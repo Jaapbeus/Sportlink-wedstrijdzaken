@@ -33,5 +33,16 @@
   {"name": "discipline: dpo",      "color": "FBCA04", "description": "Data protection review required (DPO hat)"},
   {"name": "discipline: architect","color": "0052CC", "description": "Architectural decision required"},
   {"name": "via: feedback-widget", "color": "0075CA", "description": "Created via the Blazor Admin GUI feedback widget"},
-  {"name": "supabase-advisor",     "color": "3ECF8E", "description": "Reported by the daily Supabase Security/Performance Advisor check"}
+  {"name": "supabase-advisor",     "color": "3ECF8E", "description": "Reported by the daily Supabase Security/Performance Advisor check"},
+
+  {"name": "status: awaiting-release", "color": "1D76DB", "description": "Fix zit in develop maar is nog niet uitgerold naar productie (main)"},
+  {"name": "status: pr-aangemaakt",    "color": "2EA44F", "description": "PR is aangemaakt en CI is groen — geen actie van de eigenaar vereist, klaar om te mergen"},
+  {"name": "status: waiting-codex",    "color": "FF6B35", "description": "Gedeprecieerd sinds #1343 — vervangen door turn: codex/turn: owner. Paused, waiting on Codex's read-only review/architecture opinion before Claude continues"},
+  {"name": "source: codex",       "color": "5319E7", "description": "Finding surfaced by an OpenAI Codex read-only security/privacy review"},
+  {"name": "source: claude-code", "color": "5319E7", "description": "Issue created or substantially authored by Claude Code"},
+  {"name": "source: owner",       "color": "5319E7", "description": "Issue created directly by the repository owner"},
+
+  {"name": "turn: claude-code", "color": "0E8A16", "description": "Claude Code is aan zet: implementeren, bevindingen verwerken, of Codex aanvragen"},
+  {"name": "turn: codex",       "color": "5319E7", "description": "Eenmalige aanvraag: Codex mag de gekoppelde PR read-only reviewen (#1343)"},
+  {"name": "turn: owner",       "color": "FF6B35", "description": "De eigenaar moet beslissen — rondelimiet, fout, of merge-/vervolgbesluit"}
 ]

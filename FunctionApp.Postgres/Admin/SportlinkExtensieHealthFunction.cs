@@ -20,10 +20,6 @@ public static class SportlinkExtensieHealthFunction
 {
     private const string RolNaam = SportlinkEndpointSupport.RolWedstrijdzaken;
 
-    // Ouder dan dit: de uur-keep-alive-timer hoort elk uur te verversen — als het langer geleden is,
-    // is de koppeling vermoedelijk niet meer geldig (informatief, geen harde blokkade).
-    private static readonly TimeSpan VermoedelijkVerlopenNa = TimeSpan.FromHours(2);
-
     [Function("SportlinkExtensieHealthGet")]
     public static Task<IActionResult> Get(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/sportlink-extensie/health")] HttpRequest req,
@@ -33,8 +29,10 @@ public static class SportlinkExtensieHealthFunction
             {
                 var live = req.Query["live"].ToString().Equals("true", StringComparison.OrdinalIgnoreCase);
 
-                var extensionEnabled = PostgresAppSettings.GetSetting("sportlinkExtensionEnabled") == "1";
-                var dryRun = PostgresAppSettings.GetSetting("sportlinkDryRun") != "0";
+                var extensionEnabled = PostgresAppSettings.GetSetting(
+                    SportlinkEndpointCore.InstellingExtensieIngeschakeld) == "1";
+                // #1266: dezelfde fail-safe polariteit als Program.cs en de SQL Server-tier — één plek.
+                var dryRun = SportlinkEndpointCore.IsDryRunActief(PostgresAppSettings.GetSetting);
                 var egressAllowed = EgressGuard.ExternalIntegrationsAllowed();
 
                 await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
@@ -44,7 +42,7 @@ public static class SportlinkExtensieHealthFunction
                 var (laatsteFout, laatsteFoutOp) = await LeesLaatsteMutatieFoutAsync(connection, clubCode);
                 var laatsteContractCheck = await LeesLaatsteContractCheckAsync(connection, clubCode);
 
-                object? liveResultaat = null;
+                SportlinkLiveControle? liveResultaat = null;
                 if (live)
                 {
                     // #998 harde grens: geen enkele "even snel testen"-uitzondering — dit pad raakt
@@ -71,9 +69,9 @@ public static class SportlinkExtensieHealthFunction
                 });
             });
 
-    private static async Task<List<object>> LeesRolStatusAsync(NpgsqlConnection connection, string clubCode)
+    private static async Task<List<SportlinkRolStatus>> LeesRolStatusAsync(NpgsqlConnection connection, string clubCode)
     {
-        var resultaat = new List<object>();
+        var resultaat = new List<SportlinkRolStatus>();
         await using var cmd = new NpgsqlCommand(
             "SELECT rolnaam, bijgewerktop, refreshtokenvervaltop FROM public.sportlinkservicetokens WHERE clubcode = @clubcode",
             connection);
@@ -87,14 +85,14 @@ public static class SportlinkExtensieHealthFunction
         }
 
         gevonden.TryGetValue(RolNaam, out var info);
-        resultaat.Add(new
-        {
+        // #1266: de vorm van deze statusregel en de "vermoedelijk verlopen"-drempel staan in
+        // SportlinkEndpointCore, zodat de SQL Server-tier exact hetzelfde antwoord geeft.
+        resultaat.Add(SportlinkEndpointCore.BouwRolStatus(
             RolNaam,
-            Gekoppeld = info != default,
-            LaatstVerverstOp = info == default ? (DateTime?)null : info.BijgewerktOp,
-            RefreshTokenVervaltOp = info == default ? (DateTime?)null : info.VervaltOp,
-            VermoedelijkNietMeerGeldig = info != default && (DateTime.UtcNow - info.BijgewerktOp) > VermoedelijkVerlopenNa
-        });
+            gekoppeld: info != default,
+            laatstVerverstOpUtc: info == default ? null : info.BijgewerktOp,
+            refreshTokenVervaltOpUtc: info == default ? null : info.VervaltOp,
+            nuUtc: DateTime.UtcNow));
         return resultaat;
     }
 
@@ -137,11 +135,10 @@ public static class SportlinkExtensieHealthFunction
 
     /// <summary>Eén tokenverversing + één GET op de meest recent gecachte PublicMatchId — alleen
     /// HTTP-status/resultaataard teruggeven, nooit responsdata. Lege cache is geen fout.</summary>
-    private static async Task<object> VoerLiveControleUitAsync(
+    private static async Task<SportlinkLiveControle> VoerLiveControleUitAsync(
         NpgsqlConnection connection, ISportlinkClubClient sportlinkClient, string clubCode)
     {
         var refreshStatus = await sportlinkClient.VerversTokenAsync(RolNaam);
-        var tokenRefreshGelukt = refreshStatus == SportlinkClubCallStatus.Ok;
 
         await using var cmd = new NpgsqlCommand(
             "SELECT publicmatchid FROM public.sportlinkpublicmatchidcache WHERE clubcode = @clubcode ORDER BY opgehaaldop DESC LIMIT 1",
@@ -150,14 +147,9 @@ public static class SportlinkExtensieHealthFunction
         var publicMatchId = (string?)await cmd.ExecuteScalarAsync();
 
         if (publicMatchId == null)
-            return new { TokenRefreshGelukt = tokenRefreshGelukt, MatchCheckResultaat = "Overgeslagen: geen bekende wedstrijd in de cache.", MatchCheckHttpStatus = (int?)null };
+            return SportlinkEndpointCore.BouwLiveControle(refreshStatus);
 
         var matchResult = await sportlinkClient.GetMatchAsync(RolNaam, publicMatchId);
-        return new
-        {
-            TokenRefreshGelukt = tokenRefreshGelukt,
-            MatchCheckResultaat = matchResult.Status.ToString(),
-            MatchCheckHttpStatus = matchResult.HttpStatusCode
-        };
+        return SportlinkEndpointCore.BouwLiveControle(refreshStatus, matchResult.Status, matchResult.HttpStatusCode);
     }
 }

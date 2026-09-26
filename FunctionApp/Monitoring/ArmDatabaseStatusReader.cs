@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using Azure.Core;
 using Azure.Identity;
 using Newtonsoft.Json.Linq;
+using Planner.Shared.Monitoring;
 
 namespace SportlinkFunction.Monitoring;
 
@@ -63,6 +64,12 @@ public sealed class ArmDatabaseStatusReader : IDatabaseStatusReader
             pausedSinceUtc = parsed;
         }
 
-        return new DatabaseStatusInfo(status, pausedSinceUtc);
+        // De vertaling van deze statuswaarde naar een besluitbare uitkomst staat gedeeld in
+        // DatabaseUitvalCore (#1268) — niet hier, want dat is een beslisregel en geen ARM-detail.
+        return new DatabaseStatusInfo(
+            status,
+            DatabaseUitvalCore.BepaalAzureSqlBeschikbaarheid(status),
+            pausedSinceUtc,
+            Bron: "de Azure Management API");
     }
 }

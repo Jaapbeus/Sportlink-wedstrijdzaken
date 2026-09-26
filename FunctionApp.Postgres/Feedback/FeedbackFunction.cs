@@ -36,32 +36,27 @@ public static class FeedbackFunction
 {
     // ── Validate ──────────────────────────────────────────────────────────────
 
+    // #1350: via AdminEndpoint.ExecuteZonderDatabaseAsync — dezelfde poort als elk ander
+    // admin-endpoint, maar zonder databasewacht: de feedback-widget moet juist blijven werken als
+    // de database onbereikbaar is, want dat is een van de dingen die een beheerder wil melden.
     [Function("FeedbackValidate")]
-    public static async Task<IActionResult> Validate(
+    public static Task<IActionResult> Validate(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "feedback/validate")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("FeedbackValidate");
-        var correlationId = Admin.EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        var authResult = Admin.EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return authResult;
-        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
-        try
-        {
-            var body = await new StreamReader(req.Body).ReadToEndAsync();
-            var dto = JsonConvert.DeserializeObject<FeedbackRequest>(body);
-            if (dto == null || string.IsNullOrWhiteSpace(dto.Beschrijving))
-                return new BadRequestObjectResult(new { error = "Type en beschrijving zijn verplicht." });
+        return Admin.AdminEndpoint.ExecuteZonderDatabaseAsync(req, log, "feedback valideren",
+            async () =>
+            {
+                var body = await new StreamReader(req.Body).ReadToEndAsync();
+                var dto = JsonConvert.DeserializeObject<FeedbackRequest>(body);
+                if (dto == null || string.IsNullOrWhiteSpace(dto.Beschrijving))
+                    return new BadRequestObjectResult(new { error = "Type en beschrijving zijn verplicht." });
 
-            var chatClient = context.InstanceServices.GetService<IChatClient>()
-                ?? throw new InvalidOperationException("IChatClient niet geconfigureerd — controleer OpenAiApiKey env var");
-            return await ValidateCoreAsync(dto, chatClient, log);
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Fout bij feedback validatie");
-            return new ObjectResult(new { error = "Validatie tijdelijk niet beschikbaar." }) { StatusCode = 500 };
-        }
+                var chatClient = context.InstanceServices.GetService<IChatClient>()
+                    ?? throw new InvalidOperationException("IChatClient niet geconfigureerd — controleer OpenAiApiKey env var");
+                return await ValidateCoreAsync(dto, chatClient, log);
+            });
     }
 
     /// <summary>
@@ -84,36 +79,27 @@ public static class FeedbackFunction
     // ── Voorbeeld vóór publicatie (#1205) ──────────────────────────────────────
 
     [Function("FeedbackPreview")]
-    public static async Task<IActionResult> Preview(
+    public static Task<IActionResult> Preview(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "feedback/preview")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("FeedbackPreview");
-        var correlationId = Admin.EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        var authResult = Admin.EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return authResult;
-        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
-
         // Bewust geen rate limiting, net als bij validate: een voorbeeld publiceert niets, en het is
         // juist de stap die de beheerder moet zetten vóór hij iets openbaar maakt. De limiter blijft
         // op submit staan — dáár gebeurt de GitHub-write.
-        try
-        {
-            var body = await new StreamReader(req.Body).ReadToEndAsync();
-            var dto = JsonConvert.DeserializeObject<FeedbackRequest>(body);
-            if (dto == null || string.IsNullOrWhiteSpace(dto.Beschrijving))
-                return new BadRequestObjectResult(new { error = "Beschrijving is verplicht." });
+        return Admin.AdminEndpoint.ExecuteZonderDatabaseAsync(req, log, "feedback-voorbeeld samenstellen",
+            async () =>
+            {
+                var body = await new StreamReader(req.Body).ReadToEndAsync();
+                var dto = JsonConvert.DeserializeObject<FeedbackRequest>(body);
+                if (dto == null || string.IsNullOrWhiteSpace(dto.Beschrijving))
+                    return new BadRequestObjectResult(new { error = "Beschrijving is verplicht." });
 
-            var chatClient = context.InstanceServices.GetService<IChatClient>()
-                ?? throw new InvalidOperationException("IChatClient niet geconfigureerd — controleer OpenAiApiKey env var");
+                var chatClient = context.InstanceServices.GetService<IChatClient>()
+                    ?? throw new InvalidOperationException("IChatClient niet geconfigureerd — controleer OpenAiApiKey env var");
 
-            return await PreviewCoreAsync(dto, chatClient, log);
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Fout bij feedback voorbeeld");
-            return new ObjectResult(new { error = "Voorbeeld tijdelijk niet beschikbaar." }) { StatusCode = 500 };
-        }
+                return await PreviewCoreAsync(dto, chatClient, log);
+            });
     }
 
     /// <summary>
@@ -142,52 +128,43 @@ public static class FeedbackFunction
     // ── Submit ─────────────────────────────────────────────────────────────────
 
     [Function("FeedbackSubmit")]
-    public static async Task<IActionResult> Submit(
+    public static Task<IActionResult> Submit(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "feedback/submit")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("FeedbackSubmit");
-        var correlationId = Admin.EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        var authResult = Admin.EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return authResult;
-        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
-
-        if (!FeedbackRateLimiter.TryAcquireSubmitSlot())
-            return new ObjectResult(new { error = $"Limiet bereikt: maximaal {FeedbackRateLimiter.MaxSubmissiesPerVenster} meldingen per 10 minuten." }) { StatusCode = 429 };
-
-        try
-        {
-            var body = await new StreamReader(req.Body).ReadToEndAsync();
-            var dto = JsonConvert.DeserializeObject<FeedbackRequest>(body);
-            if (dto == null || string.IsNullOrWhiteSpace(dto.Beschrijving))
-                return new BadRequestObjectResult(new { error = "Beschrijving is verplicht." });
-
-            var pat = Environment.GetEnvironmentVariable("GitHubPat");
-            var owner = Environment.GetEnvironmentVariable("GitHubOwner")
-                     ?? Environment.GetEnvironmentVariable("GITHUB_REPOSITORY_OWNER") ?? "";
-            // GitHubRepo is net als GitHubOwner verplicht: een stille fallback op de upstream-repo-naam
-            // geeft een fork met een andere naam een verwarrende 404 i.p.v. een configuratiefout. (#607)
-            var repo = Environment.GetEnvironmentVariable("GitHubRepo");
-
-            if (string.IsNullOrWhiteSpace(pat) || string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
+        return Admin.AdminEndpoint.ExecuteZonderDatabaseAsync(req, log, "feedback indienen",
+            async () =>
             {
-                log.LogWarning("GitHubPat/GitHubOwner/GitHubRepo niet volledig geconfigureerd — feedback-submit niet mogelijk");
-                return new ObjectResult(new { error = "GitHub-integratie niet geconfigureerd. Neem contact op met de beheerder." }) { StatusCode = 503 };
-            }
+                if (!FeedbackRateLimiter.TryAcquireSubmitSlot())
+                    return new ObjectResult(new { error = $"Limiet bereikt: maximaal {FeedbackRateLimiter.MaxSubmissiesPerVenster} meldingen per 10 minuten." }) { StatusCode = 429 };
 
-            var chatClient = context.InstanceServices.GetService<IChatClient>()
-                ?? throw new InvalidOperationException("IChatClient niet geconfigureerd — controleer OpenAiApiKey env var");
+                var body = await new StreamReader(req.Body).ReadToEndAsync();
+                var dto = JsonConvert.DeserializeObject<FeedbackRequest>(body);
+                if (dto == null || string.IsNullOrWhiteSpace(dto.Beschrijving))
+                    return new BadRequestObjectResult(new { error = "Beschrijving is verplicht." });
 
-            Task<(int nummer, string url)> MaakIssue(string title, string body, string[] labels) =>
-                FeedbackCore.MaakGitHubIssueAsync(pat, owner, repo, title, body, labels, log);
+                var pat = Environment.GetEnvironmentVariable("GitHubPat");
+                var owner = Environment.GetEnvironmentVariable("GitHubOwner")
+                         ?? Environment.GetEnvironmentVariable("GITHUB_REPOSITORY_OWNER") ?? "";
+                // GitHubRepo is net als GitHubOwner verplicht: een stille fallback op de upstream-repo-naam
+                // geeft een fork met een andere naam een verwarrende 404 i.p.v. een configuratiefout. (#607)
+                var repo = Environment.GetEnvironmentVariable("GitHubRepo");
 
-            return await SubmitCoreAsync(dto, chatClient, MaakIssue, log);
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Fout bij feedback submit");
-            return new ObjectResult(new { error = "Indienen mislukt. Probeer het opnieuw." }) { StatusCode = 500 };
-        }
+                if (string.IsNullOrWhiteSpace(pat) || string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
+                {
+                    log.LogWarning("GitHubPat/GitHubOwner/GitHubRepo niet volledig geconfigureerd — feedback-submit niet mogelijk");
+                    return new ObjectResult(new { error = "GitHub-integratie niet geconfigureerd. Neem contact op met de beheerder." }) { StatusCode = 503 };
+                }
+
+                var chatClient = context.InstanceServices.GetService<IChatClient>()
+                    ?? throw new InvalidOperationException("IChatClient niet geconfigureerd — controleer OpenAiApiKey env var");
+
+                Task<(int nummer, string url)> MaakIssue(string title, string body, string[] labels) =>
+                    FeedbackCore.MaakGitHubIssueAsync(pat, owner, repo, title, body, labels, log);
+
+                return await SubmitCoreAsync(dto, chatClient, MaakIssue, log);
+            });
     }
 
     /// <summary>

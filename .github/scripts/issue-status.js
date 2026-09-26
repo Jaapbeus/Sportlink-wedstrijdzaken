@@ -16,6 +16,10 @@ const PROTECTED = [
   'status: blocked',
   'status: wont-fix',
   'status: waiting-owner',
+  // Codex draait als handmatig aangeroepen, read-only reviewsweep zonder webhook — dit label
+  // wordt dus altijd door Claude Code (of de eigenaar) gezet/verwijderd, nooit automatisering.
+  // Zie CLAUDE.md, sectie "Issue-lifecycle" (#1336).
+  'status: waiting-codex',
 ];
 
 const EPIC_LABEL = 'epic';

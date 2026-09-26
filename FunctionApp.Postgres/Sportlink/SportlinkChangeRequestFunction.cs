@@ -41,7 +41,7 @@ public static class SportlinkChangeRequestFunction
         FunctionContext context)
     {
         var log = context.GetLogger("SportlinkChangeRequestsGet");
-        return AdminEndpoint.ExecuteAsync(req, log, "sportlink-wijzigingsverzoeken ophalen",
+        return SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, log, "sportlink-wijzigingsverzoeken ophalen",
             async clubCode =>
             {
                 var toggleFout = SportlinkEndpointSupport.ControleerToggleEnEgress();
@@ -56,8 +56,7 @@ public static class SportlinkChangeRequestFunction
                 var verzoeken = result.Data ?? new List<SportlinkChangeRequest>();
                 var wedstrijdContext = await ZoekWedstrijdContextAsync(verzoeken, clubCode, log);
                 return new OkObjectResult(SportlinkChangeRequestOverzichtItem.Verrijk(verzoeken, wedstrijdContext));
-            },
-            requireRole: EasyAuthHelper.RequireWedstrijdzaken);
+            });
     }
 
     /// <summary>#1111: één query voor alle PublicMatchIds; elke fout hier is een waarschuwing, geen 500.</summary>
@@ -95,7 +94,7 @@ public static class SportlinkChangeRequestFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "sportlink/change-requests/{publicRequestId}/action")] HttpRequest req,
         string publicRequestId,
         FunctionContext context) =>
-        AdminEndpoint.ExecuteAsync(req, context.GetLogger("SportlinkChangeRequestActionPut"), "sportlink-wijzigingsverzoek afhandelen",
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkChangeRequestActionPut"), "sportlink-wijzigingsverzoek afhandelen",
             async clubCode =>
             {
                 var toggleFout = SportlinkEndpointSupport.ControleerToggleEnEgress();
@@ -125,8 +124,7 @@ public static class SportlinkChangeRequestFunction
                     RolNaam, dto.Actie, dto.PublicMatchId, publicRequestId, dto.Remarks);
                 return await SportlinkEndpointSupport.RondMutatieAfAsync(
                     mutationResult, auditService, auditId, r => r, data => new OkObjectResult(data));
-            },
-            requireRole: EasyAuthHelper.RequireWedstrijdzaken);
+            });
 
     private sealed class ChangeRequestActieDto
     {

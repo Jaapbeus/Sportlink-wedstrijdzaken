@@ -35,11 +35,91 @@ jobs:
       - name: Bestandssysteem-casing-guard
         run: bash scripts/ci/check-path-casing.sh
 
+      # #1262, root cause van #1248: er bestond geen enkele controle op codeduplicatie,
+      # bestandsgrootte of tier-drift in C#-bedrijfslogica. De thema-logica stond daardoor
+      # woordelijk twee keer in de codebase — bewust, gedocumenteerd in een code-comment, en
+      # langs elke review heen. De vier guards hieronder meten wat tot nu toe ongemeten bleef;
+      # de regels die ze afdwingen staan in docs/ARCHITECTUUR-CODEKWALITEIT.md.
+      # Geen database, geen secrets — pure bestandsvergelijking.
+      - name: Codekwaliteit — tier-duplicatie stijgt niet
+        run: bash scripts/ci/check-tier-duplicatie.sh
+
+      - name: Codekwaliteit — geen logica in Blazor-pagina's
+        run: bash scripts/ci/check-blazor-codebehind.sh
+
+      # #1329: presentatie hoort in CSS isolation (<Pagina>.razor.css), niet in een <style>-blok
+      # of een statische style="..." in de markup. Een resterende dynamische waarde mag alleen
+      # als CSS custom property inline staan.
+      - name: Codekwaliteit — geen inline styles in Blazor-pagina's
+        run: bash scripts/ci/check-blazor-inline-styles.sh
+
+      - name: Codekwaliteit — platformafhankelijke valkuilen
+        run: bash scripts/ci/check-codekwaliteit-valkuilen.sh
+
+      - name: Codekwaliteit — bestandsgrootte en methodelengte
+        run: bash scripts/ci/check-bestandsgrootte.sh
+
+      # #1263: check-tier-duplicatie.sh vergelijkt alleen paren tussen FunctionApp/ en
+      # FunctionApp.Postgres/ — duplicatie binnen één boom ziet die guard niet. jscpd meet dat,
+      # met FunctionApp/ uitgesloten zodat cross-tier duplicatie niet dubbel telt.
+      - name: Codekwaliteit — interne duplicatie stijgt niet
+        run: bash scripts/ci/check-interne-duplicatie.sh
+
+      # AGENTS.md wordt uit CLAUDE.md afgeleid. Toen beide nog met de hand werden bijgehouden,
+      # miste AGENTS.md negen secties — waaronder de tier-regel, de teamnormalisatieregel en de
+      # EgressGuard-regel. De tweede reviewer van dit project werkte er dus zonder.
+      - name: Codekwaliteit — AGENTS.md afgeleid uit CLAUDE.md
+        run: python3 scripts/ci/genereer-agents-md.py
+
+      # Meta-guard: elke regel in het register heeft een bestaand, uitvoerbaar script dat ook echt
+      # in de genoemde workflow draait — en elke guard in scripts/ci/ staat in het register.
+      - name: Codekwaliteit — regelregister klopt
+        run: bash scripts/ci/check-regelregister.sh
+
+      # Een groene guard bewijst niets — hij kan ook groen zijn omdat hij niets ziet. Deze tests
+      # maken van elke overtreding tijdelijk een echte, en eisen dat de guard rood wordt. Twee van
+      # de vijf negatieve tests sloegen bij het schrijven ervan eerst ten onrechte niet aan.
+      - name: Codekwaliteit — guards zelf getest
+        run: bash scripts/ci/check-codekwaliteit.test.sh
+      # #1266: de drie Postgres-coverage-guards hieronder kijken maar EEN kant op — staat elk SQL
+      # Server-object ook in Postgres. Ze zijn geschreven toen SQL Server de leidende tier was.
+      # Bij de cutover draaiden de rollen om, maar de richting van de guards niet; sindsdien groeide
+      # de Postgres-tier vrij en liep de SQL Server-tier twaalf endpoints achter zonder dat iets
+      # het merkte. Deze guard kijkt beide kanten op. Geen database, geen secrets.
+      - name: Tier-pariteit — zelfde routes op beide tiers
+        run: bash scripts/ci/check-tier-pariteit.sh
+
+      # #1350: elk HTTP-endpoint autoriseert via AdminEndpoint.ExecuteAsync (of de Sportlink-
+      # wrapper die daarop uitkomt) — nooit via een losse EasyAuthHelper.RequireAdmin-aanroep, en
+      # nooit achter een Function key. Tot #1350 bestonden drie patronen naast elkaar; de 31
+      # endpoints met een eigen poort hadden geen enkele test die dat bewaakte. Uitzonderingen
+      # staan met reden in scripts/ci/endpoint-autorisatie-allowlist.txt. Geen database, geen secrets.
+      - name: Autorisatie — elk HTTP-endpoint via de wrapper
+        run: bash scripts/ci/check-endpoint-autorisatie.sh
+
       # #864: bewaakt de identifier-casing-conventie (docs/ARCHITECTUUR-DATABASE-TIERS.md sectie
       # 3) binnen de Postgres-migratiebestanden zelf — een ander risico dan de bestandsnaam-
       # casing hierboven (#825). Geen database, geen secrets.
       - name: Postgres identifier-casing-guard
         run: bash scripts/ci/check-postgres-identifier-casing.sh
+
+      # #1255 (epic #1249): bewaakt de thema-CSS-variabelen. Een selector die var(--theme-iets)
+      # gebruikt terwijl die variabele nergens gedefinieerd is, geeft géén foutmelding — de
+      # eigenschap valt weg en het element rendert ongestyled, zichtbaar alleen als iemand precies
+      # die pagina in precies die modus opent. Sinds het thema twee modi heeft moet elke kleur op
+      # vier plekken staan (-light, -dark, en de effectieve verwijzing in beide :root-blokken);
+      # één vergeten plek is exact zo'n stille fout. Geen database, geen secrets, geen browser.
+      - name: Thema-variabele-guard
+        run: bash scripts/ci/check-theme-variables.sh
+
+      # #1256 (epic #1249): bewaakt het contract tussen ThemeService (camelCase-sleutels), theme.js
+      # (vertaalt die naar een CSS-propertynaam) en app.css (definieert die naam). Klopt de
+      # vertaling niet, dan zet de browser een property die niemand leest — geen foutmelding, geen
+      # console-waarschuwing, de kleur blijft gewoon op de standaardwaarde staan. Ook de stille
+      # variant die dit issue beschrijft wordt hier gevangen: themeHelper.applyMode hernoemen
+      # zonder ThemeService mee te nemen. Draait zonder browser, met een minimale DOM-stub.
+      - name: Thema-JS-contractguard
+        run: node scripts/ci/check-theme-js-contract.js
 
       # #864, deel 2: de "grootste deelopgave" die #908 (deel 1) open liet — een tabel die aan de
       # SQL Server-boom wordt toegevoegd (of hernoemd) zonder Postgres-tegenhanger blijft anders
@@ -152,6 +232,19 @@ jobs:
       - name: Database.Postgres.Cli bouwen (net9.0)
         run: dotnet build Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release
 
+      # #1302: drie mappen hadden geen testproject. De CLI-argumentafhandeling bepaalt wat
+      # deploy.yml doet (migreren, his-tabellen aanmaken of demodata seeden), de kopieerder
+      # vertaalt foreign keys bij de cutover, en de tokencapture schrijft een secret in
+      # local.settings.json. Alle drie falen stil als ze fout gaan.
+      - name: Database.Postgres.Cli.Tests draaien (argumentafhandeling)
+        run: dotnet test Database.Postgres.Cli.Tests/Database.Postgres.Cli.Tests.csproj --configuration Release --verbosity minimal
+
+      - name: MigrationTools.Tests draaien (id-vertaling bij de cutover)
+        run: dotnet test MigrationTools.Tests/MigrationTools.Tests.csproj --configuration Release --verbosity minimal
+
+      - name: Tools.SportlinkTokenCapture.Tests draaien (schrijven naar local.settings.json)
+        run: dotnet test Tools.SportlinkTokenCapture.Tests/Tools.SportlinkTokenCapture.Tests.csproj --configuration Release --verbosity minimal
+
       # De unittests werden tot nu toe NIET in CI gedraaid: deze workflow bouwde alleen de twee
       # applicatieprojecten. Daardoor kon een regressie die lokaal wel rood was, ongemerkt gemerged
       # worden — ontdekt tijdens de adversariële verificatie van #705-#712. De testsuite dekt onder
@@ -159,6 +252,15 @@ jobs:
       # meer stilzwijgend kunnen breken.
       - name: Unittests draaien (FunctionApp.Tests)
         run: dotnet test FunctionApp.Tests/FunctionApp.Tests.csproj --configuration Release --verbosity minimal
+
+      # #1300: CA1502/1505/1506 staan niet standaard aan, ook niet bij AnalysisMode=All. De
+      # .editorconfig in de repo-root zet ze op 'warning'; deze guard bouwt de solution en telt
+      # de overtredingen. Ratchet, geen harde grens — de nulmeting bevat methodes met een
+      # cyclomatische complexiteit van 43, 46 en 58, en die herschrijf je niet in een chore-PR.
+      # Bewust ná de losse buildstappen: die geven een duidelijkere foutmelding bij een echte
+      # bouwfout dan deze guard, die dan alleen kan melden dat hij niets kon meten.
+      - name: Codekwaliteit — maintainability-analyzers (CA1502/1505/1506)
+        run: bash scripts/ci/check-analyzer-complexiteit.sh
 
       # ──────────────────────────────────────────────────────────────────────
       # #659: CSP-regressiewacht op de gepubliceerde index.html.
@@ -581,18 +683,28 @@ jobs:
       # Alleen zinvol bij een pull request — bij een push naar main/develop is er geen basis om
       # tegen af te zetten.
       # ──────────────────────────────────────────────────────────────────────
+      # #1265: NIET de live tip van de basisbranch ophalen, maar de commit die GitHub bij dit
+      # event als basis vastlegde. De checkout hierboven is bij een pull_request de merge-ref —
+      # een momentopname van head gemerged in de basis op het moment dat het event afging.
+      # 'git fetch origin <branch>' levert daarentegen de tip van NU. Mergt er tijdens deze run
+      # een andere PR een migratie naar develop, dan past deze stap er één méér toe dan de
+      # checkout kent, en faalt de telling verderop op een PR die migraties niet eens aanraakt.
+      # github.event.pull_request.base.sha is per definitie dezelfde basis als die van de
+      # merge-ref en beweegt dus niet mee.
       - name: Migratiepad van de basisbranch toepassen (checksum-basis, #1062)
         if: github.event_name == 'pull_request'
+        env:
+          BASIS_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+          git fetch --no-tags --depth=1 origin "$BASIS_SHA"
           rm -rf /tmp/basismigraties && mkdir -p /tmp/basismigraties
           # git archive faalt als de map op de basisbranch niet bestaat — dat is geen fout maar
           # een nieuwe map, en dan valt er ook niets te vergelijken.
-          if git archive FETCH_HEAD Database.Postgres/migrations 2>/dev/null | tar -x -C /tmp/basismigraties; then
+          if git archive "$BASIS_SHA" Database.Postgres/migrations 2>/dev/null | tar -x -C /tmp/basismigraties; then
             dotnet run --project Database.Postgres.Cli --configuration Release -- /tmp/basismigraties/Database.Postgres/migrations
           else
-            echo "::notice::Database.Postgres/migrations bestaat niet op ${{ github.base_ref }} — checksum-basis overgeslagen."
+            echo "::notice::Database.Postgres/migrations bestaat niet op basis $BASIS_SHA — checksum-basis overgeslagen."
           fi
 
       - name: Migratiepad toepassen (1e keer — verse database)
@@ -638,17 +750,22 @@ jobs:
           fi
           echo "ClubCode-dekking bevestigd voor alle vier tabellen."
 
-          # schema_migrations moet precies evenveel rijen tonen als er .sql-bestanden in de
-          # migratiemap staan — geen dubbele rij door de tweede run hierboven. Geteld vanaf schijf
-          # i.p.v. hardcoded, zodat een volgend migratiebestand (#824 voegde het tweede toe) deze
-          # assertie niet stil laat verouderen.
-          verwacht_aantal=$(ls Database.Postgres/migrations/*.sql | wc -l)
-          count=$(psql_ci -c "SELECT COUNT(*) FROM public.schema_migrations;")
-          if [ "$count" != "$verwacht_aantal" ]; then
-            echo "::error::Verwacht $verwacht_aantal toegepaste migratie(s) in schema_migrations, gevonden: $count"
+          # schema_migrations moet exact de migratiebestanden bevatten die deze checkout kent —
+          # geen dubbele rij door de tweede run hierboven, en niets extra's.
+          #
+          # #1265: vergelijk de BESTANDSNAMEN, niet alleen het aantal. Een telling zegt bij een
+          # verschil alleen "verwacht 26, gevonden 27" en laat je zelf raden welke; de namen wijzen
+          # meteen aan wat er te veel of te weinig is. Dat is hier het verschil tussen een echte
+          # fout en de basis-checksumstap die iets anders toepaste dan deze checkout bevat.
+          ls Database.Postgres/migrations/*.sql | xargs -n1 basename | sort > /tmp/verwachte_migraties.txt
+          psql_ci -c "SELECT filename FROM public.schema_migrations ORDER BY filename;" | sort > /tmp/toegepaste_migraties.txt
+          if ! diff -u /tmp/verwachte_migraties.txt /tmp/toegepaste_migraties.txt > /tmp/migratie_diff.txt; then
+            echo "::error::schema_migrations komt niet overeen met Database.Postgres/migrations."
+            echo "Alleen in de checkout (-) of alleen in de database (+):"
+            cat /tmp/migratie_diff.txt
             exit 1
           fi
-          echo "schema_migrations: exact $verwacht_aantal toegepaste migratie(s), geen duplicaat door de idempotentie-run."
+          echo "schema_migrations: exact $(wc -l < /tmp/verwachte_migraties.txt) toegepaste migratie(s), namen identiek aan de checkout."
 
           # Identifier-casing-conventie (ARCHITECTUUR-DATABASE-TIERS.md §3): geen enkele kolomnaam
           # in de vier tabellen mag afwijken van zijn eigen lowercase-vorm.
@@ -927,6 +1044,71 @@ jobs:
       # die FunctionApp.Postgres.Tests gebruikte; die moet ná de suite hierboven nog steeds de
       # volledige, gemigreerde vorm hebben. Vóór deze wijziging stonden hier 3 kolommen en 0
       # migratierijen — precies de meting uit ARCHITECTUUR-DATABASE-TIERS.md §29.
+      # #1246: de demodata-seed in de ECHTE volgorde van een installatie, op een eigen database.
+      #
+      # De twee AllStars-stappen hierboven bewijzen de copy-logica van migratie 006, maar ze bouwen
+      # de gunstige volgorde met de hand: ze zetten CIPRIMARY + een speeltijdenrij neer en draaien
+      # 006 daarna nóg een keer als los bestand. Precies die hand-gebouwde volgorde verborg de fout
+      # van #1246 -- in werkelijkheid draait 006 één keer, via de ledger, vóór er ook maar één
+      # speeltijd bestaat. De copy leverde daardoor altijd 0 rijen op en werd nooit opnieuw
+      # geprobeerd: lokaal én in productie hield de democlub permanent 0 speeltijden.
+      #
+      # Deze stap legt dat vast als before/after. De "before"-assertie (0 speeltijden na de
+      # migraties) is de rode test: die zou vóór de fix ook ná de seed nog 0 zijn geweest.
+      - name: "Demodata-seed in de echte installatievolgorde (#1246)"
+        run: |
+          psql_seed() { PGPASSWORD=ci-wegwerpwachtwoord-niet-geheim psql -h localhost -U ci_postgres -d sportlink_ci_seed1246 -t -A "$@"; }
+          CONN="Host=localhost;Port=5432;Username=ci_postgres;Password=ci-wegwerpwachtwoord-niet-geheim;Database=sportlink_ci_seed1246"
+
+          PGPASSWORD=ci-wegwerpwachtwoord-niet-geheim psql -h localhost -U ci_postgres -d sportlink_ci \
+            -v ON_ERROR_STOP=1 -c "CREATE DATABASE sportlink_ci_seed1246;"
+          POSTGRES_CONNECTION_STRING="$CONN" dotnet run --project Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release
+
+          # De primaire club en zijn speeltijden komen PAS NA de migraties -- zo gaat het echt: een
+          # beheerder voert ze in via de Admin GUI, lang nadat 006 is toegepast.
+          psql_seed -c "INSERT INTO public.appsettings (clubcode, clubname, syncenabled) VALUES ('CIPRIMARY', 'CI Primary', false);"
+          psql_seed -c "INSERT INTO public.speeltijden (leeftijd, veldafmeting, wedstrijdtotaal, wedstrijdhelft, wedstrijdrust, clubcode) VALUES ('JO13', 1.0, 60, 30, 10, 'CIPRIMARY'), ('JO15', 1.0, 70, 35, 10, 'CIPRIMARY');"
+
+          voor=$(psql_seed -c "SELECT COUNT(*) FROM public.speeltijden WHERE clubcode='ALLSTARS';")
+          echo "voor de seed: ALLSTARS-speeltijden=$voor"
+          if [ "$voor" != "0" ]; then
+            echo "::error::Verwacht 0 ALLSTARS-speeltijden na alleen de migraties (dat is de fout die #1246 beschrijft); gevonden $voor. Is de copy verplaatst of is de volgorde gewijzigd?"
+            exit 1
+          fi
+
+          POSTGRES_CONNECTION_STRING="$CONN" dotnet run --project Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release -- --ensure-his-tables
+          POSTGRES_CONNECTION_STRING="$CONN" dotnet run --project Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release -- \
+            --seed-demodata scripts/migrations/003-seed-allstars-demo-matches-postgres.sql
+
+          aantallen=$(psql_seed -c "
+            SELECT (SELECT COUNT(*) FROM public.speeltijden WHERE clubcode='ALLSTARS') || ' ' ||
+                   (SELECT COUNT(*) FROM his.teams WHERE clubcode='ALLSTARS') || ' ' ||
+                   (SELECT COUNT(*) FROM his.matches WHERE clubcode='ALLSTARS') || ' ' ||
+                   (SELECT COUNT(*) FROM avg.teambegeleiding WHERE clubcode='ALLSTARS');
+          ")
+          read -r speeltijden teams matches begeleiding <<< "$aantallen"
+          echo "na de seed: speeltijden=$speeltijden teams=$teams matches=$matches teambegeleiding=$begeleiding"
+          if [ "$speeltijden" != "2" ] || [ "$teams" != "28" ] || [ "$matches" != "224" ] || [ "$begeleiding" != "28" ]; then
+            echo "::error::Demodata-seed (#1246) klopt niet: verwacht speeltijden=2 teams=28 matches=224 teambegeleiding=28, gevonden speeltijden=$speeltijden teams=$teams matches=$matches teambegeleiding=$begeleiding"
+            exit 1
+          fi
+
+          # Idempotentie: de deploy draait deze seed bij ELKE release, dus een tweede run mag niets
+          # verdubbelen.
+          POSTGRES_CONNECTION_STRING="$CONN" dotnet run --project Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release -- \
+            --seed-demodata scripts/migrations/003-seed-allstars-demo-matches-postgres.sql
+          na2=$(psql_seed -c "SELECT COUNT(*) FROM his.teams WHERE clubcode='ALLSTARS';")
+          if [ "$na2" != "28" ]; then
+            echo "::error::Demodata-seed (#1246) is niet idempotent: his.teams=$na2 na een tweede run, verwacht 28."
+            exit 1
+          fi
+
+          # Een fork mag de democlub weghalen; dat mag de deploy niet laten falen.
+          psql_seed -c "DELETE FROM public.appsettings WHERE clubcode='ALLSTARS';"
+          POSTGRES_CONNECTION_STRING="$CONN" dotnet run --project Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release -- \
+            --seed-demodata scripts/migrations/003-seed-allstars-demo-matches-postgres.sql
+          echo "Demodata-seed (#1246): echte volgorde, idempotentie en fork-zonder-democlub bevestigd."
+
       - name: Bewijzen dat sportlink_ci onaangetast is gebleven (#925)
         run: |
           psql_ci() { PGPASSWORD=ci-wegwerpwachtwoord-niet-geheim psql -h localhost -U ci_postgres -d sportlink_ci -t -A "$@"; }

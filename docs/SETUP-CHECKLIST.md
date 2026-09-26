@@ -1,4 +1,9 @@
-# Sportlink Wedstrijdzaken — Setup Checklist (v3.2)
+# Sportlink Wedstrijdzaken — Setup Checklist
+
+> **Waarvoor dit document?** Afvinklijst voor wie het project voor het eerst opzet. De volledige
+> instructie per stap staat in [DEVELOPER-SETUP.md](DEVELOPER-SETUP.md); dagelijks werk in
+> [LOKAAL-DEBUGGEN.md](LOKAAL-DEBUGGEN.md). Wijkt een commando hier af van DEVELOPER-SETUP.md, dan
+> is DEVELOPER-SETUP.md leidend.
 
 Gebruik deze checklist om je setup-voortgang bij te houden. Vink elk item af zodra het klaar is.
 Geldt voor **Windows** en **macOS (Apple Silicon)** (#800) — zie
@@ -39,8 +44,9 @@ Geldt voor **Windows** en **macOS (Apple Silicon)** (#800) — zie
 - [ ] Node.js geïnstalleerd (`node --version`) — macOS: `brew install node`
 - [ ] Azurite geïnstalleerd (`azurite --version`) — cross-platform via npm, ongewijzigd
 - [ ] Lokale database gestart — kies één tier (identiek op Windows en macOS, Docker is de enige
-  ondersteunde manier sinds #800): `docker compose up -d` voor SQL Server, of
-  `docker compose --profile postgres up -d postgres` voor Postgres — zie DEVELOPER-SETUP.md §4
+  ondersteunde manier sinds #800): `docker compose up -d` voor Postgres (de standaardtier), of
+  `docker compose --profile sqlserver up -d sqlserver` voor SQL Server — zie DEVELOPER-SETUP.md §4.
+  Er bestaat géén profile `postgres`; Postgres is de service zonder profile.
 
 ---
 
@@ -55,52 +61,53 @@ Geldt voor **Windows** en **macOS (Apple Silicon)** (#800) — zie
 
 ## Database
 
-**SQL Server-tier** (rollback-tier, nog volledig ondersteund):
-- [ ] SQL Server bereikbaar
-- [ ] Database `SportlinkSqlDb` aangemaakt (via `scripts/db/setup-local-database.sql` of Database-project)
-- [ ] Schemas aanwezig: `stg`, `his`, `mta`, `dbo`, `planner`
-- [ ] Stored procedures aanwezig: `sp_MergeStgToHis`, `sp_CreateTargetTableFromSource`
-- [ ] Sportlink API-credentials ingesteld in `dbo.AppSettings`
+Kies één tier. Beide zijn gelijkwaardig en volledig ondersteund (#1266); Postgres is de
+standaardtier en de tier die in productie draait (#1060).
 
-**Postgres-tier** (productietier sinds 2026-09-04):
-- [ ] Postgres bereikbaar (`docker compose --profile postgres up -d postgres`)
+**Postgres-tier** (standaard, productietier sinds 2026-09-04) — zie DEVELOPER-SETUP.md §4.1–§4.3:
+- [ ] Postgres bereikbaar (`docker compose up -d`)
 - [ ] Migraties toegepast: `.\scripts\dev\Invoke-PostgresMigrations.ps1` (vereist
   `POSTGRES_CONNECTION_STRING` als omgevingsvariabele)
 - [ ] Schemas aanwezig: `stg`, `his`, `avg`, `planner`, `public` (i.p.v. `dbo`/`mta`)
 - [ ] Sportlink API-credentials ingesteld in `public.appsettings`
 
-**Credentials gebruikt:**
+**SQL Server-tier** (alternatief) — zie DEVELOPER-SETUP.md §4.4–§4.7:
+- [ ] SQL Server bereikbaar (`docker compose --profile sqlserver up -d sqlserver`)
+- [ ] Database `SportlinkSqlDb` aangemaakt en schema uitgerold via
+  `Database/Script.PostDeployment1.sql` (DEVELOPER-SETUP.md §4.5)
+- [ ] Schemas aanwezig: `stg`, `his`, `mta`, `dbo`, `planner`, `avg`, `pub`
+- [ ] Stored procedures aanwezig: `sp_MergeStgToHis`, `sp_CreateTargetTableFromSource`
+- [ ] Sportlink API-credentials ingesteld in `dbo.AppSettings`
 
-```
-SportlinkApiUrl:    https://data.sportlink.com
-SportlinkClientId:  _________________________________
-```
+**Credentials:** `SportlinkApiUrl` is `https://data.sportlink.com`. Noteer je `SportlinkClientId`
+**buiten** deze repository — dit bestand staat in git.
 
 ---
 
 ## Lokale configuratie
+
+**Postgres-tier (standaard):**
+- [ ] `FunctionApp.Postgres/local.settings.json` aangemaakt vanuit template:
+  ```powershell
+  cp FunctionApp.Postgres/local.settings.template.json FunctionApp.Postgres/local.settings.json
+  ```
+- [ ] `POSTGRES_CONNECTION_STRING` verwijst naar jouw Postgres-container/instantie — vorm:
+  `Host=localhost;Port=5432;Username=<gebruiker>;Password=<wachtwoord>;Database=sportlink`
+- [ ] `AzureWebJobsStorage` staat op `UseDevelopmentStorage=true`
+- [ ] `FUNCTIONS_WORKER_RUNTIME` staat op `dotnet-isolated`
 
 **SQL Server-tier:**
 - [ ] `FunctionApp/local.settings.json` aangemaakt vanuit template:
   ```powershell
   cp FunctionApp/local.settings.template.json FunctionApp/local.settings.json
   ```
-- [ ] `SqlConnectionString` verwijst naar jouw SQL Server
+- [ ] `SqlConnectionString` verwijst naar jouw SQL Server — vorm (identiek op Windows en macOS,
+  SQL-login tegen de Docker-container):
+  `Server=localhost,1433;Database=SportlinkSqlDb;User Id=sa;Password=<wachtwoord>;TrustServerCertificate=True;`
 - [ ] `AzureWebJobsStorage` staat op `UseDevelopmentStorage=true`
 - [ ] `FUNCTIONS_WORKER_RUNTIME` staat op `dotnet-isolated`
 
-**Connection string gebruikt (identiek op Windows en macOS — SQL-login tegen de Docker-container):**
-
-```
-Server=localhost,1433;Database=SportlinkSqlDb;User Id=sa;Password=____________;TrustServerCertificate=True;
-```
-
-**Postgres-tier:**
-- [ ] `FunctionApp.Postgres/local.settings.json` aangemaakt vanuit template:
-  ```powershell
-  cp FunctionApp.Postgres/local.settings.template.json FunctionApp.Postgres/local.settings.json
-  ```
-- [ ] `PostgresConnectionString` verwijst naar jouw Postgres-container/instantie
+> Noteer wachtwoorden en verbindingsreeksen **buiten** deze repository — dit bestand staat in git.
 
 ---
 
@@ -167,8 +174,8 @@ Als Variable werken ze ook — maar dan staan ze leesbaar in elke deploy-log.
 | Probleem | Eerste stap |
 |---------|-------------|
 | FunctionApp start niet (503) | `dotnet --list-runtimes` — .NET 9 aanwezig? |
-| "Cannot connect to database" | `SqlConnectionString` in `local.settings.json` controleren; draait de container? `docker compose ps` |
-| "401 Unauthorized" Sportlink API | `SELECT * FROM [dbo].[AppSettings]` — credentials correct? |
+| "Cannot connect to database" | Postgres: `POSTGRES_CONNECTION_STRING` in `FunctionApp.Postgres/local.settings.json` · SQL Server: `SqlConnectionString` in `FunctionApp/local.settings.json`. Draait de container? `docker compose ps` |
+| "401 Unauthorized" Sportlink API | Postgres: `SELECT * FROM public.appsettings;` · SQL Server: `SELECT * FROM [dbo].[AppSettings]` — credentials correct? |
 | "Azurite connection failed" | Windows: `Get-NetTCPConnection -LocalPort 10000` · macOS: `lsof -nP -iTCP:10000 -sTCP:LISTEN` — poort actief? |
 | Blazor "An unhandled error" | Services stoppen + `dotnet clean BlazorAdmin` + herstart |
 

@@ -54,14 +54,46 @@ internal static class EasyAuthHelper
     public static IActionResult? RequireAdmin(HttpRequest req)
         => RequireRole(req, "admin");
 
-    /// <summary>Controleert 'admin' of 'user' rol. Delegeert naar RequireRole.</summary>
-    public static IActionResult? RequireAuthenticated(HttpRequest req)
-        => RequireRole(req, "admin", "user");
+    // RequireAuthenticated ("admin" óf "user") is bij #1350 verwijderd: het werd op geen van beide
+    // tiers aangeroepen sinds #310 de teambegeleiding-endpoints admin-only maakte. De rol "user"
+    // geeft dus nergens API-toegang — een ongebruikte poort die ruimer is dan alle gebruikte, is
+    // een uitnodiging om hem per ongeluk te pakken.
 
     /// <summary>#988: aanvullende, functionele rol (naast admin/user) voor Sportlink Web
     /// Extension-mutaties (epic #986) — zie docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md §6.</summary>
     public static IActionResult? RequireWedstrijdzaken(HttpRequest req)
         => RequireRole(req, "Wedstrijdzaken");
+
+    /// <summary>
+    /// Niet-gooiende variant van <see cref="RequireRole"/> (#1341) — voor een feature-toggle-check
+    /// die zelf al bepaalt wat er bij "nee" gebeurt (bijv. de rol-feature-instelling raadplegen)
+    /// in plaats van meteen een 401/403 te retourneren. Zelfde lokale bypass als alle
+    /// <c>Require*</c>-methoden: zonder <c>WEBSITE_SITE_NAME</c> (lokaal/CI) is elke rol "aanwezig".
+    /// </summary>
+    public static bool IsInRole(HttpRequest req, string role)
+    {
+        var siteName = Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME");
+        if (string.IsNullOrEmpty(siteName)) return true;
+
+        if (!req.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL", out var encoded) ||
+            string.IsNullOrEmpty(encoded))
+            return false;
+
+        try
+        {
+            var json = Encoding.UTF8.GetString(Convert.FromBase64String(encoded!));
+            var principal = JsonSerializer.Deserialize<ClientPrincipal>(json, _opts);
+            return principal?.Claims?.Any(c =>
+                string.Equals(c.Typ, "roles", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(c.Val, role, StringComparison.OrdinalIgnoreCase)) ?? false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static bool IsAdmin(HttpRequest req) => IsInRole(req, "admin");
 
     private static string? GetClaimValue(HttpRequest req, params string[] claimTypes)
     {

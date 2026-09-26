@@ -21,6 +21,14 @@ public sealed record TeamCandidate(int TeamId, string Teamnaam, string? Leeftijd
 /// <c>upper(...)</c>, zodat de vergelijkingslaag hier en de constraint-laag in de database dezelfde
 /// hoofdletterongevoelige sleutel gebruiken. <c>RuweTekst</c> is bewust óók ge-upper't — zelfde
 /// intentie-kanttekening als de SQL Server-tier (#869).
+/// <para>
+/// #1280: de bijbehorende lookup-index op <c>ruwetekstgenormaliseerd</c> is sinds migratie 024
+/// (#1211) óók een expressie-index (<c>ix_teamaliassen_club_genormaliseerd_upper</c>). Vóór die
+/// migratie lag hij op de kale kolom en was hij per definitie onbruikbaar voor deze query: gemeten
+/// op 200.000 rijen een Parallel Seq Scan van 2309 buffers tegenover 8 daarna. Een <c>INCLUDE</c>
+/// toevoegen levert hier niets op — het OR-predicaat wordt een BitmapOr, en een bitmap-scan kan
+/// INCLUDE-kolommen niet lezen (gemeten: identiek plan, 38% grotere index).
+/// </para>
 /// </remarks>
 internal sealed class TeamCandidateRepository(string connectionString) : ITeamCandidateRepository
 {

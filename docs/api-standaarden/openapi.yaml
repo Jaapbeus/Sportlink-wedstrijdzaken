@@ -6,17 +6,29 @@ info:
 
     ## Beveiliging
 
-    Twee beveiligingsschema's:
+    Eén beveiligingsschema:
 
-    - **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.
-      Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en
-      populate-sunset).
-    - **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor
-      alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele
-      `WEBSITE_SITE_NAME` afwezig is.
+    - **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist
+      voor alle endpoints behalve `/health`. De rolcontrole gebeurt server-side:
+      `admin` (`EasyAuthHelper.RequireAdmin`, via de wrappers `AdminEndpoint.ExecuteAsync` /
+      `ExecuteZonderDatabaseAsync`) voor `/beheer/`, `/planner/`, `/feedback/` en `/test/` — sinds
+      #1350 óók voor `/postgres/sync-matches` en `/sync-matches`; `Wedstrijdzaken`
+      (`EasyAuthHelper.RequireWedstrijdzaken`, via `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`)
+      voor `/sportlink/` (op de SQL Server-tier bovendien ook `admin`). Lokaal omzeild wanneer de
+      omgevingsvariabele `WEBSITE_SITE_NAME` afwezig is.
+
+    Zonder token volgt `401`. Met een geldig token maar zonder de vereiste rol volgt `403` met
+    `{ "error": "Forbidden: vereiste rol ontbreekt" }`. De rol `user` geeft nergens toegang:
+    `EasyAuthHelper.RequireAuthenticated` is bij #1350 verwijderd.
+
+    ## Tiers
+
+    Alle endpoints bestaan sinds #1266 op beide databasetiers, met één uitzondering: de handmatige
+    synchronisatie heet `/postgres/sync-matches` op de Postgres-tier (productie) en
+    `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.4.4.0
+  version: 3.5.7.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -29,9 +41,12 @@ servers:
 
 tags:
   - name: core
-    description: Health en handmatige Sportlink-synchronisatie
+    description: |
+      Health (anoniem) en handmatige Sportlink-synchronisatie (Entra ID, admin-rol — sinds #1350
+      geen Master key meer).
+      De syncroute verschilt per tier: /postgres/sync-matches (Postgres) of /sync-matches (SQL Server).
   - name: planner
-    description: Veldplanning, beschikbaarheidscontrole en optimalisatie
+    description: Veldplanning, beschikbaarheidscontrole en dagplanning (vereist Entra ID authenticatie met admin-rol)
   - name: beheer
     description: Beheerfuncties (vereisen Entra ID authenticatie met admin-rol)
   - name: testdata
@@ -39,28 +54,28 @@ tags:
   - name: feedback
     description: Feedback widget (vereist Entra ID authenticatie met admin-rol)
   - name: sportlink
-    description: Sportlink Web Extension read-only endpoints (#986/#991, vereist Entra-approl Wedstrijdzaken)
+    description: |
+      Sportlink Web Extension (#986/#991) — lees- én mutatie-endpoints. Vereist de Entra-approl
+      Wedstrijdzaken; op de SQL Server-tier daarnaast ook de rol admin.
+      Verschillende mutaties zijn in de code op dry-run vastgezet — zie docs/SPORTLINK-WEB-EXTENSION.md.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Beveiligingsschema's
 # ─────────────────────────────────────────────────────────────────────────────
 components:
   securitySchemes:
-    functionKey:
-      type: apiKey
-      in: query
-      name: code
-      description: |
-        Azure Functions key. Gebruik de Function key voor planner-endpoints en de Master key voor
-        sync-matches en populate-sunset (AuthorizationLevel.Admin).
     easyAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
       description: |
-        Azure Easy Auth Bearer token (Entra ID). De Function App valideert dit token via Easy Auth
-        en injecteert `X-MS-CLIENT-PRINCIPAL`. EasyAuthHelper controleert de `admin`-rol op alle
-        /beheer/- en /feedback/-endpoints. Lokaal altijd toegestaan als WEBSITE_SITE_NAME afwezig is.
+        Azure Easy Auth Bearer token (Entra ID). Geldt voor alle endpoints behalve `/health`,
+        inclusief `/postgres/sync-matches` en `/sync-matches` (sinds #1350 — tot dan een Function
+        key/Master key via `?code=`). De Function App valideert dit token via Easy Auth en
+        injecteert `X-MS-CLIENT-PRINCIPAL`. EasyAuthHelper controleert daarna de rol: `admin` op
+        alle /beheer/-, /planner/-, /feedback/- en /test/-endpoints (en de twee syncroutes),
+        `Wedstrijdzaken` op alle /sportlink/-endpoints. Lokaal altijd toegestaan als
+        WEBSITE_SITE_NAME afwezig is.
 
   # ───────────────────────────────────────────────────────────────────────────
   # Herbruikbare headers
@@ -323,6 +338,12 @@ components:
           type: integer
           nullable: true
           description: Overschrijf wedstrijdduur in minuten (standaard uit Speeltijden)
+        heelVeld:
+          type: boolean
+          nullable: true
+          description: |
+            Dwing een heel veld af, ook als de leeftijdscategorie normaal op een deelveld speelt.
+            Geeft een waarschuwing terug in plaats van een fout.
 
     CheckAvailabilityResponse:
       type: object
@@ -388,6 +409,12 @@ components:
         wedstrijdDuurMinuten:
           type: integer
           nullable: true
+        heelVeld:
+          type: boolean
+          nullable: true
+          description: |
+            Dwing een heel veld af, ook als de leeftijdscategorie normaal op een deelveld speelt.
+            Geeft een waarschuwing terug in plaats van een fout.
 
     BevestigResponse:
       type: object
@@ -572,78 +599,6 @@ components:
         status:
           type: string
           example: "Aangevraagd"
-
-    OptimaliseerRequest:
-      type: object
-      required:
-        - datum
-      properties:
-        datum:
-          type: string
-          format: date
-          example: "2026-04-18"
-        doel:
-          type: string
-          nullable: true
-          enum: [veld5-ontlasten, strakker-plannen]
-          description: Optimalisatiedoel. Leeg = beide combineren.
-        gewensteEindtijd:
-          type: string
-          nullable: true
-          description: Gewenste eindtijd HH:mm. Standaard 16:15.
-          example: "16:15"
-        bufferMinuten:
-          type: integer
-          nullable: true
-          description: Buffer tussen wedstrijden in minuten. Standaard 15.
-
-    OptimalisatieSuggestie:
-      type: object
-      properties:
-        wedstrijd:
-          type: string
-        huidigVeldNummer:
-          type: integer
-        huidigVeld:
-          type: string
-        huidigeTijd:
-          type: string
-        nieuwVeldNummer:
-          type: integer
-        nieuwVeld:
-          type: string
-        nieuweTijd:
-          type: string
-        reden:
-          type: string
-
-    OptimaliseerResponse:
-      type: object
-      properties:
-        datum:
-          type: string
-          format: date
-        huidigeEindtijd:
-          type: string
-        geschatteNieuweEindtijd:
-          type: string
-          nullable: true
-        aantalVerplaatsingen:
-          type: integer
-        aantalVanVeld5Verplaatst:
-          type: integer
-        suggesties:
-          type: array
-          items:
-            $ref: '#/components/schemas/OptimalisatieSuggestie'
-        htmlPlanner:
-          type: string
-          description: HTML-plannerweergave (altijd meegegeven in JSON-modus)
-        voldoendeRuimte:
-          type: boolean
-        voldoendeRuimteMelding:
-          type: string
-          nullable: true
 
     DoordeweeksBeschikbaarRequest:
       type: object
@@ -868,44 +823,156 @@ components:
           type: string
           nullable: true
 
+    RolFeatureInstellingResponse:
+      type: object
+      description: |
+        Eén FeatureKey met zijn huidige aan/uit-stand voor de `Wedstrijdzaken`-rol bij deze club
+        (#1341, epic #1338). `admin` komt hier nooit in voor — die rol heeft altijd alles aan.
+      properties:
+        FeatureKey:
+          type: string
+          enum: [sportlink.kleedkamers, sportlink.scheidsrechter, sportlink.veld]
+        Enabled:
+          type: boolean
+
     SportlinkMatchInfoResponse:
       type: object
       description: |
-        Read-only wedstrijdgegevens uit Sportlink Club (#991, epic #986). Spiegelt
-        Planner.Shared.Integrations.SportlinkClub.SportlinkMatch (gedeelde DTO, #991/#998).
+        Read-only wedstrijdgegevens uit Sportlink Club (#991, epic #986). Spiegelt grotendeels
+        Planner.Shared.Integrations.SportlinkClub.SportlinkMatch (gedeelde DTO, #991/#998), plus
+        sinds #1339 fieldId/fieldSize (huidig veld, prefill) en de server-berekende
+        veldOpties/subpositieOpties (géén Sportlink-veld, zie SportlinkMatchFunction.BouwPaneelResponse
+        in beide tiers). Veldnamen zijn camelCase — de expliciete System.Text.Json
+        [JsonPropertyName]-attributen op SportlinkMatch, niet de PascalCase C#-eigenschapsnamen,
+        bepalen de werkelijke JSON op de draad (gecorrigeerd bij #1339; deze schema-sectie
+        documenteerde eerder abusievelijk PascalCase).
       properties:
-        PublicMatchId:
+        publicMatchId:
           type: string
           nullable: true
-        ExternalMatchId:
+        externalMatchId:
           type: string
           nullable: true
-        MatchDate:
+        matchDate:
           type: string
           format: date-time
           nullable: true
-        MatchStatus:
+        matchStatus:
           type: string
           nullable: true
-        IsHomeMatch:
+        isHomeMatch:
           type: boolean
-        IsCanceledMatch:
+        isCanceledMatch:
           type: boolean
-        IsConceptMatch:
+        isConceptMatch:
           type: boolean
-        TaskStatus:
+        taskStatus:
           type: string
           nullable: true
-        IsEditFieldAllowed:
+        isEditFieldAllowed:
           type: boolean
-        IsAssignDressingRoomsAllowed:
+        isAssignDressingRoomsAllowed:
           type: boolean
-        IsAssignOfficialsAllowed:
+        isAssignOfficialsAllowed:
           type: boolean
-        IsEditFieldSidePanelAllowed:
+        isEditFieldSidePanelAllowed:
           type: boolean
-        IsAddScoreAllowed:
+        isAddScoreAllowed:
           type: boolean
+        matchField:
+          type: object
+          nullable: true
+          description: Accommodatiecode van de wedstrijd — geen persoonsgegeven.
+          properties:
+            facilityId:
+              type: string
+              nullable: true
+            subFacilityId:
+              type: string
+              nullable: true
+            name:
+              type: string
+              nullable: true
+        field:
+          type: object
+          nullable: true
+          description: Huidig veld(deel) van de wedstrijd, rauw zoals Sportlink het teruggeeft.
+          properties:
+            fieldId:
+              type: string
+              nullable: true
+            fieldSize:
+              type: string
+              nullable: true
+            fieldOffset:
+              type: integer
+              nullable: true
+        fieldId:
+          type: string
+          nullable: true
+          description: "#1339: gelijk aan field.fieldId, plat op rootniveau voor prefill in de UI."
+        fieldSize:
+          type: string
+          nullable: true
+          description: "#1339: gelijk aan field.fieldSize, plat op rootniveau voor prefill in de UI."
+        veldOpties:
+          type: array
+          description: |
+            #1339: server-berekend voorstel per actief club-veld — géén Sportlink-gegeven. Zie
+            Planner.Shared.Integrations.SportlinkClub.SportlinkFieldIdBuilder voor de
+            berekeningswijze en de beperkte zekerheid ervan (bevestigd voor precies één
+            testwedstrijd/club).
+          items:
+            type: object
+            properties:
+              veldNummer:
+                type: integer
+              veldNaam:
+                type: string
+              voorstelFieldId:
+                type: string
+                nullable: true
+        subpositieOpties:
+          type: array
+          description: "#1339: server-berekend FieldSize-voorstel per subpositie (null = heel veld)."
+          items:
+            type: object
+            properties:
+              subpositie:
+                type: string
+                nullable: true
+              voorstelFieldSize:
+                type: string
+        kleedkamersFeatureToegestaan:
+          type: boolean
+          description: |
+            #1341: combineer met isAssignDressingRoomsAllowed hierboven (beide moeten waar zijn) —
+            dit is de per-rol-instelling, niet Sportlinks eigen permissievlag. Server-side leidend.
+        scheidsrechterFeatureToegestaan:
+          type: boolean
+          description: "#1341: combineer met isAssignOfficialsAllowed hierboven."
+        veldFeatureToegestaan:
+          type: boolean
+          description: "#1341: combineer met isEditFieldAllowed hierboven."
+        scheidsrechterRelatieCode:
+          type: string
+          nullable: true
+          description: |
+            #1340 (VOORSTEL — DPO-vraag rechtsgrond/bewaartermijn/logging nog NIET bevestigd door
+            de eigenaar, zie docs/SPORTLINK-WEB-EXTENSION.md §8): relatiecode van de huidige
+            scheidsrechter, uitsluitend als Sportlink er al één had toegewezen — nooit een naam of
+            ander persoonsgegeven. Altijd null als scheidsrechterFeatureToegestaan hierboven false
+            is (server-side genuld, ongeacht wat Sportlink teruggaf). Het Sportlink-JSON-veldnaam
+            waaruit dit gelezen wordt is NOOIT live geverifieerd — zie
+            Planner.Shared.Integrations.SportlinkClub.SportlinkMatchOfficial.RelatieCode.
+        ar1RelatieCode:
+          type: string
+          nullable: true
+          description: "#1340: relatiecode van de eerste assistent-scheidsrechter — zie scheidsrechterRelatieCode hierboven voor de volledige toelichting en de gate."
+        ar2RelatieCode:
+          type: string
+          nullable: true
+          description: "#1340: relatiecode van de tweede assistent-scheidsrechter — zie scheidsrechterRelatieCode hierboven voor de volledige toelichting en de gate."
 
     SportlinkMutationResponse:
       type: object
@@ -2065,6 +2132,33 @@ components:
         logoUrl:
           type: string
           nullable: true
+        lightColors:
+          type: object
+          nullable: true
+          description: |
+            Volledig kleurenpalet voor de lichte modus (#1254). Sleutel -> hexwaarde.
+            Bewust een vrije sleutelverzameling en geen veld per kleur: het aantal kleuren groeit
+            nog. `null` of leeg betekent: niet ingesteld, de client valt terug op de vier platte
+            kleuren hierboven.
+            Een sleutel moet `^[a-z][a-zA-Z0-9-]{0,39}$` zijn en een waarde `#rrggbb` of
+            `#rrggbbaa`; maximaal 40 sleutels per palet. De waarde belandt in een CSS custom
+            property, dus vrije CSS zoals `rgba(...)` wordt geweigerd.
+          additionalProperties:
+            type: string
+            pattern: '^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$'
+          example:
+            primary: "#1b6ec2"
+            cardBg: "#ffffff"
+        darkColors:
+          type: object
+          nullable: true
+          description: Als `lightColors`, voor de donkere modus.
+          additionalProperties:
+            type: string
+            pattern: '^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$'
+          example:
+            primary: "#14213d"
+            cardBg: "#171f30"
 
     ThemeSaveRequest:
       type: object
@@ -2094,6 +2188,33 @@ components:
         logoUrl:
           type: string
           nullable: true
+        lightColors:
+          type: object
+          nullable: true
+          description: |
+            Volledig kleurenpalet voor de lichte modus (#1254). Sleutel -> hexwaarde.
+            Bewust een vrije sleutelverzameling en geen veld per kleur: het aantal kleuren groeit
+            nog. `null` of leeg betekent: niet ingesteld, de client valt terug op de vier platte
+            kleuren hierboven.
+            Een sleutel moet `^[a-z][a-zA-Z0-9-]{0,39}$` zijn en een waarde `#rrggbb` of
+            `#rrggbbaa`; maximaal 40 sleutels per palet. De waarde belandt in een CSS custom
+            property, dus vrije CSS zoals `rgba(...)` wordt geweigerd.
+          additionalProperties:
+            type: string
+            pattern: '^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$'
+          example:
+            primary: "#1b6ec2"
+            cardBg: "#ffffff"
+        darkColors:
+          type: object
+          nullable: true
+          description: Als `lightColors`, voor de donkere modus.
+          additionalProperties:
+            type: string
+            pattern: '^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$'
+          example:
+            primary: "#14213d"
+            cardBg: "#171f30"
 
     ThemeExtractResponse:
       type: object
@@ -2262,17 +2383,10 @@ components:
 
     # ── Beheer — Teambegeleiding ──────────────────────────────────────────────
 
-    TeambegeleidingTeam:
-      type: object
-      properties:
-        team:
-          type: string
-          description: Teamnaam
-
     TeambegeleidingLid:
       type: object
       description: |
-        AVG: e-mailadressen en telefoonnummers alleen zichtbaar voor admin/user-rol
+        AVG: e-mailadressen en telefoonnummers alleen zichtbaar voor de admin-rol
         achter Entra ID auth. Nooit in auto-reply body opgenomen.
       properties:
         Naam:
@@ -2656,19 +2770,96 @@ paths:
               schema:
                 $ref: '#/components/schemas/HealthStatus'
 
+  /postgres/sync-matches:
+    get:
+      tags: [core]
+      operationId: syncMatchesPostgres
+      summary: Handmatige Sportlink synchronisatie starten (Postgres-tier)
+      description: |
+        **Tier: Postgres (productie).** Op de SQL Server-tier bestaat deze route niet (404) — daar
+        heet hij `/sync-matches`.
+
+        Start een Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).
+        Vereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key
+        via `?code=`, `AuthorizationLevel.Admin`).
+
+        - **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)
+        - **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar.
+          Een ontbrekende of onparseerbare `season` valt stil terug op de standaardmodus.
+
+        Mislukt één of meer deelstappen, dan volgt `207` in plaats van `200`: de geslaagde
+        deelstappen blijven staan, maar `lastsynctimestamp` wordt bewust niet bijgewerkt (#1081).
+      security:
+        - easyAuth: []
+      parameters:
+        - name: reset
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: true = volledig seizoen synchroniseren i.p.v. incrementeel
+        - name: season
+          in: query
+          required: false
+          schema:
+            type: integer
+            example: 2025
+          description: Startjaar seizoen (bijv. 2025 = seizoen 2025/2026). Gebruik samen met reset=true.
+      responses:
+        '200':
+          description: Synchronisatie voltooid
+          content:
+            application/json:
+              schema:
+                type: string
+                example: "Sync voltooid. WeekOffset-bereik: -1 tot 42."
+        '207':
+          description: |
+            Gedeeltelijk mislukt — één of meer deelstappen zijn niet geslaagd en
+            `lastsynctimestamp` is niet bijgewerkt (#1081).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "gedeeltelijk mislukt"
+                  weekOffsetFrom:
+                    type: integer
+                    example: -1
+                  weekOffsetTo:
+                    type: integer
+                    example: 42
+                  melding:
+                    type: string
+                    example: "Eén of meer deelstappen zijn mislukt; lastsynctimestamp is niet bijgewerkt. Zie het functielog voor de betrokken fase(s)."
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /sync-matches:
     get:
       tags: [core]
       operationId: syncMatches
-      summary: Handmatige Sportlink synchronisatie starten
+      summary: Handmatige Sportlink synchronisatie starten (SQL Server-tier)
       description: |
+        **Tier: SQL Server.** Op de Postgres-tier (productie) bestaat deze route niet (404) — daar
+        heet hij `/postgres/sync-matches`.
+
         Start een volledige Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).
-        Vereist de Azure Master key via `?code=`.
+        Vereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key
+        via `?code=`, `AuthorizationLevel.Admin`).
 
         - **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)
         - **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar
+
+        Deze tier kent de `207`-respons van de Postgres-tier niet: alleen `200` of `500`.
       security:
-        - functionKey: []
+        - easyAuth: []
       parameters:
         - name: reset
           in: query
@@ -2693,6 +2884,8 @@ paths:
                 example: "Sync completed. WeekOffset range: -1 to 42."
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2713,7 +2906,7 @@ paths:
 
         Controleert ook teamconflicten als `teamNaam` opgegeven is.
       security:
-        - functionKey: []
+        - easyAuth: []
       requestBody:
         required: true
         content:
@@ -2749,7 +2942,7 @@ paths:
         Twee reserveringen die elkaar precies aanraken (bijv. 10:00–11:00 gevolgd door 11:00–12:00)
         zijn GEEN conflict.
       security:
-        - functionKey: []
+        - easyAuth: []
       requestBody:
         required: true
         content:
@@ -2784,9 +2977,9 @@ paths:
       description: |
         Vult de `DateTable` met NOAA-berekende zonsondergangtijden voor het accommodatiecoördinaat.
         Eenmalig uitvoeren na initiële setup, of wanneer het seizoen/datumbereik wordt uitgebreid.
-        Vereist de Azure Master key.
+        Vereist een Entra ID Bearer token met de `admin`-rol — géén Master key.
       security:
-        - functionKey: []
+        - easyAuth: []
       requestBody:
         required: false
         content:
@@ -2818,7 +3011,7 @@ paths:
         Zoek een bestaande competitiewedstrijd op basis van teamnaam en datum.
         Gedeeltelijke teamnaam-match is ondersteund.
       security:
-        - functionKey: []
+        - easyAuth: []
       requestBody:
         required: true
         content:
@@ -2862,7 +3055,7 @@ paths:
         Berekent alternatieve tijdsloten voor een bestaande wedstrijd.
         **Voert niets door** — puur simulatie waarbij het huidige slot als vrij wordt beschouwd.
       security:
-        - functionKey: []
+        - easyAuth: []
       requestBody:
         required: true
         content:
@@ -2892,7 +3085,7 @@ paths:
         Registreert een herplanverzoek met status `"Aangevraagd"`.
         **Wijzigt de wedstrijd niet** — de feitelijke aanpassing in Sportlink is een handmatig proces.
       security:
-        - functionKey: []
+        - easyAuth: []
       requestBody:
         required: true
         content:
@@ -2922,7 +3115,7 @@ paths:
         Geeft beschikbare doordeweekse avondsloten (ma–do) t/m het einde van het seizoen.
         Optioneel gefilterd op dag en duur/leeftijdscategorie.
       security:
-        - functionKey: []
+        - easyAuth: []
       requestBody:
         required: false
         content:
@@ -2952,7 +3145,7 @@ paths:
 
         Optioneel `?format=html` voor een HTML-weergave.
       security:
-        - functionKey: []
+        - easyAuth: []
       parameters:
         - name: team
           in: query
@@ -3048,6 +3241,76 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UpdateSettingsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/rolfeatureinstellingen:
+    get:
+      tags: [beheer]
+      operationId: getRolFeatureInstellingen
+      summary: Per-club, per-rol feature-instellingen ophalen (#1341, epic #1338)
+      description: |
+        Toont voor de `Wedstrijdzaken`-rol bij deze club of kleedkamers toewijzen,
+        scheidsrechters toewijzen en veld wijzigen zijn ingeschakeld. `admin` heeft dit altijd
+        aan en komt hier niet in voor — alleen de instelbare rol. Fail-closed: een niet-
+        teruggegeven FeatureKey betekent uitgeschakeld.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Lijst van FeatureKeys met hun huidige stand
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RolFeatureInstellingResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags: [beheer]
+      operationId: zetRolFeatureInstelling
+      summary: Eén per-rol feature-instelling wijzigen (#1341, epic #1338)
+      description: |
+        Zet een van de drie instelbare FeatureKeys (`sportlink.kleedkamers`,
+        `sportlink.scheidsrechter`, `sportlink.veld`) aan/uit voor de `Wedstrijdzaken`-rol bij
+        deze club. Server-side de leidende controle: `SportlinkMatchFunction` wijst een
+        uitgeschakelde actie ook af als de UI-toggle omzeild wordt.
+      security:
+        - easyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [FeatureKey, Enabled]
+              properties:
+                FeatureKey:
+                  type: string
+                  enum: [sportlink.kleedkamers, sportlink.scheidsrechter, sportlink.veld]
+                Enabled:
+                  type: boolean
+      responses:
+        '200':
+          description: Instelling opgeslagen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RolFeatureInstellingResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -3237,9 +3500,12 @@ paths:
       description: |
         Zoekt het `PublicMatchId` van deze wedstrijd op (gecached, zie
         `public.sportlinkpublicmatchidcache`; reverse-lookup bij Sportlink zelf bij een cache-miss
-        — #987) en haalt daarmee het niet-persoonsgebonden wedstrijdobject op bij Sportlink Club.
-        Uitsluitend lezen — geen enkele mutatie. Vereist de Entra-approl `Wedstrijdzaken` (naast of
-        in plaats van admin, zie #988 Besluit 1) en dat `SportlinkExtensionEnabled` aan staat.
+        — #987) en haalt daarmee het wedstrijdobject op bij Sportlink Club. Uitsluitend lezen —
+        geen enkele mutatie. Vereist de Entra-approl `Wedstrijdzaken` (naast of in plaats van
+        admin, zie #988 Besluit 1) en dat `SportlinkExtensionEnabled` aan staat. Bevat sinds #1340
+        (VOORSTEL, DPO-vraag nog niet bevestigd — zie docs/SPORTLINK-WEB-EXTENSION.md §8) ook de
+        relatiecode van scheidsrechter/AR1/AR2 als PRECIES ÉÉN uitzondering op "verder
+        niet-persoonsgebonden" — nooit een naam of ander persoonsgegeven.
       security:
         - easyAuth: []
       parameters:
@@ -3368,7 +3634,9 @@ paths:
         '404':
           description: Wedstrijd of PublicMatchId niet gevonden
         '409':
-          description: Extension staat uit, koppeling ontbreekt/verlopen, of guardrail geblokkeerd
+          description: |
+            Extension staat uit, koppeling ontbreekt/verlopen, guardrail geblokkeerd, of (#1341)
+            "Kleedkamers toewijzen" staat uit voor de Wedstrijdzaken-rol bij deze club.
         '500':
           $ref: '#/components/responses/InternalServerError'
         '502':
@@ -3420,7 +3688,9 @@ paths:
         '404':
           description: Wedstrijd of PublicMatchId niet gevonden
         '409':
-          description: Extension staat uit, koppeling ontbreekt/verlopen, of guardrail geblokkeerd
+          description: |
+            Extension staat uit, koppeling ontbreekt/verlopen, guardrail geblokkeerd, of (#1341)
+            "Veld wijzigen" staat uit voor de Wedstrijdzaken-rol bij deze club.
         '500':
           $ref: '#/components/responses/InternalServerError'
         '502':
@@ -3487,7 +3757,9 @@ paths:
         '404':
           description: Wedstrijd of PublicMatchId niet gevonden
         '409':
-          description: Extension staat uit, koppeling ontbreekt/verlopen, of guardrail geblokkeerd
+          description: |
+            Extension staat uit, koppeling ontbreekt/verlopen, guardrail geblokkeerd, of (#1341)
+            "Scheidsrechters toewijzen" staat uit voor de Wedstrijdzaken-rol bij deze club.
         '500':
           $ref: '#/components/responses/InternalServerError'
         '502':
@@ -5547,8 +5819,10 @@ paths:
       operationId: getTheme
       summary: Club-thema ophalen
       description: |
-        Geeft de huidige themakleuren, favicon-URL en logo-URL uit `dbo.AppSettings`.
-        Geeft standaardwaarden terug als er nog geen thema is ingesteld.
+        Geeft de huidige themakleuren, favicon-URL, logo-URL en de licht/donker-paletten uit
+        `dbo.AppSettings` (Postgres-tier: `public.appsettings`).
+        Geeft standaardwaarden terug als er nog geen thema is ingesteld; `lightColors`/`darkColors`
+        zijn dan `null` en de client valt terug op de vier platte kleuren.
       security:
         - easyAuth: []
       responses:
@@ -5570,8 +5844,11 @@ paths:
       operationId: updateTheme
       summary: Club-thema opslaan
       description: |
-        Slaat themakleuren, favicon-URL en logo-URL op in `dbo.AppSettings`.
-        Alle kleurwaarden worden gevalideerd op hex-formaat (#rrggbb).
+        Slaat themakleuren, favicon-URL, logo-URL en de licht/donker-paletten op in
+        `dbo.AppSettings` (Postgres-tier: `public.appsettings`).
+        De vier platte kleurwaarden worden gevalideerd op `#rrggbb`. Elke sleutel en waarde in
+        `lightColors`/`darkColors` wordt afzonderlijk gevalideerd; één ongeldige waarde wijst het
+        hele verzoek af met HTTP 400.
       security:
         - easyAuth: []
       requestBody:
@@ -5945,8 +6222,10 @@ paths:
       description: |
         Geeft Naam, Teamrol, Emailadres en Telefoonnummer voor de begeleidingsleden van het team.
 
-        **AVG:** persoonsgegevens worden uitsluitend aan admin/user-rol getoond achter Entra ID auth.
-        E-mailadressen worden server-side gebruikt voor doorsturen — nooit opgenomen in auto-reply body.
+        **AVG:** persoonsgegevens worden getoond aan elke ingelogde rol (admin + user) achter Entra
+        ID auth — sinds #1330 bewust teruggedraaid uit de mei-2026-beperking (#310) die dit
+        endpoint tijdelijk tot de admin-rol beperkte. E-mailadressen worden server-side gebruikt
+        voor doorsturen — nooit opgenomen in auto-reply body.
       security:
         - easyAuth: []
       parameters:

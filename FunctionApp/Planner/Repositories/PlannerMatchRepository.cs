@@ -33,6 +33,11 @@ internal static class PlannerMatchRepository
     /// Een lege uitkomst betekent: dit is geen bekend team van deze club. De aanroepende query moet dan
     /// niets matchen — nooit alles.
     /// </para>
+    /// <para>
+    /// De sleutelvergelijkingen zijn expliciet <c>UPPER(...)</c> (#1294), gelijk aan
+    /// <see cref="TeamResolution.TeamCandidateRepository"/> — zie diens class-remarks voor de volledige
+    /// onderbouwing en de sargability-meting.
+    /// </para>
     /// </summary>
     private static async Task<List<string>> TeamSchrijfwijzenAsync(
         SqlConnection conn, string clubCode, string? teamNaam)
@@ -44,11 +49,11 @@ internal static class PlannerMatchRepository
         using var cmd = new SqlCommand(@"
             DECLARE @teamId INT = COALESCE(
                 (SELECT TOP 1 [TeamId] FROM [dbo].[Teams]
-                 WHERE [ClubCode] = @clubCode AND [TeamnaamGenormaliseerd] = @sleutel AND [IsActief] = 1),
+                 WHERE [ClubCode] = @clubCode AND UPPER([TeamnaamGenormaliseerd]) = UPPER(@sleutel) AND [IsActief] = 1),
                 (SELECT TOP 1 a.[TeamId] FROM [dbo].[TeamAliassen] a
                  INNER JOIN [dbo].[Teams] t ON t.[TeamId] = a.[TeamId] AND t.[IsActief] = 1
                  WHERE a.[ClubCode] = @clubCode AND a.[Status] = 'validated'
-                   AND (a.[RuweTekst] = @ruweTekst OR a.[RuweTekstGenormaliseerd] = @sleutel)));
+                   AND (UPPER(a.[RuweTekst]) = UPPER(@ruweTekst) OR UPPER(a.[RuweTekstGenormaliseerd]) = UPPER(@sleutel))));
 
             IF @teamId IS NULL RETURN;
 

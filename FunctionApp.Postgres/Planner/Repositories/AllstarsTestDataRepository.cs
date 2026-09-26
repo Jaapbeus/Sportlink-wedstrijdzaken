@@ -29,6 +29,19 @@ namespace FunctionApp.Postgres.Planner;
 /// equivalent: <c>LEFT JOIN LATERAL (SELECT … LIMIT 1) t ON TRUE</c> — empirisch geverifieerd
 /// tegen een Postgres-instantie (zie PR-beschrijving).
 /// </para>
+/// <para>
+/// <b>#1332 — <c>ORDER BY</c> op de LATERAL-subquery.</b> <c>his.teams</c> heeft een unieke sleutel
+/// op <c>(teamcode, lokaleteamcode, poulecode)</c>, niet op <c>teamnaam</c>: dezelfde teamnaam kan
+/// dus meerdere keren voorkomen (bijv. een latere seizoenshelft/poule-registratie die Sportlink nog
+/// niet volledig heeft gevuld, met een lege <c>leeftijdscategorie</c>). Zonder <c>ORDER BY</c>
+/// garandeert Postgres geen rijvolgorde bij <c>LIMIT 1</c> — welke rij terugkomt hangt af van de
+/// fysieke opslagvolgorde en kan wijzigen na een vacuum/rewrite. Een lege
+/// <c>leeftijdscategorie</c> laat de speeltijd-lookup stilzwijgend falen, waardoor de wedstrijd
+/// zonder foutmelding uit de Dagplanning-Gantt verdwijnt (duur blijft 0) terwijl hij in de rauwe
+/// wedstrijdenlijst gewoon zichtbaar blijft — dit was al reproduceerbaar op productiedata vóór deze
+/// fix. De rij met een niet-lege categorie krijgt nu voorrang, en bij meerdere geldige rijen de
+/// meest recent gewijzigde.
+/// </para>
 /// </summary>
 internal static class AllstarsTestDataRepository
 {
@@ -65,6 +78,7 @@ internal static class AllstarsTestDataRepository
                     SELECT leeftijdscategorie
                     FROM his.teams
                     WHERE teamnaam = m.teamnaam AND clubcode = m.clubcode
+                    ORDER BY (leeftijdscategorie <> '') DESC, mta_modified DESC
                     LIMIT 1
                 ) t ON TRUE
                 WHERE m.kaledatum::date = @date

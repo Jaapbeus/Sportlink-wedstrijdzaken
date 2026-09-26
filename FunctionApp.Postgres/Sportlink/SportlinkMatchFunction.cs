@@ -32,7 +32,7 @@ public static class SportlinkMatchFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "sportlink/match/{wedstrijdcode}")] HttpRequest req,
         string wedstrijdcode,
         FunctionContext context) =>
-        AdminEndpoint.ExecuteAsync(req, context.GetLogger("SportlinkMatchGet"), "sportlink-match ophalen",
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkMatchGet"), "sportlink-match ophalen",
             async clubCode =>
             {
                 if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))
@@ -49,9 +49,27 @@ public static class SportlinkMatchFunction
                 if (matchResult.Data == null)
                     return new NotFoundObjectResult(new { error = "Sportlink kent dit PublicMatchId niet (meer)." });
 
-                return new OkObjectResult(matchResult.Data);
-            },
-            requireRole: EasyAuthHelper.RequireWedstrijdzaken);
+                var velden = await SportlinkClubMatchRepository.GetActieveVeldenAsync(clubCode, PostgresDatabaseConfig.ConnectionString);
+                var payload = SportlinkFieldIdBuilder.BouwPaneelResponse(matchResult.Data, velden);
+                var toestemmingen = await BepaalRolFeatureToestemmingenAsync(req, clubCode);
+                return new OkObjectResult(SportlinkRolFeature.VoegToestemmingenToe(payload, toestemmingen));
+            });
+
+    /// <summary>
+    /// #1341: 'admin' mag altijd alles (fail-open bypass, toekomstbestendig — zie de toelichting
+    /// bij <see cref="ExecuteMutationAsync{T}"/>); anders per FeatureKey de
+    /// (club, Wedstrijdzaken, FeatureKey)-rij raadplegen (fail-closed: geen rij = uitgeschakeld).
+    /// </summary>
+    private static async Task<SportlinkRolFeatureToestemmingen> BepaalRolFeatureToestemmingenAsync(HttpRequest req, string clubCode)
+    {
+        if (EasyAuthHelper.IsAdmin(req))
+            return new SportlinkRolFeatureToestemmingen(true, true, true);
+
+        var cs = PostgresDatabaseConfig.ConnectionString;
+        var alle = await RolFeatureInstellingenRepository.GetAllAsync(clubCode, RolNaam, cs);
+        return new SportlinkRolFeatureToestemmingen(
+            alle[SportlinkRolFeature.Kleedkamers], alle[SportlinkRolFeature.Scheidsrechter], alle[SportlinkRolFeature.Veld]);
+    }
 
     /// <summary>
     /// <c>GET /api/sportlink/match/{wedstrijdcode}/public-match-id</c> (#989, epic #986) —
@@ -65,7 +83,7 @@ public static class SportlinkMatchFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "sportlink/match/{wedstrijdcode}/public-match-id")] HttpRequest req,
         string wedstrijdcode,
         FunctionContext context) =>
-        AdminEndpoint.ExecuteAsync(req, context.GetLogger("SportlinkMatchPublicMatchIdGet"), "sportlink-publicmatchid ophalen",
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkMatchPublicMatchIdGet"), "sportlink-publicmatchid ophalen",
             async clubCode =>
             {
                 if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))
@@ -76,8 +94,7 @@ public static class SportlinkMatchFunction
                 if (fout != null) return fout;
 
                 return new OkObjectResult(new { PublicMatchId = publicMatchId });
-            },
-            requireRole: EasyAuthHelper.RequireWedstrijdzaken);
+            });
 
     /// <summary>
     /// <c>PUT /api/sportlink/match/{wedstrijdcode}/dressingrooms</c> (#992, epic #986) — eerste
@@ -90,7 +107,7 @@ public static class SportlinkMatchFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "sportlink/match/{wedstrijdcode}/dressingrooms")] HttpRequest req,
         string wedstrijdcode,
         FunctionContext context) =>
-        AdminEndpoint.ExecuteAsync(req, context.GetLogger("SportlinkMatchDressingRoomsPut"), "sportlink-kleedkamers wijzigen",
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkMatchDressingRoomsPut"), "sportlink-kleedkamers wijzigen",
             async clubCode =>
             {
                 if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))
@@ -108,8 +125,7 @@ public static class SportlinkMatchFunction
                         BouwKleedkamerId(match.MatchField?.FacilityId, dto?.AwayDressingRoomId),
                         BouwKleedkamerId(match.MatchField?.FacilityId, dto?.OfficialDressingRoomId)),
                     naarMutatieResultaat: r => r);
-            },
-            requireRole: EasyAuthHelper.RequireWedstrijdzaken);
+            });
 
     /// <summary>
     /// <c>PUT /api/sportlink/match/{wedstrijdcode}/field</c> (#993, epic #986) — veld(deel)
@@ -122,7 +138,7 @@ public static class SportlinkMatchFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "sportlink/match/{wedstrijdcode}/field")] HttpRequest req,
         string wedstrijdcode,
         FunctionContext context) =>
-        AdminEndpoint.ExecuteAsync(req, context.GetLogger("SportlinkMatchFieldPut"), "sportlink-veld wijzigen",
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkMatchFieldPut"), "sportlink-veld wijzigen",
             async clubCode =>
             {
                 if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))
@@ -137,8 +153,7 @@ public static class SportlinkMatchFunction
                     (publicMatchId, _) => sportlinkClient!.UpdateFieldAsync(
                         RolNaam, publicMatchId, dto?.FieldId, dto?.FieldSize, dto?.FieldOffset, isForceUpdate: false),
                     naarMutatieResultaat: r => r);
-            },
-            requireRole: EasyAuthHelper.RequireWedstrijdzaken);
+            });
 
     /// <summary>
     /// <c>PUT /api/sportlink/match/{wedstrijdcode}/officials</c> (#994, epic #986) — officials
@@ -155,7 +170,7 @@ public static class SportlinkMatchFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "sportlink/match/{wedstrijdcode}/officials")] HttpRequest req,
         string wedstrijdcode,
         FunctionContext context) =>
-        AdminEndpoint.ExecuteAsync(req, context.GetLogger("SportlinkMatchOfficialsPut"), "sportlink-officials toewijzen",
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkMatchOfficialsPut"), "sportlink-officials toewijzen",
             async clubCode =>
             {
                 if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))
@@ -174,8 +189,7 @@ public static class SportlinkMatchFunction
                     SportlinkMutationSoort.Officials, dto, context,
                     (publicMatchId, _) => sportlinkClient!.AssignOfficialsAsync(RolNaam, publicMatchId, toewijzingen),
                     naarMutatieResultaat: r => r);
-            },
-            requireRole: EasyAuthHelper.RequireWedstrijdzaken);
+            });
 
     // NIET VERDER BOUWEN ZONDER LIVE BEVESTIGING DOOR DE EIGENAAR (#995, Aanpak-stap 1: body van
     // beide PUT's en de bevestigingsvlag vastleggen). Dit endpoint is uitsluitend stap 1
@@ -197,7 +211,7 @@ public static class SportlinkMatchFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "sportlink/match/{wedstrijdcode}/change-request")] HttpRequest req,
         string wedstrijdcode,
         FunctionContext context) =>
-        AdminEndpoint.ExecuteAsync(req, context.GetLogger("SportlinkMatchChangeRequestPut"), "sportlink-wijzigingsverzoek datum/tijd/accommodatie",
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkMatchChangeRequestPut"), "sportlink-wijzigingsverzoek datum/tijd/accommodatie",
             async clubCode =>
             {
                 if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))
@@ -234,8 +248,7 @@ public static class SportlinkMatchFunction
                     (publicMatchId, _) => sportlinkClient!.RequestMatchChangeAsync(
                         RolNaam, publicMatchId, nieuweDatum, nieuweStartTijd, dto.NieuweFacilityId, dto.Toelichting!),
                     naarMutatieResultaat: r => r.Mutatie);
-            },
-            requireRole: EasyAuthHelper.RequireWedstrijdzaken);
+            });
 
     // Live vastgesteld (2026-09-06, netwerktrace door de eigenaar): Sportlink verwacht
     // "{FacilityId}-DRESSINGROOM-{n}" (bijv. "BBCF989-DRESSINGROOM-11"), geen los kleedkamernummer.
@@ -337,6 +350,21 @@ public static class SportlinkMatchFunction
 
         var guard = SportlinkMutationGuard.MagMuteren(matchResult.Data, soort);
 
+        // #1341: per-club, per-rol instelbare zichtbaarheid van deze actie. 'admin' is altijd
+        // toegestaan (fail-open bypass, bewust toekomstbestendig — zie SportlinkFieldIdBuilder-
+        // achtige toelichting in issue #1341: vandaag valt elke Wedstrijdzaken-gebruiker ook al
+        // onder admin, dus deze bypass heeft nu geen zichtbaar effect, maar wordt meteen correct
+        // zodra ooit een beperktere rol bestaat). Fail-closed: geen rij = uitgeschakeld.
+        string? featureBlokReden = null;
+        var featureKey = SportlinkRolFeature.VoorMutatieSoort(soort);
+        if (guard.IsToegstaan && featureKey != null && !EasyAuthHelper.IsAdmin(req))
+        {
+            var featureAan = await RolFeatureInstellingenRepository.IsEnabledAsync(
+                clubCode, RolNaam, featureKey, PostgresDatabaseConfig.ConnectionString);
+            if (!featureAan)
+                featureBlokReden = $"Deze actie ('{featureKey}') staat uit voor de {RolNaam}-rol bij deze club. Vraag een beheerder om 'm aan te zetten.";
+        }
+
         var auditService = context.InstanceServices.GetService<ISportlinkMutationAuditService>();
         var triggerdDoor = EasyAuthHelper.GetAuditActor(req);
         // #998: WaardeVoor breidt uit met MatchStatus/IsCanceledMatch/IsConceptMatch/FacilityId/
@@ -358,10 +386,11 @@ public static class SportlinkMatchFunction
             CorrelationId: null);
         var auditId = auditService == null ? (long?)null : await auditService.LogPogingAsync(auditEntry);
 
-        if (!guard.IsToegstaan)
+        if (!guard.IsToegstaan || featureBlokReden != null)
         {
-            if (auditId.HasValue) await auditService!.VoltooiAsync(auditId.Value, "Geblokkeerd", guard.Reden);
-            return new ObjectResult(new { error = guard.Reden }) { StatusCode = 409 };
+            var reden = !guard.IsToegstaan ? guard.Reden : featureBlokReden;
+            if (auditId.HasValue) await auditService!.VoltooiAsync(auditId.Value, "Geblokkeerd", reden);
+            return new ObjectResult(new { error = reden }) { StatusCode = 409 };
         }
 
         var mutationResult = await mutationCall(publicMatchId!, matchResult.Data);
@@ -379,7 +408,7 @@ public static class SportlinkMatchFunction
         var toggleFout = SportlinkEndpointSupport.ControleerToggleEnEgress();
         if (toggleFout != null) return (toggleFout, null);
         if (sportlinkClient == null)
-            return (new ObjectResult(new { error = "Sportlink-client niet geconfigureerd." }) { StatusCode = 503 }, null);
+            return (SportlinkEndpointSupport.ClientNietGeconfigureerdFout(), null);
 
         await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
         await connection.OpenAsync();

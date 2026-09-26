@@ -12,6 +12,14 @@ namespace SportlinkFunction.TeamResolution;
 /// coördinator via de Admin-UI heeft gevalideerd (status <c>validated</c>) tellen mee in
 /// <see cref="TeamResolver"/>. Zo kan een foutieve AI-disambiguatie zich niet zelfversterken.
 /// </summary>
+/// <remarks>
+/// #1294: de exists-check en de UPDATE hieronder vergelijken <c>RuweTekstGenormaliseerd</c> nu
+/// expliciet via <c>UPPER(...)</c>, gelijk aan <see cref="TeamCandidateRepository"/> (#820) — zie
+/// diens class-remarks voor de volledige onderbouwing. Behoud van gedrag, geen wijziging: onder de
+/// huidige case-insensitieve modelcollatie (<c>1033, CI</c>) was de kale <c>=</c> hier al
+/// hoofdletterongevoelig, dus dit kan geen bestaande rij die vandaag als "nieuw" gold nu opeens als
+/// "bestaand" (UPDATE i.p.v. INSERT) laten tellen.
+/// </remarks>
 public sealed class TeamAliasLearningService(ILogger<TeamAliasLearningService> logger)
 {
     private static string Cs => SystemUtilities.DatabaseConfig.ConnectionString;
@@ -30,14 +38,14 @@ public sealed class TeamAliasLearningService(ILogger<TeamAliasLearningService> l
             using var cmd = new SqlCommand(@"
                 IF NOT EXISTS (
                     SELECT 1 FROM [dbo].[TeamAliassen]
-                    WHERE [ClubCode] = @clubCode AND [RuweTekstGenormaliseerd] = @genormaliseerd)
+                    WHERE [ClubCode] = @clubCode AND UPPER([RuweTekstGenormaliseerd]) = UPPER(@genormaliseerd))
                     INSERT INTO [dbo].[TeamAliassen]
                         ([ClubCode], [RuweTekst], [RuweTekstGenormaliseerd], [TeamId], [Bron], [Status], [AantalKeerGebruikt])
                     VALUES (@clubCode, @ruweTekst, @genormaliseerd, @teamId, @bron, 'pending', 1);
                 ELSE
                     UPDATE [dbo].[TeamAliassen]
                     SET [AantalKeerGebruikt] = [AantalKeerGebruikt] + 1, [mta_modified] = GETUTCDATE()
-                    WHERE [ClubCode] = @clubCode AND [RuweTekstGenormaliseerd] = @genormaliseerd;
+                    WHERE [ClubCode] = @clubCode AND UPPER([RuweTekstGenormaliseerd]) = UPPER(@genormaliseerd);
             ", conn);
             cmd.Parameters.AddWithValue("@clubCode", clubCode);
             cmd.Parameters.AddWithValue("@ruweTekst", ruweTekst);

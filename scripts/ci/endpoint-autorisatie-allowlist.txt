@@ -1,0 +1,25 @@
+# endpoint-autorisatie-allowlist.txt (#1350)
+#
+# Eén regel per toegestane uitzondering: <soort> <functienaam> <bestandspad> <reden>.
+#
+#   direct   Het endpoint roept EasyAuthHelper.Require* zelf aan in plaats van via
+#            AdminEndpoint.ExecuteAsync / ExecuteZonderDatabaseAsync. Dezelfde poort, alleen zonder
+#            de wrapper eromheen — de reden moet uitleggen waarom de wrapper hier niet past.
+#   anoniem  Het endpoint heeft bewust géén rolcontrole.
+#
+# Een regel hier is een bewuste beslissing die iemand heeft goedgekeurd — vandaar de verplichte
+# reden. De guard (scripts/ci/check-endpoint-autorisatie.sh) faalt op een regel zonder reden, en
+# op een regel die naar een niet-bestaand endpoint wijst. Hetzelfde tweetal 'direct'-uitzonderingen
+# staat in de autorisatietests per tier (EndpointAutorisatieTests.cs) met de verwachte status.
+
+# --- Anoniem -------------------------------------------------------------------------------------
+anoniem  Health  FunctionApp.Postgres/HealthFunction.cs          Publieke health-check zonder foutdetails (#859/#863); de deploy-smoketest leunt erop.
+anoniem  Health  FunctionApp/Planner/PlannerFunction.cs          Idem, SQL Server-tier.
+
+# --- Directe poort: bewust buiten de wrapper (#1350) --------------------------------------------
+# Beide raken de database niet (geocode) of pas ná een goedkope vormcontrole (theme/extract); de
+# wrapper zou de databasewacht vóór die controle zetten. Zelfde EasyAuthHelper.RequireAdmin-poort.
+direct   AdminThemeExtract  FunctionApp.Postgres/Admin/AdminThemeFunction.cs     Luie URL-vormcontrole vóór elke databaseaanroep; de wrapper wacht eerst op de database.
+direct   AdminThemeExtract  FunctionApp/Admin/AdminThemeFunction.cs              Idem, SQL Server-tier.
+direct   AdminGeocodeGet    FunctionApp.Postgres/Admin/AdminSettingsFunction.cs  Geocoding via Nominatim, raakt de database niet; een databasewacht zou hier alleen vertraging toevoegen.
+direct   AdminGeocodeGet    FunctionApp/Admin/AdminSettingsFunction.cs           Idem, SQL Server-tier.

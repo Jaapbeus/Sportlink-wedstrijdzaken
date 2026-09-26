@@ -30,6 +30,7 @@ DECLARE
     vandaag DATE := CURRENT_DATE;
     zaterdag1 DATE;
     demo_accommodatie VARCHAR(200);
+    bron_club VARCHAR(20);
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM public.appsettings WHERE clubcode = demo_club) THEN
         RAISE EXCEPTION 'AllStars-demodata (#862): democlub ALLSTARS bestaat niet in public.appsettings — voer eerst de reguliere migraties uit (Database.Postgres/migrations/006_allstars_demodata.sql seedt de AppSettings-rij).';
@@ -37,6 +38,40 @@ BEGIN
 
     IF to_regclass('his.teams') IS NULL OR to_regclass('his.matches') IS NULL THEN
         RAISE EXCEPTION 'AllStars-demodata (#862): his.teams/his.matches bestaan nog niet — de eerste Postgres-Sportlink-sync moet eerst lopen voordat dit script team- en wedstrijddemo kan seeden.';
+    END IF;
+
+    -- Speeltijden (#1246): deze copy stond oorspronkelijk in migratie 006, maar een eenmalige
+    -- migratie is hier het verkeerde gereedschap. Er is geen enkele andere INSERT in
+    -- public.speeltijden in de migraties: de primaire club vult zijn speeltijden via de Admin GUI,
+    -- dus op migratiemoment is er nog niets om te kopieren. De copy leverde 0 rijen op, en omdat
+    -- een migratie maar een keer draait en IF NOT EXISTS-gated is, probeerde hij het nooit opnieuw
+    -- -- lokaal en in productie hield de democlub daardoor permanent 0 speeltijden.
+    --
+    -- Hier is hij wel op zijn plek: dit script is idempotent en wordt bij elke Postgres-deploy
+    -- opnieuw gedraaid, dus zodra de primaire club speeltijden heeft, volgt de democlub vanzelf.
+    -- Migratie 006 blijft ongewijzigd: die is toegepast en checksum-bewaakt.
+    IF NOT EXISTS (SELECT 1 FROM public.speeltijden WHERE clubcode = demo_club) THEN
+        -- Zelfde bronkeuze als migratie 006 (MIN over de niet-demo clubcodes), zodat deze copy
+        -- exact doet wat daar bedoeld was -- geen stilzwijgend andere bron.
+        SELECT MIN(clubcode) INTO bron_club
+        FROM public.appsettings
+        WHERE clubcode <> demo_club;
+
+        IF bron_club IS NULL THEN
+            RAISE NOTICE 'AllStars-demodata (#1246): geen primaire club in public.appsettings -- speeltijden overgeslagen.';
+        ELSIF NOT EXISTS (SELECT 1 FROM public.speeltijden WHERE clubcode = bron_club) THEN
+            -- Geen fout: een verse installatie heeft nog geen speeltijden. De volgende deploy
+            -- pikt ze alsnog op zodra de beheerder ze via de Admin GUI heeft ingevoerd.
+            RAISE NOTICE 'AllStars-demodata (#1246): primaire club heeft nog geen speeltijden -- democlub blijft leeg tot ze zijn ingevoerd.';
+        ELSE
+            INSERT INTO public.speeltijden
+                (leeftijd, veldafmeting, wedstrijdtotaal, wedstrijdhelft, wedstrijdrust,
+                 standaardvoorkeurtijd, clubcode)
+            SELECT leeftijd, veldafmeting, wedstrijdtotaal, wedstrijdhelft, wedstrijdrust,
+                   standaardvoorkeurtijd, demo_club
+            FROM public.speeltijden
+            WHERE clubcode = bron_club;
+        END IF;
     END IF;
 
     -- his.teams: twee teams per categorie, zelfde contract als de SQL Server-tier (#853:

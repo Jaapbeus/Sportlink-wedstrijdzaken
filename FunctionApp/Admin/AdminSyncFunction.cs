@@ -26,114 +26,89 @@ namespace SportlinkFunction.Admin;
 public static class AdminSyncFunction
 {
     [Function("AdminSyncStatus")]
-    public static async Task<IActionResult> Status(
+    public static Task<IActionResult> Status(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/sync/status")] HttpRequest req,
-        FunctionContext context)
-    {
-        var log = context.GetLogger("AdminSyncStatus");
-        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        var authResult = EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return authResult;
-        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
-        try
-        {
-            await SystemUtilities.WaitForDatabaseAsync(log);
-
-            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-
-            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-            using var command = new SqlCommand(
-                "SELECT TOP 1 [LastSyncTimestamp], [FetchSchedule] FROM [dbo].[AppSettings] WHERE [ClubCode] = @ClubCode",
-                connection);
-            command.Parameters.AddWithValue("@ClubCode", clubCode);
-            using var reader = await command.ExecuteReaderAsync();
-            if (!await reader.ReadAsync())
-                return new NotFoundObjectResult(new { error = "Geen AppSettings rij" });
-
-            DateTime? lastSync = reader["LastSyncTimestamp"] != DBNull.Value
-                ? DateTime.SpecifyKind(Convert.ToDateTime(reader["LastSyncTimestamp"]), DateTimeKind.Utc)
-                : null;
-            var fetchSchedule = reader["FetchSchedule"].ToString() ?? "0 0 4 * * *";
-
-            Guid? jobId = Guid.TryParse(req.Query["jobId"], out var parsedJobId) ? parsedJobId : null;
-            var job = await SyncJobsRepository.GetLatestOrByIdAsync(clubCode, jobId);
-
-            return new OkObjectResult(new
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminSyncStatus"), "sync-status ophalen",
+            async clubCode =>
             {
-                lastSyncTimestamp = lastSync,
-                fetchSchedule,
-                status = lastSync.HasValue ? "ok" : "geen-sync-uitgevoerd",
-                job = job is null ? null : new
+                using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+                await connection.OpenAsync();
+
+                using var command = new SqlCommand(
+                    "SELECT TOP 1 [LastSyncTimestamp], [FetchSchedule] FROM [dbo].[AppSettings] WHERE [ClubCode] = @ClubCode",
+                    connection);
+                command.Parameters.AddWithValue("@ClubCode", clubCode);
+                using var reader = await command.ExecuteReaderAsync();
+                if (!await reader.ReadAsync())
+                    return new NotFoundObjectResult(new { error = "Geen AppSettings rij" });
+
+                DateTime? lastSync = reader["LastSyncTimestamp"] != DBNull.Value
+                    ? DateTime.SpecifyKind(Convert.ToDateTime(reader["LastSyncTimestamp"]), DateTimeKind.Utc)
+                    : null;
+                var fetchSchedule = reader["FetchSchedule"].ToString() ?? "0 0 4 * * *";
+
+                Guid? jobId = Guid.TryParse(req.Query["jobId"], out var parsedJobId) ? parsedJobId : null;
+                var job = await SyncJobsRepository.GetLatestOrByIdAsync(clubCode, jobId);
+
+                return new OkObjectResult(new
                 {
-                    id = job.Id,
-                    status = job.Status,
-                    weekOffsetFrom = job.WeekOffsetFrom,
-                    weekOffsetTo = job.WeekOffsetTo,
-                    createdAt = job.CreatedAt,
-                    startedAt = job.StartedAt,
-                    completedAt = job.CompletedAt,
-                    errorMessage = job.ErrorMessage
-                }
+                    lastSyncTimestamp = lastSync,
+                    fetchSchedule,
+                    status = lastSync.HasValue ? "ok" : "geen-sync-uitgevoerd",
+                    job = job is null ? null : new
+                    {
+                        id = job.Id,
+                        status = job.Status,
+                        weekOffsetFrom = job.WeekOffsetFrom,
+                        weekOffsetTo = job.WeekOffsetTo,
+                        createdAt = job.CreatedAt,
+                        startedAt = job.StartedAt,
+                        completedAt = job.CompletedAt,
+                        errorMessage = job.ErrorMessage
+                    }
+                });
             });
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Fout bij opvragen sync-status");
-            return new ObjectResult(new { error = "Ophalen sync-status mislukt" }) { StatusCode = 500 };
-        }
-    }
 
     [Function("AdminSyncTrigger")]
-    public static async Task<IActionResult> Trigger(
+    public static Task<IActionResult> Trigger(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/sync/trigger")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminSyncTrigger");
-        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        var authResult = EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return authResult;
-        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
-        try
-        {
-            await SystemUtilities.WaitForDatabaseAsync(log);
-
-            int toWeekOffset = await SystemUtilities.SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
-            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-            var jobId = Guid.NewGuid();
-
-            await SyncJobsRepository.CreateAsync(jobId, clubCode, weekOffsetFrom: -1, weekOffsetTo: toWeekOffset);
-
-            var storageVerbinding = Environment.GetEnvironmentVariable("AzureWebJobsStorage")
-                ?? throw new InvalidOperationException(
-                    "AzureWebJobsStorage ontbreekt — vereist voor de Azure Functions-host zelf.");
-            var queueClient = SyncJobsQueue.CreateClient(storageVerbinding);
-            await queueClient.CreateIfNotExistsAsync();
-            var message = new SyncJobMessage
+        return AdminEndpoint.ExecuteAsync(req, log, "sync starten",
+            async clubCode =>
             {
-                JobId = jobId,
-                ClubCode = clubCode,
-                WeekOffsetFrom = -1,
-                WeekOffsetTo = toWeekOffset
-            };
-            await queueClient.SendMessageAsync(JsonSerializer.Serialize(message));
+                int toWeekOffset = await SystemUtilities.SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
+                var jobId = Guid.NewGuid();
 
-            log.LogInformation("AdminSyncTrigger: job {JobId}, range -1 .. {To} — op de queue gezet", jobId, toWeekOffset);
+                await SyncJobsRepository.CreateAsync(jobId, clubCode, weekOffsetFrom: -1, weekOffsetTo: toWeekOffset);
 
-            return new ObjectResult(new
-            {
-                status = "gestart",
-                jobId,
-                weekOffsetFrom = -1,
-                weekOffsetTo = toWeekOffset,
-                tijdstip = DateTime.UtcNow,
-                melding = "Sync gestart op achtergrond. Controleer de voortgang via /beheer/sync/status?jobId=" + jobId + "."
-            }) { StatusCode = 202 };
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Fout bij triggeren van sync");
-            return new ObjectResult(new { error = "Sync starten mislukt" }) { StatusCode = 500 };
-        }
+                var storageVerbinding = Environment.GetEnvironmentVariable("AzureWebJobsStorage")
+                    ?? throw new InvalidOperationException(
+                        "AzureWebJobsStorage ontbreekt — vereist voor de Azure Functions-host zelf.");
+                var queueClient = SyncJobsQueue.CreateClient(storageVerbinding);
+                await queueClient.CreateIfNotExistsAsync();
+                var message = new SyncJobMessage
+                {
+                    JobId = jobId,
+                    ClubCode = clubCode,
+                    WeekOffsetFrom = -1,
+                    WeekOffsetTo = toWeekOffset
+                };
+                await queueClient.SendMessageAsync(JsonSerializer.Serialize(message));
+
+                log.LogInformation("AdminSyncTrigger: job {JobId}, range -1 .. {To} — op de queue gezet", jobId, toWeekOffset);
+
+                return new ObjectResult(new
+                {
+                    status = "gestart",
+                    jobId,
+                    weekOffsetFrom = -1,
+                    weekOffsetTo = toWeekOffset,
+                    tijdstip = DateTime.UtcNow,
+                    melding = "Sync gestart op achtergrond. Controleer de voortgang via /beheer/sync/status?jobId=" + jobId + "."
+                }) { StatusCode = 202 };
+            });
     }
 }

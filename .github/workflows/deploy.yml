@@ -309,7 +309,7 @@ jobs:
           if [ -z "$POSTGRES_CONNECTION_STRING" ]; then
             echo "::error::Secret POSTGRES_CONNECTION_STRING ontbreekt, terwijl DatabaseTier=Postgres."
             echo "::error::Zonder dit secret kan de pipeline de Postgres-migraties niet toepassen en zou de nieuwe code tegen een verouderd schema draaien (#1093, #1098)."
-            echo "::error::Zet het secret in GitHub Settings -> Secrets and variables -> Actions -> Secrets (zelfde connectiestring als de Function App-instelling; norm: sslmode=verify-full met sslrootcert, zie docs/ARCHITECTUUR-DATABASE-TIERS.md §50) en start de deploy opnieuw."
+            echo "::error::Zet het secret in GitHub Settings -> Secrets and variables -> Actions -> Secrets (zelfde connectiestring als de Function App-instelling; norm: sslmode=verify-ca met sslrootcert — verify-full is op het pooler-endpoint onhaalbaar, zie docs/ARCHITECTUUR-DATABASE-TIERS.md §50) en start de deploy opnieuw."
             exit 1
           fi
           echo "Secret aanwezig (waarde niet gelogd)."
@@ -326,6 +326,42 @@ jobs:
           POSTGRES_CONNECTION_STRING: ${{ secrets.POSTGRES_CONNECTION_STRING }}
         run: |
           dotnet run --project Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release -- Database.Postgres/migrations
+
+      # #1246: de demodata van de democlub stond tot nu toe in geen enkele geautomatiseerde stap.
+      # scripts/migrations/003-seed-allstars-demo-matches-postgres.sql kán geen migratie zijn — het
+      # vult his.teams/his.matches, en die tabellen maakt geen migratiebestand aan (PostgresSchemaGenerator
+      # doet dat dynamisch bij de eerste ETL-sync). Gevolg: de democlub had wél een AppSettings-rij,
+      # velden en veldbeschikbaarheid uit migratie 006, maar 0 teams, 0 wedstrijden en 0
+      # teambegeleiding — zowel lokaal als in productie.
+      #
+      # --ensure-his-tables maakt die tabellen langs exact dezelfde weg als de ETL zelf, zodat het
+      # seedscript daarna niet meer (terecht) hoeft te weigeren. Beide stappen zijn idempotent.
+      #
+      # Herhaald draaien is hier geen bijwerking maar het punt: de speeltijden-copy hangt af van
+      # data die de beheerder pas via de Admin GUI invoert, en een eenmalige migratie kan daar per
+      # definitie niet op wachten (dat was precies de fout in migratie 006).
+      - name: "his-tabellen aanmaken (idempotent — voorwaarde voor de demodata-seed)"
+        env:
+          POSTGRES_CONNECTION_STRING: ${{ secrets.POSTGRES_CONNECTION_STRING }}
+        run: |
+          dotnet run --project Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release -- --ensure-his-tables
+
+      - name: "Demodata democlub seeden (idempotent, uitsluitend rijen van de democlub)"
+        id: demodata
+        env:
+          POSTGRES_CONNECTION_STRING: ${{ secrets.POSTGRES_CONNECTION_STRING }}
+        run: |
+          set -o pipefail
+          dotnet run --project Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release -- \
+            --seed-demodata scripts/migrations/003-seed-allstars-demo-matches-postgres.sql 2>&1 | tee seed-demodata.log
+
+          # public.teams is een AFGELEIDE tabel en wordt uitsluitend opgebouwd door
+          # POST /api/beheer/teams/herstel. Dat endpoint is RequireAdmin (Entra-token), dus deze
+          # pipeline kán het niet aanroepen — bewust een zichtbaar signaal in plaats van een
+          # stilzwijgend gat, en bewust geen build-breker: de rest van de demodata staat er wel.
+          if grep -q 'DEMOCLUB_CANONIEKE_LIJST_ONTBREEKT' seed-demodata.log; then
+            echo "::warning title=Democlub: canonieke teamlijst ontbreekt::his.teams is gevuld maar public.teams is leeg. Open de Admin GUI, selecteer de democlub en gebruik de knop 'Teamlijst opnieuw opbouwen' op de pagina Teamaliassen. De pipeline kan dat endpoint niet aanroepen (RequireAdmin)."
+          fi
 
   test:
     runs-on: ubuntu-latest
@@ -414,9 +450,13 @@ jobs:
       - name: "Smoke test: admin endpoint beveiligd (function key → 401)"
         # #976-incident: dit endpoint bestaat onder een ander pad per tier (SQL Server:
         # /api/sync-matches, Postgres: /api/postgres/sync-matches — zie FunctionApp/Function1.cs
-        # resp. FunctionApp.Postgres/Sync/SyncFunction.cs, beide AuthorizationLevel.Admin). Een
-        # hardcoded SQL-Server-pad hier gaf een niet-gerelateerde 404 i.p.v. de bedoelde 401-check
-        # zodra de Postgres-tier gedeployed werd.
+        # resp. FunctionApp.Postgres/Sync/SyncFunction.cs). Een hardcoded SQL-Server-pad hier gaf
+        # een niet-gerelateerde 404 i.p.v. de bedoelde 401-check zodra de Postgres-tier gedeployed
+        # werd.
+        # Sinds #1350 staan beide syncroutes op AuthorizationLevel.Anonymous + AdminEndpoint.
+        # ExecuteAsync (Easy Auth + rol admin), net als elk ander beheerendpoint — een function key
+        # (of de vroegere master key) levert geen Easy Auth-principal op en krijgt dus 401. Deze
+        # stap bewijst precies dat: een key geeft geen toegang.
         env:
           FUNCTIONAPP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME || vars.AZURE_FUNCTIONAPP_NAME }}
           FUNCTION_KEY: ${{ secrets.AZURE_FUNCTION_KEY }}

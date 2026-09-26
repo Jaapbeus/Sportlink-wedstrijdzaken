@@ -1,14 +1,14 @@
 @page "/"
-@inject ThemeService ThemeService
 @using BlazorAdmin.Services
-@implements IDisposable
+@* Alle logica staat in Home.razor.cs (#1327). Geen clubwissel-abonnement, dus geen
+   ClubSelectorPageBase (#1328). *@
 
 <PageTitle>Dashboard — Sportlink Admin</PageTitle>
 
 @if (!string.IsNullOrWhiteSpace(ThemeService.LogoUrl))
 {
     <div class="mb-4 text-center">
-        <img src="@ThemeService.LogoUrl" alt="Club logo" style="max-height:80px; max-width:240px; object-fit:contain;" />
+        <img src="@ThemeService.LogoUrl" alt="Club logo" class="dashboard-logo" />
     </div>
 }
 
@@ -62,14 +62,3 @@
         </a>
     </div>
 </div>
-
-@code {
-    protected override void OnInitialized()
-    {
-        ThemeService.OnThemeChanged += OnThemeChanged;
-    }
-
-    public void Dispose() => ThemeService.OnThemeChanged -= OnThemeChanged;
-
-    private void OnThemeChanged() => _ = InvokeAsync(StateHasChanged);
-}

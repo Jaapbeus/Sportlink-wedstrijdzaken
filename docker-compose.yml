@@ -5,7 +5,7 @@
 # die met productie overeenkomt — niet de andere.
 #
 # sqlserver staat sinds #1060 achter een profile. Die tier blijft volledig ondersteund voor forks
-# die hem kiezen (scripts/ci/database-tiers.json: built=true) en is het rollbackpad uit §49 stap 7,
+# die hem kiezen (scripts/ci/database-tiers.json: built=true) en is een gelijkwaardige tier (#1266),
 # maar hij is niet langer de lokale standaard. Expliciet opstarten:
 #   docker compose --profile sqlserver up -d sqlserver
 #
@@ -53,7 +53,7 @@ services:
 
   # ── SQL Server — tweede tier, alleen op verzoek ───────────────────────────────
   #
-  # Draai deze als je aan FunctionApp/ (de SQL Server-tier) werkt of het rollbackpad test.
+  # Draai deze als je aan FunctionApp/ (de SQL Server-tier) werkt.
   #
   # Op Apple Silicon draait dit image onder Rosetta-emulatie (Microsoft levert geen native
   # ARM64-image van SQL Server); op Windows draait het native. Verder is alles gelijk:

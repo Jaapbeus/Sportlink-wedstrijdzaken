@@ -1,0 +1,533 @@
+# Codekwaliteit — strikte regels met een exit-code
+
+> Vastgelegd naar aanleiding van **#1248** (thema-logica woordelijk gedupliceerd over twee
+> database-tiers) en **#1252** (de platformafhankelijke bug die daardoor maandenlang onzichtbaar
+> bleef). Dit document is de bron voor alle codekwaliteitsregels in dit project. CLAUDE.md vat ze
+> samen en verwijst hierheen; AGENTS.md wordt uit CLAUDE.md afgeleid.
+
+---
+
+## 1. Wat er misging
+
+`FunctionApp/Admin/AdminThemeFunction.cs` en `FunctionApp.Postgres/Admin/AdminThemeFunction.cs`
+bevatten dezelfde regex-set voor kleur-, favicon- en logo-extractie, dezelfde hexvalidatie, dezelfde
+SSRF-allowlist-orkestratie en dezelfde standaardkleuren. Het enige echte verschil was de
+databaseclient en de kolomnaam-casing.
+
+De duplicatie ontstond op 2026-08-30 in de Postgres-poort (#887, PR #897), drie maanden nadat de
+oorspronkelijke thema-functie was gebouwd (#325). In het nieuwe bestand stond vanaf de eerste
+commit letterlijk:
+
+> *"De HTML-scraping/SSRF-allowlist-logica in `Extract` is ongewijzigd gekopieerd — die is
+> databasetier-onafhankelijk."*
+
+**De kopie was dus bewust, gedocumenteerd en zichtbaar voor iedere reviewer.** Ze werd niet
+tegengehouden. Dat is de eigenlijke vraag die dit document beantwoordt: niet "hoe kon iemand dit
+missen", maar "waarom was er geen grond om het af te wijzen".
+
+### Wat het kostte
+
+De prijs kwam bij #1252 binnen. `ResolveUrl` gebruikte `Uri.TryCreate(url, UriKind.Absolute, …)`
+als test voor "is dit een absolute URL". Op Unix parseert `"/favicon.ico"` daarmee **succesvol**,
+als `file:`-URI; op Windows niet. De relatieve tak was daardoor onbereikbaar, en élke
+root-relatieve verwijzing gaf `null`. De Function App draait op een Linux Consumption Plan en de
+ontwikkelmachine is macOS — beide Unix. Favicon- en logo-extractie heeft dus **nooit gewerkt**,
+vanaf #325 in mei. Zonder foutmelding: de beheerder zag "geen logo gevonden", niet te
+onderscheiden van een site zonder logo.
+
+De bug zat in beide kopieën, en in geen van beide een test.
+
+---
+
+## 2. Root cause — vijf lagen
+
+**1. De tier-regel werd breder gelezen dan hij is.** CLAUDE.md zegt: *"Eén tier per
+club-deployment, nooit een gedeelde C#-providerabstractie. […] nooit een runtime-switch in gedeelde
+code."* Dat verbiedt één interface met `SqlConnection`/`NpgsqlConnection` achter een schakelaar. Het
+zegt niets over pure, tier-onafhankelijke logica — `ARCHITECTUUR-DATABASE-TIERS.md` §2 staat het
+delen daarvan expliciet toe. In de praktijk werd de regel toegepast op het *hele bestand*.
+
+**2. De opdracht liet de vraag niet toe.** De scope van #887 was "vertaal de zestien
+admin-endpointparen 1-op-1 naar de Postgres-tier". Binnen die formulering is "welk deel hiervan
+hoort eigenlijk in `Planner.Shared`?" geen deelvraag maar scope-uitbreiding. Een agent die zijn
+opdracht netjes uitvoert, dupliceert.
+
+**3. Niets mat het.** Er bestond geen enkele controle op duplicatie, bestandsgrootte,
+methodelengte, complexiteit of tier-drift. De CI bewaakte de databasekant wél
+(`check-postgres-table-coverage.sh` en twee zusterscripts), de C#-kant niet.
+
+**4. Geen test, dus geen signaal.** De thema-logica had nul tests tot #1248 er zelf tests bij
+schreef. Een fout die stilzwijgend `null` teruggeeft, meldt zich niet.
+
+**5. En daaronder, de eigenlijke oorzaak: proza is geen controle.** Dit patroon is in dit project
+al vastgelegd voor security-regressies. Elke regel die hier standhoudt, heeft een exit-code. Elke
+regel die alleen in CLAUDE.md staat, wordt gevolgd zolang het uitkomt — en dat is bij een
+1-op-1-poort precies niet.
+
+### Dit was de vierde keer
+
+| Issue | Wat er gedupliceerd was | Hoe het aan het licht kwam |
+|---|---|---|
+| #692 → #889 | Teamnaam-normalisatie | Bij de Postgres-poort; daarna naar `Planner.Shared` |
+| #1130 | `SsrfProtection`, `ReplyPolicy`, feedbackkern | Externe reviewronde (#1107), weken later |
+| #1122 | Zes kopieën van de Sportlink-toggle-check, drie van de statusvertaling | Reviewronde na epic #986 |
+| #1248 | Volledige thema-logica | Toevallig, tijdens onderzoek voor epic #1249 |
+
+Vier keer hetzelfde mechanisme: **kopiëren bij de poort, centraliseren bij een latere review.**
+Dat is geen reeks incidenten meer, dat is het normale gedrag van het systeem.
+
+### Waarom dit bij AI-ondersteund ontwikkelen harder groeit
+
+Kopiëren is voor een agent goedkoper dan hergebruiken: het vraagt geen begrip van de bestaande
+abstractie en het risico op regressie in de bestaande tier is nul. GitClear mat over 211 miljoen
+gewijzigde regels dat blokken met vijf of meer gedupliceerde regels in 2024 met een factor acht
+toenamen, dat het aandeel gekloonde regels steeg van 8,3% (2021) naar 12,3% (2024), en dat het
+aandeel verplaatste/geherstructureerde regels in dezelfde periode daalde van 25% naar onder de 10%
+([bron](https://www.gitclear.com/ai_assistant_code_quality_2025_research)). De richting van dit
+project is dus de richting van het gemiddelde — tenzij er iets tegenin duwt.
+
+---
+
+## 3. Nulmeting (develop `03865a9`, 2026-09-19 — na de merges van #1248 en #1254)
+
+| Metriek | Waarde |
+|---|---|
+| Woordelijk identieke betekenisvolle regels tussen de twee tierbomen (77 paren) | **4.641** |
+| jscpd-duplicatie over alle C#-broncode | **15,4%** (376 clones) |
+| Regels logica in `@code`-blokken van Blazor-pagina's | **1.715** over 14 pagina's |
+| Blazor-pagina's mét code-behind | 4 van 18 |
+| `.cs`-bestanden boven 500 regels | 26 (waarvan 4 boven 800) |
+| `.editorconfig` / `Directory.Build.props` / analyzers | afwezig — alleen `<Nullable>enable</Nullable>` |
+| Architectuurtestproject | afwezig |
+| Harde regels in CLAUDE.md zonder enige geautomatiseerde controle | **21** |
+| Verschil CLAUDE.md ↔ AGENTS.md (moesten tweelingen zijn) | **280 regels, 9 ontbrekende secties** |
+
+> **Stand sindsdien.** Deze tabel is een nulmeting op een genoemde commit en wordt niet
+> bijgewerkt — dan zou hij geen nulmeting meer zijn. Wat er sindsdien is verschoven, staat hier:
+>
+> | Metriek | Nulmeting | Nu | Door |
+> |---|---|---|---|
+> | Regels logica in `@code`-blokken | 1.715 over 14 pagina's | **1.559** over 13 pagina's | #1270 (`Thema.razor`) |
+> | Blazor-pagina's mét code-behind | 4 van 18 | **5 van 18** | #1270 |
+>
+> Het plafond in `scripts/ci/codekwaliteit-plafonds.txt` volgt de kolom "Nu"; de ratchet is de
+> plek waar de actuele waarde hoort te staan, niet dit hoofdstuk.
+
+Die laatste regel verdient aparte vermelding. AGENTS.md — het regelboek dat de tweede reviewer van
+dit project leest — miste onder meer *"Multi-tier databasestrategie"*, *"Teamnaam → TeamId: één
+vertaalpunt"* en *"Uitgaande integraties — altijd via EgressGuard"*. De twee regels die duplicatie
+moeten tegenhouden en één beveiligingsregel. De reviewer die #1248 had kunnen tegenhouden, kende
+de regel niet.
+
+---
+
+## 4. De regels
+
+Elke regel hieronder heeft een guard, of staat expliciet als niet-afdwingbaar gemarkeerd. Er is
+geen derde categorie: een regel zonder controle en zonder die markering hoort hier niet.
+
+### Regel 1 — Tier-onafhankelijke logica staat in `Planner.Shared`
+
+Een bestand in `FunctionApp/` of `FunctionApp.Postgres/` bevat uitsluitend: query's,
+parameterbinding, en de vertaling van een kernstatus naar een HTTP-respons. Al het andere —
+validatie, regex, formattering, businessregels, orkestratie van een externe aanroep — hoort in
+`Planner.Shared`.
+
+Precedenten: `ThemeCore` (#1248), `FeedbackCore` + `SsrfProtection` (#1130),
+`TeamNaamNormalisatie` (#889), `SportlinkEndpointSupport` (#1122).
+
+De vraag bij een tier-poort is nooit "vertaal ik dit bestand?" maar **"welk deel hiervan gaat over
+de database, en welk deel niet?"** Alleen het eerste deel wordt vertaald.
+
+**Uitzondering, met een eigen project: endpoint-orkestratie (#1271).** Niet alle tier-duplicatie is
+databasetoegang. De routeparameter parsen, de client uit DI halen, de gedeelde kern aanroepen en
+het resultaat naar `IActionResult` vertalen, leunt op ASP.NET Core en de Azure Functions Worker —
+`Planner.Shared` blijft daarom bewust framework-vrij (zelfde grens als bij `ThemeCore`/
+`FeedbackCore`). Voor precies dát soort logica bestaat sinds #1271 `Planner.Endpoints`: een tweede
+gedeelde laag, met dezelfde discipline als `Planner.Shared`, maar wél met die afhankelijkheid.
+Eerste precedent: `SportlinkEndpointSupportCore` (`Planner.Endpoints/Sportlink/`) — de twee
+tier-`SportlinkEndpointSupport.cs`-bestanden zijn er nu een dun omhulsel om, met tier-specifieke
+stukken (instellingenlezer, `EgressGuard`, auth-keten) als delegate. Een nieuwe klasse met dezelfde
+soort orkestratie hoort in `Planner.Endpoints`, niet in `Planner.Shared` en niet nogmaals per tier.
+
+*Guard: `scripts/ci/check-tier-duplicatie.sh` — ratchet op het totaal aantal woordelijk identieke
+betekenisvolle regels.*
+
+### Regel 2 — Duplicatie mag nooit stijgen
+
+Het gemeten duplicatiegetal is een plafond, geen doel. Het staat in
+`scripts/ci/codekwaliteit-plafonds.txt` en mag alleen omlaag. Verhogen kan, maar dan in een PR die
+uitlegt waarom — de afweging wordt een diff die iemand goedkeurt.
+
+Bestaande duplicatie wordt niet in één ronde opgeruimd: dat zou riskanter zijn dan het probleem.
+De ratchet zorgt dat ze alleen nog kleiner wordt.
+
+*Guard: idem regel 1, plus `scripts/ci/check-interne-duplicatie.sh` (#1263) voor duplicatie
+**binnen** één boom — twee identieke methodes in hetzelfde bestand, of in twee bestanden binnen
+dezelfde tier, komen niet voor in een tier-paar en dus niet in `check-tier-duplicatie.sh`. Meet
+met jscpd op productiecode (geen testprojecten, zelfde reden als regel 7/8), met `FunctionApp/`
+volledig uitgesloten zodat cross-tier duplicatie niet dubbel wordt geteld door twee guards
+tegelijk.*
+
+### Regel 3 — Geen logica in Blazor-pagina's
+
+Elke `.razor` onder `BlazorAdmin/Pages/` met C#-logica heeft een code-behind: `<Pagina>.razor.cs`,
+`public partial class`, `[Inject]` in plaats van `@inject`. Een pagina met een code-behind mag
+daarnaast géén `@code`-blok hebben.
+
+Reden is testbaarheid: `BlazorAdmin.Tests` kan een partial class instantiëren, een `@code`-blok
+niet. Dat bij de nulmeting 1.715 regels logica in pagina's stonden, verklaart waarom dat
+testproject met 14 tests het kleinste van de vijf is.
+
+Dit is een eigen architectuurkeuze, geen Microsoft-voorschrift: Microsoft beschrijft beide vormen
+als ondersteund en noemt geen grens
+([bron](https://learn.microsoft.com/aspnet/core/blazor/components/#partial-class-support)).
+Precedent in dit project: de vier Sportlink-extensiepagina's (#1122).
+
+*Guard: `scripts/ci/check-blazor-codebehind.sh` — hard op dubbele logica, ratchet op het totaal.*
+
+Alle twaalf pagina's die deze regel bij de nulmeting nog niet volgden, hebben sinds #1327 een
+code-behind; het plafond staat sinds die migratie op 0. Diezelfde migratie maakte ook zichtbaar
+wat #1322 al voorspelde: twaalf pagina's herhaalden woordelijk dezelfde clubwissel-lifecycle
+(abonneren op `ClubSelectorService.OnChange`, `InvokeAsync`, `StateHasChanged`, afmelden bij
+Dispose). Die is bij #1328 gecentraliseerd in `BlazorAdmin/Pages/ClubSelectorPageBase.cs` — een
+pagina die op een clubwissel moet reageren, erft daarvan over en overschrijft alleen
+`OnClubChangedAsync()`.
+
+### Regel 3b — CSS isolation, geen `<style>`-blok of statische inline style
+
+Presentatie in een Blazor-pagina hoort in `<Pagina>.razor.css` (CSS isolation), niet in een
+`<style>`-blok of een `style="..."`-attribuut in de markup. Een dynamische waarde (een berekende
+positie, een gekozen kleur) mag inline blijven, maar dan uitsluitend als CSS custom property
+(`style="--naam:@expressie;"`) — de daadwerkelijke CSS-eigenschap staat via `var(--naam)` in het
+stylesheet.
+
+Reden: dezelfde als regel 3, van de andere kant. Een `.razor.css`-bestand is met normale CSS-tools
+te doorzoeken en te hergebruiken; 91 losse `style="..."`-attributen (waarvan sommige de hele
+Gantt-tijdlijn van `Dagplanning.razor` positioneerden) zijn dat niet. Precedent:
+`Dagplanning.razor.css` bestond al vóór deze regel werd afgedwongen; #1329 breidde dat patroon uit
+naar alle pagina's.
+
+Een uitzondering staat in `scripts/ci/blazor-inline-style-allowlist.txt`, per pad+regelnummer en
+met reden — nooit een allowlist voor een hele pagina.
+
+*Guard: `scripts/ci/check-blazor-inline-styles.sh` — hard, geen ratchet: een nieuwe overtreding is
+altijd een fout, niet een meting die mag groeien.*
+
+### Regel 4 — Platformafhankelijke valkuilen zijn verboden, tenzij gemotiveerd
+
+Vier patronen die in dit project aantoonbaar stille fouten hebben opgeleverd:
+
+| Patroon | Waarom | Incident |
+|---|---|---|
+| `UriKind.Absolute` als "is dit een URL"-test | Op Unix parseert `"/pad"` succesvol als `file:`-URI | #1252 |
+| `DateTime.Now` waar `UtcNow` hoort | Lokale tijd opgeslagen, als UTC gemarkeerd, nog eens omgerekend | #246 |
+| `GETDATE()` waar `GETUTCDATE()` hoort | Dezelfde fout, aan de databasekant | #246 |
+| `<input type="time">` in plaats van `<TimeInput>` | "830" en "8:30" worden niet genormaliseerd | — |
+
+Een uitzondering staat in `scripts/ci/codekwaliteit-valkuilen-allowlist.txt`, per pad **en met
+reden**. Een regel zonder reden laat de guard falen: een uitzondering die niemand kan beoordelen,
+groeit vanzelf uit tot gewoonte.
+
+*Guard: `scripts/ci/check-codekwaliteit-valkuilen.sh`.*
+
+
+#### De `GETDATE()`-treffers zijn beoordeeld — wat overblijft is geen tijdstempel (#1301)
+
+De drie mapbrede uitzonderingen (`Database/`, `FunctionApp/setup/`, `scripts/migrations/`) zijn
+weg. Ze dekten samen honderden bestanden, dus een nieuwe tabel met `DEFAULT GETDATE()` was
+stilzwijgend toegestaan — precies het tegenovergestelde van wat een allowlist hoort te doen.
+
+Van de 34 ruwe treffers:
+
+| Categorie | Aantal | Uitkomst |
+|---|---:|---|
+| Commentaar dat juist **waarschuwt** tegen `GETDATE()` | 5 | Telden al niet mee: de guard slaat `--`-regels over |
+| Tijdstempelkolommen in `FunctionApp/setup/*.sql` | 8 | **Gecorrigeerd** naar `GETUTCDATE()`; allowlist-regel verwijderd |
+| Seizoenskalender in `sp_UpdateSeasonTable` + zijn kopie in `Script.PostDeployment1.sql` | 20 | Blijft, met reden |
+| `CAST(GETDATE() AS DATE)` in het AllStars-demoseedscript | 1 | Blijft, met reden |
+
+**Waarom de seizoenskalender blijft.** `YEAR(GETDATE())` leidt daar af *in welk seizoen we zitten*.
+Dat is een kalenderjaar, geen instant, en de afgeleide waarden zijn `DATE`-kolommen — er is niets om
+naar UTC om te rekenen. Op Azure SQL is `GETDATE()` bovendien sowieso UTC; alleen een zelf gehoste
+server in een andere zone wijkt af, en dan hooguit enkele uren rond een maandgrens midden in het
+jaar. De procedure is idempotent en corrigeert zichzelf bij de volgende run.
+
+De UTC-regel gaat over het **opslaan van tijdstempels**. Hem hier toepassen zou een stored procedure
+op productie wijzigen voor nul effect — en dat is precies het soort wijziging dat een guard
+ongeloofwaardig maakt.
+
+**Wat de acht correcties waard waren.** De drie bestanden in `FunctionApp/setup/` bleken nergens
+naar verwezen te worden en spraken bovendien de Docker-regel uit `CLAUDE.md` tegen. Dat is apart
+opgepakt als issue #1309; de `GETUTCDATE()`-correctie was juist ongeacht die uitkomst.
+
+> **Afloop (#1309).** De hele map is verwijderd — zeven bestanden, niet drie. De vier andere waren
+> even ongebruikt en hoorden bij dezelfde kit: `update-appsettings.sql` documenteerde expliciet dat
+> het ná `complete-database-setup.sql` draaide. Twee ervan (`fix-create-procedure.sql`,
+> `fix-merge-procedure.sql`) waren losse patches op stored procedures waarvan de gezaghebbende
+> definitie in het SSDT-project staat — een derde schemakopie die stil uit de pas kon lopen.
+
+### Regel 5 — Eén regelboek, afgeleid in plaats van gekopieerd
+
+CLAUDE.md is de bron. AGENTS.md wordt eruit gegenereerd met
+`python3 scripts/ci/genereer-agents-md.py --schrijf` en wordt nooit met de hand bewerkt — zelfde
+patroon als `openapi.json` uit `openapi.yaml`.
+
+Dit is regel 1, toegepast op de documentatie zelf. Twee documenten die hetzelfde moeten zeggen en
+met de hand worden bijgehouden, lopen uiteen; dat is hier ook gebeurd, met negen ontbrekende regels
+als gevolg.
+
+*Guard: `scripts/ci/genereer-agents-md.py` (zonder `--schrijf`).*
+
+### Regel 6 — Een nieuwe regel krijgt een guard, of wordt als onbewaakt gemarkeerd
+
+Dit is de regel die de andere zeven overeind houdt, en de directe les van dit onderzoek. Wie een
+harde regel toevoegt aan CLAUDE.md of aan dit document, doet één van twee dingen:
+
+1. schrijft er een guard bij en zet die in het register hieronder; of
+2. zet hem in het register met `handmatig` en één zin over waarom een controle niet kan.
+
+Wat niet mag, is een regel zonder allebei. Dat is hoe er 21 onbewaakte regels ontstonden.
+
+*Guard: `scripts/ci/check-regelregister.sh` — controleert dat elk genoemd script bestaat,
+uitvoerbaar is en daadwerkelijk in een workflow wordt aangeroepen, en dat er geen guard bestaat die
+niet in het register staat.*
+
+### Regel 7 — Een productiebestand blijft onder de 500 regels
+
+### Regel 8 — Een methode blijft onder de 80 regels
+
+Beide zijn ratchets op een **aantal**, niet op een grens per bestand: geteld wordt hoeveel
+bestanden en methodes er boven zitten, en dat aantal mag niet stijgen. Bestaande code mag dus
+blijven; nieuwe code blijft eronder, of ruimt iets anders op.
+
+Dat is een bewuste keuze, omdat er geen gezaghebbende drempel bestaat om naar te wijzen. Google's
+reviewrichtlijnen noemen expliciet géén bestandsgrens en stellen dat "smallness" geen simpele
+functie van regelaantal is
+([bron](https://github.com/google/eng-practices/blob/master/review/developer/small-cls.md)).
+SonarSource hanteert cognitieve complexiteit 15 per functie; Microsofts CA1502 staat op
+cyclomatische complexiteit 25
+([bron](https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1502)). Drie
+serieuze bronnen, drie andere antwoorden. Een zelfgekozen harde grens zou zevenentwintig bestaande
+bestanden in één klap illegaal maken, en zo'n guard wordt uitgezet.
+
+500 en 80 markeren niet "goed", maar "dit wordt moeilijk te lezen en te testen".
+
+**Testbestanden tellen niet mee.** Een testbestand groeit door losse gevallen naast elkaar te
+zetten; dat is geen verstrengeling en leest ook bij tweeduizend regels van boven naar beneden. Een
+guard die het toevoegen van tests bestraft, werkt averechts.
+
+Opvallend bij de nulmeting: van de acht grootste bestanden zijn er zes de twee helften van drie
+tier-paren, en van de zes langste methodes zijn het er ook zes. Regel 7 en 8 wijzen dus naar
+dezelfde schuld als regel 1, vanuit een andere hoek.
+
+*Guard: `scripts/ci/check-bestandsgrootte.sh`.*
+
+#### Aanvulling: de maintainability-analyzers meten dezelfde schuld, maar gezaghebbend (#1300)
+
+Regel 7 en 8 tellen *regels*, omdat er voor die grens geen externe autoriteit bestaat. Voor
+**complexiteit** bestaat die wel: Microsoft levert CA1502 (cyclomatische complexiteit), CA1505
+(maintainability index) en CA1506 (class coupling) mee in `Microsoft.CodeAnalysis.NetAnalyzers`,
+met hun eigen drempels. Sinds #1300 staan die drie aan.
+
+Ze staan standaard uit, **ook bij `<AnalysisMode>All</AnalysisMode>`** — dat is geen vergissing van
+ons maar een bewuste keuze van Microsoft, omdat de drempels projectafhankelijk zijn. Aanzetten
+gebeurt per regel in `.editorconfig` in de repo-root, op `warning`.
+
+Nulmeting (`develop` `b34e2b1`): **19 overtredingen**.
+
+| Regel | Aantal | Waar |
+|---|---:|---|
+| CA1502 — cyclomatische complexiteit > 25 | 13 | zwaarste: `BindMatchDetailsParameters` (58), `BouwTemplateAntwoord` (46 / 43), `VerwerkMetPlannerAsync` (33 / 31) |
+| CA1506 — class coupling | 6 | `EmailTestFunction.DryRun`, `EmailProcessorFunction.Run`, `Program.cs` — elk op beide tiers |
+| CA1505 — maintainability index | 0 | — |
+
+Twee dingen zijn hier het vermelden waard.
+
+**CA1505 op nul betekent niet dat de regel niets doet.** De maintainability index is een
+samengestelde maat die pas onder de 10 klaagt; geen enkel type zit daaronder. De regel blijft aan,
+zodat de ratchet hem opvangt zodra er wél een bijkomt.
+
+**Zes van de negentien zijn tier-paren.** Net als bij regel 7 en 8 wijst de meting naar dezelfde
+schuld als regel 1: `BerichtPipeline`, `EmailTestFunction`, `EmailProcessorFunction` en `Program.cs`
+staan tweemaal in de codebase, dus hun overtreding telt tweemaal. Die zes verdwijnen vanzelf zodra
+de gedeelde endpoint-orkestratie (#1271) verder komt — zonder dat er één methode herschreven wordt.
+
+**Waarom een ratchet en niet meteen `error`.** De zwaarste gevallen zitten in `BerichtPipeline`, dat
+binnenkomende e-mail verwerkt. Een methode met cyclomatische complexiteit 46 daar herschrijven is
+een echte refactor met productierisico, geen opruimwerk dat in een chore-PR hoort. Een gate die de
+eerstvolgende PR rood maakt zonder dat iemand de overtredingen heeft gezien, wordt binnen twee PR's
+weer uitgezet — en bewaakt dan niets meer.
+
+**Testprojecten zijn uitgesloten in `.editorconfig` zelf**, niet in de guard. Zelfde redenering als
+hierboven: `SportlinkClubClientTests` raakt 96 typen aan, en dat is dekking, geen verstrengeling.
+
+*Guard: `scripts/ci/check-analyzer-complexiteit.sh` — bouwt de solution en telt. Weigert te meten
+als `.editorconfig` de drie regels niet aanzet: zonder die controle zou hij stilzwijgend nul tellen
+en voor altijd groen staan, precies het no-op-patroon uit §67 van
+`ARCHITECTUUR-DATABASE-TIERS.md`.*
+
+### Regel 9 — Elk HTTP-endpoint autoriseert via de wrapper, nooit via een eigen poort (#1350)
+
+Een endpoint met de admin-rol loopt via `AdminEndpoint.ExecuteAsync` (of
+`AdminEndpoint.ExecuteZonderDatabaseAsync` als het geen database nodig heeft); een
+Sportlink-endpoint via `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`, dat daarop uitkomt.
+Een losse `EasyAuthHelper.RequireAdmin(req)`-aanroep in een endpoint is een overtreding, en een
+`HttpTrigger` op iets anders dan `AuthorizationLevel.Anonymous` ook: een Function- of Master key
+is een tweede, identiteitsloze toegangsweg naast Easy Auth.
+
+**Wat er misging.** Bij een inventarisatie van de 92 HTTP-endpoints op de Postgres-tier bleken 49
+van de 80 admin-endpoints via de wrapper te lopen en 31 de poort zelf te bouwen — telkens dezelfde
+vier regels (`ExtractOrCreateCorrelationId` → `RequireAdmin` → `BeginScope` → eigen try/catch),
+soms met, soms zonder databasewacht. De SQL Server-tier had daarnaast nog een dérde patroon
+(`PlannerFunction.HandleAsync`). Drie manieren om dezelfde poort te bouwen betekent drie plekken
+waar de volgende wijziging er één kan vergeten — en een vergeten poort geeft niemand een
+foutmelding. Bovendien stond `EasyAuthHelper.RequireAuthenticated` (rol `admin` óf `user`) al
+jaren ongebruikt in de code: een poort die ruimer is dan alle gebruikte, is een uitnodiging om hem
+per ongeluk te pakken. Die is verwijderd. En de twee handmatige sync-routes zaten als enige achter
+een Azure master key in plaats van achter Easy Auth — zonder identiteit, zonder audittrail, met een
+sleutel die de hele Function App beheert.
+
+**Twee uitzonderingen, met reden.** `AdminThemeExtract` doet een goedkope URL-vormcontrole vóór de
+databaseaanroep en `AdminGeocodeGet` raakt de database helemaal niet; de wrapper zou bij beide de
+databasewacht vóór die controle zetten. Ze roepen dezelfde `RequireAdmin`-poort direct aan en staan
+met die reden in `scripts/ci/endpoint-autorisatie-allowlist.txt`. `Health` is het enige anonieme
+endpoint en staat daar als zodanig.
+
+**De test bewijst het per endpoint, zonder database.** `EndpointAutorisatieTests` (één per tier)
+vindt via reflectie élk `[Function]` met een `HttpTrigger` en roept het aan: zonder principal moet
+dat `401` geven, met alleen de rol `user` `403`, en met de vereiste rol(len) moet de aanroep de
+poort passeren. Dat laatste wordt bewezen met een `internal` testhaak in `AdminEndpoint`
+(`PoortGepasseerdVoorTests`) die ná de rolcontrole en vóór de databasewacht een sentinel
+teruggeeft — alleen de wrapper kan dat resultaat opleveren, dus een endpoint met een eigen poort
+valt door de mand. De haak zit ná de poort en kan die nooit verzwakken. Een echte aanroep mét
+admin was geen optie: in de CI-job met een levende database zou een DELETE- of sync-endpoint dan
+écht werk doen.
+
+*Guard: `scripts/ci/check-endpoint-autorisatie.sh` — knipt elk tierbestand per `[Function(...)]`,
+houdt de blokken met een `HttpTrigger` over en eist per blok: geen directe `Require*`-aanroep
+(tenzij op de allowlist), wél een van de bekende wrappers (tenzij als `anoniem` op de allowlist),
+en `AuthorizationLevel.Anonymous`. Een allowlist-regel zonder reden of naar een niet-bestaand
+endpoint laat hem ook falen. Dezelfde knip als de Layer-5-scan in
+`scripts/azure/Verify-AzureAuthSetup.ps1`, maar in CI.*
+
+---
+
+## 5. Register
+
+<!-- REGELREGISTER-BEGIN -->
+
+| Regel | Afgedwongen door | Draait in |
+|---|---|---|
+| 1, 2 — tier-duplicatie stijgt niet | `scripts/ci/check-tier-duplicatie.sh` | `build.yml` |
+| 1, 2 — interne duplicatie stijgt niet (#1263) | `scripts/ci/check-interne-duplicatie.sh` | `build.yml` |
+| 3 — geen logica in Blazor-pagina's | `scripts/ci/check-blazor-codebehind.sh` | `build.yml` |
+| 3b — geen `<style>`-blok of statische inline style in Blazor-pagina's (#1329) | `scripts/ci/check-blazor-inline-styles.sh` | `build.yml` |
+| 4 — platformafhankelijke valkuilen | `scripts/ci/check-codekwaliteit-valkuilen.sh` | `build.yml` |
+| 5 — AGENTS.md afgeleid uit CLAUDE.md | `scripts/ci/genereer-agents-md.py` | `build.yml` |
+| 6 — elke regel heeft een guard | `scripts/ci/check-regelregister.sh` | `build.yml` |
+| 7, 8 — bestandsgrootte en methodelengte stijgen niet | `scripts/ci/check-bestandsgrootte.sh` | `build.yml` |
+| 7, 8 — maintainability-analyzers stijgen niet (#1300) | `scripts/ci/check-analyzer-complexiteit.sh` | `build.yml` |
+| 9 — elk HTTP-endpoint autoriseert via de wrapper, op Anonymous (#1350) | `scripts/ci/check-endpoint-autorisatie.sh` | `build.yml` |
+| Alle regels — de guards worden zelf getest | `scripts/ci/check-codekwaliteit.test.sh` | `build.yml` |
+
+De guards die al bestonden staan hier ook in. Het register is daarmee de volledige lijst: een
+guard die er niet in staat, laat `check-regelregister.sh` falen — zodat een controle niet stilletjes
+uit een workflow kan verdwijnen zonder dat iemand het merkt.
+
+| Regel | Afgedwongen door | Draait in |
+|---|---|---|
+| Padverwijzingen exact in casing (#825) | `scripts/ci/check-path-casing.sh` | `build.yml` |
+| Postgres-identifiers lowercase snake_case | `scripts/ci/check-postgres-identifier-casing.sh` | `build.yml` |
+| Tabellen gedekt in beide tierbomen | `scripts/ci/check-postgres-table-coverage.sh` | `build.yml` |
+| Kolommen gedekt in beide tierbomen | `scripts/ci/check-postgres-column-coverage.sh` | `build.yml` |
+| Procedures/views gedekt in beide tierbomen | `scripts/ci/check-postgres-procedure-view-coverage.sh` | `build.yml` |
+| RLS aan op elke tabel (#1198, #1220) | `scripts/ci/check-rls-enabled.sh` | `build.yml` |
+| Supabase-lints (#1220) | `scripts/ci/check-splinter-lints.sh` | `build.yml` |
+| Thema-CSS-variabelen consistent (#1255) | `scripts/ci/check-theme-variables.sh` | `build.yml` |
+| Beide tiers bieden dezelfde routes en timers (#1266, #1268) | `scripts/ci/check-tier-pariteit.sh` | `build.yml` |
+
+<!-- REGELREGISTER-EINDE -->
+
+---
+
+## 6. Wat bewust (nog) niet wordt afgedwongen
+
+Eerlijk vermeld, zodat niemand denkt dat het gedekt is.
+
+| Onderwerp | Waarom niet | Vervolg |
+|---|---|---|
+| Testdekking per productiemap | `BlazorAdmin.Tests` heeft weinig tests tegenover bijna 7.000 regels Razor; dat groeit pas als regel 3 (code-behind) verder is doorgevoerd. De drie mappen zonder testproject zijn bij #1302 wél voorzien — zie hieronder. | Regel 3 |
+| Expressie-index bij een `UPPER()`-vergelijking (#1232) — **deels bewaakt sinds #1280** | In het algemeen niet schema-statisch te bepalen zonder de queries te parsen; de splinter-gate sluit `unused_index` bewust uit (§68 van `ARCHITECTUUR-DATABASE-TIERS.md`). De regel staat in `CLAUDE.md`, de meting per tier in §69 en §75 daarvan. Voor de drie sleutelkolommen van de teamresolutie is het wél afdwingbaar gebleken, omdat de vergelijkingen op één plek staan. | `FunctionApp.Tests/TeamResolution/TeamCandidateIndexSargabilityTests.cs` voor de teamresolutiekolommen; daarbuiten handmatig: `EXPLAIN (ANALYZE, BUFFERS)` resp. `SHOWPLAN_TEXT` bij zo'n wijziging |
+| Precies één `source:`-label per issue (#1336) | Herkomst wordt handmatig gezet door Claude Code (Codex heeft geen labelschrijftoegang) — er is geen `setIssueStatus()`-achtige helper die dit afdwingt, en geen periodieke scan die een issue zonder of met dubbel `source:`-label signaleert. | Los issue indien gewenst: een periodieke workflow (zelfde vorm als `supabase-advisors.yml`) die open issues zonder precies één `source:`-label rapporteert |
+| Verweesde `status: waiting-codex` (#1336, gedeprecieerd sinds #1343) | Er is geen GitHub-event dat Codex' read-only reviewsweep markeert als "klaar" — zetten én verwijderen zijn altijd handmatige acties van Claude Code. Een issue dat op `waiting-codex` blijft staan omdat niemand terugkomt, valt niet automatisch op. Sinds #1343 is dit label gedeprecieerd (zie `CLAUDE.md`); de rij blijft staan zolang het label en zijn `PROTECTED`-vermelding nog bestaan. | Los issue indien gewenst: dagelijkse/wekelijkse cron die `status: waiting-codex`-issues ouder dan N dagen signaleert, of verwijder het label + de `PROTECTED`-vermelding zodra bevestigd is dat niets er meer naar verwijst |
+| Precies één `turn:`-label per issue (#1343) | Net als bij `source:` (zie rij hierboven): geen `setIssueStatus()`-achtige helper dwingt exclusiviteit af voor `turn: claude-code`/`turn: codex`/`turn: owner`, en er is geen periodieke scan die een issue zonder of met dubbel `turn:`-label signaleert. | Los issue indien gewenst: dezelfde periodieke workflow als voor `source:` uitbreiden met een `turn:`-check |
+| Maximaal twee Codex-rondes per PR zonder eigenaarsbesluit (#1343) | De rondelimiet uit "Codex-turn-workflow" in `CLAUDE.md` is een afspraak tussen Claude Code en de Codex-automatisering, geen door deze repo's CI afgedwongen teller — er is geen script dat het aantal `turn: codex`-aanvragen per PR bijhoudt. | Los issue indien gewenst, pas ná de handmatige simulatie/proefautomatisering uit fase 2/3 van #1343 — te vroeg bouwen zou een teller afdwingen vóórdat bekend is hoe de Codex-app dit in de praktijk gebruikt |
+
+### Drie mappen zonder testproject, nu met een startpunt (#1302)
+
+`Database.Postgres.Cli/`, `MigrationTools/` en `Tools/` hadden geen enkele test. Per map is bepaald
+welke logica testbaar én risicovol genoeg is; een CLI-wrapper die alleen argumenten doorgeeft is dat
+niet, parsing- en vertaallogica wel.
+
+| Project | Wat er getest wordt | Waarom juist dat |
+|---|---|---|
+| `Database.Postgres.Cli.Tests` (11) | `CliArgumentParser` | Bepaalt of `deploy.yml` migraties toepast, `his`-tabellen aanmaakt of demodata seedt. Een verkeerde uitkomst is een verkeerde deploy. |
+| `MigrationTools.Tests` (11) | `IdMapRegistry`, `TableCopier.ResolveValue` | De enige plek in de cutover-kopie waar een fout **stil** is: geen exception, maar een rij die naar het verkeerde bovenliggende record wijst. |
+| `Tools.SportlinkTokenCapture.Tests` (9) | `WriteRefreshTokenToSettings`, `SettingsKeyFor` | Herschrijft `local.settings.json`, waar ook de connectiestring in staat. |
+
+Drie dingen die daarvoor nodig waren, en die de moeite van het onthouden waard zijn:
+
+**Top-level statements zijn niet testbaar.** `Database.Postgres.Cli/Program.cs` gebruikt ze, en die
+compileren naar een onbereikbare `<Main>$`. De argumentafhandeling is daarom verhuisd naar
+`CliArgumentParser`. Dat is geen stijlkeuze: zonder die verplaatsing valt er niets te asserten
+zonder het programma daadwerkelijk te starten — dezelfde reden als regel 3 voor `@code`-blokken.
+
+**`internal` plus `InternalsVisibleTo`, niet `public`.** `TableCopier.ResolveValue` en de twee
+helpers in `SportlinkTokenCapture` zijn van `private` naar `internal` gegaan. Ze horen niet bij het
+publieke oppervlak van die programma's; ze horen alleen bevraagbaar te zijn door hun eigen tests.
+
+**De eerste test was meteen rood, en terecht.** `WriteRefreshTokenToSettings` schreef een
+`local.settings.json` zónder `Values`-object gewoon terug — zonder het token, zonder foutmelding,
+met een succesmelding aan de aanroeper. Dat is nu een expliciete `InvalidOperationException`, met
+een vangnet achteraf voor elk toekomstig pad waarlangs de schrijfactie wordt overgeslagen.
+
+---
+
+## 7. Hoe je hiermee werkt
+
+```bash
+# Alle codekwaliteitsguards lokaal, zelfde volgorde als CI:
+bash scripts/ci/check-tier-duplicatie.sh
+bash scripts/ci/check-interne-duplicatie.sh
+bash scripts/ci/check-blazor-codebehind.sh
+bash scripts/ci/check-blazor-inline-styles.sh
+bash scripts/ci/check-codekwaliteit-valkuilen.sh
+bash scripts/ci/check-bestandsgrootte.sh
+bash scripts/ci/check-regelregister.sh
+python3 scripts/ci/genereer-agents-md.py
+
+# Deze ene bouwt de hele solution en duurt dus langer dan de rest bij elkaar:
+bash scripts/ci/check-analyzer-complexiteit.sh
+
+# CLAUDE.md gewijzigd? Regenereer AGENTS.md:
+python3 scripts/ci/genereer-agents-md.py --schrijf
+```
+
+Alle guards behalve de laatste lezen enkel bestanden — geen database, geen secrets, geen SDK.
+`check-analyzer-complexiteit.sh` is de uitzondering: hij draait `dotnet build` op
+`sportlink-wedstrijdzaken.slnf`, omdat CA1502/1505/1506 compileertijd-analyzers zijn en er geen
+manier is om ze zonder compilatie te tellen. Hij weigert te meten als `.editorconfig` de drie
+regels niet aanzet — anders telt hij stilzwijgend nul en staat hij voor altijd groen.
+
+Een guard die faalt omdat je iets hebt verbeterd, zegt welk getal in
+`scripts/ci/codekwaliteit-plafonds.txt` moet. Neem dat over in dezelfde PR — winst die niet wordt
+vastgezet, lekt binnen een paar PR's weg.
+
+**Over de nultolerantie naar boven.** Bij een getal van vier cijfers verschuift de tier-meting soms
+een of twee regels door toeval: twee bestanden krijgen onafhankelijk van elkaar een identieke
+regel. Dat is tijdens het invoeren zelf gebeurd — de merge van #1254 haalde 73 gedupliceerde regels
+uit het thema-paar en bracht er elders netto 2 terug. Het antwoord daarop is het plafond opnieuw
+vastleggen, met de reden erbij, en **niet** een marge naar boven inbouwen. Zo'n marge is precies de
+ruimte waarin echte groei ongemerkt past: vijf PR's van elk twee regels zijn samen een nieuw
+gekopieerd blok, en geen van vijf zou zijn opgevallen.

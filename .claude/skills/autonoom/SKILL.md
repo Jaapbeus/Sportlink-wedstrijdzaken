@@ -27,6 +27,17 @@ Symbolen:
 > e-mailadressen). Gebruik altijd placeholders (`[clubcode]`, `[TENANT_ID]`,
 > `[swa-url]`, `[club-domein]`). Zie SECURITY.md § "GitHub issues, PR's en comments".
 
+> 🖥️ **CROSS-PLATFORM — altijd van toepassing (#800, #1286).**
+> Deze skill draait op Windows én macOS. Vier regels bij het aanpassen ervan:
+> 1. **Poortdetectie uitsluitend via `Test-PortListening`** uit `scripts/dev/DevServices.psm1` —
+>    nooit `Get-NetTCPConnection` (module `NetTCPIP`, alleen Windows).
+> 2. **Nooit `Stop-Process -Name`.** Dat sloopt élk `dotnet`/`node`-proces op de machine en
+>    `dotnet watch` herstart zijn kindproces meteen. Gebruik `Stop-Debug.ps1` / `Start-Debug.ps1 -Clean`.
+> 3. **Geen backslash in padliteralen of in een regex over een pad.** Op Unix is `\` een geldig
+>    teken ín een bestandsnaam. Een padfilter matcht op `[\\/]`, nooit op `\\` alleen.
+> 4. **In bash-blokken: `grep -E`, nooit `grep -P`** — de BSD-grep van macOS kent geen PCRE en
+>    faalt daar stil in een pijplijn.
+
 **Lus-structuur (belangrijk):**
 ```
 Fase 0  (voorbereiding: PR's mergen, branches opruimen, main synchen)
@@ -135,7 +146,9 @@ Verwerk elk security issue via de volledige implementatiecyclus (zie Fase 2 per-
 HERHAAL:
   1. gh issue list --state open --label "security"
   2. Zijn er issues? → Implementeer elk issue (stappen A-E)
-  3. Na merge: gh issue close <nr>
+  3. Na merge naar develop: NIET zelf sluiten (#1295) — label-awaiting-release.yml zet
+     status: awaiting-release; close-released-issues.yml sluit het pas bij de volgende
+     productie-tag op main. Zie CLAUDE.md, "Issue-lifecycle: awaiting-release".
   4. Zijn er daarna nog open security issues? → terug naar 1
   5. Geen security issues meer? → ✅ STOP lus
 ```
@@ -220,23 +233,28 @@ Voor elk issue — volg de autonome ontwikkelcyclus uit CLAUDE.md:
 
 **Stap B — Verificatielus (max 3 iteraties)**
 ```
-a. dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug
+a. dotnet build FunctionApp.Postgres/FunctionApp.Postgres.csproj -c Debug
    → fouten? Fix, terug naar a.
+   Dit is de tier die in productie draait (#1060). Raak je ook de SQL Server-tier aan, bouw
+   dan óók: dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug
 
-b. dotnet build BlazorAdmin/BlazorAdmin.csproj
+b. ALLEEN als de BlazorAdmin dev server niet draait: dotnet build BlazorAdmin/BlazorAdmin.csproj
    → fouten? Fix, terug naar a.
+   ⚠️ NOOIT terwijl `/startdebug` (dotnet watch op :5242) al draait of vlak nadat die gestart is —
+   een tweede compilatiepas geeft een tweede set content-hash fingerprints naast de draaiende
+   server → 404 op framework-JS → "An unhandled error has occurred. Reload". Draait de server
+   al (`lsof -nP -iTCP:5242 -sTCP:LISTEN` / `Get-NetTCPConnection -LocalPort 5242`)? Sla deze
+   stap over — stap a dekt de compileerbaarheid van de FunctionApp-lagen al.
 
-c. .\scripts\dev\Test-App.ps1
+c. ./scripts/dev/Test-App.ps1
    → exit 1? Fix, terug naar a.
 ```
 
-Als FunctionApp C# gewijzigd is → stop FunctionApp en herstart:
+Als FunctionApp C# gewijzigd is → stop FunctionApp en herstart (geen hot reload op de
+isolated worker):
 ```powershell
-Stop-Process -Name "func" -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 2
-Start-Process powershell -ArgumentList "-NoExit -Command Set-Location FunctionApp; func start --port 7094"
-Start-Sleep -Seconds 15
-Invoke-RestMethod http://localhost:7094/api/health
+./scripts/dev/Stop-Debug.ps1
+./scripts/dev/Start-Debug.ps1      # pollt zelf /api/health en faalt met exit 1 als de host niet opkomt
 ```
 
 **Stap C — Documentatie bijwerken (verplicht vóór commit)**
@@ -251,9 +269,9 @@ Loop onderstaande twee categorieën na. Lees elk relevant bestand, vergelijk met
 | `FunctionApp/CLAUDE.md` | Endpoint, datamodel, API-veld of FunctionApp-configuratie gewijzigd |
 | `docs/API.md` | Endpoint toegevoegd, gewijzigd of verwijderd |
 | `docs/openapi.yaml` | Idem — sync met API.md |
-| `docs/ARCHITECTURE-PLANNER.md` | Planner-logica, pipeline of kanaalstrategie gewijzigd |
-| `docs/AZURE-ENTRA-SETUP.md` | Auth-configuratie, Easy Auth, Entra of rollen gewijzigd |
-| `docs/TESTING.md` | Testscript, schema-controle of endpoint-verificatie gewijzigd |
+| `docs/ARCHITECTUUR-PLANNER.md` | Planner-logica, pipeline of kanaalstrategie gewijzigd |
+| `docs/ENTRA-AUTH-BEHEER.md` | Auth-configuratie, Easy Auth, Entra of rollen gewijzigd |
+| `docs/VERIFICATIE-SCRIPTS.md` | Testscript, schema-controle of endpoint-verificatie gewijzigd |
 | `docs/MONITORING.md` | Alerting, KQL-queries of escalatiematrix gewijzigd |
 | `docs/EMAIL-VERWERKING.md` | Email-pipeline, kanalen of AI-verwerking gewijzigd |
 | `docs/VERSIONING.md` | Release-proces of semver-afspraken gewijzigd |
@@ -263,8 +281,8 @@ Loop onderstaande twee categorieën na. Lees elk relevant bestand, vergelijk met
 
 | Bestand | Bijwerken bij |
 |---|---|
-| `docs/v2-admin-handleiding.md` | **Altijd** als er een scherm, instelling, knop, workflow of tekst in de GUI gewijzigd is |
-| `docs/SETUP.md` | Lokale setup of configuratiestappen gewijzigd |
+| `docs/BEHEERDER-HANDLEIDING.md` | **Altijd** als er een scherm, instelling, knop, workflow of tekst in de GUI gewijzigd is |
+| `docs/DEVELOPER-SETUP.md` | Lokale setup of configuratiestappen gewijzigd |
 | `README.md` | Publieke beschrijving, architectuuroverzicht of quick-start gewijzigd |
 
 **CHANGELOG.md — altijd bijwerken:**
@@ -333,9 +351,17 @@ Na geslaagde merge:
 gh run list --branch main --workflow deploy.yml --limit 1 --json databaseId | ConvertFrom-Json
 gh run watch <run-id> --exit-status
 gh run view <run-id> --json jobs --jq '.jobs[] | {name: .name, conclusion: .conclusion}'
-# Alle jobs success/skipped? → ✅
-gh issue close <nr> --comment "✅ Geïmplementeerd, Poort 1 geslaagd, gemerged in PR #<pr-nr>."
+# Alle jobs success/skipped? → ✅ code staat live
 ```
+
+> **Nooit hier zelf `gh issue close` aanroepen (#1295).** Dat sluiten hoort bij een version-tag op
+> `main` en gebeurt automatisch via `close-released-issues.yml` — die workflow verwijdert ook de
+> status-labels, wat een handmatige `gh issue close` niet doet en dan een `status:
+> awaiting-release`-label op een gesloten issue achterlaat. Rapporteer dit issue pas als gesloten
+> zodra die workflow na een release-tag daadwerkelijk groen is gedraaid
+> (`gh run list --workflow close-released-issues.yml --limit 1 --json conclusion`) — conform de
+> hotfix-uitzondering in CLAUDE.md, "Issue-lifecycle: awaiting-release". Is er nog geen release-tag
+> gepland? Dan blijft het issue open met `status: awaiting-release` totdat die er komt.
 
 ### Één branch per batch of per issue?
 
@@ -456,7 +482,7 @@ Als gitleaks niet geïnstalleerd is (`(Get-Command gitleaks -ErrorAction Silentl
 ```powershell
 # Fallback: scan op bekende high-risk patronen
 Get-ChildItem -Recurse -Include *.cs,*.json,*.yaml,*.yml,*.md |
-    Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' } |
+    Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' } |
     Select-String -Pattern "(password|secret|token|key)\s*=\s*['""][^'""]{8,}" -CaseSensitive:$false |
     Where-Object { $_ -notmatch "(placeholder|template|example|your_|YOUR_|<[A-Z])" } |
     Select-Object -First 20
@@ -491,12 +517,17 @@ git diff HEAD~20..HEAD -- "*.cs" "*.razor" "*.json" |
 #### P2-D — Kwaliteitscontroles
 
 ```powershell
-dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug --no-restore 2>&1 | Select-Object -Last 5
+dotnet build FunctionApp.Postgres/FunctionApp.Postgres.csproj -c Debug --no-restore 2>&1 | Select-Object -Last 5
+# Ook FunctionApp/fa-dev-sportlink-01.csproj bouwen als deze cyclus de SQL Server-tier raakte.
+
+# BlazorAdmin ALLEEN bouwen als de dev server niet draait (lsof -nP -iTCP:5242 -sTCP:LISTEN /
+# Get-NetTCPConnection -LocalPort 5242) — anders geeft een tweede compilatiepas een fingerprint-
+# mismatch ("An unhandled error has occurred. Reload"). Draait de server, sla deze regel over:
 dotnet build BlazorAdmin/BlazorAdmin.csproj --no-restore 2>&1 | Select-Object -Last 5
-.\scripts\dev\Test-App.ps1 2>&1 | Select-Object -Last 10
+./scripts/dev/Test-App.ps1 2>&1 | Select-Object -Last 10
 ```
 
-- Beide builds exit 0 → ✅
+- Beide builds exit 0 (of BlazorAdmin bewust overgeslagen omdat de server draait) → ✅
 - Build-fouten → ❌ STOP — fix eerst
 - Test-App.ps1 exit 1 → ⚠️ noteer (geen hard stop als service-afhankelijke check faalt)
 
@@ -631,9 +662,13 @@ Rapporteer: `✅ Nieuwe iteratie-branch: $branchName`
 ### 5a. Check lopende services
 
 ```powershell
-$fa  = [bool](Get-NetTCPConnection -LocalPort 7094  -State Listen -ErrorAction SilentlyContinue)
-$bl  = [bool](Get-NetTCPConnection -LocalPort 5242  -State Listen -ErrorAction SilentlyContinue)
-$az  = [bool](Get-NetTCPConnection -LocalPort 10000 -State Listen -ErrorAction SilentlyContinue)
+# Poortdetectie uitsluitend via DevServices.psm1 — Get-NetTCPConnection zit in de module
+# NetTCPIP en bestaat alleen op Windows (#800, #1286).
+Import-Module ./scripts/dev/DevServices.psm1 -Force
+$p   = Get-DebugPorts
+$fa  = Test-PortListening -Port $p.FunctionApp
+$bl  = Test-PortListening -Port $p.BlazorAdmin
+$az  = Test-PortListening -Port $p.Azurite
 ```
 
 ### 5b. Start wat ontbreekt
@@ -645,12 +680,13 @@ Invoke-RestMethod http://localhost:7094/api/health
 
 Als iets mist → start alles opnieuw:
 ```powershell
-Stop-Process -Name "func","dotnet","node" -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 3
-.\scripts\dev\Start-Debug.ps1
-Start-Sleep -Seconds 15
+# Nooit Stop-Process -Name: dat sloopt élk dotnet/node-proces op de machine, en 'dotnet watch'
+# herstart zijn kindproces meteen — poort 5242 is dan direct weer bezet (CLAUDE.md).
+./scripts/dev/Start-Debug.ps1 -Clean   # stopt, cleant de stale fingerprints en start opnieuw
+
+# Start-Debug pollt zelf tot de services gereed zijn; een vaste Start-Sleep is niet nodig.
 Invoke-RestMethod http://localhost:7094/api/health
-Invoke-WebRequest http://localhost:5242/ -UseBasicParsing | Select-Object StatusCode
+(Invoke-WebRequest http://localhost:5242/).StatusCode
 ```
 
 Na elke FunctionApp C#-wijziging in Fase 2 → FunctionApp opnieuw starten (geen hot reload).

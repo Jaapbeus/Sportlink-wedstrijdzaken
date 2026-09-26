@@ -6,10 +6,25 @@ Dit document beschrijft de volledige authenticatie- en autorisatieconfiguratie v
 >
 > ```powershell
 > az login
-> .\scripts\azure\Verify-AzureAuthSetup.ps1       # diagnose, read-only
-> .\scripts\azure\Configure-EntraApp.ps1 -WhatIf  # toon wat zou veranderen
-> .\scripts\azure\Configure-EntraApp.ps1          # apply (idempotent)
+>
+> # Diagnose, read-only. -ClientId en -ExpectedTenantId zijn verplicht.
+> .\scripts\azure\Verify-AzureAuthSetup.ps1 -ClientId '<app-id>' -ExpectedTenantId '<tenant-id>'
+>
+> # Toon wat zou veranderen. Alle drie de parameters zijn verplicht.
+> .\scripts\azure\Configure-EntraApp.ps1 -ClientId '<app-id>' -ExpectedTenantId '<tenant-id>' -AdminUserPrincipalName '<admin-upn>' -WhatIf
+>
+> # Apply (idempotent) — zelfde regel zonder -WhatIf.
+> .\scripts\azure\Configure-EntraApp.ps1 -ClientId '<app-id>' -ExpectedTenantId '<tenant-id>' -AdminUserPrincipalName '<admin-upn>'
 > ```
+>
+> **Laat geen parameter weg.** `Configure-EntraApp.ps1` heeft `-ClientId`, `-ExpectedTenantId` én
+> `-AdminUserPrincipalName` als `Mandatory`; `Verify-AzureAuthSetup.ps1` heeft `-ClientId` en
+> `-ExpectedTenantId` als `Mandatory` (`-AdminUserPrincipalName` is daar optioneel). PowerShell valt
+> anders terug op een interactieve prompt — precies wat je niet wilt in het scenario waarvoor dit
+> document bestaat.
+>
+> Lees vóór de eerste run ook [Bekende valstrikken](#bekende-valstrikken); dat is de sectie die de
+> meeste tijd bespaart.
 >
 > Daarna: log uit + verse Incognito browser + opnieuw inloggen.
 
@@ -24,11 +39,61 @@ De Blazor Admin GUI (Static Web App) authenticeert tegen Entra ID via MSAL (OIDC
 | 1 | **Single tenant** App Registration | `signInAudience = AzureADMyOrg` |
 | 2 | **Assignment required** op Service Principal | `appRoleAssignmentRequired = true` |
 | 3a | **App Roles** in manifest | `admin` en `user`, `isEnabled = true` |
-| 3b | **Optional claims** voor `roles` in tokens | `optionalClaims.idToken[]` en `optionalClaims.accessToken[]` |
+| 3b | **Optional claims** voor `roles` in het **ID-token** | `optionalClaims.idToken[]` — nooit `accessToken`, zie [de valstrik hieronder](#roles-mag-niet-in-optionalclaimsaccesstoken) |
 | 4 | **Frontend role-gate** | `App.razor` checkt `IsInRole("admin") \|\| IsInRole("user")` |
-| 5 | **Backend role-gate** | `EasyAuthHelper.RequireAdmin()` op elke admin endpoint |
+| 5 | **Backend role-gate** | `EasyAuthHelper.RequireAdmin()` op elke admin endpoint — via de wrapper `AdminEndpoint.ExecuteAsync` (#1350) — aanwezig in **beide** tiers: `FunctionApp.Postgres/Admin/EasyAuthHelper.cs` (productie) en `FunctionApp/Admin/EasyAuthHelper.cs` (SQL Server-tier) |
 
-Layer 1-3b zijn Azure-config, Layer 4-5 zijn code. Layer 4-5 worden gevalideerd in CI; Layer 1-3b worden gevalideerd door `Verify-AzureAuthSetup.ps1`.
+> **Gedicht in #1276.** De Layer 5-scan doorzocht uitsluitend `FunctionApp/Admin/` — de SQL
+> Server-tier — zodat een endpoint zonder rolcontrole in `FunctionApp.Postgres/Admin/` het script
+> groen passeerde. Hij leest nu de tierlijst uit `scripts/ci/database-tiers.json` en scant de
+> `Admin/`-map van elke tier met `built = true`; een pad dat niet oplost is sindsdien een `FAIL`
+> in plaats van stilte, en een ontbrekende tierlijst ook.
+>
+> Daarbij bleek de scan zelf niet te kloppen: hij vergeleek per bestand het aantal `[Function]`-
+> attributen met het aantal letterlijke `EasyAuthHelper.RequireAdmin`-voorkomens, en meldde
+> daardoor **15 van de 24 bestanden ten onrechte als onbeschermd** — die endpoints lopen via
+> `AdminEndpoint.ExecuteAsync`, dat de rolcontrole centraal doet. De scan redeneert nu per
+> endpoint: elk stuk met een `HttpTrigger` moet langs `EasyAuthHelper.RequireAdmin`,
+> `AdminEndpoint.ExecuteAsync` of `SportlinkEndpointSupport.Execute*` gaan. Een `TimerTrigger`
+> wordt overgeslagen — die heeft geen aanroeper met een rol.
+>
+> Handmatig te draaien: `pwsh scripts/azure/Verify-AzureAuthSetup.ps1`. Verwacht resultaat op een
+> gezonde codebase: 66 HTTP-endpoints per tier, alle bewaakt.
+
+### Wat bewaakt welke laag, en wanneer
+
+Layer 1–3b zijn Azure-config, Layer 4–5 zijn code. Sinds #1277 is er precies één laag die in de
+PR-CI bewaakt wordt — laag 4. De overige vier zijn alleen tegen Entra zelf of ná de merge naar
+`main` te controleren:
+
+| Laag | Bewaakt door | Wanneer | Automatisch? |
+|---|---|---|---|
+| 1 — Single tenant | `Verify-AzureAuthSetup.ps1` | Handmatig, tegen Entra | ❌ |
+| 2 — Assignment required | `Verify-AzureAuthSetup.ps1` | Handmatig, tegen Entra | ❌ |
+| 3a — App Roles | `Verify-AzureAuthSetup.ps1` | Handmatig, tegen Entra | ❌ |
+| 3b — Optional claims | `Verify-AzureAuthSetup.ps1` | Handmatig, tegen Entra | ❌ |
+| 4 — Frontend role-gate | `BlazorAdmin.Tests/AuthGateTests.cs` + `CustomUserFactoryTests.cs` (#1277) **plus** `Verify-AzureAuthSetup.ps1` (statisch: zoekt `IsInRole("admin")` in `App.razor`) | Automatisch, **in de PR-CI** | ✅ |
+| 5 — Backend role-gate | Smoke tests in `deploy.yml` (401 verwacht op een admin-endpoint met alleen een function key, zonder token, en met een gefakete `X-MS-CLIENT-PRINCIPAL`) **plus** `Verify-AzureAuthSetup.ps1` (statisch, **beide gebouwde tiers** sinds #1276) | Automatisch, maar **pas ná de merge naar `main`** | ⚠️ gedeeltelijk |
+
+Layer 4 was tot #1277 de enige laag zonder énige automatische controle: de beslissing stond inline
+in het `@code`-blok van `App.razor` en viel daarmee buiten elk testproject. Hij staat nu als pure
+functie in `BlazorAdmin/Services/AuthGate.cs` en wordt op twee niveaus getest, omdat deze laag op
+twee manieren kan omvallen:
+
+| Faalwijze | Hoe hij eruitziet | Afgedekt door |
+|---|---|---|
+| **Verwijdering** — de rolcontrole is weg of staat altijd op `true` | Iedereen met een geldig token krijgt de app-shell | `AuthGateTests` — de drie rolgevallen uit de 3-user-test, plus de MSAL-callbackroute |
+| **Stille variant** — de controle staat er nog, maar geeft altijd `false` | Ook een echte admin ziet `NoAccess`; er verandert niets zichtbaars in de code | `CustomUserFactoryTests` — bewijst dat een Entra-`roles`-JSON-array daadwerkelijk tot `IsInRole("admin") == true` leidt |
+
+Die tweede is de gevaarlijke: zonder de `roles`-claimmapping of de `CustomUserFactory` cast Blazor
+WASM de array `["admin"]` naar één claim met de hele JSON-string als waarde, waarna `IsInRole` faalt
+terwijl de rol gewoon in het token staat. Een grep op `App.razor` ziet daar niets van.
+
+Beide testklassen zijn mutatiegetest: met de rolcontrole uitgeschakeld vallen er vier om, met het
+uitpakken van de rollen uitgeschakeld drie. Een groene test die niet rood kán worden, bewaakt niets.
+
+`Verify-AzureAuthSetup.ps1` blijft daarnaast de enige plek waar alle vijf lagen in één keer
+langskomen — inclusief de vier die alleen tegen Entra zelf te controleren zijn.
 
 ## Identifiers (club-specifiek — haal op via Azure Portal)
 
@@ -46,11 +111,26 @@ Layer 1-3b zijn Azure-config, Layer 4-5 zijn code. Layer 4-5 worden gevalideerd 
 
 ### Eerste setup
 
-1. Installeer de Azure CLI (`az --version` moet `>= 2.50` zijn).
+0. **De App Registration moet al bestaan.** `Configure-EntraApp.ps1` *configureert* een bestaande
+   registratie — het maakt er geen aan, en begint met `az ad app show --id $ClientId`. Volg voor een
+   nieuwe club eerst [`../SETUP-NIEUWE-CLUB.md`](../SETUP-NIEUWE-CLUB.md) §4a (App Registration +
+   SPA-platform met redirect-URI `https://<SWA_HOST>/authentication/login-callback`) en noteer de
+   ClientId en de TenantId.
+1. Installeer de Azure CLI (`az --version` moet `>= 2.50` zijn) en PowerShell 7 of hoger (beide
+   scripts hebben `#requires -Version 7.0`).
 2. `az login` op een account met `Application Administrator` of `Cloud Application Administrator` rol in de tenant.
 3. `az account show` → controleer dat je op de juiste tenant bent. Zo nee: `az account set --subscription <subscription-naam-of-id>`.
-4. Run `.\scripts\azure\Configure-EntraApp.ps1`. Dit script is idempotent: bestaande configuratie wordt niet aangepast, alleen ontbrekende stukken worden bijgevuld.
-5. Verifieer met `.\scripts\azure\Verify-AzureAuthSetup.ps1`. Alle regels moeten ✓ groen zijn.
+4. Doe eerst een dry-run en daarna de apply. Dit script is idempotent: bestaande configuratie wordt
+   niet aangepast, alleen ontbrekende stukken worden bijgevuld.
+   ```powershell
+   .\scripts\azure\Configure-EntraApp.ps1 -ClientId '<app-id>' -ExpectedTenantId '<tenant-id>' -AdminUserPrincipalName '<admin-upn>' -WhatIf
+   .\scripts\azure\Configure-EntraApp.ps1 -ClientId '<app-id>' -ExpectedTenantId '<tenant-id>' -AdminUserPrincipalName '<admin-upn>'
+   ```
+5. Verifieer. Alle regels moeten ✓ groen zijn.
+   ```powershell
+   .\scripts\azure\Verify-AzureAuthSetup.ps1 -ClientId '<app-id>' -ExpectedTenantId '<tenant-id>' -AdminUserPrincipalName '<admin-upn>'
+   ```
+   Zonder `-AdminUserPrincipalName` slaat het script de controle op de admin-toewijzing over.
 6. Sluit bestaande Admin GUI browser-tabs. Open een verse Incognito/InPrivate sessie. Log opnieuw in met `admin@voorbeeld.nl` (jouw admin-account).
 
 ### Nieuwe gebruiker toevoegen
@@ -107,7 +187,11 @@ In code: gebruik `IsInRole("admin")` (kleine letters), niet `IsInRole("Admin")`.
 
 Als je dezelfde browser gebruikt voor een persoonlijk Microsoft-account én `admin@voorbeeld.nl`, kan Microsoft Account Switcher het verkeerde account suggereren. Gebruik altijd een Incognito-sessie voor admin-tests, of klik op "Use another account" in de Microsoft loginpagina.
 
-## Verificatie — N-user-test (verplicht na elke auth-wijziging)
+## Verificatie — gebruikersrollentest (verplicht na elke auth-wijziging)
+
+Dit is de test die `CLAUDE.md` de **3-user-test** noemt. Sinds #988 telt hij vijf profielen; de
+eerste drie rijen zijn die oorspronkelijke drie. Eén test, drie namen in omloop — houd deze tabel
+aan als de bron.
 
 | Test-user | Configuratie in Azure | Verwacht in browser |
 |---|---|---|
@@ -115,11 +199,11 @@ Als je dezelfde browser gebruikt voor een persoonlijk Microsoft-account én `adm
 | 2e club-user | Toegewezen, role `user` | UI laadt, GET-API werkt, mutaties (later) geblokkeerd |
 | 3e club-user | **Niet** toegewezen | Geen token van Entra → blijft op login → met directe URL alsnog `NoAccess` pagina |
 | Guest / andere tenant | n.v.t. | Entra weigert login vóór redirect |
-| 4e club-user (#988) | Toegewezen, **alléén** role `Wedstrijdzaken` (geen admin/user) | `App.razor`'s `hasAccessRole` blijft `false` → `NoAccess`-pagina. **Verwacht en gewenst** resultaat: `Wedstrijdzaken` is een aanvullende rol voor Sportlink-mutatie-endpoints (#991+), geen vervanging voor `admin`/`user` — er bestaat nog geen niet-Admin-GUI-oppervlak dat deze rol gebruikt. Niet als regressie lezen. |
+| 5e profiel (#988) | Toegewezen, **alléén** role `Wedstrijdzaken` (geen admin/user) | `App.razor`'s `hasAccessRole` blijft `false` → `NoAccess`-pagina. **Verwacht en gewenst** resultaat: `Wedstrijdzaken` is een aanvullende rol voor Sportlink-mutatie-endpoints (#991+), geen vervanging voor `admin`/`user` — er bestaat nog geen niet-Admin-GUI-oppervlak dat deze rol gebruikt. Niet als regressie lezen. |
 
-Documenteer de uitkomst per release. Geen N-user-test → geen acceptatie.
+Documenteer de uitkomst per release. Geen gebruikersrollentest → geen acceptatie.
 
-**Kanttekening bij de 4e rij (#988):** de server-side handhaving (`EasyAuthHelper.RequireRole`) is
+**Kanttekening bij de laatste rij (#988):** de server-side handhaving (`EasyAuthHelper.RequireRole`) is
 lokaal niet te testen — die geeft altijd `null` (toegestaan) terug zolang `WEBSITE_SITE_NAME`
 ontbreekt (elke lokale dev-run). Voor #988 zelf volstaat bevestigen dat de rol in Entra bestaat en
 toewijsbaar is; de server-side handhaving wordt inhoudelijk pas getest zodra #991 het eerste

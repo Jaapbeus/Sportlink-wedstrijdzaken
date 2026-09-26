@@ -53,7 +53,29 @@ internal static class EasyAuthHelper
 
     public static IActionResult? RequireAdmin(HttpRequest req) => RequireRole(req, "admin");
 
-    public static IActionResult? RequireAuthenticated(HttpRequest req) => RequireRole(req, "admin", "user");
+    /// <summary>
+    /// Niet-gooiende variant van <see cref="RequireRole"/> (#1341) — voor een feature-toggle-check
+    /// die zelf al bepaalt wat er bij "nee" gebeurt (bijv. de rol-feature-instelling raadplegen)
+    /// in plaats van meteen een 401/403 te retourneren. Zelfde lokale bypass als alle
+    /// <c>Require*</c>-methoden: zonder <c>WEBSITE_SITE_NAME</c> (lokaal/CI) is elke rol "aanwezig".
+    /// </summary>
+    public static bool IsInRole(HttpRequest req, string role)
+    {
+        var siteName = Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME");
+        if (string.IsNullOrEmpty(siteName)) return true;
+
+        var principal = TryGetPrincipal(req);
+        return principal?.Claims?.Any(c =>
+            string.Equals(c.Typ, "roles", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(c.Val, role, StringComparison.OrdinalIgnoreCase)) ?? false;
+    }
+
+    public static bool IsAdmin(HttpRequest req) => IsInRole(req, "admin");
+
+    // RequireAuthenticated ("admin" óf "user") is bij #1350 verwijderd: het werd op geen van beide
+    // tiers aangeroepen sinds #310 de teambegeleiding-endpoints admin-only maakte. De rol "user"
+    // geeft dus nergens API-toegang — een ongebruikte poort die ruimer is dan alle gebruikte, is
+    // een uitnodiging om hem per ongeluk te pakken.
 
     // #988: aanvullende, functionele rol (naast admin/user) voor Sportlink Web Extension-mutaties
     // (epic #986) — zie docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md §6.

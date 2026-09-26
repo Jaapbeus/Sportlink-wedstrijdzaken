@@ -28,4 +28,11 @@
     <PackageReference Include="Microsoft.Playwright" />
   </ItemGroup>
 
+
+  <ItemGroup>
+    <!-- #1302: SettingsKeyFor en WriteRefreshTokenToSettings zijn internal zodat
+         Tools.SportlinkTokenCapture.Tests ze kan bevragen zonder een browser te starten. -->
+    <InternalsVisibleTo Include="Tools.SportlinkTokenCapture.Tests" />
+  </ItemGroup>
+
 </Project>

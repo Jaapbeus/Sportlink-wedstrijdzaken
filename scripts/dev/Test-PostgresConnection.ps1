@@ -3,7 +3,7 @@
 # is — het Postgres-equivalent van hoe Test-App.ps1 sqlcmd gebruikt voor de SQL Server-tier.
 #
 # Gebruik:
-#   docker compose --profile postgres up -d
+#   docker compose up -d          # start de Postgres-container (geen profile nodig)
 #   $env:PGPASSWORD = "<jouw lokale wachtwoord>"
 #   .\scripts\dev\Test-PostgresConnection.ps1
 #
@@ -25,7 +25,7 @@ $ErrorActionPreference = "Stop"
 if (-not (Get-Command psql -ErrorAction SilentlyContinue)) {
     Write-Host "Fout: 'psql' is niet gevonden op dit systeem." -ForegroundColor Red
     Write-Host "Installeren:" -ForegroundColor Yellow
-    Write-Host "  Windows : winget install PostgreSQL.PostgreSQL.16" -ForegroundColor Yellow
+    Write-Host "  Windows : winget install PostgreSQL.PostgreSQL.17" -ForegroundColor Yellow
     Write-Host "  macOS   : brew install libpq && brew link --force libpq" -ForegroundColor Yellow
     exit 1
 }

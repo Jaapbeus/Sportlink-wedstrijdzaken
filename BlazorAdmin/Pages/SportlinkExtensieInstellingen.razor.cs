@@ -5,10 +5,9 @@ using Microsoft.AspNetCore.Components;
 namespace BlazorAdmin.Pages;
 
 /// <summary>Code-behind van <c>SportlinkExtensieInstellingen.razor</c> (#988/#991/#998/#1113, code-behind sinds #1122).</summary>
-public partial class SportlinkExtensieInstellingen : IDisposable
+public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
 {
     [Inject] private AdminApiClient Api { get; set; } = default!;
-    [Inject] private ClubSelectorService ClubSelector { get; set; } = default!;
 
     private AppSettingsDto? settings;
     private bool saving;
@@ -28,14 +27,9 @@ public partial class SportlinkExtensieInstellingen : IDisposable
 
     private bool _isTestmodus => ClubSelector.SelectedClubCode == "ALLSTARS";
 
-    protected override async Task OnInitializedAsync()
-    {
-        ClubSelector.OnChange += OnClubChanged;
-        await LoadAsync();
-    }
+    protected override async Task OnInitializedAsync() => await LoadAsync();
 
-    private void OnClubChanged() => _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
-    public void Dispose() => ClubSelector.OnChange -= OnClubChanged;
+    protected override Task OnClubChangedAsync() => LoadAsync();
 
     private async Task LoadAsync()
     {

@@ -92,8 +92,9 @@ if (EgressGuard.ExternalIntegrationsAllowed())
         // #1122 (CISO): fail-safe. Alles behalve een expliciet geladen "0" is dry-run — dezelfde
         // polariteit als SportlinkExtensieHealthFunction. Met "== \"1\"" was een nog niet geladen
         // instellingencache (null) fail-OPEN: het statuspaneel toonde "dry-run aan" terwijl een
-        // bevestigde mutatie écht naar Sportlink zou gaan.
-        isDryRun: () => PostgresAppSettings.GetSetting("sportlinkDryRun") != "0"));
+        // bevestigde mutatie écht naar Sportlink zou gaan. Sinds #1266 staat die regel in
+        // SportlinkEndpointCore, zodat beide tiers dezelfde polariteit hebben.
+        isDryRun: () => SportlinkEndpointCore.IsDryRunActief(PostgresAppSettings.GetSetting)));
 }
 
 // Audit-logging voor Sportlink-mutaties (#991, #998) — Postgres tier
@@ -114,5 +115,12 @@ builder.Services.AddSingleton<INoodmailThrottleStore>(sp =>
         storageVerbinding,
         sp.GetRequiredService<ILoggerFactory>().CreateLogger<TableStorageNoodmailThrottleStore>());
 });
+
+// Onafhankelijke database-uitvalmonitor (#1268, tegenhanger van #831 op de SQL Server-tier).
+// Onvoorwaardelijk registreren: de reader doet pas iets bij aanroep en kiest dan zelf tussen het
+// control-plane-pad (SUPABASE_PROJECT_REF + SUPABASE_ACCESS_TOKEN + EgressGuard) en een
+// rechtstreekse verbindingsprobe. Zonder die instellingen valt hij vanzelf terug op de probe —
+// dat is bewust, anders is de monitor dood voor elke club die geen managementtoken wil zetten.
+builder.Services.AddSingleton<IDatabaseStatusReader, PostgresDatabaseStatusReader>();
 
 builder.Build().Run();

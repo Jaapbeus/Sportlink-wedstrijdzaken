@@ -1,4 +1,9 @@
-# Lokaal Debuggen — Sportlink Wedstrijdzaken (v3.2)
+# Lokaal Debuggen — Sportlink Wedstrijdzaken (v3.5)
+
+> **Waarvoor dit document?** Dagelijks werk: services starten en stoppen, poorten, hot reload,
+> handmatig synchroniseren en troubleshooten. De eenmalige opzet staat in
+> [DEVELOPER-SETUP.md](DEVELOPER-SETUP.md), het parametercontract van elk script in
+> [VERIFICATIE-SCRIPTS.md](VERIFICATIE-SCRIPTS.md).
 
 Gids voor het lokaal draaien en debuggen van de stack: FunctionApp (.NET 9) + BlazorAdmin (.NET 10 Blazor WASM).
 Geldt voor zowel **Windows** als **macOS (Apple Silicon)** (#800) — zie
@@ -32,12 +37,15 @@ Geldt voor zowel **Windows** als **macOS (Apple Silicon)** (#800) — zie
 http://localhost:5242          BlazorAdmin (Blazor WASM, dotnet watch, hot reload)
 http://localhost:7094          FunctionApp (Azure Functions isolated .NET 9, func start)
 localhost:10000–10002          Azurite (Azure Storage Emulator)
-localhost:1433/SportlinkSqlDb  SQL Server (Docker — `docker compose up -d`)
+localhost:5432/sportlink       Postgres (Docker — `docker compose up -d`; standaardtier en de
+                                tier die in productie draait sinds #976)
   — óf —
-localhost:5432/sportlink       Postgres (Docker — `docker compose --profile postgres up -d postgres`,
-                                productietier sinds #976)
+localhost:1433/SportlinkSqlDb  SQL Server (Docker — `docker compose --profile sqlserver up -d sqlserver`)
 ```
-Zie DEVELOPER-SETUP.md §4 voor beide paden — kies er één.
+Zie DEVELOPER-SETUP.md §4 voor beide paden — kies er één. Beide tiers zijn gelijkwaardig en
+volledig ondersteund (#1266); Postgres is de standaard. Er bestaat géén profile `postgres`, en een
+kaal `docker compose down` stopt de SQL Server-service niet — gebruik daarvoor
+`docker compose --profile sqlserver down`.
 
 ### Poorten en services
 
@@ -55,7 +63,8 @@ Zie DEVELOPER-SETUP.md §4 voor beide paden — kies er één.
 
 ```powershell
 .\scripts\dev\Start-Debug.ps1
-# Start Azurite + FunctionApp + BlazorAdmin elk in een apart PowerShell-venster
+# Start Azurite + FunctionApp + BlazorAdmin elk in een apart PowerShell-venster.
+# Standaardtier is Postgres; voor de andere tier: -Tier SqlServer
 ```
 
 **Optie: met SWA CLI voor auth-flow testen:**
@@ -64,6 +73,9 @@ Zie DEVELOPER-SETUP.md §4 voor beide paden — kies er één.
 .\scripts\dev\Start-Debug.ps1 -Swa
 # Admin GUI met auth-emulatie: http://localhost:4280
 ```
+
+Het volledige parametercontract (`-Tier`, `-Swa`, `-NoWatch`, `-Tail`, `-Clean`) staat in
+[VERIFICATIE-SCRIPTS.md](VERIFICATIE-SCRIPTS.md).
 
 ### Handmatig (als Start-Debug.ps1 niet beschikbaar is)
 
@@ -76,8 +88,8 @@ if (-not (Test-Path $azuriteDir)) { New-Item -ItemType Directory -Path $azuriteD
 Start-Process powershell -ArgumentList "-NoExit -Command azurite --location '$azuriteDir'"
 Start-Sleep -Seconds 3
 
-# 2. FunctionApp — vervang "FunctionApp" door "FunctionApp.Postgres" op de Postgres-tier
-Start-Process powershell -ArgumentList "-NoExit -Command Set-Location FunctionApp; func start --port 7094"
+# 2. FunctionApp — Postgres-tier (standaard); op de SQL Server-tier: Set-Location FunctionApp
+Start-Process powershell -ArgumentList "-NoExit -Command Set-Location FunctionApp.Postgres; func start --port 7094"
 
 # 3. BlazorAdmin met hot reload
 Start-Process powershell -ArgumentList "-NoExit -Command Set-Location BlazorAdmin; dotnet watch run --launch-profile http"
@@ -91,8 +103,9 @@ drie Terminal-tabbladen en voer in elk tabblad één van deze commando's uit:
 mkdir -p /tmp/azurite-sportlink && azurite --location /tmp/azurite-sportlink
 ```
 ```bash
-# Tab 2 — FunctionApp (vervang FunctionApp door FunctionApp.Postgres op de Postgres-tier)
-cd FunctionApp && func start --port 7094
+# Tab 2 — FunctionApp — Postgres-tier (standaard)
+cd FunctionApp.Postgres && func start --port 7094
+# SQL Server-tier: cd FunctionApp && func start --port 7094
 ```
 ```bash
 # Tab 3 — BlazorAdmin met hot reload
@@ -131,7 +144,12 @@ BlazorAdmin genereert content-hash fingerprints bij elke compilatie. Twee compil
 **Alleen voor build-fout-detectie (server moet NIET draaien):**
 
 ```powershell
+# Postgres-tier (standaard — de tier die in productie draait, #1060)
+dotnet build FunctionApp.Postgres/FunctionApp.Postgres.csproj -c Debug
+
+# Alleen als je (ook) aan de SQL Server-tier werkt
 dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug
+
 dotnet build BlazorAdmin/BlazorAdmin.csproj
 ```
 
@@ -181,18 +199,22 @@ if ($importmapMatch.Success) {
 
 ## Handmatige synchronisatie
 
+**De route verschilt per tier.** Postgres (de standaardtier) gebruikt `/api/postgres/sync-matches`,
+SQL Server gebruikt `/api/sync-matches`.
+
 ```powershell
 # Incrementele sync (standaard: vorige week t/m seizoenseinde — zelfde bereik als de timer)
-Invoke-RestMethod "http://localhost:7094/api/sync-matches"
+Invoke-RestMethod "http://localhost:7094/api/postgres/sync-matches"   # Postgres (standaard)
+Invoke-RestMethod "http://localhost:7094/api/sync-matches"            # SQL Server
 
-# Volledig seizoen opnieuw ophalen
+# Volledig seizoen opnieuw ophalen (zelfde patroon, beide routes)
+Invoke-RestMethod "http://localhost:7094/api/postgres/sync-matches?reset=true&season=2026"
 Invoke-RestMethod "http://localhost:7094/api/sync-matches?reset=true&season=2026"
 ```
 
-> De route is `sync-matches`. Dit stond hier eerder als `/api/sync` met parameters
-> `weekOffsetFrom`/`weekOffsetTo`; beide bestaan niet — dat geeft 404 respectievelijk stille negatie
-> van de parameters. Gevonden bij #662, waar deze sync juist werd gebruikt om de lokale omgeving
-> gelijk te trekken met productie.
+> De oude route `/api/sync` met parameters `weekOffsetFrom`/`weekOffsetTo` bestaat niet meer — dat
+> geeft 404 respectievelijk stille negatie van de parameters. Gevonden bij #662, waar deze sync
+> juist werd gebruikt om de lokale omgeving gelijk te trekken met productie.
 
 ---
 
@@ -209,12 +231,31 @@ Deze vier stappen doen dat; de laatste is de belangrijkste.
 .\scripts\dev\Start-Debug.ps1
 
 # 3. Sync in default mode — hetzelfde bereik als de productie-timer
-Invoke-RestMethod "http://localhost:7094/api/sync-matches" -TimeoutSec 1200
+#    Postgres-tier (standaard); op de SQL Server-tier: /api/sync-matches
+Invoke-RestMethod "http://localhost:7094/api/postgres/sync-matches" -TimeoutSec 1200
 # Antwoord: "Sync completed. WeekOffset range: -1 to <einde seizoen>."  (duurt circa 1,5 minuut)
 ```
 
 **4. Datapariteit verifiëren.** Draait de sync een tweede keer zonder dat de aantallen veranderen,
 dan loopt lokaal gelijk met Sportlink:
+
+**Postgres-tier (standaard)** — lowercase snake_case identifiers, conform de casing-conventie die
+`scripts/ci/check-postgres-identifier-casing.sh` bewaakt:
+
+```sql
+SELECT 'teams' AS tabel, COUNT(*) AS aantal FROM his.teams
+UNION ALL SELECT 'matches',      COUNT(*) FROM his.matches
+UNION ALL SELECT 'matchdetails', COUNT(*) FROM his.matchdetails;
+
+-- Moet 0 zijn: een rij zonder clubcode valt buiten elke clubfilter
+SELECT COUNT(*) AS zonder_clubcode FROM his.matches WHERE clubcode IS NULL;
+
+-- Datumbereik en laatste sync
+SELECT MIN(kaledatum::date) AS van, MAX(kaledatum::date) AS tot FROM his.matches;
+SELECT MAX(lastsynctimestamp) AS laatste_sync FROM public.appsettings;
+```
+
+**SQL Server-tier:**
 
 ```sql
 SELECT 'teams'   AS Tabel, COUNT(*) AS Aantal FROM his.teams
@@ -242,53 +283,23 @@ Let op bij het vergelijken van aantallen: de Dagplanning toont alleen wedstrijde
 accommodatie**. Staan er vijf wedstrijden in de database en drie op het scherm, dan zijn de andere
 twee uitwedstrijden — dat is correct gedrag, geen ontbrekende data.
 
-## Admin API-endpoints overzicht
+## API-endpoints
 
-Alle admin-endpoints vereisen Entra ID auth in productie. Lokaal (zonder `WEBSITE_SITE_NAME`) worden ze altijd toegestaan.
+Alle admin-endpoints vereisen Entra ID auth in productie. Lokaal (zonder `WEBSITE_SITE_NAME`)
+worden ze altijd toegestaan; planner-endpoints vereisen in productie een function key en zijn
+lokaal vrij.
+
+**De volledige, actuele endpointlijst staat in [API.md](API.md)** en machine-leesbaar in
+`docs/api-standaarden/openapi.yaml`. Hier stond eerder een handmatig bijgehouden kopie; die liep
+per definitie achter op de code en is daarom vervangen door deze verwijzing.
+
+De routes die je lokaal het vaakst nodig hebt:
 
 | Endpoint | Bestand | Beschrijving |
 |----------|---------|-------------|
-| `GET /api/health` | `Function1.cs` | Versie en status |
-| `GET /api/sync-matches` | `Function1.cs` | Handmatige Sportlink-sync |
-| `GET/PUT /api/beheer/settings` | `AdminSettingsFunction.cs` | Club-instellingen |
-| `GET /api/beheer/geocode` | `AdminSettingsFunction.cs` | GPS-coördinaten opzoeken |
-| `GET /api/beheer/sync/status` | `AdminSyncFunction.cs` | Sync-status |
-| `POST /api/beheer/sync/trigger` | `AdminSyncFunction.cs` | Sync starten (fire-and-forget) |
-| `GET /api/beheer/teams` | `AdminTeamsFunction.cs` | Teamlijst |
-| `GET/PUT/POST/DELETE /api/beheer/templates` | `AdminTemplatesFunction.cs` | E-mailtemplates |
-| `GET /api/beheer/email-log` | `AdminEmailLogFunction.cs` | E-mail verwerkingslog |
-| `GET/POST/DELETE /api/beheer/uitgesloten-emails` | `AdminUitgeslotenEmailFunction.cs` | Uitsluitingslijst |
-| `GET/POST/PUT/DELETE /api/beheer/velden` | `AdminVeldBeschikbaarheidFunction.cs` | Velden |
-| `GET/POST/PUT/DELETE /api/beheer/veldbeschikbaarheid` | `AdminVeldBeschikbaarheidFunction.cs` | Beschikbaarheidsregels |
-| `GET/POST/PUT/DELETE /api/beheer/voorkeurstijden` | `AdminVoorkeurTijdenFunction.cs` | Team-voorkeurstijden |
-| `GET/POST/PUT/DELETE /api/beheer/teamregels` | `AdminVoorkeurTijdenFunction.cs` | Teamregels |
-| `GET /api/beheer/clubs` | `AdminClubsFunction.cs` | Club-lijst (multi-club) |
-| `GET/PUT /api/beheer/theme` | `AdminThemeFunction.cs` | Club-thema kleuren |
-| `POST /api/beheer/theme/extract` | `AdminThemeFunction.cs` | Kleuren extraheren uit website |
-| `GET/POST/PUT/DELETE /api/beheer/speeltijden` | `AdminSpeeltijdenFunction.cs` | Speeltijden per leeftijdscategorie |
-| `GET /api/beheer/leermomenten` | `AdminLeermomentenFunction.cs` | Classificatie-leermomenten |
-| `GET /api/beheer/leermomenten/stats` | `AdminLeermomentenFunction.cs` | Leermoment-statistieken |
-| `PUT /api/beheer/leermomenten/{id}/valideer` | `AdminLeermomentenFunction.cs` | Leermoment valideren |
-| `GET/GET /api/beheer/teambegeleiding` | `AdminTeambegeleidingFunction.cs` | Teambegeleiding |
-| `POST /api/beheer/teambegeleiding/doorsturen` | `AdminTeambegeleidingFunction.cs` | Email doorsturen |
-| `POST /api/test/email` | `EmailTestFunction.cs` | Email dry-run |
-| `POST /api/feedback/validate` | `FeedbackFunction.cs` | Feedback valideren |
-| `POST /api/feedback/submit` | `FeedbackFunction.cs` | Feedback indienen |
-
-**Planner-endpoints** (function key vereist in productie, lokaal vrij):
-
-| Endpoint | Beschrijving |
-|----------|-------------|
-| `POST /api/planner/check-availability` | Veldbeschikbaarheid controleren |
-| `POST /api/planner/bevestig` | Wedstrijdslot boeken |
-| `POST /api/planner/auto-plan` | Automatisch weekplanning genereren |
-| `POST /api/planner/auto-plan/toepassen` | Automatisch plan toepassen |
-| `POST /api/planner/zoek-wedstrijd` | Bestaande wedstrijd opzoeken |
-| `POST /api/planner/herplan-check` | Herplan-alternatieven simuleren |
-| `POST /api/planner/herplan-bevestig` | Herplanverzoek registreren |
-| `POST /api/planner/auto-plan` | Dagplanning optimaliseren (regels -> voorkeurstijden -> leeftijdsdefaults) |
-| `POST /api/planner/doordeweeks-beschikbaar` | Doordeweekse beschikbaarheid |
-| `GET /api/planner/team-schedule` | Teamschema ophalen |
+| `GET /api/health` | `FunctionApp.Postgres/HealthFunction.cs` (Postgres) · `FunctionApp/Planner/PlannerFunction.cs` (SQL Server) | Versie, status en actieve databasetier |
+| `GET /api/postgres/sync-matches` | `FunctionApp.Postgres/Sync/SyncFunction.cs` | Handmatige Sportlink-sync — **Postgres-tier** |
+| `GET /api/sync-matches` | `FunctionApp/Function1.cs` | Handmatige Sportlink-sync — **SQL Server-tier** |
 
 ---
 
@@ -335,14 +346,30 @@ Mogelijk probleem: MSAL-initialisatie faalt → controleer `appsettings.json` in
 ### "Cannot connect to database"
 
 Identiek op Windows en macOS — de lokale database draait in beide gevallen in de Docker-container
-uit `docker-compose.yml` (zie DEVELOPER-SETUP.md sectie 4.1; een rechtstreeks geïnstalleerde SQL
-Server-service wordt niet meer ondersteund):
+uit `docker-compose.yml` (zie DEVELOPER-SETUP.md §4; een rechtstreeks geïnstalleerde SQL
+Server-service wordt niet meer ondersteund). Controleer de tier die je daadwerkelijk draait:
+
+**Postgres-tier (standaard):**
 
 ```bash
 docker compose ps
-docker compose logs sqlserver
+docker compose logs postgres
 ```
+```powershell
+$env:PGPASSWORD = "<lokaal-wachtwoord>"
+.\scripts\dev\Test-PostgresConnection.ps1 -User <gebruikersnaam>
+```
+
+**SQL Server-tier:**
+
 ```bash
+docker compose --profile sqlserver ps
+docker compose --profile sqlserver logs sqlserver
+```
+```powershell
+# Wachtwoord via SQLCMDPASSWORD, nooit via -P: argumenten zijn op beide platforms
+# zichtbaar in de processenlijst.
+$env:SQLCMDPASSWORD = '<zelfde waarde als MSSQL_SA_PASSWORD in .env>'
 sqlcmd -S localhost,1433 -U sa -d SportlinkSqlDb -C -Q "SELECT @@VERSION"
 ```
 
@@ -361,4 +388,4 @@ Leeg/geen output = Azurite draait niet → `Start-Debug.ps1` opnieuw uitvoeren.
 
 ---
 
-**Versie:** 2.7 — bijgewerkt 2026-08-29 (macOS/Apple Silicon-ondersteuning + Docker als enige lokale-database-optie, #800)
+**Versie:** 3.5 — bijgewerkt 2026-09-19 (Postgres als standaardtier met eigen sync-route; beide tiers gelijkwaardig, #1266)

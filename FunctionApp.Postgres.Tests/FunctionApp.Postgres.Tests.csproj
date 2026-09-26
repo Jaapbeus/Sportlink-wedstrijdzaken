@@ -16,6 +16,9 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="AwesomeAssertions" />
+    <!-- #1350: Mock<FunctionContext> voor de autorisatietest per endpoint (zelfde gebruik als in
+         Planner.Endpoints.Tests). -->
+    <PackageReference Include="Moq" />
     <!-- Microsoft.Extensions.Logging.Abstractions (NullLogger) komt transitief mee via
          FunctionApp.Postgres; een eigen versie hier geeft NU1605 zodra die keten opschuift. -->
     <PackageReference Include="Npgsql" />

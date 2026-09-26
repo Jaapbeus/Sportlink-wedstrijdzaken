@@ -67,6 +67,7 @@ internal static class AllstarsTestDataRepository
                     SELECT TOP 1 [leeftijdscategorie]
                     FROM [his].[teams]
                     WHERE [teamnaam] = m.[teamnaam] AND [ClubCode] = m.[ClubCode]
+                    ORDER BY CASE WHEN [leeftijdscategorie] <> '' THEN 0 ELSE 1 END, [mta_modified] DESC
                 ) t
                 WHERE CAST(m.[kaledatum] AS DATE) = @date
                   AND m.[ClubCode] = @clubCode

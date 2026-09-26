@@ -154,6 +154,22 @@ namespace SportlinkFunction
                     SELECT @v;", connection);
                 var sleResult = await sleCmd.ExecuteScalarAsync();
                 settings["sportlinkExtensionEnabled"] = (sleResult is bool b && b) ? "1" : "0";
+
+                // #1266: SportlinkDryRun — zelfde dynamische kolomcontrole, maar met de omgekeerde
+                // (fail-safe) default: ontbreekt de kolom of is de waarde NULL, dan blijft dry-run
+                // AAN. Alleen een expliciete 0 zet hem uit; SportlinkEndpointCore.IsDryRunActief
+                // leest dat met dezelfde polariteit terug.
+                using var dryRunCmd = new SqlCommand(@"
+                    DECLARE @d BIT = 1;
+                    DECLARE @sql NVARCHAR(200) = CASE
+                        WHEN COL_LENGTH('[dbo].[AppSettings]', 'SportlinkDryRun') IS NOT NULL
+                        THEN N'SELECT TOP 1 @d = [SportlinkDryRun] FROM [dbo].[AppSettings]'
+                        ELSE N'SELECT @d = CAST(1 AS BIT)'
+                    END;
+                    EXEC sp_executesql @sql, N'@d BIT OUTPUT', @d = @d OUTPUT;
+                    SELECT @d;", connection);
+                var dryRunResult = await dryRunCmd.ExecuteScalarAsync();
+                settings["sportlinkDryRun"] = (dryRunResult is bool dr && !dr) ? "0" : "1";
             }
 
             public static string? GetSetting(string key)
@@ -300,42 +316,6 @@ namespace SportlinkFunction
             {
                 throw new Exception("Unable to establish a database connection after multiple attempts.");
             }
-        }
-
-        /// <summary>
-        /// Berekent een deterministische 12-karakter hex fingerprint voor een exception.
-        /// Identieke fouten (zelfde type, genormaliseerd bericht, zelfde callsite) geven altijd
-        /// dezelfde fingerprint — essentieel voor deduplicatie van GitHub Issues.
-        /// </summary>
-        public static string ComputeFingerprint(Exception ex)
-        {
-            var raw = $"{ex.GetType().FullName}|{NormalizeMessage(ex.Message)}|{GetCallerFrame(ex)}";
-            using var sha = System.Security.Cryptography.SHA256.Create();
-            var bytes = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(raw));
-            return Convert.ToHexString(bytes)[..12].ToLower();
-        }
-
-        private static string NormalizeMessage(string message)
-        {
-            if (string.IsNullOrEmpty(message)) return "";
-            // Verwijder variabele delen zodat dezelfde fout altijd dezelfde fingerprint geeft
-            var s = message;
-            s = System.Text.RegularExpressions.Regex.Replace(s, @"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b", "<guid>");
-            s = System.Text.RegularExpressions.Regex.Replace(s, @"\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?", "<date>");
-            s = System.Text.RegularExpressions.Regex.Replace(s, @"\b\d+\b", "<n>");
-            return s.Trim();
-        }
-
-        private static string GetCallerFrame(Exception ex)
-        {
-            if (ex.StackTrace == null) return "unknown";
-            foreach (var line in ex.StackTrace.Split('\n'))
-            {
-                var trimmed = line.Trim();
-                if (trimmed.StartsWith("at SportlinkFunction.", StringComparison.Ordinal))
-                    return trimmed.Split('(')[0].Replace("at ", "").Trim();
-            }
-            return "external";
         }
 
         public static class SeasonHelper

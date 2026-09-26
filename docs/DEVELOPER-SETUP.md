@@ -1,6 +1,16 @@
-# Sportlink Wedstrijdzaken — Developer Setup (v2.7)
+# Sportlink Wedstrijdzaken — Developer Setup (v3.5)
 
-Volledige setupgids voor een nieuwe developer die de v2.7-stack lokaal wil draaien — op
+> **Waarvoor dit document?** Eenmalige opzet: dit is de bron voor installatie- en
+> configuratiecommando's. Dagelijks starten, stoppen en debuggen staat in
+> [LOKAAL-DEBUGGEN.md](LOKAAL-DEBUGGEN.md), het parametercontract van elk script in
+> [VERIFICATIE-SCRIPTS.md](VERIFICATIE-SCRIPTS.md), een afvinklijst in
+> [SETUP-CHECKLIST.md](SETUP-CHECKLIST.md) en het spiekbriefje in
+> [QUICK-REFERENCE.md](QUICK-REFERENCE.md).
+>
+> **De standaardtier is Postgres** (§4.1–§4.3). Werk je aan de SQL Server-tier, lees dan
+> §4.4–§4.7 in plaats daarvan. Beide tiers zijn gelijkwaardig en volledig ondersteund (#1266).
+
+Volledige setupgids voor een nieuwe developer die de v3.5-stack lokaal wil draaien — op
 **Windows** en op **macOS (Apple Silicon)**. Waar een commando platform-specifiek is, staan de
 Windows- en de macOS-variant naast elkaar (#800).
 
@@ -221,13 +231,38 @@ git commit --allow-empty -m "test hooks"
 > Lokaal op de andere tier ontwikkelen betekent dat je dagelijkse verificatie een applicatie meet
 > die niet gedeployd wordt — precies hoe #972 dagenlang onopgemerkt bleef.
 >
-> **De SQL Server-tier blijft volledig ondersteund** (§4.4–§4.7) voor forks die hem kiezen, en is
-> het rollbackpad van de cutover. Hij is alleen niet langer de standaard.
+> **De SQL Server-tier is een gelijkwaardige tier** (§4.4–§4.7), volledig ondersteund voor forks
+> die hem kiezen. Hij is alleen niet de lokale standaard, omdat deze installatie op Postgres draait.
+> "Niet de standaard" betekent nadrukkelijk niet "minder": elke functionaliteit hoort op beide tiers
+> te bestaan, en `scripts/ci/check-tier-pariteit.sh` maakt de build rood zodra dat niet zo is (#1266).
 >
 > | Tier | Lokale database | Functieproject | Start-Debug |
 > |---|---|---|---|
 > | **Postgres** (standaard) | `docker compose up -d` | `FunctionApp.Postgres/` | `.\scripts\dev\Start-Debug.ps1` |
 > | SQL Server | `docker compose --profile sqlserver up -d` | `FunctionApp/` | `.\scripts\dev\Start-Debug.ps1 -Tier SqlServer` |
+>
+> **Werk je in een git-worktree?** Dan bestaat daar geen eigen `.env` (dat bestand staat in
+> `.gitignore` en wordt niet meegekopieerd). Verwijs expliciet naar die van de hoofdwerkmap:
+> `docker compose --env-file /pad/naar/hoofdwerkmap/.env --profile sqlserver up -d sqlserver`.
+> Zonder die variabelen weigert docker compose te starten, met een expliciete melding.
+>
+> **Twee dingen die op macOS misgaan** (geverifieerd bij #1266, Apple Silicon):
+> - Poort 1433 kan bezet zijn door een ongerelateerde SQL Server-container. Controleer met
+>   `lsof -nP -iTCP -sTCP:LISTEN` vóór je start.
+> - Een verweesde, *gestopte* `sportlink-sqlserver`-container van een eerdere run blokkeert
+>   `up -d` met een naamconflict. Bevestig met `docker inspect` dat hij daadwerkelijk gestopt is
+>   vóór je hem verwijdert — er kan een andere sessie aan werken.
+>
+> **Schemawijziging aan deze tier bewijzen, niet alleen bouwen.** Draai `Script.PostDeployment1.sql`
+> twee keer tegen de container; de tweede run moet exit 0 geven, nul `Msg <nr>, Level`-regels, en
+> niets opnieuw aanmaken:
+> ```bash
+> docker cp Database/Script.PostDeployment1.sql sportlink-sqlserver:/tmp/post.sql
+> docker exec -e SQLCMDPASSWORD="$MSSQL_SA_PASSWORD" sportlink-sqlserver \
+>   /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -C -d SportlinkSqlDb -b -V 11 -i /tmp/post.sql
+> ```
+> `-b -V 11` laat sqlcmd afbreken op severity ≥ 11. Het wachtwoord gaat via `SQLCMDPASSWORD`,
+> nooit als `-P`-argument — argumenten zijn op beide platforms zichtbaar in de processenlijst.
 >
 > **Welke tier een fork daadwerkelijk deployt, is een CI/deploy-tijd-keuze, geen lokale keuze**
 > (#816): de GitHub repository-variabele `DatabaseTier` (Settings → Secrets and variables →
@@ -316,10 +351,20 @@ Op een verse database blijft de instellingencache daardoor leeg, geeft `/api/hea
 `degraded` en antwoordt **élk** `/api/beheer/*`-endpoint met 500. Seed daarom een club-neutrale
 placeholder:
 
+`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` staan in `.env` — dat leest `docker compose`,
+maar jouw shell niet. Laad ze daarom eerst in, of vul de waarden letterlijk in.
+
 ```bash
+set -a; . ./.env; set +a
 docker cp scripts/migrations/004-seed-lokale-placeholderclub-postgres.sql sportlink-postgres:/tmp/seed.sql
 docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" sportlink-postgres \
-    psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/seed.sql
+    psql -U "$POSTGRES_USER" -d "${POSTGRES_DB:-sportlink}" -v ON_ERROR_STOP=1 -f /tmp/seed.sql
+```
+```powershell
+# Windows (PowerShell) — .env wordt hier niet automatisch gelezen; vul de waarden in:
+docker cp scripts/migrations/004-seed-lokale-placeholderclub-postgres.sql sportlink-postgres:/tmp/seed.sql
+docker exec -e PGPASSWORD="<lokaal-wachtwoord>" sportlink-postgres `
+    psql -U "<gebruikersnaam>" -d sportlink -v ON_ERROR_STOP=1 -f /tmp/seed.sql
 ```
 
 Idempotent. Levert clubcode `CLUB` met drie velden en een weekschema. Dit script staat bewust in
@@ -330,8 +375,11 @@ op elke database toegepast, productie inbegrepen.
 te rapporteren voor een applicatie waarvan geen enkel beheerscherm werkt.
 
 **Optioneel maar aanbevolen: AllStars-demoteams en -wedstrijden.** De migraties zaaien voor de
-democlub alleen de AppSettings-rij, velden, veldbeschikbaarheid en speeltijden — **geen teams en
-wedstrijden**. Die staan in `scripts/migrations/003-seed-allstars-demo-matches-postgres.sql`, en dat
+democlub alleen de AppSettings-rij, velden, veldbeschikbaarheid en een teamregel — **geen teams,
+wedstrijden, teambegeleiding of speeltijden**. (Migratie 006 probeert de speeltijden wél te
+kopiëren, maar dat kan nooit slagen: op migratiemoment heeft de primaire club er zelf nog geen —
+zie #1246 en `docs/ARCHITECTUUR-DATABASE-TIERS.md` §72. Die copy staat nu in het seedscript
+hieronder.) Die staan in `scripts/migrations/003-seed-allstars-demo-matches-postgres.sql`, en dat
 script kan geen migratie zijn: het seedt in `his.teams`/`his.matches`, en die tabellen worden door
 geen enkel migratiebestand aangemaakt. `PostgresSchemaGenerator` maakt ze dynamisch zodra de ETL
 zijn eerste sync draait — op een verse ontwikkeldatabase bestaan ze dus nog niet, en het seed-script
@@ -346,7 +394,13 @@ Drie stappen, idempotent: de his-tabellen worden aangemaakt via
 `Database.Postgres.Cli --ensure-his-tables` (dat `PostgresMergeOrchestrator.EnsureHisTableAsync`
 aanroept — exact de weg die de ETL zelf neemt, dus geen handgeschreven DDL-kopie), daarna draait de
 seed, en tot slot bouwt `POST /api/beheer/teams/herstel` de canonieke teamlijst op. Levert 28 teams,
-28 aliassen en 224 wedstrijden onder clubcode `ALLSTARS`.
+28 aliassen, 224 wedstrijden en 28 teambegeleiders onder clubcode `ALLSTARS`, plus een kopie van de
+speeltijden van de primaire club.
+
+> **In productie hoef je dit niet te doen (#1246).** De job `db-migrate-postgres` in `deploy.yml`
+> draait sinds #1246 bij elke Postgres-deploy zelf `--ensure-his-tables` en `--seed-demodata`. Alleen
+> stap 3 blijft handwerk: `POST /api/beheer/teams/herstel` is `RequireAdmin`, dus de pipeline kan
+> dat endpoint niet aanroepen en meldt het in plaats daarvan met een waarschuwing.
 
 > **`public.teams` is een afgeleide tabel.** Zonder die laatste stap blijft de GUI leeg ook al staat
 > `his.teams` vol — de canonieke lijst ontstaat normaal pas aan het eind van een synchronisatie. Het
@@ -374,7 +428,9 @@ Een snelle losse verbindingscheck kan met:
 
 ```powershell
 $env:PGPASSWORD = "<lokaal-wachtwoord>"
-.\scripts\dev\Test-PostgresConnection.ps1
+.\scripts\dev\Test-PostgresConnection.ps1 -User <gebruikersnaam>
+# -User mag weg als $env:POSTGRES_USER gezet is — het script leest die als standaardwaarde.
+# Let op: die variabele staat in .env, en .env wordt niet vanzelf in je shell geladen.
 ```
 
 De volledige end-to-end-zelftest van deze tier (containers, schema, demodata, API-poorten) is een
@@ -385,9 +441,14 @@ apart script: `.\scripts\dev\Test-PostgresTier.ps1 -Tier Postgres -Mode Verify`.
 Voor een acceptatietest tegen de échte club-data (in plaats van de democlub `ALLSTARS` of de
 placeholder-club `CLUB`) haalt `.\scripts\dev\Restore-ProductionDump.ps1` eenmalig een volledige
 dump van de productie-Postgres (Supabase) op en zet die lokaal terug — inclusief het echte
-`SportlinkClientId` in `dbo.AppSettings`, zodat je daarna handmatig
-`GET /api/sync-matches?reset=true&season=<jaar>` kunt draaien om verse data bij de echte Sportlink
-API op te halen (hetzelfde synchronisatiepad als productie, zie sectie 7).
+`SportlinkClientId`, zodat je daarna handmatig een volledige sync kunt draaien om verse data bij de
+echte Sportlink API op te halen (hetzelfde synchronisatiepad als productie, zie sectie 7). Deze
+paragraaf gaat over de Postgres-tier, en daar is de route `GET /api/postgres/sync-matches`:
+
+```powershell
+Invoke-RestMethod "http://localhost:7094/api/postgres/sync-matches?reset=true&season=<jaar>"
+# SQL Server-tier: http://localhost:7094/api/sync-matches?reset=true&season=<jaar>
+```
 
 ```powershell
 docker compose up -d
@@ -427,30 +488,42 @@ omgevingsvariabele `MSSQL_SA_PASSWORD`. Zet die eenmalig, bijvoorbeeld in een `.
 `docker-compose.yml` (staat in `.gitignore`):
 
 ```powershell
-Set-Content -Path .env -Value "MSSQL_SA_PASSWORD=<jouw-sterke-wachtwoord>" -Encoding ascii
+Add-Content -Path .env -Value "MSSQL_SA_PASSWORD=<jouw-sterke-wachtwoord>" -Encoding ascii
 ```
 ```bash
-echo 'MSSQL_SA_PASSWORD=<jouw-sterke-wachtwoord>' > .env
+echo 'MSSQL_SA_PASSWORD=<jouw-sterke-wachtwoord>' >> .env
 ```
 
-Gebruik op Windows de PowerShell-variant en niet `echo ... > .env`: Windows PowerShell 5.1
+> **Toevoegen (`>>` / `Add-Content`), niet overschrijven (`>` / `Set-Content`).** Zette je eerder
+> de Postgres-tier op, dan staan `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` al in dit
+> bestand; overschrijven wist ze, en daarna weigert de postgres-service te starten omdat
+> `docker-compose.yml` die twee verplicht stelt.
+
+Gebruik op Windows de PowerShell-variant en niet `echo ... >> .env`: Windows PowerShell 5.1
 schrijft dan een UTF-16-bestand, en `docker compose` leest dat niet als een geldig `.env`.
 
 Wachtwoordeisen (SQL Server weigert de container anders stilletjes op te starten): minimaal 8
 tekens, met hoofdletters, kleine letters en cijfers of leestekens. Ontbreekt de variabele, dan
 weigert `docker compose` te starten met een expliciete foutmelding.
 
-Starten en stoppen — identiek op beide platforms:
+Starten en stoppen — identiek op beide platforms. **De sqlserver-service staat sinds #1060 achter
+het profile `sqlserver`**, dus een kaal `docker compose up -d` start hem niet (dat start Postgres,
+de standaardtier):
 
 ```bash
-docker compose up -d
+docker compose --profile sqlserver up -d sqlserver
 ```
 ```bash
-docker compose down
+docker compose --profile sqlserver down
 ```
 
-`docker compose down` laat het volume (en dus je data) staan; `docker compose down -v` verwijdert
-de database definitief. `docker compose ps` toont of de container gezond is — de healthcheck erin
+> Een service achter een profile wordt door een kaal `docker compose down` **niet** gestopt; hij
+> blijft dan poort 1433 bezetten. Gebruik daarom ook bij het stoppen de `--profile sqlserver`-vorm.
+> Er bestaat géén profile `postgres`: Postgres is de service zonder profile.
+
+`docker compose --profile sqlserver down` laat het volume (en dus je data) staan;
+`docker compose --profile sqlserver down -v` verwijdert de database definitief.
+`docker compose --profile sqlserver ps` toont of de container gezond is — de healthcheck erin
 wacht tot `sqlcmd` daadwerkelijk verbinding kan maken, niet alleen tot het proces start.
 
 De bijbehorende connection string voor `FunctionApp/local.settings.json` (zie sectie 5) en voor
@@ -474,7 +547,9 @@ identiek op Windows en macOS, want het is altijd dezelfde TDS-verbindingsstring.
 Het volledige schema komt uit **één script**: `Database/Script.PostDeployment1.sql`. Dat is
 idempotent en bouwt een verse database in één keer compleet op — dezelfde weg die de
 productie-deploy gebruikt, en die bij elke PR wordt bewezen door de CI-job *"PostDeployment op
-verse database"*. De losse scripts in `FunctionApp/setup/` zijn ouder en hiervoor niet nodig.
+verse database"*. Er is geen tweede weg: de losse setup-scripts die hier ooit naast stonden
+zijn bij #1309 verwijderd, omdat ze een verouderde schemakopie bevatten en een installatiepad
+beschreven dat dit project niet meer ondersteunt.
 
 De commando's hieronder draaien `sqlcmd` **binnen de container**. Dat scheelt een installatie van
 `mssql-tools18` op je eigen machine, en het wachtwoord blijft in de omgevingsvariabele van de
@@ -650,10 +725,13 @@ Lokaal draaien (én CI) raakt standaard **geen enkele externe dienst** — ook n
 een secret hebt ingevuld:
 
 - de externe Sportlink-databron (de timer-trigger `FetchAndStoreApiData`),
-- GitHub-issue-rapportage bij een onafgevangen fout (`GitHubIssueReporter`),
+- GitHub-issue-rapportage bij een onafgevangen fout (`Planner.Shared/Infrastructure/GitHubIssueReporter.cs`
+  — sinds #1268 gedeeld en actief op beide tiers; elke tier geeft zijn eigen `EgressGuard` als
+  delegate mee via `<tier>/Infrastructure/FoutRapportage.cs`),
 - e-mail via Microsoft Graph (`IEmailGraphService` wordt dan niet geregistreerd),
-- de AI-diensten (`IChatClient` wordt dan niet geregistreerd — teamdisambiguatie valt terug op
-  puur deterministisch gedrag).
+- de AI-diensten (`IChatClient` wordt dan niet geregistreerd — de e-mailclassificatie en de
+  feedbackwidget draaien dan niet). Teamresolutie staat hier bewust niet meer bij: die is sinds
+  #1268 op beide tiers volledig deterministisch en gebruikt geen taalmodel.
 
 Dit is één centrale poort (`FunctionApp/Infrastructure/EgressGuard.cs`), niet vier losse
 controles. De poort herkent productie aan `WEBSITE_SITE_NAME` (Azure zet die altijd; lokaal en in
@@ -731,10 +809,17 @@ met een lege context hetzelfde doet als een handmatige.
 De aanbevolen manier is via het Start-Debug.ps1-script. Dit start Azurite, FunctionApp en BlazorAdmin, en wacht daarna tot elke service daadwerkelijk reageert.
 
 ```powershell
-.\scripts\dev\Start-Debug.ps1            # losse vensters per service
-.\scripts\dev\Start-Debug.ps1 -Tail      # één samengevoegde logstroom in dit venster
-.\scripts\dev\Start-Debug.ps1 -Clean     # dotnet clean BlazorAdmin vóór het starten
+.\scripts\dev\Start-Debug.ps1                   # Postgres-tier (standaard), losse vensters per service
+.\scripts\dev\Start-Debug.ps1 -Tier SqlServer   # de andere tier
+.\scripts\dev\Start-Debug.ps1 -Tail             # één samengevoegde logstroom in dit venster
+.\scripts\dev\Start-Debug.ps1 -Swa              # inclusief de SWA emulator op :4280
+.\scripts\dev\Start-Debug.ps1 -NoWatch          # BlazorAdmin met dotnet run i.p.v. dotnet watch (geen hot reload)
+.\scripts\dev\Start-Debug.ps1 -Clean            # dotnet clean BlazorAdmin vóór het starten
 ```
+
+Dit zijn alle vijf parameters; `-Tier` accepteert `SqlServer`, `Postgres` (standaard) of `Sqlite`.
+Het volledige contract van dit en elk ander script staat in
+[VERIFICATIE-SCRIPTS.md](VERIFICATIE-SCRIPTS.md).
 
 Het script pollt `GET /api/health` voor de FunctionApp en `GET /` voor BlazorAdmin, en meldt
 de gemeten opstarttijd plus het versienummer. Je hoeft dus **niet** meer zelf een aantal
@@ -775,8 +860,9 @@ if (-not (Test-Path $azuriteDir)) { New-Item -ItemType Directory -Path $azuriteD
 Start-Process powershell -ArgumentList "-NoExit -Command azurite --location '$azuriteDir'"
 Start-Sleep -Seconds 3
 
-# 2. FunctionApp (geen hot reload)
-Start-Process powershell -ArgumentList "-NoExit -Command Set-Location FunctionApp; func start --port 7094"
+# 2. FunctionApp (geen hot reload) — Postgres-tier (standaard).
+#    Op de SQL Server-tier: Set-Location FunctionApp
+Start-Process powershell -ArgumentList "-NoExit -Command Set-Location FunctionApp.Postgres; func start --port 7094"
 
 # 3. BlazorAdmin met hot reload
 Start-Process powershell -ArgumentList "-NoExit -Command Set-Location BlazorAdmin; dotnet watch run --launch-profile http"
@@ -790,8 +876,9 @@ Terminal-tabbladen en voer in elk tabblad één van deze commando's uit:
 mkdir -p /tmp/azurite-sportlink && azurite --location /tmp/azurite-sportlink
 ```
 ```bash
-# Tab 2 — FunctionApp (geen hot reload)
-cd FunctionApp && func start --port 7094
+# Tab 2 — FunctionApp (geen hot reload) — Postgres-tier (standaard)
+cd FunctionApp.Postgres && func start --port 7094
+# SQL Server-tier: cd FunctionApp && func start --port 7094
 ```
 ```bash
 # Tab 3 — BlazorAdmin met hot reload
@@ -854,21 +941,25 @@ Invoke-WebRequest http://localhost:5242/ -UseBasicParsing
 
 ### Bruno API-collectie (handmatig testen)
 
-De map `bruno/` bevat een [Bruno](https://usebruno.com)-collectie met alle 72 endpoints uit
-`docs/api-standaarden/openapi.yaml`, gegenereerd en gecommit zodat hij in git reviewbaar blijft en
-in sync loopt met de spec. Open de map in de Bruno-app en kies de omgeving `local`
-(`http://localhost:7094`).
+De [Bruno](https://usebruno.com)-collectie staat **niet** in git (besluit #1354, 26-09-2026) — hij
+werd na elke spec-wijziging toch handmatig geregenereerd, en een gegenereerd artefact dat kan
+verouderen (zoals de pre-#1350 `functionKey`-footer die niet meesynchroniseerde) is dan alleen
+ruis in de diff. Genereer hem lokaal on-demand:
+
+```
+Skill: bruno-gen-collection (ingest → plan → apply), tegen docs/api-standaarden/openapi.yaml
+```
+
+`bruno-gen.json` (wél in git) legt het project en de `local`-omgeving (`http://localhost:7094`)
+vast, zodat dit zonder handmatige keuzes herhaalbaar is. Open de gegenereerde map in de Bruno-app.
 
 **Twee beveiligingsschema's, niet automatisch per request gewisseld:**
 - `core`/`planner`/`testdata`-endpoints (functionKey): de collectie is standaard op dit schema
   ingesteld (`?code={{apiKey}}`). Lokaal (`func start`) is dit niet verplicht.
-- `beheer`/`feedback`-endpoints (Easy Auth Bearer/Entra ID): zet in Bruno de auth van dat specifieke
-  request handmatig op "Bearer Token" met een geldig token, of laat leeg — lokaal wordt de
-  admin-rolcheck overgeslagen wanneer `WEBSITE_SITE_NAME` afwezig is (zie `EasyAuthHelper.cs`).
-
-Regenereren na een spec-wijziging: de `bruno-gen-collection`-skill (`ingest` → `plan` → `apply`),
-uitgevoerd tegen `docs/api-standaarden/openapi.yaml`. `bruno-gen.json` legt het project en de
-`local`-omgeving vast zodat dit zonder handmatige keuzes herhaalbaar is.
+- `beheer`/`feedback`/`sync`-endpoints (Easy Auth Bearer/Entra ID, sinds #1350 ook `sync-matches`):
+  zet in Bruno de auth van dat specifieke request handmatig op "Bearer Token" met een geldig token,
+  of laat leeg — lokaal wordt de admin-rolcheck overgeslagen wanneer `WEBSITE_SITE_NAME` afwezig is
+  (zie `EasyAuthHelper.cs`).
 
 ### Synchronisatiepad testen zonder de echte Sportlink-API (#867)
 
@@ -927,7 +1018,7 @@ Drie verschillen met de SQL Server-suite hierboven, alle drie in het voordeel va
 Lokaal draaien tegen een wegwerpcontainer — dezelfde opzet als de CI-job:
 
 ```powershell
-docker run -d --name pgfixture -e POSTGRES_PASSWORD=wegwerpwachtwoord-niet-geheim -e POSTGRES_DB=sportlink -p 55432:5432 postgres:16
+docker run -d --name pgfixture -e POSTGRES_PASSWORD=wegwerpwachtwoord-niet-geheim -e POSTGRES_DB=sportlink -p 55432:5432 postgres:17
 $env:POSTGRES_CONNECTION_STRING = "Host=localhost;Port=55432;Database=sportlink;Username=postgres;Password=wegwerpwachtwoord-niet-geheim"
 dotnet run --project Database.Postgres.Cli
 $env:POSTGRES_TEST_CONNECTION_STRING = $env:POSTGRES_CONNECTION_STRING
@@ -949,13 +1040,22 @@ geen stilzwijgend groen resultaat.
 > gooit nog een `InvalidOperationException`. Tegen de lokale wegwerpcontainer hierboven
 > (`localhost:55432`) speelt dit nooit: die draait zonder TLS, en de bovenstaande commando's blijven
 > ongewijzigd werken. Verbind je met een echte gehoste Postgres-instantie, geef dan
-> `?sslmode=verify-full&sslrootcert=/pad/naar/ca.pem` mee — Supabase gebruikt een **eigen** CA, dus
-> zonder dat certificaat faalt `verify-full` op de ketenvalidatie. **Sinds #1096:** dat certificaat
+> `?sslmode=verify-ca&sslrootcert=/pad/naar/ca.pem` mee — Supabase gebruikt een **eigen** CA, dus
+> zonder dat certificaat faalt de ketenvalidatie.
+>
+> **Waarom `verify-ca` en niet `verify-full`, terwijl de norm hierboven `verify-full` is (#1187):**
+> het pooler-endpoint biedt een certificaat aan met alleen een CN (`*.pooler.…`) en **geen
+> SubjectAltName**. `verify-full` valideert de hostnaam tegen die SAN en weigert daarom de
+> verbinding; .NET accepteert een CN-only certificaat niet als alternatief. `verify-ca` is dus het
+> haalbare maximum op de pooler: versleuteld én ketenvalidatie, alleen geen hostnaamvalidatie. De
+> normalizer laat dat bewust staan en geeft er een `tlsWarning` bij — die waarschuwing hoort er in
+> productie te zijn en is geen defect. Verhoog hem niet blind naar `verify-full`; zie §50.
+> **Sinds #1096:** dat certificaat
 > hoort, zodra het is toegevoegd, op `FunctionApp.Postgres/prod-ca-2021.crt` (meegekopieerd naar het
 > publish-pakket door de csproj, `Exists(...)`-conditioneel — ontbreekt het lokaal, dan is dat een
 > no-op). Download het uit het Supabase-dashboard van déze deployment (Database → Settings → SSL
 > Configuration — geen publieke, statische URL) en verwijs er lokaal naar met
-> `?sslmode=verify-full&sslrootcert=FunctionApp.Postgres/prod-ca-2021.crt` als je tegen een echte
+> `?sslmode=verify-ca&sslrootcert=FunctionApp.Postgres/prod-ca-2021.crt` als je tegen een echte
 > gehoste instantie test. Zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §50 voor de volledige
 > onderbouwing.
 
@@ -985,12 +1085,22 @@ sportlink-wedstrijdzaken/
 ├── sportlink-wedstrijdzaken.slnf      # Solution filter zonder het .sqlproj — gebruik dit op macOS (#800)
 ├── Directory.Packages.props           # NuGet Central Package Management — één versiedefinitie per pakket (#1129, zie §8.1)
 ├── .gitattributes                     # Regeleindes vastgelegd (LF voor .sh/.githooks) zodat git-hooks op macOS werken (#800)
-├── docker-compose.yml                 # Lokale SQL Server 2022 — enige ondersteunde manier, identiek op Windows/macOS (#800)
-├── FunctionApp/
+├── docker-compose.yml                 # Lokale database: Postgres (standaard, zonder profile) + SQL Server achter profile 'sqlserver' (#800, #1060)
+├── FunctionApp.Postgres/              # .NET 9 Azure Functions — Postgres-tier (standaard, draait in productie)
+│   ├── FunctionApp.Postgres.csproj
+│   ├── HealthFunction.cs              # GET /api/health (versie, status, actieve tier)
+│   ├── Sync/SyncFunction.cs           # GET /api/postgres/sync-matches
+│   ├── Admin/                         # 25 Admin-endpoint bestanden (beheer/*)
+│   ├── local.settings.json            # NIET in git — bevat POSTGRES_CONNECTION_STRING
+│   └── local.settings.template.json   # Template, wél in git
+├── Database.Postgres/                 # migrations/ + MigrationRunner (SHA-256-ledger)
+├── Database.Postgres.Cli/             # CLI die de migraties toepast (POSTGRES_CONNECTION_STRING)
+├── Planner.Shared/                    # Tier-onafhankelijke logica (TeamNaamNormalisatie, ThemeCore, VeldResolver)
+├── FunctionApp/                       # .NET 9 Azure Functions — SQL Server-tier
 │   ├── fa-dev-sportlink-01.csproj     # .NET 9 Azure Functions isolated worker
-│   ├── Function1.cs                   # Timer + HTTP sync triggers
+│   ├── Function1.cs                   # Timer + HTTP sync triggers (GET /api/sync-matches)
 │   ├── Utilities.cs                   # AppSettings, DatabaseConfig, SeasonHelper
-│   ├── Admin/                         # 12 Admin-endpoint bestanden (beheer/*)
+│   ├── Admin/                         # 25 Admin-endpoint bestanden (beheer/*)
 │   ├── Planner/                       # Planner-endpoints (check-availability, auto-plan, ...)
 │   ├── Email/                         # Email-verwerkingspipeline
 │   ├── Feedback/                      # Feedback-widget (→ GitHub Issues)
@@ -1005,7 +1115,14 @@ sportlink-wedstrijdzaken/
 │       ├── appsettings.Production.template.json  # CI-template (in git)
 │       └── appsettings.Production.json           # NIET in git — gegenereerd door CI
 ├── Database/
-│   └── SportlinkSqlDb.sqlproj         # SQL Server Database Project
+│   ├── SportlinkSqlDb.sqlproj         # SQL Server Database Project (alleen op Windows te bouwen)
+│   └── Script.PostDeployment1.sql     # Volledig SQL Server-schema, idempotent (zie §4.5)
+├── BlazorAdmin.Tests/ · FunctionApp.Tests/ · FunctionApp.Postgres.Tests/
+├── Database.Postgres.Tests/ · Planner.Shared.Tests/   # vijf testprojecten
+├── MigrationTools/SqlServerToPostgresCopy/            # eenmalige tier-migratietool
+├── Tools/SportlinkTokenCapture/                       # Sportlink-tokenopname (epic #986)
+├── bruno-gen.json                     # Bruno-generatorconfig — bruno/ zelf niet in git, zie §7
+├── infrastructure/                    # Bicep-templates
 ├── scripts/
 │   ├── dev/
 │   │   ├── Start-Debug.ps1            # Start alle lokale services + wacht op readiness
@@ -1015,10 +1132,22 @@ sportlink-wedstrijdzaken/
 │   ├── azure/
 │   │   ├── Verify-AzureAuthSetup.ps1  # Diagnose Entra-configuratie (read-only)
 │   │   └── Configure-EntraApp.ps1     # Idempotente Entra-configuratie (apply)
-│   └── db/
-│       └── setup-local-database.sql   # Database-initialisatie
+│   ├── ci/                            # CI-guards (bash/node/pwsh) + database-tiers.json
+│   ├── migrations/                    # Seed-/migratiescripts buiten de tier-migraties
+│   ├── github/                        # Sync-Labels.ps1
+│   └── security/
 └── docs/                              # Documentatie
 ```
+
+De boom hierboven toont de projecten en mappen waar je bij het opzetten mee te maken krijgt. De
+solution telt in totaal **13 `.csproj`-projecten**; de actuele lijst haal je op met:
+
+```bash
+find . -name '*.csproj' -not -path '*/obj/*' -not -path '*/bin/*' | sort
+```
+
+`sportlink-wedstrijdzaken.slnf` bevat die projecten zonder het `.sqlproj` — gebruik dat filter op
+macOS.
 
 ### 8.1 NuGet-pakketten centraal beheerd (Directory.Packages.props, #1129)
 
@@ -1078,7 +1207,7 @@ Klik op **New repository secret** voor elk van de volgende:
 | `AZURE_CREDENTIALS` | JSON van Azure service principal | Zie stap 9.2 hieronder |
 | `AZURE_FUNCTION_KEY` | Host key van de Function App | Azure Portal → Function App → App keys → Host keys → `default` |
 | `SQL_CONNECTION_STRING` | Productie SQL-verbindingsstring — alleen bij `DatabaseTier=SqlServer` | Azure Portal → SQL Database → Connection strings → ADO.NET |
-| `POSTGRES_CONNECTION_STRING` | Productie Postgres-connectiestring — alleen bij `DatabaseTier=Postgres`; gebruikt door `db-migrate-postgres` om de migraties vóór de deploy toe te passen (#1093). Zelfde waarde als de Function App-instelling; norm `sslmode=verify-full` mét `sslrootcert` (#1096) | Dashboard van de databaseprovider → Connection string |
+| `POSTGRES_CONNECTION_STRING` | Productie Postgres-connectiestring — alleen bij `DatabaseTier=Postgres`; gebruikt door `db-migrate-postgres` om de migraties vóór de deploy toe te passen (#1093). Zelfde waarde als de Function App-instelling; in productie `sslmode=verify-ca` mét `sslrootcert` — `verify-full` is op het pooler-endpoint onhaalbaar (#1096, #1187) | Dashboard van de databaseprovider → Connection string |
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | SWA deployment token | Azure Portal → Static Web App → Manage deployment token |
 
 **`AZURE_CREDENTIALS` aanmaken via Azure CLI:**
@@ -1162,7 +1291,7 @@ Controleer de .NET runtime-versie:
 
 ```powershell
 dotnet --list-runtimes
-# Moet bevatten: Microsoft.NETCore.App 9.x.x
+# Moet BEIDE bevatten: Microsoft.NETCore.App 9.x.x en Microsoft.AspNetCore.App 9.x.x (#1174)
 ```
 
 Ontbreekt .NET 9? Installeer **beide** frameworks — de base runtime alleen is niet genoeg (#1174):
@@ -1185,27 +1314,42 @@ curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && chm
 
 ### "Cannot connect to database"
 
-Identiek op Windows en macOS — de lokale database is in beide gevallen de Docker-container uit
-sectie 4.4. Controleer eerst of de container gezond is:
+Identiek op Windows en macOS — de lokale database is in beide gevallen een Docker-container uit
+`docker-compose.yml`. Controleer de tier die je daadwerkelijk draait.
+
+**Postgres-tier (standaard, sectie 4.1):**
 
 ```bash
 docker compose ps
+docker compose logs postgres
+```
+```powershell
+$env:PGPASSWORD = "<lokaal-wachtwoord>"
+.\scripts\dev\Test-PostgresConnection.ps1 -User <gebruikersnaam>
 ```
 
-Staat `sqlserver` er niet gezond (`healthy`) bij, bekijk dan de logs:
+1. Controleer `POSTGRES_CONNECTION_STRING` in `FunctionApp.Postgres/local.settings.json`
+2. Staan `POSTGRES_USER` en `POSTGRES_PASSWORD` in `.env`? Zonder die twee weigert de
+   postgres-service te starten (`docker-compose.yml` maakt ze verplicht met `:?`-syntax)
+3. Zijn de migraties toegepast? `.\scripts\dev\Invoke-PostgresMigrations.ps1` (sectie 4.2)
+
+**SQL Server-tier (sectie 4.4):**
 
 ```bash
-docker compose logs sqlserver
+docker compose --profile sqlserver ps
+docker compose --profile sqlserver logs sqlserver
 ```
-
-Test de verbinding zelf (vraagt om het wachtwoord als je `-P` weglaat):
-
-```bash
+```powershell
+# Wachtwoord via SQLCMDPASSWORD, nooit via -P: argumenten zijn op beide platforms
+# zichtbaar in de processenlijst.
+$env:SQLCMDPASSWORD = '<zelfde waarde als MSSQL_SA_PASSWORD in .env>'
 sqlcmd -S localhost,1433 -U sa -d SportlinkSqlDb -C -Q "SELECT @@VERSION"
 ```
 
-1. Controleer `SqlConnectionString` in `local.settings.json`
-2. Controleer of `MSSQL_SA_PASSWORD` gezet was vóór `docker compose up -d` (zonder die variabele weigert de container te starten)
+1. Controleer `SqlConnectionString` in `FunctionApp/local.settings.json`
+2. Is de container überhaupt gestart? Een kaal `docker compose up -d` start hem **niet** — dat
+   start Postgres. Gebruik `docker compose --profile sqlserver up -d sqlserver`, met
+   `MSSQL_SA_PASSWORD` al in `.env`
 3. Controleer of `SportlinkSqlDb` bestaat (zie sectie 4.5 — is het schema al aangemaakt?)
 
 ### "401 Unauthorized" op Sportlink API
@@ -1265,4 +1409,4 @@ Publiceer het Database-project opnieuw (zie sectie 4.5).
 
 ---
 
-**Versie:** 2.7 — bijgewerkt 2026-08-29 (macOS/Apple Silicon-ondersteuning + Docker als enige lokale-database-optie, #800)
+**Versie:** 3.5 — bijgewerkt 2026-09-19 (Postgres als standaardtier achter een kale `docker compose up -d`, SQL Server achter profile `sqlserver`; beide tiers gelijkwaardig, #1266)

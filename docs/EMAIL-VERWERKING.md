@@ -2,10 +2,12 @@
 
 Dit document beschrijft wanneer de emailprocessor een antwoord verstuurt, welke template wordt gebruikt, en wanneer een email handmatig door de coördinator moet worden afgehandeld.
 
-> **De code is leidend.** Staat er iets in dit document dat je niet in `FunctionApp/Email/` of
-> `FunctionApp/Processing/BerichtPipeline.cs` terugvindt, dan is dit document fout — meld het als
-> issue. Een eerdere versie beweerde dat élke claim hier geverifieerd was; die garantie bleek zelf
-> onwaar en is daarom weggehaald: ze verkleinde juist de kans dat een lezer nog controleerde.
+> **De code is leidend.** Staat er iets in dit document dat je niet terugvindt in
+> `FunctionApp.Postgres/Email/` of `FunctionApp.Postgres/Processing/BerichtPipeline.cs` — de tier
+> die in productie draait (#1060) — of in hun tegenhangers onder `FunctionApp/Email/` en
+> `FunctionApp/Processing/BerichtPipeline.cs`, dan is dit document fout — meld het als issue. Een
+> eerdere versie beweerde dat élke claim hier geverifieerd was; die garantie bleek zelf onwaar en is
+> daarom weggehaald: ze verkleinde juist de kans dat een lezer nog controleerde.
 
 > **Sinds #972 geldt dit stroomschema ook voor de Postgres-tier** (`FunctionApp.Postgres/Email/
 > EmailProcessorFunction.cs`) — de mailbox stond daar volledig stil sinds de productiecutover van
@@ -20,6 +22,31 @@ Dit document beschrijft wanneer de emailprocessor een antwoord verstuurt, welke 
 > Zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §61/§62 en de klassekop van
 > `FunctionApp.Postgres/Processing/BerichtPipeline.cs` en `EmailProcessorFunction.cs` voor de
 > volledige onderbouwing.
+
+### Tabelnamen per tier
+
+Dit document gebruikt hieronder de SQL Server-notatie (`dbo.AppSettings`). **Op de productietier
+heten dezelfde objecten anders**: Postgres-identifiers zijn lowercase en ongequote
+(`docs/ARCHITECTUUR-DATABASE-TIERS.md` §3). Wie in productie op `dbo.AppSettings` zoekt, vindt
+niets. De vertaling:
+
+| SQL Server | Postgres (productie) |
+|---|---|
+| `dbo.AppSettings` | `public.appsettings` |
+| `dbo.EmailTemplateInstellingen` | `public.emailtemplateinstellingen` |
+| `dbo.UitgeslotenEmailAdressen` | `public.uitgeslotenemailadressen` |
+| `dbo.Teams` / `dbo.TeamAliassen` | `public.teams` / `public.teamaliassen` |
+| `dbo.Velden` | `public.velden` |
+| `dbo.KnvbKalenderDag` | `public.knvbkalenderdag` |
+| `dbo.Season` | `public.season` |
+| `planner.EmailVerwerking` | `planner.emailverwerking` |
+| `avg.Teambegeleiding` | `avg.teambegeleiding` |
+
+Schema en tabelnaam komen bij de laatste twee overeen; alleen de casing verschilt. De
+Postgres-definities staan in `Database.Postgres/migrations/`.
+
+**Let op:** het `stg`-schema bestaat op de Postgres-tier **niet**. Daar zijn alleen `his.teams`,
+`his.matches` en `his.matchdetails` beschikbaar als historische brondata.
 
 ---
 
@@ -182,8 +209,11 @@ coördinator plant handmatig in en koppelt zelf terug.
 | Plannerrespons niet leesbaar | ✓ Ja — fail-open: zwijgen zou onopgemerkt blijven |
 | Herplanverzoek, teamcontact, bevestiging | ✓ Ja — altijd; deze types hebben geen "wel/niet planbaar"-uitkomst |
 
-De beslissing zit in `FunctionApp/Email/ReplyPolicy.cs` (puur, zonder DB of Graph) en is
-volledig gedekt door `FunctionApp.Tests/Email/ReplyPolicyTests.cs`.
+De beslissing zit in `ReplyPolicy.cs` (puur, zonder DB of Graph). Dit is géén gedeelde
+`Planner.Shared`-klasse maar **per tier een eigen kopie**, elk met eigen tests:
+`FunctionApp.Postgres/Email/ReplyPolicy.cs` (+ `FunctionApp.Postgres.Tests/Email/ReplyPolicyTests.cs`)
+en `FunctionApp/Email/ReplyPolicy.cs` (+ `FunctionApp.Tests/Email/ReplyPolicyTests.cs`). Een
+wijziging aan de reply-policy hoort dus op beide tiers te landen.
 
 Onderdrukte antwoorden zijn zichtbaar in de Admin GUI onder **Instellingen → Email verwerking
 (laatste 24u) → Handmatige planning**, en in de mailbox aan het Outlook-label.
@@ -835,6 +865,25 @@ vier env vars `AzureSubscriptionId`/`AzureResourceGroupName`/`AzureSqlServerName
 [docs/MONITORING.md](MONITORING.md#onafhankelijke-database-uitvalmonitor-831) voor de configuratie
 en de vereiste (gratis) Reader-roltoewijzing.
 
+> **Beide tiers hebben deze monitor sinds #1268.** De beslisregels staan gedeeld in
+> `Planner.Shared/Monitoring/DatabaseUitvalCore.cs` — inclusief de throttle-sleutel
+> `database-noodmail`, die dezelfde is als die van de noodmail hierboven: welk pad ook het eerst
+> meldt, onderdrukt de ander voor diezelfde uitval.
+>
+> Wat per tier verschilt is uitsluitend de statusbron, en dat verschil is inherent. De SQL
+> Server-tier bevraagt een `Microsoft.Sql/servers/...`-resource via ARM en krijgt daar ook een
+> `pausedDate` bij. Voor een beheerde Postgres-omgeving bestaat die resource niet en levert de
+> management-API geen uitvaltijdstip; `PostgresDatabaseStatusReader` gebruikt daarom de
+> control-plane van die omgeving als hij geconfigureerd is, en anders een verbindingsprobe — met de
+> eerste eigen waarneming als (expliciet als ondergrens gemelde) starttijd. Zie
+> [docs/MONITORING.md](MONITORING.md) → "Uitvalmonitor op de Postgres-tier" voor wat elk pad wél en
+> niet kan vaststellen.
+>
+> Wat er op de Postgres-tier daarnaast dagelijks draait, is `.github/workflows/supabase-advisors.yml`
+> (#1221): een read-only ophaling van de Supabase Security- en Performance Advisor. Dat houdt het
+> project tegelijk actief en voorkomt automatisch pauzeren na zeven dagen inactiviteit, maar het is
+> geen uptime-monitor.
+
 ---
 
 ## 3. Overzichtstabel — alle templates
@@ -911,8 +960,10 @@ Substitutie is case-insensitief; een niet-gevulde waarde wordt een lege string. 
 
 ### 3b. Statussen in `planner.EmailVerwerking`
 
-De `Status`-kolom bevat de naam van een `EmailStatus`-waarde (`FunctionApp/Email/BerichtModels.cs`).
-Dit zijn ze alle acht:
+De `Status`-kolom bevat de naam van een `EmailStatus`-waarde. De enum staat per tier op een
+**andere plek**: `FunctionApp.Postgres/Email/EmailModels.cs` (productie) en
+`FunctionApp/Email/BerichtModels.cs` (SQL Server). De Postgres-`BerichtModels.cs` vermeldt dat
+verschil zelf expliciet, dus zoek daar niet. De acht waarden zijn op beide tiers identiek:
 
 | Status | Betekenis | Definitief? |
 |---|---|---|
@@ -976,3 +1027,10 @@ Dit blok wordt in review-mode opgeslagen in `AntwoordEmail` én verstuurd naar d
 `EmailReviewRecipient` (herstel van een regressie uit #543, zie #801) — de originele afzender
 krijgt nog steeds nooit iets te zien. Is `EmailReviewRecipient` niet geconfigureerd, dan wordt
 alleen opgeslagen en gelogd dat er geen testmail is verstuurd.
+
+---
+
+*Feitelijkheid geverifieerd tegen beide tiers op 2026-09-19 (v3.5.3.1): tabelnamen per tier,
+tier-gebonden klassen (`ReplyPolicy`, `EmailStatus`, `DatabaseUitvalMonitorFunction`) en de
+getalsmatige claims (8 statussen, 3 pogingen, 10 oudste berichten, 5 overschrijfbare template-keys,
+6 placeholders).*

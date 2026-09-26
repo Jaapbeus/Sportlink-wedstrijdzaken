@@ -63,60 +63,46 @@ public static class AdminSettingsFunction
     }
 
     [Function("AdminSettingsGet")]
-    public static async Task<IActionResult> Get(
+    public static Task<IActionResult> Get(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/settings")] HttpRequest req,
-        FunctionContext context)
-    {
-        var log = context.GetLogger("AdminSettingsGet");
-        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        var authResult = EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return authResult;
-        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
-        try
-        {
-            await SystemUtilities.WaitForDatabaseAsync(log);
-
-            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-
-            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-            // Geen SportlinkClientId, geen geheimen
-            using var command = new SqlCommand(@"
-                SELECT TOP 1
-                    [ClubName], [ClubCode], [SportlinkApiUrl], [SeasonStartMonth], [Accommodatie],
-                    [LastSyncTimestamp], [FetchSchedule], [PlannerAfzenderNaam], [CoordinatorNaam],
-                    [CoordinatorFunctie], [PlannerEmailAdres], [HerplanDeadlineDagen],
-                    [BufferMinuten], [EmailVoetnoot], [AccommodatiePlaats],
-                    [AccommodatieLatitude], [AccommodatieLongitude],
-                    [KnvbPdfBijlageIngeschakeld], [KnvbStandaardRegio], [SportlinkExtensionEnabled]
-                FROM [dbo].[AppSettings]
-                WHERE [ClubCode] = @ClubCode", connection);
-            command.Parameters.AddWithValue("@ClubCode", clubCode);
-
-            using var reader = await command.ExecuteReaderAsync();
-            if (!await reader.ReadAsync())
-                return new NotFoundObjectResult(new { error = "Geen AppSettings rij gevonden" });
-
-            var result = new Dictionary<string, object?>();
-            for (int i = 0; i < reader.FieldCount; i++)
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminSettingsGet"), "AppSettings ophalen",
+            async clubCode =>
             {
-                var name = reader.GetName(i);
-                var raw = reader.IsDBNull(i) ? null : reader.GetValue(i);
-                result[name] = raw is DateTime dt ? DateTime.SpecifyKind(dt, DateTimeKind.Utc) : raw;
-            }
-            reader.Close();
+                using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+                await connection.OpenAsync();
 
-            result["UseRealtimeApi"] = await LeesUseRealtimeApiAsync(connection, clubCode);
-            VerrijkMetCronPreview(result);
+                // Geen SportlinkClientId, geen geheimen
+                using var command = new SqlCommand(@"
+                    SELECT TOP 1
+                        [ClubName], [ClubCode], [SportlinkApiUrl], [SeasonStartMonth], [Accommodatie],
+                        [LastSyncTimestamp], [FetchSchedule], [PlannerAfzenderNaam], [CoordinatorNaam],
+                        [CoordinatorFunctie], [PlannerEmailAdres], [HerplanDeadlineDagen],
+                        [BufferMinuten], [EmailVoetnoot], [AccommodatiePlaats],
+                        [AccommodatieLatitude], [AccommodatieLongitude],
+                        [KnvbPdfBijlageIngeschakeld], [KnvbStandaardRegio], [SportlinkExtensionEnabled]
+                    FROM [dbo].[AppSettings]
+                    WHERE [ClubCode] = @ClubCode", connection);
+                command.Parameters.AddWithValue("@ClubCode", clubCode);
 
-            return new OkObjectResult(result);
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Fout bij ophalen AppSettings");
-            return new ObjectResult(new { error = "Ophalen mislukt" }) { StatusCode = 500 };
-        }
-    }
+                using var reader = await command.ExecuteReaderAsync();
+                if (!await reader.ReadAsync())
+                    return new NotFoundObjectResult(new { error = "Geen AppSettings rij gevonden" });
+
+                var result = new Dictionary<string, object?>();
+                for (int i = 0; i < reader.FieldCount; i++)
+                {
+                    var name = reader.GetName(i);
+                    var raw = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                    result[name] = raw is DateTime dt ? DateTime.SpecifyKind(dt, DateTimeKind.Utc) : raw;
+                }
+                reader.Close();
+
+                result["UseRealtimeApi"] = await LeesUseRealtimeApiAsync(connection, clubCode);
+                VerrijkMetCronPreview(result);
+
+                return new OkObjectResult(result);
+            });
 
     // UseRealtimeApi: dynamisch laden — kolom bestaat pas na DB-migratie
     private static async Task<bool> LeesUseRealtimeApiAsync(SqlConnection connection, string clubCode)
@@ -146,83 +132,72 @@ public static class AdminSettingsFunction
     }
 
     [Function("AdminSettingsPut")]
-    public static async Task<IActionResult> Put(
+    public static Task<IActionResult> Put(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "beheer/settings")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminSettingsPut");
-        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        var authResult = EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return authResult;
-        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
-        try
-        {
-            using var bodyReader = new StreamReader(req.Body);
-            var bodyText = await bodyReader.ReadToEndAsync();
-            if (string.IsNullOrWhiteSpace(bodyText))
-                return new BadRequestObjectResult(new { error = "Lege request body" });
-
-            var updateRequest = JsonConvert.DeserializeObject<UpdateSettingsRequest>(bodyText);
-            if (updateRequest == null)
-                return new BadRequestObjectResult(new { error = "Ongeldige JSON" });
-
-            // #1003: audit-actor komt uitsluitend uit gevalideerde Easy Auth-claims, nooit uit de
-            // request-body of querystring — anders kan een beheerder de wijziging onder een
-            // zelfgekozen naam laten vastleggen.
-            var gewijzigdDoor = EasyAuthHelper.GetAuditActor(req);
-
-            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-            // Pluk alleen de toegestane velden — alles erbuiten wordt genegeerd
-            var changes = FilterToegestaneVelden(updateRequest, log);
-
-            if (changes.Count == 0)
-                return new BadRequestObjectResult(new { error = "Geen toegestane velden in request" });
-
-            var fout = ValideerWijzigingen(changes);
-            if (fout != null) return fout;
-
-            changes.TryGetValue("FetchSchedule", out var nieuweSchedule);
-
-            await SystemUtilities.WaitForDatabaseAsync(log);
-
-            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-            using var transaction = await connection.BeginTransactionAsync();
-
-            try
+        return AdminEndpoint.ExecuteAsync(req, log, "AppSettings opslaan",
+            async clubCode =>
             {
-                await PersisteerWijzigingenAsync(connection, (SqlTransaction)transaction, changes, clubCode, gewijzigdDoor);
+                using var bodyReader = new StreamReader(req.Body);
+                var bodyText = await bodyReader.ReadToEndAsync();
+                if (string.IsNullOrWhiteSpace(bodyText))
+                    return new BadRequestObjectResult(new { error = "Lege request body" });
 
-                await transaction.CommitAsync();
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                throw;
-            }
+                var updateRequest = JsonConvert.DeserializeObject<UpdateSettingsRequest>(bodyText);
+                if (updateRequest == null)
+                    return new BadRequestObjectResult(new { error = "Ongeldige JSON" });
 
-            await SystemUtilities.AppSettings.LoadSettingsAsync(log);
+                // #1003: audit-actor komt uitsluitend uit gevalideerde Easy Auth-claims, nooit uit de
+                // request-body of querystring — anders kan een beheerder de wijziging onder een
+                // zelfgekozen naam laten vastleggen.
+                var gewijzigdDoor = EasyAuthHelper.GetAuditActor(req);
 
-            var fetchScheduleChanged = changes.ContainsKey("FetchSchedule");
-            var (herstartOpmerking, herstartAutomatisch) = await BouwHerstartInfoAsync(changes, nieuweSchedule, log);
+                // Pluk alleen de toegestane velden — alles erbuiten wordt genegeerd
+                var changes = FilterToegestaneVelden(updateRequest, log);
 
-            return new OkObjectResult(new
-            {
-                gewijzigdeVelden = changes.Keys.ToArray(),
-                herstartVereist = fetchScheduleChanged && !herstartAutomatisch,
-                herstartAutomatisch,
-                opmerking = herstartOpmerking,
-                fetchScheduleLeesbaar = fetchScheduleChanged && nieuweSchedule != null
-                    ? VertaalCronNaarLeesbaar(nieuweSchedule) : null,
-                volgendeMomenten = fetchScheduleChanged && nieuweSchedule != null
-                    ? BerekenVolgendeMomenten(nieuweSchedule, 3) : null
+                if (changes.Count == 0)
+                    return new BadRequestObjectResult(new { error = "Geen toegestane velden in request" });
+
+                var fout = ValideerWijzigingen(changes);
+                if (fout != null) return fout;
+
+                changes.TryGetValue("FetchSchedule", out var nieuweSchedule);
+
+                using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+                await connection.OpenAsync();
+                using var transaction = await connection.BeginTransactionAsync();
+
+                try
+                {
+                    await PersisteerWijzigingenAsync(connection, (SqlTransaction)transaction, changes, clubCode, gewijzigdDoor);
+
+                    await transaction.CommitAsync();
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+
+                await SystemUtilities.AppSettings.LoadSettingsAsync(log);
+
+                var fetchScheduleChanged = changes.ContainsKey("FetchSchedule");
+                var (herstartOpmerking, herstartAutomatisch) = await BouwHerstartInfoAsync(changes, nieuweSchedule, log);
+
+                return new OkObjectResult(new
+                {
+                    gewijzigdeVelden = changes.Keys.ToArray(),
+                    herstartVereist = fetchScheduleChanged && !herstartAutomatisch,
+                    herstartAutomatisch,
+                    opmerking = herstartOpmerking,
+                    fetchScheduleLeesbaar = fetchScheduleChanged && nieuweSchedule != null
+                        ? VertaalCronNaarLeesbaar(nieuweSchedule) : null,
+                    volgendeMomenten = fetchScheduleChanged && nieuweSchedule != null
+                        ? BerekenVolgendeMomenten(nieuweSchedule, 3) : null
+                });
             });
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Fout bij opslaan AppSettings");
-            return new ObjectResult(new { error = "Opslaan mislukt" }) { StatusCode = 500 };
-        }
     }
 
     // Pluk alleen de toegestane velden — alles erbuiten wordt genegeerd
@@ -327,6 +302,9 @@ public static class AdminSettingsFunction
     /// Zoekt GPS-coördinaten op voor een plaatsnaam via Nominatim (OpenStreetMap).
     /// Rate-limit: 1 req/sec per Nominatim ToS — ruim voldoende voor admin-gebruik.
     /// </summary>
+    // #1350: bewust NIET via AdminEndpoint.ExecuteAsync — geocoding raakt de database niet en hoort
+    // ook geen databasewacht te krijgen. Staat daarom, met deze reden, in
+    // scripts/ci/endpoint-autorisatie-allowlist.txt. De poort zelf is identiek.
     [Function("AdminGeocodeGet")]
     public static async Task<IActionResult> Geocode(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/geocode")] HttpRequest req,

@@ -22,6 +22,7 @@ public class SportlinkMatchContractTests
             "isEditFieldSidePanelAllowed": true,
             "isAddScoreAllowed": true,
             "matchField": { "facilityId": "BBCF989", "name": "Sportpark" },
+            "field": { "fieldId": "BBCF989-OUTDOOR_FIELD-6", "fieldSize": 1.0, "fieldOffset": 0 },
             "matchOfficials": [ { "name": "geheim" } ]
         }
         """;
@@ -81,6 +82,32 @@ public class SportlinkMatchContractTests
 
         afwijkend.Should().BeEmpty();
         afwijkend.Should().NotContain(v => v.Contains("matchOfficials", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ControleerVorm_FieldOntbreekt_WordtGerapporteerdOpNaam()
+    {
+        // #1339: "field" (huidige veld-prefill) is een verplicht rootveld, net als matchField.
+        var zonderField = System.Text.RegularExpressions.Regex.Replace(
+            GeldigeMatchJson,
+            ",?\\s*\"field\"\\s*:\\s*\\{[^}]*\\}", "");
+
+        var afwijkend = SportlinkMatchContract.ControleerVorm(zonderField);
+
+        afwijkend.Should().Contain("field");
+    }
+
+    [Fact]
+    public void ControleerVorm_FieldMagNullZijn()
+    {
+        // Een wedstrijd zonder toegewezen veld heeft vermoedelijk field: null — geen contractbreuk.
+        var metNullField = System.Text.RegularExpressions.Regex.Replace(
+            GeldigeMatchJson,
+            "\"field\"\\s*:\\s*\\{[^}]*\\}", "\"field\": null");
+
+        var afwijkend = SportlinkMatchContract.ControleerVorm(metNullField);
+
+        afwijkend.Should().BeEmpty();
     }
 
     [Fact]

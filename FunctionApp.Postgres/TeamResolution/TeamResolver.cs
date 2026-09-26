@@ -8,12 +8,13 @@ namespace FunctionApp.Postgres.TeamResolution;
 /// waarlangs een teamaanduiding uit vrije tekst aan een team wordt gekoppeld.
 ///
 /// <para>
-/// De identiteitsbeslissing is deterministisch. Deze tier heeft geen AI-disambiguator vertaald
-/// (de SQL Server-tier se <c>TeamDisambiguationAiService</c>, #697) — meerdere kandidaten leveren
-/// hier dus altijd <c>MeerdereKandidaten</c> op in plaats van een AI-keuze, en er is dus ook geen
-/// geleerde alias vast te leggen vanuit deze klasse (dat gebeurt alleen ná een AI-disambiguatie).
-/// Geen gok, geen stille aanname: exact het gedrag dat de SQL Server-tier ook toont zodra
-/// <c>ITeamDisambiguator</c> daar niet geregistreerd is (geen <c>OpenAiApiKey</c>).
+/// De identiteitsbeslissing is volledig deterministisch: meerdere kandidaten leveren altijd
+/// <c>MeerdereKandidaten</c> op, met de lijst erbij. Geen gok, geen stille aanname. Er wordt vanuit
+/// deze klasse dus ook geen alias geleerd — dat gebeurde alleen ná een AI-keuze.
+/// <para>
+/// Dit gedrag is sinds #1268 identiek op beide tiers. De SQL Server-tier had tot dan een
+/// AI-disambiguator (#697) die deze tier nooit heeft gehad; dat verschil is opgeheven door de
+/// deterministische kant als norm te nemen.
 /// </para>
 ///
 /// Volgorde: (1) gevalideerde alias → (2) exacte canonieke match → (3) kandidaten op

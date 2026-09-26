@@ -3,6 +3,7 @@ using FunctionApp.Tests.Email.TestDoubles;
 using FunctionApp.Tests.Monitoring.TestDoubles;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Planner.Shared.Monitoring;
 using SportlinkFunction.Monitoring;
 using Xunit;
 
@@ -18,6 +19,15 @@ public class DatabaseUitvalMonitorFunctionTests
 {
     private static readonly DateTime Nu = new(2026, 8, 30, 12, 0, 0, DateTimeKind.Utc);
 
+    // De vertaling van de ruwe ARM-statuswaarde naar een besluitbare uitkomst staat sinds #1268 in
+    // DatabaseUitvalCore; deze twee helpers gebruiken die, zodat de tests blijven meten wat
+    // ArmDatabaseStatusReader daadwerkelijk aan de monitor doorgeeft.
+    private static DatabaseStatusInfo Online()
+        => new("Online", DatabaseUitvalCore.BepaalAzureSqlBeschikbaarheid("Online"), null);
+
+    private static DatabaseStatusInfo Gepauzeerd(DateTime? sinds)
+        => new("Paused", DatabaseUitvalCore.BepaalAzureSqlBeschikbaarheid("Paused"), sinds);
+
     private static Task RunAsync(
         FakeDatabaseStatusReader reader, FakeNoodmailThrottleStore store, FakeEmailGraphService graph, DateTime nuUtc)
         => DatabaseUitvalMonitorFunction.VerwerkStatusAsync(
@@ -28,7 +38,7 @@ public class DatabaseUitvalMonitorFunctionTests
     [Fact]
     public async Task Online_StuurtGeenMeldingEnRegistreertNiets()
     {
-        var reader = new FakeDatabaseStatusReader { StatusToReturn = new DatabaseStatusInfo("Online", null) };
+        var reader = new FakeDatabaseStatusReader { StatusToReturn = Online() };
         var store = new FakeNoodmailThrottleStore();
         var graph = new FakeEmailGraphService();
 
@@ -41,7 +51,7 @@ public class DatabaseUitvalMonitorFunctionTests
     [Fact]
     public async Task Online_MetOpenstaandeRegistratie_WistDieRegistratie()
     {
-        var reader = new FakeDatabaseStatusReader { StatusToReturn = new DatabaseStatusInfo("Online", null) };
+        var reader = new FakeDatabaseStatusReader { StatusToReturn = Online() };
         var store = new FakeNoodmailThrottleStore();
         await store.RegistreerVerstuurdAsync(DatabaseUitvalMonitorFunction.ThrottleSleutel, Nu.AddDays(-1));
         var graph = new FakeEmailGraphService();
@@ -57,7 +67,7 @@ public class DatabaseUitvalMonitorFunctionTests
     {
         var reader = new FakeDatabaseStatusReader
         {
-            StatusToReturn = new DatabaseStatusInfo("Paused", Nu - TimeSpan.FromHours(1))
+            StatusToReturn = Gepauzeerd(Nu - TimeSpan.FromHours(1))
         };
         var store = new FakeNoodmailThrottleStore();
         var graph = new FakeEmailGraphService();
@@ -72,7 +82,7 @@ public class DatabaseUitvalMonitorFunctionTests
     {
         var reader = new FakeDatabaseStatusReader
         {
-            StatusToReturn = new DatabaseStatusInfo("Paused", Nu - TimeSpan.FromHours(10))
+            StatusToReturn = Gepauzeerd(Nu - TimeSpan.FromHours(10))
         };
         var store = new FakeNoodmailThrottleStore();
         var graph = new FakeEmailGraphService();
@@ -88,7 +98,7 @@ public class DatabaseUitvalMonitorFunctionTests
     {
         var reader = new FakeDatabaseStatusReader
         {
-            StatusToReturn = new DatabaseStatusInfo("Paused", Nu - TimeSpan.FromHours(30))
+            StatusToReturn = Gepauzeerd(Nu - TimeSpan.FromHours(30))
         };
         var store = new FakeNoodmailThrottleStore();
         await store.RegistreerVerstuurdAsync(DatabaseUitvalMonitorFunction.ThrottleSleutel, Nu.AddHours(-5));
@@ -109,7 +119,7 @@ public class DatabaseUitvalMonitorFunctionTests
     {
         var reader = new FakeDatabaseStatusReader
         {
-            StatusToReturn = new DatabaseStatusInfo("Paused", Nu - TimeSpan.FromDays(3))
+            StatusToReturn = Gepauzeerd(Nu - TimeSpan.FromDays(3))
         };
         var store = new FakeNoodmailThrottleStore();
         await store.RegistreerVerstuurdAsync(DatabaseUitvalMonitorFunction.ThrottleSleutel, Nu.AddHours(-25));
@@ -126,7 +136,7 @@ public class DatabaseUitvalMonitorFunctionTests
     {
         // Fail-safe: zonder betrouwbare duur liever stil blijven dan een fout-positief op een normale,
         // korte auto-pause.
-        var reader = new FakeDatabaseStatusReader { StatusToReturn = new DatabaseStatusInfo("Paused", null) };
+        var reader = new FakeDatabaseStatusReader { StatusToReturn = Gepauzeerd(null) };
         var store = new FakeNoodmailThrottleStore();
         var graph = new FakeEmailGraphService();
 
@@ -153,7 +163,7 @@ public class DatabaseUitvalMonitorFunctionTests
     {
         var reader = new FakeDatabaseStatusReader
         {
-            StatusToReturn = new DatabaseStatusInfo("Paused", Nu - TimeSpan.FromHours(10))
+            StatusToReturn = Gepauzeerd(Nu - TimeSpan.FromHours(10))
         };
         var store = new FakeNoodmailThrottleStore();
         var graph = new FakeEmailGraphService { ThrowOnSendReply = true };
@@ -186,7 +196,7 @@ public class DatabaseUitvalMonitorFunctionTests
         {
             var reader = new FakeDatabaseStatusReader
             {
-                StatusToReturn = new DatabaseStatusInfo("Paused", Nu - TimeSpan.FromHours(10))
+                StatusToReturn = Gepauzeerd(Nu - TimeSpan.FromHours(10))
             };
             var store = new FakeNoodmailThrottleStore();
             var graph = new FakeEmailGraphService();

@@ -27,8 +27,9 @@ namespace FunctionApp.Postgres.Sportlink;
 /// #1017-refactor die dit apart van <c>ResolvePublicMatchIdAsync</c> mogelijk maakte.
 /// </para>
 /// <para>
-/// Alleen voor de Postgres-tier — zelfde reden als <see cref="SportlinkTokenKeepAliveTimerFunction"/>:
-/// de SQL Server-tier is rollback-only sinds de Postgres-cutover (#1020).
+/// De SQL Server-tegenhanger staat sinds #1266 in
+/// <c>FunctionApp/Sportlink/SportlinkPublicMatchIdWarmupTimerFunction.cs</c> — beide tiers zijn
+/// gelijkwaardig.
 /// </para>
 /// </summary>
 public static class SportlinkPublicMatchIdWarmupTimerFunction
@@ -37,8 +38,9 @@ public static class SportlinkPublicMatchIdWarmupTimerFunction
 
     // 3 dagen (vandaag + 2) — dekt een doordeweekse wedstrijd morgen én het aankomende weekend als
     // de timer op een donderdag/vrijdag draait, zonder een dagen-lange horizon vol nog-niet-
-    // relevante wedstrijden op te halen.
-    private const int VooruitkijkDagen = 2;
+    // relevante wedstrijden op te halen. Sinds #1266 gedeeld met de SQL Server-tier, zodat een
+    // tierwissel niet stilzwijgend een andere horizon oplevert.
+    private const int VooruitkijkDagen = SportlinkEndpointCore.WarmupVooruitkijkDagen;
 
     [Function("SportlinkPublicMatchIdWarmup")]
     public static async Task Run(

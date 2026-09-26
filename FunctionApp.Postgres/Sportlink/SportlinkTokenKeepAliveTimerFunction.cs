@@ -26,10 +26,10 @@ namespace FunctionApp.Postgres.Sportlink;
 /// operationele afweging maar een vaste, technisch bepaalde ondergrens.
 /// </para>
 /// <para>
-/// Alleen voor de Postgres-tier: de SQL Server-tier is sinds de productiecutover rollback-only
-/// (geen productieverkeer) en heeft nog de oudere ARM-API-tokenopslag — zie issue #1020 voor de
-/// bewust nog niet genomen beslissing daarover. Een keep-alive bouwen voor een tier die mogelijk
-/// een andere tokenopslag krijgt, zou voorbarig werk zijn.
+/// Bestond tot #1266 alleen op de Postgres-tier. De SQL Server-tegenhanger staat sinds #1266 in
+/// <c>FunctionApp/Sportlink/SportlinkTokenKeepAliveTimerFunction.cs</c> en leest zijn rollen uit
+/// <see cref="ISportlinkClubTokenStore"/> in plaats van uit een DB-tabel — die tier bewaart het
+/// refresh-token in een Function App-instelling (#1020), een bewust behouden tierverschil.
 /// </para>
 /// </summary>
 public static class SportlinkTokenKeepAliveTimerFunction

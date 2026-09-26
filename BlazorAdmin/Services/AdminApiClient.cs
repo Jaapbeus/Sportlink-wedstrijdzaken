@@ -48,6 +48,14 @@ public class AdminApiClient
     public async Task<ApiResult<SportlinkMatchInfoDto>> GetSportlinkMatchInfoAsync(string wedstrijdcode)
         => await GetAsync<SportlinkMatchInfoDto>($"api/sportlink/match/{Uri.EscapeDataString(wedstrijdcode)}");
 
+    // ── Per-club, per-rol feature-instellingen (#1341, epic #1338) ──
+
+    public async Task<ApiResult<List<RolFeatureInstellingDto>>> GetRolFeatureInstellingenAsync()
+        => await GetAsync<List<RolFeatureInstellingDto>>("api/beheer/rolfeatureinstellingen");
+
+    public async Task<ApiResult<object>> ZetRolFeatureInstellingAsync(string featureKey, bool enabled)
+        => await PutAsync<object>("api/beheer/rolfeatureinstellingen", new { FeatureKey = featureKey, Enabled = enabled });
+
     // #989: lichtgewicht variant voor de deep-link-knop — alleen PublicMatchId, geen volledige Match-aanroep.
     public async Task<ApiResult<SportlinkPublicMatchIdDto>> GetSportlinkPublicMatchIdAsync(string wedstrijdcode)
         => await GetAsync<SportlinkPublicMatchIdDto>($"api/sportlink/match/{Uri.EscapeDataString(wedstrijdcode)}/public-match-id");

@@ -14,7 +14,7 @@ internal static class Program
     // Sportlink's eigen audit-log herkenbaar als "webapp-<rol>", niet als een persoonsnaam, en
     // blijft een rol met beperkte Sportlink-rechten ook echt beperkt als onze eigen rolcheck ooit
     // een gat heeft (tweede verdedigingslinie, niet alleen UI-niveau).
-    private static string SettingsKeyFor(string role) => $"SportlinkClubRefreshToken__{role}";
+    internal static string SettingsKeyFor(string role) => $"SportlinkClubRefreshToken__{role}";
 
     private static async Task<int> Main(string[] args)
     {
@@ -115,10 +115,24 @@ internal static class Program
         return 0;
     }
 
-    private static void WriteRefreshTokenToSettings(string settingsPath, string settingsKey, string refreshToken)
+    internal static void WriteRefreshTokenToSettings(string settingsPath, string settingsKey, string refreshToken)
     {
         var json = File.ReadAllText(settingsPath);
         using var doc = JsonDocument.Parse(json);
+
+        // #1302: zonder deze controle liep de lus hieronder netjes door zonder ooit bij de
+        // "Values"-tak te komen, schreef het bestand terug ZONDER het token, en meldde de
+        // aanroeper succes. De ontwikkelaar zoekt dan naar een token dat er nooit in is gezet.
+        if (doc.RootElement.ValueKind != JsonValueKind.Object ||
+            !doc.RootElement.TryGetProperty("Values", out var bestaandeValues) ||
+            bestaandeValues.ValueKind != JsonValueKind.Object)
+        {
+            throw new InvalidOperationException(
+                $"'{settingsPath}' bevat geen \"Values\"-object; het refresh-token is nergens weggeschreven. " +
+                "Kopieer local.settings.template.json naar local.settings.json en probeer opnieuw.");
+        }
+
+        var geschreven = false;
 
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
@@ -136,6 +150,7 @@ internal static class Program
                         valueProperty.WriteTo(writer);
                     }
                     writer.WriteString(settingsKey, refreshToken);
+                    geschreven = true;
                     writer.WriteEndObject();
                 }
                 else
@@ -144,6 +159,15 @@ internal static class Program
                 }
             }
             writer.WriteEndObject();
+        }
+
+        // Vangnet achteraf: de controle vooraf dekt het bekende geval, deze regel dekt elk
+        // toekomstig pad waarlangs de schrijfactie alsnog wordt overgeslagen. Nooit een bestand
+        // terugschrijven waarvan we niet weten dat het token erin staat.
+        if (!geschreven)
+        {
+            throw new InvalidOperationException(
+                $"Het refresh-token is niet in '{settingsPath}' geschreven; het bestand is ongewijzigd gelaten.");
         }
 
         File.WriteAllBytes(settingsPath, stream.ToArray());

@@ -13,6 +13,13 @@ Symbolen:
 - ⚠️ Aandachtspunt (kan nog gecorrigeerd worden)
 - ❌ Harde blocker — sessie NIET veilig af te sluiten zolang dit open staat
 
+> 🖥️ **CROSS-PLATFORM — altijd van toepassing (#800, #1286).**
+> Deze skill draait op Windows én macOS. Twee regels bij het aanpassen ervan:
+> 1. **`grep -E`, nooit `grep -P`.** De BSD-grep van macOS kent geen PCRE; in een pijplijn faalt
+>    dat stil en lijkt het resultaat gewoon leeg.
+> 2. **Geen hardgecodeerde paden met een gebruikersnaam of schijfletter.** De memory-map verschilt
+>    per machine en per platform — neem hem over uit de sessie-instructies (zie Fase 4).
+
 ---
 
 ## FASE 0 — TRIAGE (altijd eerst, alleen lezen, geen wijzigingen)
@@ -43,13 +50,25 @@ Voer uit: `gh pr list --head $(git branch --show-current) 2>/dev/null`
 
 ## FASE 1 — CODE-INTEGRITEIT (alleen als Fase 0 geen harde blockers heeft)
 
-**1a. FunctionApp build**
-`dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug --no-restore 2>&1 | tail -8`
+**1a. FunctionApp build (Postgres-tier eerst — draait in productie, #1060)**
+`dotnet build FunctionApp.Postgres/FunctionApp.Postgres.csproj -c Debug --no-restore 2>&1 | tail -8`
 - Exit 0 → ✅ | fouten → ❌ HARDE BLOCKER — stop hier.
+- Zijn in deze sessie ook SQL Server-tier-bestanden (`FunctionApp/`) gewijzigd? Bouw die er dan
+  ook bij: `dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug --no-restore 2>&1 | tail -8`
 
-**1b. BlazorAdmin build**
-`dotnet build BlazorAdmin/BlazorAdmin.csproj --no-restore 2>&1 | tail -8`
-- Exit 0 → ✅ | fouten → ❌ HARDE BLOCKER — stop hier.
+**1b. BlazorAdmin build — ALLEEN als de BlazorAdmin dev server niet draait**
+> ⚠️ Draait `/startdebug` (dotnet watch op :5242) nog vanuit deze of een eerdere sessie?
+> `lsof -nP -iTCP:5242 -sTCP:LISTEN` (macOS/Linux) of `Get-NetTCPConnection -LocalPort 5242`
+> (Windows) laat dat zien. Een tweede `dotnet build` naast of vlak na die draaiende server
+> genereert een tweede set content-hash fingerprints → 404 op framework-JS → "An unhandled
+> error has occurred. Reload" (zie AGENTS.md-verificatielus stap b en de `startdebug`-skill).
+>
+> - Server draait niet → bouw gewoon: `dotnet build BlazorAdmin/BlazorAdmin.csproj --no-restore 2>&1 | tail -8`
+> - Server draait wel → sla deze build over (Fase 1a dekt de compileerbaarheid al voor de
+>   FunctionApp-lagen) óf herstart bewust via `./scripts/dev/Stop-Debug.ps1 -Clean` gevolgd door
+>   `./scripts/dev/Start-Debug.ps1` — nooit een losse `dotnet build BlazorAdmin` ernaast.
+
+- Exit 0 (of bewust overgeslagen omdat de server draait) → ✅ | fouten → ❌ HARDE BLOCKER — stop hier.
 
 ---
 
@@ -66,13 +85,13 @@ Lees eerste 60 regels van `CHANGELOG.md` — entry aanwezig en passend? ✅ / le
 | Gewijzigd | Controleer |
 |---|---|
 | FunctionApp/**/*.cs | docs/API.md |
-| FunctionApp/Planner/** | docs/ARCHITECTURE-PLANNER.md |
-| BlazorAdmin/**/*.razor | docs/v2-admin-handleiding.md |
+| FunctionApp/Planner/** | docs/ARCHITECTUUR-PLANNER.md |
+| BlazorAdmin/**/*.razor | docs/BEHEERDER-HANDLEIDING.md |
 | Architectuurregel/conventie | AGENTS.md |
-| Setup/configuratie | docs/SETUP.md |
-| Testscript | docs/TESTING.md |
+| Setup/configuratie | docs/DEVELOPER-SETUP.md |
+| Testscript | docs/VERIFICATIE-SCRIPTS.md |
 | Email-pipeline | docs/EMAIL-VERWERKING.md |
-| Auth/Entra | docs/AZURE-ENTRA-SETUP.md |
+| Auth/Entra | docs/ENTRA-AUTH-BEHEER.md |
 | Security/AVG | SECURITY.md |
 
 ---
@@ -87,25 +106,39 @@ Lees eerste 60 regels van `CHANGELOG.md` — entry aanwezig en passend? ✅ / le
 Haal issue-nummers op uit recente commit-messages op de huidige branch:
 ```bash
 git log origin/main..HEAD --pretty=format:"%s" 2>/dev/null \
-  | grep -oP '#\d+' | sort -u
+  | grep -oE '#[0-9]+' | sort -u
 ```
-Voor elk gevonden nummer: controleer de GitHub-status:
+Voor elk gevonden nummer: controleer de GitHub-status én het statuslabel:
 ```bash
-gh issue view <nr> --json number,title,state 2>/dev/null
+gh issue view <nr> --json number,title,state,labels 2>/dev/null
 ```
 - `state: CLOSED` → ✅
-- `state: OPEN` → ⚠️ controleer of het issue volledig is afgerond; zo ja: sluit het af met een afsluitend comment:
-  ```bash
-  gh issue close <nr> --comment "Afgerond in deze sessie — zie commit-geschiedenis voor details."
-  ```
-- Twijfel of werk nog open? → noteer als ⚠️ met toelichting in het eindrapport, sluit NIET zonder zekerheid.
+- `state: OPEN` met label `status: awaiting-release` → ✅ **dit is de juiste eindtoestand** na een
+  merge naar `develop` — NIET sluiten. `close-released-issues.yml` sluit het pas bij de
+  eerstvolgende productie-tag op `main` (AGENTS.md, "Issue-lifecycle: awaiting-release").
+- `state: OPEN` zonder enig `status:`-label, terwijl de bijbehorende PR wél gemerged is → ⚠️
+  noteer in het eindrapport en vraag de gebruiker het na te lopen — dit hoort niet voor te komen
+  (`label-awaiting-release.yml` zet het label automatisch).
+- Twijfel of werk nog open is? → noteer als ⚠️ met toelichting in het eindrapport.
+
+> **Nooit `gh issue close` aanroepen na een merge naar `develop` (#1295).** Dat sluiten gebeurt
+> uitsluitend automatisch bij een version-tag naar `main`. Reproduceert anders letterlijk het
+> incident van 2026-07-26 waar deze regel voor is vastgelegd. Uitzondering: een **hotfix-PR
+> rechtstreeks naar `main`** waarvan `close-released-issues.yml` al groen is gedraaid — dan is het
+> issue al automatisch gesloten en hoeft hier niets te gebeuren.
 
 ---
 
 ## FASE 4 — MEMORY SCHRIJVEN (altijd)
 
-Schrijf `session_latest.md` naar:
-`C:\Users\Jaap.vanBeusekom\.Codex\projects\c--repo-jaapbeus-Sportlink-wedstrijdzaken\memory\`
+Schrijf `session_latest.md` naar de **memory-map van deze sessie** — dat is de map die in de
+sessie-instructies genoemd staat en waar `MEMORY.md` al in staat. Neem die map over zoals hij
+daar vermeld wordt; schrijf hier nooit een pad met de hand uit.
+
+> **Waarom geen vast pad (#1286).** De projectmap onder de agent-configuratiemap is een slug van
+> het checkout-pad, dus hij verschilt per machine én per platform. Hier stond een hardgecodeerd
+> Windows-pad inclusief gebruikersnaam en schijfletter: op macOS bestaat dat niet, en de
+> sessiesamenvatting belandde dan nergens of op een nieuw aangemaakt, verkeerd pad.
 
 ```
 ---
@@ -146,7 +179,7 @@ Update ook de `session_latest`-regel in MEMORY.md.
 | 2b | CHANGELOG bijgewerkt | |
 | 2c | Docs actueel | |
 | 3b | PR + CI groen | |
-| 3c | Afgeronde issues gesloten | |
+| 3c | Afgeronde issues op de juiste eindstatus (`awaiting-release` of `closed`) | |
 
 - Alle ✅ → `✅ Sessie volledig afgesloten`
 - ⚠️ aanwezig → `⚠️ Afgesloten met aandachtspunten`
