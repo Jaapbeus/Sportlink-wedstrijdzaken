@@ -1,7 +1,8 @@
 @page "/instellingen/thema"
 @using BlazorAdmin.Models
+@inherits ClubSelectorPageBase
 @* Alle logica staat in Thema.razor.cs (#1270) — regel 3 van docs/ARCHITECTUUR-CODEKWALITEIT.md.
-   De injecties en IDisposable staan daar als [Inject] op de partial class. *@
+   De injecties en de clubwissel-lifecycle staan daar op de partial class (#1328). *@
 
 <PageTitle>Club-thema — Sportlink Admin</PageTitle>
 
@@ -77,8 +78,8 @@ else
                                     @* <input type="color"> kent geen alpha en zou de waarde stilzwijgend
                                        terugbrengen tot zes cijfers — daarom hier alleen een tekstveld met
                                        een voorbeeldvlak ernaast. *@
-                                    <span class="form-control form-control-color p-0 border"
-                                          style="background-color:@Kleur(sleutel); width:3rem;"
+                                    <span class="form-control form-control-color p-0 border thema-kleurvlak"
+                                          style="--thema-kleur:@Kleur(sleutel);"
                                           aria-hidden="true"></span>
                                 }
                                 else
@@ -124,10 +125,10 @@ else
                                     {
                                         var capturedColor = color;
                                         <div class="d-flex flex-column align-items-center">
-                                            <div style="width:40px; height:40px; background-color:@capturedColor; border:1px solid #dee2e6; border-radius:4px; cursor:pointer;"
+                                            <div class="thema-geextraheerde-kleur" style="--thema-kleur:@capturedColor;"
                                                  title="@capturedColor"
                                                  @onclick='() => OnColorChange("primary", capturedColor)'></div>
-                                            <small style="font-size:0.65rem;">@capturedColor</small>
+                                            <small class="thema-kleur-label">@capturedColor</small>
                                         </div>
                                     }
                                 </div>
@@ -142,7 +143,7 @@ else
                         @if (!string.IsNullOrWhiteSpace(_extractedFaviconUrl))
                         {
                             <div class="mt-2 d-flex align-items-center gap-2">
-                                <img src="@_extractedFaviconUrl" alt="Favicon" style="width:24px;height:24px;object-fit:contain;" />
+                                <img src="@_extractedFaviconUrl" alt="Favicon" class="thema-favicon-preview" />
                                 <small class="text-muted">Gevonden favicon</small>
                                 <button class="btn btn-sm btn-outline-primary" type="button"
                                         @onclick="() => { _theme.FaviconUrl = _extractedFaviconUrl; StateHasChanged(); }">
@@ -159,7 +160,7 @@ else
                         @if (!string.IsNullOrWhiteSpace(_extractedLogoUrl))
                         {
                             <div class="mt-2 d-flex align-items-center gap-2">
-                                <img src="@_extractedLogoUrl" alt="Logo" style="max-height:40px;max-width:80px;object-fit:contain;" />
+                                <img src="@_extractedLogoUrl" alt="Logo" class="thema-logo-preview" />
                                 <small class="text-muted">Gevonden logo (OG-afbeelding)</small>
                                 <button class="btn btn-sm btn-outline-primary" type="button"
                                         @onclick="() => { _theme.LogoUrl = _extractedLogoUrl; StateHasChanged(); }">
@@ -191,21 +192,22 @@ else
             <div class="card mb-4">
                 <div class="card-header">Live preview — @(_modus == "dark" ? "donkere" : "lichte") weergave</div>
                 <div class="card-body p-0">
-                    <div style="background-color: @Kleur("primary"); padding: 1rem; display:flex; align-items:center; gap:0.5rem;">
+                    <div class="thema-preview-header" style="--thema-primary:@Kleur("primary");">
                         @if (!string.IsNullOrWhiteSpace(_theme.LogoUrl))
                         {
-                            <img src="@_theme.LogoUrl" alt="Logo" style="height:28px;width:auto;object-fit:contain;" />
+                            <img src="@_theme.LogoUrl" alt="Logo" class="thema-preview-logo" />
                         }
-                        <span style="color: @Kleur("textOnPrimary"); font-weight: bold;">Zijbalk achtergrond</span>
+                        <span class="thema-preview-titel" style="--thema-tekst-op-primary:@Kleur("textOnPrimary");">Zijbalk achtergrond</span>
                     </div>
-                    <div style="padding: 1rem;">
-                        <button class="btn btn-primary me-2" style="background-color: @Kleur("primary"); border-color: @Kleur("primary"); color: @Kleur("textOnPrimary");">
+                    <div class="thema-preview-body">
+                        <button class="btn btn-primary me-2 thema-preview-primaire-knop"
+                                style="--thema-primary:@Kleur("primary"); --thema-tekst-op-primary:@Kleur("textOnPrimary");">
                             Primaire knop
                         </button>
-                        <button class="btn btn-outline-secondary me-2" style="color: @Kleur("secondary"); border-color: @Kleur("secondary");">Secundaire knop</button>
-                        <a href="#" style="color: @Kleur("accent");">Link</a>
+                        <button class="btn btn-outline-secondary me-2 thema-preview-secundaire-knop" style="--thema-secondary:@Kleur("secondary");">Secundaire knop</button>
+                        <a href="#" class="thema-preview-link" style="--thema-accent:@Kleur("accent");">Link</a>
                     </div>
-                    <div style="padding: 0.5rem 1rem; background: @Kleur("cardBg");">
+                    <div class="thema-preview-footer" style="--thema-card-bg:@Kleur("cardBg");">
                         <small class="text-muted">Kleuren worden direct toegepast in de zijbalk en knoppen</small>
                     </div>
                 </div>

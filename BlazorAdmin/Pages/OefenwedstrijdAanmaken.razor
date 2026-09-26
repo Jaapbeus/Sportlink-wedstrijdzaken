@@ -27,7 +27,7 @@ else
         <div class="alert alert-danger">@_laadFout</div>
     }
 
-    <form @onsubmit="MaakAanAsync" @onsubmit:preventDefault style="max-width: 48rem;">
+    <form @onsubmit="MaakAanAsync" @onsubmit:preventDefault class="oefenwedstrijd-formulier">
         <div class="row g-3">
             <div class="col-sm-4">
                 <label class="form-label" for="oef-datum">Datum</label>
@@ -88,7 +88,7 @@ else
 
 @if (!string.IsNullOrEmpty(_status.Melding))
 {
-    <div class="mt-3 alert @(_status.IsFout ? "alert-danger" : "alert-info")" style="max-width: 48rem;">
+    <div class="mt-3 alert oefenwedstrijd-statusmelding @(_status.IsFout ? "alert-danger" : "alert-info")">
         <div>@_status.Melding</div>
         @if (_resultaat != null)
         {

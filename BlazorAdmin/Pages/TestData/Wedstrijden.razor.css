@@ -1,0 +1,33 @@
+.tabel-compact {
+    font-size: 0.875rem;
+}
+
+.datum-input-compact {
+    width: 150px;
+}
+
+.soort-select-nieuw {
+    width: 160px;
+}
+
+.tegenstander-input-nieuw {
+    width: 160px;
+}
+
+.veld-select-nieuw {
+    width: 140px;
+}
+
+.col-nr { width: 32px; }
+.col-datum { width: 150px; }
+.col-team-thuis { width: 200px; }
+.col-tegenstander { width: 180px; }
+.col-starttijd { width: 110px; }
+.col-veld { width: 140px; }
+.col-velddeel { width: 105px; }
+.col-soort { width: 150px; }
+.col-status { width: 40px; }
+.col-actie { width: 32px; }
+
+.sortable-header { cursor: pointer; user-select: none; }
+.sortable-header:hover { background-color: #e9ecef; }

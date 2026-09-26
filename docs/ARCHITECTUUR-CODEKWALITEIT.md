@@ -186,6 +186,34 @@ Precedent in dit project: de vier Sportlink-extensiepagina's (#1122).
 
 *Guard: `scripts/ci/check-blazor-codebehind.sh` — hard op dubbele logica, ratchet op het totaal.*
 
+Alle twaalf pagina's die deze regel bij de nulmeting nog niet volgden, hebben sinds #1327 een
+code-behind; het plafond staat sinds die migratie op 0. Diezelfde migratie maakte ook zichtbaar
+wat #1322 al voorspelde: twaalf pagina's herhaalden woordelijk dezelfde clubwissel-lifecycle
+(abonneren op `ClubSelectorService.OnChange`, `InvokeAsync`, `StateHasChanged`, afmelden bij
+Dispose). Die is bij #1328 gecentraliseerd in `BlazorAdmin/Pages/ClubSelectorPageBase.cs` — een
+pagina die op een clubwissel moet reageren, erft daarvan over en overschrijft alleen
+`OnClubChangedAsync()`.
+
+### Regel 3b — CSS isolation, geen `<style>`-blok of statische inline style
+
+Presentatie in een Blazor-pagina hoort in `<Pagina>.razor.css` (CSS isolation), niet in een
+`<style>`-blok of een `style="..."`-attribuut in de markup. Een dynamische waarde (een berekende
+positie, een gekozen kleur) mag inline blijven, maar dan uitsluitend als CSS custom property
+(`style="--naam:@expressie;"`) — de daadwerkelijke CSS-eigenschap staat via `var(--naam)` in het
+stylesheet.
+
+Reden: dezelfde als regel 3, van de andere kant. Een `.razor.css`-bestand is met normale CSS-tools
+te doorzoeken en te hergebruiken; 91 losse `style="..."`-attributen (waarvan sommige de hele
+Gantt-tijdlijn van `Dagplanning.razor` positioneerden) zijn dat niet. Precedent:
+`Dagplanning.razor.css` bestond al vóór deze regel werd afgedwongen; #1329 breidde dat patroon uit
+naar alle pagina's.
+
+Een uitzondering staat in `scripts/ci/blazor-inline-style-allowlist.txt`, per pad+regelnummer en
+met reden — nooit een allowlist voor een hele pagina.
+
+*Guard: `scripts/ci/check-blazor-inline-styles.sh` — hard, geen ratchet: een nieuwe overtreding is
+altijd een fout, niet een meting die mag groeien.*
+
 ### Regel 4 — Platformafhankelijke valkuilen zijn verboden, tenzij gemotiveerd
 
 Vier patronen die in dit project aantoonbaar stille fouten hebben opgeleverd:
@@ -350,6 +378,7 @@ en voor altijd groen staan, precies het no-op-patroon uit §67 van
 | 1, 2 — tier-duplicatie stijgt niet | `scripts/ci/check-tier-duplicatie.sh` | `build.yml` |
 | 1, 2 — interne duplicatie stijgt niet (#1263) | `scripts/ci/check-interne-duplicatie.sh` | `build.yml` |
 | 3 — geen logica in Blazor-pagina's | `scripts/ci/check-blazor-codebehind.sh` | `build.yml` |
+| 3b — geen `<style>`-blok of statische inline style in Blazor-pagina's (#1329) | `scripts/ci/check-blazor-inline-styles.sh` | `build.yml` |
 | 4 — platformafhankelijke valkuilen | `scripts/ci/check-codekwaliteit-valkuilen.sh` | `build.yml` |
 | 5 — AGENTS.md afgeleid uit CLAUDE.md | `scripts/ci/genereer-agents-md.py` | `build.yml` |
 | 6 — elke regel heeft een guard | `scripts/ci/check-regelregister.sh` | `build.yml` |
@@ -427,6 +456,7 @@ een vangnet achteraf voor elk toekomstig pad waarlangs de schrijfactie wordt ove
 bash scripts/ci/check-tier-duplicatie.sh
 bash scripts/ci/check-interne-duplicatie.sh
 bash scripts/ci/check-blazor-codebehind.sh
+bash scripts/ci/check-blazor-inline-styles.sh
 bash scripts/ci/check-codekwaliteit-valkuilen.sh
 bash scripts/ci/check-bestandsgrootte.sh
 bash scripts/ci/check-regelregister.sh
