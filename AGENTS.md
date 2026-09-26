@@ -67,7 +67,12 @@ regel **niet** op.
    inventarisatie- of verificatiewerk opnieuw doen.
 5. **Issue-labels en opvolging.** Gebruik bestaande labels: altijd precies één `type:`-label en
    één `priority:`-label; voeg `discipline: architect` toe als een architectuurbesluit nodig is.
-   Laat de issue-statusautomatisering de status zetten. Maak geen branch of PR namens Claude Code.
+   Codex heeft zelf geen GitHub-schrijftoegang voor labels — **Claude Code zet `source: codex`**
+   op elk nieuw of bijgewerkt Codex-issue, op hetzelfde moment dat hij de overige labels toevoegt.
+   Zie "Herkomstlabel (`source:`)" en "Issue-lifecycle" verderop in dit document voor het volledige
+   labelmodel, inclusief `status: waiting-codex` — de ene handmatige status die Claude Code zelf
+   zet/verwijdert rond een Codex-consult. Laat de issue-statusautomatisering de status daarbuiten
+   zetten. Maak geen branch of PR namens Claude Code.
 6. **Rapporteer de overdracht.** Geef de issue-URL(s), bewijs en scope, alle reeds gedraaide checks,
    resterende verificatie en aannames. Meld expliciet dat Codex geen implementatie heeft gedaan.
 
@@ -174,29 +179,55 @@ main     ← productie (Azure deploy triggert bij elke push)
 2. Merge A naar develop
 3. Rebase B op develop: `git rebase develop`
 
-### Stap S0 — Branch valideren en zo nodig aanmaken (volledig autonoom)
+### Stap S0 — Geïsoleerde worktree aanmaken (volledig autonoom, verplicht vóór elke wijziging)
+
+> **Waarom dit geen `git checkout -b` in de gedeelde hoofd-map meer is (#1336-vervolg, vastgelegd
+> 2026-09-26):** meerdere Claude Code-sessies werken gelijktijdig tegen dezelfde repository-map.
+> Een `git checkout -b` daar wisselt de branch onder een andere, nog actieve sessie vandaan — die
+> sessie ziet dan zonder waarschuwing de bestanden van een vreemde branch in zijn working tree. Dit
+> gebeurde op 2026-09-26 drie keer binnen één sessie (`feature/#1315-...` → `feature/#1320-...` →
+> `feature/#1322-...`, telkens met echte, onafgemaakte wijzigingen van een andere sessie). Een
+> eigen worktree per branch maakt die botsing onmogelijk: git staat dezelfde branch nooit in twee
+> worktrees tegelijk toe.
+
+**Check:** staat de huidige working directory al onder `.claude/worktrees/` (dus niet de
+hoofd-checkout `Sportlink-wedstrijdzaken/` zelf)? Dan is Stap S0 al voldaan voor deze sessie —
+meteen doorgaan naar Stap 0 van de ontwikkelcyclus.
+
+Zo niet — voer dit uit vóór welke bestandswijziging, branch-aanmaak of commit dan ook:
 
 ```powershell
-$branch = git branch --show-current   # leeg = detached HEAD
-$safePrefix = 'feature/', 'hotfix/', 'chore/', 'docs/'
-
-# Al op een geïsoleerde branch? Meteen doorgaan.
-if ($safePrefix | Where-Object { $branch.StartsWith($_) }) { <# doorgaan #> }
-
-# Op 'main', 'develop' of detached HEAD → autonoom branch aanmaken:
-#
 # 1. Bepaal issue-nummer (volgorde, zonder te vragen):
 #    a. Uit conversatiecontext ("werk aan #42", "issue #42", etc.)
 #    b. gh issue list --state open --limit 20  →  kies meest relevante open issue
-#    c. Geen passend issue?  →  gh issue create --title "..." --body "..."
+#    c. Geen passend issue?  →  gh issue create --title "..." --body "..." --label "source: claude-code"
 #                                gebruik het nieuwe nummer
-#
-# 2. Bepaal branch-type:
-#    - Urgente productiefix (bug zichtbaar op live/main):
-#        git checkout -b hotfix/#<nr>-<slug> main
-#    - Alle andere gevallen (features, fixes, docs, chores):
-#        git checkout -b feature/#<nr>-<slug> develop
+
+# 2. Bepaal branch-naam en basis (zelfde tabel als hieronder):
+#    - Urgente productiefix (bug zichtbaar op live/main): hotfix/#<nr>-<slug>  vanuit origin/main
+#    - Alle andere gevallen (features, fixes, docs, chores): feature/#<nr>-<slug>  vanuit origin/develop
+
+# 3. Maak de worktree zelf aan met `git worktree add` — niet via EnterWorktree's `name`-parameter.
+#    Die basist standaard op origin/<default-branch> (hier: main) en genereert een
+#    `worktree-<naam>`-branchnaam die niet aan de conventie hierboven voldoet.
+git fetch origin develop main
+git worktree add -b feature/#<nr>-<slug> .claude/worktrees/<nr>-<slug> origin/develop
+# hotfix: git worktree add -b hotfix/#<nr>-<slug> .claude/worktrees/<nr>-<slug> origin/main
+
+# 4. Stap de sessie de worktree in — de enige toegestane vorm van EnterWorktree voor deze stap:
+#    EnterWorktree({ path: ".claude/worktrees/<nr>-<slug>" })
 ```
+
+**Al een bestaande branch zonder eigen worktree** (bijv. hervatte sessie in de hoofd-checkout)?
+Dan kan die branch niet nogmaals gecheckout worden in een tweede worktree — git staat een branch
+maar in één werkboom toe. Werk in dat geval de openstaande wijziging in de hoofd-checkout snel en
+alleen-eigen af (geen andere bestanden aanraken), commit en push, en gebruik Stap S0 hierboven
+voor de eerstvolgende taak.
+
+**Bij sessie-einde:** `ExitWorktree({ action: "keep" })` — een via `path` binnengekomen worktree
+verwijdert die tool zelf niet. De worktree blijft op schijf staan tot een bevestigde merge naar
+`develop`/`main`; verwijder hem dan pas handmatig (`git worktree remove .claude/worktrees/<nr>-<slug>`,
+zo nodig `--force` bij achtergebleven build-output — al toegestaan in `.claude/settings.json`).
 
 **Overzicht branch-types:**
 
@@ -254,13 +285,9 @@ Codex werkt autonoom: van GitHub issue tot groen CI, zonder tussenkomst van de g
 gh issue list --label "fase: N" --state open --limit 10  # haal prioriteit op
 gh issue view <nr>                                         # lees volledig + gelinkte issues
 
-# Branch aanmaken alleen als Stap S0 dit nog niet deed:
-$branch = git branch --show-current
-if ($branch -eq 'main' -or $branch -eq 'develop' -or [string]::IsNullOrEmpty($branch)) {
-    git checkout -b feature/#<nr>-<slug> develop   # ALTIJD vanuit develop, nooit vanuit main
-}
-# Urgente productiefix: git checkout -b hotfix/#<nr>-<slug> main
-# Zit je al op feature/#<nr>-... of hotfix/#<nr>-... → gewoon doorgaan
+# Branch + worktree zijn hier altijd al geregeld door Stap S0 hierboven — die stap is verplicht
+# vóórdat deze stap start. Er is dus geen aparte checkout-fallback meer: sta je niet al in een
+# eigen worktree onder .claude/worktrees/, ga eerst terug naar Stap S0.
 ```
 
 ### Stap 1 — Implementeer (altijd alle lagen synchroon)
@@ -450,7 +477,7 @@ gh pr create --draft --base develop --title "feat(#<nr>): ..." --body "..."
 
 ### Herkomstlabel (`source:`) — wie maakte dit issue aan
 
-> **Waarom een label en niet het native GitHub-auteursveld:** Codex en Codex werken beide
+> **Waarom een label en niet het native GitHub-auteursveld:** Codex en Claude Code werken beide
 > via `gh issue create`/`gh api` onder credentials die niet per se een uniek, herkenbaar GitHub-
 > account per assistent zijn. `issue.user.login` kan dus niet betrouwbaar onderscheiden wie het
 > issue inhoudelijk heeft opgesteld. Een expliciet label wel.
@@ -458,17 +485,17 @@ gh pr create --draft --base develop --title "feat(#<nr>): ..." --body "..."
 | Label | Betekenis |
 |---|---|
 | `source: codex` | Issue aangemaakt of inhoudelijk opgesteld door Codex — read-only reviewer/architect (elke taak, niet alleen CISO/DPO-bevindingen) |
-| `source: claude-code` | Issue aangemaakt door Codex zelf (bijv. Stap S0-fallback: geen passend open issue gevonden) |
+| `source: claude-code` | Issue aangemaakt door Claude Code zelf (bijv. Stap S0-fallback: geen passend open issue gevonden) |
 | `source: owner` | Issue rechtstreeks aangemaakt door de eigenaar |
 | `via: feedback-widget` | Issue binnengekomen via het feedback-widget-kanaal in de Admin GUI — dekt herkomst al; géén aparte `source:`-variant, dat zou dupliceren |
 
 **Invariant:** precies één van deze vier labels per issue. Codex is in deze repository uitsluitend
 read-only reviewer/architect — hij wijzigt nooit code, maakt geen branch/PR en heeft ook geen
 GitHub-schrijftoegang voor labels. Een Codex-issue komt dus altijd ongelabeld (qua herkomst)
-binnen. **Codex zet `source: codex` zelf**, op hetzelfde moment dat hij de
+binnen. **Claude Code zet `source: codex` zelf**, op hetzelfde moment dat hij de
 `type:`/`priority:`/`discipline:`-labels van een nieuwe Codex-batch toevoegt. Voor een issue dat de
-eigenaar zelf opent via de GitHub-UI zet Codex `source: owner` bij zodra hij het issue voor
-het eerst verwerkt. `source: claude-code` zet Codex zelf, direct bij het aanmaken
+eigenaar zelf opent via de GitHub-UI zet Claude Code `source: owner` bij zodra hij het issue voor
+het eerst verwerkt. `source: claude-code` zet Claude Code zelf, direct bij het aanmaken
 (`gh issue create --label "source: claude-code"`) — daar heeft hij, in tegenstelling tot Codex,
 wel volledige `gh`-schrijftoegang voor.
 
@@ -502,10 +529,10 @@ De volledige keten, volledig geautomatiseerd:
 > **`status: waiting-codex` — de enige status die niet in de tabel hierboven staat, want er is
 > geen GitHub-event dat hem kan triggeren.** Codex draait als een handmatig aangeroepen, read-only
 > reviewsweep — geen bot met een webhook — dus zowel het zetten als het verwijderen van dit label
-> is altijd een bewuste handeling van Codex (of de eigenaar), nooit automatisering:
-> - **Zetten:** Codex pauzeert de implementatie en zet `status: waiting-codex` wanneer hij
+> is altijd een bewuste handeling van Claude Code (of de eigenaar), nooit automatisering:
+> - **Zetten:** Claude Code pauzeert de implementatie en zet `status: waiting-codex` wanneer hij
 >   expliciet Codex' architectuur-/securityopinie nodig heeft vóórdat hij verdergaat.
-> - **Verwijderen:** zodra Codex' reactie (comment of bijgewerkt issue) verwerkt is, zet Codex
+> - **Verwijderen:** zodra Codex' reactie (comment of bijgewerkt issue) verwerkt is, zet Claude Code
 >   het issue terug naar de status die past bij de volgende stap (`in-progress` om verder te
 >   bouwen, `triage` als het issue eerst opnieuw ingeschat moet worden).
 > Staat sinds #1336 in `PROTECTED` — automatisering overschrijft dit label dus nooit stilzwijgend.
