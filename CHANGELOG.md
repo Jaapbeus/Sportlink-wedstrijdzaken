@@ -42,6 +42,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   `user` gaf al nergens API-toegang; nu bestaat de poort die dat per ongeluk had kunnen veranderen
   niet meer.
 
+### Removed
+- **Gegenereerde Bruno API-collectie niet langer in git (#1354).** De map `bruno/` werd na elke
+  wijziging aan de API-spec toch handmatig geregenereerd en raakte daardoor uit sync (o.a. een
+  verouderde autorisatie-omschrijving). Regenereer hem lokaal on-demand met de
+  `bruno-gen-collection`-skill tegen `docs/api-standaarden/openapi.yaml`; de generatorconfig
+  (`bruno-gen.json`) blijft staan. Geen effect voor de applicatie zelf.
+
 ### Added
 - **Sportlink-wedstrijdpaneel: veld nu voorafgevuld en te kiezen op onze eigen veldnaam (#1339).**
   In de Dagplanning liet het paneel "FieldId"/"FieldSize" altijd leeg staan, ook als de wedstrijd
