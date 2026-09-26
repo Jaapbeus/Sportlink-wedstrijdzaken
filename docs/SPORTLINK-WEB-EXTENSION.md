@@ -133,14 +133,33 @@ Sportlink-account, aangemaakt en gescoped in Sportlink's eigen
 3. Log in het geopende browservenster in met het zojuist aangemaakte serviceaccount. Het
    script schrijft het refresh_token lokaal weg — een echte, productie-persistente koppeling
    vereist stap 5 hieronder.
+
+   > **Veilig ophalen als er een coding agent in dezelfde sessie/werkdirectory actief is (#1318).**
+   > Open `FunctionApp.Postgres/local.settings.json` zelf, in een editor-tab of terminal waar geen
+   > agent-tool-aanroep aan te pas komt — vraag een agent nooit dit bestand te lezen, tonen,
+   > `cat`'en of erin te zoeken rond dit moment. Kopieer alleen de waarde van
+   > `SportlinkClubRefreshToken__<Rol>` met de hand. Waarom dit zo specifiek moet: als een agent dit
+   > bestand ooit eerder in dezelfde sessie heeft gelezen (voor iets totaal ongerelateerds, bijv. een
+   > `AllowExternalIntegrations`-check), toont de harness bij de eerstvolgende wijziging aan dit
+   > bestand — dus ook wanneer dit script het token wegschrijft — automatisch een diff mét de volle
+   > tokenwaarde in de agentsessie. Dat gebeurt zonder dat de agent er ooit om vraagt. Zie §4.4,
+   > incident 2026-09-26, voor de volledige analyse en wat te doen als dit toch gebeurt.
 4. Klik op het scherm Sportlink Web Extension op "Koppeling (opnieuw) registreren" en vul de accountnaam in ter
    herkenning — dit is geen live verificatie, puur een leesbaar label voor de statustabel.
 5. Vul in datzelfde dialoogvenster het veld "Refresh-token registreren" in met de waarde uit
-   stap 3 (#991). Dit valideert het token met één refresh-poging en slaat het rotarende
-   refresh_token productie-persistent op in `public.sportlinkservicetokens` — write-only, nooit
-   ergens teruggetoond.
-6. Herhaal deze koppeling alleen als Sportlink de onderliggende sessie ooit volledig intrekt
-   (zeldzaam) — niet routinematig.
+   stap 3 (#991) — plak die rechtstreeks vanuit je eigen editor/klembord, nooit via een
+   tussenstap waarbij een agent de waarde doorgeeft of herhaalt. Dit valideert het token met één
+   refresh-poging en slaat het rotarende refresh_token productie-persistent op in
+   `public.sportlinkservicetokens` — write-only, nooit ergens teruggetoond.
+6. **Postgres-tier: zet `SportlinkClubRefreshToken__<Rol>` in `local.settings.json` na een
+   geslaagde stap 5 terug naar `""`.** De Postgres-tier-runtime leest deze instelling nooit (geen
+   code-referentie in `FunctionApp.Postgres`) — hij diende alleen als eenmalig, lokaal transportpad
+   naar `public.sportlinkservicetokens`. Laat 'm daarna niet onnodig lang in platte tekst staan.
+   **SQL Server-tier: dit NIET doen** — daar is dezelfde instelling wél de actieve tokenopslag
+   (§4.1/§4.3, via de Function App-instelling), leegmaken breekt daar de koppeling.
+7. Herhaal deze koppeling alleen als Sportlink de onderliggende sessie ooit volledig intrekt
+   (zeldzaam) — niet routinematig, én altijd als een token per ongeluk in een agentsessie
+   terechtkwam (zie §4.4).
 
 ### 3.4 Entra-rol "Wedstrijdzaken"
 Naast de bestaande `admin`/`user`-rollen bestaat er een aanvullende approl `Wedstrijdzaken`
@@ -551,6 +570,32 @@ Elk token dat ooit in een agent-sessie zichtbaar wordt, geldt vanaf dat moment a
 - Verificatie van de refresh-cyclus, of van een nieuw endpoint dat een refresh_token nodig heeft,
   gebeurt dus altijd door een mens (met een van bovenstaande scripts) of door de daadwerkelijk
   gedeployde Function App-runtime zelf — nooit door een agent tijdens ontwikkeling.
+
+**Incident (2026-09-26): passieve leak via de harness' eigen file-diff-melding, geen agent-actie
+nodig.** Tijdens een lokale acceptatietest had de agent `FunctionApp.Postgres/local.settings.json`
+eerder in de sessie gelezen voor een ongerelateerde controle (`AllowExternalIntegrations`). Toen de
+mens daarna, volgens §3.3, `Tools/SportlinkTokenCapture` draaide en het verse refresh_token
+wegschreef, toonde de coding-agent-harness bij de eerstvolgende beurt automatisch een
+wijzigingsmelding met de **volledige tokenwaarde** — zonder dat de agent het bestand opnieuw las,
+opvroeg of er zelfs maar naar vroeg. Dit is fundamenteel anders dan de twee incidenten hierboven
+(die vereisten allebei een actieve stap: geplakt worden, of een `catch`-blok dat expliciet logt) —
+hier volstond alleen dat het bestand ooit, voor iets heel anders, door de agent was gelezen.
+
+**Praktisch gevolg:**
+- Zodra een coding agent een bestand met geheimen (`local.settings.json`, `.env`, of vergelijkbaar)
+  ook maar één keer in een sessie heeft gelezen, geldt elke latere wijziging aan dat bestand in
+  diezelfde sessie als een leak-risico — ongeacht wie of wat die wijziging veroorzaakte. Zie §3.3
+  stap 3 voor hoe dit in de praktijk te vermijden is (mens haalt de waarde zelf op, buiten elke
+  agent-tool-aanroep om).
+- Komt een token toch zo in een sessie terecht: exact dezelfde regel als bij elk ander incident op
+  deze pagina — vanaf dat moment geldt het als verbrand. Capture opnieuw (§3.3 stap 2), registreer
+  het nieuwe token, en doe dat bij voorkeur in een venster/sessie waar de agent dit bestand nog niet
+  heeft aangeraakt. Is dat niet haalbaar (de agent heeft het bestand al gelezen), dan blijft de
+  volgende wijziging alsnog zichtbaar worden — dat is een aanvaarde restrisico van deze harness-
+  functionaliteit, geen reden om de koppelstap over te slaan.
+- Dit generaliseert voorbij Sportlink: elk project met een "dit geheim mag een agent nooit zien"-grens
+  heeft dezelfde blinde vlek zolang het bestand ooit is gelezen — het risico zit in het
+  bestandsvolg-mechanisme van de harness, niet in een keuze van de agent zelf.
 
 **Verfijning (besloten met de eigenaar, 2026-09-06): browser-automatisering tegen de eigen,
 lokaal draaiende webapp is wél toegestaan, en is geen uitzondering op bovenstaande regel maar
