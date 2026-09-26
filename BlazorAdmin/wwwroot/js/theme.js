@@ -24,6 +24,12 @@
         // Geen opgeslagen voorkeur beschikbaar — 'light' blijft staan.
     }
     document.documentElement.setAttribute('data-theme', mode);
+    // Bootstrap 5.3's eigen kleurmodus-CSS (body-achtergrond/-tekst, cards, tabellen, modals,
+    // dropdowns, alerts — alles wat via var(--bs-*) gaat) reageert alleen op dit attribuut, niet
+    // op data-theme. Zonder deze regel blijft de hele Bootstrap-laag altijd licht: alleen de vier
+    // merkkleuren (--theme-primary e.a.) en de handvol eigen --theme-*-variabelen wisselden dan
+    // mee, de rest van de pagina (achtergrond, kaarten, tabellen) niet.
+    document.documentElement.setAttribute('data-bs-theme', mode);
 })();
 
 window.themeHelper = (function () {
@@ -67,6 +73,7 @@ window.themeHelper = (function () {
         setMode: function (mode) {
             if (mode !== 'light' && mode !== 'dark') return;
             document.documentElement.setAttribute('data-theme', mode);
+            document.documentElement.setAttribute('data-bs-theme', mode);
             try {
                 localStorage.setItem('theme-mode', mode);
             } catch (e) {

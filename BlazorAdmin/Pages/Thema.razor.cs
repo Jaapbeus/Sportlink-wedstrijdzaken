@@ -37,9 +37,30 @@ public partial class Thema : ClubSelectorPageBase
     private string? _extractedFaviconUrl;
     private string? _extractedLogoUrl;
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        // De topbalk-schakelaar (ThemeModeToggle) kan de modus ook wijzigen zonder deze pagina
+        // te gebruiken. Zonder dit abonnement blijft _modus dan op de oude waarde staan: de
+        // interface toont bijvoorbeeld donker, terwijl "Licht bewerken" nog actief lijkt en de
+        // kleurenpickers het lichte palet tonen — precies het paletformulier dat niet overeenkomt
+        // met wat de beheerder ziet.
+        ThemeService.OnModeChanged += OpGlobaleModusGewijzigd;
+        await LoadAsync();
+    }
 
     protected override Task OnClubChangedAsync() => LoadAsync();
+
+    private void OpGlobaleModusGewijzigd(string modus)
+    {
+        _modus = modus;
+        StateHasChanged();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) ThemeService.OnModeChanged -= OpGlobaleModusGewijzigd;
+        base.Dispose(disposing);
+    }
 
     private async Task LoadAsync()
     {
