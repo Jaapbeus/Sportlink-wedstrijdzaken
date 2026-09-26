@@ -51,7 +51,7 @@ public static class AdminTeambegeleidingFunction
     public static Task<IActionResult> GetTeams(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/teambegeleiding")] HttpRequest req,
         FunctionContext context) =>
-        AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminTeambegeleidingTeams"), "teams uit teambegeleiding ophalen",
+        AdminEndpoint.ExecuteAuthenticatedAsync(req, context.GetLogger("AdminTeambegeleidingTeams"), "teams uit teambegeleiding ophalen",
             async clubCode =>
             {
                 await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
@@ -73,7 +73,7 @@ public static class AdminTeambegeleidingFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/teambegeleiding/{team}")] HttpRequest req,
         string team,
         FunctionContext context) =>
-        AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminTeambegeleidingGet"), "begeleiders ophalen (team niet gelogd — AVG)",
+        AdminEndpoint.ExecuteAuthenticatedAsync(req, context.GetLogger("AdminTeambegeleidingGet"), "begeleiders ophalen (team niet gelogd — AVG)",
             async clubCode =>
             {
                 await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
@@ -117,7 +117,7 @@ public static class AdminTeambegeleidingFunction
         FunctionContext context)
     {
         var log = context.GetLogger("AdminTeambegeleidingDoorsturen");
-        return AdminEndpoint.ExecuteAsync(req, log, "teambegeleiding-vraag doorsturen (geen PII gelogd — AVG)",
+        return AdminEndpoint.ExecuteAuthenticatedAsync(req, log, "teambegeleiding-vraag doorsturen (geen PII gelogd — AVG)",
             async clubCode =>
             {
                 using var bodyReader = new StreamReader(req.Body);

@@ -874,6 +874,16 @@ Negen regels, alle negen met een exit-code:
    `user`, en poortpassage mét de vereiste rol — zonder database, via de testhaak
    `AdminEndpoint.PoortGepasseerdVoorTests`.
 
+   **Derde variant, sinds #1330: `AdminEndpoint.ExecuteAuthenticatedAsync`** — zelfde poort, maar
+   accepteert elke ingelogde rol (`admin` + `user`) in plaats van uitsluitend `admin`. Uitsluitend
+   voor endpoints die een eigenaar expliciet heeft aangewezen als "voor alle gebruikers, niet
+   beheerder-only" (vandaag: de drie Teambegeleiding-lookup/doorstuur-endpoints — de CSV-import
+   blijft bewust admin-only). Nieuwe naam is bewust, geen parameter op `ExecuteAsync` (dezelfde
+   #1272-reden als bij de andere twee varianten); `scripts/ci/check-endpoint-autorisatie.sh`
+   herkent hem expliciet als wrapper, en `EndpointAutorisatieTests.MetAlleenUserRol_Geeft403` (per
+   tier) bewijst via de `AuthenticatedRoutes`-lijst zowel dat de drie aangewezen endpoints de rol
+   `user` doorlaten, als dat elk ander endpoint hem nog steeds weigert.
+
 Lokaal draaien: zie §7 van het architectuurdocument. De guards zijn zelf getest
 (`scripts/ci/check-codekwaliteit.test.sh`) — een groene guard bewijst niets zolang niet vaststaat
 dat hij ook rood kan worden.

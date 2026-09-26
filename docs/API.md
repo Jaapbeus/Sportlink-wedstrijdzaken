@@ -93,9 +93,9 @@ verwerking plaats.
 | `POST` | `/planner/auto-plan/toepassen` | **Admin** | Berekende planning wegschrijven (alleen testmodus ALLSTARS) |
 | `GET` | `/planner/veldbezetting?datum=` | **Admin** | Wedstrijden op een datum, zonder optimalisatie-berekening |
 | `GET` | `/planner/team-schedule` | **Admin** | Wedstrijdschema per team — gescoped op `X-Club-Code` header |
-| `GET` | `/beheer/teambegeleiding` | **Admin** | Alle teams met begeleiding in database |
-| `GET` | `/beheer/teambegeleiding/{team}` | **Admin** | Begeleiders van team (naam + rol, nooit e-mail) |
-| `POST` | `/beheer/teambegeleiding/doorsturen` | **Admin** | Vraag doorsturen (BCC coördinator). `ontvangers` bepaalt de ontvangers (max 15, gevalideerd, uitsluitingslijst gecontroleerd); leeg → server-side coach-lookup (#765) |
+| `GET` | `/beheer/teambegeleiding` | **Admin + user** | Alle teams met begeleiding in database (#1330: elke ingelogde rol) |
+| `GET` | `/beheer/teambegeleiding/{team}` | **Admin + user** | Begeleiders van team (naam + rol, nooit e-mail) (#1330: elke ingelogde rol) |
+| `POST` | `/beheer/teambegeleiding/doorsturen` | **Admin + user** | Vraag doorsturen (BCC coördinator). `ontvangers` bepaalt de ontvangers (max 15, gevalideerd, uitsluitingslijst gecontroleerd); leeg → server-side coach-lookup (#765) (#1330: elke ingelogde rol) |
 | `POST` | `/beheer/teambegeleiding/import` | **Admin** | CSV-import van begeleiders — vervangt de rijen van de club atomisch (DELETE + inserts + audit-rij in één transactie, rollback bij elke fout; #1131/#1132). Kolomlengtes worden vóór elke destructieve stap gevalideerd; een te lange waarde geeft `400` met `{ error, fouten: [...] }` (rij/kolom-omschrijving per overtreding) en laat de vorige import ongemoeid. Postgres-tier serialiseert vervangingen per club (`pg_advisory_xact_lock`) zodat twee gelijktijdige imports elkaar nooit tot een vereniging van beide batches kunnen combineren. CSV wordt in-memory verwerkt en nooit opgeslagen; `avg.ImportLog` bevat alleen metadata — geen PII |
 | `GET/POST` | `/beheer/speeltijden` | **Admin** | Speeltijden per leeftijdscategorie: lijst ophalen / toevoegen |
 | `PUT/DELETE` | `/beheer/speeltijden/{leeftijd}` | **Admin** | Speeltijd van één leeftijdscategorie wijzigen / verwijderen |
