@@ -33,6 +33,11 @@ Bij spanning tussen rollen (bijv. snelheid vs. security): altijd melden.
 
 > **Codex is in deze repository uitsluitend reviewer en software-/solution-architect. Claude Code
 > is de enige implementer. Deze scheiding is verplicht en mag niet worden omzeild.**
+>
+> Eén scoped uitzondering: het "Codex-turn-workflow" verderop in deze sectie geeft Codex, uitsluitend
+> ná een expliciete `turn: codex`-aanvraag, schrijftoegang tot precies twee dingen — een
+> PR-reviewcomment op de gekoppelde PR, en de `turn:`-labelovergang op het triggerende issue. Niets
+> anders aan deze scheiding verandert daardoor.
 
 Wanneer Codex een codebase-taak krijgt — ook als de gebruiker zegt "fix", "bouw", "refactor" of
 "maak" — onderzoekt Codex de repository read-only, onderbouwt het advies met controleerbare feiten
@@ -67,14 +72,88 @@ regel **niet** op.
    inventarisatie- of verificatiewerk opnieuw doen.
 5. **Issue-labels en opvolging.** Gebruik bestaande labels: altijd precies één `type:`-label en
    één `priority:`-label; voeg `discipline: architect` toe als een architectuurbesluit nodig is.
-   Codex heeft zelf geen GitHub-schrijftoegang voor labels — **Claude Code zet `source: codex`**
-   op elk nieuw of bijgewerkt Codex-issue, op hetzelfde moment dat hij de overige labels toevoegt.
-   Zie "Herkomstlabel (`source:`)" en "Issue-lifecycle" verderop in dit document voor het volledige
-   labelmodel, inclusief `status: waiting-codex` — de ene handmatige status die Claude Code zelf
-   zet/verwijdert rond een Codex-consult. Laat de issue-statusautomatisering de status daarbuiten
-   zetten. Maak geen branch of PR namens Claude Code.
+   Codex heeft geen schrijftoegang voor `type:`/`priority:`/`discipline:`/`source:`-labels —
+   **Claude Code zet `source: codex`** op elk nieuw of bijgewerkt Codex-issue, op hetzelfde moment
+   dat hij de overige labels toevoegt. Zie "Herkomstlabel (`source:`)" en "Issue-lifecycle"
+   verderop in dit document voor het volledige labelmodel. De enige twee schrijfacties die Codex
+   wél mag uitvoeren staan in het "Codex-turn-workflow" hieronder (`turn:`-labelovergang +
+   PR-reviewcomment) en uitsluitend ná een expliciete `turn: codex`-aanvraag. Laat de
+   issue-statusautomatisering de `status:`-labels daarbuiten zetten. Maak geen branch of PR namens
+   Claude Code.
 6. **Rapporteer de overdracht.** Geef de issue-URL(s), bewijs en scope, alle reeds gedraaide checks,
    resterende verificatie en aannames. Meld expliciet dat Codex geen implementatie heeft gedaan.
+
+### Codex-turn-workflow — begrensde, op-aanvraag geautomatiseerde PR-review (#1343, 2026-09-26)
+
+> **Door de eigenaar bevestigde bevoegdheid en grens (leidend).** Na een expliciete `turn: codex`-
+> trigger mag een Codex-automatisering de gekoppelde PR-diff read-only reviewen, bevindingen als
+> PR-reviewcommentaar plaatsen, en de `turn:`-labelovergang op het triggerende issue uitvoeren.
+> Niets anders. Geen label = geen GitHub-actie van Codex. Dit is de enige scoped uitzondering op
+> "Codex heeft geen GitHub-schrijftoegang" elders in dit document.
+
+Dit is een apart, complementair mechanisme naast de "Codex-review-naar-issue"-workflow hierboven:
+die gaat over Codex die zelf een issue vóór Claude Code schrijft; dit gaat over Codex die een al
+open PR van Claude Code reviewt, op expliciete aanvraag.
+
+**`turn:`-labels — wie is aan zet, los van `status:` en `source:`:**
+
+| Label | Betekenis |
+|---|---|
+| `turn: claude-code` | Claude Code is aan zet: implementeren, Codex-bevindingen verwerken, of een volgende `turn: codex`-aanvraag doen |
+| `turn: codex` | Expliciete, eenmalige aanvraag: Codex mag de gekoppelde PR read-only reviewen |
+| `turn: owner` | De eigenaar moet beslissen (rondelimiet bereikt, fout, of merge-/vervolgbesluit) |
+
+`turn:` is orthogonaal aan `status:` (de bestaande GitHub-lifecycle) en aan `source:` (wie het
+issue opstelde) — geen van de drie labelmodellen overschrijft een ander.
+`label-issue-status.yml`/`label-awaiting-release.yml`/`close-released-issues.yml` matchen
+uitsluitend op het `status: `-prefix (zie `STATUS_PREFIX` in
+[.github/scripts/issue-status.js](.github/scripts/issue-status.js)) en raken `turn:`-labels dus
+nooit aan.
+
+**`status: waiting-codex` is hiermee gedeprecieerd — gebruik voor nieuw werk uitsluitend
+`turn: codex`/`turn: owner`.** Twee synoniemen voor "wacht op Codex" naast elkaar was precies wat
+#1343 wilde voorkomen. Het label en zijn `PROTECTED`-vermelding in `issue-status.js` blijven
+vooralsnog ongewijzigd staan — geen open issue gebruikt het op het moment van deze wijziging — zodat
+een eventuele vergeten historische verwijzing nooit stilzwijgend wordt overschreven. Een latere,
+losse opruimronde mag het label en de `PROTECTED`-vermelding verwijderen zodra bevestigd is dat
+niets er meer naar verwijst.
+
+**De lus:**
+
+1. **Claude Code vraagt aan.** Op de voorgeschreven worktree/branch (Stap S0), draft-PR gemaakt.
+   Wanneer een Codex-review echt gewenst is: zet `turn: codex` op het getriggerde issue (met de
+   gekoppelde PR erbij genoemd) — één labelwissel, `--remove-label`/`--add-label` in dezelfde
+   aanroep.
+2. **Codex reviewt, eenmaal per head-SHA.** Alleen een nog niet eerder beoordeelde head-SHA van de
+   gekoppelde PR triggert een run. Codex plaatst bevindingen als PR-reviewcommentaar (prioriteit,
+   locatie, reden — en dezelfde publicatieregels als veiligheidsregel 4a hieronder: geen
+   clubnamen, secrets, resourcenamen of persoonsgegevens in dat commentaar) en zet daarna altijd
+   `turn: claude-code` terug, ook zonder bevindingen. Bij twijfel, ontbrekende of meerdere
+   gekoppelde PR's, ontbrekende toegang of onveilige inhoud: geen label wijzigen, geen nieuw issue
+   aanmaken, geen ander issue/PR aanraken — pauzeren en de eigenaar in die taak om richting vragen.
+3. **Claude Code verwerkt en sluit de lus.** Elke bevinding krijgt "opgelost (commit/verwijzing)"
+   of "niet overgenomen (reden)". Geen nieuwe Codex-ronde start vanzelf: een volgende
+   `turn: codex` vereist een nieuwe head-SHA én een nieuwe, bewuste aanvraag. **Maximaal twee
+   Codex-rondes per PR zonder eigenaarsbesluit** — daarna `turn: owner` en pauze. Na verwerking
+   zet Claude Code de beurt op `turn: owner` voor het merge-besluit; geen enkele agent merget of
+   deployt zonder aparte eigenaarsautorisatie.
+
+**Anti-loop-invarianten:**
+- Hoogstens één `turn:`-label tegelijk; wijzig altijd met remove+add in dezelfde operatie.
+- Codex zet nooit zelf opnieuw `turn: codex` — zijn enige normale overgang is naar
+  `turn: claude-code`.
+- Een teruggegeven `turn: claude-code` start geen Codex-run; alleen een nieuwe, expliciete
+  `turn: codex`-aanvraag doet dat.
+- Gesloten/gemergede PR's, PR's zonder koppeling, en issues zonder reproduceerbare
+  implementatiescope worden overgeslagen of naar `turn: owner` gerouteerd — nooit gegokt.
+- Elke Codex-run rapporteert traceerbaar: beoordeelde head-SHA, uitkomst, eerstvolgende beurt.
+
+**Nog niet aangetoond, geen aanname:** of de Codex-app op deze host betrouwbaar geplande/pollende
+runs tegen deze repo kan draaien, en of die runs met de bestaande hostauth het toegestane
+PR-reviewcomment en de `turn:`-labelwissel daadwerkelijk kunnen schrijven, is een eigenschap van de
+Codex-app zelf die Claude Code niet kan verifiëren of configureren — dat bewijst zich pas in een
+proefrun (fase 2/3 van #1343), niet door deze tekst. Zie de twee bewust onbewaakte invarianten
+(exclusiviteit van het label, rondelimiet) in `docs/ARCHITECTUUR-CODEKWALITEIT.md` §6.
 
 ### Uitzondering voor werkinstructies
 
@@ -491,8 +570,9 @@ gh pr create --draft --base develop --title "feat(#<nr>): ..." --body "..."
 
 **Invariant:** precies één van deze vier labels per issue. Codex is in deze repository uitsluitend
 read-only reviewer/architect — hij wijzigt nooit code, maakt geen branch/PR en heeft ook geen
-GitHub-schrijftoegang voor labels. Een Codex-issue komt dus altijd ongelabeld (qua herkomst)
-binnen. **Claude Code zet `source: codex` zelf**, op hetzelfde moment dat hij de
+GitHub-schrijftoegang voor deze herkomstlabels (wél voor `turn:`-labels, en uitsluitend ná een
+expliciete aanvraag — zie "Codex-turn-workflow" hierboven). Een Codex-issue komt dus altijd
+ongelabeld (qua herkomst) binnen. **Claude Code zet `source: codex` zelf**, op hetzelfde moment dat hij de
 `type:`/`priority:`/`discipline:`-labels van een nieuwe Codex-batch toevoegt. Voor een issue dat de
 eigenaar zelf opent via de GitHub-UI zet Claude Code `source: owner` bij zodra hij het issue voor
 het eerst verwerkt. `source: claude-code` zet Claude Code zelf, direct bij het aanmaken
@@ -526,19 +606,14 @@ De volledige keten, volledig geautomatiseerd:
 > waar niets te reviewen viel, omdat het label puur op PR-draft-status wordt gezet — niet op
 > of er daadwerkelijk een beslissing nodig is.
 
-> **`status: waiting-codex` — de enige status die niet in de tabel hierboven staat, want er is
-> geen GitHub-event dat hem kan triggeren.** Codex draait als een handmatig aangeroepen, read-only
-> reviewsweep — geen bot met een webhook — dus zowel het zetten als het verwijderen van dit label
-> is altijd een bewuste handeling van Claude Code (of de eigenaar), nooit automatisering:
-> - **Zetten:** Claude Code pauzeert de implementatie en zet `status: waiting-codex` wanneer hij
->   expliciet Codex' architectuur-/securityopinie nodig heeft vóórdat hij verdergaat.
-> - **Verwijderen:** zodra Codex' reactie (comment of bijgewerkt issue) verwerkt is, zet Claude Code
->   het issue terug naar de status die past bij de volgende stap (`in-progress` om verder te
->   bouwen, `triage` als het issue eerst opnieuw ingeschat moet worden).
-> Staat sinds #1336 in `PROTECTED` — automatisering overschrijft dit label dus nooit stilzwijgend.
-> **Bekende beperking:** er is geen guard die een verweesde `waiting-codex` na N dagen signaleert
-> (vergelijkbaar met wat `supabase-advisors.yml` voor advisorbevindingen doet). Dit is bewust
-> onbewaakt gelaten conform codekwaliteitsregel 6 — zie `docs/ARCHITECTUUR-CODEKWALITEIT.md`.
+> **`status: waiting-codex` is gedeprecieerd sinds #1343 (2026-09-26) — gebruik voor nieuw werk
+> `turn: codex`/`turn: owner` uit "Codex-turn-workflow" hierboven.** Dit label betekende hetzelfde
+> ("Claude Code wacht op een Codex-opinie") als wat het `turn:`-model nu expliciet en getriggerd
+> regelt; twee labels voor dezelfde beurt zou precies de dubbelzinnigheid zijn die #1343 wilde
+> wegnemen. Het label en zijn `PROTECTED`-vermelding blijven vooralsnog staan — geen open issue
+> gebruikte het op het moment van deprecatie — zodat een vergeten historische verwijzing nooit
+> stilzwijgend wordt overschreven; een latere opruimronde mag beide verwijderen zodra dat
+> bevestigd risicoloos is.
 
 **Invarianten:**
 
@@ -547,9 +622,9 @@ De volledige keten, volledig geautomatiseerd:
    die de oude status verwijdert. Voeg nooit met de hand een `status:`-label toe met
    `gh issue edit --add-label` zonder de bestaande te verwijderen.
 2. **Handmatige statussen worden niet overschreven.** `status: blocked`, `status: wont-fix`,
-   `status: waiting-owner` en `status: waiting-codex` staan in `PROTECTED`: automatisering laat
-   ze staan. Enige uitzondering: een merge naar `develop` zet altijd `awaiting-release`, want dat
-   is een feit.
+   `status: waiting-owner` en het gedeprecieerde `status: waiting-codex` staan in `PROTECTED`:
+   automatisering laat ze staan. Enige uitzondering: een merge naar `develop` zet altijd
+   `awaiting-release`, want dat is een feit.
 3. **Alleen "strong" referenties veranderen de staat van een issue.** Een nummer in de
    PR-titel (`fix(#NNN): ...`) of achter een sluitend keyword in de body (`Closes #N`).
    Een kale kruisverwijzing in proza (`zie #123`) mag nooit de status van dat andere issue
@@ -557,12 +632,12 @@ De volledige keten, volledig geautomatiseerd:
 4. **De helper is getest.** `node .github/scripts/issue-status.test.js` draait bij elke PR in
    de CI-job `Build FunctionApp + BlazorAdmin`. De workflows zelf draaien alleen op hun eigen
    trigger, dus zonder die tests zou een fout pas bij een echte merge of release blijken.
-5. **Twee gedocumenteerde handmatige uitzonderingen — en geen andere.** Na een groene
+5. **Eén gedocumenteerde handmatige uitzondering — en geen andere.** Na een groene
    verificatielus zonder escalatie overschrijft Codex `status: review-needed` bewust met
-   `status: pr-aangemaakt` (zie Stap 5 hieronder). En Codex zet/verwijdert `status: waiting-codex`
-   rond een Codex-consult (zie hierboven). Dit zijn de enige plekken waar Codex zelf een
-   status-label zet — en altijd via `--remove-label` + `--add-label` in dezelfde aanroep,
-   conform invariant 1.
+   `status: pr-aangemaakt` (zie Stap 5 hieronder). Dit is de enige plek waar Codex zelf een
+   `status:`-label zet — altijd via `--remove-label` + `--add-label` in dezelfde aanroep, conform
+   invariant 1. (`status: waiting-codex` was tot #1343 een tweede uitzondering; die beurtlogica
+   loopt nu via de `turn:`-labels uit "Codex-turn-workflow", niet meer via een `status:`-label.)
 
 **Bij het aanmaken van een issue:** je hoeft zelf géén `status:`-label mee te geven —
 `label-issue-status.yml` zet `status: triage`. Geef wel altijd een `type:`-, `priority:`- en
@@ -679,7 +754,7 @@ Deze regels gelden altijd, zonder uitzondering:
 
 4a. **GitHub issues, PR-bodies, PR-comments en review-comments zijn even publiek als de code zelf — dezelfde regels gelden altijd.**
 
-   > **Dit is een harde stop — niet onderhandelbaar.** Een publieke repo maakt alles wat erin staat permanent zichtbaar: code, issues, comments, PR-beschrijvingen, en de git-history.
+   > **Dit is een harde stop — niet onderhandelbaar.** Een publieke repo maakt alles wat erin staat permanent zichtbaar: code, issues, comments, PR-beschrijvingen, en de git-history. Dit geldt onverkort voor Codex' PR-reviewcommentaar uit het "Codex-turn-workflow" (na een `turn: codex`-aanvraag) — die schrijfactie is een uitzondering op Codex' gebrek aan GitHub-schrijftoegang, niet op deze publicatieregel.
 
    **Verboden in ELKE GitHub-communicatie (issues, PR titles/bodies, comments):**
    - Echte Azure resource namen (Function App, SWA, Storage, App Insights) → gebruik `func-[clubcode]-sportlink`, `swa-[clubcode]-sportlink`, etc.
