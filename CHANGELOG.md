@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.6.0.0] — 2026-09-26
+
 ### Security
 - **Handmatige Sportlink-synchronisatie vereist nu een ingelogde beheerder in plaats van de Azure
   master key (#1350).** `GET /api/postgres/sync-matches` (en `GET /api/sync-matches` op de SQL
