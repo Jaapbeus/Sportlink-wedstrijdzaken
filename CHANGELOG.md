@@ -27,6 +27,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   verandert er niets aan de werking van de applicatie.
 
 ### Added
+- **Dagplanning: hover-highlight en sticky tijdlijn bij de veldbezetting (#1315).** Beweeg de muis
+  over een wedstrijd in de tabel of in de tijdlijn van de kaart "Veldbezetting op [datum]" — de
+  bijbehorende wedstrijd licht in beide oranje op, zodat direct zichtbaar is waar die wedstrijd
+  zich op het veld bevindt. De tijdlijn blijft bovendien in beeld terwijl u door de tabel eronder
+  scrolt, zodat het overzicht van de veldbezetting niet meer uit beeld verdwijnt bij een drukke
+  speeldag.
 - **Centrale architectuurbeschrijving (#1274).** `docs/ARCHITECTUUR.md` is het nieuwe leidende
   architectuurdocument: één plek met de kwaliteitsdoelen, de belanghebbenden en hun zorgen, de
   architectuurbesluiten en een toetsregister. Het is opgezet volgens ISO/IEC/IEEE 42010 en

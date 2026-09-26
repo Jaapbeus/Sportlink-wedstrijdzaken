@@ -1,0 +1,32 @@
+/* Veldbezetting-tijdlijn blijft zichtbaar terwijl de wedstrijdentabel eronder scrollt (#1315).
+   top komt overeen met de hoogte van .top-row in MainLayout.razor.css (3.5rem), zodat de
+   tijdlijn niet onder de sticky topbalk schuift. Uitgeschakeld onder 641px: daar is .top-row
+   zelf ook niet sticky (zie de media-query in MainLayout.razor.css). */
+.veldbezetting-sticky {
+    position: sticky;
+    top: 3.5rem;
+    z-index: 2;
+    background: var(--theme-card-bg, #fff);
+    padding-top: 0.35rem;
+}
+
+@media (max-width: 640.98px) {
+    .veldbezetting-sticky {
+        position: static;
+    }
+}
+
+/* Hover-correlatie tussen tijdlijnblok en tabelregel (#1315): hoveren over een wedstrijd in de
+   tabel of de tijdlijn licht hetzelfde wedstrijdblok/-rij oranje op. */
+.gantt-blok-hover {
+    outline: 3px solid #fd7e14 !important;
+    outline-offset: -1px;
+    box-shadow: 0 2px 8px rgba(253, 126, 20, 0.6) !important;
+    z-index: 3 !important;
+}
+
+/* Bootstrap's table-hover kleurt de <td>'s zelf (niet de <tr>) via .table-hover > tbody > tr:hover > *,
+   en die achtergrond ligt bovenop een kleur op de <tr>. Daarom hier op de cel zelf targeten. */
+.veldbezetting-rij-hover > td {
+    background-color: rgba(253, 126, 20, 0.35) !important;
+}

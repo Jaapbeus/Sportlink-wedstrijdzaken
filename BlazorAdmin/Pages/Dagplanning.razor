@@ -60,7 +60,7 @@
                 if (_veMin <= _vsMin) _veMin = _vsMin + 60;
                 int _vTotMin = _veMin - _vsMin;
 
-                <div style="overflow-x:auto; min-width:0;" class="mb-3">
+                <div class="veldbezetting-sticky mb-3" style="overflow-x:auto; min-width:0;">
                     @* Tijdas-header *@
                     <div style="display:flex; margin-bottom:4px;">
                         <div style="width:120px; flex-shrink:0;"></div>
@@ -101,7 +101,11 @@
                                     string _top = GanttPct((int)_topVal, 100);
                                     string _hgt = GanttPct((int)_hgtVal, 100);
                                     string _tooltip = GanttTooltip(gi);
+                                    bool _gehover = gi.WedstrijdCode != null && gi.WedstrijdCode == _veldbezettingHoverCode;
                                     <div title="@_tooltip"
+                                         class="@(_gehover ? "gantt-blok-hover" : "")"
+                                         @onmouseover="() => _veldbezettingHoverCode = gi.WedstrijdCode"
+                                         @onmouseout="() => _veldbezettingHoverCode = null"
                                          style="position:absolute;
                                                 left:calc(@(_lft)% + 2px); width:calc(@(_wdt)% - 4px);
                                                 top:calc(@(_top)% + 2px); height:calc(@(_hgt)% - 4px);
@@ -145,7 +149,9 @@
                     <tbody>
                         @foreach (var item in _veldbezetting)
                         {
-                            <tr>
+                            <tr class="@(item.WedstrijdCode != null && item.WedstrijdCode == _veldbezettingHoverCode ? "veldbezetting-rij-hover" : "")"
+                                @onmouseover="() => _veldbezettingHoverCode = item.WedstrijdCode"
+                                @onmouseout="() => _veldbezettingHoverCode = null">
                                 <td>@(item.AanvangsTijd ?? "—")</td>
                                 <td>@item.TeamNaam</td>
                                 <td>@(item.Uitteam ?? "—")</td>

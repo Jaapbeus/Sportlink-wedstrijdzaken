@@ -29,6 +29,10 @@ public partial class Dagplanning : IDisposable
     private bool _veldbezettingBezig;
     private string? _veldbezettingError;
 
+    // Hover-correlatie tussen tijdlijnblok en tabelregel (#1315): dezelfde WedstrijdCode licht in
+    // beide op, zodat een wedstrijd uit de lijst visueel terug te vinden is in de tijdlijn erboven.
+    private long? _veldbezettingHoverCode;
+
     // Sportlink-kolom (#989/#991): alleen uitklap-status en deep-link blijven hier; het paneel zelf
     // is het component SportlinkMatchPanel (#1122) met één instantie per uitgeklapte rij.
     private bool _sportlinkExtensionEnabled;
@@ -300,7 +304,8 @@ public partial class Dagplanning : IDisposable
     // bewerken — alleen de berekende planning mag met de hand worden aangepast.
     private record GanttItem(string VeldNaam, string? SubPos, TimeOnly Aanvang, TimeOnly Einde,
         decimal Fractie, string Label, string Status, int DuurMinuten,
-        string? VoorkeurTijd, int? VoorkeurAfwijking, AutoPlanWedstrijdItemDto? Bron = null);
+        string? VoorkeurTijd, int? VoorkeurAfwijking, AutoPlanWedstrijdItemDto? Bron = null,
+        long? WedstrijdCode = null);
 
     private List<GanttItem> BouwGanttItems(bool isOptimaal)
     {
@@ -315,7 +320,7 @@ public partial class Dagplanning : IDisposable
                 var sub = GanttExtractSubPos(w.OptimaalVeld);
                 items.Add(new GanttItem(w.OptimaalVeldNaam, sub, t, t.AddMinutes(w.DuurMinuten),
                     w.Veldafmeting, GanttMatchLabel(w.Wedstrijd, w.TeamNaam), w.Status, w.DuurMinuten,
-                    w.VoorkeurTijd, w.VoorkeurAfwijkingMinuten, w));
+                    w.VoorkeurTijd, w.VoorkeurAfwijkingMinuten, w, w.WedstrijdCode));
             }
             else
             {
@@ -324,7 +329,7 @@ public partial class Dagplanning : IDisposable
                 var (veldBase, sub) = GanttSplitVeld(w.HuidigeVeld!);
                 items.Add(new GanttItem(veldBase, sub, t, t.AddMinutes(w.DuurMinuten),
                     w.Veldafmeting, GanttMatchLabel(w.Wedstrijd, w.TeamNaam), "ongewijzigd", w.DuurMinuten,
-                    null, null));
+                    null, null, WedstrijdCode: w.WedstrijdCode));
             }
         }
         return items;
@@ -572,7 +577,7 @@ public partial class Dagplanning : IDisposable
             var (veldBase, sub) = GanttSplitVeld(w.Veld);
             items.Add(new GanttItem(veldBase, sub, t, t.AddMinutes(w.DuurMinuten),
                 w.Veldafmeting, GanttMatchLabel(w.Wedstrijd, w.TeamNaam), "ongewijzigd", w.DuurMinuten,
-                null, null));
+                null, null, WedstrijdCode: w.WedstrijdCode));
         }
         return items;
     }
