@@ -49,6 +49,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   `bruno-gen-collection`-skill tegen `docs/api-standaarden/openapi.yaml`; de generatorconfig
   (`bruno-gen.json`) blijft staan. Geen effect voor de applicatie zelf.
 
+### Changed
+- **URL van "Oefenwedstrijd aanmaken" ingekort naar `/wedstrijd-aanmaken` (#1358).** Zichtbare
+  naam, menu-label ("Wedstrijden") en functionaliteit blijven ongewijzigd — alleen het adres in de
+  browser is korter.
+
 ### Added
 - **Sportlink-wedstrijdpaneel: veld nu voorafgevuld en te kiezen op onze eigen veldnaam (#1339).**
   In de Dagplanning liet het paneel "FieldId"/"FieldSize" altijd leeg staan, ook als de wedstrijd
