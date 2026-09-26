@@ -30,7 +30,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.5.3.1
+  version: 3.5.5.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -832,41 +832,111 @@ components:
     SportlinkMatchInfoResponse:
       type: object
       description: |
-        Read-only wedstrijdgegevens uit Sportlink Club (#991, epic #986). Spiegelt
-        Planner.Shared.Integrations.SportlinkClub.SportlinkMatch (gedeelde DTO, #991/#998).
+        Read-only wedstrijdgegevens uit Sportlink Club (#991, epic #986). Spiegelt grotendeels
+        Planner.Shared.Integrations.SportlinkClub.SportlinkMatch (gedeelde DTO, #991/#998), plus
+        sinds #1339 fieldId/fieldSize (huidig veld, prefill) en de server-berekende
+        veldOpties/subpositieOpties (géén Sportlink-veld, zie SportlinkMatchFunction.BouwPaneelResponse
+        in beide tiers). Veldnamen zijn camelCase — de expliciete System.Text.Json
+        [JsonPropertyName]-attributen op SportlinkMatch, niet de PascalCase C#-eigenschapsnamen,
+        bepalen de werkelijke JSON op de draad (gecorrigeerd bij #1339; deze schema-sectie
+        documenteerde eerder abusievelijk PascalCase).
       properties:
-        PublicMatchId:
+        publicMatchId:
           type: string
           nullable: true
-        ExternalMatchId:
+        externalMatchId:
           type: string
           nullable: true
-        MatchDate:
+        matchDate:
           type: string
           format: date-time
           nullable: true
-        MatchStatus:
+        matchStatus:
           type: string
           nullable: true
-        IsHomeMatch:
+        isHomeMatch:
           type: boolean
-        IsCanceledMatch:
+        isCanceledMatch:
           type: boolean
-        IsConceptMatch:
+        isConceptMatch:
           type: boolean
-        TaskStatus:
+        taskStatus:
           type: string
           nullable: true
-        IsEditFieldAllowed:
+        isEditFieldAllowed:
           type: boolean
-        IsAssignDressingRoomsAllowed:
+        isAssignDressingRoomsAllowed:
           type: boolean
-        IsAssignOfficialsAllowed:
+        isAssignOfficialsAllowed:
           type: boolean
-        IsEditFieldSidePanelAllowed:
+        isEditFieldSidePanelAllowed:
           type: boolean
-        IsAddScoreAllowed:
+        isAddScoreAllowed:
           type: boolean
+        matchField:
+          type: object
+          nullable: true
+          description: Accommodatiecode van de wedstrijd — geen persoonsgegeven.
+          properties:
+            facilityId:
+              type: string
+              nullable: true
+            subFacilityId:
+              type: string
+              nullable: true
+            name:
+              type: string
+              nullable: true
+        field:
+          type: object
+          nullable: true
+          description: Huidig veld(deel) van de wedstrijd, rauw zoals Sportlink het teruggeeft.
+          properties:
+            fieldId:
+              type: string
+              nullable: true
+            fieldSize:
+              type: string
+              nullable: true
+            fieldOffset:
+              type: integer
+              nullable: true
+        fieldId:
+          type: string
+          nullable: true
+          description: "#1339: gelijk aan field.fieldId, plat op rootniveau voor prefill in de UI."
+        fieldSize:
+          type: string
+          nullable: true
+          description: "#1339: gelijk aan field.fieldSize, plat op rootniveau voor prefill in de UI."
+        veldOpties:
+          type: array
+          description: |
+            #1339: server-berekend voorstel per actief club-veld — géén Sportlink-gegeven. Zie
+            Planner.Shared.Integrations.SportlinkClub.SportlinkFieldIdBuilder voor de
+            berekeningswijze en de beperkte zekerheid ervan (bevestigd voor precies één
+            testwedstrijd/club).
+          items:
+            type: object
+            properties:
+              veldNummer:
+                type: integer
+              veldNaam:
+                type: string
+              voorstelFieldId:
+                type: string
+                nullable: true
+        subpositieOpties:
+          type: array
+          description: "#1339: server-berekend FieldSize-voorstel per subpositie (null = heel veld)."
+          items:
+            type: object
+            properties:
+              subpositie:
+                type: string
+                nullable: true
+              voorstelFieldSize:
+                type: string
 
     SportlinkMutationResponse:
       type: object

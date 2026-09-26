@@ -58,6 +58,33 @@ public sealed record SportlinkMatch
     // "{FacilityId}-OUTDOOR_FIELD-{n}") — geen persoonsgegeven, puur een accommodatiecode.
     [JsonPropertyName("matchField")]
     public SportlinkMatchField? MatchField { get; set; }
+
+    // #1339: het huidige veld(deel) van de wedstrijd — al live bevestigd aanwezig in dezelfde
+    // Match-GET-respons (2026-09-06, #1047, zie SportlinkClubClient.SportlinkFieldRaw, tot nu toe
+    // uitsluitend intern gebruikt bij een veldwijziging). Toevoegen aan dit publieke read-model
+    // zodat SportlinkMatchPanel het huidige FieldId/FieldSize kan voorafvullen in plaats van leeg
+    // te laten — geen persoonsgegeven, puur een accommodatiecode/-afmeting.
+    [JsonPropertyName("field")]
+    public SportlinkMatchFieldSnapshot? Field { get; set; }
+}
+
+/// <summary>Huidig veld(deel) van een wedstrijd — geen persoonsgegevens, alleen accommodatiecodes.
+/// Zelfde vorm als het interne <c>SportlinkClubClient.SportlinkFieldRaw</c> dat al voor de
+/// veldwijziging gebruikt wordt; hier publiek zodat het read-model (<see cref="SportlinkMatch"/>)
+/// het kan tonen.</summary>
+public sealed record SportlinkMatchFieldSnapshot
+{
+    [JsonPropertyName("fieldId")]
+    public string? FieldId { get; set; }
+
+    // Live vastgesteld (2026-09-06, #1047-vervolg): komt in de Match-GET-respons als JSON-getal
+    // terug, terwijl UpdateMatchDetails' eigen MatchData.FieldSize als string verwacht wordt.
+    [JsonPropertyName("fieldSize")]
+    [JsonConverter(typeof(FlexibleStringJsonConverter))]
+    public string? FieldSize { get; set; }
+
+    [JsonPropertyName("fieldOffset")]
+    public int? FieldOffset { get; set; }
 }
 
 /// <summary>Facility-gegevens van een wedstrijd — geen persoonsgegevens, alleen accommodatiecodes.</summary>

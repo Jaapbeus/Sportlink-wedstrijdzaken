@@ -65,4 +65,23 @@ internal static class SportlinkClubMatchRepository
         cmd.Parameters.AddWithValue("nr", veldNummer);
         return await cmd.ExecuteScalarAsync() as string;
     }
+
+    /// <summary>Alle actieve velden van deze club (#1339) — bron voor de veld-dropdown in
+    /// <c>SportlinkMatchPanel</c>, zodat de beheerder een veld op onze eigen naam kiest in plaats
+    /// van Sportlinks <c>FieldId</c>-formaat te moeten kennen.</summary>
+    internal static async Task<List<(int VeldNummer, string VeldNaam)>> GetActieveVeldenAsync(string clubCode, string cs)
+    {
+        await using var conn = new NpgsqlConnection(cs);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(@"
+            SELECT veldnummer, veldnaam FROM public.velden
+            WHERE clubcode = @cc AND actief = TRUE
+            ORDER BY veldnummer", conn);
+        cmd.Parameters.AddWithValue("cc", clubCode);
+        var resultaat = new List<(int, string)>();
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+            resultaat.Add((r.GetInt32(0), r.GetString(1)));
+        return resultaat;
+    }
 }

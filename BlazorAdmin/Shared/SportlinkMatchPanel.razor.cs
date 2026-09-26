@@ -25,6 +25,11 @@ public partial class SportlinkMatchPanel
 
     private readonly SportlinkActieStatus _veld = new();
     private string? _veldFieldId, _veldFieldSize;
+    // #1339: dropdown-keuze op onze eigen veldnaam — vult FieldId/FieldSize hierboven met een
+    // VOORSTEL (SportlinkFieldIdBuilder, Planner.Shared); de tekstvelden blijven bewerkbaar, de
+    // beheerder controleert/overschrijft vóór het klikken op "Veld wijzigen".
+    private int? _veldGekozenVeldNummer;
+    private string? _veldGekozenSubpositie;
 
     private readonly SportlinkActieStatus _officials = new();
     private string? _officialScheidsrechter, _officialAr1, _officialAr2;
@@ -38,8 +43,44 @@ public partial class SportlinkMatchPanel
     protected override async Task OnInitializedAsync()
     {
         var result = await Api.GetSportlinkMatchInfoAsync(Code);
-        if (result.Success) _info = result.Data;
+        if (result.Success)
+        {
+            _info = result.Data;
+            // #1339: prefill met de huidige waarde in plaats van de velden leeg te laten — de
+            // beheerder kan ze hierna nog steeds vrij overschrijven of via de dropdowns hieronder
+            // een ander veld kiezen.
+            _veldFieldId = _info?.FieldId;
+            _veldFieldSize = _info?.FieldSize;
+        }
         else _laadFout = result.ErrorMessage ?? "Onbekende fout bij ophalen Sportlink-gegevens.";
+    }
+
+    /// <summary>#1339: veld-dropdown gewijzigd — vult FieldId met het server-berekende voorstel
+    /// (<c>SportlinkFieldIdBuilder.BouwVoorstelFieldId</c>) voor het gekozen veldnummer. Blijft
+    /// bewerkbaar; dit is een voorstel, geen bevestigde waarde (zie SportlinkFieldIdBuilder-doc).</summary>
+    private void OnVeldGekozen(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var veldNummer))
+        {
+            _veldGekozenVeldNummer = veldNummer;
+            var optie = _info?.VeldOpties?.FirstOrDefault(v => v.VeldNummer == veldNummer);
+            if (!string.IsNullOrWhiteSpace(optie?.VoorstelFieldId))
+                _veldFieldId = optie.VoorstelFieldId;
+        }
+        else
+        {
+            _veldGekozenVeldNummer = null;
+        }
+    }
+
+    /// <summary>#1339: subpositie-dropdown gewijzigd — vult FieldSize met het server-berekende
+    /// voorstel (<c>SportlinkFieldIdBuilder.BouwVoorstelFieldSize</c>).</summary>
+    private void OnSubpositieGekozen(ChangeEventArgs e)
+    {
+        var gekozen = e.Value?.ToString();
+        _veldGekozenSubpositie = string.IsNullOrEmpty(gekozen) ? null : gekozen;
+        var optie = _info?.SubpositieOpties?.FirstOrDefault(s => (s.Subpositie ?? "") == (gekozen ?? ""));
+        if (optie != null) _veldFieldSize = optie.VoorstelFieldSize;
     }
 
     private async Task SaveDressingRoomsAsync()

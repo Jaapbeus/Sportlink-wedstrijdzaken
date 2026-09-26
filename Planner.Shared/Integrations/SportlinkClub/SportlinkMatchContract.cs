@@ -35,6 +35,8 @@ public static class SportlinkMatchContract
         ["isEditFieldSidePanelAllowed"] = new[] { JsonValueKind.True, JsonValueKind.False },
         ["isAddScoreAllowed"] = new[] { JsonValueKind.True, JsonValueKind.False },
         ["matchField"] = new[] { JsonValueKind.Object, JsonValueKind.Null },
+        // #1339: prefill van het huidige veld — zelfde vorm/onzekerheid als matchField hierboven.
+        ["field"] = new[] { JsonValueKind.Object, JsonValueKind.Null },
     };
 
     /// <summary>
