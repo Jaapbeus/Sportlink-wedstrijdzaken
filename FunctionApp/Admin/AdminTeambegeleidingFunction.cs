@@ -23,147 +23,116 @@ public static class AdminTeambegeleidingFunction
     /// GET /api/beheer/teambegeleiding — lijst van alle teams waarvoor begeleiding beschikbaar is.
     /// </summary>
     [Function("AdminTeambegeleidingTeams")]
-    public static async Task<IActionResult> GetTeams(
+    public static Task<IActionResult> GetTeams(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/teambegeleiding")] HttpRequest req,
-        FunctionContext context)
-    {
-        var log = context.GetLogger("AdminTeambegeleidingTeams");
-        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        var authResult = EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return authResult;
-        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
-        try
-        {
-            await SystemUtilities.WaitForDatabaseAsync(log);
-            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-            using var command = new SqlCommand(
-                "SELECT DISTINCT [Team] FROM [avg].[Teambegeleiding] WHERE [Team] IS NOT NULL AND [ClubCode] = @ClubCode ORDER BY [Team]",
-                connection);
-            command.Parameters.AddWithValue("@ClubCode", clubCode);
-            using var reader = await command.ExecuteReaderAsync();
-            var teams = new List<string>();
-            while (await reader.ReadAsync())
-                teams.Add(reader.GetString(0));
-            return new OkObjectResult(teams);
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Fout bij ophalen teams uit teambegeleiding");
-            return new ObjectResult(new { error = "Ophalen mislukt" }) { StatusCode = 500 };
-        }
-    }
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminTeambegeleidingTeams"), "teams uit teambegeleiding ophalen",
+            async clubCode =>
+            {
+                using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+                await connection.OpenAsync();
+                using var command = new SqlCommand(
+                    "SELECT DISTINCT [Team] FROM [avg].[Teambegeleiding] WHERE [Team] IS NOT NULL AND [ClubCode] = @ClubCode ORDER BY [Team]",
+                    connection);
+                command.Parameters.AddWithValue("@ClubCode", clubCode);
+                using var reader = await command.ExecuteReaderAsync();
+                var teams = new List<string>();
+                while (await reader.ReadAsync())
+                    teams.Add(reader.GetString(0));
+                return new OkObjectResult(teams);
+            });
 
     /// <summary>
     /// GET /api/beheer/teambegeleiding/{team} — begeleiders voor een specifiek team.
     /// Response bevat Naam, Teamrol, Emailadres en Telefoonnummer — alleen voor ingelogde beheerders (#299).
     /// </summary>
+    // AVG: de teamnaam komt bewust niet in de errorContext — die belandt in het foutlog.
     [Function("AdminTeambegeleidingGet")]
-    public static async Task<IActionResult> GetBegeleiders(
+    public static Task<IActionResult> GetBegeleiders(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/teambegeleiding/{team}")] HttpRequest req,
         string team,
-        FunctionContext context)
-    {
-        var log = context.GetLogger("AdminTeambegeleidingGet");
-        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        var authResult = EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return authResult;
-        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
-        try
-        {
-            await SystemUtilities.WaitForDatabaseAsync(log);
-            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-            using var command = new SqlCommand(@"
-                SELECT [Naam], [Teamrol], [Emailadres], [Telefoonnummer]
-                FROM [avg].[Teambegeleiding]
-                WHERE [Team] = @team
-                  AND [ClubCode] = @ClubCode
-                ORDER BY
-                    CASE WHEN [Teamrol] LIKE '%Trainer%' THEN 1
-                         WHEN [Teamrol] LIKE '%Coach%' THEN 2
-                         WHEN [Teamrol] LIKE '%Teamleider%' THEN 3
-                         ELSE 4 END,
-                    [Naam]
-            ", connection);
-            command.Parameters.AddWithValue("@team", team);
-            command.Parameters.AddWithValue("@ClubCode", clubCode);
-            using var reader = await command.ExecuteReaderAsync();
-            var list = new List<object>();
-            while (await reader.ReadAsync())
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminTeambegeleidingGet"), "begeleiders ophalen (team niet gelogd — AVG)",
+            async clubCode =>
             {
-                list.Add(new
+                using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+                await connection.OpenAsync();
+                using var command = new SqlCommand(@"
+                    SELECT [Naam], [Teamrol], [Emailadres], [Telefoonnummer]
+                    FROM [avg].[Teambegeleiding]
+                    WHERE [Team] = @team
+                      AND [ClubCode] = @ClubCode
+                    ORDER BY
+                        CASE WHEN [Teamrol] LIKE '%Trainer%' THEN 1
+                             WHEN [Teamrol] LIKE '%Coach%' THEN 2
+                             WHEN [Teamrol] LIKE '%Teamleider%' THEN 3
+                             ELSE 4 END,
+                        [Naam]
+                ", connection);
+                command.Parameters.AddWithValue("@team", team);
+                command.Parameters.AddWithValue("@ClubCode", clubCode);
+                using var reader = await command.ExecuteReaderAsync();
+                var list = new List<object>();
+                while (await reader.ReadAsync())
                 {
-                    Naam = reader.IsDBNull(0) ? "" : reader.GetString(0),
-                    Teamrol = reader.IsDBNull(1) ? "" : reader.GetString(1),
-                    Emailadres = reader.IsDBNull(2) ? null : reader.GetString(2),
-                    Telefoonnummer = reader.IsDBNull(3) ? null : reader.GetString(3)
-                });
-            }
-            return new OkObjectResult(list);
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Fout bij ophalen begeleiders (team niet gelogd — AVG)");
-            return new ObjectResult(new { error = "Ophalen mislukt" }) { StatusCode = 500 };
-        }
-    }
+                    list.Add(new
+                    {
+                        Naam = reader.IsDBNull(0) ? "" : reader.GetString(0),
+                        Teamrol = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                        Emailadres = reader.IsDBNull(2) ? null : reader.GetString(2),
+                        Telefoonnummer = reader.IsDBNull(3) ? null : reader.GetString(3)
+                    });
+                }
+                return new OkObjectResult(list);
+            });
 
     /// <summary>
     /// POST /api/beheer/teambegeleiding/doorsturen — stuurt een vraag door naar de begeleiding.
     /// Coach-email wordt server-side opgezocht en nooit in de response opgenomen (AVG).
     /// </summary>
     [Function("AdminTeambegeleidingDoorsturen")]
-    public static async Task<IActionResult> Doorsturen(
+    public static Task<IActionResult> Doorsturen(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/teambegeleiding/doorsturen")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminTeambegeleidingDoorsturen");
-        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        var authResult = EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return authResult;
-        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
-        try
-        {
-            await SystemUtilities.WaitForDatabaseAsync(log);
-
-            using var bodyReader = new StreamReader(req.Body);
-            var body = await bodyReader.ReadToEndAsync();
-            var dto = JsonConvert.DeserializeObject<DoorsturenRequest>(body);
-            if (dto == null || string.IsNullOrWhiteSpace(dto.TeamNaam))
-                return new BadRequestObjectResult(new { error = "TeamNaam is vereist" });
-            if (string.IsNullOrWhiteSpace(dto.Bericht))
-                return new BadRequestObjectResult(new { error = "Bericht is vereist" });
-
-            // Naam + email aanvrager uit Entra claims (server-side — nooit in response)
-            var aanvragerNaam = EasyAuthHelper.GetCallerName(req) ?? "een club-gebruiker";
-            var aanvragerEmail = EasyAuthHelper.GetCallerEmail(req);
-            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-
-            // #827: één keer geresolved, gebruikt voor zowel de opt-out-check als de audit-insert
-            // hieronder — geen directe `new SqlEmailPersistenceRepository()` meer.
-            var persistenceRepository = context.InstanceServices.GetRequiredService<IEmailPersistenceRepository>();
-
-            // Coördinator-email ophalen uit AppSettings (BCC — ongewijzigd)
-            var coordinatorEmail = SystemUtilities.AppSettings.GetSetting("plannerEmailAdres");
-
-            var (ontvangers, ontvangersFout) = await ResolveOntvangersAsync(dto, clubCode, coordinatorEmail, persistenceRepository, log);
-            if (ontvangersFout != null) return ontvangersFout;
-
-            var graphClient = context.InstanceServices.GetService<GraphServiceClient>();
-            if (graphClient == null)
+        return AdminEndpoint.ExecuteAsync(req, log, "teambegeleiding-vraag doorsturen (geen PII gelogd — AVG)",
+            async clubCode =>
             {
-                log.LogWarning("Graph SDK niet geconfigureerd — e-mail doorsturen niet mogelijk");
-                return new ObjectResult(new { error = "E-mail service niet geconfigureerd" }) { StatusCode = 503 };
-            }
+                using var bodyReader = new StreamReader(req.Body);
+                var body = await bodyReader.ReadToEndAsync();
+                var dto = JsonConvert.DeserializeObject<DoorsturenRequest>(body);
+                if (dto == null || string.IsNullOrWhiteSpace(dto.TeamNaam))
+                    return new BadRequestObjectResult(new { error = "TeamNaam is vereist" });
+                if (string.IsNullOrWhiteSpace(dto.Bericht))
+                    return new BadRequestObjectResult(new { error = "Bericht is vereist" });
 
-            var loggerFactory = context.InstanceServices.GetRequiredService<ILoggerFactory>();
-            var emailService = new EmailGraphService(graphClient, loggerFactory.CreateLogger<EmailGraphService>());
+                // Naam + email aanvrager uit Entra claims (server-side — nooit in response)
+                var aanvragerNaam = EasyAuthHelper.GetCallerName(req) ?? "een club-gebruiker";
+                var aanvragerEmail = EasyAuthHelper.GetCallerEmail(req);
 
-            var subject = $"[{dto.TeamNaam}] Vraag van {aanvragerNaam}";
-            var htmlBody = $@"<p>Er is een vraag binnengekomen over de begeleiding van <strong>{System.Net.WebUtility.HtmlEncode(dto.TeamNaam)}</strong>.</p>
+                // #827: één keer geresolved, gebruikt voor zowel de opt-out-check als de audit-insert
+                // hieronder — geen directe `new SqlEmailPersistenceRepository()` meer.
+                var persistenceRepository = context.InstanceServices.GetRequiredService<IEmailPersistenceRepository>();
+
+                // Coördinator-email ophalen uit AppSettings (BCC — ongewijzigd)
+                var coordinatorEmail = SystemUtilities.AppSettings.GetSetting("plannerEmailAdres");
+
+                var (ontvangers, ontvangersFout) = await ResolveOntvangersAsync(dto, clubCode, coordinatorEmail, persistenceRepository, log);
+                if (ontvangersFout != null) return ontvangersFout;
+
+                var graphClient = context.InstanceServices.GetService<GraphServiceClient>();
+                if (graphClient == null)
+                {
+                    log.LogWarning("Graph SDK niet geconfigureerd — e-mail doorsturen niet mogelijk");
+                    return new ObjectResult(new { error = "E-mail service niet geconfigureerd" }) { StatusCode = 503 };
+                }
+
+                var loggerFactory = context.InstanceServices.GetRequiredService<ILoggerFactory>();
+                var emailService = new EmailGraphService(graphClient, loggerFactory.CreateLogger<EmailGraphService>());
+
+                var subject = $"[{dto.TeamNaam}] Vraag van {aanvragerNaam}";
+                var htmlBody = $@"<p>Er is een vraag binnengekomen over de begeleiding van <strong>{System.Net.WebUtility.HtmlEncode(dto.TeamNaam)}</strong>.</p>
 <p><strong>Vraagsteller:</strong> {System.Net.WebUtility.HtmlEncode(aanvragerNaam)}</p>
 <p><strong>Onderwerp:</strong> {System.Net.WebUtility.HtmlEncode(dto.Onderwerp ?? "")}</p>
 <hr />
@@ -171,21 +140,16 @@ public static class AdminTeambegeleidingFunction
 <hr />
 <p><em>U kunt direct antwoorden op dit bericht — uw antwoord gaat naar de vraagsteller.</em></p>";
 
-            await VerstuurEnAuditeerAsync(
-                emailService, ontvangers!, subject, htmlBody, aanvragerEmail, coordinatorEmail,
-                persistenceRepository, dto.TeamNaam, clubCode, log);
+                await VerstuurEnAuditeerAsync(
+                    emailService, ontvangers!, subject, htmlBody, aanvragerEmail, coordinatorEmail,
+                    persistenceRepository, dto.TeamNaam, clubCode, log);
 
-            return new OkObjectResult(new
-            {
-                success = true,
-                bericht = $"Uw vraag over de begeleiding van {dto.TeamNaam} is doorgestuurd. De begeleider neemt rechtstreeks contact met u op."
+                return new OkObjectResult(new
+                {
+                    success = true,
+                    bericht = $"Uw vraag over de begeleiding van {dto.TeamNaam} is doorgestuurd. De begeleider neemt rechtstreeks contact met u op."
+                });
             });
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Fout bij doorsturen teambegeleiding-vraag (geen PII gelogd — AVG)");
-            return new ObjectResult(new { error = "Doorsturen mislukt" }) { StatusCode = 500 };
-        }
     }
 
     /// <summary>
@@ -278,124 +242,113 @@ public static class AdminTeambegeleidingFunction
     /// Audit log schrijft alleen metadata (rijen, bestandsnaam, duur) — geen PII.
     /// </summary>
     [Function("AdminTeambegeleidingImport")]
-    public static async Task<IActionResult> Import(
+    public static Task<IActionResult> Import(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/teambegeleiding/import")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminTeambegeleidingImport");
-        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        var authResult = EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return authResult;
-        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
-        try
-        {
-            await SystemUtilities.WaitForDatabaseAsync(log);
-
-            using var bodyReader = new StreamReader(req.Body);
-            var body = await bodyReader.ReadToEndAsync();
-            var dto = JsonConvert.DeserializeObject<TeambegeleidingImportRequest>(body);
-            if (dto == null || string.IsNullOrWhiteSpace(dto.CsvContent))
-                return new BadRequestObjectResult(new { error = "csvContent is vereist" });
-
-            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-
-            var parseResult = ParseCsv(dto.CsvContent);
-            if (!parseResult.IsValid)
-                return new BadRequestObjectResult(new
-                {
-                    error = parseResult.Error,
-                    ontbreekt = parseResult.Ontbreekt
-                });
-
-            // #1131: kolomgrenzen valideren VOORDAT er iets destructiefs gebeurt (DELETE/INSERT).
-            // Zonder deze stap kon een te lange waarde (bijv. Team > 100 tekens) de insert-lus
-            // pas na de club-scoped DELETE laten falen — met een lege tabel als resultaat.
-            var lengteFouten = ValideerKolomLengtes(parseResult.Rows);
-            if (lengteFouten.Count > 0)
-                return new BadRequestObjectResult(new
-                {
-                    error = "Een of meer rijen overschrijden de maximale kolomlengte. De vorige import is niet gewijzigd.",
-                    fouten = lengteFouten
-                });
-
-            var importeerder = EasyAuthHelper.GetCallerName(req) ?? "admin";
-
-            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-
-            // #1131: DELETE, inserts en de import-audit-rij lopen nu in ÉÉN transactie met
-            // rollback bij elke fout — vóór deze fix draaide de club-scoped DELETE in autocommit
-            // vóór de insert-transactie begon, waardoor een falende insert de vorige geldige
-            // import onherstelbaar wiste (zie Postgres-equivalent Database.Postgres/TeambegeleidingImporter.cs,
-            // dat al transactioneel was).
-            using (var tx = connection.BeginTransaction())
+        return AdminEndpoint.ExecuteAsync(req, log, "teambegeleiding importeren (geen PII gelogd — AVG)",
+            async clubCode =>
             {
-                try
+                using var bodyReader = new StreamReader(req.Body);
+                var body = await bodyReader.ReadToEndAsync();
+                var dto = JsonConvert.DeserializeObject<TeambegeleidingImportRequest>(body);
+                if (dto == null || string.IsNullOrWhiteSpace(dto.CsvContent))
+                    return new BadRequestObjectResult(new { error = "csvContent is vereist" });
+
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+
+                var parseResult = ParseCsv(dto.CsvContent);
+                if (!parseResult.IsValid)
+                    return new BadRequestObjectResult(new
+                    {
+                        error = parseResult.Error,
+                        ontbreekt = parseResult.Ontbreekt
+                    });
+
+                // #1131: kolomgrenzen valideren VOORDAT er iets destructiefs gebeurt (DELETE/INSERT).
+                // Zonder deze stap kon een te lange waarde (bijv. Team > 100 tekens) de insert-lus
+                // pas na de club-scoped DELETE laten falen — met een lege tabel als resultaat.
+                var lengteFouten = ValideerKolomLengtes(parseResult.Rows);
+                if (lengteFouten.Count > 0)
+                    return new BadRequestObjectResult(new
+                    {
+                        error = "Een of meer rijen overschrijden de maximale kolomlengte. De vorige import is niet gewijzigd.",
+                        fouten = lengteFouten
+                    });
+
+                var importeerder = EasyAuthHelper.GetCallerName(req) ?? "admin";
+
+                using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+                await connection.OpenAsync();
+
+                // #1131: DELETE, inserts en de import-audit-rij lopen nu in ÉÉN transactie met
+                // rollback bij elke fout — vóór deze fix draaide de club-scoped DELETE in autocommit
+                // vóór de insert-transactie begon, waardoor een falende insert de vorige geldige
+                // import onherstelbaar wiste (zie Postgres-equivalent Database.Postgres/TeambegeleidingImporter.cs,
+                // dat al transactioneel was).
+                using (var tx = connection.BeginTransaction())
                 {
-                    using (var deleteCmd = new SqlCommand(
-                        "DELETE FROM [avg].[Teambegeleiding] WHERE [ClubCode] = @ClubCode", connection, tx))
+                    try
                     {
-                        deleteCmd.Parameters.AddWithValue("@ClubCode", clubCode);
-                        await deleteCmd.ExecuteNonQueryAsync();
-                    }
+                        using (var deleteCmd = new SqlCommand(
+                            "DELETE FROM [avg].[Teambegeleiding] WHERE [ClubCode] = @ClubCode", connection, tx))
+                        {
+                            deleteCmd.Parameters.AddWithValue("@ClubCode", clubCode);
+                            await deleteCmd.ExecuteNonQueryAsync();
+                        }
 
-                    foreach (var row in parseResult.Rows)
+                        foreach (var row in parseResult.Rows)
+                        {
+                            using var ins = new SqlCommand(@"
+                                INSERT INTO [avg].[Teambegeleiding]
+                                    (Team, LeeftijdscategorieTeam, Teamrol, Naam, Emailadres, Telefoonnummer, ClubCode)
+                                VALUES
+                                    (@Team, @Leeftijd, @Teamrol, @Naam, @Email, @Telefoon, @ClubCode)",
+                                connection, tx);
+                            ins.Parameters.AddWithValue("@Team",     (object?)row.Team ?? DBNull.Value);
+                            ins.Parameters.AddWithValue("@Leeftijd", (object?)row.LeeftijdscategorieTeam ?? DBNull.Value);
+                            ins.Parameters.AddWithValue("@Teamrol",  (object?)row.Teamrol ?? DBNull.Value);
+                            ins.Parameters.AddWithValue("@Naam",     (object?)row.Naam ?? DBNull.Value);
+                            ins.Parameters.AddWithValue("@Email",    (object?)row.Emailadres ?? DBNull.Value);
+                            ins.Parameters.AddWithValue("@Telefoon", (object?)row.Telefoonnummer ?? DBNull.Value);
+                            ins.Parameters.AddWithValue("@ClubCode", clubCode);
+                            await ins.ExecuteNonQueryAsync();
+                        }
+
+                        sw.Stop();
+
+                        using (var logCmd = new SqlCommand(@"
+                            INSERT INTO [avg].[ImportLog] (AantalRijen, CsvBestand, ImporterendeDoor, Duur_ms, ClubCode)
+                            VALUES (@rijen, @csv, @door, @duur, @club)", connection, tx))
+                        {
+                            logCmd.Parameters.AddWithValue("@rijen", parseResult.Rows.Count);
+                            logCmd.Parameters.AddWithValue("@csv",   (object?)dto.Bestandsnaam ?? DBNull.Value);
+                            logCmd.Parameters.AddWithValue("@door",  importeerder);
+                            logCmd.Parameters.AddWithValue("@duur",  (int)sw.ElapsedMilliseconds);
+                            logCmd.Parameters.AddWithValue("@club",  clubCode);
+                            await logCmd.ExecuteNonQueryAsync();
+                        }
+
+                        tx.Commit();
+                    }
+                    catch
                     {
-                        using var ins = new SqlCommand(@"
-                            INSERT INTO [avg].[Teambegeleiding]
-                                (Team, LeeftijdscategorieTeam, Teamrol, Naam, Emailadres, Telefoonnummer, ClubCode)
-                            VALUES
-                                (@Team, @Leeftijd, @Teamrol, @Naam, @Email, @Telefoon, @ClubCode)",
-                            connection, tx);
-                        ins.Parameters.AddWithValue("@Team",     (object?)row.Team ?? DBNull.Value);
-                        ins.Parameters.AddWithValue("@Leeftijd", (object?)row.LeeftijdscategorieTeam ?? DBNull.Value);
-                        ins.Parameters.AddWithValue("@Teamrol",  (object?)row.Teamrol ?? DBNull.Value);
-                        ins.Parameters.AddWithValue("@Naam",     (object?)row.Naam ?? DBNull.Value);
-                        ins.Parameters.AddWithValue("@Email",    (object?)row.Emailadres ?? DBNull.Value);
-                        ins.Parameters.AddWithValue("@Telefoon", (object?)row.Telefoonnummer ?? DBNull.Value);
-                        ins.Parameters.AddWithValue("@ClubCode", clubCode);
-                        await ins.ExecuteNonQueryAsync();
+                        tx.Rollback();
+                        throw;
                     }
-
-                    sw.Stop();
-
-                    using (var logCmd = new SqlCommand(@"
-                        INSERT INTO [avg].[ImportLog] (AantalRijen, CsvBestand, ImporterendeDoor, Duur_ms, ClubCode)
-                        VALUES (@rijen, @csv, @door, @duur, @club)", connection, tx))
-                    {
-                        logCmd.Parameters.AddWithValue("@rijen", parseResult.Rows.Count);
-                        logCmd.Parameters.AddWithValue("@csv",   (object?)dto.Bestandsnaam ?? DBNull.Value);
-                        logCmd.Parameters.AddWithValue("@door",  importeerder);
-                        logCmd.Parameters.AddWithValue("@duur",  (int)sw.ElapsedMilliseconds);
-                        logCmd.Parameters.AddWithValue("@club",  clubCode);
-                        await logCmd.ExecuteNonQueryAsync();
-                    }
-
-                    tx.Commit();
                 }
-                catch
+
+                log.LogInformation("Teambegeleiding import geslaagd: {Rijen} rijen (geen PII gelogd — AVG)", parseResult.Rows.Count);
+
+                return new OkObjectResult(new
                 {
-                    tx.Rollback();
-                    throw;
-                }
-            }
-
-            log.LogInformation("Teambegeleiding import geslaagd: {Rijen} rijen (geen PII gelogd — AVG)", parseResult.Rows.Count);
-
-            return new OkObjectResult(new
-            {
-                rijen         = parseResult.Rows.Count,
-                herkend       = parseResult.Herkend,
-                ontbreekt     = new List<string>(),
-                waarschuwingen = parseResult.Waarschuwingen
+                    rijen         = parseResult.Rows.Count,
+                    herkend       = parseResult.Herkend,
+                    ontbreekt     = new List<string>(),
+                    waarschuwingen = parseResult.Waarschuwingen
+                });
             });
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Fout bij importeren teambegeleiding (geen PII gelogd — AVG)");
-            return new ObjectResult(new { error = "Import mislukt" }) { StatusCode = 500 };
-        }
     }
 
     // ── CSV parsing helpers ───────────────────────────────────────────────────

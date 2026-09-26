@@ -39,7 +39,7 @@ docs: |-
   Handmatige Sportlink synchronisatie starten
 
   Start een volledige Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).
-  Vereist de Azure Master key via `?code=`.
+  Vereist een Entra ID Bearer token met de `admin`-rol (sinds #1350; de Azure Master key werkt niet meer).
 
   - **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)
   - **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar
@@ -49,4 +49,4 @@ docs: |-
     reset (query) - true = volledig seizoen synchroniseren i.p.v. incrementeel
     season (query) - Startjaar seizoen (bijv. 2025 = seizoen 2025/2026). Gebruik samen met reset=true.
 
-  Spec declares security scheme "functionKey" (apiKey).
+  Spec declares security scheme "easyAuth" (http bearer).

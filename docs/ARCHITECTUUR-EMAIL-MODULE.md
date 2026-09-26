@@ -135,7 +135,7 @@ aanroepen:
 | Ontvangerresolutie | Server-side lookup via `PlannerDataAccess.GetTeamleiderContactAsync` (automatische classificatie) | `OntvangerParser.Parse` op het vrije "Email Aan"-veld, met server-side TOP-1-fallback als het veld leeg is (regel 145-203) |
 | Opt-out-check | `IEmailPersistenceService.LaadUitgeslotenAdressenAsync` (via DI-testbare laag) | Sinds #827: `context.InstanceServices.GetRequiredService<IEmailPersistenceRepository>().GetExcludedEmailAddressesAsync(clubCode)` — geïnjecteerd, geen `new` meer |
 | Logging | `planner.EmailVerwerking`, rijke statusmachine (`Pogingen`, `VerzendPogingOpUtc`, `IsBeantwoord`, idempotentie) | `planner.EmailVerwerking`, **synthetische** rij met gegenereerd `MessageId` (§1.6) |
-| Auth-boilerplate | N.v.t. (timer-trigger, geen `HttpRequest`) | Inline `RequireAdmin` + correlation-scope, **niet** via `AdminEndpoint.ExecuteAsync` |
+| Auth-boilerplate | N.v.t. (timer-trigger, geen `HttpRequest`) | Sinds #1350 via `AdminEndpoint.ExecuteAsync`; tot dan inline `RequireAdmin` + correlation-scope (zie §1.7) |
 
 ### 1.3 Sender identity vandaag: één vaste systeem-mailbox
 
@@ -286,6 +286,12 @@ die één functie goed doet (AI-idempotentie) wordt oneigenlijk gebruikt als gen
 er geen andere generieke audit-log bestaat.
 
 ### 1.7 Twee verschillende auth-boilerplate-patronen op e-mail-gerelateerde admin-endpoints
+
+> **Opgelost in #1350.** Alle hier genoemde endpoints (en de resterende 23 andere) lopen sinds
+> #1350 via `AdminEndpoint.ExecuteAsync`; alleen `theme/extract` en `geocode` roepen de poort nog
+> direct aan, met een gemotiveerde allowlist-regel. Een CI-guard
+> (`scripts/ci/check-endpoint-autorisatie.sh`) houdt dat zo. De analyse hieronder beschrijft de
+> toestand vóór die wijziging.
 
 `AdminEndpoint.ExecuteAsync` (`FunctionApp/Admin/AdminEndpoint.cs:19-42`) bundelt
 `RequireAdmin`-guard, correlation-scope, `WaitForDatabaseAsync` en een uniforme 500-fallback. Het

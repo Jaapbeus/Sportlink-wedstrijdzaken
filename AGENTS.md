@@ -847,7 +847,7 @@ De bug die daardoor maandenlang onzichtbaar bleef (#1252) zat in beide kopieën 
 een test. Dit was de vierde keer — na #889, #1130 en #1122 — dat dezelfde klasse fout werd gevonden
 door een latere review in plaats van door een controle.
 
-Acht regels, alle acht met een exit-code:
+Negen regels, alle negen met een exit-code:
 
 1. **Tier-onafhankelijke logica hoort in `Planner.Shared`.** Een bestand in `FunctionApp/` of
    `FunctionApp.Postgres/` bevat uitsluitend query's, parameterbinding en de vertaling van een
@@ -875,6 +875,16 @@ Acht regels, alle acht met een exit-code:
    zijn ratchets op een *aantal*: bestaande code mag blijven, het aantal overschrijdingen mag niet
    groeien. Testbestanden tellen niet mee — die groeien door losse gevallen naast elkaar te zetten,
    en een guard die het toevoegen van tests bestraft werkt averechts.
+9. **Elk HTTP-endpoint autoriseert via de wrapper, nooit via een eigen poort (#1350).** Admin-rol:
+   `AdminEndpoint.ExecuteAsync` (of `ExecuteZonderDatabaseAsync` zonder database); Sportlink:
+   `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`. Een losse `EasyAuthHelper.RequireAdmin`-
+   aanroep in een endpoint, of een `HttpTrigger` op iets anders dan `AuthorizationLevel.Anonymous`
+   (Function-/Master key), is een overtreding — uitzonderingen alleen met reden in
+   `scripts/ci/endpoint-autorisatie-allowlist.txt`. Tot #1350 bestonden drie poortpatronen naast
+   elkaar en zat de handmatige sync als enige achter een identiteitsloze master key.
+   `EndpointAutorisatieTests` (per tier) bewijst per endpoint 401 zonder principal, 403 met alleen
+   `user`, en poortpassage mét de vereiste rol — zonder database, via de testhaak
+   `AdminEndpoint.PoortGepasseerdVoorTests`.
 
 Lokaal draaien: zie §7 van het architectuurdocument. De guards zijn zelf getest
 (`scripts/ci/check-codekwaliteit.test.sh`) — een groene guard bewijst niets zolang niet vaststaat
@@ -1671,7 +1681,7 @@ Serverless ETL pipeline: **Sportlink REST API -> Azure Function -> SQL Server**
 
 **Two trigger functions** in `FunctionApp/Function1.cs`:
 - `FetchAndStoreApiData` — Timer trigger (schedule via `%FETCH_SCHEDULE%` app setting, default `0 0 4 * * *`), fetches teams, matches, and match details
-- `SyncMatchesHttp` — HTTP GET `/api/sync-matches`, manual trigger. Standaard vorige week t/m einde seizoen; met `?reset=true&season=YYYY` het volledige seizoen. **Let op:** de route is `sync-matches`, niet `sync` — dat laatste geeft 404 (gecorrigeerd bij #662)
+- `SyncMatchesHttp` — HTTP GET `/api/sync-matches`, manual trigger. Standaard vorige week t/m einde seizoen; met `?reset=true&season=YYYY` het volledige seizoen. **Let op:** de route is `sync-matches`, niet `sync` — dat laatste geeft 404 (gecorrigeerd bij #662). Sinds #1350 Easy Auth + rol `admin` via `AdminEndpoint.ExecuteAsync`, net als elk beheerendpoint — de Azure master key (`?code=`) werkt niet meer
 
 **Data flow:** Sportlink JSON -> C# entity models -> staging tables (`stg.*`) -> stored procedure MERGE -> history tables (`his.*`) -> public views (`pub.*`)
 

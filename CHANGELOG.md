@@ -18,6 +18,30 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Security
+- **Handmatige Sportlink-synchronisatie vereist nu een ingelogde beheerder in plaats van de Azure
+  master key (#1350).** `GET /api/postgres/sync-matches` (en `GET /api/sync-matches` op de SQL
+  Server-variant) was het enige adres van de applicatie dat met één statisch geheim — de master key
+  van de hele Function App — te bedienen was, zonder identiteit en zonder audittrail. Het loopt nu
+  langs dezelfde Entra ID-poort (rol `admin`) als elk ander beheerendpoint; `?code=` wordt genegeerd.
+  Er was geen automatisering die van die sleutel afhing: de nachtelijke sync is een timer in de app
+  zelf, en de knop "Sync starten" in de Admin GUI werkte al via Entra. Wie de volledige-seizoen-
+  herhaling (`?reset=true&season=…`) buiten de Admin GUI om start, heeft daar voortaan een
+  Entra-token voor nodig. Lokaal (zonder `WEBSITE_SITE_NAME`) verandert er niets.
+- **Eén autorisatiepoort voor alle 92 API-endpoints, per endpoint getest (#1350).** Tot nu toe
+  bouwden 31 endpoints hun eigen rolcontrole, met drie verschillende patronen over de twee
+  database-varianten heen; geen enkele test bewaakte dat. Alle endpoints lopen nu door dezelfde
+  wrapper, een nieuwe CI-controle weigert een endpoint dat zijn eigen poort bouwt of achter een
+  Function key staat, en een testsuite per variant bewijst voor élk endpoint dat een aanroep zonder
+  rol 401 krijgt, met alleen de rol `user` 403, en met de juiste rol de poort passeert. Twee
+  bewust ongewijzigde endpoints (`beheer/theme/extract`, `beheer/geocode`) staan met reden op een
+  allowlist. Voor beheerders verandert er niets zichtbaars; foutmeldingen bij een interne fout
+  luiden overal uniform "Interne fout".
+- **Ongebruikte, ruimere toegangspoort verwijderd (#1350).** `EasyAuthHelper.RequireAuthenticated`
+  (rol `admin` óf `user`) stond sinds mei 2026 ongebruikt in beide varianten van de code. De rol
+  `user` gaf al nergens API-toegang; nu bestaat de poort die dat per ongeluk had kunnen veranderen
+  niet meer.
+
 ### Added
 - **Sportlink-wedstrijdpaneel: veld nu voorafgevuld en te kiezen op onze eigen veldnaam (#1339).**
   In de Dagplanning liet het paneel "FieldId"/"FieldSize" altijd leeg staan, ook als de wedstrijd

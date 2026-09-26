@@ -189,7 +189,7 @@ Write-Section 'Layer 5 — Backend RequireAdmin (EasyAuthHelper) — code-side'
 # aanroeper met een rol) en eis dat zo'n stuk langs een van de bekende poorten gaat.
 $guardPatronen = @(
     'EasyAuthHelper\.RequireAdmin',                 # rechtstreeks in het endpoint
-    'AdminEndpoint\.ExecuteAsync',                  # centrale poort: doet RequireAdmin
+    'AdminEndpoint\.Execute',                       # centrale poort: ExecuteAsync en ExecuteZonderDatabaseAsync (#1350) doen RequireAdmin
     'SportlinkEndpointSupport\.Execute'             # Wedstrijdzaken-rol + AdminEndpoint erachter
 )
 

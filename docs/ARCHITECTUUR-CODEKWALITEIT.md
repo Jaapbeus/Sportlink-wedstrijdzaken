@@ -367,6 +367,50 @@ als `.editorconfig` de drie regels niet aanzet: zonder die controle zou hij stil
 en voor altijd groen staan, precies het no-op-patroon uit §67 van
 `ARCHITECTUUR-DATABASE-TIERS.md`.*
 
+### Regel 9 — Elk HTTP-endpoint autoriseert via de wrapper, nooit via een eigen poort (#1350)
+
+Een endpoint met de admin-rol loopt via `AdminEndpoint.ExecuteAsync` (of
+`AdminEndpoint.ExecuteZonderDatabaseAsync` als het geen database nodig heeft); een
+Sportlink-endpoint via `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`, dat daarop uitkomt.
+Een losse `EasyAuthHelper.RequireAdmin(req)`-aanroep in een endpoint is een overtreding, en een
+`HttpTrigger` op iets anders dan `AuthorizationLevel.Anonymous` ook: een Function- of Master key
+is een tweede, identiteitsloze toegangsweg naast Easy Auth.
+
+**Wat er misging.** Bij een inventarisatie van de 92 HTTP-endpoints op de Postgres-tier bleken 49
+van de 80 admin-endpoints via de wrapper te lopen en 31 de poort zelf te bouwen — telkens dezelfde
+vier regels (`ExtractOrCreateCorrelationId` → `RequireAdmin` → `BeginScope` → eigen try/catch),
+soms met, soms zonder databasewacht. De SQL Server-tier had daarnaast nog een dérde patroon
+(`PlannerFunction.HandleAsync`). Drie manieren om dezelfde poort te bouwen betekent drie plekken
+waar de volgende wijziging er één kan vergeten — en een vergeten poort geeft niemand een
+foutmelding. Bovendien stond `EasyAuthHelper.RequireAuthenticated` (rol `admin` óf `user`) al
+jaren ongebruikt in de code: een poort die ruimer is dan alle gebruikte, is een uitnodiging om hem
+per ongeluk te pakken. Die is verwijderd. En de twee handmatige sync-routes zaten als enige achter
+een Azure master key in plaats van achter Easy Auth — zonder identiteit, zonder audittrail, met een
+sleutel die de hele Function App beheert.
+
+**Twee uitzonderingen, met reden.** `AdminThemeExtract` doet een goedkope URL-vormcontrole vóór de
+databaseaanroep en `AdminGeocodeGet` raakt de database helemaal niet; de wrapper zou bij beide de
+databasewacht vóór die controle zetten. Ze roepen dezelfde `RequireAdmin`-poort direct aan en staan
+met die reden in `scripts/ci/endpoint-autorisatie-allowlist.txt`. `Health` is het enige anonieme
+endpoint en staat daar als zodanig.
+
+**De test bewijst het per endpoint, zonder database.** `EndpointAutorisatieTests` (één per tier)
+vindt via reflectie élk `[Function]` met een `HttpTrigger` en roept het aan: zonder principal moet
+dat `401` geven, met alleen de rol `user` `403`, en met de vereiste rol(len) moet de aanroep de
+poort passeren. Dat laatste wordt bewezen met een `internal` testhaak in `AdminEndpoint`
+(`PoortGepasseerdVoorTests`) die ná de rolcontrole en vóór de databasewacht een sentinel
+teruggeeft — alleen de wrapper kan dat resultaat opleveren, dus een endpoint met een eigen poort
+valt door de mand. De haak zit ná de poort en kan die nooit verzwakken. Een echte aanroep mét
+admin was geen optie: in de CI-job met een levende database zou een DELETE- of sync-endpoint dan
+écht werk doen.
+
+*Guard: `scripts/ci/check-endpoint-autorisatie.sh` — knipt elk tierbestand per `[Function(...)]`,
+houdt de blokken met een `HttpTrigger` over en eist per blok: geen directe `Require*`-aanroep
+(tenzij op de allowlist), wél een van de bekende wrappers (tenzij als `anoniem` op de allowlist),
+en `AuthorizationLevel.Anonymous`. Een allowlist-regel zonder reden of naar een niet-bestaand
+endpoint laat hem ook falen. Dezelfde knip als de Layer-5-scan in
+`scripts/azure/Verify-AzureAuthSetup.ps1`, maar in CI.*
+
 ---
 
 ## 5. Register
@@ -384,7 +428,8 @@ en voor altijd groen staan, precies het no-op-patroon uit §67 van
 | 6 — elke regel heeft een guard | `scripts/ci/check-regelregister.sh` | `build.yml` |
 | 7, 8 — bestandsgrootte en methodelengte stijgen niet | `scripts/ci/check-bestandsgrootte.sh` | `build.yml` |
 | 7, 8 — maintainability-analyzers stijgen niet (#1300) | `scripts/ci/check-analyzer-complexiteit.sh` | `build.yml` |
-| Alle acht — de guards worden zelf getest | `scripts/ci/check-codekwaliteit.test.sh` | `build.yml` |
+| 9 — elk HTTP-endpoint autoriseert via de wrapper, op Anonymous (#1350) | `scripts/ci/check-endpoint-autorisatie.sh` | `build.yml` |
+| Alle regels — de guards worden zelf getest | `scripts/ci/check-codekwaliteit.test.sh` | `build.yml` |
 
 De guards die al bestonden staan hier ook in. Het register is daarmee de volledige lijst: een
 guard die er niet in staat, laat `check-regelregister.sh` falen — zodat een controle niet stilletjes

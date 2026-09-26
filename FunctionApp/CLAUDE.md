@@ -45,7 +45,7 @@ History Tables (his.teams, his.matches, his.matchdetails)
 
 **[Function1.cs](Function1.cs)**
 - `FetchAndStoreApiData`: Timer trigger (schedule via `%FETCH_SCHEDULE%` app setting, default `0 0 4 * * *`) that orchestrates the sync
-- `SyncMatchesHttp`: HTTP endpoint for manual sync (GET `/api/sync-matches`). Default range: previous week through end of season, the same range as the timer. `?reset=true&season=YYYY` re-fetches a full season.
+- `SyncMatchesHttp`: HTTP endpoint for manual sync (GET `/api/sync-matches`). Default range: previous week through end of season, the same range as the timer. `?reset=true&season=YYYY` re-fetches a full season. Requires an Entra ID Bearer token with the `admin` role (#1350; the Azure master key no longer works).
 - Handles: Teams fetch, matches fetch (previous week through end of season, from `dbo.Season`), match details fetch
 - Uses retry logic via `SystemUtilities.WaitForDatabaseAsync()`
 

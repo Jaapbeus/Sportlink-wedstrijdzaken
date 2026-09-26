@@ -48,84 +48,59 @@ public static class AdminTeambegeleidingFunction
         "CASE WHEN teamrol ILIKE '%Trainer%' THEN 1 WHEN teamrol ILIKE '%Coach%' THEN 2 WHEN teamrol ILIKE '%Teamleider%' THEN 3 ELSE 4 END";
 
     [Function("AdminTeambegeleidingTeams")]
-    public static async Task<IActionResult> GetTeams(
+    public static Task<IActionResult> GetTeams(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/teambegeleiding")] HttpRequest req,
-        FunctionContext context)
-    {
-        var log = context.GetLogger("AdminTeambegeleidingTeams");
-        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        var authResult = EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return authResult;
-        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
-        try
-        {
-            await PostgresSystemUtilities.WaitForDatabaseAsync(log);
-            await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-            await using var command = new NpgsqlCommand(
-                "SELECT DISTINCT team FROM avg.teambegeleiding WHERE team IS NOT NULL AND clubcode = @clubcode ORDER BY team",
-                connection);
-            command.Parameters.AddWithValue("clubcode", clubCode);
-            await using var reader = await command.ExecuteReaderAsync();
-            var teams = new List<string>();
-            while (await reader.ReadAsync())
-                teams.Add(reader.GetString(0));
-            return new OkObjectResult(teams);
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Fout bij ophalen teams uit teambegeleiding");
-            return new ObjectResult(new { error = "Ophalen mislukt" }) { StatusCode = 500 };
-        }
-    }
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminTeambegeleidingTeams"), "teams uit teambegeleiding ophalen",
+            async clubCode =>
+            {
+                await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+                await connection.OpenAsync();
+                await using var command = new NpgsqlCommand(
+                    "SELECT DISTINCT team FROM avg.teambegeleiding WHERE team IS NOT NULL AND clubcode = @clubcode ORDER BY team",
+                    connection);
+                command.Parameters.AddWithValue("clubcode", clubCode);
+                await using var reader = await command.ExecuteReaderAsync();
+                var teams = new List<string>();
+                while (await reader.ReadAsync())
+                    teams.Add(reader.GetString(0));
+                return new OkObjectResult(teams);
+            });
 
+    // AVG: de teamnaam komt bewust niet in de errorContext — die belandt in het foutlog.
     [Function("AdminTeambegeleidingGet")]
-    public static async Task<IActionResult> GetBegeleiders(
+    public static Task<IActionResult> GetBegeleiders(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/teambegeleiding/{team}")] HttpRequest req,
         string team,
-        FunctionContext context)
-    {
-        var log = context.GetLogger("AdminTeambegeleidingGet");
-        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        var authResult = EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return authResult;
-        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
-        try
-        {
-            await PostgresSystemUtilities.WaitForDatabaseAsync(log);
-            await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-            await using var command = new NpgsqlCommand($@"
-                SELECT naam, teamrol, emailadres, telefoonnummer
-                FROM avg.teambegeleiding
-                WHERE team = @team
-                  AND clubcode = @clubcode
-                ORDER BY {RolVoorkeurCase}, naam
-            ", connection);
-            command.Parameters.AddWithValue("team", team);
-            command.Parameters.AddWithValue("clubcode", clubCode);
-            await using var reader = await command.ExecuteReaderAsync();
-            var list = new List<object>();
-            while (await reader.ReadAsync())
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminTeambegeleidingGet"), "begeleiders ophalen (team niet gelogd — AVG)",
+            async clubCode =>
             {
-                list.Add(new
+                await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+                await connection.OpenAsync();
+                await using var command = new NpgsqlCommand($@"
+                    SELECT naam, teamrol, emailadres, telefoonnummer
+                    FROM avg.teambegeleiding
+                    WHERE team = @team
+                      AND clubcode = @clubcode
+                    ORDER BY {RolVoorkeurCase}, naam
+                ", connection);
+                command.Parameters.AddWithValue("team", team);
+                command.Parameters.AddWithValue("clubcode", clubCode);
+                await using var reader = await command.ExecuteReaderAsync();
+                var list = new List<object>();
+                while (await reader.ReadAsync())
                 {
-                    Naam = reader.IsDBNull(0) ? "" : reader.GetString(0),
-                    Teamrol = reader.IsDBNull(1) ? "" : reader.GetString(1),
-                    Emailadres = reader.IsDBNull(2) ? null : reader.GetString(2),
-                    Telefoonnummer = reader.IsDBNull(3) ? null : reader.GetString(3)
-                });
-            }
-            return new OkObjectResult(list);
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Fout bij ophalen begeleiders (team niet gelogd — AVG)");
-            return new ObjectResult(new { error = "Ophalen mislukt" }) { StatusCode = 500 };
-        }
-    }
+                    list.Add(new
+                    {
+                        Naam = reader.IsDBNull(0) ? "" : reader.GetString(0),
+                        Teamrol = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                        Emailadres = reader.IsDBNull(2) ? null : reader.GetString(2),
+                        Telefoonnummer = reader.IsDBNull(3) ? null : reader.GetString(3)
+                    });
+                }
+                return new OkObjectResult(list);
+            });
 
     /// <summary>
     /// Stuurt een vraag over teambegeleiding door naar de begeleider(s) — Postgres-vertaling van
@@ -137,78 +112,67 @@ public static class AdminTeambegeleidingFunction
     /// </para>
     /// </summary>
     [Function("AdminTeambegeleidingDoorsturen")]
-    public static async Task<IActionResult> Doorsturen(
+    public static Task<IActionResult> Doorsturen(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/teambegeleiding/doorsturen")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminTeambegeleidingDoorsturen");
-        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        var authResult = EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return authResult;
-        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
-        try
-        {
-            await PostgresSystemUtilities.WaitForDatabaseAsync(log);
-
-            using var bodyReader = new StreamReader(req.Body);
-            var body = await bodyReader.ReadToEndAsync();
-            var dto = JsonConvert.DeserializeObject<DoorsturenRequest>(body);
-            if (dto == null || string.IsNullOrWhiteSpace(dto.TeamNaam))
-                return new BadRequestObjectResult(new { error = "TeamNaam is vereist" });
-            if (string.IsNullOrWhiteSpace(dto.Bericht))
-                return new BadRequestObjectResult(new { error = "Bericht is vereist" });
-
-            // Naam + e-mail van de aanvrager uit de Entra-claims (server-side — nooit in de respons)
-            var aanvragerNaam = EasyAuthHelper.GetCallerName(req) ?? "een club-gebruiker";
-            var aanvragerEmail = EasyAuthHelper.GetCallerEmail(req);
-            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-            var cs = PostgresDatabaseConfig.ConnectionString;
-
-            var coordinatorEmail = PostgresAppSettings.GetSetting("plannerEmailAdres");
-
-            var (ontvangers, ontvangerFout) = await ResolveOntvangersAsync(dto, clubCode, cs, coordinatorEmail, log);
-            if (ontvangerFout != null) return ontvangerFout;
-
-            // EgressGuard (#857): buiten productie is IEmailGraphService onvoorwaardelijk
-            // ongeregistreerd, ook met geconfigureerde Graph-secrets. Niet geregistreerd → 503, geen
-            // gefakete "verstuurd"-melding.
-            var emailService = context.InstanceServices.GetService<IEmailGraphService>();
-            if (emailService == null)
+        return AdminEndpoint.ExecuteAsync(req, log, "teambegeleiding-vraag doorsturen (geen PII gelogd — AVG)",
+            async clubCode =>
             {
-                log.LogWarning("Graph SDK niet geconfigureerd — e-mail doorsturen niet mogelijk");
-                return new ObjectResult(new { error = "E-mail service niet geconfigureerd" }) { StatusCode = 503 };
-            }
+                using var bodyReader = new StreamReader(req.Body);
+                var body = await bodyReader.ReadToEndAsync();
+                var dto = JsonConvert.DeserializeObject<DoorsturenRequest>(body);
+                if (dto == null || string.IsNullOrWhiteSpace(dto.TeamNaam))
+                    return new BadRequestObjectResult(new { error = "TeamNaam is vereist" });
+                if (string.IsNullOrWhiteSpace(dto.Bericht))
+                    return new BadRequestObjectResult(new { error = "Bericht is vereist" });
 
-            var subject = $"[{dto.TeamNaam}] Vraag van {aanvragerNaam}";
-            var htmlBody = BouwDoorsturenHtml(dto.TeamNaam, aanvragerNaam, dto.Onderwerp, dto.Bericht);
+                // Naam + e-mail van de aanvrager uit de Entra-claims (server-side — nooit in de respons)
+                var aanvragerNaam = EasyAuthHelper.GetCallerName(req) ?? "een club-gebruiker";
+                var aanvragerEmail = EasyAuthHelper.GetCallerEmail(req);
+                var cs = PostgresDatabaseConfig.ConnectionString;
 
-            await emailService.StuurTeamContactDoorAsync(ontvangers!, subject, htmlBody, aanvragerEmail, coordinatorEmail);
+                var coordinatorEmail = PostgresAppSettings.GetSetting("plannerEmailAdres");
 
-            // Audit-trail (#765): vrij ingetypte ontvangers zijn nieuwe persoonsgegevens. De mail is
-            // hierboven al verstuurd — een fout in het wegschrijven van de audit-rij mag de
-            // geslaagde verzending niet alsnog als mislukt melden (dat zou tot een dubbele
-            // verzendpoging kunnen leiden).
-            try
-            {
-                await SqlEmailPersistenceRepository.InsertTeambegeleidingDoorsturenAuditAsync(
-                    cs, dto.TeamNaam, aanvragerEmail ?? "onbekend", string.Join("; ", ontvangers!), clubCode);
-            }
-            catch (Exception auditEx)
-            {
-                log.LogWarning(auditEx, "Audit-trail voor teambegeleiding-doorsturen kon niet worden weggeschreven (verzending zelf is wel geslaagd)");
-            }
+                var (ontvangers, ontvangerFout) = await ResolveOntvangersAsync(dto, clubCode, cs, coordinatorEmail, log);
+                if (ontvangerFout != null) return ontvangerFout;
 
-            return new OkObjectResult(new
-            {
-                success = true,
-                bericht = $"Uw vraag over de begeleiding van {dto.TeamNaam} is doorgestuurd. De begeleider neemt rechtstreeks contact met u op."
+                // EgressGuard (#857): buiten productie is IEmailGraphService onvoorwaardelijk
+                // ongeregistreerd, ook met geconfigureerde Graph-secrets. Niet geregistreerd → 503, geen
+                // gefakete "verstuurd"-melding.
+                var emailService = context.InstanceServices.GetService<IEmailGraphService>();
+                if (emailService == null)
+                {
+                    log.LogWarning("Graph SDK niet geconfigureerd — e-mail doorsturen niet mogelijk");
+                    return new ObjectResult(new { error = "E-mail service niet geconfigureerd" }) { StatusCode = 503 };
+                }
+
+                var subject = $"[{dto.TeamNaam}] Vraag van {aanvragerNaam}";
+                var htmlBody = BouwDoorsturenHtml(dto.TeamNaam, aanvragerNaam, dto.Onderwerp, dto.Bericht);
+
+                await emailService.StuurTeamContactDoorAsync(ontvangers!, subject, htmlBody, aanvragerEmail, coordinatorEmail);
+
+                // Audit-trail (#765): vrij ingetypte ontvangers zijn nieuwe persoonsgegevens. De mail is
+                // hierboven al verstuurd — een fout in het wegschrijven van de audit-rij mag de
+                // geslaagde verzending niet alsnog als mislukt melden (dat zou tot een dubbele
+                // verzendpoging kunnen leiden).
+                try
+                {
+                    await SqlEmailPersistenceRepository.InsertTeambegeleidingDoorsturenAuditAsync(
+                        cs, dto.TeamNaam, aanvragerEmail ?? "onbekend", string.Join("; ", ontvangers!), clubCode);
+                }
+                catch (Exception auditEx)
+                {
+                    log.LogWarning(auditEx, "Audit-trail voor teambegeleiding-doorsturen kon niet worden weggeschreven (verzending zelf is wel geslaagd)");
+                }
+
+                return new OkObjectResult(new
+                {
+                    success = true,
+                    bericht = $"Uw vraag over de begeleiding van {dto.TeamNaam} is doorgestuurd. De begeleider neemt rechtstreeks contact met u op."
+                });
             });
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Fout bij doorsturen teambegeleiding-vraag (geen PII gelogd — AVG)");
-            return new ObjectResult(new { error = "Doorsturen mislukt" }) { StatusCode = 500 };
-        }
     }
 
     // #765: "Email Aan" bepaalt de ontvangers zodra het veld gevuld is. Leeg/afwezig veld houdt
@@ -281,69 +245,57 @@ public static class AdminTeambegeleidingFunction
     private record DoorsturenRequest(string TeamNaam, string? Onderwerp, string Bericht, string? Ontvangers);
 
     [Function("AdminTeambegeleidingImport")]
-    public static async Task<IActionResult> Import(
+    public static Task<IActionResult> Import(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/teambegeleiding/import")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminTeambegeleidingImport");
-        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        var authResult = EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return authResult;
-        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
-        try
-        {
-            await PostgresSystemUtilities.WaitForDatabaseAsync(log);
-
-            using var bodyReader = new StreamReader(req.Body);
-            var body = await bodyReader.ReadToEndAsync();
-            var dto = JsonConvert.DeserializeObject<TeambegeleidingImportRequest>(body);
-            if (dto == null || string.IsNullOrWhiteSpace(dto.CsvContent))
-                return new BadRequestObjectResult(new { error = "csvContent is vereist" });
-
-            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-
-            var parseResult = ParseCsv(dto.CsvContent);
-            if (!parseResult.IsValid)
-                return new BadRequestObjectResult(new
-                {
-                    error = parseResult.Error,
-                    ontbreekt = parseResult.Ontbreekt
-                });
-
-            // Databaselaag gedelegeerd naar Database.Postgres.TeambegeleidingImporter (issue 824)
-            // in plaats van een eigen, niet-atomische delete/insert/auditlog-implementatie (issue
-            // 913: dat was hier eerder drie losse, niet-getransactioneerde stappen — een crash
-            // tussen de delete en de insert-lus liet de club zonder teambegeleidingsdata achter).
-            // ParseCsv's ImportRij en TeambegeleidingImporter's TeambegeleidingRow hebben dezelfde
-            // zes velden; alleen de CSV-parselogica (kolomherkenning, aliassen) blijft hier staan.
-            var rows = parseResult.Rows
-                .Select(r => new Database.Postgres.TeambegeleidingRow(
-                    r.Team, r.LeeftijdscategorieTeam, r.Teamrol, r.Naam, r.Emailadres, r.Telefoonnummer))
-                .ToList();
-
-            var importeerder = EasyAuthHelper.GetCallerName(req) ?? "admin";
-
-            await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-            var importResult = await Database.Postgres.TeambegeleidingImporter.ImportAsync(
-                connection, clubCode, rows, dto.Bestandsnaam, importeerder);
-
-            log.LogInformation("Teambegeleiding import geslaagd: {Rijen} rijen in {Duur}ms (geen PII gelogd — AVG)",
-                importResult.AantalRijen, importResult.DuurMs);
-
-            return new OkObjectResult(new
+        return AdminEndpoint.ExecuteAsync(req, log, "teambegeleiding importeren (geen PII gelogd — AVG)",
+            async clubCode =>
             {
-                rijen         = importResult.AantalRijen,
-                herkend       = parseResult.Herkend,
-                ontbreekt     = new List<string>(),
-                waarschuwingen = parseResult.Waarschuwingen
+                using var bodyReader = new StreamReader(req.Body);
+                var body = await bodyReader.ReadToEndAsync();
+                var dto = JsonConvert.DeserializeObject<TeambegeleidingImportRequest>(body);
+                if (dto == null || string.IsNullOrWhiteSpace(dto.CsvContent))
+                    return new BadRequestObjectResult(new { error = "csvContent is vereist" });
+
+                var parseResult = ParseCsv(dto.CsvContent);
+                if (!parseResult.IsValid)
+                    return new BadRequestObjectResult(new
+                    {
+                        error = parseResult.Error,
+                        ontbreekt = parseResult.Ontbreekt
+                    });
+
+                // Databaselaag gedelegeerd naar Database.Postgres.TeambegeleidingImporter (issue 824)
+                // in plaats van een eigen, niet-atomische delete/insert/auditlog-implementatie (issue
+                // 913: dat was hier eerder drie losse, niet-getransactioneerde stappen — een crash
+                // tussen de delete en de insert-lus liet de club zonder teambegeleidingsdata achter).
+                // ParseCsv's ImportRij en TeambegeleidingImporter's TeambegeleidingRow hebben dezelfde
+                // zes velden; alleen de CSV-parselogica (kolomherkenning, aliassen) blijft hier staan.
+                var rows = parseResult.Rows
+                    .Select(r => new Database.Postgres.TeambegeleidingRow(
+                        r.Team, r.LeeftijdscategorieTeam, r.Teamrol, r.Naam, r.Emailadres, r.Telefoonnummer))
+                    .ToList();
+
+                var importeerder = EasyAuthHelper.GetCallerName(req) ?? "admin";
+
+                await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+                await connection.OpenAsync();
+                var importResult = await Database.Postgres.TeambegeleidingImporter.ImportAsync(
+                    connection, clubCode, rows, dto.Bestandsnaam, importeerder);
+
+                log.LogInformation("Teambegeleiding import geslaagd: {Rijen} rijen in {Duur}ms (geen PII gelogd — AVG)",
+                    importResult.AantalRijen, importResult.DuurMs);
+
+                return new OkObjectResult(new
+                {
+                    rijen         = importResult.AantalRijen,
+                    herkend       = parseResult.Herkend,
+                    ontbreekt     = new List<string>(),
+                    waarschuwingen = parseResult.Waarschuwingen
+                });
             });
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Fout bij importeren teambegeleiding (geen PII gelogd — AVG)");
-            return new ObjectResult(new { error = "Import mislukt" }) { StatusCode = 500 };
-        }
     }
 
     // ── CSV parsing helpers (databasetier-onafhankelijk, ongewijzigd) ─────────

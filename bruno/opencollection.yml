@@ -23,14 +23,11 @@ docs:
 
     ## Beveiliging
 
-    Twee beveiligingsschema's:
+    Eén beveiligingsschema:
 
-    - **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.
-      Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en
-      populate-sunset).
     - **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor
-      alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele
-      `WEBSITE_SITE_NAME` afwezig is.
+      alle endpoints behalve `/api/health` (incl. de sync-matches-routes, sinds #1350). Lokaal omzeild
+      wanneer de omgevingsvariabele `WEBSITE_SITE_NAME` afwezig is.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
   type: text/markdown

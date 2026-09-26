@@ -13,26 +13,15 @@ namespace SportlinkFunction.Admin;
 /// </summary>
 public static class AdminClubsFunction
 {
-    // Clubs-endpoint gebruikt geen clubCode-filter; bevraagt alle AppSettings.
-    // AdminEndpoint wrapper niet gebruikt omdat GetClubCodeFromRequest hier niet van toepassing is.
+    // Bevraagt alle clubs, dus de clubcode uit de wrapper wordt hier bewust genegeerd (#1350).
     [Function("AdminClubsGet")]
-    public static async Task<IActionResult> Get(
+    public static Task<IActionResult> Get(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/clubs")] HttpRequest req,
-        FunctionContext context)
-    {
-        var log = context.GetLogger("AdminClubsGet");
-        var authResult = EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return authResult;
-        try
-        {
-            await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubs = await AdminClubsRepository.GetClubsAsync(SystemUtilities.DatabaseConfig.ConnectionString);
-            return new OkObjectResult(clubs);
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Fout bij ophalen clubs");
-            return new ObjectResult(new { error = "Ophalen mislukt" }) { StatusCode = 500 };
-        }
-    }
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminClubsGet"), "clubs ophalen",
+            async _ =>
+            {
+                var clubs = await AdminClubsRepository.GetClubsAsync(SystemUtilities.DatabaseConfig.ConnectionString);
+                return new OkObjectResult(clubs);
+            });
 }

@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
-    "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nTwee beveiligingsschema's:\n\n- **functionKey** — `?code=` queryparameter met de Azure **Master key**\n  (`AuthorizationLevel.Admin`). Uitsluitend voor de twee synchronisatieroutes:\n  `/postgres/sync-matches` (Postgres-tier) en `/sync-matches` (SQL Server-tier).\n  Geen enkel ander endpoint accepteert een Function key.\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist\n  voor alle overige endpoints behalve `/health`. De rolcontrole gebeurt server-side:\n  `admin` (`EasyAuthHelper.RequireAdmin`) voor `/beheer/`, `/planner/`, `/feedback/` en\n  `/test/`; `Wedstrijdzaken` (`EasyAuthHelper.RequireWedstrijdzaken`) voor `/sportlink/`\n  (op de SQL Server-tier bovendien ook `admin`). Lokaal omzeild wanneer de omgevingsvariabele\n  `WEBSITE_SITE_NAME` afwezig is.\n\nZonder token volgt `401`. Met een geldig token maar zonder de vereiste rol volgt `403` met\n`{ \"error\": \"Forbidden: vereiste rol ontbreekt\" }`. De rol `user` geeft nergens toegang:\n`EasyAuthHelper.RequireAuthenticated` is wel gedefinieerd, maar wordt nergens aangeroepen.\n\n## Tiers\n\nAlle endpoints bestaan sinds #1266 op beide databasetiers, met één uitzondering: de handmatige\nsynchronisatie heet `/postgres/sync-matches` op de Postgres-tier (productie) en\n`/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "3.5.6.0",
+    "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nEén beveiligingsschema:\n\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist\n  voor alle endpoints behalve `/health`. De rolcontrole gebeurt server-side:\n  `admin` (`EasyAuthHelper.RequireAdmin`, via de wrappers `AdminEndpoint.ExecuteAsync` /\n  `ExecuteZonderDatabaseAsync`) voor `/beheer/`, `/planner/`, `/feedback/` en `/test/` — sinds\n  #1350 óók voor `/postgres/sync-matches` en `/sync-matches`; `Wedstrijdzaken`\n  (`EasyAuthHelper.RequireWedstrijdzaken`, via `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`)\n  voor `/sportlink/` (op de SQL Server-tier bovendien ook `admin`). Lokaal omzeild wanneer de\n  omgevingsvariabele `WEBSITE_SITE_NAME` afwezig is.\n\nZonder token volgt `401`. Met een geldig token maar zonder de vereiste rol volgt `403` met\n`{ \"error\": \"Forbidden: vereiste rol ontbreekt\" }`. De rol `user` geeft nergens toegang:\n`EasyAuthHelper.RequireAuthenticated` is bij #1350 verwijderd.\n\n## Tiers\n\nAlle endpoints bestaan sinds #1266 op beide databasetiers, met één uitzondering: de handmatige\nsynchronisatie heet `/postgres/sync-matches` op de Postgres-tier (productie) en\n`/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
+    "version": "3.5.6.1",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -22,7 +22,7 @@
   "tags": [
     {
       "name": "core",
-      "description": "Health (anoniem) en handmatige Sportlink-synchronisatie (Azure Master key via ?code=).\nDe syncroute verschilt per tier: /postgres/sync-matches (Postgres) of /sync-matches (SQL Server).\n"
+      "description": "Health (anoniem) en handmatige Sportlink-synchronisatie (Entra ID, admin-rol — sinds #1350\ngeen Master key meer).\nDe syncroute verschilt per tier: /postgres/sync-matches (Postgres) of /sync-matches (SQL Server).\n"
     },
     {
       "name": "planner",
@@ -47,17 +47,11 @@
   ],
   "components": {
     "securitySchemes": {
-      "functionKey": {
-        "type": "apiKey",
-        "in": "query",
-        "name": "code",
-        "description": "Azure **Master key** (`AuthorizationLevel.Admin`). Alleen geldig op `/postgres/sync-matches`\n(Postgres-tier) en `/sync-matches` (SQL Server-tier). Alle andere endpoints staan op\n`AuthorizationLevel.Anonymous` en negeren `?code=` volledig — daar geldt easyAuth.\n"
-      },
       "easyAuth": {
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT",
-        "description": "Azure Easy Auth Bearer token (Entra ID). De Function App valideert dit token via Easy Auth\nen injecteert `X-MS-CLIENT-PRINCIPAL`. EasyAuthHelper controleert daarna de rol: `admin` op\nalle /beheer/-, /planner/-, /feedback/- en /test/-endpoints, `Wedstrijdzaken` op alle\n/sportlink/-endpoints. Lokaal altijd toegestaan als WEBSITE_SITE_NAME afwezig is.\n"
+        "description": "Azure Easy Auth Bearer token (Entra ID). Geldt voor alle endpoints behalve `/health`,\ninclusief `/postgres/sync-matches` en `/sync-matches` (sinds #1350 — tot dan een Function\nkey/Master key via `?code=`). De Function App valideert dit token via Easy Auth en\ninjecteert `X-MS-CLIENT-PRINCIPAL`. EasyAuthHelper controleert daarna de rol: `admin` op\nalle /beheer/-, /planner/-, /feedback/- en /test/-endpoints (en de twee syncroutes),\n`Wedstrijdzaken` op alle /sportlink/-endpoints. Lokaal altijd toegestaan als\nWEBSITE_SITE_NAME afwezig is.\n"
       }
     },
     "headers": {
@@ -3487,10 +3481,10 @@
         ],
         "operationId": "syncMatchesPostgres",
         "summary": "Handmatige Sportlink synchronisatie starten (Postgres-tier)",
-        "description": "**Tier: Postgres (productie).** Op de SQL Server-tier bestaat deze route niet (404) — daar\nheet hij `/sync-matches`.\n\nStart een Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).\nVereist de Azure Master key via `?code=` (`AuthorizationLevel.Admin`).\n\n- **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)\n- **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar.\n  Een ontbrekende of onparseerbare `season` valt stil terug op de standaardmodus.\n\nMislukt één of meer deelstappen, dan volgt `207` in plaats van `200`: de geslaagde\ndeelstappen blijven staan, maar `lastsynctimestamp` wordt bewust niet bijgewerkt (#1081).\n",
+        "description": "**Tier: Postgres (productie).** Op de SQL Server-tier bestaat deze route niet (404) — daar\nheet hij `/sync-matches`.\n\nStart een Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).\nVereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key\nvia `?code=`, `AuthorizationLevel.Admin`).\n\n- **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)\n- **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar.\n  Een ontbrekende of onparseerbare `season` valt stil terug op de standaardmodus.\n\nMislukt één of meer deelstappen, dan volgt `207` in plaats van `200`: de geslaagde\ndeelstappen blijven staan, maar `lastsynctimestamp` wordt bewust niet bijgewerkt (#1081).\n",
         "security": [
           {
-            "functionKey": []
+            "easyAuth": []
           }
         ],
         "parameters": [
@@ -3557,6 +3551,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
           }
@@ -3570,10 +3567,10 @@
         ],
         "operationId": "syncMatches",
         "summary": "Handmatige Sportlink synchronisatie starten (SQL Server-tier)",
-        "description": "**Tier: SQL Server.** Op de Postgres-tier (productie) bestaat deze route niet (404) — daar\nheet hij `/postgres/sync-matches`.\n\nStart een volledige Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).\nVereist de Azure Master key via `?code=` (`AuthorizationLevel.Admin`).\n\n- **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)\n- **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar\n\nDeze tier kent de `207`-respons van de Postgres-tier niet: alleen `200` of `500`.\n",
+        "description": "**Tier: SQL Server.** Op de Postgres-tier (productie) bestaat deze route niet (404) — daar\nheet hij `/postgres/sync-matches`.\n\nStart een volledige Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).\nVereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key\nvia `?code=`, `AuthorizationLevel.Admin`).\n\n- **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)\n- **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar\n\nDeze tier kent de `207`-respons van de Postgres-tier niet: alleen `200` of `500`.\n",
         "security": [
           {
-            "functionKey": []
+            "easyAuth": []
           }
         ],
         "parameters": [
@@ -3611,6 +3608,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"

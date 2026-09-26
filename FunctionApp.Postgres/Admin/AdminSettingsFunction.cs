@@ -89,179 +89,154 @@ public static class AdminSettingsFunction
     }
 
     [Function("AdminSettingsGet")]
-    public static async Task<IActionResult> Get(
+    public static Task<IActionResult> Get(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/settings")] HttpRequest req,
-        FunctionContext context)
-    {
-        var log = context.GetLogger("AdminSettingsGet");
-        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        var authResult = EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return authResult;
-        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
-        try
-        {
-            await PostgresSystemUtilities.WaitForDatabaseAsync(log);
-
-            await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-
-            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-            // #1098: ontbreekt de kolom uit migratie 012 (WaitForDatabaseAsync heeft zojuist
-            // geladen, dus dit oordeel is vers), selecteer dan de migratie-default in plaats van
-            // de kolom — anders geeft dit scherm 500 terwijl de rest van de applicatie al werkt.
-            var extensieKolom = PostgresAppSettings.ExtensionColumnAvailable
-                ? "sportlinkextensionenabled"
-                : "false";
-            // #998, zelfde precedent als hierboven: ontbreekt migratie 016 nog, val dan terug op
-            // de migratie-default (DEFAULT true — dry-run AAN). Fail-safe: een ontbrekende kolom
-            // mag nooit stilzwijgend als "dry-run uit" gelezen worden.
-            var dryRunKolom = PostgresAppSettings.DryRunColumnAvailable
-                ? "sportlinkdryrun"
-                : "true";
-            await using var command = new NpgsqlCommand($@"
-                SELECT
-                    clubname AS ""ClubName"", clubcode AS ""ClubCode"",
-                    sportlinkapiurl AS ""SportlinkApiUrl"", seasonstartmonth AS ""SeasonStartMonth"",
-                    accommodatie AS ""Accommodatie"", lastsynctimestamp AS ""LastSyncTimestamp"",
-                    fetchschedule AS ""FetchSchedule"", plannerafzendernaam AS ""PlannerAfzenderNaam"",
-                    coordinatornaam AS ""CoordinatorNaam"", coordinatorfunctie AS ""CoordinatorFunctie"",
-                    planneremailadres AS ""PlannerEmailAdres"",
-                    herplandeadlinedagen AS ""HerplanDeadlineDagen"", bufferminuten AS ""BufferMinuten"",
-                    emailvoetnoot AS ""EmailVoetnoot"", accommodatieplaats AS ""AccommodatiePlaats"",
-                    accommodatielatitude AS ""AccommodatieLatitude"",
-                    accommodatielongitude AS ""AccommodatieLongitude"",
-                    knvbpdfbijlageingeschakeld AS ""KnvbPdfBijlageIngeschakeld"",
-                    knvbstandaardregio AS ""KnvbStandaardRegio"",
-                    userealtimeapi AS ""UseRealtimeApi"",
-                    {extensieKolom} AS ""SportlinkExtensionEnabled"",
-                    {dryRunKolom} AS ""SportlinkDryRun""
-                FROM public.appsettings
-                WHERE clubcode = @clubcode
-                LIMIT 1", connection);
-            command.Parameters.AddWithValue("clubcode", clubCode);
-
-            await using var reader = await command.ExecuteReaderAsync();
-            if (!await reader.ReadAsync())
-                return new NotFoundObjectResult(new { error = "Geen AppSettings rij gevonden" });
-
-            var result = new Dictionary<string, object?>();
-            for (int i = 0; i < reader.FieldCount; i++)
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminSettingsGet"), "AppSettings ophalen",
+            async clubCode =>
             {
-                var name = reader.GetName(i);
-                result[name] = reader.IsDBNull(i) ? null : reader.GetValue(i);
-            }
-            reader.Close();
+                await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+                await connection.OpenAsync();
 
-            if (result.TryGetValue("FetchSchedule", out var sched) && sched is string schedStr && !string.IsNullOrWhiteSpace(schedStr))
-            {
-                result["fetchScheduleLeesbaar"] = VertaalCronNaarLeesbaar(schedStr);
-                result["volgendeMomenten"] = BerekenVolgendeMomenten(schedStr, 3);
-            }
+                // #1098: ontbreekt de kolom uit migratie 012 (WaitForDatabaseAsync in de wrapper heeft
+                // zojuist geladen, dus dit oordeel is vers), selecteer dan de migratie-default in
+                // plaats van de kolom — anders geeft dit scherm 500 terwijl de rest van de applicatie
+                // al werkt.
+                var extensieKolom = PostgresAppSettings.ExtensionColumnAvailable
+                    ? "sportlinkextensionenabled"
+                    : "false";
+                // #998, zelfde precedent als hierboven: ontbreekt migratie 016 nog, val dan terug op
+                // de migratie-default (DEFAULT true — dry-run AAN). Fail-safe: een ontbrekende kolom
+                // mag nooit stilzwijgend als "dry-run uit" gelezen worden.
+                var dryRunKolom = PostgresAppSettings.DryRunColumnAvailable
+                    ? "sportlinkdryrun"
+                    : "true";
+                await using var command = new NpgsqlCommand($@"
+                    SELECT
+                        clubname AS ""ClubName"", clubcode AS ""ClubCode"",
+                        sportlinkapiurl AS ""SportlinkApiUrl"", seasonstartmonth AS ""SeasonStartMonth"",
+                        accommodatie AS ""Accommodatie"", lastsynctimestamp AS ""LastSyncTimestamp"",
+                        fetchschedule AS ""FetchSchedule"", plannerafzendernaam AS ""PlannerAfzenderNaam"",
+                        coordinatornaam AS ""CoordinatorNaam"", coordinatorfunctie AS ""CoordinatorFunctie"",
+                        planneremailadres AS ""PlannerEmailAdres"",
+                        herplandeadlinedagen AS ""HerplanDeadlineDagen"", bufferminuten AS ""BufferMinuten"",
+                        emailvoetnoot AS ""EmailVoetnoot"", accommodatieplaats AS ""AccommodatiePlaats"",
+                        accommodatielatitude AS ""AccommodatieLatitude"",
+                        accommodatielongitude AS ""AccommodatieLongitude"",
+                        knvbpdfbijlageingeschakeld AS ""KnvbPdfBijlageIngeschakeld"",
+                        knvbstandaardregio AS ""KnvbStandaardRegio"",
+                        userealtimeapi AS ""UseRealtimeApi"",
+                        {extensieKolom} AS ""SportlinkExtensionEnabled"",
+                        {dryRunKolom} AS ""SportlinkDryRun""
+                    FROM public.appsettings
+                    WHERE clubcode = @clubcode
+                    LIMIT 1", connection);
+                command.Parameters.AddWithValue("clubcode", clubCode);
 
-            return new OkObjectResult(result);
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Fout bij ophalen AppSettings");
-            return new ObjectResult(new { error = "Ophalen mislukt" }) { StatusCode = 500 };
-        }
-    }
+                await using var reader = await command.ExecuteReaderAsync();
+                if (!await reader.ReadAsync())
+                    return new NotFoundObjectResult(new { error = "Geen AppSettings rij gevonden" });
+
+                var result = new Dictionary<string, object?>();
+                for (int i = 0; i < reader.FieldCount; i++)
+                {
+                    var name = reader.GetName(i);
+                    result[name] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                }
+                reader.Close();
+
+                if (result.TryGetValue("FetchSchedule", out var sched) && sched is string schedStr && !string.IsNullOrWhiteSpace(schedStr))
+                {
+                    result["fetchScheduleLeesbaar"] = VertaalCronNaarLeesbaar(schedStr);
+                    result["volgendeMomenten"] = BerekenVolgendeMomenten(schedStr, 3);
+                }
+
+                return new OkObjectResult(result);
+            });
 
     [Function("AdminSettingsPut")]
-    public static async Task<IActionResult> Put(
+    public static Task<IActionResult> Put(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "beheer/settings")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminSettingsPut");
-        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        var authResult = EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return authResult;
-        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
-        try
-        {
-            using var bodyReader = new StreamReader(req.Body);
-            var bodyText = await bodyReader.ReadToEndAsync();
-            if (string.IsNullOrWhiteSpace(bodyText))
-                return new BadRequestObjectResult(new { error = "Lege request body" });
-
-            var updateRequest = JsonConvert.DeserializeObject<UpdateSettingsRequest>(bodyText);
-            if (updateRequest == null)
-                return new BadRequestObjectResult(new { error = "Ongeldige JSON" });
-
-            // #1003: audit-actor komt uitsluitend uit gevalideerde Easy Auth-claims, nooit uit de
-            // request-body of querystring — anders kan een beheerder de wijziging onder een
-            // zelfgekozen naam laten vastleggen.
-            var gewijzigdDoor = EasyAuthHelper.GetAuditActor(req);
-
-            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-
-            var validatieFout = ValidateAndFilterChanges(updateRequest, log, out var changes);
-            if (validatieFout != null) return validatieFout;
-            changes.TryGetValue("FetchSchedule", out var nieuweSchedule);
-
-            await PostgresSystemUtilities.WaitForDatabaseAsync(log);
-
-            // #1098: de schakelaar kan pas bestaan als migratie 012 is toegepast. Een 409 met
-            // uitleg in plaats van de generieke 500 "Opslaan mislukt" op een ontbrekende kolom.
-            if (changes.ContainsKey("SportlinkExtensionEnabled") && !PostgresAppSettings.ExtensionColumnAvailable)
-                return new ConflictObjectResult(new
-                {
-                    error = "De Sportlink Web Extension kan nog niet worden ingeschakeld: databasemigratie " +
-                            "012_sportlink_extension.sql is niet toegepast. Zie 'pendingMigrations' in /api/health."
-                });
-
-            // #998, zelfde precedent als hierboven (#1098): de dry-run-schakelaar kan pas bestaan
-            // als migratie 016 is toegepast.
-            if (changes.ContainsKey("SportlinkDryRun") && !PostgresAppSettings.DryRunColumnAvailable)
-                return new ConflictObjectResult(new
-                {
-                    error = "Dry-run-modus kan nog niet worden aangepast: databasemigratie " +
-                            "016_sportlink_dryrun_en_contractcheck.sql is niet toegepast. Zie 'pendingMigrations' in /api/health."
-                });
-
-            await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-
-            await ApplyChangesAsync(connection, changes, gewijzigdDoor, clubCode);
-
-            await PostgresAppSettings.LoadSettingsAsync(log);
-
-            var fetchScheduleChanged = changes.ContainsKey("FetchSchedule");
-            string? herstartOpmerking = null;
-            bool herstartAutomatisch = false;
-
-            if (fetchScheduleChanged && nieuweSchedule != null)
+        return AdminEndpoint.ExecuteAsync(req, log, "AppSettings opslaan",
+            async clubCode =>
             {
-                var restartResult = await TriggerFunctionAppRestartAsync(nieuweSchedule, log);
-                if (restartResult != null)
-                {
-                    herstartAutomatisch = true;
-                    herstartOpmerking = restartResult;
-                }
-                else
-                {
-                    herstartOpmerking = "FetchSchedule gewijzigd — herstart van de Function App vereist om effect te laten gelden. " +
-                                        "Configureer AzureSubscriptionId, AzureResourceGroupName en AzureFunctionAppName voor automatische herstart.";
-                }
-            }
+                using var bodyReader = new StreamReader(req.Body);
+                var bodyText = await bodyReader.ReadToEndAsync();
+                if (string.IsNullOrWhiteSpace(bodyText))
+                    return new BadRequestObjectResult(new { error = "Lege request body" });
 
-            return new OkObjectResult(new
-            {
-                gewijzigdeVelden = changes.Keys.ToArray(),
-                herstartVereist = fetchScheduleChanged && !herstartAutomatisch,
-                herstartAutomatisch,
-                opmerking = herstartOpmerking,
-                fetchScheduleLeesbaar = fetchScheduleChanged && nieuweSchedule != null
-                    ? VertaalCronNaarLeesbaar(nieuweSchedule) : null,
-                volgendeMomenten = fetchScheduleChanged && nieuweSchedule != null
-                    ? BerekenVolgendeMomenten(nieuweSchedule, 3) : null
+                var updateRequest = JsonConvert.DeserializeObject<UpdateSettingsRequest>(bodyText);
+                if (updateRequest == null)
+                    return new BadRequestObjectResult(new { error = "Ongeldige JSON" });
+
+                // #1003: audit-actor komt uitsluitend uit gevalideerde Easy Auth-claims, nooit uit de
+                // request-body of querystring — anders kan een beheerder de wijziging onder een
+                // zelfgekozen naam laten vastleggen.
+                var gewijzigdDoor = EasyAuthHelper.GetAuditActor(req);
+
+                var validatieFout = ValidateAndFilterChanges(updateRequest, log, out var changes);
+                if (validatieFout != null) return validatieFout;
+                changes.TryGetValue("FetchSchedule", out var nieuweSchedule);
+
+                // #1098: de schakelaar kan pas bestaan als migratie 012 is toegepast. Een 409 met
+                // uitleg in plaats van de generieke 500 "Opslaan mislukt" op een ontbrekende kolom.
+                if (changes.ContainsKey("SportlinkExtensionEnabled") && !PostgresAppSettings.ExtensionColumnAvailable)
+                    return new ConflictObjectResult(new
+                    {
+                        error = "De Sportlink Web Extension kan nog niet worden ingeschakeld: databasemigratie " +
+                                "012_sportlink_extension.sql is niet toegepast. Zie 'pendingMigrations' in /api/health."
+                    });
+
+                // #998, zelfde precedent als hierboven (#1098): de dry-run-schakelaar kan pas bestaan
+                // als migratie 016 is toegepast.
+                if (changes.ContainsKey("SportlinkDryRun") && !PostgresAppSettings.DryRunColumnAvailable)
+                    return new ConflictObjectResult(new
+                    {
+                        error = "Dry-run-modus kan nog niet worden aangepast: databasemigratie " +
+                                "016_sportlink_dryrun_en_contractcheck.sql is niet toegepast. Zie 'pendingMigrations' in /api/health."
+                    });
+
+                await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+                await connection.OpenAsync();
+
+                await ApplyChangesAsync(connection, changes, gewijzigdDoor, clubCode);
+
+                await PostgresAppSettings.LoadSettingsAsync(log);
+
+                var fetchScheduleChanged = changes.ContainsKey("FetchSchedule");
+                string? herstartOpmerking = null;
+                bool herstartAutomatisch = false;
+
+                if (fetchScheduleChanged && nieuweSchedule != null)
+                {
+                    var restartResult = await TriggerFunctionAppRestartAsync(nieuweSchedule, log);
+                    if (restartResult != null)
+                    {
+                        herstartAutomatisch = true;
+                        herstartOpmerking = restartResult;
+                    }
+                    else
+                    {
+                        herstartOpmerking = "FetchSchedule gewijzigd — herstart van de Function App vereist om effect te laten gelden. " +
+                                            "Configureer AzureSubscriptionId, AzureResourceGroupName en AzureFunctionAppName voor automatische herstart.";
+                    }
+                }
+
+                return new OkObjectResult(new
+                {
+                    gewijzigdeVelden = changes.Keys.ToArray(),
+                    herstartVereist = fetchScheduleChanged && !herstartAutomatisch,
+                    herstartAutomatisch,
+                    opmerking = herstartOpmerking,
+                    fetchScheduleLeesbaar = fetchScheduleChanged && nieuweSchedule != null
+                        ? VertaalCronNaarLeesbaar(nieuweSchedule) : null,
+                    volgendeMomenten = fetchScheduleChanged && nieuweSchedule != null
+                        ? BerekenVolgendeMomenten(nieuweSchedule, 3) : null
+                });
             });
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Fout bij opslaan AppSettings");
-            return new ObjectResult(new { error = "Opslaan mislukt" }) { StatusCode = 500 };
-        }
     }
 
     private static IActionResult? ValidateAndFilterChanges(
@@ -349,6 +324,9 @@ public static class AdminSettingsFunction
         }
     }
 
+    // #1350: bewust NIET via AdminEndpoint.ExecuteAsync — geocoding raakt de database niet en hoort
+    // ook geen databasewacht te krijgen. Staat daarom, met deze reden, in
+    // scripts/ci/endpoint-autorisatie-allowlist.txt. De poort zelf is identiek.
     [Function("AdminGeocodeGet")]
     public static async Task<IActionResult> Geocode(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/geocode")] HttpRequest req,

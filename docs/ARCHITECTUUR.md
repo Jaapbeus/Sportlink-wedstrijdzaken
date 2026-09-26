@@ -701,7 +701,7 @@ security-incident.
 | 2 | **Assignment required = Yes** — alleen pre-toegewezen gebruikers krijgen een token | Azure Portal → Enterprise applications → Properties | ⚠️ Per-deploy verifiëren |
 | 3 | **App Roles** — `admin` en `user` gedefinieerd in App Registration manifest, `allowedMemberTypes: ["User"]` | Azure Portal → App registrations → App roles | ⚠️ Per-deploy verifiëren |
 | 4 | **Frontend role-gate** — `IsInRole("admin") \|\| IsInRole("user")` BOVENOP `IsAuthenticated`; zonder rol → `NoAccess`-pagina, géén `MainLayout`. Beslissing als pure, teste functie (`AuthGate.Bepaal`), niet inline in de pagina | `BlazorAdmin/Services/AuthGate.cs` + `BlazorAdmin/App.razor` | ✓ Verplicht in code, **getest** |
-| 5 | **Backend role-gate (EasyAuthHelper)** — elke admin-endpoint roept `RequireAdmin()` aan; valideert `roles`-claim in `X-MS-CLIENT-PRINCIPAL` | `FunctionApp/Admin/EasyAuthHelper.cs` (identieke kopie in `FunctionApp.Postgres/Admin/`) | ✓ Verplicht in code |
+| 5 | **Backend role-gate (EasyAuthHelper)** — elke admin-endpoint loopt via `AdminEndpoint.ExecuteAsync`, dat `RequireAdmin()` centraal aanroept (#1350; CI-guard `check-endpoint-autorisatie.sh`); valideert `roles`-claim in `X-MS-CLIENT-PRINCIPAL` | `FunctionApp/Admin/EasyAuthHelper.cs` (identieke kopie in `FunctionApp.Postgres/Admin/`) | ✓ Verplicht in code |
 
 **De server is de waarheid.** Een aanvaller kan de Blazor WASM modificeren. Laag 5 is leidend voor
 databeveiliging. Laag 4 is voor UX (geen app-shell voor niet-geautoriseerde gebruikers).
@@ -776,7 +776,7 @@ vastlopende login.
 | 7 | `<CompressionEnabled>false</CompressionEnabled>` | `BlazorAdmin.csproj` | Azure SWA serveert pre-compressed `.wasm.br` zonder correcte `Content-Encoding: br` → SRI-check faalt in Chrome Incognito |
 | 8 | SPA redirect URI `https://<host>/authentication/login-callback` in App Registration | Azure Portal | Entra weigert de redirect als deze URI ontbreekt |
 | 9 | `Authentication.razor` op `@page "/authentication/{action}"` met `<RemoteAuthenticatorView>` | `Pages/` | Verwerkt MSAL login/logout-callback |
-| 10 | Easy Auth ingeschakeld + `EasyAuthHelper.RequireAdmin()` op elk admin-endpoint | Azure Portal + `FunctionApp*/Admin/` | Server-side validatie van Bearer token en admin-rol |
+| 10 | Easy Auth ingeschakeld + `EasyAuthHelper.RequireAdmin()` op elk admin-endpoint, via `AdminEndpoint.ExecuteAsync` (#1350) | Azure Portal + `FunctionApp*/Admin/` | Server-side validatie van Bearer token en admin-rol |
 | 11 | `Cache-Control: no-cache` voor `/index.html` en `/` | `staticwebapp.config.json` | Zonder dit cachet de browser een oude `index.html` die naar assets uit een eerdere deploy verwijst → 404's en SRI-mismatches |
 
 #### 8.2.4 Secrets en configuratie
