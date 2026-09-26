@@ -941,21 +941,25 @@ Invoke-WebRequest http://localhost:5242/ -UseBasicParsing
 
 ### Bruno API-collectie (handmatig testen)
 
-De map `bruno/` bevat een [Bruno](https://usebruno.com)-collectie met 72 requests, gegenereerd uit
-`docs/api-standaarden/openapi.yaml`, gegenereerd en gecommit zodat hij in git reviewbaar blijft en
-in sync loopt met de spec. Open de map in de Bruno-app en kies de omgeving `local`
-(`http://localhost:7094`).
+De [Bruno](https://usebruno.com)-collectie staat **niet** in git (besluit #1354, 26-09-2026) — hij
+werd na elke spec-wijziging toch handmatig geregenereerd, en een gegenereerd artefact dat kan
+verouderen (zoals de pre-#1350 `functionKey`-footer die niet meesynchroniseerde) is dan alleen
+ruis in de diff. Genereer hem lokaal on-demand:
+
+```
+Skill: bruno-gen-collection (ingest → plan → apply), tegen docs/api-standaarden/openapi.yaml
+```
+
+`bruno-gen.json` (wél in git) legt het project en de `local`-omgeving (`http://localhost:7094`)
+vast, zodat dit zonder handmatige keuzes herhaalbaar is. Open de gegenereerde map in de Bruno-app.
 
 **Twee beveiligingsschema's, niet automatisch per request gewisseld:**
 - `core`/`planner`/`testdata`-endpoints (functionKey): de collectie is standaard op dit schema
   ingesteld (`?code={{apiKey}}`). Lokaal (`func start`) is dit niet verplicht.
-- `beheer`/`feedback`-endpoints (Easy Auth Bearer/Entra ID): zet in Bruno de auth van dat specifieke
-  request handmatig op "Bearer Token" met een geldig token, of laat leeg — lokaal wordt de
-  admin-rolcheck overgeslagen wanneer `WEBSITE_SITE_NAME` afwezig is (zie `EasyAuthHelper.cs`).
-
-Regenereren na een spec-wijziging: de `bruno-gen-collection`-skill (`ingest` → `plan` → `apply`),
-uitgevoerd tegen `docs/api-standaarden/openapi.yaml`. `bruno-gen.json` legt het project en de
-`local`-omgeving vast zodat dit zonder handmatige keuzes herhaalbaar is.
+- `beheer`/`feedback`/`sync`-endpoints (Easy Auth Bearer/Entra ID, sinds #1350 ook `sync-matches`):
+  zet in Bruno de auth van dat specifieke request handmatig op "Bearer Token" met een geldig token,
+  of laat leeg — lokaal wordt de admin-rolcheck overgeslagen wanneer `WEBSITE_SITE_NAME` afwezig is
+  (zie `EasyAuthHelper.cs`).
 
 ### Synchronisatiepad testen zonder de echte Sportlink-API (#867)
 
@@ -1117,7 +1121,7 @@ sportlink-wedstrijdzaken/
 ├── Database.Postgres.Tests/ · Planner.Shared.Tests/   # vijf testprojecten
 ├── MigrationTools/SqlServerToPostgresCopy/            # eenmalige tier-migratietool
 ├── Tools/SportlinkTokenCapture/                       # Sportlink-tokenopname (epic #986)
-├── bruno/                             # Bruno API-collectie (zie §7)
+├── bruno-gen.json                     # Bruno-generatorconfig — bruno/ zelf niet in git, zie §7
 ├── infrastructure/                    # Bicep-templates
 ├── scripts/
 │   ├── dev/
