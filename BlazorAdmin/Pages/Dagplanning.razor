@@ -1,4 +1,5 @@
 @page "/dagplanning"
+@inherits ClubSelectorPageBase
 @* Alle logica staat in Dagplanning.razor.cs (#1122); het Sportlink-paneel per wedstrijd is
    het component SportlinkMatchPanel. *@
 
@@ -27,6 +28,13 @@
         </div>
     </div>
 </div>
+
+@* #1334: direct onder de knop tonen — niet pas na de (soms hoge) Veldbezetting-kaart, waar een
+   fout anders onopgemerkt bleef. *@
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="alert alert-danger">@_errorMessage</div>
+}
 
 @* ── Directe veldbezetting: wat staat er nu al gepland op deze datum (#566) ── *@
 <div class="card mb-3">
@@ -60,16 +68,15 @@
                 if (_veMin <= _vsMin) _veMin = _vsMin + 60;
                 int _vTotMin = _veMin - _vsMin;
 
-                <div style="overflow-x:auto; min-width:0;" class="mb-3">
+                <div class="veldbezetting-sticky mb-3 gantt-scroll">
                     @* Tijdas-header *@
-                    <div style="display:flex; margin-bottom:4px;">
-                        <div style="width:120px; flex-shrink:0;"></div>
-                        <div style="flex:1; position:relative; height:22px; min-width:200px;">
+                    <div class="gantt-tijdas-header">
+                        <div class="gantt-label-gutter"></div>
+                        <div class="gantt-tijdas-lijn">
                             @for (int _h = _vsMin; _h <= _veMin; _h += 60)
                             {
                                 string _lftH = GanttPct(_h - _vsMin, _vTotMin);
-                                <div style="position:absolute; left:@(_lftH)%; transform:@GanttLabelTransform(_h, _vsMin, _veMin);
-                                            font-size:0.7rem; color:#6c757d; white-space:nowrap; user-select:none;">
+                                <div class="gantt-uur-label" style="--gantt-left:@(_lftH)%; --gantt-transform:@GanttLabelTransform(_h, _vsMin, _veMin);">
                                     @GanttUurLabel(_h)
                                 </div>
                             }
@@ -79,18 +86,15 @@
                     @* Veld-rijen *@
                     @foreach (var _veld in _vVelden)
                     {
-                        <div style="display:flex; border-top:1px solid #dee2e6;">
-                            <div style="width:120px; flex-shrink:0; padding:6px 8px; font-size:0.8rem;
-                                        font-weight:600; color:#495057; background:#f8f9fa;
-                                        border-right:1px solid #dee2e6; display:flex; align-items:center;">
+                        <div class="gantt-veld-rij">
+                            <div class="gantt-veld-label">
                                 @_veld
                             </div>
-                            <div style="flex:1; position:relative; height:72px; min-width:200px; background:#fff;">
+                            <div class="gantt-veld-track">
                                 @* Uurlijnen *@
                                 @for (int _h = _vsMin + 60; _h < _veMin; _h += 60)
                                 {
-                                    <div style="position:absolute; left:@(GanttPct(_h - _vsMin, _vTotMin))%;
-                                                top:0; bottom:0; width:1px; background:#e9ecef; z-index:0;"></div>
+                                    <div class="gantt-uurlijn" style="--gantt-left:@(GanttPct(_h - _vsMin, _vTotMin))%;"></div>
                                 }
                                 @* Wedstrijdblokken *@
                                 @foreach (var gi in _vGantt.Where(g => g.VeldNaam == _veld))
@@ -101,21 +105,18 @@
                                     string _top = GanttPct((int)_topVal, 100);
                                     string _hgt = GanttPct((int)_hgtVal, 100);
                                     string _tooltip = GanttTooltip(gi);
+                                    bool _gehover = gi.WedstrijdCode != null && gi.WedstrijdCode == _veldbezettingHoverCode;
                                     <div title="@_tooltip"
-                                         style="position:absolute;
-                                                left:calc(@(_lft)% + 2px); width:calc(@(_wdt)% - 4px);
-                                                top:calc(@(_top)% + 2px); height:calc(@(_hgt)% - 4px);
-                                                background:@GanttKleur(gi.Status);
-                                                border-radius:5px; overflow:hidden;
-                                                padding:2px 5px; color:#fff;
-                                                font-size:0.68rem; line-height:1.25;
-                                                z-index:1; cursor:default;
-                                                box-shadow:0 1px 3px rgba(0,0,0,0.2);">
-                                        <div style="overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
-                                                    font-weight:700; font-size:0.7rem;">
+                                         class="gantt-blok @(_gehover ? "gantt-blok-hover" : "")"
+                                         @onmouseover="() => _veldbezettingHoverCode = gi.WedstrijdCode"
+                                         @onmouseout="() => _veldbezettingHoverCode = null"
+                                         style="--gantt-left:calc(@(_lft)% + 2px); --gantt-width:calc(@(_wdt)% - 4px);
+                                                --gantt-top:calc(@(_top)% + 2px); --gantt-height:calc(@(_hgt)% - 4px);
+                                                --gantt-bg:@GanttKleur(gi.Status);">
+                                        <div class="gantt-blok-tijd">
                                             @gi.Aanvang.ToString("HH:mm")
                                         </div>
-                                        <div style="overflow:hidden; white-space:nowrap; text-overflow:ellipsis;">
+                                        <div class="gantt-blok-label">
                                             @GanttLabel(gi.Label)
                                         </div>
                                     </div>
@@ -123,7 +124,7 @@
                             </div>
                         </div>
                     }
-                    <div style="height:1px; background:#dee2e6; margin-left:120px;"></div>
+                    <div class="gantt-as-onderlijn"></div>
                 </div>
             }
             else
@@ -145,7 +146,9 @@
                     <tbody>
                         @foreach (var item in _veldbezetting)
                         {
-                            <tr>
+                            <tr class="@(item.WedstrijdCode != null && item.WedstrijdCode == _veldbezettingHoverCode ? "veldbezetting-rij-hover" : "")"
+                                @onmouseover="() => _veldbezettingHoverCode = item.WedstrijdCode"
+                                @onmouseout="() => _veldbezettingHoverCode = null">
                                 <td>@(item.AanvangsTijd ?? "—")</td>
                                 <td>@item.TeamNaam</td>
                                 <td>@(item.Uitteam ?? "—")</td>
@@ -159,11 +162,6 @@
         }
     </div>
 </div>
-
-@if (!string.IsNullOrEmpty(_errorMessage))
-{
-    <div class="alert alert-danger">@_errorMessage</div>
-}
 
 @if (_plan != null)
 {
@@ -269,13 +267,13 @@
                 @* Legenda *@
                 <div class="d-flex flex-wrap gap-3 mb-2 small">
                     <span class="fw-semibold text-muted me-1">Status:</span>
-                    <span><span class="gantt-legenda-dot" style="background:#198754;"></span> Ongewijzigd</span>
-                    <span><span class="gantt-legenda-dot" style="background:#0d6efd;"></span> Wijziging</span>
-                    <span><span class="gantt-legenda-dot" style="background:#d97706;"></span> Nieuw slot</span>
+                    <span><span class="gantt-legenda-dot gantt-legenda-dot-ongewijzigd"></span> Ongewijzigd</span>
+                    <span><span class="gantt-legenda-dot gantt-legenda-dot-wijziging"></span> Wijziging</span>
+                    <span><span class="gantt-legenda-dot gantt-legenda-dot-nieuw"></span> Nieuw slot</span>
                     <span class="ms-3 fw-semibold text-muted me-1">Voorkeurstijd:</span>
-                    <span><span class="gantt-legenda-balk" style="background:#22c55e;"></span> Op tijd</span>
-                    <span><span class="gantt-legenda-balk" style="background:#f59e0b;"></span> &le;15 min afwijking</span>
-                    <span><span class="gantt-legenda-balk" style="background:#ef4444;"></span> &gt;15 min afwijking</span>
+                    <span><span class="gantt-legenda-balk gantt-legenda-balk-optijd"></span> Op tijd</span>
+                    <span><span class="gantt-legenda-balk gantt-legenda-balk-klein"></span> &le;15 min afwijking</span>
+                    <span><span class="gantt-legenda-balk gantt-legenda-balk-groot"></span> &gt;15 min afwijking</span>
                 </div>
 
                 @* #689: boven de tijdlijn staat alléén de legenda, die in beide tabs identiek is.
@@ -285,16 +283,15 @@
                    (50px), daarna met dezelfde hint in beide tabs maar met verschillende tekstlengte,
                    die op een 1440px-scherm in een verschillend aantal regels wrapte (21px). De
                    toelichting staat daarom nu ónder de tijdlijn, waar haar hoogte niets verschuift. *@
-                <div style="overflow-x:auto; min-width:0;">
+                <div class="gantt-scroll">
                     @* Tijdas-header *@
-                    <div style="display:flex; margin-bottom:4px;">
-                        <div style="width:120px; flex-shrink:0;"></div>
-                        <div style="flex:1; position:relative; height:22px; min-width:200px;">
+                    <div class="gantt-tijdas-header">
+                        <div class="gantt-label-gutter"></div>
+                        <div class="gantt-tijdas-lijn">
                             @for (int _h = _sMin; _h <= _eMin; _h += 60)
                             {
                                 string _lftH = GanttPct(_h - _sMin, _totMin);
-                                <div style="position:absolute; left:@(_lftH)%; transform:@GanttLabelTransform(_h, _sMin, _eMin);
-                                            font-size:0.7rem; color:#6c757d; white-space:nowrap; user-select:none;">
+                                <div class="gantt-uur-label" style="--gantt-left:@(_lftH)%; --gantt-transform:@GanttLabelTransform(_h, _sMin, _eMin);">
                                     @GanttUurLabel(_h)
                                 </div>
                             }
@@ -307,21 +304,18 @@
                     {
                         int _rij = _rijIdx++;
                         string _veldNaam = _veld;
-                        <div style="display:flex; border-top:1px solid #dee2e6;">
-                            <div style="width:120px; flex-shrink:0; padding:6px 8px; font-size:0.8rem;
-                                        font-weight:600; color:#495057; background:#f8f9fa;
-                                        border-right:1px solid #dee2e6; display:flex; align-items:center;">
+                        <div class="gantt-veld-rij">
+                            <div class="gantt-veld-label">
                                 @_veld
                             </div>
                             <div id="gantt-rij-@_rij"
-                                 style="flex:1; position:relative; height:72px; min-width:200px; background:#fff;"
+                                 class="gantt-veld-track"
                                  ondragover="event.preventDefault();"
                                  @ondrop="@(e => SleepDrop(_veldNaam, _rij, _sMin, _totMin, e))">
                                 @* Uurlijnen *@
                                 @for (int _h = _sMin + 60; _h < _eMin; _h += 60)
                                 {
-                                    <div style="position:absolute; left:@(GanttPct(_h - _sMin, _totMin))%;
-                                                top:0; bottom:0; width:1px; background:#e9ecef; z-index:0;"></div>
+                                    <div class="gantt-uurlijn" style="--gantt-left:@(GanttPct(_h - _sMin, _totMin))%;"></div>
                                 }
                                 @* Wedstrijdblokken *@
                                 @foreach (var gi in _gantt.Where(g => g.VeldNaam == _veld))
@@ -338,27 +332,21 @@
                                     <div title="@_tooltip"
                                          draggable="@(_sleepbaar ? "true" : "false")"
                                          @ondragstart="@(e => SleepStart(gi, e))"
-                                         style="position:absolute;
-                                                left:calc(@(_lft)% + 2px); width:calc(@(_wdt)% - 4px);
-                                                top:calc(@(_top)% + 2px); height:calc(@(_hgt)% - 4px);
-                                                background:@GanttKleur(gi.Status);
-                                                border-radius:5px; overflow:hidden;
-                                                padding:2px 5px; color:#fff;
-                                                font-size:0.68rem; line-height:1.25;
-                                                z-index:1; cursor:@(_sleepbaar ? "grab" : "default");
-                                                outline:@(_handmatig ? "2px dashed #fff" : "none"); outline-offset:-3px;
-                                                box-shadow:0 1px 3px rgba(0,0,0,0.2);">
+                                         class="gantt-blok gantt-blok-sleepbaar"
+                                         style="--gantt-left:calc(@(_lft)% + 2px); --gantt-width:calc(@(_wdt)% - 4px);
+                                                --gantt-top:calc(@(_top)% + 2px); --gantt-height:calc(@(_hgt)% - 4px);
+                                                --gantt-bg:@GanttKleur(gi.Status);
+                                                --gantt-cursor:@(_sleepbaar ? "grab" : "default");
+                                                --gantt-outline:@(_handmatig ? "2px dashed #fff" : "none");">
                                         @* Voorkeurstijd-indicator: gekleurde balk bovenaan het blok *@
                                         @if (!string.IsNullOrEmpty(_voorkeurBalk))
                                         {
-                                            <div style="position:absolute; top:0; left:0; right:0; height:4px;
-                                                        background:@_voorkeurBalk; border-radius:5px 5px 0 0;"></div>
+                                            <div class="gantt-voorkeur-balk" style="--gantt-voorkeur-kleur:@_voorkeurBalk;"></div>
                                         }
-                                        <div style="overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
-                                                    font-weight:700; font-size:0.7rem; margin-top:@(string.IsNullOrEmpty(_voorkeurBalk) ? "0" : "4px")">
+                                        <div class="gantt-blok-tijd" style="--gantt-margin-top:@(string.IsNullOrEmpty(_voorkeurBalk) ? "0" : "4px");">
                                             @gi.Aanvang.ToString("HH:mm")
                                         </div>
-                                        <div style="overflow:hidden; white-space:nowrap; text-overflow:ellipsis;">
+                                        <div class="gantt-blok-label">
                                             @GanttLabel(gi.Label)
                                         </div>
                                     </div>
@@ -366,7 +354,7 @@
                             </div>
                         </div>
                     }
-                    <div style="height:1px; background:#dee2e6; margin-left:120px;"></div>
+                    <div class="gantt-as-onderlijn"></div>
                 </div>
             }
 
@@ -454,7 +442,7 @@
                         @foreach (var item in GefilterdeLijst())
                         {
                             <tr class="@RowClass(item.Status)">
-                                <td style="font-size:0.85rem;">
+                                <td class="tabel-compact">
                                     <div class="fw-semibold">@(string.IsNullOrWhiteSpace(item.Wedstrijd) ? item.TeamNaam : item.Wedstrijd)</div>
                                 </td>
 
@@ -463,7 +451,7 @@
                                     @* Veld en tijd zoals de planner ze voorstelt *@
                                     @if (item.Status == "niet-inplanbaar")
                                     {
-                                        <td colspan="2" style="font-size:0.85rem;">
+                                        <td colspan="2" class="tabel-compact">
                                             <span class="text-danger" title="@item.NietInplanbaaarReden">
                                                 &#10007; @(item.NietInplanbaaarReden ?? "Niet inplanbaar")
                                             </span>
@@ -474,10 +462,10 @@
                                         @* Onbekend team: huidige situatie blijft staan, gedempt en zonder
                                            foutmelding (#487) *@
                                         var _gedempt = item.Status is "ongewijzigd" or "onbekend-team";
-                                        <td style="font-size:0.85rem;">
+                                        <td class="tabel-compact">
                                             <span class="@(_gedempt ? "" : "fw-bold")">@(item.OptimaalVeld ?? "—")</span>
                                         </td>
-                                        <td style="font-size:0.85rem;">
+                                        <td class="tabel-compact">
                                             <span class="@(_gedempt ? "" : "fw-bold")">@(item.OptimaalTijd ?? "—")</span>
                                         </td>
                                     }
@@ -485,7 +473,7 @@
                                 else
                                 {
                                     @* Veld en tijd zoals ze nu in Sportlink staan *@
-                                    <td style="font-size:0.85rem;">
+                                    <td class="tabel-compact">
                                         @if (!item.HeeftVeld)
                                         {
                                             <span class="text-warning">&#10007; Geen veld</span>
@@ -495,7 +483,7 @@
                                             <span>@item.HuidigeVeld</span>
                                         }
                                     </td>
-                                    <td style="font-size:0.85rem;">
+                                    <td class="tabel-compact">
                                         @if (!item.HeeftTijd)
                                         {
                                             <span class="text-warning">&#10007; Geen tijd</span>
@@ -507,14 +495,14 @@
                                     </td>
                                 }
 
-                                <td style="font-size:0.85rem;">@(item.Competitiesoort ?? "—")</td>
+                                <td class="tabel-compact">@(item.Competitiesoort ?? "—")</td>
 
                                 @* Voorkeurstijd los van de wijzig-status (#666): een wedstrijd kan
                                    ongewijzigd blijven én tóch ver van de voorkeurstijd liggen.
                                    De afwijking is berekend t.o.v. de optimale planning, dus die wordt
                                    alleen in die tab getoond — anders zou hij bij "Huidig" iets beweren
                                    over een stand waarop hij niet is berekend. *@
-                                <td style="font-size:0.85rem;">
+                                <td class="tabel-compact">
                                     @if (string.IsNullOrWhiteSpace(item.VoorkeurTijd))
                                     {
                                         <span class="text-muted" title="Geen voorkeurstijd voor dit team en geen standaardtijd voor de leeftijdscategorie">—</span>
@@ -525,7 +513,7 @@
                                               title="@VoorkeurTitel(item)">
                                             @item.VoorkeurTijd@VoorkeurAfwijkingTekst(item.VoorkeurAfwijkingMinuten)
                                         </span>
-                                        <span class="text-muted ms-1" style="font-size:0.75rem;">@VoorkeurBronLabel(item.VoorkeurBron)</span>
+                                        <span class="text-muted ms-1" tabel-extra-compact">@VoorkeurBronLabel(item.VoorkeurBron)</span>
                                         @if (item.VoorkeurVeldToegepast == false)
                                         {
                                             <span class="badge bg-secondary ms-1"
@@ -566,7 +554,7 @@
 
                                 @if (_sportlinkExtensionEnabled)
                                 {
-                                    <td style="font-size:0.85rem;">
+                                    <td class="tabel-compact">
                                         @if (item.WedstrijdCode == null)
                                         {
                                             <span class="text-muted" title="Geen wedstrijdcode bekend voor deze regel">—</span>
@@ -595,7 +583,7 @@
                             @if (_sportlinkExtensionEnabled && item.WedstrijdCode != null && _sportlinkUitgeklapt.Contains(item.WedstrijdCode.Value))
                             {
                                 <tr @key="item.WedstrijdCode.Value">
-                                    <td colspan="7" class="bg-light" style="font-size:0.85rem;">
+                                    <td colspan="7" class="bg-light" tabel-compact">
                                         <SportlinkMatchPanel WedstrijdCode="item.WedstrijdCode.Value" />
                                     </td>
                                 </tr>
@@ -623,7 +611,7 @@
     @if (!string.IsNullOrEmpty(HuidigeExportHtml))
     {
         <details class="mb-3">
-            <summary class="text-muted" style="cursor:pointer;">Planning delen (HTML voor e-mail of download)</summary>
+            <summary class="text-muted export-summary">Planning delen (HTML voor e-mail of download)</summary>
             <div class="card mt-2">
                 <div class="card-body">
                     <p class="text-muted small">
@@ -638,13 +626,13 @@
                             Download HTML
                         </button>
                     </div>
-                    <div class="border rounded" style="overflow:hidden;">
+                    <div class="border rounded overflow-hidden">
                         @* sandbox zonder allow-scripts: de HTML wordt server-side gegenereerd uit
                            Sportlink-data (team-/tegenstandernamen). Defense in depth tegen XSS,
                            onafhankelijk van server-side encoding. (#603) *@
                         <iframe srcdoc="@ExportHtmlZonderScript"
                                 sandbox="allow-same-origin"
-                                style="width:100%; min-height:700px; border:none; display:block;"
+                                class="export-iframe"
                                 title="Dagplanning"></iframe>
                     </div>
                 </div>

@@ -18,7 +18,27 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **Dagplanning: foutmelding bij "Optimaliseer" was onvindbaar, en wedstrijden waren pas
+  bewerkbaar na een geslaagde optimalisatie (#1334).** De foutmelding stond onder de
+  Veldbezetting-kaart en bleef daardoor vaak buiten beeld; hij verschijnt nu direct onder de knop.
+  Daarnaast werd de wedstrijdenlijst (met de Sportlink-bewerkkolom) pas gevuld ná een handmatige
+  klik op "Optimaliseer" — bij het openen van de pagina en bij het wijzigen van datum of club wordt
+  nu automatisch een plan geladen, zodat er meteen iets te bekijken en te bewerken is.
+- **Meisjeswedstrijd ontbrak zonder foutmelding in de Dagplanning-tijdlijn (#1332).** Sportlink
+  levert voor sommige meisjesteams de leeftijdscategorie aan als "Onder {n} Meiden" in plaats van
+  "{JO|MO}{n} Meiden". Dat format werd niet herkend, waardoor de speeltijd-opzoeking faalde en de
+  wedstrijd — hoewel correct met tijd en veld bekend — stil uit de visuele veldbezetting viel; in
+  de tabel eronder bleef hij wel zichtbaar. Alle drie de leeftijdsnormalisaties (de gedeelde C#-
+  logica en de twee databasevarianten) zijn aangepast om het leeftijdscijfer direct uit de tekst te
+  lezen in plaats van aan te nemen dat hij al op een vaste plek staat.
+
 ### Changed
+- **"Teambegeleiding importeren" verhuisd naar Instellingen (#1322).** Het scherm
+  `/teambegeleiding` toont voortaan alleen nog team selectie, contactgegevens en "vraag doorsturen"
+  — de CSV-import staat op een eigen pagina onder **Instellingen → Teambegeleiding importeren**.
+  De import zelf werkt ongewijzigd; alleen de plek in het menu is anders, omdat een CSV-import een
+  incidentele beheerdersactie is, geen dagelijks scherm.
 - **Eén stuk aansluitcode voor de Sportlink-koppeling in plaats van twee (#1271).** De SQL Server-
   en Postgres-variant van de app deelden tot nu toe geen code voor het afhandelen van een
   Sportlink-verzoek — alleen de databasevraag zelf verschilt tussen de twee, maar het aansluitwerk
@@ -27,6 +47,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   verandert er niets aan de werking van de applicatie.
 
 ### Added
+- **Dagplanning: hover-highlight en sticky tijdlijn bij de veldbezetting (#1315).** Beweeg de muis
+  over een wedstrijd in de tabel of in de tijdlijn van de kaart "Veldbezetting op [datum]" — de
+  bijbehorende wedstrijd licht in beide oranje op, zodat direct zichtbaar is waar die wedstrijd
+  zich op het veld bevindt. De tijdlijn blijft bovendien in beeld terwijl u door de tabel eronder
+  scrolt, zodat het overzicht van de veldbezetting niet meer uit beeld verdwijnt bij een drukke
+  speeldag.
 - **Centrale architectuurbeschrijving (#1274).** `docs/ARCHITECTUUR.md` is het nieuwe leidende
   architectuurdocument: één plek met de kwaliteitsdoelen, de belanghebbenden en hun zorgen, de
   architectuurbesluiten en een toetsregister. Het is opgezet volgens ISO/IEC/IEEE 42010 en
@@ -106,6 +132,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   schrijfwijzen meer geleerd.
 
 ### Fixed
+- **Sidebar-item "Sportlink Web Extension" liep over twee regels (#1314).** Het label onder
+  Instellingen is verkort naar "Sportlink Ext.", zodat het op één regel past — consistent met de
+  andere menu-items.
+- **Sidebar-item "Oefenwedstrijd aanmaken" liep over meerdere regels (#1321).** Het menu-item is
+  verkort naar "Wedstrijden", zodat het net als de andere items op één regel past. De pagina zelf
+  (titel, koppen, knop) blijft "Oefenwedstrijd aanmaken" heten — alleen het sidebar-label is korter.
 - **Teamherkenning op de SQL Server-tier vergelijkt schrijfwijzen nu overal hoofdletterongevoelig,
   ook op een toekomstige fork met een andere databasecollatie (#1294).** Vijf plekken in drie
   bestanden vergeleken een teamnaam of alias nog rechtstreeks, in plaats van via de methode die

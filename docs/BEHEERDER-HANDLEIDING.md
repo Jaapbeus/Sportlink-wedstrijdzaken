@@ -96,6 +96,22 @@ In testmodus:
 
 Volledige documentatie: [docs/TESTMODUS-ALLSTARS.md](TESTMODUS-ALLSTARS.md)
 
+### Dagplanning — Veldbezetting: hover-highlight en sticky tijdlijn (#1315)
+
+De kaart **"Veldbezetting op [datum]"** bovenaan Dagplanning toont wat er voor die dag al
+gepland staat: een tijdlijn per veld, met daaronder een tabel met dezelfde wedstrijden.
+
+- **Hover-highlight:** beweeg de muis over een rij in de tabel, of over een blok in de
+  tijdlijn — de bijbehorende wedstrijd licht in beide oranje op. Zo is snel terug te vinden
+  waar een wedstrijd uit de lijst zich visueel op het veld bevindt, en andersom.
+- **Sticky tijdlijn:** de tijdlijn blijft zichtbaar bovenin beeld terwijl u door de
+  wedstrijdentabel eronder scrollt — handig bij een dag met veel wedstrijden. Op een smal
+  scherm (mobiel, breedte < 641px) is dit uitgeschakeld, omdat daar ook de bovenbalk zelf niet
+  sticky is.
+
+Dit geldt alleen voor deze kaart, niet voor de tijdlijnen in de tabbladen **Optimaal**/**Huidig**
+verderop op dezelfde pagina.
+
 ### Dagplanning — twee tabs: Optimaal en Huidig
 
 Na een klik op **Optimaliseer** staat bovenaan de samenvattingsbalk (wedstrijden, zonder veld,
@@ -566,14 +582,15 @@ Boven elk scherm staat een smalle balk met, van links naar rechts:
 
 De zijbalk links bevat in deze volgorde: **Dashboard**, **Teambegeleiding**, **Dagplanning**,
 **Leermomenten**, **Teamaliassen**, **Email-tester**, dan (alleen onder een voorwaarde, zie
-hieronder) **Wijzigingsverzoeken** en **Oefenwedstrijd aanmaken**, en tot slot het uitklapbare menu
+hieronder) **Wijzigingsverzoeken** en **Wedstrijden**, en tot slot het uitklapbare menu
 **Instellingen** met daarin *Instellingen*, *Speeltijden*, *Velden*, *Voorkeurstijden*,
-*E-mailtemplates*, *Thema* en *Sportlink Web Extension*.
+*E-mailtemplates*, *Thema* en *Sportlink Ext.* (het menu-item; de functie zelf heet Sportlink Web
+Extension, zie §19).
 
 Drie menu-items verschijnen alleen onder een voorwaarde:
 
-- **Wijzigingsverzoeken** en **Oefenwedstrijd aanmaken** staan er alleen als de Sportlink Web
-  Extension is ingeschakeld (hoofdstuk 19).
+- **Wijzigingsverzoeken** en **Wedstrijden** (menu-item voor het scherm "Oefenwedstrijd aanmaken",
+  zie §18a) staan er alleen als de Sportlink Web Extension is ingeschakeld (hoofdstuk 19).
 - Onder het menu Instellingen komt nog het kopje **TESTMODUS** met daaronder **Testdata**; dat
   staat er alleen als AllStars FC in de club-keuzelijst is gekozen.
 
@@ -620,27 +637,11 @@ De pagina `/teambegeleiding` stelt beheerders én gebruikers met de **user-rol**
      30 dagen automatisch geanonimiseerd. De teller "e-mailverwerking" op de Instellingen-pagina
      telt deze verzendingen op dit moment gewoon mee — er is (nog) geen aparte detailweergave per
      bericht
-5. **Teambegeleiding importeren** — CSV-export uit Sportlink inlezen; het scherm bevat de exportstappen
-   en een voorbeeldweergave vóór bevestiging.
-   - **Wat er met de gegevens gebeurt.** Uw browser leest het bestand in en toont een voorbeeld van
-     de eerste vijf rijen, zodat u kunt controleren of u het juiste bestand heeft. Klikt u daarna op
-     importeren, dan wordt **de volledige inhoud van de CSV naar de server gestuurd** (beveiligd,
-     alleen voor uw ingelogde sessie) en daar meteen in de database verwerkt. De persoonsgegevens
-     verlaten dus wél uw browser — dat is inherent aan een import. Het bestand zelf wordt nergens
-     op de server bewaard en de inhoud komt niet in de logbestanden; wat blijft staan zijn de
-     begeleidersgegevens in de database, plus één regel in het importlogboek met wie wanneer welk
-     bestand heeft geïmporteerd en hoeveel rijen erin zaten.
-   - **Een import vervangt de bestaande teambegeleiding van de club volledig.** Het vervangen
-     gebeurt in één keer: óf de volledige nieuwe lijst komt erin, óf er verandert niets. Een fout
-     halverwege — bijvoorbeeld een te lange teamnaam — laat de vorige lijst dus ongemoeid, en twee
-     mensen die tegelijk importeren kunnen geen half-samengevoegde lijst veroorzaken. Er wordt niets
-     samengevoegd, dus een onvolledige export herstelt u door een complete export opnieuw te
-     importeren.
-   - Volledige exportinstructie voor de beheerder: [ADMIN-TEAMBEGELEIDING-IMPORT.md](ADMIN-TEAMBEGELEIDING-IMPORT.md)
 
 > **Menupositie:** Teambegeleiding staat bewust direct onder Dashboard in de zijbalk en als eerste tegel
 > op het dashboard — het is het meest gebruikte scherm, omdat contactgegevens hier sneller te vinden
-> zijn dan in Sportlink Club zelf (#669).
+> zijn dan in Sportlink Club zelf (#669). De CSV-import staat sinds #1322 niet meer op dit scherm,
+> zie 10a hieronder.
 
 ### API-endpoints
 
@@ -649,9 +650,47 @@ De pagina `/teambegeleiding` stelt beheerders én gebruikers met de **user-rol**
 | `GET /api/beheer/teambegeleiding` | Alle teams met begeleiding |
 | `GET /api/beheer/teambegeleiding/{team}` | Begeleiders van team (naam, rol, e-mailadres, telefoonnummer) |
 | `POST /api/beheer/teambegeleiding/doorsturen` | Doorsturen van vraag; `ontvangers` bepaalt de ontvangers (leeg → server-side coach-lookup) |
+
+Auth: `RequireAdmin()` — alleen toegankelijk voor de admin-rol. Namen, e-mailadressen en
+telefoonnummers zijn persoonsgegevens; sinds #310 (mei 2026) is dit voor alle vier
+Teambegeleiding-endpoints admin-only, ook al toonde deze sectie eerder ten onrechte
+`RequireAuthenticated()`.
+
+---
+
+## 10a. Teambegeleiding importeren (`/instellingen/teambegeleiding-import`)
+
+Losgekoppeld van de team selectie/weergave-pagina bij #1322: CSV-import is een incidentele
+beheerdersactie (vervangt de teambegeleiding van de club volledig), geen dagelijks scherm — daarom
+staat deze pagina onder Instellingen in plaats van in het hoofdmenu. Bereikbaar via
+**Instellingen → Teambegeleiding importeren** in het submenu, of via de kaart op de
+Instellingen-pagina zelf.
+
+- CSV-export uit Sportlink inlezen; het scherm bevat de exportstappen en een voorbeeldweergave vóór
+  bevestiging.
+- **Wat er met de gegevens gebeurt.** Uw browser leest het bestand in en toont een voorbeeld van
+  de eerste vijf rijen, zodat u kunt controleren of u het juiste bestand heeft. Klikt u daarna op
+  importeren, dan wordt **de volledige inhoud van de CSV naar de server gestuurd** (beveiligd,
+  alleen voor uw ingelogde sessie) en daar meteen in de database verwerkt. De persoonsgegevens
+  verlaten dus wél uw browser — dat is inherent aan een import. Het bestand zelf wordt nergens
+  op de server bewaard en de inhoud komt niet in de logbestanden; wat blijft staan zijn de
+  begeleidersgegevens in de database, plus één regel in het importlogboek met wie wanneer welk
+  bestand heeft geïmporteerd en hoeveel rijen erin zaten.
+- **Een import vervangt de bestaande teambegeleiding van de club volledig.** Het vervangen
+  gebeurt in één keer: óf de volledige nieuwe lijst komt erin, óf er verandert niets. Een fout
+  halverwege — bijvoorbeeld een te lange teamnaam — laat de vorige lijst dus ongemoeid, en twee
+  mensen die tegelijk importeren kunnen geen half-samengevoegde lijst veroorzaken. Er wordt niets
+  samengevoegd, dus een onvolledige export herstelt u door een complete export opnieuw te
+  importeren.
+- Volledige exportinstructie voor de beheerder: [ADMIN-TEAMBEGELEIDING-IMPORT.md](ADMIN-TEAMBEGELEIDING-IMPORT.md)
+
+### API-endpoint
+
+| Endpoint | Beschrijving |
+|---|---|
 | `POST /api/beheer/teambegeleiding/import` | CSV-import; vervangt alle rijen van de club |
 
-Auth: `RequireAuthenticated()` — toegankelijk voor zowel admin- als user-rol.
+Auth: `RequireAdmin()`.
 
 ---
 
@@ -1130,7 +1169,7 @@ Per openstaand verzoek staan twee compacte knoppen:
 
 Staat dry-run aan (§19), dan wordt de actie gesimuleerd en gelogd; het scherm meldt dat expliciet.
 
-Deze pagina en "Oefenwedstrijd aanmaken" staan alleen in het menu als de Sportlink Web Extension
+Deze pagina en "Oefenwedstrijd aanmaken" (menu-item: **Wedstrijden**, zie §18a) staan alleen in het menu als de Sportlink Web Extension
 aan staat (§19); staat hij uit, dan verdwijnen beide menu-items en toont de Dagplanning geen
 Sportlink-kolom. Deze pagina is onderdeel van de Sportlink Web Extension (zie §19) en vereist dus dat die feature
 is ingeschakeld en gekoppeld voor de rol die deze acties uitvoert.
@@ -1173,7 +1212,7 @@ Extension (§19) en vereist dat die is ingeschakeld en gekoppeld voor de rol Wed
 > [docs/SPORTLINK-WEB-EXTENSION.md](SPORTLINK-WEB-EXTENSION.md) voor de actuele stand per
 > deelfunctie vóór u hierop vertrouwt.
 
-U opent dit scherm via **Instellingen → Sportlink Web Extension** in de zijbalk, of via de knop
+U opent dit scherm via **Instellingen → Sportlink Ext.** in de zijbalk, of via de knop
 **Openen →** op de doorverwijskaart onderaan de Instellingen-pagina. De instellingen staan sinds
 #1122 dus niet meer op Instellingen zelf.
 

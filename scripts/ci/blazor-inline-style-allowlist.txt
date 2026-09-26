@@ -1,0 +1,8 @@
+# blazor-inline-style-allowlist.txt (#1329)
+#
+# Eén regel per uitzondering: <pad>:<regelnummer> <reden>.
+#
+# DIT BESTAND HOORT LEEG TE LOPEN. Elke regel is een expliciete, beoordeelde uitzondering op de
+# regel dat een resterende style="..." in een Blazor-pagina uitsluitend CSS custom properties mag
+# bevatten (zie scripts/ci/check-blazor-inline-styles.sh en docs/ARCHITECTUUR-CODEKWALITEIT.md).
+# Geen algemene allowlist voor een hele pagina — één regel dekt precies één declaratie.

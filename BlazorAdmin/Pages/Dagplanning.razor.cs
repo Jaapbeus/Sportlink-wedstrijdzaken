@@ -8,11 +8,10 @@ namespace BlazorAdmin.Pages;
 
 /// <summary>Code-behind van <c>Dagplanning.razor</c> (#1122): planning, Gantt, veldbezetting en de
 /// Sportlink-kolom. Het Sportlink-paneel per wedstrijd is <see cref="Shared.SportlinkMatchPanel"/>.</summary>
-public partial class Dagplanning : IDisposable
+public partial class Dagplanning : ClubSelectorPageBase
 {
     [Inject] private AdminApiClient Api { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
-    [Inject] private ClubSelectorService ClubSelector { get; set; } = default!;
 
     private const int KleineAfwijkingDrempelMinuten = 15;
 
@@ -28,6 +27,10 @@ public partial class Dagplanning : IDisposable
     private List<VeldbezettingItemDto> _veldbezetting = new();
     private bool _veldbezettingBezig;
     private string? _veldbezettingError;
+
+    // Hover-correlatie tussen tijdlijnblok en tabelregel (#1315): dezelfde WedstrijdCode licht in
+    // beide op, zodat een wedstrijd uit de lijst visueel terug te vinden is in de tijdlijn erboven.
+    private long? _veldbezettingHoverCode;
 
     // Sportlink-kolom (#989/#991): alleen uitklap-status en deep-link blijven hier; het paneel zelf
     // is het component SportlinkMatchPanel (#1122) met één instantie per uitgeklapte rij.
@@ -98,8 +101,8 @@ public partial class Dagplanning : IDisposable
 
     protected override void OnInitialized()
     {
+        base.OnInitialized();
         _datumDt = VolgendZaterdag().ToDateTime(TimeOnly.MinValue);
-        ClubSelector.OnChange += OnClubChanged;
     }
 
     protected override async Task OnInitializedAsync()
@@ -109,6 +112,13 @@ public partial class Dagplanning : IDisposable
         // #989: geen Sportlink-kolom/-knoppen tonen als de extension uit staat (DoD).
         var settings = await Api.GetSettingsAsync();
         _sportlinkExtensionEnabled = settings.Success && settings.Data?.SportlinkExtensionEnabled == true;
+
+        // #1334: automatisch een plan laden, zodat de wedstrijdenlijst (incl. de Sportlink-kolom
+        // met de bewerkacties) meteen zichtbaar is — vóór deze fix moest een gebruiker altijd eerst
+        // handmatig op "Optimaliseer" klikken voordat er ook maar één wedstrijd te zien of te
+        // bewerken was. De knop blijft bestaan voor een expliciete herberekening (bijv. na het
+        // wijzigen van de buffer-instelling, waar geen andere trigger voor is).
+        await AutoPlanAsync();
     }
 
     private async Task OnDatumChanged()
@@ -117,6 +127,7 @@ public partial class Dagplanning : IDisposable
         _errorMessage = null;
         _toepassenMelding = null;
         await LoadVeldbezettingAsync();
+        await AutoPlanAsync();
     }
 
     private async Task LoadVeldbezettingAsync()
@@ -137,16 +148,14 @@ public partial class Dagplanning : IDisposable
         finally { _veldbezettingBezig = false; }
     }
 
-    private void OnClubChanged() => InvokeAsync(async () =>
+    protected override async Task OnClubChangedAsync()
     {
         _plan = null;
         _errorMessage = null;
         _toepassenMelding = null;
         await LoadVeldbezettingAsync();
-        StateHasChanged();
-    });
-
-    public void Dispose() => ClubSelector.OnChange -= OnClubChanged;
+        await AutoPlanAsync();
+    }
 
     private static DateOnly VolgendZaterdag()
     {
@@ -300,7 +309,8 @@ public partial class Dagplanning : IDisposable
     // bewerken — alleen de berekende planning mag met de hand worden aangepast.
     private record GanttItem(string VeldNaam, string? SubPos, TimeOnly Aanvang, TimeOnly Einde,
         decimal Fractie, string Label, string Status, int DuurMinuten,
-        string? VoorkeurTijd, int? VoorkeurAfwijking, AutoPlanWedstrijdItemDto? Bron = null);
+        string? VoorkeurTijd, int? VoorkeurAfwijking, AutoPlanWedstrijdItemDto? Bron = null,
+        long? WedstrijdCode = null);
 
     private List<GanttItem> BouwGanttItems(bool isOptimaal)
     {
@@ -315,7 +325,7 @@ public partial class Dagplanning : IDisposable
                 var sub = GanttExtractSubPos(w.OptimaalVeld);
                 items.Add(new GanttItem(w.OptimaalVeldNaam, sub, t, t.AddMinutes(w.DuurMinuten),
                     w.Veldafmeting, GanttMatchLabel(w.Wedstrijd, w.TeamNaam), w.Status, w.DuurMinuten,
-                    w.VoorkeurTijd, w.VoorkeurAfwijkingMinuten, w));
+                    w.VoorkeurTijd, w.VoorkeurAfwijkingMinuten, w, w.WedstrijdCode));
             }
             else
             {
@@ -324,7 +334,7 @@ public partial class Dagplanning : IDisposable
                 var (veldBase, sub) = GanttSplitVeld(w.HuidigeVeld!);
                 items.Add(new GanttItem(veldBase, sub, t, t.AddMinutes(w.DuurMinuten),
                     w.Veldafmeting, GanttMatchLabel(w.Wedstrijd, w.TeamNaam), "ongewijzigd", w.DuurMinuten,
-                    null, null));
+                    null, null, WedstrijdCode: w.WedstrijdCode));
             }
         }
         return items;
@@ -572,7 +582,7 @@ public partial class Dagplanning : IDisposable
             var (veldBase, sub) = GanttSplitVeld(w.Veld);
             items.Add(new GanttItem(veldBase, sub, t, t.AddMinutes(w.DuurMinuten),
                 w.Veldafmeting, GanttMatchLabel(w.Wedstrijd, w.TeamNaam), "ongewijzigd", w.DuurMinuten,
-                null, null));
+                null, null, WedstrijdCode: w.WedstrijdCode));
         }
         return items;
     }

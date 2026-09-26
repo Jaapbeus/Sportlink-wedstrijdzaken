@@ -45,6 +45,7 @@ DOEL = WORTEL / "AGENTS.md"
 # Tokens die het woord "Claude" bevatten maar géén verwijzing naar de agent zijn.
 AFSCHERMEN = [
     "CLAUDE.md",
+    "Claude Code",  # De expliciete implementer in de Codex-review/Claude Code-handoffregel.
     ".claude/",
     "claude.ai",
     "claude.com",
@@ -76,21 +77,16 @@ def genereer(bron_tekst: str) -> str:
     for i, token in enumerate(AFSCHERMEN):
         tekst = tekst.replace(token, f"\x00{i}\x00")
 
-    # 2. Vervang de agent-aanduiding. "Claude Code" eerst: anders blijft "Code" staan.
-    tekst = tekst.replace("Claude Code", "Codex")
+    # 2. Vervang zelfstandige verwijzingen naar Claude als agent. De exacte merknaam "Claude Code"
+    #    is hierboven afgeschermd zodat de vaste implementer in de handoff-regel herkenbaar blijft.
     tekst = re.sub(r"\bClaude\b", "Codex", tekst)
 
     # 3. Zet de afgeschermde tokens terug.
     for i, token in enumerate(AFSCHERMEN):
         tekst = tekst.replace(f"\x00{i}\x00", token)
 
-    # 4. Titel en openingszin.
+    # 4. Titel.
     tekst = tekst.replace("# CLAUDE.md", "# AGENTS.md", 1)
-    tekst = tekst.replace(
-        "This file provides guidance to Codex (claude.ai/code) when working with code in this repository.",
-        "This file provides guidance to Codex when working with code in this repository.",
-        1,
-    )
 
     return KOP + tekst
 

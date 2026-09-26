@@ -98,6 +98,11 @@ async function run() {
   res = await setIssueStatus({ github: gh, context: ctx, core, issueNumber: 1, status: 'status: review-needed' });
   check('blocked niet overschreven', { res, added: gh.calls.added }, { res: 'protected', added: [] });
 
+  gh = fakeGithub(['status: waiting-codex']);
+  res = await setIssueStatus({ github: gh, context: ctx, core, issueNumber: 1, status: 'status: review-needed' });
+  check('waiting-codex niet overschreven door automatisering (#1336)', { res, added: gh.calls.added },
+        { res: 'protected', added: [] });
+
   gh = fakeGithub(['status: waiting-owner']);
   res = await setIssueStatus({ github: gh, context: ctx, core, issueNumber: 1, status: 'status: awaiting-release', respectProtected: false });
   check('merge overschrijft waiting-owner', { res, added: gh.calls.added, removed: gh.calls.removed },

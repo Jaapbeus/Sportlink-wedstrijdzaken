@@ -74,10 +74,15 @@
             </div>
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="oefenwedstrijd-aanmaken">
-                    <i class="bi bi-calendar-plus me-1" aria-hidden="true"></i> Oefenwedstrijd aanmaken
+                    <i class="bi bi-calendar-plus me-1" aria-hidden="true"></i> Wedstrijden
                 </NavLink>
             </div>
         }
+
+        @* Conventie sidebar-labels (#1314): een label mag nooit op twee regels wrappen — de
+           sidebar-breedte is smal en een dubbele regel oogt inconsistent met de andere items.
+           Kies bij een lang label een korte, herkenbare afkorting (zoals "Sportlink Ext."
+           hieronder) in plaats van de volledige naam. *@
 
         @* Collapsible Instellingen submenu *@
         <div class="nav-item px-3">
@@ -105,6 +110,11 @@
                         </NavLink>
                     </div>
                     <div class="nav-item">
+                        <NavLink class="nav-link py-1" href="instellingen/teambegeleiding-import">
+                            <i class="bi bi-upload me-1" aria-hidden="true"></i> Begeleiding importeren
+                        </NavLink>
+                    </div>
+                    <div class="nav-item">
                         <NavLink class="nav-link py-1" href="voorkeurstijden">
                             <i class="bi bi-clock-history me-1" aria-hidden="true"></i> Voorkeurstijden
                         </NavLink>
@@ -121,7 +131,7 @@
                     </div>
                     <div class="nav-item">
                         <NavLink class="nav-link py-1" href="sportlink-extension-settings">
-                            <i class="bi bi-arrow-left-right me-1" aria-hidden="true"></i> Sportlink Web Extension
+                            <i class="bi bi-arrow-left-right me-1" aria-hidden="true"></i> Sportlink Ext.
                         </NavLink>
                     </div>
                 </div>

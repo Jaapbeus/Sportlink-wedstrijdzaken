@@ -47,6 +47,12 @@ jobs:
       - name: Codekwaliteit — geen logica in Blazor-pagina's
         run: bash scripts/ci/check-blazor-codebehind.sh
 
+      # #1329: presentatie hoort in CSS isolation (<Pagina>.razor.css), niet in een <style>-blok
+      # of een statische style="..." in de markup. Een resterende dynamische waarde mag alleen
+      # als CSS custom property inline staan.
+      - name: Codekwaliteit — geen inline styles in Blazor-pagina's
+        run: bash scripts/ci/check-blazor-inline-styles.sh
+
       - name: Codekwaliteit — platformafhankelijke valkuilen
         run: bash scripts/ci/check-codekwaliteit-valkuilen.sh
 

@@ -95,7 +95,7 @@ Graph-verzending kan "inpluggen" zonder ze opnieuw te bouwen.
 | `FunctionApp/Admin/EasyAuthHelper.cs` | Claims-extractie server-side: rol, naam, e-mail, club-code, correlation-id |
 | `FunctionApp/Admin/AdminEndpoint.cs` | Herbruikbare wrapper (auth + correlation-scope + DB-wait + 500-fallback) — gebruikt door 2 van de 5 e-mail-gerelateerde admin-endpoints (zie §1.7) |
 | `FunctionApp/Program.cs` | DI-registratie van `GraphServiceClient` (app-only credential, regel 13-22) en `IChatClient` |
-| `BlazorAdmin/Pages/Teambegeleiding.razor` | GUI voor de doorstuur-actie; bevat inline ontvangersveld + live-validatie (regel 78-115, 351-363) |
+| `BlazorAdmin/Pages/Teambegeleiding.razor` (+ `.razor.cs`, code-behind sinds #1322) | GUI voor de doorstuur-actie; bevat inline ontvangersveld + live-validatie (`.razor` regel 72-110, `OnbekendeAdressen()` in `.razor.cs` regel 133-142) |
 | `BlazorAdmin/Pages/EmailTester.razor` | GUI voor de dry-run-tester |
 | `BlazorAdmin/Pages/EmailTemplates.razor` | GUI voor template-CRUD + de gedeelde "e-mail voetnoot"-instelling (regel 20-36) |
 | `FunctionApp.Tests/Email/TestDoubles/FakeEmailGraphService.cs` | Laat het huidige `IEmailGraphService`-contract zien vanuit testperspectief |
@@ -605,7 +605,8 @@ expliciete `Richting`-kolom in plaats van impliciet afgeleid uit `VerzoekType ==
 - **Frontend:** nieuw herbruikbaar component `BlazorAdmin/Shared/EmailComposer.razor`, analoog aan
   het bestaande `TimeInput.razor`-patroon (CLAUDE.md, "Tijdinvoer-normalisering — altijd via
   TimeHelper + TimeInput"). Eén component bundelt: het ontvangersveld + live-validatie (het patroon
-  dat nu inline in `Teambegeleiding.razor:78-115`/`OnbekendeAdressen()` (regel 351-363) staat) +
+  dat nu inline in `Teambegeleiding.razor:72-110`/`OnbekendeAdressen()` (in `Teambegeleiding.razor.cs`,
+  regel 133-142) staat) +
   onderwerp/body + verstuur-knop + (na §3.6) een "Van"-dropdown.
 
 Voorbeeld van een toekomstige "stekker"-aanroep vanuit een nieuw scherm:
