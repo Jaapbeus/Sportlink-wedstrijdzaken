@@ -24,399 +24,107 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   Server-variant) was het enige adres van de applicatie dat met één statisch geheim — de master key
   van de hele Function App — te bedienen was, zonder identiteit en zonder audittrail. Het loopt nu
   langs dezelfde Entra ID-poort (rol `admin`) als elk ander beheerendpoint; `?code=` wordt genegeerd.
-  Er was geen automatisering die van die sleutel afhing: de nachtelijke sync is een timer in de app
-  zelf, en de knop "Sync starten" in de Admin GUI werkte al via Entra. Wie de volledige-seizoen-
-  herhaling (`?reset=true&season=…`) buiten de Admin GUI om start, heeft daar voortaan een
-  Entra-token voor nodig. Lokaal (zonder `WEBSITE_SITE_NAME`) verandert er niets.
+  Lokaal (zonder `WEBSITE_SITE_NAME`) verandert er niets.
 - **Eén autorisatiepoort voor alle 92 API-endpoints, per endpoint getest (#1350).** Tot nu toe
   bouwden 31 endpoints hun eigen rolcontrole, met drie verschillende patronen over de twee
   database-varianten heen; geen enkele test bewaakte dat. Alle endpoints lopen nu door dezelfde
-  wrapper, een nieuwe CI-controle weigert een endpoint dat zijn eigen poort bouwt of achter een
-  Function key staat, en een testsuite per variant bewijst voor élk endpoint dat een aanroep zonder
-  rol 401 krijgt, met alleen de rol `user` 403, en met de juiste rol de poort passeert. Twee
-  bewust ongewijzigde endpoints (`beheer/theme/extract`, `beheer/geocode`) staan met reden op een
-  allowlist. Voor beheerders verandert er niets zichtbaars; foutmeldingen bij een interne fout
-  luiden overal uniform "Interne fout".
-- **Ongebruikte, ruimere toegangspoort verwijderd (#1350).** `EasyAuthHelper.RequireAuthenticated`
-  (rol `admin` óf `user`) stond sinds mei 2026 ongebruikt in beide varianten van de code. De rol
-  `user` gaf al nergens API-toegang; nu bestaat de poort die dat per ongeluk had kunnen veranderen
-  niet meer.
-
-### Removed
-- **Gegenereerde Bruno API-collectie niet langer in git (#1354).** De map `bruno/` werd na elke
-  wijziging aan de API-spec toch handmatig geregenereerd en raakte daardoor uit sync (o.a. een
-  verouderde autorisatie-omschrijving). Regenereer hem lokaal on-demand met de
-  `bruno-gen-collection`-skill tegen `docs/api-standaarden/openapi.yaml`; de generatorconfig
-  (`bruno-gen.json`) blijft staan. Geen effect voor de applicatie zelf.
-
-### Changed
-- **URL van "Oefenwedstrijd aanmaken" ingekort naar `/wedstrijd-aanmaken` (#1358).** Zichtbare
-  naam, menu-label ("Wedstrijden") en functionaliteit blijven ongewijzigd — alleen het adres in de
-  browser is korter.
+  wrapper en een nieuwe CI-controle weigert een endpoint dat zijn eigen poort bouwt of achter een
+  Function key staat. Twee bewust ongewijzigde endpoints (`beheer/theme/extract`, `beheer/geocode`)
+  staan met reden op een allowlist. Een ongebruikte, ruimere toegangsrol (`RequireAuthenticated`,
+  rol `admin` óf `user`) is verwijderd. Voor beheerders verandert er niets zichtbaars.
+- **Wie wedstrijdgegevens in Sportlink mag wijzigen, was per databasevariant anders (#1272).** De
+  rol "Wedstrijdzaken" is bedoeld als extra slot bovenop de gewone beheerderstoegang. Op de
+  Postgres-variant werkte die rol als vervánging: iemand met alleen die rol kon rechtstreeks
+  wedstrijdgegevens wijzigen zonder ooit het beheerscherm te kunnen openen. Beide varianten eisen nu
+  allebei de rollen, precies zoals bedoeld.
+- **Teambegeleiding-scherm weer toegankelijk voor alle ingelogde gebruikers, niet alleen
+  beheerders (#1330).** Een beveiligingspatch van mei 2026 beperkte dit scherm tot beheerders; een
+  gewone gebruiker kreeg sindsdien alleen foutmeldingen. De eigenaar heeft dat besluit nu bewust
+  teruggedraaid: namen, e-mailadressen en telefoonnummers van begeleiders zijn weer zichtbaar voor
+  alle ingelogde gebruikers, zoals vóór mei 2026.
 
 ### Added
-- **Sportlink-wedstrijdpaneel: veld nu voorafgevuld en te kiezen op onze eigen veldnaam (#1339).**
-  In de Dagplanning liet het paneel "FieldId"/"FieldSize" altijd leeg staan, ook als de wedstrijd
-  al een veld had in Sportlink. Beheerders kunnen nu meteen zien welk veld een wedstrijd al heeft,
-  en bij het wijzigen een veld en subpositie kiezen op onze eigen veldnaam (bijv. "Veld 1", "A1")
-  — de app stelt daarbij zelf een Sportlink-`FieldId`/`FieldSize` voor. Dit voorstel is altijd
-  zichtbaar en bewerkbaar naast de bestaande tekstvelden, nooit een verplichte, verborgen waarde.
-- **Sportlink Web Extension: per club instelbaar wie kleedkamers/scheidsrechters mag toewijzen en
-  het veld mag wijzigen (#1341).** Nieuwe pagina "Instellingen → Sportlink — rechten per rol"
-  laat een beheerder deze drie acties onafhankelijk aan/uit zetten voor de Wedstrijdzaken-rol.
-  Admin heeft dit altijd aan. De server weigert een uitgeschakelde actie ook als de knop in de UI
-  omzeild wordt.
-- **Sportlink-wedstrijdpaneel: relatiecode van scheidsrechter/AR1/AR2 nu voorafgevuld, indien al
-  bekend bij Sportlink (#1340).** De invoervelden voor het toewijzen van scheidsrechters stonden
-  altijd leeg, ook als Sportlink al een scheidsrechter/AR1/AR2 had geregistreerd. Ze tonen nu de
-  huidige relatiecode als voorstel — geen naam, alleen het interne Sportlink-identificatienummer —
-  en blijven vrij overschrijfbaar. Alleen zichtbaar voor een rol die scheidsrechters mag toewijzen
-  (dezelfde instelling als #1341). **Nog niet definitief:** het exacte veld in Sportlinks eigen
-  respons is nog niet door de eigenaar live geverifieerd, en de bijbehorende AVG-vraag
-  (rechtsgrond/bewaartermijn/logging) staat nog open als voorstel — zie
-  `docs/SPORTLINK-WEB-EXTENSION.md` §8.
-
-### Fixed
-- **Dagplanning: wedstrijdenlijst had geen eigen sortering (#1331).** De tabel onder de
-  Dagplanning-Gantt toonde wedstrijden in de volgorde die de planner toevallig teruggaf, in plaats
-  van een voorspelbare volgorde. Beheerders zien de lijst nu altijd gesorteerd op aanvangstijd
-  (vroeg naar laat) en, bij gelijke tijd, op de veldvolgorde zoals die voor de club is ingesteld —
-  dit werkt hetzelfde voor een club met velden "Veld 1"/"Veld 2" als voor een club met velden
-  "A"/"B"/"C". Een wedstrijd zonder (geldige) tijd of veld komt altijd achteraan te staan, nooit
-  onverwacht bovenaan.
-- **Donkere weergave paste alleen de merkkleuren toe, niet de rest van het scherm (#1348).**
-  Na het omschakelen naar donker bleef de paginaachtergrond en het merendeel van de kaarten,
-  tabellen, formuliervelden en meldingen wit — alleen de zijbalk en knoppen werden echt donker.
-  De licht/donker-schakelaar zette het interne `data-theme`-attribuut wel, maar niet het attribuut
-  waar Bootstrap zelf op reageert; dat laatste ontbrak, waardoor de hele Bootstrap-laag altijd
-  licht bleef. Ook de "Licht bewerken"/"Donker bewerken"-keuze op het thema-scherm liep nu altijd
-  synchroon met de schakelaar in de topbalk, en een paar losse lichtgrijze randjes/tabelkoppen zijn
-  meegenomen.
-- **Dagplanning: foutmelding bij "Optimaliseer" was onvindbaar, en wedstrijden waren pas
-  bewerkbaar na een geslaagde optimalisatie (#1334).** De foutmelding stond onder de
-  Veldbezetting-kaart en bleef daardoor vaak buiten beeld; hij verschijnt nu direct onder de knop.
-  Daarnaast werd de wedstrijdenlijst (met de Sportlink-bewerkkolom) pas gevuld ná een handmatige
-  klik op "Optimaliseer" — bij het openen van de pagina en bij het wijzigen van datum of club wordt
-  nu automatisch een plan geladen, zodat er meteen iets te bekijken en te bewerken is.
-- **Meisjeswedstrijd ontbrak zonder foutmelding in de Dagplanning-tijdlijn (#1332).** Sportlink
-  levert voor sommige meisjesteams de leeftijdscategorie aan als "Onder {n} Meiden" in plaats van
-  "{JO|MO}{n} Meiden". Dat format werd niet herkend, waardoor de speeltijd-opzoeking faalde en de
-  wedstrijd — hoewel correct met tijd en veld bekend — stil uit de visuele veldbezetting viel; in
-  de tabel eronder bleef hij wel zichtbaar. Alle drie de leeftijdsnormalisaties (de gedeelde C#-
-  logica en de twee databasevarianten) zijn aangepast om het leeftijdscijfer direct uit de tekst te
-  lezen in plaats van aan te nemen dat hij al op een vaste plek staat.
+- **Licht/donker-thema voor de Admin GUI (#1249: #1254, #1256, #1257).** Een knop rechtsboven
+  wisselt tussen een lichte en donkere weergave; de keuze wordt onthouden en volgt bij een eerste
+  bezoek de voorkeur van het besturingssysteem, zonder flits van het verkeerde thema tijdens het
+  laden. Het thema-scherm laat beide weergaven apart instellen, met kant-en-klare basisthema's om
+  mee te beginnen; het aantal instelbare kleuren is uitgebreid van vier naar negen. Een club zonder
+  eigen donkere kleuren krijgt een neutrale donkere set.
+- **Sportlink-wedstrijdpaneel vult bekende gegevens nu voor in plaats van alles handmatig te laten
+  intypen (epic #1338: #1339, #1340, #1341).** Veld en veldgrootte worden voorgesteld op basis van
+  de eigen veldnaam (#1339). Voor een rol die scheidsrechters mag toewijzen wordt ook de
+  relatiecode van scheidsrechter/AR1/AR2 voorgesteld indien bekend bij Sportlink — nooit een naam
+  (#1340; **nog niet definitief geverifieerd door de eigenaar tegen een live Sportlink-respons**).
+  Per club en per rol is nu instelbaar wie kleedkamers/scheidsrechters mag toewijzen en het veld mag
+  wijzigen; admin heeft dit altijd aan (#1341).
+- **Dagplanning: hover-highlight en sticky tijdlijn bij de veldbezetting (#1315).** Een wedstrijd
+  licht in de tabel en in de tijdlijn tegelijk op bij het aanwijzen ervan, en de tijdlijn blijft in
+  beeld terwijl u door de tabel eronder scrolt.
+- **De database wordt nu ook op de tier die in productie draait dagelijks op uitval gecontroleerd,
+  met een waarschuwingsmail bij storing (#1268).** Voorheen bleef een uitval onopgemerkt als er
+  toevallig geen e-mail binnenkwam — precies wat er in augustus 2026 vijf dagen lang gebeurde. Een
+  onverwachte fout in de synchronisatie wordt op deze tier nu net als op de andere gemeld (één
+  melding per unieke fout per 24 uur).
 
 ### Changed
-- **Teambegeleiding-scherm weer toegankelijk voor alle ingelogde gebruikers (#1330).** Tot mei 2026
-  kon iedereen die ingelogd was het scherm openen en vragen doorsturen aan begeleiders. Een
-  beveiligingspatch beperkte dit toen tot beheerders alleen — een gebruiker die het menu probeerde
-  te openen kreeg toen alleen foutmeldingen. De eigenaar heeft nu expliciet het beveiligingsbesluit
-  van mei teruggedraaid: trainers, coördinatoren en leden zien nu weer de contactgegevens en kunnen
-  vragen aan de begeleiding doorsturen. Dit betekent dat namen, e-mailadressen en telefoonnummers
-  van begeleiders opnieuw zichtbaar zijn voor alle ingelogde gebruikers, niet alleen beheerders —
-  dezelfde zichtbaarheid als vóór mei 2026.
 - **"Teambegeleiding importeren" verhuisd naar Instellingen (#1322).** Het scherm
   `/teambegeleiding` toont voortaan alleen nog team selectie, contactgegevens en "vraag doorsturen"
-  — de CSV-import staat op een eigen pagina onder **Instellingen → Teambegeleiding importeren**.
-  De import zelf werkt ongewijzigd; alleen de plek in het menu is anders, omdat een CSV-import een
-  incidentele beheerdersactie is, geen dagelijks scherm.
-- **Eén stuk aansluitcode voor de Sportlink-koppeling in plaats van twee (#1271).** De SQL Server-
-  en Postgres-variant van de app deelden tot nu toe geen code voor het afhandelen van een
-  Sportlink-verzoek — alleen de databasevraag zelf verschilt tussen de twee, maar het aansluitwerk
-  eromheen stond twee keer geschreven. Dat aansluitwerk is nu één gedeeld stuk, zodat een
-  verbetering of reparatie daar voortaan maar op één plek hoeft te gebeuren. Voor beheerders
-  verandert er niets aan de werking van de applicatie.
-
-### Added
-- **Dagplanning: hover-highlight en sticky tijdlijn bij de veldbezetting (#1315).** Beweeg de muis
-  over een wedstrijd in de tabel of in de tijdlijn van de kaart "Veldbezetting op [datum]" — de
-  bijbehorende wedstrijd licht in beide oranje op, zodat direct zichtbaar is waar die wedstrijd
-  zich op het veld bevindt. De tijdlijn blijft bovendien in beeld terwijl u door de tabel eronder
-  scrolt, zodat het overzicht van de veldbezetting niet meer uit beeld verdwijnt bij een drukke
-  speeldag.
-- **Centrale architectuurbeschrijving (#1274).** `docs/ARCHITECTUUR.md` is het nieuwe leidende
-  architectuurdocument: één plek met de kwaliteitsdoelen, de belanghebbenden en hun zorgen, de
-  architectuurbesluiten en een toetsregister. Het is opgezet volgens ISO/IEC/IEEE 42010 en
-  gestructureerd met arc42, en gegrond in openbare standaarden — het Azure Well-Architected
-  Framework, OWASP ASVS, de HTTP- en foutmodel-RFC's, OpenAPI en de AVG — zodat elke fork de
-  bronnen zelf kan nalezen. Het register noemt per regel de externe basis, de lokale afspraak en
-  de **bewijsvorm**: staat daar `ontbreekt`, dan geldt de regel wel maar is hij nog niet
-  automatisch te controleren. Die regels vormen samen hoofdstuk 11 en daarmee een geordende
-  werkvoorraad. *(Bijgewerkt: `docs/ARCHITECTURE.md` is per #1291, nog vóór de eerste release van
-  dit document, volledig in `ARCHITECTUUR.md` samengevoegd — zie de entry hieronder.)*
-- **De database wordt nu ook op de variant die in productie draait dagelijks op uitval
-  gecontroleerd (#1268).** Tot nu toe ging er alleen een waarschuwingsmail uit als er toevallig
-  e-mail binnenkwam die de database aansprak; bleef het stil in de mailbox, dan bleef een uitval
-  onopgemerkt — precies wat er in augustus 2026 vijf dagen lang gebeurde. Er draait nu elke ochtend
-  een losse controle die niet van e-mailverkeer afhangt. Ligt de database eruit, dan gaat er een
-  waarschuwing naar de beheerdersmailbox, met daarin hoe lang het al speelt en wat er te
-  controleren valt. Bij een aanhoudende storing wordt die waarschuwing hooguit eens per twintig uur
-  herhaald, en een herstart of onderhoudsmoment van de hostingomgeving levert geen loos alarm op.
-  De controle werkt zonder extra instellingen; wie de hostingomgeving rechtstreeks laat bevragen,
-  krijgt een preciezere melding terug.
-- **Automatische foutrapportage werkt nu ook op de databasevariant die in productie draait (#1268).**
-  Een onverwachte fout in de nachtelijke of handmatige synchronisatie meldde zichzelf tot nu toe
-  alleen aan als de andere databasevariant actief was; op de variant die daadwerkelijk live staat,
-  bleef zo'n fout een logregel die niemand las. Beide varianten melden een fout nu op dezelfde
-  manier: één melding per unieke fout per 24 uur, met bij herhaling een reactie op de bestaande
-  melding in plaats van een nieuwe. De melding bevat uitsluitend vaste technische velden
-  (foutsoort, fouttype, tijdstip, kenmerk) — nooit de fouttekst zelf, een bestandspad of een
-  gegeven dat naar de club of een persoon te herleiden is.
-
-### Changed
-- **Eén architectuurdocument in plaats van drie kopieën van dezelfde regel (#1291).** De vorige
-  ronde (#1274) introduceerde `docs/ARCHITECTUUR.md` bewust náást het bestaande
-  `docs/ARCHITECTURE.md`, om het risico van inhoudsverlies bij een directe samenvoeging te
-  vermijden. Die samenvoeging is nu gedaan: `ARCHITECTURE.md` bestaat niet meer, en de checklists,
-  codevoorbeelden en schemaconventies staan als concrete uitwerking in `ARCHITECTUUR.md` zelf, in
-  het hoofdstuk waar ze inhoudelijk bij horen. Dezelfde opschoning is doorgevoerd in `CLAUDE.md`:
-  de auth-lagen, de Blazor auth-gate, de MSAL-checklist, de UTC-regel, de club-isolatieregels en de
-  AVG-testdata-uitzonderingen stonden daar (bijna) woordelijk nogmaals uitgeschreven en zijn
-  vervangen door een korte samenvatting met een verwijzing naar de ene geldende versie. Voor
-  toekomstige wijzigingen legt `ARCHITECTUUR.md` §13.1 vast waar een nieuwe architectuurregel
-  voortaan hoort. Daarnaast is `docs/ARCHITECTURE-PLANNER.md` hernoemd naar
-  `docs/ARCHITECTUUR-PLANNER.md`, voor consistente naamgeving met de overige
-  `ARCHITECTUUR-*.md`-documenten. Geen functionele wijziging.
-- **De regels achter de uitvalwaarschuwing staan nu één keer in de codebase (#1268).** Wanneer iets
-  als uitval telt, hoe lang die moet duren, hoe vaak er herhaald mag worden en hoe de waarschuwing
-  luidt: dat heeft niets met de databasekeuze te maken en staat nu in de gedeelde laag, met eigen
-  tests. Beide databasevarianten gebruiken dezelfde regels en kunnen dus niet meer stilzwijgend uit
-  elkaar lopen. Alleen het opvragen van de status blijft per variant eigen — daar verschillen de
-  hostingomgevingen werkelijk van elkaar.
-- **De foutrapportage staat nu één keer in de codebase in plaats van in één databasevariant
-  (#1268).** De logica erachter — de melding opstellen, dubbele meldingen herkennen en de melding
-  versturen — heeft niets met de databasekeuze te maken en is verplaatst naar de gedeelde laag.
-  Per variant blijft alleen staan wat daar echt verschilt. Daarmee kunnen de twee varianten niet
-  meer stilzwijgend uit elkaar lopen, en zijn het herkennen van dubbele meldingen en het opstellen
-  van de melding voor het eerst met tests afgedekt.
-
-- **De bewaking die verschillen tussen de twee databasevarianten opspoort, kijkt nu ook naar
-  achtergrondtaken (#1268).** Tot nu toe vergeleek die controle alleen de schermfuncties die via een
-  webadres bereikbaar zijn. Juist daardoor kon de uitvalbewaking van de database jarenlang op één
-  variant ontbreken zonder dat iemand het merkte: een ontbrekende achtergrondtaak geeft geen
-  foutmelding, hij doet gewoon niets. De controle vergelijkt nu beide, in beide richtingen.
+  — de CSV-import staat op een eigen pagina onder **Instellingen → Teambegeleiding importeren**. De
+  import zelf werkt ongewijzigd.
+- **URL van "Oefenwedstrijd aanmaken" ingekort naar `/wedstrijd-aanmaken` (#1358).** Zichtbare naam,
+  menu-label ("Wedstrijden") en functionaliteit blijven ongewijzigd — alleen het adres in de
+  browser is korter.
+- **Dagplanning: wedstrijdenlijst is nu altijd gesorteerd op aanvangstijd en, bij gelijke tijd, op
+  de voor de club ingestelde veldvolgorde (#1331).** Voorheen stond de lijst in een willekeurige,
+  niet-voorspelbare volgorde.
 
 ### Removed
-- **`docs/ARCHITECTURE-V2.md` verwijderd (#1291-vervolg).** Dit was een bevroren, gearchiveerd
-  verslag van de single-tier architectuur van vóór de Postgres-cutover (#976) — expliciet niet meer
-  bijgewerkt sinds die datum en volledig ingehaald door `docs/ARCHITECTUUR.md`. De repository houdt
-  alleen geldende regels vast; de historische inhoud blijft opvraagbaar via de git-geschiedenis.
-  `INDEX.md` en `DOCUMENTATIEPLAN.md` zijn bijgewerkt: de "archief"-categorie is vervallen.
-- **De applicatie raadt niet langer welk team bedoeld wordt bij een dubbelzinnige naam (#1268).**
-  Staat er in een e-mail bijvoorbeeld "13-1", dan kan dat zowel JO13-1 als MO13-1 zijn. Op één van
-  de twee databasevarianten liet de applicatie een taalmodel die keuze maken; op de andere — de
-  variant die in productie draait — gebeurde dat nooit. Dat verschil is opgeheven door de
-  voorzichtige kant als norm te nemen: er wordt niet meer geraden. Je krijgt in zo'n geval de
-  mogelijke teams te zien in plaats van een keuze die er misschien naast zit. Gevolg voor de
-  praktijk: een e-mail met een dubbelzinnige teamnaam wordt niet meer automatisch gekoppeld en
-  vraagt om een handmatige bevestiging, en er worden vanuit die route ook geen nieuwe
-  schrijfwijzen meer geleerd.
+- **Gegenereerde Bruno API-collectie niet langer in git (#1354).** Regenereer hem lokaal on-demand
+  met de `bruno-gen-collection`-skill tegen `docs/api-standaarden/openapi.yaml`. Geen effect voor de
+  applicatie zelf.
+- **De applicatie raadt niet langer welk team bedoeld wordt bij een dubbelzinnige naam, bijv.
+  "13-1" (JO13-1 of MO13-1) (#1268).** Eén van de twee databasevarianten liet voorheen een
+  taalmodel die keuze maken; dat gebeurt nu nergens meer. Een e-mail met een dubbelzinnige teamnaam
+  wordt niet meer automatisch gekoppeld en vraagt om een handmatige bevestiging.
 
 ### Fixed
-- **Sidebar-item "Sportlink Web Extension" liep over twee regels (#1314).** Het label onder
-  Instellingen is verkort naar "Sportlink Ext.", zodat het op één regel past — consistent met de
-  andere menu-items.
-- **Sidebar-item "Oefenwedstrijd aanmaken" liep over meerdere regels (#1321).** Het menu-item is
-  verkort naar "Wedstrijden", zodat het net als de andere items op één regel past. De pagina zelf
-  (titel, koppen, knop) blijft "Oefenwedstrijd aanmaken" heten — alleen het sidebar-label is korter.
-- **Teamherkenning op de SQL Server-tier vergelijkt schrijfwijzen nu overal hoofdletterongevoelig,
-  ook op een toekomstige fork met een andere databasecollatie (#1294).** Vijf plekken in drie
-  bestanden vergeleken een teamnaam of alias nog rechtstreeks, in plaats van via de methode die
-  elders al gebruikt werd. Op deze installatie was dat onzichtbaar (de database is hier al
-  hoofdletterongevoelig ingesteld), maar op een andere collatie kon een wedstrijd daardoor
-  onvindbaar zijn of een alias dubbel worden aangemaakt, zonder foutmelding. Geen verandering in
-  prestaties: dezelfde indexen die eerder al voor teamherkenning zijn aangelegd, bedienen ook deze
-  vergelijkingen.
-- **De `sluitsessie`- en `autonoom`-werkwijzen konden een issue sluiten dat nog niet live stond
-  (#1295).** Beide instrueerden op vier plekken om `gh issue close` aan te roepen direct na een
-  merge naar `develop` — precies het scenario waarvoor eerder al een regel is vastgelegd, omdat
-  `develop` soms weken achterloopt op productie. Een issue zag er dan opgelost uit terwijl de fix
-  nog niet bij de gebruiker was. Beide werkwijzen laten het sluiten nu volledig aan de bestaande
-  workflow over (`close-released-issues.yml`, die pas bij een productie-tag sluit) en herkennen
-  `status: awaiting-release` als de juiste, geen zorgwekkende eindtoestand na een develop-merge.
-- **De `sluitsessie`- en `autonoom`-werkwijzen konden zelf een kapotte lokale omgeving
-  veroorzaken (#1296).** Beide bouwden `BlazorAdmin` zonder het voorbehoud dat elders al gold:
-  nooit bouwen terwijl de lokale ontwikkelserver draait. Een tweede compilatie ernaast levert een
-  tweede set bestandsfingerprints op, waardoor de browser blijft laden of "An unhandled error has
-  occurred" toont. Beide werkwijzen bouwen nu eerst de tier die in productie draait en slaan de
-  BlazorAdmin-build bewust over zolang de server actief is. Daarnaast verwezen ze naar vijf
-  documentbestanden die inmiddels waren hernoemd of nooit hebben bestaan — die verwijzingen zijn
-  gecorrigeerd zodat de bijbehorende controle niet langer stilzwijgend niets doet.
-- **Teamherkenning zoekt weer via de index in plaats van de hele aliastabel door te lopen (#1280).**
-  De lookups die een teamnaam naar een team vertalen vergelijken hoofdletterongevoelig. Op de
-  variant van de database die deze installatie draait was dat sinds 16 september al opgelost; op de
-  andere ondersteunde variant las het systeem bij elke zoekopdracht nog de volledige aliastabel.
-  Met testdata van 200.000 aliassen daalde dat van 3181 naar 6 leesbewerkingen per zoekopdracht.
-  Merkbaar wordt dit pas bij een club met veel aliassen — de reden om het nu te doen is dat het
-  met de omvang van die tabel meegroeit.
-- **De ontwikkelhulpmiddelen werken nu ook op een Mac (#1286).** De drie geautomatiseerde
-  werkwijzen die een ontwikkelaar gebruikt om de omgeving op te starten, een sessie af te sluiten
-  en de ontwikkelcyclus te doorlopen, waren op Windows geschreven en deden op macOS deels niets.
-  Het opstarten kon draaiende onderdelen daar niet zien en meldde ze als "niet actief", de
-  sessie-afsluiting sloeg de controle op afgeronde taken stilzwijgend over en schreef haar
-  samenvatting naar een pad dat op een Mac niet bestaat, en de beveiligingsscan doorzocht ook
-  build-uitvoer die overgeslagen had moeten worden. Alle drie werken nu op Windows én macOS, en de
-  Codex-tweelingen ervan zijn meegenomen. Verder bleek de controle op inconsistente
-  Blazor-bestandsversies nooit iets te kunnen aantonen — die is vervangen door een controle die
-  aantoonbaar zowel groen als rood kan worden.
-- **Een eerder in productie opgeloste fout stond nog wél in de ontwikkelbranche (#1287).** De
-  correctie op het label "Geen AI antwoord" draaide sinds 18 september wel live, maar was nooit
-  teruggebracht naar de branche waarop verder wordt ontwikkeld. Daar stonden de code, de tests en
-  de beschrijving in `docs/EMAIL-VERWERKING.md` dus nog op het oude gedrag, waarbij in review-mode
-  élk verwerkt bericht dat label kreeg — ook een bericht waarvoor net een voorstel ter beoordeling
-  was klaargezet. Dit raakte de productieomgeving niet, maar wie aan dit onderdeel verder werkte,
-  las een verouderde beschrijving en had geen test die de fout tegenhield. Zie issue #1244 voor de
-  oorspronkelijke correctie.
-- **Documentatie feitelijk gelijkgetrokken met de code (#1269).** Alle documenten in `docs/` en de
-  documentatie in de hoofdmap zijn document voor document tegen de werkelijke broncode getoetst.
-  De belangrijkste correcties, elk met gevolgen voor wie ze volgde: de twee databasevarianten
-  stonden in vier installatiedocumenten omgewisseld, waardoor het startcommando de verkeerde
-  database opstartte en een nieuwe ontwikkelaar met een lege omgeving achterbleef; de API-tabel gaf
-  bij een aantal endpoints het verkeerde beveiligingsniveau; de beheerdershandleiding beschreef een
-  knop "Testmodus" die niet bestaat (van club wisselen gaat via de clubkeuzelijst in de bovenbalk);
-  en vier schermen — Dashboard, Leermomenten, E-mailtemplates en die clubkeuzelijst — waren nergens
-  beschreven. Verder zijn verouderde versienummers uit documenttitels gehaald, is de
-  documentatie-index aangevuld met de documenten die eruit waren gelopen, en is een map met
-  ongebruikte, deels misleidende API-specificaties verwijderd.
-- **Onjuiste uitleg over de verwerking van het begeleidersbestand (#1269).** De handleiding en de
-  importinstructie stelden dat het CSV-bestand "in de browser wordt verwerkt en niets op de server
-  wordt opgeslagen". Dat gaf een verkeerd beeld: de browser toont alleen een voorbeeld van de
-  eerste regels, het volledige bestand gaat wel degelijk naar de server en wordt daar verwerkt.
-  Het wordt niet als bestand bewaard, maar de gegevens passeren de server wél. Beide documenten
-  beschrijven nu precies wat er gebeurt — een onjuiste geruststelling over persoonsgegevens is
-  ernstiger dan een onvolledige uitleg.
-- **Voorbeeldwaarden die naar de eigen club te herleiden waren, vervangen door placeholders (#1269).**
-  Twee documenten gebruikten echte identificatienummers uit de productieomgeving als voorbeeld. Ze
-  zijn vervangen door neutrale placeholders; de redenering eromheen is ongewijzigd gebleven.
-
-- **De SQL Server-variant van de database was achtergebleven op de Postgres-variant (#1266).** Deze
-  applicatie ondersteunt twee soorten database; een club kiest er bij installatie één. Sinds deze
-  installatie in september op Postgres overging, is nieuwe functionaliteit alleen daar nog gebouwd —
-  twaalf schermfuncties rond de Sportlink-koppeling, twee tabellen en een instelling ontbraken aan
-  de SQL Server-kant. Dat was geen bewuste keuze om die variant te laten vallen: het kwam voort uit
-  de aanname dat hij alleen nog als terugvaloptie bestond, een aanname die nooit als beslissing is
-  voorgelegd maar wel in vijftien documenten terechtkwam. Beide varianten zijn gelijkwaardig, en
-  dat is nu ook vastgelegd. De ontbrekende tabellen en de instelling zijn toegevoegd en getest
-  tegen een echte SQL Server-database, vers opgebouwd én bijgewerkt vanaf de oude situatie.
-- **De Sportlink-koppeling werkt nu ook op de SQL Server-variant (#1266).** De twaalf
-  schermfuncties rond wedstrijdwijzigingen — kleedkamers, veld, scheidsrechters, wijzigingsverzoeken,
-  oefenwedstrijden aanmaken en het statusoverzicht — bestonden alleen op de Postgres-variant. Een
-  club op SQL Server kreeg daar foutmeldingen op schermen die verder gewoon zichtbaar waren. Ze
-  werken nu op beide varianten, samen met de drie achtergrondtaken die de koppeling in de lucht
-  houden. De veiligheidsschakelaar blijft daarbij aan: een club die de koppeling nog niet bewust
-  heeft ingericht, verstuurt niets naar Sportlink — ook niet als het uitlezen van die instelling
-  zelf misgaat.
-- **Wie wedstrijdgegevens in Sportlink mag wijzigen, was per databasevariant anders (#1272).** Voor
-  deze koppeling bestaat een aparte rol, "Wedstrijdzaken", die bedoeld is als extra slot bovenop de
-  gewone beheerderstoegang — zo staat het ook in de handleiding. Op de Postgres-variant werkte die
-  rol echter als vervánging: iemand met alleen die rol, en dus zonder beheerderstoegang, kon het
-  beheerscherm niet eens openen maar wél rechtstreeks wedstrijdgegevens wijzigen. Beide varianten
-  eisen nu allebei de rollen, precies zoals bedoeld.
-- **Nieuwe bewaking: een functie kan niet meer op één databasevariant blijven steken (#1266).** Er
-  bestonden al drie controles op verschillen tussen de twee varianten, maar die keken maar één kant
-  op — precies de kant die na de overgang naar Postgres de verkeerde was geworden. De nieuwe
-  controle kijkt beide kanten op en houdt de build tegen zodra een schermfunctie maar op één
-  variant bestaat.
-
-### Added
-- **Het thema-scherm stelt nu beide weergaven in, met kant-en-klare basisthema's om mee te
-  beginnen (#1257).** U kiest bovenaan of u de lichte of de donkere weergave bewerkt; de hele
-  interface schakelt meteen mee, zodat u ziet wat u instelt in plaats van het te moeten
-  voorstellen. Een keuzelijst met basisthema's vult in één keer alle kleuren van die weergave,
-  waarna u elke kleur los kunt bijstellen. Het aantal instelbare kleuren is uitgebreid van vier
-  naar negen: naast de knop-, tekst- en accentkleuren nu ook de achtergrond van de pagina en de
-  kaartjes, twee grijstinten en de schaduw. Kleuren met een betekenis blijven vast: groen blijft
-  "klaar", rood blijft "fout", oranje blijft de testmodus.
-- **De Admin GUI heeft een knop om tussen een lichte en een donkere weergave te wisselen (#1256).**
-  De knop staat rechtsboven in de balk, naast de feedbackknop. De keuze wordt onthouden voor een
-  volgend bezoek. Heb je nog niets gekozen, dan volgt de site de voorkeur die in je besturings-
-  systeem of browser staat ingesteld — wie zijn computer op donker heeft staan, krijgt de site dus
-  meteen donker. De weergave staat goed vanaf het allereerste moment dat de pagina verschijnt: er
-  is geen korte flits van het verkeerde thema tijdens het laden. Een club die nog geen eigen
-  donkere kleuren heeft ingesteld krijgt een neutrale donkere set te zien; de eigen clubkleuren
-  voor beide weergaven instellen kan zodra het beheerscherm daarvoor er is.
-- **De database kan nu een volledig kleurenpalet bewaren voor zowel een lichte als een donkere
-  weergave (#1254).** Dit is de eerste stap van de thema-uitbreiding: de opslag en de API kunnen de
-  twee sets aan, het beheerscherm en de schakelaar volgen in een latere stap. Voor een club die nog
-  niets heeft ingesteld verandert er niets — die houdt exact het huidige thema, want de bestaande
-  vier kleuren blijven de terugval.
-
-### Changed
-- **Dubbele code binnen één databasevariant wordt nu ook gemeten, niet alleen tussen de twee
-  varianten (#1263).** De bestaande controle (#1262) vergelijkt alleen de SQL Server- en
-  Postgres-variant met elkaar; twee keer dezelfde logica binnen één variant viel daarbuiten. Een
-  nieuwe, aparte controle vangt dat nu op. Voor beheerders verandert er niets aan de werking van de
-  applicatie.
-- **De projectregels worden nu gecontroleerd in plaats van alleen opgeschreven (#1262).** Aanleiding
-  was een fout waarbij de volledige thema-logica — kleurherkenning, validatie en de beveiliging van
-  het ophalen van de clubwebsite — woordelijk twee keer in de codebase stond, één keer per
-  databasevariant. In het gekopieerde bestand stond zelfs een opmerking die dat toegaf. Niemand
-  hield het tegen, want er bestond geen enkele meting: niet op dubbele code, niet op bestandsgrootte,
-  niet op logica die in een scherm blijft hangen in plaats van in een testbare laag te staan.
-  De prijs kwam later: een fout in die gekopieerde code zorgde ervoor dat het automatisch ophalen
-  van het clublogo en het website-icoon in werkelijkheid nooit heeft gewerkt, zonder één foutmelding.
-  Er zijn nu acht regels met elk een controle die de build tegenhoudt, en die controles zijn zelf
-  getest — een controle die altijd groen is, bewijst niets. Voor beheerders verandert er niets aan
-  de werking van de applicatie; het verkleint de kans dat een reparatie voortaan maar half doorkomt.
-- **Het regelboek voor de tweede AI-reviewer liep 280 regels achter (#1262).** Dit project laat zijn
-  code door twee verschillende AI-assistenten beoordelen, elk met een eigen regelbestand. Die twee
-  bestanden werden met de hand gelijk gehouden en waren uit elkaar gelopen: negen hele onderdelen
-  ontbraken, waaronder juist de regels die dubbele code moeten voorkomen en de regel die bepaalt
-  wanneer de applicatie naar buiten mag verbinden. De tweede beoordelaar kende die regels dus niet.
-  Het tweede bestand wordt nu automatisch uit het eerste afgeleid en kan niet meer afwijken.
-
-### Fixed
-- **Voorbereiding op een donkere weergave: de kleuren van de schermen zitten niet langer vast in
-  de opmaak (#1255).** De achtergrond van de pagina, de kaartjes, de grijstinten en de schaduw
-  onder een kaartje waren tot nu toe vaste waarden die niemand kon aanpassen. Ze zijn nu
-  instelbaar gemaakt, elk met een variant voor een lichte en een donkere weergave. Er verandert
-  op dit moment nog niets zichtbaars — de schakelaar om over te stappen komt in een volgende stap.
-  Kleuren met een betekenis blijven bewust vast: groen blijft "klaar", rood blijft "fout", en de
-  oranje markering van de testmodus blijft oranje.
-- **De thema-functionaliteit bestond twee keer in de code, één keer per databasesoort (#1248).**
-  Dat betekende dat elke aanpassing aan de kleuren ook twee keer met de hand moest, in twee
-  bestanden die niets van elkaar wisten — met het risico dat een verbetering of beveiligingsfix in
-  het ene bestand terechtkwam en in het andere werd vergeten. Alles wat niet met de database te
-  maken heeft staat nu op één plek, met tests eromheen die er eerder helemaal niet waren. Voor de
-  beheerder verandert er niets aan wat het scherm doet; het maakt toekomstige uitbreidingen van het
-  thema wel betrouwbaarder. Deze ontdubbeling bracht meteen bovenstaande fout aan het licht.
-
-### Fixed
-- **Het logo en het icoontje van de clubwebsite werden bij "Ophalen" nooit gevonden (#1252).** Het
-  systeem zocht ze wel degelijk op de pagina, maar liet het gevonden adres daarna stilzwijgend
-  vallen zodra dat adres — zoals gebruikelijk op websites — een verkorte verwijzing was in plaats
-  van een volledig webadres. Er kwam geen foutmelding: het resultaat was simpelweg "geen logo
-  gevonden", niet te onderscheiden van een website die er echt geen heeft. Op een Windows-machine
-  werkte dezelfde code wél, waardoor het bij testen niet opviel; de servers waarop dit draait zijn
-  Linux. Logo en icoontje komen er nu uit zoals bedoeld.
-- **"Kleuren ophalen van de clubwebsite" kon mislukken bij websites die er niets mis mee hadden
-  (#1250).** Het systeem vroeg de pagina op met alleen een naamkaartje van de applicatie erbij,
-  zonder te vermelden welk soort inhoud en welke taal het verwachtte — iets wat elke browser wel
-  doet. Een deel van de websitehosts weigert zo'n verzoek daarom botweg, met als resultaat dat het
-  ophalen van de kleuren strandde terwijl er aan de kant van de club niets aan de hand was.
-  Diezelfde pagina komt mét die twee gegevens er gewoon binnen. Het ophalen werkt nu dus ook op die
-  websites. Aan wélke adressen benaderd mogen worden verandert niets: dat blijft uitsluitend het
-  webadres dat de beheerder zelf voor de eigen club heeft ingesteld.
-- **De demo-club AllStars FC had geen enkel team en geen enkele wedstrijd (#1246).** De testmodus
-  waarmee je de planner kunt uitproberen zonder de echte clubgegevens aan te raken, was in de
-  praktijk leeg: wel velden en instellingen, maar nul teams, nul wedstrijden, nul teambegeleiders
-  en nul speeltijden. De demodata bestond al wel, maar werd door niets automatisch klaargezet —
-  alleen met een script dat je met de hand moest draaien. Dat gebeurt nu bij elke update vanzelf,
-  en het herhaalt zichzelf zonder iets dubbel te zetten. De speeltijden van de demo-club worden
-  bovendien overgenomen van je eigen club zodra je ze hebt ingevuld; voorheen bleven ze voor altijd
-  leeg als je ze pas na de eerste installatie invoerde. Eén handeling blijft van jou: staat de
-  teamlijst van de demo-club nog leeg, gebruik dan de knop **Teamlijst opnieuw opbouwen** op de
-  pagina Teamaliassen — de update-procedure mag die knop om veiligheidsredenen niet zelf indrukken
-  en meldt het voortaan als het nodig is.
-- **De instellingen van de club konden stilzwijgend dubbel in de database staan, waarna de
-  applicatie willekeurig één van de twee gebruikte (#1218).** De tabel met clubinstellingen had
-  geen enkele regel die dat tegenhield. Bij twee regels voor dezelfde club koos het systeem er
-  simpelweg één — zonder foutmelding, zonder waarschuwing. Je zou dat pas merken aan gedrag dat
-  niet klopt met wat er in het beheerscherm staat. De database weigert zo'n tweede regel nu.
-  Gecontroleerd vóór het doorvoeren: de productiedatabase bevat twee regels met twee verschillende
-  clubs, dus er viel niets op te ruimen. Staan er op een andere installatie wél dubbelen, dan stopt
-  de bijwerking met een melding die vertelt om welke club het gaat, in plaats van half werk af te
-  leveren.
+- **Dagplanning: foutmelding bij "Optimaliseer" was onvindbaar, en wedstrijden waren pas bewerkbaar
+  na een geslaagde optimalisatie (#1334).** De foutmelding staat nu direct onder de knop, en bij het
+  openen van de pagina of het wijzigen van datum/club wordt automatisch een plan geladen.
+- **Meisjeswedstrijd ontbrak zonder foutmelding in de Dagplanning-tijdlijn (#1332).** Sportlink
+  levert voor sommige meisjesteams de leeftijdscategorie aan als "Onder {n} Meiden" in plaats van
+  "{JO|MO}{n} Meiden"; dat format werd niet herkend, waardoor de speeltijd-opzoeking faalde.
+- **Donkere weergave paste alleen de merkkleuren toe, niet de rest van het scherm (#1348).** De
+  paginaachtergrond en het merendeel van de kaarten, tabellen en formuliervelden bleven wit doordat
+  het attribuut waar Bootstrap zelf op reageert niet werd meegezet.
+- **Sidebar-items liepen over meerdere regels (#1314, #1321).** "Sportlink Web Extension" is
+  verkort naar "Sportlink Ext." en "Oefenwedstrijd aanmaken" naar "Wedstrijden"; de paginatitels
+  zelf zijn ongewijzigd.
+- **Teamherkenning op de SQL Server-tier vergeleek vijf schrijfwijzen nog hoofdlettergevoelig
+  (#1294).** Op deze installatie onzichtbaar (database staat al hoofdletterongevoelig), maar op een
+  andere collatie kon een wedstrijd onvindbaar zijn of een alias dubbel worden aangemaakt.
+- **Teamherkenning gebruikte de volledige aliastabel in plaats van de bestaande index (#1280).** Met
+  200.000 aliassen daalde dat van 3181 naar 6 leesbewerkingen per zoekopdracht — merkbaar bij een
+  club met veel aliassen.
+- **De Sportlink-koppeling (kleedkamers, veld, scheidsrechters, wijzigingsverzoeken,
+  oefenwedstrijden, statusoverzicht) werkte alleen op de Postgres-variant, niet op SQL
+  Server (#1266).** Beide varianten zijn nu gelijkwaardig; de twaalf schermfuncties en de drie
+  bijbehorende achtergrondtaken werken op beide. De veiligheidsschakelaar blijft daarbij leidend:
+  een club die de koppeling niet bewust heeft ingericht, verstuurt niets naar Sportlink.
+- **Logo en favicon van de clubwebsite werden bij "Ophalen" nooit gevonden (#1252).** Een gevonden,
+  verkort adres werd stilzwijgend genegeerd op de Linux-productieomgeving; op Windows viel dit bij
+  testen niet op.
+- **"Kleuren ophalen van de clubwebsite" kon mislukken bij websites die er niets mis mee
+  hadden (#1250).** Een deel van de websitehosts weigerde het verzoek omdat het geen content-type
+  en taal opgaf, zoals een browser dat wel doet.
+- **Demo-club AllStars FC had geen teams, wedstrijden, teambegeleiders of speeltijden (#1246).** De
+  demodata wordt voortaan bij elke update automatisch geseed, zonder iets dubbel te zetten.
+- **Clubinstellingen konden stilzwijgend dubbel in de database staan, waarna de applicatie
+  willekeurig één van de twee gebruikte (#1218).** De database weigert een tweede rij per club nu.
+- **Beheerdershandleiding en importinstructie stelden ten onrechte dat het begeleidersbestand
+  alleen in de browser wordt verwerkt (#1269).** Het volledige CSV-bestand gaat wel degelijk naar de
+  server en wordt daar verwerkt (niet bewaard als bestand) — de documentatie beschrijft nu precies
+  wat er met deze persoonsgegevens gebeurt.
 
 ## [3.5.0.0] — 2026-09-17
 
