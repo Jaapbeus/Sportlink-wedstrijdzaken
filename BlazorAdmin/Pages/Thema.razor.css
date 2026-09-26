@@ -6,7 +6,7 @@
 .thema-geextraheerde-kleur {
     width: 40px;
     height: 40px;
-    border: 1px solid #dee2e6;
+    border: 1px solid var(--bs-border-color);
     border-radius: 4px;
     cursor: pointer;
     background-color: var(--thema-kleur);
