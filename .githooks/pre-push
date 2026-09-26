@@ -105,26 +105,39 @@ $candidate"
       fi
     done < "$PATTERN_FILE"
   fi
-done
-
-# ── 3. Gebruik gitleaks indien beschikbaar ────────────────────────────────────
-# gitleaks is optioneel (zie CLAUDE.md), dus ontbreken mag de push niet blokkeren. Maar het stil
-# overslaan gaf een vals gevoel van dekking: de patroonscan hierboven is aanzienlijk beperkter dan
-# gitleaks. Nu wordt het expliciet gemeld, net zoals #514 dat deed voor een ontbrekende
-# sensitive-patterns.txt. (#649)
-if command -v gitleaks &>/dev/null; then
-  if ! gitleaks detect --exit-code 1 --no-banner 2>/dev/null; then
+  # ── 3. gitleaks op dezelfde commit-range als hierboven ─────────────────────
+  # gitleaks is optioneel (zie CLAUDE.md), dus ontbreken mag de push niet blokkeren. Maar het stil
+  # overslaan gaf een vals gevoel van dekking: de patroonscan hierboven is aanzienlijk beperkter dan
+  # gitleaks. Nu wordt het expliciet gemeld, net zoals #514 dat deed voor een ontbrekende
+  # sensitive-patterns.txt. (#649)
+  #
+  # #1314: 'gitleaks detect' scant zonder --log-opts de VOLLEDIGE geschiedenis van de repository —
+  # niet alleen de commits die deze push toevoegt. Op een repo met bekende, al op de remote staande
+  # historische bevindingen (zie het besloten #1204-dossier) blokkeerde dat elke push, ook een push
+  # die zelf niets gevoeligs bevat. --log-opts="$RANGE_SPEC" beperkt de scan tot exact dezelfde range
+  # als de patroonscan hierboven. gitleaks schrijft zijn per-finding-detail (inclusief het geheim
+  # zelf) naar stderr, niet stdout — vandaar het JSON-rapport hieronder in plaats van stdout/stderr
+  # parsen: --redact maskeert de waarde daarin ("REDACTED"), en alleen RuleID/File/Commit tonen
+  # blijft veilig voor de hook-output.
+  if command -v gitleaks &>/dev/null; then
+    GITLEAKS_REPORT=$(mktemp)
+    gitleaks detect --exit-code 1 --no-banner --redact --log-opts="$RANGE_SPEC" -f json -r "$GITLEAKS_REPORT" >/dev/null 2>&1
+    GITLEAKS_EXIT=$?
+    if [ "$GITLEAKS_EXIT" -ne 0 ]; then
+      echo ""
+      echo "BLOCKED: gitleaks detected secrets in commits being pushed"
+      grep -E '"(RuleID|File|Commit)":' "$GITLEAKS_REPORT" 2>/dev/null
+      FOUND_ISSUE=1
+    fi
+    rm -f "$GITLEAKS_REPORT"
+  else
     echo ""
-    echo "BLOCKED: gitleaks detected secrets in repository"
-    FOUND_ISSUE=1
+    echo "WAARSCHUWING: gitleaks is niet geinstalleerd — alleen de patroonscan is uitgevoerd."
+    echo "  Die dekt minder dan gitleaks (geen entropie-analyse, geen generieke sleutelformaten)."
+    echo "  Installeren:  winget install gitleaks   (Windows)"
+    echo "                brew install gitleaks     (macOS)"
   fi
-else
-  echo ""
-  echo "WAARSCHUWING: gitleaks is niet geinstalleerd — alleen de patroonscan is uitgevoerd."
-  echo "  Die dekt minder dan gitleaks (geen entropie-analyse, geen generieke sleutelformaten)."
-  echo "  Installeren:  winget install gitleaks   (Windows)"
-  echo "                brew install gitleaks     (macOS)"
-fi
+done
 
 if [ "$FOUND_ISSUE" -eq 1 ]; then
   echo ""
