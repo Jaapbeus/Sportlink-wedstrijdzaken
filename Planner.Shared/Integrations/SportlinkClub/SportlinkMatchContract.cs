@@ -14,6 +14,13 @@ namespace Planner.Shared.Integrations.SportlinkClub;
 /// contractcheck, geen datavalidatie, en de AVG-regel "geen officials-/spelersdata loggen" geldt
 /// onverkort. Het resultaat bevat uitsluitend veldNAMEN, nooit waarden.
 /// </para>
+/// <para>
+/// <b>Ongewijzigd door #1340:</b> <see cref="SportlinkMatch"/> leest sinds #1340 wél een smalle
+/// uitsnede van <c>matchOfficials</c> (uitsluitend relatiecode per positie, zie
+/// <see cref="SportlinkMatch.ScheidsrechterRelatieCode"/>). Deze contractcheck controleert dat veld
+/// bewust nog steeds niet — het toevoegen van een root-niveau presence/type-check voor
+/// <c>matchOfficials</c> is een aparte, nog niet gemaakte afweging en geen onderdeel van #1340.
+/// </para>
 /// </summary>
 public static class SportlinkMatchContract
 {

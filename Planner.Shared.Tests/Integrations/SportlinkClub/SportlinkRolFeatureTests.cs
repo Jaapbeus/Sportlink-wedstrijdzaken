@@ -39,4 +39,71 @@ public class SportlinkRolFeatureTests
         payload["scheidsrechterFeatureToegestaan"]!.GetValue<bool>().Should().BeFalse();
         payload["veldFeatureToegestaan"]!.GetValue<bool>().Should().BeTrue();
     }
+
+    [Fact]
+    public void VoegToestemmingenToe_ScheidsrechterNietToegestaan_NultDeDrieRelatieCodeVelden()
+    {
+        // #1340: mag een rol geen scheidsrechter toewijzen, dan mag hij ook de huidige relatiecode
+        // niet zien — anders lekt de mutatie-blokkade alsnog via de GET-respons.
+        var match = JsonSerializer.Deserialize<SportlinkMatch>(
+            """
+            {
+                "publicMatchId": "M000000001",
+                "externalMatchId": "1",
+                "matchDate": "2026-09-15T19:30:00+02:00",
+                "matchStatus": "CONCEPT",
+                "isHomeMatch": true,
+                "isCanceledMatch": false,
+                "isConceptMatch": true,
+                "isEditFieldAllowed": true,
+                "isAssignDressingRoomsAllowed": true,
+                "isAssignOfficialsAllowed": true,
+                "isEditFieldSidePanelAllowed": true,
+                "isAddScoreAllowed": true,
+                "matchOfficials": [
+                    { "OfficialPosition": "Referee", "RelatieCode": "111111" },
+                    { "OfficialPosition": "AssistantReferee1", "RelatieCode": "222222" },
+                    { "OfficialPosition": "AssistantReferee2", "RelatieCode": "333333" }
+                ]
+            }
+            """)!;
+        var toestemmingen = new SportlinkRolFeatureToestemmingen(Kleedkamers: true, Scheidsrechter: false, Veld: true);
+
+        var payload = SportlinkRolFeature.VoegToestemmingenToe(match, toestemmingen);
+
+        payload["scheidsrechterRelatieCode"].Should().BeNull();
+        payload["ar1RelatieCode"].Should().BeNull();
+        payload["ar2RelatieCode"].Should().BeNull();
+    }
+
+    [Fact]
+    public void VoegToestemmingenToe_ScheidsrechterToegestaan_LaatDeDrieRelatieCodeVeldenStaan()
+    {
+        var match = JsonSerializer.Deserialize<SportlinkMatch>(
+            """
+            {
+                "publicMatchId": "M000000001",
+                "externalMatchId": "1",
+                "matchDate": "2026-09-15T19:30:00+02:00",
+                "matchStatus": "CONCEPT",
+                "isHomeMatch": true,
+                "isCanceledMatch": false,
+                "isConceptMatch": true,
+                "isEditFieldAllowed": true,
+                "isAssignDressingRoomsAllowed": true,
+                "isAssignOfficialsAllowed": true,
+                "isEditFieldSidePanelAllowed": true,
+                "isAddScoreAllowed": true,
+                "matchOfficials": [
+                    { "OfficialPosition": "Referee", "RelatieCode": "111111" }
+                ]
+            }
+            """)!;
+        var toestemmingen = new SportlinkRolFeatureToestemmingen(Kleedkamers: true, Scheidsrechter: true, Veld: true);
+
+        var payload = SportlinkRolFeature.VoegToestemmingenToe(match, toestemmingen);
+
+        payload["scheidsrechterRelatieCode"]!.GetValue<string>().Should().Be("111111");
+        payload["ar1RelatieCode"].Should().BeNull();
+    }
 }
