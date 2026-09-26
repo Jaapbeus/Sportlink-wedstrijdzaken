@@ -96,6 +96,22 @@ In testmodus:
 
 Volledige documentatie: [docs/TESTMODUS-ALLSTARS.md](TESTMODUS-ALLSTARS.md)
 
+### Dagplanning — Veldbezetting: hover-highlight en sticky tijdlijn (#1315)
+
+De kaart **"Veldbezetting op [datum]"** bovenaan Dagplanning toont wat er voor die dag al
+gepland staat: een tijdlijn per veld, met daaronder een tabel met dezelfde wedstrijden.
+
+- **Hover-highlight:** beweeg de muis over een rij in de tabel, of over een blok in de
+  tijdlijn — de bijbehorende wedstrijd licht in beide oranje op. Zo is snel terug te vinden
+  waar een wedstrijd uit de lijst zich visueel op het veld bevindt, en andersom.
+- **Sticky tijdlijn:** de tijdlijn blijft zichtbaar bovenin beeld terwijl u door de
+  wedstrijdentabel eronder scrollt — handig bij een dag met veel wedstrijden. Op een smal
+  scherm (mobiel, breedte < 641px) is dit uitgeschakeld, omdat daar ook de bovenbalk zelf niet
+  sticky is.
+
+Dit geldt alleen voor deze kaart, niet voor de tijdlijnen in de tabbladen **Optimaal**/**Huidig**
+verderop op dezelfde pagina.
+
 ### Dagplanning — twee tabs: Optimaal en Huidig
 
 Na een klik op **Optimaliseer** staat bovenaan de samenvattingsbalk (wedstrijden, zonder veld,
