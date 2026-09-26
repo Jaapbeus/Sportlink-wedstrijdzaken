@@ -10,11 +10,10 @@ namespace BlazorAdmin.Pages;
 /// team selectie, weergave van begeleiders en "vraag doorsturen" — de CSV-import staat sinds #1322
 /// op een eigen pagina, <see cref="TeambegeleidingImport"/>.
 /// </summary>
-public partial class Teambegeleiding : IDisposable
+public partial class Teambegeleiding : ClubSelectorPageBase
 {
     [Inject] private AdminApiClient Api { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
-    [Inject] private ClubSelectorService ClubSelector { get; set; } = default!;
 
     private List<string> _teams = new();
     private List<TeambegeleidingItem> _begeleiders = new();
@@ -51,19 +50,18 @@ public partial class Teambegeleiding : IDisposable
             HashCode.Combine(obj.Naam.ToUpperInvariant(), obj.Email.ToUpperInvariant());
     }
 
-    protected override async Task OnInitializedAsync()
-    {
-        ClubSelector.OnChange += OnClubChanged;
-        await LoadAsync();
-    }
+    protected override async Task OnInitializedAsync() => await LoadAsync();
 
-    private void OnClubChanged() => _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+    protected override Task OnClubChangedAsync() => LoadAsync();
 
-    public void Dispose()
+    protected override void Dispose(bool disposing)
     {
-        ClubSelector.OnChange -= OnClubChanged;
-        _lookupCts?.Cancel();
-        _lookupCts?.Dispose();
+        if (disposing)
+        {
+            _lookupCts?.Cancel();
+            _lookupCts?.Dispose();
+        }
+        base.Dispose(disposing);
     }
 
     private async Task LoadAsync()

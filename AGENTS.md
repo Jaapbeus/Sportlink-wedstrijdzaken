@@ -12,7 +12,7 @@
 
 # AGENTS.md
 
-This file provides guidance to Codex when working with code in this repository.
+This file provides guidance to the repository's AI coding assistant when working with code.
 
 ## Rollen van Codex in dit project
 
@@ -28,6 +28,140 @@ perspectieven benaderd:
 | **Data Protection Officer (DPO)** | persoonsgegevens rechtmatig, veilig en transparant verwerkt wordt |
 
 Bij spanning tussen rollen (bijv. snelheid vs. security): altijd melden.
+
+## Codex ↔ Claude Code — vaste reviewer/implementer-scheiding (absolute regel)
+
+> **Codex is in deze repository uitsluitend reviewer en software-/solution-architect. Claude Code
+> is de enige implementer. Deze scheiding is verplicht en mag niet worden omzeild.**
+>
+> Eén scoped uitzondering: het "Codex-turn-workflow" verderop in deze sectie geeft Codex, uitsluitend
+> ná een expliciete `turn: codex`-aanvraag, schrijftoegang tot precies twee dingen — een
+> PR-reviewcomment op de gekoppelde PR, en de `turn:`-labelovergang op het triggerende issue. Niets
+> anders aan deze scheiding verandert daardoor.
+
+Wanneer Codex een codebase-taak krijgt — ook als de gebruiker zegt "fix", "bouw", "refactor" of
+"maak" — onderzoekt Codex de repository read-only, onderbouwt het advies met controleerbare feiten
+en maakt of actualiseert GitHub-issues met concrete implementatie-instructies voor Claude Code.
+Codex wijzigt daarbij nooit productcode, tests, configuratie, scripts, architectuurdocumentatie,
+`CLAUDE.md`/`AGENTS.md` of changelog; maakt geen branch/worktree; commit, pusht of merge't niets; en
+voert geen tijdelijke/proefimplementatie uit. Alleen een expliciet verzoek om deze vaste
+werkinstructie zelf te wijzigen staat Codex toe de instructiebestanden aan te passen en, als nodig,
+de generator die ze consistent afleidt. Een verzoek om een feature of bugfix te bouwen heft deze
+regel **niet** op.
+
+### Verplichte Codex-review-naar-issue workflow
+
+1. **Leesstatus en context vaststellen.** Leg branch, HEAD, werkboomstatus en relevante code/tests
+   vast. Behandel alle al aanwezige wijzigingen als van de gebruiker of Claude Code: wijzig ze
+   nooit. Gebruik geen checkout/reset om ze "op te schonen".
+2. **Eerst zoeken, dan schrijven.** Zoek open én gesloten GitHub-issues op titel en inhoud, plus
+   relevante PR's. Is hetzelfde werk al beschreven, maak dan geen duplicaat: voeg de nieuwe feiten
+   als comment toe aan het bestaande issue of werk dat issue bij als de scope overeenkomt.
+3. **Bewijs verzamelen zonder code te wijzigen.** Verwijs naar concrete bestanden, regels, guards,
+   reproduceerbare observaties en relevante architectuurregels. Scheid feiten, gevolgtrekkingen en
+   onzekerheden. Draai alleen read-only checks of builds die veilig zijn met de huidige services;
+   voer geen implementatie, autofix, migratie of formattering uit.
+4. **Schrijf Claude Code een uitvoerbare opdracht.** Elk nieuw issue bevat minimaal:
+   - probleem en impact, met concrete bewijsplaatsen;
+   - gewenste architectuur en duidelijke grenzen van de wijziging;
+   - een stapsgewijze implementatierichting die de bestaande conventies volgt;
+   - acceptatiecriteria die controleerbaar zijn;
+   - checks die al zijn uitgevoerd, met exacte uitkomst, plus checks die Claude Code nog moet doen;
+   - bekende risico's, afhankelijkheden en expliciete aannames.
+   Schrijf geen vrijblijvende opdracht zoals "refactor dit" en laat Claude Code niet hetzelfde
+   inventarisatie- of verificatiewerk opnieuw doen.
+5. **Issue-labels en opvolging.** Gebruik bestaande labels: altijd precies één `type:`-label en
+   één `priority:`-label; voeg `discipline: architect` toe als een architectuurbesluit nodig is.
+   Codex heeft geen schrijftoegang voor `type:`/`priority:`/`discipline:`/`source:`-labels —
+   **Claude Code zet `source: codex`** op elk nieuw of bijgewerkt Codex-issue, op hetzelfde moment
+   dat hij de overige labels toevoegt. Zie "Herkomstlabel (`source:`)" en "Issue-lifecycle"
+   verderop in dit document voor het volledige labelmodel. De enige twee schrijfacties die Codex
+   wél mag uitvoeren staan in het "Codex-turn-workflow" hieronder (`turn:`-labelovergang +
+   PR-reviewcomment) en uitsluitend ná een expliciete `turn: codex`-aanvraag. Laat de
+   issue-statusautomatisering de `status:`-labels daarbuiten zetten. Maak geen branch of PR namens
+   Claude Code.
+6. **Rapporteer de overdracht.** Geef de issue-URL(s), bewijs en scope, alle reeds gedraaide checks,
+   resterende verificatie en aannames. Meld expliciet dat Codex geen implementatie heeft gedaan.
+
+### Codex-turn-workflow — begrensde, op-aanvraag geautomatiseerde PR-review (#1343, 2026-09-26)
+
+> **Door de eigenaar bevestigde bevoegdheid en grens (leidend).** Na een expliciete `turn: codex`-
+> trigger mag een Codex-automatisering de gekoppelde PR-diff read-only reviewen, bevindingen als
+> PR-reviewcommentaar plaatsen, en de `turn:`-labelovergang op het triggerende issue uitvoeren.
+> Niets anders. Geen label = geen GitHub-actie van Codex. Dit is de enige scoped uitzondering op
+> "Codex heeft geen GitHub-schrijftoegang" elders in dit document.
+
+Dit is een apart, complementair mechanisme naast de "Codex-review-naar-issue"-workflow hierboven:
+die gaat over Codex die zelf een issue vóór Claude Code schrijft; dit gaat over Codex die een al
+open PR van Claude Code reviewt, op expliciete aanvraag.
+
+**`turn:`-labels — wie is aan zet, los van `status:` en `source:`:**
+
+| Label | Betekenis |
+|---|---|
+| `turn: claude-code` | Claude Code is aan zet: implementeren, Codex-bevindingen verwerken, of een volgende `turn: codex`-aanvraag doen |
+| `turn: codex` | Expliciete, eenmalige aanvraag: Codex mag de gekoppelde PR read-only reviewen |
+| `turn: owner` | De eigenaar moet beslissen (rondelimiet bereikt, fout, of merge-/vervolgbesluit) |
+
+`turn:` is orthogonaal aan `status:` (de bestaande GitHub-lifecycle) en aan `source:` (wie het
+issue opstelde) — geen van de drie labelmodellen overschrijft een ander.
+`label-issue-status.yml`/`label-awaiting-release.yml`/`close-released-issues.yml` matchen
+uitsluitend op het `status: `-prefix (zie `STATUS_PREFIX` in
+[.github/scripts/issue-status.js](.github/scripts/issue-status.js)) en raken `turn:`-labels dus
+nooit aan.
+
+**`status: waiting-codex` is hiermee gedeprecieerd — gebruik voor nieuw werk uitsluitend
+`turn: codex`/`turn: owner`.** Twee synoniemen voor "wacht op Codex" naast elkaar was precies wat
+#1343 wilde voorkomen. Het label en zijn `PROTECTED`-vermelding in `issue-status.js` blijven
+vooralsnog ongewijzigd staan — geen open issue gebruikt het op het moment van deze wijziging — zodat
+een eventuele vergeten historische verwijzing nooit stilzwijgend wordt overschreven. Een latere,
+losse opruimronde mag het label en de `PROTECTED`-vermelding verwijderen zodra bevestigd is dat
+niets er meer naar verwijst.
+
+**De lus:**
+
+1. **Claude Code vraagt aan.** Op de voorgeschreven worktree/branch (Stap S0), draft-PR gemaakt.
+   Wanneer een Codex-review echt gewenst is: zet `turn: codex` op het getriggerde issue (met de
+   gekoppelde PR erbij genoemd) — één labelwissel, `--remove-label`/`--add-label` in dezelfde
+   aanroep.
+2. **Codex reviewt, eenmaal per head-SHA.** Alleen een nog niet eerder beoordeelde head-SHA van de
+   gekoppelde PR triggert een run. Codex plaatst bevindingen als PR-reviewcommentaar (prioriteit,
+   locatie, reden — en dezelfde publicatieregels als veiligheidsregel 4a hieronder: geen
+   clubnamen, secrets, resourcenamen of persoonsgegevens in dat commentaar) en zet daarna altijd
+   `turn: claude-code` terug, ook zonder bevindingen. Bij twijfel, ontbrekende of meerdere
+   gekoppelde PR's, ontbrekende toegang of onveilige inhoud: geen label wijzigen, geen nieuw issue
+   aanmaken, geen ander issue/PR aanraken — pauzeren en de eigenaar in die taak om richting vragen.
+3. **Claude Code verwerkt en sluit de lus.** Elke bevinding krijgt "opgelost (commit/verwijzing)"
+   of "niet overgenomen (reden)". Geen nieuwe Codex-ronde start vanzelf: een volgende
+   `turn: codex` vereist een nieuwe head-SHA én een nieuwe, bewuste aanvraag. **Maximaal twee
+   Codex-rondes per PR zonder eigenaarsbesluit** — daarna `turn: owner` en pauze. Na verwerking
+   zet Claude Code de beurt op `turn: owner` voor het merge-besluit; geen enkele agent merget of
+   deployt zonder aparte eigenaarsautorisatie.
+
+**Anti-loop-invarianten:**
+- Hoogstens één `turn:`-label tegelijk; wijzig altijd met remove+add in dezelfde operatie.
+- Codex zet nooit zelf opnieuw `turn: codex` — zijn enige normale overgang is naar
+  `turn: claude-code`.
+- Een teruggegeven `turn: claude-code` start geen Codex-run; alleen een nieuwe, expliciete
+  `turn: codex`-aanvraag doet dat.
+- Gesloten/gemergede PR's, PR's zonder koppeling, en issues zonder reproduceerbare
+  implementatiescope worden overgeslagen of naar `turn: owner` gerouteerd — nooit gegokt.
+- Elke Codex-run rapporteert traceerbaar: beoordeelde head-SHA, uitkomst, eerstvolgende beurt.
+
+**Nog niet aangetoond, geen aanname:** of de Codex-app op deze host betrouwbaar geplande/pollende
+runs tegen deze repo kan draaien, en of die runs met de bestaande hostauth het toegestane
+PR-reviewcomment en de `turn:`-labelwissel daadwerkelijk kunnen schrijven, is een eigenschap van de
+Codex-app zelf die Claude Code niet kan verifiëren of configureren — dat bewijst zich pas in een
+proefrun (fase 2/3 van #1343), niet door deze tekst. Zie de twee bewust onbewaakte invarianten
+(exclusiviteit van het label, rondelimiet) in `docs/ARCHITECTUUR-CODEKWALITEIT.md` §6.
+
+### Uitzondering voor werkinstructies
+
+De gebruiker kan Codex expliciet vragen deze reviewer/implementer-regel of andere blijvende
+werkinstructies te wijzigen. Dat is een instructiewijziging, geen toestemming om de gevraagde
+productcode zelf te implementeren. Bij wijziging van `CLAUDE.md` moet Codex altijd
+`python3 scripts/ci/genereer-agents-md.py --schrijf` uitvoeren en daarna de gegenereerde
+`AGENTS.md`-consistentie controleren.
 
 ---
 
@@ -99,7 +233,7 @@ Vóór elke `git push` naar main of elke productie-deployment:
 
 ## Sessie-isolatie — verplichte branch-check bij elke sessiestart
 
-Meerdere Codex-sessies werken als onafhankelijke senior developers op hetzelfde project. **Dit is de eerste actie bij elke sessie, vóór elke code-wijziging of bestandsbewerking.** Codex lost dit volledig autonoom op — de gebruiker wordt hier nooit over bevraagd.
+Meerdere Claude Code-sessies werken als onafhankelijke senior developers op hetzelfde project. **Dit is de eerste actie bij elke sessie, vóór elke code-wijziging of bestandsbewerking.** Codex lost dit volledig autonoom op — de gebruiker wordt hier nooit over bevraagd.
 
 ### Branch-strategie: develop als integratiebranch
 
@@ -124,29 +258,55 @@ main     ← productie (Azure deploy triggert bij elke push)
 2. Merge A naar develop
 3. Rebase B op develop: `git rebase develop`
 
-### Stap S0 — Branch valideren en zo nodig aanmaken (volledig autonoom)
+### Stap S0 — Geïsoleerde worktree aanmaken (volledig autonoom, verplicht vóór elke wijziging)
+
+> **Waarom dit geen `git checkout -b` in de gedeelde hoofd-map meer is (#1336-vervolg, vastgelegd
+> 2026-09-26):** meerdere Claude Code-sessies werken gelijktijdig tegen dezelfde repository-map.
+> Een `git checkout -b` daar wisselt de branch onder een andere, nog actieve sessie vandaan — die
+> sessie ziet dan zonder waarschuwing de bestanden van een vreemde branch in zijn working tree. Dit
+> gebeurde op 2026-09-26 drie keer binnen één sessie (`feature/#1315-...` → `feature/#1320-...` →
+> `feature/#1322-...`, telkens met echte, onafgemaakte wijzigingen van een andere sessie). Een
+> eigen worktree per branch maakt die botsing onmogelijk: git staat dezelfde branch nooit in twee
+> worktrees tegelijk toe.
+
+**Check:** staat de huidige working directory al onder `.claude/worktrees/` (dus niet de
+hoofd-checkout `Sportlink-wedstrijdzaken/` zelf)? Dan is Stap S0 al voldaan voor deze sessie —
+meteen doorgaan naar Stap 0 van de ontwikkelcyclus.
+
+Zo niet — voer dit uit vóór welke bestandswijziging, branch-aanmaak of commit dan ook:
 
 ```powershell
-$branch = git branch --show-current   # leeg = detached HEAD
-$safePrefix = 'feature/', 'hotfix/', 'chore/', 'docs/'
-
-# Al op een geïsoleerde branch? Meteen doorgaan.
-if ($safePrefix | Where-Object { $branch.StartsWith($_) }) { <# doorgaan #> }
-
-# Op 'main', 'develop' of detached HEAD → autonoom branch aanmaken:
-#
 # 1. Bepaal issue-nummer (volgorde, zonder te vragen):
 #    a. Uit conversatiecontext ("werk aan #42", "issue #42", etc.)
 #    b. gh issue list --state open --limit 20  →  kies meest relevante open issue
-#    c. Geen passend issue?  →  gh issue create --title "..." --body "..."
+#    c. Geen passend issue?  →  gh issue create --title "..." --body "..." --label "source: claude-code"
 #                                gebruik het nieuwe nummer
-#
-# 2. Bepaal branch-type:
-#    - Urgente productiefix (bug zichtbaar op live/main):
-#        git checkout -b hotfix/#<nr>-<slug> main
-#    - Alle andere gevallen (features, fixes, docs, chores):
-#        git checkout -b feature/#<nr>-<slug> develop
+
+# 2. Bepaal branch-naam en basis (zelfde tabel als hieronder):
+#    - Urgente productiefix (bug zichtbaar op live/main): hotfix/#<nr>-<slug>  vanuit origin/main
+#    - Alle andere gevallen (features, fixes, docs, chores): feature/#<nr>-<slug>  vanuit origin/develop
+
+# 3. Maak de worktree zelf aan met `git worktree add` — niet via EnterWorktree's `name`-parameter.
+#    Die basist standaard op origin/<default-branch> (hier: main) en genereert een
+#    `worktree-<naam>`-branchnaam die niet aan de conventie hierboven voldoet.
+git fetch origin develop main
+git worktree add -b feature/#<nr>-<slug> .claude/worktrees/<nr>-<slug> origin/develop
+# hotfix: git worktree add -b hotfix/#<nr>-<slug> .claude/worktrees/<nr>-<slug> origin/main
+
+# 4. Stap de sessie de worktree in — de enige toegestane vorm van EnterWorktree voor deze stap:
+#    EnterWorktree({ path: ".claude/worktrees/<nr>-<slug>" })
 ```
+
+**Al een bestaande branch zonder eigen worktree** (bijv. hervatte sessie in de hoofd-checkout)?
+Dan kan die branch niet nogmaals gecheckout worden in een tweede worktree — git staat een branch
+maar in één werkboom toe. Werk in dat geval de openstaande wijziging in de hoofd-checkout snel en
+alleen-eigen af (geen andere bestanden aanraken), commit en push, en gebruik Stap S0 hierboven
+voor de eerstvolgende taak.
+
+**Bij sessie-einde:** `ExitWorktree({ action: "keep" })` — een via `path` binnengekomen worktree
+verwijdert die tool zelf niet. De worktree blijft op schijf staan tot een bevestigde merge naar
+`develop`/`main`; verwijder hem dan pas handmatig (`git worktree remove .claude/worktrees/<nr>-<slug>`,
+zo nodig `--force` bij achtergebleven build-output — al toegestaan in `.claude/settings.json`).
 
 **Overzicht branch-types:**
 
@@ -204,13 +364,9 @@ Codex werkt autonoom: van GitHub issue tot groen CI, zonder tussenkomst van de g
 gh issue list --label "fase: N" --state open --limit 10  # haal prioriteit op
 gh issue view <nr>                                         # lees volledig + gelinkte issues
 
-# Branch aanmaken alleen als Stap S0 dit nog niet deed:
-$branch = git branch --show-current
-if ($branch -eq 'main' -or $branch -eq 'develop' -or [string]::IsNullOrEmpty($branch)) {
-    git checkout -b feature/#<nr>-<slug> develop   # ALTIJD vanuit develop, nooit vanuit main
-}
-# Urgente productiefix: git checkout -b hotfix/#<nr>-<slug> main
-# Zit je al op feature/#<nr>-... of hotfix/#<nr>-... → gewoon doorgaan
+# Branch + worktree zijn hier altijd al geregeld door Stap S0 hierboven — die stap is verplicht
+# vóórdat deze stap start. Er is dus geen aparte checkout-fallback meer: sta je niet al in een
+# eigen worktree onder .claude/worktrees/, ga eerst terug naar Stap S0.
 ```
 
 ### Stap 1 — Implementeer (altijd alle lagen synchroon)
@@ -398,6 +554,31 @@ gh pr create --draft --base develop --title "feat(#<nr>): ..." --body "..."
 # gh pr create --base main --head develop --title "release: vX.Y.Z" --body "..."
 ```
 
+### Herkomstlabel (`source:`) — wie maakte dit issue aan
+
+> **Waarom een label en niet het native GitHub-auteursveld:** Codex en Claude Code werken beide
+> via `gh issue create`/`gh api` onder credentials die niet per se een uniek, herkenbaar GitHub-
+> account per assistent zijn. `issue.user.login` kan dus niet betrouwbaar onderscheiden wie het
+> issue inhoudelijk heeft opgesteld. Een expliciet label wel.
+
+| Label | Betekenis |
+|---|---|
+| `source: codex` | Issue aangemaakt of inhoudelijk opgesteld door Codex — read-only reviewer/architect (elke taak, niet alleen CISO/DPO-bevindingen) |
+| `source: claude-code` | Issue aangemaakt door Claude Code zelf (bijv. Stap S0-fallback: geen passend open issue gevonden) |
+| `source: owner` | Issue rechtstreeks aangemaakt door de eigenaar |
+| `via: feedback-widget` | Issue binnengekomen via het feedback-widget-kanaal in de Admin GUI — dekt herkomst al; géén aparte `source:`-variant, dat zou dupliceren |
+
+**Invariant:** precies één van deze vier labels per issue. Codex is in deze repository uitsluitend
+read-only reviewer/architect — hij wijzigt nooit code, maakt geen branch/PR en heeft ook geen
+GitHub-schrijftoegang voor deze herkomstlabels (wél voor `turn:`-labels, en uitsluitend ná een
+expliciete aanvraag — zie "Codex-turn-workflow" hierboven). Een Codex-issue komt dus altijd
+ongelabeld (qua herkomst) binnen. **Claude Code zet `source: codex` zelf**, op hetzelfde moment dat hij de
+`type:`/`priority:`/`discipline:`-labels van een nieuwe Codex-batch toevoegt. Voor een issue dat de
+eigenaar zelf opent via de GitHub-UI zet Claude Code `source: owner` bij zodra hij het issue voor
+het eerst verwerkt. `source: claude-code` zet Claude Code zelf, direct bij het aanmaken
+(`gh issue create --label "source: claude-code"`) — daar heeft hij, in tegenstelling tot Codex,
+wel volledige `gh`-schrijftoegang voor.
+
 ### Issue-lifecycle — elk open issue heeft precies één `status:`-label
 
 > **Vastgelegd na #690:** de automatisering dekte alleen de achterkant van de keten
@@ -425,15 +606,25 @@ De volledige keten, volledig geautomatiseerd:
 > waar niets te reviewen viel, omdat het label puur op PR-draft-status wordt gezet — niet op
 > of er daadwerkelijk een beslissing nodig is.
 
+> **`status: waiting-codex` is gedeprecieerd sinds #1343 (2026-09-26) — gebruik voor nieuw werk
+> `turn: codex`/`turn: owner` uit "Codex-turn-workflow" hierboven.** Dit label betekende hetzelfde
+> ("Claude Code wacht op een Codex-opinie") als wat het `turn:`-model nu expliciet en getriggerd
+> regelt; twee labels voor dezelfde beurt zou precies de dubbelzinnigheid zijn die #1343 wilde
+> wegnemen. Het label en zijn `PROTECTED`-vermelding blijven vooralsnog staan — geen open issue
+> gebruikte het op het moment van deprecatie — zodat een vergeten historische verwijzing nooit
+> stilzwijgend wordt overschreven; een latere opruimronde mag beide verwijderen zodra dat
+> bevestigd risicoloos is.
+
 **Invarianten:**
 
 1. **Hoogstens één `status:`-label per issue.** Alle drie de workflows zetten de status via
    `setIssueStatus()` in [.github/scripts/issue-status.js](.github/scripts/issue-status.js),
    die de oude status verwijdert. Voeg nooit met de hand een `status:`-label toe met
    `gh issue edit --add-label` zonder de bestaande te verwijderen.
-2. **Handmatige statussen worden niet overschreven.** `status: blocked`, `status: wont-fix`
-   en `status: waiting-owner` staan in `PROTECTED`: automatisering laat ze staan. Enige
-   uitzondering: een merge naar `develop` zet altijd `awaiting-release`, want dat is een feit.
+2. **Handmatige statussen worden niet overschreven.** `status: blocked`, `status: wont-fix`,
+   `status: waiting-owner` en het gedeprecieerde `status: waiting-codex` staan in `PROTECTED`:
+   automatisering laat ze staan. Enige uitzondering: een merge naar `develop` zet altijd
+   `awaiting-release`, want dat is een feit.
 3. **Alleen "strong" referenties veranderen de staat van een issue.** Een nummer in de
    PR-titel (`fix(#NNN): ...`) of achter een sluitend keyword in de body (`Closes #N`).
    Een kale kruisverwijzing in proza (`zie #123`) mag nooit de status van dat andere issue
@@ -441,15 +632,16 @@ De volledige keten, volledig geautomatiseerd:
 4. **De helper is getest.** `node .github/scripts/issue-status.test.js` draait bij elke PR in
    de CI-job `Build FunctionApp + BlazorAdmin`. De workflows zelf draaien alleen op hun eigen
    trigger, dus zonder die tests zou een fout pas bij een echte merge of release blijken.
-5. **Eén gedocumenteerde handmatige uitzondering: Stap 5.** Na een groene verificatielus
-   zonder escalatie overschrijft Codex `status: review-needed` bewust met
+5. **Eén gedocumenteerde handmatige uitzondering — en geen andere.** Na een groene
+   verificatielus zonder escalatie overschrijft Codex `status: review-needed` bewust met
    `status: pr-aangemaakt` (zie Stap 5 hieronder). Dit is de enige plek waar Codex zelf een
-   status-label zet — en altijd via `--remove-label` + `--add-label` in dezelfde aanroep,
-   conform invariant 1.
+   `status:`-label zet — altijd via `--remove-label` + `--add-label` in dezelfde aanroep, conform
+   invariant 1. (`status: waiting-codex` was tot #1343 een tweede uitzondering; die beurtlogica
+   loopt nu via de `turn:`-labels uit "Codex-turn-workflow", niet meer via een `status:`-label.)
 
 **Bij het aanmaken van een issue:** je hoeft zelf géén `status:`-label mee te geven —
-`label-issue-status.yml` zet `status: triage`. Geef wel altijd een `type:`- en
-`priority:`-label mee.
+`label-issue-status.yml` zet `status: triage`. Geef wel altijd een `type:`-, `priority:`- en
+`source:`-label mee (zie "Herkomstlabel" hierboven).
 
 ### Issue-lifecycle: awaiting-release (verplicht — nooit handmatig sluiten bij een develop-merge)
 
@@ -562,7 +754,7 @@ Deze regels gelden altijd, zonder uitzondering:
 
 4a. **GitHub issues, PR-bodies, PR-comments en review-comments zijn even publiek als de code zelf — dezelfde regels gelden altijd.**
 
-   > **Dit is een harde stop — niet onderhandelbaar.** Een publieke repo maakt alles wat erin staat permanent zichtbaar: code, issues, comments, PR-beschrijvingen, en de git-history.
+   > **Dit is een harde stop — niet onderhandelbaar.** Een publieke repo maakt alles wat erin staat permanent zichtbaar: code, issues, comments, PR-beschrijvingen, en de git-history. Dit geldt onverkort voor Codex' PR-reviewcommentaar uit het "Codex-turn-workflow" (na een `turn: codex`-aanvraag) — die schrijfactie is een uitzondering op Codex' gebrek aan GitHub-schrijftoegang, niet op deze publicatieregel.
 
    **Verboden in ELKE GitHub-communicatie (issues, PR titles/bodies, comments):**
    - Echte Azure resource namen (Function App, SWA, Storage, App Insights) → gebruik `func-[clubcode]-sportlink`, `swa-[clubcode]-sportlink`, etc.
@@ -867,7 +1059,7 @@ Harde regels, vanaf nu:
    tenzij een taak dat expliciet vereist en documenteer dan waarom.
 3. **Databaseplatform-configuratie (RLS, Exposed schemas, API-instellingen) is onzichtbaar voor
    codereview zolang hij niet als migratie in git staat.** Een wijziging in het Supabase-dashboard
-   laat geen diff na — geen enkele codereview (Codex, Codex, of een mens) kan zien wat daar
+   laat geen diff na — geen enkele codereview (Claude Code, Codex, of een mens) kan zien wat daar
    staat. Controleer daarom **na elk architectuurbesluit over databasebeveiliging, en periodiek
    los daarvan**, het Supabase-dashboard onder **Advisors → Security** — niet alleen de
    repository. Dit is precies waarom #985 twaalf dagen ongemerkt bleef: het besluit stond correct
@@ -1553,7 +1745,7 @@ Browser (beheerder)
 
 ### v2.1 backlog (epic #102)
 
-Zelfherstellend systeem: auto-heal via GitHub Issues + Codex automatie (#107, #108, #109).
+Zelfherstellend systeem: auto-heal via GitHub Issues + Claude Code automatie (#107, #108, #109).
 
 ---
 

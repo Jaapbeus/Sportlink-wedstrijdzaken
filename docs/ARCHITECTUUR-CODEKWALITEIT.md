@@ -186,6 +186,34 @@ Precedent in dit project: de vier Sportlink-extensiepagina's (#1122).
 
 *Guard: `scripts/ci/check-blazor-codebehind.sh` — hard op dubbele logica, ratchet op het totaal.*
 
+Alle twaalf pagina's die deze regel bij de nulmeting nog niet volgden, hebben sinds #1327 een
+code-behind; het plafond staat sinds die migratie op 0. Diezelfde migratie maakte ook zichtbaar
+wat #1322 al voorspelde: twaalf pagina's herhaalden woordelijk dezelfde clubwissel-lifecycle
+(abonneren op `ClubSelectorService.OnChange`, `InvokeAsync`, `StateHasChanged`, afmelden bij
+Dispose). Die is bij #1328 gecentraliseerd in `BlazorAdmin/Pages/ClubSelectorPageBase.cs` — een
+pagina die op een clubwissel moet reageren, erft daarvan over en overschrijft alleen
+`OnClubChangedAsync()`.
+
+### Regel 3b — CSS isolation, geen `<style>`-blok of statische inline style
+
+Presentatie in een Blazor-pagina hoort in `<Pagina>.razor.css` (CSS isolation), niet in een
+`<style>`-blok of een `style="..."`-attribuut in de markup. Een dynamische waarde (een berekende
+positie, een gekozen kleur) mag inline blijven, maar dan uitsluitend als CSS custom property
+(`style="--naam:@expressie;"`) — de daadwerkelijke CSS-eigenschap staat via `var(--naam)` in het
+stylesheet.
+
+Reden: dezelfde als regel 3, van de andere kant. Een `.razor.css`-bestand is met normale CSS-tools
+te doorzoeken en te hergebruiken; 91 losse `style="..."`-attributen (waarvan sommige de hele
+Gantt-tijdlijn van `Dagplanning.razor` positioneerden) zijn dat niet. Precedent:
+`Dagplanning.razor.css` bestond al vóór deze regel werd afgedwongen; #1329 breidde dat patroon uit
+naar alle pagina's.
+
+Een uitzondering staat in `scripts/ci/blazor-inline-style-allowlist.txt`, per pad+regelnummer en
+met reden — nooit een allowlist voor een hele pagina.
+
+*Guard: `scripts/ci/check-blazor-inline-styles.sh` — hard, geen ratchet: een nieuwe overtreding is
+altijd een fout, niet een meting die mag groeien.*
+
 ### Regel 4 — Platformafhankelijke valkuilen zijn verboden, tenzij gemotiveerd
 
 Vier patronen die in dit project aantoonbaar stille fouten hebben opgeleverd:
@@ -350,6 +378,7 @@ en voor altijd groen staan, precies het no-op-patroon uit §67 van
 | 1, 2 — tier-duplicatie stijgt niet | `scripts/ci/check-tier-duplicatie.sh` | `build.yml` |
 | 1, 2 — interne duplicatie stijgt niet (#1263) | `scripts/ci/check-interne-duplicatie.sh` | `build.yml` |
 | 3 — geen logica in Blazor-pagina's | `scripts/ci/check-blazor-codebehind.sh` | `build.yml` |
+| 3b — geen `<style>`-blok of statische inline style in Blazor-pagina's (#1329) | `scripts/ci/check-blazor-inline-styles.sh` | `build.yml` |
 | 4 — platformafhankelijke valkuilen | `scripts/ci/check-codekwaliteit-valkuilen.sh` | `build.yml` |
 | 5 — AGENTS.md afgeleid uit CLAUDE.md | `scripts/ci/genereer-agents-md.py` | `build.yml` |
 | 6 — elke regel heeft een guard | `scripts/ci/check-regelregister.sh` | `build.yml` |
@@ -385,6 +414,10 @@ Eerlijk vermeld, zodat niemand denkt dat het gedekt is.
 |---|---|---|
 | Testdekking per productiemap | `BlazorAdmin.Tests` heeft weinig tests tegenover bijna 7.000 regels Razor; dat groeit pas als regel 3 (code-behind) verder is doorgevoerd. De drie mappen zonder testproject zijn bij #1302 wél voorzien — zie hieronder. | Regel 3 |
 | Expressie-index bij een `UPPER()`-vergelijking (#1232) — **deels bewaakt sinds #1280** | In het algemeen niet schema-statisch te bepalen zonder de queries te parsen; de splinter-gate sluit `unused_index` bewust uit (§68 van `ARCHITECTUUR-DATABASE-TIERS.md`). De regel staat in `CLAUDE.md`, de meting per tier in §69 en §75 daarvan. Voor de drie sleutelkolommen van de teamresolutie is het wél afdwingbaar gebleken, omdat de vergelijkingen op één plek staan. | `FunctionApp.Tests/TeamResolution/TeamCandidateIndexSargabilityTests.cs` voor de teamresolutiekolommen; daarbuiten handmatig: `EXPLAIN (ANALYZE, BUFFERS)` resp. `SHOWPLAN_TEXT` bij zo'n wijziging |
+| Precies één `source:`-label per issue (#1336) | Herkomst wordt handmatig gezet door Claude Code (Codex heeft geen labelschrijftoegang) — er is geen `setIssueStatus()`-achtige helper die dit afdwingt, en geen periodieke scan die een issue zonder of met dubbel `source:`-label signaleert. | Los issue indien gewenst: een periodieke workflow (zelfde vorm als `supabase-advisors.yml`) die open issues zonder precies één `source:`-label rapporteert |
+| Verweesde `status: waiting-codex` (#1336, gedeprecieerd sinds #1343) | Er is geen GitHub-event dat Codex' read-only reviewsweep markeert als "klaar" — zetten én verwijderen zijn altijd handmatige acties van Claude Code. Een issue dat op `waiting-codex` blijft staan omdat niemand terugkomt, valt niet automatisch op. Sinds #1343 is dit label gedeprecieerd (zie `CLAUDE.md`); de rij blijft staan zolang het label en zijn `PROTECTED`-vermelding nog bestaan. | Los issue indien gewenst: dagelijkse/wekelijkse cron die `status: waiting-codex`-issues ouder dan N dagen signaleert, of verwijder het label + de `PROTECTED`-vermelding zodra bevestigd is dat niets er meer naar verwijst |
+| Precies één `turn:`-label per issue (#1343) | Net als bij `source:` (zie rij hierboven): geen `setIssueStatus()`-achtige helper dwingt exclusiviteit af voor `turn: claude-code`/`turn: codex`/`turn: owner`, en er is geen periodieke scan die een issue zonder of met dubbel `turn:`-label signaleert. | Los issue indien gewenst: dezelfde periodieke workflow als voor `source:` uitbreiden met een `turn:`-check |
+| Maximaal twee Codex-rondes per PR zonder eigenaarsbesluit (#1343) | De rondelimiet uit "Codex-turn-workflow" in `CLAUDE.md` is een afspraak tussen Claude Code en de Codex-automatisering, geen door deze repo's CI afgedwongen teller — er is geen script dat het aantal `turn: codex`-aanvragen per PR bijhoudt. | Los issue indien gewenst, pas ná de handmatige simulatie/proefautomatisering uit fase 2/3 van #1343 — te vroeg bouwen zou een teller afdwingen vóórdat bekend is hoe de Codex-app dit in de praktijk gebruikt |
 
 ### Drie mappen zonder testproject, nu met een startpunt (#1302)
 
@@ -423,6 +456,7 @@ een vangnet achteraf voor elk toekomstig pad waarlangs de schrijfactie wordt ove
 bash scripts/ci/check-tier-duplicatie.sh
 bash scripts/ci/check-interne-duplicatie.sh
 bash scripts/ci/check-blazor-codebehind.sh
+bash scripts/ci/check-blazor-inline-styles.sh
 bash scripts/ci/check-codekwaliteit-valkuilen.sh
 bash scripts/ci/check-bestandsgrootte.sh
 bash scripts/ci/check-regelregister.sh

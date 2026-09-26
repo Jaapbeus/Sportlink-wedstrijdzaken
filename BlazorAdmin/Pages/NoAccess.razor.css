@@ -1,0 +1,17 @@
+.no-access-card {
+    max-width: 480px;
+}
+
+.no-access-titel {
+    margin: 0 0 .5rem;
+    color: #b32121;
+}
+
+.no-access-tekst {
+    line-height: 1.5;
+}
+
+.no-access-meta {
+    font-size: .8rem;
+    margin-top: .5rem;
+}
