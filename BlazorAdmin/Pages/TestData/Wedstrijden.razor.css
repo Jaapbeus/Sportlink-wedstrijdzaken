@@ -30,4 +30,4 @@
 .col-actie { width: 32px; }
 
 .sortable-header { cursor: pointer; user-select: none; }
-.sortable-header:hover { background-color: #e9ecef; }
+.sortable-header:hover { background-color: var(--bs-tertiary-bg); }

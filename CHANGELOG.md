@@ -32,6 +32,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   omzeild wordt.
 
 ### Fixed
+- **Donkere weergave paste alleen de merkkleuren toe, niet de rest van het scherm (#1348).**
+  Na het omschakelen naar donker bleef de paginaachtergrond en het merendeel van de kaarten,
+  tabellen, formuliervelden en meldingen wit — alleen de zijbalk en knoppen werden echt donker.
+  De licht/donker-schakelaar zette het interne `data-theme`-attribuut wel, maar niet het attribuut
+  waar Bootstrap zelf op reageert; dat laatste ontbrak, waardoor de hele Bootstrap-laag altijd
+  licht bleef. Ook de "Licht bewerken"/"Donker bewerken"-keuze op het thema-scherm liep nu altijd
+  synchroon met de schakelaar in de topbalk, en een paar losse lichtgrijze randjes/tabelkoppen zijn
+  meegenomen.
 - **Dagplanning: foutmelding bij "Optimaliseer" was onvindbaar, en wedstrijden waren pas
   bewerkbaar na een geslaagde optimalisatie (#1334).** De foutmelding stond onder de
   Veldbezetting-kaart en bleef daardoor vaak buiten beeld; hij verschijnt nu direct onder de knop.
