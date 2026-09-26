@@ -12,7 +12,7 @@
 
 # AGENTS.md
 
-This file provides guidance to Codex when working with code in this repository.
+This file provides guidance to the repository's AI coding assistant when working with code.
 
 ## Rollen van Codex in dit project
 
@@ -28,6 +28,56 @@ perspectieven benaderd:
 | **Data Protection Officer (DPO)** | persoonsgegevens rechtmatig, veilig en transparant verwerkt wordt |
 
 Bij spanning tussen rollen (bijv. snelheid vs. security): altijd melden.
+
+## Codex ↔ Claude Code — vaste reviewer/implementer-scheiding (absolute regel)
+
+> **Codex is in deze repository uitsluitend reviewer en software-/solution-architect. Claude Code
+> is de enige implementer. Deze scheiding is verplicht en mag niet worden omzeild.**
+
+Wanneer Codex een codebase-taak krijgt — ook als de gebruiker zegt "fix", "bouw", "refactor" of
+"maak" — onderzoekt Codex de repository read-only, onderbouwt het advies met controleerbare feiten
+en maakt of actualiseert GitHub-issues met concrete implementatie-instructies voor Claude Code.
+Codex wijzigt daarbij nooit productcode, tests, configuratie, scripts, architectuurdocumentatie,
+`CLAUDE.md`/`AGENTS.md` of changelog; maakt geen branch/worktree; commit, pusht of merge't niets; en
+voert geen tijdelijke/proefimplementatie uit. Alleen een expliciet verzoek om deze vaste
+werkinstructie zelf te wijzigen staat Codex toe de instructiebestanden aan te passen en, als nodig,
+de generator die ze consistent afleidt. Een verzoek om een feature of bugfix te bouwen heft deze
+regel **niet** op.
+
+### Verplichte Codex-review-naar-issue workflow
+
+1. **Leesstatus en context vaststellen.** Leg branch, HEAD, werkboomstatus en relevante code/tests
+   vast. Behandel alle al aanwezige wijzigingen als van de gebruiker of Claude Code: wijzig ze
+   nooit. Gebruik geen checkout/reset om ze "op te schonen".
+2. **Eerst zoeken, dan schrijven.** Zoek open én gesloten GitHub-issues op titel en inhoud, plus
+   relevante PR's. Is hetzelfde werk al beschreven, maak dan geen duplicaat: voeg de nieuwe feiten
+   als comment toe aan het bestaande issue of werk dat issue bij als de scope overeenkomt.
+3. **Bewijs verzamelen zonder code te wijzigen.** Verwijs naar concrete bestanden, regels, guards,
+   reproduceerbare observaties en relevante architectuurregels. Scheid feiten, gevolgtrekkingen en
+   onzekerheden. Draai alleen read-only checks of builds die veilig zijn met de huidige services;
+   voer geen implementatie, autofix, migratie of formattering uit.
+4. **Schrijf Claude Code een uitvoerbare opdracht.** Elk nieuw issue bevat minimaal:
+   - probleem en impact, met concrete bewijsplaatsen;
+   - gewenste architectuur en duidelijke grenzen van de wijziging;
+   - een stapsgewijze implementatierichting die de bestaande conventies volgt;
+   - acceptatiecriteria die controleerbaar zijn;
+   - checks die al zijn uitgevoerd, met exacte uitkomst, plus checks die Claude Code nog moet doen;
+   - bekende risico's, afhankelijkheden en expliciete aannames.
+   Schrijf geen vrijblijvende opdracht zoals "refactor dit" en laat Claude Code niet hetzelfde
+   inventarisatie- of verificatiewerk opnieuw doen.
+5. **Issue-labels en opvolging.** Gebruik bestaande labels: altijd precies één `type:`-label en
+   één `priority:`-label; voeg `discipline: architect` toe als een architectuurbesluit nodig is.
+   Laat de issue-statusautomatisering de status zetten. Maak geen branch of PR namens Claude Code.
+6. **Rapporteer de overdracht.** Geef de issue-URL(s), bewijs en scope, alle reeds gedraaide checks,
+   resterende verificatie en aannames. Meld expliciet dat Codex geen implementatie heeft gedaan.
+
+### Uitzondering voor werkinstructies
+
+De gebruiker kan Codex expliciet vragen deze reviewer/implementer-regel of andere blijvende
+werkinstructies te wijzigen. Dat is een instructiewijziging, geen toestemming om de gevraagde
+productcode zelf te implementeren. Bij wijziging van `CLAUDE.md` moet Codex altijd
+`python3 scripts/ci/genereer-agents-md.py --schrijf` uitvoeren en daarna de gegenereerde
+`AGENTS.md`-consistentie controleren.
 
 ---
 
@@ -99,7 +149,7 @@ Vóór elke `git push` naar main of elke productie-deployment:
 
 ## Sessie-isolatie — verplichte branch-check bij elke sessiestart
 
-Meerdere Codex-sessies werken als onafhankelijke senior developers op hetzelfde project. **Dit is de eerste actie bij elke sessie, vóór elke code-wijziging of bestandsbewerking.** Codex lost dit volledig autonoom op — de gebruiker wordt hier nooit over bevraagd.
+Meerdere Claude Code-sessies werken als onafhankelijke senior developers op hetzelfde project. **Dit is de eerste actie bij elke sessie, vóór elke code-wijziging of bestandsbewerking.** Codex lost dit volledig autonoom op — de gebruiker wordt hier nooit over bevraagd.
 
 ### Branch-strategie: develop als integratiebranch
 
@@ -867,7 +917,7 @@ Harde regels, vanaf nu:
    tenzij een taak dat expliciet vereist en documenteer dan waarom.
 3. **Databaseplatform-configuratie (RLS, Exposed schemas, API-instellingen) is onzichtbaar voor
    codereview zolang hij niet als migratie in git staat.** Een wijziging in het Supabase-dashboard
-   laat geen diff na — geen enkele codereview (Codex, Codex, of een mens) kan zien wat daar
+   laat geen diff na — geen enkele codereview (Claude Code, Codex, of een mens) kan zien wat daar
    staat. Controleer daarom **na elk architectuurbesluit over databasebeveiliging, en periodiek
    los daarvan**, het Supabase-dashboard onder **Advisors → Security** — niet alleen de
    repository. Dit is precies waarom #985 twaalf dagen ongemerkt bleef: het besluit stond correct
@@ -1553,7 +1603,7 @@ Browser (beheerder)
 
 ### v2.1 backlog (epic #102)
 
-Zelfherstellend systeem: auto-heal via GitHub Issues + Codex automatie (#107, #108, #109).
+Zelfherstellend systeem: auto-heal via GitHub Issues + Claude Code automatie (#107, #108, #109).
 
 ---
 
