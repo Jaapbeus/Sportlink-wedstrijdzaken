@@ -1204,11 +1204,16 @@ minuten), **team** (keuzelijst met de actieve clubteams uit de eigen database), 
 (vrije tekst), **veld** (keuzelijst met de actieve velden) en een optionele **omschrijving**. Enter
 in een veld verstuurt het formulier.
 
+De team-keuzelijst heeft onderaan een extra optie **"Vrije tekst invoeren…"** (#1396): kiest u
+die, dan verschijnt een tekstveld waarin u een willekeurige teamnaam kunt typen — handig om te
+testen zonder een bestaand clubteam te gebruiken. De ingevulde vrije tekst wordt exact zo gebruikt
+als een uit de keuzelijst gekozen team.
+
 Wat u níet hoeft in te vullen, doet de server:
 
 | Sportlink-veld | Waar het vandaan komt |
 |---|---|
-| Team-ID | Het gekozen team, via de teamkoppeling met de gesynchroniseerde Sportlink-teams. Ontbreekt die koppeling (bijv. een puur lokaal team), dan blijft het leeg en ziet u dat als waarschuwing |
+| Team-ID | Het gekozen team, via de teamkoppeling met de gesynchroniseerde Sportlink-teams. Ontbreekt die koppeling (bijv. een puur lokaal team, of een via "Vrije tekst" ingevoerde naam), dan blijft het leeg en ziet u dat als waarschuwing |
 | Leeftijdscategorie | Van het gekozen team (bijv. `JO10`) |
 | Locatie | Altijd de eigen accommodatie: het veld **Accommodatie** op de Instellingen-pagina wordt op naam opgezocht in de locatielijst van Sportlink Club. Niet (eenduidig) gevonden → leeg + waarschuwing |
 | Omschrijving | Leeg gelaten → `Oefenwedstrijd [team] - [tegenstander] ([veld])` |
