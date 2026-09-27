@@ -10,9 +10,8 @@
     padding-top: 0.35rem;
 }
 
-/* ── Gantt-tijdlijn (#1329) — gedeeld tussen de veldbezettingsweergave en de
-   optimaal/huidig-vergelijking hieronder. Dynamische posities/kleuren komen binnen als CSS
-   custom properties; alles wat voor elke instantie gelijk is staat hier vast. */
+/* ── Gantt-tijdlijn — zelfde basisklassen als VeldOptimalisatie.razor.css; deze pagina toont alleen
+   de read-only veldbezetting, dus zonder de sleep-/voorkeur-/legenda-varianten van die pagina. */
 
 .gantt-scroll {
     overflow-x: auto;
@@ -108,13 +107,6 @@
     box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 
-/* Alleen de sleepbare blokken (optimaal/huidig-vergelijking) hebben een grijpcursor en een
-   stippellijn voor handmatig verplaatste wedstrijden; de veldbezettingsweergave niet. */
-.gantt-blok-sleepbaar {
-    cursor: var(--gantt-cursor);
-    outline: var(--gantt-outline);
-}
-
 .gantt-blok-tijd {
     overflow: hidden;
     white-space: nowrap;
@@ -130,44 +122,9 @@
     text-overflow: ellipsis;
 }
 
-.gantt-voorkeur-balk {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 4px;
-    background: var(--gantt-voorkeur-kleur);
-    border-radius: 5px 5px 0 0;
-}
-
-/* Legenda: de vorm (.gantt-legenda-dot/-balk) staat in wwwroot/css/app.css; hier alleen de kleur
-   per status/afwijkingsniveau, gelijk aan GanttKleur()/GanttVoorkeurBalkKleur() in de code-behind. */
-.gantt-legenda-dot-ongewijzigd { background: #198754; }
-.gantt-legenda-dot-wijziging { background: #0d6efd; }
-.gantt-legenda-dot-nieuw { background: #d97706; }
-.gantt-legenda-balk-optijd { background: #22c55e; }
-.gantt-legenda-balk-klein { background: #f59e0b; }
-.gantt-legenda-balk-groot { background: #ef4444; }
-
-/* ── Wedstrijdentabel (#1329): hergebruikte class in plaats van dezelfde font-size op elke cel ── */
+/* ── Wedstrijdentabel ── */
 .tabel-compact {
     font-size: 0.85rem;
-}
-
-.tabel-extra-compact {
-    font-size: 0.75rem;
-}
-
-/* ── Planning delen (#1329) ── */
-.export-summary {
-    cursor: pointer;
-}
-
-.export-iframe {
-    width: 100%;
-    min-height: 700px;
-    border: none;
-    display: block;
 }
 
 @media (max-width: 640.98px) {

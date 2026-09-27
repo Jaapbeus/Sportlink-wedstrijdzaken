@@ -80,7 +80,7 @@ In lokale omgeving is `WEBSITE_SITE_NAME` niet aanwezig, waardoor `EasyAuthHelpe
 
 ## 2. Testmodus — ALLSTARS fictieve wedstrijden
 
-De Admin GUI heeft een ingebouwde testmodus waarmee de dagplanning volledig op fictieve data kan worden getest, zonder de echte Sportlink-wedstrijden te beïnvloeden.
+De Admin GUI heeft een ingebouwde testmodus waarmee Planning en Veld optimalisatie volledig op fictieve data kunnen worden getest, zonder de echte Sportlink-wedstrijden te beïnvloeden.
 
 **Activeren:** Kies **AllStars FC** in de club-keuzelijst midden in de bovenbalk. Die keuzelijst
 verschijnt zodra er meer dan één club in de installatie staat; de democlub staat er standaard in.  
@@ -89,17 +89,19 @@ verschijnt zodra er meer dan één club in de installatie staat; de democlub sta
 In testmodus:
 - Verschijnt boven in de zijbalk een oranje blok met **TESTMODUS** en daaronder
   **AllStars FC — geen productiedata**, en kleurt de club-keuzelijst in de bovenbalk oranje
-- Laadt de dagplanning fictieve wedstrijden in plaats van de echte wedstrijden van uw club
+- Laden Planning en Veld optimalisatie fictieve wedstrijden in plaats van de echte wedstrijden van uw club
 - Verschijnt onderaan de zijbalk het kopje **TESTMODUS** met daaronder het menu-item **Testdata**,
   voor het invoeren van fictieve wedstrijden
 - Zijn synchronisatie en e-mailverwerking op de Instellingen-pagina verborgen (niet van toepassing)
 
 Volledige documentatie: [docs/TESTMODUS-ALLSTARS.md](TESTMODUS-ALLSTARS.md)
 
-### Dagplanning — Veldbezetting: hover-highlight en sticky tijdlijn (#1315)
+### Planning — Veldbezetting: hover-highlight en sticky tijdlijn (#1315)
 
-De kaart **"Veldbezetting op [datum]"** bovenaan Dagplanning toont wat er voor die dag al
-gepland staat: een tijdlijn per veld, met daaronder een tabel met dezelfde wedstrijden.
+De kaart **"Veldbezetting op [datum]"** op de pagina **Planning** toont wat er voor die dag al
+gepland staat: een tijdlijn per veld, met daaronder een tabel met dezelfde wedstrijden. Sinds #1361
+staat op deze pagina ook een Sportlink-kolom, op dezelfde manier als op Veld optimalisatie
+hieronder — zie hoofdstuk 19 voor de Sportlink Web Extension zelf.
 
 - **Hover-highlight:** beweeg de muis over een rij in de tabel, of over een blok in de
   tijdlijn — de bijbehorende wedstrijd licht in beide oranje op. Zo is snel terug te vinden
@@ -109,18 +111,24 @@ gepland staat: een tijdlijn per veld, met daaronder een tabel met dezelfde wedst
   scherm (mobiel, breedte < 641px) is dit uitgeschakeld, omdat daar ook de bovenbalk zelf niet
   sticky is.
 
-Dit geldt alleen voor deze kaart, niet voor de tijdlijnen in de tabbladen **Optimaal**/**Huidig**
-verderop op dezelfde pagina.
+Dit geldt alleen voor deze kaart, niet voor de tijdlijnen in de tabbladen **Huidig**/**Optimaal**
+op de pagina **Veld optimalisatie**.
 
-### Dagplanning — twee tabs: Optimaal en Huidig
+### Veld optimalisatie — twee tabs: Huidig en Optimaal
 
-Na een klik op **Optimaliseer** staat bovenaan de samenvattingsbalk (wedstrijden, zonder veld,
-zonder tijd, te wijzigen, optimale eindtijd). Daaronder staan twee tabs (#689):
+De pagina **Veld optimalisatie** (#1361, vóór die splitsing het onderste deel van de toenmalige
+pagina Dagplanning) laadt bij openen automatisch een berekend plan, zichtbaar in de
+samenvattingsbalk (wedstrijden, zonder veld, zonder tijd, te wijzigen, optimale eindtijd) en
+daaronder twee tabs (#689). **Huidig** is de eerste tab en staat bij openen standaard actief — u
+ziet dus eerst de bestaande Sportlink-stand voordat u eventueel naar Optimaal wisselt:
 
 | Tab | Wat je ziet |
 |---|---|
-| **Optimaal** | De planning zoals de planner die voorstelt. Wedstrijden zijn hier te **verslepen** naar een andere tijd of een ander veld. |
 | **Huidig** | De stand zoals die nu in Sportlink staat. Niet te verslepen. |
+| **Optimaal** | De planning zoals de planner die voorstelt. Wedstrijden zijn hier te **verslepen** naar een andere tijd of een ander veld. |
+
+Wijzigt u de **Buffer** of klikt u opnieuw op **Optimaliseer**, dan wordt het plan herberekend en
+springt de weergave terug naar de tab Huidig.
 
 Elke tab heeft dezelfde opbouw: eerst de **tijdlijn per veld**, daaronder de **wedstrijdenlijst** van
 diezelfde stand. Omdat beide tabs op exact dezelfde hoogte beginnen, werkt wisselen als het
@@ -146,9 +154,9 @@ De kolom **Voorkeurstijd** toont in de tab Optimaal de gewenste tijd mét de afw
 Huidig alleen de gewenste tijd. Die afwijking is namelijk berekend op de optimale planning — hem bij
 de huidige stand tonen zou een getal beweren dat daar niet op is berekend.
 
-### Dagplanning — status-badges
+### Veld optimalisatie — status-badges
 
-De dagplanning heeft **twee losse kolommen** die makkelijk verward worden (#666):
+Veld optimalisatie heeft **twee losse kolommen** die makkelijk verward worden (#666):
 
 **Kolom "Wijziging"** — verplaatst de planner deze wedstrijd t.o.v. wat er nu in Sportlink staat?
 
@@ -553,13 +561,14 @@ Exitcode 0 = alles groen. Exitcode 1 = minimaal één check gefaald.
 
 ### Het dashboard
 
-Na inloggen komt u op het **Dashboard**. Dat is een startpagina met vier snelkoppelingen naar de
+Na inloggen komt u op het **Dashboard**. Dat is een startpagina met snelkoppelingen naar de
 schermen die u het vaakst nodig heeft:
 
 | Tegel | Waarvoor |
 |---|---|
 | **Teambegeleiding** | Contactgegevens van teambegeleiders bekijken en een vraag doorsturen |
-| **Dagplanning** | Wedstrijden inplannen en de veldindeling voor een speeldag beheren |
+| **Planning** | Bekijken wat er nu al in Sportlink gepland staat voor een speeldag |
+| **Veld optimalisatie** | Wedstrijden optimaliseren en de veldindeling voor een speeldag beheren (#1361, vóór die splitsing samen met Planning het scherm Dagplanning) |
 | **Leermomenten** | Correcties op de AI-classificatie beoordelen (zie hoofdstuk 16a) |
 | **Email-tester** | De e-mailverwerking uitproberen zonder iets te versturen (zie hoofdstuk 20) |
 
@@ -586,8 +595,8 @@ Boven elk scherm staat een smalle balk met, van links naar rechts:
 
 ### De zijbalk
 
-De zijbalk links bevat in deze volgorde: **Dashboard**, **Teambegeleiding**, **Dagplanning**,
-**Leermomenten**, **Teamaliassen**, **Email-tester**, dan (alleen onder een voorwaarde, zie
+De zijbalk links bevat in deze volgorde: **Dashboard**, **Teambegeleiding**, **Planning**,
+**Veld optimalisatie**, **Leermomenten**, **Teamaliassen**, **Email-tester**, dan (alleen onder een voorwaarde, zie
 hieronder) **Wijzigingsverzoeken** en **Wedstrijden**, en tot slot het uitklapbare menu
 **Instellingen** met daarin *Instellingen*, *Speeltijden*, *Velden*, *Voorkeurstijden*,
 *E-mailtemplates*, *Thema* en *Sportlink Ext.* (het menu-item; de functie zelf heet Sportlink Web
@@ -753,7 +762,7 @@ Bij een API-fout (time-out, netwerk, service onbeschikbaar) schakelt de planner 
 
 ## 13. Test data modus (ALLSTARS) — `/testdata/wedstrijden`
 
-De **Testmodus** maakt het mogelijk fictieve wedstrijden aan te maken die worden gebruikt voor lokale tests van de dagplanning en optimalisatie, zonder productiewedstrijden te raken.
+De **Testmodus** maakt het mogelijk fictieve wedstrijden aan te maken die worden gebruikt voor lokale tests van Planning en Veld optimalisatie, zonder productiewedstrijden te raken.
 
 ### Activeren
 
@@ -813,7 +822,7 @@ de opslagstatus aan.
 > - Alle testdata gebruikt `ClubCode = 'ALLSTARS'` — echte wedstrijden blijven onaangetast
 > - `bk_matches` wordt synthetisch gegenereerd als `ALLSTARS-{guid}` (28 tekens)
 > - Testdata staat in `his.matches` — hetzelfde schema als productiewedstrijden, klaar voor gebruik
->   door de dagplanning
+>   door Planning en Veld optimalisatie
 > - De keuze voor de democlub wordt in de browser bewaard (`localStorage`) en overleeft het sluiten
 >   van de browser
 >
@@ -1168,7 +1177,7 @@ Afgewezen, Ingetrokken, Alle. Alleen openstaande verzoeken wachten op een beslis
 (alleen wat afwijkt van de huidige planning), Reden. Wedstrijdnummer en teamnamen komen uit de
 eigen wedstrijdgegevens van de app; staat er een streepje, dan is die wedstrijd nog niet aan het
 Sportlink-kenmerk gekoppeld (dat gebeurt automatisch door de dagelijkse voorbereidingstaak, of zodra
-u de wedstrijd in Dagplanning opent).
+u de wedstrijd op Planning of Veld optimalisatie opent).
 
 Per openstaand verzoek staan twee compacte knoppen:
 - **✓ (groen)** — keurt de wijziging rechtstreeks goed in Sportlink Club.
@@ -1178,8 +1187,8 @@ Per openstaand verzoek staan twee compacte knoppen:
 Staat dry-run aan (§19), dan wordt de actie gesimuleerd en gelogd; het scherm meldt dat expliciet.
 
 Deze pagina en "Oefenwedstrijd aanmaken" (menu-item: **Wedstrijden**, zie §18a) staan alleen in het menu als de Sportlink Web Extension
-aan staat (§19); staat hij uit, dan verdwijnen beide menu-items en toont de Dagplanning geen
-Sportlink-kolom. Deze pagina is onderdeel van de Sportlink Web Extension (zie §19) en vereist dus dat die feature
+aan staat (§19); staat hij uit, dan verdwijnen beide menu-items en tonen Planning en Veld
+optimalisatie geen Sportlink-kolom. Deze pagina is onderdeel van de Sportlink Web Extension (zie §19) en vereist dus dat die feature
 is ingeschakeld en gekoppeld voor de rol die deze acties uitvoert.
 
 ---
@@ -1266,7 +1275,7 @@ contract-check (een geautomatiseerde controle die vroegtijdig waarschuwt als Spo
 website heeft gewijzigd). Dit alles komt uit onze eigen gegevens — er gaat geen aanroep naar
 Sportlink uit, tenzij u zelf op **"Nu live controleren"** klikt.
 
-Eenmaal gekoppeld verschijnt in **Dagplanning** per wedstrijd een Sportlink-paneel met de actuele
+Eenmaal gekoppeld verschijnt op **Planning** en **Veld optimalisatie** per wedstrijd een Sportlink-paneel met de actuele
 Sportlink-status en (afhankelijk van wat Sportlink voor die wedstrijd toestaat) invoervelden om
 kleedkamers, veld en officials (scheidsrechter/AR1/AR2) rechtstreeks terug te schrijven, plus een
 "Open in Sportlink"-knop die de wedstrijd in een nieuw tabblad op club.sportlink.com opent.

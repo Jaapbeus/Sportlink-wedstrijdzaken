@@ -117,7 +117,7 @@ verwerking plaats.
 | `GET` | `/beheer/rolfeatureinstellingen` | **Admin** | Per-club, per-rol feature-instellingen voor de Wedstrijdzaken-rol ophalen (kleedkamers/scheidsrechter/veld) — fail-closed (#1341, epic #1338) |
 | `PUT` | `/beheer/rolfeatureinstellingen` | **Admin** | Eén FeatureKey aan/uit zetten (`{ FeatureKey, Enabled }`) — `admin` is hier nooit instelbaar, die rol heeft altijd alles aan (#1341) |
 | `GET` | `/sportlink/match/{wedstrijdcode}` | **Wedstrijdzaken** | Read-only wedstrijdgegevens uit Sportlink Club: PublicMatchId-cache/reverse-lookup + permissievlaggen (#987/#991); sinds #1339 ook het huidige veld (`fieldId`/`fieldSize`, prefill) en server-berekende `veldOpties`/`subpositieOpties` (voorstellen op onze eigen veldnaam, géén Sportlink-gegeven); sinds #1341 ook de per-rol feature-toestemmingen (`KleedkamersFeatureToegestaan`/`ScheidsrechterFeatureToegestaan`/`VeldFeatureToegestaan`); sinds #1340 (VOORSTEL, DPO-vraag nog niet bevestigd — zie `docs/SPORTLINK-WEB-EXTENSION.md` §8) ook de relatiecode van de huidige scheidsrechter/AR1/AR2 (`ScheidsrechterRelatieCode`/`Ar1RelatieCode`/`Ar2RelatieCode`, uitsluitend het relatiecode-veld, nooit een naam) — genuld als `ScheidsrechterFeatureToegestaan` false is; het exacte Sportlink-JSON-veldnaam voor de relatiecode is NOOIT live geverifieerd |
-| `GET` | `/sportlink/match/{wedstrijdcode}/public-match-id` | **Wedstrijdzaken** | Lichtgewicht variant — alleen `PublicMatchId` (cache/reverse-lookup, geen volledige Match-aanroep), voor de deep-link-knop in Dagplanning (#989) |
+| `GET` | `/sportlink/match/{wedstrijdcode}/public-match-id` | **Wedstrijdzaken** | Lichtgewicht variant — alleen `PublicMatchId` (cache/reverse-lookup, geen volledige Match-aanroep), voor de deep-link-knop op Planning en Veld optimalisatie (#989, sinds #1361 op beide pagina's) |
 | `PUT` | `/sportlink/match/{wedstrijdcode}/dressingrooms` | **Wedstrijdzaken** | Kleedkamers toewijzen — eerste echte Sportlink-mutatie, guardrail + audit-log (#992); sinds #1341 ook geweigerd (409) als de per-rol feature-instelling uitstaat |
 | `PUT` | `/sportlink/match/{wedstrijdcode}/field` | **Wedstrijdzaken** | Veld(deel) wijzigen — `IsForceUpdate` server-side altijd `false` (semantiek onbevestigd, #993); sinds #1341 ook geweigerd (409) als de per-rol feature-instelling uitstaat |
 | `PUT` | `/sportlink/match/{wedstrijdcode}/officials` | **Wedstrijdzaken** | Officials (scheidsrechter/AR1/AR2) toewijzen — scaffolding, endpoint/body ONBEVESTIGD en altijd code-gelockt (`forceDryRun`, onafhankelijk van `sportlinkDryRun`); alleen relatiecode/persoons-ID, geen namen (AVG, #994); sinds #1341 ook geweigerd (409) als de per-rol feature-instelling uitstaat |
@@ -823,7 +823,7 @@ GUI verschillende planningen opleverden. De HTML-weergaven zitten nu in de auto-
 Geeft de wedstrijden terug die op een datum al gepland staan, rechtstreeks uit de laatst
 gesynchroniseerde Sportlink-data — **zonder** de scheduling-optimalisatie te draaien die
 `/planner/auto-plan` uitvoert. Bedoeld als snelle, goedkope
-"wat staat er nu al gepland"-weergave (zie Dagplanning in de Admin GUI).
+"wat staat er nu al gepland"-weergave (zie de pagina Planning in de Admin GUI, sinds #1361).
 
 ### Query-parameters
 

@@ -1,6 +1,6 @@
 # Testmodus — ALLSTARS fictieve wedstrijden
 
-De ALLSTARS-testmodus maakt het mogelijk om de dagplanning en planner-logica te testen met volledig fictieve wedstrijden, zonder de echte Sportlink-data van de club te beïnvloeden.
+De ALLSTARS-testmodus maakt het mogelijk om Planning, Veld optimalisatie en de planner-logica te testen met volledig fictieve wedstrijden, zonder de echte Sportlink-data van de club te beïnvloeden.
 
 > **Voor wie is dit document?** Het is bewust tweeledig. Alles tot en met *Testmodus activeren en
 > verlaten* is voor de **beheerder van de vereniging**; daar is geen technische kennis voor nodig.
@@ -23,7 +23,8 @@ In normale modus haalt de planner zijn data uit de Sportlink Club API (live) of 
 
 | Functionaliteit | Werkt | Toelichting |
 |---|---|---|
-| Dagplanning | ✅ | Laadt fictieve wedstrijden uit `his.matches WHERE ClubCode='ALLSTARS'` |
+| Planning | ✅ | Laadt fictieve wedstrijden uit `his.matches WHERE ClubCode='ALLSTARS'` |
+| Veld optimalisatie | ✅ | Idem, plus de volledige planner-optimalisatie op diezelfde fictieve wedstrijden |
 | Planner-optimalisatie | ✅ | Volledige grasveld-logica, teamtijden en veldconflicten |
 | Testdata beheer (wedstrijden) | ✅ | Invoergrid op `/testdata/wedstrijden` |
 | Velden & veldbeschikbaarheid | ✅ | Deelt `dbo.Velden` met de echte club |
