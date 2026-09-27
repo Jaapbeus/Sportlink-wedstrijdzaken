@@ -1,0 +1,189 @@
+@page "/planning"
+@inherits ClubSelectorPageBase
+@using static BlazorAdmin.Services.DagplanningWeergaveHelpers
+@* Alle logica staat in Planning.razor.cs (#1361, afgesplitst van het toenmalige Dagplanning.razor).
+   Het Sportlink-paneel per wedstrijd is het component SportlinkMatchPanel. *@
+
+<PageTitle>Planning — Admin</PageTitle>
+
+<h1>Planning</h1>
+
+@* ── Invoerbalk ── *@
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">Datum</label>
+                <input type="date" class="form-control" @bind="_datumDt" @bind:after="OnDatumChanged" />
+            </div>
+        </div>
+    </div>
+</div>
+
+@* ── Directe veldbezetting: wat staat er nu al gepland op deze datum (#566) ── *@
+<div class="card mb-3">
+    <div class="card-header d-flex align-items-center gap-2">
+        <span class="fw-semibold">Veldbezetting op @_datumDt.ToString("dd-MM-yyyy")</span>
+        @if (_veldbezettingBezig)
+        {
+            <span class="spinner-border spinner-border-sm text-secondary ms-2" role="status" aria-hidden="true"></span>
+        }
+    </div>
+    <div class="card-body">
+        @if (!string.IsNullOrEmpty(_veldbezettingError))
+        {
+            <div class="alert alert-danger mb-0">@_veldbezettingError</div>
+        }
+        else if (!_veldbezettingBezig && _veldbezetting.Count == 0)
+        {
+            <p class="text-muted mb-0">Geen wedstrijden gepland op deze datum.</p>
+        }
+        else if (_veldbezetting.Count > 0)
+        {
+            var _vGantt = BouwVeldbezettingGanttItems();
+            @if (_vGantt.Any())
+            {
+                var _vVelden = _vGantt
+                    .Select(g => g.VeldNaam).Distinct()
+                    .OrderBy(v => v.StartsWith("Kunstgras", StringComparison.OrdinalIgnoreCase) ? "0" + v : "1" + v)
+                    .ToList();
+                int _vsMin = (_vGantt.Min(g => (int)g.Aanvang.ToTimeSpan().TotalMinutes) / 60) * 60;
+                int _veMin = (((int)_vGantt.Max(g => g.Einde.ToTimeSpan().TotalMinutes) + 59) / 60) * 60;
+                if (_veMin <= _vsMin) _veMin = _vsMin + 60;
+                int _vTotMin = _veMin - _vsMin;
+
+                <div class="veldbezetting-sticky mb-3 gantt-scroll">
+                    @* Tijdas-header *@
+                    <div class="gantt-tijdas-header">
+                        <div class="gantt-label-gutter"></div>
+                        <div class="gantt-tijdas-lijn">
+                            @for (int _h = _vsMin; _h <= _veMin; _h += 60)
+                            {
+                                string _lftH = GanttPct(_h - _vsMin, _vTotMin);
+                                <div class="gantt-uur-label" style="--gantt-left:@(_lftH)%; --gantt-transform:@GanttLabelTransform(_h, _vsMin, _veMin);">
+                                    @GanttUurLabel(_h)
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    @* Veld-rijen *@
+                    @foreach (var _veld in _vVelden)
+                    {
+                        <div class="gantt-veld-rij">
+                            <div class="gantt-veld-label">
+                                @_veld
+                            </div>
+                            <div class="gantt-veld-track">
+                                @* Uurlijnen *@
+                                @for (int _h = _vsMin + 60; _h < _veMin; _h += 60)
+                                {
+                                    <div class="gantt-uurlijn" style="--gantt-left:@(GanttPct(_h - _vsMin, _vTotMin))%;"></div>
+                                }
+                                @* Wedstrijdblokken *@
+                                @foreach (var gi in _vGantt.Where(g => g.VeldNaam == _veld))
+                                {
+                                    string _lft = GanttPct((int)gi.Aanvang.ToTimeSpan().TotalMinutes - _vsMin, _vTotMin);
+                                    string _wdt = GanttPct(gi.DuurMinuten, _vTotMin);
+                                    var (_topVal, _hgtVal) = GanttLayout.Bereken(gi.SubPos, gi.Fractie);
+                                    string _top = GanttPct((int)_topVal, 100);
+                                    string _hgt = GanttPct((int)_hgtVal, 100);
+                                    string _tooltip = GanttTooltip(gi);
+                                    bool _gehover = gi.WedstrijdCode != null && gi.WedstrijdCode == _veldbezettingHoverCode;
+                                    <div title="@_tooltip"
+                                         class="gantt-blok @(_gehover ? "gantt-blok-hover" : "")"
+                                         @onmouseover="() => _veldbezettingHoverCode = gi.WedstrijdCode"
+                                         @onmouseout="() => _veldbezettingHoverCode = null"
+                                         style="--gantt-left:calc(@(_lft)% + 2px); --gantt-width:calc(@(_wdt)% - 4px);
+                                                --gantt-top:calc(@(_top)% + 2px); --gantt-height:calc(@(_hgt)% - 4px);
+                                                --gantt-bg:@GanttKleur(gi.Status);">
+                                        <div class="gantt-blok-tijd">
+                                            @gi.Aanvang.ToString("HH:mm")
+                                        </div>
+                                        <div class="gantt-blok-label">
+                                            @GanttLabel(gi.Label)
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                    <div class="gantt-as-onderlijn"></div>
+                </div>
+            }
+            else
+            {
+                <p class="text-muted small">Nog geen wedstrijden met veld, tijd én bekende duur voor deze datum — zie de lijst hieronder.</p>
+            }
+
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Tijd</th>
+                            <th>Team</th>
+                            <th>Tegenstander</th>
+                            <th>Veld</th>
+                            <th>Competitie</th>
+                            @if (_sportlinkExtensionEnabled)
+                            {
+                                <th title="Wat Sportlink Club over deze wedstrijd weet (read-only)">Sportlink</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in _veldbezetting)
+                        {
+                            <tr class="@(item.WedstrijdCode != null && item.WedstrijdCode == _veldbezettingHoverCode ? "veldbezetting-rij-hover" : "")"
+                                @onmouseover="() => _veldbezettingHoverCode = item.WedstrijdCode"
+                                @onmouseout="() => _veldbezettingHoverCode = null">
+                                <td>@(item.AanvangsTijd ?? "—")</td>
+                                <td>@item.TeamNaam</td>
+                                <td>@(item.Uitteam ?? "—")</td>
+                                <td>@(item.Veld ?? "—")</td>
+                                <td>@(item.Competitiesoort ?? "—")</td>
+                                @* ── Sportlink-kolom (#1361): dezelfde Toon/Open-in-Sportlink-acties als
+                                   voorheen alleen op de vergelijkingstabel van Veld optimalisatie ── *@
+                                @if (_sportlinkExtensionEnabled)
+                                {
+                                    <td class="tabel-compact">
+                                        @if (item.WedstrijdCode == null)
+                                        {
+                                            <span class="text-muted" title="Geen wedstrijdcode bekend voor deze regel">—</span>
+                                        }
+                                        else
+                                        {
+                                            <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                    @onclick="() => _sportlinkKolom.Toggle(item.WedstrijdCode.Value)">
+                                                @(_sportlinkKolom.IsUitgeklapt(item.WedstrijdCode.Value) ? "Verberg" : "Toon")
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-outline-primary ms-1"
+                                                    title="Open deze wedstrijd in Sportlink Club (nieuw tabblad)"
+                                                    disabled="@_sportlinkKolom.Deeplink(item.WedstrijdCode.Value).Bezig"
+                                                    @onclick="() => _sportlinkKolom.OpenInSportlinkAsync(item.WedstrijdCode.Value, Api, JS)">
+                                                Open in Sportlink
+                                            </button>
+                                            @if (_sportlinkKolom.Deeplink(item.WedstrijdCode.Value).Bezig)
+                                            {
+                                                <span class="spinner-border spinner-border-sm text-secondary ms-2" role="status" aria-hidden="true"></span>
+                                            }
+                                            <Melding Status="_sportlinkKolom.Deeplink(item.WedstrijdCode.Value)" Klasse="small" />
+                                        }
+                                    </td>
+                                }
+                            </tr>
+                            @if (_sportlinkExtensionEnabled && item.WedstrijdCode != null && _sportlinkKolom.IsUitgeklapt(item.WedstrijdCode.Value))
+                            {
+                                <tr @key="item.WedstrijdCode.Value">
+                                    <td colspan="6" class="bg-light tabel-compact">
+                                        <SportlinkMatchPanel WedstrijdCode="item.WedstrijdCode.Value" />
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>

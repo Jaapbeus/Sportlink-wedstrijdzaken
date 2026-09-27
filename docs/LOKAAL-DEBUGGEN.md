@@ -275,11 +275,12 @@ SELECT MAX(LastSyncTimestamp) AS LaatsteSync FROM dbo.AppSettings;
 > dat doet de planner-view ook.
 
 **5. Functioneel controleren, niet alleen HTTP 200.** Een Blazor WASM-route geeft altijd 200; dat
-zegt niets. Open de Dagplanning op een datum waarvan je uit de database weet dat er wedstrijden zijn
-en controleer of ze in de tijdlijn én de tabel staan. Dit is de les uit #635: alle SQL-checks stonden
-groen terwijl de planner nul wedstrijden vond.
+zegt niets. Open **Planning** (#1361; vóór die splitsing was dit onderdeel van Dagplanning) op een
+datum waarvan je uit de database weet dat er wedstrijden zijn en controleer of ze in de tijdlijn én
+de tabel staan. Dit is de les uit #635: alle SQL-checks stonden groen terwijl de planner nul
+wedstrijden vond.
 
-Let op bij het vergelijken van aantallen: de Dagplanning toont alleen wedstrijden **op de eigen
+Let op bij het vergelijken van aantallen: Planning toont alleen wedstrijden **op de eigen
 accommodatie**. Staan er vijf wedstrijden in de database en drie op het scherm, dan zijn de andere
 twee uitwedstrijden — dat is correct gedrag, geen ontbrekende data.
 

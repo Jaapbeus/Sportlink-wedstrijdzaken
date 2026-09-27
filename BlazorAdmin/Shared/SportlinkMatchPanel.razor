@@ -137,9 +137,9 @@ else
 
     @if (_info.IsHomeMatch)
     {
-        @* #995: wijzigingsverzoek datum/tijd/accommodatie — ALLEEN stap 1 (valideren), ONBEVESTIGD en
-           altijd code-gelockt: de enige mutatie die een ECHTE tegenstander raakt. Bewust GEEN
-           bevestigknop — dat zou een stap 2 suggereren die niet gebouwd is. *@
+        @* #995/#1320: wijzigingsverzoek datum/tijd/accommodatie — ALLEEN stap 1 (valideren),
+           ONBEVESTIGD en altijd code-gelockt: de enige mutatie die een ECHTE tegenstander raakt.
+           Bewust GEEN bevestigknop — dat zou een stap 2 suggereren die niet gebouwd is. *@
         <div class="mt-2 pt-2 border-top">
             <div class="fw-semibold small">Wijzigingsverzoek datum/tijd/accommodatie</div>
             <div class="text-muted small">
@@ -166,12 +166,76 @@ else
                 <label class="form-label mb-0 small">Toelichting (verplicht)</label>
                 <input class="form-control form-control-sm" @bind="_wijzigingToelichting" />
             </div>
-            <div class="mt-2">
-                <button class="btn btn-sm btn-outline-primary" disabled="@_wijziging.Bezig" @onclick="SaveMatchChangeRequestAsync">Wijzigingsverzoek valideren</button>
-                @if (_wijziging.Bezig) { <span class="spinner-border spinner-border-sm"></span> }
-            </div>
+
+            @if (!_wijzigingBevestigingGevraagd)
+            {
+                <div class="mt-2">
+                    <button class="btn btn-sm btn-outline-primary" disabled="@_wijziging.Bezig" @onclick="VraagBevestigingWijziging">Wijzigingsverzoek valideren</button>
+                    @if (_wijziging.Bezig) { <span class="spinner-border spinner-border-sm"></span> }
+                </div>
+            }
+            else
+            {
+                @* #1320: de "afzonderlijke handmatige startactie" — pas déze knop verstuurt de
+                   echte PUT. Waarschuwing herhaalt bewust dat zelfs deze validatiestap Sportlinks
+                   eigen verzendmoment kan zijn (zie docs/SPORTLINK-WEB-EXTENSION.md §4.4/§6.4). *@
+                <div class="alert alert-warning py-2 px-2 mt-2 mb-0 small">
+                    Let op: dit is een echte aanroep naar Sportlink Club. Ook al is dit bedoeld als
+                    "alleen valideren" (stap 1), Sportlink kan hierbij al direct een
+                    wijzigingsverzoek naar de tegenstander versturen. Weet je dat zeker?
+                    <div class="mt-2 d-flex gap-2">
+                        <button class="btn btn-sm btn-danger" disabled="@_wijziging.Bezig" @onclick="SaveMatchChangeRequestAsync">
+                            Ja, verstuur de validatie-PUT naar Sportlink
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" disabled="@_wijziging.Bezig" @onclick="AnnuleerBevestigingWijziging">Annuleren</button>
+                        @if (_wijziging.Bezig) { <span class="spinner-border spinner-border-sm"></span> }
+                    </div>
+                </div>
+            }
+
             <div class="text-muted small">@SportlinkActieStatus.CodeLockTekst</div>
             <Melding Status="_wijziging" />
+
+            @if (_wijzigingTrace is not null)
+            {
+                @* #1320: diagnostiekpaneel — nerdy, controleerbare request/response-trace. Bewust
+                   alleen de al gedistilleerde velden (nooit de ruwe body): tokens, cookies en
+                   autorisatieheaders komen hier nooit in terecht. *@
+                <div class="mt-2 p-2 border rounded small" style="font-family: monospace;">
+                    <div><strong>Stap 1: valideren</strong> — @_wijzigingTrace.TijdstipUtc.ToString("u")</div>
+                    <div>@_wijzigingTrace.HttpMethode @_wijzigingTrace.Endpoint → HTTP @_wijzigingTrace.HttpStatusCode</div>
+                    @if (_wijzigingTrace.Resultaat?.Validatie is { } validatie)
+                    {
+                        <div>
+                            IsSuccess=@Weergeef(validatie.IsSuccess)
+                            · IsMatchChangeRequestMandatory=@Weergeef(validatie.IsMatchChangeRequestMandatory)
+                            · IsOwnFacility=@Weergeef(validatie.IsOwnFacility)
+                            · IsForceUpdate=@Weergeef(validatie.IsForceUpdate)
+                        </div>
+                        <div>ConfirmationNeeded=@validatie.ConfirmationNeeded · HasBlockingMessages=@validatie.HasBlockingMessages</div>
+                    }
+                    <div class="text-muted mt-1">
+                        Stap 2 (bevestigen) bestaat in deze app bewust niet — zie #1320/#995: de
+                        werkelijke bevestigingsvorm voor een verplicht wijzigingsverzoek is nooit met
+                        een netwerktrace gezien.
+                    </div>
+                </div>
+
+                @if (_wijzigingTrace.AuditId is { } auditId)
+                {
+                    <div class="mt-2">
+                        <label class="form-label mb-0 small">Testnotitie bij deze poging (audit #@auditId)</label>
+                        <div class="d-flex gap-2">
+                            <input class="form-control form-control-sm" @bind="_wijzigingNotitie"
+                                   placeholder="Bijv. wat je in Sportlink Club zelf zag" />
+                            <button class="btn btn-sm btn-outline-secondary" disabled="@_wijzigingNotitieStatus.Bezig" @onclick="SlaWijzigingNotitieOpAsync">Notitie opslaan</button>
+                            @if (_wijzigingNotitieStatus.Bezig) { <span class="spinner-border spinner-border-sm"></span> }
+                        </div>
+                        <Melding Status="_wijzigingNotitieStatus" />
+                    </div>
+                }
+            }
+
             @if (_wijzigingValidatieMeldingen is { Count: > 0 })
             {
                 <ul class="mt-1 mb-0 small">

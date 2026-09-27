@@ -60,9 +60,13 @@ internal static class EasyAuthHelper
     // een uitnodiging om hem per ongeluk te pakken.
 
     /// <summary>#988: aanvullende, functionele rol (naast admin/user) voor Sportlink Web
-    /// Extension-mutaties (epic #986) — zie docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md §6.</summary>
+    /// Extension-mutaties (epic #986) — zie docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md §6.
+    /// #1376: admin impliceert Wedstrijdzaken — herziening van het eerdere AND-gate-besluit (zie
+    /// memory/wedstrijdzaken-rol-vereist-altijd-ook-admin.md). Eén volledige beheerder hoeft geen
+    /// aparte tweede Entra-roltoewijzing meer te krijgen om Sportlink-mutaties te mogen
+    /// triggeren.</summary>
     public static IActionResult? RequireWedstrijdzaken(HttpRequest req)
-        => RequireRole(req, "Wedstrijdzaken");
+        => RequireRole(req, "Wedstrijdzaken", "admin");
 
     /// <summary>
     /// Niet-gooiende variant van <see cref="RequireRole"/> (#1341) — voor een feature-toggle-check

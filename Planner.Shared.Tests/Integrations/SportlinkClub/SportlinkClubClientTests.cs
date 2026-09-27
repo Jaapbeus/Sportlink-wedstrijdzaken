@@ -1916,6 +1916,55 @@ public class SportlinkClubClientTests
         result.Should().BeNull();
     }
 
+    // ── #1320: vier toplevel booleans (IsSuccess/IsMatchChangeRequestMandatory/IsOwnFacility/
+    // IsForceUpdate), gezien bij de oefenwedstrijd-trace van 2026-09-26 — GEEN bewijs voor de
+    // verplichte-wijzigingsverzoek-vorm ──
+
+    [Fact]
+    public void ParseMatchChangeValidatie_ToplevelBooleans_WordenAllevierGeparsed()
+    {
+        var json = """
+            {
+                "IsSuccess": false,
+                "IsMatchChangeRequestMandatory": false,
+                "IsOwnFacility": true,
+                "IsForceUpdate": true,
+                "ConfirmationNeeded": {"ValidationResultMessages": [], "HasBlockingMessages": false}
+            }
+            """;
+
+        var result = SportlinkClubClient.ParseMatchChangeValidatie(json);
+
+        result.Should().NotBeNull();
+        result!.IsSuccess.Should().BeFalse();
+        result.IsMatchChangeRequestMandatory.Should().BeFalse();
+        result.IsOwnFacility.Should().BeTrue();
+        result.IsForceUpdate.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ParseMatchChangeValidatie_ToplevelBooleansOntbreken_GevenNullNooitEenGok()
+    {
+        var result = SportlinkClubClient.ParseMatchChangeValidatie("""{"ConfirmationNeeded": null}""");
+
+        result.Should().NotBeNull();
+        result!.IsSuccess.Should().BeNull();
+        result.IsMatchChangeRequestMandatory.Should().BeNull();
+        result.IsOwnFacility.Should().BeNull();
+        result.IsForceUpdate.Should().BeNull();
+    }
+
+    [Fact]
+    public void ParseMatchChangeValidatie_ToplevelBooleanIsGeenBoolean_GeeftNullNooitEenGok()
+    {
+        // Defensief: een onverwacht type (hier een string) op een van de vier velden mag niet
+        // stilzwijgend als true/false geïnterpreteerd worden.
+        var result = SportlinkClubClient.ParseMatchChangeValidatie("""{"IsSuccess": "ja"}""");
+
+        result.Should().NotBeNull();
+        result!.IsSuccess.Should().BeNull();
+    }
+
     // ── #997: oefenwedstrijd aanmaken (ClubMatch) — scaffolding, bewust beperkte scope ──
 
     [Fact]

@@ -14,6 +14,13 @@ on:
   pull_request:
     branches: [main, develop]
 
+# #1370 (retro v3.6.0.0, bevinding 2) — GEPROBEERD EN BEWUST TERUGGEDRAAID.
+# Zelfde dedupmechanisme als build.yml (zie de toelichting daar): een concurrency-groep op
+# workflow+commit-SHA met cancel-in-progress bleek op PR #1372 een reproduceerbare
+# merge-blokkerende regressie te geven — GitHub's statusCheckRollup neemt bij twee check-runs
+# met dezelfde naam op dezelfde SHA de SLECHTSTE uitkomst (FAILURE), niet de laatste, ook als
+# de nieuwere run daarna succesvol afrondt. Bevinding 2 blijft open; zie de reactie op #1370.
+
 permissions:
   contents: read
   security-events: write

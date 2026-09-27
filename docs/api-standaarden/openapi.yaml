@@ -28,7 +28,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.5.7.0
+  version: 3.6.3.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -1038,6 +1038,47 @@ components:
                 type: string
             HasBlockingMessages:
               type: boolean
+            IsSuccess:
+              type: boolean
+              nullable: true
+              description: "#1320: toplevel-veld uit Sportlinks respons — ONBEVESTIGD voor de verplichte-wijzigingsverzoek-vorm, zie docs/SPORTLINK-WEB-EXTENSION.md §6.4."
+            IsMatchChangeRequestMandatory:
+              type: boolean
+              nullable: true
+            IsOwnFacility:
+              type: boolean
+              nullable: true
+            IsForceUpdate:
+              type: boolean
+              nullable: true
+
+    SportlinkMatchWijzigingsverzoekTraceResponse:
+      type: object
+      description: |
+        Sinds #1320: het antwoord op PUT .../change-request is deze trace-wrapper in plaats van
+        kaal SportlinkMatchChangeRequestResponse — voor de eigenaar-gestuurde productieproef met
+        diagnostiektrace. Spiegelt
+        Planner.Shared.Integrations.SportlinkClub.SportlinkMatchWijzigingsverzoekTrace.
+      properties:
+        Resultaat:
+          $ref: '#/components/schemas/SportlinkMatchChangeRequestResponse'
+        AuditId:
+          type: integer
+          format: int64
+          nullable: true
+          description: "null als er geen audit-service geregistreerd is. Nodig voor PUT /sportlink/audit/{id}/notitie."
+        HttpStatusCode:
+          type: integer
+          nullable: true
+        Endpoint:
+          type: string
+          example: competition/match/UpdateMatchDetails
+        HttpMethode:
+          type: string
+          example: PUT
+        TijdstipUtc:
+          type: string
+          format: date-time
 
     OefenwedstrijdAanmaakResponse:
       description: |
@@ -3819,11 +3860,13 @@ paths:
                   description: Verplicht — een wijzigingsverzoek zonder toelichting is voor de tegenstander niet te beoordelen.
       responses:
         '200':
-          description: Validatieresultaat (Mutatie.IsSuccess kan alsnog false zijn; in de praktijk altijd een gesimuleerd resultaat door de code-lock)
+          description: |
+            Diagnostiektrace (#1320) — Resultaat.Mutatie.IsSuccess kan alsnog false zijn; in de
+            praktijk altijd een gesimuleerd resultaat door de code-lock.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SportlinkMatchChangeRequestResponse'
+                $ref: '#/components/schemas/SportlinkMatchWijzigingsverzoekTraceResponse'
         '400':
           description: Toelichting ontbreekt, of NieuweDatum/NieuweStartTijd is geen geldige datum/tijd
         '401':
@@ -3840,6 +3883,53 @@ paths:
           description: Sportlink gaf geen bruikbare respons
         '503':
           description: Uitgaande integraties staan hier niet toe (EgressGuard)
+
+  /sportlink/audit/{id}/notitie:
+    put:
+      tags: [sportlink]
+      operationId: putSportlinkAuditNotitie
+      summary: Testnotitie koppelen aan een Sportlink-mutatieauditpoging (#1320)
+      description: |
+        Voor de eigenaar-gestuurde productieproef met trace van validatie en bevestiging
+        (issue #995/#1320): na een live-testpoging kan de eigenaar vastleggen wat er in Sportlink
+        Club zelf zichtbaar was. Scoped op ClubCode — een audit-rij van een andere club is hiermee
+        niet te wijzigen (404). Lege string toegestaan om een eerdere notitie te wissen.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [Notitie]
+              properties:
+                Notitie:
+                  type: string
+                  maxLength: 1000
+                  nullable: false
+      responses:
+        '200':
+          description: Notitie opgeslagen
+        '400':
+          description: Notitie ontbreekt of is langer dan 1000 tekens
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Audit-record niet gevonden voor deze club
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          description: Audit-service niet beschikbaar
 
   /sportlink/change-requests:
     get:

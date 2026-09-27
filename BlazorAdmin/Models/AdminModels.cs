@@ -263,6 +263,27 @@ public class SportlinkMatchChangeValidatieDto
     public bool ConfirmationNeeded { get; set; }
     public List<string>? ValidationResultMessages { get; set; }
     public bool HasBlockingMessages { get; set; }
+
+    // #1320: vier toplevel booleans, gezien bij de oefenwedstrijd-trace van 2026-09-26 — GEEN
+    // bewijs voor de verplichte-wijzigingsverzoek-vorm. Spiegelt
+    // Planner.Shared.Integrations.SportlinkClub.SportlinkMatchChangeValidatie.
+    public bool? IsSuccess { get; set; }
+    public bool? IsMatchChangeRequestMandatory { get; set; }
+    public bool? IsOwnFacility { get; set; }
+    public bool? IsForceUpdate { get; set; }
+}
+
+/// <summary>#1320: diagnostiektrace van één #995-stap-1-poging (eigenaar-gestuurde productieproef)
+/// — spiegelt Planner.Shared.Integrations.SportlinkClub.SportlinkMatchWijzigingsverzoekTrace. Houd
+/// deze twee synchroon bij een contractwijziging.</summary>
+public class SportlinkMatchWijzigingsverzoekTraceDto
+{
+    public SportlinkMatchWijzigingsverzoekResultaatDto? Resultaat { get; set; }
+    public long? AuditId { get; set; }
+    public int? HttpStatusCode { get; set; }
+    public string? Endpoint { get; set; }
+    public string? HttpMethode { get; set; }
+    public DateTime TijdstipUtc { get; set; }
 }
 
 public class SettingsUpdateDto

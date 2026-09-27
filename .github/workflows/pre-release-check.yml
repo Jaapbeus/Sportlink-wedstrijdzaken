@@ -43,3 +43,233 @@ jobs:
 
       - name: BlazorAdmin bouwen
         run: dotnet build BlazorAdmin/BlazorAdmin.csproj -c Release
+
+  # ── Release-branchdivergentie (#1370, retro v3.6.0.0, bevinding 1) ──────
+  # Bij v3.6.0.0 bleek PR #1368 (develop → main) pas ná het openen 'DIRTY': main bevatte de
+  # losse #1244-hotfix-changelogsectie ([3.5.0.1]) die nog niet in develop stond, en dat
+  # kostte een aparte backport-PR (#1369) tijdens het releasevenster. Die divergentie was
+  # detecteerbaar zodra de PR opende.
+  #
+  # Bewust een CHANGELOG-versiekopjesvergelijking, GEEN kale 'git log develop..main' of
+  # 'git diff --name-only': develop loopt tussen releases altijd op main vooruit (open
+  # versiebump in de .csproj's, nieuwe [Unreleased]-inhoud) en elke afgeronde release laat op
+  # main een eigen mergecommit achter die per definitie nooit op develop terugkomt. Een check
+  # op ruwe commits of bestandsnamen zou dus BIJ ELKE release-PR afgaan — precies het
+  # "meldketen die altijd meldt, dus genegeerd wordt"-patroon dat dit project al kent van de
+  # Supabase-advisor-INFO-filtering (docs/ARCHITECTUUR-DATABASE-TIERS.md §... , regel 7). Het
+  # enige signaal dat hier specifiek en zeldzaam is: een versiekopje ('## [x.y.z] — ...') dat
+  # in main's CHANGELOG staat maar niet in develop's — dat is exact de vorm van een
+  # niet-teruggebrachte hotfix-release.
+  #
+  # Bewust INFORMATIEF, geen harde gate: CLAUDE.md's eigen backportregel staat toe dat zo'n
+  # sectie tijdelijk alleen op main staat totdat de eerstvolgende release-PR hem terugbrengt —
+  # dat is dus geen fout, alleen iets om bewust van te zijn vóórdat je mergt.
+  #
+  # Alleen relevant voor de daadwerkelijke release-PR (head = develop) — een hotfix-PR naar
+  # main (head = hotfix/#N-...) vertakt zelf al vanaf main en heeft dit per ontwerp niet.
+  release-branch-divergence:
+    name: "Release-branchdivergentie main → develop (informatief)"
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.head.ref == 'develop'
+    steps:
+      - name: Checkout (volledige geschiedenis)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: "▶ CHANGELOG-versiekopjes: staat op main iets dat develop nog mist?"
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          MAIN_VERSIES=$(git show "${BASE_SHA}:CHANGELOG.md" | grep -oE '^## \[[^]]+\]' | sort -u)
+          DEV_VERSIES=$(git show "${HEAD_SHA}:CHANGELOG.md" | grep -oE '^## \[[^]]+\]' | sort -u)
+
+          # comm vereist gesorteerde bestanden, geen streams — vandaar de tussenbestanden i.p.v.
+          # process-substitution (blijft zo ook werken als de runner-shell ooit wijzigt).
+          printf '%s\n' "$MAIN_VERSIES" > /tmp/main-versies.txt
+          printf '%s\n' "$DEV_VERSIES" > /tmp/dev-versies.txt
+          ONTBREEKT=$(comm -23 /tmp/main-versies.txt /tmp/dev-versies.txt | sed '/^$/d')
+
+          if [ -z "$ONTBREEKT" ]; then
+            echo "✓ Geen CHANGELOG-versiekopje op main dat develop nog mist."
+            exit 0
+          fi
+
+          echo "::warning::main's CHANGELOG.md heeft versiekopje(s) die develop nog niet heeft — vermoedelijk een hotfix-release die nog niet is teruggebracht. Zie CLAUDE.md, sectie 'Een hotfix is pas af als hij ook terug in develop staat'. Kopjes: ${ONTBREEKT}"
+
+          {
+            echo "### ⚠️ Release-branchdivergentie: CHANGELOG-versiekopje ontbreekt in develop"
+            echo ""
+            echo "\`main\` heeft de volgende CHANGELOG-versiekopjes die niet in \`develop\`'s CHANGELOG.md staan. Dit blokkeert de merge NIET automatisch — meestal betekent dit dat er nog een backport-PR nodig is vóór (of als onderdeel van) deze release-PR, zoals #1369 dat deed voor de [3.5.0.1]-sectie."
+            echo ""
+            echo '```'
+            echo "$ONTBREEKT"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Release-diffoverzicht (#1371, retro v3.6.0.0, bevinding 3) ──────────
+  # PR #1368 (v3.6.0.0) meldde 399 gewijzigde bestanden / 172 commits — te groot voor GitHub's
+  # eigen diff-weergave (initieel zelfs 403 bestanden gerapporteerd, PR-diff niet volledig
+  # geladen). Een reviewer (mens of Codex) kan zo'n diff niet betrouwbaar handmatig doorlopen op
+  # onverwachte workflow-, IaC-, migratie- of configuratiewijzigingen — dat is zelf al een
+  # bevinding in een repo waar de Security Gate leidend is en persoonsgegevens verwerkt worden.
+  #
+  # Bewust GEEN drempel op bestands-/regelaantal voor de waarschuwing: bij deze branch-strategie
+  # (meerdere features samen naar één release-PR, zie CLAUDE.md "Sessie-isolatie —
+  # branch-strategie") is een grote release-PR de NORM, niet de uitzondering. Een aantalsdrempel
+  # zou dus bij vrijwel elke release afgaan — exact het "meldketen die altijd meldt, dus
+  # genegeerd wordt"-patroon dat release-branch-divergence hierboven al bewust vermeed en dat
+  # ook bij de Supabase-advisor-INFO-filtering is vastgelegd
+  # (docs/ARCHITECTUUR-DATABASE-TIERS.md §66-67). Het signaal hier is niet "hoe groot", maar
+  # "raakt dit een risicocategorie": workflow-bestanden, Azure-IaC, databasemigraties/-schema of
+  # configuratie(-templates). Alleen dán een `::warning::`.
+  #
+  # De aparte, niet-waarschuwende informatienotitie over GitHub's eigen renderlimiet gebruikt WEL
+  # een aantal, maar dat aantal is GitHub's eigen gedocumenteerde limiet, geen projectgok: max.
+  # 300 bestanden per diff en max. 20.000 laadbare regels óf 1 MB ruwe diffdata per PR-diff, zie
+  # https://docs.github.com/en/repositories/creating-and-managing-repositories/repository-limits
+  # (sectie "Pull request diffs", geraadpleegd bij implementatie van deze job). Dit bepaalt
+  # uitsluitend de tekst van die notitie, nooit de `::warning::` hierboven. Let op: de job telt
+  # zelf bestanden/regels via 'git diff --name-only'/'--numstat' zonder rename-detectie en zonder
+  # bytegrootte te meten — dat is dus een BENADERING van GitHub's eigen telling, geen exacte
+  # voorspelling (zie de toelichting direct bij de berekening verderop in dit bestand).
+  #
+  # Risicocategorieën (bewust gebaseerd op de daadwerkelijke repositorystructuur, niet op de
+  # oorspronkelijke issue-tekst alleen — zie PR-beschrijving voor de volledige inventarisatie):
+  #   - Workflows:        .github/workflows/*.yml|.yaml
+  #   - Azure-IaC:        infrastructure/**/*.bicep, infrastructure/**/*.json (parameterbestanden)
+  #                        — infrastructure/README.md telt bewust niet mee (documentatie, geen IaC)
+  #   - Migraties/schema: elk *.sql onder Database/ (alle schema's: dbo, avg, his, mta, planner,
+  #                        pub, stg, Schemas/, en de twee losse Script*.sql-bestanden) en onder
+  #                        Database.Postgres/migrations/. Database/SportlinkSqlDb.sqlproj en de
+  #                        C#-schemagenerators in Database.Postgres/*.cs tellen bewust niet mee:
+  #                        dat is projectconfiguratie resp. applicatiecode, al gedekt door
+  #                        build-check — geen rauw schema-/migratiebestand.
+  #   - Configuratie:      staticwebapp.config.json, elk *.template.json (bijv.
+  #                        local.settings.template.json, appsettings.Production.template.json) en
+  #                        host.json (Azure Functions-hostconfiguratie: timeouts, extensionBundle,
+  #                        logging — evenzeer productierelevant als de settings-templates).
+  #                        docker-compose*.yml en het niet-template
+  #                        BlazorAdmin/wwwroot/appsettings.json tellen bewust niet mee: beide zijn
+  #                        uitsluitend lokale ontwikkelconfiguratie (Docker-orkestratie resp. een
+  #                        hardcoded localhost-URL), niet wat er in productie draait.
+  #
+  # Bewust GEEN eigen secrets-scan hier: gitleaks + het patroonbestand
+  # (.githooks/sensitive-patterns.txt) draaien al in de pre-commit/pre-push-hooks én in de
+  # Security Gate-workflow, ongeacht PR-grootte. Een derde kopie van diezelfde controle zou
+  # precies de architectuurschending zijn die dit project elders al signaleert — dezelfde
+  # waarheid op meerdere plekken. De Security Gate blijft de ene bron van waarheid voor secrets.
+  # Deze job beoordeelt dus NOOIT bestandsinhoud — alleen welk pad is gewijzigd — en vervangt de
+  # Security Gate niet.
+  #
+  # Bewust GEEN apart gepubliceerd volledig-diff-artifact: 'git diff' tussen de twee sha's
+  # hieronder is voor iedereen met repo-toegang lokaal reproduceerbaar. Een extra artifact in
+  # een publieke repo voegt daar geen mogelijkheid aan toe, alleen een extra plek waar
+  # diff-inhoud (per ongeluk) terecht kan komen.
+  release-diff-overzicht:
+    name: "Release-diffoverzicht (informatief)"
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.head.ref == 'develop'
+    steps:
+      - name: Checkout (volledige geschiedenis)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: "▶ Categoriseer gewijzigde bestanden op risico"
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          STAT=$(git diff --shortstat "${BASE_SHA}" "${HEAD_SHA}")
+          ALLE_BESTANDEN=$(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")
+          AANTAL_BESTANDEN=$(printf '%s\n' "$ALLE_BESTANDEN" | sed '/^$/d' | wc -l | tr -d ' ')
+          AANTAL_REGELS=$(git diff --numstat "${BASE_SHA}" "${HEAD_SHA}" | awk '{if ($1 ~ /^[0-9]+$/) add+=$1; if ($2 ~ /^[0-9]+$/) del+=$2} END {print add+del+0}')
+
+          WORKFLOWS=$(printf '%s\n' "$ALLE_BESTANDEN" | grep -E '^\.github/workflows/.*\.ya?ml$' || true)
+          INFRASTRUCTUUR=$(printf '%s\n' "$ALLE_BESTANDEN" | grep -E '^infrastructure/.*\.(bicep|json)$' || true)
+          MIGRATIES=$(printf '%s\n' "$ALLE_BESTANDEN" | grep -E '^(Database\.Postgres/migrations/.*\.sql|Database/.*\.sql)$' || true)
+          CONFIGS=$(printf '%s\n' "$ALLE_BESTANDEN" | grep -E '(staticwebapp\.config\.json|template\.json|host\.json)$' || true)
+
+          {
+            echo "### 📦 Release-diffoverzicht"
+            echo ""
+            echo "Commitbereik: \`${BASE_SHA:0:7}..${HEAD_SHA:0:7}\`"
+            echo ""
+            echo "$STAT"
+            echo ""
+            echo "Totaal gewijzigde bestanden: **${AANTAL_BESTANDEN}**"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Referentiewaarden uit GitHub's eigen gedocumenteerde renderlimieten voor een
+          # PR-diff (niet de ::warning::-drempel hieronder, uitsluitend de tekst van deze
+          # notitie): https://docs.github.com/en/repositories/creating-and-managing-repositories/repository-limits
+          # noemt max. 300 bestanden per diff, en max. 20.000 laadbare regels ÓF 1 MB ruwe
+          # diffdata per PR.
+          #
+          # Deze job kan dat NIET exact voorspellen — twee bewust ongemeten verschillen met
+          # GitHub's eigen telling, empirisch bevestigd bij implementatie:
+          #  1. AANTAL_BESTANDEN komt uit 'git diff --name-only' zonder rename-detectie. Een
+          #     hernoemd bestand MET een inhoudswijziging (het gangbare geval bij een refactor)
+          #     telt hier als 2 paden (oud + nieuw), terwijl GitHub's eigen PR-weergave zoiets
+          #     doorgaans als 1 bestand met een "renamed"-badge toont. Een zuivere, inhouds-
+          #     identieke hernoeming telt wél gelijk (git comprimeert die al standaard tot 1
+          #     regel, ongeacht -M/--find-renames).
+          #  2. De byte-grootte van de ruwe diff (het "1 MB"-deel van GitHub's OF-limiet) wordt
+          #     hier helemaal niet gemeten — alleen bestands- en regelaantal. Een diff met weinig
+          #     bestanden/regels maar met enkele zeer lange regels (bijv. geminificeerde JSON) kan
+          #     dus GitHub's limiet raken zonder dat deze notitie afgaat.
+          # Deze notitie presenteert de aantallen daarom uitdrukkelijk als signaal, niet als
+          # voorspelling van wat GitHub's PR-weergave daadwerkelijk zal doen.
+          GITHUB_BESTANDSLIMIET=300
+          GITHUB_REGELLIMIET=20000
+          if [ "$AANTAL_BESTANDEN" -gt "$GITHUB_BESTANDSLIMIET" ] || [ "$AANTAL_REGELS" -gt "$GITHUB_REGELLIMIET" ]; then
+            {
+              echo "> ℹ️ Signaal, geen voorspelling: deze job telt **${AANTAL_BESTANDEN} bestanden** en"
+              echo "> **circa ${AANTAL_REGELS} gewijzigde regels** — beide boven de referentiewaarden uit"
+              echo "> GitHub's eigen gedocumenteerde renderlimiet voor een PR-diff (max. ${GITHUB_BESTANDSLIMIET} bestanden,"
+              echo "> max. ${GITHUB_REGELLIMIET} regels of 1 MB ruwe diffdata — zie"
+              echo "> [repository limits](https://docs.github.com/en/repositories/creating-and-managing-repositories/repository-limits))."
+              echo "> Deze telling kan afwijken van hoe GitHub zelf telt (o.a. hernoemde+gewijzigde"
+              echo "> bestanden tellen hier dubbel; ruwe diffgrootte in bytes wordt niet gemeten) —"
+              echo "> GitHub's eigen PR-weergave kan dus eerder of later inkorten dan hier aangegeven."
+              echo "> Reproduceer lokaal met: \`git diff --stat ${BASE_SHA} ${HEAD_SHA}\`"
+              echo ""
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          risico_gevonden=0
+
+          rapporteer_categorie() {
+            local titel="$1"
+            local lijst="$2"
+            if [ -n "$lijst" ]; then
+              risico_gevonden=1
+              {
+                echo "#### ⚠️ ${titel}"
+                echo ""
+                echo '```'
+                echo "$lijst"
+                echo '```'
+                echo ""
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
+          }
+
+          rapporteer_categorie "Workflow-bestanden gewijzigd" "$WORKFLOWS"
+          rapporteer_categorie "Azure-infrastructuur (IaC) gewijzigd" "$INFRASTRUCTUUR"
+          rapporteer_categorie "Databasemigraties/schema gewijzigd" "$MIGRATIES"
+          rapporteer_categorie "Configuratie gewijzigd" "$CONFIGS"
+
+          if [ "$risico_gevonden" -eq 1 ]; then
+            echo "::warning::Deze release-PR wijzigt minstens één risicocategorie (workflow-bestand, Azure-infrastructuur, databasemigratie/-schema of configuratie). Dit is een padgebaseerd signaal voor menselijke review — de bestandsinhoud is niet beoordeeld en dit vervangt de Security Gate niet. Controleer het job summary voor de volledige lijst vóór je mergt."
+          else
+            echo "✓ Geen workflow-, IaC-, migratie- of configuratiewijziging in deze release-PR."
+            echo "✓ Geen workflow-, IaC-, migratie- of configuratiewijziging in deze release-PR." >> "$GITHUB_STEP_SUMMARY"
+          fi

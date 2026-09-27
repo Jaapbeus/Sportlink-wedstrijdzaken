@@ -87,4 +87,23 @@ internal sealed class PostgresSportlinkMutationAuditService : ISportlinkMutation
             throw;
         }
     }
+
+    public async Task<bool> ZetNotitieAsync(long auditId, string clubCode, string notitie, CancellationToken cancellationToken = default)
+    {
+        await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = @"
+            UPDATE public.sportlinkmutationaudit
+            SET notitie = @notitie
+            WHERE id = @id AND clubcode = @clubcode";
+
+        command.Parameters.AddWithValue("@id", auditId);
+        command.Parameters.AddWithValue("@clubcode", clubCode ?? "");
+        command.Parameters.AddWithValue("@notitie", notitie ?? "");
+
+        var affected = await command.ExecuteNonQueryAsync(cancellationToken);
+        return affected > 0;
+    }
 }

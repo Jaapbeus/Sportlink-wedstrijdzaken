@@ -110,7 +110,7 @@ jobs:
             // ONGEWIJZIGDE PR-titel/body. listPullRequestsAssociatedWithCommit koppelt elke commit
             // in de release-range terug aan zijn PR; extractIssueRefs(...).strong past dezelfde
             // 'titel of sluitend keyword'-regel toe als label-awaiting-release.yml.
-            const { extractIssueRefs } =
+            const { extractIssueRefs, API_VERSION_HEADERS } =
               require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/issue-status.js`);
 
             const range = process.env.COMMIT_RANGE;
@@ -139,6 +139,7 @@ jobs:
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   commit_sha: sha,
+                  headers: API_VERSION_HEADERS,
                 })).data;
               } catch (e) {
                 core.warning(`${sha}: kon geassocieerde PR's niet ophalen (${e.message}) — overgeslagen`);
@@ -186,12 +187,19 @@ jobs:
             // Een gesloten, uitgerold issue hoort geen lifecycle-status meer te hebben; bleef
             // er een 'in-progress' of 'review-needed' op staan, dan zou dat na de release nog
             // suggereren dat er werk loopt (#690).
-            const { clearIssueStatus, isEpic } =
+            const { clearIssueStatus, isEpic, API_VERSION_HEADERS } =
               require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/issue-status.js`);
 
             const tag = process.env.RELEASE_TAG;
             const numbers = process.env.ISSUE_NUMBERS.split(',').map(n => parseInt(n, 10)).filter(Boolean);
             const afgehandeld = [];
+            // #1370 (retro v3.6.0.0, bevinding 4): een overgeslagen epic werd tot nu toe alleen
+            // als core.notice gelogd — onzichtbaar tenzij iemand de ruwe run-log doorzoekt. Na
+            // v3.6.0.0 moesten #1249 en #1338 daardoor handmatig gesloten worden, zonder dat de
+            // run zelf liet zien of er nog open sub-issues onder hingen. Deze lijst voedt de
+            // stapsamenvatting hieronder met precies dat: welke epics zijn overgeslagen (verwacht
+            // gedrag, geen storing) en wat daarvan nog open staat.
+            const overgeslagenEpics = [];
 
             for (const number of numbers) {
               let issue;
@@ -200,6 +208,7 @@ jobs:
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: number,
+                  headers: API_VERSION_HEADERS,
                 })).data;
               } catch (e) {
                 core.warning(`#${number}: kon issue niet ophalen (${e.message}) — overgeslagen`);
@@ -220,6 +229,32 @@ jobs:
               // issues onterecht werden gesloten en met de hand heropend moesten worden.
               if (isEpic(issue)) {
                 core.notice(`#${number}: epic — overgeslagen (geen release-eenheid)`);
+
+                // GitHub's native sub-issues-koppeling (niet elke epic gebruikt hem — #1338 had
+                // er geen enkele, zie #1370). Een lege lijst is dus geen fout, alleen een epic
+                // zonder GitHub-subissues; scope buiten GitHub blijft met deze aanroep per
+                // definitie onzichtbaar.
+                let subIssues = [];
+                try {
+                  subIssues = (await github.request(
+                    'GET /repos/{owner}/{repo}/issues/{issue_number}/sub_issues',
+                    {
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: number,
+                      headers: API_VERSION_HEADERS,
+                    }
+                  )).data;
+                } catch (e) {
+                  core.notice(`#${number}: sub-issues niet op te halen (${e.message}) — epic wordt zonder subissue-detail gerapporteerd`);
+                }
+
+                overgeslagenEpics.push({
+                  number,
+                  title: issue.title,
+                  openSubIssues: subIssues.filter(s => s.state === 'open'),
+                  totalSubIssues: subIssues.length,
+                });
                 continue;
               }
 
@@ -244,12 +279,35 @@ jobs:
                   issue_number: number,
                   state: 'closed',
                   state_reason: 'completed',
+                  headers: API_VERSION_HEADERS,
                 });
                 core.notice(`#${number}: gesloten (${tag})`);
               }
             }
 
             core.setOutput('handled', afgehandeld.join(','));
+            core.setOutput('epics', JSON.stringify(overgeslagenEpics));
+
+            if (overgeslagenEpics.length > 0) {
+              const regels = overgeslagenEpics.map(e => {
+                const status = e.totalSubIssues === 0
+                  ? '_geen GitHub-subissues gekoppeld_'
+                  : `${e.openSubIssues.length}/${e.totalSubIssues} sub-issue(s) nog open` +
+                    (e.openSubIssues.length > 0
+                      ? `: ${e.openSubIssues.map(s => `#${s.number}`).join(', ')}`
+                      : '');
+                return `#${e.number} — ${e.title} (${status})`;
+              });
+              core.notice(
+                `${overgeslagenEpics.length} epic(s) overgeslagen (verwacht gedrag, geen release-eenheid) — ` +
+                `bevestig de resterende scope voordat je ze handmatig sluit:\n${regels.join('\n')}`
+              );
+              await core.summary
+                .addHeading(`Overgeslagen epics bij ${tag}`, 3)
+                .addRaw('Verwacht overgeslagen (geen release-eenheid) — sluit pas na eigenaarsbevestiging van de resterende scope:')
+                .addList(regels)
+                .write();
+            }
 
       # Vangnet (#630): meld wat na deze run nog op 'awaiting-release' staat. Zonder dit rapport
       # blijft een gemist issue stil openstaan met een label dat suggereert dat het nog wacht —
@@ -267,6 +325,9 @@ jobs:
           AFGEHANDELD: ${{ steps.close.outputs.handled }}
         with:
           script: |
+            const { API_VERSION_HEADERS } =
+              require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/issue-status.js`);
+
             const label = 'status: awaiting-release';
             const { data: remaining } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
@@ -274,6 +335,7 @@ jobs:
               labels: label,
               state: 'open',
               per_page: 100,
+              headers: API_VERSION_HEADERS,
             });
 
             // De label-index van GitHub loopt achter op de sluitingen uit de vorige stap: bij de

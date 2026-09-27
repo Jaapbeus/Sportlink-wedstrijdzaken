@@ -65,7 +65,7 @@ JSON-API die hun eigen React-SPA gebruikt. Staat daarom standaard **UIT** per cl
   blijft daarna zelfstandig geldig.
 - Alles wat de extension straks doet, doet zij op naam van dat aparte account — niet op jouw eigen
   naam — dus in Sportlink's eigen logs zie je dat terug als bijvoorbeeld "webapp-wedstrijdzaken".
-- Wat vandaag al werkt: bij elke wedstrijd in Dagplanning staat een knop "Open in Sportlink" die de
+- Wat vandaag al werkt: bij elke wedstrijd op Planning en Veld optimalisatie (#1361) staat een knop "Open in Sportlink" die de
   juiste wedstrijd direct in Sportlink Club opent (nieuw tabblad) — scheelt het zoeken in het trage
   overzichtsscherm. Je klikt daar zelf nog op opslaan; deze knop wijzigt zelf niets (#989).
 
@@ -170,6 +170,17 @@ gaten, bovenop de bestaande admin-toegang. Zie
 [`docs/ENTRA-AUTH-BEHEER.md`](ENTRA-AUTH-BEHEER.md) voor het volledige rolbeheer-protocol en de
 verplichte N-user-test.
 
+**Herziening (#1376):** een `admin`-toewijzing is sinds #1376 op zichzelf voldoende voor
+Sportlink-mutatie-endpoints — een aparte `Wedstrijdzaken`-toewijzing is voor een volledige
+beheerder niet meer nodig. Dit draait een eerder, expliciet besluit terug (zie
+`memory/wedstrijdzaken-rol-vereist-altijd-ook-admin.md` in het projectgeheugen): tot #1376 golden
+`admin` en `Wedstrijdzaken` bewust als losse, AND-gecombineerde Entra-toewijzingen, met als
+motivering ruimte te houden voor een toekomstige, beperktere rol (bijv. een "sectiehoofd" dat wél
+admin is maar géén Sportlink-mutaties mag triggeren — zie
+`docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md` §6). De rol `Wedstrijdzaken` blijft wél bestaan en
+nodig voor het andere geval: een gebruiker met **alleen** `user` + `Wedstrijdzaken` (geen `admin`)
+krijgt nog steeds toegang tot dezelfde mutatie-endpoints — dat gedrag is ongewijzigd.
+
 **Belangrijk om te weten:** vandaag komt `Wedstrijdzaken` in de praktijk altijd sámen met `admin`
 voor — er bestaat (nog) geen gebruiker met uitsluitend `Wedstrijdzaken`. De per-actie-toggles in
 §3.5 hieronder hebben daardoor vandaag geen zichtbaar effect (elke Wedstrijdzaken-gebruiker is óók
@@ -250,7 +261,8 @@ toewijzen, en het veld mag wijzigen. Drie dingen om te onthouden:
 >   De drie `*Function.cs`-bestanden die de rest van de bij #1271 gemeten duplicatie vormen
 >   (`SportlinkMatchFunction.cs`, `SportlinkClubMatchFunction.cs`,
 >   `SportlinkChangeRequestFunction.cs`) zijn nog niet naar deze vorm geport.
-> - `BlazorAdmin/Shared/SportlinkMatchPanel.razor(.cs)` — het paneel per wedstrijd in Dagplanning;
+> - `BlazorAdmin/Shared/SportlinkMatchPanel.razor(.cs)` — het paneel per wedstrijd op Planning en
+>   Veld optimalisatie (#1361; vóór die splitsing Dagplanning);
 >   `BlazorAdmin/Models/SportlinkActieStatus.cs` — status van één actie plus de ene vertaling van
 >   mutatieresultaat naar melding (`Verwerk`); `BlazorAdmin/Shared/Melding.razor` toont hem. De
 >   vier extensie-pagina's hebben een code-behind en geen `@code`.
@@ -292,10 +304,15 @@ toewijzen, en het veld mag wijzigen. Drie dingen om te onthouden:
   NIET hard afgedwongen (bijv. op `SCHEDULED`) — die waarde wordt sinds #998 wel uitgebreid
   meegelogd in de audit (zie hieronder), zodat er eerst een seizoen aan echte data verzameld wordt
   vóórdat die eventueel een harde blokkade wordt.
-> **Autorisatie: beide rollen, op beide tiers (#1272).** Elk Sportlink-endpoint eist zowel `admin`
-> als `Wedstrijdzaken`, via één gedeelde vorm: `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`
-> doet eerst `RequireWedstrijdzaken` en daarna `AdminEndpoint.ExecuteAsync` (met `RequireAdmin`).
-> Beide tiers gebruiken dezelfde wrapper.
+> **Autorisatie: `Wedstrijdzaken` óf `admin`, plus `admin`/`user` voor de GUI-laag, op beide tiers
+> (#1272, herzien bij #1376).** Elk Sportlink-endpoint loopt via één gedeelde vorm:
+> `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync` doet eerst `RequireWedstrijdzaken` en
+> daarna `AdminEndpoint.ExecuteAsync` (met zijn eigen `RequireRole(req, "admin", "user")`). Beide
+> tiers gebruiken dezelfde wrapper. Sinds #1376 is `RequireWedstrijdzaken` zelf een OR:
+> `RequireRole(req, "Wedstrijdzaken", "admin")` — de facto resulterende toegang:
+> - `admin` (met of zonder aparte `Wedstrijdzaken`-toewijzing) → toegestaan.
+> - `user` + `Wedstrijdzaken` (geen `admin`) → toegestaan, ongewijzigd sinds #988/#991.
+> - alléén `user`, of geen van beide rollen → geweigerd, ongewijzigd.
 >
 > Tot #1272 gaf de Postgres-tier `requireRole:` mee aan `AdminEndpoint.ExecuteAsync`, waar het de
 > admin-controle *verving*. Dat sprak §3.4 hierboven tegen ("bovenop de bestaande admin-toegang")
@@ -829,6 +846,30 @@ zijn (zie §5). Ontgrendelen (de constante op `true` zetten) mag uitsluitend na 
 issue #995 — een handmatige proef door de wedstrijdsecretaris met netwerk-meekijken — en nooit door
 een agent (§4.4). Zelfs dan bouwt deze constante alleen stap 1 vrij: stap 2 (bevestigen) bestaat
 nog steeds niet in de code en vereist een aparte, toekomstige beslissing.
+
+**#1320 (eigenaar-gestuurde productieproef met trace van validatie en bevestiging)** bouwde de
+diagnostiek-UI rond diezelfde, ongewijzigde code-lock — de lock zelf is met dit issue niet
+aangeraakt, alleen wat de eigenaar ervoor en erna ziet:
+- Vóór de aanroep toont het scherm een expliciete waarschuwing met een aparte, tweede
+  bevestigknop ("Ja, verstuur de validatie-PUT naar Sportlink") — de eerste knop start dus nog
+  niets, hij toont alleen de waarschuwing.
+- Na de aanroep toont het scherm een leesbare trace: tijdstip (UTC, serverzijdig), HTTP-methode/
+  endpoint/status, en de vier toplevel-booleans (`IsSuccess`, `IsMatchChangeRequestMandatory`,
+  `IsOwnFacility`, `IsForceUpdate`) plus `ConfirmationNeeded`/`HasBlockingMessages` — stuk voor stuk
+  al gedistilleerde, PII-vrije velden uit `SportlinkMatchChangeValidatie`. Nooit de ruwe request-/
+  responsebody: die kan tokens of overige velden bevatten die niet bedoeld zijn voor een scherm.
+- De eigenaar kan een korte testnotitie vastleggen bij die specifieke poging
+  (`PUT /api/sportlink/audit/{id}/notitie`, zie `docs/API.md`) — gekoppeld aan het audit-record-ID
+  van diezelfde aanroep, scoped op `ClubCode` zodat een audit-rij van een andere club nooit
+  gewijzigd kan worden. Nieuwe kolom `SportlinkMutationAudit.Notitie`/`sportlinkmutationaudit.notitie`
+  (migratie 028 op de Postgres-tier, idempotente `ALTER TABLE` in `Script.PostDeployment1.sql` op de
+  SQL Server-tier).
+- Stap 2 (bevestigen) is met #1320 bewust **niet** gebouwd — dezelfde reden als hierboven: de
+  werkelijke bevestigingsvorm voor een verplicht wijzigingsverzoek is nooit met een netwerktrace
+  vastgesteld, en #1320 mag dat contract niet verzinnen. De eerste échte productietrace (na
+  Aanpak-stap 1 van #995 én het omzetten van de constante door de eigenaar zelf) moet dat gat
+  vullen — zie issue #1319 voor de drie code-locks die de eigenaar zelf, in een eigen PR, moet
+  omzetten.
 
 ## 7. Bronnen
 - [`docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md`](ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md) — volledig technisch bronrapport

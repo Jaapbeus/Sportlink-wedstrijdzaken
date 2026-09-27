@@ -18,6 +18,36 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.7.0.0] — 2026-09-27
+
+### Changed
+- **Dagplanning gesplitst in twee schermen: Planning en Veld optimalisatie (#1361).** Planning
+  toont wat er nu al in Sportlink gepland staat (datum + veldbezetting); Veld optimalisatie bevat
+  de optimalisatieknop, de vergelijking Huidig/Optimaal (Huidig staat nu als eerste tab en is
+  standaard actief, was Optimaal) en het delen van de planning. Beheerders kunnen wedstrijden nu
+  op **beide** schermen wijzigen, tonen en openen in Sportlink — de Sportlink-kolom stond eerder
+  alleen op de vergelijkingstabel.
+- **Een beheerder (rol `admin`) kan nu Sportlink-mutatie-acties uitvoeren zonder een aparte rol
+  "Wedstrijdzaken" toegewezen te krijgen (#1376).** Voorheen moest een volledige beheerder ook nog
+  expliciet de rol Wedstrijdzaken krijgen om bijvoorbeeld "Open in Sportlink" te kunnen gebruiken —
+  dat gaf onterecht een `403 Forbidden`. De rol Wedstrijdzaken blijft bestaan voor een gebruiker
+  zonder volledige beheerdersrechten.
+
+### Added
+- **Diagnostiekpaneel bij het wijzigingsverzoek datum/tijd/accommodatie, voor de eigenaar-gestuurde
+  productieproef (#1320).** Vóór het versturen van de validatiestap naar Sportlink toont het scherm
+  nu een expliciete waarschuwing met een aparte bevestigknop — deze stap kan in werkelijkheid al een
+  echte melding aan de tegenstander veroorzaken. Na de aanroep verschijnt een leesbare trace
+  (tijdstip, HTTP-methode/endpoint/status, en de belangrijkste responsvelden) en kan een testnotitie
+  worden vastgelegd bij die specifieke poging. Stap 2 (bevestigen) blijft bewust niet gebouwd: de
+  werkelijke bevestigingsvorm is nooit met een netwerktrace vastgesteld.
+
+### Fixed
+- **Favicon/logo/kleuren ophalen op het Thema-scherm faalde met "URL-domein is niet toegestaan"
+  zodra de club-website nog niet eerder was opgeslagen (#1373).** De knop **Ophalen** sloeg de
+  zojuist ingevulde Club-website URL niet automatisch op, terwijl de beveiligde extractie alleen
+  een al opgeslagen adres accepteert. **Ophalen** slaat de URL nu eerst zelf op.
+
 ## [3.6.0.0] — 2026-09-26
 
 ### Security

@@ -16,6 +16,23 @@ on:
     branches: [develop]
   workflow_dispatch:
 
+# #1370 (retro v3.6.0.0, bevinding 2) — GEPROBEERD EN BEWUST TERUGGEDRAAID.
+# Een eerdere versie van deze workflow voegde hier een `concurrency: group:
+# ${{ github.workflow }}-${{ ...head.sha || github.sha }}, cancel-in-progress: true` toe, om de
+# dubbele run (push + pull_request op dezelfde commit, gemeten bij v3.6.0.0 op f944eb8) te
+# annuleren. Dat bleek op PR #1372 zelf een REPRODUCEERBARE merge-blokkerende regressie: GitHub
+# toont bij twee check-runs met dezelfde naam op dezelfde SHA niet "de laatste telt", maar neemt
+# de ROLLUP-status van ALLEBEI (`statusCheckRollup.state` = FAILURE zodra één van de twee
+# 'FAILURE' is, ook als de andere 'SUCCESS' is en later voltooide) — geverifieerd via
+# `gh api graphql` op de contexts van PR #1372's head-commit: twee 'Security Gate'-check-runs,
+# één FAILURE (de geannuleerde, oudere run) en één SUCCESS, met `mergeStateStatus: BLOCKED`.
+# Een job die halverwege wordt geannuleerd kan dus een PERMANENTE FAILURE achterlaten op een
+# vereiste check, ook al voltooit de nieuwere run daarna succesvol. Dit is precies het risico
+# dat CLAUDE.md's regel "Security Gate is leidend, nooit omzeilen" beoogt te voorkomen — een
+# CI-dedupfix mag dat zelf niet ondermijnen. Bevinding 2 blijft dus openstaan; zie de reactie op
+# #1370 voor de analyse en een alternatieve aanpak (bijv. de twee events niet dedupliceren maar
+# ontkoppelen — één workflow triggert alleen op 'pull_request', de andere blijft 'push').
+
 permissions:
   contents: read
 

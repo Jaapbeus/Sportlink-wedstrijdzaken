@@ -716,7 +716,7 @@ Deze regels gelden altijd, zonder uitzondering:
    # Stap C — verplichte per-job controle: elk job moet 'success' of 'skipped' zijn
    gh run view <run-id> --json jobs --jq '.jobs[] | {name: .name, conclusion: .conclusion}'
    ```
-   **Stap C is verplicht**, ook als Stap B exit 0 geeft. `gh run watch` kan in de achtergrond exit 0 teruggeven terwijl individuele jobs (bijv. `blazor-deploy`) later falen. Pas als ALLE jobs `"conclusion": "success"` of `"conclusion": "skipped"` tonen is de deploy succesvol. Als één job `"conclusion": "failure"` toont: direct proberen te fixen (bijv. `gh run rerun <run-id> --failed` bij transient fouten). Lukt fix niet: onmiddellijk melden aan gebruiker. Nooit melden dat een PR succesvol is afgerond zonder Stap C te hebben uitgevoerd.
+   **Stap C is verplicht**, ook als Stap B exit 0 geeft. `gh run watch` kan in de achtergrond exit 0 teruggeven terwijl individuele jobs (bijv. `blazor-deploy`) later falen. Pas als ALLE jobs `"conclusion": "success"` of `"conclusion": "skipped"` tonen is de deploy succesvol — **met één precisering (#1370, retro v3.6.0.0, bevinding 6): `"skipped"` is alleen onschuldig voor de job van de NIET-actieve databasetier** (`db-check`/`db-migrate` bij `DatabaseTier=Postgres`, of `db-migrate-postgres` bij `DatabaseTier=SqlServer`). Staat de migratiejob van de actieve tier zelf op `"skipped"`, dan is dat geen onschuldige tier-gating maar een gemiste migratie — behandel dat als een `"failure"`. De job `deployment-summary` (laatste job in `deploy.yml`) maakt dit onderscheid al automatisch in het run-summary en faalt zelf hard bij precies dat geval, maar vervangt Stap C niet: hij draait ná `deploy` en kan een slechte deploy dus niet meer tegenhouden, alleen zichtbaar maken. Als één job `"conclusion": "failure"` toont: direct proberen te fixen (bijv. `gh run rerun <run-id> --failed` bij transient fouten). Lukt fix niet: onmiddellijk melden aan gebruiker. Nooit melden dat een PR succesvol is afgerond zonder Stap C te hebben uitgevoerd.
 
 2a. **Na elke productie-deploy: browser-rendercheck op de LIVE Admin GUI — verplicht (#659).**
 
@@ -1512,7 +1512,7 @@ De API-standaarden staan in `docs/api-standaarden/`:
 
 **Nooit een endpoint-wijziging committen zonder de spec bij te werken.** De spec is de contractdefinitie voor andere systemen, consumers en toekomstige Codex-sessies. Een verouderde spec misleidt — dat is erger dan geen spec.
 
-**Stand van de spec (bijgewerkt 2026-09-16):** `openapi.yaml`/`.json` dekken 74 routes; `info.version` volgt de app-versie. Regenereer `openapi.json` altijd uit de YAML (nooit beide handmatig bijwerken):
+**Stand van de spec (bijgewerkt 2026-09-27):** `openapi.yaml`/`.json` dekken 77 routes; `info.version` volgt de app-versie. Regenereer `openapi.json` altijd uit de YAML (nooit beide handmatig bijwerken):
 ```powershell
 python -c "import yaml,json,io; s=yaml.safe_load(io.open('docs/api-standaarden/openapi.yaml',encoding='utf-8')); json.dump(s, io.open('docs/api-standaarden/openapi.json','w',encoding='utf-8'), indent=2, ensure_ascii=False)"
 ```
