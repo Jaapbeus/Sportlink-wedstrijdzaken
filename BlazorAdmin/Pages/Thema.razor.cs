@@ -129,21 +129,6 @@ public partial class Thema : ClubSelectorPageBase
         await ToepassenAsync();
     }
 
-    private async Task PresetToepassen(ChangeEventArgs e)
-    {
-        var naam = e.Value?.ToString();
-        if (string.IsNullOrWhiteSpace(naam)) return;
-
-        var preset = ThemePresets.Alle.FirstOrDefault(p => p.Naam == naam);
-        if (preset == null) return;
-
-        var bron = _modus == "dark" ? preset.Donker : preset.Licht;
-        var doel = ActiefPalet;
-        foreach (var (sleutel, waarde) in bron) doel[sleutel] = waarde;
-
-        await ToepassenAsync();
-    }
-
     /// <summary>Past beide paletten toe op de live interface, zonder op te slaan.</summary>
     private async Task ToepassenAsync()
     {

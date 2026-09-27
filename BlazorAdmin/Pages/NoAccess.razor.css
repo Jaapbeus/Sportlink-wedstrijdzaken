@@ -4,7 +4,7 @@
 
 .no-access-titel {
     margin: 0 0 .5rem;
-    color: #b32121;
+    color: var(--theme-danger);
 }
 
 .no-access-tekst {
