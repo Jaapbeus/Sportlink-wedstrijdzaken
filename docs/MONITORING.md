@@ -594,7 +594,7 @@ verschillende momenten; alleen samen dekken ze de keten.
 |---|---|---|
 | `build.yml` — *Build (PR)* | PR naar `main`/`develop`, push naar `develop` | Build van alle projecten, unit tests, de codekwaliteits- en tier-pariteitsguards, en op een **verse** Postgres-container de databaseguards uit #1220: `scripts/ci/check-rls-enabled.sh` (RLS aan op elke tabel) en `scripts/ci/check-splinter-lints.sh` (Supabase' eigen linter) |
 | `deploy.yml` — *Deploy naar Azure* | Push naar `main` | `db-check`, de migratiejobs, de deploy zelf en de smoke tests (401 op admin-endpoints, `settingsLoaded`, `pendingMigrations`) |
-| `pre-release-check.yml` — *Pre-release check (develop → main)* | PR naar `main` | Build moet slagen vóór een release-PR gemerged kan worden; bij een release-PR (`head = develop`) ook een informatieve CHANGELOG-versiekopjescontrole (main vs. develop, #1370) — waarschuwt, blokkeert niet |
+| `pre-release-check.yml` — *Pre-release check (develop → main)* | PR naar `main` | Build moet slagen vóór een release-PR gemerged kan worden; bij een release-PR (`head = develop`) ook een informatieve CHANGELOG-versiekopjescontrole (main vs. develop, #1370) en een categorisch release-diffoverzicht (workflow-/migratie-/configuratiewijzigingen, #1371) — beide waarschuwen, blokkeren niet |
 | `pre-release-db-check.yml` — *Pre-release database check* | `workflow_run` na de vorige | Wekt/controleert de database met credentials, bewust via `workflow_run` + `ref: main` zodat PR-inhoud geen productiecredentials kan misbruiken (#1009) |
 | `supabase-advisors.yml` — *Supabase-advisors* | Dagelijks 05:00 UTC | Security- en Performance Advisor van de productiedatabase — zie [de sectie hierboven](#dagelijkse-supabase-advisorcontrole-1221-epic-1219) |
 

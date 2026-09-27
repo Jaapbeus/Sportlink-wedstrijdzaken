@@ -109,3 +109,103 @@ jobs:
             echo "$ONTBREEKT"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Release-diffoverzicht (#1371, retro v3.6.0.0, bevinding 3) ──────────
+  # PR #1368 (v3.6.0.0) meldde 399 gewijzigde bestanden / 172 commits — te groot voor GitHub's
+  # eigen diff-weergave (initieel zelfs 403 bestanden gerapporteerd, PR-diff niet volledig
+  # geladen). Een reviewer (mens of Codex) kan zo'n diff niet betrouwbaar handmatig doorlopen op
+  # onverwachte workflow-, migratie- of configuratiewijzigingen — dat is zelf al een bevinding
+  # in een repo waar de Security Gate leidend is en persoonsgegevens verwerkt worden.
+  #
+  # Bewust GEEN drempel op bestands-/regelaantal: bij deze branch-strategie (meerdere features
+  # samen naar één release-PR, zie CLAUDE.md "Sessie-isolatie — branch-strategie") is een grote
+  # release-PR de NORM, niet de uitzondering. Een aantalsdrempel zou dus bij vrijwel elke
+  # release afgaan — exact het "meldketen die altijd meldt, dus genegeerd wordt"-patroon dat
+  # release-branch-divergence hierboven al bewust vermeed en dat ook bij de
+  # Supabase-advisor-INFO-filtering is vastgelegd (docs/ARCHITECTUUR-DATABASE-TIERS.md §66-67).
+  # Het signaal hier is niet "hoe groot", maar "raakt dit een risicocategorie": workflow-
+  # bestanden, databasemigraties/-schema of configuratie-templates. Alleen dán een waarschuwing.
+  #
+  # Bewust GEEN eigen secrets-scan hier: gitleaks + het patroonbestand
+  # (.githooks/sensitive-patterns.txt) draaien al in de pre-commit/pre-push-hooks én in de
+  # Security Gate-workflow, ongeacht PR-grootte. Een derde kopie van diezelfde controle zou
+  # precies de architectuurschending zijn die dit project elders al signaleert — dezelfde
+  # waarheid op meerdere plekken. De Security Gate blijft de ene bron van waarheid voor secrets.
+  #
+  # Bewust GEEN apart gepubliceerd volledig-diff-artifact: 'git diff' tussen de twee sha's
+  # hieronder is voor iedereen met repo-toegang lokaal reproduceerbaar. Een extra artifact in
+  # een publieke repo voegt daar geen mogelijkheid aan toe, alleen een extra plek waar
+  # diff-inhoud (per ongeluk) terecht kan komen.
+  release-diff-overzicht:
+    name: "Release-diffoverzicht (informatief)"
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.head.ref == 'develop'
+    steps:
+      - name: Checkout (volledige geschiedenis)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: "▶ Categoriseer gewijzigde bestanden op risico"
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          STAT=$(git diff --shortstat "${BASE_SHA}" "${HEAD_SHA}")
+          ALLE_BESTANDEN=$(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")
+          AANTAL_BESTANDEN=$(printf '%s\n' "$ALLE_BESTANDEN" | sed '/^$/d' | wc -l | tr -d ' ')
+
+          WORKFLOWS=$(printf '%s\n' "$ALLE_BESTANDEN" | grep -E '^\.github/workflows/.*\.ya?ml$' || true)
+          MIGRATIES=$(printf '%s\n' "$ALLE_BESTANDEN" | grep -E '^(Database\.Postgres/migrations/.*\.sql|Database/dbo/.*|Database/Script\.PostDeployment.*\.sql)$' || true)
+          CONFIGS=$(printf '%s\n' "$ALLE_BESTANDEN" | grep -E '(^staticwebapp\.config\.json$|template\.json$)' || true)
+
+          {
+            echo "### 📦 Release-diffoverzicht"
+            echo ""
+            echo "Commitbereik: \`${BASE_SHA:0:7}..${HEAD_SHA:0:7}\`"
+            echo ""
+            echo "$STAT"
+            echo ""
+            echo "Totaal gewijzigde bestanden: **${AANTAL_BESTANDEN}**"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$AANTAL_BESTANDEN" -gt 100 ]; then
+            {
+              echo "> ℹ️ Deze diff is groot genoeg dat GitHub's eigen PR-weergave hem mogelijk niet"
+              echo "> volledig laadt. Reproduceer lokaal met:"
+              echo "> \`git diff --stat ${BASE_SHA} ${HEAD_SHA}\`"
+              echo ""
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          risico_gevonden=0
+
+          rapporteer_categorie() {
+            local titel="$1"
+            local lijst="$2"
+            if [ -n "$lijst" ]; then
+              risico_gevonden=1
+              {
+                echo "#### ⚠️ ${titel}"
+                echo ""
+                echo '```'
+                echo "$lijst"
+                echo '```'
+                echo ""
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
+          }
+
+          rapporteer_categorie "Workflow-bestanden gewijzigd" "$WORKFLOWS"
+          rapporteer_categorie "Databasemigraties/schema gewijzigd" "$MIGRATIES"
+          rapporteer_categorie "Configuratie-templates gewijzigd" "$CONFIGS"
+
+          if [ "$risico_gevonden" -eq 1 ]; then
+            echo "::warning::Deze release-PR wijzigt minstens één risicocategorie (workflow-bestand, databasemigratie/-schema of configuratie-template). Controleer het job summary voor de volledige lijst vóór je mergt."
+          else
+            echo "✓ Geen workflow-, migratie- of configuratie-templatewijziging in deze release-PR."
+            echo "✓ Geen workflow-, migratie- of configuratie-templatewijziging in deze release-PR." >> "$GITHUB_STEP_SUMMARY"
+          fi
