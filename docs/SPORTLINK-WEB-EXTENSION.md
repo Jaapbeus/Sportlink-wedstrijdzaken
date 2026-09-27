@@ -170,6 +170,17 @@ gaten, bovenop de bestaande admin-toegang. Zie
 [`docs/ENTRA-AUTH-BEHEER.md`](ENTRA-AUTH-BEHEER.md) voor het volledige rolbeheer-protocol en de
 verplichte N-user-test.
 
+**Herziening (#1376):** een `admin`-toewijzing is sinds #1376 op zichzelf voldoende voor
+Sportlink-mutatie-endpoints — een aparte `Wedstrijdzaken`-toewijzing is voor een volledige
+beheerder niet meer nodig. Dit draait een eerder, expliciet besluit terug (zie
+`memory/wedstrijdzaken-rol-vereist-altijd-ook-admin.md` in het projectgeheugen): tot #1376 golden
+`admin` en `Wedstrijdzaken` bewust als losse, AND-gecombineerde Entra-toewijzingen, met als
+motivering ruimte te houden voor een toekomstige, beperktere rol (bijv. een "sectiehoofd" dat wél
+admin is maar géén Sportlink-mutaties mag triggeren — zie
+`docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md` §6). De rol `Wedstrijdzaken` blijft wél bestaan en
+nodig voor het andere geval: een gebruiker met **alleen** `user` + `Wedstrijdzaken` (geen `admin`)
+krijgt nog steeds toegang tot dezelfde mutatie-endpoints — dat gedrag is ongewijzigd.
+
 **Belangrijk om te weten:** vandaag komt `Wedstrijdzaken` in de praktijk altijd sámen met `admin`
 voor — er bestaat (nog) geen gebruiker met uitsluitend `Wedstrijdzaken`. De per-actie-toggles in
 §3.5 hieronder hebben daardoor vandaag geen zichtbaar effect (elke Wedstrijdzaken-gebruiker is óók
@@ -293,10 +304,15 @@ toewijzen, en het veld mag wijzigen. Drie dingen om te onthouden:
   NIET hard afgedwongen (bijv. op `SCHEDULED`) — die waarde wordt sinds #998 wel uitgebreid
   meegelogd in de audit (zie hieronder), zodat er eerst een seizoen aan echte data verzameld wordt
   vóórdat die eventueel een harde blokkade wordt.
-> **Autorisatie: beide rollen, op beide tiers (#1272).** Elk Sportlink-endpoint eist zowel `admin`
-> als `Wedstrijdzaken`, via één gedeelde vorm: `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`
-> doet eerst `RequireWedstrijdzaken` en daarna `AdminEndpoint.ExecuteAsync` (met `RequireAdmin`).
-> Beide tiers gebruiken dezelfde wrapper.
+> **Autorisatie: `Wedstrijdzaken` óf `admin`, plus `admin`/`user` voor de GUI-laag, op beide tiers
+> (#1272, herzien bij #1376).** Elk Sportlink-endpoint loopt via één gedeelde vorm:
+> `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync` doet eerst `RequireWedstrijdzaken` en
+> daarna `AdminEndpoint.ExecuteAsync` (met zijn eigen `RequireRole(req, "admin", "user")`). Beide
+> tiers gebruiken dezelfde wrapper. Sinds #1376 is `RequireWedstrijdzaken` zelf een OR:
+> `RequireRole(req, "Wedstrijdzaken", "admin")` — de facto resulterende toegang:
+> - `admin` (met of zonder aparte `Wedstrijdzaken`-toewijzing) → toegestaan.
+> - `user` + `Wedstrijdzaken` (geen `admin`) → toegestaan, ongewijzigd sinds #988/#991.
+> - alléén `user`, of geen van beide rollen → geweigerd, ongewijzigd.
 >
 > Tot #1272 gaf de Postgres-tier `requireRole:` mee aan `AdminEndpoint.ExecuteAsync`, waar het de
 > admin-controle *verving*. Dat sprak §3.4 hierboven tegen ("bovenop de bestaande admin-toegang")

@@ -237,7 +237,7 @@ public class EndpointAutorisatieTests
 
     [Theory]
     [MemberData(nameof(SportlinkEndpoints))]
-    public async Task Sportlink_AlleenAdmin_WordtGeweigerdOpDeWedstrijdzakenPoort(string naam)
+    public async Task Sportlink_AlleenAdmin_PasseertDeWedstrijdzakenPoort(string naam)
     {
         var endpoint = Endpoint(naam);
         await MetProductieOmgeving(async () =>
@@ -246,7 +246,10 @@ public class EndpointAutorisatieTests
 
             var result = await Roep(endpoint, Principal(("roles", "admin")));
 
-            StatusVan(result).Should().Be(403, $"{endpoint} vereist de rol Wedstrijdzaken bovenop admin (#1272)");
+            result.Should().BeOfType<PoortGepasseerdResult>(
+                $"{endpoint} moet mét alleen de rol admin (geen aparte Wedstrijdzaken-toewijzing) de " +
+                "Wedstrijdzaken-poort passeren — admin impliceert Wedstrijdzaken sinds #1376, een " +
+                "herziening van de eerdere AND-gate uit #1272");
         });
     }
 

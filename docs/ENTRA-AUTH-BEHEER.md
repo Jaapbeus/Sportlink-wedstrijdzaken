@@ -200,15 +200,24 @@ aan als de bron.
 | 3e club-user | **Niet** toegewezen | Geen token van Entra → blijft op login → met directe URL alsnog `NoAccess` pagina |
 | Guest / andere tenant | n.v.t. | Entra weigert login vóór redirect |
 | 5e profiel (#988) | Toegewezen, **alléén** role `Wedstrijdzaken` (geen admin/user) | `App.razor`'s `hasAccessRole` blijft `false` → `NoAccess`-pagina. **Verwacht en gewenst** resultaat: `Wedstrijdzaken` is een aanvullende rol voor Sportlink-mutatie-endpoints (#991+), geen vervanging voor `admin`/`user` — er bestaat nog geen niet-Admin-GUI-oppervlak dat deze rol gebruikt. Niet als regressie lezen. |
+| 6e profiel (#1376) | Toegewezen, **alléén** role `admin` (geen aparte `Wedstrijdzaken`-toewijzing) | Volledige UI zoals altijd, én Sportlink-mutatie-endpoints (bijv. "Open in Sportlink" in Dagplanning) werken zonder 403. **Herziening van het eerdere besluit** dat `admin` en `Wedstrijdzaken` losse Entra-assignments moesten blijven — zie `memory/wedstrijdzaken-rol-vereist-altijd-ook-admin.md`. |
 
 Documenteer de uitkomst per release. Geen gebruikersrollentest → geen acceptatie.
 
-**Kanttekening bij de laatste rij (#988):** de server-side handhaving (`EasyAuthHelper.RequireRole`) is
+**Kanttekening bij rij 5 (#988):** de server-side handhaving (`EasyAuthHelper.RequireRole`) is
 lokaal niet te testen — die geeft altijd `null` (toegestaan) terug zolang `WEBSITE_SITE_NAME`
 ontbreekt (elke lokale dev-run). Voor #988 zelf volstaat bevestigen dat de rol in Entra bestaat en
 toewijsbaar is; de server-side handhaving wordt inhoudelijk pas getest zodra #991 het eerste
 `RequireRole(req, "Wedstrijdzaken")`-endpoint oplevert (via de SWA-CLI-emulator of een echte
 staging-deploy met deze testgebruiker).
+
+**Rij 6 (#1376) is wél lokaal dekkend unit-test-baar**, in tegenstelling tot rij 5: de OR-logica zit
+in `EasyAuthHelper.RequireWedstrijdzaken(req) => RequireRole(req, "Wedstrijdzaken", "admin")` zelf,
+niet in de lokale-bypass-tak. Zie `RequireWedstrijdzaken_MetAdminRolMaarZonderWedstrijdzaken_StaatToe`
+in `EasyAuthHelperAuditActorTests.cs` (beide tiers) — die test simuleert `WEBSITE_SITE_NAME` en dekt
+de claim-vergelijking zelf af. De browsertest in deze tabel blijft niettemin verplicht: hij bewijst
+ook dat de Entra-app-rolconfiguratie (`Configure-EntraApp.ps1`) en de MSAL-tokencache-verversing
+kloppen, niet alleen de C#-logica.
 
 ## Tracking
 

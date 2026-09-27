@@ -25,6 +25,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   standaard actief, was Optimaal) en het delen van de planning. Beheerders kunnen wedstrijden nu
   op **beide** schermen wijzigen, tonen en openen in Sportlink — de Sportlink-kolom stond eerder
   alleen op de vergelijkingstabel.
+- **Een beheerder (rol `admin`) kan nu Sportlink-mutatie-acties uitvoeren zonder een aparte rol
+  "Wedstrijdzaken" toegewezen te krijgen (#1376).** Voorheen moest een volledige beheerder ook nog
+  expliciet de rol Wedstrijdzaken krijgen om bijvoorbeeld "Open in Sportlink" te kunnen gebruiken —
+  dat gaf onterecht een `403 Forbidden`. De rol Wedstrijdzaken blijft bestaan voor een gebruiker
+  zonder volledige beheerdersrechten.
 
 ### Fixed
 - **Favicon/logo/kleuren ophalen op het Thema-scherm faalde met "URL-domein is niet toegestaan"
