@@ -74,10 +74,12 @@ if (EgressGuard.ExternalIntegrationsAllowed())
     // geladen is — of de kolom ontbreekt op een nog niet gemigreerde database — blijft dry-run dus
     // AAN. Met de omgekeerde polariteit zou een lege cache fail-OPEN zijn en zou een mutatiepad
     // per ongeluk een echte PUT/POST naar Sportlink versturen.
-    builder.Services.AddHttpClient<ISportlinkClubClient, SportlinkClubClient>(client =>
-    {
-        client.Timeout = TimeSpan.FromSeconds(15);
-    })
+    // #1387: géén HttpClient-brede Timeout meer (was 15s voor élk endpoint, ook de gedocumenteerd
+    // trage MatchProgramOverview-reverse-lookup — die gaf zo een valse HTTP 502 met nagenoeg geen
+    // marge). SportlinkClubClient bepaalt nu zelf, per endpoint, een gemotiveerd per-aanroep budget
+    // (DefaultCallTimeout/ReverseLookupCallTimeout); de .NET-default van 100s hier blijft slechts
+    // het buitenste veiligheidsnet.
+    builder.Services.AddHttpClient<ISportlinkClubClient, SportlinkClubClient>()
     .AddTypedClient<ISportlinkClubClient>((httpClient, sp) =>
     {
         var loggerFactory = sp.GetRequiredService<ILoggerFactory>();

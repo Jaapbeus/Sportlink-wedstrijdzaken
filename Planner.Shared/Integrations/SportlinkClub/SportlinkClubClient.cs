@@ -37,6 +37,28 @@ public class SportlinkClubClient : ISportlinkClubClient
     public const string ClientId = "sportlink-club-web";
     private const int TokenExpiryMarginSeconds = 60;
 
+    // #1387: per-aanroep timeouts, losgekoppeld van HttpClient.Timeout (die staat op de .NET-
+    // default van 100s als buitenste veiligheidsnet — zie Program.cs van beide tiers, die géén
+    // eigen Timeout meer zetten). Zo krijgt élk endpoint een bewust, gemotiveerd budget in plaats
+    // van dat één globale waarde voor alles geldt.
+    private static readonly TimeSpan DefaultCallTimeout = TimeSpan.FromSeconds(15);
+
+    /// <summary>
+    /// MatchProgramOverview is het enige Sportlink-endpoint dat hier gedocumenteerd 12+ seconden
+    /// duurt (zie SportlinkPublicMatchIdWarmupTimerFunction, docs/SPORTLINK-WEB-EXTENSION.md).
+    /// Tegen <see cref="DefaultCallTimeout"/> was de marge nagenoeg nul — elke extra vertraging
+    /// timede uit en gaf vóór #1387 een valse HTTP 502 (SportlinkEndpointCore.VertaalStatusNaarFout
+    /// kon een timeout niet onderscheiden van een echte Sportlink-fout). Ruimere, uitsluitend voor
+    /// dit endpoint gemotiveerde marge — geen wijziging van het budget van de overige, snellere
+    /// endpoints.
+    /// </summary>
+    private static readonly TimeSpan ReverseLookupCallTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>Wachttijd vóór de ene, begrensde retry bij een transiënte fout (zie
+    /// <see cref="IsTransientFout"/>) — los van, en aanvullend op, de bestaande 401-retry in
+    /// <see cref="ExecuteWithTokenRetryAsync{T}"/>.</summary>
+    private static readonly TimeSpan TransientRetryDelay = TimeSpan.FromSeconds(2);
+
     // #994: dit endpoint/deze body-vorm is NOOIT live bevestigd (reverse-engineered, geen
     // netwerktrace) — daarom staat de mutatie hard op forceDryRun totdat een mens (nooit een
     // agent, zie docs/SPORTLINK-WEB-EXTENSION.md §4.4) een live trace heeft gedaan en deze
@@ -122,16 +144,27 @@ public class SportlinkClubClient : ISportlinkClubClient
             (token, ct) => FetchMatchRawJsonAsync(publicMatchId, token, ct), cancellationToken);
     }
 
+    /// <summary>
+    /// De ene GET tegen <c>competition/match/Match</c> — <see cref="FetchMatchRawJsonAsync"/>,
+    /// <see cref="FetchMatchDetailsSnapshotAsync"/> en <see cref="FetchMatchAsync"/> lazen elk
+    /// dezelfde url/headers/verstuur-opbouw; hier gecentraliseerd (#1387) zodat een toekomstige
+    /// wijziging aan dat endpoint niet drie keer moet worden doorgevoerd.
+    /// </summary>
+    private Task<HttpResponseMessage> GetMatchEndpointResponseAsync(
+        string publicMatchId, string token, CancellationToken cancellationToken)
+    {
+        var url = $"{MatchEndpoint}?PublicMatchId={Uri.EscapeDataString(publicMatchId)}";
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        ZetSportlinkHeaders(request, "competition/match/Match", token);
+        return VerstuurMetTimeoutAsync(ct => _httpClient.SendAsync(request, ct), cancellationToken);
+    }
+
     private async Task<SportlinkClubResponse<string>> FetchMatchRawJsonAsync(
         string publicMatchId, string token, CancellationToken cancellationToken)
     {
         try
         {
-            var url = $"{MatchEndpoint}?PublicMatchId={Uri.EscapeDataString(publicMatchId)}";
-            var request = new HttpRequestMessage(HttpMethod.Get, url);
-            ZetSportlinkHeaders(request, "competition/match/Match", token);
-
-            var response = await _httpClient.SendAsync(request, cancellationToken);
+            var response = await GetMatchEndpointResponseAsync(publicMatchId, token, cancellationToken);
 
             if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                 return new SportlinkClubResponse<string>(
@@ -327,7 +360,7 @@ public class SportlinkClubClient : ISportlinkClubClient
             var request = new HttpRequestMessage(HttpMethod.Get, MatchChangeRequestsEndpoint);
             ZetSportlinkHeaders(request, "competition/match/changerequest/MatchChangeRequests", token);
 
-            var response = await _httpClient.SendAsync(request, cancellationToken);
+            var response = await VerstuurMetTimeoutAsync(ct => _httpClient.SendAsync(request, ct), cancellationToken);
 
             if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                 return new SportlinkClubResponse<IReadOnlyList<SportlinkChangeRequest>>(
@@ -414,7 +447,7 @@ public class SportlinkClubClient : ISportlinkClubClient
             var request = new HttpRequestMessage(HttpMethod.Get, UserInfoEndpoint);
             ZetSportlinkHeaders(request, "user/UserInfo", token);
 
-            var response = await _httpClient.SendAsync(request, cancellationToken);
+            var response = await VerstuurMetTimeoutAsync(ct => _httpClient.SendAsync(request, ct), cancellationToken);
             if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                 return new SportlinkClubResponse<SportlinkUserInfo>(SportlinkClubCallStatus.SportlinkFout, null, "Unauthorized bij UserInfo endpoint", 401);
 
@@ -649,7 +682,7 @@ public class SportlinkClubClient : ISportlinkClubClient
             var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
             ZetSportlinkHeaders(request, entityName, token);
 
-            var response = await _httpClient.SendAsync(request, cancellationToken);
+            var response = await VerstuurMetTimeoutAsync(ct => _httpClient.SendAsync(request, ct), cancellationToken);
 
             if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                 return new SportlinkClubResponse<IReadOnlyList<SportlinkPickListItem>>(
@@ -733,8 +766,9 @@ public class SportlinkClubClient : ISportlinkClubClient
     /// keer generiek voor de PUT's — zelfde overweging als TeamNaamNormalisatie/VeldResolver: één
     /// vertaalpunt in plaats van een kopie per issue). Generiek sinds #995: het teruggegeven type
     /// verschilt per aanroep, de retry-logica niet. Volgorde: token halen/verversen → aanroep → bij
-    /// 401 cache ongeldig maken, geforceerd verversen, één keer opnieuw → blijft het 401, dan is
-    /// herkoppeling vereist.
+    /// een transiënte fout (timeout/netwerk/5xx, zie <see cref="IsTransientFout"/>) één keer
+    /// opnieuw na <see cref="TransientRetryDelay"/> (#1387) → bij 401 cache ongeldig maken,
+    /// geforceerd verversen, nogmaals opnieuw → blijft het 401, dan is herkoppeling vereist.
     /// </summary>
     private async Task<SportlinkClubResponse<T>> ExecuteWithTokenRetryAsync<T>(
         string functioneleRol,
@@ -752,6 +786,13 @@ public class SportlinkClubClient : ISportlinkClubClient
                 SportlinkClubCallStatus.SportlinkFout, null, "Access token is leeg na vernieuwing", null);
 
         var response = await putAction(token, cancellationToken);
+
+        if (IsTransientFout(response.Status, response.HttpStatusCode))
+        {
+            await WachtVoorTransienteRetryAsync(
+                $"{response.Status}, HTTP {response.HttpStatusCode}, rol '{functioneleRol}'", cancellationToken);
+            response = await putAction(token, cancellationToken);
+        }
 
         if (response.Status == SportlinkClubCallStatus.Ok || response.HttpStatusCode != 401)
             return response;
@@ -776,6 +817,58 @@ public class SportlinkClubClient : ISportlinkClubClient
                 401);
 
         return retryResponse;
+    }
+
+    /// <summary>
+    /// Een fout die de moeite waard is om één keer te herhalen (#1387): een timeout/netwerkfout, of
+    /// een 5xx van Sportlink zelf — beide zijn typisch van voorbijgaande aard. Een 4xx (los van de
+    /// al apart afgehandelde 401) is een inhoudelijke afwijzing en wordt niet beter van herhalen.
+    /// </summary>
+    private static bool IsTransientFout(SportlinkClubCallStatus status, int? httpStatusCode) =>
+        status == SportlinkClubCallStatus.NetwerkFout ||
+        (status == SportlinkClubCallStatus.SportlinkFout && httpStatusCode is >= 500 and <= 599);
+
+    /// <summary>Eén gedeelde log+wacht-stap vóór de ene, begrensde transiënte retry (#1387) — zowel
+    /// <see cref="ExecuteWithTokenRetryAsync{T}"/> als het token-refreshpad in
+    /// <see cref="RefreshTokenIfNeededAsync"/> gebruiken dezelfde stap, alleen de beschrijving in
+    /// het logbericht verschilt.</summary>
+    private async Task WachtVoorTransienteRetryAsync(string beschrijving, CancellationToken cancellationToken)
+    {
+        _logger.LogWarning("Transiënte Sportlink-fout ({Beschrijving}) — één retry na {Delay}s",
+            beschrijving, TransientRetryDelay.TotalSeconds);
+        await Task.Delay(TransientRetryDelay, cancellationToken);
+    }
+
+    /// <summary>Kortere vorm voor de meerderheid van de aanroepen, die <see cref="DefaultCallTimeout"/>
+    /// gebruiken — alleen de gedocumenteerd trage reverse-lookup geeft expliciet
+    /// <see cref="ReverseLookupCallTimeout"/> mee via de overload hieronder.</summary>
+    private static Task<HttpResponseMessage> VerstuurMetTimeoutAsync(
+        Func<CancellationToken, Task<HttpResponseMessage>> aanroep, CancellationToken cancellationToken)
+        => VerstuurMetTimeoutAsync(aanroep, DefaultCallTimeout, cancellationToken);
+
+    /// <summary>
+    /// Verstuurt <paramref name="aanroep"/> met een eigen, per-aanroep timeout (#1387) bovenop de
+    /// aanroeper-<paramref name="cancellationToken"/> — zie <see cref="DefaultCallTimeout"/>/
+    /// <see cref="ReverseLookupCallTimeout"/>. Bij het aflopen van ONZE timeout gooien we bewust
+    /// dezelfde <see cref="TaskCanceledException"/> als een aanroeper-annulering zou geven, zodat
+    /// elke bestaande <c>catch (TaskCanceledException)</c> per endpoint ongewijzigd blijft werken —
+    /// alleen een échte annulering door de aanroeper zelf wordt ongewijzigd doorgegeven.
+    /// </summary>
+    private static async Task<HttpResponseMessage> VerstuurMetTimeoutAsync(
+        Func<CancellationToken, Task<HttpResponseMessage>> aanroep,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(timeout);
+        try
+        {
+            return await aanroep(cts.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TaskCanceledException($"Sportlink-aanroep afgebroken na {timeout.TotalSeconds}s (per-aanroep timeout).");
+        }
     }
 
     private Task<SportlinkClubResponse<SportlinkMutationResult>> PutDressingRoomsAsync(
@@ -1017,11 +1110,7 @@ public class SportlinkClubClient : ISportlinkClubClient
     {
         try
         {
-            var url = $"{MatchEndpoint}?PublicMatchId={Uri.EscapeDataString(publicMatchId)}";
-            var request = new HttpRequestMessage(HttpMethod.Get, url);
-            ZetSportlinkHeaders(request, "competition/match/Match", token);
-
-            var response = await _httpClient.SendAsync(request, cancellationToken);
+            var response = await GetMatchEndpointResponseAsync(publicMatchId, token, cancellationToken);
             if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                 return new SportlinkClubResponse<SportlinkMatchDetailsSnapshot>(
                     SportlinkClubCallStatus.SportlinkFout, null, "Unauthorized bij match endpoint", 401);
@@ -1182,7 +1271,7 @@ public class SportlinkClubClient : ISportlinkClubClient
             };
             ZetSportlinkHeaders(request, entityName, token);
 
-            var response = await _httpClient.SendAsync(request, cancellationToken);
+            var response = await VerstuurMetTimeoutAsync(ct => _httpClient.SendAsync(request, ct), cancellationToken);
 
             if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                 return new SportlinkClubResponse<SportlinkMutationResult>(
@@ -1270,7 +1359,9 @@ public class SportlinkClubClient : ISportlinkClubClient
             var request = new HttpRequestMessage(HttpMethod.Get, url);
             ZetSportlinkHeaders(request, "competition/match/MatchProgramOverview", token);
 
-            var response = await _httpClient.SendAsync(request, cancellationToken);
+            // #1387: dit endpoint is gedocumenteerd traag (12+s) — eigen, ruimere timeout in plaats
+            // van DefaultCallTimeout, zie ReverseLookupCallTimeout.
+            var response = await VerstuurMetTimeoutAsync(ct => _httpClient.SendAsync(request, ct), ReverseLookupCallTimeout, cancellationToken);
 
             if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                 return new SportlinkClubResponse<IReadOnlyList<SportlinkMatchProgramEntry>>(
@@ -1384,8 +1475,16 @@ public class SportlinkClubClient : ISportlinkClubClient
                 return (SportlinkClubCallStatus.RolNietGekoppeld, null, $"Rol '{functioneleRol}' is niet gekoppeld aan Sportlink");
             }
 
-            // Call refresh endpoint
+            // Call refresh endpoint. #1387: dit token-refreshpad ligt vóór ELKE andere Sportlink-
+            // aanroep (ExecuteWithTokenRetryAsync roept dit altijd eerst aan) — zonder eigen retry
+            // hier was één enkele trage/mislukte tokenverversing genoeg om alles daarachter te laten
+            // falen, terwijl elke andere aanroep al wel een transiënte retry kreeg.
             var refreshResult = await CallTokenEndpointAsync(refreshToken, cancellationToken);
+            if (refreshResult.Status == SportlinkClubCallStatus.NetwerkFout)
+            {
+                await WachtVoorTransienteRetryAsync($"token-endpoint, rol '{functioneleRol}'", cancellationToken);
+                refreshResult = await CallTokenEndpointAsync(refreshToken, cancellationToken);
+            }
             if (refreshResult.Status != SportlinkClubCallStatus.Ok)
                 return (refreshResult.Status, refreshResult.AccessToken, refreshResult.FoutmeldingVoorLog);
 
@@ -1432,7 +1531,7 @@ public class SportlinkClubClient : ISportlinkClubClient
                 { "refresh_token", refreshToken }
             });
 
-            var response = await _httpClient.PostAsync(TokenEndpoint, body, cancellationToken);
+            var response = await VerstuurMetTimeoutAsync(ct => _httpClient.PostAsync(TokenEndpoint, body, ct), cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
                 var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -1496,11 +1595,7 @@ public class SportlinkClubClient : ISportlinkClubClient
     {
         try
         {
-            var url = $"{MatchEndpoint}?PublicMatchId={Uri.EscapeDataString(publicMatchId)}";
-            var request = new HttpRequestMessage(HttpMethod.Get, url);
-            ZetSportlinkHeaders(request, "competition/match/Match", token);
-
-            var response = await _httpClient.SendAsync(request, cancellationToken);
+            var response = await GetMatchEndpointResponseAsync(publicMatchId, token, cancellationToken);
 
             if (response.IsSuccessStatusCode)
             {
@@ -1592,6 +1687,12 @@ public class SportlinkClubClient : ISportlinkClubClient
     /// vóór opslag (#991; hier gecentraliseerd bij #1122 zodat de tokenregistratie geen eigen kopie
     /// van endpoint en client-id meer draagt). Statisch en zonder tokenstore: dit token is nog van
     /// niemand. Logt niets — de aanroeper kent alleen waar/niet waar.
+    /// <para>
+    /// #1387: een timeout/netwerkfout hier gaf vóór deze fix een onafgevangen exception (500 in de
+    /// aanroepende Function-endpoint) — geen retry (dit is al een expliciete, eenmalige
+    /// gebruikersactie: "opnieuw registreren"), maar wel <c>false</c> in plaats van een crash, zodat
+    /// de aanroeper hetzelfde 409-antwoord geeft als bij een echt geweigerd token.
+    /// </para>
     /// </summary>
     public static async Task<bool> ValideerRefreshTokenAsync(HttpClient http, string refreshToken, CancellationToken cancellationToken = default)
     {
@@ -1601,8 +1702,19 @@ public class SportlinkClubClient : ISportlinkClubClient
             ["client_id"] = ClientId,
             ["refresh_token"] = refreshToken,
         });
-        using var response = await http.PostAsync(TokenEndpoint, body, cancellationToken);
-        return response.IsSuccessStatusCode;
+        try
+        {
+            using var response = await http.PostAsync(TokenEndpoint, body, cancellationToken);
+            return response.IsSuccessStatusCode;
+        }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return false;
+        }
+        catch (HttpRequestException)
+        {
+            return false;
+        }
     }
 
     private void InvalidateTokenCache(string functioneleRol)

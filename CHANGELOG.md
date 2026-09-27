@@ -18,6 +18,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **Sportlink-matchinfo gaf soms een valse "Sportlink is momenteel niet bereikbaar" (HTTP 502),
+  ook als de Sportlink-koppeling zelf gewoon werkte (#1387).** Het ophalen van Sportlink-matchinfo
+  voor een nog niet eerder bekeken wedstrijd kon uittimen (de onderliggende opzoekactie duurt
+  gedocumenteerd 12+ seconden, tegen een timeout van 15 seconden) en werd dan gemeld als een echte
+  Sportlink-storing. Elke Sportlink-aanroep krijgt nu een passende, per-aanroep timeout en één
+  automatische herhaling bij een tijdelijke storing; een reactie die te lang op zich laat wachten
+  krijgt bovendien een eigen melding in plaats van de generieke storingsmelding.
+
 ## [3.7.0.0] — 2026-09-27
 
 ### Changed

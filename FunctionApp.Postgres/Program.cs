@@ -81,10 +81,12 @@ if (EgressGuard.ExternalIntegrationsAllowed())
     // delegate hier expliciet meegegeven kan worden — PostgresAppSettings.GetSetting wordt bij ELKE
     // mutatie-aanroep opnieuw gelezen (niet één keer bij opstarten), zodat de Instellingen-toggle
     // direct effect heeft zonder herstart.
-    builder.Services.AddHttpClient<ISportlinkClubClient, SportlinkClubClient>(client =>
-    {
-        client.Timeout = TimeSpan.FromSeconds(15);
-    })
+    // #1387: géén HttpClient-brede Timeout meer (was 15s voor élk endpoint, ook de gedocumenteerd
+    // trage MatchProgramOverview-reverse-lookup — die gaf zo een valse HTTP 502 met nagenoeg geen
+    // marge). SportlinkClubClient bepaalt nu zelf, per endpoint, een gemotiveerd per-aanroep budget
+    // (DefaultCallTimeout/ReverseLookupCallTimeout); de .NET-default van 100s hier blijft slechts
+    // het buitenste veiligheidsnet.
+    builder.Services.AddHttpClient<ISportlinkClubClient, SportlinkClubClient>()
     .AddTypedClient<ISportlinkClubClient>((httpClient, sp) => new SportlinkClubClient(
         httpClient,
         sp.GetRequiredService<ISportlinkClubTokenStore>(),
