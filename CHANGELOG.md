@@ -38,6 +38,16 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Veld optimalisatie en Planning toonden in het donkere thema een wit kaartje (samenvattingsbalk en
   het uitgeklapte Sportlink-paneel) — die achtergrond volgt nu het clubthema.
 
+### Added
+- **Toegangsmatrix per rol op "Instellingen → Rechten per rol" (#1390).** Deze pagina toonde
+  eerder alleen drie losse Sportlink-schakelaars voor de rol Wedstrijdzaken; nu is elk menu-item in
+  de Admin GUI een rij, met een kolom per instelbare rol: Gebruiker (standaard), Wedstrijdzaken,
+  Sectiehoofd, Ledenadministratie. Admin toont bewust geen kolom — die rol heeft altijd alles aan.
+  Rijen met persoonsgegevens (Teambegeleiding, Begeleiding importeren) zijn gemarkeerd met een
+  AVG-badge. **Let op:** deze pagina legt vandaag vast wát een rol zou mogen zien; het
+  daadwerkelijk verbergen van menu-items en de rollen Sectiehoofd/Ledenadministratie zelf toewijzen
+  volgen in een apart vervolgtraject.
+
 ## [3.7.0.0] — 2026-09-27
 
 ### Changed
