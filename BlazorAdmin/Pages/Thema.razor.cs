@@ -192,6 +192,14 @@ public partial class Thema : ClubSelectorPageBase
         await ToepassenAsync();
     }
 
+    /// <summary>
+    /// Slaat het thema eerst op vóórdat de kleuren/favicon/logo van de club-website worden
+    /// opgehaald (#1373). <c>ThemeCore.ExtraheerAsync</c> vergelijkt de host van de opgevraagde
+    /// URL met de AL OPGESLAGEN <c>ClubWebsiteUrl</c> uit <c>AppSettings</c> — dat is de
+    /// SSRF-allowlist uit #422 en blijft ongewijzigd. Zonder deze save-stap wees elke nieuwe of
+    /// gewijzigde URL, of een club zonder eerder opgeslagen website, altijd met
+    /// "HostNietToegestaan" af, ook al stond de juiste URL in het formulier.
+    /// </summary>
     private async Task ExtractFromWebsiteAsync()
     {
         _extracting = true;
@@ -200,6 +208,14 @@ public partial class Thema : ClubSelectorPageBase
         _extractedFaviconUrl = null;
         _extractedLogoUrl = null;
         StateHasChanged();
+
+        await SaveAsync();
+        if (!_saveSuccess)
+        {
+            _extractError = _saveMessage ?? "Club-website kon niet worden opgeslagen vóór het ophalen.";
+            _extracting = false;
+            return;
+        }
 
         var result = await Api.ExtractThemeColorsAsync(_theme.ClubWebsiteUrl ?? "");
         if (result.Success && result.Data != null)
