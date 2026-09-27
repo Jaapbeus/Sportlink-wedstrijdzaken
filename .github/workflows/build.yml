@@ -16,19 +16,22 @@ on:
     branches: [develop]
   workflow_dispatch:
 
-# #1370 (retro v3.6.0.0, bevinding 2): een push naar `develop` die tegelijk de head is van een
-# open release-PR (develop → main) triggerde deze workflow ZOWEL via 'push' als via
-# 'pull_request' (synchronize) — gemeten bij v3.6.0.0: dezelfde commit f944eb8 startte beide
-# events, elk een volledige build+testrun. Groeperen op workflow+commit-SHA (in plaats van
-# ref, dat tussen de twee events verschilt) annuleert de eerst gestarte, overbodige run zodra
-# de tweede voor exact dezelfde inhoud start. Dit verandert geen enkele branch-protection-
-# uitkomst: de vereiste check ("Build FunctionApp + BlazorAdmin") heeft geen event-afhankelijke
-# logica (de enige `if: github.event_name == 'pull_request'`-stap in dit bestand zit in de
-# niet-verplichte job 'fresh-db-postgres' en doet alleen EXTRA werk bij een PR-event, nooit
-# minder) — GitHub matcht een vereiste check op commit-SHA, niet op welk event hem produceerde.
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.head.sha || github.sha }}
-  cancel-in-progress: true
+# #1370 (retro v3.6.0.0, bevinding 2) — GEPROBEERD EN BEWUST TERUGGEDRAAID.
+# Een eerdere versie van deze workflow voegde hier een `concurrency: group:
+# ${{ github.workflow }}-${{ ...head.sha || github.sha }}, cancel-in-progress: true` toe, om de
+# dubbele run (push + pull_request op dezelfde commit, gemeten bij v3.6.0.0 op f944eb8) te
+# annuleren. Dat bleek op PR #1372 zelf een REPRODUCEERBARE merge-blokkerende regressie: GitHub
+# toont bij twee check-runs met dezelfde naam op dezelfde SHA niet "de laatste telt", maar neemt
+# de ROLLUP-status van ALLEBEI (`statusCheckRollup.state` = FAILURE zodra één van de twee
+# 'FAILURE' is, ook als de andere 'SUCCESS' is en later voltooide) — geverifieerd via
+# `gh api graphql` op de contexts van PR #1372's head-commit: twee 'Security Gate'-check-runs,
+# één FAILURE (de geannuleerde, oudere run) en één SUCCESS, met `mergeStateStatus: BLOCKED`.
+# Een job die halverwege wordt geannuleerd kan dus een PERMANENTE FAILURE achterlaten op een
+# vereiste check, ook al voltooit de nieuwere run daarna succesvol. Dit is precies het risico
+# dat CLAUDE.md's regel "Security Gate is leidend, nooit omzeilen" beoogt te voorkomen — een
+# CI-dedupfix mag dat zelf niet ondermijnen. Bevinding 2 blijft dus openstaan; zie de reactie op
+# #1370 voor de analyse en een alternatieve aanpak (bijv. de twee events niet dedupliceren maar
+# ontkoppelen — één workflow triggert alleen op 'pull_request', de andere blijft 'push').
 
 permissions:
   contents: read
