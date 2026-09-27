@@ -44,13 +44,18 @@ else
 
             <div class="col-sm-6">
                 <label class="form-label" for="oef-team">Team</label>
-                <select id="oef-team" class="form-select" @bind="_teamNaam" required>
+                <select id="oef-team" class="form-select" @bind="_teamSelectie" required>
                     <option value="">— kies een team —</option>
                     @foreach (var team in _teams)
                     {
                         <option value="@team">@team</option>
                     }
+                    <option value="@VrijeTekstOptie">Vrije tekst invoeren…</option>
                 </select>
+                @if (_teamSelectie == VrijeTekstOptie)
+                {
+                    <input type="text" class="form-control mt-2" placeholder="bijv. TEST" @bind="_teamVrijeTekst" />
+                }
             </div>
             <div class="col-sm-6">
                 <label class="form-label" for="oef-tegenstander">Tegenstander</label>

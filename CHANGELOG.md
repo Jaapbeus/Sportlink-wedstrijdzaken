@@ -19,6 +19,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- Oefenwedstrijd aanmaken: de Team-keuzelijst heeft nu een extra optie "Vrije tekst invoeren…"
+  waarmee u zelf een teamnaam kunt typen, bijvoorbeeld om te testen zonder een bestaand clubteam
+  te gebruiken (#1396).
 - Instellingen → Thema: alle kleuren van de wedstrijdstatus op Planning en Veld optimalisatie
   (Gantt-blokken, legenda, statusbadges, voorkeurstijd-indicator) zijn nu instelbaar, gegroepeerd
   onder "Wedstrijdstatus" — daarvóór stonden deze kleuren vast en volgden ze het club-thema niet.
