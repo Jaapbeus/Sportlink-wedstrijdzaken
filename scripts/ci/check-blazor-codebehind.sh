@@ -97,7 +97,7 @@ fi
 if [ "$totaal" -gt "$plafond" ]; then
   echo
   echo "::error::Logica in Blazor-pagina's gestegen naar $totaal regels (plafond $plafond, dus +$((totaal - plafond)))."
-  echo "::error::Zet de C# van deze pagina in een code-behind: <Pagina>.razor.cs met 'public partial class', [Inject] in plaats van @inject. Zie docs/ARCHITECTUUR-CODEKWALITEIT.md regel 3 en Dagplanning.razor.cs als voorbeeld."
+  echo "::error::Zet de C# van deze pagina in een code-behind: <Pagina>.razor.cs met 'public partial class', [Inject] in plaats van @inject. Zie docs/ARCHITECTUUR-CODEKWALITEIT.md regel 3 en Planning.razor.cs als voorbeeld."
   fail=1
 fi
 

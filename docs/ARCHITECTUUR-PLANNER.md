@@ -605,7 +605,8 @@ prioriteit 10.
 
 De berekende planning is met de muis aan te passen: een wedstrijdblok kan naar een andere tijd (stappen
 van 5 minuten, zelfde afronding als de planner) of naar een ander veld gesleept worden. Dat gebeurt
-volledig client-side in de code-behind `Dagplanning.razor.cs`; er is geen extra endpoint.
+volledig client-side in de code-behind `VeldOptimalisatie.razor.cs` (#1361; vóór die splitsing
+`Dagplanning.razor.cs`); er is geen extra endpoint.
 
 - Alleen de **optimale planning** is sleepbaar. De tab "Huidige situatie" is de stand uit Sportlink en
   blijft read-only.

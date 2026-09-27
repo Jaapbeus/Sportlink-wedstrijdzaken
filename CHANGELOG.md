@@ -18,6 +18,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- **Dagplanning gesplitst in twee schermen: Planning en Veld optimalisatie (#1361).** Planning
+  toont wat er nu al in Sportlink gepland staat (datum + veldbezetting); Veld optimalisatie bevat
+  de optimalisatieknop, de vergelijking Huidig/Optimaal (Huidig staat nu als eerste tab en is
+  standaard actief, was Optimaal) en het delen van de planning. Beheerders kunnen wedstrijden nu
+  op **beide** schermen wijzigen, tonen en openen in Sportlink — de Sportlink-kolom stond eerder
+  alleen op de vergelijkingstabel.
+
 ### Fixed
 - **Favicon/logo/kleuren ophalen op het Thema-scherm faalde met "URL-domein is niet toegestaan"
   zodra de club-website nog niet eerder was opgeslagen (#1373).** De knop **Ophalen** sloeg de
