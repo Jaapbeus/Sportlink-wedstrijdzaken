@@ -1286,6 +1286,12 @@ Sportlink-status en (afhankelijk van wat Sportlink voor die wedstrijd toestaat) 
 kleedkamers, veld en officials (scheidsrechter/AR1/AR2) rechtstreeks terug te schrijven, plus een
 "Open in Sportlink"-knop die de wedstrijd in een nieuw tabblad op club.sportlink.com opent.
 
+> **Zichtbaarheid versus wijzigen.** Elke ingelogde gebruiker kan Planning en dit Sportlink-paneel
+> bekijken. De invoervelden om iets daadwerkelijk te wijzigen (kleedkamers, veld, officials, en het
+> wijzigingsverzoek hieronder) verschijnen alleen voor een beheerder of een gebruiker met de rol
+> **Wedstrijdzaken** — een gebruiker zonder die rol ziet in plaats daarvan een toelichting dat
+> wijzigen die rol vereist.
+
 Bij een thuiswedstrijd staat onderaan het paneel ook **"Wijzigingsverzoek datum/tijd/accommodatie"**:
 een nieuwe datum, starttijd en/of accommodatie invullen met een verplichte toelichting, en op
 **"Wijzigingsverzoek valideren"** klikken. Dit valideert alleen — Sportlinks meldingen (indien

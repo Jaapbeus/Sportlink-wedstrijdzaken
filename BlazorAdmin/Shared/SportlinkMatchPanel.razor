@@ -135,11 +135,17 @@ else
         <Melding Status="_officials" />
     }
 
-    @if (_info.IsHomeMatch)
+    @if (_info.IsHomeMatch && !_info.MagWijzigen)
+    {
+        <div class="text-muted small mt-2 pt-2 border-top">Wijzigingsverzoek datum/tijd/accommodatie indienen vereist de rol Wedstrijdzaken.</div>
+    }
+    @if (_info.IsHomeMatch && _info.MagWijzigen)
     {
         @* #995/#1320: wijzigingsverzoek datum/tijd/accommodatie — ALLEEN stap 1 (valideren),
            ONBEVESTIGD en altijd code-gelockt: de enige mutatie die een ECHTE tegenstander raakt.
-           Bewust GEEN bevestigknop — dat zou een stap 2 suggereren die niet gebouwd is. *@
+           Bewust GEEN bevestigknop — dat zou een stap 2 suggereren die niet gebouwd is.
+           #1400: MagWijzigen (admin of Wedstrijdzaken) gate't dit blok — er bestaat geen
+           FeatureKey-toggle voor deze mutatiesoort (zie SportlinkRolFeature.VoorMutatieSoort). *@
         <div class="mt-2 pt-2 border-top">
             <div class="fw-semibold small">Wijzigingsverzoek datum/tijd/accommodatie</div>
             <div class="text-muted small">

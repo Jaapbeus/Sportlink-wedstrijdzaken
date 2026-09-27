@@ -16,7 +16,10 @@ namespace SportlinkFunction.Admin;
 /// <para>
 /// <b>Sinds #1350 de enige autorisatiepoort voor admin-endpoints op deze tier.</b> Elk
 /// HTTP-endpoint met de admin-rol loopt via <see cref="ExecuteAsync"/> of
-/// <see cref="ExecuteZonderDatabaseAsync"/>. Een losse <c>EasyAuthHelper.RequireAdmin</c>-aanroep
+/// <see cref="ExecuteZonderDatabaseAsync"/>; de Sportlink-endpoints via
+/// <c>SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync</c>, dat sinds #1400 op
+/// <see cref="ExecuteWedstrijdzakenOfAdminAsync"/> uitkomt (admin ÓF Wedstrijdzaken — niet meer
+/// uitsluitend admin, zie de toelichting daar). Een losse <c>EasyAuthHelper.RequireAdmin</c>-aanroep
 /// in een endpoint wordt door <c>scripts/ci/check-endpoint-autorisatie.sh</c> geweigerd, en
 /// <c>FunctionApp.Tests/Admin/EndpointAutorisatieTests.cs</c> bewijst per endpoint dat de poort
 /// dicht zit zonder rol en open gaat mét rol.
@@ -125,13 +128,48 @@ internal static class AdminEndpoint
         }
     }
 
+    /// <summary>
+    /// Zelfde poort als <see cref="ExecuteAsync"/>, maar voor Sportlink-endpoints: accepteert de
+    /// functionele rol <c>Wedstrijdzaken</c> naast <c>admin</c> in plaats van uitsluitend admin
+    /// (#1400, fix van de AND-gate-bevinding uit #1379). Vóór deze wijziging accepteerde de EERSTE
+    /// poort van <c>SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync</c> al Wedstrijdzaken (#1376),
+    /// maar strandde zo'n gebruiker alsnog op deze TWEEDE poort, die tot nu toe altijd
+    /// <see cref="EasyAuthHelper.RequireAdmin"/> aanriep. Bewust een aparte, met naam zichtbare
+    /// methode — zelfde reden als bij <see cref="ExecuteAuthenticatedAsync"/> hierboven. Uitsluitend
+    /// bedoeld als tweede-poort-delegate voor <c>SportlinkEndpointSupport</c>; geen los endpoint
+    /// roept dit rechtstreeks aan.
+    /// </summary>
+    internal static async Task<IActionResult> ExecuteWedstrijdzakenOfAdminAsync(
+        HttpRequest req,
+        ILogger log,
+        string errorContext,
+        Func<string, Task<IActionResult>> work)
+    {
+        var (correlationId, authResult) = PoortWedstrijdzaken(req);
+        if (authResult != null) return authResult;
+        if (PoortGepasseerdVoorTests is { } haak) return haak(errorContext);
+
+        using var _ = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
+        try
+        {
+            await SystemUtilities.WaitForDatabaseAsync(log);
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
+            return await work(clubCode);
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "{Context} mislukt [correlationId={CorrelationId}]", errorContext, correlationId);
+            return new ObjectResult(new { error = "Interne fout" }) { StatusCode = 500 };
+        }
+    }
+
     // De ene plek waar de admin-poort staat. #1272: de optionele requireRole-parameter van #991 is
     // hier weg. Die verving de admin-controle in plaats van er bovenop te komen, wat §3.4 van
     // docs/SPORTLINK-WEB-EXTENSION.md tegensprak. De Sportlink-endpoints gebruiken nu
-    // SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync, dat beide poorten na elkaar zet — net
-    // als de Postgres-tier. De parameter is verwijderd en niet alleen ongebruikt gelaten: een
-    // optionele parameter die stilzwijgend een autorisatiecontrole vervangt, is een valkuil die
-    // vanzelf een tweede keer gebruikt wordt.
+    // SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync, dat sinds #1400 ExecuteWedstrijdzakenOfAdminAsync
+    // als tweede poort gebruikt — niet meer deze admin-only poort. De parameter is verwijderd en
+    // niet alleen ongebruikt gelaten: een optionele parameter die stilzwijgend een autorisatiecontrole
+    // vervangt, is een valkuil die vanzelf een tweede keer gebruikt wordt.
     private static (string CorrelationId, IActionResult? AuthResult) Poort(HttpRequest req)
     {
         var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
@@ -149,5 +187,13 @@ internal static class AdminEndpoint
     {
         var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         return (correlationId, EasyAuthHelper.RequireRole(req, "admin", "user"));
+    }
+
+    // De poort voor Sportlink-endpoints (#1400) — zelfde vorm als Poort()/PoortGeauthenticeerd()
+    // hierboven, bewust een eigen methode i.p.v. een parameter (zie de #1272-toelichting bij Poort()).
+    private static (string CorrelationId, IActionResult? AuthResult) PoortWedstrijdzaken(HttpRequest req)
+    {
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
+        return (correlationId, EasyAuthHelper.RequireWedstrijdzaken(req));
     }
 }

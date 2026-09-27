@@ -27,12 +27,19 @@ public static class SportlinkMatchFunction
 {
     private const string RolNaam = SportlinkEndpointSupport.RolWedstrijdzaken;
 
+    /// <summary>
+    /// #1400: generiek voor elke ingelogde gebruiker (admin+user) — viewing is geen Wedstrijdzaken-
+    /// gate meer, alleen de mutatie-endpoints verderop in dit bestand blijven dat. AVG: welke velden
+    /// een niet-Wedstrijdzaken-gebruiker daadwerkelijk terugkrijgt (bijv. scheidsrechter-relatiecode)
+    /// blijft server-side geredigeerd via <see cref="BepaalRolFeatureToestemmingenAsync"/> +
+    /// <see cref="SportlinkRolFeature.VoegToestemmingenToe(System.Text.Json.Nodes.JsonObject,SportlinkRolFeatureToestemmingen)"/>.
+    /// </summary>
     [Function("SportlinkMatchGet")]
     public static Task<IActionResult> Get(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "sportlink/match/{wedstrijdcode}")] HttpRequest req,
         string wedstrijdcode,
         FunctionContext context) =>
-        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkMatchGet"), "sportlink-match ophalen",
+        AdminEndpoint.ExecuteAuthenticatedAsync(req, context.GetLogger("SportlinkMatchGet"), "sportlink-match ophalen",
             async clubCode =>
             {
                 if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))
@@ -59,16 +66,25 @@ public static class SportlinkMatchFunction
     /// #1341: 'admin' mag altijd alles (fail-open bypass, toekomstbestendig — zie de toelichting
     /// bij <see cref="ExecuteMutationAsync{T}"/>); anders per FeatureKey de
     /// (club, Wedstrijdzaken, FeatureKey)-rij raadplegen (fail-closed: geen rij = uitgeschakeld).
+    /// <b>#1400:</b> sinds <see cref="Get"/> ook door een gewone <c>user</c> bereikt kan worden
+    /// (niet meer uitsluitend Wedstrijdzaken/admin), moet deze methode expliciet controleren of de
+    /// aanroeper zelf de rol Wedstrijdzaken heeft — vóór #1400 was elke niet-admin-aanroeper die
+    /// hier kon komen per definitie Wedstrijdzaken (de gate liet niemand anders door). Zonder deze
+    /// check zou een gewone <c>user</c> ten onrechte Wedstrijdzaken-permissies (en mogelijk
+    /// scheidsrechter-relatiecodes) terugkrijgen.
     /// </summary>
     private static async Task<SportlinkRolFeatureToestemmingen> BepaalRolFeatureToestemmingenAsync(HttpRequest req, string clubCode)
     {
         if (EasyAuthHelper.IsAdmin(req))
-            return new SportlinkRolFeatureToestemmingen(true, true, true);
+            return new SportlinkRolFeatureToestemmingen(true, true, true, true);
+        if (!EasyAuthHelper.IsInRole(req, RolNaam))
+            return new SportlinkRolFeatureToestemmingen(false, false, false, false);
 
         var cs = PostgresDatabaseConfig.ConnectionString;
         var alle = await RolFeatureInstellingenRepository.GetAllAsync(clubCode, RolNaam, cs);
         return new SportlinkRolFeatureToestemmingen(
-            alle[SportlinkRolFeature.Kleedkamers], alle[SportlinkRolFeature.Scheidsrechter], alle[SportlinkRolFeature.Veld]);
+            alle[SportlinkRolFeature.Kleedkamers], alle[SportlinkRolFeature.Scheidsrechter], alle[SportlinkRolFeature.Veld],
+            MagWijzigen: true);
     }
 
     /// <summary>
@@ -83,7 +99,7 @@ public static class SportlinkMatchFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "sportlink/match/{wedstrijdcode}/public-match-id")] HttpRequest req,
         string wedstrijdcode,
         FunctionContext context) =>
-        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkMatchPublicMatchIdGet"), "sportlink-publicmatchid ophalen",
+        AdminEndpoint.ExecuteAuthenticatedAsync(req, context.GetLogger("SportlinkMatchPublicMatchIdGet"), "sportlink-publicmatchid ophalen",
             async clubCode =>
             {
                 if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))

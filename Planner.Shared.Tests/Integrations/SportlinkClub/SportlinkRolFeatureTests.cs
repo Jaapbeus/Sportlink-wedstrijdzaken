@@ -27,10 +27,10 @@ public class SportlinkRolFeatureTests
     }
 
     [Fact]
-    public void VoegToestemmingenToe_VoegtDrieVlaggenToeZonderRauweVeldenTeVerliezen()
+    public void VoegToestemmingenToe_VoegtVierVlaggenToeZonderRauweVeldenTeVerliezen()
     {
         var match = new SportlinkMatch { PublicMatchId = "M000000001" };
-        var toestemmingen = new SportlinkRolFeatureToestemmingen(Kleedkamers: true, Scheidsrechter: false, Veld: true);
+        var toestemmingen = new SportlinkRolFeatureToestemmingen(Kleedkamers: true, Scheidsrechter: false, Veld: true, MagWijzigen: true);
 
         var payload = SportlinkRolFeature.VoegToestemmingenToe(match, toestemmingen);
 
@@ -38,6 +38,20 @@ public class SportlinkRolFeatureTests
         payload["kleedkamersFeatureToegestaan"]!.GetValue<bool>().Should().BeTrue();
         payload["scheidsrechterFeatureToegestaan"]!.GetValue<bool>().Should().BeFalse();
         payload["veldFeatureToegestaan"]!.GetValue<bool>().Should().BeTrue();
+        payload["magWijzigen"]!.GetValue<bool>().Should().BeTrue();
+    }
+
+    [Fact]
+    public void VoegToestemmingenToe_MagWijzigenFalse_GeeftMagWijzigenFalseTerug()
+    {
+        // #1400: een gewone 'user' (geen admin, geen Wedstrijdzaken) krijgt overal false — dit is
+        // de vlag die het wijzigingsverzoek-blok in SportlinkMatchPanel gate't (geen FeatureKey-toggle).
+        var match = new SportlinkMatch { PublicMatchId = "M000000001" };
+        var toestemmingen = new SportlinkRolFeatureToestemmingen(Kleedkamers: false, Scheidsrechter: false, Veld: false, MagWijzigen: false);
+
+        var payload = SportlinkRolFeature.VoegToestemmingenToe(match, toestemmingen);
+
+        payload["magWijzigen"]!.GetValue<bool>().Should().BeFalse();
     }
 
     [Fact]
@@ -67,7 +81,7 @@ public class SportlinkRolFeatureTests
                 ]
             }
             """)!;
-        var toestemmingen = new SportlinkRolFeatureToestemmingen(Kleedkamers: true, Scheidsrechter: false, Veld: true);
+        var toestemmingen = new SportlinkRolFeatureToestemmingen(Kleedkamers: true, Scheidsrechter: false, Veld: true, MagWijzigen: true);
 
         var payload = SportlinkRolFeature.VoegToestemmingenToe(match, toestemmingen);
 
@@ -99,7 +113,7 @@ public class SportlinkRolFeatureTests
                 ]
             }
             """)!;
-        var toestemmingen = new SportlinkRolFeatureToestemmingen(Kleedkamers: true, Scheidsrechter: true, Veld: true);
+        var toestemmingen = new SportlinkRolFeatureToestemmingen(Kleedkamers: true, Scheidsrechter: true, Veld: true, MagWijzigen: true);
 
         var payload = SportlinkRolFeature.VoegToestemmingenToe(match, toestemmingen);
 

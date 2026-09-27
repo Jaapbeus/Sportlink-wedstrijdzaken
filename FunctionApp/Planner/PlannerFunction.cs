@@ -407,13 +407,19 @@ namespace SportlinkFunction.Planner
         }
 
         // Lichtgewicht "wat staat er nu gepland"-weergave (#566) — zonder FieldScheduler-berekening.
+        /// <summary>
+        /// #1400: generiek voor elke ingelogde gebruiker (admin+user) — dit voedt de Planning-pagina
+        /// (<c>BlazorAdmin/Pages/Planning.razor</c>), die voor iedereen zichtbaar moet zijn. De
+        /// overige plannerendpoints in dit bestand blijven bewust admin-only via
+        /// <see cref="AdminEndpoint.ExecuteAsync"/> — alleen deze leesweergave wijzigt.
+        /// </summary>
         [Function("Veldbezetting")]
         public static Task<IActionResult> Veldbezetting(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "planner/veldbezetting")] HttpRequest req,
             FunctionContext context)
         {
             var log = context.GetLogger("Veldbezetting");
-            return AdminEndpoint.ExecuteAsync(req, log, "veldbezetting ophalen",
+            return AdminEndpoint.ExecuteAuthenticatedAsync(req, log, "veldbezetting ophalen",
                 async clubCode =>
                 {
                     var datumParam = req.Query["datum"].ToString();

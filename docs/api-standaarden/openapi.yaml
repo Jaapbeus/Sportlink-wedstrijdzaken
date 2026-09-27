@@ -9,20 +9,22 @@ info:
     Eén beveiligingsschema:
 
     - **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist
-      voor alle endpoints behalve `/health`. De rolcontrole gebeurt server-side:
+      voor alle endpoints behalve `/health`. De rolcontrole gebeurt server-side, met vier niveaus:
       `admin` (`EasyAuthHelper.RequireAdmin`, via de wrappers `AdminEndpoint.ExecuteAsync` /
-      `ExecuteZonderDatabaseAsync`) voor `/beheer/`, `/planner/`, `/feedback/` en `/test/` — sinds
-      #1350 óók voor `/postgres/sync-matches` en `/sync-matches`; voor `/sportlink/` op **beide**
-      tiers identiek `Wedstrijdzaken` óf `admin` (`EasyAuthHelper.RequireWedstrijdzaken`, sinds
-      #1376) gevolgd door nogmaals uitsluitend `admin` (dezelfde `AdminEndpoint.ExecuteAsync`-poort,
-      ongewijzigd sinds #1272), via `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`. Netto:
-      `admin` is altijd vereist voor `/sportlink/`; `Wedstrijdzaken` alléén (ook met `user`, zonder
-      `admin`) geeft `403`. Lokaal omzeild wanneer de omgevingsvariabele `WEBSITE_SITE_NAME`
-      afwezig is.
+      `ExecuteZonderDatabaseAsync`) voor de meeste `/beheer/`-, `/planner/`-, `/feedback/`- en
+      `/test/`-endpoints — sinds #1350 óók voor `/postgres/sync-matches` en `/sync-matches`;
+      `admin` óf `user` (`AdminEndpoint.ExecuteAuthenticatedAsync`, #1330) voor `/planner/veldbezetting`
+      (#1400), de twee Sportlink-viewing-endpoints (`GET /sportlink/match/{wedstrijdcode}` en
+      `.../public-match-id`, #1400) en de drie Teambegeleiding-lookup/doorstuur-endpoints; op
+      **beide** tiers identiek `Wedstrijdzaken` óf `admin` (`EasyAuthHelper.RequireWedstrijdzaken`,
+      beide poorten sinds #1400) voor de Sportlink-mutatie-endpoints (`PUT`/`POST` onder
+      `/sportlink/`), via `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`. Netto: een gewone
+      `user` (zonder `Wedstrijdzaken`, zonder `admin`) kan Planning en het Sportlink-paneel bekijken
+      maar geen Sportlink-mutatie triggeren; dat laatste vereist `Wedstrijdzaken` óf `admin`. Lokaal
+      omzeild wanneer de omgevingsvariabele `WEBSITE_SITE_NAME` afwezig is.
 
     Zonder token volgt `401`. Met een geldig token maar zonder de vereiste rol volgt `403` met
-    `{ "error": "Forbidden: vereiste rol ontbreekt" }`. De rol `user` geeft nergens toegang:
-    `EasyAuthHelper.RequireAuthenticated` is bij #1350 verwijderd.
+    `{ "error": "Forbidden: vereiste rol ontbreekt" }`.
 
     ## Tiers
 
@@ -31,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.7.1.0
+  version: 3.7.6.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -58,9 +60,10 @@ tags:
     description: Feedback widget (vereist Entra ID authenticatie met admin-rol)
   - name: sportlink
     description: |
-      Sportlink Web Extension (#986/#991) — lees- én mutatie-endpoints. Vereist op beide tiers
-      identiek de rol `admin`; `Wedstrijdzaken` alléén (ook met `user`) is onvoldoende — zie de
-      beveiligingsparagraaf hierboven.
+      Sportlink Web Extension (#986/#991) — lees- én mutatie-endpoints. Sinds #1400: de twee
+      viewing-endpoints (`GET /sportlink/match/{wedstrijdcode}` en `.../public-match-id`) vereisen
+      alleen `admin` óf `user`; de mutatie-endpoints (`PUT`/`POST`) vereisen op beide tiers identiek
+      `Wedstrijdzaken` óf `admin` — zie de beveiligingsparagraaf hierboven.
       Verschillende mutaties zijn in de code op dry-run vastgezet — zie docs/SPORTLINK-WEB-EXTENSION.md.
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -76,10 +79,11 @@ components:
         Azure Easy Auth Bearer token (Entra ID). Geldt voor alle endpoints behalve `/health`,
         inclusief `/postgres/sync-matches` en `/sync-matches` (sinds #1350 — tot dan een Function
         key/Master key via `?code=`). De Function App valideert dit token via Easy Auth en
-        injecteert `X-MS-CLIENT-PRINCIPAL`. EasyAuthHelper controleert daarna de rol: `admin` op
-        alle /beheer/-, /planner/-, /feedback/- en /test/-endpoints (en de twee syncroutes),
-        `Wedstrijdzaken` op alle /sportlink/-endpoints. Lokaal altijd toegestaan als
-        WEBSITE_SITE_NAME afwezig is.
+        injecteert `X-MS-CLIENT-PRINCIPAL`. EasyAuthHelper controleert daarna de rol: `admin` op de
+        meeste /beheer/-, /planner/-, /feedback/- en /test/-endpoints (en de twee syncroutes);
+        `admin` of `user` op /planner/veldbezetting en de twee Sportlink-viewing-endpoints (#1400);
+        `Wedstrijdzaken` of `admin` op de Sportlink-mutatie-endpoints (beide poorten sinds #1400).
+        Lokaal altijd toegestaan als WEBSITE_SITE_NAME afwezig is.
 
   # ───────────────────────────────────────────────────────────────────────────
   # Herbruikbare headers
@@ -981,6 +985,14 @@ components:
         veldFeatureToegestaan:
           type: boolean
           description: "#1341: combineer met isEditFieldAllowed hierboven."
+        magWijzigen:
+          type: boolean
+          description: |
+            #1400: true zodra de aanroeper admin óf Wedstrijdzaken is — onafhankelijk van de drie
+            per-club FeatureKey-toggles hierboven, want het wijzigingsverzoek datum/tijd/
+            accommodatie heeft er bewust geen. Gate't het wijzigingsverzoek-blok in
+            SportlinkMatchPanel; een gewone user (viewing is sinds #1400 generiek open) krijgt
+            hier false.
         scheidsrechterRelatieCode:
           type: string
           nullable: true
@@ -3594,9 +3606,11 @@ paths:
         Zoekt het `PublicMatchId` van deze wedstrijd op (gecached, zie
         `public.sportlinkpublicmatchidcache`; reverse-lookup bij Sportlink zelf bij een cache-miss
         — #987) en haalt daarmee het wedstrijdobject op bij Sportlink Club. Uitsluitend lezen —
-        geen enkele mutatie. Vereist de rol `admin` (`Wedstrijdzaken` alléén is onvoldoende — zie
-        #988 Besluit 1 en de beveiligingsparagraaf hierboven) en dat `SportlinkExtensionEnabled`
-        aan staat. Bevat sinds #1340
+        geen enkele mutatie. Vereist sinds #1400 alleen `admin` óf `user` (voorheen uitsluitend
+        `Wedstrijdzaken`/`admin`, zie #988 Besluit 1) en dat `SportlinkExtensionEnabled` aan staat.
+        Welke permissievlaggen en relatiecodes in de respons daadwerkelijk gevuld zijn hangt af van
+        de éigen rol van de aanroeper (`admin`/`Wedstrijdzaken` → echte waarden, gewone `user` →
+        alles `false`/`null`, zie `SportlinkRolFeatureToestemmingen.MagWijzigen`). Bevat sinds #1340
         (VOORSTEL, DPO-vraag nog niet bevestigd — zie docs/SPORTLINK-WEB-EXTENSION.md §8) ook de
         relatiecode van scheidsrechter/AR1/AR2 als PRECIES ÉÉN uitzondering op "verder
         niet-persoonsgebonden" — nooit een naam of ander persoonsgegeven.
@@ -3645,6 +3659,7 @@ paths:
         Sportlink zelf bij een cache-miss — #987/#1016) zonder de volledige `Match`-aanroep bij
         Sportlink te doen. Gebruikt door de "Open in Sportlink"-knop in Dagplanning om
         `https://club.sportlink.com/competition-affairs/match-details/{PublicMatchId}` te openen.
+        Vereist sinds #1400 alleen `admin` óf `user` (voorheen uitsluitend `Wedstrijdzaken`/`admin`).
       security:
         - easyAuth: []
       parameters:
@@ -6767,7 +6782,9 @@ paths:
         Geeft de wedstrijden terug die op een datum al gepland staan, rechtstreeks uit de
         laatst gesynchroniseerde Sportlink-data — zonder de scheduling-optimalisatie die
         `/planner/auto-plan` uitvoert. Bedoeld als snelle,
-        goedkope "wat staat er nu al gepland"-weergave.
+        goedkope "wat staat er nu al gepland"-weergave. Voedt de Planning-pagina, die sinds #1400
+        generiek zichtbaar is voor elke ingelogde gebruiker — vereist daarom alleen `admin` óf
+        `user` (voorheen uitsluitend `admin`), als enig endpoint in deze tag.
       security:
         - easyAuth: []
       parameters:

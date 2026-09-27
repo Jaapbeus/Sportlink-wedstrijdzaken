@@ -180,23 +180,28 @@ AND-gecombineerde Entra-toewijzingen, met als motivering ruimte te houden voor e
 beperktere rol (bijv. een "sectiehoofd" dat wél admin is maar géén Sportlink-mutaties mag
 triggeren — zie `docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md` §6).
 
-**#1376 raakte uitsluitend die eerste poort.** De tweede, erop volgende poort
-(`AdminEndpoint.ExecuteAsync` → `EasyAuthHelper.RequireAdmin`) is ongewijzigd sinds #1272 en
-vereist onveranderd uitsluitend `admin`. Een gebruiker met **alleen** `user` + `Wedstrijdzaken`
-(geen `admin`) passeert dus wél de eerste poort maar strandt op de tweede — `403`, bewust getest
-(`Sportlink_AlleenWedstrijdzaken_WordtGeweigerdOpDeAdminPoort`, beide tiers). Netto-effect van
-#1376: `admin` zonder aparte `Wedstrijdzaken`-toewijzing bereikt nu ook de Sportlink-endpoints —
-niet dat `Wedstrijdzaken` zonder `admin` dat inmiddels ook doet.
+**#1400 heeft ook de TWEEDE poort verruimd (fix van de #1379-bevinding).** Tot #1400 was de tweede,
+erop volgende poort (`AdminEndpoint.ExecuteAsync` → `EasyAuthHelper.RequireAdmin`) ongewijzigd
+sinds #1272 en vereiste onveranderd uitsluitend `admin` — een gebruiker met **alleen**
+`user` + `Wedstrijdzaken` (geen `admin`) passeerde dus wél de eerste poort maar strandde op de
+tweede (`403`). #1400 vervangt die tweede poort door `AdminEndpoint.ExecuteWedstrijdzakenOfAdminAsync`,
+die dezelfde `Wedstrijdzaken`-ÓF-`admin`-regel gebruikt als de eerste — bewust getest
+(`Sportlink_AlleenWedstrijdzaken_PasseertDeAdminPoort`, beide tiers). **Netto-effect: `Wedstrijdzaken`
+is sinds #1400 een echt alternatief voor `admin`** voor de mutatie-endpoints (kleedkamers, veld,
+scheidsrechters, wijzigingsverzoek datum/tijd/accommodatie) — niet alleen aanvullend. Een gewone
+`user` zonder `Wedstrijdzaken` en zonder `admin` krijgt op deze mutatie-endpoints nog steeds `403`
+(bewust getest: `Sportlink_AlleenUser_WordtGeweigerdOpDeWedstrijdzakenPoort`).
 
-**Belangrijk om te weten:** `Wedstrijdzaken` is dus, voor de endpoints zelf, nooit een alternatief
-voor `admin` — alleen een aanvullende rol die een al-toegelaten `admin`-gebruiker verder gate't via
-de per-actie-toggles in §3.5. Vandaag komt `Wedstrijdzaken` in de praktijk ook altijd sámen met
-`admin` voor — er bestaat (nog) geen gebruiker met uitsluitend `Wedstrijdzaken` — dus die toggles
-hebben vandaag geen zichtbaar effect. Dat is bewust toekomstbestendig gebouwd voor het moment dat
-er ooit een beperktere rol komt (bijv. een "sectiehoofd", zie het architectuurbesluit in §6 van
-`docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md`) — een sectiehoofd-rol zou bovendien ook de tweede
-poort moeten passeren zonder `admin`, wat een aparte herziening van `AdminEndpoint`'s huidige
-uitsluitend-`admin`-vereiste vergt, niet alleen van de eerste poort.
+**Viewing is sinds #1400 losgekoppeld van de Wedstrijdzaken-rol.** `GET /api/sportlink/match/
+{wedstrijdcode}` en `.../public-match-id` — het Sportlink-paneel in Planning — lopen niet meer via
+de Wedstrijdzaken-poort, maar via `AdminEndpoint.ExecuteAuthenticatedAsync` (elke ingelogde rol,
+`admin` + `user`): Planning en het Sportlink-paneel zijn generiek zichtbaar voor elke gebruiker.
+Welke velden een niet-Wedstrijdzaken-viewer daadwerkelijk terugkrijgt blijft wél server-side
+geredigeerd: `SportlinkMatchFunction.BepaalRolFeatureToestemmingenAsync` checkt expliciet of de
+aanroeper zelf `admin` óf `Wedstrijdzaken` is (`EasyAuthHelper.IsInRole`) — een gewone `user` krijgt
+`(false,false,false,false)` terug (`SportlinkRolFeatureToestemmingen`, inclusief de nieuwe
+`MagWijzigen`-vlag) en dus geen scheidsrechter-relatiecodes en geen zichtbare wijzig-knoppen in
+`SportlinkMatchPanel` (die blijven puur UX — de mutatie-endpoints zelf blijven de leidende controle).
 
 ### 3.5 Toegangsmatrix per rol (#1390, opvolger van #1341/epic #1338)
 Een beheerder kan op **Instellingen → Rechten per rol** een matrix instellen: rijen zijn elk
@@ -213,13 +218,15 @@ Vier dingen om te onthouden:
   HTTP 409, ook bij een directe API-aanroep buiten de Blazor-UI om, voor de rol `Wedstrijdzaken`.
   De UI verbergt de bijbehorende sectie in `SportlinkMatchPanel` alleen om een voorspelbare 409 te
   voorkomen.
-- **De overige rijen (menu-zichtbaarheid) zijn vandaag uitsluitend configuratie, geen handhaving.**
-  Er bestaat nog geen endpoint waarmee een niet-admin-gebruiker zijn éigen rechten kan opvragen, en
-  `BlazorAdmin/Services/AuthGate.cs` laat uitsluitend `admin`/`user` de app-shell in — een matrixrij
-  uitzetten verbergt dus (nog) geen menu-item en blokkeert geen endpoint. Dit is een bewuste,
-  gedocumenteerde scope-grens van #1390: het uitbreiden van de autorisatiewrapper naar meer
-  geaccepteerde rolcombinaties raakt dezelfde laag als het nog openstaande #1379 en is bewust niet
-  in dezelfde wijziging meegenomen.
+- **De overige rijen (menu-zichtbaarheid, buiten Planning) zijn vandaag uitsluitend configuratie,
+  geen handhaving.** Er bestaat nog geen endpoint waarmee een niet-admin-gebruiker zijn éigen
+  rechten kan opvragen, en `BlazorAdmin/Services/AuthGate.cs` laat uitsluitend `admin`/`user` de
+  app-shell in — een matrixrij uitzetten verbergt dus (nog) geen ander menu-item en blokkeert geen
+  ander endpoint. **Uitzondering sinds #1400: Planning/het Sportlink-paneel viewen is hard-coded
+  generiek open voor `admin`+`user`** (niet via deze matrix instelbaar — zie §3.4) en de drie
+  Sportlink-mutatieacties zijn hard-coded `admin`-of-`Wedstrijdzaken` (de AND-gate-fix van #1379).
+  Het uitbreiden van de autorisatiewrapper naar de twee nieuwe rollen `Sectiehoofd`/
+  `Ledenadministratie` blijft een apart, nog openstaand vervolgtraject.
 - **`Sectiehoofd` en `Ledenadministratie` zijn vandaag instelbare rijen, geen toewijsbare rollen.**
   Ze bestaan nog niet als Entra-approl (§3.4 hierboven beschrijft alleen `Wedstrijdzaken`) — een
   gebruiker kan deze rol dus nog niet daadwerkelijk krijgen. Toevoegen als Entra-approl is een

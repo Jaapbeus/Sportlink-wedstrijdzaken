@@ -34,16 +34,19 @@ internal static class SportlinkEndpointSupport
 
     /// <summary>
     /// Voert een Sportlink-endpoint uit met BEIDE poorten: eerst de functionele rol
-    /// <c>Wedstrijdzaken</c>, daarna de gewone admin-controle van
-    /// <see cref="AdminEndpoint.ExecuteAsync"/>. Beide tiers gebruiken sinds #1272 dezelfde
-    /// volgorde — zie <see cref="SportlinkEndpointSupportCore.ExecuteWedstrijdzakenAsync"/>.
+    /// <c>Wedstrijdzaken</c> (of <c>admin</c>), daarna nogmaals dezelfde rolcontrole samen met de
+    /// tier-infrastructuur van <see cref="AdminEndpoint.ExecuteWedstrijdzakenOfAdminAsync"/>
+    /// (databasewacht, clubcode, foutafhandeling). Sinds #1400 accepteert de TWEEDE poort ook
+    /// Wedstrijdzaken — vóór #1400 eiste die uitsluitend admin, waardoor een gebruiker met alleen
+    /// de rol Wedstrijdzaken (geen admin) alsnog een 403 kreeg (#1379). Beide tiers gebruiken
+    /// dezelfde volgorde — zie <see cref="SportlinkEndpointSupportCore.ExecuteWedstrijdzakenAsync"/>.
     /// </summary>
     internal static Task<IActionResult> ExecuteWedstrijdzakenAsync(
         HttpRequest req, ILogger log, string errorContext, Func<string, Task<IActionResult>> work)
         => SportlinkEndpointSupportCore.ExecuteWedstrijdzakenAsync(
             req, log, errorContext, work,
             EasyAuthHelper.RequireWedstrijdzaken,
-            AdminEndpoint.ExecuteAsync);
+            AdminEndpoint.ExecuteWedstrijdzakenOfAdminAsync);
 
     internal static IActionResult ClientNietGeconfigureerdFout()
         => SportlinkEndpointSupportCore.ClientNietGeconfigureerdFout();

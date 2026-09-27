@@ -84,6 +84,12 @@ public class SportlinkMatchInfoDto
     public bool ScheidsrechterFeatureToegestaan { get; set; }
     public bool VeldFeatureToegestaan { get; set; }
 
+    // #1400: geen FeatureKey-toggle (het wijzigingsverzoek datum/tijd/accommodatie heeft er bewust
+    // geen, zie SportlinkRolFeature.VoorMutatieSoort) — puur de rolcheck (admin of Wedstrijdzaken),
+    // want Planning/het Sportlink-paneel is sinds #1400 generiek zichtbaar voor elke ingelogde
+    // gebruiker terwijl wijzigen die rol vereist.
+    public bool MagWijzigen { get; set; }
+
     // #1340 (VOORSTEL — DPO-vraag nog niet bevestigd door de eigenaar, zie
     // docs/SPORTLINK-WEB-EXTENSION.md): relatiecode van de huidige official per positie, alleen
     // gevuld als Sportlink al een official had toegewezen. De server nult deze drie velden altijd

@@ -59,10 +59,15 @@ public static class SportlinkEndpointSupportCore
 
     /// <summary>
     /// Voert een Sportlink-endpoint uit met BEIDE poorten: eerst de functionele rol
-    /// <c>Wedstrijdzaken</c> (<paramref name="requireWedstrijdzaken"/>), daarna de gewone
-    /// admin-controle van de tier (<paramref name="adminExecuteAsync"/>). Sinds #1272 gebruiken
-    /// beide tiers dezelfde volgorde — geen tierverschil meer, alleen nog een andere
-    /// <c>EasyAuthHelper</c>/<c>AdminEndpoint</c> per tier.
+    /// <c>Wedstrijdzaken</c> (of <c>admin</c>, <paramref name="requireWedstrijdzaken"/>), daarna
+    /// nogmaals dezelfde rolcontrole samen met de tier-infrastructuur (databasewacht, clubcode,
+    /// foutafhandeling — <paramref name="adminExecuteAsync"/>). Sinds #1272 gebruiken beide tiers
+    /// dezelfde volgorde — geen tierverschil, alleen nog een andere
+    /// <c>EasyAuthHelper</c>/<c>AdminEndpoint</c> per tier. Sinds #1400 accepteert ook de TWEEDE
+    /// poort Wedstrijdzaken naast admin (tier-wrappers geven daarvoor
+    /// <c>AdminEndpoint.ExecuteWedstrijdzakenOfAdminAsync</c> door in plaats van het admin-only
+    /// <c>ExecuteAsync</c>) — vóór #1400 eiste die tweede poort altijd admin, waardoor een
+    /// gebruiker met uitsluitend Wedstrijdzaken (geen admin) alsnog een 403 kreeg (#1379).
     /// </summary>
     public static Task<IActionResult> ExecuteWedstrijdzakenAsync(
         HttpRequest req,

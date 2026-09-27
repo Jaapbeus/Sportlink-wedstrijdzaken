@@ -196,11 +196,12 @@ aan als de bron.
 | Test-user | Configuratie in Azure | Verwacht in browser |
 |---|---|---|
 | `admin@voorbeeld.nl` | Toegewezen, role `admin` | Volledige UI, API werkt, sidebar zichtbaar |
-| 2e club-user | Toegewezen, role `user` | UI laadt, GET-API werkt, mutaties (later) geblokkeerd |
+| 2e club-user | Toegewezen, role `user` | UI laadt, Planning/het Sportlink-paneel zijn zichtbaar (viewing, sinds #1400), Sportlink-mutaties en overige `/beheer/*`/`/planner/*`-endpoints geblokkeerd |
 | 3e club-user | **Niet** toegewezen | Geen token van Entra → blijft op login → met directe URL alsnog `NoAccess` pagina |
 | Guest / andere tenant | n.v.t. | Entra weigert login vóór redirect |
-| 5e profiel (#988) | Toegewezen, **alléén** role `Wedstrijdzaken` (geen admin/user) | `App.razor`'s `hasAccessRole` blijft `false` → `NoAccess`-pagina. **Verwacht en gewenst** resultaat: `Wedstrijdzaken` is een aanvullende rol voor Sportlink-mutatie-endpoints (#991+), geen vervanging voor `admin`/`user` — er bestaat nog geen niet-Admin-GUI-oppervlak dat deze rol gebruikt. Niet als regressie lezen. |
+| 5e profiel (#988) | Toegewezen, **alléén** role `Wedstrijdzaken` (geen admin/user) | `App.razor`'s `hasAccessRole` blijft `false` → `NoAccess`-pagina. **Verwacht en gewenst:** `Wedstrijdzaken` geeft op zichzelf geen toegang tot de app-shell — dat blijft `admin`/`user` (laag 4). De aanbevolen toewijzing is dus altijd `["user","Wedstrijdzaken"]`, nooit `Wedstrijdzaken` alleen. Niet als regressie lezen. |
 | 6e profiel (#1376) | Toegewezen, **alléén** role `admin` (geen aparte `Wedstrijdzaken`-toewijzing) | Volledige UI zoals altijd, én Sportlink-mutatie-endpoints (bijv. "Open in Sportlink" in Dagplanning) werken zonder 403. **Herziening van het eerdere besluit** dat `admin` en `Wedstrijdzaken` losse Entra-assignments moesten blijven — zie `memory/wedstrijdzaken-rol-vereist-altijd-ook-admin.md`. |
+| 7e profiel (#1400) | Toegewezen, role `user` **+** `Wedstrijdzaken` (geen admin) | Volledige Planning/Sportlink-viewing (al via rij 2) én Sportlink-mutaties (kleedkamers/veld/scheidsrechters/wijzigingsverzoek) werken nu zónder 403 — vóór #1400 gaf dit profiel nog `403` op elke mutatie (zie de kanttekening bij rij 6 hieronder). Overige `/beheer/*`/`/planner/*`-endpoints blijven `403` (die vereisen nog steeds `admin`). |
 
 Documenteer de uitkomst per release. Geen gebruikersrollentest → geen acceptatie.
 
@@ -219,13 +220,21 @@ de claim-vergelijking zelf af. De browsertest in deze tabel blijft niettemin ver
 ook dat de Entra-app-rolconfiguratie (`Configure-EntraApp.ps1`) en de MSAL-tokencache-verversing
 kloppen, niet alleen de C#-logica.
 
-**Kanttekening bij rij 6:** de OR-logica in `RequireWedstrijdzaken` opent alleen de eerste van twee
-autorisatiepoorten die elk Sportlink-endpoint doorloopt. De tweede poort
-(`AdminEndpoint.ExecuteAsync` → `EasyAuthHelper.RequireAdmin`) is ongewijzigd sinds #1272 en
-vereist onveranderd uitsluitend `admin`. Het netto-effect van #1376 is dus dat `admin` zónder
-aparte `Wedstrijdzaken`-toewijzing nu ook de Sportlink-endpoints bereikt — niet dat `Wedstrijdzaken`
-zónder `admin` dat inmiddels ook doet. Zie `Sportlink_AlleenWedstrijdzaken_WordtGeweigerdOpDeAdminPoort`
-(beide tiers) voor het bewijs dat dat laatste nog steeds `403` geeft.
+**Kanttekening bij rij 6 (historisch — opgelost bij #1400):** tot #1400 opende de OR-logica in
+`RequireWedstrijdzaken` alleen de eerste van twee autorisatiepoorten die elk Sportlink-endpoint
+doorloopt; de tweede poort (`AdminEndpoint.ExecuteAsync` → `EasyAuthHelper.RequireAdmin`) vereiste
+nog altijd uitsluitend `admin`. Het netto-effect van #1376 was dus dat `admin` zónder aparte
+`Wedstrijdzaken`-toewijzing de Sportlink-endpoints bereikte — maar `Wedstrijdzaken` zónder `admin`
+nog steeds niet (bewezen door `Sportlink_AlleenWedstrijdzaken_WordtGeweigerdOpDeAdminPoort`).
+
+**Rij 7 (#1400) fixt die tweede poort.** `AdminEndpoint.ExecuteWedstrijdzakenOfAdminAsync` vervangt
+`AdminEndpoint.ExecuteAsync` als tweede poort voor de Sportlink-mutatie-endpoints en gebruikt
+dezelfde `Wedstrijdzaken`-ÓF-`admin`-regel als de eerste poort. `Wedstrijdzaken` is daarmee een
+echt alternatief voor `admin` geworden voor die endpoints — bewezen door de hernoemde/omgedraaide
+test `Sportlink_AlleenWedstrijdzaken_PasseertDeAdminPoort` (beide tiers). Tegelijk zijn de twee
+viewing-endpoints (`GET /sportlink/match/{wedstrijdcode}` en `.../public-match-id`) losgekoppeld
+van de Wedstrijdzaken-gate en lopen nu via `AdminEndpoint.ExecuteAuthenticatedAsync` (elke ingelogde
+rol) — vandaar dat rij 2 (gewone `user`) sindsdien al viewing krijgt, ook zonder `Wedstrijdzaken`.
 
 ## Tracking
 
