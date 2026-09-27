@@ -170,23 +170,33 @@ gaten, bovenop de bestaande admin-toegang. Zie
 [`docs/ENTRA-AUTH-BEHEER.md`](ENTRA-AUTH-BEHEER.md) voor het volledige rolbeheer-protocol en de
 verplichte N-user-test.
 
-**Herziening (#1376):** een `admin`-toewijzing is sinds #1376 op zichzelf voldoende voor
-Sportlink-mutatie-endpoints — een aparte `Wedstrijdzaken`-toewijzing is voor een volledige
-beheerder niet meer nodig. Dit draait een eerder, expliciet besluit terug (zie
-`memory/wedstrijdzaken-rol-vereist-altijd-ook-admin.md` in het projectgeheugen): tot #1376 golden
-`admin` en `Wedstrijdzaken` bewust als losse, AND-gecombineerde Entra-toewijzingen, met als
-motivering ruimte te houden voor een toekomstige, beperktere rol (bijv. een "sectiehoofd" dat wél
-admin is maar géén Sportlink-mutaties mag triggeren — zie
-`docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md` §6). De rol `Wedstrijdzaken` blijft wél bestaan en
-nodig voor het andere geval: een gebruiker met **alleen** `user` + `Wedstrijdzaken` (geen `admin`)
-krijgt nog steeds toegang tot dezelfde mutatie-endpoints — dat gedrag is ongewijzigd.
+**Herziening (#1376):** een `admin`-toewijzing is sinds #1376 op zichzelf voldoende voor de eerste
+van de twee autorisatiepoorten die elk Sportlink-endpoint doorloopt
+(`EasyAuthHelper.RequireWedstrijdzaken` staat sindsdien `Wedstrijdzaken` ÓF `admin` toe) — een
+aparte `Wedstrijdzaken`-toewijzing is voor een volledige beheerder daar niet meer voor nodig. Dit
+draait een eerder, expliciet besluit terug (zie `memory/wedstrijdzaken-rol-vereist-altijd-ook-admin.md`
+in het projectgeheugen): tot #1376 golden `admin` en `Wedstrijdzaken` bewust als losse,
+AND-gecombineerde Entra-toewijzingen, met als motivering ruimte te houden voor een toekomstige,
+beperktere rol (bijv. een "sectiehoofd" dat wél admin is maar géén Sportlink-mutaties mag
+triggeren — zie `docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md` §6).
 
-**Belangrijk om te weten:** vandaag komt `Wedstrijdzaken` in de praktijk altijd sámen met `admin`
-voor — er bestaat (nog) geen gebruiker met uitsluitend `Wedstrijdzaken`. De per-actie-toggles in
-§3.5 hieronder hebben daardoor vandaag geen zichtbaar effect (elke Wedstrijdzaken-gebruiker is óók
-admin, en admin heeft altijd alles aan) — ze zijn bewust toekomstbestendig gebouwd voor het moment
-dat er ooit een beperktere rol komt (bijv. een "sectiehoofd", zie het architectuurbesluit in
-§6 van `docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md`).
+**#1376 raakte uitsluitend die eerste poort.** De tweede, erop volgende poort
+(`AdminEndpoint.ExecuteAsync` → `EasyAuthHelper.RequireAdmin`) is ongewijzigd sinds #1272 en
+vereist onveranderd uitsluitend `admin`. Een gebruiker met **alleen** `user` + `Wedstrijdzaken`
+(geen `admin`) passeert dus wél de eerste poort maar strandt op de tweede — `403`, bewust getest
+(`Sportlink_AlleenWedstrijdzaken_WordtGeweigerdOpDeAdminPoort`, beide tiers). Netto-effect van
+#1376: `admin` zonder aparte `Wedstrijdzaken`-toewijzing bereikt nu ook de Sportlink-endpoints —
+niet dat `Wedstrijdzaken` zonder `admin` dat inmiddels ook doet.
+
+**Belangrijk om te weten:** `Wedstrijdzaken` is dus, voor de endpoints zelf, nooit een alternatief
+voor `admin` — alleen een aanvullende rol die een al-toegelaten `admin`-gebruiker verder gate't via
+de per-actie-toggles in §3.5. Vandaag komt `Wedstrijdzaken` in de praktijk ook altijd sámen met
+`admin` voor — er bestaat (nog) geen gebruiker met uitsluitend `Wedstrijdzaken` — dus die toggles
+hebben vandaag geen zichtbaar effect. Dat is bewust toekomstbestendig gebouwd voor het moment dat
+er ooit een beperktere rol komt (bijv. een "sectiehoofd", zie het architectuurbesluit in §6 van
+`docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md`) — een sectiehoofd-rol zou bovendien ook de tweede
+poort moeten passeren zonder `admin`, wat een aparte herziening van `AdminEndpoint`'s huidige
+uitsluitend-`admin`-vereiste vergt, niet alleen van de eerste poort.
 
 ### 3.5 Toegangsmatrix per rol (#1390, opvolger van #1341/epic #1338)
 Een beheerder kan op **Instellingen → Rechten per rol** een matrix instellen: rijen zijn elk

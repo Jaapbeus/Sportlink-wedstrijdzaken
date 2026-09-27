@@ -12,10 +12,13 @@ info:
       voor alle endpoints behalve `/health`. De rolcontrole gebeurt server-side:
       `admin` (`EasyAuthHelper.RequireAdmin`, via de wrappers `AdminEndpoint.ExecuteAsync` /
       `ExecuteZonderDatabaseAsync`) voor `/beheer/`, `/planner/`, `/feedback/` en `/test/` — sinds
-      #1350 óók voor `/postgres/sync-matches` en `/sync-matches`; `Wedstrijdzaken`
-      (`EasyAuthHelper.RequireWedstrijdzaken`, via `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`)
-      voor `/sportlink/` (op de SQL Server-tier bovendien ook `admin`). Lokaal omzeild wanneer de
-      omgevingsvariabele `WEBSITE_SITE_NAME` afwezig is.
+      #1350 óók voor `/postgres/sync-matches` en `/sync-matches`; voor `/sportlink/` op **beide**
+      tiers identiek `Wedstrijdzaken` óf `admin` (`EasyAuthHelper.RequireWedstrijdzaken`, sinds
+      #1376) gevolgd door nogmaals uitsluitend `admin` (dezelfde `AdminEndpoint.ExecuteAsync`-poort,
+      ongewijzigd sinds #1272), via `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`. Netto:
+      `admin` is altijd vereist voor `/sportlink/`; `Wedstrijdzaken` alléén (ook met `user`, zonder
+      `admin`) geeft `403`. Lokaal omzeild wanneer de omgevingsvariabele `WEBSITE_SITE_NAME`
+      afwezig is.
 
     Zonder token volgt `401`. Met een geldig token maar zonder de vereiste rol volgt `403` met
     `{ "error": "Forbidden: vereiste rol ontbreekt" }`. De rol `user` geeft nergens toegang:
@@ -55,8 +58,9 @@ tags:
     description: Feedback widget (vereist Entra ID authenticatie met admin-rol)
   - name: sportlink
     description: |
-      Sportlink Web Extension (#986/#991) — lees- én mutatie-endpoints. Vereist de Entra-approl
-      Wedstrijdzaken; op de SQL Server-tier daarnaast ook de rol admin.
+      Sportlink Web Extension (#986/#991) — lees- én mutatie-endpoints. Vereist op beide tiers
+      identiek de rol `admin`; `Wedstrijdzaken` alléén (ook met `user`) is onvoldoende — zie de
+      beveiligingsparagraaf hierboven.
       Verschillende mutaties zijn in de code op dry-run vastgezet — zie docs/SPORTLINK-WEB-EXTENSION.md.
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -3590,8 +3594,9 @@ paths:
         Zoekt het `PublicMatchId` van deze wedstrijd op (gecached, zie
         `public.sportlinkpublicmatchidcache`; reverse-lookup bij Sportlink zelf bij een cache-miss
         — #987) en haalt daarmee het wedstrijdobject op bij Sportlink Club. Uitsluitend lezen —
-        geen enkele mutatie. Vereist de Entra-approl `Wedstrijdzaken` (naast of in plaats van
-        admin, zie #988 Besluit 1) en dat `SportlinkExtensionEnabled` aan staat. Bevat sinds #1340
+        geen enkele mutatie. Vereist de rol `admin` (`Wedstrijdzaken` alléén is onvoldoende — zie
+        #988 Besluit 1 en de beveiligingsparagraaf hierboven) en dat `SportlinkExtensionEnabled`
+        aan staat. Bevat sinds #1340
         (VOORSTEL, DPO-vraag nog niet bevestigd — zie docs/SPORTLINK-WEB-EXTENSION.md §8) ook de
         relatiecode van scheidsrechter/AR1/AR2 als PRECIES ÉÉN uitzondering op "verder
         niet-persoonsgebonden" — nooit een naam of ander persoonsgegeven.

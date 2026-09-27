@@ -219,6 +219,14 @@ de claim-vergelijking zelf af. De browsertest in deze tabel blijft niettemin ver
 ook dat de Entra-app-rolconfiguratie (`Configure-EntraApp.ps1`) en de MSAL-tokencache-verversing
 kloppen, niet alleen de C#-logica.
 
+**Kanttekening bij rij 6:** de OR-logica in `RequireWedstrijdzaken` opent alleen de eerste van twee
+autorisatiepoorten die elk Sportlink-endpoint doorloopt. De tweede poort
+(`AdminEndpoint.ExecuteAsync` → `EasyAuthHelper.RequireAdmin`) is ongewijzigd sinds #1272 en
+vereist onveranderd uitsluitend `admin`. Het netto-effect van #1376 is dus dat `admin` zónder
+aparte `Wedstrijdzaken`-toewijzing nu ook de Sportlink-endpoints bereikt — niet dat `Wedstrijdzaken`
+zónder `admin` dat inmiddels ook doet. Zie `Sportlink_AlleenWedstrijdzaken_WordtGeweigerdOpDeAdminPoort`
+(beide tiers) voor het bewijs dat dat laatste nog steeds `403` geeft.
+
 ## Tracking
 
 - Issue [#185](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/185) — Frontend role-gate (Layer 4) — gesloten, geleverd in v2.1.1

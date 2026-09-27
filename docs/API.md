@@ -14,11 +14,15 @@ van jouw deployment; zie `servers` in `docs/api-standaarden/openapi.yaml`.
 > `GET /api/postgres/sync-matches` op de Postgres-tier, `GET /api/sync-matches` op de SQL
 > Server-tier. Op de andere tier geeft die route `404`.
 >
-> Eén autorisatieverschil tussen de tiers, bewust: de `/sportlink/*`-endpoints vereisen op de
-> Postgres-tier alleen de rol `Wedstrijdzaken` (die vervangt daar de admin-check), en op de SQL
-> Server-tier `Wedstrijdzaken` **bovenop** `admin`
-> (`FunctionApp/Sportlink/SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`). De aanbevolen
-> roltoewijzing `["admin","Wedstrijdzaken"]` voldoet aan beide.
+> **Geen autorisatieverschil tussen de tiers** — beide gebruiken dezelfde gedeelde orkestratie
+> (`Planner.Endpoints/Sportlink/SportlinkEndpointSupportCore.ExecuteWedstrijdzakenAsync`, #1271)
+> met identieke poortvolgorde: eerst `Wedstrijdzaken` óf `admin` (`EasyAuthHelper.RequireWedstrijdzaken`,
+> sinds #1376), daarna alsnog uitsluitend `admin` (de gewone `AdminEndpoint.ExecuteAsync`-poort,
+> ongewijzigd sinds #1272). Netto-effect: `admin` is en blijft op beide tiers vereist voor elke
+> `/sportlink/*`-endpoint. `Wedstrijdzaken` alléén — ook in combinatie met `user`, zonder `admin` —
+> geeft nog steeds `403`, bewust getest op beide tiers
+> (`Sportlink_AlleenWedstrijdzaken_WordtGeweigerdOpDeAdminPoort`). De aanbevolen roltoewijzing
+> blijft `["admin","Wedstrijdzaken"]`; sinds #1376 volstaat `admin` alleen ook.
 
 ## Beveiliging
 
