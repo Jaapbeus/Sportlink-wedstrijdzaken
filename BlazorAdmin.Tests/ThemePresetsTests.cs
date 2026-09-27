@@ -104,8 +104,18 @@ public class ThemePresetsTests
         wedstrijdstatusSleutels.Should().BeEquivalentTo(new[]
         {
             "statusOngewijzigd", "statusWijziging", "statusNieuwSlot", "statusNietInplanbaar",
-            "voorkeurOpTijd", "voorkeurKleineAfwijking", "voorkeurGroteAfwijking"
+            "voorkeurOpTijd", "voorkeurKleineAfwijking", "voorkeurGroteAfwijking",
+            "hoverHighlight", "hoverHighlightBg"
         });
+    }
+
+    [Fact]
+    public void StandaardLicht_BevatDeOudeHardcodedHoverHighlightkleuren()
+    {
+        // #1401: zelfde waarden als de hardcoded kleuren die #1398 gedeeld maakte in app.css
+        // (.gantt-blok-hover/.gantt-rij-hover) zonder ze instelbaar te maken.
+        ThemePresets.StandaardLicht["hoverHighlight"].Should().Be("#fd7e14");
+        ThemePresets.StandaardLicht["hoverHighlightBg"].Should().Be("#fd7e1499");
     }
 
     [Fact]

@@ -48,6 +48,10 @@
     --theme-voorkeur-kleine-afwijking-light: #f59e0b;
     --theme-voorkeur-grote-afwijking-light:  #ef4444;
 
+    /* Hover-correlatie (#1315/#1398) — zelfde waarden als de oude hardcoded kleuren. */
+    --theme-hover-highlight-light:    #fd7e14;
+    --theme-hover-highlight-bg-light: #fd7e1499;
+
     /* Navigatie (#1401) — dedicated kleuren i.p.v. hergebruik van secondary/textOnPrimary, zodat
        een club het menu onafhankelijk van andere UI-elementen kan aanpassen. */
     --theme-nav-item-text-light:              #d7d7d7;
@@ -95,6 +99,10 @@
     --theme-voorkeur-kleine-afwijking-dark: #fbbf24;
     --theme-voorkeur-grote-afwijking-dark:  #f87171;
 
+    /* Hover-correlatie (#1315/#1398) — zelfde waarden als het lichte palet. */
+    --theme-hover-highlight-dark:    #fd7e14;
+    --theme-hover-highlight-bg-dark: #fd7e1499;
+
     /* Navigatie (#1401) — zelfde waarden als het lichte palet: universele wit-op-donker-affordance. */
     --theme-nav-item-text-dark:              #d7d7d7;
     --theme-nav-item-active-background-dark: #ffffff40;
@@ -141,6 +149,9 @@
     --theme-voorkeur-kleine-afwijking: var(--theme-voorkeur-kleine-afwijking-light);
     --theme-voorkeur-grote-afwijking:  var(--theme-voorkeur-grote-afwijking-light);
 
+    --theme-hover-highlight:    var(--theme-hover-highlight-light);
+    --theme-hover-highlight-bg: var(--theme-hover-highlight-bg-light);
+
     --theme-nav-item-text:              var(--theme-nav-item-text-light);
     --theme-nav-item-active-background: var(--theme-nav-item-active-background-light);
     --theme-nav-item-hover-background:  var(--theme-nav-item-hover-background-light);
@@ -183,6 +194,9 @@
     --theme-voorkeur-op-tijd:          var(--theme-voorkeur-op-tijd-dark);
     --theme-voorkeur-kleine-afwijking: var(--theme-voorkeur-kleine-afwijking-dark);
     --theme-voorkeur-grote-afwijking:  var(--theme-voorkeur-grote-afwijking-dark);
+
+    --theme-hover-highlight:    var(--theme-hover-highlight-dark);
+    --theme-hover-highlight-bg: var(--theme-hover-highlight-bg-dark);
 
     --theme-nav-item-text:              var(--theme-nav-item-text-dark);
     --theme-nav-item-active-background: var(--theme-nav-item-active-background-dark);
@@ -492,16 +506,16 @@ code {
    Staat bewust hier en niet in een .razor.css: Blazor's CSS-isolatie scopet die per component, en
    deze twee klassen moeten juist over paginagrenzen heen werken. */
 .gantt-blok-hover {
-    outline: 3px solid #fd7e14 !important;
+    outline: 3px solid var(--theme-hover-highlight) !important;
     outline-offset: -1px;
-    box-shadow: 0 2px 8px rgba(253, 126, 20, 0.6) !important;
+    box-shadow: 0 2px 8px var(--theme-hover-highlight-bg) !important;
     z-index: 3 !important;
 }
 
 /* Bootstrap's table-hover kleurt de <td>'s zelf (niet de <tr>) via .table-hover > tbody > tr:hover > *,
    en die achtergrond ligt bovenop een kleur op de <tr>. Daarom hier op de cel zelf targeten. */
 .gantt-rij-hover > td {
-    background-color: rgba(253, 126, 20, 0.35) !important;
+    background-color: var(--theme-hover-highlight-bg) !important;
 }
 
 /* ── ALLSTARS testmodus (#380) ─────────────────────────────────── */

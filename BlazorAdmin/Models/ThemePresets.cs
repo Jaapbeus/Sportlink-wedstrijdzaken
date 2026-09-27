@@ -62,6 +62,12 @@ public static class ThemePresets
         new ThemeKleurDefinitie("voorkeurKleineAfwijking",     "Voorkeurstijd: kleine afwijking", "Indicatorbalk en badge bij een kleine afwijking van de voorkeurstijd", Groep: "Wedstrijdstatus (Planning & Veld optimalisatie)"),
         new ThemeKleurDefinitie("voorkeurGroteAfwijking",      "Voorkeurstijd: grote afwijking",  "Indicatorbalk en badge bij een grote afwijking van de voorkeurstijd", Groep: "Wedstrijdstatus (Planning & Veld optimalisatie)"),
 
+        // Hover-correlatie tussen tijdlijnblok en tabelrij (#1315, generiek gemaakt in #1398). Bleef
+        // hardcoded toen #1398 de klassen deelde tussen Planning en Veld optimalisatie — #1401 maakt
+        // hem alsnog instelbaar.
+        new ThemeKleurDefinitie("hoverHighlight",   "Markeerkleur bij hoveren", "Rand bij het aanwijzen van een planningsblok", Groep: "Wedstrijdstatus (Planning & Veld optimalisatie)"),
+        new ThemeKleurDefinitie("hoverHighlightBg", "Markeerachtergrond bij hoveren", "Schaduw en rijachtergrond bij het aanwijzen van een planningsblok", StaatAlphaToe: true, Groep: "Wedstrijdstatus (Planning & Veld optimalisatie)"),
+
         // Dedicated navigatiekleuren (#1401). Ervóór hergebruikte de zijbalk "secondary"/
         // "textOnPrimary" (actief-item) of had helemaal geen instelbare kleur (hover, navbar-
         // toggler, top-row) — een club kon de menu-tekst dus niet los van andere UI-elementen
@@ -115,6 +121,10 @@ public static class ThemePresets
         ["voorkeurKleineAfwijking"] = "#f59e0b",
         ["voorkeurGroteAfwijking"]  = "#ef4444",
 
+        // Hover-correlatie (#1315/#1398) — zelfde waarden als de oude hardcoded kleuren in app.css.
+        ["hoverHighlight"]   = "#fd7e14",
+        ["hoverHighlightBg"] = "#fd7e1499",
+
         // Navigatie (#1401) — zelfde waarden als de oude hardcoded kleuren in NavMenu.razor.css.
         ["navItemText"]             = "#d7d7d7",
         ["navItemActiveBackground"] = "#ffffff5e",
@@ -163,6 +173,10 @@ public static class ThemePresets
         ["voorkeurOpTijd"]         = "#4ade80",
         ["voorkeurKleineAfwijking"] = "#fbbf24",
         ["voorkeurGroteAfwijking"]  = "#f87171",
+
+        // Hover-correlatie (#1315/#1398) — zelfde waarden als het lichte palet.
+        ["hoverHighlight"]   = "#fd7e14",
+        ["hoverHighlightBg"] = "#fd7e1499",
 
         // Navigatie (#1401) — zelfde waarden als het lichte palet: de zijbalk-tekst/hover-affordance
         // is universeel wit-op-donker en hoeft niet per modus te verschillen.

@@ -35,7 +35,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   onafhankelijk van andere UI-elementen aan te passen zijn — daarvóór hergebruikten de
   menu-kleuren "Secundaire kleur"/"Tekst op primaire achtergrond", en de hover-status was
   helemaal niet instelbaar. Daarnaast zijn de testmodusbanner (ALLSTARS), foutmeldingen,
-  validatiekleuren, de laadspinner, het vinkje op het opstartscherm, en enkele overige
+  validatiekleuren, de laadspinner, het vinkje op het opstartscherm, de hover-markeerkleur van
+  Planning/Veld optimalisatie (#1398 maakte die generiek maar niet instelbaar), en enkele overige
   systeemkleuren nu instelbaar, gegroepeerd onder "Navigatie" en "Systeemmeldingen".
 
 ### Removed
