@@ -260,6 +260,7 @@ blokkeert hij de build niet**, en de volledige pipeline dus evenmin. De gate gel
 | `db-migrate-postgres` (alleen `DatabaseTier=Postgres`) | **Nee** | `[build]` |
 | `deploy` (Function App naar Azure) | **Ja** | `[build, db-check, db-migrate, db-migrate-postgres]` |
 | `test` (smoke test) | Indirect, via `deploy` | `[deploy]` |
+| `deployment-summary` (#1370) | **Nee** — draait altijd (`if: always()`) | *(alle bovenstaande)* |
 
 Wat de gate wél garandeert: er gaat nooit Function App-code of een SQL Server-migratie naar Azure
 terwijl de database niet `Online` is. Wat hij **niet** garandeert: `build` en `blazor-deploy` lopen
@@ -286,13 +287,24 @@ zonder SQL-configuratie). De variabele is naast de al bestaande `AZURE_SQL_SERVE
 ```
 db-check ─┐
 build ────┼→ db-migrate (SqlServer)  ─┐
-          └→ db-migrate-postgres (Postgres) ─┴→ deploy → test
-build ─────→ blazor-deploy
+          └→ db-migrate-postgres (Postgres) ─┴→ deploy → test ─┐
+build ─────→ blazor-deploy ────────────────────────────────────┼→ deployment-summary
 ```
 `db-check` en `db-migrate` draaien alleen bij `DatabaseTier=SqlServer`; `db-migrate-postgres` alleen
 bij `DatabaseTier=Postgres` (#1093). `deploy` wacht op de migratiejob van de actieve tier — de
 migraties gaan dus altijd vóór de code live. Faalt `db-check` of een migratiejob, dan wordt `deploy`
 overgeslagen.
+
+**`deployment-summary` (#1370, retro v3.6.0.0)** draait altijd als laatste, ook als een job
+hierboven faalt of wordt overgeslagen, en zet een tabel met resultaat + skip-reden per job in
+het job summary van de run (zichtbaar op het "Summary"-tabblad, zonder de `gh run view --json
+jobs --jq ...`-aanroep uit CLAUDE.md's Stap C handmatig te hoeven samenstellen). Hij faalt zelf
+hard als de **actieve** tier zijn eigen migratiejob niet met `success` heeft afgerond — dat is
+altijd een anomalie (verkeerd geconfigureerde variabele, of `build` faalde), nooit de normale
+"andere tier"-skip. Omdat deze job pas ná `deploy` draait, kan hij een slechte deploy niet meer
+tegenhouden — alleen hard zichtbaar maken. Dat maakt hem geschikt als extra, niet-blokkerende
+observatie, niet als vervanging van Stap C's handmatige controle vóórdat je een release als
+geslaagd rapporteert.
 
 ### Laag 2 — In-app overlay (Blazor)
 
@@ -582,7 +594,7 @@ verschillende momenten; alleen samen dekken ze de keten.
 |---|---|---|
 | `build.yml` — *Build (PR)* | PR naar `main`/`develop`, push naar `develop` | Build van alle projecten, unit tests, de codekwaliteits- en tier-pariteitsguards, en op een **verse** Postgres-container de databaseguards uit #1220: `scripts/ci/check-rls-enabled.sh` (RLS aan op elke tabel) en `scripts/ci/check-splinter-lints.sh` (Supabase' eigen linter) |
 | `deploy.yml` — *Deploy naar Azure* | Push naar `main` | `db-check`, de migratiejobs, de deploy zelf en de smoke tests (401 op admin-endpoints, `settingsLoaded`, `pendingMigrations`) |
-| `pre-release-check.yml` — *Pre-release check (develop → main)* | PR naar `main` | Build moet slagen vóór een release-PR gemerged kan worden |
+| `pre-release-check.yml` — *Pre-release check (develop → main)* | PR naar `main` | Build moet slagen vóór een release-PR gemerged kan worden; bij een release-PR (`head = develop`) ook een informatieve CHANGELOG-versiekopjescontrole (main vs. develop, #1370) — waarschuwt, blokkeert niet |
 | `pre-release-db-check.yml` — *Pre-release database check* | `workflow_run` na de vorige | Wekt/controleert de database met credentials, bewust via `workflow_run` + `ref: main` zodat PR-inhoud geen productiecredentials kan misbruiken (#1009) |
 | `supabase-advisors.yml` — *Supabase-advisors* | Dagelijks 05:00 UTC | Security- en Performance Advisor van de productiedatabase — zie [de sectie hierboven](#dagelijkse-supabase-advisorcontrole-1221-epic-1219) |
 

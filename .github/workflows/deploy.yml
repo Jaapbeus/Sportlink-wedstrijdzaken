@@ -629,3 +629,82 @@ jobs:
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://$SWA_HOSTNAME/")
           echo "SWA: $STATUS"
           if [ "$STATUS" -ge 500 ]; then echo "FOUT: SWA gaf $STATUS"; exit 1; fi
+
+  # ── Deploymentrapportage (#1370, retro v3.6.0.0, bevinding 6) ───────────────
+  # Vóór deze job moest 'success'/'skipped' handmatig per job worden opgezocht (CLAUDE.md,
+  # "Stap C is verplicht" bij elke release). Deze job zet dat in het job summary, MET reden
+  # per skip gekoppeld aan de actieve tier — en faalt zelf hard (niet de 'deploy'-job, die al
+  # gedraaid heeft tegen de tijd dat dit hier loopt) als de actieve tier zijn eigen
+  # migratiejob niet succesvol heeft afgerond. Puur additief: raakt geen bestaande `if:`-
+  # conditie of gating van de jobs hierboven — alleen een nieuwe, losstaande observatie
+  # ACHTERAF in dezelfde run. Wil de eigenaar dit ook PREVENTIEF (vóór de deploy zelf), dan is
+  # de vervolgstap deze job als required check op main te zetten of de gating-conditie van
+  # 'deploy' zelf aan te scherpen — een aparte, aan de eigenaar voorgelegde beslissing (zie
+  # issue #1370), niet iets wat deze job zelf doet.
+  deployment-summary:
+    name: "Deploymentrapportage — status per job"
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [db-check, build, deploy, db-migrate, db-migrate-postgres, test, blazor-deploy]
+    steps:
+      - name: "▶ Rapport samenstellen"
+        env:
+          TIER: ${{ vars.DatabaseTier }}
+          R_DB_CHECK: ${{ needs.db-check.result }}
+          R_BUILD: ${{ needs.build.result }}
+          R_DEPLOY: ${{ needs.deploy.result }}
+          R_DB_MIGRATE: ${{ needs.db-migrate.result }}
+          R_DB_MIGRATE_POSTGRES: ${{ needs.db-migrate-postgres.result }}
+          R_TEST: ${{ needs.test.result }}
+          R_BLAZOR_DEPLOY: ${{ needs.blazor-deploy.result }}
+        run: |
+          set -euo pipefail
+
+          # Reden-teksten: alleen de reden, GEEN oordeel — 'success'/'failure'/'skipped' zelf
+          # bepaalt het oordeel. Zo blijft dit een feitelijk rapport, geen tweede gate.
+          reden_db_check() {
+            [ "$TIER" = "SqlServer" ] && echo "SQL Server-tier actief" || echo "niet van toepassing — actieve tier is '$TIER', db-check is uitsluitend voor SqlServer"
+          }
+          reden_db_migrate() {
+            [ "$TIER" = "SqlServer" ] && echo "SQL Server-tier actief" || echo "niet van toepassing — actieve tier is '$TIER'"
+          }
+          reden_db_migrate_postgres() {
+            [ "$TIER" = "Postgres" ] && echo "Postgres-tier actief (#1093: migraties vóór de code live)" || echo "niet van toepassing — actieve tier is '$TIER'"
+          }
+
+          {
+            echo "### Deploymentrapportage — actieve tier: \`${TIER:-onbekend}\`"
+            echo ""
+            echo "| Job | Resultaat | Reden bij skip |"
+            echo "|---|---|---|"
+            echo "| db-check | ${R_DB_CHECK} | $([ "$R_DB_CHECK" = "skipped" ] && reden_db_check || echo "—") |"
+            echo "| build | ${R_BUILD} | — |"
+            echo "| db-migrate (SQL Server) | ${R_DB_MIGRATE} | $([ "$R_DB_MIGRATE" = "skipped" ] && reden_db_migrate || echo "—") |"
+            echo "| db-migrate-postgres | ${R_DB_MIGRATE_POSTGRES} | $([ "$R_DB_MIGRATE_POSTGRES" = "skipped" ] && reden_db_migrate_postgres || echo "—") |"
+            echo "| deploy (Function App) | ${R_DEPLOY} | — |"
+            echo "| test (smoke test) | ${R_TEST} | $([ "$R_TEST" = "skipped" ] && echo "deploy niet succesvol" || echo "—") |"
+            echo "| blazor-deploy | ${R_BLAZOR_DEPLOY} | — |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Escalatie: de actieve tier moet zijn EIGEN migratiejob succesvol hebben afgerond.
+          # 'skipped' is voor de ANDERE tier normaal (zie reden-kolom); voor de actieve tier
+          # betekent 'skipped' hier ofwel een verkeerd geconfigureerde variabele, ofwel dat
+          # 'build' faalde — in beide gevallen ging 'deploy' hierboven al door zolang zijn
+          # eigen (skipped-of-success) voorwaarde daarmee ook voldaan was. Dat is precies het
+          # stille gat dat bevinding 6 aankaart: dit maakt het hard zichtbaar, ook al kan deze
+          # job de deploy die al gebeurd is niet meer tegenhouden.
+          FOUT=0
+          if [ "$TIER" = "Postgres" ] && [ "$R_DB_MIGRATE_POSTGRES" != "success" ]; then
+            echo "::error::Actieve tier is Postgres, maar db-migrate-postgres eindigde als '${R_DB_MIGRATE_POSTGRES}' i.p.v. 'success'. Controleer of de Postgres-migraties daadwerkelijk zijn toegepast vóór je erop vertrouwt dat de deploy compleet is."
+            FOUT=1
+          fi
+          if [ "$TIER" = "SqlServer" ] && [ "$R_DB_MIGRATE" != "success" ]; then
+            echo "::error::Actieve tier is SqlServer, maar db-migrate eindigde als '${R_DB_MIGRATE}' i.p.v. 'success'. Controleer of de SQL Server-migraties daadwerkelijk zijn toegepast vóór je erop vertrouwt dat de deploy compleet is."
+            FOUT=1
+          fi
+          if [ "$R_DEPLOY" != "success" ]; then
+            echo "::error::De 'deploy'-job (Function App) eindigde als '${R_DEPLOY}' — geen succesvolle productiedeploy in deze run."
+            FOUT=1
+          fi
+
+          exit $FOUT
