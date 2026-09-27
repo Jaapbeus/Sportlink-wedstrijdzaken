@@ -140,17 +140,6 @@
     }
 }
 
-/* Hover-correlatie tussen tijdlijnblok en tabelregel (#1315): hoveren over een wedstrijd in de
-   tabel of de tijdlijn licht hetzelfde wedstrijdblok/-rij oranje op. */
-.gantt-blok-hover {
-    outline: 3px solid #fd7e14 !important;
-    outline-offset: -1px;
-    box-shadow: 0 2px 8px rgba(253, 126, 20, 0.6) !important;
-    z-index: 3 !important;
-}
-
-/* Bootstrap's table-hover kleurt de <td>'s zelf (niet de <tr>) via .table-hover > tbody > tr:hover > *,
-   en die achtergrond ligt bovenop een kleur op de <tr>. Daarom hier op de cel zelf targeten. */
-.veldbezetting-rij-hover > td {
-    background-color: rgba(253, 126, 20, 0.35) !important;
-}
+/* Hover-correlatie tussen tijdlijnblok en tabelregel (#1315) — de klassen .gantt-blok-hover en
+   .gantt-rij-hover staan sinds #1398 gedeeld in wwwroot/css/app.css, zodat Veld optimalisatie
+   dezelfde correlatie kan gebruiken zonder deze regels te dupliceren. */

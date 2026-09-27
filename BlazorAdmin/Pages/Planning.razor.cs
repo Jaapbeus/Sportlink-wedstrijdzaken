@@ -22,9 +22,10 @@ public partial class Planning : ClubSelectorPageBase
     private bool _veldbezettingBezig;
     private string? _veldbezettingError;
 
-    // Hover-correlatie tussen tijdlijnblok en tabelregel (#1315): dezelfde WedstrijdCode licht in
-    // beide op, zodat een wedstrijd uit de lijst visueel terug te vinden is in de tijdlijn erboven.
-    private long? _veldbezettingHoverCode;
+    // Hover-correlatie tussen tijdlijnblok en tabelregel (#1315, generiek gemaakt bij #1398):
+    // dezelfde WedstrijdCode licht in beide op, zodat een wedstrijd uit de lijst visueel terug te
+    // vinden is in de tijdlijn erboven. Gedeelde implementatie, ook gebruikt door VeldOptimalisatie.
+    private readonly GanttHoverState _hover = new();
 
     // Sportlink-kolom (#989/#991/#1361): alleen de vlag blijft hier; uitklap-/deeplinkstate staat in
     // SportlinkActieKolomState, het paneel zelf is SportlinkMatchPanel (#1122).
