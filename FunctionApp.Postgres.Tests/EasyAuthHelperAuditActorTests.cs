@@ -187,6 +187,51 @@ public class EasyAuthHelperAuditActorTests
         });
     }
 
+    // ── RequireWedstrijdzaken (#1376): admin impliceert Wedstrijdzaken ──
+
+    [Fact]
+    public void RequireWedstrijdzaken_MetWedstrijdzakenRol_StaatToe()
+    {
+        WithEnv(azureHosting: "func-test-01", () =>
+        {
+            var principal = EncodePrincipal(("roles", "Wedstrijdzaken"));
+            var req = BuildRequest(principal);
+
+            var result = EasyAuthHelper.RequireWedstrijdzaken(req);
+
+            result.Should().BeNull();
+        });
+    }
+
+    [Fact]
+    public void RequireWedstrijdzaken_MetAdminRolMaarZonderWedstrijdzaken_StaatToe()
+    {
+        WithEnv(azureHosting: "func-test-01", () =>
+        {
+            var principal = EncodePrincipal(("roles", "admin"), ("preferred_username", "adminA@voorbeeld.nl"));
+            var req = BuildRequest(principal);
+
+            var result = EasyAuthHelper.RequireWedstrijdzaken(req);
+
+            result.Should().BeNull("admin impliceert sinds #1376 de rol Wedstrijdzaken");
+        });
+    }
+
+    [Fact]
+    public void RequireWedstrijdzaken_MetUserRolZonderAdminOfWedstrijdzaken_WordtGeweigerd()
+    {
+        WithEnv(azureHosting: "func-test-01", () =>
+        {
+            var principal = EncodePrincipal(("roles", "user"), ("preferred_username", "gebruikerB@voorbeeld.nl"));
+            var req = BuildRequest(principal);
+
+            var result = EasyAuthHelper.RequireWedstrijdzaken(req);
+
+            result.Should().NotBeNull();
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(403);
+        });
+    }
+
     // ── IsInRole/IsAdmin (#1341): niet-gooiende variant van RequireRole ──
 
     [Fact]
