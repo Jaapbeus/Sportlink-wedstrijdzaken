@@ -188,19 +188,37 @@ admin, en admin heeft altijd alles aan) — ze zijn bewust toekomstbestendig geb
 dat er ooit een beperktere rol komt (bijv. een "sectiehoofd", zie het architectuurbesluit in
 §6 van `docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md`).
 
-### 3.5 Per-actie instelbaar: kleedkamers/scheidsrechter/veld (#1341, epic #1338)
-Een beheerder kan op **Instellingen → Sportlink — rechten per rol** per club onafhankelijk
-aan/uit zetten of de `Wedstrijdzaken`-rol kleedkamers mag toewijzen, scheidsrechters mag
-toewijzen, en het veld mag wijzigen. Drie dingen om te onthouden:
+### 3.5 Toegangsmatrix per rol (#1390, opvolger van #1341/epic #1338)
+Een beheerder kan op **Instellingen → Rechten per rol** een matrix instellen: rijen zijn elk
+menu-item/functie (inclusief de drie Sportlink-mutatieacties kleedkamers/scheidsrechter/veld),
+kolommen zijn de vier instelbare rollen `user`/`Wedstrijdzaken`/`Sectiehoofd`/`Ledenadministratie`.
+Bewust geen kolom voor `admin`: admin heeft dit altijd allemaal aan. Dit is de opvolger van de
+oorspronkelijke drie losse Sportlink-toggles uit #1341 — zelfde databasetabel
+(`rolfeatureinstellingen`/`dbo.RolFeatureInstellingen`), nu met veel meer rijen en rollen.
 
-- **Server is leidend, niet de UI-toggle.** `SportlinkMatchFunction.ExecuteMutationAsync` (beide
-  tiers) wijst een uitgeschakelde actie af met HTTP 409, ook bij een directe API-aanroep buiten
-  de Blazor-UI om. De UI verbergt de bijbehorende sectie in `SportlinkMatchPanel` alleen om een
-  voorspelbare 409 te voorkomen.
+Vier dingen om te onthouden:
+
+- **Server is leidend voor de drie Sportlink-mutatieacties, niet de UI-toggle.**
+  `SportlinkMatchFunction.ExecuteMutationAsync` (beide tiers) wijst een uitgeschakelde actie af met
+  HTTP 409, ook bij een directe API-aanroep buiten de Blazor-UI om, voor de rol `Wedstrijdzaken`.
+  De UI verbergt de bijbehorende sectie in `SportlinkMatchPanel` alleen om een voorspelbare 409 te
+  voorkomen.
+- **De overige rijen (menu-zichtbaarheid) zijn vandaag uitsluitend configuratie, geen handhaving.**
+  Er bestaat nog geen endpoint waarmee een niet-admin-gebruiker zijn éigen rechten kan opvragen, en
+  `BlazorAdmin/Services/AuthGate.cs` laat uitsluitend `admin`/`user` de app-shell in — een matrixrij
+  uitzetten verbergt dus (nog) geen menu-item en blokkeert geen endpoint. Dit is een bewuste,
+  gedocumenteerde scope-grens van #1390: het uitbreiden van de autorisatiewrapper naar meer
+  geaccepteerde rolcombinaties raakt dezelfde laag als het nog openstaande #1379 en is bewust niet
+  in dezelfde wijziging meegenomen.
+- **`Sectiehoofd` en `Ledenadministratie` zijn vandaag instelbare rijen, geen toewijsbare rollen.**
+  Ze bestaan nog niet als Entra-approl (§3.4 hierboven beschrijft alleen `Wedstrijdzaken`) — een
+  gebruiker kan deze rol dus nog niet daadwerkelijk krijgen. Toevoegen als Entra-approl is een
+  aparte infrastructuurwijziging via `scripts/azure/Configure-EntraApp.ps1`, die expliciete
+  bevestiging van de eigenaar vereist.
 - **`admin` is altijd toegestaan** — geen rij nodig, geen UI-optie om admin te beperken.
-- **Ontbrekende instelling = uitgeschakeld (fail-closed).** Een club die deze pagina nog nooit
-  heeft geopend, heeft dus alle drie de acties standaard uitgeschakeld voor `Wedstrijdzaken` —
-  een beheerder moet ze bewust aanzetten.
+  **Ontbrekende instelling = uitgeschakeld (fail-closed).** Een club die deze pagina nog nooit
+  heeft geopend, heeft dus alles standaard uitgeschakeld voor de vier instelbare rollen — een
+  beheerder moet elke rij bewust aanzetten.
 
 ## 4. Voor developers
 

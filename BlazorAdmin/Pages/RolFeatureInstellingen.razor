@@ -1,20 +1,21 @@
 @page "/sportlink-rol-instellingen"
 @inherits ClubSelectorPageBase
-@* Alle logica staat in RolFeatureInstellingen.razor.cs (#1341, epic #1338). *@
+@* Alle logica staat in RolFeatureInstellingen.razor.cs (#1390, opvolger van #1341/epic #1338). *@
 
-<PageTitle>Sportlink — rechten per rol</PageTitle>
+<PageTitle>Rechten per rol</PageTitle>
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="mb-0">Sportlink — rechten per rol</h1>
+    <h1 class="mb-0">Rechten per rol</h1>
     <a class="btn btn-outline-secondary btn-sm" href="instellingen">← Terug naar Instellingen</a>
 </div>
 
 <p class="text-muted">
-    Bepaalt of een gebruiker met de rol <strong>Wedstrijdzaken</strong> bij deze club kleedkamers/
-    scheidsrechters mag toewijzen en het veld mag wijzigen via het Sportlink-wedstrijdpaneel.
-    <strong>Admin</strong> heeft dit altijd aan, ongeacht deze instelling. Een uitgeschakelde actie
-    wordt ook door de server geweigerd — deze instelling is de leidende controle, niet alleen een
-    schakelaar in de weergave.
+    Bepaalt per rol welke schermen en Sportlink-acties zichtbaar zijn. <strong>Admin</strong> heeft
+    dit altijd allemaal aan en staat daarom niet als kolom in de matrix. Voor de drie
+    Sportlink-mutatieacties (kleedkamers/scheidsrechter/veld) is deze instelling de leidende
+    controle — een uitgeschakelde actie wordt ook door de server geweigerd. Voor de overige rijen
+    (menu-zichtbaarheid) legt deze pagina vandaag alleen vast wát een rol zou mogen zien; het
+    daadwerkelijk verbergen van menu-items per rol volgt in een apart vervolgtraject (#1390).
 </p>
 
 @if (_laden)
@@ -32,39 +33,53 @@ else
         <div class="alert alert-success">@_successMessage</div>
     }
 
-    <div class="list-group rol-feature-lijst">
-        <div class="list-group-item d-flex justify-content-between align-items-center">
-            <div>
-                <div class="fw-semibold">Kleedkamers toewijzen</div>
-                <div class="text-muted small">Kleedkamer-nummers invoeren en opslaan bij een wedstrijd.</div>
-            </div>
-            <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" role="switch"
-                       checked="@IsAan(KleedkamersKey)"
-                       @onchange="e => ZetAsync(KleedkamersKey, (bool)e.Value!)" />
-            </div>
-        </div>
-        <div class="list-group-item d-flex justify-content-between align-items-center">
-            <div>
-                <div class="fw-semibold">Scheidsrechters toewijzen</div>
-                <div class="text-muted small">Relatiecode van scheidsrechter/AR1/AR2 invoeren en opslaan.</div>
-            </div>
-            <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" role="switch"
-                       checked="@IsAan(ScheidsrechterKey)"
-                       @onchange="e => ZetAsync(ScheidsrechterKey, (bool)e.Value!)" />
-            </div>
-        </div>
-        <div class="list-group-item d-flex justify-content-between align-items-center">
-            <div>
-                <div class="fw-semibold">Veld wijzigen</div>
-                <div class="text-muted small">FieldId/FieldSize van een wedstrijd wijzigen.</div>
-            </div>
-            <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" role="switch"
-                       checked="@IsAan(VeldKey)"
-                       @onchange="e => ZetAsync(VeldKey, (bool)e.Value!)" />
-            </div>
-        </div>
+    <div class="table-responsive">
+        <table class="table align-middle rol-matrix">
+            <thead>
+                <tr>
+                    <th>Functie</th>
+                    @foreach (var rol in Rollen)
+                    {
+                        <th class="text-center">@RolLabels[rol]</th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var groep in Groepen)
+                {
+                    <tr class="table-group-row">
+                        <td colspan="@(Rollen.Count + 1)">@groep.Key</td>
+                    </tr>
+                    @foreach (var rij in groep)
+                    {
+                        <tr>
+                            <td>
+                                <div class="fw-semibold">
+                                    @rij.Label
+                                    @if (rij.Avg)
+                                    {
+                                        <span class="badge text-bg-warning ms-2">AVG</span>
+                                    }
+                                </div>
+                                @if (rij.Beschrijving is not null)
+                                {
+                                    <div class="text-muted small">@rij.Beschrijving</div>
+                                }
+                            </td>
+                            @foreach (var rol in Rollen)
+                            {
+                                <td class="text-center">
+                                    <div class="form-check form-switch d-inline-block">
+                                        <input class="form-check-input" type="checkbox" role="switch"
+                                               checked="@IsAan(rol, rij.FeatureKey)"
+                                               @onchange="e => ZetAsync(rol, rij.FeatureKey, (bool)e.Value!)" />
+                                    </div>
+                                </td>
+                            }
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
     </div>
 }

@@ -119,6 +119,7 @@ public class SportlinkPublicMatchIdDto
 /// deze club — spiegelt de anonieme respons van <c>GET /api/beheer/rolfeatureinstellingen</c>.</summary>
 public class RolFeatureInstellingDto
 {
+    public string RolNaam { get; set; } = "";
     public string FeatureKey { get; set; } = "";
     public bool Enabled { get; set; }
 }
