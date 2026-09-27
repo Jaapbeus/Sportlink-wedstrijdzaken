@@ -176,7 +176,17 @@ public static class SportlinkEndpointCore
     }
 
     /// <summary>Vertaalt <see cref="SportlinkClubCallStatus"/> naar een foutuitkomst; <c>null</c> bij
-    /// <see cref="SportlinkClubCallStatus.Ok"/>.</summary>
+    /// <see cref="SportlinkClubCallStatus.Ok"/>.
+    /// <para>
+    /// #1387: <see cref="SportlinkClubCallStatus.NetwerkFout"/> (timeout/connectiviteit aan onze
+    /// kant — SportlinkClubClient heeft dit al één keer stilzwijgend geretried) en
+    /// <see cref="SportlinkClubCallStatus.SportlinkFout"/> (een échte, niet-2xx respons van
+    /// Sportlink zelf) kregen vóór deze fix dezelfde 502-tekst — een operator kon dan niet zien of
+    /// Sportlink zelf een fout gaf, of dat onze aanroep gewoon te traag/onbereikbaar was. Nu apart:
+    /// een tijdelijke, waarschijnlijk vanzelf voorbijgaande situatie (504) versus een structurelere
+    /// afwijzing door Sportlink zelf (502, ongewijzigde tekst).
+    /// </para>
+    /// </summary>
     public static SportlinkEndpointFout? VertaalStatusNaarFout(SportlinkClubCallStatus status) => status switch
     {
         SportlinkClubCallStatus.Ok => null,
@@ -184,6 +194,8 @@ public static class SportlinkEndpointCore
             $"Geen Sportlink-koppeling gevonden voor rol '{RolWedstrijdzaken}' — registreer eerst een refresh-token via Instellingen."),
         SportlinkClubCallStatus.HerkoppelingVereist => new SportlinkEndpointFout(409,
             $"De Sportlink-koppeling voor rol '{RolWedstrijdzaken}' is verlopen — registreer een nieuw refresh-token via Instellingen."),
+        SportlinkClubCallStatus.NetwerkFout => new SportlinkEndpointFout(504,
+            "Sportlink reageerde niet op tijd. Probeer het over enkele ogenblikken opnieuw."),
         _ => new SportlinkEndpointFout(502, "Sportlink is momenteel niet bereikbaar."),
     };
 

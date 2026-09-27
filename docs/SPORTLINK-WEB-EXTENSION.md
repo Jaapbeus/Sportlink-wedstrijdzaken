@@ -429,6 +429,20 @@ toewijzen, en het veld mag wijzigen. Drie dingen om te onthouden:
   `FunctionApp/Sportlink/SportlinkPublicMatchIdWarmupTimerFunction.cs`. De horizon (vandaag + 2)
   staat als `SportlinkEndpointCore.WarmupVooruitkijkDagen` in `Planner.Shared`, zodat een tierwissel
   niet stilzwijgend een ander venster oplevert.
+
+  **#1387 (voorheen wél een harde fout bij een cache-miss):** de synchrone fallback-lookup gebruikte
+  tot deze fix de globale `HttpClient`-timeout van 15 seconden — tegen de gedocumenteerde 12+
+  seconden latency van `MatchProgramOverview` een marge van bijna nul. Iedere extra vertraging
+  (Sportlink-belasting, netwerk) liet de aanroep timeouten, wat via `SportlinkClubCallStatus.NetwerkFout`
+  naar een generieke HTTP 502 "Sportlink is momenteel niet bereikbaar" leidde — ononderscheidbaar van
+  een échte Sportlink-fout. Sinds #1387: `SportlinkClubClient` bepaalt per endpoint een eigen,
+  per-aanroep timeout (`ReverseLookupCallTimeout` = 30s voor uitsluitend `MatchProgramOverview`,
+  `DefaultCallTimeout` = 15s voor de rest — losgekoppeld van de `HttpClient`-brede timeout, die nu de
+  .NET-default van 100s is als buitenste net); elke aanroep krijgt bovendien één begrensde retry bij
+  een timeout/netwerkfout of een 5xx van Sportlink zelf (nooit bij een 4xx — dat is een inhoudelijke
+  afwijzing). `SportlinkEndpointCore.VertaalStatusNaarFout` geeft een timeout/netwerkfout sindsdien
+  ook een eigen tekst en HTTP 504 in plaats van de generieke 502-tekst, zodat een operator kan zien
+  of Sportlink zelf een fout gaf of dat de aanroep gewoon (nog) te traag was.
 - `FunctionApp.Postgres/Sportlink/SportlinkChangeRequestFunction.cs` (#996) — `GET
   /api/sportlink/change-requests` + `PUT .../{publicRequestId}/action`. Niet wedstrijdcode-
   gescoped (Sportlinks `MatchChangeRequests`-endpoint levert alles voor het gekoppelde

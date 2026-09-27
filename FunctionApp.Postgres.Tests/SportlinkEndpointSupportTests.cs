@@ -14,7 +14,7 @@ public class SportlinkEndpointSupportTests
     [InlineData(SportlinkClubCallStatus.RolNietGekoppeld, 409)]
     [InlineData(SportlinkClubCallStatus.HerkoppelingVereist, 409)]
     [InlineData(SportlinkClubCallStatus.SportlinkFout, 502)]
-    [InlineData(SportlinkClubCallStatus.NetwerkFout, 502)]
+    [InlineData(SportlinkClubCallStatus.NetwerkFout, 504)] // #1387: timeout/netwerkfout krijgt eigen 504 i.p.v. de generieke 502
     public void VertaalStatusNaarFout_GeeftHttpFoutZonderSportlinkDetails(SportlinkClubCallStatus status, int verwachtHttp)
     {
         var result = SportlinkEndpointSupport.VertaalStatusNaarFout(status) as ObjectResult;

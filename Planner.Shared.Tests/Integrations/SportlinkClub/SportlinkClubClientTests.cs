@@ -790,6 +790,147 @@ public class SportlinkClubClientTests
         result.Data.Should().BeNull();
     }
 
+    // ── Transiënte retry: timeout/netwerk/5xx (#1387) ──────────────────────────────────────────
+
+    [Fact]
+    public async Task GetMatchProgramOverviewAsync_TimeoutOpEersteAanroep_RetryLuktEnGeeftOkTerug()
+    {
+        // Regressietest voor #1387: vóór deze fix was één enkele timeout op MatchProgramOverview
+        // (het gedocumenteerd trage endpoint) fataal voor het hele verzoek en gaf het een 502.
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var overviewCallCount = 0;
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("MatchProgramOverview") == true)
+            {
+                overviewCallCount++;
+                if (overviewCallCount == 1)
+                    throw new TaskCanceledException("gesimuleerde timeout");
+                return JsonResponse(MatchProgramOverviewResponse((3403, "M392686417")));
+            }
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.GetMatchProgramOverviewAsync(TestFunctioneleRol, new DateOnly(2026, 9, 5));
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data.Should().ContainSingle(e => e.PublicMatchId == "M392686417");
+        overviewCallCount.Should().Be(2, "de eerste (getimede) poging plus precies één retry");
+    }
+
+    [Fact]
+    public async Task GetMatchAsync_BlijftTimeoutGeven_RetourneertNetwerkFoutNaPreciesEenRetryGeenOneindigeLus()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var matchCallCount = 0;
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("club.sportlink.com") == true)
+            {
+                matchCallCount++;
+                throw new TaskCanceledException("gesimuleerde timeout, blijft aanhouden");
+            }
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.NetwerkFout);
+        matchCallCount.Should().Be(2, "begrensd tot precies één retry — een structureel onbereikbaar Sportlink moet zichtbaar blijven falen");
+    }
+
+    [Fact]
+    public async Task UpdateDressingRoomsAsync_Http503OpEersteAanroep_RetryLuktEnGeeftOkTerug()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var putCallCount = 0;
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("UpdateMatchDressingRooms") == true)
+            {
+                putCallCount++;
+                return putCallCount == 1
+                    ? new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+                    : JsonResponse(DressingRoomsSuccessResponse());
+            }
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.UpdateDressingRoomsAsync(TestFunctioneleRol, TestPublicMatchId, "10", "6", "9");
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data!.IsSuccess.Should().BeTrue();
+        putCallCount.Should().Be(2, "een 5xx van Sportlink zelf is transiënt en krijgt precies één retry");
+    }
+
+    [Fact]
+    public async Task GetMatchAsync_Http404OpEersteAanroep_GeenRetryOmdatHetGeenTransienteFoutIs()
+    {
+        // Onderscheid met de 5xx-test hierboven: een 4xx (buiten de al apart afgehandelde 401) is
+        // een inhoudelijke afwijzing, geen tijdelijk probleem — herhalen zou niets opleveren.
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var matchCallCount = 0;
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("club.sportlink.com") == true)
+            {
+                matchCallCount++;
+                return new HttpResponseMessage(HttpStatusCode.NotFound);
+            }
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.SportlinkFout);
+        matchCallCount.Should().Be(1, "een 4xx (geen 401) wordt niet herhaald");
+    }
+
+    [Fact]
+    public async Task GetMatchAsync_TokenEndpointTimeoutOpEersteAanroep_RetryLuktEnGeeftOkTerug()
+    {
+        // #1387: vóór deze fix had alleen de eígenlijke Sportlink-aanroep een transiënte retry —
+        // het token-refreshpad zelf (dat vóór ELKE aanroep loopt) had er nog geen.
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var tokenCallCount = 0;
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+            {
+                tokenCallCount++;
+                if (tokenCallCount == 1)
+                    throw new TaskCanceledException("gesimuleerde timeout op het token-endpoint");
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            }
+            if (req.RequestUri?.AbsoluteUri.Contains("club.sportlink.com") == true)
+                return JsonResponse(MatchResponse());
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        tokenCallCount.Should().Be(2, "de eerste (getimede) tokenpoging plus precies één retry");
+    }
+
     [Fact]
     public async Task ResolvePublicMatchIdAsync_HergebruiktGetMatchProgramOverviewAsync_EenAanroepPerDatum()
     {

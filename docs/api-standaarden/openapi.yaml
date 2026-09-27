@@ -28,7 +28,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.6.3.0
+  version: 3.7.0.1
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -3682,6 +3682,8 @@ paths:
           $ref: '#/components/responses/InternalServerError'
         '502':
           description: Sportlink gaf geen bruikbare respons
+        '504':
+          description: Sportlink reageerde niet op tijd (tijdelijke netwerk-/timeoutfout, één automatische retry al geprobeerd) (#1387)
         '503':
           description: Uitgaande integraties staan hier niet toe (EgressGuard)
 
@@ -3736,6 +3738,8 @@ paths:
           $ref: '#/components/responses/InternalServerError'
         '502':
           description: Sportlink gaf geen bruikbare respons
+        '504':
+          description: Sportlink reageerde niet op tijd (tijdelijke netwerk-/timeoutfout, één automatische retry al geprobeerd) (#1387)
         '503':
           description: Uitgaande integraties staan hier niet toe (EgressGuard)
 
@@ -3805,6 +3809,8 @@ paths:
           $ref: '#/components/responses/InternalServerError'
         '502':
           description: Sportlink gaf geen bruikbare respons
+        '504':
+          description: Sportlink reageerde niet op tijd (tijdelijke netwerk-/timeoutfout, één automatische retry al geprobeerd) (#1387)
         '503':
           description: Uitgaande integraties staan hier niet toe (EgressGuard)
 
@@ -3881,6 +3887,8 @@ paths:
           $ref: '#/components/responses/InternalServerError'
         '502':
           description: Sportlink gaf geen bruikbare respons
+        '504':
+          description: Sportlink reageerde niet op tijd (tijdelijke netwerk-/timeoutfout, één automatische retry al geprobeerd) (#1387)
         '503':
           description: Uitgaande integraties staan hier niet toe (EgressGuard)
 
@@ -4016,6 +4024,8 @@ paths:
           $ref: '#/components/responses/InternalServerError'
         '502':
           description: Sportlink gaf geen bruikbare respons
+        '504':
+          description: Sportlink reageerde niet op tijd (tijdelijke netwerk-/timeoutfout, één automatische retry al geprobeerd) (#1387)
         '503':
           description: Uitgaande integraties staan hier niet toe (EgressGuard)
 
@@ -4100,6 +4110,8 @@ paths:
           $ref: '#/components/responses/InternalServerError'
         '502':
           description: Sportlink gaf geen bruikbare respons
+        '504':
+          description: Sportlink reageerde niet op tijd (tijdelijke netwerk-/timeoutfout, één automatische retry al geprobeerd) (#1387)
         '503':
           description: Uitgaande integraties staan hier niet toe (EgressGuard)
 
