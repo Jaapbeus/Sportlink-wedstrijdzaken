@@ -1373,14 +1373,24 @@ set: de site werkt dus meteen, ook zonder dat u iets instelt.
 Op dit scherm stelt u de kleuren in die de Admin GUI gebruikt. Sinds de lichte/donkere weergave
 (hoofdstuk 21) stelt u **twee** sets in: één voor licht en één voor donker.
 
+Het tabblad **Kleuren instellen** groepeert de kleuren in twee blokken: **Merk & interface**
+(zijbalk, knoppen, achtergronden — hoofdstuk 22 hieronder) en **Wedstrijdstatus (Planning & Veld
+optimalisatie)** — de kleuren van de Gantt-blokken, de legenda en de statusbadges op die twee
+schermen. Het tabblad **Overzicht** ernaast toont dezelfde kleuren nog eens als leestabel: per
+kleur de naam, waar hij precies gebruikt wordt, en de huidige waarde in zowel de lichte als de
+donkere weergave — handig als u wilt nakijken wat u al heeft ingesteld zonder eerst elke picker
+open te klikken.
+
 ### Zo werkt het
 
 1. **Kies welke weergave u bewerkt** met de knoppen *Licht bewerken* / *Donker bewerken*. De hele
    interface schakelt meteen mee, zodat u ziet wat u instelt in plaats van het te moeten voorstellen.
 2. **Kies eventueel een basisthema** uit de keuzelijst bovenaan. Dat vult in één keer alle kleuren
-   van de weergave die u nu bewerkt. Daarna kunt u elke kleur los bijstellen — een basisthema is een
-   startpunt, geen keurslijf.
-3. **Stel de losse kleuren bij** met de kleurenkiezer of door de code in te typen.
+   van de weergave die u nu bewerkt, inclusief de wedstrijdstatuskleuren. Daarna kunt u elke kleur
+   los bijstellen — een basisthema is een startpunt, geen keurslijf.
+3. **Stel de losse kleuren bij** met de kleurenkiezer of door de code in te typen. De **secundaire
+   kleur** kleurt sinds deze uitbreiding ook het actieve menu-item in de zijbalk — daarvóór had die
+   kleur geen zichtbaar effect.
 4. **Opslaan.** Tot u opslaat is alles wat u ziet een voorbeeld: sluit u het scherm zonder opslaan,
    dan blijft alles zoals het was.
 
@@ -1411,9 +1421,16 @@ in. Leeg laten mag: dan toont de app geen logo en het standaard-icoontje.
 
 ### Wat u níet kunt instellen, en waarom
 
-Statuskleuren liggen vast: groen voor "klaar", rood voor "fout", en oranje voor de markering dat u
-in de demo-/testclub werkt. Die kleuren dragen betekenis — als ze per club of per weergave zouden
-verschillen, zou u een waarschuwing kunnen missen.
+Een klein aantal kleuren ligt vast: groen voor "klaar", rood voor een technische fout, en oranje
+voor de markering dat u in de demo-/testclub werkt. Ook rode/oranje actieknoppen (bijv.
+"Verwijderen") en waarschuwingsmeldingen blijven de vaste kleur van dat soort knoppen. Die kleuren
+dragen een universele betekenis, los van de huisstijl van uw club — als ze per club of per weergave
+zouden verschillen, zou u een waarschuwing kunnen missen of een verwijderknop niet herkennen.
+
+De kleuren van de wedstrijdstatus op Planning en Veld optimalisatie (Gantt-blokken, legenda en
+badges voor "Ongewijzigd"/"Wijziging"/"Nieuw slot"/"Niet inplanbaar", en de voorkeurstijd-indicator)
+vielen tot deze uitbreiding ook onder deze vaste kleuren — dat was geen bewuste keuze maar een
+technische beperking, en is nu opgeheven: die kleuren staan in de groep "Wedstrijdstatus" hierboven.
 
 ### Standaard herstellen
 

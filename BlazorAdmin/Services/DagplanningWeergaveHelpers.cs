@@ -88,13 +88,36 @@ public static class DagplanningWeergaveHelpers
         return sb;
     }
 
+    // Verwijst sinds #1388 naar de instelbare paletsleutels (ThemePresets.Kleuren) in plaats van
+    // vaste hex — de waarde gaat via een inline "--gantt-bg:...;"-style-attribuut naar de DOM
+    // (zie VeldOptimalisatie.razor/Planning.razor), en een CSS var()-verwijzing is daar een geldige
+    // waarde. Standaardwaarden van de paletsleutels zijn gelijk aan de oude hex-literals.
     public static string GanttKleur(string status) => status switch
     {
-        "wijziging"   => "#0d6efd",
-        "nieuw-slot"  => "#d97706",
-        "ongewijzigd" => "#198754",
-        _ => "#6c757d"
+        "wijziging"   => "var(--theme-status-wijziging)",
+        "nieuw-slot"  => "var(--theme-status-nieuw-slot)",
+        "ongewijzigd" => "var(--theme-status-ongewijzigd)",
+        _ => "var(--theme-secondary)"
     };
+
+    /// <summary>
+    /// Kleur van de voorkeurstijd-indicatorbalk bovenaan een Gantt-blok — alleen relevant in de
+    /// optimaal/huidig-vergelijking van Veld optimalisatie, niet op de directe veldbezettingsweergave
+    /// van Planning. Leeg = geen voorkeur geconfigureerd → geen balk.
+    /// <para>
+    /// Verhuisd uit <c>VeldOptimalisatie.razor.cs</c> (#1388): puur statisch, geen paginaspecifieke
+    /// afhankelijkheid buiten de drempelwaarde, die de aanroeper meegeeft — zelfde opzet als de rest
+    /// van deze klasse.
+    /// </para>
+    /// </summary>
+    public static string GanttVoorkeurBalkKleur(int? afwijking, string? voorkeurTijd, int kleineAfwijkingDrempelMinuten)
+    {
+        if (voorkeurTijd == null || !afwijking.HasValue) return string.Empty;
+        int abs = Math.Abs(afwijking.Value);
+        if (abs == 0) return "var(--theme-voorkeur-op-tijd)";
+        if (abs <= kleineAfwijkingDrempelMinuten) return "var(--theme-voorkeur-kleine-afwijking)";
+        return "var(--theme-voorkeur-grote-afwijking)";
+    }
 
     public static string GanttLabel(string label)
     {

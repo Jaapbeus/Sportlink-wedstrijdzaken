@@ -111,4 +111,36 @@ public class DagplanningWeergaveHelpersTests
         resultaat.DayOfWeek.Should().Be(DayOfWeek.Saturday);
         resultaat.Should().BeAfter(DateOnly.FromDateTime(DateTime.Today));
     }
+
+    // #1388: GanttKleur/GanttVoorkeurBalkKleur gaven vóór deze wijziging letterlijke hex terug
+    // (bijv. "#0d6efd"). Ze geven nu een CSS var()-verwijzing naar een instelbare paletsleutel uit
+    // ThemePresets.Kleuren terug — deze tests documenteren dat contract en bewaken dat de sleutel
+    // in de var()-naam blijft overeenkomen met de kebab-case vorm die theme.js ervan maakt.
+    [Theory]
+    [InlineData("wijziging",   "var(--theme-status-wijziging)")]
+    [InlineData("nieuw-slot",  "var(--theme-status-nieuw-slot)")]
+    [InlineData("ongewijzigd", "var(--theme-status-ongewijzigd)")]
+    [InlineData("onbekend-team", "var(--theme-secondary)")]
+    public void GanttKleur_GeeftVarVerwijzingNaarPaletsleutelTerug(string status, string verwacht)
+    {
+        DagplanningWeergaveHelpers.GanttKleur(status).Should().Be(verwacht);
+    }
+
+    [Fact]
+    public void GanttVoorkeurBalkKleur_GeenVoorkeurGeeftLegeString()
+    {
+        DagplanningWeergaveHelpers.GanttVoorkeurBalkKleur(afwijking: null, voorkeurTijd: null, kleineAfwijkingDrempelMinuten: 15)
+            .Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(0,  15, "var(--theme-voorkeur-op-tijd)")]
+    [InlineData(10, 15, "var(--theme-voorkeur-kleine-afwijking)")]
+    [InlineData(-10, 15, "var(--theme-voorkeur-kleine-afwijking)")]
+    [InlineData(20, 15, "var(--theme-voorkeur-grote-afwijking)")]
+    public void GanttVoorkeurBalkKleur_KiestPaletsleutelOpAbsoluteAfwijking(int afwijking, int drempel, string verwacht)
+    {
+        DagplanningWeergaveHelpers.GanttVoorkeurBalkKleur(afwijking, voorkeurTijd: "10:00", kleineAfwijkingDrempelMinuten: drempel)
+            .Should().Be(verwacht);
+    }
 }

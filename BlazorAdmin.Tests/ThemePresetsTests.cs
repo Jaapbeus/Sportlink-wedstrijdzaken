@@ -78,6 +78,37 @@ public class ThemePresetsTests
     }
 
     [Fact]
+    public void StandaardLicht_BevatDeWedstrijdstatuskleurenVanVeldOptimalisatie()
+    {
+        // #1388: dit waren vóór deze uitbreiding hex-literals in
+        // DagplanningWeergaveHelpers.GanttKleur/GanttVoorkeurBalkKleur en de legenda-CSS van
+        // VeldOptimalisatie.razor.css. Wijzigen ze hier stilzwijgend, dan verandert de kleur van de
+        // Gantt-blokken/legenda/badges voor elke club die niets heeft ingesteld.
+        ThemePresets.StandaardLicht["statusOngewijzigd"].Should().Be("#198754");
+        ThemePresets.StandaardLicht["statusWijziging"].Should().Be("#0d6efd");
+        ThemePresets.StandaardLicht["statusNieuwSlot"].Should().Be("#d97706");
+        ThemePresets.StandaardLicht["statusNietInplanbaar"].Should().Be("#dc3545");
+        ThemePresets.StandaardLicht["voorkeurOpTijd"].Should().Be("#22c55e");
+        ThemePresets.StandaardLicht["voorkeurKleineAfwijking"].Should().Be("#f59e0b");
+        ThemePresets.StandaardLicht["voorkeurGroteAfwijking"].Should().Be("#ef4444");
+    }
+
+    [Fact]
+    public void Kleuren_GroepeertWedstrijdstatuskleurenApart()
+    {
+        var wedstrijdstatusSleutels = ThemePresets.Kleuren
+            .Where(k => k.Groep == "Wedstrijdstatus (Planning & Veld optimalisatie)")
+            .Select(k => k.Sleutel)
+            .ToArray();
+
+        wedstrijdstatusSleutels.Should().BeEquivalentTo(new[]
+        {
+            "statusOngewijzigd", "statusWijziging", "statusNieuwSlot", "statusNietInplanbaar",
+            "voorkeurOpTijd", "voorkeurKleineAfwijking", "voorkeurGroteAfwijking"
+        });
+    }
+
+    [Fact]
     public void Presets_BevattenGeenClubspecifiekeAanduiding()
     {
         // Deze repository is publiek en wordt door meerdere verenigingen geforkt: een preset mag

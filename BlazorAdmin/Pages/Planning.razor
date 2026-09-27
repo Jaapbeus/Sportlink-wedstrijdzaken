@@ -175,7 +175,9 @@
                             @if (_sportlinkExtensionEnabled && item.WedstrijdCode != null && _sportlinkKolom.IsUitgeklapt(item.WedstrijdCode.Value))
                             {
                                 <tr @key="item.WedstrijdCode.Value">
-                                    <td colspan="6" class="bg-light tabel-compact">
+                                    @* #1388: bg-light schakelt niet mee met het donkere thema; kaart-thema-bg
+                                       (Planning.razor.css) volgt var(--theme-card-bg). *@
+                                    <td colspan="6" class="kaart-thema-bg tabel-compact">
                                         <SportlinkMatchPanel WedstrijdCode="item.WedstrijdCode.Value" />
                                     </td>
                                 </tr>

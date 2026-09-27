@@ -16,6 +16,19 @@
     font-size: 0.65rem;
 }
 
+/* Overzichtstabblad (#1388): kleine swatch naast de hexwaarde, zelfde --thema-kleur-conventie als
+   .thema-kleurvlak/.thema-geextraheerde-kleur hierboven. */
+.thema-overzicht-swatch {
+    display: inline-block;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 3px;
+    border: 1px solid var(--bs-border-color);
+    background-color: var(--thema-kleur);
+    vertical-align: middle;
+    margin-right: 0.35rem;
+}
+
 .thema-favicon-preview {
     width: 24px;
     height: 24px;

@@ -51,7 +51,7 @@
     }
 
     .nav-item ::deep a {
-        color: #d7d7d7;
+        color: var(--theme-text-on-primary);
         border-radius: 4px;
         height: 3rem;
         display: flex;
@@ -60,7 +60,7 @@
     }
 
     .nav-item ::deep button.nav-link {
-        color: #d7d7d7;
+        color: var(--theme-text-on-primary);
         background: none;
         border: none;
         border-radius: 4px;
@@ -72,9 +72,11 @@
         text-align: start;
     }
 
+/* Actief menu-item: was een vaste witte alpha-overlay, reageerde dus nooit op een clubkleur (#1388).
+   --theme-secondary bestond al als instelbare kleur maar had nergens een consument. */
 .nav-item ::deep a.active {
-    background-color: rgba(255,255,255,0.37);
-    color: white;
+    background-color: var(--theme-secondary);
+    color: var(--theme-text-on-primary);
 }
 
 .nav-item ::deep a:hover {

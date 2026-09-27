@@ -127,6 +127,13 @@
     font-size: 0.85rem;
 }
 
+/* #1388: bg-light schakelt niet mee met het donkere thema (Bootstrap-utility, geen --theme-*-var).
+   Zelfde klasse als VeldOptimalisatie.razor.css — CSS-isolatie scopet elk .razor.css apart, dus deze
+   ene regel staat bewust op beide plekken, net als de gedeelde Gantt-basisklassen hierboven. */
+.kaart-thema-bg {
+    background-color: var(--theme-card-bg);
+}
+
 @media (max-width: 640.98px) {
     .veldbezetting-sticky {
         position: static;
