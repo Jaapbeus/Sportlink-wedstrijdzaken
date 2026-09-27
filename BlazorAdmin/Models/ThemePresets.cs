@@ -25,35 +25,23 @@ public sealed record ThemeKleurDefinitie(
     bool StaatAlphaToe = false,
     string Groep = "Merk & interface");
 
-/// <summary>Een basisthema: een complete kleurenset voor beide modi, als startpunt.</summary>
-public sealed record ThemePreset(
-    string Naam,
-    string Toelichting,
-    IReadOnlyDictionary<string, string> Licht,
-    IReadOnlyDictionary<string, string> Donker);
-
 /// <summary>
-/// De instelbare kleuren en de ingebouwde basisthema's (#1257, epic #1249). Client-side, geen
-/// databasetabel: dit zijn startpunten om het kleurenformulier mee te vullen, geen opgeslagen data.
-/// <para>
-/// <b>Geen clubnamen of clubkleuren hier.</b> Deze repository is publiek en wordt door meerdere
-/// verenigingen geforkt; een voorinstelling die een vereniging bij naam noemt of haar huisstijl
-/// meelevert hoort niet in de broncode (zie "Geen club-specifieke strings in code" in CLAUDE.md en
-/// de lijst met niet-geaccepteerde bijdragen in CONTRIBUTING.md). De thema's hieronder zijn daarom
-/// benoemd naar hun uiterlijk. Een club zet haar eigen kleuren met "Ophalen" van de eigen website
-/// of door ze in te typen.
-/// </para>
+/// De instelbare kleuren (#1257, epic #1249; #1388 voegde de Planning-statuskleuren en groepering
+/// toe; #1401 verwijderde de basisthema-keuzelijst — elke kleur wordt direct bewerkt, licht en
+/// donker apart — en voegde dedicated navigatie- en systeemkleuren toe). Client-side, geen
+/// databasetabel: <c>StandaardLicht</c>/<c>StandaardDonker</c> zijn de terugval om het
+/// kleurenformulier mee te vullen, geen opgeslagen data.
 /// </summary>
 public static class ThemePresets
 {
     /// <summary>
-    /// De volgorde bepaalt de volgorde in het beheerscherm. Deze negen sleutels komen exact overeen
-    /// met de <c>--theme-*</c>-variabelen in <c>app.css</c>.
+    /// De volgorde bepaalt de volgorde in het beheerscherm. Elke sleutel komt exact overeen met een
+    /// <c>--theme-*</c>-variabelenpaar in <c>app.css</c>.
     /// </summary>
     public static IReadOnlyList<ThemeKleurDefinitie> Kleuren { get; } = new[]
     {
         new ThemeKleurDefinitie("primary",         "Primaire kleur",        "Achtergrond zijbalk, knoppen"),
-        new ThemeKleurDefinitie("secondary",       "Secundaire kleur",      "Actief menu-item in de zijbalk, secundaire knoppen"),
+        new ThemeKleurDefinitie("secondary",       "Secundaire kleur",      "Neutrale/secundaire badge op Veld optimalisatie"),
         new ThemeKleurDefinitie("accent",          "Accentkleur (links)"),
         new ThemeKleurDefinitie("textOnPrimary",   "Tekst op primaire achtergrond", "Meestal wit (#ffffff) of zwart (#000000)"),
         new ThemeKleurDefinitie("pageBg",          "Pagina-achtergrond",    "Achtergrond achter het laadscherm"),
@@ -62,7 +50,7 @@ public static class ThemePresets
         new ThemeKleurDefinitie("mutedTextSubtle", "Extra gedempte tekst"),
         new ThemeKleurDefinitie("shadowHover",     "Schaduw bij aanwijzen", "Acht cijfers mag: de laatste twee zijn de doorzichtigheid", StaatAlphaToe: true),
 
-        // Wedstrijdstatuskleuren van Planning en Veld optimalisatie (#1388). Stonden tot deze
+        // Wedstrijdstatuskleuren van Planning en Veld optimalisatie (#1388). Stonden tot die
         // uitbreiding als losse hex-literals in DagplanningWeergaveHelpers.GanttKleur,
         // VeldOptimalisatie.razor.cs (RowClass/VoorkeurBadgeClass/GanttVoorkeurBalkKleur) en de
         // legenda-CSS — daardoor onzichtbaar en niet instelbaar voor de beheerder.
@@ -72,7 +60,36 @@ public static class ThemePresets
         new ThemeKleurDefinitie("statusNietInplanbaar",        "Status: niet inplanbaar",    "Badge en tabelrij voor een wedstrijd die de planner niet kon plaatsen", Groep: "Wedstrijdstatus (Planning & Veld optimalisatie)"),
         new ThemeKleurDefinitie("voorkeurOpTijd",              "Voorkeurstijd: op tijd",     "Indicatorbalk en badge als een wedstrijd exact op de voorkeurstijd staat", Groep: "Wedstrijdstatus (Planning & Veld optimalisatie)"),
         new ThemeKleurDefinitie("voorkeurKleineAfwijking",     "Voorkeurstijd: kleine afwijking", "Indicatorbalk en badge bij een kleine afwijking van de voorkeurstijd", Groep: "Wedstrijdstatus (Planning & Veld optimalisatie)"),
-        new ThemeKleurDefinitie("voorkeurGroteAfwijking",      "Voorkeurstijd: grote afwijking",  "Indicatorbalk en badge bij een grote afwijking van de voorkeurstijd", Groep: "Wedstrijdstatus (Planning & Veld optimalisatie)")
+        new ThemeKleurDefinitie("voorkeurGroteAfwijking",      "Voorkeurstijd: grote afwijking",  "Indicatorbalk en badge bij een grote afwijking van de voorkeurstijd", Groep: "Wedstrijdstatus (Planning & Veld optimalisatie)"),
+
+        // Dedicated navigatiekleuren (#1401). Ervóór hergebruikte de zijbalk "secondary"/
+        // "textOnPrimary" (actief-item) of had helemaal geen instelbare kleur (hover, navbar-
+        // toggler, top-row) — een club kon de menu-tekst dus niet los van andere UI-elementen
+        // aanpassen. Standaardwaarden = de oude hardcoded kleuren, dus geen visuele wijziging.
+        new ThemeKleurDefinitie("navItemText",              "Navigatie-itemtekst", Groep: "Navigatie"),
+        new ThemeKleurDefinitie("navItemActiveBackground",  "Actief navigatie-item achtergrond", StaatAlphaToe: true, Groep: "Navigatie"),
+        new ThemeKleurDefinitie("navItemHoverBackground",   "Navigatie-item hover achtergrond", StaatAlphaToe: true, Groep: "Navigatie"),
+        new ThemeKleurDefinitie("navItemActiveHoverText",   "Navigatietekst bij actief/hover", Groep: "Navigatie"),
+        new ThemeKleurDefinitie("navbarTogglerBackground",  "Menuknop-achtergrond (mobiel)", StaatAlphaToe: true, Groep: "Navigatie"),
+        new ThemeKleurDefinitie("topRowBackground",         "Bovenbalk-achtergrond", StaatAlphaToe: true, Groep: "Navigatie"),
+        new ThemeKleurDefinitie("modalBackdrop",            "Achtergrond achter dialoogvensters", StaatAlphaToe: true, Groep: "Navigatie"),
+
+        // Generieke systeemkleuren (#1401): app-brede UI-concepten (foutmeldingen, laadschermen,
+        // testmodus-banner) — los van de Planning-specifieke status*/voorkeur*-kleuren hierboven.
+        new ThemeKleurDefinitie("success",         "Succeskleur", "Vinkje op het laadscherm, geldige formuliervelden", Groep: "Systeemmeldingen"),
+        new ThemeKleurDefinitie("danger",          "Foutkleur", "Foutmeldingen, ongeldige formuliervelden, onverwachte fouten", Groep: "Systeemmeldingen"),
+        new ThemeKleurDefinitie("textOnDanger",    "Tekst op foutachtergrond", Groep: "Systeemmeldingen"),
+        new ThemeKleurDefinitie("warning",         "Waarschuwingskleur", "ALLSTARS-testmodusbanner", Groep: "Systeemmeldingen"),
+        new ThemeKleurDefinitie("warningBorder",   "Waarschuwingskleur (rand/hover)", "Rand van de testmodus-banner, hover-variant", Groep: "Systeemmeldingen"),
+        new ThemeKleurDefinitie("warningBg",       "Waarschuwingsachtergrond", "Achtergrond van de club-kiezer in testmodus", Groep: "Systeemmeldingen"),
+        new ThemeKleurDefinitie("warningText",     "Tekst op waarschuwingsachtergrond", Groep: "Systeemmeldingen"),
+        new ThemeKleurDefinitie("warningHoverBg",  "Waarschuwing hover-achtergrond", StaatAlphaToe: true, Groep: "Systeemmeldingen"),
+        new ThemeKleurDefinitie("info",            "Informatiekleur", "Opstart-spinner", Groep: "Systeemmeldingen"),
+        new ThemeKleurDefinitie("codeText",        "Codekleur", "Kleur van <code>-tekst", Groep: "Systeemmeldingen"),
+        new ThemeKleurDefinitie("noticeBg",        "Meldingsachtergrond", "Achtergrond van de ontwikkel-foutbalk onderin", Groep: "Systeemmeldingen"),
+        new ThemeKleurDefinitie("trackColor",      "Laadbalk-achtergrond", "De 'lege' baan van laadspinners", Groep: "Systeemmeldingen"),
+        new ThemeKleurDefinitie("focusRingGap",    "Focusring — binnenrand", Groep: "Systeemmeldingen"),
+        new ThemeKleurDefinitie("focusRingAccent", "Focusring — accent", Groep: "Systeemmeldingen")
     };
 
     /// <summary>De huidige standaardkleuren van de applicatie — ongewijzigd sinds #325.</summary>
@@ -96,7 +113,32 @@ public static class ThemePresets
         ["statusNietInplanbaar"]   = "#dc3545",
         ["voorkeurOpTijd"]         = "#22c55e",
         ["voorkeurKleineAfwijking"] = "#f59e0b",
-        ["voorkeurGroteAfwijking"]  = "#ef4444"
+        ["voorkeurGroteAfwijking"]  = "#ef4444",
+
+        // Navigatie (#1401) — zelfde waarden als de oude hardcoded kleuren in NavMenu.razor.css.
+        ["navItemText"]             = "#d7d7d7",
+        ["navItemActiveBackground"] = "#ffffff5e",
+        ["navItemHoverBackground"]  = "#ffffff1a",
+        ["navItemActiveHoverText"]  = "#ffffff",
+        ["navbarTogglerBackground"] = "#ffffff1a",
+        ["topRowBackground"]        = "#00000066",
+        ["modalBackdrop"]           = "#00000073",
+
+        // Systeemmeldingen (#1401) — zelfde waarden als de oude hardcoded kleuren in app.css.
+        ["success"]         = "#198754",
+        ["danger"]          = "#dc3545",
+        ["textOnDanger"]    = "#ffffff",
+        ["warning"]         = "#f59e0b",
+        ["warningBorder"]   = "#d97706",
+        ["warningBg"]       = "#fef3c7",
+        ["warningText"]     = "#1c1917",
+        ["warningHoverBg"]  = "#f59e0b1a",
+        ["info"]            = "#0d6efd",
+        ["codeText"]        = "#c02d76",
+        ["noticeBg"]        = "#ffffe0",
+        ["trackColor"]      = "#e6e9ed",
+        ["focusRingGap"]    = "#ffffff",
+        ["focusRingAccent"] = "#258cfb"
     };
 
     /// <summary>De neutrale donkerwaarden die ook in <c>app.css</c> als terugval staan (#1255).</summary>
@@ -120,59 +162,35 @@ public static class ThemePresets
         ["statusNietInplanbaar"]   = "#f87171",
         ["voorkeurOpTijd"]         = "#4ade80",
         ["voorkeurKleineAfwijking"] = "#fbbf24",
-        ["voorkeurGroteAfwijking"]  = "#f87171"
+        ["voorkeurGroteAfwijking"]  = "#f87171",
+
+        // Navigatie (#1401) — zelfde waarden als het lichte palet: de zijbalk-tekst/hover-affordance
+        // is universeel wit-op-donker en hoeft niet per modus te verschillen.
+        ["navItemText"]             = "#d7d7d7",
+        ["navItemActiveBackground"] = "#ffffff40",
+        ["navItemHoverBackground"]  = "#ffffff26",
+        ["navItemActiveHoverText"]  = "#ffffff",
+        ["navbarTogglerBackground"] = "#ffffff1a",
+        ["topRowBackground"]        = "#00000066",
+        ["modalBackdrop"]           = "#00000073",
+
+        // Systeemmeldingen (#1401): bewust vrijwel gelijk aan de lichte modus — hun betekenis
+        // (succes/fout/waarschuwing) staat los van het licht/donker-thema. Alleen trackColor en
+        // focusRingGap krijgen een echt donkere tegenhanger, want die liggen tegen de kaart-
+        // achtergrond aan.
+        ["success"]         = "#22c55e",
+        ["danger"]          = "#f87171",
+        ["textOnDanger"]    = "#ffffff",
+        ["warning"]         = "#fbbf24",
+        ["warningBorder"]   = "#d97706",
+        ["warningBg"]       = "#fef3c7",
+        ["warningText"]     = "#1c1917",
+        ["warningHoverBg"]  = "#f59e0b1a",
+        ["info"]            = "#0d6efd",
+        ["codeText"]        = "#c02d76",
+        ["noticeBg"]        = "#ffffe0",
+        ["trackColor"]      = "#2a3448",
+        ["focusRingGap"]    = "#171f30",
+        ["focusRingAccent"] = "#258cfb"
     };
-
-    public static IReadOnlyList<ThemePreset> Alle { get; } = new[]
-    {
-        new ThemePreset("Standaard", "De kleuren waarmee de applicatie standaard werkt", StandaardLicht, StandaardDonker),
-
-        new ThemePreset("Donkerblauw en geel", "Klassieke combinatie voor een sportvereniging",
-            Licht: Samenstellen(StandaardLicht, new()
-            {
-                ["primary"] = "#1f3a6e", ["secondary"] = "#5a6474", ["accent"] = "#1f3a6e",
-                ["textOnPrimary"] = "#ffffff"
-            }),
-            Donker: Samenstellen(StandaardDonker, new()
-            {
-                ["primary"] = "#f5c518", ["secondary"] = "#9aa4b2", ["accent"] = "#f5c518",
-                ["textOnPrimary"] = "#14213d", ["pageBg"] = "#0c1424", ["cardBg"] = "#14213d"
-            })),
-
-        new ThemePreset("Groen", "Rustige groentint met een neutrale achtergrond",
-            Licht: Samenstellen(StandaardLicht, new()
-            {
-                ["primary"] = "#1b6b4a", ["secondary"] = "#5f6b66", ["accent"] = "#14875a",
-                ["textOnPrimary"] = "#ffffff"
-            }),
-            Donker: Samenstellen(StandaardDonker, new()
-            {
-                ["primary"] = "#4ade9b", ["secondary"] = "#8fa39a", ["accent"] = "#4ade9b",
-                ["textOnPrimary"] = "#0b1a14", ["pageBg"] = "#0b1a14", ["cardBg"] = "#132620"
-            })),
-
-        new ThemePreset("Rood", "Warme roodtint met een neutrale achtergrond",
-            Licht: Samenstellen(StandaardLicht, new()
-            {
-                ["primary"] = "#9b1c1c", ["secondary"] = "#6f5a5a", ["accent"] = "#b91c1c",
-                ["textOnPrimary"] = "#ffffff"
-            }),
-            Donker: Samenstellen(StandaardDonker, new()
-            {
-                ["primary"] = "#f87171", ["secondary"] = "#b09a9a", ["accent"] = "#f87171",
-                ["textOnPrimary"] = "#1a0b0b", ["pageBg"] = "#1a0b0b", ["cardBg"] = "#2a1414"
-            }))
-    };
-
-    // Een preset hoeft alleen te noemen wat afwijkt; de rest komt uit de standaardset. Zo groeit
-    // elke preset automatisch mee als er een kleur bij komt, in plaats van stilzwijgend incompleet
-    // te raken.
-    private static IReadOnlyDictionary<string, string> Samenstellen(
-        IReadOnlyDictionary<string, string> basis,
-        Dictionary<string, string> afwijkingen)
-    {
-        var resultaat = new Dictionary<string, string>(basis);
-        foreach (var (sleutel, waarde) in afwijkingen) resultaat[sleutel] = waarde;
-        return resultaat;
-    }
 }

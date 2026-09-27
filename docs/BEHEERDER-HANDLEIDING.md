@@ -1379,25 +1379,24 @@ set: de site werkt dus meteen, ook zonder dat u iets instelt.
 Op dit scherm stelt u de kleuren in die de Admin GUI gebruikt. Sinds de lichte/donkere weergave
 (hoofdstuk 21) stelt u **twee** sets in: één voor licht en één voor donker.
 
-Het tabblad **Kleuren instellen** groepeert de kleuren in twee blokken: **Merk & interface**
-(zijbalk, knoppen, achtergronden — hoofdstuk 22 hieronder) en **Wedstrijdstatus (Planning & Veld
+Het tabblad **Kleuren instellen** groepeert de kleuren in vier blokken: **Merk & interface**
+(primaire/secundaire kleur, accentkleur, achtergronden), **Wedstrijdstatus (Planning & Veld
 optimalisatie)** — de kleuren van de Gantt-blokken, de legenda en de statusbadges op die twee
-schermen. Het tabblad **Overzicht** ernaast toont dezelfde kleuren nog eens als leestabel: per
-kleur de naam, waar hij precies gebruikt wordt, en de huidige waarde in zowel de lichte als de
-donkere weergave — handig als u wilt nakijken wat u al heeft ingesteld zonder eerst elke picker
-open te klikken.
+schermen, **Navigatie** — het menu in de zijbalk (tekst, actief item, hover, bovenbalk) heeft
+sinds #1401 eigen, dedicated kleuren, onafhankelijk van de merkkleuren — en **Systeemmeldingen**
+(de testmodusbanner, foutmeldingen, validatiekleuren, laadscherm). Het tabblad **Overzicht**
+ernaast toont dezelfde kleuren nog eens als leestabel: per kleur de naam, waar hij precies
+gebruikt wordt, en de huidige waarde in zowel de lichte als de donkere weergave — handig als u
+wilt nakijken wat u al heeft ingesteld zonder eerst elke picker open te klikken.
 
 ### Zo werkt het
 
 1. **Kies welke weergave u bewerkt** met de knoppen *Licht bewerken* / *Donker bewerken*. De hele
    interface schakelt meteen mee, zodat u ziet wat u instelt in plaats van het te moeten voorstellen.
-2. **Kies eventueel een basisthema** uit de keuzelijst bovenaan. Dat vult in één keer alle kleuren
-   van de weergave die u nu bewerkt, inclusief de wedstrijdstatuskleuren. Daarna kunt u elke kleur
-   los bijstellen — een basisthema is een startpunt, geen keurslijf.
-3. **Stel de losse kleuren bij** met de kleurenkiezer of door de code in te typen. De **secundaire
-   kleur** kleurt sinds deze uitbreiding ook het actieve menu-item in de zijbalk — daarvóór had die
-   kleur geen zichtbaar effect.
-4. **Opslaan.** Tot u opslaat is alles wat u ziet een voorbeeld: sluit u het scherm zonder opslaan,
+2. **Stel de losse kleuren bij** met de kleurenkiezer of door de code in te typen. Elke kleur werkt
+   onafhankelijk van de andere — de menu-tekstkleur past u dus aan zonder dat dit ook knoppen of
+   badges elders verandert.
+3. **Opslaan.** Tot u opslaat is alles wat u ziet een voorbeeld: sluit u het scherm zonder opslaan,
    dan blijft alles zoals het was.
 
 ### Kleuren van de eigen website ophalen

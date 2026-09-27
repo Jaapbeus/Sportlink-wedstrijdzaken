@@ -118,15 +118,6 @@ if (fs.existsSync(presetsPad)) {
             meld(`ThemePresets.Kleuren kent '${basis}' maar app.css definieert '--theme-${basis}-light' niet. Die kleur wordt dan nergens gebruikt.`);
         }
     }
-
-    // Elke preset moet compleet zijn: een half gevulde set laat kleuren op de vorige waarde staan.
-    for (const m of presets.matchAll(/new ThemePreset\(\s*"([^"]+)"/g)) {
-        // Volledigheid wordt in C# afgedwongen doordat elke preset op de standaardset wordt
-        // samengesteld; hier alleen vastleggen dat die samenstelling er nog is.
-        if (!/Samenstellen\(/.test(presets) && m[1] !== 'Standaard') {
-            meld(`Preset '${m[1]}' wordt niet meer op de standaardset samengesteld — dan raakt hij stilzwijgend incompleet zodra er een kleur bij komt.`);
-        }
-    }
 }
 
 if (fouten > 0) {

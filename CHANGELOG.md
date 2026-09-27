@@ -30,6 +30,18 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Veld optimalisatie: hoveren over een wedstrijd in de tabel of in de tijdlijn licht nu ook hier
   hetzelfde blok/dezelfde rij oranje op, zoals al werkte op Planning — in zowel het tabblad Huidig
   als Optimaal (#1398).
+- **Instellingen → Thema: alle overgebleven kleuren in de Admin GUI zijn nu instelbaar (#1401).**
+  Het menu in de zijbalk heeft nu eigen, dedicated kleuren (tekst, actief item, hover) die
+  onafhankelijk van andere UI-elementen aan te passen zijn — daarvóór hergebruikten de
+  menu-kleuren "Secundaire kleur"/"Tekst op primaire achtergrond", en de hover-status was
+  helemaal niet instelbaar. Daarnaast zijn de testmodusbanner (ALLSTARS), foutmeldingen,
+  validatiekleuren, de laadspinner, het vinkje op het opstartscherm, en enkele overige
+  systeemkleuren nu instelbaar, gegroepeerd onder "Navigatie" en "Systeemmeldingen".
+
+### Removed
+- Instellingen → Thema: de "Basisthema"-keuzelijst met vier voorinstellingen is verwijderd (#1401).
+  Elke kleur wordt voortaan direct bewerkt, licht en donker apart — de keuzelijst voegde weinig toe
+  naast de losse kleurenpickers.
 
 ### Changed
 - **Officials toewijzen, een oefenwedstrijd aanmaken, en een wijzigingsverzoek datum/tijd/
@@ -46,8 +58,6 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   Sportlink-storing. Elke Sportlink-aanroep krijgt nu een passende, per-aanroep timeout en één
   automatische herhaling bij een tijdelijke storing; een reactie die te lang op zich laat wachten
   krijgt bovendien een eigen melding in plaats van de generieke storingsmelding.
-- De secundaire kleur op Instellingen → Thema heeft nu een zichtbaar effect: hij kleurt het actieve
-  menu-item in de zijbalk. Daarvóór deed die kleurinstelling nergens iets.
 - Veld optimalisatie en Planning toonden in het donkere thema een wit kaartje (samenvattingsbalk en
   het uitgeklapte Sportlink-paneel) — die achtergrond volgt nu het clubthema.
 
