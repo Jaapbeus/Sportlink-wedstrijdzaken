@@ -16,4 +16,12 @@ public interface ISportlinkMutationAuditService
     /// Markeert een audit-record als voltooid met resultaat en optionele foutmelding.
     /// </summary>
     Task VoltooiAsync(long auditId, string resultaat, string? foutmeldingSamenvatting, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Koppelt een korte testnotitie aan een bestaande audit-poging (#1320) — bijv. wat de eigenaar
+    /// in Sportlink Club zelf zag na een live-testpoging. Scoped op <paramref name="clubCode"/>: een
+    /// audit-rij van een andere club wordt nooit gewijzigd. Geeft <c>false</c> terug als er geen rij
+    /// bijgewerkt is (verkeerd ID of verkeerde club) — de aanroeper vertaalt dat naar 404.
+    /// </summary>
+    Task<bool> ZetNotitieAsync(long auditId, string clubCode, string notitie, CancellationToken cancellationToken = default);
 }

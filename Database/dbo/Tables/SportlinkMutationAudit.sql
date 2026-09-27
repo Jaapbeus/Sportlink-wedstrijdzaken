@@ -11,6 +11,7 @@ CREATE TABLE [dbo].[SportlinkMutationAudit] (
     [FoutmeldingSamenvatting] NVARCHAR(500) NULL,
     [CorrelationId]           NVARCHAR(50)  NULL,
     [Tijdstip]                DATETIME2     NOT NULL CONSTRAINT [DF_SportlinkMutationAudit_Tijdstip] DEFAULT (GETUTCDATE()),
+    [Notitie]                 NVARCHAR(1000) NULL, -- #1320: korte testnotitie van de eigenaar bij een live-testpoging
     CONSTRAINT [PK_SportlinkMutationAudit] PRIMARY KEY CLUSTERED ([Id] ASC)
 );
 GO

@@ -31,6 +31,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   dat gaf onterecht een `403 Forbidden`. De rol Wedstrijdzaken blijft bestaan voor een gebruiker
   zonder volledige beheerdersrechten.
 
+### Added
+- **Diagnostiekpaneel bij het wijzigingsverzoek datum/tijd/accommodatie, voor de eigenaar-gestuurde
+  productieproef (#1320).** Vóór het versturen van de validatiestap naar Sportlink toont het scherm
+  nu een expliciete waarschuwing met een aparte bevestigknop — deze stap kan in werkelijkheid al een
+  echte melding aan de tegenstander veroorzaken. Na de aanroep verschijnt een leesbare trace
+  (tijdstip, HTTP-methode/endpoint/status, en de belangrijkste responsvelden) en kan een testnotitie
+  worden vastgelegd bij die specifieke poging. Stap 2 (bevestigen) blijft bewust niet gebouwd: de
+  werkelijke bevestigingsvorm is nooit met een netwerktrace vastgesteld.
+
 ### Fixed
 - **Favicon/logo/kleuren ophalen op het Thema-scherm faalde met "URL-domein is niet toegestaan"
   zodra de club-website nog niet eerder was opgeslagen (#1373).** De knop **Ophalen** sloeg de

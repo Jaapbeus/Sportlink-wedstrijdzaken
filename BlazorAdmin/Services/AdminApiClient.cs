@@ -93,11 +93,18 @@ public class AdminApiClient
     // altijd code-gelockt (forceDryRun) — zie SportlinkClubClient.RequestMatchChangeAsync. Bewust
     // GEEN methode voor een bevestigstap: die bestaat hier niet.
     // NIET VERDER BOUWEN ZONDER LIVE BEVESTIGING DOOR DE EIGENAAR (#995).
-    public async Task<ApiResult<SportlinkMatchWijzigingsverzoekResultaatDto>> PutSportlinkMatchChangeRequestAsync(
+    // #1320: retourneert sinds de productieproef-trace een SportlinkMatchWijzigingsverzoekTraceDto
+    // (Mutatie+Validatie plus HTTP-status/endpoint/AuditId) in plaats van kaal het resultaat.
+    public async Task<ApiResult<SportlinkMatchWijzigingsverzoekTraceDto>> PutSportlinkMatchChangeRequestAsync(
         string wedstrijdcode, string? nieuweDatum, string? nieuweStartTijd, string? nieuweFacilityId, string toelichting)
-        => await PutAsync<SportlinkMatchWijzigingsverzoekResultaatDto>(
+        => await PutAsync<SportlinkMatchWijzigingsverzoekTraceDto>(
             $"api/sportlink/match/{Uri.EscapeDataString(wedstrijdcode)}/change-request",
             new { NieuweDatum = nieuweDatum, NieuweStartTijd = nieuweStartTijd, NieuweFacilityId = nieuweFacilityId, Toelichting = toelichting });
+
+    // #1320: testnotitie koppelen aan de trace van een #995-stap-1-poging — na een live-testpoging
+    // kan de eigenaar vastleggen wat er in Sportlink Club zelf zichtbaar was.
+    public async Task<ApiResult<object>> PutSportlinkAuditNotitieAsync(long auditId, string notitie)
+        => await PutAsync<object>($"api/sportlink/audit/{auditId}/notitie", new { Notitie = notitie });
 
     // #996: inkomende wijzigingsverzoeken van tegenstanders.
     public async Task<ApiResult<List<SportlinkChangeRequestDto>>> GetSportlinkChangeRequestsAsync()

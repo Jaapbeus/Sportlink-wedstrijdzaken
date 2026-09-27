@@ -28,10 +28,51 @@ namespace Planner.Shared.Integrations.SportlinkClub;
 /// <c>true</c> als minstens één melding blokkerend is — de aanroeper mag dan geen vervolgstap tonen
 /// (toch al niet gebouwd in deze app, zie de "NIET VERDER BOUWEN"-marker hierboven).
 /// </param>
+/// <param name="IsSuccess">
+/// Toplevel <c>IsSuccess</c> uit de respons (#1320) — <c>null</c> als het veld ontbrak of geen
+/// boolean was. Bij de enige tot nu toe geziene trace (2026-09-26, oefenwedstrijd, dus GEEN bewijs
+/// voor de verplichte-wijzigingsverzoek-vorm) stond de eerste respons op <c>false</c> naast een
+/// niet-blokkerende melding.
+/// </param>
+/// <param name="IsMatchChangeRequestMandatory">Toplevel <c>IsMatchChangeRequestMandatory</c> —
+/// zelfde onbevestigde status als <see cref="IsSuccess"/>.</param>
+/// <param name="IsOwnFacility">Toplevel <c>IsOwnFacility</c> — idem.</param>
+/// <param name="IsForceUpdate">
+/// Toplevel <c>IsForceUpdate</c> — bij de oefenwedstrijd-trace stond dit veld op <c>true</c> in de
+/// TWEEDE (rechtstreeks doorgevoerde) respons. Voor een verplicht wijzigingsverzoek aan een
+/// tegenstander is dit nooit waargenomen; behandel deze waarde niet als bevestigd contract.
+/// </param>
 public sealed record SportlinkMatchChangeValidatie(
     bool ConfirmationNeeded,
     IReadOnlyList<string> ValidationResultMessages,
-    bool HasBlockingMessages);
+    bool HasBlockingMessages,
+    bool? IsSuccess = null,
+    bool? IsMatchChangeRequestMandatory = null,
+    bool? IsOwnFacility = null,
+    bool? IsForceUpdate = null);
+
+/// <summary>
+/// Diagnostiektrace van één #995-stap-1-poging (#1320, eigenaar-gestuurde productieproef) —
+/// request-/responsemetadata voor de UI, plus het audit-record-ID zodat een testnotitie eraan
+/// gekoppeld kan worden. Bevat bewust geen ruwe request-/response-body: alleen de al
+/// gedistilleerde, PII-vrije velden uit <see cref="SportlinkMatchChangeRequestResult"/> — tokens,
+/// cookies en autorisatieheaders komen hier nooit in terecht (acceptatiecriterium #1320).
+/// </summary>
+/// <param name="Resultaat">De mutatie- en validatie-uitkomst, zelfde vorm als vóór #1320.</param>
+/// <param name="AuditId"><c>null</c> als er geen audit-service geregistreerd is (lokaal zonder DB).</param>
+/// <param name="HttpStatusCode">HTTP-statuscode van Sportlinks respons, of van de transportfout.</param>
+/// <param name="Endpoint">Sportlink-pad, bijv. <c>competition/match/UpdateMatchDetails</c>.</param>
+/// <param name="HttpMethode">Altijd <c>PUT</c> voor deze mutatie — expliciet meegegeven zodat de UI
+/// het niet hoeft aan te nemen.</param>
+/// <param name="TijdstipUtc">Serverzijdig tijdstip van deze poging (niet het kloktijdstip van de
+/// browser) — UTC, conform §8.1.1 van ARCHITECTUUR.md.</param>
+public sealed record SportlinkMatchWijzigingsverzoekTrace(
+    SportlinkMatchChangeRequestResult Resultaat,
+    long? AuditId,
+    int? HttpStatusCode,
+    string Endpoint,
+    string HttpMethode,
+    DateTime TijdstipUtc);
 
 /// <summary>
 /// Gecombineerd resultaat van <c>SportlinkClubClient.RequestMatchChangeAsync</c> (#995) — de

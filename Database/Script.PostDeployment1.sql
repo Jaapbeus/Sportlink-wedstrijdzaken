@@ -3554,3 +3554,10 @@ BEGIN
     CREATE NONCLUSTERED INDEX [IX_SyncJobs_ClubCode_CreatedAt] ON [dbo].[SyncJobs] ([ClubCode], [CreatedAt] DESC);
 END
 GO
+
+-- #1320: testnotitie gekoppeld aan een Sportlink-mutatiepoging — eigenaar-gestuurde
+-- productieproef met trace van validatie en bevestiging. Postgres-tegenhanger:
+-- Database.Postgres/migrations/028_sportlinkmutationaudit_notitie.sql.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SportlinkMutationAudit') AND name = 'Notitie')
+    ALTER TABLE [dbo].[SportlinkMutationAudit] ADD [Notitie] NVARCHAR(1000) NULL;
+GO
