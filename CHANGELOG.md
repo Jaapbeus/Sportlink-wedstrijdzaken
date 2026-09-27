@@ -25,6 +25,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Instellingen → Thema: nieuw tabblad "Overzicht" toont elke instelbare kleur met toelichting en
   swatch, voor zowel de lichte als de donkere weergave.
 
+### Changed
+- **Officials toewijzen, een oefenwedstrijd aanmaken, en een wijzigingsverzoek datum/tijd/
+  accommodatie versturen via het Sportlink-paneel sturen deze acties nu écht door naar Sportlink,
+  in plaats van dat ze altijd gesimuleerd werden (#1319).** De eigenaar heeft dit na een live
+  netwerktrace bewust aangezet; elke actie volgt vanaf nu gewoon de bestaande dry-run-instelling van
+  de club, net als de andere Sportlink-mutaties.
+
 ### Fixed
 - **Sportlink-matchinfo gaf soms een valse "Sportlink is momenteel niet bereikbaar" (HTTP 502),
   ook als de Sportlink-koppeling zelf gewoon werkte (#1387).** Het ophalen van Sportlink-matchinfo

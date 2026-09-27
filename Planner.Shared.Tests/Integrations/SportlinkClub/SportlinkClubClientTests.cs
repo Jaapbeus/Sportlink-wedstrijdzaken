@@ -1745,17 +1745,17 @@ public class SportlinkClubClientTests
         }
     }
 
-    // ── forceDryRun code-lock (#994/§1, epic #986) ──
-    // Kern-eis: een mutatie met forceDryRun:true blijft ALTIJD gesimuleerd, ook als de globale
-    // instelling (isDryRun-delegate) NIET op dry-run staat. Dit bewijst dat de lock niet via de
-    // bestaande sportlinkDryRun-instelling omzeilbaar is.
+    // ── forceDryRun code-lock ingetrokken door de eigenaar (#994, #1319) ──
+    // De eigenaar heeft MatchOfficialsActionLiveBevestigd op 27-09-2026 op true gezet na een live
+    // netwerktrace. AssignOfficialsAsync volgt vanaf nu de gewone club-instelling sportlinkDryRun,
+    // net als elke andere bevestigde mutatie (zie UpdateDressingRoomsAsync/UpdateFieldAsync
+    // hierboven voor hetzelfde testpatroon: een "_DryRun_"-test en een "echte PUT"-test).
 
     [Fact]
-    public async Task AssignOfficialsAsync_GlobaleInstellingStaatUit_BlijftTochGesimuleerdDoorCodeLock()
+    public async Task AssignOfficialsAsync_IsDryRunTrue_BlijftGesimuleerd()
     {
-        // isDryRun: () => false — de club-instelling staat NIET op dry-run. Toch mag er nooit een
-        // echte PUT/POST naar het MatchOfficialsAction-endpoint gaan, want AssignOfficialsAsync
-        // geeft altijd forceDryRun: true mee (endpoint/body nog niet live bevestigd, #994).
+        // isDryRun: () => true — de club-instelling staat op dry-run, dus mag er geen echte PUT
+        // naar het MatchOfficialsAction-endpoint gaan.
         var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
         var aangeroepenUrls = new List<string>();
         var client = MakeClient(req =>
@@ -1764,7 +1764,38 @@ public class SportlinkClubClientTests
             if (req.RequestUri.AbsoluteUri.Contains("idm.sportlink.com"))
                 return JsonResponse(TokenResponse(FictieveAccessToken));
             if (req.RequestUri.AbsoluteUri.Contains("MatchOfficialsAction"))
-                throw new InvalidOperationException("De code-lock mag deze PUT nooit versturen, ongeacht de globale dry-run-instelling.");
+                throw new InvalidOperationException("Bij isDryRun()==true mag er nooit een echte PUT verstuurd worden.");
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => true);
+
+        var result = await sut.AssignOfficialsAsync(
+            TestFunctioneleRol, TestPublicMatchId,
+            new List<SportlinkOfficialToewijzing> { new("Referee", "123456") });
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data!.IsDryRun.Should().BeTrue();
+        result.Data.IsForcedDryRun.Should().BeFalse("de code-lock is per #1319 opgeheven — dit is nu een gewone club-instelling-dry-run");
+        result.Data.IsSuccess.Should().BeTrue("een dry-run simuleert een geslaagde mutatie");
+        aangeroepenUrls.Should().Contain(url => url.Contains("idm.sportlink.com"), "token-refresh moet wél echt gebeuren");
+        aangeroepenUrls.Should().NotContain(url => url.Contains("MatchOfficialsAction"));
+    }
+
+    [Fact]
+    public async Task AssignOfficialsAsync_IsDryRunFalseEnLiveBevestigd_StuurtEenEchtePut()
+    {
+        // isDryRun: () => false — sinds #1319 (MatchOfficialsActionLiveBevestigd=true) stuurt
+        // AssignOfficialsAsync nu een ECHTE PUT, net als elke andere bevestigde mutatie.
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var aangeroepenUrls = new List<string>();
+        var client = MakeClient(req =>
+        {
+            aangeroepenUrls.Add(req.RequestUri!.AbsoluteUri);
+            if (req.RequestUri.AbsoluteUri.Contains("idm.sportlink.com"))
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri.AbsoluteUri.Contains("MatchOfficialsAction"))
+                return JsonResponse(DressingRoomsSuccessResponse());
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
@@ -1775,11 +1806,11 @@ public class SportlinkClubClientTests
             new List<SportlinkOfficialToewijzing> { new("Referee", "123456") });
 
         result.Status.Should().Be(SportlinkClubCallStatus.Ok);
-        result.Data!.IsDryRun.Should().BeTrue();
-        result.Data.IsForcedDryRun.Should().BeTrue("de code-lock is onafhankelijk van de club-instelling sportlinkDryRun");
-        result.Data.IsSuccess.Should().BeTrue("een dry-run simuleert een geslaagde mutatie");
-        aangeroepenUrls.Should().Contain(url => url.Contains("idm.sportlink.com"), "token-refresh moet wél echt gebeuren");
-        aangeroepenUrls.Should().NotContain(url => url.Contains("MatchOfficialsAction"));
+        result.Data!.IsDryRun.Should().BeFalse();
+        result.Data.IsForcedDryRun.Should().BeFalse();
+        result.Data.IsSuccess.Should().BeTrue();
+        aangeroepenUrls.Should().Contain(url => url.Contains("MatchOfficialsAction"),
+            "sinds #1319 (MatchOfficialsActionLiveBevestigd=true) stuurt deze mutatie een echte PUT");
     }
 
     [Fact]
@@ -1874,13 +1905,14 @@ public class SportlinkClubClientTests
             "de veld-wijziging (#993) blijft een ECHTE PUT versturen, ongeacht de #995-uitbreiding van ExecuteMutationWithRetryAsync");
     }
 
-    // ── forceDryRun code-lock voor RequestMatchChangeAsync (#995, epic #986) ──
-    // Kern-eis: net als AssignOfficialsAsync (#994) blijft deze mutatie ALTIJD gesimuleerd, ook als
-    // de globale instelling (isDryRun-delegate) NIET op dry-run staat — dit is bovendien de enige
-    // mutatiesoort die een ECHTE tegenstander raakt, dus de lock is hier extra belangrijk.
+    // ── forceDryRun code-lock ingetrokken door de eigenaar (#995 stap 1, #1319) ──
+    // De eigenaar heeft UpdateMatchDetailsChangeRequestLiveBevestigd op 27-09-2026 op true gezet na
+    // een live netwerktrace. RequestMatchChangeAsync (nog altijd uitsluitend stap 1: valideren, géén
+    // stap 2/bevestigen) volgt vanaf nu de gewone club-instelling sportlinkDryRun, net als
+    // AssignOfficialsAsync hierboven.
 
     [Fact]
-    public async Task RequestMatchChangeAsync_GlobaleInstellingStaatUit_BlijftTochGesimuleerdDoorCodeLock()
+    public async Task RequestMatchChangeAsync_IsDryRunTrue_BlijftGesimuleerd()
     {
         var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
         var aangeroepenUrls = new List<string>();
@@ -1890,7 +1922,39 @@ public class SportlinkClubClientTests
             if (req.RequestUri!.AbsoluteUri.Contains("idm.sportlink.com"))
                 return JsonResponse(TokenResponse(FictieveAccessToken));
             if (req.RequestUri.AbsoluteUri.Contains("UpdateMatchDetails"))
-                throw new InvalidOperationException("De code-lock mag deze PUT nooit versturen, ongeacht de globale dry-run-instelling.");
+                throw new InvalidOperationException("Bij isDryRun()==true mag er nooit een echte PUT verstuurd worden.");
+            if (req.RequestUri.AbsoluteUri.Contains("club.sportlink.com"))
+                return JsonResponse(MatchDetailsSnapshotResponse());
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => true);
+
+        var result = await sut.RequestMatchChangeAsync(
+            TestFunctioneleRol, TestPublicMatchId,
+            new DateOnly(2026, 10, 4), new TimeOnly(11, 0), "BBCF990", "Veld is niet beschikbaar door onderhoud");
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data!.Mutatie.IsDryRun.Should().BeTrue();
+        result.Data.Mutatie.IsForcedDryRun.Should().BeFalse("de code-lock is per #1319 opgeheven — dit is nu een gewone club-instelling-dry-run");
+        result.Data.Mutatie.IsSuccess.Should().BeTrue("een dry-run simuleert een geslaagde mutatie");
+        result.Data.Validatie.Should().BeNull("zonder een echte HTTP-respons is er niets te parsen");
+        aangeroepenUrls.Should().Contain(url => url.Contains("club.sportlink.com"), "de snapshot-GET moet wél echt gebeuren");
+        aangeroepenUrls.Should().NotContain(url => url.Contains("UpdateMatchDetails"));
+    }
+
+    [Fact]
+    public async Task RequestMatchChangeAsync_IsDryRunFalseEnLiveBevestigd_StuurtEenEchtePutEnParsedValidatie()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var aangeroepenUrls = new List<string>();
+        var client = MakeClient(req =>
+        {
+            aangeroepenUrls.Add(req.RequestUri!.AbsoluteUri);
+            if (req.RequestUri!.AbsoluteUri.Contains("idm.sportlink.com"))
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri.AbsoluteUri.Contains("UpdateMatchDetails"))
+                return JsonResponse("""{"IsSuccess": true}""");
             if (req.RequestUri.AbsoluteUri.Contains("club.sportlink.com"))
                 return JsonResponse(MatchDetailsSnapshotResponse());
             return new HttpResponseMessage(HttpStatusCode.NotFound);
@@ -1903,12 +1967,13 @@ public class SportlinkClubClientTests
             new DateOnly(2026, 10, 4), new TimeOnly(11, 0), "BBCF990", "Veld is niet beschikbaar door onderhoud");
 
         result.Status.Should().Be(SportlinkClubCallStatus.Ok);
-        result.Data!.Mutatie.IsDryRun.Should().BeTrue();
-        result.Data.Mutatie.IsForcedDryRun.Should().BeTrue("de code-lock is onafhankelijk van de club-instelling sportlinkDryRun");
-        result.Data.Mutatie.IsSuccess.Should().BeTrue("een dry-run simuleert een geslaagde mutatie");
-        result.Data.Validatie.Should().BeNull("zonder een echte HTTP-respons is er niets te parsen — de lock voorkomt de PUT volledig");
-        aangeroepenUrls.Should().Contain(url => url.Contains("club.sportlink.com"), "de snapshot-GET moet wél echt gebeuren");
-        aangeroepenUrls.Should().NotContain(url => url.Contains("UpdateMatchDetails"));
+        result.Data!.Mutatie.IsDryRun.Should().BeFalse();
+        result.Data.Mutatie.IsForcedDryRun.Should().BeFalse();
+        result.Data.Mutatie.IsSuccess.Should().BeTrue();
+        result.Data.Validatie.Should().NotBeNull("sinds #1319 komt er een echte HTTP-respons terug om te parsen");
+        result.Data.Validatie!.IsSuccess.Should().BeTrue();
+        aangeroepenUrls.Should().Contain(url => url.Contains("UpdateMatchDetails"),
+            "sinds #1319 (UpdateMatchDetailsChangeRequestLiveBevestigd=true) stuurt deze mutatie een echte PUT");
     }
 
     // ── BuildMatchChangeRequestBody (#995, epic #986) ──
@@ -2155,13 +2220,16 @@ public class SportlinkClubClientTests
         capturedMethods.Should().OnlyContain(x => x.Method == HttpMethod.Put);
     }
 
+    // ── forceDryRun code-lock ingetrokken door de eigenaar (#997, #1319) ──
+    // De eigenaar heeft ClubMatchLiveBevestigd op 27-09-2026 op true gezet na een live
+    // netwerktrace. CreateClubMatchAsync volgt vanaf nu de gewone club-instelling sportlinkDryRun,
+    // net als AssignOfficialsAsync/RequestMatchChangeAsync hierboven.
+
     [Fact]
-    public async Task CreateClubMatchAsync_GlobaleInstellingStaatUit_BlijftTochGesimuleerdDoorCodeLock()
+    public async Task CreateClubMatchAsync_IsDryRunTrue_BlijftGesimuleerd()
     {
-        // isDryRun: () => false — de club-instelling staat NIET op dry-run. Toch mag er nooit een
-        // echte POST naar het ClubMatch-endpoint gaan, want CreateClubMatchAsync geeft altijd
-        // forceDryRun: true mee (#997 — van alle #986-sub-issues de meeste onbekenden: volledige
-        // body onbevestigd, meerdere picklist-vormen onbekend, delete-methode onbekend).
+        // isDryRun: () => true — de club-instelling staat op dry-run, dus mag er geen echte POST
+        // naar het ClubMatch-endpoint gaan.
         var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
         var aangeroepenUrls = new List<string>();
         var client = MakeClient(req =>
@@ -2170,7 +2238,48 @@ public class SportlinkClubClientTests
             if (req.RequestUri.AbsoluteUri.Contains("idm.sportlink.com"))
                 return JsonResponse(TokenResponse(FictieveAccessToken));
             if (req.RequestUri.AbsoluteUri.Contains("clubmatch/ClubMatch"))
-                throw new InvalidOperationException("De code-lock mag deze POST nooit versturen, ongeacht de globale dry-run-instelling.");
+                throw new InvalidOperationException("Bij isDryRun()==true mag er nooit een echte POST verstuurd worden.");
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => true);
+
+        var aanvraag = new SportlinkClubMatchAanvraag(
+            MatchDateTime: new DateTime(2026, 9, 20, 19, 30, 0),
+            Duration: 90,
+            AgeClassCode: "JO10",
+            Description: "Oefenwedstrijd tegen buurtclub",
+            PublicHomeTeamId: "T2010269033",
+            PublicAwayTeamId: "T2010269099",
+            FacilityId: "BBCF989",
+            FieldId: "BBCF989-OUTDOOR_FIELD-6",
+            ExternalMatchId: 12345);
+
+        var result = await sut.CreateClubMatchAsync(TestFunctioneleRol, aanvraag);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data!.IsDryRun.Should().BeTrue();
+        result.Data.IsForcedDryRun.Should().BeFalse("de code-lock is per #1319 opgeheven — dit is nu een gewone club-instelling-dry-run");
+        result.Data.IsSuccess.Should().BeTrue("een dry-run simuleert een geslaagde mutatie");
+        result.Data.PublicMatchId.Should().BeNull("bij een dry-run is er geen echte Sportlink-respons om PublicMatchId uit te lezen");
+        aangeroepenUrls.Should().Contain(url => url.Contains("idm.sportlink.com"), "token-refresh moet wél echt gebeuren");
+        aangeroepenUrls.Should().NotContain(url => url.Contains("clubmatch/ClubMatch"));
+    }
+
+    [Fact]
+    public async Task CreateClubMatchAsync_IsDryRunFalseEnLiveBevestigd_StuurtEenEchtePost()
+    {
+        // isDryRun: () => false — sinds #1319 (ClubMatchLiveBevestigd=true) stuurt
+        // CreateClubMatchAsync nu een ECHTE POST en leest PublicMatchId uit de respons.
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var aangeroepenUrls = new List<string>();
+        var client = MakeClient(req =>
+        {
+            aangeroepenUrls.Add(req.RequestUri!.AbsoluteUri);
+            if (req.RequestUri.AbsoluteUri.Contains("idm.sportlink.com"))
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri.AbsoluteUri.Contains("clubmatch/ClubMatch"))
+                return JsonResponse("""{"IsSuccess": true, "PublicMatchId": "M-TEST-123"}""");
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
@@ -2190,12 +2299,12 @@ public class SportlinkClubClientTests
         var result = await sut.CreateClubMatchAsync(TestFunctioneleRol, aanvraag);
 
         result.Status.Should().Be(SportlinkClubCallStatus.Ok);
-        result.Data!.IsDryRun.Should().BeTrue();
-        result.Data.IsForcedDryRun.Should().BeTrue("de code-lock is onafhankelijk van de club-instelling sportlinkDryRun");
-        result.Data.IsSuccess.Should().BeTrue("een dry-run simuleert een geslaagde mutatie");
-        result.Data.PublicMatchId.Should().BeNull("Sportlink is niet echt aangeroepen tijdens een (forced) dry-run");
-        aangeroepenUrls.Should().Contain(url => url.Contains("idm.sportlink.com"), "token-refresh moet wél echt gebeuren");
-        aangeroepenUrls.Should().NotContain(url => url.Contains("clubmatch/ClubMatch"));
+        result.Data!.IsDryRun.Should().BeFalse();
+        result.Data.IsForcedDryRun.Should().BeFalse();
+        result.Data.IsSuccess.Should().BeTrue();
+        result.Data.PublicMatchId.Should().Be("M-TEST-123");
+        aangeroepenUrls.Should().Contain(url => url.Contains("clubmatch/ClubMatch"),
+            "sinds #1319 (ClubMatchLiveBevestigd=true) stuurt deze mutatie een echte POST");
     }
 
     [Fact]

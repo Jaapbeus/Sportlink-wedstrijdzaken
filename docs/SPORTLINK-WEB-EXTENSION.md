@@ -374,7 +374,7 @@ Vier dingen om te onthouden:
   onderweg: `Field.FieldSize` komt als JSON-getal terug (niet string — zelfde
   `FlexibleStringJsonConverter`-patroon als #1036), en `ExternalMatchId` in deze snapshot idem
   (nieuwe `FlexibleLongJsonConverter`, spiegelbeeld van `FlexibleStringJsonConverter`).
-  **Sinds #994 ook `PUT .../officials` (scaffolding, altijd code-gelockt):** officials
+  **Sinds #994 ook `PUT .../officials` (sinds #1319 live bevestigd, was scaffolding/code-gelockt):** officials
   (scheidsrechter/AR1/AR2) toewijzen via `AssignOfficialsAsync`/`PutMatchOfficialsAsync`
   (`competition/match/official/MatchOfficialsAction`). Endpoint én requestbody
   (`OfficialsToBeAssigned: [{OfficialPosition, PersoonId}]`) zijn NOOIT live gezien — zie
@@ -394,7 +394,7 @@ Vier dingen om te onthouden:
   hierboven, NOOIT live geverifieerd** — zie de TODO bij `SportlinkMatchOfficial.RelatieCode` en
   §8 hieronder voor de nog niet bevestigde AVG-vraag die bij deze prefill hoort.
 - **Sinds #995 ook `PUT .../change-request` — wijzigingsverzoek datum/tijd/accommodatie, ALLEEN
-  stap 1 (valideren), altijd code-gelockt:** dit is de enige mutatiesoort die een ECHTE tegenstander
+  stap 1 (valideren), sinds #1319 live bevestigd (was code-gelockt):** dit is de enige mutatiesoort die een ECHTE tegenstander
   raakt (Sportlink stuurt bij bevestiging een goedkeuringsverzoek naar de tegenstander) — zie het
   `NIET VERDER BOUWEN`-markeringscomment op `SportlinkClubClient.RequestMatchChangeAsync` en
   `ISportlinkClubClient`. Zelfde onderliggende endpoint als `.../field`
@@ -477,8 +477,8 @@ Vier dingen om te onthouden:
   "Inkomend/Uitgaand"-groepen zijn niet gebouwd: de respons bevat geen veld dat die richting
   aangeeft (of het is niet bevestigd) — pas na een menselijke netwerktrace.
 - `FunctionApp.Postgres/Sportlink/SportlinkClubMatchFunction.cs` (#997) — `POST
-  /api/sportlink/club-match` (aanmaken, altijd code-gelockt) + `GET .../club-match/picklists`
-  (Teams + Location, read-only, echt aangeroepen). **POST — ONBEVESTIGD — code-lock — geen guard
+  /api/sportlink/club-match` (aanmaken, sinds #1319 live bevestigd, was code-gelockt) + `GET
+  .../club-match/picklists` (Teams + Location, read-only, echt aangeroepen). **POST — geen guard
   mogelijk vóór aanmaak (eigen-DB-checks i.p.v. Sportlink-permissievlag):** structureel anders dan
   `SportlinkMatchFunction`/`SportlinkChangeRequestFunction` — er is vooraf GEEN bestaande wedstrijd,
   dus geen `PublicMatchId`, geen `wedstrijdcode`, geen `SportlinkMatch` om te guarden. In plaats van
@@ -731,22 +731,22 @@ test getriggerd wordt:
   ook niet tijdelijk — gebruik `JsonDocument` om gericht alleen de raw text van het specifieke
   veld te loggen dat de fout veroorzaakt (zie het patroon in git-historie van #1038 voor een
   voorbeeldimplementatie die nooit in `MatchOfficials` afdaalt zonder dat expliciet te bedoelen).
-- **#994's officials-toewijzing is scaffolding, geen live-getest pad.** Endpoint en requestbody
-  zijn gereverse-engineerd, nooit met een netwerktrace gezien — vandaar de code-niveau
-  `forceDryRun`-lock (§4.2/§6.4) die ongeacht `sportlinkDryRun` altijd simuleert. Zolang die lock
-  aan staat kan dit pad niet per ongeluk een echte mutatie bij Sportlink veroorzaken, maar de
-  requestbody/positiecodes zijn dus ook nog niet gevalideerd tegen de werkelijkheid.
+- **#994's officials-toewijzing was scaffolding, geen live-getest pad — sinds #1319 wél.** Endpoint
+  en requestbody waren gereverse-engineerd, nooit met een netwerktrace gezien — vandaar de
+  code-niveau `forceDryRun`-lock (§4.2/§6.4) die ongeacht `sportlinkDryRun` altijd simuleerde. De
+  eigenaar heeft `MatchOfficialsActionLiveBevestigd` op 27-09-2026 na een live netwerktrace op
+  `true` gezet (#1319): deze mutatie volgt vanaf nu gewoon de club-instelling `sportlinkDryRun`,
+  net als elke andere bevestigde mutatie.
 - **#995's wijzigingsverzoek is de enige mutatie die een ECHTE tegenstander raakt — en zelfs stap 1
   (valideren) kan al het gevaarlijke moment zijn.** Sportlink werkt naar verluidt in twee stappen
   (valideren → bevestigen), maar dat is niet met een netwerktrace geverifieerd. Als Sportlinks
   eerste PUT in werkelijkheid geen "dry validate" blijkt te zijn maar al het verzoek verstuurt, is
-  deze scaffolding-stap zelf al de gevaarlijke actie. De code-niveau `forceDryRun`-lock
-  (`UpdateMatchDetailsChangeRequestLiveBevestigd = false`) vangt dit softwarematig af zolang die
-  aanstaat — dat maakt deze lock hier belangrijker dan bij #994's officials-toewijzing. Stap 2
-  (bevestigen) is bewust NIET gebouwd: geen endpoint, geen client-methode, geen UI-knop — zie de
-  `NIET VERDER BOUWEN ZONDER LIVE BEVESTIGING DOOR DE EIGENAAR`-marker in de code. Ontgrendelen mag
-  uitsluitend na Aanpak-stap 1 van issue #995 (handmatige proef door de wedstrijdsecretaris met
-  netwerk-meekijken, gevolgd door een intrekking van het testverzoek), nooit door een agent (§4.4).
+  deze scaffolding-stap zelf al de gevaarlijke actie. **De eigenaar heeft
+  `UpdateMatchDetailsChangeRequestLiveBevestigd` op 27-09-2026 na een live netwerktrace op `true`
+  gezet (#1319)** — de code-niveau `forceDryRun`-lock die dit softwarematig afving, is dus
+  ingetrokken; deze mutatie volgt nu de gewone club-instelling `sportlinkDryRun`. Stap 2
+  (bevestigen) blijft bewust NIET gebouwd: geen endpoint, geen client-methode, geen UI-knop — dat is
+  een aparte, ongewijzigde scope-beslissing, los van deze lock.
 - **#996's actie-pad (goedkeuren/afwijzen) kan niet veilig getest worden met de vaste testwedstrijd
   (2026-09-06 vastgesteld).** In tegenstelling tot #992/#993 is `MatchChangeRequests` niet per
   wedstrijd gescoped — het levert alle openstaande verzoeken van échte tegenstanders voor het hele
@@ -792,12 +792,12 @@ de kernfeiten. Bij een discrepantie is de code leidend; werk dan dit overzicht b
 | `competition/match/Match` (`?PublicMatchId=`) | GET | Wedstrijddetails ophalen (ook: snapshot vóór een veldwijziging, ook: rauwe vormcontrole voor de contract-check) | — |
 | `competition/match/MatchProgramOverview` (`?DateFrom=&DateTo=`) | GET | Niet-club-gescoped, 1-daags programma — voor de `PublicMatchId`-reverse-lookup en de dagelijkse warmup-timer | — |
 | `competition/match/UpdateMatchDressingRooms` | PUT | Kleedkamers toewijzen | `SportlinkMutationSoort.Kleedkamers` |
-| `competition/match/UpdateMatchDetails` (idem, andere velden overschreven) | PUT | Wijzigingsverzoek datum/tijd/accommodatie — **ONBEVESTIGD, altijd code-gelockt, ALLEEN stap 1 (#995)**, zie §4.2/§5 | `SportlinkMutationSoort.DatumTijdAccommodatie` |
-| `competition/match/official/MatchOfficialsAction` | PUT | Officials toewijzen — **ONBEVESTIGD, altijd code-gelockt (#994)**, zie §4.2 | `SportlinkMutationSoort.Officials` |
+| `competition/match/UpdateMatchDetails` (idem, andere velden overschreven) | PUT | Wijzigingsverzoek datum/tijd/accommodatie — **sinds #1319 live bevestigd, ALLEEN stap 1 (#995)**, zie §4.2/§5 | `SportlinkMutationSoort.DatumTijdAccommodatie` |
+| `competition/match/official/MatchOfficialsAction` | PUT | Officials toewijzen — **sinds #1319 live bevestigd (#994)**, zie §4.2 | `SportlinkMutationSoort.Officials` |
 | `competition/match/changerequest/MatchChangeRequests` | GET | Inkomende wijzigingsverzoeken van tegenstanders ophalen | — (geen `SportlinkMutationGuard`, zie §4.2) |
 | `competition/match/changerequest/MatchChangeRequestAction` | PUT | Verzoek goed-/afkeuren | — (idem) |
 | `user/UserInfo` | GET | `PublicPersonId` van het service-account, nodig voor `MatchChangeRequestAction` | — |
-| `competition/match/clubmatch/ClubMatch` | **POST** | Oefenwedstrijd aanmaken — **ONBEVESTIGD, altijd code-gelockt (#997)**, zie §4.2. Geen guard mogelijk vóór aanmaak (er is nog geen wedstrijd) — alleen eigen-DB-checks i.p.v. een Sportlink-permissievlag | — (eigen toggle/EgressGuard i.p.v. `SportlinkMutationGuard`, zie §4.2) |
+| `competition/match/clubmatch/ClubMatch` | **POST** | Oefenwedstrijd aanmaken — **sinds #1319 live bevestigd (#997)**, zie §4.2. Geen guard mogelijk vóór aanmaak (er is nog geen wedstrijd) — alleen eigen-DB-checks i.p.v. een Sportlink-permissievlag | — (eigen toggle/EgressGuard i.p.v. `SportlinkMutationGuard`, zie §4.2) |
 | `competition/match/clubmatch/PickListsTeams` | GET | Picklist teams voor het aanmaak-formulier (#997) — read-only, echt aangeroepen | — |
 | `competition/match/clubmatch/PickListsLocation` | GET | Picklist locaties voor het aanmaak-formulier (#997) — read-only, echt aangeroepen | — |
 | `competition/match/clubmatch/ClubMatchDelete` | — | **Bewust NIET aangesloten (#997)** — verwijdermethode onbekend | — |
@@ -842,7 +842,8 @@ Elke aanroep zet drie headers: `X-Navajo-Entity` (het aangeroepen pad, geen vast
   "Violations":{"<code>":"Nederlandse omschrijving"}}`. Succes wordt bepaald door `Error != true &&
   response.IsSuccessStatusCode`, niet door een afzonderlijk `isSuccess`-veld (de happy-path-vorm is
   nooit live bevestigd).
-- **`ClubMatch` (#997, ONBEVESTIGD, altijd code-gelockt)**: `{ MatchDate (datum+tijd samengevoegd,
+- **`ClubMatch` (#997, sinds #1319 live bevestigd — niet elk veld hieronder is daarmee per se
+  bevestigd)**: `{ MatchDate (datum+tijd samengevoegd,
   ISO 8601 zonder tijdzone aangenomen), Duration (default 90), ExternalMatchId, HomeResult: -1,
   AwayResult: -1, AgeClassCode, Description, PublicHomeTeamId, PublicAwayTeamId, FacilityId,
   FieldId }` — komt uit Sportlinks eigen frontend-code, nooit met een netwerktrace gezien. Respons:
@@ -900,8 +901,16 @@ aangeraakt, alleen wat de eigenaar ervoor en erna ziet:
   werkelijke bevestigingsvorm voor een verplicht wijzigingsverzoek is nooit met een netwerktrace
   vastgesteld, en #1320 mag dat contract niet verzinnen. De eerste échte productietrace (na
   Aanpak-stap 1 van #995 én het omzetten van de constante door de eigenaar zelf) moet dat gat
-  vullen — zie issue #1319 voor de drie code-locks die de eigenaar zelf, in een eigen PR, moet
-  omzetten.
+  vullen.
+
+**Status sinds #1319 (27-09-2026):** de eigenaar heeft, buiten elke agent-sessie om, alle drie de
+constanten (`MatchOfficialsActionLiveBevestigd`, `UpdateMatchDetailsChangeRequestLiveBevestigd`,
+`ClubMatchLiveBevestigd`) op `true` gezet na een live netwerktrace. `forceDryRun` is voor deze drie
+mutaties dus vanaf nu altijd `false` — elke aanroep volgt de gewone club-instelling
+`sportlinkDryRun`, precies zoals elke andere bevestigde mutatie (`UpdateDressingRoomsAsync`,
+`UpdateFieldAsync`). `IsForcedDryRun`/"DryRunLocked" komen voor deze drie mutaties dus niet meer
+voor. Stap 2 (bevestigen) van #995 blijft niettemin bewust niet gebouwd — dat is een aparte,
+ongewijzigde scope-beslissing, los van deze lock.
 
 ## 7. Bronnen
 - [`docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md`](ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md) — volledig technisch bronrapport

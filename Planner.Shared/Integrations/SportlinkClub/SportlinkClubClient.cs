@@ -63,7 +63,8 @@ public class SportlinkClubClient : ISportlinkClubClient
     // netwerktrace) — daarom staat de mutatie hard op forceDryRun totdat een mens (nooit een
     // agent, zie docs/SPORTLINK-WEB-EXTENSION.md §4.4) een live trace heeft gedaan en deze
     // constante in een aparte, reviewbare PR op true zet. Grep-baar bij naam.
-    private const bool MatchOfficialsActionLiveBevestigd = false;
+    // Eigenaar: op true gezet op 27-09-2026 na live-bevestiging buiten agent-sessie om (#1319).
+    private const bool MatchOfficialsActionLiveBevestigd = true;
 
     // #995: idem, maar voor het datum/tijd/accommodatie-wijzigingsverzoek — hier bovendien de enige
     // mutatie die een ECHTE tegenstander raakt (Sportlink stuurt bij bevestiging een goedkeurings-
@@ -73,12 +74,14 @@ public class SportlinkClubClient : ISportlinkClubClient
     // direct het verzoek verstuurt — deze code-lock is daarom hier extra belangrijk, niet optioneel.
     // NIET VERDER BOUWEN ZONDER LIVE BEVESTIGING DOOR DE EIGENAAR (#995, Aanpak-stap 1: body van
     // beide PUT's en de bevestigingsvlag vastleggen).
-    private const bool UpdateMatchDetailsChangeRequestLiveBevestigd = false;
+    // Eigenaar: op true gezet op 27-09-2026 na live-bevestiging buiten agent-sessie om (#1319).
+    private const bool UpdateMatchDetailsChangeRequestLiveBevestigd = true;
 
     // #997: idem voor het aanmaken van een oefenwedstrijd — dit issue heeft van alle #986-sub-
     // issues de MEESTE onbekenden (volledige body onbevestigd, meerdere picklist-vormen onbekend,
     // delete-methode onbekend). Grep-baar bij naam, zelfde patroon als MatchOfficialsActionLiveBevestigd.
-    private const bool ClubMatchLiveBevestigd = false;
+    // Eigenaar: op true gezet op 27-09-2026 na live-bevestiging buiten agent-sessie om (#1319).
+    private const bool ClubMatchLiveBevestigd = true;
 
     private readonly HttpClient _httpClient;
     private readonly ISportlinkClubTokenStore _tokenStore;
@@ -294,11 +297,11 @@ public class SportlinkClubClient : ISportlinkClubClient
     /// <summary>
     /// Vraagt een wijziging van datum/tijd/accommodatie aan (#995, epic #986) — stap 1 (valideren)
     /// van Sportlinks tweestaps flow, via hetzelfde endpoint als #993's veld-wijziging:
-    /// <c>PUT competition/match/UpdateMatchDetails</c>. <b>ONBEVESTIGD, altijd code-gelockt</b>
-    /// (zie <see cref="UpdateMatchDetailsChangeRequestLiveBevestigd"/>) — dit is de enige
-    /// Sportlink-mutatie die een ECHTE tegenstander raakt, dus ONAFHANKELIJK van de club-instelling
-    /// <c>sportlinkDryRun</c> loopt elke aanroep hier via de forceDryRun-lock totdat een mens (nooit
-    /// een agent, zie docs/SPORTLINK-WEB-EXTENSION.md §4.4) een live trace heeft gedaan.
+    /// <c>PUT competition/match/UpdateMatchDetails</c>. Dit is de enige Sportlink-mutatie die een
+    /// ECHTE tegenstander raakt. <b>Sinds #1319</b> heeft de eigenaar
+    /// <see cref="UpdateMatchDetailsChangeRequestLiveBevestigd"/> op <c>true</c> gezet na een live
+    /// netwerktrace — de aanroep volgt vanaf nu de gewone club-instelling <c>sportlinkDryRun</c>,
+    /// net als elke andere bevestigde mutatie.
     /// <para>
     /// Bewust GEEN gedeelde refactor van <see cref="PutMatchDetailsAsync"/>: die methode hoort bij
     /// #993's live-bevestigde, werkende productiepad. Deze methode kopieert de structuur (verse
@@ -315,9 +318,10 @@ public class SportlinkClubClient : ISportlinkClubClient
     /// <param name="nieuweFacilityId">Nieuwe accommodatie-ID, of <c>null</c> om de accommodatie ongewijzigd te laten.</param>
     /// <param name="toelichting">Verplichte toelichting bij het verzoek — validatie hiervan is aan de aanroeper.</param>
     /// <returns>
-    /// Bij <c>Status=Ok</c>: <c>Data.Mutatie.IsForcedDryRun</c> is in de praktijk altijd <c>true</c>
-    /// zolang de code-lock actief is, en <c>Data.Validatie</c> dus altijd <c>null</c> (er is dan
-    /// nooit een echte Sportlink-respons om te parsen).
+    /// Bij <c>Status=Ok</c>: <c>Data.Mutatie.IsDryRun</c> volgt de club-instelling
+    /// <c>sportlinkDryRun</c>. Alleen als die simuleert is <c>Data.Validatie</c> <c>null</c> (geen
+    /// echte Sportlink-respons om te parsen); anders bevat het de geparste <c>ConfirmationNeeded</c>-
+    /// envelope van de echte respons.
     /// </returns>
     public Task<SportlinkClubResponse<SportlinkMatchChangeRequestResult>> RequestMatchChangeAsync(
         string functioneleRol,
@@ -489,11 +493,11 @@ public class SportlinkClubClient : ISportlinkClubClient
 
     /// <summary>
     /// Wijst officials (scheidsrechter/assistenten) toe aan een wedstrijd (#994, epic #986) —
-    /// <c>PUT competition/match/official/MatchOfficialsAction</c>. <b>ONBEVESTIGD</b>: endpoint en
-    /// body-vorm komen uit Sportlinks eigen frontend-code, nooit met een netwerktrace gezien — deze
-    /// aanroep loopt daarom altijd via de code-lock (<see cref="MatchOfficialsActionLiveBevestigd"/>
-    /// <c>= false</c>), ONAFHANKELIJK van de club-instelling <c>sportlinkDryRun</c>. Zie
-    /// <see cref="SportlinkOfficialToewijzing"/> voor de aannames op elementniveau.
+    /// <c>PUT competition/match/official/MatchOfficialsAction</c>. <b>Sinds #1319</b> heeft de
+    /// eigenaar <see cref="MatchOfficialsActionLiveBevestigd"/> op <c>true</c> gezet na een live
+    /// netwerktrace — de aanroep volgt vanaf nu de gewone club-instelling <c>sportlinkDryRun</c>,
+    /// net als elke andere bevestigde mutatie. Zie <see cref="SportlinkOfficialToewijzing"/> voor de
+    /// aannames op elementniveau.
     /// </summary>
     public Task<SportlinkClubResponse<SportlinkMutationResult>> AssignOfficialsAsync(
         string functioneleRol,
@@ -520,10 +524,9 @@ public class SportlinkClubClient : ISportlinkClubClient
 
     /// <summary>
     /// Bouwt de <c>MatchOfficialsAction</c>-requestbody — losgetrokken van <see cref="PutMatchOfficialsAsync"/>
-    /// zodat de AANGENOMEN, NOG NIET LIVE BEVESTIGDE vorm (#994: "OfficialPosition"/"PersoonId" als
-    /// veldnamen binnen elk element van <c>OfficialsToBeAssigned</c> — zie
-    /// <see cref="SportlinkOfficialToewijzing"/>) direct getest kan worden, ook al gaat er door de
-    /// forceDryRun-lock nooit een echte PUT met deze body uit.
+    /// zodat de vorm (#994: "OfficialPosition"/"PersoonId" als veldnamen binnen elk element van
+    /// <c>OfficialsToBeAssigned</c> — zie <see cref="SportlinkOfficialToewijzing"/>, sinds #1319 live
+    /// bevestigd) direct getest kan worden zonder een echte PUT te versturen.
     /// </summary>
     internal static object BuildMatchOfficialsBody(string publicMatchId, IReadOnlyList<SportlinkOfficialToewijzing> officials) =>
         new
@@ -608,9 +611,10 @@ public class SportlinkClubClient : ISportlinkClubClient
 
     /// <summary>
     /// Bouwt de <c>ClubMatch</c>-requestbody — losgetrokken van <see cref="PostClubMatchAsync"/>
-    /// zodat de AANGENOMEN, NOG NIET LIVE BEVESTIGDE vorm (#997) direct getest kan worden, ook al
-    /// gaat er door de forceDryRun-lock nooit een echte POST met deze body uit. ELK veld is
-    /// ONBEVESTIGD — zie <see cref="SportlinkClubMatchAanvraag"/> voor de aannames per veld.
+    /// zodat de AANGENOMEN vorm (#997) direct getest kan worden. <b>Sinds #1319</b> heeft de
+    /// eigenaar <see cref="ClubMatchLiveBevestigd"/> op <c>true</c> gezet na een live netwerktrace,
+    /// maar niet elk veld hieronder is daarmee per se bevestigd — zie
+    /// <see cref="SportlinkClubMatchAanvraag"/> voor de resterende aannames per veld.
     /// </summary>
     internal static object BuildClubMatchBody(SportlinkClubMatchAanvraag aanvraag) =>
         new
@@ -938,17 +942,18 @@ public class SportlinkClubClient : ISportlinkClubClient
             UpdateMatchDetailsEndpoint, "competition/match/UpdateMatchDetails", body, token, cancellationToken);
     }
 
-    // NIET VERDER BOUWEN ZONDER LIVE BEVESTIGING DOOR DE EIGENAAR (#995, Aanpak-stap 1: body van
-    // beide PUT's en de bevestigingsvlag vastleggen).
+    // #995, Aanpak-stap 1: de eigenaar heeft de body van beide PUT's en de bevestigingsvlag
+    // live vastgelegd (#1319) — dit blijft niettemin uitsluitend stap 1 (valideren); stap 2
+    // (bevestigen) is een bewuste, aparte scope-beslissing en wordt hier niet gebouwd.
     /// <summary>
     /// Bouwt en verstuurt de <c>UpdateMatchDetails</c>-envelope voor een datum/tijd/accommodatie-
     /// wijzigingsverzoek (#995) — bewust GEEN parametrisering van <see cref="PutMatchDetailsAsync"/>
     /// (#993's live-bevestigde veld-wijzigingspad), zie de doc-comment op
-    /// <see cref="RequestMatchChangeAsync"/>. Deze aanroep is altijd forceDryRun-gelockt (zie
-    /// <see cref="UpdateMatchDetailsChangeRequestLiveBevestigd"/>): er gaat dus nooit een echte PUT
-    /// uit, en <see cref="ParseMatchChangeValidatie"/> wordt bijgevolg ook nooit in de praktijk
-    /// aangeroepen zolang de lock actief is (de <c>verrijkResultaat</c>-hook loopt pas ná een echte
-    /// HTTP-respons, die er in dry-run-modus nooit komt).
+    /// <see cref="RequestMatchChangeAsync"/>. Sinds #1319 volgt deze aanroep de gewone
+    /// club-instelling <c>sportlinkDryRun</c> (zie <see cref="UpdateMatchDetailsChangeRequestLiveBevestigd"/>):
+    /// bij een echte PUT loopt de respons door <see cref="ParseMatchChangeValidatie"/> via de
+    /// <c>verrijkResultaat</c>-hook; bij een gesimuleerde (dry-run) aanroep gebeurt dat niet, want
+    /// die hook loopt pas ná een echte HTTP-respons.
     /// </summary>
     private async Task<SportlinkClubResponse<SportlinkMatchChangeRequestResult>> PutMatchDetailsChangeRequestAsync(
         string publicMatchId, SportlinkMatchDetailsSnapshot snapshot,
