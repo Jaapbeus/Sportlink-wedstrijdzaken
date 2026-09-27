@@ -65,7 +65,7 @@ JSON-API die hun eigen React-SPA gebruikt. Staat daarom standaard **UIT** per cl
   blijft daarna zelfstandig geldig.
 - Alles wat de extension straks doet, doet zij op naam van dat aparte account — niet op jouw eigen
   naam — dus in Sportlink's eigen logs zie je dat terug als bijvoorbeeld "webapp-wedstrijdzaken".
-- Wat vandaag al werkt: bij elke wedstrijd in Dagplanning staat een knop "Open in Sportlink" die de
+- Wat vandaag al werkt: bij elke wedstrijd op Planning en Veld optimalisatie (#1361) staat een knop "Open in Sportlink" die de
   juiste wedstrijd direct in Sportlink Club opent (nieuw tabblad) — scheelt het zoeken in het trage
   overzichtsscherm. Je klikt daar zelf nog op opslaan; deze knop wijzigt zelf niets (#989).
 
@@ -250,7 +250,8 @@ toewijzen, en het veld mag wijzigen. Drie dingen om te onthouden:
 >   De drie `*Function.cs`-bestanden die de rest van de bij #1271 gemeten duplicatie vormen
 >   (`SportlinkMatchFunction.cs`, `SportlinkClubMatchFunction.cs`,
 >   `SportlinkChangeRequestFunction.cs`) zijn nog niet naar deze vorm geport.
-> - `BlazorAdmin/Shared/SportlinkMatchPanel.razor(.cs)` — het paneel per wedstrijd in Dagplanning;
+> - `BlazorAdmin/Shared/SportlinkMatchPanel.razor(.cs)` — het paneel per wedstrijd op Planning en
+>   Veld optimalisatie (#1361; vóór die splitsing Dagplanning);
 >   `BlazorAdmin/Models/SportlinkActieStatus.cs` — status van één actie plus de ene vertaling van
 >   mutatieresultaat naar melding (`Verwerk`); `BlazorAdmin/Shared/Melding.razor` toont hem. De
 >   vier extensie-pagina's hebben een code-behind en geen `@code`.

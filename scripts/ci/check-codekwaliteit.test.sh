@@ -84,7 +84,7 @@ else
 fi
 
 # 2. Blazor: een pagina mét code-behind krijgt er een @code-blok bij.
-proef_razor="BlazorAdmin/Pages/Dagplanning.razor"
+proef_razor="BlazorAdmin/Pages/Planning.razor"
 if [ -f "$proef_razor" ] && [ -f "$proef_razor.cs" ]; then
   printf '\n@code {\n    private int Proef => 1;\n}\n' >> "$proef_razor"
   verwacht_falen "@code naast een code-behind" bash scripts/ci/check-blazor-codebehind.sh
