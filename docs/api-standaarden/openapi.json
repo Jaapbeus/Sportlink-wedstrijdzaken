@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
-    "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nEén beveiligingsschema:\n\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist\n  voor alle endpoints behalve `/health`. De rolcontrole gebeurt server-side:\n  `admin` (`EasyAuthHelper.RequireAdmin`, via de wrappers `AdminEndpoint.ExecuteAsync` /\n  `ExecuteZonderDatabaseAsync`) voor `/beheer/`, `/planner/`, `/feedback/` en `/test/` — sinds\n  #1350 óók voor `/postgres/sync-matches` en `/sync-matches`; voor `/sportlink/` op **beide**\n  tiers identiek `Wedstrijdzaken` óf `admin` (`EasyAuthHelper.RequireWedstrijdzaken`, sinds\n  #1376) gevolgd door nogmaals uitsluitend `admin` (dezelfde `AdminEndpoint.ExecuteAsync`-poort,\n  ongewijzigd sinds #1272), via `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`. Netto:\n  `admin` is altijd vereist voor `/sportlink/`; `Wedstrijdzaken` alléén (ook met `user`, zonder\n  `admin`) geeft `403`. Lokaal omzeild wanneer de omgevingsvariabele `WEBSITE_SITE_NAME`\n  afwezig is.\n\nZonder token volgt `401`. Met een geldig token maar zonder de vereiste rol volgt `403` met\n`{ \"error\": \"Forbidden: vereiste rol ontbreekt\" }`. De rol `user` geeft nergens toegang:\n`EasyAuthHelper.RequireAuthenticated` is bij #1350 verwijderd.\n\n## Tiers\n\nAlle endpoints bestaan sinds #1266 op beide databasetiers, met één uitzondering: de handmatige\nsynchronisatie heet `/postgres/sync-matches` op de Postgres-tier (productie) en\n`/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "3.7.1.0",
+    "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nEén beveiligingsschema:\n\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist\n  voor alle endpoints behalve `/health`. De rolcontrole gebeurt server-side, met vier niveaus:\n  `admin` (`EasyAuthHelper.RequireAdmin`, via de wrappers `AdminEndpoint.ExecuteAsync` /\n  `ExecuteZonderDatabaseAsync`) voor de meeste `/beheer/`-, `/planner/`-, `/feedback/`- en\n  `/test/`-endpoints — sinds #1350 óók voor `/postgres/sync-matches` en `/sync-matches`;\n  `admin` óf `user` (`AdminEndpoint.ExecuteAuthenticatedAsync`, #1330) voor `/planner/veldbezetting`\n  (#1400), de twee Sportlink-viewing-endpoints (`GET /sportlink/match/{wedstrijdcode}` en\n  `.../public-match-id`, #1400) en de drie Teambegeleiding-lookup/doorstuur-endpoints; op\n  **beide** tiers identiek `Wedstrijdzaken` óf `admin` (`EasyAuthHelper.RequireWedstrijdzaken`,\n  beide poorten sinds #1400) voor de Sportlink-mutatie-endpoints (`PUT`/`POST` onder\n  `/sportlink/`), via `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`. Netto: een gewone\n  `user` (zonder `Wedstrijdzaken`, zonder `admin`) kan Planning en het Sportlink-paneel bekijken\n  maar geen Sportlink-mutatie triggeren; dat laatste vereist `Wedstrijdzaken` óf `admin`. Lokaal\n  omzeild wanneer de omgevingsvariabele `WEBSITE_SITE_NAME` afwezig is.\n\nZonder token volgt `401`. Met een geldig token maar zonder de vereiste rol volgt `403` met\n`{ \"error\": \"Forbidden: vereiste rol ontbreekt\" }`.\n\n## Tiers\n\nAlle endpoints bestaan sinds #1266 op beide databasetiers, met één uitzondering: de handmatige\nsynchronisatie heet `/postgres/sync-matches` op de Postgres-tier (productie) en\n`/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
+    "version": "3.7.4.0",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -42,7 +42,7 @@
     },
     {
       "name": "sportlink",
-      "description": "Sportlink Web Extension (#986/#991) — lees- én mutatie-endpoints. Vereist op beide tiers\nidentiek de rol `admin`; `Wedstrijdzaken` alléén (ook met `user`) is onvoldoende — zie de\nbeveiligingsparagraaf hierboven.\nVerschillende mutaties zijn in de code op dry-run vastgezet — zie docs/SPORTLINK-WEB-EXTENSION.md.\n"
+      "description": "Sportlink Web Extension (#986/#991) — lees- én mutatie-endpoints. Sinds #1400: de twee\nviewing-endpoints (`GET /sportlink/match/{wedstrijdcode}` en `.../public-match-id`) vereisen\nalleen `admin` óf `user`; de mutatie-endpoints (`PUT`/`POST`) vereisen op beide tiers identiek\n`Wedstrijdzaken` óf `admin` — zie de beveiligingsparagraaf hierboven.\nVerschillende mutaties zijn in de code op dry-run vastgezet — zie docs/SPORTLINK-WEB-EXTENSION.md.\n"
     }
   ],
   "components": {
@@ -51,7 +51,7 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT",
-        "description": "Azure Easy Auth Bearer token (Entra ID). Geldt voor alle endpoints behalve `/health`,\ninclusief `/postgres/sync-matches` en `/sync-matches` (sinds #1350 — tot dan een Function\nkey/Master key via `?code=`). De Function App valideert dit token via Easy Auth en\ninjecteert `X-MS-CLIENT-PRINCIPAL`. EasyAuthHelper controleert daarna de rol: `admin` op\nalle /beheer/-, /planner/-, /feedback/- en /test/-endpoints (en de twee syncroutes),\n`Wedstrijdzaken` op alle /sportlink/-endpoints. Lokaal altijd toegestaan als\nWEBSITE_SITE_NAME afwezig is.\n"
+        "description": "Azure Easy Auth Bearer token (Entra ID). Geldt voor alle endpoints behalve `/health`,\ninclusief `/postgres/sync-matches` en `/sync-matches` (sinds #1350 — tot dan een Function\nkey/Master key via `?code=`). De Function App valideert dit token via Easy Auth en\ninjecteert `X-MS-CLIENT-PRINCIPAL`. EasyAuthHelper controleert daarna de rol: `admin` op de\nmeeste /beheer/-, /planner/-, /feedback/- en /test/-endpoints (en de twee syncroutes);\n`admin` of `user` op /planner/veldbezetting en de twee Sportlink-viewing-endpoints (#1400);\n`Wedstrijdzaken` of `admin` op de Sportlink-mutatie-endpoints (beide poorten sinds #1400).\nLokaal altijd toegestaan als WEBSITE_SITE_NAME afwezig is.\n"
       }
     },
     "headers": {
@@ -1206,6 +1206,10 @@
           "veldFeatureToegestaan": {
             "type": "boolean",
             "description": "#1341: combineer met isEditFieldAllowed hierboven."
+          },
+          "magWijzigen": {
+            "type": "boolean",
+            "description": "#1400: true zodra de aanroeper admin óf Wedstrijdzaken is — onafhankelijk van de drie\nper-club FeatureKey-toggles hierboven, want het wijzigingsverzoek datum/tijd/\naccommodatie heeft er bewust geen. Gate't het wijzigingsverzoek-blok in\nSportlinkMatchPanel; een gewone user (viewing is sinds #1400 generiek open) krijgt\nhier false.\n"
           },
           "scheidsrechterRelatieCode": {
             "type": "string",
@@ -4633,7 +4637,7 @@
         ],
         "operationId": "getSportlinkMatch",
         "summary": "Read-only wedstrijdgegevens uit Sportlink Club (#991, epic",
-        "description": "Zoekt het `PublicMatchId` van deze wedstrijd op (gecached, zie\n`public.sportlinkpublicmatchidcache`; reverse-lookup bij Sportlink zelf bij een cache-miss\n— #987) en haalt daarmee het wedstrijdobject op bij Sportlink Club. Uitsluitend lezen —\ngeen enkele mutatie. Vereist de rol `admin` (`Wedstrijdzaken` alléén is onvoldoende — zie\n#988 Besluit 1 en de beveiligingsparagraaf hierboven) en dat `SportlinkExtensionEnabled`\naan staat. Bevat sinds #1340\n(VOORSTEL, DPO-vraag nog niet bevestigd — zie docs/SPORTLINK-WEB-EXTENSION.md §8) ook de\nrelatiecode van scheidsrechter/AR1/AR2 als PRECIES ÉÉN uitzondering op \"verder\nniet-persoonsgebonden\" — nooit een naam of ander persoonsgegeven.\n",
+        "description": "Zoekt het `PublicMatchId` van deze wedstrijd op (gecached, zie\n`public.sportlinkpublicmatchidcache`; reverse-lookup bij Sportlink zelf bij een cache-miss\n— #987) en haalt daarmee het wedstrijdobject op bij Sportlink Club. Uitsluitend lezen —\ngeen enkele mutatie. Vereist sinds #1400 alleen `admin` óf `user` (voorheen uitsluitend\n`Wedstrijdzaken`/`admin`, zie #988 Besluit 1) en dat `SportlinkExtensionEnabled` aan staat.\nWelke permissievlaggen en relatiecodes in de respons daadwerkelijk gevuld zijn hangt af van\nde éigen rol van de aanroeper (`admin`/`Wedstrijdzaken` → echte waarden, gewone `user` →\nalles `false`/`null`, zie `SportlinkRolFeatureToestemmingen.MagWijzigen`). Bevat sinds #1340\n(VOORSTEL, DPO-vraag nog niet bevestigd — zie docs/SPORTLINK-WEB-EXTENSION.md §8) ook de\nrelatiecode van scheidsrechter/AR1/AR2 als PRECIES ÉÉN uitzondering op \"verder\nniet-persoonsgebonden\" — nooit een naam of ander persoonsgegeven.\n",
         "security": [
           {
             "easyAuth": []
@@ -4697,7 +4701,7 @@
         ],
         "operationId": "getSportlinkPublicMatchId",
         "summary": "PublicMatchId opzoeken voor de deep-link-knop (#989, epic",
-        "description": "Lichtgewicht variant van `/sportlink/match/{wedstrijdcode}`: zoekt uitsluitend het\n`PublicMatchId` op (gecached, zie `public.sportlinkpublicmatchidcache`; reverse-lookup bij\nSportlink zelf bij een cache-miss — #987/#1016) zonder de volledige `Match`-aanroep bij\nSportlink te doen. Gebruikt door de \"Open in Sportlink\"-knop in Dagplanning om\n`https://club.sportlink.com/competition-affairs/match-details/{PublicMatchId}` te openen.\n",
+        "description": "Lichtgewicht variant van `/sportlink/match/{wedstrijdcode}`: zoekt uitsluitend het\n`PublicMatchId` op (gecached, zie `public.sportlinkpublicmatchidcache`; reverse-lookup bij\nSportlink zelf bij een cache-miss — #987/#1016) zonder de volledige `Match`-aanroep bij\nSportlink te doen. Gebruikt door de \"Open in Sportlink\"-knop in Dagplanning om\n`https://club.sportlink.com/competition-affairs/match-details/{PublicMatchId}` te openen.\nVereist sinds #1400 alleen `admin` óf `user` (voorheen uitsluitend `Wedstrijdzaken`/`admin`).\n",
         "security": [
           {
             "easyAuth": []
@@ -9339,7 +9343,7 @@
         ],
         "operationId": "veldbezetting",
         "summary": "Wedstrijden op een datum ophalen, zonder optimalisatie",
-        "description": "Geeft de wedstrijden terug die op een datum al gepland staan, rechtstreeks uit de\nlaatst gesynchroniseerde Sportlink-data — zonder de scheduling-optimalisatie die\n`/planner/auto-plan` uitvoert. Bedoeld als snelle,\ngoedkope \"wat staat er nu al gepland\"-weergave.\n",
+        "description": "Geeft de wedstrijden terug die op een datum al gepland staan, rechtstreeks uit de\nlaatst gesynchroniseerde Sportlink-data — zonder de scheduling-optimalisatie die\n`/planner/auto-plan` uitvoert. Bedoeld als snelle,\ngoedkope \"wat staat er nu al gepland\"-weergave. Voedt de Planning-pagina, die sinds #1400\ngeneriek zichtbaar is voor elke ingelogde gebruiker — vereist daarom alleen `admin` óf\n`user` (voorheen uitsluitend `admin`), als enig endpoint in deze tag.\n",
         "security": [
           {
             "easyAuth": []

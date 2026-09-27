@@ -47,12 +47,22 @@ public class EndpointAutorisatieTests
     /// <see cref="MetAlleenUserRol_Geeft403"/>, die daar juist het omgekeerde bewijst: de rol
     /// <c>user</c> passeert de poort. <c>AdminTeambegeleidingImport</c> staat hier bewust NIET op —
     /// die blijft admin-only (CSV-bulkimport van persoonsgegevens, #1322).
+    /// <para>
+    /// <c>Veldbezetting</c>/<c>SqlSportlinkMatchGet</c>/<c>SqlSportlinkMatchPublicMatchIdGet</c>
+    /// zijn sinds #1400 toegevoegd: Planning en het Sportlink-paneel zijn generiek zichtbaar
+    /// geworden (viewing), terwijl de Sportlink-mutatie-endpoints hieronder wél
+    /// Wedstrijdzaken/admin-gated blijven — zie
+    /// <see cref="Sportlink_AlleenWedstrijdzaken_PasseertDeAdminPoort"/>.
+    /// </para>
     /// </summary>
     private static readonly string[] AuthenticatedRoutes =
     [
         "AdminTeambegeleidingTeams",
         "AdminTeambegeleidingGet",
         "AdminTeambegeleidingDoorsturen",
+        "Veldbezetting",
+        "SqlSportlinkMatchGet",
+        "SqlSportlinkMatchPublicMatchIdGet",
     ];
 
     private const int MinimaalVerwachtAantalEndpoints = 90;
@@ -90,6 +100,14 @@ public class EndpointAutorisatieTests
 
     public static IEnumerable<object[]> SportlinkEndpoints() =>
         VindAlleHttpEndpoints().Where(e => e.IsSportlink).Select(e => new object[] { e.Naam });
+
+    /// <summary>Sportlink-routes die ECHT via de Wedstrijdzaken/admin-poort lopen (#1400) — dus niet
+    /// <c>SqlSportlinkMatchGet</c>/<c>SqlSportlinkMatchPublicMatchIdGet</c>, die sinds #1400 via
+    /// <see cref="AdminEndpoint.ExecuteAuthenticatedAsync"/> lopen (zie <see cref="AuthenticatedRoutes"/>)
+    /// en dus geen Wedstrijdzaken-rol meer vereisen om te bekijken.</summary>
+    public static IEnumerable<object[]> SportlinkMutatieEndpoints() =>
+        VindAlleHttpEndpoints().Where(e => e.IsSportlink && !AuthenticatedRoutes.Contains(e.Naam))
+            .Select(e => new object[] { e.Naam });
 
     private static HttpEndpoint Endpoint(string naam) =>
         VindAlleHttpEndpoints().Single(e => e.Naam == naam);
@@ -225,8 +243,8 @@ public class EndpointAutorisatieTests
     }
 
     [Theory]
-    [MemberData(nameof(SportlinkEndpoints))]
-    public async Task Sportlink_AlleenWedstrijdzaken_WordtGeweigerdOpDeAdminPoort(string naam)
+    [MemberData(nameof(SportlinkMutatieEndpoints))]
+    public async Task Sportlink_AlleenWedstrijdzaken_PasseertDeAdminPoort(string naam)
     {
         var endpoint = Endpoint(naam);
         await MetProductieOmgeving(async () =>
@@ -235,7 +253,28 @@ public class EndpointAutorisatieTests
 
             var result = await Roep(endpoint, Principal(("roles", "Wedstrijdzaken")));
 
-            StatusVan(result).Should().Be(403, $"{endpoint} vereist de rol admin bovenop Wedstrijdzaken (#1272)");
+            result.Should().BeOfType<PoortGepasseerdResult>(
+                $"{endpoint} moet mét alleen de rol Wedstrijdzaken (geen admin) de tweede poort " +
+                "passeren (#1400, fix van de AND-gate-bevinding uit #1379) — vóór #1400 eiste die " +
+                "poort altijd admin, ook al liet de eerste poort Wedstrijdzaken al door sinds #1376");
+        });
+    }
+
+    [Theory]
+    [MemberData(nameof(SportlinkMutatieEndpoints))]
+    public async Task Sportlink_AlleenUser_WordtGeweigerdOpDeWedstrijdzakenPoort(string naam)
+    {
+        var endpoint = Endpoint(naam);
+        await MetProductieOmgeving(async () =>
+        {
+            AdminEndpoint.PoortGepasseerdVoorTests = _ => new PoortGepasseerdResult();
+
+            var result = await Roep(endpoint, Principal(("roles", "user")));
+
+            StatusVan(result).Should().Be(403,
+                $"{endpoint} moet een gewone 'user' (geen Wedstrijdzaken, geen admin) blijven " +
+                "weigeren — #1400 opent alleen viewing (SqlSportlinkMatchGet/PublicMatchIdGet) voor " +
+                "elke ingelogde rol, niet de mutatie-endpoints");
         });
     }
 

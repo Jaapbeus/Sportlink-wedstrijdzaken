@@ -45,6 +45,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   naast de losse kleurenpickers.
 
 ### Changed
+- **Planning en het Sportlink-paneel zijn nu zichtbaar voor elke ingelogde gebruiker; wijzigen
+  blijft voorbehouden aan de rol Wedstrijdzaken (#1400).** Daarvóór kon alleen een beheerder de
+  Planning-pagina en de Sportlink-gegevens per wedstrijd bekijken. Een gebruiker met uitsluitend de
+  rol Wedstrijdzaken (zonder beheerder-rol) kon bovendien geen enkele Sportlink-wijziging
+  doorvoeren (kleedkamers, veld, scheidsrechters, wijzigingsverzoek) — dat gaf altijd een
+  foutmelding. Beide zijn nu opgelost: elke ingelogde gebruiker ziet Planning en de
+  Sportlink-informatie per wedstrijd; wijzigen kan alleen met de rol Wedstrijdzaken (of een
+  beheerder-rol). Een gebruiker zonder die rol ziet de wijzigknoppen niet en krijgt in plaats
+  daarvan een toelichting waarom.
 - **Officials toewijzen, een oefenwedstrijd aanmaken, en een wijzigingsverzoek datum/tijd/
   accommodatie versturen via het Sportlink-paneel sturen deze acties nu écht door naar Sportlink,
   in plaats van dat ze altijd gesimuleerd werden (#1319).** De eigenaar heeft dit na een live

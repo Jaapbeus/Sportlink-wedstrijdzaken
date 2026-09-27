@@ -56,6 +56,9 @@ public static class SportlinkRolFeature
         payload["kleedkamersFeatureToegestaan"] = toestemmingen.Kleedkamers;
         payload["scheidsrechterFeatureToegestaan"] = toestemmingen.Scheidsrechter;
         payload["veldFeatureToegestaan"] = toestemmingen.Veld;
+        // #1400: geen FeatureKey-toggle (VoorMutatieSoort geeft null voor DatumTijdAccommodatie) —
+        // puur de rolcheck (admin of Wedstrijdzaken) voor het wijzigingsverzoek-blok in het paneel.
+        payload["magWijzigen"] = toestemmingen.MagWijzigen;
 
         // #1340: dezelfde gate als de "scheidsrechter toewijzen"-actie hierboven — mag een rol
         // geen scheidsrechter toewijzen, dan mag hij ook de HUIDIGE relatiecode niet zien. Zonder
@@ -79,5 +82,9 @@ public static class SportlinkRolFeature
 /// verwerkt), puur nog om door te geven aan de UI zodat een knop verborgen/disabled kan worden
 /// vóórdat de gebruiker 'm probeert. De server (<c>SportlinkMatchFunction.ExecuteMutationAsync</c>)
 /// blijft de echte, leidende controle — dit is uitsluitend UX.
+/// <see cref="MagWijzigen"/> (#1400) is <c>true</c> zodra de aanroeper admin óf Wedstrijdzaken is —
+/// onafhankelijk van de drie per-club FeatureKey-toggles hierboven, want het wijzigingsverzoek
+/// datum/tijd/accommodatie (<see cref="SportlinkMutationSoort.DatumTijdAccommodatie"/>) heeft er
+/// bewust geen (<see cref="SportlinkRolFeature.VoorMutatieSoort"/> geeft daarvoor <c>null</c>).
 /// </summary>
-public sealed record SportlinkRolFeatureToestemmingen(bool Kleedkamers, bool Scheidsrechter, bool Veld);
+public sealed record SportlinkRolFeatureToestemmingen(bool Kleedkamers, bool Scheidsrechter, bool Veld, bool MagWijzigen);
