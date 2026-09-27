@@ -63,7 +63,8 @@ public class SportlinkClubClient : ISportlinkClubClient
     // netwerktrace) — daarom staat de mutatie hard op forceDryRun totdat een mens (nooit een
     // agent, zie docs/SPORTLINK-WEB-EXTENSION.md §4.4) een live trace heeft gedaan en deze
     // constante in een aparte, reviewbare PR op true zet. Grep-baar bij naam.
-    private const bool MatchOfficialsActionLiveBevestigd = false;
+    // Eigenaar: op true gezet op 27-09-2026 na live-bevestiging buiten agent-sessie om (#1319).
+    private const bool MatchOfficialsActionLiveBevestigd = true;
 
     // #995: idem, maar voor het datum/tijd/accommodatie-wijzigingsverzoek — hier bovendien de enige
     // mutatie die een ECHTE tegenstander raakt (Sportlink stuurt bij bevestiging een goedkeurings-
@@ -73,12 +74,14 @@ public class SportlinkClubClient : ISportlinkClubClient
     // direct het verzoek verstuurt — deze code-lock is daarom hier extra belangrijk, niet optioneel.
     // NIET VERDER BOUWEN ZONDER LIVE BEVESTIGING DOOR DE EIGENAAR (#995, Aanpak-stap 1: body van
     // beide PUT's en de bevestigingsvlag vastleggen).
-    private const bool UpdateMatchDetailsChangeRequestLiveBevestigd = false;
+    // Eigenaar: op true gezet op 27-09-2026 na live-bevestiging buiten agent-sessie om (#1319).
+    private const bool UpdateMatchDetailsChangeRequestLiveBevestigd = true;
 
     // #997: idem voor het aanmaken van een oefenwedstrijd — dit issue heeft van alle #986-sub-
     // issues de MEESTE onbekenden (volledige body onbevestigd, meerdere picklist-vormen onbekend,
     // delete-methode onbekend). Grep-baar bij naam, zelfde patroon als MatchOfficialsActionLiveBevestigd.
-    private const bool ClubMatchLiveBevestigd = false;
+    // Eigenaar: op true gezet op 27-09-2026 na live-bevestiging buiten agent-sessie om (#1319).
+    private const bool ClubMatchLiveBevestigd = true;
 
     private readonly HttpClient _httpClient;
     private readonly ISportlinkClubTokenStore _tokenStore;
