@@ -2,7 +2,7 @@
 name: Feature request
 about: Voorstel voor nieuwe functionaliteit of verbetering
 title: 'feat: '
-labels: 'type: enhancement'
+labels: 'type: feature'
 assignees: ''
 ---
 
