@@ -43,3 +43,69 @@ jobs:
 
       - name: BlazorAdmin bouwen
         run: dotnet build BlazorAdmin/BlazorAdmin.csproj -c Release
+
+  # ── Release-branchdivergentie (#1370, retro v3.6.0.0, bevinding 1) ──────
+  # Bij v3.6.0.0 bleek PR #1368 (develop → main) pas ná het openen 'DIRTY': main bevatte de
+  # losse #1244-hotfix-changelogsectie ([3.5.0.1]) die nog niet in develop stond, en dat
+  # kostte een aparte backport-PR (#1369) tijdens het releasevenster. Die divergentie was
+  # detecteerbaar zodra de PR opende.
+  #
+  # Bewust een CHANGELOG-versiekopjesvergelijking, GEEN kale 'git log develop..main' of
+  # 'git diff --name-only': develop loopt tussen releases altijd op main vooruit (open
+  # versiebump in de .csproj's, nieuwe [Unreleased]-inhoud) en elke afgeronde release laat op
+  # main een eigen mergecommit achter die per definitie nooit op develop terugkomt. Een check
+  # op ruwe commits of bestandsnamen zou dus BIJ ELKE release-PR afgaan — precies het
+  # "meldketen die altijd meldt, dus genegeerd wordt"-patroon dat dit project al kent van de
+  # Supabase-advisor-INFO-filtering (docs/ARCHITECTUUR-DATABASE-TIERS.md §... , regel 7). Het
+  # enige signaal dat hier specifiek en zeldzaam is: een versiekopje ('## [x.y.z] — ...') dat
+  # in main's CHANGELOG staat maar niet in develop's — dat is exact de vorm van een
+  # niet-teruggebrachte hotfix-release.
+  #
+  # Bewust INFORMATIEF, geen harde gate: CLAUDE.md's eigen backportregel staat toe dat zo'n
+  # sectie tijdelijk alleen op main staat totdat de eerstvolgende release-PR hem terugbrengt —
+  # dat is dus geen fout, alleen iets om bewust van te zijn vóórdat je mergt.
+  #
+  # Alleen relevant voor de daadwerkelijke release-PR (head = develop) — een hotfix-PR naar
+  # main (head = hotfix/#N-...) vertakt zelf al vanaf main en heeft dit per ontwerp niet.
+  release-branch-divergence:
+    name: "Release-branchdivergentie main → develop (informatief)"
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.head.ref == 'develop'
+    steps:
+      - name: Checkout (volledige geschiedenis)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: "▶ CHANGELOG-versiekopjes: staat op main iets dat develop nog mist?"
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          MAIN_VERSIES=$(git show "${BASE_SHA}:CHANGELOG.md" | grep -oE '^## \[[^]]+\]' | sort -u)
+          DEV_VERSIES=$(git show "${HEAD_SHA}:CHANGELOG.md" | grep -oE '^## \[[^]]+\]' | sort -u)
+
+          # comm vereist gesorteerde bestanden, geen streams — vandaar de tussenbestanden i.p.v.
+          # process-substitution (blijft zo ook werken als de runner-shell ooit wijzigt).
+          printf '%s\n' "$MAIN_VERSIES" > /tmp/main-versies.txt
+          printf '%s\n' "$DEV_VERSIES" > /tmp/dev-versies.txt
+          ONTBREEKT=$(comm -23 /tmp/main-versies.txt /tmp/dev-versies.txt | sed '/^$/d')
+
+          if [ -z "$ONTBREEKT" ]; then
+            echo "✓ Geen CHANGELOG-versiekopje op main dat develop nog mist."
+            exit 0
+          fi
+
+          echo "::warning::main's CHANGELOG.md heeft versiekopje(s) die develop nog niet heeft — vermoedelijk een hotfix-release die nog niet is teruggebracht. Zie CLAUDE.md, sectie 'Een hotfix is pas af als hij ook terug in develop staat'. Kopjes: ${ONTBREEKT}"
+
+          {
+            echo "### ⚠️ Release-branchdivergentie: CHANGELOG-versiekopje ontbreekt in develop"
+            echo ""
+            echo "\`main\` heeft de volgende CHANGELOG-versiekopjes die niet in \`develop\`'s CHANGELOG.md staan. Dit blokkeert de merge NIET automatisch — meestal betekent dit dat er nog een backport-PR nodig is vóór (of als onderdeel van) deze release-PR, zoals #1369 dat deed voor de [3.5.0.1]-sectie."
+            echo ""
+            echo '```'
+            echo "$ONTBREEKT"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

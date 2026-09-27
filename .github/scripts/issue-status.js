@@ -10,6 +10,15 @@
 
 const STATUS_PREFIX = 'status: ';
 
+// #1370: Octokit logt sinds ~september 2026 een deprecation-warning op elke onversioneerde
+// REST-aanroep ("... is deprecated. It is scheduled to be removed on Fri, 10 Mar 2028").
+// Dit blokkeerde nog niets, maar is wél het officiële migratiepad (zie
+// https://docs.github.com/en/rest/about-the-rest-api/api-versions). Eén constante hier
+// i.p.v. de header los in elke aanroep herhalen — dezelfde reden als STATUS_PREFIX hierboven:
+// drie workflows delen deze aanroepen, en een los kopieerbare header-literal zou bij de
+// volgende endpoint-toevoeging weer uiteen kunnen lopen.
+const API_VERSION_HEADERS = { 'x-github-api-version': '2022-11-28' };
+
 // Statussen die een mens bewust zet. Automatisering overschrijft die niet: een issue dat
 // op 'blocked' of 'waiting-owner' staat, is dat niet minder zodra er een PR opengaat.
 const PROTECTED = [
@@ -130,6 +139,7 @@ async function setIssueStatus({
       owner: context.repo.owner,
       repo: context.repo.repo,
       issue_number: issueNumber,
+      headers: API_VERSION_HEADERS,
     })).data;
   } catch (e) {
     core.warning(`#${issueNumber}: kon issue niet ophalen (${e.message}) — overgeslagen`);
@@ -168,6 +178,7 @@ async function setIssueStatus({
       repo: context.repo.repo,
       issue_number: issueNumber,
       labels: [status],
+      headers: API_VERSION_HEADERS,
     });
   }
 
@@ -177,6 +188,7 @@ async function setIssueStatus({
       repo: context.repo.repo,
       issue_number: issueNumber,
       name: stale,
+      headers: API_VERSION_HEADERS,
     }).catch(() => {});
   }
 
@@ -204,6 +216,7 @@ module.exports = {
   STATUS_PREFIX,
   PROTECTED,
   EPIC_LABEL,
+  API_VERSION_HEADERS,
   labelNames,
   currentStatuses,
   isEpic,

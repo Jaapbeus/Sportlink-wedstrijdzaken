@@ -16,6 +16,20 @@ on:
     branches: [develop]
   workflow_dispatch:
 
+# #1370 (retro v3.6.0.0, bevinding 2): een push naar `develop` die tegelijk de head is van een
+# open release-PR (develop → main) triggerde deze workflow ZOWEL via 'push' als via
+# 'pull_request' (synchronize) — gemeten bij v3.6.0.0: dezelfde commit f944eb8 startte beide
+# events, elk een volledige build+testrun. Groeperen op workflow+commit-SHA (in plaats van
+# ref, dat tussen de twee events verschilt) annuleert de eerst gestarte, overbodige run zodra
+# de tweede voor exact dezelfde inhoud start. Dit verandert geen enkele branch-protection-
+# uitkomst: de vereiste check ("Build FunctionApp + BlazorAdmin") heeft geen event-afhankelijke
+# logica (de enige `if: github.event_name == 'pull_request'`-stap in dit bestand zit in de
+# niet-verplichte job 'fresh-db-postgres' en doet alleen EXTRA werk bij een PR-event, nooit
+# minder) — GitHub matcht een vereiste check op commit-SHA, niet op welk event hem produceerde.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

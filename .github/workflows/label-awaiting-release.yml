@@ -32,7 +32,7 @@ jobs:
             // 'status: '-label op een issue staat. Voorheen werd 'awaiting-release'
             // alleen toegevoegd, waardoor een issue dat al op 'in-progress' of
             // 'review-needed' stond twee statussen tegelijk kreeg (#690).
-            const { extractIssueRefs, setIssueStatus, isEpic } =
+            const { extractIssueRefs, setIssueStatus, isEpic, API_VERSION_HEADERS } =
               require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/issue-status.js`);
 
             const label = 'status: awaiting-release';
@@ -60,6 +60,7 @@ jobs:
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: number,
+                  headers: API_VERSION_HEADERS,
                 })).data;
               } catch (e) {
                 core.warning(`#${number}: kon issue niet ophalen (${e.message}) — overgeslagen`);
@@ -103,12 +104,14 @@ jobs:
                   issue_number: number,
                   state: 'open',
                   state_reason: 'reopened',
+                  headers: API_VERSION_HEADERS,
                 });
                 await github.rest.issues.createComment({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: number,
                   body: `🔄 Heropend: de fix zit sinds PR #${pr.number} in \`develop\`, maar \`develop\` is nog niet uitgerold naar productie (\`main\`). Dit issue sluit automatisch zodra de eerstvolgende release naar \`main\` gaat.`,
+                  headers: API_VERSION_HEADERS,
                 });
                 core.notice(`#${number}: heropend + gelabeld`);
               } else {
