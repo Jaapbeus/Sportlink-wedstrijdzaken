@@ -129,10 +129,13 @@ jobs:
   #
   # De aparte, niet-waarschuwende informatienotitie over GitHub's eigen renderlimiet gebruikt WEL
   # een aantal, maar dat aantal is GitHub's eigen gedocumenteerde limiet, geen projectgok: max.
-  # 300 bestanden per diff en max. 20.000 gewijzigde regels per PR-diff, zie
+  # 300 bestanden per diff en max. 20.000 laadbare regels óf 1 MB ruwe diffdata per PR-diff, zie
   # https://docs.github.com/en/repositories/creating-and-managing-repositories/repository-limits
   # (sectie "Pull request diffs", geraadpleegd bij implementatie van deze job). Dit bepaalt
-  # uitsluitend de tekst van die notitie, nooit de `::warning::` hierboven.
+  # uitsluitend de tekst van die notitie, nooit de `::warning::` hierboven. Let op: de job telt
+  # zelf bestanden/regels via 'git diff --name-only'/'--numstat' zonder rename-detectie en zonder
+  # bytegrootte te meten — dat is dus een BENADERING van GitHub's eigen telling, geen exacte
+  # voorspelling (zie de toelichting direct bij de berekening verderop in dit bestand).
   #
   # Risicocategorieën (bewust gebaseerd op de daadwerkelijke repositorystructuur, niet op de
   # oorspronkelijke issue-tekst alleen — zie PR-beschrijving voor de volledige inventarisatie):
@@ -204,18 +207,39 @@ jobs:
             echo ""
           } >> "$GITHUB_STEP_SUMMARY"
 
-          # GitHub's eigen gedocumenteerde renderlimieten voor een PR-diff (niet de
-          # ::warning::-drempel hieronder, uitsluitend de tekst van deze notitie):
-          # https://docs.github.com/en/repositories/creating-and-managing-repositories/repository-limits
+          # Referentiewaarden uit GitHub's eigen gedocumenteerde renderlimieten voor een
+          # PR-diff (niet de ::warning::-drempel hieronder, uitsluitend de tekst van deze
+          # notitie): https://docs.github.com/en/repositories/creating-and-managing-repositories/repository-limits
+          # noemt max. 300 bestanden per diff, en max. 20.000 laadbare regels ÓF 1 MB ruwe
+          # diffdata per PR.
+          #
+          # Deze job kan dat NIET exact voorspellen — twee bewust ongemeten verschillen met
+          # GitHub's eigen telling, empirisch bevestigd bij implementatie:
+          #  1. AANTAL_BESTANDEN komt uit 'git diff --name-only' zonder rename-detectie. Een
+          #     hernoemd bestand MET een inhoudswijziging (het gangbare geval bij een refactor)
+          #     telt hier als 2 paden (oud + nieuw), terwijl GitHub's eigen PR-weergave zoiets
+          #     doorgaans als 1 bestand met een "renamed"-badge toont. Een zuivere, inhouds-
+          #     identieke hernoeming telt wél gelijk (git comprimeert die al standaard tot 1
+          #     regel, ongeacht -M/--find-renames).
+          #  2. De byte-grootte van de ruwe diff (het "1 MB"-deel van GitHub's OF-limiet) wordt
+          #     hier helemaal niet gemeten — alleen bestands- en regelaantal. Een diff met weinig
+          #     bestanden/regels maar met enkele zeer lange regels (bijv. geminificeerde JSON) kan
+          #     dus GitHub's limiet raken zonder dat deze notitie afgaat.
+          # Deze notitie presenteert de aantallen daarom uitdrukkelijk als signaal, niet als
+          # voorspelling van wat GitHub's PR-weergave daadwerkelijk zal doen.
           GITHUB_BESTANDSLIMIET=300
           GITHUB_REGELLIMIET=20000
           if [ "$AANTAL_BESTANDEN" -gt "$GITHUB_BESTANDSLIMIET" ] || [ "$AANTAL_REGELS" -gt "$GITHUB_REGELLIMIET" ]; then
             {
-              echo "> ℹ️ Deze diff overschrijdt GitHub's eigen gedocumenteerde renderlimiet voor een"
-              echo "> PR-diff (max. ${GITHUB_BESTANDSLIMIET} bestanden en/of max. ${GITHUB_REGELLIMIET} gewijzigde regels —"
-              echo "> zie [repository limits](https://docs.github.com/en/repositories/creating-and-managing-repositories/repository-limits))."
-              echo "> GitHub's eigen PR-weergave laadt hem mogelijk niet volledig. Reproduceer lokaal met:"
-              echo "> \`git diff --stat ${BASE_SHA} ${HEAD_SHA}\`"
+              echo "> ℹ️ Signaal, geen voorspelling: deze job telt **${AANTAL_BESTANDEN} bestanden** en"
+              echo "> **circa ${AANTAL_REGELS} gewijzigde regels** — beide boven de referentiewaarden uit"
+              echo "> GitHub's eigen gedocumenteerde renderlimiet voor een PR-diff (max. ${GITHUB_BESTANDSLIMIET} bestanden,"
+              echo "> max. ${GITHUB_REGELLIMIET} regels of 1 MB ruwe diffdata — zie"
+              echo "> [repository limits](https://docs.github.com/en/repositories/creating-and-managing-repositories/repository-limits))."
+              echo "> Deze telling kan afwijken van hoe GitHub zelf telt (o.a. hernoemde+gewijzigde"
+              echo "> bestanden tellen hier dubbel; ruwe diffgrootte in bytes wordt niet gemeten) —"
+              echo "> GitHub's eigen PR-weergave kan dus eerder of later inkorten dan hier aangegeven."
+              echo "> Reproduceer lokaal met: \`git diff --stat ${BASE_SHA} ${HEAD_SHA}\`"
               echo ""
             } >> "$GITHUB_STEP_SUMMARY"
           fi
