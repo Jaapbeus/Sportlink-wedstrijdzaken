@@ -386,6 +386,24 @@ code {
     vertical-align: middle;
 }
 
+/* Hover-correlatie tussen een Gantt-tijdlijnblok en de bijbehorende tabelrij (oorspronkelijk
+   #1315 op Planning, hier generiek gemaakt bij #1398 zodat Planning, Veld optimalisatie en
+   toekomstige Gantt+tabel-pagina's dezelfde klassen delen — zie BlazorAdmin/Services/GanttHoverState.cs.
+   Staat bewust hier en niet in een .razor.css: Blazor's CSS-isolatie scopet die per component, en
+   deze twee klassen moeten juist over paginagrenzen heen werken. */
+.gantt-blok-hover {
+    outline: 3px solid #fd7e14 !important;
+    outline-offset: -1px;
+    box-shadow: 0 2px 8px rgba(253, 126, 20, 0.6) !important;
+    z-index: 3 !important;
+}
+
+/* Bootstrap's table-hover kleurt de <td>'s zelf (niet de <tr>) via .table-hover > tbody > tr:hover > *,
+   en die achtergrond ligt bovenop een kleur op de <tr>. Daarom hier op de cel zelf targeten. */
+.gantt-rij-hover > td {
+    background-color: rgba(253, 126, 20, 0.35) !important;
+}
+
 /* ── ALLSTARS testmodus (#380) ─────────────────────────────────── */
 
 /* Gele banner bovenin de sidebar */

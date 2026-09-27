@@ -27,6 +27,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   onder "Wedstrijdstatus" — daarvóór stonden deze kleuren vast en volgden ze het club-thema niet.
 - Instellingen → Thema: nieuw tabblad "Overzicht" toont elke instelbare kleur met toelichting en
   swatch, voor zowel de lichte als de donkere weergave.
+- Veld optimalisatie: hoveren over een wedstrijd in de tabel of in de tijdlijn licht nu ook hier
+  hetzelfde blok/dezelfde rij oranje op, zoals al werkte op Planning — in zowel het tabblad Huidig
+  als Optimaal (#1398).
 
 ### Changed
 - **Officials toewijzen, een oefenwedstrijd aanmaken, en een wijzigingsverzoek datum/tijd/

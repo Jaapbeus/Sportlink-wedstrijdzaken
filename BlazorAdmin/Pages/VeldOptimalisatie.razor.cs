@@ -35,6 +35,11 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     private bool _sportlinkExtensionEnabled;
     private readonly SportlinkActieKolomState _sportlinkKolom = new();
 
+    // Hover-correlatie tussen tijdlijnblok en tabelregel (#1398, zelfde gedeelde implementatie als
+    // Planning — zie GanttHoverState): dezelfde WedstrijdCode licht in beide op, in zowel de
+    // Huidig- als de Optimaal-tab.
+    private readonly GanttHoverState _hover = new();
+
     // HTML-export van de berekende planning (voorheen onderdeel van de klassieke flow, #666)
     private string? _kopieerStatus;
 

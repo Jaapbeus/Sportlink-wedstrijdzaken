@@ -207,7 +207,9 @@
                                     <div title="@_tooltip"
                                          draggable="@(_sleepbaar ? "true" : "false")"
                                          @ondragstart="@(e => SleepStart(gi, e))"
-                                         class="gantt-blok gantt-blok-sleepbaar"
+                                         @onmouseover="() => _hover.Zet(gi.WedstrijdCode)"
+                                         @onmouseout="() => _hover.Wis()"
+                                         class="gantt-blok gantt-blok-sleepbaar @_hover.BlokKlasse(gi.WedstrijdCode)"
                                          style="--gantt-left:calc(@(_lft)% + 2px); --gantt-width:calc(@(_wdt)% - 4px);
                                                 --gantt-top:calc(@(_top)% + 2px); --gantt-height:calc(@(_hgt)% - 4px);
                                                 --gantt-bg:@GanttKleur(gi.Status);
@@ -316,7 +318,9 @@
                     <tbody>
                         @foreach (var item in GefilterdeLijst())
                         {
-                            <tr class="@RowClass(item.Status)">
+                            <tr class="@RowClass(item.Status) @_hover.RijKlasse(item.WedstrijdCode)"
+                                @onmouseover="() => _hover.Zet(item.WedstrijdCode)"
+                                @onmouseout="() => _hover.Wis()">
                                 <td class="tabel-compact">
                                     <div class="fw-semibold">@(string.IsNullOrWhiteSpace(item.Wedstrijd) ? item.TeamNaam : item.Wedstrijd)</div>
                                 </td>

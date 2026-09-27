@@ -96,7 +96,7 @@ In testmodus:
 
 Volledige documentatie: [docs/TESTMODUS-ALLSTARS.md](TESTMODUS-ALLSTARS.md)
 
-### Planning — Veldbezetting: hover-highlight en sticky tijdlijn (#1315)
+### Planning en Veld optimalisatie — hover-highlight en sticky tijdlijn (#1315, generiek gemaakt bij #1398)
 
 De kaart **"Veldbezetting op [datum]"** op de pagina **Planning** toont wat er voor die dag al
 gepland staat: een tijdlijn per veld, met daaronder een tabel met dezelfde wedstrijden. Sinds #1361
@@ -105,14 +105,15 @@ hieronder — zie hoofdstuk 19 voor de Sportlink Web Extension zelf.
 
 - **Hover-highlight:** beweeg de muis over een rij in de tabel, of over een blok in de
   tijdlijn — de bijbehorende wedstrijd licht in beide oranje op. Zo is snel terug te vinden
-  waar een wedstrijd uit de lijst zich visueel op het veld bevindt, en andersom.
-- **Sticky tijdlijn:** de tijdlijn blijft zichtbaar bovenin beeld terwijl u door de
-  wedstrijdentabel eronder scrollt — handig bij een dag met veel wedstrijden. Op een smal
-  scherm (mobiel, breedte < 641px) is dit uitgeschakeld, omdat daar ook de bovenbalk zelf niet
-  sticky is.
-
-Dit geldt alleen voor deze kaart, niet voor de tijdlijnen in de tabbladen **Huidig**/**Optimaal**
-op de pagina **Veld optimalisatie**.
+  waar een wedstrijd uit de lijst zich visueel op het veld bevindt, en andersom. Sinds #1398
+  werkt dit op dezelfde manier op **Veld optimalisatie**, in zowel het tabblad **Huidig** als
+  **Optimaal** — één gedeelde implementatie (`GanttHoverState`) in plaats van een aparte
+  kopie per pagina.
+- **Sticky tijdlijn:** alleen op de kaart "Veldbezetting" van **Planning** blijft de tijdlijn
+  zichtbaar bovenin beeld terwijl u door de wedstrijdentabel eronder scrollt — handig bij een
+  dag met veel wedstrijden. Op een smal scherm (mobiel, breedte < 641px) is dit uitgeschakeld,
+  omdat daar ook de bovenbalk zelf niet sticky is. De tijdlijnen op **Veld optimalisatie** zijn
+  niet sticky.
 
 ### Veld optimalisatie — twee tabs: Huidig en Optimaal
 
