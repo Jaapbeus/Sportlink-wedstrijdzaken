@@ -43,7 +43,7 @@ Een serverless pipeline die Sportlink-data synchroniseert, verwerkt en omzet in 
 Elke nacht haalt een Azure Function alle wedstrijden, teams en details op via de Sportlink Club API. De data wordt opgeslagen in een database (Postgres of SQL Server — twee gelijkwaardige tiers, zie de architectuursectie hieronder) — zodat je er zelf query's op kunt draaien, rapporten van kunt bouwen, of koppelen aan andere systemen.
 
 ### 2 — AI-gestuurde e-mailverwerking
-Binnenkomende e-mails over wedstrijdwijzigingen (verplaatsverzoeken, afzeggingen) worden automatisch geclassificeerd via OpenAI (gpt-4o-mini, direct via OpenAI API). Op basis van de classificatie stuurt de planner een standaardantwoord terug — met de leider en trainer van het betrokken team automatisch in BCC.
+Binnenkomende e-mails over wedstrijdwijzigingen (verplaatsverzoeken, afzeggingen) worden automatisch geclassificeerd via een provider-agnostische AI-abstractie (`IChatClient`, `Microsoft.Extensions.AI`) — standaard `gpt-4o-mini`, het model is per club configureerbaar. Op basis van de classificatie stuurt de planner een standaardantwoord terug — met de leider en trainer van het betrokken team automatisch in BCC.
 
 **Geen handmatig zoekwerk meer.** De juiste contactpersonen worden automatisch gevonden via de koppeling met de ledenexport.
 
@@ -55,7 +55,8 @@ Een Blazor WebAssembly-applicatie geeft beheerders via de browser volledig behee
 - **Speeltijden** — wedstrijdduur en veldfractie per leeftijdscategorie
 - **Veldbeschikbaarheid** — tijdvensters per veld configureren
 - **Velden** — velddefinities (type, verlichting, actief/inactief)
-- **Dagplanning** — wedstrijden en velden per speeldag plannen
+- **Planning** — wedstrijden en velden per speeldag plannen
+- **Veld optimalisatie** — een berekend voorstel voor tijden en velden vergelijken met de bestaande planning
 - **Teambegeleiding** — begeleiders per team raadplegen; contactverzoeken doorsturen
 - **Leermomenten** — AI-classificatiefouten inzien en corrigeren voor betere toekomstige classificaties
 - **Teamaliassen** — geleerde teamnaam-varianten goedkeuren of afwijzen
@@ -63,9 +64,9 @@ Een Blazor WebAssembly-applicatie geeft beheerders via de browser volledig behee
 - **E-maillog** — verwerkte e-mails inzien (AVG-conform: geen berichtteksten)
 - **Testmodus (ALLSTARS)** — fictieve wedstrijden invoeren om planner te testen zonder echte data
 - **Wijzigingsverzoeken** — inkomende Sportlink-wijzigingsverzoeken van tegenstanders goedkeuren of afwijzen
-- **Oefenwedstrijd aanmaken** — een oefenwedstrijd rechtstreeks in Sportlink Club aanmaken
+- **Oefenwedstrijd aanmaken** — een oefenwedstrijd voorbereiden en direct in Sportlink Club aanmaken
 - **Thema** — clubkleuren, logo en favicon, met een aparte licht- en donkervariant en een schakelaar in de header
-- **Sportlink Web Extension** (in opbouw) — kleedkamers en veld van een wedstrijd rechtstreeks vanuit Dagplanning naar Sportlink Club terugschrijven, met een deep-link "Open in Sportlink" per wedstrijd
+- **Sportlink Web Extension** — een deep link "Open in Sportlink" per wedstrijd, en een deel van de wedstrijdacties (kleedkamers, veld, scheidsrechters, wijzigingsverzoeken) rechtstreeks vanuit Planning/Veld optimalisatie naar Sportlink Club terugschrijven — per actie in te stellen per rol
 
 ---
 
@@ -80,7 +81,7 @@ Azure Functions (.NET 9, isolated worker) — één van twee volledig gescheiden
   │                             (op de Postgres-tier: `PostgresFetchAndStoreApiData`)
   ├── EmailProcessorFunction  — leest mailbox via Microsoft Graph
   ├── BerichtAiService        — classifieert binnenkomende e-mails met AI
-  ├── Sportlink Web Extension — schrijft wedstrijdwijzigingen terug naar Sportlink Club (in opbouw)
+  ├── Sportlink Web Extension — schrijft een deel van de wedstrijdwijzigingen terug naar Sportlink Club
   └── Admin API               — REST endpoints voor de beheer-GUI
         │
         ▼
@@ -99,7 +100,7 @@ Azure Static Web Apps (gratis tier)
 
 Welke tier een fork daadwerkelijk gebruikt is een bewuste, expliciete keuze op build/deploytijd (repository-variabele `DatabaseTier`) — geen gedeelde runtime-abstractie. Zie [docs/ARCHITECTUUR-DATABASE-TIERS.md](docs/ARCHITECTUUR-DATABASE-TIERS.md).
 
-**Technologie:** .NET 9 (FunctionApp) · .NET 10 (Blazor) · Azure Functions v4 · Blazor WebAssembly · Postgres (Supabase) / Azure SQL · Microsoft Graph API · OpenAI (gpt-4o-mini, direct) · Azure Static Web Apps · Entra ID
+**Technologie:** .NET 9 (FunctionApp) · .NET 10 (Blazor) · Azure Functions v4 · Blazor WebAssembly · Postgres (Supabase) / Azure SQL · Microsoft Graph API · AI-classificatie via `IChatClient` (`Microsoft.Extensions.AI`, standaard gpt-4o-mini, configureerbaar) · Azure Static Web Apps · Entra ID
 
 ### Projectkaart
 
