@@ -18,6 +18,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **Favicon/logo/kleuren ophalen op het Thema-scherm faalde met "URL-domein is niet toegestaan"
+  zodra de club-website nog niet eerder was opgeslagen (#1373).** De knop **Ophalen** sloeg de
+  zojuist ingevulde Club-website URL niet automatisch op, terwijl de beveiligde extractie alleen
+  een al opgeslagen adres accepteert. **Ophalen** slaat de URL nu eerst zelf op.
+
 ## [3.6.0.0] — 2026-09-26
 
 ### Security

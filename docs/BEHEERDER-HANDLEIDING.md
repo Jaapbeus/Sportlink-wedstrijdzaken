@@ -1387,9 +1387,10 @@ Twee dingen om te weten:
   clubwebsites zetten hun huisstijl in een apart opmaakbestand; dan levert Ophalen weinig of niets
   op. Dat is geen storing — typ de kleurcodes in dat geval gewoon in. Uw clubbeheerder of
   websitebouwer kent ze.
-- **Alleen het adres dat u hier heeft opgeslagen mag worden benaderd.** Dat is een bewuste
-  beveiligingsmaatregel: hij voorkomt dat het scherm gebruikt kan worden om willekeurige adressen op
-  te vragen. Wilt u een andere site uitlezen, sla dan eerst dat adres op.
+- **Alleen een opgeslagen adres mag worden benaderd.** Dat is een bewuste beveiligingsmaatregel:
+  hij voorkomt dat het scherm gebruikt kan worden om willekeurige adressen op te vragen. **Ophalen**
+  slaat de zojuist ingevulde Club-website URL daarom eerst automatisch op, vóórdat het de kleuren,
+  het icoontje en het logo ervan gaat zoeken — u hoeft dit dus niet apart met **Opslaan** te doen.
 
 ### Icoontje en logo
 
