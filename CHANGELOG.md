@@ -18,6 +18,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- Instellingen → Thema: alle kleuren van de wedstrijdstatus op Planning en Veld optimalisatie
+  (Gantt-blokken, legenda, statusbadges, voorkeurstijd-indicator) zijn nu instelbaar, gegroepeerd
+  onder "Wedstrijdstatus" — daarvóór stonden deze kleuren vast en volgden ze het club-thema niet.
+- Instellingen → Thema: nieuw tabblad "Overzicht" toont elke instelbare kleur met toelichting en
+  swatch, voor zowel de lichte als de donkere weergave.
+
 ### Fixed
 - **Sportlink-matchinfo gaf soms een valse "Sportlink is momenteel niet bereikbaar" (HTTP 502),
   ook als de Sportlink-koppeling zelf gewoon werkte (#1387).** Het ophalen van Sportlink-matchinfo
@@ -26,6 +33,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   Sportlink-storing. Elke Sportlink-aanroep krijgt nu een passende, per-aanroep timeout en één
   automatische herhaling bij een tijdelijke storing; een reactie die te lang op zich laat wachten
   krijgt bovendien een eigen melding in plaats van de generieke storingsmelding.
+- De secundaire kleur op Instellingen → Thema heeft nu een zichtbaar effect: hij kleurt het actieve
+  menu-item in de zijbalk. Daarvóór deed die kleurinstelling nergens iets.
+- Veld optimalisatie en Planning toonden in het donkere thema een wit kaartje (samenvattingsbalk en
+  het uitgeklapte Sportlink-paneel) — die achtergrond volgt nu het clubthema.
 
 ## [3.7.0.0] — 2026-09-27
 

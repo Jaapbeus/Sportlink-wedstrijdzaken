@@ -14,11 +14,16 @@ namespace BlazorAdmin.Models;
 /// toont het scherm geen kleurenkiezer: <c>&lt;input type="color"&gt;</c> kent geen alpha en zou de
 /// waarde bij het openen stilzwijgend terugbrengen tot zes cijfers.
 /// </param>
+/// <param name="Groep">
+/// Groepeert de kleur in het beheerscherm en op het overzichtstabblad (#1388). Puur presentatie —
+/// geen invloed op de CSS-variabele of het opslagcontract.
+/// </param>
 public sealed record ThemeKleurDefinitie(
     string Sleutel,
     string Label,
     string? Toelichting = null,
-    bool StaatAlphaToe = false);
+    bool StaatAlphaToe = false,
+    string Groep = "Merk & interface");
 
 /// <summary>Een basisthema: een complete kleurenset voor beide modi, als startpunt.</summary>
 public sealed record ThemePreset(
@@ -48,14 +53,26 @@ public static class ThemePresets
     public static IReadOnlyList<ThemeKleurDefinitie> Kleuren { get; } = new[]
     {
         new ThemeKleurDefinitie("primary",         "Primaire kleur",        "Achtergrond zijbalk, knoppen"),
-        new ThemeKleurDefinitie("secondary",       "Secundaire kleur"),
+        new ThemeKleurDefinitie("secondary",       "Secundaire kleur",      "Actief menu-item in de zijbalk, secundaire knoppen"),
         new ThemeKleurDefinitie("accent",          "Accentkleur (links)"),
         new ThemeKleurDefinitie("textOnPrimary",   "Tekst op primaire achtergrond", "Meestal wit (#ffffff) of zwart (#000000)"),
         new ThemeKleurDefinitie("pageBg",          "Pagina-achtergrond",    "Achtergrond achter het laadscherm"),
         new ThemeKleurDefinitie("cardBg",          "Kaartachtergrond"),
         new ThemeKleurDefinitie("mutedText",       "Gedempte tekst",        "Bijschriften en toelichtingen"),
         new ThemeKleurDefinitie("mutedTextSubtle", "Extra gedempte tekst"),
-        new ThemeKleurDefinitie("shadowHover",     "Schaduw bij aanwijzen", "Acht cijfers mag: de laatste twee zijn de doorzichtigheid", StaatAlphaToe: true)
+        new ThemeKleurDefinitie("shadowHover",     "Schaduw bij aanwijzen", "Acht cijfers mag: de laatste twee zijn de doorzichtigheid", StaatAlphaToe: true),
+
+        // Wedstrijdstatuskleuren van Planning en Veld optimalisatie (#1388). Stonden tot deze
+        // uitbreiding als losse hex-literals in DagplanningWeergaveHelpers.GanttKleur,
+        // VeldOptimalisatie.razor.cs (RowClass/VoorkeurBadgeClass/GanttVoorkeurBalkKleur) en de
+        // legenda-CSS — daardoor onzichtbaar en niet instelbaar voor de beheerder.
+        new ThemeKleurDefinitie("statusOngewijzigd",          "Status: ongewijzigd",        "Gantt-blok, legenda en badge voor een wedstrijd die de planner laat staan", Groep: "Wedstrijdstatus (Planning & Veld optimalisatie)"),
+        new ThemeKleurDefinitie("statusWijziging",            "Status: wijziging",          "Gantt-blok, legenda, badge en tabelrij voor een verplaatste wedstrijd", Groep: "Wedstrijdstatus (Planning & Veld optimalisatie)"),
+        new ThemeKleurDefinitie("statusNieuwSlot",             "Status: nieuw slot",         "Gantt-blok, legenda, badge en tabelrij voor een nieuw ingepland tijdslot", Groep: "Wedstrijdstatus (Planning & Veld optimalisatie)"),
+        new ThemeKleurDefinitie("statusNietInplanbaar",        "Status: niet inplanbaar",    "Badge en tabelrij voor een wedstrijd die de planner niet kon plaatsen", Groep: "Wedstrijdstatus (Planning & Veld optimalisatie)"),
+        new ThemeKleurDefinitie("voorkeurOpTijd",              "Voorkeurstijd: op tijd",     "Indicatorbalk en badge als een wedstrijd exact op de voorkeurstijd staat", Groep: "Wedstrijdstatus (Planning & Veld optimalisatie)"),
+        new ThemeKleurDefinitie("voorkeurKleineAfwijking",     "Voorkeurstijd: kleine afwijking", "Indicatorbalk en badge bij een kleine afwijking van de voorkeurstijd", Groep: "Wedstrijdstatus (Planning & Veld optimalisatie)"),
+        new ThemeKleurDefinitie("voorkeurGroteAfwijking",      "Voorkeurstijd: grote afwijking",  "Indicatorbalk en badge bij een grote afwijking van de voorkeurstijd", Groep: "Wedstrijdstatus (Planning & Veld optimalisatie)")
     };
 
     /// <summary>De huidige standaardkleuren van de applicatie — ongewijzigd sinds #325.</summary>
@@ -69,7 +86,17 @@ public static class ThemePresets
         ["cardBg"]          = "#ffffff",
         ["mutedText"]       = "#6c757d",
         ["mutedTextSubtle"] = "#adb5bd",
-        ["shadowHover"]     = "#0000001f"
+        ["shadowHover"]     = "#0000001f",
+
+        // Zelfde waarden als de hex-literals die vóór #1388 in GanttKleur/GanttVoorkeurBalkKleur en
+        // de legenda-CSS stonden — geen visuele wijziging voor een club die niets aanpast.
+        ["statusOngewijzigd"]      = "#198754",
+        ["statusWijziging"]        = "#0d6efd",
+        ["statusNieuwSlot"]        = "#d97706",
+        ["statusNietInplanbaar"]   = "#dc3545",
+        ["voorkeurOpTijd"]         = "#22c55e",
+        ["voorkeurKleineAfwijking"] = "#f59e0b",
+        ["voorkeurGroteAfwijking"]  = "#ef4444"
     };
 
     /// <summary>De neutrale donkerwaarden die ook in <c>app.css</c> als terugval staan (#1255).</summary>
@@ -83,7 +110,17 @@ public static class ThemePresets
         ["cardBg"]          = "#171f30",
         ["mutedText"]       = "#9aa4b2",
         ["mutedTextSubtle"] = "#6b7686",
-        ["shadowHover"]     = "#0000008c"
+        ["shadowHover"]     = "#0000008c",
+
+        // Iets lichtere/fellere varianten dan het lichte palet, zelfde reden als de bestaande
+        // donkere merkkleuren hierboven: voldoende contrast tegen een donkere achtergrond.
+        ["statusOngewijzigd"]      = "#2fbf75",
+        ["statusWijziging"]        = "#4da3ff",
+        ["statusNieuwSlot"]        = "#f59e0b",
+        ["statusNietInplanbaar"]   = "#f87171",
+        ["voorkeurOpTijd"]         = "#4ade80",
+        ["voorkeurKleineAfwijking"] = "#fbbf24",
+        ["voorkeurGroteAfwijking"]  = "#f87171"
     };
 
     public static IReadOnlyList<ThemePreset> Alle { get; } = new[]

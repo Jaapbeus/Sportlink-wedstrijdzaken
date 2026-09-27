@@ -128,13 +128,52 @@
 }
 
 /* Legenda: de vorm (.gantt-legenda-dot/-balk) staat in wwwroot/css/app.css; hier alleen de kleur
-   per status/afwijkingsniveau, gelijk aan GanttKleur()/GanttVoorkeurBalkKleur() in de code-behind. */
-.gantt-legenda-dot-ongewijzigd { background: #198754; }
-.gantt-legenda-dot-wijziging { background: #0d6efd; }
-.gantt-legenda-dot-nieuw { background: #d97706; }
-.gantt-legenda-balk-optijd { background: #22c55e; }
-.gantt-legenda-balk-klein { background: #f59e0b; }
-.gantt-legenda-balk-groot { background: #ef4444; }
+   per status/afwijkingsniveau, gelijk aan GanttKleur()/GanttVoorkeurBalkKleur() in
+   DagplanningWeergaveHelpers. Sinds #1388 instelbare paletkleuren i.p.v. vaste hex. */
+.gantt-legenda-dot-ongewijzigd { background: var(--theme-status-ongewijzigd); }
+.gantt-legenda-dot-wijziging { background: var(--theme-status-wijziging); }
+.gantt-legenda-dot-nieuw { background: var(--theme-status-nieuw-slot); }
+.gantt-legenda-balk-optijd { background: var(--theme-voorkeur-op-tijd); }
+.gantt-legenda-balk-klein { background: var(--theme-voorkeur-kleine-afwijking); }
+.gantt-legenda-balk-groot { background: var(--theme-voorkeur-grote-afwijking); }
+
+/* ── Thema-gestuurde kaart-/tekst-/rij-/badgekleuren (#1388) ──
+   Vervangt Bootstrap-utilityklassen (bg-light, text-warning, table-primary, bg-warning, ...) die
+   niet meeschakelden met het geconfigureerde club-thema of met donker thema. */
+.kaart-thema-bg {
+    background-color: var(--theme-card-bg);
+}
+
+.tekst-ok        { color: var(--theme-status-ongewijzigd); }
+.tekst-attentie  { color: var(--theme-status-nieuw-slot); }
+.tekst-wijziging { color: var(--theme-status-wijziging); }
+.tekst-probleem  { color: var(--theme-status-niet-inplanbaar); }
+
+.rij-status-nieuw-slot {
+    background-color: color-mix(in srgb, var(--theme-status-nieuw-slot) 18%, var(--theme-card-bg));
+}
+.rij-status-wijziging {
+    background-color: color-mix(in srgb, var(--theme-status-wijziging) 18%, var(--theme-card-bg));
+}
+.rij-status-niet-inplanbaar {
+    background-color: color-mix(in srgb, var(--theme-status-niet-inplanbaar) 22%, var(--theme-card-bg));
+}
+
+.badge-neutraal {
+    background-color: var(--theme-card-bg);
+    color: var(--theme-muted-text);
+    border: 1px solid var(--bs-border-color);
+}
+.badge-secundair {
+    background-color: var(--theme-secondary);
+    color: var(--theme-text-on-primary);
+}
+.badge-status-nieuw-slot      { background-color: var(--theme-status-nieuw-slot); color: #1c1917; }
+.badge-status-wijziging       { background-color: var(--theme-status-wijziging); color: #fff; }
+.badge-status-niet-inplanbaar { background-color: var(--theme-status-niet-inplanbaar); color: #fff; }
+.badge-voorkeur-optijd { background-color: var(--theme-voorkeur-op-tijd); color: #fff; }
+.badge-voorkeur-klein  { background-color: var(--theme-voorkeur-kleine-afwijking); color: #1c1917; }
+.badge-voorkeur-groot  { background-color: var(--theme-voorkeur-grote-afwijking); color: #fff; }
 
 /* ── Wedstrijdentabel ── */
 .tabel-compact {

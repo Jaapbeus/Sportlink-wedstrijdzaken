@@ -30,6 +30,68 @@ else if (_error != null)
 }
 else
 {
+    <ul class="nav nav-tabs mb-3">
+        <li class="nav-item">
+            <button class="nav-link @(_tab == "instellen" ? "active" : "")" @onclick='() => _tab = "instellen"'>
+                Kleuren instellen
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_tab == "overzicht" ? "active" : "")" @onclick='() => _tab = "overzicht"'>
+                Overzicht
+            </button>
+        </li>
+    </ul>
+
+    @if (_tab == "overzicht")
+    {
+        @* #1388: leestabel van elke instelbare kleur, gegroepeerd — beantwoordt "welke kleur doet wat"
+           zonder dat de beheerder eerst elke picker moet aanklikken. *@
+        <div class="card mb-4">
+            <div class="card-header">Alle instelbare kleuren</div>
+            <div class="card-body">
+                <p class="text-muted">
+                    Elke rij is een kleur die u hierboven kunt instellen. "Licht" en "Donker" tonen de
+                    huidige waarde van beide weergaven, ongeacht welke u op dit moment bewerkt.
+                </p>
+                @foreach (var groep in ThemePresets.Kleuren.GroupBy(k => k.Groep))
+                {
+                    <h6 class="fw-semibold mt-3">@groep.Key</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead>
+                                <tr>
+                                    <th>Kleur</th>
+                                    <th>Werkingsgebied</th>
+                                    <th>Licht</th>
+                                    <th>Donker</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var kleur in groep)
+                                {
+                                    <tr>
+                                        <td class="fw-semibold">@kleur.Label</td>
+                                        <td class="text-muted small">@(kleur.Toelichting ?? "—")</td>
+                                        <td>
+                                            <span class="thema-overzicht-swatch" style="--thema-kleur:@KleurUit(_licht, kleur.Sleutel);" aria-hidden="true"></span>
+                                            <code class="small">@KleurUit(_licht, kleur.Sleutel)</code>
+                                        </td>
+                                        <td>
+                                            <span class="thema-overzicht-swatch" style="--thema-kleur:@KleurUit(_donker, kleur.Sleutel);" aria-hidden="true"></span>
+                                            <code class="small">@KleurUit(_donker, kleur.Sleutel)</code>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+    else
+    {
     <div class="row">
         <div class="col-lg-6">
             <div class="card mb-4">
@@ -65,38 +127,41 @@ else
                         </small>
                     </div>
 
-                    <hr class="my-3" />
-
-                    @foreach (var kleur in ThemePresets.Kleuren)
+                    @foreach (var groep in ThemePresets.Kleuren.GroupBy(k => k.Groep))
                     {
-                        var sleutel = kleur.Sleutel;
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">@kleur.Label</label>
-                            <div class="d-flex align-items-center gap-2">
-                                @if (kleur.StaatAlphaToe)
-                                {
-                                    @* <input type="color"> kent geen alpha en zou de waarde stilzwijgend
-                                       terugbrengen tot zes cijfers — daarom hier alleen een tekstveld met
-                                       een voorbeeldvlak ernaast. *@
-                                    <span class="form-control form-control-color p-0 border thema-kleurvlak"
-                                          style="--thema-kleur:@Kleur(sleutel);"
-                                          aria-hidden="true"></span>
-                                }
-                                else
-                                {
-                                    <input type="color" class="form-control form-control-color"
+                        <hr class="my-3" />
+                        <h6 class="fw-semibold text-muted">@groep.Key</h6>
+                        @foreach (var kleur in groep)
+                        {
+                            var sleutel = kleur.Sleutel;
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">@kleur.Label</label>
+                                <div class="d-flex align-items-center gap-2">
+                                    @if (kleur.StaatAlphaToe)
+                                    {
+                                        @* <input type="color"> kent geen alpha en zou de waarde stilzwijgend
+                                           terugbrengen tot zes cijfers — daarom hier alleen een tekstveld met
+                                           een voorbeeldvlak ernaast. *@
+                                        <span class="form-control form-control-color p-0 border thema-kleurvlak"
+                                              style="--thema-kleur:@Kleur(sleutel);"
+                                              aria-hidden="true"></span>
+                                    }
+                                    else
+                                    {
+                                        <input type="color" class="form-control form-control-color"
+                                               value="@Kleur(sleutel)"
+                                               @oninput='e => OnColorChange(sleutel, e.Value?.ToString())' />
+                                    }
+                                    <input type="text" class="form-control" maxlength="9"
                                            value="@Kleur(sleutel)"
                                            @oninput='e => OnColorChange(sleutel, e.Value?.ToString())' />
+                                </div>
+                                @if (kleur.Toelichting != null)
+                                {
+                                    <small class="text-muted">@kleur.Toelichting</small>
                                 }
-                                <input type="text" class="form-control" maxlength="9"
-                                       value="@Kleur(sleutel)"
-                                       @oninput='e => OnColorChange(sleutel, e.Value?.ToString())' />
                             </div>
-                            @if (kleur.Toelichting != null)
-                            {
-                                <small class="text-muted">@kleur.Toelichting</small>
-                            }
-                        </div>
+                        }
                     }
 
                     <hr class="my-3" />
@@ -214,4 +279,5 @@ else
             </div>
         </div>
     </div>
+    }
 }

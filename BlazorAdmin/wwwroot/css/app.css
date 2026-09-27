@@ -38,6 +38,16 @@
     --theme-muted-text-subtle-light: #adb5bd;
     --theme-shadow-hover-light:     rgba(0, 0, 0, .12);
 
+    /* Wedstrijdstatuskleuren van Planning/Veld optimalisatie (#1388) — zelfde waarden als de
+       hex-literals die deze kleuren vóór deze uitbreiding hardcoded hadden. */
+    --theme-status-ongewijzigd-light:        #198754;
+    --theme-status-wijziging-light:          #0d6efd;
+    --theme-status-nieuw-slot-light:         #d97706;
+    --theme-status-niet-inplanbaar-light:    #dc3545;
+    --theme-voorkeur-op-tijd-light:          #22c55e;
+    --theme-voorkeur-kleine-afwijking-light: #f59e0b;
+    --theme-voorkeur-grote-afwijking-light:  #ef4444;
+
     /* Donker — neutrale terugval, geen clubkleur. Een club stelt zijn eigen set in via het
        thema-scherm; deze waarden zijn wat een club zonder eigen donkere set te zien krijgt. */
     --theme-primary-dark:           #4a9eff;
@@ -50,6 +60,14 @@
     --theme-muted-text-subtle-dark: #6b7686;
     --theme-shadow-hover-dark:      rgba(0, 0, 0, .55);
 
+    --theme-status-ongewijzigd-dark:        #2fbf75;
+    --theme-status-wijziging-dark:          #4da3ff;
+    --theme-status-nieuw-slot-dark:         #f59e0b;
+    --theme-status-niet-inplanbaar-dark:    #f87171;
+    --theme-voorkeur-op-tijd-dark:          #4ade80;
+    --theme-voorkeur-kleine-afwijking-dark: #fbbf24;
+    --theme-voorkeur-grote-afwijking-dark:  #f87171;
+
     /* Effectief: lichte modus is de standaard, ook zonder data-theme-attribuut */
     --theme-primary:          var(--theme-primary-light);
     --theme-secondary:        var(--theme-secondary-light);
@@ -60,6 +78,14 @@
     --theme-muted-text:         var(--theme-muted-text-light);
     --theme-muted-text-subtle:  var(--theme-muted-text-subtle-light);
     --theme-shadow-hover:     var(--theme-shadow-hover-light);
+
+    --theme-status-ongewijzigd:        var(--theme-status-ongewijzigd-light);
+    --theme-status-wijziging:          var(--theme-status-wijziging-light);
+    --theme-status-nieuw-slot:         var(--theme-status-nieuw-slot-light);
+    --theme-status-niet-inplanbaar:    var(--theme-status-niet-inplanbaar-light);
+    --theme-voorkeur-op-tijd:          var(--theme-voorkeur-op-tijd-light);
+    --theme-voorkeur-kleine-afwijking: var(--theme-voorkeur-kleine-afwijking-light);
+    --theme-voorkeur-grote-afwijking:  var(--theme-voorkeur-grote-afwijking-light);
 }
 
 :root[data-theme="dark"] {
@@ -72,6 +98,14 @@
     --theme-muted-text:         var(--theme-muted-text-dark);
     --theme-muted-text-subtle:  var(--theme-muted-text-subtle-dark);
     --theme-shadow-hover:     var(--theme-shadow-hover-dark);
+
+    --theme-status-ongewijzigd:        var(--theme-status-ongewijzigd-dark);
+    --theme-status-wijziging:          var(--theme-status-wijziging-dark);
+    --theme-status-nieuw-slot:         var(--theme-status-nieuw-slot-dark);
+    --theme-status-niet-inplanbaar:    var(--theme-status-niet-inplanbaar-dark);
+    --theme-voorkeur-op-tijd:          var(--theme-voorkeur-op-tijd-dark);
+    --theme-voorkeur-kleine-afwijking: var(--theme-voorkeur-kleine-afwijking-dark);
+    --theme-voorkeur-grote-afwijking:  var(--theme-voorkeur-grote-afwijking-dark);
 }
 
 html, body {
