@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.7.0.0] — 2026-09-27
+
 ### Changed
 - **Dagplanning gesplitst in twee schermen: Planning en Veld optimalisatie (#1361).** Planning
   toont wat er nu al in Sportlink gepland staat (datum + veldbezetting); Veld optimalisatie bevat
