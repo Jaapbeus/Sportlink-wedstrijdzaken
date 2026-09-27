@@ -764,12 +764,15 @@ test getriggerd wordt:
   binnen Sportlink zelf. Een test van de actie zou dus een echte beslissing forceren op een echt
   verzoek van een echte tegenstander — alleen te doen met expliciete instemming van de eigenaar
   over een specifiek, door hem aangewezen verzoek.
-- **#997's oefenwedstrijd-aanmaak is scaffolding, geen live-getest pad — en heeft van alle
-  #986-sub-issues de meeste onbekenden.** Endpoint, volledige requestbody, en de exacte
-  respons-veldnamen van de twee aangesloten picklists zijn allemaal gereverse-engineerd, nooit met
-  een netwerktrace gezien. Verwijderen (`ClubMatchDelete`) en uitslag vastleggen (`ClubMatchScore`)
-  zijn bewust niet aangesloten — het is dus (nog) niet mogelijk om een per ongeluk aangemaakte
-  testwedstrijd via deze app weer te verwijderen, ook niet zodra de code-lock ooit wordt opgeheven.
+- **#997's oefenwedstrijd-aanmaak had de meeste onbekenden van alle #986-sub-issues — de
+  code-niveau `forceDryRun`-lock is sinds #1319 opgeheven (`ClubMatchLiveBevestigd = true`),
+  de onderliggende onzekerheid over endpoint/requestbody niet.** Deze mutatie respecteert nu de
+  gewone club-instelling `sportlinkDryRun` in plaats van altijd te simuleren, maar endpoint,
+  volledige requestbody, en de exacte respons-veldnamen van de twee aangesloten picklists blijven
+  grotendeels gereverse-engineerd en zijn niet apart met een eigen netwerktrace bevestigd — anders
+  dan bij #994/#995 hierboven is bij #997 geen losse trace gedocumenteerd. Verwijderen (`ClubMatchDelete`) en
+  uitslag vastleggen (`ClubMatchScore`) zijn bewust niet aangesloten — het is dus (nog) niet
+  mogelijk om een per ongeluk aangemaakte testwedstrijd via deze app weer te verwijderen.
   Een toekomstige koppeling tussen een zelf-geplande oefenwedstrijd in
   `planner.geplandewedstrijden` (kolom `sportlinkwedstrijdcode`, momenteel ongebruikt voor dit doel)
   en het door Sportlink teruggegeven `PublicMatchId` is bewust niet gebouwd in deze ronde — zie de

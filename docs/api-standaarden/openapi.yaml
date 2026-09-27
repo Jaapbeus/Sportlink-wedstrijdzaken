@@ -3800,14 +3800,13 @@ paths:
     put:
       tags: [sportlink]
       operationId: putSportlinkOfficials
-      summary: Officials (scheidsrechter/assistenten) toewijzen (#994, epic #986) — scaffolding, altijd code-gelockt
+      summary: Officials (scheidsrechter/assistenten) toewijzen (#994, epic #986) — sinds #1319 live bevestigd
       description: |
-        **ONBEVESTIGD, altijd gesimuleerd:** endpoint (`PUT
-        competition/match/official/MatchOfficialsAction`) en requestbody zijn gereverse-engineerd
-        uit Sportlinks eigen frontend-code, nooit met een netwerktrace gezien. Deze aanroep loopt
-        daarom altijd via een code-niveau `forceDryRun`-lock — ONAFHANKELIJK van de club-instelling
-        `sportlinkDryRun` — totdat een mens (nooit een agent) een live trace heeft gedaan en de
-        lock-constante in een aparte, reviewbare PR omzet. Zelfde volgorde als `.../dressingrooms`
+        **Sinds #1319 live bevestigd** (was scaffolding, altijd code-gelockt via een aparte
+        `forceDryRun`-lock, onafhankelijk van de club-instelling `sportlinkDryRun`): endpoint (`PUT
+        competition/match/official/MatchOfficialsAction`) en requestbody zijn met een echte
+        netwerktrace bevestigd te werken. De mutatie respecteert nu de gewone `sportlinkDryRun`-
+        instelling, net als `.../dressingrooms` en `.../field`. Zelfde volgorde als `.../dressingrooms`
         (resolve → guard `SportlinkMutationSoort.Officials` → audit → mutatie), met een
         taakspecifieke responsparser: als één official een `ValidationDescription` heeft, wordt
         `IsSuccess=false` gezet ook al is de HTTP-status 200 ("opgeslagen met fouten" in Sportlink
@@ -3841,7 +3840,7 @@ paths:
                         description: Relatiecode/persoons-identifier zoals ingevoerd door de beheerder — geen naam.
       responses:
         '200':
-          description: Mutatieresultaat (IsSuccess kan alsnog false zijn, ook bij een code-gelockte simulatie is dit altijd true)
+          description: Mutatieresultaat (IsSuccess kan false zijn — bijv. als Sportlink een official afwijst)
           content:
             application/json:
               schema:
@@ -3871,19 +3870,19 @@ paths:
     put:
       tags: [sportlink]
       operationId: putSportlinkMatchChangeRequest
-      summary: Wijzigingsverzoek datum/tijd/accommodatie (#995, epic #986) — ALLEEN stap 1 (valideren), altijd code-gelockt
+      summary: Wijzigingsverzoek datum/tijd/accommodatie (#995, epic #986) — ALLEEN stap 1 (valideren), sinds #1319 live bevestigd
       description: |
-        **ONBEVESTIGD, altijd gesimuleerd, en de enige mutatie die een ECHTE tegenstander raakt:**
+        **Sinds #1319 live bevestigd, en de enige mutatie die een ECHTE tegenstander raakt:**
         Sportlink werkt voor datum/tijd/accommodatie in twee stappen (valideren → bevestigen) — de
         bevestigingsstap stuurt een goedkeuringsverzoek naar de tegenstander. Dit endpoint bouwt
         UITSLUITEND stap 1: er bestaat bewust geen endpoint, client-methode of UI-knop voor stap 2.
         Zelfde onderliggende Sportlink-endpoint als `.../field`
         (`PUT competition/match/UpdateMatchDetails`), maar met `MatchDate`/`StartTime`/`FacilityId`/
-        `MatchChangeRequestRemarks` overschreven in plaats van het veld. Loopt altijd via een
-        code-niveau `forceDryRun`-lock — ONAFHANKELIJK van de club-instelling `sportlinkDryRun` —
-        totdat een mens (nooit een agent) een live trace heeft gedaan: zelfs stap 1 kan in
-        werkelijkheid al het gevaarlijke moment zijn als Sportlinks eerste PUT geen "dry validate"
-        blijkt te zijn. Guard: `SportlinkMutationSoort.DatumTijdAccommodatie` (uitsluitend
+        `MatchChangeRequestRemarks` overschreven in plaats van het veld. Was tot #1319 altijd
+        gesimuleerd via een aparte code-niveau `forceDryRun`-lock, onafhankelijk van de
+        club-instelling `sportlinkDryRun` — de eigenaar heeft die lock na een live netwerktrace
+        opgeheven; de mutatie respecteert nu de gewone `sportlinkDryRun`-instelling. Guard:
+        `SportlinkMutationSoort.DatumTijdAccommodatie` (uitsluitend
         `IsHomeMatch` + de generieke niet-afgelast/niet-concept-checks — geen specifieke
         `IsXxxAllowed`-vlag bestaat hiervoor bij Sportlink). `Toelichting` is verplicht.
       security:
@@ -4086,16 +4085,16 @@ paths:
     post:
       tags: [sportlink]
       operationId: postSportlinkClubMatch
-      summary: Oefenwedstrijd ("clubwedstrijd") aanmaken (#997, epic #986) — scaffolding, altijd code-gelockt
+      summary: Oefenwedstrijd ("clubwedstrijd") aanmaken (#997, epic #986) — code-lock sinds #1319 opgeheven
       description: |
-        **ONBEVESTIGD, altijd gesimuleerd:** endpoint (`POST
+        **Code-niveau `forceDryRun`-lock sinds #1319 opgeheven** (`ClubMatchLiveBevestigd = true`):
+        deze mutatie respecteert nu de gewone club-instelling `sportlinkDryRun` in plaats van altijd
+        te simuleren. De exacte requestbody en de veldnamen van de twee aangesloten picklists blijven
+        echter grotendeels ONBEVESTIGD — van alle #986-sub-issues heeft dit issue de meeste
+        onbekenden (delete-methode onbekend, meerdere picklist-vormen onbekend). Endpoint (`POST
         competition/match/clubmatch/ClubMatch`) en requestbody zijn gereverse-engineerd uit
-        Sportlinks eigen frontend-code, nooit met een netwerktrace gezien — van alle #986-sub-
-        issues heeft dit issue de MEESTE onbekenden (volledige body onbevestigd, meerdere
-        picklist-vormen onbekend, delete-methode onbekend). Deze aanroep loopt daarom altijd via
-        een code-niveau `forceDryRun`-lock — ONAFHANKELIJK van de club-instelling
-        `sportlinkDryRun` — totdat een mens (nooit een agent) een live trace heeft gedaan.
-        Structureel anders dan de andere `/sportlink/match/...`-endpoints: er is vooraf GEEN
+        Sportlinks eigen frontend-code — zie `docs/SPORTLINK-WEB-EXTENSION.md` §5 voor de volledige
+        lijst openstaande onzekerheden. Structureel anders dan de andere `/sportlink/match/...`-endpoints: er is vooraf GEEN
         bestaande wedstrijd, dus geen `SportlinkMutationGuard`-check — in plaats daarvan alleen
         onze eigen `sportlinkExtensionEnabled`-toggle + EgressGuard. Bewust NIET gebouwd in deze
         ronde: verwijderen (`ClubMatchDelete`) en uitslag vastleggen (`ClubMatchScore`).
