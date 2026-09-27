@@ -38,6 +38,15 @@ public partial class SportlinkMatchPanel
     private string? _wijzigingDatum, _wijzigingTijd, _wijzigingFacilityId, _wijzigingToelichting;
     private List<string>? _wijzigingValidatieMeldingen;
 
+    // #1320: eigenaar-gestuurde productieproef met trace van validatie en bevestiging.
+    // _wijzigingBevestigingGevraagd is de "afzonderlijke handmatige startactie" uit de
+    // acceptatiecriteria — de eerste klik toont alleen de waarschuwing, pas de tweede klik
+    // verstuurt de echte PUT.
+    private bool _wijzigingBevestigingGevraagd;
+    private SportlinkMatchWijzigingsverzoekTraceDto? _wijzigingTrace;
+    private string? _wijzigingNotitie;
+    private readonly SportlinkActieStatus _wijzigingNotitieStatus = new();
+
     private string Code => WedstrijdCode.ToString();
 
     protected override async Task OnInitializedAsync()
@@ -134,9 +143,22 @@ public partial class SportlinkMatchPanel
         finally { _officials.Klaar(); }
     }
 
+    /// <summary>#1320: eerste klik op de knop — toont alleen de waarschuwing, verstuurt niets.
+    /// Vult geen enkel veld en start geen Sportlink-aanroep (acceptatiecriterium: geen mutatie bij
+    /// laden/wijzigen van invoervelden).</summary>
+    private void VraagBevestigingWijziging() => _wijzigingBevestigingGevraagd = true;
+
+    private void AnnuleerBevestigingWijziging() => _wijzigingBevestigingGevraagd = false;
+
+    /// <summary>#1320: de daadwerkelijke, afzonderlijke startactie — pas hier gaat de validatie-PUT
+    /// naar Sportlink. Zie <see cref="VraagBevestigingWijziging"/> voor de waarschuwingsstap ervoor.</summary>
     private async Task SaveMatchChangeRequestAsync()
     {
+        _wijzigingBevestigingGevraagd = false;
         _wijzigingValidatieMeldingen = null;
+        _wijzigingTrace = null;
+        _wijzigingNotitie = null;
+        _wijzigingNotitieStatus.Wis();
         if (string.IsNullOrWhiteSpace(_wijzigingToelichting))
         {
             _wijziging.Fout("Toelichting is verplicht bij een wijzigingsverzoek.");
@@ -147,9 +169,31 @@ public partial class SportlinkMatchPanel
         try
         {
             var r = await Api.PutSportlinkMatchChangeRequestAsync(Code, _wijzigingDatum, _wijzigingTijd, _wijzigingFacilityId, _wijzigingToelichting);
-            _wijzigingValidatieMeldingen = r.Data?.Validatie?.ValidationResultMessages;
-            _wijziging.Verwerk(r.Success, r.ErrorMessage, r.Data?.Mutatie, "Validatie uitgevoerd door Sportlink Club.", "Sportlink heeft het wijzigingsverzoek afgewezen");
+            _wijzigingTrace = r.Data;
+            _wijzigingValidatieMeldingen = r.Data?.Resultaat?.Validatie?.ValidationResultMessages;
+            _wijziging.Verwerk(r.Success, r.ErrorMessage, r.Data?.Resultaat?.Mutatie, "Validatie uitgevoerd door Sportlink Club.", "Sportlink heeft het wijzigingsverzoek afgewezen");
         }
         finally { _wijziging.Klaar(); }
     }
+
+    /// <summary>#1320: koppelt de testnotitie aan de trace van de zojuist uitgevoerde poging —
+    /// alleen mogelijk zolang <see cref="_wijzigingTrace"/> een AuditId heeft (geen audit-service
+    /// geregistreerd = geen notitie mogelijk, net zoals elders in dit paneel).</summary>
+    private async Task SlaWijzigingNotitieOpAsync()
+    {
+        if (_wijzigingTrace?.AuditId is not { } auditId) return;
+
+        _wijzigingNotitieStatus.Start();
+        try
+        {
+            var r = await Api.PutSportlinkAuditNotitieAsync(auditId, _wijzigingNotitie ?? "");
+            if (r.Success) _wijzigingNotitieStatus.Info("Notitie opgeslagen bij deze poging.");
+            else _wijzigingNotitieStatus.Fout(r.ErrorMessage ?? "Notitie opslaan is mislukt.");
+        }
+        finally { _wijzigingNotitieStatus.Klaar(); }
+    }
+
+    /// <summary>#1320: nullable bool leesbaar tonen in het diagnostiekpaneel — "onbekend" in plaats
+    /// van een lege string zolang deze ONBEVESTIGDE velden nooit met een echte respons gevuld zijn.</summary>
+    private static string Weergeef(bool? waarde) => waarde is { } b ? b.ToString() : "onbekend";
 }

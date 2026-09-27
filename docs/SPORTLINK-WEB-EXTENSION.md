@@ -847,6 +847,30 @@ issue #995 — een handmatige proef door de wedstrijdsecretaris met netwerk-meek
 een agent (§4.4). Zelfs dan bouwt deze constante alleen stap 1 vrij: stap 2 (bevestigen) bestaat
 nog steeds niet in de code en vereist een aparte, toekomstige beslissing.
 
+**#1320 (eigenaar-gestuurde productieproef met trace van validatie en bevestiging)** bouwde de
+diagnostiek-UI rond diezelfde, ongewijzigde code-lock — de lock zelf is met dit issue niet
+aangeraakt, alleen wat de eigenaar ervoor en erna ziet:
+- Vóór de aanroep toont het scherm een expliciete waarschuwing met een aparte, tweede
+  bevestigknop ("Ja, verstuur de validatie-PUT naar Sportlink") — de eerste knop start dus nog
+  niets, hij toont alleen de waarschuwing.
+- Na de aanroep toont het scherm een leesbare trace: tijdstip (UTC, serverzijdig), HTTP-methode/
+  endpoint/status, en de vier toplevel-booleans (`IsSuccess`, `IsMatchChangeRequestMandatory`,
+  `IsOwnFacility`, `IsForceUpdate`) plus `ConfirmationNeeded`/`HasBlockingMessages` — stuk voor stuk
+  al gedistilleerde, PII-vrije velden uit `SportlinkMatchChangeValidatie`. Nooit de ruwe request-/
+  responsebody: die kan tokens of overige velden bevatten die niet bedoeld zijn voor een scherm.
+- De eigenaar kan een korte testnotitie vastleggen bij die specifieke poging
+  (`PUT /api/sportlink/audit/{id}/notitie`, zie `docs/API.md`) — gekoppeld aan het audit-record-ID
+  van diezelfde aanroep, scoped op `ClubCode` zodat een audit-rij van een andere club nooit
+  gewijzigd kan worden. Nieuwe kolom `SportlinkMutationAudit.Notitie`/`sportlinkmutationaudit.notitie`
+  (migratie 028 op de Postgres-tier, idempotente `ALTER TABLE` in `Script.PostDeployment1.sql` op de
+  SQL Server-tier).
+- Stap 2 (bevestigen) is met #1320 bewust **niet** gebouwd — dezelfde reden als hierboven: de
+  werkelijke bevestigingsvorm voor een verplicht wijzigingsverzoek is nooit met een netwerktrace
+  vastgesteld, en #1320 mag dat contract niet verzinnen. De eerste échte productietrace (na
+  Aanpak-stap 1 van #995 én het omzetten van de constante door de eigenaar zelf) moet dat gat
+  vullen — zie issue #1319 voor de drie code-locks die de eigenaar zelf, in een eigen PR, moet
+  omzetten.
+
 ## 7. Bronnen
 - [`docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md`](ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md) — volledig technisch bronrapport
 - Epic [#986](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/986) en sub-issues #987-#998

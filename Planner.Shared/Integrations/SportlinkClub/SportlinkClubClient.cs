@@ -955,9 +955,24 @@ public class SportlinkClubClient : ISportlinkClubClient
         {
             using var doc = JsonDocument.Parse(json);
 
+            // #1320: vier toplevel booleans, gezien bij de oefenwedstrijd-trace van 2026-09-26 —
+            // GEEN bewijs voor de verplichte-wijzigingsverzoek-vorm, zie de doc-comment op
+            // SportlinkMatchChangeValidatie. Ontbrekend of geen boolean -> null, nooit gokken.
+            bool? LeesToplevelBool(string naam) =>
+                doc.RootElement.TryGetProperty(naam, out var el) && el.ValueKind is JsonValueKind.True or JsonValueKind.False
+                    ? el.GetBoolean()
+                    : null;
+
+            var isSuccess = LeesToplevelBool("IsSuccess");
+            var isMatchChangeRequestMandatory = LeesToplevelBool("IsMatchChangeRequestMandatory");
+            var isOwnFacility = LeesToplevelBool("IsOwnFacility");
+            var isForceUpdate = LeesToplevelBool("IsForceUpdate");
+
             if (!doc.RootElement.TryGetProperty("ConfirmationNeeded", out var confirmationElement) ||
                 confirmationElement.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
-                return new SportlinkMatchChangeValidatie(false, Array.Empty<string>(), false);
+                return new SportlinkMatchChangeValidatie(
+                    false, Array.Empty<string>(), false,
+                    isSuccess, isMatchChangeRequestMandatory, isOwnFacility, isForceUpdate);
 
             var meldingen = new List<string>();
             if (confirmationElement.ValueKind == JsonValueKind.Object &&
@@ -987,7 +1002,9 @@ public class SportlinkClubClient : ISportlinkClubClient
                 || (doc.RootElement.TryGetProperty("HasBlockingMessages", out var rootBlocking) &&
                     rootBlocking.ValueKind == JsonValueKind.True);
 
-            return new SportlinkMatchChangeValidatie(true, meldingen, hasBlocking);
+            return new SportlinkMatchChangeValidatie(
+                true, meldingen, hasBlocking,
+                isSuccess, isMatchChangeRequestMandatory, isOwnFacility, isForceUpdate);
         }
         catch (JsonException)
         {

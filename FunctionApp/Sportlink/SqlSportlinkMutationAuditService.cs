@@ -85,4 +85,22 @@ internal sealed class SqlSportlinkMutationAuditService : ISportlinkMutationAudit
             throw;
         }
     }
+
+    public async Task<bool> ZetNotitieAsync(long auditId, string clubCode, string notitie, CancellationToken cancellationToken = default)
+    {
+        using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        using var command = new SqlCommand(@"
+            UPDATE [dbo].[SportlinkMutationAudit]
+            SET [Notitie] = @Notitie
+            WHERE [Id] = @Id AND [ClubCode] = @ClubCode", connection);
+
+        command.Parameters.AddWithValue("@Id", auditId);
+        command.Parameters.AddWithValue("@ClubCode", clubCode ?? "");
+        command.Parameters.AddWithValue("@Notitie", notitie ?? "");
+
+        var affected = await command.ExecuteNonQueryAsync(cancellationToken);
+        return affected > 0;
+    }
 }

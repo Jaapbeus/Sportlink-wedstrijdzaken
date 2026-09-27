@@ -251,7 +251,11 @@ public static class SportlinkMatchFunction
                     SportlinkMutationSoort.DatumTijdAccommodatie, dto, context,
                     (publicMatchId, _) => sportlinkClient!.RequestMatchChangeAsync(
                         RolNaam, publicMatchId, nieuweDatum, nieuweStartTijd, dto.NieuweFacilityId, dto.Toelichting!),
-                    naarMutatieResultaat: r => r.Mutatie);
+                    naarMutatieResultaat: r => r.Mutatie,
+                    // #1320: diagnostiektrace voor de eigenaar-gestuurde productieproef — zelfde
+                    // wrapper als de Postgres-tegenhanger, zie die file voor de toelichting.
+                    bouwResponse: (r, auditId, httpStatus) => new SportlinkMatchWijzigingsverzoekTrace(
+                        r, auditId, httpStatus, "competition/match/UpdateMatchDetails", "PUT", DateTime.UtcNow));
             });
 
     // Live vastgesteld (2026-09-06, netwerktrace door de eigenaar): Sportlink verwacht
@@ -324,7 +328,8 @@ public static class SportlinkMatchFunction
         object? waardeNaDto,
         FunctionContext context,
         Func<string, SportlinkMatch, Task<SportlinkClubResponse<T>>> mutationCall,
-        Func<T, SportlinkMutationResult> naarMutatieResultaat)
+        Func<T, SportlinkMutationResult> naarMutatieResultaat,
+        Func<T, long?, int?, object>? bouwResponse = null)
         where T : class
     {
         var (voorbereidFout, publicMatchId) = await BereidPublicMatchIdVoorAsync(sportlinkClient, wedstrijdcodeValue, clubCode);
@@ -382,7 +387,9 @@ public static class SportlinkMatchFunction
 
         var mutationResult = await mutationCall(publicMatchId!, matchResult.Data);
         return await SportlinkEndpointSupport.RondMutatieAfAsync(
-            mutationResult, auditService, auditId, naarMutatieResultaat, data => new OkObjectResult(data));
+            mutationResult, auditService, auditId, naarMutatieResultaat,
+            data => new OkObjectResult(
+                bouwResponse != null ? bouwResponse(data, auditId, mutationResult.HttpStatusCode) : data));
     }
 
     /// <summary>Gedeelde stappen van alle endpoints hierboven: toggle-check, EgressGuard,
