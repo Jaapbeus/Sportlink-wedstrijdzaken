@@ -531,6 +531,7 @@ code {
 .club-selector-testmodus {
     border: 2px solid var(--theme-warning) !important;
     background-color: var(--theme-warning-bg) !important;
+    color: var(--theme-warning-text) !important;
     font-weight: 600;
 }
 

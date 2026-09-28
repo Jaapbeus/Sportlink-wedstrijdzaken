@@ -70,6 +70,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   krijgt bovendien een eigen melding in plaats van de generieke storingsmelding.
 - Veld optimalisatie en Planning toonden in het donkere thema een wit kaartje (samenvattingsbalk en
   het uitgeklapte Sportlink-paneel) — die achtergrond volgt nu het clubthema.
+- **De club-selector in de topbalk toonde in testmodus (AllStars FC) onleesbare tekst in het
+  donkere thema en kon een andere club dan AllStars FC als aangevinkt tonen (#1406).** De
+  gele testmodus-achtergrond had geen eigen tekstkleur en erfde daardoor de lichte tekstkleur van
+  het donkere thema; de dropdown krijgt nu altijd een leesbare, vaste tekstkleur. Daarnaast wordt
+  het `<select>`-element opnieuw opgebouwd zodra de clublijst of de geselecteerde club wijzigt, zodat
+  de browser de juiste optie altijd als geselecteerd toont.
 
 ### Added
 - **Toegangsmatrix per rol op "Instellingen → Rechten per rol" (#1390).** Deze pagina toonde
