@@ -219,6 +219,7 @@ public class SportlinkEndpointSupportCoreTests
             });
 
         okAangeroepen.Should().BeFalse();
-        (result as ObjectResult)?.StatusCode.Should().Be(502);
+        // #1387 maps transport/network failures to 504; Sportlink HTTP failures remain 502.
+        (result as ObjectResult)?.StatusCode.Should().Be(504);
     }
 }
