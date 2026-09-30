@@ -16,7 +16,8 @@ Een geslaagde build of fixturetest is geen bewijs van live compatibiliteit.
 ## Installatie en invoer
 
 1. Publiceer na review de bijbehorende migratie: PostgreSQL `029_sportlinkautologin.sql` of
-   SQL Server `dbo.SportlinkAutoLogin` via het schema-project. Geen migratie door een agent op
+   SQL Server `dbo.SportlinkAutoLogin` via het idempotente
+   `Database/Script.PostDeployment1.sql` (synchroon met het schema-project). Geen migratie door een agent op
    productie en geen nieuwe cloudresource nodig.
 2. Laat de beheerder een cryptografisch willekeurige sleutel van 32 bytes genereren en als
    Base64 opslaan in de bestaande Function App-secretinstelling
