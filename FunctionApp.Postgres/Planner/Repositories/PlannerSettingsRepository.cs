@@ -116,8 +116,11 @@ internal static class PlannerSettingsRepository
         TimeOnly? sunset = await GetSunsetAsync(connectionString, date);
         sunset ??= PostgresSunsetCalculator.GetSunset(date);
         foreach (var field in availableFields)
-            if (field.GebruikZonsondergang && sunset.HasValue && sunset.Value < field.BeschikbaarTot)
-                field.BeschikbaarTot = sunset.Value;
+            if (field.GebruikZonsondergang && sunset.HasValue)
+            {
+                var eindtijd = PlannerShared.ZonsondergangEindtijd(sunset.Value);
+                if (eindtijd < field.BeschikbaarTot) field.BeschikbaarTot = eindtijd;
+            }
         return sunset;
     }
 

@@ -18,6 +18,39 @@ public static class PlannerShared
     public const int StandardBufferMinutes = 15;
     public const double MaxBezettingsPercentageVoorOverslaan = 50.0;
     public const int SunsetWarningMarginMinutes = 20;
+
+    /// <summary>
+    /// Een veld zonder kunstlicht blijft na de zonsondergang nog deze tijd bruikbaar (#1409): het
+    /// is dan nog ruim licht genoeg, en een harde grens op de minuut wees wedstrijden af die een
+    /// paar minuten over de zonsondergang heen liepen.
+    /// </summary>
+    public const int SunsetUitloopMinuten = 15;
+
+    /// <summary>
+    /// Laatste tijdstip waarop een wedstrijd op een veld met de zonsondergang-regel mag eindigen:
+    /// zonsondergang plus <see cref="SunsetUitloopMinuten"/>. Eén plek voor beide databasetiers.
+    /// </summary>
+    public static TimeOnly ZonsondergangEindtijd(TimeOnly sunset)
+    {
+        var eind = sunset.AddMinutes(SunsetUitloopMinuten);
+        return eind < sunset ? new TimeOnly(23, 59) : eind; // nooit over middernacht wikkelen
+    }
+
+    /// <summary>
+    /// Waarschuwingstekst voor een wedstrijd die dicht bij of na de zonsondergang eindigt, of
+    /// <c>null</c> als de marge ruim genoeg is. Een negatieve marge (einde ná zonsondergang, nog
+    /// binnen de uitloop) wordt als "N min na zonsondergang" gemeld in plaats van "-N min marge".
+    /// </summary>
+    public static string? BouwZonsondergangWaarschuwing(string veldNaam, TimeOnly eindTijd, TimeOnly sunset)
+    {
+        var margin = (int)(sunset.ToTimeSpan() - eindTijd.ToTimeSpan()).TotalMinutes;
+        if (margin >= SunsetWarningMarginMinutes) return null;
+        var marge = margin >= 0
+            ? $"{margin} min marge"
+            : $"{-margin} min ná zonsondergang, binnen de toegestane uitloop van {SunsetUitloopMinuten} min";
+        return $"Geen kunstlicht op {veldNaam}. Wedstrijd eindigt om {eindTijd:HH:mm}, " +
+               $"zonsondergang {sunset:HH:mm} ({marge}).";
+    }
     public static readonly System.Globalization.CultureInfo NL = new("nl-NL");
 
     /// <summary>

@@ -399,11 +399,8 @@ public static class AvailabilityService
         if (!sunset.HasValue) return;
         var veld = velden.FirstOrDefault(v => v.VeldNummer == slot.VeldNummer);
         if (veld == null || veld.HeeftKunstlicht) return;
-        var margin = (sunset.Value.ToTimeSpan() - slot.EindTijd.ToTimeSpan()).TotalMinutes;
-        if (margin < PlannerShared.SunsetWarningMarginMinutes)
-            response.Waarschuwingen.Add(
-                $"Geen kunstlicht op {veld.VeldNaam}. Wedstrijd eindigt om {slot.EindTijd:HH:mm}, " +
-                $"zonsondergang {sunset.Value:HH:mm} ({(int)margin} min marge).");
+        var waarschuwing = PlannerShared.BouwZonsondergangWaarschuwing(veld.VeldNaam, slot.EindTijd, sunset.Value);
+        if (waarschuwing != null) response.Waarschuwingen.Add(waarschuwing);
     }
 
     private static void AddNabijeWedstrijdWaarschuwing(
