@@ -75,10 +75,10 @@ Ook ondersteund:
 Voorkeurstijden per team staan niet in `dbo.TeamRegels` maar in `dbo.TeamVoorkeurTijden` (per `DagVanWeek`).
 
 ### Zonsondergang-beperking (velden zonder kunstlicht)
-- Wedstrijd moet eindigen **voor zonsondergang**
+- Wedstrijd moet eindigen uiterlijk **15 minuten na zonsondergang** (#1409, `PlannerShared.SunsetUitloopMinuten`; één constante voor beide databasetiers). Het veld wordt tot zonsondergang + 15 min begrensd
 - Zonsondergang berekend via NOAA solar algorithm voor de clublocatie ([breedtegraad]°N, [lengtegraad]°E) — coördinaten configureerbaar in `dbo.AppSettings`
 - Opgeslagen in `dbo.Zonsondergang` tabel (handmatige overrides mogelijk)
-- **Geen harde buffer**, wel een waarschuwing als marge < 20 minuten
+- Een wedstrijd die binnen 20 minuten vóór zonsondergang of (binnen de uitloop) erna eindigt, krijgt een waarschuwing; na zonsondergang als "N min ná zonsondergang" in plaats van een negatieve marge
 
 ### Standaard voorkeurstijd per leeftijdscategorie (zachte regel)
 

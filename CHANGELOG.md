@@ -19,6 +19,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- Velden zonder kunstlicht blijven nu tot 15 minuten na zonsondergang beschikbaar voor de planner. Een
+  wedstrijd die net na zonsondergang eindigt wordt dus niet meer afgewezen; de waarschuwing meldt dan
+  "N min ná zonsondergang" in plaats van een negatieve marge (#1409).
 - Oefenwedstrijd aanmaken: de Team-keuzelijst heeft nu een extra optie "Vrije tekst invoeren…"
   waarmee u zelf een teamnaam kunt typen, bijvoorbeeld om te testen zonder een bestaand clubteam
   te gebruiken (#1396).

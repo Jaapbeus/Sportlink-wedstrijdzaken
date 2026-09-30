@@ -314,8 +314,11 @@ internal static class AvailabilityService
         var sunset = await PlannerDataAccess.GetSunsetAsync(date);
         if (sunset == null) sunset = SunsetCalculator.GetSunset(date);
         foreach (var field in velden)
-            if (field.GebruikZonsondergang && sunset.HasValue && sunset.Value < field.BeschikbaarTot)
-                field.BeschikbaarTot = sunset.Value;
+            if (field.GebruikZonsondergang && sunset.HasValue)
+            {
+                var eindtijd = PlannerShared.ZonsondergangEindtijd(sunset.Value);
+                if (eindtijd < field.BeschikbaarTot) field.BeschikbaarTot = eindtijd;
+            }
         return sunset;
     }
 
@@ -400,11 +403,8 @@ internal static class AvailabilityService
         if (!sunset.HasValue) return;
         var veld = velden.FirstOrDefault(v => v.VeldNummer == slot.VeldNummer);
         if (veld == null || veld.HeeftKunstlicht) return;
-        var margin = (sunset.Value.ToTimeSpan() - slot.EindTijd.ToTimeSpan()).TotalMinutes;
-        if (margin < PlannerShared.SunsetWarningMarginMinutes)
-            response.Waarschuwingen.Add(
-                $"Geen kunstlicht op {veld.VeldNaam}. Wedstrijd eindigt om {slot.EindTijd:HH:mm}, " +
-                $"zonsondergang {sunset.Value:HH:mm} ({(int)margin} min marge).");
+        var waarschuwing = PlannerShared.BouwZonsondergangWaarschuwing(veld.VeldNaam, slot.EindTijd, sunset.Value);
+        if (waarschuwing != null) response.Waarschuwingen.Add(waarschuwing);
     }
 
     private static void AddNabijeWedstrijdWaarschuwing(
