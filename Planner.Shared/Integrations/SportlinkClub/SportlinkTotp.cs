@@ -27,25 +27,40 @@ public static class SportlinkTotp
         };
 
         var key = DecodeBase32(secret);
-        long unixSeconds = utcNow.ToUnixTimeSeconds();
-        if (unixSeconds < 0)
-            throw new ArgumentOutOfRangeException(nameof(utcNow), "TOTP time must be at or after the Unix epoch.");
-        var counter = (ulong)(unixSeconds / periodSeconds);
-        Span<byte> counterBytes = stackalloc byte[sizeof(long)];
-        BinaryPrimitives.WriteUInt64BigEndian(counterBytes, counter);
-        var hash = HMACSHA1.HashData(key, counterBytes);
-        if (hashAlgorithm == HashAlgorithmName.SHA256)
-            hash = HMACSHA256.HashData(key, counterBytes);
-        else if (hashAlgorithm == HashAlgorithmName.SHA512)
-            hash = HMACSHA512.HashData(key, counterBytes);
-
-        var offset = hash[^1] & 0x0f;
-        uint binary = (uint)(((hash[offset] & 0x7f) << 24) |
-                             (hash[offset + 1] << 16) |
-                             (hash[offset + 2] << 8) |
-                             hash[offset + 3]);
-        uint modulus = digits == 6 ? 1_000_000u : 100_000_000u;
-        return (binary % modulus).ToString(digits == 6 ? "D6" : "D8", System.Globalization.CultureInfo.InvariantCulture);
+        try
+        {
+            long unixSeconds = utcNow.ToUnixTimeSeconds();
+            if (unixSeconds < 0)
+                throw new ArgumentOutOfRangeException(nameof(utcNow), "TOTP time must be at or after the Unix epoch.");
+            var counter = (ulong)(unixSeconds / periodSeconds);
+            Span<byte> counterBytes = stackalloc byte[sizeof(long)];
+            BinaryPrimitives.WriteUInt64BigEndian(counterBytes, counter);
+            var hash = hashAlgorithm switch
+            {
+                { } name when name == HashAlgorithmName.SHA1 => HMACSHA1.HashData(key, counterBytes),
+                { } name when name == HashAlgorithmName.SHA256 => HMACSHA256.HashData(key, counterBytes),
+                _ => HMACSHA512.HashData(key, counterBytes)
+            };
+            try
+            {
+                var offset = hash[^1] & 0x0f;
+                uint binary = (uint)(((hash[offset] & 0x7f) << 24) |
+                                     (hash[offset + 1] << 16) |
+                                     (hash[offset + 2] << 8) |
+                                     hash[offset + 3]);
+                uint modulus = digits == 6 ? 1_000_000u : 100_000_000u;
+                return (binary % modulus).ToString(digits == 6 ? "D6" : "D8", System.Globalization.CultureInfo.InvariantCulture);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(hash);
+                CryptographicOperations.ZeroMemory(counterBytes);
+            }
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(key);
+        }
     }
 
     private static byte[] DecodeBase32(string value)
