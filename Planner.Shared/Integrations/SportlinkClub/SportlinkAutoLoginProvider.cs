@@ -81,7 +81,7 @@ public sealed class SportlinkAutoLoginProvider : ISportlinkAutoLoginProvider
             {
                 var form = await ReadFormAsync(initial, ct);
                 var loginInputs = GetLoginInputs(form);
-                var fields = new Dictionary<string, string>(form.Hidden, StringComparer.Ordinal)
+                var fields = new Dictionary<string, string>(form.SubmissionFields, StringComparer.Ordinal)
                 {
                     [loginInputs.Username] = credentials.Username,
                     [loginInputs.Password] = credentials.Password
@@ -92,10 +92,12 @@ public sealed class SportlinkAutoLoginProvider : ISportlinkAutoLoginProvider
                 if (callback is null)
                 {
                     var otpForm = await ReadFormAsync(submitted, ct);
+                    if (otpForm.Element.QuerySelector("input[type=password]") is not null)
+                        throw new SportlinkLoginException(SportlinkLoginFailure.InvalidCredentials);
                     var otpField = GetOtpField(otpForm);
                     var otp = SportlinkTotp.Generate(credentials.TotpSecret, _timeProvider.GetUtcNow(),
                         credentials.TotpAlgorithm, credentials.TotpDigits, credentials.TotpPeriodSeconds);
-                    var otpFields = new Dictionary<string, string>(otpForm.Hidden, StringComparer.Ordinal)
+                    var otpFields = new Dictionary<string, string>(otpForm.SubmissionFields, StringComparer.Ordinal)
                     {
                         [otpField] = otp
                     };
@@ -152,7 +154,7 @@ public sealed class SportlinkAutoLoginProvider : ISportlinkAutoLoginProvider
         if (!IsRedirect(response.StatusCode)) return null;
         var location = response.Headers.Location!;
         var callback = location.IsAbsoluteUri ? location : new Uri(response.RequestMessage!.RequestUri!, location);
-        if (callback.Scheme != Uri.UriSchemeHttps || callback.Host != RedirectUri.Host ||
+        if (callback.Scheme != Uri.UriSchemeHttps || callback.UserInfo.Length != 0 || callback.Host != RedirectUri.Host ||
             callback.Port != RedirectUri.Port || callback.AbsolutePath != RedirectUri.AbsolutePath ||
             !string.IsNullOrEmpty(callback.Fragment))
             throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);
@@ -198,26 +200,68 @@ public sealed class SportlinkAutoLoginProvider : ISportlinkAutoLoginProvider
         if (!response.IsSuccessStatusCode) throw new SportlinkLoginException(SportlinkLoginFailure.InvalidCredentials);
         var bytes = await ReadBodyAsync(response, ct);
         var document = new HtmlParser().ParseDocument(Encoding.UTF8.GetString(bytes));
-        if (document.QuerySelectorAll("form").Length != 1)
+        if (document.QuerySelectorAll("form").Length != 1 || ContainsUnsupportedChallenge(document))
             throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);
         var form = document.QuerySelector("form")!;
         if (!string.Equals(form.GetAttribute("method") ?? "get", "post", StringComparison.OrdinalIgnoreCase))
+            throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);
+        if (form.QuerySelector("select, textarea") is not null)
             throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);
         var baseUri = response.RequestMessage?.RequestUri ?? AuthorizationEndpoint;
         var actionValue = form.GetAttribute("action");
         var action = new Uri(baseUri, string.IsNullOrWhiteSpace(actionValue) ? baseUri.PathAndQuery : actionValue);
         EnsureAllowedFormAction(action);
-        var hidden = new Dictionary<string, string>(StringComparer.Ordinal);
+        var submissionFields = CollectSubmissionFields(form);
+        return new LoginForm(action, submissionFields, form);
+    }
+
+    private static Dictionary<string, string> CollectSubmissionFields(AngleSharp.Dom.IElement form)
+    {
+        var submissionFields = new Dictionary<string, string>(StringComparer.Ordinal);
+        var submitCount = 0;
         foreach (var input in form.QuerySelectorAll("input"))
         {
             var name = input.GetAttribute("name");
-            if (string.IsNullOrWhiteSpace(name)) throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);
             var type = (input.GetAttribute("type") ?? "text").ToLowerInvariant();
-            if (type == "hidden") hidden[name] = input.GetAttribute("value") ?? string.Empty;
-            else if (type is not ("text" or "email" or "password" or "tel" or "number"))
+            switch (type)
+            {
+                case "hidden":
+                    AddUniqueField(submissionFields, name, input.GetAttribute("value") ?? string.Empty);
+                    break;
+                case "submit":
+                    if (name != "login") throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);
+                    AddUniqueField(submissionFields, name, input.GetAttribute("value") ?? string.Empty);
+                    submitCount++;
+                    break;
+                case "checkbox":
+                    if (name != "rememberMe") throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);
+                    if (input.HasAttribute("checked")) AddUniqueField(submissionFields, name, input.GetAttribute("value") ?? "on");
+                    break;
+                case "text":
+                case "email":
+                case "password":
+                case "tel":
+                case "number":
+                    break;
+                default:
+                    throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);
+            }
+        }
+        foreach (var button in form.QuerySelectorAll("button"))
+        {
+            if (!string.Equals(button.GetAttribute("type"), "button", StringComparison.OrdinalIgnoreCase) ||
+                !(button.HasAttribute("data-password-toggle") || button.GetAttribute("aria-controls") == "password"))
                 throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);
         }
-        return new LoginForm(action, hidden, form);
+        if (submitCount != 1)
+            throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);
+        return submissionFields;
+    }
+
+    private static void AddUniqueField(Dictionary<string, string> fields, string? name, string value)
+    {
+        if (string.IsNullOrWhiteSpace(name) || !fields.TryAdd(name, value))
+            throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);
     }
 
     private static (string Username, string Password) GetLoginInputs(LoginForm form)
@@ -230,8 +274,8 @@ public sealed class SportlinkAutoLoginProvider : ISportlinkAutoLoginProvider
             var name = i.GetAttribute("name");
             return (type is null or "text" or "email") && (name is "username" or "email" or "login");
         }).ToArray();
-        var nonHidden = inputs.Where(static i => !string.Equals(i.GetAttribute("type"), "hidden", StringComparison.OrdinalIgnoreCase)).ToArray();
-        if (passwords.Length != 1 || users.Length != 1 || nonHidden.Length != 2)
+        var credentialInputs = inputs.Where(static i => (i.GetAttribute("type") ?? "text").ToLowerInvariant() is "text" or "email" or "password" or "tel" or "number").ToArray();
+        if (passwords.Length != 1 || users.Length != 1 || credentialInputs.Length != 2)
             throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);
         return (users[0].GetAttribute("name")!, passwords[0].GetAttribute("name")!);
     }
@@ -246,8 +290,8 @@ public sealed class SportlinkAutoLoginProvider : ISportlinkAutoLoginProvider
                 name is "otp" or "totp" or "code" or "credential";
         }).ToArray();
         var containsSecretField = form.Element.QuerySelectorAll("input[type=password]").Length > 0;
-        var nonHidden = form.Element.QuerySelectorAll("input").Where(static i => !string.Equals(i.GetAttribute("type"), "hidden", StringComparison.OrdinalIgnoreCase)).ToArray();
-        if (containsSecretField || candidates.Length != 1 || nonHidden.Length != 1 || candidates[0].GetAttribute("type") is not (null or "text" or "tel" or "number"))
+        var credentialInputs = form.Element.QuerySelectorAll("input").Where(static i => (i.GetAttribute("type") ?? "text").ToLowerInvariant() is "text" or "email" or "password" or "tel" or "number").ToArray();
+        if (containsSecretField || candidates.Length != 1 || credentialInputs.Length != 1 || candidates[0].GetAttribute("type") is not (null or "text" or "tel" or "number"))
             throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);
         return candidates[0].GetAttribute("name")!;
     }
@@ -281,12 +325,12 @@ public sealed class SportlinkAutoLoginProvider : ISportlinkAutoLoginProvider
     private static void EnsureAllowedFormAction(Uri uri)
     {
         EnsureAllowedIdentityUri(uri);
-        if (!uri.AbsolutePath.StartsWith("/realms/sportlink/login-actions/", StringComparison.Ordinal))
+        if (uri.AbsolutePath != "/realms/sportlink/login-actions/authenticate")
             throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);
     }
 
     private static bool IsRealmPath(string path) =>
-        path == "/realms/sportlink" || path.StartsWith("/realms/sportlink/login-actions/", StringComparison.Ordinal) ||
+        path == "/realms/sportlink" || path == "/realms/sportlink/login-actions/authenticate" ||
         path == "/realms/sportlink/protocol/openid-connect/auth" ||
         path == "/realms/sportlink/protocol/openid-connect/token";
 
@@ -321,5 +365,22 @@ public sealed class SportlinkAutoLoginProvider : ISportlinkAutoLoginProvider
         root.TryGetProperty(name, out var value) && value.TryGetInt32(out var number) && number >= 0
             ? number : throw new SportlinkLoginException(SportlinkLoginFailure.InvalidResponse);
 
-    private sealed record LoginForm(Uri Action, Dictionary<string, string> Hidden, AngleSharp.Dom.IElement Element);
+    private static bool ContainsUnsupportedChallenge(AngleSharp.Dom.IDocument document)
+    {
+        if (document.QuerySelector("iframe") is not null || document.QuerySelector("a[id^='social-'], a[href*='/broker/']") is not null ||
+            document.QuerySelector("[data-sitekey]") is not null)
+            return true;
+        foreach (var element in document.QuerySelectorAll("script, [id], [class], [src], [title]"))
+        {
+            var marker = string.Join(" ", element.GetAttribute("id"), element.GetAttribute("class"),
+                element.GetAttribute("src"), element.GetAttribute("title"));
+            if (marker.Contains("captcha", StringComparison.OrdinalIgnoreCase) ||
+                marker.Contains("recaptcha", StringComparison.OrdinalIgnoreCase) ||
+                marker.Contains("hcaptcha", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    private sealed record LoginForm(Uri Action, Dictionary<string, string> SubmissionFields, AngleSharp.Dom.IElement Element);
 }

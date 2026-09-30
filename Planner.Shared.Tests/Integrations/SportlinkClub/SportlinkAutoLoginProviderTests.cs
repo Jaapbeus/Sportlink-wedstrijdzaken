@@ -20,7 +20,7 @@ public sealed class SportlinkAutoLoginProviderTests
             var body = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
             requests.Add((request.Method.Method, request.RequestUri!, body));
             if (request.Method == HttpMethod.Get)
-                return Html("<form method='post' action='/realms/sportlink/login-actions/authenticate?session_code=fake'><input type='hidden' name='session_code' value='fake'><input name='username'><input type='password' name='password'></form>");
+                return Html("<form method='post' action='/realms/sportlink/login-actions/authenticate?session_code=fake'><input type='hidden' name='session_code' value='fake'><input type='hidden' name='credentialId' value=''><input name='username'><input type='password' name='password'><input type='checkbox' name='rememberMe'><input name='login' type='submit' value='Sign in'><button type='button' aria-controls='password'>Show password</button></form>");
             if (request.RequestUri!.AbsolutePath.EndsWith("/authenticate", StringComparison.Ordinal))
             {
                 var authorize = requests[0].Uri;
@@ -41,6 +41,8 @@ public sealed class SportlinkAutoLoginProviderTests
         Assert.Equal("S256", authQuery["code_challenge_method"]);
         Assert.Contains("username=test-user", requests[1].Body);
         Assert.Contains(Uri.EscapeDataString("pass" + "word") + "=test-password", requests[1].Body);
+        Assert.Contains("login=Sign+in", requests[1].Body);
+        Assert.DoesNotContain("rememberMe", requests[1].Body);
         var tokenBody = HttpUtility.ParseQueryString(requests[2].Body!);
         Assert.Equal("fake-code", tokenBody["code"]);
         var verifier = tokenBody["code_verifier"]!;
@@ -60,12 +62,12 @@ public sealed class SportlinkAutoLoginProviderTests
             if (request.Method == HttpMethod.Get)
             {
                 initialUri = request.RequestUri;
-                return Html("<form method='post' action='/realms/sportlink/login-actions/authenticate'><input name='username'><input type='password' name='password'></form>");
+                return Html("<form method='post' action='/realms/sportlink/login-actions/authenticate'><input name='username'><input type='password' name='password'><input name='login' type='submit' value='Sign in'></form>");
             }
             postCount++;
             if (request.RequestUri!.AbsolutePath.EndsWith("/authenticate", StringComparison.Ordinal) && postCount == 1)
-                return Html("<form method='post' action='/realms/sportlink/login-actions/required-action'><input type='hidden' name='execution' value='x'><input name='otp' autocomplete='one-time-code'></form>");
-            if (request.RequestUri!.AbsolutePath.EndsWith("/required-action", StringComparison.Ordinal))
+                return Html("<form method='post' action='/realms/sportlink/login-actions/authenticate'><input type='hidden' name='execution' value='x'><input name='otp' autocomplete='one-time-code'><input name='login' type='submit' value='Sign in'></form>");
+            if (postCount == 2)
             {
                 otpBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
                 var state = HttpUtility.ParseQueryString(initialUri!.Query)["state"]!;
@@ -87,7 +89,7 @@ public sealed class SportlinkAutoLoginProviderTests
         var provider = MakeProvider(request =>
         {
             if (request.Method == HttpMethod.Post) postCount++;
-            return Html("<form method='post' action='https://attacker.invalid/collect'><input name='username'><input type='password' name='password'></form>");
+            return Html("<form method='post' action='https://attacker.invalid/collect'><input name='username'><input type='password' name='password'><input name='login' type='submit' value='Sign in'></form>");
         });
 
         var error = await Assert.ThrowsAsync<SportlinkLoginException>(() => provider.LoginAsync(Credentials()));
@@ -103,7 +105,7 @@ public sealed class SportlinkAutoLoginProviderTests
         var provider = MakeProvider(request =>
         {
             if (request.Method == HttpMethod.Get)
-                return Html("<form method='post' action='/realms/sportlink/login-actions/authenticate'><input name='username'><input type='password' name='password'></form>");
+                return Html("<form method='post' action='/realms/sportlink/login-actions/authenticate'><input name='username'><input type='password' name='password'><input name='login' type='submit' value='Sign in'></form>");
             if (request.RequestUri!.AbsolutePath.EndsWith("/token", StringComparison.Ordinal)) tokenRequests++;
             return Redirect("https://club.sportlink.com/dashboard?code=secret-code&state=attacker-value");
         });
@@ -121,9 +123,9 @@ public sealed class SportlinkAutoLoginProviderTests
         var provider = MakeProvider(request =>
         {
             if (request.Method == HttpMethod.Get)
-                return Html("<form method='post' action='/realms/sportlink/login-actions/authenticate'><input name='username'><input type='password' name='password'></form>");
+                return Html("<form method='post' action='/realms/sportlink/login-actions/authenticate'><input name='username'><input type='password' name='password'><input name='login' type='submit' value='Sign in'></form>");
             postCount++;
-            return Html("<form method='post' action='/realms/sportlink/login-actions/required-action'><input name='otp'><input type='checkbox' name='captcha-response'></form>");
+            return Html("<script src='/resources/recaptcha/widget.js'></script><form method='post' action='/realms/sportlink/login-actions/authenticate'><input name='otp'><input type='submit' name='login' value='Sign in'></form>");
         });
 
         var error = await Assert.ThrowsAsync<SportlinkLoginException>(() => provider.LoginAsync(Credentials()));
@@ -140,7 +142,7 @@ public sealed class SportlinkAutoLoginProviderTests
         {
             requestCount++;
             if (request.Method == HttpMethod.Get)
-                return Html("<form method='post' action='/realms/sportlink/login-actions/authenticate'><input name='username'><input type='password' name='password'></form>");
+                return Html("<form method='post' action='/realms/sportlink/login-actions/authenticate'><input name='username'><input type='password' name='password'><input name='login' type='submit' value='Sign in'></form>");
             return Redirect("https://attacker.invalid/next?code=sensitive");
         });
 
@@ -148,6 +150,75 @@ public sealed class SportlinkAutoLoginProviderTests
         Assert.Equal(SportlinkLoginFailure.UnsupportedChallenge, error.Failure);
         Assert.Equal(2, requestCount);
         Assert.DoesNotContain("sensitive", error.ToString());
+    }
+
+    [Fact]
+    public async Task LoginAsync_DuplicateHiddenParameter_FailsBeforePostingCredentials()
+    {
+        var postCount = 0;
+        var provider = MakeProvider(request =>
+        {
+            if (request.Method == HttpMethod.Post) postCount++;
+            return Html("<form method='post' action='/realms/sportlink/login-actions/authenticate'><input type='hidden' name='session_code' value='one'><input type='hidden' name='session_code' value='two'><input name='username'><input type='password' name='password'><input type='submit' name='login' value='Sign in'></form>");
+        });
+
+        var error = await Assert.ThrowsAsync<SportlinkLoginException>(() => provider.LoginAsync(Credentials()));
+        Assert.Equal(SportlinkLoginFailure.UnsupportedChallenge, error.Failure);
+        Assert.Equal(0, postCount);
+    }
+
+    [Fact]
+    public async Task LoginAsync_LoginPageReturnedAfterCredentials_StopsWithoutSecondCredentialAttempt()
+    {
+        var postCount = 0;
+        var provider = MakeProvider(request =>
+        {
+            if (request.Method == HttpMethod.Get)
+                return Html("<form method='post' action='/realms/sportlink/login-actions/authenticate'><input name='username'><input type='password' name='password'><input type='submit' name='login' value='Sign in'></form>");
+            postCount++;
+            return Html("<form method='post' action='/realms/sportlink/login-actions/authenticate'><span class='alert-error'>Invalid username or password</span><input name='username'><input type='password' name='password'><input type='submit' name='login' value='Sign in'></form>");
+        });
+
+        var error = await Assert.ThrowsAsync<SportlinkLoginException>(() => provider.LoginAsync(Credentials()));
+        Assert.Equal(SportlinkLoginFailure.InvalidCredentials, error.Failure);
+        Assert.Equal(1, postCount);
+    }
+
+    [Fact]
+    public async Task LoginAsync_NonAuthenticateAction_FailsBeforePostingCredentials()
+    {
+        var postCount = 0;
+        var provider = MakeProvider(request =>
+        {
+            if (request.Method == HttpMethod.Post) postCount++;
+            return Html("<form method='post' action='/realms/sportlink/login-actions/required-action'><input name='username'><input type='password' name='password'><input type='submit' name='login' value='Sign in'></form>");
+        });
+
+        var error = await Assert.ThrowsAsync<SportlinkLoginException>(() => provider.LoginAsync(Credentials()));
+        Assert.Equal(SportlinkLoginFailure.UnsupportedChallenge, error.Failure);
+        Assert.Equal(0, postCount);
+    }
+
+    [Fact]
+    public async Task LoginAsync_CallbackWithUserInfo_FailsBeforeCodeExchange()
+    {
+        var tokenRequests = 0;
+        var initial = string.Empty;
+        var provider = MakeProvider(request =>
+        {
+            if (request.Method == HttpMethod.Get)
+            {
+                initial = request.RequestUri!.Query;
+                return Html("<form method='post' action='/realms/sportlink/login-actions/authenticate'><input name='username'><input type='password' name='password'><input type='submit' name='login' value='Sign in'></form>");
+            }
+            if (request.RequestUri!.AbsolutePath.EndsWith("/token", StringComparison.Ordinal)) tokenRequests++;
+            var state = HttpUtility.ParseQueryString(initial)["state"]!;
+            return Redirect($"https://userinfo@club.sportlink.com/dashboard?code=fake&state={Uri.EscapeDataString(state)}");
+        });
+
+        var error = await Assert.ThrowsAsync<SportlinkLoginException>(() => provider.LoginAsync(Credentials()));
+        Assert.Equal(SportlinkLoginFailure.UnsupportedChallenge, error.Failure);
+        Assert.Equal(0, tokenRequests);
     }
 
     private static SportlinkAutoLoginProvider MakeProvider(Func<HttpRequestMessage, HttpResponseMessage> reply) =>
