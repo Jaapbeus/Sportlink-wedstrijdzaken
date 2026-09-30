@@ -39,6 +39,12 @@ public static class SportlinkExtensieHealthFunction
                 await connection.OpenAsync();
 
                 var rollen = await LeesRolStatusAsync(connection, clubCode);
+                // #1411: toon de daadwerkelijk actieve opslag, niet verouderde bootstrapmetadata.
+                var autoStore = context.InstanceServices.GetService<ISportlinkAutoLoginStore>();
+                if (autoStore is not null && string.Equals(clubCode, autoStore.ClubCode, StringComparison.Ordinal))
+                    rollen = new List<SportlinkRolStatus> { SportlinkEndpointCore.BouwRolStatus(
+                        RolNaam, !string.IsNullOrWhiteSpace(autoStore.LeesRefreshToken(RolNaam)),
+                        laatstVerverstOpUtc: null, refreshTokenVervaltOpUtc: null, nuUtc: DateTime.UtcNow) };
                 var (laatsteFout, laatsteFoutOp) = await LeesLaatsteMutatieFoutAsync(connection, clubCode);
                 var laatsteContractCheck = await LeesLaatsteContractCheckAsync(connection, clubCode);
 

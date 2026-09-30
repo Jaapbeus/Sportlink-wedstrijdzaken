@@ -1,3 +1,31 @@
+# HANDOFF — #1411 automatische Sportlink-login
+
+Werkbranch: `feature/#1411-sportlink-auto-login`, basis `origin/develop` op
+`058cc2d934968468a178858ca126abb21e3c3f93`. Plan en eenmalige Codex-implementatiebevoegdheid:
+https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/1411.
+
+Implementatie: TOTP/PKCE-loginprovider, AES-GCM-opslag op beide databasetiers,
+databaselease en begrensde herlogin, admin-API en beheerinterface. Installatie, sleutelbeheer,
+verwijdering en live acceptatie staan in `docs/SPORTLINK-AUTOLOGIN.md`.
+
+Geverifieerd: builds beide backends en frontend; gerichte cryptografie/provider/coördinatie/
+client-/endpointtests; beide tiers' autorisatietests; frontend publish-CSP; geïsoleerde
+browserproef met fictieve gegevens en gemockte API. Lokale net9-tests gebruiken expliciet
+.NET 10 roll-forward omdat deze host geen net9-runtime heeft. De CI-run met de doelruntime
+blijft vereist. Geen echte Sportlink-login uitgevoerd.
+
+Open vóór ingebruikname:
+- CI inclusief echte PostgreSQL-integratietests en Security Gate controleren.
+- Eigenaar verifieert de actuele Sportlink-formulieren en TOTP-parameters met eigen account.
+- Minstens 24 uur/twee sessieovergangen inclusief herstart; geen wedstrijdmutaties in die proef.
+- Deployment, migratie en secret-invoer pas na afzonderlijk eigenaarsbesluit.
+
+Orkestratie/integratie/review: Astra. Deelimplementaties cryptografie, loginprovider,
+opslag en GUI: gpt-6-luna, door de orchestrator beoordeeld en geïntegreerd.
+De blijvende reviewerregel in CLAUDE.md/AGENTS.md is niet gewijzigd.
+
+---
+
 # HANDOFF — #1350 API-autorisatie geconsolideerd
 
 Branch `feature/#1350-api-auth-consolidatie` → PR naar `develop`. Versie `3.5.6.1` (REVISION-bump:

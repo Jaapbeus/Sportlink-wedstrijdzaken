@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Components;
 namespace BlazorAdmin.Pages;
 
 /// <summary>Code-behind van <c>SportlinkExtensieInstellingen.razor</c> (#988/#991/#998/#1113, code-behind sinds #1122).</summary>
-public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
+public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase, IDisposable
 {
     [Inject] private AdminApiClient Api { get; set; } = default!;
 
@@ -21,6 +21,14 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
     private string? registreerRefreshToken;
     private string? sportlinkTokenMessage;
 
+    private const string AutoLoginRolNaam = "Wedstrijdzaken";
+    private SportlinkAutoLoginStatusDto? autoLoginStatus;
+    private SportlinkAutoLoginRequestDto autoLoginForm = new();
+    private bool autoLoginFormOpen;
+    private bool autoLoginBusy;
+    private string? autoLoginMessage;
+    private string? autoLoginError;
+
     private SportlinkExtensieHealthDto? sportlinkHealth;
     private bool sportlinkHealthLoading;
     private string? sportlinkHealthError;
@@ -29,7 +37,12 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
-    protected override Task OnClubChangedAsync() => LoadAsync();
+    protected override Task OnClubChangedAsync()
+    {
+        SluitAutoLoginFormulier();
+        autoLoginStatus = null;
+        return LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
@@ -42,7 +55,104 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
         else errorMessage = r.ErrorMessage;
 
         await LaadSportlinkExtensieRollenAsync();
+        await LaadAutoLoginStatusAsync();
         await LaadSportlinkHealthAsync();
+    }
+
+    private async Task LaadAutoLoginStatusAsync()
+    {
+        autoLoginError = null;
+        var r = await Api.GetSportlinkAutoLoginStatusAsync(AutoLoginRolNaam);
+        autoLoginStatus = r.Success ? r.Data : null;
+        if (!r.Success) autoLoginError = "Status van automatisch inloggen kon niet worden opgehaald.";
+    }
+
+    private void StartAutoLoginInstellen()
+    {
+        WisAutoLoginGeheimen();
+        autoLoginForm = new();
+        autoLoginFormOpen = true;
+        autoLoginMessage = null;
+        autoLoginError = null;
+    }
+
+    private void SluitAutoLoginFormulier()
+    {
+        WisAutoLoginGeheimen();
+        autoLoginForm = new();
+        autoLoginFormOpen = false;
+        autoLoginMessage = null;
+    }
+
+    private void WisAutoLoginGeheimen()
+    {
+        autoLoginForm.Username = "";
+        autoLoginForm.Password = "";
+        autoLoginForm.TotpSecret = "";
+    }
+
+    public void Dispose() => WisAutoLoginGeheimen();
+
+    private async Task BewaarAutoLoginAsync()
+    {
+        if (autoLoginBusy || string.IsNullOrWhiteSpace(autoLoginForm.Username) ||
+            string.IsNullOrWhiteSpace(autoLoginForm.Password) || string.IsNullOrWhiteSpace(autoLoginForm.TotpSecret))
+            return;
+
+        autoLoginBusy = true;
+        autoLoginError = null;
+        autoLoginMessage = null;
+        try
+        {
+            var r = await Api.SetSportlinkAutoLoginAsync(AutoLoginRolNaam, autoLoginForm);
+            if (r.Success)
+            {
+                autoLoginStatus = r.Data;
+                autoLoginMessage = "Automatisch inloggen is ingesteld. De gegevens worden bij de volgende automatische vernieuwing gebruikt.";
+                autoLoginFormOpen = false;
+            }
+            else
+            {
+                autoLoginError = "Instellen is mislukt. Controleer de invoer en probeer opnieuw.";
+            }
+        }
+        catch
+        {
+            autoLoginError = "Instellen is mislukt door een onverwachte fout.";
+        }
+        finally
+        {
+            WisAutoLoginGeheimen();
+            autoLoginBusy = false;
+        }
+    }
+
+    private async Task VerwijderAutoLoginAsync()
+    {
+        if (autoLoginBusy) return;
+        autoLoginBusy = true;
+        autoLoginError = null;
+        autoLoginMessage = null;
+        try
+        {
+            var r = await Api.DeleteSportlinkAutoLoginAsync(AutoLoginRolNaam);
+            if (r.Success)
+            {
+                autoLoginStatus = r.Data;
+                autoLoginMessage = "Opgeslagen inloggegevens verwijderd.";
+                SluitAutoLoginFormulier();
+            }
+            else autoLoginError = "Verwijderen is mislukt. Probeer het later opnieuw.";
+        }
+        catch
+        {
+            autoLoginError = "Verwijderen is mislukt door een onverwachte fout.";
+        }
+        finally
+        {
+            WisAutoLoginGeheimen();
+            autoLoginBusy = false;
+        }
     }
 
     private async Task LaadSportlinkExtensieRollenAsync()

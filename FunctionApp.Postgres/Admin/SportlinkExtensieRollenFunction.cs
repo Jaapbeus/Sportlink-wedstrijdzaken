@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using FunctionApp.Postgres.Infrastructure;
 using FunctionApp.Postgres.Sportlink;
 using Microsoft.AspNetCore.Http;
@@ -114,6 +115,9 @@ public static class SportlinkExtensieRollenFunction
             {
                 if (!FunctioneleRollen.Contains(rolNaam, StringComparer.OrdinalIgnoreCase))
                     return new BadRequestObjectResult(new { error = $"Onbekende rol '{rolNaam}'. Toegestaan: {string.Join(", ", FunctioneleRollen)}." });
+
+                if (context.InstanceServices.GetService<ISportlinkAutoLoginStore>() is not null)
+                    return new ObjectResult(new { error = "Gebruik de beveiligde automatische login om opnieuw te koppelen." }) { StatusCode = 409 };
 
                 var dto = JsonConvert.DeserializeObject<RegistreerTokenDto>(
                     await new StreamReader(req.Body).ReadToEndAsync());

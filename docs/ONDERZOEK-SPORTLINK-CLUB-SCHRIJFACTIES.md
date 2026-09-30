@@ -188,8 +188,9 @@ Uitgevoerd voor SLX-04/#990. Bevindingen, uitsluitend structureel/niet-herleidba
   #2 met het NIEUWE refresh_token uit #1 → **eveneens geslaagd**, met dezelfde `expires_in`/
   `refresh_expires_in`. **De refresh-cyclus is dus herhaalbaar** (elke refresh geeft een nieuw
   refresh_token, dat weer bruikbaar is voor de volgende refresh) — dit is het sluitende bewijs voor
-  de kernvraag van #990: een backend kan zelfstandig, zonder browser, indefiniet bij Sportlink
-  Club "ingelogd" blijven zolang hij minstens elke 6 uur ververst.
+  herhaalbaarheid van de refresh-grant op die twee meetmomenten. Dit bewijst geen onbeperkte
+  sessieduur. De eigenaar bevestigde later een absolute tien-uurslimiet en afwijzing van M2M;
+  #1411 voegt daarom afzonderlijke herlogin toe (zie SPORTLINK-AUTOLOGIN.md).
 - **API-call-test (`user/UserInfo`) nog niet geslaagd — aparte, oplosbare oorzaak.** Zowel met als
   zonder `X-Navajo-*`-headers gaf de call een foutstatus. De headerwaarden in het testscript waren
   echter **gegokt** (`X-Navajo-Instance: "1"` e.d.), nooit bevestigd tegen echt verkeer — een fout

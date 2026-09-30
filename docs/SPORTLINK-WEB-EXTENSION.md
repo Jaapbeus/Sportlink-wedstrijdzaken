@@ -1,5 +1,10 @@
 # Sportlink Web Extension
 
+> #1411 voegt opt-in automatische herlogin met TOTP toe. De bevestigde tien-uurslimiet vereist
+> een nieuwe sessie; refresh alleen is niet onbeperkt. Met een ingerichte hostsleutel gebruiken
+> beide tiers versleutelde databaseopslag; de oudere bootstrapbeschrijving hieronder geldt voor
+> de configuratie zonder die sleutel. Zie [automatische login](SPORTLINK-AUTOLOGIN.md).
+
 > **Status: gedeeltelijk gebouwd. Het read-only Match-endpoint (#991) is 2026-09-06 lokaal live
 > geverifieerd tegen een echte testwedstrijd** (zie §4.4/#1036/#1038 voor de daarbij gevonden en
 > gefixte bugs: `ExternalMatchId` kwam als JSON-getal terug in plaats van string (#1036), en

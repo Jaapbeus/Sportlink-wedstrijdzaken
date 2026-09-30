@@ -85,6 +85,7 @@ public class SportlinkClubClient : ISportlinkClubClient
 
     private readonly HttpClient _httpClient;
     private readonly ISportlinkClubTokenStore _tokenStore;
+    private readonly SportlinkAutoLoginCoordinator? _autoLogin;
     private readonly ILogger<SportlinkClubClient> _logger;
     private readonly Func<bool> _isDryRun;
 
@@ -119,10 +120,12 @@ public class SportlinkClubClient : ISportlinkClubClient
         HttpClient httpClient,
         ISportlinkClubTokenStore tokenStore,
         ILogger<SportlinkClubClient> logger,
-        Func<bool>? isDryRun = null)
+        Func<bool>? isDryRun = null,
+        SportlinkAutoLoginCoordinator? autoLogin = null)
     {
         _httpClient = httpClient;
         _tokenStore = tokenStore;
+        _autoLogin = autoLogin;
         _logger = logger;
         _isDryRun = isDryRun ?? (() => false);
     }
@@ -1449,7 +1452,7 @@ public class SportlinkClubClient : ISportlinkClubClient
         var now = DateTimeOffset.UtcNow;
 
         // Check cache — is token nog geldig?
-        if (!forceRefresh && _tokenCache.TryGetValue(functioneleRol, out var cached))
+        if (_autoLogin is null && !forceRefresh && _tokenCache.TryGetValue(functioneleRol, out var cached))
         {
             if (now.AddSeconds(TokenExpiryMarginSeconds) < cached.ExpiresAtUtc)
             {
@@ -1466,13 +1469,22 @@ public class SportlinkClubClient : ISportlinkClubClient
         try
         {
             // Double-check: mis tussendoor iemand anders al vernieuwd?
-            if (!forceRefresh && _tokenCache.TryGetValue(functioneleRol, out var recheck))
+            if (_autoLogin is null && !forceRefresh && _tokenCache.TryGetValue(functioneleRol, out var recheck))
             {
                 if (now.AddSeconds(TokenExpiryMarginSeconds) < recheck.ExpiresAtUtc)
                     return (SportlinkClubCallStatus.Ok, recheck.AccessToken, null);
             }
 
-            // Lees huiconstante refresh token
+            // #1411: dezelfde databaselease voor herlogin, refresh-rotatie en beheerwrites.
+            await using var lease = _autoLogin is null ? null :
+                await _autoLogin.AcquireLeaseAsync(functioneleRol, cancellationToken);
+            if (_autoLogin is not null)
+            {
+                var login = await _autoLogin.TryLoginAsync(functioneleRol, false, cancellationToken);
+                if (login is not null) return CacheLogin(functioneleRol, login);
+            }
+
+            // Lees het laatst duurzaam opgeslagen refresh-token onder de lease.
             var refreshToken = _tokenStore.LeesRefreshToken(functioneleRol);
             if (string.IsNullOrWhiteSpace(refreshToken))
             {
@@ -1490,32 +1502,51 @@ public class SportlinkClubClient : ISportlinkClubClient
                 await WachtVoorTransienteRetryAsync($"token-endpoint, rol '{functioneleRol}'", cancellationToken);
                 refreshResult = await CallTokenEndpointAsync(refreshToken, cancellationToken);
             }
+            if (refreshResult.Status == SportlinkClubCallStatus.HerkoppelingVereist && _autoLogin is not null)
+            {
+                var login = await _autoLogin.TryLoginAsync(functioneleRol, true, cancellationToken);
+                if (login is not null) return CacheLogin(functioneleRol, login);
+            }
             if (refreshResult.Status != SportlinkClubCallStatus.Ok)
                 return (refreshResult.Status, refreshResult.AccessToken, refreshResult.FoutmeldingVoorLog);
 
             if (string.IsNullOrWhiteSpace(refreshResult.AccessToken) || !refreshResult.ExpiresIn.HasValue)
                 return (SportlinkClubCallStatus.SportlinkFout, null, "Token endpoint gaf onvolledig antwoord");
 
-            // Cache bijwerken
+            // #1411: opslag afwachten vóór caching/succes; geen fire-and-forget credentialrotatie.
+            if (!string.IsNullOrWhiteSpace(refreshResult.NewRefreshToken))
+                await _tokenStore.SchrijfRefreshTokenAsync(functioneleRol, refreshResult.NewRefreshToken, cancellationToken);
             var expiresAt = DateTimeOffset.UtcNow.AddSeconds(refreshResult.ExpiresIn.Value);
-            var newToken = new CachedRoleToken(refreshResult.AccessToken, expiresAt, refreshResult.NewRefreshToken ?? refreshToken);
-            _tokenCache[functioneleRol] = newToken;
-
-            // Async: schrijf token terug (niet-blocking)
-            _ = Task.Run(async () =>
-            {
-                if (!string.IsNullOrWhiteSpace(refreshResult.NewRefreshToken))
-                {
-                    await _tokenStore.SchrijfRefreshTokenAsync(functioneleRol, refreshResult.NewRefreshToken, cancellationToken);
-                }
-            }, cancellationToken);
+            _tokenCache[functioneleRol] = new CachedRoleToken(refreshResult.AccessToken,
+                expiresAt, refreshResult.NewRefreshToken ?? refreshToken);
 
             return (SportlinkClubCallStatus.Ok, refreshResult.AccessToken, null);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (SportlinkLoginException)
+        {
+            _tokenCache.TryRemove(functioneleRol, out _);
+            _logger.LogWarning("Automatische Sportlink-login niet voltooid; controleer de beheerstatus.");
+            return (SportlinkClubCallStatus.HerkoppelingVereist, null, "Automatisch aanmelden niet voltooid");
+        }
+        catch (Exception)
+        {
+            _tokenCache.TryRemove(functioneleRol, out _);
+            _logger.LogWarning("Sportlink-token kon niet veilig worden vernieuwd of opgeslagen.");
+            return (SportlinkClubCallStatus.SportlinkFout, null, "Veilige tokenvernieuwing niet beschikbaar");
         }
         finally
         {
             semaphore.Release();
         }
+    }
+
+    private (SportlinkClubCallStatus Status, string? AccessToken, string? FoutmeldingVoorLog)
+        CacheLogin(string role, SportlinkLoginResult login)
+    {
+        _tokenCache[role] = new CachedRoleToken(login.AccessToken,
+            DateTimeOffset.UtcNow.AddSeconds(login.ExpiresInSeconds), login.RefreshToken);
+        return (SportlinkClubCallStatus.Ok, login.AccessToken, null);
     }
 
     private record TokenEndpointResult(

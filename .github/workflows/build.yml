@@ -244,6 +244,10 @@ jobs:
       - name: Planner.Shared bouwen en testen (net9.0)
         run: dotnet test Planner.Shared.Tests/Planner.Shared.Tests.csproj --configuration Release --verbosity minimal
 
+      # #1411: de gedeelde beheer-endpoints (ook secretinvoer) moeten in CI worden getest.
+      - name: Planner.Endpoints bouwen en testen (net9.0)
+        run: dotnet test Planner.Endpoints.Tests/Planner.Endpoints.Tests.csproj --configuration Release --verbosity minimal
+
       # #821: migratie-runner-CLI voor de Postgres-tier. Build-only hier (geen live database) —
       # MigrationRunnerIntegrationTests hierboven dekt het gedrag [Fact(Skip=...)], zie #822/#823.
       - name: Database.Postgres.Cli bouwen (net9.0)

@@ -138,7 +138,7 @@ public sealed class SportlinkAutoLoginEndpointCoreTests
         Assert.Equal(1, store.DeleteCount);
         Assert.DoesNotContain(Username, body);
         Assert.DoesNotContain(Password, body);
-        Assert.DoesNotContain(Totp, body);
+        Assert.DoesNotContain(SyntheticRfc6238Seed, body);
     }
 
     private static SportlinkAutoLoginState ConfiguredState() => new()

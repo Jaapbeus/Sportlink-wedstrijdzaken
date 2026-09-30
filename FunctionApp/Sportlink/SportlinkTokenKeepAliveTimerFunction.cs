@@ -82,25 +82,7 @@ public static class SportlinkTokenKeepAliveTimerFunction
             return;
         }
 
-        if (rollen.Count == 0)
-        {
-            log.LogInformation("Geen gekoppelde Sportlink-rollen gevonden — niets te verversen.");
-            return;
-        }
-
-        // Onafhankelijke roltokens parallel verversen — geen gedeelde state tussen rollen buiten
-        // sportlinkClient's eigen per-rol-semafoor, en één mislukte rol mag de andere niet blokkeren.
-        await Task.WhenAll(rollen.Select(async rol =>
-        {
-            try
-            {
-                var status = await sportlinkClient.VerversTokenAsync(rol);
-                log.LogInformation("Keep-alive voor rol '{Rol}': {Status}", rol, status);
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "Onverwachte fout bij keep-alive voor rol '{Rol}'", rol);
-            }
-        }));
+        await SportlinkKeepAliveCore.RunAsync(sportlinkClient, rollen,
+            context.InstanceServices.GetService<ISportlinkAutoLoginStore>(), log);
     }
 }

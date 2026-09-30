@@ -1231,6 +1231,13 @@ Extension (§19) en vereist dat die is ingeschakeld en gekoppeld voor de rol Wed
 
 ## 19. Sportlink Web Extension (`/sportlink-extension-settings`) — schrijfrechten naar Sportlink Club
 
+**Automatische login (#1411):** na inrichting van de beveiligde hostsleutel kan de beheerder per
+rol gebruikersnaam, wachtwoord en authenticator-instelsleutel opslaan. De instelsleutel is de
+blijvende geheime sleutel uit de authenticatorconfiguratie, niet de zescijferige code van dit
+moment. Vul algoritme, lengte en periode overeenkomstig de echte configuratie in. De volgende
+runtimevernieuwing meldt zich aan; opslaan alleen bewijst nog geen geslaagde login. Zie
+[installatie, foutstatus en intrekking](SPORTLINK-AUTOLOGIN.md).
+
 > Deze feature is **gedeeltelijk gebouwd** (epic #986) — zie
 > [docs/SPORTLINK-WEB-EXTENSION.md](SPORTLINK-WEB-EXTENSION.md) voor de actuele stand per
 > deelfunctie vóór u hierop vertrouwt.
