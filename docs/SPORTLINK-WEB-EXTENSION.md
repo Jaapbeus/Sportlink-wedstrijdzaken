@@ -525,19 +525,28 @@ Vier dingen om te onthouden:
   `GET .../club-match/picklists` blijft daarvoor bestaan. Blijkt het een ander ID, dan is het
   alternatief een eenmalige koppel-sync die `teams` een kolom `sportlinkpublicteamid` geeft — bewust
   níet vooruit gebouwd (migratie + handmatige productie-ronde voor kolommen die niemand kan vullen).
-- **Eerste echte aanroep in productie (#1427, 01-10-2026) — het ClubMatch-contract is NIET
-  bevestigd.** Zodra dry-run uit stond, gaf `PickListsTeams` HTTP 200 met een vorm die de parser
-  niet herkende, en de `ClubMatch`-POST gaf **HTTP 602 binnen ~20 ms**: dezelfde code als bij het
-  niet-bestaande `UpdateMatchField` (#1047), niet de 420-validatievorm. Dat wijst op een verkeerd
-  endpoint, een verkeerde methode of een verkeerde entity-header, niet op één fout veld. "Live
-  bevestigd" bij #1319 betekende voor dit pad dus alleen dat de code-lock is opgeheven (zie ook de
-  nuance bij #1380). Sinds #1427: (1) de locatielijst wordt los van de teamlijst opgehaald; (2) een
-  picklist met precies één array-property wordt als lijst gelezen, ongeacht de propertynaam; (3) een
-  onherkenbare picklist logt alleen de structuur (`Object{Naam:Array[n],...}`, nooit waarden);
-  (4) een afwijzing zonder `Violations` geeft Sportlinks `Message` door aan de GUI. **Vervolg:**
-  het juiste endpoint/methode/body vereist een netwerktrace door de eigenaar van een oefenwedstrijd
-  die in Sportlink Club zelf wordt aangemaakt (DevTools → Network: URL, methode, entity-header en
-  payload van de aanmaakaanroep, plus de responsvorm van beide picklists).
+- **ClubMatch-contract live bevestigd (#1427, 01-10-2026).** De eerste echte aanroep vanuit deze
+  app gaf HTTP 602 binnen ~20 ms: de aangenomen body (datum+tijd samengevoegd, dataservice-teamcode
+  als `PublicHomeTeamId`, tegenstander als team-ID) klopte niet. "Live bevestigd" bij #1319 betekende
+  voor dit pad alleen dat de code-lock was opgeheven (zie de nuance bij #1380). De eigenaar heeft
+  daarna met een console-script in Sportlink Club zelf (alleen vorm en voorbeeldwaarden, geen tokens of
+  headers met geheimen) vastgelegd wat Sportlinks eigen formulier doet:
+  1. vier read-only GETs: `ClubMatchDefaults` (o.a. het eerstvolgende `ExternalMatchId`, standaardteam,
+     -veld, -leeftijdscategorie en -spelactiviteit), `PickListsTeams` (`{ ClubTeams: [{ Id: "T…",
+     TeamName, ExternalSportId, SportTag, … }] }`), `PickListsLocation?SearchClubId=`
+     (`{ Facilities: [{ FacilityId, NormalizedName, IsDefault, Fields: [{ SubFacilityId, Name, … }] }] }`)
+     en `PickListsMatchInformation` (`{ Activities: [{ IdTag, Description }], AgeClasses: [{ Id,
+     Description }] }`);
+  2. de POST met `HomeTeam`/`AwayTeam` als tekst, het eigen `T…`-team-ID als `PublicHomeTeamId` én
+     `PublicAwayTeamId`, `MatchDate` + `StartTime` apart, `SportIdTag`, `IsHomeMatch`,
+     `SubFacilityId`, `FieldSize` "1.0" en `FieldOffset` "0" — respons HTTP 200 met `PublicMatchId`.
+
+  De vertaling staat in `Planner.Shared/Integrations/SportlinkClub/ClubMatchAanvraagBouwer.cs`
+  (team op naam, alleen een unieke treffer; veld op naam, want `SubFacilityId` volgt geen vast patroon
+  — live is "veld 5" `…-OUTDOOR_FIELD-6`; leeftijdscategorie `JO10` → "Onder 10 (M)"; spelactiviteit =
+  `ExternalSportId/SportTag` van het team). Wat niet af te leiden is valt terug op
+  `ClubMatchDefaults` met een waarschuwing; een onbekend team of veld is een 400. Vrije tekst gebruikt
+  het standaardteam — exact wat Sportlinks eigen formulier doet.
 - **Dry-run-modus (#998).** De vertakking zit in `SportlinkClubClient.PutMutationAsync` — het ÉNE
   punt waar alle **zes** mutatiepaden doorheen lopen (kleedkamers, veld, officials,
   wijzigingsverzoek, change-request-actie en de ClubMatch-POST) — niet per tier/endpoint apart. Dat garandeert dat token-refresh en de voorbereidende snapshot-/UserInfo-
@@ -847,21 +856,10 @@ Elke aanroep zet drie headers: `X-Navajo-Entity` (het aangeroepen pad, geen vast
   "Violations":{"<code>":"Nederlandse omschrijving"}}`. Succes wordt bepaald door `Error != true &&
   response.IsSuccessStatusCode`, niet door een afzonderlijk `isSuccess`-veld (de happy-path-vorm is
   nooit live bevestigd).
-- **`ClubMatch` (#997, sinds #1319 live bevestigd — niet elk veld hieronder is daarmee per se
-  bevestigd)**: `{ MatchDate (datum+tijd samengevoegd,
-  ISO 8601 zonder tijdzone aangenomen), Duration (default 90), ExternalMatchId, HomeResult: -1,
-  AwayResult: -1, AgeClassCode, Description, PublicHomeTeamId, PublicAwayTeamId, FacilityId,
-  FieldId }` — komt uit Sportlinks eigen frontend-code, nooit met een netwerktrace gezien. Respons:
-  `{ PublicMatchId: "M...", IsSuccess: true }` — `PublicMatchId` is een optioneel vijfde veld op
-  `SportlinkMutationResult`/`SportlinkMutatieResultaatDto`, blijft `null` zolang de code-lock actief
-  is. `PutMutationAsync` is sinds #997 gegeneraliseerd met een optionele `HttpMethod`-parameter
-  (default `Put`) zodat dit endpoint als POST kan versturen zonder de drie bestaande PUT-paden te
-  raken.
-  Sinds #1116 vult de server deze body vanuit onze eigen data: `PublicHomeTeamId` =
-  `his.teams.teamcode` van de gevalideerde KNVB-alias van het team (numeriek, als string), `PublicAwayTeamId` = de vrije tekst van de
-  tegenstander, `AgeClassCode` = `public.teams.leeftijdscategorie` (bijv. `JO10`), `FacilityId` =
-  op naam gevonden in `PickListsLocation`, `FieldId` = altijd `null` (veld gaat ná aanmaken via
-  `UpdateMatchField`), `Description` = eigen tekst of `Oefenwedstrijd [team] - [tegenstander] ([veld])`.
+- **`ClubMatch` (#997; contract live bevestigd bij #1427)**: zie de #1427-alinea in §4.2 voor de
+  vier voorbereidende GETs en de exacte body. `PutMutationAsync` stuurt dit endpoint als POST
+  (optionele `HttpMethod`-parameter, default `Put`). Een afwijzing zonder `Violations` (zoals de
+  602 van vóór #1427) krijgt Sportlinks `Message` als violation.
 
 ### 6.4 Dry-run (#998) en de code-niveau forceDryRun-lock (#994)
 In dry-run wordt de body nog wél geserialiseerd (zodat een serialisatiefout alsnog opduikt) maar

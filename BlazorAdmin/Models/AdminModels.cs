@@ -191,6 +191,12 @@ public class OefenwedstrijdResultaatDto : SportlinkMutatieResultaatDto
     public string? SportlinkTeamId { get; set; }
     public string? AgeClassCode { get; set; }
     public string? FacilityId { get; set; }
+    /// <summary>#1427: het veld zoals Sportlink het kent (bijv. "…-OUTDOOR_FIELD-6").</summary>
+    public string? SubFacilityId { get; set; }
+    /// <summary>#1427: spelactiviteit, bijv. "SOCCER-VE-AL/FRIDAY".</summary>
+    public string? SportIdTag { get; set; }
+    /// <summary>#1427: wedstrijdnummer uit Sportlinks <c>ClubMatchDefaults</c>.</summary>
+    public long? WedstrijdNummer { get; set; }
     public string? VeldNaam { get; set; }
     public List<string> Waarschuwingen { get; set; } = new();
 }

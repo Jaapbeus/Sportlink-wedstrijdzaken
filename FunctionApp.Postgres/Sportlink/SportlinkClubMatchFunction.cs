@@ -11,21 +11,17 @@ using static Planner.Endpoints.Sportlink.ClubMatchEndpointCore;
 namespace FunctionApp.Postgres.Sportlink;
 
 /// <summary>
-/// Oefenwedstrijd ("clubwedstrijd") aanmaken bij Sportlink (#997, epic #986; formulier herzien in
-/// #1116) — scaffolding, geen volledige implementatie. Van alle #986-sub-issues heeft dit issue de
-/// MEESTE onbekenden: volledige requestbody onbevestigd, picklist-vormen onbekend, delete-methode
-/// onbekend.
+/// Oefenwedstrijd ("clubwedstrijd") aanmaken bij Sportlink (#997, epic #986; formulier #1116,
+/// contract live bevestigd #1427). Verwijderen en uitslag vastleggen zijn bewust niet gebouwd.
 /// <para>
-/// <b>Sinds #1116 doet de server de vertaling, niet de gebruiker.</b> Het formulier levert alleen
-/// wat een wedstrijdsecretaris snel kan invullen: datum, tijd, duur, eigen team (naam uit onze
-/// eigen database), tegenstander (vrije tekst) en veld. Deze functie vertaalt dat naar de
-/// Sportlink-velden: teamnaam → <c>PublicHomeTeamId</c> + <c>AgeClassCode</c> via
-/// <see cref="SportlinkClubMatchRepository"/>, de accommodatie uit de club-instelling
-/// <c>accommodatie</c> → <c>FacilityId</c> via de (read-only, echt aangeroepen) Sportlink-
-/// locatiepicklist. Het team-ID komt uit de gevalideerde aliassen (<c>public.teamaliassen</c> →
-/// <c>his.teams.teamcode</c>), nooit uit eigen naamlogica. Elke vertaling die niet lukt wordt een <i>waarschuwing</i> in de respons, geen
-/// fout — het pad is toch code-gelockt en de beheerder moet kunnen zien wat er (gesimuleerd) mee
-/// zou gaan.
+/// <b>Sinds #1427 live bevestigd.</b> Het formulier levert datum, tijd, duur, eigen team (naam
+/// uit onze eigen database, of vrije tekst), tegenstander en veld. De server haalt Sportlinks vier
+/// aanmaaklijsten op en <see cref="Planner.Shared.Integrations.SportlinkClub.ClubMatchAanvraagBouwer"/>
+/// maakt daaruit de body zoals Sportlinks eigen formulier hem verstuurt: het <c>T…</c>-team-ID,
+/// leeftijdscategorie, spelactiviteit, veld (<c>SubFacilityId</c>) en wedstrijdnummer. Wat niet
+/// eenduidig af te leiden is, valt terug op <c>ClubMatchDefaults</c> met een <i>waarschuwing</i>;
+/// een team of veld dat Sportlink niet kent is een 400. Dit bestand houdt alleen de databasevraag
+/// en de HTTP-aansluiting — zie <c>Planner.Endpoints/Sportlink/ClubMatchEndpointCore.cs</c>.
 /// </para>
 /// <para>
 /// <b>Structureel anders dan de andere Sportlink-mutatiefuncties:</b> <see
@@ -40,9 +36,7 @@ namespace FunctionApp.Postgres.Sportlink;
 /// <b>Audit-placeholder:</b> <see cref="SportlinkMutationAuditEntry"/> vereist een verplicht,
 /// niet-leeg <c>PublicMatchId</c>-veld — dat bestaat nog niet bij het aanmaken. De Pending-rij
 /// gebruikt daarom de placeholder-waarde <c>"NIEUW"</c>, met een gegenereerde GUID in
-/// <c>CorrelationId</c> om de Pending- en Voltooid-rij aan elkaar te koppelen. Zie de <c>TODO</c>
-/// bij <see cref="ISportlinkMutationAuditService.VoltooiAsync"/> hieronder voor waarom het écht
-/// opslaan van het teruggekregen <c>PublicMatchId</c> bewust niet is gebouwd.
+/// <c>CorrelationId</c> om de Pending- en Voltooid-rij aan elkaar te koppelen.
 /// </para>
 /// </summary>
 public static class SportlinkClubMatchFunction
@@ -74,9 +68,8 @@ public static class SportlinkClubMatchFunction
                 if (clientFout != null) return clientFout;
 
                 var cs = PostgresDatabaseConfig.ConnectionString;
-                var team = await SportlinkClubMatchRepository.GetTeamKoppelingAsync(clubCode, dto!.TeamNaam!, cs)
-                    ?? VrijeTekstKoppeling(dto);
-                if (team == null)
+                var team = await SportlinkClubMatchRepository.GetTeamKoppelingAsync(clubCode, dto!.TeamNaam!, cs);
+                if (team == null && !dto.VrijeTekst)
                     return new BadRequestObjectResult(new { error = $"Team '{dto.TeamNaam}' is niet bekend als actief clubteam." });
 
                 string? veldNaam = null;
@@ -87,30 +80,10 @@ public static class SportlinkClubMatchFunction
                         return new BadRequestObjectResult(new { error = $"Veld {dto.VeldNummer} is niet bekend als actief veld." });
                 }
 
-                var waarschuwingen = new List<string>();
-                if (team.SportlinkTeamId == null)
-                    waarschuwingen.Add(team.AantalKandidaatIds > 1
-                        ? $"Meerdere Sportlink-team-ID's ({team.AantalKandidaatIds}) gekoppeld aan '{team.TeamNaam}' — PublicHomeTeamId blijft leeg totdat de aliassen zijn opgeschoond."
-                        : $"Geen Sportlink-team-ID bekend voor '{team.TeamNaam}' (geen KNVB-teamrij als gevalideerde alias gekoppeld) — PublicHomeTeamId blijft leeg.");
-                if (string.IsNullOrWhiteSpace(team.Leeftijdscategorie))
-                    waarschuwingen.Add($"Geen leeftijdscategorie bekend voor '{team.TeamNaam}' — AgeClassCode blijft leeg.");
-
-                var accommodatie = PostgresAppSettings.GetSetting("accommodatie");
-                var facilityId = await BepaalFacilityIdAsync(sportlinkClient!, RolNaam, clubCode, accommodatie, waarschuwingen, log);
-
-                var omschrijving = BouwOmschrijving(dto.Description, team.TeamNaam, dto.Tegenstander!, veldNaam);
-                var aanvraag = new SportlinkClubMatchAanvraag(
-                    dto.MatchDateTime!.Value,
-                    dto.Duration ?? 90,
-                    AgeClassCode: team.Leeftijdscategorie,
-                    Description: omschrijving,
-                    PublicHomeTeamId: team.SportlinkTeamId?.ToString(),
-                    PublicAwayTeamId: dto.Tegenstander!.Trim(),
-                    FacilityId: facilityId,
-                    // Veld-ID: gaat volgens het plan van #997 (stap 4) pas ná aanmaken via het
-                    // bestaande veld-mutatiepad (#993) op de nieuwe PublicMatchId. Het gekozen veld
-                    // reist nu mee in de omschrijving en in de audit.
-                    FieldId: null);
+                var (aanvraag, bouwFout, waarschuwingen) = await BouwAanvraagAsync(
+                    sportlinkClient!, RolNaam, dto, team?.TeamNaam ?? dto.TeamNaam!.Trim(), team?.Leeftijdscategorie,
+                    veldNaam, PostgresAppSettings.GetSetting("accommodatie"), log);
+                if (bouwFout != null) return bouwFout;
 
                 var auditService = context.InstanceServices.GetService<ISportlinkMutationAuditService>();
                 var triggerdDoor = EasyAuthHelper.GetAuditActor(req);
@@ -122,16 +95,10 @@ public static class SportlinkClubMatchFunction
                     CorrelationId: correlationId);
                 var auditId = auditService == null ? (long?)null : await auditService.LogPogingAsync(auditEntry);
 
-                // TODO(#997-vervolg): het écht opslaan van het teruggekregen PublicMatchId in de
-                // audit vereist een uitbreiding van ISportlinkMutationAuditService.VoltooiAsync
-                // (raakt beide tiers) — niet nodig zolang dit pad altijd "DryRunLocked" teruggeeft
-                // (ClubMatchLiveBevestigd = false in SportlinkClubClient).
-                var mutationResult = await sportlinkClient!.CreateClubMatchAsync(RolNaam, aanvraag);
+                var mutationResult = await sportlinkClient!.CreateClubMatchAsync(RolNaam, aanvraag!);
                 return await SportlinkEndpointSupport.RondMutatieAfAsync(
                     mutationResult, auditService, auditId, r => r,
-                    r => new OkObjectResult(new OefenwedstrijdAanmaakResultaat(
-                        r.IsSuccess, r.Violations, r.IsDryRun, r.IsForcedDryRun, r.PublicMatchId,
-                        omschrijving, aanvraag.PublicHomeTeamId, aanvraag.AgeClassCode, facilityId, veldNaam, waarschuwingen)));
+                    r => new OkObjectResult(Resultaat(r, aanvraag!, veldNaam, waarschuwingen)));
             });
 
     /// <summary>

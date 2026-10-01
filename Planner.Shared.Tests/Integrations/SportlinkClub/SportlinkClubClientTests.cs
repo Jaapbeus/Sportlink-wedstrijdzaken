@@ -838,16 +838,7 @@ public class SportlinkClubClientTests
 
         var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
-        var aanvraag = new SportlinkClubMatchAanvraag(
-            MatchDateTime: new DateTime(2026, 9, 20, 19, 30, 0),
-            Duration: 90,
-            AgeClassCode: "JO10",
-            Description: "Oefenwedstrijd tegen buurtclub",
-            PublicHomeTeamId: "T2010269033",
-            PublicAwayTeamId: "T2010269099",
-            FacilityId: "BBCF989",
-            FieldId: "BBCF989-OUTDOOR_FIELD-6",
-            ExternalMatchId: 12345);
+        var aanvraag = TestAanvraag();
 
         var result = await sut.CreateClubMatchAsync(TestFunctioneleRol, aanvraag);
 
@@ -2342,16 +2333,7 @@ public class SportlinkClubClientTests
 
         var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => true);
 
-        var aanvraag = new SportlinkClubMatchAanvraag(
-            MatchDateTime: new DateTime(2026, 9, 20, 19, 30, 0),
-            Duration: 90,
-            AgeClassCode: "JO10",
-            Description: "Oefenwedstrijd tegen buurtclub",
-            PublicHomeTeamId: "T2010269033",
-            PublicAwayTeamId: "T2010269099",
-            FacilityId: "BBCF989",
-            FieldId: "BBCF989-OUTDOOR_FIELD-6",
-            ExternalMatchId: 12345);
+        var aanvraag = TestAanvraag();
 
         var result = await sut.CreateClubMatchAsync(TestFunctioneleRol, aanvraag);
 
@@ -2383,16 +2365,7 @@ public class SportlinkClubClientTests
 
         var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
-        var aanvraag = new SportlinkClubMatchAanvraag(
-            MatchDateTime: new DateTime(2026, 9, 20, 19, 30, 0),
-            Duration: 90,
-            AgeClassCode: "JO10",
-            Description: "Oefenwedstrijd tegen buurtclub",
-            PublicHomeTeamId: "T2010269033",
-            PublicAwayTeamId: "T2010269099",
-            FacilityId: "BBCF989",
-            FieldId: "BBCF989-OUTDOOR_FIELD-6",
-            ExternalMatchId: 12345);
+        var aanvraag = TestAanvraag();
 
         var result = await sut.CreateClubMatchAsync(TestFunctioneleRol, aanvraag);
 
@@ -2405,33 +2378,73 @@ public class SportlinkClubClientTests
             "sinds #1319 (ClubMatchLiveBevestigd=true) stuurt deze mutatie een echte POST");
     }
 
+    /// <summary>Fictieve aanvraag in de vorm die Sportlinks eigen formulier verstuurt (#1427).</summary>
+    private static SportlinkClubMatchAanvraag TestAanvraag() => new(
+        MatchDate: new DateOnly(2026, 10, 4),
+        StartTime: new TimeOnly(12, 0),
+        Duration: 90,
+        ExternalMatchId: 12345678,
+        Description: "Oefenwedstrijd",
+        HomeTeam: "TEST1",
+        AwayTeam: "TEST2",
+        PublicTeamId: "T2010269033",
+        AgeClassCode: "001",
+        SportIdTag: "SOCCER-VE-AL/FRIDAY",
+        IsHomeMatch: true,
+        FacilityId: "F1",
+        SubFacilityId: "F1-2");
+
     [Fact]
-    public void BuildClubMatchBody_AanNameNietLiveBevestigd_ZetVerwachteVelden()
+    public void BuildClubMatchBody_GelijkAanLiveTraceVanSportlinksEigenFormulier()
     {
-        // Vastlegging van de AANGENOMEN, NOG NIET LIVE BEVESTIGDE body-vorm (#997) — elk veld komt
-        // uit Sportlinks eigen frontend-code, nooit met een netwerktrace gezien. Deze test houdt de
-        // aanname grijpbaar/regressie-vast, niet een bevestigd contract.
-        var aanvraag = new SportlinkClubMatchAanvraag(
-            MatchDateTime: new DateTime(2026, 9, 20, 19, 30, 0),
-            Duration: 90,
-            AgeClassCode: "JO10",
-            Description: "Oefenwedstrijd tegen buurtclub",
-            PublicHomeTeamId: "T2010269033",
-            PublicAwayTeamId: "T2010269099",
-            FacilityId: "BBCF989",
-            FieldId: "BBCF989-OUTDOOR_FIELD-6",
-            ExternalMatchId: 12345);
+        // #1427: Sportlink Club gaf HTTP 200 + PublicMatchId op precies deze vorm (console-trace
+        // 01-10-2026). De vorige, gereverse-engineerde vorm (MatchDate met tijd, geen StartTime,
+        // dataservice-teamcode als PublicHomeTeamId) gaf HTTP 602.
+        var json = JsonSerializer.Serialize(SportlinkClubClient.BuildClubMatchBody(TestAanvraag()));
 
-        var json = JsonSerializer.Serialize(SportlinkClubClient.BuildClubMatchBody(aanvraag));
+        json.Should().Contain("\"MatchDate\":\"2026-10-04\"").And.Contain("\"StartTime\":\"12:00:00\"");
+        json.Should().Contain("\"HomeTeam\":\"TEST1\"").And.Contain("\"AwayTeam\":\"TEST2\"");
+        json.Should().Contain("\"PublicHomeTeamId\":\"T2010269033\"").And.Contain("\"PublicAwayTeamId\":\"T2010269033\"");
+        json.Should().Contain("\"AgeClassCode\":\"001\"").And.Contain("\"SportIdTag\":\"SOCCER-VE-AL/FRIDAY\"");
+        json.Should().Contain("\"ExternalMatchId\":12345678").And.Contain("\"Duration\":90");
+        json.Should().Contain("\"HomeResult\":-1").And.Contain("\"AwayResult\":-1");
+        json.Should().Contain("\"IsHomeMatch\":true");
+        json.Should().Contain("\"FacilityId\":\"F1\"").And.Contain("\"SubFacilityId\":\"F1-2\"");
+        json.Should().Contain("\"FieldSize\":\"1.0\"").And.Contain("\"FieldOffset\":\"0\"");
+        json.Should().NotContain("FieldId", "dat veld bestaat niet in Sportlinks body");
+    }
 
-        json.Should().Contain("\"MatchDate\":\"2026-09-20T19:30:00\"", "ONBEVESTIGD: datum+tijd samengevoegd, ISO 8601 zonder tijdzone aangenomen");
-        json.Should().Contain("\"Duration\":90");
-        json.Should().Contain("\"ExternalMatchId\":12345");
-        json.Should().Contain("\"HomeResult\":-1").And.Contain("\"AwayResult\":-1", "ONBEVESTIGD: -1 betekent 'nog geen uitslag' volgens het issue");
-        json.Should().Contain("\"AgeClassCode\":\"JO10\"");
-        json.Should().Contain("\"Description\":\"Oefenwedstrijd tegen buurtclub\"");
-        json.Should().Contain("\"PublicHomeTeamId\":\"T2010269033\"").And.Contain("\"PublicAwayTeamId\":\"T2010269099\"");
-        json.Should().Contain("\"FacilityId\":\"BBCF989\"").And.Contain("\"FieldId\":\"BBCF989-OUTDOOR_FIELD-6\"");
+    [Fact]
+    public async Task GetClubMatchContextAsync_LiveVorm_ParseertAlleVierLijsten()
+    {
+        // #1427: fixtures in de live vastgestelde vorm (veldnamen echt, waarden fictief).
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var client = MakeClient(req =>
+        {
+            var url = req.RequestUri!.AbsoluteUri;
+            if (url.Contains("idm.sportlink.com")) return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (url.Contains("ClubMatchDefaults"))
+                return JsonResponse("""{"ExternalMatchId":7,"Description":"Oefenwedstrijd","PublicHomeTeamId":"T1","SportIdTag":"SOCCER-VE-AL/FRIDAY","IsHomeMatch":true,"FacilityId":"F1","SubFacilityId":"F1-1","FieldSize":"1.0","FieldOffset":0,"AgeClassCode":"001"}""");
+            if (url.Contains("PickListsTeams"))
+                return JsonResponse("""{"ClubTeams":[{"Id":"T1","TeamName":"35+4","Description":"35+4 - Mannen","ExternalSportId":"SOCCER-VE-AL","SportTag":"FRIDAY"}]}""");
+            if (url.Contains("PickListsLocation?SearchClubId="))
+                return JsonResponse("""{"IsFacilityOptionVisible":true,"Facilities":[{"FacilityId":"F1","NormalizedName":"Sportpark Oost","IsDefault":true,"Name":null,"Fields":[{"SubFacilityId":"F1-OUTDOOR_FIELD-6","Name":"veld 5","NormalizedName":"veld 5"}]}]}""");
+            if (url.Contains("PickListsMatchInformation"))
+                return JsonResponse("""{"Activities":[{"Id":"SOCCER-VE-AL","Tag":"FRIDAY","IdTag":"SOCCER-VE-AL/FRIDAY","Description":"Veld - Vrijdag"}],"AgeClasses":[{"Id":"001","Description":"Senioren (M)"}]}""");
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.GetClubMatchContextAsync(TestFunctioneleRol);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data!.Defaults.ExternalMatchId.Should().Be(7);
+        result.Data.Defaults.FieldOffset.Should().Be("0", "Sportlink geeft een getal terug, de body verwacht een string");
+        result.Data.Teams.Should().ContainSingle().Which.Id.Should().Be("T1");
+        result.Data.Facilities.Should().ContainSingle().Which.Fields.Should().ContainSingle().Which.SubFacilityId.Should().Be("F1-OUTDOOR_FIELD-6");
+        result.Data.Activities.Should().ContainSingle().Which.IdTag.Should().Be("SOCCER-VE-AL/FRIDAY");
+        result.Data.AgeClasses.Should().ContainSingle().Which.Id.Should().Be("001");
     }
 
     [Fact]
@@ -2575,7 +2588,7 @@ public class SportlinkClubClientTests
         });
 
         var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
-        var aanvraag = new SportlinkClubMatchAanvraag(new DateTime(2026, 10, 4, 12, 0, 0), 90, null, "Test", null, "TEST", null, null);
+        var aanvraag = TestAanvraag();
 
         var result = await sut.CreateClubMatchAsync(TestFunctioneleRol, aanvraag);
 

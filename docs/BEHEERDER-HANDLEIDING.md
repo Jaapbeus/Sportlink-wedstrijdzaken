@@ -1220,21 +1220,22 @@ in een veld verstuurt het formulier.
 De team-keuzelijst heeft onderaan een extra optie **"Vrije tekst invoeren…"** (#1396): kiest u
 die, dan verschijnt een tekstveld waarin u een willekeurige teamnaam kunt typen — handig om te
 testen zonder een bestaand clubteam te gebruiken. Een vrije teamnaam hoeft geen actief clubteam te
-zijn (#1427): de server weigert hem niet, maar Team-ID en leeftijdscategorie blijven dan leeg (met
-een waarschuwing). Komt de naam toch overeen met een actief team, dan worden diens gegevens gebruikt.
+zijn (#1427): Sportlink heeft altijd een team van uw eigen club nodig, dus dan gebruikt de server
+Sportlinks **standaardteam** en staat uw vrije tekst als naam van het thuisteam. Zo werkt het in
+Sportlink Club zelf ook. U ziet dat als waarschuwing.
 
-Wat u níet hoeft in te vullen, doet de server:
+Wat u níet hoeft in te vullen, haalt de server op uit de lijsten van Sportlink Club zelf (#1427):
 
-| Sportlink-veld | Waar het vandaan komt |
+| In Sportlink | Waar het vandaan komt |
 |---|---|
-| Team-ID | Het gekozen team, via de teamkoppeling met de gesynchroniseerde Sportlink-teams. Ontbreekt die koppeling (bijv. een puur lokaal team, of een via "Vrije tekst" ingevoerde naam), dan blijft het leeg en ziet u dat als waarschuwing |
-| Leeftijdscategorie | Van het gekozen team (bijv. `JO10`) |
-| Locatie | Altijd de eigen accommodatie: het veld **Accommodatie** op de Instellingen-pagina wordt op naam opgezocht in de locatielijst van Sportlink Club. Niet (eenduidig) gevonden → leeg + waarschuwing |
-| Omschrijving | Leeg gelaten → `Oefenwedstrijd [team] - [tegenstander] ([veld])` |
-
-Het gekozen veld wordt nog **niet** als Sportlink-veld meegestuurd: dat gebeurt in het plan van
-#997 pas ná het aanmaken via de bestaande veldwijziging. Het staat wel in de standaard-omschrijving
-en in het auditlog.
+| Team | Het gekozen team, opgezocht in Sportlinks teamlijst: exact op naam, of op de naam zonder clubnaam ("AllStars 35+4" ↔ "35+4"). Geen of meerdere treffers → de aanmaak wordt geweigerd met een melding; er wordt nooit gegokt |
+| Thuisteam / Uitteam | De teamnaam en de tegenstander, als tekst |
+| Leeftijdscategorie | Van het gekozen team (bijv. `JO10` → "Onder 10 (M)", senioren → "Senioren (M)"). Niet te bepalen → Sportlinks standaard + waarschuwing |
+| Spelactiviteit | Die van het team in Sportlink (bijv. "Veld - Vrijdag"). Niet te bepalen → Sportlinks standaard + waarschuwing |
+| Locatie | Het veld **Accommodatie** op de Instellingen-pagina, opgezocht in Sportlinks locatielijst; anders de accommodatie die Sportlink als standaard heeft |
+| Veld | Het gekozen veld, op naam opgezocht bij die accommodatie (heel veld). Niet gevonden → geweigerd; geen veld gekozen → Sportlinks standaardveld + waarschuwing |
+| Wedstrijdnummer | Het eerstvolgende vrije nummer dat Sportlink zelf voorstelt |
+| Omschrijving | Leeg gelaten → `Oefenwedstrijd [team] - [tegenstander]` |
 
 Na het aanmaken toont een blauw (gesimuleerd/geslaagd) of rood (afgewezen) blok de melding plus de
 afgeleide gegevens en eventuele waarschuwingen. Wijst Sportlink de aanmaak af zonder eigen

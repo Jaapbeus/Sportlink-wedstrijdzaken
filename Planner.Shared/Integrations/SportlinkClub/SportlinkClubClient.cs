@@ -34,6 +34,9 @@ public class SportlinkClubClient : ISportlinkClubClient
     // (bewust beperkte scope, zie PR-beschrijving) — read-only, persoonsgegevensvrij.
     private const string PickListsTeamsEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/clubmatch/PickListsTeams";
     private const string PickListsLocationEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/clubmatch/PickListsLocation";
+    // #1427: de twee overige lijsten van Sportlinks eigen aanmaakformulier (live vastgesteld 01-10-2026).
+    private const string ClubMatchDefaultsEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/clubmatch/ClubMatchDefaults";
+    private const string PickListsMatchInformationEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/clubmatch/PickListsMatchInformation";
     public const string ClientId = "sportlink-club-web";
     private const int TokenExpiryMarginSeconds = 60;
 
@@ -619,31 +622,115 @@ public class SportlinkClubClient : ISportlinkClubClient
     }
 
     /// <summary>
-    /// Bouwt de <c>ClubMatch</c>-requestbody — losgetrokken van <see cref="PostClubMatchAsync"/>
-    /// zodat de AANGENOMEN vorm (#997) direct getest kan worden. <b>Sinds #1319</b> heeft de
-    /// eigenaar <see cref="ClubMatchLiveBevestigd"/> op <c>true</c> gezet na een live netwerktrace,
-    /// maar niet elk veld hieronder is daarmee per se bevestigd — zie
-    /// <see cref="SportlinkClubMatchAanvraag"/> voor de resterende aannames per veld.
+    /// Bouwt de <c>ClubMatch</c>-requestbody. <b>Sinds #1427 live bevestigd</b>: veld voor veld
+    /// gelijk aan wat Sportlink Clubs eigen formulier verstuurt (console-trace 01-10-2026, HTTP 200
+    /// met nieuw <c>PublicMatchId</c>). Datum en tijd gaan apart, het eigen team staat als thuis- én
+    /// uit-ID, en de teamnamen zijn vrije tekst.
     /// </summary>
     internal static object BuildClubMatchBody(SportlinkClubMatchAanvraag aanvraag) =>
         new
         {
-            // ONBEVESTIGD: aangenomen ISO 8601 zonder tijdzone — "datum+tijd samengevoegd" volgens
-            // het issue, geen aparte Date/StartTime-velden zoals bij UpdateMatchDetails.
-            MatchDate = aanvraag.MatchDateTime.ToString("yyyy-MM-ddTHH:mm:ss"),
+            AwayTeam = aanvraag.AwayTeam,
+            HomeTeam = aanvraag.HomeTeam,
+            PublicAwayTeamId = aanvraag.PublicTeamId,
+            PublicHomeTeamId = aanvraag.PublicTeamId,
+            AgeClassCode = aanvraag.AgeClassCode,
+            AwayResult = -1,
+            Description = aanvraag.Description,
             Duration = aanvraag.Duration,
             ExternalMatchId = aanvraag.ExternalMatchId,
-            // ONBEVESTIGD: -1 betekent "nog geen uitslag" volgens het issue — bij het aanmaken is
-            // er per definitie nog geen uitslag.
             HomeResult = -1,
-            AwayResult = -1,
-            AgeClassCode = aanvraag.AgeClassCode,
-            Description = aanvraag.Description,
-            PublicHomeTeamId = aanvraag.PublicHomeTeamId,
-            PublicAwayTeamId = aanvraag.PublicAwayTeamId,
+            MatchDate = aanvraag.MatchDate.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+            SportIdTag = aanvraag.SportIdTag,
+            StartTime = aanvraag.StartTime.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
+            IsHomeMatch = aanvraag.IsHomeMatch,
+            FieldOffset = aanvraag.FieldOffset,
             FacilityId = aanvraag.FacilityId,
-            FieldId = aanvraag.FieldId
+            SubFacilityId = aanvraag.SubFacilityId,
+            FieldSize = aanvraag.FieldSize
         };
+
+    /// <summary>
+    /// Haalt de vier lijsten op waarmee Sportlinks eigen formulier een oefenwedstrijd opbouwt (#1427)
+    /// — zie <see cref="ISportlinkClubClient.GetClubMatchContextAsync"/>. Read-only.
+    /// </summary>
+    public Task<SportlinkClubResponse<SportlinkClubMatchContext>> GetClubMatchContextAsync(
+        string functioneleRol, CancellationToken cancellationToken = default)
+        => ExecuteWithTokenRetryAsync(functioneleRol, RetryBeleid.Lezen,
+            (token, ct) => FetchClubMatchContextAsync(token, ct), cancellationToken);
+
+    private async Task<SportlinkClubResponse<SportlinkClubMatchContext>> FetchClubMatchContextAsync(
+        string token, CancellationToken cancellationToken)
+    {
+        var defaults = await FetchClubMatchJsonAsync<SportlinkClubMatchDefaults>(ClubMatchDefaultsEndpoint, "ClubMatchDefaults", token, cancellationToken);
+        if (defaults.Status != SportlinkClubCallStatus.Ok) return Doorgeven(defaults);
+        var teams = await FetchClubMatchJsonAsync<ClubTeamsRaw>(PickListsTeamsEndpoint, "PickListsTeams", token, cancellationToken);
+        if (teams.Status != SportlinkClubCallStatus.Ok) return Doorgeven(teams);
+        var locaties = await FetchClubMatchJsonAsync<FacilitiesRaw>(PickListsLocationEndpoint + "?SearchClubId=", "PickListsLocation", token, cancellationToken);
+        if (locaties.Status != SportlinkClubCallStatus.Ok) return Doorgeven(locaties);
+        var info = await FetchClubMatchJsonAsync<MatchInformationRaw>(PickListsMatchInformationEndpoint, "PickListsMatchInformation", token, cancellationToken);
+        if (info.Status != SportlinkClubCallStatus.Ok) return Doorgeven(info);
+
+        return new SportlinkClubResponse<SportlinkClubMatchContext>(
+            SportlinkClubCallStatus.Ok,
+            new SportlinkClubMatchContext(
+                defaults.Data!,
+                teams.Data!.ClubTeams ?? new List<SportlinkClubTeam>(),
+                locaties.Data!.Facilities ?? new List<SportlinkClubFacility>(),
+                info.Data!.Activities ?? new List<SportlinkClubActivity>(),
+                info.Data.AgeClasses ?? new List<SportlinkClubAgeClass>()),
+            null, 200);
+
+        static SportlinkClubResponse<SportlinkClubMatchContext> Doorgeven<T>(SportlinkClubResponse<T> fout) where T : class =>
+            new(fout.Status, null, fout.FoutmeldingVoorLog, fout.HttpStatusCode);
+    }
+
+    private sealed record ClubTeamsRaw(List<SportlinkClubTeam>? ClubTeams);
+    private sealed record FacilitiesRaw(List<SportlinkClubFacility>? Facilities);
+    private sealed record MatchInformationRaw(List<SportlinkClubActivity>? Activities, List<SportlinkClubAgeClass>? AgeClasses);
+
+    /// <summary>Eén read-only clubmatch-GET met getypeerde deserialisatie (#1427). Logt bij een
+    /// fout alleen entity en status, nooit de body.</summary>
+    private async Task<SportlinkClubResponse<T>> FetchClubMatchJsonAsync<T>(
+        string endpoint, string entityKort, string token, CancellationToken cancellationToken) where T : class
+    {
+        var entityName = "competition/match/clubmatch/" + entityKort;
+        try
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
+            ZetSportlinkHeaders(request, entityName, token);
+            var response = await VerstuurMetTimeoutAsync(ct => _httpClient.SendAsync(request, ct), cancellationToken);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                return new SportlinkClubResponse<T>(SportlinkClubCallStatus.SportlinkFout, null, $"Unauthorized bij {entityName} endpoint", 401);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("{Entity} endpoint gaf {StatusCode}", entityName, response.StatusCode);
+                return new SportlinkClubResponse<T>(SportlinkClubCallStatus.SportlinkFout, null, $"{entityName} endpoint gaf {response.StatusCode}", (int)response.StatusCode);
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            var data = JsonSerializer.Deserialize<T>(json, JsonOptions);
+            return data == null
+                ? new SportlinkClubResponse<T>(SportlinkClubCallStatus.SportlinkFout, null, $"{entityName}-respons was leeg", (int)response.StatusCode)
+                : new SportlinkClubResponse<T>(SportlinkClubCallStatus.Ok, data, null, (int)response.StatusCode);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "JSON deserialisatie fout voor {Entity} endpoint", entityName);
+            return new SportlinkClubResponse<T>(SportlinkClubCallStatus.SportlinkFout, null, "JSON deserialisatie fout", null);
+        }
+        catch (TaskCanceledException ex)
+        {
+            _logger.LogWarning(ex, "{Entity} endpoint timeout", entityName);
+            return new SportlinkClubResponse<T>(SportlinkClubCallStatus.NetwerkFout, null, $"Timeout bij {entityName} endpoint", null);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "{Entity} endpoint netwerk fout", entityName);
+            return new SportlinkClubResponse<T>(SportlinkClubCallStatus.NetwerkFout, null, $"Netwerk fout bij {entityName} endpoint", null);
+        }
+    }
 
     /// <summary>
     /// Haalt de twee ondersteunende picklists op (#997) — zie
@@ -763,7 +850,7 @@ public class SportlinkClubClient : ISportlinkClubClient
     internal static SportlinkPickListItem ParsePickListItem(JsonElement item)
     {
         var id = FirstStringProperty(item, "Id", "PublicTeamId", "PublicLocationId", "FacilityId", "Value", "Code");
-        var naam = FirstStringProperty(item, "Name", "TeamName", "LocationName", "FacilityName", "Text", "Description", "Naam");
+        var naam = FirstStringProperty(item, "Name", "TeamName", "NormalizedName", "LocationName", "FacilityName", "Text", "Description", "Naam");
         return new SportlinkPickListItem(id, naam);
     }
 

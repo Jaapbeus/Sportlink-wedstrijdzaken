@@ -13,8 +13,8 @@
 }
 
 <p class="text-muted">
-    Oefenwedstrijd op de eigen accommodatie. Team en veld komen uit de eigen database; de locatie
-    wordt automatisch uit de instellingen gevuld.
+    Oefenwedstrijd op de eigen accommodatie. Team en veld kiest u uit de eigen database; Sportlink
+    levert daarbij het team-ID, de leeftijdscategorie, de spelactiviteit, het veld en het wedstrijdnummer.
 </p>
 
 @if (_laden)
@@ -102,8 +102,10 @@ else
                 <dt class="col-sm-4">Omschrijving</dt><dd class="col-sm-8">@_resultaat.Omschrijving</dd>
                 <dt class="col-sm-4">Sportlink-team-ID</dt><dd class="col-sm-8">@(_resultaat.SportlinkTeamId ?? "—")</dd>
                 <dt class="col-sm-4">Leeftijdscategorie</dt><dd class="col-sm-8">@(_resultaat.AgeClassCode ?? "—")</dd>
+                <dt class="col-sm-4">Wedstrijdnummer</dt><dd class="col-sm-8">@(_resultaat.WedstrijdNummer?.ToString() ?? "—")</dd>
+                <dt class="col-sm-4">Spelactiviteit</dt><dd class="col-sm-8">@(_resultaat.SportIdTag ?? "—")</dd>
                 <dt class="col-sm-4">Locatie-ID (Sportlink)</dt><dd class="col-sm-8">@(_resultaat.FacilityId ?? "—")</dd>
-                <dt class="col-sm-4">Veld</dt><dd class="col-sm-8">@(_resultaat.VeldNaam ?? "—")</dd>
+                <dt class="col-sm-4">Veld</dt><dd class="col-sm-8">@(_resultaat.VeldNaam ?? "—") @if (!string.IsNullOrEmpty(_resultaat.SubFacilityId)) { <span class="text-muted">(@_resultaat.SubFacilityId)</span> }</dd>
                 @if (!string.IsNullOrEmpty(_resultaat.PublicMatchId))
                 {
                     <dt class="col-sm-4">PublicMatchId</dt><dd class="col-sm-8"><code>@_resultaat.PublicMatchId</code></dd>
