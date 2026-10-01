@@ -1,3 +1,12 @@
+# HANDOFF — release v3.8.0.0 (#1424)
+
+Status (2026-10-01): #1421 gemerged (3cfc9c1), lokale branches/worktrees opgeruimd, versie 3.8.0.0 en
+CHANGELOG-sectie voorbereid in PR naar `develop`, daarna release-PR `develop` → `main` en tag `v3.8.0.0`.
+Restpunten (productie-sleutel `SportlinkAutoLoginEncryptionKey`, Sportlink-koppeling opnieuw inrichten
+na migratie 030, dependabot-PR's #1404/#1405/#1414, opruimpunten) staan in issue #1423.
+
+---
+
 # HANDOFF — #1418 documentatie-uitlijning vóór release v3.8.0.0 (PR #1420)
 
 Status (2026-10-01): alle documentatie voor beheerder/gebruiker, technisch/architectuur en developer is

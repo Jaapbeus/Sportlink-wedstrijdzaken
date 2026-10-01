@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.8.0.0] — 2026-10-01
+
 ### Added
 - Opt-in automatische Sportlink-herlogin met wachtwoord en TOTP na de maximale sessieduur,
   versleutelde credential- en tokenopslag, adminbeheer en begrensde herstelpogingen op beide
