@@ -51,9 +51,6 @@
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Authentication.WebAssembly.Msal" Version="10.0.12" />
 
-    <!-- Hulpmiddelen buiten de tier-implementatiebomen (MigrationTools/, Tools/) -->
-    <PackageVersion Include="Microsoft.Playwright" Version="1.62.0" />
-
     <!-- Testprojecten -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageVersion Include="xunit" Version="2.9.3" />

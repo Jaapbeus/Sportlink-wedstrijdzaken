@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- Opruimronde na v3.8.0.0: dubbele sleutel `SportlinkAutoLoginEncryptionKey` uit beide `local.settings.template.json` verwijderd, de troubleshootregel "Sportlink API 401" in de snelle referentie noemt nu beide databasetiers, en de rollenmatrix staat in het architectuurregister als bewezen door tests; de ongebruikte pakketversie `Microsoft.Playwright` (wees sinds het verwijderen van `Tools/SportlinkTokenCapture`) is uit `Directory.Packages.props` gehaald (#1423)
+
 ## [3.8.0.0] — 2026-10-01
 
 ### Added
