@@ -39,6 +39,12 @@ public static class SportlinkExtensieHealthFunction
                 await connection.OpenAsync();
 
                 var rollen = await LeesRolStatusAsync(connection, clubCode);
+                // #1411: toon de daadwerkelijk actieve opslag, niet verouderde bootstrapmetadata.
+                var autoStore = context.InstanceServices.GetService<ISportlinkAutoLoginStore>();
+                if (autoStore is not null && string.Equals(clubCode, autoStore.ClubCode, StringComparison.Ordinal))
+                    rollen = new List<SportlinkRolStatus> { SportlinkEndpointCore.BouwRolStatus(
+                        RolNaam, !string.IsNullOrWhiteSpace(autoStore.LeesRefreshToken(RolNaam)),
+                        laatstVerverstOpUtc: null, refreshTokenVervaltOpUtc: null, nuUtc: DateTime.UtcNow) };
                 var (laatsteFout, laatsteFoutOp) = await LeesLaatsteMutatieFoutAsync(connection, clubCode);
                 var laatsteContractCheck = await LeesLaatsteContractCheckAsync(connection, clubCode);
 
@@ -73,25 +79,25 @@ public static class SportlinkExtensieHealthFunction
     {
         var resultaat = new List<SportlinkRolStatus>();
         await using var cmd = new NpgsqlCommand(
-            "SELECT rolnaam, bijgewerktop, refreshtokenvervaltop FROM public.sportlinkservicetokens WHERE clubcode = @clubcode",
+            "SELECT rolnaam, credentialsencrypted IS NOT NULL OR refreshencrypted IS NOT NULL FROM public.sportlinkautologin WHERE clubcode = @clubcode",
             connection);
         cmd.Parameters.AddWithValue("clubcode", clubCode);
 
-        var gevonden = new Dictionary<string, (DateTime BijgewerktOp, DateTime VervaltOp)>(StringComparer.OrdinalIgnoreCase);
+        var gevonden = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
         await using (var reader = await cmd.ExecuteReaderAsync())
         {
             while (await reader.ReadAsync())
-                gevonden[reader.GetString(0)] = (reader.GetDateTime(1), reader.GetDateTime(2));
+                gevonden[reader.GetString(0)] = reader.GetBoolean(1);
         }
 
-        gevonden.TryGetValue(RolNaam, out var info);
-        // #1266: de vorm van deze statusregel en de "vermoedelijk verlopen"-drempel staan in
-        // SportlinkEndpointCore, zodat de SQL Server-tier exact hetzelfde antwoord geeft.
+        gevonden.TryGetValue(RolNaam, out var gekoppeld);
+        // The encrypted store tracks login attempts, not refresh-token expiry. Report expiry as
+        // unknown; the dedicated auto-login status exposes last login and retry state.
         resultaat.Add(SportlinkEndpointCore.BouwRolStatus(
             RolNaam,
-            gekoppeld: info != default,
-            laatstVerverstOpUtc: info == default ? null : info.BijgewerktOp,
-            refreshTokenVervaltOpUtc: info == default ? null : info.VervaltOp,
+            gekoppeld,
+            laatstVerverstOpUtc: null,
+            refreshTokenVervaltOpUtc: null,
             nuUtc: DateTime.UtcNow));
         return resultaat;
     }

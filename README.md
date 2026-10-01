@@ -116,7 +116,6 @@ De repository bevat 13 .NET-projecten en één SQL Server-databaseproject (SSDT)
 | `Database/` | SQL Server-databaseproject (SSDT, `SportlinkSqlDb.sqlproj`) |
 | `BlazorAdmin/` | Blazor WebAssembly Admin GUI (`net10.0`) |
 | `MigrationTools/SqlServerToPostgresCopy/` | Eenmalige kopieertool SQL Server → Postgres |
-| `Tools/SportlinkTokenCapture/` | Hulpprogramma voor het koppelen van een Sportlink-serviceaccount |
 | `BlazorAdmin.Tests/`, `FunctionApp.Tests/`, `FunctionApp.Postgres.Tests/`, `Database.Postgres.Tests/`, `Planner.Shared.Tests/` | Unit- en integratietests |
 
 Bouw altijd via `sportlink-wedstrijdzaken.slnf` of per project. De volledige `sportlink-wedstrijdzaken.sln` bevat het SSDT-project en bouwt daardoor niet op macOS.

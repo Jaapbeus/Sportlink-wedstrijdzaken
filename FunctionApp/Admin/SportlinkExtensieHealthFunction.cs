@@ -16,13 +16,9 @@ namespace SportlinkFunction.Admin;
 /// Zonder <c>?live=true</c> doet dit endpoint GEEN Sportlink-aanroep; alles komt uit onze eigen
 /// database. Rapporteert nooit een tokenwaarde en nooit Match-data met persoonsgegevens.
 /// <para>
-/// <b>Eén tierverschil, bewust.</b> De Postgres-tier bewaart refresh-tokens in een eigen DB-tabel
-/// en kent daardoor het moment van de laatste verversing. Deze tier bewaart ze in een Function
-/// App-instelling via de Azure Management API (<see cref="SportlinkClubAppSettingsTokenStore"/>,
-/// #1020, herbevestigd bij #1266) — die opslag heeft geen tijdstempels. <c>LaatstVerverstOp</c> en
-/// <c>RefreshTokenVervaltOp</c> zijn hier dus <c>null</c>: "niet bekend", niet "verlopen". De vorm
-/// van het antwoord is verder identiek, want beide tiers bouwen hem met
-/// <see cref="SportlinkEndpointCore.BouwRolStatus"/>.
+/// Beide tiers gebruiken de versleutelde automatische-loginopslag. De status geeft geen ruwe
+/// refresh-tokenwaarde of niet-beschikbare vervaltijd terug; de login- en foutstatus staan in het
+/// aparte automatische-loginstatuspaneel.
 /// </para>
 /// </summary>
 public static class SportlinkExtensieHealthFunction
@@ -79,11 +75,8 @@ public static class SportlinkExtensieHealthFunction
             });
 
     /// <summary>
-    /// "Is deze rol gekoppeld?" is op deze tier één vraag aan de tokenopslag: bestaat de Function
-    /// App-instelling met het refresh-token. Bewust via <see cref="ISportlinkClubTokenStore"/> en
-    /// niet door hier zelf de omgevingsvariabelenaam samen te stellen — die naamgeving hoort op één
-    /// plek te staan. De tokenwaarde zelf wordt alleen op aanwezigheid getoetst en nooit
-    /// teruggegeven of gelogd.
+    /// "Is deze rol gekoppeld?" is één vraag aan de versleutelde opslag: bestaat er een refresh-token.
+    /// De tokenwaarde zelf wordt alleen op aanwezigheid getoetst en nooit teruggegeven of gelogd.
     /// </summary>
     private static List<SportlinkRolStatus> LeesRolStatus(FunctionContext context)
     {

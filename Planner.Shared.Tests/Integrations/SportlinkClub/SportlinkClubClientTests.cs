@@ -527,68 +527,6 @@ public class SportlinkClubClientTests
         }
     }
 
-    [Fact]
-    public async Task SchrijfRefreshTokenAsync_ZonderAzureManagementEnvVars_DoetNiksEnBelltNooitDefaultAzureCredential()
-    {
-        // Arrange: geen env vars (lokale omgeving)
-        var oldSub = Environment.GetEnvironmentVariable("AzureSubscriptionId");
-        var oldRg = Environment.GetEnvironmentVariable("AzureResourceGroupName");
-        var oldFunc = Environment.GetEnvironmentVariable("AzureFunctionAppName");
-
-        Environment.SetEnvironmentVariable("AzureSubscriptionId", null);
-        Environment.SetEnvironmentVariable("AzureResourceGroupName", null);
-        Environment.SetEnvironmentVariable("AzureFunctionAppName", null);
-
-        try
-        {
-            var tokenStore = new SportlinkClubAppSettingsTokenStore(
-                NullLogger<SportlinkClubAppSettingsTokenStore>.Instance);
-            var httpCallCount = 0;
-            var client = MakeClient(_ =>
-            {
-                httpCallCount++;
-                return new HttpResponseMessage(HttpStatusCode.NotFound);
-            });
-
-            // Act
-            await tokenStore.SchrijfRefreshTokenAsync("test-rol", "nieuw-token");
-
-            // Assert
-            httpCallCount.Should().Be(0, "geen HTTP-aanroepen zonder Azure env vars");
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("AzureSubscriptionId", oldSub);
-            Environment.SetEnvironmentVariable("AzureResourceGroupName", oldRg);
-            Environment.SetEnvironmentVariable("AzureFunctionAppName", oldFunc);
-        }
-    }
-
-    [Fact]
-    public async Task LeesRefreshToken_LeestUitOmgevingsvariabeleMetRolSpecifiekeNaam()
-    {
-        // Arrange: unieke rol per test om env-var-conflicten te voorkomen
-        var uniqueRol = $"test-rol-{Guid.NewGuid()}";
-        var expectedToken = $"token-{Guid.NewGuid()}";
-        Environment.SetEnvironmentVariable($"SportlinkClubRefreshToken__{uniqueRol}", expectedToken);
-
-        try
-        {
-            var tokenStore = new SportlinkClubAppSettingsTokenStore(
-                NullLogger<SportlinkClubAppSettingsTokenStore>.Instance);
-
-            // Act
-            var result = tokenStore.LeesRefreshToken(uniqueRol);
-
-            // Assert
-            result.Should().Be(expectedToken);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable($"SportlinkClubRefreshToken__{uniqueRol}", null);
-        }
-    }
-
     // ── ResolvePublicMatchIdAsync (#991/#1016) ──
 
     private static string MatchProgramOverviewResponse(params (long ExternalMatchId, string PublicMatchId)[] entries)

@@ -352,6 +352,13 @@ zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §57.
 
 ### 5.5 Sportlink Web Extension — architectuurplaatsing
 
+Automatische herlogin (#1411) gebruikt dezelfde egress- en autorisatiegrenzen. Credentials en
+nieuwe refresh-tokens worden op beide tiers met AES-256-GCM versleuteld, met een hostsleutel
+buiten de database en AAD voor club/rol/doel. De bestaande handmatige modus blijft beschikbaar
+zonder hostsleutel. De samengevoegde opslag van wachtwoord en tweede factor vergroot de impact
+van een gecompromitteerde runtime; minimale accountrechten en intrekking blijven noodzakelijk.
+Zie [ontwerp en beheer](SPORTLINK-AUTOLOGIN.md).
+
 > **Volledig protocol, endpoint-contracten en de agent-tokengrens:
 > [SPORTLINK-WEB-EXTENSION.md](SPORTLINK-WEB-EXTENSION.md).** Dit is uitsluitend de
 > architectuurplaatsing — het volledige mechanisme niet hier dupliceren.

@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="AngleSharp" />
     <PackageReference Include="Azure.Identity" />
     <!-- #1130: alleen de provider-agnostische abstractions (IChatClient, ChatMessage, ...) — geen
          OpenAI/Anthropic-specifiek pakket hier, conform de AI-services-architectuurregel in

@@ -40,6 +40,27 @@ public class SportlinkExtensieRolDto
     public string? SportlinkAccountNaam { get; set; }
 }
 
+/// <summary>Niet-geheime status van automatische Sportlink-login voor een functionele rol.</summary>
+public class SportlinkAutoLoginStatusDto
+{
+    public bool Configured { get; set; }
+    public bool Enabled { get; set; }
+    public DateTime? LastLoginUtc { get; set; }
+    public DateTime? RetryAfterUtc { get; set; }
+    public string? LastError { get; set; }
+}
+
+/// <summary>Write-only Sportlink-inloggegevens; deze waarden worden nooit opgehaald of lokaal bewaard.</summary>
+public class SportlinkAutoLoginRequestDto
+{
+    public string Username { get; set; } = "";
+    public string Password { get; set; } = "";
+    public string TotpSecret { get; set; } = "";
+    public string TotpAlgorithm { get; set; } = "SHA1";
+    public int TotpDigits { get; set; } = 6;
+    public int TotpPeriodSeconds { get; set; } = 30;
+}
+
 public class GeocodeResultDto
 {
     public double Lat { get; set; }

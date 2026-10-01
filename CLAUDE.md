@@ -1050,7 +1050,7 @@ PostgREST-REST-endpoint, bereikbaar met de (bewust publieke) anon-key, **ongeach
 die API ooit gebruikt.** Zonder RLS is elke `public`-tabel dus extern leesbaar/schrijfbaar/
 verwijderbaar door wie dan ook met de project-URL — exact wat Supabase's Security Advisor op
 13 september 2026 meldde als **CRITICAL** (`rls_disabled_in_public`), onder andere op
-`public.sportlinkservicetokens` (Sportlink-servicetokens) en `public.uitgeslotenemailadressen`
+`public.uitgeslotenemailadressen`
 (persoonsgegevens).
 
 Harde regels, vanaf nu:

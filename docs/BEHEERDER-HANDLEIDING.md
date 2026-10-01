@@ -1231,6 +1231,13 @@ Extension (§19) en vereist dat die is ingeschakeld en gekoppeld voor de rol Wed
 
 ## 19. Sportlink Web Extension (`/sportlink-extension-settings`) — schrijfrechten naar Sportlink Club
 
+**Automatische login (#1411):** na inrichting van de beveiligde hostsleutel kan de beheerder per
+rol gebruikersnaam, wachtwoord en authenticator-instelsleutel opslaan. De instelsleutel is de
+blijvende geheime sleutel uit de authenticatorconfiguratie, niet de zescijferige code van dit
+moment. Vul algoritme, lengte en periode overeenkomstig de echte configuratie in. De volgende
+runtimevernieuwing meldt zich aan; opslaan alleen bewijst nog geen geslaagde login. Zie
+[installatie, foutstatus en intrekking](SPORTLINK-AUTOLOGIN.md).
+
 > Deze feature is **gedeeltelijk gebouwd** (epic #986) — zie
 > [docs/SPORTLINK-WEB-EXTENSION.md](SPORTLINK-WEB-EXTENSION.md) voor de actuele stand per
 > deelfunctie vóór u hierop vertrouwt.
@@ -1252,19 +1259,11 @@ Sportlinks eigen audit-log de rolnaam toont in plaats van een persoonsnaam.
 | Laatst gekoppeld door / op | Wie de koppeling voor het laatst (opnieuw) heeft geregistreerd, en wanneer |
 | Sportlink-account | Naam van het gekoppelde Sportlink-serviceaccount |
 
-Achter elke rol staat de knop **Koppeling (opnieuw) registreren**. Die knop overschrijft alleen de
-weergavenaam en de "laatst gekoppeld door/op"-gegevens — de werkende toegangssleutel blijft
-daarbij ongewijzigd. Het daadwerkelijk *verkrijgen* van een nieuwe sleutel kan niet vanuit de
-webapp: Sportlink staat geen inlog via onze eigen applicatie toe (de terugverwijzing naar een eigen
-adres is aan hun kant dichtgezet). Dit is dus altijd een aparte, eenmalige technische stap die een
-**technisch beheerder** van deze installatie zelf uitvoert, op zijn eigen computer, met een lokaal
-hulpprogramma (`Tools/SportlinkTokenCapture`, met een echte browserlogin — nooit door een
-geautomatiseerd script of AI-agent, zie `docs/SPORTLINK-WEB-EXTENSION.md` §3.3/§4.4 voor de
-volledige stappen). Het resultaat plakt die beheerder daarna in het vak **Refresh-token
-registreren** onder in datzelfde registratiekaartje — "refresh-token" is de technische naam voor
-die toegangssleutel — en bevestigt met **Token registreren**. Een gekoppelde rol houdt zichzelf
-daarna automatisch actief via een uur-timer, ook zonder dagelijks gebruik; dit hoeft dus niet
-routinematig herhaald te worden.
+De oude handmatige tokenregistratie is verwijderd. Configureer of herstel de Sportlink-login via
+de beveiligde automatische-loginsectie op deze pagina. De enige ondersteunde procedure, inclusief
+eerste productieconfiguratie en herstel, staat in [Automatische Sportlink-login](SPORTLINK-AUTOLOGIN.md).
+De functie vereist gebruikersnaam, wachtwoord en authenticator-instelsleutel; een actuele
+zescijferige MFA-code wordt niet opgeslagen.
 
 **Dry-run: alles simuleren, niets naar Sportlink schrijven** — naast de aan/uit-schakelaar staat een
 tweede schakelaar die **standaard AAN** staat. Zolang deze aan staat, doorloopt elke kleedkamer-/

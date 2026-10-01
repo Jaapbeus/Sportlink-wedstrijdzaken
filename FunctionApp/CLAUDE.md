@@ -321,3 +321,12 @@ Database connection includes 5 retries with 5-second delays. If still failing:
 - [FIXES-APPLIED.md](FIXES-APPLIED.md): History of issues and fixes applied
 - Azure Functions docs: https://learn.microsoft.com/en-us/azure/azure-functions/
 - Sportlink API: https://data.sportlink.com (requires authentication)
+
+## Automatische Sportlink-login (#1411)
+
+Beide tiers hebben admin-only GET/PUT/DELETE
+`beheer/sportlink-extensie/rollen/{rolNaam}/autologin`. Alleen de primaire club kan credentials
+instellen. `SportlinkAutoLoginEncryptionKey` is een afzonderlijke host-secret; credentials en
+nieuwe refresh-tokens staan versleuteld in `dbo.SportlinkAutoLogin` respectievelijk
+`public.sportlinkautologin`. Zie `docs/SPORTLINK-AUTOLOGIN.md` voor installatie en live acceptatie.
+De egress-guard en menselijke beperking voor live agenttests blijven gelden.

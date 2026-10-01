@@ -134,6 +134,25 @@ components:
   # Schema's
   # ───────────────────────────────────────────────────────────────────────────
   schemas:
+    SportlinkAutoLoginStatus:
+      type: object
+      properties:
+        configured:
+          type: boolean
+        enabled:
+          type: boolean
+        lastLoginUtc:
+          type: string
+          format: date-time
+          nullable: true
+        retryAfterUtc:
+          type: string
+          format: date-time
+          nullable: true
+        lastError:
+          type: string
+          nullable: true
+          description: Generieke foutcategorie zonder providerrespons of secrets
 
     # ── Generiek ──────────────────────────────────────────────────────────────
 
@@ -3505,55 +3524,118 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /beheer/sportlink-extensie/rollen/{rolNaam}/token:
-    put:
+  /beheer/sportlink-extensie/rollen/{rolNaam}/autologin:
+    parameters:
+      - name: rolNaam
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [Wedstrijdzaken]
+    get:
       tags: [beheer]
-      operationId: registreerSportlinkExtensieToken
-      summary: Refresh-token productie-persistent registreren (write-only)
-      description: |
-        Bootstrap van het échte Sportlink refresh_token voor een rol (#990/#991, epic #986).
-        Valideert het token met één refresh-poging vóór opslag in `public.sportlinkservicetokens`.
-        Er bestaat bewust géén GET-tegenhanger — het token wordt nooit teruggegeven.
+      operationId: getSportlinkAutoLogin
+      summary: Status van automatische login zonder secrets
+      description: Alleen admin en primaire club. Vereist ingerichte hostsleutel. Geen externe login tijdens deze aanvraag.
       security:
         - easyAuth: []
-      parameters:
-        - name: rolNaam
-          in: path
-          required: true
-          schema:
-            type: string
-            enum: [Wedstrijdzaken]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [RefreshToken]
-              properties:
-                RefreshToken:
-                  type: string
-                  description: Ruwe refresh_token-waarde, bv. gevangen via Tools/SportlinkTokenCapture.
       responses:
         '200':
-          description: Token gevalideerd en opgeslagen
+          description: Status zonder credentials, Cache-Control no-store
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  RolNaam:
-                    type: string
+                $ref: '#/components/schemas/SportlinkAutoLoginStatus'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-        '409':
-          description: Sportlink heeft het opgegeven refresh-token geweigerd
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+        '503':
+          description: Beveiligde hostsleutel of opslag niet beschikbaar
+    put:
+      tags: [beheer]
+      operationId: setSportlinkAutoLogin
+      summary: Versleutelde logincredentials instellen
+      description: Alleen admin en primaire club. Vereist ingerichte hostsleutel. Geen externe login tijdens deze aanvraag.
+      security:
+        - easyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password, totpSecret]
+              properties:
+                username:
+                  type: string
+                  maxLength: 320
+                  writeOnly: true
+                password:
+                  type: string
+                  format: password
+                  maxLength: 1024
+                  writeOnly: true
+                totpSecret:
+                  type: string
+                  format: password
+                  maxLength: 256
+                  writeOnly: true
+                totpAlgorithm:
+                  type: string
+                  enum: [SHA1, SHA256, SHA512]
+                  default: SHA1
+                totpDigits:
+                  type: integer
+                  enum: [6, 8]
+                  default: 6
+                totpPeriodSeconds:
+                  type: integer
+                  enum: [30, 60]
+                  default: 30
+      responses:
+        '200':
+          description: Status zonder credentials, Cache-Control no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SportlinkAutoLoginStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          description: Beveiligde hostsleutel of opslag niet beschikbaar
+        '413':
+          description: Meer dan 8192 bytes JSON
+        '415':
+          description: Content-Type application/json vereist
+    delete:
+      tags: [beheer]
+      operationId: deleteSportlinkAutoLogin
+      summary: Credentials en opgeslagen afgeleid token verwijderen
+      description: Alleen admin en primaire club. Vereist ingerichte hostsleutel. Geen externe login tijdens deze aanvraag.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Status zonder credentials, Cache-Control no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SportlinkAutoLoginStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          description: Beveiligde hostsleutel of opslag niet beschikbaar
 
   /beheer/sportlink-extensie/health:
     get:

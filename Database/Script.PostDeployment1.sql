@@ -1252,6 +1252,24 @@ BEGIN
 END
 GO
 
+-- #990: encrypted authentication state for Sportlink automatic login. The deploy pipeline runs
+-- this script rather than publishing the DACPAC, so keep the idempotent table definition here too.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.SportlinkAutoLogin'))
+BEGIN
+    CREATE TABLE [dbo].[SportlinkAutoLogin] (
+        [ClubCode]             NVARCHAR(20)  NOT NULL,
+        [RolNaam]              NVARCHAR(50)  NOT NULL,
+        [CredentialsEncrypted] NVARCHAR(MAX) NULL,
+        [RefreshEncrypted]     NVARCHAR(MAX) NULL,
+        [LastLoginUtc]         DATETIME2(7)  NULL,
+        [RetryAfterUtc]        DATETIME2(7)  NULL,
+        [LastError]            NVARCHAR(64)  NULL,
+        [FailureCount]         INT           NOT NULL CONSTRAINT [DF_SportlinkAutoLogin_FailureCount] DEFAULT (0),
+        CONSTRAINT [PK_SportlinkAutoLogin] PRIMARY KEY CLUSTERED ([ClubCode] ASC, [RolNaam] ASC)
+    );
+END
+GO
+
 -- #1341: RolFeatureInstellingen — per-club, per-rol instelbare zichtbaarheid van Sportlink-acties
 -- (kleedkamers/scheidsrechter/veld). Generiek opgezet, niet beperkt tot deze drie acties. Geen rij
 -- voor een combinatie betekent UITGESCHAKELD (fail-closed); 'admin' komt hier nooit in voor.

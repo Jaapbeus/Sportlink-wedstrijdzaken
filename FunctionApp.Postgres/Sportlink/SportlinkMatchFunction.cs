@@ -19,7 +19,7 @@ namespace FunctionApp.Postgres.Sportlink;
 /// <para>
 /// Verbindt drie stukken die elk in een aparte issue/PR gebouwd zijn: de gedeelde
 /// <see cref="ISportlinkClubClient"/> (#991/#998, <c>Planner.Shared</c>), de Postgres-tier
-/// <see cref="PostgresSportlinkClubTokenStore"/> (#991) en de PublicMatchId-reverse-lookup-cache
+/// <see cref="ISportlinkClubTokenStore"/> (#991) en de PublicMatchId-reverse-lookup-cache
 /// (#991/#1016, <see cref="SportlinkPublicMatchIdRepository"/>).
 /// </para>
 /// </summary>

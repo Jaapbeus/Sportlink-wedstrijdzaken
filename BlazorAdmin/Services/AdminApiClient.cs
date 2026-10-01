@@ -39,10 +39,19 @@ public class AdminApiClient
         => await PutAsync<object>($"api/beheer/sportlink-extensie/rollen/{Uri.EscapeDataString(rolNaam)}",
             new { SportlinkAccountNaam = sportlinkAccountNaam });
 
-    // #991: write-only bootstrap van het échte refresh-token — nooit een GET-tegenhanger.
-    public async Task<ApiResult<object>> RegistreerSportlinkTokenAsync(string rolNaam, string refreshToken)
-        => await PutAsync<object>($"api/beheer/sportlink-extensie/rollen/{Uri.EscapeDataString(rolNaam)}/token",
-            new { RefreshToken = refreshToken });
+    // #990: write-only automatische login-instellingen; GET retourneert uitsluitend statusmetadata.
+    public async Task<ApiResult<SportlinkAutoLoginStatusDto>> GetSportlinkAutoLoginStatusAsync(string rolNaam)
+        => await GetAsync<SportlinkAutoLoginStatusDto>(
+            $"api/beheer/sportlink-extensie/rollen/{Uri.EscapeDataString(rolNaam)}/autologin");
+
+    public async Task<ApiResult<SportlinkAutoLoginStatusDto>> SetSportlinkAutoLoginAsync(
+        string rolNaam, SportlinkAutoLoginRequestDto request)
+        => await PutAsync<SportlinkAutoLoginStatusDto>(
+            $"api/beheer/sportlink-extensie/rollen/{Uri.EscapeDataString(rolNaam)}/autologin", request);
+
+    public async Task<ApiResult<SportlinkAutoLoginStatusDto>> DeleteSportlinkAutoLoginAsync(string rolNaam)
+        => await DeleteAsync<SportlinkAutoLoginStatusDto>(
+            $"api/beheer/sportlink-extensie/rollen/{Uri.EscapeDataString(rolNaam)}/autologin");
 
     // #991: read-only Sportlink-paneel per wedstrijd in Dagplanning.
     public async Task<ApiResult<SportlinkMatchInfoDto>> GetSportlinkMatchInfoAsync(string wedstrijdcode)

@@ -474,7 +474,7 @@ niet, parsing- en vertaallogica wel.
 |---|---|---|
 | `Database.Postgres.Cli.Tests` (11) | `CliArgumentParser` | Bepaalt of `deploy.yml` migraties toepast, `his`-tabellen aanmaakt of demodata seedt. Een verkeerde uitkomst is een verkeerde deploy. |
 | `MigrationTools.Tests` (11) | `IdMapRegistry`, `TableCopier.ResolveValue` | De enige plek in de cutover-kopie waar een fout **stil** is: geen exception, maar een rij die naar het verkeerde bovenliggende record wijst. |
-| `Tools.SportlinkTokenCapture.Tests` (9) | `WriteRefreshTokenToSettings`, `SettingsKeyFor` | Herschrijft `local.settings.json`, waar ook de connectiestring in staat. |
+| *(retired in #1411)* | Token-capturetool en tests verwijderd; zie [`docs/SPORTLINK-AUTOLOGIN.md`](SPORTLINK-AUTOLOGIN.md). | |
 
 Drie dingen die daarvoor nodig waren, en die de moeite van het onthouden waard zijn:
 
@@ -484,7 +484,7 @@ compileren naar een onbereikbare `<Main>$`. De argumentafhandeling is daarom ver
 zonder het programma daadwerkelijk te starten — dezelfde reden als regel 3 voor `@code`-blokken.
 
 **`internal` plus `InternalsVisibleTo`, niet `public`.** `TableCopier.ResolveValue` en de twee
-helpers in `SportlinkTokenCapture` zijn van `private` naar `internal` gegaan. Ze horen niet bij het
+helpers in de inmiddels verwijderde token-capturetool waren van `private` naar `internal` gegaan. Ze hoorden niet bij het
 publieke oppervlak van die programma's; ze horen alleen bevraagbaar te zijn door hun eigen tests.
 
 **De eerste test was meteen rood, en terecht.** `WriteRefreshTokenToSettings` schreef een
