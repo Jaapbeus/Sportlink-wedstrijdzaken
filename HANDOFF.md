@@ -1,3 +1,22 @@
+# HANDOFF — #1418 documentatie-uitlijning vóór release v3.8.0.0 (PR #1420)
+
+Status (2026-10-01): alle documentatie voor beheerder/gebruiker, technisch/architectuur en developer is
+tegen de code op `develop` (HEAD 8363105) gecontroleerd en waar nodig bijgewerkt — zie de PR-body van
+[PR #1420](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/pull/1420) voor de lijst per doelgroep.
+Uitsluitend documentatie; geen versiebump.
+
+Open vóór de release:
+- [#1421](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/1421) — drie GUI-teksten melden
+  nog "altijd gesimuleerd" (oefenwedstrijd-banner, `SportlinkActieStatus.CodeLockTekst`, dry-run-hulptekst)
+  terwijl de acties sinds #1319 echt doorgaan. Codewijziging, bewust buiten #1418 gehouden; aanbevolen
+  vóór v3.8.0.0.
+- Beide `local.settings.template.json`-bestanden bevatten `SportlinkAutoLoginEncryptionKey` twee keer
+  in `Values` (regel 8 en 23) — functioneel onschadelijk, wel een merge-artefact van #1411.
+- Release zelf: `[Unreleased]` bevat `feat:`-items → MINOR-bump naar 3.8.0.0 in alle drie csproj's,
+  `info.version` in `openapi.yaml`/`.json` mee, `docs/QUICK-REFERENCE.md` noemt al v3.8.
+
+---
+
 # HANDOFF — #1411 automatische Sportlink-login (na merge PR #1412)
 
 Status: implementatie en runbook zijn via [PR #1412](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/pull/1412) gemerged naar `develop` op 2026-10-01. Merge-commit: `27009f9574a191e8536adb6c88c92e2749f4aee8`; feature-head: `1a0ffb7e2fbf9a22f45f903e61bec9c0b0853457`. De productiebranch is niet aangepast en er is geen productie-deployment uitgevoerd.

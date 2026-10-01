@@ -4476,6 +4476,23 @@ naar de **titel** van de sectie, eventueel met het issuenummer erbij. Een titel 
 hernummering, een nummer niet. Dus `zie "Row-Level Security alsnog ingeschakeld" (#1198)` in plaats
 van `zie §65`.
 
+## 76. Automatische Sportlink-login: opslag op beide tiers (#1411)
+
+Credentials en het afgeleide refresh-token staan versleuteld (de FunctionApp versleutelt vóór opslag;
+zie [SPORTLINK-AUTOLOGIN.md](SPORTLINK-AUTOLOGIN.md)) in één tabel per tier, met dezelfde kolommen
+(ClubCode + RolNaam als sleutel, CredentialsEncrypted, RefreshEncrypted, LastLoginUtc, RetryAfterUtc,
+LastError, FailureCount):
+
+| Tier | Object | Aangelegd door |
+|---|---|---|
+| Postgres | `public.sportlinkautologin` (lowercase) | `Database.Postgres/migrations/029_sportlinkautologin.sql` — bevat `ENABLE ROW LEVEL SECURITY` en `REVOKE` voor `PUBLIC`/`anon`/`authenticated` |
+| SQL Server | `dbo.SportlinkAutoLogin` | `Database/dbo/Tables/SportlinkAutoLogin.sql` én idempotent `Database/Script.PostDeployment1.sql` |
+
+Migratie `030_remove_legacy_sportlink_tokens.sql` verwijdert `public.sportlinkservicetokens` (de oude
+refresh-tokenopslag); er is geen fallback. De per club/rol gedeelde lease is tier-eigen: een
+transaction-scoped advisory lock (Postgres) respectievelijk een transaction-owned application lock
+(SQL Server) — geen gedeelde providerabstractie.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

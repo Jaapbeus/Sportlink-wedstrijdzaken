@@ -108,8 +108,12 @@ Het kan. club.sportlink.com is geen server-rendered site maar een React-SPA (Vit
 - **Gevolg voor de architectuur:** `PublicMatchId` kan niet uit onze eigen data berekend worden.
   Elk endpoint dat een `PublicMatchId` nodig heeft moet 'm via een **reverse-lookup bij Sportlink
   zelf** opzoeken.
+- **Historische noot (2026-10-01):** de spikes hieronder zijn onderzoek van 2026-09-05. De drie
+  dev-scripts (`Invoke-SportlinkMatchLookup.ps1`, `Invoke-SportlinkMatchProgramLookup.ps1`,
+  `Invoke-SportlinkTokenSpike.ps1`) zijn in #1411 verwijderd; de huidige, automatische
+  login-implementatie staat in [SPORTLINK-AUTOLOGIN.md](SPORTLINK-AUTOLOGIN.md).
 - **Reverse-lookup BEVESTIGD WERKEND (2026-09-05, live productietest,
-  `scripts/dev/Invoke-SportlinkMatchProgramLookup.ps1`):**
+  `scripts/dev/Invoke-SportlinkMatchProgramLookup.ps1`, verwijderd in #1411):**
   `competition/match/MatchProgramOverview?DateFrom=<dag>&DateTo=<dag>` met een smal (1-daags)
   date-bereik gaf voor dat `<wedstrijdnummer>` (dezelfde wedstrijd als hierboven) de
   `M<9 cijfers>`-waarde terug — exact de eerder live geobserveerde waarde. Timing: 12,2 s voor het 1-daagse

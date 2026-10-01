@@ -508,6 +508,7 @@ Als een check faalt en de oorzaak niet direct duidelijk is:
 | Verbindingsstrings met credentials | `Server=...;Password=...` | `local.settings.json` (in .gitignore) |
 | Lokale paden met gebruikersnaam | `C:\Users\<naam>\...` | Relatieve paden of omgevingsvariabelen |
 | TOTP-seeds | `otpauth://totp/...?secret=...` | Alleen in authenticator-app of 1Password |
+| Sportlink-logincredentials en `SportlinkAutoLoginEncryptionKey` (#1411) | Gebruikersnaam, wachtwoord, TOTP-instelsleutel, Base64-hostsleutel | Credentials uitsluitend versleuteld in de database via de beheerpagina; hostsleutel als Function App-setting met een recoverykopie in beveiligd secretbeheer. Zie [SPORTLINK-AUTOLOGIN.md](docs/SPORTLINK-AUTOLOGIN.md) |
 
 Bij twijfel: het gaat niet in git.
 
