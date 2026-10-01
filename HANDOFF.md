@@ -1,37 +1,46 @@
-# HANDOFF — #1411 automatische Sportlink-login
+# HANDOFF — release v3.8.0.0 (#1424)
 
-Werkbranch: `feature/#1411-sportlink-auto-login`, basis `origin/develop` op
-`058cc2d934968468a178858ca126abb21e3c3f93`. Plan en eenmalige Codex-implementatiebevoegdheid:
-https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/1411.
+Status (2026-10-01): #1421 gemerged (3cfc9c1), lokale branches/worktrees opgeruimd, versie 3.8.0.0 en
+CHANGELOG-sectie voorbereid in PR naar `develop`, daarna release-PR `develop` → `main` en tag `v3.8.0.0`.
+Restpunten (productie-sleutel `SportlinkAutoLoginEncryptionKey`, Sportlink-koppeling opnieuw inrichten
+na migratie 030, dependabot-PR's #1404/#1405/#1414, opruimpunten) staan in issue #1423.
 
-Implementatie: TOTP/PKCE-loginprovider, AES-GCM-opslag op beide databasetiers,
-databaselease en begrensde herlogin, admin-API en beheerinterface. Installatie, sleutelbeheer,
-verwijdering en live acceptatie staan in `docs/SPORTLINK-AUTOLOGIN.md`.
+---
 
-Geverifieerd op de oorspronkelijke feature-head: builds beide backends en frontend; gerichte
-cryptografie/provider/coördinatie/client-/endpointtests; beide tiers' autorisatietests; frontend
-publish-CSP; geïsoleerde browserproef met fictieve gegevens en gemockte API. Lokale live bevestiging:
-twee wachtwoord+TOTP-logins via de provider zijn geslaagd;
-een refresh-grant is geslaagd en roteerde de refresh-token (access 3600 s, refresh 21600 s).
-Een directe herlogin met dezelfde TOTP-periode werd geweigerd; na de volgende 30-secondenperiode
-lukte een verse login. Dit past bij TOTP-replaybescherming, maar de precieze oorzaak is niet
-bewezen. De herstelde entry is `Sportlink WZ` in BeusFamily/Private.
+# HANDOFF — #1418 documentatie-uitlijning vóór release v3.8.0.0 (PR #1420)
 
-De eigenaar heeft die lokale auth-only proef daarna beëindigd en als geslaagd beoordeeld na
-14 uur en 39 minuten zonder onderbreking. Dit is geen 24-uursmeting en bewijst niet de database-,
-coordinator-, Function Timer- of procesherstart-integratie.
+Status (2026-10-01): alle documentatie voor beheerder/gebruiker, technisch/architectuur en developer is
+tegen de code op `develop` (HEAD 8363105) gecontroleerd en waar nodig bijgewerkt — zie de PR-body van
+[PR #1420](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/pull/1420) voor de lijst per doelgroep.
+Uitsluitend documentatie; geen versiebump.
 
-Open vóór ingebruikname:
-- CI inclusief echte PostgreSQL-integratietests en Security Gate controleren.
-- Eigenaar verifieert de actuele Sportlink-formulieren en TOTP-parameters met eigen account.
-- Indien gewenst: aparte 24-uursloop met twee automatische sessieovergangen en herstart; geen
-  wedstrijdmutaties in die proef. De uitgevoerde 14u39-harness bewijst niet de database/coordinator/
-  Function Timer-integratie of tokenbehoud na procesherstart.
-- Deployment, migratie en secret-invoer pas na afzonderlijk eigenaarsbesluit.
+Open vóór de release:
+- [#1421](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/1421) — drie GUI-teksten melden
+  nog "altijd gesimuleerd" (oefenwedstrijd-banner, `SportlinkActieStatus.CodeLockTekst`, dry-run-hulptekst)
+  terwijl de acties sinds #1319 echt doorgaan. Codewijziging, bewust buiten #1418 gehouden; aanbevolen
+  vóór v3.8.0.0.
+- Beide `local.settings.template.json`-bestanden bevatten `SportlinkAutoLoginEncryptionKey` twee keer
+  in `Values` (regel 8 en 23) — functioneel onschadelijk, wel een merge-artefact van #1411.
+- Release zelf: `[Unreleased]` bevat `feat:`-items → MINOR-bump naar 3.8.0.0 in alle drie csproj's,
+  `info.version` in `openapi.yaml`/`.json` mee, `docs/QUICK-REFERENCE.md` noemt al v3.8.
 
-Orkestratie/integratie/review: Astra. Deelimplementaties cryptografie, loginprovider,
-opslag en GUI: gpt-6-luna, door de orchestrator beoordeeld en geïntegreerd.
-De blijvende reviewerregel in CLAUDE.md/AGENTS.md is niet gewijzigd.
+---
+
+# HANDOFF — #1411 automatische Sportlink-login (na merge PR #1412)
+
+Status: implementatie en runbook zijn via [PR #1412](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/pull/1412) gemerged naar `develop` op 2026-10-01. Merge-commit: `27009f9574a191e8536adb6c88c92e2749f4aee8`; feature-head: `1a0ffb7e2fbf9a22f45f903e61bec9c0b0853457`. De productiebranch is niet aangepast en er is geen productie-deployment uitgevoerd.
+
+Implementatie: begrensde TOTP/PKCE-loginprovider, AES-GCM-encrypted opslag van credentials en refresh-tokens op beide databasetiers, databaselease en begrensde herlogin, admin-API en beheerinterface. MFA blijft actief. Productie-initialisatie, secretbeheer, herstel en veiligheidsgrenzen staan in `docs/SPORTLINK-AUTOLOGIN.md`.
+
+Verificatie op PR #1412: alle Build-, Postgres- en SQL Server-fresh-databasejobs en alle Security Scan-checks zijn geslaagd. Op de gemergde develop-head `27009f9` zijn beide FunctionApp-tiers en BlazorAdmin gebouwd; 107 gerichte auto-login/TOTP-tests en 823 `FunctionApp.Tests` zijn geslaagd, met 5 bestaande skips. `git diff --check` was schoon. Lokale .NET 9-tests op deze host gebruikten `DOTNET_ROLL_FORWARD=Major` vanwege de aanwezige .NET 10-runtime.
+
+Eigenaarstest en acceptatie: de eigenaar heeft de oorspronkelijke duur van 24 uur bijgesteld naar 14 uur en 39 minuten en de lokale auth-proef na 14u39 zonder onderbreking als geslaagd en afgerond verklaard. De acceptatietest is daarmee compleet volgens de door de eigenaar vastgestelde grens; er staat hiervoor geen aanvullende 24-uursproef open.
+
+Vervolg na deze afgeronde feature-acceptatie:
+- Productie-initialisatie volgt de stappen in `docs/SPORTLINK-AUTOLOGIN.md`, inclusief de bestaande Function App-secretsetting.
+- Een productie-release vereist een aparte releasegang van `develop` naar `main`; die is geen onderdeel van PR #1412 en is niet uitgevoerd.
+
+Uitgevoerde taak: Astra orkestreerde de implementatie, CI-opvolging, merge naar `develop` en develop-hercontrole. Bij afronding van de merge-hercontrole is deze sessie geen lopende auth-test.
 
 ---
 

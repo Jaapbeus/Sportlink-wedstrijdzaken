@@ -135,7 +135,7 @@ public class SportlinkClubClient : ISportlinkClubClient
         string publicMatchId,
         CancellationToken cancellationToken = default)
     {
-        return await ExecuteWithTokenRetryAsync(functioneleRol,
+        return await ExecuteWithTokenRetryAsync(functioneleRol, RetryBeleid.Lezen,
             (token, ct) => FetchMatchAsync(publicMatchId, token, functioneleRol, ct), cancellationToken);
     }
 
@@ -146,7 +146,7 @@ public class SportlinkClubClient : ISportlinkClubClient
         string publicMatchId,
         CancellationToken cancellationToken = default)
     {
-        return await ExecuteWithTokenRetryAsync(functioneleRol,
+        return await ExecuteWithTokenRetryAsync(functioneleRol, RetryBeleid.Lezen,
             (token, ct) => FetchMatchRawJsonAsync(publicMatchId, token, ct), cancellationToken);
     }
 
@@ -229,7 +229,7 @@ public class SportlinkClubClient : ISportlinkClubClient
         DateOnly datum,
         CancellationToken cancellationToken = default)
     {
-        return await ExecuteWithTokenRetryAsync(functioneleRol,
+        return await ExecuteWithTokenRetryAsync(functioneleRol, RetryBeleid.Lezen,
             (token, ct) => FetchMatchProgramOverviewRawAsync(datum, token, ct), cancellationToken);
     }
 
@@ -256,6 +256,7 @@ public class SportlinkClubClient : ISportlinkClubClient
         CancellationToken cancellationToken = default)
         => ExecuteWithTokenRetryAsync(
             functioneleRol,
+            RetryBeleid.Mutatie,
             (token, ct) => PutDressingRoomsAsync(publicMatchId, homeDressingRoomId, awayDressingRoomId, officialDressingRoomId, token, ct),
             cancellationToken);
 
@@ -269,6 +270,7 @@ public class SportlinkClubClient : ISportlinkClubClient
         CancellationToken cancellationToken = default)
         => ExecuteWithTokenRetryAsync(
             functioneleRol,
+            RetryBeleid.Mutatie,
             async (token, ct) =>
             {
                 // Live vastgesteld (2026-09-06, #1047): UpdateMatchDetails verwacht het VOLLEDIGE
@@ -336,6 +338,7 @@ public class SportlinkClubClient : ISportlinkClubClient
         CancellationToken cancellationToken = default)
         => ExecuteWithTokenRetryAsync<SportlinkMatchChangeRequestResult>(
             functioneleRol,
+            RetryBeleid.Mutatie,
             async (token, ct) =>
             {
                 // Zelfde reden als UpdateFieldAsync hierboven: UpdateMatchDetails verwacht het
@@ -355,7 +358,7 @@ public class SportlinkClubClient : ISportlinkClubClient
         string functioneleRol,
         CancellationToken cancellationToken = default)
     {
-        return await ExecuteWithTokenRetryAsync(functioneleRol,
+        return await ExecuteWithTokenRetryAsync(functioneleRol, RetryBeleid.Lezen,
             (token, ct) => FetchChangeRequestsAsync(token, ct), cancellationToken);
     }
 
@@ -431,6 +434,7 @@ public class SportlinkClubClient : ISportlinkClubClient
         CancellationToken cancellationToken = default)
         => ExecuteWithTokenRetryAsync(
             functioneleRol,
+            RetryBeleid.Mutatie,
             async (token, ct) =>
             {
                 // PublicPersonId van de ingelogde (service-)gebruiker is verplicht in de
@@ -509,6 +513,7 @@ public class SportlinkClubClient : ISportlinkClubClient
         CancellationToken cancellationToken = default)
         => ExecuteWithTokenRetryAsync(
             functioneleRol,
+            RetryBeleid.Mutatie,
             (token, ct) => PutMatchOfficialsAsync(publicMatchId, officials, token, ct),
             cancellationToken);
 
@@ -596,6 +601,7 @@ public class SportlinkClubClient : ISportlinkClubClient
         CancellationToken cancellationToken = default)
         => ExecuteWithTokenRetryAsync(
             functioneleRol,
+            RetryBeleid.Mutatie,
             (token, ct) => PostClubMatchAsync(aanvraag, token, ct),
             cancellationToken);
 
@@ -648,7 +654,7 @@ public class SportlinkClubClient : ISportlinkClubClient
         string functioneleRol,
         CancellationToken cancellationToken = default)
     {
-        return await ExecuteWithTokenRetryAsync(functioneleRol,
+        return await ExecuteWithTokenRetryAsync(functioneleRol, RetryBeleid.Lezen,
             (token, ct) => FetchClubMatchPickListsAsync(token, ct), cancellationToken);
     }
 
@@ -768,17 +774,39 @@ public class SportlinkClubClient : ISportlinkClubClient
     }
 
     /// <summary>
+    /// Retry-beleid per aanroeptype (#1417). Elke call site kiest expliciet — er is bewust géén
+    /// default, zodat een nieuwe mutatie nooit stilzwijgend het leesbeleid erft.
+    /// </summary>
+    private enum RetryBeleid
+    {
+        /// <summary>Idempotente GET: bij een transiënte fout (timeout/netwerk/5xx) één keer
+        /// opnieuw na <see cref="TransientRetryDelay"/> (#1387).</summary>
+        Lezen,
+
+        /// <summary>
+        /// Niet-idempotente PUT/POST: <b>géén</b> transiënte retry. Een timeout of gateway-5xx nádat
+        /// Sportlink de aanvraag al verwerkt heeft, is voor deze client niet te onderscheiden van
+        /// "nooit aangekomen"; herhalen zou dan een tweede oefenwedstrijd aanmaken of een
+        /// wijzigingsverzoek tweemaal bij een echte tegenstander afleveren (#1417). De 401-re-auth-
+        /// retry blijft wél gelden: die herhaalt pas na een expliciete afwijzing vóór verwerking.
+        /// </summary>
+        Mutatie
+    }
+
+    /// <summary>
     /// Het ene token-refresh/401-eenmalige-retry-pad voor ELKE Sportlink-aanroep, lezend én
     /// schrijvend (#1122; tot dan stond dit patroon vijf keer gekopieerd in de GET-methoden en één
     /// keer generiek voor de PUT's — zelfde overweging als TeamNaamNormalisatie/VeldResolver: één
     /// vertaalpunt in plaats van een kopie per issue). Generiek sinds #995: het teruggegeven type
-    /// verschilt per aanroep, de retry-logica niet. Volgorde: token halen/verversen → aanroep → bij
-    /// een transiënte fout (timeout/netwerk/5xx, zie <see cref="IsTransientFout"/>) één keer
-    /// opnieuw na <see cref="TransientRetryDelay"/> (#1387) → bij 401 cache ongeldig maken,
-    /// geforceerd verversen, nogmaals opnieuw → blijft het 401, dan is herkoppeling vereist.
+    /// verschilt per aanroep, de retry-logica niet. Volgorde: token halen/verversen → aanroep →
+    /// <i>alleen bij <see cref="RetryBeleid.Lezen"/></i> bij een transiënte fout (timeout/netwerk/5xx,
+    /// zie <see cref="IsTransientFout"/>) één keer opnieuw na <see cref="TransientRetryDelay"/>
+    /// (#1387, begrensd tot lezen sinds #1417) → bij 401 cache ongeldig maken, geforceerd
+    /// verversen, nogmaals opnieuw → blijft het 401, dan is herkoppeling vereist.
     /// </summary>
     private async Task<SportlinkClubResponse<T>> ExecuteWithTokenRetryAsync<T>(
         string functioneleRol,
+        RetryBeleid beleid,
         Func<string, CancellationToken, Task<SportlinkClubResponse<T>>> putAction,
         CancellationToken cancellationToken)
         where T : class
@@ -796,9 +824,22 @@ public class SportlinkClubClient : ISportlinkClubClient
 
         if (IsTransientFout(response.Status, response.HttpStatusCode))
         {
-            await WachtVoorTransienteRetryAsync(
-                $"{response.Status}, HTTP {response.HttpStatusCode}, rol '{functioneleRol}'", cancellationToken);
-            response = await putAction(token, cancellationToken);
+            if (beleid == RetryBeleid.Lezen)
+            {
+                await WachtVoorTransienteRetryAsync(
+                    $"{response.Status}, HTTP {response.HttpStatusCode}, rol '{functioneleRol}'", cancellationToken);
+                response = await putAction(token, cancellationToken);
+            }
+            else
+            {
+                // #1417: een mutatie wordt NOOIT automatisch herhaald — de uitkomst van de eerste
+                // poging is onbekend (mogelijk al verwerkt). De beheerder krijgt via
+                // SportlinkEndpointCore.VertaalStatusNaarFout(isMutatie: true) de instructie om
+                // eerst in Sportlink te controleren. Nooit de body loggen (CISO-regel).
+                _logger.LogWarning(
+                    "Transiënte fout ({Status}, HTTP {HttpStatus}) op een Sportlink-mutatie voor rol '{Rol}' — bewust niet herhaald (#1417); uitkomst bij Sportlink onbekend.",
+                    response.Status, response.HttpStatusCode, functioneleRol);
+            }
         }
 
         if (response.Status == SportlinkClubCallStatus.Ok || response.HttpStatusCode != 401)
@@ -830,6 +871,8 @@ public class SportlinkClubClient : ISportlinkClubClient
     /// Een fout die de moeite waard is om één keer te herhalen (#1387): een timeout/netwerkfout, of
     /// een 5xx van Sportlink zelf — beide zijn typisch van voorbijgaande aard. Een 4xx (los van de
     /// al apart afgehandelde 401) is een inhoudelijke afwijzing en wordt niet beter van herhalen.
+    /// Of er daadwerkelijk herhaald wordt, bepaalt <see cref="RetryBeleid"/> (#1417): alleen voor
+    /// idempotente leesaanroepen.
     /// </summary>
     private static bool IsTransientFout(SportlinkClubCallStatus status, int? httpStatusCode) =>
         status == SportlinkClubCallStatus.NetwerkFout ||
@@ -1311,6 +1354,18 @@ public class SportlinkClubClient : ISportlinkClubClient
                 _logger.LogWarning("{Entity} endpoint gaf {StatusCode} met lege/onherkenbare respons", entityName, response.StatusCode);
                 return new SportlinkClubResponse<SportlinkMutationResult>(
                     SportlinkClubCallStatus.SportlinkFout, null, $"{entityName} endpoint gaf {response.StatusCode} zonder herkenbare respons", (int)response.StatusCode);
+            }
+
+            // #1417: een 5xx is een serverfout van Sportlink, geen inhoudelijke afwijzing — ook als
+            // de body toevallig als JSON parseert. Vóór deze fix kwam zo'n respons terug als
+            // Status=Ok/IsSuccess=false, terwijl een niet-JSON 5xx al SportlinkFout gaf; dezelfde
+            // fout werd dus per toeval anders geclassificeerd. Uniform: altijd SportlinkFout mét
+            // statuscode, zodat SportlinkEndpointCore.VertaalStatusNaarFout één pad kent.
+            if ((int)response.StatusCode is >= 500 and <= 599)
+            {
+                _logger.LogWarning("{Entity} endpoint gaf serverfout {StatusCode}", entityName, response.StatusCode);
+                return new SportlinkClubResponse<SportlinkMutationResult>(
+                    SportlinkClubCallStatus.SportlinkFout, null, $"{entityName} endpoint gaf serverfout {(int)response.StatusCode}", (int)response.StatusCode);
             }
 
             var violations = raw.Violations is { Count: > 0 }

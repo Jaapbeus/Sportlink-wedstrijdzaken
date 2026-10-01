@@ -373,15 +373,27 @@ Alles kan op Azure **Free Tier** draaien:
 
 ## 10. Optioneel: Sportlink Web Extension
 
-Wil je vanuit de Admin GUI ook wijzigingen (kleedkamers, veld) terugschrijven naar Sportlink Club,
-in plaats van alleen lezen? Dat is een aparte, gedeeltelijk gebouwde feature (epic #986) met een
-eigen koppelingsproces per functionele rol. Zie **[docs/SPORTLINK-WEB-EXTENSION.md](docs/SPORTLINK-WEB-EXTENSION.md)**
-voor de huidige status en hoe je een rol koppelt — dit is geen verplichte stap voor een werkende
-basisinstallatie.
+Wil je vanuit de Admin GUI ook wijzigingen (kleedkamers, veld, scheidsrechters, oefenwedstrijd,
+wijzigingsverzoek) terugschrijven naar Sportlink Club, in plaats van alleen lezen? Dat is een
+aparte, gedeeltelijk gebouwde feature (epic #986) met een eigen koppelingsproces per functionele
+rol. Zie **[docs/SPORTLINK-WEB-EXTENSION.md](docs/SPORTLINK-WEB-EXTENSION.md)** voor de huidige
+status en hoe je een rol koppelt — dit is geen verplichte stap voor een werkende basisinstallatie.
 
-De extension start altijd in **dry-run**: elke mutatie wordt gesimuleerd en gelogd, er wordt niets
+De extension start altijd in **dry-run** (de schakelaar "Dry-run: alles simuleren, niets naar
+Sportlink schrijven" staat standaard aan): elke mutatie wordt gesimuleerd en gelogd, er wordt niets
 echt naar Sportlink geschreven, ook niet als je de extension zelf al aanzet. Controleer eerst de
-statussectie op Instellingen (rol-koppeling, contract-check) vóórdat je dry-run uitzet.
+statussectie op **Instellingen → Sportlink Ext.** (rol-koppeling, contract-check) vóórdat je dry-run
+uitzet; vanaf dat moment gaan ook officials toewijzen, een oefenwedstrijd aanmaken en een
+wijzigingsverzoek echt naar Sportlink.
+
+Optioneel kan de Sportlink-sessie zichzelf vernieuwen met **automatische login** (opt-in): onder
+**Instellingen → Sportlink Ext.** vul je in de sectie "Automatisch inloggen — rol Wedstrijdzaken" de
+gegevens van het aparte Sportlink-serviceaccount in. De beveiligde hostsleutel en de rest van de
+inrichting staan in **[docs/SPORTLINK-AUTOLOGIN.md](docs/SPORTLINK-AUTOLOGIN.md)**.
+
+Wie welke Sportlink-actie mag uitvoeren stel je per rol in onder **Instellingen → Rechten per
+rol**. Planning en het Sportlink-paneel zijn voor elke ingelogde gebruiker zichtbaar; wijzigen kan
+alleen met de rol `Wedstrijdzaken` (of `admin`).
 
 ---
 

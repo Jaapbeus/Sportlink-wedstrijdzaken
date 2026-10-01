@@ -3,16 +3,18 @@
 ## Doel en status
 
 De eigenaar heeft bevestigd dat na tien uur een nieuwe login nodig is en dat Sportlink de
-machine-to-machine-aanvraag heeft afgewezen. De lokale test liep 14 uur en 39 minuten zonder
-verbreking. Deze opt-in functie gebruikt daarom het normale account met wachtwoord en TOTP. MFA
-blijft actief. De runtime genereert de code uit de legitiem ingestelde authenticator-instelsleutel.
-Een actuele zescijferige code opslaan werkt niet. Die 14u39-test is geen bewijs van 24-uurs- of
-productiebetrouwbaarheid.
+machine-to-machine-aanvraag heeft afgewezen. De eigenaar heeft de oorspronkelijke acceptatieduur
+van 24 uur bijgesteld naar 14 uur en 39 minuten en heeft de lokale test na 14u39 zonder verbreking
+als geslaagd en afgerond verklaard. Daarmee is de eigenaarstest voor deze feature geaccepteerd
+volgens de door de eigenaar vastgestelde duur. Dit is geen uptime- of SLA-garantie voor productie.
+Deze opt-in functie gebruikt het normale account met wachtwoord en TOTP. MFA blijft actief. De
+runtime genereert de code uit de legitiem ingestelde authenticator-instelsleutel. Een actuele
+zescijferige code opslaan werkt niet.
 
 De provider ondersteunt de bekende Keycloak-formulieren via authorization code + PKCE S256.
-Tests gebruiken lokale fixtures en fictieve gegevens. De huidige Sportlink-schermen zijn tijdens
-de 14u39-proef succesvol doorlopen; de tien-uursherlogin is praktisch aangetoond, niet als 24/7-SLA.
-Een onbekend formulier, CAPTCHA, gewijzigd MFA-proces of extra identity provider wordt geweigerd.
+Tests gebruiken lokale fixtures en fictieve gegevens. De eigenaar beoordeelt de 14u39-proef als
+geslaagd; daarin zijn de huidige Sportlink-schermen doorlopen en de tien-uursherlogin praktisch
+aangetoond. Een onbekend formulier, CAPTCHA, gewijzigd MFA-proces of extra identity provider wordt geweigerd.
 Een geslaagde build of fixturetest is geen bewijs van live compatibiliteit.
 
 ## Productie-initialisatie
@@ -129,9 +131,9 @@ blokkade heeft een retrydatum in jaar 9999 en `enabled=false`; het is een status
 - Database-integratietests voor encryptie, clubisolatie, verwijdering en uitsluiting tussen
   onafhankelijke store-instanties; autorisatietests voor admin-only en afwijzing van andere clubs.
 - Builds van beide tiers en frontend, toepasselijke CI-guards en browser-smokecheck.
-- Eigenaar doorloopt minstens 24 uur en twee nieuwe sessies inclusief herstart. Controleer
-  alleen gesaneerde status/timestamps en of dezelfde functionele rechten behouden blijven.
-  Test geen wedstrijdschrijfacties tijdens deze authenticatieproef.
+- De eigenaar heeft de acceptatieproef afgerond verklaard volgens de door hem vastgestelde
+  duur van 14 uur en 39 minuten zonder verbreking. De productie-release en productie-initialisatie
+  volgen de aparte releaseprocedure; dit is geen aanvullende openstaande auth-acceptatietest.
 
 De expliciete eenmalige implementatie-uitzondering voor Codex staat in issue #1411. Agents
 hebben geen echte credentials nodig voor ontwikkeling en gebruiken geen echte Sportlink-tokens.

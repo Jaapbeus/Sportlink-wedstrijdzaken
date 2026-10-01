@@ -281,7 +281,8 @@ in `.github/workflows/deploy.yml` gebruikt dit token bij elke push naar `main`.
 
 1. **App roles** → **Create app role**
 2. Display name: `Admin`, Value: `admin`, Allowed member types: **Users/Groups** → **Apply**
-3. Optioneel: herhaal voor `user` (lees-alleen, toekomstige gebruik)
+3. Herhaal voor `user` (ingelogde gebruiker: Planning en het Sportlink-paneel bekijken) en voor
+   `Wedstrijdzaken` (mag daarnaast Sportlink-wijzigingen doorvoeren; zie §19 en §19a)
 
 ### Easy Auth configureren op de Function App
 
@@ -599,11 +600,12 @@ Boven elk scherm staat een smalle balk met, van links naar rechts:
 De zijbalk links bevat in deze volgorde: **Dashboard**, **Teambegeleiding**, **Planning**,
 **Veld optimalisatie**, **Leermomenten**, **Teamaliassen**, **Email-tester**, dan (alleen onder een voorwaarde, zie
 hieronder) **Wijzigingsverzoeken** en **Wedstrijden**, en tot slot het uitklapbare menu
-**Instellingen** met daarin *Instellingen*, *Speeltijden*, *Velden*, *Voorkeurstijden*,
-*E-mailtemplates*, *Thema* en *Sportlink Ext.* (het menu-item; de functie zelf heet Sportlink Web
-Extension, zie §19).
+**Instellingen** met daarin *Instellingen*, *Speeltijden*, *Velden*, *Begeleiding importeren*,
+*Voorkeurstijden*, *E-mailtemplates*, *Thema*, *Sportlink Ext.* (het menu-item; de functie zelf
+heet Sportlink Web Extension, zie §19) en *Rechten per rol* (zie §19a).
 
-Drie menu-items verschijnen alleen onder een voorwaarde:
+Planning en Veld optimalisatie staan voor elke ingelogde gebruiker in het menu. Drie menu-items
+verschijnen alleen onder een voorwaarde:
 
 - **Wijzigingsverzoeken** en **Wedstrijden** (menu-item voor het scherm "Oefenwedstrijd aanmaken",
   zie §18a) staan er alleen als de Sportlink Web Extension is ingeschakeld (hoofdstuk 19).
@@ -681,8 +683,8 @@ CSV-bulkimport-endpoint blijft wél admin-only, zie §10a hieronder.
 Losgekoppeld van de team selectie/weergave-pagina bij #1322: CSV-import is een incidentele
 beheerdersactie (vervangt de teambegeleiding van de club volledig), geen dagelijks scherm — daarom
 staat deze pagina onder Instellingen in plaats van in het hoofdmenu. Bereikbaar via
-**Instellingen → Teambegeleiding importeren** in het submenu, of via de kaart op de
-Instellingen-pagina zelf.
+**Instellingen → Begeleiding importeren** in het submenu (de pagina zelf heet "Teambegeleiding
+importeren"), of via de kaart op de Instellingen-pagina zelf.
 
 - CSV-export uit Sportlink inlezen; het scherm bevat de exportstappen en een voorbeeldweergave vóór
   bevestiging.
@@ -911,6 +913,14 @@ in (#679).
 | **Type** | Vrije tekst, bijv. `kunstgras` of `natuurgras` — geen vaste lijst. Bepaalt welke velden de planner ontlast bij de grasveld-ontlasten optimalisatie |
 | **Kunstlicht** | Bepaalt of de zonsondergang-beperking geldt voor dit veld |
 | **Actief** | Uitvinken deactiveert het veld zonder het te verwijderen (geen harde delete — andere tabellen verwijzen ernaar) |
+
+**Velden zonder kunstlicht en de zonsondergang (#1409).** Een veld zonder kunstlicht blijft voor de
+planner bruikbaar tot **15 minuten na zonsondergang**. Een wedstrijd die net na zonsondergang
+eindigt wordt dus niet meer afgewezen. Eindigt een wedstrijd minder dan 20 minuten vóór
+zonsondergang of erna, dan geeft de planner wel een waarschuwing, in de vorm "Geen kunstlicht op
+[veld]. Wedstrijd eindigt om [tijd], zonsondergang [tijd] ([N] min marge)." Valt het einde ná
+zonsondergang, dan staat er in plaats van een negatieve marge "[N] min ná zonsondergang, binnen de
+toegestane uitloop van 15 min".
 
 ### Periodes
 
@@ -1196,9 +1206,10 @@ is ingeschakeld en gekoppeld voor de rol die deze acties uitvoert.
 
 ## 18a. Oefenwedstrijd aanmaken (`/wedstrijd-aanmaken`)
 
-> **Scaffolding (#997/#1116):** de aanroep naar Sportlink Club wordt altijd gesimuleerd totdat een
-> mens de exacte aanmaak-body met een netwerktrace heeft bevestigd. U ziet na het aanmaken wél wat
-> er zou zijn meegestuurd, maar er verandert niets in Sportlink.
+> **Echt aanmaken (#1319):** de aanroep naar Sportlink Club is na een live netwerktrace bevestigd
+> en volgt sinds #1319 de dry-run-instelling van uw club (zie §19). Staat dry-run **aan**, dan ziet
+> u na het aanmaken wat er zou zijn meegestuurd, maar verandert er niets in Sportlink. Staat dry-run
+> **uit**, dan wordt de oefenwedstrijd echt in Sportlink Club aangemaakt.
 
 Bedoeld voor snelle invoer: één scherm met **datum**, **aanvangstijd**, **duur** (standaard 90
 minuten), **team** (keuzelijst met de actieve clubteams uit de eigen database), **tegenstander**
@@ -1231,12 +1242,30 @@ Extension (§19) en vereist dat die is ingeschakeld en gekoppeld voor de rol Wed
 
 ## 19. Sportlink Web Extension (`/sportlink-extension-settings`) — schrijfrechten naar Sportlink Club
 
-**Automatische login (#1411):** na inrichting van de beveiligde hostsleutel kan de beheerder per
-rol gebruikersnaam, wachtwoord en authenticator-instelsleutel opslaan. De instelsleutel is de
-blijvende geheime sleutel uit de authenticatorconfiguratie, niet de zescijferige code van dit
-moment. Vul algoritme, lengte en periode overeenkomstig de echte configuratie in. De volgende
-runtimevernieuwing meldt zich aan; opslaan alleen bewijst nog geen geslaagde login. Zie
-[installatie, foutstatus en intrekking](SPORTLINK-AUTOLOGIN.md).
+**Automatische login (#1411, opt-in):** onderaan het blok "Sportlink-serviceaccounts per rol" staat
+de sectie **"Automatisch inloggen — rol Wedstrijdzaken"**. Zonder deze sectie vervalt de
+Sportlink-sessie na de maximale sessieduur; met automatische login meldt het systeem zich zelf weer
+aan. U kunt het volgende doen:
+
+- Klik op **Inloggegevens instellen** (is er al iets ingesteld: **Inloggegevens vervangen**). Er
+  verschijnt een formulier "Inloggegevens instellen" met **Gebruikersnaam**, **Wachtwoord** en
+  **Authenticator-instelsleutel**. De instelsleutel is de blijvende geheime sleutel uit de
+  authenticatorconfiguratie, niet de zescijferige code van dit moment. Onder **Geavanceerde
+  TOTP-instellingen** staan **Algoritme**, **Cijferlengte** en **Periode (seconden)**; vul die in
+  zoals de echte authenticatorconfiguratie is.
+- Klik op **Automatisch inloggen instellen** om op te slaan (of op **Annuleren**). Opslaan meldt
+  nog niet direct aan; de gegevens worden bij de volgende automatische vernieuwing gebruikt. De
+  ingevulde geheimen worden niet teruggelezen en niet in de browser bewaard.
+- De sectie toont de status: **Gegevens ingesteld** of **Niet ingesteld**, **Automatisch inloggen
+  actief** of **Automatisch inloggen uit**, de **Laatste login**, en — als een poging mislukte —
+  **Volgende poging na** of de melding dat automatische login geblokkeerd is ("Controleer de
+  gegevens en sla opnieuw op").
+- **Inloggegevens en refresh-token verwijderen** zet automatische login weer uit. Een al
+  uitgegeven Sportlink-sessie kan nog geldig blijven tot hij verloopt.
+
+Voor de eerste inrichting (beveiligde hostsleutel, foutstatus, intrekking) zie
+[installatie, foutstatus en intrekking](SPORTLINK-AUTOLOGIN.md). Opslaan alleen bewijst nog geen
+geslaagde login.
 
 > Deze feature is **gedeeltelijk gebouwd** (epic #986) — zie
 > [docs/SPORTLINK-WEB-EXTENSION.md](SPORTLINK-WEB-EXTENSION.md) voor de actuele stand per
@@ -1255,23 +1284,38 @@ Sportlinks eigen audit-log de rolnaam toont in plaats van een persoonsnaam.
 | Kolom | Betekenis |
 |---|---|
 | Rol | De functionele rol waarvoor dit account wordt gebruikt |
-| Gekoppeld | Of er een geldige, actieve toegangssleutel voor deze rol is opgeslagen |
-| Laatst gekoppeld door / op | Wie de koppeling voor het laatst (opnieuw) heeft geregistreerd, en wanneer |
+| Gekoppeld | **Ja** of **Nee**: of er een geldige, actieve toegangssleutel voor deze rol is opgeslagen |
+| Laatst gekoppeld door / Laatst gekoppeld op | Wie de koppeling voor het laatst (opnieuw) heeft geregistreerd, en wanneer |
 | Sportlink-account | Naam van het gekoppelde Sportlink-serviceaccount |
 
-De oude handmatige tokenregistratie is verwijderd. Configureer of herstel de Sportlink-login via
-de beveiligde automatische-loginsectie op deze pagina. De enige ondersteunde procedure, inclusief
-eerste productieconfiguratie en herstel, staat in [Automatische Sportlink-login](SPORTLINK-AUTOLOGIN.md).
-De functie vereist gebruikersnaam, wachtwoord en authenticator-instelsleutel; een actuele
-zescijferige MFA-code wordt niet opgeslagen.
+De oude handmatige tokenregistratie (een refresh-token zelf uploaden) is verwijderd. De knop
+**Koppeling (opnieuw) registreren** in de laatste kolom legt alleen de weergavenaam
+("Sportlink-accountnaam") en de gegevens "Laatst gekoppeld door/op" vast; de echte Sportlink-login
+configureert of herstelt u via de sectie "Automatisch inloggen — rol Wedstrijdzaken" hierboven. De
+enige ondersteunde procedure, inclusief eerste productieconfiguratie en herstel, staat in
+[Automatische Sportlink-login](SPORTLINK-AUTOLOGIN.md). De functie vereist gebruikersnaam,
+wachtwoord en authenticator-instelsleutel; een actuele zescijferige MFA-code wordt niet opgeslagen.
 
 **Dry-run: alles simuleren, niets naar Sportlink schrijven** — naast de aan/uit-schakelaar staat een
 tweede schakelaar die **standaard AAN** staat. Zolang deze aan staat, doorloopt elke kleedkamer-/
-veldwijziging en elk goed-/afgekeurd wijzigingsverzoek de volledige controle (rol-koppeling,
+veldwijziging, elke officials-toewijzing, elke oefenwedstrijd, elk wijzigingsverzoek datum/tijd/
+accommodatie en elk goed-/afgekeurd wijzigingsverzoek de volledige controle (rol-koppeling,
 guardrails, audit-logging), maar de daadwerkelijke aanroep naar Sportlink Club wordt overgeslagen —
 u ziet in de Admin GUI een informatieve melding ("Dry-run: niets gewijzigd in Sportlink Club — de
 aanroep is gesimuleerd en gelogd") in plaats van een succes- of foutmelding. Zet dit pas uit nadat u
 de rol-koppeling en de statussectie hieronder heeft gecontroleerd.
+
+Sinds #1319 sturen het toewijzen van officials, het aanmaken van een oefenwedstrijd en het
+wijzigingsverzoek datum/tijd/accommodatie hun actie écht door naar Sportlink zodra dry-run uit
+staat; ze volgen dus dezelfde dry-run-schakelaar als de andere Sportlink-acties.
+
+Is Sportlink traag, dan kan een aanroep uittimen (#1387). Elke Sportlink-aanroep heeft een eigen
+time-out. Leesaanroepen (matchinfo ophalen) krijgen bij een tijdelijke storing één automatische
+herhaling; wijzigingen (oefenwedstrijd, officials, veld, kleedkamers, wijzigingsverzoek) worden
+bewust **nooit** automatisch herhaald, omdat Sportlink de eerste poging al verwerkt kan hebben
+(#1417) — controleer bij zo'n fout eerst in Sportlink of de actie al is doorgevoerd. Duurt het
+antwoord te lang, dan krijgt u een aparte melding over een te trage reactie in plaats van de
+algemene melding dat Sportlink niet bereikbaar is.
 
 **Status Sportlink Web Extension** — een sectie onder de rollen-tabel die in één oogopslag toont of
 de extension/dry-run aan staan, of uitgaande verbindingen zijn toegestaan, de koppelingsstatus en
@@ -1291,12 +1335,48 @@ kleedkamers, veld en officials (scheidsrechter/AR1/AR2) rechtstreeks terug te sc
 > **Wedstrijdzaken** — een gebruiker zonder die rol ziet in plaats daarvan een toelichting dat
 > wijzigen die rol vereist.
 
-Bij een thuiswedstrijd staat onderaan het paneel ook **"Wijzigingsverzoek datum/tijd/accommodatie"**:
-een nieuwe datum, starttijd en/of accommodatie invullen met een verplichte toelichting, en op
-**"Wijzigingsverzoek valideren"** klikken. Dit valideert alleen — Sportlinks meldingen (indien
-aanwezig) verschijnen letterlijk onder het formulier. Er is bewust **geen bevestigknop**: het
-daadwerkelijk versturen van een wijzigingsverzoek naar de tegenstander is nog niet gebouwd, dus deze
-actie blijft altijd een simulatie, ook als dry-run voor uw club uit staat.
+Bij een thuiswedstrijd staat onderaan het paneel ook **"Wijzigingsverzoek datum/tijd/accommodatie"**
+(alleen zichtbaar voor een beheerder of de rol Wedstrijdzaken):
+een nieuwe datum (**Nieuwe datum**), starttijd (**Nieuwe starttijd**) en/of accommodatie
+(**FacilityId**) invullen met een verplichte **Toelichting (verplicht)**, en op
+**"Wijzigingsverzoek valideren"** klikken. Er verschijnt dan eerst een waarschuwing dat dit een
+echte aanroep naar Sportlink Club is — Sportlink kan hierbij al direct een wijzigingsverzoek naar de
+tegenstander versturen — met de knoppen **"Ja, verstuur de validatie-PUT naar Sportlink"** en
+**Annuleren**. Het is alleen de validatiestap (stap 1): Sportlinks meldingen (indien aanwezig)
+verschijnen letterlijk onder het formulier, samen met een diagnostiekblok en een veld om een
+testnotitie bij de poging op te slaan (**Notitie opslaan**). Er is bewust **geen** tweede
+bevestigstap gebouwd. Staat dry-run aan, dan wordt de aanroep gesimuleerd.
+
+---
+
+## 19a. Rechten per rol (`/sportlink-rol-instellingen`) — toegangsmatrix (#1390)
+
+U opent dit scherm via **Instellingen → Rechten per rol** in de zijbalk. Het scherm heet
+**"Rechten per rol"** en toont een matrix: elk menu-item van de Admin GUI is een rij, en elke
+instelbare rol is een kolom. Een rol kan zo per onderdeel aan of uit gezet worden.
+
+**De kolommen:** **Gebruiker (standaard)**, **Wedstrijdzaken**, **Sectiehoofd** en
+**Ledenadministratie**. De rol **Admin** heeft bewust geen kolom: die rol heeft altijd alles aan.
+
+**De rijen** zijn gegroepeerd in **Algemeen** (Dashboard, Teambegeleiding, Planning, Veld
+optimalisatie, Leermomenten, Teamaliassen, Email-tester), **Sportlink extensie**
+(Wijzigingsverzoeken, Wedstrijd aanmaken, Kleedkamers toewijzen, Scheidsrechters toewijzen, Veld
+wijzigen) en **Instellingen** (Speeltijden, Velden, Begeleiding importeren, Voorkeurstijden,
+E-mailtemplates, Thema, Sportlink-instellingen). Een rij met persoonsgegevens —
+**Teambegeleiding** en **Begeleiding importeren** — heeft een gele **AVG**-badge: geef die alleen aan
+rollen die deze gegevens echt nodig hebben.
+
+**Bedienen:** zet de schakelaar in een cel aan of uit. Elke wijziging wordt direct opgeslagen; u
+ziet de melding "Instelling opgeslagen." en klikt niet apart op Opslaan. De matrix geldt voor de
+club die bovenin is gekozen.
+
+**Vastleggen is niet hetzelfde als afdwingen.** Alleen de drie Sportlink-acties **Kleedkamers
+toewijzen**, **Scheidsrechters toewijzen** en **Veld wijzigen** werken vandaag al echt per rol: een
+uitgeschakelde actie is in het Sportlink-paneel niet beschikbaar ("... staat uit voor jouw rol bij
+deze club") en wordt ook door de server geweigerd. Voor de overige rijen (de menu-items) legt deze
+pagina alleen vast wát een rol zou mogen zien; het daadwerkelijk verbergen van menu-items per rol en
+het toewijzen van de rollen Sectiehoofd en Ledenadministratie aan gebruikers volgen in een apart
+vervolgtraject. Zet u daar dus nu een schakelaar uit, dan verdwijnt het menu-item nog niet.
 
 ---
 

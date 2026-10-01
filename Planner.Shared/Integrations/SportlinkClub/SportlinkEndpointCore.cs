@@ -185,15 +185,35 @@ public static class SportlinkEndpointCore
     /// Sportlink zelf een fout gaf, of dat onze aanroep gewoon te traag/onbereikbaar was. Nu apart:
     /// een tijdelijke, waarschijnlijk vanzelf voorbijgaande situatie (504) versus een structurelere
     /// afwijzing door Sportlink zelf (502, ongewijzigde tekst).
+    /// <para>
+    /// #1417: voor een <i>mutatie</i> is "probeer het opnieuw" het verkeerde advies — de client
+    /// herhaalt een PUT/POST bewust niet (zie <c>SportlinkClubClient.RetryBeleid.Mutatie</c>), omdat
+    /// Sportlink de aanvraag al verwerkt kan hebben vóórdat de timeout viel. De mutatievariant
+    /// (<paramref name="isMutatie"/>) vraagt daarom eerst om controle in Sportlink; zie
+    /// <see cref="MutatieNetwerkFoutMelding"/>.
     /// </para>
     /// </summary>
-    public static SportlinkEndpointFout? VertaalStatusNaarFout(SportlinkClubCallStatus status) => status switch
+    public static SportlinkEndpointFout? VertaalStatusNaarFout(SportlinkClubCallStatus status)
+        => VertaalStatusNaarFout(status, isMutatie: false);
+
+    /// <summary>Melding bij een timeout/netwerkfout op een mutatie (#1417): de uitkomst bij Sportlink
+    /// is onbekend, dus de beheerder moet eerst daar kijken vóór een nieuwe poging.</summary>
+    public const string MutatieNetwerkFoutMelding =
+        "Sportlink reageerde niet op tijd. De actie is niet automatisch herhaald — controleer eerst in " +
+        "Sportlink of deze al is doorgevoerd voordat u het opnieuw probeert.";
+
+    /// <inheritdoc cref="VertaalStatusNaarFout(SportlinkClubCallStatus)"/>
+    /// <param name="status">De aanroepstatus van <c>SportlinkClubClient</c>.</param>
+    /// <param name="isMutatie"><c>true</c> voor een PUT/POST-uitkomst (#1417): een netwerkfout krijgt
+    /// dan <see cref="MutatieNetwerkFoutMelding"/> in plaats van het "probeer opnieuw"-advies.</param>
+    public static SportlinkEndpointFout? VertaalStatusNaarFout(SportlinkClubCallStatus status, bool isMutatie) => status switch
     {
         SportlinkClubCallStatus.Ok => null,
         SportlinkClubCallStatus.RolNietGekoppeld => new SportlinkEndpointFout(409,
             $"Geen Sportlink-koppeling gevonden voor rol '{RolWedstrijdzaken}' — registreer eerst een refresh-token via Instellingen."),
         SportlinkClubCallStatus.HerkoppelingVereist => new SportlinkEndpointFout(409,
             $"De Sportlink-koppeling voor rol '{RolWedstrijdzaken}' is verlopen — registreer een nieuw refresh-token via Instellingen."),
+        SportlinkClubCallStatus.NetwerkFout when isMutatie => new SportlinkEndpointFout(504, MutatieNetwerkFoutMelding),
         SportlinkClubCallStatus.NetwerkFout => new SportlinkEndpointFout(504,
             "Sportlink reageerde niet op tijd. Probeer het over enkele ogenblikken opnieuw."),
         _ => new SportlinkEndpointFout(502, "Sportlink is momenteel niet bereikbaar."),
@@ -219,7 +239,7 @@ public static class SportlinkEndpointCore
         Func<T, SportlinkMutationResult> naarMutatieResultaat)
         where T : class
     {
-        var fout = VertaalStatusNaarFout(respons.Status);
+        var fout = VertaalStatusNaarFout(respons.Status, isMutatie: true);
         if (fout != null)
             return new SportlinkMutatieAfronding<T>("Failure", respons.FoutmeldingVoorLog, fout, null);
 

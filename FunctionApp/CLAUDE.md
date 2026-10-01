@@ -317,8 +317,8 @@ Database connection includes 5 retries with 5-second delays. If still failing:
 
 ## Related Documentation
 
-- [DEBUG-READY.md](DEBUG-READY.md): Quick start guide for debugging
-- [FIXES-APPLIED.md](FIXES-APPLIED.md): History of issues and fixes applied
+- [docs/LOKAAL-DEBUGGEN.md](../docs/LOKAAL-DEBUGGEN.md): Quick start guide for debugging
+- [CHANGELOG.md](../CHANGELOG.md): History of issues and fixes applied
 - Azure Functions docs: https://learn.microsoft.com/en-us/azure/azure-functions/
 - Sportlink API: https://data.sportlink.com (requires authentication)
 

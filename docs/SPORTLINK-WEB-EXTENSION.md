@@ -440,11 +440,34 @@ Vier dingen om te onthouden:
   een échte Sportlink-fout. Sinds #1387: `SportlinkClubClient` bepaalt per endpoint een eigen,
   per-aanroep timeout (`ReverseLookupCallTimeout` = 30s voor uitsluitend `MatchProgramOverview`,
   `DefaultCallTimeout` = 15s voor de rest — losgekoppeld van de `HttpClient`-brede timeout, die nu de
-  .NET-default van 100s is als buitenste net); elke aanroep krijgt bovendien één begrensde retry bij
-  een timeout/netwerkfout of een 5xx van Sportlink zelf (nooit bij een 4xx — dat is een inhoudelijke
-  afwijzing). `SportlinkEndpointCore.VertaalStatusNaarFout` geeft een timeout/netwerkfout sindsdien
-  ook een eigen tekst en HTTP 504 in plaats van de generieke 502-tekst, zodat een operator kan zien
-  of Sportlink zelf een fout gaf of dat de aanroep gewoon (nog) te traag was.
+  .NET-default van 100s is als buitenste net); elke **lees**aanroep krijgt bovendien één begrensde
+  retry bij een timeout/netwerkfout of een 5xx van Sportlink zelf (nooit bij een 4xx — dat is een
+  inhoudelijke afwijzing). `SportlinkEndpointCore.VertaalStatusNaarFout` geeft een timeout/netwerkfout
+  sindsdien ook een eigen tekst en HTTP 504 in plaats van de generieke 502-tekst, zodat een operator
+  kan zien of Sportlink zelf een fout gaf of dat de aanroep gewoon (nog) te traag was.
+
+  **#1417 — retry-beleid per aanroeptype (correctie op #1387).** De transiënte retry gold tot #1417
+  voor élke aanroep, dus ook voor PUT/POST. Dat is onveilig: een timeout of gateway-5xx *nádat*
+  Sportlink de aanvraag al verwerkt heeft, is voor de client niet te onderscheiden van "nooit
+  aangekomen". Herhalen zou dan een tweede oefenwedstrijd aanmaken (`CreateClubMatchAsync`, POST,
+  geen verwijderpad in de app) of een wijzigingsverzoek tweemaal bij een echte tegenstander
+  afleveren (`RequestMatchChangeAsync`). Sinds de fix voor #1417 kiest elke call site van
+  `ExecuteWithTokenRetryAsync` expliciet een `RetryBeleid` — bewust zonder default:
+
+  | Beleid | Aanroepen | Transiënte retry (timeout/5xx) | 401-re-auth-retry |
+  |---|---|---|---|
+  | `Lezen` | alle GET's (`GetMatchAsync`, `GetMatchProgramOverviewAsync`, `GetChangeRequestsAsync`, picklists, …) en het token-refreshpad | **één keer**, na 2 s | ja |
+  | `Mutatie` | `UpdateDressingRoomsAsync`, `UpdateFieldAsync`, `AssignOfficialsAsync`, `RequestMatchChangeAsync`, `ActOnChangeRequestAsync`, `CreateClubMatchAsync` | **nooit** | ja — een 401 is een expliciete afwijzing vóór verwerking, dus herhalen met een vers token is veilig |
+
+  Een mutatie die op een netwerkfout strandt, krijgt via `VertaalStatusNaarFout(status, isMutatie: true)`
+  (gebruikt door `BepaalMutatieAfronding`) de melding `MutatieNetwerkFoutMelding`: "controleer eerst
+  in Sportlink of de actie al is doorgevoerd" — niet het "probeer opnieuw"-advies van het leespad.
+  Tegelijk is een inconsistentie in `PutMutationAsync` gedicht: een 5xx *mét* parseerbare JSON-body
+  gaf `Status = Ok`/`IsSuccess = false` terug, een 5xx zonder JSON al `SportlinkFout`; nu is elke
+  5xx uniform `SportlinkFout` mét statuscode. Tests: `CreateClubMatchAsync_TimeoutOpPost_GeenTweedePost`,
+  `RequestMatchChangeAsync_Http502OpPut_GeenTweedePut`, `AssignOfficialsAsync_TimeoutOpPut_GeenTweedePut`,
+  `UpdateDressingRoomsAsync_Http503_GeenTransienteRetryOpMutatie` (voorheen bewees die test het
+  omgekeerde) en `UpdateDressingRoomsAsync_401OpMutatie_ReAuthRetryBlijftBestaan`.
 - `FunctionApp.Postgres/Sportlink/SportlinkChangeRequestFunction.cs` (#996) — `GET
   /api/sportlink/change-requests` + `PUT .../{publicRequestId}/action`. Niet wedstrijdcode-
   gescoped (Sportlinks `MatchChangeRequests`-endpoint levert alles voor het gekoppelde
@@ -597,19 +620,20 @@ chatsessie met de agent terecht (bedoeld voor een lokale scriptprompt, per abuis
 geplakt). De eigenaar moest direct volledig uitloggen bij Sportlink om die token in te trekken.
 Elk token dat ooit in een agent-sessie zichtbaar wordt, geldt vanaf dat moment als verbrand.
 
-**Praktisch gevolg voor deze scripts:**
-- `Invoke-SportlinkTokenSpike.ps1` is van nature agent-veilig: het vráágt bij elke run opnieuw om
+**Praktisch gevolg voor deze scripts** (de drie `Invoke-Sportlink*`-spikes zijn in #1411 verwijderd;
+de regels hieronder blijven gelden voor elk toekomstig script dat een opgeslagen token gebruikt):
+- ~~`Invoke-SportlinkTokenSpike.ps1`~~ was van nature agent-veilig: het vróeg bij elke run opnieuw om
   het token via `Read-Host -AsSecureString`, wat in een niet-interactieve agent-tool-omgeving
   (stdin op `/dev/null`) niet ingevuld kan worden.
-- `Invoke-SportlinkMatchLookup.ps1` leest het token zelf uit `local.settings.json` — dat heeft
+- ~~`Invoke-SportlinkMatchLookup.ps1`~~ las het token zelf uit `local.settings.json` — dat had
   daarom een **expliciete `Read-Host`-mensbevestiging** nodig (typ "JA") vóórdat het token gebruikt
-  wordt. Zonder die bevestiging zou dit script, anders dan het spike-script, wél door een agent
+  werd. Zonder die bevestiging had dit script, anders dan het spike-script, wél door een agent
   silently uitgevoerd kunnen worden — dat is precies wat er (bijna) gebeurde bij de review die tot
   dit document leidde.
 - ~~`Tools/SportlinkTokenCapture`~~ is verwijderd in #1411. De backend automatic-login is de
   ondersteunde flow; zie [`docs/SPORTLINK-AUTOLOGIN.md`](SPORTLINK-AUTOLOGIN.md).
 - **Nieuw script, nieuwe regel:** elk toekomstig script dat een opgeslagen refresh_token gebruikt
-  krijgt dezelfde `Read-Host`-mensbevestiging als `Invoke-SportlinkMatchLookup.ps1` — niet alleen
+  krijgt dezelfde `Read-Host`-mensbevestiging als destijds `Invoke-SportlinkMatchLookup.ps1` — niet alleen
   een waarschuwing in commentaar. Commentaar wordt door een agent gelezen maar is geen technische
   barrière; `Read-Host` in een niet-interactieve omgeving wel.
 - Verificatie van de refresh-cyclus, of van een nieuw endpoint dat een refresh_token nodig heeft,
