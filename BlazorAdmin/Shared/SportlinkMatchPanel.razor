@@ -113,7 +113,7 @@ else
     }
     @if (_info.IsAssignOfficialsAllowed && _info.ScheidsrechterFeatureToegestaan)
     {
-        @* #994: scaffolding, altijd code-gelockt (forceDryRun). Bewust geen zoekfunctie (AVG):
+        @* #994: live bevestigd (#1319) — volgt de dry-run-instelling van de club. Bewust geen zoekfunctie (AVG):
            alleen een relatiecode/persoons-ID per positie, geen namen. *@
         <div class="mt-2 d-flex flex-wrap align-items-end gap-2">
             <div>
@@ -131,7 +131,6 @@ else
             <button class="btn btn-sm btn-outline-primary" disabled="@_officials.Bezig" @onclick="SaveOfficialsAsync">Scheidsrechters toewijzen</button>
             @if (_officials.Bezig) { <span class="spinner-border spinner-border-sm"></span> }
         </div>
-        <div class="text-muted small">@SportlinkActieStatus.CodeLockTekst</div>
         <Melding Status="_officials" />
     }
 
@@ -142,7 +141,7 @@ else
     @if (_info.IsHomeMatch && _info.MagWijzigen)
     {
         @* #995/#1320: wijzigingsverzoek datum/tijd/accommodatie — ALLEEN stap 1 (valideren),
-           ONBEVESTIGD en altijd code-gelockt: de enige mutatie die een ECHTE tegenstander raakt.
+           live bevestigd (#1319), volgt de dry-run-instelling: de enige mutatie die een ECHTE tegenstander raakt.
            Bewust GEEN bevestigknop — dat zou een stap 2 suggereren die niet gebouwd is.
            #1400: MagWijzigen (admin of Wedstrijdzaken) gate't dit blok — er bestaat geen
            FeatureKey-toggle voor deze mutatiesoort (zie SportlinkRolFeature.VoorMutatieSoort). *@
@@ -199,7 +198,6 @@ else
                 </div>
             }
 
-            <div class="text-muted small">@SportlinkActieStatus.CodeLockTekst</div>
             <Melding Status="_wijziging" />
 
             @if (_wijzigingTrace is not null)
