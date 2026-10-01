@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nEén beveiligingsschema:\n\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist\n  voor alle endpoints behalve `/health`. De rolcontrole gebeurt server-side, met vier niveaus:\n  `admin` (`EasyAuthHelper.RequireAdmin`, via de wrappers `AdminEndpoint.ExecuteAsync` /\n  `ExecuteZonderDatabaseAsync`) voor de meeste `/beheer/`-, `/planner/`-, `/feedback/`- en\n  `/test/`-endpoints — sinds #1350 óók voor `/postgres/sync-matches` en `/sync-matches`;\n  `admin` óf `user` (`AdminEndpoint.ExecuteAuthenticatedAsync`, #1330) voor `/planner/veldbezetting`\n  (#1400), de twee Sportlink-viewing-endpoints (`GET /sportlink/match/{wedstrijdcode}` en\n  `.../public-match-id`, #1400) en de drie Teambegeleiding-lookup/doorstuur-endpoints; op\n  **beide** tiers identiek `Wedstrijdzaken` óf `admin` (`EasyAuthHelper.RequireWedstrijdzaken`,\n  beide poorten sinds #1400) voor de Sportlink-mutatie-endpoints (`PUT`/`POST` onder\n  `/sportlink/`), via `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`. Netto: een gewone\n  `user` (zonder `Wedstrijdzaken`, zonder `admin`) kan Planning en het Sportlink-paneel bekijken\n  maar geen Sportlink-mutatie triggeren; dat laatste vereist `Wedstrijdzaken` óf `admin`. Lokaal\n  omzeild wanneer de omgevingsvariabele `WEBSITE_SITE_NAME` afwezig is.\n\nZonder token volgt `401`. Met een geldig token maar zonder de vereiste rol volgt `403` met\n`{ \"error\": \"Forbidden: vereiste rol ontbreekt\" }`.\n\n## Tiers\n\nAlle endpoints bestaan sinds #1266 op beide databasetiers, met één uitzondering: de handmatige\nsynchronisatie heet `/postgres/sync-matches` op de Postgres-tier (productie) en\n`/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "3.8.0.0",
+    "version": "3.8.0.1",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -1361,7 +1361,7 @@
         }
       },
       "OefenwedstrijdAanmaakResponse": {
-        "description": "#1116: het generieke mutatieresultaat (zelfde velden als SportlinkMutationResponse) plus wat\nde server uit teamnaam en instellingen heeft afgeleid, zodat de beheerder ziet wat er\n(gesimuleerd) naar Sportlink zou gaan. Waarschuwingen zijn geen fouten: het pad blijft\ncode-gelockt en een lege koppeling mag de simulatie niet blokkeren.\n",
+        "description": "Het generieke mutatieresultaat (zelfde velden als SportlinkMutationResponse) plus wat er naar\nSportlink is gestuurd. Sinds #1427 bouwt de server de body met Sportlinks eigen aanmaaklijsten\n(ClubMatchDefaults, PickListsTeams, PickListsLocation, PickListsMatchInformation).\nWaarschuwingen zijn terugvallen op Sportlinks standaardwaarden, geen fouten.\n",
         "allOf": [
           {
             "$ref": "#/components/schemas/SportlinkMutationResponse"
@@ -1375,16 +1375,32 @@
               "SportlinkTeamId": {
                 "type": "string",
                 "nullable": true,
-                "description": "his.teams.teamcode van de gevalideerde KNVB-alias van het team, of null als er geen of meerdere verschillende ID's aan hangen."
+                "description": "Het `T…`-team-ID uit Sportlinks teamlijst (PublicHomeTeamId én PublicAwayTeamId)."
               },
               "AgeClassCode": {
                 "type": "string",
-                "nullable": true
+                "nullable": true,
+                "description": "Code uit Sportlinks leeftijdscategorieën, bijv. `001` = Senioren (M)."
               },
               "FacilityId": {
                 "type": "string",
+                "nullable": true
+              },
+              "SubFacilityId": {
+                "type": "string",
                 "nullable": true,
-                "description": "Sportlink-locatie-ID van de eigen accommodatie, of null als die niet (eenduidig) gevonden is."
+                "description": "Het veld zoals Sportlink het kent (volgt geen vast patroon uit het veldnummer)."
+              },
+              "SportIdTag": {
+                "type": "string",
+                "nullable": true,
+                "description": "Spelactiviteit, bijv. `SOCCER-VE-AL/FRIDAY` = Veld - Vrijdag."
+              },
+              "WedstrijdNummer": {
+                "type": "integer",
+                "format": "int64",
+                "nullable": true,
+                "description": "ExternalMatchId uit ClubMatchDefaults (het eerstvolgende vrije nummer)."
               },
               "VeldNaam": {
                 "type": "string",
@@ -1402,7 +1418,7 @@
       },
       "SportlinkClubMatchPickListsResponse": {
         "type": "object",
-        "description": "De twee ondersteunende picklists die in deze ronde bewust WEL zijn aangesloten (#997,\nbewust beperkte scope): PickListsTeams + PickListsLocation. Read-only en\npersoonsgegevensvrij (teams/locaties, geen personen). ONBEVESTIGD qua werkelijke\nitem-veldnamen — zie Planner.Shared.Integrations.SportlinkClub.SportlinkPickListItem.\n",
+        "description": "De twee ondersteunende picklists die in deze ronde bewust WEL zijn aangesloten (#997,\nbewust beperkte scope): PickListsTeams + PickListsLocation. Read-only en\npersoonsgegevensvrij (teams/locaties, geen personen). Sinds #1427 is de responsvorm live\nvastgesteld (`ClubTeams[]`, `Facilities[]`); dit endpoint geeft per item alleen id + naam.\n",
         "properties": {
           "Teams": {
             "type": "array",
@@ -5480,7 +5496,7 @@
         ],
         "operationId": "postSportlinkClubMatch",
         "summary": "Oefenwedstrijd (\"clubwedstrijd\") aanmaken (#997, epic",
-        "description": "**Code-niveau `forceDryRun`-lock sinds #1319 opgeheven** (`ClubMatchLiveBevestigd = true`):\ndeze mutatie respecteert nu de gewone club-instelling `sportlinkDryRun` in plaats van altijd\nte simuleren. De exacte requestbody en de veldnamen van de twee aangesloten picklists blijven\nechter grotendeels ONBEVESTIGD — van alle #986-sub-issues heeft dit issue de meeste\nonbekenden (delete-methode onbekend, meerdere picklist-vormen onbekend). Endpoint (`POST\ncompetition/match/clubmatch/ClubMatch`) en requestbody zijn gereverse-engineerd uit\nSportlinks eigen frontend-code — zie `docs/SPORTLINK-WEB-EXTENSION.md` §5 voor de volledige\nlijst openstaande onzekerheden. Structureel anders dan de andere `/sportlink/match/...`-endpoints: er is vooraf GEEN\nbestaande wedstrijd, dus geen `SportlinkMutationGuard`-check — in plaats daarvan alleen\nonze eigen `sportlinkExtensionEnabled`-toggle + EgressGuard. Bewust NIET gebouwd in deze\nronde: verwijderen (`ClubMatchDelete`) en uitslag vastleggen (`ClubMatchScore`).\n",
+        "description": "Volgt de club-instelling `sportlinkDryRun`. **Sinds #1427 live bevestigd:** de body is\nveld voor veld gelijk aan wat Sportlink Clubs eigen formulier verstuurt (console-trace,\nHTTP 200 met nieuw `PublicMatchId`). De server haalt daarvoor eerst vier read-only lijsten\nop (`ClubMatchDefaults`, `PickListsTeams`, `PickListsLocation`,\n`PickListsMatchInformation`) en leidt daaruit team-ID (`T…`), leeftijdscategorie,\nspelactiviteit, veld (`SubFacilityId`) en wedstrijdnummer af. Een team of veld dat Sportlink\nniet (eenduidig) kent geeft 400; wat niet af te leiden is valt terug op Sportlinks\nstandaardwaarden met een waarschuwing. Er is vooraf geen bestaande wedstrijd, dus geen\n`SportlinkMutationGuard`-check — alleen de eigen toggle + EgressGuard. Bewust NIET gebouwd:\nverwijderen (`ClubMatchDelete`) en uitslag vastleggen (`ClubMatchScore`).\n",
         "security": [
           {
             "easyAuth": []
@@ -5497,7 +5513,7 @@
                   "TeamNaam",
                   "Tegenstander"
                 ],
-                "description": "Sinds #1116 stuurt het formulier alleen wat een wedstrijdsecretaris snel intikt; de\nserver leidt de Sportlink-velden af. Teamnaam → `PublicHomeTeamId` via de\ngevalideerde aliassen (`public.teamaliassen` → `his.teams.teamcode`, het team-ID dat\nde Sportlink-dataservice zelf hanteert; of Sportlink Club hetzelfde ID verwacht is\nONBEVESTIGD; bij 0 of meerdere verschillende ID's blijft het leeg met waarschuwing) en\n`AgeClassCode` via de leeftijdscategorie van het team. Locatie → `FacilityId` door de\nclub-instelling `accommodatie` op naam op te zoeken in de Sportlink-locatielijst\n(read-only GET, per uur gecachet). `FieldId` wordt bewust niet meegestuurd (het veld\ngaat volgens het plan van #997 pas ná aanmaken via het veld-mutatiepad); het gekozen\nveld staat wel in de standaard-omschrijving en in de audit.\n",
+                "description": "Het formulier stuurt alleen wat een wedstrijdsecretaris snel intikt; de server leidt\nde Sportlink-velden af uit Sportlinks eigen aanmaaklijsten (#1427). Teamnaam → het\n`T…`-team-ID (exacte naam, of onze naam met clubvoorvoegsel die eindigt op Sportlinks\nteamnaam; alleen een unieke treffer telt). Veld → `SubFacilityId` op veldnaam.\n",
                 "properties": {
                   "MatchDateTime": {
                     "type": "string",
@@ -5513,11 +5529,16 @@
                   },
                   "TeamNaam": {
                     "type": "string",
-                    "description": "Naam van een actief clubteam zoals `GET /beheer/teams` die teruggeeft (hoofdletterongevoelig)."
+                    "description": "Naam van een actief clubteam zoals `GET /beheer/teams` die teruggeeft (hoofdletterongevoelig), of vrije tekst als `VrijeTekst` true is."
+                  },
+                  "VrijeTekst": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "#1427: `TeamNaam` is vrije tekst (GUI-optie \"Vrije tekst invoeren…\", #1396). Geen 400\nals de naam geen actief clubteam is; Sportlinks standaardteam levert dan het team-ID\n(net als in Sportlinks eigen formulier) en de vrije tekst staat als naam van het\nthuisteam, met een waarschuwing.\n"
                   },
                   "Tegenstander": {
                     "type": "string",
-                    "description": "Vrije tekst — gaat als `PublicAwayTeamId` mee (ONBEVESTIGD of Sportlink hier vrije tekst accepteert)."
+                    "description": "Vrije tekst — gaat als `AwayTeam` (weergavenaam) mee."
                   },
                   "VeldNummer": {
                     "type": "integer",
@@ -5527,7 +5548,7 @@
                   "Description": {
                     "type": "string",
                     "nullable": true,
-                    "description": "Eigen omschrijving; leeg → `Oefenwedstrijd [team] - [tegenstander] ([veld])`."
+                    "description": "Eigen omschrijving; leeg → `Oefenwedstrijd [team] - [tegenstander]`."
                   }
                 }
               }
@@ -5536,7 +5557,7 @@
         },
         "responses": {
           "200": {
-            "description": "Mutatieresultaat (in de praktijk altijd IsForcedDryRun=true zolang de code-lock actief is)",
+            "description": "Mutatieresultaat. Een afwijzing door Sportlink zonder eigen `Violations` (bijv. HTTP 602) krijgt sinds",
             "content": {
               "application/json": {
                 "schema": {
@@ -5546,7 +5567,7 @@
             }
           },
           "400": {
-            "description": "MatchDateTime/TeamNaam/Tegenstander ontbreekt, Duration buiten 1–240, of team/veld niet bekend als actief"
+            "description": "MatchDateTime/TeamNaam/Tegenstander ontbreekt, Duration buiten 1–240, team niet bekend als actief (alleen zonder `VrijeTekst`), veld niet bekend als actief, of team/veld niet (eenduidig) gevonden in Sportlinks lijsten"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -5572,6 +5593,47 @@
         }
       }
     },
+    "/sportlink/club-match/dryrun-status": {
+      "get": {
+        "tags": [
+          "sportlink"
+        ],
+        "operationId": "getSportlinkClubMatchDryRunStatus",
+        "summary": "Actuele dry-run-stand voor het scherm \"Wedstrijd aanmaken\" (#1427)",
+        "description": "Leest alleen de club-instelling `sportlinkDryRun` (fail-safe: alles behalve een expliciete\n`0` is dry-run) — geen Sportlink-aanroep, geen toggle-/EgressGuard-check. Achter dezelfde\nWedstrijdzaken-poort als `POST /sportlink/club-match`; de health-endpoint\n`GET /beheer/sportlink-extensie/health` is admin-only en dus niet bruikbaar voor een\ngebruiker met alleen de rol Wedstrijdzaken.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dry-run-stand",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "DryRun": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
     "/sportlink/club-match/picklists": {
       "get": {
         "tags": [
@@ -5579,7 +5641,7 @@
         ],
         "operationId": "getSportlinkClubMatchPickLists",
         "summary": "Ondersteunende picklists voor het oefenwedstrijd-formulier (#997, bewust beperkte scope)",
-        "description": "Alleen de twee picklists die de UI het hardst nodig heeft: PickListsTeams en\nPickListsLocation — read-only en persoonsgegevensvrij (teams/locaties, geen personen).\nBewust NIET automatisch geladen bij het openen van de pagina, alleen op expliciet verzoek\nvanuit de UI. De overige drie ondersteunende endpoints uit het issue\n(ClubMatchDefaults, PickListsMatchInformation, codetable/AgeClassList) zijn in deze ronde\nbewust niet aangesloten.\n",
+        "description": "Alleen de twee picklists die de UI het hardst nodig heeft: PickListsTeams en\nPickListsLocation — read-only en persoonsgegevensvrij (teams/locaties, geen personen).\nSinds #1427 los van elkaar: een onherkenbare teamlijst geeft een lege `Teams`-lijst in\nplaats van een fout, zodat de locatielijst (nodig voor `FacilityId`) altijd wordt opgehaald.\nBewust NIET automatisch geladen bij het openen van de pagina, alleen op expliciet verzoek\nvanuit de UI. De overige drie ondersteunende endpoints uit het issue\n(ClubMatchDefaults, PickListsMatchInformation, codetable/AgeClassList) zijn in deze ronde\nbewust niet aangesloten.\n",
         "security": [
           {
             "easyAuth": []

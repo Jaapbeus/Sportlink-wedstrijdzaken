@@ -10,7 +10,14 @@ public partial class OefenwedstrijdAanmaken
     /// <summary>Sentinel-waarde van de "Vrije tekst"-optie in de Team-dropdown (#1396).</summary>
     private const string VrijeTekstOptie = "__vrije-tekst__";
 
+    /// <summary>Banner bij dry-run aan / uit (#1427) — één zin, afhankelijk van de actuele instelling.</summary>
+    internal const string DryRunAanTekst = "Dryrun is aan. Geen data wordt naar Sportlink geschreven.";
+    internal const string DryRunUitTekst = "Dryrun is uit. Wijzigingen worden direct in Sportlink weggeschreven.";
+
     [Inject] private AdminApiClient Api { get; set; } = default!;
+
+    /// <summary>Actuele dry-run-stand; <c>null</c> zolang onbekend (dan geen banner).</summary>
+    private bool? _dryRun;
 
     private bool _laden = true;
     private string? _laadFout;
@@ -42,7 +49,11 @@ public partial class OefenwedstrijdAanmaken
     {
         var teamsTaak = Api.GetTeamsAsync();
         var veldenTaak = Api.GetVeldenAsync();
-        await Task.WhenAll(teamsTaak, veldenTaak);
+        var dryRunTaak = Api.GetSportlinkDryRunStatusAsync();
+        await Task.WhenAll(teamsTaak, veldenTaak, dryRunTaak);
+
+        var dryRun = dryRunTaak.Result;
+        _dryRun = dryRun.Success ? dryRun.Data?.DryRun : null;
 
         var teams = teamsTaak.Result;
         var velden = veldenTaak.Result;
@@ -77,9 +88,9 @@ public partial class OefenwedstrijdAanmaken
         StateHasChanged();
         try
         {
-            var r = await Api.PostOefenwedstrijdAsync(_datum.Date + tijdSpan, _duur, TeamNaam!, _tegenstander, _veldNummer, _omschrijving);
+            var r = await Api.PostOefenwedstrijdAsync(_datum.Date + tijdSpan, _duur, TeamNaam!, _teamSelectie == VrijeTekstOptie, _tegenstander, _veldNummer, _omschrijving);
             _resultaat = r.Success ? r.Data : null;
-            var geslaagd = _status.Verwerk(r.Success, r.ErrorMessage, r.Data, "Oefenwedstrijd aangemaakt in Sportlink Club.", "Sportlink heeft de aanmaak afgewezen");
+            var geslaagd = _status.Verwerk(r.Success, r.ErrorMessage, r.Data, "Wedstrijd aangemaakt in Sportlink Club.", "Sportlink heeft de aanmaak afgewezen");
             if (geslaagd && _resultaat?.IsDryRun == false)
             {
                 _tegenstander = null;

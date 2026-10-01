@@ -131,21 +131,28 @@ public class AdminApiClient
     public async Task<ApiResult<SportlinkExtensieHealthDto>> GetSportlinkExtensieHealthAsync(bool live = false)
         => await GetAsync<SportlinkExtensieHealthDto>($"api/beheer/sportlink-extensie/health?live={(live ? "true" : "false")}");
 
-    // #997/#1116: oefenwedstrijd ("clubwedstrijd") aanmaken — scaffolding, altijd code-gelockt
-    // (forceDryRun) totdat een mens de body live bevestigt, zie SportlinkClubClient.CreateClubMatchAsync.
-    // Het formulier stuurt alleen teamnaam/tegenstander/veld; de server leidt de Sportlink-ID's af.
+    // #997/#1116: oefenwedstrijd ("clubwedstrijd") aanmaken — volgt sinds #1319 de dry-run-instelling
+    // van de club, zie SportlinkClubClient.CreateClubMatchAsync. Het formulier stuurt alleen
+    // teamnaam/tegenstander/veld; de server leidt de Sportlink-ID's af. vrijeTekst (#1427): de
+    // teamnaam komt niet uit de dropdown, dus geen controle op een actief clubteam.
     public async Task<ApiResult<OefenwedstrijdResultaatDto>> PostOefenwedstrijdAsync(
-        DateTime matchDateTime, int duration, string teamNaam, string tegenstander, int? veldNummer, string? description)
+        DateTime matchDateTime, int duration, string teamNaam, bool vrijeTekst, string tegenstander, int? veldNummer, string? description)
         => await PostAsync<OefenwedstrijdResultaatDto>("api/sportlink/club-match",
             new
             {
                 MatchDateTime = matchDateTime,
                 Duration = duration,
                 TeamNaam = teamNaam,
+                VrijeTekst = vrijeTekst,
                 Tegenstander = tegenstander,
                 VeldNummer = veldNummer,
                 Description = description
             });
+
+    // #1427: actuele dry-run-stand voor de banner op "Wedstrijd aanmaken" (Wedstrijdzaken-poort,
+    // geen Sportlink-aanroep).
+    public async Task<ApiResult<SportlinkDryRunStatusDto>> GetSportlinkDryRunStatusAsync()
+        => await GetAsync<SportlinkDryRunStatusDto>("api/sportlink/club-match/dryrun-status");
 
     // ── Sync ──
 

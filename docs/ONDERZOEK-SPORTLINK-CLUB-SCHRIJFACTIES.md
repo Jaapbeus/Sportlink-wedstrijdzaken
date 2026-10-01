@@ -147,7 +147,7 @@ Het kan. club.sportlink.com is geen server-rendered site maar een React-SPA (Vit
 | Officials zoeken | `competition/match/official/SearchMatchOfficials`, `PreferredOfficials` | GET | | uit code |
 | Wijzigingsverzoek goedkeuren/afwijzen (inkomend) | `competition/match/changerequest/MatchChangeRequestAction` | PUT | `{Action: APPROVE\|DENY, PublicMatchId, PublicPersonId, PublicRequestId, Remarks}` | uit code |
 | Wijzigingsverzoeken lezen | `changerequest/MatchChangeRequests`, `MatchChangeRequest?PublicRequestId=`, `MatchChangeRequestFilters` | GET | | uit code |
-| Oefenwedstrijd aanmaken | `competition/match/clubmatch/ClubMatch` | POST | o.a. `MatchDate`, `Duration`, `ExternalMatchId`, teams, locatie; respons `{PublicMatchId, IsSuccess}` | uit code |
+| Oefenwedstrijd aanmaken | `competition/match/clubmatch/ClubMatch` | POST | `HomeTeam`/`AwayTeam` (tekst), `PublicHomeTeamId`=`PublicAwayTeamId` (`T…`), `AgeClassCode`, `SportIdTag`, `MatchDate` (`yyyy-MM-dd`) + `StartTime` (`HH:mm:ss`), `Duration`, `ExternalMatchId`, `Description`, `IsHomeMatch`, `FacilityId`, `SubFacilityId`, `FieldSize`, `FieldOffset`, `HomeResult`/`AwayResult` −1; respons = body + `{PublicMatchId, IsSuccess}`. Voorbereidende GETs: `ClubMatchDefaults`, `PickListsTeams`, `PickListsLocation?SearchClubId=`, `PickListsMatchInformation` | live gezien (#1427) |
 | Oefenwedstrijd verwijderen / uitslag | `clubmatch/ClubMatchDelete`, `clubmatch/ClubMatchScore` | | | uit code |
 | Picklists (velden, tijden, kleedkamers) | `competition/match/picklist/PickLists?PublicMatchId=`, `facility/MatchFacilitiesList?PublicMatchId=`, `competition/match/MatchDetailsSidePanel?PublicMatchId=&TypeOfRequest=DRESSINGROOMS\|FIELDS` | GET | | live gezien |
 
@@ -281,7 +281,7 @@ Onze backend (Azure Function) roept dezelfde `PUT`-calls aan met een Bearer-toke
 
 ## 5. Wat ik NIET heb gedaan of weet
 - Geen enkele mutatie zelf uitgevoerd; de kleedkamerwijziging is door de wedstrijdsecretaris gedaan en teruggedraaid.
-- Exacte body van `UpdateMatchDetails` en `ClubMatch` niet live gezien.
+- Exacte body van `UpdateMatchDetails` niet live gezien. (`ClubMatch`: sinds #1427 wel, zie de tabel hierboven.)
 - **Opgelost (§2.6):** redirect-URI-whitelist getest en afgewezen (HTTP 400); access-/refresh-token-
   levensduur bevestigd (1 uur / 6 uur bij eerste uitgifte); `device_code`-grant getest en bevestigd
   uitgeschakeld voor deze client.

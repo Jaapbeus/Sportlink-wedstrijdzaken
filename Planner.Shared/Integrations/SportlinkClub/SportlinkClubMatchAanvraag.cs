@@ -1,46 +1,44 @@
 namespace Planner.Shared.Integrations.SportlinkClub;
 
 /// <summary>
-/// Aanvraag om een nieuwe oefenwedstrijd ("clubwedstrijd") aan te maken bij Sportlink (#997, epic
-/// #986) — <c>POST competition/match/clubmatch/ClubMatch</c>. ELK veld hier is ONBEVESTIGD
-/// (issue #997): de body-vorm komt uit Sportlinks eigen frontend-code, nooit met een netwerktrace
-/// gezien. Zie <see cref="ISportlinkClubClient.CreateClubMatchAsync"/> voor de forceDryRun-lock die
-/// hierdoor verplicht is.
+/// Aanvraag om een nieuwe oefenwedstrijd ("clubwedstrijd") aan te maken bij Sportlink —
+/// <c>POST competition/match/clubmatch/ClubMatch</c>. <b>Sinds #1427 live bevestigd</b>: elk veld
+/// hieronder komt uit een console-trace van Sportlink Clubs eigen formulier (01-10-2026), dat met
+/// deze body HTTP 200 en een nieuw <c>PublicMatchId</c> kreeg. Vóór #1427 was de body
+/// gereverse-engineerd en gaf hij HTTP 602. Wordt opgebouwd door
+/// <see cref="ClubMatchAanvraagBouwer"/>; zie <see cref="SportlinkClubClient.BuildClubMatchBody"/>
+/// voor de exacte JSON-notatie.
 /// </summary>
-/// <param name="MatchDateTime">
-/// ONBEVESTIGD: datum en starttijd van de wedstrijd — Sportlink verwacht deze volgens het issue
-/// "samengevoegd" als één <c>MatchDate</c>-veld; de exacte stringnotatie (ISO 8601 zonder tijdzone
-/// aangenomen) is niet live bevestigd.
-/// </param>
-/// <param name="Duration">ONBEVESTIGD: duur in minuten — het issue noemt 90 als default.</param>
-/// <param name="AgeClassCode">
-/// ONBEVESTIGD: leeftijdscategorie-code. <c>codetable/AgeClassList</c> (de picklist die dit zou
-/// valideren) is in deze ronde bewust NIET aangesloten (zie PR-beschrijving) — dit veld is dus
-/// vrije tekst totdat die picklist een volgende ronde wordt toegevoegd.
-/// </param>
-/// <param name="Description">ONBEVESTIGD: vrije omschrijving van de oefenwedstrijd.</param>
-/// <param name="PublicHomeTeamId">
-/// ONBEVESTIGD: team-identifier uit <see cref="ISportlinkClubClient.GetClubMatchPickListsAsync"/>
-/// (<c>PickListsTeams</c>).
-/// </param>
-/// <param name="PublicAwayTeamId">ONBEVESTIGD: tegenstander — vrije tekst of eveneens een team-ID uit de picklist.</param>
-/// <param name="FacilityId">
-/// ONBEVESTIGD: locatie-identifier uit <see cref="ISportlinkClubClient.GetClubMatchPickListsAsync"/>
-/// (<c>PickListsLocation</c>).
-/// </param>
-/// <param name="FieldId">ONBEVESTIGD: optioneel specifiek veld binnen de locatie.</param>
-/// <param name="ExternalMatchId">
-/// ONBEVESTIGD: onze eigen wedstrijdnummer, indien deze oefenwedstrijd gekoppeld moet worden aan
-/// een reeds lokaal geplande wedstrijd (zie <c>planner.geplandewedstrijden.sportlinkwedstrijdcode</c>
-/// — niet aangesloten in deze ronde, zie PR-beschrijving).
-/// </param>
+/// <param name="MatchDate">Speeldatum; gaat als <c>yyyy-MM-dd</c>.</param>
+/// <param name="StartTime">Aanvangstijd; gaat apart als <c>HH:mm:ss</c>.</param>
+/// <param name="Duration">Duur in minuten.</param>
+/// <param name="ExternalMatchId">Wedstrijdnummer — verplicht in Sportlinks formulier; komt uit
+/// <c>ClubMatchDefaults</c> (het eerstvolgende vrije nummer).</param>
+/// <param name="Description">Omschrijving — verplicht in Sportlinks formulier.</param>
+/// <param name="HomeTeam">Weergavenaam thuisteam (vrije tekst).</param>
+/// <param name="AwayTeam">Weergavenaam uitteam (vrije tekst, de tegenstander).</param>
+/// <param name="PublicTeamId">Het <c>T…</c>-ID van het eigen team; Sportlink zet het als
+/// <c>PublicHomeTeamId</c> én <c>PublicAwayTeamId</c>.</param>
+/// <param name="AgeClassCode">Code uit <c>PickListsMatchInformation.AgeClasses</c>, bijv. "001".</param>
+/// <param name="SportIdTag">Uit <c>PickListsMatchInformation.Activities</c>, bijv. "SOCCER-VE-AL/FRIDAY".</param>
+/// <param name="IsHomeMatch">Thuiswedstrijd (eigen accommodatie).</param>
+/// <param name="FacilityId">Accommodatie uit <c>PickListsLocation</c>.</param>
+/// <param name="SubFacilityId">Veld uit <c>PickListsLocation.Facilities[].Fields</c>.</param>
+/// <param name="FieldSize">"1.0" = heel veld.</param>
+/// <param name="FieldOffset">"0" bij een heel veld.</param>
 public sealed record SportlinkClubMatchAanvraag(
-    DateTime MatchDateTime,
-    int Duration = 90,
-    string? AgeClassCode = null,
-    string? Description = null,
-    string? PublicHomeTeamId = null,
-    string? PublicAwayTeamId = null,
-    string? FacilityId = null,
-    string? FieldId = null,
-    long? ExternalMatchId = null);
+    DateOnly MatchDate,
+    TimeOnly StartTime,
+    int Duration,
+    long? ExternalMatchId,
+    string Description,
+    string HomeTeam,
+    string AwayTeam,
+    string? PublicTeamId,
+    string? AgeClassCode,
+    string? SportIdTag,
+    bool IsHomeMatch,
+    string? FacilityId,
+    string? SubFacilityId,
+    string FieldSize = "1.0",
+    string FieldOffset = "0");

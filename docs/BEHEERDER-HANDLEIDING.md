@@ -607,7 +607,7 @@ heet Sportlink Web Extension, zie §19) en *Rechten per rol* (zie §19a).
 Planning en Veld optimalisatie staan voor elke ingelogde gebruiker in het menu. Drie menu-items
 verschijnen alleen onder een voorwaarde:
 
-- **Wijzigingsverzoeken** en **Wedstrijden** (menu-item voor het scherm "Oefenwedstrijd aanmaken",
+- **Wijzigingsverzoeken** en **Wedstrijden** (menu-item voor het scherm "Wedstrijd aanmaken",
   zie §18a) staan er alleen als de Sportlink Web Extension is ingeschakeld (hoofdstuk 19).
 - Onder het menu Instellingen komt nog het kopje **TESTMODUS** met daaronder **Testdata**; dat
   staat er alleen als AllStars FC in de club-keuzelijst is gekozen.
@@ -1197,19 +1197,20 @@ Per openstaand verzoek staan twee compacte knoppen:
 
 Staat dry-run aan (§19), dan wordt de actie gesimuleerd en gelogd; het scherm meldt dat expliciet.
 
-Deze pagina en "Oefenwedstrijd aanmaken" (menu-item: **Wedstrijden**, zie §18a) staan alleen in het menu als de Sportlink Web Extension
+Deze pagina en "Wedstrijd aanmaken" (menu-item: **Wedstrijden**, zie §18a) staan alleen in het menu als de Sportlink Web Extension
 aan staat (§19); staat hij uit, dan verdwijnen beide menu-items en tonen Planning en Veld
 optimalisatie geen Sportlink-kolom. Deze pagina is onderdeel van de Sportlink Web Extension (zie §19) en vereist dus dat die feature
 is ingeschakeld en gekoppeld voor de rol die deze acties uitvoert.
 
 ---
 
-## 18a. Oefenwedstrijd aanmaken (`/wedstrijd-aanmaken`)
+## 18a. Wedstrijd aanmaken (`/wedstrijd-aanmaken`)
 
-> **Echt aanmaken (#1319):** de aanroep naar Sportlink Club is na een live netwerktrace bevestigd
-> en volgt sinds #1319 de dry-run-instelling van uw club (zie §19). Staat dry-run **aan**, dan ziet
-> u na het aanmaken wat er zou zijn meegestuurd, maar verandert er niets in Sportlink. Staat dry-run
-> **uit**, dan wordt de oefenwedstrijd echt in Sportlink Club aangemaakt.
+> **Echt aanmaken (#1319):** de aanroep volgt de dry-run-instelling van uw club (zie §19). Bovenaan
+> de pagina staat sinds #1427 in één zin hoe die nu staat: **"Dryrun is aan. Geen data wordt naar
+> Sportlink geschreven."** of **"Dryrun is uit. Wijzigingen worden direct in Sportlink
+> weggeschreven."** (de tweede in een gele balk). Kan de stand niet worden opgehaald, dan ontbreekt
+> de balk.
 
 Bedoeld voor snelle invoer: één scherm met **datum**, **aanvangstijd**, **duur** (standaard 90
 minuten), **team** (keuzelijst met de actieve clubteams uit de eigen database), **tegenstander**
@@ -1218,24 +1219,28 @@ in een veld verstuurt het formulier.
 
 De team-keuzelijst heeft onderaan een extra optie **"Vrije tekst invoeren…"** (#1396): kiest u
 die, dan verschijnt een tekstveld waarin u een willekeurige teamnaam kunt typen — handig om te
-testen zonder een bestaand clubteam te gebruiken. De ingevulde vrije tekst wordt exact zo gebruikt
-als een uit de keuzelijst gekozen team.
+testen zonder een bestaand clubteam te gebruiken. Een vrije teamnaam hoeft geen actief clubteam te
+zijn (#1427): Sportlink heeft altijd een team van uw eigen club nodig, dus dan gebruikt de server
+Sportlinks **standaardteam** en staat uw vrije tekst als naam van het thuisteam. Zo werkt het in
+Sportlink Club zelf ook. U ziet dat als waarschuwing.
 
-Wat u níet hoeft in te vullen, doet de server:
+Wat u níet hoeft in te vullen, haalt de server op uit de lijsten van Sportlink Club zelf (#1427):
 
-| Sportlink-veld | Waar het vandaan komt |
+| In Sportlink | Waar het vandaan komt |
 |---|---|
-| Team-ID | Het gekozen team, via de teamkoppeling met de gesynchroniseerde Sportlink-teams. Ontbreekt die koppeling (bijv. een puur lokaal team, of een via "Vrije tekst" ingevoerde naam), dan blijft het leeg en ziet u dat als waarschuwing |
-| Leeftijdscategorie | Van het gekozen team (bijv. `JO10`) |
-| Locatie | Altijd de eigen accommodatie: het veld **Accommodatie** op de Instellingen-pagina wordt op naam opgezocht in de locatielijst van Sportlink Club. Niet (eenduidig) gevonden → leeg + waarschuwing |
-| Omschrijving | Leeg gelaten → `Oefenwedstrijd [team] - [tegenstander] ([veld])` |
-
-Het gekozen veld wordt nog **niet** als Sportlink-veld meegestuurd: dat gebeurt in het plan van
-#997 pas ná het aanmaken via de bestaande veldwijziging. Het staat wel in de standaard-omschrijving
-en in het auditlog.
+| Team | Het gekozen team, opgezocht in Sportlinks teamlijst: exact op naam, of op de naam zonder clubnaam ("AllStars 35+4" ↔ "35+4"). Geen of meerdere treffers → de aanmaak wordt geweigerd met een melding; er wordt nooit gegokt |
+| Thuisteam / Uitteam | De teamnaam en de tegenstander, als tekst |
+| Leeftijdscategorie | Van het gekozen team (bijv. `JO10` → "Onder 10 (M)", senioren → "Senioren (M)"). Niet te bepalen → Sportlinks standaard + waarschuwing |
+| Spelactiviteit | Die van het team in Sportlink (bijv. "Veld - Vrijdag"). Niet te bepalen → Sportlinks standaard + waarschuwing |
+| Locatie | Het veld **Accommodatie** op de Instellingen-pagina, opgezocht in Sportlinks locatielijst; anders de accommodatie die Sportlink als standaard heeft |
+| Veld | Het gekozen veld, op naam opgezocht bij die accommodatie (heel veld). Niet gevonden → geweigerd; geen veld gekozen → Sportlinks standaardveld + waarschuwing |
+| Wedstrijdnummer | Het eerstvolgende vrije nummer dat Sportlink zelf voorstelt |
+| Omschrijving | Leeg gelaten → `Oefenwedstrijd [team] - [tegenstander]` |
 
 Na het aanmaken toont een blauw (gesimuleerd/geslaagd) of rood (afgewezen) blok de melding plus de
-afgeleide gegevens en eventuele waarschuwingen. Deze pagina is onderdeel van de Sportlink Web
+afgeleide gegevens en eventuele waarschuwingen. Wijst Sportlink de aanmaak af zonder eigen
+toelichting, dan staat sinds #1427 de foutmelding van Sportlink zelf achter "afgewezen"
+(`Sportlink <code>: <melding>`). Deze pagina is onderdeel van de Sportlink Web
 Extension (§19) en vereist dat die is ingeschakeld en gekoppeld voor de rol Wedstrijdzaken.
 
 ---
