@@ -1120,7 +1120,6 @@ sportlink-wedstrijdzaken/
 ├── BlazorAdmin.Tests/ · FunctionApp.Tests/ · FunctionApp.Postgres.Tests/
 ├── Database.Postgres.Tests/ · Planner.Shared.Tests/   # vijf testprojecten
 ├── MigrationTools/SqlServerToPostgresCopy/            # eenmalige tier-migratietool
-├── Tools/SportlinkTokenCapture/                       # Sportlink-tokenopname (epic #986)
 ├── bruno-gen.json                     # Bruno-generatorconfig — bruno/ zelf niet in git, zie §7
 ├── infrastructure/                    # Bicep-templates
 ├── scripts/

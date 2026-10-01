@@ -352,6 +352,13 @@ zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §57.
 
 ### 5.5 Sportlink Web Extension — architectuurplaatsing
 
+Automatische herlogin (#1411) gebruikt dezelfde egress- en autorisatiegrenzen. Credentials en
+nieuwe refresh-tokens worden op beide tiers met AES-256-GCM versleuteld, met een hostsleutel
+buiten de database en AAD voor club/rol/doel. De bestaande handmatige modus blijft beschikbaar
+zonder hostsleutel. De samengevoegde opslag van wachtwoord en tweede factor vergroot de impact
+van een gecompromitteerde runtime; minimale accountrechten en intrekking blijven noodzakelijk.
+Zie [ontwerp en beheer](SPORTLINK-AUTOLOGIN.md).
+
 > **Volledig protocol, endpoint-contracten en de agent-tokengrens:
 > [SPORTLINK-WEB-EXTENSION.md](SPORTLINK-WEB-EXTENSION.md).** Dit is uitsluitend de
 > architectuurplaatsing — het volledige mechanisme niet hier dupliceren.
@@ -681,13 +688,14 @@ vervangen — want een controle die altijd afwijkt, leert de uitvoerder afwijkin
 |---|---|---|---|
 | Niet ingelogd | Omgeleid naar aanmelden | Geweigerd | Geen beheerder |
 | Ingelogd, geen rol | Toegang geweigerd | Geweigerd | Geen beheerder |
-| `user` | Interface laadt | Geweigerd op alle endpoints | **Onvolledig** — geen ondersteunde functie |
+| `user` | Interface laadt; Planning en het Sportlink-paneel zijn zichtbaar (#1400) | Alleen lezen: `/planner/veldbezetting`, `GET /sportlink/match/{wedstrijdcode}` en `.../public-match-id`, de Teambegeleiding-lookup/doorstuur-endpoints (`AdminEndpoint.ExecuteAuthenticatedAsync`); overige endpoints geweigerd | Gewone ingelogde gebruiker |
 | `admin` | Volledig | Toegang | De beheerder |
-| `wedstrijdzaken` | Geen toegang tot de beheerapp | Alleen de daarvoor bedoelde endpoints | Functionele rol |
+| `Wedstrijdzaken` (naast `user`) | Als `user` | Als `user`, plus de Sportlink-mutatie-endpoints (`SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`: rol `Wedstrijdzaken` óf `admin`) | Functionele rol |
+| `Sectiehoofd`, `Ledenadministratie` | Alleen kolom in de toegangsmatrix (#1390) | **Nog niet afgedwongen** — de matrix legt vast wat een rol zou mogen zien; endpoints kennen deze rollen niet | Voorbereiding |
 
-De regel `user` is vandaag zonder effect: de interface laat hem binnen, de API weigert alles. Dat is
-**te weinig toegang, geen lek** — maar code en documentatie beschrijven het verschillend, en dat is
-een openstaand punt (**WZ-SEC-05**, §11).
+Rolnamen: `Planner.Shared/Autorisatie/RolNamen.cs`. De matrix (`/beheer/rolfeatureinstellingen`, admin-only)
+toont `admin` bewust niet: die rol heeft altijd alles. `Wedstrijdzaken` zonder `user` of `admin` geeft
+geen toegang tot de app-shell (laag 4 hieronder); wijs altijd `user` + `Wedstrijdzaken` toe.
 
 #### 8.2.1 Defense in depth — vijf lagen, allemaal verplicht
 
@@ -811,8 +819,10 @@ maar alleen een Secret wordt gemaskeerd.
 Postgres — norm `sslmode=verify-full` mét CA-certificaat; ontbreekt dat, dan meldt `/api/health` een
 `tlsWarning`).
 
-Het **Sportlink refresh-token** (epic #986) is een apart, door de club-beheerder zelf via de
-Instellingen-UI gecaptured secret, niet via GitHub Secrets — zie §5.5 en `docs/SECRET-ROTATION.md`.
+De **Sportlink-logincredentials en het afgeleide refresh-token** (epic #986, herzien in #1411) staan
+versleuteld (AES-256-GCM) in `public.sportlinkautologin` / `dbo.SportlinkAutoLogin`. De Base64-hostsleutel van
+32 bytes is de Function App-setting `SportlinkAutoLoginEncryptionKey` (buiten de database, niet via
+GitHub Secrets of git) — zie `docs/SPORTLINK-AUTOLOGIN.md` voor beheer, rotatie en herstel.
 
 **Entra App Registration** mag niet via de Azure Portal handmatig worden aangepast. Gebruik altijd
 de idempotente scripts (`Verify-AzureAuthSetup.ps1` → `Configure-EntraApp.ps1 -WhatIf` →

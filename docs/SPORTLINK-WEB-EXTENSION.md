@@ -1,5 +1,10 @@
 # Sportlink Web Extension
 
+> #1411 voegt opt-in automatische herlogin met TOTP toe. De bevestigde tien-uurslimiet vereist
+> een nieuwe sessie; refresh alleen is niet onbeperkt. Met een ingerichte hostsleutel gebruiken
+> beide tiers versleutelde databaseopslag; de oudere bootstrapbeschrijving hieronder geldt voor
+> de configuratie zonder die sleutel. Zie [automatische login](SPORTLINK-AUTOLOGIN.md).
+
 > **Status: gedeeltelijk gebouwd. Het read-only Match-endpoint (#991) is 2026-09-06 lokaal live
 > geverifieerd tegen een echte testwedstrijd** (zie §4.4/#1036/#1038 voor de daarbij gevonden en
 > gefixte bugs: `ExternalMatchId` kwam als JSON-getal terug in plaats van string (#1036), en
@@ -48,6 +53,11 @@
 
 ## 1. Wat dit is
 
+> **Authenticatie is gewijzigd in #1411.** Oude passages in dit historische featuredocument over
+> token-capture, handmatige refresh-tokenregistratie, credentials elke dag handmatig vernieuwen of
+> agentverboden voor de oude tokenflow zijn achterhaald. De actieve setup- en herstelprocedure is
+> [`docs/SPORTLINK-AUTOLOGIN.md`](SPORTLINK-AUTOLOGIN.md); gebruik die als enige bron.
+
 Een optionele uitbreiding die wedstrijdwijzigingen (kleedkamers, veld, scheidsrechters,
 wijzigingsverzoeken) rechtstreeks vanuit deze webapp terugschrijft naar club.sportlink.com — in
 plaats van dat de wedstrijdsecretaris dat apart, handmatig in Sportlink Club moet doen. Het is een
@@ -59,10 +69,10 @@ JSON-API die hun eigen React-SPA gebruikt. Staat daarom standaard **UIT** per cl
 
 - Dit verandert vandaag nog niets aan hoe je werkt — de extension staat standaard uit, en zelfs
   wanneer een club hem aanzet, gebeurt er niets zonder dat jij op een knop klikt.
-- Als je club de extension gebruikt: je krijgt een eigen, apart Sportlink-account voor deze
-  koppeling (niet je eigen persoonlijke account) — een beheerder regelt dat samen met jou, zie §3.
-- Je hoeft dat account maar **één keer** te koppelen (niet elke dag, niet elke week) — de koppeling
-  blijft daarna zelfstandig geldig.
+- Als je club de extension gebruikt: een beheerder configureert de automatische login voor het
+  Sportlink-account via de beveiligde beheerpagina. De initiële setup en het herstel staan in
+  [`docs/SPORTLINK-AUTOLOGIN.md`](SPORTLINK-AUTOLOGIN.md); routinematig handmatig tokens vernieuwen
+  is niet nodig.
 - Alles wat de extension straks doet, doet zij op naam van dat aparte account — niet op jouw eigen
   naam — dus in Sportlink's eigen logs zie je dat terug als bijvoorbeeld "webapp-wedstrijdzaken".
 - Wat vandaag al werkt: bij elke wedstrijd op Planning en Veld optimalisatie (#1361) staat een knop "Open in Sportlink" die de
@@ -124,42 +134,10 @@ Sportlink-account, aangemaakt en gescoped in Sportlink's eigen
 [onderzoeksrapport §6](ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md#6-architectuurbeslissing-2026-09-04-rol-gebaseerde-sportlink-service-accounts-geen-gedeelde-credential).
 
 ### 3.3 Een rol koppelen (eenmalige, menselijke handeling)
-1. Maak in Sportlink Club zelf het serviceaccount aan voor deze rol (bv. `webapp-wedstrijdzaken`),
-   met alleen de rechten die deze rol nodig heeft — niet "alle rechten".
-2. Draai lokaal, als mens, **niet als agent** (zie §4.4 voor waarom dat een harde grens is):
-   ```
-   dotnet run --project Tools/SportlinkTokenCapture -- Wedstrijdzaken
-   ```
-3. Log in het geopende browservenster in met het zojuist aangemaakte serviceaccount. Het
-   script schrijft het refresh_token lokaal weg — een echte, productie-persistente koppeling
-   vereist stap 5 hieronder.
-
-   > **Veilig ophalen als er een coding agent in dezelfde sessie/werkdirectory actief is (#1318).**
-   > Open `FunctionApp.Postgres/local.settings.json` zelf, in een editor-tab of terminal waar geen
-   > agent-tool-aanroep aan te pas komt — vraag een agent nooit dit bestand te lezen, tonen,
-   > `cat`'en of erin te zoeken rond dit moment. Kopieer alleen de waarde van
-   > `SportlinkClubRefreshToken__<Rol>` met de hand. Waarom dit zo specifiek moet: als een agent dit
-   > bestand ooit eerder in dezelfde sessie heeft gelezen (voor iets totaal ongerelateerds, bijv. een
-   > `AllowExternalIntegrations`-check), toont de harness bij de eerstvolgende wijziging aan dit
-   > bestand — dus ook wanneer dit script het token wegschrijft — automatisch een diff mét de volle
-   > tokenwaarde in de agentsessie. Dat gebeurt zonder dat de agent er ooit om vraagt. Zie §4.4,
-   > incident 2026-09-26, voor de volledige analyse en wat te doen als dit toch gebeurt.
-4. Klik op het scherm Sportlink Web Extension op "Koppeling (opnieuw) registreren" en vul de accountnaam in ter
-   herkenning — dit is geen live verificatie, puur een leesbaar label voor de statustabel.
-5. Vul in datzelfde dialoogvenster het veld "Refresh-token registreren" in met de waarde uit
-   stap 3 (#991) — plak die rechtstreeks vanuit je eigen editor/klembord, nooit via een
-   tussenstap waarbij een agent de waarde doorgeeft of herhaalt. Dit valideert het token met één
-   refresh-poging en slaat het rotarende refresh_token productie-persistent op in
-   `public.sportlinkservicetokens` — write-only, nooit ergens teruggetoond.
-6. **Postgres-tier: zet `SportlinkClubRefreshToken__<Rol>` in `local.settings.json` na een
-   geslaagde stap 5 terug naar `""`.** De Postgres-tier-runtime leest deze instelling nooit (geen
-   code-referentie in `FunctionApp.Postgres`) — hij diende alleen als eenmalig, lokaal transportpad
-   naar `public.sportlinkservicetokens`. Laat 'm daarna niet onnodig lang in platte tekst staan.
-   **SQL Server-tier: dit NIET doen** — daar is dezelfde instelling wél de actieve tokenopslag
-   (§4.1/§4.3, via de Function App-instelling), leegmaken breekt daar de koppeling.
-7. Herhaal deze koppeling alleen als Sportlink de onderliggende sessie ooit volledig intrekt
-   (zeldzaam) — niet routinematig, én altijd als een token per ongeluk in een agentsessie
-   terechtkwam (zie §4.4).
+Deze oude procedure is verwijderd. Er is geen token-capturetool, handmatige token-upload of
+legacy-opslag meer. Gebruik uitsluitend [Automatische Sportlink-login](SPORTLINK-AUTOLOGIN.md)
+voor de productie-initialisatie en het herstel. MFA blijft ingeschakeld; een bevoegde beheerder
+stelt credentials en authenticator-instelsleutel in via de beveiligde beheerpagina.
 
 ### 3.4 Entra-rol "Wedstrijdzaken"
 Naast de bestaande `admin`/`user`-rollen bestaat er een aanvullende approl `Wedstrijdzaken`
@@ -170,37 +148,72 @@ gaten, bovenop de bestaande admin-toegang. Zie
 [`docs/ENTRA-AUTH-BEHEER.md`](ENTRA-AUTH-BEHEER.md) voor het volledige rolbeheer-protocol en de
 verplichte N-user-test.
 
-**Herziening (#1376):** een `admin`-toewijzing is sinds #1376 op zichzelf voldoende voor
-Sportlink-mutatie-endpoints — een aparte `Wedstrijdzaken`-toewijzing is voor een volledige
-beheerder niet meer nodig. Dit draait een eerder, expliciet besluit terug (zie
-`memory/wedstrijdzaken-rol-vereist-altijd-ook-admin.md` in het projectgeheugen): tot #1376 golden
-`admin` en `Wedstrijdzaken` bewust als losse, AND-gecombineerde Entra-toewijzingen, met als
-motivering ruimte te houden voor een toekomstige, beperktere rol (bijv. een "sectiehoofd" dat wél
-admin is maar géén Sportlink-mutaties mag triggeren — zie
-`docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md` §6). De rol `Wedstrijdzaken` blijft wél bestaan en
-nodig voor het andere geval: een gebruiker met **alleen** `user` + `Wedstrijdzaken` (geen `admin`)
-krijgt nog steeds toegang tot dezelfde mutatie-endpoints — dat gedrag is ongewijzigd.
+**Herziening (#1376):** een `admin`-toewijzing is sinds #1376 op zichzelf voldoende voor de eerste
+van de twee autorisatiepoorten die elk Sportlink-endpoint doorloopt
+(`EasyAuthHelper.RequireWedstrijdzaken` staat sindsdien `Wedstrijdzaken` ÓF `admin` toe) — een
+aparte `Wedstrijdzaken`-toewijzing is voor een volledige beheerder daar niet meer voor nodig. Dit
+draait een eerder, expliciet besluit terug (zie `memory/wedstrijdzaken-rol-vereist-altijd-ook-admin.md`
+in het projectgeheugen): tot #1376 golden `admin` en `Wedstrijdzaken` bewust als losse,
+AND-gecombineerde Entra-toewijzingen, met als motivering ruimte te houden voor een toekomstige,
+beperktere rol (bijv. een "sectiehoofd" dat wél admin is maar géén Sportlink-mutaties mag
+triggeren — zie `docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md` §6).
 
-**Belangrijk om te weten:** vandaag komt `Wedstrijdzaken` in de praktijk altijd sámen met `admin`
-voor — er bestaat (nog) geen gebruiker met uitsluitend `Wedstrijdzaken`. De per-actie-toggles in
-§3.5 hieronder hebben daardoor vandaag geen zichtbaar effect (elke Wedstrijdzaken-gebruiker is óók
-admin, en admin heeft altijd alles aan) — ze zijn bewust toekomstbestendig gebouwd voor het moment
-dat er ooit een beperktere rol komt (bijv. een "sectiehoofd", zie het architectuurbesluit in
-§6 van `docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md`).
+**#1400 heeft ook de TWEEDE poort verruimd (fix van de #1379-bevinding).** Tot #1400 was de tweede,
+erop volgende poort (`AdminEndpoint.ExecuteAsync` → `EasyAuthHelper.RequireAdmin`) ongewijzigd
+sinds #1272 en vereiste onveranderd uitsluitend `admin` — een gebruiker met **alleen**
+`user` + `Wedstrijdzaken` (geen `admin`) passeerde dus wél de eerste poort maar strandde op de
+tweede (`403`). #1400 vervangt die tweede poort door `AdminEndpoint.ExecuteWedstrijdzakenOfAdminAsync`,
+die dezelfde `Wedstrijdzaken`-ÓF-`admin`-regel gebruikt als de eerste — bewust getest
+(`Sportlink_AlleenWedstrijdzaken_PasseertDeAdminPoort`, beide tiers). **Netto-effect: `Wedstrijdzaken`
+is sinds #1400 een echt alternatief voor `admin`** voor de mutatie-endpoints (kleedkamers, veld,
+scheidsrechters, wijzigingsverzoek datum/tijd/accommodatie) — niet alleen aanvullend. Een gewone
+`user` zonder `Wedstrijdzaken` en zonder `admin` krijgt op deze mutatie-endpoints nog steeds `403`
+(bewust getest: `Sportlink_AlleenUser_WordtGeweigerdOpDeWedstrijdzakenPoort`).
 
-### 3.5 Per-actie instelbaar: kleedkamers/scheidsrechter/veld (#1341, epic #1338)
-Een beheerder kan op **Instellingen → Sportlink — rechten per rol** per club onafhankelijk
-aan/uit zetten of de `Wedstrijdzaken`-rol kleedkamers mag toewijzen, scheidsrechters mag
-toewijzen, en het veld mag wijzigen. Drie dingen om te onthouden:
+**Viewing is sinds #1400 losgekoppeld van de Wedstrijdzaken-rol.** `GET /api/sportlink/match/
+{wedstrijdcode}` en `.../public-match-id` — het Sportlink-paneel in Planning — lopen niet meer via
+de Wedstrijdzaken-poort, maar via `AdminEndpoint.ExecuteAuthenticatedAsync` (elke ingelogde rol,
+`admin` + `user`): Planning en het Sportlink-paneel zijn generiek zichtbaar voor elke gebruiker.
+Welke velden een niet-Wedstrijdzaken-viewer daadwerkelijk terugkrijgt blijft wél server-side
+geredigeerd: `SportlinkMatchFunction.BepaalRolFeatureToestemmingenAsync` checkt expliciet of de
+aanroeper zelf `admin` óf `Wedstrijdzaken` is (`EasyAuthHelper.IsInRole`) — een gewone `user` krijgt
+`(false,false,false,false)` terug (`SportlinkRolFeatureToestemmingen`, inclusief de nieuwe
+`MagWijzigen`-vlag) en dus geen scheidsrechter-relatiecodes en geen zichtbare wijzig-knoppen in
+`SportlinkMatchPanel` (die blijven puur UX — de mutatie-endpoints zelf blijven de leidende controle).
 
-- **Server is leidend, niet de UI-toggle.** `SportlinkMatchFunction.ExecuteMutationAsync` (beide
-  tiers) wijst een uitgeschakelde actie af met HTTP 409, ook bij een directe API-aanroep buiten
-  de Blazor-UI om. De UI verbergt de bijbehorende sectie in `SportlinkMatchPanel` alleen om een
-  voorspelbare 409 te voorkomen.
+### 3.5 Toegangsmatrix per rol (#1390, opvolger van #1341/epic #1338)
+Een beheerder kan op **Instellingen → Rechten per rol** een matrix instellen: rijen zijn elk
+menu-item/functie (inclusief de drie Sportlink-mutatieacties kleedkamers/scheidsrechter/veld),
+kolommen zijn de vier instelbare rollen `user`/`Wedstrijdzaken`/`Sectiehoofd`/`Ledenadministratie`.
+Bewust geen kolom voor `admin`: admin heeft dit altijd allemaal aan. Dit is de opvolger van de
+oorspronkelijke drie losse Sportlink-toggles uit #1341 — zelfde databasetabel
+(`rolfeatureinstellingen`/`dbo.RolFeatureInstellingen`), nu met veel meer rijen en rollen.
+
+Vier dingen om te onthouden:
+
+- **Server is leidend voor de drie Sportlink-mutatieacties, niet de UI-toggle.**
+  `SportlinkMatchFunction.ExecuteMutationAsync` (beide tiers) wijst een uitgeschakelde actie af met
+  HTTP 409, ook bij een directe API-aanroep buiten de Blazor-UI om, voor de rol `Wedstrijdzaken`.
+  De UI verbergt de bijbehorende sectie in `SportlinkMatchPanel` alleen om een voorspelbare 409 te
+  voorkomen.
+- **De overige rijen (menu-zichtbaarheid, buiten Planning) zijn vandaag uitsluitend configuratie,
+  geen handhaving.** Er bestaat nog geen endpoint waarmee een niet-admin-gebruiker zijn éigen
+  rechten kan opvragen, en `BlazorAdmin/Services/AuthGate.cs` laat uitsluitend `admin`/`user` de
+  app-shell in — een matrixrij uitzetten verbergt dus (nog) geen ander menu-item en blokkeert geen
+  ander endpoint. **Uitzondering sinds #1400: Planning/het Sportlink-paneel viewen is hard-coded
+  generiek open voor `admin`+`user`** (niet via deze matrix instelbaar — zie §3.4) en de drie
+  Sportlink-mutatieacties zijn hard-coded `admin`-of-`Wedstrijdzaken` (de AND-gate-fix van #1379).
+  Het uitbreiden van de autorisatiewrapper naar de twee nieuwe rollen `Sectiehoofd`/
+  `Ledenadministratie` blijft een apart, nog openstaand vervolgtraject.
+- **`Sectiehoofd` en `Ledenadministratie` zijn vandaag instelbare rijen, geen toewijsbare rollen.**
+  Ze bestaan nog niet als Entra-approl (§3.4 hierboven beschrijft alleen `Wedstrijdzaken`) — een
+  gebruiker kan deze rol dus nog niet daadwerkelijk krijgen. Toevoegen als Entra-approl is een
+  aparte infrastructuurwijziging via `scripts/azure/Configure-EntraApp.ps1`, die expliciete
+  bevestiging van de eigenaar vereist.
 - **`admin` is altijd toegestaan** — geen rij nodig, geen UI-optie om admin te beperken.
-- **Ontbrekende instelling = uitgeschakeld (fail-closed).** Een club die deze pagina nog nooit
-  heeft geopend, heeft dus alle drie de acties standaard uitgeschakeld voor `Wedstrijdzaken` —
-  een beheerder moet ze bewust aanzetten.
+  **Ontbrekende instelling = uitgeschakeld (fail-closed).** Een club die deze pagina nog nooit
+  heeft geopend, heeft dus alles standaard uitgeschakeld voor de vier instelbare rollen — een
+  beheerder moet elke rij bewust aanzetten.
 
 ## 4. Voor developers
 
@@ -208,19 +221,16 @@ toewijzen, en het veld mag wijzigen. Drie dingen om te onthouden:
 - club.sportlink.com is een React-SPA op een JSON-API (`/navajo/entity/common/clubweb/...`).
   Authenticatie via Keycloak (`idm.sportlink.com`, realm `sportlink`, client `sportlink-club-web`),
   standaard OAuth2 authorization_code+PKCE, `Bearer`-token, geen cookies.
-- Onze backend gebruikt uitsluitend de **refresh_token-grant**: eenmalig een refresh_token
-  vastleggen (via `Tools/SportlinkTokenCapture`, §3.3), daarna zelfstandig verversen
-  (`grant_type=refresh_token`). Rotatie is bevestigd: elke refresh geeft een nieuw refresh_token,
-  bruikbaar voor de volgende refresh — dus in theorie oneindig, zolang er minstens elke
-  `refresh_expires_in` (6 uur bij eerste uitgifte) ververst wordt.
+- Onze backend gebruikt de **refresh_token-grant** tussen volledige logins. Bij een nieuwe login verkrijgt onze backend een
+  verse sessie; tussen volledige logins wordt de refresh-token-grant gebruikt. Zie de actuele
+  coördinatie en herstelregels in [Automatische Sportlink-login](SPORTLINK-AUTOLOGIN.md).
 - Twee routes zonder eigen redirect-URI zijn **bevestigd gesloten**, geen toekomstig herstel
   hierop proberen: eigen redirect_uri → HTTP 400 (client whitelist); `device_code`-grant →
   `unauthorized_client` (uitgeschakeld voor deze client). Zie onderzoeksrapport §2.6/§3.B.
 - API-calls vereisen `X-Navajo-Entity` (= het aangeroepen pad, geen vaste appnaam),
   `X-Navajo-Instance` (vaste waarde `KNVB`), `X-Navajo-Locale` (`nl`) — live bevestigd.
-- Elke functionele rol heeft een eigen opgeslagen refresh_token:
-  `SportlinkClubRefreshToken__<Rol>` (Function App-instelling, lokaal in
-  `FunctionApp.Postgres/local.settings.json`).
+- Elke functionele rol heeft credentials en roterende tokens in de encrypted opslag; actuele
+  configuratie staat in [Automatische Sportlink-login](SPORTLINK-AUTOLOGIN.md).
 
 ### 4.2 Waar de code (gaat) zitten
 
@@ -228,15 +238,14 @@ toewijzen, en het veld mag wijzigen. Drie dingen om te onthouden:
 > `FunctionApp.Postgres/…`-pad hieronder heeft een tegenhanger op hetzelfde relatieve pad onder
 > `FunctionApp/` (SQL Server): alle tien `/api/sportlink/*`-routes, alle vier
 > `/api/beheer/sportlink-extensie/*`-routes en alle drie de timers (keep-alive, warmup,
-> contract-check), plus de opruimtimer van het audit-log. Er resteren precies drie bewuste
-> tierverschillen, alle drie hieronder beschreven: de **tokenopslag** (Postgres: DB-tabel; SQL
-> Server: Function App-instelling via de ARM-API, §4.3), de **audit-service-implementatie**
+> contract-check), plus de opruimtimer van het audit-log. De resterende verschillen zitten in
+> database-specifieke implementaties van store/lease en de **audit-service-implementatie**
 > (per tier, niet gedeeld) en de **autorisatie-wrapper** (zie het kader verderop, #1272). Een
 > nieuw endpoint hoort op beide tiers tegelijk: `scripts/ci/check-tier-pariteit.sh` vergelijkt de
 > HTTP-routes van beide tiers en laat de build falen bij een route die er maar op één staat
 > (uitzonderingen met reden in `scripts/ci/tier-pariteit-allowlist.txt`; daar staan nu alleen de
 > twee sync-trigger-naamsvarianten). Let op wat die guard **niet** ziet: hij vergelijkt routes,
-> geen implementatiekeuzes — de tokenopslag en de audit-service vallen er dus buiten. De eerder
+> geen implementatiekeuzes — de encrypted tokenopslag en de audit-service vallen er dus buiten. De eerder
 > gedocumenteerde premisse dat de SQL Server-tier "rollback-only" zou zijn, is ingetrokken — beide
 > tiers zijn gelijkwaardig.
 
@@ -268,18 +277,14 @@ toewijzen, en het veld mag wijzigen. Drie dingen om te onthouden:
 >   vier extensie-pagina's hebben een code-behind en geen `@code`.
 > - In `Planner.Shared`: `SportlinkClubClient.ExecuteWithTokenRetryAsync` is het ene
 >   token-refresh/401-retry-pad voor lezen én schrijven; `ZetSportlinkHeaders` de ene plek voor de
->   Navajo-headers; `TokenEndpoint`/`ClientId` zijn publiek en `ValideerRefreshTokenAsync` valideert
->   een aangeleverd token vóór opslag (gebruikt door de tokenregistratie).
-- `Tools/SportlinkTokenCapture` — lokaal hulpmiddel, vangt het refresh_token op via een echte
-  browserlogin (Playwright, netwerk-response-event — nooit localStorage, die is versleuteld door
-  Sportlink zelf).
-- `scripts/dev/Invoke-SportlinkTokenSpike.ps1`, `Invoke-SportlinkMatchLookup.ps1` — lokale
-  testscripts voor de refresh-cyclus resp. een read-only wedstrijd-lookup.
+>   Navajo-headers; `TokenEndpoint`/`ClientId` zijn publiek. Nieuwe volledige sessies lopen via de
+>   automatische-loginprovider.
+- ~~`Tools/SportlinkTokenCapture`~~ — verwijderd in #1411; één automatische-loginroute is leidend.
+- ~~token-gerelateerde `scripts/dev/Invoke-Sportlink*`-spikes~~ — verwijderd in #1411.
 - `FunctionApp.Postgres/Admin/SportlinkExtensieRollenFunction.cs` +
   `FunctionApp/Admin/SportlinkExtensieRollenFunction.cs` — rol↔serviceaccount-koppelingsstatus
-  (#988), geen live Sportlink-aanroep, op beide tiers. Sinds #991 ook `PUT
-  .../rollen/{rolNaam}/token` — de productie-bootstrap van het échte refresh_token; die route
-  bestond tot #1266 alleen op de Postgres-tier en staat nu op beide.
+  (#988), geen live Sportlink-aanroep, op beide tiers. De oude `PUT
+  .../rollen/{rolNaam}/token`-route is verwijderd in #1411.
 - `Planner.Shared/Integrations/SportlinkClub/SportlinkClubClient.cs` (#991) — read-only
   Sportlink-client, in `Planner.Shared` (providervrije logica: geen directe DB-toegang, alleen via
   de geïnjecteerde `ISportlinkClubTokenStore`) zodat beide tiers hem via DI kunnen gebruiken. Sinds
@@ -292,12 +297,9 @@ toewijzen, en het veld mag wijzigen. Drie dingen om te onthouden:
   De happy-path-vorm (`{"isSuccess":true}`) is nog altijd niet live bevestigd; succes wordt daarom
   bepaald door `Error != true && response.IsSuccessStatusCode`, niet door een los veld.
 - `ISportlinkClubTokenStore` — twee tier-specifieke implementaties, bewust géén gedeelde: de
-  Postgres-tier (`FunctionApp.Postgres/Sportlink/PostgresSportlinkClubTokenStore.cs`, #991) bewaart
-  het rotarende refresh_token in een eigen DB-tabel (`public.sportlinkservicetokens`); de SQL
-  Server-tier (`Planner.Shared/Integrations/SportlinkClub/SportlinkClubAppSettingsTokenStore.cs`,
-  #998) herschrijft een Function App-instelling via de Azure Management API. **De DB-tabel is de
-  gekozen aanpak voor de Postgres-tier; de ARM-API-variant is die voor de SQL Server-tier.** Dit
-  is een van de tierverschillen die na #1266 bewust zijn blijven staan — zie §4.3.
+  beide tiers gebruiken `ISportlinkAutoLoginStore` met encrypted credentials en tokens; de
+  oude tokenstores en handmatige capture/uploadroute zijn verwijderd. Zie
+  [Automatische Sportlink-login](SPORTLINK-AUTOLOGIN.md).
 - `Planner.Shared/Integrations/SportlinkClub/SportlinkMutationGuard.cs` (#998) — pure guardrail:
   staat een mutatie alleen toe bij `IsHomeMatch=true`, de bijbehorende Sportlink-permissievlag, én
   blokkeert altijd bij `IsCanceledMatch=true` of `IsConceptMatch=true`. `MatchStatus` wordt bewust
@@ -356,7 +358,7 @@ toewijzen, en het veld mag wijzigen. Drie dingen om te onthouden:
   onderweg: `Field.FieldSize` komt als JSON-getal terug (niet string — zelfde
   `FlexibleStringJsonConverter`-patroon als #1036), en `ExternalMatchId` in deze snapshot idem
   (nieuwe `FlexibleLongJsonConverter`, spiegelbeeld van `FlexibleStringJsonConverter`).
-  **Sinds #994 ook `PUT .../officials` (scaffolding, altijd code-gelockt):** officials
+  **Sinds #994 ook `PUT .../officials` (sinds #1319 live bevestigd, was scaffolding/code-gelockt):** officials
   (scheidsrechter/AR1/AR2) toewijzen via `AssignOfficialsAsync`/`PutMatchOfficialsAsync`
   (`competition/match/official/MatchOfficialsAction`). Endpoint én requestbody
   (`OfficialsToBeAssigned: [{OfficialPosition, PersoonId}]`) zijn NOOIT live gezien — zie
@@ -376,7 +378,7 @@ toewijzen, en het veld mag wijzigen. Drie dingen om te onthouden:
   hierboven, NOOIT live geverifieerd** — zie de TODO bij `SportlinkMatchOfficial.RelatieCode` en
   §8 hieronder voor de nog niet bevestigde AVG-vraag die bij deze prefill hoort.
 - **Sinds #995 ook `PUT .../change-request` — wijzigingsverzoek datum/tijd/accommodatie, ALLEEN
-  stap 1 (valideren), altijd code-gelockt:** dit is de enige mutatiesoort die een ECHTE tegenstander
+  stap 1 (valideren), sinds #1319 live bevestigd (was code-gelockt):** dit is de enige mutatiesoort die een ECHTE tegenstander
   raakt (Sportlink stuurt bij bevestiging een goedkeuringsverzoek naar de tegenstander) — zie het
   `NIET VERDER BOUWEN`-markeringscomment op `SportlinkClubClient.RequestMatchChangeAsync` en
   `ISportlinkClubClient`. Zelfde onderliggende endpoint als `.../field`
@@ -429,6 +431,43 @@ toewijzen, en het veld mag wijzigen. Drie dingen om te onthouden:
   `FunctionApp/Sportlink/SportlinkPublicMatchIdWarmupTimerFunction.cs`. De horizon (vandaag + 2)
   staat als `SportlinkEndpointCore.WarmupVooruitkijkDagen` in `Planner.Shared`, zodat een tierwissel
   niet stilzwijgend een ander venster oplevert.
+
+  **#1387 (voorheen wél een harde fout bij een cache-miss):** de synchrone fallback-lookup gebruikte
+  tot deze fix de globale `HttpClient`-timeout van 15 seconden — tegen de gedocumenteerde 12+
+  seconden latency van `MatchProgramOverview` een marge van bijna nul. Iedere extra vertraging
+  (Sportlink-belasting, netwerk) liet de aanroep timeouten, wat via `SportlinkClubCallStatus.NetwerkFout`
+  naar een generieke HTTP 502 "Sportlink is momenteel niet bereikbaar" leidde — ononderscheidbaar van
+  een échte Sportlink-fout. Sinds #1387: `SportlinkClubClient` bepaalt per endpoint een eigen,
+  per-aanroep timeout (`ReverseLookupCallTimeout` = 30s voor uitsluitend `MatchProgramOverview`,
+  `DefaultCallTimeout` = 15s voor de rest — losgekoppeld van de `HttpClient`-brede timeout, die nu de
+  .NET-default van 100s is als buitenste net); elke **lees**aanroep krijgt bovendien één begrensde
+  retry bij een timeout/netwerkfout of een 5xx van Sportlink zelf (nooit bij een 4xx — dat is een
+  inhoudelijke afwijzing). `SportlinkEndpointCore.VertaalStatusNaarFout` geeft een timeout/netwerkfout
+  sindsdien ook een eigen tekst en HTTP 504 in plaats van de generieke 502-tekst, zodat een operator
+  kan zien of Sportlink zelf een fout gaf of dat de aanroep gewoon (nog) te traag was.
+
+  **#1417 — retry-beleid per aanroeptype (correctie op #1387).** De transiënte retry gold tot #1417
+  voor élke aanroep, dus ook voor PUT/POST. Dat is onveilig: een timeout of gateway-5xx *nádat*
+  Sportlink de aanvraag al verwerkt heeft, is voor de client niet te onderscheiden van "nooit
+  aangekomen". Herhalen zou dan een tweede oefenwedstrijd aanmaken (`CreateClubMatchAsync`, POST,
+  geen verwijderpad in de app) of een wijzigingsverzoek tweemaal bij een echte tegenstander
+  afleveren (`RequestMatchChangeAsync`). Sinds de fix voor #1417 kiest elke call site van
+  `ExecuteWithTokenRetryAsync` expliciet een `RetryBeleid` — bewust zonder default:
+
+  | Beleid | Aanroepen | Transiënte retry (timeout/5xx) | 401-re-auth-retry |
+  |---|---|---|---|
+  | `Lezen` | alle GET's (`GetMatchAsync`, `GetMatchProgramOverviewAsync`, `GetChangeRequestsAsync`, picklists, …) en het token-refreshpad | **één keer**, na 2 s | ja |
+  | `Mutatie` | `UpdateDressingRoomsAsync`, `UpdateFieldAsync`, `AssignOfficialsAsync`, `RequestMatchChangeAsync`, `ActOnChangeRequestAsync`, `CreateClubMatchAsync` | **nooit** | ja — een 401 is een expliciete afwijzing vóór verwerking, dus herhalen met een vers token is veilig |
+
+  Een mutatie die op een netwerkfout strandt, krijgt via `VertaalStatusNaarFout(status, isMutatie: true)`
+  (gebruikt door `BepaalMutatieAfronding`) de melding `MutatieNetwerkFoutMelding`: "controleer eerst
+  in Sportlink of de actie al is doorgevoerd" — niet het "probeer opnieuw"-advies van het leespad.
+  Tegelijk is een inconsistentie in `PutMutationAsync` gedicht: een 5xx *mét* parseerbare JSON-body
+  gaf `Status = Ok`/`IsSuccess = false` terug, een 5xx zonder JSON al `SportlinkFout`; nu is elke
+  5xx uniform `SportlinkFout` mét statuscode. Tests: `CreateClubMatchAsync_TimeoutOpPost_GeenTweedePost`,
+  `RequestMatchChangeAsync_Http502OpPut_GeenTweedePut`, `AssignOfficialsAsync_TimeoutOpPut_GeenTweedePut`,
+  `UpdateDressingRoomsAsync_Http503_GeenTransienteRetryOpMutatie` (voorheen bewees die test het
+  omgekeerde) en `UpdateDressingRoomsAsync_401OpMutatie_ReAuthRetryBlijftBestaan`.
 - `FunctionApp.Postgres/Sportlink/SportlinkChangeRequestFunction.cs` (#996) — `GET
   /api/sportlink/change-requests` + `PUT .../{publicRequestId}/action`. Niet wedstrijdcode-
   gescoped (Sportlinks `MatchChangeRequests`-endpoint levert alles voor het gekoppelde
@@ -445,8 +484,8 @@ toewijzen, en het veld mag wijzigen. Drie dingen om te onthouden:
   "Inkomend/Uitgaand"-groepen zijn niet gebouwd: de respons bevat geen veld dat die richting
   aangeeft (of het is niet bevestigd) — pas na een menselijke netwerktrace.
 - `FunctionApp.Postgres/Sportlink/SportlinkClubMatchFunction.cs` (#997) — `POST
-  /api/sportlink/club-match` (aanmaken, altijd code-gelockt) + `GET .../club-match/picklists`
-  (Teams + Location, read-only, echt aangeroepen). **POST — ONBEVESTIGD — code-lock — geen guard
+  /api/sportlink/club-match` (aanmaken, sinds #1319 live bevestigd, was code-gelockt) + `GET
+  .../club-match/picklists` (Teams + Location, read-only, echt aangeroepen). **POST — geen guard
   mogelijk vóór aanmaak (eigen-DB-checks i.p.v. Sportlink-permissievlag):** structureel anders dan
   `SportlinkMatchFunction`/`SportlinkChangeRequestFunction` — er is vooraf GEEN bestaande wedstrijd,
   dus geen `PublicMatchId`, geen `wedstrijdcode`, geen `SportlinkMatch` om te guarden. In plaats van
@@ -527,7 +566,7 @@ toewijzen, en het veld mag wijzigen. Drie dingen om te onthouden:
 - **Health-check-endpoint (#998).** `FunctionApp.Postgres/Admin/SportlinkExtensieHealthFunction.cs`
   — `GET /api/beheer/sportlink-extensie/health?live=false` (default). Zonder `?live=true` leest dit
   uitsluitend onze eigen database (extension/dry-run-instelling, `EgressGuard`-status, koppeling +
-  laatste tokenverversing per rol uit `public.sportlinkservicetokens`, laatste `Failure`-rij uit
+  laatste login-/tokenactiviteit per rol uit `public.sportlinkautologin`, laatste `Failure`-rij uit
   `public.sportlinkmutationaudit`, laatste rij uit `public.sportlinkcontractcheck`) — geen enkele
   Sportlink-aanroep. Alleen bij expliciete `?live=true` (een gebruikersklik op "Nu live
   controleren") doet het één `VerversTokenAsync` + één `GetMatchAsync` op de meest recent gecachte
@@ -548,39 +587,20 @@ toewijzen, en het veld mag wijzigen. Drie dingen om te onthouden:
   alarmeringsmechanisme (kostenbeleid: geen betaalde Log Analytics/App Insights-alert-regel, geen
   GitHub-issue-reporter).
 
-### 4.3 Kostenbeleid-implicatie / tokenopslag (besloten, #990/#991)
-Op de Postgres-tier (de tier die déze installatie in productie draait; een fork mag de SQL
-Server-tier kiezen) wordt het rotarende refresh_token opgeslagen in
-een **eigen DB-tabel** (`public.sportlinkservicetokens`), niet in Azure Key Vault en niet als
-Function App-instelling via de ARM-API. Key Vault is "potentieel betaald" volgens het kostenbeleid
-in `CLAUDE.md` (nieuwe Azure-resource, prijscheck + goedkeuring vereist); een Function
-App-instelling herschrijven vanuit de app zelf vereist een aparte Azure AD-integratie met
-schrijfrechten op de eigen Function App — een grotere attack surface voor hetzelfde resultaat. Een
-DB-tabel is een bestaande, gratis resource en dezelfde vertrouwensgrens als de bestaande
-`SqlConnectionString`-secrets.
+### 4.3 Kostenbeleid-implicatie / tokenopslag (#1411)
 
-**Besluit (#1020, 2026-09-06) — premisse ingetrokken bij #1266.** #1020 koos ervoor dat de SQL
-Server-tier (`SportlinkClubAppSettingsTokenStore`, #998) de oudere ARM-API-aanpak behield, op grond
-van de aanname dat die tier "rollback-only" was en geen productieverkeer had. Dat besluit bevatte
-zelf de voorwaarde: *"totdat de SQL Server-tier ooit weer productie-tier zou worden (in dat geval
-eerst herbeoordelen, niet automatisch alignen)"*.
-
-Die voorwaarde is nu ingetreden: beide tiers zijn gelijkwaardig (#1266). Wat dat concreet betekent:
-
-- **De asymmetrie in tokenopslag blijft voorlopig bestaan** en is daarmee een bewuste, herbeoordeelde
-  keuze in plaats van een vergeten verschil. De ARM-API-variant wérkt op deze tier; hem vervangen
-  door een DB-tabel is een aparte afweging (Managed Identity met Website Contributor-rol per
-  deployment versus een gewone tabel), geen onderdeel van pariteitsherstel.
-- **Het valt buiten het bereik van de pariteitsguard.** `scripts/ci/check-tier-pariteit.sh`
-  vergelijkt HTTP-routes, niet implementatiekeuzes; een verschil in tokenopslag is voor die guard
-  onzichtbaar en staat dus ook niet in `scripts/ci/tier-pariteit-allowlist.txt`. Deze paragraaf is
-  daarmee de enige plek waar de uitzondering is vastgelegd — verwijder hem niet zonder de keuze
-  opnieuw te maken.
-- De premisse "rollback-only" is uit de rest van de documentatie verwijderd. Hij was nooit als
-  architectuurbesluit voorgelegd; hij sloop binnen als beschrijving van de situatie na de cutover
-  en werd daarna als norm gebruikt.
+Beide database-tiers gebruiken dezelfde architectuur: de database bewaart alleen authenticated-
+encrypted credentials en refresh-tokenmateriaal in `public.sportlinkautologin` of
+`dbo.SportlinkAutoLogin`. De AES-256-GCM-sleutel staat als secretinstelling buiten de database.
+De oude split tussen Postgres-databaseopslag en SQL Server Function App-instellingen is vervallen.
+Zie [Automatische Sportlink-login](SPORTLINK-AUTOLOGIN.md) voor sleutelbeheer, setup en herstel.
 
 ### 4.4 HARDE REGEL: coding agents mogen dit mechanisme nooit zelf uitvoeren
+
+> Deze regel is historisch vervangen voor #1411. De eigenaar gaf expliciet toestemming voor de
+> geïsoleerde implementatie- en loginproef; de actuele operationele grenzen en secretregels staan
+> in [`docs/SPORTLINK-AUTOLOGIN.md`](SPORTLINK-AUTOLOGIN.md). De beschrijving hieronder gaat over
+> het oude refresh-tokenproces en is geen actuele instructie.
 
 **Dit geldt zonder uitzondering, voor Claude Code en elke andere coding agent, in elke sessie:**
 
@@ -600,19 +620,20 @@ chatsessie met de agent terecht (bedoeld voor een lokale scriptprompt, per abuis
 geplakt). De eigenaar moest direct volledig uitloggen bij Sportlink om die token in te trekken.
 Elk token dat ooit in een agent-sessie zichtbaar wordt, geldt vanaf dat moment als verbrand.
 
-**Praktisch gevolg voor deze scripts:**
-- `Invoke-SportlinkTokenSpike.ps1` is van nature agent-veilig: het vráágt bij elke run opnieuw om
+**Praktisch gevolg voor deze scripts** (de drie `Invoke-Sportlink*`-spikes zijn in #1411 verwijderd;
+de regels hieronder blijven gelden voor elk toekomstig script dat een opgeslagen token gebruikt):
+- ~~`Invoke-SportlinkTokenSpike.ps1`~~ was van nature agent-veilig: het vróeg bij elke run opnieuw om
   het token via `Read-Host -AsSecureString`, wat in een niet-interactieve agent-tool-omgeving
   (stdin op `/dev/null`) niet ingevuld kan worden.
-- `Invoke-SportlinkMatchLookup.ps1` leest het token zelf uit `local.settings.json` — dat heeft
+- ~~`Invoke-SportlinkMatchLookup.ps1`~~ las het token zelf uit `local.settings.json` — dat had
   daarom een **expliciete `Read-Host`-mensbevestiging** nodig (typ "JA") vóórdat het token gebruikt
-  wordt. Zonder die bevestiging zou dit script, anders dan het spike-script, wél door een agent
+  werd. Zonder die bevestiging had dit script, anders dan het spike-script, wél door een agent
   silently uitgevoerd kunnen worden — dat is precies wat er (bijna) gebeurde bij de review die tot
   dit document leidde.
-- `Tools/SportlinkTokenCapture` is agent-veilig door ontwerp: het vereist een echte, zichtbare
-  browserlogin (incl. eventuele MFA) die een agent sowieso niet kan voltooien.
+- ~~`Tools/SportlinkTokenCapture`~~ is verwijderd in #1411. De backend automatic-login is de
+  ondersteunde flow; zie [`docs/SPORTLINK-AUTOLOGIN.md`](SPORTLINK-AUTOLOGIN.md).
 - **Nieuw script, nieuwe regel:** elk toekomstig script dat een opgeslagen refresh_token gebruikt
-  krijgt dezelfde `Read-Host`-mensbevestiging als `Invoke-SportlinkMatchLookup.ps1` — niet alleen
+  krijgt dezelfde `Read-Host`-mensbevestiging als destijds `Invoke-SportlinkMatchLookup.ps1` — niet alleen
   een waarschuwing in commentaar. Commentaar wordt door een agent gelezen maar is geen technische
   barrière; `Read-Host` in een niet-interactieve omgeving wel.
 - Verificatie van de refresh-cyclus, of van een nieuw endpoint dat een refresh_token nodig heeft,
@@ -622,7 +643,7 @@ Elk token dat ooit in een agent-sessie zichtbaar wordt, geldt vanaf dat moment a
 **Incident (2026-09-26): passieve leak via de harness' eigen file-diff-melding, geen agent-actie
 nodig.** Tijdens een lokale acceptatietest had de agent `FunctionApp.Postgres/local.settings.json`
 eerder in de sessie gelezen voor een ongerelateerde controle (`AllowExternalIntegrations`). Toen de
-mens daarna, volgens §3.3, `Tools/SportlinkTokenCapture` draaide en het verse refresh_token
+mens daarna, volgens de voormalige §3.3, de token-capturetool draaide en het verse refresh_token
 wegschreef, toonde de coding-agent-harness bij de eerstvolgende beurt automatisch een
 wijzigingsmelding met de **volledige tokenwaarde** — zonder dat de agent het bestand opnieuw las,
 opvroeg of er zelfs maar naar vroeg. Dit is fundamenteel anders dan de twee incidenten hierboven
@@ -699,22 +720,22 @@ test getriggerd wordt:
   ook niet tijdelijk — gebruik `JsonDocument` om gericht alleen de raw text van het specifieke
   veld te loggen dat de fout veroorzaakt (zie het patroon in git-historie van #1038 voor een
   voorbeeldimplementatie die nooit in `MatchOfficials` afdaalt zonder dat expliciet te bedoelen).
-- **#994's officials-toewijzing is scaffolding, geen live-getest pad.** Endpoint en requestbody
-  zijn gereverse-engineerd, nooit met een netwerktrace gezien — vandaar de code-niveau
-  `forceDryRun`-lock (§4.2/§6.4) die ongeacht `sportlinkDryRun` altijd simuleert. Zolang die lock
-  aan staat kan dit pad niet per ongeluk een echte mutatie bij Sportlink veroorzaken, maar de
-  requestbody/positiecodes zijn dus ook nog niet gevalideerd tegen de werkelijkheid.
+- **#994's officials-toewijzing was scaffolding, geen live-getest pad — sinds #1319 wél.** Endpoint
+  en requestbody waren gereverse-engineerd, nooit met een netwerktrace gezien — vandaar de
+  code-niveau `forceDryRun`-lock (§4.2/§6.4) die ongeacht `sportlinkDryRun` altijd simuleerde. De
+  eigenaar heeft `MatchOfficialsActionLiveBevestigd` op 27-09-2026 na een live netwerktrace op
+  `true` gezet (#1319): deze mutatie volgt vanaf nu gewoon de club-instelling `sportlinkDryRun`,
+  net als elke andere bevestigde mutatie.
 - **#995's wijzigingsverzoek is de enige mutatie die een ECHTE tegenstander raakt — en zelfs stap 1
   (valideren) kan al het gevaarlijke moment zijn.** Sportlink werkt naar verluidt in twee stappen
   (valideren → bevestigen), maar dat is niet met een netwerktrace geverifieerd. Als Sportlinks
   eerste PUT in werkelijkheid geen "dry validate" blijkt te zijn maar al het verzoek verstuurt, is
-  deze scaffolding-stap zelf al de gevaarlijke actie. De code-niveau `forceDryRun`-lock
-  (`UpdateMatchDetailsChangeRequestLiveBevestigd = false`) vangt dit softwarematig af zolang die
-  aanstaat — dat maakt deze lock hier belangrijker dan bij #994's officials-toewijzing. Stap 2
-  (bevestigen) is bewust NIET gebouwd: geen endpoint, geen client-methode, geen UI-knop — zie de
-  `NIET VERDER BOUWEN ZONDER LIVE BEVESTIGING DOOR DE EIGENAAR`-marker in de code. Ontgrendelen mag
-  uitsluitend na Aanpak-stap 1 van issue #995 (handmatige proef door de wedstrijdsecretaris met
-  netwerk-meekijken, gevolgd door een intrekking van het testverzoek), nooit door een agent (§4.4).
+  deze scaffolding-stap zelf al de gevaarlijke actie. **De eigenaar heeft
+  `UpdateMatchDetailsChangeRequestLiveBevestigd` op 27-09-2026 na een live netwerktrace op `true`
+  gezet (#1319)** — de code-niveau `forceDryRun`-lock die dit softwarematig afving, is dus
+  ingetrokken; deze mutatie volgt nu de gewone club-instelling `sportlinkDryRun`. Stap 2
+  (bevestigen) blijft bewust NIET gebouwd: geen endpoint, geen client-methode, geen UI-knop — dat is
+  een aparte, ongewijzigde scope-beslissing, los van deze lock.
 - **#996's actie-pad (goedkeuren/afwijzen) kan niet veilig getest worden met de vaste testwedstrijd
   (2026-09-06 vastgesteld).** In tegenstelling tot #992/#993 is `MatchChangeRequests` niet per
   wedstrijd gescoped — het levert alle openstaande verzoeken van échte tegenstanders voor het hele
@@ -722,12 +743,15 @@ test getriggerd wordt:
   binnen Sportlink zelf. Een test van de actie zou dus een echte beslissing forceren op een echt
   verzoek van een echte tegenstander — alleen te doen met expliciete instemming van de eigenaar
   over een specifiek, door hem aangewezen verzoek.
-- **#997's oefenwedstrijd-aanmaak is scaffolding, geen live-getest pad — en heeft van alle
-  #986-sub-issues de meeste onbekenden.** Endpoint, volledige requestbody, en de exacte
-  respons-veldnamen van de twee aangesloten picklists zijn allemaal gereverse-engineerd, nooit met
-  een netwerktrace gezien. Verwijderen (`ClubMatchDelete`) en uitslag vastleggen (`ClubMatchScore`)
-  zijn bewust niet aangesloten — het is dus (nog) niet mogelijk om een per ongeluk aangemaakte
-  testwedstrijd via deze app weer te verwijderen, ook niet zodra de code-lock ooit wordt opgeheven.
+- **#997's oefenwedstrijd-aanmaak had de meeste onbekenden van alle #986-sub-issues — de
+  code-niveau `forceDryRun`-lock is sinds #1319 opgeheven (`ClubMatchLiveBevestigd = true`),
+  de onderliggende onzekerheid over endpoint/requestbody niet.** Deze mutatie respecteert nu de
+  gewone club-instelling `sportlinkDryRun` in plaats van altijd te simuleren, maar endpoint,
+  volledige requestbody, en de exacte respons-veldnamen van de twee aangesloten picklists blijven
+  grotendeels gereverse-engineerd en zijn niet apart met een eigen netwerktrace bevestigd — anders
+  dan bij #994/#995 hierboven is bij #997 geen losse trace gedocumenteerd. Verwijderen (`ClubMatchDelete`) en
+  uitslag vastleggen (`ClubMatchScore`) zijn bewust niet aangesloten — het is dus (nog) niet
+  mogelijk om een per ongeluk aangemaakte testwedstrijd via deze app weer te verwijderen.
   Een toekomstige koppeling tussen een zelf-geplande oefenwedstrijd in
   `planner.geplandewedstrijden` (kolom `sportlinkwedstrijdcode`, momenteel ongebruikt voor dit doel)
   en het door Sportlink teruggegeven `PublicMatchId` is bewust niet gebouwd in deze ronde — zie de
@@ -760,12 +784,12 @@ de kernfeiten. Bij een discrepantie is de code leidend; werk dan dit overzicht b
 | `competition/match/Match` (`?PublicMatchId=`) | GET | Wedstrijddetails ophalen (ook: snapshot vóór een veldwijziging, ook: rauwe vormcontrole voor de contract-check) | — |
 | `competition/match/MatchProgramOverview` (`?DateFrom=&DateTo=`) | GET | Niet-club-gescoped, 1-daags programma — voor de `PublicMatchId`-reverse-lookup en de dagelijkse warmup-timer | — |
 | `competition/match/UpdateMatchDressingRooms` | PUT | Kleedkamers toewijzen | `SportlinkMutationSoort.Kleedkamers` |
-| `competition/match/UpdateMatchDetails` (idem, andere velden overschreven) | PUT | Wijzigingsverzoek datum/tijd/accommodatie — **ONBEVESTIGD, altijd code-gelockt, ALLEEN stap 1 (#995)**, zie §4.2/§5 | `SportlinkMutationSoort.DatumTijdAccommodatie` |
-| `competition/match/official/MatchOfficialsAction` | PUT | Officials toewijzen — **ONBEVESTIGD, altijd code-gelockt (#994)**, zie §4.2 | `SportlinkMutationSoort.Officials` |
+| `competition/match/UpdateMatchDetails` (idem, andere velden overschreven) | PUT | Wijzigingsverzoek datum/tijd/accommodatie — **sinds #1319 live bevestigd, ALLEEN stap 1 (#995)**, zie §4.2/§5 | `SportlinkMutationSoort.DatumTijdAccommodatie` |
+| `competition/match/official/MatchOfficialsAction` | PUT | Officials toewijzen — **sinds #1319 live bevestigd (#994)**, zie §4.2 | `SportlinkMutationSoort.Officials` |
 | `competition/match/changerequest/MatchChangeRequests` | GET | Inkomende wijzigingsverzoeken van tegenstanders ophalen | — (geen `SportlinkMutationGuard`, zie §4.2) |
 | `competition/match/changerequest/MatchChangeRequestAction` | PUT | Verzoek goed-/afkeuren | — (idem) |
 | `user/UserInfo` | GET | `PublicPersonId` van het service-account, nodig voor `MatchChangeRequestAction` | — |
-| `competition/match/clubmatch/ClubMatch` | **POST** | Oefenwedstrijd aanmaken — **ONBEVESTIGD, altijd code-gelockt (#997)**, zie §4.2. Geen guard mogelijk vóór aanmaak (er is nog geen wedstrijd) — alleen eigen-DB-checks i.p.v. een Sportlink-permissievlag | — (eigen toggle/EgressGuard i.p.v. `SportlinkMutationGuard`, zie §4.2) |
+| `competition/match/clubmatch/ClubMatch` | **POST** | Oefenwedstrijd aanmaken — **sinds #1319 live bevestigd (#997)**, zie §4.2. Geen guard mogelijk vóór aanmaak (er is nog geen wedstrijd) — alleen eigen-DB-checks i.p.v. een Sportlink-permissievlag | — (eigen toggle/EgressGuard i.p.v. `SportlinkMutationGuard`, zie §4.2) |
 | `competition/match/clubmatch/PickListsTeams` | GET | Picklist teams voor het aanmaak-formulier (#997) — read-only, echt aangeroepen | — |
 | `competition/match/clubmatch/PickListsLocation` | GET | Picklist locaties voor het aanmaak-formulier (#997) — read-only, echt aangeroepen | — |
 | `competition/match/clubmatch/ClubMatchDelete` | — | **Bewust NIET aangesloten (#997)** — verwijdermethode onbekend | — |
@@ -810,7 +834,8 @@ Elke aanroep zet drie headers: `X-Navajo-Entity` (het aangeroepen pad, geen vast
   "Violations":{"<code>":"Nederlandse omschrijving"}}`. Succes wordt bepaald door `Error != true &&
   response.IsSuccessStatusCode`, niet door een afzonderlijk `isSuccess`-veld (de happy-path-vorm is
   nooit live bevestigd).
-- **`ClubMatch` (#997, ONBEVESTIGD, altijd code-gelockt)**: `{ MatchDate (datum+tijd samengevoegd,
+- **`ClubMatch` (#997, sinds #1319 live bevestigd — niet elk veld hieronder is daarmee per se
+  bevestigd)**: `{ MatchDate (datum+tijd samengevoegd,
   ISO 8601 zonder tijdzone aangenomen), Duration (default 90), ExternalMatchId, HomeResult: -1,
   AwayResult: -1, AgeClassCode, Description, PublicHomeTeamId, PublicAwayTeamId, FacilityId,
   FieldId }` — komt uit Sportlinks eigen frontend-code, nooit met een netwerktrace gezien. Respons:
@@ -868,8 +893,16 @@ aangeraakt, alleen wat de eigenaar ervoor en erna ziet:
   werkelijke bevestigingsvorm voor een verplicht wijzigingsverzoek is nooit met een netwerktrace
   vastgesteld, en #1320 mag dat contract niet verzinnen. De eerste échte productietrace (na
   Aanpak-stap 1 van #995 én het omzetten van de constante door de eigenaar zelf) moet dat gat
-  vullen — zie issue #1319 voor de drie code-locks die de eigenaar zelf, in een eigen PR, moet
-  omzetten.
+  vullen.
+
+**Status sinds #1319 (27-09-2026):** de eigenaar heeft, buiten elke agent-sessie om, alle drie de
+constanten (`MatchOfficialsActionLiveBevestigd`, `UpdateMatchDetailsChangeRequestLiveBevestigd`,
+`ClubMatchLiveBevestigd`) op `true` gezet na een live netwerktrace. `forceDryRun` is voor deze drie
+mutaties dus vanaf nu altijd `false` — elke aanroep volgt de gewone club-instelling
+`sportlinkDryRun`, precies zoals elke andere bevestigde mutatie (`UpdateDressingRoomsAsync`,
+`UpdateFieldAsync`). `IsForcedDryRun`/"DryRunLocked" komen voor deze drie mutaties dus niet meer
+voor. Stap 2 (bevestigen) van #995 blijft niettemin bewust niet gebouwd — dat is een aparte,
+ongewijzigde scope-beslissing, los van deze lock.
 
 ## 7. Bronnen
 - [`docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md`](ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md) — volledig technisch bronrapport

@@ -118,7 +118,7 @@ public class SportlinkEndpointCoreTests
     [InlineData(SportlinkClubCallStatus.RolNietGekoppeld, 409)]
     [InlineData(SportlinkClubCallStatus.HerkoppelingVereist, 409)]
     [InlineData(SportlinkClubCallStatus.SportlinkFout, 502)]
-    [InlineData(SportlinkClubCallStatus.NetwerkFout, 502)]
+    [InlineData(SportlinkClubCallStatus.NetwerkFout, 504)]
     public void VertaalStatusNaarFout_GeeftVerwachteHttpStatus(SportlinkClubCallStatus status, int verwacht)
     {
         SportlinkEndpointCore.VertaalStatusNaarFout(status)!.HttpStatus.Should().Be(verwacht);
@@ -130,15 +130,26 @@ public class SportlinkEndpointCoreTests
         SportlinkEndpointCore.VertaalStatusNaarFout(SportlinkClubCallStatus.Ok).Should().BeNull();
     }
 
-    [Theory]
-    [InlineData(SportlinkClubCallStatus.SportlinkFout)]
-    [InlineData(SportlinkClubCallStatus.NetwerkFout)]
-    public void VertaalStatusNaarFout_LektGeenSportlinkDetails(SportlinkClubCallStatus status)
+    [Fact]
+    public void VertaalStatusNaarFout_SportlinkFout_LektGeenSportlinkDetails()
     {
         // CISO-regel: de melding die de client ziet bevat nooit de onderliggende foutdetails.
-        var fout = SportlinkEndpointCore.VertaalStatusNaarFout(status)!;
+        var fout = SportlinkEndpointCore.VertaalStatusNaarFout(SportlinkClubCallStatus.SportlinkFout)!;
 
         fout.Foutmelding.Should().Be("Sportlink is momenteel niet bereikbaar.");
+    }
+
+    [Fact]
+    public void VertaalStatusNaarFout_NetwerkFout_KrijgtEigenTekstEnHttp504()
+    {
+        // #1387: een timeout/netwerkfout aan onze kant (SportlinkClubClient heeft dit al één keer
+        // stilzwijgend geretried) is iets anders dan een échte Sportlink-fout, en krijgt sindsdien
+        // een eigen tekst en HTTP 504 in plaats van de generieke 502-tekst.
+        var fout = SportlinkEndpointCore.VertaalStatusNaarFout(SportlinkClubCallStatus.NetwerkFout)!;
+
+        fout.HttpStatus.Should().Be(504);
+        fout.Foutmelding.Should().Be("Sportlink reageerde niet op tijd. Probeer het over enkele ogenblikken opnieuw.");
+        fout.Foutmelding.Should().NotBe("Sportlink is momenteel niet bereikbaar.");
     }
 
     // ── Audit-resultaat: volgorde van voorrang ──────────────────────────────────────────────────
@@ -171,9 +182,33 @@ public class SportlinkEndpointCoreTests
             new SportlinkMutationResult(true, null));
 
         afronding.AuditResultaat.Should().Be("Failure");
-        afronding.Fout!.HttpStatus.Should().Be(502);
+        afronding.Fout!.HttpStatus.Should().Be(504, "een NetwerkFout (timeout) krijgt sinds #1387 een eigen 504 i.p.v. de generieke 502");
+        afronding.Fout.Foutmelding.Should().Be(SportlinkEndpointCore.MutatieNetwerkFoutMelding,
+            "op een mutatie is de uitkomst bij Sportlink onbekend — eerst controleren, niet 'probeer opnieuw' (#1417)");
         afronding.Data.Should().BeNull();
         afronding.AuditSamenvatting.Should().Be("timeout na 30s");
+    }
+
+    [Fact]
+    public void VertaalStatusNaarFout_NetwerkFout_LeesVariantBlijftProbeerOpnieuw()
+    {
+        // #1417: alleen de mutatievariant verandert; een lees-timeout mag nog steeds gewoon
+        // opnieuw geprobeerd worden (en is door de client al één keer stil herhaald).
+        var lezen = SportlinkEndpointCore.VertaalStatusNaarFout(SportlinkClubCallStatus.NetwerkFout)!;
+        var mutatie = SportlinkEndpointCore.VertaalStatusNaarFout(SportlinkClubCallStatus.NetwerkFout, isMutatie: true)!;
+
+        lezen.HttpStatus.Should().Be(504);
+        mutatie.HttpStatus.Should().Be(504);
+        lezen.Foutmelding.Should().Contain("opnieuw").And.NotContain("controleer");
+        mutatie.Foutmelding.Should().Be(SportlinkEndpointCore.MutatieNetwerkFoutMelding);
+    }
+
+    [Fact]
+    public void VertaalStatusNaarFout_SportlinkFoutOpMutatie_OngewijzigdeGenerieke502()
+    {
+        var fout = SportlinkEndpointCore.VertaalStatusNaarFout(SportlinkClubCallStatus.SportlinkFout, isMutatie: true)!;
+        fout.HttpStatus.Should().Be(502);
+        fout.Foutmelding.Should().Be("Sportlink is momenteel niet bereikbaar.");
     }
 
     [Fact]

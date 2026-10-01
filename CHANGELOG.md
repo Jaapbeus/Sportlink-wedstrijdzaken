@@ -18,6 +18,93 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.8.0.0] — 2026-10-01
+
+### Added
+- Opt-in automatische Sportlink-herlogin met wachtwoord en TOTP na de maximale sessieduur,
+  versleutelde credential- en tokenopslag, adminbeheer en begrensde herstelpogingen op beide
+  databasetiers (#1411). Live acceptatie met een echt account blijft vereist vóór ingebruikname.
+- Velden zonder kunstlicht blijven nu tot 15 minuten na zonsondergang beschikbaar voor de planner. Een
+  wedstrijd die net na zonsondergang eindigt wordt dus niet meer afgewezen; de waarschuwing meldt dan
+  "N min ná zonsondergang" in plaats van een negatieve marge (#1409).
+- Oefenwedstrijd aanmaken: de Team-keuzelijst heeft nu een extra optie "Vrije tekst invoeren…"
+  waarmee u zelf een teamnaam kunt typen, bijvoorbeeld om te testen zonder een bestaand clubteam
+  te gebruiken (#1396).
+- Instellingen → Thema: alle kleuren van de wedstrijdstatus op Planning en Veld optimalisatie
+  (Gantt-blokken, legenda, statusbadges, voorkeurstijd-indicator) zijn nu instelbaar, gegroepeerd
+  onder "Wedstrijdstatus" — daarvóór stonden deze kleuren vast en volgden ze het club-thema niet.
+- Instellingen → Thema: nieuw tabblad "Overzicht" toont elke instelbare kleur met toelichting en
+  swatch, voor zowel de lichte als de donkere weergave.
+- Veld optimalisatie: hoveren over een wedstrijd in de tabel of in de tijdlijn licht nu ook hier
+  hetzelfde blok/dezelfde rij oranje op, zoals al werkte op Planning — in zowel het tabblad Huidig
+  als Optimaal (#1398).
+- **Instellingen → Thema: alle overgebleven kleuren in de Admin GUI zijn nu instelbaar (#1401).**
+  Het menu in de zijbalk heeft nu eigen, dedicated kleuren (tekst, actief item, hover) die
+  onafhankelijk van andere UI-elementen aan te passen zijn — daarvóór hergebruikten de
+  menu-kleuren "Secundaire kleur"/"Tekst op primaire achtergrond", en de hover-status was
+  helemaal niet instelbaar. Daarnaast zijn de testmodusbanner (ALLSTARS), foutmeldingen,
+  validatiekleuren, de laadspinner, het vinkje op het opstartscherm, de hover-markeerkleur van
+  Planning/Veld optimalisatie (#1398 maakte die generiek maar niet instelbaar), en enkele overige
+  systeemkleuren nu instelbaar, gegroepeerd onder "Navigatie" en "Systeemmeldingen".
+- **Toegangsmatrix per rol op "Instellingen → Rechten per rol" (#1390).** Deze pagina toonde
+  eerder alleen drie losse Sportlink-schakelaars voor de rol Wedstrijdzaken; nu is elk menu-item in
+  de Admin GUI een rij, met een kolom per instelbare rol: Gebruiker (standaard), Wedstrijdzaken,
+  Sectiehoofd, Ledenadministratie. Admin toont bewust geen kolom — die rol heeft altijd alles aan.
+  Rijen met persoonsgegevens (Teambegeleiding, Begeleiding importeren) zijn gemarkeerd met een
+  AVG-badge. **Let op:** deze pagina legt vandaag vast wát een rol zou mogen zien; het
+  daadwerkelijk verbergen van menu-items en de rollen Sectiehoofd/Ledenadministratie zelf toewijzen
+  volgen in een apart vervolgtraject.
+
+### Removed
+- Instellingen → Thema: de "Basisthema"-keuzelijst met vier voorinstellingen is verwijderd (#1401).
+  Elke kleur wordt voortaan direct bewerkt, licht en donker apart — de keuzelijst voegde weinig toe
+  naast de losse kleurenpickers.
+
+### Changed
+- **Planning en het Sportlink-paneel zijn nu zichtbaar voor elke ingelogde gebruiker; wijzigen
+  blijft voorbehouden aan de rol Wedstrijdzaken (#1400).** Daarvóór kon alleen een beheerder de
+  Planning-pagina en de Sportlink-gegevens per wedstrijd bekijken. Een gebruiker met uitsluitend de
+  rol Wedstrijdzaken (zonder beheerder-rol) kon bovendien geen enkele Sportlink-wijziging
+  doorvoeren (kleedkamers, veld, scheidsrechters, wijzigingsverzoek) — dat gaf altijd een
+  foutmelding. Beide zijn nu opgelost: elke ingelogde gebruiker ziet Planning en de
+  Sportlink-informatie per wedstrijd; wijzigen kan alleen met de rol Wedstrijdzaken (of een
+  beheerder-rol). Een gebruiker zonder die rol ziet de wijzigknoppen niet en krijgt in plaats
+  daarvan een toelichting waarom.
+- **Officials toewijzen, een oefenwedstrijd aanmaken, en een wijzigingsverzoek datum/tijd/
+  accommodatie versturen via het Sportlink-paneel sturen deze acties nu écht door naar Sportlink,
+  in plaats van dat ze altijd gesimuleerd werden (#1319).** De eigenaar heeft dit na een live
+  netwerktrace bewust aangezet; elke actie volgt vanaf nu gewoon de bestaande dry-run-instelling van
+  de club, net als de andere Sportlink-mutaties.
+
+### Fixed
+- **De Admin GUI meldde nog dat officials toewijzen, een oefenwedstrijd aanmaken en een
+  wijzigingsverzoek "altijd gesimuleerd" worden, terwijl die acties sinds #1319 echt naar Sportlink
+  gaan zodra dry-run uit staat (#1421).** De gele waarschuwing op "Oefenwedstrijd aanmaken" en de
+  vaste melding onder het scheidsrechter- en wijzigingsverzoek-formulier zijn vervangen: de pagina
+  verwijst nu naar de dry-run-instelling van de club, en de hulptekst bij die instelling noemt alle
+  vijf typen wijzigingen.
+- Sportlink-mutaties (oefenwedstrijd aanmaken, officials toewijzen, wijzigingsverzoek, veld,
+  kleedkamers, verzoek goed-/afkeuren) worden bij een timeout of serverfout niet meer automatisch
+  herhaald. De retry uit #1387 kon anders een oefenwedstrijd dubbel aanmaken of een wijzigingsverzoek
+  tweemaal bij de tegenstander afleveren als Sportlink de eerste poging al had verwerkt. De
+  beheerder krijgt nu de melding om eerst in Sportlink te controleren of de actie al is doorgevoerd.
+  Leesaanroepen behouden hun enkele retry (#1417).
+- **Sportlink-matchinfo gaf soms een valse "Sportlink is momenteel niet bereikbaar" (HTTP 502),
+  ook als de Sportlink-koppeling zelf gewoon werkte (#1387).** Het ophalen van Sportlink-matchinfo
+  voor een nog niet eerder bekeken wedstrijd kon uittimen (de onderliggende opzoekactie duurt
+  gedocumenteerd 12+ seconden, tegen een timeout van 15 seconden) en werd dan gemeld als een echte
+  Sportlink-storing. Elke Sportlink-aanroep krijgt nu een passende, per-aanroep timeout en één
+  automatische herhaling bij een tijdelijke storing; een reactie die te lang op zich laat wachten
+  krijgt bovendien een eigen melding in plaats van de generieke storingsmelding.
+- Veld optimalisatie en Planning toonden in het donkere thema een wit kaartje (samenvattingsbalk en
+  het uitgeklapte Sportlink-paneel) — die achtergrond volgt nu het clubthema.
+- **De club-selector in de topbalk toonde in testmodus (AllStars FC) onleesbare tekst in het
+  donkere thema en kon een andere club dan AllStars FC als aangevinkt tonen (#1406).** De
+  gele testmodus-achtergrond had geen eigen tekstkleur en erfde daardoor de lichte tekstkleur van
+  het donkere thema; de dropdown krijgt nu altijd een leesbare, vaste tekstkleur. Daarnaast wordt
+  het `<select>`-element opnieuw opgebouwd zodra de clublijst of de geselecteerde club wijzigt, zodat
+  de browser de juiste optie altijd als geselecteerd toont.
+
 ## [3.7.0.0] — 2026-09-27
 
 ### Changed

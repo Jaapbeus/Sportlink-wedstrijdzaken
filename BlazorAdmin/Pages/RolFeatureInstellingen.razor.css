@@ -1,3 +1,7 @@
-.rol-feature-lijst {
-    max-width: 40rem;
+.rol-matrix .table-group-row td {
+    font-weight: 600;
+    background-color: var(--bs-tertiary-bg);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
 }

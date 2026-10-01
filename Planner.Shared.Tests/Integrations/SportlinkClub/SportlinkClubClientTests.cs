@@ -527,68 +527,6 @@ public class SportlinkClubClientTests
         }
     }
 
-    [Fact]
-    public async Task SchrijfRefreshTokenAsync_ZonderAzureManagementEnvVars_DoetNiksEnBelltNooitDefaultAzureCredential()
-    {
-        // Arrange: geen env vars (lokale omgeving)
-        var oldSub = Environment.GetEnvironmentVariable("AzureSubscriptionId");
-        var oldRg = Environment.GetEnvironmentVariable("AzureResourceGroupName");
-        var oldFunc = Environment.GetEnvironmentVariable("AzureFunctionAppName");
-
-        Environment.SetEnvironmentVariable("AzureSubscriptionId", null);
-        Environment.SetEnvironmentVariable("AzureResourceGroupName", null);
-        Environment.SetEnvironmentVariable("AzureFunctionAppName", null);
-
-        try
-        {
-            var tokenStore = new SportlinkClubAppSettingsTokenStore(
-                NullLogger<SportlinkClubAppSettingsTokenStore>.Instance);
-            var httpCallCount = 0;
-            var client = MakeClient(_ =>
-            {
-                httpCallCount++;
-                return new HttpResponseMessage(HttpStatusCode.NotFound);
-            });
-
-            // Act
-            await tokenStore.SchrijfRefreshTokenAsync("test-rol", "nieuw-token");
-
-            // Assert
-            httpCallCount.Should().Be(0, "geen HTTP-aanroepen zonder Azure env vars");
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("AzureSubscriptionId", oldSub);
-            Environment.SetEnvironmentVariable("AzureResourceGroupName", oldRg);
-            Environment.SetEnvironmentVariable("AzureFunctionAppName", oldFunc);
-        }
-    }
-
-    [Fact]
-    public async Task LeesRefreshToken_LeestUitOmgevingsvariabeleMetRolSpecifiekeNaam()
-    {
-        // Arrange: unieke rol per test om env-var-conflicten te voorkomen
-        var uniqueRol = $"test-rol-{Guid.NewGuid()}";
-        var expectedToken = $"token-{Guid.NewGuid()}";
-        Environment.SetEnvironmentVariable($"SportlinkClubRefreshToken__{uniqueRol}", expectedToken);
-
-        try
-        {
-            var tokenStore = new SportlinkClubAppSettingsTokenStore(
-                NullLogger<SportlinkClubAppSettingsTokenStore>.Instance);
-
-            // Act
-            var result = tokenStore.LeesRefreshToken(uniqueRol);
-
-            // Assert
-            result.Should().Be(expectedToken);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable($"SportlinkClubRefreshToken__{uniqueRol}", null);
-        }
-    }
-
     // ── ResolvePublicMatchIdAsync (#991/#1016) ──
 
     private static string MatchProgramOverviewResponse(params (long ExternalMatchId, string PublicMatchId)[] entries)
@@ -788,6 +726,307 @@ public class SportlinkClubClientTests
 
         result.Status.Should().Be(SportlinkClubCallStatus.NetwerkFout);
         result.Data.Should().BeNull();
+    }
+
+    // ── Transiënte retry: timeout/netwerk/5xx (#1387) ──────────────────────────────────────────
+
+    [Fact]
+    public async Task GetMatchProgramOverviewAsync_TimeoutOpEersteAanroep_RetryLuktEnGeeftOkTerug()
+    {
+        // Regressietest voor #1387: vóór deze fix was één enkele timeout op MatchProgramOverview
+        // (het gedocumenteerd trage endpoint) fataal voor het hele verzoek en gaf het een 502.
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var overviewCallCount = 0;
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("MatchProgramOverview") == true)
+            {
+                overviewCallCount++;
+                if (overviewCallCount == 1)
+                    throw new TaskCanceledException("gesimuleerde timeout");
+                return JsonResponse(MatchProgramOverviewResponse((3403, "M392686417")));
+            }
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.GetMatchProgramOverviewAsync(TestFunctioneleRol, new DateOnly(2026, 9, 5));
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data.Should().ContainSingle(e => e.PublicMatchId == "M392686417");
+        overviewCallCount.Should().Be(2, "de eerste (getimede) poging plus precies één retry");
+    }
+
+    [Fact]
+    public async Task GetMatchAsync_BlijftTimeoutGeven_RetourneertNetwerkFoutNaPreciesEenRetryGeenOneindigeLus()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var matchCallCount = 0;
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("club.sportlink.com") == true)
+            {
+                matchCallCount++;
+                throw new TaskCanceledException("gesimuleerde timeout, blijft aanhouden");
+            }
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.NetwerkFout);
+        matchCallCount.Should().Be(2, "begrensd tot precies één retry — een structureel onbereikbaar Sportlink moet zichtbaar blijven falen");
+    }
+
+    // ── Mutaties worden NIET transiënt herhaald (#1417) ────────────────────────────────────────
+    // #1387 gaf elke aanroep één retry bij timeout/5xx, ook PUT/POST. Een timeout nádat Sportlink de
+    // aanvraag al verwerkt heeft is voor de client niet te onderscheiden van "nooit aangekomen" —
+    // herhalen zou dan dubbele oefenwedstrijden of een dubbel wijzigingsverzoek bij een echte
+    // tegenstander opleveren. Deze tests leggen vast: exact één HTTP-mutatie per poging.
+
+    [Fact]
+    public async Task UpdateDressingRoomsAsync_Http503_GeenTransienteRetryOpMutatie()
+    {
+        // Tot #1417 bewees deze test het omgekeerde (putCallCount == 2). Die garantie is bewust
+        // ingetrokken: ook een "bijna-idempotente" PUT wordt niet herhaald, zodat er één regel is.
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var putCallCount = 0;
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("UpdateMatchDressingRooms") == true)
+            {
+                putCallCount++;
+                return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+            }
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
+
+        var result = await sut.UpdateDressingRoomsAsync(TestFunctioneleRol, TestPublicMatchId, "10", "6", "9");
+
+        result.Status.Should().Be(SportlinkClubCallStatus.SportlinkFout);
+        result.HttpStatusCode.Should().Be(503);
+        putCallCount.Should().Be(1, "een mutatie wordt nooit automatisch herhaald (#1417) — de uitkomst van de eerste poging is onbekend");
+    }
+
+    [Fact]
+    public async Task CreateClubMatchAsync_TimeoutOpPost_GeenTweedePost()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var postCallCount = 0;
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("clubmatch/ClubMatch") == true)
+            {
+                postCallCount++;
+                throw new TaskCanceledException("gesimuleerde timeout — Sportlink kan de wedstrijd al aangemaakt hebben");
+            }
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
+
+        var aanvraag = new SportlinkClubMatchAanvraag(
+            MatchDateTime: new DateTime(2026, 9, 20, 19, 30, 0),
+            Duration: 90,
+            AgeClassCode: "JO10",
+            Description: "Oefenwedstrijd tegen buurtclub",
+            PublicHomeTeamId: "T2010269033",
+            PublicAwayTeamId: "T2010269099",
+            FacilityId: "BBCF989",
+            FieldId: "BBCF989-OUTDOOR_FIELD-6",
+            ExternalMatchId: 12345);
+
+        var result = await sut.CreateClubMatchAsync(TestFunctioneleRol, aanvraag);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.NetwerkFout);
+        postCallCount.Should().Be(1, "een tweede POST zou een tweede oefenwedstrijd in Sportlink aanmaken (#1417)");
+    }
+
+    [Fact]
+    public async Task RequestMatchChangeAsync_Http502OpPut_GeenTweedePut()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var putCallCount = 0;
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri!.AbsoluteUri.Contains("idm.sportlink.com"))
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri.AbsoluteUri.Contains("UpdateMatchDetails"))
+            {
+                putCallCount++;
+                // Gateway-502 met HTML-body: niet als JSON te parsen, dus SportlinkFout + 502.
+                return new HttpResponseMessage(HttpStatusCode.BadGateway)
+                {
+                    Content = new StringContent("<html>502 Bad Gateway</html>", System.Text.Encoding.UTF8, "text/html")
+                };
+            }
+            if (req.RequestUri.AbsoluteUri.Contains("club.sportlink.com"))
+                return JsonResponse(MatchDetailsSnapshotResponse());
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
+
+        var result = await sut.RequestMatchChangeAsync(
+            TestFunctioneleRol, TestPublicMatchId,
+            new DateOnly(2026, 10, 4), new TimeOnly(11, 0), "BBCF990", "Veld is niet beschikbaar door onderhoud");
+
+        result.Status.Should().Be(SportlinkClubCallStatus.SportlinkFout);
+        result.HttpStatusCode.Should().Be(502);
+        putCallCount.Should().Be(1, "een tweede PUT kan het wijzigingsverzoek tweemaal bij de tegenstander afleveren (#1417)");
+    }
+
+    [Fact]
+    public async Task AssignOfficialsAsync_TimeoutOpPut_GeenTweedePut()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var putCallCount = 0;
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri!.AbsoluteUri.Contains("idm.sportlink.com"))
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri.AbsoluteUri.Contains("MatchOfficialsAction"))
+            {
+                putCallCount++;
+                throw new TaskCanceledException("gesimuleerde timeout");
+            }
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
+
+        var result = await sut.AssignOfficialsAsync(
+            TestFunctioneleRol, TestPublicMatchId,
+            new List<SportlinkOfficialToewijzing> { new("Referee", "123456") });
+
+        result.Status.Should().Be(SportlinkClubCallStatus.NetwerkFout);
+        putCallCount.Should().Be(1, "mutaties worden niet transiënt herhaald (#1417)");
+    }
+
+    [Fact]
+    public async Task UpdateDressingRoomsAsync_401OpMutatie_ReAuthRetryBlijftBestaan()
+    {
+        // Afbakening van #1417: de 401-re-auth-retry is géén transiënte retry — Sportlink wijst
+        // het verzoek expliciet af vóór verwerking, dus herhalen met een vers token is veilig.
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var putCallCount = 0;
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri!.AbsoluteUri.Contains("idm.sportlink.com"))
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri.AbsoluteUri.Contains("UpdateMatchDressingRooms"))
+            {
+                putCallCount++;
+                return putCallCount == 1
+                    ? new HttpResponseMessage(HttpStatusCode.Unauthorized)
+                    : JsonResponse(DressingRoomsSuccessResponse());
+            }
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
+
+        var result = await sut.UpdateDressingRoomsAsync(TestFunctioneleRol, TestPublicMatchId, "10", "6", "9");
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data!.IsSuccess.Should().BeTrue();
+        putCallCount.Should().Be(2, "na een 401 is de aanvraag aantoonbaar niet verwerkt — herhalen met een vers token is veilig");
+    }
+
+    [Fact]
+    public async Task UpdateDressingRoomsAsync_Http500MetJsonBody_IsSportlinkFoutMetStatuscode()
+    {
+        // #1417: vóór deze fix gaf een 5xx mét parseerbare JSON-body Status=Ok/IsSuccess=false terug,
+        // terwijl een 5xx zónder JSON al SportlinkFout gaf — dezelfde serverfout, twee uitkomsten.
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri!.AbsoluteUri.Contains("idm.sportlink.com"))
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri.AbsoluteUri.Contains("UpdateMatchDressingRooms"))
+                return new HttpResponseMessage(HttpStatusCode.InternalServerError)
+                {
+                    Content = new StringContent("""{"Error":true,"Status":"500","Message":"Internal error"}""", System.Text.Encoding.UTF8, "application/json")
+                };
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
+
+        var result = await sut.UpdateDressingRoomsAsync(TestFunctioneleRol, TestPublicMatchId, "10", "6", "9");
+
+        result.Status.Should().Be(SportlinkClubCallStatus.SportlinkFout);
+        result.HttpStatusCode.Should().Be(500);
+        result.Data.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetMatchAsync_Http404OpEersteAanroep_GeenRetryOmdatHetGeenTransienteFoutIs()
+    {
+        // Onderscheid met de 5xx-test hierboven: een 4xx (buiten de al apart afgehandelde 401) is
+        // een inhoudelijke afwijzing, geen tijdelijk probleem — herhalen zou niets opleveren.
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var matchCallCount = 0;
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("club.sportlink.com") == true)
+            {
+                matchCallCount++;
+                return new HttpResponseMessage(HttpStatusCode.NotFound);
+            }
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.SportlinkFout);
+        matchCallCount.Should().Be(1, "een 4xx (geen 401) wordt niet herhaald");
+    }
+
+    [Fact]
+    public async Task GetMatchAsync_TokenEndpointTimeoutOpEersteAanroep_RetryLuktEnGeeftOkTerug()
+    {
+        // #1387: vóór deze fix had alleen de eígenlijke Sportlink-aanroep een transiënte retry —
+        // het token-refreshpad zelf (dat vóór ELKE aanroep loopt) had er nog geen.
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var tokenCallCount = 0;
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+            {
+                tokenCallCount++;
+                if (tokenCallCount == 1)
+                    throw new TaskCanceledException("gesimuleerde timeout op het token-endpoint");
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            }
+            if (req.RequestUri?.AbsoluteUri.Contains("club.sportlink.com") == true)
+                return JsonResponse(MatchResponse());
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        tokenCallCount.Should().Be(2, "de eerste (getimede) tokenpoging plus precies één retry");
     }
 
     [Fact]
@@ -1604,17 +1843,17 @@ public class SportlinkClubClientTests
         }
     }
 
-    // ── forceDryRun code-lock (#994/§1, epic #986) ──
-    // Kern-eis: een mutatie met forceDryRun:true blijft ALTIJD gesimuleerd, ook als de globale
-    // instelling (isDryRun-delegate) NIET op dry-run staat. Dit bewijst dat de lock niet via de
-    // bestaande sportlinkDryRun-instelling omzeilbaar is.
+    // ── forceDryRun code-lock ingetrokken door de eigenaar (#994, #1319) ──
+    // De eigenaar heeft MatchOfficialsActionLiveBevestigd op 27-09-2026 op true gezet na een live
+    // netwerktrace. AssignOfficialsAsync volgt vanaf nu de gewone club-instelling sportlinkDryRun,
+    // net als elke andere bevestigde mutatie (zie UpdateDressingRoomsAsync/UpdateFieldAsync
+    // hierboven voor hetzelfde testpatroon: een "_DryRun_"-test en een "echte PUT"-test).
 
     [Fact]
-    public async Task AssignOfficialsAsync_GlobaleInstellingStaatUit_BlijftTochGesimuleerdDoorCodeLock()
+    public async Task AssignOfficialsAsync_IsDryRunTrue_BlijftGesimuleerd()
     {
-        // isDryRun: () => false — de club-instelling staat NIET op dry-run. Toch mag er nooit een
-        // echte PUT/POST naar het MatchOfficialsAction-endpoint gaan, want AssignOfficialsAsync
-        // geeft altijd forceDryRun: true mee (endpoint/body nog niet live bevestigd, #994).
+        // isDryRun: () => true — de club-instelling staat op dry-run, dus mag er geen echte PUT
+        // naar het MatchOfficialsAction-endpoint gaan.
         var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
         var aangeroepenUrls = new List<string>();
         var client = MakeClient(req =>
@@ -1623,7 +1862,38 @@ public class SportlinkClubClientTests
             if (req.RequestUri.AbsoluteUri.Contains("idm.sportlink.com"))
                 return JsonResponse(TokenResponse(FictieveAccessToken));
             if (req.RequestUri.AbsoluteUri.Contains("MatchOfficialsAction"))
-                throw new InvalidOperationException("De code-lock mag deze PUT nooit versturen, ongeacht de globale dry-run-instelling.");
+                throw new InvalidOperationException("Bij isDryRun()==true mag er nooit een echte PUT verstuurd worden.");
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => true);
+
+        var result = await sut.AssignOfficialsAsync(
+            TestFunctioneleRol, TestPublicMatchId,
+            new List<SportlinkOfficialToewijzing> { new("Referee", "123456") });
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data!.IsDryRun.Should().BeTrue();
+        result.Data.IsForcedDryRun.Should().BeFalse("de code-lock is per #1319 opgeheven — dit is nu een gewone club-instelling-dry-run");
+        result.Data.IsSuccess.Should().BeTrue("een dry-run simuleert een geslaagde mutatie");
+        aangeroepenUrls.Should().Contain(url => url.Contains("idm.sportlink.com"), "token-refresh moet wél echt gebeuren");
+        aangeroepenUrls.Should().NotContain(url => url.Contains("MatchOfficialsAction"));
+    }
+
+    [Fact]
+    public async Task AssignOfficialsAsync_IsDryRunFalseEnLiveBevestigd_StuurtEenEchtePut()
+    {
+        // isDryRun: () => false — sinds #1319 (MatchOfficialsActionLiveBevestigd=true) stuurt
+        // AssignOfficialsAsync nu een ECHTE PUT, net als elke andere bevestigde mutatie.
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var aangeroepenUrls = new List<string>();
+        var client = MakeClient(req =>
+        {
+            aangeroepenUrls.Add(req.RequestUri!.AbsoluteUri);
+            if (req.RequestUri.AbsoluteUri.Contains("idm.sportlink.com"))
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri.AbsoluteUri.Contains("MatchOfficialsAction"))
+                return JsonResponse(DressingRoomsSuccessResponse());
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
@@ -1634,11 +1904,11 @@ public class SportlinkClubClientTests
             new List<SportlinkOfficialToewijzing> { new("Referee", "123456") });
 
         result.Status.Should().Be(SportlinkClubCallStatus.Ok);
-        result.Data!.IsDryRun.Should().BeTrue();
-        result.Data.IsForcedDryRun.Should().BeTrue("de code-lock is onafhankelijk van de club-instelling sportlinkDryRun");
-        result.Data.IsSuccess.Should().BeTrue("een dry-run simuleert een geslaagde mutatie");
-        aangeroepenUrls.Should().Contain(url => url.Contains("idm.sportlink.com"), "token-refresh moet wél echt gebeuren");
-        aangeroepenUrls.Should().NotContain(url => url.Contains("MatchOfficialsAction"));
+        result.Data!.IsDryRun.Should().BeFalse();
+        result.Data.IsForcedDryRun.Should().BeFalse();
+        result.Data.IsSuccess.Should().BeTrue();
+        aangeroepenUrls.Should().Contain(url => url.Contains("MatchOfficialsAction"),
+            "sinds #1319 (MatchOfficialsActionLiveBevestigd=true) stuurt deze mutatie een echte PUT");
     }
 
     [Fact]
@@ -1733,13 +2003,14 @@ public class SportlinkClubClientTests
             "de veld-wijziging (#993) blijft een ECHTE PUT versturen, ongeacht de #995-uitbreiding van ExecuteMutationWithRetryAsync");
     }
 
-    // ── forceDryRun code-lock voor RequestMatchChangeAsync (#995, epic #986) ──
-    // Kern-eis: net als AssignOfficialsAsync (#994) blijft deze mutatie ALTIJD gesimuleerd, ook als
-    // de globale instelling (isDryRun-delegate) NIET op dry-run staat — dit is bovendien de enige
-    // mutatiesoort die een ECHTE tegenstander raakt, dus de lock is hier extra belangrijk.
+    // ── forceDryRun code-lock ingetrokken door de eigenaar (#995 stap 1, #1319) ──
+    // De eigenaar heeft UpdateMatchDetailsChangeRequestLiveBevestigd op 27-09-2026 op true gezet na
+    // een live netwerktrace. RequestMatchChangeAsync (nog altijd uitsluitend stap 1: valideren, géén
+    // stap 2/bevestigen) volgt vanaf nu de gewone club-instelling sportlinkDryRun, net als
+    // AssignOfficialsAsync hierboven.
 
     [Fact]
-    public async Task RequestMatchChangeAsync_GlobaleInstellingStaatUit_BlijftTochGesimuleerdDoorCodeLock()
+    public async Task RequestMatchChangeAsync_IsDryRunTrue_BlijftGesimuleerd()
     {
         var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
         var aangeroepenUrls = new List<string>();
@@ -1749,7 +2020,39 @@ public class SportlinkClubClientTests
             if (req.RequestUri!.AbsoluteUri.Contains("idm.sportlink.com"))
                 return JsonResponse(TokenResponse(FictieveAccessToken));
             if (req.RequestUri.AbsoluteUri.Contains("UpdateMatchDetails"))
-                throw new InvalidOperationException("De code-lock mag deze PUT nooit versturen, ongeacht de globale dry-run-instelling.");
+                throw new InvalidOperationException("Bij isDryRun()==true mag er nooit een echte PUT verstuurd worden.");
+            if (req.RequestUri.AbsoluteUri.Contains("club.sportlink.com"))
+                return JsonResponse(MatchDetailsSnapshotResponse());
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => true);
+
+        var result = await sut.RequestMatchChangeAsync(
+            TestFunctioneleRol, TestPublicMatchId,
+            new DateOnly(2026, 10, 4), new TimeOnly(11, 0), "BBCF990", "Veld is niet beschikbaar door onderhoud");
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data!.Mutatie.IsDryRun.Should().BeTrue();
+        result.Data.Mutatie.IsForcedDryRun.Should().BeFalse("de code-lock is per #1319 opgeheven — dit is nu een gewone club-instelling-dry-run");
+        result.Data.Mutatie.IsSuccess.Should().BeTrue("een dry-run simuleert een geslaagde mutatie");
+        result.Data.Validatie.Should().BeNull("zonder een echte HTTP-respons is er niets te parsen");
+        aangeroepenUrls.Should().Contain(url => url.Contains("club.sportlink.com"), "de snapshot-GET moet wél echt gebeuren");
+        aangeroepenUrls.Should().NotContain(url => url.Contains("UpdateMatchDetails"));
+    }
+
+    [Fact]
+    public async Task RequestMatchChangeAsync_IsDryRunFalseEnLiveBevestigd_StuurtEenEchtePutEnParsedValidatie()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var aangeroepenUrls = new List<string>();
+        var client = MakeClient(req =>
+        {
+            aangeroepenUrls.Add(req.RequestUri!.AbsoluteUri);
+            if (req.RequestUri!.AbsoluteUri.Contains("idm.sportlink.com"))
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri.AbsoluteUri.Contains("UpdateMatchDetails"))
+                return JsonResponse("""{"IsSuccess": true}""");
             if (req.RequestUri.AbsoluteUri.Contains("club.sportlink.com"))
                 return JsonResponse(MatchDetailsSnapshotResponse());
             return new HttpResponseMessage(HttpStatusCode.NotFound);
@@ -1762,12 +2065,13 @@ public class SportlinkClubClientTests
             new DateOnly(2026, 10, 4), new TimeOnly(11, 0), "BBCF990", "Veld is niet beschikbaar door onderhoud");
 
         result.Status.Should().Be(SportlinkClubCallStatus.Ok);
-        result.Data!.Mutatie.IsDryRun.Should().BeTrue();
-        result.Data.Mutatie.IsForcedDryRun.Should().BeTrue("de code-lock is onafhankelijk van de club-instelling sportlinkDryRun");
-        result.Data.Mutatie.IsSuccess.Should().BeTrue("een dry-run simuleert een geslaagde mutatie");
-        result.Data.Validatie.Should().BeNull("zonder een echte HTTP-respons is er niets te parsen — de lock voorkomt de PUT volledig");
-        aangeroepenUrls.Should().Contain(url => url.Contains("club.sportlink.com"), "de snapshot-GET moet wél echt gebeuren");
-        aangeroepenUrls.Should().NotContain(url => url.Contains("UpdateMatchDetails"));
+        result.Data!.Mutatie.IsDryRun.Should().BeFalse();
+        result.Data.Mutatie.IsForcedDryRun.Should().BeFalse();
+        result.Data.Mutatie.IsSuccess.Should().BeTrue();
+        result.Data.Validatie.Should().NotBeNull("sinds #1319 komt er een echte HTTP-respons terug om te parsen");
+        result.Data.Validatie!.IsSuccess.Should().BeTrue();
+        aangeroepenUrls.Should().Contain(url => url.Contains("UpdateMatchDetails"),
+            "sinds #1319 (UpdateMatchDetailsChangeRequestLiveBevestigd=true) stuurt deze mutatie een echte PUT");
     }
 
     // ── BuildMatchChangeRequestBody (#995, epic #986) ──
@@ -2014,13 +2318,16 @@ public class SportlinkClubClientTests
         capturedMethods.Should().OnlyContain(x => x.Method == HttpMethod.Put);
     }
 
+    // ── forceDryRun code-lock ingetrokken door de eigenaar (#997, #1319) ──
+    // De eigenaar heeft ClubMatchLiveBevestigd op 27-09-2026 op true gezet na een live
+    // netwerktrace. CreateClubMatchAsync volgt vanaf nu de gewone club-instelling sportlinkDryRun,
+    // net als AssignOfficialsAsync/RequestMatchChangeAsync hierboven.
+
     [Fact]
-    public async Task CreateClubMatchAsync_GlobaleInstellingStaatUit_BlijftTochGesimuleerdDoorCodeLock()
+    public async Task CreateClubMatchAsync_IsDryRunTrue_BlijftGesimuleerd()
     {
-        // isDryRun: () => false — de club-instelling staat NIET op dry-run. Toch mag er nooit een
-        // echte POST naar het ClubMatch-endpoint gaan, want CreateClubMatchAsync geeft altijd
-        // forceDryRun: true mee (#997 — van alle #986-sub-issues de meeste onbekenden: volledige
-        // body onbevestigd, meerdere picklist-vormen onbekend, delete-methode onbekend).
+        // isDryRun: () => true — de club-instelling staat op dry-run, dus mag er geen echte POST
+        // naar het ClubMatch-endpoint gaan.
         var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
         var aangeroepenUrls = new List<string>();
         var client = MakeClient(req =>
@@ -2029,7 +2336,48 @@ public class SportlinkClubClientTests
             if (req.RequestUri.AbsoluteUri.Contains("idm.sportlink.com"))
                 return JsonResponse(TokenResponse(FictieveAccessToken));
             if (req.RequestUri.AbsoluteUri.Contains("clubmatch/ClubMatch"))
-                throw new InvalidOperationException("De code-lock mag deze POST nooit versturen, ongeacht de globale dry-run-instelling.");
+                throw new InvalidOperationException("Bij isDryRun()==true mag er nooit een echte POST verstuurd worden.");
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => true);
+
+        var aanvraag = new SportlinkClubMatchAanvraag(
+            MatchDateTime: new DateTime(2026, 9, 20, 19, 30, 0),
+            Duration: 90,
+            AgeClassCode: "JO10",
+            Description: "Oefenwedstrijd tegen buurtclub",
+            PublicHomeTeamId: "T2010269033",
+            PublicAwayTeamId: "T2010269099",
+            FacilityId: "BBCF989",
+            FieldId: "BBCF989-OUTDOOR_FIELD-6",
+            ExternalMatchId: 12345);
+
+        var result = await sut.CreateClubMatchAsync(TestFunctioneleRol, aanvraag);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data!.IsDryRun.Should().BeTrue();
+        result.Data.IsForcedDryRun.Should().BeFalse("de code-lock is per #1319 opgeheven — dit is nu een gewone club-instelling-dry-run");
+        result.Data.IsSuccess.Should().BeTrue("een dry-run simuleert een geslaagde mutatie");
+        result.Data.PublicMatchId.Should().BeNull("bij een dry-run is er geen echte Sportlink-respons om PublicMatchId uit te lezen");
+        aangeroepenUrls.Should().Contain(url => url.Contains("idm.sportlink.com"), "token-refresh moet wél echt gebeuren");
+        aangeroepenUrls.Should().NotContain(url => url.Contains("clubmatch/ClubMatch"));
+    }
+
+    [Fact]
+    public async Task CreateClubMatchAsync_IsDryRunFalseEnLiveBevestigd_StuurtEenEchtePost()
+    {
+        // isDryRun: () => false — sinds #1319 (ClubMatchLiveBevestigd=true) stuurt
+        // CreateClubMatchAsync nu een ECHTE POST en leest PublicMatchId uit de respons.
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var aangeroepenUrls = new List<string>();
+        var client = MakeClient(req =>
+        {
+            aangeroepenUrls.Add(req.RequestUri!.AbsoluteUri);
+            if (req.RequestUri.AbsoluteUri.Contains("idm.sportlink.com"))
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri.AbsoluteUri.Contains("clubmatch/ClubMatch"))
+                return JsonResponse("""{"IsSuccess": true, "PublicMatchId": "M-TEST-123"}""");
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
@@ -2049,12 +2397,12 @@ public class SportlinkClubClientTests
         var result = await sut.CreateClubMatchAsync(TestFunctioneleRol, aanvraag);
 
         result.Status.Should().Be(SportlinkClubCallStatus.Ok);
-        result.Data!.IsDryRun.Should().BeTrue();
-        result.Data.IsForcedDryRun.Should().BeTrue("de code-lock is onafhankelijk van de club-instelling sportlinkDryRun");
-        result.Data.IsSuccess.Should().BeTrue("een dry-run simuleert een geslaagde mutatie");
-        result.Data.PublicMatchId.Should().BeNull("Sportlink is niet echt aangeroepen tijdens een (forced) dry-run");
-        aangeroepenUrls.Should().Contain(url => url.Contains("idm.sportlink.com"), "token-refresh moet wél echt gebeuren");
-        aangeroepenUrls.Should().NotContain(url => url.Contains("clubmatch/ClubMatch"));
+        result.Data!.IsDryRun.Should().BeFalse();
+        result.Data.IsForcedDryRun.Should().BeFalse();
+        result.Data.IsSuccess.Should().BeTrue();
+        result.Data.PublicMatchId.Should().Be("M-TEST-123");
+        aangeroepenUrls.Should().Contain(url => url.Contains("clubmatch/ClubMatch"),
+            "sinds #1319 (ClubMatchLiveBevestigd=true) stuurt deze mutatie een echte POST");
     }
 
     [Fact]

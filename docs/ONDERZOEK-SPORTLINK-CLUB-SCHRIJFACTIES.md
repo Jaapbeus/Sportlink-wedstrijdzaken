@@ -12,6 +12,16 @@
 > gemerged. Alleen-lezen analyse van club.sportlink.com plus één door de wedstrijdsecretaris zelf
 > uitgevoerde en teruggedraaide kleedkamerwijziging (meegelezen in netwerkverkeer).
 >
+> **Historische authenticatieprocedure ingetrokken (#1411).** Alles hieronder over het handmatig
+> opvangen, vastleggen, uploaden of bewaren van refresh-tokens beschrijft een retired ontwerp en
+> mag niet meer worden uitgevoerd. De enige actieve productie- en herstelprocedure staat in
+> [`docs/SPORTLINK-AUTOLOGIN.md`](SPORTLINK-AUTOLOGIN.md). De oude code en endpoint zijn verwijderd.
+
+> **Aanvulling 2026-10-01:** automatische gebruikersnaam-/wachtwoord-/TOTP-login is gebouwd in
+> #1411. De lokale eigenaarstest duurde 14 uur en 39 minuten; dit is geen 24-uurs- of
+> productieacceptatie. Zie issue #1411 en de actuele runbook voor de uitgevoerde en resterende
+> verificatie.
+>
 > **Regel voor latere correcties (vastgelegd 2026-09-19, #1269):** een correctie van ná 2026-09-04
 > wordt in de lopende tekst altijd als zodanig gemarkeerd en gedateerd (`**Opgelost (…)**`,
 > `**WEERLEGD (…)**`, `**Nagekomen correctie (…)**`). Alles zonder zo'n markering is de
@@ -98,8 +108,12 @@ Het kan. club.sportlink.com is geen server-rendered site maar een React-SPA (Vit
 - **Gevolg voor de architectuur:** `PublicMatchId` kan niet uit onze eigen data berekend worden.
   Elk endpoint dat een `PublicMatchId` nodig heeft moet 'm via een **reverse-lookup bij Sportlink
   zelf** opzoeken.
+- **Historische noot (2026-10-01):** de spikes hieronder zijn onderzoek van 2026-09-05. De drie
+  dev-scripts (`Invoke-SportlinkMatchLookup.ps1`, `Invoke-SportlinkMatchProgramLookup.ps1`,
+  `Invoke-SportlinkTokenSpike.ps1`) zijn in #1411 verwijderd; de huidige, automatische
+  login-implementatie staat in [SPORTLINK-AUTOLOGIN.md](SPORTLINK-AUTOLOGIN.md).
 - **Reverse-lookup BEVESTIGD WERKEND (2026-09-05, live productietest,
-  `scripts/dev/Invoke-SportlinkMatchProgramLookup.ps1`):**
+  `scripts/dev/Invoke-SportlinkMatchProgramLookup.ps1`, verwijderd in #1411):**
   `competition/match/MatchProgramOverview?DateFrom=<dag>&DateTo=<dag>` met een smal (1-daags)
   date-bereik gaf voor dat `<wedstrijdnummer>` (dezelfde wedstrijd als hierboven) de
   `M<9 cijfers>`-waarde terug — exact de eerder live geobserveerde waarde. Timing: 12,2 s voor het 1-daagse
@@ -180,16 +194,16 @@ Uitgevoerd voor SLX-04/#990. Bevindingen, uitsluitend structureel/niet-herleidba
   met `client_id=sportlink-club-web&scope=openid` geeft `{"error":"unauthorized_client",
   "error_description":"...The flow is disabled for the client."}` — onafhankelijk gereproduceerd
   door zowel de agent als de eigenaar zelf. Dit was de enige OAuth-variant zonder eigen
-  redirect-URI; met deze uitkomst blijft variant 2 (§3.B) de enige haalbare route — er is geen
-  "SSO-achtige" flow meer over die niet op een lang-levend, server-side bewaard refresh-token
-  neerkomt.
-- **Rotatie: bevestigd, door de eigenaar zelf gedraaid via `Invoke-SportlinkTokenSpike.ps1`.**
+  redirect-URI; met deze uitkomst is de latere loginvariant uit #1411 ontwikkeld. De toenmalige
+  "SSO-achtige" analyse is historisch; de actuele werkwijze staat in de runbook.
+- **Rotatie: historisch bevestigd vóór #1411 met een inmiddels verwijderde spike.**
   Refresh #1 (bestaand token) → geslaagd, `expires_in: 3600`, `refresh_expires_in: 21600`. Refresh
   #2 met het NIEUWE refresh_token uit #1 → **eveneens geslaagd**, met dezelfde `expires_in`/
   `refresh_expires_in`. **De refresh-cyclus is dus herhaalbaar** (elke refresh geeft een nieuw
   refresh_token, dat weer bruikbaar is voor de volgende refresh) — dit is het sluitende bewijs voor
-  de kernvraag van #990: een backend kan zelfstandig, zonder browser, indefiniet bij Sportlink
-  Club "ingelogd" blijven zolang hij minstens elke 6 uur ververst.
+  herhaalbaarheid van de refresh-grant op die twee meetmomenten. Dit bewijst geen onbeperkte
+  sessieduur. De eigenaar bevestigde later een absolute tien-uurslimiet en afwijzing van M2M;
+  #1411 voegt daarom afzonderlijke herlogin toe (zie SPORTLINK-AUTOLOGIN.md).
 - **API-call-test (`user/UserInfo`) nog niet geslaagd — aparte, oplosbare oorzaak.** Zowel met als
   zonder `X-Navajo-*`-headers gaf de call een foutstatus. De headerwaarden in het testscript waren
   echter **gegokt** (`X-Navajo-Instance: "1"` e.d.), nooit bevestigd tegen echt verkeer — een fout
@@ -227,25 +241,23 @@ Onze backend (Azure Function) roept dezelfde `PUT`-calls aan met een Bearer-toke
      localStorage van dat andere origin (club.sportlink.com) niet uitlezen (browser same-origin-
      policy) — er is geen client-side manier om het resultaat "over te hevelen" zonder dat
      Sportlink zelf onze redirect-URI toevoegt aan de client, of ons een eigen OAuth-client geeft.
-  2. **Technisch bevestigd werkend (2026-09-04):** eenmalige interactieve login → `refresh_token`
+  2. **Historisch prototype, ingetrokken in #1411:** eenmalige interactieve login → `refresh_token`
      lokaal opgevangen → backend vernieuwt via `token_endpoint` met
      `grant_type=refresh_token&client_id=sportlink-club-web`. Refresh + rotatie (tweede refresh met
-     het nieuwe token) live succesvol getest door de eigenaar. De handmatige DevTools-Network-tab-
-     stap is inmiddels geautomatiseerd: `Tools/SportlinkTokenCapture` opent een echte browser, laat
-     de gebruiker eenmalig inloggen (MFA blijft mensenwerk) en vangt de token-respons
-     programmatisch op via het netwerk-response-event — geen handmatig kopiëren/plakken meer
-     nodig. Schrijft het refresh_token lokaal naar `FunctionApp.Postgres/local.settings.json`
-     (sleutel `SportlinkClubRefreshToken__<Rol>`).
+     het nieuwe token) live succesvol getest door de eigenaar. De toenmalige DevTools-Network-tab-
+     stap was geautomatiseerd met `Tools/SportlinkTokenCapture`; deze tool en procedure zijn in
+     #1411 verwijderd.
+     Historisch schreef deze het refresh_token lokaal naar `FunctionApp.Postgres/local.settings.json`
+     (oude instelling, verwijderd in #1411).
      **Live uitgevoerd door de eigenaar (2026-09-04): geslaagd.** Refresh-token stond echt
-     lokaal klaar (geverifieerd: sleutel aanwezig, 720 tekens — consistent met de eerdere
-     handmatige test).
-     **Productie-persistente opslag (#990/#991, besloten):** een eigen DB-tabel
-     `public.sportlinkservicetokens` — niet Key Vault (kost geld, nieuwe Azure-resource, zie
+     lokaal klaar (historische verificatie; exacte tokeninhoud is niet relevant voor de huidige werking).
+     **Oude productie-persistente opslag (#990/#991, verwijderd in #1411):** de oude
+     `public.sportlinkservicetokens`-tabel — niet Key Vault (kost geld, nieuwe Azure-resource, zie
      kostenbeleid) en niet een Function App-instelling herschreven via de ARM-API (vereist een
      aparte Azure AD-integratie met schrijfrechten op de eigen Function App). Bootstrap gebeurt via
-     `PUT /api/beheer/sportlink-extensie/rollen/{rolNaam}/token` (admin-only, write-only, valideert
+     oude `PUT /api/beheer/sportlink-extensie/rollen/{rolNaam}/token` (verwijderd in #1411; admin-only, write-only, valideerde
      het token met één refresh-poging vóór opslag). Zie
-     `FunctionApp.Postgres/Sportlink/PostgresSportlinkClubTokenStore.cs` (implementeert
+     de verwijderde `FunctionApp.Postgres/Sportlink/PostgresSportlinkClubTokenStore.cs` (implementeerde
      `ISportlinkClubTokenStore` uit `Planner.Shared`, i.p.v. de ARM-API-variant
      `SportlinkClubAppSettingsTokenStore` die de SQL Server-tier gebruikt, #998).
   3. **Bevestigd afgewezen (2026-09-04):** `device_code`-grant staat realm-breed aan, maar is
@@ -263,7 +275,7 @@ Onze backend (Azure Function) roept dezelfde `PUT`-calls aan met een Bearer-toke
 
 ## 4. Aanbeveling
 1. **Nu**: A bouwen (knop in Dagplanning). Vooraf de mapping `PublicMatchId` ↔ `wedstrijdcode` verifiëren met één query.
-2. **Deels afgerond (§2.6):** B-variant 2's read-only spike (token vernieuwen + een echte API-call) is live succesvol getest. Resterend vóór dit in productie kan: rotatie bij een tweede refresh en de X-Navajo-headers-vraag laten bevestigen door een mens (`scripts/dev/Invoke-SportlinkTokenSpike.ps1`) — een coding agent mag dit zelf niet uitvoeren (zie §2.6).
+2. **Historische variant, ingetrokken in #1411:** B-variant 2's read-only spike was live getest. Gebruik niet de toenmalige token-spikes; de huidige loginprocedure staat in [`docs/SPORTLINK-AUTOLOGIN.md`](SPORTLINK-AUTOLOGIN.md).
 3. **Eerste schrijfactie in de app**: kleedkamers (`UpdateMatchDressingRooms`), want die is live bevestigd, omkeerbaar en raakt geen tegenstander of KNVB. Daarna veld, dan officials. Datum/tijd (wijzigingsverzoek) als laatste, achter een expliciete bevestigingsdialoog met de `ValidationResultMessages` van Sportlink.
 4. Guardrails: alleen wedstrijden met `IsHomeMatch=true` en de betreffende `Is...Allowed=true`; elke mutatie loggen met vóór/na-waarde; EgressGuard-patroon hergebruiken zodat lokaal nooit per ongeluk naar Sportlink wordt geschreven.
 
@@ -273,9 +285,7 @@ Onze backend (Azure Function) roept dezelfde `PUT`-calls aan met een Bearer-toke
 - **Opgelost (§2.6):** redirect-URI-whitelist getest en afgewezen (HTTP 400); access-/refresh-token-
   levensduur bevestigd (1 uur / 6 uur bij eerste uitgifte); `device_code`-grant getest en bevestigd
   uitgeschakeld voor deze client.
-- **Nog steeds open:** MFA-eisen bij herlogin niet getest — geblokkeerd doordat een coding agent
-  dit mechanisme (met een echt token) niet zelf mag uitvoeren (zie §2.6). Vereist een mens die
-  `scripts/dev/Invoke-SportlinkTokenSpike.ps1` zelf afmaakt.
+- **Historisch, vervangen in #1411:** MFA-eisen bij herlogin zijn onderzocht met de owner-run auto-loginproef; zie [`docs/SPORTLINK-AUTOLOGIN.md`](SPORTLINK-AUTOLOGIN.md).
 - **Opgelost (§2.6):** of het refresh-token bij elke refresh roteert — bevestigd door de eigenaar
   zelf (refresh #1 én #2 geslaagd, beide met `expires_in: 3600` / `refresh_expires_in: 21600`).
   **Opgelost (#991/#993):** of de `X-Navajo-*`-headers verplicht zijn — live bevestigd; ze worden
@@ -291,12 +301,12 @@ laten uitvoeren, is dat een privilege-escalatie: onze webapp zou dan bredere Spo
 "doorgeven" dan iemands eigen rol zou mogen hebben.
 
 **Beslissing:** elke functionele rol in de webapp die Sportlink-mutaties mag doen (bv.
-"Wedstrijdzaken") krijgt een **eigen, smal-geschaald Sportlink-serviceaccount** (aangemaakt en
-gescoped in Sportlink's eigen `/club-maintenance/users-roles`), met een **eigen refresh_token**,
-opgeslagen onder een eigen instellingennaam: `SportlinkClubRefreshToken__<Rol>` (bv.
-`SportlinkClubRefreshToken__Wedstrijdzaken`). `Tools/SportlinkTokenCapture` accepteert de rol als
-argument (`dotnet run --project Tools/SportlinkTokenCapture -- Wedstrijdzaken`) en slaat het
-refresh_token onder de bijbehorende sleutel op.
+"Wedstrijdzaken") krijgt een **eigen Sportlink-account** (aangemaakt en
+gescoped in Sportlink's eigen `/club-maintenance/users-roles`), met afzonderlijke logincredentials.
+**Historische procedure, retired in #1411:**
+`Tools/SportlinkTokenCapture` accepteerde een rol als argument en schreef een refresh-token naar
+instellingen. Gebruik dit niet; de huidige authenticatie staat in
+[`docs/SPORTLINK-AUTOLOGIN.md`](SPORTLINK-AUTOLOGIN.md).
 
 **Twee gevolgen, allebei bewust aanvaard:**
 - **Twee plekken om in sync te houden:** wie in Entra ID de rol "Wedstrijdzaken" krijgt, moet ook
@@ -310,8 +320,7 @@ refresh_token onder de bijbehorende sleutel op.
 
 **Vereiste voor elk mutatie-/leesendpoint in #991-#998:** de backend-role-gate mag nooit alleen
 generiek "is admin" checken, maar moet de specifieke, functionele rol vereisen (bv.
-"Wedstrijdzaken") — en op basis daarvan de bijbehorende `SportlinkClubRefreshToken__<Rol>`-sleutel
-kiezen. Zie ook `dbo.SportlinkMutationAudit` (#998): omdat Sportlink's eigen log per rol/account
+"Wedstrijdzaken"). Zie ook `dbo.SportlinkMutationAudit` (#998): omdat Sportlink's eigen log per rol/account
 groepeert (niet per individuele webapp-gebruiker), blijft onze eigen auditlog de enige plek waar
 te herleiden is wélke ingelogde webapp-gebruiker een specifieke actie heeft getriggerd.
 

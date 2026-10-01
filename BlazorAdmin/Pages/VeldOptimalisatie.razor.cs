@@ -35,6 +35,11 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     private bool _sportlinkExtensionEnabled;
     private readonly SportlinkActieKolomState _sportlinkKolom = new();
 
+    // Hover-correlatie tussen tijdlijnblok en tabelregel (#1398, zelfde gedeelde implementatie als
+    // Planning — zie GanttHoverState): dezelfde WedstrijdCode licht in beide op, in zowel de
+    // Huidig- als de Optimaal-tab.
+    private readonly GanttHoverState _hover = new();
+
     // HTML-export van de berekende planning (voorheen onderdeel van de klassieke flow, #666)
     private string? _kopieerStatus;
 
@@ -171,10 +176,10 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
 
     private static string VoorkeurBadgeClass(string voorkeurStatus) => voorkeurStatus switch
     {
-        "op-tijd"          => "bg-success",
-        "kleine-afwijking" => "bg-warning text-dark",
-        "grote-afwijking"  => "bg-danger",
-        _                  => "bg-light text-dark border"
+        "op-tijd"          => "badge-voorkeur-optijd",
+        "kleine-afwijking" => "badge-voorkeur-klein",
+        "grote-afwijking"  => "badge-voorkeur-groot",
+        _                  => "badge-neutraal"
     };
 
     private static string VoorkeurAfwijkingTekst(int? afwijking)
@@ -216,12 +221,15 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
         return $"Voorkeurstijd {item.VoorkeurTijd} — {bron}. Ingepland: {afwijking}.";
     }
 
+    // Sinds #1388 eigen, thema-gestuurde klassen (BlazorAdmin/Pages/VeldOptimalisatie.razor.css) in
+    // plaats van Bootstrap-contextklassen: die laatste kleuren met Bootstrap's eigen blauw/oranje/
+    // rood, los van het geconfigureerde club-thema.
     private static string RowClass(string status) => status switch
     {
         "ongewijzigd"     => "",
-        "nieuw-slot"      => "table-warning",
-        "wijziging"       => "table-primary",
-        "niet-inplanbaar" => "table-danger",
+        "nieuw-slot"      => "rij-status-nieuw-slot",
+        "wijziging"       => "rij-status-wijziging",
+        "niet-inplanbaar" => "rij-status-niet-inplanbaar",
         "onbekend-team"   => "",   // neutraal — geen rode achtergrond (#487)
         _                 => ""
     };
@@ -508,15 +516,4 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
         public double Height { get; set; }
     }
 
-    // Kleur van de voorkeurstijd-indicatorbalk bovenaan een Gantt-blok — alleen relevant in de
-    // optimaal/huidig-vergelijking, niet op de directe veldbezettingsweergave van Planning.
-    // Leeg = geen voorkeur geconfigureerd → geen balk.
-    private static string GanttVoorkeurBalkKleur(int? afwijking, string? voorkeurTijd)
-    {
-        if (voorkeurTijd == null || !afwijking.HasValue) return string.Empty;
-        int abs = Math.Abs(afwijking.Value);
-        if (abs == 0) return "#22c55e";    // Exact op voorkeurstijd → groen
-        if (abs <= KleineAfwijkingDrempelMinuten) return "#f59e0b";   // Binnen 15 minuten → amber
-        return "#ef4444";                  // Meer dan 15 min afwijking → rood
-    }
 }

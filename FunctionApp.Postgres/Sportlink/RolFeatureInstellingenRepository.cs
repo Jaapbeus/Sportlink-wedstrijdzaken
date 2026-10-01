@@ -1,4 +1,5 @@
 using Npgsql;
+using Planner.Shared.Autorisatie;
 using Planner.Shared.Integrations.SportlinkClub;
 
 namespace FunctionApp.Postgres.Sportlink;
@@ -44,6 +45,37 @@ internal static class RolFeatureInstellingenRepository
             var featureKey = r.GetString(0);
             if (resultaat.ContainsKey(featureKey))
                 resultaat[featureKey] = r.GetBoolean(1);
+        }
+        return resultaat;
+    }
+
+    /// <summary>
+    /// De volledige toegangsmatrix voor deze club (#1390): elke combinatie van
+    /// <see cref="RolNamen.Alle"/> × (<see cref="SportlinkRolFeature.Alle"/> ∪ <see cref="MenuFeatureKeys.Alle"/>),
+    /// fail-closed (ontbrekende rij = <c>false</c>). Los van <see cref="GetAllAsync"/>, dat uitsluitend
+    /// de 3 Sportlink-FeatureKeys voor één rol teruggeeft en door <c>SportlinkMatchFunction</c> wordt
+    /// gebruikt — dat pad blijft ongewijzigd.
+    /// </summary>
+    internal static async Task<Dictionary<(string RolNaam, string FeatureKey), bool>> GetMatrixAsync(string clubCode, string cs)
+    {
+        var resultaat = new Dictionary<(string, string), bool>();
+        foreach (var rol in RolNamen.Alle)
+            foreach (var featureKey in RolFeatureMatrixCore.AlleFeatureKeys)
+                resultaat[(rol, featureKey)] = false;
+
+        await using var conn = new NpgsqlConnection(cs);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(@"
+            SELECT rolnaam, featurekey, enabled FROM public.rolfeatureinstellingen
+            WHERE clubcode = @cc AND rolnaam = ANY(@rollen)", conn);
+        cmd.Parameters.AddWithValue("cc", clubCode);
+        cmd.Parameters.AddWithValue("rollen", RolNamen.Alle.ToArray());
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+        {
+            var sleutel = (r.GetString(0), r.GetString(1));
+            if (resultaat.ContainsKey(sleutel))
+                resultaat[sleutel] = r.GetBoolean(2);
         }
         return resultaat;
     }

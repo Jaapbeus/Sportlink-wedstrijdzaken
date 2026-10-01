@@ -14,11 +14,25 @@ van jouw deployment; zie `servers` in `docs/api-standaarden/openapi.yaml`.
 > `GET /api/postgres/sync-matches` op de Postgres-tier, `GET /api/sync-matches` op de SQL
 > Server-tier. Op de andere tier geeft die route `404`.
 >
-> Eén autorisatieverschil tussen de tiers, bewust: de `/sportlink/*`-endpoints vereisen op de
-> Postgres-tier alleen de rol `Wedstrijdzaken` (die vervangt daar de admin-check), en op de SQL
-> Server-tier `Wedstrijdzaken` **bovenop** `admin`
-> (`FunctionApp/Sportlink/SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`). De aanbevolen
-> roltoewijzing `["admin","Wedstrijdzaken"]` voldoet aan beide.
+> **Geen autorisatieverschil tussen de tiers** — beide gebruiken dezelfde gedeelde orkestratie
+> (`Planner.Endpoints/Sportlink/SportlinkEndpointSupportCore.ExecuteWedstrijdzakenAsync`, #1271).
+> Sinds #1400 zijn de mutatie-endpoints (`PUT`/`POST` onder `/sportlink/*`) en de twee
+> viewing-endpoints (`GET /sportlink/match/{wedstrijdcode}` en `.../public-match-id`) daadwerkelijk
+> verschillend beveiligd:
+> - **Mutaties:** beide poorten na elkaar controleren nu `Wedstrijdzaken` óf `admin`
+>   (`EasyAuthHelper.RequireWedstrijdzaken`, eerste poort sinds #1376; tweede poort
+>   `AdminEndpoint.ExecuteWedstrijdzakenOfAdminAsync`, sinds #1400 — vóór #1400 eiste die tweede
+>   poort altijd `admin`). Netto-effect: `Wedstrijdzaken` alléén (zonder `admin`) triggert nu
+>   daadwerkelijk een Sportlink-mutatie, bewust getest op beide tiers
+>   (`Sportlink_AlleenWedstrijdzaken_PasseertDeAdminPoort`). Een gewone `user` zonder `Wedstrijdzaken`
+>   krijgt hier nog steeds `403` (`Sportlink_AlleenUser_WordtGeweigerdOpDeWedstrijdzakenPoort`).
+> - **Viewing:** loopt sinds #1400 via `AdminEndpoint.ExecuteAuthenticatedAsync` (elke ingelogde rol,
+>   `admin` + `user`) — Planning en het Sportlink-paneel zijn generiek zichtbaar. Welke velden een
+>   niet-Wedstrijdzaken-viewer daadwerkelijk terugkrijgt blijft server-side geredigeerd (zie de
+>   endpointtabel hieronder en `docs/SPORTLINK-WEB-EXTENSION.md` §3.4).
+>
+> De aanbevolen roltoewijzing voor het wedstrijdsecretariaat blijft `["user","Wedstrijdzaken"]`
+> (of `["admin"]`, dat impliceert alles).
 
 ## Beveiliging
 
@@ -27,24 +41,27 @@ Drie beveiligingsniveaus:
 | Niveau | Sleutel | Wie | Endpoints |
 |--------|---------|-----|-----------|
 | **Anoniem** | geen | iedereen | `GET /api/health` |
-| **Admin** | Easy Auth Bearer + `admin`-rol (`EasyAuthHelper.RequireAdmin`) | Alleen coördinator | Alle overige endpoints: `/api/beheer/*`, `/api/planner/*`, `/api/feedback/*`, `/api/test/*`, én `GET /api/postgres/sync-matches` / `GET /api/sync-matches` (sinds #1350) |
-| **Wedstrijdzaken** | Easy Auth Bearer + `Wedstrijdzaken`-rol (`EasyAuthHelper.RequireWedstrijdzaken`) **én** de `admin`-rol (beide tiers sinds #1272; per endpoint getest sinds #1350) | Wedstrijdsecretariaat | Alle `/api/sportlink/*` |
+| **Admin** | Easy Auth Bearer + `admin`-rol (`EasyAuthHelper.RequireAdmin`) | Alleen coördinator | Alle overige `/api/beheer/*`-, `/api/planner/*`- (behalve `veldbezetting`), `/api/feedback/*`-, `/api/test/*`-endpoints, én `GET /api/postgres/sync-matches` / `GET /api/sync-matches` (sinds #1350) |
+| **Admin/User** | Easy Auth Bearer + `admin` óf `user` (`AdminEndpoint.ExecuteAuthenticatedAsync`, #1330) | Elke ingelogde gebruiker | `GET /api/planner/veldbezetting` (Planning-pagina, #1400), `GET /api/sportlink/match/{wedstrijdcode}` en `.../public-match-id` (Sportlink-paneel viewen, #1400), plus de drie Teambegeleiding-lookup/doorstuur-endpoints (#1330) |
+| **Wedstrijdzaken** | Easy Auth Bearer + `Wedstrijdzaken`-rol **óf** de `admin`-rol (`EasyAuthHelper.RequireWedstrijdzaken`, beide poorten sinds #1400 — vóór #1400 eiste de tweede poort altijd `admin`) | Wedstrijdsecretariaat | De Sportlink-mutatie-endpoints (`PUT`/`POST` onder `/api/sportlink/*`) |
 
 > **`AuthorizationLevel` in de trigger zegt niets over de echte poort.** Élk endpoint staat op
 > `AuthorizationLevel.Anonymous` — dat betekent alleen "geen Function key". De daadwerkelijke
-> rolcontrole gebeurt via de centrale wrappers `AdminEndpoint.ExecuteAsync` (admin, met
-> database-toegang) en `AdminEndpoint.ExecuteZonderDatabaseAsync` (admin, zonder database — de drie
-> `/api/feedback/*`-endpoints) en, voor de Sportlink-endpoints, via
-> `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync` (Wedstrijdzaken + admin). Twee bewuste
-> uitzonderingen roepen `EasyAuthHelper.RequireAdmin` nog direct aan, vóór een eventuele
-> databaseaanroep: `POST /api/beheer/theme/extract` (een luie URL-check vóór de databaseaanroep) en
-> `GET /api/beheer/geocode` (geen database nodig) — zelfde poort, alleen zonder de databasewacht van
-> de wrapper. **Sinds #1350 accepteert geen enkel endpoint nog een Function key of Master key** —
-> ook de twee sync-routes niet meer (zie hieronder).
+> rolcontrole gebeurt via de centrale wrappers `AdminEndpoint.ExecuteAsync` (uitsluitend admin, met
+> database-toegang), `AdminEndpoint.ExecuteZonderDatabaseAsync` (uitsluitend admin, zonder database —
+> de drie `/api/feedback/*`-endpoints), `AdminEndpoint.ExecuteAuthenticatedAsync` (elke ingelogde
+> rol — admin + user, #1330/#1400) en, voor de Sportlink-mutatie-endpoints, via
+> `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync` (Wedstrijdzaken óf admin, beide poorten sinds
+> #1400). Twee bewuste uitzonderingen roepen `EasyAuthHelper.RequireAdmin` nog direct aan, vóór een
+> eventuele databaseaanroep: `POST /api/beheer/theme/extract` (een luie URL-check vóór de
+> databaseaanroep) en `GET /api/beheer/geocode` (geen database nodig) — zelfde poort, alleen zonder
+> de databasewacht van de wrapper. **Sinds #1350 accepteert geen enkel endpoint nog een Function key
+> of Master key** — ook de twee sync-routes niet meer (zie hieronder).
 >
-> `EasyAuthHelper.RequireAuthenticated` (`admin` óf `user`) is bij #1350 verwijderd — hij werd
-> nergens aangeroepen. Er is dus geen endpoint waar de `user`-rol toegang geeft; een gebruiker met
-> alleen `user` krijgt overal `403`.
+> `EasyAuthHelper.RequireAuthenticated` (`admin` óf `user`) is bij #1350 verwijderd omdat hij toen
+> nergens werd aangeroepen. Sinds #1330 bestaat die combinatie weer, nu als de expliciet genoemde
+> poort `AdminEndpoint.ExecuteAuthenticatedAsync` — zie de rij **Admin/User** hierboven voor welke
+> endpoints dat zijn. Op elk ander endpoint krijgt een gebruiker met alleen `user` nog steeds `403`.
 
 Zonder token → `401 Unauthorized`. Mét geldig token maar zonder de vereiste rol → `403 Forbidden`
 met body `{ "error": "Forbidden: vereiste rol ontbreekt" }`. In beide gevallen vindt er geen
@@ -91,7 +108,7 @@ verwerking plaats.
 | `POST` | `/planner/herplan-bevestig` | **Admin** | Herplanverzoek registreren |
 | `POST` | `/planner/auto-plan` | **Admin** | **Dagplanning optimaliseren** — regels → voorkeurstijden → leeftijdsdefaults |
 | `POST` | `/planner/auto-plan/toepassen` | **Admin** | Berekende planning wegschrijven (alleen testmodus ALLSTARS) |
-| `GET` | `/planner/veldbezetting?datum=` | **Admin** | Wedstrijden op een datum, zonder optimalisatie-berekening |
+| `GET` | `/planner/veldbezetting?datum=` | **Admin/User** | Wedstrijden op een datum, zonder optimalisatie-berekening — voedt de Planning-pagina, sinds #1400 generiek zichtbaar voor elke ingelogde gebruiker |
 | `GET` | `/planner/team-schedule` | **Admin** | Wedstrijdschema per team — gescoped op `X-Club-Code` header |
 | `GET` | `/beheer/teambegeleiding` | **Admin + user** | Alle teams met begeleiding in database (#1330: elke ingelogde rol) |
 | `GET` | `/beheer/teambegeleiding/{team}` | **Admin + user** | Begeleiders van team (naam + rol, nooit e-mail) (#1330: elke ingelogde rol) |
@@ -112,20 +129,20 @@ verwerking plaats.
 | `GET` | `/beheer/clubs` | **Admin** | Lijst van beschikbare clubs (`[{ clubCode, clubName }]`) voor de GUI-selector |
 | `GET` | `/beheer/sportlink-extensie/rollen` | **Admin** | Sportlink Web Extension (#986/#988): per functionele rol tonen of een eigen Sportlink-serviceaccount gekoppeld is, door wie en wanneer |
 | `PUT` | `/beheer/sportlink-extensie/rollen/{rolNaam}` | **Admin** | Koppeling registreren/overschrijven voor een rol (`{ SportlinkAccountNaam }`) — `LaatstGekoppeldDoor` altijd server-bepaald |
-| `PUT` | `/beheer/sportlink-extensie/rollen/{rolNaam}/token` | **Admin** | Refresh-token productie-persistent registreren (`{ RefreshToken }`) — write-only, geen GET-tegenhanger, valideert vóór opslag (#990/#991) |
+| `GET/PUT/DELETE` | `/beheer/sportlink-extensie/rollen/{rolNaam}/autologin` | **Admin**, primaire club | Status zonder secrets; credentials versleuteld instellen/verwijderen. PUT doet geen login. Maximaal 8192 bytes JSON. Zie [automatische login](SPORTLINK-AUTOLOGIN.md). |
 | `GET` | `/beheer/sportlink-extensie/health?live=false` | **Admin** | Statussectie: extension/dry-run-instelling, koppeling + laatste tokenverversing per rol, laatste mutatiefout, laatste contract-check. Zonder `live=true` geen Sportlink-aanroep; `live=true` doet één tokenverversing + één leesaanroep (#998) |
-| `GET` | `/beheer/rolfeatureinstellingen` | **Admin** | Per-club, per-rol feature-instellingen voor de Wedstrijdzaken-rol ophalen (kleedkamers/scheidsrechter/veld) — fail-closed (#1341, epic #1338) |
-| `PUT` | `/beheer/rolfeatureinstellingen` | **Admin** | Eén FeatureKey aan/uit zetten (`{ FeatureKey, Enabled }`) — `admin` is hier nooit instelbaar, die rol heeft altijd alles aan (#1341) |
-| `GET` | `/sportlink/match/{wedstrijdcode}` | **Wedstrijdzaken** | Read-only wedstrijdgegevens uit Sportlink Club: PublicMatchId-cache/reverse-lookup + permissievlaggen (#987/#991); sinds #1339 ook het huidige veld (`fieldId`/`fieldSize`, prefill) en server-berekende `veldOpties`/`subpositieOpties` (voorstellen op onze eigen veldnaam, géén Sportlink-gegeven); sinds #1341 ook de per-rol feature-toestemmingen (`KleedkamersFeatureToegestaan`/`ScheidsrechterFeatureToegestaan`/`VeldFeatureToegestaan`); sinds #1340 (VOORSTEL, DPO-vraag nog niet bevestigd — zie `docs/SPORTLINK-WEB-EXTENSION.md` §8) ook de relatiecode van de huidige scheidsrechter/AR1/AR2 (`ScheidsrechterRelatieCode`/`Ar1RelatieCode`/`Ar2RelatieCode`, uitsluitend het relatiecode-veld, nooit een naam) — genuld als `ScheidsrechterFeatureToegestaan` false is; het exacte Sportlink-JSON-veldnaam voor de relatiecode is NOOIT live geverifieerd |
-| `GET` | `/sportlink/match/{wedstrijdcode}/public-match-id` | **Wedstrijdzaken** | Lichtgewicht variant — alleen `PublicMatchId` (cache/reverse-lookup, geen volledige Match-aanroep), voor de deep-link-knop op Planning en Veld optimalisatie (#989, sinds #1361 op beide pagina's) |
+| `GET` | `/beheer/rolfeatureinstellingen` | **Admin** | Volledige toegangsmatrix ophalen: elke combinatie van rol × functie als `{ RolNaam, FeatureKey, Enabled }` — fail-closed (#1390, opvolger van #1341/epic #1338) |
+| `PUT` | `/beheer/rolfeatureinstellingen` | **Admin** | Eén cel aan/uit zetten (`{ RolNaam, FeatureKey, Enabled }`) — `admin` is hier nooit instelbaar, die rol heeft altijd alles aan; toegestane rollen zijn `user`/`Wedstrijdzaken`/`Sectiehoofd`/`Ledenadministratie` (#1390) |
+| `GET` | `/sportlink/match/{wedstrijdcode}` | **Admin/User** (sinds #1400 — voorheen Wedstrijdzaken) | Read-only wedstrijdgegevens uit Sportlink Club: PublicMatchId-cache/reverse-lookup + permissievlaggen (#987/#991); sinds #1339 ook het huidige veld (`fieldId`/`fieldSize`, prefill) en server-berekende `veldOpties`/`subpositieOpties` (voorstellen op onze eigen veldnaam, géén Sportlink-gegeven); sinds #1341 ook de per-rol feature-toestemmingen (`KleedkamersFeatureToegestaan`/`ScheidsrechterFeatureToegestaan`/`VeldFeatureToegestaan`), sinds #1400 ook `MagWijzigen`; sinds #1340 (VOORSTEL, DPO-vraag nog niet bevestigd — zie `docs/SPORTLINK-WEB-EXTENSION.md` §8) ook de relatiecode van de huidige scheidsrechter/AR1/AR2 (`ScheidsrechterRelatieCode`/`Ar1RelatieCode`/`Ar2RelatieCode`, uitsluitend het relatiecode-veld, nooit een naam) — genuld als `ScheidsrechterFeatureToegestaan` false is; het exacte Sportlink-JSON-veldnaam voor de relatiecode is NOOIT live geverifieerd. **#1400:** viewing is generiek (admin+user); wélke permissievlaggen/relatiecodes terugkomen hangt af van de éigen rol van de aanroeper (`admin`/`Wedstrijdzaken` → echte waarden, gewone `user` → alles `false`/`null`) |
+| `GET` | `/sportlink/match/{wedstrijdcode}/public-match-id` | **Admin/User** (sinds #1400 — voorheen Wedstrijdzaken) | Lichtgewicht variant — alleen `PublicMatchId` (cache/reverse-lookup, geen volledige Match-aanroep), voor de deep-link-knop op Planning en Veld optimalisatie (#989, sinds #1361 op beide pagina's) |
 | `PUT` | `/sportlink/match/{wedstrijdcode}/dressingrooms` | **Wedstrijdzaken** | Kleedkamers toewijzen — eerste echte Sportlink-mutatie, guardrail + audit-log (#992); sinds #1341 ook geweigerd (409) als de per-rol feature-instelling uitstaat |
 | `PUT` | `/sportlink/match/{wedstrijdcode}/field` | **Wedstrijdzaken** | Veld(deel) wijzigen — `IsForceUpdate` server-side altijd `false` (semantiek onbevestigd, #993); sinds #1341 ook geweigerd (409) als de per-rol feature-instelling uitstaat |
-| `PUT` | `/sportlink/match/{wedstrijdcode}/officials` | **Wedstrijdzaken** | Officials (scheidsrechter/AR1/AR2) toewijzen — scaffolding, endpoint/body ONBEVESTIGD en altijd code-gelockt (`forceDryRun`, onafhankelijk van `sportlinkDryRun`); alleen relatiecode/persoons-ID, geen namen (AVG, #994); sinds #1341 ook geweigerd (409) als de per-rol feature-instelling uitstaat |
-| `PUT` | `/sportlink/match/{wedstrijdcode}/change-request` | **Wedstrijdzaken** | Wijzigingsverzoek datum/tijd/accommodatie — **ALLEEN stap 1 (valideren)** van Sportlinks tweestaps flow, `Toelichting` verplicht; ONBEVESTIGD en altijd code-gelockt (`forceDryRun`, onafhankelijk van `sportlinkDryRun`); enige mutatie die een echte tegenstander raakt — stap 2 (bevestigen) is bewust niet gebouwd (#995). Sinds #1320 retourneert de respons ook een diagnostiektrace (HTTP-status, endpoint, audit-ID, de vier toplevel-booleans) i.p.v. kaal Mutatie+Validatie — zie `docs/SPORTLINK-WEB-EXTENSION.md` §6.4 |
+| `PUT` | `/sportlink/match/{wedstrijdcode}/officials` | **Wedstrijdzaken** | Officials (scheidsrechter/AR1/AR2) toewijzen — sinds #1319 live bevestigd (was scaffolding/code-gelockt via `forceDryRun`, onafhankelijk van `sportlinkDryRun`); alleen relatiecode/persoons-ID, geen namen (AVG, #994); sinds #1341 ook geweigerd (409) als de per-rol feature-instelling uitstaat |
+| `PUT` | `/sportlink/match/{wedstrijdcode}/change-request` | **Wedstrijdzaken** | Wijzigingsverzoek datum/tijd/accommodatie — **ALLEEN stap 1 (valideren)** van Sportlinks tweestaps flow, `Toelichting` verplicht; sinds #1319 live bevestigd (was code-gelockt); enige mutatie die een echte tegenstander raakt — stap 2 (bevestigen) is bewust niet gebouwd (#995). Sinds #1320 retourneert de respons ook een diagnostiektrace (HTTP-status, endpoint, audit-ID, de vier toplevel-booleans) i.p.v. kaal Mutatie+Validatie — zie `docs/SPORTLINK-WEB-EXTENSION.md` §6.4 |
 | `PUT` | `/sportlink/audit/{id}/notitie` | **Wedstrijdzaken** | Testnotitie koppelen aan een bestaande Sportlink-mutatieauditpoging (#1320) — voor de eigenaar-gestuurde productieproef; scoped op `ClubCode`, 404 bij verkeerde club of onbekend ID; lege string toegestaan om te wissen (max. 1000 tekens) |
 | `GET` | `/sportlink/change-requests` | **Wedstrijdzaken** | Inkomende wijzigingsverzoeken van tegenstanders ophalen (#996), sinds #1111 verrijkt met eigen wedstrijdcontext (`Wedstrijd`: nummer, teams, datum, tijd, accommodatie uit `his.matches` via de PublicMatchId-cache; `null` als niet gecachet) en met openstaande (`CONFIRM`) verzoeken vooraan |
 | `PUT` | `/sportlink/change-requests/{publicRequestId}/action` | **Wedstrijdzaken** | Wijzigingsverzoek goedkeuren (`Actie=APPROVE`) of afwijzen (`Actie=DENY`, `Remarks` verplicht) (#996) |
-| `POST` | `/sportlink/club-match` | **Wedstrijdzaken** | Oefenwedstrijd ("clubwedstrijd") aanmaken — scaffolding, endpoint/body ONBEVESTIGD en altijd code-gelockt (`forceDryRun`, onafhankelijk van `sportlinkDryRun`); geen `SportlinkMutationGuard` (er is vooraf geen bestaande wedstrijd), alleen eigen toggle/EgressGuard-check. Body sinds #1116: `MatchDateTime`, `Duration`, `TeamNaam` (actief clubteam uit eigen database), `Tegenstander` (vrije tekst), `VeldNummer`, `Description` — de server leidt `PublicHomeTeamId` (`his.teams.teamcode` via de gevalideerde teamaliassen), `AgeClassCode` (leeftijdscategorie van het team) en `FacilityId` (club-instelling `accommodatie`, opgezocht in de Sportlink-locatielijst) zelf af en meldt wat niet lukte als `Waarschuwingen`. Verwijderen/uitslag bewust niet gebouwd (#997) |
+| `POST` | `/sportlink/club-match` | **Wedstrijdzaken** | Oefenwedstrijd ("clubwedstrijd") aanmaken — code-lock sinds #1319 opgeheven (respecteert nu `sportlinkDryRun` i.p.v. altijd te simuleren); requestbody/picklist-velden blijven grotendeels ONBEVESTIGD, zie `docs/SPORTLINK-WEB-EXTENSION.md` §5; geen `SportlinkMutationGuard` (er is vooraf geen bestaande wedstrijd), alleen eigen toggle/EgressGuard-check. Body sinds #1116: `MatchDateTime`, `Duration`, `TeamNaam` (actief clubteam uit eigen database, of sinds #1396 vrije tekst via de GUI-optie "Vrije tekst invoeren…"), `Tegenstander` (vrije tekst), `VeldNummer`, `Description` — de server leidt `PublicHomeTeamId` (`his.teams.teamcode` via de gevalideerde teamaliassen), `AgeClassCode` (leeftijdscategorie van het team) en `FacilityId` (club-instelling `accommodatie`, opgezocht in de Sportlink-locatielijst) zelf af en meldt wat niet lukte als `Waarschuwingen`. Verwijderen/uitslag bewust niet gebouwd (#997) |
 | `GET` | `/sportlink/club-match/picklists` | **Wedstrijdzaken** | De twee Sportlink-picklists (Teams + Location) — read-only, persoonsgegevensvrij. Sinds #1116 niet meer door het formulier gebruikt; diagnostisch endpoint voor de mens die de ClubMatch-body live bevestigt (welke ID-vorm hanteert Sportlink Club?) (#997) |
 | `GET/POST` | `/beheer/velden` | **Admin** | Velden beheren: naam, type (vrije tekst), kunstlicht, actief — per club vrij instelbaar (#679). Lijst ophalen / toevoegen |
 | `PUT` | `/beheer/velden/{veldNummer}` | **Admin** | Veld wijzigen. **Er is geen DELETE** — een veld wordt op inactief gezet in plaats van verwijderd |
@@ -825,6 +842,10 @@ Geeft de wedstrijden terug die op een datum al gepland staan, rechtstreeks uit d
 gesynchroniseerde Sportlink-data — **zonder** de scheduling-optimalisatie te draaien die
 `/planner/auto-plan` uitvoert. Bedoeld als snelle, goedkope
 "wat staat er nu al gepland"-weergave (zie de pagina Planning in de Admin GUI, sinds #1361).
+
+**Autorisatie (#1400):** `Admin/User` (`AdminEndpoint.ExecuteAuthenticatedAsync`) — dit is het enige
+endpoint in dit bestand dat niet uitsluitend admin vereist, want de Planning-pagina moet voor elke
+ingelogde gebruiker zichtbaar zijn.
 
 ### Query-parameters
 

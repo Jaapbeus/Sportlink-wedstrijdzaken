@@ -17,7 +17,8 @@
             <div class="d-flex justify-content-center align-items-center gap-2">
                 @if (_clubs.Count > 1)
                 {
-                    <select class="form-select form-select-sm club-selector @(IsTestmodus ? "club-selector-testmodus" : "")"
+                    <select @key="@($"{_clubs.Count}|{ClubSelector.SelectedClubCode}")"
+                            class="form-select form-select-sm club-selector @(IsTestmodus ? "club-selector-testmodus" : "")"
                             style="min-width:200px" @onchange="OnClubChanged" value="@ClubSelector.SelectedClubCode">
                         @foreach (var club in _clubs)
                         {

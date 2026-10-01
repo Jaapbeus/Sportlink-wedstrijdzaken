@@ -66,36 +66,9 @@ if (!string.IsNullOrWhiteSpace(openAiApiKey) && EgressGuard.ExternalIntegrations
 // Sportlink Club API client (#991, #998): read-only Match API + token-refresh per functionele rol.
 // EgressGuard (#857): eigen if-blok, losgekoppeld van de OpenAiApiKey-check hierboven — dit is een
 // onafhankelijke uitgaande integratie en hoort niet toevallig aan AI-configuratie vast te zitten.
-// Tokenopslag: PostgresSportlinkClubTokenStore (eigen DB-tabel) i.p.v. SportlinkClubAppSettingsTokenStore
-// (Function App-instelling via de Azure Management API, #998) — besloten voor de Postgres-tier
-// (enige live tier) omdat dat geen nieuwe Azure-resource of Managed Identity vereist. Zie
-// docs/SPORTLINK-WEB-EXTENSION.md §4.3.
-if (EgressGuard.ExternalIntegrationsAllowed())
-{
-    builder.Services.AddSingleton<ISportlinkClubTokenStore>(sp =>
-        new PostgresSportlinkClubTokenStore(
-            PostgresDatabaseConfig.ConnectionString,
-            sp.GetRequiredService<ILoggerFactory>().CreateLogger<PostgresSportlinkClubTokenStore>()));
-    // #998: .AddTypedClient overschrijft bewust de standaard-constructiewijze van AddHttpClient<T,I>
-    // (die zelf géén onbekende ctor-parameters zoals Func<bool> kan invullen) zodat de dry-run-
-    // delegate hier expliciet meegegeven kan worden — PostgresAppSettings.GetSetting wordt bij ELKE
-    // mutatie-aanroep opnieuw gelezen (niet één keer bij opstarten), zodat de Instellingen-toggle
-    // direct effect heeft zonder herstart.
-    builder.Services.AddHttpClient<ISportlinkClubClient, SportlinkClubClient>(client =>
-    {
-        client.Timeout = TimeSpan.FromSeconds(15);
-    })
-    .AddTypedClient<ISportlinkClubClient>((httpClient, sp) => new SportlinkClubClient(
-        httpClient,
-        sp.GetRequiredService<ISportlinkClubTokenStore>(),
-        sp.GetRequiredService<ILoggerFactory>().CreateLogger<SportlinkClubClient>(),
-        // #1122 (CISO): fail-safe. Alles behalve een expliciet geladen "0" is dry-run — dezelfde
-        // polariteit als SportlinkExtensieHealthFunction. Met "== \"1\"" was een nog niet geladen
-        // instellingencache (null) fail-OPEN: het statuspaneel toonde "dry-run aan" terwijl een
-        // bevestigde mutatie écht naar Sportlink zou gaan. Sinds #1266 staat die regel in
-        // SportlinkEndpointCore, zodat beide tiers dezelfde polariteit hebben.
-        isDryRun: () => SportlinkEndpointCore.IsDryRunActief(PostgresAppSettings.GetSetting)));
-}
+// Authentication and the encrypted persistent token store are registered per database tier.
+// Credentials and the key setup are documented in docs/SPORTLINK-AUTOLOGIN.md.
+PostgresSportlinkAuthenticationRegistration.Register(builder.Services);
 
 // Audit-logging voor Sportlink-mutaties (#991, #998) — Postgres tier
 builder.Services.AddSingleton<ISportlinkMutationAuditService, PostgresSportlinkMutationAuditService>();

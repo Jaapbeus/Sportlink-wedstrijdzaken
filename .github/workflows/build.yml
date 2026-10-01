@@ -244,23 +244,22 @@ jobs:
       - name: Planner.Shared bouwen en testen (net9.0)
         run: dotnet test Planner.Shared.Tests/Planner.Shared.Tests.csproj --configuration Release --verbosity minimal
 
+      # #1411: de gedeelde beheer-endpoints (ook secretinvoer) moeten in CI worden getest.
+      - name: Planner.Endpoints bouwen en testen (net9.0)
+        run: dotnet test Planner.Endpoints.Tests/Planner.Endpoints.Tests.csproj --configuration Release --verbosity minimal
+
       # #821: migratie-runner-CLI voor de Postgres-tier. Build-only hier (geen live database) —
       # MigrationRunnerIntegrationTests hierboven dekt het gedrag [Fact(Skip=...)], zie #822/#823.
       - name: Database.Postgres.Cli bouwen (net9.0)
         run: dotnet build Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release
 
-      # #1302: drie mappen hadden geen testproject. De CLI-argumentafhandeling bepaalt wat
-      # deploy.yml doet (migreren, his-tabellen aanmaken of demodata seeden), de kopieerder
-      # vertaalt foreign keys bij de cutover, en de tokencapture schrijft een secret in
-      # local.settings.json. Alle drie falen stil als ze fout gaan.
+      # #1302: de CLI-argumentafhandeling bepaalt wat deploy.yml doet (migreren, his-tabellen
+      # aanmaken of demodata seeden); de kopieerder vertaalt foreign keys bij de cutover.
       - name: Database.Postgres.Cli.Tests draaien (argumentafhandeling)
         run: dotnet test Database.Postgres.Cli.Tests/Database.Postgres.Cli.Tests.csproj --configuration Release --verbosity minimal
 
       - name: MigrationTools.Tests draaien (id-vertaling bij de cutover)
         run: dotnet test MigrationTools.Tests/MigrationTools.Tests.csproj --configuration Release --verbosity minimal
-
-      - name: Tools.SportlinkTokenCapture.Tests draaien (schrijven naar local.settings.json)
-        run: dotnet test Tools.SportlinkTokenCapture.Tests/Tools.SportlinkTokenCapture.Tests.csproj --configuration Release --verbosity minimal
 
       # De unittests werden tot nu toe NIET in CI gedraaid: deze workflow bouwde alleen de twee
       # applicatieprojecten. Daardoor kon een regressie die lokaal wel rood was, ongemerkt gemerged
@@ -740,7 +739,8 @@ jobs:
           missing=$(psql_ci -c "
             SELECT string_agg(verwacht, ' ') FROM (VALUES
               ('public.appsettings'), ('public.velden'), ('public.speeltijden'),
-              ('planner.geplandewedstrijden'), ('public.schema_migrations')
+              ('planner.geplandewedstrijden'), ('public.schema_migrations'),
+              ('public.sportlinkautologin')
             ) AS v(verwacht)
             WHERE to_regclass(v.verwacht) IS NULL;
           ")
@@ -749,6 +749,13 @@ jobs:
             exit 1
           fi
           echo "Alle verwachte objecten aanwezig."
+
+          legacy_token_table=$(psql_ci -c "SELECT to_regclass('public.sportlinkservicetokens') IS NOT NULL;")
+          if [ "$legacy_token_table" = "t" ]; then
+            echo "::error::De retired Sportlink-tokenopslag bestaat nog na migraties."
+            exit 1
+          fi
+          echo "Legacy Sportlink-tokenopslag is verwijderd."
 
           # ClubCode-dekking: elke configuratietabel die in de SQL Server-tier een ClubCode-kolom
           # heeft, moet die ook hier hebben (lowercase, conform de identifier-casing-conventie).

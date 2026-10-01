@@ -9,17 +9,22 @@ info:
     Eén beveiligingsschema:
 
     - **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist
-      voor alle endpoints behalve `/health`. De rolcontrole gebeurt server-side:
+      voor alle endpoints behalve `/health`. De rolcontrole gebeurt server-side, met vier niveaus:
       `admin` (`EasyAuthHelper.RequireAdmin`, via de wrappers `AdminEndpoint.ExecuteAsync` /
-      `ExecuteZonderDatabaseAsync`) voor `/beheer/`, `/planner/`, `/feedback/` en `/test/` — sinds
-      #1350 óók voor `/postgres/sync-matches` en `/sync-matches`; `Wedstrijdzaken`
-      (`EasyAuthHelper.RequireWedstrijdzaken`, via `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`)
-      voor `/sportlink/` (op de SQL Server-tier bovendien ook `admin`). Lokaal omzeild wanneer de
-      omgevingsvariabele `WEBSITE_SITE_NAME` afwezig is.
+      `ExecuteZonderDatabaseAsync`) voor de meeste `/beheer/`-, `/planner/`-, `/feedback/`- en
+      `/test/`-endpoints — sinds #1350 óók voor `/postgres/sync-matches` en `/sync-matches`;
+      `admin` óf `user` (`AdminEndpoint.ExecuteAuthenticatedAsync`, #1330) voor `/planner/veldbezetting`
+      (#1400), de twee Sportlink-viewing-endpoints (`GET /sportlink/match/{wedstrijdcode}` en
+      `.../public-match-id`, #1400) en de drie Teambegeleiding-lookup/doorstuur-endpoints; op
+      **beide** tiers identiek `Wedstrijdzaken` óf `admin` (`EasyAuthHelper.RequireWedstrijdzaken`,
+      beide poorten sinds #1400) voor de Sportlink-mutatie-endpoints (`PUT`/`POST` onder
+      `/sportlink/`), via `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`. Netto: een gewone
+      `user` (zonder `Wedstrijdzaken`, zonder `admin`) kan Planning en het Sportlink-paneel bekijken
+      maar geen Sportlink-mutatie triggeren; dat laatste vereist `Wedstrijdzaken` óf `admin`. Lokaal
+      omzeild wanneer de omgevingsvariabele `WEBSITE_SITE_NAME` afwezig is.
 
     Zonder token volgt `401`. Met een geldig token maar zonder de vereiste rol volgt `403` met
-    `{ "error": "Forbidden: vereiste rol ontbreekt" }`. De rol `user` geeft nergens toegang:
-    `EasyAuthHelper.RequireAuthenticated` is bij #1350 verwijderd.
+    `{ "error": "Forbidden: vereiste rol ontbreekt" }`.
 
     ## Tiers
 
@@ -28,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.6.3.0
+  version: 3.8.0.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -55,8 +60,10 @@ tags:
     description: Feedback widget (vereist Entra ID authenticatie met admin-rol)
   - name: sportlink
     description: |
-      Sportlink Web Extension (#986/#991) — lees- én mutatie-endpoints. Vereist de Entra-approl
-      Wedstrijdzaken; op de SQL Server-tier daarnaast ook de rol admin.
+      Sportlink Web Extension (#986/#991) — lees- én mutatie-endpoints. Sinds #1400: de twee
+      viewing-endpoints (`GET /sportlink/match/{wedstrijdcode}` en `.../public-match-id`) vereisen
+      alleen `admin` óf `user`; de mutatie-endpoints (`PUT`/`POST`) vereisen op beide tiers identiek
+      `Wedstrijdzaken` óf `admin` — zie de beveiligingsparagraaf hierboven.
       Verschillende mutaties zijn in de code op dry-run vastgezet — zie docs/SPORTLINK-WEB-EXTENSION.md.
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -72,10 +79,11 @@ components:
         Azure Easy Auth Bearer token (Entra ID). Geldt voor alle endpoints behalve `/health`,
         inclusief `/postgres/sync-matches` en `/sync-matches` (sinds #1350 — tot dan een Function
         key/Master key via `?code=`). De Function App valideert dit token via Easy Auth en
-        injecteert `X-MS-CLIENT-PRINCIPAL`. EasyAuthHelper controleert daarna de rol: `admin` op
-        alle /beheer/-, /planner/-, /feedback/- en /test/-endpoints (en de twee syncroutes),
-        `Wedstrijdzaken` op alle /sportlink/-endpoints. Lokaal altijd toegestaan als
-        WEBSITE_SITE_NAME afwezig is.
+        injecteert `X-MS-CLIENT-PRINCIPAL`. EasyAuthHelper controleert daarna de rol: `admin` op de
+        meeste /beheer/-, /planner/-, /feedback/- en /test/-endpoints (en de twee syncroutes);
+        `admin` of `user` op /planner/veldbezetting en de twee Sportlink-viewing-endpoints (#1400);
+        `Wedstrijdzaken` of `admin` op de Sportlink-mutatie-endpoints (beide poorten sinds #1400).
+        Lokaal altijd toegestaan als WEBSITE_SITE_NAME afwezig is.
 
   # ───────────────────────────────────────────────────────────────────────────
   # Herbruikbare headers
@@ -126,6 +134,25 @@ components:
   # Schema's
   # ───────────────────────────────────────────────────────────────────────────
   schemas:
+    SportlinkAutoLoginStatus:
+      type: object
+      properties:
+        configured:
+          type: boolean
+        enabled:
+          type: boolean
+        lastLoginUtc:
+          type: string
+          format: date-time
+          nullable: true
+        retryAfterUtc:
+          type: string
+          format: date-time
+          nullable: true
+        lastError:
+          type: string
+          nullable: true
+          description: Generieke foutcategorie zonder providerrespons of secrets
 
     # ── Generiek ──────────────────────────────────────────────────────────────
 
@@ -826,12 +853,35 @@ components:
     RolFeatureInstellingResponse:
       type: object
       description: |
-        Eén FeatureKey met zijn huidige aan/uit-stand voor de `Wedstrijdzaken`-rol bij deze club
-        (#1341, epic #1338). `admin` komt hier nooit in voor — die rol heeft altijd alles aan.
+        Eén cel van de toegangsmatrix: een rol × functie-combinatie met zijn huidige aan/uit-stand
+        bij deze club (#1390, opvolger van #1341/epic #1338). `admin` komt hier nooit in voor —
+        die rol heeft altijd alles aan.
       properties:
+        RolNaam:
+          type: string
+          enum: [user, Wedstrijdzaken, Sectiehoofd, Ledenadministratie]
         FeatureKey:
           type: string
-          enum: [sportlink.kleedkamers, sportlink.scheidsrechter, sportlink.veld]
+          enum:
+            - sportlink.kleedkamers
+            - sportlink.scheidsrechter
+            - sportlink.veld
+            - menu.dashboard
+            - menu.teambegeleiding
+            - menu.planning
+            - menu.veldoptimalisatie
+            - menu.leermomenten
+            - menu.teamaliassen
+            - menu.emailtester
+            - menu.wijzigingsverzoeken
+            - menu.wedstrijdaanmaken
+            - menu.instellingen.speeltijden
+            - menu.instellingen.velden
+            - menu.instellingen.begeleidingimport
+            - menu.instellingen.voorkeurstijden
+            - menu.instellingen.emailtemplates
+            - menu.instellingen.thema
+            - menu.instellingen.sportlinkextensie
         Enabled:
           type: boolean
 
@@ -954,6 +1004,14 @@ components:
         veldFeatureToegestaan:
           type: boolean
           description: "#1341: combineer met isEditFieldAllowed hierboven."
+        magWijzigen:
+          type: boolean
+          description: |
+            #1400: true zodra de aanroeper admin óf Wedstrijdzaken is — onafhankelijk van de drie
+            per-club FeatureKey-toggles hierboven, want het wijzigingsverzoek datum/tijd/
+            accommodatie heeft er bewust geen. Gate't het wijzigingsverzoek-blok in
+            SportlinkMatchPanel; een gewone user (viewing is sinds #1400 generiek open) krijgt
+            hier false.
         scheidsrechterRelatieCode:
           type: string
           nullable: true
@@ -3295,17 +3353,18 @@ paths:
     get:
       tags: [beheer]
       operationId: getRolFeatureInstellingen
-      summary: Per-club, per-rol feature-instellingen ophalen (#1341, epic #1338)
+      summary: Volledige toegangsmatrix per rol ophalen (#1390, opvolger van #1341/epic #1338)
       description: |
-        Toont voor de `Wedstrijdzaken`-rol bij deze club of kleedkamers toewijzen,
-        scheidsrechters toewijzen en veld wijzigen zijn ingeschakeld. `admin` heeft dit altijd
-        aan en komt hier niet in voor — alleen de instelbare rol. Fail-closed: een niet-
-        teruggegeven FeatureKey betekent uitgeschakeld.
+        Toont voor elke instelbare rol (`user`, `Wedstrijdzaken`, `Sectiehoofd`,
+        `Ledenadministratie`) bij deze club de huidige stand van elke functie: de drie
+        Sportlink-mutatieacties (kleedkamers/scheidsrechter/veld) én de menu-zichtbaarheid van elk
+        Admin GUI-scherm. `admin` heeft dit altijd aan en komt hier niet in voor — alleen de vier
+        instelbare rollen. Fail-closed: een niet-teruggegeven combinatie betekent uitgeschakeld.
       security:
         - easyAuth: []
       responses:
         '200':
-          description: Lijst van FeatureKeys met hun huidige stand
+          description: Volledige matrix — elke rol × functie-combinatie met huidige stand
           headers:
             x-correlation-id:
               $ref: '#/components/headers/CorrelationId'
@@ -3324,12 +3383,14 @@ paths:
     put:
       tags: [beheer]
       operationId: zetRolFeatureInstelling
-      summary: Eén per-rol feature-instelling wijzigen (#1341, epic #1338)
+      summary: Eén cel van de toegangsmatrix wijzigen (#1390, opvolger van #1341/epic #1338)
       description: |
-        Zet een van de drie instelbare FeatureKeys (`sportlink.kleedkamers`,
-        `sportlink.scheidsrechter`, `sportlink.veld`) aan/uit voor de `Wedstrijdzaken`-rol bij
-        deze club. Server-side de leidende controle: `SportlinkMatchFunction` wijst een
-        uitgeschakelde actie ook af als de UI-toggle omzeild wordt.
+        Zet één rol × functie-combinatie aan/uit bij deze club. Voor de drie Sportlink-
+        mutatieacties (`sportlink.kleedkamers`, `sportlink.scheidsrechter`, `sportlink.veld`) is
+        dit de server-side leidende controle: `SportlinkMatchFunction` wijst een uitgeschakelde
+        actie ook af als de UI-toggle omzeild wordt. Voor de overige (`menu.*`) FeatureKeys legt
+        dit endpoint vandaag uitsluitend configuratie vast — er is nog geen server-side handhaving
+        van menu-zichtbaarheid (zie `docs/SPORTLINK-WEB-EXTENSION.md` §3.5).
       security:
         - easyAuth: []
       requestBody:
@@ -3338,11 +3399,33 @@ paths:
           application/json:
             schema:
               type: object
-              required: [FeatureKey, Enabled]
+              required: [RolNaam, FeatureKey, Enabled]
               properties:
+                RolNaam:
+                  type: string
+                  enum: [user, Wedstrijdzaken, Sectiehoofd, Ledenadministratie]
                 FeatureKey:
                   type: string
-                  enum: [sportlink.kleedkamers, sportlink.scheidsrechter, sportlink.veld]
+                  enum:
+                    - sportlink.kleedkamers
+                    - sportlink.scheidsrechter
+                    - sportlink.veld
+                    - menu.dashboard
+                    - menu.teambegeleiding
+                    - menu.planning
+                    - menu.veldoptimalisatie
+                    - menu.leermomenten
+                    - menu.teamaliassen
+                    - menu.emailtester
+                    - menu.wijzigingsverzoeken
+                    - menu.wedstrijdaanmaken
+                    - menu.instellingen.speeltijden
+                    - menu.instellingen.velden
+                    - menu.instellingen.begeleidingimport
+                    - menu.instellingen.voorkeurstijden
+                    - menu.instellingen.emailtemplates
+                    - menu.instellingen.thema
+                    - menu.instellingen.sportlinkextensie
                 Enabled:
                   type: boolean
       responses:
@@ -3441,55 +3524,118 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /beheer/sportlink-extensie/rollen/{rolNaam}/token:
-    put:
+  /beheer/sportlink-extensie/rollen/{rolNaam}/autologin:
+    parameters:
+      - name: rolNaam
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [Wedstrijdzaken]
+    get:
       tags: [beheer]
-      operationId: registreerSportlinkExtensieToken
-      summary: Refresh-token productie-persistent registreren (write-only)
-      description: |
-        Bootstrap van het échte Sportlink refresh_token voor een rol (#990/#991, epic #986).
-        Valideert het token met één refresh-poging vóór opslag in `public.sportlinkservicetokens`.
-        Er bestaat bewust géén GET-tegenhanger — het token wordt nooit teruggegeven.
+      operationId: getSportlinkAutoLogin
+      summary: Status van automatische login zonder secrets
+      description: Alleen admin en primaire club. Vereist ingerichte hostsleutel. Geen externe login tijdens deze aanvraag.
       security:
         - easyAuth: []
-      parameters:
-        - name: rolNaam
-          in: path
-          required: true
-          schema:
-            type: string
-            enum: [Wedstrijdzaken]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [RefreshToken]
-              properties:
-                RefreshToken:
-                  type: string
-                  description: Ruwe refresh_token-waarde, bv. gevangen via Tools/SportlinkTokenCapture.
       responses:
         '200':
-          description: Token gevalideerd en opgeslagen
+          description: Status zonder credentials, Cache-Control no-store
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  RolNaam:
-                    type: string
+                $ref: '#/components/schemas/SportlinkAutoLoginStatus'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-        '409':
-          description: Sportlink heeft het opgegeven refresh-token geweigerd
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+        '503':
+          description: Beveiligde hostsleutel of opslag niet beschikbaar
+    put:
+      tags: [beheer]
+      operationId: setSportlinkAutoLogin
+      summary: Versleutelde logincredentials instellen
+      description: Alleen admin en primaire club. Vereist ingerichte hostsleutel. Geen externe login tijdens deze aanvraag.
+      security:
+        - easyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password, totpSecret]
+              properties:
+                username:
+                  type: string
+                  maxLength: 320
+                  writeOnly: true
+                password:
+                  type: string
+                  format: password
+                  maxLength: 1024
+                  writeOnly: true
+                totpSecret:
+                  type: string
+                  format: password
+                  maxLength: 256
+                  writeOnly: true
+                totpAlgorithm:
+                  type: string
+                  enum: [SHA1, SHA256, SHA512]
+                  default: SHA1
+                totpDigits:
+                  type: integer
+                  enum: [6, 8]
+                  default: 6
+                totpPeriodSeconds:
+                  type: integer
+                  enum: [30, 60]
+                  default: 30
+      responses:
+        '200':
+          description: Status zonder credentials, Cache-Control no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SportlinkAutoLoginStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          description: Beveiligde hostsleutel of opslag niet beschikbaar
+        '413':
+          description: Meer dan 8192 bytes JSON
+        '415':
+          description: Content-Type application/json vereist
+    delete:
+      tags: [beheer]
+      operationId: deleteSportlinkAutoLogin
+      summary: Credentials en opgeslagen afgeleid token verwijderen
+      description: Alleen admin en primaire club. Vereist ingerichte hostsleutel. Geen externe login tijdens deze aanvraag.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Status zonder credentials, Cache-Control no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SportlinkAutoLoginStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          description: Beveiligde hostsleutel of opslag niet beschikbaar
 
   /beheer/sportlink-extensie/health:
     get:
@@ -3542,8 +3688,11 @@ paths:
         Zoekt het `PublicMatchId` van deze wedstrijd op (gecached, zie
         `public.sportlinkpublicmatchidcache`; reverse-lookup bij Sportlink zelf bij een cache-miss
         — #987) en haalt daarmee het wedstrijdobject op bij Sportlink Club. Uitsluitend lezen —
-        geen enkele mutatie. Vereist de Entra-approl `Wedstrijdzaken` (naast of in plaats van
-        admin, zie #988 Besluit 1) en dat `SportlinkExtensionEnabled` aan staat. Bevat sinds #1340
+        geen enkele mutatie. Vereist sinds #1400 alleen `admin` óf `user` (voorheen uitsluitend
+        `Wedstrijdzaken`/`admin`, zie #988 Besluit 1) en dat `SportlinkExtensionEnabled` aan staat.
+        Welke permissievlaggen en relatiecodes in de respons daadwerkelijk gevuld zijn hangt af van
+        de éigen rol van de aanroeper (`admin`/`Wedstrijdzaken` → echte waarden, gewone `user` →
+        alles `false`/`null`, zie `SportlinkRolFeatureToestemmingen.MagWijzigen`). Bevat sinds #1340
         (VOORSTEL, DPO-vraag nog niet bevestigd — zie docs/SPORTLINK-WEB-EXTENSION.md §8) ook de
         relatiecode van scheidsrechter/AR1/AR2 als PRECIES ÉÉN uitzondering op "verder
         niet-persoonsgebonden" — nooit een naam of ander persoonsgegeven.
@@ -3592,6 +3741,7 @@ paths:
         Sportlink zelf bij een cache-miss — #987/#1016) zonder de volledige `Match`-aanroep bij
         Sportlink te doen. Gebruikt door de "Open in Sportlink"-knop in Dagplanning om
         `https://club.sportlink.com/competition-affairs/match-details/{PublicMatchId}` te openen.
+        Vereist sinds #1400 alleen `admin` óf `user` (voorheen uitsluitend `Wedstrijdzaken`/`admin`).
       security:
         - easyAuth: []
       parameters:
@@ -3682,6 +3832,8 @@ paths:
           $ref: '#/components/responses/InternalServerError'
         '502':
           description: Sportlink gaf geen bruikbare respons
+        '504':
+          description: Sportlink reageerde niet op tijd. De mutatie is bewust NIET automatisch herhaald — de uitkomst bij Sportlink is onbekend; controleer eerst in Sportlink of de actie al is doorgevoerd (#1387, #1417)
         '503':
           description: Uitgaande integraties staan hier niet toe (EgressGuard)
 
@@ -3736,6 +3888,8 @@ paths:
           $ref: '#/components/responses/InternalServerError'
         '502':
           description: Sportlink gaf geen bruikbare respons
+        '504':
+          description: Sportlink reageerde niet op tijd. De mutatie is bewust NIET automatisch herhaald — de uitkomst bij Sportlink is onbekend; controleer eerst in Sportlink of de actie al is doorgevoerd (#1387, #1417)
         '503':
           description: Uitgaande integraties staan hier niet toe (EgressGuard)
 
@@ -3743,14 +3897,13 @@ paths:
     put:
       tags: [sportlink]
       operationId: putSportlinkOfficials
-      summary: Officials (scheidsrechter/assistenten) toewijzen (#994, epic #986) — scaffolding, altijd code-gelockt
+      summary: Officials (scheidsrechter/assistenten) toewijzen (#994, epic #986) — sinds #1319 live bevestigd
       description: |
-        **ONBEVESTIGD, altijd gesimuleerd:** endpoint (`PUT
-        competition/match/official/MatchOfficialsAction`) en requestbody zijn gereverse-engineerd
-        uit Sportlinks eigen frontend-code, nooit met een netwerktrace gezien. Deze aanroep loopt
-        daarom altijd via een code-niveau `forceDryRun`-lock — ONAFHANKELIJK van de club-instelling
-        `sportlinkDryRun` — totdat een mens (nooit een agent) een live trace heeft gedaan en de
-        lock-constante in een aparte, reviewbare PR omzet. Zelfde volgorde als `.../dressingrooms`
+        **Sinds #1319 live bevestigd** (was scaffolding, altijd code-gelockt via een aparte
+        `forceDryRun`-lock, onafhankelijk van de club-instelling `sportlinkDryRun`): endpoint (`PUT
+        competition/match/official/MatchOfficialsAction`) en requestbody zijn met een echte
+        netwerktrace bevestigd te werken. De mutatie respecteert nu de gewone `sportlinkDryRun`-
+        instelling, net als `.../dressingrooms` en `.../field`. Zelfde volgorde als `.../dressingrooms`
         (resolve → guard `SportlinkMutationSoort.Officials` → audit → mutatie), met een
         taakspecifieke responsparser: als één official een `ValidationDescription` heeft, wordt
         `IsSuccess=false` gezet ook al is de HTTP-status 200 ("opgeslagen met fouten" in Sportlink
@@ -3784,7 +3937,7 @@ paths:
                         description: Relatiecode/persoons-identifier zoals ingevoerd door de beheerder — geen naam.
       responses:
         '200':
-          description: Mutatieresultaat (IsSuccess kan alsnog false zijn, ook bij een code-gelockte simulatie is dit altijd true)
+          description: Mutatieresultaat (IsSuccess kan false zijn — bijv. als Sportlink een official afwijst)
           content:
             application/json:
               schema:
@@ -3805,6 +3958,8 @@ paths:
           $ref: '#/components/responses/InternalServerError'
         '502':
           description: Sportlink gaf geen bruikbare respons
+        '504':
+          description: Sportlink reageerde niet op tijd. De mutatie is bewust NIET automatisch herhaald — de uitkomst bij Sportlink is onbekend; controleer eerst in Sportlink of de actie al is doorgevoerd (#1387, #1417)
         '503':
           description: Uitgaande integraties staan hier niet toe (EgressGuard)
 
@@ -3812,19 +3967,19 @@ paths:
     put:
       tags: [sportlink]
       operationId: putSportlinkMatchChangeRequest
-      summary: Wijzigingsverzoek datum/tijd/accommodatie (#995, epic #986) — ALLEEN stap 1 (valideren), altijd code-gelockt
+      summary: Wijzigingsverzoek datum/tijd/accommodatie (#995, epic #986) — ALLEEN stap 1 (valideren), sinds #1319 live bevestigd
       description: |
-        **ONBEVESTIGD, altijd gesimuleerd, en de enige mutatie die een ECHTE tegenstander raakt:**
+        **Sinds #1319 live bevestigd, en de enige mutatie die een ECHTE tegenstander raakt:**
         Sportlink werkt voor datum/tijd/accommodatie in twee stappen (valideren → bevestigen) — de
         bevestigingsstap stuurt een goedkeuringsverzoek naar de tegenstander. Dit endpoint bouwt
         UITSLUITEND stap 1: er bestaat bewust geen endpoint, client-methode of UI-knop voor stap 2.
         Zelfde onderliggende Sportlink-endpoint als `.../field`
         (`PUT competition/match/UpdateMatchDetails`), maar met `MatchDate`/`StartTime`/`FacilityId`/
-        `MatchChangeRequestRemarks` overschreven in plaats van het veld. Loopt altijd via een
-        code-niveau `forceDryRun`-lock — ONAFHANKELIJK van de club-instelling `sportlinkDryRun` —
-        totdat een mens (nooit een agent) een live trace heeft gedaan: zelfs stap 1 kan in
-        werkelijkheid al het gevaarlijke moment zijn als Sportlinks eerste PUT geen "dry validate"
-        blijkt te zijn. Guard: `SportlinkMutationSoort.DatumTijdAccommodatie` (uitsluitend
+        `MatchChangeRequestRemarks` overschreven in plaats van het veld. Was tot #1319 altijd
+        gesimuleerd via een aparte code-niveau `forceDryRun`-lock, onafhankelijk van de
+        club-instelling `sportlinkDryRun` — de eigenaar heeft die lock na een live netwerktrace
+        opgeheven; de mutatie respecteert nu de gewone `sportlinkDryRun`-instelling. Guard:
+        `SportlinkMutationSoort.DatumTijdAccommodatie` (uitsluitend
         `IsHomeMatch` + de generieke niet-afgelast/niet-concept-checks — geen specifieke
         `IsXxxAllowed`-vlag bestaat hiervoor bij Sportlink). `Toelichting` is verplicht.
       security:
@@ -3881,6 +4036,8 @@ paths:
           $ref: '#/components/responses/InternalServerError'
         '502':
           description: Sportlink gaf geen bruikbare respons
+        '504':
+          description: Sportlink reageerde niet op tijd. De mutatie is bewust NIET automatisch herhaald — de uitkomst bij Sportlink is onbekend; controleer eerst in Sportlink of de actie al is doorgevoerd (#1387, #1417)
         '503':
           description: Uitgaande integraties staan hier niet toe (EgressGuard)
 
@@ -4016,6 +4173,8 @@ paths:
           $ref: '#/components/responses/InternalServerError'
         '502':
           description: Sportlink gaf geen bruikbare respons
+        '504':
+          description: Sportlink reageerde niet op tijd. De mutatie is bewust NIET automatisch herhaald — de uitkomst bij Sportlink is onbekend; controleer eerst in Sportlink of de actie al is doorgevoerd (#1387, #1417)
         '503':
           description: Uitgaande integraties staan hier niet toe (EgressGuard)
 
@@ -4023,16 +4182,16 @@ paths:
     post:
       tags: [sportlink]
       operationId: postSportlinkClubMatch
-      summary: Oefenwedstrijd ("clubwedstrijd") aanmaken (#997, epic #986) — scaffolding, altijd code-gelockt
+      summary: Oefenwedstrijd ("clubwedstrijd") aanmaken (#997, epic #986) — code-lock sinds #1319 opgeheven
       description: |
-        **ONBEVESTIGD, altijd gesimuleerd:** endpoint (`POST
+        **Code-niveau `forceDryRun`-lock sinds #1319 opgeheven** (`ClubMatchLiveBevestigd = true`):
+        deze mutatie respecteert nu de gewone club-instelling `sportlinkDryRun` in plaats van altijd
+        te simuleren. De exacte requestbody en de veldnamen van de twee aangesloten picklists blijven
+        echter grotendeels ONBEVESTIGD — van alle #986-sub-issues heeft dit issue de meeste
+        onbekenden (delete-methode onbekend, meerdere picklist-vormen onbekend). Endpoint (`POST
         competition/match/clubmatch/ClubMatch`) en requestbody zijn gereverse-engineerd uit
-        Sportlinks eigen frontend-code, nooit met een netwerktrace gezien — van alle #986-sub-
-        issues heeft dit issue de MEESTE onbekenden (volledige body onbevestigd, meerdere
-        picklist-vormen onbekend, delete-methode onbekend). Deze aanroep loopt daarom altijd via
-        een code-niveau `forceDryRun`-lock — ONAFHANKELIJK van de club-instelling
-        `sportlinkDryRun` — totdat een mens (nooit een agent) een live trace heeft gedaan.
-        Structureel anders dan de andere `/sportlink/match/...`-endpoints: er is vooraf GEEN
+        Sportlinks eigen frontend-code — zie `docs/SPORTLINK-WEB-EXTENSION.md` §5 voor de volledige
+        lijst openstaande onzekerheden. Structureel anders dan de andere `/sportlink/match/...`-endpoints: er is vooraf GEEN
         bestaande wedstrijd, dus geen `SportlinkMutationGuard`-check — in plaats daarvan alleen
         onze eigen `sportlinkExtensionEnabled`-toggle + EgressGuard. Bewust NIET gebouwd in deze
         ronde: verwijderen (`ClubMatchDelete`) en uitslag vastleggen (`ClubMatchScore`).
@@ -4100,6 +4259,8 @@ paths:
           $ref: '#/components/responses/InternalServerError'
         '502':
           description: Sportlink gaf geen bruikbare respons
+        '504':
+          description: Sportlink reageerde niet op tijd. De mutatie is bewust NIET automatisch herhaald — de uitkomst bij Sportlink is onbekend; controleer eerst in Sportlink of de actie al is doorgevoerd (#1387, #1417)
         '503':
           description: Uitgaande integraties staan hier niet toe (EgressGuard)
 
@@ -6703,7 +6864,9 @@ paths:
         Geeft de wedstrijden terug die op een datum al gepland staan, rechtstreeks uit de
         laatst gesynchroniseerde Sportlink-data — zonder de scheduling-optimalisatie die
         `/planner/auto-plan` uitvoert. Bedoeld als snelle,
-        goedkope "wat staat er nu al gepland"-weergave.
+        goedkope "wat staat er nu al gepland"-weergave. Voedt de Planning-pagina, die sinds #1400
+        generiek zichtbaar is voor elke ingelogde gebruiker — vereist daarom alleen `admin` óf
+        `user` (voorheen uitsluitend `admin`), als enig endpoint in deze tag.
       security:
         - easyAuth: []
       parameters:

@@ -12,7 +12,7 @@ public enum SportlinkClubCallStatus
 
     /// <summary>
     /// De functionele rol is niet gekoppeld aan een refresh token
-    /// (geen SportlinkClubRefreshToken__{rol} omgevingsvariabele).
+    /// (geen plaintext token uit een omgevingsvariabele).
     /// </summary>
     RolNietGekoppeld,
 

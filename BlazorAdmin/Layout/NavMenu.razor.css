@@ -1,10 +1,10 @@
 .navbar-toggler {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: var(--theme-navbar-toggler-background);
 }
 
 .top-row {
     min-height: 3.5rem;
-    background-color: rgba(0,0,0,0.4);
+    background-color: var(--theme-top-row-background);
 }
 
 .navbar-brand {
@@ -51,7 +51,7 @@
     }
 
     .nav-item ::deep a {
-        color: #d7d7d7;
+        color: var(--theme-nav-item-text);
         border-radius: 4px;
         height: 3rem;
         display: flex;
@@ -60,7 +60,7 @@
     }
 
     .nav-item ::deep button.nav-link {
-        color: #d7d7d7;
+        color: var(--theme-nav-item-text);
         background: none;
         border: none;
         border-radius: 4px;
@@ -72,19 +72,22 @@
         text-align: start;
     }
 
+/* Dedicated navigatiekleuren (#1401) — vervangt #1388's hergebruik van --theme-secondary/
+   --theme-text-on-primary, zodat een club het menu onafhankelijk van andere UI-elementen
+   (secundaire knoppen, tekst op primaire achtergrond) kan aanpassen. */
 .nav-item ::deep a.active {
-    background-color: rgba(255,255,255,0.37);
-    color: white;
+    background-color: var(--theme-nav-item-active-background);
+    color: var(--theme-nav-item-active-hover-text);
 }
 
 .nav-item ::deep a:hover {
-    background-color: rgba(255,255,255,0.1);
-    color: white;
+    background-color: var(--theme-nav-item-hover-background);
+    color: var(--theme-nav-item-active-hover-text);
 }
 
 .nav-item ::deep button.nav-link:hover {
-    background-color: rgba(255,255,255,0.1);
-    color: white;
+    background-color: var(--theme-nav-item-hover-background);
+    color: var(--theme-nav-item-active-hover-text);
 }
 
 @media (min-width: 641px) {

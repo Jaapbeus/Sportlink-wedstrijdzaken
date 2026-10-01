@@ -38,15 +38,17 @@ internal static class SportlinkEndpointSupport
 
     /// <summary>
     /// De endpointwrapper voor élk Sportlink Web Extension-endpoint van deze tier (#1266, #1272).
-    /// Zet, net als de Postgres-tier sinds #1272, de functionele rolcheck bovenop de bestaande
-    /// admin-gate — zie <see cref="SportlinkEndpointSupportCore.ExecuteWedstrijdzakenAsync"/>.
+    /// Zet de functionele rolcheck bovenop de tier-infrastructuur van
+    /// <see cref="AdminEndpoint.ExecuteWedstrijdzakenOfAdminAsync"/> — sinds #1400 accepteert ook de
+    /// TWEEDE poort Wedstrijdzaken naast admin (was tot dan uitsluitend admin, zie #1379). Zie
+    /// <see cref="SportlinkEndpointSupportCore.ExecuteWedstrijdzakenAsync"/>.
     /// </summary>
     internal static Task<IActionResult> ExecuteWedstrijdzakenAsync(
         HttpRequest req, ILogger log, string errorContext, Func<string, Task<IActionResult>> work)
         => SportlinkEndpointSupportCore.ExecuteWedstrijdzakenAsync(
             req, log, errorContext, work,
             EasyAuthHelper.RequireWedstrijdzaken,
-            AdminEndpoint.ExecuteAsync);
+            AdminEndpoint.ExecuteWedstrijdzakenOfAdminAsync);
 
     internal static IActionResult ClientNietGeconfigureerdFout()
         => SportlinkEndpointSupportCore.ClientNietGeconfigureerdFout();

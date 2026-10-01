@@ -174,6 +174,10 @@ gewone club in de instellingen van de installatie is opgenomen — niet omdat er
 uitzondering voor gemaakt is. Uw keuze wordt door de browser onthouden; kiest u AllStars FC, dan
 blijft dat zo tot u zelf uw eigen club weer kiest.
 
+In testmodus krijgt de club-keuzelijst bovenin een gele achtergrond. Sinds #1406 heeft die altijd
+een vaste, leesbare tekstkleur — ook in de donkere weergave — en toont de keuzelijst altijd de club
+die u werkelijk gekozen heeft.
+
 ---
 
 ## AVG en security

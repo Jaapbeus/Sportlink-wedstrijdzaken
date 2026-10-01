@@ -40,7 +40,9 @@
 @if (_plan != null)
 {
     @* ── Samenvatting banner ── *@
-    <div class="card mb-3 border-0 bg-light">
+    @* #1388: bg-light was een Bootstrap-utility die niet meeschakelt met data-bs-theme="dark" —
+       gaf een wit kaartje in een verder donker thema. kaart-thema-bg volgt var(--theme-card-bg). *@
+    <div class="card mb-3 border-0 kaart-thema-bg">
         <div class="card-body py-2">
             <div class="row text-center g-2">
                 <div class="col">
@@ -48,19 +50,19 @@
                     <small class="text-muted">Wedstrijden</small>
                 </div>
                 <div class="col">
-                    <div class="fs-5 fw-bold @(_plan.ZonderVeld > 0 ? "text-warning" : "text-success")">
+                    <div class="fs-5 fw-bold @(_plan.ZonderVeld > 0 ? "tekst-attentie" : "tekst-ok")">
                         @_plan.ZonderVeld
                     </div>
                     <small class="text-muted">Zonder veld</small>
                 </div>
                 <div class="col">
-                    <div class="fs-5 fw-bold @(_plan.ZonderTijd > 0 ? "text-warning" : "text-success")">
+                    <div class="fs-5 fw-bold @(_plan.ZonderTijd > 0 ? "tekst-attentie" : "tekst-ok")">
                         @_plan.ZonderTijd
                     </div>
                     <small class="text-muted">Zonder tijd</small>
                 </div>
                 <div class="col">
-                    <div class="fs-5 fw-bold @(_plan.TeWijzigen > 0 ? "text-primary" : "text-success")">
+                    <div class="fs-5 fw-bold @(_plan.TeWijzigen > 0 ? "tekst-wijziging" : "tekst-ok")">
                         @_plan.TeWijzigen
                     </div>
                     <small class="text-muted">Te wijzigen</small>
@@ -68,7 +70,7 @@
                 @if (_plan.NietInplanbaar > 0)
                 {
                     <div class="col">
-                        <div class="fs-5 fw-bold text-danger">@_plan.NietInplanbaar</div>
+                        <div class="fs-5 fw-bold tekst-probleem">@_plan.NietInplanbaar</div>
                         <small class="text-muted">Niet inplanbaar</small>
                     </div>
                 }
@@ -198,14 +200,16 @@
                                     var (_topVal, _hgtVal) = GanttLayout.Bereken(gi.SubPos, gi.Fractie);
                                     string _top = GanttPct((int)_topVal, 100);
                                     string _hgt = GanttPct((int)_hgtVal, 100);
-                                    string _voorkeurBalk = GanttVoorkeurBalkKleur(gi.VoorkeurAfwijking, gi.VoorkeurTijd);
+                                    string _voorkeurBalk = GanttVoorkeurBalkKleur(gi.VoorkeurAfwijking, gi.VoorkeurTijd, KleineAfwijkingDrempelMinuten);
                                     string _tooltip = GanttTooltip(gi);
                                     bool _sleepbaar = gi.Bron != null;
                                     bool _handmatig = gi.Bron != null && _handmatigAangepast.Contains(gi.Bron);
                                     <div title="@_tooltip"
                                          draggable="@(_sleepbaar ? "true" : "false")"
                                          @ondragstart="@(e => SleepStart(gi, e))"
-                                         class="gantt-blok gantt-blok-sleepbaar"
+                                         @onmouseover="() => _hover.Zet(gi.WedstrijdCode)"
+                                         @onmouseout="() => _hover.Wis()"
+                                         class="gantt-blok gantt-blok-sleepbaar @_hover.BlokKlasse(gi.WedstrijdCode)"
                                          style="--gantt-left:calc(@(_lft)% + 2px); --gantt-width:calc(@(_wdt)% - 4px);
                                                 --gantt-top:calc(@(_top)% + 2px); --gantt-height:calc(@(_hgt)% - 4px);
                                                 --gantt-bg:@GanttKleur(gi.Status);
@@ -314,7 +318,9 @@
                     <tbody>
                         @foreach (var item in GefilterdeLijst())
                         {
-                            <tr class="@RowClass(item.Status)">
+                            <tr class="@RowClass(item.Status) @_hover.RijKlasse(item.WedstrijdCode)"
+                                @onmouseover="() => _hover.Zet(item.WedstrijdCode)"
+                                @onmouseout="() => _hover.Wis()">
                                 <td class="tabel-compact">
                                     <div class="fw-semibold">@(string.IsNullOrWhiteSpace(item.Wedstrijd) ? item.TeamNaam : item.Wedstrijd)</div>
                                 </td>
@@ -349,7 +355,7 @@
                                     <td class="tabel-compact">
                                         @if (!item.HeeftVeld)
                                         {
-                                            <span class="text-warning">&#10007; Geen veld</span>
+                                            <span class="tekst-attentie">&#10007; Geen veld</span>
                                         }
                                         else
                                         {
@@ -359,7 +365,7 @@
                                     <td class="tabel-compact">
                                         @if (!item.HeeftTijd)
                                         {
-                                            <span class="text-warning">&#10007; Geen tijd</span>
+                                            <span class="tekst-attentie">&#10007; Geen tijd</span>
                                         }
                                         else
                                         {
@@ -389,7 +395,7 @@
                                         <span class="text-muted ms-1" tabel-extra-compact">@VoorkeurBronLabel(item.VoorkeurBron)</span>
                                         @if (item.VoorkeurVeldToegepast == false)
                                         {
-                                            <span class="badge bg-secondary ms-1"
+                                            <span class="badge badge-secundair ms-1"
                                                   title="Voorkeursveld was niet beschikbaar; de planner koos een ander veld">
                                                 ander veld
                                             </span>
@@ -397,7 +403,7 @@
                                     }
                                     else
                                     {
-                                        <span class="badge bg-light text-dark border"
+                                        <span class="badge badge-neutraal"
                                               title="Gewenste tijd volgens @VoorkeurBronLabel(item.VoorkeurBron). De afwijking staat in de tab Optimaal.">
                                             @item.VoorkeurTijd
                                         </span>
@@ -408,19 +414,19 @@
                                     @switch (item.Status)
                                     {
                                         case "ongewijzigd":
-                                            <span class="badge bg-light text-dark border" title="De planner laat deze wedstrijd staan">Ongewijzigd</span>
+                                            <span class="badge badge-neutraal" title="De planner laat deze wedstrijd staan">Ongewijzigd</span>
                                             break;
                                         case "nieuw-slot":
-                                            <span class="badge bg-warning text-dark">Nieuw</span>
+                                            <span class="badge badge-status-nieuw-slot">Nieuw</span>
                                             break;
                                         case "wijziging":
-                                            <span class="badge bg-primary">Wijzig</span>
+                                            <span class="badge badge-status-wijziging">Wijzig</span>
                                             break;
                                         case "niet-inplanbaar":
-                                            <span class="badge bg-danger">Probleem</span>
+                                            <span class="badge badge-status-niet-inplanbaar">Probleem</span>
                                             break;
                                         case "onbekend-team":
-                                            <span class="badge bg-secondary">Onbekend</span>
+                                            <span class="badge badge-secundair">Onbekend</span>
                                             break;
                                     }
                                 </td>
@@ -456,7 +462,7 @@
                             @if (_sportlinkExtensionEnabled && item.WedstrijdCode != null && _sportlinkKolom.IsUitgeklapt(item.WedstrijdCode.Value))
                             {
                                 <tr @key="item.WedstrijdCode.Value">
-                                    <td colspan="7" class="bg-light tabel-compact">
+                                    <td colspan="7" class="kaart-thema-bg tabel-compact">
                                         <SportlinkMatchPanel WedstrijdCode="item.WedstrijdCode.Value" />
                                     </td>
                                 </tr>

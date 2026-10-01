@@ -40,6 +40,27 @@ public class SportlinkExtensieRolDto
     public string? SportlinkAccountNaam { get; set; }
 }
 
+/// <summary>Niet-geheime status van automatische Sportlink-login voor een functionele rol.</summary>
+public class SportlinkAutoLoginStatusDto
+{
+    public bool Configured { get; set; }
+    public bool Enabled { get; set; }
+    public DateTime? LastLoginUtc { get; set; }
+    public DateTime? RetryAfterUtc { get; set; }
+    public string? LastError { get; set; }
+}
+
+/// <summary>Write-only Sportlink-inloggegevens; deze waarden worden nooit opgehaald of lokaal bewaard.</summary>
+public class SportlinkAutoLoginRequestDto
+{
+    public string Username { get; set; } = "";
+    public string Password { get; set; } = "";
+    public string TotpSecret { get; set; } = "";
+    public string TotpAlgorithm { get; set; } = "SHA1";
+    public int TotpDigits { get; set; } = 6;
+    public int TotpPeriodSeconds { get; set; } = 30;
+}
+
 public class GeocodeResultDto
 {
     public double Lat { get; set; }
@@ -84,6 +105,12 @@ public class SportlinkMatchInfoDto
     public bool ScheidsrechterFeatureToegestaan { get; set; }
     public bool VeldFeatureToegestaan { get; set; }
 
+    // #1400: geen FeatureKey-toggle (het wijzigingsverzoek datum/tijd/accommodatie heeft er bewust
+    // geen, zie SportlinkRolFeature.VoorMutatieSoort) — puur de rolcheck (admin of Wedstrijdzaken),
+    // want Planning/het Sportlink-paneel is sinds #1400 generiek zichtbaar voor elke ingelogde
+    // gebruiker terwijl wijzigen die rol vereist.
+    public bool MagWijzigen { get; set; }
+
     // #1340 (VOORSTEL — DPO-vraag nog niet bevestigd door de eigenaar, zie
     // docs/SPORTLINK-WEB-EXTENSION.md): relatiecode van de huidige official per positie, alleen
     // gevuld als Sportlink al een official had toegewezen. De server nult deze drie velden altijd
@@ -119,6 +146,7 @@ public class SportlinkPublicMatchIdDto
 /// deze club — spiegelt de anonieme respons van <c>GET /api/beheer/rolfeatureinstellingen</c>.</summary>
 public class RolFeatureInstellingDto
 {
+    public string RolNaam { get; set; } = "";
     public string FeatureKey { get; set; } = "";
     public bool Enabled { get; set; }
 }

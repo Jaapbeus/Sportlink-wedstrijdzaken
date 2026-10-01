@@ -7,6 +7,9 @@ namespace BlazorAdmin.Pages;
 /// <summary>Code-behind van <c>OefenwedstrijdAanmaken.razor</c> (#997/#1116, code-behind sinds #1122).</summary>
 public partial class OefenwedstrijdAanmaken
 {
+    /// <summary>Sentinel-waarde van de "Vrije tekst"-optie in de Team-dropdown (#1396).</summary>
+    private const string VrijeTekstOptie = "__vrije-tekst__";
+
     [Inject] private AdminApiClient Api { get; set; } = default!;
 
     private bool _laden = true;
@@ -17,7 +20,8 @@ public partial class OefenwedstrijdAanmaken
     private DateTime _datum = DateTime.Today;
     private string? _tijd = "19:00";
     private int _duur = 90;
-    private string? _teamNaam;
+    private string? _teamSelectie;
+    private string? _teamVrijeTekst;
     private string? _tegenstander;
     private int? _veldNummer;
     private string? _omschrijving;
@@ -25,10 +29,14 @@ public partial class OefenwedstrijdAanmaken
     private readonly SportlinkActieStatus _status = new();
     private OefenwedstrijdResultaatDto? _resultaat;
 
+    /// <summary>De daadwerkelijk te gebruiken teamnaam: uit de dropdown, of het vrije-tekstveld
+    /// als de gebruiker "Vrije tekst" heeft gekozen (#1396).</summary>
+    private string? TeamNaam => _teamSelectie == VrijeTekstOptie ? _teamVrijeTekst : _teamSelectie;
+
     private string StandaardOmschrijving =>
-        string.IsNullOrWhiteSpace(_teamNaam) || string.IsNullOrWhiteSpace(_tegenstander)
+        string.IsNullOrWhiteSpace(TeamNaam) || string.IsNullOrWhiteSpace(_tegenstander)
             ? "standaard: Oefenwedstrijd [team] - [tegenstander]"
-            : $"Oefenwedstrijd {_teamNaam} - {_tegenstander}";
+            : $"Oefenwedstrijd {TeamNaam} - {_tegenstander}";
 
     protected override async Task OnInitializedAsync()
     {
@@ -54,9 +62,9 @@ public partial class OefenwedstrijdAanmaken
         _status.Wis();
         _resultaat = null;
 
-        if (string.IsNullOrWhiteSpace(_teamNaam) || string.IsNullOrWhiteSpace(_tegenstander))
+        if (string.IsNullOrWhiteSpace(TeamNaam) || string.IsNullOrWhiteSpace(_tegenstander))
         {
-            _status.Fout("Kies een team en vul een tegenstander in.");
+            _status.Fout("Kies een team (of vul een vrije teamnaam in) en vul een tegenstander in.");
             return;
         }
         if (!TimeSpan.TryParse(_tijd, out var tijdSpan))
@@ -69,7 +77,7 @@ public partial class OefenwedstrijdAanmaken
         StateHasChanged();
         try
         {
-            var r = await Api.PostOefenwedstrijdAsync(_datum.Date + tijdSpan, _duur, _teamNaam, _tegenstander, _veldNummer, _omschrijving);
+            var r = await Api.PostOefenwedstrijdAsync(_datum.Date + tijdSpan, _duur, TeamNaam!, _tegenstander, _veldNummer, _omschrijving);
             _resultaat = r.Success ? r.Data : null;
             var geslaagd = _status.Verwerk(r.Success, r.ErrorMessage, r.Data, "Oefenwedstrijd aangemaakt in Sportlink Club.", "Sportlink heeft de aanmaak afgewezen");
             if (geslaagd && _resultaat?.IsDryRun == false)

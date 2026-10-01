@@ -37,6 +37,9 @@ public partial class Thema : ClubSelectorPageBase
     private string? _extractedFaviconUrl;
     private string? _extractedLogoUrl;
 
+    // "instellen" (pickers, standaard) of "overzicht" (leestabel van alle kleuren — #1388).
+    private string _tab = "instellen";
+
     protected override async Task OnInitializedAsync()
     {
         // De topbalk-schakelaar (ThemeModeToggle) kan de modus ook wijzigen zonder deze pagina
@@ -111,27 +114,18 @@ public partial class Thema : ClubSelectorPageBase
 
     private string Kleur(string sleutel) => ActiefPalet.TryGetValue(sleutel, out var waarde) ? waarde : "#000000";
 
+    /// <summary>Zelfde opzoeklogica als <see cref="Kleur"/>, maar voor een expliciet meegegeven
+    /// palet — het overzichtstabblad toont licht én donker naast elkaar, ongeacht welke modus
+    /// <see cref="_modus"/> op dit moment is.</summary>
+    private static string KleurUit(Dictionary<string, string> palet, string sleutel) =>
+        palet.TryGetValue(sleutel, out var waarde) ? waarde : "#000000";
+
     private async Task ModusBewerkenAsync(string modus)
     {
         _modus = modus;
         // De hele interface schakelt mee: anders stelt de beheerder donkere kleuren in terwijl hij
         // naar een licht scherm kijkt.
         await ThemeService.SetModeAsync(modus);
-        await ToepassenAsync();
-    }
-
-    private async Task PresetToepassen(ChangeEventArgs e)
-    {
-        var naam = e.Value?.ToString();
-        if (string.IsNullOrWhiteSpace(naam)) return;
-
-        var preset = ThemePresets.Alle.FirstOrDefault(p => p.Naam == naam);
-        if (preset == null) return;
-
-        var bron = _modus == "dark" ? preset.Donker : preset.Licht;
-        var doel = ActiefPalet;
-        foreach (var (sleutel, waarde) in bron) doel[sleutel] = waarde;
-
         await ToepassenAsync();
     }
 
