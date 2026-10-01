@@ -1,37 +1,19 @@
-# HANDOFF — #1411 automatische Sportlink-login
+# HANDOFF — #1411 automatische Sportlink-login (na merge PR #1412)
 
-Werkbranch: `feature/#1411-sportlink-auto-login`, basis `origin/develop` op
-`058cc2d934968468a178858ca126abb21e3c3f93`. Plan en eenmalige Codex-implementatiebevoegdheid:
-https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/1411.
+Status: implementatie en runbook zijn via [PR #1412](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/pull/1412) gemerged naar `develop` op 2026-10-01. Merge-commit: `27009f9574a191e8536adb6c88c92e2749f4aee8`; feature-head: `1a0ffb7e2fbf9a22f45f903e61bec9c0b0853457`. De productiebranch is niet aangepast en er is geen productie-deployment uitgevoerd.
 
-Implementatie: TOTP/PKCE-loginprovider, AES-GCM-opslag op beide databasetiers,
-databaselease en begrensde herlogin, admin-API en beheerinterface. Installatie, sleutelbeheer,
-verwijdering en live acceptatie staan in `docs/SPORTLINK-AUTOLOGIN.md`.
+Implementatie: begrensde TOTP/PKCE-loginprovider, AES-GCM-encrypted opslag van credentials en refresh-tokens op beide databasetiers, databaselease en begrensde herlogin, admin-API en beheerinterface. MFA blijft actief. Productie-initialisatie, secretbeheer, herstel en veiligheidsgrenzen staan in `docs/SPORTLINK-AUTOLOGIN.md`.
 
-Geverifieerd op de oorspronkelijke feature-head: builds beide backends en frontend; gerichte
-cryptografie/provider/coördinatie/client-/endpointtests; beide tiers' autorisatietests; frontend
-publish-CSP; geïsoleerde browserproef met fictieve gegevens en gemockte API. Lokale live bevestiging:
-twee wachtwoord+TOTP-logins via de provider zijn geslaagd;
-een refresh-grant is geslaagd en roteerde de refresh-token (access 3600 s, refresh 21600 s).
-Een directe herlogin met dezelfde TOTP-periode werd geweigerd; na de volgende 30-secondenperiode
-lukte een verse login. Dit past bij TOTP-replaybescherming, maar de precieze oorzaak is niet
-bewezen. De herstelde entry is `Sportlink WZ` in BeusFamily/Private.
+Verificatie op PR #1412: alle Build-, Postgres- en SQL Server-fresh-databasejobs en alle Security Scan-checks zijn geslaagd. Op de gemergde develop-head `27009f9` zijn beide FunctionApp-tiers en BlazorAdmin gebouwd; 107 gerichte auto-login/TOTP-tests en 823 `FunctionApp.Tests` zijn geslaagd, met 5 bestaande skips. `git diff --check` was schoon. Lokale .NET 9-tests op deze host gebruikten `DOTNET_ROLL_FORWARD=Major` vanwege de aanwezige .NET 10-runtime.
 
-De eigenaar heeft die lokale auth-only proef daarna beëindigd en als geslaagd beoordeeld na
-14 uur en 39 minuten zonder onderbreking. Dit is geen 24-uursmeting en bewijst niet de database-,
-coordinator-, Function Timer- of procesherstart-integratie.
+Eigenaarstest: de eigenaar heeft de lokale auth-proef na 14 uur en 39 minuten zonder onderbreking als geslaagd beoordeeld. Dit is eigenaar-gerapporteerd bewijs voor die proef; het bewijst niet de afgesproken minimale 24 uur, twee sessieovergangen inclusief herstart, of de productie-integratie.
 
-Open vóór ingebruikname:
-- CI inclusief echte PostgreSQL-integratietests en Security Gate controleren.
-- Eigenaar verifieert de actuele Sportlink-formulieren en TOTP-parameters met eigen account.
-- Indien gewenst: aparte 24-uursloop met twee automatische sessieovergangen en herstart; geen
-  wedstrijdmutaties in die proef. De uitgevoerde 14u39-harness bewijst niet de database/coordinator/
-  Function Timer-integratie of tokenbehoud na procesherstart.
-- Deployment, migratie en secret-invoer pas na afzonderlijk eigenaarsbesluit.
+Open vóór productieacceptatie:
+- Voer met de eigenaar een afzonderlijke, secretsvrije resultaatregistratie uit van minimaal 24 uur en twee automatische sessieovergangen, inclusief procesherstart; voer geen wedstrijdmutaties uit.
+- Bevestig vóór release dat productie-initialisatie volgens `docs/SPORTLINK-AUTOLOGIN.md` is voltooid en de bestaande Function App-secretsetting correct is gezet.
+- Issue #1411 blijft open tot deze acceptatiecriteria zijn afgetekend. Een productie-release vereist een aparte releasegang naar `main`; die is geen onderdeel van PR #1412.
 
-Orkestratie/integratie/review: Astra. Deelimplementaties cryptografie, loginprovider,
-opslag en GUI: gpt-6-luna, door de orchestrator beoordeeld en geïntegreerd.
-De blijvende reviewerregel in CLAUDE.md/AGENTS.md is niet gewijzigd.
+Uitgevoerde taak: Astra orkestreerde de implementatie, CI-opvolging, merge naar `develop` en develop-hercontrole. Bij afronding van de merge-hercontrole is deze sessie geen lopende auth-test.
 
 ---
 
