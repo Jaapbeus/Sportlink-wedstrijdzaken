@@ -183,8 +183,32 @@ public class SportlinkEndpointCoreTests
 
         afronding.AuditResultaat.Should().Be("Failure");
         afronding.Fout!.HttpStatus.Should().Be(504, "een NetwerkFout (timeout) krijgt sinds #1387 een eigen 504 i.p.v. de generieke 502");
+        afronding.Fout.Foutmelding.Should().Be(SportlinkEndpointCore.MutatieNetwerkFoutMelding,
+            "op een mutatie is de uitkomst bij Sportlink onbekend — eerst controleren, niet 'probeer opnieuw' (#1417)");
         afronding.Data.Should().BeNull();
         afronding.AuditSamenvatting.Should().Be("timeout na 30s");
+    }
+
+    [Fact]
+    public void VertaalStatusNaarFout_NetwerkFout_LeesVariantBlijftProbeerOpnieuw()
+    {
+        // #1417: alleen de mutatievariant verandert; een lees-timeout mag nog steeds gewoon
+        // opnieuw geprobeerd worden (en is door de client al één keer stil herhaald).
+        var lezen = SportlinkEndpointCore.VertaalStatusNaarFout(SportlinkClubCallStatus.NetwerkFout)!;
+        var mutatie = SportlinkEndpointCore.VertaalStatusNaarFout(SportlinkClubCallStatus.NetwerkFout, isMutatie: true)!;
+
+        lezen.HttpStatus.Should().Be(504);
+        mutatie.HttpStatus.Should().Be(504);
+        lezen.Foutmelding.Should().Contain("opnieuw").And.NotContain("controleer");
+        mutatie.Foutmelding.Should().Be(SportlinkEndpointCore.MutatieNetwerkFoutMelding);
+    }
+
+    [Fact]
+    public void VertaalStatusNaarFout_SportlinkFoutOpMutatie_OngewijzigdeGenerieke502()
+    {
+        var fout = SportlinkEndpointCore.VertaalStatusNaarFout(SportlinkClubCallStatus.SportlinkFout, isMutatie: true)!;
+        fout.HttpStatus.Should().Be(502);
+        fout.Foutmelding.Should().Be("Sportlink is momenteel niet bereikbaar.");
     }
 
     [Fact]

@@ -67,6 +67,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   de club, net als de andere Sportlink-mutaties.
 
 ### Fixed
+- Sportlink-mutaties (oefenwedstrijd aanmaken, officials toewijzen, wijzigingsverzoek, veld,
+  kleedkamers, verzoek goed-/afkeuren) worden bij een timeout of serverfout niet meer automatisch
+  herhaald. De retry uit #1387 kon anders een oefenwedstrijd dubbel aanmaken of een wijzigingsverzoek
+  tweemaal bij de tegenstander afleveren als Sportlink de eerste poging al had verwerkt. De
+  beheerder krijgt nu de melding om eerst in Sportlink te controleren of de actie al is doorgevoerd.
+  Leesaanroepen behouden hun enkele retry (#1417).
 - **Sportlink-matchinfo gaf soms een valse "Sportlink is momenteel niet bereikbaar" (HTTP 502),
   ook als de Sportlink-koppeling zelf gewoon werkte (#1387).** Het ophalen van Sportlink-matchinfo
   voor een nog niet eerder bekeken wedstrijd kon uittimen (de onderliggende opzoekactie duurt

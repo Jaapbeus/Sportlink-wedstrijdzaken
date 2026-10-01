@@ -33,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.7.6.0
+  version: 3.7.7.1
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -3833,7 +3833,7 @@ paths:
         '502':
           description: Sportlink gaf geen bruikbare respons
         '504':
-          description: Sportlink reageerde niet op tijd (tijdelijke netwerk-/timeoutfout, één automatische retry al geprobeerd) (#1387)
+          description: Sportlink reageerde niet op tijd. De mutatie is bewust NIET automatisch herhaald — de uitkomst bij Sportlink is onbekend; controleer eerst in Sportlink of de actie al is doorgevoerd (#1387, #1417)
         '503':
           description: Uitgaande integraties staan hier niet toe (EgressGuard)
 
@@ -3889,7 +3889,7 @@ paths:
         '502':
           description: Sportlink gaf geen bruikbare respons
         '504':
-          description: Sportlink reageerde niet op tijd (tijdelijke netwerk-/timeoutfout, één automatische retry al geprobeerd) (#1387)
+          description: Sportlink reageerde niet op tijd. De mutatie is bewust NIET automatisch herhaald — de uitkomst bij Sportlink is onbekend; controleer eerst in Sportlink of de actie al is doorgevoerd (#1387, #1417)
         '503':
           description: Uitgaande integraties staan hier niet toe (EgressGuard)
 
@@ -3959,7 +3959,7 @@ paths:
         '502':
           description: Sportlink gaf geen bruikbare respons
         '504':
-          description: Sportlink reageerde niet op tijd (tijdelijke netwerk-/timeoutfout, één automatische retry al geprobeerd) (#1387)
+          description: Sportlink reageerde niet op tijd. De mutatie is bewust NIET automatisch herhaald — de uitkomst bij Sportlink is onbekend; controleer eerst in Sportlink of de actie al is doorgevoerd (#1387, #1417)
         '503':
           description: Uitgaande integraties staan hier niet toe (EgressGuard)
 
@@ -4037,7 +4037,7 @@ paths:
         '502':
           description: Sportlink gaf geen bruikbare respons
         '504':
-          description: Sportlink reageerde niet op tijd (tijdelijke netwerk-/timeoutfout, één automatische retry al geprobeerd) (#1387)
+          description: Sportlink reageerde niet op tijd. De mutatie is bewust NIET automatisch herhaald — de uitkomst bij Sportlink is onbekend; controleer eerst in Sportlink of de actie al is doorgevoerd (#1387, #1417)
         '503':
           description: Uitgaande integraties staan hier niet toe (EgressGuard)
 
@@ -4174,7 +4174,7 @@ paths:
         '502':
           description: Sportlink gaf geen bruikbare respons
         '504':
-          description: Sportlink reageerde niet op tijd (tijdelijke netwerk-/timeoutfout, één automatische retry al geprobeerd) (#1387)
+          description: Sportlink reageerde niet op tijd. De mutatie is bewust NIET automatisch herhaald — de uitkomst bij Sportlink is onbekend; controleer eerst in Sportlink of de actie al is doorgevoerd (#1387, #1417)
         '503':
           description: Uitgaande integraties staan hier niet toe (EgressGuard)
 
@@ -4260,7 +4260,7 @@ paths:
         '502':
           description: Sportlink gaf geen bruikbare respons
         '504':
-          description: Sportlink reageerde niet op tijd (tijdelijke netwerk-/timeoutfout, één automatische retry al geprobeerd) (#1387)
+          description: Sportlink reageerde niet op tijd. De mutatie is bewust NIET automatisch herhaald — de uitkomst bij Sportlink is onbekend; controleer eerst in Sportlink of de actie al is doorgevoerd (#1387, #1417)
         '503':
           description: Uitgaande integraties staan hier niet toe (EgressGuard)
 
