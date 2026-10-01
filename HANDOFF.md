@@ -6,12 +6,11 @@ Implementatie: begrensde TOTP/PKCE-loginprovider, AES-GCM-encrypted opslag van c
 
 Verificatie op PR #1412: alle Build-, Postgres- en SQL Server-fresh-databasejobs en alle Security Scan-checks zijn geslaagd. Op de gemergde develop-head `27009f9` zijn beide FunctionApp-tiers en BlazorAdmin gebouwd; 107 gerichte auto-login/TOTP-tests en 823 `FunctionApp.Tests` zijn geslaagd, met 5 bestaande skips. `git diff --check` was schoon. Lokale .NET 9-tests op deze host gebruikten `DOTNET_ROLL_FORWARD=Major` vanwege de aanwezige .NET 10-runtime.
 
-Eigenaarstest: de eigenaar heeft de lokale auth-proef na 14 uur en 39 minuten zonder onderbreking als geslaagd beoordeeld. Dit is eigenaar-gerapporteerd bewijs voor die proef; het bewijst niet de afgesproken minimale 24 uur, twee sessieovergangen inclusief herstart, of de productie-integratie.
+Eigenaarstest en acceptatie: de eigenaar heeft de oorspronkelijke duur van 24 uur bijgesteld naar 14 uur en 39 minuten en de lokale auth-proef na 14u39 zonder onderbreking als geslaagd en afgerond verklaard. De acceptatietest is daarmee compleet volgens de door de eigenaar vastgestelde grens; er staat hiervoor geen aanvullende 24-uursproef open.
 
-Open vóór productieacceptatie:
-- Voer met de eigenaar een afzonderlijke, secretsvrije resultaatregistratie uit van minimaal 24 uur en twee automatische sessieovergangen, inclusief procesherstart; voer geen wedstrijdmutaties uit.
-- Bevestig vóór release dat productie-initialisatie volgens `docs/SPORTLINK-AUTOLOGIN.md` is voltooid en de bestaande Function App-secretsetting correct is gezet.
-- Issue #1411 blijft open tot deze acceptatiecriteria zijn afgetekend. Een productie-release vereist een aparte releasegang naar `main`; die is geen onderdeel van PR #1412.
+Vervolg na deze afgeronde feature-acceptatie:
+- Productie-initialisatie volgt de stappen in `docs/SPORTLINK-AUTOLOGIN.md`, inclusief de bestaande Function App-secretsetting.
+- Een productie-release vereist een aparte releasegang van `develop` naar `main`; die is geen onderdeel van PR #1412 en is niet uitgevoerd.
 
 Uitgevoerde taak: Astra orkestreerde de implementatie, CI-opvolging, merge naar `develop` en develop-hercontrole. Bij afronding van de merge-hercontrole is deze sessie geen lopende auth-test.
 
