@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -6,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Planner.Shared.Integrations.SportlinkClub;
+using static Planner.Endpoints.Sportlink.ClubMatchEndpointCore;
 using SportlinkFunction.Admin;
 
 namespace SportlinkFunction.Sportlink;
@@ -14,20 +14,18 @@ namespace SportlinkFunction.Sportlink;
 /// SQL Server-tegenhanger van <c>FunctionApp.Postgres/Sportlink/SportlinkClubMatchFunction.cs</c>
 /// (#1266, epic #986).
 /// <para>
-/// Oefenwedstrijd ("clubwedstrijd") aanmaken bij Sportlink (#997; formulier herzien in #1116) —
-/// scaffolding, geen volledige implementatie. Van alle #986-sub-issues heeft dit issue de MEESTE
-/// onbekenden: volledige requestbody onbevestigd, picklist-vormen onbekend, delete-methode onbekend.
+/// Oefenwedstrijd ("clubwedstrijd") aanmaken bij Sportlink (#997; formulier #1116, contract live
+/// bevestigd #1427). Verwijderen en uitslag vastleggen zijn bewust niet gebouwd.
 /// </para>
 /// <para>
-/// <b>Sinds #1116 doet de server de vertaling, niet de gebruiker.</b> Het formulier levert alleen
-/// wat een wedstrijdsecretaris snel kan invullen: datum, tijd, duur, eigen team (naam uit onze
-/// eigen database), tegenstander (vrije tekst) en veld. Deze functie vertaalt dat naar de
-/// Sportlink-velden: teamnaam → <c>PublicHomeTeamId</c> + <c>AgeClassCode</c> via
-/// <see cref="SportlinkClubMatchRepository"/>, de accommodatie uit de club-instelling
-/// <c>accommodatie</c> → <c>FacilityId</c> via de (read-only, echt aangeroepen) Sportlink-
-/// locatiepicklist. Het team-ID komt uit de gevalideerde aliassen, nooit uit eigen naamlogica. Elke
-/// vertaling die niet lukt wordt een <i>waarschuwing</i> in de respons, geen fout — het pad is toch
-/// code-gelockt en de beheerder moet kunnen zien wat er (gesimuleerd) mee zou gaan.
+/// <b>Sinds #1427 live bevestigd.</b> Het formulier levert datum, tijd, duur, eigen team (naam
+/// uit onze eigen database, of vrije tekst), tegenstander en veld. De server haalt Sportlinks vier
+/// aanmaaklijsten op en <see cref="Planner.Shared.Integrations.SportlinkClub.ClubMatchAanvraagBouwer"/>
+/// maakt daaruit de body zoals Sportlinks eigen formulier hem verstuurt: het <c>T…</c>-team-ID,
+/// leeftijdscategorie, spelactiviteit, veld (<c>SubFacilityId</c>) en wedstrijdnummer. Wat niet
+/// eenduidig af te leiden is, valt terug op <c>ClubMatchDefaults</c> met een <i>waarschuwing</i>;
+/// een team of veld dat Sportlink niet kent is een 400. Dit bestand houdt alleen de databasevraag
+/// en de HTTP-aansluiting — zie <c>Planner.Endpoints/Sportlink/ClubMatchEndpointCore.cs</c>.
 /// </para>
 /// <para>
 /// <b>Structureel anders dan de andere Sportlink-mutatiefuncties:</b> <see
@@ -49,16 +47,6 @@ public static class SportlinkClubMatchFunction
 {
     private const string RolNaam = SportlinkEndpointSupport.RolWedstrijdzaken;
     private const string AuditPublicMatchIdPlaceholder = "NIEUW";
-    private const int MaxDuurMinuten = 240;
-
-    /// <summary>
-    /// De Sportlink-locatiepicklist verandert praktisch nooit (accommodaties van de club). Eén keer
-    /// per uur per club ophalen is ruim genoeg en voorkomt twee extra Sportlink-GETs per ingevoerde
-    /// oefenwedstrijd. Bewust in-memory: de Consumption-host recyclet toch, en een miss kost alleen
-    /// één read-only aanroep.
-    /// </summary>
-    private static readonly TimeSpan LocatieCacheDuur = TimeSpan.FromHours(1);
-    private static readonly ConcurrentDictionary<string, (DateTime OpgehaaldUtc, IReadOnlyList<SportlinkPickListItem> Locaties)> LocatieCache = new();
 
     /// <summary>
     /// <c>POST /api/sportlink/club-match</c> — maakt een nieuwe oefenwedstrijd aan. Live bevestigd door de
@@ -85,7 +73,7 @@ public static class SportlinkClubMatchFunction
 
                 var cs = SystemUtilities.DatabaseConfig.ConnectionString;
                 var team = await SportlinkClubMatchRepository.GetTeamKoppelingAsync(clubCode, dto!.TeamNaam!, cs);
-                if (team == null)
+                if (team == null && !dto.VrijeTekst)
                     return new BadRequestObjectResult(new { error = $"Team '{dto.TeamNaam}' is niet bekend als actief clubteam." });
 
                 string? veldNaam = null;
@@ -96,30 +84,10 @@ public static class SportlinkClubMatchFunction
                         return new BadRequestObjectResult(new { error = $"Veld {dto.VeldNummer} is niet bekend als actief veld." });
                 }
 
-                var waarschuwingen = new List<string>();
-                if (team.SportlinkTeamId == null)
-                    waarschuwingen.Add(team.AantalKandidaatIds > 1
-                        ? $"Meerdere Sportlink-team-ID's ({team.AantalKandidaatIds}) gekoppeld aan '{team.TeamNaam}' — PublicHomeTeamId blijft leeg totdat de aliassen zijn opgeschoond."
-                        : $"Geen Sportlink-team-ID bekend voor '{team.TeamNaam}' (geen KNVB-teamrij als gevalideerde alias gekoppeld) — PublicHomeTeamId blijft leeg.");
-                if (string.IsNullOrWhiteSpace(team.Leeftijdscategorie))
-                    waarschuwingen.Add($"Geen leeftijdscategorie bekend voor '{team.TeamNaam}' — AgeClassCode blijft leeg.");
-
-                var accommodatie = SystemUtilities.AppSettings.GetSetting("accommodatie");
-                var facilityId = await BepaalFacilityIdAsync(sportlinkClient!, clubCode, accommodatie, waarschuwingen, log);
-
-                var omschrijving = BouwOmschrijving(dto.Description, team.TeamNaam, dto.Tegenstander!, veldNaam);
-                var aanvraag = new SportlinkClubMatchAanvraag(
-                    dto.MatchDateTime!.Value,
-                    dto.Duration ?? 90,
-                    AgeClassCode: team.Leeftijdscategorie,
-                    Description: omschrijving,
-                    PublicHomeTeamId: team.SportlinkTeamId?.ToString(),
-                    PublicAwayTeamId: dto.Tegenstander!.Trim(),
-                    FacilityId: facilityId,
-                    // Veld-ID: gaat volgens het plan van #997 (stap 4) pas ná aanmaken via het
-                    // bestaande veld-mutatiepad (#993) op de nieuwe PublicMatchId. Het gekozen veld
-                    // reist nu mee in de omschrijving en in de audit.
-                    FieldId: null);
+                var (aanvraag, bouwFout, waarschuwingen) = await BouwAanvraagAsync(
+                    sportlinkClient!, RolNaam, dto, team?.TeamNaam ?? dto.TeamNaam!.Trim(), team?.Leeftijdscategorie,
+                    veldNaam, SystemUtilities.AppSettings.GetSetting("accommodatie"), log);
+                if (bouwFout != null) return bouwFout;
 
                 var auditService = context.InstanceServices.GetService<ISportlinkMutationAuditService>();
                 var triggerdDoor = EasyAuthHelper.GetAuditActor(req);
@@ -131,17 +99,23 @@ public static class SportlinkClubMatchFunction
                     CorrelationId: correlationId);
                 var auditId = auditService == null ? (long?)null : await auditService.LogPogingAsync(auditEntry);
 
-                // TODO(#997-vervolg): het écht opslaan van het teruggekregen PublicMatchId in de
-                // audit vereist een uitbreiding van ISportlinkMutationAuditService.VoltooiAsync
-                // (raakt beide tiers) — niet nodig zolang dit pad altijd "DryRunLocked" teruggeeft
-                // (ClubMatchLiveBevestigd = false in SportlinkClubClient).
-                var mutationResult = await sportlinkClient!.CreateClubMatchAsync(RolNaam, aanvraag);
+                var mutationResult = await sportlinkClient!.CreateClubMatchAsync(RolNaam, aanvraag!);
                 return await SportlinkEndpointSupport.RondMutatieAfAsync(
                     mutationResult, auditService, auditId, r => r,
-                    r => new OkObjectResult(new OefenwedstrijdAanmaakResultaat(
-                        r.IsSuccess, r.Violations, r.IsDryRun, r.IsForcedDryRun, r.PublicMatchId,
-                        omschrijving, aanvraag.PublicHomeTeamId, aanvraag.AgeClassCode, facilityId, veldNaam, waarschuwingen)));
+                    r => new OkObjectResult(Resultaat(r, aanvraag!, veldNaam, waarschuwingen)));
             });
+
+    /// <summary>
+    /// <c>GET /api/sportlink/club-match/dryrun-status</c> (#1427) — de actuele dry-run-stand voor de
+    /// banner op "Wedstrijd aanmaken". Leest alleen de club-instelling, geen Sportlink-aanroep. Eigen
+    /// endpoint achter de Wedstrijdzaken-poort, omdat de health-endpoint admin-only is.
+    /// </summary>
+    [Function("SqlSportlinkClubMatchDryRunStatusGet")]
+    public static Task<IActionResult> GetDryRunStatus(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "sportlink/club-match/dryrun-status")] HttpRequest req,
+        FunctionContext context) =>
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SqlSportlinkClubMatchDryRunStatusGet"), "dry-run-status ophalen",
+            _ => Task.FromResult<IActionResult>(new OkObjectResult(new { DryRun = SportlinkEndpointSupport.IsDryRunActief() })));
 
     /// <summary>
     /// <c>GET /api/sportlink/club-match/picklists</c> — de twee ondersteunende Sportlink-picklists
@@ -168,126 +142,6 @@ public static class SportlinkClubMatchFunction
                 return new OkObjectResult(result.Data ?? new SportlinkClubMatchPickLists(
                     Array.Empty<SportlinkPickListItem>(), Array.Empty<SportlinkPickListItem>()));
             });
-
-    /// <summary>Invoer van het formulier (#1116) — alleen wat een mens snel kan intikken; de Sportlink-ID's leidt de server af.</summary>
-    internal sealed class OefenwedstrijdAanmakenDto
-    {
-        public DateTime? MatchDateTime { get; set; }
-        public int? Duration { get; set; }
-        public string? TeamNaam { get; set; }
-        public string? Tegenstander { get; set; }
-        public int? VeldNummer { get; set; }
-        public string? Description { get; set; }
-    }
-
-    /// <summary>
-    /// Respons van <c>POST /api/sportlink/club-match</c>: het generieke mutatieresultaat plus wat de
-    /// server uit teamnaam en instellingen heeft afgeleid, zodat de beheerder ziet wat er
-    /// (gesimuleerd) naar Sportlink zou gaan. Spiegelt <c>BlazorAdmin.Models.OefenwedstrijdResultaatDto</c>.
-    /// </summary>
-    internal sealed record OefenwedstrijdAanmaakResultaat(
-        bool IsSuccess,
-        IReadOnlyList<string>? Violations,
-        bool IsDryRun,
-        bool IsForcedDryRun,
-        string? PublicMatchId,
-        string Omschrijving,
-        string? SportlinkTeamId,
-        string? AgeClassCode,
-        string? FacilityId,
-        string? VeldNaam,
-        IReadOnlyList<string> Waarschuwingen);
-
-    /// <summary>Invoervalidatie — <c>null</c> als de aanvraag bruikbaar is, anders een 400 met de reden.</summary>
-    internal static IActionResult? Valideer(OefenwedstrijdAanmakenDto? dto)
-    {
-        if (dto?.MatchDateTime == null)
-            return new BadRequestObjectResult(new { error = "MatchDateTime is verplicht." });
-        if (string.IsNullOrWhiteSpace(dto.TeamNaam))
-            return new BadRequestObjectResult(new { error = "TeamNaam is verplicht." });
-        if (string.IsNullOrWhiteSpace(dto.Tegenstander))
-            return new BadRequestObjectResult(new { error = "Tegenstander is verplicht." });
-        if (dto.Duration is < 1 or > MaxDuurMinuten)
-            return new BadRequestObjectResult(new { error = $"Duration moet tussen 1 en {MaxDuurMinuten} minuten liggen." });
-        return null;
-    }
-
-    /// <summary>
-    /// Omschrijving zoals die naar Sportlink gaat: de eigen tekst van de beheerder, of anders een
-    /// standaardtekst met team, tegenstander en — zolang <c>FieldId</c> nog niet wordt meegestuurd —
-    /// het gekozen veld, zodat dat in Sportlink Club in ieder geval leesbaar is.
-    /// </summary>
-    internal static string BouwOmschrijving(string? eigenTekst, string teamNaam, string tegenstander, string? veldNaam)
-    {
-        if (!string.IsNullOrWhiteSpace(eigenTekst)) return eigenTekst.Trim();
-        var basis = $"Oefenwedstrijd {teamNaam} - {tegenstander.Trim()}";
-        return string.IsNullOrWhiteSpace(veldNaam) ? basis : $"{basis} ({veldNaam})";
-    }
-
-    /// <summary>
-    /// Zoekt de eigen accommodatie (club-instelling <c>accommodatie</c>) op naam in de Sportlink-
-    /// locatiepicklist. Eerst exact (hoofdletter- en spatie-ongevoelig); lukt dat niet, dan één
-    /// unieke gedeeltelijke match (de ene naam bevat de andere). Meerdere of geen treffers → <c>null</c>:
-    /// beter leeg dan de verkeerde locatie.
-    /// </summary>
-    internal static string? ZoekFacilityId(IEnumerable<SportlinkPickListItem> locaties, string? accommodatie)
-    {
-        if (string.IsNullOrWhiteSpace(accommodatie)) return null;
-        var gezocht = accommodatie.Trim();
-        var kandidaten = locaties
-            .Where(l => !string.IsNullOrWhiteSpace(l.Id) && !string.IsNullOrWhiteSpace(l.Naam))
-            .Select(l => (l.Id!, Naam: l.Naam!.Trim()))
-            .ToList();
-
-        var exact = kandidaten.Where(k => string.Equals(k.Naam, gezocht, StringComparison.OrdinalIgnoreCase)).ToList();
-        if (exact.Count == 1) return exact[0].Item1;
-        if (exact.Count > 1) return null;
-
-        var gedeeltelijk = kandidaten
-            .Where(k => k.Naam.Contains(gezocht, StringComparison.OrdinalIgnoreCase)
-                     || gezocht.Contains(k.Naam, StringComparison.OrdinalIgnoreCase))
-            .ToList();
-        return gedeeltelijk.Count == 1 ? gedeeltelijk[0].Item1 : null;
-    }
-
-    private static async Task<string?> BepaalFacilityIdAsync(
-        ISportlinkClubClient client, string clubCode, string? accommodatie, List<string> waarschuwingen, ILogger log)
-    {
-        if (string.IsNullOrWhiteSpace(accommodatie))
-        {
-            waarschuwingen.Add("Club-instelling 'accommodatie' is leeg — FacilityId blijft leeg.");
-            return null;
-        }
-
-        var locaties = await HaalLocatiesAsync(client, clubCode, log);
-        if (locaties == null)
-        {
-            waarschuwingen.Add("Sportlink-locatielijst kon niet worden opgehaald — FacilityId blijft leeg.");
-            return null;
-        }
-
-        var facilityId = ZoekFacilityId(locaties, accommodatie);
-        if (facilityId == null)
-            waarschuwingen.Add($"Accommodatie '{accommodatie}' niet (eenduidig) gevonden in de Sportlink-locatielijst — FacilityId blijft leeg.");
-        return facilityId;
-    }
-
-    private static async Task<IReadOnlyList<SportlinkPickListItem>?> HaalLocatiesAsync(ISportlinkClubClient client, string clubCode, ILogger log)
-    {
-        if (LocatieCache.TryGetValue(clubCode, out var cached) && DateTime.UtcNow - cached.OpgehaaldUtc < LocatieCacheDuur)
-            return cached.Locaties;
-
-        var result = await client.GetClubMatchPickListsAsync(RolNaam);
-        if (result.Status != SportlinkClubCallStatus.Ok || result.Data == null)
-        {
-            // Alleen de status loggen, nooit de foutmelding-body — die kan Sportlink-details bevatten.
-            log.LogWarning("Sportlink-locatiepicklist niet beschikbaar (status {Status}); FacilityId blijft leeg.", result.Status);
-            return null;
-        }
-
-        LocatieCache[clubCode] = (DateTime.UtcNow, result.Data.Locations);
-        return result.Data.Locations;
-    }
 
     private static IActionResult? VertaalStatusNaarFout(SportlinkClubCallStatus status)
         => SportlinkEndpointSupport.VertaalStatusNaarFout(status);

@@ -972,7 +972,7 @@ Dit is het hoofdstuk waar een agent of reviewer begint. Kolom **Bewijs** zegt ho
 | WZ-SEC-02 | Ontwikkelbypass | ASVS V4 | Expliciet, beperkt tot ontwikkeling, faalt dicht bij twijfel | **ontbreekt** |
 | WZ-SEC-03 | Beveiligingskoppen | ASVS V14.4 | De webinterface stuurt een restrictief inhoudsbeleid en de bijbehorende koppen | Configuratiebestand |
 | WZ-SEC-04 | Geheimen | ASVS V2 / V14 | Nooit in code, sjabloon, log, issue of pull request | Hooks + beveiligingspoort |
-| WZ-SEC-05 | Rollenmatrix | ASVS V4 | Code, matrix en documentatie beschrijven dezelfde werking | **ontbreekt** — lopen nu uiteen |
+| WZ-SEC-05 | Rollenmatrix | ASVS V4 | Code, matrix en documentatie beschrijven dezelfde werking | Tests — elke API-rij van de matrix in §8.2 is een geval in `EndpointAutorisatieTests` (per tier; de `user`-uitzonderingen zijn de lijst `AuthenticatedRoutes`), de interfacekolom voor aanmelden/geen rol/onbekende rol in `AuthGateTests` (getoetst bij #1423) |
 | WZ-SEC-06 | Injectie | ASVS V5 | Uitsluitend geparametriseerde query's | Reviewcontrole |
 | WZ-SEC-07 | Uitgaande aanroep op invoer | ASVS V12 | Een door de gebruiker opgegeven adres passeert de beveiligde client met adrescontrole en begrensde doorverwijzingen | Bestaande tests |
 | WZ-SEC-08 | Publicatiecontrole | — | Een tekst zonder echte waarden kan nog een vindaanwijzing zijn; bij een nog niet verholpen bevinding alleen klasse en codepad | Reviewcontrole |
@@ -1047,7 +1047,7 @@ werkvoorraad.
 | 3 | Laaggrenzen niet vastgeklikt | WZ-ARC-01 | De regels zijn vandaag al waar; borging kost geen codewijziging | ± 1 dag |
 | 4 | Autorisatiedekking niet afgedwongen | WZ-SEC-01 | Negenennegentig handmatige aanroepen; niets bewaakt de honderdste | valt samen met 3 |
 | 5 | Doorgifte aan AI-verwerker niet vastgelegd | WZ-AI-05 | Verantwoordingsplicht; geen code nodig | documentatie |
-| 6 | Rollenmatrix loopt uiteen met de code | WZ-SEC-05 | Een verplichte test waarvan een stap niet kan slagen, leert afwijkingen negeren | ± halve dag |
+| 6 | ~~Rollenmatrix loopt uiteen met de code~~ — afgerond: matrix en tests zijn gelijkgetrokken (#1390, #1400; getoetst bij #1423) | WZ-SEC-05 | Een verplichte test waarvan een stap niet kan slagen, leert afwijkingen negeren | — |
 | 7 | Aanmelding van automatisering zonder geheim | WZ-DEP-04 | Kost niets en de rechten staan al klaar | ± halve dag |
 | 8 | Infrastructuur belooft wat ze niet uitrolt | WZ-DEP-02 | Voorbeeldmodus zou hier blijvend verschil moeten tonen | ± 2 uur |
 | 9 | Labels op resources | WZ-DEP-03 | Goedkoop; nodig voor kostentoerekening | ± 2 uur |

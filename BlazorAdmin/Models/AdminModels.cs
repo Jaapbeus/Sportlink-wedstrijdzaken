@@ -175,6 +175,12 @@ public class SportlinkMutatieResultaatDto
     public string? PublicMatchId { get; set; }
 }
 
+/// <summary>#1427: respons van <c>GET /api/sportlink/club-match/dryrun-status</c>.</summary>
+public class SportlinkDryRunStatusDto
+{
+    public bool DryRun { get; set; }
+}
+
 /// <summary>#1116: respons van POST /api/sportlink/club-match — het generieke mutatieresultaat plus
 /// wat de server uit teamnaam en instellingen heeft afgeleid (Sportlink-team-ID, leeftijdscategorie,
 /// locatie-ID, veld), zodat de beheerder ziet wat er (gesimuleerd) naar Sportlink zou gaan. Spiegelt
@@ -185,6 +191,12 @@ public class OefenwedstrijdResultaatDto : SportlinkMutatieResultaatDto
     public string? SportlinkTeamId { get; set; }
     public string? AgeClassCode { get; set; }
     public string? FacilityId { get; set; }
+    /// <summary>#1427: het veld zoals Sportlink het kent (bijv. "…-OUTDOOR_FIELD-6").</summary>
+    public string? SubFacilityId { get; set; }
+    /// <summary>#1427: spelactiviteit, bijv. "SOCCER-VE-AL/FRIDAY".</summary>
+    public string? SportIdTag { get; set; }
+    /// <summary>#1427: wedstrijdnummer uit Sportlinks <c>ClubMatchDefaults</c>.</summary>
+    public long? WedstrijdNummer { get; set; }
     public string? VeldNaam { get; set; }
     public List<string> Waarschuwingen { get; set; } = new();
 }

@@ -167,7 +167,7 @@ Volledige, actuele endpoint-lijst: [docs/API.md](API.md).
 |---------|-----------|
 | FunctionApp start niet (503) | `dotnet --list-runtimes` — staan **beide** 9.x-frameworks er (`NETCore.App` én `AspNetCore.App`)? Windows: `winget install Microsoft.DotNet.Runtime.9` + `Microsoft.DotNet.AspNetCore.9` · macOS: `/tmp/dotnet-install.sh --channel 9.0 --runtime dotnet` én `--runtime aspnetcore` (zie DEVELOPER-SETUP.md §1) |
 | Database verbinding mislukt | Draait de container? `docker compose ps` — anders de verbindingsreeks controleren: Postgres → `POSTGRES_CONNECTION_STRING` in `FunctionApp.Postgres/local.settings.json`; SQL Server → `SqlConnectionString` in `FunctionApp/local.settings.json` (zie DEVELOPER-SETUP.md §4) |
-| Sportlink API 401 | `UPDATE [dbo].[AppSettings] SET SportlinkClientId = '...'` |
+| Sportlink API 401 | Client-ID in de instellingentabel klopt niet (niet in de Admin GUI te wijzigen). Postgres-tier: `UPDATE public.appsettings SET sportlinkclientid = '...' WHERE clubcode = '...'` · SQL Server-tier: `UPDATE [dbo].[AppSettings] SET SportlinkClientId = '...'` |
 | Sportlink Club-acties mislukken, sessie verlopen | Admin GUI → **Instellingen → Sportlink Ext.** → sectie "Automatisch inloggen — rol Wedstrijdzaken": status, **Laatste login** en **Volgende poging na** controleren; inrichting en herstel: [SPORTLINK-AUTOLOGIN.md](SPORTLINK-AUTOLOGIN.md) |
 | Azurite niet actief | Windows: `Get-NetTCPConnection -LocalPort 10000` · macOS: `lsof -nP -iTCP:10000 -sTCP:LISTEN` — start via `Start-Debug.ps1` |
 | Blazor "An unhandled error" | Stop services → `dotnet clean BlazorAdmin` → `Start-Debug.ps1` |

@@ -284,4 +284,13 @@ public interface ISportlinkClubClient
     Task<SportlinkClubResponse<SportlinkClubMatchPickLists>> GetClubMatchPickListsAsync(
         string functioneleRol,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// #1427: de vier read-only lijsten waarmee Sportlinks eigen formulier een oefenwedstrijd
+    /// opbouwt — <c>ClubMatchDefaults</c>, <c>PickListsTeams</c>, <c>PickListsLocation</c> en
+    /// <c>PickListsMatchInformation</c>. Live vastgesteld; zie <see cref="SportlinkClubMatchContext"/>.
+    /// </summary>
+    Task<SportlinkClubResponse<SportlinkClubMatchContext>> GetClubMatchContextAsync(
+        string functioneleRol,
+        CancellationToken cancellationToken = default);
 }

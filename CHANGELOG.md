@@ -18,8 +18,23 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
-### Fixed
+## [3.8.1.0] — 2026-10-01
 
+### Changed
+- Opruimronde na v3.8.0.0: dubbele sleutel `SportlinkAutoLoginEncryptionKey` uit beide `local.settings.template.json` verwijderd, de troubleshootregel "Sportlink API 401" in de snelle referentie noemt nu beide databasetiers, en de rollenmatrix staat in het architectuurregister als bewezen door tests; de ongebruikte pakketversie `Microsoft.Playwright` (wees sinds het verwijderen van `Tools/SportlinkTokenCapture`) is uit `Directory.Packages.props` gehaald (#1423)
+
+### Fixed
+- **Wedstrijd aanmaken werkt nu echt in Sportlink Club** (#1427). Sportlink wees elke aanmaak af
+  (HTTP 602): het verzoek was nagebouwd en nooit gecontroleerd. Het is nu gelijk aan wat Sportlink
+  Clubs eigen formulier verstuurt. De server haalt daarvoor eerst Sportlinks eigen lijsten op en vult
+  daarmee het team, de leeftijdscategorie, de spelactiviteit, het veld en het wedstrijdnummer. Een
+  team of veld dat Sportlink niet eenduidig kent, wordt geweigerd met een melding in plaats van gegokt.
+- De pagina heet nu "Wedstrijd aanmaken" en toont bovenaan in één zin de actuele dry-run-stand in
+  plaats van een vaste uitleg (#1427).
+- Een team dat via **"Vrije tekst invoeren…"** is ingevuld wordt niet meer geweigerd met "niet bekend
+  als actief clubteam"; Sportlinks standaardteam wordt dan gebruikt, met uw tekst als naam (#1427).
+- Wijst Sportlink een mutatie af zonder eigen toelichting, dan toont de GUI nu Sportlinks eigen
+  foutmelding in plaats van alleen "afgewezen" (#1427).
 - De knop **Toon** (Sportlink-matchinfo) op Planning en Veld optimalisatie gaf bij wedstrijden met
   toegewezen officials "Sportlink is momenteel niet bereikbaar", terwijl de koppeling gewoon werkte.
   Sportlink levert de positie van een official als getal aan; dat wordt nu geaccepteerd. Het

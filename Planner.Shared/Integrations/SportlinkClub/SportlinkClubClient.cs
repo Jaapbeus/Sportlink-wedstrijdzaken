@@ -34,6 +34,9 @@ public class SportlinkClubClient : ISportlinkClubClient
     // (bewust beperkte scope, zie PR-beschrijving) — read-only, persoonsgegevensvrij.
     private const string PickListsTeamsEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/clubmatch/PickListsTeams";
     private const string PickListsLocationEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/clubmatch/PickListsLocation";
+    // #1427: de twee overige lijsten van Sportlinks eigen aanmaakformulier (live vastgesteld 01-10-2026).
+    private const string ClubMatchDefaultsEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/clubmatch/ClubMatchDefaults";
+    private const string PickListsMatchInformationEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/clubmatch/PickListsMatchInformation";
     public const string ClientId = "sportlink-club-web";
     private const int TokenExpiryMarginSeconds = 60;
 
@@ -619,31 +622,115 @@ public class SportlinkClubClient : ISportlinkClubClient
     }
 
     /// <summary>
-    /// Bouwt de <c>ClubMatch</c>-requestbody — losgetrokken van <see cref="PostClubMatchAsync"/>
-    /// zodat de AANGENOMEN vorm (#997) direct getest kan worden. <b>Sinds #1319</b> heeft de
-    /// eigenaar <see cref="ClubMatchLiveBevestigd"/> op <c>true</c> gezet na een live netwerktrace,
-    /// maar niet elk veld hieronder is daarmee per se bevestigd — zie
-    /// <see cref="SportlinkClubMatchAanvraag"/> voor de resterende aannames per veld.
+    /// Bouwt de <c>ClubMatch</c>-requestbody. <b>Sinds #1427 live bevestigd</b>: veld voor veld
+    /// gelijk aan wat Sportlink Clubs eigen formulier verstuurt (console-trace 01-10-2026, HTTP 200
+    /// met nieuw <c>PublicMatchId</c>). Datum en tijd gaan apart, het eigen team staat als thuis- én
+    /// uit-ID, en de teamnamen zijn vrije tekst.
     /// </summary>
     internal static object BuildClubMatchBody(SportlinkClubMatchAanvraag aanvraag) =>
         new
         {
-            // ONBEVESTIGD: aangenomen ISO 8601 zonder tijdzone — "datum+tijd samengevoegd" volgens
-            // het issue, geen aparte Date/StartTime-velden zoals bij UpdateMatchDetails.
-            MatchDate = aanvraag.MatchDateTime.ToString("yyyy-MM-ddTHH:mm:ss"),
+            AwayTeam = aanvraag.AwayTeam,
+            HomeTeam = aanvraag.HomeTeam,
+            PublicAwayTeamId = aanvraag.PublicTeamId,
+            PublicHomeTeamId = aanvraag.PublicTeamId,
+            AgeClassCode = aanvraag.AgeClassCode,
+            AwayResult = -1,
+            Description = aanvraag.Description,
             Duration = aanvraag.Duration,
             ExternalMatchId = aanvraag.ExternalMatchId,
-            // ONBEVESTIGD: -1 betekent "nog geen uitslag" volgens het issue — bij het aanmaken is
-            // er per definitie nog geen uitslag.
             HomeResult = -1,
-            AwayResult = -1,
-            AgeClassCode = aanvraag.AgeClassCode,
-            Description = aanvraag.Description,
-            PublicHomeTeamId = aanvraag.PublicHomeTeamId,
-            PublicAwayTeamId = aanvraag.PublicAwayTeamId,
+            MatchDate = aanvraag.MatchDate.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+            SportIdTag = aanvraag.SportIdTag,
+            StartTime = aanvraag.StartTime.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
+            IsHomeMatch = aanvraag.IsHomeMatch,
+            FieldOffset = aanvraag.FieldOffset,
             FacilityId = aanvraag.FacilityId,
-            FieldId = aanvraag.FieldId
+            SubFacilityId = aanvraag.SubFacilityId,
+            FieldSize = aanvraag.FieldSize
         };
+
+    /// <summary>
+    /// Haalt de vier lijsten op waarmee Sportlinks eigen formulier een oefenwedstrijd opbouwt (#1427)
+    /// — zie <see cref="ISportlinkClubClient.GetClubMatchContextAsync"/>. Read-only.
+    /// </summary>
+    public Task<SportlinkClubResponse<SportlinkClubMatchContext>> GetClubMatchContextAsync(
+        string functioneleRol, CancellationToken cancellationToken = default)
+        => ExecuteWithTokenRetryAsync(functioneleRol, RetryBeleid.Lezen,
+            (token, ct) => FetchClubMatchContextAsync(token, ct), cancellationToken);
+
+    private async Task<SportlinkClubResponse<SportlinkClubMatchContext>> FetchClubMatchContextAsync(
+        string token, CancellationToken cancellationToken)
+    {
+        var defaults = await FetchClubMatchJsonAsync<SportlinkClubMatchDefaults>(ClubMatchDefaultsEndpoint, "ClubMatchDefaults", token, cancellationToken);
+        if (defaults.Status != SportlinkClubCallStatus.Ok) return Doorgeven(defaults);
+        var teams = await FetchClubMatchJsonAsync<ClubTeamsRaw>(PickListsTeamsEndpoint, "PickListsTeams", token, cancellationToken);
+        if (teams.Status != SportlinkClubCallStatus.Ok) return Doorgeven(teams);
+        var locaties = await FetchClubMatchJsonAsync<FacilitiesRaw>(PickListsLocationEndpoint + "?SearchClubId=", "PickListsLocation", token, cancellationToken);
+        if (locaties.Status != SportlinkClubCallStatus.Ok) return Doorgeven(locaties);
+        var info = await FetchClubMatchJsonAsync<MatchInformationRaw>(PickListsMatchInformationEndpoint, "PickListsMatchInformation", token, cancellationToken);
+        if (info.Status != SportlinkClubCallStatus.Ok) return Doorgeven(info);
+
+        return new SportlinkClubResponse<SportlinkClubMatchContext>(
+            SportlinkClubCallStatus.Ok,
+            new SportlinkClubMatchContext(
+                defaults.Data!,
+                teams.Data!.ClubTeams ?? new List<SportlinkClubTeam>(),
+                locaties.Data!.Facilities ?? new List<SportlinkClubFacility>(),
+                info.Data!.Activities ?? new List<SportlinkClubActivity>(),
+                info.Data.AgeClasses ?? new List<SportlinkClubAgeClass>()),
+            null, 200);
+
+        static SportlinkClubResponse<SportlinkClubMatchContext> Doorgeven<T>(SportlinkClubResponse<T> fout) where T : class =>
+            new(fout.Status, null, fout.FoutmeldingVoorLog, fout.HttpStatusCode);
+    }
+
+    private sealed record ClubTeamsRaw(List<SportlinkClubTeam>? ClubTeams);
+    private sealed record FacilitiesRaw(List<SportlinkClubFacility>? Facilities);
+    private sealed record MatchInformationRaw(List<SportlinkClubActivity>? Activities, List<SportlinkClubAgeClass>? AgeClasses);
+
+    /// <summary>Eén read-only clubmatch-GET met getypeerde deserialisatie (#1427). Logt bij een
+    /// fout alleen entity en status, nooit de body.</summary>
+    private async Task<SportlinkClubResponse<T>> FetchClubMatchJsonAsync<T>(
+        string endpoint, string entityKort, string token, CancellationToken cancellationToken) where T : class
+    {
+        var entityName = "competition/match/clubmatch/" + entityKort;
+        try
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
+            ZetSportlinkHeaders(request, entityName, token);
+            var response = await VerstuurMetTimeoutAsync(ct => _httpClient.SendAsync(request, ct), cancellationToken);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                return new SportlinkClubResponse<T>(SportlinkClubCallStatus.SportlinkFout, null, $"Unauthorized bij {entityName} endpoint", 401);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("{Entity} endpoint gaf {StatusCode}", entityName, response.StatusCode);
+                return new SportlinkClubResponse<T>(SportlinkClubCallStatus.SportlinkFout, null, $"{entityName} endpoint gaf {response.StatusCode}", (int)response.StatusCode);
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            var data = JsonSerializer.Deserialize<T>(json, JsonOptions);
+            return data == null
+                ? new SportlinkClubResponse<T>(SportlinkClubCallStatus.SportlinkFout, null, $"{entityName}-respons was leeg", (int)response.StatusCode)
+                : new SportlinkClubResponse<T>(SportlinkClubCallStatus.Ok, data, null, (int)response.StatusCode);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "JSON deserialisatie fout voor {Entity} endpoint", entityName);
+            return new SportlinkClubResponse<T>(SportlinkClubCallStatus.SportlinkFout, null, "JSON deserialisatie fout", null);
+        }
+        catch (TaskCanceledException ex)
+        {
+            _logger.LogWarning(ex, "{Entity} endpoint timeout", entityName);
+            return new SportlinkClubResponse<T>(SportlinkClubCallStatus.NetwerkFout, null, $"Timeout bij {entityName} endpoint", null);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "{Entity} endpoint netwerk fout", entityName);
+            return new SportlinkClubResponse<T>(SportlinkClubCallStatus.NetwerkFout, null, $"Netwerk fout bij {entityName} endpoint", null);
+        }
+    }
 
     /// <summary>
     /// Haalt de twee ondersteunende picklists op (#997) — zie
@@ -661,11 +748,12 @@ public class SportlinkClubClient : ISportlinkClubClient
     private async Task<SportlinkClubResponse<SportlinkClubMatchPickLists>> FetchClubMatchPickListsAsync(
         string token, CancellationToken cancellationToken)
     {
+        // #1427: de teamlijst mag de locatielijst niet meer blokkeren. Het aanmaakpad gebruikt
+        // alleen de locaties (FacilityId); de teams komen uit onze eigen database. Live gaf
+        // PickListsTeams HTTP 200 met een onherkende vorm, waardoor PickListsLocation nooit werd
+        // aangeroepen en FacilityId altijd leeg bleef. Een mislukte teamlijst wordt nu een lege lijst.
         var teamsResult = await FetchPickListAsync(
             PickListsTeamsEndpoint, "competition/match/clubmatch/PickListsTeams", token, cancellationToken);
-        if (teamsResult.Status != SportlinkClubCallStatus.Ok)
-            return new SportlinkClubResponse<SportlinkClubMatchPickLists>(
-                teamsResult.Status, null, teamsResult.FoutmeldingVoorLog, teamsResult.HttpStatusCode);
 
         var locationsResult = await FetchPickListAsync(
             PickListsLocationEndpoint, "competition/match/clubmatch/PickListsLocation", token, cancellationToken);
@@ -712,11 +800,18 @@ public class SportlinkClubClient : ISportlinkClubClient
             try
             {
                 using var doc = JsonDocument.Parse(json);
-                var element = UnwrapArrayEnvelope(doc.RootElement, "Items", "Teams", "Locations", "Data");
+                var element = UnwrapArrayEnvelope(doc.RootElement, "Items", "Teams", "Locations", "Data")
+                    ?? EnigeArrayProperty(doc.RootElement);
 
                 if (element is not { ValueKind: JsonValueKind.Array } arrayElement)
+                {
+                    // #1427: alleen de STRUCTUUR loggen (propertynamen + JSON-soorten), nooit
+                    // waarden — zo is de echte vorm uit de log af te leiden zonder netwerktrace.
+                    _logger.LogWarning("{Entity}-respons had onverwachte vorm: {Structuur}",
+                        entityName, BeschrijfJsonStructuur(doc.RootElement));
                     return new SportlinkClubResponse<IReadOnlyList<SportlinkPickListItem>>(
                         SportlinkClubCallStatus.SportlinkFout, null, $"{entityName}-respons had onverwachte vorm", (int)response.StatusCode);
+                }
 
                 var items = arrayElement.EnumerateArray().Select(ParsePickListItem).ToList();
                 return new SportlinkClubResponse<IReadOnlyList<SportlinkPickListItem>>(
@@ -755,7 +850,7 @@ public class SportlinkClubClient : ISportlinkClubClient
     internal static SportlinkPickListItem ParsePickListItem(JsonElement item)
     {
         var id = FirstStringProperty(item, "Id", "PublicTeamId", "PublicLocationId", "FacilityId", "Value", "Code");
-        var naam = FirstStringProperty(item, "Name", "TeamName", "LocationName", "FacilityName", "Text", "Description", "Naam");
+        var naam = FirstStringProperty(item, "Name", "TeamName", "NormalizedName", "LocationName", "FacilityName", "Text", "Description", "Naam");
         return new SportlinkPickListItem(id, naam);
     }
 
@@ -1372,6 +1467,14 @@ public class SportlinkClubClient : ISportlinkClubClient
                 ? raw.Violations.Select(kv => $"{kv.Key}: {kv.Value}").ToList()
                 : raw.ViolationCodes;
             var isSuccess = raw.Error != true && response.IsSuccessStatusCode;
+            // #1427: een afwijzing zonder Violations (live gezien: HTTP 602 op ClubMatch) toonde in
+            // de GUI alleen "afgewezen". Sportlinks eigen Message geeft dan de reden — die gaat
+            // naar de gebruiker; in de log alleen de statuscode, nooit de body.
+            if (!isSuccess && violations is not { Count: > 0 })
+            {
+                _logger.LogWarning("{Entity} endpoint wees af met {StatusCode} zonder violations", entityName, (int)response.StatusCode);
+                violations = new List<string> { $"Sportlink {(int)response.StatusCode}: {raw.Message ?? "geen foutmelding"}" };
+            }
             // #997: PublicMatchId komt alleen terug op de ClubMatch-aanmaak-respons — voor elke
             // andere mutatie-respons (dressing rooms, veld, officials, change-request-actie) staat
             // dit veld hier niet in en blijft raw.PublicMatchId dus null (bestaand gedrag ongewijzigd).
@@ -1485,6 +1588,29 @@ public class SportlinkClubClient : ISportlinkClubClient
     /// (naam en casing per endpoint verschillend, niet 100% live bevestigd) — deze helper zoekt de
     /// array op één van beide manieren zodat elke fetch-methode niet zijn eigen kopie hoeft te houden.
     /// </summary>
+    /// <summary>
+    /// #1427: als een object precies één array-property heeft, is dat vrijwel zeker de lijst —
+    /// ongeacht hoe Sportlink die property noemt. Meerdere arrays → <c>null</c>: niet gokken.
+    /// </summary>
+    internal static JsonElement? EnigeArrayProperty(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object) return null;
+        var arrays = root.EnumerateObject().Where(p => p.Value.ValueKind == JsonValueKind.Array).ToList();
+        return arrays.Count == 1 ? arrays[0].Value : null;
+    }
+
+    /// <summary>
+    /// #1427: beschrijft de vorm van een JSON-respons zonder één waarde te tonen — bijv.
+    /// <c>Object{Foo:Array[12],Bar:String}</c>. Veilig om te loggen; maximaal tien properties.
+    /// </summary>
+    internal static string BeschrijfJsonStructuur(JsonElement root) => root.ValueKind switch
+    {
+        JsonValueKind.Object => "Object{" + string.Join(",", root.EnumerateObject().Take(10).Select(p =>
+            p.Value.ValueKind == JsonValueKind.Array ? $"{p.Name}:Array[{p.Value.GetArrayLength()}]" : $"{p.Name}:{p.Value.ValueKind}")) + "}",
+        JsonValueKind.Array => $"Array[{root.GetArrayLength()}]",
+        _ => root.ValueKind.ToString()
+    };
+
     private static JsonElement? UnwrapArrayEnvelope(JsonElement root, params string[] propertyNames)
     {
         if (root.ValueKind == JsonValueKind.Array)
