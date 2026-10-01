@@ -32,6 +32,7 @@ ALTER TABLE public.sportlinkcontractcheck ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sportlinkextensierollen ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sportlinkmutationaudit ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sportlinkpublicmatchidcache ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sportlinkservicetokens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.syncjobs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.teamaliassen ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.teamregels ENABLE ROW LEVEL SECURITY;
