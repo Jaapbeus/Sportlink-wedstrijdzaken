@@ -1310,9 +1310,12 @@ wijzigingsverzoek datum/tijd/accommodatie hun actie écht door naar Sportlink zo
 staat; ze volgen dus dezelfde dry-run-schakelaar als de andere Sportlink-acties.
 
 Is Sportlink traag, dan kan een aanroep uittimen (#1387). Elke Sportlink-aanroep heeft een eigen
-time-out en krijgt bij een tijdelijke storing één automatische herhaling; duurt het antwoord te
-lang, dan krijgt u een aparte melding over een te trage reactie in plaats van de algemene melding
-dat Sportlink niet bereikbaar is.
+time-out. Leesaanroepen (matchinfo ophalen) krijgen bij een tijdelijke storing één automatische
+herhaling; wijzigingen (oefenwedstrijd, officials, veld, kleedkamers, wijzigingsverzoek) worden
+bewust **nooit** automatisch herhaald, omdat Sportlink de eerste poging al verwerkt kan hebben
+(#1417) — controleer bij zo'n fout eerst in Sportlink of de actie al is doorgevoerd. Duurt het
+antwoord te lang, dan krijgt u een aparte melding over een te trage reactie in plaats van de
+algemene melding dat Sportlink niet bereikbaar is.
 
 **Status Sportlink Web Extension** — een sectie onder de rollen-tabel die in één oogopslag toont of
 de extension/dry-run aan staan, of uitgaande verbindingen zijn toegestaan, de koppelingsstatus en
