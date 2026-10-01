@@ -1759,10 +1759,12 @@ Zelfherstellend systeem: auto-heal via GitHub Issues + Claude Code automatie (#1
 
 ## Solution Structure
 
-De solution telt achttien .csproj-projecten plus het legacy SSDT-project `Database/SportlinkSqlDb.sqlproj`.
-`sportlink-wedstrijdzaken.slnf` bevat alle achttien zonder dat SSDT-project — dat is wat de CI bouwt,
-en het enige dat op macOS werkt. Sinds #1302 staan `MigrationTools/` en `Tools/` er ook in: ze
-zaten wél in de `.sln` maar niet in de `.slnf`, en werden dus door geen enkele CI-stap gebouwd. Actuele lijst: `find . -name '*.csproj' -not -path '*/obj/*' -not -path '*/bin/*'`.
+De solution telt zestien .csproj-projecten plus het legacy SSDT-project `Database/SportlinkSqlDb.sqlproj`.
+`sportlink-wedstrijdzaken.slnf` bevat alle zestien zonder dat SSDT-project — dat is wat de CI bouwt,
+en het enige dat op macOS werkt. Sinds #1302 staat `MigrationTools/` er ook in: het zat wél in de
+`.sln` maar niet in de `.slnf`, en werd dus door geen enkele CI-stap gebouwd. `Tools/SportlinkTokenCapture`
+en zijn testproject zijn in #1411 verwijderd (automatische Sportlink-login). Actuele lijst:
+`find . -name '*.csproj' -not -path '*/obj/*' -not -path '*/bin/*'`.
 
 De twee kernprojecten van de oorspronkelijke ETL-pijplijn:
 
@@ -1816,7 +1818,7 @@ De `exports/` map bevat **scripts** voor data-exports. De databestanden zelf (CS
 
 **Workflow:**
 1. Download CSV via club.sportlink.com (zie [docs/ADMIN-TEAMBEGELEIDING-IMPORT.md](docs/ADMIN-TEAMBEGELEIDING-IMPORT.md) voor exacte stappen)
-2. Importeer via de Admin GUI (**Instellingen → Teambegeleiding importeren**, sinds #1322 een eigen
+2. Importeer via de Admin GUI (**Instellingen → Begeleiding importeren**, sinds #1322 een eigen
    pagina) — de browser toont een voorbeeld, maar de volledige CSV-inhoud gaat naar de server en
    wordt daar verwerkt; alleen het bestand zelf wordt nergens bewaard
 3. Alternatief vanaf de commandline: sla de CSV op in de lokale `exports/` map (nooit committen) en voer `.\exports\import-teambegeleiding-to-sql.ps1` uit

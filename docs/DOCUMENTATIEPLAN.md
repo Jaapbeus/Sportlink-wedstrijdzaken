@@ -67,6 +67,7 @@ Azure-productieomgeving. Eenmalig uit te voeren, daarna niet meer dagelijks nodi
 | [ARCHITECTUUR-TEAMRESOLUTIE.md](ARCHITECTUUR-TEAMRESOLUTIE.md) | Teamnaam-normalisatie, aliassen, disambiguatie |
 | [ARCHITECTUUR-EMAIL-MODULE.md](ARCHITECTUUR-EMAIL-MODULE.md) | Doelarchitectuur e-mailverzendlaag — ontwerp, migratie nog niet gestart |
 | [SPORTLINK-WEB-EXTENSION.md](SPORTLINK-WEB-EXTENSION.md) | Schrijfrichting webapp → Sportlink Club: protocol, endpoints, agent-tokengrens |
+| [SPORTLINK-AUTOLOGIN.md](SPORTLINK-AUTOLOGIN.md) | Automatische Sportlink-login (#1411): implementatie, productie-setup, TOTP-verwerking |
 | [ARCHITECTUUR-PLANNER.md](ARCHITECTUUR-PLANNER.md) | Planner API: algoritme, velddefinities, API-contract |
 | [API.md](API.md) | Alle HTTP-endpoints: routes, parameters, response-formaten |
 | [api-standaarden/openapi.yaml](api-standaarden/openapi.yaml) | Machine-readable OpenAPI 3.0 spec — bewaakt op actualiteit via CLAUDE.md |

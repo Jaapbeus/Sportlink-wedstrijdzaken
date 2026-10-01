@@ -44,6 +44,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   validatiekleuren, de laadspinner, het vinkje op het opstartscherm, de hover-markeerkleur van
   Planning/Veld optimalisatie (#1398 maakte die generiek maar niet instelbaar), en enkele overige
   systeemkleuren nu instelbaar, gegroepeerd onder "Navigatie" en "Systeemmeldingen".
+- **Toegangsmatrix per rol op "Instellingen → Rechten per rol" (#1390).** Deze pagina toonde
+  eerder alleen drie losse Sportlink-schakelaars voor de rol Wedstrijdzaken; nu is elk menu-item in
+  de Admin GUI een rij, met een kolom per instelbare rol: Gebruiker (standaard), Wedstrijdzaken,
+  Sectiehoofd, Ledenadministratie. Admin toont bewust geen kolom — die rol heeft altijd alles aan.
+  Rijen met persoonsgegevens (Teambegeleiding, Begeleiding importeren) zijn gemarkeerd met een
+  AVG-badge. **Let op:** deze pagina legt vandaag vast wát een rol zou mogen zien; het
+  daadwerkelijk verbergen van menu-items en de rollen Sectiehoofd/Ledenadministratie zelf toewijzen
+  volgen in een apart vervolgtraject.
 
 ### Removed
 - Instellingen → Thema: de "Basisthema"-keuzelijst met vier voorinstellingen is verwijderd (#1401).
@@ -88,16 +96,6 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   het donkere thema; de dropdown krijgt nu altijd een leesbare, vaste tekstkleur. Daarnaast wordt
   het `<select>`-element opnieuw opgebouwd zodra de clublijst of de geselecteerde club wijzigt, zodat
   de browser de juiste optie altijd als geselecteerd toont.
-
-### Added
-- **Toegangsmatrix per rol op "Instellingen → Rechten per rol" (#1390).** Deze pagina toonde
-  eerder alleen drie losse Sportlink-schakelaars voor de rol Wedstrijdzaken; nu is elk menu-item in
-  de Admin GUI een rij, met een kolom per instelbare rol: Gebruiker (standaard), Wedstrijdzaken,
-  Sectiehoofd, Ledenadministratie. Admin toont bewust geen kolom — die rol heeft altijd alles aan.
-  Rijen met persoonsgegevens (Teambegeleiding, Begeleiding importeren) zijn gemarkeerd met een
-  AVG-badge. **Let op:** deze pagina legt vandaag vast wát een rol zou mogen zien; het
-  daadwerkelijk verbergen van menu-items en de rollen Sectiehoofd/Ledenadministratie zelf toewijzen
-  volgen in een apart vervolgtraject.
 
 ## [3.7.0.0] — 2026-09-27
 

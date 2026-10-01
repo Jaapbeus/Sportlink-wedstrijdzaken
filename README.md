@@ -64,9 +64,10 @@ Een Blazor WebAssembly-applicatie geeft beheerders via de browser volledig behee
 - **E-maillog** — verwerkte e-mails inzien (AVG-conform: geen berichtteksten)
 - **Testmodus (ALLSTARS)** — fictieve wedstrijden invoeren om planner te testen zonder echte data
 - **Wijzigingsverzoeken** — inkomende Sportlink-wijzigingsverzoeken van tegenstanders goedkeuren of afwijzen
-- **Oefenwedstrijd aanmaken** — een oefenwedstrijd voorbereiden en direct in Sportlink Club aanmaken
-- **Thema** — clubkleuren, logo en favicon, met een aparte licht- en donkervariant en een schakelaar in de header
-- **Sportlink Web Extension** — een deep link "Open in Sportlink" per wedstrijd, en een deel van de wedstrijdacties (kleedkamers, veld, scheidsrechters, wijzigingsverzoeken) rechtstreeks vanuit Planning/Veld optimalisatie naar Sportlink Club terugschrijven — per actie in te stellen per rol
+- **Oefenwedstrijd aanmaken** — een oefenwedstrijd voorbereiden en (als dry-run uit staat) direct in Sportlink Club aanmaken; het team kan ook als vrije tekst worden ingevoerd
+- **Thema** — alle kleuren van de Admin GUI (merk, wedstrijdstatus, navigatie, systeemmeldingen) plus logo en favicon, met een aparte licht- en donkervariant, een tabblad "Overzicht" en een schakelaar in de header
+- **Sportlink Web Extension** — een deep link "Open in Sportlink" per wedstrijd, en een deel van de wedstrijdacties (kleedkamers, veld, scheidsrechters, oefenwedstrijd, wijzigingsverzoeken) rechtstreeks vanuit Planning/Veld optimalisatie naar Sportlink Club terugschrijven. Planning en het Sportlink-paneel zijn zichtbaar voor elke ingelogde gebruiker; wijzigen kan met de rol Wedstrijdzaken (of admin). De acties volgen een dry-run-schakelaar en kunnen met opt-in automatische Sportlink-login (wachtwoord + TOTP) de sessie zelf vernieuwen
+- **Rechten per rol** — toegangsmatrix per menu-item en rol (Gebruiker, Wedstrijdzaken, Sectiehoofd, Ledenadministratie); legt vast wat een rol mag zien, het daadwerkelijk verbergen van menu-items volgt nog
 
 ---
 

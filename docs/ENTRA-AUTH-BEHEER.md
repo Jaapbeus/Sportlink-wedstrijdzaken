@@ -236,6 +236,12 @@ viewing-endpoints (`GET /sportlink/match/{wedstrijdcode}` en `.../public-match-i
 van de Wedstrijdzaken-gate en lopen nu via `AdminEndpoint.ExecuteAuthenticatedAsync` (elke ingelogde
 rol) — vandaar dat rij 2 (gewone `user`) sindsdien al viewing krijgt, ook zonder `Wedstrijdzaken`.
 
+**Rollen `Sectiehoofd` en `Ledenadministratie` (#1390).** Naast `user` en `Wedstrijdzaken` kent
+`Planner.Shared/Autorisatie/RolNamen.cs` deze twee rollen als kolom in de toegangsmatrix
+(Instellingen → Rechten per rol). Ze worden **nog niet afgedwongen**: geen endpoint en geen
+app-roldefinitie in Entra gebruikt ze, en de matrix legt alleen vast wat een rol zou mogen zien.
+Maak er dus nog geen Entra-appRole-toewijzingen voor aan. `admin` heeft altijd alles en is niet instelbaar.
+
 ## Tracking
 
 - Issue [#185](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/185) — Frontend role-gate (Layer 4) — gesloten, geleverd in v2.1.1

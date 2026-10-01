@@ -620,19 +620,20 @@ chatsessie met de agent terecht (bedoeld voor een lokale scriptprompt, per abuis
 geplakt). De eigenaar moest direct volledig uitloggen bij Sportlink om die token in te trekken.
 Elk token dat ooit in een agent-sessie zichtbaar wordt, geldt vanaf dat moment als verbrand.
 
-**Praktisch gevolg voor deze scripts:**
-- `Invoke-SportlinkTokenSpike.ps1` is van nature agent-veilig: het vráágt bij elke run opnieuw om
+**Praktisch gevolg voor deze scripts** (de drie `Invoke-Sportlink*`-spikes zijn in #1411 verwijderd;
+de regels hieronder blijven gelden voor elk toekomstig script dat een opgeslagen token gebruikt):
+- ~~`Invoke-SportlinkTokenSpike.ps1`~~ was van nature agent-veilig: het vróeg bij elke run opnieuw om
   het token via `Read-Host -AsSecureString`, wat in een niet-interactieve agent-tool-omgeving
   (stdin op `/dev/null`) niet ingevuld kan worden.
-- `Invoke-SportlinkMatchLookup.ps1` leest het token zelf uit `local.settings.json` — dat heeft
+- ~~`Invoke-SportlinkMatchLookup.ps1`~~ las het token zelf uit `local.settings.json` — dat had
   daarom een **expliciete `Read-Host`-mensbevestiging** nodig (typ "JA") vóórdat het token gebruikt
-  wordt. Zonder die bevestiging zou dit script, anders dan het spike-script, wél door een agent
+  werd. Zonder die bevestiging had dit script, anders dan het spike-script, wél door een agent
   silently uitgevoerd kunnen worden — dat is precies wat er (bijna) gebeurde bij de review die tot
   dit document leidde.
 - ~~`Tools/SportlinkTokenCapture`~~ is verwijderd in #1411. De backend automatic-login is de
   ondersteunde flow; zie [`docs/SPORTLINK-AUTOLOGIN.md`](SPORTLINK-AUTOLOGIN.md).
 - **Nieuw script, nieuwe regel:** elk toekomstig script dat een opgeslagen refresh_token gebruikt
-  krijgt dezelfde `Read-Host`-mensbevestiging als `Invoke-SportlinkMatchLookup.ps1` — niet alleen
+  krijgt dezelfde `Read-Host`-mensbevestiging als destijds `Invoke-SportlinkMatchLookup.ps1` — niet alleen
   een waarschuwing in commentaar. Commentaar wordt door een agent gelezen maar is geen technische
   barrière; `Read-Host` in een niet-interactieve omgeving wel.
 - Verificatie van de refresh-cyclus, of van een nieuw endpoint dat een refresh_token nodig heeft,

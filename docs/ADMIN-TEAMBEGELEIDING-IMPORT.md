@@ -83,8 +83,9 @@ technische kennis.
 
 ### Optie A — via de Admin GUI (aanbevolen)
 
-1. Open de Admin GUI en ga naar **Instellingen → Teambegeleiding importeren**
-   (of klik de kaart "Teambegeleiding importeren" op de Instellingen-pagina zelf)
+1. Open de Admin GUI en ga naar **Instellingen → Begeleiding importeren** (de pagina heet
+   "Teambegeleiding importeren"; je kunt ook de kaart "Teambegeleiding importeren" op de
+   Instellingen-pagina zelf aanklikken)
 2. Kies het gedownloade bestand
 3. Controleer de voorbeeldweergave en bevestig de import
 
@@ -174,7 +175,7 @@ Deze export wordt **wekelijks** uitgevoerd — kies een vast moment dat past bij
 ## Technische achtergrond (niet nodig om de import uit te voeren)
 
 > **Postgres-tier (#824, epic #815).** Deze handleiding is tier-neutraal: de stappen hierboven
-> (Sportlink-export + upload via **Instellingen → Teambegeleiding importeren**) werken identiek
+> (Sportlink-export + upload via **Instellingen → Begeleiding importeren**) werken identiek
 > op beide databasevarianten. Sinds #913 heeft de Postgres-tier dezelfde flexibele
 > CSV-kolomherkenning (aliassen, dedup, validatie — `FunctionApp.Postgres/Admin/
 > AdminTeambegeleidingFunction.cs`) als de SQL Server-tier, boven op het AVG-gevoelige
