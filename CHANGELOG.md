@@ -75,6 +75,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   de club, net als de andere Sportlink-mutaties.
 
 ### Fixed
+- **De Admin GUI meldde nog dat officials toewijzen, een oefenwedstrijd aanmaken en een
+  wijzigingsverzoek "altijd gesimuleerd" worden, terwijl die acties sinds #1319 echt naar Sportlink
+  gaan zodra dry-run uit staat (#1421).** De gele waarschuwing op "Oefenwedstrijd aanmaken" en de
+  vaste melding onder het scheidsrechter- en wijzigingsverzoek-formulier zijn vervangen: de pagina
+  verwijst nu naar de dry-run-instelling van de club, en de hulptekst bij die instelling noemt alle
+  vijf typen wijzigingen.
 - Sportlink-mutaties (oefenwedstrijd aanmaken, officials toewijzen, wijzigingsverzoek, veld,
   kleedkamers, verzoek goed-/afkeuren) worden bij een timeout of serverfout niet meer automatisch
   herhaald. De retry uit #1387 kon anders een oefenwedstrijd dubbel aanmaken of een wijzigingsverzoek

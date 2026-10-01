@@ -61,9 +61,8 @@ public static class SportlinkClubMatchFunction
     private static readonly ConcurrentDictionary<string, (DateTime OpgehaaldUtc, IReadOnlyList<SportlinkPickListItem> Locaties)> LocatieCache = new();
 
     /// <summary>
-    /// <c>POST /api/sportlink/club-match</c> — maakt een nieuwe oefenwedstrijd aan. Blijft door de
-    /// forceDryRun-code-lock (<c>CreateClubMatchAsync</c>, #997) altijd gesimuleerd totdat een mens
-    /// (nooit een agent, zie docs/SPORTLINK-WEB-EXTENSION.md §4.4) de body live heeft bevestigd.
+    /// <c>POST /api/sportlink/club-match</c> — maakt een nieuwe oefenwedstrijd aan. Live bevestigd door de
+    /// eigenaar (#1319): volgt de dry-run-instelling van de club (zie docs/SPORTLINK-WEB-EXTENSION.md §4.4).
     /// </summary>
     [Function("SportlinkClubMatchPost")]
     public static Task<IActionResult> Post(
