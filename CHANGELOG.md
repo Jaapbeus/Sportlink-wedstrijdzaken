@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.8.1.0] — 2026-10-01
+
 ### Changed
 - Opruimronde na v3.8.0.0: dubbele sleutel `SportlinkAutoLoginEncryptionKey` uit beide `local.settings.template.json` verwijderd, de troubleshootregel "Sportlink API 401" in de snelle referentie noemt nu beide databasetiers, en de rollenmatrix staat in het architectuurregister als bewezen door tests; de ongebruikte pakketversie `Microsoft.Playwright` (wees sinds het verwijderen van `Tools/SportlinkTokenCapture`) is uit `Directory.Packages.props` gehaald (#1423)
 
@@ -33,6 +35,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   als actief clubteam"; Sportlinks standaardteam wordt dan gebruikt, met uw tekst als naam (#1427).
 - Wijst Sportlink een mutatie af zonder eigen toelichting, dan toont de GUI nu Sportlinks eigen
   foutmelding in plaats van alleen "afgewezen" (#1427).
+- De knop **Toon** (Sportlink-matchinfo) op Planning en Veld optimalisatie gaf bij wedstrijden met
+  toegewezen officials "Sportlink is momenteel niet bereikbaar", terwijl de koppeling gewoon werkte.
+  Sportlink levert de positie van een official als getal aan; dat wordt nu geaccepteerd. Het
+  vooraf invullen van scheidsrechter/assistenten blijft voorlopig leeg tot de positiecodes bekend
+  zijn (#1431)
 
 ## [3.8.0.0] — 2026-10-01
 

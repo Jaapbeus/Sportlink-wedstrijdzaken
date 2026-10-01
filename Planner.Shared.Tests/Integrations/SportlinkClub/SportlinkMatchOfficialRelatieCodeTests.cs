@@ -34,6 +34,32 @@ public class SportlinkMatchOfficialRelatieCodeTests
         """;
 
     [Fact]
+    public void SportlinkMatch_OfficialPositionEnRelatieCodeAlsGetal_DeserialiseertZonderFout()
+    {
+        // #1431: productietelemetrie (v3.8.0.0) toonde "Cannot get the value of a token type
+        // 'Number' as a string" op $.MatchOfficials[0].OfficialPosition — de hele Match-GET faalde
+        // daardoor met HTTP 502. Synthetische fixture: alleen de vorm (getal i.p.v. string) is
+        // overgenomen, geen enkele echte waarde. Zelfde opties als SportlinkClubClient.
+        var json = $$"""
+        {
+            {{MinimaleMatchVelden}},
+            "MatchOfficials": [
+                { "OfficialPosition": 1, "RelatieCode": 111111 }
+            ]
+        }
+        """;
+        var opties = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+        var match = JsonSerializer.Deserialize<SportlinkMatch>(json, opties);
+
+        match.Should().NotBeNull();
+        match!.MatchOfficials.Should().ContainSingle()
+            .Which.Should().Be(new SportlinkMatchOfficial { OfficialPosition = "1", RelatieCode = "111111" });
+        // Numerieke positiecodes zijn nog niet aan Referee/AR1/AR2 gekoppeld: prefill blijft leeg.
+        match.ScheidsrechterRelatieCode.Should().BeNull();
+    }
+
+    [Fact]
     public void SportlinkMatch_MatchOfficialsMetDrieBekendePosities_LeestElkeRelatieCodeCorrect()
     {
         // Synthetische fixture — nooit een echte Sportlink-respons, zie klasse-comment. Bevat
