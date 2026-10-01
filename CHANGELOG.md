@@ -18,6 +18,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+
+- De knop **Toon** (Sportlink-matchinfo) op Planning en Veld optimalisatie gaf bij wedstrijden met
+  toegewezen officials "Sportlink is momenteel niet bereikbaar", terwijl de koppeling gewoon werkte.
+  Sportlink levert de positie van een official als getal aan; dat wordt nu geaccepteerd. Het
+  vooraf invullen van scheidsrechter/assistenten blijft voorlopig leeg tot de positiecodes bekend
+  zijn (#1431)
+
 ## [3.8.0.0] — 2026-10-01
 
 ### Added

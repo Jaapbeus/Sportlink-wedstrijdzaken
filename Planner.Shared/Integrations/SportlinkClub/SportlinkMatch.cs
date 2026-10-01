@@ -126,12 +126,20 @@ public sealed record SportlinkMatchOfficial
     // aanname vastgelegd in docs/SPORTLINK-WEB-EXTENSION.md §6.2 ("afgeleid uit OfficialPosition
     // zoals dat terugkomt in GET .../MatchOfficials") — dit is dus GEEN nieuwe gok, alleen de
     // eerste keer dat die aanname in een C#-model landt.
+    // #1431: live vastgesteld (productietelemetrie 2026-10-01) dat Sportlink deze waarde als
+    // JSON-getal teruggeeft. Zonder flexibele converter faalde de hele Match-GET-deserialisatie
+    // zodra een wedstrijd officials had (HTTP 502 op "Toon"). De positiecodes zelf blijven
+    // ONBEVESTIGD — een getal matcht "Referee" niet, dus de prefill blijft dan leeg.
     [JsonPropertyName("OfficialPosition")]
+    [JsonConverter(typeof(FlexibleStringJsonConverter))]
     public string? OfficialPosition { get; set; }
 
     // TODO(#1340, owner-verificatie vóór merge): dit veldnaam is NOOIT live geverifieerd tegen de
     // Sportlink-API — controleer via de acceptatie-worktree vóór deze PR gemerged wordt.
+    // #1431: zelfde flexibele converter als OfficialPosition — een relatiecode is cijfermatig en kan
+    // dus net zo goed als JSON-getal binnenkomen.
     [JsonPropertyName(RelatieCodeJsonVeldnaam)]
+    [JsonConverter(typeof(FlexibleStringJsonConverter))]
     public string? RelatieCode { get; set; }
 
     /// <summary>ENIGE plek met de aanname voor het relatiecode-veldnaam (#1340) — zie de TODO
