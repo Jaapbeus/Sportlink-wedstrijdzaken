@@ -525,6 +525,19 @@ Vier dingen om te onthouden:
   `GET .../club-match/picklists` blijft daarvoor bestaan. Blijkt het een ander ID, dan is het
   alternatief een eenmalige koppel-sync die `teams` een kolom `sportlinkpublicteamid` geeft — bewust
   níet vooruit gebouwd (migratie + handmatige productie-ronde voor kolommen die niemand kan vullen).
+- **Eerste echte aanroep in productie (#1427, 01-10-2026) — het ClubMatch-contract is NIET
+  bevestigd.** Zodra dry-run uit stond, gaf `PickListsTeams` HTTP 200 met een vorm die de parser
+  niet herkende, en de `ClubMatch`-POST gaf **HTTP 602 binnen ~20 ms**: dezelfde code als bij het
+  niet-bestaande `UpdateMatchField` (#1047), niet de 420-validatievorm. Dat wijst op een verkeerd
+  endpoint, een verkeerde methode of een verkeerde entity-header, niet op één fout veld. "Live
+  bevestigd" bij #1319 betekende voor dit pad dus alleen dat de code-lock is opgeheven (zie ook de
+  nuance bij #1380). Sinds #1427: (1) de locatielijst wordt los van de teamlijst opgehaald; (2) een
+  picklist met precies één array-property wordt als lijst gelezen, ongeacht de propertynaam; (3) een
+  onherkenbare picklist logt alleen de structuur (`Object{Naam:Array[n],...}`, nooit waarden);
+  (4) een afwijzing zonder `Violations` geeft Sportlinks `Message` door aan de GUI. **Vervolg:**
+  het juiste endpoint/methode/body vereist een netwerktrace door de eigenaar van een oefenwedstrijd
+  die in Sportlink Club zelf wordt aangemaakt (DevTools → Network: URL, methode, entity-header en
+  payload van de aanmaakaanroep, plus de responsvorm van beide picklists).
 - **Dry-run-modus (#998).** De vertakking zit in `SportlinkClubClient.PutMutationAsync` — het ÉNE
   punt waar alle **zes** mutatiepaden doorheen lopen (kleedkamers, veld, officials,
   wijzigingsverzoek, change-request-actie en de ClubMatch-POST) — niet per tier/endpoint apart. Dat garandeert dat token-refresh en de voorbereidende snapshot-/UserInfo-

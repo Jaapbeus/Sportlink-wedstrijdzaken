@@ -1,5 +1,5 @@
 using AwesomeAssertions;
-using FunctionApp.Postgres.Sportlink;
+using Planner.Endpoints.Sportlink;
 using Microsoft.AspNetCore.Mvc;
 using Planner.Shared.Integrations.SportlinkClub;
 using Xunit;
@@ -14,7 +14,7 @@ namespace FunctionApp.Postgres.Tests;
 /// </summary>
 public class SportlinkClubMatchFunctionTests
 {
-    private static SportlinkClubMatchFunction.OefenwedstrijdAanmakenDto GeldigeInvoer() => new()
+    private static ClubMatchEndpointCore.OefenwedstrijdAanmakenDto GeldigeInvoer() => new()
     {
         MatchDateTime = new DateTime(2026, 9, 20, 19, 30, 0),
         Duration = 90,
@@ -26,13 +26,13 @@ public class SportlinkClubMatchFunctionTests
     [Fact]
     public void Valideer_GeldigeInvoer_GeeftNull()
     {
-        SportlinkClubMatchFunction.Valideer(GeldigeInvoer()).Should().BeNull();
+        ClubMatchEndpointCore.Valideer(GeldigeInvoer()).Should().BeNull();
     }
 
     [Fact]
     public void Valideer_LegeBody_VerplichtMatchDateTime()
     {
-        SportlinkClubMatchFunction.Valideer(null).Should().BeOfType<BadRequestObjectResult>();
+        ClubMatchEndpointCore.Valideer(null).Should().BeOfType<BadRequestObjectResult>();
     }
 
     [Theory]
@@ -44,7 +44,7 @@ public class SportlinkClubMatchFunctionTests
         var dto = GeldigeInvoer();
         dto.TeamNaam = teamNaam;
 
-        SportlinkClubMatchFunction.Valideer(dto).Should().BeOfType<BadRequestObjectResult>();
+        ClubMatchEndpointCore.Valideer(dto).Should().BeOfType<BadRequestObjectResult>();
     }
 
     [Fact]
@@ -53,7 +53,7 @@ public class SportlinkClubMatchFunctionTests
         var dto = GeldigeInvoer();
         dto.Tegenstander = " ";
 
-        SportlinkClubMatchFunction.Valideer(dto).Should().BeOfType<BadRequestObjectResult>();
+        ClubMatchEndpointCore.Valideer(dto).Should().BeOfType<BadRequestObjectResult>();
     }
 
     [Theory]
@@ -65,7 +65,7 @@ public class SportlinkClubMatchFunctionTests
         var dto = GeldigeInvoer();
         dto.Duration = duur;
 
-        SportlinkClubMatchFunction.Valideer(dto).Should().BeOfType<BadRequestObjectResult>();
+        ClubMatchEndpointCore.Valideer(dto).Should().BeOfType<BadRequestObjectResult>();
     }
 
     [Fact]
@@ -74,13 +74,13 @@ public class SportlinkClubMatchFunctionTests
         var dto = GeldigeInvoer();
         dto.Duration = null;
 
-        SportlinkClubMatchFunction.Valideer(dto).Should().BeNull("Duration is optioneel; de functie vult 90 in");
+        ClubMatchEndpointCore.Valideer(dto).Should().BeNull("Duration is optioneel; de functie vult 90 in");
     }
 
     [Fact]
     public void BouwOmschrijving_EigenTekst_WintAltijd()
     {
-        SportlinkClubMatchFunction.BouwOmschrijving("  Oefenpot met scheids  ", "JO10-1", "SV Voorbeeld", "veld 3")
+        ClubMatchEndpointCore.BouwOmschrijving("  Oefenpot met scheids  ", "JO10-1", "SV Voorbeeld", "veld 3")
             .Should().Be("Oefenpot met scheids");
     }
 
@@ -89,14 +89,14 @@ public class SportlinkClubMatchFunctionTests
     {
         // Zolang FieldId niet wordt meegestuurd (dat pad loopt pas ná aanmaken via #993) is dit
         // de enige plek waar het gekozen veld in Sportlink Club leesbaar is.
-        SportlinkClubMatchFunction.BouwOmschrijving(null, "JO10-1", " SV Voorbeeld JO10-2 ", "veld 3")
+        ClubMatchEndpointCore.BouwOmschrijving(null, "JO10-1", " SV Voorbeeld JO10-2 ", "veld 3")
             .Should().Be("Oefenwedstrijd JO10-1 - SV Voorbeeld JO10-2 (veld 3)");
     }
 
     [Fact]
     public void BouwOmschrijving_ZonderVeld_LaatHaakjesWeg()
     {
-        SportlinkClubMatchFunction.BouwOmschrijving("", "JO10-1", "SV Voorbeeld", null)
+        ClubMatchEndpointCore.BouwOmschrijving("", "JO10-1", "SV Voorbeeld", null)
             .Should().Be("Oefenwedstrijd JO10-1 - SV Voorbeeld");
     }
 
@@ -115,21 +115,21 @@ public class SportlinkClubMatchFunctionTests
     [InlineData("  Sportpark Oost", "F3")]
     public void ZoekFacilityId_ExacteNaam_HoofdletterEnSpatieOngevoelig(string accommodatie, string verwacht)
     {
-        SportlinkClubMatchFunction.ZoekFacilityId(Locaties, accommodatie).Should().Be(verwacht);
+        ClubMatchEndpointCore.ZoekFacilityId(Locaties, accommodatie).Should().Be(verwacht);
     }
 
     [Fact]
     public void ZoekFacilityId_UniekeGedeeltelijkeMatch_WordtGeaccepteerd()
     {
         // De instelling bevat vaak een langere naam ("Sportpark Zuid, Veldstraat 1") dan de picklist.
-        SportlinkClubMatchFunction.ZoekFacilityId(Locaties, "Sportpark Zuid, Veldstraat 1").Should().Be("F2");
+        ClubMatchEndpointCore.ZoekFacilityId(Locaties, "Sportpark Zuid, Veldstraat 1").Should().Be("F2");
     }
 
     [Fact]
     public void ZoekFacilityId_MeerdereGedeeltelijkeMatches_GeeftNull()
     {
         // "Sportpark" past op drie locaties — liever leeg dan de verkeerde accommodatie.
-        SportlinkClubMatchFunction.ZoekFacilityId(Locaties, "Sportpark").Should().BeNull();
+        ClubMatchEndpointCore.ZoekFacilityId(Locaties, "Sportpark").Should().BeNull();
     }
 
     [Theory]
@@ -138,12 +138,32 @@ public class SportlinkClubMatchFunctionTests
     [InlineData("Onbekend terrein")]
     public void ZoekFacilityId_GeenMatchOfLegeInstelling_GeeftNull(string? accommodatie)
     {
-        SportlinkClubMatchFunction.ZoekFacilityId(Locaties, accommodatie).Should().BeNull();
+        ClubMatchEndpointCore.ZoekFacilityId(Locaties, accommodatie).Should().BeNull();
     }
 
     [Fact]
     public void ZoekFacilityId_ItemsZonderIdOfNaam_WordenOvergeslagen()
     {
-        SportlinkClubMatchFunction.ZoekFacilityId(Locaties, "Zonder id").Should().BeNull();
+        ClubMatchEndpointCore.ZoekFacilityId(Locaties, "Zonder id").Should().BeNull();
+    }
+
+    [Fact]
+    public void VrijeTekstKoppeling_VrijeTekst_GeeftKoppelingZonderSportlinkGegevens()
+    {
+        // #1427: vrije tekst ("Vrije tekst invoeren…") krijgt geen 400 "niet bekend als actief clubteam".
+        var dto = GeldigeInvoer();
+        dto.TeamNaam = " TEST ";
+        dto.VrijeTekst = true;
+
+        var koppeling = ClubMatchEndpointCore.VrijeTekstKoppeling(dto);
+
+        koppeling.Should().BeEquivalentTo(new ClubMatchTeamKoppeling("TEST", null, null, 0));
+    }
+
+    [Fact]
+    public void VrijeTekstKoppeling_DropdownKeuze_GeeftNull()
+    {
+        // Een naam uit de dropdown die geen actief team (meer) is, blijft een 400.
+        ClubMatchEndpointCore.VrijeTekstKoppeling(GeldigeInvoer()).Should().BeNull();
     }
 }

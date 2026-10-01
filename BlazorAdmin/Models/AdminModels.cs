@@ -175,6 +175,12 @@ public class SportlinkMutatieResultaatDto
     public string? PublicMatchId { get; set; }
 }
 
+/// <summary>#1427: respons van <c>GET /api/sportlink/club-match/dryrun-status</c>.</summary>
+public class SportlinkDryRunStatusDto
+{
+    public bool DryRun { get; set; }
+}
+
 /// <summary>#1116: respons van POST /api/sportlink/club-match — het generieke mutatieresultaat plus
 /// wat de server uit teamnaam en instellingen heeft afgeleid (Sportlink-team-ID, leeftijdscategorie,
 /// locatie-ID, veld), zodat de beheerder ziet wat er (gesimuleerd) naar Sportlink zou gaan. Spiegelt

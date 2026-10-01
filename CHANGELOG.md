@@ -21,6 +21,17 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ### Changed
 - Opruimronde na v3.8.0.0: dubbele sleutel `SportlinkAutoLoginEncryptionKey` uit beide `local.settings.template.json` verwijderd, de troubleshootregel "Sportlink API 401" in de snelle referentie noemt nu beide databasetiers, en de rollenmatrix staat in het architectuurregister als bewezen door tests; de ongebruikte pakketversie `Microsoft.Playwright` (wees sinds het verwijderen van `Tools/SportlinkTokenCapture`) is uit `Directory.Packages.props` gehaald (#1423)
 
+### Fixed
+- **Wedstrijd aanmaken** (`/wedstrijd-aanmaken`): de pagina heet nu "Wedstrijd aanmaken" en toont
+  bovenaan in één zin de actuele dry-run-stand in plaats van een vaste uitleg (#1427).
+- Een team dat via **"Vrije tekst invoeren…"** is ingevuld wordt niet meer geweigerd met "niet bekend
+  als actief clubteam"; Team-ID en leeftijdscategorie blijven dan leeg met een waarschuwing (#1427).
+- De locatie (`FacilityId`) wordt weer opgezocht als de teamlijst van Sportlink een onverwachte vorm
+  heeft — die blokkeerde tot nu toe ook de locatielijst. Is ook de locatielijst onherkenbaar, dan
+  logt de server alleen de structuur (namen en soorten, geen waarden) (#1427).
+- Wijst Sportlink een mutatie af zonder eigen toelichting, dan toont de GUI nu Sportlinks eigen
+  foutmelding in plaats van alleen "afgewezen" (#1427).
+
 ## [3.8.0.0] — 2026-10-01
 
 ### Added

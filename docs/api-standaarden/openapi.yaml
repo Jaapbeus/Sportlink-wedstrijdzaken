@@ -33,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.8.0.0
+  version: 3.8.0.1
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -4228,7 +4228,15 @@ paths:
                   description: Duur in minuten.
                 TeamNaam:
                   type: string
-                  description: Naam van een actief clubteam zoals `GET /beheer/teams` die teruggeeft (hoofdletterongevoelig).
+                  description: Naam van een actief clubteam zoals `GET /beheer/teams` die teruggeeft (hoofdletterongevoelig), of vrije tekst als `VrijeTekst` true is.
+                VrijeTekst:
+                  type: boolean
+                  default: false
+                  description: |
+                    #1427: `TeamNaam` is vrije tekst (GUI-optie "Vrije tekst invoeren…", #1396). Geen 400
+                    als de naam geen actief clubteam is; `PublicHomeTeamId` en `AgeClassCode` blijven dan
+                    leeg, met een waarschuwing. Komt de naam toch overeen met een actief team, dan worden
+                    diens gegevens gebruikt.
                 Tegenstander:
                   type: string
                   description: Vrije tekst — gaat als `PublicAwayTeamId` mee (ONBEVESTIGD of Sportlink hier vrije tekst accepteert).
@@ -4242,13 +4250,13 @@ paths:
                   description: Eigen omschrijving; leeg → `Oefenwedstrijd [team] - [tegenstander] ([veld])`.
       responses:
         '200':
-          description: Mutatieresultaat (in de praktijk altijd IsForcedDryRun=true zolang de code-lock actief is)
+          description: Mutatieresultaat. Een afwijzing door Sportlink zonder eigen `Violations` (bijv. HTTP 602) krijgt sinds #1427 Sportlinks `Message` als enige violation (`Sportlink <status>: <message>`).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/OefenwedstrijdAanmaakResponse'
         '400':
-          description: MatchDateTime/TeamNaam/Tegenstander ontbreekt, Duration buiten 1–240, of team/veld niet bekend als actief
+          description: MatchDateTime/TeamNaam/Tegenstander ontbreekt, Duration buiten 1–240, team niet bekend als actief (alleen zonder `VrijeTekst`), of veld niet bekend als actief
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -4264,6 +4272,36 @@ paths:
         '503':
           description: Uitgaande integraties staan hier niet toe (EgressGuard)
 
+  /sportlink/club-match/dryrun-status:
+    get:
+      tags: [sportlink]
+      operationId: getSportlinkClubMatchDryRunStatus
+      summary: Actuele dry-run-stand voor het scherm "Wedstrijd aanmaken" (#1427)
+      description: |
+        Leest alleen de club-instelling `sportlinkDryRun` (fail-safe: alles behalve een expliciete
+        `0` is dry-run) — geen Sportlink-aanroep, geen toggle-/EgressGuard-check. Achter dezelfde
+        Wedstrijdzaken-poort als `POST /sportlink/club-match`; de health-endpoint
+        `GET /beheer/sportlink-extensie/health` is admin-only en dus niet bruikbaar voor een
+        gebruiker met alleen de rol Wedstrijdzaken.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Dry-run-stand
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  DryRun:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /sportlink/club-match/picklists:
     get:
       tags: [sportlink]
@@ -4272,6 +4310,8 @@ paths:
       description: |
         Alleen de twee picklists die de UI het hardst nodig heeft: PickListsTeams en
         PickListsLocation — read-only en persoonsgegevensvrij (teams/locaties, geen personen).
+        Sinds #1427 los van elkaar: een onherkenbare teamlijst geeft een lege `Teams`-lijst in
+        plaats van een fout, zodat de locatielijst (nodig voor `FacilityId`) altijd wordt opgehaald.
         Bewust NIET automatisch geladen bij het openen van de pagina, alleen op expliciet verzoek
         vanuit de UI. De overige drie ondersteunende endpoints uit het issue
         (ClubMatchDefaults, PickListsMatchInformation, codetable/AgeClassList) zijn in deze ronde

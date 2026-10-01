@@ -2498,6 +2498,92 @@ public class SportlinkClubClientTests
     }
 
     [Fact]
+    public async Task GetClubMatchPickListsAsync_TeamlijstOnherkenbaar_HaaltLocatiesToch()
+    {
+        // #1427: live gaf PickListsTeams 200 met een onherkende vorm, waarna PickListsLocation
+        // nooit werd aangeroepen en FacilityId altijd leeg bleef. De locatielijst staat nu los.
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("PickListsTeams") == true)
+                return JsonResponse("""{"A": [1], "B": [2]}""");
+            if (req.RequestUri?.AbsoluteUri.Contains("PickListsLocation") == true)
+                return JsonResponse("""[{"FacilityId": "F1", "FacilityName": "Sportpark Oost"}]""");
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.GetClubMatchPickListsAsync(TestFunctioneleRol);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data!.Teams.Should().BeEmpty();
+        result.Data.Locations.Should().ContainSingle().Which.Id.Should().Be("F1");
+    }
+
+    [Fact]
+    public async Task GetClubMatchPickListsAsync_OnbekendeEnvelopeMetEenArray_ParseertDieArray()
+    {
+        // #1427: de envelope-naam is onbevestigd — precies één array-property is de lijst.
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("PickListsLocation") == true)
+                return JsonResponse("""{"Total": 1, "Facility": [{"FacilityId": "F1", "FacilityName": "Sportpark Oost"}]}""");
+            return JsonResponse("[]");
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.GetClubMatchPickListsAsync(TestFunctioneleRol);
+
+        result.Data!.Locations.Should().ContainSingle().Which.Id.Should().Be("F1");
+    }
+
+    [Fact]
+    public void BeschrijfJsonStructuur_ToontNamenEnSoortenNooitWaarden()
+    {
+        var root = JsonDocument.Parse("""{"Geheim": "waarde-x", "Lijst": [1, 2, 3]}""").RootElement;
+
+        var structuur = SportlinkClubClient.BeschrijfJsonStructuur(root);
+
+        structuur.Should().Be("Object{Geheim:String,Lijst:Array[3]}");
+        structuur.Should().NotContain("waarde-x");
+    }
+
+    [Fact]
+    public async Task CreateClubMatchAsync_AfwijzingZonderViolations_GeeftSportlinkMessageTerug()
+    {
+        // #1427: live gaf ClubMatch HTTP 602 zonder Violations; de GUI toonde dan alleen
+        // "afgewezen". Sportlinks Message moet als reden doorkomen.
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("clubmatch/ClubMatch") == true)
+                return new HttpResponseMessage((HttpStatusCode)602)
+                {
+                    Content = new StringContent("""{"Error": true, "Status": "602", "Message": "no valid entity key found"}""",
+                        System.Text.Encoding.UTF8, "application/json")
+                };
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
+        var aanvraag = new SportlinkClubMatchAanvraag(new DateTime(2026, 10, 4, 12, 0, 0), 90, null, "Test", null, "TEST", null, null);
+
+        var result = await sut.CreateClubMatchAsync(TestFunctioneleRol, aanvraag);
+
+        result.Data!.IsSuccess.Should().BeFalse();
+        result.Data.Violations.Should().ContainSingle().Which.Should().Be("Sportlink 602: no valid entity key found");
+    }
+
+    [Fact]
     public void ParsePickListItem_OnbekendeVeldnamen_GeeftNullTerug()
     {
         // Defensief pad: onherkenbare/onbekende veldnamen mogen geen exception geven, alleen null.

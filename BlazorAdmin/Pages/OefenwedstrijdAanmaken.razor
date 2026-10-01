@@ -1,15 +1,16 @@
 @page "/wedstrijd-aanmaken"
 @* Alle logica staat in OefenwedstrijdAanmaken.razor.cs (#1122). *@
 
-<PageTitle>Oefenwedstrijd aanmaken — Admin</PageTitle>
+<PageTitle>Wedstrijd aanmaken — Admin</PageTitle>
 
-<h1>Oefenwedstrijd aanmaken</h1>
+<h1>Wedstrijd aanmaken</h1>
 
-<div class="alert alert-info py-2">
-    Deze actie volgt de dry-run-instelling van uw club (Instellingen → Sportlink Ext.). Staat dry-run
-    aan, dan wordt er niets naar Sportlink gestuurd; staat dry-run uit, dan wordt de oefenwedstrijd
-    echt in Sportlink Club aangemaakt.
-</div>
+@if (_dryRun.HasValue)
+{
+    <div class="alert @(_dryRun.Value ? "alert-info" : "alert-warning") py-2">
+        @(_dryRun.Value ? DryRunAanTekst : DryRunUitTekst)
+    </div>
+}
 
 <p class="text-muted">
     Oefenwedstrijd op de eigen accommodatie. Team en veld komen uit de eigen database; de locatie
@@ -85,7 +86,7 @@ else
                 {
                     <span class="spinner-border spinner-border-sm me-1"></span>
                 }
-                Oefenwedstrijd aanmaken
+                Wedstrijd aanmaken
             </button>
         </div>
     </form>
