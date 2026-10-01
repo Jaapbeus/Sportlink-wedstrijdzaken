@@ -53,6 +53,11 @@
 
 ## 1. Wat dit is
 
+> **Authenticatie is gewijzigd in #1411.** Oude passages in dit historische featuredocument over
+> token-capture, handmatige refresh-tokenregistratie, credentials elke dag handmatig vernieuwen of
+> agentverboden voor de oude tokenflow zijn achterhaald. De actieve setup- en herstelprocedure is
+> [`docs/SPORTLINK-AUTOLOGIN.md`](SPORTLINK-AUTOLOGIN.md); gebruik die als enige bron.
+
 Een optionele uitbreiding die wedstrijdwijzigingen (kleedkamers, veld, scheidsrechters,
 wijzigingsverzoeken) rechtstreeks vanuit deze webapp terugschrijft naar club.sportlink.com — in
 plaats van dat de wedstrijdsecretaris dat apart, handmatig in Sportlink Club moet doen. Het is een
@@ -64,10 +69,10 @@ JSON-API die hun eigen React-SPA gebruikt. Staat daarom standaard **UIT** per cl
 
 - Dit verandert vandaag nog niets aan hoe je werkt — de extension staat standaard uit, en zelfs
   wanneer een club hem aanzet, gebeurt er niets zonder dat jij op een knop klikt.
-- Als je club de extension gebruikt: je krijgt een eigen, apart Sportlink-account voor deze
-  koppeling (niet je eigen persoonlijke account) — een beheerder regelt dat samen met jou, zie §3.
-- Je hoeft dat account maar **één keer** te koppelen (niet elke dag, niet elke week) — de koppeling
-  blijft daarna zelfstandig geldig.
+- Als je club de extension gebruikt: een beheerder configureert de automatische login voor het
+  Sportlink-account via de beveiligde beheerpagina. De initiële setup en het herstel staan in
+  [`docs/SPORTLINK-AUTOLOGIN.md`](SPORTLINK-AUTOLOGIN.md); routinematig handmatig tokens vernieuwen
+  is niet nodig.
 - Alles wat de extension straks doet, doet zij op naam van dat aparte account — niet op jouw eigen
   naam — dus in Sportlink's eigen logs zie je dat terug als bijvoorbeeld "webapp-wedstrijdzaken".
 - Wat vandaag al werkt: bij elke wedstrijd op Planning en Veld optimalisatie (#1361) staat een knop "Open in Sportlink" die de
@@ -129,42 +134,10 @@ Sportlink-account, aangemaakt en gescoped in Sportlink's eigen
 [onderzoeksrapport §6](ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md#6-architectuurbeslissing-2026-09-04-rol-gebaseerde-sportlink-service-accounts-geen-gedeelde-credential).
 
 ### 3.3 Een rol koppelen (eenmalige, menselijke handeling)
-1. Maak in Sportlink Club zelf het serviceaccount aan voor deze rol (bv. `webapp-wedstrijdzaken`),
-   met alleen de rechten die deze rol nodig heeft — niet "alle rechten".
-2. Draai lokaal, als mens, **niet als agent** (zie §4.4 voor waarom dat een harde grens is):
-   ```
-   dotnet run --project Tools/SportlinkTokenCapture -- Wedstrijdzaken
-   ```
-3. Log in het geopende browservenster in met het zojuist aangemaakte serviceaccount. Het
-   script schrijft het refresh_token lokaal weg — een echte, productie-persistente koppeling
-   vereist stap 5 hieronder.
-
-   > **Veilig ophalen als er een coding agent in dezelfde sessie/werkdirectory actief is (#1318).**
-   > Open `FunctionApp.Postgres/local.settings.json` zelf, in een editor-tab of terminal waar geen
-   > agent-tool-aanroep aan te pas komt — vraag een agent nooit dit bestand te lezen, tonen,
-   > `cat`'en of erin te zoeken rond dit moment. Kopieer alleen de waarde van
-   > `SportlinkClubRefreshToken__<Rol>` met de hand. Waarom dit zo specifiek moet: als een agent dit
-   > bestand ooit eerder in dezelfde sessie heeft gelezen (voor iets totaal ongerelateerds, bijv. een
-   > `AllowExternalIntegrations`-check), toont de harness bij de eerstvolgende wijziging aan dit
-   > bestand — dus ook wanneer dit script het token wegschrijft — automatisch een diff mét de volle
-   > tokenwaarde in de agentsessie. Dat gebeurt zonder dat de agent er ooit om vraagt. Zie §4.4,
-   > incident 2026-09-26, voor de volledige analyse en wat te doen als dit toch gebeurt.
-4. Klik op het scherm Sportlink Web Extension op "Koppeling (opnieuw) registreren" en vul de accountnaam in ter
-   herkenning — dit is geen live verificatie, puur een leesbaar label voor de statustabel.
-5. Vul in datzelfde dialoogvenster het veld "Refresh-token registreren" in met de waarde uit
-   stap 3 (#991) — plak die rechtstreeks vanuit je eigen editor/klembord, nooit via een
-   tussenstap waarbij een agent de waarde doorgeeft of herhaalt. Dit valideert het token met één
-   refresh-poging en slaat het rotarende refresh_token productie-persistent op in
-   `public.sportlinkservicetokens` — write-only, nooit ergens teruggetoond.
-6. **Postgres-tier: zet `SportlinkClubRefreshToken__<Rol>` in `local.settings.json` na een
-   geslaagde stap 5 terug naar `""`.** De Postgres-tier-runtime leest deze instelling nooit (geen
-   code-referentie in `FunctionApp.Postgres`) — hij diende alleen als eenmalig, lokaal transportpad
-   naar `public.sportlinkservicetokens`. Laat 'm daarna niet onnodig lang in platte tekst staan.
-   **SQL Server-tier: dit NIET doen** — daar is dezelfde instelling wél de actieve tokenopslag
-   (§4.1/§4.3, via de Function App-instelling), leegmaken breekt daar de koppeling.
-7. Herhaal deze koppeling alleen als Sportlink de onderliggende sessie ooit volledig intrekt
-   (zeldzaam) — niet routinematig, én altijd als een token per ongeluk in een agentsessie
-   terechtkwam (zie §4.4).
+Deze oude procedure is verwijderd. Er is geen token-capturetool, handmatige token-upload of
+legacy-opslag meer. Gebruik uitsluitend [Automatische Sportlink-login](SPORTLINK-AUTOLOGIN.md)
+voor de productie-initialisatie en het herstel. MFA blijft ingeschakeld; een bevoegde beheerder
+stelt credentials en authenticator-instelsleutel in via de beveiligde beheerpagina.
 
 ### 3.4 Entra-rol "Wedstrijdzaken"
 Naast de bestaande `admin`/`user`-rollen bestaat er een aanvullende approl `Wedstrijdzaken`
@@ -248,19 +221,16 @@ Vier dingen om te onthouden:
 - club.sportlink.com is een React-SPA op een JSON-API (`/navajo/entity/common/clubweb/...`).
   Authenticatie via Keycloak (`idm.sportlink.com`, realm `sportlink`, client `sportlink-club-web`),
   standaard OAuth2 authorization_code+PKCE, `Bearer`-token, geen cookies.
-- Onze backend gebruikt uitsluitend de **refresh_token-grant**: eenmalig een refresh_token
-  vastleggen (via `Tools/SportlinkTokenCapture`, §3.3), daarna zelfstandig verversen
-  (`grant_type=refresh_token`). Rotatie is bevestigd: elke refresh geeft een nieuw refresh_token,
-  bruikbaar voor de volgende refresh — dus in theorie oneindig, zolang er minstens elke
-  `refresh_expires_in` (6 uur bij eerste uitgifte) ververst wordt.
+- Onze backend gebruikt de **refresh_token-grant** tussen volledige logins. Bij een nieuwe login verkrijgt onze backend een
+  verse sessie; tussen volledige logins wordt de refresh-token-grant gebruikt. Zie de actuele
+  coördinatie en herstelregels in [Automatische Sportlink-login](SPORTLINK-AUTOLOGIN.md).
 - Twee routes zonder eigen redirect-URI zijn **bevestigd gesloten**, geen toekomstig herstel
   hierop proberen: eigen redirect_uri → HTTP 400 (client whitelist); `device_code`-grant →
   `unauthorized_client` (uitgeschakeld voor deze client). Zie onderzoeksrapport §2.6/§3.B.
 - API-calls vereisen `X-Navajo-Entity` (= het aangeroepen pad, geen vaste appnaam),
   `X-Navajo-Instance` (vaste waarde `KNVB`), `X-Navajo-Locale` (`nl`) — live bevestigd.
-- Elke functionele rol heeft een eigen opgeslagen refresh_token:
-  `SportlinkClubRefreshToken__<Rol>` (Function App-instelling, lokaal in
-  `FunctionApp.Postgres/local.settings.json`).
+- Elke functionele rol heeft credentials en roterende tokens in de encrypted opslag; actuele
+  configuratie staat in [Automatische Sportlink-login](SPORTLINK-AUTOLOGIN.md).
 
 ### 4.2 Waar de code (gaat) zitten
 
@@ -268,15 +238,14 @@ Vier dingen om te onthouden:
 > `FunctionApp.Postgres/…`-pad hieronder heeft een tegenhanger op hetzelfde relatieve pad onder
 > `FunctionApp/` (SQL Server): alle tien `/api/sportlink/*`-routes, alle vier
 > `/api/beheer/sportlink-extensie/*`-routes en alle drie de timers (keep-alive, warmup,
-> contract-check), plus de opruimtimer van het audit-log. Er resteren precies drie bewuste
-> tierverschillen, alle drie hieronder beschreven: de **tokenopslag** (Postgres: DB-tabel; SQL
-> Server: Function App-instelling via de ARM-API, §4.3), de **audit-service-implementatie**
+> contract-check), plus de opruimtimer van het audit-log. De resterende verschillen zitten in
+> database-specifieke implementaties van store/lease en de **audit-service-implementatie**
 > (per tier, niet gedeeld) en de **autorisatie-wrapper** (zie het kader verderop, #1272). Een
 > nieuw endpoint hoort op beide tiers tegelijk: `scripts/ci/check-tier-pariteit.sh` vergelijkt de
 > HTTP-routes van beide tiers en laat de build falen bij een route die er maar op één staat
 > (uitzonderingen met reden in `scripts/ci/tier-pariteit-allowlist.txt`; daar staan nu alleen de
 > twee sync-trigger-naamsvarianten). Let op wat die guard **niet** ziet: hij vergelijkt routes,
-> geen implementatiekeuzes — de tokenopslag en de audit-service vallen er dus buiten. De eerder
+> geen implementatiekeuzes — de encrypted tokenopslag en de audit-service vallen er dus buiten. De eerder
 > gedocumenteerde premisse dat de SQL Server-tier "rollback-only" zou zijn, is ingetrokken — beide
 > tiers zijn gelijkwaardig.
 
@@ -308,18 +277,14 @@ Vier dingen om te onthouden:
 >   vier extensie-pagina's hebben een code-behind en geen `@code`.
 > - In `Planner.Shared`: `SportlinkClubClient.ExecuteWithTokenRetryAsync` is het ene
 >   token-refresh/401-retry-pad voor lezen én schrijven; `ZetSportlinkHeaders` de ene plek voor de
->   Navajo-headers; `TokenEndpoint`/`ClientId` zijn publiek en `ValideerRefreshTokenAsync` valideert
->   een aangeleverd token vóór opslag (gebruikt door de tokenregistratie).
-- `Tools/SportlinkTokenCapture` — lokaal hulpmiddel, vangt het refresh_token op via een echte
-  browserlogin (Playwright, netwerk-response-event — nooit localStorage, die is versleuteld door
-  Sportlink zelf).
-- `scripts/dev/Invoke-SportlinkTokenSpike.ps1`, `Invoke-SportlinkMatchLookup.ps1` — lokale
-  testscripts voor de refresh-cyclus resp. een read-only wedstrijd-lookup.
+>   Navajo-headers; `TokenEndpoint`/`ClientId` zijn publiek. Nieuwe volledige sessies lopen via de
+>   automatische-loginprovider.
+- ~~`Tools/SportlinkTokenCapture`~~ — verwijderd in #1411; één automatische-loginroute is leidend.
+- ~~token-gerelateerde `scripts/dev/Invoke-Sportlink*`-spikes~~ — verwijderd in #1411.
 - `FunctionApp.Postgres/Admin/SportlinkExtensieRollenFunction.cs` +
   `FunctionApp/Admin/SportlinkExtensieRollenFunction.cs` — rol↔serviceaccount-koppelingsstatus
-  (#988), geen live Sportlink-aanroep, op beide tiers. Sinds #991 ook `PUT
-  .../rollen/{rolNaam}/token` — de productie-bootstrap van het échte refresh_token; die route
-  bestond tot #1266 alleen op de Postgres-tier en staat nu op beide.
+  (#988), geen live Sportlink-aanroep, op beide tiers. De oude `PUT
+  .../rollen/{rolNaam}/token`-route is verwijderd in #1411.
 - `Planner.Shared/Integrations/SportlinkClub/SportlinkClubClient.cs` (#991) — read-only
   Sportlink-client, in `Planner.Shared` (providervrije logica: geen directe DB-toegang, alleen via
   de geïnjecteerde `ISportlinkClubTokenStore`) zodat beide tiers hem via DI kunnen gebruiken. Sinds
@@ -332,12 +297,9 @@ Vier dingen om te onthouden:
   De happy-path-vorm (`{"isSuccess":true}`) is nog altijd niet live bevestigd; succes wordt daarom
   bepaald door `Error != true && response.IsSuccessStatusCode`, niet door een los veld.
 - `ISportlinkClubTokenStore` — twee tier-specifieke implementaties, bewust géén gedeelde: de
-  Postgres-tier (`FunctionApp.Postgres/Sportlink/PostgresSportlinkClubTokenStore.cs`, #991) bewaart
-  het rotarende refresh_token in een eigen DB-tabel (`public.sportlinkservicetokens`); de SQL
-  Server-tier (`Planner.Shared/Integrations/SportlinkClub/SportlinkClubAppSettingsTokenStore.cs`,
-  #998) herschrijft een Function App-instelling via de Azure Management API. **De DB-tabel is de
-  gekozen aanpak voor de Postgres-tier; de ARM-API-variant is die voor de SQL Server-tier.** Dit
-  is een van de tierverschillen die na #1266 bewust zijn blijven staan — zie §4.3.
+  beide tiers gebruiken `ISportlinkAutoLoginStore` met encrypted credentials en tokens; de
+  oude tokenstores en handmatige capture/uploadroute zijn verwijderd. Zie
+  [Automatische Sportlink-login](SPORTLINK-AUTOLOGIN.md).
 - `Planner.Shared/Integrations/SportlinkClub/SportlinkMutationGuard.cs` (#998) — pure guardrail:
   staat een mutatie alleen toe bij `IsHomeMatch=true`, de bijbehorende Sportlink-permissievlag, én
   blokkeert altijd bij `IsCanceledMatch=true` of `IsConceptMatch=true`. `MatchStatus` wordt bewust
@@ -581,7 +543,7 @@ Vier dingen om te onthouden:
 - **Health-check-endpoint (#998).** `FunctionApp.Postgres/Admin/SportlinkExtensieHealthFunction.cs`
   — `GET /api/beheer/sportlink-extensie/health?live=false` (default). Zonder `?live=true` leest dit
   uitsluitend onze eigen database (extension/dry-run-instelling, `EgressGuard`-status, koppeling +
-  laatste tokenverversing per rol uit `public.sportlinkservicetokens`, laatste `Failure`-rij uit
+  laatste login-/tokenactiviteit per rol uit `public.sportlinkautologin`, laatste `Failure`-rij uit
   `public.sportlinkmutationaudit`, laatste rij uit `public.sportlinkcontractcheck`) — geen enkele
   Sportlink-aanroep. Alleen bij expliciete `?live=true` (een gebruikersklik op "Nu live
   controleren") doet het één `VerversTokenAsync` + één `GetMatchAsync` op de meest recent gecachte
@@ -602,39 +564,20 @@ Vier dingen om te onthouden:
   alarmeringsmechanisme (kostenbeleid: geen betaalde Log Analytics/App Insights-alert-regel, geen
   GitHub-issue-reporter).
 
-### 4.3 Kostenbeleid-implicatie / tokenopslag (besloten, #990/#991)
-Op de Postgres-tier (de tier die déze installatie in productie draait; een fork mag de SQL
-Server-tier kiezen) wordt het rotarende refresh_token opgeslagen in
-een **eigen DB-tabel** (`public.sportlinkservicetokens`), niet in Azure Key Vault en niet als
-Function App-instelling via de ARM-API. Key Vault is "potentieel betaald" volgens het kostenbeleid
-in `CLAUDE.md` (nieuwe Azure-resource, prijscheck + goedkeuring vereist); een Function
-App-instelling herschrijven vanuit de app zelf vereist een aparte Azure AD-integratie met
-schrijfrechten op de eigen Function App — een grotere attack surface voor hetzelfde resultaat. Een
-DB-tabel is een bestaande, gratis resource en dezelfde vertrouwensgrens als de bestaande
-`SqlConnectionString`-secrets.
+### 4.3 Kostenbeleid-implicatie / tokenopslag (#1411)
 
-**Besluit (#1020, 2026-09-06) — premisse ingetrokken bij #1266.** #1020 koos ervoor dat de SQL
-Server-tier (`SportlinkClubAppSettingsTokenStore`, #998) de oudere ARM-API-aanpak behield, op grond
-van de aanname dat die tier "rollback-only" was en geen productieverkeer had. Dat besluit bevatte
-zelf de voorwaarde: *"totdat de SQL Server-tier ooit weer productie-tier zou worden (in dat geval
-eerst herbeoordelen, niet automatisch alignen)"*.
-
-Die voorwaarde is nu ingetreden: beide tiers zijn gelijkwaardig (#1266). Wat dat concreet betekent:
-
-- **De asymmetrie in tokenopslag blijft voorlopig bestaan** en is daarmee een bewuste, herbeoordeelde
-  keuze in plaats van een vergeten verschil. De ARM-API-variant wérkt op deze tier; hem vervangen
-  door een DB-tabel is een aparte afweging (Managed Identity met Website Contributor-rol per
-  deployment versus een gewone tabel), geen onderdeel van pariteitsherstel.
-- **Het valt buiten het bereik van de pariteitsguard.** `scripts/ci/check-tier-pariteit.sh`
-  vergelijkt HTTP-routes, niet implementatiekeuzes; een verschil in tokenopslag is voor die guard
-  onzichtbaar en staat dus ook niet in `scripts/ci/tier-pariteit-allowlist.txt`. Deze paragraaf is
-  daarmee de enige plek waar de uitzondering is vastgelegd — verwijder hem niet zonder de keuze
-  opnieuw te maken.
-- De premisse "rollback-only" is uit de rest van de documentatie verwijderd. Hij was nooit als
-  architectuurbesluit voorgelegd; hij sloop binnen als beschrijving van de situatie na de cutover
-  en werd daarna als norm gebruikt.
+Beide database-tiers gebruiken dezelfde architectuur: de database bewaart alleen authenticated-
+encrypted credentials en refresh-tokenmateriaal in `public.sportlinkautologin` of
+`dbo.SportlinkAutoLogin`. De AES-256-GCM-sleutel staat als secretinstelling buiten de database.
+De oude split tussen Postgres-databaseopslag en SQL Server Function App-instellingen is vervallen.
+Zie [Automatische Sportlink-login](SPORTLINK-AUTOLOGIN.md) voor sleutelbeheer, setup en herstel.
 
 ### 4.4 HARDE REGEL: coding agents mogen dit mechanisme nooit zelf uitvoeren
+
+> Deze regel is historisch vervangen voor #1411. De eigenaar gaf expliciet toestemming voor de
+> geïsoleerde implementatie- en loginproef; de actuele operationele grenzen en secretregels staan
+> in [`docs/SPORTLINK-AUTOLOGIN.md`](SPORTLINK-AUTOLOGIN.md). De beschrijving hieronder gaat over
+> het oude refresh-tokenproces en is geen actuele instructie.
 
 **Dit geldt zonder uitzondering, voor Claude Code en elke andere coding agent, in elke sessie:**
 
@@ -663,8 +606,8 @@ Elk token dat ooit in een agent-sessie zichtbaar wordt, geldt vanaf dat moment a
   wordt. Zonder die bevestiging zou dit script, anders dan het spike-script, wél door een agent
   silently uitgevoerd kunnen worden — dat is precies wat er (bijna) gebeurde bij de review die tot
   dit document leidde.
-- `Tools/SportlinkTokenCapture` is agent-veilig door ontwerp: het vereist een echte, zichtbare
-  browserlogin (incl. eventuele MFA) die een agent sowieso niet kan voltooien.
+- ~~`Tools/SportlinkTokenCapture`~~ is verwijderd in #1411. De backend automatic-login is de
+  ondersteunde flow; zie [`docs/SPORTLINK-AUTOLOGIN.md`](SPORTLINK-AUTOLOGIN.md).
 - **Nieuw script, nieuwe regel:** elk toekomstig script dat een opgeslagen refresh_token gebruikt
   krijgt dezelfde `Read-Host`-mensbevestiging als `Invoke-SportlinkMatchLookup.ps1` — niet alleen
   een waarschuwing in commentaar. Commentaar wordt door een agent gelezen maar is geen technische
@@ -676,7 +619,7 @@ Elk token dat ooit in een agent-sessie zichtbaar wordt, geldt vanaf dat moment a
 **Incident (2026-09-26): passieve leak via de harness' eigen file-diff-melding, geen agent-actie
 nodig.** Tijdens een lokale acceptatietest had de agent `FunctionApp.Postgres/local.settings.json`
 eerder in de sessie gelezen voor een ongerelateerde controle (`AllowExternalIntegrations`). Toen de
-mens daarna, volgens §3.3, `Tools/SportlinkTokenCapture` draaide en het verse refresh_token
+mens daarna, volgens de voormalige §3.3, de token-capturetool draaide en het verse refresh_token
 wegschreef, toonde de coding-agent-harness bij de eerstvolgende beurt automatisch een
 wijzigingsmelding met de **volledige tokenwaarde** — zonder dat de agent het bestand opnieuw las,
 opvroeg of er zelfs maar naar vroeg. Dit is fundamenteel anders dan de twee incidenten hierboven

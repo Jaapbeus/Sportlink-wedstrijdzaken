@@ -9,18 +9,15 @@ public sealed class PostgresSportlinkAutoLoginStore : ISportlinkAutoLoginStore
     private readonly string _connectionString;
     private readonly Func<string> _clubCode;
     private readonly SportlinkCredentialProtector _protector;
-    private readonly ISportlinkClubTokenStore _legacy;
 
     public PostgresSportlinkAutoLoginStore(
         string connectionString,
         Func<string> clubCode,
-        SportlinkCredentialProtector protector,
-        ISportlinkClubTokenStore legacy)
+        SportlinkCredentialProtector protector)
     {
         _connectionString = connectionString;
         _clubCode = clubCode;
         _protector = protector;
-        _legacy = legacy;
     }
 
     public string ClubCode => _clubCode();
@@ -176,7 +173,7 @@ public sealed class PostgresSportlinkAutoLoginStore : ISportlinkAutoLoginStore
         command.Parameters.AddWithValue("clubcode", club);
         command.Parameters.AddWithValue("rolnaam", role);
         var encrypted = await command.ExecuteScalarAsync();
-        if (encrypted is null) return _legacy.LeesRefreshToken(role);
+        if (encrypted is null) return null;
         return encrypted is string ciphertext
             ? _protector.UnprotectSecret(ciphertext, club, role, "refresh-token")
             : null;

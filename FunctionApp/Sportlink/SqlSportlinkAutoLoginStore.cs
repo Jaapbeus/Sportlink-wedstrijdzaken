@@ -9,18 +9,15 @@ public sealed class SqlSportlinkAutoLoginStore : ISportlinkAutoLoginStore
     private readonly string _connectionString;
     private readonly Func<string> _clubCode;
     private readonly SportlinkCredentialProtector _protector;
-    private readonly ISportlinkClubTokenStore _legacy;
 
     public SqlSportlinkAutoLoginStore(
         string connectionString,
         Func<string> clubCode,
-        SportlinkCredentialProtector protector,
-        ISportlinkClubTokenStore legacy)
+        SportlinkCredentialProtector protector)
     {
         _connectionString = connectionString;
         _clubCode = clubCode;
         _protector = protector;
-        _legacy = legacy;
     }
 
     public string ClubCode => _clubCode();
@@ -178,7 +175,7 @@ public sealed class SqlSportlinkAutoLoginStore : ISportlinkAutoLoginStore
             WHERE [ClubCode] = @clubcode AND [RolNaam] = @rolnaam", connection);
         AddScope(command, club, role);
         var value = await command.ExecuteScalarAsync();
-        if (value is null) return _legacy.LeesRefreshToken(role);
+        if (value is null) return null;
         return value is string ciphertext
             ? _protector.UnprotectSecret(ciphertext, club, role, "refresh-token")
             : null;

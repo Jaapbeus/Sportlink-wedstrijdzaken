@@ -16,16 +16,14 @@ internal static class PostgresSportlinkAuthenticationRegistration
         if (sportlinkProtector is not null)
         {
             services.AddSingleton<ISportlinkAutoLoginStore>(sp => new PostgresSportlinkAutoLoginStore(
-                PostgresDatabaseConfig.ConnectionString, () => FunctionApp.Postgres.Planner.PostgresClubScope.Primary, sportlinkProtector,
-                new PostgresSportlinkClubTokenStore(PostgresDatabaseConfig.ConnectionString, sp.GetRequiredService<ILoggerFactory>().CreateLogger<PostgresSportlinkClubTokenStore>())));
+                PostgresDatabaseConfig.ConnectionString, () => FunctionApp.Postgres.Planner.PostgresClubScope.Primary, sportlinkProtector));
         }
 
         if (EgressGuard.ExternalIntegrationsAllowed())
         {
-            services.AddSingleton<ISportlinkClubTokenStore>(sp =>
-                (ISportlinkClubTokenStore?)sp.GetService<ISportlinkAutoLoginStore>() ??
-                new PostgresSportlinkClubTokenStore(PostgresDatabaseConfig.ConnectionString, sp.GetRequiredService<ILoggerFactory>().CreateLogger<PostgresSportlinkClubTokenStore>()));
             if (sportlinkProtector is not null)
+            {
+                services.AddSingleton<ISportlinkClubTokenStore>(sp => sp.GetRequiredService<ISportlinkAutoLoginStore>());
                 services.AddSingleton(sp => new SportlinkAutoLoginCoordinator(
                     sp.GetRequiredService<ISportlinkAutoLoginStore>(), new SportlinkAutoLoginProvider()));
             // #998: .AddTypedClient overschrijft bewust de standaard-constructiewijze van AddHttpClient<T,I>
@@ -50,6 +48,7 @@ internal static class PostgresSportlinkAuthenticationRegistration
                 // SportlinkEndpointCore, zodat beide tiers dezelfde polariteit hebben.
                 isDryRun: () => SportlinkEndpointCore.IsDryRunActief(PostgresAppSettings.GetSetting),
                 autoLogin: sp.GetService<SportlinkAutoLoginCoordinator>()));
+            }
         }
     }
 }

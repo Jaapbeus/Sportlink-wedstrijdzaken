@@ -66,10 +66,8 @@ if (!string.IsNullOrWhiteSpace(openAiApiKey) && EgressGuard.ExternalIntegrations
 // Sportlink Club API client (#991, #998): read-only Match API + token-refresh per functionele rol.
 // EgressGuard (#857): eigen if-blok, losgekoppeld van de OpenAiApiKey-check hierboven — dit is een
 // onafhankelijke uitgaande integratie en hoort niet toevallig aan AI-configuratie vast te zitten.
-// Tokenopslag: PostgresSportlinkClubTokenStore (eigen DB-tabel) i.p.v. SportlinkClubAppSettingsTokenStore
-// (Function App-instelling via de Azure Management API, #998) — besloten voor de Postgres-tier
-// (enige live tier) omdat dat geen nieuwe Azure-resource of Managed Identity vereist. Zie
-// docs/SPORTLINK-WEB-EXTENSION.md §4.3.
+// Authentication and the encrypted persistent token store are registered per database tier.
+// Credentials and the key setup are documented in docs/SPORTLINK-AUTOLOGIN.md.
 PostgresSportlinkAuthenticationRegistration.Register(builder.Services);
 
 // Audit-logging voor Sportlink-mutaties (#991, #998) — Postgres tier

@@ -1259,19 +1259,11 @@ Sportlinks eigen audit-log de rolnaam toont in plaats van een persoonsnaam.
 | Laatst gekoppeld door / op | Wie de koppeling voor het laatst (opnieuw) heeft geregistreerd, en wanneer |
 | Sportlink-account | Naam van het gekoppelde Sportlink-serviceaccount |
 
-Achter elke rol staat de knop **Koppeling (opnieuw) registreren**. Die knop overschrijft alleen de
-weergavenaam en de "laatst gekoppeld door/op"-gegevens — de werkende toegangssleutel blijft
-daarbij ongewijzigd. Het daadwerkelijk *verkrijgen* van een nieuwe sleutel kan niet vanuit de
-webapp: Sportlink staat geen inlog via onze eigen applicatie toe (de terugverwijzing naar een eigen
-adres is aan hun kant dichtgezet). Dit is dus altijd een aparte, eenmalige technische stap die een
-**technisch beheerder** van deze installatie zelf uitvoert, op zijn eigen computer, met een lokaal
-hulpprogramma (`Tools/SportlinkTokenCapture`, met een echte browserlogin — nooit door een
-geautomatiseerd script of AI-agent, zie `docs/SPORTLINK-WEB-EXTENSION.md` §3.3/§4.4 voor de
-volledige stappen). Het resultaat plakt die beheerder daarna in het vak **Refresh-token
-registreren** onder in datzelfde registratiekaartje — "refresh-token" is de technische naam voor
-die toegangssleutel — en bevestigt met **Token registreren**. Een gekoppelde rol houdt zichzelf
-daarna automatisch actief via een uur-timer, ook zonder dagelijks gebruik; dit hoeft dus niet
-routinematig herhaald te worden.
+De oude handmatige tokenregistratie is verwijderd. Configureer of herstel de Sportlink-login via
+de beveiligde automatische-loginsectie op deze pagina. De enige ondersteunde procedure, inclusief
+eerste productieconfiguratie en herstel, staat in [Automatische Sportlink-login](SPORTLINK-AUTOLOGIN.md).
+De functie vereist gebruikersnaam, wachtwoord en authenticator-instelsleutel; een actuele
+zescijferige MFA-code wordt niet opgeslagen.
 
 **Dry-run: alles simuleren, niets naar Sportlink schrijven** — naast de aan/uit-schakelaar staat een
 tweede schakelaar die **standaard AAN** staat. Zolang deze aan staat, doorloopt elke kleedkamer-/

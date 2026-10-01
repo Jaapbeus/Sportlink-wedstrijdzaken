@@ -249,9 +249,22 @@ public sealed class SportlinkAutoLoginProvider : ISportlinkAutoLoginProvider
         }
         foreach (var button in form.QuerySelectorAll("button"))
         {
-            if (!string.Equals(button.GetAttribute("type"), "button", StringComparison.OrdinalIgnoreCase) ||
-                !(button.HasAttribute("data-password-toggle") || button.GetAttribute("aria-controls") == "password"))
-                throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);
+            var type = (button.GetAttribute("type") ?? "submit").ToLowerInvariant();
+            if (type == "button" &&
+                (button.HasAttribute("data-password-toggle") || button.GetAttribute("aria-controls") == "password"))
+                continue;
+
+            // Keycloak currently renders its login action as a button (name=login, no value),
+            // while older/form-fixture pages use input[type=submit]. In HTML the button's
+            // displayed text is not a submitted value, so preserve the actual empty value.
+            if (type == "submit" && button.GetAttribute("name") == "login")
+            {
+                AddUniqueField(submissionFields, "login", button.GetAttribute("value") ?? string.Empty);
+                submitCount++;
+                continue;
+            }
+
+            throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);
         }
         if (submitCount != 1)
             throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);

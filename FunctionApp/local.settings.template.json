@@ -20,6 +20,7 @@
     "EmailReviewMode": "true",
     "EmailReviewRecipient": "",
     "EMAIL_POLL_SCHEDULE": "0 0 * * * *",
+    "SportlinkAutoLoginEncryptionKey": "",
     "AzureSubscriptionId": "",
     "AzureResourceGroupName": "",
     "AzureFunctionAppName": "",

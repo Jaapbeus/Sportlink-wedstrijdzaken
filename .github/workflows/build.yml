@@ -744,7 +744,8 @@ jobs:
           missing=$(psql_ci -c "
             SELECT string_agg(verwacht, ' ') FROM (VALUES
               ('public.appsettings'), ('public.velden'), ('public.speeltijden'),
-              ('planner.geplandewedstrijden'), ('public.schema_migrations')
+              ('planner.geplandewedstrijden'), ('public.schema_migrations'),
+              ('public.sportlinkautologin')
             ) AS v(verwacht)
             WHERE to_regclass(v.verwacht) IS NULL;
           ")
@@ -753,6 +754,13 @@ jobs:
             exit 1
           fi
           echo "Alle verwachte objecten aanwezig."
+
+          legacy_token_table=$(psql_ci -c "SELECT to_regclass('public.sportlinkservicetokens') IS NOT NULL;")
+          if [ "$legacy_token_table" = "t" ]; then
+            echo "::error::De retired Sportlink-tokenopslag bestaat nog na migraties."
+            exit 1
+          fi
+          echo "Legacy Sportlink-tokenopslag is verwijderd."
 
           # ClubCode-dekking: elke configuratietabel die in de SQL Server-tier een ClubCode-kolom
           # heeft, moet die ook hier hebben (lowercase, conform de identifier-casing-conventie).

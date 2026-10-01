@@ -20,7 +20,7 @@ public sealed class SportlinkAutoLoginProviderTests
             var body = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
             requests.Add((request.Method.Method, request.RequestUri!, body));
             if (request.Method == HttpMethod.Get)
-                return Html("<form method='post' action='/realms/sportlink/login-actions/authenticate?session_code=fake'><input type='hidden' name='session_code' value='fake'><input type='hidden' name='credentialId' value=''><input name='username'><input type='password' name='password'><input type='checkbox' name='rememberMe'><input name='login' type='submit' value='Sign in'><button type='button' aria-controls='password'>Show password</button></form>");
+                return Html("<form method='post' action='/realms/sportlink/login-actions/authenticate?session_code=fake'><input type='hidden' name='session_code' value='fake'><input type='hidden' name='credentialId' value=''><input name='username'><input type='password' name='password'><input type='checkbox' name='rememberMe'><button type='button' aria-controls='password'>Show password</button><button type='submit' name='login'>Sign in</button></form>");
             if (request.RequestUri!.AbsolutePath.EndsWith("/authenticate", StringComparison.Ordinal))
             {
                 var authorize = requests[0].Uri;
@@ -41,7 +41,8 @@ public sealed class SportlinkAutoLoginProviderTests
         Assert.Equal("S256", authQuery["code_challenge_method"]);
         Assert.Contains("username=test-user", requests[1].Body);
         Assert.Contains(Uri.EscapeDataString("pass" + "word") + "=test-password", requests[1].Body);
-        Assert.Contains("login=Sign+in", requests[1].Body);
+        Assert.Contains("login=", requests[1].Body);
+        Assert.DoesNotContain("login=Sign+in", requests[1].Body);
         Assert.DoesNotContain("rememberMe", requests[1].Body);
         var tokenBody = HttpUtility.ParseQueryString(requests[2].Body!);
         Assert.Equal("fake-code", tokenBody["code"]);

@@ -16,16 +16,14 @@ internal static class SqlSportlinkAuthenticationRegistration
         if (sportlinkProtector is not null)
         {
             services.AddSingleton<ISportlinkAutoLoginStore>(sp => new SqlSportlinkAutoLoginStore(
-                SportlinkFunction.SystemUtilities.DatabaseConfig.ConnectionString, () => SportlinkFunction.Planner.ClubScope.Primary, sportlinkProtector,
-                new SportlinkClubAppSettingsTokenStore(sp.GetRequiredService<ILoggerFactory>().CreateLogger<SportlinkClubAppSettingsTokenStore>())));
+                SportlinkFunction.SystemUtilities.DatabaseConfig.ConnectionString, () => SportlinkFunction.Planner.ClubScope.Primary, sportlinkProtector));
         }
 
         if (EgressGuard.ExternalIntegrationsAllowed())
         {
-            services.AddSingleton<ISportlinkClubTokenStore>(sp =>
-                (ISportlinkClubTokenStore?)sp.GetService<ISportlinkAutoLoginStore>() ??
-                new SportlinkClubAppSettingsTokenStore(sp.GetRequiredService<ILoggerFactory>().CreateLogger<SportlinkClubAppSettingsTokenStore>()));
             if (sportlinkProtector is not null)
+            {
+                services.AddSingleton<ISportlinkClubTokenStore>(sp => sp.GetRequiredService<ISportlinkAutoLoginStore>());
                 services.AddSingleton(sp => new SportlinkAutoLoginCoordinator(
                     sp.GetRequiredService<ISportlinkAutoLoginStore>(), new SportlinkAutoLoginProvider()));
             // #1266: de dry-run-stand komt nu uit dbo.AppSettings.SportlinkDryRun in plaats van een harde
@@ -54,6 +52,7 @@ internal static class SqlSportlinkAuthenticationRegistration
                         SportlinkFunction.SystemUtilities.AppSettings.GetSetting, dryRunLogger),
                     autoLogin: sp.GetService<SportlinkAutoLoginCoordinator>());
             });
+            }
         }
     }
 }

@@ -1,4 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
 using FunctionApp.Postgres.Infrastructure;
 using FunctionApp.Postgres.Sportlink;
 using Microsoft.AspNetCore.Http;
@@ -6,7 +5,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Newtonsoft.Json;
 using Npgsql;
-using Planner.Shared.Integrations.SportlinkClub;
 
 namespace FunctionApp.Postgres.Admin;
 
@@ -18,10 +16,6 @@ namespace FunctionApp.Postgres.Admin;
 public static class SportlinkExtensieRollenFunction
 {
     private static readonly string[] FunctioneleRollen = { "Wedstrijdzaken" };
-
-    // #991: kale HttpClient voor de Keycloak-tokenexchange bij bootstrap — zelfde precedent als
-    // Sync/PostgresSyncPipeline.cs (geen Polly/resilience-library elders in deze repo).
-    private static readonly HttpClient TokenHttp = new();
 
     [Function("SportlinkExtensieRollenGet")]
     public static Task<IActionResult> Get(
@@ -101,56 +95,9 @@ public static class SportlinkExtensieRollenFunction
                 return new OkObjectResult(new { RolNaam = rolNaam, LaatstGekoppeldDoor = door });
             });
 
-    // #991: registreert het échte refresh_token productie-persistent in
-    // public.sportlinkservicetokens (via PostgresSportlinkClubTokenStore). Bewust géén
-    // GET-tegenhanger — dit endpoint is write-only. Valideert eerst met één refresh-poging
-    // rechtstreeks bij Keycloak, zodat een ongeldige waarde nooit opgeslagen wordt.
-    [Function("SportlinkExtensieRollenPutToken")]
-    public static Task<IActionResult> PutToken(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "beheer/sportlink-extensie/rollen/{rolNaam}/token")] HttpRequest req,
-        string rolNaam,
-        FunctionContext context) =>
-        AdminEndpoint.ExecuteAsync(req, context.GetLogger("SportlinkExtensieRollenPutToken"), "sportlink-extensie-token registreren",
-            async clubCode =>
-            {
-                if (!FunctioneleRollen.Contains(rolNaam, StringComparer.OrdinalIgnoreCase))
-                    return new BadRequestObjectResult(new { error = $"Onbekende rol '{rolNaam}'. Toegestaan: {string.Join(", ", FunctioneleRollen)}." });
-
-                if (context.InstanceServices.GetService<ISportlinkAutoLoginStore>() is not null)
-                    return new ObjectResult(new { error = "Gebruik de beveiligde automatische login om opnieuw te koppelen." }) { StatusCode = 409 };
-
-                var dto = JsonConvert.DeserializeObject<RegistreerTokenDto>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
-                if (string.IsNullOrWhiteSpace(dto?.RefreshToken))
-                    return new BadRequestObjectResult(new { error = "refreshToken ontbreekt." });
-
-                // #857: dit is een echte uitgaande aanroep naar idm.sportlink.com — zelfde poort als
-                // elke andere externe integratie in deze repo, nooit een eigen ad-hoc controle.
-                if (!EgressGuard.ExternalIntegrationsAllowed())
-                {
-                    // #1266: dezelfde status én tekst als elke andere EgressGuard-afwijzing op beide
-                    // tiers — uit SportlinkEndpointCore, niet nog een keer uitgeschreven.
-                    var egressFout = SportlinkEndpointCore.EgressGeblokkeerdFout;
-                    return new ObjectResult(new { error = egressFout.Foutmelding }) { StatusCode = egressFout.HttpStatus };
-                }
-
-                if (!await SportlinkClubClient.ValideerRefreshTokenAsync(TokenHttp, dto.RefreshToken))
-                    return new ObjectResult(new { error = "Sportlink heeft dit refresh-token geweigerd — controleer of het recent en correct is." }) { StatusCode = 409 };
-
-                var tokenStore = new PostgresSportlinkClubTokenStore(
-                    PostgresDatabaseConfig.ConnectionString, context.GetLogger<PostgresSportlinkClubTokenStore>());
-                await tokenStore.SchrijfRefreshTokenAsync(rolNaam, dto.RefreshToken);
-
-                return new OkObjectResult(new { RolNaam = rolNaam });
-            });
-
     private class RegistreerKoppelingDto
     {
         public string? SportlinkAccountNaam { get; set; }
     }
 
-    private class RegistreerTokenDto
-    {
-        public string? RefreshToken { get; set; }
-    }
 }

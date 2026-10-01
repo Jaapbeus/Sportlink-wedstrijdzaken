@@ -80,17 +80,15 @@ public sealed class PostgresSportlinkAutoLoginStoreIntegrationTests
     }
 
     [PostgresFact]
-    public async Task DeleteCredentials_WistBeideCiphertexts_EnRoeptLegacyFallbackNietAan()
+    public async Task DeleteCredentials_WistBeideCiphertexts()
     {
-        var legacy = new FakeLegacyTokenStore("legacy-refresh-secret");
-        await using var scope = await TestScope.CreateAsync(legacy: legacy);
+        await using var scope = await TestScope.CreateAsync();
         await scope.Store.ConfigureAsync(scope.Role, NieuweCredentials(), CancellationToken.None);
         await scope.Store.SchrijfRefreshTokenAsync(scope.Role, "stored-refresh-secret");
 
         await scope.Store.ConfigureAsync(scope.Role, NieuweCredentials(), CancellationToken.None);
         scope.Store.LeesRefreshToken(scope.Role).Should().BeNull(
             "nieuwe logincredentials mogen geen refresh-token van het vorige account blijven gebruiken");
-        legacy.ReadCount.Should().Be(0);
         await scope.Store.SchrijfRefreshTokenAsync(scope.Role, "stored-refresh-secret");
 
         await scope.Store.DeleteCredentialsAsync(scope.Role, CancellationToken.None);
@@ -100,20 +98,17 @@ public sealed class PostgresSportlinkAutoLoginStoreIntegrationTests
         raw.Refresh.Should().BeNull();
         (await scope.Store.ReadAsync(scope.Role, CancellationToken.None))!.Credentials.Should().BeNull();
         scope.Store.LeesRefreshToken(scope.Role).Should().BeNull();
-        legacy.ReadCount.Should().Be(0, "een tombstone-rij voorkomt dat een oud token na verwijderen terugkomt");
     }
 
     [PostgresFact]
-    public async Task OntbrekendeRijGebruiktLegacyToken_EnClubcontextIsolereertCiphertext()
+    public async Task OntbrekendeRijHeeftGeenRefreshToken_EnClubcontextIsolereertCiphertext()
     {
         var key = RandomNumberGenerator.GetBytes(32);
         await using var first = await TestScope.CreateAsync(key: key);
-        var legacy = new FakeLegacyTokenStore("legacy-refresh-secret");
-        await using var second = await TestScope.CreateAsync(role: first.Role, key: key, legacy: legacy);
+        await using var second = await TestScope.CreateAsync(role: first.Role, key: key);
 
         (await second.Store.ReadAsync(second.Role, CancellationToken.None)).Should().BeNull();
-        second.Store.LeesRefreshToken(second.Role).Should().Be("legacy-refresh-secret");
-        legacy.ReadCount.Should().Be(1);
+        second.Store.LeesRefreshToken(second.Role).Should().BeNull();
 
         await first.Store.ConfigureAsync(first.Role, NieuweCredentials(), CancellationToken.None);
         var encrypted = (await LeesGeheimenAsync(first.Club, first.Role)).Credentials!;
@@ -177,29 +172,26 @@ public sealed class PostgresSportlinkAutoLoginStoreIntegrationTests
     private sealed class TestScope : IAsyncDisposable
     {
         private readonly byte[] _key;
-        private readonly FakeLegacyTokenStore _legacy;
         public string Club { get; }
         public string Role { get; }
         public PostgresSportlinkAutoLoginStore Store { get; }
 
-        private TestScope(string club, string role, byte[] key, FakeLegacyTokenStore legacy)
+        private TestScope(string club, string role, byte[] key)
         {
             Club = club;
             Role = role;
             _key = key;
-            _legacy = legacy;
             Store = new PostgresSportlinkAutoLoginStore(
-                ConnectionString, () => Club, new SportlinkCredentialProtector(_key), _legacy);
+                ConnectionString, () => Club, new SportlinkCredentialProtector(_key));
         }
 
         public static async Task<TestScope> CreateAsync(
-            string? club = null, string? role = null, byte[]? key = null, FakeLegacyTokenStore? legacy = null)
+            string? club = null, string? role = null, byte[]? key = null)
         {
             var scope = new TestScope(
                 club ?? "al" + Guid.NewGuid().ToString("N")[..16],
                 role ?? "r" + Guid.NewGuid().ToString("N")[..20],
-                key ?? RandomNumberGenerator.GetBytes(32),
-                legacy ?? new FakeLegacyTokenStore(null));
+                key ?? RandomNumberGenerator.GetBytes(32));
             await scope.DeleteRowsAsync();
             return scope;
         }
@@ -221,15 +213,4 @@ public sealed class PostgresSportlinkAutoLoginStoreIntegrationTests
         }
     }
 
-    private sealed class FakeLegacyTokenStore(string? token) : ISportlinkClubTokenStore
-    {
-        public int ReadCount { get; private set; }
-        public string? LeesRefreshToken(string functioneleRol)
-        {
-            ReadCount++;
-            return token;
-        }
-        public Task SchrijfRefreshTokenAsync(string functioneleRol, string nieuwRefreshToken, CancellationToken cancellationToken = default)
-            => Task.CompletedTask;
-    }
 }

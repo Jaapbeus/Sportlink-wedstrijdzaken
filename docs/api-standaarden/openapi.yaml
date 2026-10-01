@@ -3524,56 +3524,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /beheer/sportlink-extensie/rollen/{rolNaam}/token:
-    put:
-      tags: [beheer]
-      operationId: registreerSportlinkExtensieToken
-      summary: Refresh-token productie-persistent registreren (write-only)
-      description: |
-        Bootstrap van het échte Sportlink refresh_token voor een rol (#990/#991, epic #986).
-        Valideert het token met één refresh-poging vóór opslag in `public.sportlinkservicetokens`.
-        Er bestaat bewust géén GET-tegenhanger — het token wordt nooit teruggegeven.
-      security:
-        - easyAuth: []
-      parameters:
-        - name: rolNaam
-          in: path
-          required: true
-          schema:
-            type: string
-            enum: [Wedstrijdzaken]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [RefreshToken]
-              properties:
-                RefreshToken:
-                  type: string
-                  description: Ruwe refresh_token-waarde, bv. gevangen via Tools/SportlinkTokenCapture.
-      responses:
-        '200':
-          description: Token gevalideerd en opgeslagen
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  RolNaam:
-                    type: string
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          description: Sportlink heeft het opgegeven refresh-token geweigerd
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   /beheer/sportlink-extensie/rollen/{rolNaam}/autologin:
     parameters:
       - name: rolNaam

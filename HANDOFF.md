@@ -8,16 +8,25 @@ Implementatie: TOTP/PKCE-loginprovider, AES-GCM-opslag op beide databasetiers,
 databaselease en begrensde herlogin, admin-API en beheerinterface. Installatie, sleutelbeheer,
 verwijdering en live acceptatie staan in `docs/SPORTLINK-AUTOLOGIN.md`.
 
-Geverifieerd: builds beide backends en frontend; gerichte cryptografie/provider/coördinatie/
-client-/endpointtests; beide tiers' autorisatietests; frontend publish-CSP; geïsoleerde
-browserproef met fictieve gegevens en gemockte API. Lokale net9-tests gebruiken expliciet
-.NET 10 roll-forward omdat deze host geen net9-runtime heeft. De CI-run met de doelruntime
-blijft vereist. Geen echte Sportlink-login uitgevoerd.
+Geverifieerd op de oorspronkelijke feature-head: builds beide backends en frontend; gerichte
+cryptografie/provider/coördinatie/client-/endpointtests; beide tiers' autorisatietests; frontend
+publish-CSP; geïsoleerde browserproef met fictieve gegevens en gemockte API. Lokale live bevestiging:
+twee wachtwoord+TOTP-logins via de provider zijn geslaagd;
+een refresh-grant is geslaagd en roteerde de refresh-token (access 3600 s, refresh 21600 s).
+Een directe herlogin met dezelfde TOTP-periode werd geweigerd; na de volgende 30-secondenperiode
+lukte een verse login. Dit past bij TOTP-replaybescherming, maar de precieze oorzaak is niet
+bewezen. De herstelde entry is `Sportlink WZ` in BeusFamily/Private.
+
+De eigenaar heeft die lokale auth-only proef daarna beëindigd en als geslaagd beoordeeld na
+14 uur en 39 minuten zonder onderbreking. Dit is geen 24-uursmeting en bewijst niet de database-,
+coordinator-, Function Timer- of procesherstart-integratie.
 
 Open vóór ingebruikname:
 - CI inclusief echte PostgreSQL-integratietests en Security Gate controleren.
 - Eigenaar verifieert de actuele Sportlink-formulieren en TOTP-parameters met eigen account.
-- Minstens 24 uur/twee sessieovergangen inclusief herstart; geen wedstrijdmutaties in die proef.
+- Indien gewenst: aparte 24-uursloop met twee automatische sessieovergangen en herstart; geen
+  wedstrijdmutaties in die proef. De uitgevoerde 14u39-harness bewijst niet de database/coordinator/
+  Function Timer-integratie of tokenbehoud na procesherstart.
 - Deployment, migratie en secret-invoer pas na afzonderlijk eigenaarsbesluit.
 
 Orkestratie/integratie/review: Astra. Deelimplementaties cryptografie, loginprovider,

@@ -39,11 +39,6 @@ public class AdminApiClient
         => await PutAsync<object>($"api/beheer/sportlink-extensie/rollen/{Uri.EscapeDataString(rolNaam)}",
             new { SportlinkAccountNaam = sportlinkAccountNaam });
 
-    // #991: write-only bootstrap van het échte refresh-token — nooit een GET-tegenhanger.
-    public async Task<ApiResult<object>> RegistreerSportlinkTokenAsync(string rolNaam, string refreshToken)
-        => await PutAsync<object>($"api/beheer/sportlink-extensie/rollen/{Uri.EscapeDataString(rolNaam)}/token",
-            new { RefreshToken = refreshToken });
-
     // #990: write-only automatische login-instellingen; GET retourneert uitsluitend statusmetadata.
     public async Task<ApiResult<SportlinkAutoLoginStatusDto>> GetSportlinkAutoLoginStatusAsync(string rolNaam)
         => await GetAsync<SportlinkAutoLoginStatusDto>(

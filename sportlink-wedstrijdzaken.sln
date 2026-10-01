@@ -33,8 +33,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SqlServerToPostgresCopy", "
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tools", "Tools", "{2A1B3C4D-5E6F-47A8-9B0C-1D2E3F4A5B6C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SportlinkTokenCapture", "Tools\SportlinkTokenCapture\SportlinkTokenCapture.csproj", "{3B2C4D5E-6F70-48A9-8B1C-2D3E4F5A6B7D}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BlazorAdmin.Tests", "BlazorAdmin.Tests\BlazorAdmin.Tests.csproj", "{80CC237A-CBD3-4B91-83BF-08E13348803C}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Planner.Endpoints", "Planner.Endpoints\Planner.Endpoints.csproj", "{4D596708-36CF-44F4-A629-1F58F942B0CB}"
@@ -42,8 +40,6 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Planner.Endpoints.Tests", "Planner.Endpoints.Tests\Planner.Endpoints.Tests.csproj", "{2633F678-515A-4602-8557-EEF5FC92BBCA}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MigrationTools.Tests", "MigrationTools.Tests\MigrationTools.Tests.csproj", "{1673DE36-E601-4C18-90E7-BC4DD3BB6801}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tools.SportlinkTokenCapture.Tests", "Tools.SportlinkTokenCapture.Tests\Tools.SportlinkTokenCapture.Tests.csproj", "{A8078097-D31C-4D44-89B5-4D7EAAC9E245}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Database.Postgres.Cli.Tests", "Database.Postgres.Cli.Tests\Database.Postgres.Cli.Tests.csproj", "{4CB915FA-99F7-4FB0-BA0B-990A9BCBE24F}"
 EndProject

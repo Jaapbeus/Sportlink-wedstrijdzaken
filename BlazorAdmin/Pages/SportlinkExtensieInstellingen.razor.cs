@@ -18,8 +18,6 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase, IDisp
     private SportlinkExtensieRolDto? registreerRol;
     private string? registreerSportlinkAccountNaam;
     private string? sportlinkKoppelMessage;
-    private string? registreerRefreshToken;
-    private string? sportlinkTokenMessage;
 
     private const string AutoLoginRolNaam = "Wedstrijdzaken";
     private SportlinkAutoLoginStatusDto? autoLoginStatus;
@@ -212,19 +210,6 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase, IDisp
         registreerRol = rol;
         registreerSportlinkAccountNaam = rol.SportlinkAccountNaam;
         sportlinkKoppelMessage = null;
-        registreerRefreshToken = null;
-        sportlinkTokenMessage = null;
-    }
-
-    // #991: schrijft het échte refresh-token weg — write-only, nooit teruggetoond.
-    private async Task BevestigRegistreerTokenAsync()
-    {
-        if (registreerRol == null || string.IsNullOrWhiteSpace(registreerRefreshToken)) return;
-        var r = await Api.RegistreerSportlinkTokenAsync(registreerRol.RolNaam, registreerRefreshToken);
-        registreerRefreshToken = null;
-        sportlinkTokenMessage = r.Success
-            ? "Token geregistreerd en gevalideerd."
-            : "Fout: " + r.ErrorMessage;
     }
 
     private async Task BevestigRegistreerKoppelingAsync()
