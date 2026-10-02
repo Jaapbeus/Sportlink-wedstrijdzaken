@@ -43,6 +43,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Het deploypakket van de Function App is ruim 39 MB groter (zip, beide tiers), doordat QuestPDF
   native bibliotheken voor alle platforms meelevert (#1363). Ruim binnen de grens van het
   Consumption Plan; details en meting in docs/ARCHITECTUUR-PDF-EXPORT.md §3.1.
+- Voorbereiding op de overstap naar het Flex Consumption-plan (epic #1063, zie issue #1070 en
+  issue #1071): nieuw draaiboek docs/RUNBOOK-FLEX-MIGRATIE.md met de volgorde van aanmaken tot en
+  met cutover en rollback, de vier kostencontroles, en een sjabloon voor een tijdelijke
+  testdeploy-workflow. Er is niets aan Azure of aan de bestaande deploy-pipeline gewijzigd. Het
+  draaiboek waarschuwt dat een volledige uitrol van infrastructure/main.bicep de app settings van
+  de bestaande Function App zou vervangen; voor de nieuwe app rol je alleen de Flex-module uit.
 
 ### Fixed
 - **Veld optimalisatie waarschuwt nu ook voor teamspecifieke buffers na het verslepen** (#1430). Heeft een
