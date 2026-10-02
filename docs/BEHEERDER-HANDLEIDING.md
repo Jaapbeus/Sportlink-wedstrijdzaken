@@ -131,6 +131,12 @@ ziet dus eerst de bestaande Sportlink-stand voordat u eventueel naar Optimaal wi
 Wijzigt u de **Buffer** of klikt u opnieuw op **Optimaliseer**, dan wordt het plan herberekend en
 springt de weergave terug naar de tab Huidig.
 
+Na het verslepen van een wedstrijd in de tab Optimaal controleert de pagina meteen of de nieuwe stand
+nog klopt, met dezelfde regels als de planner: twee wedstrijden op hetzelfde veldgedeelte tegelijk, te
+weinig tijd tussen twee wedstrijden op één veld, en een team dat tegelijk (of te kort na elkaar) op
+twee velden staat. Daarbij tellen ook de **Buffer vóór**/**Buffer na** uit de teamregels mee: is die
+groter dan de algemene buffer, dan noemt de waarschuwing "de vereiste teambuffer van N min" (#1430).
+
 Elke tab heeft dezelfde opbouw: eerst de **tijdlijn per veld**, daaronder de **wedstrijdenlijst** van
 diezelfde stand. Omdat beide tabs op exact dezelfde hoogte beginnen, werkt wisselen als het
 vergelijken van twee foto's: je oog springt niet en je ziet direct wat er in de veldbezetting

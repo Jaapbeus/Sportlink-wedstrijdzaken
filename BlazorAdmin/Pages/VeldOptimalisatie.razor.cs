@@ -368,24 +368,6 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
 
     private static readonly string[] BaanLabels = ["A1", "A2", "B1", "B2"];
 
-    // Welke kwartbanen bezet een wedstrijd met deze subpositie? Leeg/onbekend = heel veld.
-    // Dezelfde indeling als de planner server-side gebruikt.
-    private static bool[] BanenVanSubpositie(string? subpositie)
-    {
-        var b = new bool[4];
-        switch ((subpositie ?? string.Empty).Trim().ToUpperInvariant())
-        {
-            case "A1": b[0] = true; break;
-            case "A2": b[1] = true; break;
-            case "B1": b[2] = true; break;
-            case "B2": b[3] = true; break;
-            case "A":  b[0] = b[1] = true; break;
-            case "B":  b[2] = b[3] = true; break;
-            default:   b[0] = b[1] = b[2] = b[3] = true; break;
-        }
-        return b;
-    }
-
     // Status, voorkeursafwijking en de samenvatting opnieuw bepalen — dezelfde regels als de server,
     // zodat een handmatige zet net zo eerlijk wordt beoordeeld als een berekende.
     private void HerberekenNaSleep(AutoPlanWedstrijdItemDto item)
@@ -418,92 +400,11 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
         ControleerConflicten();
     }
 
-    // Overlap- en buffercontrole per veld, zodat een handmatige zet niet stil een onmogelijke
-    // planning oplevert. Zelfde regel als de server: gelijktijdig mag als de veldfracties samen
-    // binnen één veld blijven; achter elkaar vraagt de ingestelde buffer.
-    private void ControleerConflicten()
-    {
-        _conflicten = new List<string>();
-        if (_plan == null) return;
-
-        var perVeld = _plan.Wedstrijden
-            .Where(w => w.OptimaalTijd != null && w.OptimaalVeldNaam != null && w.DuurMinuten > 0
-                        && TimeOnly.TryParse(w.OptimaalTijd, out _))
-            .GroupBy(w => w.OptimaalVeldNaam!);
-
-        foreach (var veld in perVeld)
-        {
-            var lijst = veld.OrderBy(w => TimeOnly.Parse(w.OptimaalTijd!)).ToList();
-            for (int i = 0; i < lijst.Count; i++)
-            {
-                var a = lijst[i];
-                var aStart = TimeOnly.Parse(a.OptimaalTijd!);
-                var aEind = aStart.AddMinutes(a.DuurMinuten);
-                for (int j = i + 1; j < lijst.Count; j++)
-                {
-                    var b = lijst[j];
-                    var bStart = TimeOnly.Parse(b.OptimaalTijd!);
-                    var bEind = bStart.AddMinutes(b.DuurMinuten);
-
-                    bool overlapt = aStart < bEind && aEind > bStart;
-                    if (overlapt)
-                    {
-                        // Op banen vergelijken, niet op de som van de fracties: een half veld op A plus
-                        // een kwart veld telt op tot 0,75 — numeriek prima — maar botst wél als dat kwart
-                        // op A1 of A2 staat. De veldhelften zijn wat er fysiek bezet is.
-                        var baanA = BanenVanSubpositie(DagplanningWeergaveHelpers.GanttExtractSubPos(a.OptimaalVeld));
-                        var baanB = BanenVanSubpositie(DagplanningWeergaveHelpers.GanttExtractSubPos(b.OptimaalVeld));
-                        bool botst = false;
-                        for (int k = 0; k < 4; k++) if (baanA[k] && baanB[k]) botst = true;
-                        if (botst)
-                            _conflicten.Add($"{veld.Key}: {a.TeamNaam} en {b.TeamNaam} staan op hetzelfde veldgedeelte op dezelfde tijd.");
-                    }
-                    else
-                    {
-                        int gat = (int)(bStart.ToTimeSpan() - aEind.ToTimeSpan()).TotalMinutes;
-                        if (gat >= 0 && gat < _bufferMinuten)
-                            _conflicten.Add($"{veld.Key}: tussen {a.TeamNaam} en {b.TeamNaam} zit {gat} min, minder dan de ingestelde buffer van {_bufferMinuten} min.");
-                    }
-                }
-            }
-        }
-
-        // #939: dezelfde controle als hierboven, maar per TEAM in plaats van per veld — een team kan
-        // niet op twee velden tegelijk staan, ongeacht of er op elk van die velden zelf nog ruimte
-        // was. Zonder deze doorsnede kon een handmatige sleepactie een team dubbel boeken zonder
-        // enige waarschuwing, terwijl FieldScheduler datzelfde scenario server-side al weigert.
-        var perTeam = _plan.Wedstrijden
-            .Where(w => w.OptimaalTijd != null && w.DuurMinuten > 0 && TimeOnly.TryParse(w.OptimaalTijd, out _)
-                        && !string.IsNullOrWhiteSpace(w.TeamNaam))
-            .GroupBy(w => w.TeamNaam);
-
-        foreach (var team in perTeam)
-        {
-            var lijst = team.OrderBy(w => TimeOnly.Parse(w.OptimaalTijd!)).ToList();
-            for (int i = 0; i < lijst.Count; i++)
-            {
-                var a = lijst[i];
-                var aStart = TimeOnly.Parse(a.OptimaalTijd!);
-                var aEind = aStart.AddMinutes(a.DuurMinuten);
-                for (int j = i + 1; j < lijst.Count; j++)
-                {
-                    var b = lijst[j];
-                    var bStart = TimeOnly.Parse(b.OptimaalTijd!);
-                    var bEind = bStart.AddMinutes(b.DuurMinuten);
-
-                    bool overlapt = aStart < bEind && aEind > bStart;
-                    if (overlapt)
-                    {
-                        _conflicten.Add($"{team.Key}: staat tegelijk ingepland op {a.OptimaalVeldNaam} en {b.OptimaalVeldNaam} om {aStart:HH\\:mm}.");
-                        continue;
-                    }
-                    int gat = (int)(bStart.ToTimeSpan() - aEind.ToTimeSpan()).TotalMinutes;
-                    if (gat >= 0 && gat < _bufferMinuten)
-                        _conflicten.Add($"{team.Key}: tussen de wedstrijd op {a.OptimaalVeldNaam} en die op {b.OptimaalVeldNaam} zit {gat} min, minder dan de ingestelde buffer van {_bufferMinuten} min.");
-                }
-            }
-        }
-    }
+    // Overlap- en buffercontrole per veld én per team, zodat een handmatige zet niet stil een
+    // onmogelijke planning oplevert. De regels zelf staan sinds #1430 in PlanningConflictDetectie
+    // (Planner.Shared, gelinkt) — dezelfde regels als de planner, inclusief teamspecifieke buffers.
+    private void ControleerConflicten() =>
+        _conflicten = _plan == null ? new List<string>() : VeldplanningConflictMeldingen.Bepaal(_plan.Wedstrijden, _bufferMinuten);
 
     private static string NormaliseerVeld(string? veld) =>
         string.IsNullOrWhiteSpace(veld) ? "" : veld.Trim().ToLowerInvariant().Replace("  ", " ");

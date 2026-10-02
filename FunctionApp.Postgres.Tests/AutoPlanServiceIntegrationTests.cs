@@ -125,6 +125,34 @@ public class AutoPlanServiceIntegrationTests : IDisposable
             "hetzelfde team kan niet op twee velden tegelijk spelen, ook al zijn er genoeg vrije velden");
     }
 
+    /// <summary>
+    /// #1430: de handmatige conflictcontrole in de GUI heeft de teamspecifieke buffers nodig om na
+    /// een sleepactie dezelfde regel als de planner toe te passen. Het contract levert de ruwe actieve
+    /// teamregels per wedstrijd; een team zonder regel krijgt null (en dus de algemene buffer).
+    /// </summary>
+    [PostgresFact]
+    public async Task AutoPlanAsync_LevertTeamspecifiekeBuffersInHetContract()
+    {
+        await using var conn = await OpstellingAsync();
+        await ZetWedstrijdAsync(conn, 9500010, "ALLSTARS JO13-1", aanvang: null, veld: null);
+        await ZetWedstrijdAsync(conn, 9500011, "ALLSTARS JO15-1", aanvang: null, veld: null);
+        await ExecAsync(conn, @"
+            INSERT INTO public.teamregels (teamnaam, regeltype, waardeminuten, prioriteit, actief, clubcode)
+            VALUES ('ALLSTARS JO13-1', 'BufferNa', 60, 10, true, @club),
+                   ('ALLSTARS JO13-1', 'BufferVoor', 45, 10, true, @club),
+                   ('ALLSTARS JO13-1', 'BufferNa', 90, 10, false, @club)", ("club", Club));
+
+        var response = await AutoPlanService.AutoPlanAsync(
+            ConnectionString, new AutoPlanRequest { Datum = Zaterdag.ToString("yyyy-MM-dd") }, Club, NullLogger.Instance);
+
+        var metRegel = response.Wedstrijden.Single(w => w.TeamNaam == "ALLSTARS JO13-1");
+        metRegel.TeamBufferNa.Should().Be(60, "alleen actieve regels tellen; de inactieve 90 niet");
+        metRegel.TeamBufferVoor.Should().Be(45);
+        var zonderRegel = response.Wedstrijden.Single(w => w.TeamNaam == "ALLSTARS JO15-1");
+        zonderRegel.TeamBufferNa.Should().BeNull();
+        zonderRegel.TeamBufferVoor.Should().BeNull();
+    }
+
     [PostgresFact]
     public async Task AutoPlanToepassenAsync_SchrijftDeOptimaleTijdEnVeldTerug()
     {

@@ -2,6 +2,7 @@ using FunctionApp.Postgres.Planner.Repositories;
 using Microsoft.Extensions.Logging;
 using Planner.Shared;
 using Planner.Shared.Deel;
+using Planner.Shared.Planning;
 
 namespace FunctionApp.Postgres.Planner;
 
@@ -105,6 +106,8 @@ internal static class AutoPlanService
         var scheduler = new FieldScheduler(beschikbaarheid, velden, buffer, teamBuffers);
         var items = PlanWedstrijden(metDoel, scheduler, speeltijden, veldInfoLookup, teamBuffers, buffer);
 
+        VulTeamBuffers(items, teamBuffers);
+
         int zonderVeld = items.Count(i => !i.HeeftVeld);
         int zonderTijd = items.Count(i => !i.HeeftTijd);
         int teWijzigen = items.Count(i => i.Status is "nieuw-slot" or "wijziging");
@@ -160,6 +163,17 @@ internal static class AutoPlanService
     }
 
     /// <summary>
+    /// #1430: de ruwe teamregels in het contract zetten, zodat de handmatige conflictcontrole in de
+    /// GUI na het verslepen dezelfde richtinggevoelige buffers toepast als de planner.
+    /// </summary>
+    private static void VulTeamBuffers(List<AutoPlanWedstrijdItem> items,
+        Dictionary<string, (int bufferVoor, int bufferNa)> teamBuffers)
+    {
+        foreach (var item in items)
+            (item.TeamBufferVoor, item.TeamBufferNa) = PlanningBufferRegels.TeamRegel(teamBuffers, item.TeamNaam);
+    }
+
+    /// <summary>
     /// Wijst elke wedstrijd in <paramref name="metDoel"/> (al gesorteerd op planningsrangorde) een
     /// slot toe via de gedeelde <see cref="FieldScheduler"/> — geëxtraheerd uit
     /// <see cref="AutoPlanAsync"/> als de meest zelfstandige sub-stap.
@@ -207,8 +221,8 @@ internal static class AutoPlanService
             IngeplandSlot? slot;
             string? voorkeurTijdStr = null;
             int? voorkeurAfwijking = null;
-            int teamBufVoor = teamBuffers.TryGetValue(wedstrijd.TeamNaam, out var tb) && tb.bufferVoor > buffer
-                ? tb.bufferVoor : buffer;
+            int teamBufVoor = PlanningBufferRegels.Effectief(buffer,
+                teamBuffers.TryGetValue(wedstrijd.TeamNaam, out var tb) ? tb.bufferVoor : null);
 
             if (doel.DoelTijd.HasValue)
             {

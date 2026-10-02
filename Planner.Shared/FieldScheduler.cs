@@ -1,3 +1,5 @@
+using Planner.Shared.Planning;
+
 namespace Planner.Shared;
 
 /// <summary>
@@ -402,16 +404,37 @@ public class FieldScheduler
             _occupations[v.VeldNummer] = new List<IngeplandSlot>();
     }
 
+    // #1430: de buffer- en overlapregels zelf staan in Planning/PlanningConflictRegels.cs — dezelfde
+    // regels die de handmatige conflictcontrole in de Admin GUI gebruikt. Hier alleen de koppeling
+    // van teamnaam naar de ruwe teamregel.
     private int TeamBufferVoor(string? teamNaam) =>
-        teamNaam != null && _teamBuffers.TryGetValue(teamNaam, out var b) && b.bufferVoor > _buffer
-            ? b.bufferVoor : _buffer;
+        PlanningBufferRegels.Effectief(_buffer,
+            teamNaam != null && _teamBuffers.TryGetValue(teamNaam, out var b) ? b.bufferVoor : null);
 
     private int TeamBufferNa(string? teamNaam) =>
-        teamNaam != null && _teamBuffers.TryGetValue(teamNaam, out var b) && b.bufferNa > _buffer
-            ? b.bufferNa : _buffer;
+        PlanningBufferRegels.Effectief(_buffer,
+            teamNaam != null && _teamBuffers.TryGetValue(teamNaam, out var b) ? b.bufferNa : null);
 
     private int EffectieveBuffer(string? occTeamNaam, int nieuwBufVoor) =>
-        Math.Max(TeamBufferNa(occTeamNaam), nieuwBufVoor);
+        PlanningBufferRegels.VereisteTussenruimte(TeamBufferNa(occTeamNaam), nieuwBufVoor);
+
+    /// <summary>
+    /// Botst een nieuwe wedstrijd <c>[start, end)</c> in tijd met een bestaande bezetting, inclusief
+    /// de richtinggevoelige buffer? Gelijktijdig telt hier níet mee — dat beoordeelt de aanroeper
+    /// (team: altijd een conflict; veld: alleen als de banen botsen).
+    /// </summary>
+    private bool BufferConflict(IngeplandSlot occ, TimeOnly start, TimeOnly end, int nieuwBufVoor, int nieuwBufNa)
+    {
+        int nStart = PlanningBufferRegels.Minuut(start), nEind = PlanningBufferRegels.Minuut(end);
+        int oStart = PlanningBufferRegels.Minuut(occ.AanvangsTijd), oEind = PlanningBufferRegels.Minuut(occ.EindTijd);
+        return oEind <= nStart
+            ? PlanningBufferRegels.BufferTeKort(oEind, TeamBufferNa(occ.TeamNaam), nStart, nieuwBufVoor)
+            : PlanningBufferRegels.BufferTeKort(nEind, nieuwBufNa, oStart, TeamBufferVoor(occ.TeamNaam));
+    }
+
+    private static bool Overlapt(IngeplandSlot occ, TimeOnly start, TimeOnly end) =>
+        PlanningBufferRegels.Overlappen(PlanningBufferRegels.Minuut(occ.AanvangsTijd), PlanningBufferRegels.Minuut(occ.EindTijd),
+            PlanningBufferRegels.Minuut(start), PlanningBufferRegels.Minuut(end));
 
     /// <summary>
     /// Is <paramref name="teamNaam"/> al ingepland op een willekeurig ander veld binnen dit
@@ -433,19 +456,7 @@ public class FieldScheduler
             foreach (var occ in occs)
             {
                 if (!string.Equals(occ.TeamNaam, teamNaam, StringComparison.OrdinalIgnoreCase)) continue;
-
-                if (occ.AanvangsTijd < end && occ.EindTijd > start) return true;
-
-                if (occ.EindTijd <= start)
-                {
-                    int buf = Math.Max(TeamBufferNa(occ.TeamNaam), nieuwBufVoor);
-                    if (start < occ.EindTijd.AddMinutes(buf)) return true;
-                }
-                else
-                {
-                    int buf = Math.Max(nieuwBufNa, TeamBufferVoor(occ.TeamNaam));
-                    if (occ.AanvangsTijd < end.AddMinutes(buf)) return true;
-                }
+                if (Overlapt(occ, start, end) || BufferConflict(occ, start, end, nieuwBufVoor, nieuwBufNa)) return true;
             }
         }
         return false;
@@ -478,28 +489,18 @@ public class FieldScheduler
 
         foreach (var occ in occs)
         {
-            bool overlapt = occ.AanvangsTijd < end && occ.EindTijd > start;
-            if (overlapt)
+            if (Overlapt(occ, start, end))
             {
                 // Gelijktijdig op hetzelfde veld: welke kwartbanen liggen al vol? Géén buffer hiertussen —
                 // deze wedstrijden staan naast elkaar op het veld, niet achter elkaar.
-                var occBanen = BanenVanSubpositie(occ.VeldSubpositie);
+                var occBanen = PlanningBufferRegels.BanenVanSubpositie(occ.VeldSubpositie);
                 for (int i = 0; i < 4; i++) bezet[i] |= occBanen[i];
                 continue;
             }
 
-            if (occ.EindTijd <= start)
-            {
-                // Bestaande wedstrijd gaat vooraf: gat = grootste van haar BufferNa en onze BufferVoor.
-                int buf = Math.Max(TeamBufferNa(occ.TeamNaam), nieuwBufVoor);
-                if (start < occ.EindTijd.AddMinutes(buf)) return false;
-            }
-            else
-            {
-                // Bestaande wedstrijd volgt: gat = grootste van onze BufferNa en haar BufferVoor.
-                int buf = Math.Max(nieuwBufNa, TeamBufferVoor(occ.TeamNaam));
-                if (occ.AanvangsTijd < end.AddMinutes(buf)) return false;
-            }
+            // Achter elkaar op dit veld: gat = grootste van de BufferNa van de voorganger en de
+            // BufferVoor van de opvolger (richtinggevoelig, zie PlanningBufferRegels).
+            if (BufferConflict(occ, start, end, nieuwBufVoor, nieuwBufNa)) return false;
         }
 
         var vrij = EersteVrijeSubpositie(bezet, fractie);
@@ -622,22 +623,9 @@ public class FieldScheduler
     // baan, een halfveldwedstrijd twee aangrenzende banen (A = 0+1, B = 2+3) en een heel veld alle vier.
     public static readonly string[] BaanLabels = ["A1", "A2", "B1", "B2"];
 
-    /// <summary>Welke kwartbanen bezet een wedstrijd met deze subpositie? Leeg = heel veld.</summary>
-    public static bool[] BanenVanSubpositie(string? subpositie)
-    {
-        var banen = new bool[4];
-        switch ((subpositie ?? string.Empty).Trim().ToUpperInvariant())
-        {
-            case "A1": banen[0] = true; break;
-            case "A2": banen[1] = true; break;
-            case "B1": banen[2] = true; break;
-            case "B2": banen[3] = true; break;
-            case "A":  banen[0] = banen[1] = true; break;
-            case "B":  banen[2] = banen[3] = true; break;
-            default:   banen[0] = banen[1] = banen[2] = banen[3] = true; break;
-        }
-        return banen;
-    }
+    /// <summary>Welke kwartbanen bezet een wedstrijd met deze subpositie? Leeg = heel veld.
+    /// Sinds #1430 gedeeld met de handmatige conflictcontrole — zie <see cref="PlanningBufferRegels"/>.</summary>
+    public static bool[] BanenVanSubpositie(string? subpositie) => PlanningBufferRegels.BanenVanSubpositie(subpositie);
 
     /// <summary>Hoeveel kwartbanen heeft een wedstrijd van deze veldafmeting nodig?</summary>
     public static int BanenNodig(decimal fractie) => fractie switch

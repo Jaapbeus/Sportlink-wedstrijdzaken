@@ -14,9 +14,9 @@
          Wie dit terugzet naar true moet óók de CSP oplossen — en nonce/SRI kan niet op statische
          hosting. Zie index.html voor de volledige afweging. -->
     <OverrideHtmlAssetPlaceholders>false</OverrideHtmlAssetPlaceholders>
-    <Version>3.9.3.0</Version>
-    <AssemblyVersion>3.9.3.0</AssemblyVersion>
-    <FileVersion>3.9.3.0</FileVersion>
+    <Version>3.9.3.1</Version>
+    <AssemblyVersion>3.9.3.1</AssemblyVersion>
+    <FileVersion>3.9.3.1</FileVersion>
     <!-- Azure Static Web Apps doet content negotiation op .wasm en serveert de pre-compressed
          .wasm.br data ZONDER 'Content-Encoding: br' header te zetten. Chrome (vooral Incognito)
          interpreteert de Brotli-bytes dan als raw wasm → SRI integrity check faalt → app crasht.
@@ -39,6 +39,14 @@
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" PrivateAssets="all" />
     <PackageReference Include="Microsoft.Authentication.WebAssembly.Msal" />
+  </ItemGroup>
+
+  <!-- #1430: de conflictregels van de veldplanning zijn één bron van waarheid voor de automatische
+       planner (FieldScheduler) én de handmatige controle na het verslepen. Gelinkt als bronbestand,
+       geen projectreferentie: Planner.Shared trekt Azure.Identity/AngleSharp/Newtonsoft.Json mee,
+       die niet in de WASM-bundle horen. Het bestand hangt daarom alleen van de BCL af. -->
+  <ItemGroup>
+    <Compile Include="../Planner.Shared/Planning/PlanningConflictRegels.cs" Link="Gedeeld/PlanningConflictRegels.cs" />
   </ItemGroup>
 
 </Project>
