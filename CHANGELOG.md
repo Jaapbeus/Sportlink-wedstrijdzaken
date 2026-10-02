@@ -43,6 +43,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   native bibliotheken voor alle platforms meelevert (#1363). Ruim binnen de grens van het
   Consumption Plan; details en meting in docs/ARCHITECTUUR-PDF-EXPORT.md §3.1.
 
+### Fixed
+- **Veld optimalisatie waarschuwt nu ook voor teamspecifieke buffers na het verslepen** (#1430). Heeft een
+  team een buffer-regel (bijvoorbeeld 60 minuten na de wedstrijd), dan toonde de pagina na een
+  handmatige zet geen waarschuwing zolang het gat groter was dan de algemene buffer — terwijl de
+  automatische planner diezelfde zet wél weigert. De controle na het slepen gebruikt nu exact dezelfde
+  regels als de planner; zo'n melding noemt "de vereiste teambuffer". Teamnamen worden daarbij, net als
+  in de planner, zonder onderscheid in hoofdletters vergeleken.
+
 ## [3.9.0.0] — 2026-10-02
 
 ### Added

@@ -1,4 +1,5 @@
 using Planner.Shared;
+using Planner.Shared.Planning;
 using Microsoft.Extensions.Logging;
 
 namespace SportlinkFunction.Planner;
@@ -28,7 +29,20 @@ internal static class AutoPlanService
         var scheduler = new FieldScheduler(beschikbaarheid, velden, buffer, teamBuffers);
         var items = PlanWedstrijdItems(gesorteerd, doelen, scheduler, speeltijden, veldInfoLookup, teamBuffers, buffer);
 
+        VulTeamBuffers(items, teamBuffers);
+
         return BuildAutoPlanResponse(request.Datum, datum, items, velden, log);
+    }
+
+    /// <summary>
+    /// #1430: de ruwe teamregels in het contract zetten, zodat de handmatige conflictcontrole in de
+    /// GUI na het verslepen dezelfde richtinggevoelige buffers toepast als de planner.
+    /// </summary>
+    private static void VulTeamBuffers(List<AutoPlanWedstrijdItem> items,
+        Dictionary<string, (int bufferVoor, int bufferNa)> teamBuffers)
+    {
+        foreach (var item in items)
+            (item.TeamBufferVoor, item.TeamBufferNa) = PlanningBufferRegels.TeamRegel(teamBuffers, item.TeamNaam);
     }
 
     /// <summary>
@@ -111,8 +125,8 @@ internal static class AutoPlanService
             IngeplandSlot? slot;
             string? voorkeurTijdStr = null;
             int? voorkeurAfwijking = null;
-            int teamBufVoor = teamBuffers.TryGetValue(wedstrijd.TeamNaam, out var tb) && tb.bufferVoor > buffer
-                ? tb.bufferVoor : buffer;
+            int teamBufVoor = PlanningBufferRegels.Effectief(buffer,
+                teamBuffers.TryGetValue(wedstrijd.TeamNaam, out var tb) ? tb.bufferVoor : null);
 
             if (doel.DoelTijd.HasValue)
             {

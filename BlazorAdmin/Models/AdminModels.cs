@@ -597,6 +597,10 @@ public class AutoPlanWedstrijdItemDto
     public string VoorkeurStatus { get; set; } = "geen-voorkeur";
     public int? VoorkeurVeldNummer { get; set; }
     public bool? VoorkeurVeldToegepast { get; set; }
+    // #1430: ruwe actieve teamregels BufferVoor/BufferNa (null = geen regel). De effectieve buffer
+    // bepaalt PlanningBufferRegels (gedeeld met de planner) met de op dat moment ingestelde buffer.
+    public int? TeamBufferVoor { get; set; }
+    public int? TeamBufferNa { get; set; }
 }
 
 public class AutoPlanResponseDto

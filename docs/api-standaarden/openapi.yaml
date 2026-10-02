@@ -33,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.9.2.0
+  version: 3.9.3.1
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -2814,6 +2814,17 @@ components:
           type: boolean
           nullable: true
           description: false als er een voorkeursveld was maar de planner een ander veld moest kiezen
+        teamBufferVoor:
+          type: integer
+          nullable: true
+          description: |
+            Actieve teamregel BufferVoor in minuten (#1430); null = geen regel. Ruwe waarde: de
+            effectieve buffer is het maximum van deze waarde en de algemene buffer. De Admin GUI
+            gebruikt hem om na handmatig verslepen dezelfde bufferregel toe te passen als de planner.
+        teamBufferNa:
+          type: integer
+          nullable: true
+          description: Actieve teamregel BufferNa in minuten (#1430); null = geen regel. Zie teamBufferVoor.
 
     VeldbezettingItem:
       type: object

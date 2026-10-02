@@ -799,7 +799,9 @@ eerste claimt. `BufferVoor`/`BufferNa` zijn geen laag maar gelden altijd.
       "voorkeurBron": "leeftijd",
       "voorkeurStatus": "kleine-afwijking",
       "voorkeurVeldNummer": null,
-      "voorkeurVeldToegepast": null
+      "voorkeurVeldToegepast": null,
+      "teamBufferVoor": null,
+      "teamBufferNa": 60
     }
   ],
   "huidigeHtml": "<html>...</html>",
@@ -820,6 +822,12 @@ minuten als "OK" werd gepresenteerd.
 
 `voorkeurVeldToegepast` is `false` als er een voorkeursveld was maar de planner een ander veld moest
 kiezen; `null` als er geen voorkeursveld-regel is.
+
+`teamBufferVoor`/`teamBufferNa` (#1430) zijn de actieve teamregels `BufferVoor`/`BufferNa` van het team
+in minuten, of `null` zonder regel. Het zijn de ruwe waarden: de effectieve buffer is het maximum met de
+algemene buffer, en tussen twee opeenvolgende wedstrijden telt de grootste van de `BufferNa` van de
+voorganger en de `BufferVoor` van de opvolger. De Admin GUI gebruikt ze om na handmatig verslepen exact
+dezelfde regel toe te passen als de planner.
 
 > **`nietInplanbaaarReden` — let op de dubbele `a`.** De veldnaam bevat een typefout die in het
 > wire-contract zit (`AutoPlanWedstrijdItem` op beide tiers). Hij is gevuld bij
