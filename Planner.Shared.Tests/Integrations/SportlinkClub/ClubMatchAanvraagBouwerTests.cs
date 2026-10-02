@@ -62,7 +62,9 @@ public class ClubMatchAanvraagBouwerTests
         a.StartTime.Should().Be(new TimeOnly(12, 0));
         a.AgeClassCode.Should().Be("001");
         a.SportIdTag.Should().Be("SOCCER-VE-AL/FRIDAY");
-        a.ExternalMatchId.Should().Be(41);
+        a.ExternalMatchId.Should().BeNull("het wedstrijdnummer komt uit de eigen teller en wordt pas vlak voor het versturen ingevuld (#1437)");
+        a.FieldSize.Should().Be("1.0");
+        a.FieldOffset.Should().Be("0");
         a.FacilityId.Should().Be("F1");
         a.SubFacilityId.Should().Be("F1-1");
         a.IsHomeMatch.Should().BeTrue();
@@ -160,11 +162,73 @@ public class ClubMatchAanvraagBouwerTests
     }
 
     [Fact]
-    public void Bouw_GeenWedstrijdnummerVanSportlink_IsFout()
+    public void Bouw_ZonderWedstrijdnummerVanSportlink_IsGeenFoutMeer()
     {
         var context = Context() with { Defaults = Context().Defaults with { ExternalMatchId = null } };
 
-        ClubMatchAanvraagBouwer.Bouw(Invoer(), context).Fout.Should().Contain("wedstrijdnummer");
+        ClubMatchAanvraagBouwer.Bouw(Invoer(), context).Aanvraag.Should().NotBeNull();
+    }
+
+    [Theory]
+    [InlineData("1.0")]
+    [InlineData("0.5")]
+    [InlineData("0.25")]
+    [InlineData("0.125")]
+    public void Bouw_Velddeel_GaatAlsFieldSizeMeeMetOffsetNul(string velddeel)
+    {
+        var r = ClubMatchAanvraagBouwer.Bouw(Invoer() with { Velddeel = velddeel }, Context());
+
+        r.Aanvraag!.FieldSize.Should().Be(velddeel);
+        r.Aanvraag.FieldOffset.Should().Be("0");
+    }
+
+    [Theory]
+    [InlineData("Veld - Zaterdag", "SOCCER-VE-AL/SATURDAY")]
+    [InlineData("veld - zaterdag", "SOCCER-VE-AL/SATURDAY")]
+    [InlineData("SOCCER-VE-AL/SATURDAY", "SOCCER-VE-AL/SATURDAY")]
+    [InlineData("soccer-ve-al/saturday", "SOCCER-VE-AL/SATURDAY")]
+    public void Bouw_SpelactiviteitInstelling_WintAltijdVanHetTeam(string instelling, string verwacht)
+    {
+        // 35+4 speelt zelf op vrijdag; de clubinstelling gaat voor.
+        var r = ClubMatchAanvraagBouwer.Bouw(Invoer() with { Spelactiviteit = instelling }, Context());
+
+        r.Aanvraag!.SportIdTag.Should().Be(verwacht);
+        r.Waarschuwingen.Should().NotContain(w => w.Contains("Spelactiviteit"));
+    }
+
+    [Fact]
+    public void Bouw_SpelactiviteitInstellingLeeg_VolgtHetTeam()
+    {
+        var r = ClubMatchAanvraagBouwer.Bouw(Invoer() with { Spelactiviteit = "  " }, Context());
+
+        r.Aanvraag!.SportIdTag.Should().Be("SOCCER-VE-AL/FRIDAY");
+    }
+
+    [Fact]
+    public void Bouw_SpelactiviteitInstellingNietGevonden_ValtTerugMetWaarschuwing()
+    {
+        var r = ClubMatchAanvraagBouwer.Bouw(Invoer() with { Spelactiviteit = "Zaal - Zondag" }, Context());
+
+        r.Aanvraag!.SportIdTag.Should().Be("SOCCER-VE-AL/FRIDAY", "het eigen team");
+        r.Waarschuwingen.Should().Contain(w => w.Contains("Spelactiviteit") && w.Contains("Zaal - Zondag"));
+    }
+
+    [Fact]
+    public void Bouw_GekozenLeeftijdscategorie_WintVanDieVanHetTeam()
+    {
+        var r = ClubMatchAanvraagBouwer.Bouw(Invoer(leeftijd: "JO10") with { AgeClassCodeOverride = "215" }, Context());
+
+        r.Aanvraag!.AgeClassCode.Should().Be("215");
+    }
+
+    [Fact]
+    public void ZoekAgeClassId_MapptOnzeCategorieNaarHetSportlinkId()
+    {
+        var ageClasses = Context().AgeClasses;
+
+        ClubMatchAanvraagBouwer.ZoekAgeClassId("JO10", ageClasses).Should().Be("110");
+        ClubMatchAanvraagBouwer.ZoekAgeClassId("JO99", ageClasses).Should().BeNull();
+        ClubMatchAanvraagBouwer.ZoekAgeClassId(null, ageClasses).Should().BeNull();
     }
 
     [Theory]

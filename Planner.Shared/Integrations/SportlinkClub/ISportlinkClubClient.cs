@@ -155,7 +155,7 @@ public interface ISportlinkClubClient
     /// <summary>
     /// Haalt alle inkomende wijzigingsverzoeken op (#996, epic #986) —
     /// <c>competition/match/changerequest/MatchChangeRequests</c>. Niet club-/wedstrijd-gescoped —
-    /// filter zelf op <c>RequestStatus == "CONFIRM"</c> voor verzoeken die op ons wachten.
+    /// filter zelf op <c>SportlinkChangeRequestStatusGroep.Bepaal(RequestStatus)</c> (OPEN = wacht op een beslissing).
     /// </summary>
     Task<SportlinkClubResponse<IReadOnlyList<SportlinkChangeRequest>>> GetChangeRequestsAsync(
         string functioneleRol,

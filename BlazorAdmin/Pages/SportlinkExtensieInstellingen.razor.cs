@@ -176,7 +176,7 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase, IDisp
         }
     }
 
-    // Alleen deze twee velden — een bewust kleine, aparte "Velden"-update (partial update, raakt
+    // Alleen deze drie velden — een bewust kleine, aparte "Velden"-update (partial update, raakt
     // geen andere instellingen op de hoofd-Instellingen-pagina).
     private async Task OpslaanAsync()
     {
@@ -191,6 +191,7 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase, IDisp
             {
                 ["SportlinkExtensionEnabled"] = settings.SportlinkExtensionEnabled ? "1" : "0",
                 ["SportlinkDryRun"] = settings.SportlinkDryRun ? "1" : "0",
+                ["SportlinkSpelactiviteit"] = string.IsNullOrWhiteSpace(settings.SportlinkSpelactiviteit) ? null : settings.SportlinkSpelactiviteit.Trim(),
             }
         };
 

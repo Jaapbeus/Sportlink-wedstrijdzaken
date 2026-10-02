@@ -3579,3 +3579,21 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SportlinkMutationAudit') AND name = 'Notitie')
     ALTER TABLE [dbo].[SportlinkMutationAudit] ADD [Notitie] NVARCHAR(1000) NULL;
 GO
+
+-- #1437: teller voor het wedstrijdnummer van zelf aangemaakte oefenwedstrijden (YYMMDD + volgnummer per speeldag).
+-- Postgres-tegenhanger: Database.Postgres/migrations/031_wedstrijdnummerteller.sql.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.WedstrijdnummerTeller'))
+BEGIN
+    CREATE TABLE [dbo].[WedstrijdnummerTeller] (
+        [ClubCode]          NVARCHAR(20) NOT NULL,
+        [Datum]             DATE         NOT NULL,
+        [LaatsteVolgnummer] INT          NOT NULL,
+        CONSTRAINT [PK_WedstrijdnummerTeller] PRIMARY KEY CLUSTERED ([ClubCode] ASC, [Datum] ASC)
+    );
+END
+GO
+
+-- #1437: clubinstelling Spelactiviteit (omschrijving of IdTag uit Sportlinks lijst). Postgres: migratie 032.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'SportlinkSpelactiviteit')
+    ALTER TABLE [dbo].[AppSettings] ADD [SportlinkSpelactiviteit] NVARCHAR(100) NULL;
+GO

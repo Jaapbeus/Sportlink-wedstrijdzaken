@@ -68,21 +68,16 @@ public static class SportlinkClubMatchFunction
                 if (clientFout != null) return clientFout;
 
                 var cs = PostgresDatabaseConfig.ConnectionString;
-                var team = await SportlinkClubMatchRepository.GetTeamKoppelingAsync(clubCode, dto!.TeamNaam!, cs);
-                if (team == null && !dto.VrijeTekst)
-                    return new BadRequestObjectResult(new { error = $"Team '{dto.TeamNaam}' is niet bekend als actief clubteam." });
-
-                string? veldNaam = null;
-                if (dto.VeldNummer.HasValue)
-                {
-                    veldNaam = await SportlinkClubMatchRepository.GetActiefVeldNaamAsync(clubCode, dto.VeldNummer.Value, cs);
-                    if (veldNaam == null)
-                        return new BadRequestObjectResult(new { error = $"Veld {dto.VeldNummer} is niet bekend als actief veld." });
-                }
+                var (gegevens, _, gegevensFout) = await LosGegevensOpAsync(dto!,
+                    naam => SportlinkClubMatchRepository.GetTeamKoppelingAsync(clubCode, naam, cs),
+                    nr => SportlinkClubMatchRepository.GetActiefVeldNaamAsync(clubCode, nr, cs),
+                    () => SportlinkClubMatchRepository.GetSpelactiviteitAsync(clubCode, cs),
+                    PostgresAppSettings.GetSetting("accommodatie"));
+                if (gegevensFout != null) return gegevensFout;
 
                 var (aanvraag, bouwFout, waarschuwingen) = await BouwAanvraagAsync(
-                    sportlinkClient!, RolNaam, dto, team?.TeamNaam ?? dto.TeamNaam!.Trim(), team?.Leeftijdscategorie,
-                    veldNaam, PostgresAppSettings.GetSetting("accommodatie"), log);
+                    sportlinkClient!, RolNaam, dto!, gegevens!,
+                    datum => SportlinkClubMatchRepository.ReserveerVolgnummerAsync(clubCode, datum, cs), log);
                 if (bouwFout != null) return bouwFout;
 
                 var auditService = context.InstanceServices.GetService<ISportlinkMutationAuditService>();
@@ -91,14 +86,14 @@ public static class SportlinkClubMatchFunction
                 var auditEntry = new SportlinkMutationAuditEntry(
                     clubCode, RolNaam, triggerdDoor, AuditPublicMatchIdPlaceholder, "CreateClubMatch",
                     WaardeVoor: null,
-                    WaardeNa: JsonConvert.SerializeObject(new { Invoer = dto, Aanvraag = aanvraag, VeldNaam = veldNaam, Waarschuwingen = waarschuwingen }),
+                    WaardeNa: JsonConvert.SerializeObject(new { Invoer = dto, Aanvraag = aanvraag, VeldNaam = gegevens!.VeldNaam, Waarschuwingen = waarschuwingen }),
                     CorrelationId: correlationId);
                 var auditId = auditService == null ? (long?)null : await auditService.LogPogingAsync(auditEntry);
 
                 var mutationResult = await sportlinkClient!.CreateClubMatchAsync(RolNaam, aanvraag!);
                 return await SportlinkEndpointSupport.RondMutatieAfAsync(
                     mutationResult, auditService, auditId, r => r,
-                    r => new OkObjectResult(Resultaat(r, aanvraag!, veldNaam, waarschuwingen)));
+                    r => new OkObjectResult(Resultaat(r, aanvraag!, gegevens!.VeldNaam, waarschuwingen)));
             });
 
     /// <summary>
@@ -114,6 +109,24 @@ public static class SportlinkClubMatchFunction
             _ => Task.FromResult<IActionResult>(new OkObjectResult(new { DryRun = SportlinkEndpointSupport.IsDryRunActief() })));
 
     /// <summary>
+    /// <c>GET /api/sportlink/club-match/formulier</c> (#1437) — de voorinvulling voor "Wedstrijd aanmaken":
+    /// per actief team de Sportlink-leeftijdscategorie, duur en velddeel (uit de speeltijden), plus
+    /// Sportlinks leeftijdscategorielijst. Achter de Wedstrijdzaken-poort: de speeltijden-API is
+    /// admin-only en dus niet bruikbaar voor deze pagina. Is Sportlink niet bereikbaar, dan komen de
+    /// teamgegevens zonder lijst terug (<c>sportlinkBeschikbaar = false</c>).
+    /// </summary>
+    [Function("SportlinkClubMatchFormulierGet")]
+    public static Task<IActionResult> GetFormulier(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "sportlink/club-match/formulier")] HttpRequest req,
+        FunctionContext context) =>
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkClubMatchFormulierGet"), "oefenwedstrijd-formulier ophalen",
+            clubCode => FormulierAsync(
+                () => SportlinkClubMatchRepository.GetFormulierGegevensAsync(clubCode, PostgresDatabaseConfig.ConnectionString),
+                () => SportlinkEndpointSupport.ControleerToggleEnEgress() == null
+                      && SportlinkEndpointSupport.ClientOfFout(context) is { Fout: null } c ? c.Client : null,
+                RolNaam, context.GetLogger("SportlinkClubMatchFormulierGet")));
+
+    /// <summary>
     /// <c>GET /api/sportlink/club-match/picklists</c> — de twee ondersteunende Sportlink-picklists
     /// (Teams + Location). Sinds #1116 niet meer door het formulier gebruikt (teams en velden komen
     /// uit onze eigen database); blijft bestaan als diagnostisch endpoint voor de mens die de
@@ -125,21 +138,6 @@ public static class SportlinkClubMatchFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "sportlink/club-match/picklists")] HttpRequest req,
         FunctionContext context) =>
         SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkClubMatchPickListsGet"), "oefenwedstrijd-picklists ophalen",
-            async _ =>
-            {
-                var toggleFout = SportlinkEndpointSupport.ControleerToggleEnEgress();
-                if (toggleFout != null) return toggleFout;
-                var (sportlinkClient, clientFout) = SportlinkEndpointSupport.ClientOfFout(context);
-                if (clientFout != null) return clientFout;
-
-                var result = await sportlinkClient!.GetClubMatchPickListsAsync(RolNaam);
-                var fout = VertaalStatusNaarFout(result.Status);
-                if (fout != null) return fout;
-
-                return new OkObjectResult(result.Data ?? new SportlinkClubMatchPickLists(
-                    Array.Empty<SportlinkPickListItem>(), Array.Empty<SportlinkPickListItem>()));
-            });
-
-    private static IActionResult? VertaalStatusNaarFout(SportlinkClubCallStatus status)
-        => SportlinkEndpointSupport.VertaalStatusNaarFout(status);
+            _ => PickListsAsync(
+                SportlinkEndpointSupport.ControleerToggleEnEgress, () => SportlinkEndpointSupport.ClientOfFout(context), RolNaam));
 }

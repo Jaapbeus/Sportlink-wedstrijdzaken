@@ -1177,13 +1177,16 @@ De tabel heeft de kolommen **E-mailadres**, **Omschrijving** en **Actief**.
 
 ## 18. Wijzigingsverzoeken (`/wijzigingsverzoeken`)
 
-Toont wijzigingsverzoeken die tegenstanders in Sportlink Club hebben ingediend voor de datum, tijd
-of accommodatie van een wedstrijd, ingedeeld naar het voorbeeld van Sportlinks eigen scherm.
+Toont wijzigingsverzoeken voor de datum, tijd of accommodatie van een wedstrijd uit Sportlink Club,
+ingedeeld naar het voorbeeld van Sportlinks eigen scherm: per filter twee secties, **Inkomend**
+(tegenstanders vragen u) en **Uitgaand** (u vraagt hen).
 
-**Statusfilter** bovenaan (knoppenrij, met aantallen): **Openstaand** (standaard), Goedgekeurd,
-Afgewezen, Ingetrokken, Alle. Alleen openstaande verzoeken wachten op een beslissing van uw club.
+**Statusfilter** bovenaan (knoppenrij, met aantallen): **Openstaand** (standaard), Akkoord,
+Afgewezen, Ingetrokken, Alle (en alleen als er verzoeken met een onbekende status zijn: Onbekend).
+Bij een openstaand verzoek staat erbij op wie gewacht wordt (de bond, thuisclub of uitclub). Alleen
+openstaande **inkomende** verzoeken kunt u hier goedkeuren of afwijzen.
 
-**Kolommen:** statusicoon (oranje uitroepteken = openstaand, groen vinkje = goedgekeurd, rood kruis
+**Kolommen:** statusicoon (oranje uitroepteken = openstaand, groen vinkje = akkoord, rood kruis
 = afgewezen, grijs = ingetrokken), Wedstrijdnr., Thuis, Uit, Datum, Tijd, Accommodatie, Gevraagd
 (alleen wat afwijkt van de huidige planning), Reden. Wedstrijdnummer en teamnamen komen uit de
 eigen wedstrijdgegevens van de app; staat er een streepje, dan is die wedstrijd nog niet aan het
@@ -1212,10 +1215,32 @@ is ingeschakeld en gekoppeld voor de rol die deze acties uitvoert.
 > weggeschreven."** (de tweede in een gele balk). Kan de stand niet worden opgehaald, dan ontbreekt
 > de balk.
 
-Bedoeld voor snelle invoer: één scherm met **datum**, **aanvangstijd**, **duur** (standaard 90
-minuten), **team** (keuzelijst met de actieve clubteams uit de eigen database), **tegenstander**
-(vrije tekst), **veld** (keuzelijst met de actieve velden) en een optionele **omschrijving**. Enter
-in een veld verstuurt het formulier.
+Bedoeld voor snelle invoer: één scherm, in deze volgorde: **team** (keuzelijst met de actieve
+clubteams uit de eigen database) en **tegenstander** (vrije tekst); **datum**, **aanvangstijd** en
+**duur** (standaard 90 minuten); **veld** (keuzelijst met de actieve velden) en **velddeel**
+(heel, half, kwart of achtste veld); **leeftijdscategorie** (keuzelijst met de lijst van Sportlink)
+en een optionele **omschrijving**.
+
+Kiest u een team, dan vult de pagina **duur**, **leeftijdscategorie** en **velddeel** voor met wat
+bij dat team past (de wedstrijdduur en veldafmeting uit Beheer → Speeltijden, de categorie van het
+team in Sportlink). U kunt alles daarna nog aanpassen. Is er niets bekend, dan blijft de duur staan,
+het velddeel is "Heel veld" en de leeftijdscategorie "— Sportlink-standaard —". Het velddeel
+"half", "kwart" en "achtste" is nog niet met een echte wedstrijd in Sportlink Club gecontroleerd:
+controleer het resultaat in Sportlink bij het eerste gebruik.
+
+De knop **Leegmaken** naast **Wedstrijd aanmaken** zet alle velden terug naar de beginstand (vandaag,
+19:00, 90 minuten, heel veld, de rest leeg) en wist ook de melding en het resultaat; hij is
+uitgeschakeld tijdens de bevestigstap en terwijl er een aanvraag loopt. Na een echte (niet
+gesimuleerde) aanmaak staat onder de knoppen de link **Open wedstrijd in Sportlink Club**, die de
+wedstrijd in een nieuw tabblad opent.
+
+> **Aanmaken gaat alleen via de knop, en vraagt eerst om bevestiging (#1436).** Enter in een veld
+> verstuurt níets meer: dat maakte eerder ongemerkt een echte wedstrijd in Sportlink aan. Na een
+> klik op **Wedstrijd aanmaken** controleert de pagina de invoer (met Nederlandse meldingen per
+> ontbrekend veld). Staat dry-run uit, of is de stand onbekend, dan verschijnt een samenvatting
+> (datum, tijd, team, tegenstander, veld en velddeel) met **Bevestigen en aanmaken** en **Annuleren**; de velden
+> zijn dan vergrendeld. Pas na **Bevestigen** gaat de aanvraag naar Sportlink, en zolang die loopt
+> kan er geen tweede worden verstuurd. Met dry-run aan wordt direct gesimuleerd, zonder bevestiging.
 
 De team-keuzelijst heeft onderaan een extra optie **"Vrije tekst invoeren…"** (#1396): kiest u
 die, dan verschijnt een tekstveld waarin u een willekeurige teamnaam kunt typen — handig om te
@@ -1230,11 +1255,11 @@ Wat u níet hoeft in te vullen, haalt de server op uit de lijsten van Sportlink 
 |---|---|
 | Team | Het gekozen team, opgezocht in Sportlinks teamlijst: exact op naam, of op de naam zonder clubnaam ("AllStars 35+4" ↔ "35+4"). Geen of meerdere treffers → de aanmaak wordt geweigerd met een melding; er wordt nooit gegokt |
 | Thuisteam / Uitteam | De teamnaam en de tegenstander, als tekst |
-| Leeftijdscategorie | Van het gekozen team (bijv. `JO10` → "Onder 10 (M)", senioren → "Senioren (M)"). Niet te bepalen → Sportlinks standaard + waarschuwing |
-| Spelactiviteit | Die van het team in Sportlink (bijv. "Veld - Vrijdag"). Niet te bepalen → Sportlinks standaard + waarschuwing |
+| Leeftijdscategorie | De keuze in de keuzelijst; vooringevuld met die van het gekozen team (bijv. `JO10` → "Onder 10 (M)", senioren → "Senioren (M)"). Niet te bepalen en niets gekozen → Sportlinks standaard + waarschuwing |
+| Spelactiviteit | De instelling **Spelactiviteit voor nieuwe oefenwedstrijden** op de pagina Sportlink Web Extension (§19), bijv. "Veld - Zaterdag": is die ingevuld en gevonden in Sportlinks lijst, dan geldt altijd die. Leeg → die van het team in Sportlink. Ingevuld maar niet gevonden → die van het team, met een waarschuwing. Niet te bepalen → Sportlinks standaard + waarschuwing |
 | Locatie | Het veld **Accommodatie** op de Instellingen-pagina, opgezocht in Sportlinks locatielijst; anders de accommodatie die Sportlink als standaard heeft |
-| Veld | Het gekozen veld, op naam opgezocht bij die accommodatie (heel veld). Niet gevonden → geweigerd; geen veld gekozen → Sportlinks standaardveld + waarschuwing |
-| Wedstrijdnummer | Het eerstvolgende vrije nummer dat Sportlink zelf voorstelt |
+| Veld | Het gekozen veld, op naam opgezocht bij die accommodatie, met het gekozen velddeel. Niet gevonden → geweigerd; geen veld gekozen → Sportlinks standaardveld + waarschuwing |
+| Wedstrijdnummer | Een eigen nummer: de speeldatum als jaar-maand-dag (bijv. 261002) gevolgd door een volgnummer van twee cijfers per dag — 26100201, 26100202, … Maximaal 99 per dag. Het nummer verschijnt in het resultaat. Ook een gesimuleerde aanmaak (dry-run) gebruikt een nummer |
 | Omschrijving | Leeg gelaten → `Oefenwedstrijd [team] - [tegenstander]` |
 
 Na het aanmaken toont een blauw (gesimuleerd/geslaagd) of rood (afgewezen) blok de melding plus de

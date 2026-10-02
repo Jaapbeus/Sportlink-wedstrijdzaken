@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nEén beveiligingsschema:\n\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist\n  voor alle endpoints behalve `/health`. De rolcontrole gebeurt server-side, met vier niveaus:\n  `admin` (`EasyAuthHelper.RequireAdmin`, via de wrappers `AdminEndpoint.ExecuteAsync` /\n  `ExecuteZonderDatabaseAsync`) voor de meeste `/beheer/`-, `/planner/`-, `/feedback/`- en\n  `/test/`-endpoints — sinds #1350 óók voor `/postgres/sync-matches` en `/sync-matches`;\n  `admin` óf `user` (`AdminEndpoint.ExecuteAuthenticatedAsync`, #1330) voor `/planner/veldbezetting`\n  (#1400), de twee Sportlink-viewing-endpoints (`GET /sportlink/match/{wedstrijdcode}` en\n  `.../public-match-id`, #1400) en de drie Teambegeleiding-lookup/doorstuur-endpoints; op\n  **beide** tiers identiek `Wedstrijdzaken` óf `admin` (`EasyAuthHelper.RequireWedstrijdzaken`,\n  beide poorten sinds #1400) voor de Sportlink-mutatie-endpoints (`PUT`/`POST` onder\n  `/sportlink/`), via `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`. Netto: een gewone\n  `user` (zonder `Wedstrijdzaken`, zonder `admin`) kan Planning en het Sportlink-paneel bekijken\n  maar geen Sportlink-mutatie triggeren; dat laatste vereist `Wedstrijdzaken` óf `admin`. Lokaal\n  omzeild wanneer de omgevingsvariabele `WEBSITE_SITE_NAME` afwezig is.\n\nZonder token volgt `401`. Met een geldig token maar zonder de vereiste rol volgt `403` met\n`{ \"error\": \"Forbidden: vereiste rol ontbreekt\" }`.\n\n## Tiers\n\nAlle endpoints bestaan sinds #1266 op beide databasetiers, met één uitzondering: de handmatige\nsynchronisatie heet `/postgres/sync-matches` op de Postgres-tier (productie) en\n`/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "3.8.1.0",
+    "version": "3.8.3.0",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -1400,11 +1400,16 @@
                 "type": "integer",
                 "format": "int64",
                 "nullable": true,
-                "description": "ExternalMatchId uit ClubMatchDefaults (het eerstvolgende vrije nummer)."
+                "description": "ExternalMatchId uit de eigen teller (#1437) — `YYMMDD` + tweecijferig volgnummer per speeldag, bijv. 26100201."
               },
               "VeldNaam": {
                 "type": "string",
                 "nullable": true
+              },
+              "Velddeel": {
+                "type": "string",
+                "nullable": true,
+                "description": "#1437: het velddeel zoals het naar Sportlink ging (`FieldSize`): 1.0, 0.5, 0.25 of 0.125."
               },
               "Waarschuwingen": {
                 "type": "array",
@@ -1415,6 +1420,62 @@
             }
           }
         ]
+      },
+      "OefenwedstrijdFormulierResponse": {
+        "type": "object",
+        "description": "Voorinvulling voor \"Wedstrijd aanmaken\" (#1437).",
+        "properties": {
+          "Teams": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "TeamNaam": {
+                  "type": "string"
+                },
+                "Leeftijdscategorie": {
+                  "type": "string",
+                  "nullable": true,
+                  "description": "Onze leeftijdscategorie van het team (bijv. `JO10`, `1-99`)."
+                },
+                "AgeClassCode": {
+                  "type": "string",
+                  "nullable": true,
+                  "description": "Het Sportlink-`Id` dat bij die categorie hoort; `null` als onbekend of Sportlink niet bereikbaar."
+                },
+                "Duur": {
+                  "type": "integer",
+                  "nullable": true,
+                  "description": "Wedstrijdduur in minuten uit de speeltijden van de club."
+                },
+                "Veldafmeting": {
+                  "type": "string",
+                  "nullable": true,
+                  "description": "De veldafmeting uit de speeltijden als velddeel — `1.0`, `0.5`, `0.25` of `0.125`; `null` als onbekend."
+                }
+              }
+            }
+          },
+          "AgeClasses": {
+            "type": "array",
+            "description": "Sportlinks leeftijdscategorielijst; leeg als Sportlink niet bereikbaar is.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "Id": {
+                  "type": "string"
+                },
+                "Description": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "SportlinkBeschikbaar": {
+            "type": "boolean",
+            "description": "`false` als Sportlinks lijst niet kon worden opgehaald (de teamgegevens zijn dan wel compleet)."
+          }
+        }
       },
       "SportlinkClubMatchPickListsResponse": {
         "type": "object",
@@ -1540,7 +1601,7 @@
       },
       "SportlinkChangeRequest": {
         "type": "object",
-        "description": "Eén inkomend wijzigingsverzoek (#996, epic #986). Spiegelt\nPlanner.Shared.Integrations.SportlinkClub.SportlinkChangeRequest. Veldnamen letterlijk uit\nSportlinks bundle-code (issue #996) — nog niet live geverifieerd.\n",
+        "description": "Eén inkomend wijzigingsverzoek (#996, epic #986). Spiegelt\nPlanner.Shared.Integrations.SportlinkClub.SportlinkChangeRequest. Veldnamen letterlijk uit\nSportlinks bundle-code (issue #996); `ChangeRequestStatus` en `IsIncomingRequest` bevestigd in #1439.\n",
         "properties": {
           "PublicMatchId": {
             "type": "string",
@@ -1552,8 +1613,24 @@
           },
           "RequestStatus": {
             "type": "string",
-            "description": "APPROVED, CONFIRM (wacht op ons), DENIED of REVOKED",
+            "description": "Sportlinks `ChangeRequestStatus` (bevestigd uit Sportlinks bundle, #1439): APPROVED,\nCONFIRM_AWAY, CONFIRM_HOME, CONFIRM_UNION, DENIED, MATCH_FINALIZED of REVOKED.\n",
             "nullable": true
+          },
+          "IsIncomingRequest": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "true = inkomend (tegenstander vraagt ons), false = uitgaand (#1439)."
+          },
+          "StatusGroep": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "ACCEPTED",
+              "DENIED",
+              "REVOKED",
+              "UNKNOWN"
+            ],
+            "description": "Sportlinks vier filtergroepen, server-side afgeleid van RequestStatus (#1439). OPEN =\nCONFIRM_*, ACCEPTED = APPROVED/MATCH_FINALIZED. Alleen aanwezig op de GET-respons.\n"
           },
           "RequestData": {
             "type": "object",
@@ -5360,7 +5437,7 @@
         ],
         "operationId": "getSportlinkChangeRequests",
         "summary": "Inkomende wijzigingsverzoeken ophalen (#996, epic",
-        "description": "Niet wedstrijdcode-gescoped: `MatchChangeRequests` levert alle openstaande verzoeken voor\nhet gekoppelde serviceaccount in één keer. Filter client-side op\n`RequestStatus == \"CONFIRM\"` voor verzoeken die op ons wachten.\n\nSinds #1111 draagt elk item ook `Wedstrijd`: onze eigen wedstrijdcontext (wedstrijdnummer,\nteams, datum, tijd, accommodatie) uit `his.matches` via de PublicMatchId-cache. `null` als\nde wedstrijd nog niet gecachet is. Openstaande verzoeken (`CONFIRM`) staan vooraan.\n",
+        "description": "Niet wedstrijdcode-gescoped: `MatchChangeRequests` levert alle openstaande verzoeken voor\nhet gekoppelde serviceaccount in één keer. Filter client-side op\n`StatusGroep == \"OPEN\"` (en `IsIncomingRequest == true` voor verzoeken die op ons wachten).\n\nSinds #1111 draagt elk item ook `Wedstrijd`: onze eigen wedstrijdcontext (wedstrijdnummer,\nteams, datum, tijd, accommodatie) uit `his.matches` via de PublicMatchId-cache. `null` als\nde wedstrijd nog niet gecachet is. Openstaande verzoeken (`StatusGroep` OPEN) staan vooraan, inkomend vóór uitgaand.\n",
         "security": [
           {
             "easyAuth": []
@@ -5496,7 +5573,7 @@
         ],
         "operationId": "postSportlinkClubMatch",
         "summary": "Oefenwedstrijd (\"clubwedstrijd\") aanmaken (#997, epic",
-        "description": "Volgt de club-instelling `sportlinkDryRun`. **Sinds #1427 live bevestigd:** de body is\nveld voor veld gelijk aan wat Sportlink Clubs eigen formulier verstuurt (console-trace,\nHTTP 200 met nieuw `PublicMatchId`). De server haalt daarvoor eerst vier read-only lijsten\nop (`ClubMatchDefaults`, `PickListsTeams`, `PickListsLocation`,\n`PickListsMatchInformation`) en leidt daaruit team-ID (`T…`), leeftijdscategorie,\nspelactiviteit, veld (`SubFacilityId`) en wedstrijdnummer af. Een team of veld dat Sportlink\nniet (eenduidig) kent geeft 400; wat niet af te leiden is valt terug op Sportlinks\nstandaardwaarden met een waarschuwing. Er is vooraf geen bestaande wedstrijd, dus geen\n`SportlinkMutationGuard`-check — alleen de eigen toggle + EgressGuard. Bewust NIET gebouwd:\nverwijderen (`ClubMatchDelete`) en uitslag vastleggen (`ClubMatchScore`).\n",
+        "description": "Volgt de club-instelling `sportlinkDryRun`. **Sinds #1427 live bevestigd:** de body is\nveld voor veld gelijk aan wat Sportlink Clubs eigen formulier verstuurt (console-trace,\nHTTP 200 met nieuw `PublicMatchId`). De server haalt daarvoor eerst vier read-only lijsten\nop (`ClubMatchDefaults`, `PickListsTeams`, `PickListsLocation`,\n`PickListsMatchInformation`) en leidt daaruit team-ID (`T…`), leeftijdscategorie,\nspelactiviteit en veld (`SubFacilityId`) af. Het wedstrijdnummer (`ExternalMatchId`) komt sinds #1437\nuit een eigen teller per club en speeldag: `YYMMDD` + tweecijferig volgnummer (26100201,\n26100202, …), pas gereserveerd vlak voor de Sportlink-aanroep; ook een dry-run verbruikt een\nnummer. De spelactiviteit komt uit de clubinstelling `SportlinkSpelactiviteit` (omschrijving\nof IdTag; gevonden = wint altijd), anders van het team. Een team of veld dat Sportlink\nniet (eenduidig) kent geeft 400; wat niet af te leiden is valt terug op Sportlinks\nstandaardwaarden met een waarschuwing. Er is vooraf geen bestaande wedstrijd, dus geen\n`SportlinkMutationGuard`-check — alleen de eigen toggle + EgressGuard. Bewust NIET gebouwd:\nverwijderen (`ClubMatchDelete`) en uitslag vastleggen (`ClubMatchScore`).\n",
         "security": [
           {
             "easyAuth": []
@@ -5549,6 +5626,22 @@
                     "type": "string",
                     "nullable": true,
                     "description": "Eigen omschrijving; leeg → `Oefenwedstrijd [team] - [tegenstander]`."
+                  },
+                  "Velddeel": {
+                    "type": "string",
+                    "enum": [
+                      "1.0",
+                      "0.5",
+                      "0.25",
+                      "0.125"
+                    ],
+                    "default": "1.0",
+                    "description": "#1437: het deel van het veld (`FieldSize` in Sportlinks body) — heel, half, kwart of achtste veld;\n`FieldOffset` is altijd `0` (eerste deel). **Aanname:** alleen `1.0` is live bevestigd, de\nnotatie van de overige drie is geëxtrapoleerd en nog niet met een echte wedstrijd gecontroleerd.\nEen andere waarde → 400.\n"
+                  },
+                  "AgeClassCode": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "#1437: Sportlink-`Id` van de leeftijdscategorie (bijv. `110`, uit `GET /sportlink/club-match/formulier`).\nMoet in Sportlinks lijst staan (anders 400) en wint van de categorie die uit het team volgt.\nLeeg → afleiden uit het team, anders Sportlinks standaard met een waarschuwing.\n"
                   }
                 }
               }
@@ -5567,7 +5660,7 @@
             }
           },
           "400": {
-            "description": "MatchDateTime/TeamNaam/Tegenstander ontbreekt, Duration buiten 1–240, team niet bekend als actief (alleen zonder `VrijeTekst`), veld niet bekend als actief, of team/veld niet (eenduidig) gevonden in Sportlinks lijsten"
+            "description": "MatchDateTime/TeamNaam/Tegenstander ontbreekt, Duration buiten 1–240, Velddeel niet een van 1.0/0.5/0.25/0.125, AgeClassCode niet in Sportlinks lijst, team niet bekend als actief (alleen zonder `VrijeTekst`), veld niet bekend als actief, team/veld niet (eenduidig) gevonden in Sportlinks lijsten, of er zijn voor die speeldag al 99 wedstrijdnummers uitgegeven"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -5618,6 +5711,42 @@
                       "type": "boolean"
                     }
                   }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/sportlink/club-match/formulier": {
+      "get": {
+        "tags": [
+          "sportlink"
+        ],
+        "operationId": "getSportlinkClubMatchFormulier",
+        "summary": "Voorinvulling voor het scherm \"Wedstrijd aanmaken\" (#1437)",
+        "description": "Per actief team de Sportlink-leeftijdscategorie, de duur en het velddeel (uit de speeltijden van de\nclub), plus Sportlinks leeftijdscategorielijst voor de keuzelijst. Achter dezelfde\nWedstrijdzaken-poort als `POST /sportlink/club-match`; de speeltijden-API (`/beheer/speeltijden`)\nis admin-only en dus niet bruikbaar voor een gebruiker met alleen die rol. Is Sportlink niet\nbereikbaar (extensie uit, geen koppeling, fout), dan komen de teamgegevens zonder lijst terug met\n`SportlinkBeschikbaar: false` — het scherm blijft werken.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Voorinvulling",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OefenwedstrijdFormulierResponse"
                 }
               }
             }

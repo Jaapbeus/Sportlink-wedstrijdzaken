@@ -1556,7 +1556,8 @@ public class SportlinkClubClientTests
           {
             "publicMatchId": "M392686417",
             "publicRequestId": "R1",
-            "requestStatus": "CONFIRM",
+            "ChangeRequestStatus": "CONFIRM_HOME",
+            "IsIncomingRequest": true,
             "requestData": {
               "currentDate": "2026-09-27",
               "currentStartTime": "10:30",
@@ -1589,7 +1590,8 @@ public class SportlinkClubClientTests
         result.Data.Should().ContainSingle();
         var item = result.Data![0];
         item.PublicRequestId.Should().Be("R1");
-        item.RequestStatus.Should().Be("CONFIRM");
+        item.RequestStatus.Should().Be("CONFIRM_HOME", "Sportlinks veld heet ChangeRequestStatus (#1439)");
+        item.IsIncomingRequest.Should().BeTrue();
         item.RequestData!.RequestedStartTime.Should().Be("11:00");
     }
 

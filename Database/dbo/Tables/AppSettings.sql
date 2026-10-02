@@ -53,7 +53,9 @@
 	-- #1266 (tegenhanger van Postgres-migratie 016): slaat de daadwerkelijke PUT/POST naar Sportlink
 	-- over. Standaard AAN (1) — een club die de extensie nog niet bewust heeft ingericht mag nooit
 	-- per ongeluk echt schrijven. Dit is fail-safe: de waarde wordt per aanroep gelezen.
-	[SportlinkDryRun] BIT NOT NULL DEFAULT 1
+	[SportlinkDryRun] BIT NOT NULL DEFAULT 1,
+	-- #1437: clubinstelling Spelactiviteit voor oefenwedstrijden (omschrijving of IdTag uit Sportlinks lijst); leeg = team/standaard. Postgres: migratie 032.
+	[SportlinkSpelactiviteit] NVARCHAR(100) NULL
 	-- Geen primaire sleutel op ClubCode: die uniciteit wordt al sinds #324 afgedwongen door
 	-- UQ_AppSettings_ClubCode in Script.PostDeployment1.sql. Het probleem dat Postgres-migratie 025
 	-- (#1218) oploste — twee rijen met dezelfde ClubCode, waarna een TOP 1-query er stilzwijgend
