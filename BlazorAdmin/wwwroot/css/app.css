@@ -38,6 +38,10 @@
     --theme-muted-text-subtle-light: #adb5bd;
     --theme-shadow-hover-light:     rgba(0, 0, 0, .12);
 
+    /* Lichte vlakken (#1442) — vervangt Bootstrap's .bg-light, die niet meeschakelt met donker. */
+    --theme-surface-subtle-bg-light:   #f8f9fa;
+    --theme-surface-subtle-text-light: #212529;
+
     /* Wedstrijdstatuskleuren van Planning/Veld optimalisatie (#1388) — zelfde waarden als de
        hex-literals die deze kleuren vóór deze uitbreiding hardcoded hadden. */
     --theme-status-ongewijzigd-light:        #198754;
@@ -91,6 +95,9 @@
     --theme-muted-text-subtle-dark: #6b7686;
     --theme-shadow-hover-dark:      rgba(0, 0, 0, .55);
 
+    --theme-surface-subtle-bg-dark:   #222c40;
+    --theme-surface-subtle-text-dark: #e6e9ef;
+
     --theme-status-ongewijzigd-dark:        #2fbf75;
     --theme-status-wijziging-dark:          #4da3ff;
     --theme-status-nieuw-slot-dark:         #f59e0b;
@@ -140,6 +147,8 @@
     --theme-muted-text:         var(--theme-muted-text-light);
     --theme-muted-text-subtle:  var(--theme-muted-text-subtle-light);
     --theme-shadow-hover:     var(--theme-shadow-hover-light);
+    --theme-surface-subtle-bg:   var(--theme-surface-subtle-bg-light);
+    --theme-surface-subtle-text: var(--theme-surface-subtle-text-light);
 
     --theme-status-ongewijzigd:        var(--theme-status-ongewijzigd-light);
     --theme-status-wijziging:          var(--theme-status-wijziging-light);
@@ -186,6 +195,8 @@
     --theme-muted-text:         var(--theme-muted-text-dark);
     --theme-muted-text-subtle:  var(--theme-muted-text-subtle-dark);
     --theme-shadow-hover:     var(--theme-shadow-hover-dark);
+    --theme-surface-subtle-bg:   var(--theme-surface-subtle-bg-dark);
+    --theme-surface-subtle-text: var(--theme-surface-subtle-text-dark);
 
     --theme-status-ongewijzigd:        var(--theme-status-ongewijzigd-dark);
     --theme-status-wijziging:          var(--theme-status-wijziging-dark);
@@ -327,6 +338,20 @@ a, .btn-link {
 
 code {
     color: var(--theme-code-text);
+}
+
+/* Lichte vlakken (#1442). Bootstrap's .bg-light is een vaste lichte kleur met !important en
+   schakelt niet mee met het donkere thema; in donker gaf dat lichte tekst op een licht vlak
+   (codeblokken op de Email-tester). Zelfde specificiteit + !important, en app.css laadt ná
+   Bootstrap, dus deze regel wint. ".bg-light.text-dark" (tellerbadges) krijgt de themakleur ook,
+   anders blijft daar donkere tekst op een donker vlak over. */
+.bg-light {
+    background-color: var(--theme-surface-subtle-bg) !important;
+    color: var(--theme-surface-subtle-text);
+}
+
+.bg-light.text-dark {
+    color: var(--theme-surface-subtle-text) !important;
 }
 
 /* ── API startup overlay ─────────────────────────────────────── */

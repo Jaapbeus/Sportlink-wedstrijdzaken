@@ -1504,6 +1504,18 @@ ernaast toont dezelfde kleuren nog eens als leestabel: per kleur de naam, waar h
 gebruikt wordt, en de huidige waarde in zowel de lichte als de donkere weergave — handig als u
 wilt nakijken wat u al heeft ingesteld zonder eerst elke picker open te klikken.
 
+Onder **Merk & interface** staan sinds #1442 ook **Licht vlak — achtergrond** en **Licht vlak —
+tekst**: de grijze vlakken van onder meer de codeblokken op de Email-tester, de uitlegkaart bij
+*Begeleiding importeren* en de tellerbadges. Die volgden eerder het donkere thema niet en waren
+daar onleesbaar.
+
+**CSS-pad per kleur.** Onder elke kleur — en in een eigen kolom op het tabblad Overzicht — staat
+de CSS-variabele (bijv. `--theme-card-bg`). Klik erop voor de `-light`/`-dark`-variant die wordt
+opgeslagen en de lijst CSS-selectors die de kleur gebruiken. Die lijst wordt live uit de geladen
+opmaak van de app gelezen, dus hij klopt altijd met wat de browser echt doet. Staat er "Geen
+CSS-regel gevonden", dan zet de app die kleur rechtstreeks vanuit de code (zoals de Gantt-blokken
+van Planning). Een element dat in geen enkele lijst voorkomt, zit (nog) niet in het thema.
+
 ### Zo werkt het
 
 1. **Kies welke weergave u bewerkt** met de knoppen *Licht bewerken* / *Donker bewerken*. De hele

@@ -30,6 +30,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - **Spelactiviteit als clubinstelling** op de pagina Sportlink Web Extension: vult u bijvoorbeeld "Veld -
   Zaterdag" in, dan gebruikt "Wedstrijd aanmaken" altijd die spelactiviteit; leeg laten werkt zoals voorheen.
 - Het velddeel half, kwart en achtste veld is nog niet met een echte wedstrijd in Sportlink Club gecontroleerd.
+- Thema: nieuwe kleuren **Licht vlak — achtergrond** en **Licht vlak — tekst**. De grijze vlakken (codeblokken op de Email-tester, uitlegkaart bij Begeleiding importeren, tellerbadges) schakelen nu mee met het donkere thema en zijn daar weer leesbaar; in de lichte weergave verandert niets (#1442)
+- Thema: onder elke kleur en op het tabblad Overzicht staat nu het CSS-pad — de CSS-variabele, de opgeslagen `-light`/`-dark`-variant en de selectors die de kleur gebruiken, live uitgelezen uit de geladen opmaak (#1442)
 
 ### Fixed
 - **Wedstrijd aanmaken maakt geen wedstrijd meer aan zonder dat u daarom vraagt** (#1436). Een Enter

@@ -63,6 +63,7 @@ else
                                 <tr>
                                     <th>Kleur</th>
                                     <th>Werkingsgebied</th>
+                                    <th>CSS-pad</th>
                                     <th>Licht</th>
                                     <th>Donker</th>
                                 </tr>
@@ -73,6 +74,7 @@ else
                                     <tr>
                                         <td class="fw-semibold">@kleur.Label</td>
                                         <td class="text-muted small">@(kleur.Toelichting ?? "—")</td>
+                                        <td><ThemaCssPad Kleur="kleur" Selectors="SelectorsVoor(kleur)" Geladen="_cssSelectors != null" /></td>
                                         <td>
                                             <span class="thema-overzicht-swatch" style="--thema-kleur:@KleurUit(_licht, kleur.Sleutel);" aria-hidden="true"></span>
                                             <code class="small">@KleurUit(_licht, kleur.Sleutel)</code>
@@ -148,6 +150,7 @@ else
                                 {
                                     <small class="text-muted">@kleur.Toelichting</small>
                                 }
+                                <ThemaCssPad Kleur="kleur" Selectors="SelectorsVoor(kleur)" Geladen="_cssSelectors != null" />
                             </div>
                         }
                     }

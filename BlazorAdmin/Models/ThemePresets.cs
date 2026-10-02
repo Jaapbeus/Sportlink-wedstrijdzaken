@@ -23,7 +23,16 @@ public sealed record ThemeKleurDefinitie(
     string Label,
     string? Toelichting = null,
     bool StaatAlphaToe = false,
-    string Groep = "Merk & interface");
+    string Groep = "Merk & interface")
+{
+    /// <summary>
+    /// De effectieve CSS-variabele die selectors gebruiken (<c>cardBg</c> → <c>--theme-card-bg</c>,
+    /// #1442). Zelfde vertaling als <c>naarCssNaam</c> in <c>theme.js</c>; de -light/-dark-varianten
+    /// zijn deze naam plus het modus-achtervoegsel.
+    /// </summary>
+    public string CssVariabele =>
+        "--theme-" + System.Text.RegularExpressions.Regex.Replace(Sleutel, "[A-Z]", m => "-" + char.ToLowerInvariant(m.Value[0]));
+}
 
 /// <summary>
 /// De instelbare kleuren (#1257, epic #1249; #1388 voegde de Planning-statuskleuren en groepering
@@ -49,6 +58,12 @@ public static class ThemePresets
         new ThemeKleurDefinitie("mutedText",       "Gedempte tekst",        "Bijschriften en toelichtingen"),
         new ThemeKleurDefinitie("mutedTextSubtle", "Extra gedempte tekst"),
         new ThemeKleurDefinitie("shadowHover",     "Schaduw bij aanwijzen", "Acht cijfers mag: de laatste twee zijn de doorzichtigheid", StaatAlphaToe: true),
+
+        // Lichte vlakken (#1442): Bootstrap's .bg-light (codeblokken op de Email-tester, de
+        // uitlegkaart bij Begeleiding importeren, tellerbadges) schakelde niet mee met het donkere
+        // thema en had geen eigen kleur — licht vlak met lichte tekst, onleesbaar.
+        new ThemeKleurDefinitie("surfaceSubtleBg",   "Licht vlak — achtergrond", "Codeblokken (Email-tester), uitlegkaarten en tellerbadges (Bootstrap .bg-light)"),
+        new ThemeKleurDefinitie("surfaceSubtleText", "Licht vlak — tekst",       "Tekst op zo'n licht vlak"),
 
         // Wedstrijdstatuskleuren van Planning en Veld optimalisatie (#1388). Stonden tot die
         // uitbreiding als losse hex-literals in DagplanningWeergaveHelpers.GanttKleur,
@@ -111,6 +126,10 @@ public static class ThemePresets
         ["mutedTextSubtle"] = "#adb5bd",
         ["shadowHover"]     = "#0000001f",
 
+        // Lichte vlakken (#1442) — Bootstrap's eigen .bg-light/body-tekst, geen visuele wijziging.
+        ["surfaceSubtleBg"]   = "#f8f9fa",
+        ["surfaceSubtleText"] = "#212529",
+
         // Zelfde waarden als de hex-literals die vóór #1388 in GanttKleur/GanttVoorkeurBalkKleur en
         // de legenda-CSS stonden — geen visuele wijziging voor een club die niets aanpast.
         ["statusOngewijzigd"]      = "#198754",
@@ -163,6 +182,10 @@ public static class ThemePresets
         ["mutedText"]       = "#9aa4b2",
         ["mutedTextSubtle"] = "#6b7686",
         ["shadowHover"]     = "#0000008c",
+
+        // Lichte vlakken (#1442): een tint lichter dan cardBg, met lichte tekst.
+        ["surfaceSubtleBg"]   = "#222c40",
+        ["surfaceSubtleText"] = "#e6e9ef",
 
         // Iets lichtere/fellere varianten dan het lichte palet, zelfde reden als de bestaande
         // donkere merkkleuren hierboven: voldoende contrast tegen een donkere achtergrond.
