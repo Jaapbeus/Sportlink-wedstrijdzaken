@@ -33,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.9.5.0
+  version: 3.9.6.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -7068,8 +7068,27 @@ paths:
 
         **Voert niets door** — puur simulatie/voorstel.
         Gebruik `/planner/auto-plan/toepassen` om het plan daadwerkelijk te boeken.
+
+        Met `?format=html` of `?format=pdf` (#1364) komt het resultaat als gedeeld document terug
+        (kolommen Tijd, Team, Tegenstander, Veld, Competitie); `?tab=huidig|optimaal` kiest welke kant.
       security:
         - easyAuth: []
+      parameters:
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [json, html, pdf]
+            default: json
+        - name: tab
+          in: query
+          required: false
+          description: Alleen bij format=html|pdf — welke kant van het plan in het document komt
+          schema:
+            type: string
+            enum: [huidig, optimaal]
+            default: huidig
       requestBody:
         required: true
         content:
@@ -7078,7 +7097,7 @@ paths:
               $ref: '#/components/schemas/AutoPlanRequest'
       responses:
         '200':
-          description: Gegenereerd auto-plan
+          description: Gegenereerd auto-plan (JSON), of bij format=html|pdf het gedeelde document
           headers:
             x-correlation-id:
               $ref: '#/components/headers/CorrelationId'
@@ -7086,6 +7105,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AutoPlanResponse'
+            text/html:
+              schema:
+                type: string
+            application/pdf:
+              schema:
+                type: string
+                format: binary
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -7118,15 +7144,30 @@ paths:
             format: date
           description: Datum in yyyy-MM-dd formaat
           example: "2026-08-22"
+        - name: format
+          in: query
+          required: false
+          description: json (standaard), html of pdf (#1364) — het gedeelde document voor de deel-knop op Planning
+          schema:
+            type: string
+            enum: [json, html, pdf]
+            default: json
       responses:
         '200':
-          description: Wedstrijden op deze datum, gesorteerd op aanvangstijd
+          description: Wedstrijden op deze datum, gesorteerd op aanvangstijd (JSON), of bij format=html|pdf het gedeelde document
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: '#/components/schemas/VeldbezettingItem'
+            text/html:
+              schema:
+                type: string
+            application/pdf:
+              schema:
+                type: string
+                format: binary
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':

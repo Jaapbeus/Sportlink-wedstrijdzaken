@@ -110,6 +110,16 @@ public class PlannerShareModelBuilderTests
         PlannerShareModelBuilder.TegenstanderUitWedstrijd(wedstrijd).Should().Be(verwacht);
     }
 
+    [Theory]
+    [InlineData("Tegenstander 1 - AllStars JO10 1", "AllStars JO10 1", "Tegenstander 1")]   // uitwedstrijd
+    [InlineData("AllStars JO10 1 - Tegenstander 1", "AllStars JO10 1", "Tegenstander 1")]   // thuiswedstrijd
+    [InlineData("AllStars JO10-1 - Gasten JO10-10", "JO10-1", "Gasten JO10-10")]            // teamnaam ook in tegenstander
+    [InlineData("A - B", "JO10-1", "B")]                                                    // team onvindbaar: gedrag #1363
+    public void TegenstanderUitWedstrijd_MetTeamnaam_KiestDeAndereKant(string wedstrijd, string team, string verwacht)
+    {
+        PlannerShareModelBuilder.TegenstanderUitWedstrijd(wedstrijd, team).Should().Be(verwacht);
+    }
+
     [Fact]
     public void Builders_WeigerenNull()
     {

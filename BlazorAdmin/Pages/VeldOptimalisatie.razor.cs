@@ -29,6 +29,10 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     // zoals die nu in Sportlink staat zien, en pas daarna desgewenst naar Optimaal wisselen.
     private string _visTab = "huidig";
     private AutoPlanResponseDto? _plan;
+    // #1364: de PDF wordt server-side opnieuw berekend; met de invoer waarmee het getoonde plan is
+    // gemaakt, niet met wat er inmiddels in de invoerbalk staat.
+    private string _planDatum = "";
+    private int _planBuffer;
 
     // Sportlink-kolom (#989/#991/#1361): alleen de vlag blijft hier; uitklap-/deeplinkstate staat in
     // SportlinkActieKolomState, het paneel zelf is SportlinkMatchPanel (#1122).
@@ -48,6 +52,7 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     private string ExportToelichting =>
         $"Weergave van de {(_visTab == "optimaal" ? "optimale" : "huidige")} planning zoals hierboven gekozen. " +
         "Handig om als e-mail te versturen of als bestand te bewaren.";
+    private Task<byte[]> PdfOphalenAsync() => Api.GetAutoPlanPdfAsync(_planDatum, _planBuffer, _visTab);
     private string ExportBestandsNaam => $"veld-optimalisatie-{DatumStr}";
     private string ExportSleutel => $"{_visTab}|{DatumStr}|{_plan?.GetHashCode()}";
 
@@ -106,6 +111,8 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
             if (result.Success)
             {
                 _plan = result.Data;
+                _planDatum = req.Datum;
+                _planBuffer = _bufferMinuten;
                 _filter = "alles";
                 _visTab = "huidig";
             }

@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
+using Planner.Endpoints.Deel;
 using Newtonsoft.Json;
 using Planner.Shared;
 using SportlinkFunction.Admin;
@@ -375,10 +376,14 @@ namespace SportlinkFunction.Planner
                     if (request == null || string.IsNullOrEmpty(request.Datum))
                         return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
+                    // #1364: ?format=html|pdf (+ ?tab=huidig|optimaal) voor de deel-knop; AutoPlanAsync is een
+                    // leesbewerking (alleen AutoPlanToepassen schrijft), dus een tweede aanroep is zonder bijwerking.
+                    if (PlannerDeelEndpointCore.Lees(req.Query["format"], req.Query["tab"], request.Datum, out var deel) is { } deelFout) return deelFout;
+
                     log.LogInformation("AutoPlan: datum={Datum}, club={Club}", request.Datum, clubCode);
 
                     var response = await PlannerService.AutoPlanAsync(request, clubCode, log);
-                    return new OkObjectResult(response);
+                    return deel.VanPlan(response.Wedstrijden, clubCode) ?? new OkObjectResult(response);
                 });
         }
 
@@ -426,10 +431,13 @@ namespace SportlinkFunction.Planner
                     if (string.IsNullOrWhiteSpace(datumParam) || !DateOnly.TryParse(datumParam, out var datum))
                         return new BadRequestObjectResult(new { error = "Query parameter 'datum' (yyyy-MM-dd) is verplicht." });
 
+                    // #1364: ?format=html|pdf voor de deel-knop op de Planning-pagina; zonder format blijft het JSON.
+                    if (PlannerDeelEndpointCore.Lees(req.Query["format"], null, datumParam, out var deel) is { } deelFout) return deelFout;
+
                     log.LogInformation("Veldbezetting: datum={Datum}, club={Club}", datumParam, clubCode);
 
                     var items = await PlannerService.VeldbezettingAsync(datum, clubCode);
-                    return new OkObjectResult(items);
+                    return deel.VanVeldbezetting(items, clubCode) ?? new OkObjectResult(items);
                 });
         }
 

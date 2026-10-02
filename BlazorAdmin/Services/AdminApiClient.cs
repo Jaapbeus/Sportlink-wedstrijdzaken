@@ -10,7 +10,7 @@ namespace BlazorAdmin.Services;
 /// BaseUrl komt uit appsettings.json (FunctionBaseUrl).
 /// In productie (SWA) is FunctionBaseUrl leeg → relatieve URLs via SWA proxying.
 /// </summary>
-public class AdminApiClient
+public partial class AdminApiClient
 {
     private readonly HttpClient _http;
     private readonly ApiStatusService _status;

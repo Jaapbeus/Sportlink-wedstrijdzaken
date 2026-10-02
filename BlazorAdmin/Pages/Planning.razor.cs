@@ -32,6 +32,7 @@ public partial class Planning : ClubSelectorPageBase
     private bool _sportlinkExtensionEnabled;
     private readonly SportlinkActieKolomState _sportlinkKolom = new();
 
+    private string ExportBestandsNaam => $"veldbezetting-{DatumStr}";
     private string DatumStr => _datumDt.ToString("yyyy-MM-dd");
 
     protected override void OnInitialized()

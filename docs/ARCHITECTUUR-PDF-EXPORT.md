@@ -1,7 +1,8 @@
 # PDF-export van planning en veldbezetting — QuestPDF
 
-> Status: **gedeelde generator gebouwd (#1363)**, nog niet aangeroepen vanuit een endpoint of
-> scherm — dat is #1364 (epic #1365). Architectuurbesluit: WZ-ADR-012 in
+> Status: **gebouwd (#1363) en aangesloten (#1364)** op `GET planner/veldbezetting` en
+> `POST planner/auto-plan` (`?format=html|pdf`, op beide tiers) en de schermen Planning en Veld
+> optimalisatie (epic #1365). Architectuurbesluit: WZ-ADR-012 in
 > [ARCHITECTUUR.md](ARCHITECTUUR.md) §9.
 
 ## 1. Wat er staat
@@ -21,6 +22,16 @@ HTML→PDF-conversie.
 `browser-wasm`; de Blazor-app kan de generator dus niet zelf aanroepen. #1364 hoort de PDF via een
 endpoint te leveren (het `?format=html`-patroon van `GET /api/planner/team-schedule` is het
 precedent), op beide tiers.
+
+**Hoe het is aangesloten (#1364).** De tier-onafhankelijke respons-logica (`?format=`/`?tab=`/datum
+valideren, `PlannerShareModel` → `FileContentResult`/`ContentResult`) staat in
+`Planner.Endpoints/Deel/PlannerDeelEndpointCore.cs`; de HTML-weergave van hetzelfde model in
+`Planner.Shared/Deel/PlannerShareHtmlGenerator.cs` (zelfde kolommen als de PDF, alles
+HTML-geëncodeerd, geen script). Elke `PlannerFunction.cs` doet alleen nog de databasevraag en één
+`if (format != null)`. Autorisatie ongewijzigd: `veldbezetting` blijft `admin`+`user`
+(`ExecuteAuthenticatedAsync`), `auto-plan` blijft `admin` (`ExecuteAsync`). De Blazor-kant gebruikt
+`AdminApiClient.Deel.cs`; Veld optimalisatie laat de server de PDF opnieuw berekenen met de datum en
+buffer waarmee het getoonde plan is gemaakt (`AutoPlanAsync` is een pure leesbewerking).
 
 **Persoonsgegevens:** dezelfde velden als de pagina vandaag al toont (epic #1365, besluit 3). Geen
 extra filtering, geen logging van de inhoud. De scheidsrechterkolom verschijnt alleen als minstens
