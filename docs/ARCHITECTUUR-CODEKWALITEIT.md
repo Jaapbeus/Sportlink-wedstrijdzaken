@@ -214,6 +214,17 @@ met reden — nooit een allowlist voor een hele pagina.
 *Guard: `scripts/ci/check-blazor-inline-styles.sh` — hard, geen ratchet: een nieuwe overtreding is
 altijd een fout, niet een meting die mag groeien.*
 
+### Regel 3c — Gelinkte bronbestanden in BlazorAdmin hangen uitsluitend van de BCL af (#1461)
+
+BlazorAdmin (WASM) refereert bewust niet aan `Planner.Shared`, maar compileert enkele bestanden
+als `<Compile Include="../Planner.Shared/..." Link="..." />` (nu: `PlanningConflictRegels.cs`, #1430).
+Zo'n bestand draait in de browser, dus: uitsluitend `using System*` (geen ander `Planner.Shared`-type,
+geen NuGet) en nooit `RegexOptions.Compiled` (NullReferenceException tijdens renderen, geen
+buildfout). Tot #1461 stond dit alleen als commentaar in het bestand zelf — een onbewaakte harde regel.
+
+*Guard: `scripts/ci/check-gelinkte-bronbestanden.sh` — hard, geen ratchet; negatief getest in
+`check-codekwaliteit.test.sh`.*
+
 ### Regel 4 — Platformafhankelijke valkuilen zijn verboden, tenzij gemotiveerd
 
 Vier patronen die in dit project aantoonbaar stille fouten hebben opgeleverd:
@@ -423,6 +434,7 @@ endpoint laat hem ook falen. Dezelfde knip als de Layer-5-scan in
 | 1, 2 — interne duplicatie stijgt niet (#1263) | `scripts/ci/check-interne-duplicatie.sh` | `build.yml` |
 | 3 — geen logica in Blazor-pagina's | `scripts/ci/check-blazor-codebehind.sh` | `build.yml` |
 | 3b — geen `<style>`-blok of statische inline style in Blazor-pagina's (#1329) | `scripts/ci/check-blazor-inline-styles.sh` | `build.yml` |
+| 3c — gelinkte bronbestanden in BlazorAdmin: alleen `using System*`, geen `RegexOptions.Compiled` (#1461) | `scripts/ci/check-gelinkte-bronbestanden.sh` | `build.yml` |
 | 4 — platformafhankelijke valkuilen | `scripts/ci/check-codekwaliteit-valkuilen.sh` | `build.yml` |
 | 5 — AGENTS.md afgeleid uit CLAUDE.md | `scripts/ci/genereer-agents-md.py` | `build.yml` |
 | 6 — elke regel heeft een guard | `scripts/ci/check-regelregister.sh` | `build.yml` |
@@ -502,6 +514,7 @@ bash scripts/ci/check-tier-duplicatie.sh
 bash scripts/ci/check-interne-duplicatie.sh
 bash scripts/ci/check-blazor-codebehind.sh
 bash scripts/ci/check-blazor-inline-styles.sh
+bash scripts/ci/check-gelinkte-bronbestanden.sh
 bash scripts/ci/check-codekwaliteit-valkuilen.sh
 bash scripts/ci/check-bestandsgrootte.sh
 bash scripts/ci/check-regelregister.sh

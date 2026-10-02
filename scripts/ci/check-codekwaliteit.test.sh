@@ -59,6 +59,7 @@ verwacht_slagen "blazor-codebehind"    bash scripts/ci/check-blazor-codebehind.s
 verwacht_slagen "blazor-inline-styles" bash scripts/ci/check-blazor-inline-styles.sh
 verwacht_slagen "valkuilen"            bash scripts/ci/check-codekwaliteit-valkuilen.sh
 verwacht_slagen "bestandsgrootte"      bash scripts/ci/check-bestandsgrootte.sh
+verwacht_slagen "gelinkte bronbestanden" bash scripts/ci/check-gelinkte-bronbestanden.sh
 verwacht_slagen "regelregister"        bash scripts/ci/check-regelregister.sh
 verwacht_slagen "AGENTS.md afgeleid"   python3 scripts/ci/genereer-agents-md.py
 verwacht_slagen "tier-pariteit"        bash scripts/ci/check-tier-pariteit.sh
@@ -156,6 +157,21 @@ git add -N "$proef_groot" >/dev/null 2>&1 || true
 verwacht_falen "te groot bestand en te lange methode" bash scripts/ci/check-bestandsgrootte.sh
 git rm -q --cached "$proef_groot" >/dev/null 2>&1 || true
 rm -f "$proef_groot"
+
+# 4b. Gelinkte bronbestanden (#1461): een niet-System-using en RegexOptions.Compiled in het
+#     bestand dat BlazorAdmin.csproj linkt. Het bestand wordt aan het einde hersteld.
+proef_link="Planner.Shared/Planning/PlanningConflictRegels.cs"
+if [ -f "$proef_link" ]; then
+  printf 'using Planner.Shared.Proef;\n' | cat - "$proef_link" > "$TMP_B" && cp "$TMP_B" "$proef_link"
+  verwacht_falen "gelinkt bronbestand met niet-System-using" bash scripts/ci/check-gelinkte-bronbestanden.sh
+  herstel "$proef_link"
+  printf 'internal static class ProefCompiled1461 { internal static readonly System.Text.RegularExpressions.Regex R = new("x", System.Text.RegularExpressions.RegexOptions.Compiled); }\n' >> "$proef_link"
+  verwacht_falen "gelinkt bronbestand met RegexOptions.Compiled" bash scripts/ci/check-gelinkte-bronbestanden.sh
+  herstel "$proef_link"
+else
+  echo "::error::Gelinkt proefbestand ontbreekt — de negatieve test is overgeslagen."
+  mislukt=$((mislukt + 1))
+fi
 
 # 5. Regelregister: een guard die niet in het register staat.
 proef_guard="scripts/ci/check-proef1262.sh"

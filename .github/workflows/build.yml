@@ -70,6 +70,10 @@ jobs:
       - name: Codekwaliteit — geen inline styles in Blazor-pagina's
         run: bash scripts/ci/check-blazor-inline-styles.sh
 
+      # #1461: gelinkte bronbestanden in BlazorAdmin mogen uitsluitend van de BCL afhangen.
+      - name: Codekwaliteit — gelinkte bronbestanden in BlazorAdmin
+        run: bash scripts/ci/check-gelinkte-bronbestanden.sh
+
       - name: Codekwaliteit — platformafhankelijke valkuilen
         run: bash scripts/ci/check-codekwaliteit-valkuilen.sh
 

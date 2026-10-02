@@ -12,6 +12,10 @@
                 {
                     <p class="text-muted small">@Toelichting</p>
                 }
+                @if (!string.IsNullOrEmpty(Waarschuwing))
+                {
+                    <div class="alert alert-warning small py-2" role="alert" data-testid="deel-waarschuwing">@Waarschuwing</div>
+                }
                 <div class="mb-2">
                     <button class="btn btn-sm btn-outline-secondary me-2" disabled="@_status.Bezig" @onclick="KopieerAsync">
                         @(_kopieerStatus ?? "Kopieer HTML")

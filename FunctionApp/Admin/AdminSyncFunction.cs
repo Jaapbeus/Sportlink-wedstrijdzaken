@@ -87,8 +87,11 @@ public static class AdminSyncFunction
                     return new BadRequestObjectResult(new { error = keuze.Fout });
 
                 int toWeekOffset = await SystemUtilities.SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
-                var fromWeekOffset = await SyncTriggerCore.BepaalVanWeekOffsetAsync(keuze,
-                    jaar => SystemUtilities.SeasonHelper.GetSeasonStartWeekOffsetAsync(jaar, log));
+                var (vanOffset, seizoenFout) = await SyncTriggerCore.BepaalVanWeekOffsetAsync(keuze,
+                    jaar => SystemUtilities.SeasonHelper.GetSeasonStartWeekOffsetOrNullAsync(jaar));
+                // #1461: onbekend seizoen is een 400, geen stille terugval op een standaardvenster.
+                if (vanOffset is not int fromWeekOffset)
+                    return new BadRequestObjectResult(new { error = seizoenFout });
                 var jobId = Guid.NewGuid();
 
                 await SyncJobsRepository.CreateAsync(jobId, clubCode, weekOffsetFrom: fromWeekOffset, weekOffsetTo: toWeekOffset);

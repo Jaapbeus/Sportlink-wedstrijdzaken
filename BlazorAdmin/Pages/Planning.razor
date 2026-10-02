@@ -193,6 +193,6 @@
 <DeelPaneel Titel="Veldbezetting delen"
             Toelichting="De veldbezetting van de gekozen datum, om als e-mail te versturen of als bestand te bewaren."
             BestandsNaam="@ExportBestandsNaam"
-            VerversSleutel="@DatumStr"
+            VerversSleutel="@ExportSleutel"
             HtmlOphalen="@(() => Api.GetVeldbezettingHtmlAsync(DatumStr))"
             PdfOphalen="@(() => Api.GetVeldbezettingPdfAsync(DatumStr))" />

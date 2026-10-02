@@ -3,7 +3,11 @@ namespace Planner.Shared;
 /// <summary>Eén rij uit de teambegeleiding-CSV, al genormaliseerd naar de canonieke kolommen.</summary>
 public sealed record TeambegeleidingCsvRij(
     string? Team, string? LeeftijdscategorieTeam, string? Teamrol, string? Functie,
-    string? Naam, string? Emailadres, string? Telefoonnummer);
+    string? Naam, string? Emailadres, string? Telefoonnummer)
+{
+    /// <summary>1-based regelnummer in het originele bestand (header = 1, lege regels tellen mee); 0 = onbekend (#1461).</summary>
+    public int Regelnummer { get; init; }
+}
 
 public sealed class TeambegeleidingCsvResultaat
 {
@@ -12,6 +16,8 @@ public sealed class TeambegeleidingCsvResultaat
     public List<string> Ontbreekt { get; set; } = [];
     public List<string> Herkend { get; set; } = [];
     public List<string> Waarschuwingen { get; set; } = [];
+    /// <summary>Kolomlengte-overschrijdingen; alleen gevuld door <see cref="TeambegeleidingCsv.ParseEnValideer"/>.</summary>
+    public List<string> Lengtefouten { get; set; } = [];
     public List<TeambegeleidingCsvRij> Rows { get; set; } = [];
 }
 
@@ -53,10 +59,12 @@ public static class TeambegeleidingCsv
     public static TeambegeleidingCsvResultaat Parse(string csvContent)
     {
         var result = new TeambegeleidingCsvResultaat();
+        // #1461: regelnummers van het originele bestand bewaren, zodat lengtefouten na het
+        // overslaan van lege regels en deduplicatie nog naar de juiste CSV-regel wijzen.
         var lines = csvContent
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
-            .Select(l => l.TrimEnd('\r'))
-            .Where(l => !string.IsNullOrWhiteSpace(l))
+            .Split('\n')
+            .Select((l, i) => (Tekst: l.TrimEnd('\r'), Nr: i + 1))
+            .Where(l => !string.IsNullOrWhiteSpace(l.Tekst))
             .ToList();
 
         if (lines.Count < 2)
@@ -65,7 +73,7 @@ public static class TeambegeleidingCsv
             return result;
         }
 
-        var mapping = BouwKolomMapping(SplitCsvLine(lines[0]));
+        var mapping = BouwKolomMapping(SplitCsvLine(lines[0].Tekst));
         var ontbreekt = VereistKolommen.Where(v => !mapping.ContainsKey(v)).ToList();
         if (ontbreekt.Count > 0)
         {
@@ -82,24 +90,37 @@ public static class TeambegeleidingCsv
         result.Rows = deduped;
         if (duplicaten > 0)
             result.Waarschuwingen.Add(
-                $"{duplicaten} exacte duplicaat-rij{(duplicaten == 1 ? "" : "en")} overgeslagen (zelfde team, rol, functie, naam en e-mailadres).");
+                $"{duplicaten} exacte duplicaat-rij{(duplicaten == 1 ? "" : "en")} overgeslagen (zelfde team, rol, functie, naam, e-mailadres en telefoonnummer).");
 
         result.IsValid = true;
         return result;
     }
 
     /// <summary>
+    /// <see cref="Parse"/> plus kolomlengte-validatie in één stap (#1461). Beide tiers gebruiken
+    /// uitsluitend deze ingang, zodat een te lange waarde altijd een 400 met rijnummers geeft in
+    /// plaats van een databasefout (500) nadat er al iets destructiefs is gebeurd.
+    /// </summary>
+    public static TeambegeleidingCsvResultaat ParseEnValideer(string csvContent)
+    {
+        var result = Parse(csvContent);
+        if (!result.IsValid) return result;
+        result.Lengtefouten = ValideerKolomLengtes(result.Rows);
+        return result;
+    }
+
+    /// <summary>
     /// Valideert elke rij tegen de kolomgrenzen van <c>avg.Teambegeleiding</c> vóórdat er iets
-    /// destructiefs (DELETE/INSERT) gebeurt (#1131). Rijnummers zijn 1-based en tellen de header
-    /// mee (rij 1 = header, rij 2 = eerste datarij).
+    /// destructiefs (DELETE/INSERT) gebeurt (#1131). Rijnummers zijn de 1-based regelnummers van het
+    /// originele bestand (<see cref="TeambegeleidingCsvRij.Regelnummer"/>; header = regel 1).
     /// </summary>
     public static List<string> ValideerKolomLengtes(IReadOnlyList<TeambegeleidingCsvRij> rows)
     {
         var fouten = new List<string>();
         for (int i = 0; i < rows.Count; i++)
         {
-            var rijNummer = i + 2;
             var row = rows[i];
+            var rijNummer = row.Regelnummer > 0 ? row.Regelnummer : i + 2;
             VoegLengteFoutToe(fouten, rijNummer, "Team", row.Team, TeamMaxLength);
             VoegLengteFoutToe(fouten, rijNummer, "Leeftijdscategorie team", row.LeeftijdscategorieTeam, LeeftijdscategorieTeamMaxLength);
             VoegLengteFoutToe(fouten, rijNummer, "Teamrol", row.Teamrol, TeamrolMaxLength);
@@ -144,12 +165,12 @@ public static class TeambegeleidingCsv
         return mapping;
     }
 
-    private static List<TeambegeleidingCsvRij> BouwRijen(List<string> lines, Dictionary<string, int> mapping)
+    private static List<TeambegeleidingCsvRij> BouwRijen(List<(string Tekst, int Nr)> lines, Dictionary<string, int> mapping)
     {
         var rows = new List<TeambegeleidingCsvRij>();
         for (int i = 1; i < lines.Count; i++)
         {
-            var fields = SplitCsvLine(lines[i]);
+            var fields = SplitCsvLine(lines[i].Tekst);
 
             string? GetVeld(string key)
             {
@@ -169,7 +190,8 @@ public static class TeambegeleidingCsv
                 GetVeld("Functie"),
                 naam,
                 GetVeld("Emailadres"),
-                GetVeld("MobielNummer") ?? GetVeld("TelefoonnummerKolom")));
+                GetVeld("MobielNummer") ?? GetVeld("TelefoonnummerKolom"))
+            { Regelnummer = lines[i].Nr });
         }
         return rows;
     }

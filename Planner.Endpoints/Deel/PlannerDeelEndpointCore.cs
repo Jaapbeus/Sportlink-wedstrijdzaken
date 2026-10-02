@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Planner.Shared.Deel;
 
@@ -74,12 +75,33 @@ public static class PlannerDeelEndpointCore
                 FileDownloadName = naam + ".pdf",
             };
 
-        return new ContentResult
+        return new BeveiligdeHtmlResult
         {
             Content = PlannerShareHtmlGenerator.Genereer(model),
             ContentType = "text/html; charset=utf-8",
             StatusCode = 200,
         };
+    }
+
+    /// <summary>
+    /// De HTML-export wordt vanaf de API-origin geserveerd en bevat tekst uit Sportlink-data.
+    /// Mocht iemand de URL rechtstreeks openen, dan mag die pagina geen script draaien, niets
+    /// extern laden en geen same-origin-rechten krijgen (#1461): strikte CSP met <c>sandbox</c>,
+    /// plus <c>nosniff</c> zodat de browser het type niet zelf gaat raden.
+    /// </summary>
+    public const string HtmlContentSecurityPolicy = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
+
+    private sealed class BeveiligdeHtmlResult : ContentResult
+    {
+        public override Task ExecuteResultAsync(ActionContext context)
+        {
+            var response = context.HttpContext.Response;
+            response.Headers["Content-Security-Policy"] = HtmlContentSecurityPolicy;
+            response.Headers["X-Content-Type-Options"] = "nosniff";
+            response.StatusCode = StatusCode ?? 200;
+            response.ContentType = ContentType;
+            return response.WriteAsync(Content ?? "", System.Text.Encoding.UTF8);
+        }
     }
 
     /// <summary>

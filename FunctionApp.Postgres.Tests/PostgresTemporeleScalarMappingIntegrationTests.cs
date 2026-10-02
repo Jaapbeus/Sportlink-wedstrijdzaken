@@ -108,4 +108,14 @@ public class PostgresTemporeleScalarMappingIntegrationTests : IAsyncLifetime
             (DominantDateFrom.ToDateTime(TimeOnly.MinValue) - DateTime.UtcNow.Date).TotalDays / 7.0);
         offset.Should().Be(verwacht, "zelfde stille terugval als bij GetSeasonEndWeekOffsetAsync");
     }
+
+    // #1461: een seizoen zonder rij is "onbekend" (null), geen stille standaardwaarde.
+    [PostgresFact]
+    public async Task GetSeasonStartWeekOffsetOrNullAsync_BestaandSeizoen_GeeftOffset_OnbekendSeizoen_GeeftNull()
+    {
+        await ZaaiDominantSeizoenAsync();
+
+        (await PostgresSeasonHelper.GetSeasonStartWeekOffsetOrNullAsync(DominantDateFrom.Year)).Should().NotBeNull();
+        (await PostgresSeasonHelper.GetSeasonStartWeekOffsetOrNullAsync(1999)).Should().BeNull();
+    }
 }

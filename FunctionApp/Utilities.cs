@@ -357,23 +357,31 @@ namespace SportlinkFunction
             {
                 try
                 {
-                    using var connection = new SqlConnection(DatabaseConfig.ConnectionString);
-                    await connection.OpenAsync();
-                    using var command = new SqlCommand(
-                        "SELECT MIN(DateFrom) FROM [dbo].[Season] WHERE YEAR(DateFrom) = @Year", connection);
-                    command.Parameters.AddWithValue("@Year", startYear);
-                    var result = await command.ExecuteScalarAsync();
-                    if (result != null && result != DBNull.Value)
-                    {
-                        var startDate = Convert.ToDateTime(result);
-                        return (int)Math.Floor((startDate - DateTime.Today).TotalDays / 7.0);
-                    }
+                    return await GetSeasonStartWeekOffsetOrNullAsync(startYear) ?? DefaultSeasonStartWeeksBack;
                 }
                 catch (Exception ex)
                 {
                     log.LogError(ex, "Error fetching season start for year {StartYear}", startYear);
                 }
                 return DefaultSeasonStartWeeksBack;
+            }
+
+            /// <summary>Als <see cref="GetSeasonStartWeekOffsetAsync"/>, maar <c>null</c> wanneer er geen seizoensrij
+            /// voor dat startjaar bestaat en zonder foutafhandeling (#1461).</summary>
+            public static async Task<int?> GetSeasonStartWeekOffsetOrNullAsync(int startYear)
+            {
+                using var connection = new SqlConnection(DatabaseConfig.ConnectionString);
+                await connection.OpenAsync();
+                using var command = new SqlCommand(
+                    "SELECT MIN(DateFrom) FROM [dbo].[Season] WHERE YEAR(DateFrom) = @Year", connection);
+                command.Parameters.AddWithValue("@Year", startYear);
+                var result = await command.ExecuteScalarAsync();
+                if (result != null && result != DBNull.Value)
+                {
+                    var startDate = Convert.ToDateTime(result);
+                    return (int)Math.Floor((startDate - DateTime.Today).TotalDays / 7.0);
+                }
+                return null;
             }
 
             /// <summary>

@@ -18,6 +18,8 @@ public partial class DeelPaneel : ComponentBase
     [Parameter] public string? Toelichting { get; set; }
     /// <summary>Basis van de bestandsnaam zonder extensie, bijv. <c>veld-optimalisatie-2026-10-03</c>.</summary>
     [Parameter] public string BestandsNaam { get; set; } = "planning";
+    /// <summary>Optionele waarschuwing in het paneel, bijv. dat het gedeelde bestand afwijkt van het scherm.</summary>
+    [Parameter] public string? Waarschuwing { get; set; }
     /// <summary>Geeft de volledige (server-gegenereerde) HTML; scripts worden hier gestript voor preview/kopie.</summary>
     [Parameter] public Func<Task<string>>? HtmlOphalen { get; set; }
     /// <summary>Geeft PDF-bytes. Null = geen PDF-knop.</summary>
@@ -70,9 +72,20 @@ public partial class DeelPaneel : ComponentBase
 
     private async Task KopieerAsync()
     {
-        var html = DeelHtmlHelper.ZonderScript(await HaalHtmlAsync());
+        // #1461: de al geladen preview kopiëren, zonder eerst een netwerkaanroep. Die verbruikte de
+        // user activation, waarna clipboard.writeText werd geweigerd en de Blazor-foutbanner verscheen.
+        // Alleen als het paneel nog niets heeft geladen halen we de HTML alsnog op.
+        var html = _previewHtml ?? DeelHtmlHelper.ZonderScript(await HaalHtmlAsync());
         if (string.IsNullOrEmpty(html)) return;
-        await JS.InvokeVoidAsync("blazorHelpers.copyToClipboard", html);
+        try
+        {
+            await JS.InvokeVoidAsync("blazorHelpers.copyToClipboard", html);
+        }
+        catch (JSException)
+        {
+            _status.Fout("Kopiëren is niet gelukt: de browser weigert toegang tot het klembord. Gebruik 'Download HTML'.");
+            return;
+        }
         _kopieerStatus = "Gekopieerd!";
         _ = Task.Delay(2500).ContinueWith(_ => { _kopieerStatus = null; InvokeAsync(StateHasChanged); });
     }

@@ -88,21 +88,29 @@ internal static class PostgresSeasonHelper
     {
         try
         {
-            await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-            await using var command = new NpgsqlCommand(
-                "SELECT MIN(datefrom) FROM public.season WHERE EXTRACT(YEAR FROM datefrom) = @jaar", connection);
-            command.Parameters.AddWithValue("jaar", startYear);
-            var result = await command.ExecuteScalarAsync();
-            // DateOnly, niet DateTime — zie GetSeasonEndWeekOffsetAsync hierboven.
-            if (result is DateOnly startDate)
-                return (int)Math.Floor((startDate.ToDateTime(TimeOnly.MinValue) - DateTime.UtcNow.Date).TotalDays / 7.0);
+            return await GetSeasonStartWeekOffsetOrNullAsync(startYear) ?? DefaultFromWeekOffset;
         }
         catch (Exception ex)
         {
             log.LogError(ex, "Fout bij ophalen seizoensstart voor jaar {StartYear}", startYear);
         }
         return DefaultFromWeekOffset;
+    }
+
+    /// <summary>Als <see cref="GetSeasonStartWeekOffsetAsync"/>, maar <c>null</c> wanneer er geen seizoensrij
+    /// voor dat startjaar bestaat en zonder foutafhandeling (#1461: de aanroeper wil dat onderscheid zien).</summary>
+    internal static async Task<int?> GetSeasonStartWeekOffsetOrNullAsync(int startYear)
+    {
+        await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            "SELECT MIN(datefrom) FROM public.season WHERE EXTRACT(YEAR FROM datefrom) = @jaar", connection);
+        command.Parameters.AddWithValue("jaar", startYear);
+        var result = await command.ExecuteScalarAsync();
+        // DateOnly, niet DateTime — zie GetSeasonEndWeekOffsetAsync hierboven.
+        if (result is DateOnly startDate)
+            return (int)Math.Floor((startDate.ToDateTime(TimeOnly.MinValue) - DateTime.UtcNow.Date).TotalDays / 7.0);
+        return null;
     }
 
     /// <summary>

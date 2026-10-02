@@ -71,6 +71,27 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   automatische planner diezelfde zet wél weigert. De controle na het slepen gebruikt nu exact dezelfde
   regels als de planner; zo'n melding noemt "de vereiste teambuffer". Teamnamen worden daarbij, net als
   in de planner, zonder onderscheid in hoofdletters vergeleken.
+- **Kopiëren van de deelweergave geeft geen foutbanner meer** (#1461). Op **Planning** werd bij
+  **Kopieer HTML** eerst opnieuw opgehaald, waarna de browser het klembord kon weigeren en de
+  Blazor-foutbanner verscheen. Het paneel kopieert nu de al getoonde preview en meldt een geweigerde
+  klembordtoegang als gewone melding. Na een clubwissel wordt de preview van Planning ook opnieuw
+  opgehaald.
+- **Volledig seizoen opnieuw opbouwen: seizoenslijst en foutmelding kloppen** (#1461). De lijst biedt
+  geen seizoen in de toekomst meer aan, en kiest u een seizoen waarvoor geen seizoensrij bestaat, dan
+  meldt de server dat (400) in plaats van stil een standaardperiode op te halen en "voltooid" te melden.
+- **Begeleiders-import: te lange kolom geeft op Postgres een duidelijke melding** (#1461). Een te lange
+  waarde (bijvoorbeeld Functie) gaf op de Postgres-tier een serverfout (500); nu, net als op SQL Server,
+  een 400 met de regelnummers. Die regelnummers verwijzen nu naar de echte regel in het bestand (ook na
+  lege regels en overgeslagen duplicaten), en de duplicaatwaarschuwing noemt het telefoonnummer.
+- **Veld optimalisatie waarschuwt bij delen na handmatig verslepen** (#1461). Het gedeelde bestand toont
+  de berekende planning, niet uw handmatige aanpassingen; het deelpaneel zegt dat nu. De echte oplossing
+  volgt in issue #1460.
+
+### Security
+- **HTML-export van de veldbezetting en planning krijgt strikte beveiligingskoppen** (#1461). De export
+  wordt vanaf de API geserveerd; hij draagt nu `Content-Security-Policy: default-src 'none';
+  style-src 'unsafe-inline'; sandbox` en `X-Content-Type-Options: nosniff`, op beide databasetiers.
+  Nieuwe CI-guard bewaakt dat het in BlazorAdmin gelinkte bronbestand alleen van de BCL afhangt.
 
 ## [3.9.0.0] — 2026-10-02
 
