@@ -1,3 +1,4 @@
+using Planner.Shared.Sync;
 using System.Text.Json;
 using Azure.Storage.Queues;
 using Microsoft.AspNetCore.Http;
@@ -79,10 +80,18 @@ public static class AdminSyncFunction
         return AdminEndpoint.ExecuteAsync(req, log, "sync starten",
             async clubCode =>
             {
+                // #1352: optionele body {reset, season}; zonder body exact het oude gedrag.
+                var keuze = SyncTriggerCore.LeesEnValideer(
+                    await new StreamReader(req.Body).ReadToEndAsync(), DateTime.UtcNow.Year);
+                if (!keuze.Geldig)
+                    return new BadRequestObjectResult(new { error = keuze.Fout });
+
                 int toWeekOffset = await SystemUtilities.SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
+                var fromWeekOffset = await SyncTriggerCore.BepaalVanWeekOffsetAsync(keuze,
+                    jaar => SystemUtilities.SeasonHelper.GetSeasonStartWeekOffsetAsync(jaar, log));
                 var jobId = Guid.NewGuid();
 
-                await SyncJobsRepository.CreateAsync(jobId, clubCode, weekOffsetFrom: -1, weekOffsetTo: toWeekOffset);
+                await SyncJobsRepository.CreateAsync(jobId, clubCode, weekOffsetFrom: fromWeekOffset, weekOffsetTo: toWeekOffset);
 
                 var storageVerbinding = Environment.GetEnvironmentVariable("AzureWebJobsStorage")
                     ?? throw new InvalidOperationException(
@@ -93,18 +102,18 @@ public static class AdminSyncFunction
                 {
                     JobId = jobId,
                     ClubCode = clubCode,
-                    WeekOffsetFrom = -1,
+                    WeekOffsetFrom = fromWeekOffset,
                     WeekOffsetTo = toWeekOffset
                 };
                 await queueClient.SendMessageAsync(JsonSerializer.Serialize(message));
 
-                log.LogInformation("AdminSyncTrigger: job {JobId}, range -1 .. {To} — op de queue gezet", jobId, toWeekOffset);
+                log.LogInformation("AdminSyncTrigger: job {JobId}, range {From} .. {To} (reset: {Reset}) — op de queue gezet", jobId, fromWeekOffset, toWeekOffset, keuze.SeasonStartYear is not null);
 
                 return new ObjectResult(new
                 {
                     status = "gestart",
                     jobId,
-                    weekOffsetFrom = -1,
+                    weekOffsetFrom = fromWeekOffset,
                     weekOffsetTo = toWeekOffset,
                     tijdstip = DateTime.UtcNow,
                     melding = "Sync gestart op achtergrond. Controleer de voortgang via /beheer/sync/status?jobId=" + jobId + "."

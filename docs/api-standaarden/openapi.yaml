@@ -33,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.9.0.0
+  version: 3.9.1.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -4533,6 +4533,8 @@ paths:
       description: |
         Start een Sportlink-synchronisatie op de achtergrond (~5 minuten). Retourneert direct 202.
         Prik op `GET /beheer/sync/status` om de voortgang te bewaken via `lastSyncTimestamp`.
+        Met `reset: true` en `season` wordt het volledige seizoen opnieuw opgehaald vanaf de
+        seizoensstart (#1352). Zonder `reset` wordt `season` genegeerd.
       security:
         - easyAuth: []
       requestBody:
@@ -4541,7 +4543,18 @@ paths:
           application/json:
             schema:
               type: object
+              properties:
+                reset:
+                  type: boolean
+                  default: false
+                  description: Volledig seizoen opnieuw ophalen vanaf de seizoensstart.
+                season:
+                  type: integer
+                  minimum: 2000
+                  description: Startjaar van het seizoen (bijv. 2025 voor 2025/2026); verplicht bij reset, maximaal huidig jaar + 1.
       responses:
+        '400':
+          description: Ongeldig seizoen of ongeldige body (NL-foutmelding in `error`)
         '202':
           description: Synchronisatie gestart
           headers:
