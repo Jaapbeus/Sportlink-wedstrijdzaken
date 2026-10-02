@@ -15,12 +15,13 @@ namespace Planner.Shared.Tests.Integrations.SportlinkClub;
 /// </summary>
 public class SportlinkChangeRequestOverzichtTests
 {
-    private static SportlinkChangeRequest Verzoek(string publicMatchId, string status, string requestId = "R1") => new()
+    private static SportlinkChangeRequest Verzoek(string publicMatchId, string status, string requestId = "R1", bool? inkomend = null) => new()
     {
         PublicMatchId = publicMatchId,
         PublicRequestId = requestId,
         RequestStatus = status,
         Reason = "reden",
+        IsIncomingRequest = inkomend,
     };
 
     private static readonly SportlinkWedstrijdContext Context =
@@ -30,13 +31,13 @@ public class SportlinkChangeRequestOverzichtTests
     public void Verrijk_BekendPublicMatchId_KoppeltWedstrijdContext()
     {
         var result = SportlinkChangeRequestOverzichtItem.Verrijk(
-            new[] { Verzoek("M1", "CONFIRM") },
+            new[] { Verzoek("M1", "CONFIRM_HOME") },
             new Dictionary<string, SportlinkWedstrijdContext> { ["M1"] = Context });
 
         result.Should().ContainSingle();
         result[0].Wedstrijd.Should().Be(Context);
         result[0].PublicMatchId.Should().Be("M1");
-        result[0].RequestStatus.Should().Be("CONFIRM");
+        result[0].RequestStatus.Should().Be("CONFIRM_HOME");
         result[0].Reason.Should().Be("reden", "de Sportlink-velden blijven letterlijk staan");
     }
 
@@ -44,7 +45,7 @@ public class SportlinkChangeRequestOverzichtTests
     public void Verrijk_OnbekendPublicMatchId_LaatVerzoekStaanZonderContext()
     {
         var result = SportlinkChangeRequestOverzichtItem.Verrijk(
-            new[] { Verzoek("M-onbekend", "CONFIRM") },
+            new[] { Verzoek("M-onbekend", "CONFIRM_HOME") },
             new Dictionary<string, SportlinkWedstrijdContext>());
 
         result.Should().ContainSingle("een verzoek zonder cache-treffer mag nooit uit de lijst verdwijnen");
@@ -57,15 +58,59 @@ public class SportlinkChangeRequestOverzichtTests
         var input = new[]
         {
             Verzoek("A", "APPROVED", "R1"),
-            Verzoek("B", "CONFIRM", "R2"),
+            Verzoek("B", "CONFIRM_HOME", "R2"),
             Verzoek("C", "DENIED", "R3"),
-            Verzoek("D", "confirm", "R4"),   // Sportlink-casing niet vertrouwen
+            Verzoek("D", "confirm_union", "R4"),   // Sportlink-casing niet vertrouwen
             Verzoek("E", "REVOKED", "R5"),
         };
 
         var result = SportlinkChangeRequestOverzichtItem.Verrijk(input, new Dictionary<string, SportlinkWedstrijdContext>());
 
         result.Select(r => r.PublicRequestId).Should().Equal("R2", "R4", "R1", "R3", "R5");
+    }
+
+    [Theory]
+    [InlineData("CONFIRM_AWAY", "OPEN")]
+    [InlineData("CONFIRM_HOME", "OPEN")]
+    [InlineData("CONFIRM_UNION", "OPEN")]
+    [InlineData("APPROVED", "ACCEPTED")]
+    [InlineData("MATCH_FINALIZED", "ACCEPTED")]
+    [InlineData("DENIED", "DENIED")]
+    [InlineData("REVOKED", "REVOKED")]
+    [InlineData("revoked", "REVOKED")]
+    [InlineData("", "UNKNOWN")]
+    [InlineData(null, "UNKNOWN")]
+    [InlineData("CONFIRM", "UNKNOWN")]
+    [InlineData("XYZ", "UNKNOWN")]
+    public void StatusGroep_Bepaal_MapptNaarSportlinkGroepen(string? status, string verwacht)
+        => SportlinkChangeRequestStatusGroep.Bepaal(status).Should().Be(verwacht);
+
+    [Fact]
+    public void Verrijk_OpenstaandInkomendEerst_DaarnaOpenstaandUitgaand_DanRest()
+    {
+        var input = new[]
+        {
+            Verzoek("A", "APPROVED", "R1", true),
+            Verzoek("B", "CONFIRM_AWAY", "R2", false),
+            Verzoek("C", "CONFIRM_HOME", "R3", true),
+            Verzoek("D", "DENIED", "R4", true),
+        };
+
+        var result = SportlinkChangeRequestOverzichtItem.Verrijk(input, new Dictionary<string, SportlinkWedstrijdContext>());
+
+        result.Select(r => r.PublicRequestId).Should().Equal("R3", "R2", "R1", "R4");
+        result[0].StatusGroep.Should().Be("OPEN");
+    }
+
+    [Fact]
+    public void Verrijk_GeeftIsIncomingRequestDoor()
+    {
+        var result = SportlinkChangeRequestOverzichtItem.Verrijk(
+            new[] { Verzoek("A", "APPROVED", "R1", false), Verzoek("B", "APPROVED", "R2", null) },
+            new Dictionary<string, SportlinkWedstrijdContext>());
+
+        // null telt als inkomend en sorteert dus vóór uitgaand (false).
+        result.Select(r => r.IsIncomingRequest).Should().Equal(null, false);
     }
 
     [Fact]

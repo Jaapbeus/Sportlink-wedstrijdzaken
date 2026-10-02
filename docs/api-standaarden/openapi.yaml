@@ -33,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.8.2.0
+  version: 3.8.2.1
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -1317,7 +1317,7 @@ components:
       description: |
         Eén inkomend wijzigingsverzoek (#996, epic #986). Spiegelt
         Planner.Shared.Integrations.SportlinkClub.SportlinkChangeRequest. Veldnamen letterlijk uit
-        Sportlinks bundle-code (issue #996) — nog niet live geverifieerd.
+        Sportlinks bundle-code (issue #996); `ChangeRequestStatus` en `IsIncomingRequest` bevestigd in #1439.
       properties:
         PublicMatchId:
           type: string
@@ -1327,8 +1327,20 @@ components:
           nullable: true
         RequestStatus:
           type: string
-          description: APPROVED, CONFIRM (wacht op ons), DENIED of REVOKED
+          description: |
+            Sportlinks `ChangeRequestStatus` (bevestigd uit Sportlinks bundle, #1439): APPROVED,
+            CONFIRM_AWAY, CONFIRM_HOME, CONFIRM_UNION, DENIED, MATCH_FINALIZED of REVOKED.
           nullable: true
+        IsIncomingRequest:
+          type: boolean
+          nullable: true
+          description: true = inkomend (tegenstander vraagt ons), false = uitgaand (#1439).
+        StatusGroep:
+          type: string
+          enum: [OPEN, ACCEPTED, DENIED, REVOKED, UNKNOWN]
+          description: |
+            Sportlinks vier filtergroepen, server-side afgeleid van RequestStatus (#1439). OPEN =
+            CONFIRM_*, ACCEPTED = APPROVED/MATCH_FINALIZED. Alleen aanwezig op de GET-respons.
         RequestData:
           type: object
           nullable: true
@@ -4150,11 +4162,11 @@ paths:
       description: |
         Niet wedstrijdcode-gescoped: `MatchChangeRequests` levert alle openstaande verzoeken voor
         het gekoppelde serviceaccount in één keer. Filter client-side op
-        `RequestStatus == "CONFIRM"` voor verzoeken die op ons wachten.
+        `StatusGroep == "OPEN"` (en `IsIncomingRequest == true` voor verzoeken die op ons wachten).
 
         Sinds #1111 draagt elk item ook `Wedstrijd`: onze eigen wedstrijdcontext (wedstrijdnummer,
         teams, datum, tijd, accommodatie) uit `his.matches` via de PublicMatchId-cache. `null` als
-        de wedstrijd nog niet gecachet is. Openstaande verzoeken (`CONFIRM`) staan vooraan.
+        de wedstrijd nog niet gecachet is. Openstaande verzoeken (`StatusGroep` OPEN) staan vooraan, inkomend vóór uitgaand.
       security:
         - easyAuth: []
       responses:

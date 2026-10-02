@@ -1177,13 +1177,16 @@ De tabel heeft de kolommen **E-mailadres**, **Omschrijving** en **Actief**.
 
 ## 18. Wijzigingsverzoeken (`/wijzigingsverzoeken`)
 
-Toont wijzigingsverzoeken die tegenstanders in Sportlink Club hebben ingediend voor de datum, tijd
-of accommodatie van een wedstrijd, ingedeeld naar het voorbeeld van Sportlinks eigen scherm.
+Toont wijzigingsverzoeken voor de datum, tijd of accommodatie van een wedstrijd uit Sportlink Club,
+ingedeeld naar het voorbeeld van Sportlinks eigen scherm: per filter twee secties, **Inkomend**
+(tegenstanders vragen u) en **Uitgaand** (u vraagt hen).
 
-**Statusfilter** bovenaan (knoppenrij, met aantallen): **Openstaand** (standaard), Goedgekeurd,
-Afgewezen, Ingetrokken, Alle. Alleen openstaande verzoeken wachten op een beslissing van uw club.
+**Statusfilter** bovenaan (knoppenrij, met aantallen): **Openstaand** (standaard), Akkoord,
+Afgewezen, Ingetrokken, Alle (en alleen als er verzoeken met een onbekende status zijn: Onbekend).
+Bij een openstaand verzoek staat erbij op wie gewacht wordt (de bond, thuisclub of uitclub). Alleen
+openstaande **inkomende** verzoeken kunt u hier goedkeuren of afwijzen.
 
-**Kolommen:** statusicoon (oranje uitroepteken = openstaand, groen vinkje = goedgekeurd, rood kruis
+**Kolommen:** statusicoon (oranje uitroepteken = openstaand, groen vinkje = akkoord, rood kruis
 = afgewezen, grijs = ingetrokken), Wedstrijdnr., Thuis, Uit, Datum, Tijd, Accommodatie, Gevraagd
 (alleen wat afwijkt van de huidige planning), Reden. Wedstrijdnummer en teamnamen komen uit de
 eigen wedstrijdgegevens van de app; staat er een streepje, dan is die wedstrijd nog niet aan het

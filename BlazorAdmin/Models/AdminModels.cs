@@ -280,6 +280,12 @@ public class SportlinkChangeRequestDto
     public string? PublicMatchId { get; set; }
     public string? PublicRequestId { get; set; }
     public string? RequestStatus { get; set; }
+
+    /// <summary>#1439: true = inkomend (tegenstander vraagt ons), false = uitgaand, null = onbekend.</summary>
+    public bool? IsIncomingRequest { get; set; }
+
+    /// <summary>#1439: OPEN, ACCEPTED, DENIED, REVOKED of UNKNOWN — zie SportlinkChangeRequestStatusGroep.</summary>
+    public string? StatusGroep { get; set; }
     public SportlinkChangeRequestDataDto? RequestData { get; set; }
     public string? Reason { get; set; }
     public string? Remarks { get; set; }
