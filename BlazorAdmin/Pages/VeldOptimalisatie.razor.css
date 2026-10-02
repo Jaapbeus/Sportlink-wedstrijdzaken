@@ -183,15 +183,3 @@
 .tabel-extra-compact {
     font-size: 0.75rem;
 }
-
-/* ── Planning delen ── */
-.export-summary {
-    cursor: pointer;
-}
-
-.export-iframe {
-    width: 100%;
-    min-height: 700px;
-    border: none;
-    display: block;
-}

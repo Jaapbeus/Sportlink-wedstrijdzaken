@@ -489,33 +489,10 @@
     @* ── Deelbare weergave van de berekende planning ── *@
     @if (!string.IsNullOrEmpty(HuidigeExportHtml))
     {
-        <details class="mb-3">
-            <summary class="text-muted export-summary">Planning delen (HTML voor e-mail of download)</summary>
-            <div class="card mt-2">
-                <div class="card-body">
-                    <p class="text-muted small">
-                        Weergave van de @(_visTab == "optimaal" ? "optimale" : "huidige") planning zoals hierboven
-                        gekozen. Handig om als e-mail te versturen of als bestand te bewaren.
-                    </p>
-                    <div class="mb-2">
-                        <button class="btn btn-sm btn-outline-secondary me-2" @onclick="KopieerEmailHtmlAsync">
-                            @(_kopieerStatus ?? "Kopieer HTML")
-                        </button>
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="DownloadHtmlAsync">
-                            Download HTML
-                        </button>
-                    </div>
-                    <div class="border rounded overflow-hidden">
-                        @* sandbox zonder allow-scripts: de HTML wordt server-side gegenereerd uit
-                           Sportlink-data (team-/tegenstandernamen). Defense in depth tegen XSS,
-                           onafhankelijk van server-side encoding. (#603) *@
-                        <iframe srcdoc="@ExportHtmlZonderScript"
-                                sandbox="allow-same-origin"
-                                class="export-iframe"
-                                title="Veld optimalisatie"></iframe>
-                    </div>
-                </div>
-            </div>
-        </details>
+        <DeelPaneel Titel="Planning delen (HTML voor e-mail of download)"
+                    Toelichting="@ExportToelichting"
+                    BestandsNaam="@ExportBestandsNaam"
+                    VerversSleutel="@ExportSleutel"
+                    HtmlOphalen="@(() => Task.FromResult(HuidigeExportHtml ?? ""))" />
     }
 }

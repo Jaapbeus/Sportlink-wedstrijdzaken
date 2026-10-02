@@ -1,0 +1,49 @@
+@* Generiek "planning delen"-paneel (#1362): sandboxed preview + kopieer/download (+ PDF als PdfOphalen is gezet). *@
+<div class="mb-3">
+    <button type="button" class="btn btn-link p-0 text-muted deel-paneel-kop" aria-expanded="@(_open ? "true" : "false")"
+            @onclick="WisselOpenAsync">
+        <span aria-hidden="true">@(_open ? "▾" : "▸")</span> @Titel
+    </button>
+    @if (_open)
+    {
+        <div class="card mt-2">
+            <div class="card-body">
+                @if (!string.IsNullOrEmpty(Toelichting))
+                {
+                    <p class="text-muted small">@Toelichting</p>
+                }
+                <div class="mb-2">
+                    <button class="btn btn-sm btn-outline-secondary me-2" disabled="@_status.Bezig" @onclick="KopieerAsync">
+                        @(_kopieerStatus ?? "Kopieer HTML")
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary me-2" disabled="@_status.Bezig" @onclick="DownloadHtmlAsync">
+                        Download HTML
+                    </button>
+                    @if (PdfOphalen != null)
+                    {
+                        <button class="btn btn-sm btn-outline-secondary" disabled="@_status.Bezig" @onclick="DownloadPdfAsync">
+                            Download PDF
+                        </button>
+                    }
+                    @if (_status.Bezig)
+                    {
+                        <span class="spinner-border spinner-border-sm ms-2" role="status" aria-label="Bezig"></span>
+                    }
+                </div>
+                <Melding Status="_status" Klasse="small" />
+                @if (!string.IsNullOrEmpty(_previewHtml))
+                {
+                    <div class="border rounded overflow-hidden">
+                        @* sandbox zonder allow-scripts: de HTML wordt server-side gegenereerd uit
+                           Sportlink-data (team-/tegenstandernamen). Defense in depth tegen XSS,
+                           onafhankelijk van server-side encoding. (#603) *@
+                        <iframe srcdoc="@_previewHtml"
+                                sandbox="allow-same-origin"
+                                class="deel-paneel-iframe"
+                                title="@Titel"></iframe>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>

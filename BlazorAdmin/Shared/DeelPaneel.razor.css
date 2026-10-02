@@ -1,0 +1,11 @@
+.deel-paneel-kop {
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.deel-paneel-iframe {
+    width: 100%;
+    min-height: 700px;
+    border: none;
+    display: block;
+}
