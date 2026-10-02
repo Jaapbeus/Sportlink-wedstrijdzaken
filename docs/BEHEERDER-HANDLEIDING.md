@@ -1214,8 +1214,15 @@ is ingeschakeld en gekoppeld voor de rol die deze acties uitvoert.
 
 Bedoeld voor snelle invoer: één scherm met **datum**, **aanvangstijd**, **duur** (standaard 90
 minuten), **team** (keuzelijst met de actieve clubteams uit de eigen database), **tegenstander**
-(vrije tekst), **veld** (keuzelijst met de actieve velden) en een optionele **omschrijving**. Enter
-in een veld verstuurt het formulier.
+(vrije tekst), **veld** (keuzelijst met de actieve velden) en een optionele **omschrijving**.
+
+> **Aanmaken gaat alleen via de knop, en vraagt eerst om bevestiging (#1436).** Enter in een veld
+> verstuurt níets meer: dat maakte eerder ongemerkt een echte wedstrijd in Sportlink aan. Na een
+> klik op **Wedstrijd aanmaken** controleert de pagina de invoer (met Nederlandse meldingen per
+> ontbrekend veld). Staat dry-run uit, of is de stand onbekend, dan verschijnt een samenvatting
+> (datum, tijd, team, tegenstander, veld) met **Bevestigen en aanmaken** en **Annuleren**; de velden
+> zijn dan vergrendeld. Pas na **Bevestigen** gaat de aanvraag naar Sportlink, en zolang die loopt
+> kan er geen tweede worden verstuurd. Met dry-run aan wordt direct gesimuleerd, zonder bevestiging.
 
 De team-keuzelijst heeft onderaan een extra optie **"Vrije tekst invoeren…"** (#1396): kiest u
 die, dan verschijnt een tekstveld waarin u een willekeurige teamnaam kunt typen — handig om te

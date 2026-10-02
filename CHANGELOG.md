@@ -18,6 +18,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **Wedstrijd aanmaken maakt geen wedstrijd meer aan zonder dat u daarom vraagt** (#1436). Een Enter
+  in een tekstveld verstuurde het formulier, en met dry-run uit stond er dan meteen een echte
+  wedstrijd in Sportlink Club. Aanmaken gaat nu alleen via de knop. Met dry-run uit verschijnt eerst
+  een samenvatting met **Bevestigen en aanmaken**, een dubbelklik maakt geen tweede wedstrijd aan,
+  en ontbrekende velden krijgen een Nederlandse melding in plaats van de Engelse browsermelding.
+
 ## [3.8.1.0] — 2026-10-01
 
 ### Changed
