@@ -33,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.8.1.0
+  version: 3.8.2.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -1170,11 +1170,52 @@ components:
               type: integer
               format: int64
               nullable: true
-              description: ExternalMatchId uit ClubMatchDefaults (het eerstvolgende vrije nummer).
+              description: ExternalMatchId uit de eigen teller (#1437) — `YYMMDD` + tweecijferig volgnummer per speeldag, bijv. 26100201.
             VeldNaam: { type: string, nullable: true }
+            Velddeel:
+              type: string
+              nullable: true
+              description: '#1437: het velddeel zoals het naar Sportlink ging (`FieldSize`): 1.0, 0.5, 0.25 of 0.125.'
             Waarschuwingen:
               type: array
               items: { type: string }
+    OefenwedstrijdFormulierResponse:
+      type: object
+      description: Voorinvulling voor "Wedstrijd aanmaken" (#1437).
+      properties:
+        Teams:
+          type: array
+          items:
+            type: object
+            properties:
+              TeamNaam: { type: string }
+              Leeftijdscategorie:
+                type: string
+                nullable: true
+                description: Onze leeftijdscategorie van het team (bijv. `JO10`, `1-99`).
+              AgeClassCode:
+                type: string
+                nullable: true
+                description: Het Sportlink-`Id` dat bij die categorie hoort; `null` als onbekend of Sportlink niet bereikbaar.
+              Duur:
+                type: integer
+                nullable: true
+                description: Wedstrijdduur in minuten uit de speeltijden van de club.
+              Veldafmeting:
+                type: string
+                nullable: true
+                description: De veldafmeting uit de speeltijden als velddeel — `1.0`, `0.5`, `0.25` of `0.125`; `null` als onbekend.
+        AgeClasses:
+          type: array
+          description: Sportlinks leeftijdscategorielijst; leeg als Sportlink niet bereikbaar is.
+          items:
+            type: object
+            properties:
+              Id: { type: string }
+              Description: { type: string }
+        SportlinkBeschikbaar:
+          type: boolean
+          description: "`false` als Sportlinks lijst niet kon worden opgehaald (de teamgegevens zijn dan wel compleet)."
     SportlinkClubMatchPickListsResponse:
       type: object
       description: |
@@ -4202,7 +4243,11 @@ paths:
         HTTP 200 met nieuw `PublicMatchId`). De server haalt daarvoor eerst vier read-only lijsten
         op (`ClubMatchDefaults`, `PickListsTeams`, `PickListsLocation`,
         `PickListsMatchInformation`) en leidt daaruit team-ID (`T…`), leeftijdscategorie,
-        spelactiviteit, veld (`SubFacilityId`) en wedstrijdnummer af. Een team of veld dat Sportlink
+        spelactiviteit en veld (`SubFacilityId`) af. Het wedstrijdnummer (`ExternalMatchId`) komt sinds #1437
+        uit een eigen teller per club en speeldag: `YYMMDD` + tweecijferig volgnummer (26100201,
+        26100202, …), pas gereserveerd vlak voor de Sportlink-aanroep; ook een dry-run verbruikt een
+        nummer. De spelactiviteit komt uit de clubinstelling `SportlinkSpelactiviteit` (omschrijving
+        of IdTag; gevonden = wint altijd), anders van het team. Een team of veld dat Sportlink
         niet (eenduidig) kent geeft 400; wat niet af te leiden is valt terug op Sportlinks
         standaardwaarden met een waarschuwing. Er is vooraf geen bestaande wedstrijd, dus geen
         `SportlinkMutationGuard`-check — alleen de eigen toggle + EgressGuard. Bewust NIET gebouwd:
@@ -4254,6 +4299,22 @@ paths:
                   type: string
                   nullable: true
                   description: Eigen omschrijving; leeg → `Oefenwedstrijd [team] - [tegenstander]`.
+                Velddeel:
+                  type: string
+                  enum: ['1.0', '0.5', '0.25', '0.125']
+                  default: '1.0'
+                  description: |
+                    #1437: het deel van het veld (`FieldSize` in Sportlinks body) — heel, half, kwart of achtste veld;
+                    `FieldOffset` is altijd `0` (eerste deel). **Aanname:** alleen `1.0` is live bevestigd, de
+                    notatie van de overige drie is geëxtrapoleerd en nog niet met een echte wedstrijd gecontroleerd.
+                    Een andere waarde → 400.
+                AgeClassCode:
+                  type: string
+                  nullable: true
+                  description: |
+                    #1437: Sportlink-`Id` van de leeftijdscategorie (bijv. `110`, uit `GET /sportlink/club-match/formulier`).
+                    Moet in Sportlinks lijst staan (anders 400) en wint van de categorie die uit het team volgt.
+                    Leeg → afleiden uit het team, anders Sportlinks standaard met een waarschuwing.
       responses:
         '200':
           description: Mutatieresultaat. Een afwijzing door Sportlink zonder eigen `Violations` (bijv. HTTP 602) krijgt sinds #1427 Sportlinks `Message` als enige violation (`Sportlink <status>: <message>`).
@@ -4262,7 +4323,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/OefenwedstrijdAanmaakResponse'
         '400':
-          description: MatchDateTime/TeamNaam/Tegenstander ontbreekt, Duration buiten 1–240, team niet bekend als actief (alleen zonder `VrijeTekst`), veld niet bekend als actief, of team/veld niet (eenduidig) gevonden in Sportlinks lijsten
+          description: MatchDateTime/TeamNaam/Tegenstander ontbreekt, Duration buiten 1–240, Velddeel niet een van 1.0/0.5/0.25/0.125, AgeClassCode niet in Sportlinks lijst, team niet bekend als actief (alleen zonder `VrijeTekst`), veld niet bekend als actief, team/veld niet (eenduidig) gevonden in Sportlinks lijsten, of er zijn voor die speeldag al 99 wedstrijdnummers uitgegeven
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -4301,6 +4362,34 @@ paths:
                 properties:
                   DryRun:
                     type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /sportlink/club-match/formulier:
+    get:
+      tags: [sportlink]
+      operationId: getSportlinkClubMatchFormulier
+      summary: Voorinvulling voor het scherm "Wedstrijd aanmaken" (#1437)
+      description: |
+        Per actief team de Sportlink-leeftijdscategorie, de duur en het velddeel (uit de speeltijden van de
+        club), plus Sportlinks leeftijdscategorielijst voor de keuzelijst. Achter dezelfde
+        Wedstrijdzaken-poort als `POST /sportlink/club-match`; de speeltijden-API (`/beheer/speeltijden`)
+        is admin-only en dus niet bruikbaar voor een gebruiker met alleen die rol. Is Sportlink niet
+        bereikbaar (extensie uit, geen koppeling, fout), dan komen de teamgegevens zonder lijst terug met
+        `SportlinkBeschikbaar: false` — het scherm blijft werken.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Voorinvulling
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OefenwedstrijdFormulierResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':

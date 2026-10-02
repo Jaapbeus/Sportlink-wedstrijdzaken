@@ -1,6 +1,7 @@
 using FunctionApp.Postgres.TeamResolution;
 using Npgsql;
 using Planner.Shared.Integrations.SportlinkClub;
+using static Planner.Endpoints.Sportlink.ClubMatchEndpointCore;
 
 namespace FunctionApp.Postgres.Sportlink;
 
@@ -44,13 +45,7 @@ internal static class SportlinkClubMatchRepository
             LIMIT 1", conn);
         cmd.Parameters.AddWithValue("cc", clubCode);
         cmd.Parameters.AddWithValue("naam", teamNaam.Trim());
-        await using var r = await cmd.ExecuteReaderAsync();
-        if (!await r.ReadAsync()) return null;
-        return new ClubMatchTeamKoppeling(
-            r.GetString(0),
-            r.IsDBNull(1) ? null : r.GetString(1),
-            r.IsDBNull(2) ? null : r.GetInt64(2),
-            r.GetInt32(3));
+        return (await LeesAlleAsync(cmd, TeamKoppelingRij)).FirstOrDefault();
     }
 
     /// <summary>Naam van een actief veld van deze club, of <c>null</c> als het veldnummer onbekend/inactief is.</summary>
@@ -78,10 +73,56 @@ internal static class SportlinkClubMatchRepository
             WHERE clubcode = @cc AND actief = TRUE
             ORDER BY veldnummer", conn);
         cmd.Parameters.AddWithValue("cc", clubCode);
-        var resultaat = new List<(int, string)>();
-        await using var r = await cmd.ExecuteReaderAsync();
-        while (await r.ReadAsync())
-            resultaat.Add((r.GetInt32(0), r.GetString(1)));
-        return resultaat;
+        return await LeesAlleAsync(cmd, r => (r.GetInt32(0), r.GetString(1)));
+    }
+
+    /// <summary>Actieve teams (met leeftijdscategorie) én speeltijden van deze club (#1437) — bron voor de
+    /// voorinvulling van "Wedstrijd aanmaken". Geen teamnaam-logica: de koppeling met de speeltijden
+    /// gebeurt in <c>ClubMatchEndpointCore</c> (Planner.Shared-normalisatie).</summary>
+    internal static async Task<(List<ClubMatchFormulierTeamInvoer> Teams, List<ClubMatchSpeeltijdInvoer> Speeltijden)> GetFormulierGegevensAsync(string clubCode, string cs)
+    {
+        await using var conn = new NpgsqlConnection(cs);
+        await conn.OpenAsync();
+        await using var teamsCmd = new NpgsqlCommand(
+            "SELECT teamnaam, leeftijdscategorie FROM public.teams WHERE clubcode = @cc AND isactief = TRUE ORDER BY teamnaam", conn);
+        teamsCmd.Parameters.AddWithValue("cc", clubCode);
+        await using var tijdenCmd = new NpgsqlCommand(
+            "SELECT leeftijd, veldafmeting, wedstrijdtotaal FROM public.speeltijden WHERE clubcode = @cc", conn);
+        tijdenCmd.Parameters.AddWithValue("cc", clubCode);
+        return (await LeesAlleAsync(teamsCmd, TeamRij), await LeesAlleAsync(tijdenCmd, SpeeltijdRij));
+    }
+
+    /// <summary>Clubinstelling Spelactiviteit (#1437, migratie 032) — leeg of ontbrekend is <c>null</c>.</summary>
+    internal static async Task<string?> GetSpelactiviteitAsync(string clubCode, string cs)
+    {
+        await using var conn = new NpgsqlConnection(cs);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(
+            "SELECT sportlinkspelactiviteit FROM public.appsettings WHERE clubcode = @cc LIMIT 1", conn);
+        cmd.Parameters.AddWithValue("cc", clubCode);
+        return await cmd.ExecuteScalarAsync() as string;
+    }
+
+    /// <summary>
+    /// Reserveert het volgende volgnummer voor deze speeldag (#1437), atomair in één statement: een
+    /// <c>INSERT ... ON CONFLICT DO UPDATE</c> is voor gelijktijdige aanvragen een rijslot, dus twee
+    /// aanvragen krijgen nooit hetzelfde nummer. <c>null</c> als de dag vol zit (het volgnummer blijft
+    /// dan op het maximum staan).
+    /// </summary>
+    internal static async Task<int?> ReserveerVolgnummerAsync(string clubCode, DateOnly datum, string cs)
+    {
+        await using var conn = new NpgsqlConnection(cs);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(@"
+            INSERT INTO public.wedstrijdnummerteller AS t (clubcode, datum, laatstevolgnummer)
+            VALUES (@cc, @datum, 1)
+            ON CONFLICT (clubcode, datum) DO UPDATE
+                SET laatstevolgnummer = t.laatstevolgnummer + 1
+                WHERE t.laatstevolgnummer < @max
+            RETURNING laatstevolgnummer", conn);
+        cmd.Parameters.AddWithValue("cc", clubCode);
+        cmd.Parameters.AddWithValue("datum", datum);
+        cmd.Parameters.AddWithValue("max", ClubMatchWedstrijdNummer.MaxVolgnummer);
+        return await cmd.ExecuteScalarAsync() as int?;
     }
 }

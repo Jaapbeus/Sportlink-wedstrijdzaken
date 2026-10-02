@@ -93,6 +93,7 @@
     <Build Include="dbo\Tables\DateTable.sql" />
     <Build Include="dbo\Tables\Season.sql" />
     <Build Include="dbo\Tables\Speeltijden.sql" />
+    <Build Include="dbo\Tables\WedstrijdnummerTeller.sql" />
     <Build Include="dbo\Tables\SportlinkAutoLogin.sql" />
     <Build Include="pub\Views\Matches.sql" />
     <Build Include="his\Tables\Teams.sql" />

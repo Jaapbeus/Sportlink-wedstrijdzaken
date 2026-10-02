@@ -18,6 +18,19 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- **Wedstrijd aanmaken is uitgebreid** (#1437). Kies een **velddeel** (heel, half, kwart of achtste veld)
+  en de **leeftijdscategorie** uit de lijst van Sportlink. Bij het kiezen van een team vult de pagina de
+  duur, leeftijdscategorie en het velddeel voor met wat bij dat team past; u kunt ze daarna nog aanpassen.
+  Team en tegenstander staan nu bovenaan, de voorbeeldteksten in de velden zijn weg, er is een knop
+  **Leegmaken**, en na een echte aanmaak staat onder de knoppen een link **Open wedstrijd in Sportlink
+  Club**. Het resultaat toont ook het wedstrijdnummer en het velddeel.
+- **Eigen wedstrijdnummers**: een zelf aangemaakte wedstrijd krijgt het nummer jaar-maand-dag plus een
+  volgnummer van twee cijfers (bijv. 26100201), per speeldag en club, maximaal 99 per dag.
+- **Spelactiviteit als clubinstelling** op de pagina Sportlink Web Extension: vult u bijvoorbeeld "Veld -
+  Zaterdag" in, dan gebruikt "Wedstrijd aanmaken" altijd die spelactiviteit; leeg laten werkt zoals voorheen.
+- Het velddeel half, kwart en achtste veld is nog niet met een echte wedstrijd in Sportlink Club gecontroleerd.
+
 ### Fixed
 - **Wedstrijd aanmaken maakt geen wedstrijd meer aan zonder dat u daarom vraagt** (#1436). Een Enter
   in een tekstveld verstuurde het formulier, en met dry-run uit stond er dan meteen een echte

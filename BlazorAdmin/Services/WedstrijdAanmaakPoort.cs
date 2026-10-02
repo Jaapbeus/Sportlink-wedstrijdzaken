@@ -53,7 +53,7 @@ public sealed class WedstrijdAanmaakPoort
     public void Klaar() => Huidig = Stap.Invoer;
 
     /// <summary>Verplichte velden en hun Nederlandse melding. Lege lijst = bruikbaar.</summary>
-    public static IReadOnlyList<string> Valideer(DateTime? datum, string? tijd, int? duur, string? teamNaam, string? tegenstander)
+    public static IReadOnlyList<string> Valideer(DateTime? datum, string? tijd, int? duur, string? teamNaam, string? tegenstander, string? velddeel = null)
     {
         var fouten = new List<string>();
         if (datum == null) fouten.Add("Vul een datum in.");
@@ -61,6 +61,8 @@ public sealed class WedstrijdAanmaakPoort
         if (duur is null or < 1 or > 240) fouten.Add("Vul een duur in tussen 1 en 240 minuten.");
         if (string.IsNullOrWhiteSpace(teamNaam)) fouten.Add("Kies een team of vul een vrije teamnaam in.");
         if (string.IsNullOrWhiteSpace(tegenstander)) fouten.Add("Vul een tegenstander in.");
+        if (!string.IsNullOrWhiteSpace(velddeel) && !OefenwedstrijdFormulierState.Velddelen.Any(v => v.Waarde == velddeel))
+            fouten.Add("Kies een velddeel uit de lijst (heel, half, kwart of achtste veld).");
         return fouten;
     }
 }
