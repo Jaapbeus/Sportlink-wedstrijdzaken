@@ -1287,6 +1287,17 @@ toelichting, dan staat sinds #1427 de foutmelding van Sportlink zelf achter "afg
 (`Sportlink <code>: <melding>`). Deze pagina is onderdeel van de Sportlink Web
 Extension (§19) en vereist dat die is ingeschakeld en gekoppeld voor de rol Wedstrijdzaken.
 
+> **Verwijderen — voorlopig altijd een simulatie (#1440).** Na een échte (niet gesimuleerde) aanmaak
+> staat onder het resultaat de knop **Wedstrijd verwijderen uit Sportlink**. Een klik toont eerst een
+> rood bevestigblok met de omschrijving en het PublicMatchId, met **Ja, verwijderen** en **Annuleren**;
+> pas na **Ja, verwijderen** gaat de aanvraag naar de server. Hoe Sportlink het verwijderen verwacht, is
+> afgeleid uit de openbare code van Sportlink Club en nog niet in de praktijk bevestigd. Daarom wordt er
+> voorlopig **niets** in Sportlink verwijderd, ook niet als dry-run uit staat: de melding zegt dan
+> "Nog niet live bevestigd door Sportlink — deze actie is altijd een simulatie". De poging staat wel in
+> de mutatie-audit. Alleen clubwedstrijden (oefenwedstrijden) komen in aanmerking; een competitie- of
+> bekerwedstrijd weigert de server. Een testwedstrijd ruimt u tot nader order nog op in Sportlink Club
+> zelf (knop **Verwijder** op de wedstrijddetailpagina).
+
 ---
 
 ## 19. Sportlink Web Extension (`/sportlink-extension-settings`) — schrijfrechten naar Sportlink Club

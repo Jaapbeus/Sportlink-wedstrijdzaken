@@ -18,7 +18,15 @@ public enum SportlinkMutationSoort
     /// <see cref="SportlinkMatchChangeValidatie"/> en de forceDryRun-lock op
     /// <c>SportlinkClubClient.RequestMatchChangeAsync</c>.
     /// </summary>
-    DatumTijdAccommodatie
+    DatumTijdAccommodatie,
+
+    /// <summary>
+    /// Een clubwedstrijd verwijderen (#1440, <c>ClubMatchDelete</c>). Toegestaan alleen bij een
+    /// expliciete <c>IsKernelMatch = false</c> — dezelfde voorwaarde waaronder Sportlinks eigen
+    /// frontend de knop "Verwijder" toont (uit de publieke bundle, niet live gezien). Het pad zelf
+    /// staat bovendien hard op dry-run via <c>SportlinkClubClient.ClubMatchDeleteLiveBevestigd</c>.
+    /// </summary>
+    Verwijderen
 }
 
 /// <summary>
@@ -45,6 +53,13 @@ public static class SportlinkMutationGuard
         if (!match.IsHomeMatch)
             return SportlinkMutationGuardResult.Geblokkeerd(
                 "Alleen thuiswedstrijden mogen via de extension gewijzigd worden (IsHomeMatch=false).");
+
+        // #1440: verwijderen hangt uitsluitend aan IsKernelMatch (plus IsHomeMatch hierboven, strenger
+        // dan Sportlinks eigen knop). Afgelast of concept doet er niet toe: ook een afgelaste eigen
+        // oefenwedstrijd moet opgeruimd kunnen worden. Geen enkele Is…Allowed-vlag telt mee — een
+        // bewerkpermissie is geen verwijderpermissie.
+        if (soort == SportlinkMutationSoort.Verwijderen)
+            return MagVerwijderen(match);
 
         // #998: hard blokkeren op IsCanceledMatch/IsConceptMatch — onomstreden gevallen waarin een
         // mutatie nooit zinvol is. MatchStatus wordt BEWUST niet hard afgedwongen (bijv. op
@@ -80,4 +95,14 @@ public static class SportlinkMutationGuard
             : SportlinkMutationGuardResult.Geblokkeerd(
                 $"Sportlink staat deze actie niet toe voor deze wedstrijd ({soort}).");
     }
+
+    /// <summary>Fail-closed: alleen een expliciete <c>IsKernelMatch = false</c> (clubwedstrijd) mag weg (#1440).</summary>
+    private static SportlinkMutationGuardResult MagVerwijderen(SportlinkMatch match) => match.IsKernelMatch switch
+    {
+        false => SportlinkMutationGuardResult.Toegestaan(),
+        true => SportlinkMutationGuardResult.Geblokkeerd(
+            "Alleen clubwedstrijden (oefenwedstrijden) mogen verwijderd worden; dit is een bondswedstrijd (IsKernelMatch=true)."),
+        null => SportlinkMutationGuardResult.Geblokkeerd(
+            "Sportlink gaf niet aan of dit een clubwedstrijd is (IsKernelMatch ontbreekt) — verwijderen geweigerd.")
+    };
 }

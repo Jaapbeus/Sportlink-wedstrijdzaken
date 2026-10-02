@@ -30,6 +30,8 @@ public class SportlinkClubClient : ISportlinkClubClient
     private const string UserInfoEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/user/UserInfo";
     // #997: aanmaken van een nieuwe oefenwedstrijd ("clubwedstrijd") — zie CreateClubMatchAsync.
     private const string ClubMatchEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/clubmatch/ClubMatch";
+    // #1440: verwijderen van een clubwedstrijd — zie DeleteClubMatchAsync.
+    private const string ClubMatchDeleteEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/clubmatch/ClubMatchDelete";
     // #997: de twee ondersteunende picklist-GETs die in deze ronde bewust WEL zijn aangesloten
     // (bewust beperkte scope, zie PR-beschrijving) — read-only, persoonsgegevensvrij.
     private const string PickListsTeamsEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/clubmatch/PickListsTeams";
@@ -85,6 +87,14 @@ public class SportlinkClubClient : ISportlinkClubClient
     // delete-methode onbekend). Grep-baar bij naam, zelfde patroon als MatchOfficialsActionLiveBevestigd.
     // Eigenaar: op true gezet op 27-09-2026 na live-bevestiging buiten agent-sessie om (#1319).
     private const bool ClubMatchLiveBevestigd = true;
+
+    // #1440: verwijderen van een clubwedstrijd. Methode (DELETE), parameter (PublicMatchId als
+    // querystring, geen body) en foutvorm (HTTP 420 met Violations) komen uit Sportlinks PUBLIEKE
+    // frontend-bundle (02-10-2026) — NOOIT live gezien. Of verwijderen in Sportlink terug te draaien
+    // is, is onbekend. Daarom hard op forceDryRun totdat een mens (nooit een agent, zie
+    // docs/SPORTLINK-WEB-EXTENSION.md §4.4) een live trace heeft gedaan en deze constante in een
+    // aparte, reviewbare PR op true zet. Grep-baar bij naam; SportlinkClubMatchDeleteTests bewaakt hem.
+    private const bool ClubMatchDeleteLiveBevestigd = false;
 
     private readonly HttpClient _httpClient;
     private readonly ISportlinkClubTokenStore _tokenStore;
@@ -620,6 +630,43 @@ public class SportlinkClubClient : ISportlinkClubClient
             forceDryRun: !ClubMatchLiveBevestigd,
             method: HttpMethod.Post);
     }
+
+    /// <summary>
+    /// Verwijdert een clubwedstrijd (#1440) — zie <see cref="ISportlinkClubClient.DeleteClubMatchAsync"/>.
+    /// Zolang <see cref="ClubMatchDeleteLiveBevestigd"/> <c>false</c> is, verlaat er geen DELETE deze
+    /// client: <see cref="PutMutationAsync"/> slaat het verzenden over (forceDryRun) en meldt
+    /// <c>IsForcedDryRun</c>.
+    /// </summary>
+    public Task<SportlinkClubResponse<SportlinkMutationResult>> DeleteClubMatchAsync(
+        string functioneleRol,
+        string publicMatchId,
+        CancellationToken cancellationToken = default)
+        => ExecuteWithTokenRetryAsync(
+            functioneleRol,
+            RetryBeleid.Mutatie,
+            (token, ct) => PutMutationAsync(
+                BouwClubMatchDeleteUrl(publicMatchId),
+                "competition/match/clubmatch/ClubMatchDelete",
+                body: null,
+                token,
+                ct,
+                forceDryRun: !ClubMatchDeleteLiveBevestigd,
+                method: HttpMethod.Delete,
+                legeSuccesBodyIsSucces: true),
+            cancellationToken);
+
+    /// <summary>URL van de verwijderaanroep: <c>PublicMatchId</c> als queryparameter, zoals Sportlinks
+    /// eigen frontend hem meestuurt (<c>params:{PublicMatchId}</c> in de bundle, #1440).</summary>
+    internal static string BouwClubMatchDeleteUrl(string publicMatchId)
+        => ClubMatchDeleteEndpoint + "?PublicMatchId=" + Uri.EscapeDataString(publicMatchId);
+
+    /// <summary>
+    /// #1440: een 2xx zonder body is voor een verwijderaanroep een geslaagde mutatie. Sportlinks eigen
+    /// frontend leest de succesbody van <c>ClubMatchDelete</c> niet; zonder deze uitzondering zou een
+    /// lege respons als "onherkenbare respons" (fout) gelden terwijl de wedstrijd wél weg is.
+    /// </summary>
+    internal static bool IsLegeSuccesRespons(System.Net.HttpStatusCode status, string body)
+        => (int)status is >= 200 and <= 299 && string.IsNullOrWhiteSpace(body);
 
     /// <summary>
     /// Bouwt de <c>ClubMatch</c>-requestbody. <b>Sinds #1427 live bevestigd</b>: veld voor veld
@@ -1372,10 +1419,10 @@ public class SportlinkClubClient : ISportlinkClubClient
     /// regressierisico op de drie bevestigde PUT-paden dan een simpele parameter-toevoeging.
     /// </summary>
     private async Task<SportlinkClubResponse<SportlinkMutationResult>> PutMutationAsync(
-        string endpoint, string entityName, object body, string token, CancellationToken cancellationToken,
+        string endpoint, string entityName, object? body, string token, CancellationToken cancellationToken,
         bool forceDryRun = false,
         Func<string, SportlinkMutationResult, SportlinkMutationResult>? verrijkResultaat = null,
-        HttpMethod? method = null)
+        HttpMethod? method = null, bool legeSuccesBodyIsSucces = false)
     {
         var httpMethod = method ?? HttpMethod.Put;
         try
@@ -1388,7 +1435,8 @@ public class SportlinkClubClient : ISportlinkClubClient
             // officials toewijzen) — ONAFHANKELIJK van _isDryRun() (de club-instelling
             // sportlinkDryRun, voor bevestigde mutaties). Ongeacht wat de club instelt, blijft een
             // forceDryRun-aanroep altijd gesimuleerd.
-            var serializedBody = JsonSerializer.Serialize(body);
+            // #1440: body == null (DELETE) → geen content; de parameters staan dan in de URL.
+            var serializedBody = body == null ? null : JsonSerializer.Serialize(body);
             if (forceDryRun || _isDryRun())
             {
                 // NOOIT de body zelf loggen — kan teamnamen/persoonsgegevens bevatten (CISO-regel).
@@ -1411,10 +1459,9 @@ public class SportlinkClubClient : ISportlinkClubClient
                     200);
             }
 
-            var request = new HttpRequestMessage(httpMethod, endpoint)
-            {
-                Content = new StringContent(serializedBody, System.Text.Encoding.UTF8, "application/json")
-            };
+            var request = new HttpRequestMessage(httpMethod, endpoint);
+            if (serializedBody != null)
+                request.Content = new StringContent(serializedBody, System.Text.Encoding.UTF8, "application/json");
             ZetSportlinkHeaders(request, entityName, token);
 
             var response = await VerstuurMetTimeoutAsync(ct => _httpClient.SendAsync(request, ct), cancellationToken);
@@ -1424,6 +1471,9 @@ public class SportlinkClubClient : ISportlinkClubClient
                     SportlinkClubCallStatus.SportlinkFout, null, $"Unauthorized bij {entityName} endpoint", 401);
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (legeSuccesBodyIsSucces && IsLegeSuccesRespons(response.StatusCode, json))
+                return new SportlinkClubResponse<SportlinkMutationResult>(
+                    SportlinkClubCallStatus.Ok, new SportlinkMutationResult(true, null), null, (int)response.StatusCode);
 
             // Live vastgesteld (2026-09-06, testwedstrijd wedstrijdnummer 69): een door Sportlink
             // afgewezen mutatie geeft HTTP 420 met deze vorm — niet de eerder aangenomen

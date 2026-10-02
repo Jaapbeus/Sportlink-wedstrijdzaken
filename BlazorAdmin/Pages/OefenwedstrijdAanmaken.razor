@@ -185,3 +185,39 @@ else
         }
     </div>
 }
+
+@* #1440: verwijderen alleen op het resultaat van een echte aanmaak (dan is het zeker een eigen
+   clubwedstrijd), altijd na bevestiging, en zonder form-element (zie #1436). *@
+@if (_verwijderPoort.ToonKnop(_resultaat))
+{
+    <div class="mt-2">
+        <button type="button" class="btn btn-outline-danger btn-sm" @onclick="VraagVerwijderenAan">
+            Wedstrijd verwijderen uit Sportlink
+        </button>
+    </div>
+}
+@if (_verwijderPoort.Huidig is WedstrijdVerwijderPoort.Stap.Bevestigen or WedstrijdVerwijderPoort.Stap.Bezig)
+{
+    <div class="alert alert-danger mt-2 oefenwedstrijd-verwijderbevestiging">
+        <div class="fw-semibold">Deze wedstrijd wordt in Sportlink Club verwijderd.</div>
+        <div class="mt-1">
+            @(_resultaat?.Omschrijving) — PublicMatchId <code>@_resultaat?.PublicMatchId</code>.
+            Of verwijderen in Sportlink terug te draaien is, is niet bekend.
+        </div>
+        <div class="mt-2 d-flex gap-2">
+            <button type="button" class="btn btn-danger" @onclick="BevestigVerwijderenAsync"
+                    disabled="@(_verwijderPoort.Huidig == WedstrijdVerwijderPoort.Stap.Bezig)">
+                @if (_verwijderStatus.Bezig)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                Ja, verwijderen
+            </button>
+            <button type="button" class="btn btn-outline-secondary" @onclick="AnnuleerVerwijderen"
+                    disabled="@(_verwijderPoort.Huidig == WedstrijdVerwijderPoort.Stap.Bezig)">
+                Annuleren
+            </button>
+        </div>
+    </div>
+}
+<Melding Status="_verwijderStatus" />

@@ -152,6 +152,11 @@ public class AdminApiClient
                 AgeClassCode = string.IsNullOrWhiteSpace(ageClassCode) ? null : ageClassCode
             });
 
+    // #1440: een zojuist aangemaakte oefenwedstrijd weer verwijderen. Staat op de server hard op
+    // dry-run (ClubMatchDeleteLiveBevestigd) tot de eigenaar het contract live bevestigt.
+    public async Task<ApiResult<SportlinkMutatieResultaatDto>> DeleteOefenwedstrijdAsync(string publicMatchId)
+        => await DeleteAsync<SportlinkMutatieResultaatDto>($"api/sportlink/club-match/{Uri.EscapeDataString(publicMatchId)}");
+
     // #1437: voorinvulling per team (Sportlink-leeftijdscategorie, duur, velddeel) + Sportlinks
     // leeftijdscategorielijst — achter de Wedstrijdzaken-poort, want de speeltijden-API is admin-only.
     public async Task<ApiResult<OefenwedstrijdFormulierDto>> GetOefenwedstrijdFormulierAsync()

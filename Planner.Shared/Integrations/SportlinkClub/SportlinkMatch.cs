@@ -52,6 +52,16 @@ public sealed record SportlinkMatch
     [JsonPropertyName("isConceptMatch")]
     public bool IsConceptMatch { get; set; }
 
+    /// <summary>
+    /// #1440: <c>false</c> = clubwedstrijd (zelf aangemaakt, bijv. een oefenwedstrijd), <c>true</c> =
+    /// bondswedstrijd (competitie/beker). Uit Sportlinks publieke frontend-bundle (02-10-2026): de
+    /// knop "Verwijder" verschijnt daar alleen bij <c>IsKernelMatch === false</c>. Nog NIET live
+    /// gezien in een Match-respons van deze app — daarom nullable: ontbreekt het veld, dan is het
+    /// <c>null</c> en weigert <see cref="SportlinkMutationGuard"/> het verwijderen (fail-closed).
+    /// </summary>
+    [JsonPropertyName("isKernelMatch")]
+    public bool? IsKernelMatch { get; set; }
+
     [JsonPropertyName("taskStatus")]
     public string? TaskStatus { get; set; }
 
