@@ -18,6 +18,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- **Volledig seizoen opnieuw opbouwen vanuit de Admin GUI** (#1352). Op de Instellingen-pagina staat naast
+  **Nu synchroniseren** de knop **Volledig seizoen opnieuw opbouwen…**: kies een seizoen, bevestig, en alle
+  wedstrijden vanaf de seizoensstart worden opnieuw opgehaald. Een ongeldig seizoen geeft een duidelijke melding.
+
 ## [3.9.0.0] — 2026-10-02
 
 ### Added

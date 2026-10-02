@@ -897,6 +897,19 @@ Fijnere regels per team: buffers vóór/na wedstrijden en een vaste veldvoorkeur
 
 ---
 
+## 12a. Volledig seizoen opnieuw opbouwen (`/instellingen`) (#1352)
+
+Naast **Nu synchroniseren** (vorige week t/m einde seizoen) staat op de Instellingen-pagina de knop
+**Volledig seizoen opnieuw opbouwen…**. Daarmee haalt u alle wedstrijden vanaf de start van een
+gekozen seizoen opnieuw op bij Sportlink — handig na een onvolledige of foutieve eerdere sync.
+
+1. Klik op **Volledig seizoen opnieuw opbouwen…**
+2. Kies het seizoen (standaard het huidige seizoen) in de bevestigingsmelding
+3. Bevestig met **Ja, opnieuw opbouwen** (of kies **Annuleren**)
+
+Dit duurt langer en belast de Sportlink-koppeling zwaarder dan een gewone sync; gebruik het dus
+alleen wanneer nodig. De voortgang ziet u op dezelfde plek als bij een gewone sync.
+
 ## 15. Velden, veldbeschikbaarheid en trainingsschema (`/instellingen/velden`)
 
 De pagina `/instellingen/velden` beheert alles rond de velden van de club: hoeveel er zijn, welk

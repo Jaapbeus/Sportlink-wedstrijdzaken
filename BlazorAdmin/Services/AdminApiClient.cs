@@ -169,8 +169,13 @@ public class AdminApiClient
             ? $"api/beheer/sync/status?jobId={jobId}"
             : "api/beheer/sync/status");
 
-    public async Task<ApiResult<TriggerSyncResultDto>> TriggerSyncAsync()
-        => await PostAsync<TriggerSyncResultDto>("api/beheer/sync/trigger", new { });
+    /// <summary>
+    /// Start een sync. Zonder argumenten het standaardvenster; met <paramref name="seizoenStartjaar"/>
+    /// een volledige herberekening vanaf dat seizoen (#1352 — body <c>{reset:true, season}</c>).
+    /// </summary>
+    public async Task<ApiResult<TriggerSyncResultDto>> TriggerSyncAsync(int? seizoenStartjaar = null)
+        => await PostAsync<TriggerSyncResultDto>("api/beheer/sync/trigger",
+            seizoenStartjaar is int jaar ? new { reset = true, season = jaar } : new { });
 
     // ── Templates ──
 

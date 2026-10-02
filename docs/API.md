@@ -83,7 +83,7 @@ verwerking plaats.
 | `GET/PUT` | `/beheer/settings` | **Admin** | Club-instellingen ophalen/opslaan (incl. Sportlink Web Extension-schakelaar) |
 | `GET` | `/beheer/geocode` | **Admin** | Adres → GPS-coördinaten opzoeken voor de accommodatie-instelling |
 | `GET` | `/beheer/sync/status` | **Admin** | Status van de laatste Sportlink-synchronisatie, plus optioneel `?jobId=` voor een specifieke sync-job (#1138) |
-| `POST` | `/beheer/sync/trigger` | **Admin** | Synchronisatie starten via een Storage Queue-job (#1138) — geeft direct een `jobId` terug, geen fire-and-forget meer |
+| `POST` | `/beheer/sync/trigger` | **Admin** | Synchronisatie starten via een Storage Queue-job (#1138) — geeft direct een `jobId` terug, geen fire-and-forget meer. Optionele body `{"reset":true,"season":2025}` haalt het hele seizoen opnieuw op vanaf de seizoensstart (#1352); ongeldig seizoen → 400 |
 | `GET` | `/beheer/teams` | **Admin** | Teamlijst ophalen |
 | `GET` | `/beheer/templates` | **Admin** | Alle e-mailtemplates per berichttype ophalen |
 | `PUT` | `/beheer/templates/{key}` | **Admin** | Eén e-mailtemplate opslaan |
@@ -1082,6 +1082,20 @@ curl "http://localhost:7094/api/beheer/sync/status?jobId=<jobId>"
 #  "job":{"id":"…","status":"running|succeeded|failed","weekOffsetFrom":-1,"weekOffsetTo":15,
 #         "createdAt":"…","startedAt":"…","completedAt":null,"errorMessage":null}}
 ```
+
+**Volledig seizoen opnieuw ophalen (#1352):** optionele JSON-body, zelfde semantiek als
+`GET /sync-matches?reset=true&season=`:
+
+```bash
+curl -X POST http://localhost:7094/api/beheer/sync/trigger \
+  -H "Content-Type: application/json" -d '{"reset":true,"season":2025}'
+# weekOffsetFrom = weekoffset van de seizoensstart i.p.v. -1
+```
+
+`season` is het startjaar (2000 t/m huidig jaar + 1) en is verplicht bij `reset:true`; zonder
+`reset` wordt `season` genegeerd en blijft het gedrag ongewijzigd. Ongeldige waarde of ongeldige
+JSON → `400` met `{"error":"…"}` (NL-melding). Validatie staat tier-onafhankelijk in
+`Planner.Shared/Sync/SyncTriggerCore.cs`.
 
 Zonder `?jobId=` geeft `/beheer/sync/status` de meest recente job terug. `job` is `null` zolang er
 nog nooit een sync is gestart. Mogelijke `job.status`-waarden: `pending`, `running`, `succeeded`,

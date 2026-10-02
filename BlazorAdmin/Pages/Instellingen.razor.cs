@@ -28,6 +28,8 @@ public partial class Instellingen : ClubSelectorPageBase
     private bool _syncLoading = true;
     private bool _syncing;
     private string? _syncResult;
+    private bool _toonResetBevestiging;
+    private int _resetSeizoen = HuidigSeizoenStartjaar();
     private int _emailVerwerkt, _emailFouten, _emailBuitenScope, _emailGeenAntwoord;
 
     private bool _isTestmodus => ClubSelector.SelectedClubCode == "ALLSTARS";
@@ -81,11 +83,34 @@ public partial class Instellingen : ClubSelectorPageBase
         await LaadUitgeslotenEmailsAsync();
     }
 
-    private async Task TriggerSyncAsync()
+    // Het KNVB-seizoen start in de zomer: vóór 1 juli hoort het startjaar bij het vorige kalenderjaar.
+    private static int HuidigSeizoenStartjaar() =>
+        DateTime.Today.Month >= 7 ? DateTime.Today.Year : DateTime.Today.Year - 1;
+
+    private IEnumerable<int> ResetSeizoenOpties =>
+        Enumerable.Range(HuidigSeizoenStartjaar() - 4, 6).Reverse();
+
+    private void ToonResetBevestiging()
+    {
+        _resetSeizoen = HuidigSeizoenStartjaar();
+        _toonResetBevestiging = true;
+    }
+
+    private void AnnuleerReset() => _toonResetBevestiging = false;
+
+    private async Task BevestigResetAsync()
+    {
+        _toonResetBevestiging = false;
+        await StartSyncAsync(_resetSeizoen);
+    }
+
+    private async Task TriggerSyncAsync() => await StartSyncAsync(null);
+
+    private async Task StartSyncAsync(int? seizoenStartjaar)
     {
         _syncing = true;
         _syncResult = null;
-        var r = await Api.TriggerSyncAsync();
+        var r = await Api.TriggerSyncAsync(seizoenStartjaar);
         if (!r.Success || r.Data?.JobId is not Guid jobId)
         {
             _syncResult = $"Sync starten mislukt: {r.ErrorMessage}";
