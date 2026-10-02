@@ -37,6 +37,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   wedstrijd in Sportlink Club. Aanmaken gaat nu alleen via de knop. Met dry-run uit verschijnt eerst
   een samenvatting met **Bevestigen en aanmaken**, een dubbelklik maakt geen tweede wedstrijd aan,
   en ontbrekende velden krijgen een Nederlandse melding in plaats van de Engelse browsermelding.
+- Wijzigingsverzoeken: de status van elk verzoek werd niet gelezen (het scherm toonde overal "onbekende status" en het filter "Openstaand" bleef leeg). Het scherm gebruikt nu Sportlinks eigen statussen en filters (Openstaand, Akkoord, Afgewezen, Ingetrokken), toont inkomende en uitgaande verzoeken apart en biedt goedkeuren/afwijzen alleen bij openstaande inkomende verzoeken (#1439)
 
 ## [3.8.1.0] — 2026-10-01
 

@@ -20,13 +20,12 @@ public sealed record SportlinkChangeRequestOverzichtItem(
     SportlinkChangeRequestData? RequestData,
     string? Reason,
     string? Remarks,
-    SportlinkWedstrijdContext? Wedstrijd)
+    SportlinkWedstrijdContext? Wedstrijd,
+    bool? IsIncomingRequest,
+    string StatusGroep)
 {
-    /// <summary>Sportlinks statuscode voor "wacht op een beslissing van ons".</summary>
-    public const string StatusOpenstaand = "CONFIRM";
-
     /// <summary>
-    /// Koppelt elk verzoek aan zijn wedstrijdcontext en zet openstaande verzoeken bovenaan. Pure
+    /// Koppelt elk verzoek aan zijn wedstrijdcontext en zet openstaande (inkomend eerst) verzoeken bovenaan. Pure
     /// functie — geen database, geen Sportlink — zodat de beslisregel toetsbaar is zonder
     /// integratieharnas. De volgorde binnen een groep is die van Sportlink zelf (stabiele sortering).
     /// </summary>
@@ -36,7 +35,11 @@ public sealed record SportlinkChangeRequestOverzichtItem(
         => verzoeken
             .Select(v => new SportlinkChangeRequestOverzichtItem(
                 v.PublicMatchId, v.PublicRequestId, v.RequestStatus, v.RequestData, v.Reason, v.Remarks,
-                contextPerPublicMatchId.TryGetValue(v.PublicMatchId, out var ctx) ? ctx : null))
-            .OrderBy(v => string.Equals(v.RequestStatus, StatusOpenstaand, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                contextPerPublicMatchId.TryGetValue(v.PublicMatchId, out var ctx) ? ctx : null,
+                v.IsIncomingRequest,
+                SportlinkChangeRequestStatusGroep.Bepaal(v.RequestStatus)))
+            // Openstaand vooraan, daarbinnen inkomend (null telt als inkomend) vóór uitgaand (#1439).
+            .OrderBy(v => v.StatusGroep == SportlinkChangeRequestStatusGroep.Openstaand ? 0 : 1)
+            .ThenBy(v => v.IsIncomingRequest == false ? 1 : 0)
             .ToList();
 }

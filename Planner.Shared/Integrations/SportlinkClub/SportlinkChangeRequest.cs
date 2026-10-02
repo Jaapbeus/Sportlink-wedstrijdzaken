@@ -18,9 +18,18 @@ public sealed record SportlinkChangeRequest
     [JsonPropertyName("publicRequestId")]
     public string PublicRequestId { get; set; } = "";
 
-    /// <summary>APPROVED, CONFIRM (wacht op ons), DENIED of REVOKED.</summary>
-    [JsonPropertyName("requestStatus")]
+    /// <summary>
+    /// Sportlinks <c>ChangeRequestStatus</c> (veldnaam en enum bevestigd uit Sportlinks eigen
+    /// frontend-bundle, #1439): APPROVED, CONFIRM_AWAY, CONFIRM_HOME, CONFIRM_UNION, DENIED,
+    /// MATCH_FINALIZED, REVOKED. De eerdere aanname <c>requestStatus</c>/<c>CONFIRM</c> was fout en
+    /// leverde altijd een lege waarde op. De C#-naam blijft <c>RequestStatus</c> (stabiel API-contract).
+    /// </summary>
+    [JsonPropertyName("ChangeRequestStatus")]
     public string RequestStatus { get; set; } = "";
+
+    /// <summary>True = inkomend verzoek (de tegenstander vraagt ons), false = uitgaand (wij vragen).</summary>
+    [JsonPropertyName("IsIncomingRequest")]
+    public bool? IsIncomingRequest { get; set; }
 
     [JsonPropertyName("requestData")]
     public SportlinkChangeRequestData? RequestData { get; set; }

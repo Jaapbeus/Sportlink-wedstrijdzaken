@@ -6,9 +6,10 @@
 <h1>Wijzigingsverzoeken</h1>
 
 <p class="text-muted">
-    Wijzigingsverzoeken die tegenstanders in Sportlink Club hebben ingediend voor datum, tijd of
-    accommodatie. Alleen <strong>openstaande</strong> verzoeken wachten op een beslissing van ons;
-    de overige staan er ter referentie bij. Wedstrijdnummer en teams komen uit onze eigen
+    Wijzigingsverzoeken voor datum, tijd of accommodatie uit Sportlink Club, gesplitst in
+    <strong>inkomend</strong> (tegenstanders vragen ons) en <strong>uitgaand</strong> (wij vragen
+    hen). Alleen openstaande <em>inkomende</em> verzoeken kun je hier goedkeuren of afwijzen; de
+    rest staat er ter referentie bij. Wedstrijdnummer en teams komen uit onze eigen
     wedstrijdgegevens — ontbreken ze bij een verzoek, dan is die wedstrijd nog niet gekoppeld.
 </p>
 
@@ -32,7 +33,7 @@ else
         <div class="btn-group btn-group-sm" role="group" aria-label="Statusfilter">
             @foreach (var f in Filters)
             {
-                var aantal = _verzoeken.Count(v => f.Match(v.RequestStatus));
+                var aantal = _verzoeken.Count(v => f.Match(v));
                 <button type="button"
                         class="btn @(_filter == f.Key ? "btn-primary" : "btn-outline-primary")"
                         @onclick="() => _filter = f.Key">
@@ -45,7 +46,12 @@ else
         </button>
     </div>
 
-    var zichtbaar = _verzoeken.Where(v => HuidigFilter.Match(v.RequestStatus)).ToList();
+    var zichtbaar = _verzoeken.Where(HuidigFilter.Match).ToList();
+    var secties = new[]
+    {
+        (Titel: "Inkomend", Items: zichtbaar.Where(IsInkomend).ToList()),
+        (Titel: "Uitgaand", Items: zichtbaar.Where(v => !IsInkomend(v)).ToList()),
+    };
 
     @if (zichtbaar.Count == 0)
     {
@@ -53,6 +59,9 @@ else
     }
     else
     {
+        @foreach (var sectie in secties.Where(x => x.Items.Count > 0))
+        {
+        <h2 class="h5 mt-3">@sectie.Titel <span class="badge bg-light text-dark">@sectie.Items.Count</span></h2>
         <div class="table-responsive">
             <table class="table table-sm table-hover align-middle">
                 <thead>
@@ -70,15 +79,19 @@ else
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var verzoek in zichtbaar)
+                    @foreach (var verzoek in sectie.Items)
                     {
-                        var isOpen = IsOpenstaand(verzoek.RequestStatus);
+                        var isOpen = KanBeslissen(verzoek);
                         var id = verzoek.PublicRequestId ?? "";
                         var w = verzoek.Wedstrijd;
                         <tr>
                             <td>
-                                <i class="bi @StatusIcoon(verzoek.RequestStatus)" title="@StatusLabel(verzoek.RequestStatus)"
-                                   aria-label="@StatusLabel(verzoek.RequestStatus)"></i>
+                                <i class="bi @StatusIcoon(verzoek)" title="@StatusLabel(verzoek)"
+                                   aria-label="@StatusLabel(verzoek)"></i>
+                                @if (StatusSubtekst(verzoek) is { } sub)
+                                {
+                                    <div class="text-muted small">@sub</div>
+                                }
                             </td>
                             <td>@(w?.Wedstrijdnummer?.ToString() ?? "–")</td>
                             <td>@(w?.Thuisteam ?? "–")</td>
@@ -142,5 +155,6 @@ else
                 </tbody>
             </table>
         </div>
+        }
     }
 }

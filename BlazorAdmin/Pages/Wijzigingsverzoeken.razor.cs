@@ -20,40 +20,67 @@ public partial class Wijzigingsverzoeken
     private SportlinkActieStatus Status(string id)
         => _status.TryGetValue(id, out var s) ? s : _status[id] = new SportlinkActieStatus();
 
-    // Sportlinks statuscodes (SportlinkChangeRequest.RequestStatus): CONFIRM wacht op ons,
-    // APPROVED/DENIED zijn afgehandeld, REVOKED is door de indiener ingetrokken.
-    private sealed record StatusFilter(string Key, string Label, Func<string?, bool> Match);
+    // Sportlinks vier statusgroepen (#1439), afgeleid op de server uit ChangeRequestStatus
+    // (SportlinkChangeRequestStatusGroep): OPEN, ACCEPTED, DENIED, REVOKED. UNKNOWN krijgt alleen
+    // een tab als er zulke items zijn.
+    private sealed record StatusFilter(string Key, string Label, Func<SportlinkChangeRequestDto, bool> Match);
 
-    private static readonly StatusFilter[] Filters =
+    private static readonly StatusFilter[] BasisFilters =
     {
-        new("open", "Openstaand", s => IsOpenstaand(s)),
-        new("appr", "Goedgekeurd", s => Is(s, "APPROVED")),
-        new("deny", "Afgewezen", s => Is(s, "DENIED")),
-        new("revk", "Ingetrokken", s => Is(s, "REVOKED")),
-        new("all", "Alle", _ => true),
+        new("open", "Openstaand", v => Groep(v) == "OPEN"),
+        new("acc", "Akkoord", v => Groep(v) == "ACCEPTED"),
+        new("deny", "Afgewezen", v => Groep(v) == "DENIED"),
+        new("revk", "Ingetrokken", v => Groep(v) == "REVOKED"),
     };
 
-    private StatusFilter HuidigFilter => Filters.FirstOrDefault(f => f.Key == _filter) ?? Filters[0];
+    private static readonly StatusFilter OnbekendFilter = new("unk", "Onbekend", v => Groep(v) == "UNKNOWN");
+    private static readonly StatusFilter AlleFilter = new("all", "Alle", _ => true);
 
-    private static bool Is(string? status, string code) => string.Equals(status, code, StringComparison.OrdinalIgnoreCase);
-    private static bool IsOpenstaand(string? status) => Is(status, "CONFIRM");
-
-    private static string StatusIcoon(string? status) => status?.ToUpperInvariant() switch
+    private IEnumerable<StatusFilter> Filters
     {
-        "CONFIRM" => "bi-exclamation-circle-fill text-warning",
-        "APPROVED" => "bi-check-circle-fill text-success",
+        get
+        {
+            foreach (var f in BasisFilters) yield return f;
+            if (_verzoeken?.Any(OnbekendFilter.Match) == true) yield return OnbekendFilter;
+            yield return AlleFilter;
+        }
+    }
+
+    private StatusFilter HuidigFilter => Filters.FirstOrDefault(f => f.Key == _filter) ?? BasisFilters[0];
+
+    private static string Groep(SportlinkChangeRequestDto v) => v.StatusGroep ?? "UNKNOWN";
+
+    /// <summary>Inkomend; een ontbrekende IsIncomingRequest (null) valt bewust onder Inkomend.</summary>
+    private static bool IsInkomend(SportlinkChangeRequestDto v) => v.IsIncomingRequest != false;
+
+    /// <summary>Goedkeuren/afwijzen kan alleen op een openstaand, inkomend verzoek.</summary>
+    private static bool KanBeslissen(SportlinkChangeRequestDto v)
+        => Groep(v) == "OPEN" && v.IsIncomingRequest == true;
+
+    private static string StatusIcoon(SportlinkChangeRequestDto v) => Groep(v) switch
+    {
+        "OPEN" => "bi-exclamation-circle-fill text-warning",
+        "ACCEPTED" => "bi-check-circle-fill text-success",
         "DENIED" => "bi-x-circle-fill text-danger",
         "REVOKED" => "bi-slash-circle text-secondary",
         _ => "bi-question-circle text-secondary",
     };
 
-    private static string StatusLabel(string? status) => status?.ToUpperInvariant() switch
+    private static string StatusLabel(SportlinkChangeRequestDto v) => Groep(v) switch
     {
-        "CONFIRM" => "Openstaand — wacht op onze beslissing",
-        "APPROVED" => "Goedgekeurd",
+        "OPEN" => "Openstaand",
+        "ACCEPTED" => "Akkoord",
         "DENIED" => "Afgewezen",
-        "REVOKED" => "Ingetrokken door de indiener",
-        _ => $"Onbekende status ({status})",
+        "REVOKED" => "Ingetrokken",
+        _ => $"Onbekende status ({v.RequestStatus})",
+    };
+
+    private static string? StatusSubtekst(SportlinkChangeRequestDto v) => v.RequestStatus?.ToUpperInvariant() switch
+    {
+        "CONFIRM_UNION" => "wacht op de bond",
+        "CONFIRM_HOME" => "wacht op thuisclub",
+        "CONFIRM_AWAY" => "wacht op uitclub",
+        _ => null,
     };
 
     /// <summary>Compacte weergave van wat de tegenstander vraagt; alleen de velden die afwijken van huidig.</summary>

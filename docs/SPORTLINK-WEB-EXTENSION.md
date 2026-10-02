@@ -479,10 +479,15 @@ Vier dingen om te onthouden:
   teams, datum, tijd, accommodatie) via `public.sportlinkpublicmatchidcache` → `his.matches`
   (`SportlinkPublicMatchIdRepository.ZoekWedstrijdenBijPublicMatchIdsAsync`) — bewust NIET via
   extra velden uit `MatchChangeRequests`: die zijn nooit met een netwerktrace bevestigd, en zo'n
-  trace maakt een agent nooit (§4.4). Geen cache-treffer = `null`, het verzoek blijft staan. De
-  Blazor-pagina filtert standaard op `CONFIRM` en toont statusiconen + icoonknoppen. Sportlinks
-  "Inkomend/Uitgaand"-groepen zijn niet gebouwd: de respons bevat geen veld dat die richting
-  aangeeft (of het is niet bevestigd) — pas na een menselijke netwerktrace.
+  trace maakt een agent nooit (§4.4). Geen cache-treffer = `null`, het verzoek blijft staan. **#1439
+  (contract bevestigd uit Sportlinks eigen frontend-bundle):** de respons is
+  `{ "ChangeRequests": [...] }`; het statusveld heet `ChangeRequestStatus` (niet `requestStatus` —
+  `RequestStatus` bleef daardoor altijd leeg) met de waarden APPROVED, CONFIRM_AWAY, CONFIRM_HOME,
+  CONFIRM_UNION, DENIED, MATCH_FINALIZED, REVOKED; `IsIncomingRequest` (bool) scheidt inkomend van
+  uitgaand. `SportlinkChangeRequestStatusGroep` vertaalt dit naar Sportlinks vier filtergroepen:
+  Openstaand (CONFIRM_*), Akkoord (APPROVED, MATCH_FINALIZED), Afgewezen, Ingetrokken; onbekende
+  waarden worden `UNKNOWN`. De Blazor-pagina filtert standaard op Openstaand, toont per filter de
+  secties Inkomend en Uitgaand, en biedt goedkeuren/afwijzen alleen bij openstaand + inkomend.
 - `FunctionApp.Postgres/Sportlink/SportlinkClubMatchFunction.cs` (#997) — `POST
   /api/sportlink/club-match` (aanmaken, sinds #1319 live bevestigd, was code-gelockt) + `GET
   .../club-match/picklists` (Teams + Location, read-only, echt aangeroepen). **POST — geen guard
