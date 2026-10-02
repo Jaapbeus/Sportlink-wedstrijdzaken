@@ -33,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.9.3.1
+  version: 3.9.5.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -4278,7 +4278,7 @@ paths:
         niet (eenduidig) kent geeft 400; wat niet af te leiden is valt terug op Sportlinks
         standaardwaarden met een waarschuwing. Er is vooraf geen bestaande wedstrijd, dus geen
         `SportlinkMutationGuard`-check — alleen de eigen toggle + EgressGuard. Bewust NIET gebouwd:
-        verwijderen (`ClubMatchDelete`) en uitslag vastleggen (`ClubMatchScore`).
+        uitslag vastleggen (`ClubMatchScore`). Verwijderen: zie `DELETE /sportlink/club-match/{publicMatchId}` (#1440).
       security:
         - easyAuth: []
       requestBody:
@@ -4365,6 +4365,71 @@ paths:
           description: Sportlink reageerde niet op tijd. De mutatie is bewust NIET automatisch herhaald — de uitkomst bij Sportlink is onbekend; controleer eerst in Sportlink of de actie al is doorgevoerd (#1387, #1417)
         '503':
           description: Uitgaande integraties staan hier niet toe (EgressGuard)
+
+  /sportlink/club-match/{publicMatchId}:
+    delete:
+      tags: [sportlink]
+      operationId: deleteSportlinkClubMatch
+      summary: Clubwedstrijd (oefenwedstrijd) verwijderen (#1440) — contract NIET live bevestigd, altijd dry-run
+      description: |
+        Verwijdert een clubwedstrijd bij Sportlink via `DELETE competition/match/clubmatch/ClubMatchDelete?PublicMatchId=`.
+        Methode, parameter en foutvorm komen uit Sportlinks publieke frontend-bundle en zijn **nooit live gezien**.
+        Daarom staat de aanroep hard op dry-run (`ClubMatchDeleteLiveBevestigd = false`), ongeacht de club-instelling
+        `sportlinkDryRun`: de respons heeft dan `IsDryRun` en `IsForcedDryRun` op `true` en Sportlink is niet aangeroepen
+        (wel de read-only `GET competition/match/Match` voor de guard). Volgorde: toggle + EgressGuard → huidige
+        wedstrijd ophalen → `SportlinkMutationGuard` (`Verwijderen`: alleen bij expliciet `IsKernelMatch = false`
+        én `IsHomeMatch`, anders 409) → audit "Pending" met het `PublicMatchId` → verwijderen (nooit automatisch
+        herhaald) → audit voltooien. De Admin GUI biedt dit alleen aan op het resultaat van "Wedstrijd aanmaken".
+      security:
+        - easyAuth: []
+      parameters:
+        - name: publicMatchId
+          in: path
+          required: true
+          description: Sportlink-`PublicMatchId` (letters, cijfers, `-` en `_`, maximaal 64 tekens).
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9_-]{1,64}$'
+      responses:
+        '200':
+          description: Mutatieresultaat. Een inhoudelijke afwijzing door Sportlink is ook 200, met `IsSuccess = false` en `Violations`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  IsSuccess:
+                    type: boolean
+                  Violations:
+                    type: array
+                    nullable: true
+                    items:
+                      type: string
+                  IsDryRun:
+                    type: boolean
+                  IsForcedDryRun:
+                    type: boolean
+                    description: Zolang het contract niet live bevestigd is altijd `true`.
+                  PublicMatchId:
+                    type: string
+        '400':
+          description: Ongeldig `PublicMatchId`
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Sportlink kent dit `PublicMatchId` niet (meer)
+        '409':
+          description: Extension staat uit, de Sportlink-koppeling ontbreekt/is verlopen, of de guard weigert (geen clubwedstrijd, `IsKernelMatch` ontbreekt, of geen thuiswedstrijd)
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '502':
+          description: Sportlink gaf geen bruikbare respons
+        '503':
+          description: Uitgaande integraties staan hier niet toe (EgressGuard)
+        '504':
+          description: Sportlink reageerde niet op tijd. Bewust NIET automatisch herhaald — controleer eerst in Sportlink of de wedstrijd al weg is (#1417)
 
   /sportlink/club-match/dryrun-status:
     get:

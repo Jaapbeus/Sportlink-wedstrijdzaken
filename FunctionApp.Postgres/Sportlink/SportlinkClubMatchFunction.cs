@@ -5,6 +5,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Planner.Endpoints.Sportlink;
 using Planner.Shared.Integrations.SportlinkClub;
 using static Planner.Endpoints.Sportlink.ClubMatchEndpointCore;
 
@@ -12,7 +13,8 @@ namespace FunctionApp.Postgres.Sportlink;
 
 /// <summary>
 /// Oefenwedstrijd ("clubwedstrijd") aanmaken bij Sportlink (#997, epic #986; formulier #1116,
-/// contract live bevestigd #1427). Verwijderen en uitslag vastleggen zijn bewust niet gebouwd.
+/// contract live bevestigd #1427). Uitslag vastleggen is bewust niet gebouwd;
+/// verwijderen (#1440) staat hard op dry-run tot de eigenaar het contract live bevestigt.
 /// <para>
 /// <b>Sinds #1427 live bevestigd.</b> Het formulier levert datum, tijd, duur, eigen team (naam
 /// uit onze eigen database, of vrije tekst), tegenstander en veld. De server haalt Sportlinks vier
@@ -95,6 +97,24 @@ public static class SportlinkClubMatchFunction
                     mutationResult, auditService, auditId, r => r,
                     r => new OkObjectResult(Resultaat(r, aanvraag!, gegevens!.VeldNaam, waarschuwingen)));
             });
+
+    /// <summary>
+    /// <c>DELETE /api/sportlink/club-match/{publicMatchId}</c> (#1440) — een clubwedstrijd verwijderen.
+    /// Contract uit Sportlinks publieke frontend-bundle, niet live gezien: de aanroep staat hard op
+    /// dry-run (<c>ClubMatchDeleteLiveBevestigd</c>). Orkestratie en guard: <see
+    /// cref="Planner.Endpoints.Sportlink.ClubMatchVerwijderCore"/>; hier alleen de route en de audit.
+    /// </summary>
+    [Function("SportlinkClubMatchDelete")]
+    public static Task<IActionResult> Delete(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "sportlink/club-match/{publicMatchId}")] HttpRequest req,
+        string publicMatchId,
+        FunctionContext context) =>
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkClubMatchDelete"), "oefenwedstrijd verwijderen",
+            clubCode => ClubMatchVerwijderCore.VerwijderAsync(
+                publicMatchId, SportlinkEndpointSupport.ControleerToggleEnEgress, () => SportlinkEndpointSupport.ClientOfFout(context), RolNaam,
+                context.InstanceServices.GetService<ISportlinkMutationAuditService>() is { } audit
+                    ? new(clubCode, EasyAuthHelper.GetAuditActor(req), e => audit.LogPogingAsync(e), (id, r, s) => audit.VoltooiAsync(id, r, s))
+                    : null));
 
     /// <summary>
     /// <c>GET /api/sportlink/club-match/dryrun-status</c> (#1427) — de actuele dry-run-stand voor de
