@@ -38,6 +38,13 @@ resources overeenkomen.
 
 ### Deploy (alleen na expliciete goedkeuring)
 
+> ⚠️ **Een `create` van `main.bicep` wijzigt de bestaande productie-app.** De module
+> `function-app.bicep` declareert maar zes app settings in `siteConfig.appSettings`; een `create`
+> vervangt daarmee de volledige lijst van de live app (secrets, `POSTGRES_CONNECTION_STRING`, de
+> SAS-URL in `WEBSITE_RUN_FROM_PACKAGE`). De "Modify"-diffs die `what-if` toont zijn dus geen
+> onschuldige drift zodra je ze uitvoert. Voor de Flex-app (FLEX-05) rol je **alleen**
+> `modules/function-app-flex.bicep` uit — zie [docs/RUNBOOK-FLEX-MIGRATIE.md](../docs/RUNBOOK-FLEX-MIGRATIE.md) §3.
+
 ```bash
 az deployment group create \
   --resource-group myAppGroup \
@@ -77,6 +84,10 @@ wijziging van de bestaande app.
 alleen op `true` zetten via een los `--parameters deployFlexApp=true` (nooit in dit bestand commit)
 na expliciete kostengoedkeuring van de eigenaar. Voor `what-if` mag de conditie tijdelijk `true` zijn
 — `what-if` wijzigt niets.
+Voor het daadwerkelijk aanmaken (FLEX-05) **niet** `main.bicep` met `deployFlexApp=true` uitrollen,
+maar de module zelfstandig — anders gaat de bestaande app mee (zie de waarschuwing bij *Deploy*
+hierboven). Commando's, de vier kostencontroles en de volgorde tot en met de cutover staan in
+[docs/RUNBOOK-FLEX-MIGRATIE.md](../docs/RUNBOOK-FLEX-MIGRATIE.md).
 
 Onderbouwde defaults (FLEX-02, gemeten 2026-09-12 over 31 dagen echt verbruik):
 - `flexInstanceMemoryMB = 2048` — 512 MB is **niet haalbaar**: op alle 31 gemeten dagen lag het

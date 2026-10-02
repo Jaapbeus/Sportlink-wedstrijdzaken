@@ -61,6 +61,9 @@ param clientId string = ''
 // (via een los --parameters deployFlexApp=true, nooit in dit bestand) na expliciete
 // bevestiging van de eigenaar, en alleen voor een echte `deployment group create`. Voor
 // `what-if` (FLEX-04) mag de conditie tijdelijk true zijn — what-if wijzigt niets.
+// Let op: voor de echte aanmaak (FLEX-05) NIET deze template met deployFlexApp=true uitrollen —
+// een create van main.bicep vervangt ook de app settings van de bestaande productie-app (module
+// function-app). Rol modules/function-app-flex.bicep zelfstandig uit: docs/RUNBOOK-FLEX-MIGRATIE.md §3.
 @description('Nieuwe Flex Consumption Function App uitrollen? Alleen true na expliciete kostengoedkeuring eigenaar (FLEX-05).')
 param deployFlexApp bool = false
 
