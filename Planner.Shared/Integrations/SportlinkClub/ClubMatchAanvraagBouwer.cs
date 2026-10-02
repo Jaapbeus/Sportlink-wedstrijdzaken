@@ -1,7 +1,10 @@
 namespace Planner.Shared.Integrations.SportlinkClub;
 
 /// <summary>Wat het formulier "Wedstrijd aanmaken" aanlevert, aangevuld met wat de server uit de eigen
-/// database weet (leeftijdscategorie van het team, veldnaam, accommodatie).</summary>
+/// database weet (leeftijdscategorie van het team, veldnaam, accommodatie). Sinds #1437 ook de
+/// clubinstelling <paramref name="Spelactiviteit"/> (Sportlink-omschrijving of IdTag; gevuld én gevonden
+/// wint altijd), het <paramref name="Velddeel"/> en een expliciet gekozen <paramref name="AgeClassCodeOverride"/>
+/// (Sportlink-<c>Id</c>, wint van de leeftijdscategorie van het team).</summary>
 public sealed record ClubMatchInvoer(
     DateTime MatchDateTime,
     int Duration,
@@ -11,7 +14,10 @@ public sealed record ClubMatchInvoer(
     string Tegenstander,
     string? VeldNaam,
     string Omschrijving,
-    string? Accommodatie);
+    string? Accommodatie,
+    string? Spelactiviteit = null,
+    string Velddeel = ClubMatchVelddeel.Heel,
+    string? AgeClassCodeOverride = null);
 
 /// <summary>Uitkomst van <see cref="ClubMatchAanvraagBouwer.Bouw"/>: een aanvraag, of een fout die
 /// het aanmaken tegenhoudt. Waarschuwingen zijn keuzes die de beheerder moet kunnen zien.</summary>
@@ -52,9 +58,6 @@ public static class ClubMatchAanvraagBouwer
         if (string.IsNullOrWhiteSpace(teamId))
             return Fout("Sportlink gaf geen standaardteam terug — kies een team uit de lijst.");
 
-        if (d.ExternalMatchId == null)
-            return Fout("Sportlink gaf geen wedstrijdnummer terug (ClubMatchDefaults).");
-
         var facility = ZoekFacility(context.Facilities, invoer.Accommodatie, d.FacilityId);
         if (facility == null)
             return Fout("Geen accommodatie gevonden in de Sportlink-locatielijst.");
@@ -76,16 +79,21 @@ public static class ClubMatchAanvraagBouwer
             MatchDate: DateOnly.FromDateTime(invoer.MatchDateTime),
             StartTime: TimeOnly.FromDateTime(invoer.MatchDateTime),
             Duration: invoer.Duration,
-            ExternalMatchId: d.ExternalMatchId,
+            // #1437: het wedstrijdnummer komt niet meer uit ClubMatchDefaults maar uit onze eigen teller;
+            // de aanroeper (ClubMatchEndpointCore) vult het in vlak vóór de Sportlink-aanroep.
+            ExternalMatchId: null,
             Description: invoer.Omschrijving,
             HomeTeam: teamNaam,
             AwayTeam: invoer.Tegenstander.Trim(),
             PublicTeamId: teamId,
-            AgeClassCode: BepaalAgeClass(invoer.Leeftijdscategorie, context.AgeClasses, d.AgeClassCode, waarschuwingen),
-            SportIdTag: BepaalSportIdTag(team, context.Activities, d.SportIdTag, waarschuwingen),
+            AgeClassCode: BepaalAgeClass(invoer, context.AgeClasses, d.AgeClassCode, waarschuwingen),
+            SportIdTag: BepaalSportIdTag(team, invoer.Spelactiviteit, context.Activities, d.SportIdTag, waarschuwingen),
             IsHomeMatch: true,
             FacilityId: facility.FacilityId,
-            SubFacilityId: subFacilityId);
+            SubFacilityId: subFacilityId,
+            // AANNAME (#1437): zie ClubMatchVelddeel — alleen "1.0" is live bevestigd; FieldOffset 0 = eerste deel.
+            FieldSize: invoer.Velddeel,
+            FieldOffset: "0");
         return new ClubMatchBouwResultaat(aanvraag, null, waarschuwingen);
 
         ClubMatchBouwResultaat Fout(string fout) => new(null, fout, waarschuwingen);
@@ -162,22 +170,56 @@ public static class ClubMatchAanvraagBouwer
         return null;
     }
 
-    private static string? BepaalAgeClass(
-        string? leeftijdscategorie, IReadOnlyList<SportlinkClubAgeClass> ageClasses, string? standaard, List<string> waarschuwingen)
+    /// <summary>Het Sportlink-<c>Id</c> van onze leeftijdscategorie ("JO10" → "110"), of <c>null</c> als die niet herkend
+    /// of niet in Sportlinks lijst staat. Gedeeld met het formulier-endpoint (#1437), zodat de dropdown dezelfde
+    /// voorinvulling krijgt als de server zou kiezen.</summary>
+    public static string? ZoekAgeClassId(string? leeftijdscategorie, IReadOnlyList<SportlinkClubAgeClass> ageClasses)
     {
         var omschrijving = AgeClassOmschrijving(leeftijdscategorie);
-        var treffer = omschrijving == null ? null
-            : ageClasses.FirstOrDefault(a => string.Equals(a.Description?.Trim(), omschrijving, StringComparison.OrdinalIgnoreCase));
-        if (treffer?.Id != null) return treffer.Id;
+        if (omschrijving == null) return null;
+        return ageClasses.FirstOrDefault(a => string.Equals(a.Description?.Trim(), omschrijving, StringComparison.OrdinalIgnoreCase))?.Id;
+    }
 
+    private static string? BepaalAgeClass(
+        ClubMatchInvoer invoer, IReadOnlyList<SportlinkClubAgeClass> ageClasses, string? standaard, List<string> waarschuwingen)
+    {
+        // #1437: een expliciet gekozen leeftijdscategorie wint van die van het team (validatie op bestaan
+        // gebeurt bij de aanroeper, vóór deze methode).
+        if (!string.IsNullOrWhiteSpace(invoer.AgeClassCodeOverride)) return invoer.AgeClassCodeOverride.Trim();
+
+        var treffer = ZoekAgeClassId(invoer.Leeftijdscategorie, ageClasses);
+        if (treffer != null) return treffer;
+
+        var leeftijdscategorie = invoer.Leeftijdscategorie;
         var reden = string.IsNullOrWhiteSpace(leeftijdscategorie) ? "onbekend" : $"'{leeftijdscategorie}' niet in Sportlinks lijst";
         waarschuwingen.Add($"Leeftijdscategorie {reden} — Sportlinks standaard ({standaard ?? "geen"}) wordt gebruikt.");
         return standaard;
     }
 
+    /// <summary>
+    /// Spelactiviteit. De clubinstelling (omschrijving of IdTag, hoofdletterongevoelig) wint altijd als hij
+    /// gevonden wordt (#1437); leeg → het eigen team, anders Sportlinks standaard; gevuld maar niet gevonden →
+    /// hetzelfde als leeg, met een waarschuwing.
+    /// </summary>
     private static string? BepaalSportIdTag(
-        SportlinkClubTeam? team, IReadOnlyList<SportlinkClubActivity> activiteiten, string? standaard, List<string> waarschuwingen)
+        SportlinkClubTeam? team, string? instelling, IReadOnlyList<SportlinkClubActivity> activiteiten, string? standaard, List<string> waarschuwingen)
     {
+        if (!string.IsNullOrWhiteSpace(instelling))
+        {
+            var gezocht = instelling.Trim();
+            var treffers = activiteiten
+                .Where(a => !string.IsNullOrWhiteSpace(a.IdTag)
+                         && (string.Equals(a.IdTag!.Trim(), gezocht, StringComparison.OrdinalIgnoreCase)
+                          || string.Equals(a.Description?.Trim(), gezocht, StringComparison.OrdinalIgnoreCase)))
+                .Select(a => a.IdTag!.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (treffers.Count == 1) return treffers[0];
+            waarschuwingen.Add(treffers.Count == 0
+                ? $"De clubinstelling Spelactiviteit '{gezocht}' staat niet in Sportlinks lijst — de spelactiviteit van het team of Sportlinks standaard wordt gebruikt."
+                : $"De clubinstelling Spelactiviteit '{gezocht}' komt meerdere keren voor in Sportlinks lijst — de spelactiviteit van het team of Sportlinks standaard wordt gebruikt.");
+        }
+
         if (team is { ExternalSportId: { Length: > 0 } sport, SportTag: { Length: > 0 } tag })
         {
             var idTag = $"{sport}/{tag}";

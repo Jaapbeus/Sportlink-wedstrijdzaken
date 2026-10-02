@@ -33,43 +33,42 @@ else
     <div class="oefenwedstrijd-formulier">
         <fieldset disabled="@_poort.InvoerVergrendeld">
         <div class="row g-3">
-            <div class="col-sm-4">
-                <label class="form-label" for="oef-datum">Datum</label>
-                <input id="oef-datum" type="date" class="form-control" @bind="_datum" />
-            </div>
-            <div class="col-sm-4">
-                <label class="form-label">Aanvangstijd</label>
-                <TimeInput @bind-Value="_tijd" />
-            </div>
-            <div class="col-sm-4">
-                <label class="form-label" for="oef-duur">Duur (minuten)</label>
-                <input id="oef-duur" type="number" class="form-control" min="1" max="240" @bind="_duur" />
-            </div>
-
             <div class="col-sm-6">
                 <label class="form-label" for="oef-team">Team</label>
-                <select id="oef-team" class="form-select" @bind="_teamSelectie">
+                <select id="oef-team" class="form-select" @bind="_form.TeamSelectie">
                     <option value="">— kies een team —</option>
                     @foreach (var team in _teams)
                     {
                         <option value="@team">@team</option>
                     }
-                    <option value="@VrijeTekstOptie">Vrije tekst invoeren…</option>
+                    <option value="@OefenwedstrijdFormulierState.VrijeTekstOptie">Vrije tekst invoeren…</option>
                 </select>
-                @if (_teamSelectie == VrijeTekstOptie)
+                @if (_form.IsVrijeTekst)
                 {
-                    <input type="text" class="form-control mt-2" placeholder="bijv. TEST" autocomplete="off" @bind="_teamVrijeTekst" />
+                    <input type="text" class="form-control mt-2" autocomplete="off" @bind="_form.TeamVrijeTekst" />
                 }
             </div>
             <div class="col-sm-6">
                 <label class="form-label" for="oef-tegenstander">Tegenstander</label>
-                <input id="oef-tegenstander" type="text" class="form-control" placeholder="bijv. SV Voorbeeld JO10-2"
-                       autocomplete="off" @bind="_tegenstander" />
+                <input id="oef-tegenstander" type="text" class="form-control" autocomplete="off" @bind="_form.Tegenstander" />
+            </div>
+
+            <div class="col-sm-4">
+                <label class="form-label" for="oef-datum">Datum</label>
+                <input id="oef-datum" type="date" class="form-control" @bind="_form.Datum" />
+            </div>
+            <div class="col-sm-4">
+                <label class="form-label">Aanvangstijd</label>
+                <TimeInput @bind-Value="_form.Tijd" />
+            </div>
+            <div class="col-sm-4">
+                <label class="form-label" for="oef-duur">Duur (minuten)</label>
+                <input id="oef-duur" type="number" class="form-control" min="1" max="240" @bind="_form.Duur" />
             </div>
 
             <div class="col-sm-6">
                 <label class="form-label" for="oef-veld">Veld</label>
-                <select id="oef-veld" class="form-select" @bind="_veldNummer">
+                <select id="oef-veld" class="form-select" @bind="_form.VeldNummer">
                     <option value="">— geen veld —</option>
                     @foreach (var veld in _velden)
                     {
@@ -78,8 +77,28 @@ else
                 </select>
             </div>
             <div class="col-sm-6">
+                <label class="form-label" for="oef-velddeel">Velddeel</label>
+                <select id="oef-velddeel" class="form-select" @bind="_form.Velddeel">
+                    @foreach (var keuze in OefenwedstrijdFormulierState.Velddelen)
+                    {
+                        <option value="@keuze.Waarde">@keuze.Label</option>
+                    }
+                </select>
+            </div>
+
+            <div class="col-sm-6">
+                <label class="form-label" for="oef-leeftijd">Leeftijdscategorie</label>
+                <select id="oef-leeftijd" class="form-select" @bind="_form.AgeClassCode">
+                    <option value="">— Sportlink-standaard —</option>
+                    @foreach (var ageClass in _ageClasses)
+                    {
+                        <option value="@ageClass.Id">@ageClass.Description</option>
+                    }
+                </select>
+            </div>
+            <div class="col-sm-6">
                 <label class="form-label" for="oef-omschrijving">Omschrijving <span class="text-muted">(optioneel)</span></label>
-                <input id="oef-omschrijving" type="text" class="form-control" placeholder="@StandaardOmschrijving" autocomplete="off" @bind="_omschrijving" />
+                <input id="oef-omschrijving" type="text" class="form-control" autocomplete="off" @bind="_form.Omschrijving" />
             </div>
         </div>
         </fieldset>
@@ -101,8 +120,8 @@ else
             <div class="alert alert-warning mt-3 mb-0 oefenwedstrijd-bevestiging">
                 <div class="fw-semibold">Deze wedstrijd wordt direct in Sportlink Club aangemaakt:</div>
                 <div class="mt-1">
-                    @_datum.ToString("dddd d MMMM yyyy") om @_tijd (@_duur min) —
-                    <strong>@TeamNaam</strong> tegen <strong>@_tegenstander</strong>@(GekozenVeldNaam is { } veld ? $", {veld}" : "")
+                    @_form.Datum.ToString("dddd d MMMM yyyy") om @_form.Tijd (@_form.Duur min) —
+                    <strong>@_form.TeamNaam</strong> tegen <strong>@_form.Tegenstander</strong>@(GekozenVeldNaam is { } veld ? $", {veld}" : ""), @GekozenVelddeelLabel.ToLowerInvariant()
                 </div>
                 <div class="mt-2 d-flex gap-2">
                     <button type="button" class="btn btn-warning" @onclick="BevestigAsync">Bevestigen en aanmaken</button>
@@ -120,6 +139,16 @@ else
                 }
                 Wedstrijd aanmaken
             </button>
+            <button type="button" class="btn btn-outline-secondary ms-2" @onclick="Leegmaken"
+                    disabled="@_poort.InvoerVergrendeld">
+                Leegmaken
+            </button>
+            @if (SportlinkLink is { } link)
+            {
+                <div class="mt-2">
+                    <a href="@link" target="_blank" rel="noopener">Open wedstrijd in Sportlink Club</a>
+                </div>
+            }
         </div>
     </div>
 }
@@ -137,6 +166,7 @@ else
                 <dt class="col-sm-4">Wedstrijdnummer</dt><dd class="col-sm-8">@(_resultaat.WedstrijdNummer?.ToString() ?? "—")</dd>
                 <dt class="col-sm-4">Spelactiviteit</dt><dd class="col-sm-8">@(_resultaat.SportIdTag ?? "—")</dd>
                 <dt class="col-sm-4">Locatie-ID (Sportlink)</dt><dd class="col-sm-8">@(_resultaat.FacilityId ?? "—")</dd>
+                <dt class="col-sm-4">Velddeel</dt><dd class="col-sm-8">@(VelddeelLabel(_resultaat.Velddeel))</dd>
                 <dt class="col-sm-4">Veld</dt><dd class="col-sm-8">@(_resultaat.VeldNaam ?? "—") @if (!string.IsNullOrEmpty(_resultaat.SubFacilityId)) { <span class="text-muted">(@_resultaat.SubFacilityId)</span> }</dd>
                 @if (!string.IsNullOrEmpty(_resultaat.PublicMatchId))
                 {

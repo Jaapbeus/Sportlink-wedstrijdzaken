@@ -547,6 +547,37 @@ Vier dingen om te onthouden:
   `ExternalSportId/SportTag` van het team). Wat niet af te leiden is valt terug op
   `ClubMatchDefaults` met een waarschuwing; een onbekend team of veld is een 400. Vrije tekst gebruikt
   het standaardteam — exact wat Sportlinks eigen formulier doet.
+- **Wedstrijd aanmaken — verbeteringen (#1437).** Gebouwd op beide gebouwde tiers:
+  1. **Velddeel.** `FieldSize` komt uit de keuze Heel/Half/Kwart/Achtste veld (`1.0`/`0.5`/`0.25`/`0.125`,
+     `FieldOffset` blijft `0`); `ClubMatchVelddeel` (Planner.Shared) is de enige plek met die waarden.
+     **AANNAME, nog niet live bevestigd:** alleen `"1.0"` is met een echte aanmaak vastgesteld (#1427).
+     De notatie voor een deel van het veld is daaruit geëxtrapoleerd, en `FieldOffset 0` als "eerste
+     deel" idem. Eerst een echte proefwedstrijd met half veld aanmaken (dry-run uit) en in Sportlink
+     Club controleren of het veld goed bezet is, vóór dit als bevestigd geldt.
+  2. **Wedstrijdnummer.** Niet meer Sportlinks voorstel (`ClubMatchDefaults.ExternalMatchId`) maar een
+     eigen nummer `YYMMDD` + tweecijferig volgnummer per speeldag en club (26100201, 26100202, …) uit de
+     tabel `wedstrijdnummerteller` (zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §77). Het nummer wordt pas
+     gereserveerd als validatie en bouw geslaagd zijn, vlak vóór de Sportlink-aanroep; ook een
+     dry-run verbruikt een nummer, en een door Sportlink afgewezen aanmaak laat een gat achter. Meer dan
+     99 per dag → 400. Maakt iemand in Sportlink Club zelf een wedstrijd aan met hetzelfde nummer, dan
+     voorkomt deze teller dat niet — hij kent alleen onze eigen aanmaken.
+  3. **Spelactiviteit** is een clubinstelling (`SportlinkSpelactiviteit` in AppSettings, scherm
+     "Sportlink Web Extension"): de omschrijving ("Veld - Zaterdag") of de IdTag
+     ("SOCCER-VE-AL/SATURDAY"), hoofdletterongevoelig. Gevuld én gevonden wint altijd; leeg is het
+     oude gedrag (het team, anders Sportlinks standaard); gevuld maar niet gevonden is het oude gedrag
+     met een waarschuwing.
+  4. **Leeftijdscategorie** is een keuzelijst met Sportlinks eigen lijst; de voorinvulling is die van het
+     gekozen team (`AgeClassOmschrijving` → Sportlink-`Id`), anders "— Sportlink-standaard —". De
+     gekozen `AgeClassCode` moet in de lijst staan en wint van de categorie van het team.
+  5. **`GET /api/sportlink/club-match/formulier`** (Wedstrijdzaken-poort) levert die voorinvulling:
+     per team Sportlink-categorie, duur en velddeel uit de speeltijden, plus Sportlinks lijst. De
+     speeltijden-API is admin-only, vandaar een eigen endpoint. Is Sportlink niet bereikbaar, dan komen de
+     teamgegevens zonder lijst terug (`SportlinkBeschikbaar: false`). De samenstelling staat in
+     `ClubMatchEndpointCore.BouwFormulierAsync`; de tiers doen alleen de queries.
+  6. **Pagina.** Team en Tegenstander eerst, dan datum/tijd/duur, veld/velddeel, leeftijdscategorie en
+     omschrijving. Een team kiezen vult duur, leeftijdscategorie en velddeel voor (aanpasbaar);
+     **Leegmaken** zet alles terug (`OefenwedstrijdFormulierState`); na een echte aanmaak staat er een
+     link "Open wedstrijd in Sportlink Club" (`https://club.sportlink.com/competition-affairs/match-details/{PublicMatchId}`).
 - **Dry-run-modus (#998).** De vertakking zit in `SportlinkClubClient.PutMutationAsync` — het ÉNE
   punt waar alle **zes** mutatiepaden doorheen lopen (kleedkamers, veld, officials,
   wijzigingsverzoek, change-request-actie en de ClubMatch-POST) — niet per tier/endpoint apart. Dat garandeert dat token-refresh en de voorbereidende snapshot-/UserInfo-

@@ -1,5 +1,6 @@
 using Microsoft.Data.SqlClient;
 using Planner.Shared.Integrations.SportlinkClub;
+using static Planner.Endpoints.Sportlink.ClubMatchEndpointCore;
 using SportlinkFunction.Planner;
 using SportlinkFunction.TeamResolution;
 
@@ -58,13 +59,7 @@ internal static class SportlinkClubMatchRepository
         ClubScope.AddHisParams(cmd, clubCode);
         cmd.Parameters.AddWithValue("@Naam", teamNaam.Trim());
 
-        using var r = await cmd.ExecuteReaderAsync();
-        if (!await r.ReadAsync()) return null;
-        return new ClubMatchTeamKoppeling(
-            r.GetString(0),
-            r.IsDBNull(1) ? null : r.GetString(1),
-            r.IsDBNull(2) ? null : r.GetInt64(2),
-            r.GetInt32(3));
+        return (await LeesAlleAsync(cmd, TeamKoppelingRij)).FirstOrDefault();
     }
 
     /// <summary>Naam van een actief veld van deze club, of <c>null</c> als het veldnummer onbekend/inactief is.</summary>
@@ -92,10 +87,60 @@ internal static class SportlinkClubMatchRepository
             WHERE [ClubCode] = {ClubScope.ClubCodeParam} AND [Actief] = 1
             ORDER BY [VeldNummer]", conn);
         ClubScope.AddClubParam(cmd, clubCode);
-        var resultaat = new List<(int, string)>();
-        using var r = await cmd.ExecuteReaderAsync();
-        while (await r.ReadAsync())
-            resultaat.Add((r.GetInt32(0), r.GetString(1)));
-        return resultaat;
+        return await LeesAlleAsync(cmd, r => (r.GetInt32(0), r.GetString(1)));
+    }
+
+    /// <summary>Actieve teams (met leeftijdscategorie) én speeltijden van deze club (#1437) — bron voor de
+    /// voorinvulling van "Wedstrijd aanmaken". Geen teamnaam-logica: de koppeling met de speeltijden
+    /// gebeurt in <c>ClubMatchEndpointCore</c> (Planner.Shared-normalisatie).</summary>
+    internal static async Task<(List<ClubMatchFormulierTeamInvoer> Teams, List<ClubMatchSpeeltijdInvoer> Speeltijden)> GetFormulierGegevensAsync(string clubCode, string cs)
+    {
+        using var conn = new SqlConnection(cs);
+        await conn.OpenAsync();
+        using var teamsCmd = new SqlCommand($@"
+            SELECT [Teamnaam], [LeeftijdsCategorie] FROM [dbo].[Teams]
+            WHERE [ClubCode] = {ClubScope.ClubCodeParam} AND [IsActief] = 1 ORDER BY [Teamnaam]", conn);
+        ClubScope.AddClubParam(teamsCmd, clubCode);
+        using var tijdenCmd = new SqlCommand($@"
+            SELECT [Leeftijd], [Veldafmeting], [WedstrijdTotaal] FROM [dbo].[Speeltijden]
+            WHERE [ClubCode] = {ClubScope.ClubCodeParam}", conn);
+        ClubScope.AddClubParam(tijdenCmd, clubCode);
+        return (await LeesAlleAsync(teamsCmd, TeamRij), await LeesAlleAsync(tijdenCmd, SpeeltijdRij));
+    }
+
+    /// <summary>Clubinstelling Spelactiviteit (#1437, kolom via PostDeployment) — leeg of ontbrekend is <c>null</c>.</summary>
+    internal static async Task<string?> GetSpelactiviteitAsync(string clubCode, string cs)
+    {
+        using var conn = new SqlConnection(cs);
+        await conn.OpenAsync();
+        using var cmd = new SqlCommand($@"
+            SELECT TOP 1 [SportlinkSpelactiviteit] FROM [dbo].[AppSettings]
+            WHERE [ClubCode] = {ClubScope.ClubCodeParam}", conn);
+        ClubScope.AddClubParam(cmd, clubCode);
+        return await cmd.ExecuteScalarAsync() as string;
+    }
+
+    /// <summary>
+    /// Reserveert het volgende volgnummer voor deze speeldag (#1437), atomair: <c>MERGE ... WITH
+    /// (HOLDLOCK)</c> neemt een range-lock, dus twee gelijktijdige aanvragen krijgen nooit hetzelfde
+    /// nummer. <c>null</c> als de dag vol zit (de teller blijft dan op het maximum staan).
+    /// </summary>
+    internal static async Task<int?> ReserveerVolgnummerAsync(string clubCode, DateOnly datum, string cs)
+    {
+        using var conn = new SqlConnection(cs);
+        await conn.OpenAsync();
+        using var cmd = new SqlCommand($@"
+            MERGE [dbo].[WedstrijdnummerTeller] WITH (HOLDLOCK) AS t
+            USING (SELECT {ClubScope.ClubCodeParam} AS [ClubCode], @Datum AS [Datum]) AS s
+               ON t.[ClubCode] = s.[ClubCode] AND t.[Datum] = s.[Datum]
+            WHEN MATCHED AND t.[LaatsteVolgnummer] < @Max THEN
+                UPDATE SET [LaatsteVolgnummer] = t.[LaatsteVolgnummer] + 1
+            WHEN NOT MATCHED THEN
+                INSERT ([ClubCode], [Datum], [LaatsteVolgnummer]) VALUES (s.[ClubCode], s.[Datum], 1)
+            OUTPUT inserted.[LaatsteVolgnummer];", conn);
+        ClubScope.AddClubParam(cmd, clubCode);
+        cmd.Parameters.Add("@Datum", System.Data.SqlDbType.Date).Value = datum.ToDateTime(TimeOnly.MinValue);
+        cmd.Parameters.AddWithValue("@Max", ClubMatchWedstrijdNummer.MaxVolgnummer);
+        return await cmd.ExecuteScalarAsync() as int?;
     }
 }

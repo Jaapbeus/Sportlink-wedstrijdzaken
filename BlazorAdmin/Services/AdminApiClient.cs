@@ -136,7 +136,8 @@ public class AdminApiClient
     // teamnaam/tegenstander/veld; de server leidt de Sportlink-ID's af. vrijeTekst (#1427): de
     // teamnaam komt niet uit de dropdown, dus geen controle op een actief clubteam.
     public async Task<ApiResult<OefenwedstrijdResultaatDto>> PostOefenwedstrijdAsync(
-        DateTime matchDateTime, int duration, string teamNaam, bool vrijeTekst, string tegenstander, int? veldNummer, string? description)
+        DateTime matchDateTime, int duration, string teamNaam, bool vrijeTekst, string tegenstander, int? veldNummer, string? description,
+        string? velddeel = null, string? ageClassCode = null)
         => await PostAsync<OefenwedstrijdResultaatDto>("api/sportlink/club-match",
             new
             {
@@ -146,8 +147,15 @@ public class AdminApiClient
                 VrijeTekst = vrijeTekst,
                 Tegenstander = tegenstander,
                 VeldNummer = veldNummer,
-                Description = description
+                Description = description,
+                Velddeel = velddeel,
+                AgeClassCode = string.IsNullOrWhiteSpace(ageClassCode) ? null : ageClassCode
             });
+
+    // #1437: voorinvulling per team (Sportlink-leeftijdscategorie, duur, velddeel) + Sportlinks
+    // leeftijdscategorielijst — achter de Wedstrijdzaken-poort, want de speeltijden-API is admin-only.
+    public async Task<ApiResult<OefenwedstrijdFormulierDto>> GetOefenwedstrijdFormulierAsync()
+        => await GetAsync<OefenwedstrijdFormulierDto>("api/sportlink/club-match/formulier");
 
     // #1427: actuele dry-run-stand voor de banner op "Wedstrijd aanmaken" (Wedstrijdzaken-poort,
     // geen Sportlink-aanroep).
