@@ -20,6 +20,12 @@ updates:
         update-types:
           - "minor"
           - "patch"
+        # #1363: QuestPDF komt altijd als eigen PR, nooit in de verzamel-PR. Het pakket valt onder
+        # een eigen licentie (QuestPDF Community License) en de licentie die met een release
+        # meekomt, geldt voor die release — elke bump is dus ook een licentiebeoordeling. Zie
+        # docs/ARCHITECTUUR-PDF-EXPORT.md §2.
+        exclude-patterns:
+          - "QuestPDF"
 
   - package-ecosystem: "github-actions"
     directory: "/"

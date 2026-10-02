@@ -275,6 +275,14 @@ restore). Twee harde guards bewaken dat de scan nooit meer stilzwijgend leeg dra
 bevat minstens één daadwerkelijk gescand `nuget`-manifest). Zonder deze guards vond de job eerder
 `Number of language-specific files num=0` en was de gate groen zonder ooit een pakket te scannen.
 
+**Native code in een NuGet-pakket valt buiten deze scan (#1363).** QuestPDF (PDF-export) levert
+per platform eigen native bibliotheken mee, met daarin onder meer Skia, qpdf, libpng,
+libjpeg-turbo en libwebp. Een kwetsbaarheid in zo'n meegecompileerd onderdeel verschijnt niet als
+NuGet-advisory, dus ook niet in Trivy. Mitigatie: de generator verwerkt alleen tekst uit de eigen
+database (geen afbeeldingen of uploads), en QuestPDF komt via Dependabot altijd als eigen PR — met
+daarbij een nieuwe licentiebeoordeling, omdat de licentie per release kan wijzigen. Zie
+[docs/ARCHITECTUUR-PDF-EXPORT.md](docs/ARCHITECTUUR-PDF-EXPORT.md) §2 en §4.
+
 ### Laag 3 — .gitignore (passieve blokkade)
 
 Bepaalde bestandstypen worden nooit getrackt door git, ongeacht wat er gedaan wordt:

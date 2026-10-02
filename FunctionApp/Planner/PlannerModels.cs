@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Planner.Shared;
+using Planner.Shared.Deel;
 
 namespace SportlinkFunction.Planner
 {
@@ -236,7 +237,8 @@ namespace SportlinkFunction.Planner
 
     // ── Veldbezetting: lichtgewicht "wat staat er nu gepland"-weergave (#566) ──
     // Bewust zonder FieldScheduler-berekening — puur een projectie van WedstrijdRaw.
-    public class VeldbezettingItem
+    // IVeldbezettingRegel (#1363): de gedeelde PDF-export leest deze regel zonder eigen mapping per tier.
+    public class VeldbezettingItem : IVeldbezettingRegel
     {
         public long? WedstrijdCode { get; set; }
         public string Wedstrijd { get; set; } = string.Empty;
@@ -250,7 +252,8 @@ namespace SportlinkFunction.Planner
         public decimal Veldafmeting { get; set; }
     }
 
-    public class AutoPlanWedstrijdItem
+    // IPlanWedstrijdRegel (#1363): zie VeldbezettingItem hierboven.
+    public class AutoPlanWedstrijdItem : IPlanWedstrijdRegel
     {
         public long? WedstrijdCode { get; set; }
         public string Wedstrijd { get; set; } = string.Empty;

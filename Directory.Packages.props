@@ -45,6 +45,18 @@
     <PackageVersion Include="Microsoft.Graph" Version="6.7.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
+    <!--
+      #1363: PDF-export van planning/veldbezetting. LET OP — twee afwijkingen van alle andere
+      pakketten hier, allebei bewust en vastgelegd in docs/ARCHITECTUUR-PDF-EXPORT.md:
+      1. Geen OSI-licentie maar de QuestPDF Community License (source-available, v3.0): gratis voor
+         een organisatie met < USD 1.000.000 jaaromzet. Elke club die deze repository forkt toetst
+         dat zelf (zie SETUP-NIEUWE-CLUB.md). Een versiebump is ook een licentiebump — de licentie
+         die met een release meekomt geldt voor die release — dus lees bij elke bump LICENSE.md in
+         het pakket opnieuw.
+      2. Geen puur managed pakket: levert per platform een native Skia- en qpdf-bibliotheek mee
+         (runtimes/<rid>/native/). Voor linux-x64 ~11 MB.
+    -->
+    <PackageVersion Include="QuestPDF" Version="2026.9.1" />
 
     <!-- BlazorAdmin (WASM + MSAL) -->
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.12" />
@@ -69,5 +81,9 @@
     <PackageVersion Include="AwesomeAssertions" Version="9.6.0" />
     <PackageVersion Include="Moq" Version="4.21.0" />
     <PackageVersion Include="coverlet.collector" Version="10.1.0" />
+    <!-- #1363: alleen in Planner.Shared.Tests — leest de tekst terug uit een gegenereerde PDF, zodat
+         de tests inhoud en Nederlandse tekens controleren in plaats van alleen de %PDF-header.
+         Apache-2.0, puur managed. -->
+    <PackageVersion Include="PdfPig" Version="0.1.16" />
   </ItemGroup>
 </Project>

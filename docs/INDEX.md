@@ -44,6 +44,7 @@ document van het onderdeel waaraan je werkt.
 | [AI-services architectuur](ARCHITECTUUR-AI-SERVICES.md) | Provider-agnostisch ontwerp, datumregel, few-shot conventies, IChatClient |
 | [Planner architectuur](ARCHITECTUUR-PLANNER.md) | Algoritme, velddefinities, API-contract veldplanner |
 | [Teamresolutie](ARCHITECTUUR-TEAMRESOLUTIE.md) | Teamnaam-normalisatie, aliassen, disambiguatie — één vertaalpunt |
+| [PDF-export](ARCHITECTUUR-PDF-EXPORT.md) | QuestPDF-generator in `Planner.Shared/Deel/`: licentievoorwaarde per club, native assets, pakketgrootte, platformbewijs |
 | [E-mailverwerking](EMAIL-VERWERKING.md) | Pipeline, AI-classificatie, templates, kanaalstrategie |
 | [E-mailmodule (doelarchitectuur)](ARCHITECTUUR-EMAIL-MODULE.md) | Verzendlaag, afzenderstrategie, e-maillogging — ontwerp, migratie nog niet gestart |
 | [Sportlink Web Extension](SPORTLINK-WEB-EXTENSION.md) | Schrijfrichting webapp → Sportlink Club: protocol, endpoints, agent-tokengrens |

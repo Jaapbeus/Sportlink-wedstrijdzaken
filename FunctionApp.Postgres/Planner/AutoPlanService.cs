@@ -1,13 +1,15 @@
 using FunctionApp.Postgres.Planner.Repositories;
 using Microsoft.Extensions.Logging;
 using Planner.Shared;
+using Planner.Shared.Deel;
 
 namespace FunctionApp.Postgres.Planner;
 
+// IVeldbezettingRegel (#1363): de gedeelde PDF-export leest deze regel zonder eigen mapping per tier.
 internal sealed record VeldbezettingItem(
     long? WedstrijdCode, string Wedstrijd, string TeamNaam, string? Uitteam,
     string? AanvangsTijd, string? Veld, string? Competitiesoort, string? LeeftijdsCategorie,
-    int DuurMinuten, decimal Veldafmeting);
+    int DuurMinuten, decimal Veldafmeting) : IVeldbezettingRegel;
 
 /// <summary>
 /// Postgres-tier-tegenhanger van <c>FunctionApp/Planner/Services/AutoPlanService.cs</c> (#888).
