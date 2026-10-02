@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
 using Newtonsoft.Json;
 using SportlinkFunction.Email;
+using Planner.Endpoints.Teambegeleiding;
 using Planner.Shared;
 
 namespace SportlinkFunction.Admin;
@@ -259,24 +260,8 @@ public static class AdminTeambegeleidingFunction
 
                 var sw = System.Diagnostics.Stopwatch.StartNew();
 
-                var parseResult = TeambegeleidingCsv.Parse(dto.CsvContent);
-                if (!parseResult.IsValid)
-                    return new BadRequestObjectResult(new
-                    {
-                        error = parseResult.Error,
-                        ontbreekt = parseResult.Ontbreekt
-                    });
-
-                // #1131: kolomgrenzen valideren VOORDAT er iets destructiefs gebeurt (DELETE/INSERT).
-                // Zonder deze stap kon een te lange waarde (bijv. Team > 100 tekens) de insert-lus
-                // pas na de club-scoped DELETE laten falen — met een lege tabel als resultaat.
-                var lengteFouten = TeambegeleidingCsv.ValideerKolomLengtes(parseResult.Rows);
-                if (lengteFouten.Count > 0)
-                    return new BadRequestObjectResult(new
-                    {
-                        error = "Een of meer rijen overschrijden de maximale kolomlengte. De vorige import is niet gewijzigd.",
-                        fouten = lengteFouten
-                    });
+                var parseResult = TeambegeleidingCsv.ParseEnValideer(dto.CsvContent);
+                if (TeambegeleidingImportEndpointCore.Weiger(parseResult) is { } weiger) return weiger;
 
                 var importeerder = EasyAuthHelper.GetCallerName(req) ?? "admin";
 

@@ -8,7 +8,8 @@ namespace BlazorAdmin.Services;
 /// <summary>
 /// Wrapper rondom HttpClient voor alle Admin API calls.
 /// BaseUrl komt uit appsettings.json (FunctionBaseUrl).
-/// In productie (SWA) is FunctionBaseUrl leeg → relatieve URLs via SWA proxying.
+/// De SWA proxyt niet: de browser roept de Function App rechtstreeks aan (CORS) met het MSAL-Bearer-token;
+/// FunctionBaseUrl wijst dus ook in productie naar de Function App.
 /// </summary>
 public partial class AdminApiClient
 {

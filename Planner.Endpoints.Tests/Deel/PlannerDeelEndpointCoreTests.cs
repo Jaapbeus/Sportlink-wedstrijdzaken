@@ -89,6 +89,22 @@ public class PlannerDeelEndpointCoreTests
         Encoding.ASCII.GetString(bestand.FileContents, 0, 5).Should().Be("%PDF-");
     }
 
+    // #1461: HTML-export vanaf de API-origin → CSP + nosniff op de respons zelf.
+    [Fact]
+    public async Task Maak_Html_ZetCspEnNosniffHeaders()
+    {
+        var model = Model(new PlannerShareWedstrijd("09:30", "JO10-1", "Gasten JO10-2", "veld 3 A", "competitie", null));
+        var result = PlannerDeelEndpointCore.Maak(model, PlannerDeelEndpointCore.FormatHtml, "veldbezetting");
+        var http = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+        http.Response.Body = new MemoryStream();
+
+        await result.ExecuteResultAsync(new Microsoft.AspNetCore.Mvc.ActionContext { HttpContext = http });
+
+        http.Response.Headers["Content-Security-Policy"].ToString()
+            .Should().Be("default-src 'none'; style-src 'unsafe-inline'; sandbox");
+        http.Response.Headers["X-Content-Type-Options"].ToString().Should().Be("nosniff");
+    }
+
     [Fact]
     public void Maak_Html_GeeftEenHtmlPaginaZonderScript()
     {
@@ -96,7 +112,7 @@ public class PlannerDeelEndpointCoreTests
 
         var result = PlannerDeelEndpointCore.Maak(model, PlannerDeelEndpointCore.FormatHtml, "veldbezetting");
 
-        var inhoud = result.Should().BeOfType<ContentResult>().Subject;
+        var inhoud = result.Should().BeAssignableTo<ContentResult>().Subject;
         inhoud.ContentType.Should().StartWith("text/html");
         inhoud.Content.Should().Contain("JO10-1").And.Contain("Gasten JO10-2").And.NotContain("<script");
     }
@@ -146,7 +162,7 @@ public class PlannerDeelEndpointCoreTests
 
         pdf.VanPlan(wedstrijden, "ALLSTARS").Should().BeOfType<FileContentResult>()
             .Which.FileDownloadName.Should().Be(bestandsnaam);
-        html.VanPlan(wedstrijden, "ALLSTARS").Should().BeOfType<ContentResult>()
+        html.VanPlan(wedstrijden, "ALLSTARS").Should().BeAssignableTo<ContentResult>()
             .Which.Content.Should().Contain(verwachteTijd);
     }
 

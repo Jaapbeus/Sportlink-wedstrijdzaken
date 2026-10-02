@@ -71,8 +71,16 @@ public static class SyncTriggerCore
 
     /// <summary>
     /// Bepaalt de "van"-weekoffset: standaard -1, bij een reset de seizoensstart via de (tier-specifieke)
-    /// databasevraag <paramref name="seizoensStartWeekOffset"/>.
+    /// databasevraag <paramref name="seizoensStartWeekOffset"/>. Die geeft <c>null</c> als er geen
+    /// seizoensrij voor dat startjaar bestaat; dat is een fout (400) en nooit een stille terugval op
+    /// een standaardvenster, want de GUI zou dan "voltooid" melden terwijl er niets is opgebouwd (#1461).
     /// </summary>
-    public static async Task<int> BepaalVanWeekOffsetAsync(SyncTriggerKeuze keuze, Func<int, Task<int>> seizoensStartWeekOffset) =>
-        keuze.SeasonStartYear is int jaar ? await seizoensStartWeekOffset(jaar) : StandaardVanWeekOffset;
+    public static async Task<(int? Van, string? Fout)> BepaalVanWeekOffsetAsync(SyncTriggerKeuze keuze, Func<int, Task<int?>> seizoensStartWeekOffset)
+    {
+        if (keuze.SeasonStartYear is not int jaar) return (StandaardVanWeekOffset, null);
+        var offset = await seizoensStartWeekOffset(jaar);
+        return offset is int o
+            ? (o, null)
+            : (null, $"Seizoen {jaar} bestaat niet: er is geen seizoensrij met dat startjaar, dus er is niets om opnieuw op te bouwen.");
+    }
 }

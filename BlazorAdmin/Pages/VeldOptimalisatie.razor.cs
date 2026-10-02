@@ -52,6 +52,12 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     private string ExportToelichting =>
         $"Weergave van de {(_visTab == "optimaal" ? "optimale" : "huidige")} planning zoals hierboven gekozen. " +
         "Handig om als e-mail te versturen of als bestand te bewaren.";
+    // #1461 (tijdelijk, echte oplossing is issue #1460): de export komt van de server en kent een
+    // handmatige versleping niet — dus waarschuwen zodra de tijdlijn daarvan afwijkt.
+    private string? ExportWaarschuwing => _handmatigAangepast.Count > 0
+        ? "Let op: je hebt blokken handmatig versleept. Dit deelbare bestand toont de berekende planning, " +
+          "niet jouw handmatige aanpassingen op het scherm."
+        : null;
     private Task<byte[]> PdfOphalenAsync() => Api.GetAutoPlanPdfAsync(_planDatum, _planBuffer, _visTab);
     private string ExportBestandsNaam => $"veld-optimalisatie-{DatumStr}";
     private string ExportSleutel => $"{_visTab}|{DatumStr}|{_plan?.GetHashCode()}";
@@ -86,6 +92,7 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     private async Task OnDatumChanged()
     {
         _plan = null;
+        _handmatigAangepast.Clear();
         _errorMessage = null;
         _toepassenMelding = null;
         await AutoPlanAsync();
@@ -94,6 +101,7 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     protected override async Task OnClubChangedAsync()
     {
         _plan = null;
+        _handmatigAangepast.Clear();
         _errorMessage = null;
         _toepassenMelding = null;
         await AutoPlanAsync();
@@ -111,6 +119,7 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
             if (result.Success)
             {
                 _plan = result.Data;
+                _handmatigAangepast.Clear();
                 _planDatum = req.Datum;
                 _planBuffer = _bufferMinuten;
                 _filter = "alles";

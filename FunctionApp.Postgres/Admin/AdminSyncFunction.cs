@@ -93,8 +93,11 @@ public static class AdminSyncFunction
                 // #861: rol public.season zo nodig door vóór het venster gelezen wordt.
                 await PostgresSeasonHelper.EnsureSeasonsAsync(log);
                 var toWeekOffset = await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log);
-                var fromWeekOffset = await SyncTriggerCore.BepaalVanWeekOffsetAsync(keuze,
-                    jaar => PostgresSeasonHelper.GetSeasonStartWeekOffsetAsync(jaar, log));
+                var (vanOffset, seizoenFout) = await SyncTriggerCore.BepaalVanWeekOffsetAsync(keuze,
+                    jaar => PostgresSeasonHelper.GetSeasonStartWeekOffsetOrNullAsync(jaar));
+                // #1461: onbekend seizoen is een 400, geen stille terugval op een standaardvenster.
+                if (vanOffset is not int fromWeekOffset)
+                    return new BadRequestObjectResult(new { error = seizoenFout });
                 var jobId = Guid.NewGuid();
 
                 await SyncJobsRepository.CreateAsync(jobId, clubCode, weekOffsetFrom: fromWeekOffset, weekOffsetTo: toWeekOffset);

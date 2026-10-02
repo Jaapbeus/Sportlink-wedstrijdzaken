@@ -83,12 +83,9 @@ public partial class Instellingen : ClubSelectorPageBase
         await LaadUitgeslotenEmailsAsync();
     }
 
-    // Het KNVB-seizoen start in de zomer: vóór 1 juli hoort het startjaar bij het vorige kalenderjaar.
-    private static int HuidigSeizoenStartjaar() =>
-        DateTime.Today.Month >= 7 ? DateTime.Today.Year : DateTime.Today.Year - 1;
+    private static int HuidigSeizoenStartjaar() => SeizoenKeuze.HuidigStartjaar(DateTime.Today);
 
-    private IEnumerable<int> ResetSeizoenOpties =>
-        Enumerable.Range(HuidigSeizoenStartjaar() - 4, 6).Reverse();
+    private IEnumerable<int> ResetSeizoenOpties => SeizoenKeuze.ResetOpties(DateTime.Today);
 
     private void ToonResetBevestiging()
     {

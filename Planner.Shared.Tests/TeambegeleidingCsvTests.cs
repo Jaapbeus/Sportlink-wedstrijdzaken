@@ -249,5 +249,30 @@ public class TeambegeleidingCsvTests
 
             fouten.Should().BeEmpty();
         }
+
+        // #1461: rijnummers moeten naar de regel in het ORIGINELE bestand wijzen, ook na lege regels
+        // en deduplicatie; ParseEnValideer is de ingang voor beide tiers.
+        [Fact]
+        public void ParseEnValideer_RijnummerIsOrigineleRegel_NaLegeRegelsEnDuplicaten()
+        {
+            var csv = Header + "\n"
+                + "JO13-1;Technische staf;Jan;de Vries;trainer@voorbeeld.nl\n"
+                + "\n"
+                + "JO13-1;Technische staf;Jan;de Vries;trainer@voorbeeld.nl\n"
+                + $"{new string('A', 101)};Technische staf;Piet;Jansen;piet@voorbeeld.nl\n";
+            var r = TeambegeleidingCsv.ParseEnValideer(csv);
+
+            r.IsValid.Should().BeTrue();
+            r.Lengtefouten.Should().ContainSingle().Which.Should().Contain("Rij 5");
+        }
+
+        [Fact]
+        public void DuplicaatWaarschuwing_NoemtTelefoonnummer()
+        {
+            var csv = "Team;Rol in team;Voornaam;Familienaam;E-mailadres\n"
+                + "JO13-1;Staf;Jan;de Vries;a@voorbeeld.nl\n"
+                + "JO13-1;Staf;Jan;de Vries;a@voorbeeld.nl\n";
+            TeambegeleidingCsv.Parse(csv).Waarschuwingen.Should().Contain(w => w.Contains("telefoonnummer"));
+        }
     }
 }

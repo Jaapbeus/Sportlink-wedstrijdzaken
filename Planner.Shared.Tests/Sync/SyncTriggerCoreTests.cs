@@ -56,8 +56,9 @@ public class SyncTriggerCoreTests
     public async Task VanWeekOffset_ZonderReset_IsMinEenEnDatabaseWordtNietGeraadpleegd()
     {
         var aangeroepen = false;
-        var van = await SyncTriggerCore.BepaalVanWeekOffsetAsync(new SyncTriggerKeuze(null, null), _ => { aangeroepen = true; return Task.FromResult(0); });
+        var (van, fout) = await SyncTriggerCore.BepaalVanWeekOffsetAsync(new SyncTriggerKeuze(null, null), _ => { aangeroepen = true; return Task.FromResult<int?>(0); });
         van.Should().Be(-1);
+        fout.Should().BeNull();
         aangeroepen.Should().BeFalse();
     }
 
@@ -65,8 +66,18 @@ public class SyncTriggerCoreTests
     public async Task VanWeekOffset_MetReset_GeeftSeizoensstartDoor()
     {
         int? ontvangen = null;
-        var van = await SyncTriggerCore.BepaalVanWeekOffsetAsync(new SyncTriggerKeuze(null, 2025), j => { ontvangen = j; return Task.FromResult(-60); });
+        var (van, fout) = await SyncTriggerCore.BepaalVanWeekOffsetAsync(new SyncTriggerKeuze(null, 2025), j => { ontvangen = j; return Task.FromResult<int?>(-60); });
         van.Should().Be(-60);
+        fout.Should().BeNull();
         ontvangen.Should().Be(2025);
+    }
+
+    // #1461: een ontbrekende seizoensrij mocht niet stil terugvallen op een standaardvenster.
+    [Fact]
+    public async Task VanWeekOffset_MetReset_SeizoenBestaatNiet_GeeftFoutEnGeenOffset()
+    {
+        var (van, fout) = await SyncTriggerCore.BepaalVanWeekOffsetAsync(new SyncTriggerKeuze(null, 2031), _ => Task.FromResult<int?>(null));
+        van.Should().BeNull();
+        fout.Should().Contain("2031").And.Contain("bestaat niet");
     }
 }

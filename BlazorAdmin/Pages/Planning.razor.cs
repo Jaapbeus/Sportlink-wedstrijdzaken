@@ -33,6 +33,8 @@ public partial class Planning : ClubSelectorPageBase
     private readonly SportlinkActieKolomState _sportlinkKolom = new();
 
     private string ExportBestandsNaam => $"veldbezetting-{DatumStr}";
+    // Club zit in de sleutel: na een clubwissel moet de preview opnieuw worden opgehaald (#1461).
+    private string ExportSleutel => $"{ClubSelector.SelectedClubCode}|{DatumStr}";
     private string DatumStr => _datumDt.ToString("yyyy-MM-dd");
 
     protected override void OnInitialized()

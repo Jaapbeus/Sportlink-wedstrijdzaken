@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Npgsql;
+using Planner.Endpoints.Teambegeleiding;
 using Planner.Shared;
 
 namespace FunctionApp.Postgres.Admin;
@@ -260,13 +261,8 @@ public static class AdminTeambegeleidingFunction
                 if (dto == null || string.IsNullOrWhiteSpace(dto.CsvContent))
                     return new BadRequestObjectResult(new { error = "csvContent is vereist" });
 
-                var parseResult = TeambegeleidingCsv.Parse(dto.CsvContent);
-                if (!parseResult.IsValid)
-                    return new BadRequestObjectResult(new
-                    {
-                        error = parseResult.Error,
-                        ontbreekt = parseResult.Ontbreekt
-                    });
+                var parseResult = TeambegeleidingCsv.ParseEnValideer(dto.CsvContent);
+                if (TeambegeleidingImportEndpointCore.Weiger(parseResult) is { } weiger) return weiger;
 
                 // Databaselaag gedelegeerd naar Database.Postgres.TeambegeleidingImporter (issue 824)
                 // in plaats van een eigen, niet-atomische delete/insert/auditlog-implementatie (issue
