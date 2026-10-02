@@ -1,3 +1,16 @@
+# HANDOFF — Wedstrijd aanmaken: bug #1436 + verbeteringen #1437
+
+Status (2026-10-02):
+- #1436 (critical): PR #1438 naar `develop`, v3.8.1.1 — geen form-element meer, bevestigstap bij
+  dry-run uit, guard tegen dubbele verzending, Nederlandse validatie.
+- #1437: gebouwd op de #1436-branch, v3.8.2.0. Merge-volgorde: eerst #1438, daarna #1437 rebasen op
+  `develop`.
+- Open aanname: de FieldSize-notatie voor half/kwart/achtste veld (0.5/0.25/0.125) is afgeleid van
+  het live bevestigde "1.0" en nog niet live gecontroleerd in Sportlink.
+- Tot de release: dry-run aan laten op productie.
+
+---
+
 # HANDOFF — release v3.8.0.0 (#1424)
 
 Status (2026-10-01): #1421 gemerged (3cfc9c1), lokale branches/worktrees opgeruimd, versie 3.8.0.0 en
