@@ -73,6 +73,7 @@ document van het onderdeel waaraan je werkt.
 | [Cosmos DB e-maillog](ARCHITECTUUR-COSMOSDB-EMAILLOG.md) | Tier 4, alleen het e-mailverwerkingslog — ontwerp + kostenverificatie, nog niet gebouwd |
 | [Sportlink schermen-analyse](SPORTLINK-CLUB-SCHERMEN-ANALYSE.md) | Beschikbare datavelden in de Sportlink Club-interface — brondata voor SPORTLINK-WEB-EXTENSION.md |
 | [Sportlink Club schrijfacties — onderzoek](ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md) | Bronrapport met netwerktraces en gevonden endpoint-contracten — brondata voor SPORTLINK-WEB-EXTENSION.md |
+| [Serena vs Graft benchmark](SERENA-VS-GRAFT-BENCHMARK.md) | Context-ophaal workflows: waarom dit project Serena gebruikt, waar Graft sterker is, praktische richtlijnen |
 
 ---
 
