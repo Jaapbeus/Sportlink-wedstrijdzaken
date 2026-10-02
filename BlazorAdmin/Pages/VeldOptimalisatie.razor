@@ -493,6 +493,7 @@
                     Toelichting="@ExportToelichting"
                     BestandsNaam="@ExportBestandsNaam"
                     VerversSleutel="@ExportSleutel"
-                    HtmlOphalen="@(() => Task.FromResult(HuidigeExportHtml ?? ""))" />
+                    HtmlOphalen="@(() => Task.FromResult(HuidigeExportHtml ?? ""))"
+                    PdfOphalen="@PdfOphalenAsync" />
     }
 }

@@ -27,6 +27,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   Sportlink verwijderd, ook niet als dry-run uit staat. De poging staat wel in de mutatie-audit. Alleen
   clubwedstrijden (geen competitie- of bekerwedstrijden) komen in aanmerking. Tot de eigenaar het verwijderen
   live heeft bevestigd, ruimt u een testwedstrijd dus nog op in Sportlink Club zelf.
+- **Planning en Veld optimalisatie delen als HTML én PDF** (#1364). Onderaan **Planning** staat het blok
+  **Veldbezetting delen**: voorbeeldweergave, HTML kopiëren/downloaden en **PDF downloaden** voor de gekozen
+  datum. Het blok **Planning delen** op **Veld optimalisatie** heeft nu ook een PDF-knop, voor de tab (Huidig of
+  Optimaal) die u bekijkt. De PDF is een A4-liggend document met tijd, team, tegenstander, veld en competitie.
+  Planning delen kan elke ingelogde gebruiker; Veld optimalisatie blijft alleen voor beheerders. Op een
+  uitwedstrijd toont de kolom Tegenstander nu de andere partij in plaats van het eigen team.
 - **Herbruikbaar deelpaneel voor planningen** (#1362). Het blok "Planning delen" op Veld optimalisatie is een eigen component geworden (voorbereiding op delen vanaf meer schermen en PDF). Voorbeeldweergave, HTML kopiëren en HTML downloaden werken zoals voorheen; het paneel klapt nu open met een klik op de titel.
 - **Volledig seizoen opnieuw opbouwen vanuit de Admin GUI** (#1352). Op de Instellingen-pagina staat naast
   **Nu synchroniseren** de knop **Volledig seizoen opnieuw opbouwen…**: kies een seizoen, bevestig, en alle

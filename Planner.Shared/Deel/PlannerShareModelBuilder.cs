@@ -67,7 +67,7 @@ namespace Planner.Shared.Deel
                 .Select(w => new PlannerShareWedstrijd(
                     Tijd: TijdOfPlaatshouder(optimaal ? w.OptimaalTijd : w.HuidigeTijd),
                     Team: w.TeamNaam,
-                    Tegenstander: TegenstanderUitWedstrijd(w.Wedstrijd),
+                    Tegenstander: TegenstanderUitWedstrijd(w.Wedstrijd, w.TeamNaam),
                     Veld: LeegAlsNull(optimaal ? w.OptimaalVeld : w.HuidigeVeld),
                     Competitie: LeegAlsNull(w.Competitiesoort),
                     Scheidsrechter: null))
@@ -87,12 +87,30 @@ namespace Planner.Shared.Deel
         /// spaties rond het streepje en splitst dus niet.
         /// </summary>
         public static string? TegenstanderUitWedstrijd(string? wedstrijd)
+            => TegenstanderUitWedstrijd(wedstrijd, null);
+
+        /// <summary>
+        /// Zoals <see cref="TegenstanderUitWedstrijd(string?)"/>, maar bij een uitwedstrijd is het
+        /// tweede deel het eigen team (#1364: "Tegenstander 1 - AllStars JO10 1" gaf het eigen team
+        /// als tegenstander). Staat <paramref name="teamNaam"/> in het tweede deel, dan is het
+        /// eerste deel de tegenstander; staat hij in geen van beide (andere schrijfwijze, zie
+        /// docs/ARCHITECTUUR-TEAMRESOLUTIE.md), dan blijft het gedrag van #1363: het tweede deel.
+        /// </summary>
+        public static string? TegenstanderUitWedstrijd(string? wedstrijd, string? teamNaam)
         {
             if (string.IsNullOrWhiteSpace(wedstrijd))
                 return null;
 
             var delen = wedstrijd.Split(TegenstanderScheiding);
-            return delen.Length == 2 ? LeegAlsNull(delen[1]) : null;
+            if (delen.Length != 2)
+                return null;
+
+            if (!string.IsNullOrWhiteSpace(teamNaam)
+                && delen[1].Contains(teamNaam.Trim(), StringComparison.OrdinalIgnoreCase)
+                && !delen[0].Contains(teamNaam.Trim(), StringComparison.OrdinalIgnoreCase))
+                return LeegAlsNull(delen[0]);
+
+            return LeegAlsNull(delen[1]);
         }
 
         /// <summary>Lange Nederlandse datum, bv. "zaterdag 3 oktober 2026".</summary>

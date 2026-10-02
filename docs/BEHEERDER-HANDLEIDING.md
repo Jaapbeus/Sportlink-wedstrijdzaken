@@ -115,6 +115,21 @@ hieronder — zie hoofdstuk 19 voor de Sportlink Web Extension zelf.
   omdat daar ook de bovenbalk zelf niet sticky is. De tijdlijnen op **Veld optimalisatie** zijn
   niet sticky.
 
+### Planning en Veld optimalisatie — delen als HTML of PDF (#1364)
+
+Onderaan **Planning** staat het blok **Veldbezetting delen**, en onderaan **Veld optimalisatie**
+(zodra er een planning is berekend) het blok **Planning delen**. Klik op de titel om het blok te openen.
+
+- **Voorbeeld en HTML:** een voorbeeldweergave van de gekozen dag. **HTML kopiëren** zet de pagina op
+  het klembord (voor in een e-mail), **HTML downloaden** bewaart haar als bestand.
+- **PDF downloaden:** een A4-liggend document met per wedstrijd tijd, team, tegenstander, veld en
+  competitie. Bestandsnamen zijn `veldbezetting-<datum>.pdf`, `huidige-planning-<datum>.pdf` of
+  `optimale-planning-<datum>.pdf`. Een kolom Scheidsrechter verschijnt alleen als die gegevens bekend zijn.
+- **Welke planning wordt gedeeld:** op Planning de datum bovenin de pagina. Op Veld optimalisatie de
+  tab die u op dat moment bekijkt (**Huidig** of **Optimaal**), met de datum en buffer waarmee u de
+  planning hebt berekend; de titel van het document zegt welke van de twee het is.
+- **Rechten:** Planning delen kan elke ingelogde gebruiker; Veld optimalisatie blijft alleen voor beheerders.
+
 ### Veld optimalisatie — twee tabs: Huidig en Optimaal
 
 De pagina **Veld optimalisatie** (#1361, vóór die splitsing het onderste deel van de toenmalige
