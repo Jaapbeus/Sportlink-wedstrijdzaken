@@ -7,6 +7,7 @@ CREATE TABLE [avg].[Teambegeleiding] (
     [Team]                   NVARCHAR (100) NULL,
     [LeeftijdscategorieTeam] NVARCHAR (50)  NULL,
     [Teamrol]                NVARCHAR (100) NULL,
+    [Functie]                NVARCHAR (150) NULL,
     [Naam]                   NVARCHAR (300) NULL,
     [Emailadres]             NVARCHAR (200) NULL,
     [Telefoonnummer]         NVARCHAR (50)  NULL,

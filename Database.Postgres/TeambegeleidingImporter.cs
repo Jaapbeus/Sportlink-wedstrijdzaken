@@ -10,7 +10,8 @@ public sealed record TeambegeleidingRow(
     string? Teamrol,
     string? Naam,
     string? Emailadres,
-    string? Telefoonnummer);
+    string? Telefoonnummer,
+    string? Functie = null);
 
 public sealed record TeambegeleidingImportResult(int AantalRijen, long DuurMs);
 
@@ -129,7 +130,7 @@ public static class TeambegeleidingImporter
     private static async Task KopieerRijenAsync(NpgsqlConnection connection, string clubCode, IReadOnlyList<TeambegeleidingRow> rows, CancellationToken ct)
     {
         await using var writer = await connection.BeginBinaryImportAsync(
-            "COPY avg.teambegeleiding (team, leeftijdscategorieteam, teamrol, naam, emailadres, telefoonnummer, clubcode) FROM STDIN (FORMAT BINARY)",
+            "COPY avg.teambegeleiding (team, leeftijdscategorieteam, teamrol, naam, emailadres, telefoonnummer, functie, clubcode) FROM STDIN (FORMAT BINARY)",
             ct);
 
         foreach (var row in rows)
@@ -141,6 +142,7 @@ public static class TeambegeleidingImporter
             await WriteNullableAsync(writer, row.Naam, ct);
             await WriteNullableAsync(writer, row.Emailadres, ct);
             await WriteNullableAsync(writer, row.Telefoonnummer, ct);
+            await WriteNullableAsync(writer, row.Functie, ct);
             await writer.WriteAsync(clubCode, NpgsqlDbType.Varchar, ct);
         }
         await writer.CompleteAsync(ct);

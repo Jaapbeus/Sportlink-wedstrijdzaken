@@ -95,6 +95,7 @@ Het script herkent kolomnamen **hoofdletterongevoelig** en accepteert meerdere v
 |-------------------------|---------------------------------------------------------------|
 | `Team`                  | `Team`, `Teamnaam`, `Team naam`                               |
 | `Teamrol`               | `Teamrol`, `Rol`, `Rol in team`, `Rol team`                   |
+| `Functie` *(optioneel, #1360)* | `Functie`, `Functie in team` — ontbreekt de kolom, dan toont de badge alleen de Teamrol |
 | `Naam` *(samengesteld)* | `Roepnaam` **en** `Achternaam` (beide verplicht)              |
 | `Emailadres`            | `E-mailadres`, `Email`, `E-mail`, `Emailadres`, `Mailadres`   |
 
@@ -136,6 +137,7 @@ Het script herkent kolomnamen **hoofdletterongevoelig** en accepteert meerdere v
 | `Team`                   | NVARCHAR(100)  | Teamnaam zoals in Sportlink (bijv. `JO15-1`)           |
 | `LeeftijdscategorieTeam` | NVARCHAR(50)   | Leeftijdsgroep (bijv. `Onder 15`, `Senioren`)          |
 | `Teamrol`                | NVARCHAR(100)  | `Technische staf`, `Lokale staf`, `Overige staf`, etc. |
+| `Functie`                | NVARCHAR(150)  | Specifieke functie, bijv. `Trainer/coach` (nullable)   |
 | `Naam`                   | NVARCHAR(300)  | Volledige naam: Roepnaam [Tussenvoegsel] Achternaam    |
 | `Emailadres`             | NVARCHAR(200)  | E-mailadres van de persoon                             |
 | `Telefoonnummer`         | NVARCHAR(50)   | Mobiel nummer (voorkeur) of vaste lijn                 |

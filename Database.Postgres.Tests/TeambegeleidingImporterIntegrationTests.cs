@@ -44,6 +44,7 @@ public class TeambegeleidingImporterIntegrationTests : IAsyncLifetime
                 team VARCHAR(100) NULL,
                 leeftijdscategorieteam VARCHAR(50) NULL,
                 teamrol VARCHAR(100) NULL,
+                functie VARCHAR(150) NULL,
                 naam VARCHAR(300) NULL,
                 emailadres VARCHAR(200) NULL,
                 telefoonnummer VARCHAR(50) NULL,
@@ -99,6 +100,30 @@ public class TeambegeleidingImporterIntegrationTests : IAsyncLifetime
             "SELECT COUNT(*) FROM avg.teambegeleiding WHERE clubcode = 'testclub'", connection);
         var aantalVrc = (long)(await countVrc.ExecuteScalarAsync())!;
         aantalVrc.Should().Be(2);
+    }
+
+    /// <summary>#1360: Functie komt via de binaire COPY in avg.teambegeleiding.functie; leeg blijft NULL.</summary>
+    [PostgresFact]
+    public async Task ImportAsync_MetFunctie_SlaatFunctieOpEnLaatLegeFunctieNull()
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        IReadOnlyList<TeambegeleidingRow> rows =
+        [
+            new TeambegeleidingRow("Testclub JO13-1", "Onder 13", "Technische staf", "Jan de Vries", "trainer@voorbeeld.nl", null, "Trainer/coach"),
+            new TeambegeleidingRow("Testclub JO13-1", "Onder 13", "Overige staf", "Piet de Jong", "leider@voorbeeld.nl", null),
+        ];
+
+        await TeambegeleidingImporter.ImportAsync(connection, "testclub", rows, "fixture.csv", "test", CancellationToken.None);
+
+        await using var cmd = new NpgsqlCommand(
+            "SELECT naam, functie FROM avg.teambegeleiding WHERE clubcode = 'testclub' ORDER BY naam", connection);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        (await reader.ReadAsync()).Should().BeTrue();
+        reader.GetString(0).Should().Be("Jan de Vries");
+        reader.GetString(1).Should().Be("Trainer/coach");
+        (await reader.ReadAsync()).Should().BeTrue();
+        reader.IsDBNull(1).Should().BeTrue("een rij zonder Functie moet NULL opleveren, geen lege string");
     }
 
     /// <summary>

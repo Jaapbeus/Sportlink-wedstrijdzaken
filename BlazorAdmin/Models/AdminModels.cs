@@ -520,8 +520,12 @@ public class TeambegeleidingItem
 {
     public string Naam { get; set; } = "";
     public string Teamrol { get; set; } = "";
+    public string? Functie { get; set; }
     public string? Emailadres { get; set; }
     public string? Telefoonnummer { get; set; }
+
+    /// <summary>Badge-tekst: "Teamrol - Functie", of alleen de Teamrol als er geen Functie is (#1360).</summary>
+    public string RolLabel => string.IsNullOrWhiteSpace(Functie) ? Teamrol : $"{Teamrol} - {Functie}";
 }
 
 public class DoorsturenRequest

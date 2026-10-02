@@ -33,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.9.1.0
+  version: 3.9.2.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -2559,6 +2559,10 @@ components:
         Teamrol:
           type: string
           nullable: true
+        Functie:
+          type: string
+          nullable: true
+          description: Specifieke functie binnen de teamrol (bijv. "Trainer/coach"); null als de import geen Functie-kolom had (#1360)
         Emailadres:
           type: string
           nullable: true
@@ -6631,7 +6635,7 @@ paths:
       operationId: getTeambegeleidingDetail
       summary: Begeleiding voor een specifiek team ophalen
       description: |
-        Geeft Naam, Teamrol, Emailadres en Telefoonnummer voor de begeleidingsleden van het team.
+        Geeft Naam, Teamrol, Functie, Emailadres en Telefoonnummer voor de begeleidingsleden van het team.
 
         **AVG:** persoonsgegevens worden getoond aan elke ingelogde rol (admin + user) achter Entra
         ID auth — sinds #1330 bewust teruggedraaid uit de mei-2026-beperking (#310) die dit
