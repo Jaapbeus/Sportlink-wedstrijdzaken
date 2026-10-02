@@ -28,11 +28,14 @@ else
         <div class="alert alert-danger">@_laadFout</div>
     }
 
-    <form @onsubmit="MaakAanAsync" @onsubmit:preventDefault class="oefenwedstrijd-formulier">
+    @* #1436: bewust geen form-element. Dat maakt van elke Enter een impliciete submit — met dry-run uit
+       een echte wedstrijd in Sportlink. Aanmaken gebeurt alleen via de knop (type="button"). *@
+    <div class="oefenwedstrijd-formulier">
+        <fieldset disabled="@_poort.InvoerVergrendeld">
         <div class="row g-3">
             <div class="col-sm-4">
                 <label class="form-label" for="oef-datum">Datum</label>
-                <input id="oef-datum" type="date" class="form-control" @bind="_datum" required />
+                <input id="oef-datum" type="date" class="form-control" @bind="_datum" />
             </div>
             <div class="col-sm-4">
                 <label class="form-label">Aanvangstijd</label>
@@ -45,7 +48,7 @@ else
 
             <div class="col-sm-6">
                 <label class="form-label" for="oef-team">Team</label>
-                <select id="oef-team" class="form-select" @bind="_teamSelectie" required>
+                <select id="oef-team" class="form-select" @bind="_teamSelectie">
                     <option value="">— kies een team —</option>
                     @foreach (var team in _teams)
                     {
@@ -55,13 +58,13 @@ else
                 </select>
                 @if (_teamSelectie == VrijeTekstOptie)
                 {
-                    <input type="text" class="form-control mt-2" placeholder="bijv. TEST" @bind="_teamVrijeTekst" />
+                    <input type="text" class="form-control mt-2" placeholder="bijv. TEST" autocomplete="off" @bind="_teamVrijeTekst" />
                 }
             </div>
             <div class="col-sm-6">
                 <label class="form-label" for="oef-tegenstander">Tegenstander</label>
                 <input id="oef-tegenstander" type="text" class="form-control" placeholder="bijv. SV Voorbeeld JO10-2"
-                       @bind="_tegenstander" required />
+                       autocomplete="off" @bind="_tegenstander" />
             </div>
 
             <div class="col-sm-6">
@@ -76,12 +79,41 @@ else
             </div>
             <div class="col-sm-6">
                 <label class="form-label" for="oef-omschrijving">Omschrijving <span class="text-muted">(optioneel)</span></label>
-                <input id="oef-omschrijving" type="text" class="form-control" placeholder="@StandaardOmschrijving" @bind="_omschrijving" />
+                <input id="oef-omschrijving" type="text" class="form-control" placeholder="@StandaardOmschrijving" autocomplete="off" @bind="_omschrijving" />
             </div>
         </div>
+        </fieldset>
+
+        @if (_validatieFouten.Count > 0)
+        {
+            <div class="alert alert-danger mt-3 mb-0">
+                <ul class="mb-0">
+                    @foreach (var fout in _validatieFouten)
+                    {
+                        <li>@fout</li>
+                    }
+                </ul>
+            </div>
+        }
+
+        @if (_poort.Huidig == WedstrijdAanmaakPoort.Stap.Bevestigen)
+        {
+            <div class="alert alert-warning mt-3 mb-0 oefenwedstrijd-bevestiging">
+                <div class="fw-semibold">Deze wedstrijd wordt direct in Sportlink Club aangemaakt:</div>
+                <div class="mt-1">
+                    @_datum.ToString("dddd d MMMM yyyy") om @_tijd (@_duur min) —
+                    <strong>@TeamNaam</strong> tegen <strong>@_tegenstander</strong>@(GekozenVeldNaam is { } veld ? $", {veld}" : "")
+                </div>
+                <div class="mt-2 d-flex gap-2">
+                    <button type="button" class="btn btn-warning" @onclick="BevestigAsync">Bevestigen en aanmaken</button>
+                    <button type="button" class="btn btn-outline-secondary" @onclick="Annuleer">Annuleren</button>
+                </div>
+            </div>
+        }
 
         <div class="mt-3">
-            <button type="submit" class="btn btn-primary" disabled="@(_status.Bezig || _teams.Count == 0)">
+            <button type="button" class="btn btn-primary" @onclick="VraagAanAsync"
+                    disabled="@(_poort.InvoerVergrendeld || _teams.Count == 0)">
                 @if (_status.Bezig)
                 {
                     <span class="spinner-border spinner-border-sm me-1"></span>
@@ -89,7 +121,7 @@ else
                 Wedstrijd aanmaken
             </button>
         </div>
-    </form>
+    </div>
 }
 
 @if (!string.IsNullOrEmpty(_status.Melding))
