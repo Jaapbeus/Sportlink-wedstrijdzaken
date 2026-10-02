@@ -4493,6 +4493,23 @@ refresh-tokenopslag); er is geen fallback. De per club/rol gedeelde lease is tie
 transaction-scoped advisory lock (Postgres) respectievelijk een transaction-owned application lock
 (SQL Server) — geen gedeelde providerabstractie.
 
+## 77. Wedstrijdnummer-teller en clubinstelling Spelactiviteit: beide tiers (#1437)
+
+Twee schemawijzigingen voor "Wedstrijd aanmaken", op beide tiers gelijk:
+
+| Wat | Postgres | SQL Server |
+|---|---|---|
+| Teller `YYMMDD` + volgnummer per club en speeldag (`clubcode`, `datum`, `laatstevolgnummer`, PK op de eerste twee) | `public.wedstrijdnummerteller` — `Database.Postgres/migrations/031_wedstrijdnummerteller.sql`, met `ENABLE ROW LEVEL SECURITY` in dezelfde migratie | `dbo.WedstrijdnummerTeller` — `Database/dbo/Tables/WedstrijdnummerTeller.sql` én idempotent `Database/Script.PostDeployment1.sql` |
+| Kolom `SportlinkSpelactiviteit` (100 tekens, nullable) op de AppSettings-rij | `public.appsettings.sportlinkspelactiviteit` — migratie `032_appsettings_sportlinkspelactiviteit.sql` | `dbo.AppSettings.SportlinkSpelactiviteit` — `AppSettings.sql` én `Script.PostDeployment1.sql` |
+
+Het ophogen van de teller is per tier atomair in één statement, zonder gedeelde providerabstractie:
+Postgres `INSERT … ON CONFLICT (clubcode, datum) DO UPDATE … WHERE laatstevolgnummer < 99 RETURNING`
+(een rijslot), SQL Server `MERGE … WITH (HOLDLOCK) … OUTPUT inserted.LaatsteVolgnummer`. Zit de dag
+op 99, dan geeft het statement geen rij terug en antwoordt het endpoint met een 400. De opmaak
+(datum + volgnummer → getal) staat in `Planner.Shared/Integrations/SportlinkClub/ClubMatchWedstrijdNummer.cs`.
+De kolomnamen zijn bewust zonder underscore (`laatstevolgnummer`): `check-postgres-column-coverage.sh`
+vertaalt een SQL Server-kolom door alleen te lowercasen.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

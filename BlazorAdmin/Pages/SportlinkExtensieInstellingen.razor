@@ -64,6 +64,20 @@ else
                 </div>
             </div>
 
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label" for="sportlinkSpelactiviteit">Spelactiviteit voor nieuwe oefenwedstrijden</label>
+                    <input id="sportlinkSpelactiviteit" class="form-control" maxlength="100" autocomplete="off"
+                           @bind="settings.SportlinkSpelactiviteit" />
+                    <small class="form-text text-muted">
+                        De omschrijving of code uit de lijst van Sportlink Club, zoals "Veld - Zaterdag" of
+                        "SOCCER-VE-AL/SATURDAY". Is dit ingevuld en gevonden, dan gebruikt "Wedstrijd aanmaken"
+                        altijd deze spelactiviteit. Leeg laten: de spelactiviteit van het team, anders de
+                        standaard van Sportlink.
+                    </small>
+                </div>
+            </div>
+
             <button class="btn btn-primary" disabled="@saving" @onclick="OpslaanAsync">
                 @(saving ? "Opslaan..." : "Opslaan")
             </button>

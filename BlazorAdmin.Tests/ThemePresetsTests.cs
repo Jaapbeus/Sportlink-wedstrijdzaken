@@ -160,4 +160,27 @@ public class ThemePresetsTests
             "focusRingGap", "focusRingAccent"
         });
     }
+
+    [Theory]
+    [InlineData("primary", "--theme-primary")]
+    [InlineData("cardBg", "--theme-card-bg")]
+    [InlineData("mutedTextSubtle", "--theme-muted-text-subtle")]
+    [InlineData("surfaceSubtleBg", "--theme-surface-subtle-bg")]
+    public void CssVariabele_VolgtDezelfdeVertalingAlsThemeJs(string sleutel, string verwacht)
+    {
+        // #1442: het beheerscherm toont deze naam als CSS-pad en zoekt er de selectors mee op.
+        // Wijkt hij af van naarCssNaam in theme.js, dan toont het scherm "geen selectors" voor een
+        // kleur die wel degelijk gebruikt wordt.
+        new ThemeKleurDefinitie(sleutel, "x").CssVariabele.Should().Be(verwacht);
+    }
+
+    [Fact]
+    public void LichtVlak_IsInstelbaarMetBootstrapStandaardInLicht()
+    {
+        // #1442: vervangt Bootstrap's .bg-light — in licht exact Bootstraps eigen waarden, dus geen
+        // visuele wijziging voor een club die niets aanpast.
+        ThemePresets.Kleuren.Select(k => k.Sleutel).Should().Contain(new[] { "surfaceSubtleBg", "surfaceSubtleText" });
+        ThemePresets.StandaardLicht["surfaceSubtleBg"].Should().Be("#f8f9fa");
+        ThemePresets.StandaardLicht["surfaceSubtleText"].Should().Be("#212529");
+    }
 }

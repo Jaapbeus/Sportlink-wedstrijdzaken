@@ -44,7 +44,7 @@ public static class AdminSettingsFunction
         "Accommodatie", "FetchSchedule", "EmailVoetnoot",
         "AccommodatiePlaats", "AccommodatieLatitude", "AccommodatieLongitude",
         "UseRealtimeApi", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio",
-        "SportlinkExtensionEnabled"
+        "SportlinkExtensionEnabled", "SportlinkSpelactiviteit"
     };
 
     // Geldige waarden voor KnvbStandaardRegio — komt overeen met de PK-waarden in dbo.KnvbKalenderDag.
@@ -80,7 +80,8 @@ public static class AdminSettingsFunction
                         [CoordinatorFunctie], [PlannerEmailAdres], [HerplanDeadlineDagen],
                         [BufferMinuten], [EmailVoetnoot], [AccommodatiePlaats],
                         [AccommodatieLatitude], [AccommodatieLongitude],
-                        [KnvbPdfBijlageIngeschakeld], [KnvbStandaardRegio], [SportlinkExtensionEnabled]
+                        [KnvbPdfBijlageIngeschakeld], [KnvbStandaardRegio], [SportlinkExtensionEnabled],
+                        [SportlinkSpelactiviteit]
                     FROM [dbo].[AppSettings]
                     WHERE [ClubCode] = @ClubCode", connection);
                 command.Parameters.AddWithValue("@ClubCode", clubCode);
@@ -240,6 +241,10 @@ public static class AdminSettingsFunction
         {
             return new BadRequestObjectResult(new { error = $"Ongeldige KnvbStandaardRegio: '{nieuweRegio}'. Toegestaan: {string.Join(", ", GeldigeKnvbRegios)}." });
         }
+
+        // #1437: de kolom is 100 tekens breed; een te lange waarde geeft anders een databasefout (500).
+        if (changes.TryGetValue("SportlinkSpelactiviteit", out var nieuweActiviteit) && nieuweActiviteit is { Length: > 100 })
+            return new BadRequestObjectResult(new { error = "Spelactiviteit mag maximaal 100 tekens bevatten." });
 
         return null;
     }

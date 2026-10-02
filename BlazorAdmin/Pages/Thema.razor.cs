@@ -1,6 +1,7 @@
 using BlazorAdmin.Models;
 using BlazorAdmin.Services;
 using Microsoft.AspNetCore.Components;
+using Microsoft.JSInterop;
 
 namespace BlazorAdmin.Pages;
 
@@ -18,6 +19,7 @@ public partial class Thema : ClubSelectorPageBase
 {
     [Inject] private AdminApiClient Api { get; set; } = default!;
     [Inject] private ThemeService ThemeService { get; set; } = default!;
+    [Inject] private IJSRuntime JS { get; set; } = default!;
 
     private ThemeDto _theme = new();
     private bool _loading = true;
@@ -39,6 +41,21 @@ public partial class Thema : ClubSelectorPageBase
 
     // "instellen" (pickers, standaard) of "overzicht" (leestabel van alle kleuren — #1388).
     private string _tab = "instellen";
+
+    // Per CSS-variabele de selectors die hem gebruiken (#1442), live uitgelezen uit de geladen
+    // stylesheets door theme-css-pad.js. null = nog niet opgehaald.
+    private Dictionary<string, string[]>? _cssSelectors;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_cssSelectors != null || _loading || _error != null) return;
+        var namen = ThemePresets.Kleuren.Select(k => k.CssVariabele).ToArray();
+        _cssSelectors = await JS.InvokeAsync<Dictionary<string, string[]>>("themeCssPad.zoekSelectors", (object)namen);
+        StateHasChanged();
+    }
+
+    private string[] SelectorsVoor(ThemeKleurDefinitie kleur) =>
+        _cssSelectors != null && _cssSelectors.TryGetValue(kleur.CssVariabele, out var lijst) ? lijst : Array.Empty<string>();
 
     protected override async Task OnInitializedAsync()
     {
