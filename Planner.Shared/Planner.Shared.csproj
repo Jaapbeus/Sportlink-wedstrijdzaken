@@ -16,6 +16,9 @@
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Newtonsoft.Json" />
+    <!-- #1363: PDF-export (Deel/PlannerPdfGenerator.cs). Licentie en native assets: zie
+         Directory.Packages.props en docs/ARCHITECTUUR-PDF-EXPORT.md. -->
+    <PackageReference Include="QuestPDF" />
   </ItemGroup>
 
   <ItemGroup>

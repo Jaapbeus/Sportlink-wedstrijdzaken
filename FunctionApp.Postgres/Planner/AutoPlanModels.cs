@@ -1,3 +1,5 @@
+using Planner.Shared.Deel;
+
 namespace FunctionApp.Postgres.Planner;
 
 /// <summary>
@@ -22,7 +24,8 @@ public class AutoPlanRequest
     public int? BufferMinuten { get; set; }
 }
 
-public class AutoPlanWedstrijdItem
+// IPlanWedstrijdRegel (#1363): de gedeelde PDF-export leest deze regel zonder eigen mapping per tier.
+public class AutoPlanWedstrijdItem : IPlanWedstrijdRegel
 {
     public long? WedstrijdCode { get; set; }
     public string Wedstrijd { get; set; } = string.Empty;

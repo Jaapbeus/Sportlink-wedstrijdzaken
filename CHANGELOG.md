@@ -33,6 +33,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ### Changed
 - De CSV-verwerking van de teambegeleiding-import staat nu op één plek (beide databasevarianten gebruiken
   dezelfde code), zodat de twee varianten niet meer uit elkaar kunnen lopen.
+- Voorbereiding op het delen van de planning als PDF (#1363, epic #1365): de applicatie kan nu een
+  PDF maken van de veldbezetting of van de huidige/optimale planning — titel, club, speeldag en een
+  tabel met tijd, team, tegenstander, veld en competitie. Er is nog geen knop of endpoint dat hem
+  aanbiedt; dat volgt in issue #1364. Gebouwd met QuestPDF onder de gratis Community License, die
+  geldt voor verenigingen met een jaaromzet onder USD 1 miljoen — elke club die deze repository
+  gebruikt controleert dat zelf (zie SETUP-NIEUWE-CLUB.md en docs/ARCHITECTUUR-PDF-EXPORT.md).
+- Het deploypakket van de Function App is ruim 39 MB groter (zip, beide tiers), doordat QuestPDF
+  native bibliotheken voor alle platforms meelevert (#1363). Ruim binnen de grens van het
+  Consumption Plan; details en meting in docs/ARCHITECTUUR-PDF-EXPORT.md §3.1.
 
 ## [3.9.0.0] — 2026-10-02
 
