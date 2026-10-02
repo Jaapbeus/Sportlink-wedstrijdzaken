@@ -81,10 +81,8 @@ public static class AdminSyncFunction
             async clubCode =>
             {
                 // #1352: optionele body {reset, season}; zonder body exact het oude gedrag.
-                var (request, leesFout) = SyncTriggerCore.LeesBody(await new StreamReader(req.Body).ReadToEndAsync());
-                var keuze = leesFout is null
-                    ? SyncTriggerCore.Valideer(request, DateTime.UtcNow.Year)
-                    : new SyncTriggerKeuze(leesFout, null);
+                var keuze = SyncTriggerCore.LeesEnValideer(
+                    await new StreamReader(req.Body).ReadToEndAsync(), DateTime.UtcNow.Year);
                 if (!keuze.Geldig)
                     return new BadRequestObjectResult(new { error = keuze.Fout });
 

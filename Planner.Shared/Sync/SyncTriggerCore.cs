@@ -59,6 +59,13 @@ public static class SyncTriggerCore
         return new SyncTriggerKeuze(null, jaar);
     }
 
+    /// <summary>Leest en valideert in één stap; leesfouten worden een foutkeuze.</summary>
+    public static SyncTriggerKeuze LeesEnValideer(string? body, int huidigJaar)
+    {
+        var (request, fout) = LeesBody(body);
+        return fout is null ? Valideer(request, huidigJaar) : new SyncTriggerKeuze(fout, null);
+    }
+
     /// <summary>Standaard begin van het sync-venster: vorige week.</summary>
     public const int StandaardVanWeekOffset = -1;
 
