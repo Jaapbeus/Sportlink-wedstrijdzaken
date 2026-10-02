@@ -40,32 +40,16 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     // Huidig- als de Optimaal-tab.
     private readonly GanttHoverState _hover = new();
 
-    // HTML-export van de berekende planning (voorheen onderdeel van de klassieke flow, #666)
-    private string? _kopieerStatus;
-
-    // Volgt de gekozen tab: de export toont dezelfde planning als de tijdlijn erboven.
+    // Volgt de gekozen tab: de export toont dezelfde planning als de tijdlijn erboven. Preview,
+    // kopiëren en downloaden zitten in <DeelPaneel> (#1362); script-strip staat in DeelHtmlHelper.
     private string? HuidigeExportHtml =>
         _plan == null ? null : (_visTab == "optimaal" ? _plan.OptimaleHtml : _plan.HuidigeHtml);
 
-    // De gegenereerde HTML bevat een klik-interactie-script. In het iframe hieronder staat bewust
-    // geen 'allow-scripts' (XSS-verdediging, #603), en e-mailclients strippen scripts toch — het
-    // script wordt daar dus altijd geblokkeerd en levert alleen een console-fout op. Voor de
-    // voorbeeldweergave en de e-mailversie halen we het eruit; de download houdt het wél, want in
-    // een los geopend HTML-bestand werkt de interactie normaal.
-    private string? ExportHtmlZonderScript
-    {
-        get
-        {
-            var html = HuidigeExportHtml;
-            if (string.IsNullOrEmpty(html)) return html;
-            // Geen static Regex-veld en geen RegexOptions.Compiled: dat faalt in Blazor WebAssembly
-            // (NullReferenceException bij het renderen, geen buildfout — alleen zichtbaar in de browser).
-            return System.Text.RegularExpressions.Regex.Replace(
-                html, @"<script\b[^>]*>.*?</script>", string.Empty,
-                System.Text.RegularExpressions.RegexOptions.Singleline |
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        }
-    }
+    private string ExportToelichting =>
+        $"Weergave van de {(_visTab == "optimaal" ? "optimale" : "huidige")} planning zoals hierboven gekozen. " +
+        "Handig om als e-mail te versturen of als bestand te bewaren.";
+    private string ExportBestandsNaam => $"veld-optimalisatie-{DatumStr}";
+    private string ExportSleutel => $"{_visTab}|{DatumStr}|{_plan?.GetHashCode()}";
 
     // Toepassen feedback
     private string? _toepassenMelding;
@@ -233,26 +217,6 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
         "onbekend-team"   => "",   // neutraal — geen rode achtergrond (#487)
         _                 => ""
     };
-
-    // ── HTML-export van de berekende planning ──
-    // Sinds #666 komt de HTML uit de auto-plan-response zelf (HuidigeHtml / OptimaleHtml). Er is dus
-    // geen extra API-call meer nodig; het losse optimaliseer-endpoint is vervallen.
-
-    private async Task KopieerEmailHtmlAsync()
-    {
-        var html = ExportHtmlZonderScript;
-        if (string.IsNullOrEmpty(html)) return;
-        await JS.InvokeVoidAsync("blazorHelpers.copyToClipboard", html);
-        _kopieerStatus = "Gekopieerd!";
-        _ = Task.Delay(2500).ContinueWith(_ => { _kopieerStatus = null; InvokeAsync(StateHasChanged); });
-    }
-
-    private async Task DownloadHtmlAsync()
-    {
-        var html = HuidigeExportHtml;
-        if (string.IsNullOrEmpty(html)) return;
-        await JS.InvokeVoidAsync("blazorHelpers.downloadHtml", $"veld-optimalisatie-{DatumStr}.html", html);
-    }
 
     // ── Gantt helpers ──
 

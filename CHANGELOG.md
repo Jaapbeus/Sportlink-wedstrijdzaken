@@ -19,6 +19,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Herbruikbaar deelpaneel voor planningen** (#1362). Het blok "Planning delen" op Veld optimalisatie is een eigen component geworden (voorbereiding op delen vanaf meer schermen en PDF). Voorbeeldweergave, HTML kopiëren en HTML downloaden werken zoals voorheen; het paneel klapt nu open met een klik op de titel.
 - **Volledig seizoen opnieuw opbouwen vanuit de Admin GUI** (#1352). Op de Instellingen-pagina staat naast
   **Nu synchroniseren** de knop **Volledig seizoen opnieuw opbouwen…**: kies een seizoen, bevestig, en alle
   wedstrijden vanaf de seizoensstart worden opnieuw opgehaald. Een ongeldig seizoen geeft een duidelijke melding.
