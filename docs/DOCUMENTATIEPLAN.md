@@ -90,6 +90,7 @@ Azure-productieomgeving. Eenmalig uit te voeren, daarna niet meer dagelijks nodi
 | [SETUP-CHECKLIST.md](SETUP-CHECKLIST.md) | Snelle checklist voor eerste opzet, beide databasetiers |
 | [ENTRA-AUTH-BEHEER.md](ENTRA-AUTH-BEHEER.md) | Entra App Registration, Easy Auth, rollen — configure via scripts |
 | [CUSTOM-DOMAIN.md](CUSTOM-DOMAIN.md) | Eigen domein op de Static Web App, CORS-origins, redirect-URI's |
+| [RUNBOOK-FLEX-MIGRATIE.md](RUNBOOK-FLEX-MIGRATIE.md) | Eenmalig draaiboek Flex Consumption-migratie (epic #1063); vervalt na FLEX-13 |
 
 ### Navigatie
 

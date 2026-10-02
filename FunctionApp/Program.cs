@@ -109,6 +109,8 @@ builder.Services.AddSingleton<IDatabaseStatusReader, ArmDatabaseStatusReader>();
 builder.Services.AddSingleton<ISportlinkMutationAuditService, SqlSportlinkMutationAuditService>();
 
 // CORS voor lokale dev: geconfigureerd via Host.CORS in local.settings.json (Functions host-level).
-// In productie (Azure SWA) is CORS niet nodig: SWA proxying houdt alles op dezelfde origin.
+// In productie is CORS wél nodig: de SWA proxyt niet, de Blazor-client roept de Function App
+// rechtstreeks aan op een andere origin. De toegestane origins staan als platforminstelling op de
+// Function App (az functionapp cors), niet in code of bicep — zie docs/RUNBOOK-FLEX-MIGRATIE.md §5.
 
 builder.Build().Run();
