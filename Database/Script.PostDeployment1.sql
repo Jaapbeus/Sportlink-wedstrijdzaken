@@ -3597,3 +3597,8 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'SportlinkSpelactiviteit')
     ALTER TABLE [dbo].[AppSettings] ADD [SportlinkSpelactiviteit] NVARCHAR(100) NULL;
 GO
+
+-- #1360: Functie (bijv. "Trainer/coach") naast Teamrol voor de badge op /teambegeleiding. Postgres: migratie 033.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('avg.Teambegeleiding') AND name = 'Functie')
+    ALTER TABLE [avg].[Teambegeleiding] ADD [Functie] NVARCHAR(150) NULL;
+GO

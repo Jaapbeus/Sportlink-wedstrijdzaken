@@ -13,7 +13,7 @@ namespace SportlinkFunction.Admin;
 
 /// <summary>
 /// Admin API voor teambegeleiding (#168, #299).
-/// /teambegeleiding/{team} geeft Naam, Teamrol, Emailadres en Telefoonnummer terug
+/// /teambegeleiding/{team} geeft Naam, Teamrol, Functie, Emailadres en Telefoonnummer terug
 /// aan de ingelogde beheerder (admin/user-rol) — pagina is afgeschermd achter Entra ID Easy Auth.
 /// E-mail doorstuur-pipeline gebruikt Emailadres uitsluitend server-side; nooit in auto-reply body.
 /// </summary>
@@ -58,7 +58,7 @@ public static class AdminTeambegeleidingFunction
                 using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
                 await connection.OpenAsync();
                 using var command = new SqlCommand(@"
-                    SELECT [Naam], [Teamrol], [Emailadres], [Telefoonnummer]
+                    SELECT [Naam], [Teamrol], [Emailadres], [Telefoonnummer], [Functie]
                     FROM [avg].[Teambegeleiding]
                     WHERE [Team] = @team
                       AND [ClubCode] = @ClubCode
@@ -80,7 +80,8 @@ public static class AdminTeambegeleidingFunction
                         Naam = reader.IsDBNull(0) ? "" : reader.GetString(0),
                         Teamrol = reader.IsDBNull(1) ? "" : reader.GetString(1),
                         Emailadres = reader.IsDBNull(2) ? null : reader.GetString(2),
-                        Telefoonnummer = reader.IsDBNull(3) ? null : reader.GetString(3)
+                        Telefoonnummer = reader.IsDBNull(3) ? null : reader.GetString(3),
+                        Functie = reader.IsDBNull(4) ? null : reader.GetString(4)
                     });
                 }
                 return new OkObjectResult(list);
@@ -258,7 +259,7 @@ public static class AdminTeambegeleidingFunction
 
                 var sw = System.Diagnostics.Stopwatch.StartNew();
 
-                var parseResult = ParseCsv(dto.CsvContent);
+                var parseResult = TeambegeleidingCsv.Parse(dto.CsvContent);
                 if (!parseResult.IsValid)
                     return new BadRequestObjectResult(new
                     {
@@ -269,7 +270,7 @@ public static class AdminTeambegeleidingFunction
                 // #1131: kolomgrenzen valideren VOORDAT er iets destructiefs gebeurt (DELETE/INSERT).
                 // Zonder deze stap kon een te lange waarde (bijv. Team > 100 tekens) de insert-lus
                 // pas na de club-scoped DELETE laten falen — met een lege tabel als resultaat.
-                var lengteFouten = ValideerKolomLengtes(parseResult.Rows);
+                var lengteFouten = TeambegeleidingCsv.ValideerKolomLengtes(parseResult.Rows);
                 if (lengteFouten.Count > 0)
                     return new BadRequestObjectResult(new
                     {
@@ -302,13 +303,14 @@ public static class AdminTeambegeleidingFunction
                         {
                             using var ins = new SqlCommand(@"
                                 INSERT INTO [avg].[Teambegeleiding]
-                                    (Team, LeeftijdscategorieTeam, Teamrol, Naam, Emailadres, Telefoonnummer, ClubCode)
+                                    (Team, LeeftijdscategorieTeam, Teamrol, Functie, Naam, Emailadres, Telefoonnummer, ClubCode)
                                 VALUES
-                                    (@Team, @Leeftijd, @Teamrol, @Naam, @Email, @Telefoon, @ClubCode)",
+                                    (@Team, @Leeftijd, @Teamrol, @Functie, @Naam, @Email, @Telefoon, @ClubCode)",
                                 connection, tx);
                             ins.Parameters.AddWithValue("@Team",     (object?)row.Team ?? DBNull.Value);
                             ins.Parameters.AddWithValue("@Leeftijd", (object?)row.LeeftijdscategorieTeam ?? DBNull.Value);
                             ins.Parameters.AddWithValue("@Teamrol",  (object?)row.Teamrol ?? DBNull.Value);
+                            ins.Parameters.AddWithValue("@Functie",  (object?)row.Functie ?? DBNull.Value);
                             ins.Parameters.AddWithValue("@Naam",     (object?)row.Naam ?? DBNull.Value);
                             ins.Parameters.AddWithValue("@Email",    (object?)row.Emailadres ?? DBNull.Value);
                             ins.Parameters.AddWithValue("@Telefoon", (object?)row.Telefoonnummer ?? DBNull.Value);
@@ -349,204 +351,6 @@ public static class AdminTeambegeleidingFunction
                     waarschuwingen = parseResult.Waarschuwingen
                 });
             });
-    }
-
-    // ── CSV parsing helpers ───────────────────────────────────────────────────
-
-    private static readonly Dictionary<string, string[]> _kolomAliassen = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["Team"]                   = ["Team", "Teamnaam", "Team naam"],
-        ["Teamrol"]                = ["Teamrol", "Rol", "Rol in team", "Rol team"],
-        ["Roepnaam"]               = ["Roepnaam", "Voornaam", "First name"],
-        ["Achternaam"]             = ["Achternaam", "Familienaam", "Last name"],
-        ["Emailadres"]             = ["E-mailadres", "Email", "E-mail", "Emailadres", "Mailadres"],
-        ["LeeftijdscategorieTeam"] = ["Leeftijdscategorie team", "Leeftijdscategorie", "Age category"],
-        ["Tussenvoegsel"]          = ["Tussenvoegsel(s)", "Tussenvoegsel", "Infix", "Tussenv."],
-        ["MobielNummer"]           = ["Mobiel nummer", "Mobiel", "Mobiele telefoon", "Mobile"],
-        ["TelefoonnummerKolom"]    = ["Telefoonnummer", "Telefoon", "Vaste telefoon", "Phone"],
-    };
-
-    private static readonly string[] _vereistKolommen = ["Team", "Teamrol", "Roepnaam", "Achternaam", "Emailadres"];
-
-    // #1131: kolomgrenzen zoals gedefinieerd in Database/avg/Tables/Teambegeleiding.sql —
-    // hier hardcoded overnemen omdat de handler geen schema-introspectie doet. Bij een
-    // schemawijziging aan die tabel dit synchroon houden.
-    private const int TeamMaxLength = 100;
-    private const int LeeftijdscategorieTeamMaxLength = 50;
-    private const int TeamrolMaxLength = 100;
-    private const int NaamMaxLength = 300;
-    private const int EmailadresMaxLength = 200;
-    private const int TelefoonnummerMaxLength = 50;
-
-    /// <summary>
-    /// Valideert elke rij tegen de kolomgrenzen van <c>avg.Teambegeleiding</c> vóórdat er iets
-    /// destructiefs (DELETE/INSERT) gebeurt (#1131). Rijnummers zijn 1-based en tellen de
-    /// header mee (rij 1 = header, rij 2 = eerste datarij), zodat ze overeenkomen met wat een
-    /// beheerder in een spreadsheet/CSV-editor ziet.
-    /// </summary>
-    internal static List<string> ValideerKolomLengtes(List<ImportRij> rows)
-    {
-        var fouten = new List<string>();
-        for (int i = 0; i < rows.Count; i++)
-        {
-            var rijNummer = i + 2;
-            var row = rows[i];
-            VoegLengteFoutToe(fouten, rijNummer, "Team", row.Team, TeamMaxLength);
-            VoegLengteFoutToe(fouten, rijNummer, "Leeftijdscategorie team", row.LeeftijdscategorieTeam, LeeftijdscategorieTeamMaxLength);
-            VoegLengteFoutToe(fouten, rijNummer, "Teamrol", row.Teamrol, TeamrolMaxLength);
-            VoegLengteFoutToe(fouten, rijNummer, "Naam", row.Naam, NaamMaxLength);
-            VoegLengteFoutToe(fouten, rijNummer, "Emailadres", row.Emailadres, EmailadresMaxLength);
-            VoegLengteFoutToe(fouten, rijNummer, "Telefoonnummer", row.Telefoonnummer, TelefoonnummerMaxLength);
-        }
-        return fouten;
-    }
-
-    private static void VoegLengteFoutToe(List<string> fouten, int rijNummer, string kolomNaam, string? waarde, int maxLength)
-    {
-        if (waarde != null && waarde.Length > maxLength)
-            fouten.Add($"Rij {rijNummer}, kolom '{kolomNaam}': {waarde.Length} tekens (maximaal {maxLength}).");
-    }
-
-    internal record ImportRij(
-        string? Team, string? LeeftijdscategorieTeam, string? Teamrol,
-        string? Naam, string? Emailadres, string? Telefoonnummer);
-
-    internal class CsvParseResult
-    {
-        public bool IsValid { get; set; }
-        public string? Error { get; set; }
-        public List<string> Ontbreekt { get; set; } = [];
-        public List<string> Herkend { get; set; } = [];
-        public List<string> Waarschuwingen { get; set; } = [];
-        public List<ImportRij> Rows { get; set; } = [];
-    }
-
-    internal static CsvParseResult ParseCsv(string csvContent)
-    {
-        var result = new CsvParseResult();
-        var lines = csvContent
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
-            .Select(l => l.TrimEnd('\r'))
-            .Where(l => !string.IsNullOrWhiteSpace(l))
-            .ToList();
-
-        if (lines.Count < 2)
-        {
-            result.Error = "CSV bevat geen gegevensrijen.";
-            return result;
-        }
-
-        var headers = SplitCsvLine(lines[0]);
-        var mapping = BouwKolomMapping(headers);
-
-        var ontbreekt = ValideerVerplichteKolommen(mapping);
-        if (ontbreekt.Count > 0)
-        {
-            result.IsValid = false;
-            result.Ontbreekt = ontbreekt;
-            result.Error = $"Vereiste kolommen niet gevonden: {string.Join(", ", ontbreekt)}";
-            return result;
-        }
-
-        result.Herkend = [.. mapping.Keys];
-
-        if (!mapping.ContainsKey("MobielNummer") && !mapping.ContainsKey("TelefoonnummerKolom"))
-            result.Waarschuwingen.Add("Geen telefoonnummer-kolom gevonden — Telefoonnummer wordt leeg.");
-        if (!mapping.ContainsKey("LeeftijdscategorieTeam"))
-            result.Waarschuwingen.Add("Kolom 'Leeftijdscategorie team' niet gevonden — wordt leeg.");
-
-        for (int i = 1; i < lines.Count; i++)
-        {
-            var fields = SplitCsvLine(lines[i]);
-
-            string? GetVeld(string key)
-            {
-                if (!mapping.TryGetValue(key, out var idx) || idx >= fields.Length) return null;
-                var v = fields[idx];
-                return string.IsNullOrWhiteSpace(v) ? null : v;
-            }
-
-            var naamDelen = new[] { GetVeld("Roepnaam"), GetVeld("Tussenvoegsel"), GetVeld("Achternaam") }
-                .Where(p => p != null).ToArray();
-            var naam = naamDelen.Length > 0 ? string.Join(" ", naamDelen) : null;
-
-            var telefoon = GetVeld("MobielNummer") ?? GetVeld("TelefoonnummerKolom");
-
-            result.Rows.Add(new ImportRij(
-                GetVeld("Team"),
-                GetVeld("LeeftijdscategorieTeam"),
-                GetVeld("Teamrol"),
-                naam,
-                GetVeld("Emailadres"),
-                telefoon));
-        }
-
-        var (rows, duplicaten) = DedupliceerRijen(result.Rows);
-        result.Rows = rows;
-        if (duplicaten > 0)
-            result.Waarschuwingen.Add(
-                $"{duplicaten} exacte duplicaat-rij{(duplicaten == 1 ? "" : "en")} overgeslagen (zelfde team, rol, naam en e-mailadres).");
-
-        result.IsValid = true;
-        return result;
-    }
-
-    private static Dictionary<string, int> BouwKolomMapping(string[] headers)
-    {
-        var mapping = new Dictionary<string, int>();
-        foreach (var (canonical, aliases) in _kolomAliassen)
-        {
-            for (int i = 0; i < headers.Length; i++)
-            {
-                if (aliases.Any(a => string.Equals(a, headers[i], StringComparison.OrdinalIgnoreCase)))
-                {
-                    mapping[canonical] = i;
-                    break;
-                }
-            }
-        }
-        return mapping;
-    }
-
-    private static List<string> ValideerVerplichteKolommen(Dictionary<string, int> mapping)
-        => _vereistKolommen.Where(v => !mapping.ContainsKey(v)).ToList();
-
-    private static (List<ImportRij> Rows, int Duplicaten) DedupliceerRijen(List<ImportRij> rows)
-    {
-        var voorDedup = rows.Count;
-        List<ImportRij> gededupliceerd = [.. rows
-            .GroupBy(r => (
-                Team: r.Team?.Trim().ToUpperInvariant(),
-                Teamrol: r.Teamrol?.Trim().ToUpperInvariant(),
-                Naam: r.Naam?.Trim().ToUpperInvariant(),
-                Email: r.Emailadres?.Trim().ToUpperInvariant(),
-                Telefoon: r.Telefoonnummer?.Trim().ToUpperInvariant()))
-            .Select(g => g.First())];
-        return (gededupliceerd, voorDedup - gededupliceerd.Count);
-    }
-
-    private static string[] SplitCsvLine(string line)
-    {
-        var fields = new List<string>();
-        var current = new System.Text.StringBuilder();
-        bool inQuote = false;
-        for (int i = 0; i < line.Length; i++)
-        {
-            char c = line[i];
-            if (c == '"')
-            {
-                if (inQuote && i + 1 < line.Length && line[i + 1] == '"')
-                { current.Append('"'); i++; }
-                else
-                { inQuote = !inQuote; }
-            }
-            else if (c == ';' && !inQuote)
-            { fields.Add(current.ToString().Trim()); current.Clear(); }
-            else
-            { current.Append(c); }
-        }
-        fields.Add(current.ToString().Trim());
-        return [.. fields];
     }
 
     private record DoorsturenRequest(string TeamNaam, string? Onderwerp, string Bericht, string? Ontvangers);

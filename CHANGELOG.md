@@ -22,6 +22,17 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - **Volledig seizoen opnieuw opbouwen vanuit de Admin GUI** (#1352). Op de Instellingen-pagina staat naast
   **Nu synchroniseren** de knop **Volledig seizoen opnieuw opbouwen…**: kies een seizoen, bevestig, en alle
   wedstrijden vanaf de seizoensstart worden opnieuw opgehaald. Een ongeldig seizoen geeft een duidelijke melding.
+- **Teambegeleiding toont de functie van elke begeleider** (#1360). De badge op de Teambegeleiding-pagina
+  toont nu "Technische staf - Trainer/coach" in plaats van alleen de brede teamrol, zodat u doordeweeks
+  de trainer en in het weekend de teammanager kunt herkennen. De kolom "Functie" (of "Functie in team")
+  uit de Sportlink-export wordt bij het importeren mee ingelezen; ontbreekt de kolom, dan blijft de badge
+  zoals voorheen en meldt de import dat de kolom niet gevonden is. Twee regels voor dezelfde persoon die
+  alleen in functie verschillen blijven beide bewaard. Opnieuw importeren is nodig om bestaande
+  begeleiders van een functie te voorzien.
+
+### Changed
+- De CSV-verwerking van de teambegeleiding-import staat nu op één plek (beide databasevarianten gebruiken
+  dezelfde code), zodat de twee varianten niet meer uit elkaar kunnen lopen.
 
 ## [3.9.0.0] — 2026-10-02
 

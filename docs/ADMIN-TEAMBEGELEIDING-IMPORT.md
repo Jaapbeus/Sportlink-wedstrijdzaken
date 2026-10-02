@@ -101,7 +101,7 @@ Wat er daarna staat, en wat niet:
 
 | | |
 |---|---|
-| **Wordt bewaard** | De begeleidersgegevens zelf (team, leeftijdscategorie, teamrol, naam, e-mailadres, telefoonnummer) in de database van je club |
+| **Wordt bewaard** | De begeleidersgegevens zelf (team, leeftijdscategorie, teamrol, functie, naam, e-mailadres, telefoonnummer) in de database van je club |
 | **Wordt bewaard** | Eén regel in het importlogboek: wie er wanneer heeft geïmporteerd, de bestandsnaam en het aantal rijen |
 | **Wordt níet bewaard** | Het CSV-bestand zelf — dat wordt nergens op de server opgeslagen |
 | **Wordt níet bewaard** | De inhoud van de CSV in logbestanden; de applicatie logt bewust alleen het aantal rijen en de duur |
@@ -177,15 +177,15 @@ Deze export wordt **wekelijks** uitgevoerd — kies een vast moment dat past bij
 > **Postgres-tier (#824, epic #815).** Deze handleiding is tier-neutraal: de stappen hierboven
 > (Sportlink-export + upload via **Instellingen → Begeleiding importeren**) werken identiek
 > op beide databasevarianten. Sinds #913 heeft de Postgres-tier dezelfde flexibele
-> CSV-kolomherkenning (aliassen, dedup, validatie — `FunctionApp.Postgres/Admin/
-> AdminTeambegeleidingFunction.cs`) als de SQL Server-tier, boven op het AVG-gevoelige
+> CSV-kolomherkenning (aliassen, dedup, validatie — sinds #1360 één gedeelde
+> `Planner.Shared/TeambegeleidingCsv.cs`) als de SQL Server-tier, boven op het AVG-gevoelige
 > database-interactiedeel uit #824 zelf (`avg.teambegeleiding`/`avg.importlog` via
 > `Database.Postgres/TeambegeleidingImporter.cs`: atomische delete-vóór-COPY-import,
 > ClubCode-gescoped staleness-check, `syncenabled`-gevalideerde clubselectie). Getest tegen een
 > lokale Postgres-devcontainer, uitsluitend met fictieve testdata.
 >
 > **#1131/#1132 (beide tiers atomisch en per-club geserialiseerd).** De SQL Server-import
-> (`FunctionApp/Admin/AdminTeambegeleidingFunction.cs`) valideert de kolomlengtes van élke rij
+> (`FunctionApp/Admin/AdminTeambegeleidingFunction.cs`, validatie in `TeambegeleidingCsv.ValideerKolomLengtes`) valideert de kolomlengtes van élke rij
 > vóórdat de club-scoped DELETE draait, en voert DELETE + inserts + de audit-rij in `avg.ImportLog`
 > uit in één transactie met rollback bij elke fout — een te lange waarde (bijv. een teamnaam van
 > meer dan 100 tekens) levert een 400 met een foutmelding per rij/kolom op, en laat de vorige
