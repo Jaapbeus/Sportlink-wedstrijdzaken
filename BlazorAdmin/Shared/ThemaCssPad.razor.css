@@ -1,0 +1,12 @@
+.thema-css-pad {
+    display: block;
+    margin-top: 0.15rem;
+}
+
+.thema-css-pad summary {
+    cursor: pointer;
+}
+
+.thema-css-pad code {
+    word-break: break-all;
+}

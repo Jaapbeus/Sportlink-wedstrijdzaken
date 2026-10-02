@@ -18,6 +18,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- Thema: nieuwe kleuren **Licht vlak — achtergrond** en **Licht vlak — tekst**. De grijze vlakken (codeblokken op de Email-tester, uitlegkaart bij Begeleiding importeren, tellerbadges) schakelen nu mee met het donkere thema en zijn daar weer leesbaar; in de lichte weergave verandert niets (#1442)
+- Thema: onder elke kleur en op het tabblad Overzicht staat nu het CSS-pad — de CSS-variabele, de opgeslagen `-light`/`-dark`-variant en de selectors die de kleur gebruiken, live uitgelezen uit de geladen opmaak (#1442)
+
 ## [3.8.1.0] — 2026-10-01
 
 ### Changed
