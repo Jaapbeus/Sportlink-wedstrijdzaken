@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.9.0.0] — 2026-10-02
+
 ### Added
 - **Wedstrijd aanmaken is uitgebreid** (#1437). Kies een **velddeel** (heel, half, kwart of achtste veld)
   en de **leeftijdscategorie** uit de lijst van Sportlink. Bij het kiezen van een team vult de pagina de
