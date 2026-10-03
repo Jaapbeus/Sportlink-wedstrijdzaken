@@ -350,6 +350,14 @@ Dit getal wordt via `Assembly.GetExecutingAssembly().GetName().Version?.ToString
 De stappen hieronder in deze volgorde. Stap 2 is de voorwaarde waaronder `release.yml` überhaupt
 release-notes vindt.
 
+> **Voer een release uit met de skill `/release` (#1470).** Die doorloopt deze stappen en begint met
+> een verplichte securitypoort (stap 0 hieronder). De lijst hier is de uitleg, niet een alternatief
+> handmatig pad.
+
+0. **Securitypoort.** `/security-review` op de volledige releasediff, plus geen open
+   high/critical-alerts (Dependabot, code scanning) en geen open secret-scanning-alert. Eén
+   HIGH-bevinding stopt de release.
+
 1. **Bepaal het nieuwe nummer** volgens Fase 2 hierboven, op basis van de inhoud van
    `## [Unreleased]`.
 2. **Verplaats alles** van `## [Unreleased]` naar een nieuwe kop `## [x.y.z.r] — YYYY-MM-DD` en zet
