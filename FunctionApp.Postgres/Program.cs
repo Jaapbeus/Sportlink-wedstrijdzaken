@@ -81,11 +81,8 @@ builder.Services.AddSingleton<ISportlinkMutationAuditService, PostgresSportlinkM
 // valt het niet onder EgressGuard (#857).
 builder.Services.AddSingleton<INoodmailThrottleStore>(sp =>
 {
-    var storageVerbinding = Environment.GetEnvironmentVariable("AzureWebJobsStorage")
-        ?? throw new InvalidOperationException(
-            "AzureWebJobsStorage ontbreekt — vereist voor de Azure Functions-host zelf.");
+    // Connection string óf identity-based (Flex, #1512) — zie Planner.Shared.Infrastructure.OpslagVerbinding.
     return new TableStorageNoodmailThrottleStore(
-        storageVerbinding,
         sp.GetRequiredService<ILoggerFactory>().CreateLogger<TableStorageNoodmailThrottleStore>());
 });
 
