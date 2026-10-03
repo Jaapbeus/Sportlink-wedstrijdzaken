@@ -23,6 +23,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   Planning rechts in de datumbalk een groene knop **Wedstr. toevoegen**. Die opent het
   aanmaakformulier in een kaart op de pagina zelf, met de gekozen datum al ingevuld; na een echte
   aanmaak of verwijdering verschijnt de wijziging meteen in de veldbezetting.
+- **Ontwikkelaars kunnen de Sportlink-koppeling lokaal live testen voor de eigen club** (#1466).
+  `Start-Debug.ps1 -SportlinkLive` zet de lokale instellingen hiervoor klaar, zonder waarden te tonen.
+  Na het starten meldt het script altijd of de primaire club live kan, en zo niet, waarom niet. De
+  democlub gaat nooit live. Welke club live gaat, bepaalt de database, niet de code. De skill
+  `/startdebug` start nu ook altijd de laatste `develop`.
 - **Een zojuist aangemaakte oefenwedstrijd weer verwijderen — nog als simulatie** (#1440). Na een echte
   aanmaak op **Wedstrijd aanmaken** staat onder het resultaat de knop **Wedstrijd verwijderen uit
   Sportlink**; na een extra bevestiging ("Ja, verwijderen") vraagt de app Sportlink om de wedstrijd te
