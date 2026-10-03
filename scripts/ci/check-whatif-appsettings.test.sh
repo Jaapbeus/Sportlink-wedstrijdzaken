@@ -23,6 +23,10 @@ verwacht "zonder before en zonder live faalt"  2 "live-lijst"     -- bash $G $F/
 verwacht "live-lijst met extra setting faalt"  1 "LIVE_ONLY"      -- bash $G $F/zonder-before.json $F/live-met-extra.json
 verwacht "live-lijst veilig slaagt"            0 "^OK|OK:"        -- bash $G $F/zonder-before.json $F/live-veilig.json
 verwacht "--sites geeft sitenaam"              0 "func-\\[clubcode\\]-sportlink" -- bash $G --sites $F/veilig.json
+verwacht "twee sites, beide veilig slaagt"     0 "^OK|OK:"        -- bash $G $F/twee-sites.json $F/twee-sites-live-ok
+verwacht "twee sites, setting van site A weg"  1 "func-a-.*|ONLY_ON_A" -- bash $G $F/twee-sites.json $F/twee-sites-live-verdwijnt
+verwacht "twee sites: live-lijst B ontbreekt"  2 "func-b-"        -- bash $G $F/twee-sites.json $F/twee-sites-live-onvolledig
+verwacht "twee sites + enkel bestand faalt"    2 "meerdere sites" -- bash $G $F/twee-sites.json $F/live-veilig.json
 # waarden mogen nooit in de uitvoer staan
 if bash $G $F/verwijdert.json 2>&1 | grep -q "waarde"; then echo "FAIL waarde gelekt"; bad=$((bad+1)); else echo "OK   geen waarden in uitvoer"; ok=$((ok+1)); fi
 echo "geslaagd=$ok mislukt=$bad"
