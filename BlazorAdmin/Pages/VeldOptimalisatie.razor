@@ -130,6 +130,18 @@
             }
             else
             {
+                @* Legenda — terug na #1491; hoort boven de tijdlijn en is in beide tabs identiek (#689). *@
+                <div class="d-flex flex-wrap gap-3 mb-2 small">
+                    <span class="fw-semibold text-muted me-1">Status:</span>
+                    <span><span class="gantt-legenda-dot gantt-legenda-dot-ongewijzigd"></span> Ongewijzigd</span>
+                    <span><span class="gantt-legenda-dot gantt-legenda-dot-wijziging"></span> Wijziging</span>
+                    <span><span class="gantt-legenda-dot gantt-legenda-dot-nieuw"></span> Nieuw slot</span>
+                    <span class="ms-3 fw-semibold text-muted me-1">Voorkeurstijd:</span>
+                    <span><span class="gantt-legenda-balk gantt-legenda-balk-optijd"></span> Op tijd</span>
+                    <span><span class="gantt-legenda-balk gantt-legenda-balk-klein"></span> &le;15 min afwijking</span>
+                    <span><span class="gantt-legenda-balk gantt-legenda-balk-groot"></span> &gt;15 min afwijking</span>
+                </div>
+
                 @* #689: boven de tijdlijn staat alléén de legenda, die in beide tabs identiek is.
                    Elk element daarboven dat per tab van hoogte verschilt, verschuift de tijdlijn bij
                    het wisselen — en juist dat springen maakt het vergelijken onbruikbaar. Dat is hier

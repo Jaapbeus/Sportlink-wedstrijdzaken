@@ -19,6 +19,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Fixed
+- **Kleurlegenda op Veld optimalisatie is terug** (#1503). Boven de tijdlijn staan weer de uitleg van de
+  statuskleuren en de voorkeurstijd-balkjes; die vielen weg bij het samenvoegen van de tijdlijnweergave.
 - **Het feedbackvenster ligt weer boven de veldbezetting; zonder AI-dienst een nette melding** (#1487).
   Op Planning en Veld optimalisatie vingen de blokken van de veldbezetting de klikken van het
   feedbackvenster af, waardoor "Controleren" niet bruikbaar was. Daarnaast gaf het controleren van
