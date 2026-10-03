@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.10.0.0] — 2026-10-03
+
 ### Fixed
 - **Kleurlegenda op Veld optimalisatie is terug** (#1503). Boven de tijdlijn staan weer de uitleg van de
   statuskleuren en de voorkeurstijd-balkjes; die vielen weg bij het samenvoegen van de tijdlijnweergave.
