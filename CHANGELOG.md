@@ -18,6 +18,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Security
+- **Infrastructure-deploy kan geen app settings meer wissen** (#1455). `infrastructure.yml` draait voor
+  een deploy eerst een what-if en stopt als een bestaande app setting van de Function App zou
+  verdwijnen; het log toont alleen de namen, nooit waarden. Onleesbare what-if-uitvoer stopt de
+  deploy ook.
+
 ### Added
 - **Wedstrijd toevoegen direct op Planning** (#1468). Staat de Sportlink Web Extension aan, dan heeft
   Planning rechts in de datumbalk een groene knop **Wedstr. toevoegen**. Die opent het

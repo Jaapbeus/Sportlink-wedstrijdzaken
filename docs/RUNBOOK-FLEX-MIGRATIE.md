@@ -70,6 +70,10 @@ JavaScript ingevuld en waren via een fetch niet leesbaar — controleer ze in de
 
 ### 3.1 Niet `main.bicep` uitrollen — alleen de Flex-module
 
+> **Vangnet sinds #1455:** de deploy-actie van `infrastructure.yml` draait eerst een what-if-poort
+> (`scripts/ci/check-whatif-appsettings.sh`) die faalt als een bestaande app setting zou verdwijnen,
+> en toont dan alleen de namen. Dat is een vangnet, geen reden om `main.bicep` alsnog uit te rollen.
+
 > ⚠️ **Gevonden bij de voorbereiding (2026-10-02), niet eerder benoemd.** `infrastructure/main.bicep`
 > declareert óók de bestaande productie-app (`modules/function-app.bicep`), met een
 > `siteConfig.appSettings`-lijst van zes settings. Een `az deployment group create` van

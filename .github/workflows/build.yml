@@ -102,6 +102,9 @@ jobs:
       # de vijf negatieve tests sloegen bij het schrijven ervan eerst ten onrechte niet aan.
       - name: Codekwaliteit — guards zelf getest
         run: bash scripts/ci/check-codekwaliteit.test.sh
+      # #1455: de what-if-poort van infrastructure.yml, getest met geanonimiseerde fixtures.
+      - name: What-if-poort app settings — zelf getest
+        run: bash scripts/ci/check-whatif-appsettings.test.sh
       # #1266: de drie Postgres-coverage-guards hieronder kijken maar EEN kant op — staat elk SQL
       # Server-object ook in Postgres. Ze zijn geschreven toen SQL Server de leidende tier was.
       # Bij de cutover draaiden de rollen om, maar de richting van de guards niet; sindsdien groeide
