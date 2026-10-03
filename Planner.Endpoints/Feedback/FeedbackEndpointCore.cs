@@ -146,7 +146,18 @@ public static class FeedbackEndpointCore
             return new ObjectResult(new { error = LimietGebruikerMelding }) { StatusCode = 429 };
 
         SaneerInvoer(dto, wie.Naam, wie.Rol);
+        VerwijderBevestigingAlsGeenBeheerder(dto, wie);
         return null;
+    }
+
+    /// <summary>
+    /// Alleen een beheerder mag de AI-velden zelf aanleveren (bevestigingsstap, #1205). De rol komt uit
+    /// het principal, nooit uit de body; voor een gewone gebruiker wordt het veld genegeerd en
+    /// structureert de server de melding zelf.
+    /// </summary>
+    private static void VerwijderBevestigingAlsGeenBeheerder(FeedbackRequest dto, FeedbackAanroeper wie)
+    {
+        if (!wie.IsAdmin) dto.Bevestiging = null;
     }
 
     public static void SaneerInvoer(FeedbackRequest dto, string? melderNaam, string rol)
@@ -176,6 +187,7 @@ public static class FeedbackEndpointCore
 
         if (await Limietoverschrijding(store, clubCode, wie, nu) is { } limiet) return limiet;
 
+        VerwijderBevestigingAlsGeenBeheerder(dto, wie);
         var voorbereid = await FeedbackCore.BereidVoorAsync(dto, chatClient, log, nu);
         switch (voorbereid.Status)
         {
