@@ -19,6 +19,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Wedstrijd toevoegen direct op Planning** (#1468). Staat de Sportlink Web Extension aan, dan heeft
+  Planning rechts in de datumbalk een groene knop **Wedstr. toevoegen**. Die opent het
+  aanmaakformulier in een kaart op de pagina zelf, met de gekozen datum al ingevuld; na een echte
+  aanmaak of verwijdering verschijnt de wijziging meteen in de veldbezetting.
 - **Een zojuist aangemaakte oefenwedstrijd weer verwijderen — nog als simulatie** (#1440). Na een echte
   aanmaak op **Wedstrijd aanmaken** staat onder het resultaat de knop **Wedstrijd verwijderen uit
   Sportlink**; na een extra bevestiging ("Ja, verwijderen") vraagt de app Sportlink om de wedstrijd te
@@ -46,6 +50,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   begeleiders van een functie te voorzien.
 
 ### Changed
+- **Menu: Wedstr. aanmaken en Wijzigingsverzoeken staan nu direct onder Planning** (#1468). Het
+  menu-item "Wedstrijden" heet voortaan **Wedstr. aanmaken**; beide items zijn zoals voorheen alleen
+  zichtbaar als de Sportlink Web Extension aan staat. Veld optimalisatie staat daaronder.
 - De CSV-verwerking van de teambegeleiding-import staat nu op één plek (beide databasevarianten gebruiken
   dezelfde code), zodat de twee varianten niet meer uit elkaar kunnen lopen.
 - Voorbereiding op het delen van de planning als PDF (#1363, epic #1365): de applicatie kan nu een

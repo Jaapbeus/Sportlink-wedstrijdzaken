@@ -17,6 +17,10 @@ public partial class Planning : ClubSelectorPageBase
 
     private DateTime _datumDt;
 
+    /// <summary>#1468: het inline aanmaakformulier is open.</summary>
+    private bool _toonAanmaken;
+    private void ToggleAanmaken() => _toonAanmaken = !_toonAanmaken;
+
     // Directe veldbezetting (#566)
     private List<VeldbezettingItemDto> _veldbezetting = new();
     private bool _veldbezettingBezig;
