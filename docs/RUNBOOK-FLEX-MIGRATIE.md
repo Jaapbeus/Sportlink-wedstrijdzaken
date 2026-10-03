@@ -179,6 +179,11 @@ Bron: de indeling uit #1064. De bicep zet er al vier (`AzureWebJobsStorage__acco
 `SqlConnectionString` (leeg)). Secrets nooit via een tussenbestand of als argument: gebruik een
 prompt.
 
+> **`AzureWebJobsStorage` is op Flex identity-based (#1512).** Er is geen connection string; de code
+> (`Planner.Shared/Infrastructure/OpslagVerbinding.cs`) gebruikt `AzureWebJobsStorage` als die er is,
+> anders `AzureWebJobsStorage__accountName` (+ optioneel `__clientId`, `__tableServiceUri`,
+> `__queueServiceUri`) met de managed identity. Zet dus nooit een connection string terug.
+
 ```bash
 # Groep (a) — functionele configuratie, waarden overnemen van de bestaande app:
 az functionapp config appsettings set -g "$RG" -n "$APP" --settings \
