@@ -413,11 +413,107 @@ jobs:
           fi
           echo "✅ Trivy heeft $SCANNED NuGet-manifest(en) daadwerkelijk gescand."
 
+  # ── 4b. Statische analyse van eigen code (CodeQL) ───────────────────────────
+  #
+  # #1470: Trivy hierboven kijkt alleen naar pakketten van derden. Kwetsbaarheden in de eigen
+  # C#, JavaScript of in de workflows zelf (injectie, SSRF, workflow-injectie) zag geen enkele
+  # job. CodeQL is gratis voor een publieke repository. Het staat bewust in déze workflow en
+  # niet in een losse codeql.yml: zo valt het onder de Security Gate, die al verplicht is op
+  # main en develop — zonder wijziging aan de branch protection.
+  #
+  # De analyze-stap zelf faalt nooit op bevindingen; dat doet de stap erna, op dezelfde drempel
+  # als Trivy (HIGH/CRITICAL = security-severity >= 7.0). Lagere bevindingen komen wel in
+  # GitHub → Security → Code scanning, maar blokkeren niet.
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # C# zonder build: CodeQL's buildless modus. Een echte build zou hier de .NET 9-
+        # en .NET 10-SDK plus de SSDT-uitsluiting (zie .slnf) moeten herhalen.
+        include:
+          - language: csharp
+            build-mode: none
+          - language: javascript-typescript
+            build-mode: none
+          - language: actions
+            build-mode: none
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: CodeQL initialiseren
+        uses: github/codeql-action/init@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      # Een PR uit een fork krijgt een read-only token; uploaden faalt daar. De drempelcheck
+      # hieronder leest de lokale SARIF en werkt dus ook zonder upload.
+      - name: CodeQL-analyse
+        id: analyze
+        uses: github/codeql-action/analyze@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
+        with:
+          category: /language:${{ matrix.language }}
+          output: codeql-sarif
+          upload: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'never' || 'always' }}
+
+      - name: Drempel — geen bevindingen met security-severity >= 7.0
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import glob, json, sys
+
+          DREMPEL = 7.0
+          bestanden = glob.glob("codeql-sarif/*.sarif")
+          if not bestanden:
+              print("::error::Geen SARIF-uitvoer gevonden — de CodeQL-analyse heeft niets opgeleverd.")
+              sys.exit(1)
+
+          te_hoog = []
+          totaal = 0
+          for pad in bestanden:
+              sarif = json.load(open(pad, encoding="utf-8"))
+              for run in sarif.get("runs", []):
+                  regels = {}
+                  tool = run.get("tool", {})
+                  for comp in [tool.get("driver", {})] + tool.get("extensions", []):
+                      for r in comp.get("rules", []) or []:
+                          sev = (r.get("properties") or {}).get("security-severity")
+                          if sev is not None:
+                              regels[r["id"]] = float(sev)
+                  print(f"{pad}: {len(regels)} regels met security-severity, {len(run.get('results', []))} resultaten")
+                  for res in run.get("results", []):
+                      totaal += 1
+                      if res.get("suppressions"):
+                          continue
+                      sev = regels.get(res.get("ruleId"), 0.0)
+                      if sev >= DREMPEL:
+                          loc = (res.get("locations") or [{}])[0].get("physicalLocation", {})
+                          bestand = loc.get("artifactLocation", {}).get("uri", "?")
+                          regel = loc.get("region", {}).get("startLine", "?")
+                          te_hoog.append((sev, res.get("ruleId"), bestand, regel))
+
+          if te_hoog:
+              # Alleen regel-id en vindplaats: de berichttekst kan invoerwaarden citeren, en de
+              # log van een publieke repo is publiek (zie #1225).
+              print(f"::error::🚨 CODEQL: {len(te_hoog)} bevinding(en) met security-severity >= {DREMPEL}")
+              for sev, rid, bestand, regel in sorted(te_hoog, reverse=True):
+                  print(f"::error file={bestand},line={regel}::{rid} (security-severity {sev})")
+              print("::error::Details: GitHub → Security → Code scanning. Zie SECURITY.md.")
+              sys.exit(1)
+          print(f"✅ Geen CodeQL-bevindingen met security-severity >= {DREMPEL} ({totaal} resultaten beoordeeld).")
+          PY
+
   # ── 5. Security gate — blokkeert merge als bovenstaande checks falen ────────
   security-gate:
     name: "Security Gate — blokkeert merge bij fout"
     runs-on: ubuntu-latest
-    needs: [gitleaks, pii-files, pii-patterns, pii-docs, infra-patterns, dependency-scan]
+    needs: [gitleaks, pii-files, pii-patterns, pii-docs, infra-patterns, dependency-scan, codeql]
     if: always()
     steps:
       - name: Controleer alle verplichte security checks
@@ -429,6 +525,7 @@ jobs:
           [ "${{ needs.pii-docs.result }}"          != "success" ] && FAILED="${FAILED}\n  ❌ PII in Documentatie:          ${{ needs.pii-docs.result }}"
           [ "${{ needs.infra-patterns.result }}"    != "success" ] && FAILED="${FAILED}\n  ❌ Club-infrastructuur patronen: ${{ needs.infra-patterns.result }}"
           [ "${{ needs.dependency-scan.result }}"   != "success" ] && FAILED="${FAILED}\n  ❌ Dependency Vulnerability Scan: ${{ needs.dependency-scan.result }}"
+          [ "${{ needs.codeql.result }}"            != "success" ] && FAILED="${FAILED}\n  ❌ CodeQL (eigen code):          ${{ needs.codeql.result }}"
 
           if [ -n "$FAILED" ]; then
             echo "::error::════════════════════════════════════════════════════"

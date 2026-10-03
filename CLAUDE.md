@@ -1576,28 +1576,32 @@ twee verandert dan mee, en niets waarschuwt ervoor. Gebeurd bij #859/#952/#939 (
 **Verplicht vóór een release:**
 1. Verplaats alles van `## [Unreleased]` naar `## [x.y.z] — YYYY-MM-DD`
 2. Voeg een lege `## [Unreleased]` terug bovenaan
-3. Bump de versie in `FunctionApp/fa-dev-sportlink-01.csproj` en `BlazorAdmin/BlazorAdmin.csproj`
+3. Bump de versie in alle drie de csproj's (zie hierboven) — `/release` doet dit in stap R4
 
-### Release-workflow
+### Release-workflow — altijd via de skill `/release` (#1470)
 
-```powershell
-# 1. Zorg dat main up-to-date en groen is
-git checkout main && git pull
-.\scripts\dev\Test-App.ps1   # moet exit 0
+**Een release naar productie loopt uitsluitend via `/release`** (`.claude/skills/release/SKILL.md`).
+`/autonoom --release` roept die skill aan en heeft geen eigen kopie van de stappen meer. De skill is
+de ene plek voor de volgorde: securitypoort → versie en CHANGELOG → kostencheck → versiebump-PR naar
+`develop` → release-PR `develop` → `main` → deploycontrole per job + live rendercheck → tag.
 
-# 2. PR aanmaken en mergen naar main (via GitHub) — vanuit een release-branch
-gh pr create --base main --title "release: v2.0.1" ...
+**De securitypoort is stap één en blokkeert hard.** Vóór er iets gecommit wordt:
+- `/security-review` (de ingebouwde skill, lokaal in Claude Code, geen API-kosten) op de volledige
+  releasediff `origin/main...origin/develop`. Eén HIGH-bevinding stopt de release.
+- Geen open Dependabot- of code-scanning-alert op high/critical, geen open secret-scanning-alert.
+- Security Gate groen op de HEAD van `origin/develop`. Sinds #1470 hoort daar ook CodeQL bij, die
+  faalt op security-severity ≥ 7.0.
 
-# 3. Na merge: tag aanmaken op main
-git checkout main && git pull
-git tag v2.0.1 -m "Release v2.0.1"
-git push origin v2.0.1  # triggert release.yml workflow automatisch
+> **Waarom een skill en geen CI-job.** Een `/security-review` in GitHub Actions vraagt een
+> Anthropic API-sleutel en dus API-kosten (zie "Kostenbeleid"). Releases worden altijd vanuit een
+> Claude Code-sessie gedaan, dus de review hoort dáár, als vaste eerste stap. Wat CI wél gratis kan
+> (statische analyse met CodeQL), zit in de verplichte Security Gate. Daarmee is een vergeten
+> review ook niet langer de enige vangrail voor eigen code.
 
-# 4. GitHub Release wordt automatisch aangemaakt door release.yml
-# Body komt uit CHANGELOG.md — sectie [2.0.1]
-```
+Een niet-verholpen bevinding uit de review is publicatiegevoelig (veiligheidsregel 4a): in de
+release-PR staan alleen aantallen per severity, nooit vindplaatsen of scenario's.
 
-Of via GitHub Actions UI (workflow_dispatch in release.yml) zonder lokale tag.
+Handmatig alternatief voor alleen de tag-stap: `release.yml` via workflow_dispatch in de Actions-UI.
 
 **Databasemigraties bij een release (#1093):** `deploy.yml` past ze zelf toe, vóór de code live
 gaat — `db-migrate` (SQL Server-PostDeployment) bij `DatabaseTier=SqlServer`, `db-migrate-postgres`

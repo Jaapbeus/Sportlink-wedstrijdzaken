@@ -246,14 +246,22 @@ Bij elke push naar elke branch en bij elke pull request naar `main` of `develop`
 | **PII in Documentatie (CHANGELOG/docs)** | E-mailadressen in `CHANGELOG.md`, `docs/` en recente commit-berichten | ✅ Ja |
 | **Club-infrastructuur patrooncheck** | Azure-resourcenamen, hostnames, tenant-/client-ID's en andere club-identificerende waarden in getrackte bestanden — de check die regel 4a hierboven afdwingt | ✅ Ja |
 | **Dependency Vulnerability Scan** | Bekende kwetsbaarheden in NuGet-pakketten (HIGH/CRITICAL), inclusief transitieve dependencies | ✅ Ja |
+| **CodeQL (eigen code)** | Statische analyse van de eigen C#, JavaScript en GitHub-workflows (injectie, SSRF, workflow-injectie e.d.); faalt op security-severity ≥ 7.0 (high/critical), lagere bevindingen alleen in *Security → Code scanning* (#1470) | ✅ Ja |
 | **Security Gate** | Faalt als één van de bovenstaande verplichte checks faalt | ✅ Ja |
 
-De **Security Gate** is de finale poortwachter: hij hangt via `needs:` af van precies de zes jobs
+De **Security Gate** is de finale poortwachter: hij hangt via `needs:` af van precies de zeven jobs
 hierboven, en zolang hij rood is, is merge naar `main` geblokkeerd.
 
 Een fork kan de infrastructuur-patrooncheck uitbreiden met eigen reguliere expressies via het
 optionele GitHub Secret `CLUB_EXTRA_PATTERNS` (newline-gescheiden) — nuttig voor waarden die alleen
 jouw club identificeren.
+
+**Securitypoort vóór elke release (#1470).** CI scant elke push en PR, maar kijkt niet inhoudelijk
+naar wát er sinds de vorige release is veranderd. Daarom begint elke release met de skill
+`/release`, en die begint met een harde poort: `/security-review` op de volledige releasediff
+(`origin/main...origin/develop`), plus nul open Dependabot-, code-scanning- (high/critical) en
+secret-scanning-alerts. Eén HIGH-bevinding stopt de release vóór de versiebump. De review draait
+lokaal in Claude Code, dus zonder API-kosten. Zie `CLAUDE.md`, "Release-workflow".
 
 **Op welke events de Security Scan draait (#1202):** `push` naar élke branch, én `pull_request`
 naar `main` en naar `develop` — die twee branches staan letterlijk zo in de `on:`-sectie van
