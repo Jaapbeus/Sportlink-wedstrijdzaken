@@ -122,6 +122,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   zichtbaar als de Sportlink Web Extension aan staat. Veld optimalisatie staat daaronder.
 - De CSV-verwerking van de teambegeleiding-import staat nu op één plek (beide databasevarianten gebruiken
   dezelfde code), zodat de twee varianten niet meer uit elkaar kunnen lopen.
+- CI bewaakt nu dat elke Postgres-migratie een uniek volgnummer heeft (#1485).
 - Voorbereiding op het delen van de planning als PDF (#1363, epic #1365): de applicatie kan nu een
   PDF maken van de veldbezetting of van de huidige/optimale planning — titel, club, speeldag en een
   tabel met tijd, team, tegenstander, veld en competitie. Er is nog geen knop of endpoint dat hem

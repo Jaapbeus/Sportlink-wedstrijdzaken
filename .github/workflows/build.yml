@@ -133,6 +133,17 @@ jobs:
       - name: Postgres identifier-casing-guard
         run: bash scripts/ci/check-postgres-identifier-casing.sh
 
+      # #1485: twee parallel gebouwde PR's kunnen elk hetzelfde volgnummer toevoegen
+      # (bijv. 034_pdf_switch.sql en 034_feedback_storage.sql). Technisch werkt het omdat
+      # MigrationRunner op bestandsnaam sorteert, maar numerieke uniciteit hoort dwingend
+      # af te worden gehandhaafd. Geen database, geen secrets.
+      - name: Postgres migratie-volgnummers uniek
+        run: bash scripts/ci/check-migratie-volgnummers.sh
+
+      # Test-suite voor de migratie-volgnummers-guard (#1485).
+      - name: Postgres migratie-volgnummers — zelf getest
+        run: bash scripts/ci/check-migratie-volgnummers.test.sh
+
       # #1255 (epic #1249): bewaakt de thema-CSS-variabelen. Een selector die var(--theme-iets)
       # gebruikt terwijl die variabele nergens gedefinieerd is, geeft géén foutmelding — de
       # eigenschap valt weg en het element rendert ongestyled, zichtbaar alleen als iemand precies
