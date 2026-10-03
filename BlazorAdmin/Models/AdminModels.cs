@@ -34,6 +34,12 @@ public class AppSettingsDto
     public bool PdfExportIngeschakeld { get; set; }
 }
 
+/// <summary>#1459: antwoord van <c>GET api/planner/pdf-export</c> (voor elke ingelogde rol).</summary>
+public class PdfExportStatusDto
+{
+    public bool PdfExportIngeschakeld { get; set; }
+}
+
 /// <summary>#988: rol↔serviceaccount-koppelingsstatus, zie docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md §6.</summary>
 public class SportlinkExtensieRolDto
 {

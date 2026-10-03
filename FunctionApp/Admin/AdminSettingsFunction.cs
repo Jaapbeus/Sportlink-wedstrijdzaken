@@ -1,5 +1,4 @@
 using Azure.Core;
-using Planner.Endpoints.Deel;
 using Azure.Identity;
 using Cronos;
 using Microsoft.AspNetCore.Http;
@@ -8,6 +7,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Planner.Endpoints.Deel;
 using Newtonsoft.Json.Linq;
 using System.Globalization;
 using System.Net.Http.Headers;
@@ -165,9 +165,6 @@ public static class AdminSettingsFunction
                 var fout = ValideerWijzigingen(changes);
                 if (fout != null) return fout;
 
-                if (changes.TryGetValue("PdfExportIngeschakeld", out var nieuwePdf) && PlannerDeelEndpointCore.ControleerPdfInstelling(nieuwePdf) is { } pdfFout)
-                    return pdfFout;
-
                 changes.TryGetValue("FetchSchedule", out var nieuweSchedule);
 
                 using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
@@ -249,6 +246,10 @@ public static class AdminSettingsFunction
         // #1437: de kolom is 100 tekens breed; een te lange waarde geeft anders een databasefout (500).
         if (changes.TryGetValue("SportlinkSpelactiviteit", out var nieuweActiviteit) && nieuweActiviteit is { Length: > 100 })
             return new BadRequestObjectResult(new { error = "Spelactiviteit mag maximaal 100 tekens bevatten." });
+
+        // #1459: alleen een expliciete aan/uit-waarde is geldig (gedeelde regel in PlannerDeelEndpointCore).
+        if (changes.TryGetValue("PdfExportIngeschakeld", out var nieuwePdf) && PlannerDeelEndpointCore.ControleerPdfInstelling(nieuwePdf) is { } pdfFout)
+            return pdfFout;
 
         return null;
     }

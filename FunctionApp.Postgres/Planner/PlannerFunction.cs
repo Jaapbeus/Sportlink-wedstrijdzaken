@@ -65,7 +65,7 @@ public static class PlannerFunction
 
                 // #1364: ?format=html|pdf voor de deel-knop op de Planning-pagina; zonder format blijft het JSON.
                 if (PlannerDeelEndpointCore.Lees(req.Query["format"], null, datumParam, out var deel) is { } deelFout) return deelFout;
-                if (await deel.WeigerPdfAsync(() => PostgresPdfExportInstelling.IsIngeschakeldAsync(clubCode)) is { } pdfGeweigerd) return pdfGeweigerd;
+                if (await deel.WeigerPdfAsync(() => PdfExportInstelling.IsIngeschakeldAsync(clubCode)) is { } pdfGeweigerd) return pdfGeweigerd;
 
                 log.LogInformation("Veldbezetting: datum={Datum}, club={Club}", datumParam, clubCode);
 
@@ -74,6 +74,18 @@ public static class PlannerFunction
                 return deel.VanVeldbezetting(items, clubCode) ?? new OkObjectResult(items);
             });
     }
+
+    /// <summary>
+    /// #1459: of PDF-export voor de gekozen club aan staat. Open voor elke ingelogde rol (net als
+    /// <c>planner/veldbezetting</c>), zodat Planning de PDF-knop ook voor de rol <c>user</c> juist toont;
+    /// <c>beheer/settings</c> is admin-only. Beslissing en respons in <see cref="PlannerDeelEndpointCore"/>.
+    /// </summary>
+    [Function("PdfExportStatus")]
+    public static Task<IActionResult> PdfExportStatus(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "planner/pdf-export")] HttpRequest req,
+        FunctionContext context)
+        => AdminEndpoint.ExecuteAuthenticatedAsync(req, context.GetLogger("PdfExportStatus"), "pdf-export-status ophalen",
+            clubCode => PlannerDeelEndpointCore.PdfExportStatusAsync(() => PdfExportInstelling.IsIngeschakeldAsync(clubCode)));
 
     /// <summary>
     /// Teamrooster: per zaterdag tot het seizoenseinde of het team vrij is, en de wedstrijdenlijst.
@@ -423,9 +435,9 @@ public static class PlannerFunction
                 // #1364: ?format=html|pdf (+ ?tab=huidig|optimaal) voor de deel-knop; AutoPlanAsync is een
                 // leesbewerking (alleen AutoPlanToepassen schrijft), dus een tweede aanroep is zonder bijwerking.
                 if (PlannerDeelEndpointCore.Lees(req.Query["format"], req.Query["tab"], request.Datum, out var deel) is { } deelFout) return deelFout;
-                if (await deel.WeigerPdfAsync(() => PostgresPdfExportInstelling.IsIngeschakeldAsync(PostgresClubScope.Resolve(rawClubCode))) is { } pdfGeweigerd) return pdfGeweigerd;
-
                 var clubCode = PostgresClubScope.Resolve(rawClubCode);
+                if (await deel.WeigerPdfAsync(() => PdfExportInstelling.IsIngeschakeldAsync(clubCode)) is { } pdfGeweigerd) return pdfGeweigerd;
+
                 log.LogInformation("AutoPlan: datum={Datum}, buffer={Buffer}, club={Club}",
                     request.Datum, request.BufferMinuten, clubCode);
 

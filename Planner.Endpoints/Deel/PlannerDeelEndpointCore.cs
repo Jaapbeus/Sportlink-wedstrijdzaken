@@ -42,12 +42,39 @@ public static class PlannerDeelEndpointCore
 
     /// <summary>
     /// #1459: de kolom <c>PdfExportIngeschakeld</c> is NOT NULL; alleen een expliciete aan/uit-waarde
-    /// is geldig (400 anders). Hier gedeeld zodat beide tiers dezelfde regel toepassen.
+    /// is geldig (400 anders). Beide <c>AdminSettingsFunction</c>-bestanden roepen dit op dezelfde
+    /// plek aan, zodat de regel op beide tiers identiek is.
     /// </summary>
     public static IActionResult? ControleerPdfInstelling(string? waarde) =>
         waarde is "0" or "1" or "true" or "false"
             ? null
             : new BadRequestObjectResult(new { error = "PdfExportIngeschakeld moet 0/1 (aan/uit) zijn." });
+
+    /// <summary>
+    /// #1459: DE beslissing voor elk deel-endpoint. PDF-export staat per club standaard UIT tot een
+    /// beheerder bevestigt dat de QuestPDF Community-voorwaarden gelden. Bij <paramref name="format"/>
+    /// <c>pdf</c> zonder die bevestiging: <c>409 Conflict</c> (zelfde code als de andere
+    /// uitgeschakelde-functie-meldingen, bv. de Sportlink-schakelaar). Voor json/html wordt de
+    /// instelling niet eens gelezen. De tierbestanden geven alleen de lees-delegate mee
+    /// (<c>PdfExportInstelling.IsIngeschakeldAsync</c>, per tier alleen de query).
+    /// </summary>
+    /// <returns><c>Weigering</c> = de 409-respons of <c>null</c>; <c>PdfToegestaan</c> = mag de generator een PDF maken.</returns>
+    public static async Task<(IActionResult? Weigering, bool PdfToegestaan)> BeslisPdfAsync(
+        string? format, Func<Task<bool>> pdfIngeschakeld)
+    {
+        if (format != FormatPdf) return (null, false);
+        return await pdfIngeschakeld()
+            ? (null, true)
+            : (new ConflictObjectResult(new { error = PdfUitgeschakeldMelding }), false);
+    }
+
+    /// <summary>
+    /// #1459: <c>GET planner/pdf-export</c> — of PDF-export voor de club van de aanroeper aan staat.
+    /// Open voor elke ingelogde rol, zodat Planning de PDF-knop ook voor de rol <c>user</c> correct
+    /// toont (de volledige instellingen onder <c>beheer/settings</c> zijn admin-only).
+    /// </summary>
+    public static async Task<IActionResult> PdfExportStatusAsync(Func<Task<bool>> pdfIngeschakeld)
+        => new OkObjectResult(new { pdfExportIngeschakeld = await pdfIngeschakeld() });
 
     /// <summary>Leest <c>?tab=huidig|optimaal</c> (default huidig).</summary>
     public static IActionResult? ControleerTab(string? rauw, out PlanWeergave weergave)
@@ -80,7 +107,7 @@ public static class PlannerDeelEndpointCore
     /// <paramref name="bestandsBasis"/> is een vaste tekst uit de code (nooit invoer van de
     /// aanroeper); de datum komt uit de gevalideerde <see cref="PlannerShareModel.Peildatum"/>.
     /// </summary>
-    public static IActionResult Maak(PlannerShareModel model, string format, string bestandsBasis, bool pdfToegestaan = false)
+    public static IActionResult Maak(PlannerShareModel model, string format, string bestandsBasis, bool pdfToegestaan)
     {
         var naam = $"{bestandsBasis}-{model.Peildatum:yyyy-MM-dd}";
         if (format == FormatPdf)
@@ -134,19 +161,14 @@ public static class PlannerDeelEndpointCore
         public bool PdfToegestaan { get; private set; }
 
         /// <summary>
-        /// #1459: PDF-export staat per club standaard UIT tot een beheerder bevestigt dat de
-        /// QuestPDF Community-voorwaarden gelden. Geeft bij <c>?format=pdf</c> zonder die bevestiging
-        /// <c>409 Conflict</c> (zelfde code als de andere uitgeschakelde-functie-meldingen, bv. de
-        /// Sportlink-schakelaar); voor json/html leest het de instelling niet eens. De tierbestanden
-        /// geven alleen de lees-delegate mee, zodat de beslissing op beide tiers identiek is.
+        /// #1459: past <see cref="BeslisPdfAsync"/> toe op dit verzoek — 409 als PDF gevraagd is en
+        /// uit staat, anders <c>null</c> en wordt <see cref="PdfToegestaan"/> gezet.
         /// </summary>
         public async Task<IActionResult?> WeigerPdfAsync(Func<Task<bool>> pdfIngeschakeld)
         {
-            if (Format != FormatPdf) return null;
-            if (!await pdfIngeschakeld())
-                return new ConflictObjectResult(new { error = PdfUitgeschakeldMelding });
-            PdfToegestaan = true;
-            return null;
+            var (weigering, toegestaan) = await BeslisPdfAsync(Format, pdfIngeschakeld);
+            PdfToegestaan = toegestaan;
+            return weigering;
         }
 
         /// <summary>Het deel-document voor <c>planner/veldbezetting</c>, of <c>null</c> (= JSON).</summary>

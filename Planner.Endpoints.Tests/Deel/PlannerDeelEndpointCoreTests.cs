@@ -94,7 +94,7 @@ public class PlannerDeelEndpointCoreTests
     public async Task Maak_Html_ZetCspEnNosniffHeaders()
     {
         var model = Model(new PlannerShareWedstrijd("09:30", "JO10-1", "Gasten JO10-2", "veld 3 A", "competitie", null));
-        var result = PlannerDeelEndpointCore.Maak(model, PlannerDeelEndpointCore.FormatHtml, "veldbezetting");
+        var result = PlannerDeelEndpointCore.Maak(model, PlannerDeelEndpointCore.FormatHtml, "veldbezetting", pdfToegestaan: false);
         var http = new Microsoft.AspNetCore.Http.DefaultHttpContext();
         http.Response.Body = new MemoryStream();
 
@@ -110,7 +110,7 @@ public class PlannerDeelEndpointCoreTests
     {
         var model = Model(new PlannerShareWedstrijd("09:30", "JO10-1", "Gasten JO10-2", "veld 3 A", "competitie", null));
 
-        var result = PlannerDeelEndpointCore.Maak(model, PlannerDeelEndpointCore.FormatHtml, "veldbezetting");
+        var result = PlannerDeelEndpointCore.Maak(model, PlannerDeelEndpointCore.FormatHtml, "veldbezetting", pdfToegestaan: false);
 
         var inhoud = result.Should().BeAssignableTo<ContentResult>().Subject;
         inhoud.ContentType.Should().StartWith("text/html");
@@ -164,6 +164,31 @@ public class PlannerDeelEndpointCoreTests
         verzoek.PdfToegestaan.Should().BeFalse();
         var act = () => verzoek.VanVeldbezetting(new List<Regel> { new() }, "ALLSTARS");
         act.Should().Throw<InvalidOperationException>("zonder bevestigde licentie komt er nooit een PDF uit");
+    }
+
+    [Theory]
+    [InlineData("pdf", false, 409, false)]
+    [InlineData("pdf", true, null, true)]
+    [InlineData("html", false, null, false)]
+    [InlineData(null, false, null, false)]
+    public async Task BeslisPdf_IsDeEneBeslissingVoorElkDeelEndpoint(string? format, bool ingeschakeld, int? status, bool toegestaan)
+    {
+        var (weigering, pdfToegestaan) = await PlannerDeelEndpointCore.BeslisPdfAsync(format, () => Task.FromResult(ingeschakeld));
+
+        pdfToegestaan.Should().Be(toegestaan);
+        if (status == null) weigering.Should().BeNull();
+        else weigering.Should().BeOfType<ConflictObjectResult>().Which.StatusCode.Should().Be(status);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task PdfExportStatus_GeeftDeClubinstellingTerug(bool ingeschakeld)
+    {
+        var result = await PlannerDeelEndpointCore.PdfExportStatusAsync(() => Task.FromResult(ingeschakeld));
+
+        var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+        ok.Value!.GetType().GetProperty("pdfExportIngeschakeld")!.GetValue(ok.Value).Should().Be(ingeschakeld);
     }
 
     [Theory]

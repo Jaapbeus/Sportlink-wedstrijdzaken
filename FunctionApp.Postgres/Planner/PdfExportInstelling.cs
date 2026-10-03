@@ -3,13 +3,12 @@ using Npgsql;
 namespace FunctionApp.Postgres.Planner;
 
 /// <summary>
-/// #1459: de clubinstelling "PDF-export" (<c>public.appsettings.pdfexportingeschakeld</c>, migratie
-/// 034). Standaard <c>false</c> — fail-closed tot een beheerder bevestigt dat de QuestPDF
-/// Community-licentievoorwaarden voor de club gelden. Per club gelezen (niet uit de
-/// primaire-club-cache): de planner-endpoints werken voor de gekozen club, ook voor de democlub.
-/// SQL Server-tegenhanger: <c>SportlinkFunction.Planner.PdfExportInstelling</c> (zelfde regel, SQL Server).
+/// #1459: leest de clubinstelling "PDF-export" (<c>public.appsettings.pdfexportingeschakeld</c>,
+/// migratie 034). Alleen de databasevraag staat per tier; de beslissing (409, fail-closed) staat in
+/// <c>Planner.Endpoints.Deel.PlannerDeelEndpointCore.BeslisPdfAsync</c>. Per club gelezen, niet uit de
+/// primaire-club-cache: de planner-endpoints werken voor de gekozen club. Geen rij telt als uit.
 /// </summary>
-public static class PostgresPdfExportInstelling
+public static class PdfExportInstelling
 {
     public static async Task<bool> IsIngeschakeldAsync(string clubCode)
     {

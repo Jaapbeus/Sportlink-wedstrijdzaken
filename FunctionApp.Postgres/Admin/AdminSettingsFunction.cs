@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Npgsql;
+using Planner.Endpoints.Deel;
 using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text;
@@ -284,9 +285,9 @@ public static class AdminSettingsFunction
         if (changes.TryGetValue("SportlinkSpelactiviteit", out var nieuweActiviteit) && nieuweActiviteit is { Length: > 100 })
             return new BadRequestObjectResult(new { error = "Spelactiviteit mag maximaal 100 tekens bevatten." });
 
-        // #1459: de kolom is NOT NULL; alleen een expliciete aan/uit-waarde is geldig.
-        if (changes.TryGetValue("PdfExportIngeschakeld", out var nieuwePdf))
-            return global::Planner.Endpoints.Deel.PlannerDeelEndpointCore.ControleerPdfInstelling(nieuwePdf);
+        // #1459: alleen een expliciete aan/uit-waarde is geldig (gedeelde regel in PlannerDeelEndpointCore).
+        if (changes.TryGetValue("PdfExportIngeschakeld", out var nieuwePdf) && PlannerDeelEndpointCore.ControleerPdfInstelling(nieuwePdf) is { } pdfFout)
+            return pdfFout;
 
         return null;
     }

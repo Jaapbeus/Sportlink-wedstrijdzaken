@@ -81,8 +81,7 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
         // #989: geen Sportlink-kolom/-knoppen tonen als de extension uit staat (DoD).
         var settings = await Api.GetSettingsAsync();
         _sportlinkExtensionEnabled = settings.Success && settings.Data?.SportlinkExtensionEnabled == true;
-        // #1459: de PDF-knop verschijnt alleen als de club PDF-export heeft ingeschakeld (standaard uit).
-        _pdfExportIngeschakeld = settings.Success && settings.Data?.PdfExportIngeschakeld == true;
+        await LaadPdfExportStatusAsync();
 
         // #1334: automatisch een plan laden, zodat de wedstrijdenlijst (incl. de Sportlink-kolom
         // met de bewerkacties) meteen zichtbaar is — vóór deze fix moest een gebruiker altijd eerst
@@ -107,8 +106,15 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
         _handmatigAangepast.Clear();
         _errorMessage = null;
         _toepassenMelding = null;
+        await LaadPdfExportStatusAsync();
         await AutoPlanAsync();
     }
+
+    /// <summary>
+    /// #1459: de PDF-knop verschijnt alleen als de gekozen club PDF-export heeft ingeschakeld
+    /// (standaard uit). Via het voor elke ingelogde rol open endpoint, opnieuw bij een clubwissel.
+    /// </summary>
+    private async Task LaadPdfExportStatusAsync() => _pdfExportIngeschakeld = await Api.IsPdfExportIngeschakeldAsync();
 
     private async Task AutoPlanAsync()
     {
