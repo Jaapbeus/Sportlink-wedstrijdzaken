@@ -55,6 +55,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   begeleiders van een functie te voorzien.
 
 ### Changed
+
+- Alle projecten (Function Apps, Planner.*, Database.*, tests, tools) draaien op .NET 10; CI en lokale tooling gebruiken alleen nog de .NET 10 SDK (#1073)
 - **Menu: Wedstr. aanmaken en Wijzigingsverzoeken staan nu direct onder Planning** (#1468). Het
   menu-item "Wedstrijden" heet voortaan **Wedstr. aanmaken**; beide items zijn zoals voorheen alleen
   zichtbaar als de Sportlink Web Extension aan staat. Veld optimalisatie staat daaronder.

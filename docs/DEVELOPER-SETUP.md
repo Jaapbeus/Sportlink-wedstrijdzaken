@@ -86,41 +86,17 @@ Dekt **Windows** en **macOS (Apple Silicon)**. Sla het platform over dat niet va
   # PowerShell.
   brew install powershell
   ```
-- [ ] **.NET 9 Runtime — TWEE frameworks** — vereist voor FunctionApp (Linux Consumption Plan
-  ondersteunt net10.0 niet)
-
-  > **Let op (#1174): alleen de base runtime is niet genoeg.** `FunctionApp.Tests` en
-  > `FunctionApp.Postgres.Tests` hebben blijkens hun `runtimeconfig.json` zowel
-  > `Microsoft.NETCore.App` **als** `Microsoft.AspNetCore.App` op 9.x nodig. Ontbreekt de tweede,
-  > dan bouwen die projecten gewoon, maar breekt `dotnet test` af met
-  > *"You must install or update .NET to run this application"* — een melding die naar een
-  > ontbrekende SDK lijkt te wijzen in plaats van naar een ontbrekend gedeeld framework.
-  > In CI blijft dit onzichtbaar: `actions/setup-dotnet` installeert beide.
-
-  ```powershell
-  # Windows — base runtime én ASP.NET Core runtime
-  winget install Microsoft.DotNet.Runtime.9
-  winget install Microsoft.DotNet.AspNetCore.9
-  ```
-  ```bash
-  # macOS — dotnet-install script. --runtime dotnet geeft ALLEEN Microsoft.NETCore.App,
-  # dus de tweede aanroep (--runtime aspnetcore) is net zo verplicht als de eerste.
-  curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && chmod +x /tmp/dotnet-install.sh
-  /tmp/dotnet-install.sh --channel 9.0 --runtime dotnet
-  /tmp/dotnet-install.sh --channel 9.0 --runtime aspnetcore
-  ```
-- [ ] **.NET 10 SDK** — vereist voor BlazorAdmin
+- [ ] **.NET 10 SDK** — vereist voor alle projecten (FunctionApps, Planner.*, Database.*, BlazorAdmin; #1073)
   ```powershell
   # Windows
   winget install Microsoft.DotNet.SDK.10
   ```
   ```bash
-  # macOS — zonder --runtime installeert het script de SDK (incl. bijpassende .NET 10 runtime)
+  # macOS — zonder --runtime installeert het script de SDK (incl. .NET 10 runtime en ASP.NET Core runtime)
+  curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && chmod +x /tmp/dotnet-install.sh
   /tmp/dotnet-install.sh --channel 10.0
   ```
-  Beide macOS-installs schrijven naar dezelfde map `~/.dotnet` — .NET-runtimes van verschillende
-  major-versies staan daar altijd side-by-side (`~/.dotnet/shared/Microsoft.NETCore.App/9.x.x` én
-  `/10.x.x`); dat is standaardgedrag, geen speciale configuratie nodig. Voeg wel toe aan je
+  De macOS-install schrijft naar `~/.dotnet`. Voeg toe aan je
   shell-profiel, want een scriptinstallatie doet dat niet automatisch:
   ```bash
   echo 'export DOTNET_ROOT=$HOME/.dotnet' >> ~/.zshrc && echo 'export PATH=$PATH:$HOME/.dotnet:$HOME/.dotnet/tools' >> ~/.zshrc && source ~/.zshrc
@@ -173,8 +149,7 @@ Dekt **Windows** en **macOS (Apple Silicon)**. Sla het platform over dat niet va
 ### Versies controleren
 
 ```powershell
-# Beide 9.x-regels moeten er staan — alleen de eerste is niet genoeg, zie #1174.
-dotnet --list-runtimes   # moet 'Microsoft.NETCore.App 9.x.x' EN 'Microsoft.AspNetCore.App 9.x.x' bevatten
+dotnet --list-runtimes   # moet 'Microsoft.NETCore.App 10.x.x' EN 'Microsoft.AspNetCore.App 10.x.x' bevatten (#1174)
 dotnet --version         # moet 10.x.x zijn (SDK)
 func --version           # moet 4.x.x zijn
 azurite --version        # moet aanwezig zijn
@@ -1117,7 +1092,7 @@ sportlink-wedstrijdzaken/
 ├── Directory.Packages.props           # NuGet Central Package Management — één versiedefinitie per pakket (#1129, zie §8.1)
 ├── .gitattributes                     # Regeleindes vastgelegd (LF voor .sh/.githooks) zodat git-hooks op macOS werken (#800)
 ├── docker-compose.yml                 # Lokale database: Postgres (standaard, zonder profile) + SQL Server achter profile 'sqlserver' (#800, #1060)
-├── FunctionApp.Postgres/              # .NET 9 Azure Functions — Postgres-tier (standaard, draait in productie)
+├── FunctionApp.Postgres/              # .NET 10 Azure Functions — Postgres-tier (standaard, draait in productie)
 │   ├── FunctionApp.Postgres.csproj
 │   ├── HealthFunction.cs              # GET /api/health (versie, status, actieve tier)
 │   ├── Sync/SyncFunction.cs           # GET /api/postgres/sync-matches
@@ -1127,8 +1102,8 @@ sportlink-wedstrijdzaken/
 ├── Database.Postgres/                 # migrations/ + MigrationRunner (SHA-256-ledger)
 ├── Database.Postgres.Cli/             # CLI die de migraties toepast (POSTGRES_CONNECTION_STRING)
 ├── Planner.Shared/                    # Tier-onafhankelijke logica (TeamNaamNormalisatie, ThemeCore, VeldResolver)
-├── FunctionApp/                       # .NET 9 Azure Functions — SQL Server-tier
-│   ├── fa-dev-sportlink-01.csproj     # .NET 9 Azure Functions isolated worker
+├── FunctionApp/                       # .NET 10 Azure Functions — SQL Server-tier
+│   ├── fa-dev-sportlink-01.csproj     # .NET 10 Azure Functions isolated worker
 │   ├── Function1.cs                   # Timer + HTTP sync triggers (GET /api/sync-matches)
 │   ├── Utilities.cs                   # AppSettings, DatabaseConfig, SeasonHelper
 │   ├── Admin/                         # 25 Admin-endpoint bestanden (beheer/*)
@@ -1321,25 +1296,20 @@ Controleer de .NET runtime-versie:
 
 ```powershell
 dotnet --list-runtimes
-# Moet BEIDE bevatten: Microsoft.NETCore.App 9.x.x en Microsoft.AspNetCore.App 9.x.x (#1174)
+# Moet BEIDE bevatten: Microsoft.NETCore.App 10.x.x en Microsoft.AspNetCore.App 10.x.x (#1174)
 ```
 
-Ontbreekt .NET 9? Installeer **beide** frameworks — de base runtime alleen is niet genoeg (#1174):
+Ontbreekt .NET 10? Installeer de SDK (bevat beide frameworks):
 
 ```powershell
-# Windows
-winget install Microsoft.DotNet.Runtime.9
-winget install Microsoft.DotNet.AspNetCore.9
+winget install Microsoft.DotNet.SDK.10
 ```
 ```bash
-# macOS
-curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && chmod +x /tmp/dotnet-install.sh
-/tmp/dotnet-install.sh --channel 9.0 --runtime dotnet
-/tmp/dotnet-install.sh --channel 9.0 --runtime aspnetcore
+/tmp/dotnet-install.sh --channel 10.0
 ```
 
-> .NET 10 als runtime voor FunctionApp geeft een 503 op Azure Consumption Plan. Zie CLAUDE.md voor
-> details. Op Apple Silicon: faalt `func start` al bij de eerste run, controleer dan eerst de
+> .NET 10 voor de FunctionApps draait uitsluitend op het Flex Consumption Plan (epic #1063); op het
+> oude Linux Consumption Plan geeft het een 503. Op Apple Silicon: faalt `func start` al bij de eerste run, controleer dan eerst de
 > arm64-kanttekening bij Azure Functions Core Tools in sectie 1 voordat je verder zoekt.
 
 ### "Cannot connect to database"
