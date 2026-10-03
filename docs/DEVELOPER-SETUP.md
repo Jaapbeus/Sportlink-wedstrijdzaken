@@ -753,6 +753,37 @@ endpoint bestaat juist om desgewenst bewust tegen de echte Sportlink-API te test
 > `Test-App.ps1` en de CI-jobs draaien dus altijd met de blokkade aan, zonder dat daar iets voor
 > geconfigureerd hoeft te worden.
 
+#### 5.3.1 Sportlink Web Extension lokaal live testen (#1466)
+
+De ene bewuste uitzondering op "nooit standaard aan" is de acceptatieomgeving waarin de eigenaar
+de Sportlink Web Extension test tegen de echte Sportlink Club, inclusief schrijfacties zoals
+**Wedstrijd aanmaken** en verwijderen (#1440). Daarvoor is er één schakelaar:
+
+```powershell
+./scripts/dev/Start-Debug.ps1 -Clean -SportlinkLive
+```
+
+`-SportlinkLive` (`Set-SportlinkLiveLocalSettings` in `scripts/dev/DevServices.psm1`) zet
+`AllowExternalIntegrations` op `true` en maakt een lokale `SportlinkAutoLoginEncryptionKey` aan
+als die ontbreekt of ongeldig is (base64, 32 bytes, #1411). Zonder die sleutel registreert de
+host géén Sportlink-client, ook als egress openstaat. Een geldige sleutel wordt nooit vervangen,
+want een nieuwe sleutel maakt al opgeslagen inloggegevens onleesbaar. Het script toont geen
+enkele waarde. Na het opstarten meldt `Start-Debug.ps1` altijd, ook zonder de schakelaar, of de
+primaire club live-klaar is en zo niet, waarom niet (`Get-SportlinkLiveBlockers`).
+
+- **Welke club live gaat, bepaalt de database:** de club met `syncenabled = TRUE` in
+  `public.appsettings`. De democlub `ALLSTARS` heeft geen koppeling en de extensie staat er uit.
+  Er staat dus geen clubnaam in code of scripts, en een andere fork werkt ongewijzigd.
+- **Inloggegevens en dry-run zijn mensenwerk:** menu **Sportlink Ext.** → kaart
+  **Automatisch inloggen — rol Wedstrijdzaken**. Lokaal en productie hebben elk een eigen sleutel,
+  dus na een nieuwe lokale sleutel voer je de gegevens daar eenmalig opnieuw in.
+- **De code-locks (`…LiveBevestigd` in `SportlinkClubClient.cs`) blijven leidend**, ook lokaal.
+  Zie `docs/SPORTLINK-WEB-EXTENSION.md` §4.4.
+- **Bijwerking:** de poort staat dan voor élke externe integratie open. In de standaard lokale
+  configuratie zijn Graph, OpenAI en GitHub leeg, dus in de praktijk gaan alleen Sportlink Club en
+  de Sportlink-dataservice live. Laat `-SportlinkLive` weg (skill: argument `offline`) en zet
+  `AllowExternalIntegrations` terug op `false` als je die andere secrets lokaal wél hebt ingevuld.
+
 ---
 
 ### 5.4 Supabase MCP-server instellen (optioneel, #1222)

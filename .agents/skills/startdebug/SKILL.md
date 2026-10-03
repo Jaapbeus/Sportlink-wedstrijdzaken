@@ -1,7 +1,7 @@
 ---
-description: Start alle lokale debug-services — Azurite, FunctionApp (:7094) en BlazorAdmin (:5242). Gebruik "swa" als argument voor de SWA emulator (:4280).
+description: Start alle lokale debug-services op de laatste develop-branch — Azurite, FunctionApp (:7094) en BlazorAdmin (:5242). Werkt develop eerst bij naar origin/develop, past openstaande migraties toe en zet live Sportlink-verkeer voor de primaire club klaar (nooit ALLSTARS). Argumenten: "swa" voor de SWA emulator (:4280), "offline" om zonder Sportlink-verkeer te starten.
 disable-model-invocation: true
-argument-hint: [swa]
+argument-hint: [swa] [offline]
 ---
 
 Start de lokale debug-omgeving. Scripts staan in `scripts/dev/`.
@@ -26,6 +26,68 @@ Start de lokale debug-omgeving. Scripts staan in `scripts/dev/`.
 >    geen scheidingsteken. Forward slashes werken op beide platforms.
 
 Alle commando's hieronder draaien in PowerShell 7 (`pwsh` op macOS, `powershell`/`pwsh` op Windows).
+
+## Stap 0 — Draai altijd de laatste `develop` (verplicht, vóór Stap 1)
+
+> **Waarom (#1466).** De skill start de services vanuit de huidige werkmap. Is dat de main-checkout,
+> dan draait de GUI op de productieversie — of erger, op een achterlopende main (voorbeeld: GUI
+> toonde v3.8.0.0 terwijl `origin/develop` al op v3.9.6.1 stond, 32 commits verder) — terwijl je
+> bijna altijd de nieuwste integratiestand wilt testen. `develop` is de integratiebranch voor lokaal
+> testen (zie CLAUDE.md, "Branch-strategie"); dáár hoort de debug-omgeving op te draaien. **Elke
+> volgende stap (1 t/m 7) voer je uit vanuit de develop-worktree die je hier bepaalt** — niet vanuit
+> de map waarin de sessie toevallig startte.
+
+**0a — Vind de worktree die `develop` uitgecheckt heeft.** `develop` kan maar in één worktree tegelijk
+staan; die is het doel van alle volgende stappen. Draai vanuit de repo-root:
+
+```powershell
+$developPad = $null; $pad = $null
+foreach ($line in (git worktree list --porcelain)) {
+    if     ($line -like 'worktree *')              { $pad = $line.Substring(9) }
+    elseif ($line -eq 'branch refs/heads/develop') { $developPad = $pad; break }
+}
+if (-not $developPad) {
+    Write-Host "Geen worktree op 'develop' gevonden. Maak er eenmalig één buiten de repo-boom:" -ForegroundColor Yellow
+    Write-Host "  git worktree add ../Sportlink-wedstrijdzaken-develop develop" -ForegroundColor Yellow
+    Write-Host "en draai daarna deze skill opnieuw." -ForegroundColor Yellow
+} else {
+    Write-Host "develop-worktree: $developPad" -ForegroundColor Green
+}
+```
+
+**0b — Werk develop bij naar `origin/develop` (fast-forward only).** Nooit forceren: heeft de lokale
+develop eigen commits (diverged), dan faalt de fast-forward bewust — stop dan en meld dat aan de
+gebruiker in plaats van te mergen of te resetten.
+
+```powershell
+git -C $developPad fetch origin develop
+git -C $developPad merge --ff-only origin/develop
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "FF-only mislukt — develop is lokaal afgeweken. STOP en meld aan de gebruiker." -ForegroundColor Red
+}
+```
+
+**0c — Pas openstaande Postgres-migraties toe VÓÓR het starten.** Een bijgewerkte develop brengt soms
+nieuwe migraties mee; zonder toepassen blijft `/api/health` op `degraded` staan met een niet-lege
+`pendingMigrations`. Doe dit nu, **niet** terwijl de services draaien: een `dotnet run` naast
+`func start` + `dotnet watch` heeft de functiehost al eens laten omvallen (SIGKILL door
+resource-druk). De runner is idempotent. De connection string komt uit `local.settings.json` —
+**nooit echoën**.
+
+```powershell
+Push-Location $developPad
+try {
+    $ls = Get-Content FunctionApp.Postgres/local.settings.json -Raw | ConvertFrom-Json
+    $env:POSTGRES_CONNECTION_STRING = $ls.Values.POSTGRES_CONNECTION_STRING
+    if ($env:POSTGRES_CONNECTION_STRING) { dotnet run --project Database.Postgres.Cli }
+    else { Write-Host "Geen POSTGRES_CONNECTION_STRING in local.settings.json" -ForegroundColor Yellow }
+} finally { Pop-Location }
+```
+
+**0d — Stap de sessie de develop-worktree in** (`Set-Location $developPad`, of werk met expliciete
+paden). Alle `./scripts/dev/...`-aanroepen en healthchecks hieronder gaan vanaf hier over díe
+worktree. Rapporteer in de samenvatting (Stap 7) welke branch én welk versienummer draaien, zodat
+meteen zichtbaar is dat het de laatste develop is.
 
 ## Stap 1 — Controleer lopende services
 
@@ -54,8 +116,16 @@ Rapporteer welke poorten al bezet zijn.
 in één pass — op beide platforms. Voer het daarom **niet** met de hand voor in losse stappen.
 
 Bepaal op basis van `$ARGUMENTS`:
-- Geen argument of leeg: `./scripts/dev/Start-Debug.ps1 -Clean`
-- Argument bevat "swa": `./scripts/dev/Start-Debug.ps1 -Clean -Swa`
+- Standaard: `./scripts/dev/Start-Debug.ps1 -Clean -SportlinkLive`
+- Argument bevat "swa": voeg `-Swa` toe
+- Argument bevat "offline": laat `-SportlinkLive` weg (lokaal dan geen Sportlink-verkeer, zie Stap 3b)
+
+> **Waarom `-SportlinkLive` standaard is (#1466).** De eigenaar test op localhost de Sportlink Web
+> Extension tegen de échte Sportlink Club van de eigen club, inclusief schrijfacties zoals
+> **Wedstrijd aanmaken** en verwijderen (#1440). Zonder deze schakelaar staat lokaal elk extern
+> verkeer dicht (EgressGuard, #857) en registreert de host geen Sportlink-client (ontbrekende
+> hostsleutel, #1411). De schakelaar maakt dit veilig en herhaalbaar; zie Stap 3b voor wat hij
+> wel en niet doet.
 
 > Het script gebruikt intern `dotnet watch run` (of `dotnet run` bij `-NoWatch`) voor BlazorAdmin.
 > Dit is de ENIGE geautoriseerde manier om BlazorAdmin te starten — het doet build+serve in één pass.
@@ -88,6 +158,68 @@ try {
 
 - Versienummer zichtbaar (bijv. `2.5.0.0`) → ✅
 - Geen antwoord of fout → ❌ — lees de FunctionApp-log (macOS/Linux) of het venster (Windows) en rapporteer
+
+## Stap 3b — Sportlink live voor de primaire club (#1466)
+
+`Start-Debug.ps1` meldt na het opstarten altijd één van twee regels:
+- `Sportlink live-klaar voor de primaire club (dry-run AAN …)` of `(dry-run UIT …)` → ✅
+- `Sportlink niet live voor de primaire club:` met per regel de reden → los die op zoals hieronder
+
+**Welke club live gaat, bepaalt de database, niet de code of deze skill.** Dat is de club met
+`syncenabled = TRUE` in `public.appsettings` (de primaire club van de installatie). De democlub
+`ALLSTARS` heeft geen Sportlink-koppeling en de extensie staat er uit. Hij gaat dus nooit live.
+Elke fork werkt ongewijzigd met de eigen primaire club. Noem in issues/PR's/commits nooit de
+naam of code van die club (CLAUDE.md veiligheidsregel 4a).
+
+**Wat `-SportlinkLive` doet** (`Set-SportlinkLiveLocalSettings` in `scripts/dev/DevServices.psm1`):
+1. zet `AllowExternalIntegrations` op `true` in `local.settings.json` van de tier;
+2. maakt een lokale `SportlinkAutoLoginEncryptionKey` (32 bytes, base64) aan **als die ontbreekt
+   of ongeldig is**. Een geldige sleutel blijft staan, want een nieuwe sleutel maakt al opgeslagen
+   inloggegevens onleesbaar.
+
+Het script toont of logt nooit een waarde. Lees `local.settings.json` als agent ook niet zelf
+uit, want het bevat secrets (zie `docs/SPORTLINK-WEB-EXTENSION.md`, de alinea over `local.settings.json`).
+
+> **Gevolg van `AllowExternalIntegrations=true`:** de poort staat dan open voor élke externe
+> integratie, niet alleen Sportlink. In de standaard lokale configuratie zijn de Graph-, OpenAI-
+> en GitHub-instellingen leeg, dus in de praktijk gaan alleen Sportlink Club en de
+> Sportlink-dataservice (de sync-timer) live. Vul je die andere secrets lokaal wél in, dan gaan
+> ook die live. Start dan met `offline` als je dat niet wilt.
+
+**Wat alleen de eigenaar doet — nooit een agent:**
+- **Inloggegevens invoeren:** menu **Sportlink Ext.** (pagina **Sportlink Web Extension**) →
+  kaart **Automatisch inloggen — rol Wedstrijdzaken** → **Automatisch inloggen instellen**.
+  Daarvoor is eenmalig een nieuwe invoer nodig na een nieuwe lokale hostsleutel. Lokaal en
+  productie hebben elk hun eigen sleutel, dus de versleutelde gegevens zijn niet uitwisselbaar.
+- **Dry-run uitzetten** (vinkje *Dry-run: alles simuleren, niets naar Sportlink schrijven* op
+  dezelfde pagina). Zolang dry-run aan staat, gaat lezen live en worden schrijfacties alleen
+  gesimuleerd en geaudit.
+- **De code-locks per schrijfactie** in `Planner.Shared/Integrations/SportlinkClub/SportlinkClubClient.cs`
+  (`…LiveBevestigd`-constanten, `docs/SPORTLINK-WEB-EXTENSION.md` §4.4). Voor verwijderen (#1440)
+  is dat `ClubMatchDeleteLiveBevestigd`. Zolang die op `false` staat, is verwijderen óók lokaal
+  altijd een simulatie, ongeacht de dry-run-instelling. Een agent zet zo'n constante nooit om,
+  ook niet lokaal of tijdelijk.
+
+**Verwijderen (#1440) lokaal testen:** de knop **Wedstrijd verwijderen uit Sportlink** verschijnt
+alleen onder het resultaat van een **echte** aanmaak op **Wedstrijd aanmaken**. Daarvoor moet de
+eigenaar dry-run uitzetten: dan wordt er echt een wedstrijd in Sportlink aangemaakt. Na **Ja, verwijderen**
+is het verwijderen zelf zolang `ClubMatchDeleteLiveBevestigd = false` nog een simulatie. De
+testwedstrijd blijft dan staan en moet in Sportlink Club met de hand worden opgeruimd. Gebruik
+nooit een competitie- of bekerwedstrijd. Na de verwijdering verdwijnt de wedstrijd lokaal pas uit de planning bij de
+eerstvolgende geslaagde sync (#1193).
+
+> **Risico om te melden vóór de eerste live login:** of een lokale login met hetzelfde
+> serviceaccount een productiesessie ongeldig maakt, is niet aangetoond. Met automatisch inloggen
+> (#1411) herstelt productie zich bij de volgende vernieuwing zelf, maar meld het de eigenaar.
+
+Handmatige herhaling van de controle (lokaal is de rolcontrole uitgeschakeld, dus geen token nodig):
+
+```powershell
+Import-Module ./scripts/dev/DevServices.psm1 -Force
+$sl = try { Invoke-RestMethod "http://localhost:7094/api/beheer/sportlink-extensie/health" -ErrorAction Stop } catch { $null }
+Get-SportlinkLiveBlockers -SettingsPath FunctionApp.Postgres/local.settings.json -Health $sl
+# Lege uitvoer = live-klaar. $sl.dryRun zegt of schrijfacties gesimuleerd worden.
+```
 
 ## Stap 4 — Blazor fingerprint consistency check
 
@@ -186,8 +318,10 @@ Als "An unhandled error" toch verschijnt na hard refresh:
 
 | Service | URL | Status |
 |---|---|---|
+| Branch / versie | develop → `/api/health`.version | ✅ laatste develop (fast-forward van origin/develop) |
 | Azurite | poort 10000 | ✅/❌ |
 | FunctionApp | http://localhost:7094/api/health | ✅/❌ versie: ... |
+| Sportlink live (primaire club) | Start-Debug-melding / Stap 3b | ✅ live-klaar (dry-run aan/uit) / ⚠️ reden / n.v.t. bij `offline` |
 | BlazorAdmin | http://localhost:5242 | ✅/❌ |
 | Fingerprint check | dotnet.*.js HTTP 200 | ✅/❌ |
 | /api/beheer/settings | http://localhost:7094/... | ✅/⚠️ |
