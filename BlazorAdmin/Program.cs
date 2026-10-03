@@ -70,7 +70,7 @@ if (builder.HostEnvironment.IsProduction())
             InnerHandler = authHandler
         };
         var http = new HttpClient(clubHandler) { BaseAddress = new Uri(capturedFunctionBaseUrl) };
-        return new AdminApiClient(http, sp.GetRequiredService<ApiStatusService>());
+        return new AdminApiClient(http, sp.GetRequiredService<ApiStatusService>(), sp.GetRequiredService<ClientTelemetryService>());
     });
 }
 else
@@ -87,13 +87,15 @@ else
             InnerHandler = new HttpClientHandler()
         };
         var http = new HttpClient(clubHandler) { BaseAddress = new Uri(functionBaseUrl) };
-        return new AdminApiClient(http, sp.GetRequiredService<ApiStatusService>());
+        return new AdminApiClient(http, sp.GetRequiredService<ApiStatusService>(), sp.GetRequiredService<ClientTelemetryService>());
     });
 }
 
 builder.Services.AddScoped<ClubSelectorService>();
 builder.Services.AddScoped<ThemeService>();
 builder.Services.AddScoped<ApiStatusService>();
+// #764: verzamelt de technische context (mislukte API-aanroepen, navigatiespoor) voor de feedbackwidget.
+builder.Services.AddScoped<ClientTelemetryService>();
 builder.Services.AddScoped<DatabaseStatusService>();
 
 await builder.Build().RunAsync();

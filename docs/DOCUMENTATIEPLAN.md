@@ -68,6 +68,7 @@ Azure-productieomgeving. Eenmalig uit te voeren, daarna niet meer dagelijks nodi
 | [ARCHITECTUUR-PDF-EXPORT.md](ARCHITECTUUR-PDF-EXPORT.md) | PDF-export met QuestPDF: licentie, native assets, pakketgrootte |
 | [ARCHITECTUUR-EMAIL-MODULE.md](ARCHITECTUUR-EMAIL-MODULE.md) | Doelarchitectuur e-mailverzendlaag — ontwerp, migratie nog niet gestart |
 | [SPORTLINK-WEB-EXTENSION.md](SPORTLINK-WEB-EXTENSION.md) | Schrijfrichting webapp → Sportlink Club: protocol, endpoints, agent-tokengrens |
+| [FEEDBACK.md](FEEDBACK.md) | Feedbackwidget en -overzicht: rollen, publicatiebeleid, technische context en redactie, bewaartermijnen, verwerkingsregister (#764) |
 | [SPORTLINK-AUTOLOGIN.md](SPORTLINK-AUTOLOGIN.md) | Automatische Sportlink-login (#1411): implementatie, productie-setup, TOTP-verwerking |
 | [ARCHITECTUUR-PLANNER.md](ARCHITECTUUR-PLANNER.md) | Planner API: algoritme, velddefinities, API-contract |
 | [API.md](API.md) | Alle HTTP-endpoints: routes, parameters, response-formaten |

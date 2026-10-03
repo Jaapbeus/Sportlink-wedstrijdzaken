@@ -63,8 +63,8 @@ internal static class AdminEndpoint
 
     /// <summary>
     /// Zelfde poort als <see cref="ExecuteAsync"/>, zonder databasewacht en zonder clubcode — voor
-    /// endpoints die geen database nodig hebben (#1350: de feedback-endpoints, die juist moeten
-    /// blijven werken als de database onbereikbaar is). Bewust een aparte methode en géén optionele
+    /// endpoints die geen database nodig hebben (#1350: tot #764 de feedback-endpoints; die bewaren
+    /// sinds #764 elke melding en lopen daarom via <see cref="ExecuteAuthenticatedAsync"/>). Admin-only. Bewust een aparte methode en géén optionele
     /// parameter op <see cref="ExecuteAsync"/>: een vlag die stilzwijgend een stap overslaat is
     /// dezelfde valkuil als de <c>requireRole</c>-parameter die #1272 verwijderde.
     /// </summary>

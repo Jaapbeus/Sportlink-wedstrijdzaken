@@ -119,6 +119,9 @@
     <Build Include="Schemas\avg.sql" />
     <Build Include="avg\Tables\Teambegeleiding.sql" />
     <Build Include="avg\Tables\ImportLog.sql" />
+    <Build Include="avg\Tables\Feedback.sql" />
+    <Build Include="avg\Tables\FeedbackTelemetrie.sql" />
+    <Build Include="avg\Tables\FeedbackInzageLog.sql" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Script1.sql" />

@@ -81,6 +81,29 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   staat). Het bevestigblok waarschuwt: "Verwijderen is definitief; de tegenstander kan een melding
   krijgen." Alleen clubwedstrijden kunnen weg, nooit een bondswedstrijd.
 - **Delen neemt handmatig versleepte wedstrijden mee** (#1460). Op Veld optimalisatie bevat het gedeelde HTML- of PDF-bestand nu de planning zoals die op het scherm staat, ook na handmatig verslepen; de waarschuwing dat aanpassingen verloren gaan is vervallen. Daarvoor stuurt de pagina de getoonde lijst mee naar het nieuwe stateless `POST /api/planner/auto-plan/deel` (beide databasetiers; niets wordt opgeslagen).
+- **Iedere ingelogde gebruiker kan feedback geven** (#1476, #1477, #1478). Het volledige plan staat in
+  issue #764. De FEEDBACK-knop werkt nu voor beheerders én gewone gebruikers; eerder kreeg een gewone gebruiker bij het
+  versturen een foutmelding. Een melding van een beheerder gaat, na het bekende voorbeeld, direct naar
+  GitHub. Een melding van een gewone gebruiker wordt eerst bewaard en pas gepubliceerd nadat een
+  beheerder de tekst heeft gezien en op **Publiceer** klikt; de gebruiker ziet daarna "Je melding is
+  opgeslagen" met een meldingsnummer, geen link naar GitHub. Per persoon mogen er maximaal drie
+  meldingen per tien minuten binnenkomen.
+- **Nieuw scherm Feedback voor beheerders** (#1478). Onder **Feedback** in de zijbalk staan alle meldingen
+  met melder, rol, scherm, status en issue; filteren op soort, status, periode en zoektekst; een
+  melding openklappen toont de beschrijving, de exacte tekst die openbaar wordt en de technische
+  gegevens; **Publiceer** zet een wachtende melding op GitHub (een tweede klik maakt geen tweede issue).
+  Het tabblad **Inzagelog** laat zien wie het overzicht opende, welke melding bekeek of publiceerde.
+  Er is bewust geen export.
+- **Technische gegevens bij een melding** (#1477). Standaard gaan de laatste foutmeldingen van de
+  browser, de laatste mislukte aanroepen naar de server, de laatst bezochte schermen en de browser mee
+  zodat de ontwikkelaar een probleem kan terugvinden. Dat staat zichtbaar in het overzicht van de
+  melding (**Bekijk wat er wordt meegestuurd**) en is met één vinkje uit te zetten. E-mailadressen,
+  ID's, tokens en zoekwaarden in webadressen worden er in de browser én op de server uitgehaald; de
+  gegevens staan nooit in het openbare issue en worden na 90 dagen gewist.
+- **Bewaartermijnen voor feedback** (#1476). De naam van de melder staat alleen in het
+  beheeroverzicht en wordt 24 maanden nadat het GitHub-issue is gesloten losgekoppeld van de melding
+  (de tekst blijft); het inzagelog wordt na 24 maanden gewist. Dit gebeurt dagelijks automatisch op
+  beide databasevarianten. Zie `docs/FEEDBACK.md`, ook voor het verwerkingsregister.
 - **Wedstrijd toevoegen direct op Planning** (#1468). Staat de Sportlink Web Extension aan, dan heeft
   Planning rechts in de datumbalk een groene knop **Wedstr. toevoegen**. Die opent het
   aanmaakformulier in een kaart op de pagina zelf, met de gekozen datum al ingevuld; na een echte

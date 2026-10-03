@@ -237,7 +237,7 @@ Browser (beheerder)
         ▼
   Azure Functions (Linux Consumption plan) — net9.0, isolated worker
         Easy Auth: valideert Bearer token, injecteert X-MS-CLIENT-PRINCIPAL
-        EasyAuthHelper: checkt 'admin' rol op alle /api/beheer/*, /api/test/*, /api/feedback/*
+        EasyAuthHelper: checkt 'admin' rol op alle /api/beheer/*, /api/test/*; /api/feedback/* is open voor admin én user (#764)
         │
         ├── DatabaseTier=SqlServer          ├── DatabaseTier=Postgres
         │   FunctionApp/                    │   FunctionApp.Postgres/
