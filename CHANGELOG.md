@@ -148,6 +148,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   begeleiders van een functie te voorzien.
 
 ### Changed
+- Beide tiers delen nu de sync-trigger- en deel-orkestratie (`SyncTriggerEndpointCore`, `PlannerDeelEndpointCore.VerwerkAsync`); gedrag ongewijzigd (#1492)
 - **Menu: Wedstr. aanmaken en Wijzigingsverzoeken staan nu direct onder Planning** (#1468). Het
   menu-item "Wedstrijden" heet voortaan **Wedstr. aanmaken**; beide items zijn zoals voorheen alleen
   zichtbaar als de Sportlink Web Extension aan staat. Veld optimalisatie staat daaronder.
