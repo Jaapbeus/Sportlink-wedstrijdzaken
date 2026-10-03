@@ -53,6 +53,25 @@ public class SportlinkChangeRequestOverzichtTests
     }
 
     [Fact]
+    public void Verrijk_GeeftSportlinkWedstrijdnummerEnTeamsDoor_OokZonderEigenContext()
+    {
+        var verzoek = Verzoek("M-onbekend", "APPROVED") with
+        {
+            ExternalMatchId = "84663",
+            HomeTeam = new SportlinkChangeRequestTeam { TeamName = "TEST1" },
+            AwayTeam = new SportlinkChangeRequestTeam { TeamName = "TEST2" },
+        };
+
+        var result = SportlinkChangeRequestOverzichtItem.Verrijk(
+            new[] { verzoek }, new Dictionary<string, SportlinkWedstrijdContext>());
+
+        result[0].Wedstrijd.Should().BeNull();
+        result[0].ExternalMatchId.Should().Be("84663", "Sportlinks eigen wedstrijdnummer is de terugval (#1464)");
+        result[0].Thuisteam.Should().Be("TEST1");
+        result[0].Uitteam.Should().Be("TEST2");
+    }
+
+    [Fact]
     public void Verrijk_OpenstaandeVerzoekenEerst_VolgordeBinnenGroepBlijftDieVanSportlink()
     {
         var input = new[]

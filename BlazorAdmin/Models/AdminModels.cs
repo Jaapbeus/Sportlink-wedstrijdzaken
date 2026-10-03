@@ -286,6 +286,12 @@ public class SportlinkChangeRequestDto
 
     /// <summary>#1439: OPEN, ACCEPTED, DENIED, REVOKED of UNKNOWN — zie SportlinkChangeRequestStatusGroep.</summary>
     public string? StatusGroep { get; set; }
+
+    /// <summary>#1464: Sportlinks eigen wedstrijdnummer en teamnamen — terugval als
+    /// <see cref="Wedstrijd"/> ontbreekt.</summary>
+    public string? ExternalMatchId { get; set; }
+    public string? Thuisteam { get; set; }
+    public string? Uitteam { get; set; }
     public SportlinkChangeRequestDataDto? RequestData { get; set; }
     public string? Reason { get; set; }
     public string? Remarks { get; set; }
