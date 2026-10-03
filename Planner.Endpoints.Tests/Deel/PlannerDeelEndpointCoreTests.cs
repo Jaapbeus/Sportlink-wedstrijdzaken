@@ -191,22 +191,6 @@ public class PlannerDeelEndpointCoreTests
         ok.Value!.GetType().GetProperty("pdfExportIngeschakeld")!.GetValue(ok.Value).Should().Be(ingeschakeld);
     }
 
-    [Theory]
-    [InlineData("0", true)]
-    [InlineData("1", true)]
-    [InlineData("true", true)]
-    [InlineData("false", true)]
-    [InlineData(null, false)]
-    [InlineData("", false)]
-    [InlineData("ja", false)]
-    public void ControleerPdfInstelling_AlleenExpliciete_AanUitWaarde(string? waarde, bool geldig)
-    {
-        var uitkomst = PlannerDeelEndpointCore.ControleerPdfInstelling(waarde);
-
-        if (geldig) uitkomst.Should().BeNull();
-        else uitkomst.Should().BeOfType<BadRequestObjectResult>();
-    }
-
     [Fact]
     public async Task WeigerPdf_ClubInstellingAan_LaatPdfToe()
     {

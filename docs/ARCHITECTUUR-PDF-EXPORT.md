@@ -68,10 +68,17 @@ sponsorinkomsten) kan die grens wél halen. Daarom:
    `dbo.AppSettings.PdfExportIngeschakeld`). De beheerder zet hem aan bij Instellingen → PDF-export
    en bevestigt daarmee dat de voorwaarden gelden. De licentie wordt pas in
    `PlannerPdfGenerator.Genereer(model, pdfIngeschakeld: true)` gezet (niet meer in de statische
-   constructor); `false` gooit. Boven die vangrail weigert `PlannerDeelEndpointCore.WeigerPdfAsync`
-   `?format=pdf` met **409** zolang de instelling uit staat (beide tiers, één plek), en verbergt de
-   GUI de PDF-knop (`DeelPaneel.PdfOphalen = null`). Geen migratie of seed zet hem voor een
-   specifieke club aan; na de release moet de beheerder hem zelf inschakelen.
+   constructor); `false` gooit. Boven die vangrail weigert de ene gedeelde beslissing
+   `PlannerDeelEndpointCore.BeslisPdfAsync` `?format=pdf` met **409** zolang de instelling uit
+   staat — op `planner/veldbezetting`, `planner/auto-plan` én `planner/auto-plan/deel` (#1460), op
+   beide tiers. De 0/1-validatie van de instelling staat in `Planner.Endpoints/Admin/AppSettingsValidatieCore.cs`
+   (samen met de overige settingsvalidatie). Per tier staat alleen de databasevraag
+   (`Planner/PdfExportInstelling.IsIngeschakeldAsync`, zelfde pad en naam op beide tiers). De GUI
+   verbergt de PDF-knop (`DeelPaneel.PdfOphalen = null`) op basis van `GET planner/pdf-export`
+   (`Planner/PdfExportStatusFunction.cs` per tier), dat
+   open staat voor elke ingelogde rol — `beheer/settings` is admin-only, en Planning is sinds #1400
+   ook voor de rol `user`. De stand wordt opnieuw opgehaald bij een clubwissel. Geen migratie of
+   seed zet hem voor een specifieke club aan; na de release moet de beheerder hem zelf inschakelen.
 2. **Elke club controleert dat zelf bij het forken** (zie
    [SETUP-NIEUWE-CLUB.md](../SETUP-NIEUWE-CLUB.md) §1). Haalt een club de grens wel: Professional
    License kopen, of de PDF-export niet gebruiken. QuestPDF kent een overgangstermijn van 90 dagen

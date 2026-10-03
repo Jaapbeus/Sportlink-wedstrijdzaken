@@ -76,18 +76,6 @@ public static class PlannerFunction
     }
 
     /// <summary>
-    /// #1459: of PDF-export voor de gekozen club aan staat. Open voor elke ingelogde rol (net als
-    /// <c>planner/veldbezetting</c>), zodat Planning de PDF-knop ook voor de rol <c>user</c> juist toont;
-    /// <c>beheer/settings</c> is admin-only. Beslissing en respons in <see cref="PlannerDeelEndpointCore"/>.
-    /// </summary>
-    [Function("PdfExportStatus")]
-    public static Task<IActionResult> PdfExportStatus(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "planner/pdf-export")] HttpRequest req,
-        FunctionContext context)
-        => AdminEndpoint.ExecuteAuthenticatedAsync(req, context.GetLogger("PdfExportStatus"), "pdf-export-status ophalen",
-            clubCode => PlannerDeelEndpointCore.PdfExportStatusAsync(() => PdfExportInstelling.IsIngeschakeldAsync(clubCode)));
-
-    /// <summary>
     /// Teamrooster: per zaterdag tot het seizoenseinde of het team vrij is, en de wedstrijdenlijst.
     /// Met <c>?format=html</c> een leesbare pagina in plaats van JSON — zelfde twee vormen als op de
     /// SQL Server-tier.
@@ -445,6 +433,25 @@ public static class PlannerFunction
                     PostgresDatabaseConfig.ConnectionString, request, clubCode, log);
 
                 return deel.VanPlan(response.Wedstrijden, clubCode) ?? new OkObjectResult(response);
+            });
+    }
+
+    /// <summary>
+    /// #1460: deelt de planning zoals de browser hem toont (incl. handmatig versleepte blokken).
+    /// Stateless — geen database, geen herberekening; validatie en rendering in
+    /// <see cref="PlannerDeelPlanEndpointCore"/>, identiek op beide tiers.
+    /// </summary>
+    [Function("AutoPlanDeel")]
+    public static Task<IActionResult> AutoPlanDeel(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/auto-plan/deel")] HttpRequest req,
+        FunctionContext context)
+    {
+        var log = context.GetLogger("AutoPlanDeel");
+        return AdminEndpoint.ExecuteAsync(req, log, "planning delen",
+            rawClubCode =>
+            {
+                var clubCode = PostgresClubScope.Resolve(rawClubCode);
+                return PlannerDeelPlanEndpointCore.VerwerkAsync(req, clubCode, () => PdfExportInstelling.IsIngeschakeldAsync(clubCode));
             });
     }
 

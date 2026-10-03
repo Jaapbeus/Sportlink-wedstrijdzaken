@@ -37,8 +37,8 @@
 > de hele extensie die een échte tegenstander raakt. #997 heeft van alle #986-sub-issues de meeste
 > onbekenden: volledige body onbevestigd, meerdere picklist-vormen onbekend, delete-methode
 > onbekend — alleen de aanmaak-POST en de twee picklist-GETs (Teams + Location) zijn aangesloten,
-> uitslag bewust niet. Verwijderen is sinds #1440 gebouwd, maar staat hard op dry-run
-> (`ClubMatchDeleteLiveBevestigd = false`) tot de eigenaar het contract live bevestigt. Epic
+> uitslag bewust niet. Verwijderen is sinds #1440 gebouwd en sinds #1458 live
+> (`ClubMatchDeleteLiveBevestigd = true`; volgt de club-instelling `sportlinkDryRun`). Epic
 > [#986](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/986). Dit document is de
 > canonieke, levende beschrijving — bij twijfel of tegenspraak met een ouder issue-comment geldt
 > dit document. Het bronrapport met alle live-geteste technische details staat in
@@ -813,11 +813,8 @@ test getriggerd wordt:
   volledige requestbody, en de exacte respons-veldnamen van de twee aangesloten picklists blijven
   grotendeels gereverse-engineerd en zijn niet apart met een eigen netwerktrace bevestigd — anders
   dan bij #994/#995 hierboven is bij #997 geen losse trace gedocumenteerd. Uitslag vastleggen
-  (`ClubMatchScore`) is bewust niet aangesloten. **Verwijderen (`ClubMatchDelete`, #1440) is wél
-  gebouwd, maar kan nog niets echt verwijderen**: het contract komt uit Sportlinks publieke
-  frontend-bundle (nooit live gezien) en staat daarom hard op dry-run
-  (`ClubMatchDeleteLiveBevestigd = false`) — zie de alinea "#1440" in §6.4. Een per ongeluk
-  aangemaakte testwedstrijd moet tot die bevestiging dus nog in Sportlink Club zelf weg.
+  (`ClubMatchScore`) is bewust niet aangesloten. **Verwijderen (`ClubMatchDelete`, #1440) is gebouwd en sinds #1458 live**
+  (`ClubMatchDeleteLiveBevestigd = true`) — zie de alinea "#1440" in §6.4.
   Een toekomstige koppeling tussen een zelf-geplande oefenwedstrijd in
   `planner.geplandewedstrijden` (kolom `sportlinkwedstrijdcode`, momenteel ongebruikt voor dit doel)
   en het door Sportlink teruggegeven `PublicMatchId` is bewust niet gebouwd in deze ronde — zie de
@@ -858,7 +855,7 @@ de kernfeiten. Bij een discrepantie is de code leidend; werk dan dit overzicht b
 | `competition/match/clubmatch/ClubMatch` | **POST** | Oefenwedstrijd aanmaken — **sinds #1319 live bevestigd (#997)**, zie §4.2. Geen guard mogelijk vóór aanmaak (er is nog geen wedstrijd) — alleen eigen-DB-checks i.p.v. een Sportlink-permissievlag | — (eigen toggle/EgressGuard i.p.v. `SportlinkMutationGuard`, zie §4.2) |
 | `competition/match/clubmatch/PickListsTeams` | GET | Picklist teams voor het aanmaak-formulier (#997) — read-only, echt aangeroepen | — |
 | `competition/match/clubmatch/PickListsLocation` | GET | Picklist locaties voor het aanmaak-formulier (#997) — read-only, echt aangeroepen | — |
-| `competition/match/clubmatch/ClubMatchDelete` (`?PublicMatchId=`, geen body) | **DELETE** | Clubwedstrijd verwijderen (#1440). Contract **uit de publieke frontend-bundle, niet live gezien** — hard op dry-run (`ClubMatchDeleteLiveBevestigd = false`), zie §6.4. Alleen aangeboden op het resultaat van "Wedstrijd aanmaken" | `SportlinkMutationSoort.Verwijderen` (`IsKernelMatch = false`, fail-closed, plus `IsHomeMatch`) |
+| `competition/match/clubmatch/ClubMatchDelete` (`?PublicMatchId=`, geen body) | **DELETE** | Clubwedstrijd verwijderen (#1440). Live sinds #1458 (`ClubMatchDeleteLiveBevestigd = true`, respons `{PublicMatchId, IsSuccess}`), volgt `sportlinkDryRun`, zie §6.4. Alleen aangeboden op het resultaat van "Wedstrijd aanmaken" | `SportlinkMutationSoort.Verwijderen` (`IsKernelMatch = false`, fail-closed, plus `IsHomeMatch`) |
 | `competition/match/clubmatch/ClubMatchScore` | — | **Bewust NIET aangesloten (#997)** — uitslag vastleggen, buiten scope | — |
 | `competition/match/clubmatch/ClubMatchDefaults`, `PickListsMatchInformation`, `codetable/AgeClassList` | — | **Bewust NIET aangesloten (#997)** — drie extra onbevestigde endpoints tegelijk is te veel gok in één ronde | — |
 | `competition/match/MatchRemarks` | — | **Bewust NIET aangesloten** — opmerking bij een wedstrijd; wel in het bronrapport (§2.4), maar er is geen functionele vraag naar en het pad is nooit live gezien | — |
@@ -927,30 +924,29 @@ issue #995 — een handmatige proef door de wedstrijdsecretaris met netwerk-meek
 een agent (§4.4). Zelfs dan bouwt deze constante alleen stap 1 vrij: stap 2 (bevestigen) bestaat
 nog steeds niet in de code en vereist een aparte, toekomstige beslissing.
 
-**#1440 — verwijderen van een clubwedstrijd (`DeleteClubMatchAsync`).** Derde lock van deze soort:
-`ClubMatchDeleteLiveBevestigd = false`. Methode (`DELETE`), parameter (`PublicMatchId` als
-querystring, geen body) en de voorwaarde voor de knop (`IsKernelMatch === false`) komen uit Sportlinks
-publieke frontend-bundle (2026-10-02, zie §2.4a van het bronrapport); geen ervan is live gezien, en
-of een verwijdering in Sportlink terug te draaien is, is onbekend. Daarom, zolang de vlag `false`
-is: er verlaat geen DELETE de client, ook niet met dry-run uit (`SportlinkClubMatchDeleteTests`
-bewijst dat, en faalt met naam als de vlag stil wordt omgezet). Daarnaast, los van de vlag:
-- **Guard** `SportlinkMutationSoort.Verwijderen`: alleen een expliciete `IsKernelMatch = false`
-  (clubwedstrijd) mag weg; ontbreekt het veld in de Match-respons, dan weigert hij (409). De
-  bestaande `IsHomeMatch`-regel geldt ook — strenger dan Sportlinks eigen knop, bewust.
-- **UI** alleen op het resultaat van een échte aanmaak op "Wedstrijd aanmaken" (dan is het
-  `PublicMatchId` bekend en is het zeker een eigen clubwedstrijd), altijd met een bevestigstap,
-  zonder form-element (#1436). Niet in het Sportlink-paneel op Planning.
+**#1440/#1458 — verwijderen van een clubwedstrijd (`DeleteClubMatchAsync`).** Derde lock van deze
+soort, door de eigenaar opgeheven in #1458 (besluit 2026-10-03, na live trace):
+`ClubMatchDeleteLiveBevestigd = true`. Methode (`DELETE`) en parameter (`PublicMatchId` als
+querystring, geen body) komen uit Sportlinks publieke frontend-bundle; de succesrespons is live
+vastgesteld: een JSON-object `{ "PublicMatchId": ..., "IsSuccess": true }`. De aanroep volgt vanaf
+nu de club-instelling `sportlinkDryRun` (bij dry-run verlaat er geen DELETE de client;
+`SportlinkClubMatchDeleteTests` bewijst beide takken en de responsvorm).
+- **Guard** `SportlinkMutationSoort.Verwijderen`: "zoals Sportlink" alleen een expliciete
+  `IsKernelMatch = false` (clubwedstrijd) mag weg; ontbreekt het veld, dan weigert hij (409). Er is
+  geen aanvullende eis op het competitietype. De algemene `IsHomeMatch`-regel van
+  `SportlinkMutationGuard` geldt voor alle mutaties en bleef gehandhaafd.
+- **Geen beperking tot via de webapp aangemaakte wedstrijden** (eigenaarsbesluit 2026-10-03): de
+  server-guard hierboven volstaat. De UI biedt de knop wel alleen aan op het resultaat van een échte
+  aanmaak op "Wedstrijd aanmaken", altijd met een bevestigstap met de waarschuwing "Verwijderen is
+  definitief; de tegenstander kan een melding krijgen.", zonder form-element (#1436).
+- **Fail-closed audit (#1458):** ontbreekt de mutatie-auditservice in DI, dan weigert elk
+  mutatie-endpoint (aanmaken, verwijderen, wedstrijdmutaties, wijzigingsverzoek-acties) met HTTP
+  503 vóór de Sportlink-aanroep, op beide tiers (`SportlinkEndpointSupportCore.AuditNietBeschikbaarFout`).
 - **Audit**: elke poging (ook een geblokkeerde) krijgt een rij met het echte `PublicMatchId`, actie
   `DeleteClubMatch` en in `WaardeVoor` een snapshot zonder persoonsgegevens (wedstrijdnummer, datum,
   status, `IsKernelMatch`, accommodatie).
-- **Respons**: een 2xx zonder body telt als geslaagd (`SportlinkClubClient.IsLegeSuccesRespons`) —
-  Sportlinks eigen frontend leest de succesbody niet; een 420 met `Violations` is een afwijzing.
-
-**Openstaand, alleen door de eigenaar** (op een testwedstrijd die echt weg mag, met netwerk-
-meekijken): de DELETE zelf en zijn respons, of `IsKernelMatch` in de Match-respons van deze app
-`false` is voor een zelf aangemaakte oefenwedstrijd, en of Sportlink anderen een melding stuurt of
-het verwijderen terug te draaien is. Pas daarna mag de vlag — in een aparte PR, nooit door een agent
-(§4.4) — op `true`.
+- **Respons**: een 2xx zonder body telt nog steeds als geslaagd (`IsLegeSuccesRespons`, voor het geval
+  Sportlink dat ooit doet); een 420 met `Violations` is een afwijzing.
 
 **#1320 (eigenaar-gestuurde productieproef met trace van validatie en bevestiging)** bouwde de
 diagnostiek-UI rond diezelfde, ongewijzigde code-lock — de lock zelf is met dit issue niet

@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Npgsql;
-using Planner.Endpoints.Deel;
+using Planner.Endpoints.Admin;
 using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text;
@@ -53,11 +53,6 @@ public static class AdminSettingsFunction
         "AccommodatiePlaats", "AccommodatieLatitude", "AccommodatieLongitude",
         "UseRealtimeApi", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio",
         "SportlinkExtensionEnabled", "SportlinkDryRun", "SportlinkSpelactiviteit", "PdfExportIngeschakeld"
-    };
-
-    private static readonly string[] GeldigeKnvbRegios =
-    {
-        "West", "Noord", "Oost", "Zuid", "Landelijk", "LandelijkJeugd"
     };
 
     /// <summary>
@@ -268,28 +263,7 @@ public static class AdminSettingsFunction
         if (changes.Count == 0)
             return new BadRequestObjectResult(new { error = "Geen toegestane velden in request" });
 
-        if (changes.TryGetValue("FetchSchedule", out var nieuweSchedule) && nieuweSchedule != null)
-        {
-            if (!CronExpression.TryParse(nieuweSchedule, CronFormat.IncludeSeconds, out _))
-                return new BadRequestObjectResult(new { error = $"Ongeldige CRON-expressie: '{nieuweSchedule}'. Verwacht 6 velden (seconden minuten uren dag maand weekdag)." });
-        }
-
-        if (changes.TryGetValue("KnvbStandaardRegio", out var nieuweRegio) &&
-            !string.IsNullOrWhiteSpace(nieuweRegio) &&
-            !GeldigeKnvbRegios.Contains(nieuweRegio, StringComparer.Ordinal))
-        {
-            return new BadRequestObjectResult(new { error = $"Ongeldige KnvbStandaardRegio: '{nieuweRegio}'. Toegestaan: {string.Join(", ", GeldigeKnvbRegios)}." });
-        }
-
-        // #1437: de kolom is 100 tekens breed; een te lange waarde geeft anders een databasefout (500).
-        if (changes.TryGetValue("SportlinkSpelactiviteit", out var nieuweActiviteit) && nieuweActiviteit is { Length: > 100 })
-            return new BadRequestObjectResult(new { error = "Spelactiviteit mag maximaal 100 tekens bevatten." });
-
-        // #1459: alleen een expliciete aan/uit-waarde is geldig (gedeelde regel in PlannerDeelEndpointCore).
-        if (changes.TryGetValue("PdfExportIngeschakeld", out var nieuwePdf) && PlannerDeelEndpointCore.ControleerPdfInstelling(nieuwePdf) is { } pdfFout)
-            return pdfFout;
-
-        return null;
+        return AppSettingsValidatieCore.Valideer(changes);
     }
 
     private static async Task ApplyChangesAsync(

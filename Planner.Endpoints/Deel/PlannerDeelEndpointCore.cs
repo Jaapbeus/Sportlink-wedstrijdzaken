@@ -41,16 +41,6 @@ public static class PlannerDeelEndpointCore
     }
 
     /// <summary>
-    /// #1459: de kolom <c>PdfExportIngeschakeld</c> is NOT NULL; alleen een expliciete aan/uit-waarde
-    /// is geldig (400 anders). Beide <c>AdminSettingsFunction</c>-bestanden roepen dit op dezelfde
-    /// plek aan, zodat de regel op beide tiers identiek is.
-    /// </summary>
-    public static IActionResult? ControleerPdfInstelling(string? waarde) =>
-        waarde is "0" or "1" or "true" or "false"
-            ? null
-            : new BadRequestObjectResult(new { error = "PdfExportIngeschakeld moet 0/1 (aan/uit) zijn." });
-
-    /// <summary>
     /// #1459: DE beslissing voor elk deel-endpoint. PDF-export staat per club standaard UIT tot een
     /// beheerder bevestigt dat de QuestPDF Community-voorwaarden gelden. Bij <paramref name="format"/>
     /// <c>pdf</c> zonder die bevestiging: <c>409 Conflict</c> (zelfde code als de andere

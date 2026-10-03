@@ -53,15 +53,42 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     private string ExportToelichting =>
         $"Weergave van de {(_visTab == "optimaal" ? "optimale" : "huidige")} planning zoals hierboven gekozen. " +
         "Handig om als e-mail te versturen of als bestand te bewaren.";
-    // #1461 (tijdelijk, echte oplossing is issue #1460): de export komt van de server en kent een
-    // handmatige versleping niet — dus waarschuwen zodra de tijdlijn daarvan afwijkt.
-    private string? ExportWaarschuwing => _handmatigAangepast.Count > 0
-        ? "Let op: je hebt blokken handmatig versleept. Dit deelbare bestand toont de berekende planning, " +
-          "niet jouw handmatige aanpassingen op het scherm."
+    // #1460: de export komt van de server. Zonder handmatige aanpassing is dat het berekende plan;
+    // met handmatig versleepte blokken sturen we de getoonde lijst mee naar het stateless
+    // planner/auto-plan/deel-endpoint, zodat het gedeelde bestand gelijk is aan het scherm.
+    private bool HeeftHandmatigeAanpassing => _handmatigAangepast.Count > 0;
+
+    private string? ExportWaarschuwing => HeeftHandmatigeAanpassing
+        ? "Dit bestand bevat je handmatige aanpassingen zoals ze nu op het scherm staan."
         : null;
-    private Task<byte[]> PdfOphalenAsync() => Api.GetAutoPlanPdfAsync(_planDatum, _planBuffer, _visTab);
+
+    private IEnumerable<AutoPlanDeelRegelDto> GetoondeRegels()
+    {
+        var optimaal = _visTab == "optimaal";
+        return (_plan?.Wedstrijden ?? new()).Select(w => new AutoPlanDeelRegelDto
+        {
+            TeamNaam = w.TeamNaam,
+            Wedstrijd = w.Wedstrijd,
+            Competitiesoort = w.Competitiesoort,
+            Tijd = optimaal ? w.OptimaalTijd : w.HuidigeTijd,
+            Veld = optimaal ? w.OptimaalVeld : w.HuidigeVeld,
+        });
+    }
+
+    private Task<string> HtmlOphalenAsync() => HeeftHandmatigeAanpassing
+        ? Api.GetAutoPlanDeelHtmlAsync(_planDatum, _visTab, GetoondeRegels())
+        : Task.FromResult(HuidigeExportHtml ?? "");
+
+    private Task<byte[]> PdfOphalenAsync() => HeeftHandmatigeAanpassing
+        ? Api.GetAutoPlanDeelPdfAsync(_planDatum, _visTab, GetoondeRegels())
+        : Api.GetAutoPlanPdfAsync(_planDatum, _planBuffer, _visTab);
+
     private string ExportBestandsNaam => $"veld-optimalisatie-{DatumStr}";
-    private string ExportSleutel => $"{_visTab}|{DatumStr}|{_plan?.GetHashCode()}";
+    private string ExportSleutel => $"{_visTab}|{DatumStr}|{_plan?.GetHashCode()}|{HandmatigeStand()}";
+
+    // Verandert bij elke versleping, zodat een open deelpaneel zijn preview ververst.
+    private string HandmatigeStand() => string.Join(';', _handmatigAangepast
+        .Select(w => $"{w.WedstrijdCode}:{w.OptimaalTijd}:{w.OptimaalVeld}").OrderBy(x => x, StringComparer.Ordinal));
 
     // Toepassen feedback
     private string? _toepassenMelding;
