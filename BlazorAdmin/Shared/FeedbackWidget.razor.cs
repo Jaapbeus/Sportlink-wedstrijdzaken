@@ -243,7 +243,8 @@ public partial class FeedbackWidget
     private static string FoutTekst(int status, string? serverFout, string standaard) => status switch
     {
         429 => "Je hebt net al een paar meldingen gestuurd. Probeer het over 10 minuten nog eens.",
-        503 => "Meldingen zijn tijdelijk niet mogelijk. Laat het je beheerder weten.",
+        // #1487: zonder AI-dienst geeft de server zelf een begrijpelijke melding mee; die tonen we.
+        503 => serverFout ?? "Meldingen zijn tijdelijk niet mogelijk. Laat het je beheerder weten.",
         _ => serverFout ?? standaard
     };
 }

@@ -6237,6 +6237,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '503':
+          description: AI-dienst niet beschikbaar (`IChatClient` niet geregistreerd — lokaal door de EgressGuard, #857). Body `{ error, aiBeschikbaar: false }`; er is niets verwerkt en geen AI-limietslot verbruikt (#1487)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -6282,6 +6288,12 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '422':
           description: Mogelijke persoonsgegevens gedetecteerd in invoer of AI-output
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: AI-dienst niet beschikbaar (`IChatClient` niet geregistreerd — lokaal door de EgressGuard, #857). Body `{ error, aiBeschikbaar: false }`; er is niets verwerkt en geen AI-limietslot verbruikt (#1487)
           content:
             application/json:
               schema:
@@ -6343,6 +6355,12 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Limiet overschreden (per gebruiker of voor de hele club)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: AI-dienst niet beschikbaar (`IChatClient` niet geregistreerd — lokaal door de EgressGuard, #857). Body `{ error, aiBeschikbaar: false }`; er is niets verwerkt en geen AI-limietslot verbruikt (#1487)
           content:
             application/json:
               schema:

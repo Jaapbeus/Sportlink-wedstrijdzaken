@@ -19,6 +19,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Fixed
+- **Het feedbackvenster ligt weer boven de veldbezetting; zonder AI-dienst een nette melding** (#1487).
+  Op Planning en Veld optimalisatie vingen de blokken van de veldbezetting de klikken van het
+  feedbackvenster af, waardoor "Controleren" niet bruikbaar was. Daarnaast gaf het controleren van
+  feedback een algemene serverfout zodra de AI-dienst niet beschikbaar was; nu volgt een duidelijke
+  melding (HTTP 503) op beide databasevarianten.
 - **Verify-AzureAuthSetup.ps1 lekt geen persoonlijke gegevens meer bij lege admin-parameter** (#1474).
   Wanneer het verificatiescript zonder `-AdminUserPrincipalName` gestart wordt, slaat het de admin-toewijzingscontrole
   over in plaats van een ongefilterde gebruikerszoekopdracht uit te voeren die alle tenant-gebruikers zou tonen.

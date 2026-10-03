@@ -110,6 +110,26 @@ public static class FeedbackEndpointCore
         }
     }
 
+    // ── AI-dienst ontbreekt (#1487) ────────────────────────────────────────────
+
+    public const string AiNietBeschikbaarMelding =
+        "Het automatisch controleren van feedback is nu niet beschikbaar. Probeer het later opnieuw; er is niets verstuurd.";
+
+    /// <summary>
+    /// Validate, preview en submit hebben alle drie de AI-dienst nodig (titel, body en PII-gates
+    /// komen uit <see cref="FeedbackCore"/>). Is <c>IChatClient</c> niet geregistreerd — lokaal door
+    /// de EgressGuard (#857), of in productie zonder API-sleutel — dan is dat geen serverfout maar
+    /// een tijdelijk onbeschikbare dienst: 503 met een begrijpelijke melding, op beide tiers gelijk.
+    /// Geeft <c>null</c> als de dienst er is. Aanroepen vóór <see cref="ControleerEnSaneer"/>, zodat
+    /// een niet-uitgevoerde aanroep ook geen AI-limietslot verbruikt.
+    /// </summary>
+    public static IActionResult? ControleerAiBeschikbaar(IChatClient? chatClient, ILogger log)
+    {
+        if (chatClient is not null) return null;
+        log.LogWarning("Feedback-AI niet beschikbaar: IChatClient niet geregistreerd (EgressGuard of ontbrekende API-sleutel)");
+        return new ObjectResult(new { error = AiNietBeschikbaarMelding, aiBeschikbaar = false }) { StatusCode = 503 };
+    }
+
     // ── Validate / Preview: gedeelde invoerpoort ───────────────────────────────
 
     /// <summary>
