@@ -104,7 +104,7 @@ public class FeedbackEndpointCoreTests
         dto.Bevestiging = new FeedbackBevestiging { Titel = "Titel", Samenvatting = $"Mail {PiiMarker}", Acceptatiecriteria = [] };
         var (store, chat, github) = (new FeedbackStoreFake(), new FakeChat(GeldigeAiJson()), new FakeGitHub());
 
-        var result = await Submit(dto, Gebruiker, store, chat, github);
+        var result = await Submit(dto, Beheerder, store, chat, github);
 
         result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(422);
         (chat.Aanroepen, github.Aanroepen, store.Bewaard.Count).Should().Be((0, 0, 0));
@@ -127,6 +127,48 @@ public class FeedbackEndpointCoreTests
         store.Statussen[rij.FeedbackId].Should().Be(FeedbackStatusWaarden.Gepubliceerd);
         store.Gepubliceerd[rij.FeedbackId].Nummer.Should().Be(123);
         ok.Value!.ToString().Should().Contain("123");
+    }
+
+    [Fact]
+    public async Task Bevestiging_VanGewoneGebruiker_WordtGenegeerdEnDeServerStructureertZelf()
+    {
+        var dto = MaakRequest();
+        dto.Bevestiging = new FeedbackBevestiging { Titel = "Titel van de client", Samenvatting = "Samenvatting van de client", Acceptatiecriteria = [] };
+        var (store, chat) = (new FeedbackStoreFake(), new FakeChat(GeldigeAiJson()));
+
+        await Submit(dto, Gebruiker, store, chat, new FakeGitHub());
+
+        chat.Aanroepen.Should().Be(1, "voor de rol user structureert de server, ook als de body een bevestiging bevat");
+        var rij = store.Bewaard.Should().ContainSingle().Subject.Rij;
+        rij.IssueBody.Should().NotContain("Samenvatting van de client").And.Contain("Gebruiker meldt dat de pagina blijft hangen.");
+    }
+
+    [Fact]
+    public async Task Bevestiging_VanBeheerder_WordtGebruiktZonderNieuweAiAanroep()
+    {
+        var dto = MaakRequest();
+        dto.Bevestiging = new FeedbackBevestiging { Titel = "Titel van de beheerder", Samenvatting = "Samenvatting van de beheerder", Acceptatiecriteria = [] };
+        var (store, chat, github) = (new FeedbackStoreFake(), new FakeChat(GeldigeAiJson()), new FakeGitHub());
+
+        await Submit(dto, Beheerder, store, chat, github);
+
+        chat.Aanroepen.Should().Be(0);
+        github.Titel.Should().Be("Titel van de beheerder");
+        github.Body.Should().Contain("Samenvatting van de beheerder");
+    }
+
+    [Fact]
+    public void ControleerEnSaneer_VerwijdertBevestigingVoorGewoneGebruikerMaarNietVoorBeheerder()
+    {
+        FeedbackRequest MetBevestiging() { var d = MaakRequest(); d.Bevestiging = new FeedbackBevestiging { Titel = "T" }; return d; }
+        var voorGebruiker = MetBevestiging();
+        var voorBeheerder = MetBevestiging();
+
+        FeedbackEndpointCore.ControleerEnSaneer(voorGebruiker, Gebruiker, "x");
+        FeedbackEndpointCore.ControleerEnSaneer(voorBeheerder, Beheerder, "x");
+
+        voorGebruiker.Bevestiging.Should().BeNull();
+        voorBeheerder.Bevestiging.Should().NotBeNull();
     }
 
     [Fact]

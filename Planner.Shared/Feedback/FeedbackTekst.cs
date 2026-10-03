@@ -59,4 +59,27 @@ internal static class FeedbackTekst
             .Replace("</script>", "&lt;/script&gt;", StringComparison.OrdinalIgnoreCase);
         return clean.Length > maxLen ? clean[..maxLen] + "…" : clean;
     }
+
+    private static readonly System.Text.RegularExpressions.Regex OnveiligeVersieTekens =
+        new(@"[^A-Za-z0-9._ ()/\-]", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    // Pagina: geen backticks (breekt de code-span), regeleinden of | (breekt de tabelrij), [ ] (link-
+    // markdown), < > (HTML) of @ (mention). Daarna dezelfde Sanitize als alle andere tekst.
+    private static readonly System.Text.RegularExpressions.Regex OnveiligePaginaTekens =
+        new(@"[`\r\n|\[\]<>@]", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// Versie en Browser komen rechtstreeks van de client en staan in een tabelcel van een openbaar
+    /// issue: alleen letters, cijfers en <c>._ ()/-</c>, maximaal 60 tekens (#1494).
+    /// </summary>
+    internal static string SanitizeVersieOfBrowser(string? input)
+    {
+        if (string.IsNullOrEmpty(input)) return "";
+        var schoon = OnveiligeVersieTekens.Replace(input, "").Trim();
+        return schoon.Length > 60 ? schoon[..60] : schoon;
+    }
+
+    /// <summary>Pagina in een code-span in de issuetabel: geen markdown-, tabel-, HTML- of mention-tekens (#1494).</summary>
+    internal static string SanitizePagina(string? input) =>
+        Sanitize(OnveiligePaginaTekens.Replace(input ?? "", ""), 200);
 }

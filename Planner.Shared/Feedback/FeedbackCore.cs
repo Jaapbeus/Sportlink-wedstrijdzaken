@@ -193,9 +193,11 @@ public static class FeedbackCore
         // - Noodzakelijk omdat StructureerIssue op temperature 0.2 draait: een tweede aanroep levert
         //   andere tekst op, waardoor het getoonde voorbeeld niet meer zou kloppen met wat er
         //   gepubliceerd wordt — precies de misleiding die #1205 wegneemt.
-        // - Veilig omdat dit endpoint achter RequireAdmin zit en dezelfde beheerder via het veld
-        //   Beschrijving sowieso al willekeurige tekst in de body kan krijgen; er komt dus geen nieuw
-        //   aanvalspad bij.
+        // - Veilig omdat de aanroeper (FeedbackEndpointCore) dit veld alleen laat staan voor de rol
+        //   admin — voor de rol user wordt het uit de body gehaald vóór deze kern draait — en dezelfde
+        //   beheerder via het veld Beschrijving sowieso al willekeurige tekst in de body kan krijgen;
+        //   er komt dus geen nieuw aanvalspad bij. Deze kern kent geen rollen: ze vertrouwt erop dat
+        //   de aanroeper dat onderscheid maakt.
         // Vertrouwd wordt de client hier desondanks niet. Deze velden waren vóór #1205 altijd
         // AI-output; nu kunnen ze rechtstreeks van de client komen, dus ze krijgen exact dezelfde
         // behandeling als alle andere tekst die de body in gaat: Normaliseer hieronder haalt ze door
