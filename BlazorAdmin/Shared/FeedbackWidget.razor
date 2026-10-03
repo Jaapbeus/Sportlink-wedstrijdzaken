@@ -1,14 +1,8 @@
-@using System.Reflection
-@inject AdminApiClient Api
-@inject IJSRuntime JS
-@inject IAuthService Auth
-@inject NavigationManager Nav
-
 <button class="btn btn-warning btn-sm me-3" @onclick="OpenAsync">FEEDBACK</button>
 
 @if (_isOpen)
 {
-    <div class="modal fade show d-block" tabindex="-1" style="background:var(--theme-modal-backdrop)" @onclick="SluitAlsAchtergrond">
+    <div class="modal fade show d-block" tabindex="-1" style="background:var(--theme-modal-backdrop)" @onclick="Sluit">
         <div class="modal-dialog" @onclick:stopPropagation="true">
             <div class="modal-content">
 
@@ -22,13 +16,13 @@
                         <div class="mb-3">
                             <label class="form-label fw-semibold">Wat wil je melden?</label>
                             <div class="btn-group w-100" role="group">
-                                @foreach (var optie in new[] { "Fout", "Verzoek", "Vraag" })
+                                @foreach (var optie in FeedbackWidgetState.Types)
                                 {
-                                    <input type="radio" class="btn-check" id="type-@optie"
-                                           name="feedbackType" value="@optie"
-                                           checked="@(_type == optie)"
-                                           @onchange="() => { _type = optie; _vragen.Clear(); _antwoorden.Clear(); }" />
-                                    <label class="btn btn-outline-secondary" for="type-@optie">@optie</label>
+                                    <input type="radio" class="btn-check" id="type-@optie.Waarde"
+                                           name="feedbackType" value="@optie.Waarde"
+                                           checked="@(_type == optie.Waarde)"
+                                           @onchange="() => KiesType(optie.Waarde)" />
+                                    <label class="btn btn-outline-secondary" for="type-@optie.Waarde">@optie.Label</label>
                                 }
                             </div>
                         </div>
@@ -39,9 +33,11 @@
                                       @bind="_beschrijving"></textarea>
                         </div>
 
+                        <p class="text-muted small mb-0">@FeedbackWidgetState.PrivacyUitleg(IsAdmin)</p>
+
                         @if (_vragen.Count > 0)
                         {
-                            <div class="alert alert-info py-2 mb-3">
+                            <div class="alert alert-info py-2 my-3">
                                 <small>We hebben nog wat extra informatie nodig:</small>
                             </div>
                             @for (var i = 0; i < _vragen.Count; i++)
@@ -74,22 +70,14 @@
                 else if (_stap == Stap.Overzicht)
                 {
                     <div class="modal-header">
-                        <h5 class="modal-title">Overzicht</h5>
+                        <h5 class="modal-title">Klopt dit zo?</h5>
                         <button type="button" class="btn-close" @onclick="Sluit"></button>
                     </div>
                     <div class="modal-body">
-                        <div class="alert alert-warning py-2 small mb-3">
-                            ⚠️ Deze melding wordt <strong>openbaar op internet</strong> gepubliceerd als GitHub-issue —
-                            iedereen kan hem lezen. Voeg geen persoonsgegevens toe (namen, adressen, geboortedata,
-                            e-mailadressen, telefoonnummers) en geen wachtwoorden of sleutels.
-                        </div>
-                        <p class="text-muted small mb-3">
-                            In de volgende stap ziet u de volledige tekst zoals die gepubliceerd wordt,
-                            en bevestigt u zelf of die openbaar mag.
-                        </p>
+                        <div class="alert alert-warning py-2 small mb-3">@FeedbackWidgetState.PubliciteitWaarschuwing(IsAdmin)</div>
                         <dl class="row mb-0 small">
-                            <dt class="col-4">Type</dt>
-                            <dd class="col-8">@_type</dd>
+                            <dt class="col-4">Soort</dt>
+                            <dd class="col-8">@FeedbackWidgetState.LabelVoor(_type)</dd>
                             <dt class="col-4">Pagina</dt>
                             <dd class="col-8">@(_context?.Pagina ?? "—")</dd>
                             <dt class="col-4">Versie</dt>
@@ -106,17 +94,41 @@
                                 }
                             </ul>
                         }
+
+                        <hr class="my-3" />
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="feedback-telemetrie" @bind="_metTelemetrie" />
+                            <label class="form-check-label fw-semibold" for="feedback-telemetrie">
+                                Technische gegevens meesturen
+                            </label>
+                            <div class="form-text">
+                                Helpt de ontwikkelaar om het probleem terug te vinden. Alleen zichtbaar voor beheerders,
+                                nooit in de openbare tekst, en na 90 dagen gewist.
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-link btn-sm px-0" @onclick="() => _toonContext = !_toonContext">
+                            @(_toonContext ? "Verberg" : "Bekijk") wat er wordt meegestuurd
+                        </button>
+                        @if (_toonContext)
+                        {
+                            <pre class="border rounded bg-light p-2 small mb-0 feedback-context">@ContextTekst</pre>
+                            <p class="text-muted small mb-0 mt-1">
+                                Persoonsgegevens (e-mailadressen, ID's, tokens, zoekwaarden in webadressen) zijn hieruit al weggehaald.
+                                Er worden geen schermafbeeldingen en geen ingevulde formulierinhoud meegestuurd.
+                            </p>
+                        }
+
                         @if (_foutmelding != null)
                         {
                             <div class="alert alert-danger py-2 mt-2">@_foutmelding</div>
                         }
                     </div>
                     <div class="modal-footer">
-                        <button class="btn btn-secondary" @onclick="() => { _stap = Stap.Formulier; _foutmelding = null; }">← Terug</button>
+                        <button class="btn btn-secondary" @onclick="TerugNaarFormulier">← Terug</button>
                         <button class="btn btn-success" disabled="@_bezig" @onclick="VersturenAsync">
                             @if (_bezig)
                             { <span class="spinner-border spinner-border-sm me-1"></span> }
-                            Voorbeeld bekijken →
+                            @(IsAdmin ? "Voorbeeld bekijken →" : "Versturen")
                         </button>
                     </div>
                 }
@@ -139,11 +151,11 @@
                         <p class="border rounded bg-light p-2 small mb-3">@_voorbeeldTitel</p>
 
                         <label class="form-label fw-semibold small mb-1">Volledige tekst van het issue</label>
-                        <pre class="border rounded bg-light p-2 small mb-2"
-                             style="max-height:18rem; overflow:auto; white-space:pre-wrap; word-break:break-word;">@_voorbeeldBody</pre>
+                        <pre class="border rounded bg-light p-2 small mb-2 feedback-voorbeeld">@_voorbeeldBody</pre>
                         <p class="text-muted small mb-0">
                             Alleen het tijdstip in de tabel wordt bij publiceren op het publicatiemoment gezet;
-                            de rest is exact de tekst hierboven.
+                            de rest is exact de tekst hierboven. Uw naam en de technische gegevens staan er niet in:
+                            die worden alleen in het beheeroverzicht bewaard.
                         </p>
 
                         @if (_foutmelding != null)
@@ -169,10 +181,21 @@
                     </div>
                     <div class="modal-body text-center py-4">
                         <div class="fs-1 mb-2">✅</div>
-                        <p>Je melding is ontvangen en staat klaar voor de ontwikkelaar.</p>
-                        <a href="@_issueUrl" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm">
-                            Issue #@_issueNummer bekijken
-                        </a>
+                        <p>@FeedbackWidgetState.BevestigingTekst(IsAdmin, _antwoord)</p>
+                        @if (!string.IsNullOrWhiteSpace(_antwoord?.Meldingsnummer))
+                        {
+                            <p class="text-muted small mb-2">Meldingsnummer @_antwoord!.Meldingsnummer — noem dit nummer als je er later naar vraagt.</p>
+                        }
+                        @if (IsAdmin && !string.IsNullOrWhiteSpace(_antwoord?.IssueUrl))
+                        {
+                            <a href="@_antwoord!.IssueUrl" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm">
+                                Issue #@_antwoord.IssueNummer bekijken
+                            </a>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(_antwoord?.Waarschuwing))
+                        {
+                            <div class="alert alert-warning py-2 small mt-3 mb-0">@_antwoord!.Waarschuwing</div>
+                        }
                     </div>
                     <div class="modal-footer border-0">
                         <button class="btn btn-secondary" @onclick="Sluit">Sluiten</button>
@@ -182,218 +205,4 @@
             </div>
         </div>
     </div>
-}
-
-@code {
-    private bool _isOpen;
-    private bool _bezig;
-    private string? _foutmelding;
-    private Stap _stap = Stap.Formulier;
-
-    private string _type = "Fout";
-    private string _beschrijving = "";
-    private List<string> _vragen = [];
-    private List<string> _antwoorden = [];
-    private FeedbackContext? _context;
-
-    private int _issueNummer;
-    private string _issueUrl = "";
-
-    // Het voorbeeld dat de beheerder te zien krijgt vóór publicatie (#1205). De AI-velden worden bij
-    // het publiceren onveranderd teruggestuurd, zodat er exact gepubliceerd wordt wat hier stond —
-    // een tweede AI-aanroep op de server zou andere tekst opleveren.
-    private string _voorbeeldTitel = "";
-    private string _voorbeeldBody = "";
-    private FeedbackBevestiging? _bevestiging;
-
-    private enum Stap { Formulier, Overzicht, Voorbeeld, Bevestiging }
-
-    private async Task OpenAsync()
-    {
-        _isOpen = true;
-        _stap = Stap.Formulier;
-        _beschrijving = "";
-        _type = "Fout";
-        _vragen = [];
-        _antwoorden = [];
-        _foutmelding = null;
-        _voorbeeldTitel = "";
-        _voorbeeldBody = "";
-        _bevestiging = null;
-
-        // Geen JS eval() gebruiken: de productie-CSP staat alleen 'wasm-unsafe-eval' toe, waardoor
-        // eval() een EvalError gooit en de hele widget crasht. Pathname komt uit NavigationManager,
-        // user-agent via een dedicated interop-helper. (#597)
-        var pagina = "/" + Nav.ToBaseRelativePath(Nav.Uri).Split('?')[0].Split('#')[0];
-        var browser = await GetUserAgentAsync();
-        var versie = typeof(FeedbackWidget).Assembly.GetName().Version?.ToString(4) ?? "?";
-        var rol = Auth.IsAdmin ? "admin" : "gebruiker";
-
-        _context = new FeedbackContext
-        {
-            Pagina = pagina,
-            Versie = versie,
-            Rol = rol,
-            Browser = browser.Length > 120 ? browser[..120] : browser
-        };
-    }
-
-    /// <summary>
-    /// Leest de user-agent via een dedicated interop-helper. Faalt de interop (bijv. helper nog
-    /// niet geladen), dan blijft de widget bruikbaar met een lege browserwaarde. (#597)
-    /// </summary>
-    private async Task<string> GetUserAgentAsync()
-    {
-        try
-        {
-            return await JS.InvokeAsync<string>("blazorHelpers.getUserAgent") ?? "";
-        }
-        catch (JSException)
-        {
-            return "";
-        }
-    }
-
-    private void Sluit()
-    {
-        _isOpen = false;
-        _foutmelding = null;
-    }
-
-    private void SluitAlsAchtergrond() => Sluit();
-
-    private void ZetAntwoord(int index, string waarde)
-    {
-        while (_antwoorden.Count <= index)
-            _antwoorden.Add("");
-        _antwoorden[index] = waarde;
-    }
-
-    private async Task ControlerenAsync()
-    {
-        if (string.IsNullOrWhiteSpace(_beschrijving) || _beschrijving.Trim().Length < 10)
-        {
-            _foutmelding = "Vul een beschrijving in van minimaal 10 tekens.";
-            return;
-        }
-
-        _bezig = true;
-        _foutmelding = null;
-
-        var request = BouwRequest();
-        var result = await Api.ValidateFeedbackAsync(request);
-
-        _bezig = false;
-
-        if (!result.Success)
-        {
-            _foutmelding = result.ErrorMessage ?? "Controleren mislukt. Probeer het opnieuw.";
-            return;
-        }
-
-        if (result.Data!.Volledig)
-        {
-            _stap = Stap.Overzicht;
-        }
-        else
-        {
-            var nieuweVragen = result.Data.Vragen ?? [];
-            // Bewaar antwoorden op vragen die ook in de nieuwe set voorkomen.
-            var nieuweAntwoorden = nieuweVragen
-                .Select(v =>
-                {
-                    var idx = _vragen.IndexOf(v);
-                    return idx >= 0 && idx < _antwoorden.Count ? _antwoorden[idx] : "";
-                })
-                .ToList();
-            _vragen = nieuweVragen;
-            _antwoorden = nieuweAntwoorden;
-        }
-    }
-
-    /// <summary>
-    /// Haalt het voorbeeld op — publiceert nog niets. De beheerder krijgt de volledige, uiteindelijke
-    /// tekst te zien en bevestigt daarna pas dat die openbaar mag (#1205).
-    /// </summary>
-    private async Task VersturenAsync()
-    {
-        _bezig = true;
-        _foutmelding = null;
-
-        var result = await Api.PreviewFeedbackAsync(BouwRequest());
-
-        _bezig = false;
-
-        if (!result.Success)
-        {
-            _foutmelding = result.ErrorMessage ?? "Voorbeeld ophalen mislukt. Probeer het opnieuw.";
-            return;
-        }
-
-        _voorbeeldTitel = result.Data!.Titel;
-        _voorbeeldBody = result.Data.Body;
-        _bevestiging = new FeedbackBevestiging
-        {
-            Titel = result.Data.Titel,
-            Samenvatting = result.Data.Samenvatting,
-            Acceptatiecriteria = result.Data.Acceptatiecriteria
-        };
-        _stap = Stap.Voorbeeld;
-    }
-
-    private void TerugNaarFormulier()
-    {
-        // De ingevulde tekst blijft staan: _beschrijving, _vragen en _antwoorden worden niet gewist.
-        _stap = Stap.Formulier;
-        _foutmelding = null;
-        _bevestiging = null;
-        _voorbeeldTitel = "";
-        _voorbeeldBody = "";
-    }
-
-    /// <summary>
-    /// De bewuste publicatiestap: stuurt de in het voorbeeld getoonde velden terug, zodat exact díe
-    /// tekst openbaar wordt (#1205). De server past de PII-gate onverkort opnieuw toe.
-    /// </summary>
-    private async Task PublicerenAsync()
-    {
-        _bezig = true;
-        _foutmelding = null;
-
-        var request = BouwRequest();
-        request.Bevestiging = _bevestiging;
-        var result = await Api.SubmitFeedbackAsync(request);
-
-        _bezig = false;
-
-        if (!result.Success)
-        {
-            _foutmelding = result.ErrorMessage ?? "Publiceren mislukt. Probeer het opnieuw.";
-            return;
-        }
-
-        _issueNummer = result.Data!.IssueNummer;
-        _issueUrl = result.Data.IssueUrl;
-        _stap = Stap.Bevestiging;
-    }
-
-    private FeedbackValidateRequest BouwRequest()
-    {
-        var qa = _vragen
-            .Select((v, i) => new FeedbackVraagAntwoord
-            {
-                Vraag = v,
-                Antwoord = _antwoorden.Count > i ? _antwoorden[i] : ""
-            })
-            .Where(x => !string.IsNullOrWhiteSpace(x.Antwoord))
-            .ToList();
-
-        return new FeedbackValidateRequest
-        {
-            Type = _type,
-            Beschrijving = _beschrijving.Trim(),
-            VragenAntwoorden = qa,
-            Context = _context
-        };
-    }
 }

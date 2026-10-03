@@ -49,4 +49,13 @@
     <Compile Include="../Planner.Shared/Planning/PlanningConflictRegels.cs" Link="Gedeeld/PlanningConflictRegels.cs" />
   </ItemGroup>
 
+  <!-- #764: redactie van persoonsgegevens in de technische context van een feedbackmelding. Eén bron
+       voor browser én server (de server past dezelfde regels nogmaals toe — een client wordt nooit
+       vertrouwd): wat het contextpaneel toont is daardoor al geredigeerd. Beide bestanden hangen
+       uitsluitend van de BCL af (check-gelinkte-bronbestanden.sh). -->
+  <ItemGroup>
+    <Compile Include="../Planner.Shared/Feedback/FeedbackRedactie.cs" Link="Gedeeld/FeedbackRedactie.cs" />
+    <Compile Include="../Planner.Shared/Feedback/FeedbackTelemetrie.cs" Link="Gedeeld/FeedbackTelemetrie.cs" />
+  </ItemGroup>
+
 </Project>

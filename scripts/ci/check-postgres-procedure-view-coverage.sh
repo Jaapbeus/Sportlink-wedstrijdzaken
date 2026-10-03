@@ -34,6 +34,7 @@ MAPPING=(
   "planner.sp_CleanupEmailVerwerking|Database.Postgres/PostgresCleanupProcedures.cs|CleanupEmailVerwerkingAsync"
   "planner.sp_CleanupClassificatieCorrectie|Database.Postgres/PostgresCleanupProcedures.cs|CleanupClassificatieCorrectieAsync"
   "avg.sp_CleanupTeambegeleiding|Database.Postgres/PostgresCleanupProcedures.cs|CleanupTeambegeleidingAsync"
+  "avg.sp_CleanupFeedback|Database.Postgres/PostgresCleanupProcedures.cs|CleanupFeedbackAsync"
   "avg.sp_CleanupImportLog|Database.Postgres/PostgresCleanupProcedures.cs|CleanupImportLogAsync"
   "dbo.sp_CreateTargetTableFromSource|Database.Postgres/PostgresMergeOrchestrator.cs|EnsureHisTableAsync"
   "dbo.sp_MergeStgToHis|Database.Postgres/PostgresMergeOrchestrator.cs|MergeStgToHisAsync"

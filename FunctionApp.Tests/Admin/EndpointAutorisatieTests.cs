@@ -68,6 +68,12 @@ public class EndpointAutorisatieTests
         "SqlSportlinkMatchGet",
         "SqlSportlinkMatchPublicMatchIdGet",
         "PdfExportStatus",
+        // #764: de feedbackwidget is open voor elke ingelogde rol; een melding van een gewone
+        // gebruiker wordt nooit rechtstreeks gepubliceerd (zie FeedbackEndpointCore). Het
+        // beheeroverzicht (AdminFeedback*) blijft admin-only.
+        "FeedbackValidate",
+        "FeedbackPreview",
+        "FeedbackSubmit",
     ];
 
     private const int MinimaalVerwachtAantalEndpoints = 90;
