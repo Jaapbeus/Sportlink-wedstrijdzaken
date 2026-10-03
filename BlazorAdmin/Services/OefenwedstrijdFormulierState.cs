@@ -62,10 +62,10 @@ public sealed class OefenwedstrijdFormulierState
         => _teamInfo = teams.GroupBy(t => t.TeamNaam, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Alles terug naar de beginstand: vandaag, 19:00, 90 minuten, heel veld en de rest leeg. De geladen teamgegevens blijven.</summary>
-    public void Leegmaken()
+    /// <summary>Alles terug naar de beginstand: vandaag (of <paramref name="beginDatum"/>, #1468), 19:00, 90 minuten, heel veld en de rest leeg. De geladen teamgegevens blijven.</summary>
+    public void Leegmaken(DateTime? beginDatum = null)
     {
-        Datum = DateTime.Today;
+        Datum = beginDatum?.Date ?? DateTime.Today;
         Tijd = StandaardTijd;
         Duur = StandaardDuur;
         _teamSelectie = null;

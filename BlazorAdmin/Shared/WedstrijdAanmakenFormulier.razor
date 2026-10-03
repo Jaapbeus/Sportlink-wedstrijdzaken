@@ -1,0 +1,221 @@
+@* Gedeeld formulier "Wedstrijd aanmaken" (#1468): gebruikt door de pagina /wedstrijd-aanmaken en door Planning. Logica staat in de code-behind (#1122). *@
+
+@if (_dryRun.HasValue)
+{
+    <div class="alert @(_dryRun.Value ? "alert-info" : "alert-warning") py-2">
+        @(_dryRun.Value ? DryRunAanTekst : DryRunUitTekst)
+    </div>
+}
+
+@if (ToonIntro)
+{
+    <p class="text-muted">
+        Oefenwedstrijd op de eigen accommodatie. Team en veld kiest u uit de eigen database; Sportlink
+        levert daarbij het team-ID, de leeftijdscategorie, de spelactiviteit, het veld en het wedstrijdnummer.
+    </p>
+}
+
+@if (_laden)
+{
+    <div class="text-muted"><span class="spinner-border spinner-border-sm me-1"></span> Teams en velden laden…</div>
+}
+else
+{
+    @if (!string.IsNullOrEmpty(_laadFout))
+    {
+        <div class="alert alert-danger">@_laadFout</div>
+    }
+
+    @* #1436: bewust geen form-element. Dat maakt van elke Enter een impliciete submit — met dry-run uit
+       een echte wedstrijd in Sportlink. Aanmaken gebeurt alleen via de knop (type="button"). *@
+    <div class="oefenwedstrijd-formulier">
+        <fieldset disabled="@_poort.InvoerVergrendeld">
+        <div class="row g-3">
+            <div class="col-sm-6">
+                <label class="form-label" for="oef-team">Team</label>
+                <select id="oef-team" class="form-select" @bind="_form.TeamSelectie">
+                    <option value="">— kies een team —</option>
+                    @foreach (var team in _teams)
+                    {
+                        <option value="@team">@team</option>
+                    }
+                    <option value="@OefenwedstrijdFormulierState.VrijeTekstOptie">Vrije tekst invoeren…</option>
+                </select>
+                @if (_form.IsVrijeTekst)
+                {
+                    <input type="text" class="form-control mt-2" autocomplete="off" @bind="_form.TeamVrijeTekst" />
+                }
+            </div>
+            <div class="col-sm-6">
+                <label class="form-label" for="oef-tegenstander">Tegenstander</label>
+                <input id="oef-tegenstander" type="text" class="form-control" autocomplete="off" @bind="_form.Tegenstander" />
+            </div>
+
+            <div class="col-sm-4">
+                <label class="form-label" for="oef-datum">Datum</label>
+                <input id="oef-datum" type="date" class="form-control" @bind="_form.Datum" />
+            </div>
+            <div class="col-sm-4">
+                <label class="form-label">Aanvangstijd</label>
+                <TimeInput @bind-Value="_form.Tijd" />
+            </div>
+            <div class="col-sm-4">
+                <label class="form-label" for="oef-duur">Duur (minuten)</label>
+                <input id="oef-duur" type="number" class="form-control" min="1" max="240" @bind="_form.Duur" />
+            </div>
+
+            <div class="col-sm-6">
+                <label class="form-label" for="oef-veld">Veld</label>
+                <select id="oef-veld" class="form-select" @bind="_form.VeldNummer">
+                    <option value="">— geen veld —</option>
+                    @foreach (var veld in _velden)
+                    {
+                        <option value="@veld.VeldNummer">@veld.VeldNaam</option>
+                    }
+                </select>
+            </div>
+            <div class="col-sm-6">
+                <label class="form-label" for="oef-velddeel">Velddeel</label>
+                <select id="oef-velddeel" class="form-select" @bind="_form.Velddeel">
+                    @foreach (var keuze in OefenwedstrijdFormulierState.Velddelen)
+                    {
+                        <option value="@keuze.Waarde">@keuze.Label</option>
+                    }
+                </select>
+            </div>
+
+            <div class="col-sm-6">
+                <label class="form-label" for="oef-leeftijd">Leeftijdscategorie</label>
+                <select id="oef-leeftijd" class="form-select" @bind="_form.AgeClassCode">
+                    <option value="">— Sportlink-standaard —</option>
+                    @foreach (var ageClass in _ageClasses)
+                    {
+                        <option value="@ageClass.Id">@ageClass.Description</option>
+                    }
+                </select>
+            </div>
+            <div class="col-sm-6">
+                <label class="form-label" for="oef-omschrijving">Omschrijving <span class="text-muted">(optioneel)</span></label>
+                <input id="oef-omschrijving" type="text" class="form-control" autocomplete="off" @bind="_form.Omschrijving" />
+            </div>
+        </div>
+        </fieldset>
+
+        @if (_validatieFouten.Count > 0)
+        {
+            <div class="alert alert-danger mt-3 mb-0">
+                <ul class="mb-0">
+                    @foreach (var fout in _validatieFouten)
+                    {
+                        <li>@fout</li>
+                    }
+                </ul>
+            </div>
+        }
+
+        @if (_poort.Huidig == WedstrijdAanmaakPoort.Stap.Bevestigen)
+        {
+            <div class="alert alert-warning mt-3 mb-0 oefenwedstrijd-bevestiging">
+                <div class="fw-semibold">Deze wedstrijd wordt direct in Sportlink Club aangemaakt:</div>
+                <div class="mt-1">
+                    @_form.Datum.ToString("dddd d MMMM yyyy") om @_form.Tijd (@_form.Duur min) —
+                    <strong>@_form.TeamNaam</strong> tegen <strong>@_form.Tegenstander</strong>@(GekozenVeldNaam is { } veld ? $", {veld}" : ""), @GekozenVelddeelLabel.ToLowerInvariant()
+                </div>
+                <div class="mt-2 d-flex gap-2">
+                    <button type="button" class="btn btn-warning" @onclick="BevestigAsync">Bevestigen en aanmaken</button>
+                    <button type="button" class="btn btn-outline-secondary" @onclick="Annuleer">Annuleren</button>
+                </div>
+            </div>
+        }
+
+        <div class="mt-3">
+            <button type="button" class="btn btn-primary" @onclick="VraagAanAsync"
+                    disabled="@(_poort.InvoerVergrendeld || _teams.Count == 0)">
+                @if (_status.Bezig)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                Wedstrijd aanmaken
+            </button>
+            <button type="button" class="btn btn-outline-secondary ms-2" @onclick="Leegmaken"
+                    disabled="@_poort.InvoerVergrendeld">
+                Leegmaken
+            </button>
+            @if (SportlinkLink is { } link)
+            {
+                <div class="mt-2">
+                    <a href="@link" target="_blank" rel="noopener">Open wedstrijd in Sportlink Club</a>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(_status.Melding))
+{
+    <div class="mt-3 alert oefenwedstrijd-statusmelding @(_status.IsFout ? "alert-danger" : "alert-info")">
+        <div>@_status.Melding</div>
+        @if (_resultaat != null)
+        {
+            <dl class="row mb-0 mt-2 small">
+                <dt class="col-sm-4">Omschrijving</dt><dd class="col-sm-8">@_resultaat.Omschrijving</dd>
+                <dt class="col-sm-4">Sportlink-team-ID</dt><dd class="col-sm-8">@(_resultaat.SportlinkTeamId ?? "—")</dd>
+                <dt class="col-sm-4">Leeftijdscategorie</dt><dd class="col-sm-8">@(_resultaat.AgeClassCode ?? "—")</dd>
+                <dt class="col-sm-4">Wedstrijdnummer</dt><dd class="col-sm-8">@(_resultaat.WedstrijdNummer?.ToString() ?? "—")</dd>
+                <dt class="col-sm-4">Spelactiviteit</dt><dd class="col-sm-8">@(_resultaat.SportIdTag ?? "—")</dd>
+                <dt class="col-sm-4">Locatie-ID (Sportlink)</dt><dd class="col-sm-8">@(_resultaat.FacilityId ?? "—")</dd>
+                <dt class="col-sm-4">Velddeel</dt><dd class="col-sm-8">@(VelddeelLabel(_resultaat.Velddeel))</dd>
+                <dt class="col-sm-4">Veld</dt><dd class="col-sm-8">@(_resultaat.VeldNaam ?? "—") @if (!string.IsNullOrEmpty(_resultaat.SubFacilityId)) { <span class="text-muted">(@_resultaat.SubFacilityId)</span> }</dd>
+                @if (!string.IsNullOrEmpty(_resultaat.PublicMatchId))
+                {
+                    <dt class="col-sm-4">PublicMatchId</dt><dd class="col-sm-8"><code>@_resultaat.PublicMatchId</code></dd>
+                }
+            </dl>
+            @if (_resultaat.Waarschuwingen.Count > 0)
+            {
+                <ul class="mb-0 mt-2 small">
+                    @foreach (var w in _resultaat.Waarschuwingen)
+                    {
+                        <li>@w</li>
+                    }
+                </ul>
+            }
+        }
+    </div>
+}
+
+@* #1440: verwijderen alleen op het resultaat van een echte aanmaak (dan is het zeker een eigen
+   clubwedstrijd), altijd na bevestiging, en zonder form-element (zie #1436). *@
+@if (_verwijderPoort.ToonKnop(_resultaat))
+{
+    <div class="mt-2">
+        <button type="button" class="btn btn-outline-danger btn-sm" @onclick="VraagVerwijderenAan">
+            Wedstrijd verwijderen uit Sportlink
+        </button>
+    </div>
+}
+@if (_verwijderPoort.Huidig is WedstrijdVerwijderPoort.Stap.Bevestigen or WedstrijdVerwijderPoort.Stap.Bezig)
+{
+    <div class="alert alert-danger mt-2 oefenwedstrijd-verwijderbevestiging">
+        <div class="fw-semibold">Deze wedstrijd wordt in Sportlink Club verwijderd.</div>
+        <div class="mt-1">
+            @(_resultaat?.Omschrijving) — PublicMatchId <code>@_resultaat?.PublicMatchId</code>.
+            Of verwijderen in Sportlink terug te draaien is, is niet bekend.
+        </div>
+        <div class="mt-2 d-flex gap-2">
+            <button type="button" class="btn btn-danger" @onclick="BevestigVerwijderenAsync"
+                    disabled="@(_verwijderPoort.Huidig == WedstrijdVerwijderPoort.Stap.Bezig)">
+                @if (_verwijderStatus.Bezig)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                Ja, verwijderen
+            </button>
+            <button type="button" class="btn btn-outline-secondary" @onclick="AnnuleerVerwijderen"
+                    disabled="@(_verwijderPoort.Huidig == WedstrijdVerwijderPoort.Stap.Bezig)">
+                Annuleren
+            </button>
+        </div>
+    </div>
+}
+<Melding Status="_verwijderStatus" />

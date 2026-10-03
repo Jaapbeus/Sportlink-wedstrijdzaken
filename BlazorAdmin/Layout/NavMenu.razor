@@ -47,6 +47,23 @@
                 <i class="bi bi-calendar-week me-1" aria-hidden="true"></i> Planning
             </NavLink>
         </div>
+        @* #1122/#1468: de twee extensie-schermen alleen tonen als de Sportlink Web Extension aan staat —
+           zelfde regel als de Sportlink-kolom in Planning (#989). Ze staan direct onder Planning,
+           omdat daar mee gewerkt wordt. Inschakelen gebeurt via het submenu Instellingen →
+           Sportlink Web Extension, dat altijd zichtbaar blijft. *@
+        @if (ClubSelector.SportlinkExtensionEnabled)
+        {
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="wedstrijd-aanmaken">
+                    <i class="bi bi-calendar-plus me-1" aria-hidden="true"></i> Wedstr. aanmaken
+                </NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="wijzigingsverzoeken">
+                    <i class="bi bi-arrow-left-right me-1" aria-hidden="true"></i> Wijzigingsverzoeken
+                </NavLink>
+            </div>
+        }
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="veld-optimalisatie">
                 <i class="bi bi-sliders me-1" aria-hidden="true"></i> Veld optimalisatie
@@ -67,23 +84,6 @@
                 <i class="bi bi-envelope-check me-1" aria-hidden="true"></i> Email-tester
             </NavLink>
         </div>
-        @* #1122: de twee extensie-schermen alleen tonen als de Sportlink Web Extension aan staat —
-           zelfde regel als de Sportlink-kolom in Dagplanning (#989). Inschakelen gebeurt via het
-           submenu Instellingen → Sportlink Web Extension, dat altijd zichtbaar blijft. *@
-        @if (ClubSelector.SportlinkExtensionEnabled)
-        {
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="wijzigingsverzoeken">
-                    <i class="bi bi-arrow-left-right me-1" aria-hidden="true"></i> Wijzigingsverzoeken
-                </NavLink>
-            </div>
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="wedstrijd-aanmaken">
-                    <i class="bi bi-calendar-plus me-1" aria-hidden="true"></i> Wedstrijden
-                </NavLink>
-            </div>
-        }
-
         @* Conventie sidebar-labels (#1314): een label mag nooit op twee regels wrappen — de
            sidebar-breedte is smal en een dubbele regel oogt inconsistent met de andere items.
            Kies bij een lang label een korte, herkenbare afkorting (zoals "Sportlink Ext."

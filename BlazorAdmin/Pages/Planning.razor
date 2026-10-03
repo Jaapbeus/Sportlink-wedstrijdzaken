@@ -16,9 +16,32 @@
                 <label class="form-label">Datum</label>
                 <input type="date" class="form-control" @bind="_datumDt" @bind:after="OnDatumChanged" />
             </div>
+            @if (_sportlinkExtensionEnabled)
+            {
+                <div class="col-md-auto ms-auto">
+                    <button type="button" class="btn btn-success" @onclick="ToggleAanmaken">
+                        <i class="bi bi-plus-circle me-1" aria-hidden="true"></i> Wedstr. toevoegen
+                    </button>
+                </div>
+            }
         </div>
     </div>
 </div>
+
+@* #1468: het aanmaakformulier inline, met de gekozen datum; @key zet de datum opnieuw bij een andere dag. *@
+@if (_sportlinkExtensionEnabled && _toonAanmaken)
+{
+    <div class="card mb-3">
+        <div class="card-header d-flex align-items-center justify-content-between">
+            <span class="fw-semibold">Wedstrijd toevoegen op @_datumDt.ToString("dd-MM-yyyy")</span>
+            <button type="button" class="btn-close" aria-label="Sluiten" @onclick="ToggleAanmaken"></button>
+        </div>
+        <div class="card-body">
+            <WedstrijdAanmakenFormulier BeginDatum="_datumDt" ToonIntro="false"
+                                        OnAangemaakt="LoadVeldbezettingAsync" @key="DatumStr" />
+        </div>
+    </div>
+}
 
 @* ── Directe veldbezetting: wat staat er nu al gepland op deze datum (#566) ── *@
 <div class="card mb-3">

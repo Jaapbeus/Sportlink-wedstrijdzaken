@@ -104,7 +104,7 @@ public class WedstrijdAanmaakPoortTests
     [Fact]
     public void Pagina_heeft_geen_form_en_geen_submitknop()
     {
-        var pad = Path.Combine(ZoekRepoRoot(), "BlazorAdmin", "Pages", "OefenwedstrijdAanmaken.razor");
+        var pad = Path.Combine(ZoekRepoRoot(), "BlazorAdmin", "Shared", "WedstrijdAanmakenFormulier.razor");
         var markup = File.ReadAllText(pad);
 
         markup.Should().NotContain("<form", "Enter in een tekstveld zou dan een wedstrijd aanmaken");
