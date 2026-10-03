@@ -59,6 +59,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ### Security
 - De what-if-poort controleert de app settings nu per Function App (#1495).
+- **Feedbacktekst in een publiek issue bevat geen actieve vermeldingen meer** (#1501).
 - **Feedback: strengere controle op invoer die in een GitHub-issue terechtkomt** (#1494).
 - **Workflows draaien met minimale tokenrechten** (zie issue #1472). `deploy.yml` en `pre-release-check.yml`
   krijgen alleen leesrechten op de repository; daarmee zijn de elf CodeQL-meldingen over ontbrekende

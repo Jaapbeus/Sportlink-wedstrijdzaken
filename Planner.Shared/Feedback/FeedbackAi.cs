@@ -44,7 +44,7 @@ internal static class FeedbackAi
             return new ValidateResponse(true, []);
 
         var beschrijving = Sanitize(dto.Beschrijving, 2000);
-        var paginaInfo = string.IsNullOrWhiteSpace(dto.Context?.Pagina) ? "" : $"Pagina: {dto.Context.Pagina}\n";
+        var paginaInfo = string.IsNullOrWhiteSpace(dto.Context?.Pagina) ? "" : $"Pagina: {SanitizePagina(dto.Context.Pagina)}\n";
         var qaBlok = BouwQaBlok(dto.VragenAntwoorden);
 
         var systemPrompt = """
@@ -123,8 +123,8 @@ internal static class FeedbackAi
 
         var userPrompt = $"""
             Type: {dto.Type}
-            Pagina: {dto.Context?.Pagina ?? "onbekend"}
-            Versie: {dto.Context?.Versie ?? "?"}
+            Pagina: {(string.IsNullOrWhiteSpace(dto.Context?.Pagina) ? "onbekend" : SanitizePagina(dto.Context.Pagina))}
+            Versie: {(string.IsNullOrWhiteSpace(dto.Context?.Versie) ? "?" : SanitizeVersieOfBrowser(dto.Context.Versie))}
 
             Beschrijving gebruiker: "{beschrijving}"
             {qaBlok}{contextBlok}
