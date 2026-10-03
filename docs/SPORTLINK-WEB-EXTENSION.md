@@ -489,6 +489,10 @@ Vier dingen om te onthouden:
   Openstaand (CONFIRM_*), Akkoord (APPROVED, MATCH_FINALIZED), Afgewezen, Ingetrokken; onbekende
   waarden worden `UNKNOWN`. De Blazor-pagina filtert standaard op Openstaand, toont per filter de
   secties Inkomend en Uitgaand, en biedt goedkeuren/afwijzen alleen bij openstaand + inkomend.
+  **#1464:** de lijstrespons draagt per verzoek ook `ExternalMatchId` (wedstrijdnummer, als getal),
+  `HomeTeam.TeamName` en `AwayTeam.TeamName` — Sportlinks eigen tabelkolommen, uit dezelfde bundle.
+  Die gaan als `ExternalMatchId`/`Thuisteam`/`Uitteam` mee en vullen de kolommen wanneer de eigen
+  context (`Wedstrijd`) ontbreekt; eigen context blijft voorrang houden.
 - `FunctionApp.Postgres/Sportlink/SportlinkClubMatchFunction.cs` (#997) — `POST
   /api/sportlink/club-match` (aanmaken, sinds #1319 live bevestigd, was code-gelockt) + `GET
   .../club-match/picklists` (Teams + Location, read-only, echt aangeroepen). **POST — geen guard

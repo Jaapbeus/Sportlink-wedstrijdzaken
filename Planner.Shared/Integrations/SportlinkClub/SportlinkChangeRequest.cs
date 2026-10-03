@@ -34,11 +34,35 @@ public sealed record SportlinkChangeRequest
     [JsonPropertyName("requestData")]
     public SportlinkChangeRequestData? RequestData { get; set; }
 
+    /// <summary>
+    /// Sportlinks wedstrijdnummer — de kolom "Wedstrijdnr." van Sportlinks eigen
+    /// wijzigingsverzoekentabel (veldnaam uit de frontend-bundle, #1464). Flexibel gelezen: het
+    /// <c>Match</c>-endpoint levert hetzelfde veld als JSON-getal.
+    /// </summary>
+    [JsonPropertyName("ExternalMatchId")]
+    [JsonConverter(typeof(FlexibleStringJsonConverter))]
+    public string? ExternalMatchId { get; set; }
+
+    /// <summary>Thuisteam zoals Sportlink het toont (<c>HomeTeam.TeamName</c>, #1464).</summary>
+    [JsonPropertyName("HomeTeam")]
+    public SportlinkChangeRequestTeam? HomeTeam { get; set; }
+
+    /// <summary>Uitteam zoals Sportlink het toont (<c>AwayTeam.TeamName</c>, #1464).</summary>
+    [JsonPropertyName("AwayTeam")]
+    public SportlinkChangeRequestTeam? AwayTeam { get; set; }
+
     [JsonPropertyName("reason")]
     public string? Reason { get; set; }
 
     [JsonPropertyName("remarks")]
     public string? Remarks { get; set; }
+}
+
+/// <summary>Team in een wijzigingsverzoek — alleen de naam; het logo wordt niet overgenomen (#1464).</summary>
+public sealed record SportlinkChangeRequestTeam
+{
+    [JsonPropertyName("TeamName")]
+    public string? TeamName { get; set; }
 }
 
 /// <summary>Huidige vs. gevraagde datum/tijd/accommodatie — velden letterlijk uit issue #996.</summary>

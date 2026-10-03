@@ -10,7 +10,7 @@
     <strong>inkomend</strong> (tegenstanders vragen ons) en <strong>uitgaand</strong> (wij vragen
     hen). Alleen openstaande <em>inkomende</em> verzoeken kun je hier goedkeuren of afwijzen; de
     rest staat er ter referentie bij. Wedstrijdnummer en teams komen uit onze eigen
-    wedstrijdgegevens — ontbreken ze bij een verzoek, dan is die wedstrijd nog niet gekoppeld.
+    wedstrijdgegevens en anders uit Sportlink zelf.
 </p>
 
 @if (_laden)
@@ -93,9 +93,9 @@ else
                                     <div class="text-muted small">@sub</div>
                                 }
                             </td>
-                            <td>@(w?.Wedstrijdnummer?.ToString() ?? "–")</td>
-                            <td>@(w?.Thuisteam ?? "–")</td>
-                            <td>@(w?.Uitteam ?? "–")</td>
+                            <td>@(w?.Wedstrijdnummer?.ToString() ?? LeegAlsStreepje(verzoek.ExternalMatchId))</td>
+                            <td>@(w?.Thuisteam ?? LeegAlsStreepje(verzoek.Thuisteam))</td>
+                            <td>@(w?.Uitteam ?? LeegAlsStreepje(verzoek.Uitteam))</td>
                             <td>@(w?.Datum ?? verzoek.RequestData?.CurrentDate ?? "–")</td>
                             <td>@(w?.Tijd ?? verzoek.RequestData?.CurrentStartTime ?? "–")</td>
                             <td>@(w?.Accommodatie ?? verzoek.RequestData?.CurrentFacilityName ?? "–")</td>

@@ -1558,6 +1558,9 @@ public class SportlinkClubClientTests
             "publicRequestId": "R1",
             "ChangeRequestStatus": "CONFIRM_HOME",
             "IsIncomingRequest": true,
+            "ExternalMatchId": 84663,
+            "HomeTeam": { "TeamName": "TEST1", "Logo": { "Url": "https://example.test/a.png" } },
+            "AwayTeam": { "TeamName": "TEST2", "Logo": null },
             "requestData": {
               "currentDate": "2026-09-27",
               "currentStartTime": "10:30",
@@ -1593,6 +1596,9 @@ public class SportlinkClubClientTests
         item.RequestStatus.Should().Be("CONFIRM_HOME", "Sportlinks veld heet ChangeRequestStatus (#1439)");
         item.IsIncomingRequest.Should().BeTrue();
         item.RequestData!.RequestedStartTime.Should().Be("11:00");
+        item.ExternalMatchId.Should().Be("84663", "Sportlink levert het wedstrijdnummer als getal (#1464)");
+        item.HomeTeam!.TeamName.Should().Be("TEST1");
+        item.AwayTeam!.TeamName.Should().Be("TEST2");
     }
 
     [Fact]

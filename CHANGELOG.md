@@ -65,6 +65,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   de bestaande Function App zou vervangen; voor de nieuwe app rol je alleen de Flex-module uit.
 
 ### Fixed
+- **Wijzigingsverzoeken toont weer wedstrijdnummer, thuis- en uitteam** (#1464). Die kolommen bleven
+  op **Wijzigingsverzoeken** leeg (`–`) zodra een wedstrijd niet in onze eigen wedstrijdgegevens
+  gekoppeld was. Ze worden nu overgenomen uit Sportlink zelf, dezelfde gegevens die Sportlink Club op
+  zijn eigen scherm toont.
 - **Veld optimalisatie waarschuwt nu ook voor teamspecifieke buffers na het verslepen** (#1430). Heeft een
   team een buffer-regel (bijvoorbeeld 60 minuten na de wedstrijd), dan toonde de pagina na een
   handmatige zet geen waarschuwing zolang het gat groter was dan de algemene buffer — terwijl de
