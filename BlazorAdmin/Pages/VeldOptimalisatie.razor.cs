@@ -1,5 +1,6 @@
 using BlazorAdmin.Models;
 using BlazorAdmin.Services;
+using BlazorAdmin.Shared;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
@@ -313,16 +314,20 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     private readonly HashSet<AutoPlanWedstrijdItemDto> _handmatigAangepast = new();
     private List<string> _conflicten = new();
 
-    private void SleepStart(DagplanningWeergaveHelpers.GanttItem gi, DragEventArgs e)
+    private bool IsHandmatigAangepast(DagplanningWeergaveHelpers.GanttItem gi)
+        => gi.Bron != null && _handmatigAangepast.Contains(gi.Bron);
+
+    private void SleepStart(GanttChart.SleepStartArgs args)
     {
-        if (gi.Bron == null) return;
-        _sleepItem = gi.Bron;
+        if (args.Item.Bron == null) return;
+        _sleepItem = args.Item.Bron;
         // Waar in het blok is gepakt — anders verspringt het blok naar de cursor bij het neerzetten.
-        _sleepGrijpOffsetPx = e.OffsetX;
+        _sleepGrijpOffsetPx = args.Event.OffsetX;
     }
 
-    private async Task SleepDrop(string veldNaam, int rijIndex, int startMinuut, int totaalMinuten, DragEventArgs e)
+    private async Task SleepDrop(GanttChart.SleepDropArgs args)
     {
+        var (veldNaam, rijIndex, startMinuut, totaalMinuten, e) = (args.VeldNaam, args.RijIndex, args.StartMinuut, args.TotaalMinuten, args.Event);
         var item = _sleepItem;
         _sleepItem = null;
         if (item == null || _plan == null) return;
