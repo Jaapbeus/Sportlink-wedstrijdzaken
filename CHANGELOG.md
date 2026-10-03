@@ -148,6 +148,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   begeleiders van een functie te voorzien.
 
 ### Changed
+- Planning en Veld optimalisatie delen nu één Gantt-tijdlijncomponent; geen zichtbare wijziging (#1491).
 - **Menu: Wedstr. aanmaken en Wijzigingsverzoeken staan nu direct onder Planning** (#1468). Het
   menu-item "Wedstrijden" heet voortaan **Wedstr. aanmaken**; beide items zijn zoals voorheen alleen
   zichtbaar als de Sportlink Web Extension aan staat. Veld optimalisatie staat daaronder.
