@@ -33,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.9.6.1
+  version: 3.9.6.2
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -1341,6 +1341,20 @@ components:
           description: |
             Sportlinks vier filtergroepen, server-side afgeleid van RequestStatus (#1439). OPEN =
             CONFIRM_*, ACCEPTED = APPROVED/MATCH_FINALIZED. Alleen aanwezig op de GET-respons.
+        ExternalMatchId:
+          type: string
+          nullable: true
+          description: |
+            Sportlinks wedstrijdnummer (`ExternalMatchId` uit de lijstrespons, veldnaam uit Sportlinks
+            bundle, #1464). Terugval voor `Wedstrijd.Wedstrijdnummer`. Alleen op de GET-respons.
+        Thuisteam:
+          type: string
+          nullable: true
+          description: Sportlinks `HomeTeam.TeamName` (#1464). Terugval voor `Wedstrijd.Thuisteam`. Alleen op de GET-respons.
+        Uitteam:
+          type: string
+          nullable: true
+          description: Sportlinks `AwayTeam.TeamName` (#1464). Terugval voor `Wedstrijd.Uitteam`. Alleen op de GET-respons.
         RequestData:
           type: object
           nullable: true
