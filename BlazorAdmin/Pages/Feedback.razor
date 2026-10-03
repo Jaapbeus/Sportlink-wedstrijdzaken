@@ -1,0 +1,235 @@
+@page "/feedback"
+@inherits ClubSelectorPageBase
+@using BlazorAdmin.Services
+
+<PageTitle>Feedback — Admin</PageTitle>
+
+<h1>Feedback</h1>
+
+<p class="text-muted">
+    Alle meldingen via de FEEDBACK-knop. De naam van de melder is alleen hier zichtbaar — nooit in het
+    openbare GitHub-issue. Meldingen van gewone gebruikers worden pas gepubliceerd nadat u op
+    <em>Publiceer</em> klikt. Elke keer dat u het overzicht of een melding opent, wordt dat vastgelegd
+    in het inzagelog.
+</p>
+
+<ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+        <button class="nav-link @(_tab == Tab.Meldingen ? "active" : "")" @onclick="() => KiesTabAsync(Tab.Meldingen)">Meldingen</button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link @(_tab == Tab.Inzagelog ? "active" : "")" @onclick="() => KiesTabAsync(Tab.Inzagelog)">Inzagelog</button>
+    </li>
+</ul>
+
+@if (!string.IsNullOrEmpty(_fout))
+{
+    <div class="alert alert-danger">@_fout</div>
+}
+@if (!string.IsNullOrEmpty(_melding))
+{
+    <div class="alert alert-success">@_melding</div>
+}
+
+@if (_tab == Tab.Meldingen)
+{
+    <div class="row g-2 mb-3 align-items-end">
+        <div class="col-6 col-md-2">
+            <label class="form-label small mb-0" for="fb-type">Soort</label>
+            <select id="fb-type" class="form-select form-select-sm" @bind="_filter.Type">
+                <option value="">Alle</option>
+                @foreach (var optie in FeedbackWidgetState.Types)
+                {
+                    <option value="@optie.Waarde">@optie.Label</option>
+                }
+            </select>
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label small mb-0" for="fb-status">Status</label>
+            <select id="fb-status" class="form-select form-select-sm" @bind="_filter.Status">
+                <option value="">Alle</option>
+                @foreach (var optie in FeedbackWeergave.Statussen)
+                {
+                    <option value="@optie.Waarde">@optie.Label</option>
+                }
+            </select>
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label small mb-0" for="fb-vanaf">Van</label>
+            <input id="fb-vanaf" type="date" class="form-control form-control-sm" @bind="_vanaf" />
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label small mb-0" for="fb-tot">Tot en met</label>
+            <input id="fb-tot" type="date" class="form-control form-control-sm" @bind="_tot" />
+        </div>
+        <div class="col-12 col-md-4">
+            <label class="form-label small mb-0" for="fb-zoek">Zoeken in onderwerp en beschrijving</label>
+            <div class="input-group input-group-sm">
+                <input id="fb-zoek" type="text" class="form-control" maxlength="100" @bind="_filter.Zoek" @bind:event="oninput"
+                       @onkeydown="OnZoekToets" />
+                <button class="btn btn-primary" @onclick="ZoekAsync">Zoeken</button>
+                <button class="btn btn-outline-secondary" @onclick="WisFilterAsync">Wissen</button>
+            </div>
+        </div>
+    </div>
+
+    @if (_bezig)
+    {
+        <div class="text-muted">Laden...</div>
+    }
+    else if (_lijst == null || _lijst.Items.Count == 0)
+    {
+        <div class="alert alert-info">Geen meldingen gevonden.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Datum</th>
+                        <th>Soort</th>
+                        <th>Onderwerp</th>
+                        <th>Melder</th>
+                        <th>Rol</th>
+                        <th>Scherm</th>
+                        <th>Issue</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in _lijst.Items)
+                    {
+                        var id = item.FeedbackId;
+                        <tr>
+                            <td><small>@item.AangemaaktUtc.ToLocalTime().ToString("dd-MM-yyyy HH:mm")</small></td>
+                            <td><small>@FeedbackWeergave.TypeIcoon(item.Type) @item.Type</small></td>
+                            <td>@item.Onderwerp <small class="text-muted">(@item.Meldingsnummer)</small></td>
+                            <td><small>@FeedbackWeergave.MelderTekst(item.MelderNaam, item.IsGeanonimiseerd)</small></td>
+                            <td><small>@item.MelderRol</small></td>
+                            <td><small>@(item.Pagina ?? "—")</small></td>
+                            <td>
+                                @if (item.IssueNummer is { } nr && !string.IsNullOrWhiteSpace(item.IssueUrl))
+                                {
+                                    <a href="@item.IssueUrl" target="_blank" rel="noopener">#@nr ↗</a>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
+                            <td><span class="badge @FeedbackWeergave.StatusBadgeKlasse(item.Status)">@FeedbackWeergave.StatusLabel(item.Status)</span></td>
+                            <td class="text-nowrap">
+                                @if (FeedbackWeergave.KanPubliceren(item.Status))
+                                {
+                                    <button class="btn btn-sm btn-success me-1" disabled="@_publicerenBezig.Contains(id)"
+                                            @onclick="() => PubliceerAsync(id)">Publiceer</button>
+                                }
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => ToggleDetailAsync(id)">
+                                    @(_open == id ? "▾" : "▸")
+                                </button>
+                            </td>
+                        </tr>
+                        @if (_open == id)
+                        {
+                            <tr>
+                                <td colspan="9" class="bg-body-tertiary">
+                                    @if (_detailBezig)
+                                    {
+                                        <div class="text-muted">Laden...</div>
+                                    }
+                                    else if (_detail != null)
+                                    {
+                                        <h6 class="mb-1">Beschrijving (eigen woorden van de melder)</h6>
+                                        <p class="small feedback-tekst">@_detail.Beschrijving</p>
+
+                                        @if (_detail.VragenAntwoorden is { Count: > 0 })
+                                        {
+                                            <h6 class="mb-1">Aanvullende context</h6>
+                                            <ul class="small">
+                                                @foreach (var qa in _detail.VragenAntwoorden)
+                                                {
+                                                    <li><strong>@qa.Vraag</strong> → @qa.Antwoord</li>
+                                                }
+                                            </ul>
+                                        }
+
+                                        @if (FeedbackWeergave.KanPubliceren(_detail.Status))
+                                        {
+                                            <h6 class="mb-1">Zo wordt het openbaar gepubliceerd</h6>
+                                            <pre class="border rounded p-2 small feedback-tekst">@_detail.IssueBody</pre>
+                                        }
+
+                                        <details class="mb-2">
+                                            <summary class="small">Technische gegevens (@_detail.Telemetrie.Count @(_detail.Telemetrie.Count == 1 ? "bron" : "bronnen"))</summary>
+                                            @if (_detail.Telemetrie.Count == 0)
+                                            {
+                                                <p class="text-muted small mb-0">Niet meegestuurd, of na 90 dagen gewist.</p>
+                                            }
+                                            @foreach (var t in _detail.Telemetrie)
+                                            {
+                                                <pre class="border rounded p-2 small mb-1 feedback-tekst">@t.Tekst</pre>
+                                            }
+                                        </details>
+                                        <p class="text-muted small mb-0">
+                                            App-versie @(_detail.AppVersie ?? "?") · FeedbackId @_detail.FeedbackId
+                                        </p>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="d-flex align-items-center gap-2">
+            <button class="btn btn-sm btn-outline-secondary" disabled="@(_filter.Offset <= 0)" @onclick="VorigeAsync">◀ Vorige</button>
+            <small class="text-muted">Toont @(_filter.Offset + 1)–@(_filter.Offset + _lijst.Items.Count) van @_lijst.Totaal</small>
+            <button class="btn btn-sm btn-outline-secondary" disabled="@(_filter.Offset + _lijst.Items.Count >= _lijst.Totaal)" @onclick="VolgendeAsync">Volgende ▶</button>
+        </div>
+    }
+}
+else
+{
+    <p class="text-muted small">
+        Wie welke melding bekeek of publiceerde. Het log bevat nooit de inhoud van een melding en wordt na
+        24 maanden gewist.
+    </p>
+    @if (_bezig)
+    {
+        <div class="text-muted">Laden...</div>
+    }
+    else if (_inzage == null || _inzage.Items.Count == 0)
+    {
+        <div class="alert alert-info">Nog geen inzage vastgelegd.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm align-middle">
+                <thead>
+                    <tr><th>Tijdstip</th><th>Door</th><th>Actie</th><th>Melding</th><th>Filter</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var regel in _inzage.Items)
+                    {
+                        <tr>
+                            <td><small>@regel.TijdstipUtc.ToLocalTime().ToString("dd-MM-yyyy HH:mm:ss")</small></td>
+                            <td><small>@(regel.InzienDoor ?? "—")</small></td>
+                            <td><small>@FeedbackWeergave.ActieLabel(regel.Actie)</small></td>
+                            <td><small>@(regel.FeedbackId?.ToString("N")[..8].ToUpperInvariant() ?? "—")</small></td>
+                            <td><small>@(regel.Filter ?? "—")</small></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <button class="btn btn-sm btn-outline-secondary" disabled="@(_inzageOffset <= 0)" @onclick="VorigeInzageAsync">◀ Vorige</button>
+            <small class="text-muted">Toont @(_inzageOffset + 1)–@(_inzageOffset + _inzage.Items.Count) van @_inzage.Totaal</small>
+            <button class="btn btn-sm btn-outline-secondary" disabled="@(_inzageOffset + _inzage.Items.Count >= _inzage.Totaal)" @onclick="VolgendeInzageAsync">Volgende ▶</button>
+        </div>
+    }
+}
