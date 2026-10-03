@@ -1,10 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <!-- net9.0 is verplicht zolang deze app op een Linux Consumption Plan draait: dat plan
-         ondersteunt maximaal .NET 9 (zie CLAUDE.md ".NET versie" — #162, sessie 2026-05-24).
-         Niet verhogen vóór de cutover naar Flex Consumption uit epic #1063 — een net10.0-deploy
-         naar Linux Consumption geeft 503 "Function host is not running". -->
-    <TargetFramework>net9.0</TargetFramework>
+    <!-- net10.0 (#1073): deze branch wordt pas gemerged NA de Flex Consumption-cutover (#1072);
+         op het huidige Linux Consumption Plan geeft net10.0 een 503. -->
+    <TargetFramework>net10.0</TargetFramework>
     <AzureFunctionsVersion>v4</AzureFunctionsVersion>
     <OutputType>Exe</OutputType>
     <ImplicitUsings>enable</ImplicitUsings>

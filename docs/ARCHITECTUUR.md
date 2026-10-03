@@ -235,7 +235,7 @@ Browser (beheerder)
         │
         │ HTTPS + Bearer token (Entra ID)
         ▼
-  Azure Functions (Linux Consumption plan) — net9.0, isolated worker
+  Azure Functions (Linux Consumption plan, na cutover Flex Consumption) — net10.0 (#1073), isolated worker
         Easy Auth: valideert Bearer token, injecteert X-MS-CLIENT-PRINCIPAL
         EasyAuthHelper: checkt 'admin' rol op alle /api/beheer/*, /api/test/*, /api/feedback/*
         │
@@ -258,7 +258,7 @@ Browser (beheerder)
                 sinds epic #986, sinds #1266 beide gebouwde tiers, zie §5.5)
 ```
 
-**Technologiestack:** `FunctionApp` `net9.0` (SQL Server-tier) · `FunctionApp.Postgres` `net9.0`
+**Technologiestack:** `FunctionApp` `net10.0` (SQL Server-tier) · `FunctionApp.Postgres` `net10.0`
 (Postgres-tier) · `BlazorAdmin` `net10.0` · `Planner.Shared` (tier-agnostische bibliotheek) ·
 Azure Functions v4 · Blazor WebAssembly · Azure SQL / Postgres · Microsoft Graph API · OpenAI
 (direct, model via configuratie) · Azure Static Web Apps · Entra ID (single-tenant)
@@ -267,8 +267,8 @@ Azure Functions v4 · Blazor WebAssembly · Azure SQL / Postgres · Microsoft Gr
 
 | Project | Target | Reden |
 |---|---|---|
-| `FunctionApp/fa-dev-sportlink-01.csproj` | **`net9.0`** | Linux Consumption Plan ondersteunt `net10.0` niet → 503 "Function host is not running" |
-| `FunctionApp.Postgres/FunctionApp.Postgres.csproj` | **`net9.0`** | Zelfde beperking als hierboven |
+| `FunctionApp/fa-dev-sportlink-01.csproj` | **`net10.0`** (#1073, branch pas na cutover gemerged) | Linux Consumption Plan ondersteunt `net10.0` niet → 503 "Function host is not running" |
+| `FunctionApp.Postgres/FunctionApp.Postgres.csproj` | **`net10.0`** (#1073) | Zelfde beperking als hierboven |
 | `BlazorAdmin/BlazorAdmin.csproj` | `net10.0` | Browser-runtime, geen Azure-beperking |
 | Azure Portal runtime | `DOTNET-ISOLATED\|9.0` | Moet overeenkomen met csproj |
 
