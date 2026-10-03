@@ -54,11 +54,25 @@ internal static class FeedbackTekst
     internal static string Sanitize(string? input, int maxLen)
     {
         if (string.IsNullOrEmpty(input)) return "";
-        var clean = input
+        var clean = NeutraliseerGitHubVerwijzingen(input)
             .Replace("<script", "&lt;script", StringComparison.OrdinalIgnoreCase)
             .Replace("</script>", "&lt;/script&gt;", StringComparison.OrdinalIgnoreCase);
         return clean.Length > maxLen ? clean[..maxLen] + "…" : clean;
     }
+
+    // Keuze: een zero-width joiner (U+200D) direct na @ of # in plaats van backticks. GitHub herkent
+    // een vermelding of verwijzing alleen als het teken direct door een naam/cijfer wordt gevolgd; de
+    // joiner breekt dat, de tekst blijft zichtbaar gelijk en breekt geen omringende markdown (een
+    // backtick in een citaat of code-span zou dat wel doen). Een e-mailadres (@ na een woordteken)
+    // blijft ongemoeid, zodat de PII-gate op de eindtekst hem nog ziet. Idempotent: na de joiner
+    // volgt geen woordteken meer. Markdown-afbeeldingen worden verwijderd (ook een tracking-pixel).
+    private static readonly System.Text.RegularExpressions.Regex MarkdownAfbeelding =
+        new(@"!\[[^\]]*\](\([^)]*\)|\[[^\]]*\])", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex ActieveVermelding =
+        new(@"(?<!\w)@(?=\w)|#(?=\d)", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    internal static string NeutraliseerGitHubVerwijzingen(string input) =>
+        ActieveVermelding.Replace(MarkdownAfbeelding.Replace(input, ""), m => m.Value + "\u200D");
 
     private static readonly System.Text.RegularExpressions.Regex OnveiligeVersieTekens =
         new(@"[^A-Za-z0-9._ ()/\-]", System.Text.RegularExpressions.RegexOptions.Compiled);
