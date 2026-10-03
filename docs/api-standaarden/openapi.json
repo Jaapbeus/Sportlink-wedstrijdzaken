@@ -986,6 +986,11 @@
             "description": "Bij een herplanverzoek van een tegenstander zonder concrete nieuwe datum: stuurt de\nKNVB-speeldagenkalender als PDF-bijlage + een paar vrije zaterdagen mee, met de\nbegeleiding van het eigen team in BCC (#561). Uit = bestaand herplan-gedrag ongewijzigd.\n",
             "default": true
           },
+          "PdfExportIngeschakeld": {
+            "type": "boolean",
+            "description": "PDF-export van planningen (`?format=pdf` op `/planner/veldbezetting` en\n`/planner/auto-plan`) voor deze club (#1459). Standaard false (fail-closed): de PDF gebruikt\nQuestPDF onder de Community-licentie (organisaties onder USD 1 mln jaaromzet); een\nbeheerder bevestigt dat die voorwaarden gelden door dit aan te zetten. Uit = `?format=pdf`\ngeeft 409; HTML-export blijft werken.\n",
+            "default": false
+          },
           "KnvbStandaardRegio": {
             "type": "string",
             "nullable": true,
@@ -1755,7 +1760,7 @@
       },
       "UpdateSettingsRequest": {
         "type": "object",
-        "description": "Wijzig toegestane AppSettings-velden. Velden buiten de witte lijst worden genegeerd.\nWitte lijst: HerplanDeadlineDagen, BufferMinuten, PlannerAfzenderNaam, CoordinatorNaam,\nCoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,\nAccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi,\nKnvbPdfBijlageIngeschakeld, KnvbStandaardRegio, SportlinkExtensionEnabled.\n\nDe audit-actor (wie de wijziging doorvoerde) wordt uitsluitend server-side bepaald uit de\ndoor Easy Auth gevalideerde claims — dit contract kent daarom geen \"wie\"-veld (#1003).\n",
+        "description": "Wijzig toegestane AppSettings-velden. Velden buiten de witte lijst worden genegeerd.\nWitte lijst: HerplanDeadlineDagen, BufferMinuten, PlannerAfzenderNaam, CoordinatorNaam,\nCoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,\nAccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi,\nKnvbPdfBijlageIngeschakeld, KnvbStandaardRegio, SportlinkExtensionEnabled, PdfExportIngeschakeld\n(waarde `0`/`1`/`true`/`false`, anders 400).\n\nDe audit-actor (wie de wijziging doorvoerde) wordt uitsluitend server-side bepaald uit de\ndoor Easy Auth gevalideerde claims — dit contract kent daarom geen \"wie\"-veld (#1003).\n",
         "properties": {
           "velden": {
             "type": "object",
@@ -9833,6 +9838,9 @@
           "403": {
             "$ref": "#/components/responses/Forbidden"
           },
+          "409": {
+            "description": "`?format=pdf` terwijl de clubinstelling PdfExportIngeschakeld uit staat (#1459)"
+          },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
           }
@@ -9965,8 +9973,55 @@
           "403": {
             "$ref": "#/components/responses/Forbidden"
           },
+          "409": {
+            "description": "`?format=pdf` terwijl de clubinstelling PdfExportIngeschakeld uit staat (#1459)"
+          },
           "413": {
             "description": "Request body te groot"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/planner/pdf-export": {
+      "get": {
+        "tags": [
+          "planner"
+        ],
+        "operationId": "pdfExportStatus",
+        "summary": "Staat PDF-export aan voor de gekozen club?",
+        "description": "#1459: geeft alleen de aan/uit-stand van de clubinstelling PdfExportIngeschakeld terug, zodat\nPlanning de PDF-knop alleen toont als `?format=pdf` werkt. Net als `/planner/veldbezetting`\nopen voor elke ingelogde rol (`admin` óf `user`); de volledige instellingen onder\n`/beheer/settings` blijven admin-only. Club via `X-Club-Code`. Geen rij = uit.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "De stand van de instelling",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "pdfExportIngeschakeld"
+                  ],
+                  "properties": {
+                    "pdfExportIngeschakeld": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -9981,7 +10036,7 @@
         ],
         "operationId": "veldbezetting",
         "summary": "Wedstrijden op een datum ophalen, zonder optimalisatie",
-        "description": "Geeft de wedstrijden terug die op een datum al gepland staan, rechtstreeks uit de\nlaatst gesynchroniseerde Sportlink-data — zonder de scheduling-optimalisatie die\n`/planner/auto-plan` uitvoert. Bedoeld als snelle,\ngoedkope \"wat staat er nu al gepland\"-weergave. Voedt de Planning-pagina, die sinds #1400\ngeneriek zichtbaar is voor elke ingelogde gebruiker — vereist daarom alleen `admin` óf\n`user` (voorheen uitsluitend `admin`), als enig endpoint in deze tag.\n",
+        "description": "Geeft de wedstrijden terug die op een datum al gepland staan, rechtstreeks uit de\nlaatst gesynchroniseerde Sportlink-data — zonder de scheduling-optimalisatie die\n`/planner/auto-plan` uitvoert. Bedoeld als snelle,\ngoedkope \"wat staat er nu al gepland\"-weergave. Voedt de Planning-pagina, die sinds #1400\ngeneriek zichtbaar is voor elke ingelogde gebruiker — vereist daarom alleen `admin` óf\n`user` (voorheen uitsluitend `admin`); in deze tag geldt dat verder alleen voor\n`/planner/pdf-export` (#1459).\n",
         "security": [
           {
             "easyAuth": []
@@ -10048,6 +10103,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "`?format=pdf` terwijl de clubinstelling PdfExportIngeschakeld uit staat (#1459)"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"

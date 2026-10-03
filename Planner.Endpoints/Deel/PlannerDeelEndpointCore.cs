@@ -17,6 +17,11 @@ public static class PlannerDeelEndpointCore
     public const string FormatHtml = "html";
     public const string FormatPdf = "pdf";
 
+    /// <summary>Foutmelding bij <c>?format=pdf</c> terwijl de clubinstelling PDF-export uit staat (409).</summary>
+    public const string PdfUitgeschakeldMelding =
+        "PDF-export staat uit voor deze club. Een beheerder kan hem inschakelen bij Instellingen " +
+        "(PDF-export), na bevestiging dat de QuestPDF Community-licentievoorwaarden gelden.";
+
     /// <summary>
     /// Leest en valideert <c>?format=</c>. Leeg of <c>json</c> = de bestaande JSON-respons
     /// (<paramref name="format"/> wordt <c>null</c>); een onbekende waarde is een fout.
@@ -34,6 +39,32 @@ public static class PlannerDeelEndpointCore
         }
         return new BadRequestObjectResult(new { error = "Query parameter 'format' moet 'json', 'html' of 'pdf' zijn." });
     }
+
+    /// <summary>
+    /// #1459: DE beslissing voor elk deel-endpoint. PDF-export staat per club standaard UIT tot een
+    /// beheerder bevestigt dat de QuestPDF Community-voorwaarden gelden. Bij <paramref name="format"/>
+    /// <c>pdf</c> zonder die bevestiging: <c>409 Conflict</c> (zelfde code als de andere
+    /// uitgeschakelde-functie-meldingen, bv. de Sportlink-schakelaar). Voor json/html wordt de
+    /// instelling niet eens gelezen. De tierbestanden geven alleen de lees-delegate mee
+    /// (<c>PdfExportInstelling.IsIngeschakeldAsync</c>, per tier alleen de query).
+    /// </summary>
+    /// <returns><c>Weigering</c> = de 409-respons of <c>null</c>; <c>PdfToegestaan</c> = mag de generator een PDF maken.</returns>
+    public static async Task<(IActionResult? Weigering, bool PdfToegestaan)> BeslisPdfAsync(
+        string? format, Func<Task<bool>> pdfIngeschakeld)
+    {
+        if (format != FormatPdf) return (null, false);
+        return await pdfIngeschakeld()
+            ? (null, true)
+            : (new ConflictObjectResult(new { error = PdfUitgeschakeldMelding }), false);
+    }
+
+    /// <summary>
+    /// #1459: <c>GET planner/pdf-export</c> — of PDF-export voor de club van de aanroeper aan staat.
+    /// Open voor elke ingelogde rol, zodat Planning de PDF-knop ook voor de rol <c>user</c> correct
+    /// toont (de volledige instellingen onder <c>beheer/settings</c> zijn admin-only).
+    /// </summary>
+    public static async Task<IActionResult> PdfExportStatusAsync(Func<Task<bool>> pdfIngeschakeld)
+        => new OkObjectResult(new { pdfExportIngeschakeld = await pdfIngeschakeld() });
 
     /// <summary>Leest <c>?tab=huidig|optimaal</c> (default huidig).</summary>
     public static IActionResult? ControleerTab(string? rauw, out PlanWeergave weergave)
@@ -66,11 +97,11 @@ public static class PlannerDeelEndpointCore
     /// <paramref name="bestandsBasis"/> is een vaste tekst uit de code (nooit invoer van de
     /// aanroeper); de datum komt uit de gevalideerde <see cref="PlannerShareModel.Peildatum"/>.
     /// </summary>
-    public static IActionResult Maak(PlannerShareModel model, string format, string bestandsBasis)
+    public static IActionResult Maak(PlannerShareModel model, string format, string bestandsBasis, bool pdfToegestaan)
     {
         var naam = $"{bestandsBasis}-{model.Peildatum:yyyy-MM-dd}";
         if (format == FormatPdf)
-            return new FileContentResult(PlannerPdfGenerator.Genereer(model), "application/pdf")
+            return new FileContentResult(PlannerPdfGenerator.Genereer(model, pdfToegestaan), "application/pdf")
             {
                 FileDownloadName = naam + ".pdf",
             };
@@ -112,17 +143,35 @@ public static class PlannerDeelEndpointCore
     /// </summary>
     public sealed record DeelVerzoek(string? Format, PlanWeergave Weergave, DateOnly Datum)
     {
+        /// <summary>
+        /// Alleen <c>true</c> nadat <see cref="WeigerPdfAsync"/> de clubinstelling heeft gelezen en
+        /// PDF heeft toegestaan (#1459). Standaard <c>false</c>: zonder die controle maakt de generator
+        /// geen PDF (fail-closed).
+        /// </summary>
+        public bool PdfToegestaan { get; private set; }
+
+        /// <summary>
+        /// #1459: past <see cref="BeslisPdfAsync"/> toe op dit verzoek — 409 als PDF gevraagd is en
+        /// uit staat, anders <c>null</c> en wordt <see cref="PdfToegestaan"/> gezet.
+        /// </summary>
+        public async Task<IActionResult?> WeigerPdfAsync(Func<Task<bool>> pdfIngeschakeld)
+        {
+            var (weigering, toegestaan) = await BeslisPdfAsync(Format, pdfIngeschakeld);
+            PdfToegestaan = toegestaan;
+            return weigering;
+        }
+
         /// <summary>Het deel-document voor <c>planner/veldbezetting</c>, of <c>null</c> (= JSON).</summary>
         public IActionResult? VanVeldbezetting<T>(IEnumerable<T> items, string clubCode) where T : IVeldbezettingRegel
             => Format == null ? null : Maak(
                 PlannerShareModelBuilder.VanVeldbezetting(items.Cast<IVeldbezettingRegel>(), Datum, clubCode),
-                Format, "veldbezetting");
+                Format, "veldbezetting", PdfToegestaan);
 
         /// <summary>Het deel-document voor <c>planner/auto-plan</c>, of <c>null</c> (= JSON).</summary>
         public IActionResult? VanPlan<T>(IEnumerable<T> wedstrijden, string clubCode) where T : IPlanWedstrijdRegel
             => Format == null ? null : Maak(
                 PlannerShareModelBuilder.VanPlan(wedstrijden.Cast<IPlanWedstrijdRegel>(), Datum, clubCode, Weergave),
-                Format, Weergave == PlanWeergave.Optimaal ? "optimale-planning" : "huidige-planning");
+                Format, Weergave == PlanWeergave.Optimaal ? "optimale-planning" : "huidige-planning", PdfToegestaan);
     }
 
     /// <summary>

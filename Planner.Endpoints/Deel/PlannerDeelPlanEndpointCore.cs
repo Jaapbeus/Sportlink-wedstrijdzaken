@@ -10,7 +10,7 @@ namespace Planner.Endpoints.Deel;
 /// Veld optimalisatie getoond wordt — inclusief handmatig versleepte blokken — en de server rendert
 /// daar hetzelfde HTML/PDF-document van als van <c>planner/auto-plan?format=</c>. Niets wordt
 /// opgeslagen of herberekend. Tier-onafhankelijk (codekwaliteitsregel 1): beide <c>PlannerFunction</c>-
-/// bestanden roepen alleen <see cref="Verwerk"/> aan.
+/// bestanden roepen alleen <see cref="VerwerkAsync"/> aan, met hun eigen lees-delegate voor de PDF-instelling.
 /// <para>
 /// <b>Vertrouwensgrens.</b> De inhoud komt van de client en wordt dus als niet-vertrouwd behandeld:
 /// begrensd aantal regels, begrensde veldlengtes, strikte tijdnotatie, geen stuurtekens. Het
@@ -46,15 +46,29 @@ public static class PlannerDeelPlanEndpointCore
         [JsonProperty("veld")] public string? Veld { get; set; }
     }
 
-    /// <summary>Leest body en <c>?format=</c> uit het verzoek en roept <see cref="Verwerk"/> aan — het hele tier-aansluitwerk.</summary>
-    public static async Task<IActionResult> VerwerkAsync(Microsoft.AspNetCore.Http.HttpRequest req, string clubCode)
-        => Verwerk(await new StreamReader(req.Body).ReadToEndAsync(), req.Query["format"], clubCode);
+    /// <summary>
+    /// Leest body en <c>?format=</c> uit het verzoek en roept <see cref="Verwerk"/> aan — het hele
+    /// tier-aansluitwerk. #1459: bij <c>format=pdf</c> eerst de gedeelde beslissing
+    /// <see cref="PlannerDeelEndpointCore.BeslisPdfAsync"/> (409 als PDF-export voor de club uit staat);
+    /// <paramref name="pdfIngeschakeld"/> is de per-tier lees-delegate (<c>PdfExportInstelling.IsIngeschakeldAsync</c>).
+    /// </summary>
+    public static async Task<IActionResult> VerwerkAsync(
+        Microsoft.AspNetCore.Http.HttpRequest req, string clubCode, Func<Task<bool>> pdfIngeschakeld)
+    {
+        string? format = req.Query["format"];
+        var (weigering, pdfToegestaan) = await PlannerDeelEndpointCore.BeslisPdfAsync(
+            (format ?? "").Trim().ToLowerInvariant(), pdfIngeschakeld);
+        if (weigering != null) return weigering;
+        return Verwerk(await new StreamReader(req.Body).ReadToEndAsync(), format, clubCode, pdfToegestaan);
+    }
 
     /// <summary>
     /// Valideert en rendert. <paramref name="body"/> is de ruwe JSON, <paramref name="format"/> de
     /// ruwe <c>?format=</c> (alleen <c>html</c>/<c>pdf</c>), <paramref name="clubCode"/> de club van de aanroeper.
+    /// <paramref name="pdfToegestaan"/> is de uitkomst van <see cref="PlannerDeelEndpointCore.BeslisPdfAsync"/>
+    /// (#1459); zonder die toestemming maakt de generator geen PDF.
     /// </summary>
-    public static IActionResult Verwerk(string? body, string? format, string clubCode)
+    public static IActionResult Verwerk(string? body, string? format, string clubCode, bool pdfToegestaan)
     {
         var f = (format ?? "").Trim().ToLowerInvariant();
         if (f != PlannerDeelEndpointCore.FormatHtml && f != PlannerDeelEndpointCore.FormatPdf)
@@ -97,7 +111,7 @@ public static class PlannerDeelPlanEndpointCore
 
         var model = PlannerShareModelBuilder.VanGetoondePlan(regels, datum, clubCode, weergave);
         return PlannerDeelEndpointCore.Maak(model, f,
-            weergave == PlanWeergave.Optimaal ? "optimale-planning" : "huidige-planning");
+            weergave == PlanWeergave.Optimaal ? "optimale-planning" : "huidige-planning", pdfToegestaan);
     }
 
     private static IActionResult? ControleerRegel(Regel r, int i)

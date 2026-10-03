@@ -65,6 +65,7 @@ public static class PlannerFunction
 
                 // #1364: ?format=html|pdf voor de deel-knop op de Planning-pagina; zonder format blijft het JSON.
                 if (PlannerDeelEndpointCore.Lees(req.Query["format"], null, datumParam, out var deel) is { } deelFout) return deelFout;
+                if (await deel.WeigerPdfAsync(() => PdfExportInstelling.IsIngeschakeldAsync(clubCode)) is { } pdfGeweigerd) return pdfGeweigerd;
 
                 log.LogInformation("Veldbezetting: datum={Datum}, club={Club}", datumParam, clubCode);
 
@@ -422,8 +423,9 @@ public static class PlannerFunction
                 // #1364: ?format=html|pdf (+ ?tab=huidig|optimaal) voor de deel-knop; AutoPlanAsync is een
                 // leesbewerking (alleen AutoPlanToepassen schrijft), dus een tweede aanroep is zonder bijwerking.
                 if (PlannerDeelEndpointCore.Lees(req.Query["format"], req.Query["tab"], request.Datum, out var deel) is { } deelFout) return deelFout;
-
                 var clubCode = PostgresClubScope.Resolve(rawClubCode);
+                if (await deel.WeigerPdfAsync(() => PdfExportInstelling.IsIngeschakeldAsync(clubCode)) is { } pdfGeweigerd) return pdfGeweigerd;
+
                 log.LogInformation("AutoPlan: datum={Datum}, buffer={Buffer}, club={Club}",
                     request.Datum, request.BufferMinuten, clubCode);
 
@@ -446,7 +448,11 @@ public static class PlannerFunction
     {
         var log = context.GetLogger("AutoPlanDeel");
         return AdminEndpoint.ExecuteAsync(req, log, "planning delen",
-            rawClubCode => PlannerDeelPlanEndpointCore.VerwerkAsync(req, PostgresClubScope.Resolve(rawClubCode)));
+            rawClubCode =>
+            {
+                var clubCode = PostgresClubScope.Resolve(rawClubCode);
+                return PlannerDeelPlanEndpointCore.VerwerkAsync(req, clubCode, () => PdfExportInstelling.IsIngeschakeldAsync(clubCode));
+            });
     }
 
     /// <summary>

@@ -109,6 +109,7 @@ verwerking plaats.
 | `POST` | `/planner/auto-plan` | **Admin** | **Dagplanning optimaliseren** — regels → voorkeurstijden → leeftijdsdefaults |
 | `POST` | `/planner/auto-plan/deel` | **Admin** | Planning delen zoals getoond op het scherm (HTML/PDF, stateless, #1460) |
 | `POST` | `/planner/auto-plan/toepassen` | **Admin** | Berekende planning wegschrijven (alleen testmodus ALLSTARS) |
+| `GET` | `/planner/pdf-export` | **Admin/User** | Of PDF-export voor de gekozen club aan staat: `{ "pdfExportIngeschakeld": bool }` — Planning toont de PDF-knop alleen dan, ook voor de rol `user` (#1459) |
 | `GET` | `/planner/veldbezetting?datum=` | **Admin/User** | Wedstrijden op een datum, zonder optimalisatie-berekening — voedt de Planning-pagina, sinds #1400 generiek zichtbaar voor elke ingelogde gebruiker |
 | `GET` | `/planner/team-schedule` | **Admin** | Wedstrijdschema per team — gescoped op `X-Club-Code` header |
 | `GET` | `/beheer/teambegeleiding` | **Admin + user** | Alle teams met begeleiding in database (#1330: elke ingelogde rol) |
@@ -759,6 +760,8 @@ Sinds #666 is dit de enige dagplanning-optimalisatie.
 | `format` | `string` | Nee | `json` (standaard), `html` of `pdf` — dezelfde berekening, maar het resultaat als gedeeld document (zelfde kolommen als de Planning-export). Bestandsnaam `huidige-planning-<datum>.pdf` / `optimale-planning-<datum>.pdf`. Andere waarde: 400 |
 | `tab` | `string` | Nee | `huidig` (standaard) of `optimaal` — welke kant in het document komt. Alleen relevant bij `format=html|pdf`. Andere waarde: 400 |
 
+`format=pdf` vereist dat de clubinstelling **PDF-export** (`PdfExportIngeschakeld`, Instellingen) aan staat; standaard staat hij uit en geeft `format=pdf` dan **`409`** met een uitleg (#1459). `json` en `html` zijn niet afhankelijk van die instelling.
+
 Bij `format=html|pdf` moet `datum` strikt `yyyy-MM-dd` zijn (anders 400). De berekening is een pure
 leesbewerking; alleen `/planner/auto-plan/toepassen` schrijft, dus een tweede aanroep voor de export heeft
 geen bijwerking.
@@ -777,6 +780,7 @@ versleepte blokken); de server valideert en rendert hetzelfde HTML/PDF-document 
 Limieten: max 500 wedstrijden; tekstvelden max 200 tekens zonder stuurtekens; `tijd` `HH:mm`;
 `datum` `yyyy-MM-dd` tussen 2020-01-01 en 2100-12-31; body max 512 KB (413). De club komt van de
 aanroeper — een afwijkende optionele `clubCode` geeft 403. Overige fouten: 400.
+`format=pdf` volgt dezelfde clubinstelling **PDF-export** als hierboven: uit (standaard) geeft **`409`** (#1459).
 
 ### Rangorde van het planningsdoel
 

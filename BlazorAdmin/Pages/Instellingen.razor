@@ -250,6 +250,26 @@ else
         </div>
 
         <hr />
+        <h5>PDF-export</h5>
+        <div class="row">
+            <div class="col-md-8 mb-3">
+                <div class="form-check form-switch mt-2">
+                    <input class="form-check-input" type="checkbox" id="pdfExportIngeschakeld"
+                           @bind="settings.PdfExportIngeschakeld" />
+                    <label class="form-check-label" for="pdfExportIngeschakeld">
+                        PDF-export van planningen inschakelen
+                    </label>
+                </div>
+                <small class="form-text text-muted">
+                    De PDF-knop bij "delen" gebruikt de bibliotheek QuestPDF onder de Community-licentie. Die is
+                    alleen gratis voor organisaties met een jaaromzet onder 1 miljoen USD. Door deze schakelaar
+                    aan te zetten bevestig je dat dit voor jullie vereniging geldt. Staat standaard UIT; delen
+                    als HTML werkt altijd.
+                </small>
+            </div>
+        </div>
+
+        <hr />
         <h5>KNVB-verzetten zonder datum</h5>
         <div class="row">
             <div class="col-md-6 mb-3">

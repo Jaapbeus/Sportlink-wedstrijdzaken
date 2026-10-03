@@ -7,6 +7,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Planner.Endpoints.Admin;
 using Newtonsoft.Json.Linq;
 using System.Globalization;
 using System.Net.Http.Headers;
@@ -44,13 +45,7 @@ public static class AdminSettingsFunction
         "Accommodatie", "FetchSchedule", "EmailVoetnoot",
         "AccommodatiePlaats", "AccommodatieLatitude", "AccommodatieLongitude",
         "UseRealtimeApi", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio",
-        "SportlinkExtensionEnabled", "SportlinkSpelactiviteit"
-    };
-
-    // Geldige waarden voor KnvbStandaardRegio — komt overeen met de PK-waarden in dbo.KnvbKalenderDag.
-    private static readonly string[] GeldigeKnvbRegios =
-    {
-        "West", "Noord", "Oost", "Zuid", "Landelijk", "LandelijkJeugd"
+        "SportlinkExtensionEnabled", "SportlinkSpelactiviteit", "PdfExportIngeschakeld"
     };
 
     private const string ManagementApiVersion = "2022-03-01";
@@ -81,7 +76,7 @@ public static class AdminSettingsFunction
                         [BufferMinuten], [EmailVoetnoot], [AccommodatiePlaats],
                         [AccommodatieLatitude], [AccommodatieLongitude],
                         [KnvbPdfBijlageIngeschakeld], [KnvbStandaardRegio], [SportlinkExtensionEnabled],
-                        [SportlinkSpelactiviteit]
+                        [SportlinkSpelactiviteit], [PdfExportIngeschakeld]
                     FROM [dbo].[AppSettings]
                     WHERE [ClubCode] = @ClubCode", connection);
                 command.Parameters.AddWithValue("@ClubCode", clubCode);
@@ -161,7 +156,7 @@ public static class AdminSettingsFunction
                 if (changes.Count == 0)
                     return new BadRequestObjectResult(new { error = "Geen toegestane velden in request" });
 
-                var fout = ValideerWijzigingen(changes);
+                var fout = AppSettingsValidatieCore.Valideer(changes);
                 if (fout != null) return fout;
 
                 changes.TryGetValue("FetchSchedule", out var nieuweSchedule);
@@ -223,30 +218,6 @@ public static class AdminSettingsFunction
             }
         }
         return changes;
-    }
-
-    private static IActionResult? ValideerWijzigingen(Dictionary<string, string?> changes)
-    {
-        // Valideer CRON-expressie vóór opslaan
-        if (changes.TryGetValue("FetchSchedule", out var nieuweSchedule) && nieuweSchedule != null)
-        {
-            if (!CronExpression.TryParse(nieuweSchedule, CronFormat.IncludeSeconds, out _))
-                return new BadRequestObjectResult(new { error = $"Ongeldige CRON-expressie: '{nieuweSchedule}'. Verwacht 6 velden (seconden minuten uren dag maand weekdag)." });
-        }
-
-        // Valideer KnvbStandaardRegio vóór opslaan — moet, indien aanwezig en niet leeg, een geldige regio zijn
-        if (changes.TryGetValue("KnvbStandaardRegio", out var nieuweRegio) &&
-            !string.IsNullOrWhiteSpace(nieuweRegio) &&
-            !GeldigeKnvbRegios.Contains(nieuweRegio, StringComparer.Ordinal))
-        {
-            return new BadRequestObjectResult(new { error = $"Ongeldige KnvbStandaardRegio: '{nieuweRegio}'. Toegestaan: {string.Join(", ", GeldigeKnvbRegios)}." });
-        }
-
-        // #1437: de kolom is 100 tekens breed; een te lange waarde geeft anders een databasefout (500).
-        if (changes.TryGetValue("SportlinkSpelactiviteit", out var nieuweActiviteit) && nieuweActiviteit is { Length: > 100 })
-            return new BadRequestObjectResult(new { error = "Spelactiviteit mag maximaal 100 tekens bevatten." });
-
-        return null;
     }
 
     private static async Task PersisteerWijzigingenAsync(

@@ -20,6 +20,8 @@ public class PlannerPdfGeneratorTests
     private static PlannerShareModel Model(params PlannerShareWedstrijd[] wedstrijden) =>
         new("Veldbezetting op zaterdag 3 oktober 2026", "ALLSTARS", Zaterdag, wedstrijden);
 
+    private static byte[] Genereer(PlannerShareModel model) => PlannerPdfGenerator.Genereer(model, pdfIngeschakeld: true);
+
     private static (int Paginas, string Tekst) Lees(byte[] pdf)
     {
         using var document = PdfDocument.Open(pdf);
@@ -32,7 +34,7 @@ public class PlannerPdfGeneratorTests
     [Fact]
     public void Genereer_GeeftEenGeldigePdfMetTitelClubEnTabelinhoud()
     {
-        var pdf = PlannerPdfGenerator.Genereer(Model(
+        var pdf = Genereer(Model(
             new PlannerShareWedstrijd("09:30", "JO10-1", "Gasten JO10-2", "veld 3 A", "competitie", null)));
 
         Encoding.ASCII.GetString(pdf, 0, 5).Should().Be("%PDF-");
@@ -51,7 +53,7 @@ public class PlannerPdfGeneratorTests
     [Fact]
     public void Genereer_LegeLijst_GeeftNettePdfMetMelding()
     {
-        var pdf = PlannerPdfGenerator.Genereer(Model());
+        var pdf = Genereer(Model());
 
         Encoding.ASCII.GetString(pdf, 0, 5).Should().Be("%PDF-");
         var (paginas, tekst) = Lees(pdf);
@@ -66,7 +68,7 @@ public class PlannerPdfGeneratorTests
         const string team = "Zoë’s Café JO11-1";
         const string tegenstander = "Coöperatie Reünie ü é è à ç";
 
-        var pdf = PlannerPdfGenerator.Genereer(Model(
+        var pdf = Genereer(Model(
             new PlannerShareWedstrijd("10:00", team, tegenstander, "veld één", null, null)));
 
         var (_, tekst) = Lees(pdf);
@@ -80,7 +82,7 @@ public class PlannerPdfGeneratorTests
     {
         // Een emoji staat niet in Lato. ThrowOnMissingTextGlyphs staat bewust uit: één vreemd
         // teken in een teamnaam mag niet de hele export blokkeren.
-        var genereer = () => PlannerPdfGenerator.Genereer(Model(
+        var genereer = () => Genereer(Model(
             new PlannerShareWedstrijd("10:00", "JO9-1 ⚽", null, null, null, null)));
 
         genereer.Should().NotThrow();
@@ -91,7 +93,7 @@ public class PlannerPdfGeneratorTests
     public void Genereer_TekstMetOpmaaktekens_WordtLetterlijkWeergegeven()
     {
         // Geen markup-taal in een PDF: wat in de HTML-export een injectie zou zijn (#1010) is hier tekst.
-        var pdf = PlannerPdfGenerator.Genereer(Model(
+        var pdf = Genereer(Model(
             new PlannerShareWedstrijd("10:00", "<script>alert(1)</script>", "A & B", null, null, null)));
 
         Lees(pdf).Tekst.Should().Contain("<script>alert(1)</script>").And.Contain("A & B");
@@ -100,9 +102,9 @@ public class PlannerPdfGeneratorTests
     [Fact]
     public void Genereer_ScheidsrechterKolom_AlleenAlsErEenBekendIs()
     {
-        var zonder = Lees(PlannerPdfGenerator.Genereer(Model(
+        var zonder = Lees(Genereer(Model(
             new PlannerShareWedstrijd("10:00", "JO10-1", null, null, null, null)))).Tekst;
-        var met = Lees(PlannerPdfGenerator.Genereer(Model(
+        var met = Lees(Genereer(Model(
             new PlannerShareWedstrijd("10:00", "JO10-1", null, null, null, "J. Fluitist"),
             new PlannerShareWedstrijd("11:00", "JO10-2", null, null, null, null)))).Tekst;
 
@@ -117,7 +119,7 @@ public class PlannerPdfGeneratorTests
             .Select(i => new PlannerShareWedstrijd("10:00", $"Team{i:000}", null, null, null, null))
             .ToArray();
 
-        var (paginas, tekst) = Lees(PlannerPdfGenerator.Genereer(Model(regels)));
+        var (paginas, tekst) = Lees(Genereer(Model(regels)));
 
         paginas.Should().BeGreaterThan(1);
         tekst.Should().Contain("Team001").And.Contain("Team120");
@@ -127,7 +129,7 @@ public class PlannerPdfGeneratorTests
     [Fact]
     public void Genereer_ZetDeTitelInDeDocumentMetadata()
     {
-        using var document = PdfDocument.Open(PlannerPdfGenerator.Genereer(Model()));
+        using var document = PdfDocument.Open(Genereer(Model()));
 
         document.Information.Title.Should().Be("Veldbezetting op zaterdag 3 oktober 2026");
     }
@@ -135,8 +137,17 @@ public class PlannerPdfGeneratorTests
     [Fact]
     public void Genereer_WeigertNull()
     {
-        var genereer = () => PlannerPdfGenerator.Genereer(null!);
+        var genereer = () => Genereer(null!);
 
         genereer.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void Genereer_ZonderIngeschakeldeClubinstelling_MaaktGeenPdf()
+    {
+        // #1459: fail-closed — zonder bevestigde QuestPDF Community-licentie komt er nooit een PDF uit.
+        var genereer = () => PlannerPdfGenerator.Genereer(Model(), pdfIngeschakeld: false);
+
+        genereer.Should().Throw<InvalidOperationException>();
     }
 }

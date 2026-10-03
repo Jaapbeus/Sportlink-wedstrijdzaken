@@ -379,6 +379,7 @@ namespace SportlinkFunction.Planner
                     // #1364: ?format=html|pdf (+ ?tab=huidig|optimaal) voor de deel-knop; AutoPlanAsync is een
                     // leesbewerking (alleen AutoPlanToepassen schrijft), dus een tweede aanroep is zonder bijwerking.
                     if (PlannerDeelEndpointCore.Lees(req.Query["format"], req.Query["tab"], request.Datum, out var deel) is { } deelFout) return deelFout;
+                    if (await deel.WeigerPdfAsync(() => PdfExportInstelling.IsIngeschakeldAsync(clubCode)) is { } pdfGeweigerd) return pdfGeweigerd;
 
                     log.LogInformation("AutoPlan: datum={Datum}, club={Club}", request.Datum, clubCode);
 
@@ -398,7 +399,7 @@ namespace SportlinkFunction.Planner
         {
             var log = context.GetLogger("AutoPlanDeel");
             return AdminEndpoint.ExecuteAsync(req, log, "planning delen",
-                clubCode => PlannerDeelPlanEndpointCore.VerwerkAsync(req, clubCode));
+                clubCode => PlannerDeelPlanEndpointCore.VerwerkAsync(req, clubCode, () => PdfExportInstelling.IsIngeschakeldAsync(clubCode)));
         }
 
         [Function("AutoPlanToepassen")]
@@ -447,6 +448,7 @@ namespace SportlinkFunction.Planner
 
                     // #1364: ?format=html|pdf voor de deel-knop op de Planning-pagina; zonder format blijft het JSON.
                     if (PlannerDeelEndpointCore.Lees(req.Query["format"], null, datumParam, out var deel) is { } deelFout) return deelFout;
+                    if (await deel.WeigerPdfAsync(() => PdfExportInstelling.IsIngeschakeldAsync(clubCode)) is { } pdfGeweigerd) return pdfGeweigerd;
 
                     log.LogInformation("Veldbezetting: datum={Datum}, club={Club}", datumParam, clubCode);
 

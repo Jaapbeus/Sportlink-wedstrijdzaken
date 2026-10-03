@@ -42,6 +42,16 @@ public partial class AdminApiClient
     private static string AutoPlanDeelPad(string format, string tab)
         => $"api/planner/auto-plan?format={format}&tab={Uri.EscapeDataString(tab)}";
 
+    /// <summary>
+    /// #1459: of PDF-export voor de gekozen club aan staat (<c>GET api/planner/pdf-export</c>, open voor
+    /// elke ingelogde rol). Een mislukte aanroep telt als uit — fail-closed, net als de server.
+    /// </summary>
+    public async Task<bool> IsPdfExportIngeschakeldAsync()
+    {
+        var status = await GetAsync<PdfExportStatusDto>("api/planner/pdf-export");
+        return status.Success && status.Data?.PdfExportIngeschakeld == true;
+    }
+
     private static async Task<string> LeesTekstAsync(Task<HttpResponseMessage> aanroep)
     {
         using var resp = await aanroep;

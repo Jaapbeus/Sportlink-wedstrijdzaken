@@ -218,4 +218,4 @@
             BestandsNaam="@ExportBestandsNaam"
             VerversSleutel="@ExportSleutel"
             HtmlOphalen="@(() => Api.GetVeldbezettingHtmlAsync(DatumStr))"
-            PdfOphalen="@(() => Api.GetVeldbezettingPdfAsync(DatumStr))" />
+            PdfOphalen="@(_pdfExportIngeschakeld ? () => Api.GetVeldbezettingPdfAsync(DatumStr) : null)" />

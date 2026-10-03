@@ -30,6 +30,14 @@ public class AppSettingsDto
     public bool SportlinkDryRun { get; set; } = true;
     /// <summary>#1437: clubinstelling Spelactiviteit voor nieuwe oefenwedstrijden (omschrijving of IdTag uit Sportlinks lijst).</summary>
     public string? SportlinkSpelactiviteit { get; set; }
+    /// <summary>#1459: PDF-export (QuestPDF Community) per club; standaard uit tot een beheerder de licentievoorwaarden bevestigt.</summary>
+    public bool PdfExportIngeschakeld { get; set; }
+}
+
+/// <summary>#1459: antwoord van <c>GET api/planner/pdf-export</c> (voor elke ingelogde rol).</summary>
+public class PdfExportStatusDto
+{
+    public bool PdfExportIngeschakeld { get; set; }
 }
 
 /// <summary>#988: rol↔serviceaccount-koppelingsstatus, zie docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md §6.</summary>

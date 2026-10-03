@@ -69,6 +69,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   Nieuwe CI-guard bewaakt dat het in BlazorAdmin gelinkte bronbestand alleen van de BCL afhangt.
 
 ### Added
+- **PDF-export van planningen is per club aan/uit te zetten, standaard uit** (#1459). Beheerders vinden
+  de schakelaar bij Instellingen onder *PDF-export*, met uitleg dat de gebruikte QuestPDF Community-licentie
+  geldt voor organisaties onder 1 miljoen USD jaaromzet; door hem aan te zetten bevestigt de beheerder dat.
+  Staat hij uit, dan verdwijnt de PDF-knop bij Planning en Veld optimalisatie en weigert de server een
+  PDF-verzoek (409), ook bij het delen van een handmatig aangepaste planning; delen als HTML blijft
+  werken. Ook gebruikers zonder beheerdersrol zien de PDF-knop op Planning zodra de instelling aan staat.
+  **Na de release staat PDF-export voor elke club uit tot een beheerder hem inschakelt.**
 - **Wedstrijd verwijderen uit Sportlink werkt nu echt** (#1458). Na een echte aanmaak op "Wedstrijd
   aanmaken" verwijdert de knop de oefenwedstrijd daadwerkelijk uit Sportlink Club (tenzij dry-run aan
   staat). Het bevestigblok waarschuwt: "Verwijderen is definitief; de tegenstander kan een melding

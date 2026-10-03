@@ -3598,6 +3598,11 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSet
     ALTER TABLE [dbo].[AppSettings] ADD [SportlinkSpelactiviteit] NVARCHAR(100) NULL;
 GO
 
+-- #1459: PDF-export (QuestPDF Community) per club; standaard UIT tot een beheerder de voorwaarden bevestigt. Postgres: migratie 034.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'PdfExportIngeschakeld')
+    ALTER TABLE [dbo].[AppSettings] ADD [PdfExportIngeschakeld] BIT NOT NULL CONSTRAINT [DF_AppSettings_PdfExportIngeschakeld] DEFAULT 0;
+GO
+
 -- #1360: Functie (bijv. "Trainer/coach") naast Teamrol voor de badge op /teambegeleiding. Postgres: migratie 033.
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('avg.Teambegeleiding') AND name = 'Functie')
     ALTER TABLE [avg].[Teambegeleiding] ADD [Functie] NVARCHAR(150) NULL;

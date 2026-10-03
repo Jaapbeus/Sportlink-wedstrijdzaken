@@ -255,6 +255,7 @@ public partial class Instellingen : ClubSelectorPageBase
                 ["UseRealtimeApi"] = settings.UseRealtimeApi ? "1" : "0",
                 ["KnvbPdfBijlageIngeschakeld"] = settings.KnvbPdfBijlageIngeschakeld ? "1" : "0",
                 ["KnvbStandaardRegio"] = settings.KnvbStandaardRegio,
+                ["PdfExportIngeschakeld"] = settings.PdfExportIngeschakeld ? "1" : "0",
             }
         };
 
