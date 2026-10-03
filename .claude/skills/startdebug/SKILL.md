@@ -1,5 +1,5 @@
 ---
-description: Start alle lokale debug-services — Azurite, FunctionApp (:7094) en BlazorAdmin (:5242). Gebruik "swa" als argument voor de SWA emulator (:4280).
+description: Start alle lokale debug-services op de laatste develop-branch — Azurite, FunctionApp (:7094) en BlazorAdmin (:5242). Werkt develop eerst bij naar origin/develop en past openstaande migraties toe. Gebruik "swa" als argument voor de SWA emulator (:4280).
 disable-model-invocation: true
 argument-hint: [swa]
 ---
@@ -26,6 +26,68 @@ Start de lokale debug-omgeving. Scripts staan in `scripts/dev/`.
 >    geen scheidingsteken. Forward slashes werken op beide platforms.
 
 Alle commando's hieronder draaien in PowerShell 7 (`pwsh` op macOS, `powershell`/`pwsh` op Windows).
+
+## Stap 0 — Draai altijd de laatste `develop` (verplicht, vóór Stap 1)
+
+> **Waarom (#1466).** De skill start de services vanuit de huidige werkmap. Is dat de main-checkout,
+> dan draait de GUI op de productieversie — of erger, op een achterlopende main (voorbeeld: GUI
+> toonde v3.8.0.0 terwijl `origin/develop` al op v3.9.6.1 stond, 32 commits verder) — terwijl je
+> bijna altijd de nieuwste integratiestand wilt testen. `develop` is de integratiebranch voor lokaal
+> testen (zie CLAUDE.md, "Branch-strategie"); dáár hoort de debug-omgeving op te draaien. **Elke
+> volgende stap (1 t/m 7) voer je uit vanuit de develop-worktree die je hier bepaalt** — niet vanuit
+> de map waarin de sessie toevallig startte.
+
+**0a — Vind de worktree die `develop` uitgecheckt heeft.** `develop` kan maar in één worktree tegelijk
+staan; die is het doel van alle volgende stappen. Draai vanuit de repo-root:
+
+```powershell
+$developPad = $null; $pad = $null
+foreach ($line in (git worktree list --porcelain)) {
+    if     ($line -like 'worktree *')              { $pad = $line.Substring(9) }
+    elseif ($line -eq 'branch refs/heads/develop') { $developPad = $pad; break }
+}
+if (-not $developPad) {
+    Write-Host "Geen worktree op 'develop' gevonden. Maak er eenmalig één buiten de repo-boom:" -ForegroundColor Yellow
+    Write-Host "  git worktree add ../Sportlink-wedstrijdzaken-develop develop" -ForegroundColor Yellow
+    Write-Host "en draai daarna deze skill opnieuw." -ForegroundColor Yellow
+} else {
+    Write-Host "develop-worktree: $developPad" -ForegroundColor Green
+}
+```
+
+**0b — Werk develop bij naar `origin/develop` (fast-forward only).** Nooit forceren: heeft de lokale
+develop eigen commits (diverged), dan faalt de fast-forward bewust — stop dan en meld dat aan de
+gebruiker in plaats van te mergen of te resetten.
+
+```powershell
+git -C $developPad fetch origin develop
+git -C $developPad merge --ff-only origin/develop
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "FF-only mislukt — develop is lokaal afgeweken. STOP en meld aan de gebruiker." -ForegroundColor Red
+}
+```
+
+**0c — Pas openstaande Postgres-migraties toe VÓÓR het starten.** Een bijgewerkte develop brengt soms
+nieuwe migraties mee; zonder toepassen blijft `/api/health` op `degraded` staan met een niet-lege
+`pendingMigrations`. Doe dit nu, **niet** terwijl de services draaien: een `dotnet run` naast
+`func start` + `dotnet watch` heeft de functiehost al eens laten omvallen (SIGKILL door
+resource-druk). De runner is idempotent. De connection string komt uit `local.settings.json` —
+**nooit echoën**.
+
+```powershell
+Push-Location $developPad
+try {
+    $ls = Get-Content FunctionApp.Postgres/local.settings.json -Raw | ConvertFrom-Json
+    $env:POSTGRES_CONNECTION_STRING = $ls.Values.POSTGRES_CONNECTION_STRING
+    if ($env:POSTGRES_CONNECTION_STRING) { dotnet run --project Database.Postgres.Cli }
+    else { Write-Host "Geen POSTGRES_CONNECTION_STRING in local.settings.json" -ForegroundColor Yellow }
+} finally { Pop-Location }
+```
+
+**0d — Stap de sessie de develop-worktree in** (`Set-Location $developPad`, of werk met expliciete
+paden). Alle `./scripts/dev/...`-aanroepen en healthchecks hieronder gaan vanaf hier over díe
+worktree. Rapporteer in de samenvatting (Stap 7) welke branch én welk versienummer draaien, zodat
+meteen zichtbaar is dat het de laatste develop is.
 
 ## Stap 1 — Controleer lopende services
 
@@ -186,6 +248,7 @@ Als "An unhandled error" toch verschijnt na hard refresh:
 
 | Service | URL | Status |
 |---|---|---|
+| Branch / versie | develop → `/api/health`.version | ✅ laatste develop (fast-forward van origin/develop) |
 | Azurite | poort 10000 | ✅/❌ |
 | FunctionApp | http://localhost:7094/api/health | ✅/❌ versie: ... |
 | BlazorAdmin | http://localhost:5242 | ✅/❌ |
