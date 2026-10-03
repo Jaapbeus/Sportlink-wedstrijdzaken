@@ -211,6 +211,12 @@ zolang de melding niet is geanonimiseerd).
 * `submit`: maximaal 3 meldingen per 10 minuten **per gebruiker** (gemeten in `avg.Feedback`, dus
   gedeeld over instances) en een vangnet van 30 per uur voor de hele club. Boven de limiet:
   HTTP 429 met een mensentaal-melding.
+* **AI-dienst niet beschikbaar (#1487).** `validate`, `preview` en `submit` hebben alle drie de AI nodig
+  (titel, body en PII-gates). Is `IChatClient` niet geregistreerd — lokaal door de EgressGuard (#857) of
+  zonder API-sleutel — dan geven ze HTTP **503** `{ "error": "...", "aiBeschikbaar": false }` in plaats van
+  een 500. Eén plek: `FeedbackEndpointCore.ControleerAiBeschikbaar`, op beide tiers aangeroepen vóór de
+  invoerpoort (er wordt dus geen AI-limietslot verbruikt). De widget toont de servermelding; er wordt niets
+  bewaard of verstuurd.
 
 ## 11. Code-overzicht
 

@@ -96,7 +96,7 @@ verwerking plaats.
 | `PUT/DELETE` | `/beheer/teamregels/{id}` | **Admin** | Planningsregel wijzigen / verwijderen |
 | `GET` | `/beheer/email-log` | **Admin** | Verwerkte e-mails inzien (AVG-conform: geen berichtteksten) |
 | `POST` | `/test/email` | **Admin** | AI-classificatie dry-run zonder e-mail te versturen (Email-tester-pagina) |
-| `POST` | `/feedback/validate` | **Admin/User** | Feedback-widget: voorvalidatie op volledigheid. Per gebruiker begrensd (30 AI-aanroepen per 10 min, samen met `preview`) |
+| `POST` | `/feedback/validate` | **Admin/User** | Feedback-widget: voorvalidatie op volledigheid. Per gebruiker begrensd (30 AI-aanroepen per 10 min, samen met `preview`). **503** `{ error, aiBeschikbaar: false }` als de AI-dienst niet geregistreerd is (lokaal door de EgressGuard); geldt ook voor `preview` en `submit`, beide tiers gelijk (#1487) |
 | `POST` | `/feedback/preview` | **Admin/User** | Feedback-widget: exacte titel + body van het te publiceren issue opvragen, zónder iets aan te maken (#1205) |
 | `POST` | `/feedback/submit` | **Admin/User** | Feedback-widget: melding bewaren in `avg.Feedback` (melder = Entra object-ID + naam-momentopname, nooit in het publieke issue). **Admin**: direct als openbaar GitHub-issue; met `bevestiging` wordt exact de in het voorbeeld getoonde tekst gepubliceerd. **User**: wacht op publicatie door een beheerder, de response bevat geen issueverwijzing. Optioneel `telemetrie` (technische context, geredigeerd, na 90 dagen gewist). Limiet: 3 per 10 min per gebruiker, 30 per uur per club → `429` |
 | `GET` | `/beheer/feedback` | **Admin** | Feedbackoverzicht (filters `type`, `status`, `vanaf`, `tot`, `q`, `limit`, `offset`); elke aanroep komt in het inzagelog (#764) |

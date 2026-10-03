@@ -310,6 +310,22 @@ public class FeedbackEndpointCoreTests
 
     // ── Fakes ──────────────────────────────────────────────────────────────────────────────────
 
+    [Fact]
+    public void ControleerAiBeschikbaar_ZonderChatClient_Geeft503MetMelding()
+    {
+        var uitkomst = FeedbackEndpointCore.ControleerAiBeschikbaar(null, NullLogger.Instance);
+
+        var obj = uitkomst.Should().BeOfType<ObjectResult>().Subject;
+        obj.StatusCode.Should().Be(503);
+        obj.Value!.ToString().Should().Contain(FeedbackEndpointCore.AiNietBeschikbaarMelding);
+    }
+
+    [Fact]
+    public void ControleerAiBeschikbaar_MetChatClient_LaatDoor()
+    {
+        FeedbackEndpointCore.ControleerAiBeschikbaar(new FakeChat("{}"), NullLogger.Instance).Should().BeNull();
+    }
+
     private sealed class FakeChat(string antwoord) : IChatClient
     {
         public int Aanroepen { get; private set; }

@@ -59,14 +59,14 @@ public static class FeedbackFunction
         return SportlinkFunction.Admin.AdminEndpoint.ExecuteAuthenticatedAsync(req, log, "feedback valideren",
             async _ =>
             {
+                var chatClient = context.InstanceServices.GetService<IChatClient>();
+                if (FeedbackEndpointCore.ControleerAiBeschikbaar(chatClient, log) is { } zonderAi) return zonderAi;
                 var body = await new StreamReader(req.Body).ReadToEndAsync();
                 var dto = JsonConvert.DeserializeObject<FeedbackRequest>(body);
                 if (FeedbackEndpointCore.ControleerEnSaneer(dto, Aanroeper(req), "Type en beschrijving zijn verplicht.") is { } afwijzing)
                     return afwijzing;
 
-                var chatClient = context.InstanceServices.GetService<IChatClient>()
-                    ?? throw new InvalidOperationException("IChatClient niet geconfigureerd — controleer OpenAiApiKey env var");
-                return await ValidateCoreAsync(dto!, chatClient, log);
+                return await ValidateCoreAsync(dto!, chatClient!, log);
             });
     }
 
@@ -99,15 +99,15 @@ public static class FeedbackFunction
         return SportlinkFunction.Admin.AdminEndpoint.ExecuteAuthenticatedAsync(req, log, "feedback-voorbeeld samenstellen",
             async _ =>
             {
+                var chatClient = context.InstanceServices.GetService<IChatClient>();
+                if (FeedbackEndpointCore.ControleerAiBeschikbaar(chatClient, log) is { } zonderAi) return zonderAi;
                 var body = await new StreamReader(req.Body).ReadToEndAsync();
                 var dto = JsonConvert.DeserializeObject<FeedbackRequest>(body);
                 if (FeedbackEndpointCore.ControleerEnSaneer(dto, Aanroeper(req), "Beschrijving is verplicht.") is { } afwijzing)
                     return afwijzing;
 
-                var chatClient = context.InstanceServices.GetService<IChatClient>()
-                    ?? throw new InvalidOperationException("IChatClient niet geconfigureerd — controleer OpenAiApiKey env var");
 
-                return await PreviewCoreAsync(dto!, chatClient, log);
+                return await PreviewCoreAsync(dto!, chatClient!, log);
             });
     }
 
@@ -145,17 +145,17 @@ public static class FeedbackFunction
         return SportlinkFunction.Admin.AdminEndpoint.ExecuteAuthenticatedAsync(req, log, "feedback indienen",
             async clubCode =>
             {
+                var chatClient = context.InstanceServices.GetService<IChatClient>();
+                if (FeedbackEndpointCore.ControleerAiBeschikbaar(chatClient, log) is { } zonderAi) return zonderAi;
                 var body = await new StreamReader(req.Body).ReadToEndAsync();
                 var dto = JsonConvert.DeserializeObject<FeedbackRequest>(body);
                 var wie = Aanroeper(req);
                 if (FeedbackEndpointCore.ControleerEnSaneer(dto, wie, "Beschrijving is verplicht.") is { } afwijzing)
                     return afwijzing;
 
-                var chatClient = context.InstanceServices.GetService<IChatClient>()
-                    ?? throw new InvalidOperationException("IChatClient niet geconfigureerd — controleer OpenAiApiKey env var");
 
                 return await FeedbackEndpointCore.SubmitAsync(
-                    dto!, wie, clubCode, chatClient, new SqlFeedbackStore(SystemUtilities.DatabaseConfig.ConnectionString),
+                    dto!, wie, clubCode, chatClient!, new SqlFeedbackStore(SystemUtilities.DatabaseConfig.ConnectionString),
                     FeedbackEndpointCore.MaakGitHubIssueDelegate(Infrastructure.EgressGuard.ExternalIntegrationsAllowed(), log), log);
             });
     }
