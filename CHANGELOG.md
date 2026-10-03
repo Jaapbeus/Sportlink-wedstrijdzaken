@@ -19,6 +19,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Wedstrijd verwijderen uit Sportlink werkt nu echt** (#1458). Na een echte aanmaak op "Wedstrijd
+  aanmaken" verwijdert de knop de oefenwedstrijd daadwerkelijk uit Sportlink Club (tenzij dry-run aan
+  staat). Het bevestigblok waarschuwt: "Verwijderen is definitief; de tegenstander kan een melding
+  krijgen." Alleen clubwedstrijden kunnen weg, nooit een bondswedstrijd.
 - **Wedstrijd toevoegen direct op Planning** (#1468). Staat de Sportlink Web Extension aan, dan heeft
   Planning rechts in de datumbalk een groene knop **Wedstr. toevoegen**. Die opent het
   aanmaakformulier in een kaart op de pagina zelf, met de gekozen datum al ingevuld; na een echte
@@ -104,6 +108,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   volgt in issue #1460.
 
 ### Security
+- **Sportlink-wijzigingen zonder auditspoor worden geweigerd** (#1458). Is de mutatie-audit
+  niet beschikbaar, dan voert de server geen enkele Sportlink-mutatie meer uit (melding 503) in plaats
+  van zonder logboek door te gaan; dit geldt op beide databasetiers.
 - **Elke release begint met een verplichte securitypoort** (#1470). De nieuwe releaseprocedure
   `/release` laat de code die naar productie gaat eerst inhoudelijk op beveiligingslekken
   beoordelen, en stopt de release bij een ernstige bevinding of een openstaande beveiligingsmelding

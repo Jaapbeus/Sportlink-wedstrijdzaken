@@ -184,9 +184,10 @@ deleteMatch: mutation({ query: e => ({ method: `DELETE`,
 
 **Wat de app ermee doet (#1440):** `SportlinkClubClient.DeleteClubMatchAsync` volgt vraag 1–3; de
 guard (`SportlinkMutationSoort.Verwijderen`) eist een expliciete `IsKernelMatch = false` (fail-closed:
-ontbreekt het veld, dan weigert hij) en daarnaast de bestaande `IsHomeMatch`-regel. De aanroep staat
-hard op dry-run via `ClubMatchDeleteLiveBevestigd = false` totdat de eigenaar het contract live
-bevestigt — zie `docs/SPORTLINK-WEB-EXTENSION.md` §4.4 en §6.2.
+ontbreekt het veld, dan weigert hij) en daarnaast de bestaande `IsHomeMatch`-regel. Sinds #1458 is de
+code-lock opgeheven (`ClubMatchDeleteLiveBevestigd = true`, live respons `{PublicMatchId,
+IsSuccess}`) en volgt de aanroep `sportlinkDryRun` — zie `docs/SPORTLINK-WEB-EXTENSION.md` §6.4.
+Historisch: de bundle-analyse hierboven is de bron van het contract, niet bijgewerkt.
 
 **Openstaand voor de live bevestiging door de eigenaar** (op een testwedstrijd die echt weg mag):
 de DELETE-aanroep zelf (methode, querystring, statuscode en body van de respons), of `IsKernelMatch`
