@@ -41,16 +41,16 @@ Drie beveiligingsniveaus:
 | Niveau | Sleutel | Wie | Endpoints |
 |--------|---------|-----|-----------|
 | **Anoniem** | geen | iedereen | `GET /api/health` |
-| **Admin** | Easy Auth Bearer + `admin`-rol (`EasyAuthHelper.RequireAdmin`) | Alleen coördinator | Alle overige `/api/beheer/*`-, `/api/planner/*`- (behalve `veldbezetting`), `/api/feedback/*`-, `/api/test/*`-endpoints, én `GET /api/postgres/sync-matches` / `GET /api/sync-matches` (sinds #1350) |
-| **Admin/User** | Easy Auth Bearer + `admin` óf `user` (`AdminEndpoint.ExecuteAuthenticatedAsync`, #1330) | Elke ingelogde gebruiker | `GET /api/planner/veldbezetting` (Planning-pagina, #1400), `GET /api/sportlink/match/{wedstrijdcode}` en `.../public-match-id` (Sportlink-paneel viewen, #1400), plus de drie Teambegeleiding-lookup/doorstuur-endpoints (#1330) |
+| **Admin** | Easy Auth Bearer + `admin`-rol (`EasyAuthHelper.RequireAdmin`) | Alleen coördinator | Alle overige `/api/beheer/*`- (inclusief het feedbackoverzicht `/api/beheer/feedback/*`), `/api/planner/*`- (behalve `veldbezetting`), `/api/test/*`-endpoints, én `GET /api/postgres/sync-matches` / `GET /api/sync-matches` (sinds #1350) |
+| **Admin/User** | Easy Auth Bearer + `admin` óf `user` (`AdminEndpoint.ExecuteAuthenticatedAsync`, #1330) | Elke ingelogde gebruiker | `GET /api/planner/veldbezetting` (Planning-pagina, #1400), de drie `/api/feedback/*`-endpoints (#764: iedereen die is ingelogd mag feedback geven), `GET /api/sportlink/match/{wedstrijdcode}` en `.../public-match-id` (Sportlink-paneel viewen, #1400), plus de drie Teambegeleiding-lookup/doorstuur-endpoints (#1330) |
 | **Wedstrijdzaken** | Easy Auth Bearer + `Wedstrijdzaken`-rol **óf** de `admin`-rol (`EasyAuthHelper.RequireWedstrijdzaken`, beide poorten sinds #1400 — vóór #1400 eiste de tweede poort altijd `admin`) | Wedstrijdsecretariaat | De Sportlink-mutatie-endpoints (`PUT`/`POST` onder `/api/sportlink/*`) |
 
 > **`AuthorizationLevel` in de trigger zegt niets over de echte poort.** Élk endpoint staat op
 > `AuthorizationLevel.Anonymous` — dat betekent alleen "geen Function key". De daadwerkelijke
 > rolcontrole gebeurt via de centrale wrappers `AdminEndpoint.ExecuteAsync` (uitsluitend admin, met
 > database-toegang), `AdminEndpoint.ExecuteZonderDatabaseAsync` (uitsluitend admin, zonder database —
-> de drie `/api/feedback/*`-endpoints), `AdminEndpoint.ExecuteAuthenticatedAsync` (elke ingelogde
-> rol — admin + user, #1330/#1400) en, voor de Sportlink-mutatie-endpoints, via
+> sinds #764 door geen enkel feedback-endpoint meer gebruikt), `AdminEndpoint.ExecuteAuthenticatedAsync` (elke ingelogde
+> rol — admin + user, #1330/#1400, sinds #764 ook de drie `/api/feedback/*`-endpoints) en, voor de Sportlink-mutatie-endpoints, via
 > `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync` (Wedstrijdzaken óf admin, beide poorten sinds
 > #1400). Twee bewuste uitzonderingen roepen `EasyAuthHelper.RequireAdmin` nog direct aan, vóór een
 > eventuele databaseaanroep: `POST /api/beheer/theme/extract` (een luie URL-check vóór de
@@ -83,7 +83,7 @@ verwerking plaats.
 | `GET/PUT` | `/beheer/settings` | **Admin** | Club-instellingen ophalen/opslaan (incl. Sportlink Web Extension-schakelaar) |
 | `GET` | `/beheer/geocode` | **Admin** | Adres → GPS-coördinaten opzoeken voor de accommodatie-instelling |
 | `GET` | `/beheer/sync/status` | **Admin** | Status van de laatste Sportlink-synchronisatie, plus optioneel `?jobId=` voor een specifieke sync-job (#1138) |
-| `POST` | `/beheer/sync/trigger` | **Admin** | Synchronisatie starten via een Storage Queue-job (#1138) — geeft direct een `jobId` terug, geen fire-and-forget meer |
+| `POST` | `/beheer/sync/trigger` | **Admin** | Synchronisatie starten via een Storage Queue-job (#1138) — geeft direct een `jobId` terug, geen fire-and-forget meer. Optionele body `{"reset":true,"season":2025}` haalt het hele seizoen opnieuw op vanaf de seizoensstart (#1352); ongeldig seizoen of een seizoen zonder seizoensrij → 400 (#1461) |
 | `GET` | `/beheer/teams` | **Admin** | Teamlijst ophalen |
 | `GET` | `/beheer/templates` | **Admin** | Alle e-mailtemplates per berichttype ophalen |
 | `PUT` | `/beheer/templates/{key}` | **Admin** | Eén e-mailtemplate opslaan |
@@ -96,9 +96,13 @@ verwerking plaats.
 | `PUT/DELETE` | `/beheer/teamregels/{id}` | **Admin** | Planningsregel wijzigen / verwijderen |
 | `GET` | `/beheer/email-log` | **Admin** | Verwerkte e-mails inzien (AVG-conform: geen berichtteksten) |
 | `POST` | `/test/email` | **Admin** | AI-classificatie dry-run zonder e-mail te versturen (Email-tester-pagina) |
-| `POST` | `/feedback/validate` | **Admin** | Feedback-widget: voorvalidatie op volledigheid |
-| `POST` | `/feedback/preview` | **Admin** | Feedback-widget: exacte titel + body van het te publiceren issue opvragen, zónder iets aan te maken (#1205) |
-| `POST` | `/feedback/submit` | **Admin** | Feedback-widget: publiceren als **openbaar** GitHub-issue; met `bevestiging` wordt exact de in het voorbeeld getoonde tekst gepubliceerd |
+| `POST` | `/feedback/validate` | **Admin/User** | Feedback-widget: voorvalidatie op volledigheid. Per gebruiker begrensd (30 AI-aanroepen per 10 min, samen met `preview`). **503** `{ error, aiBeschikbaar: false }` als de AI-dienst niet geregistreerd is (lokaal door de EgressGuard); geldt ook voor `preview` en `submit`, beide tiers gelijk (#1487) |
+| `POST` | `/feedback/preview` | **Admin/User** | Feedback-widget: exacte titel + body van het te publiceren issue opvragen, zónder iets aan te maken (#1205) |
+| `POST` | `/feedback/submit` | **Admin/User** | Feedback-widget: melding bewaren in `avg.Feedback` (melder = Entra object-ID + naam-momentopname, nooit in het publieke issue). **Admin**: direct als openbaar GitHub-issue; met `bevestiging` wordt exact de in het voorbeeld getoonde tekst gepubliceerd. **User**: wacht op publicatie door een beheerder, de response bevat geen issueverwijzing. Optioneel `telemetrie` (technische context, geredigeerd, na 90 dagen gewist). Limiet: 3 per 10 min per gebruiker, 30 per uur per club → `429` |
+| `GET` | `/beheer/feedback` | **Admin** | Feedbackoverzicht (filters `type`, `status`, `vanaf`, `tot`, `q`, `limit`, `offset`); elke aanroep komt in het inzagelog (#764) |
+| `GET` | `/beheer/feedback/{id}` | **Admin** | Eén melding met technische context; komt in het inzagelog |
+| `POST` | `/beheer/feedback/{id}/publiceer` | **Admin** | Een wachtende melding publiceren als GitHub-issue (exact de bewaarde tekst, PII-gate opnieuw); `409` bij een tweede klik |
+| `GET` | `/beheer/feedback/inzagelog` | **Admin** | Wie bekeek welke melding (nooit de inhoud; 24 maanden bewaard) |
 | `POST` | `/planner/check-availability` | **Admin** | Veldbeschikbaarheid controleren — gescoped op `X-Club-Code` header |
 | `POST` | `/planner/doordeweeks-beschikbaar` | **Admin** | Doordeweekse beschikbaarheid door het seizoen heen — gescoped op `X-Club-Code` header |
 | `POST` | `/planner/bevestig` | **Admin** | Wedstrijdslot boeken |
@@ -107,11 +111,13 @@ verwerking plaats.
 | `POST` | `/planner/herplan-check` | **Admin** | Herplan-alternatieven simuleren — gescoped op `X-Club-Code` header |
 | `POST` | `/planner/herplan-bevestig` | **Admin** | Herplanverzoek registreren |
 | `POST` | `/planner/auto-plan` | **Admin** | **Dagplanning optimaliseren** — regels → voorkeurstijden → leeftijdsdefaults |
+| `POST` | `/planner/auto-plan/deel` | **Admin** | Planning delen zoals getoond op het scherm (HTML/PDF, stateless, #1460) |
 | `POST` | `/planner/auto-plan/toepassen` | **Admin** | Berekende planning wegschrijven (alleen testmodus ALLSTARS) |
+| `GET` | `/planner/pdf-export` | **Admin/User** | Of PDF-export voor de gekozen club aan staat: `{ "pdfExportIngeschakeld": bool }` — Planning toont de PDF-knop alleen dan, ook voor de rol `user` (#1459) |
 | `GET` | `/planner/veldbezetting?datum=` | **Admin/User** | Wedstrijden op een datum, zonder optimalisatie-berekening — voedt de Planning-pagina, sinds #1400 generiek zichtbaar voor elke ingelogde gebruiker |
 | `GET` | `/planner/team-schedule` | **Admin** | Wedstrijdschema per team — gescoped op `X-Club-Code` header |
 | `GET` | `/beheer/teambegeleiding` | **Admin + user** | Alle teams met begeleiding in database (#1330: elke ingelogde rol) |
-| `GET` | `/beheer/teambegeleiding/{team}` | **Admin + user** | Begeleiders van team (naam + rol, nooit e-mail) (#1330: elke ingelogde rol) |
+| `GET` | `/beheer/teambegeleiding/{team}` | **Admin + user** | Begeleiders van team (naam + rol + functie, nooit e-mail) (#1330: elke ingelogde rol) |
 | `POST` | `/beheer/teambegeleiding/doorsturen` | **Admin + user** | Vraag doorsturen (BCC coördinator). `ontvangers` bepaalt de ontvangers (max 15, gevalideerd, uitsluitingslijst gecontroleerd); leeg → server-side coach-lookup (#765) (#1330: elke ingelogde rol) |
 | `POST` | `/beheer/teambegeleiding/import` | **Admin** | CSV-import van begeleiders — vervangt de rijen van de club atomisch (DELETE + inserts + audit-rij in één transactie, rollback bij elke fout; #1131/#1132). Kolomlengtes worden vóór elke destructieve stap gevalideerd; een te lange waarde geeft `400` met `{ error, fouten: [...] }` (rij/kolom-omschrijving per overtreding) en laat de vorige import ongemoeid. Postgres-tier serialiseert vervangingen per club (`pg_advisory_xact_lock`) zodat twee gelijktijdige imports elkaar nooit tot een vereniging van beide batches kunnen combineren. CSV wordt in-memory verwerkt en nooit opgeslagen; `avg.ImportLog` bevat alleen metadata — geen PII |
 | `GET/POST` | `/beheer/speeltijden` | **Admin** | Speeltijden per leeftijdscategorie: lijst ophalen / toevoegen |
@@ -140,9 +146,10 @@ verwerking plaats.
 | `PUT` | `/sportlink/match/{wedstrijdcode}/officials` | **Wedstrijdzaken** | Officials (scheidsrechter/AR1/AR2) toewijzen — sinds #1319 live bevestigd (was scaffolding/code-gelockt via `forceDryRun`, onafhankelijk van `sportlinkDryRun`); alleen relatiecode/persoons-ID, geen namen (AVG, #994); sinds #1341 ook geweigerd (409) als de per-rol feature-instelling uitstaat |
 | `PUT` | `/sportlink/match/{wedstrijdcode}/change-request` | **Wedstrijdzaken** | Wijzigingsverzoek datum/tijd/accommodatie — **ALLEEN stap 1 (valideren)** van Sportlinks tweestaps flow, `Toelichting` verplicht; sinds #1319 live bevestigd (was code-gelockt); enige mutatie die een echte tegenstander raakt — stap 2 (bevestigen) is bewust niet gebouwd (#995). Sinds #1320 retourneert de respons ook een diagnostiektrace (HTTP-status, endpoint, audit-ID, de vier toplevel-booleans) i.p.v. kaal Mutatie+Validatie — zie `docs/SPORTLINK-WEB-EXTENSION.md` §6.4 |
 | `PUT` | `/sportlink/audit/{id}/notitie` | **Wedstrijdzaken** | Testnotitie koppelen aan een bestaande Sportlink-mutatieauditpoging (#1320) — voor de eigenaar-gestuurde productieproef; scoped op `ClubCode`, 404 bij verkeerde club of onbekend ID; lege string toegestaan om te wissen (max. 1000 tekens) |
-| `GET` | `/sportlink/change-requests` | **Wedstrijdzaken** | Inkomende en uitgaande wijzigingsverzoeken ophalen (#996; `RequestStatus` = Sportlinks `ChangeRequestStatus`, plus `IsIncomingRequest` en `StatusGroep` OPEN/ACCEPTED/DENIED/REVOKED/UNKNOWN, #1439), sinds #1111 verrijkt met eigen wedstrijdcontext (`Wedstrijd`: nummer, teams, datum, tijd, accommodatie uit `his.matches` via de PublicMatchId-cache; `null` als niet gecachet) en met openstaande (`StatusGroep` OPEN, inkomend eerst) verzoeken vooraan |
+| `GET` | `/sportlink/change-requests` | **Wedstrijdzaken** | Inkomende en uitgaande wijzigingsverzoeken ophalen (#996; `RequestStatus` = Sportlinks `ChangeRequestStatus`, plus `IsIncomingRequest` en `StatusGroep` OPEN/ACCEPTED/DENIED/REVOKED/UNKNOWN, #1439), sinds #1111 verrijkt met eigen wedstrijdcontext (`Wedstrijd`: nummer, teams, datum, tijd, accommodatie uit `his.matches` via de PublicMatchId-cache; `null` als niet gecachet), sinds #1464 met Sportlinks eigen `ExternalMatchId`/`Thuisteam`/`Uitteam` als terugval, en met openstaande (`StatusGroep` OPEN, inkomend eerst) verzoeken vooraan |
 | `PUT` | `/sportlink/change-requests/{publicRequestId}/action` | **Wedstrijdzaken** | Wijzigingsverzoek goedkeuren (`Actie=APPROVE`) of afwijzen (`Actie=DENY`, `Remarks` verplicht) (#996) |
-| `POST` | `/sportlink/club-match` | **Wedstrijdzaken** | Oefenwedstrijd ("clubwedstrijd") aanmaken — volgt `sportlinkDryRun`; **contract sinds #1427 live bevestigd** (body gelijk aan Sportlinks eigen formulier). Body: `MatchDateTime`, `Duration`, `TeamNaam`, `VrijeTekst` (bij `true` geen 400 voor een onbekend team; Sportlinks standaardteam levert dan het team-ID), `Tegenstander`, `VeldNummer`, `Description`, sinds #1437 `Velddeel` (`1.0`/`0.5`/`0.25`/`0.125`, standaard heel veld; de notatie van half/kwart/achtste is een aanname) en `AgeClassCode` (Sportlink-`Id` uit het formulier-endpoint; wint van de categorie van het team). De server haalt `ClubMatchDefaults`, `PickListsTeams`, `PickListsLocation` en `PickListsMatchInformation` op en leidt daaruit het `T…`-team-ID, leeftijdscategorie, spelactiviteit, `SubFacilityId` af; het wedstrijdnummer komt sinds #1437 uit een eigen teller (`YYMMDD` + volgnummer per speeldag, max. 99 per dag → anders 400); de clubinstelling `SportlinkSpelactiviteit` gaat voor de spelactiviteit van het team; team/veld niet (eenduidig) bij Sportlink → 400, overige terugvallen als `Waarschuwingen`. Geen `SportlinkMutationGuard` (er is vooraf geen wedstrijd). Verwijderen/uitslag bewust niet gebouwd (#997) |
+| `POST` | `/sportlink/club-match` | **Wedstrijdzaken** | Oefenwedstrijd ("clubwedstrijd") aanmaken — volgt `sportlinkDryRun`; **contract sinds #1427 live bevestigd** (body gelijk aan Sportlinks eigen formulier). Body: `MatchDateTime`, `Duration`, `TeamNaam`, `VrijeTekst` (bij `true` geen 400 voor een onbekend team; Sportlinks standaardteam levert dan het team-ID), `Tegenstander`, `VeldNummer`, `Description`, sinds #1437 `Velddeel` (`1.0`/`0.5`/`0.25`/`0.125`, standaard heel veld; de notatie van half/kwart/achtste is een aanname) en `AgeClassCode` (Sportlink-`Id` uit het formulier-endpoint; wint van de categorie van het team). De server haalt `ClubMatchDefaults`, `PickListsTeams`, `PickListsLocation` en `PickListsMatchInformation` op en leidt daaruit het `T…`-team-ID, leeftijdscategorie, spelactiviteit, `SubFacilityId` af; het wedstrijdnummer komt sinds #1437 uit een eigen teller (`YYMMDD` + volgnummer per speeldag, max. 99 per dag → anders 400); de clubinstelling `SportlinkSpelactiviteit` gaat voor de spelactiviteit van het team; team/veld niet (eenduidig) bij Sportlink → 400, overige terugvallen als `Waarschuwingen`. Geen `SportlinkMutationGuard` (er is vooraf geen wedstrijd). Uitslag bewust niet gebouwd (#997); verwijderen: zie de regel hieronder (#1440) |
+| `DELETE` | `/sportlink/club-match/{publicMatchId}` | **Wedstrijdzaken** | Clubwedstrijd (oefenwedstrijd) verwijderen (#1440) — live sinds #1458 (volgt `sportlinkDryRun`; bij dry-run `IsDryRun: true`). Haalt eerst de wedstrijd op voor `SportlinkMutationGuard` (`Verwijderen`: alleen bij expliciet `IsKernelMatch = false` én `IsHomeMatch`, anders 409); **503 als de mutatie-auditservice ontbreekt (fail-closed, geldt voor alle Sportlink-mutaties)**; elke poging staat in de mutatie-audit met het `PublicMatchId`. Nooit automatisch herhaald. Respons `{ IsSuccess, Violations, IsDryRun, IsForcedDryRun, PublicMatchId }`; 400 bij een ongeldig `PublicMatchId`, 404 als Sportlink de wedstrijd niet kent. De GUI biedt dit alleen aan op het resultaat van "Wedstrijd aanmaken" |
 | `GET` | `/sportlink/club-match/dryrun-status` | **Wedstrijdzaken** | Actuele dry-run-stand (`{ DryRun }`) voor de banner op "Wedstrijd aanmaken" — leest alleen de club-instelling `sportlinkDryRun`, geen Sportlink-aanroep (#1427) |
 | `GET` | `/sportlink/club-match/formulier` | **Wedstrijdzaken** | Voorinvulling voor "Wedstrijd aanmaken" (#1437): per actief team `{ TeamNaam, Leeftijdscategorie, AgeClassCode, Duur, Veldafmeting }` (Sportlink-categorie, wedstrijdduur en velddeel uit de speeltijden van de club) plus `AgeClasses` `[{ Id, Description }]` uit Sportlink en `SportlinkBeschikbaar`. Eigen endpoint omdat de speeltijden-API admin-only is. Is Sportlink onbereikbaar, dan komen de teamgegevens zonder lijst terug (`SportlinkBeschikbaar: false`) |
 | `GET` | `/sportlink/club-match/picklists` | **Wedstrijdzaken** | De twee Sportlink-picklists (Teams + Location) — read-only, persoonsgegevensvrij. Sinds #1427 los van elkaar: een onherkenbare teamlijst blokkeert de locatielijst niet meer. Diagnostisch endpoint (id + naam per item); het aanmaakpad gebruikt sinds #1427 de volledige lijsten via de server (#997) |
@@ -750,6 +757,35 @@ Sinds #666 is dit de enige dagplanning-optimalisatie.
 | `datum` | `string` | **Ja** | Datum in `yyyy-MM-dd` formaat |
 | `bufferMinuten` | `integer` | Nee | Buffer tussen wedstrijden. Standaard 15. Teamspecifieke buffers uit `public.teamregels` gaan vóór als die groter zijn |
 
+### Query-parameters (#1364)
+
+| Parameter | Type | Verplicht | Beschrijving |
+|-----------|------|-----------|-------------|
+| `format` | `string` | Nee | `json` (standaard), `html` of `pdf` — dezelfde berekening, maar het resultaat als gedeeld document (zelfde kolommen als de Planning-export). Bestandsnaam `huidige-planning-<datum>.pdf` / `optimale-planning-<datum>.pdf`. Andere waarde: 400 |
+| `tab` | `string` | Nee | `huidig` (standaard) of `optimaal` — welke kant in het document komt. Alleen relevant bij `format=html|pdf`. Andere waarde: 400 |
+
+`format=pdf` vereist dat de clubinstelling **PDF-export** (`PdfExportIngeschakeld`, Instellingen) aan staat; standaard staat hij uit en geeft `format=pdf` dan **`409`** met een uitleg (#1459). `json` en `html` zijn niet afhankelijk van die instelling.
+
+Bij `format=html|pdf` moet `datum` strikt `yyyy-MM-dd` zijn (anders 400). De berekening is een pure
+leesbewerking; alleen `/planner/auto-plan/toepassen` schrijft, dus een tweede aanroep voor de export heeft
+geen bijwerking.
+
+### POST /api/planner/auto-plan/deel — planning delen zoals getoond (#1460)
+
+Stateless: de browser stuurt de lijst zoals die op Veld optimalisatie staat (inclusief handmatig
+versleepte blokken); de server valideert en rendert hetzelfde HTML/PDF-document als
+`auto-plan?format=`. Geen opslag, geen herberekening. Query `format=html|pdf` (verplicht).
+
+```json
+{ "datum": "2026-10-03", "tab": "optimaal",
+  "wedstrijden": [ { "teamNaam": "...", "wedstrijd": "Thuis - Uit", "competitiesoort": "...", "tijd": "09:30", "veld": "..." } ] }
+```
+
+Limieten: max 500 wedstrijden; tekstvelden max 200 tekens zonder stuurtekens; `tijd` `HH:mm`;
+`datum` `yyyy-MM-dd` tussen 2020-01-01 en 2100-12-31; body max 512 KB (413). De club komt van de
+aanroeper — een afwijkende optionele `clubCode` geeft 403. Overige fouten: 400.
+`format=pdf` volgt dezelfde clubinstelling **PDF-export** als hierboven: uit (standaard) geeft **`409`** (#1459).
+
 ### Rangorde van het planningsdoel
 
 Per wedstrijd wordt de streeftijd bepaald in deze vaste volgorde:
@@ -799,7 +835,9 @@ eerste claimt. `BufferVoor`/`BufferNa` zijn geen laag maar gelden altijd.
       "voorkeurBron": "leeftijd",
       "voorkeurStatus": "kleine-afwijking",
       "voorkeurVeldNummer": null,
-      "voorkeurVeldToegepast": null
+      "voorkeurVeldToegepast": null,
+      "teamBufferVoor": null,
+      "teamBufferNa": 60
     }
   ],
   "huidigeHtml": "<html>...</html>",
@@ -820,6 +858,12 @@ minuten als "OK" werd gepresenteerd.
 
 `voorkeurVeldToegepast` is `false` als er een voorkeursveld was maar de planner een ander veld moest
 kiezen; `null` als er geen voorkeursveld-regel is.
+
+`teamBufferVoor`/`teamBufferNa` (#1430) zijn de actieve teamregels `BufferVoor`/`BufferNa` van het team
+in minuten, of `null` zonder regel. Het zijn de ruwe waarden: de effectieve buffer is het maximum met de
+algemene buffer, en tussen twee opeenvolgende wedstrijden telt de grootste van de `BufferNa` van de
+voorganger en de `BufferVoor` van de opvolger. De Admin GUI gebruikt ze om na handmatig verslepen exact
+dezelfde regel toe te passen als de planner.
 
 > **`nietInplanbaaarReden` — let op de dubbele `a`.** De veldnaam bevat een typefout die in het
 > wire-contract zit (`AutoPlanWedstrijdItem` op beide tiers). Hij is gevuld bij
@@ -854,6 +898,7 @@ ingelogde gebruiker zichtbaar zijn.
 | Parameter | Type | Verplicht | Beschrijving |
 |-----------|------|-----------|-------------|
 | `datum` | `string` | **Ja** | Datum in `yyyy-MM-dd` formaat |
+| `format` | `string` | Nee | `json` (standaard), `html` (zelfstandige pagina, `text/html`) of `pdf` (`application/pdf`, bestandsnaam `veldbezetting-<datum>.pdf`). Andere waarde: 400 (#1364) |
 
 ### Antwoord — JSON (200)
 
@@ -1082,6 +1127,20 @@ curl "http://localhost:7094/api/beheer/sync/status?jobId=<jobId>"
 #  "job":{"id":"…","status":"running|succeeded|failed","weekOffsetFrom":-1,"weekOffsetTo":15,
 #         "createdAt":"…","startedAt":"…","completedAt":null,"errorMessage":null}}
 ```
+
+**Volledig seizoen opnieuw ophalen (#1352):** optionele JSON-body, zelfde semantiek als
+`GET /sync-matches?reset=true&season=`:
+
+```bash
+curl -X POST http://localhost:7094/api/beheer/sync/trigger \
+  -H "Content-Type: application/json" -d '{"reset":true,"season":2025}'
+# weekOffsetFrom = weekoffset van de seizoensstart i.p.v. -1
+```
+
+`season` is het startjaar (2000 t/m huidig jaar + 1) en is verplicht bij `reset:true`; zonder
+`reset` wordt `season` genegeerd en blijft het gedrag ongewijzigd. Ongeldige waarde of ongeldige
+JSON → `400` met `{"error":"…"}` (NL-melding). Validatie staat tier-onafhankelijk in
+`Planner.Shared/Sync/SyncTriggerCore.cs`.
 
 Zonder `?jobId=` geeft `/beheer/sync/status` de meest recente job terug. `job` is `null` zolang er
 nog nooit een sync is gestart. Mogelijke `job.status`-waarden: `pending`, `running`, `succeeded`,

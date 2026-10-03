@@ -65,8 +65,10 @@ Azure-productieomgeving. Eenmalig uit te voeren, daarna niet meer dagelijks nodi
 | [ARCHITECTUUR-CODEKWALITEIT.md](ARCHITECTUUR-CODEKWALITEIT.md) | Codekwaliteitsregels met CI-guard en plafond per regel |
 | [ARCHITECTUUR-AI-SERVICES.md](ARCHITECTUUR-AI-SERVICES.md) | Provider-agnostisch AI-ontwerp, datumregel, few-shot conventies |
 | [ARCHITECTUUR-TEAMRESOLUTIE.md](ARCHITECTUUR-TEAMRESOLUTIE.md) | Teamnaam-normalisatie, aliassen, disambiguatie |
+| [ARCHITECTUUR-PDF-EXPORT.md](ARCHITECTUUR-PDF-EXPORT.md) | PDF-export met QuestPDF: licentie, native assets, pakketgrootte |
 | [ARCHITECTUUR-EMAIL-MODULE.md](ARCHITECTUUR-EMAIL-MODULE.md) | Doelarchitectuur e-mailverzendlaag — ontwerp, migratie nog niet gestart |
 | [SPORTLINK-WEB-EXTENSION.md](SPORTLINK-WEB-EXTENSION.md) | Schrijfrichting webapp → Sportlink Club: protocol, endpoints, agent-tokengrens |
+| [FEEDBACK.md](FEEDBACK.md) | Feedbackwidget en -overzicht: rollen, publicatiebeleid, technische context en redactie, bewaartermijnen, verwerkingsregister (#764) |
 | [SPORTLINK-AUTOLOGIN.md](SPORTLINK-AUTOLOGIN.md) | Automatische Sportlink-login (#1411): implementatie, productie-setup, TOTP-verwerking |
 | [ARCHITECTUUR-PLANNER.md](ARCHITECTUUR-PLANNER.md) | Planner API: algoritme, velddefinities, API-contract |
 | [API.md](API.md) | Alle HTTP-endpoints: routes, parameters, response-formaten |
@@ -75,6 +77,7 @@ Azure-productieomgeving. Eenmalig uit te voeren, daarna niet meer dagelijks nodi
 | [EMAIL-VERWERKING.md](EMAIL-VERWERKING.md) | E-mailpipeline, AI-classificatie, templates, kanaalstrategie |
 | [VERSIONING.md](VERSIONING.md) | Semver-regels, conventional commits, release-workflow, CHANGELOG-richtlijnen |
 | [VERIFICATIE-SCRIPTS.md](VERIFICATIE-SCRIPTS.md) | Test-App.ps1: schema-controle, endpoint-verificatie, Blazor-pagina's |
+| [SERENA-VS-GRAFT-BENCHMARK.md](SERENA-VS-GRAFT-BENCHMARK.md) | Context-ophaal workflows: waarom dit project Serena gebruikt, waar Graft sterker is |
 | [LOKAAL-DEBUGGEN.md](LOKAAL-DEBUGGEN.md) | Services starten, poorten, Azurite, func start, hot-reload |
 | [SPORTLINK-CLUB-SCHERMEN-ANALYSE.md](SPORTLINK-CLUB-SCHERMEN-ANALYSE.md) | Analyse van Sportlink Club-schermen en beschikbare datavelden |
 | [ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md](ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md) | Bronrapport netwerktraces en endpoint-contracten — onderzoek, niet meer actief bijgewerkt |
@@ -89,6 +92,7 @@ Azure-productieomgeving. Eenmalig uit te voeren, daarna niet meer dagelijks nodi
 | [SETUP-CHECKLIST.md](SETUP-CHECKLIST.md) | Snelle checklist voor eerste opzet, beide databasetiers |
 | [ENTRA-AUTH-BEHEER.md](ENTRA-AUTH-BEHEER.md) | Entra App Registration, Easy Auth, rollen — configure via scripts |
 | [CUSTOM-DOMAIN.md](CUSTOM-DOMAIN.md) | Eigen domein op de Static Web App, CORS-origins, redirect-URI's |
+| [RUNBOOK-FLEX-MIGRATIE.md](RUNBOOK-FLEX-MIGRATIE.md) | Eenmalig draaiboek Flex Consumption-migratie (epic #1063); vervalt na FLEX-13 |
 
 ### Navigatie
 

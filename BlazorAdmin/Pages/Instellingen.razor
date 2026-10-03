@@ -52,6 +52,28 @@
                     <button class="btn btn-primary btn-sm" @onclick="TriggerSyncAsync" disabled="@(_syncing)">
                         @(_syncing ? "Synchroniseren..." : "Nu synchroniseren")
                     </button>
+                    <button class="btn btn-outline-secondary btn-sm ms-2" id="sync-reset-open" @onclick="ToonResetBevestiging" disabled="@(_syncing)">
+                        Volledig seizoen opnieuw opbouwen…
+                    </button>
+                    @if (_toonResetBevestiging)
+                    {
+                        <div class="alert alert-warning mt-3" id="sync-reset-bevestiging" role="alertdialog">
+                            <p class="mb-2">
+                                <strong>Zeker weten?</strong> Alle wedstrijden vanaf de start van het gekozen seizoen worden
+                                opnieuw bij Sportlink opgehaald. Dit duurt langer en belast de Sportlink-koppeling zwaarder
+                                dan een gewone synchronisatie.
+                            </p>
+                            <label class="form-label" for="sync-reset-seizoen">Seizoen (startjaar)</label>
+                            <select id="sync-reset-seizoen" class="form-select form-select-sm w-auto mb-2" @bind="_resetSeizoen">
+                                @foreach (var jaar in ResetSeizoenOpties)
+                                {
+                                    <option value="@jaar">@jaar/@(jaar + 1)</option>
+                                }
+                            </select>
+                            <button class="btn btn-danger btn-sm" id="sync-reset-bevestig" @onclick="BevestigResetAsync">Ja, opnieuw opbouwen</button>
+                            <button class="btn btn-link btn-sm" id="sync-reset-annuleer" @onclick="AnnuleerReset">Annuleren</button>
+                        </div>
+                    }
                     @if (!string.IsNullOrEmpty(_syncResult))
                     {
                         <div class="alert alert-info mt-3">@_syncResult</div>
@@ -223,6 +245,26 @@ else
                 <small class="form-text text-muted">
                     Aan: de planner checkt beschikbaarheid direct bij de Sportlink API (meest actueel).
                     Uit: alleen de lokale database wordt gebruikt (sneller, werkt zonder API-verbinding).
+                </small>
+            </div>
+        </div>
+
+        <hr />
+        <h5>PDF-export</h5>
+        <div class="row">
+            <div class="col-md-8 mb-3">
+                <div class="form-check form-switch mt-2">
+                    <input class="form-check-input" type="checkbox" id="pdfExportIngeschakeld"
+                           @bind="settings.PdfExportIngeschakeld" />
+                    <label class="form-check-label" for="pdfExportIngeschakeld">
+                        PDF-export van planningen inschakelen
+                    </label>
+                </div>
+                <small class="form-text text-muted">
+                    De PDF-knop bij "delen" gebruikt de bibliotheek QuestPDF onder de Community-licentie. Die is
+                    alleen gratis voor organisaties met een jaaromzet onder 1 miljoen USD. Door deze schakelaar
+                    aan te zetten bevestig je dat dit voor jullie vereniging geldt. Staat standaard UIT; delen
+                    als HTML werkt altijd.
                 </small>
             </div>
         </div>

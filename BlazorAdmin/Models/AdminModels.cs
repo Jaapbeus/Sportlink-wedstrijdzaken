@@ -30,6 +30,14 @@ public class AppSettingsDto
     public bool SportlinkDryRun { get; set; } = true;
     /// <summary>#1437: clubinstelling Spelactiviteit voor nieuwe oefenwedstrijden (omschrijving of IdTag uit Sportlinks lijst).</summary>
     public string? SportlinkSpelactiviteit { get; set; }
+    /// <summary>#1459: PDF-export (QuestPDF Community) per club; standaard uit tot een beheerder de licentievoorwaarden bevestigt.</summary>
+    public bool PdfExportIngeschakeld { get; set; }
+}
+
+/// <summary>#1459: antwoord van <c>GET api/planner/pdf-export</c> (voor elke ingelogde rol).</summary>
+public class PdfExportStatusDto
+{
+    public bool PdfExportIngeschakeld { get; set; }
 }
 
 /// <summary>#988: rol↔serviceaccount-koppelingsstatus, zie docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md §6.</summary>
@@ -286,6 +294,12 @@ public class SportlinkChangeRequestDto
 
     /// <summary>#1439: OPEN, ACCEPTED, DENIED, REVOKED of UNKNOWN — zie SportlinkChangeRequestStatusGroep.</summary>
     public string? StatusGroep { get; set; }
+
+    /// <summary>#1464: Sportlinks eigen wedstrijdnummer en teamnamen — terugval als
+    /// <see cref="Wedstrijd"/> ontbreekt.</summary>
+    public string? ExternalMatchId { get; set; }
+    public string? Thuisteam { get; set; }
+    public string? Uitteam { get; set; }
     public SportlinkChangeRequestDataDto? RequestData { get; set; }
     public string? Reason { get; set; }
     public string? Remarks { get; set; }
@@ -520,8 +534,12 @@ public class TeambegeleidingItem
 {
     public string Naam { get; set; } = "";
     public string Teamrol { get; set; } = "";
+    public string? Functie { get; set; }
     public string? Emailadres { get; set; }
     public string? Telefoonnummer { get; set; }
+
+    /// <summary>Badge-tekst: "Teamrol - Functie", of alleen de Teamrol als er geen Functie is (#1360).</summary>
+    public string RolLabel => string.IsNullOrWhiteSpace(Functie) ? Teamrol : $"{Teamrol} - {Functie}";
 }
 
 public class DoorsturenRequest
@@ -562,6 +580,23 @@ public class AutoPlanRequestDto
     public int? BufferMinuten { get; set; }
 }
 
+/// <summary>#1460: body van <c>POST planner/auto-plan/deel</c> — de planning zoals getoond (geen persoonsgegevens).</summary>
+public class AutoPlanDeelRequestDto
+{
+    public string Datum { get; set; } = "";
+    public string Tab { get; set; } = "huidig";
+    public List<AutoPlanDeelRegelDto> Wedstrijden { get; set; } = new();
+}
+
+public class AutoPlanDeelRegelDto
+{
+    public string TeamNaam { get; set; } = "";
+    public string Wedstrijd { get; set; } = "";
+    public string? Competitiesoort { get; set; }
+    public string? Tijd { get; set; }
+    public string? Veld { get; set; }
+}
+
 public class AutoPlanWedstrijdItemDto
 {
     public long? WedstrijdCode { get; set; }
@@ -593,6 +628,10 @@ public class AutoPlanWedstrijdItemDto
     public string VoorkeurStatus { get; set; } = "geen-voorkeur";
     public int? VoorkeurVeldNummer { get; set; }
     public bool? VoorkeurVeldToegepast { get; set; }
+    // #1430: ruwe actieve teamregels BufferVoor/BufferNa (null = geen regel). De effectieve buffer
+    // bepaalt PlanningBufferRegels (gedeeld met de planner) met de op dat moment ingestelde buffer.
+    public int? TeamBufferVoor { get; set; }
+    public int? TeamBufferNa { get; set; }
 }
 
 public class AutoPlanResponseDto

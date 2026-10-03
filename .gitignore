@@ -157,3 +157,7 @@ __MACOSX/
 # repository is publiek (CLAUDE.md regel 4a). Het sjabloon met {{SUPABASE_PROJECT_REF}}
 # staat wél in git: .mcp.json.template.
 .mcp.json
+
+# #1470: de skill /release heet zo; [Rr]elease/ hierboven is bedoeld voor build-output.
+!.claude/skills/release/
+!.agents/skills/release/

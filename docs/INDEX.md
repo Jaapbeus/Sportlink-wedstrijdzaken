@@ -44,9 +44,11 @@ document van het onderdeel waaraan je werkt.
 | [AI-services architectuur](ARCHITECTUUR-AI-SERVICES.md) | Provider-agnostisch ontwerp, datumregel, few-shot conventies, IChatClient |
 | [Planner architectuur](ARCHITECTUUR-PLANNER.md) | Algoritme, velddefinities, API-contract veldplanner |
 | [Teamresolutie](ARCHITECTUUR-TEAMRESOLUTIE.md) | Teamnaam-normalisatie, aliassen, disambiguatie — één vertaalpunt |
+| [PDF-export](ARCHITECTUUR-PDF-EXPORT.md) | QuestPDF-generator in `Planner.Shared/Deel/`: licentievoorwaarde per club, native assets, pakketgrootte, platformbewijs |
 | [E-mailverwerking](EMAIL-VERWERKING.md) | Pipeline, AI-classificatie, templates, kanaalstrategie |
 | [E-mailmodule (doelarchitectuur)](ARCHITECTUUR-EMAIL-MODULE.md) | Verzendlaag, afzenderstrategie, e-maillogging — ontwerp, migratie nog niet gestart |
 | [Sportlink Web Extension](SPORTLINK-WEB-EXTENSION.md) | Schrijfrichting webapp → Sportlink Club: protocol, endpoints, agent-tokengrens |
+| [Feedback](FEEDBACK.md) | Feedbackwidget voor alle gebruikers, beheeroverzicht, technische context en redactie, bewaartermijnen, inzagelog, verwerkingsregister (#764) |
 | [Automatische Sportlink-login](SPORTLINK-AUTOLOGIN.md) | Automatic login met TOTP (#1411): implementatie, productie-setup, beveiliging |
 
 **API-contract**
@@ -73,6 +75,7 @@ document van het onderdeel waaraan je werkt.
 | [Cosmos DB e-maillog](ARCHITECTUUR-COSMOSDB-EMAILLOG.md) | Tier 4, alleen het e-mailverwerkingslog — ontwerp + kostenverificatie, nog niet gebouwd |
 | [Sportlink schermen-analyse](SPORTLINK-CLUB-SCHERMEN-ANALYSE.md) | Beschikbare datavelden in de Sportlink Club-interface — brondata voor SPORTLINK-WEB-EXTENSION.md |
 | [Sportlink Club schrijfacties — onderzoek](ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md) | Bronrapport met netwerktraces en gevonden endpoint-contracten — brondata voor SPORTLINK-WEB-EXTENSION.md |
+| [Serena vs Graft benchmark](SERENA-VS-GRAFT-BENCHMARK.md) | Context-ophaal workflows: waarom dit project Serena gebruikt, waar Graft sterker is, praktische richtlijnen |
 
 ---
 
@@ -87,6 +90,7 @@ Voor nieuwe clubs en developers die de app voor het eerst inrichten.
 | [Setup checklist](SETUP-CHECKLIST.md) | Snelle checklist voor eerste opzet, beide databasetiers |
 | [Entra auth & beheer](ENTRA-AUTH-BEHEER.md) | App Registration, Easy Auth, rollen, gebruikers toevoegen — via scripts |
 | [Eigen domein](CUSTOM-DOMAIN.md) | Custom domain op de Static Web App, CORS-origins, redirect-URI's |
+| [Runbook Flex-migratie](RUNBOOK-FLEX-MIGRATIE.md) | Eenmalig: Linux Consumption → Flex Consumption (epic #1063) — volgorde FLEX-05 t/m 09, kostencontroles, cutover en rollback |
 
 ---
 

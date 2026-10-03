@@ -89,7 +89,9 @@ main {
     .top-row {
         position: sticky;
         top: 0;
-        z-index: 1;
+        /* #1487: de sticky top-row is een stacking context en bevat het FEEDBACK-venster. Met
+           z-index 1 lagen de gantt-blokken (z-index 1, later in de DOM) erbovenop. 1055 = Bootstrap-modal-niveau. */
+        z-index: 1055;
     }
 
     .top-row.auth ::deep a:first-child {

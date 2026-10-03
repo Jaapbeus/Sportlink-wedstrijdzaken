@@ -3597,3 +3597,125 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'SportlinkSpelactiviteit')
     ALTER TABLE [dbo].[AppSettings] ADD [SportlinkSpelactiviteit] NVARCHAR(100) NULL;
 GO
+
+-- #1459: PDF-export (QuestPDF Community) per club; standaard UIT tot een beheerder de voorwaarden bevestigt. Postgres: migratie 034.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'PdfExportIngeschakeld')
+    ALTER TABLE [dbo].[AppSettings] ADD [PdfExportIngeschakeld] BIT NOT NULL CONSTRAINT [DF_AppSettings_PdfExportIngeschakeld] DEFAULT 0;
+GO
+
+-- #1360: Functie (bijv. "Trainer/coach") naast Teamrol voor de badge op /teambegeleiding. Postgres: migratie 033.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('avg.Teambegeleiding') AND name = 'Functie')
+    ALTER TABLE [avg].[Teambegeleiding] ADD [Functie] NVARCHAR(150) NULL;
+GO
+
+-- #764/#1476/#1478: feedbackmeldingen van alle gebruikers + technische context + inzagelog (avg-schema).
+-- Postgres-tegenhanger: Database.Postgres/migrations/035_avg_feedback.sql. Bron: Database/avg/Tables/Feedback*.sql
+-- en Database/avg/System Stored Procedures/sp_CleanupFeedback.sql.
+-- QUOTED_IDENTIFIER ON: vereist voor de gefilterde index IX_avg_Feedback_Melder_Datum (zie #1280).
+SET QUOTED_IDENTIFIER ON;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'avg')
+    EXEC('CREATE SCHEMA [avg]');
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('avg.Feedback'))
+BEGIN
+    CREATE TABLE [avg].[Feedback] (
+        [Id]                            INT              IDENTITY (1, 1) NOT NULL,
+        [FeedbackId]                    UNIQUEIDENTIFIER NOT NULL,
+        [ClubCode]                      NVARCHAR (20)    NOT NULL CONSTRAINT [CK_avg_Feedback_ClubCode] CHECK (LEN([ClubCode]) > 0),
+        [Type]                          NVARCHAR (20)    NOT NULL,
+        [Onderwerp]                     NVARCHAR (200)   NOT NULL,
+        [Beschrijving]                  NVARCHAR (MAX)   NOT NULL,
+        [VragenAntwoorden]              NVARCHAR (MAX)   NULL,
+        [IssueBody]                     NVARCHAR (MAX)   NOT NULL,
+        [MelderObjectId]                NVARCHAR (64)    NULL,
+        [MelderNaam]                    NVARCHAR (200)   NULL,
+        [MelderRol]                     NVARCHAR (20)    NOT NULL CONSTRAINT [DF_avg_Feedback_MelderRol] DEFAULT ('user'),
+        [Pagina]                        NVARCHAR (200)   NULL,
+        [AppVersie]                     NVARCHAR (20)    NULL,
+        [IssueNummer]                   INT              NULL,
+        [IssueUrl]                      NVARCHAR (300)   NULL,
+        [Status]                        NVARCHAR (30)    NOT NULL CONSTRAINT [DF_avg_Feedback_Status] DEFAULT ('wacht-op-publicatie'),
+        [IssueGeslotenOpUtc]            DATETIME2        NULL,
+        [IssueStatusGecontroleerdOpUtc] DATETIME2        NULL,
+        [IsGeanonimiseerd]              BIT              NOT NULL CONSTRAINT [DF_avg_Feedback_IsGeanonimiseerd] DEFAULT (0),
+        [GeanonimiseerdOpUtc]           DATETIME2        NULL,
+        [mta_inserted]                  DATETIME2        NOT NULL CONSTRAINT [DF_avg_Feedback_mta_inserted] DEFAULT (GETUTCDATE()),
+        [mta_modified]                  DATETIME2        NOT NULL CONSTRAINT [DF_avg_Feedback_mta_modified] DEFAULT (GETUTCDATE()),
+        CONSTRAINT [PK_avg_Feedback] PRIMARY KEY CLUSTERED ([Id] ASC),
+        CONSTRAINT [UQ_avg_Feedback_FeedbackId] UNIQUE NONCLUSTERED ([FeedbackId])
+    );
+    CREATE NONCLUSTERED INDEX [IX_avg_Feedback_Club_Datum]
+        ON [avg].[Feedback] ([ClubCode] ASC, [mta_inserted] DESC);
+    CREATE NONCLUSTERED INDEX [IX_avg_Feedback_Club_Status]
+        ON [avg].[Feedback] ([ClubCode] ASC, [Status] ASC, [mta_inserted] DESC);
+    CREATE NONCLUSTERED INDEX [IX_avg_Feedback_Melder_Datum]
+        ON [avg].[Feedback] ([ClubCode] ASC, [MelderObjectId] ASC, [mta_inserted] DESC)
+        WHERE [MelderObjectId] IS NOT NULL;
+END
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('avg.FeedbackTelemetrie'))
+BEGIN
+    CREATE TABLE [avg].[FeedbackTelemetrie] (
+        [Id]           INT              IDENTITY (1, 1) NOT NULL,
+        [FeedbackId]   UNIQUEIDENTIFIER NOT NULL,
+        [ClubCode]     NVARCHAR (20)    NOT NULL,
+        [Bron]         NVARCHAR (30)    NOT NULL,
+        [Payload]      NVARCHAR (MAX)   NULL,
+        [mta_inserted] DATETIME2        NOT NULL CONSTRAINT [DF_avg_FeedbackTelemetrie_mta_inserted] DEFAULT (GETUTCDATE()),
+        CONSTRAINT [PK_avg_FeedbackTelemetrie] PRIMARY KEY CLUSTERED ([Id] ASC),
+        CONSTRAINT [FK_avg_FeedbackTelemetrie_Feedback] FOREIGN KEY ([FeedbackId]) REFERENCES [avg].[Feedback] ([FeedbackId]) ON DELETE CASCADE
+    );
+    CREATE NONCLUSTERED INDEX [IX_avg_FeedbackTelemetrie_FeedbackId] ON [avg].[FeedbackTelemetrie] ([FeedbackId] ASC);
+    CREATE NONCLUSTERED INDEX [IX_avg_FeedbackTelemetrie_Inserted] ON [avg].[FeedbackTelemetrie] ([mta_inserted] ASC);
+END
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('avg.FeedbackInzageLog'))
+BEGIN
+    CREATE TABLE [avg].[FeedbackInzageLog] (
+        [Id]                 INT              IDENTITY (1, 1) NOT NULL,
+        [ClubCode]           NVARCHAR (20)    NOT NULL,
+        [InzienDoorObjectId] NVARCHAR (64)    NULL,
+        [InzienDoorNaam]     NVARCHAR (200)   NULL,
+        [Actie]              NVARCHAR (20)    NOT NULL,
+        [FeedbackId]         UNIQUEIDENTIFIER NULL,
+        [Filter]             NVARCHAR (300)   NULL,
+        [mta_inserted]       DATETIME2        NOT NULL CONSTRAINT [DF_avg_FeedbackInzageLog_mta_inserted] DEFAULT (GETUTCDATE()),
+        CONSTRAINT [PK_avg_FeedbackInzageLog] PRIMARY KEY CLUSTERED ([Id] ASC)
+    );
+    CREATE NONCLUSTERED INDEX [IX_avg_FeedbackInzageLog_Club_Datum] ON [avg].[FeedbackInzageLog] ([ClubCode] ASC, [mta_inserted] DESC);
+END
+GO
+-- Bron: Database/avg/System Stored Procedures/sp_CleanupFeedback.sql  (#764)
+CREATE OR ALTER PROCEDURE [avg].[sp_CleanupFeedback]
+    @NuUtc               DATETIME2,
+    @IdentiteitMaanden   INT,
+    @TelemetrieDagen     INT,
+    @InzageMaanden       INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @Geanonimiseerd INT, @Telemetrie INT, @Inzage INT;
+    DECLARE @Grens DATETIME2 = DATEADD(MONTH, -@IdentiteitMaanden, @NuUtc);
+
+    UPDATE [avg].[Feedback]
+    SET [MelderObjectId]      = NULL,
+        [MelderNaam]          = NULL,
+        [IsGeanonimiseerd]    = 1,
+        [GeanonimiseerdOpUtc] = @NuUtc,
+        [mta_modified]        = @NuUtc
+    WHERE [IsGeanonimiseerd] = 0
+      AND (([IssueGeslotenOpUtc] IS NOT NULL AND [IssueGeslotenOpUtc] < @Grens)
+           OR ([IssueNummer] IS NULL AND [mta_inserted] < @Grens));
+    SET @Geanonimiseerd = @@ROWCOUNT;
+
+    DELETE FROM [avg].[FeedbackTelemetrie] WHERE [mta_inserted] < DATEADD(DAY, -@TelemetrieDagen, @NuUtc);
+    SET @Telemetrie = @@ROWCOUNT;
+
+    DELETE FROM [avg].[FeedbackInzageLog] WHERE [mta_inserted] < DATEADD(MONTH, -@InzageMaanden, @NuUtc);
+    SET @Inzage = @@ROWCOUNT;
+
+    SELECT @Geanonimiseerd AS [Geanonimiseerd], @Telemetrie AS [TelemetrieVerwijderd], @Inzage AS [InzageVerwijderd];
+END;
+GO

@@ -17,6 +17,10 @@ public partial class Planning : ClubSelectorPageBase
 
     private DateTime _datumDt;
 
+    /// <summary>#1468: het inline aanmaakformulier is open.</summary>
+    private bool _toonAanmaken;
+    private void ToggleAanmaken() => _toonAanmaken = !_toonAanmaken;
+
     // Directe veldbezetting (#566)
     private List<VeldbezettingItemDto> _veldbezetting = new();
     private bool _veldbezettingBezig;
@@ -29,9 +33,13 @@ public partial class Planning : ClubSelectorPageBase
 
     // Sportlink-kolom (#989/#991/#1361): alleen de vlag blijft hier; uitklap-/deeplinkstate staat in
     // SportlinkActieKolomState, het paneel zelf is SportlinkMatchPanel (#1122).
+    private bool _pdfExportIngeschakeld;
     private bool _sportlinkExtensionEnabled;
     private readonly SportlinkActieKolomState _sportlinkKolom = new();
 
+    private string ExportBestandsNaam => $"veldbezetting-{DatumStr}";
+    // Club zit in de sleutel: na een clubwissel moet de preview opnieuw worden opgehaald (#1461).
+    private string ExportSleutel => $"{ClubSelector.SelectedClubCode}|{DatumStr}";
     private string DatumStr => _datumDt.ToString("yyyy-MM-dd");
 
     protected override void OnInitialized()
@@ -47,6 +55,7 @@ public partial class Planning : ClubSelectorPageBase
         // #989: geen Sportlink-kolom/-knoppen tonen als de extension uit staat (DoD).
         var settings = await Api.GetSettingsAsync();
         _sportlinkExtensionEnabled = settings.Success && settings.Data?.SportlinkExtensionEnabled == true;
+        await LaadPdfExportStatusAsync();
     }
 
     private async Task OnDatumChanged() => await LoadVeldbezettingAsync();
@@ -69,7 +78,18 @@ public partial class Planning : ClubSelectorPageBase
         finally { _veldbezettingBezig = false; }
     }
 
-    protected override async Task OnClubChangedAsync() => await LoadVeldbezettingAsync();
+    protected override async Task OnClubChangedAsync()
+    {
+        await LoadVeldbezettingAsync();
+        await LaadPdfExportStatusAsync();
+    }
+
+    /// <summary>
+    /// #1459: de PDF-knop verschijnt alleen als de gekozen club PDF-export heeft ingeschakeld
+    /// (standaard uit). Via het voor elke ingelogde rol open endpoint — niet via de admin-only
+    /// instellingen — en opnieuw bij een clubwissel.
+    /// </summary>
+    private async Task LaadPdfExportStatusAsync() => _pdfExportIngeschakeld = await Api.IsPdfExportIngeschakeldAsync();
 
     // Gantt-blokken voor de directe veldbezetting-weergave (#566) — geen optimalisatie, alleen wat er
     // al gepland staat. Hergebruikt dezelfde GanttItem/helpers als Veld optimalisatie.

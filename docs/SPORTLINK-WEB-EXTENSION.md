@@ -37,7 +37,8 @@
 > de hele extensie die een échte tegenstander raakt. #997 heeft van alle #986-sub-issues de meeste
 > onbekenden: volledige body onbevestigd, meerdere picklist-vormen onbekend, delete-methode
 > onbekend — alleen de aanmaak-POST en de twee picklist-GETs (Teams + Location) zijn aangesloten,
-> verwijderen/uitslag bewust niet. Epic
+> uitslag bewust niet. Verwijderen is sinds #1440 gebouwd en sinds #1458 live
+> (`ClubMatchDeleteLiveBevestigd = true`; volgt de club-instelling `sportlinkDryRun`). Epic
 > [#986](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/986). Dit document is de
 > canonieke, levende beschrijving — bij twijfel of tegenspraak met een ouder issue-comment geldt
 > dit document. Het bronrapport met alle live-geteste technische details staat in
@@ -449,15 +450,15 @@ Vier dingen om te onthouden:
   **#1417 — retry-beleid per aanroeptype (correctie op #1387).** De transiënte retry gold tot #1417
   voor élke aanroep, dus ook voor PUT/POST. Dat is onveilig: een timeout of gateway-5xx *nádat*
   Sportlink de aanvraag al verwerkt heeft, is voor de client niet te onderscheiden van "nooit
-  aangekomen". Herhalen zou dan een tweede oefenwedstrijd aanmaken (`CreateClubMatchAsync`, POST,
-  geen verwijderpad in de app) of een wijzigingsverzoek tweemaal bij een echte tegenstander
+  aangekomen". Herhalen zou dan een tweede oefenwedstrijd aanmaken (`CreateClubMatchAsync`, POST;
+  het verwijderpad van #1440 staat nog hard op dry-run) of een wijzigingsverzoek tweemaal bij een echte tegenstander
   afleveren (`RequestMatchChangeAsync`). Sinds de fix voor #1417 kiest elke call site van
   `ExecuteWithTokenRetryAsync` expliciet een `RetryBeleid` — bewust zonder default:
 
   | Beleid | Aanroepen | Transiënte retry (timeout/5xx) | 401-re-auth-retry |
   |---|---|---|---|
   | `Lezen` | alle GET's (`GetMatchAsync`, `GetMatchProgramOverviewAsync`, `GetChangeRequestsAsync`, picklists, …) en het token-refreshpad | **één keer**, na 2 s | ja |
-  | `Mutatie` | `UpdateDressingRoomsAsync`, `UpdateFieldAsync`, `AssignOfficialsAsync`, `RequestMatchChangeAsync`, `ActOnChangeRequestAsync`, `CreateClubMatchAsync` | **nooit** | ja — een 401 is een expliciete afwijzing vóór verwerking, dus herhalen met een vers token is veilig |
+  | `Mutatie` | `UpdateDressingRoomsAsync`, `UpdateFieldAsync`, `AssignOfficialsAsync`, `RequestMatchChangeAsync`, `ActOnChangeRequestAsync`, `CreateClubMatchAsync`, `DeleteClubMatchAsync` (#1440) | **nooit** | ja — een 401 is een expliciete afwijzing vóór verwerking, dus herhalen met een vers token is veilig |
 
   Een mutatie die op een netwerkfout strandt, krijgt via `VertaalStatusNaarFout(status, isMutatie: true)`
   (gebruikt door `BepaalMutatieAfronding`) de melding `MutatieNetwerkFoutMelding`: "controleer eerst
@@ -488,6 +489,10 @@ Vier dingen om te onthouden:
   Openstaand (CONFIRM_*), Akkoord (APPROVED, MATCH_FINALIZED), Afgewezen, Ingetrokken; onbekende
   waarden worden `UNKNOWN`. De Blazor-pagina filtert standaard op Openstaand, toont per filter de
   secties Inkomend en Uitgaand, en biedt goedkeuren/afwijzen alleen bij openstaand + inkomend.
+  **#1464:** de lijstrespons draagt per verzoek ook `ExternalMatchId` (wedstrijdnummer, als getal),
+  `HomeTeam.TeamName` en `AwayTeam.TeamName` — Sportlinks eigen tabelkolommen, uit dezelfde bundle.
+  Die gaan als `ExternalMatchId`/`Thuisteam`/`Uitteam` mee en vullen de kolommen wanneer de eigen
+  context (`Wedstrijd`) ontbreekt; eigen context blijft voorrang houden.
 - `FunctionApp.Postgres/Sportlink/SportlinkClubMatchFunction.cs` (#997) — `POST
   /api/sportlink/club-match` (aanmaken, sinds #1319 live bevestigd, was code-gelockt) + `GET
   .../club-match/picklists` (Teams + Location, read-only, echt aangeroepen). **POST — geen guard
@@ -504,7 +509,7 @@ Vier dingen om te onthouden:
   vereist een uitbreiding van `ISportlinkMutationAuditService.VoltooiAsync` (een extra optionele
   parameter, raakt beide tiers) — bewust NIET gebouwd in deze ronde (`// TODO` in de broncode),
   niet nodig zolang dit pad toch altijd `"DryRunLocked"` teruggeeft. **Bewust NIET gebouwd (toekomstig
-  werk):** verwijderen (`ClubMatchDelete`), uitslag vastleggen (`ClubMatchScore`), de drie overige
+  werk):** uitslag vastleggen (`ClubMatchScore`), de drie overige
   ondersteunende endpoints (`ClubMatchDefaults`, `PickListsMatchInformation`,
   `codetable/AgeClassList`), en een "vrij tijdslot"-concept in de Dagplanning-Gantt — het formulier
   (`BlazorAdmin/Pages/OefenwedstrijdAanmaken.razor`) staat los van de Gantt.
@@ -807,9 +812,9 @@ test getriggerd wordt:
   gewone club-instelling `sportlinkDryRun` in plaats van altijd te simuleren, maar endpoint,
   volledige requestbody, en de exacte respons-veldnamen van de twee aangesloten picklists blijven
   grotendeels gereverse-engineerd en zijn niet apart met een eigen netwerktrace bevestigd — anders
-  dan bij #994/#995 hierboven is bij #997 geen losse trace gedocumenteerd. Verwijderen (`ClubMatchDelete`) en
-  uitslag vastleggen (`ClubMatchScore`) zijn bewust niet aangesloten — het is dus (nog) niet
-  mogelijk om een per ongeluk aangemaakte testwedstrijd via deze app weer te verwijderen.
+  dan bij #994/#995 hierboven is bij #997 geen losse trace gedocumenteerd. Uitslag vastleggen
+  (`ClubMatchScore`) is bewust niet aangesloten. **Verwijderen (`ClubMatchDelete`, #1440) is gebouwd en sinds #1458 live**
+  (`ClubMatchDeleteLiveBevestigd = true`) — zie de alinea "#1440" in §6.4.
   Een toekomstige koppeling tussen een zelf-geplande oefenwedstrijd in
   `planner.geplandewedstrijden` (kolom `sportlinkwedstrijdcode`, momenteel ongebruikt voor dit doel)
   en het door Sportlink teruggegeven `PublicMatchId` is bewust niet gebouwd in deze ronde — zie de
@@ -850,7 +855,7 @@ de kernfeiten. Bij een discrepantie is de code leidend; werk dan dit overzicht b
 | `competition/match/clubmatch/ClubMatch` | **POST** | Oefenwedstrijd aanmaken — **sinds #1319 live bevestigd (#997)**, zie §4.2. Geen guard mogelijk vóór aanmaak (er is nog geen wedstrijd) — alleen eigen-DB-checks i.p.v. een Sportlink-permissievlag | — (eigen toggle/EgressGuard i.p.v. `SportlinkMutationGuard`, zie §4.2) |
 | `competition/match/clubmatch/PickListsTeams` | GET | Picklist teams voor het aanmaak-formulier (#997) — read-only, echt aangeroepen | — |
 | `competition/match/clubmatch/PickListsLocation` | GET | Picklist locaties voor het aanmaak-formulier (#997) — read-only, echt aangeroepen | — |
-| `competition/match/clubmatch/ClubMatchDelete` | — | **Bewust NIET aangesloten (#997)** — verwijdermethode onbekend | — |
+| `competition/match/clubmatch/ClubMatchDelete` (`?PublicMatchId=`, geen body) | **DELETE** | Clubwedstrijd verwijderen (#1440). Live sinds #1458 (`ClubMatchDeleteLiveBevestigd = true`, respons `{PublicMatchId, IsSuccess}`), volgt `sportlinkDryRun`, zie §6.4. Alleen aangeboden op het resultaat van "Wedstrijd aanmaken" | `SportlinkMutationSoort.Verwijderen` (`IsKernelMatch = false`, fail-closed, plus `IsHomeMatch`) |
 | `competition/match/clubmatch/ClubMatchScore` | — | **Bewust NIET aangesloten (#997)** — uitslag vastleggen, buiten scope | — |
 | `competition/match/clubmatch/ClubMatchDefaults`, `PickListsMatchInformation`, `codetable/AgeClassList` | — | **Bewust NIET aangesloten (#997)** — drie extra onbevestigde endpoints tegelijk is te veel gok in één ronde | — |
 | `competition/match/MatchRemarks` | — | **Bewust NIET aangesloten** — opmerking bij een wedstrijd; wel in het bronrapport (§2.4), maar er is geen functionele vraag naar en het pad is nooit live gezien | — |
@@ -918,6 +923,30 @@ zijn (zie §5). Ontgrendelen (de constante op `true` zetten) mag uitsluitend na 
 issue #995 — een handmatige proef door de wedstrijdsecretaris met netwerk-meekijken — en nooit door
 een agent (§4.4). Zelfs dan bouwt deze constante alleen stap 1 vrij: stap 2 (bevestigen) bestaat
 nog steeds niet in de code en vereist een aparte, toekomstige beslissing.
+
+**#1440/#1458 — verwijderen van een clubwedstrijd (`DeleteClubMatchAsync`).** Derde lock van deze
+soort, door de eigenaar opgeheven in #1458 (besluit 2026-10-03, na live trace):
+`ClubMatchDeleteLiveBevestigd = true`. Methode (`DELETE`) en parameter (`PublicMatchId` als
+querystring, geen body) komen uit Sportlinks publieke frontend-bundle; de succesrespons is live
+vastgesteld: een JSON-object `{ "PublicMatchId": ..., "IsSuccess": true }`. De aanroep volgt vanaf
+nu de club-instelling `sportlinkDryRun` (bij dry-run verlaat er geen DELETE de client;
+`SportlinkClubMatchDeleteTests` bewijst beide takken en de responsvorm).
+- **Guard** `SportlinkMutationSoort.Verwijderen`: "zoals Sportlink" alleen een expliciete
+  `IsKernelMatch = false` (clubwedstrijd) mag weg; ontbreekt het veld, dan weigert hij (409). Er is
+  geen aanvullende eis op het competitietype. De algemene `IsHomeMatch`-regel van
+  `SportlinkMutationGuard` geldt voor alle mutaties en bleef gehandhaafd.
+- **Geen beperking tot via de webapp aangemaakte wedstrijden** (eigenaarsbesluit 2026-10-03): de
+  server-guard hierboven volstaat. De UI biedt de knop wel alleen aan op het resultaat van een échte
+  aanmaak op "Wedstrijd aanmaken", altijd met een bevestigstap met de waarschuwing "Verwijderen is
+  definitief; de tegenstander kan een melding krijgen.", zonder form-element (#1436).
+- **Fail-closed audit (#1458):** ontbreekt de mutatie-auditservice in DI, dan weigert elk
+  mutatie-endpoint (aanmaken, verwijderen, wedstrijdmutaties, wijzigingsverzoek-acties) met HTTP
+  503 vóór de Sportlink-aanroep, op beide tiers (`SportlinkEndpointSupportCore.AuditNietBeschikbaarFout`).
+- **Audit**: elke poging (ook een geblokkeerde) krijgt een rij met het echte `PublicMatchId`, actie
+  `DeleteClubMatch` en in `WaardeVoor` een snapshot zonder persoonsgegevens (wedstrijdnummer, datum,
+  status, `IsKernelMatch`, accommodatie).
+- **Respons**: een 2xx zonder body telt nog steeds als geslaagd (`IsLegeSuccesRespons`, voor het geval
+  Sportlink dat ooit doet); een 420 met `Violations` is een afwijzing.
 
 **#1320 (eigenaar-gestuurde productieproef met trace van validatie en bevestiging)** bouwde de
 diagnostiek-UI rond diezelfde, ongewijzigde code-lock — de lock zelf is met dit issue niet

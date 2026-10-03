@@ -11,10 +11,10 @@ info:
     - **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist
       voor alle endpoints behalve `/health`. De rolcontrole gebeurt server-side, met vier niveaus:
       `admin` (`EasyAuthHelper.RequireAdmin`, via de wrappers `AdminEndpoint.ExecuteAsync` /
-      `ExecuteZonderDatabaseAsync`) voor de meeste `/beheer/`-, `/planner/`-, `/feedback/`- en
-      `/test/`-endpoints — sinds #1350 óók voor `/postgres/sync-matches` en `/sync-matches`;
+      `ExecuteZonderDatabaseAsync`) voor de meeste `/beheer/`-, `/planner/`- en
+      `/test/`-endpoints (waaronder het feedbackoverzicht `/beheer/feedback`) — sinds #1350 óók voor `/postgres/sync-matches` en `/sync-matches`;
       `admin` óf `user` (`AdminEndpoint.ExecuteAuthenticatedAsync`, #1330) voor `/planner/veldbezetting`
-      (#1400), de twee Sportlink-viewing-endpoints (`GET /sportlink/match/{wedstrijdcode}` en
+      (#1400), de drie `/feedback/`-endpoints (#764: elke ingelogde gebruiker mag feedback geven), de twee Sportlink-viewing-endpoints (`GET /sportlink/match/{wedstrijdcode}` en
       `.../public-match-id`, #1400) en de drie Teambegeleiding-lookup/doorstuur-endpoints; op
       **beide** tiers identiek `Wedstrijdzaken` óf `admin` (`EasyAuthHelper.RequireWedstrijdzaken`,
       beide poorten sinds #1400) voor de Sportlink-mutatie-endpoints (`PUT`/`POST` onder
@@ -33,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.9.0.0
+  version: 3.10.0.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -57,7 +57,9 @@ tags:
   - name: testdata
     description: Testdata beheer voor ALLSTARS demo-club (vereist admin-rol)
   - name: feedback
-    description: Feedback widget (vereist Entra ID authenticatie met admin-rol)
+    description: |
+      Feedback widget (#764): voor elke ingelogde gebruiker (rol admin of user). Het beheeroverzicht
+      onder /beheer/feedback is alleen voor de admin-rol. Zie docs/FEEDBACK.md.
   - name: sportlink
     description: |
       Sportlink Web Extension (#986/#991) — lees- én mutatie-endpoints. Sinds #1400: de twee
@@ -802,6 +804,15 @@ components:
             KNVB-speeldagenkalender als PDF-bijlage + een paar vrije zaterdagen mee, met de
             begeleiding van het eigen team in BCC (#561). Uit = bestaand herplan-gedrag ongewijzigd.
           default: true
+        PdfExportIngeschakeld:
+          type: boolean
+          description: |
+            PDF-export van planningen (`?format=pdf` op `/planner/veldbezetting` en
+            `/planner/auto-plan`) voor deze club (#1459). Standaard false (fail-closed): de PDF gebruikt
+            QuestPDF onder de Community-licentie (organisaties onder USD 1 mln jaaromzet); een
+            beheerder bevestigt dat die voorwaarden gelden door dit aan te zetten. Uit = `?format=pdf`
+            geeft 409; HTML-export blijft werken.
+          default: false
         KnvbStandaardRegio:
           type: string
           nullable: true
@@ -1341,6 +1352,20 @@ components:
           description: |
             Sportlinks vier filtergroepen, server-side afgeleid van RequestStatus (#1439). OPEN =
             CONFIRM_*, ACCEPTED = APPROVED/MATCH_FINALIZED. Alleen aanwezig op de GET-respons.
+        ExternalMatchId:
+          type: string
+          nullable: true
+          description: |
+            Sportlinks wedstrijdnummer (`ExternalMatchId` uit de lijstrespons, veldnaam uit Sportlinks
+            bundle, #1464). Terugval voor `Wedstrijd.Wedstrijdnummer`. Alleen op de GET-respons.
+        Thuisteam:
+          type: string
+          nullable: true
+          description: Sportlinks `HomeTeam.TeamName` (#1464). Terugval voor `Wedstrijd.Thuisteam`. Alleen op de GET-respons.
+        Uitteam:
+          type: string
+          nullable: true
+          description: Sportlinks `AwayTeam.TeamName` (#1464). Terugval voor `Wedstrijd.Uitteam`. Alleen op de GET-respons.
         RequestData:
           type: object
           nullable: true
@@ -1395,7 +1420,8 @@ components:
         Witte lijst: HerplanDeadlineDagen, BufferMinuten, PlannerAfzenderNaam, CoordinatorNaam,
         CoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,
         AccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi,
-        KnvbPdfBijlageIngeschakeld, KnvbStandaardRegio, SportlinkExtensionEnabled.
+        KnvbPdfBijlageIngeschakeld, KnvbStandaardRegio, SportlinkExtensionEnabled, PdfExportIngeschakeld
+        (waarde `0`/`1`/`true`/`false`, anders 400).
 
         De audit-actor (wie de wijziging doorvoerde) wordt uitsluitend server-side bepaald uit de
         door Easy Auth gevalideerde claims — dit contract kent daarom geen "wie"-veld (#1003).
@@ -2122,8 +2148,55 @@ components:
         context:
           $ref: '#/components/schemas/FeedbackContext'
           nullable: true
+        telemetrie:
+          $ref: '#/components/schemas/FeedbackTelemetrie'
+          nullable: true
         bevestiging:
           $ref: '#/components/schemas/FeedbackBevestiging'
+          nullable: true
+
+    FeedbackTelemetrie:
+      type: object
+      description: |
+        Technische context bij een melding (#764): standaard meegestuurd, door de gebruiker per melding
+        uit te zetten (dan weggelaten). De server redigeert alles opnieuw (e-mailadressen, GUID's, tokens,
+        querystrings, ID's in paden, naam van de melder) en kapt af op maximaal 5 items per soort en 300
+        tekens per item. Wordt nooit in het publieke GitHub-issue opgenomen.
+      properties:
+        consoleFouten:
+          type: array
+          maxItems: 5
+          items:
+            type: string
+        mislukteAanroepen:
+          type: array
+          maxItems: 5
+          items:
+            type: object
+            properties:
+              methode:
+                type: string
+              pad:
+                type: string
+                description: Pad zonder querystring
+              status:
+                type: integer
+              tijdUtc:
+                type: string
+                format: date-time
+              correlatieId:
+                type: string
+                nullable: true
+        navigatiespoor:
+          type: array
+          maxItems: 5
+          items:
+            type: string
+        browser:
+          type: string
+          nullable: true
+        schermbreedte:
+          type: integer
           nullable: true
 
     FeedbackBevestiging:
@@ -2184,14 +2257,163 @@ components:
 
     FeedbackSubmitResponse:
       type: object
+      description: |
+        Een melding van een beheerder wordt direct gepubliceerd; een melding van een gewone gebruiker
+        wacht (`status: wacht-op-publicatie`) tot een beheerder haar publiceert.
       properties:
+        feedbackId:
+          type: string
+          format: uuid
+        meldingsnummer:
+          type: string
+          description: Kort nummer (8 tekens) dat een gebruiker kan noemen als hij er later naar vraagt
+        status:
+          type: string
+          enum: [wacht-op-publicatie, gepubliceerd]
+        bewaardInOverzicht:
+          type: boolean
+          description: Onwaar als de database tijdens een directe publicatie door een beheerder onbereikbaar was
+        gepubliceerd:
+          type: boolean
         issueNummer:
           type: integer
-          description: GitHub issue nummer
+          description: GitHub issue nummer — alleen voor een beheerder; 0 voor een gewone gebruiker
         issueUrl:
           type: string
           format: uri
-          description: URL naar het aangemaakte GitHub issue
+          nullable: true
+          description: URL naar het GitHub issue — alleen voor een beheerder, nooit voor een gewone gebruiker
+        waarschuwing:
+          type: string
+          nullable: true
+          description: Bijv. dat de GitHub-integratie niet geconfigureerd is (alleen beheerder)
+
+    FeedbackItem:
+      type: object
+      properties:
+        feedbackId:
+          type: string
+          format: uuid
+        meldingsnummer:
+          type: string
+        aangemaaktUtc:
+          type: string
+          format: date-time
+        type:
+          type: string
+          enum: [Fout, Verzoek, Vraag]
+        onderwerp:
+          type: string
+        melderNaam:
+          type: string
+          nullable: true
+          description: Naam-momentopname; null na anonimisering. Alleen in dit beheeroverzicht zichtbaar.
+        isGeanonimiseerd:
+          type: boolean
+        melderRol:
+          type: string
+          enum: [admin, user]
+        pagina:
+          type: string
+          nullable: true
+        issueNummer:
+          type: integer
+          nullable: true
+        issueUrl:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [wacht-op-publicatie, publiceren, gepubliceerd, github-mislukt]
+
+    FeedbackListResponse:
+      type: object
+      properties:
+        totaal:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FeedbackItem'
+
+    FeedbackDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/FeedbackItem'
+        - type: object
+          properties:
+            beschrijving:
+              type: string
+            vragenAntwoorden:
+              type: array
+              nullable: true
+              items:
+                $ref: '#/components/schemas/VraagAntwoord'
+            issueBody:
+              type: string
+              description: De tekst die (of zoals ze) op GitHub staat — zonder identiteit en zonder technische context
+            appVersie:
+              type: string
+              nullable: true
+            telemetrie:
+              type: array
+              description: Geredigeerde technische context per bron; leeg na 90 dagen of als de melder het uitzette
+              items:
+                type: object
+                properties:
+                  bron:
+                    type: string
+                    enum: [omgeving, console, netwerk, navigatie]
+                  tekst:
+                    type: string
+
+    FeedbackPublishResponse:
+      type: object
+      properties:
+        feedbackId:
+          type: string
+          format: uuid
+        status:
+          type: string
+        issueNummer:
+          type: integer
+        issueUrl:
+          type: string
+
+    FeedbackInzageResponse:
+      type: object
+      properties:
+        totaal:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              tijdstipUtc:
+                type: string
+                format: date-time
+              inzienDoor:
+                type: string
+                nullable: true
+              actie:
+                type: string
+                enum: [lijst, detail, publiceer]
+              feedbackId:
+                type: string
+                format: uuid
+                nullable: true
+              filter:
+                type: string
+                nullable: true
+                description: Welke filtervelden zijn gebruikt — nooit de zoektekst zelf
 
     # ── Beheer — Clubs ────────────────────────────────────────────────────────
 
@@ -2559,6 +2781,10 @@ components:
         Teamrol:
           type: string
           nullable: true
+        Functie:
+          type: string
+          nullable: true
+          description: Specifieke functie binnen de teamrol (bijv. "Trainer/coach"); null als de import geen Functie-kolom had (#1360)
         Emailadres:
           type: string
           nullable: true
@@ -2810,6 +3036,17 @@ components:
           type: boolean
           nullable: true
           description: false als er een voorkeursveld was maar de planner een ander veld moest kiezen
+        teamBufferVoor:
+          type: integer
+          nullable: true
+          description: |
+            Actieve teamregel BufferVoor in minuten (#1430); null = geen regel. Ruwe waarde: de
+            effectieve buffer is het maximum van deze waarde en de algemene buffer. De Admin GUI
+            gebruikt hem om na handmatig verslepen dezelfde bufferregel toe te passen als de planner.
+        teamBufferNa:
+          type: integer
+          nullable: true
+          description: Actieve teamregel BufferNa in minuten (#1430); null = geen regel. Zie teamBufferVoor.
 
     VeldbezettingItem:
       type: object
@@ -4263,7 +4500,7 @@ paths:
         niet (eenduidig) kent geeft 400; wat niet af te leiden is valt terug op Sportlinks
         standaardwaarden met een waarschuwing. Er is vooraf geen bestaande wedstrijd, dus geen
         `SportlinkMutationGuard`-check — alleen de eigen toggle + EgressGuard. Bewust NIET gebouwd:
-        verwijderen (`ClubMatchDelete`) en uitslag vastleggen (`ClubMatchScore`).
+        uitslag vastleggen (`ClubMatchScore`). Verwijderen: zie `DELETE /sportlink/club-match/{publicMatchId}` (#1440).
       security:
         - easyAuth: []
       requestBody:
@@ -4350,6 +4587,71 @@ paths:
           description: Sportlink reageerde niet op tijd. De mutatie is bewust NIET automatisch herhaald — de uitkomst bij Sportlink is onbekend; controleer eerst in Sportlink of de actie al is doorgevoerd (#1387, #1417)
         '503':
           description: Uitgaande integraties staan hier niet toe (EgressGuard)
+
+  /sportlink/club-match/{publicMatchId}:
+    delete:
+      tags: [sportlink]
+      operationId: deleteSportlinkClubMatch
+      summary: Clubwedstrijd (oefenwedstrijd) verwijderen (#1440) — contract NIET live bevestigd, altijd dry-run
+      description: |
+        Verwijdert een clubwedstrijd bij Sportlink via `DELETE competition/match/clubmatch/ClubMatchDelete?PublicMatchId=`.
+        Methode, parameter en foutvorm komen uit Sportlinks publieke frontend-bundle en zijn **nooit live gezien**.
+        Daarom staat de aanroep hard op dry-run (`ClubMatchDeleteLiveBevestigd = false`), ongeacht de club-instelling
+        `sportlinkDryRun`: de respons heeft dan `IsDryRun` en `IsForcedDryRun` op `true` en Sportlink is niet aangeroepen
+        (wel de read-only `GET competition/match/Match` voor de guard). Volgorde: toggle + EgressGuard → huidige
+        wedstrijd ophalen → `SportlinkMutationGuard` (`Verwijderen`: alleen bij expliciet `IsKernelMatch = false`
+        én `IsHomeMatch`, anders 409) → audit "Pending" met het `PublicMatchId` → verwijderen (nooit automatisch
+        herhaald) → audit voltooien. De Admin GUI biedt dit alleen aan op het resultaat van "Wedstrijd aanmaken".
+      security:
+        - easyAuth: []
+      parameters:
+        - name: publicMatchId
+          in: path
+          required: true
+          description: Sportlink-`PublicMatchId` (letters, cijfers, `-` en `_`, maximaal 64 tekens).
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9_-]{1,64}$'
+      responses:
+        '200':
+          description: Mutatieresultaat. Een inhoudelijke afwijzing door Sportlink is ook 200, met `IsSuccess = false` en `Violations`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  IsSuccess:
+                    type: boolean
+                  Violations:
+                    type: array
+                    nullable: true
+                    items:
+                      type: string
+                  IsDryRun:
+                    type: boolean
+                  IsForcedDryRun:
+                    type: boolean
+                    description: Zolang het contract niet live bevestigd is altijd `true`.
+                  PublicMatchId:
+                    type: string
+        '400':
+          description: Ongeldig `PublicMatchId`
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Sportlink kent dit `PublicMatchId` niet (meer)
+        '409':
+          description: Extension staat uit, de Sportlink-koppeling ontbreekt/is verlopen, of de guard weigert (geen clubwedstrijd, `IsKernelMatch` ontbreekt, of geen thuiswedstrijd)
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '502':
+          description: Sportlink gaf geen bruikbare respons
+        '503':
+          description: Uitgaande integraties staan hier niet toe (EgressGuard)
+        '504':
+          description: Sportlink reageerde niet op tijd. Bewust NIET automatisch herhaald — controleer eerst in Sportlink of de wedstrijd al weg is (#1417)
 
   /sportlink/club-match/dryrun-status:
     get:
@@ -4533,6 +4835,8 @@ paths:
       description: |
         Start een Sportlink-synchronisatie op de achtergrond (~5 minuten). Retourneert direct 202.
         Prik op `GET /beheer/sync/status` om de voortgang te bewaken via `lastSyncTimestamp`.
+        Met `reset: true` en `season` wordt het volledige seizoen opnieuw opgehaald vanaf de
+        seizoensstart (#1352). Zonder `reset` wordt `season` genegeerd.
       security:
         - easyAuth: []
       requestBody:
@@ -4541,7 +4845,18 @@ paths:
           application/json:
             schema:
               type: object
+              properties:
+                reset:
+                  type: boolean
+                  default: false
+                  description: Volledig seizoen opnieuw ophalen vanaf de seizoensstart.
+                season:
+                  type: integer
+                  minimum: 2000
+                  description: Startjaar van het seizoen (bijv. 2025 voor 2025/2026); verplicht bij reset, maximaal huidig jaar + 1.
       responses:
+        '400':
+          description: Ongeldig seizoen, seizoen zonder seizoensrij (bestaat niet) of ongeldige body (NL-foutmelding in `error`)
         '202':
           description: Synchronisatie gestart
           headers:
@@ -5896,7 +6211,8 @@ paths:
       description: |
         Controleert via GPT-4o-mini of de beschrijving voldoende informatie bevat.
         Geeft gerichte aanvulvragen terug als er gaten zijn.
-        Geen rate limiting — validatie is goedkoop.
+        Open voor elke ingelogde rol (admin én user, #764). Per gebruiker begrensd: max 30 AI-aanroepen
+        (validate + preview) per 10 minuten.
       security:
         - easyAuth: []
       requestBody:
@@ -5921,6 +6237,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '503':
+          description: AI-dienst niet beschikbaar (`IChatClient` niet geregistreerd — lokaal door de EgressGuard, #857). Body `{ error, aiBeschikbaar: false }`; er is niets verwerkt en geen AI-limietslot verbruikt (#1487)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -5938,7 +6260,8 @@ paths:
         de PII-gate op de verzamelde invoer en de PII-gate op de uiteindelijke titel/body. Een
         voorbeeld komt dus nooit door waar een publicatie zou afketsen.
 
-        Geen rate limiting — er wordt niets gepubliceerd.
+        Per gebruiker begrensd (zie `/feedback/validate`) — er wordt niets gepubliceerd. Open voor
+        elke ingelogde rol (#764).
       security:
         - easyAuth: []
       requestBody:
@@ -5969,6 +6292,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: AI-dienst niet beschikbaar (`IChatClient` niet geregistreerd — lokaal door de EgressGuard, #857). Body `{ error, aiBeschikbaar: false }`; er is niets verwerkt en geen AI-limietslot verbruikt (#1487)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -5976,15 +6305,24 @@ paths:
     post:
       tags: [feedback]
       operationId: feedbackSubmit
-      summary: Feedback indienen als GitHub issue
+      summary: Feedback indienen (bewaren, en direct publiceren als beheerder)
       description: |
-        Structureert de feedback met GPT-4o-mini en maakt een GitHub Issue aan in de repository.
+        Open voor elke ingelogde rol (#764). De melder (Entra object-ID, naam-momentopname, rol) komt
+        uitsluitend uit het Easy Auth-principal en wordt bewaard in `avg.Feedback` — nooit in het
+        publieke issue. Structureert de feedback met GPT-4o-mini en bewaart de te publiceren titel en body.
+
+        * Rol **admin**: de melding wordt direct als GitHub-issue gepubliceerd (is GitHub niet
+          geconfigureerd, dan blijft ze bewaard met een `waarschuwing`).
+        * Rol **user**: de melding wacht (`status: wacht-op-publicatie`) tot een beheerder haar in het
+          overzicht publiceert (`POST /beheer/feedback/{id}/publiceer`). De response bevat geen
+          issueverwijzing.
 
         Is `bevestiging` meegestuurd — de velden zoals `/feedback/preview` ze teruggaf en de
         beheerder ze gezien heeft — dan wordt exact díe tekst gepubliceerd en volgt er géén nieuwe
         AI-aanroep. De PII-gate draait onverkort op de uiteindelijke titel en body.
 
-        Rate limiting: max 5 indieningenen per 10 minuten (globaal).
+        Limieten: max 3 meldingen per 10 minuten per gebruiker (gemeten in de database, dus gedeeld over
+        instances) en een vangnet van 30 per uur voor de hele club.
       security:
         - easyAuth: []
       requestBody:
@@ -5995,7 +6333,7 @@ paths:
               $ref: '#/components/schemas/FeedbackRequest'
       responses:
         '200':
-          description: GitHub issue aangemaakt
+          description: Melding bewaard (en bij een beheerder gepubliceerd)
           headers:
             x-correlation-id:
               $ref: '#/components/headers/CorrelationId'
@@ -6009,20 +6347,242 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '422':
+          description: Mogelijke persoonsgegevens gedetecteerd in invoer of AI-output
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
-          description: Rate limit overschreden (max 5 per 10 minuten)
+          description: Limiet overschreden (per gebruiker of voor de hele club)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: AI-dienst niet beschikbaar (`IChatClient` niet geregistreerd — lokaal door de EgressGuard, #857). Body `{ error, aiBeschikbaar: false }`; er is niets verwerkt en geen AI-limietslot verbruikt (#1487)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '502':
+          description: Bewaard, maar publiceren op GitHub is mislukt (alleen beheerder); opnieuw te publiceren via het overzicht
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ── Beheer — Feedbackoverzicht (#764) ────────────────────────────────────────
+
+  /beheer/feedback:
+    get:
+      tags: [feedback]
+      operationId: getFeedbackOverzicht
+      summary: Feedbackmeldingen ophalen (overzicht)
+      description: |
+        Alle meldingen van de gekozen club (`X-Club-Code`), nieuwste eerst. Alleen rol `admin`: de naam
+        van de melder is hier zichtbaar. **Elke aanroep wordt vastgelegd in het inzagelog**
+        (`avg.FeedbackInzageLog`: wie, wanneer, welk filter — nooit de zoektekst). Geen export.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [Fout, Verzoek, Vraag]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [wacht-op-publicatie, publiceren, gepubliceerd, github-mislukt]
+        - name: vanaf
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: tot
+          in: query
+          description: Tot en met deze dag
+          schema:
+            type: string
+            format: date
+        - name: q
+          in: query
+          description: Zoekt (hoofdletterongevoelig, wildcards letterlijk) in onderwerp en beschrijving; max 100 tekens
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 200
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: Meldingen
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/feedback/{id}:
+    get:
+      tags: [feedback]
+      operationId: getFeedbackDetail
+      summary: Eén feedbackmelding met technische context
+      description: |
+        Alleen rol `admin`. Wordt vastgelegd in het inzagelog (`actie: detail`).
+      security:
+        - easyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Melding
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackDetailResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/feedback/{id}/publiceer:
+    post:
+      tags: [feedback]
+      operationId: publiceerFeedback
+      summary: Een wachtende melding publiceren als GitHub-issue
+      description: |
+        Publiceert exact de bij het indienen voorbereide titel en body (de AI draait niet opnieuw);
+        de PII-gate draait vlak vóór de GitHub-write nogmaals. Atomair geclaimd: een tweede klik
+        maakt geen tweede issue (`409`). Alleen rol `admin`; wordt vastgelegd in het inzagelog
+        (`actie: publiceer`).
+      security:
+        - easyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Gepubliceerd
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackPublishResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Al gepubliceerd, of wordt al gepubliceerd
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Mogelijke persoonsgegevens gedetecteerd; niet gepubliceerd
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '502':
+          description: Publiceren op GitHub mislukt; de melding blijft bewaard en is opnieuw te publiceren
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '503':
           description: GitHub-integratie niet geconfigureerd
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+
+  /beheer/feedback/inzagelog:
+    get:
+      tags: [feedback]
+      operationId: getFeedbackInzagelog
+      summary: Inzagelog van het feedbackoverzicht
+      description: |
+        Wie het overzicht opende, een melding bekeek of publiceerde. Bevat nooit meldingsinhoud en
+        wordt na 24 maanden gewist. Alleen rol `admin`.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 200
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: Inzageregels, nieuwste eerst
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackInzageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   # ── Beheer — Clubs ───────────────────────────────────────────────────────────
 
@@ -6618,7 +7178,7 @@ paths:
       operationId: getTeambegeleidingDetail
       summary: Begeleiding voor een specifiek team ophalen
       description: |
-        Geeft Naam, Teamrol, Emailadres en Telefoonnummer voor de begeleidingsleden van het team.
+        Geeft Naam, Teamrol, Functie, Emailadres en Telefoonnummer voor de begeleidingsleden van het team.
 
         **AVG:** persoonsgegevens worden getoond aan elke ingelogde rol (admin + user) achter Entra
         ID auth — sinds #1330 bewust teruggedraaid uit de mei-2026-beperking (#310) die dit
@@ -6975,8 +7535,27 @@ paths:
 
         **Voert niets door** — puur simulatie/voorstel.
         Gebruik `/planner/auto-plan/toepassen` om het plan daadwerkelijk te boeken.
+
+        Met `?format=html` of `?format=pdf` (#1364) komt het resultaat als gedeeld document terug
+        (kolommen Tijd, Team, Tegenstander, Veld, Competitie); `?tab=huidig|optimaal` kiest welke kant.
       security:
         - easyAuth: []
+      parameters:
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [json, html, pdf]
+            default: json
+        - name: tab
+          in: query
+          required: false
+          description: Alleen bij format=html|pdf — welke kant van het plan in het document komt
+          schema:
+            type: string
+            enum: [huidig, optimaal]
+            default: huidig
       requestBody:
         required: true
         content:
@@ -6985,7 +7564,7 @@ paths:
               $ref: '#/components/schemas/AutoPlanRequest'
       responses:
         '200':
-          description: Gegenereerd auto-plan
+          description: Gegenereerd auto-plan (JSON), of bij format=html|pdf het gedeelde document
           headers:
             x-correlation-id:
               $ref: '#/components/headers/CorrelationId'
@@ -6993,8 +7572,126 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AutoPlanResponse'
+            text/html:
+              schema:
+                type: string
+            application/pdf:
+              schema:
+                type: string
+                format: binary
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: "`?format=pdf` terwijl de clubinstelling PdfExportIngeschakeld uit staat (#1459)"
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /planner/auto-plan/deel:
+    post:
+      tags: [planner]
+      operationId: autoPlanDeel
+      summary: Planning delen zoals getoond (stateless)
+      description: |
+        Rendert dezelfde HTML/PDF als `/planner/auto-plan?format=` (#1460), maar van de lijst die de
+        browser meestuurt — dus inclusief handmatig versleepte blokken. Niets wordt opgeslagen of
+        herberekend. De club komt van de aanroeper; een afwijkende `clubCode` in de body geeft 403.
+
+        Limieten: maximaal 500 wedstrijden, tekstvelden maximaal 200 tekens zonder stuurtekens,
+        `tijd` als `HH:mm` (of leeg), `datum` als `yyyy-MM-dd` tussen 2020-01-01 en 2100-12-31,
+        body maximaal 512 KB (413).
+      security:
+        - easyAuth: []
+      parameters:
+        - name: format
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [html, pdf]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [datum, wedstrijden]
+              properties:
+                datum:
+                  type: string
+                  format: date
+                tab:
+                  type: string
+                  enum: [huidig, optimaal]
+                  default: huidig
+                clubCode:
+                  type: string
+                  description: Optioneel; moet gelijk zijn aan de club van de aanroeper.
+                wedstrijden:
+                  type: array
+                  maxItems: 500
+                  items:
+                    type: object
+                    required: [teamNaam]
+                    properties:
+                      teamNaam: {type: string, maxLength: 200}
+                      wedstrijd: {type: string, maxLength: 200, description: 'Thuis - Uit'}
+                      competitiesoort: {type: string, maxLength: 200, nullable: true}
+                      tijd: {type: string, pattern: '^([01]\d|2[0-3]):[0-5]\d$', nullable: true}
+                      veld: {type: string, maxLength: 200, nullable: true}
+      responses:
+        '200':
+          description: Het gedeelde document
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            text/html:
+              schema:
+                type: string
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: "`?format=pdf` terwijl de clubinstelling PdfExportIngeschakeld uit staat (#1459)"
+        '413':
+          description: Request body te groot
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /planner/pdf-export:
+    get:
+      tags: [planner]
+      operationId: pdfExportStatus
+      summary: Staat PDF-export aan voor de gekozen club?
+      description: |
+        #1459: geeft alleen de aan/uit-stand van de clubinstelling PdfExportIngeschakeld terug, zodat
+        Planning de PDF-knop alleen toont als `?format=pdf` werkt. Net als `/planner/veldbezetting`
+        open voor elke ingelogde rol (`admin` óf `user`); de volledige instellingen onder
+        `/beheer/settings` blijven admin-only. Club via `X-Club-Code`. Geen rij = uit.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: De stand van de instelling
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pdfExportIngeschakeld]
+                properties:
+                  pdfExportIngeschakeld:
+                    type: boolean
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -7013,7 +7710,8 @@ paths:
         `/planner/auto-plan` uitvoert. Bedoeld als snelle,
         goedkope "wat staat er nu al gepland"-weergave. Voedt de Planning-pagina, die sinds #1400
         generiek zichtbaar is voor elke ingelogde gebruiker — vereist daarom alleen `admin` óf
-        `user` (voorheen uitsluitend `admin`), als enig endpoint in deze tag.
+        `user` (voorheen uitsluitend `admin`); in deze tag geldt dat verder alleen voor
+        `/planner/pdf-export` (#1459).
       security:
         - easyAuth: []
       parameters:
@@ -7025,21 +7723,38 @@ paths:
             format: date
           description: Datum in yyyy-MM-dd formaat
           example: "2026-08-22"
+        - name: format
+          in: query
+          required: false
+          description: json (standaard), html of pdf (#1364) — het gedeelde document voor de deel-knop op Planning
+          schema:
+            type: string
+            enum: [json, html, pdf]
+            default: json
       responses:
         '200':
-          description: Wedstrijden op deze datum, gesorteerd op aanvangstijd
+          description: Wedstrijden op deze datum, gesorteerd op aanvangstijd (JSON), of bij format=html|pdf het gedeelde document
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: '#/components/schemas/VeldbezettingItem'
+            text/html:
+              schema:
+                type: string
+            application/pdf:
+              schema:
+                type: string
+                format: binary
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '409':
+          description: "`?format=pdf` terwijl de clubinstelling PdfExportIngeschakeld uit staat (#1459)"
         '500':
           $ref: '#/components/responses/InternalServerError'
 

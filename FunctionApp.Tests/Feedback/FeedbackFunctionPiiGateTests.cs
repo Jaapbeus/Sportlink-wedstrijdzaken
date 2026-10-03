@@ -26,6 +26,11 @@ namespace FunctionApp.Tests.Feedback;
 /// </summary>
 public class FeedbackFunctionPiiGateTests
 {
+    // #764: de submit-orkestratie (PII-gates vóór AI en GitHub, opslag, publicatiebeleid) staat sinds
+    // deze wijziging in Planner.Endpoints/Feedback/FeedbackEndpointCore en wordt getest in
+    // Planner.Endpoints.Tests/Feedback/FeedbackEndpointCoreTests (inclusief de voormalige
+    // SubmitCoreAsync-gevallen). Hier blijven de tier-specifieke validate/preview-vertalingen.
+
     // Synthetisch testadres — goedgekeurde AVG-veilige placeholder (CLAUDE.md), geen bestaand persoon.
     private const string PiiMarker = "trainer@voorbeeld.nl";
 
@@ -78,36 +83,6 @@ public class FeedbackFunctionPiiGateTests
         fake.AantalAanroepen.Should().Be(0);
     }
 
-    [Fact]
-    public async Task SubmitCoreAsync_OngeldigType_WordtGeblokkeerdZonderAiEnGitHubAanroep()
-    {
-        var dto = MaakSchoonRequest();
-        dto.Type = "Onbekend";
-        var fake = new FakeChatClient(GeldigeAiStructuurJson());
-        var github = new FakeGitHubIssueCreator();
-
-        var result = await FeedbackFunction.SubmitCoreAsync(dto, fake, github.MaakAsync, NullLogger.Instance);
-
-        AssertOngeldigType(result);
-        fake.AantalAanroepen.Should().Be(0);
-        github.AantalAanroepen.Should().Be(0);
-    }
-
-    [Fact]
-    public async Task SubmitCoreAsync_PiiInType_WordtGeblokkeerdZonderAiEnGitHubAanroep()
-    {
-        var dto = MaakSchoonRequest();
-        dto.Type = PiiMarker;
-        var fake = new FakeChatClient(GeldigeAiStructuurJson());
-        var github = new FakeGitHubIssueCreator();
-
-        var result = await FeedbackFunction.SubmitCoreAsync(dto, fake, github.MaakAsync, NullLogger.Instance);
-
-        AssertOngeldigType(result);
-        fake.AantalAanroepen.Should().Be(0);
-        github.AantalAanroepen.Should().Be(0);
-    }
-
     // ── Validate: blokkeert vóór de AI-aanroep ─────────────────────────────────
 
     [Fact]
@@ -150,86 +125,8 @@ public class FeedbackFunctionPiiGateTests
 
     // ── Submit: eerste gate blokkeert vóór de AI-aanroep ───────────────────────
 
-    [Fact]
-    public async Task SubmitCoreAsync_PiiInContextBrowser_WordtGeblokkeerdZonderAiEnGitHubAanroep()
-    {
-        var dto = MaakSchoonRequest();
-        dto.Context!.Browser = $"Mozilla/5.0 (stuur naar {PiiMarker})";
-        var fake = new FakeChatClient(GeldigeAiStructuurJson());
-        var github = new FakeGitHubIssueCreator();
-
-        var result = await FeedbackFunction.SubmitCoreAsync(dto, fake, github.MaakAsync, NullLogger.Instance);
-
-        AssertGeblokkeerd(result);
-        fake.AantalAanroepen.Should().Be(0);
-        github.AantalAanroepen.Should().Be(0);
-    }
-
-    [Fact]
-    public async Task SubmitCoreAsync_PiiInVraag_WordtGeblokkeerdZonderAiEnGitHubAanroep()
-    {
-        var dto = MaakSchoonRequest();
-        dto.VragenAntwoorden = [new VraagAntwoord { Vraag = $"Mail dit naar {PiiMarker}", Antwoord = "ok" }];
-        var fake = new FakeChatClient(GeldigeAiStructuurJson());
-        var github = new FakeGitHubIssueCreator();
-
-        var result = await FeedbackFunction.SubmitCoreAsync(dto, fake, github.MaakAsync, NullLogger.Instance);
-
-        AssertGeblokkeerd(result);
-        fake.AantalAanroepen.Should().Be(0);
-        github.AantalAanroepen.Should().Be(0);
-    }
-
     // ── Submit: tweede gate blokkeert vlak vóór de GitHub-write, ook bij PII die pas via de
     //    AI-output ontstaat — de eerste gate kan dit per definitie niet zien. ─────────────────
-
-    [Fact]
-    public async Task SubmitCoreAsync_PiiInAiSamenvatting_WordtGeblokkeerdVoorGitHubMaarAiIsWelAangeroepen()
-    {
-        // Schone invoer — de eerste gate laat dit door. Het taalmodel genereert (hier gesimuleerd
-        // via een fake) een samenvatting die de PII-marker bevat. De tweede gate, vlak vóór de
-        // GitHub-write, moet dit alsnog blokkeren.
-        var dto = MaakSchoonRequest();
-        var fake = new FakeChatClient($$"""
-            {"title": "Veldenpagina laadt niet", "samenvatting": "Neem voor details contact op via {{PiiMarker}}.", "acceptatiecriteria": []}
-            """);
-        var github = new FakeGitHubIssueCreator();
-
-        var result = await FeedbackFunction.SubmitCoreAsync(dto, fake, github.MaakAsync, NullLogger.Instance);
-
-        AssertGeblokkeerd(result);
-        fake.AantalAanroepen.Should().Be(1, "de AI is al aangeroepen — de blokkade zit ná de AI-call, niet ervoor");
-        github.AantalAanroepen.Should().Be(0, "een geblokkeerde AI-output mag nooit tot een GitHub-aanroep leiden");
-    }
-
-    [Fact]
-    public async Task SubmitCoreAsync_PiiInAiAcceptatiecriterium_WordtGeblokkeerdVoorGitHub()
-    {
-        var dto = MaakSchoonRequest();
-        var fake = new FakeChatClient($$"""
-            {"title": "Veldenpagina laadt niet", "samenvatting": "Ok.", "acceptatiecriteria": ["Bij fouten mailen naar {{PiiMarker}}"]}
-            """);
-        var github = new FakeGitHubIssueCreator();
-
-        var result = await FeedbackFunction.SubmitCoreAsync(dto, fake, github.MaakAsync, NullLogger.Instance);
-
-        AssertGeblokkeerd(result);
-        github.AantalAanroepen.Should().Be(0);
-    }
-
-    [Fact]
-    public async Task SubmitCoreAsync_SchoneInvoerEnSchoneAiOutput_MaaktGitHubIssueAan()
-    {
-        var dto = MaakSchoonRequest();
-        var fake = new FakeChatClient(GeldigeAiStructuurJson());
-        var github = new FakeGitHubIssueCreator();
-
-        var result = await FeedbackFunction.SubmitCoreAsync(dto, fake, github.MaakAsync, NullLogger.Instance);
-
-        result.Should().BeOfType<OkObjectResult>();
-        fake.AantalAanroepen.Should().Be(1);
-        github.AantalAanroepen.Should().Be(1);
-    }
 
     // ── Voorbeeld vóór publicatie (#1205) ──────────────────────────────────────
 
@@ -272,27 +169,6 @@ public class FeedbackFunctionPiiGateTests
 
         AssertOngeldigType(result);
         fake.AantalAanroepen.Should().Be(0);
-    }
-
-    [Fact]
-    public async Task SubmitCoreAsync_BevestigdeVeldenMetPii_WordtAlsnogGeblokkeerdVoorGitHub()
-    {
-        // De bevestigde velden komen van de client; de PII-gate draait er onverkort overheen.
-        var dto = MaakSchoonRequest();
-        dto.Bevestiging = new FeedbackBevestiging
-        {
-            Titel = "Veldenpagina laadt niet",
-            Samenvatting = $"Neem contact op via {PiiMarker}.",
-            Acceptatiecriteria = [],
-        };
-        var fake = new FakeChatClient(GeldigeAiStructuurJson());
-        var github = new FakeGitHubIssueCreator();
-
-        var result = await FeedbackFunction.SubmitCoreAsync(dto, fake, github.MaakAsync, NullLogger.Instance);
-
-        AssertGeblokkeerd(result);
-        fake.AantalAanroepen.Should().Be(0, "bevestigde velden vervangen de AI-aanroep");
-        github.AantalAanroepen.Should().Be(0);
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────

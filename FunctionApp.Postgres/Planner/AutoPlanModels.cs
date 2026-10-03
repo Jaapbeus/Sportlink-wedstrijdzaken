@@ -1,3 +1,5 @@
+using Planner.Shared.Deel;
+
 namespace FunctionApp.Postgres.Planner;
 
 /// <summary>
@@ -22,7 +24,8 @@ public class AutoPlanRequest
     public int? BufferMinuten { get; set; }
 }
 
-public class AutoPlanWedstrijdItem
+// IPlanWedstrijdRegel (#1363): de gedeelde PDF-export leest deze regel zonder eigen mapping per tier.
+public class AutoPlanWedstrijdItem : IPlanWedstrijdRegel
 {
     public long? WedstrijdCode { get; set; }
     public string Wedstrijd { get; set; } = string.Empty;
@@ -72,6 +75,15 @@ public class AutoPlanWedstrijdItem
 
     /// <summary>False als er een voorkeursveld was maar de planner een ander veld moest kiezen.</summary>
     public bool? VoorkeurVeldToegepast { get; set; }
+
+    /// <summary>
+    /// Actieve teamregel <c>BufferVoor</c> in minuten, of null zonder regel (#1430). Ruwe waarde, niet
+    /// de effectieve: de client neemt het maximum met de algemene buffer (PlanningBufferRegels).
+    /// </summary>
+    public int? TeamBufferVoor { get; set; }
+
+    /// <summary>Actieve teamregel <c>BufferNa</c> in minuten, of null zonder regel (#1430).</summary>
+    public int? TeamBufferNa { get; set; }
 }
 
 public class AutoPlanResponse

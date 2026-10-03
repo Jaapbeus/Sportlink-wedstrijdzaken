@@ -18,6 +18,16 @@
 #   .\Start-Debug.ps1 -NoWatch   → BlazorAdmin zonder hot reload (dotnet run i.p.v. dotnet watch)
 #   .\Start-Debug.ps1 -Tail      → één samengevoegde logstroom i.p.v. losse vensters
 #   .\Start-Debug.ps1 -Clean     → stop + dotnet clean BlazorAdmin vóór het starten
+#   .\Start-Debug.ps1 -SportlinkLive → zet local.settings.json klaar voor live Sportlink-verkeer
+#                                    van de PRIMAIRE club (#1466) — zie de toelichting hieronder
+#
+# SPORTLINK LIVE (#1466): lokaal staat extern verkeer standaard uit (EgressGuard, #857). Met
+# -SportlinkLive zet dit script AllowExternalIntegrations=true en maakt het een lokale
+# SportlinkAutoLoginEncryptionKey aan als die ontbreekt (#1411) — waarden worden nooit getoond.
+# Welke club live gaat bepaalt de database (public.appsettings, syncenabled = TRUE), niet dit
+# script: de democlub ALLSTARS krijgt nooit een koppeling. Inloggegevens voert alleen de eigenaar
+# in, via menu Sportlink Ext. (pagina Sportlink Web Extension). Na het starten meldt dit script altijd of de
+# primaire club live-klaar is, ook zonder -SportlinkLive.
 #
 # Exit code: 0 = alle services bereikbaar, 1 = minstens één service niet opgestart.
 #
@@ -42,7 +52,8 @@ param(
     [switch]$Swa,      # Start ook de Azure SWA emulator (vereist swa CLI)
     [switch]$NoWatch,  # Gebruik dotnet run i.p.v. dotnet watch voor BlazorAdmin
     [switch]$Tail,     # Voeg alle service-output samen in één venster
-    [switch]$Clean     # dotnet clean op BlazorAdmin vóór het starten
+    [switch]$Clean,    # dotnet clean op BlazorAdmin vóór het starten
+    [switch]$SportlinkLive  # Live Sportlink-verkeer voor de primaire club toestaan (#1466)
 )
 
 $root    = Resolve-Path (Join-Path $PSScriptRoot "../..")
@@ -89,6 +100,17 @@ if (-not (Test-Path $funcSettings)) {
     Write-Host "  Kopieer local.settings.template.json ernaast en vul de verbindingsreeks in." -ForegroundColor Yellow
     Write-Host "  Zie docs/DEVELOPER-SETUP.md sectie 5." -ForegroundColor Yellow
     exit 1
+}
+
+if ($SportlinkLive) {
+    $gewijzigd = Set-SportlinkLiveLocalSettings -SettingsPath $funcSettings
+    if ($gewijzigd.Count -gt 0) {
+        Write-Host "Sportlink live: local.settings.json bijgewerkt ($($gewijzigd -join ', '))." -ForegroundColor Cyan
+        if ($gewijzigd -contains 'SportlinkAutoLoginEncryptionKey') {
+            Write-Host "  Nieuwe lokale hostsleutel: voer de Sportlink-inloggegevens (opnieuw) in via" -ForegroundColor Yellow
+            Write-Host '  menu Sportlink Ext. → "Automatisch inloggen — rol Wedstrijdzaken".' -ForegroundColor Yellow
+        }
+    }
 }
 
 # Controleer of de machine-lokale git-hook patronen aanwezig zijn (#514)
@@ -279,7 +301,15 @@ if ($health) {
     # naar het seed-script — dat is een andere oorzaak.
     $pending = if (($health.PSObject.Properties.Name -contains 'pendingMigrations') -and $health.pendingMigrations) { @($health.pendingMigrations) } else { @() }
     $schemaWarning = if ($health.PSObject.Properties.Name -contains 'schemaWarning') { $health.schemaWarning } else { $null }
-    if (-not ($statusOk -and $settingsOk)) {
+    # #1466: met egress open (-SportlinkLive) verwacht health een recente sync en meldt anders
+    # 'degraded' (syncStale). Lokaal betekent dat alleen dat de data oud is, niet dat de host stuk
+    # is — dus een waarschuwing, geen startfout. Elke andere oorzaak blijft wél een fout.
+    $alleenSyncOud = -not $statusOk -and $settingsOk -and $pending.Count -eq 0 -and -not $schemaWarning `
+        -and ($health.PSObject.Properties.Name -contains 'syncStale') -and $health.syncStale
+    if ($alleenSyncOud) {
+        Write-Host "  Health 'degraded' alleen door een verouderde sync (laatste: $($health.lastSync))." -ForegroundColor DarkYellow
+        Write-Host "    Lokale data verversen: GET http://localhost:$($ports.FunctionApp)/api/sync-matches (leest live uit Sportlink)." -ForegroundColor DarkYellow
+    } elseif (-not ($statusOk -and $settingsOk)) {
         Write-Host "  Health meldt status '$($health.status)' (settingsLoaded=$($health.settingsLoaded))." -ForegroundColor Red
         if ($pending.Count -gt 0) {
             Write-Host "    Openstaande migraties: $($pending -join ', ')" -ForegroundColor Yellow
@@ -299,6 +329,22 @@ if ($health) {
 } else {
     Write-Host "  FunctionApp reageerde niet binnen 120s op /api/health" -ForegroundColor Red
     $failures.Add('FunctionApp')
+}
+
+# Sportlink-livemodus (#1466): informatief, nooit een startfout. Zonder X-Club-Code antwoordt het
+# endpoint voor de primaire club; lokaal geldt de rolbypass (WEBSITE_SITE_NAME ontbreekt).
+if ($health) {
+    $slHealth = try {
+        Invoke-RestMethod "http://localhost:$($ports.FunctionApp)/api/beheer/sportlink-extensie/health" -TimeoutSec 10 -ErrorAction Stop
+    } catch { $null }
+    $blokkades = Get-SportlinkLiveBlockers -SettingsPath $funcSettings -Health $slHealth
+    if ($blokkades.Count -eq 0) {
+        $modus = if ($slHealth.dryRun) { 'dry-run AAN: lezen live, mutaties gesimuleerd' } else { 'dry-run UIT: mutaties gaan echt naar Sportlink' }
+        Write-Host "  Sportlink live-klaar voor de primaire club ($modus)" -ForegroundColor Green
+    } else {
+        Write-Host "  Sportlink niet live voor de primaire club:" -ForegroundColor DarkYellow
+        foreach ($b in $blokkades) { Write-Host "    - $b" -ForegroundColor DarkYellow }
+    }
 }
 
 # BlazorAdmin: eerste build kan lang duren, vooral na een clean.

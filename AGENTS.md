@@ -521,6 +521,8 @@ bewust worden bekeken.
 | `docs/ARCHITECTUUR-EMAIL-MODULE.md` | E-mail-verzendlaag, afzenderstrategie, ontvangerresolutie of e-mail-loggingschema gewijzigd |
 | `docs/ARCHITECTUUR-DATABASE-TIERS.md` | Tier-keuze, bouwvolgorde, casing-conventie of nieuwe tier-implementatie gewijzigd |
 | `docs/ARCHITECTUUR-CODEKWALITEIT.md` | Codekwaliteitsregel, guard, plafond of allowlist-uitzondering gewijzigd; nieuwe harde regel toegevoegd |
+| `docs/ARCHITECTUUR-PDF-EXPORT.md` | PDF-export (QuestPDF) in `Planner.Shared/Deel/`: licentie, native assets, pakketgrootte of platformbewijs gewijzigd |
+| `docs/RUNBOOK-FLEX-MIGRATIE.md` | Flex Consumption-migratie (epic #1063): volgorde, kostencontroles, cutover of rollback gewijzigd |
 | `docs/SPORTLINK-WEB-EXTENSION.md` | Sportlink Web Extension (epic #986): rol/serviceaccount-koppeling, auth-flow of de regel dat agents dit mechanisme nooit zelf mogen uitvoeren gewijzigd |
 | `docs/VERIFICATIE-SCRIPTS.md` | Testscript, schema-controle of endpoint-verificatie gewijzigd |
 | `docs/MONITORING.md` | Alerting-drempelwaarden, KQL-queries of escalatiematrix gewijzigd |
@@ -890,7 +892,8 @@ Negen regels, alle negen met een exit-code:
    accepteert elke ingelogde rol (`admin` + `user`) in plaats van uitsluitend `admin`. Uitsluitend
    voor endpoints die een eigenaar expliciet heeft aangewezen als "voor alle gebruikers, niet
    beheerder-only" (vandaag: de drie Teambegeleiding-lookup/doorstuur-endpoints — de CSV-import
-   blijft bewust admin-only). Nieuwe naam is bewust, geen parameter op `ExecuteAsync` (dezelfde
+   blijft bewust admin-only —, de Planning-/Sportlink-viewing-endpoints (#1400) en sinds #764 de
+   drie `/api/feedback/*`-endpoints). Nieuwe naam is bewust, geen parameter op `ExecuteAsync` (dezelfde
    #1272-reden als bij de andere twee varianten); `scripts/ci/check-endpoint-autorisatie.sh`
    herkent hem expliciet als wrapper, en `EndpointAutorisatieTests.MetAlleenUserRol_Geeft403` (per
    tier) bewijst via de `AuthenticatedRoutes`-lijst zowel dat de drie aangewezen endpoints de rol
@@ -1281,6 +1284,28 @@ controles in plaats van één expliciete).
 
 ---
 
+### Feedback — identiteit van de melder nooit in het publieke issue (#764)
+
+> Volledige uitwerking, datamodel, redactieregels, bewaartermijnen en verwerkingsregister:
+> **[docs/FEEDBACK.md](docs/FEEDBACK.md)**
+
+De feedbackwidget is open voor elke ingelogde rol (`admin` + `user`). Harde regels:
+
+1. **De melder (Entra object-ID, naam-momentopname) staat uitsluitend in het `avg`-schema, nooit in een
+   GitHub-issue, -comment of log** — en wordt uitsluitend uit het Easy Auth-principal gehaald, nooit uit
+   de requestbody. Geen e-mailadres bewaren.
+2. **Een gewone gebruiker publiceert nooit zelf.** `FeedbackEndpointCore` bewaart zijn melding met status
+   `wacht-op-publicatie`; alleen een beheerder publiceert (direct bij eigen melding, via de knop in het
+   overzicht bij die van een ander). Een nieuw pad dat publiceert zonder dat een beheerder de tekst zag
+   is een architectuurschending.
+3. **Technische context is geredigeerd en blijft buiten het publieke issue.** Nieuwe contextbronnen
+   lopen door `FeedbackRedactie`/`FeedbackTelemetrieSaneerder` (`Planner.Shared/Feedback/`, ook in de
+   browser gelinkt); een tweede set regex-regels elders is dezelfde fout als #692.
+4. **Bewaartermijnen staan in `FeedbackRetentie`** (identiteit open + 24 mnd na sluiting, telemetrie
+   90 dagen, inzagelog 24 mnd) en worden door de dagelijkse timer `CleanupFeedback` op beide tiers
+   afgedwongen. Wijzig een termijn alleen samen met `docs/FEEDBACK.md` en het verwerkingsregister.
+5. **Het overzicht blijft zonder export** en legt elke inzage vast (`avg.FeedbackInzageLog`).
+
 ### Thema-logica — één gedeelde kern, en nooit `UriKind.Absolute` als "is dit een URL"-test (#1248, #1252)
 
 Twee harde regels:
@@ -1512,7 +1537,7 @@ De API-standaarden staan in `docs/api-standaarden/`:
 
 **Nooit een endpoint-wijziging committen zonder de spec bij te werken.** De spec is de contractdefinitie voor andere systemen, consumers en toekomstige Codex-sessies. Een verouderde spec misleidt — dat is erger dan geen spec.
 
-**Stand van de spec (bijgewerkt 2026-10-01):** `openapi.yaml`/`.json` dekken 78 routes; `info.version` volgt de app-versie. Regenereer `openapi.json` altijd uit de YAML (nooit beide handmatig bijwerken):
+**Stand van de spec (bijgewerkt 2026-10-03):** `openapi.yaml`/`.json` dekken 84 routes (105 operaties); `info.version` volgt de app-versie. Regenereer `openapi.json` altijd uit de YAML (nooit beide handmatig bijwerken):
 ```powershell
 python -c "import yaml,json,io; s=yaml.safe_load(io.open('docs/api-standaarden/openapi.yaml',encoding='utf-8')); json.dump(s, io.open('docs/api-standaarden/openapi.json','w',encoding='utf-8'), indent=2, ensure_ascii=False)"
 ```
@@ -1586,28 +1611,32 @@ twee verandert dan mee, en niets waarschuwt ervoor. Gebeurd bij #859/#952/#939 (
 **Verplicht vóór een release:**
 1. Verplaats alles van `## [Unreleased]` naar `## [x.y.z] — YYYY-MM-DD`
 2. Voeg een lege `## [Unreleased]` terug bovenaan
-3. Bump de versie in `FunctionApp/fa-dev-sportlink-01.csproj` en `BlazorAdmin/BlazorAdmin.csproj`
+3. Bump de versie in alle drie de csproj's (zie hierboven) — `/release` doet dit in stap R4
 
-### Release-workflow
+### Release-workflow — altijd via de skill `/release` (#1470)
 
-```powershell
-# 1. Zorg dat main up-to-date en groen is
-git checkout main && git pull
-.\scripts\dev\Test-App.ps1   # moet exit 0
+**Een release naar productie loopt uitsluitend via `/release`** (`.claude/skills/release/SKILL.md`).
+`/autonoom --release` roept die skill aan en heeft geen eigen kopie van de stappen meer. De skill is
+de ene plek voor de volgorde: securitypoort → versie en CHANGELOG → kostencheck → versiebump-PR naar
+`develop` → release-PR `develop` → `main` → deploycontrole per job + live rendercheck → tag.
 
-# 2. PR aanmaken en mergen naar main (via GitHub) — vanuit een release-branch
-gh pr create --base main --title "release: v2.0.1" ...
+**De securitypoort is stap één en blokkeert hard.** Vóór er iets gecommit wordt:
+- `/security-review` (de ingebouwde skill, lokaal in Claude Code, geen API-kosten) op de volledige
+  releasediff `origin/main...origin/develop`. Eén HIGH-bevinding stopt de release.
+- Geen open Dependabot- of code-scanning-alert op high/critical, geen open secret-scanning-alert.
+- Security Gate groen op de HEAD van `origin/develop`. Sinds #1470 hoort daar ook CodeQL bij, die
+  faalt op security-severity ≥ 7.0.
 
-# 3. Na merge: tag aanmaken op main
-git checkout main && git pull
-git tag v2.0.1 -m "Release v2.0.1"
-git push origin v2.0.1  # triggert release.yml workflow automatisch
+> **Waarom een skill en geen CI-job.** Een `/security-review` in GitHub Actions vraagt een
+> Anthropic API-sleutel en dus API-kosten (zie "Kostenbeleid"). Releases worden altijd vanuit een
+> Claude Code-sessie gedaan, dus de review hoort dáár, als vaste eerste stap. Wat CI wél gratis kan
+> (statische analyse met CodeQL), zit in de verplichte Security Gate. Daarmee is een vergeten
+> review ook niet langer de enige vangrail voor eigen code.
 
-# 4. GitHub Release wordt automatisch aangemaakt door release.yml
-# Body komt uit CHANGELOG.md — sectie [2.0.1]
-```
+Een niet-verholpen bevinding uit de review is publicatiegevoelig (veiligheidsregel 4a): in de
+release-PR staan alleen aantallen per severity, nooit vindplaatsen of scenario's.
 
-Of via GitHub Actions UI (workflow_dispatch in release.yml) zonder lokale tag.
+Handmatig alternatief voor alleen de tag-stap: `release.yml` via workflow_dispatch in de Actions-UI.
 
 **Databasemigraties bij een release (#1093):** `deploy.yml` past ze zelf toe, vóór de code live
 gaat — `db-migrate` (SQL Server-PostDeployment) bij `DatabaseTier=SqlServer`, `db-migrate-postgres`
@@ -1717,10 +1746,10 @@ Browser (beheerder)
         ▼
   Azure Functions (Consumption) — func-[clubcode]-sportlink.azurewebsites.net
     Easy Auth: valideert Bearer token, injecteert X-MS-CLIENT-PRINCIPAL
-    EasyAuthHelper: checkt 'admin' rol op alle /api/beheer/*, /api/test/*, /api/feedback/*
+    EasyAuthHelper: checkt 'admin' rol op alle /api/beheer/*, /api/test/*; /api/feedback/* is open voor admin én user (#764)
     FunctionApp/Admin/       → 9 bestanden, 18+ endpoints op /api/beheer/
     FunctionApp/Processing/  → BerichtPipeline (kanaal-agnostisch)
-    FunctionApp/Feedback/    → Intelligente feedback widget → GitHub Issues
+    FunctionApp/Feedback/    → Feedback widget (alle gebruikers; opslag in avg.Feedback; beheerder publiceert direct, user na klik) → GitHub Issues
         │
         ▼
   Azure SQL — SportlinkSqlDb
@@ -1761,7 +1790,8 @@ Browser (beheerder)
 | `GET /api/beheer/clubs` | `AdminClubsFunction.cs` |
 | `GET/POST/PUT/DELETE /api/beheer/speeltijden`, `/{leeftijd}` | `AdminSpeeltijdenFunction.cs` |
 | `POST /api/test/email` | `EmailTestFunction.cs` |
-| `POST /api/feedback/validate`, `/preview`, `/submit` | `FeedbackFunction.cs` |
+| `POST /api/feedback/validate`, `/preview`, `/submit` (admin + user, #764) | `FeedbackFunction.cs` |
+| `GET /api/beheer/feedback`, `/{id}`, `/inzagelog`, `POST /{id}/publiceer` (inzagelog, #764) | `AdminFeedbackFunction.cs` |
 
 ### v2.1 backlog (epic #102)
 

@@ -1,3 +1,35 @@
+# HANDOFF — autonome ronde 2026-10-02 (vanaf epic #1063)
+
+Status (2026-10-02): elf PR's gemerged naar `develop` (3.9.0.0 → 3.9.6.1). **Niets naar `main`, geen productie-deploy.**
+Elke PR had groene CI, inclusief de Security Gate. De orchestrator heeft hem gemerged na eigen verificatie; versie- en plafondconflicten zijn per merge opnieuw gemeten.
+
+| Issue | PR | Inhoud |
+|---|---|---|
+| #1408 | #1448 | docs: Serena vs Graft benchmark |
+| #1352 | #1449 | Volledig seizoen opnieuw opbouwen via de GUI (POST sync/trigger met reset/season) |
+| #1360 | #1450 | Teambegeleiding-badge "Teamrol - Functie" (migratie 033, CSV-parsing naar Planner.Shared) |
+| #1363 | #1451 | QuestPDF-generator in Planner.Shared (WZ-ADR-012, docs/ARCHITECTUUR-PDF-EXPORT.md) |
+| #1430 | #1452 | Handmatige veldplanning past teambuffers toe via gedeelde conflictregels |
+| #1362 | #1453 | Generiek DeelPaneel-component |
+| #1070/#1071 | #1454 | Flex-runbook + hostname-inventaris (alleen docs/commentaar) |
+| #1440 | #1456 | ClubMatchDelete — **hard dry-run** (`ClubMatchDeleteLiveBevestigd = false`) |
+| #1364 | #1457 | Planning/Veld optimalisatie delen als HTML + PDF |
+| #1461 | #1462 | Fixes uit de afsluitende code-, security- en architectuurreview |
+
+## Eigenaarsacties (open)
+1. **QuestPDF Community License**: geldt alleen bij een jaaromzet onder USD 1 mln. Bevestig dit voor de eigen club vóór de release van develop naar main; zie `docs/SETUP-NIEUWE-CLUB.md`. Configureerbaar maken: #1459.
+2. **FLEX-05 (#1068)**: kostengate, niet uitgevoerd. Volg `docs/RUNBOOK-FLEX-MIGRATIE.md` (standaard 2048 MB, always-ready 0, prijscheck op de dag zelf). Het testdeploy-workflowsjabloon staat in bijlage A; de agent mocht het niet als workflow toevoegen. #1070/#1071 staan op `status: blocked`. Deadline: .NET 9 EOL op 10 november 2026.
+3. **#1458**: netwerktrace van ClubMatchDelete, daarna de lock opheffen. In dezelfde PR: fail-closed audit en een besluit over de server-scope.
+4. **#1455**: de `deploy`-actie van `infrastructure.yml` vervangt alle app settings van de productie-app. Niet draaien vóór dit is opgelost.
+
+## Vervolgissues (Claude Code)
+#1459 (PDF-licentie/toggle), #1460 (delen na handmatig verslepen; er is nu een tijdelijke waarschuwing), #1455.
+
+## Niet lokaal te verifiëren
+`Test-App.ps1` (pwsh wordt in worktrees geweigerd; de stappen zijn met de hand gedaan), de SQL Server-tier end-to-end (alleen build, unit-tests en de CI-job PostDeployment), live Entra-rollen (alleen EndpointAutorisatieTests) en een echte Azure-run van QuestPDF (alleen bewezen in een Linux-container).
+
+---
+
 # HANDOFF — Wedstrijd aanmaken: bug #1436 + verbeteringen #1437
 
 Status (2026-10-02):

@@ -22,7 +22,10 @@ public sealed record SportlinkChangeRequestOverzichtItem(
     string? Remarks,
     SportlinkWedstrijdContext? Wedstrijd,
     bool? IsIncomingRequest,
-    string StatusGroep)
+    string StatusGroep,
+    string? ExternalMatchId = null,
+    string? Thuisteam = null,
+    string? Uitteam = null)
 {
     /// <summary>
     /// Koppelt elk verzoek aan zijn wedstrijdcontext en zet openstaande (inkomend eerst) verzoeken bovenaan. Pure
@@ -37,7 +40,10 @@ public sealed record SportlinkChangeRequestOverzichtItem(
                 v.PublicMatchId, v.PublicRequestId, v.RequestStatus, v.RequestData, v.Reason, v.Remarks,
                 contextPerPublicMatchId.TryGetValue(v.PublicMatchId, out var ctx) ? ctx : null,
                 v.IsIncomingRequest,
-                SportlinkChangeRequestStatusGroep.Bepaal(v.RequestStatus)))
+                SportlinkChangeRequestStatusGroep.Bepaal(v.RequestStatus),
+                // #1464: Sportlinks eigen wedstrijdnummer en teamnamen — de terugval als de eigen
+                // context ontbreekt, zodat de kolommen niet leeg blijven.
+                v.ExternalMatchId, v.HomeTeam?.TeamName, v.AwayTeam?.TeamName))
             // Openstaand vooraan, daarbinnen inkomend (null telt als inkomend) vóór uitgaand (#1439).
             .OrderBy(v => v.StatusGroep == SportlinkChangeRequestStatusGroep.Openstaand ? 0 : 1)
             .ThenBy(v => v.IsIncomingRequest == false ? 1 : 0)

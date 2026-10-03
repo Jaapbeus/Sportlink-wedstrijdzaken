@@ -1,5 +1,6 @@
 using BlazorAdmin.Models;
 using BlazorAdmin.Services;
+using BlazorAdmin.Shared;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
@@ -29,9 +30,14 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     // zoals die nu in Sportlink staat zien, en pas daarna desgewenst naar Optimaal wisselen.
     private string _visTab = "huidig";
     private AutoPlanResponseDto? _plan;
+    // #1364: de PDF wordt server-side opnieuw berekend; met de invoer waarmee het getoonde plan is
+    // gemaakt, niet met wat er inmiddels in de invoerbalk staat.
+    private string _planDatum = "";
+    private int _planBuffer;
 
     // Sportlink-kolom (#989/#991/#1361): alleen de vlag blijft hier; uitklap-/deeplinkstate staat in
     // SportlinkActieKolomState, het paneel zelf is SportlinkMatchPanel (#1122).
+    private bool _pdfExportIngeschakeld;
     private bool _sportlinkExtensionEnabled;
     private readonly SportlinkActieKolomState _sportlinkKolom = new();
 
@@ -40,32 +46,50 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     // Huidig- als de Optimaal-tab.
     private readonly GanttHoverState _hover = new();
 
-    // HTML-export van de berekende planning (voorheen onderdeel van de klassieke flow, #666)
-    private string? _kopieerStatus;
-
-    // Volgt de gekozen tab: de export toont dezelfde planning als de tijdlijn erboven.
+    // Volgt de gekozen tab: de export toont dezelfde planning als de tijdlijn erboven. Preview,
+    // kopiëren en downloaden zitten in <DeelPaneel> (#1362); script-strip staat in DeelHtmlHelper.
     private string? HuidigeExportHtml =>
         _plan == null ? null : (_visTab == "optimaal" ? _plan.OptimaleHtml : _plan.HuidigeHtml);
 
-    // De gegenereerde HTML bevat een klik-interactie-script. In het iframe hieronder staat bewust
-    // geen 'allow-scripts' (XSS-verdediging, #603), en e-mailclients strippen scripts toch — het
-    // script wordt daar dus altijd geblokkeerd en levert alleen een console-fout op. Voor de
-    // voorbeeldweergave en de e-mailversie halen we het eruit; de download houdt het wél, want in
-    // een los geopend HTML-bestand werkt de interactie normaal.
-    private string? ExportHtmlZonderScript
+    private string ExportToelichting =>
+        $"Weergave van de {(_visTab == "optimaal" ? "optimale" : "huidige")} planning zoals hierboven gekozen. " +
+        "Handig om als e-mail te versturen of als bestand te bewaren.";
+    // #1460: de export komt van de server. Zonder handmatige aanpassing is dat het berekende plan;
+    // met handmatig versleepte blokken sturen we de getoonde lijst mee naar het stateless
+    // planner/auto-plan/deel-endpoint, zodat het gedeelde bestand gelijk is aan het scherm.
+    private bool HeeftHandmatigeAanpassing => _handmatigAangepast.Count > 0;
+
+    private string? ExportWaarschuwing => HeeftHandmatigeAanpassing
+        ? "Dit bestand bevat je handmatige aanpassingen zoals ze nu op het scherm staan."
+        : null;
+
+    private IEnumerable<AutoPlanDeelRegelDto> GetoondeRegels()
     {
-        get
+        var optimaal = _visTab == "optimaal";
+        return (_plan?.Wedstrijden ?? new()).Select(w => new AutoPlanDeelRegelDto
         {
-            var html = HuidigeExportHtml;
-            if (string.IsNullOrEmpty(html)) return html;
-            // Geen static Regex-veld en geen RegexOptions.Compiled: dat faalt in Blazor WebAssembly
-            // (NullReferenceException bij het renderen, geen buildfout — alleen zichtbaar in de browser).
-            return System.Text.RegularExpressions.Regex.Replace(
-                html, @"<script\b[^>]*>.*?</script>", string.Empty,
-                System.Text.RegularExpressions.RegexOptions.Singleline |
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        }
+            TeamNaam = w.TeamNaam,
+            Wedstrijd = w.Wedstrijd,
+            Competitiesoort = w.Competitiesoort,
+            Tijd = optimaal ? w.OptimaalTijd : w.HuidigeTijd,
+            Veld = optimaal ? w.OptimaalVeld : w.HuidigeVeld,
+        });
     }
+
+    private Task<string> HtmlOphalenAsync() => HeeftHandmatigeAanpassing
+        ? Api.GetAutoPlanDeelHtmlAsync(_planDatum, _visTab, GetoondeRegels())
+        : Task.FromResult(HuidigeExportHtml ?? "");
+
+    private Task<byte[]> PdfOphalenAsync() => HeeftHandmatigeAanpassing
+        ? Api.GetAutoPlanDeelPdfAsync(_planDatum, _visTab, GetoondeRegels())
+        : Api.GetAutoPlanPdfAsync(_planDatum, _planBuffer, _visTab);
+
+    private string ExportBestandsNaam => $"veld-optimalisatie-{DatumStr}";
+    private string ExportSleutel => $"{_visTab}|{DatumStr}|{_plan?.GetHashCode()}|{HandmatigeStand()}";
+
+    // Verandert bij elke versleping, zodat een open deelpaneel zijn preview ververst.
+    private string HandmatigeStand() => string.Join(';', _handmatigAangepast
+        .Select(w => $"{w.WedstrijdCode}:{w.OptimaalTijd}:{w.OptimaalVeld}").OrderBy(x => x, StringComparer.Ordinal));
 
     // Toepassen feedback
     private string? _toepassenMelding;
@@ -85,6 +109,7 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
         // #989: geen Sportlink-kolom/-knoppen tonen als de extension uit staat (DoD).
         var settings = await Api.GetSettingsAsync();
         _sportlinkExtensionEnabled = settings.Success && settings.Data?.SportlinkExtensionEnabled == true;
+        await LaadPdfExportStatusAsync();
 
         // #1334: automatisch een plan laden, zodat de wedstrijdenlijst (incl. de Sportlink-kolom
         // met de bewerkacties) meteen zichtbaar is — vóór deze fix moest een gebruiker altijd eerst
@@ -97,6 +122,7 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     private async Task OnDatumChanged()
     {
         _plan = null;
+        _handmatigAangepast.Clear();
         _errorMessage = null;
         _toepassenMelding = null;
         await AutoPlanAsync();
@@ -105,10 +131,18 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     protected override async Task OnClubChangedAsync()
     {
         _plan = null;
+        _handmatigAangepast.Clear();
         _errorMessage = null;
         _toepassenMelding = null;
+        await LaadPdfExportStatusAsync();
         await AutoPlanAsync();
     }
+
+    /// <summary>
+    /// #1459: de PDF-knop verschijnt alleen als de gekozen club PDF-export heeft ingeschakeld
+    /// (standaard uit). Via het voor elke ingelogde rol open endpoint, opnieuw bij een clubwissel.
+    /// </summary>
+    private async Task LaadPdfExportStatusAsync() => _pdfExportIngeschakeld = await Api.IsPdfExportIngeschakeldAsync();
 
     private async Task AutoPlanAsync()
     {
@@ -122,6 +156,9 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
             if (result.Success)
             {
                 _plan = result.Data;
+                _handmatigAangepast.Clear();
+                _planDatum = req.Datum;
+                _planBuffer = _bufferMinuten;
                 _filter = "alles";
                 _visTab = "huidig";
             }
@@ -234,26 +271,6 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
         _                 => ""
     };
 
-    // ── HTML-export van de berekende planning ──
-    // Sinds #666 komt de HTML uit de auto-plan-response zelf (HuidigeHtml / OptimaleHtml). Er is dus
-    // geen extra API-call meer nodig; het losse optimaliseer-endpoint is vervallen.
-
-    private async Task KopieerEmailHtmlAsync()
-    {
-        var html = ExportHtmlZonderScript;
-        if (string.IsNullOrEmpty(html)) return;
-        await JS.InvokeVoidAsync("blazorHelpers.copyToClipboard", html);
-        _kopieerStatus = "Gekopieerd!";
-        _ = Task.Delay(2500).ContinueWith(_ => { _kopieerStatus = null; InvokeAsync(StateHasChanged); });
-    }
-
-    private async Task DownloadHtmlAsync()
-    {
-        var html = HuidigeExportHtml;
-        if (string.IsNullOrEmpty(html)) return;
-        await JS.InvokeVoidAsync("blazorHelpers.downloadHtml", $"veld-optimalisatie-{DatumStr}.html", html);
-    }
-
     // ── Gantt helpers ──
 
     // Wedstrijd meegegeven zodat een sleepactie in de tijdlijn de onderliggende regel kan bijwerken
@@ -297,16 +314,20 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     private readonly HashSet<AutoPlanWedstrijdItemDto> _handmatigAangepast = new();
     private List<string> _conflicten = new();
 
-    private void SleepStart(DagplanningWeergaveHelpers.GanttItem gi, DragEventArgs e)
+    private bool IsHandmatigAangepast(DagplanningWeergaveHelpers.GanttItem gi)
+        => gi.Bron != null && _handmatigAangepast.Contains(gi.Bron);
+
+    private void SleepStart(GanttChart.SleepStartArgs args)
     {
-        if (gi.Bron == null) return;
-        _sleepItem = gi.Bron;
+        if (args.Item.Bron == null) return;
+        _sleepItem = args.Item.Bron;
         // Waar in het blok is gepakt — anders verspringt het blok naar de cursor bij het neerzetten.
-        _sleepGrijpOffsetPx = e.OffsetX;
+        _sleepGrijpOffsetPx = args.Event.OffsetX;
     }
 
-    private async Task SleepDrop(string veldNaam, int rijIndex, int startMinuut, int totaalMinuten, DragEventArgs e)
+    private async Task SleepDrop(GanttChart.SleepDropArgs args)
     {
+        var (veldNaam, rijIndex, startMinuut, totaalMinuten, e) = (args.VeldNaam, args.RijIndex, args.StartMinuut, args.TotaalMinuten, args.Event);
         var item = _sleepItem;
         _sleepItem = null;
         if (item == null || _plan == null) return;
@@ -368,24 +389,6 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
 
     private static readonly string[] BaanLabels = ["A1", "A2", "B1", "B2"];
 
-    // Welke kwartbanen bezet een wedstrijd met deze subpositie? Leeg/onbekend = heel veld.
-    // Dezelfde indeling als de planner server-side gebruikt.
-    private static bool[] BanenVanSubpositie(string? subpositie)
-    {
-        var b = new bool[4];
-        switch ((subpositie ?? string.Empty).Trim().ToUpperInvariant())
-        {
-            case "A1": b[0] = true; break;
-            case "A2": b[1] = true; break;
-            case "B1": b[2] = true; break;
-            case "B2": b[3] = true; break;
-            case "A":  b[0] = b[1] = true; break;
-            case "B":  b[2] = b[3] = true; break;
-            default:   b[0] = b[1] = b[2] = b[3] = true; break;
-        }
-        return b;
-    }
-
     // Status, voorkeursafwijking en de samenvatting opnieuw bepalen — dezelfde regels als de server,
     // zodat een handmatige zet net zo eerlijk wordt beoordeeld als een berekende.
     private void HerberekenNaSleep(AutoPlanWedstrijdItemDto item)
@@ -418,92 +421,11 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
         ControleerConflicten();
     }
 
-    // Overlap- en buffercontrole per veld, zodat een handmatige zet niet stil een onmogelijke
-    // planning oplevert. Zelfde regel als de server: gelijktijdig mag als de veldfracties samen
-    // binnen één veld blijven; achter elkaar vraagt de ingestelde buffer.
-    private void ControleerConflicten()
-    {
-        _conflicten = new List<string>();
-        if (_plan == null) return;
-
-        var perVeld = _plan.Wedstrijden
-            .Where(w => w.OptimaalTijd != null && w.OptimaalVeldNaam != null && w.DuurMinuten > 0
-                        && TimeOnly.TryParse(w.OptimaalTijd, out _))
-            .GroupBy(w => w.OptimaalVeldNaam!);
-
-        foreach (var veld in perVeld)
-        {
-            var lijst = veld.OrderBy(w => TimeOnly.Parse(w.OptimaalTijd!)).ToList();
-            for (int i = 0; i < lijst.Count; i++)
-            {
-                var a = lijst[i];
-                var aStart = TimeOnly.Parse(a.OptimaalTijd!);
-                var aEind = aStart.AddMinutes(a.DuurMinuten);
-                for (int j = i + 1; j < lijst.Count; j++)
-                {
-                    var b = lijst[j];
-                    var bStart = TimeOnly.Parse(b.OptimaalTijd!);
-                    var bEind = bStart.AddMinutes(b.DuurMinuten);
-
-                    bool overlapt = aStart < bEind && aEind > bStart;
-                    if (overlapt)
-                    {
-                        // Op banen vergelijken, niet op de som van de fracties: een half veld op A plus
-                        // een kwart veld telt op tot 0,75 — numeriek prima — maar botst wél als dat kwart
-                        // op A1 of A2 staat. De veldhelften zijn wat er fysiek bezet is.
-                        var baanA = BanenVanSubpositie(DagplanningWeergaveHelpers.GanttExtractSubPos(a.OptimaalVeld));
-                        var baanB = BanenVanSubpositie(DagplanningWeergaveHelpers.GanttExtractSubPos(b.OptimaalVeld));
-                        bool botst = false;
-                        for (int k = 0; k < 4; k++) if (baanA[k] && baanB[k]) botst = true;
-                        if (botst)
-                            _conflicten.Add($"{veld.Key}: {a.TeamNaam} en {b.TeamNaam} staan op hetzelfde veldgedeelte op dezelfde tijd.");
-                    }
-                    else
-                    {
-                        int gat = (int)(bStart.ToTimeSpan() - aEind.ToTimeSpan()).TotalMinutes;
-                        if (gat >= 0 && gat < _bufferMinuten)
-                            _conflicten.Add($"{veld.Key}: tussen {a.TeamNaam} en {b.TeamNaam} zit {gat} min, minder dan de ingestelde buffer van {_bufferMinuten} min.");
-                    }
-                }
-            }
-        }
-
-        // #939: dezelfde controle als hierboven, maar per TEAM in plaats van per veld — een team kan
-        // niet op twee velden tegelijk staan, ongeacht of er op elk van die velden zelf nog ruimte
-        // was. Zonder deze doorsnede kon een handmatige sleepactie een team dubbel boeken zonder
-        // enige waarschuwing, terwijl FieldScheduler datzelfde scenario server-side al weigert.
-        var perTeam = _plan.Wedstrijden
-            .Where(w => w.OptimaalTijd != null && w.DuurMinuten > 0 && TimeOnly.TryParse(w.OptimaalTijd, out _)
-                        && !string.IsNullOrWhiteSpace(w.TeamNaam))
-            .GroupBy(w => w.TeamNaam);
-
-        foreach (var team in perTeam)
-        {
-            var lijst = team.OrderBy(w => TimeOnly.Parse(w.OptimaalTijd!)).ToList();
-            for (int i = 0; i < lijst.Count; i++)
-            {
-                var a = lijst[i];
-                var aStart = TimeOnly.Parse(a.OptimaalTijd!);
-                var aEind = aStart.AddMinutes(a.DuurMinuten);
-                for (int j = i + 1; j < lijst.Count; j++)
-                {
-                    var b = lijst[j];
-                    var bStart = TimeOnly.Parse(b.OptimaalTijd!);
-                    var bEind = bStart.AddMinutes(b.DuurMinuten);
-
-                    bool overlapt = aStart < bEind && aEind > bStart;
-                    if (overlapt)
-                    {
-                        _conflicten.Add($"{team.Key}: staat tegelijk ingepland op {a.OptimaalVeldNaam} en {b.OptimaalVeldNaam} om {aStart:HH\\:mm}.");
-                        continue;
-                    }
-                    int gat = (int)(bStart.ToTimeSpan() - aEind.ToTimeSpan()).TotalMinutes;
-                    if (gat >= 0 && gat < _bufferMinuten)
-                        _conflicten.Add($"{team.Key}: tussen de wedstrijd op {a.OptimaalVeldNaam} en die op {b.OptimaalVeldNaam} zit {gat} min, minder dan de ingestelde buffer van {_bufferMinuten} min.");
-                }
-            }
-        }
-    }
+    // Overlap- en buffercontrole per veld én per team, zodat een handmatige zet niet stil een
+    // onmogelijke planning oplevert. De regels zelf staan sinds #1430 in PlanningConflictDetectie
+    // (Planner.Shared, gelinkt) — dezelfde regels als de planner, inclusief teamspecifieke buffers.
+    private void ControleerConflicten() =>
+        _conflicten = _plan == null ? new List<string>() : VeldplanningConflictMeldingen.Bepaal(_plan.Wedstrijden, _bufferMinuten);
 
     private static string NormaliseerVeld(string? veld) =>
         string.IsNullOrWhiteSpace(veld) ? "" : veld.Trim().ToLowerInvariant().Replace("  ", " ");

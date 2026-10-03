@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Npgsql;
+using Planner.Endpoints.Teambegeleiding;
 using Planner.Shared;
 
 namespace FunctionApp.Postgres.Admin;
@@ -16,7 +17,7 @@ namespace FunctionApp.Postgres.Admin;
 /// <b>GetTeams, GetBegeleiders en Import zijn volledig vertaald</b>: <c>[avg].[Teambegeleiding]</c>/
 /// <c>[avg].[ImportLog]</c> → <c>avg.teambegeleiding</c>/<c>avg.importlog</c> (bestaan al sinds
 /// <c>002_avg_teambegeleiding.sql</c>, #824). De CSV-parselogica (kolomaliassen, dedup, validatie)
-/// is databasetier-onafhankelijk en ongewijzigd gekopieerd.
+/// is databasetier-onafhankelijk en staat sinds #1360 in <c>Planner.Shared/TeambegeleidingCsv.cs</c>.
 /// </para>
 /// <para>
 /// <b>Databaselaag van Import gedelegeerd naar <see cref="Database.Postgres.TeambegeleidingImporter"/>
@@ -79,7 +80,7 @@ public static class AdminTeambegeleidingFunction
                 await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
                 await connection.OpenAsync();
                 await using var command = new NpgsqlCommand($@"
-                    SELECT naam, teamrol, emailadres, telefoonnummer
+                    SELECT naam, teamrol, emailadres, telefoonnummer, functie
                     FROM avg.teambegeleiding
                     WHERE team = @team
                       AND clubcode = @clubcode
@@ -96,7 +97,8 @@ public static class AdminTeambegeleidingFunction
                         Naam = reader.IsDBNull(0) ? "" : reader.GetString(0),
                         Teamrol = reader.IsDBNull(1) ? "" : reader.GetString(1),
                         Emailadres = reader.IsDBNull(2) ? null : reader.GetString(2),
-                        Telefoonnummer = reader.IsDBNull(3) ? null : reader.GetString(3)
+                        Telefoonnummer = reader.IsDBNull(3) ? null : reader.GetString(3),
+                        Functie = reader.IsDBNull(4) ? null : reader.GetString(4)
                     });
                 }
                 return new OkObjectResult(list);
@@ -259,23 +261,18 @@ public static class AdminTeambegeleidingFunction
                 if (dto == null || string.IsNullOrWhiteSpace(dto.CsvContent))
                     return new BadRequestObjectResult(new { error = "csvContent is vereist" });
 
-                var parseResult = ParseCsv(dto.CsvContent);
-                if (!parseResult.IsValid)
-                    return new BadRequestObjectResult(new
-                    {
-                        error = parseResult.Error,
-                        ontbreekt = parseResult.Ontbreekt
-                    });
+                var parseResult = TeambegeleidingCsv.ParseEnValideer(dto.CsvContent);
+                if (TeambegeleidingImportEndpointCore.Weiger(parseResult) is { } weiger) return weiger;
 
                 // Databaselaag gedelegeerd naar Database.Postgres.TeambegeleidingImporter (issue 824)
                 // in plaats van een eigen, niet-atomische delete/insert/auditlog-implementatie (issue
                 // 913: dat was hier eerder drie losse, niet-getransactioneerde stappen — een crash
                 // tussen de delete en de insert-lus liet de club zonder teambegeleidingsdata achter).
                 // ParseCsv's ImportRij en TeambegeleidingImporter's TeambegeleidingRow hebben dezelfde
-                // zes velden; alleen de CSV-parselogica (kolomherkenning, aliassen) blijft hier staan.
+                // velden; alleen de CSV-parselogica (kolomherkenning, aliassen) blijft hier staan.
                 var rows = parseResult.Rows
                     .Select(r => new Database.Postgres.TeambegeleidingRow(
-                        r.Team, r.LeeftijdscategorieTeam, r.Teamrol, r.Naam, r.Emailadres, r.Telefoonnummer))
+                        r.Team, r.LeeftijdscategorieTeam, r.Teamrol, r.Naam, r.Emailadres, r.Telefoonnummer, r.Functie))
                     .ToList();
 
                 var importeerder = EasyAuthHelper.GetCallerName(req) ?? "admin";
@@ -296,172 +293,6 @@ public static class AdminTeambegeleidingFunction
                     waarschuwingen = parseResult.Waarschuwingen
                 });
             });
-    }
-
-    // ── CSV parsing helpers (databasetier-onafhankelijk, ongewijzigd) ─────────
-
-    private static readonly Dictionary<string, string[]> _kolomAliassen = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["Team"]                   = ["Team", "Teamnaam", "Team naam"],
-        ["Teamrol"]                = ["Teamrol", "Rol", "Rol in team", "Rol team"],
-        ["Roepnaam"]               = ["Roepnaam", "Voornaam", "First name"],
-        ["Achternaam"]             = ["Achternaam", "Familienaam", "Last name"],
-        ["Emailadres"]             = ["E-mailadres", "Email", "E-mail", "Emailadres", "Mailadres"],
-        ["LeeftijdscategorieTeam"] = ["Leeftijdscategorie team", "Leeftijdscategorie", "Age category"],
-        ["Tussenvoegsel"]          = ["Tussenvoegsel(s)", "Tussenvoegsel", "Infix", "Tussenv."],
-        ["MobielNummer"]           = ["Mobiel nummer", "Mobiel", "Mobiele telefoon", "Mobile"],
-        ["TelefoonnummerKolom"]    = ["Telefoonnummer", "Telefoon", "Vaste telefoon", "Phone"],
-    };
-
-    private static readonly string[] _vereistKolommen = ["Team", "Teamrol", "Roepnaam", "Achternaam", "Emailadres"];
-
-    internal record ImportRij(
-        string? Team, string? LeeftijdscategorieTeam, string? Teamrol,
-        string? Naam, string? Emailadres, string? Telefoonnummer);
-
-    internal class CsvParseResult
-    {
-        public bool IsValid { get; set; }
-        public string? Error { get; set; }
-        public List<string> Ontbreekt { get; set; } = [];
-        public List<string> Herkend { get; set; } = [];
-        public List<string> Waarschuwingen { get; set; } = [];
-        public List<ImportRij> Rows { get; set; } = [];
-    }
-
-    internal static CsvParseResult ParseCsv(string csvContent)
-    {
-        var result = new CsvParseResult();
-        var lines = csvContent
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
-            .Select(l => l.TrimEnd('\r'))
-            .Where(l => !string.IsNullOrWhiteSpace(l))
-            .ToList();
-
-        if (lines.Count < 2)
-        {
-            result.Error = "CSV bevat geen gegevensrijen.";
-            return result;
-        }
-
-        var headers = SplitCsvLine(lines[0]);
-
-        var (mapping, ontbreekt) = BuildKolomMapping(headers);
-        if (ontbreekt.Count > 0)
-        {
-            result.IsValid = false;
-            result.Ontbreekt = ontbreekt;
-            result.Error = $"Vereiste kolommen niet gevonden: {string.Join(", ", ontbreekt)}";
-            return result;
-        }
-
-        result.Herkend = [.. mapping.Keys];
-
-        if (!mapping.ContainsKey("MobielNummer") && !mapping.ContainsKey("TelefoonnummerKolom"))
-            result.Waarschuwingen.Add("Geen telefoonnummer-kolom gevonden — Telefoonnummer wordt leeg.");
-        if (!mapping.ContainsKey("LeeftijdscategorieTeam"))
-            result.Waarschuwingen.Add("Kolom 'Leeftijdscategorie team' niet gevonden — wordt leeg.");
-
-        result.Rows = BouwRijen(lines, mapping);
-
-        var (deduped, duplicaten) = DedupliceerRijen(result.Rows);
-        result.Rows = deduped;
-        if (duplicaten > 0)
-            result.Waarschuwingen.Add(
-                $"{duplicaten} exacte duplicaat-rij{(duplicaten == 1 ? "" : "en")} overgeslagen (zelfde team, rol, naam en e-mailadres).");
-
-        result.IsValid = true;
-        return result;
-    }
-
-    private static (Dictionary<string, int> Mapping, List<string> Ontbreekt) BuildKolomMapping(string[] headers)
-    {
-        var mapping = new Dictionary<string, int>();
-        foreach (var (canonical, aliases) in _kolomAliassen)
-        {
-            for (int i = 0; i < headers.Length; i++)
-            {
-                if (aliases.Any(a => string.Equals(a, headers[i], StringComparison.OrdinalIgnoreCase)))
-                {
-                    mapping[canonical] = i;
-                    break;
-                }
-            }
-        }
-
-        var ontbreekt = _vereistKolommen.Where(v => !mapping.ContainsKey(v)).ToList();
-        return (mapping, ontbreekt);
-    }
-
-    private static List<ImportRij> BouwRijen(List<string> lines, Dictionary<string, int> mapping)
-    {
-        var rows = new List<ImportRij>();
-        for (int i = 1; i < lines.Count; i++)
-        {
-            var fields = SplitCsvLine(lines[i]);
-
-            string? GetVeld(string key)
-            {
-                if (!mapping.TryGetValue(key, out var idx) || idx >= fields.Length) return null;
-                var v = fields[idx];
-                return string.IsNullOrWhiteSpace(v) ? null : v;
-            }
-
-            var naamDelen = new[] { GetVeld("Roepnaam"), GetVeld("Tussenvoegsel"), GetVeld("Achternaam") }
-                .Where(p => p != null).ToArray();
-            var naam = naamDelen.Length > 0 ? string.Join(" ", naamDelen) : null;
-
-            var telefoon = GetVeld("MobielNummer") ?? GetVeld("TelefoonnummerKolom");
-
-            rows.Add(new ImportRij(
-                GetVeld("Team"),
-                GetVeld("LeeftijdscategorieTeam"),
-                GetVeld("Teamrol"),
-                naam,
-                GetVeld("Emailadres"),
-                telefoon));
-        }
-        return rows;
-    }
-
-    private static (List<ImportRij> Rows, int Duplicaten) DedupliceerRijen(List<ImportRij> rows)
-    {
-        var voorDedup = rows.Count;
-        var deduped = rows
-            .GroupBy(r => (
-                Team: r.Team?.Trim().ToUpperInvariant(),
-                Teamrol: r.Teamrol?.Trim().ToUpperInvariant(),
-                Naam: r.Naam?.Trim().ToUpperInvariant(),
-                Email: r.Emailadres?.Trim().ToUpperInvariant(),
-                Telefoon: r.Telefoonnummer?.Trim().ToUpperInvariant()))
-            .Select(g => g.First())
-            .ToList();
-        var duplicaten = voorDedup - deduped.Count;
-        return (deduped, duplicaten);
-    }
-
-    private static string[] SplitCsvLine(string line)
-    {
-        var fields = new List<string>();
-        var current = new System.Text.StringBuilder();
-        bool inQuote = false;
-        for (int i = 0; i < line.Length; i++)
-        {
-            char c = line[i];
-            if (c == '"')
-            {
-                if (inQuote && i + 1 < line.Length && line[i + 1] == '"')
-                { current.Append('"'); i++; }
-                else
-                { inQuote = !inQuote; }
-            }
-            else if (c == ';' && !inQuote)
-            { fields.Add(current.ToString().Trim()); current.Clear(); }
-            else
-            { current.Append(c); }
-        }
-        fields.Add(current.ToString().Trim());
-        return [.. fields];
     }
 
     private record TeambegeleidingImportRequest(string CsvContent, string? Bestandsnaam);

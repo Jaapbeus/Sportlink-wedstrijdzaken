@@ -1,3 +1,4 @@
+using Planner.Endpoints.Admin;
 using System.Text.Json;
 using Azure.Storage.Queues;
 using Microsoft.AspNetCore.Http;
@@ -79,10 +80,16 @@ public static class AdminSyncFunction
         return AdminEndpoint.ExecuteAsync(req, log, "sync starten",
             async clubCode =>
             {
-                int toWeekOffset = await SystemUtilities.SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
+                // #1352/#1461/#1492: body + seizoensvenster via de gedeelde orkestratie (400 bij ongeldig).
+                var venster = await SyncTriggerEndpointCore.BepaalVensterAsync(
+                    await new StreamReader(req.Body).ReadToEndAsync(), DateTime.UtcNow.Year,
+                    () => SystemUtilities.SeasonHelper.GetSeasonEndWeekOffsetAsync(log),
+                    jaar => SystemUtilities.SeasonHelper.GetSeasonStartWeekOffsetOrNullAsync(jaar));
+                if (venster.Fout is not null) return venster.Fout;
+                int fromWeekOffset = venster.Van, toWeekOffset = venster.Tot;
                 var jobId = Guid.NewGuid();
 
-                await SyncJobsRepository.CreateAsync(jobId, clubCode, weekOffsetFrom: -1, weekOffsetTo: toWeekOffset);
+                await SyncJobsRepository.CreateAsync(jobId, clubCode, weekOffsetFrom: fromWeekOffset, weekOffsetTo: toWeekOffset);
 
                 var storageVerbinding = Environment.GetEnvironmentVariable("AzureWebJobsStorage")
                     ?? throw new InvalidOperationException(
@@ -93,18 +100,18 @@ public static class AdminSyncFunction
                 {
                     JobId = jobId,
                     ClubCode = clubCode,
-                    WeekOffsetFrom = -1,
+                    WeekOffsetFrom = fromWeekOffset,
                     WeekOffsetTo = toWeekOffset
                 };
                 await queueClient.SendMessageAsync(JsonSerializer.Serialize(message));
 
-                log.LogInformation("AdminSyncTrigger: job {JobId}, range -1 .. {To} — op de queue gezet", jobId, toWeekOffset);
+                log.LogInformation("AdminSyncTrigger: job {JobId}, range {From} .. {To} (reset: {Reset}) — op de queue gezet", jobId, fromWeekOffset, toWeekOffset, venster.IsReset);
 
                 return new ObjectResult(new
                 {
                     status = "gestart",
                     jobId,
-                    weekOffsetFrom = -1,
+                    weekOffsetFrom = fromWeekOffset,
                     weekOffsetTo = toWeekOffset,
                     tijdstip = DateTime.UtcNow,
                     melding = "Sync gestart op achtergrond. Controleer de voortgang via /beheer/sync/status?jobId=" + jobId + "."

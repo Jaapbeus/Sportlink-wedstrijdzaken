@@ -110,12 +110,13 @@ BEGIN
     -- avg.teambegeleiding: fictieve trainer per team, .test-domein, deterministisch via hashtext
     -- i.p.v. SQL Server's CHECKSUM (Postgres-equivalent, zelfde soort niet-cryptografische hash).
     IF NOT EXISTS (SELECT 1 FROM avg.teambegeleiding WHERE clubcode = demo_club) THEN
-        INSERT INTO avg.teambegeleiding (team, naam, emailadres, teamrol, clubcode)
+        INSERT INTO avg.teambegeleiding (team, naam, emailadres, teamrol, functie, clubcode)
         SELECT
             t.teamnaam,
             v.naam,
             LOWER(v.naam) || '.' || ROW_NUMBER() OVER (ORDER BY t.teamnaam) || '@allstars-fc.test',
             'Trainer',
+            'Trainer/coach',
             demo_club
         FROM his.teams t
         CROSS JOIN LATERAL (
@@ -127,6 +128,11 @@ BEGIN
         ) v
         WHERE t.clubcode = demo_club;
     END IF;
+
+    -- #1360: bestaande demo-begeleiders (al geseed vóór kolom functie) krijgen de functie alsnog.
+    -- Idempotent en uitsluitend de eigen democlub-rijen.
+    UPDATE avg.teambegeleiding SET functie = 'Trainer/coach'
+    WHERE clubcode = demo_club AND teamrol = 'Trainer' AND functie IS NULL;
 
     -- his.matches: acht speelronden vanaf de eerstvolgende zaterdag, afwisselend thuis/uit.
     -- 1900-01-01 was een maandag (dag 0), dus (vandaag - 1900-01-01) % 7 geeft 5 = zaterdag,

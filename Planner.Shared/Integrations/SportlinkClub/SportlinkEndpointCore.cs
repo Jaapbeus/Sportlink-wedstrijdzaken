@@ -116,6 +116,11 @@ public static class SportlinkEndpointCore
     public static SportlinkEndpointFout ClientNietGeconfigureerdFout { get; } =
         new(503, "Sportlink-client niet geconfigureerd.");
 
+    /// <summary>De mutatie-auditservice is niet in DI geregistreerd (HTTP 503, #1458). Een mutatie
+    /// zonder auditspoor mag niet doorgaan: fail-closed.</summary>
+    public static SportlinkEndpointFout AuditNietBeschikbaarFout { get; } =
+        new(503, "Mutatie-audit niet beschikbaar — de wijziging is niet uitgevoerd.");
+
     /// <summary>Log-template voor een timer die wordt overgeslagen omdat de toggle uitstaat.</summary>
     public const string TimerExtensieUitLog = "Sportlink Web Extension staat uit — {Taak} overgeslagen.";
 

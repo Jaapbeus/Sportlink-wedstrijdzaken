@@ -84,6 +84,9 @@ public partial class Wijzigingsverzoeken
     };
 
     /// <summary>Compacte weergave van wat de tegenstander vraagt; alleen de velden die afwijken van huidig.</summary>
+    /// <summary>#1464: Sportlink-terugval; leeg of ontbrekend wordt een streepje.</summary>
+    private static string LeegAlsStreepje(string? waarde) => string.IsNullOrWhiteSpace(waarde) ? "–" : waarde;
+
     private static string Gevraagd(SportlinkChangeRequestDataDto? d)
     {
         if (d == null) return "–";

@@ -70,6 +70,10 @@ jobs:
       - name: Codekwaliteit — geen inline styles in Blazor-pagina's
         run: bash scripts/ci/check-blazor-inline-styles.sh
 
+      # #1461: gelinkte bronbestanden in BlazorAdmin mogen uitsluitend van de BCL afhangen.
+      - name: Codekwaliteit — gelinkte bronbestanden in BlazorAdmin
+        run: bash scripts/ci/check-gelinkte-bronbestanden.sh
+
       - name: Codekwaliteit — platformafhankelijke valkuilen
         run: bash scripts/ci/check-codekwaliteit-valkuilen.sh
 
@@ -98,6 +102,9 @@ jobs:
       # de vijf negatieve tests sloegen bij het schrijven ervan eerst ten onrechte niet aan.
       - name: Codekwaliteit — guards zelf getest
         run: bash scripts/ci/check-codekwaliteit.test.sh
+      # #1455: de what-if-poort van infrastructure.yml, getest met geanonimiseerde fixtures.
+      - name: What-if-poort app settings — zelf getest
+        run: bash scripts/ci/check-whatif-appsettings.test.sh
       # #1266: de drie Postgres-coverage-guards hieronder kijken maar EEN kant op — staat elk SQL
       # Server-object ook in Postgres. Ze zijn geschreven toen SQL Server de leidende tier was.
       # Bij de cutover draaiden de rollen om, maar de richting van de guards niet; sindsdien groeide
@@ -105,6 +112,12 @@ jobs:
       # het merkte. Deze guard kijkt beide kanten op. Geen database, geen secrets.
       - name: Tier-pariteit — zelfde routes op beide tiers
         run: bash scripts/ci/check-tier-pariteit.sh
+
+      # #1474: Verify-AzureAuthSetup.ps1 mag niet alle tenant-gebruikers dumpen wanneer de
+      # admin-parameter leeg is. Deze guard controleert of de IsNullOrWhiteSpace()-guard er staat,
+      # en of Layer 4 van het script de werkelijke AuthGate-implementatie volgt.
+      - name: Verify-AzureAuthSetup guards
+        run: bash scripts/ci/check-verify-script-guards.sh
 
       # #1350: elk HTTP-endpoint autoriseert via AdminEndpoint.ExecuteAsync (of de Sportlink-
       # wrapper die daarop uitkomt) — nooit via een losse EasyAuthHelper.RequireAdmin-aanroep, en
@@ -119,6 +132,17 @@ jobs:
       # casing hierboven (#825). Geen database, geen secrets.
       - name: Postgres identifier-casing-guard
         run: bash scripts/ci/check-postgres-identifier-casing.sh
+
+      # #1485: twee parallel gebouwde PR's kunnen elk hetzelfde volgnummer toevoegen
+      # (bijv. 034_pdf_switch.sql en 034_feedback_storage.sql). Technisch werkt het omdat
+      # MigrationRunner op bestandsnaam sorteert, maar numerieke uniciteit hoort dwingend
+      # af te worden gehandhaafd. Geen database, geen secrets.
+      - name: Postgres migratie-volgnummers uniek
+        run: bash scripts/ci/check-migratie-volgnummers.sh
+
+      # Test-suite voor de migratie-volgnummers-guard (#1485).
+      - name: Postgres migratie-volgnummers — zelf getest
+        run: bash scripts/ci/check-migratie-volgnummers.test.sh
 
       # #1255 (epic #1249): bewaakt de thema-CSS-variabelen. Een selector die var(--theme-iets)
       # gebruikt terwijl die variabele nergens gedefinieerd is, geeft géén foutmelding — de

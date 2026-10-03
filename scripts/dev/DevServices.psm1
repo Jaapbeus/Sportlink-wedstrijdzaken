@@ -871,10 +871,107 @@ function Get-SelftestArtifactRoot {
     Join-Path $RepoRoot 'artifacts' 'selftest' $RunId
 }
 
+# ──────────────────────────────────────────────────────────────────────
+# Sportlink-livemodus lokaal (#1466)
+# ──────────────────────────────────────────────────────────────────────
+# Lokaal staat élk extern verkeer uit (EgressGuard, #857). Om de Sportlink Web Extension tegen de
+# echte Sportlink Club van de PRIMAIRE club te testen (public.appsettings, syncenabled = TRUE —
+# nooit de democlub ALLSTARS, die heeft geen koppeling en de extensie staat er uit) zijn twee
+# hostinstellingen nodig: AllowExternalIntegrations=true en een eigen 32-byte
+# SportlinkAutoLoginEncryptionKey (#1411; zonder sleutel registreert de host géén Sportlink-client).
+# De clubkeuze zit dus in de data, niet in code of in deze functies: een andere fork met een
+# andere primaire club werkt ongewijzigd.
+
+function Set-SportlinkLiveLocalSettings {
+    <#
+    .SYNOPSIS
+        Zet AllowExternalIntegrations=true en maakt een lokale SportlinkAutoLoginEncryptionKey aan
+        als die ontbreekt of ongeldig is. Toont of logt nooit een waarde.
+    .OUTPUTS
+        Lijst met wijzigingen (alleen namen), leeg als alles al goed stond.
+    #>
+    param([Parameter(Mandatory)][string]$SettingsPath)
+
+    $json = Get-Content -LiteralPath $SettingsPath -Raw | ConvertFrom-Json
+    if (-not $json.PSObject.Properties['Values']) {
+        $json | Add-Member -NotePropertyName Values -NotePropertyValue ([pscustomobject]@{})
+    }
+    $values = $json.Values
+    $gewijzigd = [System.Collections.Generic.List[string]]::new()
+
+    if ([string]$values.AllowExternalIntegrations -ne 'true') {
+        $values | Add-Member -NotePropertyName AllowExternalIntegrations -NotePropertyValue 'true' -Force
+        $gewijzigd.Add('AllowExternalIntegrations')
+    }
+
+    if (-not (Test-SportlinkEncryptionKey -Base64Key ([string]$values.SportlinkAutoLoginEncryptionKey))) {
+        # Een nieuwe sleutel maakt eerder lokaal opgeslagen Sportlink-inloggegevens onleesbaar; die
+        # moeten dan opnieuw ingevoerd worden via menu Sportlink Ext. Een geldige
+        # sleutel wordt daarom nooit vervangen.
+        $bytes = [byte[]]::new(32)
+        [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+        $values | Add-Member -NotePropertyName SportlinkAutoLoginEncryptionKey `
+            -NotePropertyValue ([Convert]::ToBase64String($bytes)) -Force
+        [Array]::Clear($bytes, 0, $bytes.Length)
+        $gewijzigd.Add('SportlinkAutoLoginEncryptionKey')
+    }
+
+    if ($gewijzigd.Count -gt 0) {
+        $json | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $SettingsPath -Encoding utf8
+    }
+    , $gewijzigd
+}
+
+function Test-SportlinkEncryptionKey {
+    # Zelfde regel als SportlinkAutoLoginConfiguration.CreateProtector: base64 van precies 32 bytes.
+    param([string]$Base64Key)
+    if ([string]::IsNullOrWhiteSpace($Base64Key)) { return $false }
+    try { return ([Convert]::FromBase64String($Base64Key)).Length -eq 32 } catch { return $false }
+}
+
+function Get-SportlinkLiveBlockers {
+    <#
+    .SYNOPSIS
+        Bepaalt waarom de primaire club lokaal (nog) niet live met Sportlink kan praten.
+    .PARAMETER Health
+        Respons van GET /api/beheer/sportlink-extensie/health (zonder X-Club-Code = primaire club),
+        of $null als die niet op te halen was.
+    .OUTPUTS
+        Lijst met blokkades in gewone taal; leeg = live-klaar. Dry-run is géén blokkade: lezen gaat
+        dan live, alleen mutaties worden gesimuleerd.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$SettingsPath,
+        $Health
+    )
+    $blokkades = [System.Collections.Generic.List[string]]::new()
+    $values = (Get-Content -LiteralPath $SettingsPath -Raw | ConvertFrom-Json).Values
+
+    if ([string]$values.AllowExternalIntegrations -ne 'true') {
+        $blokkades.Add('AllowExternalIntegrations staat niet op true (start met -SportlinkLive)')
+    }
+    if (-not (Test-SportlinkEncryptionKey -Base64Key ([string]$values.SportlinkAutoLoginEncryptionKey))) {
+        $blokkades.Add('SportlinkAutoLoginEncryptionKey ontbreekt of is ongeldig (start met -SportlinkLive)')
+    }
+    if ($null -eq $Health) {
+        $blokkades.Add('/api/beheer/sportlink-extensie/health niet bereikbaar')
+        return , $blokkades
+    }
+    if (-not $Health.extensionEnabled) {
+        $blokkades.Add('Sportlink-extensie staat uit voor de primaire club (menu Sportlink Ext.)')
+    }
+    $gekoppeld = @($Health.rollen) | Where-Object { $_.gekoppeld }
+    if (-not $gekoppeld) {
+        $blokkades.Add('geen Sportlink-inloggegevens opgeslagen (menu Sportlink Ext. → "Automatisch inloggen — rol Wedstrijdzaken"; alleen de eigenaar voert die in)')
+    }
+    , $blokkades
+}
+
 Export-ModuleMember -Function Get-DebugTempDir, Get-DebugPidFile, Get-DebugPorts,
     Test-PortListening, Get-PortOwner, Get-PortOwnerId, Get-ParentProcessId,
     Get-ChildProcessId, Get-ProcessTree, Stop-ProcessTree, Wait-ForPort, Wait-ForHealth,
     Wait-ForHttp, Stop-DebugServices,
     Get-SelftestPorts, Test-DockerAvailable, Get-ContainerState, Wait-ForPostgres,
     Invoke-Psql, New-SelftestPassword, Get-SelftestArtifactRoot, Get-DatabaseTierProject,
-    Start-SelftestAzurite, Start-FunctionHost, Stop-FunctionHost
+    Start-SelftestAzurite, Start-FunctionHost, Stop-FunctionHost,
+    Set-SportlinkLiveLocalSettings, Test-SportlinkEncryptionKey, Get-SportlinkLiveBlockers

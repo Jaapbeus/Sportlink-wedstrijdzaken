@@ -20,6 +20,20 @@ window.blazorHelpers = {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
     },
+    downloadBytes: function (filename, base64, mimeType) {
+        var bin = atob(base64);
+        var bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        var blob = new Blob([bytes], { type: mimeType || 'application/octet-stream' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    },
     // Dedicated helpers i.p.v. JS eval(): de productie-CSP staat alleen 'wasm-unsafe-eval' toe,
     // niet 'unsafe-eval'. eval() gooit daar een EvalError. (#597)
     getUserAgent: function () {

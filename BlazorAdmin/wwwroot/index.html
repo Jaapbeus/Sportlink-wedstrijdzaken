@@ -50,6 +50,9 @@
         <span class="dismiss">🗙</span>
     </div>
     <script src="js/theme.js"></script>
+    <!-- #764: vangt console-fouten op vóór Blazor start, zodat ook opstartfouten in de technische
+         context van een feedbackmelding terechtkomen. Extern bestand i.p.v. inline (CSP, #659). -->
+    <script src="js/feedback-telemetry.js"></script>
     <script src="_content/Microsoft.Authentication.WebAssembly.Msal/AuthenticationService.js"></script>
     <script src="_framework/blazor.webassembly.js"></script>
     <!-- Extern i.p.v. inline: inline scripts worden door de productie-CSP geblokkeerd (#659). -->

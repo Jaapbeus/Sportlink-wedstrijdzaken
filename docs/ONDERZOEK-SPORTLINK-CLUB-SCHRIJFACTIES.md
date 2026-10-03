@@ -148,10 +148,51 @@ Het kan. club.sportlink.com is geen server-rendered site maar een React-SPA (Vit
 | Wijzigingsverzoek goedkeuren/afwijzen (inkomend) | `competition/match/changerequest/MatchChangeRequestAction` | PUT | `{Action: APPROVE\|DENY, PublicMatchId, PublicPersonId, PublicRequestId, Remarks}` | uit code |
 | Wijzigingsverzoeken lezen | `changerequest/MatchChangeRequests`, `MatchChangeRequest?PublicRequestId=`, `MatchChangeRequestFilters` | GET | | uit code |
 | Oefenwedstrijd aanmaken | `competition/match/clubmatch/ClubMatch` | POST | `HomeTeam`/`AwayTeam` (tekst), `PublicHomeTeamId`=`PublicAwayTeamId` (`T…`), `AgeClassCode`, `SportIdTag`, `MatchDate` (`yyyy-MM-dd`) + `StartTime` (`HH:mm:ss`), `Duration`, `ExternalMatchId`, `Description`, `IsHomeMatch`, `FacilityId`, `SubFacilityId`, `FieldSize`, `FieldOffset`, `HomeResult`/`AwayResult` −1; respons = body + `{PublicMatchId, IsSuccess}`. Voorbereidende GETs: `ClubMatchDefaults`, `PickListsTeams`, `PickListsLocation?SearchClubId=`, `PickListsMatchInformation` | live gezien (#1427) |
-| Oefenwedstrijd verwijderen / uitslag | `clubmatch/ClubMatchDelete`, `clubmatch/ClubMatchScore` | | | uit code |
+| Oefenwedstrijd verwijderen | `competition/match/clubmatch/ClubMatchDelete?PublicMatchId=` | DELETE | geen body; `PublicMatchId` als queryparameter. **Nagekomen aanvulling (2026-10-02, #1440)** — zie §2.4a | uit publieke frontend-bundle (2026-10-02, `main-CHH8RXRM.js`), **niet live gezien** |
+| Oefenwedstrijd uitslag | `clubmatch/ClubMatchScore` | | | uit code |
 | Picklists (velden, tijden, kleedkamers) | `competition/match/picklist/PickLists?PublicMatchId=`, `facility/MatchFacilitiesList?PublicMatchId=`, `competition/match/MatchDetailsSidePanel?PublicMatchId=&TypeOfRequest=DRESSINGROOMS\|FIELDS` | GET | | live gezien |
 
 UI-tekst op de detailpagina bevestigt de semantiek: "Het wijzigen van datum, tijd en accommodatie vereist goedkeuring door de tegenstander. Je kan hier direct een wijzigingsverzoek aanmaken." Een uitgaand wijzigingsverzoek is dus geen apart endpoint maar het gevolg van `UpdateMatchDetails` met gewijzigde datum/tijd/accommodatie **[onzeker: niet live uitgevoerd]**.
+
+### 2.4a Nagekomen aanvulling (2026-10-02, #1440): `ClubMatchDelete` uit de publieke frontend-bundle
+
+> **Bron: uit publieke frontend-bundle (2026-10-02, bundle `/assets/main-CHH8RXRM.js`, SHA-256
+> `8b74e5e187af4d3f723af0646d9c3352ec65328e33b61a6858ee61060f180e34`) — NIET live gezien.** De
+> bundle is zonder login op te halen (de startpagina van Sportlink Club noemt hem). Er is geen
+> enkele geauthenticeerde aanroep gedaan, geen token gebruikt en geen Sportlink-API aangeroepen.
+> Zelfde methode als bij #1439. Een live bevestiging door de eigenaar blijft openstaan (tabel
+> hieronder, laatste kolom).
+
+De verwijdermutatie staat in dezelfde RTK-Query-endpointgroep als `getMatch`
+(`competition/match/Match`) en `updateMatchDetails`:
+
+```
+deleteMatch: mutation({ query: e => ({ method: `DELETE`,
+                                       params: { PublicMatchId: e.PublicMatchId },
+                                       url: `competition/match/clubmatch/ClubMatchDelete` }) })
+```
+
+| Vraag uit #1440 | Wat de bundle zegt | Zekerheid |
+|---|---|---|
+| 1. HTTP-methode | `DELETE` | uit bundle, eenduidig |
+| 2. Parameters/body | alleen `PublicMatchId`, als queryparameter (`params`), geen body | uit bundle, eenduidig |
+| 3. Respons | de succesbody wordt **niet gelezen** (alleen `await`; daarna worden het programma, de uitslagen en de taken ververst en navigeert de pagina naar het wedstrijdprogramma). Een fout met HTTP **420** en een body met `Violations` (de bekende Navajo-afwijzingsvorm) laat de bevestigingsdialoog openstaan; elke andere fout sluit hem | uit bundle; de vorm van een succesbody is daarmee onbekend en voor de implementatie niet nodig |
+| 4. Welke wedstrijden | de knop "Verwijder" verschijnt alleen als `IsKernelMatch === false` (veld uit de `competition/match/Match`-respons) **én** de gebruiker de module-permissie `HASTEAMS` heeft. `IsKernelMatch` is elders in de bundle de "bondswedstrijd"-vlag (competitie/beker); `false` = clubwedstrijd. Geen eigen `Is…Allowed`-vlag voor verwijderen | uit bundle; dat `IsKernelMatch` in onze Match-GET-respons meekomt is **niet live gezien** |
+| 5. Bevestigingsdialoog | puur client-side (`dialogDeleteMatch`, tekstsleutel `DeleteMatchText`, knoppen Annuleren/Verwijder); **geen** voorafgaande validatie- of bevestigingsaanroep | uit bundle, eenduidig |
+| 6. Gevolgen (melding tegenstander, terugdraaien) | niet af te leiden uit de bundle; er is geen "ongedaan maken"-pad bij deze knop | onbekend — alleen live vast te stellen |
+| 7. Wedstrijdnummer na verwijderen | niet af te leiden uit de bundle | onbekend |
+
+**Wat de app ermee doet (#1440):** `SportlinkClubClient.DeleteClubMatchAsync` volgt vraag 1–3; de
+guard (`SportlinkMutationSoort.Verwijderen`) eist een expliciete `IsKernelMatch = false` (fail-closed:
+ontbreekt het veld, dan weigert hij) en daarnaast de bestaande `IsHomeMatch`-regel. Sinds #1458 is de
+code-lock opgeheven (`ClubMatchDeleteLiveBevestigd = true`, live respons `{PublicMatchId,
+IsSuccess}`) en volgt de aanroep `sportlinkDryRun` — zie `docs/SPORTLINK-WEB-EXTENSION.md` §6.4.
+Historisch: de bundle-analyse hierboven is de bron van het contract, niet bijgewerkt.
+
+**Openstaand voor de live bevestiging door de eigenaar** (op een testwedstrijd die echt weg mag):
+de DELETE-aanroep zelf (methode, querystring, statuscode en body van de respons), of `IsKernelMatch`
+in de Match-GET-respons van deze app meekomt en `false` is voor een zelf aangemaakte
+oefenwedstrijd, en vraag 6 en 7.
 
 ### 2.5 Waar zit de traagheid (gemeten met Performance API)
 | Call | Duur |

@@ -16,9 +16,32 @@
                 <label class="form-label">Datum</label>
                 <input type="date" class="form-control" @bind="_datumDt" @bind:after="OnDatumChanged" />
             </div>
+            @if (_sportlinkExtensionEnabled)
+            {
+                <div class="col-md-auto ms-auto">
+                    <button type="button" class="btn btn-success" @onclick="ToggleAanmaken">
+                        <i class="bi bi-plus-circle me-1" aria-hidden="true"></i> Wedstr. toevoegen
+                    </button>
+                </div>
+            }
         </div>
     </div>
 </div>
+
+@* #1468: het aanmaakformulier inline, met de gekozen datum; @key zet de datum opnieuw bij een andere dag. *@
+@if (_sportlinkExtensionEnabled && _toonAanmaken)
+{
+    <div class="card mb-3">
+        <div class="card-header d-flex align-items-center justify-content-between">
+            <span class="fw-semibold">Wedstrijd toevoegen op @_datumDt.ToString("dd-MM-yyyy")</span>
+            <button type="button" class="btn-close" aria-label="Sluiten" @onclick="ToggleAanmaken"></button>
+        </div>
+        <div class="card-body">
+            <WedstrijdAanmakenFormulier BeginDatum="_datumDt" ToonIntro="false"
+                                        OnAangemaakt="LoadVeldbezettingAsync" @key="DatumStr" />
+        </div>
+    </div>
+}
 
 @* ── Directe veldbezetting: wat staat er nu al gepland op deze datum (#566) ── *@
 <div class="card mb-3">
@@ -43,71 +66,8 @@
             var _vGantt = BouwVeldbezettingGanttItems();
             @if (_vGantt.Any())
             {
-                var _vVelden = _vGantt
-                    .Select(g => g.VeldNaam).Distinct()
-                    .OrderBy(v => v.StartsWith("Kunstgras", StringComparison.OrdinalIgnoreCase) ? "0" + v : "1" + v)
-                    .ToList();
-                int _vsMin = (_vGantt.Min(g => (int)g.Aanvang.ToTimeSpan().TotalMinutes) / 60) * 60;
-                int _veMin = (((int)_vGantt.Max(g => g.Einde.ToTimeSpan().TotalMinutes) + 59) / 60) * 60;
-                if (_veMin <= _vsMin) _veMin = _vsMin + 60;
-                int _vTotMin = _veMin - _vsMin;
-
-                <div class="veldbezetting-sticky mb-3 gantt-scroll">
-                    @* Tijdas-header *@
-                    <div class="gantt-tijdas-header">
-                        <div class="gantt-label-gutter"></div>
-                        <div class="gantt-tijdas-lijn">
-                            @for (int _h = _vsMin; _h <= _veMin; _h += 60)
-                            {
-                                string _lftH = GanttPct(_h - _vsMin, _vTotMin);
-                                <div class="gantt-uur-label" style="--gantt-left:@(_lftH)%; --gantt-transform:@GanttLabelTransform(_h, _vsMin, _veMin);">
-                                    @GanttUurLabel(_h)
-                                </div>
-                            }
-                        </div>
-                    </div>
-
-                    @* Veld-rijen *@
-                    @foreach (var _veld in _vVelden)
-                    {
-                        <div class="gantt-veld-rij">
-                            <div class="gantt-veld-label">
-                                @_veld
-                            </div>
-                            <div class="gantt-veld-track">
-                                @* Uurlijnen *@
-                                @for (int _h = _vsMin + 60; _h < _veMin; _h += 60)
-                                {
-                                    <div class="gantt-uurlijn" style="--gantt-left:@(GanttPct(_h - _vsMin, _vTotMin))%;"></div>
-                                }
-                                @* Wedstrijdblokken *@
-                                @foreach (var gi in _vGantt.Where(g => g.VeldNaam == _veld))
-                                {
-                                    string _lft = GanttPct((int)gi.Aanvang.ToTimeSpan().TotalMinutes - _vsMin, _vTotMin);
-                                    string _wdt = GanttPct(gi.DuurMinuten, _vTotMin);
-                                    var (_topVal, _hgtVal) = GanttLayout.Bereken(gi.SubPos, gi.Fractie);
-                                    string _top = GanttPct((int)_topVal, 100);
-                                    string _hgt = GanttPct((int)_hgtVal, 100);
-                                    string _tooltip = GanttTooltip(gi);
-                                    <div title="@_tooltip"
-                                         class="gantt-blok @_hover.BlokKlasse(gi.WedstrijdCode)"
-                                         @onmouseover="() => _hover.Zet(gi.WedstrijdCode)"
-                                         @onmouseout="() => _hover.Wis()"
-                                         style="--gantt-left:calc(@(_lft)% + 2px); --gantt-width:calc(@(_wdt)% - 4px);
-                                                --gantt-top:calc(@(_top)% + 2px); --gantt-height:calc(@(_hgt)% - 4px);
-                                                --gantt-bg:@GanttKleur(gi.Status);">
-                                        <div class="gantt-blok-tijd">
-                                            @gi.Aanvang.ToString("HH:mm")
-                                        </div>
-                                        <div class="gantt-blok-label">
-                                            @GanttLabel(gi.Label)
-                                        </div>
-                                    </div>
-                                }
-                            </div>
-                        </div>
-                    }
-                    <div class="gantt-as-onderlijn"></div>
+                <div class="veldbezetting-sticky mb-3">
+                    <GanttChart Items="_vGantt" Hover="_hover" HoverGewijzigd="@(() => Task.CompletedTask)" />
                 </div>
             }
             else
@@ -188,3 +148,11 @@
         }
     </div>
 </div>
+
+@* ── Veldbezetting delen (#1364): HTML + PDF, datum zoals in de invoerbalk ── *@
+<DeelPaneel Titel="Veldbezetting delen"
+            Toelichting="De veldbezetting van de gekozen datum, om als e-mail te versturen of als bestand te bewaren."
+            BestandsNaam="@ExportBestandsNaam"
+            VerversSleutel="@ExportSleutel"
+            HtmlOphalen="@(() => Api.GetVeldbezettingHtmlAsync(DatumStr))"
+            PdfOphalen="@(_pdfExportIngeschakeld ? () => Api.GetVeldbezettingPdfAsync(DatumStr) : null)" />

@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
+using Planner.Endpoints.Deel;
 using Newtonsoft.Json;
 using Planner.Shared;
 using SportlinkFunction.Admin;
@@ -375,11 +376,31 @@ namespace SportlinkFunction.Planner
                     if (request == null || string.IsNullOrEmpty(request.Datum))
                         return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
-                    log.LogInformation("AutoPlan: datum={Datum}, club={Club}", request.Datum, clubCode);
-
-                    var response = await PlannerService.AutoPlanAsync(request, clubCode, log);
-                    return new OkObjectResult(response);
+                    // #1364: ?format=html|pdf (+ ?tab=huidig|optimaal) voor de deel-knop; AutoPlanAsync is een
+                    // leesbewerking (alleen AutoPlanToepassen schrijft), dus een tweede aanroep is zonder bijwerking.
+                    return await PlannerDeelEndpointCore.VerwerkAsync(req.Query["format"], req.Query["tab"], request.Datum,
+                        () => PdfExportInstelling.IsIngeschakeldAsync(clubCode),
+                        () =>
+                        {
+                            log.LogInformation("AutoPlan: datum={Datum}, club={Club}", request.Datum, clubCode);
+                            return PlannerService.AutoPlanAsync(request, clubCode, log);
+                        },
+                        (deel, response) => deel.VanPlan(response.Wedstrijden, clubCode), response => new OkObjectResult(response));
                 });
+        }
+
+        /// <summary>
+        /// #1460: deelt de planning zoals de browser hem toont (incl. handmatig versleepte blokken).
+        /// Stateless — validatie en rendering in <see cref="PlannerDeelPlanEndpointCore"/>, identiek op beide tiers.
+        /// </summary>
+        [Function("AutoPlanDeel")]
+        public static Task<IActionResult> AutoPlanDeel(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/auto-plan/deel")] HttpRequest req,
+            FunctionContext context)
+        {
+            var log = context.GetLogger("AutoPlanDeel");
+            return AdminEndpoint.ExecuteAsync(req, log, "planning delen",
+                clubCode => PlannerDeelPlanEndpointCore.VerwerkAsync(req, clubCode, () => PdfExportInstelling.IsIngeschakeldAsync(clubCode)));
         }
 
         [Function("AutoPlanToepassen")]
@@ -426,10 +447,12 @@ namespace SportlinkFunction.Planner
                     if (string.IsNullOrWhiteSpace(datumParam) || !DateOnly.TryParse(datumParam, out var datum))
                         return new BadRequestObjectResult(new { error = "Query parameter 'datum' (yyyy-MM-dd) is verplicht." });
 
+                    // #1364: ?format=html|pdf voor de deel-knop op de Planning-pagina; zonder format blijft het JSON.
                     log.LogInformation("Veldbezetting: datum={Datum}, club={Club}", datumParam, clubCode);
-
-                    var items = await PlannerService.VeldbezettingAsync(datum, clubCode);
-                    return new OkObjectResult(items);
+                    return await PlannerDeelEndpointCore.VerwerkAsync(req.Query["format"], null, datumParam,
+                        () => PdfExportInstelling.IsIngeschakeldAsync(clubCode),
+                        () => PlannerService.VeldbezettingAsync(datum, clubCode),
+                        (deel, items) => deel.VanVeldbezetting(items, clubCode), items => new OkObjectResult(items));
                 });
         }
 

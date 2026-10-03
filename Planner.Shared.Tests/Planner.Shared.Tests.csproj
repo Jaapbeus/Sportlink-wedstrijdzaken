@@ -17,6 +17,7 @@
     </PackageReference>
     <PackageReference Include="AwesomeAssertions" />
     <PackageReference Include="Moq" />
+    <PackageReference Include="PdfPig" />
     <PackageReference Include="coverlet.collector">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>

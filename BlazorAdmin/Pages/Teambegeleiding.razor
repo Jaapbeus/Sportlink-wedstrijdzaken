@@ -49,7 +49,7 @@ else if (_selectedTeam != null && _begeleiders.Count > 0)
                 <div class="card h-100">
                     <div class="card-body">
                         <h5 class="card-title">@b.Naam</h5>
-                        <span class="badge bg-secondary mb-2">@b.Teamrol</span>
+                        <span class="badge bg-secondary mb-2 text-wrap text-start">@b.RolLabel</span>
                         @if (!string.IsNullOrWhiteSpace(b.Emailadres))
                         {
                             <div class="small mt-1">

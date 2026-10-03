@@ -613,10 +613,25 @@ volledig client-side in de code-behind `VeldOptimalisatie.razor.cs` (#1361; vó�
 - Na een zet worden `Status`, `VoorkeurAfwijkingMinuten`, `VoorkeurStatus`, het aantal te wijzigen
   wedstrijden en de geschatte eindtijd opnieuw bepaald met dezelfde regels als de server, zodat een
   handmatige zet net zo eerlijk beoordeeld wordt als een berekende.
-- `ControleerConflicten` bewaakt dezelfde regels als `PastOpVeld` (capaciteit bij overlap, buffer bij
-  opeenvolging, én sinds #939 een teamconflict-doorsnede over alle velden heen) en toont per
-  overtreding welke twee wedstrijden het betreft. Een handmatige zet kan dus wel een onmogelijke
-  planning opleveren, maar niet stilzwijgend.
+- Na een zet controleert de pagina de hele planning opnieuw op conflicten: velddeeloverlap bij
+  gelijktijdigheid, buffer bij opeenvolging op hetzelfde veld, en (#939) per team over alle velden heen
+  gelijktijdigheid en buffer. Per overtreding toont hij welke twee wedstrijden het betreft. Een
+  handmatige zet kan dus wel een onmogelijke planning opleveren, maar niet stilzwijgend.
+- **Eén bron van waarheid (#1430).** Die controle en `FieldScheduler.PastOpVeld` gebruiken dezelfde code:
+  `Planner.Shared/Planning/PlanningConflictRegels.cs` (`PlanningBufferRegels` voor de buffer-, overlap-
+  en baanregels, `PlanningConflictDetectie` voor de controle over een hele planning). Blazor WASM
+  refereert niet aan `Planner.Shared` (dat trekt Azure.Identity/AngleSharp/Newtonsoft.Json mee), dus
+  `BlazorAdmin.csproj` compileert dít ene bestand mee als gelinkt bronbestand; het hangt daarom
+  uitsluitend van de BCL af. `VeldOptimalisatie.razor.cs` roept alleen
+  `BlazorAdmin/Services/VeldplanningConflictMeldingen` aan, dat DTO's naar invoer en conflicten naar
+  tekst vertaalt. `PlannerConflictPariteitTests` bewijst in beide richtingen dat planner en controle
+  niet uit elkaar lopen.
+- **Teamspecifieke buffers na slepen (#1430).** Vóór #1430 vergeleek de client alleen met de algemene
+  buffer: een teamregel `BufferNa = 60` werd na een handmatige zet genegeerd. Het auto-plancontract
+  levert nu per wedstrijd `teamBufferVoor`/`teamBufferNa` (ruwe actieve teamregels, beide tiers); de
+  effectieve buffer is per kant het maximum met de algemene buffer van dat moment, en tussen voorganger
+  en opvolger telt de grootste van `BufferNa(voorganger)` en `BufferVoor(opvolger)`. Een melding die door
+  een teamregel komt, noemt "de vereiste teambuffer van N min" in plaats van "de ingestelde buffer".
 - Wegschrijven gaat ongewijzigd via **Toepassen in testmodus** (`/planner/auto-plan/toepassen`).
 
 ### Twee losse statussen — bewust gescheiden

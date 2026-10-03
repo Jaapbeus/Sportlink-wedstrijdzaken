@@ -93,13 +93,14 @@ DECLARE @DemoClub NVARCHAR(20) = 'ALLSTARS';
 -- avg.Teambegeleiding: een fictieve trainer per team. Voornaam zonder achternaam, .test-domein.
 -- Het rijnummer in het e-mailadres houdt de adressen uniek zonder achternamen te verzinnen.
 IF NOT EXISTS (SELECT 1 FROM [avg].[Teambegeleiding] WHERE [ClubCode] = @DemoClub)
-    INSERT INTO [avg].[Teambegeleiding] ([Team], [Naam], [Emailadres], [Teamrol], [ClubCode])
+    INSERT INTO [avg].[Teambegeleiding] ([Team], [Naam], [Emailadres], [Teamrol], [Functie], [ClubCode])
     SELECT
         t.[teamnaam],
         v.[Naam],
         CONCAT(LOWER(v.[Naam]), '.',
                ROW_NUMBER() OVER (ORDER BY t.[teamnaam]), '@allstars-fc.test'),
         'Trainer',
+        'Trainer/coach',
         @DemoClub
     FROM [his].[teams] t
     CROSS APPLY (
@@ -111,6 +112,10 @@ IF NOT EXISTS (SELECT 1 FROM [avg].[Teambegeleiding] WHERE [ClubCode] = @DemoClu
         OFFSET (ABS(CHECKSUM(t.[bk_teams])) % 14) ROWS FETCH NEXT 1 ROWS ONLY
     ) v
     WHERE t.[ClubCode] = @DemoClub;
+
+-- #1360: bestaande demo-begeleiders (geseed vóór kolom Functie) krijgen de functie alsnog.
+UPDATE [avg].[Teambegeleiding] SET [Functie] = 'Trainer/coach'
+WHERE [ClubCode] = @DemoClub AND [Teamrol] = 'Trainer' AND [Functie] IS NULL;
 GO
 
 DECLARE @DemoClub NVARCHAR(20) = 'ALLSTARS';

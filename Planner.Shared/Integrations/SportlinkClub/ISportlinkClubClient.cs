@@ -274,6 +274,20 @@ public interface ISportlinkClubClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Verwijdert een clubwedstrijd bij Sportlink (#1440) — <c>DELETE
+    /// competition/match/clubmatch/ClubMatchDelete?PublicMatchId=…</c>, zonder body. Contract uit
+    /// Sportlinks publieke frontend-bundle (02-10-2026), <b>nooit live gezien</b>: de methode staat
+    /// daarom hard op dry-run (<c>ClubMatchDeleteLiveBevestigd = false</c>), los van de
+    /// club-instelling <c>sportlinkDryRun</c>. Nooit automatisch herhaald (<c>RetryBeleid.Mutatie</c>).
+    /// Doet zelf geen guardrail-check — de aanroeper roept eerst
+    /// <c>SportlinkMutationGuard.MagMuteren(match, SportlinkMutationSoort.Verwijderen)</c> aan.
+    /// </summary>
+    Task<SportlinkClubResponse<SportlinkMutationResult>> DeleteClubMatchAsync(
+        string functioneleRol,
+        string publicMatchId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Haalt de twee ondersteunende picklists op die een oefenwedstrijd-formulier nodig heeft
     /// (#997, bewust beperkte scope): <c>clubmatch/PickListsTeams</c> en
     /// <c>clubmatch/PickListsLocation</c>. Read-only en persoonsgegevensvrij (teams/locaties, geen

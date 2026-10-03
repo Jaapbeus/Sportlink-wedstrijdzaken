@@ -237,7 +237,7 @@ Browser (beheerder)
         ▼
   Azure Functions (Linux Consumption plan) — net9.0, isolated worker
         Easy Auth: valideert Bearer token, injecteert X-MS-CLIENT-PRINCIPAL
-        EasyAuthHelper: checkt 'admin' rol op alle /api/beheer/*, /api/test/*, /api/feedback/*
+        EasyAuthHelper: checkt 'admin' rol op alle /api/beheer/*, /api/test/*; /api/feedback/* is open voor admin én user (#764)
         │
         ├── DatabaseTier=SqlServer          ├── DatabaseTier=Postgres
         │   FunctionApp/                    │   FunctionApp.Postgres/
@@ -936,6 +936,7 @@ nieuw besluit dat het oude vervangt.
 | **WZ-ADR-009** | Foutmodel volgens RFC 9457 | Internationale standaard in plaats van een eigen formaat. Gevolg: één herbruikbaar schema in de specificatie; bestaande ad-hoc foutobjecten migreren. |
 | **WZ-ADR-010** | Geen waarden van de installatie in de repository | Volgt uit B1. Gevolg: de eerste authenticatie-uitrol gebeurt lokaal met een privéparameterbestand; automatisering mag die waarden niet opslaan. |
 | **WZ-ADR-011** | Eén fork = één productieclub + demo-club, geen shared hosting | Vastgelegd na review van #393 (2026-05-31). Gevolg: geen server-side multi-user-clubautorisatie nodig; `X-Club-Code` is UX, geen beveiligingsgrens; shared hosting vereist een volledige herontwerpslag en is expliciet niet het doel. Zie §2.1. |
+| **WZ-ADR-012** | PDF-export met QuestPDF uit een eigen documentmodel, niet via HTML→PDF | Besluit eigenaar 2026-09-26 (epic #1365), uitgevoerd in #1363. Gevolg: server-side generatie in `Planner.Shared/Deel/`, de HTML-export blijft ongemoeid. Twee afwijkingen van de rest van de stack, beide bewust: QuestPDF is *source-available* onder een omzetgebonden Community License (< USD 1 mln; elke club toetst dat zelf), en het levert native bibliotheken per platform mee (+39,5 MB zip per deploypakket). Zie [ARCHITECTUUR-PDF-EXPORT.md](ARCHITECTUUR-PDF-EXPORT.md). |
 
 ### Afwijkingsregister
 

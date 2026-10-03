@@ -214,6 +214,17 @@ met reden — nooit een allowlist voor een hele pagina.
 *Guard: `scripts/ci/check-blazor-inline-styles.sh` — hard, geen ratchet: een nieuwe overtreding is
 altijd een fout, niet een meting die mag groeien.*
 
+### Regel 3c — Gelinkte bronbestanden in BlazorAdmin hangen uitsluitend van de BCL af (#1461)
+
+BlazorAdmin (WASM) refereert bewust niet aan `Planner.Shared`, maar compileert enkele bestanden
+als `<Compile Include="../Planner.Shared/..." Link="..." />` (nu: `PlanningConflictRegels.cs`, #1430).
+Zo'n bestand draait in de browser, dus: uitsluitend `using System*` (geen ander `Planner.Shared`-type,
+geen NuGet) en nooit `RegexOptions.Compiled` (NullReferenceException tijdens renderen, geen
+buildfout). Tot #1461 stond dit alleen als commentaar in het bestand zelf — een onbewaakte harde regel.
+
+*Guard: `scripts/ci/check-gelinkte-bronbestanden.sh` — hard, geen ratchet; negatief getest in
+`check-codekwaliteit.test.sh`.*
+
 ### Regel 4 — Platformafhankelijke valkuilen zijn verboden, tenzij gemotiveerd
 
 Vier patronen die in dit project aantoonbaar stille fouten hebben opgeleverd:
@@ -423,6 +434,7 @@ endpoint laat hem ook falen. Dezelfde knip als de Layer-5-scan in
 | 1, 2 — interne duplicatie stijgt niet (#1263) | `scripts/ci/check-interne-duplicatie.sh` | `build.yml` |
 | 3 — geen logica in Blazor-pagina's | `scripts/ci/check-blazor-codebehind.sh` | `build.yml` |
 | 3b — geen `<style>`-blok of statische inline style in Blazor-pagina's (#1329) | `scripts/ci/check-blazor-inline-styles.sh` | `build.yml` |
+| 3c — gelinkte bronbestanden in BlazorAdmin: alleen `using System*`, geen `RegexOptions.Compiled` (#1461) | `scripts/ci/check-gelinkte-bronbestanden.sh` | `build.yml` |
 | 4 — platformafhankelijke valkuilen | `scripts/ci/check-codekwaliteit-valkuilen.sh` | `build.yml` |
 | 5 — AGENTS.md afgeleid uit CLAUDE.md | `scripts/ci/genereer-agents-md.py` | `build.yml` |
 | 6 — elke regel heeft een guard | `scripts/ci/check-regelregister.sh` | `build.yml` |
@@ -439,6 +451,8 @@ uit een workflow kan verdwijnen zonder dat iemand het merkt.
 |---|---|---|
 | Padverwijzingen exact in casing (#825) | `scripts/ci/check-path-casing.sh` | `build.yml` |
 | Postgres-identifiers lowercase snake_case | `scripts/ci/check-postgres-identifier-casing.sh` | `build.yml` |
+| Migratievolgnummers uniek in Database.Postgres/migrations (#1485) | `scripts/ci/check-migratie-volgnummers.sh` | `build.yml` |
+| Migratievolgnummers zelf getest (#1485) | `scripts/ci/check-migratie-volgnummers.test.sh` | `build.yml` |
 | Tabellen gedekt in beide tierbomen | `scripts/ci/check-postgres-table-coverage.sh` | `build.yml` |
 | Kolommen gedekt in beide tierbomen | `scripts/ci/check-postgres-column-coverage.sh` | `build.yml` |
 | Procedures/views gedekt in beide tierbomen | `scripts/ci/check-postgres-procedure-view-coverage.sh` | `build.yml` |
@@ -446,6 +460,9 @@ uit een workflow kan verdwijnen zonder dat iemand het merkt.
 | Supabase-lints (#1220) | `scripts/ci/check-splinter-lints.sh` | `build.yml` |
 | Thema-CSS-variabelen consistent (#1255) | `scripts/ci/check-theme-variables.sh` | `build.yml` |
 | Beide tiers bieden dezelfde routes en timers (#1266, #1268) | `scripts/ci/check-tier-pariteit.sh` | `build.yml` |
+| Verify-AzureAuthSetup.ps1 lekt geen PII bij lege parameter (#1474) | `scripts/ci/check-verify-script-guards.sh` | `build.yml` |
+| Een infra-deploy mag geen bestaande app setting wissen (#1455) | `scripts/ci/check-whatif-appsettings.sh` | `infrastructure.yml` |
+| De what-if-poort kan ook rood worden (#1455) | `scripts/ci/check-whatif-appsettings.test.sh` | `build.yml` |
 
 <!-- REGELREGISTER-EINDE -->
 
@@ -462,6 +479,7 @@ Eerlijk vermeld, zodat niemand denkt dat het gedekt is.
 | Precies één `source:`-label per issue (#1336) | Herkomst wordt handmatig gezet door Claude Code (Codex heeft geen labelschrijftoegang) — er is geen `setIssueStatus()`-achtige helper die dit afdwingt, en geen periodieke scan die een issue zonder of met dubbel `source:`-label signaleert. | Los issue indien gewenst: een periodieke workflow (zelfde vorm als `supabase-advisors.yml`) die open issues zonder precies één `source:`-label rapporteert |
 | Verweesde `status: waiting-codex` (#1336, gedeprecieerd sinds #1343) | Er is geen GitHub-event dat Codex' read-only reviewsweep markeert als "klaar" — zetten én verwijderen zijn altijd handmatige acties van Claude Code. Een issue dat op `waiting-codex` blijft staan omdat niemand terugkomt, valt niet automatisch op. Sinds #1343 is dit label gedeprecieerd (zie `CLAUDE.md`); de rij blijft staan zolang het label en zijn `PROTECTED`-vermelding nog bestaan. | Los issue indien gewenst: dagelijkse/wekelijkse cron die `status: waiting-codex`-issues ouder dan N dagen signaleert, of verwijder het label + de `PROTECTED`-vermelding zodra bevestigd is dat niets er meer naar verwijst |
 | Precies één `turn:`-label per issue (#1343) | Net als bij `source:` (zie rij hierboven): geen `setIssueStatus()`-achtige helper dwingt exclusiviteit af voor `turn: claude-code`/`turn: codex`/`turn: owner`, en er is geen periodieke scan die een issue zonder of met dubbel `turn:`-label signaleert. | Los issue indien gewenst: dezelfde periodieke workflow als voor `source:` uitbreiden met een `turn:`-check |
+| `/security-review` vóór elke release (#1470) | Afgedwongen door de skill `/release` (stap R1), niet door CI: een review in GitHub Actions vraagt een Anthropic API-sleutel en dus API-kosten. Een release buiten `/release` om (handmatig mergen van een `develop` → `main`-PR) slaat de review over. De automatische ondergrens is de Security Gate met CodeQL, die wél verplicht is op `main`. | Geen; bewust zo gelaten. Vangrail is de verplichte Security Gate |
 | Maximaal twee Codex-rondes per PR zonder eigenaarsbesluit (#1343) | De rondelimiet uit "Codex-turn-workflow" in `CLAUDE.md` is een afspraak tussen Claude Code en de Codex-automatisering, geen door deze repo's CI afgedwongen teller — er is geen script dat het aantal `turn: codex`-aanvragen per PR bijhoudt. | Los issue indien gewenst, pas ná de handmatige simulatie/proefautomatisering uit fase 2/3 van #1343 — te vroeg bouwen zou een teller afdwingen vóórdat bekend is hoe de Codex-app dit in de praktijk gebruikt |
 
 ### Drie mappen zonder testproject, nu met een startpunt (#1302)
@@ -502,6 +520,7 @@ bash scripts/ci/check-tier-duplicatie.sh
 bash scripts/ci/check-interne-duplicatie.sh
 bash scripts/ci/check-blazor-codebehind.sh
 bash scripts/ci/check-blazor-inline-styles.sh
+bash scripts/ci/check-gelinkte-bronbestanden.sh
 bash scripts/ci/check-codekwaliteit-valkuilen.sh
 bash scripts/ci/check-bestandsgrootte.sh
 bash scripts/ci/check-regelregister.sh

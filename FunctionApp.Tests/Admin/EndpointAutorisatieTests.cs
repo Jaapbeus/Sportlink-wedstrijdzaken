@@ -54,6 +54,10 @@ public class EndpointAutorisatieTests
     /// Wedstrijdzaken/admin-gated blijven — zie
     /// <see cref="Sportlink_AlleenWedstrijdzaken_PasseertDeAdminPoort"/>.
     /// </para>
+    /// <para>
+    /// <c>PdfExportStatus</c> (#1459): alleen de aan/uit-stand van PDF-export voor de gekozen club,
+    /// zodat Planning de PDF-knop ook voor de rol <c>user</c> juist toont.
+    /// </para>
     /// </summary>
     private static readonly string[] AuthenticatedRoutes =
     [
@@ -63,6 +67,13 @@ public class EndpointAutorisatieTests
         "Veldbezetting",
         "SqlSportlinkMatchGet",
         "SqlSportlinkMatchPublicMatchIdGet",
+        "PdfExportStatus",
+        // #764: de feedbackwidget is open voor elke ingelogde rol; een melding van een gewone
+        // gebruiker wordt nooit rechtstreeks gepubliceerd (zie FeedbackEndpointCore). Het
+        // beheeroverzicht (AdminFeedback*) blijft admin-only.
+        "FeedbackValidate",
+        "FeedbackPreview",
+        "FeedbackSubmit",
     ];
 
     private const int MinimaalVerwachtAantalEndpoints = 90;

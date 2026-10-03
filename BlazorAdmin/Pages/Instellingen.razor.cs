@@ -28,6 +28,8 @@ public partial class Instellingen : ClubSelectorPageBase
     private bool _syncLoading = true;
     private bool _syncing;
     private string? _syncResult;
+    private bool _toonResetBevestiging;
+    private int _resetSeizoen = HuidigSeizoenStartjaar();
     private int _emailVerwerkt, _emailFouten, _emailBuitenScope, _emailGeenAntwoord;
 
     private bool _isTestmodus => ClubSelector.SelectedClubCode == "ALLSTARS";
@@ -81,11 +83,31 @@ public partial class Instellingen : ClubSelectorPageBase
         await LaadUitgeslotenEmailsAsync();
     }
 
-    private async Task TriggerSyncAsync()
+    private static int HuidigSeizoenStartjaar() => SeizoenKeuze.HuidigStartjaar(DateTime.Today);
+
+    private IEnumerable<int> ResetSeizoenOpties => SeizoenKeuze.ResetOpties(DateTime.Today);
+
+    private void ToonResetBevestiging()
+    {
+        _resetSeizoen = HuidigSeizoenStartjaar();
+        _toonResetBevestiging = true;
+    }
+
+    private void AnnuleerReset() => _toonResetBevestiging = false;
+
+    private async Task BevestigResetAsync()
+    {
+        _toonResetBevestiging = false;
+        await StartSyncAsync(_resetSeizoen);
+    }
+
+    private async Task TriggerSyncAsync() => await StartSyncAsync(null);
+
+    private async Task StartSyncAsync(int? seizoenStartjaar)
     {
         _syncing = true;
         _syncResult = null;
-        var r = await Api.TriggerSyncAsync();
+        var r = await Api.TriggerSyncAsync(seizoenStartjaar);
         if (!r.Success || r.Data?.JobId is not Guid jobId)
         {
             _syncResult = $"Sync starten mislukt: {r.ErrorMessage}";
@@ -233,6 +255,7 @@ public partial class Instellingen : ClubSelectorPageBase
                 ["UseRealtimeApi"] = settings.UseRealtimeApi ? "1" : "0",
                 ["KnvbPdfBijlageIngeschakeld"] = settings.KnvbPdfBijlageIngeschakeld ? "1" : "0",
                 ["KnvbStandaardRegio"] = settings.KnvbStandaardRegio,
+                ["PdfExportIngeschakeld"] = settings.PdfExportIngeschakeld ? "1" : "0",
             }
         };
 
