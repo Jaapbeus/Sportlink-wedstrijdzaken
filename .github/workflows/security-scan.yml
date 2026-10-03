@@ -475,6 +475,7 @@ jobs:
               sys.exit(1)
 
           te_hoog = []
+          totaal = 0
           for pad in bestanden:
               sarif = json.load(open(pad, encoding="utf-8"))
               for run in sarif.get("runs", []):
@@ -485,7 +486,9 @@ jobs:
                           sev = (r.get("properties") or {}).get("security-severity")
                           if sev is not None:
                               regels[r["id"]] = float(sev)
+                  print(f"{pad}: {len(regels)} regels met security-severity, {len(run.get('results', []))} resultaten")
                   for res in run.get("results", []):
+                      totaal += 1
                       if res.get("suppressions"):
                           continue
                       sev = regels.get(res.get("ruleId"), 0.0)
@@ -503,7 +506,7 @@ jobs:
                   print(f"::error file={bestand},line={regel}::{rid} (security-severity {sev})")
               print("::error::Details: GitHub → Security → Code scanning. Zie SECURITY.md.")
               sys.exit(1)
-          print(f"✅ Geen CodeQL-bevindingen met security-severity >= {DREMPEL}.")
+          print(f"✅ Geen CodeQL-bevindingen met security-severity >= {DREMPEL} ({totaal} resultaten beoordeeld).")
           PY
 
   # ── 5. Security gate — blokkeert merge als bovenstaande checks falen ────────
