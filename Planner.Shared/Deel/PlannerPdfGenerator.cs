@@ -38,10 +38,9 @@ namespace Planner.Shared.Deel
         /// </summary>
         static PlannerPdfGenerator()
         {
-            // Zonder deze regel weigert QuestPDF te renderen. "Community" is een zelfverklaring van
-            // de club die deze installatie draait — de voorwaarde (< USD 1.000.000 jaaromzet) staat
-            // in docs/ARCHITECTUUR-PDF-EXPORT.md §2 en SETUP-NIEUWE-CLUB.md.
-            Settings.License = LicenseType.Community;
+            // #1459: de licentie wordt hier bewust NIET gezet maar in Genereer, alleen als de club
+            // PDF-export heeft ingeschakeld (zelfverklaring Community-voorwaarden, zie
+            // docs/ARCHITECTUUR-PDF-EXPORT.md §2).
 
             // Alleen het meegeleverde Lato-lettertype, nooit systeemfonts: het Linux Consumption Plan
             // garandeert geen geïnstalleerde fonts, en dezelfde invoer moet overal dezelfde PDF geven.
@@ -57,10 +56,22 @@ namespace Planner.Shared.Deel
             Settings.ThrowOnMissingTextGlyphs = false;
         }
 
-        /// <summary>Genereert de PDF. Een lege wedstrijdlijst geeft een geldige PDF met een melding.</summary>
-        public static byte[] Genereer(PlannerShareModel model)
+        /// <summary>
+        /// Genereert de PDF. Een lege wedstrijdlijst geeft een geldige PDF met een melding.
+        /// <paramref name="pdfIngeschakeld"/> is de clubinstelling "PDF-export" (#1459): alleen dan
+        /// wordt <c>QuestPDF.Settings.License = Community</c> gezet. Bij <c>false</c> gooit dit een
+        /// <see cref="InvalidOperationException"/> — de endpoints weigeren al eerder met 409, dit is
+        /// de laatste vangrail zodat er nooit een PDF ontstaat zonder bevestigde licentie.
+        /// </summary>
+        public static byte[] Genereer(PlannerShareModel model, bool pdfIngeschakeld)
         {
             ArgumentNullException.ThrowIfNull(model);
+            if (!pdfIngeschakeld)
+                throw new InvalidOperationException("PDF-export is voor deze club niet ingeschakeld (QuestPDF-licentie niet bevestigd).");
+
+            // Zonder deze regel weigert QuestPDF te renderen. "Community" is een zelfverklaring van
+            // de club die deze installatie draait: < USD 1.000.000 jaaromzet.
+            Settings.License = LicenseType.Community;
 
             return Document.Create(document =>
                 {

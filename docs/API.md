@@ -758,6 +758,8 @@ Sinds #666 is dit de enige dagplanning-optimalisatie.
 | `format` | `string` | Nee | `json` (standaard), `html` of `pdf` — dezelfde berekening, maar het resultaat als gedeeld document (zelfde kolommen als de Planning-export). Bestandsnaam `huidige-planning-<datum>.pdf` / `optimale-planning-<datum>.pdf`. Andere waarde: 400 |
 | `tab` | `string` | Nee | `huidig` (standaard) of `optimaal` — welke kant in het document komt. Alleen relevant bij `format=html|pdf`. Andere waarde: 400 |
 
+`format=pdf` vereist dat de clubinstelling **PDF-export** (`PdfExportIngeschakeld`, Instellingen) aan staat; standaard staat hij uit en geeft `format=pdf` dan **`409`** met een uitleg (#1459). `json` en `html` zijn niet afhankelijk van die instelling.
+
 Bij `format=html|pdf` moet `datum` strikt `yyyy-MM-dd` zijn (anders 400). De berekening is een pure
 leesbewerking; alleen `/planner/auto-plan/toepassen` schrijft, dus een tweede aanroep voor de export heeft
 geen bijwerking.

@@ -81,7 +81,7 @@ public class PlannerDeelEndpointCoreTests
     {
         var model = Model(new PlannerShareWedstrijd("09:30", "JO10-1", "Gasten JO10-2", "veld 3 A", "competitie", null));
 
-        var result = PlannerDeelEndpointCore.Maak(model, PlannerDeelEndpointCore.FormatPdf, "veldbezetting");
+        var result = PlannerDeelEndpointCore.Maak(model, PlannerDeelEndpointCore.FormatPdf, "veldbezetting", pdfToegestaan: true);
 
         var bestand = result.Should().BeOfType<FileContentResult>().Subject;
         bestand.ContentType.Should().Be("application/pdf");
@@ -139,9 +139,10 @@ public class PlannerDeelEndpointCoreTests
     }
 
     [Fact]
-    public void VanVeldbezetting_Pdf_GeeftPdfMetBestandsnaam()
+    public async Task VanVeldbezetting_Pdf_GeeftPdfMetBestandsnaam()
     {
         PlannerDeelEndpointCore.Lees("pdf", null, "2026-10-03", out var verzoek).Should().BeNull();
+        (await verzoek.WeigerPdfAsync(() => Task.FromResult(true))).Should().BeNull();
 
         var result = verzoek.VanVeldbezetting(new List<Regel> { new() }, "ALLSTARS");
 
@@ -151,12 +152,66 @@ public class PlannerDeelEndpointCoreTests
         Encoding.ASCII.GetString(bestand.FileContents, 0, 5).Should().Be("%PDF-");
     }
 
+    // #1459: PDF-export staat per club standaard uit → 409; json/html lezen de instelling niet eens.
+    [Fact]
+    public async Task WeigerPdf_ClubInstellingUit_Geeft409EnMaaktGeenPdf()
+    {
+        PlannerDeelEndpointCore.Lees("pdf", null, "2026-10-03", out var verzoek).Should().BeNull();
+
+        var geweigerd = await verzoek.WeigerPdfAsync(() => Task.FromResult(false));
+
+        geweigerd.Should().BeOfType<ConflictObjectResult>();
+        verzoek.PdfToegestaan.Should().BeFalse();
+        var act = () => verzoek.VanVeldbezetting(new List<Regel> { new() }, "ALLSTARS");
+        act.Should().Throw<InvalidOperationException>("zonder bevestigde licentie komt er nooit een PDF uit");
+    }
+
+    [Theory]
+    [InlineData("0", true)]
+    [InlineData("1", true)]
+    [InlineData("true", true)]
+    [InlineData("false", true)]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    [InlineData("ja", false)]
+    public void ControleerPdfInstelling_AlleenExpliciete_AanUitWaarde(string? waarde, bool geldig)
+    {
+        var uitkomst = PlannerDeelEndpointCore.ControleerPdfInstelling(waarde);
+
+        if (geldig) uitkomst.Should().BeNull();
+        else uitkomst.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task WeigerPdf_ClubInstellingAan_LaatPdfToe()
+    {
+        PlannerDeelEndpointCore.Lees("pdf", null, "2026-10-03", out var verzoek).Should().BeNull();
+
+        (await verzoek.WeigerPdfAsync(() => Task.FromResult(true))).Should().BeNull();
+
+        verzoek.PdfToegestaan.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("html")]
+    [InlineData(null)]
+    public async Task WeigerPdf_HtmlOfJson_LeestDeInstellingNiet(string? format)
+    {
+        PlannerDeelEndpointCore.Lees(format, null, "2026-10-03", out var verzoek).Should().BeNull();
+
+        var gelezen = false;
+        (await verzoek.WeigerPdfAsync(() => { gelezen = true; return Task.FromResult(false); })).Should().BeNull();
+
+        gelezen.Should().BeFalse();
+    }
+
     [Theory]
     [InlineData("huidig", "huidige-planning-2026-10-03.pdf", "09:00")]
     [InlineData("optimaal", "optimale-planning-2026-10-03.pdf", "08:30")]
-    public void VanPlan_KiestDeGevraagdeTab(string tab, string bestandsnaam, string verwachteTijd)
+    public async Task VanPlan_KiestDeGevraagdeTab(string tab, string bestandsnaam, string verwachteTijd)
     {
         PlannerDeelEndpointCore.Lees("pdf", tab, "2026-10-03", out var pdf).Should().BeNull();
+        (await pdf.WeigerPdfAsync(() => Task.FromResult(true))).Should().BeNull();
         PlannerDeelEndpointCore.Lees("html", tab, "2026-10-03", out var html).Should().BeNull();
         var wedstrijden = new List<PlanRegel> { new() };
 

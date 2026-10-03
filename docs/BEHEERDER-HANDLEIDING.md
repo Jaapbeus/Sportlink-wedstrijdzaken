@@ -122,12 +122,18 @@ Onderaan **Planning** staat het blok **Veldbezetting delen**, en onderaan **Veld
 
 - **Voorbeeld en HTML:** een voorbeeldweergave van de gekozen dag. **HTML kopiëren** zet de pagina op
   het klembord (voor in een e-mail), **HTML downloaden** bewaart haar als bestand.
-- **PDF downloaden:** een A4-liggend document met per wedstrijd tijd, team, tegenstander, veld en
+- **PDF downloaden (alleen als PDF-export aan staat, #1459):** een A4-liggend document met per wedstrijd tijd, team, tegenstander, veld en
   competitie. Bestandsnamen zijn `veldbezetting-<datum>.pdf`, `huidige-planning-<datum>.pdf` of
   `optimale-planning-<datum>.pdf`. Een kolom Scheidsrechter verschijnt alleen als die gegevens bekend zijn.
 - **Welke planning wordt gedeeld:** op Planning de datum bovenin de pagina. Op Veld optimalisatie de
   tab die u op dat moment bekijkt (**Huidig** of **Optimaal**), met de datum en buffer waarmee u de
   planning hebt berekend; de titel van het document zegt welke van de twee het is.
+- **PDF-export aanzetten:** de PDF-knop verschijnt alleen als een beheerder bij **Instellingen → PDF-export**
+  de schakelaar *PDF-export van planningen inschakelen* aanzet en opslaat. Die staat standaard **uit**. De PDF
+  gebruikt de bibliotheek QuestPDF onder de gratis Community-licentie, die alleen geldt voor organisaties met
+  een jaaromzet onder 1 miljoen USD; door de schakelaar aan te zetten bevestigt u dat dit voor uw vereniging
+  geldt. HTML kopiëren en downloaden werken altijd. Alleen beheerders zien de PDF-knop; ook als de
+  schakelaar uit staat weigert de server een PDF-verzoek.
 - **Rechten:** Planning delen kan elke ingelogde gebruiker; Veld optimalisatie blijft alleen voor beheerders.
 
 ### Veld optimalisatie — twee tabs: Huidig en Optimaal

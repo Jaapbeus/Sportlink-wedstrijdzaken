@@ -28,7 +28,7 @@ public class PlannerShareTierContractTests
         };
 
         var model = PlannerShareModelBuilder.VanVeldbezetting(items, Zaterdag, "ALLSTARS");
-        var pdf = PlannerPdfGenerator.Genereer(model);
+        var pdf = PlannerPdfGenerator.Genereer(model, true);
 
         model.Wedstrijden.Single().Should().Be(
             new PlannerShareWedstrijd("09:30", "JO10-1", "Gasten JO10-2", "veld 3 A", "competitie", null));
@@ -48,5 +48,16 @@ public class PlannerShareTierContractTests
 
         model.Wedstrijden.Single().Should().Be(
             new PlannerShareWedstrijd("09:15", "JO13-2", "Gasten JO13-1", "veld 2 B", "beker", null));
+    }
+
+    [Fact]
+    public void Pdf_ZonderIngeschakeldeClubinstelling_WordtGeweigerd()
+    {
+        // #1459: PDF-export staat per club standaard uit; de generator is de laatste vangrail.
+        var model = PlannerShareModelBuilder.VanVeldbezetting(new List<VeldbezettingItem>(), Zaterdag, "ALLSTARS");
+
+        var act = () => PlannerPdfGenerator.Genereer(model, false);
+
+        act.Should().Throw<InvalidOperationException>();
     }
 }

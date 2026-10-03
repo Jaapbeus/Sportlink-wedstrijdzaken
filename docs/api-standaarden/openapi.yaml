@@ -802,6 +802,15 @@ components:
             KNVB-speeldagenkalender als PDF-bijlage + een paar vrije zaterdagen mee, met de
             begeleiding van het eigen team in BCC (#561). Uit = bestaand herplan-gedrag ongewijzigd.
           default: true
+        PdfExportIngeschakeld:
+          type: boolean
+          description: |
+            PDF-export van planningen (`?format=pdf` op `/planner/veldbezetting` en
+            `/planner/auto-plan`) voor deze club (#1459). Standaard false (fail-closed): de PDF gebruikt
+            QuestPDF onder de Community-licentie (organisaties onder USD 1 mln jaaromzet); een
+            beheerder bevestigt dat die voorwaarden gelden door dit aan te zetten. Uit = `?format=pdf`
+            geeft 409; HTML-export blijft werken.
+          default: false
         KnvbStandaardRegio:
           type: string
           nullable: true
@@ -1409,7 +1418,8 @@ components:
         Witte lijst: HerplanDeadlineDagen, BufferMinuten, PlannerAfzenderNaam, CoordinatorNaam,
         CoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,
         AccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi,
-        KnvbPdfBijlageIngeschakeld, KnvbStandaardRegio, SportlinkExtensionEnabled.
+        KnvbPdfBijlageIngeschakeld, KnvbStandaardRegio, SportlinkExtensionEnabled, PdfExportIngeschakeld
+        (waarde `0`/`1`/`true`/`false`, anders 400).
 
         De audit-actor (wie de wijziging doorvoerde) wordt uitsluitend server-side bepaald uit de
         door Easy Auth gevalideerde claims — dit contract kent daarom geen "wie"-veld (#1003).
@@ -7132,6 +7142,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '409':
+          description: "`?format=pdf` terwijl de clubinstelling PdfExportIngeschakeld uit staat (#1459)"
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -7188,6 +7200,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '409':
+          description: "`?format=pdf` terwijl de clubinstelling PdfExportIngeschakeld uit staat (#1459)"
         '500':
           $ref: '#/components/responses/InternalServerError'
 

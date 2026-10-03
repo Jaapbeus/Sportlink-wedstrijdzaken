@@ -51,7 +51,7 @@ public static class AdminSettingsFunction
         "Accommodatie", "FetchSchedule", "EmailVoetnoot",
         "AccommodatiePlaats", "AccommodatieLatitude", "AccommodatieLongitude",
         "UseRealtimeApi", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio",
-        "SportlinkExtensionEnabled", "SportlinkDryRun", "SportlinkSpelactiviteit"
+        "SportlinkExtensionEnabled", "SportlinkDryRun", "SportlinkSpelactiviteit", "PdfExportIngeschakeld"
     };
 
     private static readonly string[] GeldigeKnvbRegios =
@@ -77,6 +77,7 @@ public static class AdminSettingsFunction
         ["KnvbPdfBijlageIngeschakeld"] = "::boolean",
         ["SportlinkExtensionEnabled"] = "::boolean",
         ["SportlinkDryRun"] = "::boolean",
+        ["PdfExportIngeschakeld"] = "::boolean",
     };
 
     private const string ManagementApiVersion = "2022-03-01";
@@ -127,6 +128,7 @@ public static class AdminSettingsFunction
                         knvbstandaardregio AS ""KnvbStandaardRegio"",
                         userealtimeapi AS ""UseRealtimeApi"",
                         sportlinkspelactiviteit AS ""SportlinkSpelactiviteit"",
+                        pdfexportingeschakeld AS ""PdfExportIngeschakeld"",
                         {extensieKolom} AS ""SportlinkExtensionEnabled"",
                         {dryRunKolom} AS ""SportlinkDryRun""
                     FROM public.appsettings
@@ -281,6 +283,10 @@ public static class AdminSettingsFunction
         // #1437: de kolom is 100 tekens breed; een te lange waarde geeft anders een databasefout (500).
         if (changes.TryGetValue("SportlinkSpelactiviteit", out var nieuweActiviteit) && nieuweActiviteit is { Length: > 100 })
             return new BadRequestObjectResult(new { error = "Spelactiviteit mag maximaal 100 tekens bevatten." });
+
+        // #1459: de kolom is NOT NULL; alleen een expliciete aan/uit-waarde is geldig.
+        if (changes.TryGetValue("PdfExportIngeschakeld", out var nieuwePdf))
+            return global::Planner.Endpoints.Deel.PlannerDeelEndpointCore.ControleerPdfInstelling(nieuwePdf);
 
         return null;
     }

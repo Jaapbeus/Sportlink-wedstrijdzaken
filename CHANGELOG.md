@@ -19,6 +19,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **PDF-export van planningen is per club aan/uit te zetten, standaard uit** (#1459). Beheerders vinden
+  de schakelaar bij Instellingen onder *PDF-export*, met uitleg dat de gebruikte QuestPDF Community-licentie
+  geldt voor organisaties onder 1 miljoen USD jaaromzet; door hem aan te zetten bevestigt de beheerder dat.
+  Staat hij uit, dan verdwijnt de PDF-knop bij Planning en Veld optimalisatie en weigert de server een
+  PDF-verzoek (409); delen als HTML blijft werken. **Na de release staat PDF-export voor elke club uit
+  tot een beheerder hem inschakelt.**
 - **Wedstrijd toevoegen direct op Planning** (#1468). Staat de Sportlink Web Extension aan, dan heeft
   Planning rechts in de datumbalk een groene knop **Wedstr. toevoegen**. Die opent het
   aanmaakformulier in een kaart op de pagina zelf, met de gekozen datum al ingevuld; na een echte

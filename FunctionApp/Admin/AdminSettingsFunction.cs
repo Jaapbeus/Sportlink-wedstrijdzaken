@@ -1,4 +1,5 @@
 using Azure.Core;
+using Planner.Endpoints.Deel;
 using Azure.Identity;
 using Cronos;
 using Microsoft.AspNetCore.Http;
@@ -44,7 +45,7 @@ public static class AdminSettingsFunction
         "Accommodatie", "FetchSchedule", "EmailVoetnoot",
         "AccommodatiePlaats", "AccommodatieLatitude", "AccommodatieLongitude",
         "UseRealtimeApi", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio",
-        "SportlinkExtensionEnabled", "SportlinkSpelactiviteit"
+        "SportlinkExtensionEnabled", "SportlinkSpelactiviteit", "PdfExportIngeschakeld"
     };
 
     // Geldige waarden voor KnvbStandaardRegio — komt overeen met de PK-waarden in dbo.KnvbKalenderDag.
@@ -81,7 +82,7 @@ public static class AdminSettingsFunction
                         [BufferMinuten], [EmailVoetnoot], [AccommodatiePlaats],
                         [AccommodatieLatitude], [AccommodatieLongitude],
                         [KnvbPdfBijlageIngeschakeld], [KnvbStandaardRegio], [SportlinkExtensionEnabled],
-                        [SportlinkSpelactiviteit]
+                        [SportlinkSpelactiviteit], [PdfExportIngeschakeld]
                     FROM [dbo].[AppSettings]
                     WHERE [ClubCode] = @ClubCode", connection);
                 command.Parameters.AddWithValue("@ClubCode", clubCode);
@@ -163,6 +164,9 @@ public static class AdminSettingsFunction
 
                 var fout = ValideerWijzigingen(changes);
                 if (fout != null) return fout;
+
+                if (changes.TryGetValue("PdfExportIngeschakeld", out var nieuwePdf) && PlannerDeelEndpointCore.ControleerPdfInstelling(nieuwePdf) is { } pdfFout)
+                    return pdfFout;
 
                 changes.TryGetValue("FetchSchedule", out var nieuweSchedule);
 

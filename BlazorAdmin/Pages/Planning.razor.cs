@@ -33,6 +33,7 @@ public partial class Planning : ClubSelectorPageBase
 
     // Sportlink-kolom (#989/#991/#1361): alleen de vlag blijft hier; uitklap-/deeplinkstate staat in
     // SportlinkActieKolomState, het paneel zelf is SportlinkMatchPanel (#1122).
+    private bool _pdfExportIngeschakeld;
     private bool _sportlinkExtensionEnabled;
     private readonly SportlinkActieKolomState _sportlinkKolom = new();
 
@@ -54,6 +55,8 @@ public partial class Planning : ClubSelectorPageBase
         // #989: geen Sportlink-kolom/-knoppen tonen als de extension uit staat (DoD).
         var settings = await Api.GetSettingsAsync();
         _sportlinkExtensionEnabled = settings.Success && settings.Data?.SportlinkExtensionEnabled == true;
+        // #1459: de PDF-knop verschijnt alleen als de club PDF-export heeft ingeschakeld (standaard uit).
+        _pdfExportIngeschakeld = settings.Success && settings.Data?.PdfExportIngeschakeld == true;
     }
 
     private async Task OnDatumChanged() => await LoadVeldbezettingAsync();
