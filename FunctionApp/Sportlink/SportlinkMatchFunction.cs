@@ -4,6 +4,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
+using Planner.Endpoints.Sportlink;
 using Planner.Shared.Integrations.SportlinkClub;
 using SportlinkFunction.Admin;
 using SportlinkFunction.Integrations.SportlinkClub;
@@ -375,6 +376,7 @@ public static class SportlinkMatchFunction
         }
 
         var auditService = context.InstanceServices.GetService<ISportlinkMutationAuditService>();
+        if (auditService == null) return SportlinkEndpointSupportCore.AuditNietBeschikbaarFout();
         var triggerdDoor = EasyAuthHelper.GetAuditActor(req);
         // #998: WaardeVoor bevat alleen niet-persoonsgebonden velden die al in SportlinkMatch
         // zitten. Doel: een seizoen aan auditdata verzamelen vóórdat MatchStatus eventueel een

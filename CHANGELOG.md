@@ -18,13 +18,62 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **Verify-AzureAuthSetup.ps1 lekt geen persoonlijke gegevens meer bij lege admin-parameter** (#1474).
+  Wanneer het verificatiescript zonder `-AdminUserPrincipalName` gestart wordt, slaat het de admin-toewijzingscontrole
+  over in plaats van een ongefilterde gebruikerszoekopdracht uit te voeren die alle tenant-gebruikers zou tonen.
+  Laag 4 van het verificatiescript checkt nu correct de `AuthGate.Bepaal()`-implementatie in plaats van een
+  verouderde `IsInRole`-aanroep in App.razor rechtstreeks.
+- **Wijzigingsverzoeken toont weer wedstrijdnummer, thuis- en uitteam** (#1464). Die kolommen bleven
+  op **Wijzigingsverzoeken** leeg (`–`) zodra een wedstrijd niet in onze eigen wedstrijdgegevens
+  gekoppeld was. Ze worden nu overgenomen uit Sportlink zelf, dezelfde gegevens die Sportlink Club op
+  zijn eigen scherm toont.
+- **Veld optimalisatie waarschuwt nu ook voor teamspecifieke buffers na het verslepen** (#1430). Heeft een
+  team een buffer-regel (bijvoorbeeld 60 minuten na de wedstrijd), dan toonde de pagina na een
+  handmatige zet geen waarschuwing zolang het gat groter was dan de algemene buffer — terwijl de
+  automatische planner diezelfde zet wél weigert. De controle na het slepen gebruikt nu exact dezelfde
+  regels als de planner; zo'n melding noemt "de vereiste teambuffer". Teamnamen worden daarbij, net als
+  in de planner, zonder onderscheid in hoofdletters vergeleken.
+- **Kopiëren van de deelweergave geeft geen foutbanner meer** (#1461). Op **Planning** werd bij
+  **Kopieer HTML** eerst opnieuw opgehaald, waarna de browser het klembord kon weigeren en de
+  Blazor-foutbanner verscheen. Het paneel kopieert nu de al getoonde preview en meldt een geweigerde
+  klembordtoegang als gewone melding. Na een clubwissel wordt de preview van Planning ook opnieuw
+  opgehaald.
+- **Volledig seizoen opnieuw opbouwen: seizoenslijst en foutmelding kloppen** (#1461). De lijst biedt
+  geen seizoen in de toekomst meer aan, en kiest u een seizoen waarvoor geen seizoensrij bestaat, dan
+  meldt de server dat (400) in plaats van stil een standaardperiode op te halen en "voltooid" te melden.
+- **Begeleiders-import: te lange kolom geeft op Postgres een duidelijke melding** (#1461). Een te lange
+  waarde (bijvoorbeeld Functie) gaf op de Postgres-tier een serverfout (500); nu, net als op SQL Server,
+  een 400 met de regelnummers. Die regelnummers verwijzen nu naar de echte regel in het bestand (ook na
+  lege regels en overgeslagen duplicaten), en de duplicaatwaarschuwing noemt het telefoonnummer.
+- **Veld optimalisatie waarschuwt bij delen na handmatig verslepen** (#1461). Het gedeelde bestand toont
+  de berekende planning, niet uw handmatige aanpassingen; het deelpaneel zegt dat nu. De echte oplossing
+  volgt in issue #1460.
+
 ### Security
 - **Infrastructure-deploy kan geen app settings meer wissen** (#1455). `infrastructure.yml` draait voor
   een deploy eerst een what-if en stopt als een bestaande app setting van de Function App zou
   verdwijnen; het log toont alleen de namen, nooit waarden. Onleesbare what-if-uitvoer stopt de
   deploy ook.
+- **Sportlink-wijzigingen zonder auditspoor worden geweigerd** (#1458). Is de mutatie-audit
+  niet beschikbaar, dan voert de server geen enkele Sportlink-mutatie meer uit (melding 503) in plaats
+  van zonder logboek door te gaan; dit geldt op beide databasetiers.
+- **Elke release begint met een verplichte securitypoort** (#1470). De nieuwe releaseprocedure
+  `/release` laat de code die naar productie gaat eerst inhoudelijk op beveiligingslekken
+  beoordelen, en stopt de release bij een ernstige bevinding of een openstaande beveiligingsmelding
+  op GitHub. Daarnaast controleert de verplichte Security Gate nu ook de eigen code (CodeQL) en
+  blokkeert hij bij ernstige bevindingen.
+- **HTML-export van de veldbezetting en planning krijgt strikte beveiligingskoppen** (#1461). De export
+  wordt vanaf de API geserveerd; hij draagt nu `Content-Security-Policy: default-src 'none';
+  style-src 'unsafe-inline'; sandbox` en `X-Content-Type-Options: nosniff`, op beide databasetiers.
+  Nieuwe CI-guard bewaakt dat het in BlazorAdmin gelinkte bronbestand alleen van de BCL afhangt.
 
 ### Added
+- **Wedstrijd verwijderen uit Sportlink werkt nu echt** (#1458). Na een echte aanmaak op "Wedstrijd
+  aanmaken" verwijdert de knop de oefenwedstrijd daadwerkelijk uit Sportlink Club (tenzij dry-run aan
+  staat). Het bevestigblok waarschuwt: "Verwijderen is definitief; de tegenstander kan een melding
+  krijgen." Alleen clubwedstrijden kunnen weg, nooit een bondswedstrijd.
+- **Delen neemt handmatig versleepte wedstrijden mee** (#1460). Op Veld optimalisatie bevat het gedeelde HTML- of PDF-bestand nu de planning zoals die op het scherm staat, ook na handmatig verslepen; de waarschuwing dat aanpassingen verloren gaan is vervallen. Daarvoor stuurt de pagina de getoonde lijst mee naar het nieuwe stateless `POST /api/planner/auto-plan/deel` (beide databasetiers; niets wordt opgeslagen).
 - **Wedstrijd toevoegen direct op Planning** (#1468). Staat de Sportlink Web Extension aan, dan heeft
   Planning rechts in de datumbalk een groene knop **Wedstr. toevoegen**. Die opent het
   aanmaakformulier in een kaart op de pagina zelf, met de gekozen datum al ingevuld; na een echte
@@ -81,44 +130,6 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   testdeploy-workflow. Er is niets aan Azure of aan de bestaande deploy-pipeline gewijzigd. Het
   draaiboek waarschuwt dat een volledige uitrol van infrastructure/main.bicep de app settings van
   de bestaande Function App zou vervangen; voor de nieuwe app rol je alleen de Flex-module uit.
-
-### Fixed
-- **Wijzigingsverzoeken toont weer wedstrijdnummer, thuis- en uitteam** (#1464). Die kolommen bleven
-  op **Wijzigingsverzoeken** leeg (`–`) zodra een wedstrijd niet in onze eigen wedstrijdgegevens
-  gekoppeld was. Ze worden nu overgenomen uit Sportlink zelf, dezelfde gegevens die Sportlink Club op
-  zijn eigen scherm toont.
-- **Veld optimalisatie waarschuwt nu ook voor teamspecifieke buffers na het verslepen** (#1430). Heeft een
-  team een buffer-regel (bijvoorbeeld 60 minuten na de wedstrijd), dan toonde de pagina na een
-  handmatige zet geen waarschuwing zolang het gat groter was dan de algemene buffer — terwijl de
-  automatische planner diezelfde zet wél weigert. De controle na het slepen gebruikt nu exact dezelfde
-  regels als de planner; zo'n melding noemt "de vereiste teambuffer". Teamnamen worden daarbij, net als
-  in de planner, zonder onderscheid in hoofdletters vergeleken.
-- **Kopiëren van de deelweergave geeft geen foutbanner meer** (#1461). Op **Planning** werd bij
-  **Kopieer HTML** eerst opnieuw opgehaald, waarna de browser het klembord kon weigeren en de
-  Blazor-foutbanner verscheen. Het paneel kopieert nu de al getoonde preview en meldt een geweigerde
-  klembordtoegang als gewone melding. Na een clubwissel wordt de preview van Planning ook opnieuw
-  opgehaald.
-- **Volledig seizoen opnieuw opbouwen: seizoenslijst en foutmelding kloppen** (#1461). De lijst biedt
-  geen seizoen in de toekomst meer aan, en kiest u een seizoen waarvoor geen seizoensrij bestaat, dan
-  meldt de server dat (400) in plaats van stil een standaardperiode op te halen en "voltooid" te melden.
-- **Begeleiders-import: te lange kolom geeft op Postgres een duidelijke melding** (#1461). Een te lange
-  waarde (bijvoorbeeld Functie) gaf op de Postgres-tier een serverfout (500); nu, net als op SQL Server,
-  een 400 met de regelnummers. Die regelnummers verwijzen nu naar de echte regel in het bestand (ook na
-  lege regels en overgeslagen duplicaten), en de duplicaatwaarschuwing noemt het telefoonnummer.
-- **Veld optimalisatie waarschuwt bij delen na handmatig verslepen** (#1461). Het gedeelde bestand toont
-  de berekende planning, niet uw handmatige aanpassingen; het deelpaneel zegt dat nu. De echte oplossing
-  volgt in issue #1460.
-
-### Security
-- **Elke release begint met een verplichte securitypoort** (#1470). De nieuwe releaseprocedure
-  `/release` laat de code die naar productie gaat eerst inhoudelijk op beveiligingslekken
-  beoordelen, en stopt de release bij een ernstige bevinding of een openstaande beveiligingsmelding
-  op GitHub. Daarnaast controleert de verplichte Security Gate nu ook de eigen code (CodeQL) en
-  blokkeert hij bij ernstige bevindingen.
-- **HTML-export van de veldbezetting en planning krijgt strikte beveiligingskoppen** (#1461). De export
-  wordt vanaf de API geserveerd; hij draagt nu `Content-Security-Policy: default-src 'none';
-  style-src 'unsafe-inline'; sandbox` en `X-Content-Type-Options: nosniff`, op beide databasetiers.
-  Nieuwe CI-guard bewaakt dat het in BlazorAdmin gelinkte bronbestand alleen van de BCL afhangt.
 
 ## [3.9.0.0] — 2026-10-02
 

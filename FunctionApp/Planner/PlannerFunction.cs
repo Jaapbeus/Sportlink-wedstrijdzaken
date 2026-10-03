@@ -387,6 +387,20 @@ namespace SportlinkFunction.Planner
                 });
         }
 
+        /// <summary>
+        /// #1460: deelt de planning zoals de browser hem toont (incl. handmatig versleepte blokken).
+        /// Stateless — validatie en rendering in <see cref="PlannerDeelPlanEndpointCore"/>, identiek op beide tiers.
+        /// </summary>
+        [Function("AutoPlanDeel")]
+        public static Task<IActionResult> AutoPlanDeel(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/auto-plan/deel")] HttpRequest req,
+            FunctionContext context)
+        {
+            var log = context.GetLogger("AutoPlanDeel");
+            return AdminEndpoint.ExecuteAsync(req, log, "planning delen",
+                clubCode => PlannerDeelPlanEndpointCore.VerwerkAsync(req, clubCode));
+        }
+
         [Function("AutoPlanToepassen")]
         public static Task<IActionResult> AutoPlanToepassen(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/auto-plan/toepassen")] HttpRequest req,

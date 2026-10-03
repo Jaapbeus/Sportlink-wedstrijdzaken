@@ -70,6 +70,14 @@ namespace Planner.Shared.Deel
         string? OptimaalVeld { get; }
     }
 
+    /// <summary>Eén wedstrijd zoals de Veld optimalisatie-pagina hem toont (#1460): tijd en veld zijn de getoonde waarden.</summary>
+    public sealed record GetoondePlanRegel(
+        string TeamNaam,
+        string Wedstrijd,
+        string? Competitiesoort,
+        string? Tijd,
+        string? Veld);
+
     /// <summary>Welke kant van de Veld optimalisatie-pagina gedeeld wordt.</summary>
     public enum PlanWeergave
     {

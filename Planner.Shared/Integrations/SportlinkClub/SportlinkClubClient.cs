@@ -88,13 +88,13 @@ public class SportlinkClubClient : ISportlinkClubClient
     // Eigenaar: op true gezet op 27-09-2026 na live-bevestiging buiten agent-sessie om (#1319).
     private const bool ClubMatchLiveBevestigd = true;
 
-    // #1440: verwijderen van een clubwedstrijd. Methode (DELETE), parameter (PublicMatchId als
-    // querystring, geen body) en foutvorm (HTTP 420 met Violations) komen uit Sportlinks PUBLIEKE
-    // frontend-bundle (02-10-2026) — NOOIT live gezien. Of verwijderen in Sportlink terug te draaien
-    // is, is onbekend. Daarom hard op forceDryRun totdat een mens (nooit een agent, zie
-    // docs/SPORTLINK-WEB-EXTENSION.md §4.4) een live trace heeft gedaan en deze constante in een
-    // aparte, reviewbare PR op true zet. Grep-baar bij naam; SportlinkClubMatchDeleteTests bewaakt hem.
-    private const bool ClubMatchDeleteLiveBevestigd = false;
+    // #1440/#1458: verwijderen van een clubwedstrijd. Methode (DELETE), parameter (PublicMatchId als
+    // querystring, geen body) en foutvorm (HTTP 420 met Violations) kwamen uit Sportlinks publieke
+    // frontend-bundle; de succesrespons is live vastgesteld (03-10-2026): een JSON-object
+    // { "PublicMatchId": ..., "IsSuccess": true }, niet leeg. Door de eigenaar op true gezet
+    // (besluit 03-10-2026, #1458): de aanroep volgt vanaf nu de club-instelling sportlinkDryRun.
+    // Grep-baar bij naam; SportlinkClubMatchDeleteTests bewaakt hem.
+    private const bool ClubMatchDeleteLiveBevestigd = true;
 
     private readonly HttpClient _httpClient;
     private readonly ISportlinkClubTokenStore _tokenStore;
@@ -633,9 +633,8 @@ public class SportlinkClubClient : ISportlinkClubClient
 
     /// <summary>
     /// Verwijdert een clubwedstrijd (#1440) — zie <see cref="ISportlinkClubClient.DeleteClubMatchAsync"/>.
-    /// Zolang <see cref="ClubMatchDeleteLiveBevestigd"/> <c>false</c> is, verlaat er geen DELETE deze
-    /// client: <see cref="PutMutationAsync"/> slaat het verzenden over (forceDryRun) en meldt
-    /// <c>IsForcedDryRun</c>.
+    /// Sinds #1458 live (<see cref="ClubMatchDeleteLiveBevestigd"/> = <c>true</c>): de aanroep volgt de
+    /// club-instelling <c>sportlinkDryRun</c>; bij dry-run verlaat er geen DELETE deze client.
     /// </summary>
     public Task<SportlinkClubResponse<SportlinkMutationResult>> DeleteClubMatchAsync(
         string functioneleRol,

@@ -153,8 +153,8 @@ public partial class AdminApiClient
                 AgeClassCode = string.IsNullOrWhiteSpace(ageClassCode) ? null : ageClassCode
             });
 
-    // #1440: een zojuist aangemaakte oefenwedstrijd weer verwijderen. Staat op de server hard op
-    // dry-run (ClubMatchDeleteLiveBevestigd) tot de eigenaar het contract live bevestigt.
+    // #1440/#1458: een zojuist aangemaakte oefenwedstrijd weer verwijderen; live, volgt de
+    // club-instelling sportlinkDryRun.
     public async Task<ApiResult<SportlinkMutatieResultaatDto>> DeleteOefenwedstrijdAsync(string publicMatchId)
         => await DeleteAsync<SportlinkMutatieResultaatDto>($"api/sportlink/club-match/{Uri.EscapeDataString(publicMatchId)}");
 

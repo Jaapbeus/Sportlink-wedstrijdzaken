@@ -10,11 +10,10 @@ namespace Planner.Shared.Tests.Integrations.SportlinkClub;
 
 /// <summary>
 /// Verwijderen van een clubwedstrijd (#1440, <c>DELETE competition/match/clubmatch/ClubMatchDelete</c>).
-/// Het contract komt uit Sportlinks publieke frontend-bundle en is NOOIT live gezien. Daarom staat
-/// <c>ClubMatchDeleteLiveBevestigd</c> op <c>false</c>: het pad is altijd een simulatie, ook als de
-/// club dry-run uit heeft staan. Deze tests bewijzen dat hard — een agent zet die vlag nooit om
-/// (docs/SPORTLINK-WEB-EXTENSION.md §4.4); doet een mens dat na een live trace, dan moet deze test
-/// bewust mee veranderen.
+/// Sinds #1458 staat <c>ClubMatchDeleteLiveBevestigd</c> op <c>true</c> (eigenaarsbesluit na live
+/// trace): de aanroep volgt de club-instelling <c>sportlinkDryRun</c>. Deze tests bewijzen dat dry-run
+/// nog steeds niets verstuurt, en dat de live respons <c>{PublicMatchId, IsSuccess}</c> als succes
+/// wordt gelezen.
 /// </summary>
 public class SportlinkClubMatchDeleteTests
 {
@@ -32,7 +31,9 @@ public class SportlinkClubMatchDeleteTests
         }
     }
 
-    private static (SportlinkClubClient Sut, List<HttpRequestMessage> Verzoeken) Maak(bool clubDryRun)
+    private const string LiveSuccesBody = """{"PublicMatchId":"M000000001","IsSuccess":true}""";
+
+    private static (SportlinkClubClient Sut, List<HttpRequestMessage> Verzoeken) Maak(bool clubDryRun, string deleteBody = LiveSuccesBody)
     {
         var verzoeken = new List<HttpRequestMessage>();
         var handler = new Mock<HttpMessageHandler>();
@@ -49,7 +50,10 @@ public class SportlinkClubMatchDeleteTests
                             System.Text.Encoding.UTF8, "application/json")
                     };
                 if (req.RequestUri.AbsoluteUri.Contains("ClubMatchDelete"))
-                    throw new InvalidOperationException("Zolang ClubMatchDeleteLiveBevestigd=false mag er nooit een echte DELETE naar Sportlink.");
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(deleteBody, System.Text.Encoding.UTF8, "application/json")
+                    };
                 return new HttpResponseMessage(HttpStatusCode.NotFound);
             });
         var sut = new SportlinkClubClient(new HttpClient(handler.Object), new FakeTokenStore(),
@@ -57,34 +61,46 @@ public class SportlinkClubMatchDeleteTests
         return (sut, verzoeken);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task DeleteClubMatchAsync_ZolangNietLiveBevestigd_StuurtNooitEenDelete(bool clubDryRun)
+    [Fact]
+    public async Task DeleteClubMatchAsync_ClubDryRunAan_StuurtGeenDelete_MaarIsGeenGedwongenSimulatie()
     {
-        var (sut, verzoeken) = Maak(clubDryRun);
+        var (sut, verzoeken) = Maak(clubDryRun: true);
 
         var result = await sut.DeleteClubMatchAsync(Rol, PublicMatchId);
 
         result.Status.Should().Be(SportlinkClubCallStatus.Ok);
         result.Data!.IsDryRun.Should().BeTrue();
-        result.Data.IsForcedDryRun.Should().BeTrue(
-            "de code-lock ClubMatchDeleteLiveBevestigd=false wint van de club-instelling sportlinkDryRun");
+        result.Data.IsForcedDryRun.Should().BeFalse("de code-lock is opgeheven (#1458); alleen de club-instelling bepaalt dry-run");
         verzoeken.Should().NotContain(r => r.RequestUri!.AbsoluteUri.Contains("ClubMatchDelete"));
-        verzoeken.Should().NotContain(r => r.Method == HttpMethod.Delete);
     }
 
     [Fact]
-    public void ClubMatchDeleteLiveBevestigd_StaatOpFalse()
+    public async Task DeleteClubMatchAsync_ClubDryRunUit_StuurtEchteDelete_EnLeestLiveResponsvorm()
     {
-        // Vangnet naast de gedragstest hierboven: een stille omzetting van de vlag faalt hier met naam.
+        var (sut, verzoeken) = Maak(clubDryRun: false);
+
+        var result = await sut.DeleteClubMatchAsync(Rol, PublicMatchId);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data!.IsSuccess.Should().BeTrue();
+        result.Data.IsDryRun.Should().BeFalse();
+        result.Data.IsForcedDryRun.Should().BeFalse();
+        result.Data.PublicMatchId.Should().Be(PublicMatchId, "de live respons is {PublicMatchId, IsSuccess}, niet leeg");
+        var delete = verzoeken.Should().ContainSingle(r => r.RequestUri!.AbsoluteUri.Contains("ClubMatchDelete")).Subject;
+        delete.Method.Should().Be(HttpMethod.Delete);
+    }
+
+    [Fact]
+    public void ClubMatchDeleteLiveBevestigd_StaatOpTrue()
+    {
+        // Vangnet: een stille omzetting van de vlag faalt hier met naam.
         var veld = typeof(SportlinkClubClient).GetField("ClubMatchDeleteLiveBevestigd",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
 
         veld.Should().NotBeNull("de vlag moet grep-baar bij naam bestaan, zelfde patroon als ClubMatchLiveBevestigd");
         veld!.IsLiteral.Should().BeTrue();
-        ((bool)veld.GetRawConstantValue()!).Should().BeFalse(
-            "alleen de eigenaar zet dit om, na een live trace, in een aparte PR (docs/SPORTLINK-WEB-EXTENSION.md §4.4)");
+        ((bool)veld.GetRawConstantValue()!).Should().BeTrue(
+            "eigenaarsbesluit 03-10-2026 (#1458): live; omzetten naar false is een bewuste, reviewbare wijziging");
     }
 
     [Fact]
