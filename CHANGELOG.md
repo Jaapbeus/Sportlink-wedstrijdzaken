@@ -56,6 +56,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   volgt in issue #1460.
 
 ### Security
+- **Workflows draaien met minimale tokenrechten** (zie issue #1472). `deploy.yml` en `pre-release-check.yml`
+  krijgen alleen leesrechten op de repository; daarmee zijn de elf CodeQL-meldingen over ontbrekende
+  workflowrechten opgelost. De meldingen over log-injectie volgen in een volgende release.
 - **Infrastructure-deploy kan geen app settings meer wissen** (#1455). `infrastructure.yml` draait voor
   een deploy eerst een what-if en stopt als een bestaande app setting van de Function App zou
   verdwijnen; het log toont alleen de namen, nooit waarden. Onleesbare what-if-uitvoer stopt de
