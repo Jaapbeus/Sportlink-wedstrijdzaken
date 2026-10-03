@@ -56,6 +56,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   volgt in issue #1460.
 
 ### Security
+- **Feedback: strengere controle op invoer die in een GitHub-issue terechtkomt** (#1494).
 - **Workflows draaien met minimale tokenrechten** (zie issue #1472). `deploy.yml` en `pre-release-check.yml`
   krijgen alleen leesrechten op de repository; daarmee zijn de elf CodeQL-meldingen over ontbrekende
   workflowrechten opgelost. De meldingen over log-injectie volgen in een volgende release.
@@ -148,6 +149,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   begeleiders van een functie te voorzien.
 
 ### Changed
+- **Feedback-code opgesplitst in kleinere bestanden** (#1494). Geen wijziging in gedrag; de feedbackkern is verdeeld over eigen bestanden voor modellen, AI-aanroepen, GitHub-aanroepen, issuebody en tekstcontrole.
 - **Menu: Wedstr. aanmaken en Wijzigingsverzoeken staan nu direct onder Planning** (#1468). Het
   menu-item "Wedstrijden" heet voortaan **Wedstr. aanmaken**; beide items zijn zoals voorheen alleen
   zichtbaar als de Sportlink Web Extension aan staat. Veld optimalisatie staat daaronder.
