@@ -11,7 +11,7 @@ klaar voor de volgende iteratie.
 **Argumenten:**
 - `--dry-run` — toon wat er zou gebeuren zonder daadwerkelijk te wijzigen
 - `--features` — voer ook grote feature-issues uit (label `enhancement` of `type: feature`); zonder dit argument worden die overgeslagen
-- `--release` — voer Fase 3.5 uit: versie-bump, CHANGELOG afsluiten, PR develop→main, tag aanmaken en productie-deploy bewaken. **Zonder dit argument stopt de cyclus na Fase 2b** — alle issues zijn geïmplementeerd op develop, maar er wordt niets naar productie gepusht. Dit geeft ruimte om de wijzigingen eerst lokaal te testen vóór release.
+- `--release` — voer Fase 3.5 uit: die roept de skill `release` aan (securitypoort met `/security-review`, versie-bump, CHANGELOG afsluiten, PR develop→main, productie-deploy bewaken, tag). **Zonder dit argument stopt de cyclus na Fase 2b** — alle issues zijn geïmplementeerd op develop, maar er wordt niets naar productie gepusht. Dit geeft ruimte om de wijzigingen eerst lokaal te testen vóór release.
 
 > **Standaard = develop-only.** Productie-deploy vereist bewuste `--release` keuze.
 
@@ -52,7 +52,7 @@ Fase 0  (voorbereiding: PR's mergen, branches opruimen, main synchen)
          → Zijn er nieuwe uitvoerbare issues? → terug naar Fase 2
          → Geen uitvoerbare issues meer?
            → Fase 3 (sync lokaal = online)
-             → Fase 3.5 — POORT 2 (alleen met --release; anders: stop + melding)
+             → Fase 3.5 — POORT 2 = skill `release` (alleen met --release; anders: stop + melding)
                → Fase 4 (nieuwe iteratie-branch)
                  → Fase 5 (debug starten)
 ```
@@ -446,191 +446,26 @@ Wacht op groen als er net een merge was. Verplichte per-job check (zie Fase 0d).
 
 ---
 
-## FASE 3.5 — POORT 2: RELEASE GO/NO-GO (vóór versie-bump + tag)
+## FASE 3.5 — POORT 2: RELEASE (alleen met `--release`)
 
 > **⚠️ DEZE FASE WORDT ALLEEN UITGEVOERD ALS `--release` IS MEEGEGEVEN.**
 >
 > Zonder `--release`: sla Fase 3.5 volledig over en ga direct naar Fase 4.
 > Meld dan aan de gebruiker:
 > "✅ Cyclus voltooid op develop — alle issues geïmplementeerd en gemerged.
-> Start `/autonoom --release` als je klaar bent om naar productie te gaan."
+> Start `/release` (of `/autonoom --release`) als je klaar bent om naar productie te gaan."
 
-> **Poort 2 is zwaarder dan Poort 1.** Poort 1 bewaakt één PR (per merge naar main).
-> Poort 2 bewaakt de codebase als geheel vóórdat een versienummer en tag worden
-> aangemaakt — dat is het formele moment dat een release "live" is voor alle clubs
-> die de repo gebruiken. Sla deze fase nooit over als `--release` aanwezig is.
+Met `--release`: **roep de skill `release` aan** (`Skill({ skill: "release" })`) en volg die
+volledig. Hier staat bewust geen eigen kopie van de releasestappen meer (#1470).
 
-Dit is een volledige security- en kwaliteitsaudit van de huidige staat van `main`.
-Voer alleen uit als Fase 2b heeft bevestigd dat er geen uitvoerbare issues meer zijn.
+> Tot #1470 stond hier een eigen releaseprocedure. Die was uit de pas gelopen met de werkelijkheid:
+> een rechtstreekse push naar `develop`, een versiebump in twee van de drie csproj's, geen
+> OpenAPI-versie, en een database-check op de SQL Server-tier. Bovendien ontbrak `/security-review`.
+> Eén procedure op één plek voorkomt dat dit opnieuw gebeurt.
 
-> **Opmerking:** Poort 2 is optioneel als er geen releasewaardig werk in deze cyclus zit
-> (bijv. alleen chore/docs). Check: zijn er `feat:` of `fix:` commits? Zo ja → uitvoeren.
-> Zo nee → sla versie-bump over en ga direct naar Fase 4.
-
-### Checklist Poort 2
-
-#### P2-A — Gitleaks scan (volledige codebase)
-
-```powershell
-gitleaks detect --source . --no-git 2>&1 | Select-Object -Last 20
-```
-
-- Geen findings → ✅
-- Findings aanwezig → ❌ STOP — meld aan eigenaar, geen versie-bump
-
-Als gitleaks niet geïnstalleerd is (`(Get-Command gitleaks -ErrorAction SilentlyContinue) -ne $null` → false):
-```powershell
-# Fallback: scan op bekende high-risk patronen
-Get-ChildItem -Recurse -Include *.cs,*.json,*.yaml,*.yml,*.md |
-    Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' } |
-    Select-String -Pattern "(password|secret|token|key)\s*=\s*['""][^'""]{8,}" -CaseSensitive:$false |
-    Where-Object { $_ -notmatch "(placeholder|template|example|your_|YOUR_|<[A-Z])" } |
-    Select-Object -First 20
-```
-
-#### P2-B — Club-data scan (volledige main)
-
-```powershell
-git diff HEAD~20..HEAD --name-only | ForEach-Object {
-    if (Test-Path $_) {
-        Select-String -Path $_ -Pattern "(func-[a-z]|swa-[a-z]|\.azurewebsites\.|\.database\.windows\.|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4})" |
-            Where-Object { $_ -notmatch "(//|#|placeholder|template|example)" }
-    }
-} | Select-Object -First 20
-```
-
-- Geen output → ✅
-- Club-ID's of resource-namen gevonden → ❌ STOP — fix eerst, dan Poort 2 opnieuw
-
-#### P2-C — AVG / persoonsgegevens scan
-
-```powershell
-git diff HEAD~20..HEAD -- "*.cs" "*.razor" "*.json" |
-    Select-String -Pattern "(@[a-z0-9._%+-]+\.[a-z]{2,}|BSN|geboortedatum|IBAN)" |
-    Where-Object { $_ -notmatch "(voorbeeld\.nl|example\.com|placeholder|//|#)" } |
-    Select-Object -First 20
-```
-
-- Geen output → ✅
-- Persoonsgegevens gevonden → ❌ STOP — verwijder en fix, dan Poort 2 opnieuw
-
-#### P2-D — Kwaliteitscontroles
-
-```powershell
-dotnet build FunctionApp.Postgres/FunctionApp.Postgres.csproj -c Debug --no-restore 2>&1 | Select-Object -Last 5
-# Ook FunctionApp/fa-dev-sportlink-01.csproj bouwen als deze cyclus de SQL Server-tier raakte.
-
-# BlazorAdmin ALLEEN bouwen als de dev server niet draait (lsof -nP -iTCP:5242 -sTCP:LISTEN /
-# Get-NetTCPConnection -LocalPort 5242) — anders geeft een tweede compilatiepas een fingerprint-
-# mismatch ("An unhandled error has occurred. Reload"). Draait de server, sla deze regel over:
-dotnet build BlazorAdmin/BlazorAdmin.csproj --no-restore 2>&1 | Select-Object -Last 5
-./scripts/dev/Test-App.ps1 2>&1 | Select-Object -Last 10
-```
-
-- Beide builds exit 0 (of BlazorAdmin bewust overgeslagen omdat de server draait) → ✅
-- Build-fouten → ❌ STOP — fix eerst
-- Test-App.ps1 exit 1 → ⚠️ noteer (geen hard stop als service-afhankelijke check faalt)
-
-#### P2-E — CHANGELOG completeness
-
-Lees de eerste 80 regels van `CHANGELOG.md`:
-- `## [Unreleased]` bevat entries voor alle geïmplementeerde issues uit deze cyclus → ✅
-- Lege `[Unreleased]` terwijl er wel feat/fix-commits zijn → ⚠️ vul aan vóór verdere actie
-
-#### P2-F — Versie-bump beslissing
-
-Op basis van commits sinds de laatste tag:
-```powershell
-git log $(git describe --tags --abbrev=0 2>/dev/null)..HEAD --pretty=format:"%s" 2>/dev/null |
-    Select-Object -First 30
-```
-
-- `feat:` commits aanwezig → MINOR bump (2.x.y → 2.x+1.0)
-- Alleen `fix:`/`security:` → PATCH bump (2.x.y → 2.x.y+1)
-- `BREAKING CHANGE:` in commit-body → MAJOR bump (escaleer naar eigenaar eerst)
-- Bij twijfel tussen MINOR en PATCH → MINOR
-
-### Poort 2 uitvoeren — release-volgorde (versie-bump ALTIJD NA succesvolle deploy)
-
-> **KRITIEKE VOLGORDE — nooit omdraaien:**
-> versie-bump en CHANGELOG afsluiten ALLEEN als de deploy succesvol is afgerond.
-> Een versie-label op code die niet deployed is misleidt toekomstige releases.
-
-Alleen als **alle P2-A t/m P2-E checks ✅ of ⚠️ (geen ❌)**:
-
-```powershell
-$newVersion = "<nieuw versienummer>"   # bijv. "2.3.0"
-
-# ── Stap 1: Pre-release DB-check — vóór PR aanmaken ──────────────────────
-# De database MOET online zijn vóór de merge. Zo niet: abort en meld.
-$dbStatus = az sql db show `
-  --name "$env:SQL_DATABASE" `
-  --resource-group "$env:SQL_RESOURCE_GROUP" `
-  --server "$env:SQL_SERVER" `
-  --query 'status' --output tsv 2>$null
-if ($dbStatus -ne "Online") {
-    Write-Host "❌ Database is '$dbStatus' — release afgebroken."
-    Write-Host "Zorg dat de database Online is en voer --release opnieuw uit."
-    # GEEN versie-bump, GEEN PR, GEEN merge
-    exit 1
-}
-
-# ── Stap 2: Versie-bump + CHANGELOG op develop (ZONDER te mergen) ─────────
-# Pas <Version> aan in FunctionApp/fa-dev-sportlink-01.csproj
-# Pas <Version> aan in BlazorAdmin/BlazorAdmin.csproj
-# CHANGELOG: verplaats [Unreleased] naar [x.y.z] — YYYY-MM-DD
-git add FunctionApp/fa-dev-sportlink-01.csproj BlazorAdmin/BlazorAdmin.csproj CHANGELOG.md
-git commit -m "chore: release v$newVersion"
-git push origin develop
-
-# ── Stap 3: Release-PR develop → main ────────────────────────────────────
-# pre-release-check.yml draait automatisch op de PR en controleert opnieuw:
-#   - db-check (database Online)
-#   - build-check (FunctionApp + BlazorAdmin compileren)
-# De PR kan NIET gemerged worden als deze checks falen (branch protection).
-gh pr create --base main --head develop --title "release: v$newVersion" --body "..."
-
-# ── Stap 4: Wacht op pre-release-check en merge ───────────────────────────
-gh pr checks <pr-nr> --watch
-# Alle checks groen? → merge
-gh pr merge <pr-nr> --merge
-
-# ── Stap 5: Wacht op SUCCESVOLLE deploy — dan pas tag ────────────────────
-gh run list --branch main --workflow deploy.yml --limit 1 --json databaseId | ConvertFrom-Json
-gh run watch <run-id> --exit-status
-
-# Verplichte per-job check (alle jobs success/skipped?)
-gh run view <run-id> --json jobs --jq '.jobs[] | {name: .name, conclusion: .conclusion}'
-
-# ── Stap 6: Tag ALLEEN na succesvolle deploy ─────────────────────────────
-git checkout main && git pull
-git tag "v$newVersion" -m "Release v$newVersion"
-git push origin "v$newVersion"
-```
-
-Na tag-push:
-```powershell
-gh run list --workflow release.yml --limit 1
-gh run watch <run-id> --exit-status
-```
-
-Rapporteer: `✅ Poort 2 geslaagd — v$newVersion gedeployed, getagd + GitHub Release aangemaakt`
-
-### Poort 2 — NO-GO (database niet beschikbaar)
-
-Als de DB-check in Stap 1 of de pre-release-check op de PR faalt:
-- **Geen versie-bump op develop**
-- **Geen PR naar main**
-- **Geen tag**
-- Meld aan gebruiker: "Database niet beschikbaar — release uitgesteld. Issues staan klaar op develop. Voer `/autonoom --release` opnieuw uit zodra de database Online is."
-
-Als deploy (Stap 5) faalt na succesvolle merge:
-- Tag NIET aanmaken (Stap 6 overslagen)
-- Meld aan gebruiker: "Deploy gefaald na merge — zie GitHub Actions voor details. Tag wordt aangemaakt zodra deploy slaagt."
-
-Als andere ❌ checks (P2-A/B/C) falen:
-- Fix het probleem op develop
-- Voer Poort 2 opnieuw uit vanaf Stap 1
+Poort 2 is geslaagd als `/release` zijn eindrapport zonder ❌ afsluit. Een STOP uit de
+securitypoort van `/release` is ook een STOP voor deze cyclus: ga niet door naar Fase 4, en meld
+de stopconditie aan de eigenaar.
 
 ---
 

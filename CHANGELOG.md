@@ -104,6 +104,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   volgt in issue #1460.
 
 ### Security
+- **Elke release begint met een verplichte securitypoort** (#1470). De nieuwe releaseprocedure
+  `/release` laat de code die naar productie gaat eerst inhoudelijk op beveiligingslekken
+  beoordelen, en stopt de release bij een ernstige bevinding of een openstaande beveiligingsmelding
+  op GitHub. Daarnaast controleert de verplichte Security Gate nu ook de eigen code (CodeQL) en
+  blokkeert hij bij ernstige bevindingen.
 - **HTML-export van de veldbezetting en planning krijgt strikte beveiligingskoppen** (#1461). De export
   wordt vanaf de API geserveerd; hij draagt nu `Content-Security-Policy: default-src 'none';
   style-src 'unsafe-inline'; sandbox` en `X-Content-Type-Options: nosniff`, op beide databasetiers.
