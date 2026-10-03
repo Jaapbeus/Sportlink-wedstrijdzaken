@@ -378,13 +378,14 @@ namespace SportlinkFunction.Planner
 
                     // #1364: ?format=html|pdf (+ ?tab=huidig|optimaal) voor de deel-knop; AutoPlanAsync is een
                     // leesbewerking (alleen AutoPlanToepassen schrijft), dus een tweede aanroep is zonder bijwerking.
-                    if (PlannerDeelEndpointCore.Lees(req.Query["format"], req.Query["tab"], request.Datum, out var deel) is { } deelFout) return deelFout;
-                    if (await deel.WeigerPdfAsync(() => PdfExportInstelling.IsIngeschakeldAsync(clubCode)) is { } pdfGeweigerd) return pdfGeweigerd;
-
-                    log.LogInformation("AutoPlan: datum={Datum}, club={Club}", request.Datum, clubCode);
-
-                    var response = await PlannerService.AutoPlanAsync(request, clubCode, log);
-                    return deel.VanPlan(response.Wedstrijden, clubCode) ?? new OkObjectResult(response);
+                    return await PlannerDeelEndpointCore.VerwerkAsync(req.Query["format"], req.Query["tab"], request.Datum,
+                        () => PdfExportInstelling.IsIngeschakeldAsync(clubCode),
+                        () =>
+                        {
+                            log.LogInformation("AutoPlan: datum={Datum}, club={Club}", request.Datum, clubCode);
+                            return PlannerService.AutoPlanAsync(request, clubCode, log);
+                        },
+                        (deel, response) => deel.VanPlan(response.Wedstrijden, clubCode), response => new OkObjectResult(response));
                 });
         }
 
@@ -447,13 +448,11 @@ namespace SportlinkFunction.Planner
                         return new BadRequestObjectResult(new { error = "Query parameter 'datum' (yyyy-MM-dd) is verplicht." });
 
                     // #1364: ?format=html|pdf voor de deel-knop op de Planning-pagina; zonder format blijft het JSON.
-                    if (PlannerDeelEndpointCore.Lees(req.Query["format"], null, datumParam, out var deel) is { } deelFout) return deelFout;
-                    if (await deel.WeigerPdfAsync(() => PdfExportInstelling.IsIngeschakeldAsync(clubCode)) is { } pdfGeweigerd) return pdfGeweigerd;
-
                     log.LogInformation("Veldbezetting: datum={Datum}, club={Club}", datumParam, clubCode);
-
-                    var items = await PlannerService.VeldbezettingAsync(datum, clubCode);
-                    return deel.VanVeldbezetting(items, clubCode) ?? new OkObjectResult(items);
+                    return await PlannerDeelEndpointCore.VerwerkAsync(req.Query["format"], null, datumParam,
+                        () => PdfExportInstelling.IsIngeschakeldAsync(clubCode),
+                        () => PlannerService.VeldbezettingAsync(datum, clubCode),
+                        (deel, items) => deel.VanVeldbezetting(items, clubCode), items => new OkObjectResult(items));
                 });
         }
 
