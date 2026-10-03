@@ -301,7 +301,15 @@ if ($health) {
     # naar het seed-script — dat is een andere oorzaak.
     $pending = if (($health.PSObject.Properties.Name -contains 'pendingMigrations') -and $health.pendingMigrations) { @($health.pendingMigrations) } else { @() }
     $schemaWarning = if ($health.PSObject.Properties.Name -contains 'schemaWarning') { $health.schemaWarning } else { $null }
-    if (-not ($statusOk -and $settingsOk)) {
+    # #1466: met egress open (-SportlinkLive) verwacht health een recente sync en meldt anders
+    # 'degraded' (syncStale). Lokaal betekent dat alleen dat de data oud is, niet dat de host stuk
+    # is — dus een waarschuwing, geen startfout. Elke andere oorzaak blijft wél een fout.
+    $alleenSyncOud = -not $statusOk -and $settingsOk -and $pending.Count -eq 0 -and -not $schemaWarning `
+        -and ($health.PSObject.Properties.Name -contains 'syncStale') -and $health.syncStale
+    if ($alleenSyncOud) {
+        Write-Host "  Health 'degraded' alleen door een verouderde sync (laatste: $($health.lastSync))." -ForegroundColor DarkYellow
+        Write-Host "    Lokale data verversen: GET http://localhost:$($ports.FunctionApp)/api/sync-matches (leest live uit Sportlink)." -ForegroundColor DarkYellow
+    } elseif (-not ($statusOk -and $settingsOk)) {
         Write-Host "  Health meldt status '$($health.status)' (settingsLoaded=$($health.settingsLoaded))." -ForegroundColor Red
         if ($pending.Count -gt 0) {
             Write-Host "    Openstaande migraties: $($pending -join ', ')" -ForegroundColor Yellow

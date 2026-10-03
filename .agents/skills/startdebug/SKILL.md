@@ -138,6 +138,15 @@ Platformverschil in de output, geen fout:
   gebruiker; het script meldt het pad. Gebruik `-Tail` voor één samengevoegde logstroom in de
   huidige terminal.
 
+> **Binnen een Claude Code-sessie (agent, niet de eigenaar in een eigen terminal):** services die
+> `Start-Debug.ps1` start, overleven het einde van die ene tool-aanroep niet. Vastgesteld bij
+> #1466: health was groen en één aanroep later waren de FunctionApp en Azurite weg. Draai daar dus
+> Start-Debug voor de controle en de readiness-meldingen, en start daarna elke service die
+> verdwenen is als **eigen** achtergrondaanroep (`run_in_background`), vanuit de develop-worktree:
+> `azurite --silent --location <tempdir>/azurite`, en
+> `func start --port 7094` in `FunctionApp.Postgres/`. Controleer daarna in een **volgende**
+> aanroep of de poort nog luistert. Een controle in dezelfde aanroep bewijst niets.
+
 Faalt de start (exit 1)? Lees de logs (macOS/Linux) of het bijbehorende venster (Windows) en
 rapporteer de fout. Veelvoorkomend: .NET 9 runtime ontbreekt, of de database draait niet
 (`docker compose up -d`).
