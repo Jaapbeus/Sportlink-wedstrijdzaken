@@ -107,6 +107,7 @@ verwerking plaats.
 | `POST` | `/planner/herplan-check` | **Admin** | Herplan-alternatieven simuleren — gescoped op `X-Club-Code` header |
 | `POST` | `/planner/herplan-bevestig` | **Admin** | Herplanverzoek registreren |
 | `POST` | `/planner/auto-plan` | **Admin** | **Dagplanning optimaliseren** — regels → voorkeurstijden → leeftijdsdefaults |
+| `POST` | `/planner/auto-plan/deel` | **Admin** | Planning delen zoals getoond op het scherm (HTML/PDF, stateless, #1460) |
 | `POST` | `/planner/auto-plan/toepassen` | **Admin** | Berekende planning wegschrijven (alleen testmodus ALLSTARS) |
 | `GET` | `/planner/veldbezetting?datum=` | **Admin/User** | Wedstrijden op een datum, zonder optimalisatie-berekening — voedt de Planning-pagina, sinds #1400 generiek zichtbaar voor elke ingelogde gebruiker |
 | `GET` | `/planner/team-schedule` | **Admin** | Wedstrijdschema per team — gescoped op `X-Club-Code` header |
@@ -143,7 +144,7 @@ verwerking plaats.
 | `GET` | `/sportlink/change-requests` | **Wedstrijdzaken** | Inkomende en uitgaande wijzigingsverzoeken ophalen (#996; `RequestStatus` = Sportlinks `ChangeRequestStatus`, plus `IsIncomingRequest` en `StatusGroep` OPEN/ACCEPTED/DENIED/REVOKED/UNKNOWN, #1439), sinds #1111 verrijkt met eigen wedstrijdcontext (`Wedstrijd`: nummer, teams, datum, tijd, accommodatie uit `his.matches` via de PublicMatchId-cache; `null` als niet gecachet), sinds #1464 met Sportlinks eigen `ExternalMatchId`/`Thuisteam`/`Uitteam` als terugval, en met openstaande (`StatusGroep` OPEN, inkomend eerst) verzoeken vooraan |
 | `PUT` | `/sportlink/change-requests/{publicRequestId}/action` | **Wedstrijdzaken** | Wijzigingsverzoek goedkeuren (`Actie=APPROVE`) of afwijzen (`Actie=DENY`, `Remarks` verplicht) (#996) |
 | `POST` | `/sportlink/club-match` | **Wedstrijdzaken** | Oefenwedstrijd ("clubwedstrijd") aanmaken — volgt `sportlinkDryRun`; **contract sinds #1427 live bevestigd** (body gelijk aan Sportlinks eigen formulier). Body: `MatchDateTime`, `Duration`, `TeamNaam`, `VrijeTekst` (bij `true` geen 400 voor een onbekend team; Sportlinks standaardteam levert dan het team-ID), `Tegenstander`, `VeldNummer`, `Description`, sinds #1437 `Velddeel` (`1.0`/`0.5`/`0.25`/`0.125`, standaard heel veld; de notatie van half/kwart/achtste is een aanname) en `AgeClassCode` (Sportlink-`Id` uit het formulier-endpoint; wint van de categorie van het team). De server haalt `ClubMatchDefaults`, `PickListsTeams`, `PickListsLocation` en `PickListsMatchInformation` op en leidt daaruit het `T…`-team-ID, leeftijdscategorie, spelactiviteit, `SubFacilityId` af; het wedstrijdnummer komt sinds #1437 uit een eigen teller (`YYMMDD` + volgnummer per speeldag, max. 99 per dag → anders 400); de clubinstelling `SportlinkSpelactiviteit` gaat voor de spelactiviteit van het team; team/veld niet (eenduidig) bij Sportlink → 400, overige terugvallen als `Waarschuwingen`. Geen `SportlinkMutationGuard` (er is vooraf geen wedstrijd). Uitslag bewust niet gebouwd (#997); verwijderen: zie de regel hieronder (#1440) |
-| `DELETE` | `/sportlink/club-match/{publicMatchId}` | **Wedstrijdzaken** | Clubwedstrijd (oefenwedstrijd) verwijderen (#1440) — **contract niet live bevestigd (uit Sportlinks publieke frontend-bundle), daarom altijd dry-run** (`ClubMatchDeleteLiveBevestigd = false`, ongeacht `sportlinkDryRun`; respons `IsForcedDryRun: true`). Haalt eerst de wedstrijd op voor `SportlinkMutationGuard` (`Verwijderen`: alleen bij expliciet `IsKernelMatch = false` én `IsHomeMatch`, anders 409); elke poging staat in de mutatie-audit met het `PublicMatchId`. Nooit automatisch herhaald. Respons `{ IsSuccess, Violations, IsDryRun, IsForcedDryRun, PublicMatchId }`; 400 bij een ongeldig `PublicMatchId`, 404 als Sportlink de wedstrijd niet kent. De GUI biedt dit alleen aan op het resultaat van "Wedstrijd aanmaken" |
+| `DELETE` | `/sportlink/club-match/{publicMatchId}` | **Wedstrijdzaken** | Clubwedstrijd (oefenwedstrijd) verwijderen (#1440) — live sinds #1458 (volgt `sportlinkDryRun`; bij dry-run `IsDryRun: true`). Haalt eerst de wedstrijd op voor `SportlinkMutationGuard` (`Verwijderen`: alleen bij expliciet `IsKernelMatch = false` én `IsHomeMatch`, anders 409); **503 als de mutatie-auditservice ontbreekt (fail-closed, geldt voor alle Sportlink-mutaties)**; elke poging staat in de mutatie-audit met het `PublicMatchId`. Nooit automatisch herhaald. Respons `{ IsSuccess, Violations, IsDryRun, IsForcedDryRun, PublicMatchId }`; 400 bij een ongeldig `PublicMatchId`, 404 als Sportlink de wedstrijd niet kent. De GUI biedt dit alleen aan op het resultaat van "Wedstrijd aanmaken" |
 | `GET` | `/sportlink/club-match/dryrun-status` | **Wedstrijdzaken** | Actuele dry-run-stand (`{ DryRun }`) voor de banner op "Wedstrijd aanmaken" — leest alleen de club-instelling `sportlinkDryRun`, geen Sportlink-aanroep (#1427) |
 | `GET` | `/sportlink/club-match/formulier` | **Wedstrijdzaken** | Voorinvulling voor "Wedstrijd aanmaken" (#1437): per actief team `{ TeamNaam, Leeftijdscategorie, AgeClassCode, Duur, Veldafmeting }` (Sportlink-categorie, wedstrijdduur en velddeel uit de speeltijden van de club) plus `AgeClasses` `[{ Id, Description }]` uit Sportlink en `SportlinkBeschikbaar`. Eigen endpoint omdat de speeltijden-API admin-only is. Is Sportlink onbereikbaar, dan komen de teamgegevens zonder lijst terug (`SportlinkBeschikbaar: false`) |
 | `GET` | `/sportlink/club-match/picklists` | **Wedstrijdzaken** | De twee Sportlink-picklists (Teams + Location) — read-only, persoonsgegevensvrij. Sinds #1427 los van elkaar: een onherkenbare teamlijst blokkeert de locatielijst niet meer. Diagnostisch endpoint (id + naam per item); het aanmaakpad gebruikt sinds #1427 de volledige lijsten via de server (#997) |
@@ -761,6 +762,21 @@ Sinds #666 is dit de enige dagplanning-optimalisatie.
 Bij `format=html|pdf` moet `datum` strikt `yyyy-MM-dd` zijn (anders 400). De berekening is een pure
 leesbewerking; alleen `/planner/auto-plan/toepassen` schrijft, dus een tweede aanroep voor de export heeft
 geen bijwerking.
+
+### POST /api/planner/auto-plan/deel — planning delen zoals getoond (#1460)
+
+Stateless: de browser stuurt de lijst zoals die op Veld optimalisatie staat (inclusief handmatig
+versleepte blokken); de server valideert en rendert hetzelfde HTML/PDF-document als
+`auto-plan?format=`. Geen opslag, geen herberekening. Query `format=html|pdf` (verplicht).
+
+```json
+{ "datum": "2026-10-03", "tab": "optimaal",
+  "wedstrijden": [ { "teamNaam": "...", "wedstrijd": "Thuis - Uit", "competitiesoort": "...", "tijd": "09:30", "veld": "..." } ] }
+```
+
+Limieten: max 500 wedstrijden; tekstvelden max 200 tekens zonder stuurtekens; `tijd` `HH:mm`;
+`datum` `yyyy-MM-dd` tussen 2020-01-01 en 2100-12-31; body max 512 KB (413). De club komt van de
+aanroeper — een afwijkende optionele `clubCode` geeft 403. Overige fouten: 400.
 
 ### Rangorde van het planningsdoel
 

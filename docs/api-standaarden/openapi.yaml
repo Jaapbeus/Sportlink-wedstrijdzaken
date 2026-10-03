@@ -7135,6 +7135,83 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /planner/auto-plan/deel:
+    post:
+      tags: [planner]
+      operationId: autoPlanDeel
+      summary: Planning delen zoals getoond (stateless)
+      description: |
+        Rendert dezelfde HTML/PDF als `/planner/auto-plan?format=` (#1460), maar van de lijst die de
+        browser meestuurt — dus inclusief handmatig versleepte blokken. Niets wordt opgeslagen of
+        herberekend. De club komt van de aanroeper; een afwijkende `clubCode` in de body geeft 403.
+
+        Limieten: maximaal 500 wedstrijden, tekstvelden maximaal 200 tekens zonder stuurtekens,
+        `tijd` als `HH:mm` (of leeg), `datum` als `yyyy-MM-dd` tussen 2020-01-01 en 2100-12-31,
+        body maximaal 512 KB (413).
+      security:
+        - easyAuth: []
+      parameters:
+        - name: format
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [html, pdf]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [datum, wedstrijden]
+              properties:
+                datum:
+                  type: string
+                  format: date
+                tab:
+                  type: string
+                  enum: [huidig, optimaal]
+                  default: huidig
+                clubCode:
+                  type: string
+                  description: Optioneel; moet gelijk zijn aan de club van de aanroeper.
+                wedstrijden:
+                  type: array
+                  maxItems: 500
+                  items:
+                    type: object
+                    required: [teamNaam]
+                    properties:
+                      teamNaam: {type: string, maxLength: 200}
+                      wedstrijd: {type: string, maxLength: 200, description: 'Thuis - Uit'}
+                      competitiesoort: {type: string, maxLength: 200, nullable: true}
+                      tijd: {type: string, pattern: '^([01]\d|2[0-3]):[0-5]\d$', nullable: true}
+                      veld: {type: string, maxLength: 200, nullable: true}
+      responses:
+        '200':
+          description: Het gedeelde document
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            text/html:
+              schema:
+                type: string
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          description: Request body te groot
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /planner/veldbezetting:
     get:
       tags: [planner]

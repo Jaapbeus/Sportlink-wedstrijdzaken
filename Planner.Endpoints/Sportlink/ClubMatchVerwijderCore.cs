@@ -12,9 +12,10 @@ namespace Planner.Endpoints.Sportlink;
 /// <see cref="SportlinkMutationGuard"/> (<see cref="SportlinkMutationSoort.Verwijderen"/>) → audit
 /// "Pending" → verwijderen → audit voltooien.
 /// <para>
-/// <b>Contract niet live bevestigd.</b> Methode, parameter en foutvorm komen uit Sportlinks publieke
-/// frontend-bundle; de aanroep zelf staat hard op dry-run via
-/// <c>SportlinkClubClient.ClubMatchDeleteLiveBevestigd</c>. Deze kern verandert daar niets aan.
+/// <b>Live bevestigd (#1440, vrijgegeven in #1458).</b> Sportlink antwoordt met een JSON-object
+/// <c>{ "PublicMatchId": ..., "IsSuccess": true }</c>. De aanroep volgt de club-instelling
+/// <c>sportlinkDryRun</c>. Guard: uitsluitend <c>IsKernelMatch = false</c> (zoals Sportlink zelf);
+/// zonder auditservice weigert deze kern met 503 (fail-closed).
 /// </para>
 /// <para>
 /// De tierbestanden houden alleen de route-registratie en het tier-eigen auditcontract
@@ -44,7 +45,7 @@ public static class ClubMatchVerwijderCore
     /// <param name="controleerToggleEnEgress">Tier-eigen toggle- en EgressGuard-controle.</param>
     /// <param name="clientOfFout">Tier-eigen client uit DI (of de 503).</param>
     /// <param name="rolNaam">De functionele rol (Wedstrijdzaken).</param>
-    /// <param name="audit">Tier-eigen auditcontract; <c>null</c> als er geen auditservice is.</param>
+    /// <param name="audit">Tier-eigen auditcontract; <c>null</c> als er geen auditservice is (dan 503).</param>
     public static async Task<IActionResult> VerwijderAsync(
         string? publicMatchId,
         Func<IActionResult?> controleerToggleEnEgress,
@@ -59,6 +60,10 @@ public static class ClubMatchVerwijderCore
         if (toggleFout != null) return toggleFout;
         var (client, clientFout) = clientOfFout();
         if (clientFout != null) return clientFout;
+
+        // #1458: fail-closed. Een onomkeerbare verwijdering zonder auditspoor mag niet doorgaan: de
+        // verwijderde wedstrijd is daarna niet meer in Sportlink na te kijken.
+        if (audit == null) return SportlinkEndpointSupportCore.AuditNietBeschikbaarFout();
 
         var match = await client!.GetMatchAsync(rolNaam, publicMatchId!);
         var matchFout = SportlinkEndpointSupportCore.VertaalStatusNaarFout(match.Status);
