@@ -2,11 +2,20 @@ using BlazorAdmin.Models;
 using BlazorAdmin.Services;
 using Microsoft.AspNetCore.Components;
 
-namespace BlazorAdmin.Pages;
+namespace BlazorAdmin.Shared;
 
-/// <summary>Code-behind van <c>OefenwedstrijdAanmaken.razor</c> (#997/#1116, code-behind sinds #1122).</summary>
-public partial class OefenwedstrijdAanmaken
+/// <summary>Code-behind van <c>WedstrijdAanmakenFormulier.razor</c> (#997/#1116, code-behind sinds #1122; gedeeld component sinds #1468).</summary>
+public partial class WedstrijdAanmakenFormulier
 {
+    /// <summary>Begindatum van het formulier (bijv. de gekozen datum op Planning); zonder waarde: vandaag.</summary>
+    [Parameter] public DateTime? BeginDatum { get; set; }
+
+    /// <summary>Wordt aangeroepen na een echte aanmaak (geen dry-run) en na een geslaagde verwijdering.</summary>
+    [Parameter] public EventCallback OnAangemaakt { get; set; }
+
+    /// <summary>Toon de inleidende alinea (Planning verbergt hem).</summary>
+    [Parameter] public bool ToonIntro { get; set; } = true;
+
     /// <summary>Banner bij dry-run aan / uit (#1427) — één zin, afhankelijk van de actuele instelling.</summary>
     internal const string DryRunAanTekst = "Dryrun is aan. Geen data wordt naar Sportlink geschreven.";
     internal const string DryRunUitTekst = "Dryrun is uit. Wijzigingen worden direct in Sportlink weggeschreven.";
@@ -53,6 +62,7 @@ public partial class OefenwedstrijdAanmaken
 
     protected override async Task OnInitializedAsync()
     {
+        _form.Leegmaken(BeginDatum);
         var teamsTaak = Api.GetTeamsAsync();
         var veldenTaak = Api.GetVeldenAsync();
         var dryRunTaak = Api.GetSportlinkDryRunStatusAsync();
@@ -109,7 +119,7 @@ public partial class OefenwedstrijdAanmaken
     private void Leegmaken()
     {
         if (_poort.InvoerVergrendeld || _verwijderPoort.Huidig == WedstrijdVerwijderPoort.Stap.Bezig) return;
-        _form.Leegmaken();
+        _form.Leegmaken(BeginDatum);
         _validatieFouten = Array.Empty<string>();
         _resultaat = null;
         _status.Wis();
@@ -144,7 +154,9 @@ public partial class OefenwedstrijdAanmaken
         {
             var r = await Api.DeleteOefenwedstrijdAsync(publicMatchId);
             data = r.Success ? r.Data : null;
-            _verwijderStatus.Verwerk(r.Success, r.ErrorMessage, r.Data, "Wedstrijd verwijderd uit Sportlink Club.", "Sportlink heeft het verwijderen afgewezen");
+            var geslaagd = _verwijderStatus.Verwerk(r.Success, r.ErrorMessage, r.Data, "Wedstrijd verwijderd uit Sportlink Club.", "Sportlink heeft het verwijderen afgewezen");
+            if (geslaagd && !_verwijderStatus.IsDryRun)
+                await OnAangemaakt.InvokeAsync();
         }
         finally
         {
@@ -165,7 +177,10 @@ public partial class OefenwedstrijdAanmaken
             _resultaat = r.Success ? r.Data : null;
             var geslaagd = _status.Verwerk(r.Success, r.ErrorMessage, r.Data, "Wedstrijd aangemaakt in Sportlink Club.", "Sportlink heeft de aanmaak afgewezen");
             if (geslaagd && _resultaat?.IsDryRun == false)
+            {
                 _form.NaGeslaagdeAanmaak();
+                await OnAangemaakt.InvokeAsync();
+            }
         }
         finally
         {

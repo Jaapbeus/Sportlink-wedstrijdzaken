@@ -619,8 +619,8 @@ Boven elk scherm staat een smalle balk met, van links naar rechts:
 ### De zijbalk
 
 De zijbalk links bevat in deze volgorde: **Dashboard**, **Teambegeleiding**, **Planning**,
-**Veld optimalisatie**, **Leermomenten**, **Teamaliassen**, **Email-tester**, dan (alleen onder een voorwaarde, zie
-hieronder) **Wijzigingsverzoeken** en **Wedstrijden**, en tot slot het uitklapbare menu
+dan (alleen onder een voorwaarde, zie hieronder) **Wedstr. aanmaken** en **Wijzigingsverzoeken**,
+daarna **Veld optimalisatie**, **Leermomenten**, **Teamaliassen**, **Email-tester**, en tot slot het uitklapbare menu
 **Instellingen** met daarin *Instellingen*, *Speeltijden*, *Velden*, *Begeleiding importeren*,
 *Voorkeurstijden*, *E-mailtemplates*, *Thema*, *Sportlink Ext.* (het menu-item; de functie zelf
 heet Sportlink Web Extension, zie §19) en *Rechten per rol* (zie §19a).
@@ -628,8 +628,9 @@ heet Sportlink Web Extension, zie §19) en *Rechten per rol* (zie §19a).
 Planning en Veld optimalisatie staan voor elke ingelogde gebruiker in het menu. Drie menu-items
 verschijnen alleen onder een voorwaarde:
 
-- **Wijzigingsverzoeken** en **Wedstrijden** (menu-item voor het scherm "Wedstrijd aanmaken",
-  zie §18a) staan er alleen als de Sportlink Web Extension is ingeschakeld (hoofdstuk 19).
+- **Wedstr. aanmaken** (menu-item voor het scherm "Wedstrijd aanmaken",
+  zie §18a) en **Wijzigingsverzoeken** staan er alleen als de Sportlink Web Extension is ingeschakeld
+  (hoofdstuk 19). Ze staan bewust direct onder Planning, want daar werkt u ook mee (#1468).
 - Onder het menu Instellingen komt nog het kopje **TESTMODUS** met daaronder **Testdata**; dat
   staat er alleen als AllStars FC in de club-keuzelijst is gekozen.
 
@@ -1234,7 +1235,7 @@ Per openstaand verzoek staan twee compacte knoppen:
 
 Staat dry-run aan (§19), dan wordt de actie gesimuleerd en gelogd; het scherm meldt dat expliciet.
 
-Deze pagina en "Wedstrijd aanmaken" (menu-item: **Wedstrijden**, zie §18a) staan alleen in het menu als de Sportlink Web Extension
+Deze pagina en "Wedstrijd aanmaken" (menu-item: **Wedstr. aanmaken**, zie §18a) staan alleen in het menu als de Sportlink Web Extension
 aan staat (§19); staat hij uit, dan verdwijnen beide menu-items en tonen Planning en Veld
 optimalisatie geen Sportlink-kolom. Deze pagina is onderdeel van de Sportlink Web Extension (zie §19) en vereist dus dat die feature
 is ingeschakeld en gekoppeld voor de rol die deze acties uitvoert.
@@ -1242,6 +1243,13 @@ is ingeschakeld en gekoppeld voor de rol die deze acties uitvoert.
 ---
 
 ## 18a. Wedstrijd aanmaken (`/wedstrijd-aanmaken`)
+
+> **Ook op Planning (#1468):** als de Sportlink Web Extension aan staat, heeft **Planning** rechts in
+> de datumbalk een groene knop **Wedstr. toevoegen**. Die opent hetzelfde formulier als dit scherm,
+> in een kaart onder de datumbalk (sluiten met het kruisje), met de op Planning gekozen datum al
+> ingevuld. Na een echte aanmaak (of een verwijdering) wordt de veldbezetting op Planning direct
+> opnieuw geladen, zodat de wedstrijd meteen in de tijdlijn staat. Alles hieronder geldt ook voor dat
+> formulier; alleen de inleidende tekst ontbreekt daar.
 
 > **Echt aanmaken (#1319):** de aanroep volgt de dry-run-instelling van uw club (zie §19). Bovenaan
 > de pagina staat sinds #1427 in één zin hoe die nu staat: **"Dryrun is aan. Geen data wordt naar
