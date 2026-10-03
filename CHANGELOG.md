@@ -18,6 +18,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **Opslag via managed identity op de Flex-app** (backport van hotfix 3.10.0.1, zie issue #1512). E-mailverwerking en
+  handmatige sync gebruiken de identity-gebaseerde opslaginstellingen als er geen verbindingsstring is.
+
 ## [3.10.0.0] — 2026-10-03
 
 ### Fixed

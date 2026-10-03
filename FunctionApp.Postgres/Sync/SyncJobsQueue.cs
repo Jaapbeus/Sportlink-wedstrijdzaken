@@ -19,6 +19,7 @@ internal static class SyncJobsQueue
     /// blijft voor altijd op <c>pending</c> staan omdat <see cref="SyncJobProcessor"/> nooit wordt
     /// aangeroepen. Één fabrieksmethode zodat dit nooit los van elkaar kan gaan afwijken.
     /// </summary>
-    internal static QueueClient CreateClient(string connectionString)
-        => new(connectionString, QueueName, new QueueClientOptions { MessageEncoding = QueueMessageEncoding.Base64 });
+    internal static QueueClient CreateClient()
+        => global::Planner.Shared.Infrastructure.OpslagVerbinding.MaakQueueClient(
+            QueueName, new QueueClientOptions { MessageEncoding = QueueMessageEncoding.Base64 });
 }
