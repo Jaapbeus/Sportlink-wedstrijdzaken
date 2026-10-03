@@ -250,4 +250,42 @@ public class PlannerDeelEndpointCoreTests
         public string? OptimaalTijd => "08:30";
         public string? OptimaalVeld => "veld 2";
     }
+
+    [Fact]
+    public async Task VerwerkAsync_OngeldigFormat_Geeft400_ZonderHalen()
+    {
+        var gehaald = false;
+        var r = await PlannerDeelEndpointCore.VerwerkAsync<int>("xml", null, null, () => Task.FromResult(true),
+            () => { gehaald = true; return Task.FromResult(1); }, (_, _) => null, d => new OkObjectResult(d));
+        r.Should().BeOfType<BadRequestObjectResult>();
+        gehaald.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task VerwerkAsync_PdfUit_Geeft409_ZonderHalen()
+    {
+        var gehaald = false;
+        var r = await PlannerDeelEndpointCore.VerwerkAsync<int>("pdf", null, "2026-10-03", () => Task.FromResult(false),
+            () => { gehaald = true; return Task.FromResult(1); }, (_, _) => null, d => new OkObjectResult(d));
+        r.Should().BeOfType<ConflictObjectResult>();
+        gehaald.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task VerwerkAsync_ZonderFormat_GeeftJson_ZonderPdfInstellingTeLezen()
+    {
+        var r = await PlannerDeelEndpointCore.VerwerkAsync("", null, null,
+            () => throw new InvalidOperationException("niet verwacht"),
+            () => Task.FromResult(7), (_, _) => null, d => new OkObjectResult(d));
+        r.Should().BeOfType<OkObjectResult>().Which.Value.Should().Be(7);
+    }
+
+    [Fact]
+    public async Task VerwerkAsync_Html_GeeftDeelDocument()
+    {
+        var sentinel = new OkObjectResult("deel");
+        var r = await PlannerDeelEndpointCore.VerwerkAsync("html", null, "2026-10-03", () => Task.FromResult(false),
+            () => Task.FromResult(7), (_, _) => sentinel, d => new OkObjectResult(d));
+        r.Should().BeSameAs(sentinel);
+    }
 }

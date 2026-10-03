@@ -56,6 +56,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   volgt in issue #1460.
 
 ### Security
+- De what-if-poort controleert de app settings nu per Function App (#1495).
 - **Workflows draaien met minimale tokenrechten** (zie issue #1472). `deploy.yml` en `pre-release-check.yml`
   krijgen alleen leesrechten op de repository; daarmee zijn de elf CodeQL-meldingen over ontbrekende
   workflowrechten opgelost. De meldingen over log-injectie volgen in een volgende release.
@@ -148,6 +149,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   begeleiders van een functie te voorzien.
 
 ### Changed
+- Beide tiers delen nu de sync-trigger- en deel-orkestratie (`SyncTriggerEndpointCore`, `PlannerDeelEndpointCore.VerwerkAsync`); gedrag ongewijzigd (#1492)
 - Interne opruiming van de Sportlink-client: het bestand is opgedeeld in kleinere onderdelen en de gedeelde mutatie-uitvoering is in stukken gesplitst, zonder verandering in gedrag (#1493)
 - **Menu: Wedstr. aanmaken en Wijzigingsverzoeken staan nu direct onder Planning** (#1468). Het
   menu-item "Wedstrijden" heet voortaan **Wedstr. aanmaken**; beide items zijn zoals voorheen alleen
