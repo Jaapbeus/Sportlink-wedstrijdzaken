@@ -156,8 +156,9 @@ terug zonder iets aan te maken, de widget toont die letterlijk met de waarschuwi
 openbaar op internet staat, en pas een expliciete bevestiging leidt tot `POST /api/feedback/submit`.
 De bevestiging stuurt de getoonde AI-velden terug zodat er exact gepubliceerd wordt wat er op het
 scherm stond — een tweede AI-aanroep zou andere tekst opleveren en het voorbeeld tot een gok maken.
-Dat is veilig omdat beide endpoints achter `RequireAdmin` zitten en dezelfde beheerder via het veld
-`Beschrijving` sowieso al willekeurige tekst in de body krijgt. De client wordt op dat punt
+Dat is veilig omdat uitsluitend een beheerder zelf publiceert (sinds #764 mogen ook gewone
+gebruikers feedback indienen, maar hun melding wacht op de klik van een beheerder — zie hieronder) en
+dezelfde beheerder via het veld `Beschrijving` sowieso al willekeurige tekst in de body krijgt. De client wordt op dat punt
 desondanks niet vertrouwd: de teruggestuurde velden gaan door **dezelfde sanitizer en dezelfde
 lengte- en aantalgrenzen** als alle andere tekst in de body (samenvatting afgekapt, maximaal vijf
 acceptatiecriteria), en beide PII-gates draaien onverkort op de uiteindelijke, samengestelde body.
@@ -165,6 +166,46 @@ acceptatiecriteria), en beide PII-gates draaien onverkort op de uiteindelijke, s
 **Regel bij wijzigingen aan dit pad:** maak nooit een route die publiceert zonder dat de beheerder
 de uiteindelijke tekst heeft gezien, en presenteer de PII-gate in geen enkel scherm of document als
 een garantie dat er geen persoonsgegevens meer in staan.
+
+### Feedback voor alle gebruikers: identiteit, technische context en bewaartermijnen (#764)
+
+Sinds #764 mag iedere ingelogde gebruiker (rol `admin` én `user`) feedback geven. Volledige uitwerking,
+datamodel en verwerkingsregister: **[docs/FEEDBACK.md](docs/FEEDBACK.md)**. De beveiligingsrelevante
+kern:
+
+* **Publicatie blijft een bewuste handeling van een beheerder.** Een beheerder publiceert direct (na
+  het voorbeeld uit #1205); een gewone gebruiker kan niet zelf publiceren: zijn melding wordt bewaard
+  (`status: wacht-op-publicatie`) en pas gepubliceerd nadat een beheerder de exacte tekst heeft gezien en
+  op *Publiceer* klikt. De PII-gate draait bij het indienen (vóór AI en op de uiteindelijke tekst) én
+  opnieuw vlak vóór de GitHub-write. De GitHub-link krijgt een gewone gebruiker niet te zien.
+* **Identiteit van de melder staat in het `avg`-schema, nooit in het publieke issue:** Entra
+  object-ID (pseudoniem, art. 4 lid 5) en de weergavenaam als momentopname, uitsluitend uit het Easy
+  Auth-principal (nooit uit de requestbody). Geen e-mailadres. Grondslag art. 6 lid 1 sub f.
+* **Bewaartermijn (eigenaarsbesluit 2026-10-03):** identiteit zolang het issue open is plus 24 maanden
+  na sluiting, daarna op `NULL` (dagelijkse timer op beide tiers, eerst GitHub-status synchroniseren via
+  `EgressGuard`, nooit wissen op een gok); meldingstekst onbeperkt (staat al openbaar); technische
+  context 90 dagen; inzagelog 24 maanden.
+* **Technische context** (console-fouten, mislukte aanroepen, navigatiespoor, browser) is standaard aan,
+  vóór verzending zichtbaar en uit te zetten, wordt client- én server-side geredigeerd
+  (`Planner.Shared/Feedback/FeedbackRedactie.cs`: e-mail, GUID/token, querystrings, ID's in paden,
+  waarden achter `naam`/`password`-achtige sleutels, de naam van de melder) en komt nooit in het
+  publieke issue. **Restrisico:** de naam van een ánder in vrije tekst wordt niet herkend.
+* **Inzagelog.** Het beheeroverzicht toont namen van collega's; elke inzage (wie, wat, wanneer,
+  filtervelden — nooit zoektekst of inhoud) komt in `avg.FeedbackInzageLog`. Geen export (CSV/Excel).
+* **Limieten:** 3 meldingen per 10 minuten per gebruiker (database, dus gedeeld over instances),
+  30 per uur per club, en 30 AI-aanroepen per 10 minuten per gebruiker voor validate/preview.
+* **RLS** staat aan op de drie nieuwe tabellen (migratie 034); `check-rls-enabled.sh` bewaakt dat.
+
+**Verwerkingsregister (AVG art. 30), samengevat** — de volledige rij staat in `docs/FEEDBACK.md` §8:
+
+| Veld | Inhoud |
+|---|---|
+| Verwerking | Feedbackmeldingen van gebruikers van de beheertoepassing (incl. technische context, inzagelog) |
+| Grondslag | Art. 6 lid 1 sub f — gerechtvaardigd belang |
+| Betrokkenen / gegevens | Gebruikers met een account · Entra object-ID, weergavenaam (momentopname), meldingstekst, geredigeerde technische context |
+| Ontvangers | GitHub (alleen gepubliceerde tekst zonder identiteit), Microsoft Azure, OpenAI (tekst, geen identiteit) — verwerkers; doorgifte buiten de EER op basis van SCC's |
+| Bewaartermijnen | Identiteit: open + 24 mnd na sluiting · tekst: onbeperkt · technische context: 90 dagen · inzagelog: 24 mnd |
+| DPIA | Niet verplicht; pre-DPIA-notitie in `docs/FEEDBACK.md` §7 |
 
 ---
 

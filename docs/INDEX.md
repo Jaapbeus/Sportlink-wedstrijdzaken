@@ -48,6 +48,7 @@ document van het onderdeel waaraan je werkt.
 | [E-mailverwerking](EMAIL-VERWERKING.md) | Pipeline, AI-classificatie, templates, kanaalstrategie |
 | [E-mailmodule (doelarchitectuur)](ARCHITECTUUR-EMAIL-MODULE.md) | Verzendlaag, afzenderstrategie, e-maillogging — ontwerp, migratie nog niet gestart |
 | [Sportlink Web Extension](SPORTLINK-WEB-EXTENSION.md) | Schrijfrichting webapp → Sportlink Club: protocol, endpoints, agent-tokengrens |
+| [Feedback](FEEDBACK.md) | Feedbackwidget voor alle gebruikers, beheeroverzicht, technische context en redactie, bewaartermijnen, inzagelog, verwerkingsregister (#764) |
 | [Automatische Sportlink-login](SPORTLINK-AUTOLOGIN.md) | Automatic login met TOTP (#1411): implementatie, productie-setup, beveiliging |
 
 **API-contract**

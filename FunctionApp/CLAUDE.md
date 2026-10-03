@@ -330,3 +330,14 @@ instellen. `SportlinkAutoLoginEncryptionKey` is een afzonderlijke host-secret; c
 nieuwe refresh-tokens staan versleuteld in `dbo.SportlinkAutoLogin` respectievelijk
 `public.sportlinkautologin`. Zie `docs/SPORTLINK-AUTOLOGIN.md` voor installatie en live acceptatie.
 De egress-guard en menselijke beperking voor live agenttests blijven gelden.
+
+## Feedback voor alle gebruikers (#764)
+
+`POST feedback/validate|preview|submit` zijn open voor admin én user (`ExecuteAuthenticatedAsync`);
+`GET beheer/feedback`, `GET beheer/feedback/{id}`, `GET beheer/feedback/inzagelog` en
+`POST beheer/feedback/{id}/publiceer` zijn admin-only (`AdminFeedbackFunction.cs`). Timer
+`CleanupFeedback` (dagelijks 05:15 UTC) voert de bewaartermijnen uit. Opslag: `avg.Feedback`,
+`avg.FeedbackTelemetrie`, `avg.FeedbackInzageLog` via `SqlFeedbackStore`; alle logica staat in
+`Planner.Shared/Feedback` en `Planner.Endpoints/Feedback`. De melder komt uitsluitend uit het
+Easy Auth-principal (`EasyAuthHelper.GetCallerObjectId`) en staat nooit in het publieke issue. Zie
+`docs/FEEDBACK.md`.

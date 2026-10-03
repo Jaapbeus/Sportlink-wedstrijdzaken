@@ -41,16 +41,16 @@ Drie beveiligingsniveaus:
 | Niveau | Sleutel | Wie | Endpoints |
 |--------|---------|-----|-----------|
 | **Anoniem** | geen | iedereen | `GET /api/health` |
-| **Admin** | Easy Auth Bearer + `admin`-rol (`EasyAuthHelper.RequireAdmin`) | Alleen coördinator | Alle overige `/api/beheer/*`-, `/api/planner/*`- (behalve `veldbezetting`), `/api/feedback/*`-, `/api/test/*`-endpoints, én `GET /api/postgres/sync-matches` / `GET /api/sync-matches` (sinds #1350) |
-| **Admin/User** | Easy Auth Bearer + `admin` óf `user` (`AdminEndpoint.ExecuteAuthenticatedAsync`, #1330) | Elke ingelogde gebruiker | `GET /api/planner/veldbezetting` (Planning-pagina, #1400), `GET /api/sportlink/match/{wedstrijdcode}` en `.../public-match-id` (Sportlink-paneel viewen, #1400), plus de drie Teambegeleiding-lookup/doorstuur-endpoints (#1330) |
+| **Admin** | Easy Auth Bearer + `admin`-rol (`EasyAuthHelper.RequireAdmin`) | Alleen coördinator | Alle overige `/api/beheer/*`- (inclusief het feedbackoverzicht `/api/beheer/feedback/*`), `/api/planner/*`- (behalve `veldbezetting`), `/api/test/*`-endpoints, én `GET /api/postgres/sync-matches` / `GET /api/sync-matches` (sinds #1350) |
+| **Admin/User** | Easy Auth Bearer + `admin` óf `user` (`AdminEndpoint.ExecuteAuthenticatedAsync`, #1330) | Elke ingelogde gebruiker | `GET /api/planner/veldbezetting` (Planning-pagina, #1400), de drie `/api/feedback/*`-endpoints (#764: iedereen die is ingelogd mag feedback geven), `GET /api/sportlink/match/{wedstrijdcode}` en `.../public-match-id` (Sportlink-paneel viewen, #1400), plus de drie Teambegeleiding-lookup/doorstuur-endpoints (#1330) |
 | **Wedstrijdzaken** | Easy Auth Bearer + `Wedstrijdzaken`-rol **óf** de `admin`-rol (`EasyAuthHelper.RequireWedstrijdzaken`, beide poorten sinds #1400 — vóór #1400 eiste de tweede poort altijd `admin`) | Wedstrijdsecretariaat | De Sportlink-mutatie-endpoints (`PUT`/`POST` onder `/api/sportlink/*`) |
 
 > **`AuthorizationLevel` in de trigger zegt niets over de echte poort.** Élk endpoint staat op
 > `AuthorizationLevel.Anonymous` — dat betekent alleen "geen Function key". De daadwerkelijke
 > rolcontrole gebeurt via de centrale wrappers `AdminEndpoint.ExecuteAsync` (uitsluitend admin, met
 > database-toegang), `AdminEndpoint.ExecuteZonderDatabaseAsync` (uitsluitend admin, zonder database —
-> de drie `/api/feedback/*`-endpoints), `AdminEndpoint.ExecuteAuthenticatedAsync` (elke ingelogde
-> rol — admin + user, #1330/#1400) en, voor de Sportlink-mutatie-endpoints, via
+> sinds #764 door geen enkel feedback-endpoint meer gebruikt), `AdminEndpoint.ExecuteAuthenticatedAsync` (elke ingelogde
+> rol — admin + user, #1330/#1400, sinds #764 ook de drie `/api/feedback/*`-endpoints) en, voor de Sportlink-mutatie-endpoints, via
 > `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync` (Wedstrijdzaken óf admin, beide poorten sinds
 > #1400). Twee bewuste uitzonderingen roepen `EasyAuthHelper.RequireAdmin` nog direct aan, vóór een
 > eventuele databaseaanroep: `POST /api/beheer/theme/extract` (een luie URL-check vóór de
@@ -96,9 +96,13 @@ verwerking plaats.
 | `PUT/DELETE` | `/beheer/teamregels/{id}` | **Admin** | Planningsregel wijzigen / verwijderen |
 | `GET` | `/beheer/email-log` | **Admin** | Verwerkte e-mails inzien (AVG-conform: geen berichtteksten) |
 | `POST` | `/test/email` | **Admin** | AI-classificatie dry-run zonder e-mail te versturen (Email-tester-pagina) |
-| `POST` | `/feedback/validate` | **Admin** | Feedback-widget: voorvalidatie op volledigheid |
-| `POST` | `/feedback/preview` | **Admin** | Feedback-widget: exacte titel + body van het te publiceren issue opvragen, zónder iets aan te maken (#1205) |
-| `POST` | `/feedback/submit` | **Admin** | Feedback-widget: publiceren als **openbaar** GitHub-issue; met `bevestiging` wordt exact de in het voorbeeld getoonde tekst gepubliceerd |
+| `POST` | `/feedback/validate` | **Admin/User** | Feedback-widget: voorvalidatie op volledigheid. Per gebruiker begrensd (30 AI-aanroepen per 10 min, samen met `preview`) |
+| `POST` | `/feedback/preview` | **Admin/User** | Feedback-widget: exacte titel + body van het te publiceren issue opvragen, zónder iets aan te maken (#1205) |
+| `POST` | `/feedback/submit` | **Admin/User** | Feedback-widget: melding bewaren in `avg.Feedback` (melder = Entra object-ID + naam-momentopname, nooit in het publieke issue). **Admin**: direct als openbaar GitHub-issue; met `bevestiging` wordt exact de in het voorbeeld getoonde tekst gepubliceerd. **User**: wacht op publicatie door een beheerder, de response bevat geen issueverwijzing. Optioneel `telemetrie` (technische context, geredigeerd, na 90 dagen gewist). Limiet: 3 per 10 min per gebruiker, 30 per uur per club → `429` |
+| `GET` | `/beheer/feedback` | **Admin** | Feedbackoverzicht (filters `type`, `status`, `vanaf`, `tot`, `q`, `limit`, `offset`); elke aanroep komt in het inzagelog (#764) |
+| `GET` | `/beheer/feedback/{id}` | **Admin** | Eén melding met technische context; komt in het inzagelog |
+| `POST` | `/beheer/feedback/{id}/publiceer` | **Admin** | Een wachtende melding publiceren als GitHub-issue (exact de bewaarde tekst, PII-gate opnieuw); `409` bij een tweede klik |
+| `GET` | `/beheer/feedback/inzagelog` | **Admin** | Wie bekeek welke melding (nooit de inhoud; 24 maanden bewaard) |
 | `POST` | `/planner/check-availability` | **Admin** | Veldbeschikbaarheid controleren — gescoped op `X-Club-Code` header |
 | `POST` | `/planner/doordeweeks-beschikbaar` | **Admin** | Doordeweekse beschikbaarheid door het seizoen heen — gescoped op `X-Club-Code` header |
 | `POST` | `/planner/bevestig` | **Admin** | Wedstrijdslot boeken |
