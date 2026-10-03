@@ -26,7 +26,7 @@ public class FeedbackStoreIntegrationTests
 
     private static FeedbackNieuw Rij(string club, Guid? id = null, string? oid = "oid-1", string type = "Fout",
         string onderwerp = "Onderwerp", string beschrijving = "Beschrijving", string status = FeedbackStatusWaarden.WachtOpPublicatie) =>
-        new(id ?? Guid.NewGuid(), club, type, onderwerp, "Issuetekst", beschrijving, null, oid, "Jan Melder", "user", "/velden", "3.9.7.0", status);
+        new(id ?? Guid.NewGuid(), club, type, onderwerp, "Issuetekst", beschrijving, null, oid, "Jan de Vries", "user", "/velden", "3.9.7.0", status);
 
     private static async Task ExecAsync(string sql, params (string, object?)[] parameters)
     {
@@ -57,7 +57,7 @@ public class FeedbackStoreIntegrationTests
             var detail = await Store().GetDetailAsync(club, rij.FeedbackId);
 
             detail.Should().NotBeNull();
-            detail!.Samenvatting.MelderNaam.Should().Be("Jan Melder");
+            detail!.Samenvatting.MelderNaam.Should().Be("Jan de Vries");
             detail.Samenvatting.Status.Should().Be(FeedbackStatusWaarden.WachtOpPublicatie);
             detail.Samenvatting.AangemaaktUtc.Kind.Should().Be(DateTimeKind.Utc);
             detail.IssueBody.Should().Be("Issuetekst");
@@ -154,14 +154,14 @@ public class FeedbackStoreIntegrationTests
         {
             var s = Store();
             var id = Guid.NewGuid();
-            await s.LogInzageAsync(new FeedbackInzageNieuw(club, "oid-admin", "Piet Beheerder", "detail", id, null));
-            await s.LogInzageAsync(new FeedbackInzageNieuw(club, "oid-admin", "Piet Beheerder", "lijst", null, "type=Fout"));
+            await s.LogInzageAsync(new FeedbackInzageNieuw(club, "oid-admin", "Testbeheerder", "detail", id, null));
+            await s.LogInzageAsync(new FeedbackInzageNieuw(club, "oid-admin", "Testbeheerder", "lijst", null, "type=Fout"));
 
             var lijst = await s.LijstInzageAsync(club, 10, 0);
 
             lijst.Totaal.Should().Be(2);
             lijst.Items.Select(i => i.Actie).Should().Equal("lijst", "detail");
-            lijst.Items.Should().OnlyContain(i => i.InzienDoorNaam == "Piet Beheerder");
+            lijst.Items.Should().OnlyContain(i => i.InzienDoorNaam == "Testbeheerder");
             lijst.Items[1].FeedbackId.Should().Be(id);
         }
         finally { await OpruimenAsync(club); }
@@ -210,9 +210,9 @@ public class FeedbackStoreIntegrationTests
 
             (await Lees(gesloten25.FeedbackId)).Should().Be((null, null, true), "25 maanden na sluiting: identiteit weg");
             (await Lees(nooitGepubliceerdOud.FeedbackId)).Should().Be((null, null, true), "nooit gepubliceerd telt vanaf aanmaak");
-            (await Lees(gesloten23.FeedbackId)).Should().Be(("oid-2", "Jan Melder", false), "23 maanden is binnen de termijn");
-            (await Lees(openOud.FeedbackId)).Should().Be(("oid-3", "Jan Melder", false), "zolang het issue open is blijft de identiteit bewaard");
-            (await Lees(nooitGepubliceerdNieuw.FeedbackId)).Should().Be(("oid-5", "Jan Melder", false));
+            (await Lees(gesloten23.FeedbackId)).Should().Be(("oid-2", "Jan de Vries", false), "23 maanden is binnen de termijn");
+            (await Lees(openOud.FeedbackId)).Should().Be(("oid-3", "Jan de Vries", false), "zolang het issue open is blijft de identiteit bewaard");
+            (await Lees(nooitGepubliceerdNieuw.FeedbackId)).Should().Be(("oid-5", "Jan de Vries", false));
 
             var tekst = (await s.GetDetailAsync(club, gesloten25.FeedbackId))!;
             tekst.Beschrijving.Should().Be("tekst blijft", "de meldingstekst zelf blijft onbeperkt bewaard");

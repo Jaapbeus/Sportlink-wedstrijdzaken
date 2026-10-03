@@ -3609,7 +3609,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('avg.Teambe
 GO
 
 -- #764/#1476/#1478: feedbackmeldingen van alle gebruikers + technische context + inzagelog (avg-schema).
--- Postgres-tegenhanger: Database.Postgres/migrations/034_avg_feedback.sql. Bron: Database/avg/Tables/Feedback*.sql
+-- Postgres-tegenhanger: Database.Postgres/migrations/035_avg_feedback.sql. Bron: Database/avg/Tables/Feedback*.sql
 -- en Database/avg/System Stored Procedures/sp_CleanupFeedback.sql.
 -- QUOTED_IDENTIFIER ON: vereist voor de gefilterde index IX_avg_Feedback_Melder_Datum (zie #1280).
 SET QUOTED_IDENTIFIER ON;

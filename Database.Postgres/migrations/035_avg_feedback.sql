@@ -1,4 +1,4 @@
--- 034_avg_feedback.sql — feedbackmeldingen van alle gebruikers, met telemetrie en inzagelog (#764, #1476, #1478).
+-- 035_avg_feedback.sql — feedbackmeldingen van alle gebruikers, met telemetrie en inzagelog (#764, #1476, #1478).
 -- SQL Server-tegenhanger: Database/avg/Tables/Feedback*.sql + Database/Script.PostDeployment1.sql.
 --
 -- Persoonsgegevens (AVG): MelderObjectId is de Entra object-ID (pseudoniem, art. 4(5)), MelderNaam is

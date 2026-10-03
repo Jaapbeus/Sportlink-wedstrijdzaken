@@ -61,7 +61,7 @@ melding ──► PII-gates ──► AI-structurering ──► opslag in avg.F
 ## 4. Datamodel (beide tiers, schema `avg` — persoonsgegevens)
 
 SQL Server: `Database/avg/Tables/Feedback*.sql` + idempotent in `Database/Script.PostDeployment1.sql`;
-Postgres: migratie `034_avg_feedback.sql` (lowercase). Row-Level Security staat aan zonder policies
+Postgres: migratie `035_avg_feedback.sql` (lowercase). Row-Level Security staat aan zonder policies
 (#1198, geborgd door `check-rls-enabled.sh`).
 
 **`avg.Feedback`** — één rij per melding

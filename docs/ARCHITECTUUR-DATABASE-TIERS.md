@@ -4520,7 +4520,7 @@ tier-kant.
 
 | Onderdeel | Postgres | SQL Server |
 |---|---|---|
-| Tabellen | `avg.feedback`, `avg.feedbacktelemetrie`, `avg.feedbackinzagelog` — `034_avg_feedback.sql`, met `ENABLE ROW LEVEL SECURITY` in dezelfde migratie | `avg.Feedback`, `avg.FeedbackTelemetrie`, `avg.FeedbackInzageLog` — `Database/avg/Tables/` én idempotent `Script.PostDeployment1.sql` |
+| Tabellen | `avg.feedback`, `avg.feedbacktelemetrie`, `avg.feedbackinzagelog` — `035_avg_feedback.sql`, met `ENABLE ROW LEVEL SECURITY` in dezelfde migratie | `avg.Feedback`, `avg.FeedbackTelemetrie`, `avg.FeedbackInzageLog` — `Database/avg/Tables/` én idempotent `Script.PostDeployment1.sql` |
 | Bewaartermijn | `PostgresCleanupProcedures.CleanupFeedbackAsync` (grenzen in C#, parameters) | `avg.sp_CleanupFeedback` (parameters) — zelfde regels |
 | Opslag | `PostgresFeedbackStore` | `SqlFeedbackStore` |
 

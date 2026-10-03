@@ -30,7 +30,7 @@ public class SqlFeedbackStoreIntegrationTests
 
     private static FeedbackNieuw Rij(string club, string? oid = "oid-1", string type = "Fout",
         string onderwerp = "Onderwerp", string beschrijving = "Beschrijving") =>
-        new(Guid.NewGuid(), club, type, onderwerp, "Issuetekst", beschrijving, null, oid, "Jan Melder", "user", "/velden", "3.9.7.0",
+        new(Guid.NewGuid(), club, type, onderwerp, "Issuetekst", beschrijving, null, oid, "Jan de Vries", "user", "/velden", "3.9.7.0",
             FeedbackStatusWaarden.WachtOpPublicatie);
 
     private static async Task ExecAsync(string sql, params (string, object?)[] parameters)
@@ -71,7 +71,7 @@ public class SqlFeedbackStoreIntegrationTests
             var detail = await Store().GetDetailAsync(club, rij.FeedbackId);
 
             detail.Should().NotBeNull();
-            detail!.Samenvatting.MelderNaam.Should().Be("Jan Melder");
+            detail!.Samenvatting.MelderNaam.Should().Be("Jan de Vries");
             detail.Samenvatting.AangemaaktUtc.Kind.Should().Be(DateTimeKind.Utc);
             detail.Telemetrie.Select(t => t.Bron).Should().Equal("console", "netwerk");
             (await Store().GetDetailAsync("andere-club", rij.FeedbackId)).Should().BeNull();
@@ -148,8 +148,8 @@ public class SqlFeedbackStoreIntegrationTests
         {
             var s = Store();
             var id = Guid.NewGuid();
-            await s.LogInzageAsync(new FeedbackInzageNieuw(club, "oid-admin", "Piet Beheerder", "detail", id, null));
-            await s.LogInzageAsync(new FeedbackInzageNieuw(club, "oid-admin", "Piet Beheerder", "lijst", null, "type=Fout"));
+            await s.LogInzageAsync(new FeedbackInzageNieuw(club, "oid-admin", "Testbeheerder", "detail", id, null));
+            await s.LogInzageAsync(new FeedbackInzageNieuw(club, "oid-admin", "Testbeheerder", "lijst", null, "type=Fout"));
 
             var lijst = await s.LijstInzageAsync(club, 10, 0);
 
@@ -201,9 +201,9 @@ public class SqlFeedbackStoreIntegrationTests
 
             (await Lees(gesloten25.FeedbackId)).Should().Be((DBNull.Value, DBNull.Value));
             (await Lees(nooitOud.FeedbackId)).Should().Be((DBNull.Value, DBNull.Value));
-            (await Lees(gesloten23.FeedbackId)).Should().Be(("oid-2", "Jan Melder"));
-            (await Lees(openOud.FeedbackId)).Should().Be(("oid-3", "Jan Melder"), "zolang het issue open is blijft de identiteit bewaard");
-            (await Lees(nooitNieuw.FeedbackId)).Should().Be(("oid-5", "Jan Melder"));
+            (await Lees(gesloten23.FeedbackId)).Should().Be(("oid-2", "Jan de Vries"));
+            (await Lees(openOud.FeedbackId)).Should().Be(("oid-3", "Jan de Vries"), "zolang het issue open is blijft de identiteit bewaard");
+            (await Lees(nooitNieuw.FeedbackId)).Should().Be(("oid-5", "Jan de Vries"));
             (await s.GetDetailAsync(club, gesloten25.FeedbackId))!.Beschrijving.Should().Be("tekst blijft");
             (await s.GetDetailAsync(club, gesloten25.FeedbackId))!.Telemetrie.Select(t => t.Bron).Should().Equal("netwerk");
             (await s.LijstInzageAsync(club, 10, 0)).Items.Select(i => i.Actie).Should().Equal("detail");

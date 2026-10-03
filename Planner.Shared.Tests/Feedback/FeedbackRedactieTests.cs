@@ -52,7 +52,8 @@ public class FeedbackRedactieTests
     [Theory]
     [InlineData("{\"password\":\"hunter2\"}", "hunter2")]
     [InlineData("naam=Jan", "Jan")]
-    [InlineData("displayName: \"Piet Puk\"", "Piet")]
+    [InlineData("displayName: \"Jan de Vries\"", "Vries")]
+    [InlineData("{\"name\":\"Jan de Vries\",\"rol\":\"user\"}", "de Vries")]
     public void Redigeer_VerbergtWaardenAchterGevoeligeSleutels(string invoer, string weg)
     {
         FeedbackRedactie.Redigeer(invoer).Should().NotContain(weg).And.Contain("[verborgen]");
@@ -183,8 +184,8 @@ public class FeedbackTelemetrieSaneerderTests
     {
         var invoer = new FeedbackTelemetrie { ConsoleFouten = ["Fout 12345678 voor trainer@voorbeeld.nl"], Navigatiespoor = ["/a?b=c"] };
 
-        var eenmaal = FeedbackTelemetrieSaneerder.Saneer(invoer, "Jan Jansen")!;
-        var tweemaal = FeedbackTelemetrieSaneerder.Saneer(eenmaal, "Jan Jansen")!;
+        var eenmaal = FeedbackTelemetrieSaneerder.Saneer(invoer, "Jan de Vries")!;
+        var tweemaal = FeedbackTelemetrieSaneerder.Saneer(eenmaal, "Jan de Vries")!;
 
         tweemaal.NaarTekst().Should().Be(eenmaal.NaarTekst());
     }

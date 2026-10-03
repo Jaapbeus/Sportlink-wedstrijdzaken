@@ -1,5 +1,5 @@
 -- #764/#1476: feedbackmeldingen van alle gebruikers. Postgres-tegenhanger: avg.feedback
--- (Database.Postgres/migrations/034_avg_feedback.sql).
+-- (Database.Postgres/migrations/035_avg_feedback.sql).
 -- AVG: MelderObjectId (Entra object-ID, pseudoniem) en MelderNaam (momentopname) gaan op NULL via
 -- avg.sp_CleanupFeedback, 24 maanden na sluiting van het GitHub-issue. Nooit in het publieke issue.
 CREATE TABLE [avg].[Feedback] (

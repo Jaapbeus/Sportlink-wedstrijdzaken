@@ -41,8 +41,10 @@ public static class FeedbackRedactie
     private static readonly Regex Querystring = R(@"(?<pad>(?:https?://)?[A-Za-z0-9\-._~%/:]*/[A-Za-z0-9\-._~%/{}]*)[?#][^\s""'<>)\]]*");
 
     // Sleutel=waarde en "sleutel":"waarde" voor sleutels die persoonsgegevens of geheimen dragen.
+    // Een waarde tussen aanhalingstekens wordt in zijn geheel verborgen (anders lekt een achternaam:
+    // "Jan de Vries" werd "[verborgen] de Vries").
     private static readonly Regex GevoeligeSleutel = R(
-        @"(?<sleutel>\b(?:wachtwoord|password|pwd|secret|token|apikey|api_key|code|sig|signature|email|e-mail|emailadres|upn|naam|name|displayname|voornaam|achternaam|fullname|username|gebruikersnaam)\b[""']?\s*[:=]\s*[""']?)(?<waarde>[^\s""',;&}\]]+)",
+        @"(?<sleutel>\b(?:wachtwoord|password|pwd|secret|token|apikey|api_key|code|sig|signature|email|e-mail|emailadres|upn|naam|name|displayname|voornaam|achternaam|fullname|username|gebruikersnaam)\b[""']?\s*[:=]\s*)(?<waarde>""[^""]*""|'[^']*'|[^\s""',;&}\]]+)",
         RegexOptions.IgnoreCase);
 
     // Numerieke ID's als padsegment: /teams/12345 → /teams/{id}.

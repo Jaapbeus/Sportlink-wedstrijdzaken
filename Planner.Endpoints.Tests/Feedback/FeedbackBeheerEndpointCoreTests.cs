@@ -11,12 +11,12 @@ namespace Planner.Endpoints.Tests.Feedback;
 public class FeedbackBeheerEndpointCoreTests
 {
     private const string ClubCode = "ALLSTARS";
-    private static readonly FeedbackAanroeper Beheerder = new("00000000-0000-0000-0000-0000000000a1", "Piet Beheerder", true);
+    private static readonly FeedbackAanroeper Beheerder = new("00000000-0000-0000-0000-0000000000a1", "Testbeheerder", true);
     private static readonly Guid Id = Guid.Parse("3f2a9c1b-1111-2222-3333-444455556666");
 
     private static FeedbackDetail MaakDetail(string status = FeedbackStatusWaarden.WachtOpPublicatie, string body = "Schone issuetekst.") => new(
         new FeedbackSamenvatting(Id, new DateTime(2026, 10, 1, 8, 0, 0, DateTimeKind.Utc), "Fout", "Veldenpagina laadt niet",
-            "Jan Melder", false, "user", "/velden", null, null, status),
+            "Jan de Vries", false, "user", "/velden", null, null, status),
         "Eigen woorden van de melder", null, body, "3.9.7.0", []);
 
     private static Func<string, string, string[], Task<(int, string)>> GitHub(out List<string> aanroepen, bool faalt = false)
@@ -45,7 +45,7 @@ public class FeedbackBeheerEndpointCoreTests
         var log = store.Inzage.Should().ContainSingle().Subject;
         log.Actie.Should().Be("lijst");
         log.InzienDoorObjectId.Should().Be(Beheerder.ObjectId);
-        log.InzienDoorNaam.Should().Be("Piet Beheerder");
+        log.InzienDoorNaam.Should().Be("Testbeheerder");
         log.Filter.Should().Contain("type=Fout").And.Contain("zoekterm=ja").And.NotContain("jan de vries");
         store.LaatsteFilter!.Limit.Should().Be(25);
     }
