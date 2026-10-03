@@ -18,6 +18,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.10.0.1] — 2026-10-04
+
+### Fixed
+- **E-mailverwerking en handmatige sync werken weer op Flex Consumption** (#1512). De opslag van de
+  noodmail-throttle en de sync-wachtrij gebruikte alleen een connection string; op Flex draait de
+  host-opslag via managed identity (`AzureWebJobsStorage__accountName`). Beide ondersteunen nu
+  beide vormen, met de connection string als voorrang.
+
 ## [3.10.0.0] — 2026-10-03
 
 ### Fixed

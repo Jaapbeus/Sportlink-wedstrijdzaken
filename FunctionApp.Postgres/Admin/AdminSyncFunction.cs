@@ -95,10 +95,7 @@ public static class AdminSyncFunction
 
                 await SyncJobsRepository.CreateAsync(jobId, clubCode, weekOffsetFrom: fromWeekOffset, weekOffsetTo: toWeekOffset);
 
-                var storageVerbinding = Environment.GetEnvironmentVariable("AzureWebJobsStorage")
-                    ?? throw new InvalidOperationException(
-                        "AzureWebJobsStorage ontbreekt — vereist voor de Azure Functions-host zelf.");
-                var queueClient = SyncJobsQueue.CreateClient(storageVerbinding);
+                var queueClient = SyncJobsQueue.CreateClient();
                 await queueClient.CreateIfNotExistsAsync();
                 var message = new SyncJobMessage
                 {
