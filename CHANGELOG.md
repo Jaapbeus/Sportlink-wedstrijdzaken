@@ -19,6 +19,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Delen neemt handmatig versleepte wedstrijden mee** (#1460). Op Veld optimalisatie bevat het gedeelde HTML- of PDF-bestand nu de planning zoals die op het scherm staat, ook na handmatig verslepen; de waarschuwing dat aanpassingen verloren gaan is vervallen. Daarvoor stuurt de pagina de getoonde lijst mee naar het nieuwe stateless `POST /api/planner/auto-plan/deel` (beide databasetiers; niets wordt opgeslagen).
 - **Wedstrijd toevoegen direct op Planning** (#1468). Staat de Sportlink Web Extension aan, dan heeft
   Planning rechts in de datumbalk een groene knop **Wedstr. toevoegen**. Die opent het
   aanmaakformulier in een kaart op de pagina zelf, met de gekozen datum al ingevuld; na een echte

@@ -435,6 +435,21 @@ public static class PlannerFunction
     }
 
     /// <summary>
+    /// #1460: deelt de planning zoals de browser hem toont (incl. handmatig versleepte blokken).
+    /// Stateless — geen database, geen herberekening; validatie en rendering in
+    /// <see cref="PlannerDeelPlanEndpointCore"/>, identiek op beide tiers.
+    /// </summary>
+    [Function("AutoPlanDeel")]
+    public static Task<IActionResult> AutoPlanDeel(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/auto-plan/deel")] HttpRequest req,
+        FunctionContext context)
+    {
+        var log = context.GetLogger("AutoPlanDeel");
+        return AdminEndpoint.ExecuteAsync(req, log, "planning delen",
+            rawClubCode => PlannerDeelPlanEndpointCore.VerwerkAsync(req, PostgresClubScope.Resolve(rawClubCode)));
+    }
+
+    /// <summary>
     /// Past een AutoPlan-resultaat toe op de demowedstrijden — alleen in testmodus (ALLSTARS).
     /// Postgres-vertaling van het gelijknamige SQL Server-endpoint (issue 888 vervolg, §42).
     /// </summary>
