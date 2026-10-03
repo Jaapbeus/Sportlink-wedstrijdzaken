@@ -572,6 +572,23 @@ public class AutoPlanRequestDto
     public int? BufferMinuten { get; set; }
 }
 
+/// <summary>#1460: body van <c>POST planner/auto-plan/deel</c> — de planning zoals getoond (geen persoonsgegevens).</summary>
+public class AutoPlanDeelRequestDto
+{
+    public string Datum { get; set; } = "";
+    public string Tab { get; set; } = "huidig";
+    public List<AutoPlanDeelRegelDto> Wedstrijden { get; set; } = new();
+}
+
+public class AutoPlanDeelRegelDto
+{
+    public string TeamNaam { get; set; } = "";
+    public string Wedstrijd { get; set; } = "";
+    public string? Competitiesoort { get; set; }
+    public string? Tijd { get; set; }
+    public string? Veld { get; set; }
+}
+
 public class AutoPlanWedstrijdItemDto
 {
     public long? WedstrijdCode { get; set; }

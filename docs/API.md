@@ -107,6 +107,7 @@ verwerking plaats.
 | `POST` | `/planner/herplan-check` | **Admin** | Herplan-alternatieven simuleren — gescoped op `X-Club-Code` header |
 | `POST` | `/planner/herplan-bevestig` | **Admin** | Herplanverzoek registreren |
 | `POST` | `/planner/auto-plan` | **Admin** | **Dagplanning optimaliseren** — regels → voorkeurstijden → leeftijdsdefaults |
+| `POST` | `/planner/auto-plan/deel` | **Admin** | Planning delen zoals getoond op het scherm (HTML/PDF, stateless, #1460) |
 | `POST` | `/planner/auto-plan/toepassen` | **Admin** | Berekende planning wegschrijven (alleen testmodus ALLSTARS) |
 | `GET` | `/planner/veldbezetting?datum=` | **Admin/User** | Wedstrijden op een datum, zonder optimalisatie-berekening — voedt de Planning-pagina, sinds #1400 generiek zichtbaar voor elke ingelogde gebruiker |
 | `GET` | `/planner/team-schedule` | **Admin** | Wedstrijdschema per team — gescoped op `X-Club-Code` header |
@@ -761,6 +762,21 @@ Sinds #666 is dit de enige dagplanning-optimalisatie.
 Bij `format=html|pdf` moet `datum` strikt `yyyy-MM-dd` zijn (anders 400). De berekening is een pure
 leesbewerking; alleen `/planner/auto-plan/toepassen` schrijft, dus een tweede aanroep voor de export heeft
 geen bijwerking.
+
+### POST /api/planner/auto-plan/deel — planning delen zoals getoond (#1460)
+
+Stateless: de browser stuurt de lijst zoals die op Veld optimalisatie staat (inclusief handmatig
+versleepte blokken); de server valideert en rendert hetzelfde HTML/PDF-document als
+`auto-plan?format=`. Geen opslag, geen herberekening. Query `format=html|pdf` (verplicht).
+
+```json
+{ "datum": "2026-10-03", "tab": "optimaal",
+  "wedstrijden": [ { "teamNaam": "...", "wedstrijd": "Thuis - Uit", "competitiesoort": "...", "tijd": "09:30", "veld": "..." } ] }
+```
+
+Limieten: max 500 wedstrijden; tekstvelden max 200 tekens zonder stuurtekens; `tijd` `HH:mm`;
+`datum` `yyyy-MM-dd` tussen 2020-01-01 en 2100-12-31; body max 512 KB (413). De club komt van de
+aanroeper — een afwijkende optionele `clubCode` geeft 403. Overige fouten: 400.
 
 ### Rangorde van het planningsdoel
 
