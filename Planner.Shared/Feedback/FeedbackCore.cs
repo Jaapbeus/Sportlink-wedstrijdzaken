@@ -79,6 +79,13 @@ public sealed class FeedbackRequest
     public FeedbackContext? Context { get; set; }
 
     /// <summary>
+    /// Technische context (#764): console-fouten, mislukte API-aanroepen, navigatiespoor. Standaard
+    /// meegestuurd, door de gebruiker per melding uit te zetten (dan <c>null</c>). De server
+    /// redigeert dit opnieuw (<see cref="FeedbackTelemetrieSaneerder"/>) vóór het wordt gebruikt.
+    /// </summary>
+    public FeedbackTelemetrie? Telemetrie { get; set; }
+
+    /// <summary>
     /// Alleen gevuld op de bevestigingsstap na een voorbeeld (#1205). Zie
     /// <see cref="FeedbackCore.SubmitAsync"/> voor waarom deze clientwaarden hier veilig zijn.
     /// </summary>
@@ -217,6 +224,24 @@ public static class FeedbackCore
         var (issueNummer, issueUrl) = await maakGitHubIssueAsync(voorbereid.Titel!, voorbereid.Body!, labels);
 
         return new FeedbackSubmitResultaat(FeedbackStatus.Ok, null, issueNummer, issueUrl);
+    }
+
+    /// <summary>
+    /// De volledig voorbereide, PII-gecontroleerde melding (#764): titel en body zoals ze naar GitHub
+    /// zouden gaan. Het endpoint bewaart dit en publiceert het direct (beheerder) of na een klik van
+    /// een beheerder (gewone gebruiker) — zonder de AI nogmaals aan te roepen.
+    /// </summary>
+    public sealed record FeedbackVoorbereiding(FeedbackStatus Status, string? Foutmelding, string? Titel = null, string? Body = null);
+
+    /// <summary>
+    /// Publiek toegangspunt op dezelfde voorbereiding als <see cref="VoorbeeldAsync"/> en
+    /// <see cref="SubmitAsync"/>: alle gates, dezelfde titel/body-opbouw.
+    /// </summary>
+    public static async Task<FeedbackVoorbereiding> BereidVoorAsync(
+        FeedbackRequest dto, IChatClient chatClient, ILogger log, DateTime? tijdstipUtc = null)
+    {
+        var voorbereid = await BereidPublicatieVoorAsync(dto, chatClient, log, tijdstipUtc, "Feedback");
+        return new FeedbackVoorbereiding(voorbereid.Status, voorbereid.Foutmelding, voorbereid.Titel, voorbereid.Body);
     }
 
     private sealed record VoorbereidePublicatie(
@@ -378,6 +403,12 @@ public static class FeedbackCore
     {
         var beschrijving = Sanitize(dto.Beschrijving, 2000);
         var qaBlok = BouwQaBlok(dto.VragenAntwoorden);
+        // #764: de (reeds geredigeerde) technische context laat het model de oorzaak concreet
+        // benoemen ("POST /api/... geeft 500") in plaats van "de knop doet niets". Alleen aanwezig
+        // als de melder dit niet heeft uitgezet.
+        var contextBlok = dto.Telemetrie is { IsLeeg: false } t
+            ? $"\nTechnische context (automatisch verzameld, al geredigeerd):\n{Sanitize(t.NaarTekst(), 1500)}\n"
+            : "";
 
         var systemPrompt = """
             Je vertaalt gebruikersfeedback van een clubbeheerder naar een gestructureerd GitHub issue voor een developer.
@@ -400,6 +431,8 @@ public static class FeedbackCore
             - Criteria: implementatiestappen als checkbox
 
             Schrijf technisch, voor een developer, niet voor de gebruiker.
+            Is er technische context meegegeven, gebruik die dan om de oorzaak concreet te benoemen
+            (route, statuscode, foutmelding). Neem nooit namen of andere persoonsgegevens over.
             """;
 
         var userPrompt = $"""
@@ -408,7 +441,7 @@ public static class FeedbackCore
             Versie: {dto.Context?.Versie ?? "?"}
 
             Beschrijving gebruiker: "{beschrijving}"
-            {qaBlok}
+            {qaBlok}{contextBlok}
             """;
 
         var messages = new List<ChatMessage>
@@ -497,6 +530,41 @@ public static class FeedbackCore
         string issueUrl = (string)created.html_url;
         log.LogInformation("GitHub issue #{Nr} aangemaakt via feedback widget", nummer);
         return (nummer, issueUrl);
+    }
+
+    private static readonly HttpClient StatusHttp = MaakStatusHttp();
+
+    private static HttpClient MaakStatusHttp()
+    {
+        var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("SportlinkFeedbackWidget/2.0");
+        http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+        http.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
+        return http;
+    }
+
+    /// <summary>
+    /// Leest uit GitHub of een gepubliceerd issue gesloten is (#764, bewaartermijn: identiteit blijft
+    /// bewaard zolang het issue open is plus 24 maanden na sluiting). Geeft <c>null</c> voor "nog open"
+    /// en <c>false</c> in <c>gelukt</c> als de status niet te bepalen was — dan wordt er niets
+    /// geanonimiseerd; liever te lang bewaren dan op een gok wissen.
+    /// </summary>
+    public static async Task<(bool gelukt, DateTime? geslotenOpUtc)> HaalIssueSluitingAsync(
+        string pat, string owner, string repo, int nummer, ILogger log)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.github.com/repos/{owner}/{repo}/issues/{nummer}");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pat);
+        using var resp = await StatusHttp.SendAsync(req);
+        if (!resp.IsSuccessStatusCode)
+        {
+            log.LogWarning("GitHub-issuestatus ophalen mislukt voor #{Nr}: HTTP {Status}", nummer, (int)resp.StatusCode);
+            return (false, null);
+        }
+        var json = JObject.Parse(await resp.Content.ReadAsStringAsync());
+        if (!string.Equals(json["state"]?.Value<string>(), "closed", StringComparison.OrdinalIgnoreCase))
+            return (true, null);
+        var gesloten = json["closed_at"]?.Value<DateTime>();
+        return (true, gesloten?.ToUniversalTime());
     }
 
     // ── Issue body samenstelllen ───────────────────────────────────────────────
@@ -650,6 +718,36 @@ public static class FeedbackRateLimiter
     private static readonly TimeSpan RateLimitVenster = TimeSpan.FromMinutes(10);
     private static readonly Queue<DateTime> _submits = new();
     private static readonly object _rateLock = new();
+
+    // #764: nu elke ingelogde gebruiker de widget mag gebruiken, kost elke gebruiker die zonder rem
+    // /validate of /preview aanroept een betaalde AI-aanroep. Teller per gebruiker, in-memory:
+    // voor deze rem (bescherming tegen per ongeluk doorklikken en een lopende script) is dat
+    // genoeg — de harde grens voor opslag zit per gebruiker in de database (zie
+    // FeedbackEndpointCore). Een gelijkwaardige limiet geldt dus op beide tiers.
+    public const int MaxAiAanroepenPerVenster = 30;
+    private static readonly Dictionary<string, Queue<DateTime>> _perGebruiker = new();
+
+    public static bool TryAcquireAiSlot(string gebruikerSleutel)
+    {
+        lock (_rateLock)
+        {
+            var nu = DateTime.UtcNow;
+            var cutoff = nu - RateLimitVenster;
+            if (!_perGebruiker.TryGetValue(gebruikerSleutel, out var wachtrij))
+            {
+                // Houd het geheugen begrensd: oude, lege sleutels meteen opruimen.
+                if (_perGebruiker.Count > 500)
+                    foreach (var sleutel in _perGebruiker.Where(kv => kv.Value.Count == 0 || kv.Value.Peek() < cutoff).Select(kv => kv.Key).ToList())
+                        _perGebruiker.Remove(sleutel);
+                wachtrij = _perGebruiker[gebruikerSleutel] = new Queue<DateTime>();
+            }
+            while (wachtrij.TryPeek(out var eerste) && eerste < cutoff)
+                wachtrij.Dequeue();
+            if (wachtrij.Count >= MaxAiAanroepenPerVenster) return false;
+            wachtrij.Enqueue(nu);
+            return true;
+        }
+    }
 
     public static bool TryAcquireSubmitSlot()
     {
