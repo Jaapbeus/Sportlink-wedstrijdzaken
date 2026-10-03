@@ -9,7 +9,7 @@ namespace BlazorAdmin.Services;
 /// <item>De knop verschijnt alleen op het resultaat van een ECHTE aanmaak (geen dry-run) met een
 ///   <c>PublicMatchId</c> — dan is zeker dat het een door deze app aangemaakte clubwedstrijd is.</item>
 /// <item>Verwijderen gebeurt nooit zonder expliciete bevestiging, ook niet als dry-run aan staat:
-///   verwijderen is mogelijk niet terug te draaien.</item>
+///   verwijderen is definitief en de tegenstander kan een melding krijgen.</item>
 /// <item>Er loopt hooguit één verwijderaanvraag tegelijk; na een echte, geslaagde verwijdering
 ///   verdwijnt de knop.</item>
 /// </list>

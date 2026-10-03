@@ -6,6 +6,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
 using Npgsql;
+using Planner.Endpoints.Sportlink;
 using Planner.Shared.Integrations.SportlinkClub;
 using System.Linq;
 
@@ -389,6 +390,7 @@ public static class SportlinkMatchFunction
         }
 
         var auditService = context.InstanceServices.GetService<ISportlinkMutationAuditService>();
+        if (auditService == null) return SportlinkEndpointSupportCore.AuditNietBeschikbaarFout();
         var triggerdDoor = EasyAuthHelper.GetAuditActor(req);
         // #998: WaardeVoor breidt uit met MatchStatus/IsCanceledMatch/IsConceptMatch/FacilityId/
         // FacilityName — allemaal niet-persoonsgebonden velden die al in SportlinkMatch zitten. Geen
