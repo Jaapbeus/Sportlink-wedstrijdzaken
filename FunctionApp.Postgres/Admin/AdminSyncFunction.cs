@@ -6,7 +6,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using FunctionApp.Postgres.Sync;
-using Planner.Shared.Sync;
+using Planner.Endpoints.Admin;
 
 namespace FunctionApp.Postgres.Admin;
 
@@ -84,20 +84,13 @@ public static class AdminSyncFunction
         return AdminEndpoint.ExecuteAsync(req, log, "sync starten",
             async clubCode =>
             {
-                // #1352: optionele body {reset, season}; zonder body exact het oude gedrag.
-                var keuze = SyncTriggerCore.LeesEnValideer(
-                    await new StreamReader(req.Body).ReadToEndAsync(), DateTime.UtcNow.Year);
-                if (!keuze.Geldig)
-                    return new BadRequestObjectResult(new { error = keuze.Fout });
-
-                // #861: rol public.season zo nodig door vóór het venster gelezen wordt.
-                await PostgresSeasonHelper.EnsureSeasonsAsync(log);
-                var toWeekOffset = await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log);
-                var (vanOffset, seizoenFout) = await SyncTriggerCore.BepaalVanWeekOffsetAsync(keuze,
+                // #1352/#1461/#1492: body + seizoensvenster via de gedeelde orkestratie (400 bij ongeldig).
+                var venster = await SyncTriggerEndpointCore.BepaalVensterAsync(
+                    await new StreamReader(req.Body).ReadToEndAsync(), DateTime.UtcNow.Year,
+                    async () => { await PostgresSeasonHelper.EnsureSeasonsAsync(log); return await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log); },
                     jaar => PostgresSeasonHelper.GetSeasonStartWeekOffsetOrNullAsync(jaar));
-                // #1461: onbekend seizoen is een 400, geen stille terugval op een standaardvenster.
-                if (vanOffset is not int fromWeekOffset)
-                    return new BadRequestObjectResult(new { error = seizoenFout });
+                if (venster.Fout is not null) return venster.Fout;
+                int fromWeekOffset = venster.Van, toWeekOffset = venster.Tot;
                 var jobId = Guid.NewGuid();
 
                 await SyncJobsRepository.CreateAsync(jobId, clubCode, weekOffsetFrom: fromWeekOffset, weekOffsetTo: toWeekOffset);
@@ -116,7 +109,7 @@ public static class AdminSyncFunction
                 };
                 await queueClient.SendMessageAsync(JsonSerializer.Serialize(message));
 
-                log.LogInformation("AdminSyncTrigger: job {JobId}, range {From} .. {To} (reset: {Reset}) — op de queue gezet", jobId, fromWeekOffset, toWeekOffset, keuze.SeasonStartYear is not null);
+                log.LogInformation("AdminSyncTrigger: job {JobId}, range {From} .. {To} (reset: {Reset}) — op de queue gezet", jobId, fromWeekOffset, toWeekOffset, venster.IsReset);
 
                 return new ObjectResult(new
                 {

@@ -194,4 +194,20 @@ public static class PlannerDeelEndpointCore
         verzoek = new DeelVerzoek(f, weergave, datumWaarde);
         return null;
     }
+
+    /// <summary>
+    /// De volledige deel-flow in één aanroep (#1492): <see cref="Lees"/> (400), <see cref="DeelVerzoek.WeigerPdfAsync"/>
+    /// (409 bij uitgeschakelde PDF, #1459), dan <paramref name="haal"/> (de tier-specifieke databasevraag) en
+    /// <paramref name="naarDeel"/> (<c>VanPlan</c>/<c>VanVeldbezetting</c>; <c>null</c> = JSON). Zonder
+    /// <c>?format=</c> geeft het <paramref name="alsJson"/>-resultaat terug.
+    /// </summary>
+    public static async Task<IActionResult> VerwerkAsync<T>(
+        string? format, string? tab, string? datum, Func<Task<bool>> pdfIngeschakeld,
+        Func<Task<T>> haal, Func<DeelVerzoek, T, IActionResult?> naarDeel, Func<T, IActionResult> alsJson)
+    {
+        if (Lees(format, tab, datum, out var deel) is { } deelFout) return deelFout;
+        if (await deel.WeigerPdfAsync(pdfIngeschakeld) is { } pdfGeweigerd) return pdfGeweigerd;
+        var data = await haal();
+        return naarDeel(deel, data) ?? alsJson(data);
+    }
 }
