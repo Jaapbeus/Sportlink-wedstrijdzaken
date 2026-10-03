@@ -56,6 +56,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   volgt in issue #1460.
 
 ### Security
+- De what-if-poort controleert de app settings nu per Function App (#1495).
 - **Workflows draaien met minimale tokenrechten** (zie issue #1472). `deploy.yml` en `pre-release-check.yml`
   krijgen alleen leesrechten op de repository; daarmee zijn de elf CodeQL-meldingen over ontbrekende
   workflowrechten opgelost. De meldingen over log-injectie volgen in een volgende release.
