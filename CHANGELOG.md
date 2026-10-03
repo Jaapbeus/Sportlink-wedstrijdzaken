@@ -18,6 +18,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **Verify-AzureAuthSetup.ps1 lekt geen persoonlijke gegevens meer bij lege admin-parameter** (#1474).
+  Wanneer het verificatiescript zonder `-AdminUserPrincipalName` gestart wordt, slaat het de admin-toewijzingscontrole
+  over in plaats van een ongefilterde gebruikerszoekopdracht uit te voeren die alle tenant-gebruikers zou tonen.
+  Laag 4 van het verificatiescript checkt nu correct de `AuthGate.Bepaal()`-implementatie in plaats van een
+  verouderde `IsInRole`-aanroep in App.razor rechtstreeks.
+
 ### Added
 - **Wedstrijd toevoegen direct op Planning** (#1468). Staat de Sportlink Web Extension aan, dan heeft
   Planning rechts in de datumbalk een groene knop **Wedstr. toevoegen**. Die opent het

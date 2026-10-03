@@ -154,17 +154,44 @@ if ($idClaims) {
     Write-Info "Zonder dit komt de role claim niet in het ID token van Blazor WASM."
 }
 
-# ── Layer 4 — Frontend role-gate (App.razor) ──────────────────────────────────
-Write-Section 'Layer 4 — Frontend role-gate (App.razor) — code-side'
+# ── Layer 4 — Frontend role-gate (AuthGate.Bepaal) ──────────────────────────────
+Write-Section 'Layer 4 — Frontend role-gate (AuthGate) — code-side'
 
+# De auth-gate staat sinds #1277 niet in App.razor zelf, maar in AuthGate.cs:
+# App.razor roept AuthGate.Bepaal() aan, die controleert via IsInRole().
 # Dit script staat in scripts/azure/, dus de repo-root ligt twee niveaus hoger.
-# Stond hier '..', waardoor het pad scripts/BlazorAdmin/App.razor werd — dat bestaat niet,
-# -Resolve gaf $null en Layer 4 rapporteerde daardoor altijd FAIL (#800).
+$authGateCs = Join-Path $PSScriptRoot '../../BlazorAdmin/Services/AuthGate.cs' -Resolve -ErrorAction SilentlyContinue
 $appRazor = Join-Path $PSScriptRoot '../../BlazorAdmin/App.razor' -Resolve -ErrorAction SilentlyContinue
-if ($appRazor -and (Get-Content $appRazor -Raw) -match 'IsInRole\("admin"\)') {
-    Write-Pass "App.razor bevat IsInRole-check (Layer 4 actief in code)"
+
+$hasAuthGate = $false
+$hasGateCall = $false
+
+if ($authGateCs) {
+    $gateContent = Get-Content $authGateCs -Raw
+    # AuthGate moet de ToegangsRollen array hebben en IsInRole() in Bepaal() aanroepen
+    if ($gateContent -match 'public static readonly string\[\] ToegangsRollen' -and
+        $gateContent -match 'gebruiker\.IsInRole\(') {
+        $hasAuthGate = $true
+    }
+}
+
+if ($appRazor) {
+    $razorContent = Get-Content $appRazor -Raw
+    # App.razor moet AuthGate.Bepaal() aanroepen
+    if ($razorContent -match 'AuthGate\.Bepaal\(') {
+        $hasGateCall = $true
+    }
+}
+
+if ($hasAuthGate -and $hasGateCall) {
+    Write-Pass "AuthGate.Bepaal() voert Layer 4 frontend role-gate uit (code-side)"
 } else {
-    Write-Fail "App.razor bevat GEEN IsInRole-check — Layer 4 in code ontbreekt"
+    if (-not $hasAuthGate) {
+        Write-Fail "AuthGate.cs bevat GEEN ToegangsRollen of IsInRole-check — Layer 4 ontbreekt"
+    }
+    if (-not $hasGateCall) {
+        Write-Fail "App.razor roept AuthGate.Bepaal() NIET aan — Layer 4 niet ingewired"
+    }
 }
 
 # ── Layer 5 — Backend RequireAdmin op alle protected endpoints ────────────────
@@ -248,30 +275,37 @@ if (-not (Test-Path $tierBestand)) {
 }
 
 # ── Admin user assignment ─────────────────────────────────────────────────────
-Write-Section "Admin-user assignment ($AdminUserPrincipalName)"
+Write-Section "Admin-user assignment"
 
-$adminUser = az ad user show --id $AdminUserPrincipalName 2>$null | ConvertFrom-Json
-if (-not $adminUser) {
-    Write-Fail "User $AdminUserPrincipalName niet gevonden in tenant"
+if ([string]::IsNullOrWhiteSpace($AdminUserPrincipalName)) {
+    Write-Warn "Geen admin-gebruiker opgegeven — sectie overgeslagen"
+    Write-Info "Wil je een admin-gebruiker controleren? Run het script opnieuw met -AdminUserPrincipalName 'admin@jouwclub.nl'"
 } else {
-    Write-Pass "User gevonden: $($adminUser.displayName) (id $($adminUser.id))"
-
-    $assignments = az rest --method GET `
-        --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$($sp.id)/appRoleAssignedTo" 2>$null `
-        | ConvertFrom-Json
-
-    $myAssignment = $assignments.value | Where-Object { $_.principalId -eq $adminUser.id }
-    if ($myAssignment) {
-        $roleId = $myAssignment.appRoleId
-        $matched = $app.appRoles | Where-Object { $_.id -eq $roleId }
-        if ($matched.value -eq 'admin') {
-            Write-Pass "$AdminUserPrincipalName heeft 'admin' role assignment"
-        } else {
-            Write-Warn "$AdminUserPrincipalName heeft assignment, maar role-value = '$($matched.value)' (verwacht 'admin')"
-        }
+    # Zoek de exacte gebruiker op basis van UPN/mail equality — nooit een ongefilterde lijst ophalen
+    $adminUser = az ad user show --id $AdminUserPrincipalName 2>$null | ConvertFrom-Json
+    if (-not $adminUser) {
+        Write-Fail "User $AdminUserPrincipalName niet gevonden in tenant"
     } else {
-        Write-Fail "$AdminUserPrincipalName heeft GEEN role-assignment"
-        Write-Info 'Fix: .\scripts\Configure-EntraApp.ps1 (maakt assignment aan met admin-role)'
+        # Print alleen de gevonden UPN, niet meer — geen gebruikerslijsten
+        Write-Pass "User gevonden: $($adminUser.userPrincipalName)"
+
+        $assignments = az rest --method GET `
+            --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$($sp.id)/appRoleAssignedTo" 2>$null `
+            | ConvertFrom-Json
+
+        $myAssignment = $assignments.value | Where-Object { $_.principalId -eq $adminUser.id }
+        if ($myAssignment) {
+            $roleId = $myAssignment.appRoleId
+            $matched = $app.appRoles | Where-Object { $_.id -eq $roleId }
+            if ($matched.value -eq 'admin') {
+                Write-Pass "$AdminUserPrincipalName heeft 'admin' role assignment"
+            } else {
+                Write-Warn "$AdminUserPrincipalName heeft assignment, maar role-value = '$($matched.value)' (verwacht 'admin')"
+            }
+        } else {
+            Write-Fail "$AdminUserPrincipalName heeft GEEN role-assignment"
+            Write-Info 'Fix: .\scripts\Configure-EntraApp.ps1 (maakt assignment aan met admin-role)'
+        }
     }
 }
 
