@@ -8,7 +8,8 @@
 #
 # Gebruik:
 #   check-whatif-appsettings.sh --sites <whatif.json>               # namen van Web/sites in de changes
-#   check-whatif-appsettings.sh <whatif.json> [<live-namen.json>]   # de poort
+#   check-whatif-appsettings.sh <whatif.json> [<live-map>|<live-namen.json>]   # de poort
+#   <live-map> bevat <sitenaam>.json per Function App (#1495); ontbrekend bestand = exit 2
 #
 # <live-namen.json>: JSON-array van objecten met "name" (uitvoer van
 #   `az functionapp config appsettings list`), of van strings. Nodig omdat een site-GET in what-if
@@ -80,15 +81,28 @@ def app_settings(res):
         return None
     return sc.get("appSettings")
 
-live_names = None
-if live:
+def read_live(path):
     try:
-        with open(live, encoding="utf-8") as f:
-            live_names = names(json.load(f), "live")
+        with open(path, encoding="utf-8") as f:
+            return names(json.load(f), "live")
     except SystemExit:
         raise
     except Exception as e:
         fatal("live-appsettinglijst onleesbaar (%s)" % type(e).__name__)
+
+# <live> is een map met <sitenaam>.json (per Function App, #1495) of een enkel bestand
+# (oud gedrag: dezelfde lijst voor alle sites; alleen veilig bij precies een site).
+import os
+live_dir = live if (live and os.path.isdir(live)) else None
+live_single = read_live(live) if (live and live_dir is None) else None
+
+def live_for(site):
+    if live_dir is not None:
+        p = os.path.join(live_dir, site + ".json")
+        if not os.path.isfile(p):
+            return None
+        return read_live(p)
+    return live_single
 
 failed = False
 for c in sites:
@@ -106,6 +120,11 @@ for c in sites:
     after_n = names(after, "after")
     before_raw = app_settings(c.get("before"))
     before_n = names(before_raw, "before") if before_raw is not None else set()
+    live_names = live_for(site)
+    if live_names is None and live_dir is not None:
+        fatal("site '%s': geen live-lijst voor deze Function App - kan niet bewijzen dat niets verdwijnt" % site)
+    if live_single is not None and len(sites) > 1:
+        fatal("meerdere sites in what-if maar een enkele live-lijst - geef een map met <site>.json")
     if not before_n and live_names is None:
         fatal("site '%s': 'before' bevat geen appSettings en er is geen live-lijst meegegeven" % site)
     existing = before_n | (live_names or set())
