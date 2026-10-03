@@ -89,6 +89,11 @@ public static class SportlinkEndpointSupportCore
     public static IActionResult ClientNietGeconfigureerdFout()
         => NaarActionResult(SportlinkEndpointCore.ClientNietGeconfigureerdFout);
 
+    /// <summary>Fail-closed (#1458): de 503 voor "mutatie-auditservice niet geregistreerd". Elk
+    /// mutatie-endpoint weigert hiermee vóór de Sportlink-aanroep, op beide tiers.</summary>
+    public static IActionResult AuditNietBeschikbaarFout()
+        => NaarActionResult(SportlinkEndpointCore.AuditNietBeschikbaarFout);
+
     /// <summary>De <see cref="ISportlinkClubClient"/> uit DI, of een 503 als hij niet geregistreerd
     /// is (Program.cs registreert hem alleen als de EgressGuard het toestaat).</summary>
     public static (ISportlinkClubClient? Client, IActionResult? Fout) ClientOfFout(FunctionContext context)
