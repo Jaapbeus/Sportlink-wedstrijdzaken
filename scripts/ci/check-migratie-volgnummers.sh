@@ -16,6 +16,13 @@
 
 set -euo pipefail
 
+# Historische uitzondering: dit paar staat sinds 2026-08-30 op main en is in productie toegepast.
+# Het migratielogboek (schema_migrations) werkt op bestandsnaam, dus hernoemen zou ze opnieuw laten
+# draaien — nooit doen. Een volgnummer mag alleen dubbel zijn als ÁLLE bestanden ervan hier staan;
+# een nieuw 003_*-bestand naast dit paar laat de guard dus alsnog falen.
+toegestaan_dubbel="003_admin_tables.sql
+003_speeltijden_kolommen.sql"
+
 migratie_dir="${1:-Database.Postgres/migrations}"
 if [ ! -d "$migratie_dir" ]; then
   echo "::error::Mapargument '$migratie_dir' bestaat niet."
@@ -56,16 +63,19 @@ dups_raw=$(printf '%s' "$entries" | cut -f1 | sort | uniq -d || true)
 
 if [ -n "$dups_raw" ]; then
   # Voor elke dubbele, toon welke bestanden ermee geassocieerd zijn
-  printf '%s\n' "$dups_raw" | while IFS= read -r dup; do
-    [ -z "$dup" ] && continue
-    echo "::error::Volgnummer $dup komt meer dan eens voor in Database.Postgres/migrations/ (#1485):"
-    printf '%s' "$entries" | while IFS=$'\t' read -r nr bestand; do
-      if [ "$nr" = "$dup" ]; then
-        echo "  - $bestand"
-      fi
+  fout=0
+  for dup in $dups_raw; do
+    bestanden=$(printf '%s' "$entries" | awk -F'\t' -v d="$dup" '$1 == d { print $2 }')
+    alles_toegestaan=1
+    for b in $bestanden; do
+      printf '%s\n' "$toegestaan_dubbel" | grep -qxF "$b" || alles_toegestaan=0
     done
+    [ "$alles_toegestaan" -eq 1 ] && continue
+    echo "::error::Volgnummer $dup komt meer dan eens voor in Database.Postgres/migrations/ (#1485):"
+    for b in $bestanden; do echo "  - $b"; done
+    fout=1
   done
-  exit 1
+  [ "$fout" -eq 1 ] && exit 1
 fi
 
 echo "OK: alle ${count} migratievolgnummers in $(basename "$migratie_dir") zijn uniek."

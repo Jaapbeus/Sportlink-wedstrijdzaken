@@ -46,8 +46,17 @@ rm "$F"/*
 touch "$F"/034_first.sql "$F"/034_second.sql
 verwacht "dubbel 034" 1 "034 komt meer dan eens voor" -- bash $G "$F"
 
-# Test 7: standaardmap (Database.Postgres/migrations) — faalt omdat daar dubbel 003 zit
-verwacht "standaardmap dubbel 003" 1 "003 komt meer dan eens voor" -- bash $G
+# Test 7: historisch toegestaan 003-paar alleen — slaagt
+rm "$F"/*
+touch "$F"/001_first.sql "$F"/003_admin_tables.sql "$F"/003_speeltijden_kolommen.sql
+verwacht "toegestaan 003-paar" 0 "^OK:" -- bash $G "$F"
+
+# Test 8: nieuw 003-bestand naast het toegestane paar — faalt
+touch "$F"/003_nieuw.sql
+verwacht "nieuw naast toegestaan paar" 1 "003 komt meer dan eens voor" -- bash $G "$F"
+
+# Test 9: de echte map in deze repository — moet groen zijn
+verwacht "standaardmap" 0 "^OK:" -- bash $G
 
 echo ""
 echo "geslaagd=$ok mislukt=$bad"
