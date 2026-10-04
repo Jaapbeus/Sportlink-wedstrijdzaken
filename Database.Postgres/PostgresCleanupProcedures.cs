@@ -259,4 +259,59 @@ public static class PostgresCleanupProcedures
         delete.Parameters.AddWithValue("verwijderVoor", verwijderVoor);
         await delete.ExecuteNonQueryAsync(ct);
     }
+
+    /// <summary>
+    /// Postgres-tegenhanger van <c>avg.sp_CleanupFeedback</c> (#764, #1476) — de bewaartermijnen van
+    /// de feedbackmeldingen. De termijnen komen als parameter binnen (de aanroeper leest ze uit
+    /// <c>Planner.Shared.Feedback.FeedbackRetentie</c>; dit project kent Planner.Shared niet).
+    /// <para>
+    /// <b>Identiteit</b> (<c>melderobjectid</c> + <c>meldernaam</c>) gaat op NULL
+    /// (<c>isgeanonimiseerd = TRUE</c>) zodra het gekoppelde issue langer dan
+    /// <paramref name="identiteitMaanden"/> gesloten is. Een melding die nooit is gepubliceerd
+    /// (<c>issuenummer IS NULL</c>) telt vanaf haar aanmaakmoment, zodat een vergeten melding de
+    /// identiteit niet eeuwig vasthoudt. De meldingstekst blijft staan.
+    /// <b>Telemetrie</b> wordt na <paramref name="telemetrieDagen"/> verwijderd, het
+    /// <b>inzagelog</b> na <paramref name="inzageMaanden"/>. Alle grenzen worden eenmalig in C#
+    /// berekend (zelfde keuze als de procedures hierboven).
+    /// </para>
+    /// Geeft uitsluitend aantallen terug — nooit inhoud (AVG).
+    /// </summary>
+    public static async Task<(int Geanonimiseerd, int TelemetrieVerwijderd, int InzageVerwijderd)> CleanupFeedbackAsync(
+        NpgsqlConnection connection, DateTime nuUtc, int identiteitMaanden, int telemetrieDagen, int inzageMaanden,
+        CancellationToken ct = default)
+    {
+        int geanonimiseerd, telemetrie, inzage;
+
+        await using (var update = new NpgsqlCommand(@"
+            UPDATE avg.feedback
+            SET melderobjectid = NULL,
+                meldernaam = NULL,
+                isgeanonimiseerd = TRUE,
+                geanonimiseerdoputc = @nu,
+                mta_modified = @nu
+            WHERE isgeanonimiseerd = FALSE
+              AND ((issuegeslotenoputc IS NOT NULL AND issuegeslotenoputc < @grens)
+                   OR (issuenummer IS NULL AND mta_inserted < @grens))", connection))
+        {
+            update.Parameters.AddWithValue("nu", nuUtc);
+            update.Parameters.AddWithValue("grens", nuUtc.AddMonths(-identiteitMaanden));
+            geanonimiseerd = await update.ExecuteNonQueryAsync(ct);
+        }
+
+        await using (var deleteTelemetrie = new NpgsqlCommand(
+            "DELETE FROM avg.feedbacktelemetrie WHERE mta_inserted < @grens", connection))
+        {
+            deleteTelemetrie.Parameters.AddWithValue("grens", nuUtc.AddDays(-telemetrieDagen));
+            telemetrie = await deleteTelemetrie.ExecuteNonQueryAsync(ct);
+        }
+
+        await using (var deleteInzage = new NpgsqlCommand(
+            "DELETE FROM avg.feedbackinzagelog WHERE mta_inserted < @grens", connection))
+        {
+            deleteInzage.Parameters.AddWithValue("grens", nuUtc.AddMonths(-inzageMaanden));
+            inzage = await deleteInzage.ExecuteNonQueryAsync(ct);
+        }
+
+        return (geanonimiseerd, telemetrie, inzage);
+    }
 }

@@ -70,6 +70,10 @@ JavaScript ingevuld en waren via een fetch niet leesbaar — controleer ze in de
 
 ### 3.1 Niet `main.bicep` uitrollen — alleen de Flex-module
 
+> **Vangnet sinds #1455:** de deploy-actie van `infrastructure.yml` draait eerst een what-if-poort
+> (`scripts/ci/check-whatif-appsettings.sh`) die faalt als een bestaande app setting zou verdwijnen,
+> en toont dan alleen de namen. Dat is een vangnet, geen reden om `main.bicep` alsnog uit te rollen.
+
 > ⚠️ **Gevonden bij de voorbereiding (2026-10-02), niet eerder benoemd.** `infrastructure/main.bicep`
 > declareert óók de bestaande productie-app (`modules/function-app.bicep`), met een
 > `siteConfig.appSettings`-lijst van zes settings. Een `az deployment group create` van
@@ -174,6 +178,11 @@ Bron: de indeling uit #1064. De bicep zet er al vier (`AzureWebJobsStorage__acco
 `AzureWebJobsStorage__credential`, `APPLICATIONINSIGHTS_CONNECTION_STRING` (leeg),
 `SqlConnectionString` (leeg)). Secrets nooit via een tussenbestand of als argument: gebruik een
 prompt.
+
+> **`AzureWebJobsStorage` is op Flex identity-based (#1512).** Er is geen connection string; de code
+> (`Planner.Shared/Infrastructure/OpslagVerbinding.cs`) gebruikt `AzureWebJobsStorage` als die er is,
+> anders `AzureWebJobsStorage__accountName` (+ optioneel `__clientId`, `__tableServiceUri`,
+> `__queueServiceUri`) met de managed identity. Zet dus nooit een connection string terug.
 
 ```bash
 # Groep (a) — functionele configuratie, waarden overnemen van de bestaande app:
@@ -492,9 +501,9 @@ buiten een wedstrijdweekend.
 Pas na een geslaagde cutover en 24–48 uur observatie. Volgorde en scope staan in #1073 (inclusief
 de scope-aanvulling: alle negen `net9.0`-projecten, de zes `(net9.0)`-jobnamen in `build.yml`, en
 `DOTNET_VERSION`/`dotnet-version: 9.0.x` in `deploy.yml`). In de bicep: `runtime.version` naar
-`'10.0'` in `function-app-flex.bicep`. Zolang er nog een deploy naar de oude Linux Consumption-app
-mogelijk is (rollback van §7.4), is een `net10.0`-build daarvoor een productiebreker — de rollback
-vervalt dus feitelijk zodra #1073 op `main` staat. Plan FLEX-13 (oude app opruimen) daarom pas ná
+`'10.0'` in `function-app-flex.bicep`. **Status 2026-10-04:** eigenaarsbesluit — .NET 10 gaat nu naar productie (#1073, #1074). De rollback van
+§7.4 naar de oude Linux Consumption-app is daarmee **niet meer van toepassing**: een `net10.0`-build
+is daarvoor een productiebreker en de oude app staat stil. Plan FLEX-13 (oude app opruimen) daarom pas ná
 #1073.
 
 ---
@@ -830,3 +839,11 @@ jobs:
           printf '%s\n' "$ONTBREEKT"
           exit 1
 ```
+
+## Instellingen per instantie (#1515)
+
+Op Flex Consumption draait elke niet-HTTP-trigger op een eigen instantie; de procesbrede
+instellingencache is dus per instantie leeg tot hij gevuld wordt. Een worker-middleware
+(`Planner.Endpoints/Instellingen/InstellingenLaadGuard.cs`, geregistreerd in beide `Program.cs`)
+laadt de instellingen vóór elke functie, eenmaal per proces, met een nieuwe poging bij de volgende
+aanroep als de eerste faalde. Een database-uitval laat de functie niet falen (alleen een warning).

@@ -1,0 +1,49 @@
+{
+ "status": "Succeeded",
+ "changes": [
+  {
+   "resourceId": "/subscriptions/[SUBSCRIPTION_ID]/resourceGroups/[resource-group]/providers/Microsoft.Web/sites/func-[clubcode]-sportlink",
+   "changeType": "Modify",
+   "before": {
+    "properties": {
+     "siteConfig": {
+      "appSettings": [
+       {
+        "name": "A",
+        "value": "[waarde]"
+       },
+       {
+        "name": "B",
+        "value": "[waarde]"
+       }
+      ]
+     }
+    }
+   },
+   "after": {
+    "properties": {
+     "siteConfig": {
+      "appSettings": [
+       {
+        "name": "A",
+        "value": "[waarde]"
+       },
+       {
+        "name": "B",
+        "value": "[waarde]"
+       },
+       {
+        "name": "C",
+        "value": "[waarde]"
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "resourceId": "/subscriptions/[SUBSCRIPTION_ID]/resourceGroups/[resource-group]/providers/Microsoft.Storage/storageAccounts/st[clubcode]",
+   "changeType": "NoEffect"
+  }
+ ]
+}

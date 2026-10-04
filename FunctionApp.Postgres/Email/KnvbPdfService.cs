@@ -26,7 +26,7 @@ internal static class KnvbPdfService
 
     /// <summary>
     /// Regio → bestandsnaam-slug. Uitputtende lijst — een regio die hier niet in staat, staat ook
-    /// niet in public.knvbkalenderdag/AdminSettingsFunction's GeldigeKnvbRegios en levert bewust
+    /// niet in public.knvbkalenderdag/Planner.Endpoints AppSettingsValidatieCore.GeldigeKnvbRegios en levert bewust
     /// <c>null</c> op.
     /// </summary>
     private static readonly IReadOnlyDictionary<string, string> RegioSlug = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)

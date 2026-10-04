@@ -4,16 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an **Azure Functions application** (**`net9.0`**, isolated worker model) that integrates with the Sportlink API to fetch sports data and sync it to a SQL Server database. The application runs on a timer trigger (daily at 04:00) and provides manual sync via HTTP trigger.
+This is an **Azure Functions application** (**`net10.0`**, isolated worker model) that integrates with the Sportlink API to fetch sports data and sync it to a SQL Server database. The application runs on a timer trigger (daily at 04:00) and provides manual sync via HTTP trigger.
 
-> **Do not raise the target framework before the plan migration.** The Linux Consumption Plan does
-> not support `net10.0` — deploying it returns 503 "Function host is not running". `.NET 10` requires
-> the Flex Consumption Plan, which *does* have a free monthly grant (a smaller one than Consumption),
-> but is a different plan and needs explicit owner approval.
->
-> This is a state with an expiry date: .NET 9 loses support on **10 November 2026** and is the last
-> .NET version Linux Consumption will receive. The migration runs through **epic #1063**. See the
-> root CLAUDE.md for the full constraint (#579).
+> All projects target `net10.0`; the app runs on a Flex Consumption Plan with stack
+> `dotnet-isolated 10.0` (#1073, #1074). Keep the csproj target and the stack in sync. Migration
+> history: **epic #1063**. See the root CLAUDE.md.
 
 ## Solution Structure
 
@@ -330,3 +325,14 @@ instellen. `SportlinkAutoLoginEncryptionKey` is een afzonderlijke host-secret; c
 nieuwe refresh-tokens staan versleuteld in `dbo.SportlinkAutoLogin` respectievelijk
 `public.sportlinkautologin`. Zie `docs/SPORTLINK-AUTOLOGIN.md` voor installatie en live acceptatie.
 De egress-guard en menselijke beperking voor live agenttests blijven gelden.
+
+## Feedback voor alle gebruikers (#764)
+
+`POST feedback/validate|preview|submit` zijn open voor admin én user (`ExecuteAuthenticatedAsync`);
+`GET beheer/feedback`, `GET beheer/feedback/{id}`, `GET beheer/feedback/inzagelog` en
+`POST beheer/feedback/{id}/publiceer` zijn admin-only (`AdminFeedbackFunction.cs`). Timer
+`CleanupFeedback` (dagelijks 05:15 UTC) voert de bewaartermijnen uit. Opslag: `avg.Feedback`,
+`avg.FeedbackTelemetrie`, `avg.FeedbackInzageLog` via `SqlFeedbackStore`; alle logica staat in
+`Planner.Shared/Feedback` en `Planner.Endpoints/Feedback`. De melder komt uitsluitend uit het
+Easy Auth-principal (`EasyAuthHelper.GetCallerObjectId`) en staat nooit in het publieke issue. Zie
+`docs/FEEDBACK.md`.

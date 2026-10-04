@@ -99,6 +99,7 @@ niet bijwerken naar de huidige toestand, wel doorzoekbaar houden.
 | [§72](#72-demodata-van-de-democlub-waarom-een-eenmalige-migratie-het-verkeerde-gereedschap-was-1246) | Demodata van de democlub: waarom een eenmalige migratie het verkeerde gereedschap was (#1246) | **geldend** |
 | [§73](#73-thema-logica-gedeeld--en-de-platformafhankelijke-bug-die-de-duplicatie-verborgen-hield-1248-1252) | Thema-logica gedeeld — en de platformafhankelijke bug die de duplicatie verborgen hield (#1248, #1252) | **geldend** |
 | [§74](#74-kleurenpalet-per-modus-als-json--en-waar-een-sql-server-schemawijziging-écht-hoort-1254) | Kleurenpalet per modus als JSON — en waar een SQL Server-schemawijziging écht hoort (#1254) | **geldend** |
+| [§78](#78-feedbackmeldingen-opslag-bewaartermijn-en-inzagelog-op-beide-tiers-764) | Feedbackmeldingen: opslag, bewaartermijn en inzagelog op beide tiers (#764) | **geldend** |
 
 ## 1. Bouwvolgorde (vier tiers, vaste volgorde)
 
@@ -4508,6 +4509,33 @@ op 99, dan geeft het statement geen rij terug en antwoordt het endpoint met een 
 (datum + volgnummer → getal) staat in `Planner.Shared/Integrations/SportlinkClub/ClubMatchWedstrijdNummer.cs`.
 De kolomnamen zijn bewust zonder underscore (`laatstevolgnummer`): `check-postgres-column-coverage.sh`
 vertaalt een SQL Server-kolom door alleen te lowercasen.
+
+
+## 78. Feedbackmeldingen: opslag, bewaartermijn en inzagelog op beide tiers (#764)
+
+Feedback is sinds #764 open voor elke ingelogde gebruiker en bewaart de melder (Entra object-ID +
+naam-momentopname). Het datamodel en de afspraken staan in [FEEDBACK.md](FEEDBACK.md); hier de
+tier-kant.
+
+| Onderdeel | Postgres | SQL Server |
+|---|---|---|
+| Tabellen | `avg.feedback`, `avg.feedbacktelemetrie`, `avg.feedbackinzagelog` — `035_avg_feedback.sql`, met `ENABLE ROW LEVEL SECURITY` in dezelfde migratie | `avg.Feedback`, `avg.FeedbackTelemetrie`, `avg.FeedbackInzageLog` — `Database/avg/Tables/` én idempotent `Script.PostDeployment1.sql` |
+| Bewaartermijn | `PostgresCleanupProcedures.CleanupFeedbackAsync` (grenzen in C#, parameters) | `avg.sp_CleanupFeedback` (parameters) — zelfde regels |
+| Opslag | `PostgresFeedbackStore` | `SqlFeedbackStore` |
+
+**Geen gedeelde providerabstractie, wél een gedeeld opslagcontract.** `IFeedbackStore`
+(`Planner.Shared/Feedback/FeedbackOpslag.cs`) is geen runtime-switch: elke tier heeft zijn eigen
+implementatie en geeft die door aan `Planner.Endpoints/Feedback/*`, dezelfde vorm als
+`ISportlinkMutationAuditService` bij `SportlinkEndpointSupportCore`. Alles wat niet over SQL gaat —
+publicatiebeleid, limieten, redactie, de retentierun zelf — staat eenmalig in `Planner.Shared`/`Planner.Endpoints`.
+
+**Gemeten, niet aangenomen.** Beide stores zijn tegen een echte database getest: Postgres 17
+(`FeedbackStoreIntegrationTests`, in CI via de fresh-db-job) en SQL Server 2022
+(`SqlFeedbackStoreIntegrationTests`, lokaal tegen een wegwerpcontainer met alleen het #764-blok van de
+PostDeployment — dat blok bleek bovendien idempotent). De retentie-tests bewijzen per geval wat wél en
+wat niet verdwijnt (23 maanden blijft, 25 maanden niet; een nog open issue blijft ongeacht leeftijd).
+Eén verschil dat de tests aan het licht brengen: de gefilterde index `IX_avg_Feedback_Melder_Datum` op
+SQL Server vereist `SET QUOTED_IDENTIFIER ON` (zie §75), vandaar de expliciete regel boven het blok.
 
 ## Gerelateerd
 

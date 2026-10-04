@@ -122,12 +122,18 @@ Onderaan **Planning** staat het blok **Veldbezetting delen**, en onderaan **Veld
 
 - **Voorbeeld en HTML:** een voorbeeldweergave van de gekozen dag. **HTML kopiëren** zet de pagina op
   het klembord (voor in een e-mail), **HTML downloaden** bewaart haar als bestand.
-- **PDF downloaden:** een A4-liggend document met per wedstrijd tijd, team, tegenstander, veld en
+- **PDF downloaden (alleen als PDF-export aan staat, #1459):** een A4-liggend document met per wedstrijd tijd, team, tegenstander, veld en
   competitie. Bestandsnamen zijn `veldbezetting-<datum>.pdf`, `huidige-planning-<datum>.pdf` of
   `optimale-planning-<datum>.pdf`. Een kolom Scheidsrechter verschijnt alleen als die gegevens bekend zijn.
 - **Welke planning wordt gedeeld:** op Planning de datum bovenin de pagina. Op Veld optimalisatie de
   tab die u op dat moment bekijkt (**Huidig** of **Optimaal**), met de datum en buffer waarmee u de
   planning hebt berekend; de titel van het document zegt welke van de twee het is.
+- **PDF-export aanzetten:** de PDF-knop verschijnt alleen als een beheerder bij **Instellingen → PDF-export**
+  de schakelaar *PDF-export van planningen inschakelen* aanzet en opslaat. Die staat standaard **uit**. De PDF
+  gebruikt de bibliotheek QuestPDF onder de gratis Community-licentie, die alleen geldt voor organisaties met
+  een jaaromzet onder 1 miljoen USD; door de schakelaar aan te zetten bevestigt u dat dit voor uw vereniging
+  geldt. HTML kopiëren en downloaden werken altijd. Alleen beheerders zien de PDF-knop; ook als de
+  schakelaar uit staat weigert de server een PDF-verzoek.
 - **Rechten:** Planning delen kan elke ingelogde gebruiker; Veld optimalisatie blijft alleen voor beheerders.
 
 ### Veld optimalisatie — twee tabs: Huidig en Optimaal
@@ -613,24 +619,25 @@ Boven elk scherm staat een smalle balk met, van links naar rechts:
   vanzelf.
 - **Het versienummer** van de applicatie (rechts).
 - **De zon/maan-knop** voor lichte of donkere weergave — zie hoofdstuk 21.
-- **De FEEDBACK-knop** om een melding te doen — zie hoofdstuk 23.
+- **De FEEDBACK-knop** om een melding te doen — voor iedere ingelogde gebruiker, zie hoofdstuk 23.
 - **About**, een link naar de broncode van het project.
 
 ### De zijbalk
 
 De zijbalk links bevat in deze volgorde: **Dashboard**, **Teambegeleiding**, **Planning**,
 dan (alleen onder een voorwaarde, zie hieronder) **Wedstr. aanmaken** en **Wijzigingsverzoeken**,
-daarna **Veld optimalisatie**, **Leermomenten**, **Teamaliassen**, **Email-tester**, en tot slot het uitklapbare menu
+daarna **Veld optimalisatie**, **Leermomenten**, **Teamaliassen**, **Feedback** (alleen voor beheerders, zie §23a), **Email-tester**, en tot slot het uitklapbare menu
 **Instellingen** met daarin *Instellingen*, *Speeltijden*, *Velden*, *Begeleiding importeren*,
 *Voorkeurstijden*, *E-mailtemplates*, *Thema*, *Sportlink Ext.* (het menu-item; de functie zelf
 heet Sportlink Web Extension, zie §19) en *Rechten per rol* (zie §19a).
 
-Planning en Veld optimalisatie staan voor elke ingelogde gebruiker in het menu. Drie menu-items
+Planning en Veld optimalisatie staan voor elke ingelogde gebruiker in het menu. Vier menu-items
 verschijnen alleen onder een voorwaarde:
 
 - **Wedstr. aanmaken** (menu-item voor het scherm "Wedstrijd aanmaken",
   zie §18a) en **Wijzigingsverzoeken** staan er alleen als de Sportlink Web Extension is ingeschakeld
   (hoofdstuk 19). Ze staan bewust direct onder Planning, want daar werkt u ook mee (#1468).
+- **Feedback** (het feedbackoverzicht, §23a) staat er alleen voor een beheerder.
 - Onder het menu Instellingen komt nog het kopje **TESTMODUS** met daaronder **Testdata**; dat
   staat er alleen als AllStars FC in de club-keuzelijst is gekozen.
 
@@ -1310,16 +1317,15 @@ toelichting, dan staat sinds #1427 de foutmelding van Sportlink zelf achter "afg
 (`Sportlink <code>: <melding>`). Deze pagina is onderdeel van de Sportlink Web
 Extension (§19) en vereist dat die is ingeschakeld en gekoppeld voor de rol Wedstrijdzaken.
 
-> **Verwijderen — voorlopig altijd een simulatie (#1440).** Na een échte (niet gesimuleerde) aanmaak
+> **Verwijderen (#1440, live sinds #1458).** Na een échte (niet gesimuleerde) aanmaak
 > staat onder het resultaat de knop **Wedstrijd verwijderen uit Sportlink**. Een klik toont eerst een
-> rood bevestigblok met de omschrijving en het PublicMatchId, met **Ja, verwijderen** en **Annuleren**;
-> pas na **Ja, verwijderen** gaat de aanvraag naar de server. Hoe Sportlink het verwijderen verwacht, is
-> afgeleid uit de openbare code van Sportlink Club en nog niet in de praktijk bevestigd. Daarom wordt er
-> voorlopig **niets** in Sportlink verwijderd, ook niet als dry-run uit staat: de melding zegt dan
-> "Nog niet live bevestigd door Sportlink — deze actie is altijd een simulatie". De poging staat wel in
-> de mutatie-audit. Alleen clubwedstrijden (oefenwedstrijden) komen in aanmerking; een competitie- of
-> bekerwedstrijd weigert de server. Een testwedstrijd ruimt u tot nader order nog op in Sportlink Club
-> zelf (knop **Verwijder** op de wedstrijddetailpagina).
+> rood bevestigblok met de omschrijving, het PublicMatchId en de waarschuwing "Verwijderen is
+> definitief; de tegenstander kan een melding krijgen.", met **Ja, verwijderen** en **Annuleren**;
+> pas na **Ja, verwijderen** gaat de aanvraag naar de server. Staat dry-run aan (§19), dan wordt er
+> niets verwijderd en meldt het scherm een simulatie; anders wordt de wedstrijd echt uit Sportlink
+> Club verwijderd. Elke poging staat in de mutatie-audit; is die niet beschikbaar, dan weigert de
+> server (503) en gebeurt er niets. Zoals in Sportlink zelf mag alleen een clubwedstrijd
+> (oefenwedstrijd) weg; een competitie- of bekerwedstrijd weigert de server.
 
 ---
 
@@ -1624,24 +1630,52 @@ applicatie. Ook dat is pas definitief nadat u opslaat.
 
 ---
 
-## 23. Feedback geven (FEEDBACK-knop) — met voorbeeld vóór publicatie
+## 23. Feedback geven (FEEDBACK-knop)
 
-De FEEDBACK-knop rechtsboven maakt van uw melding een **GitHub-issue**. Die issue staat in een
-publieke repository: hij is **openbaar op internet** en voor iedereen leesbaar, ook zonder account.
-Dat is bewust — het is de plek waar de ontwikkelaar het werk bijhoudt — maar het betekent dat alles
-wat u typt openbaar wordt.
+De FEEDBACK-knop rechtsboven is er voor **iedere ingelogde gebruiker** (rol beheerder én gebruiker).
+Een melding komt uiteindelijk als **GitHub-issue** op de takenlijst van de ontwikkelaar. Die issue
+staat in een publieke repository: hij is **openbaar op internet** en voor iedereen leesbaar, ook
+zonder account. Dat is bewust, maar het betekent dat alles wat u typt openbaar kan worden.
 
-### De vier stappen
+**Wat er met uw naam gebeurt.** Uw naam (en uw interne gebruikers-ID) wordt bewaard in het
+feedbackoverzicht, zodat de beheerder bij u kan navragen. Ze staan **nooit** in het openbare issue.
+Zolang het issue open is en daarna nog 24 maanden blijft dat zo; daarna wordt de koppeling tussen u en
+de melding losgelaten (de tekst blijft). Zie `docs/FEEDBACK.md` voor de volledige afspraken.
+
+### Wat er daarna gebeurt — verschilt per rol
+
+| | Beheerder | Gewone gebruiker |
+|---|---|---|
+| Stappen | Formulier → Overzicht → **Voorbeeld** → Openbaar publiceren | Formulier → Overzicht → **Versturen** |
+| Publicatie | Direct, nadat u in het voorbeeld zelf bevestigt | **Niet direct.** Een beheerder leest de melding eerst en publiceert hem in het feedbackoverzicht (hoofdstuk 23a) |
+| Na afloop | Bevestiging met link naar het issue | *"Je melding is opgeslagen"* met een meldingsnummer — geen link naar GitHub |
+
+### De stappen voor een beheerder
 
 | Stap | Wat u doet | Wat het systeem doet |
 |---|---|---|
-| 1. **Formulier** | Kies Fout / Verzoek / Vraag en beschrijf de melding in eigen woorden | Beoordeelt of de beschrijving compleet is en stelt zo nodig maximaal drie aanvulvragen |
-| 2. **Overzicht** | Controleer type, pagina en uw eigen tekst | — |
+| 1. **Formulier** | Kies *Er gaat iets mis* / *Ik mis iets* / *Ik snap iets niet* en beschrijf de melding in eigen woorden | Beoordeelt of de beschrijving compleet is en stelt zo nodig maximaal drie aanvulvragen |
+| 2. **Overzicht** | Controleer soort, pagina en uw tekst; bepaal of de technische gegevens meegaan | — |
 | 3. **Voorbeeld** | **Lees de volledige tekst die gepubliceerd wordt** en kies: *Aanpassen* of *Openbaar publiceren* | Stelt de exacte titel en body samen — inclusief de AI-samenvatting en acceptatiecriteria — en toont die, zónder iets te publiceren |
 | 4. **Bevestiging** | — | Pas nu wordt het issue aangemaakt; u krijgt het issuenummer met een link |
 
 Stap 3 is de publicatiegrens: tot u daar op **Openbaar publiceren** klikt, is er niets naar
 internet gegaan. Klikt u op **Aanpassen**, dan keert u terug naar het formulier met uw tekst intact.
+
+### Technische gegevens meesturen (stap 2)
+
+Standaard staat **Technische gegevens meesturen** aan: de laatste foutmeldingen van de browser, de
+laatste mislukte aanroepen naar de server, de laatst bezochte schermen en uw browser. Dat helpt de
+ontwikkelaar om "de knop doet niets" terug te vinden. Via **Bekijk wat er wordt meegestuurd** ziet u
+letterlijk de regels die verstuurd worden. Wilt u dit niet, haal dan het vinkje weg: er gaat dan
+niets mee.
+
+- E-mailadressen, ID's, tokens en alles achter een vraagteken in een webadres zijn er al uit gehaald.
+  Namen van andere personen in een foutmelding herkent het systeem niet altijd — het kader is bedoeld
+  voor technische tekst.
+- Er worden geen schermafbeeldingen en geen ingevulde formulierinhoud meegestuurd.
+- De technische gegevens staan **nooit** in het openbare issue, zijn alleen zichtbaar voor beheerders
+  en worden na 90 dagen gewist.
 
 ### Wat u zelf moet controleren in het voorbeeld
 
@@ -1660,7 +1694,8 @@ Die controle is een **vangnet, geen anonimisering**. Niet herkend worden onder m
 
 Lees het voorbeeld daarom woord voor woord. Twijfelt u? Klik op **Aanpassen** en herschrijf de
 melding zonder het gegeven — of beschrijf de situatie in algemene termen ("een speler van JO13-1"
-in plaats van een naam).
+in plaats van een naam). Voor meldingen van gewone gebruikers is dit precies waarom een beheerder ze
+eerst leest (hoofdstuk 23a).
 
 > **Eenmaal gepubliceerd is niet terug te draaien.** GitHub bewaart bewerkingsgeschiedenis, en
 > zoekmachines en archiefdiensten nemen nieuwe issues binnen minuten op. Een issue later aanpassen
@@ -1668,6 +1703,45 @@ in plaats van een naam).
 
 ### Grenzen
 
-- Maximaal 5 publicaties per 10 minuten. Het voorbeeld opvragen telt niet mee — dat publiceert niets.
-- Werkt alleen als de GitHub-koppeling is geconfigureerd; anders meldt de widget dat en wordt er
-  niets verstuurd.
+- Maximaal 3 meldingen per 10 minuten per persoon (en 30 per uur voor de hele club). Daarboven volgt
+  *"Je hebt net al een paar meldingen gestuurd. Probeer het over 10 minuten nog eens."* Het voorbeeld
+  opvragen publiceert niets, maar is wel begrensd (30 controles per 10 minuten).
+- Werkt alleen als de GitHub-koppeling is geconfigureerd. Is dat niet zo, dan wordt de melding van een
+  beheerder toch bewaard in het overzicht (met een waarschuwing) en kan hij later gepubliceerd worden.
+
+---
+
+## 23a. Feedbackoverzicht (`/feedback`) — alleen beheerders
+
+Onder **Feedback** in de zijbalk (alleen zichtbaar voor beheerders) staan alle meldingen. Daar leest
+u mee, publiceert u de meldingen van gewone gebruikers en ziet u wie wat heeft ingezien.
+
+### Tabblad Meldingen
+
+- **Filteren** op soort, status, periode (*Van* / *Tot en met*) en zoektekst (onderwerp en
+  beschrijving). **Wissen** zet alle filters terug.
+- Elke regel toont datum, soort, onderwerp (met meldingsnummer), **melder**, rol, scherm, het
+  GitHub-issue en de status: *Wacht op publicatie*, *Gepubliceerd*, *Publiceren mislukt* of
+  *Wordt gepubliceerd*. Bij een melding waarvan de bewaartermijn verlopen is staat
+  *— (geanonimiseerd)* in plaats van de naam.
+- **▸** klapt de melding open: de beschrijving in eigen woorden, aanvullende antwoorden en — voor een
+  melding die nog niet gepubliceerd is — **de exacte tekst die openbaar gaat worden**. Onder
+  *Technische gegevens* staan de meegestuurde foutmeldingen, mislukte aanroepen en schermen.
+- **Publiceer** (alleen bij *Wacht op publicatie* of *Publiceren mislukt*) maakt het GitHub-issue aan
+  met precies de getoonde tekst. Lees die eerst: dit is de enige keer dat een gewone gebruiker iets
+  openbaar maakt, en de beheerder is daar de poortwachter. Een tweede klik maakt geen tweede issue.
+  Mislukt publiceren, dan blijft de melding staan en kunt u het later opnieuw proberen.
+
+### Tabblad Inzagelog
+
+Elke keer dat iemand het overzicht opent, een melding bekijkt of publiceert, wordt dat vastgelegd:
+**wie, wanneer, wat** (en welke filtervelden — nooit de zoektekst). Het log bevat nooit de inhoud van
+een melding en wordt na 24 maanden gewist. U ziet hier dus ook uw eigen inzagen; dat is bedoeld, omdat
+u hier namen van collega's kunt lezen.
+
+### Wat het overzicht bewust niet kan
+
+- **Geen export** naar CSV of Excel: dat zou een kopie buiten de bewaartermijn en het inzagelog om
+  maken.
+- Er is geen knop om een melding te verwijderen. Een verzoek tot wissing (AVG) volgt de werkwijze in
+  `docs/FEEDBACK.md` §9.

@@ -26,7 +26,7 @@ Deze handleiding beschrijft hoe je een eigen instantie van Sportlink Wedstrijdza
 | Sportlink `clientId` | Opvragen bij jouw eigen Sportlink-beheerder |
 | GitHub-account | Voor de repository-fork en CI/CD |
 | Azure CLI | Voor Entra-configuratie (`az login`) |
-| Jaaromzet van de vereniging **onder USD 1.000.000** | Alleen voor de PDF-export van de planning. Die gebruikt QuestPDF onder de gratis *Community License*, en die geldt voor organisaties onder deze omzetgrens (contributie, kantine, sponsoring en subsidies tellen mee). Zit jouw club erboven, dan is een betaalde QuestPDF-licentie nodig of gebruik je de PDF-export niet. Zie [docs/ARCHITECTUUR-PDF-EXPORT.md](docs/ARCHITECTUUR-PDF-EXPORT.md) §2 |
+| Jaaromzet van de vereniging **onder USD 1.000.000** | Alleen voor de PDF-export van de planning. Die gebruikt QuestPDF onder de gratis *Community License*, en die geldt voor organisaties onder deze omzetgrens (contributie, kantine, sponsoring en subsidies tellen mee). Zit jouw club erboven, dan is een betaalde QuestPDF-licentie nodig of gebruik je de PDF-export niet. Sinds #1459 staat de PDF-export standaard **uit**; een beheerder zet hem zelf aan bij Instellingen → PDF-export en bevestigt daarmee dat de voorwaarden gelden. Zie [docs/ARCHITECTUUR-PDF-EXPORT.md](docs/ARCHITECTUUR-PDF-EXPORT.md) §2 |
 
 ---
 

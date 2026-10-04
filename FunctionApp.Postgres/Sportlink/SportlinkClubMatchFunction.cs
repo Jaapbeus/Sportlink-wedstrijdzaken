@@ -83,6 +83,7 @@ public static class SportlinkClubMatchFunction
                 if (bouwFout != null) return bouwFout;
 
                 var auditService = context.InstanceServices.GetService<ISportlinkMutationAuditService>();
+                if (auditService == null) return SportlinkEndpointSupportCore.AuditNietBeschikbaarFout();
                 var triggerdDoor = EasyAuthHelper.GetAuditActor(req);
                 var correlationId = Guid.NewGuid().ToString();
                 var auditEntry = new SportlinkMutationAuditEntry(

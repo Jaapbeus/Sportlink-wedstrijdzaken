@@ -61,7 +61,7 @@ case-sensitief voor tabelnamen op de meeste platforms maar niet gegarandeerd op 
 
 ## 6. Open architectuurbesluit: persistente opslag op Linux Consumption
 
-Dit project draait op het Linux Azure Functions Consumption-plan (net9.0 isolated worker) — zie
+Dit project draait op het Linux Azure Functions Consumption-plan (destijds net9.0 isolated worker; inmiddels Flex Consumption, net10.0) — zie
 CLAUDE.md, sectie ".NET versie". **Dit document stelt niet voor om die beperking te heroverwegen.**
 
 > **Let op — de aanname onder dit hoofdstuk verloopt.** Sinds epic #1063 ligt er een migratie naar

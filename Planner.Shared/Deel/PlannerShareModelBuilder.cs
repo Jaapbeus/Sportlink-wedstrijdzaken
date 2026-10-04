@@ -63,12 +63,32 @@ namespace Planner.Shared.Deel
             ArgumentNullException.ThrowIfNull(wedstrijden);
 
             var optimaal = weergave == PlanWeergave.Optimaal;
-            var regels = wedstrijden
+            return VanGetoondePlan(
+                wedstrijden.Select(w => new GetoondePlanRegel(
+                    w.TeamNaam, w.Wedstrijd, w.Competitiesoort,
+                    optimaal ? w.OptimaalTijd : w.HuidigeTijd,
+                    optimaal ? w.OptimaalVeld : w.HuidigeVeld)),
+                datum, clubCode, weergave);
+        }
+
+        /// <summary>
+        /// De Veld optimalisatie-pagina zoals de browser hem toont (#1460), dus mét handmatig
+        /// versleepte blokken: dezelfde mapping en titel als <see cref="VanPlan"/>, maar tijd en
+        /// veld zijn al de getoonde waarden. <see cref="VanPlan"/> loopt hier zelf ook doorheen, zodat
+        /// de twee paden niet uit elkaar kunnen lopen.
+        /// </summary>
+        public static PlannerShareModel VanGetoondePlan(
+            IEnumerable<GetoondePlanRegel> regels, DateOnly datum, string clubCode, PlanWeergave weergave)
+        {
+            ArgumentNullException.ThrowIfNull(regels);
+
+            var optimaal = weergave == PlanWeergave.Optimaal;
+            var lijst = regels
                 .Select(w => new PlannerShareWedstrijd(
-                    Tijd: TijdOfPlaatshouder(optimaal ? w.OptimaalTijd : w.HuidigeTijd),
+                    Tijd: TijdOfPlaatshouder(w.Tijd),
                     Team: w.TeamNaam,
                     Tegenstander: TegenstanderUitWedstrijd(w.Wedstrijd, w.TeamNaam),
-                    Veld: LeegAlsNull(optimaal ? w.OptimaalVeld : w.HuidigeVeld),
+                    Veld: LeegAlsNull(w.Veld),
                     Competitie: LeegAlsNull(w.Competitiesoort),
                     Scheidsrechter: null))
                 .ToList();
@@ -78,7 +98,7 @@ namespace Planner.Shared.Deel
                 Titel: $"{soort} op {DatumTekst(datum)}",
                 ClubCode: clubCode,
                 Peildatum: datum,
-                Wedstrijden: Sorteer(regels));
+                Wedstrijden: Sorteer(lijst));
         }
 
         /// <summary>

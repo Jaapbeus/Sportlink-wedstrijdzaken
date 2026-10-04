@@ -6,7 +6,7 @@
 // nooit een wijziging daarvan. De bestaande module blijft ongewijzigd de live productie-app
 // beschrijven totdat de cutover (FLEX-09) is afgerond en FLEX-13 de oude resources opruimt.
 //
-// Bewust nog net9.0 — de bump naar net10.0 gebeurt in FLEX-10/FLEX-11, ná de plan-migratie
+// Stack: dotnet-isolated 10.0 (#1074) — gelijk aan net10.0 in de csproj's.
 // (volgorde-onderbouwing: zie epic #1063 "Gekozen volgorde: eerst het plan, dan het framework").
 //
 // Instance memory en maximumInstanceCount zijn GEEN aannames maar gemeten/onderbouwde keuzes:
@@ -133,7 +133,7 @@ resource flexFunctionApp 'Microsoft.Web/sites@2024-04-01' = {
       }
       runtime: {
         name: 'dotnet-isolated'
-        version: '9.0' // bewust nog 9.0 — zie moduleheader; bump naar 10.0 in FLEX-10/FLEX-11
+        version: '10.0' // .NET 10 (#1074): moet overeenkomen met de TargetFramework net10.0 van de csproj's
       }
     }
   }

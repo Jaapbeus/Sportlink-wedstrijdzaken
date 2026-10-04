@@ -30,6 +30,14 @@ public class AppSettingsDto
     public bool SportlinkDryRun { get; set; } = true;
     /// <summary>#1437: clubinstelling Spelactiviteit voor nieuwe oefenwedstrijden (omschrijving of IdTag uit Sportlinks lijst).</summary>
     public string? SportlinkSpelactiviteit { get; set; }
+    /// <summary>#1459: PDF-export (QuestPDF Community) per club; standaard uit tot een beheerder de licentievoorwaarden bevestigt.</summary>
+    public bool PdfExportIngeschakeld { get; set; }
+}
+
+/// <summary>#1459: antwoord van <c>GET api/planner/pdf-export</c> (voor elke ingelogde rol).</summary>
+public class PdfExportStatusDto
+{
+    public bool PdfExportIngeschakeld { get; set; }
 }
 
 /// <summary>#988: rol↔serviceaccount-koppelingsstatus, zie docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md §6.</summary>
@@ -570,6 +578,23 @@ public class AutoPlanRequestDto
 {
     public string Datum { get; set; } = "";
     public int? BufferMinuten { get; set; }
+}
+
+/// <summary>#1460: body van <c>POST planner/auto-plan/deel</c> — de planning zoals getoond (geen persoonsgegevens).</summary>
+public class AutoPlanDeelRequestDto
+{
+    public string Datum { get; set; } = "";
+    public string Tab { get; set; } = "huidig";
+    public List<AutoPlanDeelRegelDto> Wedstrijden { get; set; } = new();
+}
+
+public class AutoPlanDeelRegelDto
+{
+    public string TeamNaam { get; set; } = "";
+    public string Wedstrijd { get; set; } = "";
+    public string? Competitiesoort { get; set; }
+    public string? Tijd { get; set; }
+    public string? Veld { get; set; }
 }
 
 public class AutoPlanWedstrijdItemDto

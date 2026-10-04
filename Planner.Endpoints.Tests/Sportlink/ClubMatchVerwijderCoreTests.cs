@@ -34,7 +34,7 @@ public class ClubMatchVerwijderCoreTests
             .ReturnsAsync(new SportlinkClubResponse<SportlinkMatch>(matchStatus, match, null, 200));
         mock.Setup(c => c.DeleteClubMatchAsync(It.IsAny<string>(), Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SportlinkClubResponse<SportlinkMutationResult>(
-                SportlinkClubCallStatus.Ok, new SportlinkMutationResult(true, null, IsDryRun: true, IsForcedDryRun: true), null, 200));
+                SportlinkClubCallStatus.Ok, new SportlinkMutationResult(true, null, PublicMatchId: Id), null, 200));
         return mock;
     }
 
@@ -57,14 +57,26 @@ public class ClubMatchVerwijderCoreTests
         var ok = result.Should().BeOfType<OkObjectResult>().Subject.Value.Should()
             .BeOfType<ClubMatchVerwijderCore.ClubMatchVerwijderResultaat>().Subject;
         ok.PublicMatchId.Should().Be(Id);
-        ok.IsForcedDryRun.Should().BeTrue();
+        ok.IsSuccess.Should().BeTrue();
         client.Verify(c => c.DeleteClubMatchAsync("Wedstrijdzaken", Id, It.IsAny<CancellationToken>()), Times.Once);
         var poging = audit.Pogingen.Should().ContainSingle().Subject;
         poging.PublicMatchId.Should().Be(Id);
         poging.Actie.Should().Be(ClubMatchVerwijderCore.AuditActie);
         poging.ClubCode.Should().Be("ALLSTARS");
         poging.WaardeVoor.Should().Contain("\"IsKernelMatch\":false").And.Contain("26100201");
-        audit.Voltooid.Should().ContainSingle().Which.Should().Be((42L, "DryRunLocked", (string?)null), "de code-lock maakt dit een gedwongen simulatie; Voltooid hoort bij dezelfde auditrij");
+        audit.Voltooid.Should().ContainSingle().Which.Should().Be((42L, "Success", (string?)null), "Voltooid hoort bij dezelfde auditrij");
+    }
+
+    [Fact]
+    public async Task ZonderAuditservice_Geeft503_EnVerwijdertNooit()
+    {
+        // #1458: fail-closed — geen onomkeerbare verwijdering zonder auditspoor.
+        var client = new Mock<ISportlinkClubClient>(MockBehavior.Strict);
+
+        var result = await ClubMatchVerwijderCore.VerwijderAsync(Id, () => null, () => (client.Object, null), "Wedstrijdzaken", audit: null);
+
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(503);
+        client.VerifyNoOtherCalls();
     }
 
     [Theory]

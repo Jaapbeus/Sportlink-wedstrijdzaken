@@ -1,4 +1,4 @@
-using Planner.Shared.Sync;
+using Planner.Endpoints.Admin;
 using System.Text.Json;
 using Azure.Storage.Queues;
 using Microsoft.AspNetCore.Http;
@@ -80,26 +80,18 @@ public static class AdminSyncFunction
         return AdminEndpoint.ExecuteAsync(req, log, "sync starten",
             async clubCode =>
             {
-                // #1352: optionele body {reset, season}; zonder body exact het oude gedrag.
-                var keuze = SyncTriggerCore.LeesEnValideer(
-                    await new StreamReader(req.Body).ReadToEndAsync(), DateTime.UtcNow.Year);
-                if (!keuze.Geldig)
-                    return new BadRequestObjectResult(new { error = keuze.Fout });
-
-                int toWeekOffset = await SystemUtilities.SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
-                var (vanOffset, seizoenFout) = await SyncTriggerCore.BepaalVanWeekOffsetAsync(keuze,
+                // #1352/#1461/#1492: body + seizoensvenster via de gedeelde orkestratie (400 bij ongeldig).
+                var venster = await SyncTriggerEndpointCore.BepaalVensterAsync(
+                    await new StreamReader(req.Body).ReadToEndAsync(), DateTime.UtcNow.Year,
+                    () => SystemUtilities.SeasonHelper.GetSeasonEndWeekOffsetAsync(log),
                     jaar => SystemUtilities.SeasonHelper.GetSeasonStartWeekOffsetOrNullAsync(jaar));
-                // #1461: onbekend seizoen is een 400, geen stille terugval op een standaardvenster.
-                if (vanOffset is not int fromWeekOffset)
-                    return new BadRequestObjectResult(new { error = seizoenFout });
+                if (venster.Fout is not null) return venster.Fout;
+                int fromWeekOffset = venster.Van, toWeekOffset = venster.Tot;
                 var jobId = Guid.NewGuid();
 
                 await SyncJobsRepository.CreateAsync(jobId, clubCode, weekOffsetFrom: fromWeekOffset, weekOffsetTo: toWeekOffset);
 
-                var storageVerbinding = Environment.GetEnvironmentVariable("AzureWebJobsStorage")
-                    ?? throw new InvalidOperationException(
-                        "AzureWebJobsStorage ontbreekt — vereist voor de Azure Functions-host zelf.");
-                var queueClient = SyncJobsQueue.CreateClient(storageVerbinding);
+                var queueClient = SyncJobsQueue.CreateClient();
                 await queueClient.CreateIfNotExistsAsync();
                 var message = new SyncJobMessage
                 {
@@ -110,7 +102,7 @@ public static class AdminSyncFunction
                 };
                 await queueClient.SendMessageAsync(JsonSerializer.Serialize(message));
 
-                log.LogInformation("AdminSyncTrigger: job {JobId}, range {From} .. {To} (reset: {Reset}) — op de queue gezet", jobId, fromWeekOffset, toWeekOffset, keuze.SeasonStartYear is not null);
+                log.LogInformation("AdminSyncTrigger: job {JobId}, range {From} .. {To} (reset: {Reset}) — op de queue gezet", jobId, fromWeekOffset, toWeekOffset, venster.IsReset);
 
                 return new ObjectResult(new
                 {

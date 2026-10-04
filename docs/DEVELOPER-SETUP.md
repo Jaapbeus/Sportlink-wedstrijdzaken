@@ -115,7 +115,7 @@ Dekt **Windows** en **macOS (Apple Silicon)**. Sla het platform over dat niet va
   brew tap azure/functions && brew install azure-functions-core-tools@4
   ```
   > **Niet volledig geverifieerd:** er is geen officiële Microsoft-bevestiging gevonden dat dit
-  > pakket een `dotnet-isolated net9.0`-app expliciet ondersteunt op Apple Silicon (arm64).
+  > pakket een `dotnet-isolated net10.0`-app expliciet ondersteunt op Apple Silicon (arm64).
   > Installeer op deze manier en controleer bij de eerste `func start` of de FunctionApp
   > daadwerkelijk opstart — faalt dat op Apple Silicon, dan is dit de meest waarschijnlijke
   > oorzaak.

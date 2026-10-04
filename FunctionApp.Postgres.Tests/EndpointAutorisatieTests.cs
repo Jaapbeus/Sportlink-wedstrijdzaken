@@ -78,6 +78,10 @@ public class EndpointAutorisatieTests
     /// (viewing), terwijl de Sportlink-mutatie-endpoints hieronder wél Wedstrijdzaken/admin-gated
     /// blijven — zie <see cref="Sportlink_AlleenWedstrijdzaken_PasseertDeAdminPoort"/>.
     /// </para>
+    /// <para>
+    /// <c>PdfExportStatus</c> (#1459): alleen de aan/uit-stand van PDF-export voor de gekozen club,
+    /// zodat Planning de PDF-knop ook voor de rol <c>user</c> juist toont.
+    /// </para>
     /// </summary>
     private static readonly string[] AuthenticatedRoutes =
     [
@@ -87,6 +91,13 @@ public class EndpointAutorisatieTests
         "Veldbezetting",
         "SportlinkMatchGet",
         "SportlinkMatchPublicMatchIdGet",
+        "PdfExportStatus",
+        // #764: de feedbackwidget is open voor elke ingelogde rol; een melding van een gewone
+        // gebruiker wordt nooit rechtstreeks gepubliceerd (zie FeedbackEndpointCore). Het
+        // beheeroverzicht (AdminFeedback*) blijft admin-only.
+        "FeedbackValidate",
+        "FeedbackPreview",
+        "FeedbackSubmit",
     ];
 
     /// <summary>Minimumaantal HTTP-endpoints dat de reflectie moet vinden. Vangt een stille

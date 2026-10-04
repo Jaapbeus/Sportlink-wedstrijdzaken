@@ -1,0 +1,128 @@
+/* Gedeelde Gantt-tijdlijn (#1491) — gescopet op het component; verhuisd uit Planning.razor.css en
+   VeldOptimalisatie.razor.css, waar dezelfde basisklassen dubbel stonden. Klassenamen ongewijzigd. */
+
+.gantt-scroll {
+    overflow-x: auto;
+    min-width: 0;
+}
+
+.gantt-tijdas-header {
+    display: flex;
+    margin-bottom: 4px;
+}
+
+.gantt-label-gutter {
+    width: 120px;
+    flex-shrink: 0;
+}
+
+.gantt-tijdas-lijn {
+    flex: 1;
+    position: relative;
+    height: 22px;
+    min-width: 200px;
+}
+
+.gantt-uur-label {
+    position: absolute;
+    left: var(--gantt-left);
+    transform: var(--gantt-transform);
+    font-size: 0.7rem;
+    color: var(--bs-secondary-color);
+    white-space: nowrap;
+    user-select: none;
+}
+
+.gantt-veld-rij {
+    display: flex;
+    border-top: 1px solid var(--bs-border-color);
+}
+
+.gantt-veld-label {
+    width: 120px;
+    flex-shrink: 0;
+    padding: 6px 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--bs-secondary-color);
+    background: var(--bs-tertiary-bg);
+    border-right: 1px solid var(--bs-border-color);
+    display: flex;
+    align-items: center;
+}
+
+.gantt-veld-track {
+    flex: 1;
+    position: relative;
+    height: 72px;
+    min-width: 200px;
+    background: var(--bs-body-bg);
+}
+
+.gantt-uurlijn {
+    position: absolute;
+    left: var(--gantt-left);
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--bs-border-color);
+    z-index: 0;
+}
+
+.gantt-as-onderlijn {
+    height: 1px;
+    background: var(--bs-border-color);
+    margin-left: 120px;
+}
+
+.gantt-blok {
+    position: absolute;
+    left: var(--gantt-left);
+    width: var(--gantt-width);
+    top: var(--gantt-top);
+    height: var(--gantt-height);
+    background: var(--gantt-bg);
+    border-radius: 5px;
+    overflow: hidden;
+    padding: 2px 5px;
+    color: #fff;
+    font-size: 0.68rem;
+    line-height: 1.25;
+    z-index: 1;
+    cursor: default;
+    outline: none;
+    outline-offset: -3px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+/* Alleen de sleepbare blokken (optimaal/huidig-vergelijking) hebben een grijpcursor en een
+   stippellijn voor handmatig verplaatste wedstrijden. */
+.gantt-blok-sleepbaar {
+    cursor: var(--gantt-cursor);
+    outline: var(--gantt-outline);
+}
+
+.gantt-blok-tijd {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-weight: 700;
+    font-size: 0.7rem;
+    margin-top: var(--gantt-margin-top, 0);
+}
+
+.gantt-blok-label {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.gantt-voorkeur-balk {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: var(--gantt-voorkeur-kleur);
+    border-radius: 5px 5px 0 0;
+}

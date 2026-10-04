@@ -429,8 +429,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # C# zonder build: CodeQL's buildless modus. Een echte build zou hier de .NET 9-
-        # en .NET 10-SDK plus de SSDT-uitsluiting (zie .slnf) moeten herhalen.
+        # C# zonder build: CodeQL's buildless modus. Een echte build zou hier de
+        # .NET 10-SDK plus de SSDT-uitsluiting (zie .slnf) moeten herhalen.
         include:
           - language: csharp
             build-mode: none

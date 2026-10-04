@@ -27,8 +27,30 @@ public partial class AdminApiClient
     public Task<byte[]> GetAutoPlanPdfAsync(string datum, int? bufferMinuten, string tab)
         => LeesBytesAsync(_http.PostAsJsonAsync(AutoPlanDeelPad("pdf", tab), new AutoPlanRequestDto { Datum = datum, BufferMinuten = bufferMinuten }));
 
+    /// <summary>
+    /// #1460: deelt de planning zoals die op het scherm staat, inclusief handmatig versleepte
+    /// blokken. Stateless: de server valideert en rendert alleen wat hier meegestuurd wordt.
+    /// </summary>
+    public Task<string> GetAutoPlanDeelHtmlAsync(string datum, string tab, IEnumerable<AutoPlanDeelRegelDto> regels)
+        => LeesTekstAsync(_http.PostAsJsonAsync(AutoPlanGetoondPad("html"), new AutoPlanDeelRequestDto { Datum = datum, Tab = tab, Wedstrijden = regels.ToList() }));
+
+    public Task<byte[]> GetAutoPlanDeelPdfAsync(string datum, string tab, IEnumerable<AutoPlanDeelRegelDto> regels)
+        => LeesBytesAsync(_http.PostAsJsonAsync(AutoPlanGetoondPad("pdf"), new AutoPlanDeelRequestDto { Datum = datum, Tab = tab, Wedstrijden = regels.ToList() }));
+
+    private static string AutoPlanGetoondPad(string format) => $"api/planner/auto-plan/deel?format={format}";
+
     private static string AutoPlanDeelPad(string format, string tab)
         => $"api/planner/auto-plan?format={format}&tab={Uri.EscapeDataString(tab)}";
+
+    /// <summary>
+    /// #1459: of PDF-export voor de gekozen club aan staat (<c>GET api/planner/pdf-export</c>, open voor
+    /// elke ingelogde rol). Een mislukte aanroep telt als uit — fail-closed, net als de server.
+    /// </summary>
+    public async Task<bool> IsPdfExportIngeschakeldAsync()
+    {
+        var status = await GetAsync<PdfExportStatusDto>("api/planner/pdf-export");
+        return status.Success && status.Data?.PdfExportIngeschakeld == true;
+    }
 
     private static async Task<string> LeesTekstAsync(Task<HttpResponseMessage> aanroep)
     {

@@ -1,0 +1,45 @@
+{
+ "status": "Succeeded",
+ "changes": [
+  {
+   "resourceId": "/subscriptions/[SUBSCRIPTION_ID]/resourceGroups/[resource-group]/providers/Microsoft.Web/sites/func-a-[clubcode]",
+   "changeType": "Modify",
+   "after": {
+    "properties": {
+     "siteConfig": {
+      "appSettings": [
+       {
+        "name": "A",
+        "value": "[waarde]"
+       },
+       {
+        "name": "B",
+        "value": "[waarde]"
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "resourceId": "/subscriptions/[SUBSCRIPTION_ID]/resourceGroups/[resource-group]/providers/Microsoft.Web/sites/func-b-[clubcode]",
+   "changeType": "Modify",
+   "after": {
+    "properties": {
+     "siteConfig": {
+      "appSettings": [
+       {
+        "name": "C",
+        "value": "[waarde]"
+       },
+       {
+        "name": "D",
+        "value": "[waarde]"
+       }
+      ]
+     }
+    }
+   }
+  }
+ ]
+}

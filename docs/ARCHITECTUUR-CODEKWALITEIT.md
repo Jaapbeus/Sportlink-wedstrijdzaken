@@ -451,6 +451,8 @@ uit een workflow kan verdwijnen zonder dat iemand het merkt.
 |---|---|---|
 | Padverwijzingen exact in casing (#825) | `scripts/ci/check-path-casing.sh` | `build.yml` |
 | Postgres-identifiers lowercase snake_case | `scripts/ci/check-postgres-identifier-casing.sh` | `build.yml` |
+| Migratievolgnummers uniek in Database.Postgres/migrations (#1485) | `scripts/ci/check-migratie-volgnummers.sh` | `build.yml` |
+| Migratievolgnummers zelf getest (#1485) | `scripts/ci/check-migratie-volgnummers.test.sh` | `build.yml` |
 | Tabellen gedekt in beide tierbomen | `scripts/ci/check-postgres-table-coverage.sh` | `build.yml` |
 | Kolommen gedekt in beide tierbomen | `scripts/ci/check-postgres-column-coverage.sh` | `build.yml` |
 | Procedures/views gedekt in beide tierbomen | `scripts/ci/check-postgres-procedure-view-coverage.sh` | `build.yml` |
@@ -458,6 +460,9 @@ uit een workflow kan verdwijnen zonder dat iemand het merkt.
 | Supabase-lints (#1220) | `scripts/ci/check-splinter-lints.sh` | `build.yml` |
 | Thema-CSS-variabelen consistent (#1255) | `scripts/ci/check-theme-variables.sh` | `build.yml` |
 | Beide tiers bieden dezelfde routes en timers (#1266, #1268) | `scripts/ci/check-tier-pariteit.sh` | `build.yml` |
+| Verify-AzureAuthSetup.ps1 lekt geen PII bij lege parameter (#1474) | `scripts/ci/check-verify-script-guards.sh` | `build.yml` |
+| Een infra-deploy mag geen bestaande app setting wissen (#1455) | `scripts/ci/check-whatif-appsettings.sh` | `infrastructure.yml` |
+| De what-if-poort kan ook rood worden (#1455) | `scripts/ci/check-whatif-appsettings.test.sh` | `build.yml` |
 
 <!-- REGELREGISTER-EINDE -->
 

@@ -416,4 +416,56 @@ public class FeedbackCoreTests
             return Task.FromResult((123, "https://github.com/example/repo/issues/123"));
         }
     }
+
+    // ── Invoerhardening van contextvelden in de publieke issuebody (#1494) ────────────────────
+
+    private static async Task<string> BouwBody(Action<FeedbackContext> wijzig)
+    {
+        var dto = MaakSchoonRequest();
+        wijzig(dto.Context!);
+        var github = new FakeGitHubIssueCreator();
+        var result = await FeedbackCore.SubmitAsync(dto, new FakeChatClient(GeldigeAiStructuurJson()), github.MaakAsync, NullLogger.Instance, VastTijdstip);
+        result.Status.Should().Be(FeedbackStatus.Ok);
+        return github.LaatsteBody!;
+    }
+
+    [Theory]
+    [InlineData("3.2.2.0 | Hacked | x", "3.2.2.0  Hacked  x")]
+    [InlineData("1.0\n## Kop", "1.0 Kop")]
+    [InlineData("1.0 [klik](http://kwaad.example)", "1.0 klik(http//kwaad.example)")]
+    public async Task Body_Versie_BehoudtAlleenVeiligeTekens(string invoer, string verwacht)
+    {
+        var body = await BouwBody(c => c.Versie = invoer);
+
+        body.Split('\n').Should().Contain($"| Versie | {verwacht} |");
+    }
+
+    [Fact]
+    public async Task Body_Versie_WordtAfgekaptOp60Tekens()
+    {
+        var body = await BouwBody(c => c.Versie = new string('1', 200));
+
+        body.Should().Contain($"| Versie | {new string('1', 60)} |");
+    }
+
+    [Fact]
+    public async Task Body_Browser_BehoudtAlleenVeiligeTekensEnIsBegrensd()
+    {
+        var body = await BouwBody(c => c.Browser = "Mozilla/5.0 (X11) |<img src=x>|@iemand\n| Extra | rij |" + new string('a', 100));
+
+        var regel = body.Split('\n').Single(r => r.StartsWith("| Browser |"));
+        regel.Should().NotContain("<").And.NotContain("@");
+        regel.Count(ch => ch == '|').Should().Be(3, "een tabelrij met één cel, geen uitbraak naar extra kolommen");
+        regel.Length.Should().BeLessThan(80);
+    }
+
+    [Fact]
+    public async Task Body_Pagina_VerwijdertMarkdownTabelHtmlEnMentionTekens()
+    {
+        var body = await BouwBody(c => c.Pagina = "/velden`|[klik](http://kwaad.example)<b>@beheerder\n## Kop");
+
+        var regel = body.Split('\n').Single(r => r.StartsWith("| Pagina |"));
+        regel.Should().Be("| Pagina | `/veldenklik(http://kwaad.example)bbeheerder## Kop` |");
+        body.Should().NotContain("@beheerder");
+    }
 }

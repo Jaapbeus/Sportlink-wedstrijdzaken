@@ -1,0 +1,121 @@
+@* Gedeelde Gantt-tijdlijn (#1491); logica in GanttChart.razor.cs, opmaak in GanttChart.razor.css. *@
+@using static BlazorAdmin.Services.DagplanningWeergaveHelpers
+@using BlazorAdmin.Services
+@if (Items.Count > 0)
+{
+    var _velden = OrdenVelden(Items);
+    var (_sMin, _eMin, _totMin) = BerekenTijdAs(Items);
+
+    <div class="gantt-scroll">
+        @* Tijdas-header *@
+        <div class="gantt-tijdas-header">
+            <div class="gantt-label-gutter"></div>
+            <div class="gantt-tijdas-lijn">
+                @for (int _h = _sMin; _h <= _eMin; _h += 60)
+                {
+                    string _lftH = GanttPct(_h - _sMin, _totMin);
+                    <div class="gantt-uur-label" style="--gantt-left:@(_lftH)%; --gantt-transform:@GanttLabelTransform(_h, _sMin, _eMin);">
+                        @GanttUurLabel(_h)
+                    </div>
+                }
+            </div>
+        </div>
+
+        @* Veld-rijen — sleepbaar bij de optimale planning (#666) *@
+        @{ int _rijIdx = 0; }
+        @foreach (var _veld in _velden)
+        {
+            int _rij = _rijIdx++;
+            string _veldNaam = _veld;
+            <div class="gantt-veld-rij">
+                <div class="gantt-veld-label">
+                    @_veld
+                </div>
+                @if (Sleepbaar)
+                {
+                    <div id="gantt-rij-@_rij"
+                         class="gantt-veld-track"
+                         ondragover="event.preventDefault();"
+                         @ondrop="@(e => OnSleepDrop.InvokeAsync(new SleepDropArgs(_veldNaam, _rij, _sMin, _totMin, e)))">
+                        @RenderTrackInhoud(_veld, _sMin, _eMin, _totMin)
+                    </div>
+                }
+                else
+                {
+                    <div class="gantt-veld-track">
+                        @RenderTrackInhoud(_veld, _sMin, _eMin, _totMin)
+                    </div>
+                }
+            </div>
+        }
+        <div class="gantt-as-onderlijn"></div>
+    </div>
+}
+
+@code {
+    // Alleen markup-fragment (geen logica): de track-inhoud is identiek voor de read-only en de sleepvariant.
+    private RenderFragment RenderTrackInhoud(string veld, int sMin, int eMin, int totMin) => __builder =>
+    {
+        @* Uurlijnen *@
+        for (int _h = sMin + 60; _h < eMin; _h += 60)
+        {
+            <div class="gantt-uurlijn" style="--gantt-left:@(GanttPct(_h - sMin, totMin))%;"></div>
+        }
+        @* Wedstrijdblokken *@
+        foreach (var gi in Items.Where(g => g.VeldNaam == veld))
+        {
+            string _lft = GanttPct((int)gi.Aanvang.ToTimeSpan().TotalMinutes - sMin, totMin);
+            string _wdt = GanttPct(gi.DuurMinuten, totMin);
+            var (_topVal, _hgtVal) = GanttLayout.Bereken(gi.SubPos, gi.Fractie);
+            string _top = GanttPct((int)_topVal, 100);
+            string _hgt = GanttPct((int)_hgtVal, 100);
+            string _tooltip = GanttTooltip(gi);
+            if (!Sleepbaar)
+            {
+                <div title="@_tooltip"
+                     class="gantt-blok @BlokHoverKlasse(gi)"
+                     @onmouseover="() => ZetHoverAsync(gi.WedstrijdCode)"
+                     @onmouseout="() => WisHoverAsync()"
+                     style="--gantt-left:calc(@(_lft)% + 2px); --gantt-width:calc(@(_wdt)% - 4px);
+                            --gantt-top:calc(@(_top)% + 2px); --gantt-height:calc(@(_hgt)% - 4px);
+                            --gantt-bg:@GanttKleur(gi.Status);">
+                    <div class="gantt-blok-tijd">
+                        @gi.Aanvang.ToString("HH:mm")
+                    </div>
+                    <div class="gantt-blok-label">
+                        @GanttLabel(gi.Label)
+                    </div>
+                </div>
+            }
+            else
+            {
+                string _voorkeurBalk = GanttVoorkeurBalkKleur(gi.VoorkeurAfwijking, gi.VoorkeurTijd, KleineAfwijkingDrempelMinuten);
+                bool _sleepbaar = gi.Bron != null;
+                bool _handmatig = gi.Bron != null && IsHandmatigAangepast?.Invoke(gi) == true;
+                <div title="@_tooltip"
+                     draggable="@(_sleepbaar ? "true" : "false")"
+                     @ondragstart="@(e => OnSleepStart.InvokeAsync(new SleepStartArgs(gi, e)))"
+                     @onmouseover="() => ZetHoverAsync(gi.WedstrijdCode)"
+                     @onmouseout="() => WisHoverAsync()"
+                     class="gantt-blok gantt-blok-sleepbaar @BlokHoverKlasse(gi)"
+                     style="--gantt-left:calc(@(_lft)% + 2px); --gantt-width:calc(@(_wdt)% - 4px);
+                            --gantt-top:calc(@(_top)% + 2px); --gantt-height:calc(@(_hgt)% - 4px);
+                            --gantt-bg:@GanttKleur(gi.Status);
+                            --gantt-cursor:@(_sleepbaar ? "grab" : "default");
+                            --gantt-outline:@(_handmatig ? "2px dashed #fff" : "none");">
+                    @* Voorkeurstijd-indicator: gekleurde balk bovenaan het blok *@
+                    @if (!string.IsNullOrEmpty(_voorkeurBalk))
+                    {
+                        <div class="gantt-voorkeur-balk" style="--gantt-voorkeur-kleur:@_voorkeurBalk;"></div>
+                    }
+                    <div class="gantt-blok-tijd" style="--gantt-margin-top:@(string.IsNullOrEmpty(_voorkeurBalk) ? "0" : "4px");">
+                        @gi.Aanvang.ToString("HH:mm")
+                    </div>
+                    <div class="gantt-blok-label">
+                        @GanttLabel(gi.Label)
+                    </div>
+                </div>
+            }
+        }
+    };
+}

@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Npgsql;
+using Planner.Endpoints.Sportlink;
 using Planner.Shared.Integrations.SportlinkClub;
 
 namespace FunctionApp.Postgres.Sportlink;
@@ -112,6 +113,7 @@ public static class SportlinkChangeRequestFunction
                 if (clientFout != null) return clientFout;
 
                 var auditService = context.InstanceServices.GetService<ISportlinkMutationAuditService>();
+                if (auditService == null) return SportlinkEndpointSupportCore.AuditNietBeschikbaarFout();
                 var triggerdDoor = EasyAuthHelper.GetAuditActor(req);
                 var auditEntry = new SportlinkMutationAuditEntry(
                     clubCode, RolNaam, triggerdDoor, dto.PublicMatchId, $"MatchChangeRequestAction:{dto.Actie}",

@@ -880,7 +880,8 @@ Negen regels, alle negen met een exit-code:
    accepteert elke ingelogde rol (`admin` + `user`) in plaats van uitsluitend `admin`. Uitsluitend
    voor endpoints die een eigenaar expliciet heeft aangewezen als "voor alle gebruikers, niet
    beheerder-only" (vandaag: de drie Teambegeleiding-lookup/doorstuur-endpoints — de CSV-import
-   blijft bewust admin-only). Nieuwe naam is bewust, geen parameter op `ExecuteAsync` (dezelfde
+   blijft bewust admin-only —, de Planning-/Sportlink-viewing-endpoints (#1400) en sinds #764 de
+   drie `/api/feedback/*`-endpoints). Nieuwe naam is bewust, geen parameter op `ExecuteAsync` (dezelfde
    #1272-reden als bij de andere twee varianten); `scripts/ci/check-endpoint-autorisatie.sh`
    herkent hem expliciet als wrapper, en `EndpointAutorisatieTests.MetAlleenUserRol_Geeft403` (per
    tier) bewijst via de `AuthenticatedRoutes`-lijst zowel dat de drie aangewezen endpoints de rol
@@ -1271,6 +1272,28 @@ controles in plaats van één expliciete).
 
 ---
 
+### Feedback — identiteit van de melder nooit in het publieke issue (#764)
+
+> Volledige uitwerking, datamodel, redactieregels, bewaartermijnen en verwerkingsregister:
+> **[docs/FEEDBACK.md](docs/FEEDBACK.md)**
+
+De feedbackwidget is open voor elke ingelogde rol (`admin` + `user`). Harde regels:
+
+1. **De melder (Entra object-ID, naam-momentopname) staat uitsluitend in het `avg`-schema, nooit in een
+   GitHub-issue, -comment of log** — en wordt uitsluitend uit het Easy Auth-principal gehaald, nooit uit
+   de requestbody. Geen e-mailadres bewaren.
+2. **Een gewone gebruiker publiceert nooit zelf.** `FeedbackEndpointCore` bewaart zijn melding met status
+   `wacht-op-publicatie`; alleen een beheerder publiceert (direct bij eigen melding, via de knop in het
+   overzicht bij die van een ander). Een nieuw pad dat publiceert zonder dat een beheerder de tekst zag
+   is een architectuurschending.
+3. **Technische context is geredigeerd en blijft buiten het publieke issue.** Nieuwe contextbronnen
+   lopen door `FeedbackRedactie`/`FeedbackTelemetrieSaneerder` (`Planner.Shared/Feedback/`, ook in de
+   browser gelinkt); een tweede set regex-regels elders is dezelfde fout als #692.
+4. **Bewaartermijnen staan in `FeedbackRetentie`** (identiteit open + 24 mnd na sluiting, telemetrie
+   90 dagen, inzagelog 24 mnd) en worden door de dagelijkse timer `CleanupFeedback` op beide tiers
+   afgedwongen. Wijzig een termijn alleen samen met `docs/FEEDBACK.md` en het verwerkingsregister.
+5. **Het overzicht blijft zonder export** en legt elke inzage vast (`avg.FeedbackInzageLog`).
+
 ### Thema-logica — één gedeelde kern, en nooit `UriKind.Absolute` als "is dit een URL"-test (#1248, #1252)
 
 Twee harde regels:
@@ -1319,39 +1342,19 @@ Vastgelegd na de review van epic #986. Twee harde regels:
 
 ---
 
-### .NET versie — FunctionApp staat op net9.0, met einddatum (migratie via epic #1063)
+### .NET versie — alle projecten op net10.0, FunctionApp op Flex Consumption (#1073, #1074)
 
-**KRITIEKE BEPERKING — twee keer eerder misgegaan (issue #162, sessie 2026-05-24):**
+Alle projecten (FunctionApps, `Planner.*`, `Database.*`, BlazorAdmin, tests) targeten **`net10.0`**.
+De Function App draait op een **Flex Consumption Plan** met stack `dotnet-isolated 10.0`
+(`infrastructure/modules/function-app-flex.bicep`, `runtime.version: '10.0'`). Het csproj-target en de
+stackwaarde moeten altijd overeenkomen: een csproj-bump zonder stackwijziging (of omgekeerd) geeft 503
+"Function host is not running". Het oude Linux Consumption-plan (alleen tot .NET 9) is niet meer het
+deploydoel; de oude app staat stil en terugrollen naar `net9.0` is niet meer van toepassing.
 
-Azure Functions op een **Linux Consumption Plan** ondersteunt maximaal **.NET 9**. Zolang de
-FunctionApp op dat plan draait bestaat de stackwaarde `dotnet-isolated 10.0` daar niet — een
-`net10.0`-build geeft 503 "Function host is not running".
-
-| Component | Target | Reden |
-|---|---|---|
-| `FunctionApp/fa-dev-sportlink-01.csproj` | **`net9.0`** — niet wijzigen vóór de cutover | Linux Consumption Plan: net10.0 → 503 "Function host is not running" |
-| `FunctionApp.Postgres/FunctionApp.Postgres.csproj` | **`net9.0`** — idem | Idem |
-| `BlazorAdmin/BlazorAdmin.csproj` | `net10.0` | Browser-runtime, geen Azure-beperking |
-| Azure Portal runtime | `DOTNET-ISOLATED\|9.0` | Moet overeenkomen met csproj |
-
-> **Dit is een toestand met een einddatum, geen eindsituatie.** .NET 9 gaat op **10 november 2026**
-> uit support, en .NET 9 is de laatste .NET-versie die Linux Consumption krijgt — nieuwere versies
-> worden er niet meer aan toegevoegd. Linux Consumption zelf wordt op 30 september 2028
-> uitgefaseerd. De migratie naar Flex Consumption + .NET 10 loopt via **epic #1063**, en stond al
-> als roadmap-punt in `CHANGELOG.md` bij v2.1.0 (#162).
-
-**Lokale ontwikkeling:** zorg dat de .NET 9 runtime geïnstalleerd is — **beide frameworks**, `Microsoft.NETCore.App` én `Microsoft.AspNetCore.App`; zonder de tweede breekt `dotnet test` op de twee FunctionApp-testprojecten af (#1174). Windows: `winget install Microsoft.DotNet.Runtime.9` plus `Microsoft.DotNet.AspNetCore.9`, macOS: zie [docs/DEVELOPER-SETUP.md](docs/DEVELOPER-SETUP.md).
-Zonder net9.0 runtime kan `func start` niet starten — het installatieprobleem oplossen, nooit het target verhogen.
-
-**Upgradepad naar .NET 10 — uitsluitend via epic #1063, in deze volgorde:**
-1. Een **nieuwe** Function App op een Flex Consumption-plan aanmaken. In-place migratie van een
-   bestaande app naar Flex bestaat niet, en terug ook niet — `az functionapp update --plan` werkt
-   hiervoor dus níet.
-2. Cutover naar die nieuwe app, nog op `net9.0`.
-3. Pas dáárna de csproj's en de stackconfiguratie naar `net10.0` / `DOTNET-ISOLATED|10.0`.
-
-Nooit alleen de csproj bumpen: zolang de app op Linux Consumption draait is elke `net10.0`-deploy
-een productie-breker.
+**Lokale ontwikkeling:** de .NET 10 SDK volstaat; `func start` draait op de .NET 10 runtime. Zie
+[docs/DEVELOPER-SETUP.md](docs/DEVELOPER-SETUP.md). Historie van de migratie: epic #1063 en
+`docs/RUNBOOK-FLEX-MIGRATIE.md`. Een plan- of tierwijziging blijft expliciete eigenaarsgoedkeuring
+vereisen (zie Kostenbeleid).
 
 ### Cross-platform scripts — Windows én macOS, geen uitzonderingen (#800)
 
@@ -1502,7 +1505,7 @@ De API-standaarden staan in `docs/api-standaarden/`:
 
 **Nooit een endpoint-wijziging committen zonder de spec bij te werken.** De spec is de contractdefinitie voor andere systemen, consumers en toekomstige Claude-sessies. Een verouderde spec misleidt — dat is erger dan geen spec.
 
-**Stand van de spec (bijgewerkt 2026-10-02):** `openapi.yaml`/`.json` dekken 80 routes (101 operaties); `info.version` volgt de app-versie. Regenereer `openapi.json` altijd uit de YAML (nooit beide handmatig bijwerken):
+**Stand van de spec (bijgewerkt 2026-10-03):** `openapi.yaml`/`.json` dekken 84 routes (105 operaties); `info.version` volgt de app-versie. Regenereer `openapi.json` altijd uit de YAML (nooit beide handmatig bijwerken):
 ```powershell
 python -c "import yaml,json,io; s=yaml.safe_load(io.open('docs/api-standaarden/openapi.yaml',encoding='utf-8')); json.dump(s, io.open('docs/api-standaarden/openapi.json','w',encoding='utf-8'), indent=2, ensure_ascii=False)"
 ```
@@ -1658,7 +1661,7 @@ dotnet build FunctionApp.Postgres/FunctionApp.Postgres.csproj -c Debug
 # GET http://localhost:7094/api/sync-matches?reset=true&season=2026
 ```
 
-**Prerequisites:** .NET 9 runtime + .NET 10 SDK (Blazor), Azure Functions Core Tools v4, Azurite (Azure Storage Emulator), en de database van de actieve tier — standaard Postgres via `docker compose up -d` (#1060).
+**Prerequisites:** .NET 10 SDK, Azure Functions Core Tools v4, Azurite (Azure Storage Emulator), en de database van de actieve tier — standaard Postgres via `docker compose up -d` (#1060).
 
 **Configuration:** Kopieer het `local.settings.template.json` van de tier waarop je werkt naar `local.settings.json` ernaast — standaard `FunctionApp.Postgres/`, met `POSTGRES_CONNECTION_STRING`; voor de SQL Server-tier `FunctionApp/`, met `SqlConnectionString`.
 
@@ -1711,10 +1714,10 @@ Browser (beheerder)
         ▼
   Azure Functions (Consumption) — func-[clubcode]-sportlink.azurewebsites.net
     Easy Auth: valideert Bearer token, injecteert X-MS-CLIENT-PRINCIPAL
-    EasyAuthHelper: checkt 'admin' rol op alle /api/beheer/*, /api/test/*, /api/feedback/*
+    EasyAuthHelper: checkt 'admin' rol op alle /api/beheer/*, /api/test/*; /api/feedback/* is open voor admin én user (#764)
     FunctionApp/Admin/       → 9 bestanden, 18+ endpoints op /api/beheer/
     FunctionApp/Processing/  → BerichtPipeline (kanaal-agnostisch)
-    FunctionApp/Feedback/    → Intelligente feedback widget → GitHub Issues
+    FunctionApp/Feedback/    → Feedback widget (alle gebruikers; opslag in avg.Feedback; beheerder publiceert direct, user na klik) → GitHub Issues
         │
         ▼
   Azure SQL — SportlinkSqlDb
@@ -1755,7 +1758,8 @@ Browser (beheerder)
 | `GET /api/beheer/clubs` | `AdminClubsFunction.cs` |
 | `GET/POST/PUT/DELETE /api/beheer/speeltijden`, `/{leeftijd}` | `AdminSpeeltijdenFunction.cs` |
 | `POST /api/test/email` | `EmailTestFunction.cs` |
-| `POST /api/feedback/validate`, `/preview`, `/submit` | `FeedbackFunction.cs` |
+| `POST /api/feedback/validate`, `/preview`, `/submit` (admin + user, #764) | `FeedbackFunction.cs` |
+| `GET /api/beheer/feedback`, `/{id}`, `/inzagelog`, `POST /{id}/publiceer` (inzagelog, #764) | `AdminFeedbackFunction.cs` |
 
 ### v2.1 backlog (epic #102)
 
@@ -1774,7 +1778,7 @@ en zijn testproject zijn in #1411 verwijderd (automatische Sportlink-login). Act
 
 De twee kernprojecten van de oorspronkelijke ETL-pijplijn:
 
-1. **FunctionApp/** (`fa-dev-sportlink-01.csproj`) — .NET 9 isolated worker Azure Function
+1. **FunctionApp/** (`fa-dev-sportlink-01.csproj`) — .NET 10 isolated worker Azure Function
    - `Function1.cs` — trigger functions and API fetch/store orchestration
    - `Utilities.cs` — AppSettings loader, DatabaseConfig, SeasonHelper, retry logic (5 retries, 5s delay)
    - `Enitities.cs` — Team, Match, MatchDetail models (note: filename typo is intentional legacy)

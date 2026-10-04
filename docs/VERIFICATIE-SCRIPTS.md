@@ -162,6 +162,19 @@ build-foutdetectie: eerst `Stop-Debug.ps1`, dan `Test-App.ps1`.
 
 ---
 
+## What-if-poort voor app settings (#1455)
+
+`scripts/ci/check-whatif-appsettings.sh <what-if.json> [<live-map>]` leest de JSON van
+`az deployment group what-if --result-format FullResourcePayloads --no-pretty-print` en faalt
+(exit 1) als een bestaande app setting (uit `before` of uit de live lijst) niet in `after` staat; exit 2
+bij onleesbare of onverwachte uitvoer (gesloten poort). Alleen namen worden getoond. Een site-GET geeft
+de appSettings meestal niet in `before`, daarom haalt `infrastructure.yml` de live namen apart op, per Function App
+in een map met `<sitenaam>.json` (#1495). Ontbreekt de lijst van een gewijzigde site, dan exit 2; een enkel bestand
+mag alleen bij precies een site.
+Test: `bash scripts/ci/check-whatif-appsettings.test.sh` (fixtures in `scripts/ci/fixtures/whatif/`).
+
+---
+
 ## Seed-AllStarsDemodata.ps1 (#1060)
 
 Zet de AllStars-demoteams en -wedstrijden klaar op een lokale Postgres-ontwikkeldatabase. Drie

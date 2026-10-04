@@ -130,16 +130,7 @@
             }
             else
             {
-                var _velden = _gantt
-                    .Select(g => g.VeldNaam).Distinct()
-                    .OrderBy(v => v.StartsWith("Kunstgras", StringComparison.OrdinalIgnoreCase) ? "0" + v : "1" + v)
-                    .ToList();
-                int _sMin = (_gantt.Min(g => (int)g.Aanvang.ToTimeSpan().TotalMinutes) / 60) * 60;
-                int _eMin = (((int)_gantt.Max(g => g.Einde.ToTimeSpan().TotalMinutes) + 59) / 60) * 60;
-                if (_eMin <= _sMin) _eMin = _sMin + 60;
-                int _totMin = _eMin - _sMin;
-
-                @* Legenda *@
+                @* Legenda — terug na #1491; hoort boven de tijdlijn en is in beide tabs identiek (#689). *@
                 <div class="d-flex flex-wrap gap-3 mb-2 small">
                     <span class="fw-semibold text-muted me-1">Status:</span>
                     <span><span class="gantt-legenda-dot gantt-legenda-dot-ongewijzigd"></span> Ongewijzigd</span>
@@ -158,81 +149,10 @@
                    (50px), daarna met dezelfde hint in beide tabs maar met verschillende tekstlengte,
                    die op een 1440px-scherm in een verschillend aantal regels wrapte (21px). De
                    toelichting staat daarom nu ónder de tijdlijn, waar haar hoogte niets verschuift. *@
-                <div class="gantt-scroll">
-                    @* Tijdas-header *@
-                    <div class="gantt-tijdas-header">
-                        <div class="gantt-label-gutter"></div>
-                        <div class="gantt-tijdas-lijn">
-                            @for (int _h = _sMin; _h <= _eMin; _h += 60)
-                            {
-                                string _lftH = GanttPct(_h - _sMin, _totMin);
-                                <div class="gantt-uur-label" style="--gantt-left:@(_lftH)%; --gantt-transform:@GanttLabelTransform(_h, _sMin, _eMin);">
-                                    @GanttUurLabel(_h)
-                                </div>
-                            }
-                        </div>
-                    </div>
-
-                    @* Veld-rijen — sleepbaar bij de optimale planning (#666) *@
-                    @{ int _rijIdx = 0; }
-                    @foreach (var _veld in _velden)
-                    {
-                        int _rij = _rijIdx++;
-                        string _veldNaam = _veld;
-                        <div class="gantt-veld-rij">
-                            <div class="gantt-veld-label">
-                                @_veld
-                            </div>
-                            <div id="gantt-rij-@_rij"
-                                 class="gantt-veld-track"
-                                 ondragover="event.preventDefault();"
-                                 @ondrop="@(e => SleepDrop(_veldNaam, _rij, _sMin, _totMin, e))">
-                                @* Uurlijnen *@
-                                @for (int _h = _sMin + 60; _h < _eMin; _h += 60)
-                                {
-                                    <div class="gantt-uurlijn" style="--gantt-left:@(GanttPct(_h - _sMin, _totMin))%;"></div>
-                                }
-                                @* Wedstrijdblokken *@
-                                @foreach (var gi in _gantt.Where(g => g.VeldNaam == _veld))
-                                {
-                                    string _lft = GanttPct((int)gi.Aanvang.ToTimeSpan().TotalMinutes - _sMin, _totMin);
-                                    string _wdt = GanttPct(gi.DuurMinuten, _totMin);
-                                    var (_topVal, _hgtVal) = GanttLayout.Bereken(gi.SubPos, gi.Fractie);
-                                    string _top = GanttPct((int)_topVal, 100);
-                                    string _hgt = GanttPct((int)_hgtVal, 100);
-                                    string _voorkeurBalk = GanttVoorkeurBalkKleur(gi.VoorkeurAfwijking, gi.VoorkeurTijd, KleineAfwijkingDrempelMinuten);
-                                    string _tooltip = GanttTooltip(gi);
-                                    bool _sleepbaar = gi.Bron != null;
-                                    bool _handmatig = gi.Bron != null && _handmatigAangepast.Contains(gi.Bron);
-                                    <div title="@_tooltip"
-                                         draggable="@(_sleepbaar ? "true" : "false")"
-                                         @ondragstart="@(e => SleepStart(gi, e))"
-                                         @onmouseover="() => _hover.Zet(gi.WedstrijdCode)"
-                                         @onmouseout="() => _hover.Wis()"
-                                         class="gantt-blok gantt-blok-sleepbaar @_hover.BlokKlasse(gi.WedstrijdCode)"
-                                         style="--gantt-left:calc(@(_lft)% + 2px); --gantt-width:calc(@(_wdt)% - 4px);
-                                                --gantt-top:calc(@(_top)% + 2px); --gantt-height:calc(@(_hgt)% - 4px);
-                                                --gantt-bg:@GanttKleur(gi.Status);
-                                                --gantt-cursor:@(_sleepbaar ? "grab" : "default");
-                                                --gantt-outline:@(_handmatig ? "2px dashed #fff" : "none");">
-                                        @* Voorkeurstijd-indicator: gekleurde balk bovenaan het blok *@
-                                        @if (!string.IsNullOrEmpty(_voorkeurBalk))
-                                        {
-                                            <div class="gantt-voorkeur-balk" style="--gantt-voorkeur-kleur:@_voorkeurBalk;"></div>
-                                        }
-                                        <div class="gantt-blok-tijd" style="--gantt-margin-top:@(string.IsNullOrEmpty(_voorkeurBalk) ? "0" : "4px");">
-                                            @gi.Aanvang.ToString("HH:mm")
-                                        </div>
-                                        <div class="gantt-blok-label">
-                                            @GanttLabel(gi.Label)
-                                        </div>
-                                    </div>
-                                }
-                            </div>
-                        </div>
-                    }
-                    <div class="gantt-as-onderlijn"></div>
-                </div>
+                <GanttChart Items="_gantt" Hover="_hover" HoverGewijzigd="@(() => Task.CompletedTask)"
+                            Sleepbaar="true" KleineAfwijkingDrempelMinuten="KleineAfwijkingDrempelMinuten"
+                            IsHandmatigAangepast="IsHandmatigAangepast"
+                            OnSleepStart="SleepStart" OnSleepDrop="SleepDrop" />
             }
 
             @* Toelichting per tab — onder de tijdlijn, zie de uitleg hierboven. *@
@@ -494,7 +414,7 @@
                     Waarschuwing="@ExportWaarschuwing"
                     BestandsNaam="@ExportBestandsNaam"
                     VerversSleutel="@ExportSleutel"
-                    HtmlOphalen="@(() => Task.FromResult(HuidigeExportHtml ?? ""))"
-                    PdfOphalen="@PdfOphalenAsync" />
+                    HtmlOphalen="@HtmlOphalenAsync"
+                    PdfOphalen="@(_pdfExportIngeschakeld ? PdfOphalenAsync : null)" />
     }
 }

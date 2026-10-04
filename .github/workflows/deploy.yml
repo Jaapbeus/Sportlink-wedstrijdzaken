@@ -5,6 +5,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Minimale tokenrechten (CodeQL actions/missing-workflow-permissions, #1472): geen job schrijft naar
+# GitHub; azure/login gebruikt AZURE_CREDENTIALS (geen OIDC) en de SWA-deploy reageert alleen op PR's.
+permissions:
+  contents: read
+
 env:
   DOTNET_VERSION: '10.0.x'
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -152,9 +157,8 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      # TODO(#1074): de Function App-stackinstelling (DOTNET-ISOLATED|9.0) van de bestaande Linux
-      # Consumption-app blijft 9 tot de cutover; dit build-artefact is net10.0 en mag daarom pas
-      # naar productie na de cutover naar Flex Consumption (#1072).
+      # De Function App draait op Flex Consumption met stack dotnet-isolated 10.0 (#1074);
+      # dit net10.0-artefact past daarbij.
       - name: Function App bouwen
         run: |
           dotnet publish ${{ steps.tier.outputs.csproj_path }} \

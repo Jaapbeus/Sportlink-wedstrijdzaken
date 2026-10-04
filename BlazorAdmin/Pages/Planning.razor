@@ -66,71 +66,8 @@
             var _vGantt = BouwVeldbezettingGanttItems();
             @if (_vGantt.Any())
             {
-                var _vVelden = _vGantt
-                    .Select(g => g.VeldNaam).Distinct()
-                    .OrderBy(v => v.StartsWith("Kunstgras", StringComparison.OrdinalIgnoreCase) ? "0" + v : "1" + v)
-                    .ToList();
-                int _vsMin = (_vGantt.Min(g => (int)g.Aanvang.ToTimeSpan().TotalMinutes) / 60) * 60;
-                int _veMin = (((int)_vGantt.Max(g => g.Einde.ToTimeSpan().TotalMinutes) + 59) / 60) * 60;
-                if (_veMin <= _vsMin) _veMin = _vsMin + 60;
-                int _vTotMin = _veMin - _vsMin;
-
-                <div class="veldbezetting-sticky mb-3 gantt-scroll">
-                    @* Tijdas-header *@
-                    <div class="gantt-tijdas-header">
-                        <div class="gantt-label-gutter"></div>
-                        <div class="gantt-tijdas-lijn">
-                            @for (int _h = _vsMin; _h <= _veMin; _h += 60)
-                            {
-                                string _lftH = GanttPct(_h - _vsMin, _vTotMin);
-                                <div class="gantt-uur-label" style="--gantt-left:@(_lftH)%; --gantt-transform:@GanttLabelTransform(_h, _vsMin, _veMin);">
-                                    @GanttUurLabel(_h)
-                                </div>
-                            }
-                        </div>
-                    </div>
-
-                    @* Veld-rijen *@
-                    @foreach (var _veld in _vVelden)
-                    {
-                        <div class="gantt-veld-rij">
-                            <div class="gantt-veld-label">
-                                @_veld
-                            </div>
-                            <div class="gantt-veld-track">
-                                @* Uurlijnen *@
-                                @for (int _h = _vsMin + 60; _h < _veMin; _h += 60)
-                                {
-                                    <div class="gantt-uurlijn" style="--gantt-left:@(GanttPct(_h - _vsMin, _vTotMin))%;"></div>
-                                }
-                                @* Wedstrijdblokken *@
-                                @foreach (var gi in _vGantt.Where(g => g.VeldNaam == _veld))
-                                {
-                                    string _lft = GanttPct((int)gi.Aanvang.ToTimeSpan().TotalMinutes - _vsMin, _vTotMin);
-                                    string _wdt = GanttPct(gi.DuurMinuten, _vTotMin);
-                                    var (_topVal, _hgtVal) = GanttLayout.Bereken(gi.SubPos, gi.Fractie);
-                                    string _top = GanttPct((int)_topVal, 100);
-                                    string _hgt = GanttPct((int)_hgtVal, 100);
-                                    string _tooltip = GanttTooltip(gi);
-                                    <div title="@_tooltip"
-                                         class="gantt-blok @_hover.BlokKlasse(gi.WedstrijdCode)"
-                                         @onmouseover="() => _hover.Zet(gi.WedstrijdCode)"
-                                         @onmouseout="() => _hover.Wis()"
-                                         style="--gantt-left:calc(@(_lft)% + 2px); --gantt-width:calc(@(_wdt)% - 4px);
-                                                --gantt-top:calc(@(_top)% + 2px); --gantt-height:calc(@(_hgt)% - 4px);
-                                                --gantt-bg:@GanttKleur(gi.Status);">
-                                        <div class="gantt-blok-tijd">
-                                            @gi.Aanvang.ToString("HH:mm")
-                                        </div>
-                                        <div class="gantt-blok-label">
-                                            @GanttLabel(gi.Label)
-                                        </div>
-                                    </div>
-                                }
-                            </div>
-                        </div>
-                    }
-                    <div class="gantt-as-onderlijn"></div>
+                <div class="veldbezetting-sticky mb-3">
+                    <GanttChart Items="_vGantt" Hover="_hover" HoverGewijzigd="@(() => Task.CompletedTask)" />
                 </div>
             }
             else
@@ -218,4 +155,4 @@
             BestandsNaam="@ExportBestandsNaam"
             VerversSleutel="@ExportSleutel"
             HtmlOphalen="@(() => Api.GetVeldbezettingHtmlAsync(DatumStr))"
-            PdfOphalen="@(() => Api.GetVeldbezettingPdfAsync(DatumStr))" />
+            PdfOphalen="@(_pdfExportIngeschakeld ? () => Api.GetVeldbezettingPdfAsync(DatumStr) : null)" />

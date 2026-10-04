@@ -237,7 +237,7 @@ Browser (beheerder)
         ▼
   Azure Functions (Linux Consumption plan, na cutover Flex Consumption) — net10.0 (#1073), isolated worker
         Easy Auth: valideert Bearer token, injecteert X-MS-CLIENT-PRINCIPAL
-        EasyAuthHelper: checkt 'admin' rol op alle /api/beheer/*, /api/test/*, /api/feedback/*
+        EasyAuthHelper: checkt 'admin' rol op alle /api/beheer/*, /api/test/*; /api/feedback/* is open voor admin én user (#764)
         │
         ├── DatabaseTier=SqlServer          ├── DatabaseTier=Postgres
         │   FunctionApp/                    │   FunctionApp.Postgres/
@@ -263,22 +263,11 @@ Browser (beheerder)
 Azure Functions v4 · Blazor WebAssembly · Azure SQL / Postgres · Microsoft Graph API · OpenAI
 (direct, model via configuratie) · Azure Static Web Apps · Entra ID (single-tenant)
 
-**Runtimeversies zijn niet uitwisselbaar — niet upgraden zonder infrastructuurwijziging (#579).**
-
-| Project | Target | Reden |
-|---|---|---|
-| `FunctionApp/fa-dev-sportlink-01.csproj` | **`net10.0`** (#1073, branch pas na cutover gemerged) | Linux Consumption Plan ondersteunt `net10.0` niet → 503 "Function host is not running" |
-| `FunctionApp.Postgres/FunctionApp.Postgres.csproj` | **`net10.0`** (#1073) | Zelfde beperking als hierboven |
-| `BlazorAdmin/BlazorAdmin.csproj` | `net10.0` | Browser-runtime, geen Azure-beperking |
-| Azure Portal runtime | `DOTNET-ISOLATED\|9.0` | Moet overeenkomen met csproj |
-
-`.NET 10` voor Azure Functions vereist het **Flex Consumption Plan** — een ander plan, dus een
-planwijziging vraagt altijd expliciete goedkeuring van de eigenaar (kostenbeleid, CLAUDE.md). Zie
-epic #1063 voor de migratie. **Dit is een toestand met een einddatum, geen eindsituatie:** .NET 9
-gaat op 10 november 2026 uit support en is de laatste .NET-versie die Linux Consumption krijgt; dat
-plan zelf wordt op 30 september 2028 uitgefaseerd. In-place migratie naar Flex bestaat niet — er
-moet een nieuwe Function App komen, eerst nog op `net9.0`, pas daarna de csproj's en de
-stackconfiguratie naar `net10.0`. Zie ook §11 (risico's).
+**Runtimeversie (#1073, #1074).** Alle projecten targeten `net10.0`. De Function App draait op een
+Flex Consumption Plan met stack `DOTNET-ISOLATED|10.0`; csproj-target en stack moeten overeenkomen
+(anders 503 "Function host is not running"). Een planwijziging vraagt altijd expliciete goedkeuring van
+de eigenaar (kostenbeleid). Zie epic #1063 en `docs/RUNBOOK-FLEX-MIGRATIE.md` voor de migratie. Zie ook
+§11 (risico's).
 
 **ETL-data flow (identiek patroon op beide tiers):**
 ```

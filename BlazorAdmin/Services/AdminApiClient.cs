@@ -15,12 +15,14 @@ public partial class AdminApiClient
 {
     private readonly HttpClient _http;
     private readonly ApiStatusService _status;
+    private readonly ClientTelemetryService? _telemetrie;
     private static readonly JsonSerializerOptions _jsonOpts = new(JsonSerializerDefaults.Web);
 
-    public AdminApiClient(HttpClient http, ApiStatusService status)
+    public AdminApiClient(HttpClient http, ApiStatusService status, ClientTelemetryService? telemetrie = null)
     {
         _http = http;
         _status = status;
+        _telemetrie = telemetrie;
     }
 
     // ── Settings ──
@@ -153,8 +155,8 @@ public partial class AdminApiClient
                 AgeClassCode = string.IsNullOrWhiteSpace(ageClassCode) ? null : ageClassCode
             });
 
-    // #1440: een zojuist aangemaakte oefenwedstrijd weer verwijderen. Staat op de server hard op
-    // dry-run (ClubMatchDeleteLiveBevestigd) tot de eigenaar het contract live bevestigt.
+    // #1440/#1458: een zojuist aangemaakte oefenwedstrijd weer verwijderen; live, volgt de
+    // club-instelling sportlinkDryRun.
     public async Task<ApiResult<SportlinkMutatieResultaatDto>> DeleteOefenwedstrijdAsync(string publicMatchId)
         => await DeleteAsync<SportlinkMutatieResultaatDto>($"api/sportlink/club-match/{Uri.EscapeDataString(publicMatchId)}");
 
@@ -366,39 +368,37 @@ public partial class AdminApiClient
     public async Task<ApiResult<ThemeExtractResultDto>> ExtractThemeColorsAsync(string url)
         => await PostAsync<ThemeExtractResultDto>($"api/beheer/theme/extract?url={Uri.EscapeDataString(url)}", new { });
 
-    // ── Feedback widget ──
-
-    public async Task<ApiResult<FeedbackValidateResponse>> ValidateFeedbackAsync(FeedbackValidateRequest dto)
-        => await PostAsync<FeedbackValidateResponse>("api/feedback/validate", dto);
-
-    /// <summary>
-    /// Haalt de exacte titel + body op die gepubliceerd zou worden, zonder iets aan te maken (#1205).
-    /// </summary>
-    public async Task<ApiResult<FeedbackPreviewResponse>> PreviewFeedbackAsync(FeedbackValidateRequest dto)
-        => await PostAsync<FeedbackPreviewResponse>("api/feedback/preview", dto);
-
-    public async Task<ApiResult<FeedbackSubmitResponse>> SubmitFeedbackAsync(FeedbackValidateRequest dto)
-        => await PostAsync<FeedbackSubmitResponse>("api/feedback/submit", dto);
-
     // ── HTTP-helpers ──
 
-    private async Task<ApiResult<T>> SendAsync<T>(Func<Task<HttpResponseMessage>> send)
+    private async Task<ApiResult<T>> SendAsync<T>(string methode, string pad, Func<Task<HttpResponseMessage>> send)
     {
         try
         {
-            return await HandleAsync<T>(await send());
+            var resp = await send();
+            var result = await HandleAsync<T>(resp);
+            if (!result.Success)
+                _telemetrie?.MeldMislukteAanroep(methode, pad, (int)resp.StatusCode, CorrelatieId(resp));
+            return result;
         }
         // #1136: een bewust geannuleerde aanroep (aanroeper heeft een nieuwere lookup gestart)
         // hoort geen foutmelding op te leveren — de aanroeper gooit dit resultaat toch weg.
         catch (OperationCanceledException) { return ApiResult<T>.Fail("Geannuleerd"); }
-        catch (Exception ex) { return ApiResult<T>.Fail(ex.Message); }
+        catch (Exception ex)
+        {
+            // Netwerkfout zonder antwoord: status 0 (#764 — technische context bij feedback).
+            _telemetrie?.MeldMislukteAanroep(methode, pad, 0, null);
+            return ApiResult<T>.Fail(ex.Message);
+        }
     }
 
+    private static string? CorrelatieId(HttpResponseMessage resp) =>
+        resp.Headers.TryGetValues("x-correlation-id", out var waarden) ? waarden.FirstOrDefault() : null;
+
     private Task<ApiResult<T>> GetAsync<T>(string path, CancellationToken cancellationToken = default)
-        => SendAsync<T>(() => _http.GetAsync(path, cancellationToken));
-    private Task<ApiResult<T>> PostAsync<T>(string path, object body) => SendAsync<T>(() => _http.PostAsJsonAsync(path, body));
-    private Task<ApiResult<T>> PutAsync<T>(string path, object body) => SendAsync<T>(() => _http.PutAsJsonAsync(path, body));
-    private Task<ApiResult<T>> DeleteAsync<T>(string path) => SendAsync<T>(() => _http.DeleteAsync(path));
+        => SendAsync<T>("GET", path, () => _http.GetAsync(path, cancellationToken));
+    private Task<ApiResult<T>> PostAsync<T>(string path, object body) => SendAsync<T>("POST", path, () => _http.PostAsJsonAsync(path, body));
+    private Task<ApiResult<T>> PutAsync<T>(string path, object body) => SendAsync<T>("PUT", path, () => _http.PutAsJsonAsync(path, body));
+    private Task<ApiResult<T>> DeleteAsync<T>(string path) => SendAsync<T>("DELETE", path, () => _http.DeleteAsync(path));
 
     // ── Velden (#679) ──
     public async Task<ApiResult<List<VeldDto>>> GetVeldenAsync()

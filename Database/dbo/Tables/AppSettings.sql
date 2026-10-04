@@ -55,7 +55,9 @@
 	-- per ongeluk echt schrijven. Dit is fail-safe: de waarde wordt per aanroep gelezen.
 	[SportlinkDryRun] BIT NOT NULL DEFAULT 1,
 	-- #1437: clubinstelling Spelactiviteit voor oefenwedstrijden (omschrijving of IdTag uit Sportlinks lijst); leeg = team/standaard. Postgres: migratie 032.
-	[SportlinkSpelactiviteit] NVARCHAR(100) NULL
+	[SportlinkSpelactiviteit] NVARCHAR(100) NULL,
+	-- #1459: PDF-export (QuestPDF Community) per club; standaard UIT tot een beheerder de licentievoorwaarden bevestigt. Postgres: migratie 034.
+	[PdfExportIngeschakeld] BIT NOT NULL DEFAULT 0
 	-- Geen primaire sleutel op ClubCode: die uniciteit wordt al sinds #324 afgedwongen door
 	-- UQ_AppSettings_ClubCode in Script.PostDeployment1.sql. Het probleem dat Postgres-migratie 025
 	-- (#1218) oploste — twee rijen met dezelfde ClubCode, waarna een TOP 1-query er stilzwijgend

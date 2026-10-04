@@ -52,6 +52,37 @@ jobs:
             --parameters infrastructure/main.parameters.json \
             --parameters deployMonitoring=${{ inputs.deploy_monitoring }}
 
+      # #1455: een ARM PUT met siteConfig.appSettings VERVANGT alle app settings van de bestaande
+      # Function App. Deze poort draait what-if en faalt als een bestaande setting zou verdwijnen;
+      # alleen namen komen in het log, nooit waarden. Onleesbare uitvoer = falen (gesloten poort).
+      - name: What-if-poort — mag er een app setting verdwijnen?
+        if: inputs.action == 'deploy'
+        env:
+          AI_CS: ${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING }}
+          SQL_CS: ${{ secrets.AZURE_SQL_CONNECTION_STRING }}
+          STORAGE_CS: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+          DEPLOY_MONITORING: ${{ inputs.deploy_monitoring }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/whatif.json"
+          az deployment group what-if \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infrastructure/main.bicep \
+            --parameters infrastructure/main.parameters.json \
+            --parameters deployMonitoring="$DEPLOY_MONITORING" \
+            --parameters appInsightsConnectionString="$AI_CS" \
+            --parameters sqlConnectionString="$SQL_CS" \
+            --parameters azureWebJobsStorage="$STORAGE_CS" \
+            --result-format FullResourcePayloads --no-pretty-print --output json > "$out"
+          live="$RUNNER_TEMP/live-appsettings"
+          rm -rf "$live"; mkdir -p "$live"
+          for site in $(bash scripts/ci/check-whatif-appsettings.sh --sites "$out"); do
+            # Alleen namen ophalen — de waarden verlaten de query nooit.
+            az functionapp config appsettings list -g "$RESOURCE_GROUP" -n "$site" \
+              --query "[].{name:name}" --output json > "$live/$site.json"
+          done
+          bash scripts/ci/check-whatif-appsettings.sh "$out" "$live"
+
       - name: Deploy — infrastructure bijwerken
         if: inputs.action == 'deploy'
         run: |

@@ -1,5 +1,6 @@
 using Azure.Identity;
 using Microsoft.Azure.Functions.Worker.Builder;
+using Planner.Endpoints.Instellingen;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -15,6 +16,13 @@ using SportlinkFunction.TeamResolution;
 
 var builder = FunctionsApplication.CreateBuilder(args);
 builder.ConfigureFunctionsWebApplication();
+
+// #1515: instellingen eenmaal per instantie laden (Flex: elke niet-HTTP-trigger = eigen instantie).
+builder.UseInstellingenLader(async log =>
+{
+    await SportlinkFunction.SystemUtilities.AppSettings.LoadSettingsAsync(log);
+    return !SportlinkFunction.SystemUtilities.AppSettings.LastLoadFailed;
+});
 
 // Graph client met client credentials (application permissions)
 var tenantId = Environment.GetEnvironmentVariable("GraphTenantId");
@@ -91,11 +99,8 @@ builder.Services.AddSingleton<IEmailPersistenceService>(sp =>
 // Functions-host zelf, dus onvoorwaardelijk registreren.
 builder.Services.AddSingleton<INoodmailThrottleStore>(sp =>
 {
-    var storageVerbinding = Environment.GetEnvironmentVariable("AzureWebJobsStorage")
-        ?? throw new InvalidOperationException(
-            "AzureWebJobsStorage ontbreekt — vereist voor de Azure Functions-host zelf.");
+    // Connection string óf identity-based (Flex, #1512) — zie Planner.Shared.Infrastructure.OpslagVerbinding.
     return new TableStorageNoodmailThrottleStore(
-        storageVerbinding,
         sp.GetRequiredService<ILoggerFactory>().CreateLogger<TableStorageNoodmailThrottleStore>());
 });
 

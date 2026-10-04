@@ -124,6 +124,15 @@ internal static class EasyAuthHelper
         => GetClaimValue(req, "name");
 
     /// <summary>
+    /// De Entra object-ID (<c>oid</c>) van de aanroeper (#764) — de stabiele, pseudonieme sleutel van
+    /// de melder in <c>avg.Feedback</c>. Easy Auth levert afhankelijk van de configuratie de korte
+    /// claim <c>oid</c> óf de lange URI-vorm; beide worden herkend. Null in lokale ontwikkeling of als
+    /// de claim ontbreekt. Uitsluitend server-side gebruik: nooit in een response of in een publiek issue.
+    /// </summary>
+    public static string? GetCallerObjectId(HttpRequest req)
+        => GetClaimValue(req, "oid", "http://schemas.microsoft.com/identity/claims/objectidentifier");
+
+    /// <summary>
     /// Haalt het e-mailadres van de aanroeper op uit de Entra ID claims.
     /// Uitsluitend voor server-side gebruik (Reply-To in doorstuur-email). Nooit in response terugsturen.
     /// </summary>

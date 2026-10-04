@@ -77,7 +77,7 @@ Een Blazor WebAssembly-applicatie geeft beheerders via de browser volledig behee
 Sportlink Club API
         │  (nachtelijke sync via timer trigger)
         ▼
-Azure Functions (.NET 9, isolated worker) — één van twee volledig gescheiden tier-implementaties
+Azure Functions (.NET 10, isolated worker) — één van twee volledig gescheiden tier-implementaties
   ├── FetchAndStoreApiData    — nachtelijke sync van teams, wedstrijden en details
   │                             (op de Postgres-tier: `PostgresFetchAndStoreApiData`)
   ├── EmailProcessorFunction  — leest mailbox via Microsoft Graph
@@ -101,7 +101,7 @@ Azure Static Web Apps (gratis tier)
 
 Welke tier een fork daadwerkelijk gebruikt is een bewuste, expliciete keuze op build/deploytijd (repository-variabele `DatabaseTier`) — geen gedeelde runtime-abstractie. Zie [docs/ARCHITECTUUR-DATABASE-TIERS.md](docs/ARCHITECTUUR-DATABASE-TIERS.md).
 
-**Technologie:** .NET 9 (FunctionApp) · .NET 10 (Blazor) · Azure Functions v4 · Blazor WebAssembly · Postgres (Supabase) / Azure SQL · Microsoft Graph API · AI-classificatie via `IChatClient` (`Microsoft.Extensions.AI`, standaard gpt-4o-mini, configureerbaar) · Azure Static Web Apps · Entra ID
+**Technologie:** .NET 10 · Azure Functions v4 · Blazor WebAssembly · Postgres (Supabase) / Azure SQL · Microsoft Graph API · AI-classificatie via `IChatClient` (`Microsoft.Extensions.AI`, standaard gpt-4o-mini, configureerbaar) · Azure Static Web Apps · Entra ID
 
 ### Projectkaart
 
@@ -109,8 +109,8 @@ De repository bevat 13 .NET-projecten en één SQL Server-databaseproject (SSDT)
 
 | Project | Rol |
 |---|---|
-| `FunctionApp.Postgres/` | Azure Functions, Postgres-tier (draait in productie, `net9.0`) |
-| `FunctionApp/` | Azure Functions, SQL Server-tier (`fa-dev-sportlink-01.csproj`, `net9.0`) |
+| `FunctionApp.Postgres/` | Azure Functions, Postgres-tier (draait in productie, `net10.0`) |
+| `FunctionApp/` | Azure Functions, SQL Server-tier (`fa-dev-sportlink-01.csproj`, `net10.0`) |
 | `Planner.Shared/` | Tier-onafhankelijke domeinlogica: teamnaam-normalisatie, veldresolutie, planner-regels, thema (`Theming/ThemeCore.cs`), feedback en SSRF-bescherming. Nieuwe gedeelde logica hoort hier — nooit als tweede kopie in een tierboom. |
 | `Database.Postgres/` | Postgres-schema, migraties (`migrations/`) en de checksum-bewaakte migratierunner |
 | `Database.Postgres.Cli/` | CLI om die migraties toe te passen (gebruikt door CI en lokaal) |
@@ -157,7 +157,7 @@ Alle documentatie staat in de [`docs/`](docs/) map, georganiseerd op doelgroep.
 
 ## Lokaal aan de slag
 
-**Vereisten:** .NET 10.0 SDK · .NET 9 Runtime — beide frameworks, `Microsoft.NETCore.App` én `Microsoft.AspNetCore.App` · Azure Functions Core Tools v4 · Azurite · Docker voor de lokale database (zie [docs/DEVELOPER-SETUP.md](docs/DEVELOPER-SETUP.md) §4)
+**Vereisten:** .NET 10.0 SDK · Azure Functions Core Tools v4 · Azurite · Docker voor de lokale database (zie [docs/DEVELOPER-SETUP.md](docs/DEVELOPER-SETUP.md) §4)
 
 ```powershell
 # 1. Lokale database starten — 'docker compose up -d' start Postgres, de tier die in

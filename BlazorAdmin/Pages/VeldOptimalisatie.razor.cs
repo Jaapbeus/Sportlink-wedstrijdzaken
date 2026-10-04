@@ -1,5 +1,6 @@
 using BlazorAdmin.Models;
 using BlazorAdmin.Services;
+using BlazorAdmin.Shared;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
@@ -36,6 +37,7 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
 
     // Sportlink-kolom (#989/#991/#1361): alleen de vlag blijft hier; uitklap-/deeplinkstate staat in
     // SportlinkActieKolomState, het paneel zelf is SportlinkMatchPanel (#1122).
+    private bool _pdfExportIngeschakeld;
     private bool _sportlinkExtensionEnabled;
     private readonly SportlinkActieKolomState _sportlinkKolom = new();
 
@@ -52,15 +54,42 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     private string ExportToelichting =>
         $"Weergave van de {(_visTab == "optimaal" ? "optimale" : "huidige")} planning zoals hierboven gekozen. " +
         "Handig om als e-mail te versturen of als bestand te bewaren.";
-    // #1461 (tijdelijk, echte oplossing is issue #1460): de export komt van de server en kent een
-    // handmatige versleping niet — dus waarschuwen zodra de tijdlijn daarvan afwijkt.
-    private string? ExportWaarschuwing => _handmatigAangepast.Count > 0
-        ? "Let op: je hebt blokken handmatig versleept. Dit deelbare bestand toont de berekende planning, " +
-          "niet jouw handmatige aanpassingen op het scherm."
+    // #1460: de export komt van de server. Zonder handmatige aanpassing is dat het berekende plan;
+    // met handmatig versleepte blokken sturen we de getoonde lijst mee naar het stateless
+    // planner/auto-plan/deel-endpoint, zodat het gedeelde bestand gelijk is aan het scherm.
+    private bool HeeftHandmatigeAanpassing => _handmatigAangepast.Count > 0;
+
+    private string? ExportWaarschuwing => HeeftHandmatigeAanpassing
+        ? "Dit bestand bevat je handmatige aanpassingen zoals ze nu op het scherm staan."
         : null;
-    private Task<byte[]> PdfOphalenAsync() => Api.GetAutoPlanPdfAsync(_planDatum, _planBuffer, _visTab);
+
+    private IEnumerable<AutoPlanDeelRegelDto> GetoondeRegels()
+    {
+        var optimaal = _visTab == "optimaal";
+        return (_plan?.Wedstrijden ?? new()).Select(w => new AutoPlanDeelRegelDto
+        {
+            TeamNaam = w.TeamNaam,
+            Wedstrijd = w.Wedstrijd,
+            Competitiesoort = w.Competitiesoort,
+            Tijd = optimaal ? w.OptimaalTijd : w.HuidigeTijd,
+            Veld = optimaal ? w.OptimaalVeld : w.HuidigeVeld,
+        });
+    }
+
+    private Task<string> HtmlOphalenAsync() => HeeftHandmatigeAanpassing
+        ? Api.GetAutoPlanDeelHtmlAsync(_planDatum, _visTab, GetoondeRegels())
+        : Task.FromResult(HuidigeExportHtml ?? "");
+
+    private Task<byte[]> PdfOphalenAsync() => HeeftHandmatigeAanpassing
+        ? Api.GetAutoPlanDeelPdfAsync(_planDatum, _visTab, GetoondeRegels())
+        : Api.GetAutoPlanPdfAsync(_planDatum, _planBuffer, _visTab);
+
     private string ExportBestandsNaam => $"veld-optimalisatie-{DatumStr}";
-    private string ExportSleutel => $"{_visTab}|{DatumStr}|{_plan?.GetHashCode()}";
+    private string ExportSleutel => $"{_visTab}|{DatumStr}|{_plan?.GetHashCode()}|{HandmatigeStand()}";
+
+    // Verandert bij elke versleping, zodat een open deelpaneel zijn preview ververst.
+    private string HandmatigeStand() => string.Join(';', _handmatigAangepast
+        .Select(w => $"{w.WedstrijdCode}:{w.OptimaalTijd}:{w.OptimaalVeld}").OrderBy(x => x, StringComparer.Ordinal));
 
     // Toepassen feedback
     private string? _toepassenMelding;
@@ -80,6 +109,7 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
         // #989: geen Sportlink-kolom/-knoppen tonen als de extension uit staat (DoD).
         var settings = await Api.GetSettingsAsync();
         _sportlinkExtensionEnabled = settings.Success && settings.Data?.SportlinkExtensionEnabled == true;
+        await LaadPdfExportStatusAsync();
 
         // #1334: automatisch een plan laden, zodat de wedstrijdenlijst (incl. de Sportlink-kolom
         // met de bewerkacties) meteen zichtbaar is — vóór deze fix moest een gebruiker altijd eerst
@@ -104,8 +134,15 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
         _handmatigAangepast.Clear();
         _errorMessage = null;
         _toepassenMelding = null;
+        await LaadPdfExportStatusAsync();
         await AutoPlanAsync();
     }
+
+    /// <summary>
+    /// #1459: de PDF-knop verschijnt alleen als de gekozen club PDF-export heeft ingeschakeld
+    /// (standaard uit). Via het voor elke ingelogde rol open endpoint, opnieuw bij een clubwissel.
+    /// </summary>
+    private async Task LaadPdfExportStatusAsync() => _pdfExportIngeschakeld = await Api.IsPdfExportIngeschakeldAsync();
 
     private async Task AutoPlanAsync()
     {
@@ -277,16 +314,20 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     private readonly HashSet<AutoPlanWedstrijdItemDto> _handmatigAangepast = new();
     private List<string> _conflicten = new();
 
-    private void SleepStart(DagplanningWeergaveHelpers.GanttItem gi, DragEventArgs e)
+    private bool IsHandmatigAangepast(DagplanningWeergaveHelpers.GanttItem gi)
+        => gi.Bron != null && _handmatigAangepast.Contains(gi.Bron);
+
+    private void SleepStart(GanttChart.SleepStartArgs args)
     {
-        if (gi.Bron == null) return;
-        _sleepItem = gi.Bron;
+        if (args.Item.Bron == null) return;
+        _sleepItem = args.Item.Bron;
         // Waar in het blok is gepakt — anders verspringt het blok naar de cursor bij het neerzetten.
-        _sleepGrijpOffsetPx = e.OffsetX;
+        _sleepGrijpOffsetPx = args.Event.OffsetX;
     }
 
-    private async Task SleepDrop(string veldNaam, int rijIndex, int startMinuut, int totaalMinuten, DragEventArgs e)
+    private async Task SleepDrop(GanttChart.SleepDropArgs args)
     {
+        var (veldNaam, rijIndex, startMinuut, totaalMinuten, e) = (args.VeldNaam, args.RijIndex, args.StartMinuut, args.TotaalMinuten, args.Event);
         var item = _sleepItem;
         _sleepItem = null;
         if (item == null || _plan == null) return;

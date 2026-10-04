@@ -5,6 +5,7 @@ using FunctionApp.Postgres.Infrastructure;
 using FunctionApp.Postgres.Monitoring;
 using FunctionApp.Postgres.Sportlink;
 using Microsoft.Azure.Functions.Worker.Builder;
+using Planner.Endpoints.Instellingen;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -20,6 +21,13 @@ using Planner.Shared.Integrations.SportlinkClub;
 // (EmailProcessorFunction — de mailbox-getriggerde inkomende e-mailverwerking).
 var builder = FunctionsApplication.CreateBuilder(args);
 builder.ConfigureFunctionsWebApplication();
+
+// #1515: instellingen eenmaal per instantie laden (Flex: elke niet-HTTP-trigger = eigen instantie).
+builder.UseInstellingenLader(async log =>
+{
+    try { await PostgresAppSettings.LoadSettingsAsync(log); return !PostgresAppSettings.LastLoadFailed; }
+    catch (Exception ex) { log.LogWarning(ex, "Instellingen laden mislukt"); return false; }
+});
 
 // Graph-client met client credentials (application permissions).
 var tenantId = Environment.GetEnvironmentVariable("GraphTenantId");
@@ -81,11 +89,8 @@ builder.Services.AddSingleton<ISportlinkMutationAuditService, PostgresSportlinkM
 // valt het niet onder EgressGuard (#857).
 builder.Services.AddSingleton<INoodmailThrottleStore>(sp =>
 {
-    var storageVerbinding = Environment.GetEnvironmentVariable("AzureWebJobsStorage")
-        ?? throw new InvalidOperationException(
-            "AzureWebJobsStorage ontbreekt — vereist voor de Azure Functions-host zelf.");
+    // Connection string óf identity-based (Flex, #1512) — zie Planner.Shared.Infrastructure.OpslagVerbinding.
     return new TableStorageNoodmailThrottleStore(
-        storageVerbinding,
         sp.GetRequiredService<ILoggerFactory>().CreateLogger<TableStorageNoodmailThrottleStore>());
 });
 

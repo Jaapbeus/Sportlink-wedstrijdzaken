@@ -20,10 +20,21 @@ public sealed class TableStorageNoodmailThrottleStore : INoodmailThrottleStore
     private readonly ILogger<TableStorageNoodmailThrottleStore> _log;
     private bool _tabelGegarandeerd;
 
-    public TableStorageNoodmailThrottleStore(string storageConnectionString, ILogger<TableStorageNoodmailThrottleStore> log)
+    /// <summary>Productiepad (#1512): connection string of managed identity, via <c>OpslagVerbinding</c>.</summary>
+    public TableStorageNoodmailThrottleStore(ILogger<TableStorageNoodmailThrottleStore> log)
+        : this(global::Planner.Shared.Infrastructure.OpslagVerbinding.MaakTableClient(TableName), log)
     {
-        _tableClient = new TableClient(storageConnectionString, TableName);
+    }
+
+    public TableStorageNoodmailThrottleStore(TableClient tableClient, ILogger<TableStorageNoodmailThrottleStore> log)
+    {
+        _tableClient = tableClient;
         _log = log;
+    }
+
+    public TableStorageNoodmailThrottleStore(string opslagVerbinding, ILogger<TableStorageNoodmailThrottleStore> log)
+        : this(new TableClient(opslagVerbinding, TableName), log)
+    {
     }
 
     public async Task<DateTime?> LaatsteKeerVerstuurdAsync(string sleutel)
