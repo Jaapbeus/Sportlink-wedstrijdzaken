@@ -248,7 +248,7 @@ isolated worker):
 
 Loop onderstaande twee categorieën na. Lees elk relevant bestand, vergelijk met de gemaakte wijziging, en update wat niet meer klopt. Verouderde informatie is erger dan geen informatie.
 
-**Categorie 1 — Technische documentatie** (voor ontwikkelaars en Codex):
+**Categorie 1 — Technische documentatie** (voor ontwikkelaars en agents):
 
 | Bestand | Bijwerken bij |
 |---|---|
@@ -344,7 +344,6 @@ gh run view <run-id> --json jobs --jq '.jobs[] | {name: .name, conclusion: .conc
 > (`gh run list --workflow close-released-issues.yml --limit 1 --json conclusion`) — conform de
 > hotfix-uitzondering in CLAUDE.md, "Issue-lifecycle: awaiting-release". Is er nog geen release-tag
 > gepland? Dan blijft het issue open met `status: awaiting-release` totdat die er komt.
-```
 
 ### Één branch per batch of per issue?
 

@@ -38,43 +38,31 @@ Symbolen:
 
 ## FASE 0 — TRIAGE (altijd eerst, alleen lezen, geen wijzigingen)
 
-**0a. Branch-check**
-Voer uit: `git branch --show-current`
-- Op `feature/*`, `hotfix/*` of `codex/*` in de eigen geverifieerde worktree → ✅, ongeacht de rest van deze fase.
-- Op `main`, `develop` of detached HEAD → nog geen oordeel — wacht op 0b/0c en pas dan het
-  **branch-oordeel** hieronder toe. Op zichzelf is dit geen harde blocker: pas 0b/0c samen bepalen
-  of er van déze sessie iets op het spel staat.
+**0a. Branch en worktree controleren**
+Lees `git branch --show-current`, `git status --short` en `git worktree list --porcelain`.
+- `feature/*`, `hotfix/*` of `codex/*` in de eigen geverifieerde worktree: correcte ontwikkelisolatie.
+- `main`, `develop`, detached HEAD of een niet-eigen worktree: uitsluitend read-only afsluiting.
+  Geen fallback naar gedeeld schrijven, branchwissel, cleanup of services wijzigen.
 
-**0b. Uncommitted werk**
-Voer uit: `git status --short`
-- Geen output → ✅
-- Wijzigingen aanwezig → ❌ HARDE BLOCKER, altijd, ongeacht de branch — lijst bestanden op en stop hier.
+**0b. Werkstatus en eigenaarschap**
+Onverwerkt eigen werk: rapporteer bestanden en overdracht, sluit de implementatie niet als af aan.
+Andermans wijzigingen: laat ze intact; beoordeel ze niet als eigen werk dat moet worden opgeruimd.
+Een read-only sessie mag worden afgesloten met vermelding dat er geen implementatie is gedaan;
+sla de bouw-, changelog- en PR-gates voor niet-uitgevoerde ontwikkeling over, schrijf wel memory.
 
-**0c. Ongepushte commits**
-Voer uit: `git log --oneline origin/$(git branch --show-current)..HEAD 2>/dev/null || git log --oneline -5`
-- Geen output → ✅
-- Commits aanwezig die niet op origin staan → ⚠️ (of ❌ in combinatie met 0a — zie branch-oordeel)
-
-**Branch-oordeel (combineert 0a + 0b + 0c — bepaalt of 0a een harde blocker is):**
-- `feature/*`/`hotfix/*` → altijd ✅.
-- `main`/`develop`/detached HEAD, mét 0b schoon (geen output) én 0c leeg (geen ongepushte
-  commits) → **geen harde blocker, wel ⚠️**. Dit was een puur read-only/onderzoeksessie of de
-  checkout staat zo door een andere, gelijktijdige sessie ([[feedback_worktree_isolation_required]]
-  — meerdere sessies delen deze working directory zonder git-worktree). Er staat niets van déze
-  sessie op het spel: geen wijzigingen, niets te verliezen. Rapporteer dit expliciet als ⚠️ en ga
-  NIET zelf een branch aanmaken of wisselen — dat kan een andere sessie die deze checkout verwacht
-  aan te treffen verstoren.
-- `main`/`develop`/detached HEAD MET 0b-wijzigingen of MET 0c-commits van déze sessie → ❌ HARDE
-  BLOCKER — stop hier. Dit is het scenario waar de regel voor bedoeld is: eigen werk dat op een
-  beschermde branch staat en verloren kan gaan of per ongeluk gedeeld wordt.
+**0c. Ongepushte eigen commits**
+Controleer uitsluitend de eigen taakbranch tegenover zijn upstream met
+`git log --oneline @{upstream}..HEAD`. Zonder upstream: rapporteer dat expliciet, geen fallback
+naar de laatste vijf historische commits alsof die ongepusht werk van deze sessie bewijzen.
+Ongepushte eigen commits: overdracht vereist; push alleen de eigen toegewezen branch.
 
 **0d. Open PR**
 Voer uit: `gh pr list --head $(git branch --show-current) 2>/dev/null`
 - PR aanwezig → noteer PR-nummer
 - Geen PR → ⚠️
 
-→ Toon triage-samenvatting. Stop bij een harde blocker uit het branch-oordeel of bij 0b op
-zichzelf — ga pas verder als de gebruiker de blocker oplost of expliciet vraagt door te gaan.
+→ Rapporteer de triage. Bij onverwerkt eigen implementatiewerk blijft de afsluiting gedeeltelijk;
+leg de overdracht en memory vast. Ga nooit andermans werk herstellen om de sessie groen te maken.
 
 ---
 

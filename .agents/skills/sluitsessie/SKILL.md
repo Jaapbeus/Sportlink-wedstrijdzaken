@@ -15,10 +15,11 @@ disable-model-invocation: true
 > Poorten vrij betekent niet dat databases/testdata vrij zijn. Leg reservering en vrijgave vast
 > in de taak/sessie-overdracht; laat services intact als ze aan een andere sessie behoren.
 
+
 Voer de sessie-afsluiting uit als een gate-based pipeline. Elke fase is een poort:
 als een harde blocker gevonden wordt, stop je bij die fase en rapporteer je wat er
 nog moet gebeuren. Leg altijd implementer, reviewer, fase, branch, head-SHA, werkstatus, taak- en runtime-eigenaarschap vast
-in de sessie-overdracht. Schrijf een sessiesamenvatting naar eigen beschikbare memory — ook bij
+in de sessie-overdracht. Schrijf altijd een sessiesamenvatting naar eigen memory — ook bij
 gedeeltelijke afsluiting.
 
 Symbolen:
@@ -37,27 +38,31 @@ Symbolen:
 
 ## FASE 0 — TRIAGE (altijd eerst, alleen lezen, geen wijzigingen)
 
-**0a. Branch-check**
-Voer uit: `git branch --show-current`
-- Op `feature/*`, `hotfix/*` of `codex/*` in de eigen geverifieerde worktree → ✅
-- Op `main`, `v2/develop` of detached HEAD → ❌ HARDE BLOCKER — stop hier.
+**0a. Branch en worktree controleren**
+Lees `git branch --show-current`, `git status --short` en `git worktree list --porcelain`.
+- `feature/*`, `hotfix/*` of `codex/*` in de eigen geverifieerde worktree: correcte ontwikkelisolatie.
+- `main`, `develop`, detached HEAD of een niet-eigen worktree: uitsluitend read-only afsluiting.
+  Geen fallback naar gedeeld schrijven, branchwissel, cleanup of services wijzigen.
 
-**0b. Uncommitted werk**
-Voer uit: `git status --short`
-- Geen output → ✅
-- Wijzigingen aanwezig → ❌ HARDE BLOCKER — lijst bestanden op en stop hier.
+**0b. Werkstatus en eigenaarschap**
+Onverwerkt eigen werk: rapporteer bestanden en overdracht, sluit de implementatie niet als af aan.
+Andermans wijzigingen: laat ze intact; beoordeel ze niet als eigen werk dat moet worden opgeruimd.
+Een read-only sessie mag worden afgesloten met vermelding dat er geen implementatie is gedaan;
+sla de bouw-, changelog- en PR-gates voor niet-uitgevoerde ontwikkeling over, schrijf wel memory.
 
-**0c. Ongepushte commits**
-Voer uit: `git log --oneline origin/$(git branch --show-current)..HEAD 2>/dev/null || git log --oneline -5`
-- Geen output → ✅
-- Commits aanwezig die niet op origin staan → ⚠️
+**0c. Ongepushte eigen commits**
+Controleer uitsluitend de eigen taakbranch tegenover zijn upstream met
+`git log --oneline @{upstream}..HEAD`. Zonder upstream: rapporteer dat expliciet, geen fallback
+naar de laatste vijf historische commits alsof die ongepusht werk van deze sessie bewijzen.
+Ongepushte eigen commits: overdracht vereist; push alleen de eigen toegewezen branch.
 
 **0d. Open PR**
 Voer uit: `gh pr list --head $(git branch --show-current) 2>/dev/null`
 - PR aanwezig → noteer PR-nummer
 - Geen PR → ⚠️
 
-→ Toon triage-samenvatting. Stop bij harde blockers (0a of 0b) — ga pas verder als de gebruiker de blocker oplost of expliciet vraagt door te gaan.
+→ Rapporteer de triage. Bij onverwerkt eigen implementatiewerk blijft de afsluiting gedeeltelijk;
+leg de overdracht en memory vast. Ga nooit andermans werk herstellen om de sessie groen te maken.
 
 ---
 
@@ -121,6 +126,12 @@ Haal issue-nummers op uit recente commit-messages op de huidige branch:
 git log origin/main..HEAD --pretty=format:"%s" 2>/dev/null \
   | grep -oE '#[0-9]+' | sort -u
 ```
+
+> **`grep -E`, nooit `grep -P` (#800, #1286).** De BSD-grep van macOS kent geen PCRE en weigert
+> `-P`. In deze pijplijn faalt dat *stil*: `grep` schrijft zijn foutmelding naar stderr, levert
+> geen regels, en `sort` sluit daarna af met 0. De skill zou dan "geen afgeronde issues" melden
+> in plaats van een fout. Let op dat de fout onzichtbaar blijft op een macOS met `ugrep` of
+> GNU-grep uit Homebrew op `PATH` — die accepteren `-P` wél.
 Voor elk gevonden nummer: controleer de GitHub-status én het statuslabel:
 ```bash
 gh issue view <nr> --json number,title,state,labels 2>/dev/null
@@ -148,10 +159,20 @@ Schrijf `session_latest.md` naar de **memory-map van deze sessie** — dat is de
 sessie-instructies genoemd staat en waar `MEMORY.md` al in staat. Neem die map over zoals hij
 daar vermeld wordt; schrijf hier nooit een pad met de hand uit.
 
-> **Waarom geen vast pad (#1286).** De projectmap onder de agent-configuratiemap is een slug van
-> het checkout-pad, dus hij verschilt per machine én per platform. Hier stond een hardgecodeerd
-> Windows-pad inclusief gebruikersnaam en schijfletter: op macOS bestaat dat niet, en de
-> sessiesamenvatting belandde dan nergens of op een nieuw aangemaakt, verkeerd pad.
+> **Waarom geen vast pad (#1286).** De projectmap onder `~/.claude/projects/` is een slug van het
+> checkout-pad, dus hij verschilt per machine én per platform — op macOS bijvoorbeeld
+> `~/.claude/projects/-Users-<gebruiker>-Repo-Sportlink-wedstrijdzaken/memory/`, op Windows
+> `%USERPROFILE%\.claude\projects\c--repo-<map>-Sportlink-wedstrijdzaken\memory\`. Hier stond een
+> hardgecodeerd Windows-pad inclusief gebruikersnaam: op macOS bestaat dat niet, en de sessie-
+> samenvatting belandde dan nergens of op een nieuw aangemaakt, verkeerd pad.
+
+Twijfel je welke map het is, leid hem dan af in plaats van hem te gokken:
+
+```bash
+# PowerShell 7 (Windows + macOS)
+Join-Path $HOME '.claude/projects'
+# → zoek de submap die bij deze checkout hoort; daarin staat memory/MEMORY.md
+```
 
 ```
 ---
@@ -199,3 +220,17 @@ Update ook de `session_latest`-regel in MEMORY.md.
 - ❌ aanwezig → `❌ NIET afgesloten — los blocker op en voer /sluitsessie opnieuw uit`
 
 Sluit af met één aanbevolen volgende actie.
+
+**Alleen als alle checks ✅ zijn** (volledig groen, geen enkele ⚠️ of ❌): plaats na de
+aanbevolen volgende actie, als allerlaatste in de response, dit banner in een code block:
+
+```
+  ██████╗ ██╗  ██╗ █████╗ ██╗   ██╗
+ ██╔═══██╗██║ ██╔╝██╔══██╗╚██╗ ██╔╝
+ ██║   ██║█████╔╝ ███████║ ╚████╔╝
+ ██║   ██║██╔═██╗ ██╔══██║  ╚██╔╝
+ ╚██████╔╝██║  ██╗██║  ██║   ██║
+  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝
+```
+
+Bij ⚠️ of ❌ dit banner NIET tonen — dat zou een onafgeronde sessie als voltooid voorspiegelen.

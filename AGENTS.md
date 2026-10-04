@@ -46,8 +46,12 @@ Bij spanning tussen rollen (bijv. snelheid vs. security): altijd melden.
    bestanden/componenten, branch, absoluut worktreepad en afhankelijkheden. De eigenaar wijst
    de implementer aan; een agent neemt geen reeds toegewezen taak over. Een directe opdracht
    aan de aangesproken agent geldt als toewijzing, zolang geen bestaande claim daarmee botst.
-   Bij een expliciete instructiewijziging zonder issue staat dit taakregister in de PR-body
-   en, vóór de PR bestaat, in de sessie-overdracht.
+   Iedere implementatie, inclusief instructie-, documentatie- en CI-wijzigingen, heeft een
+   gekoppeld issue vóór wijzigingen. Zoek eerst open én gesloten issues; maak bij ontbrekende
+   passende scope een issue met precies één bestaand `type:`- en `priority:`-label en één
+   aantoonbaar herkomstlabel. Voeg `discipline: architect` toe bij een architectuurbesluit.
+   Gebruik geen legacy/synonieme labels. `status:` volgt de lifecycle-automatisering; geen
+   handmatige sluiting na develop-merge. De PR verwijst sterk naar dit issue in titel/body.
 3. **Parallel werk vereist vooraf gescheiden scopes.** Controleer overlap in bestanden én in
    API-contracten, databaseschema's en gedeelde logica. Bij overlap voert één implementer dat
    onderdeel uit; ander werk wacht of krijgt een vastgelegde afhankelijkheid. Herhaal de controle
@@ -148,6 +152,27 @@ Bij expliciete opdracht mogen beide agents blijvende werkinstructies aanpassen. 
 is de bron; `AGENTS.md` wordt uitsluitend gegenereerd. Draai na iedere bronwijziging
 `python3 scripts/ci/genereer-agents-md.py --schrijf` en daarna dezelfde opdracht zonder `--schrijf`.
 De generator bewaart agentnamen, bevoegdheden, paden en URL's: alleen de documenttitel verschilt.
+
+**Instructiecontrole vóór iedere overdracht:** draai `python3 scripts/ci/check-agent-instructies.py`
+en `python3 scripts/ci/check-agent-instructies.test.py`. De CI controleert beide skilllocaties op
+identieke inhoud (alleen documentverwijzingen mogen verschillen) en op onafgesloten Markdown-
+codeblokken. Wijzig bij een skillaanpassing beide kopieën; een afwijkende kopie blokkeert CI.
+Dit bewijst structurele consistentie, geen semantische juistheid of taak-/runtime-exclusiviteit.
+
+**Reviewbewijs hoort bij de PR.** Leg reviewer, ronde, aangeboden/beoordeelde SHA, uitkomst en
+bevindingenafhandeling vast in een PR-comment of -review. Memory en chat verwijzen naar dat bewijs;
+ze vervangen het niet. Een review van een oudere SHA is geen review van de huidige head.
+Na verwerking wisselt de implementer eerst de fase/beurt naar zichzelf. Een nieuwe review volgt
+alleen na expliciete teruggave; na maximaal twee rondes is de eigenaar aan zet. Bestaande
+reviewmonitors mogen geen tweede gelijktijdige review op dezelfde SHA starten.
+
+**Instructies versus memory:** het expliciete eigenaarsbesluit is leidend. Memory vermeldt
+besluitdatum, PR, geldende afspraak en uitrolstatus (draft/ongemerged, develop, main). Een nog
+ongemergede PR betekent dat de gedeelde branches nog de vorige tekst bevatten. Bij sessiestart
+wordt die status gecontroleerd; oude verboden worden niet als actuele instructie herhaald.
+Tot geautoriseerde merge geldt de expliciete opdracht voor deze taak; memory geeft geen extra
+merge-/deploybevoegdheid. Rapporteer ontbrekende handhaving als beperking, nooit als garantie.
+
 
 ---
 
@@ -257,8 +282,9 @@ wanneer de vorige sessie niet meer schrijft en de overdracht is vastgelegd.
    Leg implementer, reviewer, sessie en scope vast vóór implementatie.
 2. Fetch de basis zonder de hoofd-checkout te wijzigen: `git fetch origin develop main`.
 3. Maak een unieke branch/worktree volgens onderstaande tabel. Voeg bij botsende namen een
-   sessiesuffix toe; neem nooit een bestaande actieve branch over. Een expliciet toegewezen
-   instructiewijziging zonder issue gebruikt een beschrijvende slug zoals `codex/agent-samenwerking`.
+   sessiesuffix toe; neem nooit een bestaande actieve branch over. Een nieuwe implementatiebranch bevat het issue-nummer. Een reeds geopende PR mag zijn
+   bestaande branch behouden wanneer het issue achteraf wordt gekoppeld; leg die uitzondering
+   vast bij het issue en begin vervolgwerk wel met het issue vóór de branch.
 4. Voer alle schrijvende commando's uit vanuit het absolute eigen worktreepad. Claude Code kan
    `EnterWorktree({ path: ... })` gebruiken; Codex gebruikt het pad als commandowerkmap.
    Maak geen worktree met impliciete default-basis: features starten vanaf `origin/develop`.
@@ -269,7 +295,9 @@ wanneer de vorige sessie niet meer schrijft en de overdracht is vastgelegd.
 | Claude Code feature/fix/docs/chore | `feature/#<nr>-<slug>` | `origin/develop` | `develop` | `.claude/worktrees/<nr>-<sessie>` |
 | Codex urgente productiefix | `codex/hotfix-<nr>-<slug>` | `origin/main` | `main` | `.codex/worktrees/<nr>-<sessie>` |
 | Claude Code urgente productiefix | `hotfix/#<nr>-<slug>` | `origin/main` | `main` | `.claude/worktrees/<nr>-<sessie>` |
-| Release | `develop` | integratiestand | `main` | aparte, gereserveerde release-/acceptatieomgeving |
+| Codex releasevoorbereiding | `codex/<nr>-release-<versie>` | `origin/develop` | `develop` | `.codex/worktrees/<nr>-<sessie>` |
+| Claude Code releasevoorbereiding | `feature/#<nr>-release-<versie>` | `origin/develop` | `develop` | `.claude/worktrees/<nr>-<sessie>` |
+| Release-PR na voorbereiding | `develop` | integratiestand | `main` | gereserveerde acceptatieomgeving; geen directe commits op `develop` |
 
 Voorbeeld (vervang placeholders, quote branchnaam met `#`):
 ```bash
@@ -540,7 +568,7 @@ gh pr create --draft --base develop --title "feat(#<nr>): ..." --body "..."
 | Label | Betekenis |
 |---|---|
 | `source: codex` | Issue oorspronkelijk aangemaakt of inhoudelijk opgesteld door Codex |
-| `source: claude-code` | Issue aangemaakt door Claude Code zelf (bijv. Stap S0-fallback: geen passend open issue gevonden) |
+| `source: claude-code` | Issue oorspronkelijk aangemaakt of inhoudelijk opgesteld door Claude Code |
 | `source: owner` | Issue rechtstreeks aangemaakt door de eigenaar |
 | `via: feedback-widget` | Issue binnengekomen via het feedback-widget-kanaal in de Admin GUI — dekt herkomst al; géén aparte `source:`-variant, dat zou dupliceren |
 
@@ -648,7 +676,7 @@ Alleen als Stap 4 volledig groen is:
 1. Rond eerst de wederzijdse review op de huidige head-SHA af en verwerk de bevindingen.
    Zonder die review blijft de PR draft; groene CI vervangt geen tweede reviewer.
    Zet na afronding fase `eigenaarsbesluit` en `turn: owner` (bij een issue);
-   zonder issue staat de eigenaarsbeurt in de PR-body. Haal daarna de PR uit draft: `gh pr ready <pr-nr>` (automatisering zet hierdoor
+   de PR-body verwijst naar dezelfde eigenaarsbeurt. Haal daarna de PR uit draft: `gh pr ready <pr-nr>` (automatisering zet hierdoor
    `status: review-needed` — dat is op dit punt nog een tussenstap, geen eindoordeel).
 2. Toets tegen "Escaleer naar gebruiker bij" hieronder — dat zijn de ENIGE gevallen waarin
    `status: review-needed` mag blijven staan:
