@@ -38,11 +38,11 @@
   {"name": "status: awaiting-release", "color": "1D76DB", "description": "Fix zit in develop maar is nog niet uitgerold naar productie (main)"},
   {"name": "status: pr-aangemaakt",    "color": "2EA44F", "description": "PR is aangemaakt en CI is groen — geen actie van de eigenaar vereist, klaar om te mergen"},
   {"name": "status: waiting-codex",    "color": "FF6B35", "description": "Gedeprecieerd sinds #1343 — vervangen door turn: codex/turn: owner. Paused, waiting on Codex's read-only review/architecture opinion before Claude continues"},
-  {"name": "source: codex",       "color": "5319E7", "description": "Finding surfaced by an OpenAI Codex read-only security/privacy review"},
-  {"name": "source: claude-code", "color": "5319E7", "description": "Issue created or substantially authored by Claude Code"},
+  {"name": "source: codex",       "color": "5319E7", "description": "Issue oorspronkelijk opgesteld door Codex; herkomst, geen implementer- of reviewerrol."},
+  {"name": "source: claude-code", "color": "5319E7", "description": "Issue oorspronkelijk opgesteld door Claude Code; herkomst, geen implementer- of reviewerrol."},
   {"name": "source: owner",       "color": "5319E7", "description": "Issue created directly by the repository owner"},
 
-  {"name": "turn: claude-code", "color": "0E8A16", "description": "Claude Code is aan zet: implementeren, bevindingen verwerken, of Codex aanvragen"},
-  {"name": "turn: codex",       "color": "5319E7", "description": "Eenmalige aanvraag: Codex mag de gekoppelde PR read-only reviewen (#1343)"},
-  {"name": "turn: owner",       "color": "FF6B35", "description": "De eigenaar moet beslissen — rondelimiet, fout, of merge-/vervolgbesluit"}
+  {"name": "turn: claude-code", "color": "0E8A16", "description": "Claude Code is aan zet in de vastgelegde fase; geen zelfstandige implementatie- of mergeautorisatie."},
+  {"name": "turn: codex",       "color": "5319E7", "description": "Codex is aan zet in de vastgelegde fase; geen zelfstandige implementatie- of mergeautorisatie."},
+  {"name": "turn: owner",       "color": "FF6B35", "description": "Eigenaar beslist over blokkade, reviewrondelimiet, merge-moment of vervolg."}
 ]

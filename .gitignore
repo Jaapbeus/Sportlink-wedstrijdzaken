@@ -161,3 +161,7 @@ __MACOSX/
 # #1470: de skill /release heet zo; [Rr]elease/ hierboven is bedoeld voor build-output.
 !.claude/skills/release/
 !.agents/skills/release/
+
+# Geïsoleerde agent-worktrees zijn lokale checkouts, geen projectinhoud.
+.codex/worktrees/
+.claude/worktrees/

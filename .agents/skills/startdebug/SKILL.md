@@ -1,8 +1,20 @@
 ---
-description: Start alle lokale debug-services op de laatste develop-branch — Azurite, FunctionApp (:7094) en BlazorAdmin (:5242). Werkt develop eerst bij naar origin/develop, past openstaande migraties toe en zet live Sportlink-verkeer voor de primaire club klaar (nooit ALLSTARS). Argumenten: "swa" voor de SWA emulator (:4280), "offline" om zonder Sportlink-verkeer te starten.
+name: startdebug
+description: "Start alle lokale debug-services op de laatste develop-branch — Azurite, FunctionApp (:7094) en BlazorAdmin (:5242). Werkt develop eerst bij naar origin/develop, past openstaande migraties toe en zet live Sportlink-verkeer voor de primaire club klaar (nooit ALLSTARS). Argumenten: \"swa\" voor de SWA emulator (:4280), \"offline\" om zonder Sportlink-verkeer te starten."
 disable-model-invocation: true
-argument-hint: [swa] [offline]
+argument-hint: "[swa] [offline]"
 ---
+
+> **Gezamenlijke agentregels zijn leidend (CLAUDE.md/AGENTS.md).** Deze skill geldt voor Codex
+> en Claude Code. Werk uitsluitend aan de toegewezen taak in de eigen geverifieerde worktree;
+> claim of wijzig geen taak, branch, worktree of services van een andere actieve sessie.
+> Behoud `source:` als herkomst; registreer implementer, reviewer, fase en sessie afzonderlijk.
+> Vóór merge: wederzijdse review van de huidige head-SHA, relevante checks én afzonderlijke
+> eigenaarsautorisatie. Deze skill omzeilt die grenzen niet.
+> Start/stop/clean/migraties vereisen vooraf exclusief runtime-eigenaarschap. De huidige
+> debugscriptset is gedeeld: onbekende of andere runtime-eigenaar betekent geen mutaties.
+> Poorten vrij betekent niet dat databases/testdata vrij zijn. Leg reservering en vrijgave vast
+> in de taak/sessie-overdracht; laat services intact als ze aan een andere sessie behoren.
 
 Start de lokale debug-omgeving. Scripts staan in `scripts/dev/`.
 
@@ -37,6 +49,10 @@ Alle commando's hieronder draaien in PowerShell 7 (`pwsh` op macOS, `powershell`
 > volgende stap (1 t/m 7) voer je uit vanuit de develop-worktree die je hier bepaalt** — niet vanuit
 > de map waarin de sessie toevallig startte.
 
+**Vóór 0a:** reserveer de gedeelde runtime én de develop-acceptatieworktree; controleer
+dat geen andere sessie daar schrijft of services beheert. Zonder reservering geen fetch/merge,
+migratie, clean of start in die omgeving. `/startdebug` reserveert niet automatisch andermans omgeving.
+
 **0a — Vind de worktree die `develop` uitgecheckt heeft.** `develop` kan maar in één worktree tegelijk
 staan; die is het doel van alle volgende stappen. Draai vanuit de repo-root:
 
@@ -63,7 +79,7 @@ gebruiker in plaats van te mergen of te resetten.
 git -C $developPad fetch origin develop
 git -C $developPad merge --ff-only origin/develop
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "FF-only mislukt — develop is lokaal afgeweken. STOP en meld aan de gebruiker." -ForegroundColor Red
+    throw "FF-only mislukt — develop is lokaal afgeweken. Geen migraties/services starten."
 }
 ```
 

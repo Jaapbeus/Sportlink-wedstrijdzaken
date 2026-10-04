@@ -26,34 +26,18 @@ GEBRUIK
     python3 scripts/ci/genereer-agents-md.py            # controleer (exit 1 bij verschil)
     python3 scripts/ci/genereer-agents-md.py --schrijf  # regenereer AGENTS.md
 
-DE VERVANGING
--------------
-Alleen het woord "Claude" wordt "Codex". Bestandsnamen, paden en URL's blijven ongemoeid: een
-blinde vervanging maakte van "CLAUDE.md" eerder "CODEX.md" en van "claude.ai" "codex.ai" — de
-huidige AGENTS.md bevat daardoor geen enkele verwijzing meer naar CLAUDE.md. Die tokens worden
-hieronder eerst afgeschermd.
+DE AFLEIDING
+------------
+De inhoud is gedeeld voor beide agents. Alleen de documenttitel wordt aangepast;
+agentnamen, rollen, bevoegdheden, paden en URL's blijven letterlijk behouden.
 """
 
-import re
 import sys
 from pathlib import Path
 
 WORTEL = Path(__file__).resolve().parents[2]
 BRON = WORTEL / "CLAUDE.md"
 DOEL = WORTEL / "AGENTS.md"
-
-# Tokens die het woord "Claude" bevatten maar géén verwijzing naar de agent zijn.
-AFSCHERMEN = [
-    "CLAUDE.md",
-    "Claude Code",  # De expliciete implementer in de Codex-review/Claude Code-handoffregel.
-    ".claude/",
-    "claude.ai",
-    "claude.com",
-    "Claude Opus",
-    "Claude Fable",
-    "Claude Sonnet",
-    "Claude Haiku",
-]
 
 KOP = """<!-- GEGENEREERD BESTAND — NIET MET DE HAND BEWERKEN.
 
@@ -71,24 +55,7 @@ KOP = """<!-- GEGENEREERD BESTAND — NIET MET DE HAND BEWERKEN.
 
 
 def genereer(bron_tekst: str) -> str:
-    tekst = bron_tekst
-
-    # 1. Scherm de niet-agent-tokens af.
-    for i, token in enumerate(AFSCHERMEN):
-        tekst = tekst.replace(token, f"\x00{i}\x00")
-
-    # 2. Vervang zelfstandige verwijzingen naar Claude als agent. De exacte merknaam "Claude Code"
-    #    is hierboven afgeschermd zodat de vaste implementer in de handoff-regel herkenbaar blijft.
-    tekst = re.sub(r"\bClaude\b", "Codex", tekst)
-
-    # 3. Zet de afgeschermde tokens terug.
-    for i, token in enumerate(AFSCHERMEN):
-        tekst = tekst.replace(f"\x00{i}\x00", token)
-
-    # 4. Titel.
-    tekst = tekst.replace("# CLAUDE.md", "# AGENTS.md", 1)
-
-    return KOP + tekst
+    return KOP + bron_tekst.replace("# CLAUDE.md", "# AGENTS.md", 1)
 
 
 def main() -> int:

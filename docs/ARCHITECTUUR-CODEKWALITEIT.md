@@ -436,6 +436,8 @@ endpoint laat hem ook falen. Dezelfde knip als de Layer-5-scan in
 | 3b — geen `<style>`-blok of statische inline style in Blazor-pagina's (#1329) | `scripts/ci/check-blazor-inline-styles.sh` | `build.yml` |
 | 3c — gelinkte bronbestanden in BlazorAdmin: alleen `using System*`, geen `RegexOptions.Compiled` (#1461) | `scripts/ci/check-gelinkte-bronbestanden.sh` | `build.yml` |
 | 4 — platformafhankelijke valkuilen | `scripts/ci/check-codekwaliteit-valkuilen.sh` | `build.yml` |
+| Agentinstructies — skilltweelingen en afgesloten codeblokken | `scripts/ci/check-agent-instructies.py` | `build.yml` |
+| Agentinstructies — negatieve/positieve fixturetests | `scripts/ci/check-agent-instructies.test.py` | `build.yml` |
 | 5 — AGENTS.md afgeleid uit CLAUDE.md | `scripts/ci/genereer-agents-md.py` | `build.yml` |
 | 6 — elke regel heeft een guard | `scripts/ci/check-regelregister.sh` | `build.yml` |
 | 7, 8 — bestandsgrootte en methodelengte stijgen niet | `scripts/ci/check-bestandsgrootte.sh` | `build.yml` |
@@ -476,11 +478,33 @@ Eerlijk vermeld, zodat niemand denkt dat het gedekt is.
 |---|---|---|
 | Testdekking per productiemap | `BlazorAdmin.Tests` heeft weinig tests tegenover bijna 7.000 regels Razor; dat groeit pas als regel 3 (code-behind) verder is doorgevoerd. De drie mappen zonder testproject zijn bij #1302 wél voorzien — zie hieronder. | Regel 3 |
 | Expressie-index bij een `UPPER()`-vergelijking (#1232) — **deels bewaakt sinds #1280** | In het algemeen niet schema-statisch te bepalen zonder de queries te parsen; de splinter-gate sluit `unused_index` bewust uit (§68 van `ARCHITECTUUR-DATABASE-TIERS.md`). De regel staat in `CLAUDE.md`, de meting per tier in §69 en §75 daarvan. Voor de drie sleutelkolommen van de teamresolutie is het wél afdwingbaar gebleken, omdat de vergelijkingen op één plek staan. | `FunctionApp.Tests/TeamResolution/TeamCandidateIndexSargabilityTests.cs` voor de teamresolutiekolommen; daarbuiten handmatig: `EXPLAIN (ANALYZE, BUFFERS)` resp. `SHOWPLAN_TEXT` bij zo'n wijziging |
-| Precies één `source:`-label per issue (#1336) | Herkomst wordt handmatig gezet door Claude Code (Codex heeft geen labelschrijftoegang) — er is geen `setIssueStatus()`-achtige helper die dit afdwingt, en geen periodieke scan die een issue zonder of met dubbel `source:`-label signaleert. | Los issue indien gewenst: een periodieke workflow (zelfde vorm als `supabase-advisors.yml`) die open issues zonder precies één `source:`-label rapporteert |
-| Verweesde `status: waiting-codex` (#1336, gedeprecieerd sinds #1343) | Er is geen GitHub-event dat Codex' read-only reviewsweep markeert als "klaar" — zetten én verwijderen zijn altijd handmatige acties van Claude Code. Een issue dat op `waiting-codex` blijft staan omdat niemand terugkomt, valt niet automatisch op. Sinds #1343 is dit label gedeprecieerd (zie `CLAUDE.md`); de rij blijft staan zolang het label en zijn `PROTECTED`-vermelding nog bestaan. | Los issue indien gewenst: dagelijkse/wekelijkse cron die `status: waiting-codex`-issues ouder dan N dagen signaleert, of verwijder het label + de `PROTECTED`-vermelding zodra bevestigd is dat niets er meer naar verwijst |
+| Precies één `source:`-label per issue (#1336) | Herkomst wordt handmatig gezet door de opsteller (Codex of Claude Code) — er is geen `setIssueStatus()`-achtige helper die dit afdwingt, en geen periodieke scan die een issue zonder of met dubbel `source:`-label signaleert. | Los issue indien gewenst: een periodieke workflow (zelfde vorm als `supabase-advisors.yml`) die open issues zonder precies één `source:`-label rapporteert |
+| Verweesde `status: waiting-codex` (#1336, gedeprecieerd sinds #1343) | Historische wachtstatus zonder betrouwbare afrondingstrigger; de huidige wederzijdse reviews gebruiken expliciete fase/beurt en PR-bewijs. Een issue dat op `waiting-codex` blijft staan omdat niemand terugkomt, valt niet automatisch op. Sinds #1343 is dit label gedeprecieerd (zie `CLAUDE.md`); de rij blijft staan zolang het label en zijn `PROTECTED`-vermelding nog bestaan. | Los issue indien gewenst: dagelijkse/wekelijkse cron die `status: waiting-codex`-issues ouder dan N dagen signaleert, of verwijder het label + de `PROTECTED`-vermelding zodra bevestigd is dat niets er meer naar verwijst |
 | Precies één `turn:`-label per issue (#1343) | Net als bij `source:` (zie rij hierboven): geen `setIssueStatus()`-achtige helper dwingt exclusiviteit af voor `turn: claude-code`/`turn: codex`/`turn: owner`, en er is geen periodieke scan die een issue zonder of met dubbel `turn:`-label signaleert. | Los issue indien gewenst: dezelfde periodieke workflow als voor `source:` uitbreiden met een `turn:`-check |
 | `/security-review` vóór elke release (#1470) | Afgedwongen door de skill `/release` (stap R1), niet door CI: een review in GitHub Actions vraagt een Anthropic API-sleutel en dus API-kosten. Een release buiten `/release` om (handmatig mergen van een `develop` → `main`-PR) slaat de review over. De automatische ondergrens is de Security Gate met CodeQL, die wél verplicht is op `main`. | Geen; bewust zo gelaten. Vangrail is de verplichte Security Gate |
-| Maximaal twee Codex-rondes per PR zonder eigenaarsbesluit (#1343) | De rondelimiet uit "Codex-turn-workflow" in `CLAUDE.md` is een afspraak tussen Claude Code en de Codex-automatisering, geen door deze repo's CI afgedwongen teller — er is geen script dat het aantal `turn: codex`-aanvragen per PR bijhoudt. | Los issue indien gewenst, pas ná de handmatige simulatie/proefautomatisering uit fase 2/3 van #1343 — te vroeg bouwen zou een teller afdwingen vóórdat bekend is hoe de Codex-app dit in de praktijk gebruikt |
+| Maximaal twee wederzijdse reviewrondes per PR zonder eigenaarsbesluit | De rondelimiet uit de wederzijdse reviewworkflow in `CLAUDE.md` geldt voor beide agents; CI houdt nog geen teller per PR bij. | Los issue indien gewenst, pas ná de handmatige simulatie/proefautomatisering uit fase 2/3 van #1343 — te vroeg bouwen zou een teller afdwingen vóórdat bekend is hoe de Codex-app dit in de praktijk gebruikt |
+
+### Agent-isolatie — afspraken, nog geen technische locks
+
+Sinds de instructiewijziging van 2026-10-04 mogen Codex en Claude Code beide ontwikkelen.
+`CLAUDE.md` legt één implementer per taak, een eigen branch/worktree per sessie, gescheiden
+scopes en wederzijdse review op een vastgelegde head-SHA vast. `source:` blijft herkomst;
+implementer, reviewer en fase staan afzonderlijk bij de taak. De taak-/runtime-afspraken zijn geen technische locks. De CI-guard `check-agent-instructies.py`
+bewaakt wel skilltweelingen en afgesloten codeblokken; negatieve tests bewijzen dat overtredingen falen.
+
+Een issuecomment is geen atomische taakclaim; voorlopig mogen alleen vooraf toegewezen,
+gescheiden taken parallel starten. Gedeelde contracten/schema's tellen als overlap, ook zonder
+Git-conflict. Een technische claimvoorziening zou afzonderlijk moeten worden gerealiseerd.
+
+De debugscriptset is nog niet per sessie geïsoleerd: `Start-Debug.ps1` stopt bestaande services.
+Daarom is één vooraf gereserveerde runtime-eigenaar vereist voor services, migraties en gedeelde
+testdata. Parallelle runtimes wachten op geverifieerde isolatie van poorten, processen, PID/log/
+tempbestanden, databases en externe integraties. Deze wijziging realiseert die isolatie niet.
+
+Geplande reviewruns mogen alleen een expliciet aangevraagde review uitvoeren; label plus fase,
+implementer/reviewer, gekoppelde PR en head-SHA moeten overeenkomen. Bestaande automatiseringen
+moeten vóór gebruik aan dat contract worden getoetst. Betrouwbare polling, rondetelling en
+exclusiviteit zijn niet door deze instructiewijziging bewezen.
 
 ### Drie mappen zonder testproject, nu met een startpunt (#1302)
 
@@ -550,3 +574,17 @@ uit het thema-paar en bracht er elders netto 2 terug. Het antwoord daarop is het
 vastleggen, met de reden erbij, en **niet** een marge naar boven inbouwen. Zo'n marge is precies de
 ruimte waarin echte groei ongemerkt past: vijf PR's van elk twee regels zijn samen een nieuw
 gekopieerd blok, en geen van vijf zou zijn opgevallen.
+
+### Grenzen van instructiehandhaving
+
+De skillguard vergelijkt de vier verplichte en overige gedeelde `SKILL.md`-bestanden, niet alle
+onderliggende resources of uitsluitend aan één agent geïnstalleerde skills. De fencecheck controleert
+alleen top-level fences (maximaal drie spaties inspringing) in die skills, niet alle Markdown in docs
+of geneste lijst-/blockquote-fences. Het is geen volledige Markdown-parser of inhoudelijke reviewer.
+De guard leest UTF-8 expliciet voor Windows/macOS; zijn tests en registervermelding draaien in CI.
+
+De gedeelde Claude-allowlist geeft geen algemene automatische toestemming meer voor merge,
+release, API-mutaties, push/tag, checkout/stash of branch-/bestandsverwijdering. Native permissies
+zijn aanvullend: eigenaarsautorisatie blijft vereist. Dit is geen OS-vergrendeling, GitHub branch
+protection of handhaving van de Codex-toolpermissies; persoonlijke overrides en handmatige shell-
+commando's kunnen ruimer zijn. Zulke overrides heffen de gezamenlijke werkinstructies niet op.
