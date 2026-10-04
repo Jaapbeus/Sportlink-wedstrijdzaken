@@ -7,7 +7,7 @@ namespace Planner.Shared.Infrastructure;
 
 /// <summary>
 /// Bouwt Table- en Queue-clients op het <c>AzureWebJobsStorage</c>-opslagaccount (#1512).
-/// Volgorde: (1) connection string <c>AzureWebJobsStorage</c> (Linux Consumption, Azurite lokaal);
+/// Volgorde: (1) connection string <c>AzureWebJobsStorage</c> (klassiek, Azurite lokaal);
 /// (2) identity-based <c>AzureWebJobsStorage__accountName</c> (Flex Consumption, managed identity),
 /// met optioneel <c>__clientId</c>, <c>__tableServiceUri</c> en <c>__queueServiceUri</c>;
 /// (3) anders een duidelijke <see cref="InvalidOperationException"/>.

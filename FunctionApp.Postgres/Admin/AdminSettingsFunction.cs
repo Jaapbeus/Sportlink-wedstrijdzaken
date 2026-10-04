@@ -249,12 +249,12 @@ public static class AdminSettingsFunction
             {
                 if (!AllowedFields.Contains(key, StringComparer.OrdinalIgnoreCase))
                 {
-                    log.LogWarning("AdminSettingsPut: veld {Veld} niet in witte lijst, wordt genegeerd", key);
+                    log.LogWarning("AdminSettingsPut: veld {Veld} niet in witte lijst, wordt genegeerd", LogWaarde.Schoon(key));
                     continue;
                 }
                 if (!System.Text.RegularExpressions.Regex.IsMatch(key, @"^[A-Za-z][A-Za-z0-9_]*$"))
                 {
-                    log.LogWarning("AdminSettingsPut: veldnaam {Veld} bevat ongeldige tekens, wordt genegeerd", key);
+                    log.LogWarning("AdminSettingsPut: veldnaam {Veld} bevat ongeldige tekens, wordt genegeerd", LogWaarde.Schoon(key));
                     continue;
                 }
                 changes[key] = value;

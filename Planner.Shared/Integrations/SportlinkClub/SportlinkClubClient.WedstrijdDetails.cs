@@ -207,24 +207,7 @@ public partial class SportlinkClubClient
                     false, Array.Empty<string>(), false,
                     isSuccess, isMatchChangeRequestMandatory, isOwnFacility, isForceUpdate);
 
-            var meldingen = new List<string>();
-            if (confirmationElement.ValueKind == JsonValueKind.Object &&
-                confirmationElement.TryGetProperty("ValidationResultMessages", out var messagesElement) &&
-                messagesElement.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var item in messagesElement.EnumerateArray())
-                {
-                    string? tekst = item.ValueKind switch
-                    {
-                        JsonValueKind.String => item.GetString(),
-                        JsonValueKind.Object when item.TryGetProperty("Message", out var m) && m.ValueKind == JsonValueKind.String => m.GetString(),
-                        JsonValueKind.Object when item.TryGetProperty("Description", out var d) && d.ValueKind == JsonValueKind.String => d.GetString(),
-                        _ => null
-                    };
-                    if (!string.IsNullOrWhiteSpace(tekst))
-                        meldingen.Add(tekst);
-                }
-            }
+            var meldingen = LeesValidatieMeldingen(confirmationElement);
 
             // Positie van HasBlockingMessages niet bevestigd — genest onder ConfirmationNeeded en
             // toplevel allebei proberen, genest weegt zwaarder (issue-tekst noemt ze als één geheel).
@@ -243,6 +226,30 @@ public partial class SportlinkClubClient
         {
             return null;
         }
+    }
+
+    /// <summary>Leest <c>ValidationResultMessages</c>: kale strings of objecten met <c>Message</c>/<c>Description</c>.</summary>
+    private static List<string> LeesValidatieMeldingen(JsonElement confirmationElement)
+    {
+        var meldingen = new List<string>();
+        if (confirmationElement.ValueKind != JsonValueKind.Object ||
+            !confirmationElement.TryGetProperty("ValidationResultMessages", out var messagesElement) ||
+            messagesElement.ValueKind != JsonValueKind.Array)
+            return meldingen;
+
+        foreach (var item in messagesElement.EnumerateArray())
+        {
+            string? tekst = item.ValueKind switch
+            {
+                JsonValueKind.String => item.GetString(),
+                JsonValueKind.Object when item.TryGetProperty("Message", out var m) && m.ValueKind == JsonValueKind.String => m.GetString(),
+                JsonValueKind.Object when item.TryGetProperty("Description", out var d) && d.ValueKind == JsonValueKind.String => d.GetString(),
+                _ => null
+            };
+            if (!string.IsNullOrWhiteSpace(tekst))
+                meldingen.Add(tekst);
+        }
+        return meldingen;
     }
 
     private async Task<SportlinkClubResponse<SportlinkMatchDetailsSnapshot>> FetchMatchDetailsSnapshotAsync(
