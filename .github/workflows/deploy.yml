@@ -157,6 +157,8 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
+      # De Function App draait op Flex Consumption met stack dotnet-isolated 10.0 (#1074);
+      # dit net10.0-artefact past daarbij.
       - name: Function App bouwen
         run: |
           dotnet publish ${{ steps.tier.outputs.csproj_path }} \
@@ -319,12 +321,12 @@ jobs:
           fi
           echo "Secret aanwezig (waarde niet gelogd)."
 
-      # Database.Postgres.Cli is net9.0 (zelfde beperking als de Function App, zie CLAUDE.md) —
-      # dezelfde SDK-keuze als de CI-job fresh-db-postgres in build.yml.
+      # Database.Postgres.Cli is net10.0 (#1073) — dezelfde SDK-keuze als de CI-job
+      # fresh-db-postgres in build.yml.
       - name: .NET SDK installeren
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: 10.0.x
 
       - name: "Postgres-migraties toepassen (Database.Postgres.Cli — idempotent, advisory lock, checksum-bewaakt)"
         env:

@@ -199,10 +199,7 @@ op ingericht en draait dus volledig (zie SECURITY.md, "Laag 2 — GitHub Actions
 Zie [docs/DEVELOPER-SETUP.md](docs/DEVELOPER-SETUP.md) voor de volledige lokale setup. Samenvatting:
 
 **Vereisten:**
-- .NET 10.0 SDK (BlazorAdmin — net10.0)
-- .NET 9 Runtime (FunctionApp — net9.0, vereist door het Linux Consumption Plan). Installeer **beide**
-  frameworks: `Microsoft.NETCore.App` én `Microsoft.AspNetCore.App` — zonder de tweede breken de
-  FunctionApp-testprojecten af.
+- .NET 10.0 SDK (alle projecten — net10.0)
 - Azure Functions Core Tools v4
 - Docker, voor de lokale database
 - Azurite (Azure Storage Emulator)

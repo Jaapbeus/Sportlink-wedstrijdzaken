@@ -2,7 +2,7 @@
 # Start alle lokale services voor v2 ontwikkelen en testen, en wacht tot ze daadwerkelijk
 # klaar zijn (readiness-polling — geen vaste sleeps).
 #
-# Vereisten: .NET 9 runtime + .NET 10 SDK, Azure Functions Core Tools v4, Azurite,
+# Vereisten: .NET 10 SDK/runtime, Azure Functions Core Tools v4, Azurite,
 #            en de database van de gekozen tier (docker compose up -d).
 #
 # TIER-KEUZE (#1060): standaard Postgres — de tier die deze installatie in productie draait
@@ -379,7 +379,7 @@ if ($failures.Count -gt 0) {
     } else {
         Write-Host "  Controleer de foutmelding in het bijbehorende venster." -ForegroundColor Yellow
     }
-    Write-Host "  Veelvoorkomend: .NET 9 runtime ontbreekt (503 'Function host is not running')" -ForegroundColor DarkGray
+    Write-Host "  Veelvoorkomend: .NET 10 runtime ontbreekt (503 'Function host is not running')" -ForegroundColor DarkGray
     Write-Host "  of de database van de $Tier-tier is niet bereikbaar (docker compose up -d)." -ForegroundColor DarkGray
     exit 1
 }

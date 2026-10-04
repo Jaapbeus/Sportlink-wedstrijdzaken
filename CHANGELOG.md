@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- De app draait op .NET 10: alle projecten, de build en de Flex-Function App zijn overgezet (#1073, #1074).
+
 ### Fixed
 - **Instellingen per instantie geladen op de Flex-app** (backport van hotfix 3.10.0.2, zie issue #1515). Sportlink-timers
   (keep-alive, warmup, contract-check) zien de clubinstellingen nu ook op een eigen Flex-instantie.

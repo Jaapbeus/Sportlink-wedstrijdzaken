@@ -501,9 +501,9 @@ buiten een wedstrijdweekend.
 Pas na een geslaagde cutover en 24–48 uur observatie. Volgorde en scope staan in #1073 (inclusief
 de scope-aanvulling: alle negen `net9.0`-projecten, de zes `(net9.0)`-jobnamen in `build.yml`, en
 `DOTNET_VERSION`/`dotnet-version: 9.0.x` in `deploy.yml`). In de bicep: `runtime.version` naar
-`'10.0'` in `function-app-flex.bicep`. Zolang er nog een deploy naar de oude Linux Consumption-app
-mogelijk is (rollback van §7.4), is een `net10.0`-build daarvoor een productiebreker — de rollback
-vervalt dus feitelijk zodra #1073 op `main` staat. Plan FLEX-13 (oude app opruimen) daarom pas ná
+`'10.0'` in `function-app-flex.bicep`. **Status 2026-10-04:** eigenaarsbesluit — .NET 10 gaat nu naar productie (#1073, #1074). De rollback van
+§7.4 naar de oude Linux Consumption-app is daarmee **niet meer van toepassing**: een `net10.0`-build
+is daarvoor een productiebreker en de oude app staat stil. Plan FLEX-13 (oude app opruimen) daarom pas ná
 #1073.
 
 ---

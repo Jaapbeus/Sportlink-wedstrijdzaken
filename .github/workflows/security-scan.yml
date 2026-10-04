@@ -305,15 +305,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # FunctionApp/FunctionApp.Postgres/Database.Postgres(.*) mikken op net9.0,
-      # BlazorAdmin op net10.0 (zie CLAUDE.md ".NET versie") — beide SDK's nodig om elk
-      # project te kunnen restoren.
+      # Alle projecten targeten net10.0 (#1073) — alleen de .NET 10 SDK is nodig.
       - name: .NET SDK installeren
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: |
-            9.0.x
-            10.0.x
+          dotnet-version: 10.0.x
 
       # Geen hardcoded projectlijst: een glob zodat een nieuw project automatisch
       # meegenomen wordt zonder deze workflow te hoeven aanpassen.
@@ -433,8 +429,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # C# zonder build: CodeQL's buildless modus. Een echte build zou hier de .NET 9-
-        # en .NET 10-SDK plus de SSDT-uitsluiting (zie .slnf) moeten herhalen.
+        # C# zonder build: CodeQL's buildless modus. Een echte build zou hier de
+        # .NET 10-SDK plus de SSDT-uitsluiting (zie .slnf) moeten herhalen.
         include:
           - language: csharp
             build-mode: none

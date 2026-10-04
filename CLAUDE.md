@@ -1342,39 +1342,19 @@ Vastgelegd na de review van epic #986. Twee harde regels:
 
 ---
 
-### .NET versie — FunctionApp staat op net9.0, met einddatum (migratie via epic #1063)
+### .NET versie — alle projecten op net10.0, FunctionApp op Flex Consumption (#1073, #1074)
 
-**KRITIEKE BEPERKING — twee keer eerder misgegaan (issue #162, sessie 2026-05-24):**
+Alle projecten (FunctionApps, `Planner.*`, `Database.*`, BlazorAdmin, tests) targeten **`net10.0`**.
+De Function App draait op een **Flex Consumption Plan** met stack `dotnet-isolated 10.0`
+(`infrastructure/modules/function-app-flex.bicep`, `runtime.version: '10.0'`). Het csproj-target en de
+stackwaarde moeten altijd overeenkomen: een csproj-bump zonder stackwijziging (of omgekeerd) geeft 503
+"Function host is not running". Het oude Linux Consumption-plan (alleen tot .NET 9) is niet meer het
+deploydoel; de oude app staat stil en terugrollen naar `net9.0` is niet meer van toepassing.
 
-Azure Functions op een **Linux Consumption Plan** ondersteunt maximaal **.NET 9**. Zolang de
-FunctionApp op dat plan draait bestaat de stackwaarde `dotnet-isolated 10.0` daar niet — een
-`net10.0`-build geeft 503 "Function host is not running".
-
-| Component | Target | Reden |
-|---|---|---|
-| `FunctionApp/fa-dev-sportlink-01.csproj` | **`net9.0`** — niet wijzigen vóór de cutover | Linux Consumption Plan: net10.0 → 503 "Function host is not running" |
-| `FunctionApp.Postgres/FunctionApp.Postgres.csproj` | **`net9.0`** — idem | Idem |
-| `BlazorAdmin/BlazorAdmin.csproj` | `net10.0` | Browser-runtime, geen Azure-beperking |
-| Azure Portal runtime | `DOTNET-ISOLATED\|9.0` | Moet overeenkomen met csproj |
-
-> **Dit is een toestand met een einddatum, geen eindsituatie.** .NET 9 gaat op **10 november 2026**
-> uit support, en .NET 9 is de laatste .NET-versie die Linux Consumption krijgt — nieuwere versies
-> worden er niet meer aan toegevoegd. Linux Consumption zelf wordt op 30 september 2028
-> uitgefaseerd. De migratie naar Flex Consumption + .NET 10 loopt via **epic #1063**, en stond al
-> als roadmap-punt in `CHANGELOG.md` bij v2.1.0 (#162).
-
-**Lokale ontwikkeling:** zorg dat de .NET 9 runtime geïnstalleerd is — **beide frameworks**, `Microsoft.NETCore.App` én `Microsoft.AspNetCore.App`; zonder de tweede breekt `dotnet test` op de twee FunctionApp-testprojecten af (#1174). Windows: `winget install Microsoft.DotNet.Runtime.9` plus `Microsoft.DotNet.AspNetCore.9`, macOS: zie [docs/DEVELOPER-SETUP.md](docs/DEVELOPER-SETUP.md).
-Zonder net9.0 runtime kan `func start` niet starten — het installatieprobleem oplossen, nooit het target verhogen.
-
-**Upgradepad naar .NET 10 — uitsluitend via epic #1063, in deze volgorde:**
-1. Een **nieuwe** Function App op een Flex Consumption-plan aanmaken. In-place migratie van een
-   bestaande app naar Flex bestaat niet, en terug ook niet — `az functionapp update --plan` werkt
-   hiervoor dus níet.
-2. Cutover naar die nieuwe app, nog op `net9.0`.
-3. Pas dáárna de csproj's en de stackconfiguratie naar `net10.0` / `DOTNET-ISOLATED|10.0`.
-
-Nooit alleen de csproj bumpen: zolang de app op Linux Consumption draait is elke `net10.0`-deploy
-een productie-breker.
+**Lokale ontwikkeling:** de .NET 10 SDK volstaat; `func start` draait op de .NET 10 runtime. Zie
+[docs/DEVELOPER-SETUP.md](docs/DEVELOPER-SETUP.md). Historie van de migratie: epic #1063 en
+`docs/RUNBOOK-FLEX-MIGRATIE.md`. Een plan- of tierwijziging blijft expliciete eigenaarsgoedkeuring
+vereisen (zie Kostenbeleid).
 
 ### Cross-platform scripts — Windows én macOS, geen uitzonderingen (#800)
 
@@ -1681,7 +1661,7 @@ dotnet build FunctionApp.Postgres/FunctionApp.Postgres.csproj -c Debug
 # GET http://localhost:7094/api/sync-matches?reset=true&season=2026
 ```
 
-**Prerequisites:** .NET 9 runtime + .NET 10 SDK (Blazor), Azure Functions Core Tools v4, Azurite (Azure Storage Emulator), en de database van de actieve tier — standaard Postgres via `docker compose up -d` (#1060).
+**Prerequisites:** .NET 10 SDK, Azure Functions Core Tools v4, Azurite (Azure Storage Emulator), en de database van de actieve tier — standaard Postgres via `docker compose up -d` (#1060).
 
 **Configuration:** Kopieer het `local.settings.template.json` van de tier waarop je werkt naar `local.settings.json` ernaast — standaard `FunctionApp.Postgres/`, met `POSTGRES_CONNECTION_STRING`; voor de SQL Server-tier `FunctionApp/`, met `SqlConnectionString`.
 
@@ -1798,7 +1778,7 @@ en zijn testproject zijn in #1411 verwijderd (automatische Sportlink-login). Act
 
 De twee kernprojecten van de oorspronkelijke ETL-pijplijn:
 
-1. **FunctionApp/** (`fa-dev-sportlink-01.csproj`) — .NET 9 isolated worker Azure Function
+1. **FunctionApp/** (`fa-dev-sportlink-01.csproj`) — .NET 10 isolated worker Azure Function
    - `Function1.cs` — trigger functions and API fetch/store orchestration
    - `Utilities.cs` — AppSettings loader, DatabaseConfig, SeasonHelper, retry logic (5 retries, 5s delay)
    - `Enitities.cs` — Team, Match, MatchDetail models (note: filename typo is intentional legacy)

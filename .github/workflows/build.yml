@@ -216,16 +216,13 @@ jobs:
       - name: Tier-switch-veiligheidsmechanisme (DatabaseTierSwitchConfirmation)
         run: pwsh scripts/ci/Test-TierSwitchConfirmation.ps1
 
-      # FunctionApp target net9.0, BlazorAdmin net10.0 — beide runtimes nodig.
-      # LET OP: FunctionApp mag NOOIT naar net10.0 (Linux Consumption ondersteunt dat niet).
+      # Alle projecten targeten net10.0 (#1073) — alleen de .NET 10 SDK is nodig.
       - name: .NET SDK installeren
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: |
-            9.0.x
-            10.0.x
+          dotnet-version: 10.0.x
 
-      - name: FunctionApp bouwen (net9.0)
+      - name: FunctionApp bouwen (net10.0)
         run: dotnet build FunctionApp/fa-dev-sportlink-01.csproj --configuration Release
 
       - name: BlazorAdmin bouwen (net10.0)
@@ -242,7 +239,7 @@ jobs:
       # geselecteerde. De integratietests (tegen een échte Postgres-instantie) zijn hier env-gestuurd
       # zichtbaar overgeslagen ([PostgresFact]/[PostgresTheory], #866) — de fresh-db-postgres-job
       # verderop in dit bestand draait ze wél, tegen de instantie die die job zelf opzet.
-      - name: Database.Postgres bouwen (net9.0)
+      - name: Database.Postgres bouwen (net10.0)
         run: dotnet build Database.Postgres/Database.Postgres.csproj --configuration Release
 
       - name: Database.Postgres.Tests draaien (unit tests, geen Postgres nodig)
@@ -251,7 +248,7 @@ jobs:
       # #891: FunctionApp.Postgres — de applicatie-datalaag voor de Postgres-tier (#860). Vandaag
       # nog een minimaal project (alleen /api/health); #887-#890 breiden dit verder uit. Build-only
       # hier, zelfde reden als Database.Postgres.Cli hieronder — geen live database in deze job.
-      - name: FunctionApp.Postgres bouwen (net9.0)
+      - name: FunctionApp.Postgres bouwen (net10.0)
         run: dotnet build FunctionApp.Postgres/FunctionApp.Postgres.csproj --configuration Release
 
       # Issue 890: het testproject voor de Postgres-applicatielaag. Hier bewust ZONDER
@@ -265,16 +262,16 @@ jobs:
       # VeldNormalisatie) — gedeeld tussen FunctionApp (SQL Server-tier) en Database.Postgres,
       # zodat er nooit een derde, onafhankelijke kopie van deze matching ontstaat naast de
       # bestaande SQL Server-view en de C#-implementatie. Puur tekstlogica, geen databaseafhankelijkheid.
-      - name: Planner.Shared bouwen en testen (net9.0)
+      - name: Planner.Shared bouwen en testen (net10.0)
         run: dotnet test Planner.Shared.Tests/Planner.Shared.Tests.csproj --configuration Release --verbosity minimal
 
       # #1411: de gedeelde beheer-endpoints (ook secretinvoer) moeten in CI worden getest.
-      - name: Planner.Endpoints bouwen en testen (net9.0)
+      - name: Planner.Endpoints bouwen en testen (net10.0)
         run: dotnet test Planner.Endpoints.Tests/Planner.Endpoints.Tests.csproj --configuration Release --verbosity minimal
 
       # #821: migratie-runner-CLI voor de Postgres-tier. Build-only hier (geen live database) —
       # MigrationRunnerIntegrationTests hierboven dekt het gedrag [Fact(Skip=...)], zie #822/#823.
-      - name: Database.Postgres.Cli bouwen (net9.0)
+      - name: Database.Postgres.Cli bouwen (net10.0)
         run: dotnet build Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release
 
       # #1302: de CLI-argumentafhandeling bepaalt wat deploy.yml doet (migreren, his-tabellen
@@ -707,7 +704,7 @@ jobs:
       - name: .NET SDK installeren
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: 10.0.x
 
       # ──────────────────────────────────────────────────────────────────────
       # #1062: het gat dat een verse database per definitie niet ziet.
