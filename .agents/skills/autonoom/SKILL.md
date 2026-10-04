@@ -1,8 +1,24 @@
 ---
-description: Volledige autonome ontwikkelcyclus — PR's mergen, branches opruimen, lokaal/online synchen, open issues uitvoeren, iteratie-branch aanmaken, debug starten.
+name: autonoom
+description: "Ontwikkel toegewezen issues in eigen worktrees, laat de andere agent reviewen en bewaak CI. Merge uitsluitend met aparte eigenaarsautorisatie; reserveer de gedeelde debugomgeving vóór gebruik."
 disable-model-invocation: false
-argument-hint: [--dry-run] [--features] [--release]
+argument-hint: "[--dry-run] [--features] [--release]"
 ---
+
+> **Gezamenlijke agentregels zijn leidend (CLAUDE.md/AGENTS.md).** Deze skill geldt voor Codex
+> en Claude Code. Werk uitsluitend aan de toegewezen taak in de eigen geverifieerde worktree;
+> claim of wijzig geen taak, branch, worktree of services van een andere actieve sessie.
+> Behoud `source:` als herkomst; registreer implementer, reviewer, fase en sessie afzonderlijk.
+> Vóór merge: wederzijdse review van de huidige head-SHA, relevante checks én afzonderlijke
+> eigenaarsautorisatie. Deze skill omzeilt die grenzen niet.
+> `/autonoom` zonder verdere mergeopdracht autoriseert ontwikkeling en PR's, geen merges.
+> Sla merge-/cleanupstappen zonder aparte autorisatie over en rapporteer de klaarstaande PR's.
+> Alleen vooraf toegewezen, gescheiden issues behoren tot deze cyclus; nieuw gevonden werk
+> dat overlapt of door een andere sessie is geclaimd wordt niet automatisch opgepakt.
+> Start/stop/clean/migraties vereisen vooraf exclusief runtime-eigenaarschap. De huidige
+> debugscriptset is gedeeld: onbekende of andere runtime-eigenaar betekent geen mutaties.
+> Poorten vrij betekent niet dat databases/testdata vrij zijn. Leg reservering en vrijgave vast
+> in de taak/sessie-overdracht; laat services intact als ze aan een andere sessie behoren.
 
 Voer de volledige autonome ontwikkelcyclus uit. Dit is de standaard werkmodus: van
 openstaande issues tot een schone, gesynchroniseerde codebase met een verse branch
@@ -11,7 +27,7 @@ klaar voor de volgende iteratie.
 **Argumenten:**
 - `--dry-run` — toon wat er zou gebeuren zonder daadwerkelijk te wijzigen
 - `--features` — voer ook grote feature-issues uit (label `enhancement` of `type: feature`); zonder dit argument worden die overgeslagen
-- `--release` — voer Fase 3.5 uit: die roept de skill `release` aan (securitypoort met `/security-review`, versie-bump, CHANGELOG afsluiten, PR develop→main, productie-deploy bewaken, tag). **Zonder dit argument stopt de cyclus na Fase 2b** — alle issues zijn geïmplementeerd op develop, maar er wordt niets naar productie gepusht. Dit geeft ruimte om de wijzigingen eerst lokaal te testen vóór release.
+- `--release` — voer Fase 3.5 uit: die roept de skill `release` aan (securitypoort met `/security-review`, versie-bump, CHANGELOG afsluiten, PR develop→main, productie-deploy bewaken, tag). **Zonder dit argument wordt Fase 3.5 overgeslagen** — de toegewezen PR's worden klaargezet; merges vereisen aparte autorisatie. Dit geeft ruimte om de wijzigingen eerst lokaal te testen vóór release.
 
 > **Standaard = develop-only.** Productie-deploy vereist bewuste `--release` keuze.
 
@@ -38,29 +54,21 @@ Symbolen:
 > 4. **In bash-blokken: `grep -E`, nooit `grep -P`** — de BSD-grep van macOS kent geen PCRE en
 >    faalt daar stil in een pijplijn.
 
-**Lus-structuur (belangrijk):**
+**Lus-structuur:**
 ```
-Fase 0  (voorbereiding: PR's mergen, branches opruimen, main synchen)
-  → Fase 0.5 — SECURITY GATE (hard stop — nooit overslaan)
-       Open security issues aanwezig?
-         → Oplosbaar autonoom? → Oplossen (lus totdat leeg)
-         → Niet oplosbaar?     → Escaleer naar eigenaar, STOP HIER
-       Nul open security issues? → ✅ verder naar Fase 1
-  → Fase 1 (issue-triage: klein uitvoerbaar / groot / wacht / geblokkeerd)
-    → Fase 2 (implementatie: klein zonder vlag, groot met --features)
-      ↘ Fase 2b (hercheck nieuwe issues)
-         → Zijn er nieuwe uitvoerbare issues? → terug naar Fase 2
-         → Geen uitvoerbare issues meer?
-           → Fase 3 (sync lokaal = online)
-             → Fase 3.5 — POORT 2 = skill `release` (alleen met --release; anders: stop + melding)
-               → Fase 4 (nieuwe iteratie-branch)
-                 → Fase 5 (debug starten)
+Fase 0   Geautoriseerde PR's beoordelen; alleen eigen afgerond werk opruimen
+Fase 0.5 Securityissues inventariseren; alleen toegewezen fixes uitvoeren
+Fase 1   Toegewezen scope triageren en overlap controleren
+Fase 2   Per taak eigen worktree, implementatie, checks en wederzijdse review
+Fase 2b  Nieuwe feiten beoordelen binnen de toegewezen scope
+Fase 3   Eigen branch en remote stand controleren zonder gedeelde checkout te wijzigen
+Fase 3.5 Release alleen bij expliciete --release-opdracht, via skill release
+Fase 4   Volgende toegewezen taak via S0; anders huidige werkstatus behouden
+Fase 5   Debug alleen met exclusieve runtime-reservering
 ```
 
-**Garanties:**
-- Fase 0.5 wordt ALTIJD uitgevoerd, ook als `--features` niet is meegegeven
-- De skill verlaat Fase 0.5 pas als er **nul open security issues** zijn
-- Fase 3/4/5 worden pas bereikt als de volledige lus Fase 1 → 2 → 2b leeg is
+Securityblokkades worden altijd gemeld; ze geven geen toestemming andermans taak over te nemen.
+Een nog open `awaiting-release`-issue betekent niet dat implementatie opnieuw moet worden gedaan.
 
 ---
 
@@ -72,9 +80,10 @@ Fase 0  (voorbereiding: PR's mergen, branches opruimen, main synchen)
 gh pr list --state open --json number,title,headRefName,statusCheckRollup
 ```
 
-Voor elke open PR:
+Voor elke expliciet voor merge geautoriseerde PR (andere PR's alleen rapporteren):
 1. Haal CI-status op: `gh pr checks <nr>`
-2. Is Security Gate ✅ en alle andere checks ✅ of skipped? → merge:
+2. Is de wederzijdse review op de huidige SHA afgerond, merge geautoriseerd, Security Gate ✅
+   en zijn alle toepasselijke checks ✅ (skipped alleen waar toegestaan)? → merge:
    ```powershell
    gh pr merge <nr> --merge --delete-branch
    ```
@@ -85,26 +94,17 @@ Rapporteer: welke PR's gemerged, welke overgeslagen en waarom.
 
 ### 0b. Merged branches opruimen (lokaal)
 
-```powershell
-# Fetch en prune remote-refs die niet meer bestaan
-git fetch --prune
+Fetch remote-refs zonder gedeelde checkouts te veranderen. Verwijder alleen eigen,
+bevestigd gemergede branches/worktrees zonder actieve sessie of onverwerkt werk, volgens S0.
+Geen globale branchcleanup; een verdwenen remote is geen bewijs dat lokaal werk overbodig is.
 
-# Verwijder lokale branches waarvan de remote al weg is
-git branch -vv | Where-Object { $_ -match '\[origin/.*: gone\]' } |
-    ForEach-Object { ($_ -split '\s+')[1] } |
-    ForEach-Object { git branch -d $_ }
-```
-
-Rapporteer welke branches verwijderd zijn.
-
-### 0c. Lokaal naar main synchen
+### 0c. Remote main bijwerken zonder checkout
 
 ```powershell
-git checkout main
-git pull origin main
+git fetch origin main develop
 ```
 
-Verifieer daarna: `git status` → schoon + up-to-date.
+Lees productie-inhoud via `git show origin/main:<pad>`; wissel de hoofd-checkout niet.
 
 ### 0d. Deploy-workflow op main verifiëren
 
@@ -139,28 +139,14 @@ gh issue list --state open --label "security" --json number,title,labels,body
 
 ### Als er open security issues zijn
 
-Verwerk elk security issue via de volledige implementatiecyclus (zie Fase 2 per-issue stappen A t/m E). Security issues volgen **altijd** de grote-feature regels niet — ze worden altijd direct uitgevoerd, ongeacht scope of omvang.
+Beoordeel alle open securityissues. Implementeer alleen vooraf toegewezen issues zonder
+scope-overlap via Fase 2; securityprioriteit verleent geen eigenaarschap over andermans werk.
+Een issue met `status: awaiting-release` blijft terecht open en start geen herimplementatielus.
 
-**Lus totdat leeg:**
-```
-HERHAAL:
-  1. gh issue list --state open --label "security"
-  2. Zijn er issues? → Implementeer elk issue (stappen A-E)
-  3. Na merge naar develop: NIET zelf sluiten (#1295) — label-awaiting-release.yml zet
-     status: awaiting-release; close-released-issues.yml sluit het pas bij de volgende
-     productie-tag op main. Zie AGENTS.md, "Issue-lifecycle: awaiting-release".
-  4. Zijn er daarna nog open security issues? → terug naar 1
-  5. Geen security issues meer? → ✅ STOP lus
-```
-
-### Als een security issue niet autonoom oplosbaar is
-
-```powershell
-gh issue edit <nr> --add-label "wacht op: eigenaar"
-gh issue comment <nr> --body "⏸️ Security issue — wacht op eigenaar. Open vraag: [beschrijf wat ontbreekt om dit op te lossen]"
-```
-
-**→ STOP de volledige cyclus hier.** Fase 1 en verder worden niet uitgevoerd zolang er een security issue open staat dat niet autonoom oplosbaar is. Meld dit expliciet aan de gebruiker.
+Niet autonoom oplosbaar, niet toegewezen of door een andere sessie beheerd? Rapporteer de
+blokkade aan de eigenaar. Geen nieuwe werkclaim of wijziging van andermans labels. Laat de
+release geblokkeerd zolang de toepasselijke securitypoort niet groen is; ga niet zelf andermans
+fixes implementeren om die blokkade op te heffen.
 
 ### Als er geen open security issues zijn
 
@@ -205,7 +191,7 @@ Toon de indeling voordat je begint met implementeren. Toon ook welke grote featu
 
 ### 1c. Label wacht-issues
 
-Voor elk "wacht op eigenaar" issue dat nog geen passend label heeft:
+Voor elk toegewezen "wacht op eigenaar" issue dat nog geen passend label heeft:
 ```powershell
 gh issue edit <nr> --add-label "waiting-for-owner"
 ```
@@ -227,6 +213,7 @@ Voor elk issue — volg de autonome ontwikkelcyclus uit AGENTS.md:
 ### Per-issue stappen
 
 **Stap A — Implementeer**
+- Controleer taakclaim, scope-overlap en eigen branch/worktree volgens S0 vóór wijzigingen.
 - Lees het volledige issue: `gh issue view <nr>`
 - Implementeer alle betrokken lagen tegelijk: DB → API → Blazor GUI (nooit één laag alleen)
 - Controleer: ClubCode discriminator, UTC in DB, GUI synchroon met code, geen club-specifieke strings
@@ -294,7 +281,8 @@ git add <specifieke bestanden>   # NOOIT git add -A of git add .
 git commit -m "fix(#<nr>): ..."   # of feat(#<nr>): voor features
 
 git push -u origin <branch-naam>
-gh pr create --base main --title "..." --body "Closes #<nr>"
+gh pr create --draft --base develop --title "..." --body-file <pr-body>
+# Alleen urgente productiefix vanuit origin/main: --base main. Volg daarna de backportregel.
 ```
 
 **Stap E — CI bewaken**
@@ -303,24 +291,18 @@ gh pr checks <pr-nr> --watch
 ```
 
 **Als CI rood (Security Gate ❌ of buildfouten na 3 fixpogingen):**
-```powershell
-# 1. Draai de branch-commit(s) terug
-git checkout main
-git branch -D <branch-naam>
-git push origin --delete <branch-naam>
-
-# 2. Laat issue open + label + comment
-gh issue edit <nr> --add-label "wacht op: eigenaar"
-gh issue comment <nr> --body "⏸️ Implementatie teruggedraaid — [beschrijf hier concreet wat er mis ging en wat de open vraag is]. CI-fout: [fout-samenvatting]"
-```
-Security Gate ❌ of > 3 iteraties zonder voortgang → altijd terugdraaien, nooit half-werkende code laten staan.
+Stop, behoud eigen branch/worktree en maak de PR niet ready. Rapporteer fout, checks,
+werkstatus en open beslissing aan de eigenaar. Geen `checkout main`, branchverwijdering,
+remote-delete of terugdraaien van andermans werk. Een rode Security Gate blokkeert merge.
 
 **Stap F — POORT 1: Pre-merge GO/NO-GO (vóór elke merge naar main)**
 
 > **main IS productie** — elke merge triggert een automatische deploy naar Azure.
 > Dit is een harde checklist, geen aanbeveling.
 
-Controleer elk punt voordat je `gh pr merge` aanroept:
+Features gaan naar `develop`; deze productiechecklist geldt alleen voor afzonderlijk
+geautoriseerde hotfix/release-merges naar `main`. Voor iedere merge: huidige head-SHA
+reviewen door de andere agent en bevindingen verwerken. Controleer vóór productie bovendien:
 
 ```
 □ CI volledig groen (alle jobs ✅ of skipped — inclusief Security Gate)
@@ -336,14 +318,14 @@ Controleer elk punt voordat je `gh pr merge` aanroept:
    naam-velden in SQL-queries die als JSON teruggaan)
 ```
 
-Alle vakjes ✅? → **GO: merge**
+Alle vakjes ✅, wederzijdse review afgerond en merge expliciet geautoriseerd? → **GO: merge**
 ```powershell
 gh pr merge <pr-nr> --merge --delete-branch
 ```
 
 Één of meer ❌? → **NO-GO: niet mergen**
 - Fix het probleem op de branch en push opnieuw
-- Of draai terug + wacht op eigenaar (zie CI-rood procedure hierboven)
+- Of behoud de draft-PR en wacht op de eigenaar (zie CI-rood procedure hierboven)
 
 Na geslaagde merge:
 ```powershell
@@ -368,13 +350,13 @@ gh run view <run-id> --json jobs --jq '.jobs[] | {name: .name, conclusion: .conc
 
 - Meerdere kleine gerelateerde issues (zelfde laag, zelfde pagina): één branch, één PR
 - Grote feature of architectuurwijziging: eigen branch
-- Branchnaam: `feature/#<nr>-<slug>` (voor primaire issue)
+- Branch en worktree volgens S0: Codex `codex/<nr>-<slug>`, Claude Code `feature/#<nr>-<slug>`; één implementer per batch.
 
 ---
 
 ## FASE 2b — HERCHECK: zijn er nieuwe issues bijgekomen?
 
-Na het afronden van Fase 2 (alle uitvoerbare issues geïmplementeerd), **altijd** opnieuw controleren of er nieuwe issues zijn aangemaakt — bijv. door Dependabot, security scans, CI-alerts, of door de eigenaar tijdens de implementatie.
+Na het afronden van Fase 2 (toegewezen uitvoerbare scope afgerond), **altijd** opnieuw controleren of er nieuwe issues zijn aangemaakt — bijv. door Dependabot, security scans, CI-alerts, of door de eigenaar tijdens de implementatie.
 
 ### Stap: haal alle open issues opnieuw op
 
@@ -383,9 +365,9 @@ gh issue list --state open --limit 50 --json number,title,labels,createdAt,body
 ```
 
 Vergelijk de resultaten met de lijst uit Fase 1:
-- Zijn er issues aangemaakt **ná** de start van deze cyclus? → verwerk ze opnieuw via Fase 1b (classificeren) en zo nodig Fase 2 (implementeren)
+- Zijn er nieuwe issues? → inventariseer; implementeer alleen binnen de vooraf toegewezen, niet-overlappende scope.
 - Zijn er issues die eerder "wacht op eigenaar" waren maar nu genoeg context hebben? → herclassificeer
-- Zijn er security-issues, Dependabot-alerts of CI-gegenereerde issues? → hoge prioriteit, direct oppakken als uitvoerbaar
+- Nieuwe securityissues/alerts hebben hoge prioriteit; rapporteer ze en voer alleen toegewezen, niet-overlappende taken uit.
 
 ### Herhaallus (zolang er uitvoerbare issues zijn)
 
@@ -393,49 +375,37 @@ Vergelijk de resultaten met de lijst uit Fase 1:
 HERHAAL:
   1. Voer gh issue list uit
   2. Classificeer (zie Fase 1b)
-  3. Zijn er uitvoerbare issues? → voer Fase 2 uit voor elk van hen
-  4. Zijn er GEEN uitvoerbare issues meer? → STOP lus, ga naar Fase 3
+  3. Zijn er toegewezen, niet-overlappende uitvoerbare issues? → voer Fase 2 uit voor die scope
+  4. Is de toegewezen scope afgerond? → STOP lus, ga naar Fase 3
 
 MAX ITERATIES: onbeperkt, maar na > 5 rondes zonder voortgang → meld aan gebruiker
 ```
 
-**Loopterm:** ga pas verder met Fase 3 als er **geen enkele open uitvoerbare issue** meer bestaat — niet wanneer de huidige batch klaar is.
+**Loopterm:** ga pas verder wanneer de vooraf toegewezen, gescheiden scope is afgerond.
+Rapporteer resterende open issues; neem andermans werk niet over om de globale lijst leeg te maken.
 
 ---
 
 ## FASE 3 — SYNC CHECK: lokaal = online
 
-Na alle PR's gemerged en CI groen:
+Na afronding van de toegewezen PR's en groene CI (merges alleen indien geautoriseerd):
 
-### 3a. Haal main opnieuw op
+### 3a. Remote stand lezen
 
 ```powershell
-git checkout main
-git pull origin main
+git fetch origin main develop
 ```
 
 ### 3b. Versie vergelijken
 
-```powershell
-# Versie in csproj
-Select-String -Path "FunctionApp/fa-dev-sportlink-01.csproj" -Pattern "<Version>"
+Lees de csproj-versie via `git show origin/main:FunctionApp/fa-dev-sportlink-01.csproj` voor
+productie, en `origin/develop` voor integratie. De lokale :7094-health is een debugversie,
+geen bewijs van productie. Wijzig geen gedeelde checkout om deze vergelijking te doen.
 
-# Versie op productie (als services draaien)
-(Invoke-RestMethod http://localhost:7094/api/health).version
-```
+### 3c. Ongepushte eigen commits?
 
-Zijn CHANGELOG `[Unreleased]` en csproj-versie consistent? ✅ / divergentie? ⚠️
-
-### 3c. Ongepushte commits?
-
-```powershell
-git log origin/main..HEAD --oneline
-```
-
-Geen output → ✅. Commits aanwezig → push:
-```powershell
-git push origin main   # alleen als direct op main; anders via PR
-```
+Vergelijk de eigen branch met zijn upstream. Push uitsluitend de eigen toegewezen branch;
+nooit direct naar `main` of `develop`. Ontbreekt een upstream, leg die vast bij de eigen push.
 
 ### 3d. Deploy-workflow opnieuw controleren na merges
 
@@ -453,7 +423,7 @@ Wacht op groen als er net een merge was. Verplichte per-job check (zie Fase 0d).
 >
 > Zonder `--release`: sla Fase 3.5 volledig over en ga direct naar Fase 4.
 > Meld dan aan de gebruiker:
-> "✅ Cyclus voltooid op develop — alle issues geïmplementeerd en gemerged.
+> "✅ Toegewezen ontwikkelscope afgerond — rapporteer afzonderlijk welke PR's klaarstaan en welke geautoriseerd zijn gemerged.
 > Start `/release` (of `/autonoom --release`) als je klaar bent om naar productie te gaan."
 
 Met `--release`: **roep de skill `release` aan** (`Skill({ skill: "release" })`) en volg die
@@ -470,26 +440,12 @@ de stopconditie aan de eigenaar.
 
 ---
 
-## FASE 4 — NIEUWE ITERATIE-BRANCH
+## FASE 4 — VOLGENDE TAAK
 
-### 4a. Bepaal versienummer
-
-```powershell
-$csproj = Get-Content "FunctionApp/fa-dev-sportlink-01.csproj" -Raw
-$version = ([regex]'<Version>([\d.]+)</Version>').Match($csproj).Groups[1].Value
-# Haal MINOR op: bijv. "2.3.0" → "v2.3"
-$minor = ($version -split '\.')[0..1] -join '.'
-$branchName = "feature/v$minor-iteratie"
-```
-
-### 4b. Branch aanmaken
-
-```powershell
-git checkout main
-git checkout -b $branchName
-```
-
-Rapporteer: `✅ Nieuwe iteratie-branch: $branchName`
+Maak geen generieke iteratiebranch en wissel nooit de gedeelde checkout. Voor een volgende
+vooraf toegewezen taak: controleer overlap en maak een nieuwe eigen worktree vanaf
+`origin/develop` volgens S0, met issue- en sessie-identificatie. Zonder volgende opdracht:
+behoud de huidige worktree en rapporteer de eindstand.
 
 ---
 
@@ -514,7 +470,8 @@ Als alle drie al draaien → health-check en klaar:
 Invoke-RestMethod http://localhost:7094/api/health
 ```
 
-Als iets mist → start alles opnieuw:
+Als iets mist én deze sessie de exclusieve runtime-eigenaar is → start opnieuw.
+Bij andere/onbekende eigenaar: rapporteer de ontbrekende check en laat services intact:
 ```powershell
 # Nooit Stop-Process -Name: dat sloopt élk dotnet/node-proces op de machine, en 'dotnet watch'
 # herstart zijn kindproces meteen — poort 5242 is dan direct weer bezet (CLAUDE.md).

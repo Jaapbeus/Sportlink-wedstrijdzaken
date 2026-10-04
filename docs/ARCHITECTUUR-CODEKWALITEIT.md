@@ -476,11 +476,32 @@ Eerlijk vermeld, zodat niemand denkt dat het gedekt is.
 |---|---|---|
 | Testdekking per productiemap | `BlazorAdmin.Tests` heeft weinig tests tegenover bijna 7.000 regels Razor; dat groeit pas als regel 3 (code-behind) verder is doorgevoerd. De drie mappen zonder testproject zijn bij #1302 wél voorzien — zie hieronder. | Regel 3 |
 | Expressie-index bij een `UPPER()`-vergelijking (#1232) — **deels bewaakt sinds #1280** | In het algemeen niet schema-statisch te bepalen zonder de queries te parsen; de splinter-gate sluit `unused_index` bewust uit (§68 van `ARCHITECTUUR-DATABASE-TIERS.md`). De regel staat in `CLAUDE.md`, de meting per tier in §69 en §75 daarvan. Voor de drie sleutelkolommen van de teamresolutie is het wél afdwingbaar gebleken, omdat de vergelijkingen op één plek staan. | `FunctionApp.Tests/TeamResolution/TeamCandidateIndexSargabilityTests.cs` voor de teamresolutiekolommen; daarbuiten handmatig: `EXPLAIN (ANALYZE, BUFFERS)` resp. `SHOWPLAN_TEXT` bij zo'n wijziging |
-| Precies één `source:`-label per issue (#1336) | Herkomst wordt handmatig gezet door Claude Code (Codex heeft geen labelschrijftoegang) — er is geen `setIssueStatus()`-achtige helper die dit afdwingt, en geen periodieke scan die een issue zonder of met dubbel `source:`-label signaleert. | Los issue indien gewenst: een periodieke workflow (zelfde vorm als `supabase-advisors.yml`) die open issues zonder precies één `source:`-label rapporteert |
+| Precies één `source:`-label per issue (#1336) | Herkomst wordt handmatig gezet door de opsteller (Codex of Claude Code) — er is geen `setIssueStatus()`-achtige helper die dit afdwingt, en geen periodieke scan die een issue zonder of met dubbel `source:`-label signaleert. | Los issue indien gewenst: een periodieke workflow (zelfde vorm als `supabase-advisors.yml`) die open issues zonder precies één `source:`-label rapporteert |
 | Verweesde `status: waiting-codex` (#1336, gedeprecieerd sinds #1343) | Er is geen GitHub-event dat Codex' read-only reviewsweep markeert als "klaar" — zetten én verwijderen zijn altijd handmatige acties van Claude Code. Een issue dat op `waiting-codex` blijft staan omdat niemand terugkomt, valt niet automatisch op. Sinds #1343 is dit label gedeprecieerd (zie `CLAUDE.md`); de rij blijft staan zolang het label en zijn `PROTECTED`-vermelding nog bestaan. | Los issue indien gewenst: dagelijkse/wekelijkse cron die `status: waiting-codex`-issues ouder dan N dagen signaleert, of verwijder het label + de `PROTECTED`-vermelding zodra bevestigd is dat niets er meer naar verwijst |
 | Precies één `turn:`-label per issue (#1343) | Net als bij `source:` (zie rij hierboven): geen `setIssueStatus()`-achtige helper dwingt exclusiviteit af voor `turn: claude-code`/`turn: codex`/`turn: owner`, en er is geen periodieke scan die een issue zonder of met dubbel `turn:`-label signaleert. | Los issue indien gewenst: dezelfde periodieke workflow als voor `source:` uitbreiden met een `turn:`-check |
 | `/security-review` vóór elke release (#1470) | Afgedwongen door de skill `/release` (stap R1), niet door CI: een review in GitHub Actions vraagt een Anthropic API-sleutel en dus API-kosten. Een release buiten `/release` om (handmatig mergen van een `develop` → `main`-PR) slaat de review over. De automatische ondergrens is de Security Gate met CodeQL, die wél verplicht is op `main`. | Geen; bewust zo gelaten. Vangrail is de verplichte Security Gate |
-| Maximaal twee Codex-rondes per PR zonder eigenaarsbesluit (#1343) | De rondelimiet uit "Codex-turn-workflow" in `CLAUDE.md` is een afspraak tussen Claude Code en de Codex-automatisering, geen door deze repo's CI afgedwongen teller — er is geen script dat het aantal `turn: codex`-aanvragen per PR bijhoudt. | Los issue indien gewenst, pas ná de handmatige simulatie/proefautomatisering uit fase 2/3 van #1343 — te vroeg bouwen zou een teller afdwingen vóórdat bekend is hoe de Codex-app dit in de praktijk gebruikt |
+| Maximaal twee wederzijdse reviewrondes per PR zonder eigenaarsbesluit | De rondelimiet uit de wederzijdse reviewworkflow in `CLAUDE.md` geldt voor beide agents; CI houdt nog geen teller per PR bij. | Los issue indien gewenst, pas ná de handmatige simulatie/proefautomatisering uit fase 2/3 van #1343 — te vroeg bouwen zou een teller afdwingen vóórdat bekend is hoe de Codex-app dit in de praktijk gebruikt |
+
+### Agent-isolatie — afspraken, nog geen technische locks
+
+Sinds de instructiewijziging van 2026-10-04 mogen Codex en Claude Code beide ontwikkelen.
+`CLAUDE.md` legt één implementer per taak, een eigen branch/worktree per sessie, gescheiden
+scopes en wederzijdse review op een vastgelegde head-SHA vast. `source:` blijft herkomst;
+implementer, reviewer en fase staan afzonderlijk bij de taak. De regels zijn geen nieuwe CI-guards.
+
+Een issuecomment is geen atomische taakclaim; voorlopig mogen alleen vooraf toegewezen,
+gescheiden taken parallel starten. Gedeelde contracten/schema's tellen als overlap, ook zonder
+Git-conflict. Een technische claimvoorziening zou afzonderlijk moeten worden gerealiseerd.
+
+De debugscriptset is nog niet per sessie geïsoleerd: `Start-Debug.ps1` stopt bestaande services.
+Daarom is één vooraf gereserveerde runtime-eigenaar vereist voor services, migraties en gedeelde
+testdata. Parallelle runtimes wachten op geverifieerde isolatie van poorten, processen, PID/log/
+tempbestanden, databases en externe integraties. Deze wijziging realiseert die isolatie niet.
+
+Geplande reviewruns mogen alleen een expliciet aangevraagde review uitvoeren; label plus fase,
+implementer/reviewer, gekoppelde PR en head-SHA moeten overeenkomen. Bestaande automatiseringen
+moeten vóór gebruik aan dat contract worden getoetst. Betrouwbare polling, rondetelling en
+exclusiviteit zijn niet door deze instructiewijziging bewezen.
 
 ### Drie mappen zonder testproject, nu met een startpunt (#1302)
 

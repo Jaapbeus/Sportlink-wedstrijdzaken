@@ -1,11 +1,25 @@
 ---
-description: Sluit de sessie gestructureerd af — triage eerst, daarna gates, altijd memory schrijven.
+name: sluitsessie
+description: "Sluit de sessie gestructureerd af — triage eerst, daarna gates, altijd memory schrijven."
 disable-model-invocation: true
 ---
 
+> **Gezamenlijke agentregels zijn leidend (CLAUDE.md/AGENTS.md).** Deze skill geldt voor Codex
+> en Claude Code. Werk uitsluitend aan de toegewezen taak in de eigen geverifieerde worktree;
+> claim of wijzig geen taak, branch, worktree of services van een andere actieve sessie.
+> Behoud `source:` als herkomst; registreer implementer, reviewer, fase en sessie afzonderlijk.
+> Vóór merge: wederzijdse review van de huidige head-SHA, relevante checks én afzonderlijke
+> eigenaarsautorisatie. Deze skill omzeilt die grenzen niet.
+> Start/stop/clean/migraties vereisen vooraf exclusief runtime-eigenaarschap. De huidige
+> debugscriptset is gedeeld: onbekende of andere runtime-eigenaar betekent geen mutaties.
+> Poorten vrij betekent niet dat databases/testdata vrij zijn. Leg reservering en vrijgave vast
+> in de taak/sessie-overdracht; laat services intact als ze aan een andere sessie behoren.
+
+
 Voer de sessie-afsluiting uit als een gate-based pipeline. Elke fase is een poort:
 als een harde blocker gevonden wordt, stop je bij die fase en rapporteer je wat er
-nog moet gebeuren. Schrijf altijd een sessiesamenvatting naar memory — ook bij
+nog moet gebeuren. Leg altijd implementer, reviewer, fase, branch, head-SHA, werkstatus, taak- en runtime-eigenaarschap vast
+in de sessie-overdracht. Schrijf altijd een sessiesamenvatting naar eigen memory — ook bij
 gedeeltelijke afsluiting.
 
 Symbolen:
@@ -26,7 +40,7 @@ Symbolen:
 
 **0a. Branch-check**
 Voer uit: `git branch --show-current`
-- Op `feature/*` of `hotfix/*` → ✅, ongeacht de rest van deze fase.
+- Op `feature/*`, `hotfix/*` of `codex/*` in de eigen geverifieerde worktree → ✅, ongeacht de rest van deze fase.
 - Op `main`, `develop` of detached HEAD → nog geen oordeel — wacht op 0b/0c en pas dan het
   **branch-oordeel** hieronder toe. Op zichzelf is dit geen harde blocker: pas 0b/0c samen bepalen
   of er van déze sessie iets op het spel staat.

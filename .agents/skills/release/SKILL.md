@@ -1,8 +1,20 @@
 ---
-description: Release van develop naar productie — eerst een verplichte securitypoort (/security-review op de volledige releasediff + open alerts), daarna versiebump, release-PR, deploycontrole en tag.
+name: release
+description: "Release van develop naar productie — eerst een verplichte securitypoort (/security-review op de volledige releasediff + open alerts), daarna versiebump, release-PR, deploycontrole en tag."
 disable-model-invocation: false
-argument-hint: [--dry-run]
+argument-hint: "[--dry-run]"
 ---
+
+> **Gezamenlijke agentregels zijn leidend (CLAUDE.md/AGENTS.md).** Deze skill geldt voor Codex
+> en Claude Code. Werk uitsluitend aan de toegewezen taak in de eigen geverifieerde worktree;
+> claim of wijzig geen taak, branch, worktree of services van een andere actieve sessie.
+> Behoud `source:` als herkomst; registreer implementer, reviewer, fase en sessie afzonderlijk.
+> Vóór merge: wederzijdse review van de huidige head-SHA, relevante checks én afzonderlijke
+> eigenaarsautorisatie. Deze skill omzeilt die grenzen niet.
+> Een expliciete eigenaarsaanroep `/release` (of `/autonoom --release`) autoriseert alleen
+> de releaseprocedure. Reserveer release-scope en gedeelde runtime vóór R0. Is `/security-review`
+> niet beschikbaar voor de uitvoerende agent, dan is R1 niet voltooid: draag de securityreview
+> expliciet over aan Claude Code; geen versiebump/merge/deploy totdat het bewijs beschikbaar is.
 
 Voer een release uit van `develop` naar `main` (productie). Dit is **de enige releaseprocedure**
 van dit project; `/autonoom --release` roept deze skill aan in plaats van een eigen kopie (#1470).
@@ -41,14 +53,17 @@ eigenaar uit waarom, met bestand en regel. De eigenaar beslist, niet jij.
 
 ## R0 — Voorbereiding (worktree + scope)
 
-1. **Stap S0 uit AGENTS.md** — eigen worktree, vanuit `origin/develop`:
+1. **Stap S0 uit AGENTS.md** — reserveer release-scope (versiebestanden, CHANGELOG en
+   OpenAPI) zodat geen andere sessie daar tegelijk schrijft. Eigen worktree vanaf `origin/develop`:
    ```bash
    git fetch origin develop main --tags
    # Release-issue: zoek een open "release vX.Y.Z.R"-issue, anders aanmaken met
    #   --label "type: chore" --label "priority: medium" --label "source: claude-code"
    git worktree add -b "feature/#<nr>-release-<versie>" ".claude/worktrees/<nr>-release-<versie>" origin/develop
    ```
-   Stap de sessie de worktree in (`EnterWorktree({ path: ... })`). Pas de werkboom **niet** aan
+   Codex gebruikt `codex/<nr>-release-<versie>` en `.codex/worktrees/<nr>-<sessie>`;
+   gebruik `source: codex` voor een nieuw Codex-issue. Claude Code gebruikt het voorbeeld hierboven.
+   Stap de sessie de worktree in (Claude Code: `EnterWorktree({ path: ... })`; Codex: expliciete werkmap). Pas de werkboom **niet** aan
    vóór R1 klaar is: de review moet exact de inhoud van `origin/develop` zien.
 
 2. **Is er iets te releasen?**
@@ -187,7 +202,8 @@ In de worktree:
    notes.
 4. Commit (`chore(#<nr>): release vX.Y.Z.R — versiebump, CHANGELOG-sectie, OpenAPI-versie`),
    push, `gh pr create --draft --base develop`, met de kostencheck in de body.
-5. `gh pr checks <pr> --watch` ⇒ groen ⇒ `gh pr ready` ⇒ merge (`--merge`).
+5. Wederzijdse review op huidige head-SHA ⇒ bevindingen verwerkt ⇒
+   `gh pr checks <pr> --watch` groen ⇒ `gh pr ready` ⇒ geautoriseerde merge (`--merge`).
 
 Het starten van `/release` door de eigenaar is de autorisatie voor de merges en de tag in deze
 procedure. Twijfel over iets wat niet in deze skill staat ⇒ vraag het.
@@ -206,7 +222,7 @@ R1-resultaatregel** (alleen aantallen).
 
 `gh pr checks <pr> --watch`. Daarop draaien de Security Gate (inclusief CodeQL), `pre-release-check`
 en `pre-release-db-check`. Rood ⇒ niet mergen. Een rode Security Gate is een STOP die je meldt,
-geen fout die je zelf wegwerkt. Bij groen: `gh pr merge <pr> --merge`.
+geen fout die je zelf wegwerkt. Bij groen én afgeronde review van de actuele release-head: `gh pr merge <pr> --merge`.
 
 ---
 
