@@ -22,6 +22,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Documentatie bijgewerkt naar de huidige stand (Flex Consumption, .NET 10, beheerdershandleiding, setup voor nieuwe clubs) en verouderde documentatie en scripts opgeruimd (#1525).
 - Afsluitende codereview: grote methodes opgesplitst, verouderd commentaar (Linux Consumption, dry-run-lock) opgeschoond, en de Sportlink-extensie-instellingenpagina meldt zich nu correct af bij het sluiten (#1529).
 
+### Fixed
+- Foutmeldingen van de server (zoals "automatisch controleren van feedback is nu niet beschikbaar") tonen alleen de melding, niet meer de ruwe `HTTP 503: {json}` (#1529).
+
 ### Security
 
 - De SQL-configuratie van de deploy-workflows (servernaam, databasenaam, resource group) staat nu als GitHub Secret in plaats van Variable, zodat ze niet meer in publieke logs verschijnen (zie issue #1237). Lokaal start Azurite met `--skipApiVersionCheck` zodat de Storage Queue-client weer werkt.
