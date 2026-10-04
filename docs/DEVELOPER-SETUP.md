@@ -1,4 +1,4 @@
-# Sportlink Wedstrijdzaken — Developer Setup (v3.5)
+# Sportlink Wedstrijdzaken — lokaal opzetten
 
 > **Waarvoor dit document?** Eenmalige opzet: dit is de bron voor installatie- en
 > configuratiecommando's. Dagelijks starten, stoppen en debuggen staat in
@@ -10,7 +10,13 @@
 > **De standaardtier is Postgres** (§4.1–§4.3). Werk je aan de SQL Server-tier, lees dan
 > §4.4–§4.7 in plaats daarvan. Beide tiers zijn gelijkwaardig en volledig ondersteund (#1266).
 
-Volledige setupgids voor een nieuwe developer die de v3.5-stack lokaal wil draaien — op
+Wil je eerst zien of de app bij jouw club past? Je kunt lokaal beginnen met Postgres en fictieve
+AllStars-wedstrijden. Voor dat proefrondje hoef je geen Azure-resources aan te maken en geen echte
+Sportlink-gegevens op te halen. Rond de database-inrichting en lokale configuratie hieronder af,
+start de services en zet vervolgens de [demodata](TESTMODUS-ALLSTARS.md#een-eerste-proefrondje) klaar.
+E-mailverwerking en de Sportlink-schrijfkoppeling kun je later afzonderlijk inrichten.
+
+Deze gids beschrijft de lokale .NET 10-stack — op
 **Windows** en op **macOS (Apple Silicon)**. Waar een commando platform-specifiek is, staan de
 Windows- en de macOS-variant naast elkaar (#800).
 
@@ -63,7 +69,7 @@ docker exec -e PGPASSWORD="<wachtwoord>" sportlink-postgres psql -U "<gebruiker>
 6. [Services starten (Start-Debug.ps1)](#6-services-starten)
 7. [Verificatie (Test-App.ps1)](#7-verificatie)
 8. [Projectstructuur](#8-projectstructuur)
-9. [GitHub Actions — productie-deployment configureren](#9-github-actions-productie-deployment-configureren)
+9. [GitHub Actions — productie-deployment configureren](#9-github-actions--productie-deployment-configureren)
 10. [Troubleshooting](#10-troubleshooting)
 
 ---
@@ -863,7 +869,7 @@ platform), dus daar schrijft `Start-Debug.ps1` de output altijd naar een logbest
 # 1. Azurite
 $azuriteDir = Join-Path ([System.IO.Path]::GetTempPath()) 'azurite'
 if (-not (Test-Path $azuriteDir)) { New-Item -ItemType Directory -Path $azuriteDir | Out-Null }
-Start-Process powershell -ArgumentList "-NoExit -Command azurite --location '$azuriteDir'"
+Start-Process powershell -ArgumentList "-NoExit -Command azurite --skipApiVersionCheck --location '$azuriteDir'"
 Start-Sleep -Seconds 3
 
 # 2. FunctionApp (geen hot reload) — Postgres-tier (standaard).
@@ -879,7 +885,7 @@ Terminal-tabbladen en voer in elk tabblad één van deze commando's uit:
 
 ```bash
 # Tab 1 — Azurite
-mkdir -p /tmp/azurite-sportlink && azurite --location /tmp/azurite-sportlink
+mkdir -p /tmp/azurite-sportlink && azurite --skipApiVersionCheck --location /tmp/azurite-sportlink
 ```
 ```bash
 # Tab 2 — FunctionApp (geen hot reload) — Postgres-tier (standaard)
@@ -1251,16 +1257,20 @@ Deze zes waarden identificeren jouw club. Zet ze op het tabblad **Secrets** →
 > SPA laat tenant- en client-ID toch aan elke browser zien — maar ze verraden wél welke club deze
 > fork draait, en dat is precies wat het club-neutrale open-sourcebeleid wil voorkomen.
 >
-> `deploy.yml` leest ze als `${{ secrets.NAAM || vars.NAAM }}`. Heb je ze al als **Variable**
-> staan, dan blijft de deploy gewoon werken; de waarden staan dan alleen leesbaar in de logs.
+> Alle zes (`AZURE_AD_CLIENT_ID`, `AZURE_AD_TENANT_ID`, `AZURE_FUNCTIONAPP_NAME`, `AZURE_FUNCTIONAPP_URL`,
+> `AZURE_STATIC_WEB_APP_HOSTNAME`, `POST_LOGOUT_REDIRECT_URL`) zijn **uitsluitend Secrets**, nooit Variables.
+> `deploy.yml` leest `${{ secrets.NAAM || vars.NAAM }}`, maar de `vars`-tak is alleen een legacy-terugval
+> voor oudere forks: heb je ze nog als **Variable** staan, zet ze dan om naar Secret en verwijder de Variable,
+> want anders staan de waarden leesbaar in de publieke logs.
 
-### 9.2a Variables instellen
+### 9.2a SQL-configuratie (alleen `DatabaseTier=SqlServer`)
 
-Klik op het tabblad **Variables** → **New repository variable** voor elk van de volgende. Deze
-waarden zijn niet club-identificerend, of worden in een job-`if:` gebruikt — daar is de
-`secrets`-context niet beschikbaar, dus die moeten Variable blijven:
+`AZURE_SQL_SERVER_NAME`, `AZURE_SQL_DATABASE_NAME` en `AZURE_SQL_RESOURCE_GROUP` zijn **Secrets**
+(club-identificerend; zie #1237/#1204). `secrets` is niet beschikbaar in een job-`if:`, dus de
+tier-gating loopt via de niet-gevoelige **Variable** `DatabaseTier`; een eerste stap in
+`db-check`/`db-migrate` faalt met een duidelijke melding als een van de drie secrets leeg is.
 
-| Naam | Voorbeeld | Beschrijving |
+| Secret | Voorbeeld | Beschrijving |
 |------|-----------|-------------|
 | `AZURE_SQL_SERVER_NAME` | `[sql-servernaam]` | SQL-servernaam **zonder** `.database.windows.net` |
 | `AZURE_SQL_DATABASE_NAME` | `[database-naam]` | Naam van de SQL-database |
@@ -1270,7 +1280,7 @@ waarden zijn niet club-identificerend, of worden in een job-`if:` gebruikt — d
 
 | Jobs | Vereiste configuratie | Gedrag zonder configuratie |
 |------|-----------------------|---------------------------|
-| `db-check` + `db-migrate` (alleen `DatabaseTier=SqlServer`) | `AZURE_SQL_SERVER_NAME`, `AZURE_SQL_DATABASE_NAME`, `AZURE_SQL_RESOURCE_GROUP`, `SQL_CONNECTION_STRING` | Jobs worden overgeslagen |
+| `db-check` + `db-migrate` (alleen `DatabaseTier=SqlServer`) | `AZURE_SQL_SERVER_NAME`, `AZURE_SQL_DATABASE_NAME`, `AZURE_SQL_RESOURCE_GROUP`, `SQL_CONNECTION_STRING` (allemaal Secrets) | Jobs falen hard bij ontbrekende secret; ze draaien alleen bij `DatabaseTier=SqlServer` |
 | `db-migrate-postgres` (alleen `DatabaseTier=Postgres`) | `POSTGRES_CONNECTION_STRING` | **Job faalt hard** — stil overslaan zou de nieuwe code tegen een verouderd schema laten draaien (#1093) |
 | `blazor-deploy` + SWA smoke test | `AZURE_STATIC_WEB_APPS_API_TOKEN`, `AZURE_STATIC_WEB_APP_HOSTNAME` | Job wordt overgeslagen |
 | `build` + `test` | `AZURE_CREDENTIALS`, `AZURE_FUNCTIONAPP_NAME`, `AZURE_FUNCTION_KEY` | Verplicht — mislukken bij ontbreken |
@@ -1376,7 +1386,7 @@ lsof -nP -iTCP:10000 -sTCP:LISTEN
 Start Azurite handmatig (cross-platform, werkt op beide platforms in PowerShell 7):
 
 ```powershell
-azurite --silent --location ([System.IO.Path]::GetTempPath() + 'azurite')
+azurite --silent --skipApiVersionCheck --location ([System.IO.Path]::GetTempPath() + 'azurite')
 ```
 
 ### Blazor toont "An unhandled error has occurred"

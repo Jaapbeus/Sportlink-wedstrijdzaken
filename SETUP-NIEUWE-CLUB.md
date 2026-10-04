@@ -1,6 +1,19 @@
 # SETUP — Sportlink Wedstrijdzaken voor jouw vereniging
 
-Deze handleiding beschrijft hoe je een eigen instantie van Sportlink Wedstrijdzaken opzet voor jouw voetbalvereniging. Je hebt geen programmeerervaring nodig voor de basis-setup, maar Azure CLI-kennis is handig voor de Entra ID-configuratie.
+Zin om de wedstrijdplanning voor jouw club anders aan te pakken? Met deze gids maak je een eigen
+installatie van Sportlink Wedstrijdzaken: je eigen gegevens, instellingen en gebruikers.
+
+Je hoeft hiervoor geen applicatiecode te schrijven. Reken wel op werk met Azure, een database,
+GitHub Secrets en Microsoft Entra ID. Het helpt als één technisch vaardige vrijwilliger de
+inrichting en het onderhoud op zich neemt.
+
+**Eerst proberen?** Begin dan met de [lokale setup](docs/DEVELOPER-SETUP.md) en
+[fictieve AllStars-wedstrijden](docs/TESTMODUS-ALLSTARS.md#een-eerste-proefrondje).
+Deze cloudgids heb je pas nodig als je een eigen installatie wilt hosten.
+
+Bouw rustig op: eerst de app en planning, daarna de optionele mailboxverwerking en
+Sportlink-schrijfkoppeling. Laat e-mailverwerking uit en Sportlink-wijzigingen in dry-run totdat
+je die onderdelen hebt ingericht en getest. Bekijk vooraf ook [de kosten](#9-kosten).
 
 ## Inhoudsopgave
 
@@ -22,8 +35,8 @@ Deze handleiding beschrijft hoe je een eigen instantie van Sportlink Wedstrijdza
 | Vereiste | Versie / Opmerking |
 |---|---|
 | Microsoft 365 / Entra ID tenant | Gratis bij Microsoft 365 Business of Azure |
-| Azure-abonnement | Free tier volstaat |
-| Sportlink `clientId` | Opvragen bij jouw eigen Sportlink-beheerder |
+| Azure-abonnement | Voor eigen hosting; controleer gratis tegoeden en stel een kostenbudget in |
+| Sportlink Club Dataservice en `clientId` | Voor echte wedstrijddata; opvragen bij jouw eigen Sportlink-beheerder |
 | GitHub-account | Voor de repository-fork en CI/CD |
 | Azure CLI | Voor Entra-configuratie (`az login`) |
 | Jaaromzet van de vereniging **onder USD 1.000.000** | Alleen voor de PDF-export van de planning. Die gebruikt QuestPDF onder de gratis *Community License*, en die geldt voor organisaties onder deze omzetgrens (contributie, kantine, sponsoring en subsidies tellen mee). Zit jouw club erboven, dan is een betaalde QuestPDF-licentie nodig of gebruik je de PDF-export niet. Sinds #1459 staat de PDF-export standaard **uit**; een beheerder zet hem zelf aan bij Instellingen → PDF-export en bevestigt daarmee dat de voorwaarden gelden. Zie [docs/ARCHITECTUUR-PDF-EXPORT.md](docs/ARCHITECTUUR-PDF-EXPORT.md) §2 |
@@ -34,18 +47,33 @@ Deze handleiding beschrijft hoe je een eigen instantie van Sportlink Wedstrijdza
 
 Maak de volgende resources aan in de Azure Portal (of via Azure CLI). Alle resources in één resource group, bijv. `rg-<clubcode>-sportlink`.
 
-### 2a. Azure Functions (Consumption plan)
+### 2a. Azure Functions (Flex Consumption plan, .NET 10)
+
+De Function App draait op een **Flex Consumption-plan** met stack `dotnet-isolated 10.0` (productie sinds
+2026-10-03; zie [docs/ARCHITECTUUR.md](docs/ARCHITECTUUR.md) §5.3). Maak voor een nieuwe club **direct een
+Flex-app** aan en nooit een Linux Consumption-app: dat plan ondersteunt .NET 10 niet, en een `net10.0`-build
+geeft daar een 503 ("Function host is not running"). In-place migratie bestaat niet.
+
+De bedoelde route is de Bicep-module `infrastructure/modules/function-app-flex.bicep`
+(system-assigned managed identity, host-opslag zonder connection string, `maximumInstanceCount`
+standaard 5, bewust geen always-ready instances — die laten het gratis tegoed vervallen). Hij hergebruikt
+een **bestaand** storage account en maakt de deployment-container zelf aan: maak dus eerst een
+storage account aan, en rol daarna **uitsluitend deze module** uit, niet `main.bicep`
+(zie [infrastructure/README.md](infrastructure/README.md)). Doe vóór het aanmaken eerst de prijscheck
+voor Flex Consumption op Microsoft Learn: het gratis tegoed is kleiner dan bij Consumption.
 
 ```bash
-az functionapp create \
+az deployment group create \
   --resource-group rg-<clubcode>-sportlink \
-  --consumption-plan-location westeurope \
-  --runtime dotnet-isolated \
-  --runtime-version 9 \
-  --functions-version 4 \
-  --name func-<clubcode>-sportlink \
-  --storage-account <storage-account-naam>
+  --template-file infrastructure/modules/function-app-flex.bicep \
+  --parameters flexFunctionAppName=func-<clubcode>-sportlink \
+               flexAppServicePlanName=plan-<clubcode>-sportlink-flex \
+               storageAccountName=<storage-account-naam>
 ```
+
+De managed identity krijgt de rollen Storage Blob Data Owner, Queue Data Contributor en Table Data
+Contributor op dat storage account; de host-opslag staat in `AzureWebJobsStorage__accountName` (geen
+connection string). De applicatiecode ondersteunt beide vormen (`OpslagVerbinding`).
 
 **Applicatie-instellingen toevoegen:**
 
@@ -95,26 +123,16 @@ az functionapp config appsettings set \
 > volwaardig, ondersteund alternatief. Zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` voor de afweging.
 > Wat je hier kiest, moet overeenkomen met de `DatabaseTier`-variabele in §5c.
 
-**Optie A — Azure SQL Database (Free tier):**
+**Optie A — Azure SQL Database (gratis aanbod):**
 
-```bash
-# Server aanmaken
-az sql server create \
-  --name sql-<clubcode>-sportlink \
-  --resource-group rg-<clubcode>-sportlink \
-  --location westeurope \
-  --admin-user sqladmin \
-  --admin-password <sterk-wachtwoord>
+Gebruik de [Microsoft-handleiding voor het gratis SQL-aanbod](https://learn.microsoft.com/en-us/azure/azure-sql/database/free-offer).
+Begin in de Azure Portal bij **Start free**. Kies je resource group en een bestaande of nieuwe
+logische SQL-server. Controleer vóór aanmaken dat **Free offer applied!** verschijnt.
 
-# Database aanmaken (Free tier = 32GB, voldoende voor een club)
-az sql db create \
-  --resource-group rg-<clubcode>-sportlink \
-  --server sql-<clubcode>-sportlink \
-  --name SportlinkSqlDb \
-  --tier Free
-```
-
-> **Let op:** Controleer de actuele beschikbaarheid van de Free tier via de [Azure Portal](https://portal.azure.com) of via `mcp__claude_ai_Microsoft_Learn__microsoft_docs_search("Azure SQL Free tier pricing")` — Microsoft kan dit aanbod wijzigen zonder voorafgaande aankondiging.
+Laat **Auto-pause the database until next month** geselecteerd als je binnen het gratis aanbod
+wilt blijven. De database kan dan bij het bereiken van de limiet pauzeren; de app is op dat moment
+niet volledig beschikbaar. **Continue using database for additional charges** kan kosten veroorzaken.
+Controleer de actuele grenzen en beschikbaarheid bij Microsoft voordat je dit aanbod kiest.
 
 **Optie B — Postgres (bijv. Supabase free tier):** maak een nieuw project aan bij je gekozen
 Postgres-provider en noteer de connectiestring. Die gaat op twee plaatsen naartoe, allebei onder de
@@ -247,7 +265,7 @@ In jouw fork: Settings → Secrets and variables → Actions → **Secrets**:
 > Deze repository is publiek en de Actions-logs van een publieke repository zijn dat óók: GitHub
 > drukt ingevulde expressies letterlijk in de joblog af en maskeert **alleen** secrets. Als Variable
 > belanden je Function App-naam, SWA-hostname en Entra-ID's dus zichtbaar in elke workflow-run. De
-> workflows lezen ze als `secrets.X || vars.X`, dus een Variable werkt technisch nog wel — maar dat
+> workflows lezen ze als `secrets.X || vars.X` (de `vars`-tak is alleen legacy-terugval), dus een Variable werkt technisch nog wel — maar dat
 > is een fallback voor bestaande installaties, niet de aanbevolen inrichting. Zie SECURITY.md,
 > "Laag 2 — GitHub Actions".
 
@@ -359,16 +377,28 @@ cp .githooks/sensitive-patterns.template.txt .githooks/sensitive-patterns.txt
 
 ## 9. Kosten
 
-Alles kan op Azure **Free Tier** draaien:
+De app is ingericht op lage gebruikskosten. Gratis tiers en tegoeden helpen daarbij, maar ze
+maken niet elke installatie volledig gratis. Maak vooraf onderscheid tussen hosting en diensten
+die je club al afneemt.
 
-| Resource | Tier | Geschatte kosten |
-|---|---|---|
-| Azure Functions | Consumption | €0 (eerste 1M requests/maand gratis) |
-| Database | Azure SQL Free tier (32GB) óf Postgres free tier (bijv. Supabase) | €0 |
-| Azure Static Web Apps | Free | €0 |
-| Azure Storage (Azurite-equivalent) | LRS, minimaal gebruik | < €0,05/maand |
+| Onderdeel | Waar je op let |
+|---|---|
+| Sportlink Club Dataservice | Abonnement en API-toegang voor echte wedstrijddata; vraag de actuele voorwaarden op bij Sportlink |
+| Microsoft 365 | Mailbox en tenant voor de e-mailkoppeling; mogelijk al aanwezig bij je club |
+| Azure Functions Flex Consumption | Gratis maandtegoed voor on-demand gebruik; gedeeld binnen je subscription. Controleer de actuele tarieven |
+| Database | Postgres of SQL Server: kies een aanbod dat past en controleer limieten, opslag en voorwaarden |
+| Azure Static Web Apps | Kies de Free-tier en bewaak de limieten |
+| Azure Storage en netwerk | Worden apart berekend; gebruik is geen vast maandbedrag |
+| AI-classificatie | API-gebruik wordt door de gekozen provider berekend; alleen nodig als je AI-verwerking gebruikt |
+| PDF-export | Optioneel; standaard uit. Controleer de licentievoorwaarden voordat je hem aanzet |
 
-> Schakel de e-mailverwerking (`EmailProcessorEnabled=true`) pas in als je de volledige setup hebt getest. OpenAI-gebruik kost geld per API-aanroep.
+Zie de actuele [Azure Functions-prijzen](https://azure.microsoft.com/en-us/pricing/details/functions/)
+voor het Flex-tegoed en de aparte opslag- en netwerkkosten. Stel een kostenbudget en meldingen in
+voordat je begint. Een budgetmelding is geen automatische stop op verbruik.
+
+Activeer `EmailProcessorEnabled=true` pas nadat de mailboxverwerking is getest. Begin met
+`EmailReviewMode=true` én een ingestelde `EmailReviewRecipient`, zodat antwoorden naar de
+beoordelaar gaan. Met de E-mailtester kun je eerst classificatie proberen zonder berichten te versturen.
 
 ---
 

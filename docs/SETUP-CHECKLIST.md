@@ -25,20 +25,6 @@ Geldt voor **Windows** en **macOS (Apple Silicon)** (#800) — zie
   # macOS
   brew install powershell
   ```
-- [ ] .NET 9 Runtime geïnstalleerd — **beide** frameworks (`dotnet --list-runtimes` toont
-  `Microsoft.NETCore.App 9.x.x` én `Microsoft.AspNetCore.App 9.x.x`). Zonder de tweede breken
-  `FunctionApp.Tests` en `FunctionApp.Postgres.Tests` af bij `dotnet test` (#1174).
-  ```powershell
-  # Windows
-  winget install Microsoft.DotNet.Runtime.9
-  winget install Microsoft.DotNet.AspNetCore.9
-  ```
-  ```bash
-  # macOS
-  curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && chmod +x /tmp/dotnet-install.sh
-  /tmp/dotnet-install.sh --channel 9.0 --runtime dotnet
-  /tmp/dotnet-install.sh --channel 9.0 --runtime aspnetcore
-  ```
 - [ ] .NET 10 SDK geïnstalleerd (`dotnet --version` toont `10.x.x`) — macOS: `/tmp/dotnet-install.sh --channel 10.0`
 - [ ] Azure Functions Core Tools v4 geïnstalleerd (`func --version` toont `4.x.x`) — macOS: `brew tap azure/functions && brew install azure-functions-core-tools@4`
 - [ ] Node.js geïnstalleerd (`node --version`) — macOS: `brew install node`
@@ -141,11 +127,11 @@ Alleen nodig als je naar Azure wilt deployen.
 - [ ] `POSTGRES_CONNECTION_STRING` — alleen bij `DatabaseTier=Postgres`; de pipeline past hiermee de migraties toe vóór elke deploy (#1093). Zelfde waarde als de Function App-instelling
 - [ ] `AZURE_STATIC_WEB_APPS_API_TOKEN` — SWA deployment token
 
-**Secrets (aanbevolen — club-identificerende configuratie, #1204):**
+**Secrets (verplicht Secret, nooit Variable — club-identificerende configuratie, #1204):**
 
 Deze zes waarden identificeren jouw club. Sla ze op als **Secret**, niet als Variable: bij een
 publieke fork zijn de Actions-logs publiek leesbaar, en GitHub maskeert alleen secrets (`***`).
-Als Variable werken ze ook — maar dan staan ze leesbaar in elke deploy-log.
+De workflows lezen `secrets.X || vars.X`, maar de `vars`-tak is alleen een legacy-terugval: een Variable staat leesbaar in elke deploy-log. Verwijder een eventuele Variable met dezelfde naam.
 
 - [ ] `AZURE_FUNCTIONAPP_NAME`
 - [ ] `AZURE_FUNCTIONAPP_URL`
@@ -158,7 +144,7 @@ Als Variable werken ze ook — maar dan staan ze leesbaar in elke deploy-log.
 
 - [ ] `DatabaseTier` — `SqlServer` of `Postgres`
 - [ ] `DatabaseTierSwitchConfirmation` — **exact dezelfde waarde als `DatabaseTier`**, anders faalt de deploy met exitcode 3
-- [ ] `AZURE_SQL_SERVER_NAME` / `AZURE_SQL_DATABASE_NAME` / `AZURE_SQL_RESOURCE_GROUP` — alleen bij `DatabaseTier=SqlServer` (deze worden in een job-`if:` gebruikt en moeten Variable blijven)
+- [ ] `AZURE_SQL_SERVER_NAME` / `AZURE_SQL_DATABASE_NAME` / `AZURE_SQL_RESOURCE_GROUP` — alleen bij `DatabaseTier=SqlServer` (**Secrets**, geen Variables — #1237)
 
 **Verificatie na instellen:**
 
@@ -173,7 +159,7 @@ Als Variable werken ze ook — maar dan staan ze leesbaar in elke deploy-log.
 
 | Probleem | Eerste stap |
 |---------|-------------|
-| FunctionApp start niet (503) | `dotnet --list-runtimes` — .NET 9 aanwezig? |
+| FunctionApp start niet (503) | `dotnet --list-sdks` — .NET 10 SDK aanwezig? (`func start` draait op de .NET 10 runtime) |
 | "Cannot connect to database" | Postgres: `POSTGRES_CONNECTION_STRING` in `FunctionApp.Postgres/local.settings.json` · SQL Server: `SqlConnectionString` in `FunctionApp/local.settings.json`. Draait de container? `docker compose ps` |
 | "401 Unauthorized" Sportlink API | Postgres: `SELECT * FROM public.appsettings;` · SQL Server: `SELECT * FROM [dbo].[AppSettings]` — credentials correct? |
 | "Azurite connection failed" | Windows: `Get-NetTCPConnection -LocalPort 10000` · macOS: `lsof -nP -iTCP:10000 -sTCP:LISTEN` — poort actief? |

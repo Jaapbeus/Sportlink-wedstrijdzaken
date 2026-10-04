@@ -365,17 +365,17 @@ public static class ThemeCore
             var faviconUrl = ExtractFaviconUrl(html, parsedUri);
             var logoUrl = ExtractLogoUrl(html, parsedUri);
             log.LogInformation("Assets geëxtraheerd uit {Host}: {Count} kleuren, favicon={Fav}, logo={Logo}",
-                parsedUri.Host, colors.Count, faviconUrl != null, logoUrl != null);
+                LogWaarde.Schoon(parsedUri.Host), colors.Count, faviconUrl != null, logoUrl != null);
             return new ThemeExtractieResultaat(ThemeExtractieStatus.Ok, null, colors, faviconUrl, logoUrl);
         }
         catch (SsrfBlockedException ex)
         {
-            log.LogWarning(ex, "Extractie geweigerd door SSRF-bescherming: {Host}", parsedUri.Host);
+            log.LogWarning(ex, "Extractie geweigerd door SSRF-bescherming: {Host}", LogWaarde.Schoon(parsedUri.Host));
             return new ThemeExtractieResultaat(ThemeExtractieStatus.BestemmingGeblokkeerd, "URL-bestemming is niet toegestaan.");
         }
         catch (Exception ex)
         {
-            log.LogWarning(ex, "Ophalen website mislukt: {Host}", parsedUri.Host);
+            log.LogWarning(ex, "Ophalen website mislukt: {Host}", LogWaarde.Schoon(parsedUri.Host));
             return new ThemeExtractieResultaat(ThemeExtractieStatus.OphalenMislukt, "Website kon niet worden opgehaald.");
         }
     }
@@ -424,7 +424,7 @@ public static class ThemeCore
     /// <para>
     /// Er wordt bewust met <see cref="UriKind.RelativeOrAbsolute"/> geparsed en daarna op
     /// <see cref="Uri.IsAbsoluteUri"/> beslist, niet met <see cref="UriKind.Absolute"/> vooraf
-    /// (#1252): op Unix — en dus op het Linux Consumption Plan waar dit draait — parseert
+    /// (#1252): op Unix — en dus op de Linux-host waar dit draait — parseert
     /// <c>Uri.TryCreate("/favicon.ico", UriKind.Absolute, out _)</c> succesvol, als
     /// <c>file:</c>-URI. De oude volgorde nam daardoor altijd de absolute tak, vond schema
     /// <c>file</c> en gaf <c>null</c> terug; de relatieve tak was voor root-relatieve paden

@@ -13,12 +13,12 @@ permissions:
 env:
   DOTNET_VERSION: '10.0.x'
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  # Repository-variabelen — geconfigureerd in GitHub repo Settings → Variables.
-  # Hier gedeclareerd zodat de linter ze kent; gebruik $SQL_SERVER/$SQL_DATABASE/$SQL_RESOURCE_GROUP
-  # in run-scripts en env.SQL_* in if-conditions.
-  SQL_SERVER: ${{ vars.AZURE_SQL_SERVER_NAME }}
-  SQL_DATABASE: ${{ vars.AZURE_SQL_DATABASE_NAME }}
-  SQL_RESOURCE_GROUP: ${{ vars.AZURE_SQL_RESOURCE_GROUP }}
+  # SQL-configuratie staat als repository-SECRETS (#1237/#1204: identificeert de club, Actions-logs
+  # zijn publiek). `secrets` mag niet in een `if:`; de tier-gating loopt daarom via de
+  # niet-gevoelige variabele DatabaseTier, en een stap controleert of de secrets gevuld zijn.
+  SQL_SERVER: ${{ secrets.AZURE_SQL_SERVER_NAME }}
+  SQL_DATABASE: ${{ secrets.AZURE_SQL_DATABASE_NAME }}
+  SQL_RESOURCE_GROUP: ${{ secrets.AZURE_SQL_RESOURCE_GROUP }}
 
 jobs:
   # ──────────────────────────────────────────────────────────────────────────
@@ -36,8 +36,15 @@ jobs:
     # job én db-migrate bij elke release nog tegen de oude Azure SQL-database draaiden, terwijl
     # de database die er wél toe deed nooit gemigreerd werd. Tier-gating hoort bij de tier, niet
     # bij de toevallige aanwezigheid van resourcenamen.
-    if: vars.DatabaseTier == 'SqlServer' && vars.AZURE_SQL_SERVER_NAME != '' && vars.AZURE_SQL_DATABASE_NAME != ''
+    if: vars.DatabaseTier == 'SqlServer'
     steps:
+      - name: SQL-configuratie aanwezig? (secrets)
+        run: |
+          if [ -z "$SQL_SERVER" ] || [ -z "$SQL_DATABASE" ] || [ -z "$SQL_RESOURCE_GROUP" ]; then
+            echo "::error::DatabaseTier=SqlServer maar secret AZURE_SQL_SERVER_NAME / AZURE_SQL_DATABASE_NAME / AZURE_SQL_RESOURCE_GROUP ontbreekt."
+            exit 1
+          fi
+
       # Nodig voor scripts/ci/wake-database.sql in de login-poging hieronder (#624).
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -159,10 +166,16 @@ jobs:
 
       # De Function App draait op Flex Consumption met stack dotnet-isolated 10.0 (#1074);
       # dit net10.0-artefact past daarbij.
+      # #1473: RID-specifiek voor linux-x64 (Flex Consumption draait op Linux x64), framework-
+      # dependent. Zonder -r komen de native QuestPDF-bibliotheken van alle platforms in het
+      # pakket (~39,5 MB extra zip). Geldt voor beide tiers (csproj_path). Lokaal blijft
+      # `func start` ongewijzigd: de RID staat bewust niet in de csproj.
       - name: Function App bouwen
         run: |
           dotnet publish ${{ steps.tier.outputs.csproj_path }} \
             --configuration Release \
+            --runtime linux-x64 \
+            --self-contained false \
             --output ./output
 
       - name: Artefact uploaden
@@ -214,10 +227,17 @@ jobs:
     # + AZURE_SQL_SERVER_NAME.
     # #1093: tier-gating, zie db-check.
     needs: [build, db-check]
-    if: always() && vars.DatabaseTier == 'SqlServer' && vars.AZURE_SQL_SERVER_NAME != ''
+    if: always() && vars.DatabaseTier == 'SqlServer'
         && needs.build.result == 'success'
         && (needs.db-check.result == 'success' || needs.db-check.result == 'skipped')
     steps:
+      - name: SQL-configuratie aanwezig? (secrets)
+        run: |
+          if [ -z "$SQL_SERVER" ] || [ -z "$SQL_DATABASE" ] || [ -z "$SQL_RESOURCE_GROUP" ]; then
+            echo "::error::DatabaseTier=SqlServer maar secret AZURE_SQL_SERVER_NAME / AZURE_SQL_DATABASE_NAME / AZURE_SQL_RESOURCE_GROUP ontbreekt."
+            exit 1
+          fi
+
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -554,9 +574,8 @@ jobs:
   blazor-deploy:
     runs-on: ubuntu-latest
     needs: build
-    # TODO: Stel AZURE_STATIC_WEB_APPS_API_TOKEN in als GitHub Secret voor de SWA deploy.
-    # Zie docs/BEHEERDER-HANDLEIDING.md voor het aanmaken van de SWA resource.
-    # Job wordt overgeslagen als het secret leeg is — guard via env op step-niveau (secrets context
+    # Vereist het secret AZURE_STATIC_WEB_APPS_API_TOKEN (zie docs/BEHEERDER-HANDLEIDING.md voor de
+    # SWA-resource). Job wordt overgeslagen als het secret leeg is — guard via env op step-niveau (secrets context
     # mag niet in job-level if direct staan).
     env:
       SWA_TOKEN: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}

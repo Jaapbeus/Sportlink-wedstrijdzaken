@@ -1,11 +1,25 @@
 ---
-description: Sluit de sessie gestructureerd af — triage eerst, daarna gates, altijd memory schrijven.
+name: sluitsessie
+description: "Sluit de sessie gestructureerd af — triage eerst, daarna gates, altijd memory schrijven."
 disable-model-invocation: true
 ---
 
+> **Gezamenlijke agentregels zijn leidend (CLAUDE.md/AGENTS.md).** Deze skill geldt voor Codex
+> en Claude Code. Werk uitsluitend aan de toegewezen taak in de eigen geverifieerde worktree;
+> claim of wijzig geen taak, branch, worktree of services van een andere actieve sessie.
+> Behoud `source:` als herkomst; registreer implementer, reviewer, fase en sessie afzonderlijk.
+> Vóór merge: wederzijdse review van de huidige head-SHA, relevante checks én afzonderlijke
+> eigenaarsautorisatie. Deze skill omzeilt die grenzen niet.
+> Start/stop/clean/migraties vereisen vooraf exclusief runtime-eigenaarschap. De huidige
+> debugscriptset is gedeeld: onbekende of andere runtime-eigenaar betekent geen mutaties.
+> Poorten vrij betekent niet dat databases/testdata vrij zijn. Leg reservering en vrijgave vast
+> in de taak/sessie-overdracht; laat services intact als ze aan een andere sessie behoren.
+
+
 Voer de sessie-afsluiting uit als een gate-based pipeline. Elke fase is een poort:
 als een harde blocker gevonden wordt, stop je bij die fase en rapporteer je wat er
-nog moet gebeuren. Schrijf altijd een sessiesamenvatting naar memory — ook bij
+nog moet gebeuren. Leg altijd implementer, reviewer, fase, branch, head-SHA, werkstatus, taak- en runtime-eigenaarschap vast
+in de sessie-overdracht. Schrijf altijd een sessiesamenvatting naar eigen memory — ook bij
 gedeeltelijke afsluiting.
 
 Symbolen:
@@ -24,43 +38,31 @@ Symbolen:
 
 ## FASE 0 — TRIAGE (altijd eerst, alleen lezen, geen wijzigingen)
 
-**0a. Branch-check**
-Voer uit: `git branch --show-current`
-- Op `feature/*` of `hotfix/*` → ✅, ongeacht de rest van deze fase.
-- Op `main`, `develop` of detached HEAD → nog geen oordeel — wacht op 0b/0c en pas dan het
-  **branch-oordeel** hieronder toe. Op zichzelf is dit geen harde blocker: pas 0b/0c samen bepalen
-  of er van déze sessie iets op het spel staat.
+**0a. Branch en worktree controleren**
+Lees `git branch --show-current`, `git status --short` en `git worktree list --porcelain`.
+- `feature/*`, `hotfix/*` of `codex/*` in de eigen geverifieerde worktree: correcte ontwikkelisolatie.
+- `main`, `develop`, detached HEAD of een niet-eigen worktree: uitsluitend read-only afsluiting.
+  Geen fallback naar gedeeld schrijven, branchwissel, cleanup of services wijzigen.
 
-**0b. Uncommitted werk**
-Voer uit: `git status --short`
-- Geen output → ✅
-- Wijzigingen aanwezig → ❌ HARDE BLOCKER, altijd, ongeacht de branch — lijst bestanden op en stop hier.
+**0b. Werkstatus en eigenaarschap**
+Onverwerkt eigen werk: rapporteer bestanden en overdracht, sluit de implementatie niet als af aan.
+Andermans wijzigingen: laat ze intact; beoordeel ze niet als eigen werk dat moet worden opgeruimd.
+Een read-only sessie mag worden afgesloten met vermelding dat er geen implementatie is gedaan;
+sla de bouw-, changelog- en PR-gates voor niet-uitgevoerde ontwikkeling over, schrijf wel memory.
 
-**0c. Ongepushte commits**
-Voer uit: `git log --oneline origin/$(git branch --show-current)..HEAD 2>/dev/null || git log --oneline -5`
-- Geen output → ✅
-- Commits aanwezig die niet op origin staan → ⚠️ (of ❌ in combinatie met 0a — zie branch-oordeel)
-
-**Branch-oordeel (combineert 0a + 0b + 0c — bepaalt of 0a een harde blocker is):**
-- `feature/*`/`hotfix/*` → altijd ✅.
-- `main`/`develop`/detached HEAD, mét 0b schoon (geen output) én 0c leeg (geen ongepushte
-  commits) → **geen harde blocker, wel ⚠️**. Dit was een puur read-only/onderzoeksessie of de
-  checkout staat zo door een andere, gelijktijdige sessie ([[feedback_worktree_isolation_required]]
-  — meerdere sessies delen deze working directory zonder git-worktree). Er staat niets van déze
-  sessie op het spel: geen wijzigingen, niets te verliezen. Rapporteer dit expliciet als ⚠️ en ga
-  NIET zelf een branch aanmaken of wisselen — dat kan een andere sessie die deze checkout verwacht
-  aan te treffen verstoren.
-- `main`/`develop`/detached HEAD MET 0b-wijzigingen of MET 0c-commits van déze sessie → ❌ HARDE
-  BLOCKER — stop hier. Dit is het scenario waar de regel voor bedoeld is: eigen werk dat op een
-  beschermde branch staat en verloren kan gaan of per ongeluk gedeeld wordt.
+**0c. Ongepushte eigen commits**
+Controleer uitsluitend de eigen taakbranch tegenover zijn upstream met
+`git log --oneline @{upstream}..HEAD`. Zonder upstream: rapporteer dat expliciet, geen fallback
+naar de laatste vijf historische commits alsof die ongepusht werk van deze sessie bewijzen.
+Ongepushte eigen commits: overdracht vereist; push alleen de eigen toegewezen branch.
 
 **0d. Open PR**
 Voer uit: `gh pr list --head $(git branch --show-current) 2>/dev/null`
 - PR aanwezig → noteer PR-nummer
 - Geen PR → ⚠️
 
-→ Toon triage-samenvatting. Stop bij een harde blocker uit het branch-oordeel of bij 0b op
-zichzelf — ga pas verder als de gebruiker de blocker oplost of expliciet vraagt door te gaan.
+→ Rapporteer de triage. Bij onverwerkt eigen implementatiewerk blijft de afsluiting gedeeltelijk;
+leg de overdracht en memory vast. Ga nooit andermans werk herstellen om de sessie groen te maken.
 
 ---
 
@@ -91,7 +93,7 @@ zichzelf — ga pas verder als de gebruiker de blocker oplost of expliciet vraag
 ## FASE 2 — DOCUMENTATIE (alleen als Fase 1 volledig ✅)
 
 **2a. Gewijzigde bestanden**
-`git diff origin/$(git branch --show-current)...HEAD --name-only 2>/dev/null || git diff HEAD~5..HEAD --name-only`
+`git diff @{upstream}...HEAD --name-only`; ontbrekende upstream expliciet rapporteren, geen historische fallback.
 
 **2b. CHANGELOG [Unreleased]**
 Lees eerste 60 regels van `CHANGELOG.md` — entry aanwezig en passend? ✅ / leeg? ⚠️
@@ -121,7 +123,7 @@ Lees eerste 60 regels van `CHANGELOG.md` — entry aanwezig en passend? ✅ / le
 **3c. Open issues die in deze sessie zijn afgerond**
 Haal issue-nummers op uit recente commit-messages op de huidige branch:
 ```bash
-git log origin/main..HEAD --pretty=format:"%s" 2>/dev/null \
+git log @{upstream}..HEAD --pretty=format:"%s" 2>/dev/null \
   | grep -oE '#[0-9]+' | sort -u
 ```
 
@@ -130,7 +132,8 @@ git log origin/main..HEAD --pretty=format:"%s" 2>/dev/null \
 > geen regels, en `sort` sluit daarna af met 0. De skill zou dan "geen afgeronde issues" melden
 > in plaats van een fout. Let op dat de fout onzichtbaar blijft op een macOS met `ugrep` of
 > GNU-grep uit Homebrew op `PATH` — die accepteren `-P` wél.
-Voor elk gevonden nummer: controleer de GitHub-status én het statuslabel:
+Neem issue-nummers uitsluitend uit het vastgelegde taakregister en de eigen PR;
+geen inventarisatie van andermans integratiecommits. Voor elk gevonden nummer: controleer de GitHub-status én het statuslabel:
 ```bash
 gh issue view <nr> --json number,title,state,labels 2>/dev/null
 ```

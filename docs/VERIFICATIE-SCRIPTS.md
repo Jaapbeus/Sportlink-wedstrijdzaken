@@ -222,7 +222,13 @@ geen vaste `Start-Sleep` meer (#684).
 .\scripts\dev\Start-Debug.ps1 -Swa       # inclusief SWA emulator op :4280
 .\scripts\dev\Start-Debug.ps1 -NoWatch   # BlazorAdmin zonder hot reload
 .\scripts\dev\Start-Debug.ps1 -Clean     # dotnet clean BlazorAdmin vóór het starten
+.\scripts\dev\Start-Debug.ps1 -SportlinkLive  # lokale instellingen klaar voor live Sportlink-verkeer van de primaire club (#1466)
 ```
+
+`-SportlinkLive` zet `AllowExternalIntegrations=true` en een lokale `SportlinkAutoLoginEncryptionKey` klaar
+(zonder waarden te tonen) en is bedoeld voor de acceptatieomgeving van de eigenaar; uitleg in
+[DEVELOPER-SETUP.md](DEVELOPER-SETUP.md) §5.3.1. Na het opstarten meldt het script altijd of de primaire
+club live-klaar is. Uitzondering: zonder deze schakelaar blijft extern verkeer lokaal uit (EgressGuard, #857).
 
 Twee controles die verder gaan dan "de poort antwoordt" (#1060):
 

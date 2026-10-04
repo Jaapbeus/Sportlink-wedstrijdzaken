@@ -165,7 +165,7 @@ public class ThemeCoreTests
     [InlineData("//cdn.example.com/logo.png", "https://cdn.example.com/logo.png")]
     public void ResolveUrl_RootRelatievePadenLossenOpTegenDeBasis(string invoer, string verwacht)
     {
-        // Regressieslot op #1252. Op Unix — en dus op het Linux Consumption Plan waar dit draait —
+        // Regressieslot op #1252. Op Unix — en dus op de Linux-host waar dit draait —
         // parseert Uri.TryCreate("/favicon.ico", UriKind.Absolute, out _) succesvol, als file:-URI.
         // De oorspronkelijke volgorde nam daardoor altijd de absolute tak, vond schema "file" en gaf
         // null terug: favicon en logo kwamen er in productie nooit uit, zonder foutmelding. Op

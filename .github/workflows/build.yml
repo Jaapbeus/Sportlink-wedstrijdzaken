@@ -92,6 +92,11 @@ jobs:
       - name: Codekwaliteit — AGENTS.md afgeleid uit CLAUDE.md
         run: python3 scripts/ci/genereer-agents-md.py
 
+      - name: Agentinstructies — skilltweelingen en codeblokken
+        run: |
+          python3 scripts/ci/check-agent-instructies.py
+          python3 scripts/ci/check-agent-instructies.test.py
+
       # Meta-guard: elke regel in het register heeft een bestaand, uitvoerbaar script dat ook echt
       # in de genoemde workflow draait — en elke guard in scripts/ci/ staat in het register.
       - name: Codekwaliteit — regelregister klopt

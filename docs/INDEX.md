@@ -1,7 +1,14 @@
 # Documentatie — Sportlink Wedstrijdzaken
 
-Centrale inhoudsopgave — elk document in `docs/` staat hier. Structuur en categorieregels: zie
-[DOCUMENTATIEPLAN.md](DOCUMENTATIEPLAN.md).
+Nieuw hier? Begin bij de [README](../README.md) voor het idee achter de app. Daarna kun je deze
+korte route volgen:
+
+1. **Rondkijken:** [eerste rondje door de app](BEHEERDER-HANDLEIDING.md#eerste-rondje-door-de-app).
+2. **Proberen:** [fictieve AllStars-wedstrijden](TESTMODUS-ALLSTARS.md#een-eerste-proefrondje), op een bestaande of lokale installatie.
+3. **Zelf draaien:** [lokaal opzetten](DEVELOPER-SETUP.md) of [een eigen clubinstallatie](../SETUP-NIEUWE-CLUB.md).
+
+Hieronder staat de volledige leeslijst, van dagelijks gebruik tot technische verdieping.
+De regels voor het bijhouden van documentatie staan in [DOCUMENTATIEPLAN.md](DOCUMENTATIEPLAN.md).
 
 ---
 
@@ -90,7 +97,7 @@ Voor nieuwe clubs en developers die de app voor het eerst inrichten.
 | [Setup checklist](SETUP-CHECKLIST.md) | Snelle checklist voor eerste opzet, beide databasetiers |
 | [Entra auth & beheer](ENTRA-AUTH-BEHEER.md) | App Registration, Easy Auth, rollen, gebruikers toevoegen — via scripts |
 | [Eigen domein](CUSTOM-DOMAIN.md) | Custom domain op de Static Web App, CORS-origins, redirect-URI's |
-| [Runbook Flex-migratie](RUNBOOK-FLEX-MIGRATIE.md) | Eenmalig: Linux Consumption → Flex Consumption (epic #1063) — volgorde FLEX-05 t/m 09, kostencontroles, cutover en rollback |
+| [Runbook Flex-migratie](RUNBOOK-FLEX-MIGRATIE.md) | Historisch verslag, migratie voltooid op 2026-10-03/04: Linux Consumption → Flex Consumption (epic #1063) — volgorde FLEX-05 t/m 09, kostencontroles, cutover en rollback |
 
 ---
 

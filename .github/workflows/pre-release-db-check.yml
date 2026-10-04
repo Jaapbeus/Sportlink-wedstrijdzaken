@@ -63,9 +63,9 @@ permissions:
   checks: write
 
 env:
-  SQL_SERVER:         ${{ vars.AZURE_SQL_SERVER_NAME }}
-  SQL_DATABASE:       ${{ vars.AZURE_SQL_DATABASE_NAME }}
-  SQL_RESOURCE_GROUP: ${{ vars.AZURE_SQL_RESOURCE_GROUP }}
+  SQL_SERVER:         ${{ secrets.AZURE_SQL_SERVER_NAME }}
+  SQL_DATABASE:       ${{ secrets.AZURE_SQL_DATABASE_NAME }}
+  SQL_RESOURCE_GROUP: ${{ secrets.AZURE_SQL_RESOURCE_GROUP }}
   CHECK_NAME: "Database beschikbaar voor deploy"
 
 jobs:

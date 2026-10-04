@@ -101,8 +101,8 @@ public static class SportlinkClubMatchFunction
 
     /// <summary>
     /// <c>DELETE /api/sportlink/club-match/{publicMatchId}</c> (#1440) — een clubwedstrijd verwijderen.
-    /// Contract uit Sportlinks publieke frontend-bundle, niet live gezien: de aanroep staat hard op
-    /// dry-run (<c>ClubMatchDeleteLiveBevestigd</c>). Orkestratie en guard: <see
+    /// Contract uit Sportlinks publieke frontend-bundle en sinds #1458 live bevestigd; de aanroep
+    /// volgt de club-instelling <c>sportlinkDryRun</c>. Orkestratie en guard: <see
     /// cref="Planner.Endpoints.Sportlink.ClubMatchVerwijderCore"/>; hier alleen de route en de audit.
     /// </summary>
     [Function("SportlinkClubMatchDelete")]

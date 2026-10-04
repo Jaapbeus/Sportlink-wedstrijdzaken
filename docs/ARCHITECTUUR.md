@@ -235,7 +235,7 @@ Browser (beheerder)
         │
         │ HTTPS + Bearer token (Entra ID)
         ▼
-  Azure Functions (Linux Consumption plan, na cutover Flex Consumption) — net10.0 (#1073), isolated worker
+  Azure Functions (Flex Consumption plan sinds de cutover van 2026-10-03) — net10.0 (#1073), isolated worker
         Easy Auth: valideert Bearer token, injecteert X-MS-CLIENT-PRINCIPAL
         EasyAuthHelper: checkt 'admin' rol op alle /api/beheer/*, /api/test/*; /api/feedback/* is open voor admin én user (#764)
         │
@@ -263,11 +263,25 @@ Browser (beheerder)
 Azure Functions v4 · Blazor WebAssembly · Azure SQL / Postgres · Microsoft Graph API · OpenAI
 (direct, model via configuratie) · Azure Static Web Apps · Entra ID (single-tenant)
 
-**Runtimeversie (#1073, #1074).** Alle projecten targeten `net10.0`. De Function App draait op een
-Flex Consumption Plan met stack `DOTNET-ISOLATED|10.0`; csproj-target en stack moeten overeenkomen
-(anders 503 "Function host is not running"). Een planwijziging vraagt altijd expliciete goedkeuring van
-de eigenaar (kostenbeleid). Zie epic #1063 en `docs/RUNBOOK-FLEX-MIGRATIE.md` voor de migratie. Zie ook
-§11 (risico's).
+**Runtimeversie en hosting (#1073, #1074, #1063).** Alle projecten targeten `net10.0`. De Function App
+draait sinds 2026-10-03 op een **Flex Consumption Plan** met stack `DOTNET-ISOLATED|10.0` (v3.10.0.0 op
+Flex, v3.11.0.0 op .NET 10); csproj-target en stack moeten overeenkomen (anders 503 "Function host is
+not running"). De oude Linux Consumption-app is gestopt maar bewaard tot minimaal 2027-01-03 (#1076).
+Een planwijziging vraagt altijd expliciete goedkeuring van de eigenaar (kostenbeleid). Migratiehistorie:
+epic #1063 en `docs/RUNBOOK-FLEX-MIGRATIE.md`. Drie Flex-specifieke ontwerpkeuzes:
+
+1. **Host-opslag via managed identity.** De Flex-app gebruikt `AzureWebJobsStorage__accountName` in
+   plaats van een connection string. Code die de Table- of Queue-opslag zelf aanspreekt (noodmail-throttle,
+   sync-wachtrij) gaat via `Planner.Shared/Infrastructure/OpslagVerbinding.cs`, die beide vormen
+   ondersteunt met de connection string als voorrang (Azurite lokaal) (#1512).
+2. **Instellingen per instantie laden.** Flex schaalt elke niet-HTTP-trigger als eigen instantie; een
+   enkele laadactie bij het starten van één instantie dekte de andere niet. `FunctionApp.Postgres/Program.cs`
+   laadt de instellingen daarom via middleware vóór elke functie, eenmaal per instantie (#1515).
+3. **Application Insights is gesampled.** Verifieer een timer dus niet alleen via `requests`, maar via
+   `traces` of de databaseregels die hij schrijft; een ontbrekende request betekent niet dat de timer
+   niet draaide (les van v3.11.0.0).
+
+Zie ook §11 (risico's).
 
 **ETL-data flow (identiek patroon op beide tiers):**
 ```
@@ -1055,9 +1069,10 @@ moet worden — precies het probleem onder punt 2).
   `sync-matches`, op de Postgres-tier `postgres/sync-matches`. Functioneel gelijkwaardig, maar een
   beheerder moet na een tierwissel een ander adres gebruiken. Staat als enige openstaande post in de
   tier-pariteit-allowlist; uitlijnen heeft een breaking-change-kant en is daarom een aparte wijziging.
-- **Beide Function Apps staan op `net9.0` met een harde einddatum (epic #1063, zie §5.3).** .NET 9
-  gaat op 10 november 2026 uit support; Linux Consumption wordt op 30 september 2028 uitgefaseerd.
-  In-place migratie naar Flex Consumption bestaat niet.
+- **Hosting op Flex Consumption heeft geen automatische kostenrem (epic #1063).** Flex kent geen
+  spending limit; kosten worden begrensd door `maximumInstanceCount` (5) en bewaakt door een
+  eurobudget met meldingen (#1075). Een metric alert op het gratis tegoed is betaald en wacht op
+  akkoord van de eigenaar.
 
 ---
 

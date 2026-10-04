@@ -103,7 +103,7 @@ Het pakket levert per platform twee native bibliotheken mee:
 
 | Platform (RID) | Bestanden | Grootte |
 |---|---|---|
-| `linux-x64` (productie: Linux Consumption) | `libQuestPdfSkia.so`, `libqpdf.so` | 8,1 MB + 3,3 MB |
+| `linux-x64` (productie: Linux, Flex Consumption) | `libQuestPdfSkia.so`, `libqpdf.so` | 8,1 MB + 3,3 MB |
 | `linux-arm64`, `linux-musl-x64`, `osx-x64`, `osx-arm64`, `win-x64`, `win-x86`, `win-arm64` | idem per platform | 9–12 MB per platform |
 | *(alle platforms)* | `QuestPDF.dll` + het meegeleverde lettertype `QuestPDF.Fonts.Lato.br` | 0,7 MB + 3,0 MB |
 
@@ -122,6 +122,7 @@ op het productieplatform in plaats van aangenomen. Bewijs (2 oktober 2026, `Ques
   `UseSystemFonts = false` en gebruikt uitsluitend het meegeleverde Lato.
 - **Geen extra systeembibliotheken.** `ldd libQuestPdfSkia.so` toont alleen `libc`, `libstdc++`,
   `libm`, `libgcc_s` en `libpthread` — geen fontconfig of freetype van het besturingssysteem.
+- **Let op de datering.** Bovenstaand bewijs is geleverd op het .NET 9-image van vóór de overstap op Flex Consumption en .NET 10 (v3.10.0.0/v3.11.0.0). Een herhaling op het huidige productie-image (`dotnet-isolated 10.0`) is niet vastgelegd; draai de probe opnieuw bij elke wijziging van runtime of QuestPDF-versie.
 - **De unittests draaien op Linux x64:** `Planner.Shared.Tests` (`Deel`) in
   `mcr.microsoft.com/dotnet/sdk:9.0` (`linux/amd64`): 24 geslaagd, 0 gefaald. CI (ubuntu) draait ze
   bij elke PR.
@@ -130,27 +131,26 @@ Drie instellingen in de statische constructor van `PlannerPdfGenerator`, met red
 
 | Instelling | Waarde | Waarom |
 |---|---|---|
-| `UseSystemFonts` | `false` | Linux Consumption garandeert geen fonts; dezelfde invoer moet overal dezelfde PDF geven |
+| `UseSystemFonts` | `false` | Azure Functions op Linux garandeert geen fonts; dezelfde invoer moet overal dezelfde PDF geven |
 | `FontDiscoveryPath` | `null` | Anders scant QuestPDF bij de eerste PDF recursief de hele app-map naar fontbestanden — koude-starttijd voor niets |
 | `ThrowOnMissingTextGlyphs` | `false` | Sinds 2026.9 standaard `true`: één emoji in een teamnaam zou de hele export laten mislukken. Nu wordt het een vervangteken |
 
 ### 3.1 Pakketgrootte — een merkbaar gevolg
 
-Omdat `deploy.yml` zonder runtime-identifier publiceert, komen de native bibliotheken van **alle**
-platforms in het deploypakket. Gemeten met `dotnet publish -c Release` vóór en na deze wijziging:
+Een `dotnet publish` zonder runtime-identifier neemt de native bibliotheken van **alle** platforms
+mee in het deploypakket. Sinds #1473 publiceert `deploy.yml` daarom RID-specifiek:
+`dotnet publish -c Release -r linux-x64 --self-contained false` (framework-dependent; Flex Consumption
+levert de .NET-runtime). De RID staat bewust **niet** in de csproj, zodat lokaal `func start` op
+macOS arm64/Windows ongewijzigd werkt. Gemeten (uitgepakt / zip):
 
-| Tier | Uitgepakt vóór → na | Zip vóór → na |
+| Tier | Zonder `-r` | Met `-r linux-x64 --self-contained false` |
 |---|---|---|
-| Postgres (`FunctionApp.Postgres`) | 73,8 MB → 160,6 MB (**+86,8 MB**) | 19,9 MB → 59,4 MB (**+39,5 MB**) |
-| SQL Server (`FunctionApp`) | 79,8 MB → 166,6 MB (**+86,8 MB**) | 22,0 MB → 61,5 MB (**+39,5 MB**) |
-| Postgres, ter vergelijking met `-r linux-x64 --self-contained false` | 87,1 MB | 27,4 MB |
+| Postgres (`FunctionApp.Postgres`) | 158 MB / 59 MB | 86 MB / 27 MB |
+| SQL Server (`FunctionApp`) | 163 MB / 61 MB | 88 MB / 28 MB |
 
-Dat valt ruim binnen de grens van het Consumption Plan (deploypakket max. 1 GB, Microsoft Learn
-`azure-functions/functions-scale#service-limits`) en kost geen geld, maar het zip-pakket wordt ruim
-twee keer zo groot, en dat pakket wordt bij elke koude start opgehaald. Het pakket alleen voor
-`linux-x64` publiceren bespaart het grootste deel, maar wijzigt de productie-deploy en is daarom hier
-**bewust niet** gedaan: dat hoort als eigen, apart te testen wijziging (bij voorkeur samen met de
-Flex Consumption-migratie, epic #1063).
+In de RID-specifieke uitvoer staan `libQuestPdfSkia.so` en `libqpdf.so` voor linux-x64 in de root, de
+overige platforms zijn weg, en `.azurefunctions/` en `functions.metadata` zijn aanwezig. Draai de
+runtime-probe uit paragraaf 3 opnieuw als de RID of het productie-image wijzigt.
 
 `Database.Postgres` verwijst ook naar `Planner.Shared`; het migratieprogramma
 (`Database.Postgres.Cli`, gebruikt in de deployjob `db-migrate-postgres`) neemt QuestPDF dus

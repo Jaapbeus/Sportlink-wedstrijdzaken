@@ -96,7 +96,7 @@ while IFS= read -r rij; do
 done < "$register"
 
 # Omgekeerd: elke guard in scripts/ci/ moet in het register staan.
-for script in $(git ls-files -- 'scripts/ci/check-*.sh' 'scripts/ci/genereer-*.py'); do
+for script in $(git ls-files -- 'scripts/ci/check-*.sh' 'scripts/ci/check-*.py' 'scripts/ci/genereer-*.py'); do
   if ! grep -qxF "$script" "$genoemd"; then
     echo "::error file=$script::Deze guard staat niet in het register van $DOC. Voeg hem toe met de regel die hij afdwingt en de workflow waarin hij draait."
     fail=1

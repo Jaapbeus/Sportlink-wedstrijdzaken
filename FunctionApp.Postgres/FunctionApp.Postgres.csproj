@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <!-- net10.0 (#1073): deze branch wordt pas gemerged NA de Flex Consumption-cutover (#1072);
-         op het huidige Linux Consumption Plan geeft net10.0 een 503. -->
+    <!-- net10.0 (#1073, #1074): de Function App draait op Flex Consumption met dotnet-isolated 10.0;
+         csproj-target en stackwaarde moeten overeenkomen, anders 503. -->
     <TargetFramework>net10.0</TargetFramework>
     <AzureFunctionsVersion>v4</AzureFunctionsVersion>
     <OutputType>Exe</OutputType>
@@ -13,9 +13,9 @@
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>.</DockerfileContext>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Version>3.11.0.0</Version>
-    <AssemblyVersion>3.11.0.0</AssemblyVersion>
-    <FileVersion>3.11.0.0</FileVersion>
+    <Version>3.11.1.0</Version>
+    <AssemblyVersion>3.11.1.0</AssemblyVersion>
+    <FileVersion>3.11.1.0</FileVersion>
   </PropertyGroup>
   <ItemGroup>
     <!-- Test-project heeft toegang tot internal members — zelfde patroon als de SQL Server-tier

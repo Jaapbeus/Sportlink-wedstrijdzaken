@@ -1,3 +1,4 @@
+using Planner.Shared;
 using Azure.Core;
 using Azure.Identity;
 using Cronos;
@@ -206,12 +207,12 @@ public static class AdminSettingsFunction
             {
                 if (!AllowedFields.Contains(key, StringComparer.OrdinalIgnoreCase))
                 {
-                    log.LogWarning("AdminSettingsPut: veld {Veld} niet in witte lijst, wordt genegeerd", key);
+                    log.LogWarning("AdminSettingsPut: veld {Veld} niet in witte lijst, wordt genegeerd", LogWaarde.Schoon(key));
                     continue;
                 }
                 if (!System.Text.RegularExpressions.Regex.IsMatch(key, @"^[A-Za-z][A-Za-z0-9_]*$"))
                 {
-                    log.LogWarning("AdminSettingsPut: veldnaam {Veld} bevat ongeldige tekens, wordt genegeerd", key);
+                    log.LogWarning("AdminSettingsPut: veldnaam {Veld} bevat ongeldige tekens, wordt genegeerd", LogWaarde.Schoon(key));
                     continue;
                 }
                 changes[key] = value;
@@ -321,12 +322,12 @@ public static class AdminSettingsFunction
         }
         catch (TaskCanceledException)
         {
-            log.LogWarning("Nominatim request time-out voor '{Plaatsnaam}'", plaatsnaam);
+            log.LogWarning("Nominatim request time-out voor '{Plaatsnaam}'", LogWaarde.Schoon(plaatsnaam));
             return new ObjectResult(new { error = "Geocoding service time-out (10s)" }) { StatusCode = 504 };
         }
         catch (Exception ex)
         {
-            log.LogError(ex, "Fout bij geocoding van '{Plaatsnaam}'", plaatsnaam);
+            log.LogError(ex, "Fout bij geocoding van '{Plaatsnaam}'", LogWaarde.Schoon(plaatsnaam));
             return new ObjectResult(new { error = "Geocoding mislukt" }) { StatusCode = 500 };
         }
     }

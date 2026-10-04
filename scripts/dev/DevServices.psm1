@@ -571,7 +571,7 @@ function Start-SelftestAzurite {
     & docker rm -f $ContainerName 2>&1 | Out-Null
     & docker run -d --name $ContainerName `
         -p "${Port}:10000" -p "$($Port + 1):10001" -p "$($Port + 2):10002" `
-        mcr.microsoft.com/azure-storage/azurite 2>&1 | Out-Null
+        mcr.microsoft.com/azure-storage/azurite azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --skipApiVersionCheck 2>&1 | Out-Null
 
     $ready = Wait-ForPort -Port $Port -TimeoutSeconds $TimeoutSeconds -Quiet
     [pscustomobject]@{
