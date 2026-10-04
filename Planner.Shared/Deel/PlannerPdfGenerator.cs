@@ -42,7 +42,7 @@ namespace Planner.Shared.Deel
             // PDF-export heeft ingeschakeld (zelfverklaring Community-voorwaarden, zie
             // docs/ARCHITECTUUR-PDF-EXPORT.md §2).
 
-            // Alleen het meegeleverde Lato-lettertype, nooit systeemfonts: het Linux Consumption Plan
+            // Alleen het meegeleverde Lato-lettertype, nooit systeemfonts: de Functions-host
             // garandeert geen geïnstalleerde fonts, en dezelfde invoer moet overal dezelfde PDF geven.
             Settings.UseSystemFonts = false;
 

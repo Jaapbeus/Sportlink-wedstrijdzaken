@@ -20,6 +20,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ### Changed
 - Documentatie bijgewerkt naar de huidige stand (Flex Consumption, .NET 10, beheerdershandleiding, setup voor nieuwe clubs) en verouderde documentatie en scripts opgeruimd (#1525).
+- Afsluitende codereview: grote methodes opgesplitst, verouderd commentaar (Linux Consumption, dry-run-lock) opgeschoond, en de Sportlink-extensie-instellingenpagina meldt zich nu correct af bij het sluiten (#1529).
 
 ### Security
 
