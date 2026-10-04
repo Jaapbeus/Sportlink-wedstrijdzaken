@@ -9,8 +9,8 @@ infrastructure/
 ├── main.bicep                    # Top-level deployment, referenceert modules
 ├── main.parameters.json          # Resource-namen en parameters (geen secrets)
 └── modules/
-    ├── function-app.bicep        # BESTAANDE Function App + Consumption Plan + Storage Account
-    ├── function-app-flex.bicep   # NIEUWE Function App op Flex Consumption (epic #1063)
+    ├── function-app.bicep        # OUDE Function App (Linux Consumption, gestopt) + Storage Account
+    ├── function-app-flex.bicep   # Function App op Flex Consumption (productie sinds 2026-10-03, epic #1063)
     ├── static-web-app.bicep      # Static Web App (Free tier, Blazor WASM)
     └── monitoring.bicep          # Application Insights (workspace-based, gratis tot 5 GB/maand)
 ```
@@ -68,8 +68,8 @@ az deployment group create \
 
 | Module | Status | Kosten |
 |---|---|---|
-| `function-app.bicep` | Beschrijft bestaande resources | Gratis (Consumption Plan) |
-| `function-app-flex.bicep` | Aanwezig, **niet auto-uitgerold** (`deployFlexApp=false`) | Gratis binnen het Flex-tegoed, mits `instanceMemoryMB`/`maximumInstanceCount` bewust laag blijven — zie hieronder |
+| `function-app.bicep` | Beschrijft de oude Linux Consumption-app (gestopt, bewaard tot 2027-01-03) | Gratis (Consumption Plan) |
+| `function-app-flex.bicep` | Beschrijft de productie-app (Flex); in `main.bicep` achter `deployFlexApp` (standaard `false`) | Gratis binnen het Flex-tegoed, mits `instanceMemoryMB`/`maximumInstanceCount` bewust laag blijven — zie hieronder |
 | `static-web-app.bicep` | Beschrijft bestaande resources | Gratis (Free SKU) |
 | `monitoring.bicep` | Aanwezig, **niet auto-uitgerold** | Gratis tot 5 GB/maand (gedeeld per billing account) |
 
@@ -115,20 +115,25 @@ billing account. Daarboven: pay-as-you-go op verbruik.
 Maatregel: `deployMonitoring` staat standaard op `false` in `main.parameters.json`.
 Vereist expliciete `--parameters deployMonitoring=true` bij deployment.
 
-## Kritieke constraint: .NET 9 — met einddatum
+## Runtime: .NET 10 op Flex Consumption
 
-```bicep
-linuxFxVersion: 'DOTNET-ISOLATED|9.0'  // niet wijzigen zolang dit een Consumption-plan is
-```
+De productie-app draait sinds 2026-10-03 op Flex Consumption met stack `dotnet-isolated 10.0`
+(`function-app-flex.bicep`, `runtime.version: '10.0'`); alle csproj's targeten `net10.0`. Csproj-target en
+stackwaarde moeten altijd overeenkomen, anders volgt een 503 "Function host is not running".
 
-Het Linux Consumption Plan ondersteunt .NET 10 niet — een `net10.0`-deploy geeft daar 503.
-
-.NET 9 gaat op **10 november 2026** uit support en is de laatste .NET-versie die Linux Consumption
-krijgt. De migratie naar Flex Consumption + .NET 10 loopt via **epic #1063**. Let op: in-place
-migratie naar Flex bestaat niet — er moet een nieuwe Function App komen, met een nieuwe hostname.
-Flex heeft een eigen (kleiner) gratis tegoed; zie CLAUDE.md → Kostenbeleid.
+`function-app.bicep` beschrijft de **oude Linux Consumption-app** (`DOTNET-ISOLATED|9.0`). Die app is gestopt
+maar bewaard tot minimaal 2027-01-03 (#1076) en wordt daarna opgeruimd; zet er nooit een `net10.0`-build op.
+Voor een **nieuwe club** rol je uitsluitend `function-app-flex.bicep` uit (zie
+[SETUP-NIEUWE-CLUB.md](../SETUP-NIEUWE-CLUB.md) §2a). De migratiegeschiedenis staat in
+[docs/RUNBOOK-FLEX-MIGRATIE.md](../docs/RUNBOOK-FLEX-MIGRATIE.md).
 
 ## CI/CD — GitHub Actions
+
+> **What-if-poort (#1455, #1495).** Bij `action=deploy` draait `infrastructure.yml` eerst een what-if en stopt als een
+> bestaande app setting van één van de Function Apps in die what-if zou verdwijnen (een ARM-PUT met
+> `siteConfig.appSettings` vervangt de hele lijst). De controle loopt per Function App
+> (`scripts/ci/check-whatif-appsettings.sh`); het log toont alleen namen, nooit waarden, en onleesbare
+> uitvoer stopt de deploy ook.
 
 De workflow `.github/workflows/infrastructure.yml` is alleen handmatig te triggeren
 (`workflow_dispatch`). Geen automatische deploy bij push — dit is bewust om

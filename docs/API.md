@@ -189,7 +189,7 @@ Voorbeeld van de **Postgres-tier** (de tier die in productie draait):
 ```json
 {
   "status": "ok",
-  "version": "3.5.3.1",
+  "version": "3.11.0.0",
   "timestamp": "2026-09-19T15:00:00Z",
   "database": "online",
   "settingsLoaded": true,
@@ -212,7 +212,7 @@ Op de **SQL Server-tier** ontbreken `lastSync`, `syncStale`, `tlsMode`, `tlsWarn
 | Veld | Type | Beschrijving |
 |---|---|---|
 | `status` | `string` | `"ok"` als `database` `"online"` is, `settingsLoaded` `true` is en — alleen op de Postgres-tier — `pendingMigrations` leeg is **én** `syncStale` `false` is op een omgeving waar een synchronisatie hoort te draaien (`EgressGuard` laat uitgaand verkeer toe). Anders `"degraded"`. Op de SQL Server-tier tellen alleen `database` en `settingsLoaded` mee |
-| `version` | `string` | Vierdelig assembly-versienummer, bijv. `"3.5.3.1"` |
+| `version` | `string` | Vierdelig assembly-versienummer, bijv. `"3.11.0.0"` |
 | `database` | `string` | `online`, `paused`, `timeout`, `unavailable` of `unconfigured` — `unconfigured` geeft HTTP 503 |
 | `settingsLoaded` | `boolean` | `false` als de laatste poging om de clubinstellingen te laden mislukte (#859) — geen foutdetails hier, die staan in het functielog |
 | `tier` | `string` | De databasetier waarmee dit artefact gebouwd is — zie `scripts/ci/database-tiers.json` |

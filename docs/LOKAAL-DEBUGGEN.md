@@ -5,7 +5,7 @@
 > [DEVELOPER-SETUP.md](DEVELOPER-SETUP.md), het parametercontract van elk script in
 > [VERIFICATIE-SCRIPTS.md](VERIFICATIE-SCRIPTS.md).
 
-Gids voor het lokaal draaien en debuggen van de stack: FunctionApp (.NET 9) + BlazorAdmin (.NET 10 Blazor WASM).
+Gids voor het lokaal draaien en debuggen van de stack: FunctionApp (.NET 10) + BlazorAdmin (.NET 10 Blazor WASM); de .NET 10 SDK is het enige dat je nodig hebt.
 Geldt voor zowel **Windows** als **macOS (Apple Silicon)** (#800) — zie
 [DEVELOPER-SETUP.md](DEVELOPER-SETUP.md) voor de volledige installatie-instructies per platform.
 
@@ -35,7 +35,7 @@ Geldt voor zowel **Windows** als **macOS (Apple Silicon)** (#800) — zie
 
 ```
 http://localhost:5242          BlazorAdmin (Blazor WASM, dotnet watch, hot reload)
-http://localhost:7094          FunctionApp (Azure Functions isolated .NET 9, func start)
+http://localhost:7094          FunctionApp (Azure Functions isolated .NET 10, func start)
 localhost:10000–10002          Azurite (Azure Storage Emulator)
 localhost:5432/sportlink       Postgres (Docker — `docker compose up -d`; standaardtier en de
                                 tier die in productie draait sinds #976)
@@ -74,7 +74,7 @@ kaal `docker compose down` stopt de SQL Server-service niet — gebruik daarvoor
 # Admin GUI met auth-emulatie: http://localhost:4280
 ```
 
-Het volledige parametercontract (`-Tier`, `-Swa`, `-NoWatch`, `-Tail`, `-Clean`) staat in
+Het volledige parametercontract (`-Tier`, `-Swa`, `-NoWatch`, `-Tail`, `-Clean`, `-SportlinkLive`) staat in
 [VERIFICATIE-SCRIPTS.md](VERIFICATIE-SCRIPTS.md).
 
 ### Handmatig (als Start-Debug.ps1 niet beschikbaar is)
@@ -309,22 +309,21 @@ De routes die je lokaal het vaakst nodig hebt:
 ### FunctionApp start niet (503 / "Function host is not running")
 
 ```powershell
-dotnet --list-runtimes
-# Moet BEIDE bevatten: Microsoft.NETCore.App 9.x.x en Microsoft.AspNetCore.App 9.x.x (#1174)
+dotnet --list-sdks
+# Moet een 10.x.x-SDK bevatten; die brengt de .NET 10 runtime en ASP.NET Core runtime mee (#1174)
 ```
 
-Ontbreekt .NET 9? Installeer allebei de frameworks — de base runtime alleen is niet genoeg:
+Ontbreekt de .NET 10 SDK? Installeer hem; een losse .NET 9 runtime is niet meer nodig (de projecten
+targeten `net10.0`):
 
 ```powershell
 # Windows
-winget install Microsoft.DotNet.Runtime.9
-winget install Microsoft.DotNet.AspNetCore.9
+winget install Microsoft.DotNet.SDK.10
 ```
 ```bash
 # macOS
 curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && chmod +x /tmp/dotnet-install.sh
-/tmp/dotnet-install.sh --channel 9.0 --runtime dotnet
-/tmp/dotnet-install.sh --channel 9.0 --runtime aspnetcore
+/tmp/dotnet-install.sh --channel 10.0
 ```
 
 ### Blazor "An unhandled error has occurred"

@@ -34,18 +34,33 @@ Deze handleiding beschrijft hoe je een eigen instantie van Sportlink Wedstrijdza
 
 Maak de volgende resources aan in de Azure Portal (of via Azure CLI). Alle resources in één resource group, bijv. `rg-<clubcode>-sportlink`.
 
-### 2a. Azure Functions (Consumption plan)
+### 2a. Azure Functions (Flex Consumption plan, .NET 10)
+
+De Function App draait op een **Flex Consumption-plan** met stack `dotnet-isolated 10.0` (productie sinds
+2026-10-03; zie [docs/ARCHITECTUUR.md](docs/ARCHITECTUUR.md) §5.3). Maak voor een nieuwe club **direct een
+Flex-app** aan en nooit een Linux Consumption-app: dat plan ondersteunt .NET 10 niet, en een `net10.0`-build
+geeft daar een 503 ("Function host is not running"). In-place migratie bestaat niet.
+
+De bedoelde route is de Bicep-module `infrastructure/modules/function-app-flex.bicep`
+(system-assigned managed identity, host-opslag zonder connection string, `maximumInstanceCount`
+standaard 5, bewust geen always-ready instances — die laten het gratis tegoed vervallen). Hij hergebruikt
+een **bestaand** storage account en maakt de deployment-container zelf aan: maak dus eerst een
+storage account aan, en rol daarna **uitsluitend deze module** uit, niet `main.bicep`
+(zie [infrastructure/README.md](infrastructure/README.md)). Doe vóór het aanmaken eerst de prijscheck
+voor Flex Consumption op Microsoft Learn: het gratis tegoed is kleiner dan bij Consumption.
 
 ```bash
-az functionapp create \
+az deployment group create \
   --resource-group rg-<clubcode>-sportlink \
-  --consumption-plan-location westeurope \
-  --runtime dotnet-isolated \
-  --runtime-version 9 \
-  --functions-version 4 \
-  --name func-<clubcode>-sportlink \
-  --storage-account <storage-account-naam>
+  --template-file infrastructure/modules/function-app-flex.bicep \
+  --parameters flexFunctionAppName=func-<clubcode>-sportlink \
+               flexAppServicePlanName=plan-<clubcode>-sportlink-flex \
+               storageAccountName=<storage-account-naam>
 ```
+
+De managed identity krijgt de rollen Storage Blob Data Owner, Queue Data Contributor en Table Data
+Contributor op dat storage account; de host-opslag staat in `AzureWebJobsStorage__accountName` (geen
+connection string). De applicatiecode ondersteunt beide vormen (`OpslagVerbinding`).
 
 **Applicatie-instellingen toevoegen:**
 
@@ -247,7 +262,7 @@ In jouw fork: Settings → Secrets and variables → Actions → **Secrets**:
 > Deze repository is publiek en de Actions-logs van een publieke repository zijn dat óók: GitHub
 > drukt ingevulde expressies letterlijk in de joblog af en maskeert **alleen** secrets. Als Variable
 > belanden je Function App-naam, SWA-hostname en Entra-ID's dus zichtbaar in elke workflow-run. De
-> workflows lezen ze als `secrets.X || vars.X`, dus een Variable werkt technisch nog wel — maar dat
+> workflows lezen ze als `secrets.X || vars.X` (de `vars`-tak is alleen legacy-terugval), dus een Variable werkt technisch nog wel — maar dat
 > is een fallback voor bestaande installaties, niet de aanbevolen inrichting. Zie SECURITY.md,
 > "Laag 2 — GitHub Actions".
 
@@ -363,7 +378,7 @@ Alles kan op Azure **Free Tier** draaien:
 
 | Resource | Tier | Geschatte kosten |
 |---|---|---|
-| Azure Functions | Consumption | €0 (eerste 1M requests/maand gratis) |
+| Azure Functions | Flex Consumption | €0 binnen het gratis maandtegoed (250.000 executies + 100.000 GB-s per subscription; zie het kostenbeleid in CLAUDE.md en stel een kostenbudget in) |
 | Database | Azure SQL Free tier (32GB) óf Postgres free tier (bijv. Supabase) | €0 |
 | Azure Static Web Apps | Free | €0 |
 | Azure Storage (Azurite-equivalent) | LRS, minimaal gebruik | < €0,05/maand |

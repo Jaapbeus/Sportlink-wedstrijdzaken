@@ -15,10 +15,16 @@ plak de echte waarden nooit terug in een issue, PR of commit (CLAUDE.md §4a).
 | `[flex-host]` | De standaardhostname van de Flex-app — **altijd opvragen, nooit samenstellen** (§3.4) |
 | `[TENANT_ID]`, `[CLIENT_ID]` | Entra-tenant en App Registration |
 
-> **Stand op 2026-10-02.** De code-kant is voorbereid: bicep (FLEX-04, al gemerged), dit runbook,
-> een kant-en-klare testdeploy-workflow als sjabloon (bijlage A), en de inventaris uit FLEX-08 (§6).
-> **Alles hieronder vanaf §3 is geblokkeerd door de kostengate FLEX-05 (issue #1068)**: er bestaat
-> nog geen Flex-app, en alleen de eigenaar mag die laten aanmaken.
+> **Huidige stand (2026-10-04) — de migratie is voltooid; dit document is een historisch verslag.**
+> Productie draait op de **Flex Consumption-app** met **.NET 10** (`dotnet-isolated 10.0`):
+> cutover FLEX-09 op 2026-10-03 (v3.10.0.0), .NET 10 in v3.11.0.0 (#1073, #1074). De oude
+> Linux Consumption-app is **gestopt, niet verwijderd** en wordt bewaard tot minimaal 2027-01-03
+> (#1076); opruimen (FLEX-13) volgt daarna. De rollback uit §7.4 is niet meer van toepassing (een
+> `net10.0`-build draait niet op die oude app). Na de cutover zijn twee Flex-specifieke fouten gevonden en
+> opgelost: host-opslag via managed identity (#1512) en instellingen per instantie (#1515, laatste
+> sectie). Wie een **nieuwe club** inricht, volgt dit runbook niet: maak de Flex-app direct aan
+> ([SETUP-NIEUWE-CLUB.md](../SETUP-NIEUWE-CLUB.md)). De tekst hieronder blijft ongewijzigd als
+> werkjournaal van de overstap en is dus niet bijgewerkt naar de huidige tijd.
 
 ---
 
@@ -291,7 +297,7 @@ omzetten maakt een testdeploy dus tegelijk een GUI-release en een migratieronde;
 uitschakelen vraagt een `if:` op bijna elke job, en dan is "het reguliere pad is identiek" alleen
 nog per regel te beredeneren.
 
-Gekozen: **een losse workflow `.github/workflows/deploy-flex-test.yml`** (sjabloon in bijlage A),
+Gekozen: **een losse workflow `.github/workflows/deploy-flex-test.yml`** (sjabloon was bijlage A, inmiddels verwijderd),
 die alleen `build` → `deploy-flex` → `smoke-flex` doet en bij de cutover weer wordt verwijderd.
 
 > **Status: niet toegevoegd aan de repository.** Bij het voorbereiden op 2026-10-02 weigerde de
@@ -346,7 +352,7 @@ Gecontroleerd in de broncode op de SHA uit `deploy.yml` (`c5060b3b…`, de commi
 ### 5.4 Uitvoeren
 
 1. Eigenaar: secret `AZURE_FUNCTIONAPP_NAME_FLEX` zetten (Secret, geen Variable — #1204).
-2. Eigenaar: `deploy-flex-test.yml` uit bijlage A toevoegen via een PR naar `develop`, mee naar
+2. Eigenaar: `deploy-flex-test.yml` toevoegen (sjabloon inmiddels verwijderd) via een PR naar `develop`, mee naar
    `main` met de eerstvolgende release (de workflow draait alleen vanaf `main`).
 3. Actions → *Testdeploy naar Flex-app* → Run workflow (branch `main`).
 4. Per job controleren: `gh run view <run-id> --json jobs --jq '.jobs[] | {name, conclusion}'`.
@@ -376,8 +382,8 @@ valt buiten het tegoed en is een architectuurbevinding, geen instelling.
 
 | # | Plek | Hoe | Wijzigt bij cutover |
 |---|---|---|---|
-| 1 | `BlazorAdmin/wwwroot/appsettings.Production.template.json` → `FunctionBaseUrl` | Token `{{AZURE_FUNCTIONAPP_URL}}`, gevuld door `deploy.yml` (job `blazor-deploy`) | Ja — via secret/variable `AZURE_FUNCTIONAPP_URL` |
-| 2 | `BlazorAdmin/wwwroot/staticwebapp.config.json` → CSP `connect-src` | Zelfde token, `sed` in `blazor-deploy` | Ja — zelfde secret/variable |
+| 1 | `BlazorAdmin/wwwroot/appsettings.Production.template.json` → `FunctionBaseUrl` | Token `{{AZURE_FUNCTIONAPP_URL}}`, gevuld door `deploy.yml` (job `blazor-deploy`) | Ja — via Secret `AZURE_FUNCTIONAPP_URL` |
+| 2 | `BlazorAdmin/wwwroot/staticwebapp.config.json` → CSP `connect-src` | Zelfde token, `sed` in `blazor-deploy` | Ja — zelfde Secret |
 | 3 | `BlazorAdmin/wwwroot/appsettings.json` | `http://localhost:7094` — alleen lokaal | Nee |
 | 4 | `BlazorAdmin/Program.cs` | Leest `FunctionBaseUrl` uit configuratie; zowel `BaseAddress` als de `authorizedUrls` van de MSAL-handler | Nee (volgt #1) |
 | 5 | `.github/workflows/deploy.yml` → `deploy`.`app-name` | `secrets.AZURE_FUNCTIONAPP_NAME \|\| vars.AZURE_FUNCTIONAPP_NAME` | Ja |
@@ -468,8 +474,8 @@ buiten een wedstrijdweekend.
    Zo draait een timer nooit op twee apps tegelijk.
 3. **GitHub-configuratie omzetten** (eigenaar): `AZURE_FUNCTIONAPP_NAME` → de Flex-app,
    `AZURE_FUNCTIONAPP_URL` → `https://[flex-host]`, `AZURE_FUNCTION_KEY` → de default key van de
-   Flex-app (`az functionapp keys list -g "$RG" -n "$APP"` — niet loggen). Steeds als Secret.
-4. **De tijdelijke workflow verwijderen**: `deploy-flex-test.yml` (bijlage A) in dezelfde PR als stap 1,
+   Flex-app (`az functionapp keys list -g "$RG" -n "$APP"` — niet loggen). **Uitsluitend als Secret, nooit als Variable** (#1204): Variables worden niet gemaskeerd in de publieke Actions-logs. Staat een van deze namen nog als Variable, verwijder die dan; de workflows lezen `secrets.X || vars.X` alleen als legacy-terugval.
+4. **De tijdelijke workflow verwijderen**: `deploy-flex-test.yml` (nooit toegevoegd; bijlage A is verwijderd) in dezelfde PR als stap 1,
    of direct erna.
 5. **Volledige deploy vanaf `main`**, daarna per job (CLAUDE.md regel 2, stap C) en de live
    browsercheck (regel 2a). `blazor-deploy` zet de nieuwe URL in `FunctionBaseUrl` én in de CSP.
@@ -508,337 +514,13 @@ is daarvoor een productiebreker en de oude app staat stil. Plan FLEX-13 (oude ap
 
 ---
 
-## Bijlage A — sjabloon `.github/workflows/deploy-flex-test.yml`
+## Bijlage A — verwijderd
 
-Gevalideerd op 2026-10-02 met `actionlint` 1.7.12 (inclusief shellcheck): geen bevindingen. De
-`jq`-filter voor de niet-HTTP-triggers is lokaal getest op de echte `functions.metadata` (11
-functies, zie §3.6). Niet gedraaid tegen Azure — dat kan pas na FLEX-05.
-
-Twee punten die pas de eerste echte run bewijst: of `az functionapp function list` op een Flex-app
-de uitgeschakelde functies meelevert (aangenomen, niet geverifieerd), en of `properties.sku` in de site-GET de waarde `FlexConsumption` heeft (de action leest
-exact dat veld, zie §5.3).
-
-```yaml
-name: Testdeploy naar Flex-app (FLEX-07, tijdelijk)
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Epic #1063, FLEX-07 (issue #1070): handmatig de huidige code naar de NIEUWE Flex Consumption-app
-# deployen, zonder de reguliere productiedeploy te raken.
-#
-# Waarom een aparte workflow en geen workflow_dispatch-input op deploy.yml:
-#   deploy.yml doet bij elke run ook de databasemigraties op productie (db-migrate-postgres), de
-#   SWA-deploy van de Admin GUI (blazor-deploy) en de productierapportage. Een input die alleen het
-#   app-name-veld omzet, zou al die jobs óók laten draaien — dan is een testdeploy naar de Flex-app
-#   tegelijk een productierelease van de GUI en een migratieronde. Al die jobs per input uitzetten
-#   betekent een `if:` op elke job van deploy.yml, en dan is "het reguliere pad is identiek" alleen
-#   nog per regel te beredeneren in plaats van aantoonbaar. Een losse workflow laat deploy.yml
-#   byte-voor-byte ongewijzigd (zie docs/RUNBOOK-FLEX-MIGRATIE.md §5.2).
-#
-# Wat deze workflow bewust NIET doet: migraties, SWA-deploy, iets aan de bestaande app.
-# Hij draait uitsluitend vanaf `main` (dezelfde code als productie, waarvan de migraties al zijn
-# toegepast) en weigert te deployen tenzij de doel-app aantoonbaar een Flex-app is, Easy Auth aan
-# staat, en elke niet-HTTP-trigger (timers + de queue-trigger) op de Flex-app is uitgeschakeld.
-#
-# Opruimen: bij de cutover (FLEX-09, issue #1072) wordt dit bestand verwijderd; daarna deployt
-# deploy.yml regulier naar de Flex-app.
-#
-# Benodigd (door de eigenaar, niet door een agent): Secret AZURE_FUNCTIONAPP_NAME_FLEX.
-# Bewust alleen als Secret, zonder variable-fallback: de naam identificeert de club en een secret
-# wordt in de publieke Actions-log gemaskeerd (#1204).
-# ──────────────────────────────────────────────────────────────────────────────
-
-on:
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-concurrency:
-  group: deploy-flex-test
-  cancel-in-progress: false
-
-env:
-  DOTNET_VERSION: '10.0.x'
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
-jobs:
-  preflight:
-    name: "Voorcontrole (branch + doel-app ≠ productie-app)"
-    runs-on: ubuntu-latest
-    steps:
-      - name: Alleen vanaf main
-        run: |
-          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
-            echo "::error::Deze workflow draait alleen vanaf main (gestart vanaf $GITHUB_REF)."
-            echo "::error::De Flex-app praat met de productiedatabase; alleen main-code heeft zijn migraties daar al toegepast."
-            exit 1
-          fi
-
-      - name: Doel-app geconfigureerd en niet de productie-app
-        env:
-          FLEX_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME_FLEX }}
-          PROD_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME || vars.AZURE_FUNCTIONAPP_NAME }}
-        run: |
-          if [ -z "$FLEX_NAME" ]; then
-            echo "::error::Secret AZURE_FUNCTIONAPP_NAME_FLEX ontbreekt. Pas zetten na FLEX-05 (#1068) — zie docs/RUNBOOK-FLEX-MIGRATIE.md."
-            exit 1
-          fi
-          if [ "$(printf '%s' "$FLEX_NAME" | tr '[:upper:]' '[:lower:]')" = "$(printf '%s' "$PROD_NAME" | tr '[:upper:]' '[:lower:]')" ]; then
-            echo "::error::AZURE_FUNCTIONAPP_NAME_FLEX is gelijk aan de productie-app. Deze workflow deployt nooit naar productie."
-            exit 1
-          fi
-          echo "Doel-app geconfigureerd en verschilt van de productie-app (namen niet gelogd)."
-
-  build:
-    name: "Build (identiek aan deploy.yml → build)"
-    runs-on: ubuntu-latest
-    needs: [preflight]
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Database-tier resolven
-        id: tier
-        env:
-          DatabaseTier: ${{ vars.DatabaseTier }}
-          DatabaseTierSwitchConfirmation: ${{ vars.DatabaseTierSwitchConfirmation }}
-        run: bash scripts/ci/resolve-database-tier.sh
-
-      - name: .NET SDK installeren
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
-
-      - name: Function App bouwen
-        run: |
-          dotnet publish ${{ steps.tier.outputs.csproj_path }} \
-            --configuration Release \
-            --output ./output
-
-      # One Deploy (Flex) en WEBSITE_RUN_FROM_PACKAGE (huidige app) pakken dezelfde map in via
-      # dezelfde archiveFolder-functie van de action; deze stap maakt de twee eisen expliciet
-      # die anders pas op de app zelf blijken: het verborgen .azurefunctions-mapje en de
-      # functie-metadata waaruit de host zijn triggers registreert.
-      - name: Artefact controleren (.azurefunctions + functions.metadata) en verwachte versie vastleggen
-        env:
-          CSPROJ: ${{ steps.tier.outputs.csproj_path }}
-        run: |
-          set -euo pipefail
-          test -d ./output/.azurefunctions || { echo "::error::.azurefunctions ontbreekt in ./output"; exit 1; }
-          test -s ./output/functions.metadata || { echo "::error::functions.metadata ontbreekt of is leeg"; exit 1; }
-          jq -r '.[] | select(any(.bindings[]; (.type | ascii_downcase | endswith("trigger")) and ((.type | ascii_downcase) != "httptrigger"))) | .name' \
-            ./output/functions.metadata | LC_ALL=C sort > ./output-niet-http-triggers.txt
-          jq -r '.[].name' ./output/functions.metadata | LC_ALL=C sort > ./output-alle-functies.txt
-          sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' "$CSPROJ" | head -n1 > ./output-verwachte-versie.txt
-          echo "Functies: $(wc -l < ./output-alle-functies.txt), waarvan niet-HTTP-triggers: $(wc -l < ./output-niet-http-triggers.txt)"
-          cat ./output-niet-http-triggers.txt
-          echo "Verwachte versie: $(cat ./output-verwachte-versie.txt)"
-
-      - name: Artefact uploaden
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: functionapp-flex
-          path: ./output
-          include-hidden-files: true  # .azurefunctions folder is hidden en verplicht voor isolated worker
-
-      - name: Controlebestanden uploaden
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: flex-controle
-          path: |
-            ./output-niet-http-triggers.txt
-            ./output-alle-functies.txt
-            ./output-verwachte-versie.txt
-
-  deploy-flex:
-    name: "Deploy naar Flex-app (One Deploy)"
-    runs-on: ubuntu-latest
-    needs: [preflight, build]
-    steps:
-      - name: Controlebestanden downloaden
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: flex-controle
-          path: ./controle
-
-      - name: Artefact downloaden
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: functionapp-flex
-          path: ./output
-
-      - name: Azure inloggen
-        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      # Alles hieronder is read-only (show/list/GET). De resource-ID, resourcegroep en hostname
-      # worden gemaskeerd vóór ze in een variabele belanden: ook die identificeren de club.
-      - name: "Doel-app controleren: Flex, kostenkritische instellingen, Easy Auth, triggers uit"
-        id: azure
-        env:
-          FLEX_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME_FLEX }}
-        run: |
-          set -euo pipefail
-          ID=$(az resource list --resource-type Microsoft.Web/sites --name "$FLEX_NAME" --query "[0].id" -o tsv)
-          if [ -z "$ID" ]; then echo "::error::Flex-app niet gevonden met deze credentials."; exit 1; fi
-          echo "::add-mask::$ID"
-          RG=$(printf '%s' "$ID" | cut -d/ -f5)
-          echo "::add-mask::$RG"
-
-          SITE=$(az rest --method get --url "https://management.azure.com${ID}?api-version=2024-04-01" -o json)
-          HOST=$(printf '%s' "$SITE" | jq -r '.properties.defaultHostName // empty')
-          [ -n "$HOST" ] && echo "::add-mask::$HOST"
-          SKU=$(printf '%s' "$SITE" | jq -r '.properties.sku // empty')
-          MEM=$(printf '%s' "$SITE" | jq -r '.properties.functionAppConfig.scaleAndConcurrency.instanceMemoryMB // empty')
-          MAXI=$(printf '%s' "$SITE" | jq -r '.properties.functionAppConfig.scaleAndConcurrency.maximumInstanceCount // empty')
-          AR=$(printf '%s' "$SITE" | jq -r '(.properties.functionAppConfig.scaleAndConcurrency.alwaysReady // []) | length')
-          echo "sku=${SKU} instanceMemoryMB=${MEM} maximumInstanceCount=${MAXI} alwaysReady-entries=${AR}"
-
-          FOUT=0
-          # Harde guard: alleen een Flex-app. Dit voorkomt ook dat een verkeerd gezet secret
-          # alsnog de bestaande Linux Consumption-app (sku Dynamic) raakt.
-          [ "$SKU" = "FlexConsumption" ] || { echo "::error::Doel-app is geen Flex Consumption-app (sku='$SKU')."; FOUT=1; }
-          # Kostengate (#1063/#1065/#1068): bij always-ready vervalt het gratis tegoed volledig.
-          [ "$AR" = "0" ] || { echo "::error::alwaysReady is niet leeg — dan vervalt het gratis tegoed. Eerst op 0 zetten."; FOUT=1; }
-          case "$MEM" in 512|2048) ;; *) echo "::error::instanceMemoryMB='$MEM' — alleen 512 of 2048 vallen binnen de onderbouwing van #1065."; FOUT=1 ;; esac
-          if [ -z "$MAXI" ] || [ "$MAXI" -gt 5 ]; then
-            echo "::error::maximumInstanceCount='${MAXI:-leeg}' — maximaal 5 (#1063: nooit de default van 100)."; FOUT=1
-          fi
-
-          # Zonder Easy Auth vertrouwt EasyAuthHelper een meegestuurde X-MS-CLIENT-PRINCIPAL-
-          # header: dan geeft één vervalste header admin-toegang tot de productiedatabase.
-          # Easy Auth (FLEX-06) staat dus aan VÓÓR er code met productiesecrets op deze app komt.
-          AUTH=$(az rest --method get --url "https://management.azure.com${ID}/config/authsettingsV2?api-version=2024-04-01" -o json)
-          AUTH_ON=$(printf '%s' "$AUTH" | jq -r '.properties.platform.enabled // false')
-          AAD_ON=$(printf '%s' "$AUTH" | jq -r '.properties.identityProviders.azureActiveDirectory.enabled // false')
-          echo "easyAuth platform.enabled=${AUTH_ON} azureActiveDirectory.enabled=${AAD_ON}"
-          if [ "$AUTH_ON" != "true" ] || [ "$AAD_ON" != "true" ]; then
-            echo "::error::Easy Auth staat niet aan op de Flex-app. Eerst FLEX-06 (#1069), dan pas code deployen."; FOUT=1
-          fi
-
-          # Timers én de queue-trigger mogen op de Flex-app niet draaien zolang de bestaande app
-          # productie is: zelfde database, zelfde storage-queue, dubbele e-mailverwerking en
-          # dubbele Sportlink-tokenrefresh. Per functie AzureWebJobs.<naam>.Disabled=true.
-          # Alleen de waarde van precies deze setting wordt opgevraagd, nooit de hele lijst.
-          SETTINGS=$(az functionapp config appsettings list --resource-group "$RG" --name "$FLEX_NAME" --query "[?starts_with(name, 'AzureWebJobs.') && ends_with(name, '.Disabled')].{n:name,v:value}" -o json)
-          while IFS= read -r fn; do
-            [ -z "$fn" ] && continue
-            V=$(printf '%s' "$SETTINGS" | jq -r --arg n "AzureWebJobs.${fn}.Disabled" '.[] | select(.n == $n) | .v' | tr '[:upper:]' '[:lower:]')
-            if [ "$V" != "true" ] && [ "$V" != "1" ]; then
-              echo "::error::Niet-HTTP-trigger '$fn' is niet uitgeschakeld op de Flex-app (AzureWebJobs.${fn}.Disabled ontbreekt of is niet true)."
-              FOUT=1
-            else
-              echo "  uitgeschakeld: $fn"
-            fi
-          done < ./controle/output-niet-http-triggers.txt
-
-          [ "$FOUT" -eq 0 ] || exit 1
-          echo "Alle voorcontroles groen."
-
-      # Zelfde action en SHA als deploy.yml. Met RBAC-credentials leest de action zelf de sku van
-      # de doel-app en kiest bij 'FlexConsumption' One Deploy (POST /api/publish); 'sku' hoeft
-      # dan niet gezet. remote-build blijft op de default false: het artefact is al gebouwd.
-      # Geen slot-name: Flex kent geen deployment slots.
-      - name: Function App deployen naar Flex-app
-        uses: Azure/functions-action@c5060b3b8bb1ebbcb531abd00c822ecbaa8ea656 # v1.5.7
-        with:
-          app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME_FLEX }}
-          package: ./output
-
-  smoke-flex:
-    name: "Smoke test Flex-app (health, versie, auth, functies geregistreerd)"
-    runs-on: ubuntu-latest
-    needs: [deploy-flex]
-    steps:
-      - name: Controlebestanden downloaden
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: flex-controle
-          path: ./controle
-
-      - name: Azure inloggen
-        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      # De hostname wordt bewust opgehaald in plaats van samengesteld uit de app-naam: een nieuwe
-      # app kan een unieke standaardhostname krijgen (<naam>-<hash>.<regio>.azurewebsites.net).
-      - name: "Health → 200, database online, instellingen geladen, juiste versie"
-        env:
-          FLEX_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME_FLEX }}
-        run: |
-          set -uo pipefail
-          ID=$(az resource list --resource-type Microsoft.Web/sites --name "$FLEX_NAME" --query "[0].id" -o tsv)
-          echo "::add-mask::$ID"
-          HOST=$(az rest --method get --url "https://management.azure.com${ID}?api-version=2024-04-01" --query properties.defaultHostName -o tsv)
-          echo "::add-mask::$HOST"
-          echo "FLEX_HOST=$HOST" >> "$GITHUB_ENV"
-          VERWACHT=$(cat ./controle/output-verwachte-versie.txt)
-          URL="https://${HOST}/api/health"
-          for i in $(seq 1 8); do
-            RESPONSE=$(curl -s --max-time 30 -w '\n%{http_code}' "$URL" || true)
-            STATUS=$(printf '%s' "$RESPONSE" | tail -n1)
-            BODY=$(printf '%s' "$RESPONSE" | sed '$d')
-            echo "Poging $i/8 — health: $STATUS"
-            if [ "$STATUS" = "200" ]; then
-              VERSIE=$(printf '%s' "$BODY" | jq -r '.version // empty')
-              DB=$(printf '%s' "$BODY" | jq -r '.database // empty')
-              SETTINGS=$(printf '%s' "$BODY" | jq -r '.settingsLoaded // empty')
-              PENDING=$(printf '%s' "$BODY" | jq -r '(.pendingMigrations // []) | join(", ")')
-              echo "versie=${VERSIE} (verwacht ${VERWACHT}) database=${DB} settingsLoaded=${SETTINGS} pendingMigrations=[${PENDING}]"
-              FOUT=0
-              [ "$VERSIE" = "$VERWACHT" ] || { echo "::error::Versie op de Flex-app is '$VERSIE', verwacht '$VERWACHT'."; FOUT=1; }
-              if [ -n "$DB" ] && [ "$DB" != "online" ]; then echo "::error::database='$DB'"; FOUT=1; fi
-              [ "$SETTINGS" != "false" ] || { echo "::error::settingsLoaded=false — app settings op de Flex-app onvolledig?"; FOUT=1; }
-              [ -z "$PENDING" ] || { echo "::error::Openstaande migraties: andere database achter de Flex-app dan achter productie?"; FOUT=1; }
-              exit $FOUT
-            fi
-            sleep 20
-          done
-          echo "::error::Health gaf geen 200 na 8 pogingen (laatste: $STATUS)."
-          exit 1
-
-      - name: "Admin-endpoint zonder token → 401"
-        run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://${FLEX_HOST}/api/beheer/settings" || true)
-          echo "GET /api/beheer/settings zonder token: $STATUS"
-          [ "$STATUS" = "401" ] || { echo "::error::verwacht 401, kreeg $STATUS"; exit 1; }
-
-      - name: "Vervalste X-MS-CLIENT-PRINCIPAL wordt niet vertrouwd → 401"
-        run: |
-          FAKE_PRINCIPAL=$(echo '{"auth_typ":"aad","claims":[{"typ":"roles","val":"admin"}],"name_typ":"","role_typ":"roles"}' | base64 -w 0)
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
-            -H "X-MS-CLIENT-PRINCIPAL: $FAKE_PRINCIPAL" "https://${FLEX_HOST}/api/beheer/settings" || true)
-          echo "GET /api/beheer/settings met vervalste principal: $STATUS"
-          [ "$STATUS" = "401" ] || { echo "::error::verwacht 401, kreeg $STATUS — Easy Auth op de Flex-app werkt niet. DIRECT de app stoppen."; exit 1; }
-
-      # Een timer die niet geregistreerd wordt faalt stil (#1070). Uitgeschakelde functies staan
-      # wel in de lijst, dus dit bewijst registratie zonder dat ze draaien.
-      - name: "Alle functies uit het artefact staan geregistreerd op de Flex-app"
-        env:
-          FLEX_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME_FLEX }}
-        run: |
-          set -uo pipefail
-          ID=$(az resource list --resource-type Microsoft.Web/sites --name "$FLEX_NAME" --query "[0].id" -o tsv)
-          echo "::add-mask::$ID"
-          RG=$(printf '%s' "$ID" | cut -d/ -f5)
-          echo "::add-mask::$RG"
-          for i in $(seq 1 6); do
-            az functionapp function list --resource-group "$RG" --name "$FLEX_NAME" --query "[].name" -o tsv 2>/dev/null \
-              | sed 's:.*/::' | LC_ALL=C sort > ./geregistreerd.txt || true
-            ONTBREEKT=$(comm -23 ./controle/output-alle-functies.txt ./geregistreerd.txt)
-            if [ -z "$ONTBREEKT" ]; then
-              echo "Alle $(wc -l < ./controle/output-alle-functies.txt) functies geregistreerd."
-              exit 0
-            fi
-            echo "Poging $i/6 — nog niet geregistreerd: $(printf '%s' "$ONTBREEKT" | wc -l) functie(s); wacht 30s"
-            sleep 30
-          done
-          echo "::error::Niet geregistreerd op de Flex-app:"
-          printf '%s\n' "$ONTBREEKT"
-          exit 1
-```
+Hier stond het sjabloon voor de tijdelijke workflow `.github/workflows/deploy-flex-test.yml` (FLEX-07).
+Dat sjabloon is vervallen: de workflow is nooit als bestand in de repository geplaatst, de testdeploys en
+de cutover (FLEX-07 t/m FLEX-09) zijn afgerond, en `deploy.yml` deployt sinds de cutover regulier naar
+de Flex-app. De stappen in §5 beschrijven de gevolgde aanpak als historie; het YAML-sjabloon is
+met #1525 uit dit document gehaald omdat het niet meer uitvoerbaar of actueel is.
 
 ## Instellingen per instantie (#1515)
 

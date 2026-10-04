@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- Documentatie bijgewerkt naar de huidige stand (Flex Consumption, .NET 10, beheerdershandleiding, setup voor nieuwe clubs) en verouderde documentatie en scripts opgeruimd (#1525).
+
 ## [3.11.0.0] — 2026-10-04
 
 ### Changed

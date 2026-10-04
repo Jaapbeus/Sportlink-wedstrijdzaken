@@ -77,7 +77,7 @@ Een Blazor WebAssembly-applicatie geeft beheerders via de browser volledig behee
 Sportlink Club API
         │  (nachtelijke sync via timer trigger)
         ▼
-Azure Functions (.NET 10, isolated worker) — één van twee volledig gescheiden tier-implementaties
+Azure Functions (Flex Consumption, .NET 10, isolated worker) — één van twee volledig gescheiden tier-implementaties
   ├── FetchAndStoreApiData    — nachtelijke sync van teams, wedstrijden en details
   │                             (op de Postgres-tier: `PostgresFetchAndStoreApiData`)
   ├── EmailProcessorFunction  — leest mailbox via Microsoft Graph
@@ -105,7 +105,7 @@ Welke tier een fork daadwerkelijk gebruikt is een bewuste, expliciete keuze op b
 
 ### Projectkaart
 
-De repository bevat 13 .NET-projecten en één SQL Server-databaseproject (SSDT):
+De repository bevat 16 .NET-projecten en één SQL Server-databaseproject (SSDT):
 
 | Project | Rol |
 |---|---|
@@ -113,11 +113,12 @@ De repository bevat 13 .NET-projecten en één SQL Server-databaseproject (SSDT)
 | `FunctionApp/` | Azure Functions, SQL Server-tier (`fa-dev-sportlink-01.csproj`, `net10.0`) |
 | `Planner.Shared/` | Tier-onafhankelijke domeinlogica: teamnaam-normalisatie, veldresolutie, planner-regels, thema (`Theming/ThemeCore.cs`), feedback en SSRF-bescherming. Nieuwe gedeelde logica hoort hier — nooit als tweede kopie in een tierboom. |
 | `Database.Postgres/` | Postgres-schema, migraties (`migrations/`) en de checksum-bewaakte migratierunner |
+| `Planner.Endpoints/` | Gedeelde endpoint-orkestratie voor beide tiers (autorisatie-wrapper, Sportlink- en deel-endpoints) |
 | `Database.Postgres.Cli/` | CLI om die migraties toe te passen (gebruikt door CI en lokaal) |
 | `Database/` | SQL Server-databaseproject (SSDT, `SportlinkSqlDb.sqlproj`) |
 | `BlazorAdmin/` | Blazor WebAssembly Admin GUI (`net10.0`) |
 | `MigrationTools/SqlServerToPostgresCopy/` | Eenmalige kopieertool SQL Server → Postgres |
-| `BlazorAdmin.Tests/`, `FunctionApp.Tests/`, `FunctionApp.Postgres.Tests/`, `Database.Postgres.Tests/`, `Planner.Shared.Tests/` | Unit- en integratietests |
+| `BlazorAdmin.Tests/`, `FunctionApp.Tests/`, `FunctionApp.Postgres.Tests/`, `Database.Postgres.Tests/`, `Planner.Shared.Tests/`, `Planner.Endpoints.Tests/`, `Database.Postgres.Cli.Tests/`, `MigrationTools.Tests/` | Unit- en integratietests |
 
 Bouw altijd via `sportlink-wedstrijdzaken.slnf` of per project. De volledige `sportlink-wedstrijdzaken.sln` bevat het SSDT-project en bouwt daardoor niet op macOS.
 
@@ -245,7 +246,7 @@ Bij een actief abonnement ontvang je een `clientId` waarmee de applicatie de API
 |---|---|---|
 | Sportlink Club Dataservice | Betaald abonnement (zie hierboven) | Varieert |
 | Microsoft 365 / Entra ID tenant | Gratis (inbegrepen bij M365) | €0 |
-| Azure Functions | Consumption (1M requests/maand gratis) | €0 |
+| Azure Functions | Flex Consumption (gratis maandtegoed: 250.000 executies + 100.000 GB-s) | €0 binnen het tegoed; stel een kostenbudget in |
 | Database | Postgres (bijv. Supabase free tier) of Azure SQL Database (free tier, 32 GB) — één bewuste keuze per fork | €0 |
 | Azure Static Web Apps | Free | €0 |
 
