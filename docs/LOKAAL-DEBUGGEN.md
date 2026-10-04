@@ -85,7 +85,7 @@ Het volledige parametercontract (`-Tier`, `-Swa`, `-NoWatch`, `-Tail`, `-Clean`,
 # 1. Azurite
 $azuriteDir = Join-Path ([System.IO.Path]::GetTempPath()) 'azurite'
 if (-not (Test-Path $azuriteDir)) { New-Item -ItemType Directory -Path $azuriteDir | Out-Null }
-Start-Process powershell -ArgumentList "-NoExit -Command azurite --location '$azuriteDir'"
+Start-Process powershell -ArgumentList "-NoExit -Command azurite --skipApiVersionCheck --location '$azuriteDir'"
 Start-Sleep -Seconds 3
 
 # 2. FunctionApp — Postgres-tier (standaard); op de SQL Server-tier: Set-Location FunctionApp
@@ -100,7 +100,7 @@ drie Terminal-tabbladen en voer in elk tabblad één van deze commando's uit:
 
 ```bash
 # Tab 1 — Azurite
-mkdir -p /tmp/azurite-sportlink && azurite --location /tmp/azurite-sportlink
+mkdir -p /tmp/azurite-sportlink && azurite --skipApiVersionCheck --location /tmp/azurite-sportlink
 ```
 ```bash
 # Tab 2 — FunctionApp — Postgres-tier (standaard)

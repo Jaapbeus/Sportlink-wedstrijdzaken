@@ -863,7 +863,7 @@ platform), dus daar schrijft `Start-Debug.ps1` de output altijd naar een logbest
 # 1. Azurite
 $azuriteDir = Join-Path ([System.IO.Path]::GetTempPath()) 'azurite'
 if (-not (Test-Path $azuriteDir)) { New-Item -ItemType Directory -Path $azuriteDir | Out-Null }
-Start-Process powershell -ArgumentList "-NoExit -Command azurite --location '$azuriteDir'"
+Start-Process powershell -ArgumentList "-NoExit -Command azurite --skipApiVersionCheck --location '$azuriteDir'"
 Start-Sleep -Seconds 3
 
 # 2. FunctionApp (geen hot reload) — Postgres-tier (standaard).
@@ -879,7 +879,7 @@ Terminal-tabbladen en voer in elk tabblad één van deze commando's uit:
 
 ```bash
 # Tab 1 — Azurite
-mkdir -p /tmp/azurite-sportlink && azurite --location /tmp/azurite-sportlink
+mkdir -p /tmp/azurite-sportlink && azurite --skipApiVersionCheck --location /tmp/azurite-sportlink
 ```
 ```bash
 # Tab 2 — FunctionApp (geen hot reload) — Postgres-tier (standaard)
@@ -1257,13 +1257,14 @@ Deze zes waarden identificeren jouw club. Zet ze op het tabblad **Secrets** →
 > voor oudere forks: heb je ze nog als **Variable** staan, zet ze dan om naar Secret en verwijder de Variable,
 > want anders staan de waarden leesbaar in de publieke logs.
 
-### 9.2a Variables instellen
+### 9.2a SQL-configuratie (alleen `DatabaseTier=SqlServer`)
 
-Klik op het tabblad **Variables** → **New repository variable** voor elk van de volgende. Deze
-waarden zijn niet club-identificerend, of worden in een job-`if:` gebruikt — daar is de
-`secrets`-context niet beschikbaar, dus die moeten Variable blijven:
+`AZURE_SQL_SERVER_NAME`, `AZURE_SQL_DATABASE_NAME` en `AZURE_SQL_RESOURCE_GROUP` zijn **Secrets**
+(club-identificerend; zie #1237/#1204). `secrets` is niet beschikbaar in een job-`if:`, dus de
+tier-gating loopt via de niet-gevoelige **Variable** `DatabaseTier`; een eerste stap in
+`db-check`/`db-migrate` faalt met een duidelijke melding als een van de drie secrets leeg is.
 
-| Naam | Voorbeeld | Beschrijving |
+| Secret | Voorbeeld | Beschrijving |
 |------|-----------|-------------|
 | `AZURE_SQL_SERVER_NAME` | `[sql-servernaam]` | SQL-servernaam **zonder** `.database.windows.net` |
 | `AZURE_SQL_DATABASE_NAME` | `[database-naam]` | Naam van de SQL-database |
@@ -1273,7 +1274,7 @@ waarden zijn niet club-identificerend, of worden in een job-`if:` gebruikt — d
 
 | Jobs | Vereiste configuratie | Gedrag zonder configuratie |
 |------|-----------------------|---------------------------|
-| `db-check` + `db-migrate` (alleen `DatabaseTier=SqlServer`) | `AZURE_SQL_SERVER_NAME`, `AZURE_SQL_DATABASE_NAME`, `AZURE_SQL_RESOURCE_GROUP`, `SQL_CONNECTION_STRING` | Jobs worden overgeslagen |
+| `db-check` + `db-migrate` (alleen `DatabaseTier=SqlServer`) | `AZURE_SQL_SERVER_NAME`, `AZURE_SQL_DATABASE_NAME`, `AZURE_SQL_RESOURCE_GROUP`, `SQL_CONNECTION_STRING` (allemaal Secrets) | Jobs falen hard bij ontbrekende secret; ze draaien alleen bij `DatabaseTier=SqlServer` |
 | `db-migrate-postgres` (alleen `DatabaseTier=Postgres`) | `POSTGRES_CONNECTION_STRING` | **Job faalt hard** — stil overslaan zou de nieuwe code tegen een verouderd schema laten draaien (#1093) |
 | `blazor-deploy` + SWA smoke test | `AZURE_STATIC_WEB_APPS_API_TOKEN`, `AZURE_STATIC_WEB_APP_HOSTNAME` | Job wordt overgeslagen |
 | `build` + `test` | `AZURE_CREDENTIALS`, `AZURE_FUNCTIONAPP_NAME`, `AZURE_FUNCTION_KEY` | Verplicht — mislukken bij ontbreken |
@@ -1379,7 +1380,7 @@ lsof -nP -iTCP:10000 -sTCP:LISTEN
 Start Azurite handmatig (cross-platform, werkt op beide platforms in PowerShell 7):
 
 ```powershell
-azurite --silent --location ([System.IO.Path]::GetTempPath() + 'azurite')
+azurite --silent --skipApiVersionCheck --location ([System.IO.Path]::GetTempPath() + 'azurite')
 ```
 
 ### Blazor toont "An unhandled error has occurred"
