@@ -503,7 +503,7 @@ public class EmailProcessorFunction
 
         await SqlEmailPersistenceRepository.UpdateStatusAsync(cs, verwerkingId, EmailStatus.Geclassificeerd, classificatieJson);
         log.LogInformation("Email {Id} geregistreerd als {Type}, datum={Datum}",
-            verwerkingId, classificatie.Type, classificatie.Datum);
+            verwerkingId, classificatie.Type, LogWaarde.Schoon(classificatie.Datum));
 
         var plannerResponseJson = await BerichtPipeline.VerwerkMetPlannerAsync(
             classificatie, email, log, teamResolver, clubCode);
@@ -570,7 +570,7 @@ public class EmailProcessorFunction
                     origineelType ?? "", afgeleidType,
                     originaleSamenvatting, correctieSamenvatting, clubCode);
                 log.LogInformation("Correctie gedetecteerd voor verwerking {OrigineleId}: {OrigineelType} → {JuistType}",
-                    origineleVerwerkingId, origineelType, afgeleidType);
+                    origineleVerwerkingId, LogWaarde.Schoon(origineelType), LogWaarde.Schoon(afgeleidType));
             }
         }
         catch (Exception ex)
@@ -858,7 +858,7 @@ public class EmailProcessorFunction
             var teamleider = await AllstarsTestDataRepository.GetTeamleiderContactAsync(cs, teamNaam, clubCode);
             if (teamleider == null)
             {
-                log.LogInformation("Geen teamleider gevonden voor {Team} in avg.teambegeleiding — notificatie overgeslagen", teamNaam);
+                log.LogInformation("Geen teamleider gevonden voor {Team} in avg.teambegeleiding — notificatie overgeslagen", LogWaarde.Schoon(teamNaam));
                 return;
             }
 
@@ -883,11 +883,11 @@ public class EmailProcessorFunction
                 notificatieBody,
                 null);
 
-            log.LogInformation("Teamleider-notificatie verstuurd voor team {Team}", teamNaam);
+            log.LogInformation("Teamleider-notificatie verstuurd voor team {Team}", LogWaarde.Schoon(teamNaam));
         }
         catch (Exception ex)
         {
-            log.LogWarning(ex, "Fout bij versturen teamleider-notificatie voor {Team} — hoofdverwerking niet onderbroken", teamNaam);
+            log.LogWarning(ex, "Fout bij versturen teamleider-notificatie voor {Team} — hoofdverwerking niet onderbroken", LogWaarde.Schoon(teamNaam));
         }
     }
 
@@ -903,7 +903,7 @@ public class EmailProcessorFunction
             var coach = await AllstarsTestDataRepository.GetTeamleiderContactAsync(cs, teamNaam, clubCode);
             if (coach == null)
             {
-                log.LogInformation("Geen begeleider gevonden voor {Team} — doorsturen overgeslagen", teamNaam);
+                log.LogInformation("Geen begeleider gevonden voor {Team} — doorsturen overgeslagen", LogWaarde.Schoon(teamNaam));
                 return;
             }
 
@@ -933,11 +933,11 @@ public class EmailProcessorFunction
             await graphService.StuurTeamContactDoorAsync(
                 [coach.Emailadres], subject, body, email.Afzender, auditKopieAdres);
 
-            log.LogInformation("Teambegeleiding-vraag doorgestuurd voor {Team}", teamNaam);
+            log.LogInformation("Teambegeleiding-vraag doorgestuurd voor {Team}", LogWaarde.Schoon(teamNaam));
         }
         catch (Exception ex)
         {
-            log.LogWarning(ex, "Fout bij doorsturen teambegeleiding-vraag voor {Team} — hoofdverwerking niet onderbroken", teamNaam);
+            log.LogWarning(ex, "Fout bij doorsturen teambegeleiding-vraag voor {Team} — hoofdverwerking niet onderbroken", LogWaarde.Schoon(teamNaam));
         }
     }
 
