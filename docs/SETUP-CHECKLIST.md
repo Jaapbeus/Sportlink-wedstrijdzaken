@@ -158,7 +158,7 @@ Als Variable werken ze ook — maar dan staan ze leesbaar in elke deploy-log.
 
 - [ ] `DatabaseTier` — `SqlServer` of `Postgres`
 - [ ] `DatabaseTierSwitchConfirmation` — **exact dezelfde waarde als `DatabaseTier`**, anders faalt de deploy met exitcode 3
-- [ ] `AZURE_SQL_SERVER_NAME` / `AZURE_SQL_DATABASE_NAME` / `AZURE_SQL_RESOURCE_GROUP` — alleen bij `DatabaseTier=SqlServer` (deze worden in een job-`if:` gebruikt en moeten Variable blijven)
+- [ ] `AZURE_SQL_SERVER_NAME` / `AZURE_SQL_DATABASE_NAME` / `AZURE_SQL_RESOURCE_GROUP` — alleen bij `DatabaseTier=SqlServer` (**Secrets**, geen Variables — #1237)
 
 **Verificatie na instellen:**
 

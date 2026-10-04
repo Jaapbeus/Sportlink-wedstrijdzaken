@@ -212,7 +212,7 @@ if (Test-PortListening -Port $ports.Azurite) {
     if (-not (Test-Path $azuriteDir)) { New-Item -ItemType Directory -Path $azuriteDir | Out-Null }
     $azuriteLog = Join-Path $azuriteDir 'debug.log'
     Start-Service -Name 'azurite' -Minimized `
-        -Command "azurite --location '$azuriteDir' --debug '$azuriteLog'" | Out-Null
+        -Command "azurite --skipApiVersionCheck --location '$azuriteDir' --debug '$azuriteLog'" | Out-Null
 
     if (-not (Wait-ForPort -Port $ports.Azurite -TimeoutSeconds 30 -Label 'Azurite')) {
         Write-Host "Azurite is niet binnen 30s gestart." -ForegroundColor Red

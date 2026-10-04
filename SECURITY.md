@@ -668,6 +668,12 @@ gedocumenteerd. De GraphQL-mutatie is een *gedeeltelijke* update — weggelaten 
 > Security Gate-verplichting op `main` verdwijnt dan zonder waarschuwing en zonder dat de
 > responsestatus daar iets over zegt.
 
+### Restrisico: oude release-tags
+
+Oude release-tags (v2.1.x–v2.2.0) bevatten nog configuratie-identificatoren uit de tijd vóór #1204
+(geen geheimen; in een SPA per ontwerp publiek). Besluit eigenaar 2026-10-04: restrisico
+geaccepteerd, geen history-rewrite. Details in het besloten dossier.
+
 ### Uitzondering: history-rewrite na een leak
 
 `scripts/security/Clean-GitHistory.ps1` (git-history scrubben na een gepusht secret of PII) eindigt

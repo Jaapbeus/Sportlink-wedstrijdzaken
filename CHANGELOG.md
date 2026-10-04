@@ -18,6 +18,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Security
+
+- De SQL-configuratie van de deploy-workflows (servernaam, databasenaam, resource group) staat nu als GitHub Secret in plaats van Variable, zodat ze niet meer in publieke logs verschijnen (zie issue #1237). Lokaal start Azurite met `--skipApiVersionCheck` zodat de Storage Queue-client weer werkt.
+
+
 ## [3.11.0.0] — 2026-10-04
 
 ### Changed
