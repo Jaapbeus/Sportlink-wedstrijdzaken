@@ -19,6 +19,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Fixed
+- **Sportlink contract-check meldt niet langer alle velden als afwijkend** (#1518). De controle vergeleek veldnamen hoofdlettergevoelig terwijl Sportlink PascalCase levert; geen onterechte dagelijkse noodmail meer.
 - **Opslag via managed identity op de Flex-app** (backport van hotfix 3.10.0.1, zie issue #1512). E-mailverwerking en
   handmatige sync gebruiken de identity-gebaseerde opslaginstellingen als er geen verbindingsstring is.
 
