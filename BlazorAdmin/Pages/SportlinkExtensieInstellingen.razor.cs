@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Components;
 namespace BlazorAdmin.Pages;
 
 /// <summary>Code-behind van <c>SportlinkExtensieInstellingen.razor</c> (#988/#991/#998/#1113, code-behind sinds #1122).</summary>
-public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase, IDisposable
+public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
 {
     [Inject] private AdminApiClient Api { get; set; } = default!;
 
@@ -89,7 +89,11 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase, IDisp
         autoLoginForm.TotpSecret = "";
     }
 
-    public void Dispose() => WisAutoLoginGeheimen();
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) WisAutoLoginGeheimen();
+        base.Dispose(disposing);
+    }
 
     private async Task BewaarAutoLoginAsync()
     {

@@ -23,8 +23,7 @@ public enum SportlinkMutationSoort
     /// <summary>
     /// Een clubwedstrijd verwijderen (#1440, <c>ClubMatchDelete</c>). Toegestaan alleen bij een
     /// expliciete <c>IsKernelMatch = false</c> — dezelfde voorwaarde waaronder Sportlinks eigen
-    /// frontend de knop "Verwijder" toont (uit de publieke bundle, niet live gezien). Het pad zelf
-    /// staat bovendien hard op dry-run via <c>SportlinkClubClient.ClubMatchDeleteLiveBevestigd</c>.
+    /// frontend de knop "Verwijder" toont (uit de publieke bundle, sinds #1458 live bevestigd).
     /// </summary>
     Verwijderen
 }

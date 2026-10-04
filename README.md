@@ -1,268 +1,128 @@
 # Sportlink Wedstrijdzaken
 
-> **Automatisering voor voetbalverenigingen die genoeg hebben van handmatig werk in Sportlink.**
+> **Minder klikken. Meer overzicht. Meer tijd voor voetbal.**
 
-[![Security](https://img.shields.io/badge/AVG%2FGDPR-compliant-green.svg)](SECURITY.md)
-[![Platform](https://img.shields.io/badge/platform-Azure%20Functions%20%7C%20Blazor-0078d4.svg)](https://azure.microsoft.com)
-[![Changelog](https://img.shields.io/badge/changelog-CHANGELOG.md-informational)](CHANGELOG.md)
+Herken je dat? Je wilt even de zaterdagplanning regelen, maar bent vooral bezig met schermen
+openen, gegevens overtypen en mailtjes doorsturen. Sportlink Wedstrijdzaken brengt wedstrijdplanning,
+veldbezetting en een deel van de Sportlink-acties samen in één webapp.
 
----
+Je gebruikt de app naast Sportlink Club. Wedstrijdgegevens worden gesynchroniseerd naar je eigen
+database; daar kun je mee plannen, vergelijken en delen. Voor acties die terugschrijven naar
+Sportlink blijft de app afhankelijk van de Sportlink-verbinding.
 
-## Waar moet ik zijn?
+[![Security](https://img.shields.io/badge/security-beleid-blue.svg)](SECURITY.md)
+[![Platform](https://img.shields.io/badge/platform-.NET%2010%20%7C%20Blazor-0078d4.svg)](docs/DEVELOPER-SETUP.md)
+[![Changelog](https://img.shields.io/badge/changelog-bekijk%20de%20wijzigingen-informational)](CHANGELOG.md)
 
-| Ik ben… | Begin hier |
+## Wat heb je eraan?
+
+### De zaterdag in één oogopslag
+
+**Planning** laat de wedstrijden en veldbezetting zien in een tabel en een tijdlijn. Je ziet
+welke teams spelen, op welk veld en wanneer. **Veld optimalisatie** berekent een voorstel op basis
+van je velden, beschikbaarheid, speeltijden en teamvoorkeuren. Vergelijk dat met de bestaande
+planning voordat je iets overneemt.
+
+Met **Delen** maak je een HTML-overzicht voor anderen. PDF-export is ook beschikbaar als de
+beheerder die heeft ingeschakeld en de licentievoorwaarden heeft gecontroleerd.
+
+### Veelgebruikte Sportlink-acties bij de wedstrijd
+
+Vanuit de webapp kun je wedstrijdinformatie openen, een veld of kleedkamers toewijzen en
+scheidsrechters vastleggen. Ook oefenwedstrijden aanmaken en verwijderen is gebouwd. Welke actie
+beschikbaar is, hangt af van je rol, de wedstrijd en de rechten van het gekoppelde Sportlink-account.
+
+De koppeling begint in **dry-run**: de wijziging wordt gesimuleerd. Met een ingerichte koppeling en
+dry-run uit kunnen deze acties echt naar Sportlink schrijven. Een verplicht wijzigingsverzoek voor
+datum, tijd of accommodatie vraagt nog aandacht: de app heeft de validatiestap, maar de aparte
+bevestigingsstap is nog niet gebouwd. Zie de [Sportlink-koppeling](docs/SPORTLINK-WEB-EXTENSION.md).
+
+### Minder handwerk rond de mailbox
+
+De optionele e-mailverwerking leest een Microsoft 365-mailbox, laat AI wedstrijdverzoeken
+herkennen en bouwt antwoorden met je eigen templates en planningsgegevens. Teambegeleiding uit
+een ledenexport helpt om de juiste contactpersoon te vinden.
+
+Begin met **reviewmodus**: antwoorden gaan naar een ingestelde beoordelaar. De **E-mailtester**
+laat je de classificatie proberen zonder berichten te versturen. AI kan zich vergissen; met
+leermomenten en teamaliassen kun je herkenning bijsturen. Automatisch antwoorden aan afzenders is
+een keuze die je zelf activeert na het testen.
+
+### Je eigen club, je eigen inrichting
+
+Stel velden, speeltijden en teamvoorkeuren in. Geef de app je clubkleuren en logo, kies licht of
+donker en regel toegang via Microsoft Entra ID. Met de fictieve democlub **AllStars FC** kun je
+Planning en Veld optimalisatie uitproberen op testwedstrijden.
+
+## Past dit bij jouw club?
+
+Dit project is interessant als je wedstrijdzaken doet én er iemand in de club is die graag met
+GitHub, Docker en Azure werkt. Je hoeft niet meteen C# te schrijven, maar voor een eigen
+installatie zijn technische inrichting en onderhoud wel nodig.
+
+Voor echte wedstrijddata heb je toegang tot **Sportlink Club Dataservice** en een eigen
+`clientId` nodig. Vraag je Sportlink-beheerder naar jullie abonnement en mogelijkheden. De
+Sportlink Club-koppeling voor schrijfacties vraagt daarnaast een eigen inrichting.
+
+Je host de applicatie zelf. Er is geen gedeelde aanmeldservice voor nieuwe clubs. Een lokaal
+proefrondje met fictieve data kan zonder Azure-deployment of een echte Sportlink-synchronisatie.
+
+## Eerst even rondkijken
+
+| Je wilt… | Begin hier |
 |---|---|
-| **benieuwd wat dit is** | lees gewoon verder — twee minuten |
-| **bestuurder of beheerder van een club die dit wil gaan gebruiken** | [Voor wie is dit interessant?](#voor-wie-is-dit-interessant) → [SETUP-NIEUWE-CLUB.md](SETUP-NIEUWE-CLUB.md) |
-| **beheerder van een draaiende installatie** | [docs/BEHEERDER-HANDLEIDING.md](docs/BEHEERDER-HANDLEIDING.md) |
-| **developer die wil bijdragen** | [CONTRIBUTING.md](CONTRIBUTING.md) → [docs/DEVELOPER-SETUP.md](docs/DEVELOPER-SETUP.md) |
-| **AI-agent of nieuwe developer die de code moet begrijpen** | [CLAUDE.md](CLAUDE.md) — de harde architectuurregels, het kostenbeleid en de tierstrategie. [AGENTS.md](AGENTS.md) is dezelfde inhoud voor niet-Claude-agents en wordt uit `CLAUDE.md` gegenereerd. |
-| **op zoek naar één specifiek document** | [docs/INDEX.md](docs/INDEX.md) |
+| Zien hoe een werkdag eruitziet | [Eerste rondje door de app](docs/BEHEERDER-HANDLEIDING.md#eerste-rondje-door-de-app) |
+| Met fictieve wedstrijden spelen | [AllStars-testmodus](docs/TESTMODUS-ALLSTARS.md#een-eerste-proefrondje) |
+| De app lokaal draaien | [Developer setup](docs/DEVELOPER-SETUP.md) — Postgres is de standaard |
+| Een installatie voor je club maken | [Nieuwe club opzetten](SETUP-NIEUWE-CLUB.md) |
+| Meehelpen of een idee aandragen | [Bijdragen](CONTRIBUTING.md) · [GitHub Issues](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues) |
+| Een specifiek document vinden | [Documentatie-index](docs/INDEX.md) |
 
----
+## Wat kost het?
 
-## Het probleem
+Het project richt zich op lage gebruikskosten en maakt gebruik van gratis tiers en tegoeden.
+**Een volledig gratis installatie is geen garantie.** Sportlink Dataservice, Microsoft 365,
+AI-aanroepen en cloudopslag kunnen kosten met zich meebrengen; ook gratis tiers hebben grenzen.
 
-Sportlink is het dominante ledenbeheer- en wedstrijdplatform voor Nederlandse voetbalverenigingen. Het werkt — maar het werkt traag, omslachtig en biedt nauwelijks automatisering. Voor een kleine club met vijf teams valt dat mee. Voor een grote vereniging met dertig teams of meer wordt het een wekelijks gevecht.
+Azure Functions draait op Flex Consumption, met een gratis maandtegoed voor on-demand gebruik.
+Opslag en netwerk worden apart berekend. Controleer de actuele
+[Azure-prijzen](https://azure.microsoft.com/en-us/pricing/details/functions/) en stel een kostenbudget
+in voordat je resources aanmaakt. De [setupgids](SETUP-NIEUWE-CLUB.md#9-kosten) helpt je bij die afweging.
 
-**Herkenbare pijnpunten:**
+## Voor wie graag onder de motorkap kijkt
 
-- Een tegenstander vraagt een wedstrijd te verzetten. Jij moet handmatig de juiste leider en trainer opzoeken, een e-mail opstellen, en wachten op goedkeuring — terwijl het veld al geboekt is en de spelersbus al gepland staat.
-- Sportlink heeft nauwelijks een API die je zelf kunt aansturen. Nieuwe functies wachten jarenlang in de wachtrij.
-- Wijzigingen worden niet automatisch gecommuniceerd naar betrokkenen. Iemand moet altijd iets doorsturen.
+De stack bestaat uit **.NET 10**, **Azure Functions**, **Blazor WebAssembly** en **Microsoft Entra ID**.
+Postgres is de standaarddatabase; SQL Server is de tweede ondersteunde keuze. Microsoft Graph
+verzorgt de mailboxkoppeling. AI-classificatie gebruikt `IChatClient`, met een configureerbare modelnaam.
 
-Dit project bouwt die automatiseringslaag zelf.
+De webapp leest via de API uit de eigen database. Synchronisatie haalt Sportlink-data op volgens een
+instelbaar schema; je kunt ook handmatig synchroniseren. De Sportlink Club-koppeling verzorgt de
+schrijfacties. Een berekend planningsvoorstel wordt niet vanzelf een wijziging in Sportlink.
 
----
+Meer weten? Lees de [architectuur](docs/ARCHITECTUUR.md),
+[databasekeuze](docs/ARCHITECTUUR-DATABASE-TIERS.md) of [API-referentie](docs/API.md).
+AI-agents vinden hun werkinstructies in [CLAUDE.md](CLAUDE.md) en de daaruit gegenereerde [AGENTS.md](AGENTS.md).
 
-## Wat deze applicatie doet
+## Gegevens en privacy
 
-Een serverless pipeline die Sportlink-data synchroniseert, verwerkt en omzet in acties:
+De applicatie verwerkt onder meer contactgegevens van teambegeleiders. Er zijn maatregelen zoals
+rolcontrole, afgeschermde opslag, BCC in relevante mailstromen en beveiligingschecks in CI. Bij een
+eigen installatie hoort ook zorgvuldig beheer van toegang, imports en bewaartermijnen.
 
-### 1 — Wedstrijddata automatisch ophalen
-Elke nacht haalt een Azure Function alle wedstrijden, teams en details op via de Sportlink Club API. De data wordt opgeslagen in een database (Postgres of SQL Server — twee gelijkwaardige tiers, zie de architectuursectie hieronder) — zodat je er zelf query's op kunt draaien, rapporten van kunt bouwen, of koppelen aan andere systemen.
+Lees het [beveiligings- en privacybeleid](SECURITY.md) voordat je echte persoonsgegevens invoert.
 
-### 2 — AI-gestuurde e-mailverwerking
-Binnenkomende e-mails over wedstrijdwijzigingen (verplaatsverzoeken, afzeggingen) worden automatisch geclassificeerd via een provider-agnostische AI-abstractie (`IChatClient`, `Microsoft.Extensions.AI`) — standaard `gpt-4o-mini`, het model is per club configureerbaar. Op basis van de classificatie stuurt de planner een standaardantwoord terug — met de leider en trainer van het betrokken team automatisch in BCC.
+## Volg de ontwikkeling
 
-**Geen handmatig zoekwerk meer.** De juiste contactpersonen worden automatisch gevonden via de koppeling met de ledenexport.
+Bekijk de [releases](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/releases) en
+[CHANGELOG](CHANGELOG.md) voor nieuwe mogelijkheden en fixes.
+Op GitHub zie je ook werk dat nog in ontwikkeling is: `main` hoort bij de releases,
+`develop` is de integratiebranch. Een gemergede feature op `develop` staat dus nog niet automatisch live.
 
-### 3 — Admin GUI
-Een Blazor WebAssembly-applicatie geeft beheerders via de browser volledig beheer over:
-- **Instellingen** — API-verbinding, e-mailaccounts, herplan-deadlines, GPS-coördinaten, club-thema
-- **E-mailtemplates** — AI-antwoordtemplates per berichttype; gedeelde e-mailvoetnoot
-- **Voorkeurstijden** — per team gewenste speeltijden instellen
-- **Speeltijden** — wedstrijdduur en veldfractie per leeftijdscategorie
-- **Veldbeschikbaarheid** — tijdvensters per veld configureren
-- **Velden** — velddefinities (type, verlichting, actief/inactief)
-- **Planning** — wedstrijden en velden per speeldag plannen
-- **Veld optimalisatie** — een berekend voorstel voor tijden en velden vergelijken met de bestaande planning
-- **Teambegeleiding** — begeleiders per team raadplegen; contactverzoeken doorsturen
-- **Leermomenten** — AI-classificatiefouten inzien en corrigeren voor betere toekomstige classificaties
-- **Teamaliassen** — geleerde teamnaam-varianten goedkeuren of afwijzen
-- **E-mail tester** — AI-classificatie dry-run zonder e-mail te versturen
-- **E-maillog** — verwerkte e-mails inzien (AVG-conform: geen berichtteksten)
-- **Testmodus (ALLSTARS)** — fictieve wedstrijden invoeren om planner te testen zonder echte data
-- **Wijzigingsverzoeken** — inkomende Sportlink-wijzigingsverzoeken van tegenstanders goedkeuren of afwijzen
-- **Wedstrijd aanmaken** — een oefenwedstrijd voorbereiden en (als dry-run uit staat) direct in Sportlink Club aanmaken; het team kan ook als vrije tekst worden ingevoerd
-- **Thema** — alle kleuren van de Admin GUI (merk, wedstrijdstatus, navigatie, systeemmeldingen) plus logo en favicon, met een aparte licht- en donkervariant, een tabblad "Overzicht" en een schakelaar in de header
-- **Sportlink Web Extension** — een deep link "Open in Sportlink" per wedstrijd, en een deel van de wedstrijdacties (kleedkamers, veld, scheidsrechters, oefenwedstrijd, wijzigingsverzoeken) rechtstreeks vanuit Planning/Veld optimalisatie naar Sportlink Club terugschrijven. Planning en het Sportlink-paneel zijn zichtbaar voor elke ingelogde gebruiker; wijzigen kan met de rol Wedstrijdzaken (of admin). De acties volgen een dry-run-schakelaar en kunnen met opt-in automatische Sportlink-login (wachtwoord + TOTP) de sessie zelf vernieuwen
-- **Rechten per rol** — toegangsmatrix per menu-item en rol (Gebruiker, Wedstrijdzaken, Sectiehoofd, Ledenadministratie); legt vast wat een rol mag zien, het daadwerkelijk verbergen van menu-items volgt nog
-
----
-
-## Architectuur op één pagina
-
-```
-Sportlink Club API
-        │  (nachtelijke sync via timer trigger)
-        ▼
-Azure Functions (Flex Consumption, .NET 10, isolated worker) — één van twee volledig gescheiden tier-implementaties
-  ├── FetchAndStoreApiData    — nachtelijke sync van teams, wedstrijden en details
-  │                             (op de Postgres-tier: `PostgresFetchAndStoreApiData`)
-  ├── EmailProcessorFunction  — leest mailbox via Microsoft Graph
-  ├── BerichtAiService        — classifieert binnenkomende e-mails met AI
-  ├── Sportlink Web Extension — schrijft een deel van de wedstrijdwijzigingen terug naar Sportlink Club
-  └── Admin API               — REST endpoints voor de beheer-GUI
-        │
-        ▼
-Postgres (via Supabase) of Azure SQL Server — twee gelijkwaardige tiers; je fork kiest er één
-  ├── stg.*   — staging (tijdelijk, elke run geleegd)
-  ├── his.*   — history (persistent, met audit-timestamps)
-  ├── pub.*   — public views (alleen-lezen voor consumers)
-  ├── public.* / dbo.* — configuratie (AppSettings, Speeltijden, Seizoen — naamgeving per tier)
-  └── avg.*   — AVG-beschermde data (teambegeleiding — toegang beperkt)
-        │
-        ▼
-Azure Static Web Apps (gratis tier)
-  └── Blazor WebAssembly Admin GUI
-        └── Entra ID authenticatie (admin / user / Wedstrijdzaken rollen)
-```
-
-Welke tier een fork daadwerkelijk gebruikt is een bewuste, expliciete keuze op build/deploytijd (repository-variabele `DatabaseTier`) — geen gedeelde runtime-abstractie. Zie [docs/ARCHITECTUUR-DATABASE-TIERS.md](docs/ARCHITECTUUR-DATABASE-TIERS.md).
-
-**Technologie:** .NET 10 · Azure Functions v4 · Blazor WebAssembly · Postgres (Supabase) / Azure SQL · Microsoft Graph API · AI-classificatie via `IChatClient` (`Microsoft.Extensions.AI`, standaard gpt-4o-mini, configureerbaar) · Azure Static Web Apps · Entra ID
-
-### Projectkaart
-
-De repository bevat 16 .NET-projecten en één SQL Server-databaseproject (SSDT):
-
-| Project | Rol |
-|---|---|
-| `FunctionApp.Postgres/` | Azure Functions, Postgres-tier (draait in productie, `net10.0`) |
-| `FunctionApp/` | Azure Functions, SQL Server-tier (`fa-dev-sportlink-01.csproj`, `net10.0`) |
-| `Planner.Shared/` | Tier-onafhankelijke domeinlogica: teamnaam-normalisatie, veldresolutie, planner-regels, thema (`Theming/ThemeCore.cs`), feedback en SSRF-bescherming. Nieuwe gedeelde logica hoort hier — nooit als tweede kopie in een tierboom. |
-| `Database.Postgres/` | Postgres-schema, migraties (`migrations/`) en de checksum-bewaakte migratierunner |
-| `Planner.Endpoints/` | Gedeelde endpoint-orkestratie voor beide tiers (autorisatie-wrapper, Sportlink- en deel-endpoints) |
-| `Database.Postgres.Cli/` | CLI om die migraties toe te passen (gebruikt door CI en lokaal) |
-| `Database/` | SQL Server-databaseproject (SSDT, `SportlinkSqlDb.sqlproj`) |
-| `BlazorAdmin/` | Blazor WebAssembly Admin GUI (`net10.0`) |
-| `MigrationTools/SqlServerToPostgresCopy/` | Eenmalige kopieertool SQL Server → Postgres |
-| `BlazorAdmin.Tests/`, `FunctionApp.Tests/`, `FunctionApp.Postgres.Tests/`, `Database.Postgres.Tests/`, `Planner.Shared.Tests/`, `Planner.Endpoints.Tests/`, `Database.Postgres.Cli.Tests/`, `MigrationTools.Tests/` | Unit- en integratietests |
-
-Bouw altijd via `sportlink-wedstrijdzaken.slnf` of per project. De volledige `sportlink-wedstrijdzaken.sln` bevat het SSDT-project en bouwt daardoor niet op macOS.
-
----
-
-## Voor wie is dit interessant?
-
-**Als bijdrager** ben je welkom als je ervaring hebt met een of meerdere van deze gebieden:
-- C# / .NET (backend logic, Azure Functions)
-- Blazor WebAssembly (admin GUI)
-- SQL — Postgres (migraties en schema-ontwerp) en SQL Server (stored procedures) voor de tweede tier
-- Azure (Functions, Static Web Apps, Entra ID, Graph API)
-- Nederlandse voetbalwereld (domeinkennis om de juiste problemen op te lossen)
-
-**Als eindgebruiker** is dit project bedoeld voor verenigingen die:
-- Draaien op Sportlink Club (KNVB-aangesloten) **en beschikken over een actief [Club Dataservice](https://www.sportlink.nl/producten/club-dataservice/)-abonnement**
-- Meer dan ~10 teams hebben en daardoor veel handmatig werk in wedstrijdplanning
-- Bereid zijn een Azure-omgeving in te richten (kosten: €0 — de volledige stack draait op Azure Free tiers)
-
----
-
-## Documentatie
-
-Alle documentatie staat in de [`docs/`](docs/) map, georganiseerd op doelgroep.
-
-| Categorie | Documenten |
-|---|---|
-| **Beheerders** | [Beheerder handleiding](docs/BEHEERDER-HANDLEIDING.md) · [Testmodus ALLSTARS](docs/TESTMODUS-ALLSTARS.md) · [Teambegeleiding import](docs/ADMIN-TEAMBEGELEIDING-IMPORT.md) |
-| **Developers — opzet** | [Nieuwe club opzetten](SETUP-NIEUWE-CLUB.md) · [Developer setup](docs/DEVELOPER-SETUP.md) · [Setup checklist](docs/SETUP-CHECKLIST.md) · [Lokaal debuggen](docs/LOKAAL-DEBUGGEN.md) · [Quick reference](docs/QUICK-REFERENCE.md) |
-| **Developers — architectuur** | [Architectuurbeschrijving](docs/ARCHITECTUUR.md) · [API referentie](docs/API.md) · [Planner architectuur](docs/ARCHITECTUUR-PLANNER.md) · [E-mailverwerking](docs/EMAIL-VERWERKING.md) |
-| **Azure & auth** | [Entra auth & beheer](docs/ENTRA-AUTH-BEHEER.md) · [Versiebeheer](docs/VERSIONING.md) |
-| **Kwaliteit & security** | [Verificatie-scripts](docs/VERIFICATIE-SCRIPTS.md) · [Security](SECURITY.md) |
-
-**→ [Volledige inhoudsopgave: docs/INDEX.md](docs/INDEX.md)**
-
----
-
-## Lokaal aan de slag
-
-**Vereisten:** .NET 10.0 SDK · Azure Functions Core Tools v4 · Azurite · Docker voor de lokale database (zie [docs/DEVELOPER-SETUP.md](docs/DEVELOPER-SETUP.md) §4)
-
-```powershell
-# 1. Lokale database starten — 'docker compose up -d' start Postgres, de tier die in
-#    productie draait. SQL Server staat achter een profile:
-#    docker compose --profile sqlserver up -d sqlserver
-docker compose up -d
-
-# 2. Settings-template kopiëren en POSTGRES_CONNECTION_STRING invullen
-cp FunctionApp.Postgres/local.settings.template.json FunctionApp.Postgres/local.settings.json
-
-# 3. Alle services starten (Azurite + FunctionApp :7094 + BlazorAdmin :5242)
-.\scripts\dev\Start-Debug.ps1            # -Tier SqlServer voor de andere tier
-
-# 4. Verificatie (Start-Debug wacht zelf tot de services klaar zijn)
-.\scripts\dev\Test-App.ps1
-```
-
-**Git hooks activeren** (verplicht — blokkeert secrets en persoonsgegevens bij commit):
-```bash
-git config core.hooksPath .githooks
-cp .githooks/sensitive-patterns.template.txt .githooks/sensitive-patterns.txt
-```
-
-Volledige lokale setupbeschrijving: [docs/DEVELOPER-SETUP.md](docs/DEVELOPER-SETUP.md)  
-Beveiligingsprotocol: [SECURITY.md](SECURITY.md)
-
----
-
-## AVG / Privacy
-
-Deze applicatie verwerkt persoonsgegevens van clubleden (namen, e-mailadressen, telefoonnummers van teamleiders en trainers). Dit zijn gewone persoonsgegevens onder de AVG (artikel 4 lid 1) — deels van minderjarigen, wat extra zorgvuldigheid vraagt. Zie [SECURITY.md](SECURITY.md) voor de classificatie en de datalekprocedure.
-
-Het project is zo gebouwd dat:
-- Persoonsgegevens **nooit** in git belanden (meerdere onafhankelijke beveiligingslagen)
-- E-mailadressen van leden uitsluitend via **BCC** worden gebruikt bij communicatie met derden
-- De `avg`-database-schema is gescheiden van operationele data en bedoeld voor beperkte toegang
-- Automatische beveiligingschecks blokkeren een merge zodra er een risico wordt gedetecteerd
-
-Zie [SECURITY.md](SECURITY.md) voor de volledige beveiligingsarchitectuur en verantwoorde omgang met persoonsgegevens.
-
-Zie [docs/ARCHITECTUUR.md](docs/ARCHITECTUUR.md) voor de volledige, leidende
-architectuurbeschrijving — kwaliteitsdoelen, architectuurbesluiten, de concrete uitwerking per
-onderwerp (tijdzones, multi-club isolatie, secrets, AVG, auth-lagen) en het toetsregister waarin
-per regel staat welke externe standaard eraan ten grondslag ligt en hoe je hem controleert.
-
----
-
-## Releases en changelog
-
-Alle noemenswaardige wijzigingen staan in [CHANGELOG.md](CHANGELOG.md).  
-Releases zijn beschikbaar via [GitHub Releases](../../releases).
-
-Versienummering volgt een vier-delig schema: `MAJOR.MINOR.PATCH.REVISION`. Het actuele nummer
-staat bovenaan [CHANGELOG.md](CHANGELOG.md) en op de [releases-pagina](../../releases); de Admin GUI
-toont het in de header en `/api/health` in het veld `version`.  
-Definitie van bug, feature en enhancement, en de twee versie-bumpfasen: zie [docs/VERSIONING.md](docs/VERSIONING.md).
-
----
-
-## Jouw club aan de slag
-
-Sportlink Wedstrijdzaken is ontworpen voor gebruik door meerdere clubs. Je forkt de repository, richt je eigen Azure-resources in, en configureert je eigen Entra ID-tenant — **er komen geen club-specifieke waarden in de code**.
-
-Volg de stap-voor-stap installatiehandleiding: **[SETUP-NIEUWE-CLUB.md](SETUP-NIEUWE-CLUB.md)**
-
-### Vereiste: Sportlink Club Dataservice
-
-Deze applicatie haalt alle wedstrijddata op via de **[Sportlink Club Dataservice](https://www.sportlink.nl/producten/club-dataservice/)** — een betaald product van Sportlink. Zonder dit abonnement is er geen toegang tot de Sportlink API en is de applicatie niet bruikbaar.
-
-De Club Dataservice wordt aangeboden in drie bundels met het Sportlink mediaplatform:
-
-| Bundel | Kosten |
-|---|---|
-| Goed (app + tv + sponsoring) | €1,95/lid/jaar + €375 eenmalig |
-| Beter (integratie bestaande website) | €2,70/lid/jaar + €375 eenmalig |
-| Ideaal (nieuwe website + integratie) | €2,80/lid/jaar + €375 eenmalig |
-
-Facturering is gemaximeerd op 800 leden. Neem contact op met jouw Sportlink-contactpersoon voor de actuele tarieven en beschikbaarheid.
-
-Bij een actief abonnement ontvang je een `clientId` waarmee de applicatie de API aanroept. Dit `clientId` wordt per club geconfigureerd in de applicatie-instellingen — het staat nooit in de broncode.
-
-### Wat je verder nodig hebt
-
-| Resource | Tier | Kosten |
-|---|---|---|
-| Sportlink Club Dataservice | Betaald abonnement (zie hierboven) | Varieert |
-| Microsoft 365 / Entra ID tenant | Gratis (inbegrepen bij M365) | €0 |
-| Azure Functions | Flex Consumption (gratis maandtegoed: 250.000 executies + 100.000 GB-s) | €0 binnen het tegoed; stel een kostenbudget in |
-| Database | Postgres (bijv. Supabase free tier) of Azure SQL Database (free tier, 32 GB) — één bewuste keuze per fork | €0 |
-| Azure Static Web Apps | Free | €0 |
-
----
-
-## Bijdragen
-
-Pull requests zijn welkom. Kijk voor openstaand werk naar de [GitHub Issues](../../issues).
-
-Lees voor je begint: **[CONTRIBUTING.md](CONTRIBUTING.md)** — beschrijft de branch-strategie, commit-conventies, en Security Gate.
-
-Heb je een club die baat zou hebben bij deze oplossing, of wil je meedenken over de richting? Open een [Discussion](../../discussions) of stuur een issue.
-
----
+Een onhandig scherm of een goed idee? [Open een issue](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/new/choose)
+met wat je wilt bereiken. Gebruik fictieve voorbeelden en laat clubgegevens, persoonsgegevens en
+secrets weg. Voor kwetsbaarheden volg je de private meldroute in [SECURITY.md](SECURITY.md).
 
 ## Licentie
 
-⚠️ Er is nog geen `LICENSE`-bestand in de repository — de badge en link hiernaartoe zijn daarom
-verwijderd totdat dat is toegevoegd. Neem contact op met de eigenaar voor de beoogde licentie.
+Er staat nog geen `LICENSE`-bestand in deze repository. Stem de gebruiks- en distributierechten
+met de eigenaar af voordat je de software voor je club in gebruik neemt.

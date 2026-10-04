@@ -5,7 +5,7 @@
 # stonden al als harde regel in CLAUDE.md; geen van vier werd door iets gecontroleerd.
 #
 #   uri-absolute   Uri.TryCreate(..., UriKind.Absolute, ...) als "is dit een URL"-test. Op Unix —
-#                  en dus op het Linux Consumption Plan én op een macOS-ontwikkelmachine — parseert
+#                  en dus op de Linux-host én op een macOS-ontwikkelmachine — parseert
 #                  "/favicon.ico" daarmee succesvol als file:-URI. Op Windows niet. #1252 maakte zo
 #                  maandenlang élke favicon- en logo-extractie null, zonder één foutmelding.
 #   datetime-now   DateTime.Now waar UtcNow hoort. PR #246: lokale tijd opgeslagen, als UTC

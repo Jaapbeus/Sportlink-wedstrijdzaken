@@ -1,4 +1,4 @@
-# Sportlink Wedstrijdzaken — Developer Setup (v3.5)
+# Sportlink Wedstrijdzaken — lokaal opzetten
 
 > **Waarvoor dit document?** Eenmalige opzet: dit is de bron voor installatie- en
 > configuratiecommando's. Dagelijks starten, stoppen en debuggen staat in
@@ -10,7 +10,13 @@
 > **De standaardtier is Postgres** (§4.1–§4.3). Werk je aan de SQL Server-tier, lees dan
 > §4.4–§4.7 in plaats daarvan. Beide tiers zijn gelijkwaardig en volledig ondersteund (#1266).
 
-Volledige setupgids voor een nieuwe developer die de v3.5-stack lokaal wil draaien — op
+Wil je eerst zien of de app bij jouw club past? Je kunt lokaal beginnen met Postgres en fictieve
+AllStars-wedstrijden. Voor dat proefrondje hoef je geen Azure-resources aan te maken en geen echte
+Sportlink-gegevens op te halen. Rond de database-inrichting en lokale configuratie hieronder af,
+start de services en zet vervolgens de [demodata](TESTMODUS-ALLSTARS.md#een-eerste-proefrondje) klaar.
+E-mailverwerking en de Sportlink-schrijfkoppeling kun je later afzonderlijk inrichten.
+
+Deze gids beschrijft de lokale .NET 10-stack — op
 **Windows** en op **macOS (Apple Silicon)**. Waar een commando platform-specifiek is, staan de
 Windows- en de macOS-variant naast elkaar (#800).
 
@@ -63,7 +69,7 @@ docker exec -e PGPASSWORD="<wachtwoord>" sportlink-postgres psql -U "<gebruiker>
 6. [Services starten (Start-Debug.ps1)](#6-services-starten)
 7. [Verificatie (Test-App.ps1)](#7-verificatie)
 8. [Projectstructuur](#8-projectstructuur)
-9. [GitHub Actions — productie-deployment configureren](#9-github-actions-productie-deployment-configureren)
+9. [GitHub Actions — productie-deployment configureren](#9-github-actions--productie-deployment-configureren)
 10. [Troubleshooting](#10-troubleshooting)
 
 ---
