@@ -121,6 +121,23 @@ public partial class SportlinkClubClient
         string? NewRefreshToken,
         string? FoutmeldingVoorLog);
 
+    private static TokenEndpointResult LeesTokenResponse(string json)
+    {
+        var tokenResponse = JsonSerializer.Deserialize<JsonElement>(json, JsonOptions);
+        if (!tokenResponse.TryGetProperty("access_token", out var accessTokenElement))
+            return new TokenEndpointResult(SportlinkClubCallStatus.SportlinkFout, null, null, null, "access_token ontbreekt in response");
+
+        string? newRefreshToken = null;
+        if (tokenResponse.TryGetProperty("refresh_token", out var refreshTokenElement))
+            newRefreshToken = refreshTokenElement.GetString();
+
+        var expiresIn = 3600; // default
+        if (tokenResponse.TryGetProperty("expires_in", out var expiresInElement) && expiresInElement.TryGetInt32(out var ei))
+            expiresIn = ei;
+
+        return new TokenEndpointResult(SportlinkClubCallStatus.Ok, accessTokenElement.GetString(), expiresIn, newRefreshToken, null);
+    }
+
     private async Task<TokenEndpointResult> CallTokenEndpointAsync(string refreshToken, CancellationToken cancellationToken)
     {
         try
@@ -152,24 +169,7 @@ public partial class SportlinkClubClient
             }
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken);
-            var tokenResponse = JsonSerializer.Deserialize<JsonElement>(json, JsonOptions);
-            if (!tokenResponse.TryGetProperty("access_token", out var accessTokenElement))
-                return new TokenEndpointResult(SportlinkClubCallStatus.SportlinkFout, null, null, null, "access_token ontbreekt in response");
-
-            string? newRefreshToken = null;
-            if (tokenResponse.TryGetProperty("refresh_token", out var refreshTokenElement))
-                newRefreshToken = refreshTokenElement.GetString();
-
-            var expiresIn = 3600; // default
-            if (tokenResponse.TryGetProperty("expires_in", out var expiresInElement) && expiresInElement.TryGetInt32(out var ei))
-                expiresIn = ei;
-
-            return new TokenEndpointResult(
-                SportlinkClubCallStatus.Ok,
-                accessTokenElement.GetString(),
-                expiresIn,
-                newRefreshToken,
-                null);
+            return LeesTokenResponse(json);
         }
         catch (TaskCanceledException ex)
         {

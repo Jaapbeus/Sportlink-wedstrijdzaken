@@ -229,6 +229,31 @@ public partial class Instellingen : ClubSelectorPageBase
         geocoding = false;
     }
 
+    private static SettingsUpdateDto BouwUpdate(AppSettingsDto s)
+    {
+        return new SettingsUpdateDto
+        {
+            Velden = new()
+            {
+                ["Accommodatie"] = s.Accommodatie,
+                ["AccommodatiePlaats"] = s.AccommodatiePlaats,
+                ["AccommodatieLatitude"] = s.AccommodatieLatitude?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["AccommodatieLongitude"] = s.AccommodatieLongitude?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["HerplanDeadlineDagen"] = s.HerplanDeadlineDagen?.ToString(),
+                ["BufferMinuten"] = s.BufferMinuten?.ToString(),
+                ["PlannerAfzenderNaam"] = s.PlannerAfzenderNaam,
+                ["PlannerEmailAdres"] = s.PlannerEmailAdres,
+                ["CoordinatorNaam"] = s.CoordinatorNaam,
+                ["CoordinatorFunctie"] = s.CoordinatorFunctie,
+                ["FetchSchedule"] = s.FetchSchedule,
+                ["UseRealtimeApi"] = s.UseRealtimeApi ? "1" : "0",
+                ["KnvbPdfBijlageIngeschakeld"] = s.KnvbPdfBijlageIngeschakeld ? "1" : "0",
+                ["KnvbStandaardRegio"] = s.KnvbStandaardRegio,
+                ["PdfExportIngeschakeld"] = s.PdfExportIngeschakeld ? "1" : "0",
+            }
+        };
+    }
+
     private async Task OpslaanAsync()
     {
         if (settings == null) return;
@@ -237,29 +262,7 @@ public partial class Instellingen : ClubSelectorPageBase
         herstartMessage = null;
         errorMessage = null;
 
-        var update = new SettingsUpdateDto
-        {
-            Velden = new()
-            {
-                ["Accommodatie"] = settings.Accommodatie,
-                ["AccommodatiePlaats"] = settings.AccommodatiePlaats,
-                ["AccommodatieLatitude"] = settings.AccommodatieLatitude?.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                ["AccommodatieLongitude"] = settings.AccommodatieLongitude?.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                ["HerplanDeadlineDagen"] = settings.HerplanDeadlineDagen?.ToString(),
-                ["BufferMinuten"] = settings.BufferMinuten?.ToString(),
-                ["PlannerAfzenderNaam"] = settings.PlannerAfzenderNaam,
-                ["PlannerEmailAdres"] = settings.PlannerEmailAdres,
-                ["CoordinatorNaam"] = settings.CoordinatorNaam,
-                ["CoordinatorFunctie"] = settings.CoordinatorFunctie,
-                ["FetchSchedule"] = settings.FetchSchedule,
-                ["UseRealtimeApi"] = settings.UseRealtimeApi ? "1" : "0",
-                ["KnvbPdfBijlageIngeschakeld"] = settings.KnvbPdfBijlageIngeschakeld ? "1" : "0",
-                ["KnvbStandaardRegio"] = settings.KnvbStandaardRegio,
-                ["PdfExportIngeschakeld"] = settings.PdfExportIngeschakeld ? "1" : "0",
-            }
-        };
-
-        var r = await Api.UpdateSettingsAsync(update);
+        var r = await Api.UpdateSettingsAsync(BouwUpdate(settings));
         if (r.Success)
         {
             successMessage = "Instellingen opgeslagen.";

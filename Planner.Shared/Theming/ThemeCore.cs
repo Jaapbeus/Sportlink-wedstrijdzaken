@@ -424,7 +424,7 @@ public static class ThemeCore
     /// <para>
     /// Er wordt bewust met <see cref="UriKind.RelativeOrAbsolute"/> geparsed en daarna op
     /// <see cref="Uri.IsAbsoluteUri"/> beslist, niet met <see cref="UriKind.Absolute"/> vooraf
-    /// (#1252): op Unix — en dus op het Linux Consumption Plan waar dit draait — parseert
+    /// (#1252): op Unix — en dus op de Linux-host waar dit draait — parseert
     /// <c>Uri.TryCreate("/favicon.ico", UriKind.Absolute, out _)</c> succesvol, als
     /// <c>file:</c>-URI. De oude volgorde nam daardoor altijd de absolute tak, vond schema
     /// <c>file</c> en gaf <c>null</c> terug; de relatieve tak was voor root-relatieve paden
