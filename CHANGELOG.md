@@ -18,6 +18,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.10.0.2] — 2026-10-04
+
+### Fixed
+
+- Sportlink-timers (token-keepalive, PublicMatchId-warmup, contractcontrole) werden op Flex Consumption stilzwijgend overgeslagen omdat elke instantie de instellingen niet geladen had; instellingen worden nu vóór elke functie eenmaal per instantie geladen (#1515)
+
 ## [3.10.0.1] — 2026-10-04
 
 ### Fixed
