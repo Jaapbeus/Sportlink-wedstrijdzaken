@@ -1,3 +1,4 @@
+using Planner.Shared;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using Planner.Shared.Integrations.SportlinkClub;
@@ -45,7 +46,7 @@ internal sealed class PostgresSportlinkMutationAuditService : ISportlinkMutation
             var result = await command.ExecuteScalarAsync(cancellationToken);
             if (result is long id)
             {
-                _logger.LogInformation("Sportlink mutation audit gelogd: ID {AuditId}, PublicMatchId {PublicMatchId}", id, entry.PublicMatchId);
+                _logger.LogInformation("Sportlink mutation audit gelogd: ID {AuditId}, PublicMatchId {PublicMatchId}", id, LogWaarde.Schoon(entry.PublicMatchId));
                 return id;
             }
 

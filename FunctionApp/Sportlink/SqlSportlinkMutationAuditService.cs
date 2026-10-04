@@ -1,3 +1,4 @@
+using Planner.Shared;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Planner.Shared.Integrations.SportlinkClub;
@@ -44,7 +45,7 @@ internal sealed class SqlSportlinkMutationAuditService : ISportlinkMutationAudit
             var result = await command.ExecuteScalarAsync(cancellationToken);
             if (result is long id)
             {
-                _logger.LogInformation("Sportlink mutation audit gelogd: ID {AuditId}, PublicMatchId {PublicMatchId}", id, entry.PublicMatchId);
+                _logger.LogInformation("Sportlink mutation audit gelogd: ID {AuditId}, PublicMatchId {PublicMatchId}", id, LogWaarde.Schoon(entry.PublicMatchId));
                 return id;
             }
 

@@ -343,7 +343,7 @@ internal static class AutoPlanService
             }
         }
         log.LogInformation("AutoPlan toepassen {Datum}: {Bijgewerkt} bijgewerkt, {Mislukt} mislukt",
-            request.Datum, response.Bijgewerkt, response.Mislukt);
+            LogWaarde.Schoon(request.Datum), response.Bijgewerkt, response.Mislukt);
         return response;
     }
 

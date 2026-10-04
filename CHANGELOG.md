@@ -82,6 +82,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   volgt in issue #1460.
 
 ### Security
+- **Gebruikersinvoer wordt veilig gelogd** (#1472). Waarden uit een verzoek (datum, teamnaam, plaatsnaam e.d.) worden vóór het loggen ontdaan van regeleinden en stuurcodes en begrensd in lengte, zodat niemand valse logregels kan inbrengen.
 - De what-if-poort controleert de app settings nu per Function App (#1495).
 - **Feedbacktekst in een publiek issue bevat geen actieve vermeldingen meer** (#1501).
 - **Feedback: strengere controle op invoer die in een GitHub-issue terechtkomt** (#1494).
