@@ -137,21 +137,20 @@ Drie instellingen in de statische constructor van `PlannerPdfGenerator`, met red
 
 ### 3.1 Pakketgrootte — een merkbaar gevolg
 
-Omdat `deploy.yml` zonder runtime-identifier publiceert, komen de native bibliotheken van **alle**
-platforms in het deploypakket. Gemeten met `dotnet publish -c Release` vóór en na deze wijziging:
+Een `dotnet publish` zonder runtime-identifier neemt de native bibliotheken van **alle** platforms
+mee in het deploypakket. Sinds #1473 publiceert `deploy.yml` daarom RID-specifiek:
+`dotnet publish -c Release -r linux-x64 --self-contained false` (framework-dependent; Flex Consumption
+levert de .NET-runtime). De RID staat bewust **niet** in de csproj, zodat lokaal `func start` op
+macOS arm64/Windows ongewijzigd werkt. Gemeten (uitgepakt / zip):
 
-| Tier | Uitgepakt vóór → na | Zip vóór → na |
+| Tier | Zonder `-r` | Met `-r linux-x64 --self-contained false` |
 |---|---|---|
-| Postgres (`FunctionApp.Postgres`) | 73,8 MB → 160,6 MB (**+86,8 MB**) | 19,9 MB → 59,4 MB (**+39,5 MB**) |
-| SQL Server (`FunctionApp`) | 79,8 MB → 166,6 MB (**+86,8 MB**) | 22,0 MB → 61,5 MB (**+39,5 MB**) |
-| Postgres, ter vergelijking met `-r linux-x64 --self-contained false` | 87,1 MB | 27,4 MB |
+| Postgres (`FunctionApp.Postgres`) | 158 MB / 59 MB | 86 MB / 27 MB |
+| SQL Server (`FunctionApp`) | 163 MB / 61 MB | 88 MB / 28 MB |
 
-Dat valt ruim binnen de grens van het Consumption Plan (deploypakket max. 1 GB, Microsoft Learn
-`azure-functions/functions-scale#service-limits`) en kost geen geld, maar het zip-pakket wordt ruim
-twee keer zo groot, en dat pakket wordt bij elke koude start opgehaald. Het pakket alleen voor
-`linux-x64` publiceren bespaart het grootste deel, maar wijzigt de productie-deploy en is daarom hier
-**bewust niet** gedaan: dat hoort als eigen, apart te testen wijziging (bij voorkeur samen met de
-Flex Consumption-migratie, epic #1063).
+In de RID-specifieke uitvoer staan `libQuestPdfSkia.so` en `libqpdf.so` voor linux-x64 in de root, de
+overige platforms zijn weg, en `.azurefunctions/` en `functions.metadata` zijn aanwezig. Draai de
+runtime-probe uit paragraaf 3 opnieuw als de RID of het productie-image wijzigt.
 
 `Database.Postgres` verwijst ook naar `Planner.Shared`; het migratieprogramma
 (`Database.Postgres.Cli`, gebruikt in de deployjob `db-migrate-postgres`) neemt QuestPDF dus
