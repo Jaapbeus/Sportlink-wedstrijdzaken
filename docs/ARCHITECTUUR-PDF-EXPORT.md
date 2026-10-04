@@ -103,7 +103,7 @@ Het pakket levert per platform twee native bibliotheken mee:
 
 | Platform (RID) | Bestanden | Grootte |
 |---|---|---|
-| `linux-x64` (productie: Linux Consumption) | `libQuestPdfSkia.so`, `libqpdf.so` | 8,1 MB + 3,3 MB |
+| `linux-x64` (productie: Linux, Flex Consumption) | `libQuestPdfSkia.so`, `libqpdf.so` | 8,1 MB + 3,3 MB |
 | `linux-arm64`, `linux-musl-x64`, `osx-x64`, `osx-arm64`, `win-x64`, `win-x86`, `win-arm64` | idem per platform | 9–12 MB per platform |
 | *(alle platforms)* | `QuestPDF.dll` + het meegeleverde lettertype `QuestPDF.Fonts.Lato.br` | 0,7 MB + 3,0 MB |
 
@@ -122,6 +122,7 @@ op het productieplatform in plaats van aangenomen. Bewijs (2 oktober 2026, `Ques
   `UseSystemFonts = false` en gebruikt uitsluitend het meegeleverde Lato.
 - **Geen extra systeembibliotheken.** `ldd libQuestPdfSkia.so` toont alleen `libc`, `libstdc++`,
   `libm`, `libgcc_s` en `libpthread` — geen fontconfig of freetype van het besturingssysteem.
+- **Let op de datering.** Bovenstaand bewijs is geleverd op het .NET 9-image van vóór de overstap op Flex Consumption en .NET 10 (v3.10.0.0/v3.11.0.0). Een herhaling op het huidige productie-image (`dotnet-isolated 10.0`) is niet vastgelegd; draai de probe opnieuw bij elke wijziging van runtime of QuestPDF-versie.
 - **De unittests draaien op Linux x64:** `Planner.Shared.Tests` (`Deel`) in
   `mcr.microsoft.com/dotnet/sdk:9.0` (`linux/amd64`): 24 geslaagd, 0 gefaald. CI (ubuntu) draait ze
   bij elke PR.
@@ -130,7 +131,7 @@ Drie instellingen in de statische constructor van `PlannerPdfGenerator`, met red
 
 | Instelling | Waarde | Waarom |
 |---|---|---|
-| `UseSystemFonts` | `false` | Linux Consumption garandeert geen fonts; dezelfde invoer moet overal dezelfde PDF geven |
+| `UseSystemFonts` | `false` | Azure Functions op Linux garandeert geen fonts; dezelfde invoer moet overal dezelfde PDF geven |
 | `FontDiscoveryPath` | `null` | Anders scant QuestPDF bij de eerste PDF recursief de hele app-map naar fontbestanden — koude-starttijd voor niets |
 | `ThrowOnMissingTextGlyphs` | `false` | Sinds 2026.9 standaard `true`: één emoji in een teamnaam zou de hele export laten mislukken. Nu wordt het een vervangteken |
 

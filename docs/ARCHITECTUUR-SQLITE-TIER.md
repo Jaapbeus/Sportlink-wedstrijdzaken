@@ -59,17 +59,16 @@ Zelfde conventie als de Postgres-tier: lowercase snake_case, al vastgesteld in #
 case-sensitief voor tabelnamen op de meeste platforms maar niet gegarandeerd op alle — de conventie
 "altijd lowercase, nooit quoten" voorkomt dat dit ooit een vraag wordt.
 
-## 6. Open architectuurbesluit: persistente opslag op Linux Consumption
+## 6. Open architectuurbesluit: persistente opslag op Linux Consumption (historische titel; productie draait inmiddels op Flex)
 
-Dit project draait op het Linux Azure Functions Consumption-plan (destijds net9.0 isolated worker; inmiddels Flex Consumption, net10.0) — zie
+Dit project draait op het Linux Azure Functions Consumption-plan (destijds net9.0 isolated worker; sinds 2026-10-03 Flex Consumption, sinds v3.11.0.0 net10.0) — zie
 CLAUDE.md, sectie ".NET versie". **Dit document stelt niet voor om die beperking te heroverwegen.**
 
-> **Let op — de aanname onder dit hoofdstuk verloopt.** Sinds epic #1063 ligt er een migratie naar
-> Flex Consumption op de rol, gedwongen door het einde van de support voor .NET 9 op 10 november
-> 2026. Flex Consumption ondersteunt Azure Files storage mounts wél. Zodra die migratie is
-> afgerond, vervalt de beperking die dit hoofdstuk beschrijft en wordt optie C hieronder de
-> feitelijke situatie in plaats van een hypothetische planwijziging. Het besluit zelf hoort bij
-> epic #815 en wordt hier niet genomen.
+> **Stand 2026-10-04 — de aanname onder dit hoofdstuk is vervallen.** De migratie naar Flex Consumption
+> (epic #1063) is afgerond; productie draait sinds 2026-10-03 op Flex. Flex Consumption ondersteunt
+> Azure Files storage mounts wél, dus optie C hieronder is nu de feitelijke situatie in plaats van een
+> hypothetische planwijziging. Het besluit over de SQLite-tier zelf hoort bij epic #815 en wordt hier
+> niet genomen; de tekst hieronder is de analyse zoals die is opgesteld (2026-08-30).
 
 **Microsoft Learn-geverifieerd (2026-08-30):** Azure Files storage mounts worden **niet
 ondersteund op het Consumption-plan** — alleen Flex Consumption, Elastic Premium en Dedicated

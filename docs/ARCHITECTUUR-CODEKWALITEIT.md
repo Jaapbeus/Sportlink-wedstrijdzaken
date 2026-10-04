@@ -30,7 +30,7 @@ missen", maar "waarom was er geen grond om het af te wijzen".
 De prijs kwam bij #1252 binnen. `ResolveUrl` gebruikte `Uri.TryCreate(url, UriKind.Absolute, …)`
 als test voor "is dit een absolute URL". Op Unix parseert `"/favicon.ico"` daarmee **succesvol**,
 als `file:`-URI; op Windows niet. De relatieve tak was daardoor onbereikbaar, en élke
-root-relatieve verwijzing gaf `null`. De Function App draait op een Linux Consumption Plan en de
+root-relatieve verwijzing gaf `null`. De Function App draaide toen op een Linux Consumption Plan (nu Linux Flex Consumption) en de
 ontwikkelmachine is macOS — beide Unix. Favicon- en logo-extractie heeft dus **nooit gewerkt**,
 vanaf #325 in mei. Zonder foutmelding: de beheerder zag "geen logo gevonden", niet te
 onderscheiden van een site zonder logo.

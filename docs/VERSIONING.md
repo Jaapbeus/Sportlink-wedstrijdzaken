@@ -97,10 +97,9 @@ die gebruikers troffen. Een correctie van de SDK-versie in `deploy.yml` die geen
 verandert: ❌ niet in changelog (interne infrastructuur-correctie).
 
 > Verwar de **SDK**-versie in `deploy.yml` (`DOTNET_VERSION: '10.0.x'`) niet met het
-> **doelframework**. Dat van de FunctionApp is en blijft `net9.0` — op beide tiers — tot epic #1063
-> de cutover naar Flex Consumption doet; een `net10.0`-build geeft op het Linux Consumption Plan
-> een 503 "Function host is not running". Alleen `BlazorAdmin` staat op `net10.0`. Bump dus nooit
-> het `<TargetFramework>` van een FunctionApp-csproj op grond van dit voorbeeld.
+> **doelframework**. Sinds v3.11.0.0 (#1073, #1074) targeten alle projecten `net10.0` en draait de
+> Function App op Flex Consumption met `dotnet-isolated 10.0`; csproj-target en stackwaarde moeten
+> altijd overeenkomen (anders 503 "Function host is not running").
 
 **Performance-verbetering** — alleen in changelog als de verbetering merkbaar is
 voor de gebruiker (bijv. "laadtijd overview 60% sneller"). Micro-optimalisaties: ❌.

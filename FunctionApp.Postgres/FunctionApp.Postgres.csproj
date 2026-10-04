@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <!-- net10.0 (#1073): deze branch wordt pas gemerged NA de Flex Consumption-cutover (#1072);
-         op het huidige Linux Consumption Plan geeft net10.0 een 503. -->
+    <!-- net10.0 (#1073, #1074): de Function App draait op Flex Consumption met dotnet-isolated 10.0;
+         csproj-target en stackwaarde moeten overeenkomen, anders 503. -->
     <TargetFramework>net10.0</TargetFramework>
     <AzureFunctionsVersion>v4</AzureFunctionsVersion>
     <OutputType>Exe</OutputType>

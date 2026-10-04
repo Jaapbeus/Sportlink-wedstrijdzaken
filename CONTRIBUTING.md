@@ -178,6 +178,9 @@ De Security Gate job in CI is **leidend**. Zolang deze rood is, wordt een PR nie
 - Wachtwoorden en tokens (gitleaks)
 - Persoonsgegevens (PII-scan)
 - Dependency vulnerabilities (Trivy)
+- Statische analyse van de eigen code (CodeQL; faalt bij security-severity high/critical, #1470)
+
+Dependabot houdt NuGet-pakketten en GitHub Actions wekelijks bij (PR's naar `develop`; QuestPDF altijd als eigen PR vanwege de licentie). Een release naar productie loopt uitsluitend via de eigenaarsskill `/release`, die begint met een verplichte securitypoort (`/security-review` op de releasediff plus nul open high/critical-alerts).
 
 De gate draait op elke push én op elke pull request naar `main` of `develop` — ook op een PR vanuit
 een fork. Een fork-PR krijgt van GitHub een read-only token zonder secrets; de scan is daar bewust

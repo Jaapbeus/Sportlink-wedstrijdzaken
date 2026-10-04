@@ -98,6 +98,25 @@ az functionapp config appsettings set --name func-[clubcode]-sportlink --resourc
 
 Of via Azure Portal → Function App → Settings → Environment variables.
 
+### Hosting op Flex Consumption: wat u anders bewaakt (#1063, #1075, #1512, #1515)
+
+Sinds 2026-10-03 draait de Function App op Flex Consumption. Vier gevolgen voor bewaking:
+
+- **Kosten.** Flex kent geen automatische kostenrem; het gratis tegoed is 250.000 executies en
+  100.000 GB-s per maand per subscription, en vervalt bij always-ready instances (die staan bewust uit).
+  Er staat een eurobudget (5 euro per maand, meldingen bij 85% en 100%). Een metric alert op het tegoed zelf
+  is betaald en wacht op akkoord van de eigenaar (#1075). `maximumInstanceCount` (standaard 5) begrenst het
+  worstgeval.
+- **Timers verifieert u niet alleen via `requests`.** Application Insights is gesampled; een ontbrekende
+  request bewijst niet dat een timer niet draaide. Controleer via `traces` of via de regels die de timer in
+  de database schrijft (bijvoorbeeld `public.sportlinkcontractcheck`).
+- **Elke niet-HTTP-trigger draait op een eigen instantie.** Instellingen worden daarom per instantie voor de
+  eerste functie geladen (middleware, #1515). Zie je een timer die "overgeslagen" lijkt, kijk dan eerst
+  of de instellingen geladen waren (`settingsLoaded` in `/api/health`).
+- **Host-opslag zonder connection string.** `AzureWebJobsStorage__accountName` met managed identity; ontbreken
+  de rollen Blob Data Owner, Queue Data Contributor en Table Data Contributor, dan faalt de host of de
+  noodmail-throttle en de sync-wachtrij (#1512).
+
 ### host.json (sampling)
 
 **Sampling staat nu niet aan.** Zowel `FunctionApp.Postgres/host.json` (productietier) als
@@ -374,7 +393,7 @@ is verstuurd, plus de uitvalduur — nooit de waarde van `GraphMailbox`. Dit vol
 Function-logs en Application Insights. Wie wil controleren wáár de melding heen ging, leest de
 app-setting `GraphMailbox` — niet het log.
 
-**Kosten: €0.** Eén Function-executie per dag valt ruim binnen de Consumption-plan-limiet
+**Kosten: €0.** Eén Function-executie per dag valt ruim binnen het gratis Flex Consumption-tegoed
 (1M executies/maand), en een ARM-managementaanroep wordt niet gefactureerd als database-compute.
 
 **Configuratie (optioneel — zonder deze stap blijft alleen de bestaande, e-mail-afhankelijke
@@ -456,7 +475,7 @@ dan komt de hele Function App niet omhoog. Op de tier die in productie draait is
 onaanvaardbaar risico voor een monitoringfunctie. Uitzetten kan met de standaard-app-setting
 `AzureWebJobs.DatabaseUitvalMonitor.Disabled`.
 
-**Kosten: €0.** Eén extra Function-executie per dag valt ruim binnen de Consumption-limiet, en er
+**Kosten: €0.** Eén extra Function-executie per dag valt ruim binnen het gratis Flex Consumption-tegoed, en er
 komt geen Azure-resource bij.
 
 **Optionele configuratie (app settings op de Function App):**

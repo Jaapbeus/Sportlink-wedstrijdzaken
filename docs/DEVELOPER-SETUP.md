@@ -1251,8 +1251,11 @@ Deze zes waarden identificeren jouw club. Zet ze op het tabblad **Secrets** →
 > SPA laat tenant- en client-ID toch aan elke browser zien — maar ze verraden wél welke club deze
 > fork draait, en dat is precies wat het club-neutrale open-sourcebeleid wil voorkomen.
 >
-> `deploy.yml` leest ze als `${{ secrets.NAAM || vars.NAAM }}`. Heb je ze al als **Variable**
-> staan, dan blijft de deploy gewoon werken; de waarden staan dan alleen leesbaar in de logs.
+> Alle zes (`AZURE_AD_CLIENT_ID`, `AZURE_AD_TENANT_ID`, `AZURE_FUNCTIONAPP_NAME`, `AZURE_FUNCTIONAPP_URL`,
+> `AZURE_STATIC_WEB_APP_HOSTNAME`, `POST_LOGOUT_REDIRECT_URL`) zijn **uitsluitend Secrets**, nooit Variables.
+> `deploy.yml` leest `${{ secrets.NAAM || vars.NAAM }}`, maar de `vars`-tak is alleen een legacy-terugval
+> voor oudere forks: heb je ze nog als **Variable** staan, zet ze dan om naar Secret en verwijder de Variable,
+> want anders staan de waarden leesbaar in de publieke logs.
 
 ### 9.2a SQL-configuratie (alleen `DatabaseTier=SqlServer`)
 

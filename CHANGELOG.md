@@ -18,10 +18,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- Documentatie bijgewerkt naar de huidige stand (Flex Consumption, .NET 10, beheerdershandleiding, setup voor nieuwe clubs) en verouderde documentatie en scripts opgeruimd (#1525).
+
 ### Security
 
 - De SQL-configuratie van de deploy-workflows (servernaam, databasenaam, resource group) staat nu als GitHub Secret in plaats van Variable, zodat ze niet meer in publieke logs verschijnen (zie issue #1237). Lokaal start Azurite met `--skipApiVersionCheck` zodat de Storage Queue-client weer werkt.
-
 
 ## [3.11.0.0] — 2026-10-04
 
@@ -87,6 +89,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   volgt in issue #1460.
 
 ### Security
+- **Gebruikersinvoer wordt veilig gelogd** (#1472). Waarden uit een verzoek (datum, teamnaam, plaatsnaam e.d.) worden vóór het loggen ontdaan van regeleinden en stuurcodes en begrensd in lengte, zodat niemand valse logregels kan inbrengen.
 - De what-if-poort controleert de app settings nu per Function App (#1495).
 - **Feedbacktekst in een publiek issue bevat geen actieve vermeldingen meer** (#1501).
 - **Feedback: strengere controle op invoer die in een GitHub-issue terechtkomt** (#1494).
