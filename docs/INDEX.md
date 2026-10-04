@@ -1,7 +1,14 @@
 # Documentatie — Sportlink Wedstrijdzaken
 
-Centrale inhoudsopgave — elk document in `docs/` staat hier. Structuur en categorieregels: zie
-[DOCUMENTATIEPLAN.md](DOCUMENTATIEPLAN.md).
+Nieuw hier? Begin bij de [README](../README.md) voor het idee achter de app. Daarna kun je deze
+korte route volgen:
+
+1. **Rondkijken:** [eerste rondje door de app](BEHEERDER-HANDLEIDING.md#eerste-rondje-door-de-app).
+2. **Proberen:** [fictieve AllStars-wedstrijden](TESTMODUS-ALLSTARS.md#een-eerste-proefrondje), op een bestaande of lokale installatie.
+3. **Zelf draaien:** [lokaal opzetten](DEVELOPER-SETUP.md) of [een eigen clubinstallatie](../SETUP-NIEUWE-CLUB.md).
+
+Hieronder staat de volledige leeslijst, van dagelijks gebruik tot technische verdieping.
+De regels voor het bijhouden van documentatie staan in [DOCUMENTATIEPLAN.md](DOCUMENTATIEPLAN.md).
 
 ---
 

@@ -1,6 +1,9 @@
 # Bijdragen aan Sportlink Wedstrijdzaken
 
-Welkom! Dit project is open-source en andere voetbalverenigingen mogen de code gebruiken, verbeteren en aanpassingen voorstellen.
+Welkom! Werk je met wedstrijdzaken en zie je iets dat handiger kan? Een duidelijke bugmelding,
+een betere uitleg of een praktische verbetering is hier net zo welkom als een bijdrage in C#.
+De code staat publiek op GitHub; er is nog geen `LICENSE`-bestand. Stem gebruiks- en
+distributierechten met de eigenaar af voordat je de software voor je club gebruikt.
 
 ## Inhoudsopgave
 
@@ -16,11 +19,20 @@ Welkom! Dit project is open-source en andere voetbalverenigingen mogen de code g
 
 ## Voor andere clubs
 
-Wil je deze software gebruiken voor jouw vereniging? Zie [SETUP-NIEUWE-CLUB.md](SETUP-NIEUWE-CLUB.md) voor de volledige installatie-instructies. Je hebt een eigen Azure-omgeving nodig (gratis tier is voldoende) en een Microsoft Entra ID tenant.
+Wil je deze software gebruiken voor jouw vereniging? Zie [SETUP-NIEUWE-CLUB.md](SETUP-NIEUWE-CLUB.md) voor de volledige installatie-instructies. Voor eigen hosting heb je een Azure-omgeving en een Microsoft Entra ID tenant nodig.
+Bekijk eerst [de kosten](SETUP-NIEUWE-CLUB.md#9-kosten). Wil je vooral rondkijken, begin dan
+[lokaal](docs/DEVELOPER-SETUP.md) met [AllStars-testdata](docs/TESTMODUS-ALLSTARS.md#een-eerste-proefrondje).
 
 **Nooit** fork-specifieke configuratie (tenant-IDs, connection strings, API-keys) terugsturen als Pull Request naar dit project — die horen in jouw eigen GitHub Secrets/Variables.
 
 ---
+
+## Een vraag of idee delen
+
+Open een [issue](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/new/choose) met wat je
+probeert te doen, waar je vastloopt en wat je verwachtte. Fictieve teams en een korte beschrijving
+van de stappen zijn vaak al genoeg. Laat clubgegevens, persoonsgegevens en secrets weg; ook een
+screenshot of foutmelding kan die bevatten. Meld kwetsbaarheden via de private route in [SECURITY.md](SECURITY.md).
 
 ## Bijdragen als developer
 

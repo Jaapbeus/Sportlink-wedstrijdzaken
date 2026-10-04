@@ -1,6 +1,21 @@
-# v2 Admin GUI — handleiding
+# Sportlink Wedstrijdzaken — gebruikers- en beheerdershandleiding
 
-Deze handleiding beschrijft het Admin-portaal (Blazor WebAssembly) en de bijbehorende admin-API.
+## Eerste rondje door de app
+
+Je wilt weten waar de app je werk makkelijker maakt? Begin op een ingerichte installatie met
+**Planning**. Kies een speeldag en bekijk de wedstrijden in de tabel en op de tijdlijn.
+
+1. Open **Veld optimalisatie** en vergelijk een berekend voorstel met de bestaande planning.
+2. Probeer **Delen** voor een HTML-overzicht van de veldbezetting. PDF verschijnt als de beheerder die optie heeft aangezet.
+3. Open bij een wedstrijd het **Sportlink-paneel** om details en beschikbare acties te bekijken. Met dry-run aan worden wijzigingen gesimuleerd; met dry-run uit kunnen ze echt worden uitgevoerd.
+4. Wil je eerst met fictieve wedstrijden oefenen? Kies **AllStars FC** in de clubkeuze en volg het [proefrondje](TESTMODUS-ALLSTARS.md#een-eerste-proefrondje).
+
+Welke knoppen je ziet en mag gebruiken, hangt af van je rol en de inrichting. Laat de technische
+installatie gerust aan de clubbeheerder over. De schermuitleg begint bij hoofdstuk 9a.
+
+## Voor de technisch beheerder
+
+Deze handleiding beschrijft ook het Admin-portaal (Blazor WebAssembly) en de bijbehorende admin-API.
 **Deze installatie draait sinds 2026-09-04 op de Postgres-tier** (`FunctionApp.Postgres/Admin/`).
 De SQL Server-tier (`FunctionApp/Admin/`) is daarmee niet minder: het zijn twee gelijkwaardige
 tiers, en een fork kiest er één. De admin-API-routes zijn op beide tiers identiek; welke tier jouw installatie gebruikt bepaalt alleen welk project daadwerkelijk
