@@ -365,17 +365,17 @@ public static class ThemeCore
             var faviconUrl = ExtractFaviconUrl(html, parsedUri);
             var logoUrl = ExtractLogoUrl(html, parsedUri);
             log.LogInformation("Assets geëxtraheerd uit {Host}: {Count} kleuren, favicon={Fav}, logo={Logo}",
-                parsedUri.Host, colors.Count, faviconUrl != null, logoUrl != null);
+                LogWaarde.Schoon(parsedUri.Host), colors.Count, faviconUrl != null, logoUrl != null);
             return new ThemeExtractieResultaat(ThemeExtractieStatus.Ok, null, colors, faviconUrl, logoUrl);
         }
         catch (SsrfBlockedException ex)
         {
-            log.LogWarning(ex, "Extractie geweigerd door SSRF-bescherming: {Host}", parsedUri.Host);
+            log.LogWarning(ex, "Extractie geweigerd door SSRF-bescherming: {Host}", LogWaarde.Schoon(parsedUri.Host));
             return new ThemeExtractieResultaat(ThemeExtractieStatus.BestemmingGeblokkeerd, "URL-bestemming is niet toegestaan.");
         }
         catch (Exception ex)
         {
-            log.LogWarning(ex, "Ophalen website mislukt: {Host}", parsedUri.Host);
+            log.LogWarning(ex, "Ophalen website mislukt: {Host}", LogWaarde.Schoon(parsedUri.Host));
             return new ThemeExtractieResultaat(ThemeExtractieStatus.OphalenMislukt, "Website kon niet worden opgehaald.");
         }
     }
