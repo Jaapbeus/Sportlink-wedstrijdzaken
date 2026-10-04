@@ -8,24 +8,22 @@
       "Bash(git status)",
       "Bash(git diff*)",
       "Bash(git log*)",
-      "Bash(git branch*)",
-      "Bash(git checkout*)",
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Bash(git push*)",
       "Bash(git fetch*)",
-      "Bash(git pull*)",
-      "Bash(git stash*)",
-      "Bash(git restore*)",
       "Bash(git mv *)",
-      "Bash(git rm *)",
-      "Bash(git tag*)",
       "Bash(gh issue*)",
-      "Bash(gh pr*)",
       "Bash(gh repo*)",
       "Bash(gh run*)",
-      "Bash(gh release*)",
-      "Bash(gh api*)"
-     ]
+      "Bash(git branch --show-current)",
+      "Bash(git branch --list *)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr list *)",
+      "Bash(gh pr diff *)",
+      "Bash(gh pr checks *)",
+      "Bash(gh pr create *)",
+      "Bash(gh pr edit *)",
+      "Bash(gh pr comment *)"
+    ]
   }
 }

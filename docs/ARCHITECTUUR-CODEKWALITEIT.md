@@ -437,6 +437,7 @@ endpoint laat hem ook falen. Dezelfde knip als de Layer-5-scan in
 | 3c — gelinkte bronbestanden in BlazorAdmin: alleen `using System*`, geen `RegexOptions.Compiled` (#1461) | `scripts/ci/check-gelinkte-bronbestanden.sh` | `build.yml` |
 | 4 — platformafhankelijke valkuilen | `scripts/ci/check-codekwaliteit-valkuilen.sh` | `build.yml` |
 | Agentinstructies — skilltweelingen en afgesloten codeblokken | `scripts/ci/check-agent-instructies.py` | `build.yml` |
+| Agentinstructies — negatieve/positieve fixturetests | `scripts/ci/check-agent-instructies.test.py` | `build.yml` |
 | 5 — AGENTS.md afgeleid uit CLAUDE.md | `scripts/ci/genereer-agents-md.py` | `build.yml` |
 | 6 — elke regel heeft een guard | `scripts/ci/check-regelregister.sh` | `build.yml` |
 | 7, 8 — bestandsgrootte en methodelengte stijgen niet | `scripts/ci/check-bestandsgrootte.sh` | `build.yml` |
@@ -573,3 +574,17 @@ uit het thema-paar en bracht er elders netto 2 terug. Het antwoord daarop is het
 vastleggen, met de reden erbij, en **niet** een marge naar boven inbouwen. Zo'n marge is precies de
 ruimte waarin echte groei ongemerkt past: vijf PR's van elk twee regels zijn samen een nieuw
 gekopieerd blok, en geen van vijf zou zijn opgevallen.
+
+### Grenzen van instructiehandhaving
+
+De skillguard vergelijkt de vier verplichte en overige gedeelde `SKILL.md`-bestanden, niet alle
+onderliggende resources of uitsluitend aan één agent geïnstalleerde skills. De fencecheck controleert
+alleen top-level fences (maximaal drie spaties inspringing) in die skills, niet alle Markdown in docs
+of geneste lijst-/blockquote-fences. Het is geen volledige Markdown-parser of inhoudelijke reviewer.
+De guard leest UTF-8 expliciet voor Windows/macOS; zijn tests en registervermelding draaien in CI.
+
+De gedeelde Claude-allowlist geeft geen algemene automatische toestemming meer voor merge,
+release, API-mutaties, push/tag, checkout/stash of branch-/bestandsverwijdering. Native permissies
+zijn aanvullend: eigenaarsautorisatie blijft vereist. Dit is geen OS-vergrendeling, GitHub branch
+protection of handhaving van de Codex-toolpermissies; persoonlijke overrides en handmatige shell-
+commando's kunnen ruimer zijn. Zulke overrides heffen de gezamenlijke werkinstructies niet op.

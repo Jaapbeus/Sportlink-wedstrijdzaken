@@ -82,7 +82,7 @@ implementatieopdracht. Rapporteer steeds wat wel en niet is uitgevoerd.
 
 **Merge en deployment vereisen aparte eigenaarsautorisatie.** Een ontwikkelopdracht, groene CI,
 review of `turn:`-label is geen merge-/deploytoestemming. Een expliciet door de eigenaar gestart
-`/release` autoriseert uitsluitend de merges/deploy/tag binnen die releaseprocedure. Werk na
+`/release` of `/autonoom --release` autoriseert uitsluitend de merges/deploy/tag binnen die releaseprocedure. Werk na
 andere merges de eigen branch bij vanaf de afgesproken basis en herhaal relevante verificatie;
 verander daarbij geen gedeelde checkout.
 
@@ -154,7 +154,7 @@ is de bron; `AGENTS.md` wordt uitsluitend gegenereerd. Draai na iedere bronwijzi
 De generator bewaart agentnamen, bevoegdheden, paden en URL's: alleen de documenttitel verschilt.
 
 **Instructiecontrole vóór iedere overdracht:** draai `python3 scripts/ci/check-agent-instructies.py`
-en `python3 scripts/ci/check-agent-instructies.test.py`. De CI controleert beide skilllocaties op
+en `python3 scripts/ci/check-agent-instructies.test.py`. De CI controleert de vier verplichte en overige gedeelde `SKILL.md`-tweelingen op
 identieke inhoud (alleen documentverwijzingen mogen verschillen) en op onafgesloten Markdown-
 codeblokken. Wijzig bij een skillaanpassing beide kopieën; een afwijkende kopie blokkeert CI.
 Dit bewijst structurele consistentie, geen semantische juistheid of taak-/runtime-exclusiviteit.
@@ -687,8 +687,8 @@ Alleen als Stap 4 volledig groen is:
      ```powershell
      gh issue edit <issue-nr> --remove-label "status: review-needed" --add-label "status: pr-aangemaakt"
      ```
-     `status: pr-aangemaakt` betekent: de PR staat klaar, CI is groen, er is niets van de
-     gebruiker nodig — de PR wacht alleen nog op een merge-moment naar keuze.
+     `status: pr-aangemaakt` betekent: CI en review afgerond, geen inhoudelijke blocker.
+     `turn: owner` vraagt nog het afzonderlijke merge-besluit/moment; dit is geen mergeautorisatie.
 3. Rapporteer aan de gebruiker: PR-URL, issue-nr, samenvatting van wijzigingen, en welk
    label uiteindelijk is gezet (`review-needed` = actie nodig, `pr-aangemaakt` = geen actie
    nodig).
@@ -803,7 +803,12 @@ Deze regels gelden altijd, zonder uitzondering:
 
 5. **De Security Gate job is leidend.** Zolang `Security Gate — blokkeert merge bij fout` rood is, mag er niets gemerged worden — ook al zijn andere checks groen.
 
-6. **Elke sessie begint op een geïsoleerde branch — volledig autonoom geregeld.** Voer bij sessiestart altijd Stap S0 uit (zie "Sessie-isolatie" hierboven). Zit je op `main` of detached HEAD? Maak direct autonoom een branch aan — nooit vragen aan de gebruiker, nooit wachten, nooit een bestandswijziging vóór de branch bestaat. Issue-nummer bepaal je uit de conversatiecontext of via `gh issue list`; ontbreekt een passend issue, maak er dan zelf één aan.
+6. **Iedere implementatiesessie werkt in een eigen geverifieerde worktree.** Volg S0 en de
+   taak-/eigenaarschapsregels vóór iedere wijziging. In de hoofd-checkout nooit een branch
+   wisselen of schrijven. Een read-only review/onderzoek vereist geen implementatiebranch.
+   Zonder toegewezen taak of bij onduidelijk/overlappend eigenaarschap: geen eigen claim,
+   eerst de eigenaar laten beslissen. Zoek of maak het passende gelabelde issue vóór implementatie.
+
 
 Zie [SECURITY.md](SECURITY.md) voor het volledige protocol.
 

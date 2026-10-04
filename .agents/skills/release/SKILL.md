@@ -1,7 +1,7 @@
 ---
 name: release
 description: "Release van develop naar productie — eerst een verplichte securitypoort (/security-review op de volledige releasediff + open alerts), daarna versiebump, release-PR, deploycontrole en tag."
-disable-model-invocation: false
+disable-model-invocation: true
 argument-hint: "[--dry-run]"
 ---
 
@@ -59,7 +59,7 @@ eigenaar uit waarom, met bestand en regel. De eigenaar beslist, niet jij.
    git fetch origin develop main --tags
    # Release-issue: zoek een open "release vX.Y.Z.R"-issue, anders aanmaken met
    #   --label "type: chore" --label "priority: medium" --label "source: claude-code"
-   git worktree add -b "feature/#<nr>-release-<versie>" ".claude/worktrees/<nr>-release-<versie>" origin/develop
+   git worktree add -b "feature/#<nr>-release-<versie>" ".claude/worktrees/<nr>-<sessie>" origin/develop
    ```
    Codex gebruikt `codex/<nr>-release-<versie>` en `.codex/worktrees/<nr>-<sessie>`;
    gebruik `source: codex` voor een nieuw Codex-issue. Claude Code gebruikt het voorbeeld hierboven.

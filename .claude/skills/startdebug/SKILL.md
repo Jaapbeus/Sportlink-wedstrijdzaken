@@ -79,7 +79,7 @@ gebruiker in plaats van te mergen of te resetten.
 git -C $developPad fetch origin develop
 git -C $developPad merge --ff-only origin/develop
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "FF-only mislukt — develop is lokaal afgeweken. STOP en meld aan de gebruiker." -ForegroundColor Red
+    throw "FF-only mislukt — develop is lokaal afgeweken. Geen migraties/services starten."
 }
 ```
 

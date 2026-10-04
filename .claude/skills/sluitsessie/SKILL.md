@@ -93,7 +93,7 @@ leg de overdracht en memory vast. Ga nooit andermans werk herstellen om de sessi
 ## FASE 2 — DOCUMENTATIE (alleen als Fase 1 volledig ✅)
 
 **2a. Gewijzigde bestanden**
-`git diff origin/$(git branch --show-current)...HEAD --name-only 2>/dev/null || git diff HEAD~5..HEAD --name-only`
+`git diff @{upstream}...HEAD --name-only`; ontbrekende upstream expliciet rapporteren, geen historische fallback.
 
 **2b. CHANGELOG [Unreleased]**
 Lees eerste 60 regels van `CHANGELOG.md` — entry aanwezig en passend? ✅ / leeg? ⚠️
@@ -123,7 +123,7 @@ Lees eerste 60 regels van `CHANGELOG.md` — entry aanwezig en passend? ✅ / le
 **3c. Open issues die in deze sessie zijn afgerond**
 Haal issue-nummers op uit recente commit-messages op de huidige branch:
 ```bash
-git log origin/main..HEAD --pretty=format:"%s" 2>/dev/null \
+git log @{upstream}..HEAD --pretty=format:"%s" 2>/dev/null \
   | grep -oE '#[0-9]+' | sort -u
 ```
 
@@ -132,7 +132,8 @@ git log origin/main..HEAD --pretty=format:"%s" 2>/dev/null \
 > geen regels, en `sort` sluit daarna af met 0. De skill zou dan "geen afgeronde issues" melden
 > in plaats van een fout. Let op dat de fout onzichtbaar blijft op een macOS met `ugrep` of
 > GNU-grep uit Homebrew op `PATH` — die accepteren `-P` wél.
-Voor elk gevonden nummer: controleer de GitHub-status én het statuslabel:
+Neem issue-nummers uitsluitend uit het vastgelegde taakregister en de eigen PR;
+geen inventarisatie van andermans integratiecommits. Voor elk gevonden nummer: controleer de GitHub-status én het statuslabel:
 ```bash
 gh issue view <nr> --json number,title,state,labels 2>/dev/null
 ```

@@ -38,11 +38,11 @@ def controleer(root: Path) -> list[str]:
             if naam in {"autonoom", "release", "sluitsessie", "startdebug"}:
                 fouten.append(f"{naam}: verplichte skilltweeling ontbreekt")
             continue
-        if links.read_text().replace("CLAUDE.md", "AGENTS.md") != rechts.read_text().replace("CLAUDE.md", "AGENTS.md"):
+        if links.read_text(encoding="utf-8").replace("CLAUDE.md", "AGENTS.md") != rechts.read_text(encoding="utf-8").replace("CLAUDE.md", "AGENTS.md"):
             fouten.append(f"{naam}: skilltweelingen verschillen inhoudelijk")
     for basis in (claude, codex):
         for pad in sorted(basis.glob("*/SKILL.md")):
-            regel = onafgesloten_codeblok(pad.read_text())
+            regel = onafgesloten_codeblok(pad.read_text(encoding="utf-8"))
             if regel:
                 fouten.append(f"{pad.relative_to(root)}:{regel}: onafgesloten codeblok")
     return fouten

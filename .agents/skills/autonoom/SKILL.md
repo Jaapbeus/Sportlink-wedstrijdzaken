@@ -72,7 +72,7 @@ Een nog open `awaiting-release`-issue betekent niet dat implementatie opnieuw mo
 
 ---
 
-## FASE 0 — VOORBEREIDING: PR's mergen + opruimen
+## FASE 0 — Geautoriseerde PR's en uitsluitend eigen afgerond werk
 
 ### 0a. Open PR's met groene CI samenvoegen
 
@@ -123,7 +123,7 @@ gh run view $run.databaseId --json jobs --jq '.jobs[] | {name: .name, conclusion
 
 Alle jobs `success` of `skipped`? → ✅
 
-Toon: versienummer uit health endpoint: `Invoke-RestMethod http://localhost:7094/api/health`
+Alleen bij gereserveerde debugruntime: lokale debugversie (geen productie-bewijs): `Invoke-RestMethod http://localhost:7094/api/health`
 
 ---
 
@@ -134,8 +134,13 @@ Dit is geen optionele stap. De skill loopt pas verder als deze fase volledig gro
 ### Stap: haal alle open security issues op
 
 ```powershell
-gh issue list --state open --label "security" --json number,title,labels,body
+gh issue list --state open --label "type: security" --json number,title,labels,body
 ```
+
+Controleer ook historische `security`-issues met dezelfde read-only query. Het legacylabel
+wordt nog op GitHub gebruikt; een lege canonieke query bewijst daarom geen lege securitywachtrij.
+Bij query-/toegangsfout geen groene securitytriage rapporteren; controleer daarnaast de verplichte
+Security Gate en open alerts via de releaseprocedure. Maak geen nieuwe legacylabels.
 
 ### Als er open security issues zijn
 
@@ -150,7 +155,8 @@ fixes implementeren om die blokkade op te heffen.
 
 ### Als er geen open security issues zijn
 
-✅ Security Gate geslaagd — ga verder naar Fase 1.
+✅ Issue-triage zonder open bevindingen (canonieke én historische query geslaagd).
+Dit bewijst niet dat Security Gate of release-securitypoort geslaagd is; die checks blijven verplicht.
 
 ---
 
@@ -167,19 +173,19 @@ gh issue list --state open --limit 50 --json number,title,labels,body
 Analyseer elk issue en deel in:
 
 **UITVOERBAAR-KLEIN** (standaard — altijd uitvoeren):
-- Labels: `bug`, `fix`, `security`, `chore`, `docs` — of kleine verbetering zonder nieuw scherm/endpoint
+- Labels: `type: bug`, `type: security`, `type: chore`, `type: docs` — of kleine verbetering zonder nieuw scherm/endpoint
 - Criterium: technisch helder, geen beslissing van eigenaar vereist, alle data aanwezig in codebase
 - Past binnen de gratis Azure-stack (geen nieuwe betaalde resources)
 - Scope: ≤ ~3 bestanden, ≤ ~1 dag werk, geen nieuwe tabel/pagina nodig
 
 **UITVOERBAAR-GROOT** (alleen met `--features`):
-- Labels: `enhancement`, `type: feature`, `epic`
+- Labels: `type: feature`, `epic`
 - Meerdere nieuwe bestanden, nieuwe DB-tabel, nieuwe Blazor-pagina, of nieuwe API-endpoints
 - Technisch helder en volledig gespecificeerd — maar groot genoeg om expliciet te plannen
 - **Zonder `--features`**: sla over, voeg geen label toe (eigenaar kiest zelf wanneer)
 
-**WACHT OP EIGENAAR** (sla over, voeg label toe):
-- Al gelabeld `wacht op: eigenaar` / `waiting-for-owner` → altijd overslaan
+**WACHT OP EIGENAAR** (sla over en rapporteer de beslissing):
+- Al gelabeld `status: waiting-owner` of `turn: owner` → altijd overslaan
 - Architectuurregel onduidelijk, AVG/security afweging nodig, budget/infra wijziging vereist
 - Issue is te vaag om te implementeren zonder aanvullende specificatie
 
@@ -189,17 +195,11 @@ Analyseer elk issue en deel in:
 
 Toon de indeling voordat je begint met implementeren. Toon ook welke grote features overgeslagen worden en waarom.
 
-### 1c. Label wacht-issues
+### 1c. Eigenaarsbeurt vastleggen
 
-Voor elk toegewezen "wacht op eigenaar" issue dat nog geen passend label heeft:
-```powershell
-gh issue edit <nr> --add-label "waiting-for-owner"
-```
-
-Voeg een kort comment toe met de open vraag:
-```powershell
-gh issue comment <nr> --body "⏸️ Wacht op eigenaar — [open vraag hier]"
-```
+Voor het toegewezen issue: leg de open beslissing in een veilig comment vast en wissel uitsluitend
+het `turn:`-label naar `turn: owner`, met remove+add in één operatie. Gebruik geen
+`waiting-for-owner`/`wacht op: eigenaar` of andere synoniemen; verander `status:` niet handmatig.
 
 ---
 
@@ -237,7 +237,7 @@ c. ./scripts/dev/Test-App.ps1
    → exit 1? Fix, terug naar a.
 ```
 
-Als FunctionApp C# gewijzigd is → stop FunctionApp en herstart (geen hot reload op de
+Alleen met exclusieve runtime-reservering: als FunctionApp C# gewijzigd is → stop eigen FunctionApp en herstart (geen hot reload op de
 isolated worker):
 ```powershell
 ./scripts/dev/Stop-Debug.ps1
@@ -255,7 +255,7 @@ Loop onderstaande twee categorieën na. Lees elk relevant bestand, vergelijk met
 | `AGENTS.md` | Architectuurregel, buildproces, conventie of deployment-constraint gewijzigd |
 | `FunctionApp/AGENTS.md` | Endpoint, datamodel, API-veld of FunctionApp-configuratie gewijzigd |
 | `docs/API.md` | Endpoint toegevoegd, gewijzigd of verwijderd |
-| `docs/openapi.yaml` | Idem — sync met API.md |
+| `docs/api-standaarden/openapi.yaml` | Idem — sync met API.md |
 | `docs/ARCHITECTUUR-PLANNER.md` | Planner-logica, pipeline of kanaalstrategie gewijzigd |
 | `docs/ENTRA-AUTH-BEHEER.md` | Auth-configuratie, Easy Auth, Entra of rollen gewijzigd |
 | `docs/VERIFICATIE-SCRIPTS.md` | Testscript, schema-controle of endpoint-verificatie gewijzigd |
@@ -513,8 +513,8 @@ BlazorAdmin hot reload via `dotnet watch` — draait automatisch bij Stap 2B als
 ### Fase 2 — Implementatie
 [per issue: wat gedaan, PR-URL, CI-status, gesloten ja/nee]
 
-### Teruggedraaid
-[per issue: reden, branch verwijderd, comment geplaatst, label gezet]
+### Onvoltooid eigen werk
+[per issue: reden, behouden branch/worktree, overdracht en eigenaarsbeurt]
 
 ### Fase 2b — Hercheck
 | Herlus-rondes | n |
@@ -524,8 +524,8 @@ BlazorAdmin hot reload via `dotnet watch` — draait automatisch bij Stap 2B als
 | Lokaal = online | ✅/⚠️ |
 | Versie consistent | ✅/⚠️ |
 
-### Fase 4 — Iteratie-branch
-| Branch | feature/v{x.y}-iteratie |
+### Fase 4 — Volgende toegewezen taak
+| Issue, eigen branch/worktree of geen nieuwe opdracht | ... |
 
 ### Fase 5 — Debug
 | FunctionApp :7094 | ✅/❌ |
