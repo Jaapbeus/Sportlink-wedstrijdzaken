@@ -132,8 +132,11 @@ Onderaan **Planning** staat het blok **Veldbezetting delen**, en onderaan **Veld
   de schakelaar *PDF-export van planningen inschakelen* aanzet en opslaat. Die staat standaard **uit**. De PDF
   gebruikt de bibliotheek QuestPDF onder de gratis Community-licentie, die alleen geldt voor organisaties met
   een jaaromzet onder 1 miljoen USD; door de schakelaar aan te zetten bevestigt u dat dit voor uw vereniging
-  geldt. HTML kopiëren en downloaden werken altijd. Alleen beheerders zien de PDF-knop; ook als de
-  schakelaar uit staat weigert de server een PDF-verzoek.
+  geldt. HTML kopiëren en downloaden werken altijd. Staat de schakelaar aan, dan zien ook gebruikers zonder beheerdersrol de
+  PDF-knop op Planning; staat hij uit, dan verdwijnt de knop en weigert de server een PDF-verzoek (409).
+- **Handmatig versleepte wedstrijden gaan mee (#1460):** op Veld optimalisatie bevat het gedeelde
+  HTML- of PDF-bestand de planning zoals die op het scherm staat, ook nadat u wedstrijden zelf hebt
+  verplaatst. Er wordt niets opgeslagen; de pagina stuurt de getoonde lijst eenmalig mee.
 - **Rechten:** Planning delen kan elke ingelogde gebruiker; Veld optimalisatie blijft alleen voor beheerders.
 
 ### Veld optimalisatie — twee tabs: Huidig en Optimaal
@@ -485,7 +488,7 @@ die niet geïnstalleerd is op de devmachine. `dotnet build` compileert succesvol
 aanwezig is; de runtime is een andere installatie.
 
 **Oplossing:** Controleer welke runtimes beschikbaar zijn (`dotnet --list-runtimes`) en zorg dat
-`TargetFramework` daarmee overeenkomt. Huidig: `net9.0`.
+`TargetFramework` daarmee overeenkomt. Huidig: `net10.0` (de .NET 10 SDK brengt de runtime mee).
 
 **Controle:** `func start` toont "Worker process started and initialized" — anders is er een
 runtime mismatch.
@@ -655,7 +658,10 @@ De pagina `/teambegeleiding` stelt beheerders én gebruikers met de **user-rol**
 2. **Begeleiders inzien** — kaarten per begeleider met naam, teamrol, e-mailadres en telefoonnummer.
    U moet ingelogd zijn om deze pagina te kunnen openen, dus deze contactgegevens zijn alleen
    zichtbaar voor mensen die toegang hebben tot dit beheerscherm. Zichtbaarheid is daarmee geen
-   aparte afweging per veld, maar een gevolg van wie er mag inloggen.
+   aparte afweging per veld, maar een gevolg van wie er mag inloggen. De badge toont de **functie**
+   uit de Sportlink-export, bijvoorbeeld "Technische staf - Trainer/coach" (#1360); zo ziet u
+   doordeweeks de trainer en in het weekend de teammanager. Staat er alleen de brede teamrol, dan is de
+   begeleidersgroep nog niet opnieuw geïmporteerd met de kolom *Functie* (zie 10a).
 3. **"Email Aan"-veld** — bewerkbaar tekstveld, standaard gevuld met alle begeleiders van het team in
    `"Naam" <adres>; ...`-notatie. Dit veld bepaalt **daadwerkelijk** wie de mail bij "Vraag doorsturen"
    ontvangt (#765) — er is dus geen verschil meer tussen wat u ziet en wat er verstuurd wordt.
@@ -717,6 +723,10 @@ importeren"), of via de kaart op de Instellingen-pagina zelf.
 
 - CSV-export uit Sportlink inlezen; het scherm bevat de exportstappen en een voorbeeldweergave vóór
   bevestiging.
+- **Kolom Functie (#1360):** de kolom *Functie* (of *Functie in team*) wordt mee ingelezen en getoond op
+  Teambegeleiding. Ontbreekt de kolom, dan meldt de import dat; bestaande begeleiders krijgen hun functie
+  pas na een nieuwe import. Een te lange waarde of onjuiste regel geeft een melding met het echte regelnummer
+  in het bestand (HTTP 400, op beide databasevarianten, #1461).
 - **Wat er met de gegevens gebeurt.** Uw browser leest het bestand in en toont een voorbeeld van
   de eerste vijf rijen, zodat u kunt controleren of u het juiste bestand heeft. Klikt u daarna op
   importeren, dan wordt **de volledige inhoud van de CSV naar de server gestuurd** (beveiligd,
@@ -933,7 +943,8 @@ Naast **Nu synchroniseren** (vorige week t/m einde seizoen) staat op de Instelli
 gekozen seizoen opnieuw op bij Sportlink — handig na een onvolledige of foutieve eerdere sync.
 
 1. Klik op **Volledig seizoen opnieuw opbouwen…**
-2. Kies het seizoen (standaard het huidige seizoen) in de bevestigingsmelding
+2. Kies het seizoen (standaard het huidige seizoen) in de bevestigingsmelding; seizoenen in de toekomst
+   staan niet in de lijst, en een seizoen zonder seizoensrij wordt met een melding geweigerd (#1461)
 3. Bevestig met **Ja, opnieuw opbouwen** (of kies **Annuleren**)
 
 Dit duurt langer en belast de Sportlink-koppeling zwaarder dan een gewone sync; gebruik het dus

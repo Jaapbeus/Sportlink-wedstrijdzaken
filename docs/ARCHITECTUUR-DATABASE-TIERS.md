@@ -122,7 +122,8 @@ kalendermaand, zonder mogelijkheid om daaromheen te werken — dit gebeurde ~10 
   die qua faalmodel (7-dagen-pauzebeleid bij inactiviteit) fundamenteel anders is dan Azure SQL
   serverless' vCore-uitputting.
 - SQLite daarna — een lichter, file-based alternatief; relevant zodra de opslagvraag op Azure
-  Functions Linux Consumption is opgelost (zie #826).
+  Functions is opgelost (zie #826; productie draait sinds 2026-10-03 op Flex Consumption, dat
+  Azure Files storage mounts wél ondersteunt).
 - Cosmos DB als laatste — raakt uitsluitend één geïsoleerd onderdeel (het e-maillog), niet de
   hoofddatabase, en heeft dus de laagste prioriteit.
 
