@@ -839,3 +839,11 @@ jobs:
           printf '%s\n' "$ONTBREEKT"
           exit 1
 ```
+
+## Instellingen per instantie (#1515)
+
+Op Flex Consumption draait elke niet-HTTP-trigger op een eigen instantie; de procesbrede
+instellingencache is dus per instantie leeg tot hij gevuld wordt. Een worker-middleware
+(`Planner.Endpoints/Instellingen/InstellingenLaadGuard.cs`, geregistreerd in beide `Program.cs`)
+laadt de instellingen vóór elke functie, eenmaal per proces, met een nieuwe poging bij de volgende
+aanroep als de eerste faalde. Een database-uitval laat de functie niet falen (alleen een warning).
