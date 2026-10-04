@@ -18,15 +18,27 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.11.0.0] — 2026-10-04
+
 ### Changed
 - De app draait op .NET 10: alle projecten, de build en de Flex-Function App zijn overgezet (#1073, #1074).
 
 ### Fixed
-- **Instellingen per instantie geladen op de Flex-app** (backport van hotfix 3.10.0.2, zie issue #1515). Sportlink-timers
-  (keep-alive, warmup, contract-check) zien de clubinstellingen nu ook op een eigen Flex-instantie.
 - **Sportlink contract-check meldt niet langer alle velden als afwijkend** (#1518). De controle vergeleek veldnamen hoofdlettergevoelig terwijl Sportlink PascalCase levert; geen onterechte dagelijkse noodmail meer.
-- **Opslag via managed identity op de Flex-app** (backport van hotfix 3.10.0.1, zie issue #1512). E-mailverwerking en
-  handmatige sync gebruiken de identity-gebaseerde opslaginstellingen als er geen verbindingsstring is.
+
+## [3.10.0.2] — 2026-10-04
+
+### Fixed
+
+- Sportlink-timers (token-keepalive, PublicMatchId-warmup, contractcontrole) werden op Flex Consumption stilzwijgend overgeslagen omdat elke instantie de instellingen niet geladen had; instellingen worden nu vóór elke functie eenmaal per instantie geladen (#1515)
+
+## [3.10.0.1] — 2026-10-04
+
+### Fixed
+- **E-mailverwerking en handmatige sync werken weer op Flex Consumption** (#1512). De opslag van de
+  noodmail-throttle en de sync-wachtrij gebruikte alleen een connection string; op Flex draait de
+  host-opslag via managed identity (`AzureWebJobsStorage__accountName`). Beide ondersteunen nu
+  beide vormen, met de connection string als voorrang.
 
 ## [3.10.0.0] — 2026-10-03
 
