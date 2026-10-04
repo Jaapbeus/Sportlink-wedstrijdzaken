@@ -117,4 +117,45 @@ public class SportlinkMatchContractTests
 
         act.Should().Throw<JsonException>();
     }
+
+    // #1518: de echte wire-vorm is PascalCase; de oude hoofdlettergevoelige check meldde alle 14 velden.
+    private const string PascalCaseMatchJson = """
+        {
+            "PublicMatchId": "M000000001",
+            "ExternalMatchId": 123456,
+            "MatchDate": { "Date": "2026-09-15", "StartTime": "19:30" },
+            "MatchStatus": "SCHEDULED",
+            "IsHomeMatch": true,
+            "IsCanceledMatch": false,
+            "IsConceptMatch": false,
+            "IsEditFieldAllowed": true,
+            "IsAssignDressingRoomsAllowed": true,
+            "IsAssignOfficialsAllowed": true,
+            "IsEditFieldSidePanelAllowed": true,
+            "IsAddScoreAllowed": true,
+            "MatchField": { "FacilityId": "BBCF989" },
+            "Field": { "FieldId": "BBCF989-OUTDOOR_FIELD-6" },
+            "MatchOfficials": []
+        }
+        """;
+
+    [Fact]
+    public void ControleerVorm_PascalCaseWireVorm_GeeftLegeLijst()
+        => SportlinkMatchContract.ControleerVorm(PascalCaseMatchJson).Should().BeEmpty();
+
+    [Fact]
+    public void ControleerVorm_PascalCaseZonderEenVeld_MeldtAlleenDatVeld()
+    {
+        var json = PascalCaseMatchJson.Replace("\"IsAddScoreAllowed\": true,", "");
+
+        SportlinkMatchContract.ControleerVorm(json).Should().Equal("isAddScoreAllowed");
+    }
+
+    [Fact]
+    public void ControleerVorm_PascalCaseHernoemdVeld_WordtGemeld()
+    {
+        var json = PascalCaseMatchJson.Replace("\"MatchStatus\"", "\"Status\"");
+
+        SportlinkMatchContract.ControleerVorm(json).Should().Equal("matchStatus");
+    }
 }

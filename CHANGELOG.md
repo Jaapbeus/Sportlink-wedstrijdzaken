@@ -18,6 +18,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.11.0.0] — 2026-10-04
+
+### Changed
+- De app draait op .NET 10: alle projecten, de build en de Flex-Function App zijn overgezet (#1073, #1074).
+
+### Fixed
+- **Sportlink contract-check meldt niet langer alle velden als afwijkend** (#1518). De controle vergeleek veldnamen hoofdlettergevoelig terwijl Sportlink PascalCase levert; geen onterechte dagelijkse noodmail meer.
+
 ## [3.10.0.2] — 2026-10-04
 
 ### Fixed

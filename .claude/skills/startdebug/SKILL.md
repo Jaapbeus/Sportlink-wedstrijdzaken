@@ -148,7 +148,7 @@ Platformverschil in de output, geen fout:
 > aanroep of de poort nog luistert. Een controle in dezelfde aanroep bewijst niets.
 
 Faalt de start (exit 1)? Lees de logs (macOS/Linux) of het bijbehorende venster (Windows) en
-rapporteer de fout. Veelvoorkomend: .NET 9 runtime ontbreekt, of de database draait niet
+rapporteer de fout. Veelvoorkomend: .NET 10 SDK/runtime ontbreekt, of de database draait niet
 (`docker compose up -d`).
 
 ## Stap 3 — FunctionApp health check
