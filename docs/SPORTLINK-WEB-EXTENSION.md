@@ -1,48 +1,42 @@
 # Sportlink Web Extension
 
-> #1411 voegt opt-in automatische herlogin met TOTP toe. De bevestigde tien-uurslimiet vereist
-> een nieuwe sessie; refresh alleen is niet onbeperkt. Met een ingerichte hostsleutel gebruiken
-> beide tiers versleutelde databaseopslag; de oudere bootstrapbeschrijving hieronder geldt voor
-> de configuratie zonder die sleutel. Zie [automatische login](SPORTLINK-AUTOLOGIN.md).
+## Wat kun je ermee?
 
-> **Status: gedeeltelijk gebouwd. Het read-only Match-endpoint (#991) is 2026-09-06 lokaal live
-> geverifieerd tegen een echte testwedstrijd** (zie §4.4/#1036/#1038 voor de daarbij gevonden en
-> gefixte bugs: `ExternalMatchId` kwam als JSON-getal terug in plaats van string (#1036), en
-> `MatchDate` kwam genest terug (`{Date, StartTime, DateTime}`) in plaats van als losse ISO-string
-> (#1038)). **Kleedkamers toewijzen (#992) is 2026-09-06 live bevestigd te werken** — na een
-> afwijzing (`INVALID_COMBINATION_FACILITY_DRESSINGROOM`, #1040) leverde een netwerktrace door de
-> eigenaar de echte identifiervorm: `{FacilityId}-DRESSINGROOM-{n}` (bijv.
-> `"<FacilityId>-DRESSINGROOM-11"`), niet een los kleedkamernummer (zie #1045). Met die fix slaagde de
-> mutatie echt (`{"isSuccess":true}`, bevestigd in het audit-log en een verse GET). **Veld wijzigen
-> (#993) is 2026-09-06 live bevestigd te werken, volledig end-to-end.** Dezelfde netwerktrace toonde
-> dat Sportlinks eigen UI niet `UpdateMatchField` aanroept (wat deze app eerst implementeerde, HTTP
-> 602 "no valid entity key found") maar `UpdateMatchDetails` — een endpoint dat het VOLLEDIGE
-> wedstrijdrecord verwacht, opgebouwd door een verse Match-GET-snapshot terug te sturen met alléén
-> het gewijzigde veld overschreven (Sportlinks eigen UI-patroon, #1047). Onderweg bleek ook
-> `PublicApplicantId` (aanvankelijk via `UserInfo` opgehaald) leeg mee te mogen voor een
-> eigen-veld-wijziging — live bevestigd geaccepteerd (#1048), dus geen aparte, kwetsbare
-> `UserInfo`-aanroep nodig voor dit pad. **`UserInfo` zelf is nog steeds stuk** (`HTTP 602`) en blokkeert alleen nog
-> #996's actie-pad, dat wél een echte aanvrager-identiteit nodig heeft. Let op: issue #1048 is op
-> 2026-09-12 gesloten door de release-automatisering, niet door een fix — de bug bestaat nog.
-> `SportlinkClubClient.FetchUserInfoAsync` is ongewijzigd en het codecommentaar erboven
-> (`SportlinkClubClient.cs`, bij `UpdateFieldAsync`) noemt hem nog steeds openstaand. **Inkomende wijzigingsverzoeken ophalen (#996, GET) is 2026-09-06 live bevestigd te
-> werken** — toont echte, actuele verzoeken van tegenstanders. De actie (goedkeuren/afwijzen) is
-> bewust NIET live getest en blijft geblokkeerd op #1048's `UserInfo`-bug. **#994 (officials
-> toewijzen), #995 (wijzigingsverzoek datum/tijd/accommodatie) en #997 (oefenwedstrijd aanmaken)
-> zijn inmiddels gebouwd als scaffolding**: endpoint, guard en UI bestaan, maar lopen altijd via de
-> code-niveau `forceDryRun`-lock omdat de exacte requestvorm nooit met een netwerktrace bevestigd is
-> (zie §4.2/§5/§6.2 hieronder). **#995 is bovendien uitsluitend stap 1 (valideren) van Sportlinks
-> tweestaps flow** — stap 2 (bevestigen, die een goedkeuringsverzoek naar de tegenstander stuurt) is
-> bewust NIET gebouwd: geen endpoint, geen client-methode, geen UI-knop. Dit is de enige mutatie in
-> de hele extensie die een échte tegenstander raakt. #997 heeft van alle #986-sub-issues de meeste
-> onbekenden: volledige body onbevestigd, meerdere picklist-vormen onbekend, delete-methode
-> onbekend — alleen de aanmaak-POST en de twee picklist-GETs (Teams + Location) zijn aangesloten,
-> uitslag bewust niet. Verwijderen is sinds #1440 gebouwd en sinds #1458 live
-> (`ClubMatchDeleteLiveBevestigd = true`; volgt de club-instelling `sportlinkDryRun`). Epic
-> [#986](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/986). Dit document is de
-> canonieke, levende beschrijving — bij twijfel of tegenspraak met een ouder issue-comment geldt
-> dit document. Het bronrapport met alle live-geteste technische details staat in
-> [`docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md`](ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md).
+De Sportlink-koppeling brengt veelgebruikte wedstrijdacties naar de webapp. Je hoeft daardoor
+voor die acties niet steeds zelf een Sportlink-scherm op te zoeken. De koppeling moet wel zijn
+ingericht en gebruikt de rechten van het gekoppelde Sportlink-account.
+
+| Actie | Huidige mogelijkheden |
+|---|---|
+| Wedstrijd bekijken | Details ophalen en de wedstrijd in Sportlink openen |
+| Veld en kleedkamers | Toewijzen vanuit de webapp, als wedstrijd en rechten dat toestaan |
+| Scheidsrechters | Officials toewijzen; de eerdere verplichte simulatie is opgeheven |
+| Oefenwedstrijd | Aanmaken en verwijderen; verwijderen betreft een eigen clubwedstrijd, geen KNVB-wedstrijd |
+| Datum, tijd of accommodatie | Validatiestap beschikbaar; de aparte bevestigingsstap voor een verplicht wijzigingsverzoek is nog niet gebouwd |
+| Inkomende wijzigingsverzoeken | Ophalen en acties voor goedkeuren/afwijzen zijn gebouwd; de actie vereist een werkende `UserInfo`-lookup |
+
+**Begin met dry-run.** De club-instelling `sportlinkDryRun` staat standaard aan. Dan worden
+schrijfacties gesimuleerd; voorbereidende leesacties kunnen nog wel Sportlink benaderen. Met
+dry-run uit kunnen de bevestigde mutaties echt schrijven. Je rol en de wedstrijdrechten blijven
+bepalen wat mag. Een simulatie bewijst niet dat Sportlink de echte wijziging zal accepteren.
+
+Automatische herlogin is optioneel. Met die inrichting kan de app een verlopen Sportlink-sessie
+vernieuwen; zie [automatische Sportlink-login](SPORTLINK-AUTOLOGIN.md). Voor dagelijkse bediening
+kun je de [gebruikershandleiding](BEHEERDER-HANDLEIDING.md) volgen.
+
+## Technische verdieping
+
+De status hierboven volgt de gedeelde clientcode: `MatchOfficialsActionLiveBevestigd`,
+`UpdateMatchDetailsChangeRequestLiveBevestigd`, `ClubMatchLiveBevestigd` en
+`ClubMatchDeleteLiveBevestigd` staan alle vier op `true`. Dat beschrijft de code, niet een
+live-test van jouw installatie. `MatchChangeRequestActionAsync` haalt de aanvrager op via
+`FetchUserInfoAsync`; eerdere verificatie vond daar een fout. Ga bij inrichting dus na of die
+actie met jouw account werkt.
+
+Hieronder staan het protocol, de inrichting, beveiligingsgrenzen en de geschiedenis van de
+implementatie. Oudere proefresultaten beschrijven die proef, niet de huidige stand van alle acties.
+Epic [#986](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/986) en het
+[brononderzoek](ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md) geven de achtergrond.
 
 > **HARDE REGEL VOOR CODING AGENTS — lees §4.4 vóór je iets met dit mechanisme aanraakt.** Een
 > coding agent leest, kopieert, bewaart of gebruikt nooit zelf een Sportlink-refresh- of
@@ -616,7 +610,8 @@ Vier dingen om te onthouden:
   `PutMutationAsync` kreeg een `forceDryRun`-parameter (`if (forceDryRun || _isDryRun())`) — de club
   kan dit NIET uitzetten via Instellingen, ongeacht de stand van `sportlinkDryRun`. Elke
   mutatiemethode voor zo'n onbevestigd endpoint geeft `forceDryRun: !XyzLiveBevestigd` mee, met een
-  bijbehorende `private const bool XyzLiveBevestigd = false;` bovenaan `SportlinkClubClient.cs` —
+  bijbehorende constante die bij een onbevestigd endpoint op `false` staat. De vier huidige
+  `LiveBevestigd`-constanten staan inmiddels op `true`; onderstaande uitleg beschrijft het mechanisme —
   grep-baar en pas door een mens (nooit een agent, §4.4) op `true` te zetten in een aparte,
   reviewbare PR ná een live trace. De log-regel bij deze tak vermeldt expliciet
   "code-lock, body niet live bevestigd" (anders dan de generieke dry-run-logregel), en
@@ -915,14 +910,12 @@ bevestigd is (het eerste voorbeeld: `AssignOfficialsAsync`). In dat geval krijgt
 tekst "code-lock, body niet live bevestigd" — zo is in de Function-log meteen te zien of een
 gesimuleerde mutatie kwam door de club-instelling of door deze harde, niet-instelbare lock.
 
-Sinds #995 geldt dezelfde lock voor `RequestMatchChangeAsync`
-(`UpdateMatchDetailsChangeRequestLiveBevestigd = false`) — met een extra reden om hem aan te
-houden: dit is de enige mutatie die een ECHTE tegenstander raakt, en zelfs de "valideer"-stap kan in
-werkelijkheid al de gevaarlijke actie zijn als Sportlinks eerste PUT geen dry validate blijkt te
-zijn (zie §5). Ontgrendelen (de constante op `true` zetten) mag uitsluitend na Aanpak-stap 1 van
-issue #995 — een handmatige proef door de wedstrijdsecretaris met netwerk-meekijken — en nooit door
-een agent (§4.4). Zelfs dan bouwt deze constante alleen stap 1 vrij: stap 2 (bevestigen) bestaat
-nog steeds niet in de code en vereist een aparte, toekomstige beslissing.
+Bij #995 werd dezelfde lock gebruikt voor `RequestMatchChangeAsync`. Sinds #1319 staat
+`UpdateMatchDetailsChangeRequestLiveBevestigd` op `true`: de validatiestap volgt nu de
+club-instelling `sportlinkDryRun`. Die stap kan een echte Sportlink-aanroep doen. De aparte
+bevestigingsstap voor een verplicht wijzigingsverzoek bestaat nog niet en vereist een toekomstige
+implementatie en beslissing. Een eventuele nieuwe lock ontgrendelen blijft voorbehouden aan de
+eigenaar na een handmatige proef, nooit aan een agent (§4.4).
 
 **#1440/#1458 — verwijderen van een clubwedstrijd (`DeleteClubMatchAsync`).** Derde lock van deze
 soort, door de eigenaar opgeheven in #1458 (besluit 2026-10-03, na live trace):

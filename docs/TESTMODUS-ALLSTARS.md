@@ -9,6 +9,31 @@ De ALLSTARS-testmodus maakt het mogelijk om Planning, Veld optimalisatie en de p
 
 ---
 
+## Een eerste proefrondje
+
+Op een ingerichte installatie kun je meteen beginnen:
+
+1. Kies **AllStars FC** in de clubkeuze bovenaan. De oranje testmodusmelding laat zien dat je met fictieve wedstrijden werkt.
+2. Open **Planning** en kies een datum waarvoor testwedstrijden zijn ingevoerd.
+3. Open **Veld optimalisatie**, bereken een voorstel en vergelijk tijden en velden.
+4. Voeg via **Testdata → Wedstrijden** een fictieve wedstrijd toe en bekijk wat er in de planning verandert.
+5. Kies na afloop je eigen club weer in de bovenbalk.
+
+Nog geen installatie? Volg eerst de [lokale setup](DEVELOPER-SETUP.md). Op de Postgres-tier zet je
+daarna, met de lokale services aan en `POSTGRES_CONNECTION_STRING` in je omgeving, de demodata klaar:
+
+```powershell
+# Vanuit PowerShell 7, in de repository-root; Windows en macOS
+./scripts/dev/Seed-AllStarsDemodata.ps1
+```
+
+Dit script maakt de benodigde historietabellen aan, vult fictieve teams en wedstrijden en herstelt
+de teamlijst via de lokale API. Een echte Sportlink-sync is hiervoor niet nodig. Gebruik je de
+SQL Server-tier, volg dan de testdata-inrichting voor die tier; dit script is alleen voor Postgres.
+
+De democlub schakelt synchronisatie en e-mailverwerking uit. Sommige configuratie of leermomenten
+worden gedeeld: zie de tabel hieronder voordat je meer doet dan testwedstrijden invoeren en plannen.
+
 ## Wat is de ALLSTARS-testmodus?
 
 In normale modus haalt de planner zijn data uit de Sportlink Club API (live) of de gesynchroniseerde database (`his.matches` met `ClubCode = '<jouwclub>'`). In ALLSTARS-modus wordt dezelfde plannerlogica uitgevoerd op testdata die opgeslagen staat in `his.matches WHERE ClubCode = 'ALLSTARS'`.
