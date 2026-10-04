@@ -19,6 +19,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Changed
+- Het deploypakket van de Function App wordt nu alleen voor linux-x64 gepubliceerd (zip ongeveer 59 MB naar 27 MB op de Postgres-tier), zodat koude starts minder te downloaden hebben (#1473).
 - Documentatie bijgewerkt naar de huidige stand (Flex Consumption, .NET 10, beheerdershandleiding, setup voor nieuwe clubs) en verouderde documentatie en scripts opgeruimd (#1525).
 - Afsluitende codereview: grote methodes opgesplitst, verouderd commentaar (Linux Consumption, dry-run-lock) opgeschoond, en de Sportlink-extensie-instellingenpagina meldt zich nu correct af bij het sluiten (#1529).
 

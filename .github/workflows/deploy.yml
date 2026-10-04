@@ -166,10 +166,16 @@ jobs:
 
       # De Function App draait op Flex Consumption met stack dotnet-isolated 10.0 (#1074);
       # dit net10.0-artefact past daarbij.
+      # #1473: RID-specifiek voor linux-x64 (Flex Consumption draait op Linux x64), framework-
+      # dependent. Zonder -r komen de native QuestPDF-bibliotheken van alle platforms in het
+      # pakket (~39,5 MB extra zip). Geldt voor beide tiers (csproj_path). Lokaal blijft
+      # `func start` ongewijzigd: de RID staat bewust niet in de csproj.
       - name: Function App bouwen
         run: |
           dotnet publish ${{ steps.tier.outputs.csproj_path }} \
             --configuration Release \
+            --runtime linux-x64 \
+            --self-contained false \
             --output ./output
 
       - name: Artefact uploaden
