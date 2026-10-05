@@ -223,6 +223,27 @@ public class AutoPlanServiceIntegrationTests : IDisposable
         items.Should().ContainSingle().Which.Veldafmeting.Should().Be(0.5m);
     }
 
+    /// <summary>#1547: Sportlinks eigen speelduur (via interncode) is leidend, plus de vijftien
+    /// minuten die de Sportlink-veldplanner erbovenop toont. Twee clubwedstrijden met hetzelfde
+    /// Sportlink-wedstrijdnummer (1) krijgen elk hun eigen duur.</summary>
+    [PostgresFact]
+    public async Task VeldbezettingAsync_SportlinkSpeelduurIsLeidend_OokBijGelijkWedstrijdnummer()
+    {
+        await using var conn = await OpstellingAsync();
+        await ZetWedstrijdAsync(conn, 9500021, "ALLSTARS JO13-1", aanvang: "10:00", veld: "Kunstgras 1");
+        await ZetWedstrijdAsync(conn, 9500022, "ALLSTARS JO13-2", aanvang: "10:00", veld: "Kunstgras 2");
+        await ZetWedstrijdAsync(conn, 9500023, "ALLSTARS JO15-1", aanvang: "12:00", veld: "Kunstgras 1");
+        await ZetSportlinkSpeelduurAsync(conn, wedstrijdnummer: 1, interncode: 9500021, duur: 75);
+        await ZetSportlinkSpeelduurAsync(conn, wedstrijdnummer: 1, interncode: 9500022, duur: 50);
+
+        var items = await AutoPlanService.VeldbezettingAsync(ConnectionString, Zaterdag, Club);
+
+        items.Single(i => i.WedstrijdCode == 9500021).DuurMinuten.Should().Be(90);
+        items.Single(i => i.WedstrijdCode == 9500022).DuurMinuten.Should().Be(65);
+        items.Single(i => i.WedstrijdCode == 9500023).DuurMinuten.Should().Be(70,
+            "zonder Sportlink-speelduur blijft de speeltijdentabel de terugval");
+    }
+
     [PostgresFact]
     public async Task AutoPlanToepassenAsync_NietDemoclub_Weigert()
     {
@@ -241,7 +262,7 @@ public class AutoPlanServiceIntegrationTests : IDisposable
 
     private static async Task<NpgsqlConnection> OpstellingAsync()
     {
-        await HisTabelVorm.ZorgVoorProductievormAsync(ConnectionString, KnownEntities.Teams, KnownEntities.Matches);
+        await HisTabelVorm.ZorgVoorProductievormAsync(ConnectionString, KnownEntities.Teams, KnownEntities.Matches, KnownEntities.MatchDetails);
         PostgresAppSettings.SetForTests("clubCode", Club);
         // De gedeelde HTML-generator eist deze instelling (§42) — zonder deze waarde gooit
         // BouwHtmlInstellingen, en dat zou elke test hier op dezelfde melding laten stranden.
@@ -254,6 +275,7 @@ public class AutoPlanServiceIntegrationTests : IDisposable
         foreach (var sql in new[]
         {
             "DELETE FROM his.matches WHERE clubcode = @club",
+            "DELETE FROM his.matchdetails WHERE clubcode = @club",
             "DELETE FROM his.teams WHERE clubcode = @club",
             "DELETE FROM public.teamvoorkeurtijden WHERE clubcode = @club",
             "DELETE FROM public.teamregels WHERE clubcode = @club",
@@ -303,6 +325,12 @@ public class AutoPlanServiceIntegrationTests : IDisposable
             ("wedstrijd", (object?)wedstrijdNaam ?? $"{teamnaam} - Tegenstander"),
             ("club", Club));
     }
+
+    private static async Task ZetSportlinkSpeelduurAsync(NpgsqlConnection conn, int wedstrijdnummer, long interncode, int duur)
+        => await ExecAsync(conn, @"
+            INSERT INTO his.matchdetails (wedstrijdcode, interncode, duration, clubcode, mta_inserted, mta_modified)
+            VALUES (@nummer, @intern, @duur, @club, NOW(), NOW())",
+            ("nummer", wedstrijdnummer), ("intern", (int)interncode), ("duur", duur), ("club", Club));
 
     private static async Task ExecAsync(NpgsqlConnection conn, string sql, params (string Naam, object Waarde)[] parameters)
     {

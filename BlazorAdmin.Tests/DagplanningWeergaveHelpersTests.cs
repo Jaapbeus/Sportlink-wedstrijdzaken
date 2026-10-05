@@ -90,17 +90,12 @@ public class DagplanningWeergaveHelpersTests
     }
 
     [Fact]
-    public void GanttLabel_KortLabelBlijftOngewijzigd()
+    public void GanttMatchLabel_LangeWedstrijdnaamHoudtDeTegenstander()
     {
-        DagplanningWeergaveHelpers.GanttLabel("AllStars - FC Onbekend").Should().Be("AllStars - FC Onbekend");
-    }
+        // #1547: tot dan knipte de Gantt alles na " - " weg boven 30 tekens — juist de tegenstander.
+        var wedstrijd = "AllStars JO13 1 - Tegenstander met een heel lange verenigingsnaam JO13-1";
 
-    [Fact]
-    public void GanttLabel_LangLabelStriptHetAchtervoegselNaHetKoppelteken()
-    {
-        var label = "AllStars FC eerste elftal senioren - FC Onbekend JO7 1";
-
-        DagplanningWeergaveHelpers.GanttLabel(label).Should().Be("AllStars FC eerste elftal senioren");
+        DagplanningWeergaveHelpers.GanttMatchLabel(wedstrijd, "AllStars JO13 1").Should().Be(wedstrijd);
     }
 
     [Fact]
