@@ -155,6 +155,30 @@ public static class TeamNaamNormalisatie
             int.Parse(match.Groups["team"].Value),
             key);
     }
+
+    /// <summary>
+    /// Leidt de leeftijdscategorie (Speeltijden-sleutel) af uit een teamnaam: "JO14-2" → "JO14",
+    /// "[club] O14-2" → "JO14", "MO13-1" → "MO13" (#1545).
+    /// </summary>
+    /// <remarks>
+    /// Geeft <c>null</c> zonder geslacht-prefix ("14-2"): dat zou een gok zijn tussen JO en MO.
+    /// Bedoeld voor een naam die al door <c>TeamResolver</c> naar een bestaand team is herleid.
+    /// </remarks>
+    public static string? LeidLeeftijdsCategorieAf(string? teamNaam, string? clubPrefix = null)
+    {
+        var componenten = Parse(teamNaam, clubPrefix);
+        return componenten?.Prefix is null ? null : $"{componenten.Prefix}{componenten.LeeftijdNummer}";
+    }
+
+    /// <summary>
+    /// Vult een ontbrekende leeftijdscategorie aan uit het herkende eigen team (#1545). De AI laat de
+    /// categorie terecht leeg bij "14-2" (geen J/M-prefix raden), maar zodra <c>TeamResolver</c> dat
+    /// naar het enige passende team herleidt, staat de categorie vast. Zonder categorie kan de
+    /// beschikbaarheidscheck geen wedstrijdduur bepalen en meldt hij ten onrechte "geen veld".
+    /// Een al ingevulde categorie blijft ongemoeid.
+    /// </summary>
+    public static string? VulLeeftijdsCategorieAan(string? huidige, string? teamNaam, string? clubPrefix)
+        => string.IsNullOrWhiteSpace(huidige) ? LeidLeeftijdsCategorieAf(teamNaam, clubPrefix) : huidige;
 }
 
 /// <summary>Ontlede onderdelen van een genormaliseerde teamnaam. Zie <see cref="TeamNaamNormalisatie.Parse"/>.</summary>

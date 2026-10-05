@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Planner.Shared;
 using FunctionApp.Postgres.Email;
 using FunctionApp.Postgres.Planner;
 using FunctionApp.Postgres.Planner.Repositories;
@@ -102,6 +103,7 @@ internal static class BerichtPipeline
         var cs = PostgresDatabaseConfig.ConnectionString;
         var cc = ResolveHeuristicClubCode(clubCode);
         var eigenTeamHerkend = await BepaalEigenTeamEnTegenstanderAsync(classificatie, teamResolver, cc, log);
+        if (eigenTeamHerkend) classificatie.LeeftijdsCategorie = TeamNaamNormalisatie.VulLeeftijdsCategorieAan(classificatie.LeeftijdsCategorie, classificatie.TeamNaam, cc);
 
         switch (classificatie.Type)
         {
@@ -134,6 +136,7 @@ internal static class BerichtPipeline
                     {
                         classificatie.TeamNaam = eigenTeam;
                         eigenTeamHerkend = true;
+                        classificatie.LeeftijdsCategorie = TeamNaamNormalisatie.VulLeeftijdsCategorieAan(classificatie.LeeftijdsCategorie, classificatie.TeamNaam, cc);
                     }
                 }
 
