@@ -56,6 +56,13 @@ public partial class Speeltijden : ClubSelectorPageBase
         _saveError = null;
     }
 
+    /// <summary>
+    /// Het formulier staat direct onder de regel die wordt bewerkt, niet onderaan de pagina:
+    /// bij een lange lijst viel het daar buiten beeld en leek Bewerken niets te doen (#1543).
+    /// </summary>
+    private bool IsInBewerking(SpeeltijdDto s) =>
+        _editing != null && !_isNew && string.Equals(_editing.Leeftijd, s.Leeftijd, StringComparison.Ordinal);
+
     private void Annuleer()
     {
         _editing = null;

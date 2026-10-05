@@ -784,6 +784,10 @@ Het veld **Totaal (min)** — in het scherm met de toevoeging *incl. rust* — i
 veldblokkeertijd die de planner direct gebruikt. Rust wordt er dus **niet** nog eens apart bij
 opgeteld: Totaal = speeltijd + rust + buffer. Voorbeeld senioren: 2×45 + 15 rust + 10 buffer = 115.
 
+**Bewerken** opent het formulier direct onder de regel die u bewerkt (die regel is gemarkeerd);
+**Nieuwe categorie** opent het formulier bovenaan de tabel. Met **Opslaan** wordt de regel
+bijgewerkt, **Annuleer** sluit het formulier zonder wijziging.
+
 ### Categorieregels
 - Categorie `1-99` = Senioren mannen; `VR` = Senioren vrouwen → beide 115 minuten
 - MO-categorieën hebben dezelfde WedstrijdTotaal als de equivalente JO-categorie
