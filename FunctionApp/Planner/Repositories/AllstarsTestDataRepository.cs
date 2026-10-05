@@ -39,6 +39,8 @@ internal static class AllstarsTestDataRepository
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
 
+        // #1547: de speelduur volgens Sportlink staat in his.matchdetails en koppelt op InternCode —
+        // niet op WedstrijdCode, want dat is Sportlinks wedstrijdNUMMER (bij clubwedstrijden vaak 1).
         string sql = isAllstars
             // De tegenstander is niet altijd [uitteam]: bij een UITwedstrijd staat het eigen team in
             // [uitteam] en de tegenstander in [thuisteam] (zo levert Sportlink het aan). Deze tak
@@ -53,15 +55,23 @@ internal static class AllstarsTestDataRepository
                        CASE WHEN m.[teamnaam] = m.[thuisteam]
                             THEN m.[uitteam] ELSE m.[thuisteam] END AS uitteam,
                        m.[aanvangstijd], m.[veld], m.[competitiesoort],
-                       NULL AS leeftijdscategorie
+                       NULL AS leeftijdscategorie,
+                       md.[Duration] AS sportlinkspeelduur
                 FROM [his].[matches] m
+                OUTER APPLY (
+                    SELECT TOP 1 [Duration]
+                    FROM [his].[matchdetails]
+                    WHERE [InternCode] = m.[wedstrijdcode] AND [mta_deleted] IS NULL
+                    ORDER BY [mta_modified] DESC
+                ) md
                 WHERE CAST(m.[kaledatum] AS DATE) = @date
                   AND m.[ClubCode] = '{AllstarsClubCode}'
                   AND (m.[status] IS NULL OR m.[status] <> 'Afgelast')
                 ORDER BY m.[teamnaam]"
             : $@"SELECT m.[wedstrijdcode], m.[wedstrijd], m.[teamnaam], m.[uitteam],
                        m.[aanvangstijd], m.[veld], m.[competitiesoort],
-                       {LeeftijdNormalisatieSql.SqlExpr("ISNULL(t.[leeftijdscategorie], '')")} AS leeftijdscategorie
+                       {LeeftijdNormalisatieSql.SqlExpr("ISNULL(t.[leeftijdscategorie], '')")} AS leeftijdscategorie,
+                       md.[Duration] AS sportlinkspeelduur
                 FROM [his].[matches] m
                 OUTER APPLY (
                     SELECT TOP 1 [leeftijdscategorie]
@@ -69,6 +79,12 @@ internal static class AllstarsTestDataRepository
                     WHERE [teamnaam] = m.[teamnaam] AND [ClubCode] = m.[ClubCode]
                     ORDER BY CASE WHEN [leeftijdscategorie] <> '' THEN 0 ELSE 1 END, [mta_modified] DESC
                 ) t
+                OUTER APPLY (
+                    SELECT TOP 1 [Duration]
+                    FROM [his].[matchdetails]
+                    WHERE [InternCode] = m.[wedstrijdcode] AND [mta_deleted] IS NULL
+                    ORDER BY [mta_modified] DESC
+                ) md
                 WHERE CAST(m.[kaledatum] AS DATE) = @date
                   AND m.[ClubCode] = @clubCode
                   AND m.[status] <> 'Afgelast'
@@ -91,7 +107,8 @@ internal static class AllstarsTestDataRepository
                 Veld = reader.IsDBNull(5) ? null : reader.GetString(5)?.Trim(),
                 Competitiesoort = reader.IsDBNull(6) ? null : reader.GetString(6),
                 LeeftijdsCategorie = reader.IsDBNull(7) ? null :
-                    (string.IsNullOrWhiteSpace(reader.GetString(7)) ? null : reader.GetString(7))
+                    (string.IsNullOrWhiteSpace(reader.GetString(7)) ? null : reader.GetString(7)),
+                SportlinkSpeelduur = reader.IsDBNull(8) ? null : Convert.ToInt32(reader.GetValue(8))
             });
         return results;
     }

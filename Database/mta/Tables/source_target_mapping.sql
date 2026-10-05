@@ -19,6 +19,6 @@ VALUES
 (1,'https://data.sportlink.com',NULL,'uitslagen',NULL,0,'SportlinkSqlDb','stg','matches',NULL),
 (0,'SportlinkSqlDb','stg','matches','[wedstrijdcode]',0,'SportlinkSqlDb','his','matches','bk_matches NVARCHAR(100)'),
 (1,'https://data.sportlink.com',NULL,'wedstrijd-informatie',NULL,0,'SportlinkSqlDb','stg','matchdetails',NULL),
-(0,'SportlinkSqlDb','stg','matchdetails','[WedstrijdCode]',0,'SportlinkSqlDb','his','matchdetails','bk_WedstrijdCode INT')
+(0,'SportlinkSqlDb','stg','matchdetails','[InternCode]',0,'SportlinkSqlDb','his','matchdetails','bk_InternCode INT')
 ;
 */
