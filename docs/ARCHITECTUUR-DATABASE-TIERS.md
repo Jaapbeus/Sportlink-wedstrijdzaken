@@ -1272,7 +1272,8 @@ De SQL Server-tier is bij de synthetische business-key-kolom **zelf inconsistent
 `his.Teams` en `his.Matches` gebruiken `bk_<entiteit>` (`bk_teams`, `bk_matches`), maar
 `his.MatchDetails` gebruikt de naam van de business-key-*kolom*: `bk_WedstrijdCode`.
 `PostgresSchemaGenerator.BusinessKeyColumnName` hanteert consequent `bk_<entiteit>` voor alle drie,
-dus daar heet hij `bk_matchdetails`.
+dus daar heet hij `bk_matchdetails`. *Sinds #1547 is de sleutel `InternCode` en heet de kolom
+`bk_InternCode` — zie §79; de afwijking zelf bestaat nog steeds.*
 
 Een repo-brede zoekactie bevestigt dat niets buiten de SQL Server-boom naar `bk_WedstrijdCode`
 verwijst — alleen `mta.source_target_mapping` en `Script.PostDeployment1.sql`, en de Postgres-tier
