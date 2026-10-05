@@ -4541,3 +4541,37 @@ SQL Server vereist `SET QUOTED_IDENTIFIER ON` (zie §75), vandaar de expliciete 
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).
+
+## 79. Sportlink is leidend voor de veldbezetting: sleutel, reconciliatie en speelduur (#1547)
+
+Een vergelijking van één speeldag tussen de Sportlink-veldplanner en de Planning, en een read-only
+controle van de productiedatabase, leverde zeven samenhangende oorzaken op. De eigenaar legde
+daarbij vast: **Sportlink is altijd leidend** — elke wedstrijd wordt na elke sync aangemaakt of
+bijgewerkt naar wat Sportlink zegt.
+
+| # | Oorzaak | Gevolg | Oplossing |
+|---|---|---|---|
+| 1 | `matchdetails`-sleutel was `wedstrijdcode` — in `/wedstrijd-informatie` is dat het wedstrijd*nummer* | Clubwedstrijden (vaak nummer 1) overschreven elkaars details of werden overgeslagen | Sleutel en staging-ontdubbeling op `interncode` (= `his.matches.wedstrijdcode`); Postgres-migratie 036 bouwt de gegenereerde kolom om, SQL Server via `mta.source_target_mapping` |
+| 2 | De upsert zette `mta_deleted` nooit terug | Na één haperende run bleef een toekomstige wedstrijd voorgoed onzichtbaar | `mta_deleted = NULL` in de update, en `OR mta_deleted IS NOT NULL` in de wijzigingsdetectie |
+| 3 | Reconciliatie keek ook naar datums vóór vandaag | Elke ochtend na een speeldag werden de gespeelde wedstrijden als verwijderd gemarkeerd | `ReconcileWindowedAsync(..., ondergrens)`; de pipeline geeft "vandaag" (Nederlandse tijd) mee |
+| 4 | Een gespeelde wedstrijd komt alleen via `/uitslagen` binnen, zonder `kaledatum`/`veld`/`teamnaam` | De upsert overschreef de his-rij met lege waarden; afgelopen speeldagen verdwenen | `VulUitslagRijenAanUitHisAsync` vult de stg-rij aan uit his vóór de upsert |
+| 5 | Speelduur kwam uit de speeltijdentabel per leeftijdscategorie | Een team met afwijkende speelduur kreeg de categoriestandaard | `Planner.Shared.VeldbezettingDuur`: Sportlinks `duration` + 15, speeltijden alleen als terugval |
+| 6 | Gantt-label knipte alles na `" - "` boven 30 tekens | Juist bij lange namen verdween de tegenstander | Label ongewijzigd, over maximaal twee regels |
+| 7 | Testfixture had `wedstrijdnummer` en `wedstijdnummerintern` omgedraaid | Oorzaak 1 kon door geen enkele test gevonden worden | Fixture volgt de echte Sportlink-vorm |
+
+**Waarom "+15".** Sportlinks `duration` is de netto speeltijd (2×30 = 60). De Sportlink-veldplanner
+tekent elk blok vijftien minuten langer; nagemeten op acht wedstrijden van 50 t/m 90 minuten,
+inclusief categorieën waar de eigen speeltijdentabel tien minuten rust kent. Niet nagemeten:
+toernooivorm-competities van één periode (20 minuten, elk halfuur een wedstrijd). Daar geeft "+15"
+vijf minuten overlap tussen opeenvolgende wedstrijden — zie het openstaande punt in #1547.
+
+**Wat dit niet verandert.** De optimalisatie (`FieldScheduler`, besluit #291) rekent nog met de
+speeltijdentabel inclusief buffer; alleen de weergave van wat er al gepland staat volgt Sportlink.
+De SQL Server-tier kent nog steeds geen reconciliatie (#1193 is alleen op Postgres gebouwd) — dat
+is een bestaand pariteitsgat dat hier niet is opgelost.
+
+**Gemeten, niet aangenomen.** Migratie 036 is uitgevoerd op een verse Postgres 17-database met
+his-tabellen in de oude vorm (oude sleutelexpressie, een uitslagrij zonder datum en veld, een
+onterecht verwijderde gespeelde wedstrijd, een vóór zijn datum geschrapte wedstrijd): sleutel
+omgebouwd, de eerste twee hersteld, de laatste bewust ongemoeid. De volledige fixture-sync en de
+nieuwe reconciliatie- en veldbezettingstests draaien in de bestaande integratiesuites.
