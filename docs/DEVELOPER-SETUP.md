@@ -1259,9 +1259,9 @@ Deze zes waarden identificeren jouw club. Zet ze op het tabblad **Secrets** →
 >
 > Alle zes (`AZURE_AD_CLIENT_ID`, `AZURE_AD_TENANT_ID`, `AZURE_FUNCTIONAPP_NAME`, `AZURE_FUNCTIONAPP_URL`,
 > `AZURE_STATIC_WEB_APP_HOSTNAME`, `POST_LOGOUT_REDIRECT_URL`) zijn **uitsluitend Secrets**, nooit Variables.
-> `deploy.yml` leest `${{ secrets.NAAM || vars.NAAM }}`, maar de `vars`-tak is alleen een legacy-terugval
-> voor oudere forks: heb je ze nog als **Variable** staan, zet ze dan om naar Secret en verwijder de Variable,
-> want anders staan de waarden leesbaar in de publieke logs.
+> `deploy.yml` leest uitsluitend `${{ secrets.NAAM }}`; de vroegere terugval op een Variable is bij #1237
+> verwijderd. Heb je ze in een oudere fork nog als **Variable** staan, zet ze dan om naar Secret en verwijder
+> de Variable: de deploy faalt anders vooraf met een melding welk secret ontbreekt.
 
 ### 9.2a SQL-configuratie (alleen `DatabaseTier=SqlServer`)
 

@@ -386,7 +386,7 @@ valt buiten het tegoed en is een architectuurbevinding, geen instelling.
 | 2 | `BlazorAdmin/wwwroot/staticwebapp.config.json` → CSP `connect-src` | Zelfde token, `sed` in `blazor-deploy` | Ja — zelfde Secret |
 | 3 | `BlazorAdmin/wwwroot/appsettings.json` | `http://localhost:7094` — alleen lokaal | Nee |
 | 4 | `BlazorAdmin/Program.cs` | Leest `FunctionBaseUrl` uit configuratie; zowel `BaseAddress` als de `authorizedUrls` van de MSAL-handler | Nee (volgt #1) |
-| 5 | `.github/workflows/deploy.yml` → `deploy`.`app-name` | `secrets.AZURE_FUNCTIONAPP_NAME \|\| vars.AZURE_FUNCTIONAPP_NAME` | Ja |
+| 5 | `.github/workflows/deploy.yml` → `deploy`.`app-name` | `secrets.AZURE_FUNCTIONAPP_NAME` (sinds #1237 zonder `vars`-terugval) | Ja |
 | 6 | `.github/workflows/deploy.yml` → `test` (5 stappen) | `https://${FUNCTIONAPP_NAME}.azurewebsites.net/...` — **samengesteld uit de naam** | Ja, en zie §7.2 |
 | 7 | `.github/workflows/deploy.yml` → `test` → `AZURE_FUNCTION_KEY` | Function key van de app (de `?code=`-stappen verwachten 401) | Ja — key van de Flex-app |
 | 8 | App setting `AzureFunctionAppName` | Naam voor de Management API-herstart in `AdminSettingsFunction` | Ja — al bij FLEX-05 (§3.5) |
