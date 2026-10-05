@@ -38,9 +38,19 @@ else
             </tr>
         </thead>
         <tbody>
+            @if (_editing != null && _isNew)
+            {
+                <tr class="speeltijd-formulierrij">
+                    <td colspan="7">
+                        <SpeeltijdFormulier Model="_editing" IsNew="true" SaveError="@_saveError"
+                                            OnOpslaan="OpslaanAsync" OnAnnuleer="Annuleer" />
+                    </td>
+                </tr>
+            }
             @foreach (var s in _items)
             {
-                <tr>
+                var inBewerking = IsInBewerking(s);
+                <tr class="@(inBewerking ? "table-active" : null)">
                     <td>@s.Leeftijd</td>
                     <td>@s.Veldafmeting.ToString("0.00")</td>
                     <td><strong>@s.WedstrijdTotaal</strong></td>
@@ -61,6 +71,15 @@ else
                         <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(s.Leeftijd)">Verwijderen</button>
                     </td>
                 </tr>
+                @if (inBewerking)
+                {
+                    <tr class="speeltijd-formulierrij">
+                        <td colspan="7">
+                            <SpeeltijdFormulier Model="_editing!" IsNew="false" SaveError="@_saveError"
+                                                OnOpslaan="OpslaanAsync" OnAnnuleer="Annuleer" />
+                        </td>
+                    </tr>
+                }
             }
             @if (_items.Count == 0)
             {
@@ -68,56 +87,4 @@ else
             }
         </tbody>
     </table>
-
-    @if (_editing != null)
-    {
-        <hr />
-        <h3>@(_isNew ? "Nieuwe leeftijdscategorie" : $"Bewerken: {_editing.Leeftijd}")</h3>
-        <p class="text-muted small">
-            WedstrijdTotaal = speeltijd + rust. Voorbeeld senioren: 2×45 + 15 rust + 10 buffer = 115.<br />
-            <strong>Standaard voorkeurstijd</strong> geldt voor teams in deze categorie die géén eigen
-            voorkeurstijd hebben onder Instellingen → Voorkeurstijden. Laat leeg om geen streeftijd te
-            gebruiken; de planner kiest dan het eerst beschikbare tijdslot.
-        </p>
-        <EditForm Model="_editing" OnValidSubmit="OpslaanAsync">
-            <div class="row g-3 align-items-end">
-                <div class="col-md-2">
-                    <label class="form-label">Leeftijd</label>
-                    <input class="form-control" @bind="_editing.Leeftijd" disabled="@(!_isNew)" placeholder="JO12" />
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">Veldafmeting</label>
-                    <input class="form-control" type="number" step="0.25" min="0.25" max="1.00"
-                           @bind="_editing.Veldafmeting" />
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">Totaal (min) <small class="text-muted">incl. rust</small></label>
-                    <input class="form-control" type="number" min="1" @bind="_editing.WedstrijdTotaal" />
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">Helft (min)</label>
-                    <input class="form-control" type="number" min="1" @bind="_editing.WedstrijdHelft" />
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">Rust (min)</label>
-                    <input class="form-control" type="number" min="0" @bind="_editing.WedstrijdRust" />
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">Standaard voorkeurstijd</label>
-                    <TimeInput Value="@_editing.StandaardVoorkeurTijd"
-                               ValueChanged="@(v => _editing.StandaardVoorkeurTijd = string.IsNullOrWhiteSpace(v) ? null : v)"
-                               Placeholder="bijv. 10:00" />
-                </div>
-                <div class="col-md-2 d-flex gap-2">
-                    <button type="submit" class="btn btn-primary">Opslaan</button>
-                    <button type="button" class="btn btn-secondary" @onclick="Annuleer">Annuleer</button>
-                </div>
-            </div>
-        </EditForm>
-        @if (_saveError != null)
-        {
-            <div class="alert alert-danger mt-2">@_saveError</div>
-        }
-    }
 }
-

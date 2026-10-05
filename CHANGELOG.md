@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- Speeltijden: **Bewerken** opent het formulier nu direct onder de regel die u bewerkt, en **Nieuwe categorie** bovenaan de tabel. Voorheen verscheen het formulier onderaan een lange pagina, buiten beeld, waardoor het leek alsof de knop niets deed (#1543).
+
 ## [3.11.1.0] — 2026-10-04
 
 ### Changed
