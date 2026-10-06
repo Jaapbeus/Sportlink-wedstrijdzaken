@@ -1167,7 +1167,12 @@ de tekst, hoe vaak hij is gezien en wanneer voor het laatst. Per regel kunt u:
 Maakt u elders (bijvoorbeeld met **Alias toevoegen**) een alias voor dezelfde tekst, dan wordt de open regel
 automatisch afgehandeld. Komt een afgehandelde tekst later toch weer onherkend binnen, dan gaat de regel
 opnieuw open. Regels die 90 dagen niet meer zijn gezien verdwijnen vanzelf. De getoonde tekst is afgekapt en
-ontdaan van e-mailadressen en nummers.
+ontdaan van e-mailadressen en nummers. Alleen teksten die eruitzien als een teamnaam (kort, met een cijfer, zoals
+`j10-04` of `JO 13/2`) komen in de wachtrij; een hele zin of een naam uit de mail wordt niet bewaard.
+
+Dit is ook de plek waar u een niet-herkend team uit de **e-maillog** koppelt: de bewaarde trace toont de
+ruwe tekst uit de mail bewust niet, maar verwijst met de knop *Open wachtrij onbekende teamteksten* naar deze
+kaart. In de **e-mailtester** staat de tekst wel in de trace (u typte die zelf) en koppelt u direct met *Koppel '…' aan team…*.
 
 ### Teamlijst opnieuw opbouwen
 
@@ -1599,8 +1604,9 @@ gekozen. Stappen die onzeker of mislukt zijn, hebben een gele of rode markering.
 samenvatting: **Zou automatisch verstuurd worden** of **Zou in review gaan**, met de redenen. Deze
 samenvatting is in de tester informatief (de tester verstuurt nooit); bij een echt bericht bepaalt dezelfde beoordeling
 of de zekerheidspoort het antwoord tegenhoudt (zie hieronder). De trace
-bevat nooit de tekst van het bericht, de afzender of telefoonnummers — alleen teamschrijfwijzen,
-datums en keuzes.
+toont in de tester de teamschrijfwijze die de AI vond (u typte die mail zelf). De permanent bewaarde trace
+(e-maillog) bevat nooit de tekst van het bericht, de afzender, telefoonnummers of de ruwe teamtekst uit de mail —
+alleen vaste codes, tellingen, datums, herkende teamnamen en een vormkenmerk van wat niet herkend werd.
 
 **Trace van een echt verwerkt bericht.** Op de Instellingen-pagina staat bij de kaart *Email
 verwerking* de knop **Toon berichten en traces**. Die toont de berichten van de laatste 24 uur met

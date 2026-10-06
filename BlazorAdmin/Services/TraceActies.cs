@@ -27,6 +27,18 @@ public static class TraceActies
         return GemaskeerdeTekens.Any(m => tekst.Contains(m, StringComparison.Ordinal)) ? null : tekst;
     }
 
+    /// <summary>Pad van de pagina met de wachtrij onbekende teamteksten (Teamaliassen).</summary>
+    public const string WachtrijPad = "teamaliassen";
+
+    /// <summary>
+    /// Of een stap uit de BEWAARDE trace naar de wachtrij moet verwijzen: een niet-herkend team, waarvan de ruwe
+    /// tekst bewust niet in de permanente trace staat. De beheerder koppelt dan in de wachtrij (#1568, R1-F1).
+    /// </summary>
+    public static bool VerwijstNaarWachtrij(TraceStapDto stap)
+        => stap.Code is TeamHerkenning or TegenstanderHerkenning
+           && stap.Details.TryGetValue("bron", out var bron) && bron is "Onopgelost" or "MeerdereKandidaten"
+           && !stap.Details.ContainsKey("ruweTekst");
+
     private static readonly string[] GemaskeerdeTekens = ["[e-mail]", "[nummer]"];
 
     /// <summary>Het verzoektype dat de classificatiestap koos; <c>null</c> als deze stap geen classificatie is.</summary>

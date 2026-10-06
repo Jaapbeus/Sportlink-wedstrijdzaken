@@ -1,5 +1,7 @@
 @* Beslissingstrace van een verwerkt bericht (#1568): gedeeld door de e-mailtester en het e-maillog.
-   Voor beheerders staan bij een niet-herkend team en bij de classificatie leeracties (#1568 deel C). *@
+   Voor beheerders staan bij een niet-herkend team en bij de classificatie leeracties (#1568 deel C).
+   De bewaarde trace (e-maillog) bevat geen ruwe teamtekst: daar verwijst de stap naar de wachtrij onbekende teamteksten;
+   alleen de transiënte trace van de e-mailtester biedt "Koppel '...' aan team". *@
 @using BlazorAdmin.Services
 @if (Trace is { Stappen.Count: > 0 })
 {
@@ -40,6 +42,12 @@
                                                      HerkomstVerwerkingId="VerwerkingId"
                                                      OnGekoppeld="GekoppeldAsync" OnAnnuleer="Sluit" />
                             }
+                        }
+                        @if (!Proefrun && TraceActies.VerwijstNaarWachtrij(stap))
+                        {
+                            <a class="btn btn-sm btn-outline-secondary mt-1" href="@TraceActies.WachtrijPad">
+                                Open wachtrij onbekende teamteksten
+                            </a>
                         }
                         @if (TraceActies.ClassificatieType(stap) is { } classificatieType)
                         {

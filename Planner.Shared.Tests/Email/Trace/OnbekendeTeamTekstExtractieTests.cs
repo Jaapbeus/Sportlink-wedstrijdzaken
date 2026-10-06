@@ -100,6 +100,46 @@ public class OnbekendeTeamTekstExtractieTests
         OnbekendeTeamTekstExtractie.Uit(trace, Club).Should().ContainSingle();
     }
 
+    [Theory]
+    [InlineData("Pieter en zijn moeder Sanne komen zaterdag niet omdat het regent")]
+    [InlineData("Pieter komt zaterdag niet")]
+    [InlineData("Sanne")]
+    [InlineData("mijn zoon Pieter speelt in 13-2 en 14-1")]
+    [InlineData("13-2; DROP TABLE")]
+    [InlineData("13-2 <b>")]
+    public void VrijeTekstAlsTeam_KomtNietInDeWachtrij(string vrijeTekst)
+    {
+        var trace = Builder().TeamHerkenning(TraceCodes.TeamHerkenning, vrijeTekst, "Onopgelost", 0, null, null).Bouw();
+
+        OnbekendeTeamTekstExtractie.Uit(trace, Club).Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("j10-04")]
+    [InlineData("JO 13/2")]
+    [InlineData("Ajax 13-2")]
+    [InlineData("35+1")]
+    [InlineData("zin met spatie en veel woorden 3", false)]
+    public void StructureelTeamlabel_WordtHerkend(string tekst, bool verwacht = true)
+        => OnbekendeTeamTekstExtractie.ZietEruitAlsTeamlabel(tekst).Should().Be(verwacht);
+
+    [Fact]
+    public async Task VrijeTekst_KomtNietInDeWachtrijUpsert_MaarEenEchteSchrijfwijzeWel()
+    {
+        var trace = Builder()
+            .TeamHerkenning(TraceCodes.TeamHerkenning, "Pieter komt zaterdag niet vanwege de regen", "Onopgelost", 0, null, null)
+            .TeamHerkenning(TraceCodes.TeamHerkenning, "j10-04", "Onopgelost", 0, null, null)
+            .Bouw();
+        var schrijver = new OpnemendeSchrijver();
+
+        await OnbekendeTeamTekstOpslag.BewaarVeiligAsync(trace, Club, 9, schrijver, NullLogger.Instance);
+
+        var regel = schrijver.Regels.Should().ContainSingle().Subject;
+        regel.Item3.Should().Be("j10-04");
+        regel.ToString().Should().NotContain("Pieter");
+        trace.VoorOpslag().ToJson().Should().NotContain("j10-04").And.NotContain("Pieter");
+    }
+
     [Fact]
     public async Task EenStoringBijHetSchrijven_BreektDeVerwerkingNiet()
     {

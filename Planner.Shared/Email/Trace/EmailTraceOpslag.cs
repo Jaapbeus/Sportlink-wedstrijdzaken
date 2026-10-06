@@ -7,7 +7,7 @@ namespace Planner.Shared.Email.Trace;
 
 /// <summary>
 /// Wat er per verwerkt bericht in <c>planner.EmailTrace</c> wordt opgeslagen (#1568, deel B).
-/// Bevat uitsluitend PII-arme velden: de trace-JSON komt uit <see cref="BeslissingsTrace.ToJson"/>.
+/// Bevat uitsluitend PII-arme velden: de trace-JSON komt uit <see cref="BeslissingsTrace.VoorOpslag"/> (allowlist, geen ruwe teamtekst).
 /// </summary>
 public sealed record EmailTraceRecord(
     int VerwerkingId,
@@ -36,7 +36,7 @@ public sealed record EmailTraceRecord(
             Kap(verzoekType, MaxVerzoekTypeLengte),
             ZekerheidVan(trace),
             sjabloon is null ? null : Kap(sjabloon, MaxSjabloonLengte),
-            trace.ToJson(),
+            trace.VoorOpslag().ToJson(),
             Kap(appVersie, MaxAppVersieLengte));
     }
 

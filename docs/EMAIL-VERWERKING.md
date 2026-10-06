@@ -190,7 +190,8 @@ Bij een aanduiding die écht dubbelzinnig is — "13-1" kan JO13-1 of MO13-1 zij
 er volgt óf een keuze uit een korte kandidatenlijst, óf de vraag wordt teruggelegd.
 
 Een teamtekst die niet herkend wordt (`Onopgelost` of `MeerdereKandidaten`) komt sinds #1568 deel C in de
-wachtrij **Onbekende teamteksten** (scherm Teamaliassen); de beheerder koppelt hem daar met één klik aan
+wachtrij **Onbekende teamteksten** (scherm Teamaliassen) — mits de tekst eruitziet als een teamlabel; een zin
+of naam uit de mail wordt niet bewaard. De beheerder koppelt hem daar met één klik aan
 een team door een goedgekeurde alias aan te maken — zie [§3d](#3d-leren-vanuit-de-trace-1568-deel-c).
 
 Is de teamlijst leeg (bijvoorbeeld direct na een deploy, vóór de eerste nachtelijke synchronisatie),
@@ -1065,10 +1066,31 @@ wedstrijd is gevonden), `opponent-team-herkenning`, `datum`, `tak` (plannerrespo
 `sjabloon` (database-override of ingebouwd, met sleutel) en `eindoordeel`. Elke stap heeft een
 zekerheid (`Zeker`, `Onzeker`, `Mislukt`).
 
-**PII-arm, afgedwongen op één plek.** Alle tekst loopt door `TraceBuilder.Saneer`: control-chars weg,
-e-mailadressen en cijferreeksen van negen of meer cijfers gemaskeerd, afgekapt op 80 tekens. De typed
-methoden nemen geen mailbody of afzender aan. Toegestaan: teamschrijfwijzen, namen van kandidaat-teams
-(clubteams), enum-waarden, datums, tellingen, bron/confidence en de sjabloonsleutel.
+**Twee vormen van dezelfde trace (Codex R1-F1).** De *transiënte* trace (respons van de e-mailtester) loopt door
+`TraceBuilder.Saneer` (control-chars weg, e-mailadressen en cijferreeksen van negen of meer cijfers gemaskeerd,
+afgekapt op 80 tekens) en toont ook de ruwe teamschrijfwijze die de AI uit de mail haalde: de beheerder typte die
+mail zelf en niets wordt opgeslagen. De *bewaarde* trace is `BeslissingsTrace.VoorOpslag()`
+(`Planner.Shared/Email/Trace/TraceOpslagProjectie.cs`): een allowlist per stapcode met een strikte waardevorm.
+Alles wat AI-vrije tekst kan bevatten valt af; een onbekende sleutel of stapcode wordt weggelaten.
+
+Toegestane detailsleutels per stapcode in de bewaarde trace:
+
+| Stapcode | Bewaarde details |
+|---|---|
+| `classificatie` | `type`, `teamVereist`, `teamGenoemd`, `tegenstanderGenoemd`, `aantalDatums`, `tijdGenoemd` |
+| `leermomenten` | `aantal` |
+| `team-herkenning`, `tegenstander-herkenning`, `opponent-team-herkenning` | `bron`, `confidence`, `aantalKandidaten`, `kandidaten` (clubteams), `canoniekeNaam`, `vorm`, `reden` (alleen `geen clubcode`) |
+| `team-wissel` | `team` (canoniek), `tegenstanderVorm` |
+| `opponent-pad` | `tak`, `wedstrijdGevonden` |
+| `datum` | `aantalDatums`, `datums` (alleen `yyyy-MM-dd`) |
+| `tak` | `plannerResponseVlag`, `reden` (alleen de vaste buiten-scope-reden) |
+| `herplan-uitkomst` | `uitkomst`, `wedstrijdGevonden`, `datumAanwezig`, `sjabloon` |
+| `sjabloon` | `sjabloon`, `bron` |
+| `eindoordeel`, `zekerheidspoort` | `redenen` (opnieuw afgeleid uit de bewaarde stappen), `poortActief` |
+| `verwerking-fout` | geen |
+
+`vorm` en `tegenstanderVorm` zijn vormkenmerken zonder tekst (`6 tekens: letters+cijfers+streepje`). De
+niet-herkende teamtekst zelf staat alleen in de wachtrij met begrensde retentie (§3d).
 
 **Zekerheidsoordeel.** `ZekerheidsBeoordeling` markeert een resultaat als onzeker bij: een verzoektype
 dat een team nodig heeft (beschikbaarheid, herplannen) zonder herkend team (ook bij
@@ -1090,8 +1112,8 @@ reproduceerbaarheid: welke code nam de beslissing).
 
 * **Permanent en PII-arm (besluit eigenaar 2026-10-06).** Anders dan `planner.EmailVerwerking`, die na
   30 dagen wordt geanonimiseerd en na 90 dagen wordt verwijderd, wordt `planner.EmailTrace` nooit
-  opgeruimd: de trace bevat alleen gesaneerde keuzes (`TraceBuilder.Saneer`), nooit body, afzender of
-  onderwerp, en is daarmee geen persoonsgegeven. Dat maakt hem bruikbaar om maanden later te
+  opgeruimd: de bewaarde trace bevat alleen allowlist-velden (`BeslissingsTrace.VoorOpslag()`), nooit body,
+  afzender, onderwerp of de ruwe teamtekst uit de mail, en is daarmee geen persoonsgegeven. Dat maakt hem bruikbaar om maanden later te
   beoordelen waarom een antwoord zo uitviel. Er is bewust geen retentietimer.
 * **Geen foreign key naar `EmailVerwerking`.** Een FK zou de cleanup van de verwerking laten falen of
   de trace meenemen (CASCADE); `VerwerkingId` is een identity-waarde die nooit hergebruikt wordt. Het
@@ -1121,7 +1143,9 @@ code of SQL van laten leren. De lus:
    berichten en traces*).
 2. **Corrigeren** — knoppen in de trace, alleen voor beheerders:
    * bij een niet-herkend team (`team-herkenning` of `tegenstander-herkenning` met `Onopgelost` of
-     `MeerdereKandidaten`): *Koppel '…' aan team…* → keuze uit de teams → een goedgekeurde alias;
+     `MeerdereKandidaten`): in de **e-mailtester** *Koppel '…' aan team…* → keuze uit de teams → een goedgekeurde
+     alias. In de **e-maillog-trace** staat de ruwe tekst bewust niet (zie §3c); daar verwijst de stap met *Open
+     wachtrij onbekende teamteksten* naar het scherm Teamaliassen, waar *Koppel aan team* hetzelfde doet;
    * bij de classificatie: *Verzoektype corrigeren…* → juist type + korte samenvatting → een admin-leermoment.
 3. **Opnieuw beoordelen** (alleen in de tester) — draait dezelfde invoer nogmaals en zet de uitkomst naast die
    van vóór de correctie: verzoektype, herkend team, zekerheid, antwoordsjabloon en het aantal meegegeven
@@ -1130,7 +1154,7 @@ code of SQL van laten leren. De lus:
 | Onderdeel | Gedrag |
 |---|---|
 | **Alias aanmaken** (`POST /api/beheer/teamaliassen`) | Bron `CoordinatorCorrectie`, direct `validated`. De sleutel komt uitsluitend uit `TeamNaamNormalisatie`. Bestaat de sleutel al voor een ander team → `409`; herkoppelen gebeurt alleen als de beheerder dat expliciet aangeeft. Audit: `AangemaaktDoor` (object-ID), `AangemaaktDoorNaam` (momentopname), `AangemaaktOp` (UTC), `HerkomstVerwerkingId`, `Reden`; valideren/afwijzen legt `BeoordeeldDoor(Naam)`/`BeoordeeldOp` vast. Alles uit het Easy Auth-principal, nooit uit de body, geen e-mailadres. |
-| **Wachtrij onbekende teamteksten** (`planner.OnbekendeTeamTekst`) | De processor schrijft na elke verwerking elke onbekende teamtekst (gesaneerd, afgekapt op 80 tekens, geen mailbody) als upsert op (club, genormaliseerde tekst): aantal, eerst/laatst gezien, laatste verwerking (geen FK). Een retry telt niet dubbel. Een fout bij het schrijven laat de verwerking nooit falen. Een alias met dezelfde sleutel zet de open regel automatisch op `afgehandeld`; een afgehandelde regel die terugkomt gaat weer open, een genegeerde blijft genegeerd. Regels die 90 dagen niet meer zijn gezien worden door de e-mail-cleanup verwijderd. |
+| **Wachtrij onbekende teamteksten** (`planner.OnbekendeTeamTekst`) | De processor schrijft na elke verwerking elke onbekende teamtekst die de vormguard `ZietEruitAlsTeamlabel` passeert (kort, alleen letters/cijfers/spatie/`-`/`/`/`.`/`+`, hoogstens twee tokens met letters, minstens één cijfer; ook de genormaliseerde sleutel — zinnen en namen vallen af; gesaneerd, afgekapt op 80 tekens, geen mailbody) als upsert op (club, genormaliseerde tekst): aantal, eerst/laatst gezien, laatste verwerking (geen FK). Een retry telt niet dubbel. Een fout bij het schrijven laat de verwerking nooit falen. Een alias met dezelfde sleutel zet de open regel automatisch op `afgehandeld`; een afgehandelde regel die terugkomt gaat weer open, een genegeerde blijft genegeerd. Regels die 90 dagen niet meer zijn gezien worden door de e-mail-cleanup verwijderd. |
 | **Admin-leermoment** (`POST /api/beheer/leermomenten`) | Herkomst `Admin`, direct gevalideerd, zonder reply-paar (`OrigineleVerwerkingId`/`CorrectionVerwerkingId` zijn `NULL`; `HerkomstVerwerkingId` is een los getal zonder FK, zodat de retentie-DELETE van de verwerking (#424) nooit blokkeert of meeneemt). De samenvatting (max 500) gaat door `TraceBuilder.Saneer` — dezelfde PII-arme sanering als de trace, geen tweede sanitizer. **Permanent**: de cleanup (`sp_CleanupClassificatieCorrectie`, `sp_CleanupEmailVerwerking` fase 2a, en `PostgresCleanupProcedures`) raakt alleen herkomst `Reply`. |
 | **Few-shot** | `HaalVoorbeeldenOpAsync` neemt alle gevalideerde, niet-afgewezen leermomenten mee (limiet 20); admin-voorbeelden staan eerst. Een admin-leermoment staat in de prompt als `Samenvatting "…" → is een <type>.` (of "was geclassificeerd als X, maar was eigenlijk Y" als het oorspronkelijke type bekend is). |
 | **Tester-pariteit** | De tester classificeert met dezelfde leermomenten als de processor (de trace meldt het aantal in de stap `leermomenten`) en schrijft niets. De enige uitzondering: is de teamlijst van de gekozen club nog helemaal leeg (bijvoorbeeld een democlub die nooit gesynchroniseerd is), dan bouwt de tester hem eenmalig op — anders resolvet niets. Een gevulde lijst blijft onaangeroerd; de nachtelijke sync en de processor houden hem actueel. |

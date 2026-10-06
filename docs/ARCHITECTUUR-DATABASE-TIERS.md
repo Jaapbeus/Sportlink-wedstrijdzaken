@@ -4635,7 +4635,8 @@ Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/i
 ## 80. Beslissingstrace per e-mailverwerking: permanente tabel op beide tiers (#1568)
 
 De trace van de e-mailpipeline (zie [EMAIL-VERWERKING.md](EMAIL-VERWERKING.md) §3c) wordt per verwerkt
-bericht bewaard. Eigenaarsbesluit 2026-10-06: **permanent**, omdat hij PII-arm is.
+bericht bewaard. Eigenaarsbesluit 2026-10-06: **permanent**, mits zonder persoonsgegevens of vrije mailtekst — en dat
+legt de opslagprojectie vast (hieronder), niet alleen een afspraak.
 
 | Onderdeel | Postgres | SQL Server |
 |---|---|---|
@@ -4651,6 +4652,13 @@ en de opzoeking voegt de verwerking met een LEFT JOIN toe (status is `null` na d
 tier-onafhankelijke deel (record, JSON-mapping, "opslag faalt stil", queryparameters en vertaling naar
 HTTP) staat in `Planner.Shared/Email/Trace/EmailTraceOpslag.cs` en
 `Planner.Endpoints/Admin/EmailLogEndpointCore.cs`.
+
+**De opslagprojectie is bepalend (Codex R1-F1).** `EmailTraceRecord.Van` bewaart `trace.VoorOpslag().ToJson()`:
+`TraceOpslagProjectie` laat per stapcode alleen allowlist-sleutels in een strikte waardevorm door en vervangt de ruwe,
+door de AI uit de mail gehaalde teamtekst door een vormkenmerk. Die ene aansluiting is tier-onafhankelijk
+(`Planner.Shared`) en wordt door beide tiers via `EmailTraceRecord.Van` gebruikt; er is dus geen tierverschil in wat
+permanent landt. De niet-herkende tekst staat uitsluitend in de wachtrij (§81), achter een structurele vormguard en
+met 90 dagen retentie. Een nieuw tracedetail vereist een allowlist-regel mét waardevorm en een test.
 
 ---
 
@@ -4679,6 +4687,11 @@ idempotent, op beide tiers tegelijk (regel 3 van de multi-tier-strategie):
   het ontbreken van de constraint en ontdubbelt op `PARTITION BY (OrigineleVerwerkingId, CorrectionVerwerkingId)`;
   alle admin-rijen (`NULL`, `NULL`) vallen in één partitie. Het blok is nu overgeslagen zodra de gefilterde
   index bestaat.
+* **De wachtrij is de aparte opslag voor ruwe teamtekst, met een vormguard (Codex R1-F1).** Alleen een tekst die
+  `OnbekendeTeamTekstExtractie.ZietEruitAlsTeamlabel` passeert (≤ 24 tekens, letters/cijfers/spatie/`-`/`/`/`.`/`+`,
+  hoogstens twee tokens met letters, minstens één cijfer, ook de genormaliseerde sleutel) wordt als voorbeeldtekst
+  bewaard, op beide tiers via dezelfde `OnbekendeTeamTekstOpslag`. Dit is validatie, geen nieuwe normalisatieregel
+  (regel 1 van de teamnaamregels blijft: normalisatie uitsluitend in `TeamNaamNormalisatie`).
 * **Geen FK voor `HerkomstVerwerkingId`/`LaatsteVerwerkingId`** (zelfde reden als §80 en #424).
 * **Kolomnaam-typo gevangen door de guard.** Een Postgres-kolom `beoordeeldoor` (één `d` te weinig) werd door
   `check-postgres-column-coverage.sh` afgevangen tegen de SQL Server-kolom `BeoordeeldDoor`; de guard bewijst

@@ -411,13 +411,21 @@ Persoonsgegevens mogen **nooit** in logs of Application Insights terechtkomen.
 De cleanup wordt wekelijks (zondagochtend 03:00 UTC) uitgevoerd door `CleanupEmailVerwerkingFunction`. De stored procedure `planner.sp_CleanupEmailVerwerking` is idempotent.
 
 **`planner.EmailTrace` valt bewust buiten deze retentie (#1568, besluit eigenaar 2026-10-06).** De
-beslissingstrace per verwerkt bericht wordt permanent bewaard. Dat is verantwoord omdat hij PII-arm is
-by design: alleen gesaneerde keuzes (herkende teamschrijfwijze, tellingen, bron/confidence, gekozen
-sjabloon), afgekapt op 80 tekens, met e-mailadressen en lange cijferreeksen gemaskeerd door
-`TraceBuilder.Saneer`, en nooit body, afzender of onderwerp. Er is geen foreign key naar
-`EmailVerwerking`, zodat de bovenstaande verwijdering na 90 dagen de trace niet raakt. Wie hier later
-een nieuw veld aan toevoegt, moet dat veld eerst door `Saneer` laten lopen; een veld met vrije tekst uit
-een mail hoort hier niet en zou de permanente bewaring ongeldig maken.
+beslissingstrace per verwerkt bericht wordt permanent bewaard. Dat is alleen verantwoord omdat de
+opslag **geen ruwe tekst uit de mail** bevat, en dat wordt afgedwongen, niet verondersteld (Codex R1-F1):
+`BeslissingsTrace.VoorOpslag()` (`TraceOpslagProjectie`, `Planner.Shared`) is de enige weg naar
+`planner.EmailTrace` en laat uitsluitend een **allowlist** van detailsleutels per stapcode door, elk in een
+strikte waardevorm: vaste codes en enum-waarden, tellingen, datums, de bron van een teamherkenning, de
+gevalideerde canonieke teamnaam en de namen van kandidaat-clubteams. De ruwe, door de AI uit de mail
+gehaalde teamtekst (en een tegenstander) wordt niet bewaard; daarvoor in de plaats komt een vormkenmerk
+(lengte en tekensoorten, bijvoorbeeld `6 tekens: letters+cijfers+streepje`). Een onbekende sleutel, een waarde in
+een onverwachte vorm of een onbekende stapcode wordt bij opslag weggelaten; de titels en uitkomsten zijn
+vaste teksten en de redenen worden opnieuw afgeleid uit de geprojecteerde stappen. De volledige trace
+bestaat alleen transiënt (e-mailtester: de beheerder typte die mail zelf; niets wordt opgeslagen). Er is
+geen foreign key naar `EmailVerwerking`, zodat de bovenstaande verwijdering na 90 dagen de trace niet raakt.
+Wie hier later een nieuw veld aan toevoegt, voegt het toe aan de allowlist in `TraceOpslagProjectie` mét een
+vaste waardevorm, en een test; een veld met vrije tekst uit een mail kan er niet op. Al opgeslagen traces van
+vóór deze projectie bestaan niet: de feature was nog niet gemerged.
 
 **Leren vanuit de trace: auditspoor, wachtrij en admin-leermomenten (#1568 deel C).**
 
@@ -430,9 +438,14 @@ een mail hoort hier niet en zou de permanente bewaring ongeldig maken.
   staat uitsluitend in de tabelkolommen** (`AangemaaktDoor`/`BeoordeeldDoor` en de naammomentopname): de
   leren-functionaliteit schrijft nergens een object-ID of naam naar het applicatielog — het log bevat alleen
   rij-id's en tellingen. Een verwijdering laat dus bewust geen identificator achter buiten de tabel zelf.
-* **Wachtrij `planner.OnbekendeTeamTekst`.** Bevat per club een gesaneerde teamschrijfwijze (80 tekens,
-  e-mailadressen en cijferreeksen gemaskeerd door `TraceBuilder.Saneer`, nooit de mailbody), tellers en een
-  verwerking-id zonder foreign key. Een regel die 90 dagen niet meer is gezien wordt door
+* **Wachtrij `planner.OnbekendeTeamTekst`.** De enige permanente plek voor een ruwe teamschrijfwijze, en
+  bedoeld voor *Koppel aan team*. Voor opslag moet de tekst een structurele vormguard passeren
+  (`OnbekendeTeamTekstExtractie.ZietEruitAlsTeamlabel`: ≤ 24 tekens, alleen letters, cijfers, spatie, `-`, `/`, `.`, `+`,
+  hoogstens twee tokens met letters, minstens één cijfer; ook de genormaliseerde sleutel); een zin of naam uit
+  de mail wordt niet bewaard. Daarna: gesaneerd (80 tekens, e-mailadressen en cijferreeksen gemaskeerd door
+  `TraceBuilder.Saneer`, nooit de mailbody), tellers en een verwerking-id zonder foreign key. Restrisico: een
+  enkel woord met een cijfer (bijvoorbeeld een voornaam met een getal) past wel in de vorm; de retentie van 90 dagen
+  begrenst dat. Een regel die 90 dagen niet meer is gezien wordt door
   `CleanupEmailVerwerking` verwijderd (beide tiers). RLS staat aan (migratie 039).
 * **Admin-leermomenten verlopen niet, maar zijn wel verwijderbaar (besluit eigenaar 2026-10-06; verwijderen
   toegevoegd na review).** `sp_CleanupClassificatieCorrectie`, fase 2a van `sp_CleanupEmailVerwerking` en

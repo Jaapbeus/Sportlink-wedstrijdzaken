@@ -5476,7 +5476,7 @@ paths:
         `planner.EmailTrace`: welke keuzes de e-mailpipeline maakte (classificatie, team- en
         tegenstanderherkenning, datum, gekozen sjabloon) en hoe zeker elke stap was.
 
-        AVG: bevat nooit berichttekst, afzender of onderwerp. De trace blijft bestaan nadat de
+        AVG: bevat nooit berichttekst, afzender, onderwerp of de teamtekst die de AI uit de mail haalde (alleen een allowlist van vaste codes, tellingen, datums, herkende teamnamen en een vormkenmerk). De trace blijft bestaan nadat de
         verwerking zelf is geanonimiseerd/verwijderd; `status` en `ontvangstDatum` zijn dan `null`.
       security:
         - easyAuth: []

@@ -12,8 +12,9 @@ public enum ZekerheidsNiveau
 }
 
 /// <summary>
-/// Eén beslissing van de e-mailpipeline, in leesbare vorm. Bevat uitsluitend PII-arme waarden
-/// (zie <see cref="TraceBuilder"/>): nooit mailbody, afzender of vrije tekst uit de mail.
+/// Eén beslissing van de e-mailpipeline, in leesbare vorm. De transiënte trace (e-mailtester) bevat PII-arme,
+/// gesaneerde waarden (zie <see cref="TraceBuilder"/>), maar kan nog de ruwe teamschrijfwijze uit de mail dragen;
+/// wat permanent wordt bewaard bepaalt uitsluitend <see cref="BeslissingsTrace.VoorOpslag"/>.
 /// </summary>
 /// <param name="Code">Stabiele sleutel (zie <see cref="TraceCodes"/>); machine-leesbaar.</param>
 /// <param name="Titel">Korte Nederlandse naam van de stap.</param>
@@ -41,6 +42,12 @@ public sealed record BeslissingsTrace(
 
     /// <summary>Serialiseert de trace; op beide tiers identiek (System.Text.Json, camelCase).</summary>
     public string ToJson() => JsonSerializer.Serialize(this, JsonOpties);
+
+    /// <summary>
+    /// De variant die PERMANENT bewaard mag worden: alleen allowlist-details in een vaste vorm, nooit ruwe
+    /// teamtekst uit de mail (zie <see cref="TraceOpslagProjectie"/>). De volledige trace blijft transiënt.
+    /// </summary>
+    public BeslissingsTrace VoorOpslag() => TraceOpslagProjectie.Projecteer(this);
 
     /// <summary>De trace als JSON-element, zodat een API-respons hem tier-onafhankelijk kan opnemen.</summary>
     public JsonElement ToJsonElement() => JsonDocument.Parse(ToJson()).RootElement;

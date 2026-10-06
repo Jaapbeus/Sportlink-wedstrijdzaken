@@ -41,6 +41,18 @@ public class TraceActiesTests
     public void KoppelTekst_ZonderBron_GeeftNull_ResolutieStoring()
         => TraceActies.KoppelTekst(Stap("team-herkenning", "", ("ruweTekst", "j10-04"))).Should().BeNull();
 
+    [Theory]
+    [InlineData("team-herkenning", "Onopgelost", true)]
+    [InlineData("tegenstander-herkenning", "MeerdereKandidaten", true)]
+    [InlineData("team-herkenning", "ExacteAlias", false)]
+    [InlineData("classificatie", "Onopgelost", false)]
+    public void VerwijstNaarWachtrij_BijNietHerkendTeamZonderRuweTekst(string code, string bron, bool verwacht)
+        => TraceActies.VerwijstNaarWachtrij(Stap(code, "", ("bron", bron))).Should().Be(verwacht);
+
+    [Fact]
+    public void VerwijstNaarWachtrij_NietAlsDeRuweTekstWelBeschikbaarIs_DeTester()
+        => TraceActies.VerwijstNaarWachtrij(Stap("team-herkenning", "", ("bron", "Onopgelost"), ("ruweTekst", "j10-04"))).Should().BeFalse();
+
     [Fact]
     public void ClassificatieType_AlleenBijDeClassificatiestap()
     {

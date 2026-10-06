@@ -7272,7 +7272,7 @@
         ],
         "operationId": "getEmailLogTrace",
         "summary": "Beslissingstrace van een verwerkt bericht ophalen",
-        "description": "Geeft de permanente, PII-arme beslissingstrace (#1568) van één verwerking uit\n`planner.EmailTrace`: welke keuzes de e-mailpipeline maakte (classificatie, team- en\ntegenstanderherkenning, datum, gekozen sjabloon) en hoe zeker elke stap was.\n\nAVG: bevat nooit berichttekst, afzender of onderwerp. De trace blijft bestaan nadat de\nverwerking zelf is geanonimiseerd/verwijderd; `status` en `ontvangstDatum` zijn dan `null`.\n",
+        "description": "Geeft de permanente, PII-arme beslissingstrace (#1568) van één verwerking uit\n`planner.EmailTrace`: welke keuzes de e-mailpipeline maakte (classificatie, team- en\ntegenstanderherkenning, datum, gekozen sjabloon) en hoe zeker elke stap was.\n\nAVG: bevat nooit berichttekst, afzender, onderwerp of de teamtekst die de AI uit de mail haalde (alleen een allowlist van vaste codes, tellingen, datums, herkende teamnamen en een vormkenmerk). De trace blijft bestaan nadat de\nverwerking zelf is geanonimiseerd/verwijderd; `status` en `ontvangstDatum` zijn dan `null`.\n",
         "security": [
           {
             "easyAuth": []

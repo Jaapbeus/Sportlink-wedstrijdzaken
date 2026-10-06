@@ -26,6 +26,22 @@ public class EmailTraceRepositoryIntegrationTests
             new TraceBuilder().Classificatie(zekerheidstype, true, true, 1, true).Bouw(), "1.0.0.0");
 
     [PostgresFact]
+    public async Task Upsert_BewaartGeenRuweTeamtekst()
+    {
+        await SchoonAsync();
+        var id = 900_002;
+        var trace = new TraceBuilder().Classificatie("BeschikbaarheidCheck", true, true, 1, true)
+            .TeamHerkenning(TraceCodes.TeamHerkenning, "Pieter komt zaterdag niet vanwege de regen", "Onopgelost", 0, null, null)
+            .Bouw();
+
+        await EmailTraceRepository.UpsertAsync(ConnectionString,
+            EmailTraceRecord.Van(id, ClubCode, "BeschikbaarheidCheck", trace, "1.0.0.0"));
+
+        var antwoord = await EmailTraceRepository.HaalOpAsync(ConnectionString, ClubCode, id);
+        antwoord!.Trace!.Value.GetRawText().Should().NotContain("Pieter").And.NotContain("ruweTekst");
+    }
+
+    [PostgresFact]
     public async Task Upsert_TweemaalDezelfdeVerwerking_LevertEenRij()
     {
         await SchoonAsync();
