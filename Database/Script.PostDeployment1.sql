@@ -2086,7 +2086,7 @@ DECLARE @hisTabellen TABLE ([Tabel] SYSNAME, [Bk] SYSNAME);
 INSERT INTO @hisTabellen ([Tabel], [Bk]) VALUES
     ('teams',        'bk_teams'),
     ('matches',      'bk_matches'),
-    ('matchdetails', 'bk_WedstrijdCode');
+    ('matchdetails', 'bk_InternCode');
 
 DECLARE @tabel SYSNAME, @bk SYSNAME, @sql NVARCHAR(MAX), @objId INT, @duplicaten INT;
 DECLARE hisCur CURSOR LOCAL FAST_FORWARD FOR SELECT [Tabel], [Bk] FROM @hisTabellen;
@@ -2197,7 +2197,7 @@ INSERT INTO [mta].[source_target_mapping]
 SELECT v.* FROM (VALUES
     (0, 'SportlinkSqlDb', 'stg', 'teams',        '[teamcode],[lokaleteamcode],[poulecode]', 0, 'SportlinkSqlDb', 'his', 'teams',        'bk_teams NVARCHAR(100)'),
     (0, 'SportlinkSqlDb', 'stg', 'matches',      '[wedstrijdcode]',                         0, 'SportlinkSqlDb', 'his', 'matches',      'bk_matches NVARCHAR(100)'),
-    (0, 'SportlinkSqlDb', 'stg', 'matchdetails', '[WedstrijdCode]',                         0, 'SportlinkSqlDb', 'his', 'matchdetails', 'bk_WedstrijdCode INT')
+    (0, 'SportlinkSqlDb', 'stg', 'matchdetails', '[InternCode]',                            0, 'SportlinkSqlDb', 'his', 'matchdetails', 'bk_InternCode INT')
 ) AS v([source_type], [source_root], [source_schema], [source_entity], [source_pk],
        [target_type], [target_root], [target_schema], [target_entity], [target_pk])
 WHERE NOT EXISTS (
@@ -3718,4 +3718,155 @@ BEGIN
 
     SELECT @Geanonimiseerd AS [Geanonimiseerd], @Telemetrie AS [TelemetrieVerwijderd], @Inzage AS [InzageVerwijderd];
 END;
+GO
+
+-- ============================================================
+-- #1547: business key van his.matchdetails — WedstrijdCode -> InternCode.
+--
+-- /wedstrijd-informatie noemt het wedstrijdNUMMER "wedstrijdnummer" (kolom WedstrijdCode). Dat is niet
+-- uniek: clubwedstrijden hebben vaak nummer 1, waardoor detailrijen van verschillende wedstrijden
+-- elkaar overschreven. InternCode is gelijk aan his.matches.wedstrijdcode en wél uniek.
+-- Idempotent; his.* bestaat pas na de eerste sync.
+-- Dubbele InternCodes (dezelfde wedstrijd) worden teruggebracht tot de meest recente rij. Oude rijen
+-- zonder InternCode blijven bewaard (review #1547 R1: geen verlies van historische details) en
+-- krijgen -WedstrijdCode als sleutel: uniek omdat de oude sleutel uniek was, en nooit gelijk aan een
+-- echte (positieve) InternCode. Zo blijven kolom (NOT NULL) en index gelijk aan een verse installatie.
+-- Herstartbaar: het tweede blok vult de sleutel opnieuw en maakt de index zolang die ontbreekt.
+-- ============================================================
+UPDATE [mta].[source_target_mapping]
+SET [source_pk] = '[InternCode]', [target_pk] = 'bk_InternCode INT'
+WHERE [source_schema] = 'stg' AND [source_entity] = 'matchdetails'
+  AND [target_schema] = 'his' AND [target_entity] = 'matchdetails'
+  AND ([source_pk] <> '[InternCode]' OR [target_pk] <> 'bk_InternCode INT');
+GO
+
+IF OBJECT_ID('his.matchdetails') IS NOT NULL
+   AND COL_LENGTH('his.matchdetails', 'bk_WedstrijdCode') IS NOT NULL
+   AND COL_LENGTH('his.matchdetails', 'bk_InternCode') IS NULL
+BEGIN
+    EXEC(N'
+        WITH r AS (
+            SELECT ROW_NUMBER() OVER (PARTITION BY [InternCode]
+                                      ORDER BY [mta_modified] DESC, [mta_inserted] DESC) AS rn
+            FROM [his].[matchdetails]
+            WHERE [InternCode] IS NOT NULL)
+        DELETE FROM r WHERE rn > 1;');
+    IF EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('his.matchdetails') AND name = 'UQ_matchdetails_bk')
+        EXEC(N'DROP INDEX [UQ_matchdetails_bk] ON [his].[matchdetails];');
+    IF EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('his.matchdetails') AND name = 'IX_matchdetails_bk')
+        EXEC(N'DROP INDEX [IX_matchdetails_bk] ON [his].[matchdetails];');
+    EXEC sp_rename N'his.matchdetails.bk_WedstrijdCode', N'bk_InternCode', N'COLUMN';
+    PRINT 'his.matchdetails: bk-kolom hernoemd naar bk_InternCode (#1547).';
+END
+GO
+
+-- Ook na een herstart: de #606-lus hierboven kan de index al op nog oude sleutelwaarden hebben
+-- aangemaakt. Daarom kijkt dit blok naar afwijkende waarden, niet alleen naar een ontbrekende index.
+IF OBJECT_ID('his.matchdetails') IS NOT NULL
+   AND COL_LENGTH('his.matchdetails', 'bk_InternCode') IS NOT NULL
+BEGIN
+    DECLARE @afwijkend INT;
+    EXEC sp_executesql
+        N'SELECT @n = COUNT(*) FROM [his].[matchdetails] WHERE [bk_InternCode] <> COALESCE([InternCode], -[WedstrijdCode]);',
+        N'@n INT OUTPUT', @n = @afwijkend OUTPUT;
+
+    IF @afwijkend > 0
+       OR NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('his.matchdetails')
+                      AND name = 'UQ_matchdetails_bk')
+    BEGIN
+        IF EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('his.matchdetails') AND name = 'UQ_matchdetails_bk')
+            EXEC(N'DROP INDEX [UQ_matchdetails_bk] ON [his].[matchdetails];');
+        IF EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('his.matchdetails') AND name = 'IX_matchdetails_bk')
+            EXEC(N'DROP INDEX [IX_matchdetails_bk] ON [his].[matchdetails];');
+        EXEC(N'UPDATE [his].[matchdetails] SET [bk_InternCode] = COALESCE([InternCode], -[WedstrijdCode]);');
+        EXEC(N'CREATE UNIQUE NONCLUSTERED INDEX [UQ_matchdetails_bk] ON [his].[matchdetails] ([bk_InternCode]);');
+        PRINT 'his.matchdetails: business key gevuld uit InternCode en unieke index aangemaakt (#1547).';
+    END
+END
+GO
+
+-- ============================================================
+-- #1547: herstel van gespeelde wedstrijden die hun kaledatum en veld kwijtraakten.
+--
+-- Spiegel van stap 1 en 3 van Postgres-migratie 036. Een gespeelde wedstrijd komt alleen nog via
+-- /uitslagen binnen, zonder kaledatum en veld; sp_MergeStgToHis zette die kolommen dan op NULL
+-- (WHEN MATCHED neemt elke niet-sleutelkolom uit stg over). Vanaf #1547 vult de sync ze aan, maar
+-- wat al leeg is, repareert alleen dit blok:
+--   - kaledatum uit het lokale datumdeel van wedstrijddatum (altijd correct, geen UTC-conversie);
+--   - veld uit his.matchdetails.VeldNaam (via InternCode), UITSLUITEND voor al gespeelde
+--     wedstrijden: voor toekomstige wedstrijden is /programma de bron en mag een oude waarde nooit
+--     Sportlinks eigen (lege) veld overschrijven. Daardoor is dit blok bij elke deploy herhaalbaar.
+-- Stap 2 van 036 (mta_deleted herstellen) bestaat hier niet: de SQL Server-tier heeft geen
+-- reconciliatie (#1193), dus er wordt nooit iets als verwijderd gemarkeerd.
+-- Idempotent; his.* bestaat pas na de eerste sync.
+-- ============================================================
+IF OBJECT_ID('his.matches') IS NOT NULL
+BEGIN
+    EXEC(N'
+        UPDATE [his].[matches]
+        SET [kaledatum] = LEFT([wedstrijddatum], 10) + N'' 00:00:00.00''
+        WHERE [kaledatum] IS NULL
+          AND [wedstrijddatum] LIKE N''[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]%'';');
+
+    IF OBJECT_ID('his.matchdetails') IS NOT NULL
+       AND COL_LENGTH('his.matchdetails', 'VeldNaam') IS NOT NULL
+       AND COL_LENGTH('his.matchdetails', 'InternCode') IS NOT NULL
+    BEGIN
+        EXEC(N'
+            UPDATE m
+            SET m.[veld] = md.[VeldNaam]
+            FROM [his].[matches] m
+            INNER JOIN [his].[matchdetails] md ON md.[InternCode] = m.[wedstrijdcode]
+            WHERE m.[veld] IS NULL
+              AND COALESCE(md.[VeldNaam], N'''') <> N''''
+              AND TRY_CONVERT(date, LEFT(m.[wedstrijddatum], 10)) < CAST(GETUTCDATE() AS date);');
+    END
+END
+GO
+
+-- ============================================================
+-- #1561: herstel van de lege teamnaam bij gespeelde wedstrijden.
+--
+-- Spiegel van Postgres-migratie 037; zie daar de volledige onderbouwing. Een gespeelde wedstrijd kwam
+-- alleen nog via /uitslagen binnen, zonder teamnaam, en sp_MergeStgToHis zette de kolom dan op leeg.
+-- #1547 stopte dat voor de toekomst en herstelde kaledatum en veld (blok hierboven), maar niet de
+-- teamnaam. De eigen teamnaam volgt uit de relatiecode van de eigen club, die uit de al gevulde rijen
+-- van dezelfde club wordt afgeleid (geen club-specifieke waarde in de code). Minstens één van beide teams
+-- draagt die code; bij een onderlinge wedstrijd is het thuisteam de teamnaam, zoals /programma zelf doet. Rijen met een gevulde teamnaam blijven
+-- onaangeroerd, dus dit blok is bij elke deploy herhaalbaar. his.* bestaat pas na de eerste sync.
+-- ============================================================
+IF OBJECT_ID('his.matches') IS NOT NULL
+   AND COL_LENGTH('his.matches', 'ClubCode') IS NOT NULL
+   AND COL_LENGTH('his.matches', 'thuisteamclubrelatiecode') IS NOT NULL
+   AND COL_LENGTH('his.matches', 'uitteamclubrelatiecode') IS NOT NULL
+BEGIN
+    EXEC(N'
+        WITH gevuld AS (
+            SELECT [ClubCode], [thuisteamclubrelatiecode] AS code
+            FROM [his].[matches]
+            WHERE COALESCE([teamnaam], N'''') <> N'''' AND [teamnaam] = [thuisteam]
+              AND COALESCE([thuisteamclubrelatiecode], N'''') <> N''''
+            UNION ALL
+            SELECT [ClubCode], [uitteamclubrelatiecode]
+            FROM [his].[matches]
+            WHERE COALESCE([teamnaam], N'''') <> N'''' AND [teamnaam] = [uitteam]
+              AND COALESCE([uitteamclubrelatiecode], N'''') <> N''''
+        ),
+        geteld AS (
+            SELECT [ClubCode], code, COUNT(*) AS aantal,
+                   ROW_NUMBER() OVER (PARTITION BY [ClubCode] ORDER BY COUNT(*) DESC) AS rang
+            FROM gevuld
+            GROUP BY [ClubCode], code
+        )
+        UPDATE m
+        SET m.[teamnaam] = CASE WHEN COALESCE(m.[thuisteamclubrelatiecode], N'''') = e.code
+                                THEN m.[thuisteam] ELSE m.[uitteam] END
+        FROM [his].[matches] m
+        INNER JOIN geteld e ON e.[ClubCode] = m.[ClubCode] AND e.rang = 1
+        WHERE COALESCE(m.[teamnaam], N'''') = N''''
+          AND (COALESCE(m.[thuisteamclubrelatiecode], N'''') = e.code
+               OR COALESCE(m.[uitteamclubrelatiecode], N'''') = e.code)
+          AND COALESCE(CASE WHEN COALESCE(m.[thuisteamclubrelatiecode], N'''') = e.code
+                            THEN m.[thuisteam] ELSE m.[uitteam] END, N'''') <> N'''';');
+END
 GO

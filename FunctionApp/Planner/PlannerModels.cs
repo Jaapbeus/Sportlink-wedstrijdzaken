@@ -227,6 +227,8 @@ namespace SportlinkFunction.Planner
         public string? Veld { get; set; }
         public string? LeeftijdsCategorie { get; set; }
         public string? Competitiesoort { get; set; }
+        /// <summary>Netto speelduur volgens Sportlink (his.matchdetails.Duration), indien bekend (#1547).</summary>
+        public int? SportlinkSpeelduur { get; set; }
     }
 
     public class AutoPlanRequest

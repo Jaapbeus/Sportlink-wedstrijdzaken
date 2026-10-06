@@ -1259,9 +1259,9 @@ Deze zes waarden identificeren jouw club. Zet ze op het tabblad **Secrets** →
 >
 > Alle zes (`AZURE_AD_CLIENT_ID`, `AZURE_AD_TENANT_ID`, `AZURE_FUNCTIONAPP_NAME`, `AZURE_FUNCTIONAPP_URL`,
 > `AZURE_STATIC_WEB_APP_HOSTNAME`, `POST_LOGOUT_REDIRECT_URL`) zijn **uitsluitend Secrets**, nooit Variables.
-> `deploy.yml` leest `${{ secrets.NAAM || vars.NAAM }}`, maar de `vars`-tak is alleen een legacy-terugval
-> voor oudere forks: heb je ze nog als **Variable** staan, zet ze dan om naar Secret en verwijder de Variable,
-> want anders staan de waarden leesbaar in de publieke logs.
+> `deploy.yml` leest uitsluitend `${{ secrets.NAAM }}`; de vroegere terugval op een Variable is bij #1237
+> verwijderd. Heb je ze in een oudere fork nog als **Variable** staan, zet ze dan om naar Secret en verwijder
+> de Variable: de deploy faalt anders vooraf met een melding welk secret ontbreekt.
 
 ### 9.2a SQL-configuratie (alleen `DatabaseTier=SqlServer`)
 
@@ -1282,8 +1282,9 @@ tier-gating loopt via de niet-gevoelige **Variable** `DatabaseTier`; een eerste 
 |------|-----------------------|---------------------------|
 | `db-check` + `db-migrate` (alleen `DatabaseTier=SqlServer`) | `AZURE_SQL_SERVER_NAME`, `AZURE_SQL_DATABASE_NAME`, `AZURE_SQL_RESOURCE_GROUP`, `SQL_CONNECTION_STRING` (allemaal Secrets) | Jobs falen hard bij ontbrekende secret; ze draaien alleen bij `DatabaseTier=SqlServer` |
 | `db-migrate-postgres` (alleen `DatabaseTier=Postgres`) | `POSTGRES_CONNECTION_STRING` | **Job faalt hard** — stil overslaan zou de nieuwe code tegen een verouderd schema laten draaien (#1093) |
-| `blazor-deploy` + SWA smoke test | `AZURE_STATIC_WEB_APPS_API_TOKEN`, `AZURE_STATIC_WEB_APP_HOSTNAME` | Job wordt overgeslagen |
-| `build` + `test` | `AZURE_CREDENTIALS`, `AZURE_FUNCTIONAPP_NAME`, `AZURE_FUNCTION_KEY` | Verplicht — mislukken bij ontbreken |
+| `blazor-deploy` + SWA smoke test | `AZURE_STATIC_WEB_APPS_API_TOKEN` | Ontbreekt het token: de vervolgstappen worden overgeslagen |
+| `blazor-deploy` (token aanwezig) | `AZURE_STATIC_WEB_APP_HOSTNAME`, `AZURE_FUNCTIONAPP_URL`, `AZURE_AD_TENANT_ID`, `AZURE_AD_CLIENT_ID`, `POST_LOGOUT_REDIRECT_URL` (allemaal Secrets) | **Job faalt vooraf** bij elk ontbrekend secret, met de naam in de melding (#1237) |
+| `deploy` + `test` | `AZURE_CREDENTIALS`, `AZURE_FUNCTIONAPP_NAME`, `AZURE_FUNCTION_KEY` | Verplicht — `deploy` faalt vooraf als `AZURE_FUNCTIONAPP_NAME` ontbreekt (#1237); zonder de andere twee mislukken inloggen of de smoketests |
 
 ### 9.4 Verificatie na instellen
 

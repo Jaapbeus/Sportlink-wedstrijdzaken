@@ -1,0 +1,19 @@
+/* #1553: een grid dat zich aanpast aan de breedte van de cel waarin het staat — niet aan de
+   viewport zoals de Bootstrap-kolommen. Op een telefoon één kolom, op een breed scherm alle velden
+   naast elkaar. */
+.speeltijd-formulier-velden {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+    gap: 0.75rem 1rem;
+    align-items: end;
+}
+
+.speeltijd-formulier-knoppen {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.speeltijd-formulier-kop {
+    overflow-wrap: anywhere;
+}

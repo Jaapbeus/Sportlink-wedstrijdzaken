@@ -93,8 +93,9 @@ namespace SportlinkFunction
                             DROP TABLE [stg].[matchdetails];
 
                         CREATE TABLE [stg].[matchdetails] (
-                            WedstrijdCode INT PRIMARY KEY,
-                            InternCode INT,
+                            -- #1547: InternCode is de unieke sleutel; WedstrijdCode is het wedstrijdnummer (bij clubwedstrijden vaak 1).
+                            WedstrijdCode INT NOT NULL,
+                            InternCode INT PRIMARY KEY,
                             VeldNaam NVARCHAR(200),
                             VeldLocatie NVARCHAR(200),
                             VertrekTijd NVARCHAR(200),

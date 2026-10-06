@@ -118,6 +118,14 @@ gepland staat: een tijdlijn per veld, met daaronder een tabel met dezelfde wedst
 staat op deze pagina ook een Sportlink-kolom, op dezelfde manier als op Veld optimalisatie
 hieronder — zie hoofdstuk 19 voor de Sportlink Web Extension zelf.
 
+**Sportlink is leidend (#1547).** De tijdlijn toont elke wedstrijd zoals de veldplanner in
+Sportlink Club hem toont: hetzelfde veld, dezelfde aanvangstijd, en een blok dat even lang is —
+Sportlinks speelduur plus vijftien minuten. De speelduur komt dus uit Sportlink, niet uit
+**Speeltijden**; die tabel is alleen nog de terugval voor een wedstrijd waarvan Sportlink geen
+speelduur kent, en blijft de basis voor **Veld optimalisatie**. Een lange wedstrijdnaam loopt over
+twee regels door, met de aanvangstijd vóór de naam op dezelfde regel; de volledige naam staat ook in de tooltip. Ziet u toch een verschil met Sportlink,
+start dan eerst een synchronisatie — de Planning toont de stand van de laatste sync.
+
 - **Hover-highlight:** beweeg de muis over een rij in de tabel, of over een blok in de
   tijdlijn — de bijbehorende wedstrijd licht in beide oranje op. Zo is snel terug te vinden
   waar een wedstrijd uit de lijst zich visueel op het veld bevindt, en andersom. Sinds #1398
@@ -226,6 +234,12 @@ Veld optimalisatie heeft **twee losse kolommen** die makkelijk verward worden (#
 
 Achter de tijd staat de herkomst: **regel** (teamregel voorkeursveld met tijd), **team** (eigen
 voorkeurstijd) of **standaard** (standaardtijd van de leeftijdscategorie).
+
+**Afwijkende tijd voor één team.** Leg in **Speeltijden** de standaardtijd per leeftijdscategorie vast
+(bijvoorbeeld JO23 om 12:00) en voeg in **Voorkeurstijden** alleen de teams toe die daarvan afwijken
+(bijvoorbeeld JO23-4 om 15:30). De planner zoekt eerst het specifieke team; is dat er niet, dan geldt de
+standaardtijd van de categorie. Het maakt niet uit hoe het team geschreven is: `JO23-4`, `O23-4` en de
+Sportlink-notatie met clubnaam ervoor zijn hetzelfde team.
 
 > **Waarom twee kolommen?** Tot #666 was er één groene "OK"-badge die alleen keek of de planner iets
 > verplaatste. Een wedstrijd die bleef staan toonde dus "OK", ook als die 60 minuten van de gewenste
@@ -777,6 +791,21 @@ deze pagina. Wat Sportlink zelf als wedstrijdduur doorgeeft, wordt genegeerd —
 Het veld **Totaal (min)** — in het scherm met de toevoeging *incl. rust* — is de totale
 veldblokkeertijd die de planner direct gebruikt. Rust wordt er dus **niet** nog eens apart bij
 opgeteld: Totaal = speeltijd + rust + buffer. Voorbeeld senioren: 2×45 + 15 rust + 10 buffer = 115.
+
+**Bewerken** opent het formulier direct onder de regel die u bewerkt (die regel is gemarkeerd);
+**Nieuwe categorie** opent het formulier bovenaan de tabel. Met **Opslaan** wordt de regel
+bijgewerkt, **Annuleer** sluit het formulier zonder wijziging. Op een telefoon of in een smal
+venster worden de regels kaarten met de kolomnaam ervoor; het formulier past dan binnen het scherm.
+
+Zolang een opslag loopt — tot de lijst daarna opnieuw is opgehaald — staat er **Opslaan…** bij
+die regel en zijn **Bewerken** en **Verwijderen** van die regel even niet beschikbaar; de regel
+toont intussen al de opgeslagen waarden. U kunt wel een andere categorie openen: het resultaat van
+de eerste opslag raakt dat tweede formulier niet. Mislukt een opslag terwijl het formulier al dicht
+is, dan verschijnt de fout als melding boven de tabel, met de naam van de categorie erbij. Lukt het
+opslaan wel maar het opnieuw ophalen van de lijst niet, dan ziet u een waarschuwing en blijft de
+regel de zojuist opgeslagen waarden tonen. Slaat u meerdere regels vlak na elkaar op, dan houdt elke
+regel de waarden die u opsloeg, ook als de lijst na de eerste opslag later binnenkomt dan die na de
+tweede. Met **Sluiten** haalt u zo'n melding weg.
 
 ### Categorieregels
 - Categorie `1-99` = Senioren mannen; `VR` = Senioren vrouwen → beide 115 minuten

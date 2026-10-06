@@ -119,9 +119,19 @@ public sealed class PostgresMergeOrchestrator
     /// nog steeds veiliger dan een wal-klok-gebaseerde schatting van Sportlink's weekindeling
     /// gebruiken (met het risico op de andere kant: per ongeluk data buiten het echte venster raken).
     /// </para>
+    /// <para>
+    /// <b><paramref name="ondergrens"/> (#1547): nooit reconciliëren vóór die datum.</b>
+    /// <c>/programma</c> laat een wedstrijd vallen zodra hij gespeeld is (hij staat dan in
+    /// <c>/uitslagen</c>), maar het stg-venster begint bij "vorige week". Zonder ondergrens markeerde
+    /// elke ochtendrun na een speeldag alle gespeelde wedstrijden van die dag als verwijderd — circa
+    /// twintig per week. Afwezigheid in <c>/programma</c> is alleen voor wedstrijden ná vandaag een
+    /// bewijs dat Sportlink de wedstrijd niet meer kent; de pipeline geeft daarom morgen mee (review
+    /// #1547 R1-F2: op de speeldag zelf kan de uitslag nog ontbreken).
+    /// </para>
     /// </summary>
     public async Task<int> ReconcileWindowedAsync(
-        EntityDefinition entity, string clubCode, string dateColumn, CancellationToken ct = default)
+        EntityDefinition entity, string clubCode, string dateColumn, CancellationToken ct = default,
+        DateOnly? ondergrens = null)
     {
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(ct);
@@ -142,6 +152,11 @@ public sealed class PostgresMergeOrchestrator
             van = reader.GetFieldValue<DateOnly>(0);
             tot = reader.GetFieldValue<DateOnly>(1);
         }
+
+        if (ondergrens is { } grens && grens > van)
+            van = grens;
+        if (van > tot)
+            return 0; // Het hele stg-venster ligt vóór de ondergrens.
 
         await using var command = new NpgsqlCommand(
             PostgresReconciliationGenerator.GenerateSoftDeleteMissing(entity, dateColumn), connection);

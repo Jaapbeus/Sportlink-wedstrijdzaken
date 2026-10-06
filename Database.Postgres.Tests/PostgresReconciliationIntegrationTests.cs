@@ -192,6 +192,103 @@ public class PostgresReconciliationIntegrationTests : IAsyncLifetime
         (await IsGemarkeerdAlsVerwijderdAsync(connection, "matches", "M-ANDER")).Should().BeFalse();
     }
 
+    [PostgresFact]
+    public async Task ReconcileWindowedAsync_GespeeldeWedstrijdVoorOndergrens_BlijftOngemarkeerd()
+    {
+        var entity = TestEntities.SingleKeyWithClub;
+        await Orchestrator.RecreateStgTableAsync(entity);
+        await Orchestrator.EnsureHisTableAsync(entity);
+
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+
+        // #1547: zaterdag gespeeld, dus niet meer in /programma; stg begint nog wel bij "vorige week"
+        // omdat er die week ook een wedstrijd zonder uitslag staat. Vóór de ondergrens werd de
+        // gespeelde wedstrijd elke zondagochtend als verwijderd gemarkeerd.
+        await SeedHisMatchAsync(connection, "M-GESPEELD", "CLUBA", "2026-10-03");
+        await SeedHisMatchAsync(connection, "M-VERVALLEN", "CLUBA", "2026-10-10");
+        await SeedStgMatchAsync(connection, "M-OUD", "CLUBA", "2026-10-01");
+        await SeedStgMatchAsync(connection, "M-TOEKOMST", "CLUBA", "2026-10-17");
+
+        var aantal = await Orchestrator.ReconcileWindowedAsync(
+            entity, "CLUBA", "datum", ondergrens: new DateOnly(2026, 10, 5));
+
+        aantal.Should().Be(1, "alleen de toekomstige wedstrijd die Sportlink niet meer kent verdwijnt");
+        (await IsGemarkeerdAlsVerwijderdAsync(connection, "matches", "M-GESPEELD")).Should().BeFalse();
+        (await IsGemarkeerdAlsVerwijderdAsync(connection, "matches", "M-VERVALLEN")).Should().BeTrue();
+    }
+
+    [PostgresFact]
+    public async Task ReconcileWindowedAsync_HeleVensterVoorOndergrens_ReconcilieertNiets()
+    {
+        var entity = TestEntities.SingleKeyWithClub;
+        await Orchestrator.RecreateStgTableAsync(entity);
+        await Orchestrator.EnsureHisTableAsync(entity);
+
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+
+        await SeedHisMatchAsync(connection, "M-1", "CLUBA", "2026-10-02");
+        await SeedStgMatchAsync(connection, "M-2", "CLUBA", "2026-10-01");
+        await SeedStgMatchAsync(connection, "M-3", "CLUBA", "2026-10-03");
+
+        var aantal = await Orchestrator.ReconcileWindowedAsync(
+            entity, "CLUBA", "datum", ondergrens: new DateOnly(2026, 10, 5));
+
+        aantal.Should().Be(0);
+    }
+
+    [PostgresFact]
+    public async Task ReconcileWindowedAsync_SpeeldagSyncZonderUitslag_LaatGespeeldeWedstrijdStaan()
+    {
+        var entity = TestEntities.SingleKeyWithClub;
+        await Orchestrator.RecreateStgTableAsync(entity);
+        await Orchestrator.EnsureHisTableAsync(entity);
+
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+
+        // Review #1547 R1-F2: handmatige sync op de speeldag (10 okt). De ochtendwedstrijd is al uit
+        // /programma, de uitslag staat er nog niet; andere wedstrijden van vandaag en volgende week
+        // houden het venster open. De pipeline geeft morgen als ondergrens mee.
+        await SeedHisMatchAsync(connection, "M-OCHTEND", "CLUBA", "2026-10-10");
+        await SeedHisMatchAsync(connection, "M-GESCHRAPT", "CLUBA", "2026-10-17");
+        await SeedStgMatchAsync(connection, "M-MIDDAG", "CLUBA", "2026-10-10");
+        await SeedStgMatchAsync(connection, "M-VOLGENDE", "CLUBA", "2026-10-24");
+
+        var aantal = await Orchestrator.ReconcileWindowedAsync(
+            entity, "CLUBA", "datum", ondergrens: new DateOnly(2026, 10, 11));
+
+        aantal.Should().Be(1);
+        (await IsGemarkeerdAlsVerwijderdAsync(connection, "matches", "M-OCHTEND")).Should().BeFalse(
+            "een gespeelde wedstrijd van vandaag zonder gepubliceerde uitslag is niet verdwenen");
+        (await IsGemarkeerdAlsVerwijderdAsync(connection, "matches", "M-GESCHRAPT")).Should().BeTrue(
+            "een toekomstige wedstrijd die Sportlink niet meer levert, verdwijnt wel");
+    }
+
+    [PostgresFact]
+    public async Task MergeStgToHis_RijTerugInSportlink_WordtHersteld()
+    {
+        var entity = TestEntities.SingleKeyWithClub;
+        await Orchestrator.RecreateStgTableAsync(entity);
+        await Orchestrator.EnsureHisTableAsync(entity);
+
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+
+        // #1547: één haperende sync markeerde de wedstrijd als verwijderd; de volgende sync levert
+        // hem ongewijzigd weer op. Vóór de fix bleef hij voor altijd verborgen.
+        await SeedHisMatchAsync(connection, "M-1", "CLUBA", "2026-10-24");
+        await using (var markeer = new NpgsqlCommand(
+            "UPDATE his.\"matches\" SET \"mta_deleted\" = NOW() WHERE \"matchcode\" = 'M-1'", connection))
+            await markeer.ExecuteNonQueryAsync();
+        await SeedStgMatchAsync(connection, "M-1", "CLUBA", "2026-10-24");
+
+        await Orchestrator.MergeStgToHisAsync(entity);
+
+        (await IsGemarkeerdAlsVerwijderdAsync(connection, "matches", "M-1")).Should().BeFalse();
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────────────────────
 
     private static async Task SeedHisTeamAsync(NpgsqlConnection connection, string teamcode, string clubcode)

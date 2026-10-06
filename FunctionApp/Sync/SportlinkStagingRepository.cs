@@ -121,6 +121,73 @@ internal static class SportlinkStagingRepository
         return inserted;
     }
 
+    /// <summary>
+    /// Kolommen die alleen <c>/programma</c> levert en <c>/uitslagen</c> niet (#1547).
+    /// </summary>
+    private static readonly string[] AlleenProgrammaKolommen =
+    [
+        "teamnaam", "teamvolgorde", "competitie", "klasse", "poule", "klassepoule", "kaledatum",
+        "vertrektijd", "verzameltijd", "scheidsrechters", "scheidsrechter", "veld", "veld_subpositie",
+        "locatie", "plaats", "rijders", "kleedkamerthuisteam", "kleedkameruitteam", "kleedkamerscheidsrechter",
+    ];
+
+    /// <summary>
+    /// Vult stg-rijen die <see cref="MergeUitslagenAsync"/> invoegde aan met de programma-gegevens die
+    /// al in <c>his.matches</c> staan (#1547). Een gespeelde wedstrijd staat niet meer in
+    /// <c>/programma</c>, dus komt hij alleen via <c>/uitslagen</c> in stg — zonder kaledatum, veld,
+    /// teamnaam en kleedkamers — en de merge overschreef daarmee de complete his-rij met NULL's.
+    /// Zonder his-rij wordt <c>kaledatum</c> uit <c>wedstrijddatum</c> afgeleid.
+    /// Kolommen die niet in stg of his bestaan (bv. veld_subpositie op een oudere installatie) worden overgeslagen.
+    /// </summary>
+    internal static async Task<int> VulUitslagRijenAanUitHisAsync(string clubCode, ILogger log)
+    {
+        using var conn = new SqlConnection(Cs);
+        await conn.OpenAsync();
+        var aangevuld = 0;
+
+        if (await ScalarBoolAsync(conn, "SELECT CASE WHEN OBJECT_ID('his.matches') IS NOT NULL THEN 1 ELSE 0 END"))
+        {
+            var sets = new List<string>();
+            foreach (var k in AlleenProgrammaKolommen)
+            {
+                if (await ScalarBoolAsync(conn,
+                        $"SELECT CASE WHEN COL_LENGTH('stg.matches', '{k}') IS NOT NULL AND COL_LENGTH('his.matches', '{k}') IS NOT NULL THEN 1 ELSE 0 END"))
+                    // Review #1547 R1-F3: de uitslagdatum is actueler dan de kaledatum in his.
+                    sets.Add(k == "kaledatum"
+                        ? $"s.[kaledatum] = COALESCE({KaledatumUitWedstrijddatum("s.[wedstrijddatum]")}, h.[kaledatum])"
+                        : $"s.[{k}] = COALESCE(s.[{k}], h.[{k}])");
+            }
+            if (sets.Count > 0)
+            {
+                using var vulAan = new SqlCommand($@"
+                    UPDATE s SET {string.Join(", ", sets)}
+                    FROM [stg].[matches] s
+                    INNER JOIN [his].[matches] h ON h.[wedstrijdcode] = s.[wedstrijdcode] AND h.[ClubCode] = s.[ClubCode]
+                    WHERE s.[ClubCode] = @clubcode AND s.[kaledatum] IS NULL", conn);
+                vulAan.Parameters.AddWithValue("@clubcode", clubCode);
+                aangevuld = await vulAan.ExecuteNonQueryAsync();
+            }
+        }
+
+        using var datum = new SqlCommand($@"
+            UPDATE [stg].[matches] SET [kaledatum] = {KaledatumUitWedstrijddatum("[wedstrijddatum]")}
+            WHERE [ClubCode] = @clubcode AND [kaledatum] IS NULL", conn);
+        datum.Parameters.AddWithValue("@clubcode", clubCode);
+        await datum.ExecuteNonQueryAsync();
+        log.LogInformation("MATCHES/UITSLAGEN - {Aangevuld} uitslag-rijen aangevuld uit his.matches.", aangevuld);
+        return aangevuld;
+    }
+
+    /// <summary>Lokale datum van Sportlinks wedstrijddatum in kaledatum-vorm, of NULL als het geen datum is.</summary>
+    private static string KaledatumUitWedstrijddatum(string kolom)
+        => $"CASE WHEN {kolom} LIKE '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]%' THEN LEFT({kolom}, 10) + ' 00:00:00.00' END";
+
+    private static async Task<bool> ScalarBoolAsync(SqlConnection conn, string sql)
+    {
+        using var cmd = new SqlCommand(sql, conn);
+        return Convert.ToInt32(await cmd.ExecuteScalarAsync()) == 1;
+    }
+
     internal static async Task<int> MergeUitslagenAsync(List<Match> matches, string clubCode, ILogger log)
     {
         using var conn = new SqlConnection(Cs);
@@ -182,7 +249,9 @@ internal static class SportlinkStagingRepository
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
         using var cmd = new SqlCommand(@"
-            IF NOT EXISTS (SELECT 1 FROM [stg].[matchdetails] WHERE WedstrijdCode = @WedstrijdCode)
+            -- #1547: ontdubbelen op InternCode (= his.matches.wedstrijdcode, uniek). WedstrijdCode is het
+            -- wedstrijdnummer en bij clubwedstrijden vaak 1.
+            IF NOT EXISTS (SELECT 1 FROM [stg].[matchdetails] WHERE InternCode = @InternCode)
             INSERT INTO [stg].[matchdetails] (
                 WedstrijdCode, InternCode, VeldNaam, VeldLocatie, VertrekTijd, Rijder,
                 ThuisScore, ThuisScoreRegulier, ThuisScoreNV, ThuisScoreS, UitScore, UitScoreRegulier,

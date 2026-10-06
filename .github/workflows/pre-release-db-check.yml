@@ -47,8 +47,8 @@ name: Pre-release database check (develop → main)
 # "db-check" als required status check in branch protection te kunnen blijven gebruiken,
 # maakt deze job zelf een check-run aan op github.event.workflow_run.head_sha via de
 # GitHub Checks API (GITHUB_TOKEN — het ingebouwde Actions-token, geen productiecredential)
-# en rondt die af met de uiteindelijke conclusie. Dit vervangt de vroegere job-level
-# `if: vars.AZURE_SQL_SERVER_NAME != ''`-skip: die skip gebeurt nu ook via een expliciete
+# en rondt die af met de uiteindelijke conclusie. Dit vervangt de vroegere job-level skip op
+# een SQL-configuratiewaarde: die skip gebeurt nu ook via een expliciete
 # check-conclusie (`skipped`) in plaats van het job simpelweg niet te laten draaien, zodat
 # er altijd een afgeronde check op de PR verschijnt (anders blijft branch protection voor
 # altijd op "expected" staan).

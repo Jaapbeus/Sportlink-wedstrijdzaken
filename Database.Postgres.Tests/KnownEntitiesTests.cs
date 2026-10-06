@@ -41,11 +41,19 @@ public class KnownEntitiesTests
     [Fact]
     public void MatchDetails_BusinessKeyIsIntegerKolom_WerktOokAlsHetGeenStringIs()
     {
-        // wedstrijdcode is INT, niet VARCHAR — de synthetische bk_-kolom cast expliciet naar
+        // interncode is INT, niet VARCHAR — de synthetische bk_-kolom cast expliciet naar
         // ::text, dus dit mag geen probleem zijn. Zie ook de empirische integratietest.
         var sql = PostgresSchemaGenerator.GenerateHisTable(KnownEntities.MatchDetails);
 
-        sql.Should().Contain("COALESCE(\"wedstrijdcode\"::text, '')");
+        sql.Should().Contain("COALESCE(\"interncode\"::text, '')");
+    }
+
+    [Fact]
+    public void MatchDetails_BusinessKeyIsInterncode_NietHetNietUniekeWedstrijdnummer()
+    {
+        // #1547: "wedstrijdcode" van /wedstrijd-informatie is het wedstrijdnummer — bij
+        // clubwedstrijden vaak 1. Met die sleutel overschreven detailrijen elkaar.
+        KnownEntities.MatchDetails.BusinessKey.Should().Equal("interncode");
     }
 
     /// <summary>

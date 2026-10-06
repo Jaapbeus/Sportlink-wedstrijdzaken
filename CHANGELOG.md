@@ -18,6 +18,30 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.11.2.0] — 2026-10-06
+
+### Fixed
+- **Planning**: bij afgelopen speeldagen staat in de lijst weer het eigen team in de kolom Team. Het oude sync-gedrag had die naam bij gespeelde wedstrijden leeggemaakt (in productie 347 wedstrijden) en dat werd tot nu toe niet hersteld. De deploy leidt de teamnaam nu af uit de wedstrijd zelf; wedstrijden waar niet vast te stellen is welk team bedoeld is, blijven ongemoeid (#1561).
+- **Planning**: in een kort blok (een deelveld, de helft van een veldrij) blijft de tegenstander leesbaar. De aanvangstijd staat nu vóór de naam op dezelfde regel, zoals in de Sportlink-veldplanner, zodat de tweede regel voor de tegenstander overblijft (#1561).
+- Speeltijden: **Bewerken** opent het formulier nu direct onder de regel die u bewerkt, en **Nieuwe categorie** bovenaan de tabel. Voorheen verscheen het formulier onderaan een lange pagina, buiten beeld, waardoor het leek alsof de knop niets deed (#1543).
+- Speeltijden: een opslag die laat terugkomt — bijvoorbeeld bij een trage verbinding — raakt alleen nog de regel waar hij bij hoort. Wie intussen een andere categorie opent, krijgt de foutmelding van de vorige niet meer onder het verkeerde formulier, en dat geopende formulier wordt niet onverwacht gesloten; een mislukte opslag van een al gesloten formulier verschijnt als aparte melding boven de tabel. Zolang een opslag loopt — tot de lijst daarna is bijgewerkt — zijn **Bewerken** en **Verwijderen** van die ene regel even niet beschikbaar; de regel toont intussen al de opgeslagen waarden, ook als het opnieuw ophalen van de lijst mislukt. Slaat u meerdere regels vlak na elkaar op, dan houdt elke regel zijn opgeslagen waarden: een trager binnenkomend, ouder lijstantwoord zet er geen terug (#1552).
+- Speeltijden: op een telefoon of in een smal venster worden de regels kaarten en past het bewerkformulier binnen het scherm; horizontaal schuiven is niet meer nodig (#1553).
+- Speeltijden: elk label in het bewerkformulier hoort nu bij zijn invoerveld — klikken op een label zet de cursor in het veld, en hulptechnologie leest de veldnaam voor (#1554).
+- Een e-mailverzoek met een team zonder J/M ervoor (bijvoorbeeld "14-2") kreeg het antwoord "Helaas geen veld beschikbaar", ook als er ruimte genoeg was. Als er maar één passend team is, wordt de leeftijdscategorie nu van dat team overgenomen en wordt de beschikbaarheid echt gecontroleerd (#1545).
+- Een voorkeurstijd of voorkeursveld voor één team (bijvoorbeeld JO23-4 om 15:30) werd niet gevonden als Sportlink het team anders schrijft ("O23-4" met de clubnaam ervoor). Alle schrijfwijzen van hetzelfde team vinden nu de instelling; teams zonder eigen voorkeurstijd houden de standaardtijd van hun leeftijdscategorie (#1545).
+- De veldbezetting op **Planning** sluit weer aan op de Sportlink-veldplanner (#1547):
+  - De speelduur komt uit Sportlink (plus vijftien minuten, zoals Sportlink het blok tekent) in plaats van de standaard per leeftijdscategorie — een team met een afwijkende speelduur kreeg een veel te lang blok.
+  - De tegenstander verdwijnt niet meer uit een blok met een lange wedstrijdnaam.
+  - Wedstrijden die na een haperende synchronisatie als verwijderd gemarkeerd bleven, komen terug zodra Sportlink ze weer levert.
+  - Gespeelde wedstrijden verdwijnen niet meer uit afgelopen speeldagen: de synchronisatie markeerde ze als verwijderd en overschreef datum, veld en team met lege waarden.
+  - Wedstrijdinformatie van clubwedstrijden met hetzelfde Sportlink-wedstrijdnummer overschrijft elkaar niet meer.
+  - Een gespeelde wedstrijd van vandaag waarvan de uitslag nog niet bekend is, verdwijnt niet bij een synchronisatie op de speeldag zelf; een verplaatste gespeelde wedstrijd staat op de nieuwe dag.
+  - Op de SQL Server-variant worden gespeelde wedstrijden die hun datum en veld kwijt waren bij de eerstvolgende update hersteld (op de Postgres-variant doet migratie 036 dat).
+
+### Security
+- De deploy leest club-identificerende configuratie nu uitsluitend uit GitHub Secrets; de terugval op een Variable met dezelfde naam is weg. Ontbreekt een secret, dan stopt de deploy vooraf met een melding die het secret noemt, in plaats van een vage Azure-fout (#1237).
+- `SECURITY.md` legt twee restrisicobesluiten van de eigenaar vast: de classificatie van de Sportlink-clientId en de oude issue- en PR-teksten (#1237).
+
 ## [3.11.1.0] — 2026-10-04
 
 ### Changed

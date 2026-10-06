@@ -102,19 +102,23 @@
     outline: var(--gantt-outline);
 }
 
+/* #1561: de aanvangstijd staat vóór de wedstrijdnaam op dezelfde regel, zoals in de Sportlink-veldplanner.
+   Tot #1561 stonden tijd en naam onder elkaar: in een blok van één deelveld (de helft van de rij) bleef
+   dan nog maar één regel over, en de tegenstander verdween ("VRC O12-5 -"). Nu past de naam op de
+   tweede regel. De tooltip toont altijd de volledige tekst. */
 .gantt-blok-tijd {
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
     font-weight: 700;
     font-size: 0.7rem;
-    margin-top: var(--gantt-margin-top, 0);
+    margin-right: 0.15rem;
 }
 
+/* #1547: de volledige wedstrijdnaam in plaats van een afgeknipt label. Geen vaste regelgrens meer:
+   het blok zelf kapt af op zijn hoogte, zodat een hoger blok ook meer regels laat zien. */
 .gantt-blok-label {
     overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    padding-top: var(--gantt-margin-top, 0);
 }
 
 .gantt-voorkeur-balk {

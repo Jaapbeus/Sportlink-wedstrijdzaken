@@ -139,6 +139,73 @@ internal static class PostgresStagingRepository
         return inserted;
     }
 
+    /// <summary>
+    /// Kolommen die alleen <c>/programma</c> levert en <c>/uitslagen</c> niet (#1547).
+    /// </summary>
+    private static readonly string[] AlleenProgrammaKolommen =
+    [
+        "teamnaam", "teamvolgorde", "competitie", "klasse", "poule", "klassepoule", "kaledatum",
+        "vertrektijd", "verzameltijd", "scheidsrechters", "scheidsrechter", "veld", "veld_subpositie",
+        "locatie", "plaats", "rijders", "kleedkamerthuisteam", "kleedkameruitteam", "kleedkamerscheidsrechter",
+    ];
+
+    /// <summary>
+    /// Vult stg-rijen die <see cref="MergeUitslagenAsync"/> invoegde aan met de programma-gegevens die
+    /// al in <c>his.matches</c> staan (#1547).
+    /// <para>
+    /// Een gespeelde wedstrijd staat niet meer in <c>/programma</c>, dus komt hij alleen via
+    /// <c>/uitslagen</c> in stg — zonder <c>kaledatum</c>, <c>veld</c>, <c>teamnaam</c> en kleedkamers.
+    /// De upsert overschreef daarna de complete his-rij met die lege waarden: elke afgelopen speeldag
+    /// verdween zo uit de Planning (in productie 347 wedstrijden). Wat Sportlink niet meer levert,
+    /// blijft nu staan zoals Sportlink het eerder leverde. Zonder his-rij wordt <c>kaledatum</c> uit
+    /// de lokale datum van <c>wedstrijddatum</c> afgeleid.
+    /// </para>
+    /// </summary>
+    internal static async Task<int> VulUitslagRijenAanUitHisAsync(string connectionString, string clubCode)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        var aangevuld = 0;
+
+        await using (var bestaat = new NpgsqlCommand("SELECT to_regclass('his.matches') IS NOT NULL", connection))
+        {
+            if ((bool)(await bestaat.ExecuteScalarAsync())!)
+            {
+                // Review #1547 R1-F3: de datum uit /uitslagen is actueler dan die in his. Een wedstrijd
+                // die na de vorige sync verplaatst is, kreeg anders de oude kaledatum terug en stond
+                // op /planning op de verkeerde dag. Alleen als wedstrijddatum onbruikbaar is, valt
+                // kaledatum terug op his.
+                var sets = string.Join(", ", AlleenProgrammaKolommen.Select(k => k == "kaledatum"
+                    ? $"kaledatum = COALESCE({KaledatumUitWedstrijddatum("s.wedstrijddatum")}, h.kaledatum)"
+                    : $"{k} = COALESCE(s.{k}, h.{k})"));
+                await using var vulAan = new NpgsqlCommand($"""
+                    UPDATE stg.matches s SET {sets}
+                    FROM his.matches h
+                    WHERE h.wedstrijdcode = s.wedstrijdcode AND h.clubcode = s.clubcode
+                      AND s.clubcode = @clubcode AND s.kaledatum IS NULL
+                    """, connection);
+                vulAan.Parameters.AddWithValue("clubcode", clubCode);
+                aangevuld = await vulAan.ExecuteNonQueryAsync();
+            }
+        }
+
+        await using var datum = new NpgsqlCommand($"""
+            UPDATE stg.matches SET kaledatum = {KaledatumUitWedstrijddatum("wedstrijddatum")}
+            WHERE clubcode = @clubcode AND kaledatum IS NULL
+            """, connection);
+        datum.Parameters.AddWithValue("clubcode", clubCode);
+        await datum.ExecuteNonQueryAsync();
+        return aangevuld;
+    }
+
+    /// <summary>
+    /// Lokale datum van Sportlinks <c>wedstrijddatum</c> ("2026-10-10T10:15:00+0200") in de
+    /// kaledatum-vorm, of NULL als de waarde geen datum is. Het datumdeel is al lokale tijd — geen
+    /// UTC-conversie, die zou een avondwedstrijd naar de volgende dag kunnen schuiven.
+    /// </summary>
+    private static string KaledatumUitWedstrijddatum(string kolom)
+        => $"CASE WHEN {kolom} ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}' THEN left({kolom}, 10) || ' 00:00:00.00' END";
+
     internal static async Task<int> MergeUitslagenAsync(string connectionString, List<Match> matches, string clubCode, ILogger log)
     {
         await using var connection = new NpgsqlConnection(connectionString);
@@ -217,9 +284,12 @@ internal static class PostgresStagingRepository
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
 
+        // #1547: ontdubbelen op interncode (= his.matches.wedstrijdcode, uniek). Het wedstrijdnummer
+        // is bij clubwedstrijden vaak 1, en daarop ontdubbeld werd de tweede zo'n wedstrijd van een
+        // run overgeslagen — met zijn speelduur.
         await using var existsCommand = new NpgsqlCommand(
-            "SELECT 1 FROM stg.matchdetails WHERE wedstrijdcode = @wedstrijdcode", connection);
-        existsCommand.Parameters.AddWithValue("wedstrijdcode", matchDetails.Wedstrijdinformatie.Wedstrijdnummer);
+            "SELECT 1 FROM stg.matchdetails WHERE interncode = @interncode", connection);
+        existsCommand.Parameters.AddWithValue("interncode", matchDetails.Wedstrijdinformatie.Wedstijdnummerintern);
         if (await existsCommand.ExecuteScalarAsync() != null)
         {
             log.LogInformation("MATCHDETAILS - stg.matchdetails rij bestaat al, overgeslagen.");

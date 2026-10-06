@@ -29,6 +29,8 @@ internal static class SportlinkSyncPipeline
         partialFailure |= await FetchTeamsPhaseAsync(sportlinkApiUrl, sportlinkClientId, clubCode, log);
         partialFailure |= await FetchProgrammaPhaseAsync(fromWeekOffset, toWeekOffset, sportlinkApiUrl, sportlinkClientId, clubCode, log);
         partialFailure |= await FetchUitslagenPhaseAsync(fromWeekOffset, sportlinkApiUrl, sportlinkClientId, clubCode, log);
+        // #1547: een gespeelde wedstrijd komt alleen nog via /uitslagen binnen, zonder veld/datum/team.
+        await SportlinkStagingRepository.VulUitslagRijenAanUitHisAsync(clubCode, log);
         partialFailure |= await FetchMatchDetailsPhaseAsync(sportlinkApiUrl, sportlinkClientId, clubCode, log);
 
         await MergeAllToHisAsync(log);

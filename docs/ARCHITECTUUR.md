@@ -798,7 +798,7 @@ configuratie automatisch vanuit templates en GitHub Secrets/Variables.
 | Bestand | In git? | Toelichting |
 |---|---|---|
 | `BlazorAdmin/wwwroot/appsettings.Production.template.json` | ✓ | Bevat alleen `{{PLACEHOLDER}}`-tokens |
-| `BlazorAdmin/wwwroot/appsettings.Production.json` | ✗ | Gegenereerd door CI vanuit template + GitHub Variables/Secrets |
+| `BlazorAdmin/wwwroot/appsettings.Production.json` | ✗ | Gegenereerd door CI vanuit template + GitHub Secrets |
 | `BlazorAdmin/wwwroot/appsettings.json` | ✓ | Localhost-config, geen secrets |
 | `FunctionApp/local.settings.json` | ✗ | Bevat `SqlConnectionString` en andere secrets |
 | `FunctionApp/local.settings.template.json` | ✓ | Template zonder waarden |
@@ -809,13 +809,14 @@ configuratie automatisch vanuit templates en GitHub Secrets/Variables.
 **Club-identificerende configuratie — als GitHub Secret** (gemaskeerd in Actions-logs, die bij een
 publieke repository voor iedereen leesbaar zijn): `AZURE_FUNCTIONAPP_NAME`, `AZURE_FUNCTIONAPP_URL`,
 `AZURE_STATIC_WEB_APP_HOSTNAME`, `AZURE_AD_TENANT_ID`, `AZURE_AD_CLIENT_ID`,
-`POST_LOGOUT_REDIRECT_URL`. Een bestaande Variable blijft werken (`${{ secrets.NAAM || vars.NAAM }}`),
-maar alleen een Secret wordt gemaskeerd.
+`POST_LOGOUT_REDIRECT_URL`, en bij `SqlServer` ook `AZURE_SQL_SERVER_NAME`/`AZURE_SQL_DATABASE_NAME`/
+`AZURE_SQL_RESOURCE_GROUP`. Er is geen terugval op een Variable met dezelfde naam (#1237): ontbreekt een
+secret, dan faalt de deploy vooraf met een melding die het secret noemt.
 
 **GitHub Variables** (gebruikt in job-`if:`, waar de `secrets`-context niet beschikbaar is):
 `DatabaseTier` (`SqlServer`/`Postgres`), `DatabaseTierSwitchConfirmation` (moet exact gelijk zijn aan
-`DatabaseTier`, anders faalt de deploy met exitcode 3 — zie §8.4), en bij `SqlServer`:
-`AZURE_SQL_SERVER_NAME`/`AZURE_SQL_RESOURCE_GROUP`.
+`DatabaseTier`, anders faalt de deploy met exitcode 3 — zie §8.4). Verder geen: alles wat de club
+identificeert is een Secret.
 
 **GitHub Secrets:** `AZURE_CREDENTIALS`, `AZURE_FUNCTION_KEY`, `AZURE_STATIC_WEB_APPS_API_TOKEN`
 (beide tiers); `SQL_CONNECTION_STRING` (alleen SqlServer); `POSTGRES_CONNECTION_STRING` (alleen

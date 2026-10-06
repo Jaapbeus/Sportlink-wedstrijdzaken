@@ -25,99 +25,90 @@ else
         <button class="btn btn-success" @onclick="StartNew">Nieuwe categorie</button>
     </div>
 
-    <table class="table table-striped table-sm">
-        <thead>
-            <tr>
-                <th>Leeftijd</th>
-                <th>Veldafmeting</th>
-                <th title="speeltijd + rust incl. buffer">Totaal (min) <small class="text-muted">incl. rust</small></th>
-                <th>Helft (min)</th>
-                <th>Rust (min)</th>
-                <th title="Gebruikt als een team geen eigen voorkeurstijd heeft">Standaard voorkeurstijd</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var s in _items)
-            {
-                <tr>
-                    <td>@s.Leeftijd</td>
-                    <td>@s.Veldafmeting.ToString("0.00")</td>
-                    <td><strong>@s.WedstrijdTotaal</strong></td>
-                    <td>@s.WedstrijdHelft</td>
-                    <td>@s.WedstrijdRust</td>
-                    <td>
-                        @if (string.IsNullOrWhiteSpace(s.StandaardVoorkeurTijd))
-                        {
-                            <span class="text-muted">—</span>
-                        }
-                        else
-                        {
-                            @s.StandaardVoorkeurTijd
-                        }
-                    </td>
-                    <td>
-                        <button class="btn btn-sm btn-primary me-1" @onclick="() => Edit(s)">Bewerken</button>
-                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(s.Leeftijd)">Verwijderen</button>
-                    </td>
-                </tr>
-            }
-            @if (_items.Count == 0)
-            {
-                <tr><td colspan="7" class="text-muted">Geen speeltijden gevonden.</td></tr>
-            }
-        </tbody>
-    </table>
-
-    @if (_editing != null)
+    @if (_bewerking.Melding != null)
     {
-        <hr />
-        <h3>@(_isNew ? "Nieuwe leeftijdscategorie" : $"Bewerken: {_editing.Leeftijd}")</h3>
-        <p class="text-muted small">
-            WedstrijdTotaal = speeltijd + rust. Voorbeeld senioren: 2×45 + 15 rust + 10 buffer = 115.<br />
-            <strong>Standaard voorkeurstijd</strong> geldt voor teams in deze categorie die géén eigen
-            voorkeurstijd hebben onder Instellingen → Voorkeurstijden. Laat leeg om geen streeftijd te
-            gebruiken; de planner kiest dan het eerst beschikbare tijdslot.
-        </p>
-        <EditForm Model="_editing" OnValidSubmit="OpslaanAsync">
-            <div class="row g-3 align-items-end">
-                <div class="col-md-2">
-                    <label class="form-label">Leeftijd</label>
-                    <input class="form-control" @bind="_editing.Leeftijd" disabled="@(!_isNew)" placeholder="JO12" />
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">Veldafmeting</label>
-                    <input class="form-control" type="number" step="0.25" min="0.25" max="1.00"
-                           @bind="_editing.Veldafmeting" />
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">Totaal (min) <small class="text-muted">incl. rust</small></label>
-                    <input class="form-control" type="number" min="1" @bind="_editing.WedstrijdTotaal" />
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">Helft (min)</label>
-                    <input class="form-control" type="number" min="1" @bind="_editing.WedstrijdHelft" />
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">Rust (min)</label>
-                    <input class="form-control" type="number" min="0" @bind="_editing.WedstrijdRust" />
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">Standaard voorkeurstijd</label>
-                    <TimeInput Value="@_editing.StandaardVoorkeurTijd"
-                               ValueChanged="@(v => _editing.StandaardVoorkeurTijd = string.IsNullOrWhiteSpace(v) ? null : v)"
-                               Placeholder="bijv. 10:00" />
-                </div>
-                <div class="col-md-2 d-flex gap-2">
-                    <button type="submit" class="btn btn-primary">Opslaan</button>
-                    <button type="button" class="btn btn-secondary" @onclick="Annuleer">Annuleer</button>
-                </div>
-            </div>
-        </EditForm>
-        @if (_saveError != null)
-        {
-            <div class="alert alert-danger mt-2">@_saveError</div>
-        }
+        <div class="alert alert-danger d-flex justify-content-between align-items-start gap-2" role="alert">
+            <span>@_bewerking.Melding</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" @onclick="_bewerking.SluitMelding">Sluiten</button>
+        </div>
     }
-}
+    @if (_bewerking.VerversFout != null)
+    {
+        <div class="alert alert-warning d-flex justify-content-between align-items-start gap-2" role="alert">
+            <span>@_bewerking.VerversFout</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" @onclick="_bewerking.SluitVerversFout">Sluiten</button>
+        </div>
+    }
 
+    @* Op een smalle container worden de regels kaarten (Speeltijden.razor.css), zodat het inline
+       formulier de beschikbare breedte krijgt in plaats van die van de zevenkolomstabel (#1553).
+       De tabelrollen staan expliciet: zodra de cellen display:block krijgen, laat de browser de
+       impliciete tabelsemantiek vallen en zou een schermlezer losse tekst horen. *@
+    <div class="speeltijden-lijst">
+        <table class="table table-striped table-sm speeltijden-tabel" role="table">
+            <thead role="rowgroup">
+                <tr role="row">
+                    <th role="columnheader" scope="col">Leeftijd</th>
+                    <th role="columnheader" scope="col">Veldafmeting</th>
+                    <th role="columnheader" scope="col" title="speeltijd + rust incl. buffer">Totaal (min) <small class="text-muted">incl. rust</small></th>
+                    <th role="columnheader" scope="col">Helft (min)</th>
+                    <th role="columnheader" scope="col">Rust (min)</th>
+                    <th role="columnheader" scope="col" title="Gebruikt als een team geen eigen voorkeurstijd heeft">Standaard voorkeurstijd</th>
+                    <th role="columnheader" scope="col"><span class="visually-hidden">Acties</span></th>
+                </tr>
+            </thead>
+            <tbody role="rowgroup">
+                @if (_bewerking.Actief is { IsNieuw: true } nieuw)
+                {
+                    <tr role="row" class="speeltijd-formulierrij">
+                        <td role="cell" colspan="7">
+                            <SpeeltijdFormulier @key="nieuw" Sessie="nieuw" OnOpslaan="OpslaanAsync" OnAnnuleer="Annuleer" />
+                        </td>
+                    </tr>
+                }
+                @foreach (var s in _bewerking.Items)
+                {
+                    var inBewerking = _bewerking.IsInBewerking(s);
+                    var opslagBezig = _bewerking.IsOpslagBezig(s);
+                    <tr role="row" class="@(inBewerking ? "table-active" : null)">
+                        <td role="cell" data-label="Leeftijd" class="speeltijd-leeftijd">@s.Leeftijd</td>
+                        <td role="cell" data-label="Veldafmeting">@s.Veldafmeting.ToString("0.00")</td>
+                        <td role="cell" data-label="Totaal (min)"><strong>@s.WedstrijdTotaal</strong></td>
+                        <td role="cell" data-label="Helft (min)">@s.WedstrijdHelft</td>
+                        <td role="cell" data-label="Rust (min)">@s.WedstrijdRust</td>
+                        <td role="cell" data-label="Standaard voorkeurstijd">
+                            @if (string.IsNullOrWhiteSpace(s.StandaardVoorkeurTijd))
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                            else
+                            {
+                                @s.StandaardVoorkeurTijd
+                            }
+                        </td>
+                        <td role="cell" class="speeltijd-acties">
+                            @if (opslagBezig)
+                            {
+                                <span class="text-muted small me-1" role="status">Opslaan…</span>
+                            }
+                            <button class="btn btn-sm btn-primary me-1" disabled="@opslagBezig" @onclick="() => Edit(s)">Bewerken</button>
+                            <button class="btn btn-sm btn-outline-danger" disabled="@opslagBezig" @onclick="() => DeleteAsync(s.Leeftijd)">Verwijderen</button>
+                        </td>
+                    </tr>
+                    @if (inBewerking)
+                    {
+                        <tr role="row" class="speeltijd-formulierrij">
+                            <td role="cell" colspan="7">
+                                <SpeeltijdFormulier @key="_bewerking.Actief" Sessie="_bewerking.Actief!" OnOpslaan="OpslaanAsync" OnAnnuleer="Annuleer" />
+                            </td>
+                        </tr>
+                    }
+                }
+                @if (_bewerking.Items.Count == 0)
+                {
+                    <tr role="row"><td role="cell" colspan="7" class="text-muted">Geen speeltijden gevonden.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

@@ -176,7 +176,11 @@ public static class KnownEntities
             new ColumnDefinition("uitteamemail", ProviderAgnosticType.VarChar, Length: 200),
             new ColumnDefinition("clubcode", ProviderAgnosticType.VarChar, Length: 20),
         ],
-        businessKey: ["wedstrijdcode"],
+        // #1547: interncode, niet wedstrijdcode. /wedstrijd-informatie noemt het wedstrijdNUMMER
+        // "wedstrijdcode"; dat is niet uniek (clubwedstrijden hebben vaak nummer 1), waardoor
+        // detailrijen van verschillende wedstrijden elkaar overschreven of werden overgeslagen.
+        // interncode is gelijk aan his.matches.wedstrijdcode en wél uniek.
+        businessKey: ["interncode"],
         hasClubCode: true);
 
     /// <summary>Alle drie entiteiten — handig voor "genereer voor elke bekende entiteit"-loops.</summary>

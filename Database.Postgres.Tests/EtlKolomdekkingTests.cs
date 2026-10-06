@@ -36,12 +36,12 @@ public class EtlKolomdekkingTests
     /// </summary>
     private static readonly Dictionary<string, string> BewusteAfwijkingen = new()
     {
-        ["his.matchdetails.bk_wedstrijdcode"] =
+        ["his.matchdetails.bk_interncode"] =
             "De SQL Server-tier is hier zelf inconsistent: his.Teams en his.Matches gebruiken " +
             "bk_<entiteit> (bk_teams, bk_matches), maar his.MatchDetails gebruikt de naam van de " +
-            "business-key-KOLOM (bk_WedstrijdCode). PostgresSchemaGenerator.BusinessKeyColumnName " +
+            "business-key-KOLOM (bk_InternCode, tot #1547 bk_WedstrijdCode). PostgresSchemaGenerator.BusinessKeyColumnName " +
             "hanteert consequent bk_<entiteit> voor alle drie, dus daar heet hij bk_matchdetails. " +
-            "Niets buiten de SQL Server-boom verwijst naar bk_WedstrijdCode (alleen " +
+            "Niets buiten de SQL Server-boom verwijst naar bk_InternCode (alleen " +
             "mta.source_target_mapping en Script.PostDeployment1.sql, en de Postgres-tier heeft " +
             "die stuurtabel architecturaal niet — #818). Bewust niet gespiegeld: de inconsistentie " +
             "overnemen zou de Postgres-boom onnodig onregelmatig maken.",

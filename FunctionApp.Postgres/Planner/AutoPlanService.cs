@@ -93,7 +93,7 @@ internal static class AutoPlanService
         // Paren i.p.v. een dictionary — zie de klasse-doc-comment over record-waardegelijkheid.
         var metDoel = alleWedstrijden
             .Select(w => (Wedstrijd: w, Doel: AutoPlanRegels.BepaalPlanDoel(
-                w.TeamNaam, w.LeeftijdsCategorie, isAllstars, voorkeurVelden, voorkeurLookup, speeltijden)))
+                w.TeamNaam, w.LeeftijdsCategorie, isAllstars, voorkeurVelden, voorkeurLookup, speeltijden, clubCode)))
             .OrderBy(p => p.Doel.Laag)                 // regels vóór voorkeuren vóór defaults
             .ThenBy(p => p.Doel.Prioriteit)            // laag getal = belangrijker
             .ThenBy(p => p.Doel.DoelTijd.HasValue
@@ -391,7 +391,8 @@ internal static class AutoPlanService
                     Veld: w.Veld,
                     Competitiesoort: w.Competitiesoort,
                     LeeftijdsCategorie: w.LeeftijdsCategorie,
-                    DuurMinuten: speeltijdInfo?.WedstrijdTotaal ?? 0,
+                    // #1547: Sportlinks eigen speelduur is leidend; speeltijden alleen als terugval.
+                    DuurMinuten: VeldbezettingDuur.Bepaal(w.SportlinkSpeelduur, speeltijdInfo?.WedstrijdTotaal),
                     Veldafmeting: VeldafmetingVoorWedstrijd(w.Veld, veldNamen, speeltijdInfo?.Veldafmeting ?? 1.00m));
             })
             .OrderBy(w => string.IsNullOrWhiteSpace(w.AanvangsTijd) ? "99:99" : w.AanvangsTijd)

@@ -83,45 +83,13 @@ public static class SportlinkFixtures
 
         // /uitslagen verrijkt de bestaande /programma-rij alleen met scorevelden — zelfde
         // wedstrijdcode, geen nieuwe wedstrijd (zie FunctionApp/CLAUDE.md, "Sync strategie").
-        server.RespondWithJson("/uitslagen", $$"""
-            [
-              {
-                "wedstrijddatum": "2026-09-05T10:00:00+0200",
-                "wedstrijdcode": {{wedstrijdcode}},
-                "wedstrijdnummer": 19780,
-                "datum": "05 sep.",
-                "wedstrijd": "{{clubCode}} JO13-1 - Tegenstander JO13-1",
-                "accommodatie": "Sportpark Oost",
-                "aanvangstijd": "10:00",
-                "thuisteam": "{{clubCode}} JO13-1",
-                "thuisteamid": 99007,
-                "thuisteamlogo": "https://binaries.sportlink.com/logo-thuis.png",
-                "thuisteamclubrelatiecode": "BBBZXXXX",
-                "uitteamclubrelatiecode": "BBBZYYYY",
-                "uitteam": "Tegenstander JO13-1",
-                "uitteamid": 222309,
-                "uitteamlogo": "https://binaries.sportlink.com/logo-uit.png",
-                "competitiesoort": "regulier",
-                "status": "Gespeeld",
-                "meer": "wedstrijd-informatie?wedstrijdcode={{wedstrijdcode}}",
-                "datumopgemaakt": "05 sep. 2026",
-                "uitslag": "3-1",
-                "uitslag-regulier": "3-1",
-                "uitslag-nv": "",
-                "uitslag-s": "",
-                "competitienaam": "0214 JO13 Zaterdag",
-                "eigenteam": "thuis",
-                "sportomschrijving": "Voetbal",
-                "verenigingswedstrijd": "Ja"
-              }
-            ]
-            """);
+        server.RespondWithJson("/uitslagen", UitslagenJson(wedstrijdcode, clubCode));
 
         server.RespondWithJson("/wedstrijd-informatie", $$"""
             {
               "wedstrijdinformatie": {
-                "wedstrijdnummer": {{wedstrijdcode}},
-                "wedstijdnummerintern": 19780,
+                "wedstrijdnummer": 19780,
+                "wedstijdnummerintern": {{wedstrijdcode}},
                 "veldnaam": "veld 3",
                 "veldlocatie": "Veld",
                 "vertrektijd": "08:35",
@@ -200,4 +168,43 @@ public static class SportlinkFixtures
 
         return server;
     }
+
+    /// <summary>
+    /// <c>/uitslagen</c>-respons met één gespeelde wedstrijd. <paramref name="wedstrijddatum"/> is
+    /// instelbaar voor het #1547-scenario van een wedstrijd die na de vorige sync verplaatst is.
+    /// </summary>
+    public static string UitslagenJson(long wedstrijdcode, string clubCode,
+        string wedstrijddatum = "2026-09-05T10:00:00+0200") => $$"""
+            [
+              {
+                "wedstrijddatum": "{{wedstrijddatum}}",
+                "wedstrijdcode": {{wedstrijdcode}},
+                "wedstrijdnummer": 19780,
+                "datum": "05 sep.",
+                "wedstrijd": "{{clubCode}} JO13-1 - Tegenstander JO13-1",
+                "accommodatie": "Sportpark Oost",
+                "aanvangstijd": "10:00",
+                "thuisteam": "{{clubCode}} JO13-1",
+                "thuisteamid": 99007,
+                "thuisteamlogo": "https://binaries.sportlink.com/logo-thuis.png",
+                "thuisteamclubrelatiecode": "BBBZXXXX",
+                "uitteamclubrelatiecode": "BBBZYYYY",
+                "uitteam": "Tegenstander JO13-1",
+                "uitteamid": 222309,
+                "uitteamlogo": "https://binaries.sportlink.com/logo-uit.png",
+                "competitiesoort": "regulier",
+                "status": "Gespeeld",
+                "meer": "wedstrijd-informatie?wedstrijdcode={{wedstrijdcode}}",
+                "datumopgemaakt": "05 sep. 2026",
+                "uitslag": "3-1",
+                "uitslag-regulier": "3-1",
+                "uitslag-nv": "",
+                "uitslag-s": "",
+                "competitienaam": "0214 JO13 Zaterdag",
+                "eigenteam": "thuis",
+                "sportomschrijving": "Voetbal",
+                "verenigingswedstrijd": "Ja"
+              }
+            ]
+            """;
 }

@@ -1272,7 +1272,8 @@ De SQL Server-tier is bij de synthetische business-key-kolom **zelf inconsistent
 `his.Teams` en `his.Matches` gebruiken `bk_<entiteit>` (`bk_teams`, `bk_matches`), maar
 `his.MatchDetails` gebruikt de naam van de business-key-*kolom*: `bk_WedstrijdCode`.
 `PostgresSchemaGenerator.BusinessKeyColumnName` hanteert consequent `bk_<entiteit>` voor alle drie,
-dus daar heet hij `bk_matchdetails`.
+dus daar heet hij `bk_matchdetails`. *Sinds #1547 is de sleutel `InternCode` en heet de kolom
+`bk_InternCode` — zie §79; de afwijking zelf bestaat nog steeds.*
 
 Een repo-brede zoekactie bevestigt dat niets buiten de SQL Server-boom naar `bk_WedstrijdCode`
 verwijst — alleen `mta.source_target_mapping` en `Script.PostDeployment1.sql`, en de Postgres-tier
@@ -4537,6 +4538,93 @@ PostDeployment — dat blok bleek bovendien idempotent). De retentie-tests bewij
 wat niet verdwijnt (23 maanden blijft, 25 maanden niet; een nog open issue blijft ongeacht leeftijd).
 Eén verschil dat de tests aan het licht brengen: de gefilterde index `IX_avg_Feedback_Melder_Datum` op
 SQL Server vereist `SET QUOTED_IDENTIFIER ON` (zie §75), vandaar de expliciete regel boven het blok.
+
+## 79. Sportlink is leidend voor de veldbezetting: sleutel, reconciliatie en speelduur (#1547)
+
+Een vergelijking van één speeldag tussen de Sportlink-veldplanner en de Planning, en een read-only
+controle van de productiedatabase, leverde zeven samenhangende oorzaken op. De eigenaar legde
+daarbij vast: **Sportlink is altijd leidend** — elke wedstrijd wordt na elke sync aangemaakt of
+bijgewerkt naar wat Sportlink zegt.
+
+| # | Oorzaak | Gevolg | Oplossing |
+|---|---|---|---|
+| 1 | `matchdetails`-sleutel was `wedstrijdcode` — in `/wedstrijd-informatie` is dat het wedstrijd*nummer* | Clubwedstrijden (vaak nummer 1) overschreven elkaars details of werden overgeslagen | Sleutel en staging-ontdubbeling op `interncode` (= `his.matches.wedstrijdcode`); Postgres-migratie 036 bouwt de gegenereerde kolom om, SQL Server via `mta.source_target_mapping` |
+| 2 | De upsert zette `mta_deleted` nooit terug | Na één haperende run bleef een toekomstige wedstrijd voorgoed onzichtbaar | `mta_deleted = NULL` in de update, en `OR mta_deleted IS NOT NULL` in de wijzigingsdetectie |
+| 3 | Reconciliatie keek ook naar datums vóór vandaag | Elke ochtend na een speeldag werden de gespeelde wedstrijden als verwijderd gemarkeerd | `ReconcileWindowedAsync(..., ondergrens)`; de pipeline geeft **morgen** (Nederlandse tijd) mee — zie R1-F2 hieronder |
+| 4 | Een gespeelde wedstrijd komt alleen via `/uitslagen` binnen, zonder `kaledatum`/`veld`/`teamnaam` | De upsert overschreef de his-rij met lege waarden; afgelopen speeldagen verdwenen | `VulUitslagRijenAanUitHisAsync` vult de stg-rij aan uit his vóór de upsert |
+| 5 | Speelduur kwam uit de speeltijdentabel per leeftijdscategorie | Een team met afwijkende speelduur kreeg de categoriestandaard | `Planner.Shared.VeldbezettingDuur`: Sportlinks `duration` + 15, speeltijden alleen als terugval |
+| 6 | Gantt-label knipte alles na `" - "` boven 30 tekens | Juist bij lange namen verdween de tegenstander | Label ongewijzigd, over maximaal twee regels |
+| 7 | Testfixture had `wedstrijdnummer` en `wedstijdnummerintern` omgedraaid | Oorzaak 1 kon door geen enkele test gevonden worden | Fixture volgt de echte Sportlink-vorm |
+
+**Codex-review ronde 1 (op `742d13c8`) — verwerking.**
+
+| Bevinding | Afhandeling |
+|---|---|
+| R1-F1: migratie 036 herstelt verwijdermarkeringen zonder positief bronbewijs | **Niet in code gewijzigd — eigenaarsbesluit 2026-10-06.** 036 staat al op `develop` en mag niet meer veranderen (checksum-guard, #1062). Geen van de kandidaten had bronbewijs (geen uitslag, geen detailscore, niet opnieuw geleverd); allemaal gemarkeerd de ochtend ná hun speeldag, het bekende foutpatroon. De eigenaar keurde die herstelset goed. Restrisico: een wedstrijd die Sportlink op de speeldag zelf schrapte, verschijnt weer in de historie (nooit in de toekomst). |
+| R1-F2: reconciliatie op de speeldag zelf | Ondergrens is nu **morgen** (`PostgresSyncPipeline.EersteTeReconcilierenDatum`). Prijs: een op de speeldag zelf geschrapte wedstrijd blijft staan; een afgelaste wedstrijd valt via status "Afgelast" wel direct weg. |
+| R1-F3: oude kaledatum wint van actuele uitslagdatum | Beide tiers: kaledatum uit de lokale datum van `wedstrijddatum`, his alleen als terugval. |
+| SQL Server-upgrade: verlies van rijen zonder InternCode | Rijen blijven bewaard met sleutel `-WedstrijdCode` (uniek, nooit een echte InternCode); schema gelijk aan een verse installatie; tweede blok herstelt afwijkende sleutelwaarden na een gedeeltelijke run. **Extra gevonden:** `stg.matchdetails` had op SQL Server een PRIMARY KEY op WedstrijdCode, waardoor twee clubwedstrijden met nummer 1 nog steeds niet pasten — nu op InternCode. |
+
+**Bewijs bij deze verwerking:** SQL Server 2022 (wegwerpcontainer) — database opgebouwd met de PostDeployment van vóór #1547 en de oude tabelvorm, met een dubbele InternCode en rijen zonder InternCode; nieuwe PostDeployment tweemaal (tweede run nul fouten, niets opnieuw); daarna `sp_MergeStgToHis` met twee clubwedstrijden met wedstrijdnummer 1 (beide opgeslagen) en een update; vers-installatiepad idem; de drie SQL Server-fixturesynctests (normaal overgeslagen) lokaal geslaagd. Postgres: §57-proef — de sync-, veldbezettings- en optimalisatietests van de codeversie vóór #1547 slagen tegen een database waarop 036 al is toegepast. Beperking: 036 faalt op een database waarvan de his-tabellen een testvorm hebben (zonder `interncode`/`kaledatum`); productie- en CI-databases hebben die vorm niet.
+
+**Waarom "+15".** Sportlinks `duration` is de netto speeltijd (2×30 = 60). De Sportlink-veldplanner
+tekent elk blok vijftien minuten langer; nagemeten op acht wedstrijden van 50 t/m 90 minuten,
+inclusief categorieën waar de eigen speeltijdentabel tien minuten rust kent. Niet nagemeten:
+toernooivorm-competities van één periode (20 minuten, elk halfuur een wedstrijd). Daar geeft "+15"
+vijf minuten overlap tussen opeenvolgende wedstrijden — zie issue #1560.
+
+**Wat dit niet verandert.** De optimalisatie (`FieldScheduler`, besluit #291) rekent nog met de
+speeltijdentabel inclusief buffer; alleen de weergave van wat er al gepland staat volgt Sportlink.
+De SQL Server-tier kent nog steeds geen reconciliatie (#1193 is alleen op Postgres gebouwd) — dat
+is een bestaand pariteitsgat dat hier niet is opgelost; zie issue #1558. Of Veld optimalisatie ook
+Sportlinks speelduur moet volgen is een eigenaarsbesluit: zie issue #1559.
+
+**Gemeten, niet aangenomen.** Migratie 036 is uitgevoerd op een verse Postgres 17-database met
+his-tabellen in de oude vorm (oude sleutelexpressie, een uitslagrij zonder datum en veld, een
+onterecht verwijderde gespeelde wedstrijd, een vóór zijn datum geschrapte wedstrijd): sleutel
+omgebouwd, de eerste twee hersteld, de laatste bewust ongemoeid. De volledige fixture-sync en de
+nieuwe reconciliatie- en veldbezettingstests draaien in de bestaande integratiesuites.
+
+**Aanvullende verificatie na review ronde 2 (2026-10-06).**
+
+| Punt | Uitkomst |
+|---|---|
+| Migratie 036 tegen de productiecatalogus (read-only) | Alle betrokken tabellen zijn van de migratierol; niets hangt aan `bk_matchdetails` of zijn index (alleen een view hangt aan `his.matches`, en 036 doet daar uitsluitend UPDATE's); de event triggers vuren bij ALTER/INDEX maar `rls_auto_enable` reageert alleen op `CREATE TABLE` en `pgrst_ddl_watch` stuurt alleen een melding; tabellen van ca. 900 en 1100 rijen. Effect in productie: 347 datums gevuld, **69** wedstrijden hersteld (allemaal zaterdagen, geen enkele in de toekomst, 65 een dag na hun speeldag en 4 twee of drie dagen erna), 345 velden gevuld. Dat is de door de eigenaar goedgekeurde herstelset. Geen dubbele of ontbrekende `interncode`. |
+| Herstart halverwege de SQL Server-upgrade | Getest met de kolom al hernoemd, de index weg en de oude waarden nog aanwezig: de #606-lus maakt eerst een index op die oude waarden, het #1547-blok ziet de afwijking, herstelt de sleutel en bouwt de index opnieuw; een tweede run is stil. |
+| SQL Server mist het datum- en veldherstel van 036 | Toegevoegd als blok in `Script.PostDeployment1.sql`: `kaledatum` uit `wedstrijddatum`, `veld` uit `matchdetails.VeldNaam` — dit laatste alleen voor al gespeelde wedstrijden, zodat het bij elke deploy herhaalbaar is en Sportlinks eigen waarde voor toekomstige wedstrijden nooit overschrijft. Stap 2 van 036 (`mta_deleted`) bestaat hier niet: de tier heeft geen reconciliatie. |
+| Tijdzone in de sync | `VandaagInNederland` staat buiten de bewaking van de reconciliatie en gooit nu nooit meer: Windows-id, dan IANA-id, anders UTC-datum plus één dag (een latere ondergrens reconcilieert minder, nooit meer). |
+| Pipeline-standaard van de ondergrens | Eerder door geen enkele test geraakt (alle synctests geven hem expliciet mee); nu dekt een integratietest dat een wedstrijd uit het verleden zonder expliciete ondergrens nooit als verwijderd wordt gemarkeerd. |
+
+**Bewust verschil tussen de tiers.** Migratie 036 brengt rijen met `interncode IS NULL` terug tot één rij
+(`IS NOT DISTINCT FROM` ziet NULL's als gelijk); het SQL Server-blok bewaart ze met sleutel `-WedstrijdCode`.
+In productie zijn er geen zulke rijen (0 gemeten), dus dit heeft daar geen effect; 036 kan niet meer
+wijzigen (checksum-guard). Een fork die op Postgres draait en wél zulke rijen heeft, verliest er dus
+historische details van.
+
+**Vervolg bij de acceptatietest (#1561).** Het vergelijken van de Planning met de Sportlink-veldplanner op 10 en
+26 oktober gaf drie nieuwe bevindingen:
+
+- *Lege teamnaam bij gespeelde wedstrijden.* Oorzaak 4 hierboven is voor de toekomst opgelost, maar de rijen die
+  al leeg waren (347 in productie en lokaal) bleven leeg: 036 herstelt alleen `kaledatum` en `veld`, en de sync kan
+  een teamnaam niet meer aanvullen die er nooit meer in `/programma` staat. Migratie **037** (Postgres) en het
+  spiegelblok in `Database/Script.PostDeployment1.sql` (SQL Server) leiden de teamnaam af: het team met de
+  relatiecode van de eigen club, per club vastgesteld uit de al gevulde rijen (geen club-specifieke waarde in de
+  code). Bij een onderlinge wedstrijd is het thuisteam de teamnaam, zoals `/programma` zelf doet. Een club zonder
+  gevulde rijen of zonder relatiecodes (de democlub) blijft ongemoeid. Gemeten op de lokale kopie: 347 → 0 lege
+  teamnamen. Idempotent; bewezen op een echte Postgres (`HerstelTeamnaamMigratieIntegrationTests`, het echte
+  migratiebestand) en een echte SQL Server (zelfde zeven gevallen, tweede run 0 rijen).
+- *Tegenstander afgeknipt.* Een blok van één deelveld is maar de helft van een rij hoog; tijd en naam onder elkaar
+  lieten één regel voor de naam over. De aanvangstijd staat nu op dezelfde regel als de naam
+  (`GanttChart.razor`).
+- *Korte wedstrijden (35+/VR30+, één keer 20 minuten).* Eerst als speelduur + 10 uitgewerkt, daarna op
+  eigenaarsbesluit teruggedraaid: de rust tussen twee wedstrijden is geen speeltijd en wordt niet apart
+  meegeteld. Elke wedstrijd volgt dus dezelfde regel (Sportlinks speelduur + 15). Een afwijking van de
+  Sportlink-veldplanner op een 35+-dag lost #1563 definitief op door de blokduur rechtstreeks uit
+  Sportlink te lezen.
+
+Bewust niet gedaan: wedstrijden met thuisteam gelijk aan uitteam (op 10 oktober twee extra blokken die Sportlink niet
+toont) blijven in de Planning. Een toernooi heeft dezelfde vorm, dus een filter zonder Sportlink-bewijs van de
+toernooidagen kan een echte wedstrijd verbergen (#1560).
 
 ## Gerelateerd
 
