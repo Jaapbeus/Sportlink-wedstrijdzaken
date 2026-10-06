@@ -19,6 +19,11 @@ namespace Planner.Shared;
 /// niets met de werkelijke bezetting te maken had.
 /// </para>
 /// <para>
+/// Eén regel voor elke wedstrijd, ook voor 35+ en VR30+ (één keer twintig minuten): de rust tussen twee
+/// wedstrijden is geen speeltijd en telt dus niet apart mee (eigenaarsbesluit #1561). Een uitzondering per
+/// duur is bewust niet gebouwd; de exacte blokduur rechtstreeks uit Sportlink volgt in #1563.
+/// </para>
+/// <para>
 /// Dit geldt uitsluitend voor de weergave van wat er al gepland staat. De optimalisatie
 /// (<see cref="FieldScheduler"/>, besluit #291) rekent nog met de speeltijdentabel inclusief buffer.
 /// </para>
@@ -28,31 +33,11 @@ public static class VeldbezettingDuur
     /// <summary>Minuten die de Sportlink-veldplanner bovenop de netto speelduur als bezetting toont.</summary>
     public const int SportlinkBezettingBovenopSpeelduur = 15;
 
-    /// <summary>
-    /// Een wedstrijd van deze duur of korter (35+/VR30+: één keer twintig minuten, dag-/avondtoernooien)
-    /// is een "korte wedstrijd" met een eigen bezettingsregel, zie <see cref="KorteWedstrijdBezettingBovenopSpeelduur"/>.
-    /// </summary>
-    public const int KorteWedstrijdMaxSpeelduur = 20;
-
-    /// <summary>
-    /// Bezetting bovenop de speelduur van een korte wedstrijd: tien minuten rust tussen twee wedstrijden.
-    /// <para>
-    /// Eigenaarsbesluit (#1561): een 35+-wedstrijd is één keer twintig minuten met tien minuten rust,
-    /// en er start elk halfuur een wedstrijd — een blok van dertig minuten. Met de vijftien minuten van
-    /// de lange wedstrijden werd het 35 en overlapten opeenvolgende blokken vijf minuten. <b>Niet
-    /// nagemeten op de Sportlink-veldplanner</b> (de vijftien is gemeten op wedstrijden van 50 tot 90
-    /// minuten); controleer dit op een toernooi-/35+-speeldag, zie #1560.
-    /// </para>
-    /// </summary>
-    public const int KorteWedstrijdBezettingBovenopSpeelduur = 10;
-
     /// <param name="sportlinkSpeelduur">Netto speelduur volgens Sportlink, of <c>null</c>/0 als onbekend.</param>
     /// <param name="speeltijdenTotaal">Terugval uit de speeltijdentabel, of <c>null</c> als de categorie ontbreekt.</param>
     /// <returns>Bezettingsduur in minuten; 0 als geen van beide bronnen iets weet.</returns>
     public static int Bepaal(int? sportlinkSpeelduur, int? speeltijdenTotaal)
         => sportlinkSpeelduur is > 0
-            ? sportlinkSpeelduur.Value + (sportlinkSpeelduur.Value <= KorteWedstrijdMaxSpeelduur
-                ? KorteWedstrijdBezettingBovenopSpeelduur
-                : SportlinkBezettingBovenopSpeelduur)
+            ? sportlinkSpeelduur.Value + SportlinkBezettingBovenopSpeelduur
             : Math.Max(speeltijdenTotaal ?? 0, 0);
 }
