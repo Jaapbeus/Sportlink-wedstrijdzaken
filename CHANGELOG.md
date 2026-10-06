@@ -37,6 +37,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - **Zekerheidspoort: herplanverzoek zonder wedstrijd of datum is onzeker**: een herplanverzoek waarvan het team herkend was maar waarvoor geen wedstrijd gevonden werd, of waarvan team of datum ontbrak, ging nog automatisch naar de afzender. Dat gaat nu naar review; geslaagde herplanverzoeken blijven automatisch gaan (#1568).
 - **Leren vanuit de trace**: de Entra object-ID van de beheerder staat niet meer in het applicatielog bij het verwijderen van een alias; een verwijzing naar een verwerking van een andere club wordt genegeerd; een gelijktijdig aangemaakte alias geeft een nette melding in plaats van een serverfout; de lijst met onbekende teamteksten ververst bij het wisselen van club (#1568).
 - **E-mail (Postgres-tier)**: een bericht waarvoor de wedstrijd via de tegenstander al in de planning staat, kreeg een "niet planbaar"-antwoord in plaats van het antwoord dat de wedstrijd al is ingepland. De SQL Server-tier deed dit al goed (#1568).
+- **Admin GUI**: de bovenbalk past nu ook op schermen van 320 px breed; de pagina pant niet meer horizontaal. Op smalle schermen is de marge kleiner en verdwijnt het versienummer uit de balk (#1556).
 
 ## [3.11.2.0] — 2026-10-06
 
