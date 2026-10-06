@@ -674,6 +674,19 @@ Oude release-tags (v2.1.x–v2.2.0) bevatten nog configuratie-identificatoren ui
 (geen geheimen; in een SPA per ontwerp publiek). Besluit eigenaar 2026-10-04: restrisico
 geaccepteerd, geen history-rewrite. Details in het besloten dossier.
 
+### Restrisico: oude issue- en PR-teksten
+
+Besluit eigenaar 2026-10-05: restrisico geaccepteerd, geen verdere redactie. Onderbouwing en
+afbakening staan in het besloten dossier. Nieuwe teksten vallen onverkort onder de controleplicht
+van dit document.
+
+### Classificatie: Sportlink-clientId
+
+Besluit eigenaar 2026-10-05: de Sportlink-clientId is geclassificeerd als publieke identifier
+(restrisico), niet als secret. Onderbouwing staat in het besloten dossier. De classificatie is geen
+vrijstelling: de clientId komt niet in git, niet in logs en niet in telemetrie (zie Laag 5). Wijzigt
+de leverancier de classificatie, dan wordt het besluit heroverwogen.
+
 ### Uitzondering: history-rewrite na een leak
 
 `scripts/security/Clean-GitHistory.ps1` (git-history scrubben na een gepusht secret of PII) eindigt
