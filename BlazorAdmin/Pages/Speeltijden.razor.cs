@@ -8,30 +8,24 @@ public partial class Speeltijden : ClubSelectorPageBase
 {
     [Inject] private AdminApiClient Api { get; set; } = default!;
 
-    private List<SpeeltijdDto> _items = new();
     private readonly SpeeltijdBewerking _bewerking = new();
     private bool _loading = true;
     private string? _error;
 
     protected override async Task OnInitializedAsync()
     {
+        _bewerking.Gewijzigd += StateHasChanged;
         await LaadAsync();
     }
 
     protected override Task OnClubChangedAsync() => LaadAsync();
 
-    /// <param name="toonLaden">
-    /// Na opslaan <c>false</c>: de tabel blijft staan, zodat een intussen geopend ander formulier
-    /// (en wat daarin getypt is) niet verdwijnt (#1552).
-    /// </param>
-    private async Task LaadAsync(bool toonLaden = true)
+    private async Task LaadAsync()
     {
-        if (toonLaden) _loading = true;
+        _loading = true;
         _error = null;
-        var result = await Api.GetSpeeltijdenAsync();
-        if (result.Success)
-            _items = result.Data ?? new();
-        else
+        var result = await _bewerking.LaadAsync(Api.GetSpeeltijdenAsync);
+        if (!result.Success)
             _error = result.ErrorMessage ?? "Ophalen mislukt";
         _loading = false;
     }
@@ -42,14 +36,16 @@ public partial class Speeltijden : ClubSelectorPageBase
 
     private void Annuleer() => _bewerking.Annuleer();
 
-    private async Task OpslaanAsync()
-    {
-        var opgeslagen = await _bewerking.OpslaanAsync((model, isNieuw) => isNieuw
+    /// <summary>
+    /// Opslaan én de verversing erna lopen in <see cref="SpeeltijdBewerking"/>: die houdt de regel
+    /// geblokkeerd tot de verse lijst er is en vangt een mislukte verversing op zonder laadscherm,
+    /// zodat een intussen geopend ander formulier blijft staan (#1552).
+    /// </summary>
+    private Task OpslaanAsync() => _bewerking.OpslaanAsync(
+        (model, isNieuw) => isNieuw
             ? Api.CreateSpeeltijdAsync(model)
-            : Api.UpdateSpeeltijdAsync(model.Leeftijd, model));
-        if (opgeslagen)
-            await LaadAsync(toonLaden: false);
-    }
+            : Api.UpdateSpeeltijdAsync(model.Leeftijd, model),
+        Api.GetSpeeltijdenAsync);
 
     private async Task DeleteAsync(string leeftijd)
     {

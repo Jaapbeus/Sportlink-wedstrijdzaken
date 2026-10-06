@@ -7,12 +7,35 @@
 // elk niet-lokaal request wordt afgebroken. Er wordt dus geen database of externe dienst geraakt.
 //
 //   cd BlazorAdmin && ASPNETCORE_ENVIRONMENT=Development dotnet run --no-launch-profile --urls http://localhost:5301
-//   # in een map met playwright (npm install playwright; npx playwright install chromium):
+//   # in een (scratch-)map waarin Playwright is geïnstalleerd — npm install playwright; npx playwright install chromium —
+//   # en van dáár uit het script in de repo aanroepen; het script hoeft niet gekopieerd te worden:
 //   BLAZOR_URL=http://localhost:5301 node <repo>/scripts/dev/browsercheck-speeltijden-formulier.mjs
+//
+// Playwright wordt gezocht vanaf de huidige werkmap. Een kale `import 'playwright'` resolveert ESM vanaf de
+// locatie van dít bestand (de repo, zonder node_modules) en faalt dan met ERR_MODULE_NOT_FOUND — PR #1557, review
+// ronde 1, P3. Daarom hieronder eerst de kale import (werkt als het script náást node_modules staat) en anders
+// expliciet <werkmap>/node_modules/playwright.
 //
 // Exit 0 = alle controles geslaagd. Chrome logt elke 4xx/5xx-respons als console-error; de opzettelijk
 // falende mocks worden daarom apart geteld (netlog) en niet als applicatiefout gerekend.
-import { chromium } from 'playwright';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+async function laadPlaywright() {
+  try { return await import('playwright'); }
+  catch (e) {
+    if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e;
+    const lokaal = path.join(process.cwd(), 'node_modules', 'playwright', 'index.mjs');
+    if (!existsSync(lokaal)) {
+      console.error(`Playwright niet gevonden: niet naast het script en niet in ${process.cwd()}/node_modules.\n` +
+        'Installeer het in de map van waaruit je dit script start: npm install playwright && npx playwright install chromium');
+      process.exit(2);
+    }
+    return await import(pathToFileURL(lokaal).href);
+  }
+}
+const { chromium } = await laadPlaywright();
 const base = process.env.BLAZOR_URL || 'http://localhost:5301';
 const LANG = 'Senioren-zaterdag-veteranen-zevental-met-een-heel-lange-categorienaam';
 const lft = ['JO6','JO7','JO8','JO9','JO10','JO11','JO12','JO13','JO14','JO15','JO16','JO17','JO18','JO19','JO23','MO7','MO8','MO9','MO10','MO11','MO12','MO13','MO14','MO15','MO16','MO17','MO18','MO19','MO20','MO23','G','VR','1-99', LANG];
@@ -31,14 +54,18 @@ async function open({ width = 1400, height = 900, leeg = false } = {}) {
     // Chrome logt elke 4xx/5xx-respons als console-error; bij een opzettelijk falende mock is dat verwacht gedrag, geen applicatiefout.
     if (/Failed to load resource: the server responded with a status of \d{3}/.test(m.text())) netlog.push(m.text()); else errors.push(m.text());
   });
-  const api = { state: leeg ? [] : lft.map(l => ({ leeftijd: l, veldafmeting: 1, wedstrijdTotaal: 75, wedstrijdHelft: 30, wedstrijdRust: 15, standaardVoorkeurTijd: '10:00' })), hold: null, puts: [], posts: [], failNext: null };
+  const api = { state: leeg ? [] : lft.map(l => ({ leeftijd: l, veldafmeting: 1, wedstrijdTotaal: 75, wedstrijdHelft: 30, wedstrijdRust: 15, standaardVoorkeurTijd: '10:00' })), hold: null, holdGet: null, failGetNext: false, puts: [], posts: [], failNext: null };
   await page.route('**/*', async route => {
     const req = route.request(); const url = new URL(req.url());
     if (url.hostname !== 'localhost') return route.abort();          // geen enkel extern verkeer
     if (url.port !== '7094') return route.continue();
     const json = (b, s = 200) => route.fulfill({ status: s, contentType: 'application/json', body: JSON.stringify(b) });
     if (url.pathname === '/api/health') return json({ status: 'healthy', database: 'online', version: 'test' });
-    if (url.pathname === '/api/beheer/speeltijden' && req.method() === 'GET') return json(api.state);
+    if (url.pathname === '/api/beheer/speeltijden' && req.method() === 'GET') {
+      if (api.holdGet) { const g = api.holdGet; api.holdGet = null; await g.gate; }
+      if (api.failGetNext) { api.failGetNext = false; return json({ error: 'lijst tijdelijk niet beschikbaar' }, 500); }
+      return json(api.state);
+    }
     if (url.pathname.startsWith('/api/beheer/speeltijden') && ['PUT', 'POST'].includes(req.method())) {
       const body = req.postDataJSON(); const key = decodeURIComponent(url.pathname.split('/').pop());
       (req.method() === 'PUT' ? api.puts : api.posts).push({ key, body });
@@ -55,6 +82,7 @@ async function open({ width = 1400, height = 900, leeg = false } = {}) {
   return { ctx, page, api, errors, netlog };
 }
 const holdNext = (api, status, error) => { let release; const gate = new Promise(r => release = r); api.hold = { gate, status, error }; return release; };
+const holdGet = api => { let release; const gate = new Promise(r => release = r); api.holdGet = { gate }; return release; };
 const row = (page, l) => page.locator(`tbody > tr:has(> td:text-is("${l}"))`);
 const formRows = page => page.locator('tr.speeltijd-formulierrij');
 const nextIsForm = async (page, l) => row(page, l).evaluate(tr => tr.nextElementSibling?.classList.contains('speeltijd-formulierrij') ?? false);
@@ -141,8 +169,48 @@ const geenFouten = (errors, label) => ok(errors.length === 0, `${label}: geen pa
   await page.getByLabel('Rust (min)').fill('14');
   await formRows(page).getByRole('button', { name: 'Opslaan' }).click(); await settle(page);
   ok(await formRows(page).count() === 0 && (await row(page, 'JO14').locator('td').nth(4).textContent()).trim() === '14', '#1552 direct succes sluit het formulier en ververst de regel');
-  ok(api.puts.length === 7 && api.posts.length === 0, `#1552 alle ${api.puts.length} opslagen liepen via de gemockte PUT; geen echte API geraakt`);
-  ok(netlog.length === 4, `#1552 netwerklog bevat precies de 4 opzettelijk mislukte responsen (${netlog.length})`);
+  // 7. Codex-reproductie (PR #1557 ronde 1, P2): PUT en GET afzonderlijk vertraagd, tussentijdse render,
+  //    heropenen van dezelfde categorie, tweede opslag die een ander veld wijzigt
+  await row(page, 'JO16').getByRole('button', { name: 'Bewerken' }).click();
+  await page.getByLabel('Totaal (min)').fill('90');
+  const releasePut = holdNext(api, 200);
+  const releaseGet = holdGet(api);
+  await formRows(page).getByRole('button', { name: 'Opslaan' }).click();
+  await formRows(page).getByRole('button', { name: 'Annuleer' }).click();        // annuleren tijdens de PUT
+  releasePut(); await settle(page);                                               // PUT geslaagd, GET hangt
+  ok(await totaalVan(page, 'JO16') === '90', '#1552 P2-regressie: regel toont de opgeslagen waarde al vóór de GET (lokaal bijgewerkt)');
+  await page.getByRole('button', { name: 'Nieuwe categorie' }).click();          // tussentijdse render
+  ok(await row(page, 'JO16').getByRole('button', { name: 'Bewerken' }).isDisabled(), '#1552 P2-regressie: Bewerken van JO16 blijft uitgeschakeld zolang de GET loopt');
+  ok((await row(page, 'JO16').getByRole('status').textContent()).includes('Opslaan…'), '#1552 P2-regressie: status "Opslaan…" blijft staan tot de lijst actueel is');
+  await formRows(page).getByRole('button', { name: 'Annuleer' }).click();
+  releaseGet(); await settle(page);
+  ok(!(await row(page, 'JO16').getByRole('button', { name: 'Bewerken' }).isDisabled()), '#1552 P2-regressie: na de GET is JO16 weer bewerkbaar');
+  await row(page, 'JO16').getByRole('button', { name: 'Bewerken' }).click();
+  ok(await page.getByLabel('Totaal (min)').inputValue() === '90', '#1552 P2-regressie: heropend formulier toont 90, niet de oude 75');
+  await page.getByLabel('Rust (min)').fill('13');
+  await formRows(page).getByRole('button', { name: 'Opslaan' }).click(); await settle(page);
+  const laatstePut = api.puts.at(-1);
+  const totaalInBody = Number(laatstePut.body.wedstrijdTotaal ?? laatstePut.body.WedstrijdTotaal);
+  const rustInBody = Number(laatstePut.body.wedstrijdRust ?? laatstePut.body.WedstrijdRust);
+  ok(laatstePut.key === 'JO16' && totaalInBody === 90 && rustInBody === 13, `#1552 P2-regressie: tweede opslag schrijft totaal 90 en rust 13 (geen lost update; body totaal=${totaalInBody})`);
+
+  // 8. geslaagde PUT, mislukte GET erna: regel toont de opgeslagen waarde, waarschuwing boven de tabel, regel komt vrij
+  await row(page, 'JO17').getByRole('button', { name: 'Bewerken' }).click();
+  await page.getByLabel('Totaal (min)').fill('91');
+  api.failGetNext = true;
+  await formRows(page).getByRole('button', { name: 'Opslaan' }).click(); await settle(page);
+  const waarschuwing = page.locator('.alert-warning[role=alert]');
+  ok(await waarschuwing.count() === 1 && (await waarschuwing.textContent()).includes('JO17'), '#1552 mislukte refresh: waarschuwing boven de tabel noemt JO17');
+  ok(await totaalVan(page, 'JO17') === '91', '#1552 mislukte refresh: regel toont de opgeslagen waarde (91)');
+  ok(!(await row(page, 'JO17').getByRole('button', { name: 'Bewerken' }).isDisabled()), '#1552 mislukte refresh: regel blijft niet eeuwig geblokkeerd');
+  await row(page, 'JO17').getByRole('button', { name: 'Bewerken' }).click();
+  ok(await page.getByLabel('Totaal (min)').inputValue() === '91', '#1552 mislukte refresh: heropend formulier toont 91');
+  await formRows(page).getByRole('button', { name: 'Annuleer' }).click();
+  await waarschuwing.getByRole('button', { name: 'Sluiten' }).click();
+  ok(await page.locator('.alert-warning[role=alert]').count() === 0, '#1552 mislukte refresh: waarschuwing is te sluiten');
+
+  ok(api.puts.length === 10 && api.posts.length === 0, `#1552 alle ${api.puts.length} opslagen liepen via de gemockte PUT; geen echte API geraakt`);
+  ok(netlog.length === 5, `#1552 netwerklog bevat precies de 5 opzettelijk mislukte responsen (4× PUT, 1× GET) (${netlog.length})`);
   geenFouten(errors, '#1552');
   await ctx.close();
 }

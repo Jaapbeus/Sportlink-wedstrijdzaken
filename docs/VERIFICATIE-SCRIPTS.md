@@ -498,7 +498,12 @@ kloppen. Besluiten en meetwaarden: `docs/DOSSIER-SPEELTIJDEN-INLINE-FORMULIER.md
   (zonder `database: online` blijft de app op "Database wordt opgestart…" staan). Niet-lokale requests worden
   afgebroken, dus er wordt geen database of externe dienst geraakt.
 - **Playwright staat niet in de repo** (geen `package.json`): `npm install playwright` en
-  `npx playwright install chromium` in een scratch-map, en het script van daaruit aanroepen.
+  `npx playwright install chromium` in een scratch-map, en het script van daaruit aanroepen
+  (`node <repo>/scripts/dev/browsercheck-speeltijden-formulier.mjs`). Het script zoekt Playwright
+  in de **werkmap** (`<werkmap>/node_modules/playwright`), want een kale ESM-import zou vanaf het
+  scriptbestand in de repo resolveren en daar is geen `node_modules` — dat gaf `ERR_MODULE_NOT_FOUND`
+  (PR #1557, review ronde 1). Kopiëren van het script is dus niet nodig; ontbreekt Playwright in de
+  werkmap, dan stopt het script met exit 2 en een installatie-aanwijzing.
 - **Netwerklog ≠ fout.** Chrome logt elke 4xx/5xx-respons als console-error. De suite telt die apart en
   faalt alleen op echte page-/console-errors; bij een uitbreiding die scheiding behouden.
 - Exit 0 = alle controles geslaagd; de uitvoer is één regel per controle (`OK`/`FAIL`).

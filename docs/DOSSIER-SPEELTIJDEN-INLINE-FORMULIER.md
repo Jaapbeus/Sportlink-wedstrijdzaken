@@ -38,13 +38,25 @@ de bewerkte regel. De Codex-review op SHA `4c416ca6` bevestigde de hoofdflow en 
     ververst zonder laadscherm;
   - fout → geen fout onder het actieve formulier, maar een sluitbare melding boven de tabel met de
     naam van de categorie ("Opslaan van JO10 is mislukt: …").
-- **Heropenen tijdens een lopende opslag van dezelfde categorie wordt geweigerd.** Het formulier
-  kopieert de regelwaarden bij openen; tijdens een lopende opslag zijn dat de waarden van vóór die
-  opslag, en Opslaan vanuit zo'n kopie zou het zojuist opgeslagen resultaat overschrijven (lost
-  update). Daarom toont de regel "Opslaan…" en zijn **Bewerken** en **Verwijderen** van die regel
-  uitgeschakeld totdat de opslag is afgerond; andere regels blijven bewerkbaar. Dit is de
-  "sessie + per-regel-slot"-variant van de twee opties uit het issue; een algemene blokkade van
-  wisselen tijdens opslaan is bewust niet gekozen.
+- **Heropenen tijdens een lopende opslag van dezelfde categorie wordt geweigerd — tot en met de
+  verversing van de lijst erna.** Het formulier kopieert de regelwaarden bij openen; zolang de
+  lijst nog de waarden van vóór de opslag bevat, zou Opslaan vanuit zo'n kopie het zojuist
+  opgeslagen resultaat overschrijven (lost update). Daarom toont de regel "Opslaan…" en zijn
+  **Bewerken** en **Verwijderen** van die regel uitgeschakeld totdat de verse lijst binnen is;
+  andere regels blijven bewerkbaar. Dit is de "sessie + per-regel-slot"-variant van de twee opties
+  uit het issue; een algemene blokkade van wisselen tijdens opslaan is bewust niet gekozen.
+  *Herzien na review ronde 1 (P2):* het slot viel oorspronkelijk weg zodra de PUT klaar was, terwijl
+  de GET erna nog liep — in dat venster kon de regel met oude waarden heropend worden (door Codex
+  gereproduceerd). Nu geldt het slot tot de verversing is afgerond.
+- **Lokale bijwerking vóór de verversing, als vangnet voor een mislukte refresh.** Direct na een
+  geslaagde PUT krijgt de regel in de lijst een kopie van de opgeslagen waarden (`PasLokaalToe`) en
+  signaleert de staat `Gewijzigd`, zodat de pagina rendert en de waarde meteen zichtbaar is. Mislukt
+  de GET daarna, dan blijft die lokaal bijgewerkte regel staan, komt het slot vrij (anders zou de
+  regel eeuwig geblokkeerd zijn) en verschijnt een sluitbare waarschuwing boven de tabel
+  (`VerversFout`); een volgende geslaagde verversing ruimt die waarschuwing op. Een heropend
+  formulier toont dus ook zonder verse lijst de opgeslagen waarden.
+- De lijst (`Items`) hoort bij dezelfde staat als de bewerksessies — nodig om slot, lokale
+  bijwerking en verversing zonder UI te kunnen testen.
 - Het component `SpeeltijdFormulier` krijgt de sessie als parameter en staat onder `@key="<sessie>"`,
   zodat Blazor bij een lijstverversing de componentinstantie (en de getypte invoer) behoudt.
 
@@ -81,13 +93,13 @@ de bewerkte regel. De Codex-review op SHA `4c416ca6` bevestigde de hoofdflow en 
 
 | Bestand | Wijziging |
 |---|---|
-| `BlazorAdmin/Services/SpeeltijdBewerking.cs` | **Nieuw** — `SpeeltijdBewerkSessie` + `SpeeltijdBewerking` (§2.1), zonder UI-afhankelijkheid, dus los testbaar |
-| `BlazorAdmin/Pages/Speeltijden.razor(.cs)` | Pagina gebruikt `SpeeltijdBewerking`; melding boven de tabel; `Opslaan…`-status en uitgeschakelde knoppen per regel; ARIA-rollen; `data-label` per cel |
+| `BlazorAdmin/Services/SpeeltijdBewerking.cs` | **Nieuw** — `SpeeltijdBewerkSessie` + `SpeeltijdBewerking` (§2.1): sessies, regel-slot, lijst, lokale bijwerking, verversing; zonder UI-afhankelijkheid, dus los testbaar |
+| `BlazorAdmin/Pages/Speeltijden.razor(.cs)` | Pagina gebruikt `SpeeltijdBewerking` (ook voor de lijst); melding en verversingswaarschuwing boven de tabel; `Opslaan…`-status en uitgeschakelde knoppen per regel; ARIA-rollen; `data-label` per cel |
 | `BlazorAdmin/Pages/Speeltijden.razor.css` | **Nieuw** — kaartweergave onder 48 rem containerbreedte |
 | `BlazorAdmin/Shared/SpeeltijdFormulier.razor(.cs)` | Sessie als parameter; `for`/`id` per veld; grid-layout; `Opslaan…` op de submitknop tijdens de opslag |
 | `BlazorAdmin/Shared/SpeeltijdFormulier.razor.css` | **Nieuw** — responsive grid |
-| `BlazorAdmin.Tests/SpeeltijdBewerkingTests.cs` | **Nieuw** — 12 tests (§4.1) |
-| `scripts/dev/browsercheck-speeltijden-formulier.mjs` | **Nieuw** — de Playwright-suite van §4.2, herhaalbaar tegen een eigen BlazorAdmin-instantie |
+| `BlazorAdmin.Tests/SpeeltijdBewerkingTests.cs` | **Nieuw** — 17 tests (§4.1) |
+| `scripts/dev/browsercheck-speeltijden-formulier.mjs` | **Nieuw** — de Playwright-suite van §4.2, herhaalbaar tegen een eigen BlazorAdmin-instantie; laadt Playwright vanaf de werkmap (P3) |
 | `CHANGELOG.md`, `docs/BEHEERDER-HANDLEIDING.md` §11, `docs/VERIFICATIE-SCRIPTS.md`, `docs/INDEX.md`, `docs/DOCUMENTATIEPLAN.md` | Documentatie |
 | Drie `.csproj` | 3.11.1.4 |
 
@@ -97,22 +109,26 @@ Geen API-, database- of FunctionApp-wijziging.
 
 ### 4.1 Unit tests — `BlazorAdmin.Tests`
 
-`dotnet test BlazorAdmin.Tests` → **153 geslaagd, 0 mislukt** (12 nieuw in `SpeeltijdBewerkingTests`):
-directe fout/succes; vertraagde fout en vertraagd succes na wisselen naar B; vertraagd resultaat na
-**Nieuwe categorie**; vertraagde fout na **Annuleer** (wordt melding, sluitbaar); heropenen tijdens
-lopende opslag geweigerd en daarna weer toegestaan; `IsOpslagBezig` alleen voor de regel in opslag,
-ook na een mislukte opslag vrijgegeven; POST van een nieuwe categorie blokkeert geen bestaande regel;
-dubbel Opslaan tijdens een lopende opslag genegeerd; bewerken werkt op een kopie; een nieuwe
-categorie staat nooit onder een bestaande regel.
+`dotnet test BlazorAdmin.Tests` → **158 geslaagd, 0 mislukt** (17 in `SpeeltijdBewerkingTests`):
+directe fout (lijst niet opnieuw opgevraagd) en direct succes; vertraagde fout en vertraagd succes na
+wisselen naar B; vertraagd resultaat na **Nieuwe categorie**; vertraagde fout na **Annuleer** (wordt
+melding, sluitbaar); **de door Codex gereproduceerde race** (PUT geslaagd, GET hangt, tussentijdse
+actie, heropenen geweigerd, na de GET heropend met 90, tweede opslag van alleen rust stuurt totaal
+90 — geen lost update); `Gewijzigd` gaat af met de lokaal bijgewerkte waarde vóór de GET; mislukte
+verversing houdt de lokaal bijgewerkte regel, geeft de regel vrij en meldt de fout; een geslaagde
+verversing ruimt die melding op; nieuwe categorie staat direct in de lijst, ook bij mislukte
+verversing; heropenen tijdens lopende PUT geweigerd, andere regel niet; POST van een nieuwe
+categorie blokkeert geen bestaande regel; dubbel Opslaan genegeerd; bewerken en lokaal bijwerken
+werken op kopieën; nieuwe categorie nooit onder een bestaande regel; laadfout laat de lijst staan.
 
-### 4.2 Browser — Playwright/Chromium, **193 controles geslaagd, 0 mislukt**
+### 4.2 Browser — Playwright/Chromium, **203 controles geslaagd, 0 mislukt**
 
 Opzet: eigen `dotnet run` van BlazorAdmin op een vrije poort (Development, lokale auth-bypass);
 alle verkeer naar de API-poort onderschept met `page.route`, elk niet-lokaal request afgebroken.
 Health-mock `{"status":"healthy","database":"online"}`; 34 synthetische categorieën, waaronder één
-met een extreem lange naam. Vertraagde responsen via een gate per request.
+met een extreem lange naam. Vertraagde responsen via een gate per request, voor de PUT en voor de GET erna afzonderlijk.
 
-**#1552** — zes scenario's, elk met controle dat het verkeerde formulier níet wordt geraakt:
+**#1552** — acht scenario's, elk met controle dat het verkeerde formulier níet wordt geraakt:
 
 | Scenario | Resultaat |
 |---|---|
@@ -122,9 +138,11 @@ met een extreem lange naam. Vertraagde responsen via een gate per request.
 | Fout komt binnen na **Annuleer** | geen formulier heropend; melding |
 | Succes komt binnen na **Annuleer** + heropenen van dezelfde categorie | heropenen is geblokkeerd zolang de opslag loopt (Bewerken én Verwijderen uitgeschakeld, andere regel niet); daarna toont het heropende formulier de opgeslagen waarde |
 | Directe fout / direct succes | fout uitsluitend in het eigen formulier; succes sluit en ververst |
+| **Codex-reproductie P2:** PUT geslaagd, GET vastgehouden, tussentijdse render (Nieuwe categorie), heropenen, tweede opslag van alleen rust | regel toont 90 al vóór de GET; Bewerken/Verwijderen blijven uitgeschakeld tot de GET klaar is; daarna heropend met 90; de tweede PUT stuurt totaal 90 en rust 13 — geen lost update |
+| PUT geslaagd, GET mislukt (500) | waarschuwing boven de tabel noemt de categorie; regel toont de opgeslagen waarde; regel komt vrij; heropend formulier toont de opgeslagen waarde; waarschuwing sluitbaar |
 
-Alle zeven opslagen liepen via de gemockte PUT; de netwerklog bevatte precies de vier opzettelijk
-mislukte responsen; geen page- of console-errors.
+Alle tien opslagen liepen via de gemockte PUT; de netwerklog bevatte precies de vijf opzettelijk
+mislukte responsen (4× PUT, 1× GET); geen page- of console-errors.
 
 **#1553** — 4 breedtes × 5 situaties (bewerken, bewerken met lange naam, nieuw, lange foutmelding,
 lege lijst), per combinatie: alle velden/knoppen/meldingen binnen de viewport, lijst en formulier
@@ -168,7 +186,8 @@ Opslaan → Annuleer (nieuw: leeftijd eerst); Enter in een veld slaat op.
 
 | Ronde | Reviewer | SHA | Uitkomst | Afhandeling |
 |---|---|---|---|---|
-| 1 | Codex | aangeboden head-SHA staat in de reviewaanvraag op de PR; wordt hier bij de verwerking ingevuld | *(volgt)* | *(volgt)* |
+| 1 | Codex | `cb09174f` | Bevindingen: P2 (regel-slot viel weg tussen geslaagde PUT en afgeronde GET → lost update gereproduceerd), P3 (gedocumenteerde scratch-mapaanroep vindt Playwright niet: ESM resolveert vanaf het scriptbestand), telling 192 ≠ 193 | **P2 opgelost:** slot tot de verversing is afgerond, lokale bijwerking vóór de GET met `Gewijzigd`-render, `VerversFout` bij mislukte refresh; regressie als unit test én als browserscenario met afzonderlijk vertraagde PUT en GET (§4). **P3 opgelost:** het script laadt Playwright vanaf de werkmap (`<werkmap>/node_modules/playwright`) met een duidelijke foutmelding als het ontbreekt; de gedocumenteerde aanroep is vanuit een scratch-map tegen het script in de repo geverifieerd — de oude versie faalde met `ERR_MODULE_NOT_FOUND`, de nieuwe draait. **Telling opgelost:** het dossier telde een inmiddels verwijderde no-op-assertie mee; nu 203, gelijk aan de suite. |
+| 2 | Codex | *(aangevraagd op de nieuwe head-SHA; zie PR)* | *(volgt)* | *(volgt)* |
 
 ## 6. Restbeperkingen en vervolg
 
@@ -181,6 +200,9 @@ Opslaan → Annuleer (nieuw: leeftijd eerst); Enter in een veld slaat op.
   mogelijk.
 - `display: block` op tabelcellen is een bekend patroon met bekende beperkingen; de expliciete
   rollen vangen de semantiek op, maar een echte schermlezertest staat open (§4.4).
+- **Gelijktijdige bewerking door een andere beheerder** is niet afgedekt (geen ETag/versieveld):
+  wie een regel opent terwijl iemand anders dezelfde regel wijzigt, overschrijft die wijziging bij
+  Opslaan. Het slot van §2.1 beschermt alleen tegen de eigen, nog lopende opslag.
 - Chrome logt elke 4xx/5xx-respons als console-error. De browsersuite telt die apart als
   netwerklog; wie de suite uitbreidt, moet die scheiding behouden om echte fouten niet te maskeren.
 
@@ -188,9 +210,10 @@ Opslaan → Annuleer (nieuw: leeftijd eerst); Enter in een veld slaat op.
 
 - Herhalen van de browsersuite: start BlazorAdmin zelf op een vrije poort
   (`ASPNETCORE_ENVIRONMENT=Development dotnet run --no-launch-profile --urls http://localhost:<poort>`
-  in `BlazorAdmin/`), dan `BLAZOR_URL=http://localhost:<poort> node scripts/dev/browsercheck-speeltijden-formulier.mjs`
-  vanuit een map met `playwright` geïnstalleerd (`npm install playwright`, Chromium via
-  `npx playwright install chromium`). Zie `docs/VERIFICATIE-SCRIPTS.md`.
+  in `BlazorAdmin/`). Installeer Playwright in een scratch-map (`npm install playwright`,
+  `npx playwright install chromium`) en roep van dáár uit het script in de repo aan:
+  `BLAZOR_URL=http://localhost:<poort> node <repo>/scripts/dev/browsercheck-speeltijden-formulier.mjs`.
+  Het script zoekt Playwright in de werkmap; kopiëren is niet nodig. Zie `docs/VERIFICATIE-SCRIPTS.md`.
 - Na de merge: worktree en branch van deze sessie opruimen; het issue blijft `awaiting-release`
   tot de volgende productierelease.
 

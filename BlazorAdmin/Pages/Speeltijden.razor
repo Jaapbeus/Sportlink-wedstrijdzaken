@@ -32,6 +32,13 @@ else
             <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" @onclick="_bewerking.SluitMelding">Sluiten</button>
         </div>
     }
+    @if (_bewerking.VerversFout != null)
+    {
+        <div class="alert alert-warning d-flex justify-content-between align-items-start gap-2" role="alert">
+            <span>@_bewerking.VerversFout</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" @onclick="_bewerking.SluitVerversFout">Sluiten</button>
+        </div>
+    }
 
     @* Op een smalle container worden de regels kaarten (Speeltijden.razor.css), zodat het inline
        formulier de beschikbare breedte krijgt in plaats van die van de zevenkolomstabel (#1553).
@@ -59,7 +66,7 @@ else
                         </td>
                     </tr>
                 }
-                @foreach (var s in _items)
+                @foreach (var s in _bewerking.Items)
                 {
                     var inBewerking = _bewerking.IsInBewerking(s);
                     var opslagBezig = _bewerking.IsOpslagBezig(s);
@@ -97,7 +104,7 @@ else
                         </tr>
                     }
                 }
-                @if (_items.Count == 0)
+                @if (_bewerking.Items.Count == 0)
                 {
                     <tr role="row"><td role="cell" colspan="7" class="text-muted">Geen speeltijden gevonden.</td></tr>
                 }
