@@ -73,6 +73,7 @@ document van het onderdeel waaraan je werkt.
 | [Versioning & CHANGELOG](VERSIONING.md) | Semver-regels, conventional commits, release-workflow |
 | [Verificatie-scripts](VERIFICATIE-SCRIPTS.md) | Test-App.ps1 + Start-Debug.ps1: schema-controle, endpoints, Blazor-pagina's |
 | [Lokaal debuggen](LOKAAL-DEBUGGEN.md) | Services starten, poorten, hot-reload, func start |
+| [Dossier Speeltijden inline formulier](DOSSIER-SPEELTIJDEN-INLINE-FORMULIER.md) | Gedateerd werkjournaal van #1552/#1553/#1554: besluiten (opslag per bewerksessie, kaartweergave, labelkoppeling), verificatiebewijs, reviewafhandeling, restbeperkingen |
 
 **Onderzoek en ontwerp — nog geen gebouwde code**
 

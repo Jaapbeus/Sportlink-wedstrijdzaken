@@ -1,0 +1,54 @@
+/* #1553: de zevenkolomstabel is breder dan een telefoonscherm. Het inline bewerkformulier staat in
+   een tabelcel en erfde die breedte. Op een smalle container wordt elke regel een kaart: de cellen
+   stapelen met hun kolomnaam ervoor, en de formuliercel krijgt de volle beschikbare breedte.
+   Een container query en geen media query: de sidebar bepaalt hoeveel ruimte de pagina heeft,
+   niet de viewport. */
+.speeltijden-lijst {
+    container-type: inline-size;
+}
+
+@container (max-width: 47.99rem) {
+    .speeltijden-tabel,
+    .speeltijden-tabel tbody,
+    .speeltijden-tabel tr,
+    .speeltijden-tabel td {
+        display: block;
+        width: 100%;
+    }
+
+    .speeltijden-tabel thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+    }
+
+    .speeltijden-tabel tbody tr {
+        border-bottom: 1px solid var(--bs-border-color);
+        padding: 0.25rem 0;
+    }
+
+    .speeltijden-tabel td {
+        border: none;
+        overflow-wrap: anywhere;
+    }
+
+    .speeltijden-tabel td[data-label] {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+
+    .speeltijden-tabel td[data-label]::before {
+        content: attr(data-label);
+        font-weight: 600;
+    }
+
+    .speeltijden-tabel td.speeltijd-acties {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+}

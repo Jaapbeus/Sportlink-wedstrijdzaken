@@ -9,11 +9,9 @@ public partial class Speeltijden : ClubSelectorPageBase
     [Inject] private AdminApiClient Api { get; set; } = default!;
 
     private List<SpeeltijdDto> _items = new();
-    private SpeeltijdDto? _editing;
-    private bool _isNew;
+    private readonly SpeeltijdBewerking _bewerking = new();
     private bool _loading = true;
     private string? _error;
-    private string? _saveError;
 
     protected override async Task OnInitializedAsync()
     {
@@ -22,9 +20,13 @@ public partial class Speeltijden : ClubSelectorPageBase
 
     protected override Task OnClubChangedAsync() => LaadAsync();
 
-    private async Task LaadAsync()
+    /// <param name="toonLaden">
+    /// Na opslaan <c>false</c>: de tabel blijft staan, zodat een intussen geopend ander formulier
+    /// (en wat daarin getypt is) niet verdwijnt (#1552).
+    /// </param>
+    private async Task LaadAsync(bool toonLaden = true)
     {
-        _loading = true;
+        if (toonLaden) _loading = true;
         _error = null;
         var result = await Api.GetSpeeltijdenAsync();
         if (result.Success)
@@ -34,60 +36,19 @@ public partial class Speeltijden : ClubSelectorPageBase
         _loading = false;
     }
 
-    private void StartNew()
-    {
-        _editing = new SpeeltijdDto();
-        _isNew = true;
-        _saveError = null;
-    }
+    private void StartNew() => _bewerking.StartNieuw();
 
-    private void Edit(SpeeltijdDto s)
-    {
-        _editing = new SpeeltijdDto
-        {
-            Leeftijd = s.Leeftijd,
-            Veldafmeting = s.Veldafmeting,
-            WedstrijdTotaal = s.WedstrijdTotaal,
-            WedstrijdHelft = s.WedstrijdHelft,
-            WedstrijdRust = s.WedstrijdRust,
-            StandaardVoorkeurTijd = s.StandaardVoorkeurTijd
-        };
-        _isNew = false;
-        _saveError = null;
-    }
+    private void Edit(SpeeltijdDto s) => _bewerking.StartBewerken(s);
 
-    /// <summary>
-    /// Het formulier staat direct onder de regel die wordt bewerkt, niet onderaan de pagina:
-    /// bij een lange lijst viel het daar buiten beeld en leek Bewerken niets te doen (#1543).
-    /// </summary>
-    private bool IsInBewerking(SpeeltijdDto s) =>
-        _editing != null && !_isNew && string.Equals(_editing.Leeftijd, s.Leeftijd, StringComparison.Ordinal);
-
-    private void Annuleer()
-    {
-        _editing = null;
-        _saveError = null;
-    }
+    private void Annuleer() => _bewerking.Annuleer();
 
     private async Task OpslaanAsync()
     {
-        if (_editing == null) return;
-        _saveError = null;
-        ApiResult<object> result;
-        if (_isNew)
-            result = await Api.CreateSpeeltijdAsync(_editing);
-        else
-            result = await Api.UpdateSpeeltijdAsync(_editing.Leeftijd, _editing);
-
-        if (result.Success)
-        {
-            _editing = null;
-            await LaadAsync();
-        }
-        else
-        {
-            _saveError = result.ErrorMessage ?? "Opslaan mislukt";
-        }
+        var opgeslagen = await _bewerking.OpslaanAsync((model, isNieuw) => isNieuw
+            ? Api.CreateSpeeltijdAsync(model)
+            : Api.UpdateSpeeltijdAsync(model.Leeftijd, model));
+        if (opgeslagen)
+            await LaadAsync(toonLaden: false);
     }
 
     private async Task DeleteAsync(string leeftijd)

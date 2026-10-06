@@ -20,6 +20,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ### Fixed
 - Speeltijden: **Bewerken** opent het formulier nu direct onder de regel die u bewerkt, en **Nieuwe categorie** bovenaan de tabel. Voorheen verscheen het formulier onderaan een lange pagina, buiten beeld, waardoor het leek alsof de knop niets deed (#1543).
+- Speeltijden: een opslag die laat terugkomt — bijvoorbeeld bij een trage verbinding — raakt alleen nog de regel waar hij bij hoort. Wie intussen een andere categorie opent, krijgt de foutmelding van de vorige niet meer onder het verkeerde formulier, en dat geopende formulier wordt niet onverwacht gesloten; een mislukte opslag van een al gesloten formulier verschijnt als aparte melding boven de tabel. Zolang een opslag loopt, zijn **Bewerken** en **Verwijderen** van die ene regel even niet beschikbaar (#1552).
+- Speeltijden: op een telefoon of in een smal venster worden de regels kaarten en past het bewerkformulier binnen het scherm; horizontaal schuiven is niet meer nodig (#1553).
+- Speeltijden: elk label in het bewerkformulier hoort nu bij zijn invoerveld — klikken op een label zet de cursor in het veld, en hulptechnologie leest de veldnaam voor (#1554).
 - Een e-mailverzoek met een team zonder J/M ervoor (bijvoorbeeld "14-2") kreeg het antwoord "Helaas geen veld beschikbaar", ook als er ruimte genoeg was. Als er maar één passend team is, wordt de leeftijdscategorie nu van dat team overgenomen en wordt de beschikbaarheid echt gecontroleerd (#1545).
 - Een voorkeurstijd of voorkeursveld voor één team (bijvoorbeeld JO23-4 om 15:30) werd niet gevonden als Sportlink het team anders schrijft ("O23-4" met de clubnaam ervoor). Alle schrijfwijzen van hetzelfde team vinden nu de instelling; teams zonder eigen voorkeurstijd houden de standaardtijd van hun leeftijdscategorie (#1545).
 - De veldbezetting op **Planning** sluit weer aan op de Sportlink-veldplanner (#1547):

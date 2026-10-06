@@ -483,6 +483,26 @@ component-rendering volledig te bewijzen.
 
 ---
 
+## Browsercheck Speeltijden-formulier (`scripts/dev/browsercheck-speeltijden-formulier.mjs`, #1552–#1554)
+
+Playwright/Chromium-suite voor het inline bewerkformulier op Instellingen → Speeltijden. Hij bewijst wat
+een unit test niet kan: dat het formulier in de DOM direct onder de bewerkte regel staat, dat een laat
+binnenkomend opslagresultaat het verkeerde formulier niet raakt, dat alles op 320/375/768 px en desktop
+binnen de viewport past zonder horizontaal pannen, en dat labels, toegankelijke namen en tabvolgorde
+kloppen. Besluiten en meetwaarden: `docs/DOSSIER-SPEELTIJDEN-INLINE-FORMULIER.md`.
+
+- **Eigen instantie, nooit de gedeelde omgeving.** Start BlazorAdmin zelf op een vrije poort
+  (`ASPNETCORE_ENVIRONMENT=Development dotnet run --no-launch-profile --urls http://localhost:<poort>` in
+  `BlazorAdmin/`) en geef die door via `BLAZOR_URL`. De lokale auth-bypass maakt de ingelogde UI bereikbaar.
+- **Alle API-verkeer is gemockt** via `page.route`; de health-mock geeft `{"status":"healthy","database":"online"}`
+  (zonder `database: online` blijft de app op "Database wordt opgestart…" staan). Niet-lokale requests worden
+  afgebroken, dus er wordt geen database of externe dienst geraakt.
+- **Playwright staat niet in de repo** (geen `package.json`): `npm install playwright` en
+  `npx playwright install chromium` in een scratch-map, en het script van daaruit aanroepen.
+- **Netwerklog ≠ fout.** Chrome logt elke 4xx/5xx-respons als console-error. De suite telt die apart en
+  faalt alleen op echte page-/console-errors; bij een uitbreiding die scheiding behouden.
+- Exit 0 = alle controles geslaagd; de uitvoer is één regel per controle (`OK`/`FAIL`).
+
 ## Database.Postgres.Tests — integratietests, env-gestuurd (#866)
 
 De integratietests in `Database.Postgres.Tests` (`PostgresMergeOrchestratorIntegrationTests`,
