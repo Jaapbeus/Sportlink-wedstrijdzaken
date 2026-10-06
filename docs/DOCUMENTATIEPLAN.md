@@ -79,6 +79,7 @@ Azure-productieomgeving. Eenmalig uit te voeren, daarna niet meer dagelijks nodi
 | [VERIFICATIE-SCRIPTS.md](VERIFICATIE-SCRIPTS.md) | Test-App.ps1: schema-controle, endpoint-verificatie, Blazor-pagina's |
 | [SERENA-VS-GRAFT-BENCHMARK.md](SERENA-VS-GRAFT-BENCHMARK.md) | Context-ophaal workflows: waarom dit project Serena gebruikt, waar Graft sterker is |
 | [LOKAAL-DEBUGGEN.md](LOKAAL-DEBUGGEN.md) | Services starten, poorten, Azurite, func start, hot-reload |
+| [DOSSIER-SPEELTIJDEN-INLINE-FORMULIER.md](DOSSIER-SPEELTIJDEN-INLINE-FORMULIER.md) | Gedateerd werkjournaal #1552/#1553/#1554 — besluiten, verificatiebewijs, reviewafhandeling; niet naar het heden bijgewerkt |
 | [SPORTLINK-CLUB-SCHERMEN-ANALYSE.md](SPORTLINK-CLUB-SCHERMEN-ANALYSE.md) | Analyse van Sportlink Club-schermen en beschikbare datavelden |
 | [ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md](ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md) | Bronrapport netwerktraces en endpoint-contracten — onderzoek, niet meer actief bijgewerkt |
 | [ARCHITECTUUR-SQLITE-TIER.md](ARCHITECTUUR-SQLITE-TIER.md) | Tier 3 — voorbereidend ontwerp, nog niet gebouwd |

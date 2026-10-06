@@ -794,7 +794,18 @@ opgeteld: Totaal = speeltijd + rust + buffer. Voorbeeld senioren: 2×45 + 15 rus
 
 **Bewerken** opent het formulier direct onder de regel die u bewerkt (die regel is gemarkeerd);
 **Nieuwe categorie** opent het formulier bovenaan de tabel. Met **Opslaan** wordt de regel
-bijgewerkt, **Annuleer** sluit het formulier zonder wijziging.
+bijgewerkt, **Annuleer** sluit het formulier zonder wijziging. Op een telefoon of in een smal
+venster worden de regels kaarten met de kolomnaam ervoor; het formulier past dan binnen het scherm.
+
+Zolang een opslag loopt — tot de lijst daarna opnieuw is opgehaald — staat er **Opslaan…** bij
+die regel en zijn **Bewerken** en **Verwijderen** van die regel even niet beschikbaar; de regel
+toont intussen al de opgeslagen waarden. U kunt wel een andere categorie openen: het resultaat van
+de eerste opslag raakt dat tweede formulier niet. Mislukt een opslag terwijl het formulier al dicht
+is, dan verschijnt de fout als melding boven de tabel, met de naam van de categorie erbij. Lukt het
+opslaan wel maar het opnieuw ophalen van de lijst niet, dan ziet u een waarschuwing en blijft de
+regel de zojuist opgeslagen waarden tonen. Slaat u meerdere regels vlak na elkaar op, dan houdt elke
+regel de waarden die u opsloeg, ook als de lijst na de eerste opslag later binnenkomt dan die na de
+tweede. Met **Sluiten** haalt u zo'n melding weg.
 
 ### Categorieregels
 - Categorie `1-99` = Senioren mannen; `VR` = Senioren vrouwen → beide 115 minuten
