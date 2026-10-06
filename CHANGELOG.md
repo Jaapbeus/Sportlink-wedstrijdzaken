@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- **Planning**: veld, aanvangstijd en blokduur komen nu rechtstreeks uit de veldplanner van Sportlink Club, in plaats van berekend te worden (#1563). Een blok is precies zo lang als Sportlink hem tekent: speelduur plus pauze, met een eventueel in- of uitloopdeel. Daardoor kloppen ook 35+ (pauze van tien minuten) en wedstrijden waarvan Sportlink het veld of de tijd verschoof. Is Sportlink niet bereikbaar, staat de extensie uit of kent Sportlink een wedstrijd niet, dan toont de Planning zoals voorheen de eigen berekening. Wedstrijden tussen andere clubs die wel in Sportlinks veldplanner staan maar niet in onze database, worden nog niet getoond.
+
 ## [3.11.2.0] — 2026-10-06
 
 ### Fixed

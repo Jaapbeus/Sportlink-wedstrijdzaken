@@ -287,6 +287,13 @@ public interface ISportlinkClubClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// De blokken van de Sportlink-veldplanner voor één accommodatie en dag (#1563): veld, starttijd en
+    /// volledige bezetting, rechtstreeks uit Sportlink. Read-only, persoonsgegevensvrij (alleen teams).
+    /// </summary>
+    Task<SportlinkClubResponse<IReadOnlyList<SportlinkVeldplannerBlok>>> GetVeldplannerAsync(
+        string functioneleRol, string facilityId, DateOnly datum, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Haalt de twee ondersteunende picklists op die een oefenwedstrijd-formulier nodig heeft
     /// (#997, bewust beperkte scope): <c>clubmatch/PickListsTeams</c> en
     /// <c>clubmatch/PickListsLocation</c>. Read-only en persoonsgegevensvrij (teams/locaties, geen

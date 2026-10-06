@@ -33,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.11.2.0
+  version: 3.11.3.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -7712,6 +7712,10 @@ paths:
         generiek zichtbaar is voor elke ingelogde gebruiker — vereist daarom alleen `admin` óf
         `user` (voorheen uitsluitend `admin`); in deze tag geldt dat verder alleen voor
         `/planner/pdf-export` (#1459).
+
+        Sinds #1563 komen `veld`, `aanvangsTijd`, `veldafmeting` en `duurMinuten` van een wedstrijd uit de
+        Sportlink-veldplanner als de Sportlink Web Extension aan en bereikbaar is; anders (of voor een wedstrijd
+        die Sportlink niet kent) blijft de eigen berekening. De vorm van het antwoord is ongewijzigd.
       security:
         - easyAuth: []
       parameters:
