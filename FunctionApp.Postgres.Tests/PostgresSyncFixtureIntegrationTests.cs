@@ -281,6 +281,74 @@ public class PostgresSyncFixtureIntegrationTests
     }
 
     /// <summary>
+    /// Review #1547 R1-F3: een gespeelde wedstrijd die na de vorige sync naar een andere dag is
+    /// verplaatst en daarna alleen nog via <c>/uitslagen</c> binnenkomt, moet op de nieuwe dag
+    /// staan. De aanvulling uit his gaf hem eerst de oude kaledatum terug.
+    /// </summary>
+    [PostgresFact]
+    public async Task RunSyncAsync_VerplaatsteGespeeldeWedstrijd_KrijgtDeActueleDatum()
+    {
+        await SchoonAsync();
+
+        using var fixtureServer = SportlinkFixtures.BuildServer(Wedstrijdcode, ClubCode);
+        await RunAsync(fixtureServer);
+
+        fixtureServer.RespondWithJson("/programma", AndereWedstrijdJson(Wedstrijdcode + 1));
+        fixtureServer.RespondWithJson("/uitslagen",
+            SportlinkFixtures.UitslagenJson(Wedstrijdcode, ClubCode, wedstrijddatum: "2026-09-06T10:00:00+0200"));
+        await RunAsync(fixtureServer);
+
+        (await ScalarAsync<string?>(
+                "SELECT kaledatum FROM his.matches WHERE wedstrijdcode = @code AND clubcode = @club"))
+            .Should().Be("2026-09-06 00:00:00.00", "de uitslagdatum is actueler dan de eerder opgeslagen plandatum");
+        (await ScalarAsync<string?>(
+                "SELECT veld FROM his.matches WHERE wedstrijdcode = @code AND clubcode = @club"))
+            .Should().Be("veld 3", "wat /uitslagen niet levert, blijft uit his komen");
+    }
+
+    /// <summary>Review #1547 R1-F3: zonder eerdere his-rij komt de datum uit de uitslag zelf.</summary>
+    [PostgresFact]
+    public async Task RunSyncAsync_GespeeldeWedstrijdZonderHisRij_KrijgtDatumUitDeUitslag()
+    {
+        await SchoonAsync();
+
+        using var fixtureServer = SportlinkFixtures.BuildServer(Wedstrijdcode, ClubCode);
+        fixtureServer.RespondWithJson("/programma", "[]");
+        await RunAsync(fixtureServer);
+
+        (await ScalarAsync<string?>(
+                "SELECT kaledatum FROM his.matches WHERE wedstrijdcode = @code AND clubcode = @club"))
+            .Should().Be("2026-09-05 00:00:00.00");
+    }
+
+    /// <summary>Review #1547 R1-F3: de aanvulling raakt alleen stg-rijen van de gesyncte club.</summary>
+    [PostgresFact]
+    public async Task VulUitslagRijenAan_RaaktGeenAndereClub()
+    {
+        await SchoonAsync();
+        using var fixtureServer = SportlinkFixtures.BuildServer(Wedstrijdcode, ClubCode);
+        await RunAsync(fixtureServer); // laat stg.matches in productievorm achter
+
+        await using (var conn = new NpgsqlConnection(ConnectionString))
+        {
+            await conn.OpenAsync();
+            await using var insert = new NpgsqlCommand(
+                "INSERT INTO stg.matches (wedstrijdcode, wedstrijddatum, clubcode) " +
+                "VALUES (@code, '2026-09-05T10:00:00+0200', 'ANDERECLUB')", conn);
+            insert.Parameters.AddWithValue("code", Wedstrijdcode + 50);
+            await insert.ExecuteNonQueryAsync();
+        }
+
+        await PostgresStagingRepository.VulUitslagRijenAanUitHisAsync(ConnectionString, ClubCode);
+
+        await using var check = new NpgsqlConnection(ConnectionString);
+        await check.OpenAsync();
+        await using var cmd = new NpgsqlCommand(
+            "SELECT kaledatum FROM stg.matches WHERE clubcode = 'ANDERECLUB'", check);
+        (await cmd.ExecuteScalarAsync()).Should().Be(DBNull.Value);
+    }
+
+    /// <summary>
     /// Minimale <c>/programma</c>-respons met precies één wedstrijd, op dezelfde datum als de
     /// standaardfixture (2026-09-05) maar met een andere <c>wedstrijdcode</c> en team — voor het
     /// "één wedstrijd verdwijnt, de rest van het weekend niet"-scenario hierboven.

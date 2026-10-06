@@ -3726,9 +3726,12 @@ GO
 -- /wedstrijd-informatie noemt het wedstrijdNUMMER "wedstrijdnummer" (kolom WedstrijdCode). Dat is niet
 -- uniek: clubwedstrijden hebben vaak nummer 1, waardoor detailrijen van verschillende wedstrijden
 -- elkaar overschreven. InternCode is gelijk aan his.matches.wedstrijdcode en wél uniek.
--- Idempotent: draait alleen zolang de oude bk-kolom bestaat. his.* bestaat pas na de eerste sync.
--- Rijen zonder InternCode zijn niet aan een wedstrijd te koppelen en worden verwijderd; dubbele
--- InternCodes worden teruggebracht tot de meest recente rij. De volgende sync vult de details aan.
+-- Idempotent; his.* bestaat pas na de eerste sync.
+-- Dubbele InternCodes (dezelfde wedstrijd) worden teruggebracht tot de meest recente rij. Oude rijen
+-- zonder InternCode blijven bewaard (review #1547 R1: geen verlies van historische details) en
+-- krijgen -WedstrijdCode als sleutel: uniek omdat de oude sleutel uniek was, en nooit gelijk aan een
+-- echte (positieve) InternCode. Zo blijven kolom (NOT NULL) en index gelijk aan een verse installatie.
+-- Herstartbaar: het tweede blok vult de sleutel opnieuw en maakt de index zolang die ontbreekt.
 -- ============================================================
 UPDATE [mta].[source_target_mapping]
 SET [source_pk] = '[InternCode]', [target_pk] = 'bk_InternCode INT'
@@ -3741,20 +3744,43 @@ IF OBJECT_ID('his.matchdetails') IS NOT NULL
    AND COL_LENGTH('his.matchdetails', 'bk_WedstrijdCode') IS NOT NULL
    AND COL_LENGTH('his.matchdetails', 'bk_InternCode') IS NULL
 BEGIN
-    EXEC(N'DELETE FROM [his].[matchdetails] WHERE [InternCode] IS NULL;');
     EXEC(N'
         WITH r AS (
             SELECT ROW_NUMBER() OVER (PARTITION BY [InternCode]
                                       ORDER BY [mta_modified] DESC, [mta_inserted] DESC) AS rn
-            FROM [his].[matchdetails])
+            FROM [his].[matchdetails]
+            WHERE [InternCode] IS NOT NULL)
         DELETE FROM r WHERE rn > 1;');
     IF EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('his.matchdetails') AND name = 'UQ_matchdetails_bk')
         EXEC(N'DROP INDEX [UQ_matchdetails_bk] ON [his].[matchdetails];');
     IF EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('his.matchdetails') AND name = 'IX_matchdetails_bk')
         EXEC(N'DROP INDEX [IX_matchdetails_bk] ON [his].[matchdetails];');
     EXEC sp_rename N'his.matchdetails.bk_WedstrijdCode', N'bk_InternCode', N'COLUMN';
-    EXEC(N'UPDATE [his].[matchdetails] SET [bk_InternCode] = [InternCode];');
-    EXEC(N'CREATE UNIQUE NONCLUSTERED INDEX [UQ_matchdetails_bk] ON [his].[matchdetails] ([bk_InternCode]);');
-    PRINT 'his.matchdetails: business key omgebouwd naar InternCode (#1547).';
+    PRINT 'his.matchdetails: bk-kolom hernoemd naar bk_InternCode (#1547).';
+END
+GO
+
+-- Ook na een herstart: de #606-lus hierboven kan de index al op nog oude sleutelwaarden hebben
+-- aangemaakt. Daarom kijkt dit blok naar afwijkende waarden, niet alleen naar een ontbrekende index.
+IF OBJECT_ID('his.matchdetails') IS NOT NULL
+   AND COL_LENGTH('his.matchdetails', 'bk_InternCode') IS NOT NULL
+BEGIN
+    DECLARE @afwijkend INT;
+    EXEC sp_executesql
+        N'SELECT @n = COUNT(*) FROM [his].[matchdetails] WHERE [bk_InternCode] <> COALESCE([InternCode], -[WedstrijdCode]);',
+        N'@n INT OUTPUT', @n = @afwijkend OUTPUT;
+
+    IF @afwijkend > 0
+       OR NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('his.matchdetails')
+                      AND name = 'UQ_matchdetails_bk')
+    BEGIN
+        IF EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('his.matchdetails') AND name = 'UQ_matchdetails_bk')
+            EXEC(N'DROP INDEX [UQ_matchdetails_bk] ON [his].[matchdetails];');
+        IF EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('his.matchdetails') AND name = 'IX_matchdetails_bk')
+            EXEC(N'DROP INDEX [IX_matchdetails_bk] ON [his].[matchdetails];');
+        EXEC(N'UPDATE [his].[matchdetails] SET [bk_InternCode] = COALESCE([InternCode], -[WedstrijdCode]);');
+        EXEC(N'CREATE UNIQUE NONCLUSTERED INDEX [UQ_matchdetails_bk] ON [his].[matchdetails] ([bk_InternCode]);');
+        PRINT 'his.matchdetails: business key gevuld uit InternCode en unieke index aangemaakt (#1547).';
+    END
 END
 GO

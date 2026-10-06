@@ -171,7 +171,13 @@ internal static class PostgresStagingRepository
         {
             if ((bool)(await bestaat.ExecuteScalarAsync())!)
             {
-                var sets = string.Join(", ", AlleenProgrammaKolommen.Select(k => $"{k} = COALESCE(s.{k}, h.{k})"));
+                // Review #1547 R1-F3: de datum uit /uitslagen is actueler dan die in his. Een wedstrijd
+                // die na de vorige sync verplaatst is, kreeg anders de oude kaledatum terug en stond
+                // op /planning op de verkeerde dag. Alleen als wedstrijddatum onbruikbaar is, valt
+                // kaledatum terug op his.
+                var sets = string.Join(", ", AlleenProgrammaKolommen.Select(k => k == "kaledatum"
+                    ? $"kaledatum = COALESCE({KaledatumUitWedstrijddatum("s.wedstrijddatum")}, h.kaledatum)"
+                    : $"{k} = COALESCE(s.{k}, h.{k})"));
                 await using var vulAan = new NpgsqlCommand($"""
                     UPDATE stg.matches s SET {sets}
                     FROM his.matches h
@@ -183,14 +189,22 @@ internal static class PostgresStagingRepository
             }
         }
 
-        await using var datum = new NpgsqlCommand("""
-            UPDATE stg.matches SET kaledatum = left(wedstrijddatum, 10) || ' 00:00:00.00'
-            WHERE clubcode = @clubcode AND kaledatum IS NULL AND wedstrijddatum ~ '^\d{4}-\d{2}-\d{2}'
+        await using var datum = new NpgsqlCommand($"""
+            UPDATE stg.matches SET kaledatum = {KaledatumUitWedstrijddatum("wedstrijddatum")}
+            WHERE clubcode = @clubcode AND kaledatum IS NULL
             """, connection);
         datum.Parameters.AddWithValue("clubcode", clubCode);
         await datum.ExecuteNonQueryAsync();
         return aangevuld;
     }
+
+    /// <summary>
+    /// Lokale datum van Sportlinks <c>wedstrijddatum</c> ("2026-10-10T10:15:00+0200") in de
+    /// kaledatum-vorm, of NULL als de waarde geen datum is. Het datumdeel is al lokale tijd — geen
+    /// UTC-conversie, die zou een avondwedstrijd naar de volgende dag kunnen schuiven.
+    /// </summary>
+    private static string KaledatumUitWedstrijddatum(string kolom)
+        => $"CASE WHEN {kolom} ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}' THEN left({kolom}, 10) || ' 00:00:00.00' END";
 
     internal static async Task<int> MergeUitslagenAsync(string connectionString, List<Match> matches, string clubCode, ILogger log)
     {

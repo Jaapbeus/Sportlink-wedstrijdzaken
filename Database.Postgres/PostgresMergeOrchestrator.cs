@@ -124,8 +124,9 @@ public sealed class PostgresMergeOrchestrator
     /// <c>/programma</c> laat een wedstrijd vallen zodra hij gespeeld is (hij staat dan in
     /// <c>/uitslagen</c>), maar het stg-venster begint bij "vorige week". Zonder ondergrens markeerde
     /// elke ochtendrun na een speeldag alle gespeelde wedstrijden van die dag als verwijderd — circa
-    /// twintig per week. Afwezigheid in <c>/programma</c> is alleen voor wedstrijden vanaf vandaag
-    /// een bewijs dat Sportlink de wedstrijd niet meer kent.
+    /// twintig per week. Afwezigheid in <c>/programma</c> is alleen voor wedstrijden ná vandaag een
+    /// bewijs dat Sportlink de wedstrijd niet meer kent; de pipeline geeft daarom morgen mee (review
+    /// #1547 R1-F2: op de speeldag zelf kan de uitslag nog ontbreken).
     /// </para>
     /// </summary>
     public async Task<int> ReconcileWindowedAsync(

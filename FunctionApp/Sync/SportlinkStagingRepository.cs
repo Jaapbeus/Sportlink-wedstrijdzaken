@@ -152,7 +152,10 @@ internal static class SportlinkStagingRepository
             {
                 if (await ScalarBoolAsync(conn,
                         $"SELECT CASE WHEN COL_LENGTH('stg.matches', '{k}') IS NOT NULL AND COL_LENGTH('his.matches', '{k}') IS NOT NULL THEN 1 ELSE 0 END"))
-                    sets.Add($"s.[{k}] = COALESCE(s.[{k}], h.[{k}])");
+                    // Review #1547 R1-F3: de uitslagdatum is actueler dan de kaledatum in his.
+                    sets.Add(k == "kaledatum"
+                        ? $"s.[kaledatum] = COALESCE({KaledatumUitWedstrijddatum("s.[wedstrijddatum]")}, h.[kaledatum])"
+                        : $"s.[{k}] = COALESCE(s.[{k}], h.[{k}])");
             }
             if (sets.Count > 0)
             {
@@ -166,15 +169,18 @@ internal static class SportlinkStagingRepository
             }
         }
 
-        using var datum = new SqlCommand(@"
-            UPDATE [stg].[matches] SET [kaledatum] = LEFT([wedstrijddatum], 10) + ' 00:00:00.00'
-            WHERE [ClubCode] = @clubcode AND [kaledatum] IS NULL
-              AND [wedstrijddatum] LIKE '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]%'", conn);
+        using var datum = new SqlCommand($@"
+            UPDATE [stg].[matches] SET [kaledatum] = {KaledatumUitWedstrijddatum("[wedstrijddatum]")}
+            WHERE [ClubCode] = @clubcode AND [kaledatum] IS NULL", conn);
         datum.Parameters.AddWithValue("@clubcode", clubCode);
         await datum.ExecuteNonQueryAsync();
         log.LogInformation("MATCHES/UITSLAGEN - {Aangevuld} uitslag-rijen aangevuld uit his.matches.", aangevuld);
         return aangevuld;
     }
+
+    /// <summary>Lokale datum van Sportlinks wedstrijddatum in kaledatum-vorm, of NULL als het geen datum is.</summary>
+    private static string KaledatumUitWedstrijddatum(string kolom)
+        => $"CASE WHEN {kolom} LIKE '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]%' THEN LEFT({kolom}, 10) + ' 00:00:00.00' END";
 
     private static async Task<bool> ScalarBoolAsync(SqlConnection conn, string sql)
     {

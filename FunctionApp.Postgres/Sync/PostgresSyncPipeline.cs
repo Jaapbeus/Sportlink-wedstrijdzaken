@@ -75,7 +75,7 @@ internal static class PostgresSyncPipeline
         // al geslaagde ETL-run niet alsnog laten falen. Draait vóór de plannerview/canonicalisatie
         // zodat die stroomafwaartse stappen al met de opgeschoonde data werken.
         await ReconcileVerdwenenAsync(orchestrator, clubCode, teamsFailed, matchesFailed,
-            reconciliatieOndergrens ?? VandaagInNederland(), log);
+            reconciliatieOndergrens ?? EersteTeReconcilierenDatum(VandaagInNederland()), log);
 
         // Plannerview (#861/#819): CREATE OR REPLACE VIEW planner.alle_wedstrijden_op_veld_ruw.
         //
@@ -277,7 +277,7 @@ internal static class PostgresSyncPipeline
         {
             try
             {
-                // #1547: gespeelde wedstrijden verdwijnen uit /programma — alleen vanaf vandaag
+                // #1547: gespeelde wedstrijden verdwijnen uit /programma — alleen vanaf morgen
                 // (Nederlandse tijd) betekent "niet meer in stg" ook "niet meer bij Sportlink".
                 var matchesVerwijderd = await orchestrator.ReconcileWindowedAsync(
                     KnownEntities.Matches, clubCode, "kaledatum", ondergrens: ondergrens);
@@ -292,6 +292,19 @@ internal static class PostgresSyncPipeline
             }
         }
     }
+
+    /// <summary>
+    /// Eerste datum waarop afwezigheid in de sync een wedstrijd als verwijderd mag markeren: morgen.
+    /// <para>
+    /// Review #1547 R1-F2: niet vandaag. Op een speeldag verdwijnt een gespeelde wedstrijd uit
+    /// <c>/programma</c> terwijl de uitslag soms nog niet gepubliceerd is; dan ontbreekt hij in beide
+    /// feeds, ook als beide aanroepen slagen. Een handmatige sync markeerde hem dan als verwijderd.
+    /// Prijs: een wedstrijd die Sportlink op de speeldag zelf schrapt, blijft die dag en daarna als
+    /// historie staan. Een afgelaste wedstrijd houdt in Sportlink zijn rij met status "Afgelast" en
+    /// valt via dat filter wél direct weg.
+    /// </para>
+    /// </summary>
+    internal static DateOnly EersteTeReconcilierenDatum(DateOnly vandaag) => vandaag.AddDays(1);
 
     private static DateOnly VandaagInNederland()
     {
