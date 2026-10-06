@@ -315,7 +315,7 @@ leeg. Per job:
 |---|---|
 | `db-check`, `db-migrate`, `db-migrate-postgres` | Ongewijzigd; de testworkflow heeft geen migratiejob en raakt de database niet |
 | `build` | Ongewijzigd; de testworkflow heeft een eigen kopie met dezelfde vier stappen en dezelfde gepinde SHA's, plus een extra controle |
-| `deploy` | Ongewijzigd, zelfde `app-name: secrets.AZURE_FUNCTIONAPP_NAME \|\| vars.AZURE_FUNCTIONAPP_NAME` |
+| `deploy` | Ongewijzigd, zelfde `app-name` uit secret `AZURE_FUNCTIONAPP_NAME` (sinds #1237 zonder `vars`-terugval) |
 | `test`, `blazor-deploy`, `deployment-summary` | Ongewijzigd; de testworkflow deployt geen GUI en schrijft geen productierapport |
 | Triggers | `deploy.yml`: `push: main` + `workflow_dispatch` (ongewijzigd). Testworkflow: alleen `workflow_dispatch`, alleen vanaf `main` |
 
@@ -474,7 +474,7 @@ buiten een wedstrijdweekend.
    Zo draait een timer nooit op twee apps tegelijk.
 3. **GitHub-configuratie omzetten** (eigenaar): `AZURE_FUNCTIONAPP_NAME` → de Flex-app,
    `AZURE_FUNCTIONAPP_URL` → `https://[flex-host]`, `AZURE_FUNCTION_KEY` → de default key van de
-   Flex-app (`az functionapp keys list -g "$RG" -n "$APP"` — niet loggen). **Uitsluitend als Secret, nooit als Variable** (#1204): Variables worden niet gemaskeerd in de publieke Actions-logs. Staat een van deze namen nog als Variable, verwijder die dan; de workflows lezen `secrets.X || vars.X` alleen als legacy-terugval.
+   Flex-app (`az functionapp keys list -g "$RG" -n "$APP"` — niet loggen). **Uitsluitend als Secret, nooit als Variable** (#1204): Variables worden niet gemaskeerd in de publieke Actions-logs. Staat een van deze namen nog als Variable, verwijder die dan; sinds #1237 lezen de workflows uitsluitend `secrets.X`.
 4. **De tijdelijke workflow verwijderen**: `deploy-flex-test.yml` (nooit toegevoegd; bijlage A is verwijderd) in dezelfde PR als stap 1,
    of direct erna.
 5. **Volledige deploy vanaf `main`**, daarna per job (CLAUDE.md regel 2, stap C) en de live

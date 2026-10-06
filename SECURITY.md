@@ -674,22 +674,18 @@ Oude release-tags (v2.1.x–v2.2.0) bevatten nog configuratie-identificatoren ui
 (geen geheimen; in een SPA per ontwerp publiek). Besluit eigenaar 2026-10-04: restrisico
 geaccepteerd, geen history-rewrite. Details in het besloten dossier.
 
-### Restrisico: oude issue- en PR-teksten van vóór #1204
+### Restrisico: oude issue- en PR-teksten
 
-Een deel van de oude issue- en PR-teksten met dezelfde soort configuratie-identificatoren is
-geredigeerd; voor het restant, en voor de oude revisies in de bewerkingsgeschiedenis, geldt
-dezelfde afweging als bij de tags hierboven. Besluit eigenaar 2026-10-05: restrisico geaccepteerd,
-geen verdere redactie. Nieuwe teksten vallen onverkort onder de controleplicht van dit document.
+Besluit eigenaar 2026-10-05: restrisico geaccepteerd, geen verdere redactie. Onderbouwing en
+afbakening staan in het besloten dossier. Nieuwe teksten vallen onverkort onder de controleplicht
+van dit document.
 
-### Classificatie: de Sportlink-clientId is een publieke identifier
+### Classificatie: Sportlink-clientId
 
-Sportlinks eigen browserwidgets gebruiken de clientId per ontwerp in de browser van elke bezoeker;
-roteren verplaatst de waarde dus alleen naar dezelfde openbare plek. Besluit eigenaar 2026-10-05:
-de clientId geldt als publieke identifier (restrisico), niet als secret, en wordt niet geroteerd
-naar aanleiding van #1200. Dat verandert niets aan de bestaande regels: hij komt niet in git, niet
-in logs en niet in telemetrie (zie Laag 5), want een publieke identifier hoeft niet ook nog door
-deze applicatie verspreid te worden. Mocht Sportlink Services hem alsnog als secret aanmerken, dan
-wordt dit besluit heroverwogen. Details in het besloten dossier.
+Besluit eigenaar 2026-10-05: de Sportlink-clientId is geclassificeerd als publieke identifier
+(restrisico), niet als secret. Onderbouwing staat in het besloten dossier. De classificatie is geen
+vrijstelling: de clientId komt niet in git, niet in logs en niet in telemetrie (zie Laag 5). Wijzigt
+de leverancier de classificatie, dan wordt het besluit heroverwogen.
 
 ### Uitzondering: history-rewrite na een leak
 
