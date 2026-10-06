@@ -4616,10 +4616,11 @@ historische details van.
 - *Tegenstander afgeknipt.* Een blok van één deelveld is maar de helft van een rij hoog; tijd en naam onder elkaar
   lieten één regel voor de naam over. De aanvangstijd staat nu op dezelfde regel als de naam
   (`GanttChart.razor`).
-- *Korte wedstrijden.* `VeldbezettingDuur` rekent een wedstrijd van 20 minuten of korter als speelduur + 10
-  (35+/VR30+: één keer 20 minuten, 10 minuten rust, elk halfuur een wedstrijd) in plaats van + 15. De vijftien blijft
-  voor alle andere wedstrijden. **Niet nagemeten op de Sportlink-veldplanner**; controle op een 35+-speeldag staat
-  in #1560.
+- *Korte wedstrijden (35+/VR30+, één keer 20 minuten).* Eerst als speelduur + 10 uitgewerkt, daarna op
+  eigenaarsbesluit teruggedraaid: de rust tussen twee wedstrijden is geen speeltijd en wordt niet apart
+  meegeteld. Elke wedstrijd volgt dus dezelfde regel (Sportlinks speelduur + 15). Een afwijking van de
+  Sportlink-veldplanner op een 35+-dag lost #1563 definitief op door de blokduur rechtstreeks uit
+  Sportlink te lezen.
 
 Bewust niet gedaan: wedstrijden met thuisteam gelijk aan uitteam (op 10 oktober twee extra blokken die Sportlink niet
 toont) blijven in de Planning. Een toernooi heeft dezelfde vorm, dus een filter zonder Sportlink-bewijs van de

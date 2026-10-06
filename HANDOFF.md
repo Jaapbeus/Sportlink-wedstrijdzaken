@@ -67,6 +67,6 @@ Lokale Playwright-acceptatie en -regressie groen; live: health ok, 401-controles
 
 ## #1561 (versie 3.11.1.6) — vervolg op de acceptatietest van 3.11.1.5
 Migratie 037 (+ SQL Server-spiegelblok) herstelt de lege teamnaam bij gespeelde wedstrijden; Planning-blokken tonen
-tijd en naam op één regel; wedstrijden van 20 minuten of korter krijgen speelduur + 10 in plaats van + 15 (niet
-nagemeten op Sportlink). Open: wedstrijden met thuisteam = uitteam (twee extra blokken op 10 oktober) en het
+tijd en naam op één regel; elke wedstrijd, ook 35+/VR30+ (20 min), volgt speelduur + 15 (geen uitzondering,
+zie #1563 voor de blokduur rechtstreeks uit Sportlink). Open: wedstrijden met thuisteam = uitteam (twee extra blokken op 10 oktober) en het
 35+-blok verifiëren met Sportlink-screenshots van de toernooidagen, zie #1560.

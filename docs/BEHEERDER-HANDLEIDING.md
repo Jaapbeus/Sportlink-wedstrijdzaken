@@ -120,7 +120,7 @@ hieronder — zie hoofdstuk 19 voor de Sportlink Web Extension zelf.
 
 **Sportlink is leidend (#1547).** De tijdlijn toont elke wedstrijd zoals de veldplanner in
 Sportlink Club hem toont: hetzelfde veld, dezelfde aanvangstijd, en een blok dat even lang is —
-Sportlinks speelduur plus vijftien minuten (bij een wedstrijd van 20 minuten of korter, zoals 35+, plus tien: één keer 20 minuten met 10 minuten rust). De speelduur komt dus uit Sportlink, niet uit
+Sportlinks speelduur plus vijftien minuten. De speelduur komt dus uit Sportlink, niet uit
 **Speeltijden**; die tabel is alleen nog de terugval voor een wedstrijd waarvan Sportlink geen
 speelduur kent, en blijft de basis voor **Veld optimalisatie**. Een lange wedstrijdnaam loopt over
 twee regels door, met de aanvangstijd vóór de naam op dezelfde regel; de volledige naam staat ook in de tooltip. Ziet u toch een verschil met Sportlink,
