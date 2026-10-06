@@ -49,4 +49,15 @@ public class PostgresUpsertGeneratorTests
 
         sql.Should().Contain("ON CONFLICT (\"bk_teams\") DO UPDATE SET");
     }
+
+    [Fact]
+    public void GenerateUpsertFromStgToHis_HerstelEenEerderVerwijderdeRij()
+    {
+        // #1547: een rij die weer in stg staat bestaat bij Sportlink — hij moet altijd terugkomen,
+        // ook als zijn data niet veranderd is.
+        var sql = PostgresUpsertGenerator.GenerateUpsertFromStgToHis(TestEntities.SingleKeyNoClub);
+
+        sql.Should().Contain("\"mta_deleted\" = NULL");
+        sql.Should().Contain(" OR his.\"matches\".\"mta_deleted\" IS NOT NULL;");
+    }
 }

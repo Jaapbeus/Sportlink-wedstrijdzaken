@@ -119,14 +119,6 @@ public static class DagplanningWeergaveHelpers
         return "var(--theme-voorkeur-grote-afwijking)";
     }
 
-    public static string GanttLabel(string label)
-    {
-        // Toon alleen de teamnamen, strip " - FC Onbekend JO7 1" achtervoegsel als het lang is
-        var idx = label.IndexOf(" - ", StringComparison.Ordinal);
-        if (idx > 0 && label.Length > 30) return label[..idx];
-        return label;
-    }
-
     /// <summary>Eerstvolgende zaterdag vanaf vandaag — de standaard-datum op zowel Planning als
     /// Veld optimalisatie. Als vandaag al zaterdag is, telt dat niet mee (dan is het antwoord vandaag
     /// over een week).</summary>

@@ -86,7 +86,7 @@ public class PostgresSyncFixtureIntegrationTests
 
         (await CountAsync("SELECT count(*) FROM his.teams WHERE clubcode = @club"))
             .Should().Be(1, "het ene team uit /teams moet na de eerste sync in his.teams staan");
-        (await CountAsync("SELECT count(*) FROM his.matchdetails WHERE wedstrijdcode = @code AND clubcode = @club"))
+        (await CountAsync("SELECT count(*) FROM his.matchdetails WHERE interncode = @code AND clubcode = @club"))
             .Should().Be(1, "de matchdetails uit /wedstrijd-informatie moeten na de eerste sync in his.matchdetails staan");
 
         // Bewijs 3 (het kernacceptatiecriterium): tweemaal draaien tegen identieke fixture-data levert
@@ -106,7 +106,7 @@ public class PostgresSyncFixtureIntegrationTests
             .Should().Be(1, "een tweede run met identieke data mag geen duplicaatrij toevoegen");
         (await CountAsync("SELECT count(*) FROM his.matches WHERE wedstrijdcode = @code AND clubcode = @club"))
             .Should().Be(1, "een tweede run met identieke data mag geen duplicaatrij toevoegen");
-        (await CountAsync("SELECT count(*) FROM his.matchdetails WHERE wedstrijdcode = @code AND clubcode = @club"))
+        (await CountAsync("SELECT count(*) FROM his.matchdetails WHERE interncode = @code AND clubcode = @club"))
             .Should().Be(1, "een tweede run met identieke data mag geen duplicaatrij toevoegen");
     }
 
@@ -249,6 +249,38 @@ public class PostgresSyncFixtureIntegrationTests
     }
 
     /// <summary>
+    /// #1547: een gespeelde wedstrijd staat niet meer in <c>/programma</c>, alleen nog in
+    /// <c>/uitslagen</c> — en die levert geen <c>kaledatum</c>, <c>veld</c> of <c>teamnaam</c>. Vóór
+    /// de fix overschreef de upsert de his-rij met die lege waarden, en verdween de afgelopen
+    /// speeldag uit de Planning. Nu blijft wat Sportlink eerder leverde staan, en vult de uitslag aan.
+    /// </summary>
+    [PostgresFact]
+    public async Task RunSyncAsync_GespeeldeWedstrijdAlleenInUitslagen_BehoudtDatumVeldEnTeam()
+    {
+        await SchoonAsync();
+
+        using var fixtureServer = SportlinkFixtures.BuildServer(Wedstrijdcode, ClubCode);
+        await RunAsync(fixtureServer);
+
+        fixtureServer.RespondWithJson("/programma", AndereWedstrijdJson(Wedstrijdcode + 1));
+        await RunAsync(fixtureServer);
+
+        (await ScalarAsync<string?>(
+                "SELECT kaledatum FROM his.matches WHERE wedstrijdcode = @code AND clubcode = @club"))
+            .Should().Be("2026-09-05 00:00:00.00");
+        (await ScalarAsync<string?>(
+                "SELECT veld FROM his.matches WHERE wedstrijdcode = @code AND clubcode = @club"))
+            .Should().Be("veld 3");
+        (await ScalarAsync<string?>(
+                "SELECT teamnaam FROM his.matches WHERE wedstrijdcode = @code AND clubcode = @club"))
+            .Should().Be($"{ClubCode} JO13-1");
+        (await ScalarAsync<string?>(
+                "SELECT uitslag FROM his.matches WHERE wedstrijdcode = @code AND clubcode = @club"))
+            .Should().Be("3-1", "de uitslag zelf moet wel binnenkomen");
+        (await IsZichtbaarViaHisFilterAsync()).Should().BeTrue();
+    }
+
+    /// <summary>
     /// Minimale <c>/programma</c>-respons met precies één wedstrijd, op dezelfde datum als de
     /// standaardfixture (2026-09-05) maar met een andere <c>wedstrijdcode</c> en team — voor het
     /// "één wedstrijd verdwijnt, de rest van het weekend niet"-scenario hierboven.
@@ -312,7 +344,10 @@ public class PostgresSyncFixtureIntegrationTests
             sportlinkClientId: "clientId=fixture-test",
             clubCode: ClubCode,
             connectionString: ConnectionString,
-            log: NullLogger.Instance);
+            log: NullLogger.Instance,
+            // De fixture speelt in september 2026; de ondergrens (#1547, standaard "vandaag") ligt
+            // vast vóór die datum zodat deze test niet afhangt van de dag waarop hij draait.
+            reconciliatieOndergrens: new DateOnly(2026, 9, 1));
 
     /// <summary>
     /// Schone lei voor deze club. <c>his.*</c> blijft tussen runs staan (alleen <c>stg.*</c> wordt

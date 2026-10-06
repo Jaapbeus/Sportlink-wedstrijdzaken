@@ -60,7 +60,7 @@ public class SportlinkFixtureSyncIntegrationTests : IAsyncLifetime
         await using var connection = new SqlConnection(ConnectionString);
         await connection.OpenAsync();
         await using var cleanup = new SqlCommand(
-            "IF OBJECT_ID('[his].[matchdetails]') IS NOT NULL DELETE FROM [his].[matchdetails] WHERE WedstrijdCode = @code; " +
+            "IF OBJECT_ID('[his].[matchdetails]') IS NOT NULL DELETE FROM [his].[matchdetails] WHERE InternCode = @code; " +
             "IF OBJECT_ID('[his].[matches]') IS NOT NULL DELETE FROM [his].[matches] WHERE wedstrijdcode = @code; " +
             "IF OBJECT_ID('[his].[teams]') IS NOT NULL DELETE FROM [his].[teams] WHERE ClubCode = @club;", connection);
         cleanup.Parameters.AddWithValue("@code", Wedstrijdcode);
@@ -107,7 +107,7 @@ public class SportlinkFixtureSyncIntegrationTests : IAsyncLifetime
         teamCount.Should().Be(1, "het ene team uit /teams moet na de eerste sync in his.teams staan");
 
         var detailCount = await CountAsync(connection,
-            "SELECT COUNT(*) FROM [his].[matchdetails] WHERE WedstrijdCode = @code", Wedstrijdcode);
+            "SELECT COUNT(*) FROM [his].[matchdetails] WHERE InternCode = @code", Wedstrijdcode);
         detailCount.Should().Be(1, "de matchdetails uit /wedstrijd-informatie moeten na de eerste sync in his.matchdetails staan");
 
         // ── Bewijs 3 (kernacceptatiecriterium #867): tweemaal draaien tegen identieke fixture-data
@@ -131,9 +131,44 @@ public class SportlinkFixtureSyncIntegrationTests : IAsyncLifetime
         teamCountAfterSecondRun.Should().Be(1, "een tweede run met identieke data mag geen duplicaatrij toevoegen");
 
         var detailCountAfterSecondRun = await CountAsync(connection,
-            "SELECT COUNT(*) FROM [his].[matchdetails] WHERE WedstrijdCode = @code", Wedstrijdcode);
+            "SELECT COUNT(*) FROM [his].[matchdetails] WHERE InternCode = @code", Wedstrijdcode);
         detailCountAfterSecondRun.Should().Be(1, "een tweede run met identieke data mag geen duplicaatrij toevoegen");
     }
+
+    /// <summary>
+    /// #1547: een gespeelde wedstrijd valt uit /programma en komt alleen nog via /uitslagen binnen,
+    /// zonder kaledatum/veld/team. De sync moet die kolommen uit his.matches aanvullen in plaats van
+    /// ze met NULL te overschrijven. Spiegel van de Postgres-tiertest met dezelfde naam.
+    /// </summary>
+    [Fact(Skip = "Vereist lokale SQL Server met volledig schema (zie klasse-doc-comment) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    public async Task RunSyncAsync_GespeeldeWedstrijdAlleenInUitslagen_BehoudtDatumVeldEnTeam()
+    {
+        using var fixtureServer = SportlinkFixtures.BuildServer(Wedstrijdcode, ClubCode);
+        await RunAsync(fixtureServer);
+
+        // Tweede run: /programma kent de wedstrijd niet meer (gespeeld), /uitslagen wel.
+        fixtureServer.RespondWithJson("/programma", "[]");
+        await RunAsync(fixtureServer);
+
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        foreach (var kolom in new[] { "kaledatum", "veld", "teamnaam" })
+        {
+            await using var cmd = new SqlCommand(
+                $"SELECT [{kolom}] FROM [his].[matches] WHERE wedstrijdcode = @code AND ClubCode = @club", connection);
+            cmd.Parameters.AddWithValue("@code", Wedstrijdcode);
+            cmd.Parameters.AddWithValue("@club", ClubCode);
+            var waarde = await cmd.ExecuteScalarAsync();
+            (waarde is null or DBNull).Should().BeFalse($"{kolom} mag niet door de uitslag-rij leeg overschreven worden");
+        }
+    }
+
+    private static Task RunAsync(SportlinkFixtureServer server) =>
+        SportlinkSyncPipeline.RunSyncAsync(
+            fromWeekOffset: 0, toWeekOffset: 0,
+            sportlinkApiUrl: server.BaseUrl,
+            sportlinkClientId: "clientId=fixture-test",
+            log: NullLogger.Instance);
 
     private static async Task<DateTime?> ReadMtaModifiedAsync(SqlConnection connection, string sql, long code)
     {

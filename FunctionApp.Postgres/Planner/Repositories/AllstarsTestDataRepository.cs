@@ -53,6 +53,9 @@ internal static class AllstarsTestDataRepository
         await using var conn = new NpgsqlConnection(connectionString);
         await conn.OpenAsync();
 
+        // #1547: de speelduur volgens Sportlink staat in his.matchdetails, en die koppelt op
+        // interncode — niet op matchdetails.wedstrijdcode, want dat is Sportlinks wedstrijdNUMMER
+        // (bij clubwedstrijden vaak gewoon 1) en dus niet uniek.
         string sql = isAllstars
             ? @"SELECT m.wedstrijdcode,
                        COALESCE(NULLIF(m.wedstrijd, ''),
@@ -63,8 +66,16 @@ internal static class AllstarsTestDataRepository
                        CASE WHEN m.teamnaam = m.thuisteam
                             THEN m.uitteam ELSE m.thuisteam END AS uitteam,
                        m.aanvangstijd, m.veld, m.competitiesoort,
-                       NULL AS leeftijdscategorie
+                       NULL AS leeftijdscategorie,
+                       md.duration AS sportlinkspeelduur
                 FROM his.matches m
+                LEFT JOIN LATERAL (
+                    SELECT duration
+                    FROM his.matchdetails
+                    WHERE interncode = m.wedstrijdcode AND mta_deleted IS NULL
+                    ORDER BY mta_modified DESC
+                    LIMIT 1
+                ) md ON TRUE
                 WHERE m.kaledatum::date = @date
                   AND m.clubcode = 'ALLSTARS'
                   AND (m.status IS NULL OR m.status <> 'Afgelast')
@@ -72,7 +83,8 @@ internal static class AllstarsTestDataRepository
                 ORDER BY m.teamnaam"
             : $@"SELECT m.wedstrijdcode, m.wedstrijd, m.teamnaam, m.uitteam,
                        m.aanvangstijd, m.veld, m.competitiesoort,
-                       {PostgresLeeftijdNormalisatie.SqlExpr("COALESCE(t.leeftijdscategorie, '')")} AS leeftijdscategorie
+                       {PostgresLeeftijdNormalisatie.SqlExpr("COALESCE(t.leeftijdscategorie, '')")} AS leeftijdscategorie,
+                       md.duration AS sportlinkspeelduur
                 FROM his.matches m
                 LEFT JOIN LATERAL (
                     SELECT leeftijdscategorie
@@ -81,6 +93,13 @@ internal static class AllstarsTestDataRepository
                     ORDER BY (leeftijdscategorie <> '') DESC, mta_modified DESC
                     LIMIT 1
                 ) t ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT duration
+                    FROM his.matchdetails
+                    WHERE interncode = m.wedstrijdcode AND mta_deleted IS NULL
+                    ORDER BY mta_modified DESC
+                    LIMIT 1
+                ) md ON TRUE
                 WHERE m.kaledatum::date = @date
                   AND m.clubcode = @clubCode
                   AND m.status <> 'Afgelast'
@@ -103,7 +122,8 @@ internal static class AllstarsTestDataRepository
                 Veld: reader.IsDBNull(5) ? null : reader.GetString(5)?.Trim(),
                 Competitiesoort: reader.IsDBNull(6) ? null : reader.GetString(6),
                 LeeftijdsCategorie: reader.IsDBNull(7) ? null :
-                    (string.IsNullOrWhiteSpace(reader.GetString(7)) ? null : reader.GetString(7))));
+                    (string.IsNullOrWhiteSpace(reader.GetString(7)) ? null : reader.GetString(7)),
+                SportlinkSpeelduur: reader.IsDBNull(8) ? null : Convert.ToInt32(reader.GetValue(8))));
         return results;
     }
 
@@ -229,7 +249,8 @@ internal static class AllstarsTestDataRepository
 
 internal sealed record WedstrijdRaw(
     long? WedstrijdCode, string Wedstrijd, string TeamNaam, string? Uitteam,
-    string? AanvangsTijd, string? Veld, string? Competitiesoort, string? LeeftijdsCategorie);
+    string? AanvangsTijd, string? Veld, string? Competitiesoort, string? LeeftijdsCategorie,
+    int? SportlinkSpeelduur = null);
 
 /// <summary>
 /// AVG: bevat persoonsgegevens — uitsluitend voor interne notificaties. Postgres-tier-tegenhanger

@@ -1,6 +1,6 @@
 ﻿-- This table will recreated if staging fields changes detected in functionaApp
 CREATE TABLE [his].[matchdetails](
-	[bk_WedstrijdCode] [int] NOT NULL,
+	[bk_InternCode] [int] NOT NULL,
 	[WedstrijdCode] [int] NOT NULL,
 	[InternCode] [int] NULL,
 	[VeldNaam] [nvarchar](200) NULL,

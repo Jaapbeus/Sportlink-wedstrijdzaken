@@ -42,13 +42,18 @@ public static class AutoPlanRegels
     /// <param name="teamNaam">Teamnaam zoals die in de bron staat.</param>
     /// <param name="leeftijdsCategorie">Leeftijdscategorie uit de bron; leeg/null is toegestaan.</param>
     /// <param name="isAllstars">In demomodus wordt de leeftijd uit de teamnaam afgeleid als de bron er geen levert.</param>
+    /// <param name="clubPrefix">
+    /// ClubCode van de eigen club. Teamvoorkeuren worden via <see cref="TeamSleutelLookup"/> gezocht,
+    /// zodat een voorkeur op "JO23-4" ook geldt voor "[club] O23-4" uit de wedstrijdbron (#1545).
+    /// </param>
     public static PlanDoel BepaalPlanDoel(
         string? teamNaam,
         string? leeftijdsCategorie,
         bool isAllstars,
         Dictionary<string, TeamVoorkeurVeld> voorkeurVelden,
         Dictionary<string, List<(TimeOnly Tijd, int Prioriteit)>> voorkeurLookup,
-        Dictionary<string, Speeltijd> speeltijden)
+        Dictionary<string, Speeltijd> speeltijden,
+        string? clubPrefix = null)
     {
         var leeftijd = (!string.IsNullOrWhiteSpace(leeftijdsCategorie))
             ? leeftijdsCategorie
@@ -63,7 +68,7 @@ public static class AutoPlanRegels
         TimeOnly? teamTijd = null;
         int teamPrioriteit = int.MaxValue;
         var team = teamNaam ?? "";
-        if (voorkeurLookup.TryGetValue(team, out var voorkeuren) && voorkeuren.Count > 0)
+        if (TeamSleutelLookup.TryGetValue(voorkeurLookup, team, clubPrefix, out var voorkeuren) && voorkeuren.Count > 0)
         {
             var primair = voorkeuren.OrderBy(v => v.Prioriteit).First();
             teamTijd = primair.Tijd;
@@ -72,7 +77,7 @@ public static class AutoPlanRegels
 
         // Laag 0 — voorkeursveld-regel. Een tijd óp die regel is het meest specifieke wat de
         // wedstrijdsecretaris kan opgeven en gaat dus vóór de losse voorkeurstijd van het team.
-        if (voorkeurVelden.TryGetValue(team, out var vv))
+        if (TeamSleutelLookup.TryGetValue(voorkeurVelden, team, clubPrefix, out var vv))
         {
             return new PlanDoel(
                 Laag: 0,

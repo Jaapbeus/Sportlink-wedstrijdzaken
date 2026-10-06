@@ -256,6 +256,25 @@ onherleidbare naam zet `check-availability` een expliciete waarschuwing in het a
 dit pad bij nul rijen een *correct* antwoord, of een *verkeerd* antwoord? Bij het tweede hoort de
 onherleidbaarheid zichtbaar te worden, niet weggemiddeld in een lege collectie.
 
+## Per-team-instellingen worden via de genormaliseerde sleutel gezocht (#1545)
+
+Beheertabellen met een teamnaam als sleutel (`teamvoorkeurtijden`, `teamregels`) bewaren de naam die
+de beheerder koos, bijvoorbeeld `JO23-4`. De wedstrijdbron levert `[club] O23-4`. Een exacte
+stringvergelijking vond de instelling daardoor nooit, en de planning viel zonder melding terug op de
+standaardtijd van de leeftijdscategorie.
+
+`Planner.Shared.TeamSleutelLookup` zoekt daarom in drie stappen: exacte sleutel → gelijke
+genormaliseerde sleutel → een prefixloze aanduiding (`23-4`) alleen als precies één team dezelfde
+leeftijd en hetzelfde teamnummer heeft. `AutoPlanRegels.BepaalPlanDoel` gebruikt die lookup voor
+voorkeurstijden en voorkeursvelden. Bij `JO13-1` én `MO13-1` wordt niets gekozen (regel 2 hierboven).
+
+In de beschikbaarheidscheck van de e-mailpipeline wordt een ontbrekende leeftijdscategorie aangevuld
+uit het team dat `TeamResolver` herkende (`TeamNaamNormalisatie.LeidLeeftijdsCategorieAf`,
+`JO14-2` → `JO14`). Zonder categorie kan de check geen wedstrijdduur bepalen.
+
+**Nog niet via deze lookup:** de buffers uit `teamregels` (`FieldScheduler`, `PlanningConflictRegels`)
+vergelijken nog exact. Teams met een JM-suffix (`[club] O14-1JM`) leveren geen afgeleide categorie op.
+
 ## Bestanden
 
 | Bestand | Verantwoordelijkheid |

@@ -46,7 +46,7 @@ internal static class PostgresSyncPipeline
         int fromWeekOffset, int toWeekOffset,
         string sportlinkApiUrl, string sportlinkClientId,
         string clubCode, string connectionString,
-        ILogger log)
+        ILogger log, DateOnly? reconciliatieOndergrens = null)
     {
         var partialFailure = false;
         var orchestrator = new PostgresMergeOrchestrator(connectionString);
@@ -58,6 +58,8 @@ internal static class PostgresSyncPipeline
         await orchestrator.RecreateStgTableAsync(KnownEntities.Matches);
         var programmaFailed = await FetchProgrammaPhaseAsync(connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, fromWeekOffset, toWeekOffset, log);
         var uitslagenFailed = await FetchUitslagenPhaseAsync(connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, fromWeekOffset, log);
+        // #1547: een gespeelde wedstrijd komt alleen nog via /uitslagen binnen, zonder veld/datum/team.
+        await PostgresStagingRepository.VulUitslagRijenAanUitHisAsync(connectionString, clubCode);
         var matchesFailed = programmaFailed || uitslagenFailed;
         partialFailure |= matchesFailed;
 
@@ -72,7 +74,8 @@ internal static class PostgresSyncPipeline
         // teamcanonicalisatie hieronder: his.* is op dit punt al gemerged, dus een fout hier mag de
         // al geslaagde ETL-run niet alsnog laten falen. Draait vóór de plannerview/canonicalisatie
         // zodat die stroomafwaartse stappen al met de opgeschoonde data werken.
-        await ReconcileVerdwenenAsync(orchestrator, clubCode, teamsFailed, matchesFailed, log);
+        await ReconcileVerdwenenAsync(orchestrator, clubCode, teamsFailed, matchesFailed,
+            reconciliatieOndergrens ?? VandaagInNederland(), log);
 
         // Plannerview (#861/#819): CREATE OR REPLACE VIEW planner.alle_wedstrijden_op_veld_ruw.
         //
@@ -251,7 +254,8 @@ internal static class PostgresSyncPipeline
     /// </para>
     /// </summary>
     private static async Task ReconcileVerdwenenAsync(
-        PostgresMergeOrchestrator orchestrator, string clubCode, bool teamsFailed, bool matchesFailed, ILogger log)
+        PostgresMergeOrchestrator orchestrator, string clubCode, bool teamsFailed, bool matchesFailed,
+        DateOnly ondergrens, ILogger log)
     {
         if (!teamsFailed)
         {
@@ -273,7 +277,10 @@ internal static class PostgresSyncPipeline
         {
             try
             {
-                var matchesVerwijderd = await orchestrator.ReconcileWindowedAsync(KnownEntities.Matches, clubCode, "kaledatum");
+                // #1547: gespeelde wedstrijden verdwijnen uit /programma — alleen vanaf vandaag
+                // (Nederlandse tijd) betekent "niet meer in stg" ook "niet meer bij Sportlink".
+                var matchesVerwijderd = await orchestrator.ReconcileWindowedAsync(
+                    KnownEntities.Matches, clubCode, "kaledatum", ondergrens: ondergrens);
                 if (matchesVerwijderd > 0)
                     log.LogInformation(
                         "RECONCILIATIE - {Aantal} his.matches-rij(en) gemarkeerd als verwijderd voor {ClubCode}",
@@ -284,6 +291,14 @@ internal static class PostgresSyncPipeline
                 log.LogError(ex, "RECONCILIATIE - his.matches mislukt voor {ClubCode}", clubCode);
             }
         }
+    }
+
+    private static DateOnly VandaagInNederland()
+    {
+        TimeZoneInfo zone;
+        try { zone = TimeZoneInfo.FindSystemTimeZoneById("W. Europe Standard Time"); }
+        catch (TimeZoneNotFoundException) { zone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Amsterdam"); }
+        return DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, zone));
     }
 
     /// <summary>

@@ -111,10 +111,17 @@
     margin-top: var(--gantt-margin-top, 0);
 }
 
+/* #1547: de volledige wedstrijdnaam, over maximaal twee regels — net als de Sportlink-veldplanner.
+   Tot #1547 knipte GanttLabel() alles na " - " weg zodra de naam langer was dan 30 tekens, waardoor
+   de tegenstander bij juist de lange namen verdween. De tooltip toont altijd de volledige naam. */
 .gantt-blok-label {
     overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .gantt-voorkeur-balk {
