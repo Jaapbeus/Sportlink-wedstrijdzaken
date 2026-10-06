@@ -1,4 +1,5 @@
 using Microsoft.Data.SqlClient;
+using Planner.Endpoints.Leren;
 using Planner.Shared.Leren;
 
 namespace SportlinkFunction.Admin;
@@ -92,5 +93,24 @@ internal static class AdminLeermomentenRepository
         cmd.Parameters.AddWithValue("@Naam", (object?)o.Wie.DoorNaam ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@Verwerking", (object?)o.HerkomstVerwerkingId ?? DBNull.Value);
         return (int)(await cmd.ExecuteScalarAsync())!;
+    }
+
+    /// <summary>Verwijdert uitsluitend een leermoment met herkomst <c>Admin</c> van de eigen club (AVG, #1568).</summary>
+    internal static async Task<LeermomentVerwijderUitkomst> VerwijderAdminLeermomentAsync(int id, string clubCode, string cs)
+    {
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
+        using (var del = new SqlCommand(
+            "DELETE FROM [planner].[ClassificatieCorrectie] WHERE [Id] = @Id AND [ClubCode] = @Cc AND [Herkomst] = N'Admin'", conn))
+        {
+            del.Parameters.AddWithValue("@Id", id);
+            del.Parameters.AddWithValue("@Cc", clubCode);
+            if (await del.ExecuteNonQueryAsync() > 0) return LeermomentVerwijderUitkomst.Verwijderd;
+        }
+        using var bestaat = new SqlCommand(
+            "SELECT 1 FROM [planner].[ClassificatieCorrectie] WHERE [Id] = @Id AND [ClubCode] = @Cc", conn);
+        bestaat.Parameters.AddWithValue("@Id", id);
+        bestaat.Parameters.AddWithValue("@Cc", clubCode);
+        return await bestaat.ExecuteScalarAsync() is null
+            ? LeermomentVerwijderUitkomst.NietGevonden : LeermomentVerwijderUitkomst.GeenAdminLeermoment;
     }
 }

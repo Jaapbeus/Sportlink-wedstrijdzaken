@@ -1,4 +1,5 @@
 using Npgsql;
+using Planner.Endpoints.Leren;
 using Planner.Shared.Leren;
 
 namespace FunctionApp.Postgres.Admin;
@@ -110,5 +111,25 @@ internal static class AdminLeermomentenRepository
         cmd.Parameters.AddWithValue("naam", (object?)o.Wie.DoorNaam ?? DBNull.Value);
         cmd.Parameters.AddWithValue("verwerking", (object?)o.HerkomstVerwerkingId ?? DBNull.Value);
         return (int)(await cmd.ExecuteScalarAsync())!;
+    }
+
+    /// <summary>Verwijdert uitsluitend een leermoment met herkomst <c>Admin</c> van de eigen club (AVG, #1568).</summary>
+    internal static async Task<LeermomentVerwijderUitkomst> VerwijderAdminLeermomentAsync(int id, string clubCode, string cs)
+    {
+        await using var conn = new NpgsqlConnection(cs);
+        await conn.OpenAsync();
+        await using (var del = new NpgsqlCommand(
+            "DELETE FROM planner.classificatiecorrectie WHERE id = @id AND clubcode = @cc AND herkomst = 'Admin'", conn))
+        {
+            del.Parameters.AddWithValue("id", id);
+            del.Parameters.AddWithValue("cc", clubCode);
+            if (await del.ExecuteNonQueryAsync() > 0) return LeermomentVerwijderUitkomst.Verwijderd;
+        }
+        await using var bestaat = new NpgsqlCommand(
+            "SELECT 1 FROM planner.classificatiecorrectie WHERE id = @id AND clubcode = @cc", conn);
+        bestaat.Parameters.AddWithValue("id", id);
+        bestaat.Parameters.AddWithValue("cc", clubCode);
+        return await bestaat.ExecuteScalarAsync() is null
+            ? LeermomentVerwijderUitkomst.NietGevonden : LeermomentVerwijderUitkomst.GeenAdminLeermoment;
     }
 }

@@ -12,6 +12,10 @@ public partial class AdminApiClient
     public async Task<ApiResult<object>> MaakLeermomentAsync(LeermomentAanmaakDto dto)
         => await PostAsync<object>("api/beheer/leermomenten", dto);
 
+    /// <summary>Verwijdert een door een beheerder toegevoegd leermoment (AVG); een leermoment uit een beantwoorde mail geeft 409.</summary>
+    public async Task<ApiResult<object>> VerwijderLeermomentAsync(int id)
+        => await DeleteAsync<object>($"api/beheer/leermomenten/{id}");
+
     public async Task<ApiResult<List<TeamKeuzeDto>>> GetTeamKeuzelijstAsync()
         => await GetAsync<List<TeamKeuzeDto>>("api/beheer/teams/keuzelijst");
 

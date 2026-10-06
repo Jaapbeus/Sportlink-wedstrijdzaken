@@ -400,7 +400,7 @@ public class EmailProcessorFunction
                 cs, verwerkingId, email.MessageId, classificatie, classificatieJson, graphService, log))
         {
             var korteTrace = EmailTraceOpslag.BouwKorteTrace(classificatie.Type.ToString(), classificatie.TeamNaam,
-                classificatie.Tegenstander, classificatie.GetAlleDatums().Count, classificatie.AanvangsTijd, "Buiten scope");
+                classificatie.Tegenstander, classificatie.GetAlleDatums().Count, classificatie.AanvangsTijd, EmailTraceOpslag.BuitenScopeReden);
             await EmailTraceOpslag.BewaarVeiligAsync(() => EmailTraceRepository.UpsertAsync(cs, EmailTraceRecord.Van(
                 verwerkingId, clubCode, classificatie.Type.ToString(), korteTrace,
                 EmailTraceRecord.VersieVan(typeof(EmailProcessorFunction).Assembly))), log, verwerkingId);

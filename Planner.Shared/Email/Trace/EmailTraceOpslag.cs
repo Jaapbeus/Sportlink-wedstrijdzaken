@@ -145,6 +145,9 @@ public static class EmailTraceOpslag
         }
     }
 
+    /// <summary>De ene tekst voor "buiten scope" in de korte trace, zodat beide tiers dezelfde reden tonen.</summary>
+    public const string BuitenScopeReden = "Buiten scope: geen antwoord door de planner";
+
     /// <summary>Korte trace voor berichten die de planner niet bereiken (buiten scope): classificatie + reden.</summary>
     public static BeslissingsTrace BouwKorteTrace(
         string type, string? team, string? tegenstander, int aantalDatums, string? aanvangsTijd, string reden)

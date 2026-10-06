@@ -106,4 +106,26 @@ public class LeermomentEnWachtrijEndpointCoreTests
         (await OnbekendeTeamTekstEndpointCore.ZetStatusAsync(Club, 4, "{\"status\":\"vernietigd\"}", wachtrij)).Should().BeOfType<BadRequestObjectResult>();
         (await OnbekendeTeamTekstEndpointCore.ZetStatusAsync(Club, 4, "{\"status\":\"open\"}", wachtrij)).Should().BeOfType<NotFoundObjectResult>();
     }
+
+    [Fact]
+    public async Task Leermoment_Verwijderen_AdminRij_Geeft200()
+    {
+        var result = await LeermomentEndpointCore.VerwijderAsync(5, _ => Task.FromResult(LeermomentVerwijderUitkomst.Verwijderd));
+        result.Should().BeOfType<OkObjectResult>();
+    }
+
+    [Fact]
+    public async Task Leermoment_Verwijderen_RijVanEenAndereClubOfOnbekend_Geeft404()
+    {
+        // De tier filtert op eigen clubcode; een rij van een andere club is dus "niet gevonden".
+        var result = await LeermomentEndpointCore.VerwijderAsync(5, _ => Task.FromResult(LeermomentVerwijderUitkomst.NietGevonden));
+        result.Should().BeOfType<NotFoundObjectResult>();
+    }
+
+    [Fact]
+    public async Task Leermoment_Verwijderen_ReplyRij_Geeft409_EnVerwijdertNiets()
+    {
+        var result = await LeermomentEndpointCore.VerwijderAsync(5, _ => Task.FromResult(LeermomentVerwijderUitkomst.GeenAdminLeermoment));
+        result.Should().BeOfType<ConflictObjectResult>();
+    }
 }

@@ -77,6 +77,10 @@ public class LerenAanroeperTests
         => new LerenAanroeper(null, null).DoorId.Should().Be("lokale-ontwikkelaar");
 
     [Fact]
+    public void MetPrincipalMaarZonderObjectIdEnNaam_IsOnbekend_NooitLokaal()
+        => (new LerenAanroeper(null, null) { HeeftPrincipal = true }).DoorId.Should().Be("onbekend");
+
+    [Fact]
     public void ZonderObjectIdMaarMetNaam_IsOnbekend_EnLangeWaardenWordenAfgekapt()
     {
         var wie = new LerenAanroeper(null, new string('n', 300));

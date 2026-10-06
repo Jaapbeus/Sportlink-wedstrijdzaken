@@ -411,7 +411,7 @@ public class EmailProcessorFunction
         {
             await BewaarTraceVeiligAsync(persistenceService, verwerkingId, classificatie.Type.ToString(),
                 EmailTraceOpslag.BouwKorteTrace(classificatie.Type.ToString(), classificatie.TeamNaam, classificatie.Tegenstander,
-                    classificatie.GetAlleDatums().Count, classificatie.AanvangsTijd, "Buiten scope: geen antwoord door de planner"), log);
+                    classificatie.GetAlleDatums().Count, classificatie.AanvangsTijd, EmailTraceOpslag.BuitenScopeReden), log);
             return;
         }
 

@@ -16,6 +16,8 @@ public sealed class LeermomentAanmaakRequest
     public int? HerkomstVerwerkingId { get; set; }
 }
 
+public enum LeermomentVerwijderUitkomst { NietGevonden, Verwijderd, GeenAdminLeermoment }
+
 /// <summary>Een leermoment door een beheerder: direct gevalideerd, herkomst <c>Admin</c>, nooit door de cleanup geraakt.</summary>
 public static class LeermomentEndpointCore
 {
@@ -39,6 +41,22 @@ public static class LeermomentEndpointCore
             ? new NotFoundObjectResult(new { error = $"Leermoment {id} niet gevonden." })
             : new OkObjectResult(new { id, actie });
     }
+
+    /// <summary>
+    /// Verwijdert een door een beheerder toegevoegd leermoment (AVG: wat een beheerder zelf invoerde moet ook
+    /// weer weg kunnen). <paramref name="verwijderAsync"/> verwijdert uitsluitend een rij met herkomst
+    /// <c>Admin</c> binnen de eigen club en geeft <see cref="LeermomentVerwijderUitkomst"/>.
+    /// </summary>
+    public static async Task<IActionResult> VerwijderAsync(int id, Func<int, Task<LeermomentVerwijderUitkomst>> verwijderAsync)
+        => await verwijderAsync(id) switch
+        {
+            LeermomentVerwijderUitkomst.Verwijderd => new OkObjectResult(new { deleted = true, id }),
+            LeermomentVerwijderUitkomst.GeenAdminLeermoment => new ConflictObjectResult(new
+            {
+                error = "Alleen een door een beheerder toegevoegd leermoment kan worden verwijderd; dit leermoment komt uit een beantwoorde mail."
+            }),
+            _ => new NotFoundObjectResult(new { error = $"Leermoment {id} niet gevonden." })
+        };
 
     private sealed class ActieBody { public string? Actie { get; set; } }
 

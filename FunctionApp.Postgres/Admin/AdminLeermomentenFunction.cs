@@ -56,4 +56,14 @@ public static class AdminLeermomentenFunction
                 id, await TeamAliasEndpointCore.LeesBodyAsync(req),
                 (leermomentId, isGevalideerd, isAfgewezen) => AdminLeermomentenRepository.ValideerAsync(
                     leermomentId, isGevalideerd, isAfgewezen, clubCode, PostgresDatabaseConfig.ConnectionString)));
+
+    /// <summary>Verwijdert een door een beheerder toegevoegd leermoment (AVG); een leermoment uit een beantwoorde mail geeft 409.</summary>
+    [Function("AdminLeermomentenDelete")]
+    public static Task<IActionResult> Delete(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "beheer/leermomenten/{id:int}")] HttpRequest req,
+        int id,
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminLeermomentenDelete"), "leermoment verwijderen",
+            clubCode => LeermomentEndpointCore.VerwijderAsync(
+                id, leermomentId => AdminLeermomentenRepository.VerwijderAdminLeermomentAsync(leermomentId, clubCode, PostgresDatabaseConfig.ConnectionString)));
 }

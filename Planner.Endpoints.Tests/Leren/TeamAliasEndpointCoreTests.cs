@@ -164,7 +164,26 @@ public class TeamAliasEndpointCoreTests
     [Fact]
     public async Task Verwijder_BestaandeAlias_Geeft200_OnbekendeAlias_Geeft404()
     {
-        (await TeamAliasEndpointCore.VerwijderAsync(3, Wie, NullLogger.Instance, _ => Task.FromResult(1))).Should().BeOfType<OkObjectResult>();
-        (await TeamAliasEndpointCore.VerwijderAsync(3, Wie, NullLogger.Instance, _ => Task.FromResult(0))).Should().BeOfType<NotFoundObjectResult>();
+        (await TeamAliasEndpointCore.VerwijderAsync(3, NullLogger.Instance, _ => Task.FromResult(1))).Should().BeOfType<OkObjectResult>();
+        (await TeamAliasEndpointCore.VerwijderAsync(3, NullLogger.Instance, _ => Task.FromResult(0))).Should().BeOfType<NotFoundObjectResult>();
+    }
+
+    /// <summary>AVG (M2): het log bevat het alias-id, nooit een identificator van de beheerder.</summary>
+    [Fact]
+    public async Task Verwijder_LogtGeenIdentificatorVanDeBeheerder()
+    {
+        var log = new OpnemendLog();
+        await TeamAliasEndpointCore.VerwijderAsync(3, log, _ => Task.FromResult(1));
+
+        log.Regels.Should().ContainSingle().Which.Should().Contain("3").And.NotContain(Wie.DoorId).And.NotContain("Testbeheerder");
+    }
+
+    private sealed class OpnemendLog : Microsoft.Extensions.Logging.ILogger
+    {
+        public List<string> Regels { get; } = new();
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId,
+            TState state, Exception? exception, Func<TState, Exception?, string> formatter) => Regels.Add(formatter(state, exception));
     }
 }

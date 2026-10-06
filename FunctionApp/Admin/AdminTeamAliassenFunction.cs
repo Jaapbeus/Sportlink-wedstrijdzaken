@@ -80,6 +80,6 @@ public static class AdminTeamAliassenFunction
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminTeamAliassenDelete"), "teamalias verwijderen",
             clubCode => TeamAliasEndpointCore.VerwijderAsync(
-                id, EasyAuthHelper.GetLerenAanroeper(req), context.GetLogger("AdminTeamAliassenDelete"),
+                id, context.GetLogger("AdminTeamAliassenDelete"),
                 aliasId => AdminTeamAliassenRepository.DeleteAsync(aliasId, clubCode, SystemUtilities.DatabaseConfig.ConnectionString)));
 }

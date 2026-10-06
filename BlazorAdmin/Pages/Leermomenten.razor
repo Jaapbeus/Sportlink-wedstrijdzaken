@@ -135,6 +135,28 @@ else
                             }
                         </td>
                         <td>
+                            @if (item.Herkomst == "Admin")
+                            {
+                                var adminId = item.Id;
+                                @if (_verwijderBevestigId == adminId)
+                                {
+                                    <div><small>Dit leermoment definitief verwijderen? De AI gebruikt het daarna niet meer.</small></div>
+                                    <button class="btn btn-sm btn-danger me-1"
+                                            disabled="@_actieBezigId.Contains(adminId)"
+                                            @onclick="() => VerwijderAsync(adminId)">
+                                        Ja, verwijderen
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="AnnuleerVerwijderen">Annuleren</button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-outline-danger"
+                                            disabled="@_actieBezigId.Contains(adminId)"
+                                            @onclick="() => VraagVerwijderen(adminId)">
+                                        Verwijderen
+                                    </button>
+                                }
+                            }
                             @if (!item.IsGevalideerd && !item.IsAfgewezen)
                             {
                                 var capturedId = item.Id;

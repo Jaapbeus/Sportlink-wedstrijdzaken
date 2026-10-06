@@ -11,9 +11,15 @@ public sealed record LerenAanroeper(string? ObjectId, string? Naam)
     public const int MaxIdLengte = 64;
     public const int MaxNaamLengte = 100;
 
-    /// <summary>Lokaal (geen principal) is de aanroeper de lokale ontwikkelaar; met principal zonder oid "onbekend".</summary>
+    /// <summary>
+    /// Lokaal (helemaal geen principal: noch oid noch naam) is de aanroeper de lokale ontwikkelaar; een principal
+    /// zonder oid — ook als de naam ontbreekt — is "onbekend", zodat een echte aanroeper nooit als lokaal wordt vastgelegd.
+    /// </summary>
     public string DoorId => Kap(!string.IsNullOrWhiteSpace(ObjectId) ? ObjectId
-        : string.IsNullOrWhiteSpace(Naam) ? "lokale-ontwikkelaar" : "onbekend", MaxIdLengte)!;
+        : HeeftPrincipal || !string.IsNullOrWhiteSpace(Naam) ? "onbekend" : "lokale-ontwikkelaar", MaxIdLengte)!;
+
+    /// <summary>Of er een Easy Auth-principal hoort te zijn (productie: <c>WEBSITE_SITE_NAME</c> gezet); alleen lokaal is dat <c>false</c>.</summary>
+    public bool HeeftPrincipal { get; init; }
 
     /// <summary>Momentopname van de weergavenaam; <c>null</c> als die ontbreekt.</summary>
     public string? DoorNaam => Kap(Naam, MaxNaamLengte);

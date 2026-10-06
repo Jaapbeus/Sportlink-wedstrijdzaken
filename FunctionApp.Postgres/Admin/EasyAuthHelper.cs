@@ -110,7 +110,7 @@ internal static class EasyAuthHelper
 
     /// <summary>De aanroeper voor leeracties en hun auditspoor (#1568 deel C): object-ID + naammomentopname, geen e-mailadres.</summary>
     public static global::Planner.Shared.Leren.LerenAanroeper GetLerenAanroeper(HttpRequest req)
-        => new(GetCallerObjectId(req), GetCallerName(req));
+        => new(GetCallerObjectId(req), GetCallerName(req)) { HeeftPrincipal = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME")) };
 
     public static string? GetCallerEmail(HttpRequest req)
     {

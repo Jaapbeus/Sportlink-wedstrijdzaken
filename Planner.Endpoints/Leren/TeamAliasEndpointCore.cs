@@ -120,15 +120,15 @@ public static class TeamAliasEndpointCore
     }
 
     /// <summary>
-    /// Verwijderen. Een verwijderde rij laat geen auditregel achter in de tabel; wie het deed staat daarom
-    /// (alleen als pseudoniem) in het applicatielog.
+    /// Verwijderen. Het log bevat uitsluitend het alias-id: geen identificator van de beheerder
+    /// (AVG: de audit staat alleen in de tabelkolommen, die met de rij worden bewaard en verdwijnen).
     /// </summary>
     public static async Task<IActionResult> VerwijderAsync(
-        int id, LerenAanroeper wie, ILogger log, Func<int, Task<int>> verwijderAsync)
+        int id, ILogger log, Func<int, Task<int>> verwijderAsync)
     {
         var rijen = await verwijderAsync(id);
         if (rijen == 0) return new NotFoundObjectResult(new { error = $"Teamalias {id} niet gevonden." });
-        log.LogInformation("Teamalias {AliasId} verwijderd door {Door}", id, wie.DoorId);
+        log.LogInformation("Teamalias {AliasId} verwijderd", id);
         return new OkObjectResult(new { deleted = true, id });
     }
 

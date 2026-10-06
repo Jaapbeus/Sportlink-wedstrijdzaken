@@ -64,6 +64,35 @@ public partial class Leermomenten : ClubSelectorPageBase
         }
     }
 
+    private int? _verwijderBevestigId;
+
+    private void VraagVerwijderen(int id) => _verwijderBevestigId = id;
+
+    private void AnnuleerVerwijderen() => _verwijderBevestigId = null;
+
+    private async Task VerwijderAsync(int id)
+    {
+        _actieBezigId.Add(id);
+        StateHasChanged();
+        try
+        {
+            var result = await Api.VerwijderLeermomentAsync(id);
+            _verwijderBevestigId = null;
+            if (!result.Success)
+                _fout = result.ErrorMessage ?? "Verwijderen mislukt";
+            else
+                await LaadAsync(_filterStatus);
+        }
+        catch (Exception ex)
+        {
+            _fout = ex.Message;
+        }
+        finally
+        {
+            _actieBezigId.Remove(id);
+        }
+    }
+
     private async Task ValideerAsync(int id, string actie)
     {
         _actieBezigId.Add(id);
