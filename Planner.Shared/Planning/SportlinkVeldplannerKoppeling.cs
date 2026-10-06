@@ -17,8 +17,8 @@ public static class SportlinkVeldplannerKoppeling
     {
         var resultaat = new Dictionary<int, SportlinkVeldplannerBlok>();
         var gebruikt = new HashSet<int>();
-        // Ronde 1: exact hetzelfde label. Ronde 2, alleen voor wat ronde 1 overliet: per ploeg mag de ene naam de
-        // andere bevatten ("v.v. Uit 35+2" tegenover "Uit 35+2").
+        // Ronde 1: exact hetzelfde label. Ronde 2, alleen voor wat ronde 1 overliet: per ploeg mag de ene naam een extra
+        // clubvoorvoegsel hebben ("v.v. Uit 35+2" tegenover "Uit 35+2"); categorie en teamnummer blijven exact.
         Ronde(eigen, blokken, resultaat, gebruikt, (a, b) => Normaliseer(a) == Normaliseer(b));
         Ronde(eigen, blokken, resultaat, gebruikt, ZijnZelfdeWedstrijd);
         return resultaat;
@@ -47,21 +47,36 @@ public static class SportlinkVeldplannerKoppeling
         }
     }
 
-    /// <summary>Thuis- én uitploeg moeten gelijk zijn of de ene de andere bevatten.</summary>
+    /// <summary>Thuis- én uitploeg moeten overeenkomen, waarbij het ene label hooguit een extra clubvoorvoegsel heeft.</summary>
     private static bool ZijnZelfdeWedstrijd(string a, string b)
     {
         var (aThuis, aUit) = Splits(a);
         var (bThuis, bUit) = Splits(b);
-        return aUit != null && bUit != null && Bevat(aThuis, bThuis) && Bevat(aUit, bUit);
+        return aUit != null && bUit != null && ZelfdeBehalveVoorvoegsel(aThuis, bThuis) && ZelfdeBehalveVoorvoegsel(aUit, bUit);
     }
 
-    private static bool Bevat(string x, string y) => x.Length > 0 && y.Length > 0 && (x.Contains(y) || y.Contains(x));
+    /// <summary>
+    /// De woorden van de kortste naam moeten het einde van de langste vormen: "v.v. Uit 35+2" past bij "Uit 35+2", maar
+    /// "JO13-1" nooit bij "JO13-10". Categorie en teamnummer staan achteraan en moeten dus exact gelijk zijn; bij twijfel
+    /// koppelt de regel niet en behoudt de Planning de eigen gegevens.
+    /// </summary>
+    private static bool ZelfdeBehalveVoorvoegsel(IReadOnlyList<string> x, IReadOnlyList<string> y)
+    {
+        if (x.Count == 0 || y.Count == 0) return false;
+        var (kort, lang) = x.Count <= y.Count ? (x, y) : (y, x);
+        for (var i = 1; i <= kort.Count; i++)
+            if (kort[^i] != lang[^i]) return false;
+        return true;
+    }
 
-    private static (string Thuis, string? Uit) Splits(string label)
+    private static (IReadOnlyList<string> Thuis, IReadOnlyList<string>? Uit) Splits(string label)
     {
         var i = label.IndexOf(" - ", StringComparison.Ordinal);
-        return i < 0 ? (Normaliseer(label), null) : (Normaliseer(label[..i]), Normaliseer(label[(i + 3)..]));
+        return i < 0 ? (Woorden(label), null) : (Woorden(label[..i]), Woorden(label[(i + 3)..]));
     }
+
+    private static IReadOnlyList<string> Woorden(string tekst)
+        => tekst.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(Normaliseer).Where(w => w.Length > 0).ToList();
 
     /// <summary>Alleen letters en cijfers, kleine letters: "Voorbeeld '46 8" en "Voorbeeld 46 8" zijn dezelfde ploeg.</summary>
     public static string Normaliseer(string? tekst)

@@ -120,4 +120,21 @@ public class SportlinkVeldplannerTests
 
         res.Should().ContainSingle().Which.Key.Should().Be(1, "het exacte label gaat voor");
     }
+
+    [Theory]
+    [InlineData("Thuis JO13-1 - Uit JO13-1", "Thuis JO13-10 - Uit JO13-10")]
+    [InlineData("Thuis 1 - Uit 1", "Thuis 10 - Uit 10")]
+    [InlineData("Thuis O13-1 - Uit O13-1", "Thuis O15-1 - Uit O15-1")]
+    [InlineData("Thuis JO13-1 - Uit JO13-1", "Thuis MO13-1 - Uit MO13-1")]
+    public void Koppel_VerschillendTeamnummerOfCategorie_KoppeltNooit(string eigenLabel, string sportlinkLabel)
+        => SportlinkVeldplannerKoppeling.Koppel(
+                new[] { (eigenLabel, (string?)"09:00") }, new[] { Blok(sportlinkLabel, "09:00") })
+            .Should().BeEmpty("bij twijfel behoudt de Planning de eigen gegevens (R1-F1)");
+
+    [Fact]
+    public void Koppel_VoorvoegselMagVerschillen_MaarTeamnummerMoetExactKloppen()
+        => SportlinkVeldplannerKoppeling.Koppel(
+                new[] { ("v.v. Thuis JO13-1 - Uit JO13-1", (string?)"09:00") },
+                new[] { Blok("Thuis JO13-10 - Uit JO13-10", "09:00"), Blok("Thuis JO13-1 - Uit JO13-1", "13:00") })
+            .Should().ContainKey(0).WhoseValue.StartTijd.Should().Be("13:00");
 }
