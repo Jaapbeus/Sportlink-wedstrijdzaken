@@ -27,8 +27,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - **E-mailtester**: onder het voorbeeld-antwoord staat nu een beslissingstrace, een genummerde lijst met wat de verwerking herkende en koos (team, tegenstander, datum, antwoordsjabloon). Onzekere en mislukte stappen zijn gemarkeerd en een samenvatting meldt of het antwoord automatisch verstuurd zou worden of in review zou gaan. De trace bevat nooit de tekst van de mail of gegevens van de afzender (#1568).
 
 ### Changed
+- **Zekerheidspoort: onzekere e-mailantwoorden gaan niet meer automatisch naar de afzender.** Gedragswijziging: is het systeem niet zeker van een antwoord (team niet herkend, meerdere teams mogelijk, via de tegenstander geen wedstrijd gevonden, of een antwoord dat de afzender om het team of de datum vraagt), dan wordt er niets verstuurd. De mail krijgt in het e-maillog de status *Review* met het voorgestelde antwoord (30 dagen bewaard), in Outlook het label *Geen AI antwoord*, en de review-ontvanger — als die is ingesteld — krijgt het voorstel met bovenaan de waarschuwing dat het niet naar de afzender is gegaan. In de trace staat bij *Zekerheidspoort* waarom. Zekere antwoorden blijven automatisch gaan. Uit te zetten per club via Instellingen → *E-mailantwoorden* (standaard aan); nieuwe instelling `ZekerheidspoortActief`, op beide databasetiers (migratie 040) (#1568).
 - **E-mailtester volgt productie**: de tester geeft de gevalideerde leermomenten nu mee aan de classificatie (zoals de echte verwerking, het aantal staat in de trace) en schrijft niets meer weg; alleen een nog lege teamlijst van de gekozen club wordt eenmalig opgebouwd (#1568).
 - **Teamaliassen en leermomenten**: valideren en afwijzen van een alias legt nu vast wie het deed en wanneer (#1568).
+
+### Fixed
+- **E-mail (Postgres-tier)**: een bericht waarvoor de wedstrijd via de tegenstander al in de planning staat, kreeg een "niet planbaar"-antwoord in plaats van het antwoord dat de wedstrijd al is ingepland. De SQL Server-tier deed dit al goed (#1568).
 
 ## [3.11.2.0] — 2026-10-06
 

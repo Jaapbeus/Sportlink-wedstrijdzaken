@@ -136,6 +136,13 @@ FASE 2 — database wordt gewekt
         ├─ Onderdrukken → status GeenAntwoordNodig + label "Handmatige planning"
         │
         ▼
+┌─ Zekerheidspoort (#1568 deel D) — ZekerheidsPoort.Bepaal ────────────────────┐
+│  Antwoord opgebouwd, maar de beslissingstrace is Onzeker of Mislukt           │
+│  (en de poort staat aan)  → status Review, voorstel bewaard, GEEN antwoord    │
+│  naar de afzender; label "Geen AI antwoord" + mark as read (§1e)              │
+└──────────────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
    Antwoord versturen naar de afzender (reply in dezelfde conversatie)
         │
         ▼  alleen NA een daadwerkelijk verstuurd antwoord:
@@ -279,6 +286,43 @@ Emails met **meerdere datums voor hetzelfde team** zijn géén BuitenScope — d
 Het tweede geval bestaat omdat de herclassificatie met leermomenten alsnog "buiten scope" kan
 opleveren. Zonder die afhandeling ging er tóch een automatisch antwoord uit, puur afhankelijk van
 of er gevalideerde leermomenten in de database stonden.
+
+### 1e. Zekerheidspoort — onzeker antwoord gaat ter review (#1568 deel D)
+
+> **Gedragswijziging.** Vóór #1568 deel D ging elk opgebouwd antwoord automatisch naar de afzender,
+> ook als het systeem het team niet herkende of de afzender in het antwoord om het team of de datum
+> moest vragen. Nu houdt de zekerheidspoort zulke antwoorden tegen. Staat de poort uit
+> (instelling hieronder), dan geldt het oude gedrag.
+
+Na het opbouwen van het antwoord beoordeelt `ZekerheidsBeoordeling` (§3c) de trace tot dat punt. Is het
+oordeel **Onzeker** of **Mislukt**, dan gebeurt het volgende, op beide tiers identiek:
+
+* Er gaat **niets naar de afzender**. Er wordt geen verzendintentie gezet en er wordt niets als verstuurd
+  geregistreerd; `isbeantwoord` blijft 0 en `VerstuurdNaar` blijft leeg.
+* De rij krijgt status **`Review`** met het voorstel in `AntwoordEmail` (dezelfde 30-dagenretentie als
+  bij review-mode). Het bericht krijgt het Outlook-label *Geen AI antwoord* en wordt als gelezen
+  gemarkeerd, zodat de volgende poll het niet opnieuw oppakt (idempotentie, #715).
+* Is `EmailReviewRecipient` geconfigureerd, dan krijgt die het voorstel met bovenaan de vaste regel
+  *"LET OP: dit antwoord is NIET naar de afzender verstuurd. De zekerheidspoort hield het tegen ..."*.
+  De mail bevat geen trace-details of persoonsgegevens; de reden staat in de trace.
+* De trace krijgt de stap **`zekerheidspoort`** met uitkomst *Tegengehouden* en de redenen, zodat de beheerder
+  in het e-maillog ziet waarom er geen antwoord ging.
+* De vervolgnotificaties (teamleider bij een herplanverzoek, doorsturen naar de coach) volgen alleen op een
+  daadwerkelijk verstuurd antwoord en blijven dus uit.
+
+**Onzeker** is het resultaat van een van deze situaties: een verzoektype dat een team nodig heeft (beschikbaarheid,
+herplannen) zonder herkend team of zonder gevonden wedstrijd via de tegenstander, `MeerdereKandidaten`, een
+opponent-pad zonder wedstrijd, de sjablonen `teamOnbekend` en `datumOnbekend`, of een andere mislukte stap.
+Een **zeker** antwoord gaat ongewijzigd automatisch door (ook in review-mode, die onveranderd blijft).
+
+**Terugkoppeling.** Koppelt de beheerder via de trace een alias aan het team (§3d), dan wordt dezelfde mail bij
+een volgende verwerking *zeker* en gaat het antwoord weer automatisch.
+
+**Schakelaar.** Instellingen → *E-mailantwoorden* → *Onzekere antwoorden eerst laten beoordelen
+(zekerheidspoort)*; veld `ZekerheidspoortActief` in `dbo.AppSettings` / `public.appsettings.zekerheidspoortactief`
+(migratie 040), per club. Standaard **aan**; een ontbrekende rij of kolom, of een leesfout, telt als aan
+(fail-safe: liever een mens laten kijken dan een onzeker antwoord versturen). Staat de poort uit, dan wordt in de
+trace alsnog vermeld dat het antwoord onzeker was (`poortActief = nee`).
 
 ### 1c. Stille skip — geen antwoord, geen verdere verwerking
 
@@ -981,7 +1025,7 @@ verschil zelf expliciet, dus zoek daar niet. De acht waarden zijn op beide tiers
 | `Geclassificeerd` | AI-classificatie vastgelegd | Nee |
 | `Verwerkt` | Plannerlogica gedraaid, nog geen antwoordbesluit | Nee |
 | `AntwoordVerstuurd` | Antwoord de deur uit; `IsBeantwoord` = 1 | **Ja** |
-| `Review` | Voorstel opgeslagen in `AntwoordEmail`, niets verstuurd — review-mode, of onbekende verzenduitkomst (#716, #1133) | Nee |
+| `Review` | Voorstel opgeslagen in `AntwoordEmail`, niets verstuurd — review-mode, onbekende verzenduitkomst (#716, #1133) of door de zekerheidspoort tegengehouden (§1e, #1568) | Nee |
 | `Fout` | Verwerking mislukt of opgegeven na 3 pogingen | Nee |
 | `BuitenScope` | Buiten scope bevonden ná herclassificatie | **Ja** |
 | `GeenAntwoordNodig` | Bewust geen antwoord: planning is mogelijk (#572) | **Ja** |
@@ -1023,7 +1067,7 @@ methoden nemen geen mailbody of afzender aan. Toegestaan: teamschrijfwijzen, nam
 dat een team nodig heeft (beschikbaarheid, herplannen) zonder herkend team (ook bij
 `MeerdereKandidaten`) en zonder wedstrijd via de tegenstander op de gevraagde datum; een opponent-pad
 zonder wedstrijd; sjabloon `teamOnbekend` of `datumOnbekend`; of een andere mislukte stap. Bij twijfel
-onzeker. Deel D gebruikt dit als zekerheidspoort; in de tester is het uitsluitend informatief.
+onzeker. Deel D gebruikt dit als zekerheidspoort (§1e); in de tester is het uitsluitend informatief (de tester verstuurt nooit).
 
 **Opslag (deel B).** `EmailProcessorFunction` maakt per bericht een `TraceBuilder`, geeft hem mee aan
 `VerwerkMetPlannerAsync`/`BouwTemplateAntwoord` en bewaart de trace daarna in `planner.EmailTrace`
@@ -1051,9 +1095,11 @@ reproduceerbaarheid: welke code nam de beslissing).
 * **Weergave:** Instellingen, kaart "Email verwerking", knop *Toon berichten en traces*; per regel de
   knop *Trace*. Het component `TraceWeergave` wordt ook door de e-mailtester gebruikt.
 
-**Bekend verschil tussen de tiers (niet door #1568 veroorzaakt):** `BouwTemplateAntwoord` op de
-Postgres-tier kent de plannerresponse-tak `wedstrijdAlIngepland` niet, terwijl `VerwerkMetPlannerAsync`
-hem wel kan teruggeven.
+**Opgelost verschil tussen de tiers (#1568 deel D):** `BouwTemplateAntwoord` op de Postgres-tier kende de
+plannerresponse-tak `wedstrijdAlIngepland` niet, terwijl `VerwerkMetPlannerAsync` hem bij het opponent-pad
+(#1139) wél teruggeeft. Het antwoord viel daardoor door naar het standaard-beschikbaarheidsantwoord met een lege
+`CheckAvailabilityResponse` (een "niet planbaar"-antwoord in plaats van "de wedstrijd staat al ingepland"). De tak
+staat er nu ook, identiek aan de SQL Server-tier, met een test.
 
 ---
 

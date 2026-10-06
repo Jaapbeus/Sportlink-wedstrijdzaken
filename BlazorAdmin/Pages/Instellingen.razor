@@ -258,6 +258,28 @@ else
         </div>
 
         <hr />
+        <h5>E-mailantwoorden</h5>
+        <div class="row">
+            <div class="col-md-8 mb-3">
+                <div class="form-check form-switch mt-2">
+                    <input class="form-check-input" type="checkbox" id="zekerheidspoortActief"
+                           @bind="settings.ZekerheidspoortActief" />
+                    <label class="form-check-label" for="zekerheidspoortActief">
+                        Onzekere antwoorden eerst laten beoordelen (zekerheidspoort)
+                    </label>
+                </div>
+                <small class="form-text text-muted">
+                    Aan: is het systeem niet zeker van een antwoord (bijvoorbeeld een team dat niet herkend is,
+                    of een antwoord dat de afzender om het team of de datum vraagt), dan gaat er geen
+                    automatisch antwoord naar de afzender. De mail krijgt dan de status Review en je ziet in de
+                    trace bij het e-maillog waarom. Is een review-ontvanger ingesteld, dan krijgt die het voorstel.
+                    Uit: het antwoord wordt altijd automatisch verstuurd, ook als het systeem onzeker is.
+                    Staat standaard AAN.
+                </small>
+            </div>
+        </div>
+
+        <hr />
         <h5>PDF-export</h5>
         <div class="row">
             <div class="col-md-8 mb-3">

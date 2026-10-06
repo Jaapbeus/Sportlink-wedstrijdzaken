@@ -442,7 +442,9 @@ public class EmailProcessorFunction
                 persistenceService,
                 () => BerichtPipeline.BouwTemplateAntwoord(classificatie, plannerResponseJson, email, log, trace: trace),
                 SanitizeFoutMelding,
-                log);
+                log,
+                trace,
+                await ZekerheidspoortInstelling.IsActiefAsync(persistenceService.ResolveClubCode(), log));
         }, async t =>
             {
                 // #1568 deel C: onbekende teamteksten naar de wachtrij; een fout hier breekt de trace-opslag niet.

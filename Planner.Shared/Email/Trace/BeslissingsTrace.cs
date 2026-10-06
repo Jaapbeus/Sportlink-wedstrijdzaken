@@ -68,5 +68,6 @@ public static class TraceCodes
     public const string Tak = "tak";
     public const string Sjabloon = "sjabloon";
     public const string Eindoordeel = "eindoordeel";
+    public const string Zekerheidspoort = "zekerheidspoort";
     public const string VerwerkingFout = "verwerking-fout";
 }

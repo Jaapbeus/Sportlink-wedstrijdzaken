@@ -3697,6 +3697,11 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSet
     ALTER TABLE [dbo].[AppSettings] ADD [PdfExportIngeschakeld] BIT NOT NULL CONSTRAINT [DF_AppSettings_PdfExportIngeschakeld] DEFAULT 0;
 GO
 
+-- #1568 deel D: zekerheidspoort per club; standaard AAN (onzekere antwoorden gaan ter review). Postgres: migratie 040.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'ZekerheidspoortActief')
+    ALTER TABLE [dbo].[AppSettings] ADD [ZekerheidspoortActief] BIT NOT NULL CONSTRAINT [DF_AppSettings_ZekerheidspoortActief] DEFAULT 1;
+GO
+
 -- #1360: Functie (bijv. "Trainer/coach") naast Teamrol voor de badge op /teambegeleiding. Postgres: migratie 033.
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('avg.Teambegeleiding') AND name = 'Functie')
     ALTER TABLE [avg].[Teambegeleiding] ADD [Functie] NVARCHAR(150) NULL;

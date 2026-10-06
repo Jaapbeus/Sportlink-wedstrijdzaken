@@ -1589,7 +1589,8 @@ met de stappen die de verwerking zette — wat de AI herkende, welk team is gevo
 zekerheid), of de tegenstander is opgezocht, welke datum(s) zijn gebruikt en welk antwoordsjabloon is
 gekozen. Stappen die onzeker of mislukt zijn, hebben een gele of rode markering. Daarboven staat een
 samenvatting: **Zou automatisch verstuurd worden** of **Zou in review gaan**, met de redenen. Deze
-samenvatting is voorlopig alleen informatief; er verandert niets aan het echte verzenden. De trace
+samenvatting is in de tester informatief (de tester verstuurt nooit); bij een echt bericht bepaalt dezelfde beoordeling
+of de zekerheidspoort het antwoord tegenhoudt (zie hieronder). De trace
 bevat nooit de tekst van het bericht, de afzender of telefoonnummers — alleen teamschrijfwijzen,
 datums en keuzes.
 
@@ -1601,6 +1602,21 @@ de knop **Trace**; die klapt dezelfde stappenlijst uit, nu met de samenvatting *
 app en welk sjabloon is gekozen. Voor berichten die buiten scope vielen is de trace kort (classificatie en
 reden). De trace blijft permanent bewaard, ook nadat het bericht zelf na 90 dagen uit het log is
 verdwenen; een regel zonder de knop heeft geen trace (berichten van vóór deze functie).
+
+### Onzekere antwoorden en de zekerheidspoort (#1568)
+
+Is het systeem niet zeker van een antwoord — het eigen team is niet herkend, meerdere teams komen in aanmerking,
+er is via de tegenstander geen wedstrijd gevonden, of het antwoord zou de afzender om het team of de datum
+vragen — dan gaat er **geen automatisch antwoord naar de afzender**. De mail krijgt in het e-maillog de status
+**Review**, in Outlook het label *Geen AI antwoord* en staat als gelezen; het voorgestelde antwoord wordt 30 dagen
+bewaard. Is een review-ontvanger ingesteld (`EmailReviewRecipient`), dan krijgt die het voorstel met bovenaan de
+waarschuwing dat het niet naar de afzender is gegaan. Open de **Trace** bij het bericht: de stap *Zekerheidspoort*
+toont waarom het is tegengehouden. Handel de mail zelf af, of koppel een alias (zie hieronder) zodat dezelfde mail
+voortaan wel automatisch wordt beantwoord.
+
+**Schakelaar:** Instellingen → *E-mailantwoorden* → *Onzekere antwoorden eerst laten beoordelen
+(zekerheidspoort)*. Staat standaard **aan**. Zet u hem uit, dan gaan ook onzekere antwoorden weer automatisch
+naar de afzender (het oude gedrag).
 
 ### Leren vanuit de trace (#1568)
 

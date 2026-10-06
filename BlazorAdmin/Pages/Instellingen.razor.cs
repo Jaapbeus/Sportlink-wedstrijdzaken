@@ -251,6 +251,7 @@ public partial class Instellingen : ClubSelectorPageBase
                 ["KnvbPdfBijlageIngeschakeld"] = s.KnvbPdfBijlageIngeschakeld ? "1" : "0",
                 ["KnvbStandaardRegio"] = s.KnvbStandaardRegio,
                 ["PdfExportIngeschakeld"] = s.PdfExportIngeschakeld ? "1" : "0",
+                ["ZekerheidspoortActief"] = s.ZekerheidspoortActief ? "1" : "0",
             }
         };
     }

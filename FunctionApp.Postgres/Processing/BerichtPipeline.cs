@@ -380,6 +380,16 @@ internal static class BerichtPipeline
             case VerzoekType.BeschikbaarheidCheck:
                 var jobj = Newtonsoft.Json.Linq.JObject.Parse(plannerResponseJson);
 
+                // #1568: zelfde tak als de SQL Server-tier. VerwerkMetPlannerAsync geeft deze vlag terug
+                // bij het opponent-pad (#1139); zonder deze tak viel het antwoord door naar het standaard-
+                // beschikbaarheidsantwoord met een lege CheckAvailabilityResponse ("niet planbaar").
+                if (jobj["wedstrijdAlIngepland"]?.ToObject<bool>() == true)
+                {
+                    var ingeplandWedstrijd = jobj["wedstrijd"]?.ToObject<ZoekWedstrijdResponse>();
+                    return BerichtResponseGenerator.BouwWedstrijdAlIngeplandAntwoord(
+                        ingeplandWedstrijd, classificatie, bericht, clubSettings);
+                }
+
                 if (jobj["teamOnbekend"]?.ToObject<bool>() == true)
                 {
                     var onbekendeTegenstander = jobj["tegenstander"]?.ToString()

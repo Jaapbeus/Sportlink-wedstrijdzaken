@@ -804,6 +804,13 @@ components:
             KNVB-speeldagenkalender als PDF-bijlage + een paar vrije zaterdagen mee, met de
             begeleiding van het eigen team in BCC (#561). Uit = bestaand herplan-gedrag ongewijzigd.
           default: true
+        ZekerheidspoortActief:
+          type: boolean
+          description: |
+            Zekerheidspoort (#1568): een e-mailantwoord dat de beslissingstrace als onzeker of mislukt
+            beoordeelt gaat niet automatisch naar de afzender maar krijgt status Review. Standaard true;
+            false = het oude gedrag (altijd automatisch antwoorden).
+          default: true
         PdfExportIngeschakeld:
           type: boolean
           description: |
@@ -1420,7 +1427,8 @@ components:
         Witte lijst: HerplanDeadlineDagen, BufferMinuten, PlannerAfzenderNaam, CoordinatorNaam,
         CoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,
         AccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi,
-        KnvbPdfBijlageIngeschakeld, KnvbStandaardRegio, SportlinkExtensionEnabled, PdfExportIngeschakeld
+        KnvbPdfBijlageIngeschakeld, KnvbStandaardRegio, SportlinkExtensionEnabled, PdfExportIngeschakeld,
+        ZekerheidspoortActief
         (waarde `0`/`1`/`true`/`false`, anders 400).
 
         De audit-actor (wie de wijziging doorvoerde) wordt uitsluitend server-side bepaald uit de

@@ -434,7 +434,9 @@ public class EmailProcessorFunction
                 graphService,
                 () => BerichtPipeline.BouwTemplateAntwoord(classificatie, plannerResponseJson, email, log, null, clubCode, trace),
                 SanitizeFoutMelding,
-                log);
+                log,
+                trace,
+                await ZekerheidspoortInstelling.IsActiefAsync(cs, clubCode, log));
         }, async t =>
             {
                 // #1568 deel C: onbekende teamteksten naar de wachtrij; een fout hier breekt de trace-opslag niet.

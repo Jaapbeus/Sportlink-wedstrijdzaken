@@ -17,7 +17,7 @@ public static class ZekerheidsBeoordeling
 
     public static ZekerheidsOordeel Beoordeel(IEnumerable<TraceStap> stappen)
     {
-        var lijst = stappen.Where(s => s.Code != TraceCodes.Eindoordeel).ToList();
+        var lijst = stappen.Where(s => s.Code is not (TraceCodes.Eindoordeel or TraceCodes.Zekerheidspoort)).ToList();
         var redenen = new List<string>();
 
         var teamVereist = lijst.Any(s => s.Code == TraceCodes.Classificatie

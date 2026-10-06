@@ -32,6 +32,8 @@ public class AppSettingsDto
     public string? SportlinkSpelactiviteit { get; set; }
     /// <summary>#1459: PDF-export (QuestPDF Community) per club; standaard uit tot een beheerder de licentievoorwaarden bevestigt.</summary>
     public bool PdfExportIngeschakeld { get; set; }
+    /// <summary>#1568: zekerheidspoort — onzekere antwoorden gaan ter review i.p.v. naar de afzender. Standaard aan.</summary>
+    public bool ZekerheidspoortActief { get; set; } = true;
 }
 
 /// <summary>#1459: antwoord van <c>GET api/planner/pdf-export</c> (voor elke ingelogde rol).</summary>

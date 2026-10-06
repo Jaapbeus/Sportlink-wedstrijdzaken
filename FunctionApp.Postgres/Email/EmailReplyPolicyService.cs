@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using FunctionApp.Postgres.Planner;
 using FunctionApp.Postgres.Sync;
 using Planner.Shared;
+using Planner.Shared.Email.Trace;
 
 namespace FunctionApp.Postgres.Email;
 
@@ -54,7 +55,9 @@ internal sealed class EmailReplyPolicyService
         IEmailGraphService graphService,
         Func<Task<(string onderwerp, string body)>> bouwTemplateAntwoordAsync,
         Func<string, string> sanitizeFoutMelding,
-        ILogger log)
+        ILogger log,
+        TraceBuilder? trace = null,
+        bool zekerheidspoortActief = true)
     {
         // Review mode blijft de eerste check: er gaat nooit een antwoord naar de originele
         // afzender. Het voorgestelde antwoord wordt opgebouwd en opgeslagen — zonder dat valt er
@@ -68,7 +71,7 @@ internal sealed class EmailReplyPolicyService
                 graphService, bouwTemplateAntwoordAsync, sanitizeFoutMelding, log)
             : await HandelNormaalVerstuurAsync(
                 connectionString, verwerkingId, email, classificatie, plannerResponseJson,
-                graphService, bouwTemplateAntwoordAsync, sanitizeFoutMelding, log);
+                graphService, bouwTemplateAntwoordAsync, sanitizeFoutMelding, log, trace, zekerheidspoortActief, reviewRecipient);
     }
 
     private async Task<ReplyVerwerkingUitkomst> HandelReviewModeAsync(
@@ -81,7 +84,8 @@ internal sealed class EmailReplyPolicyService
         IEmailGraphService graphService,
         Func<Task<(string onderwerp, string body)>> bouwTemplateAntwoordAsync,
         Func<string, string> sanitizeFoutMelding,
-        ILogger log)
+        ILogger log,
+        bool tegengehouden = false)
     {
         var reviewBesluit = ReplyPolicy.Bepaal(classificatie, plannerResponseJson);
         if (reviewBesluit.MoetVersturen)
@@ -95,7 +99,8 @@ internal sealed class EmailReplyPolicyService
             {
                 try
                 {
-                    await graphService.SendReplyAsync(reviewRecipient, voorgesteldOnderwerp, voorgesteldeBody, email.ConversationId);
+                    await graphService.SendReplyAsync(reviewRecipient, voorgesteldOnderwerp,
+                        tegengehouden ? ZekerheidsPoort.MetReviewKop(voorgesteldeBody) : voorgesteldeBody, email.ConversationId);
                     log.LogInformation(
                         "Email {Id} review mode — testantwoord verstuurd naar EmailReviewRecipient", verwerkingId);
                 }
@@ -124,8 +129,10 @@ internal sealed class EmailReplyPolicyService
             // Alleen labelen als er géén voorstel is opgebouwd (#1244). Is er wél een voorstel, dan
             // ís er een AI-antwoord — het wacht enkel op beoordeling. Het label onvoorwaardelijk
             // zetten maakte het betekenisloos: in review-mode kreeg élke verwerkte mail het, ook
-            // die waarvoor net een voorstel naar de review-ontvanger was gemaild.
-            if (!reviewBesluit.MoetVersturen)
+            // die waarvoor net een voorstel naar de review-ontvanger was gemaild. Uitzondering: een door
+            // de zekerheidspoort tegengehouden voorstel (#1568) krijgt het label wél — de afzender kreeg geen
+            // antwoord en de mail wacht op een mens.
+            if (!reviewBesluit.MoetVersturen || tegengehouden)
             {
                 await graphService.EnsureMasterCategoryAsync(EmailCategorieLabels.GeenAiAntwoord, EmailCategorieLabels.GeenAiAntwoordKleur);
                 await graphService.SetCategoriesAsync(email.MessageId, EmailCategorieLabels.GeenAiAntwoord);
@@ -152,7 +159,10 @@ internal sealed class EmailReplyPolicyService
         IEmailGraphService graphService,
         Func<Task<(string onderwerp, string body)>> bouwTemplateAntwoordAsync,
         Func<string, string> sanitizeFoutMelding,
-        ILogger log)
+        ILogger log,
+        TraceBuilder? trace,
+        bool zekerheidspoortActief,
+        string? reviewRecipient)
     {
         var replyBesluit = ReplyPolicy.Bepaal(classificatie, plannerResponseJson);
         if (!replyBesluit.MoetVersturen)
@@ -175,6 +185,13 @@ internal sealed class EmailReplyPolicyService
         }
 
         var (onderwerp, antwoordBody) = await bouwTemplateAntwoordAsync();
+
+        // Zekerheidspoort (#1568 deel D): een onzeker antwoord gaat niet naar de afzender maar ter review.
+        var poort = ZekerheidsPoort.Bepaal(zekerheidspoortActief, trace);
+        if (poort.Tegenhouden)
+            return await HandelReviewModeAsync(
+                connectionString, verwerkingId, email, classificatie, plannerResponseJson, reviewRecipient,
+                graphService, () => Task.FromResult((onderwerp, antwoordBody)), sanitizeFoutMelding, log, tegengehouden: true);
 
         // Verzendintentie vóór het versturen. Wordt de invocatie hierna hard afgebroken
         // (functie-time-out, host-recycle, scale-in), dan is dit het enige spoor dat er misschien al
