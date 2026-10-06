@@ -4560,6 +4560,17 @@ bijgewerkt naar wat Sportlink zegt.
 | 6 | Gantt-label knipte alles na `" - "` boven 30 tekens | Juist bij lange namen verdween de tegenstander | Label ongewijzigd, over maximaal twee regels |
 | 7 | Testfixture had `wedstrijdnummer` en `wedstijdnummerintern` omgedraaid | Oorzaak 1 kon door geen enkele test gevonden worden | Fixture volgt de echte Sportlink-vorm |
 
+**Codex-review ronde 1 (op `742d13c8`) — verwerking.**
+
+| Bevinding | Afhandeling |
+|---|---|
+| R1-F1: migratie 036 herstelt verwijdermarkeringen zonder positief bronbewijs | **Niet in code gewijzigd — eigenaarsbesluit 2026-10-06.** 036 staat al op `develop` en mag niet meer veranderen (checksum-guard, #1062). Geen van de kandidaten had bronbewijs (geen uitslag, geen detailscore, niet opnieuw geleverd); allemaal gemarkeerd de ochtend ná hun speeldag, het bekende foutpatroon. De eigenaar keurde die herstelset goed. Restrisico: een wedstrijd die Sportlink op de speeldag zelf schrapte, verschijnt weer in de historie (nooit in de toekomst). |
+| R1-F2: reconciliatie op de speeldag zelf | Ondergrens is nu **morgen** (`PostgresSyncPipeline.EersteTeReconcilierenDatum`). Prijs: een op de speeldag zelf geschrapte wedstrijd blijft staan; een afgelaste wedstrijd valt via status "Afgelast" wel direct weg. |
+| R1-F3: oude kaledatum wint van actuele uitslagdatum | Beide tiers: kaledatum uit de lokale datum van `wedstrijddatum`, his alleen als terugval. |
+| SQL Server-upgrade: verlies van rijen zonder InternCode | Rijen blijven bewaard met sleutel `-WedstrijdCode` (uniek, nooit een echte InternCode); schema gelijk aan een verse installatie; tweede blok herstelt afwijkende sleutelwaarden na een gedeeltelijke run. **Extra gevonden:** `stg.matchdetails` had op SQL Server een PRIMARY KEY op WedstrijdCode, waardoor twee clubwedstrijden met nummer 1 nog steeds niet pasten — nu op InternCode. |
+
+**Bewijs bij deze verwerking:** SQL Server 2022 (wegwerpcontainer) — database opgebouwd met de PostDeployment van vóór #1547 en de oude tabelvorm, met een dubbele InternCode en rijen zonder InternCode; nieuwe PostDeployment tweemaal (tweede run nul fouten, niets opnieuw); daarna `sp_MergeStgToHis` met twee clubwedstrijden met wedstrijdnummer 1 (beide opgeslagen) en een update; vers-installatiepad idem; de drie SQL Server-fixturesynctests (normaal overgeslagen) lokaal geslaagd. Postgres: §57-proef — de sync-, veldbezettings- en optimalisatietests van de codeversie vóór #1547 slagen tegen een database waarop 036 al is toegepast. Beperking: 036 faalt op een database waarvan de his-tabellen een testvorm hebben (zonder `interncode`/`kaledatum`); productie- en CI-databases hebben die vorm niet.
+
 **Waarom "+15".** Sportlinks `duration` is de netto speeltijd (2×30 = 60). De Sportlink-veldplanner
 tekent elk blok vijftien minuten langer; nagemeten op acht wedstrijden van 50 t/m 90 minuten,
 inclusief categorieën waar de eigen speeltijdentabel tien minuten rust kent. Niet nagemeten:
