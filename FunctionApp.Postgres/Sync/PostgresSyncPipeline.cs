@@ -130,9 +130,11 @@ internal static class PostgresSyncPipeline
     {
         try
         {
-            await FetchAndStoreTeamsAsync(connectionString, $"{sportlinkApiUrl}/teams?{sportlinkClientId}", clubCode, log);
+            var volledig = await FetchAndStoreTeamsAsync(connectionString, $"{sportlinkApiUrl}/teams?{sportlinkClientId}", clubCode, log);
             log.LogInformation("TEAMS - GET endpoint=/teams");
-            return false;
+            // #1558 R1-F1: een lege of ontbrekende respons is geen geldige snapshot; dat telt als
+            // mislukte fetch, zodat reconciliatie niet alle teams als verdwenen markeert.
+            return !volledig;
         }
         catch (Exception ex)
         {
@@ -357,13 +359,13 @@ internal static class PostgresSyncPipeline
         log.LogInformation("lastsynctimestamp bijgewerkt voor club {ClubCode}", clubCode);
     }
 
-    private static async Task FetchAndStoreTeamsAsync(string connectionString, string apiUrl, string clubCode, ILogger log)
+    internal static async Task<bool> FetchAndStoreTeamsAsync(string connectionString, string apiUrl, string clubCode, ILogger log)
     {
         var response = await HttpClient.GetAsync(apiUrl);
         response.EnsureSuccessStatusCode();
         var json = await response.Content.ReadAsStringAsync();
         var teams = JsonConvert.DeserializeObject<List<Team>>(json, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
-        if (teams != null)
+        if (teams is { Count: > 0 })
         {
             log.LogInformation("TEAMS - {Count} gevonden.", teams.Count);
             await PostgresStagingRepository.SaveTeamsAsync(connectionString, teams, clubCode, log);
@@ -372,6 +374,7 @@ internal static class PostgresSyncPipeline
         {
             log.LogWarning("TEAMS - geen data gevonden.");
         }
+        return global::Planner.Shared.Sync.ReconciliatieOndergrens.IsVolledigeTeamsSnapshot(teams?.Count);
     }
 
     private static async Task FetchAndStoreProgrammaAsync(string connectionString, string apiUrl, string clubCode, ILogger log)

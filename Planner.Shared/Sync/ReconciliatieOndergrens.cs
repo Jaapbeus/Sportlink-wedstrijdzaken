@@ -39,6 +39,15 @@ public static class ReconciliatieOndergrens
         return DateOnly.FromDateTime(utcNu).AddDays(1);
     }
 
+    /// <summary>
+    /// Mag deze teams-respons als complete snapshot gelden, zodat afwezigheid in <c>stg.teams</c> bewijs is
+    /// dat Sportlink een team niet meer kent (#1558, review R1-F1)? Alleen bij minstens één team: een
+    /// <c>null</c>-respons of een lege lijst is bij een club met teams veel waarschijnlijker een
+    /// ontbrekende of afgekapte respons dan een club zonder enig team, en zou anders alle teams als
+    /// verwijderd markeren. Een lege snapshot telt daarom als mislukte fetch.
+    /// </summary>
+    public static bool IsVolledigeTeamsSnapshot(int? aantalTeams) => aantalTeams is > 0;
+
     /// <summary>De ondergrens voor een sync-run op dit moment.</summary>
     public static DateOnly Nu() =>
         EersteTeReconcilierenDatum(VandaagInNederland(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById));

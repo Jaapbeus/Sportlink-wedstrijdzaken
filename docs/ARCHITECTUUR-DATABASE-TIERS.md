@@ -4640,7 +4640,10 @@ toernooidagen kan een echte wedstrijd verbergen (#1560).
 
 Regels, gelijk aan Postgres: alleen de gesyncte club (nooit AllStars of rijen zonder clubstempel), matches
 alleen binnen het MIN/MAX-venster van `kaledatum` in `stg` en nooit vóór morgen, teams over de volledige
-snapshot, niets bij een mislukte fetch-fase of een lege `stg`-snapshot, best-effort zodat een fout de
+snapshot, niets bij een mislukte fetch-fase of een lege `stg`-snapshot. Sinds review R1-F1 telt ook een
+`null`-, lege of ontbrekende teams-respons als mislukte fetch op beide tiers
+(`ReconciliatieOndergrens.IsVolledigeTeamsSnapshot`: minstens één team), zodat zo'n respons bestaande
+teams nooit als verdwenen markeert. Verder: best-effort zodat een fout de
 geslaagde ETL niet laat falen. `matchdetails` reconcilieert bewust niet mee (zie §79).
 
 **Gemeten.** `SqlServerReconciliationIntegrationTests` draait tegen een echte SQL Server 2022 (zie de

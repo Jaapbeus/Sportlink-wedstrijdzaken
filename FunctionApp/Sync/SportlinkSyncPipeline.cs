@@ -60,9 +60,11 @@ internal static class SportlinkSyncPipeline
         await CreateStagingTable.ExecuteAsync("teams");
         try
         {
-            await FetchAndStoreTeamsAsync($"{sportlinkApiUrl}/teams?{sportlinkClientId}", clubCode, log);
+            var volledig = await FetchAndStoreTeamsAsync($"{sportlinkApiUrl}/teams?{sportlinkClientId}", clubCode, log);
             log.LogInformation("TEAMS - GET endpoint=/teams");
-            return false;
+            // #1558 R1-F1: een lege of ontbrekende respons is geen geldige snapshot; dat telt als
+            // mislukte fetch, zodat reconciliatie niet alle teams als verdwenen markeert.
+            return !volledig;
         }
         catch (Exception ex)
         {
@@ -181,13 +183,13 @@ internal static class SportlinkSyncPipeline
         }
     }
 
-    private static async Task FetchAndStoreTeamsAsync(string apiUrl, string clubCode, ILogger log)
+    internal static async Task<bool> FetchAndStoreTeamsAsync(string apiUrl, string clubCode, ILogger log, HttpClient? httpClient = null)
     {
-        var response = await _client.GetAsync(apiUrl);
+        var response = await (httpClient ?? _client).GetAsync(apiUrl);
         response.EnsureSuccessStatusCode();
         var json  = await response.Content.ReadAsStringAsync();
         var teams = JsonConvert.DeserializeObject<List<Team>>(json, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
-        if (teams != null)
+        if (teams is { Count: > 0 })
         {
             log.LogInformation("TEAMS - {Count} gevonden.", teams.Count);
             await SportlinkStagingRepository.SaveTeamsAsync(teams, clubCode, log);
@@ -196,6 +198,7 @@ internal static class SportlinkSyncPipeline
         {
             log.LogWarning("TEAMS - geen data gevonden.");
         }
+        return global::Planner.Shared.Sync.ReconciliatieOndergrens.IsVolledigeTeamsSnapshot(teams?.Count);
     }
 
     private static async Task FetchAndStoreProgrammaAsync(string apiUrl, string clubCode, ILogger log)
