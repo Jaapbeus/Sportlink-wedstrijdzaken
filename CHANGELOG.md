@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.11.2.0] — 2026-10-06
+
 ### Fixed
 - **Planning**: bij afgelopen speeldagen staat in de lijst weer het eigen team in de kolom Team. Het oude sync-gedrag had die naam bij gespeelde wedstrijden leeggemaakt (in productie 347 wedstrijden) en dat werd tot nu toe niet hersteld. De deploy leidt de teamnaam nu af uit de wedstrijd zelf; wedstrijden waar niet vast te stellen is welk team bedoeld is, blijven ongemoeid (#1561).
 - **Planning**: in een kort blok (een deelveld, de helft van een veldrij) blijft de tegenstander leesbaar. De aanvangstijd staat nu vóór de naam op dezelfde regel, zoals in de Sportlink-veldplanner, zodat de tweede regel voor de tegenstander overblijft (#1561).
