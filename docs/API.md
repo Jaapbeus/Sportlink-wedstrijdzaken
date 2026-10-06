@@ -85,6 +85,7 @@ verwerking plaats.
 | `GET` | `/beheer/sync/status` | **Admin** | Status van de laatste Sportlink-synchronisatie, plus optioneel `?jobId=` voor een specifieke sync-job (#1138) |
 | `POST` | `/beheer/sync/trigger` | **Admin** | Synchronisatie starten via een Storage Queue-job (#1138) — geeft direct een `jobId` terug, geen fire-and-forget meer. Optionele body `{"reset":true,"season":2025}` haalt het hele seizoen opnieuw op vanaf de seizoensstart (#1352); ongeldig seizoen of een seizoen zonder seizoensrij → 400 (#1461) |
 | `GET` | `/beheer/teams` | **Admin** | Teamlijst ophalen |
+| `GET` | `/beheer/teams/keuzelijst` | **Admin** | Actieve teams met `teamId` + canonieke naam, voor het koppelen van een teamtekst aan een team (#1568) |
 | `GET` | `/beheer/templates` | **Admin** | Alle e-mailtemplates per berichttype ophalen |
 | `PUT` | `/beheer/templates/{key}` | **Admin** | Eén e-mailtemplate opslaan |
 | `POST` | `/beheer/templates/{key}/reset` | **Admin** | Eén e-mailtemplate terugzetten naar standaard |
@@ -96,7 +97,7 @@ verwerking plaats.
 | `PUT/DELETE` | `/beheer/teamregels/{id}` | **Admin** | Planningsregel wijzigen / verwijderen |
 | `GET` | `/beheer/email-log` | **Admin** | Verwerkte e-mails inzien (AVG-conform: geen berichtteksten); per regel `HeeftTrace` (#1568) |
 | `GET` | `/beheer/email-log/{id}/trace` | **Admin** | Permanente, PII-arme beslissingstrace van één verwerking (`id` = `Id` uit het e-maillog): `verwerkingId`, `verzoekType`, `status` (`null` als de verwerking is opgeruimd), `ontvangstDatum`, `aangemaakt`, `zekerheid`, `sjabloonSleutel`, `appVersie`, `trace` (`stappen`, `oordeel`). Geen body, afzender of onderwerp. **404** als er geen trace is (#1568) |
-| `POST` | `/test/email` | **Admin** | AI-classificatie dry-run zonder e-mail te versturen (Email-tester-pagina); de respons bevat sinds #1568 ook `trace` (beslissingstrace) |
+| `POST` | `/test/email` | **Admin** | AI-classificatie dry-run zonder e-mail te versturen (Email-tester-pagina); de respons bevat sinds #1568 ook `trace` (beslissingstrace) en `leersuggestie`; de tester geeft de gevalideerde leermomenten mee aan de classificatie (zoals productie) en schrijft niets |
 | `POST` | `/feedback/validate` | **Admin/User** | Feedback-widget: voorvalidatie op volledigheid. Per gebruiker begrensd (30 AI-aanroepen per 10 min, samen met `preview`). **503** `{ error, aiBeschikbaar: false }` als de AI-dienst niet geregistreerd is (lokaal door de EgressGuard); geldt ook voor `preview` en `submit`, beide tiers gelijk (#1487) |
 | `POST` | `/feedback/preview` | **Admin/User** | Feedback-widget: exacte titel + body van het te publiceren issue opvragen, zónder iets aan te maken (#1205) |
 | `POST` | `/feedback/submit` | **Admin/User** | Feedback-widget: melding bewaren in `avg.Feedback` (melder = Entra object-ID + naam-momentopname, nooit in het publieke issue). **Admin**: direct als openbaar GitHub-issue; met `bevestiging` wordt exact de in het voorbeeld getoonde tekst gepubliceerd. **User**: wacht op publicatie door een beheerder, de response bevat geen issueverwijzing. Optioneel `telemetrie` (technische context, geredigeerd, na 90 dagen gewist). Limiet: 3 per 10 min per gebruiker, 30 per uur per club → `429` |
@@ -125,10 +126,14 @@ verwerking plaats.
 | `PUT/DELETE` | `/beheer/speeltijden/{leeftijd}` | **Admin** | Speeltijd van één leeftijdscategorie wijzigen / verwijderen |
 | `GET` | `/beheer/leermomenten` | **Admin** | Classificatie-leermomenten ophalen (`?status=pending\|validated\|rejected`) |
 | `GET` | `/beheer/leermomenten/stats` | **Admin** | Aantallen leermomenten per status |
+| `POST` | `/beheer/leermomenten` | **Admin** | Leermoment toevoegen als beheerder (#1568): `{ "origineelVerzoekType"?, "juistVerzoekType", "samenvatting", "herkomstVerwerkingId"? }`. Direct gevalideerd, herkomst `Admin`, permanent. Samenvatting (max 500) wordt gesaneerd; de aanmaker komt uit het principal |
 | `PUT` | `/beheer/leermomenten/{id}/valideer` | **Admin** | Leermoment valideren of afwijzen (`{ "actie": "valideer"\|"afwijzen" }`) |
 | `GET` | `/beheer/teamaliassen` | **Admin** | Teamnaam-aliassen ophalen (`?status=pending\|validated\|rejected&limit=100`) — inclusief canonieke teamnaam |
 | `POST` | `/beheer/teams/herstel` | **Admin** | Canonieke teamlijst opnieuw opbouwen uit `his.teams` (Postgres-tier; `his.Teams` op de SQL Server-tier): volledige canonicalisatie + sleutelmigratie (#766). Idempotent. `409` als er nog niets gesynchroniseerd is — "niets te doen" is bewust geen `200` (#946) |
-| `PUT` | `/beheer/teamaliassen/{id}/valideer` | **Admin** | Alias goedkeuren of afwijzen (`{ "status": "validated"\|"rejected" }`) |
+| `POST` | `/beheer/teamaliassen` | **Admin** | Alias aanmaken als beheerder (#1568): `{ "ruweTekst", "teamId", "herkoppel"?, "herkomstVerwerkingId"?, "reden"? }`. Bron `CoordinatorCorrectie`, direct `validated`; `409` bij een bestaande alias voor een ander team tenzij `herkoppel: true` |
+| `GET` | `/beheer/onbekende-teamteksten` | **Admin** | Wachtrij met teamteksten die de pipeline niet kon koppelen (`?status=open\|afgehandeld\|genegeerd&limit=100`) (#1568) |
+| `PUT` | `/beheer/onbekende-teamteksten/{id}/status` | **Admin** | Wachtrijregel op `open`, `afgehandeld` of `genegeerd` zetten (`{ "status": ... }`) |
+| `PUT` | `/beheer/teamaliassen/{id}/valideer` | **Admin** | Alias goedkeuren of afwijzen (`{ "status": "validated"\|"rejected" }`); legt wie en wanneer vast |
 | `DELETE` | `/beheer/teamaliassen/{id}` | **Admin** | Alias definitief verwijderen |
 | `GET` | `/beheer/theme` | **Admin** | Club-thema ophalen (kleuren + website-URL + `lightColors`/`darkColors`) — gefilterd op `X-Club-Code` header. De paletten zijn `null` zolang er geen licht/donker-set is ingesteld; de client valt dan terug op de vier platte kleuren |
 | `PUT` | `/beheer/theme` | **Admin** | Club-thema opslaan (`{ primary, secondary, accent, textOnPrimary, clubWebsiteUrl, faviconUrl, logoUrl, lightColors, darkColors }`) — gefilterd op `X-Club-Code` header. `lightColors`/`darkColors` zijn sleutel→hex-objecten voor het volledige palet per modus (#1254); elke sleutel moet `^[a-z][a-zA-Z0-9-]{0,39}$` zijn en elke waarde `#rrggbb` of `#rrggbbaa`, maximaal 40 per palet |
@@ -961,11 +966,22 @@ curl "http://localhost:7094/api/beheer/teamaliassen?status=pending&limit=50"
       "status": "pending",
       "aantalKeerGebruikt": 3,
       "mtaInserted": "2026-07-26T09:12:00Z",
-      "mtaModified": "2026-07-27T07:03:00Z"
+      "mtaModified": "2026-07-27T07:03:00Z",
+      "aangemaaktDoorNaam": null,
+      "aangemaaktOp": null,
+      "herkomstVerwerkingId": null,
+      "reden": null,
+      "beoordeeldDoorNaam": null,
+      "beoordeeldOp": null
     }
   ]
 }
 ```
+
+Sinds #1568 staat bij een alias die een beheerder aanmaakte of beoordeelde wie en wanneer: de
+weergavenaam (momentopname) en het tijdstip (UTC). `aangemaaktDoorNaam: null` betekent dat het systeem
+(sync of AI) de alias aanmaakte. In de database staat daarnaast de Entra object-ID (pseudoniem); die
+komt nooit in een response.
 
 `pending`/`validated`/`rejected` zijn de totalen per status voor de hele club — onafhankelijk van
 het `status`-filter en de `limit`. Datums zijn UTC (`Z`-suffix); de GUI toont ze in lokale tijd.
@@ -979,6 +995,56 @@ lijst met nullen in plaats van een fout.
 > wijziging; nieuwe aliassen ontstaan niet meer langs deze weg. Zie
 > `docs/ARCHITECTUUR-TEAMRESOLUTIE.md` voor de volledige achtergrond.
 
+### POST /api/beheer/teamaliassen
+
+Een beheerder koppelt een teamtekst aan een team (#1568) — zonder code of SQL. Bron
+`CoordinatorCorrectie`, direct `validated`. De genormaliseerde sleutel wordt server-side uit
+`TeamNaamNormalisatie` gehaald; de aanmaker (object-ID + naammomentopname, geen e-mailadres) komt uit het
+Easy Auth-principal, nooit uit de body.
+
+```bash
+curl -X POST http://localhost:7094/api/beheer/teamaliassen -H "Content-Type: application/json" \
+  -d '{"ruweTekst":"j10-04","teamId":7,"herkomstVerwerkingId":123,"reden":"uit trace"}'
+```
+
+```json
+{ "id": 31, "status": "aangemaakt", "ruweTekst": "j10-04", "ruweTekstGenormaliseerd": "JO10-4", "teamId": 7, "teamnaam": "[ClubCode] JO10-4" }
+```
+
+| Situatie | Antwoord |
+|---|---|
+| Nieuwe alias | `201`, `status: "aangemaakt"` |
+| Alias met dezelfde sleutel bestond al voor hetzelfde team | `200`, `status: "bestaat-al"` (een niet-gevalideerde alias wordt gevalideerd) |
+| Alias bestaat voor een ander team, `herkoppel` ontbreekt of `false` | `409` met `bestaandeAliasId`, `bestaandTeamId`, `bestaandTeamnaam`, `bestaandeStatus` |
+| Idem met `"herkoppel": true` | `200`, `status: "herkoppeld"` |
+| Lege tekst, `teamId` ontbreekt, tekst > 200 tekens, geen herkenbare teamaanduiding | `400` |
+| Onbekend of inactief team (van deze club) | `404` |
+
+Een open regel in `GET /api/beheer/onbekende-teamteksten` met dezelfde sleutel wordt automatisch
+`afgehandeld`. `GET /api/beheer/teams/keuzelijst` levert de teams met `teamId` voor een keuzelijst.
+
+### GET /api/beheer/onbekende-teamteksten
+
+Teamteksten uit binnengekomen e-mails die de pipeline niet aan een eigen team kon koppelen (trace-stap
+`team-herkenning`: `Onopgelost` of `MeerdereKandidaten`). Parameters: `status` (`open`, `afgehandeld`,
+`genegeerd`; leeg = alles) en `limit` (default 100, max 500).
+
+```json
+{
+  "count": 1, "limit": 100, "open": 1,
+  "items": [
+    { "id": 4, "voorbeeld": "j10-04", "genormaliseerd": "JO10-4", "aantal": 3,
+      "eerstGezien": "2026-10-01T08:00:00Z", "laatstGezien": "2026-10-06T19:30:00Z",
+      "laatsteVerwerkingId": 812, "status": "open" }
+  ]
+}
+```
+
+`voorbeeld` is de gesaneerde, afgekapte schrijfwijze (e-mailadressen en lange cijferreeksen gemaskeerd);
+`laatsteVerwerkingId` is een aanwijzing zonder foreign key. Een regel die 90 dagen niet meer is gezien
+wordt door de wekelijkse e-mail-cleanup verwijderd. `PUT /api/beheer/onbekende-teamteksten/{id}/status`
+met `{"status":"genegeerd"}` (of `open`/`afgehandeld`) zet een regel om; onbekend id → `404`.
+
 ### PUT /api/beheer/teamaliassen/{id}/valideer
 
 ```bash
@@ -990,7 +1056,7 @@ curl -X PUT http://localhost:7094/api/beheer/teamaliassen/12/valideer -H "Conten
 ```
 
 Alleen `validated` of `rejected` zijn toegestaan → anders `400`. Onbekende id (of een id van een
-andere club) → `404`.
+andere club) → `404`. Wie (object-ID + naam) en wanneer (UTC) wordt vastgelegd (#1568).
 
 ### DELETE /api/beheer/teamaliassen/{id}
 
@@ -1001,6 +1067,9 @@ curl -X DELETE http://localhost:7094/api/beheer/teamaliassen/12
 ```json
 { "deleted": true, "id": 12 }
 ```
+
+Een verwijderde rij laat geen auditregel achter in de tabel; wie het deed staat (als pseudoniem, alleen de
+object-ID) in het applicatielog.
 
 ---
 

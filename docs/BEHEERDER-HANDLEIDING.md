@@ -1115,6 +1115,8 @@ niet vastzetten en steeds opnieuw naar hetzelfde verkeerde team wijzen.
 | **Status** | Te beoordelen, Goedgekeurd of Afgewezen |
 | **Keer gebruikt** | Hoe vaak deze schrijfwijze al is aangetroffen — een hoog getal betekent dat goedkeuren of afwijzen echt effect heeft |
 | **Aangemaakt** | Moment waarop de alias voor het eerst werd gezien (in uw eigen tijdzone) |
+| **Door** | Wie de alias aanmaakte (de naam van de beheerder) en wanneer, met eventueel een korte reden. *systeem* betekent: automatisch aangemaakt door de sync of de AI |
+| **Beoordeeld** | Wie de alias het laatst goedkeurde of afwees, en wanneer |
 
 Bovenaan staan drie tellers (te beoordelen / goedgekeurd / afgewezen) en filterknoppen. De pagina
 opent standaard op **Alleen te beoordelen**; met **Alles** ziet u ook de al beoordeelde aliassen.
@@ -1130,6 +1132,36 @@ opent standaard op **Alleen te beoordelen**; met **Alles** ziet u ook de al beoo
 **Twijfelt u?** Wijs de alias af of laat hem staan. Alleen goedkeuren wat u zeker weet is
 veiliger dan een fout vastleggen — een goedgekeurde alias stuurt namelijk toekomstige
 e-mailverwerking naar dat team.
+
+### Zelf een alias toevoegen (#1568)
+
+Weet u welk team een schrijfwijze bedoelt, dan hoeft u niet te wachten tot het systeem hem tegenkomt:
+klik op **Alias toevoegen**, vul de teamtekst in (bijvoorbeeld `j10-04`), kies het team en klik op
+**Koppel**. De alias is **direct goedgekeurd** — u bent zelf de beoordelaar — en het systeem legt vast
+wie hem aanmaakte en wanneer.
+
+- Hoort die schrijfwijze al bij een **ander** team, dan weigert het systeem dat met een melding en toont
+  het bij welk team hij nu hoort. Pas als u op **Herkoppel naar dit team** klikt, wordt hij verplaatst. Zo
+  overschrijft u nooit per ongeluk een bestaande koppeling.
+- Hoort hij al bij **hetzelfde** team, dan verandert er niets (stond hij nog op *te beoordelen*, dan wordt hij
+  goedgekeurd).
+
+### Onbekende teamteksten
+
+Boven de aliassen staat de kaart **Onbekende teamteksten**. Daar verzamelt het systeem teamteksten uit
+binnengekomen e-mail die het niet aan een team kon koppelen (of waarbij meerdere teams in aanmerking kwamen):
+de tekst, hoe vaak hij is gezien en wanneer voor het laatst. Per regel kunt u:
+
+| Actie | Effect |
+|---|---|
+| **Koppel aan team** | Kies het team; er ontstaat direct een goedgekeurde alias en de regel gaat op *afgehandeld* |
+| **Negeren** | Het is geen eigen team (bijvoorbeeld een tegenstander); de regel gaat op *genegeerd* en blijft daar staan |
+| **Heropenen** | Zet een genegeerde regel terug op *open* |
+
+Maakt u elders (bijvoorbeeld met **Alias toevoegen**) een alias voor dezelfde tekst, dan wordt de open regel
+automatisch afgehandeld. Komt een afgehandelde tekst later toch weer onherkend binnen, dan gaat de regel
+opnieuw open. Regels die 90 dagen niet meer zijn gezien verdwijnen vanzelf. De getoonde tekst is afgekapt en
+ontdaan van e-mailadressen en nummers.
 
 ### Teamlijst opnieuw opbouwen
 
@@ -1162,8 +1194,12 @@ worden bijgewerkt.
 | Endpoint | Beschrijving |
 |---|---|
 | `GET /api/beheer/teamaliassen?status=pending` | Aliassen ophalen, optioneel gefilterd op status |
+| `POST /api/beheer/teamaliassen` | Alias toevoegen (de knop *Alias toevoegen* en *Koppel aan team*) |
 | `PUT /api/beheer/teamaliassen/{id}/valideer` | Alias goedkeuren (`validated`) of afwijzen (`rejected`) |
 | `DELETE /api/beheer/teamaliassen/{id}` | Alias definitief verwijderen |
+| `GET /api/beheer/onbekende-teamteksten` | De wachtrij met onbekende teamteksten |
+| `PUT /api/beheer/onbekende-teamteksten/{id}/status` | Een wachtrijregel afhandelen, negeren of heropenen |
+| `GET /api/beheer/teams/keuzelijst` | De teams voor de keuzelijst bij het koppelen |
 | `POST /api/beheer/teams/herstel` | Teamlijst opnieuw opbouwen (de knop hierboven) |
 
 ---
@@ -1195,6 +1231,22 @@ samenvatting**, de **Correctie samenvatting** en de **Status**.
 
 De twee knoppen verschijnen alleen bij leermomenten die nog niet beoordeeld zijn.
 
+### Zelf een leermoment toevoegen (#1568)
+
+U hoeft niet te wachten op een reply van een afzender: ziet u in de e-mailtester of de trace dat het systeem
+een bericht verkeerd heeft ingeschat, dan legt u zelf een leermoment vast. Klik op **Leermoment toevoegen**
+(of in de trace op **Verzoektype corrigeren…**), kies het **juiste verzoektype** en schrijf een **korte
+samenvatting** van het bericht.
+
+- Schrijf de samenvatting zelf, **zonder namen, e-mailadressen of telefoonnummers**: het is een voorbeeld,
+  geen kopie van de mail. Het systeem maskeert adressen en nummers nog eens extra en kapt af op 500 tekens.
+- Zo'n leermoment is **direct gevalideerd** en wordt meegegeven aan de AI bij nieuwe e-mail. Voorbeelden van
+  een beheerder gaan voor op die uit replies.
+- In de kolom **Herkomst** staat *Beheerder* (met uw naam en het moment) of *Reply*.
+- Leermomenten van een beheerder worden **nooit automatisch opgeruimd**; leermomenten uit replies wel
+  (samenvatting na 30 dagen leeg, verwijderd na 90 dagen). Wilt u er één kwijt, dan is dat een
+  beheerdersingreep (zie de privacyparagraaf in `SECURITY.md`).
+
 **Twijfelt u?** Net als bij Teamaliassen geldt: keur alleen goed wat u zeker weet. Een gevalideerd
 leermoment stuurt namelijk hoe toekomstige e-mail wordt afgehandeld.
 
@@ -1204,6 +1256,7 @@ leermoment stuurt namelijk hoe toekomstige e-mail wordt afgehandeld.
 |---|---|
 | `GET /api/beheer/leermomenten` | Leermomenten ophalen, eventueel gefilterd op status |
 | `GET /api/beheer/leermomenten/stats` | De tellers boven aan de pagina |
+| `POST /api/beheer/leermomenten` | Een leermoment als beheerder toevoegen |
 | `PUT /api/beheer/leermomenten/{id}/valideer` | Eén leermoment valideren of afwijzen |
 
 ---
@@ -1548,6 +1601,23 @@ de knop **Trace**; die klapt dezelfde stappenlijst uit, nu met de samenvatting *
 app en welk sjabloon is gekozen. Voor berichten die buiten scope vielen is de trace kort (classificatie en
 reden). De trace blijft permanent bewaard, ook nadat het bericht zelf na 90 dagen uit het log is
 verdwenen; een regel zonder de knop heeft geen trace (berichten van vóór deze functie).
+
+### Leren vanuit de trace (#1568)
+
+Als beheerder ziet u in de trace — in de tester én bij een echt verwerkt bericht — knoppen bij de stappen
+waar u iets kunt rechtzetten:
+
+| Knop | Wanneer | Wat het doet |
+|---|---|---|
+| **Koppel '…' aan team…** | Bij een stap *Team herkend* of *Tegenstander herkend als eigen team?* die het team niet herkende (of meerdere teams vond) | U kiest het team; er ontstaat een goedgekeurde alias (zie hoofdstuk 16) |
+| **Verzoektype corrigeren…** | Bij de stap *AI-classificatie* | U kiest het juiste type en redigeert de samenvatting (in de tester al ingevuld met een gesaneerde voorzet); er ontstaat een leermoment (zie hoofdstuk 16a) |
+
+**Opnieuw beoordelen.** Na zo'n correctie klikt u in de tester op **Opnieuw beoordelen**. Dat draait
+dezelfde invoer nogmaals — de AI wordt dus opnieuw aangeroepen, en de limiet van 10 per minuut geldt
+— en toont een tabel **Vergelijking vóór ↔ na** met verzoektype, herkend team, zekerheid, antwoordsjabloon
+en het aantal meegegeven leermomenten; wat veranderde is geel gemarkeerd. Zo ziet u meteen of uw
+correctie werkt, zonder dat er iets verstuurd of opgeslagen wordt. De tester gebruikt daarbij dezelfde
+leermomenten als de echte verwerking; de trace noemt in de stap *Geleerde voorbeelden* hoeveel het er waren.
 
 ---
 

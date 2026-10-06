@@ -419,6 +419,36 @@ sjabloon), afgekapt op 80 tekens, met e-mailadressen en lange cijferreeksen gema
 een nieuw veld aan toevoegt, moet dat veld eerst door `Saneer` laten lopen; een veld met vrije tekst uit
 een mail hoort hier niet en zou de permanente bewaring ongeldig maken.
 
+**Leren vanuit de trace: auditspoor, wachtrij en admin-leermomenten (#1568 deel C).**
+
+* **Wie het deed.** `public.teamaliassen`/`dbo.TeamAliassen` (aanmaken, beoordelen) en
+  `planner.ClassificatieCorrectie` (admin-leermoment) leggen vast *wie* en *wanneer*: de Entra object-ID
+  (pseudoniem, art. 4 lid 5), een momentopname van de weergavenaam en een UTC-tijdstip. Uitsluitend uit het
+  Easy Auth-principal, nooit uit de requestbody, en geen e-mailadres — dezelfde regel als bij de feedbackmelder
+  (#764). Grondslag: art. 6 lid 1 sub f (verantwoording van wijzigingen aan het zelflerende systeem). De
+  gegevens leven zolang de bijbehorende rij bestaat; een verwijderde alias neemt zijn auditspoor mee, en wie
+  hem verwijderde staat alleen als object-ID in het applicatielog (dus onder de logretentie).
+* **Wachtrij `planner.OnbekendeTeamTekst`.** Bevat per club een gesaneerde teamschrijfwijze (80 tekens,
+  e-mailadressen en cijferreeksen gemaskeerd door `TraceBuilder.Saneer`, nooit de mailbody), tellers en een
+  verwerking-id zonder foreign key. Een regel die 90 dagen niet meer is gezien wordt door
+  `CleanupEmailVerwerking` verwijderd (beide tiers). RLS staat aan (migratie 039).
+* **Admin-leermomenten zijn permanent (besluit eigenaar 2026-10-06).** `sp_CleanupClassificatieCorrectie`,
+  fase 2a van `sp_CleanupEmailVerwerking` en `PostgresCleanupProcedures` raken uitsluitend herkomst `Reply`;
+  een admin-leermoment wordt dus nooit geanonimiseerd of verwijderd. Dat is verantwoord omdat de samenvatting
+  (max 500 tekens) door de beheerder is geredigeerd én door `TraceBuilder.Saneer` is gehaald (geen e-mailadressen
+  of nummers, geen mailbody), en omdat een leermoment zijn waarde verliest als hij verloopt. **Restrisico:**
+  een naam van een persoon in vrije tekst herkent de sanering niet; de beheerder wordt daarvoor in het
+  formulier gewaarschuwd. Een leermoment kan via de API wel worden afgewezen (dan telt hij niet meer mee als
+  voorbeeld) maar niet worden verwijderd; een verwijderverzoek (art. 17) loopt via een beheerdersingreep in
+  de database.
+* **Geen harde FK.** `HerkomstVerwerkingId` (alias, leermoment) en `LaatsteVerwerkingId` (wachtrij) zijn losse
+  getallen: een FK naar `planner.EmailVerwerking` zou de retentie-DELETE van die tabel laten falen (#424) of
+  een permanente rij laten verdwijnen.
+* **Autorisatie.** Alle nieuwe endpoints (`POST /api/beheer/teamaliassen`, `POST /api/beheer/leermomenten`,
+  `GET/PUT /api/beheer/onbekende-teamteksten`, `GET /api/beheer/teams/keuzelijst`) lopen via
+  `AdminEndpoint.ExecuteAsync` (alleen rol `admin`); `EndpointAutorisatieTests` bewijst per tier 401/403/poortpassage.
+  De e-mailtester schrijft niets (een lege teamlijst van de gekozen club wordt eenmalig opgebouwd).
+
 `avg.Teambegeleiding` bevat persoonsgegevens van teambegeleiders. De rijen van de club worden bij
 elke import volledig vervangen (club-scoped DELETE + insert, nooit een TRUNCATE — dat zou andere
 clubs' rijen ook wissen; #1131/#1132 maakten dit atomisch per import en, op de Postgres-tier,

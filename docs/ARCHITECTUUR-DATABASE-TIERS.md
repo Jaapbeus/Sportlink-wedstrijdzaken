@@ -4651,3 +4651,48 @@ en de opzoeking voegt de verwerking met een LEFT JOIN toe (status is `null` na d
 tier-onafhankelijke deel (record, JSON-mapping, "opslag faalt stil", queryparameters en vertaling naar
 HTTP) staat in `Planner.Shared/Email/Trace/EmailTraceOpslag.cs` en
 `Planner.Endpoints/Admin/EmailLogEndpointCore.cs`.
+
+---
+
+## 81. Leren vanuit de trace: alias-audit, wachtrij en admin-leermomenten op beide tiers (#1568 deel C)
+
+De beheerder leert het systeem vanuit de trace (zie [EMAIL-VERWERKING.md](EMAIL-VERWERKING.md) §3d en
+[ARCHITECTUUR-TEAMRESOLUTIE.md](ARCHITECTUUR-TEAMRESOLUTIE.md)). Drie schemawijzigingen, alle additief en
+idempotent, op beide tiers tegelijk (regel 3 van de multi-tier-strategie):
+
+| Onderdeel | Postgres (`039_leren_van_de_trace.sql`) | SQL Server (`Database/` + `Script.PostDeployment1.sql`) |
+|---|---|---|
+| Auditkolommen `teamaliassen` | `aangemaaktdoor`, `aangemaaktdoornaam`, `aangemaaktop`, `herkomstverwerkingid`, `reden`, `beoordeelddoor`, `beoordeelddoornaam`, `beoordeeldop` | `dbo.TeamAliassen`: dezelfde kolommen in PascalCase; `ALTER TABLE ... ADD` achter `COL_LENGTH`, met `SET QUOTED_IDENTIFIER ON` (persisted computed columns, #1280) |
+| Wachtrij | `planner.onbekendeteamtekst`, `UNIQUE (clubcode, ruwetekstgenormaliseerd)`, RLS in dezelfde migratie | `planner.OnbekendeTeamTekst` (`Database/planner/Tables/OnbekendeTeamTekst.sql`, `IF NOT EXISTS CREATE TABLE`) |
+| Herkomst leermoment | `herkomst VARCHAR(10) DEFAULT 'Reply'`, `CHECK`; beide verwerkings-id's `DROP NOT NULL` | `Herkomst NVARCHAR(10) DEFAULT N'Reply'`, `CHECK`; beide id's `ALTER COLUMN ... NULL` |
+| Reply-paar uniek | `UNIQUE (origineleverwerkingid, correctionverwerkingid)` blijft: Postgres telt `NULL`'s als verschillend | `UQ_ClassificatieCorrectie_Paar` (`UNIQUE`-constraint) wordt **gefilterde unique index** `UX_ClassificatieCorrectie_Paar` (`WHERE ... IS NOT NULL`): SQL Server telt `NULL`'s als gelijk en twee admin-leermomenten zouden elkaar blokkeren |
+| Invariant reply | `CHECK (herkomst <> 'Reply' OR (beide id's NOT NULL))` | `CK_ClassificatieCorrectie_ReplyPaar` |
+| Retentie | `PostgresCleanupProcedures`: drie statements filteren op `herkomst = 'Reply'`; wachtrij: DELETE `laatstgezien` > 90 dagen in `CleanupEmailVerwerkingAsync` | `sp_CleanupClassificatieCorrectie` en `sp_CleanupEmailVerwerking` (fase 2a + wachtrij): `[Herkomst] = N'Reply'` |
+
+**Valkuilen die dit gaf:**
+
+* **Plaats in `Script.PostDeployment1.sql` telt.** De `CREATE OR ALTER`-procedures verwijzen naar de nieuwe kolom
+  `[Herkomst]`. SQL Server valideert een kolomverwijzing van een bestáánde tabel wél bij het aanmaken (alleen een
+  ontbrekende *tabel* wordt uitgesteld). Het blok dat de kolom toevoegt staat daarom vóór de procedures,
+  direct na het aanmaken van `ClassificatieCorrectie`.
+* **Het oude ontdubbelblok (#715) zou admin-leermomenten verwijderd hebben.** Het leidt zijn `UQ`-aanleg af uit
+  het ontbreken van de constraint en ontdubbelt op `PARTITION BY (OrigineleVerwerkingId, CorrectionVerwerkingId)`;
+  alle admin-rijen (`NULL`, `NULL`) vallen in één partitie. Het blok is nu overgeslagen zodra de gefilterde
+  index bestaat.
+* **Geen FK voor `HerkomstVerwerkingId`/`LaatsteVerwerkingId`** (zelfde reden als §80 en #424).
+* **Kolomnaam-typo gevangen door de guard.** Een Postgres-kolom `beoordeeldoor` (één `d` te weinig) werd door
+  `check-postgres-column-coverage.sh` afgevangen tegen de SQL Server-kolom `BeoordeeldDoor`; de guard bewijst
+  hier dus echt iets.
+
+**Gedeelde laag (tier-onafhankelijk):** `Planner.Shared/Leren/` (contracten: aanroeper, alias-opdracht,
+store-interfaces), `Planner.Shared/Email/LeermomentInvoer.cs` (validatie + saneren + few-shot-regel) en
+`Planner.Shared/Email/Trace/OnbekendeTeamTekstExtractie.cs`; `Planner.Endpoints/Leren/` en
+`Planner.Endpoints/Admin/EmailTestEndpointCore.cs` (orkestratie, HTTP-vertaling, rate limiting van de tester).
+Per tier blijft alleen SQL (`Sql…`/`Postgres…TeamAliasStore`, `…OnbekendeTeamTekstStore`,
+`AdminLeermomentenRepository.MaakAdminLeermomentAsync`) en de route-registratie. De tier-duplicatie daalde
+daardoor van 5213 naar 5194.
+
+**Niet bewezen in deze PR:** de databasegebonden tests (`LerenVanTraceIntegrationTests`) zijn geschreven en
+compileren, maar draaien alleen in de CI-job met een levende Postgres; voor de SQL Server-tier bestaat geen
+equivalente integratietest (de SQL is handmatig gespiegeld, de statische controle is de schema-drift check en
+de job *PostDeployment op verse database*).

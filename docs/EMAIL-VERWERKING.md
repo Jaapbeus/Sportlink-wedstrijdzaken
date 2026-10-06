@@ -161,6 +161,10 @@ Wanneer een afzender repliet op een AI-antwoord en het verzoek was verkeerd gecl
 
 **Beheer via Admin GUI:** `/leermomenten` — toont pending/validated/rejected correcties met valideer/afwijzen knoppen.
 
+Sinds #1568 deel C kan een beheerder ook zelf een leermoment toevoegen ("Leermoment toevoegen", of vanuit de
+trace: *Verzoektype corrigeren…*) — zie [§3d](#3d-leren-vanuit-de-trace-1568-deel-c). Zo'n leermoment heeft
+herkomst `Admin`, is direct gevalideerd en wordt nooit door de retentie geraakt.
+
 ### Teamherkenning (#692)
 
 Welk team een bericht betreft, wordt niet meer per plek met eigen tekstregels bepaald. Er is één
@@ -177,6 +181,10 @@ staat — niet meer door te raden op spaties of clubprefix.
 
 Bij een aanduiding die écht dubbelzinnig is — "13-1" kan JO13-1 of MO13-1 zijn — wordt niet gegokt:
 er volgt óf een keuze uit een korte kandidatenlijst, óf de vraag wordt teruggelegd.
+
+Een teamtekst die niet herkend wordt (`Onopgelost` of `MeerdereKandidaten`) komt sinds #1568 deel C in de
+wachtrij **Onbekende teamteksten** (scherm Teamaliassen); de beheerder koppelt hem daar met één klik aan
+een team door een goedgekeurde alias aan te maken — zie [§3d](#3d-leren-vanuit-de-trace-1568-deel-c).
 
 Is de teamlijst leeg (bijvoorbeeld direct na een deploy, vóór de eerste nachtelijke synchronisatie),
 dan wordt hij eenmalig alsnog opgebouwd. Lukt dat niet, dan wordt er níet verwerkt — dat is beter dan
@@ -371,8 +379,10 @@ invocatie zelf hard wordt afgebroken vóórdat deze afhandeling draait.
 Omdat een hervatte verwerking dezelfde rij hergebruikt, draaide de correctiedetectie bij elke poging
 opnieuw en leverde hetzelfde (origineel, correctie)-paar tot drie identieke leermomenten op. Die moest
 de beheerder allemaal apart valideren, en meervoudig goedgekeurd woog hetzelfde voorbeeld zwaarder in
-de AI-prompt dan bedoeld. `UQ_ClassificatieCorrectie_Paar` is nu de harde grens; de repository doet er
-een `IF NOT EXISTS` voor zodat de normale herhaling geen fout oplevert.
+de AI-prompt dan bedoeld. De unieke combinatie (origineel, correctie) is nu de harde grens — sinds #1568 deel C op de SQL Server-tier
+een gefilterde unique index `UX_ClassificatieCorrectie_Paar` (een `UNIQUE`-constraint telt `NULL`'s als
+gelijk en zou twee admin-leermomenten blokkeren); de repository doet er een `IF NOT EXISTS` voor zodat de
+normale herhaling geen fout oplevert.
 
 ---
 
@@ -1044,6 +1054,34 @@ reproduceerbaarheid: welke code nam de beslissing).
 **Bekend verschil tussen de tiers (niet door #1568 veroorzaakt):** `BouwTemplateAntwoord` op de
 Postgres-tier kent de plannerresponse-tak `wedstrijdAlIngepland` niet, terwijl `VerwerkMetPlannerAsync`
 hem wel kan teruggeven.
+
+---
+
+### 3d. Leren vanuit de trace (#1568 deel C)
+
+De trace maakt zichtbaar *waarom* een antwoord zo uitviel; deel C laat de beheerder het systeem daar zonder
+code of SQL van laten leren. De lus:
+
+1. **Trace bekijken** — in de e-mailtester (`/email-tester`) of per e-maillog-regel (Instellingen → *Toon
+   berichten en traces*).
+2. **Corrigeren** — knoppen in de trace, alleen voor beheerders:
+   * bij een niet-herkend team (`team-herkenning` of `tegenstander-herkenning` met `Onopgelost` of
+     `MeerdereKandidaten`): *Koppel '…' aan team…* → keuze uit de teams → een goedgekeurde alias;
+   * bij de classificatie: *Verzoektype corrigeren…* → juist type + korte samenvatting → een admin-leermoment.
+3. **Opnieuw beoordelen** (alleen in de tester) — draait dezelfde invoer nogmaals en zet de uitkomst naast die
+   van vóór de correctie: verzoektype, herkend team, zekerheid, antwoordsjabloon en het aantal meegegeven
+   leermomenten. Dat roept de AI opnieuw aan (kost credits; rate limit 10 per minuut).
+
+| Onderdeel | Gedrag |
+|---|---|
+| **Alias aanmaken** (`POST /api/beheer/teamaliassen`) | Bron `CoordinatorCorrectie`, direct `validated`. De sleutel komt uitsluitend uit `TeamNaamNormalisatie`. Bestaat de sleutel al voor een ander team → `409`; herkoppelen gebeurt alleen als de beheerder dat expliciet aangeeft. Audit: `AangemaaktDoor` (object-ID), `AangemaaktDoorNaam` (momentopname), `AangemaaktOp` (UTC), `HerkomstVerwerkingId`, `Reden`; valideren/afwijzen legt `BeoordeeldDoor(Naam)`/`BeoordeeldOp` vast. Alles uit het Easy Auth-principal, nooit uit de body, geen e-mailadres. |
+| **Wachtrij onbekende teamteksten** (`planner.OnbekendeTeamTekst`) | De processor schrijft na elke verwerking elke onbekende teamtekst (gesaneerd, afgekapt op 80 tekens, geen mailbody) als upsert op (club, genormaliseerde tekst): aantal, eerst/laatst gezien, laatste verwerking (geen FK). Een retry telt niet dubbel. Een fout bij het schrijven laat de verwerking nooit falen. Een alias met dezelfde sleutel zet de open regel automatisch op `afgehandeld`; een afgehandelde regel die terugkomt gaat weer open, een genegeerde blijft genegeerd. Regels die 90 dagen niet meer zijn gezien worden door de e-mail-cleanup verwijderd. |
+| **Admin-leermoment** (`POST /api/beheer/leermomenten`) | Herkomst `Admin`, direct gevalideerd, zonder reply-paar (`OrigineleVerwerkingId`/`CorrectionVerwerkingId` zijn `NULL`; `HerkomstVerwerkingId` is een los getal zonder FK, zodat de retentie-DELETE van de verwerking (#424) nooit blokkeert of meeneemt). De samenvatting (max 500) gaat door `TraceBuilder.Saneer` — dezelfde PII-arme sanering als de trace, geen tweede sanitizer. **Permanent**: de cleanup (`sp_CleanupClassificatieCorrectie`, `sp_CleanupEmailVerwerking` fase 2a, en `PostgresCleanupProcedures`) raakt alleen herkomst `Reply`. |
+| **Few-shot** | `HaalVoorbeeldenOpAsync` neemt alle gevalideerde, niet-afgewezen leermomenten mee (limiet 20); admin-voorbeelden staan eerst. Een admin-leermoment staat in de prompt als `Samenvatting "…" → is een <type>.` (of "was geclassificeerd als X, maar was eigenlijk Y" als het oorspronkelijke type bekend is). |
+| **Tester-pariteit** | De tester classificeert met dezelfde leermomenten als de processor (de trace meldt het aantal in de stap `leermomenten`) en schrijft niets. De enige uitzondering: is de teamlijst van de gekozen club nog helemaal leeg (bijvoorbeeld een democlub die nooit gesynchroniseerd is), dan bouwt de tester hem eenmalig op — anders resolvet niets. Een gevulde lijst blijft onaangeroerd; de nachtelijke sync en de processor houden hem actueel. |
+
+**Beperking:** het verwijderen van een alias laat geen auditregel achter in de tabel (de rij is weg); wie het
+deed staat alleen als pseudoniem (object-ID) in het applicatielog.
 
 ---
 
