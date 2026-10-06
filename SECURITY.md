@@ -426,26 +426,35 @@ een mail hoort hier niet en zou de permanente bewaring ongeldig maken.
   (pseudoniem, art. 4 lid 5), een momentopname van de weergavenaam en een UTC-tijdstip. Uitsluitend uit het
   Easy Auth-principal, nooit uit de requestbody, en geen e-mailadres — dezelfde regel als bij de feedbackmelder
   (#764). Grondslag: art. 6 lid 1 sub f (verantwoording van wijzigingen aan het zelflerende systeem). De
-  gegevens leven zolang de bijbehorende rij bestaat; een verwijderde alias neemt zijn auditspoor mee, en wie
-  hem verwijderde staat alleen als object-ID in het applicatielog (dus onder de logretentie).
+  gegevens leven zolang de bijbehorende rij bestaat; een verwijderde alias neemt zijn auditspoor mee. **De audit
+  staat uitsluitend in de tabelkolommen** (`AangemaaktDoor`/`BeoordeeldDoor` en de naammomentopname): de
+  leren-functionaliteit schrijft nergens een object-ID of naam naar het applicatielog — het log bevat alleen
+  rij-id's en tellingen. Een verwijdering laat dus bewust geen identificator achter buiten de tabel zelf.
 * **Wachtrij `planner.OnbekendeTeamTekst`.** Bevat per club een gesaneerde teamschrijfwijze (80 tekens,
   e-mailadressen en cijferreeksen gemaskeerd door `TraceBuilder.Saneer`, nooit de mailbody), tellers en een
   verwerking-id zonder foreign key. Een regel die 90 dagen niet meer is gezien wordt door
   `CleanupEmailVerwerking` verwijderd (beide tiers). RLS staat aan (migratie 039).
-* **Admin-leermomenten zijn permanent (besluit eigenaar 2026-10-06).** `sp_CleanupClassificatieCorrectie`,
-  fase 2a van `sp_CleanupEmailVerwerking` en `PostgresCleanupProcedures` raken uitsluitend herkomst `Reply`;
-  een admin-leermoment wordt dus nooit geanonimiseerd of verwijderd. Dat is verantwoord omdat de samenvatting
+* **Admin-leermomenten verlopen niet, maar zijn wel verwijderbaar (besluit eigenaar 2026-10-06; verwijderen
+  toegevoegd na review).** `sp_CleanupClassificatieCorrectie`, fase 2a van `sp_CleanupEmailVerwerking` en
+  `PostgresCleanupProcedures` raken uitsluitend herkomst `Reply`; een admin-leermoment wordt dus nooit
+  automatisch geanonimiseerd of verwijderd. Een beheerder kan hem wél expliciet verwijderen
+  (`DELETE /api/beheer/leermomenten/{id}`, knop "Verwijderen" met bevestiging in het scherm Leermomenten): alleen
+  herkomst `Admin` en alleen de eigen club (een rij van een andere club geeft 404, een `Reply`-rij 409, want die
+  valt onder de gewone retentie). Dat is verantwoord omdat de samenvatting
   (max 500 tekens) door de beheerder is geredigeerd én door `TraceBuilder.Saneer` is gehaald (geen e-mailadressen
   of nummers, geen mailbody), en omdat een leermoment zijn waarde verliest als hij verloopt. **Restrisico:**
   een naam van een persoon in vrije tekst herkent de sanering niet; de beheerder wordt daarvoor in het
-  formulier gewaarschuwd. Een leermoment kan via de API wel worden afgewezen (dan telt hij niet meer mee als
-  voorbeeld) maar niet worden verwijderd; een verwijderverzoek (art. 17) loopt via een beheerdersingreep in
-  de database.
+  formulier gewaarschuwd. Een verwijderverzoek (art. 17) voor een admin-leermoment is nu een gewone
+  beheerdershandeling in het scherm; het enige wat blijft is dat de verwijdering zelf geen auditregel
+  achterlaat (zie "De audit staat uitsluitend in de tabelkolommen").
+* **`HerkomstVerwerkingId` hoort bij de eigen club.** Een meegestuurd verwerking-id wordt in dezelfde SQL-instructie
+  tegen `planner.EmailVerwerking` van de eigen club gelezen; een id van een andere club of een onbestaand id wordt
+  NULL, zodat een beheerder via dit veld geen verwijzing naar andermans verwerking kan leggen.
 * **Geen harde FK.** `HerkomstVerwerkingId` (alias, leermoment) en `LaatsteVerwerkingId` (wachtrij) zijn losse
   getallen: een FK naar `planner.EmailVerwerking` zou de retentie-DELETE van die tabel laten falen (#424) of
   een permanente rij laten verdwijnen.
 * **Autorisatie.** Alle nieuwe endpoints (`POST /api/beheer/teamaliassen`, `POST /api/beheer/leermomenten`,
-  `GET/PUT /api/beheer/onbekende-teamteksten`, `GET /api/beheer/teams/keuzelijst`) lopen via
+  `DELETE /api/beheer/leermomenten/{id}`, `GET/PUT /api/beheer/onbekende-teamteksten`, `GET /api/beheer/teams/keuzelijst`) lopen via
   `AdminEndpoint.ExecuteAsync` (alleen rol `admin`); `EndpointAutorisatieTests` bewijst per tier 401/403/poortpassage.
   De e-mailtester schrijft niets (een lege teamlijst van de gekozen club wordt eenmalig opgebouwd).
 

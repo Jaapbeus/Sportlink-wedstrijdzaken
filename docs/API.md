@@ -127,10 +127,11 @@ verwerking plaats.
 | `GET` | `/beheer/leermomenten` | **Admin** | Classificatie-leermomenten ophalen (`?status=pending\|validated\|rejected`) |
 | `GET` | `/beheer/leermomenten/stats` | **Admin** | Aantallen leermomenten per status |
 | `POST` | `/beheer/leermomenten` | **Admin** | Leermoment toevoegen als beheerder (#1568): `{ "origineelVerzoekType"?, "juistVerzoekType", "samenvatting", "herkomstVerwerkingId"? }`. Direct gevalideerd, herkomst `Admin`, permanent. Samenvatting (max 500) wordt gesaneerd; de aanmaker komt uit het principal |
+| `DELETE` | `/beheer/leermomenten/{id}` | **Admin** | Leermoment van een beheerder (herkomst `Admin`) definitief verwijderen (AVG, #1568). Alleen eigen club: andere club of onbekend → `404`; een leermoment uit een beantwoorde mail (`Reply`) → `409` |
 | `PUT` | `/beheer/leermomenten/{id}/valideer` | **Admin** | Leermoment valideren of afwijzen (`{ "actie": "valideer"\|"afwijzen" }`) |
 | `GET` | `/beheer/teamaliassen` | **Admin** | Teamnaam-aliassen ophalen (`?status=pending\|validated\|rejected&limit=100`) — inclusief canonieke teamnaam |
 | `POST` | `/beheer/teams/herstel` | **Admin** | Canonieke teamlijst opnieuw opbouwen uit `his.teams` (Postgres-tier; `his.Teams` op de SQL Server-tier): volledige canonicalisatie + sleutelmigratie (#766). Idempotent. `409` als er nog niets gesynchroniseerd is — "niets te doen" is bewust geen `200` (#946) |
-| `POST` | `/beheer/teamaliassen` | **Admin** | Alias aanmaken als beheerder (#1568): `{ "ruweTekst", "teamId", "herkoppel"?, "herkomstVerwerkingId"?, "reden"? }`. Bron `CoordinatorCorrectie`, direct `validated`; `409` bij een bestaande alias voor een ander team tenzij `herkoppel: true` |
+| `POST` | `/beheer/teamaliassen` | **Admin** | Alias aanmaken als beheerder (#1568): `{ "ruweTekst", "teamId", "herkoppel"?, "bevestigDubbelzinnig"?, "herkomstVerwerkingId"?, "reden"? }`. Bron `CoordinatorCorrectie`, direct `validated`; `409` bij een bestaande alias voor een ander team tenzij `herkoppel: true`, en `409` (`code: "dubbelzinnig"`) als de tekst bij meerdere teams past tenzij `bevestigDubbelzinnig: true` |
 | `GET` | `/beheer/onbekende-teamteksten` | **Admin** | Wachtrij met teamteksten die de pipeline niet kon koppelen (`?status=open\|afgehandeld\|genegeerd&limit=100`) (#1568) |
 | `PUT` | `/beheer/onbekende-teamteksten/{id}/status` | **Admin** | Wachtrijregel op `open`, `afgehandeld` of `genegeerd` zetten (`{ "status": ... }`) |
 | `PUT` | `/beheer/teamaliassen/{id}/valideer` | **Admin** | Alias goedkeuren of afwijzen (`{ "status": "validated"\|"rejected" }`); legt wie en wanneer vast |
@@ -1015,8 +1016,10 @@ curl -X POST http://localhost:7094/api/beheer/teamaliassen -H "Content-Type: app
 |---|---|
 | Nieuwe alias | `201`, `status: "aangemaakt"` |
 | Alias met dezelfde sleutel bestond al voor hetzelfde team | `200`, `status: "bestaat-al"` (een niet-gevalideerde alias wordt gevalideerd) |
-| Alias bestaat voor een ander team, `herkoppel` ontbreekt of `false` | `409` met `bestaandeAliasId`, `bestaandTeamId`, `bestaandTeamnaam`, `bestaandeStatus` |
-| Idem met `"herkoppel": true` | `200`, `status: "herkoppeld"` |
+| Alias bestaat voor een ander team, `herkoppel` ontbreekt of `false` | `409`, `code: "conflict"`, met `bestaandeAliasId`, `bestaandTeamId`, `bestaandTeamnaam`, `bestaandeStatus` en `aantalRijen` (hoeveel alias-rijen herkoppelen raakt) |
+| Idem met `"herkoppel": true` | `200`, `status: "herkoppeld"`; raakt de bestaande rij en rijen met dezelfde sleutel die niet uit de Sportlink-synchronisatie komen (bron `Sync` blijft ongemoeid) |
+| De tekst past zonder alias bij meerdere teams (bijv. `13-1` → JO13-1 én MO13-1), `bevestigDubbelzinnig` ontbreekt of `false` | `409`, `code: "dubbelzinnig"`, met `kandidaten`. Met `"bevestigDubbelzinnig": true` wordt de alias toch aangemaakt: voortaan gaan álle mails met deze schrijfwijze naar dit team |
+| Een gelijktijdige aanroep maakte dezelfde alias net eerder aan | `409`, `code: "bestaat-al"` (geen `500`) |
 | Lege tekst, `teamId` ontbreekt, tekst > 200 tekens, geen herkenbare teamaanduiding | `400` |
 | Onbekend of inactief team (van deze club) | `404` |
 
@@ -1068,8 +1071,21 @@ curl -X DELETE http://localhost:7094/api/beheer/teamaliassen/12
 { "deleted": true, "id": 12 }
 ```
 
-Een verwijderde rij laat geen auditregel achter in de tabel; wie het deed staat (als pseudoniem, alleen de
-object-ID) in het applicatielog.
+Een verwijderde rij laat geen auditregel achter in de tabel, en het applicatielog bevat alleen het alias-id: geen
+object-ID of naam van de beheerder (AVG).
+
+### DELETE /api/beheer/leermomenten/{id}
+
+```bash
+curl -X DELETE http://localhost:7094/api/beheer/leermomenten/5
+```
+
+```json
+{ "deleted": true, "id": 5 }
+```
+
+Verwijdert uitsluitend een door een beheerder toegevoegd leermoment (herkomst `Admin`) van de eigen club. Een id van
+een andere club of een onbestaand id → `404`; een leermoment uit een beantwoorde mail (herkomst `Reply`) → `409`.
 
 ---
 

@@ -3755,7 +3755,12 @@
           "herkoppel": {
             "type": "boolean",
             "default": false,
-            "description": "Alleen `true` als de beheerder expliciet een bestaande alias met dezelfde genormaliseerde tekst naar dit team wil verplaatsen."
+            "description": "Alleen `true` als de beheerder expliciet een bestaande alias met dezelfde genormaliseerde tekst naar dit team wil\nverplaatsen. Raakt de bestaande rij en rijen met dezelfde sleutel die niet uit de Sportlink-synchronisatie komen\n(bron `Sync` blijft ongemoeid); het `409`-antwoord noemt het aantal rijen (`aantalRijen`).\n"
+          },
+          "bevestigDubbelzinnig": {
+            "type": "boolean",
+            "default": false,
+            "description": "Alleen `true` na een expliciete bevestiging dat de tekst zonder alias bij meerdere teams past (bijv. `13-1`\nvoor JO13-1 én MO13-1) en dat voortaan álle mails met deze schrijfwijze naar het gekozen team gaan.\n"
           },
           "herkomstVerwerkingId": {
             "type": "integer",
@@ -10134,6 +10139,79 @@
         }
       }
     },
+    "/beheer/leermomenten/{id}": {
+      "delete": {
+        "tags": [
+          "beheer"
+        ],
+        "operationId": "deleteLeermoment",
+        "summary": "Leermoment van een beheerder verwijderen",
+        "description": "Verwijdert een door een beheerder toegevoegd leermoment (herkomst `Admin`) definitief, zodat de AI het niet meer\nals voorbeeld gebruikt (AVG: wat een beheerder zelf invoerde moet weer weg kunnen). Uitsluitend binnen de eigen\nclub (`X-Club-Code`); een id van een andere club geeft `404`. Een leermoment uit een beantwoorde mail\n(herkomst `Reply`) geeft `409`: die valt onder de gewone retentie.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Leermoment ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Verwijderd",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deleted": {
+                      "type": "boolean"
+                    },
+                    "id": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Het leermoment komt uit een beantwoorde mail (herkomst `Reply`) en kan niet worden verwijderd",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
     "/beheer/leermomenten/{id}/valideer": {
       "put": {
         "tags": [
@@ -10287,7 +10365,7 @@
         ],
         "operationId": "createTeamAlias",
         "summary": "Teamalias aanmaken (beheerder)",
-        "description": "Koppelt een teamtekst aan een team (#1568 deel C): bron `CoordinatorCorrectie`, direct `validated`. De\ngenormaliseerde sleutel komt uit `TeamNaamNormalisatie` (de enige normalisatieplek). Bestaat al een alias\nmet dezelfde genormaliseerde tekst (of dezelfde ruwe tekst): voor hetzelfde team → `200` met status\n`bestaat-al` (een niet-gevalideerde alias wordt dan gevalideerd); voor een ander team → `409`, tenzij\n`herkoppel` expliciet `true` is (dan `200`, status `herkoppeld`). Een open regel in de wachtrij met\nonbekende teamteksten met dezelfde sleutel wordt automatisch `afgehandeld`. De aanmaker (object-ID +\nnaammomentopname, geen e-mailadres) komt uit het Easy Auth-principal en wordt samen met de UTC-aanmaaktijd\nvastgelegd.\n",
+        "description": "Koppelt een teamtekst aan een team (#1568 deel C): bron `CoordinatorCorrectie`, direct `validated`. De\ngenormaliseerde sleutel komt uit `TeamNaamNormalisatie` (de enige normalisatieplek). Bestaat al een alias\nmet dezelfde genormaliseerde tekst (of dezelfde ruwe tekst): voor hetzelfde team → `200` met status\n`bestaat-al` (een niet-gevalideerde alias wordt dan gevalideerd); voor een ander team → `409`, tenzij\n`herkoppel` expliciet `true` is (dan `200`, status `herkoppeld`). Past de tekst zonder alias bij meerdere teams\n(bijv. `13-1`), dan volgt `409` met code `dubbelzinnig` tenzij `bevestigDubbelzinnig` `true` is. Een\nunique-violation door een gelijktijdige aanroep is `409` met code `bestaat-al`, geen `500`. Een open regel in de wachtrij met\nonbekende teamteksten met dezelfde sleutel wordt automatisch `afgehandeld`. De aanmaker (object-ID +\nnaammomentopname, geen e-mailadres) komt uit het Easy Auth-principal en wordt samen met de UTC-aanmaaktijd\nvastgelegd.\n",
         "security": [
           {
             "easyAuth": []
@@ -10337,14 +10415,33 @@
             "$ref": "#/components/responses/NotFound"
           },
           "409": {
-            "description": "De schrijfwijze hoort al bij een ander team en `herkoppel` was niet `true`",
+            "description": "Drie varianten, te onderscheiden aan `code`: `conflict` (de schrijfwijze hoort al bij een ander team en\n`herkoppel` was niet `true`), `dubbelzinnig` (de tekst past bij meerdere teams en `bevestigDubbelzinnig` was\nniet `true`; `kandidaten` noemt de teams) en `bestaat-al` (een gelijktijdige aanroep maakte dezelfde alias net\neerder aan; unique-violation).\n",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "conflict",
+                        "dubbelzinnig",
+                        "bestaat-al"
+                      ]
+                    },
                     "error": {
                       "type": "string"
+                    },
+                    "kandidaten": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Alleen bij `dubbelzinnig`."
+                    },
+                    "aantalRijen": {
+                      "type": "integer",
+                      "description": "Alleen bij `conflict`; het aantal alias-rijen dat herkoppelen raakt."
                     },
                     "bestaandeAliasId": {
                       "type": "integer"
@@ -10452,7 +10549,7 @@
         ],
         "operationId": "deleteTeamAlias",
         "summary": "Teamalias verwijderen",
-        "description": "Verwijdert de alias definitief. Uitsluitend binnen de eigen club (`X-Club-Code`). Wie het deed staat\n(als pseudoniem) in het applicatielog; de tabel bewaart geen auditregel van een verwijderde rij.\nDe alias kan opnieuw als `pending` verschijnen wanneer de schrijfwijze weer wordt\naangetroffen.\n",
+        "description": "Verwijdert de alias definitief. Uitsluitend binnen de eigen club (`X-Club-Code`). Er staat nergens een\nidentificator van de beheerder in het log; de tabel bewaart geen auditregel van een verwijderde rij.\nDe alias kan opnieuw als `pending` verschijnen wanneer de schrijfwijze weer wordt\naangetroffen.\n",
         "security": [
           {
             "easyAuth": []

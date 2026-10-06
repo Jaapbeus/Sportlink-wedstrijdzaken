@@ -134,7 +134,16 @@ Postgres-definities: `Database.Postgres/migrations/003_admin_tables.sql` (tabell
    `TeamNaamNormalisatie.NormaliseerVoorVergelijking` — er is **geen** tweede normalisatieplek bijgekomen.
 3. Bestaat de sleutel al voor een ander team, dan volgt een `409`; **herkoppelen gebeurt alleen als de
    beheerder dat expliciet aangeeft** (`herkoppel: true`). Zo overschrijft een alias nooit stilzwijgend een
-   bestaande koppeling — ook niet een `Sync`-alias die uit echte Sportlink-data komt.
+   bestaande koppeling. Ook mét `herkoppel` blijven rijen met bron `Sync` (echte Sportlink-data) ongemoeid: het
+   verplaatst de ene bestaande rij en rijen met dezelfde sleutel met een andere bron, en het `409` noemt vooraf
+   het aantal rijen (`aantalRijen`).
+   Een tekst die zonder alias bij meerdere teams past (`MeerdereKandidaten` in de resolver, bijv. `13-1` →
+   JO13-1 én MO13-1) geeft een `409` met `code: "dubbelzinnig"` en de kandidaten, tenzij de beheerder
+   `bevestigDubbelzinnig: true` meestuurt: een alias beslist daarna voor *alle* mails met die schrijfwijze, dus
+   een stille keuze is hier precies de gok die regel 3 van de resolver verbiedt. De store gebruikt daarvoor
+   dezelfde volgorde als de resolver (exacte teamnaam wint, dan leeftijd+teamnummer) via
+   `AliasDubbelzinnigheid` in `Planner.Shared`. Een unique-violation bij gelijktijdig aanmaken wordt `409`
+   met `code: "bestaat-al"`.
 4. De alias is direct `validated` (de beheerder ís de goedkeuring; dit is geen automatisch geleerde gok, dus
    de zelfversterkingsregel van "Ambiguïteit is echt" geldt niet) en zet de open wachtrijregel met dezelfde
    sleutel op `afgehandeld`.

@@ -1142,7 +1142,13 @@ wie hem aanmaakte en wanneer.
 
 - Hoort die schrijfwijze al bij een **ander** team, dan weigert het systeem dat met een melding en toont
   het bij welk team hij nu hoort. Pas als u op **Herkoppel naar dit team** klikt, wordt hij verplaatst. Zo
-  overschrijft u nooit per ongeluk een bestaande koppeling.
+  overschrijft u nooit per ongeluk een bestaande koppeling. De melding noemt hoeveel alias-rijen het
+  herkoppelen raakt; aliassen die uit de Sportlink-synchronisatie komen blijven altijd ongemoeid.
+- **Past de tekst bij meerdere teams?** Een tekst zonder geslacht-letter, zoals `13-1`, kan zowel JO13-1 als
+  MO13-1 zijn. Het systeem weigert dan eerst met de waarschuwing **Let op, deze schrijfwijze is dubbelzinnig**
+  en noemt de teams. Klikt u toch op *Ja, alle mails met deze schrijfwijze naar dit team*, dan gaan **álle**
+  mails met precies deze schrijfwijze voortaan naar het gekozen team — ook die voor het andere team. Doe dit
+  alleen als u zeker weet dat de schrijfwijze in uw club altijd hetzelfde team bedoelt.
 - Hoort hij al bij **hetzelfde** team, dan verandert er niets (stond hij nog op *te beoordelen*, dan wordt hij
   goedgekeurd).
 
@@ -1244,8 +1250,9 @@ samenvatting** van het bericht.
   een beheerder gaan voor op die uit replies.
 - In de kolom **Herkomst** staat *Beheerder* (met uw naam en het moment) of *Reply*.
 - Leermomenten van een beheerder worden **nooit automatisch opgeruimd**; leermomenten uit replies wel
-  (samenvatting na 30 dagen leeg, verwijderd na 90 dagen). Wilt u er één kwijt, dan is dat een
-  beheerdersingreep (zie de privacyparagraaf in `SECURITY.md`).
+  (samenvatting na 30 dagen leeg, verwijderd na 90 dagen). Wilt u een leermoment van een beheerder kwijt,
+  klik dan bij die regel op **Verwijderen** en bevestig: het is dan definitief weg en de AI gebruikt het niet
+  meer. Een leermoment uit een reply heeft die knop niet (dat valt onder de gewone opruiming).
 
 **Twijfelt u?** Net als bij Teamaliassen geldt: keur alleen goed wat u zeker weet. Een gevalideerd
 leermoment stuurt namelijk hoe toekomstige e-mail wordt afgehandeld.
@@ -1258,6 +1265,7 @@ leermoment stuurt namelijk hoe toekomstige e-mail wordt afgehandeld.
 | `GET /api/beheer/leermomenten/stats` | De tellers boven aan de pagina |
 | `POST /api/beheer/leermomenten` | Een leermoment als beheerder toevoegen |
 | `PUT /api/beheer/leermomenten/{id}/valideer` | Eén leermoment valideren of afwijzen |
+| `DELETE /api/beheer/leermomenten/{id}` | Een leermoment van een beheerder verwijderen |
 
 ---
 
@@ -1613,6 +1621,12 @@ bewaard. Is een review-ontvanger ingesteld (`EmailReviewRecipient`), dan krijgt 
 waarschuwing dat het niet naar de afzender is gegaan. Open de **Trace** bij het bericht: de stap *Zekerheidspoort*
 toont waarom het is tegengehouden. Handel de mail zelf af, of koppel een alias (zie hieronder) zodat dezelfde mail
 voortaan wel automatisch wordt beantwoord.
+
+**Zonder review-ontvanger is de mail alleen hier terug te vinden.** Een tegengehouden mail staat als gelezen in de
+inbox. Is er geen `EmailReviewRecipient` ingesteld, dan ziet u hem alleen in de teller **Wacht op beoordeling
+(Review)** op Instellingen (kaart *Email verwerking*; telt alle Review-berichten, ook van vóór de laatste 24 uur,
+met een knop naar de berichten en hun trace) en aan het Outlook-label *Geen AI antwoord*. Loop die teller dus
+regelmatig na, of stel een review-ontvanger in.
 
 **Schakelaar:** Instellingen → *E-mailantwoorden* → *Onzekere antwoorden eerst laten beoordelen
 (zekerheidspoort)*. Staat standaard **aan**. Zet u hem uit, dan gaan ook onzekere antwoorden weer automatisch

@@ -301,7 +301,14 @@ oordeel **Onzeker** of **Mislukt**, dan gebeurt het volgende, op beide tiers ide
   geregistreerd; `isbeantwoord` blijft 0 en `VerstuurdNaar` blijft leeg.
 * De rij krijgt status **`Review`** met het voorstel in `AntwoordEmail` (dezelfde 30-dagenretentie als
   bij review-mode). Het bericht krijgt het Outlook-label *Geen AI antwoord* en wordt als gelezen
-  gemarkeerd, zodat de volgende poll het niet opnieuw oppakt (idempotentie, #715).
+  gemarkeerd, zodat de volgende poll het niet opnieuw oppakt (idempotentie, #715). **Bewust niet ongelezen
+  laten:** `Review` is geen definitieve status voor de idempotentiecheck, dus een ongelezen Review-mail zou
+  elke poll opnieuw worden verwerkt (tot drie pogingen, met nieuwe AI-aanroepen en de kans op een automatisch
+  antwoord zodra de uitkomst wijzigt) en de tien-oudste-ongelezen-wachtrij bezetten. Zichtbaarheid loopt
+  daarom via de teller **Wacht op beoordeling (Review)** op Instellingen (kaart *Email verwerking*, alle
+  Review-berichten ongeacht leeftijd, met knop naar de berichtenlijst en trace) en de Outlook-categorie.
+  **Zonder ingestelde `EmailReviewRecipient`** staat een tegengehouden mail dus alleen in die teller, in het
+  e-maillog en onder de Outlook-categorie — er gaat geen mail naar een mens.
 * Is `EmailReviewRecipient` geconfigureerd, dan krijgt die het voorstel met bovenaan de vaste regel
   *"LET OP: dit antwoord is NIET naar de afzender verstuurd. De zekerheidspoort hield het tegen ..."*.
   De mail bevat geen trace-details of persoonsgegevens; de reden staat in de trace.
@@ -1066,15 +1073,17 @@ methoden nemen geen mailbody of afzender aan. Toegestaan: teamschrijfwijzen, nam
 **Zekerheidsoordeel.** `ZekerheidsBeoordeling` markeert een resultaat als onzeker bij: een verzoektype
 dat een team nodig heeft (beschikbaarheid, herplannen) zonder herkend team (ook bij
 `MeerdereKandidaten`) en zonder wedstrijd via de tegenstander op de gevraagde datum; een opponent-pad
-zonder wedstrijd; sjabloon `teamOnbekend` of `datumOnbekend`; of een andere mislukte stap. Bij twijfel
-onzeker. Deel D gebruikt dit als zekerheidspoort (§1e); in de tester is het uitsluitend informatief (de tester verstuurt nooit).
+zonder wedstrijd; een herplanverzoek zonder gevonden wedstrijd voor team en datum of zonder team/datum (stap
+`herplan-uitkomst`, uitkomst `geen-wedstrijd` of `onvoldoende-gegevens`; een geslaagde herplan blijft zeker);
+sjabloon `teamOnbekend` of `datumOnbekend`; of een andere mislukte stap. Bij twijfel onzeker. Deel D gebruikt dit als zekerheidspoort (§1e); in de tester is het uitsluitend informatief (de tester verstuurt nooit).
 
 **Opslag (deel B).** `EmailProcessorFunction` maakt per bericht een `TraceBuilder`, geeft hem mee aan
 `VerwerkMetPlannerAsync`/`BouwTemplateAntwoord` en bewaart de trace daarna in `planner.EmailTrace`
 (Postgres: `planner.emailtrace`, migratie `038_planner_emailtrace.sql`; SQL Server:
 `Database/planner/Tables/EmailTrace.sql` + `Script.PostDeployment1.sql`). Ook een bericht dat
-buiten scope valt krijgt een korte trace (classificatie + reden), en een verwerking die faalt bewaart
-de trace tot en met de mislukte stap. Per verwerking één rij (`UNIQUE (VerwerkingId)`), dus een retry
+buiten scope valt krijgt een korte trace (classificatie + reden), en een verwerking die faalt ná het aanmaken
+van de trace bewaart de trace tot en met de mislukte stap. Een fout vóór dat punt (bijvoorbeeld een mislukte
+classificatie of een bericht dat nog niet is geregistreerd) levert dus géén trace op. Per verwerking één rij (`UNIQUE (VerwerkingId)`), dus een retry
 vervangt de eerdere trace. Kolommen: `VerwerkingId`, `ClubCode`, `Aangemaakt` (UTC), `VerzoekType`,
 `Zekerheid` (`Zeker`/`Onzeker`/`Mislukt`), `SjabloonSleutel`, `TraceJson` en `AppVersie` (voor
 reproduceerbaarheid: welke code nam de beslissing).

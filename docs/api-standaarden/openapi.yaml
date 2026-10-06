@@ -2940,7 +2940,16 @@ components:
         herkoppel:
           type: boolean
           default: false
-          description: Alleen `true` als de beheerder expliciet een bestaande alias met dezelfde genormaliseerde tekst naar dit team wil verplaatsen.
+          description: |
+            Alleen `true` als de beheerder expliciet een bestaande alias met dezelfde genormaliseerde tekst naar dit team wil
+            verplaatsen. Raakt de bestaande rij en rijen met dezelfde sleutel die niet uit de Sportlink-synchronisatie komen
+            (bron `Sync` blijft ongemoeid); het `409`-antwoord noemt het aantal rijen (`aantalRijen`).
+        bevestigDubbelzinnig:
+          type: boolean
+          default: false
+          description: |
+            Alleen `true` na een expliciete bevestiging dat de tekst zonder alias bij meerdere teams past (bijv. `13-1`
+            voor JO13-1 én MO13-1) en dat voortaan álle mails met deze schrijfwijze naar het gekozen team gaan.
         herkomstVerwerkingId:
           type: integer
           nullable: true
@@ -7342,6 +7351,55 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /beheer/leermomenten/{id}:
+    delete:
+      tags: [beheer]
+      operationId: deleteLeermoment
+      summary: Leermoment van een beheerder verwijderen
+      description: |
+        Verwijdert een door een beheerder toegevoegd leermoment (herkomst `Admin`) definitief, zodat de AI het niet meer
+        als voorbeeld gebruikt (AVG: wat een beheerder zelf invoerde moet weer weg kunnen). Uitsluitend binnen de eigen
+        club (`X-Club-Code`); een id van een andere club geeft `404`. Een leermoment uit een beantwoorde mail
+        (herkomst `Reply`) geeft `409`: die valt onder de gewone retentie.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Leermoment ID
+      responses:
+        '200':
+          description: Verwijderd
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+                  id:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Het leermoment komt uit een beantwoorde mail (herkomst `Reply`) en kan niet worden verwijderd
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /beheer/leermomenten/{id}/valideer:
     put:
       tags: [beheer]
@@ -7451,7 +7509,9 @@ paths:
         genormaliseerde sleutel komt uit `TeamNaamNormalisatie` (de enige normalisatieplek). Bestaat al een alias
         met dezelfde genormaliseerde tekst (of dezelfde ruwe tekst): voor hetzelfde team → `200` met status
         `bestaat-al` (een niet-gevalideerde alias wordt dan gevalideerd); voor een ander team → `409`, tenzij
-        `herkoppel` expliciet `true` is (dan `200`, status `herkoppeld`). Een open regel in de wachtrij met
+        `herkoppel` expliciet `true` is (dan `200`, status `herkoppeld`). Past de tekst zonder alias bij meerdere teams
+        (bijv. `13-1`), dan volgt `409` met code `dubbelzinnig` tenzij `bevestigDubbelzinnig` `true` is. Een
+        unique-violation door een gelijktijdige aanroep is `409` met code `bestaat-al`, geen `500`. Een open regel in de wachtrij met
         onbekende teamteksten met dezelfde sleutel wordt automatisch `afgehandeld`. De aanmaker (object-ID +
         naammomentopname, geen e-mailadres) komt uit het Easy Auth-principal en wordt samen met de UTC-aanmaaktijd
         vastgelegd.
@@ -7485,14 +7545,29 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: De schrijfwijze hoort al bij een ander team en `herkoppel` was niet `true`
+          description: |
+            Drie varianten, te onderscheiden aan `code`: `conflict` (de schrijfwijze hoort al bij een ander team en
+            `herkoppel` was niet `true`), `dubbelzinnig` (de tekst past bij meerdere teams en `bevestigDubbelzinnig` was
+            niet `true`; `kandidaten` noemt de teams) en `bestaat-al` (een gelijktijdige aanroep maakte dezelfde alias net
+            eerder aan; unique-violation).
           content:
             application/json:
               schema:
                 type: object
                 properties:
+                  code:
+                    type: string
+                    enum: [conflict, dubbelzinnig, bestaat-al]
                   error:
                     type: string
+                  kandidaten:
+                    type: array
+                    items:
+                      type: string
+                    description: Alleen bij `dubbelzinnig`.
+                  aantalRijen:
+                    type: integer
+                    description: Alleen bij `conflict`; het aantal alias-rijen dat herkoppelen raakt.
                   bestaandeAliasId:
                     type: integer
                   bestaandTeamId:
@@ -7560,8 +7635,8 @@ paths:
       operationId: deleteTeamAlias
       summary: Teamalias verwijderen
       description: |
-        Verwijdert de alias definitief. Uitsluitend binnen de eigen club (`X-Club-Code`). Wie het deed staat
-        (als pseudoniem) in het applicatielog; de tabel bewaart geen auditregel van een verwijderde rij.
+        Verwijdert de alias definitief. Uitsluitend binnen de eigen club (`X-Club-Code`). Er staat nergens een
+        identificator van de beheerder in het log; de tabel bewaart geen auditregel van een verwijderde rij.
         De alias kan opnieuw als `pending` verschijnen wanneer de schrijfwijze weer wordt
         aangetroffen.
       security:
