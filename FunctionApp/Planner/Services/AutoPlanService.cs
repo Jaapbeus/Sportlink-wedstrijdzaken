@@ -24,7 +24,7 @@ internal static class AutoPlanService
         var (alleWedstrijden, velden, beschikbaarheid, speeltijden, veldInfoLookup, voorkeurLookup, teamBuffers, voorkeurVelden) =
             await LoadAutoPlanBronnenAsync(datum, clubCode, isAllstars);
 
-        var (gesorteerd, doelen) = BepaalEnSorteerWedstrijden(alleWedstrijden, isAllstars, voorkeurVelden, voorkeurLookup, speeltijden);
+        var (gesorteerd, doelen) = BepaalEnSorteerWedstrijden(alleWedstrijden, isAllstars, voorkeurVelden, voorkeurLookup, speeltijden, clubCode);
 
         var scheduler = new FieldScheduler(beschikbaarheid, velden, buffer, teamBuffers);
         var items = PlanWedstrijdItems(gesorteerd, doelen, scheduler, speeltijden, veldInfoLookup, teamBuffers, buffer);
@@ -55,7 +55,8 @@ internal static class AutoPlanService
         bool isAllstars,
         Dictionary<string, TeamVoorkeurVeld> voorkeurVelden,
         Dictionary<string, List<(TimeOnly Tijd, int Prioriteit)>> voorkeurLookup,
-        Dictionary<string, Speeltijd> speeltijden)
+        Dictionary<string, Speeltijd> speeltijden,
+        string clubCode)
     {
         // Per wedstrijd het planningsdoel bepalen volgens de vastgelegde rangorde (#666):
         //   1. Regels     — dbo.TeamRegels: buffers (altijd van kracht) en VoorkeurVeld (veld + evt. tijd)
@@ -65,7 +66,7 @@ internal static class AutoPlanService
         // claimen. Dát is wat conflicten tussen teams oplost: wie eerder verwerkt wordt, krijgt de plek.
         var doelen = alleWedstrijden.ToDictionary(
             w => w,
-            w => BepaalPlanDoel(w, isAllstars, voorkeurVelden, voorkeurLookup, speeltijden));
+            w => BepaalPlanDoel(w, isAllstars, voorkeurVelden, voorkeurLookup, speeltijden, clubCode));
 
         var gesorteerd = alleWedstrijden
             .OrderBy(w => doelen[w].Laag)          // regels vóór voorkeuren vóór defaults
@@ -444,10 +445,11 @@ internal static class AutoPlanService
         bool isAllstars,
         Dictionary<string, TeamVoorkeurVeld> voorkeurVelden,
         Dictionary<string, List<(TimeOnly Tijd, int Prioriteit)>> voorkeurLookup,
-        Dictionary<string, Speeltijd> speeltijden)
+        Dictionary<string, Speeltijd> speeltijden,
+        string? clubCode = null)
         => AutoPlanRegels.BepaalPlanDoel(
             wedstrijd.TeamNaam, wedstrijd.LeeftijdsCategorie, isAllstars,
-            voorkeurVelden, voorkeurLookup, speeltijden);
+            voorkeurVelden, voorkeurLookup, speeltijden, clubCode);
 
     /// <inheritdoc cref="AutoPlanRegels.BepaalVoorkeurStatus"/>
     internal static string BepaalVoorkeurStatus(string? voorkeurTijd, int? afwijkingMinuten)

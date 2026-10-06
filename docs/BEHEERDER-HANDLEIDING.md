@@ -227,6 +227,12 @@ Veld optimalisatie heeft **twee losse kolommen** die makkelijk verward worden (#
 Achter de tijd staat de herkomst: **regel** (teamregel voorkeursveld met tijd), **team** (eigen
 voorkeurstijd) of **standaard** (standaardtijd van de leeftijdscategorie).
 
+**Afwijkende tijd voor één team.** Leg in **Speeltijden** de standaardtijd per leeftijdscategorie vast
+(bijvoorbeeld JO23 om 12:00) en voeg in **Voorkeurstijden** alleen de teams toe die daarvan afwijken
+(bijvoorbeeld JO23-4 om 15:30). De planner zoekt eerst het specifieke team; is dat er niet, dan geldt de
+standaardtijd van de categorie. Het maakt niet uit hoe het team geschreven is: `JO23-4`, `O23-4` en de
+Sportlink-notatie met clubnaam ervoor zijn hetzelfde team.
+
 > **Waarom twee kolommen?** Tot #666 was er één groene "OK"-badge die alleen keek of de planner iets
 > verplaatste. Een wedstrijd die bleef staan toonde dus "OK", ook als die 60 minuten van de gewenste
 > tijd af lag. Die twee vragen zijn nu gescheiden.

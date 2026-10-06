@@ -93,7 +93,7 @@ internal static class AutoPlanService
         // Paren i.p.v. een dictionary — zie de klasse-doc-comment over record-waardegelijkheid.
         var metDoel = alleWedstrijden
             .Select(w => (Wedstrijd: w, Doel: AutoPlanRegels.BepaalPlanDoel(
-                w.TeamNaam, w.LeeftijdsCategorie, isAllstars, voorkeurVelden, voorkeurLookup, speeltijden)))
+                w.TeamNaam, w.LeeftijdsCategorie, isAllstars, voorkeurVelden, voorkeurLookup, speeltijden, clubCode)))
             .OrderBy(p => p.Doel.Laag)                 // regels vóór voorkeuren vóór defaults
             .ThenBy(p => p.Doel.Prioriteit)            // laag getal = belangrijker
             .ThenBy(p => p.Doel.DoelTijd.HasValue

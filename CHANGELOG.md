@@ -20,6 +20,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ### Fixed
 - Speeltijden: **Bewerken** opent het formulier nu direct onder de regel die u bewerkt, en **Nieuwe categorie** bovenaan de tabel. Voorheen verscheen het formulier onderaan een lange pagina, buiten beeld, waardoor het leek alsof de knop niets deed (#1543).
+- Een e-mailverzoek met een team zonder J/M ervoor (bijvoorbeeld "14-2") kreeg het antwoord "Helaas geen veld beschikbaar", ook als er ruimte genoeg was. Als er maar één passend team is, wordt de leeftijdscategorie nu van dat team overgenomen en wordt de beschikbaarheid echt gecontroleerd (#1545).
+- Een voorkeurstijd of voorkeursveld voor één team (bijvoorbeeld JO23-4 om 15:30) werd niet gevonden als Sportlink het team anders schrijft ("O23-4" met de clubnaam ervoor). Alle schrijfwijzen van hetzelfde team vinden nu de instelling; teams zonder eigen voorkeurstijd houden de standaardtijd van hun leeftijdscategorie (#1545).
 
 ## [3.11.1.0] — 2026-10-04
 
