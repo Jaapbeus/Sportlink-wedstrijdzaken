@@ -982,6 +982,45 @@ kolom overleeft de AVG-anonimisering, `VerstuurdNaar` niet (#718).
 
 ---
 
+### 3c. Beslissingstrace (#1568)
+
+Een mail kan een antwoord krijgen dat "verkeerd" voelt (bijvoorbeeld het sjabloon `teamOnbekend`
+bij een oefenwedstrijd tussen twee teams in een niet-herkende schrijfwijze) zonder dat zichtbaar is
+*waarom*. De beslissingstrace legt de keuzes van de pipeline vast als geordende stappen.
+
+**Deel A (dit document): in-memory model, instrumentatie, e-mailtester.** Er is nog geen
+databasepersistentie; de echte pipeline (`EmailProcessorFunction`) geeft geen trace mee.
+
+| Onderdeel | Plek |
+|---|---|
+| Model, builder, JSON, sanitize | `Planner.Shared/Email/Trace/` (`BeslissingsTrace`, `TraceBuilder`) |
+| Zekerheidsoordeel (pure functie) | `ZekerheidsBeoordeling.Beoordeel` |
+| Instrumentatie | `BerichtPipeline.VerwerkMetPlannerAsync` en `BouwTemplateAntwoord` op beide tiers: optionele parameter `TraceBuilder? trace = null` (zonder trace gedraagt alles zich als voorheen) |
+| Weergave | e-mailtester: `trace` in de respons van `POST /api/test/email` en de lijst in `/email-tester` |
+
+**Stappen** (stabiele codes, in volgorde): `classificatie` (type, welke velden aanwezig ja/nee),
+`team-herkenning`, `tegenstander-herkenning`, `team-wissel`, `opponent-pad` (#1139: tak en of een
+wedstrijd is gevonden), `opponent-team-herkenning`, `datum`, `tak` (plannerresponse-vlag),
+`sjabloon` (database-override of ingebouwd, met sleutel) en `eindoordeel`. Elke stap heeft een
+zekerheid (`Zeker`, `Onzeker`, `Mislukt`).
+
+**PII-arm, afgedwongen op één plek.** Alle tekst loopt door `TraceBuilder.Saneer`: control-chars weg,
+e-mailadressen en cijferreeksen van negen of meer cijfers gemaskeerd, afgekapt op 80 tekens. De typed
+methoden nemen geen mailbody of afzender aan. Toegestaan: teamschrijfwijzen, namen van kandidaat-teams
+(clubteams), enum-waarden, datums, tellingen, bron/confidence en de sjabloonsleutel.
+
+**Zekerheidsoordeel.** `ZekerheidsBeoordeling` markeert een resultaat als onzeker bij: een verzoektype
+dat een team nodig heeft (beschikbaarheid, herplannen) zonder herkend team (ook bij
+`MeerdereKandidaten`) en zonder wedstrijd via de tegenstander op de gevraagde datum; een opponent-pad
+zonder wedstrijd; sjabloon `teamOnbekend` of `datumOnbekend`; of een andere mislukte stap. Bij twijfel
+onzeker. Deel D gebruikt dit als zekerheidspoort; in de tester is het uitsluitend informatief.
+
+**Bekend verschil tussen de tiers (niet door #1568 veroorzaakt):** `BouwTemplateAntwoord` op de
+Postgres-tier kent de plannerresponse-tak `wedstrijdAlIngepland` niet, terwijl `VerwerkMetPlannerAsync`
+hem wel kan teruggeven.
+
+---
+
 ## 4. Handtekening en aanhef
 
 **Aanhef** is tijdsgebonden, berekend uit UTC in de Nederlandse tijdzone:

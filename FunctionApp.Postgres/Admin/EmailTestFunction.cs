@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Planner.Shared.Email.Trace;
 using Newtonsoft.Json;
 using Npgsql;
 using FunctionApp.Postgres.Email;
@@ -103,10 +104,11 @@ public static class EmailTestFunction
                     await TeamCanonicalisatieService.RefreshAsync(PostgresDatabaseConfig.ConnectionString, clubCode, log);
                     var teamResolver = new TeamResolver(new TeamCandidateRepository(PostgresDatabaseConfig.ConnectionString));
 
+                    var trace = new TraceBuilder();
                     var plannerResponseJson = await BerichtPipeline.VerwerkMetPlannerAsync(
-                        classificatie, fakeEmail, log, teamResolver, clubCode, clubSettings);
+                        classificatie, fakeEmail, log, teamResolver, clubCode, clubSettings, trace);
                     var (voorbeeldOnderwerp, voorbeeldBody) = await BerichtPipeline.BouwTemplateAntwoord(
-                        classificatie, plannerResponseJson, fakeEmail, log, clubSettings, clubCode);
+                        classificatie, plannerResponseJson, fakeEmail, log, clubSettings, clubCode, trace);
 
                     return new OkObjectResult(new
                     {
@@ -114,6 +116,7 @@ public static class EmailTestFunction
                         opmerking = "Dit verstuurt niets en slaat niets op",
                         classificatie,
                         plannerResponse = System.Text.Json.JsonDocument.Parse(plannerResponseJson).RootElement,
+                        trace = trace.Bouw().ToJsonElement(),
                         voorbeeldAntwoord = new
                         {
                             onderwerp = voorbeeldOnderwerp,

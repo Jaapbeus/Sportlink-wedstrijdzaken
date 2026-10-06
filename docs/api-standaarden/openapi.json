@@ -2644,6 +2644,59 @@
                 "type": "string"
               }
             }
+          },
+          "trace": {
+            "type": "object",
+            "description": "Beslissingstrace van de pipeline (#1568), PII-arm (geen mailbody of afzender).\nGeordende stappen plus een eindoordeel over de zekerheid.\n",
+            "properties": {
+              "stappen": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "example": "team-herkenning"
+                    },
+                    "titel": {
+                      "type": "string"
+                    },
+                    "uitkomst": {
+                      "type": "string"
+                    },
+                    "zekerheid": {
+                      "type": "string",
+                      "enum": [
+                        "Zeker",
+                        "Onzeker",
+                        "Mislukt"
+                      ]
+                    },
+                    "details": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              },
+              "oordeel": {
+                "type": "object",
+                "properties": {
+                  "isZeker": {
+                    "type": "boolean",
+                    "description": "false = het antwoord zou in review gaan"
+                  },
+                  "redenen": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       },

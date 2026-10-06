@@ -5,6 +5,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Planner.Shared.Email.Trace;
 using Newtonsoft.Json;
 using SportlinkFunction.Email;
 using SportlinkFunction.Processing;
@@ -103,12 +104,13 @@ public static class EmailTestFunction
                     if (gereedheid != null)
                         await gereedheid.ZorgVoorTeamlijstAsync(clubCode);
 
+                    var trace = new TraceBuilder();
                     var plannerResponseJson = await BerichtPipeline.VerwerkMetPlannerAsync(
-                        classificatie, fakeEmail, log, teamResolver, clubCode, clubSettings);
+                        classificatie, fakeEmail, log, teamResolver, clubCode, clubSettings, trace);
                     // clubCode expliciet meegeven: zonder dat leest EmailTemplateService de templates van de
                     // primaire club, terwijl de tester de club uit de GUI-clubswitcher toont (#677/#706).
                     var (voorbeeldOnderwerp, voorbeeldBody) = await BerichtPipeline.BouwTemplateAntwoord(
-                        classificatie, plannerResponseJson, fakeEmail, log, clubSettings, clubCode);
+                        classificatie, plannerResponseJson, fakeEmail, log, clubSettings, clubCode, trace);
 
                     return new OkObjectResult(new
                     {
@@ -116,6 +118,7 @@ public static class EmailTestFunction
                         opmerking = "Dit verstuurt niets en slaat niets op",
                         classificatie,
                         plannerResponse = System.Text.Json.JsonDocument.Parse(plannerResponseJson).RootElement,
+                        trace = trace.Bouw().ToJsonElement(),
                         voorbeeldAntwoord = new
                         {
                             onderwerp = voorbeeldOnderwerp,

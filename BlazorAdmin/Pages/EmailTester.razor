@@ -61,6 +61,38 @@
             <h5 class="mt-4">Voorbeeld-antwoord (zou-worden-verstuurd)</h5>
             <p><strong>Onderwerp:</strong> @response.VoorbeeldAntwoord?.Onderwerp</p>
             <pre class="bg-light p-3">@response.VoorbeeldAntwoord?.Body</pre>
+
+            @if (response.Trace is { Stappen.Count: > 0 })
+            {
+                <h5 class="mt-4">Beslissingstrace <small class="text-muted">(waarom dit antwoord?)</small></h5>
+                <div class="@ZekerheidAlertKlasse" role="status">
+                    <strong>@ZekerheidSamenvatting</strong>
+                    @if (response.Trace.Oordeel?.Redenen.Count > 0)
+                    {
+                        <ul class="mb-0 mt-1">
+                            @foreach (var reden in response.Trace.Oordeel.Redenen)
+                            {
+                                <li>@reden</li>
+                            }
+                        </ul>
+                    }
+                </div>
+                <ol class="list-group list-group-numbered">
+                    @foreach (var stap in response.Trace.Stappen)
+                    {
+                        <li class="@StapKlasse(stap)">
+                            <div class="ms-2 me-auto">
+                                <div class="fw-bold">@stap.Titel <span class="badge @ZekerheidBadgeKlasse(stap)">@stap.Zekerheid</span></div>
+                                @stap.Uitkomst
+                                @if (stap.Details.Count > 0)
+                                {
+                                    <div class="small text-muted">@StapDetails(stap)</div>
+                                }
+                            </div>
+                        </li>
+                    }
+                </ol>
+            }
         </div>
     </div>
 }

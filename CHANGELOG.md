@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- **E-mailtester**: onder het voorbeeld-antwoord staat nu een beslissingstrace, een genummerde lijst met wat de verwerking herkende en koos (team, tegenstander, datum, antwoordsjabloon). Onzekere en mislukte stappen zijn gemarkeerd en een samenvatting meldt of het antwoord automatisch verstuurd zou worden of in review zou gaan. De trace bevat nooit de tekst van de mail of gegevens van de afzender (#1568).
+
 ## [3.11.2.0] — 2026-10-06
 
 ### Fixed

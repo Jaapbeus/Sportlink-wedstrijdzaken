@@ -483,6 +483,30 @@ public class TestEmailResponse
     public object? Classificatie { get; set; }
     public object? PlannerResponse { get; set; }
     public VoorbeeldAntwoord? VoorbeeldAntwoord { get; set; }
+    /// <summary>Beslissingstrace van de pipeline (#1568); <c>null</c> bij een oudere server.</summary>
+    public BeslissingsTraceDto? Trace { get; set; }
+}
+
+/// <summary>Spiegel van <c>Planner.Shared.Email.Trace.BeslissingsTrace</c>; Zekerheid als tekst (Zeker/Onzeker/Mislukt).</summary>
+public class BeslissingsTraceDto
+{
+    public List<TraceStapDto> Stappen { get; set; } = new();
+    public TraceOordeelDto? Oordeel { get; set; }
+}
+
+public class TraceStapDto
+{
+    public string Code { get; set; } = "";
+    public string Titel { get; set; } = "";
+    public string Uitkomst { get; set; } = "";
+    public string Zekerheid { get; set; } = "Zeker";
+    public Dictionary<string, string> Details { get; set; } = new();
+}
+
+public class TraceOordeelDto
+{
+    public bool IsZeker { get; set; }
+    public List<string> Redenen { get; set; } = new();
 }
 
 public class VoorbeeldAntwoord

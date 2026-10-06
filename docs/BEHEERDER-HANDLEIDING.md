@@ -1531,6 +1531,15 @@ verzonden en niets in de e-maillog vastgelegd. Handig om te controleren hoe de A
 grensgeval van een bericht zou classificeren vóórdat het echt binnenkomt, of om een
 classificatie-instelling te verifiëren na een wijziging in de e-mailtemplates.
 
+Onder het voorbeeld-antwoord toont de tester de **beslissingstrace** (#1568): een genummerde lijst
+met de stappen die de verwerking zette — wat de AI herkende, welk team is gevonden (en met welke
+zekerheid), of de tegenstander is opgezocht, welke datum(s) zijn gebruikt en welk antwoordsjabloon is
+gekozen. Stappen die onzeker of mislukt zijn, hebben een gele of rode markering. Daarboven staat een
+samenvatting: **Zou automatisch verstuurd worden** of **Zou in review gaan**, met de redenen. Deze
+samenvatting is voorlopig alleen informatief; er verandert niets aan het echte verzenden. De trace
+bevat nooit de tekst van het bericht, de afzender of telefoonnummers — alleen teamschrijfwijzen,
+datums en keuzes.
+
 ---
 
 ## 20a. E-mailtemplates (`/email-templates`)
