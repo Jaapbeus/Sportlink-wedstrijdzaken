@@ -58,7 +58,7 @@ main {
 }
 
 .club-selector {
-    min-width: 130px;
+    min-width: 200px;
     max-width: 200px;
     font-size: 0.8rem;
     padding: 0.2rem 0.5rem;
@@ -67,6 +67,11 @@ main {
 @media (max-width: 640.98px) {
     .top-row {
         justify-content: space-between;
+        padding-inline: 0.75rem !important;
+    }
+
+    .club-selector {
+        min-width: 130px;
     }
 
     .top-row ::deep a, .top-row ::deep .btn-link {
@@ -103,5 +108,12 @@ main {
     .top-row, article {
         padding-left: 2rem !important;
         padding-right: 1.5rem !important;
+    }
+}
+
+/* #1556: op 320 px past de bovenbalk anders niet (document 360 px breed) */
+@media (max-width: 400px) {
+    .top-row-versie {
+        display: none;
     }
 }
