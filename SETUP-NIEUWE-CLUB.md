@@ -265,9 +265,9 @@ In jouw fork: Settings → Secrets and variables → Actions → **Secrets**:
 > Deze repository is publiek en de Actions-logs van een publieke repository zijn dat óók: GitHub
 > drukt ingevulde expressies letterlijk in de joblog af en maskeert **alleen** secrets. Als Variable
 > belanden je Function App-naam, SWA-hostname en Entra-ID's dus zichtbaar in elke workflow-run. De
-> workflows lezen ze als `secrets.X || vars.X` (de `vars`-tak is alleen legacy-terugval), dus een Variable werkt technisch nog wel — maar dat
-> is een fallback voor bestaande installaties, niet de aanbevolen inrichting. Zie SECURITY.md,
-> "Laag 2 — GitHub Actions".
+> workflows lezen ze uitsluitend als `secrets.X`; een Variable met dezelfde naam wordt niet gebruikt
+> (#1237). Ontbreekt een secret, dan faalt de deploy vooraf met een melding die het noemt. Zie
+> SECURITY.md, "Laag 2 — GitHub Actions".
 
 **Service Principal aanmaken voor `AZURE_CREDENTIALS`:**
 ```bash

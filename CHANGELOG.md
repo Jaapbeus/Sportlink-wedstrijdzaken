@@ -31,6 +31,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   - Een gespeelde wedstrijd van vandaag waarvan de uitslag nog niet bekend is, verdwijnt niet bij een synchronisatie op de speeldag zelf; een verplaatste gespeelde wedstrijd staat op de nieuwe dag.
   - Op de SQL Server-variant worden gespeelde wedstrijden die hun datum en veld kwijt waren bij de eerstvolgende update hersteld (op de Postgres-variant doet migratie 036 dat).
 
+### Security
+- De deploy leest club-identificerende configuratie nu uitsluitend uit GitHub Secrets; de terugval op een Variable met dezelfde naam is weg. Ontbreekt een secret, dan stopt de deploy vooraf met een melding die het secret noemt, in plaats van een vage Azure-fout (#1237).
+- `SECURITY.md` legt twee restrisicobesluiten van de eigenaar vast: de classificatie van de Sportlink-clientId en de oude issue- en PR-teksten (#1237).
+
 ## [3.11.1.0] — 2026-10-04
 
 ### Changed
