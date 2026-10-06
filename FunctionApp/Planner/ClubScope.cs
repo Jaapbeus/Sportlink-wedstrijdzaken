@@ -26,9 +26,14 @@ internal static class ClubScope
     /// SQL-predicaat voor een <c>his.*</c>-tabel met NULL-tolerantie.
     /// Gebruik de tabel-alias, bijvoorbeeld <c>HisFilter("m")</c>.
     /// Vereist beide parameters — zet ze via <see cref="AddHisParams"/>.
+    /// <para>
+    /// <b>#1558:</b> sluit ook zacht-verwijderde rijen uit (<c>mta_deleted IS NULL</c>): een rij die de
+    /// reconciliatiestap na een sync als verdwenen bij Sportlink markeerde, hoort in geen enkele
+    /// lezende query terug te komen. Spiegel van <c>PostgresClubScope.HisFilter</c>.
+    /// </para>
     /// </summary>
     internal static string HisFilter(string alias)
-        => $"ISNULL({alias}.[ClubCode], {PrimaryClubCodeParam}) = {ClubCodeParam}";
+        => $"ISNULL({alias}.[ClubCode], {PrimaryClubCodeParam}) = {ClubCodeParam} AND {alias}.[mta_deleted] IS NULL";
 
     /// <summary>
     /// SQL-predicaat voor een tabel met <c>ClubCode NOT NULL</c> waarin nog rijen zónder

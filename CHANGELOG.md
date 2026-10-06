@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **Planning (SQL Server-tier)**: een wedstrijd die Sportlink schrapt, verdwijnt na de volgende sync ook uit de Planning als de installatie op de SQL Server-tier draait; eerder gold dat alleen voor Postgres. Gespeelde wedstrijden van vandaag en eerder blijven staan, en een wedstrijd die terugkeert in Sportlink wordt automatisch hersteld (#1558).
+
 ## [3.11.2.0] — 2026-10-06
 
 ### Fixed

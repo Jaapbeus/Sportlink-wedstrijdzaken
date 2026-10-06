@@ -26,14 +26,23 @@ internal static class SportlinkSyncPipeline
         if (string.IsNullOrWhiteSpace(clubCode))
             throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings — sync kan niet doorgaan zonder ClubCode.");
 
-        partialFailure |= await FetchTeamsPhaseAsync(sportlinkApiUrl, sportlinkClientId, clubCode, log);
-        partialFailure |= await FetchProgrammaPhaseAsync(fromWeekOffset, toWeekOffset, sportlinkApiUrl, sportlinkClientId, clubCode, log);
-        partialFailure |= await FetchUitslagenPhaseAsync(fromWeekOffset, sportlinkApiUrl, sportlinkClientId, clubCode, log);
+        var teamsFailed = await FetchTeamsPhaseAsync(sportlinkApiUrl, sportlinkClientId, clubCode, log);
+        partialFailure |= teamsFailed;
+        var programmaFailed = await FetchProgrammaPhaseAsync(fromWeekOffset, toWeekOffset, sportlinkApiUrl, sportlinkClientId, clubCode, log);
+        var uitslagenFailed = await FetchUitslagenPhaseAsync(fromWeekOffset, sportlinkApiUrl, sportlinkClientId, clubCode, log);
+        var matchesFailed = programmaFailed || uitslagenFailed;
+        partialFailure |= matchesFailed;
         // #1547: een gespeelde wedstrijd komt alleen nog via /uitslagen binnen, zonder veld/datum/team.
         await SportlinkStagingRepository.VulUitslagRijenAanUitHisAsync(clubCode, log);
         partialFailure |= await FetchMatchDetailsPhaseAsync(sportlinkApiUrl, sportlinkClientId, clubCode, log);
 
         await MergeAllToHisAsync(log);
+
+        // Reconciliatie (#1558, pariteit met #1193): verdwenen teams/wedstrijden zacht verwijderen.
+        // Best-effort; draait vóór de canonicalisatie zodat die met opgeschoonde data werkt.
+        await SqlServerReconciliation.ReconcileVerdwenenAsync(
+            clubCode, teamsFailed, matchesFailed, global::Planner.Shared.Sync.ReconciliatieOndergrens.Nu(), log);
+
         await RefreshTeamCanonicalisatieAsync(clubCode, log);
 
         await Planner.PlannerDataAccess.MarkeerVervallenGeplandeWedstrijdenAsync(log);
