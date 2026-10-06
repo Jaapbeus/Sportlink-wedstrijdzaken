@@ -306,12 +306,27 @@ internal static class PostgresSyncPipeline
     /// </summary>
     internal static DateOnly EersteTeReconcilierenDatum(DateOnly vandaag) => vandaag.AddDays(1);
 
-    private static DateOnly VandaagInNederland()
+    private static DateOnly VandaagInNederland() => VandaagInNederland(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById);
+
+    /// <summary>
+    /// De datum van vandaag in Nederland, uit <paramref name="utcNu"/>. Gooit nooit.
+    /// <para>
+    /// Deze aanroep staat in <see cref="RunSyncAsync"/> buiten de best-effort-bewaking van de
+    /// reconciliatie: een uitzondering hier liet de hele sync mislukken. Daarom probeert hij eerst de
+    /// Windows-id en dan de IANA-id (welke op een host bestaat, hangt af van ICU en tzdata), en valt hij
+    /// bij beide mislukkingen terug op de UTC-datum plus één dag. Dat is bewust de veilige kant op: een
+    /// latere "vandaag" geeft een latere ondergrens en dus minder reconciliatie, nooit meer. De sync
+    /// zelf blijft dan intact; hoogstens markeert hij een dag later een verdwenen wedstrijd.
+    /// </para>
+    /// </summary>
+    internal static DateOnly VandaagInNederland(DateTime utcNu, Func<string, TimeZoneInfo> zoekTijdzone)
     {
-        TimeZoneInfo zone;
-        try { zone = TimeZoneInfo.FindSystemTimeZoneById("W. Europe Standard Time"); }
-        catch (TimeZoneNotFoundException) { zone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Amsterdam"); }
-        return DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, zone));
+        foreach (var id in new[] { "W. Europe Standard Time", "Europe/Amsterdam" })
+        {
+            try { return DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNu, zoekTijdzone(id))); }
+            catch (Exception) { /* volgende id; zie summary */ }
+        }
+        return DateOnly.FromDateTime(utcNu).AddDays(1);
     }
 
     /// <summary>

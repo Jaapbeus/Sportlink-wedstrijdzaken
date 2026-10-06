@@ -3784,3 +3784,42 @@ BEGIN
     END
 END
 GO
+
+-- ============================================================
+-- #1547: herstel van gespeelde wedstrijden die hun kaledatum en veld kwijtraakten.
+--
+-- Spiegel van stap 1 en 3 van Postgres-migratie 036. Een gespeelde wedstrijd komt alleen nog via
+-- /uitslagen binnen, zonder kaledatum en veld; sp_MergeStgToHis zette die kolommen dan op NULL
+-- (WHEN MATCHED neemt elke niet-sleutelkolom uit stg over). Vanaf #1547 vult de sync ze aan, maar
+-- wat al leeg is, repareert alleen dit blok:
+--   - kaledatum uit het lokale datumdeel van wedstrijddatum (altijd correct, geen UTC-conversie);
+--   - veld uit his.matchdetails.VeldNaam (via InternCode), UITSLUITEND voor al gespeelde
+--     wedstrijden: voor toekomstige wedstrijden is /programma de bron en mag een oude waarde nooit
+--     Sportlinks eigen (lege) veld overschrijven. Daardoor is dit blok bij elke deploy herhaalbaar.
+-- Stap 2 van 036 (mta_deleted herstellen) bestaat hier niet: de SQL Server-tier heeft geen
+-- reconciliatie (#1193), dus er wordt nooit iets als verwijderd gemarkeerd.
+-- Idempotent; his.* bestaat pas na de eerste sync.
+-- ============================================================
+IF OBJECT_ID('his.matches') IS NOT NULL
+BEGIN
+    EXEC(N'
+        UPDATE [his].[matches]
+        SET [kaledatum] = LEFT([wedstrijddatum], 10) + N'' 00:00:00.00''
+        WHERE [kaledatum] IS NULL
+          AND [wedstrijddatum] LIKE N''[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]%'';');
+
+    IF OBJECT_ID('his.matchdetails') IS NOT NULL
+       AND COL_LENGTH('his.matchdetails', 'VeldNaam') IS NOT NULL
+       AND COL_LENGTH('his.matchdetails', 'InternCode') IS NOT NULL
+    BEGIN
+        EXEC(N'
+            UPDATE m
+            SET m.[veld] = md.[VeldNaam]
+            FROM [his].[matches] m
+            INNER JOIN [his].[matchdetails] md ON md.[InternCode] = m.[wedstrijdcode]
+            WHERE m.[veld] IS NULL
+              AND COALESCE(md.[VeldNaam], N'''') <> N''''
+              AND TRY_CONVERT(date, LEFT(m.[wedstrijddatum], 10)) < CAST(GETUTCDATE() AS date);');
+    END
+END
+GO

@@ -349,6 +349,37 @@ public class PostgresSyncFixtureIntegrationTests
     }
 
     /// <summary>
+    /// De standaard van de pipeline zelf (geen expliciete ondergrens) mag nooit een wedstrijd uit het
+    /// verleden als verwijderd markeren. Alle andere synctests geven de ondergrens expliciet mee en
+    /// raken die standaard dus niet: zou iemand hem terugzetten naar "alles reconciliëren", dan bleef
+    /// de suite groen en verdwenen gespeelde wedstrijden opnieuw.
+    /// </summary>
+    [PostgresFact]
+    public async Task RunSyncAsync_ZonderExpliciteOndergrens_RaaktGeenWedstrijdUitHetVerleden()
+    {
+        await SchoonAsync();
+
+        using var fixtureServer = SportlinkFixtures.BuildServer(Wedstrijdcode, ClubCode);
+        await RunAsync(fixtureServer);
+
+        // De fixturewedstrijd (5 sep 2026) verdwijnt uit /programma en /uitslagen; een andere wedstrijd
+        // op dezelfde datum houdt het stg-venster open, precies als in de reconciliatietest.
+        fixtureServer.RespondWithJson("/programma", AndereWedstrijdJson(Wedstrijdcode + 1));
+        fixtureServer.RespondWithJson("/uitslagen", "[]");
+        await PostgresSyncPipeline.RunSyncAsync(
+            fromWeekOffset: 0, toWeekOffset: 0,
+            sportlinkApiUrl: fixtureServer.BaseUrl,
+            sportlinkClientId: "clientId=fixture-test",
+            clubCode: ClubCode,
+            connectionString: ConnectionString,
+            log: NullLogger.Instance);
+
+        (await ScalarAsync<DateTime?>(
+                "SELECT mta_deleted FROM his.matches WHERE wedstrijdcode = @code AND clubcode = @club"))
+            .Should().BeNull("een wedstrijd van vóór vandaag valt buiten het reconciliatievenster");
+    }
+
+    /// <summary>
     /// Minimale <c>/programma</c>-respons met precies één wedstrijd, op dezelfde datum als de
     /// standaardfixture (2026-09-05) maar met een andere <c>wedstrijdcode</c> en team — voor het
     /// "één wedstrijd verdwijnt, de rest van het weekend niet"-scenario hierboven.
@@ -413,7 +444,7 @@ public class PostgresSyncFixtureIntegrationTests
             clubCode: ClubCode,
             connectionString: ConnectionString,
             log: NullLogger.Instance,
-            // De fixture speelt in september 2026; de ondergrens (#1547, standaard "vandaag") ligt
+            // De fixture speelt in september 2026; de ondergrens (#1547, standaard "morgen") ligt
             // vast vóór die datum zodat deze test niet afhangt van de dag waarop hij draait.
             reconciliatieOndergrens: new DateOnly(2026, 9, 1));
 

@@ -29,6 +29,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   - Gespeelde wedstrijden verdwijnen niet meer uit afgelopen speeldagen: de synchronisatie markeerde ze als verwijderd en overschreef datum, veld en team met lege waarden.
   - Wedstrijdinformatie van clubwedstrijden met hetzelfde Sportlink-wedstrijdnummer overschrijft elkaar niet meer.
   - Een gespeelde wedstrijd van vandaag waarvan de uitslag nog niet bekend is, verdwijnt niet bij een synchronisatie op de speeldag zelf; een verplaatste gespeelde wedstrijd staat op de nieuwe dag.
+  - Op de SQL Server-variant worden gespeelde wedstrijden die hun datum en veld kwijt waren bij de eerstvolgende update hersteld (op de Postgres-variant doet migratie 036 dat).
 
 ## [3.11.1.0] — 2026-10-04
 
