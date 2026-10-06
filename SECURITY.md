@@ -410,6 +410,67 @@ Persoonsgegevens mogen **nooit** in logs of Application Insights terechtkomen.
 
 De cleanup wordt wekelijks (zondagochtend 03:00 UTC) uitgevoerd door `CleanupEmailVerwerkingFunction`. De stored procedure `planner.sp_CleanupEmailVerwerking` is idempotent.
 
+**`planner.EmailTrace` valt bewust buiten deze retentie (#1568, besluit eigenaar 2026-10-06).** De
+beslissingstrace per verwerkt bericht wordt permanent bewaard. Dat is alleen verantwoord omdat de
+opslag **geen ruwe tekst uit de mail** bevat, en dat wordt afgedwongen, niet verondersteld (Codex R1-F1):
+`BeslissingsTrace.VoorOpslag()` (`TraceOpslagProjectie`, `Planner.Shared`) is de enige weg naar
+`planner.EmailTrace` en laat uitsluitend een **allowlist** van detailsleutels per stapcode door, elk in een
+strikte waardevorm: vaste codes en enum-waarden, tellingen, datums, de bron van een teamherkenning, de
+gevalideerde canonieke teamnaam en de namen van kandidaat-clubteams. De ruwe, door de AI uit de mail
+gehaalde teamtekst (en een tegenstander) wordt niet bewaard; daarvoor in de plaats komt een vormkenmerk
+(lengte en tekensoorten, bijvoorbeeld `6 tekens: letters+cijfers+streepje`). Een onbekende sleutel, een waarde in
+een onverwachte vorm of een onbekende stapcode wordt bij opslag weggelaten; de titels en uitkomsten zijn
+vaste teksten en de redenen worden opnieuw afgeleid uit de geprojecteerde stappen. De volledige trace
+bestaat alleen transiënt (e-mailtester: de beheerder typte die mail zelf; niets wordt opgeslagen). Er is
+geen foreign key naar `EmailVerwerking`, zodat de bovenstaande verwijdering na 90 dagen de trace niet raakt.
+Wie hier later een nieuw veld aan toevoegt, voegt het toe aan de allowlist in `TraceOpslagProjectie` mét een
+vaste waardevorm, en een test; een veld met vrije tekst uit een mail kan er niet op. Al opgeslagen traces van
+vóór deze projectie bestaan niet: de feature was nog niet gemerged.
+
+**Leren vanuit de trace: auditspoor, wachtrij en admin-leermomenten (#1568 deel C).**
+
+* **Wie het deed.** `public.teamaliassen`/`dbo.TeamAliassen` (aanmaken, beoordelen) en
+  `planner.ClassificatieCorrectie` (admin-leermoment) leggen vast *wie* en *wanneer*: de Entra object-ID
+  (pseudoniem, art. 4 lid 5), een momentopname van de weergavenaam en een UTC-tijdstip. Uitsluitend uit het
+  Easy Auth-principal, nooit uit de requestbody, en geen e-mailadres — dezelfde regel als bij de feedbackmelder
+  (#764). Grondslag: art. 6 lid 1 sub f (verantwoording van wijzigingen aan het zelflerende systeem). De
+  gegevens leven zolang de bijbehorende rij bestaat; een verwijderde alias neemt zijn auditspoor mee. **De audit
+  staat uitsluitend in de tabelkolommen** (`AangemaaktDoor`/`BeoordeeldDoor` en de naammomentopname): de
+  leren-functionaliteit schrijft nergens een object-ID of naam naar het applicatielog — het log bevat alleen
+  rij-id's en tellingen. Een verwijdering laat dus bewust geen identificator achter buiten de tabel zelf.
+* **Wachtrij `planner.OnbekendeTeamTekst`.** De enige permanente plek voor een ruwe teamschrijfwijze, en
+  bedoeld voor *Koppel aan team*. Voor opslag moet de tekst een structurele vormguard passeren
+  (`OnbekendeTeamTekstExtractie.ZietEruitAlsTeamlabel`: ≤ 24 tekens, alleen letters, cijfers, spatie, `-`, `/`, `.`, `+`,
+  hoogstens twee tokens met letters, minstens één cijfer; ook de genormaliseerde sleutel); een zin of naam uit
+  de mail wordt niet bewaard. Daarna: gesaneerd (80 tekens, e-mailadressen en cijferreeksen gemaskeerd door
+  `TraceBuilder.Saneer`, nooit de mailbody), tellers en een verwerking-id zonder foreign key. Restrisico: een
+  enkel woord met een cijfer (bijvoorbeeld een voornaam met een getal) past wel in de vorm; de retentie van 90 dagen
+  begrenst dat. Een regel die 90 dagen niet meer is gezien wordt door
+  `CleanupEmailVerwerking` verwijderd (beide tiers). RLS staat aan (migratie 039).
+* **Admin-leermomenten verlopen niet, maar zijn wel verwijderbaar (besluit eigenaar 2026-10-06; verwijderen
+  toegevoegd na review).** `sp_CleanupClassificatieCorrectie`, fase 2a van `sp_CleanupEmailVerwerking` en
+  `PostgresCleanupProcedures` raken uitsluitend herkomst `Reply`; een admin-leermoment wordt dus nooit
+  automatisch geanonimiseerd of verwijderd. Een beheerder kan hem wél expliciet verwijderen
+  (`DELETE /api/beheer/leermomenten/{id}`, knop "Verwijderen" met bevestiging in het scherm Leermomenten): alleen
+  herkomst `Admin` en alleen de eigen club (een rij van een andere club geeft 404, een `Reply`-rij 409, want die
+  valt onder de gewone retentie). Dat is verantwoord omdat de samenvatting
+  (max 500 tekens) door de beheerder is geredigeerd én door `TraceBuilder.Saneer` is gehaald (geen e-mailadressen
+  of nummers, geen mailbody), en omdat een leermoment zijn waarde verliest als hij verloopt. **Restrisico:**
+  een naam van een persoon in vrije tekst herkent de sanering niet; de beheerder wordt daarvoor in het
+  formulier gewaarschuwd. Een verwijderverzoek (art. 17) voor een admin-leermoment is nu een gewone
+  beheerdershandeling in het scherm; het enige wat blijft is dat de verwijdering zelf geen auditregel
+  achterlaat (zie "De audit staat uitsluitend in de tabelkolommen").
+* **`HerkomstVerwerkingId` hoort bij de eigen club.** Een meegestuurd verwerking-id wordt in dezelfde SQL-instructie
+  tegen `planner.EmailVerwerking` van de eigen club gelezen; een id van een andere club of een onbestaand id wordt
+  NULL, zodat een beheerder via dit veld geen verwijzing naar andermans verwerking kan leggen.
+* **Geen harde FK.** `HerkomstVerwerkingId` (alias, leermoment) en `LaatsteVerwerkingId` (wachtrij) zijn losse
+  getallen: een FK naar `planner.EmailVerwerking` zou de retentie-DELETE van die tabel laten falen (#424) of
+  een permanente rij laten verdwijnen.
+* **Autorisatie.** Alle nieuwe endpoints (`POST /api/beheer/teamaliassen`, `POST /api/beheer/leermomenten`,
+  `DELETE /api/beheer/leermomenten/{id}`, `GET/PUT /api/beheer/onbekende-teamteksten`, `GET /api/beheer/teams/keuzelijst`) lopen via
+  `AdminEndpoint.ExecuteAsync` (alleen rol `admin`); `EndpointAutorisatieTests` bewijst per tier 401/403/poortpassage.
+  De e-mailtester schrijft niets (een lege teamlijst van de gekozen club wordt eenmalig opgebouwd).
+
 `avg.Teambegeleiding` bevat persoonsgegevens van teambegeleiders. De rijen van de club worden bij
 elke import volledig vervangen (club-scoped DELETE + insert, nooit een TRUNCATE — dat zou andere
 clubs' rijen ook wissen; #1131/#1132 maakten dit atomisch per import en, op de Postgres-tier,

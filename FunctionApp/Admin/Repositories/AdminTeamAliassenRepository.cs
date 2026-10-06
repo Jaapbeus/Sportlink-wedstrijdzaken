@@ -1,4 +1,5 @@
 using Microsoft.Data.SqlClient;
+using Planner.Shared.Leren;
 
 namespace SportlinkFunction.Admin;
 
@@ -9,9 +10,6 @@ namespace SportlinkFunction.Admin;
 /// </summary>
 internal static class AdminTeamAliassenRepository
 {
-    /// <summary>Toegestane statuswaarden — spiegelt de CHECK-semantiek van dbo.TeamAliassen.</summary>
-    internal static readonly string[] GeldigeStatussen = ["pending", "validated", "rejected"];
-
     internal static async Task<(int count, int limit, List<Dictionary<string, object?>> items)> GetAsync(
         string clubCode, string? statusFilter, int limit, string cs)
     {
@@ -21,7 +19,9 @@ internal static class AdminTeamAliassenRepository
                     ta.[Id], ta.[RuweTekst], ta.[RuweTekstGenormaliseerd],
                     ta.[TeamId], t.[Teamnaam], t.[LeeftijdsCategorie],
                     ta.[Bron], ta.[Status], ta.[AantalKeerGebruikt],
-                    ta.[mta_inserted], ta.[mta_modified]
+                    ta.[mta_inserted], ta.[mta_modified],
+                    ta.[AangemaaktDoorNaam], ta.[AangemaaktOp], ta.[HerkomstVerwerkingId], ta.[Reden],
+                    ta.[BeoordeeldDoorNaam], ta.[BeoordeeldOp]
                 FROM [dbo].[TeamAliassen] ta
                 LEFT JOIN [dbo].[Teams] t
                     ON t.[TeamId] = ta.[TeamId] AND t.[ClubCode] = ta.[ClubCode]
@@ -54,6 +54,12 @@ internal static class AdminTeamAliassenRepository
                 ["aantalKeerGebruikt"]      = r.GetInt32(r.GetOrdinal("AantalKeerGebruikt")),
                 ["mtaInserted"]             = Utc(r, "mta_inserted"),
                 ["mtaModified"]             = Utc(r, "mta_modified"),
+                ["aangemaaktDoorNaam"]      = Nullable(r, "AangemaaktDoorNaam"),
+                ["aangemaaktOp"]            = Utc(r, "AangemaaktOp"),
+                ["herkomstVerwerkingId"]    = NullableInt(r, "HerkomstVerwerkingId"),
+                ["reden"]                   = Nullable(r, "Reden"),
+                ["beoordeeldDoorNaam"]      = Nullable(r, "BeoordeeldDoorNaam"),
+                ["beoordeeldOp"]            = Utc(r, "BeoordeeldOp"),
             });
         }
         return (list.Count, limit, list);
@@ -77,16 +83,22 @@ internal static class AdminTeamAliassenRepository
                 r.IsDBNull(2) ? 0 : r.GetInt32(2));
     }
 
-    /// <summary>Zet de status van één alias. Retourneert het aantal geraakte rijen (0 = niet gevonden).</summary>
-    internal static async Task<int> ZetStatusAsync(int id, string status, string clubCode, string cs)
+    /// <summary>
+    /// Zet de status van één alias en legt vast wie (object-ID + naammomentopname) en wanneer (UTC) dat deed
+    /// (#1568 deel C). Retourneert het aantal geraakte rijen (0 = niet gevonden).
+    /// </summary>
+    internal static async Task<int> ZetStatusAsync(int id, string status, string clubCode, LerenAanroeper wie, string cs)
     {
         using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             UPDATE [dbo].[TeamAliassen]
-            SET [Status] = @Status, [mta_modified] = GETUTCDATE()
+            SET [Status] = @Status, [mta_modified] = GETUTCDATE(),
+                [BeoordeeldDoor] = @Door, [BeoordeeldDoorNaam] = @Naam, [BeoordeeldOp] = GETUTCDATE()
             WHERE [Id] = @Id AND [ClubCode] = @Cc", conn);
         cmd.Parameters.AddWithValue("@Id",     id);
         cmd.Parameters.AddWithValue("@Status", status);
+        cmd.Parameters.AddWithValue("@Door",   wie.DoorId);
+        cmd.Parameters.AddWithValue("@Naam",   (object?)wie.DoorNaam ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@Cc",     clubCode);
         return await cmd.ExecuteNonQueryAsync();
     }
@@ -105,6 +117,12 @@ internal static class AdminTeamAliassenRepository
     {
         var i = r.GetOrdinal(kolom);
         return r.IsDBNull(i) ? null : r.GetString(i);
+    }
+
+    private static int? NullableInt(SqlDataReader r, string kolom)
+    {
+        var i = r.GetOrdinal(kolom);
+        return r.IsDBNull(i) ? null : r.GetInt32(i);
     }
 
     /// <summary>DB slaat UTC op; markeer expliciet als UTC zodat de JSON een Z-suffix krijgt.</summary>

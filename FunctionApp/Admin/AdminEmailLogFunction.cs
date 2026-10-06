@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
+using Planner.Endpoints.Admin;
+using SportlinkFunction.Email;
 
 namespace SportlinkFunction.Admin;
 
@@ -13,9 +15,6 @@ namespace SportlinkFunction.Admin;
 /// </summary>
 public static class AdminEmailLogFunction
 {
-    private const int DefaultLimit = 50;
-    private const int MaxLimit     = 200;
-
     [Function("AdminEmailLogGet")]
     public static Task<IActionResult> Get(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/email-log")] HttpRequest req,
@@ -23,16 +22,25 @@ public static class AdminEmailLogFunction
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminEmailLogGet"), "email-log ophalen",
             async clubCode =>
             {
-                DateTime? vanaf = null, tot = null;
-                if (DateTime.TryParse(req.Query["vanaf"].ToString(), out var vd)) vanaf = vd.Date;
-                if (DateTime.TryParse(req.Query["tot"].ToString(),   out var td)) tot   = td.Date.AddDays(1);
-                var statusFilter = req.Query["status"].ToString();
-                int limit = DefaultLimit;
-                if (int.TryParse(req.Query["limit"].ToString(), out var l))
-                    limit = Math.Min(MaxLimit, Math.Max(1, l));
-
+                var filter = EmailLogEndpointCore.LeesFilter(req.Query);
                 var items = await AdminEmailLogRepository.GetAsync(
-                    clubCode, vanaf, tot, statusFilter, limit, SystemUtilities.DatabaseConfig.ConnectionString);
-                return new OkObjectResult(new { count = items.Count, limit, items });
+                    clubCode, filter.Vanaf, filter.Tot, filter.Status, filter.Limit, SystemUtilities.DatabaseConfig.ConnectionString);
+                return new OkObjectResult(new { count = items.Count, limit = filter.Limit, items });
+            });
+
+    /// <summary>
+    /// GET /api/beheer/email-log/{id}/trace — PII-arme beslissingstrace van één verwerking (#1568).
+    /// Bevat nooit body, afzender of onderwerp; blijft beschikbaar nadat de verwerking is opgeruimd.
+    /// </summary>
+    [Function("AdminEmailLogTraceGet")]
+    public static Task<IActionResult> GetTrace(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/email-log/{id}/trace")] HttpRequest req,
+        int id,
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminEmailLogTraceGet"), "email-trace ophalen",
+            async clubCode =>
+            {
+                var trace = await EmailTraceRepository.HaalOpAsync(SystemUtilities.DatabaseConfig.ConnectionString, clubCode, id);
+                return EmailLogEndpointCore.VertaalTrace(trace);
             });
 }

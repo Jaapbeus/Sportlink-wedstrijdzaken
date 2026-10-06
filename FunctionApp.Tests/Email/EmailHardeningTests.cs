@@ -1,4 +1,5 @@
 using AwesomeAssertions;
+using Planner.Shared.Email;
 using FunctionApp.Tests.Email.TestDoubles;
 using Microsoft.Extensions.Logging.Abstractions;
 using SportlinkFunction.Email;

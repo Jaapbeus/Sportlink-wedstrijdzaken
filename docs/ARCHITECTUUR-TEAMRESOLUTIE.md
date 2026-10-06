@@ -108,13 +108,49 @@ schrijft, geldt hetzelfde voor `public.teams`.
 | Tabel (SQL Server / Postgres) | Rol |
 |---|---|
 | `dbo.Teams` / `public.teams` | Eén rij per werkelijk team, gesleuteld op `(ClubCode, TeamnaamGenormaliseerd)` — op Postgres `(clubcode, teamnaamgenormaliseerd)`. Gevuld door de nachtelijke sync. Verdwenen teams worden gedeactiveerd, niet verwijderd. |
-| `dbo.TeamAliassen` / `public.teamaliassen` | Uitsluitend schrijfwijzen die **niet** uit de normalisatie volgen: handmatig toegevoegd, of (tot #1268) geleerd uit e-mail. Status `pending`/`validated`/`rejected` — alleen `validated` wordt vertrouwd. |
+| `dbo.TeamAliassen` / `public.teamaliassen` | Twee soorten rijen. `Bron = 'Sync'`: elke schrijfwijze die in `his.matches`/`his.teams` voorkomt (door `TeamCanonicalisatieService` na de sync, direct `validated`). `Bron = 'CoordinatorCorrectie'` (door een beheerder aangemaakt, sinds #1568 deel C, direct `validated`) of `AiDisambiguatie` (tot #1268, `pending`): schrijfwijzen die niet uit de data volgen. Status `pending`/`validated`/`rejected` — alleen `validated` wordt vertrouwd. Sinds #1568 deel C met auditspoor: wie (`AangemaaktDoor`/`BeoordeeldDoor` = object-ID, `*Naam` = naammomentopname) en wanneer (UTC), plus `HerkomstVerwerkingId` en `Reden`. |
+| `planner.OnbekendeTeamTekst` / `planner.onbekendeteamtekst` | Wachtrij (#1568 deel C) met teamteksten die de pipeline niet kon koppelen: gesaneerde voorbeeldtekst, genormaliseerde sleutel (uniek per club), aantal, eerst/laatst gezien, laatste verwerking (geen FK), status `open`/`afgehandeld`/`genegeerd`. Regels die 90 dagen niet zijn gezien worden door de e-mail-cleanup verwijderd. |
 
 Postgres-definities: `Database.Postgres/migrations/003_admin_tables.sql` (tabellen) en
 `007_teams_collation_fix.sql` (de `upper(...)`-unique-indexen, zie de collatie-kanttekening onderaan).
 
-De sync schrijft géén aliassen: alle Sportlink-schrijfwijzen van één team normaliseren per definitie
-naar dezelfde sleutel, dus een alias-rij zou dupliceren wat de teamtabel al weet.
+> **Correctie (#1568 deel C, geverifieerd in de code).** Dit document zei hier eerder dat de sync géén
+> aliassen schrijft. Dat klopt niet: `TeamCanonicalisatieService.RegistreerBronSchrijfwijzenAsync`
+> (beide tiers) legt na elke sync elke in `his.matches`/`his.teams` aangetroffen schrijfwijze vast als
+> alias met `Bron = 'Sync'`, direct `validated` (zodat het zoeken van een wedstrijd een exacte join op de
+> ruwe naam is). Een handmatige of geleerde alias (`Bron <> 'Sync'`) wordt door die upsert nooit
+> overschreven.
+
+### Een beheerder leert de resolver een schrijfwijze (#1568 deel C)
+
+`CoordinatorCorrectie` was lang alleen een waarde in een commentaar; sinds #1568 deel C bestaat het pad echt:
+
+1. De pipeline noteert een niet-herkende teamtekst (trace-stap `team-herkenning` met `Onopgelost` of
+   `MeerdereKandidaten`, en geen als eigen team herkende tegenstander) in de wachtrij `OnbekendeTeamTekst`.
+   Alleen de gesaneerde trace wordt gelezen, nooit de mailbody; een fout bij het schrijven laat de verwerking
+   nooit falen (`OnbekendeTeamTekstOpslag`, `Planner.Shared`).
+2. De beheerder koppelt de tekst in het scherm *Teamaliassen* (sectie *Onbekende teamteksten*, of vanuit de
+   trace) aan een team: `POST /api/beheer/teamaliassen`. De sleutel komt uitsluitend uit
+   `TeamNaamNormalisatie.NormaliseerVoorVergelijking` — er is **geen** tweede normalisatieplek bijgekomen.
+3. Bestaat de sleutel al voor een ander team, dan volgt een `409`; **herkoppelen gebeurt alleen als de
+   beheerder dat expliciet aangeeft** (`herkoppel: true`). Zo overschrijft een alias nooit stilzwijgend een
+   bestaande koppeling. Ook mét `herkoppel` blijven rijen met bron `Sync` (echte Sportlink-data) ongemoeid: het
+   verplaatst de ene bestaande rij en rijen met dezelfde sleutel met een andere bron, en het `409` noemt vooraf
+   het aantal rijen (`aantalRijen`).
+   Een tekst die zonder alias bij meerdere teams past (`MeerdereKandidaten` in de resolver, bijv. `13-1` →
+   JO13-1 én MO13-1) geeft een `409` met `code: "dubbelzinnig"` en de kandidaten, tenzij de beheerder
+   `bevestigDubbelzinnig: true` meestuurt: een alias beslist daarna voor *alle* mails met die schrijfwijze, dus
+   een stille keuze is hier precies de gok die regel 3 van de resolver verbiedt. De store gebruikt daarvoor
+   dezelfde volgorde als de resolver (exacte teamnaam wint, dan leeftijd+teamnummer) via
+   `AliasDubbelzinnigheid` in `Planner.Shared`. Een unique-violation bij gelijktijdig aanmaken wordt `409`
+   met `code: "bestaat-al"`.
+4. De alias is direct `validated` (de beheerder ís de goedkeuring; dit is geen automatisch geleerde gok, dus
+   de zelfversterkingsregel van "Ambiguïteit is echt" geldt niet) en zet de open wachtrijregel met dezelfde
+   sleutel op `afgehandeld`.
+
+De regressietest `AliasLerenRegressieTests` (per tier) bewijst dat `TeamResolver` na het aanmaken van alias
+`j10-04` die tekst oplost als `ExacteAlias` met zekerheid 1.0. De databasegebonden delen (de SQL van de
+stores, conflict/herkoppelen, retentie) staan in `LerenVanTraceIntegrationTests` (Postgres, draait in CI).
 
 **Sinds #1268 wordt hier niets meer automatisch geleerd.** `TeamAliasLearningService` (`LegVastAsync`)
 bestaat nog op beide tiers, maar heeft nergens meer een aanroeper: hij werd uitsluitend gebruikt om
@@ -289,6 +325,7 @@ tegenhanger onder `FunctionApp.Postgres/TeamResolution/` — zie de tiertabel da
 | `FunctionApp/TeamResolution/TeamResolver.cs` | Resolutievolgorde; kiest nooit zelf bij ambiguïteit — sinds #1268 identiek aan de Postgres-tegenhanger. |
 | `FunctionApp/TeamResolution/TeamCandidateRepository.cs` | Lookups tegen `dbo.Teams`/`dbo.TeamAliassen` (Postgres: `public.teams`/`public.teamaliassen`), altijd op ClubCode. |
 | `FunctionApp/TeamResolution/TeamAliasLearningService.cs` | Legt nieuwe schrijfwijzen vast als `pending`. **Sinds #1268 zonder aanroeper op beide tiers** — hij werd uitsluitend ná een AI-disambiguatiekeuze gebruikt (zie hieronder), en die keuze wordt niet meer gemaakt. Ook niet meer in DI geregistreerd op de SQL Server-tier (op Postgres nooit geweest). De klasse blijft in de codebase staan uit tier-gelijkwaardigheid, niet omdat hij nog iets doet. |
+| `Planner.Endpoints/Leren/TeamAliasEndpointCore.cs`, `Planner.Shared/Leren/` | Orkestratie van alias aanmaken/valideren/verwijderen en de wachtrij (tier-onafhankelijk, #1568 deel C); de databasevraag staat per tier in `SqlTeamAliasStore`/`PostgresTeamAliasStore` en `Sql…`/`PostgresOnbekendeTeamTekstStore`. |
 | `FunctionApp/TeamResolution/TeamCanonicalisatieService.cs` | Vult de teamtabel na de sync; ontdubbelt de twee notaties; migreert opgeslagen sleutels na een normalisatiewijziging. |
 | `FunctionApp/TeamResolution/TeamlijstGereedheid.cs` | Vult de teamlijst alsnog als die leeg is en migreert sleuteldrift als die wél gevuld is; faalt hard en zichtbaar als dat niet lukt. **Alleen SQL Server-tier** — zie "Uitrol — geen schakelaar" hierboven voor wat er op Postgres voor in de plaats staat. |
 

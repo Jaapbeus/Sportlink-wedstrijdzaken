@@ -1115,6 +1115,8 @@ niet vastzetten en steeds opnieuw naar hetzelfde verkeerde team wijzen.
 | **Status** | Te beoordelen, Goedgekeurd of Afgewezen |
 | **Keer gebruikt** | Hoe vaak deze schrijfwijze al is aangetroffen — een hoog getal betekent dat goedkeuren of afwijzen echt effect heeft |
 | **Aangemaakt** | Moment waarop de alias voor het eerst werd gezien (in uw eigen tijdzone) |
+| **Door** | Wie de alias aanmaakte (de naam van de beheerder) en wanneer, met eventueel een korte reden. *systeem* betekent: automatisch aangemaakt door de sync of de AI |
+| **Beoordeeld** | Wie de alias het laatst goedkeurde of afwees, en wanneer |
 
 Bovenaan staan drie tellers (te beoordelen / goedgekeurd / afgewezen) en filterknoppen. De pagina
 opent standaard op **Alleen te beoordelen**; met **Alles** ziet u ook de al beoordeelde aliassen.
@@ -1130,6 +1132,47 @@ opent standaard op **Alleen te beoordelen**; met **Alles** ziet u ook de al beoo
 **Twijfelt u?** Wijs de alias af of laat hem staan. Alleen goedkeuren wat u zeker weet is
 veiliger dan een fout vastleggen — een goedgekeurde alias stuurt namelijk toekomstige
 e-mailverwerking naar dat team.
+
+### Zelf een alias toevoegen (#1568)
+
+Weet u welk team een schrijfwijze bedoelt, dan hoeft u niet te wachten tot het systeem hem tegenkomt:
+klik op **Alias toevoegen**, vul de teamtekst in (bijvoorbeeld `j10-04`), kies het team en klik op
+**Koppel**. De alias is **direct goedgekeurd** — u bent zelf de beoordelaar — en het systeem legt vast
+wie hem aanmaakte en wanneer.
+
+- Hoort die schrijfwijze al bij een **ander** team, dan weigert het systeem dat met een melding en toont
+  het bij welk team hij nu hoort. Pas als u op **Herkoppel naar dit team** klikt, wordt hij verplaatst. Zo
+  overschrijft u nooit per ongeluk een bestaande koppeling. De melding noemt hoeveel alias-rijen het
+  herkoppelen raakt; aliassen die uit de Sportlink-synchronisatie komen blijven altijd ongemoeid.
+- **Past de tekst bij meerdere teams?** Een tekst zonder geslacht-letter, zoals `13-1`, kan zowel JO13-1 als
+  MO13-1 zijn. Het systeem weigert dan eerst met de waarschuwing **Let op, deze schrijfwijze is dubbelzinnig**
+  en noemt de teams. Klikt u toch op *Ja, alle mails met deze schrijfwijze naar dit team*, dan gaan **álle**
+  mails met precies deze schrijfwijze voortaan naar het gekozen team — ook die voor het andere team. Doe dit
+  alleen als u zeker weet dat de schrijfwijze in uw club altijd hetzelfde team bedoelt.
+- Hoort hij al bij **hetzelfde** team, dan verandert er niets (stond hij nog op *te beoordelen*, dan wordt hij
+  goedgekeurd).
+
+### Onbekende teamteksten
+
+Boven de aliassen staat de kaart **Onbekende teamteksten**. Daar verzamelt het systeem teamteksten uit
+binnengekomen e-mail die het niet aan een team kon koppelen (of waarbij meerdere teams in aanmerking kwamen):
+de tekst, hoe vaak hij is gezien en wanneer voor het laatst. Per regel kunt u:
+
+| Actie | Effect |
+|---|---|
+| **Koppel aan team** | Kies het team; er ontstaat direct een goedgekeurde alias en de regel gaat op *afgehandeld* |
+| **Negeren** | Het is geen eigen team (bijvoorbeeld een tegenstander); de regel gaat op *genegeerd* en blijft daar staan |
+| **Heropenen** | Zet een genegeerde regel terug op *open* |
+
+Maakt u elders (bijvoorbeeld met **Alias toevoegen**) een alias voor dezelfde tekst, dan wordt de open regel
+automatisch afgehandeld. Komt een afgehandelde tekst later toch weer onherkend binnen, dan gaat de regel
+opnieuw open. Regels die 90 dagen niet meer zijn gezien verdwijnen vanzelf. De getoonde tekst is afgekapt en
+ontdaan van e-mailadressen en nummers. Alleen teksten die eruitzien als een teamnaam (kort, met een cijfer, zoals
+`j10-04` of `JO 13/2`) komen in de wachtrij; een hele zin of een naam uit de mail wordt niet bewaard.
+
+Dit is ook de plek waar u een niet-herkend team uit de **e-maillog** koppelt: de bewaarde trace toont de
+ruwe tekst uit de mail bewust niet, maar verwijst met de knop *Open wachtrij onbekende teamteksten* naar deze
+kaart. In de **e-mailtester** staat de tekst wel in de trace (u typte die zelf) en koppelt u direct met *Koppel '…' aan team…*.
 
 ### Teamlijst opnieuw opbouwen
 
@@ -1162,8 +1205,12 @@ worden bijgewerkt.
 | Endpoint | Beschrijving |
 |---|---|
 | `GET /api/beheer/teamaliassen?status=pending` | Aliassen ophalen, optioneel gefilterd op status |
+| `POST /api/beheer/teamaliassen` | Alias toevoegen (de knop *Alias toevoegen* en *Koppel aan team*) |
 | `PUT /api/beheer/teamaliassen/{id}/valideer` | Alias goedkeuren (`validated`) of afwijzen (`rejected`) |
 | `DELETE /api/beheer/teamaliassen/{id}` | Alias definitief verwijderen |
+| `GET /api/beheer/onbekende-teamteksten` | De wachtrij met onbekende teamteksten |
+| `PUT /api/beheer/onbekende-teamteksten/{id}/status` | Een wachtrijregel afhandelen, negeren of heropenen |
+| `GET /api/beheer/teams/keuzelijst` | De teams voor de keuzelijst bij het koppelen |
 | `POST /api/beheer/teams/herstel` | Teamlijst opnieuw opbouwen (de knop hierboven) |
 
 ---
@@ -1195,6 +1242,23 @@ samenvatting**, de **Correctie samenvatting** en de **Status**.
 
 De twee knoppen verschijnen alleen bij leermomenten die nog niet beoordeeld zijn.
 
+### Zelf een leermoment toevoegen (#1568)
+
+U hoeft niet te wachten op een reply van een afzender: ziet u in de e-mailtester of de trace dat het systeem
+een bericht verkeerd heeft ingeschat, dan legt u zelf een leermoment vast. Klik op **Leermoment toevoegen**
+(of in de trace op **Verzoektype corrigeren…**), kies het **juiste verzoektype** en schrijf een **korte
+samenvatting** van het bericht.
+
+- Schrijf de samenvatting zelf, **zonder namen, e-mailadressen of telefoonnummers**: het is een voorbeeld,
+  geen kopie van de mail. Het systeem maskeert adressen en nummers nog eens extra en kapt af op 500 tekens.
+- Zo'n leermoment is **direct gevalideerd** en wordt meegegeven aan de AI bij nieuwe e-mail. Voorbeelden van
+  een beheerder gaan voor op die uit replies.
+- In de kolom **Herkomst** staat *Beheerder* (met uw naam en het moment) of *Reply*.
+- Leermomenten van een beheerder worden **nooit automatisch opgeruimd**; leermomenten uit replies wel
+  (samenvatting na 30 dagen leeg, verwijderd na 90 dagen). Wilt u een leermoment van een beheerder kwijt,
+  klik dan bij die regel op **Verwijderen** en bevestig: het is dan definitief weg en de AI gebruikt het niet
+  meer. Een leermoment uit een reply heeft die knop niet (dat valt onder de gewone opruiming).
+
 **Twijfelt u?** Net als bij Teamaliassen geldt: keur alleen goed wat u zeker weet. Een gevalideerd
 leermoment stuurt namelijk hoe toekomstige e-mail wordt afgehandeld.
 
@@ -1204,7 +1268,9 @@ leermoment stuurt namelijk hoe toekomstige e-mail wordt afgehandeld.
 |---|---|
 | `GET /api/beheer/leermomenten` | Leermomenten ophalen, eventueel gefilterd op status |
 | `GET /api/beheer/leermomenten/stats` | De tellers boven aan de pagina |
+| `POST /api/beheer/leermomenten` | Een leermoment als beheerder toevoegen |
 | `PUT /api/beheer/leermomenten/{id}/valideer` | Eén leermoment valideren of afwijzen |
+| `DELETE /api/beheer/leermomenten/{id}` | Een leermoment van een beheerder verwijderen |
 
 ---
 
@@ -1530,6 +1596,64 @@ Voert de AI-classificatie van een binnenkomend bericht uit als **dry-run** — e
 verzonden en niets in de e-maillog vastgelegd. Handig om te controleren hoe de AI een nieuw of
 grensgeval van een bericht zou classificeren vóórdat het echt binnenkomt, of om een
 classificatie-instelling te verifiëren na een wijziging in de e-mailtemplates.
+
+Onder het voorbeeld-antwoord toont de tester de **beslissingstrace** (#1568): een genummerde lijst
+met de stappen die de verwerking zette — wat de AI herkende, welk team is gevonden (en met welke
+zekerheid), of de tegenstander is opgezocht, welke datum(s) zijn gebruikt en welk antwoordsjabloon is
+gekozen. Stappen die onzeker of mislukt zijn, hebben een gele of rode markering. Daarboven staat een
+samenvatting: **Zou automatisch verstuurd worden** of **Zou in review gaan**, met de redenen. Deze
+samenvatting is in de tester informatief (de tester verstuurt nooit); bij een echt bericht bepaalt dezelfde beoordeling
+of de zekerheidspoort het antwoord tegenhoudt (zie hieronder). De trace
+toont in de tester de teamschrijfwijze die de AI vond (u typte die mail zelf). De permanent bewaarde trace
+(e-maillog) bevat nooit de tekst van het bericht, de afzender, telefoonnummers of de ruwe teamtekst uit de mail —
+alleen vaste codes, tellingen, datums, herkende teamnamen en een vormkenmerk van wat niet herkend werd.
+
+**Trace van een echt verwerkt bericht.** Op de Instellingen-pagina staat bij de kaart *Email
+verwerking* de knop **Toon berichten en traces**. Die toont de berichten van de laatste 24 uur met
+ontvangstmoment, type en status — bewust zonder afzender of onderwerp. Bij elke regel met een trace staat
+de knop **Trace**; die klapt dezelfde stappenlijst uit, nu met de samenvatting *Eindoordeel: zeker* of
+*onzeker, handmatige controle nodig*, en daaronder wanneer de trace is gemaakt, met welke versie van de
+app en welk sjabloon is gekozen. Voor berichten die buiten scope vielen is de trace kort (classificatie en
+reden). De trace blijft permanent bewaard, ook nadat het bericht zelf na 90 dagen uit het log is
+verdwenen; een regel zonder de knop heeft geen trace (berichten van vóór deze functie).
+
+### Onzekere antwoorden en de zekerheidspoort (#1568)
+
+Is het systeem niet zeker van een antwoord — het eigen team is niet herkend, meerdere teams komen in aanmerking,
+er is via de tegenstander geen wedstrijd gevonden, of het antwoord zou de afzender om het team of de datum
+vragen — dan gaat er **geen automatisch antwoord naar de afzender**. De mail krijgt in het e-maillog de status
+**Review**, in Outlook het label *Geen AI antwoord* en staat als gelezen; het voorgestelde antwoord wordt 30 dagen
+bewaard. Is een review-ontvanger ingesteld (`EmailReviewRecipient`), dan krijgt die het voorstel met bovenaan de
+waarschuwing dat het niet naar de afzender is gegaan. Open de **Trace** bij het bericht: de stap *Zekerheidspoort*
+toont waarom het is tegengehouden. Handel de mail zelf af, of koppel een alias (zie hieronder) zodat dezelfde mail
+voortaan wel automatisch wordt beantwoord.
+
+**Zonder review-ontvanger is de mail alleen hier terug te vinden.** Een tegengehouden mail staat als gelezen in de
+inbox. Is er geen `EmailReviewRecipient` ingesteld, dan ziet u hem alleen in de teller **Wacht op beoordeling
+(Review)** op Instellingen (kaart *Email verwerking*; telt alle Review-berichten, ook van vóór de laatste 24 uur,
+met een knop naar de berichten en hun trace) en aan het Outlook-label *Geen AI antwoord*. Loop die teller dus
+regelmatig na, of stel een review-ontvanger in.
+
+**Schakelaar:** Instellingen → *E-mailantwoorden* → *Onzekere antwoorden eerst laten beoordelen
+(zekerheidspoort)*. Staat standaard **aan**. Zet u hem uit, dan gaan ook onzekere antwoorden weer automatisch
+naar de afzender (het oude gedrag).
+
+### Leren vanuit de trace (#1568)
+
+Als beheerder ziet u in de trace — in de tester én bij een echt verwerkt bericht — knoppen bij de stappen
+waar u iets kunt rechtzetten:
+
+| Knop | Wanneer | Wat het doet |
+|---|---|---|
+| **Koppel '…' aan team…** | Bij een stap *Team herkend* of *Tegenstander herkend als eigen team?* die het team niet herkende (of meerdere teams vond) | U kiest het team; er ontstaat een goedgekeurde alias (zie hoofdstuk 16) |
+| **Verzoektype corrigeren…** | Bij de stap *AI-classificatie* | U kiest het juiste type en redigeert de samenvatting (in de tester al ingevuld met een gesaneerde voorzet); er ontstaat een leermoment (zie hoofdstuk 16a) |
+
+**Opnieuw beoordelen.** Na zo'n correctie klikt u in de tester op **Opnieuw beoordelen**. Dat draait
+dezelfde invoer nogmaals — de AI wordt dus opnieuw aangeroepen, en de limiet van 10 per minuut geldt
+— en toont een tabel **Vergelijking vóór ↔ na** met verzoektype, herkend team, zekerheid, antwoordsjabloon
+en het aantal meegegeven leermomenten; wat veranderde is geel gemarkeerd. Zo ziet u meteen of uw
+correctie werkt, zonder dat er iets verstuurd of opgeslagen wordt. De tester gebruikt daarbij dezelfde
+leermomenten als de echte verwerking; de trace noemt in de stap *Geleerde voorbeelden* hoeveel het er waren.
 
 ---
 
