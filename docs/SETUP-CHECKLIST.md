@@ -131,7 +131,7 @@ Alleen nodig als je naar Azure wilt deployen.
 
 Deze zes waarden identificeren jouw club. Sla ze op als **Secret**, niet als Variable: bij een
 publieke fork zijn de Actions-logs publiek leesbaar, en GitHub maskeert alleen secrets (`***`).
-De workflows lezen `secrets.X || vars.X`, maar de `vars`-tak is alleen een legacy-terugval: een Variable staat leesbaar in elke deploy-log. Verwijder een eventuele Variable met dezelfde naam.
+De workflows lezen uitsluitend `secrets.X`; er is geen terugval op een Variable (#1237). Ontbreekt een secret, dan faalt de deploy vooraf met een melding die het noemt. Verwijder een eventuele Variable met dezelfde naam: die wordt niet meer gebruikt.
 
 - [ ] `AZURE_FUNCTIONAPP_NAME`
 - [ ] `AZURE_FUNCTIONAPP_URL`

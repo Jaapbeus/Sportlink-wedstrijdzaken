@@ -32,6 +32,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   - Gespeelde wedstrijden verdwijnen niet meer uit afgelopen speeldagen: de synchronisatie markeerde ze als verwijderd en overschreef datum, veld en team met lege waarden.
   - Wedstrijdinformatie van clubwedstrijden met hetzelfde Sportlink-wedstrijdnummer overschrijft elkaar niet meer.
 
+### Security
+- De deploy leest club-identificerende configuratie nu uitsluitend uit GitHub Secrets; de terugval op een Variable met dezelfde naam is weg. Ontbreekt een secret, dan stopt de deploy vooraf met een melding die het secret noemt, in plaats van een vage Azure-fout (#1237).
+- `SECURITY.md` legt twee restrisicobesluiten van de eigenaar vast: de classificatie van de Sportlink-clientId en de oude issue- en PR-teksten (#1237).
+
 ## [3.11.1.0] — 2026-10-04
 
 ### Changed
