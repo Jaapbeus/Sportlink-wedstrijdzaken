@@ -20,6 +20,24 @@ public partial class TeamAliassen : ClubSelectorPageBase
     private TeamHerstelDto? _herstelResultaat;
     private string? _herstelFout;
 
+    private bool _toevoegenOpen;
+
+    private void WisselToevoegen() => _toevoegenOpen = !_toevoegenOpen;
+
+    private async Task NaToevoegenAsync(TeamAliasAanmaakResultaatDto resultaat)
+    {
+        _toevoegenOpen = false;
+        _melding = resultaat.Status switch
+        {
+            "herkoppeld" => $"Alias '{resultaat.RuweTekst}' is herkoppeld naar {resultaat.Teamnaam}.",
+            "bestaat-al" => $"Alias '{resultaat.RuweTekst}' bestond al voor {resultaat.Teamnaam} en is nu goedgekeurd.",
+            _ => $"Alias '{resultaat.RuweTekst}' is aangemaakt voor {resultaat.Teamnaam}."
+        };
+        await LaadAsync(_filterStatus);
+    }
+
+    private Task HerlaadNaKoppelenAsync() => LaadAsync(_filterStatus);
+
     protected override async Task OnInitializedAsync()
     {
         await LaadAsync("pending");

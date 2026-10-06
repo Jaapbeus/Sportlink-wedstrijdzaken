@@ -42,6 +42,16 @@
     </div>
 }
 
+<div class="mb-3">
+    <button type="button" class="btn btn-outline-primary" @onclick="WisselToevoegen">
+        @(_toevoegenOpen ? "Sluiten" : "Leermoment toevoegen")
+    </button>
+    @if (_toevoegenOpen)
+    {
+        <LeermomentFormulier OnOpgeslagen="NaToevoegenAsync" OnAnnuleer="WisselToevoegen" />
+    }
+</div>
+
 <div class="mb-3 d-flex gap-2">
     <button class="btn btn-outline-primary @(_filterStatus == "pending" ? "active" : "")"
             @onclick='() => LaadAsync("pending")'>Te beoordelen</button>
@@ -72,6 +82,7 @@ else
             <thead>
                 <tr>
                     <th>Datum</th>
+                    <th>Herkomst</th>
                     <th>Origineel type</th>
                     <th>Afgeleid type</th>
                     <th>Originele samenvatting</th>
@@ -85,6 +96,17 @@ else
                 {
                     <tr>
                         <td><small>@item.MtaInserted.ToLocalTime().ToString("dd-MM-yyyy HH:mm")</small></td>
+                        <td>
+                            @if (item.Herkomst == "Admin")
+                            {
+                                <span class="badge bg-info text-dark">Beheerder</span>
+                                <div><small>@(item.AangemaaktDoorNaam ?? "onbekend")@(item.AangemaaktOp.HasValue ? " · " + item.AangemaaktOp.Value.ToLocalTime().ToString("dd-MM-yyyy HH:mm") : "")</small></div>
+                            }
+                            else
+                            {
+                                <span class="badge bg-light text-dark">Reply</span>
+                            }
+                        </td>
                         <td><span class="badge bg-secondary">@item.OrigineelVerzoekType</span></td>
                         <td>
                             @if (!string.IsNullOrEmpty(item.AfgeleidJuistType))

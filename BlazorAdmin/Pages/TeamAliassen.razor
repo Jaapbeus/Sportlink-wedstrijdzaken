@@ -43,6 +43,18 @@
     </div>
 }
 
+<OnbekendeTeamTeksten OnGekoppeld="HerlaadNaKoppelenAsync" />
+
+<div class="mb-3">
+    <button type="button" class="btn btn-outline-primary" @onclick="WisselToevoegen">
+        @(_toevoegenOpen ? "Sluiten" : "Alias toevoegen")
+    </button>
+    @if (_toevoegenOpen)
+    {
+        <TeamKoppelFormulier OnGekoppeld="NaToevoegenAsync" OnAnnuleer="WisselToevoegen" />
+    }
+</div>
+
 <div class="card mb-4">
     <div class="card-body">
         <h5 class="card-title">Teamlijst opnieuw opbouwen</h5>
@@ -119,6 +131,8 @@ else
                     <th>Status</th>
                     <th class="text-end">Keer gebruikt</th>
                     <th>Aangemaakt</th>
+                    <th>Door</th>
+                    <th>Beoordeeld</th>
                     <th>Actie</th>
                 </tr>
             </thead>
@@ -163,6 +177,31 @@ else
                                 @(item.MtaInserted.HasValue
                                     ? item.MtaInserted.Value.ToLocalTime().ToString("dd-MM-yyyy HH:mm")
                                     : "—")
+                            </small>
+                        </td>
+                        <td>
+                            <small>
+                                @(item.AangemaaktDoorNaam ?? "systeem")
+                                @if (item.AangemaaktOp.HasValue)
+                                {
+                                    <br />@item.AangemaaktOp.Value.ToLocalTime().ToString("dd-MM-yyyy HH:mm")
+                                }
+                                @if (!string.IsNullOrEmpty(item.Reden))
+                                {
+                                    <br /><span class="text-muted">@item.Reden</span>
+                                }
+                            </small>
+                        </td>
+                        <td>
+                            <small>
+                                @if (item.BeoordeeldOp.HasValue)
+                                {
+                                    @(item.BeoordeeldDoorNaam ?? "onbekend")<br />@item.BeoordeeldOp.Value.ToLocalTime().ToString("dd-MM-yyyy HH:mm")
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
                             </small>
                         </td>
                         <td>

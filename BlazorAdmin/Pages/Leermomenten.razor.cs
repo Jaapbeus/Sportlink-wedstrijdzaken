@@ -15,6 +15,16 @@ public partial class Leermomenten : ClubSelectorPageBase
     private string? _fout;
     private readonly HashSet<int> _actieBezigId = new();
 
+    private bool _toevoegenOpen;
+
+    private void WisselToevoegen() => _toevoegenOpen = !_toevoegenOpen;
+
+    private async Task NaToevoegenAsync()
+    {
+        _toevoegenOpen = false;
+        await LaadAsync(_filterStatus);
+    }
+
     protected override async Task OnInitializedAsync()
     {
         await LaadAsync("pending");

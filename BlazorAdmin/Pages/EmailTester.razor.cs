@@ -25,7 +25,39 @@ public partial class EmailTester
         $"Onderwerp: {request.Onderwerp}\n\n" +
         $"{request.Body}";
 
+    private IReadOnlyList<TraceVergelijkingRij>? vergelijking;
+    private bool heeftGeleerd;
+
+    private string OpnieuwKnopKlasse => heeftGeleerd ? "btn btn-primary" : "btn btn-outline-primary";
+
     private async Task TestAsync()
+    {
+        vergelijking = null;
+        heeftGeleerd = false;
+        await DraaiAsync();
+    }
+
+    /// <summary>
+    /// Draait dezelfde invoer opnieuw (#1568 deel C) en zet het vorige resultaat naast het nieuwe. Een mislukte
+    /// run laat de vergelijking leeg in plaats van het vorige resultaat te wissen.
+    /// </summary>
+    private async Task OpnieuwBeoordelenAsync()
+    {
+        var vorige = response?.Trace;
+        var oud = response;
+        await DraaiAsync();
+        if (response is null) response = oud;
+        else vergelijking = TraceVergelijking.Maak(vorige, response.Trace);
+        heeftGeleerd = false;
+    }
+
+    private Task OnGeleerdAsync()
+    {
+        heeftGeleerd = true;
+        return Task.CompletedTask;
+    }
+
+    private async Task DraaiAsync()
     {
         busy = true;
         error = null;

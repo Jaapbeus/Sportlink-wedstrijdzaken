@@ -1,4 +1,6 @@
-@* Beslissingstrace van een verwerkt bericht (#1568): gedeeld door de e-mailtester en het e-maillog. *@
+@* Beslissingstrace van een verwerkt bericht (#1568): gedeeld door de e-mailtester en het e-maillog.
+   Voor beheerders staan bij een niet-herkend team en bij de classificatie leeracties (#1568 deel C). *@
+@using BlazorAdmin.Services
 @if (Trace is { Stappen.Count: > 0 })
 {
     <div class="@ZekerheidAlertKlasse" role="status">
@@ -23,6 +25,39 @@
                     @if (stap.Details.Count > 0)
                     {
                         <div class="small text-muted">@StapDetails(stap)</div>
+                    }
+                    @if (KanCorrigeren)
+                    {
+                        @if (TraceActies.KoppelTekst(stap) is { } koppelTekst)
+                        {
+                            <button type="button" class="btn btn-sm btn-outline-primary mt-1"
+                                    @onclick="() => WisselActie(stap, koppelTekst)">
+                                Koppel '@koppelTekst' aan team…
+                            </button>
+                            @if (_openStap == stap && _openActie == Actie.Koppel)
+                            {
+                                <TeamKoppelFormulier RuweTekst="@koppelTekst" TekstVergrendeld="false"
+                                                     HerkomstVerwerkingId="VerwerkingId"
+                                                     OnGekoppeld="GekoppeldAsync" OnAnnuleer="Sluit" />
+                            }
+                        }
+                        @if (TraceActies.ClassificatieType(stap) is { } classificatieType)
+                        {
+                            <button type="button" class="btn btn-sm btn-outline-primary mt-1"
+                                    @onclick="() => WisselActie(stap, classificatieType)">
+                                Verzoektype corrigeren…
+                            </button>
+                            @if (_openStap == stap && _openActie == Actie.Corrigeer)
+                            {
+                                <LeermomentFormulier OrigineelType="@classificatieType" SuggestieSamenvatting="@SuggestieSamenvatting"
+                                                     HerkomstVerwerkingId="VerwerkingId"
+                                                     OnOpgeslagen="GeleerdAsync" OnAnnuleer="Sluit" />
+                            }
+                        }
+                    }
+                    @if (!string.IsNullOrEmpty(_melding) && _openStap == stap)
+                    {
+                        <div class="alert alert-success mt-2 mb-0">@_melding</div>
                     }
                 </div>
             </li>
