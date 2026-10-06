@@ -1,3 +1,25 @@
+# HANDOFF — #1547 veldbezetting volgt Sportlink (2026-10-06, op develop, nog niet gereleased)
+
+**Wat er op develop staat (v3.11.1.4):** de Planning toont de veldbezetting zoals de Sportlink-veldplanner (veld, tijd,
+duur = Sportlink-speelduur + 15, volledige wedstrijdnaam). Zeven oorzaken opgelost op beide databasetiers; uitleg,
+bewijs en bewuste verschillen: `docs/ARCHITECTUUR-DATABASE-TIERS.md` §79. PR #1548 (kern) en #1555 (verwerking Codex-review
+ronde 1 en 2 plus restpunten uit de verificatie) zijn gemerged; Codex-rondes zijn gebruikt (limiet twee).
+
+**Bij de volgende release (productie):** Postgres-migratie `036` draait mee en herstelt bestaande schade: sleutel van
+`his.matchdetails` naar `interncode`, 347 ontbrekende datums, 345 velden en **69** onterecht als verwijderd gemarkeerde
+gespeelde wedstrijden (door de eigenaar goedgekeurde herstelset, R1-F1). Productie is read-only nagekeken: veilig.
+Na de deploy: Planning van de eerstvolgende zaterdag naast de Sportlink-veldplanner leggen, en daarna vier weken door.
+
+**Open (eigen issues):** #1558 reconciliatie op de SQL Server-tier ontbreekt; #1559 eigenaarsbesluit: moet Veld
+optimalisatie ook Sportlinks speelduur volgen (nu nog Speeltijden, besluit #291); #1560 spookwedstrijden (thuisteam =
+uitteam, in Sportlinks data-API maar niet in de veldplanner), "+15" bij toernooivorm (20 min, vrijdag) en de
+acceptatie over vijf zaterdagen. PR #1557 zet ook versie 3.11.1.4: wie als tweede merget, moet naar 3.11.1.5.
+
+**Lessen:** zie memory `sportlink-wedstrijdcode-vs-interncode` (wedstrijdnummer is niet uniek, koppel via interncode) en
+`lokale-sqlserver-tier-testen` (upgradeproef met bestaande data; een sqlcmd-batch met compilatiefout voert niets uit).
+
+---
+
 # HANDOFF — na release v3.11.0.0 (2026-10-04)
 
 **Update 2026-10-04 avond (op develop, nog niet gereleased):** Dependabot NuGet/Actions getest en gemerged
