@@ -79,11 +79,8 @@
                      style="--gantt-left:calc(@(_lft)% + 2px); --gantt-width:calc(@(_wdt)% - 4px);
                             --gantt-top:calc(@(_top)% + 2px); --gantt-height:calc(@(_hgt)% - 4px);
                             --gantt-bg:@GanttKleur(gi.Status);">
-                    <div class="gantt-blok-tijd">
-                        @gi.Aanvang.ToString("HH:mm")
-                    </div>
                     <div class="gantt-blok-label">
-                        @gi.Label
+                        <span class="gantt-blok-tijd">@gi.Aanvang.ToString("HH:mm")</span> @gi.Label
                     </div>
                 </div>
             }
@@ -108,11 +105,8 @@
                     {
                         <div class="gantt-voorkeur-balk" style="--gantt-voorkeur-kleur:@_voorkeurBalk;"></div>
                     }
-                    <div class="gantt-blok-tijd" style="--gantt-margin-top:@(string.IsNullOrEmpty(_voorkeurBalk) ? "0" : "4px");">
-                        @gi.Aanvang.ToString("HH:mm")
-                    </div>
-                    <div class="gantt-blok-label">
-                        @gi.Label
+                    <div class="gantt-blok-label" style="--gantt-margin-top:@(string.IsNullOrEmpty(_voorkeurBalk) ? "0" : "4px");">
+                        <span class="gantt-blok-tijd">@gi.Aanvang.ToString("HH:mm")</span> @gi.Label
                     </div>
                 </div>
             }
