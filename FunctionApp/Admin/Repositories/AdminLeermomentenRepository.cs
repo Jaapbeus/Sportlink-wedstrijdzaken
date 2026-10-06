@@ -1,5 +1,4 @@
 using Microsoft.Data.SqlClient;
-using Planner.Endpoints.Leren;
 using Planner.Shared.Leren;
 
 namespace SportlinkFunction.Admin;
@@ -96,22 +95,25 @@ internal static class AdminLeermomentenRepository
         return (int)(await cmd.ExecuteScalarAsync())!;
     }
 
-    /// <summary>Verwijdert uitsluitend een leermoment met herkomst <c>Admin</c> van de eigen club (AVG, #1568).</summary>
-    internal static async Task<LeermomentVerwijderUitkomst> VerwijderAdminLeermomentAsync(int id, string clubCode, string cs)
+    /// <summary>Verwijdert uitsluitend een leermoment met herkomst <c>Admin</c> van de eigen club (AVG, #1568); geeft het aantal verwijderde rijen.</summary>
+    internal static async Task<int> VerwijderAdminLeermomentAsync(int id, string clubCode, string cs)
     {
         using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
-        using (var del = new SqlCommand(
-            "DELETE FROM [planner].[ClassificatieCorrectie] WHERE [Id] = @Id AND [ClubCode] = @Cc AND [Herkomst] = N'Admin'", conn))
-        {
-            del.Parameters.AddWithValue("@Id", id);
-            del.Parameters.AddWithValue("@Cc", clubCode);
-            if (await del.ExecuteNonQueryAsync() > 0) return LeermomentVerwijderUitkomst.Verwijderd;
-        }
-        using var bestaat = new SqlCommand(
+        using var cmd = new SqlCommand(
+            "DELETE FROM [planner].[ClassificatieCorrectie] WHERE [Id] = @Id AND [ClubCode] = @Cc AND [Herkomst] = N'Admin'", conn);
+        cmd.Parameters.AddWithValue("@Id", id);
+        cmd.Parameters.AddWithValue("@Cc", clubCode);
+        return await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>Bestaat dit leermoment (elke herkomst) bij de eigen club? Onderscheidt een <c>Reply</c>-rij (409) van een onbekend id (404).</summary>
+    internal static async Task<bool> BestaatLeermomentAsync(int id, string clubCode, string cs)
+    {
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
+        using var cmd = new SqlCommand(
             "SELECT 1 FROM [planner].[ClassificatieCorrectie] WHERE [Id] = @Id AND [ClubCode] = @Cc", conn);
-        bestaat.Parameters.AddWithValue("@Id", id);
-        bestaat.Parameters.AddWithValue("@Cc", clubCode);
-        return await bestaat.ExecuteScalarAsync() is null
-            ? LeermomentVerwijderUitkomst.NietGevonden : LeermomentVerwijderUitkomst.GeenAdminLeermoment;
+        cmd.Parameters.AddWithValue("@Id", id);
+        cmd.Parameters.AddWithValue("@Cc", clubCode);
+        return await cmd.ExecuteScalarAsync() is not null;
     }
 }

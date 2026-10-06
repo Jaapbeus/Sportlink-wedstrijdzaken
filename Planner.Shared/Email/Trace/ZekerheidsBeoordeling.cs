@@ -19,43 +19,56 @@ public static class ZekerheidsBeoordeling
     {
         var lijst = stappen.Where(s => s.Code is not (TraceCodes.Eindoordeel or TraceCodes.Zekerheidspoort)).ToList();
         var redenen = new List<string>();
-
-        var teamVereist = lijst.Any(s => s.Code == TraceCodes.Classificatie
-            && s.Details.TryGetValue(TraceBuilder.TeamVereistSleutel, out var v) && v == TraceBuilder.Ja);
-        var teamOpgelost = lijst.Any(s => TeamStappen.Contains(s.Code) && s.Zekerheid == ZekerheidsNiveau.Zeker);
-        var wedstrijdViaTegenstander = lijst.Any(s => s.Code == TraceCodes.OpponentPad
-            && s.Details.TryGetValue("wedstrijdGevonden", out var g) && g == TraceBuilder.Ja
-            && s.Details.TryGetValue("tak", out var t) && t == "opponent-op-datum");
-
-        if (teamVereist && !teamOpgelost && !wedstrijdViaTegenstander)
-        {
-            var meerdere = lijst.Any(s => TeamStappen.Contains(s.Code)
-                && s.Details.TryGetValue("bron", out var b) && b == "MeerdereKandidaten");
-            redenen.Add(meerdere
-                ? "Meerdere teams komen in aanmerking; er is niets gekozen"
-                : "Het eigen team is niet herkend");
-        }
-
-        foreach (var s in lijst.Where(s => s.Code == TraceCodes.OpponentPad
-            && s.Details.TryGetValue("wedstrijdGevonden", out var g) && g == TraceBuilder.Nee))
-            redenen.Add("Via de tegenstander is geen wedstrijd gevonden");
-
-        foreach (var s in lijst.Where(s => s.Code == TraceCodes.HerplanUitkomst
-            && s.Details.TryGetValue("uitkomst", out var u) && u != "gelukt"))
-            redenen.Add(s.Details["uitkomst"] == "geen-wedstrijd"
-                ? "Voor het herplanverzoek is geen wedstrijd gevonden"
-                : "Het herplanverzoek mist team of datum");
-
-        foreach (var s in lijst.Where(s => s.Code == TraceCodes.Sjabloon
-            && s.Details.TryGetValue("sjabloon", out var sj) && (sj == "teamOnbekend" || sj == "datumOnbekend")))
-            redenen.Add(s.Details["sjabloon"] == "teamOnbekend"
-                ? "Het antwoord vraagt de afzender om het team"
-                : "Het antwoord vraagt de afzender om de datum");
-
-        foreach (var s in lijst.Where(s => s.Zekerheid == ZekerheidsNiveau.Mislukt && !TeamStappen.Contains(s.Code)))
-            redenen.Add($"{s.Titel}: {s.Uitkomst}");
+        redenen.AddRange(TeamRedenen(lijst));
+        redenen.AddRange(OpponentRedenen(lijst));
+        redenen.AddRange(HerplanRedenen(lijst));
+        redenen.AddRange(SjabloonRedenen(lijst));
+        redenen.AddRange(MislukteStapRedenen(lijst));
 
         var uniek = redenen.Distinct().ToList();
         return new ZekerheidsOordeel(uniek.Count == 0, uniek);
     }
+
+    private static bool HeeftDetail(TraceStap s, string sleutel, string waarde)
+        => s.Details.TryGetValue(sleutel, out var v) && v == waarde;
+
+    private static IEnumerable<string> TeamRedenen(List<TraceStap> lijst)
+    {
+        var teamVereist = lijst.Any(s => s.Code == TraceCodes.Classificatie && HeeftDetail(s, TraceBuilder.TeamVereistSleutel, TraceBuilder.Ja));
+        var teamOpgelost = lijst.Any(s => TeamStappen.Contains(s.Code) && s.Zekerheid == ZekerheidsNiveau.Zeker);
+        var wedstrijdViaTegenstander = lijst.Any(s => s.Code == TraceCodes.OpponentPad
+            && HeeftDetail(s, "wedstrijdGevonden", TraceBuilder.Ja) && HeeftDetail(s, "tak", "opponent-op-datum"));
+
+        if (!teamVereist || teamOpgelost || wedstrijdViaTegenstander) yield break;
+
+        var meerdere = lijst.Any(s => TeamStappen.Contains(s.Code) && HeeftDetail(s, "bron", "MeerdereKandidaten"));
+        yield return meerdere
+            ? "Meerdere teams komen in aanmerking; er is niets gekozen"
+            : "Het eigen team is niet herkend";
+    }
+
+    private static IEnumerable<string> OpponentRedenen(List<TraceStap> lijst)
+        => lijst.Where(s => s.Code == TraceCodes.OpponentPad && HeeftDetail(s, "wedstrijdGevonden", TraceBuilder.Nee))
+            .Select(_ => "Via de tegenstander is geen wedstrijd gevonden");
+
+    /// <summary>Een herplanverzoek zonder gevonden wedstrijd of zonder team/datum is geen bruikbare uitkomst (review M3).</summary>
+    private static IEnumerable<string> HerplanRedenen(List<TraceStap> lijst)
+        => lijst.Where(s => s.Code == TraceCodes.HerplanUitkomst
+                && s.Details.TryGetValue("uitkomst", out var u) && u != "gelukt")
+            .Select(s => s.Details["uitkomst"] == "geen-wedstrijd"
+                ? "Voor het herplanverzoek is geen wedstrijd gevonden"
+                : "Het herplanverzoek mist team of datum");
+
+    private static IEnumerable<string> SjabloonRedenen(List<TraceStap> lijst)
+    {
+        foreach (var s in lijst.Where(s => s.Code == TraceCodes.Sjabloon))
+        {
+            if (HeeftDetail(s, "sjabloon", "teamOnbekend")) yield return "Het antwoord vraagt de afzender om het team";
+            else if (HeeftDetail(s, "sjabloon", "datumOnbekend")) yield return "Het antwoord vraagt de afzender om de datum";
+        }
+    }
+
+    private static IEnumerable<string> MislukteStapRedenen(List<TraceStap> lijst)
+        => lijst.Where(s => s.Zekerheid == ZekerheidsNiveau.Mislukt && !TeamStappen.Contains(s.Code))
+            .Select(s => $"{s.Titel}: {s.Uitkomst}");
 }

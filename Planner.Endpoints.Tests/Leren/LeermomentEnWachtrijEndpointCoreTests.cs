@@ -108,24 +108,26 @@ public class LeermomentEnWachtrijEndpointCoreTests
     }
 
     [Fact]
-    public async Task Leermoment_Verwijderen_AdminRij_Geeft200()
+    public async Task Leermoment_Verwijderen_AdminRij_Geeft200_EnVraagNietNaarHetBestaan()
     {
-        var result = await LeermomentEndpointCore.VerwijderAsync(5, _ => Task.FromResult(LeermomentVerwijderUitkomst.Verwijderd));
+        var bestaatGevraagd = false;
+        var result = await LeermomentEndpointCore.VerwijderAsync(5, _ => Task.FromResult(1), _ => { bestaatGevraagd = true; return Task.FromResult(true); });
         result.Should().BeOfType<OkObjectResult>();
+        bestaatGevraagd.Should().BeFalse();
     }
 
     [Fact]
     public async Task Leermoment_Verwijderen_RijVanEenAndereClubOfOnbekend_Geeft404()
     {
-        // De tier filtert op eigen clubcode; een rij van een andere club is dus "niet gevonden".
-        var result = await LeermomentEndpointCore.VerwijderAsync(5, _ => Task.FromResult(LeermomentVerwijderUitkomst.NietGevonden));
+        // De tier filtert op eigen clubcode; een rij van een andere club bestaat daar dus niet.
+        var result = await LeermomentEndpointCore.VerwijderAsync(5, _ => Task.FromResult(0), _ => Task.FromResult(false));
         result.Should().BeOfType<NotFoundObjectResult>();
     }
 
     [Fact]
     public async Task Leermoment_Verwijderen_ReplyRij_Geeft409_EnVerwijdertNiets()
     {
-        var result = await LeermomentEndpointCore.VerwijderAsync(5, _ => Task.FromResult(LeermomentVerwijderUitkomst.GeenAdminLeermoment));
+        var result = await LeermomentEndpointCore.VerwijderAsync(5, _ => Task.FromResult(0), _ => Task.FromResult(true));
         result.Should().BeOfType<ConflictObjectResult>();
     }
 }

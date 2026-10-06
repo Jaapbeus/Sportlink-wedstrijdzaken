@@ -69,5 +69,7 @@ public static class AdminLeermomentenFunction
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminLeermomentenDelete"), "leermoment verwijderen",
             clubCode => LeermomentEndpointCore.VerwijderAsync(
-                id, leermomentId => AdminLeermomentenRepository.VerwijderAdminLeermomentAsync(leermomentId, clubCode, SystemUtilities.DatabaseConfig.ConnectionString)));
+                id,
+                leermomentId => AdminLeermomentenRepository.VerwijderAdminLeermomentAsync(leermomentId, clubCode, SystemUtilities.DatabaseConfig.ConnectionString),
+                leermomentId => AdminLeermomentenRepository.BestaatLeermomentAsync(leermomentId, clubCode, SystemUtilities.DatabaseConfig.ConnectionString)));
 }

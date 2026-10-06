@@ -40,10 +40,13 @@ internal enum ReplyVerwerkingUitkomst
     OnbekendeVerzendUitkomst
 }
 
-internal sealed class EmailReplyPolicyService(Func<string, IReplyPersistentie>? persistentie = null)
+internal sealed class EmailReplyPolicyService
 {
     /// <summary>De opslag van de reply-afhandeling; standaard de Postgres-repository, een test geeft een fake mee (geen database nodig).</summary>
-    private readonly Func<string, IReplyPersistentie> _persistentie = persistentie ?? (cs => new SqlReplyPersistentie(cs));
+    private readonly Func<string, IReplyPersistentie> _persistentie;
+
+    internal EmailReplyPolicyService(Func<string, IReplyPersistentie>? persistentie = null)
+        => _persistentie = persistentie ?? (cs => new SqlReplyPersistentie(cs));
 
     private const string HandmatigePlanningLabel = "Handmatige planning";
 

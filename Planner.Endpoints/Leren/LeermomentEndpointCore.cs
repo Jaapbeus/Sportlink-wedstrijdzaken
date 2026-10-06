@@ -16,8 +16,6 @@ public sealed class LeermomentAanmaakRequest
     public int? HerkomstVerwerkingId { get; set; }
 }
 
-public enum LeermomentVerwijderUitkomst { NietGevonden, Verwijderd, GeenAdminLeermoment }
-
 /// <summary>Een leermoment door een beheerder: direct gevalideerd, herkomst <c>Admin</c>, nooit door de cleanup geraakt.</summary>
 public static class LeermomentEndpointCore
 {
@@ -44,19 +42,21 @@ public static class LeermomentEndpointCore
 
     /// <summary>
     /// Verwijdert een door een beheerder toegevoegd leermoment (AVG: wat een beheerder zelf invoerde moet ook
-    /// weer weg kunnen). <paramref name="verwijderAsync"/> verwijdert uitsluitend een rij met herkomst
-    /// <c>Admin</c> binnen de eigen club en geeft <see cref="LeermomentVerwijderUitkomst"/>.
+    /// weer weg kunnen). <paramref name="verwijderAdminAsync"/> verwijdert uitsluitend een rij met herkomst
+    /// <c>Admin</c> binnen de eigen club en geeft het aantal verwijderde rijen; alleen als dat 0 is vraagt
+    /// <paramref name="bestaatAsync"/> (eigen club, elke herkomst) of het een <c>Reply</c>-rij was (409) of onbekend (404).
     /// </summary>
-    public static async Task<IActionResult> VerwijderAsync(int id, Func<int, Task<LeermomentVerwijderUitkomst>> verwijderAsync)
-        => await verwijderAsync(id) switch
-        {
-            LeermomentVerwijderUitkomst.Verwijderd => new OkObjectResult(new { deleted = true, id }),
-            LeermomentVerwijderUitkomst.GeenAdminLeermoment => new ConflictObjectResult(new
+    public static async Task<IActionResult> VerwijderAsync(
+        int id, Func<int, Task<int>> verwijderAdminAsync, Func<int, Task<bool>> bestaatAsync)
+    {
+        if (await verwijderAdminAsync(id) > 0) return new OkObjectResult(new { deleted = true, id });
+        return await bestaatAsync(id)
+            ? new ConflictObjectResult(new
             {
                 error = "Alleen een door een beheerder toegevoegd leermoment kan worden verwijderd; dit leermoment komt uit een beantwoorde mail."
-            }),
-            _ => new NotFoundObjectResult(new { error = $"Leermoment {id} niet gevonden." })
-        };
+            })
+            : new NotFoundObjectResult(new { error = $"Leermoment {id} niet gevonden." });
+    }
 
     private sealed class ActieBody { public string? Actie { get; set; } }
 

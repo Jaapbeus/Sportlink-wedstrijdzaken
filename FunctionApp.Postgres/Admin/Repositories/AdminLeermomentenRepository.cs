@@ -1,5 +1,4 @@
 using Npgsql;
-using Planner.Endpoints.Leren;
 using Planner.Shared.Leren;
 
 namespace FunctionApp.Postgres.Admin;
@@ -114,23 +113,27 @@ internal static class AdminLeermomentenRepository
         return (int)(await cmd.ExecuteScalarAsync())!;
     }
 
-    /// <summary>Verwijdert uitsluitend een leermoment met herkomst <c>Admin</c> van de eigen club (AVG, #1568).</summary>
-    internal static async Task<LeermomentVerwijderUitkomst> VerwijderAdminLeermomentAsync(int id, string clubCode, string cs)
+    /// <summary>Verwijdert uitsluitend een leermoment met herkomst <c>Admin</c> van de eigen club (AVG, #1568); geeft het aantal verwijderde rijen.</summary>
+    internal static async Task<int> VerwijderAdminLeermomentAsync(int id, string clubCode, string cs)
     {
         await using var conn = new NpgsqlConnection(cs);
         await conn.OpenAsync();
-        await using (var del = new NpgsqlCommand(
-            "DELETE FROM planner.classificatiecorrectie WHERE id = @id AND clubcode = @cc AND herkomst = 'Admin'", conn))
-        {
-            del.Parameters.AddWithValue("id", id);
-            del.Parameters.AddWithValue("cc", clubCode);
-            if (await del.ExecuteNonQueryAsync() > 0) return LeermomentVerwijderUitkomst.Verwijderd;
-        }
-        await using var bestaat = new NpgsqlCommand(
+        await using var cmd = new NpgsqlCommand(
+            "DELETE FROM planner.classificatiecorrectie WHERE id = @id AND clubcode = @cc AND herkomst = 'Admin'", conn);
+        cmd.Parameters.AddWithValue("id", id);
+        cmd.Parameters.AddWithValue("cc", clubCode);
+        return await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>Bestaat dit leermoment (elke herkomst) bij de eigen club? Onderscheidt een <c>Reply</c>-rij (409) van een onbekend id (404).</summary>
+    internal static async Task<bool> BestaatLeermomentAsync(int id, string clubCode, string cs)
+    {
+        await using var conn = new NpgsqlConnection(cs);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(
             "SELECT 1 FROM planner.classificatiecorrectie WHERE id = @id AND clubcode = @cc", conn);
-        bestaat.Parameters.AddWithValue("id", id);
-        bestaat.Parameters.AddWithValue("cc", clubCode);
-        return await bestaat.ExecuteScalarAsync() is null
-            ? LeermomentVerwijderUitkomst.NietGevonden : LeermomentVerwijderUitkomst.GeenAdminLeermoment;
+        cmd.Parameters.AddWithValue("id", id);
+        cmd.Parameters.AddWithValue("cc", clubCode);
+        return await cmd.ExecuteScalarAsync() is not null;
     }
 }
