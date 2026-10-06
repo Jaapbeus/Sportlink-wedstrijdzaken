@@ -26,8 +26,21 @@ public class LerenVanTraceIntegrationTests
 
     // ── Alias ─────────────────────────────────────────────────────────────────────────────────
 
-    private static AliasAanmaakOpdracht Alias(string ruw, int teamId, bool herkoppel = false) => new(
-        ClubCode, ruw, global::Planner.Shared.TeamNaamNormalisatie.NormaliseerVoorVergelijking(ruw, ClubCode), teamId, herkoppel, Wie, 42, "uit trace");
+    private static AliasAanmaakOpdracht Alias(string ruw, int teamId, bool herkoppel = false, int? verwerkingId = 42) => new(
+        ClubCode, ruw, global::Planner.Shared.TeamNaamNormalisatie.NormaliseerVoorVergelijking(ruw, ClubCode), teamId, herkoppel, Wie, verwerkingId, "uit trace");
+
+    [PostgresFact]
+    public async Task Alias_Negeert_HerkomstVerwerkingId_Zonder_Eigen_Verwerking()
+    {
+        await SchoonAsync();
+        var team = await MaakTeamAsync("TESTCLUB O10-5", "JO10-5");
+        var store = new PostgresTeamAliasStore(ConnectionString);
+
+        var uitkomst = await store.MaakAanAsync(Alias("j10-05", team, verwerkingId: 2000000));
+
+        uitkomst.Status.Should().Be(AliasAanmaakStatus.Aangemaakt);
+        (await LeesAliasAsync(uitkomst.Id!.Value)).HerkomstVerwerkingId.Should().BeNull();
+    }
 
     [PostgresFact]
     public async Task Alias_Aanmaken_IsDirectGevalideerd_MetAuditEnBronCoordinatorCorrectie()
@@ -36,7 +49,9 @@ public class LerenVanTraceIntegrationTests
         var team = await MaakTeamAsync("TESTCLUB O10-4", "JO10-4");
         var store = new PostgresTeamAliasStore(ConnectionString);
 
-        var uitkomst = await store.MaakAanAsync(Alias("j10-04", team));
+        var verwerkingId = await SqlEmailPersistenceRepository.InsertEmailVerwerkingAsync(ConnectionString, Bericht($"alias-{Guid.NewGuid():N}"), ClubCode);
+
+        var uitkomst = await store.MaakAanAsync(Alias("j10-04", team, verwerkingId: verwerkingId));
 
         uitkomst.Status.Should().Be(AliasAanmaakStatus.Aangemaakt);
         var rij = await LeesAliasAsync(uitkomst.Id!.Value);
@@ -45,7 +60,7 @@ public class LerenVanTraceIntegrationTests
         rij.AangemaaktDoor.Should().Be("oid-test");
         rij.AangemaaktDoorNaam.Should().Be("Testbeheerder");
         rij.AangemaaktOpGezet.Should().BeTrue();
-        rij.HerkomstVerwerkingId.Should().Be(42);
+        rij.HerkomstVerwerkingId.Should().Be(verwerkingId);
     }
 
     [PostgresFact]
