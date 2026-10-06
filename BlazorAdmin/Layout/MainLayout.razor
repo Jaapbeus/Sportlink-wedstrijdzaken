@@ -19,7 +19,7 @@
                 {
                     <select @key="@($"{_clubs.Count}|{ClubSelector.SelectedClubCode}")"
                             class="form-select form-select-sm club-selector @(IsTestmodus ? "club-selector-testmodus" : "")"
-                            style="min-width:200px" @onchange="OnClubChanged" value="@ClubSelector.SelectedClubCode">
+                            @onchange="OnClubChanged" value="@ClubSelector.SelectedClubCode">
                         @foreach (var club in _clubs)
                         {
                             <option value="@club.ClubCode">@club.ClubName</option>
@@ -35,7 +35,7 @@
                 }
             </div>
             <div class="flex-fill d-flex align-items-center justify-content-end gap-2">
-                <span class="text-muted small">v@(Assembly.GetExecutingAssembly().GetName().Version?.ToString(4) ?? "?")</span>
+                <span class="text-muted small top-row-versie">v@(Assembly.GetExecutingAssembly().GetName().Version?.ToString(4) ?? "?")</span>
                 <ThemeModeToggle />
                 <FeedbackWidget />
                 <a href="https://github.com/Jaapbeus/Sportlink-wedstrijdzaken" target="_blank">About</a>

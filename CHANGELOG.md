@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **Admin GUI**: de bovenbalk past nu ook op schermen van 320 px breed; de pagina pant niet meer horizontaal. Op smalle schermen is de marge kleiner en verdwijnt het versienummer uit de balk (#1556).
+
 ## [3.11.2.0] — 2026-10-06
 
 ### Fixed
