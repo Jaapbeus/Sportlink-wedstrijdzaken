@@ -24,8 +24,10 @@ internal static class AdminEmailLogRepository
                            afzender AS ""Afzender"", onderwerp AS ""Onderwerp"",
                            ontvangstdatum AS ""OntvangstDatum"", verzoektype AS ""VerzoekType"",
                            status AS ""Status"", verstuurdnaar AS ""VerstuurdNaar"",
-                           mta_inserted, mta_modified
-                    FROM planner.emailverwerking
+                           mta_inserted, mta_modified,
+                           EXISTS (SELECT 1 FROM planner.emailtrace t
+                                   WHERE t.verwerkingid = v.id AND t.clubcode = v.clubcode) AS ""HeeftTrace""
+                    FROM planner.emailverwerking v
                     WHERE clubcode = @cc";
         if (vanaf.HasValue) sql += " AND ontvangstdatum >= @vanaf";
         if (tot.HasValue)   sql += " AND ontvangstdatum < @tot";

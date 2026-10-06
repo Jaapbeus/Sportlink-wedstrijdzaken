@@ -17,12 +17,17 @@ BEGIN
     DECLARE @AnonimiseerVanaf DATETIME = DATEADD(DAY, -30, GETUTCDATE());
     DECLARE @VerwijderVoor    DATETIME = DATEADD(DAY, -90, GETUTCDATE());
 
+    -- #1568 deel C: uitsluitend herkomst 'Reply'. Een admin-leermoment is permanent (besluit eigenaar
+    -- 2026-10-06): de samenvatting is door de beheerder geredigeerd en door de PII-arme sanering gehaald,
+    -- en het leermoment verliest zijn waarde als het na 30 dagen leeg wordt of na 90 dagen verdwijnt.
+
     -- Fase 1: anonimiseer samenvattingen in records 30-90 dagen oud
     UPDATE [planner].[ClassificatieCorrectie]
     SET [OrigineleSamenvatting] = NULL,
         [CorrectieSamenvatting] = NULL,
         [mta_modified]          = GETUTCDATE()
-    WHERE [mta_inserted] < @AnonimiseerVanaf
+    WHERE [Herkomst] = N'Reply'
+      AND [mta_inserted] < @AnonimiseerVanaf
       AND [mta_inserted] >= @VerwijderVoor
       AND ([OrigineleSamenvatting] IS NOT NULL
            OR [CorrectieSamenvatting] IS NOT NULL);
@@ -31,5 +36,6 @@ BEGIN
     -- Correctierijen die jonger zijn maar naar een te verwijderen e-mailrij verwijzen, worden
     -- opgeruimd door sp_CleanupEmailVerwerking (fase 2a).
     DELETE FROM [planner].[ClassificatieCorrectie]
-    WHERE [mta_inserted] < @VerwijderVoor;
+    WHERE [Herkomst] = N'Reply'
+      AND [mta_inserted] < @VerwijderVoor;
 END;

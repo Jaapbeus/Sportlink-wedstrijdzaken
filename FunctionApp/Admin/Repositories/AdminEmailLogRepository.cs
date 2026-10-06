@@ -10,15 +10,19 @@ internal static class AdminEmailLogRepository
     internal static async Task<List<Dictionary<string, object?>>> GetAsync(
         string clubCode, DateTime? vanaf, DateTime? tot, string? statusFilter, int limit, string cs)
     {
-        var sql = @"SELECT TOP (@Limit) [Id], [MessageId], [ConversationId], [Afzender], [Onderwerp],
-                           [OntvangstDatum], [VerzoekType], [Status], [VerstuurdNaar],
-                           [mta_inserted], [mta_modified]
-                    FROM [planner].[EmailVerwerking]
-                    WHERE [ClubCode] = @Cc";
-        if (vanaf.HasValue) sql += " AND [OntvangstDatum] >= @Vanaf";
-        if (tot.HasValue)   sql += " AND [OntvangstDatum] < @Tot";
-        if (!string.IsNullOrWhiteSpace(statusFilter)) sql += " AND [Status] = @Status";
-        sql += " ORDER BY [OntvangstDatum] DESC";
+        // HeeftTrace (#1568): alleen een vlag, de trace zelf haalt de GUI op per regel.
+        var sql = @"SELECT TOP (@Limit) v.[Id], v.[MessageId], v.[ConversationId], v.[Afzender], v.[Onderwerp],
+                           v.[OntvangstDatum], v.[VerzoekType], v.[Status], v.[VerstuurdNaar],
+                           v.[mta_inserted], v.[mta_modified],
+                           CAST(CASE WHEN EXISTS (SELECT 1 FROM [planner].[EmailTrace] t
+                                                  WHERE t.[VerwerkingId] = v.[Id] AND t.[ClubCode] = v.[ClubCode])
+                                     THEN 1 ELSE 0 END AS BIT) AS [HeeftTrace]
+                    FROM [planner].[EmailVerwerking] v
+                    WHERE v.[ClubCode] = @Cc";
+        if (vanaf.HasValue) sql += " AND v.[OntvangstDatum] >= @Vanaf";
+        if (tot.HasValue)   sql += " AND v.[OntvangstDatum] < @Tot";
+        if (!string.IsNullOrWhiteSpace(statusFilter)) sql += " AND v.[Status] = @Status";
+        sql += " ORDER BY v.[OntvangstDatum] DESC";
 
         using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(sql, conn);

@@ -46,7 +46,7 @@ public static class AdminSettingsFunction
         "Accommodatie", "FetchSchedule", "EmailVoetnoot",
         "AccommodatiePlaats", "AccommodatieLatitude", "AccommodatieLongitude",
         "UseRealtimeApi", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio",
-        "SportlinkExtensionEnabled", "SportlinkSpelactiviteit", "PdfExportIngeschakeld"
+        "SportlinkExtensionEnabled", "SportlinkSpelactiviteit", "PdfExportIngeschakeld", "ZekerheidspoortActief"
     };
 
     private const string ManagementApiVersion = "2022-03-01";
@@ -77,7 +77,7 @@ public static class AdminSettingsFunction
                         [BufferMinuten], [EmailVoetnoot], [AccommodatiePlaats],
                         [AccommodatieLatitude], [AccommodatieLongitude],
                         [KnvbPdfBijlageIngeschakeld], [KnvbStandaardRegio], [SportlinkExtensionEnabled],
-                        [SportlinkSpelactiviteit], [PdfExportIngeschakeld]
+                        [SportlinkSpelactiviteit], [PdfExportIngeschakeld], [ZekerheidspoortActief]
                     FROM [dbo].[AppSettings]
                     WHERE [ClubCode] = @ClubCode", connection);
                 command.Parameters.AddWithValue("@ClubCode", clubCode);

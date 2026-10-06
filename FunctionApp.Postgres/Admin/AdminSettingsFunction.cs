@@ -53,7 +53,7 @@ public static class AdminSettingsFunction
         "Accommodatie", "FetchSchedule", "EmailVoetnoot",
         "AccommodatiePlaats", "AccommodatieLatitude", "AccommodatieLongitude",
         "UseRealtimeApi", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio",
-        "SportlinkExtensionEnabled", "SportlinkDryRun", "SportlinkSpelactiviteit", "PdfExportIngeschakeld"
+        "SportlinkExtensionEnabled", "SportlinkDryRun", "SportlinkSpelactiviteit", "PdfExportIngeschakeld", "ZekerheidspoortActief"
     };
 
     /// <summary>
@@ -75,6 +75,7 @@ public static class AdminSettingsFunction
         ["SportlinkExtensionEnabled"] = "::boolean",
         ["SportlinkDryRun"] = "::boolean",
         ["PdfExportIngeschakeld"] = "::boolean",
+        ["ZekerheidspoortActief"] = "::boolean",
     };
 
     private const string ManagementApiVersion = "2022-03-01";
@@ -126,6 +127,7 @@ public static class AdminSettingsFunction
                         userealtimeapi AS ""UseRealtimeApi"",
                         sportlinkspelactiviteit AS ""SportlinkSpelactiviteit"",
                         pdfexportingeschakeld AS ""PdfExportIngeschakeld"",
+                        zekerheidspoortactief AS ""ZekerheidspoortActief"",
                         {extensieKolom} AS ""SportlinkExtensionEnabled"",
                         {dryRunKolom} AS ""SportlinkDryRun""
                     FROM public.appsettings

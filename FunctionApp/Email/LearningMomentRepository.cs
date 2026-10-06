@@ -60,7 +60,7 @@ internal static class LearningMomentRepository
                               [OrigineleSamenvatting], [CorrectieSamenvatting]
                 FROM [planner].[ClassificatieCorrectie]
                 WHERE [IsGevalideerd] = 1 AND [IsAfgewezen] = 0 AND [ClubCode] = @ClubCode
-                ORDER BY [mta_modified] DESC", conn);
+                ORDER BY CASE WHEN [Herkomst] = N'Admin' THEN 0 ELSE 1 END, [mta_modified] DESC", conn);
             cmd.Parameters.AddWithValue("@ClubCode", clubCode);
 
             var list = new List<ClassificatieCorrectieVoorbeeld>();

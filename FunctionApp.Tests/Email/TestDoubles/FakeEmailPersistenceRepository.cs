@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Planner.Shared.Email.Trace;
 using SportlinkFunction.Email;
 
 namespace FunctionApp.Tests.Email.TestDoubles;
@@ -85,6 +86,14 @@ internal sealed class FakeEmailPersistenceRepository : IEmailPersistenceReposito
     public Task UpdateFoutAsync(int verwerkingId, string foutMelding) => throw new NotImplementedException();
 
     public Task UpdateReplyStatusAsync(int verwerkingId, bool isReply, int replyOpVerwerkingId) => throw new NotImplementedException();
+
+    public List<EmailTraceRecord> Traces { get; } = new();
+
+    public Task UpsertTraceAsync(EmailTraceRecord record)
+    {
+        Traces.Add(record);
+        return Task.CompletedTask;
+    }
 
     public Task<List<ClassificatieCorrectieVoorbeeld>> HaalLeermomentVoorbeeldenOpAsync(string clubCode, ILogger log)
         => throw new NotImplementedException();
