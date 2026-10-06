@@ -40,8 +40,9 @@ const base = process.env.BLAZOR_URL || 'http://localhost:5301';
 const LANG = 'Senioren-zaterdag-veteranen-zevental-met-een-heel-lange-categorienaam';
 const lft = ['JO6','JO7','JO8','JO9','JO10','JO11','JO12','JO13','JO14','JO15','JO16','JO17','JO18','JO19','JO23','MO7','MO8','MO9','MO10','MO11','MO12','MO13','MO14','MO15','MO16','MO17','MO18','MO19','MO20','MO23','G','VR','1-99', LANG];
 const results = []; let failed = 0;
-const ok = (c, m) => { results.push((c ? 'OK   ' : 'FAIL ') + m); if (!c) failed++; };
-const info = m => results.push('INFO ' + m);
+// Elke controle wordt direct geprint: crasht de suite halverwege (bijv. een locator-timeout op een kapotte build), dan blijft zichtbaar wat er vóór de crash al was vastgesteld.
+const ok = (c, m) => { const r = (c ? 'OK   ' : 'FAIL ') + m; results.push(r); console.log(r); if (!c) failed++; };
+const info = m => { results.push('INFO ' + m); console.log('INFO ' + m); };
 const browser = await chromium.launch();
 
 async function open({ width = 1400, height = 900, leeg = false } = {}) {
@@ -62,9 +63,10 @@ async function open({ width = 1400, height = 900, leeg = false } = {}) {
     const json = (b, s = 200) => route.fulfill({ status: s, contentType: 'application/json', body: JSON.stringify(b) });
     if (url.pathname === '/api/health') return json({ status: 'healthy', database: 'online', version: 'test' });
     if (url.pathname === '/api/beheer/speeltijden' && req.method() === 'GET') {
-      if (api.holdGet) { const g = api.holdGet; api.holdGet = null; await g.gate; }
       if (api.failGetNext) { api.failGetNext = false; return json({ error: 'lijst tijdelijk niet beschikbaar' }, 500); }
-      return json(api.state);
+      const momentopname = JSON.parse(JSON.stringify(api.state));            // zoals een echte server: de stand op het moment van de vraag
+      if (api.holdGet) { const g = api.holdGet; api.holdGet = null; await g.gate; }
+      return json(momentopname);
     }
     if (url.pathname.startsWith('/api/beheer/speeltijden') && ['PUT', 'POST'].includes(req.method())) {
       const body = req.postDataJSON(); const key = decodeURIComponent(url.pathname.split('/').pop());
@@ -209,8 +211,44 @@ const geenFouten = (errors, label) => ok(errors.length === 0, `${label}: geen pa
   await waarschuwing.getByRole('button', { name: 'Sluiten' }).click();
   ok(await page.locator('.alert-warning[role=alert]').count() === 0, '#1552 mislukte refresh: waarschuwing is te sluiten');
 
-  ok(api.puts.length === 10 && api.posts.length === 0, `#1552 alle ${api.puts.length} opslagen liepen via de gemockte PUT; geen echte API geraakt`);
-  ok(netlog.length === 5, `#1552 netwerklog bevat precies de 5 opzettelijk mislukte responsen (4× PUT, 1× GET) (${netlog.length})`);
+  // 9. Codex-reproductie (PR #1557 ronde 2, P2): twee overlappende opslagen; de GET van A is een oudere momentopname
+  //    en komt ná de GET van B binnen — B mag niet terugspringen
+  await row(page, 'JO18').getByRole('button', { name: 'Bewerken' }).click();
+  await page.getByLabel('Totaal (min)').fill('90');
+  const releaseGetA = holdGet(api);                                               // PUT van A direct ok; zijn GET (A=90, B=75) blijft hangen
+  await formRows(page).getByRole('button', { name: 'Opslaan' }).click(); await settle(page);
+  ok(await row(page, 'JO18').getByRole('button', { name: 'Bewerken' }).isDisabled(), '#1552 P2-r2: A (JO18) is geblokkeerd zolang zijn GET loopt');
+  await row(page, 'JO19').getByRole('button', { name: 'Bewerken' }).click();
+  await page.getByLabel('Totaal (min)').fill('91');
+  await formRows(page).getByRole('button', { name: 'Opslaan' }).click(); await settle(page);   // PUT en GET van B voltooien (A=90, B=91)
+  ok(await totaalVan(page, 'JO19') === '91' && !(await row(page, 'JO19').getByRole('button', { name: 'Bewerken' }).isDisabled()), '#1552 P2-r2: B (JO19) toont 91 en is vrijgegeven');
+  releaseGetA(); await settle(page);                                              // oudere momentopname komt nu binnen
+  ok(await totaalVan(page, 'JO19') === '91', '#1552 P2-r2: B blijft 91 na de oudere GET-respons van A (niet teruggezet naar 75)');
+  ok(await totaalVan(page, 'JO18') === '90' && !(await row(page, 'JO18').getByRole('button', { name: 'Bewerken' }).isDisabled()), '#1552 P2-r2: A toont 90 en is vrijgegeven');
+  await row(page, 'JO19').getByRole('button', { name: 'Bewerken' }).click();
+  ok(await page.getByLabel('Totaal (min)').inputValue() === '91', '#1552 P2-r2: heropend B toont 91');
+  await page.getByLabel('Rust (min)').fill('13');
+  await formRows(page).getByRole('button', { name: 'Opslaan' }).click(); await settle(page);
+  const putB2 = api.puts.at(-1);
+  ok(putB2.key === 'JO19' && Number(putB2.body.wedstrijdTotaal ?? putB2.body.WedstrijdTotaal) === 91, `#1552 P2-r2: tweede opslag van B stuurt totaal 91 (body totaal=${Number(putB2.body.wedstrijdTotaal ?? putB2.body.WedstrijdTotaal)})`);
+
+  // 10. idem, maar de nieuwste verversing (van B) mislukt: lokale waarden blijven, de oudere respons van A wordt genegeerd
+  await row(page, 'MO11').getByRole('button', { name: 'Bewerken' }).click();
+  await page.getByLabel('Totaal (min)').fill('92');
+  const releaseGetA2 = holdGet(api);
+  await formRows(page).getByRole('button', { name: 'Opslaan' }).click(); await settle(page);
+  await row(page, 'MO12').getByRole('button', { name: 'Bewerken' }).click();
+  await page.getByLabel('Totaal (min)').fill('93');
+  api.failGetNext = true;
+  await formRows(page).getByRole('button', { name: 'Opslaan' }).click(); await settle(page);
+  ok(await page.locator('.alert-warning[role=alert]').count() === 1 && await totaalVan(page, 'MO12') === '93', '#1552 P2-r2 + mislukte refresh: waarschuwing zichtbaar, B (MO12) toont lokaal 93');
+  releaseGetA2(); await settle(page);
+  ok(await totaalVan(page, 'MO12') === '93' && await totaalVan(page, 'MO11') === '92', '#1552 P2-r2 + mislukte refresh: oudere respons van A genegeerd, beide regels houden de opgeslagen waarden');
+  ok(await page.locator('.alert-warning[role=alert]').count() === 1, '#1552 P2-r2 + mislukte refresh: waarschuwing blijft staan');
+  await page.locator('.alert-warning[role=alert]').getByRole('button', { name: 'Sluiten' }).click();
+
+  ok(api.puts.length === 15 && api.posts.length === 0, `#1552 alle ${api.puts.length} opslagen liepen via de gemockte PUT; geen echte API geraakt`);
+  ok(netlog.length === 6, `#1552 netwerklog bevat precies de 6 opzettelijk mislukte responsen (4× PUT, 2× GET) (${netlog.length})`);
   geenFouten(errors, '#1552');
   await ctx.close();
 }
@@ -302,6 +340,5 @@ for (const w of [320, 375, 768, 1400]) {
   await ctx.close();
 }
 await browser.close();
-console.log(results.join('\n'));
 console.log(`\n${results.length - failed}/${results.length} geslaagd (${results.filter(r => r.startsWith('INFO')).length} info)`);
 process.exitCode = failed ? 1 : 0;

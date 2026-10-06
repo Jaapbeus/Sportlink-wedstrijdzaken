@@ -506,7 +506,12 @@ kloppen. Besluiten en meetwaarden: `docs/DOSSIER-SPEELTIJDEN-INLINE-FORMULIER.md
   werkmap, dan stopt het script met exit 2 en een installatie-aanwijzing.
 - **Netwerklog ≠ fout.** Chrome logt elke 4xx/5xx-respons als console-error. De suite telt die apart en
   faalt alleen op echte page-/console-errors; bij een uitbreiding die scheiding behouden.
-- Exit 0 = alle controles geslaagd; de uitvoer is één regel per controle (`OK`/`FAIL`).
+- Exit 0 = alle controles geslaagd; de uitvoer is één regel per controle (`OK`/`FAIL`), direct geprint — ook
+  als de suite halverwege crasht (bijv. een locator-timeout op een kapotte build) blijft zichtbaar wat er al is
+  vastgesteld. De GET-mock levert een **momentopname van het moment van de vraag**, zodat een traag antwoord
+  een oude stand kan bevatten; dat is nodig om responsvolgorde-races te kunnen reproduceren. Wil je bewijzen dat
+  een scenario ook rood kan worden, draai de suite dan tegen een build van vóór de fix (eigen tijdelijke worktree
+  + eigen poort) — zie dossier §4.5.
 
 ## Database.Postgres.Tests — integratietests, env-gestuurd (#866)
 

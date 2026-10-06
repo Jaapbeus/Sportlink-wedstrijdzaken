@@ -339,6 +339,131 @@ public class SpeeltijdBewerkingTests
         bewerking.IsInBewerking(A).Should().BeFalse();
     }
 
+    /// <summary>
+    /// Codex, PR #1557 ronde 2 (P2): twee overlappende opslagen; de GET van de eerste komt als oudere
+    /// momentopname ná de GET van de tweede binnen en mag de al vrijgegeven tweede regel niet terugzetten.
+    /// </summary>
+    [Fact]
+    public async Task OverlappendeOpslagen_EenOudereLijstresponsOverschrijftGeenNieuwereWaarden()
+    {
+        var bewerking = await Geladen(Regel("JO10", 75), Regel("JO11", 75));
+        bewerking.StartBewerken(bewerking.Items[0]);
+        bewerking.Actief!.Model.WedstrijdTotaal = 90;
+        var opslagA = new VertraagdeOpslag(bewerking);
+        opslagA.Put.SetResult(ApiResult<object>.Ok(new object()));
+        await opslagA.GetGestart.Task;                                   // GET van A hangt (momentopname A=90, B=75)
+
+        bewerking.StartBewerken(bewerking.Items[1]).Should().BeTrue("B is niet geblokkeerd door de opslag van A");
+        bewerking.Actief!.Model.WedstrijdTotaal = 91;
+        var opslagB = new VertraagdeOpslag(bewerking);
+        opslagB.Put.SetResult(ApiResult<object>.Ok(new object()));
+        await opslagB.GetGestart.Task;
+        opslagB.Get.SetResult(ApiResult<List<SpeeltijdDto>>.Ok(new() { Regel("JO10", 90), Regel("JO11", 91) }));
+        (await opslagB.Resultaat).Should().BeTrue();
+        Totaal(bewerking, "JO11").Should().Be(91);
+        bewerking.IsOpslagBezig(Regel("JO11", 0)).Should().BeFalse("B is vrijgegeven");
+
+        opslagA.Get.SetResult(ApiResult<List<SpeeltijdDto>>.Ok(new() { Regel("JO10", 90), Regel("JO11", 75) }));  // oudere momentopname
+        (await opslagA.Resultaat).Should().BeTrue();
+
+        Totaal(bewerking, "JO11").Should().Be(91, "een oudere lijstrespons mag een nieuwere waarde niet terugzetten");
+        Totaal(bewerking, "JO10").Should().Be(90);
+        bewerking.IsOpslagBezig(Regel("JO10", 0)).Should().BeFalse("het slot van A komt vrij als zijn eigen GET terug is");
+        bewerking.StartBewerken(bewerking.Items[1]).Should().BeTrue();
+        bewerking.Actief!.Model.WedstrijdTotaal.Should().Be(91);
+        bewerking.Actief.Model.WedstrijdRust = 13;
+        var tweede = new VertraagdeOpslag(bewerking);
+        tweede.Put.SetResult(ApiResult<object>.Ok(new object()));
+        tweede.Get.SetResult(ApiResult<List<SpeeltijdDto>>.Ok(new() { Regel("JO10", 90), Regel("JO11", 91) }));
+        await tweede.Resultaat;
+        tweede.Verzonden.Single().WedstrijdTotaal.Should().Be(91, "alleen rust wijzigen stuurt de eerder opgeslagen 91 mee");
+    }
+
+    [Fact]
+    public async Task OudereLijstrespons_DieVoorDeNieuwereBinnenkomt_WordtOokGenegeerd()
+    {
+        var bewerking = await Geladen(Regel("JO10", 75), Regel("JO11", 75));
+        bewerking.StartBewerken(bewerking.Items[0]);
+        bewerking.Actief!.Model.WedstrijdTotaal = 90;
+        var opslagA = new VertraagdeOpslag(bewerking);
+        opslagA.Put.SetResult(ApiResult<object>.Ok(new object()));
+        await opslagA.GetGestart.Task;
+        bewerking.StartBewerken(bewerking.Items[1]);
+        bewerking.Actief!.Model.WedstrijdTotaal = 91;
+        var opslagB = new VertraagdeOpslag(bewerking);
+        opslagB.Put.SetResult(ApiResult<object>.Ok(new object()));
+        await opslagB.GetGestart.Task;                                   // beide GET's hangen; B is de nieuwste
+
+        opslagA.Get.SetResult(ApiResult<List<SpeeltijdDto>>.Ok(new() { Regel("JO10", 90), Regel("JO11", 75) }));
+        await opslagA.Resultaat;
+        Totaal(bewerking, "JO11").Should().Be(91, "zolang de nieuwere verversing loopt blijft de lokale bijwerking staan");
+
+        opslagB.Get.SetResult(ApiResult<List<SpeeltijdDto>>.Ok(new() { Regel("JO10", 90), Regel("JO11", 91) }));
+        await opslagB.Resultaat;
+        Totaal(bewerking, "JO11").Should().Be(91);
+        bewerking.VerversFout.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task MislukteNieuwsteVerversing_MetLaterBinnenkomendeOudereRespons_HoudtDeLokaleWaarden()
+    {
+        var bewerking = await Geladen(Regel("JO10", 75), Regel("JO11", 75));
+        bewerking.StartBewerken(bewerking.Items[0]);
+        bewerking.Actief!.Model.WedstrijdTotaal = 92;
+        var opslagA = new VertraagdeOpslag(bewerking);
+        opslagA.Put.SetResult(ApiResult<object>.Ok(new object()));
+        await opslagA.GetGestart.Task;
+        bewerking.StartBewerken(bewerking.Items[1]);
+        bewerking.Actief!.Model.WedstrijdTotaal = 93;
+        var opslagB = new VertraagdeOpslag(bewerking);
+        opslagB.Put.SetResult(ApiResult<object>.Ok(new object()));
+        await opslagB.GetGestart.Task;
+        opslagB.Get.SetResult(ApiResult<List<SpeeltijdDto>>.Fail("netwerkfout"));
+        await opslagB.Resultaat;
+        bewerking.VerversFout.Should().Contain("JO11");
+
+        opslagA.Get.SetResult(ApiResult<List<SpeeltijdDto>>.Ok(new() { Regel("JO10", 92), Regel("JO11", 75) }));
+        await opslagA.Resultaat;
+
+        Totaal(bewerking, "JO11").Should().Be(93, "de oudere respons wordt genegeerd, ook als de nieuwste verversing mislukte");
+        Totaal(bewerking, "JO10").Should().Be(92);
+        bewerking.VerversFout.Should().Contain("JO11", "de waarschuwing blijft staan tot een geslaagde verversing of Sluiten");
+    }
+
+    [Fact]
+    public async Task HandmatigLaden_WintVanEenNogHangendeVerversing()
+    {
+        var bewerking = await Geladen(Regel("JO10", 75), Regel("JO11", 75));
+        bewerking.StartBewerken(bewerking.Items[0]);
+        bewerking.Actief!.Model.WedstrijdTotaal = 90;
+        var opslag = new VertraagdeOpslag(bewerking);
+        opslag.Put.SetResult(ApiResult<object>.Ok(new object()));
+        await opslag.GetGestart.Task;
+
+        var handmatig = await bewerking.LaadAsync(() => Lijst(Regel("JO10", 90), Regel("JO11", 80)));
+        handmatig.Success.Should().BeTrue();
+        Totaal(bewerking, "JO11").Should().Be(80);
+
+        opslag.Get.SetResult(ApiResult<List<SpeeltijdDto>>.Ok(new() { Regel("JO10", 90), Regel("JO11", 75) }));
+        await opslag.Resultaat;
+        Totaal(bewerking, "JO11").Should().Be(80, "de latere handmatige lading is de nieuwste vraag");
+    }
+
+    [Fact]
+    public async Task VerouderdeHandmatigeLading_GeeftDeHuidigeLijstTerug_ZonderFout()
+    {
+        var bewerking = await Geladen(Regel("JO10", 75));
+        var eerste = new TaskCompletionSource<ApiResult<List<SpeeltijdDto>>>();
+        var eersteTaak = bewerking.LaadAsync(() => eerste.Task);
+        await bewerking.LaadAsync(() => Lijst(Regel("JO10", 90)));
+
+        eerste.SetResult(ApiResult<List<SpeeltijdDto>>.Fail("time-out"));
+        var resultaat = await eersteTaak;
+
+        resultaat.Success.Should().BeTrue("een verouderd antwoord — ook een mislukt — mag de pagina niet in de foutstand zetten");
+        Totaal(bewerking, "JO10").Should().Be(90);
+    }
+
     [Fact]
     public async Task LaadFout_LaatDeBestaandeLijstStaan_EnGeeftHetResultaatTerug()
     {

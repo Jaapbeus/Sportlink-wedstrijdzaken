@@ -37,6 +37,14 @@ public sealed class SpeeltijdBewerking
     private readonly List<SpeeltijdBewerkSessie> _lopend = new();
     private List<SpeeltijdDto> _items = new();
 
+    /// <summary>
+    /// Volgnummer van de laatst aangevraagde lijstverversing. Meerdere regels mogen tegelijk worden
+    /// opgeslagen, en elke opslag vraagt daarna de lijst op; die antwoorden kunnen in omgekeerde
+    /// volgorde binnenkomen. Alleen het antwoord op de laatst gestelde vraag wordt toegepast — een
+    /// ouder antwoord zou een intussen bijgewerkte, al vrijgegeven regel terugzetten (PR #1557, ronde 2).
+    /// </summary>
+    private int _laadGeneratie;
+
     public IReadOnlyList<SpeeltijdDto> Items => _items;
 
     public SpeeltijdBewerkSessie? Actief { get; private set; }
@@ -57,16 +65,15 @@ public sealed class SpeeltijdBewerking
     /// </summary>
     public event Action? Gewijzigd;
 
-    /// <summary>Haalt de lijst op. Het resultaat gaat terug naar de pagina voor de laadfoutafhandeling.</summary>
+    /// <summary>
+    /// Haalt de lijst op. Het resultaat gaat terug naar de pagina voor de laadfoutafhandeling. Is er
+    /// intussen een nieuwere verversing gestart, dan wordt dit (oudere) antwoord genegeerd en krijgt
+    /// de pagina de huidige lijst terug alsof het ophalen slaagde.
+    /// </summary>
     public async Task<ApiResult<List<SpeeltijdDto>>> LaadAsync(Func<Task<ApiResult<List<SpeeltijdDto>>>> laad)
     {
-        var resultaat = await laad();
-        if (resultaat.Success)
-        {
-            _items = resultaat.Data ?? new();
-            VerversFout = null;
-        }
-        return resultaat;
+        var (resultaat, verouderd) = await VerversAsync(laad);
+        return verouderd ? ApiResult<List<SpeeltijdDto>>.Ok(_items) : resultaat;
     }
 
     public void StartNieuw() => Actief = new SpeeltijdBewerkSessie(new SpeeltijdDto(), isNieuw: true);
@@ -134,13 +141,8 @@ public sealed class SpeeltijdBewerking
             PasLokaalToe(sessie.Model);
             Gewijzigd?.Invoke();
 
-            var vers = await laad();
-            if (vers.Success)
-            {
-                _items = vers.Data ?? new();
-                VerversFout = null;
-            }
-            else
+            var (vers, verouderd) = await VerversAsync(laad);
+            if (!verouderd && !vers.Success)
                 VerversFout = $"De lijst kon na het opslaan van {sessie.Naam} niet opnieuw worden opgehaald " +
                               $"({vers.ErrorMessage ?? "onbekende fout"}). De regel toont de zojuist opgeslagen waarden.";
             return true;
@@ -150,6 +152,26 @@ public sealed class SpeeltijdBewerking
             sessie.Bezig = false;
             _lopend.Remove(sessie);
         }
+    }
+
+    /// <summary>
+    /// Vraagt de lijst op en past het antwoord alleen toe als er intussen geen nieuwere verversing is
+    /// gestart. Een ouder antwoord is een oudere momentopname: toepassen zou recentere (lokale of
+    /// opgehaalde) waarden overschrijven. Geeft terug of het antwoord verouderd was.
+    /// </summary>
+    private async Task<(ApiResult<List<SpeeltijdDto>> Resultaat, bool Verouderd)> VerversAsync(
+        Func<Task<ApiResult<List<SpeeltijdDto>>>> laad)
+    {
+        var generatie = ++_laadGeneratie;
+        var resultaat = await laad();
+        if (generatie != _laadGeneratie)
+            return (resultaat, true);
+        if (resultaat.Success)
+        {
+            _items = resultaat.Data ?? new();
+            VerversFout = null;
+        }
+        return (resultaat, false);
     }
 
     /// <summary>De opgeslagen regel staat direct in de lijst, nog vóór de server hem opnieuw levert.</summary>

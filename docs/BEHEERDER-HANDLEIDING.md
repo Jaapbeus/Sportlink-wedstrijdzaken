@@ -803,7 +803,9 @@ toont intussen al de opgeslagen waarden. U kunt wel een andere categorie openen:
 de eerste opslag raakt dat tweede formulier niet. Mislukt een opslag terwijl het formulier al dicht
 is, dan verschijnt de fout als melding boven de tabel, met de naam van de categorie erbij. Lukt het
 opslaan wel maar het opnieuw ophalen van de lijst niet, dan ziet u een waarschuwing en blijft de
-regel de zojuist opgeslagen waarden tonen. Met **Sluiten** haalt u zo'n melding weg.
+regel de zojuist opgeslagen waarden tonen. Slaat u meerdere regels vlak na elkaar op, dan houdt elke
+regel de waarden die u opsloeg, ook als de lijst na de eerste opslag later binnenkomt dan die na de
+tweede. Met **Sluiten** haalt u zo'n melding weg.
 
 ### Categorieregels
 - Categorie `1-99` = Senioren mannen; `VR` = Senioren vrouwen → beide 115 minuten
