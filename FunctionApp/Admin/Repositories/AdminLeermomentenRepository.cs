@@ -84,7 +84,8 @@ internal static class AdminLeermomentenRepository
                  [OrigineleSamenvatting], [IsGevalideerd], [ClubCode], [Herkomst],
                  [AangemaaktDoor], [AangemaaktDoorNaam], [AangemaaktOp], [HerkomstVerwerkingId])
             OUTPUT INSERTED.[Id]
-            VALUES (NULL, NULL, @Origineel, @Juist, @Samenvatting, 1, @Cc, N'Admin', @Door, @Naam, GETUTCDATE(), @Verwerking)", conn);
+            VALUES (NULL, NULL, @Origineel, @Juist, @Samenvatting, 1, @Cc, N'Admin', @Door, @Naam, GETUTCDATE(),
+                    (SELECT [Id] FROM [planner].[EmailVerwerking] WHERE [Id] = @Verwerking AND [ClubCode] = @Cc))", conn);
         cmd.Parameters.AddWithValue("@Origineel", o.OrigineelType);
         cmd.Parameters.AddWithValue("@Juist", o.JuistType);
         cmd.Parameters.AddWithValue("@Samenvatting", o.Samenvatting);

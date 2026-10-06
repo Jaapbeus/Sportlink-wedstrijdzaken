@@ -40,8 +40,11 @@ internal enum ReplyVerwerkingUitkomst
     OnbekendeVerzendUitkomst
 }
 
-internal sealed class EmailReplyPolicyService
+internal sealed class EmailReplyPolicyService(Func<string, IReplyPersistentie>? persistentie = null)
 {
+    /// <summary>De opslag van de reply-afhandeling; standaard de Postgres-repository, een test geeft een fake mee (geen database nodig).</summary>
+    private readonly Func<string, IReplyPersistentie> _persistentie = persistentie ?? (cs => new SqlReplyPersistentie(cs));
+
     private const string HandmatigePlanningLabel = "Handmatige planning";
 
     internal async Task<ReplyVerwerkingUitkomst> HandelReplyFlowAfAsync(
@@ -91,7 +94,7 @@ internal sealed class EmailReplyPolicyService
         if (reviewBesluit.MoetVersturen)
         {
             var (voorgesteldOnderwerp, voorgesteldeBody) = await bouwTemplateAntwoordAsync();
-            await SqlEmailPersistenceRepository.UpdateVoorgesteldAntwoordAsync(connectionString, verwerkingId, voorgesteldeBody);
+            await _persistentie(connectionString).UpdateVoorgesteldAntwoordAsync(verwerkingId, voorgesteldeBody);
             log.LogInformation(
                 "Email {Id} review mode — voorgesteld antwoord opgeslagen ter beoordeling", verwerkingId);
 
@@ -119,7 +122,7 @@ internal sealed class EmailReplyPolicyService
         }
         else
         {
-            await SqlEmailPersistenceRepository.UpdateStatusAsync(connectionString, verwerkingId, EmailStatus.Review, null);
+            await _persistentie(connectionString).UpdateStatusAsync(verwerkingId, EmailStatus.Review, null);
             log.LogInformation(
                 "Email {Id} review mode — geen antwoord voorgesteld: {Reden}", verwerkingId, reviewBesluit.Reden);
         }
@@ -143,7 +146,7 @@ internal sealed class EmailReplyPolicyService
         catch (Exception ex)
         {
             log.LogError(ex, "Graph-categorie mislukt voor verwerking {Id} in review mode", verwerkingId);
-            try { await SqlEmailPersistenceRepository.UpdateFoutAsync(connectionString, verwerkingId, sanitizeFoutMelding(ex.Message)); }
+            try { await _persistentie(connectionString).UpdateFoutAsync(verwerkingId, sanitizeFoutMelding(ex.Message)); }
             catch (Exception logEx) { log.LogWarning(logEx, "Kon foutstatus niet vastleggen voor verwerking {Id}", verwerkingId); }
         }
 
@@ -167,7 +170,7 @@ internal sealed class EmailReplyPolicyService
         var replyBesluit = ReplyPolicy.Bepaal(classificatie, plannerResponseJson);
         if (!replyBesluit.MoetVersturen)
         {
-            await SqlEmailPersistenceRepository.UpdateStatusAsync(connectionString, verwerkingId, EmailStatus.GeenAntwoordNodig, null);
+            await _persistentie(connectionString).UpdateStatusAsync(verwerkingId, EmailStatus.GeenAntwoordNodig, null);
             try
             {
                 await graphService.EnsureMasterCategoryAsync(HandmatigePlanningLabel, "preset5");
@@ -198,7 +201,7 @@ internal sealed class EmailReplyPolicyService
         // een antwoord de deur uit is — de volgende poll stuurt dan geen tweede antwoord meer maar legt
         // het bericht ter beoordeling neer. Mislukt het vastleggen van de intentie zelf, dan wordt er
         // niet verstuurd: zonder die grens is een dubbel antwoord mogelijk.
-        await SqlEmailPersistenceRepository.MarkeerVerzendPogingAsync(connectionString, verwerkingId);
+        await _persistentie(connectionString).MarkeerVerzendPogingAsync(verwerkingId);
 
         IReadOnlyList<string>? bcc = null;
         EmailBijlage? bijlage = null;
@@ -256,7 +259,7 @@ internal sealed class EmailReplyPolicyService
 
                 try
                 {
-                    await SqlEmailPersistenceRepository.UpdateStatusAsync(connectionString, verwerkingId, EmailStatus.Review, null);
+                    await _persistentie(connectionString).UpdateStatusAsync(verwerkingId, EmailStatus.Review, null);
                 }
                 catch (Exception statusEx)
                 {
@@ -288,14 +291,14 @@ internal sealed class EmailReplyPolicyService
             // Het versturen is aantoonbaar mislukt, dus de intentie moet weg: anders is dit scenario —
             // waarin juist wél opnieuw geprobeerd moet worden — niet te onderscheiden van een
             // onbekende uitkomst en belandt het bericht onnodig op Review.
-            try { await SqlEmailPersistenceRepository.WisVerzendPogingAsync(connectionString, verwerkingId); }
+            try { await _persistentie(connectionString).WisVerzendPogingAsync(verwerkingId); }
             catch (Exception wisEx)
             {
                 log.LogWarning(wisEx,
                     "Verzendintentie kon niet gewist worden voor verwerking {Id} — een volgende poll legt dit "
                     + "bericht ter beoordeling neer in plaats van opnieuw te versturen", verwerkingId);
             }
-            try { await SqlEmailPersistenceRepository.UpdateFoutAsync(connectionString, verwerkingId, sanitizeFoutMelding(ex.Message)); }
+            try { await _persistentie(connectionString).UpdateFoutAsync(verwerkingId, sanitizeFoutMelding(ex.Message)); }
             catch (Exception logEx) { log.LogWarning(logEx, "Kon foutstatus niet vastleggen voor verwerking {Id}", verwerkingId); }
             return ReplyVerwerkingUitkomst.VerzendFout;
         }
@@ -305,7 +308,7 @@ internal sealed class EmailReplyPolicyService
         // wordt de fout alleen gelogd en gaat het als-gelezen-markeren altijd door.
         try
         {
-            await SqlEmailPersistenceRepository.UpdateAntwoordVerstuurdAsync(connectionString, verwerkingId, email.Afzender, antwoordBody);
+            await _persistentie(connectionString).UpdateAntwoordVerstuurdAsync(verwerkingId, email.Afzender, antwoordBody);
         }
         catch (Exception ex)
         {

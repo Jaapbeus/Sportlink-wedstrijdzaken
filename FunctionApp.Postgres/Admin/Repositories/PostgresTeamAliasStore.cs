@@ -122,7 +122,7 @@ internal sealed class PostgresTeamAliasStore(string connectionString) : ITeamAli
             INSERT INTO public.teamaliassen
                 (clubcode, ruwetekst, ruwetekstgenormaliseerd, teamid, bron, status, aantalkeergebruikt,
                  aangemaaktdoor, aangemaaktdoornaam, aangemaaktop, herkomstverwerkingid, reden)
-            VALUES (@cc, @ruw, @sleutel, @teamid, @bron, 'validated', 0, @door, @naam, NOW(), @verwerking, @reden)
+            VALUES (@cc, @ruw, @sleutel, @teamid, @bron, 'validated', 0, @door, @naam, NOW(), (SELECT id FROM planner.emailverwerking WHERE id = @verwerking::integer AND clubcode = @cc), @reden)
             RETURNING id", conn);
         cmd.Parameters.AddWithValue("cc", o.ClubCode);
         cmd.Parameters.AddWithValue("ruw", o.RuweTekst);
@@ -140,7 +140,7 @@ internal sealed class PostgresTeamAliasStore(string connectionString) : ITeamAli
             UPDATE public.teamaliassen
             SET teamid = @teamid, status = 'validated', bron = CASE WHEN @herkoppel THEN @bron ELSE bron END,
                 mta_modified = NOW(), beoordeelddoor = @door, beoordeelddoornaam = @naam, beoordeeldop = NOW(),
-                herkomstverwerkingid = COALESCE(@verwerking::integer, herkomstverwerkingid), reden = COALESCE(@reden::varchar, reden)
+                herkomstverwerkingid = COALESCE((SELECT id FROM planner.emailverwerking WHERE id = @verwerking::integer AND clubcode = @cc), herkomstverwerkingid), reden = COALESCE(@reden::varchar, reden)
             WHERE clubcode = @cc AND (id = @id OR (@herkoppel AND bron <> 'Sync' AND (UPPER(ruwetekstgenormaliseerd) = UPPER(@sleutel)
                                                                                     OR UPPER(ruwetekst) = UPPER(@ruw))))", conn);
         cmd.Parameters.AddWithValue("cc", o.ClubCode);
@@ -154,6 +154,7 @@ internal sealed class PostgresTeamAliasStore(string connectionString) : ITeamAli
         await cmd.ExecuteNonQueryAsync();
     }
 
+    /// <summary>De herkomst-aanwijzing wordt via een subquery op de eigen club gelezen: een verwerking van een andere club of een onbestaand id wordt NULL, nooit een verwijzing.</summary>
     private static void VoegAuditToe(NpgsqlCommand cmd, AliasAanmaakOpdracht o)
     {
         cmd.Parameters.AddWithValue("door", o.Wie.DoorId);

@@ -20,8 +20,14 @@ public static class TraceActies
     {
         if (stap.Code is not (TeamHerkenning or TegenstanderHerkenning)) return null;
         if (!stap.Details.TryGetValue("bron", out var bron) || bron is not ("Onopgelost" or "MeerdereKandidaten")) return null;
-        return stap.Details.TryGetValue("ruweTekst", out var tekst) && !string.IsNullOrWhiteSpace(tekst) ? tekst : null;
+        if (!stap.Details.TryGetValue("ruweTekst", out var tekst) || string.IsNullOrWhiteSpace(tekst)) return null;
+
+        // De trace maskeert e-mailadressen en nummers. Een gemaskeerde tekst is niet de echte schrijfwijze:
+        // daar een alias op aanmaken koppelt letterlijk "[e-mail]" aan een team en verandert niets aan de echte mail.
+        return GemaskeerdeTekens.Any(m => tekst.Contains(m, StringComparison.Ordinal)) ? null : tekst;
     }
+
+    private static readonly string[] GemaskeerdeTekens = ["[e-mail]", "[nummer]"];
 
     /// <summary>Het verzoektype dat de classificatiestap koos; <c>null</c> als deze stap geen classificatie is.</summary>
     public static string? ClassificatieType(TraceStapDto stap)

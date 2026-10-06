@@ -120,7 +120,7 @@ internal sealed class SqlTeamAliasStore(string connectionString) : ITeamAliasSto
                 ([ClubCode], [RuweTekst], [RuweTekstGenormaliseerd], [TeamId], [Bron], [Status], [AantalKeerGebruikt],
                  [AangemaaktDoor], [AangemaaktDoorNaam], [AangemaaktOp], [HerkomstVerwerkingId], [Reden])
             OUTPUT INSERTED.[Id]
-            VALUES (@Cc, @Ruw, @Sleutel, @TeamId, @Bron, 'validated', 0, @Door, @Naam, GETUTCDATE(), @Verwerking, @Reden)", conn);
+            VALUES (@Cc, @Ruw, @Sleutel, @TeamId, @Bron, 'validated', 0, @Door, @Naam, GETUTCDATE(), (SELECT [Id] FROM [planner].[EmailVerwerking] WHERE [Id] = @Verwerking AND [ClubCode] = @Cc), @Reden)", conn);
         cmd.Parameters.AddWithValue("@Cc", o.ClubCode);
         cmd.Parameters.AddWithValue("@Ruw", o.RuweTekst);
         cmd.Parameters.AddWithValue("@Sleutel", o.Genormaliseerd);
@@ -137,7 +137,7 @@ internal sealed class SqlTeamAliasStore(string connectionString) : ITeamAliasSto
             UPDATE [dbo].[TeamAliassen]
             SET [TeamId] = @TeamId, [Status] = 'validated', [Bron] = CASE WHEN @Herkoppel = 1 THEN @Bron ELSE [Bron] END,
                 [mta_modified] = GETUTCDATE(), [BeoordeeldDoor] = @Door, [BeoordeeldDoorNaam] = @Naam, [BeoordeeldOp] = GETUTCDATE(),
-                [HerkomstVerwerkingId] = COALESCE(@Verwerking, [HerkomstVerwerkingId]), [Reden] = COALESCE(@Reden, [Reden])
+                [HerkomstVerwerkingId] = COALESCE((SELECT [Id] FROM [planner].[EmailVerwerking] WHERE [Id] = @Verwerking AND [ClubCode] = @Cc), [HerkomstVerwerkingId]), [Reden] = COALESCE(@Reden, [Reden])
             WHERE [ClubCode] = @Cc AND ([Id] = @Id OR (@Herkoppel = 1 AND [Bron] <> 'Sync' AND (UPPER([RuweTekstGenormaliseerd]) = UPPER(@Sleutel)
                                                                                            OR UPPER([RuweTekst]) = UPPER(@Ruw))))", conn);
         cmd.Parameters.AddWithValue("@Cc", o.ClubCode);
@@ -151,6 +151,7 @@ internal sealed class SqlTeamAliasStore(string connectionString) : ITeamAliasSto
         await cmd.ExecuteNonQueryAsync();
     }
 
+    /// <summary>De herkomst-aanwijzing wordt via een subquery op de eigen club gelezen: een verwerking van een andere club of een onbestaand id wordt NULL, nooit een verwijzing.</summary>
     private static void VoegAuditToe(SqlCommand cmd, AliasAanmaakOpdracht o)
     {
         cmd.Parameters.AddWithValue("@Door", o.Wie.DoorId);

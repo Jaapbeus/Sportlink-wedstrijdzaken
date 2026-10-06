@@ -70,8 +70,8 @@ public partial class TraceWeergave
 
     private string ZekerheidSamenvatting => (Proefrun, TraceIsZeker) switch
     {
-        (true, true) => "Zou automatisch verstuurd worden",
-        (true, false) => "Zou in review gaan",
+        (true, true) => "Zeker: zou automatisch verstuurd worden, tenzij het reply-beleid (bijv. een planning die handmatig moet) geen antwoord toestaat",
+        (true, false) => "Onzeker: zou in review gaan als de zekerheidspoort aan staat (Instellingen); staat die uit, dan wordt het antwoord toch automatisch verstuurd",
         (false, true) => "Eindoordeel: zeker",
         (false, false) => "Eindoordeel: onzeker, handmatige controle nodig"
     };

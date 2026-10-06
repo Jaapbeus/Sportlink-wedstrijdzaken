@@ -101,7 +101,8 @@ internal static class AdminLeermomentenRepository
                 (origineleverwerkingid, correctionverwerkingid, origineelverzoektype, afgeleidjuisttype,
                  originelesamenvatting, isgevalideerd, clubcode, herkomst,
                  aangemaaktdoor, aangemaaktdoornaam, aangemaaktop, herkomstverwerkingid)
-            VALUES (NULL, NULL, @origineel, @juist, @samenvatting, TRUE, @cc, 'Admin', @door, @naam, NOW(), @verwerking)
+            VALUES (NULL, NULL, @origineel, @juist, @samenvatting, TRUE, @cc, 'Admin', @door, @naam, NOW(),
+                    (SELECT id FROM planner.emailverwerking WHERE id = @verwerking::integer AND clubcode = @cc))
             RETURNING id", conn);
         cmd.Parameters.AddWithValue("origineel", o.OrigineelType);
         cmd.Parameters.AddWithValue("juist", o.JuistType);

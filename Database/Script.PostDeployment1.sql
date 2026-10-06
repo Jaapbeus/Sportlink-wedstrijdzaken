@@ -2908,6 +2908,11 @@ GO
 -- hierboven, dus geen schema-afhankelijkheid zoals bij de andere vier).
 -- ============================================================
 
+-- QUOTED_IDENTIFIER ON expliciet vóór deze procedure (#1568): de procedure wijzigt tabellen met een gefilterde index/
+-- computed column, en de instelling wordt bij CREATE vastgelegd. sqlcmd zet hem standaard OFF.
+SET QUOTED_IDENTIFIER ON;
+GO
+
 -- Bron: Database/planner/System Stored Procedures/sp_CleanupClassificatieCorrectie.sql  (#424)
 CREATE OR ALTER PROCEDURE [planner].[sp_CleanupClassificatieCorrectie]
 AS
@@ -2950,6 +2955,11 @@ BEGIN
     WHERE [Herkomst] = N'Reply'
       AND [mta_inserted] < @VerwijderVoor;
 END;
+GO
+
+-- QUOTED_IDENTIFIER ON expliciet vóór deze procedure (#1568): de procedure wijzigt tabellen met een gefilterde index/
+-- computed column, en de instelling wordt bij CREATE vastgelegd. sqlcmd zet hem standaard OFF.
+SET QUOTED_IDENTIFIER ON;
 GO
 
 -- Bron: Database/planner/System Stored Procedures/sp_CleanupEmailVerwerking.sql  (#208 / #420)

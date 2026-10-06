@@ -31,6 +31,12 @@ public class TraceActiesTests
     public void KoppelTekst_BijHerkendOfLeegOfAndereStap_GeeftNull(string code, string bron, string tekst)
         => TraceActies.KoppelTekst(Stap(code, "", ("bron", bron), ("ruweTekst", tekst))).Should().BeNull();
 
+    [Theory]
+    [InlineData("JO13 [e-mail]")]
+    [InlineData("[nummer]")]
+    public void KoppelTekst_GemaskeerdeTekst_WordtNietAangebodenOmTeKoppelen(string tekst)
+        => TraceActies.KoppelTekst(Stap("team-herkenning", "", ("bron", "Onopgelost"), ("ruweTekst", tekst))).Should().BeNull();
+
     [Fact]
     public void KoppelTekst_ZonderBron_GeeftNull_ResolutieStoring()
         => TraceActies.KoppelTekst(Stap("team-herkenning", "", ("ruweTekst", "j10-04"))).Should().BeNull();

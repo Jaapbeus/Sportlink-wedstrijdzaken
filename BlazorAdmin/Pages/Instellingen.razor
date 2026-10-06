@@ -98,6 +98,28 @@
                         </p>
                         <p><strong>Fouten:</strong> @_emailFouten</p>
                         <p><strong>Buiten scope:</strong> @_emailBuitenScope</p>
+                        @if (_reviewLog != null)
+                        {
+                            <p id="email-review-teller">
+                                <strong>Wacht op beoordeling (Review):</strong> @_emailReviewTekst
+                                <span class="text-muted small d-block">
+                                    Alle berichten met status Review, ook van vóór de laatste 24 uur: onzekere antwoorden die
+                                    de zekerheidspoort tegenhield en onbekende verzenduitkomsten. Zonder ingestelde review-ontvanger
+                                    zie je ze alleen hier en aan de Outlook-categorie.
+                                </span>
+                                @if (_emailReview > 0)
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-warning mt-1"
+                                            @onclick="() => _toonReview = !_toonReview">
+                                        @(_toonReview ? "Verberg deze berichten" : "Toon deze berichten")
+                                    </button>
+                                }
+                            </p>
+                            @if (_toonReview && _reviewLog.Items.Count > 0)
+                            {
+                                <EmailLogLijst Items="_reviewLog.Items" />
+                            }
+                        }
                         <button type="button" class="btn btn-sm btn-outline-secondary mb-2"
                                 @onclick="() => _toonEmailLog = !_toonEmailLog">
                             @(_toonEmailLog ? "Verberg berichten en traces" : "Toon berichten en traces")
