@@ -17,7 +17,9 @@ public static class PostgresUpsertGenerator
     /// laten verwateren bij de tier-migratie).
     /// <para>
     /// <b>Sportlink is leidend (#1547).</b> Een rij die opnieuw in stg verschijnt, wordt altijd
-    /// hersteld (<c>mta_deleted = NULL</c>), ook zonder inhoudelijke wijziging.
+    /// hersteld (<c>mta_deleted = NULL</c>), ook zonder inhoudelijke wijziging. Dat herstel telt als
+    /// wijziging: <c>mta_modified</c> schuift dan één keer op. Een actieve, ongewijzigde rij blijft
+    /// onaangeroerd, zoals hierboven.
     /// </para>
     /// </summary>
     public static string GenerateUpsertFromStgToHis(EntityDefinition entity)

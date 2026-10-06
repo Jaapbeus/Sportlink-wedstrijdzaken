@@ -75,7 +75,7 @@ internal static class PostgresSyncPipeline
         // al geslaagde ETL-run niet alsnog laten falen. Draait vóór de plannerview/canonicalisatie
         // zodat die stroomafwaartse stappen al met de opgeschoonde data werken.
         await ReconcileVerdwenenAsync(orchestrator, clubCode, teamsFailed, matchesFailed,
-            reconciliatieOndergrens ?? VandaagInNederland(), log);
+            reconciliatieOndergrens ?? EersteTeReconcilierenDatum(VandaagInNederland()), log);
 
         // Plannerview (#861/#819): CREATE OR REPLACE VIEW planner.alle_wedstrijden_op_veld_ruw.
         //
@@ -277,7 +277,7 @@ internal static class PostgresSyncPipeline
         {
             try
             {
-                // #1547: gespeelde wedstrijden verdwijnen uit /programma — alleen vanaf vandaag
+                // #1547: gespeelde wedstrijden verdwijnen uit /programma — alleen vanaf morgen
                 // (Nederlandse tijd) betekent "niet meer in stg" ook "niet meer bij Sportlink".
                 var matchesVerwijderd = await orchestrator.ReconcileWindowedAsync(
                     KnownEntities.Matches, clubCode, "kaledatum", ondergrens: ondergrens);
@@ -293,12 +293,40 @@ internal static class PostgresSyncPipeline
         }
     }
 
-    private static DateOnly VandaagInNederland()
+    /// <summary>
+    /// Eerste datum waarop afwezigheid in de sync een wedstrijd als verwijderd mag markeren: morgen.
+    /// <para>
+    /// Review #1547 R1-F2: niet vandaag. Op een speeldag verdwijnt een gespeelde wedstrijd uit
+    /// <c>/programma</c> terwijl de uitslag soms nog niet gepubliceerd is; dan ontbreekt hij in beide
+    /// feeds, ook als beide aanroepen slagen. Een handmatige sync markeerde hem dan als verwijderd.
+    /// Prijs: een wedstrijd die Sportlink op de speeldag zelf schrapt, blijft die dag en daarna als
+    /// historie staan. Een afgelaste wedstrijd houdt in Sportlink zijn rij met status "Afgelast" en
+    /// valt via dat filter wél direct weg.
+    /// </para>
+    /// </summary>
+    internal static DateOnly EersteTeReconcilierenDatum(DateOnly vandaag) => vandaag.AddDays(1);
+
+    private static DateOnly VandaagInNederland() => VandaagInNederland(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById);
+
+    /// <summary>
+    /// De datum van vandaag in Nederland, uit <paramref name="utcNu"/>. Gooit nooit.
+    /// <para>
+    /// Deze aanroep staat in <see cref="RunSyncAsync"/> buiten de best-effort-bewaking van de
+    /// reconciliatie: een uitzondering hier liet de hele sync mislukken. Daarom probeert hij eerst de
+    /// Windows-id en dan de IANA-id (welke op een host bestaat, hangt af van ICU en tzdata), en valt hij
+    /// bij beide mislukkingen terug op de UTC-datum plus één dag. Dat is bewust de veilige kant op: een
+    /// latere "vandaag" geeft een latere ondergrens en dus minder reconciliatie, nooit meer. De sync
+    /// zelf blijft dan intact; hoogstens markeert hij een dag later een verdwenen wedstrijd.
+    /// </para>
+    /// </summary>
+    internal static DateOnly VandaagInNederland(DateTime utcNu, Func<string, TimeZoneInfo> zoekTijdzone)
     {
-        TimeZoneInfo zone;
-        try { zone = TimeZoneInfo.FindSystemTimeZoneById("W. Europe Standard Time"); }
-        catch (TimeZoneNotFoundException) { zone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Amsterdam"); }
-        return DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, zone));
+        foreach (var id in new[] { "W. Europe Standard Time", "Europe/Amsterdam" })
+        {
+            try { return DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNu, zoekTijdzone(id))); }
+            catch (Exception) { /* volgende id; zie summary */ }
+        }
+        return DateOnly.FromDateTime(utcNu).AddDays(1);
     }
 
     /// <summary>

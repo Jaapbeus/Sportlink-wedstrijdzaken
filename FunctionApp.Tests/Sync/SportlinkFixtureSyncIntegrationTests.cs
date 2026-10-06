@@ -163,6 +163,30 @@ public class SportlinkFixtureSyncIntegrationTests : IAsyncLifetime
         }
     }
 
+    /// <summary>
+    /// Review #1547 R1-F3: een verplaatste gespeelde wedstrijd die alleen nog via /uitslagen
+    /// binnenkomt, staat op de nieuwe datum. Spiegel van de Postgres-tiertest met dezelfde naam.
+    /// </summary>
+    [Fact(Skip = "Vereist lokale SQL Server met volledig schema (zie klasse-doc-comment) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    public async Task RunSyncAsync_VerplaatsteGespeeldeWedstrijd_KrijgtDeActueleDatum()
+    {
+        using var fixtureServer = SportlinkFixtures.BuildServer(Wedstrijdcode, ClubCode);
+        await RunAsync(fixtureServer);
+
+        fixtureServer.RespondWithJson("/programma", "[]");
+        fixtureServer.RespondWithJson("/uitslagen",
+            SportlinkFixtures.UitslagenJson(Wedstrijdcode, ClubCode, wedstrijddatum: "2026-09-06T10:00:00+0200"));
+        await RunAsync(fixtureServer);
+
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        await using var cmd = new SqlCommand(
+            "SELECT [kaledatum] FROM [his].[matches] WHERE wedstrijdcode = @code AND ClubCode = @club", connection);
+        cmd.Parameters.AddWithValue("@code", Wedstrijdcode);
+        cmd.Parameters.AddWithValue("@club", ClubCode);
+        ((string?)await cmd.ExecuteScalarAsync()).Should().Be("2026-09-06 00:00:00.00");
+    }
+
     private static Task RunAsync(SportlinkFixtureServer server) =>
         SportlinkSyncPipeline.RunSyncAsync(
             fromWeekOffset: 0, toWeekOffset: 0,
