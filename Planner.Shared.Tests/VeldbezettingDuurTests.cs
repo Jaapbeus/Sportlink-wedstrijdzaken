@@ -21,6 +21,27 @@ public class VeldbezettingDuurTests
         VeldbezettingDuur.Bepaal(sportlink, speeltijdenTotaal: 115).Should().Be(verwacht);
     }
 
+    [Theory]
+    [InlineData(20, 30)]   // 35+/VR30+: 1×20 plus 10 minuten rust, elk halfuur een wedstrijd (#1561)
+    [InlineData(15, 25)]
+    public void KorteWedstrijd_KrijgtTienMinutenRustInPlaatsVanVijftien(int sportlink, int verwacht)
+    {
+        VeldbezettingDuur.Bepaal(sportlink, speeltijdenTotaal: 115).Should().Be(verwacht);
+    }
+
+    [Fact]
+    public void OpeenvolgendeKorteWedstrijdenOverlappenNiet()
+    {
+        // Elk halfuur een wedstrijd van 20 minuten: het blok mag niet langer zijn dan de aanvangsstap.
+        VeldbezettingDuur.Bepaal(20, null).Should().BeLessThanOrEqualTo(30);
+    }
+
+    [Fact]
+    public void WedstrijdVanEenMinuutBoven20_ValtNietMeerInDeKorteRegel()
+    {
+        VeldbezettingDuur.Bepaal(21, null).Should().Be(36);
+    }
+
     [Fact]
     public void AfwijkendeSpeelduurVanEenTeam_WintVanDeCategorieStandaard()
     {

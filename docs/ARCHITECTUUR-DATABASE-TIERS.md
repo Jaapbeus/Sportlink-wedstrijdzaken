@@ -4601,6 +4601,30 @@ In productie zijn er geen zulke rijen (0 gemeten), dus dit heeft daar geen effec
 wijzigen (checksum-guard). Een fork die op Postgres draait en wél zulke rijen heeft, verliest er dus
 historische details van.
 
+**Vervolg bij de acceptatietest (#1561).** Het vergelijken van de Planning met de Sportlink-veldplanner op 10 en
+26 oktober gaf drie nieuwe bevindingen:
+
+- *Lege teamnaam bij gespeelde wedstrijden.* Oorzaak 4 hierboven is voor de toekomst opgelost, maar de rijen die
+  al leeg waren (347 in productie en lokaal) bleven leeg: 036 herstelt alleen `kaledatum` en `veld`, en de sync kan
+  een teamnaam niet meer aanvullen die er nooit meer in `/programma` staat. Migratie **037** (Postgres) en het
+  spiegelblok in `Database/Script.PostDeployment1.sql` (SQL Server) leiden de teamnaam af: het team met de
+  relatiecode van de eigen club, per club vastgesteld uit de al gevulde rijen (geen club-specifieke waarde in de
+  code). Bij een onderlinge wedstrijd is het thuisteam de teamnaam, zoals `/programma` zelf doet. Een club zonder
+  gevulde rijen of zonder relatiecodes (de democlub) blijft ongemoeid. Gemeten op de lokale kopie: 347 → 0 lege
+  teamnamen. Idempotent; bewezen op een echte Postgres (`HerstelTeamnaamMigratieIntegrationTests`, het echte
+  migratiebestand) en een echte SQL Server (zelfde zeven gevallen, tweede run 0 rijen).
+- *Tegenstander afgeknipt.* Een blok van één deelveld is maar de helft van een rij hoog; tijd en naam onder elkaar
+  lieten één regel voor de naam over. De aanvangstijd staat nu op dezelfde regel als de naam
+  (`GanttChart.razor`).
+- *Korte wedstrijden.* `VeldbezettingDuur` rekent een wedstrijd van 20 minuten of korter als speelduur + 10
+  (35+/VR30+: één keer 20 minuten, 10 minuten rust, elk halfuur een wedstrijd) in plaats van + 15. De vijftien blijft
+  voor alle andere wedstrijden. **Niet nagemeten op de Sportlink-veldplanner**; controle op een 35+-speeldag staat
+  in #1560.
+
+Bewust niet gedaan: wedstrijden met thuisteam gelijk aan uitteam (op 10 oktober twee extra blokken die Sportlink niet
+toont) blijven in de Planning. Een toernooi heeft dezelfde vorm, dus een filter zonder Sportlink-bewijs van de
+toernooidagen kan een echte wedstrijd verbergen (#1560).
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

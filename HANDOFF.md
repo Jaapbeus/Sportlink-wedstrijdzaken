@@ -64,3 +64,9 @@ Lokale Playwright-acceptatie en -regressie groen; live: health ok, 401-controles
 ## Volgende ronde (Claude Code)
 - ~~.NET 10~~ — live in v3.11.0.0.
 - **#1473** RID-specifieke publish (nu onblokkeerd), **#1472** log-injectie (45 CodeQL-meldingen).
+
+## #1561 (versie 3.11.1.6) — vervolg op de acceptatietest van 3.11.1.5
+Migratie 037 (+ SQL Server-spiegelblok) herstelt de lege teamnaam bij gespeelde wedstrijden; Planning-blokken tonen
+tijd en naam op één regel; wedstrijden van 20 minuten of korter krijgen speelduur + 10 in plaats van + 15 (niet
+nagemeten op Sportlink). Open: wedstrijden met thuisteam = uitteam (twee extra blokken op 10 oktober) en het
+35+-blok verifiëren met Sportlink-screenshots van de toernooidagen, zie #1560.

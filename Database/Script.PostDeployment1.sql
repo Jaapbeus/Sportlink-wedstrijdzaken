@@ -3823,3 +3823,50 @@ BEGIN
     END
 END
 GO
+
+-- ============================================================
+-- #1561: herstel van de lege teamnaam bij gespeelde wedstrijden.
+--
+-- Spiegel van Postgres-migratie 037; zie daar de volledige onderbouwing. Een gespeelde wedstrijd kwam
+-- alleen nog via /uitslagen binnen, zonder teamnaam, en sp_MergeStgToHis zette de kolom dan op leeg.
+-- #1547 stopte dat voor de toekomst en herstelde kaledatum en veld (blok hierboven), maar niet de
+-- teamnaam. De eigen teamnaam volgt uit de relatiecode van de eigen club, die uit de al gevulde rijen
+-- van dezelfde club wordt afgeleid (geen club-specifieke waarde in de code). Minstens één van beide teams
+-- draagt die code; bij een onderlinge wedstrijd is het thuisteam de teamnaam, zoals /programma zelf doet. Rijen met een gevulde teamnaam blijven
+-- onaangeroerd, dus dit blok is bij elke deploy herhaalbaar. his.* bestaat pas na de eerste sync.
+-- ============================================================
+IF OBJECT_ID('his.matches') IS NOT NULL
+   AND COL_LENGTH('his.matches', 'ClubCode') IS NOT NULL
+   AND COL_LENGTH('his.matches', 'thuisteamclubrelatiecode') IS NOT NULL
+   AND COL_LENGTH('his.matches', 'uitteamclubrelatiecode') IS NOT NULL
+BEGIN
+    EXEC(N'
+        WITH gevuld AS (
+            SELECT [ClubCode], [thuisteamclubrelatiecode] AS code
+            FROM [his].[matches]
+            WHERE COALESCE([teamnaam], N'''') <> N'''' AND [teamnaam] = [thuisteam]
+              AND COALESCE([thuisteamclubrelatiecode], N'''') <> N''''
+            UNION ALL
+            SELECT [ClubCode], [uitteamclubrelatiecode]
+            FROM [his].[matches]
+            WHERE COALESCE([teamnaam], N'''') <> N'''' AND [teamnaam] = [uitteam]
+              AND COALESCE([uitteamclubrelatiecode], N'''') <> N''''
+        ),
+        geteld AS (
+            SELECT [ClubCode], code, COUNT(*) AS aantal,
+                   ROW_NUMBER() OVER (PARTITION BY [ClubCode] ORDER BY COUNT(*) DESC) AS rang
+            FROM gevuld
+            GROUP BY [ClubCode], code
+        )
+        UPDATE m
+        SET m.[teamnaam] = CASE WHEN COALESCE(m.[thuisteamclubrelatiecode], N'''') = e.code
+                                THEN m.[thuisteam] ELSE m.[uitteam] END
+        FROM [his].[matches] m
+        INNER JOIN geteld e ON e.[ClubCode] = m.[ClubCode] AND e.rang = 1
+        WHERE COALESCE(m.[teamnaam], N'''') = N''''
+          AND (COALESCE(m.[thuisteamclubrelatiecode], N'''') = e.code
+               OR COALESCE(m.[uitteamclubrelatiecode], N'''') = e.code)
+          AND COALESCE(CASE WHEN COALESCE(m.[thuisteamclubrelatiecode], N'''') = e.code
+                            THEN m.[thuisteam] ELSE m.[uitteam] END, N'''') <> N'''';');
+END
+GO
