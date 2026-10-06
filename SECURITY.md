@@ -410,6 +410,15 @@ Persoonsgegevens mogen **nooit** in logs of Application Insights terechtkomen.
 
 De cleanup wordt wekelijks (zondagochtend 03:00 UTC) uitgevoerd door `CleanupEmailVerwerkingFunction`. De stored procedure `planner.sp_CleanupEmailVerwerking` is idempotent.
 
+**`planner.EmailTrace` valt bewust buiten deze retentie (#1568, besluit eigenaar 2026-10-06).** De
+beslissingstrace per verwerkt bericht wordt permanent bewaard. Dat is verantwoord omdat hij PII-arm is
+by design: alleen gesaneerde keuzes (herkende teamschrijfwijze, tellingen, bron/confidence, gekozen
+sjabloon), afgekapt op 80 tekens, met e-mailadressen en lange cijferreeksen gemaskeerd door
+`TraceBuilder.Saneer`, en nooit body, afzender of onderwerp. Er is geen foreign key naar
+`EmailVerwerking`, zodat de bovenstaande verwijdering na 90 dagen de trace niet raakt. Wie hier later
+een nieuw veld aan toevoegt, moet dat veld eerst door `Saneer` laten lopen; een veld met vrije tekst uit
+een mail hoort hier niet en zou de permanente bewaring ongeldig maken.
+
 `avg.Teambegeleiding` bevat persoonsgegevens van teambegeleiders. De rijen van de club worden bij
 elke import volledig vervangen (club-scoped DELETE + insert, nooit een TRUNCATE — dat zou andere
 clubs' rijen ook wissen; #1131/#1132 maakten dit atomisch per import en, op de Postgres-tier,

@@ -4629,3 +4629,25 @@ toernooidagen kan een echte wedstrijd verbergen (#1560).
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).
+
+---
+
+## 80. Beslissingstrace per e-mailverwerking: permanente tabel op beide tiers (#1568)
+
+De trace van de e-mailpipeline (zie [EMAIL-VERWERKING.md](EMAIL-VERWERKING.md) §3c) wordt per verwerkt
+bericht bewaard. Eigenaarsbesluit 2026-10-06: **permanent**, omdat hij PII-arm is.
+
+| Onderdeel | Postgres | SQL Server |
+|---|---|---|
+| Tabel | `planner.emailtrace` — `038_planner_emailtrace.sql`, met `ENABLE ROW LEVEL SECURITY` in dezelfde migratie | `planner.EmailTrace` — `Database/planner/Tables/EmailTrace.sql` én idempotent `Script.PostDeployment1.sql` |
+| `TraceJson` | `JSONB` | `NVARCHAR(MAX)` met `CHECK (ISJSON(...) = 1)` |
+| Idempotentie | `UNIQUE (verwerkingid)` + `INSERT ... ON CONFLICT DO UPDATE` | `UNIQUE ([VerwerkingId])` + `MERGE ... WITH (HOLDLOCK)` |
+| Repository | `FunctionApp.Postgres/Email/EmailTraceRepository.cs` | `FunctionApp/Email/EmailTraceRepository.cs` |
+| Endpoint | `GET /api/beheer/email-log/{id}/trace` (`AdminEmailLogFunction`) | idem |
+
+**Bewust geen foreign key naar `EmailVerwerking`.** De wekelijkse cleanup verwijdert verwerkingen na
+90 dagen; een FK zou die DELETE blokkeren of de trace meenemen. De tabel heeft daarom geen retentietimer
+en de opzoeking voegt de verwerking met een LEFT JOIN toe (status is `null` na de cleanup). Het
+tier-onafhankelijke deel (record, JSON-mapping, "opslag faalt stil", queryparameters en vertaling naar
+HTTP) staat in `Planner.Shared/Email/Trace/EmailTraceOpslag.cs` en
+`Planner.Endpoints/Admin/EmailLogEndpointCore.cs`.

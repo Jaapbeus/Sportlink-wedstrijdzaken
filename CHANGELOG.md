@@ -19,6 +19,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **E-maillog met beslissingstrace**: van elk verwerkt bericht wordt nu permanent vastgelegd waarom het antwoord zo uitviel (herkend team, tegenstander, datum, gekozen sjabloon en hoe zeker elke stap was), ook bij berichten die buiten scope vielen of waar de verwerking mislukte. Op Instellingen staat bij de kaart "Email verwerking" de knop *Toon berichten en traces*, met per regel een knop *Trace*. De trace bevat nooit de tekst van de mail, de afzender of het onderwerp, en blijft bestaan nadat het bericht zelf na 90 dagen is opgeruimd. Beide databasetiers; nieuw endpoint `GET /api/beheer/email-log/{id}/trace` (#1568).
 - **E-mailtester**: onder het voorbeeld-antwoord staat nu een beslissingstrace, een genummerde lijst met wat de verwerking herkende en koos (team, tegenstander, datum, antwoordsjabloon). Onzekere en mislukte stappen zijn gemarkeerd en een samenvatting meldt of het antwoord automatisch verstuurd zou worden of in review zou gaan. De trace bevat nooit de tekst van de mail of gegevens van de afzender (#1568).
 
 ## [3.11.2.0] — 2026-10-06

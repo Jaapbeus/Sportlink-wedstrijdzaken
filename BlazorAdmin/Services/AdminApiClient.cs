@@ -264,6 +264,9 @@ public partial class AdminApiClient
         return await GetAsync<EmailLogResponse>("api/beheer/email-log?" + string.Join("&", qp));
     }
 
+    public async Task<ApiResult<EmailTraceDto>> GetEmailTraceAsync(int verwerkingId)
+        => await GetAsync<EmailTraceDto>($"api/beheer/email-log/{verwerkingId}/trace");
+
     // ── Geocoding ──
 
     public async Task<ApiResult<GeocodeResultDto>> GeocodeAsync(string plaatsnaam)

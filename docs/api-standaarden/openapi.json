@@ -2035,6 +2035,10 @@
             "type": "string",
             "nullable": true
           },
+          "HeeftTrace": {
+            "type": "boolean",
+            "description": "Er is een beslissingstrace opgeslagen (`GET /beheer/email-log/{id}/trace`)"
+          },
           "mta_inserted": {
             "type": "string",
             "format": "date-time"
@@ -2043,6 +2047,98 @@
             "type": "string",
             "format": "date-time",
             "nullable": true
+          }
+        }
+      },
+      "EmailTraceResponse": {
+        "type": "object",
+        "description": "Permanente, PII-arme beslissingstrace van één verwerking (#1568).",
+        "properties": {
+          "verwerkingId": {
+            "type": "integer"
+          },
+          "verzoekType": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "nullable": true,
+            "description": "Status van de verwerking; null als die inmiddels is opgeruimd"
+          },
+          "ontvangstDatum": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "aangemaakt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "zekerheid": {
+            "type": "string",
+            "enum": [
+              "Zeker",
+              "Onzeker",
+              "Mislukt"
+            ]
+          },
+          "sjabloonSleutel": {
+            "type": "string",
+            "nullable": true
+          },
+          "appVersie": {
+            "type": "string"
+          },
+          "trace": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "stappen": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "titel": {
+                      "type": "string"
+                    },
+                    "uitkomst": {
+                      "type": "string"
+                    },
+                    "zekerheid": {
+                      "type": "string",
+                      "enum": [
+                        "Zeker",
+                        "Onzeker",
+                        "Mislukt"
+                      ]
+                    },
+                    "details": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              },
+              "oordeel": {
+                "type": "object",
+                "properties": {
+                  "isZeker": {
+                    "type": "boolean"
+                  },
+                  "redenen": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -6862,6 +6958,61 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/beheer/email-log/{id}/trace": {
+      "get": {
+        "tags": [
+          "beheer"
+        ],
+        "operationId": "getEmailLogTrace",
+        "summary": "Beslissingstrace van een verwerkt bericht ophalen",
+        "description": "Geeft de permanente, PII-arme beslissingstrace (#1568) van één verwerking uit\n`planner.EmailTrace`: welke keuzes de e-mailpipeline maakte (classificatie, team- en\ntegenstanderherkenning, datum, gekozen sjabloon) en hoe zeker elke stap was.\n\nAVG: bevat nooit berichttekst, afzender of onderwerp. De trace blijft bestaan nadat de\nverwerking zelf is geanonimiseerd/verwijderd; `status` en `ontvangstDatum` zijn dan `null`.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Verwerking-id (`Id` uit `GET /beheer/email-log`)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trace van de verwerking",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailTraceResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "Er is geen trace voor deze verwerking van deze club"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"

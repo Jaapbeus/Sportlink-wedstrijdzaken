@@ -1540,6 +1540,15 @@ samenvatting is voorlopig alleen informatief; er verandert niets aan het echte v
 bevat nooit de tekst van het bericht, de afzender of telefoonnummers — alleen teamschrijfwijzen,
 datums en keuzes.
 
+**Trace van een echt verwerkt bericht.** Op de Instellingen-pagina staat bij de kaart *Email
+verwerking* de knop **Toon berichten en traces**. Die toont de berichten van de laatste 24 uur met
+ontvangstmoment, type en status — bewust zonder afzender of onderwerp. Bij elke regel met een trace staat
+de knop **Trace**; die klapt dezelfde stappenlijst uit, nu met de samenvatting *Eindoordeel: zeker* of
+*onzeker, handmatige controle nodig*, en daaronder wanneer de trace is gemaakt, met welke versie van de
+app en welk sjabloon is gekozen. Voor berichten die buiten scope vielen is de trace kort (classificatie en
+reden). De trace blijft permanent bewaard, ook nadat het bericht zelf na 90 dagen uit het log is
+verdwenen; een regel zonder de knop heeft geen trace (berichten van vóór deze functie).
+
 ---
 
 ## 20a. E-mailtemplates (`/email-templates`)

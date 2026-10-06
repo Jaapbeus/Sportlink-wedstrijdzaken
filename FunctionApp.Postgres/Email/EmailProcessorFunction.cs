@@ -8,6 +8,8 @@ using FunctionApp.Postgres.Planner;
 using FunctionApp.Postgres.Processing;
 using FunctionApp.Postgres.TeamResolution;
 using Planner.Shared;
+using Planner.Shared.Email;
+using Planner.Shared.Email.Trace;
 
 namespace FunctionApp.Postgres.Email;
 
@@ -92,110 +94,6 @@ internal static class EmailIdempotentie
     }
 }
 
-/// <summary>Uitkomst van een poging om de uitsluitingslijst te verversen.</summary>
-internal enum UitsluitingslijstStand
-{
-    /// <summary>Binnen de geldigheidsduur — er is niets uit de database gelezen.</summary>
-    Actueel,
-
-    /// <summary>Opnieuw uit de database gelezen; de lijst kan gewijzigd zijn.</summary>
-    Ververst,
-
-    /// <summary>Herladen mislukt, maar er is een eerdere lijst — die blijft gelden.</summary>
-    VerouderdBehouden,
-
-    /// <summary>Nooit geladen én nu niet te laden — er mag niet geclassificeerd worden.</summary>
-    Ontbreekt
-}
-
-/// <summary>
-/// In-memory kopie van de uitsluitingslijst met een geldigheidsduur. Woordelijke kopie van het
-/// SQL Server-origineel.
-/// </summary>
-internal sealed class UitsluitingslijstCache
-{
-    /// <summary>
-    /// Geldigheidsduur van de kopie. Bewust ruimer dan het poll-interval: bij élke poll herladen zou
-    /// de database wakker houden voor batches die anders helemaal niet in de database terechtkomen.
-    /// Vijftien minuten begrenst hoe lang een net uitgesloten adres nog een AI-call kan kosten.
-    /// </summary>
-    internal static readonly TimeSpan Ttl = TimeSpan.FromMinutes(15);
-
-    // volatile / Volatile.Read: meerdere invocaties lezen dezelfde statische instantie.
-    private volatile HashSet<string> _adressen = new(StringComparer.OrdinalIgnoreCase);
-    private long _geladenOpTicksUtc;
-
-    internal IReadOnlySet<string> Adressen => _adressen;
-
-    /// <summary>Is de lijst ooit met succes geladen? Zo niet, dan geldt fail-closed.</summary>
-    internal bool IsGeladen => Volatile.Read(ref _geladenOpTicksUtc) != 0;
-
-    internal bool IsVerouderd(DateTime nuUtc)
-    {
-        var ticks = Volatile.Read(ref _geladenOpTicksUtc);
-        return ticks == 0 || nuUtc - new DateTime(ticks, DateTimeKind.Utc) >= Ttl;
-    }
-
-    internal async Task<UitsluitingslijstStand> VerversIndienVerouderdAsync(
-        Func<Task<HashSet<string>>> laadAsync, DateTime nuUtc, ILogger log)
-    {
-        if (!IsVerouderd(nuUtc))
-            return UitsluitingslijstStand.Actueel;
-
-        try
-        {
-            await HerlaadAsync(laadAsync, nuUtc);
-            return UitsluitingslijstStand.Ververst;
-        }
-        catch (Exception ex)
-        {
-            if (!IsGeladen)
-            {
-                log.LogError(ex, "Uitsluitingslijst niet beschikbaar — AI-verwerking uitgesteld (fail-closed)");
-                return UitsluitingslijstStand.Ontbreekt;
-            }
-
-            log.LogWarning(ex,
-                "Uitsluitingslijst kon niet worden ververst — eerdere lijst met {Aantal} adressen blijft gelden",
-                _adressen.Count);
-            return UitsluitingslijstStand.VerouderdBehouden;
-        }
-    }
-
-    /// <summary>
-    /// Laadt de lijst onvoorwaardelijk opnieuw. Gebruikt door fase 2, waar de hercheck vóór de INSERT
-    /// op een lijst uit déze invocatie moet gebeuren en niet op een kopie die tot de TTL oud kan zijn.
-    /// </summary>
-    internal async Task HerlaadAsync(Func<Task<HashSet<string>>> laadAsync, DateTime nuUtc)
-    {
-        _adressen = await laadAsync();
-        Volatile.Write(ref _geladenOpTicksUtc, nuUtc.Ticks);
-    }
-}
-
-/// <summary>
-/// Postgres-tier-tegenhanger van <c>FunctionApp/Email/EmailProcessorFunction.cs</c> (#972) — de
-/// mailbox-getriggerde e-mailverwerkingspijplijn die op deze tier tot nu toe volledig ontbrak.
-/// Sinds de productiecutover naar Postgres op 2026-09-04 draait deze code, maar zonder deze
-/// functie werd de mailbox nooit gepolld — geen classificatie, geen auto-reply.
-///
-/// <para>
-/// <b>Resterende afwijkingen t.o.v. het SQL Server-origineel.</b> Opponent-lookup
-/// (<c>FindMatchByOpponentAsync</c>) is sinds #1139 vertaald en <c>TeamContactOpvragen</c>/
-/// <c>coachGevonden</c> plus de teamleider-/teamcontact-vervolgnotificaties hieronder (#66/#168)
-/// zijn sinds #1140 vertaald — beide gebruiken nu
-/// <see cref="AllstarsTestDataRepository.GetTeamleiderContactAsync"/>, woordelijk gelijk aan het
-/// SQL Server-origineel (zie <c>BerichtPipeline</c>).
-/// </para>
-/// <list type="number">
-/// <item>KNVB-PDF-bijlage/"verzet zonder datum" niet vertaald — zie <c>BerichtPipeline</c> en
-/// <c>EmailReplyPolicyService</c>.</item>
-/// <item><b>Nieuw bij #972:</b> <see cref="INoodmailThrottleStore"/> is wél vertaald (Azure Table
-/// Storage is DB-tier-agnostisch), maar de onafhankelijke, ARM-gebaseerde database-uitvalmonitor
-/// (<c>DatabaseUitvalMonitorFunction</c>/<c>IDatabaseStatusReader</c>, #831) is dat niet — die
-/// controleert specifiek Azure SQL-status en is een apart, niet-#972-issue.</item>
-/// </list>
-/// </summary>
 public class EmailProcessorFunction
 {
     // Throttle-sleutels voor INoodmailThrottleStore. Geen gedeelde sleutel met een database-
@@ -499,32 +397,47 @@ public class EmailProcessorFunction
 
         if (await HandelBuitenScopeAsync(
                 cs, verwerkingId, email.MessageId, classificatie, classificatieJson, graphService, log))
+        {
+            var korteTrace = EmailTraceOpslag.BouwKorteTrace(classificatie.Type.ToString(), classificatie.TeamNaam,
+                classificatie.Tegenstander, classificatie.GetAlleDatums().Count, classificatie.AanvangsTijd, "Buiten scope");
+            await EmailTraceOpslag.BewaarVeiligAsync(() => EmailTraceRepository.UpsertAsync(cs, EmailTraceRecord.Van(
+                verwerkingId, clubCode, classificatie.Type.ToString(), korteTrace,
+                EmailTraceRecord.VersieVan(typeof(EmailProcessorFunction).Assembly))), log, verwerkingId);
             return;
+        }
 
         await SqlEmailPersistenceRepository.UpdateStatusAsync(cs, verwerkingId, EmailStatus.Geclassificeerd, classificatieJson);
         log.LogInformation("Email {Id} geregistreerd als {Type}, datum={Datum}",
             verwerkingId, classificatie.Type, LogWaarde.Schoon(classificatie.Datum));
 
-        var plannerResponseJson = await BerichtPipeline.VerwerkMetPlannerAsync(
-            classificatie, email, log, teamResolver, clubCode);
-        await SqlEmailPersistenceRepository.UpdatePlannerResponseAsync(cs, verwerkingId, plannerResponseJson);
-        await SqlEmailPersistenceRepository.UpdateStatusAsync(cs, verwerkingId, EmailStatus.Verwerkt, null);
+        // #1568: de beslissingstrace wordt per bericht opgebouwd en altijd (ook bij een fout) bewaard.
+        var trace = new TraceBuilder();
+        var replyUitkomst = await EmailTraceOpslag.MetTraceAsync(trace, async () =>
+        {
+            var plannerResponseJson = await BerichtPipeline.VerwerkMetPlannerAsync(
+                classificatie, email, log, teamResolver, clubCode, trace: trace);
+            await SqlEmailPersistenceRepository.UpdatePlannerResponseAsync(cs, verwerkingId, plannerResponseJson);
+            await SqlEmailPersistenceRepository.UpdateStatusAsync(cs, verwerkingId, EmailStatus.Verwerkt, null);
 
-        var reviewMode = string.Equals(
-            Environment.GetEnvironmentVariable("EmailReviewMode"), "true", StringComparison.OrdinalIgnoreCase);
-        var reviewRecipient = Environment.GetEnvironmentVariable("EmailReviewRecipient");
-        var replyUitkomst = await replyPolicyService.HandelReplyFlowAfAsync(
-            cs,
-            verwerkingId,
-            email,
-            classificatie,
-            plannerResponseJson,
-            reviewMode,
-            reviewRecipient,
-            graphService,
-            () => BerichtPipeline.BouwTemplateAntwoord(classificatie, plannerResponseJson, email, log, null, clubCode),
-            SanitizeFoutMelding,
-            log);
+            var reviewMode = string.Equals(
+                Environment.GetEnvironmentVariable("EmailReviewMode"), "true", StringComparison.OrdinalIgnoreCase);
+            var reviewRecipient = Environment.GetEnvironmentVariable("EmailReviewRecipient");
+            return await replyPolicyService.HandelReplyFlowAfAsync(
+                cs,
+                verwerkingId,
+                email,
+                classificatie,
+                plannerResponseJson,
+                reviewMode,
+                reviewRecipient,
+                graphService,
+                () => BerichtPipeline.BouwTemplateAntwoord(classificatie, plannerResponseJson, email, log, null, clubCode, trace),
+                SanitizeFoutMelding,
+                log);
+        }, t => EmailTraceRepository.UpsertAsync(cs, EmailTraceRecord.Van(
+                verwerkingId, clubCode, classificatie.Type.ToString(), t,
+                EmailTraceRecord.VersieVan(typeof(EmailProcessorFunction).Assembly))),
+            log, verwerkingId);
 
         if (replyUitkomst != ReplyVerwerkingUitkomst.AntwoordVerstuurd)
             return;

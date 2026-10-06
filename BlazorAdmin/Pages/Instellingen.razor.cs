@@ -30,6 +30,7 @@ public partial class Instellingen : ClubSelectorPageBase
     private string? _syncResult;
     private bool _toonResetBevestiging;
     private int _resetSeizoen = HuidigSeizoenStartjaar();
+    private bool _toonEmailLog;
     private int _emailVerwerkt, _emailFouten, _emailBuitenScope, _emailGeenAntwoord;
 
     private bool _isTestmodus => ClubSelector.SelectedClubCode == "ALLSTARS";

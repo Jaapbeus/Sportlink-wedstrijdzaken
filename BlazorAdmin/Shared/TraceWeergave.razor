@@ -1,0 +1,31 @@
+@* Beslissingstrace van een verwerkt bericht (#1568): gedeeld door de e-mailtester en het e-maillog. *@
+@if (Trace is { Stappen.Count: > 0 })
+{
+    <div class="@ZekerheidAlertKlasse" role="status">
+        <strong>@ZekerheidSamenvatting</strong>
+        @if (Trace.Oordeel?.Redenen.Count > 0)
+        {
+            <ul class="mb-0 mt-1">
+                @foreach (var reden in Trace.Oordeel.Redenen)
+                {
+                    <li>@reden</li>
+                }
+            </ul>
+        }
+    </div>
+    <ol class="list-group list-group-numbered">
+        @foreach (var stap in Trace.Stappen)
+        {
+            <li class="@StapKlasse(stap)">
+                <div class="ms-2 me-auto">
+                    <div class="fw-bold">@stap.Titel <span class="badge @ZekerheidBadgeKlasse(stap)">@stap.Zekerheid</span></div>
+                    @stap.Uitkomst
+                    @if (stap.Details.Count > 0)
+                    {
+                        <div class="small text-muted">@StapDetails(stap)</div>
+                    }
+                </div>
+            </li>
+        }
+    </ol>
+}

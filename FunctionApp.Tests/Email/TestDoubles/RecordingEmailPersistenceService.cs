@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Planner.Shared.Email.Trace;
 using SportlinkFunction.Email;
 
 namespace FunctionApp.Tests.Email.TestDoubles;
@@ -119,6 +120,18 @@ internal sealed class RecordingEmailPersistenceService : IEmailPersistenceServic
         string? originaleSamenvatting,
         string? correctieSamenvatting)
         => Task.CompletedTask;
+
+    public List<(int VerwerkingId, string VerzoekType, BeslissingsTrace Trace)> Traces { get; } = new();
+
+    /// <summary>Zet een fout die <see cref="UpsertTraceAsync"/> gooit, om "trace-opslag mislukt" te testen.</summary>
+    public Exception? TraceFout { get; set; }
+
+    public Task UpsertTraceAsync(int verwerkingId, string verzoekType, BeslissingsTrace trace, string appVersie)
+    {
+        if (TraceFout is not null) throw TraceFout;
+        Traces.Add((verwerkingId, verzoekType, trace));
+        return Task.CompletedTask;
+    }
 
     public Task<List<ClassificatieCorrectieVoorbeeld>> HaalLeermomentVoorbeeldenOpAsync(ILogger log)
         => Task.FromResult(new List<ClassificatieCorrectieVoorbeeld>());

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Planner.Shared.Email.Trace;
 
 namespace SportlinkFunction.Email;
 
@@ -89,6 +90,9 @@ internal interface IEmailPersistenceService
         string? originaleSamenvatting,
         string? correctieSamenvatting);
     Task<List<ClassificatieCorrectieVoorbeeld>> HaalLeermomentVoorbeeldenOpAsync(ILogger log);
+
+    /// <summary>Slaat de PII-arme beslissingstrace van een verwerking idempotent op (#1568, deel B).</summary>
+    Task UpsertTraceAsync(int verwerkingId, string verzoekType, BeslissingsTrace trace, string appVersie);
     string ResolveClubCode();
 }
 
@@ -182,4 +186,8 @@ internal sealed class EmailPersistenceService : IEmailPersistenceService
 
     public Task<List<ClassificatieCorrectieVoorbeeld>> HaalLeermomentVoorbeeldenOpAsync(ILogger log)
         => _repository.HaalLeermomentVoorbeeldenOpAsync(ResolveClubCode(), log);
+
+    public Task UpsertTraceAsync(int verwerkingId, string verzoekType, BeslissingsTrace trace, string appVersie)
+        => _repository.UpsertTraceAsync(
+            EmailTraceRecord.Van(verwerkingId, ResolveClubCode(), verzoekType, trace, appVersie));
 }

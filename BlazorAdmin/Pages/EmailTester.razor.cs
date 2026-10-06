@@ -25,34 +25,6 @@ public partial class EmailTester
         $"Onderwerp: {request.Onderwerp}\n\n" +
         $"{request.Body}";
 
-    private bool TraceIsZeker => response?.Trace?.Oordeel?.IsZeker ?? false;
-
-    private string ZekerheidSamenvatting => TraceIsZeker
-        ? "Zou automatisch verstuurd worden"
-        : "Zou in review gaan";
-
-    private string ZekerheidAlertKlasse => TraceIsZeker ? "alert alert-success" : "alert alert-warning";
-
-    private static string StapKlasse(TraceStapDto stap) => stap.Zekerheid switch
-    {
-        "Mislukt" => "list-group-item d-flex list-group-item-danger",
-        "Onzeker" => "list-group-item d-flex list-group-item-warning",
-        _ => "list-group-item d-flex"
-    };
-
-    private static string ZekerheidBadgeKlasse(TraceStapDto stap) => stap.Zekerheid switch
-    {
-        "Mislukt" => "bg-danger",
-        "Onzeker" => "bg-warning text-dark",
-        _ => "bg-success"
-    };
-
-    /// <summary>Details als "sleutel: waarde"-regel; lege waarden en de al getoonde stapcode vallen weg.</summary>
-    private static string StapDetails(TraceStapDto stap)
-        => string.Join(" · ", stap.Details
-            .Where(d => !string.IsNullOrWhiteSpace(d.Value))
-            .Select(d => $"{d.Key}: {d.Value}"));
-
     private async Task TestAsync()
     {
         busy = true;

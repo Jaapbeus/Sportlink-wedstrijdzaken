@@ -1,0 +1,55 @@
+@* Compacte lijst van verwerkte e-mails met per regel de beslissingstrace (#1568). Toont bewust geen
+   afzender of onderwerp: de trace en deze lijst zijn PII-arm. *@
+@if (Items.Count == 0)
+{
+    <p class="text-muted small mb-0">Geen berichten in deze periode.</p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead>
+                <tr><th>Ontvangen</th><th>Type</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Items)
+                {
+                    <tr>
+                        <td>@item.OntvangstDatum.ToLocalTime().ToString("dd-MM HH:mm")</td>
+                        <td>@item.VerzoekType</td>
+                        <td>@item.Status</td>
+                        <td class="text-end">
+                            @if (item.HeeftTrace)
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-secondary"
+                                        @onclick="() => WisselTraceAsync(item.Id)">
+                                    @(_openId == item.Id ? "Verberg trace" : "Trace")
+                                </button>
+                            }
+                        </td>
+                    </tr>
+                    @if (_openId == item.Id)
+                    {
+                        <tr>
+                            <td colspan="4">
+                                @if (_laden)
+                                {
+                                    <span class="text-muted">Trace laden...</span>
+                                }
+                                else if (_fout is not null)
+                                {
+                                    <div class="alert alert-danger mb-0">@_fout</div>
+                                }
+                                else if (_trace is not null)
+                                {
+                                    <div class="small text-muted mb-2">@TraceKop</div>
+                                    <TraceWeergave Trace="_trace.Trace" />
+                                }
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+}

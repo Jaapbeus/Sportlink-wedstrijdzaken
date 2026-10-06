@@ -3870,3 +3870,26 @@ BEGIN
                             THEN m.[thuisteam] ELSE m.[uitteam] END, N'''') <> N'''';');
 END
 GO
+
+-- #1568 deel B: permanente, PII-arme beslissingstrace per verwerkt e-mailbericht.
+-- Postgres-tegenhanger: Database.Postgres/migrations/038_planner_emailtrace.sql. Bron: Database/planner/Tables/EmailTrace.sql.
+-- Bewust geen FK naar [planner].[EmailVerwerking]: de trace overleeft de cleanup van de verwerking.
+SET QUOTED_IDENTIFIER ON;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('planner.EmailTrace'))
+BEGIN
+    CREATE TABLE [planner].[EmailTrace] (
+        [Id]              BIGINT         IDENTITY (1, 1) NOT NULL,
+        [VerwerkingId]    INT            NOT NULL,
+        [ClubCode]        NVARCHAR (20)  NOT NULL CONSTRAINT [CK_EmailTrace_ClubCode] CHECK (LEN([ClubCode]) > 0),
+        [Aangemaakt]      DATETIME2      NOT NULL CONSTRAINT [DF_EmailTrace_Aangemaakt] DEFAULT (GETUTCDATE()),
+        [VerzoekType]     NVARCHAR (50)  NOT NULL,
+        [Zekerheid]       NVARCHAR (10)  NOT NULL CONSTRAINT [CK_EmailTrace_Zekerheid] CHECK ([Zekerheid] IN (N'Zeker', N'Onzeker', N'Mislukt')),
+        [SjabloonSleutel] NVARCHAR (60)  NULL,
+        [TraceJson]       NVARCHAR (MAX) NOT NULL CONSTRAINT [CK_EmailTrace_TraceJson] CHECK (ISJSON([TraceJson]) = 1),
+        [AppVersie]       NVARCHAR (20)  NOT NULL,
+        CONSTRAINT [PK_EmailTrace] PRIMARY KEY CLUSTERED ([Id] ASC),
+        CONSTRAINT [UQ_EmailTrace_VerwerkingId] UNIQUE ([VerwerkingId])
+    );
+END
+GO

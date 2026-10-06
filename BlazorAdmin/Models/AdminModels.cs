@@ -459,6 +459,23 @@ public class EmailLogDto
     public string? Status { get; set; }
     public string? VerstuurdNaar { get; set; }
     public string? FoutMelding { get; set; }
+    /// <summary>Er is een beslissingstrace opgeslagen voor dit bericht (#1568).</summary>
+    public bool HeeftTrace { get; set; }
+}
+
+/// <summary>Opgeslagen beslissingstrace van één verwerking (#1568); PII-arm, zonder body/afzender/onderwerp.</summary>
+public class EmailTraceDto
+{
+    public int VerwerkingId { get; set; }
+    public string VerzoekType { get; set; } = "";
+    /// <summary>Status van de verwerking; <c>null</c> als die inmiddels is opgeruimd.</summary>
+    public string? Status { get; set; }
+    public DateTime? OntvangstDatum { get; set; }
+    public DateTime Aangemaakt { get; set; }
+    public string Zekerheid { get; set; } = "";
+    public string? SjabloonSleutel { get; set; }
+    public string AppVersie { get; set; } = "";
+    public BeslissingsTraceDto? Trace { get; set; }
 }
 
 public class EmailLogResponse

@@ -988,8 +988,8 @@ Een mail kan een antwoord krijgen dat "verkeerd" voelt (bijvoorbeeld het sjabloo
 bij een oefenwedstrijd tussen twee teams in een niet-herkende schrijfwijze) zonder dat zichtbaar is
 *waarom*. De beslissingstrace legt de keuzes van de pipeline vast als geordende stappen.
 
-**Deel A (dit document): in-memory model, instrumentatie, e-mailtester.** Er is nog geen
-databasepersistentie; de echte pipeline (`EmailProcessorFunction`) geeft geen trace mee.
+**Deel A: in-memory model, instrumentatie, e-mailtester. Deel B: permanente opslag, endpoint en
+weergave per e-maillog-regel (zie "Opslag" hieronder).**
 
 | Onderdeel | Plek |
 |---|---|
@@ -1014,6 +1014,32 @@ dat een team nodig heeft (beschikbaarheid, herplannen) zonder herkend team (ook 
 `MeerdereKandidaten`) en zonder wedstrijd via de tegenstander op de gevraagde datum; een opponent-pad
 zonder wedstrijd; sjabloon `teamOnbekend` of `datumOnbekend`; of een andere mislukte stap. Bij twijfel
 onzeker. Deel D gebruikt dit als zekerheidspoort; in de tester is het uitsluitend informatief.
+
+**Opslag (deel B).** `EmailProcessorFunction` maakt per bericht een `TraceBuilder`, geeft hem mee aan
+`VerwerkMetPlannerAsync`/`BouwTemplateAntwoord` en bewaart de trace daarna in `planner.EmailTrace`
+(Postgres: `planner.emailtrace`, migratie `038_planner_emailtrace.sql`; SQL Server:
+`Database/planner/Tables/EmailTrace.sql` + `Script.PostDeployment1.sql`). Ook een bericht dat
+buiten scope valt krijgt een korte trace (classificatie + reden), en een verwerking die faalt bewaart
+de trace tot en met de mislukte stap. Per verwerking één rij (`UNIQUE (VerwerkingId)`), dus een retry
+vervangt de eerdere trace. Kolommen: `VerwerkingId`, `ClubCode`, `Aangemaakt` (UTC), `VerzoekType`,
+`Zekerheid` (`Zeker`/`Onzeker`/`Mislukt`), `SjabloonSleutel`, `TraceJson` en `AppVersie` (voor
+reproduceerbaarheid: welke code nam de beslissing).
+
+* **Permanent en PII-arm (besluit eigenaar 2026-10-06).** Anders dan `planner.EmailVerwerking`, die na
+  30 dagen wordt geanonimiseerd en na 90 dagen wordt verwijderd, wordt `planner.EmailTrace` nooit
+  opgeruimd: de trace bevat alleen gesaneerde keuzes (`TraceBuilder.Saneer`), nooit body, afzender of
+  onderwerp, en is daarmee geen persoonsgegeven. Dat maakt hem bruikbaar om maanden later te
+  beoordelen waarom een antwoord zo uitviel. Er is bewust geen retentietimer.
+* **Geen foreign key naar `EmailVerwerking`.** Een FK zou de cleanup van de verwerking laten falen of
+  de trace meenemen (CASCADE); `VerwerkingId` is een identity-waarde die nooit hergebruikt wordt. Het
+  endpoint leest de status via een LEFT JOIN, dus na de cleanup is die `null` en blijft de trace
+  zelf beschikbaar.
+* **Een mislukte opslag laat de verwerking nooit falen.** `EmailTraceOpslag.BewaarVeiligAsync`
+  (`Planner.Shared`) vangt elke fout af en logt alleen het fouttype.
+* **Endpoint:** `GET /api/beheer/email-log/{id}/trace` (admin, beide tiers); `id` is het `Id` uit
+  `GET /api/beheer/email-log`, dat sinds #1568 per regel `HeeftTrace` meegeeft. Zie docs/API.md.
+* **Weergave:** Instellingen, kaart "Email verwerking", knop *Toon berichten en traces*; per regel de
+  knop *Trace*. Het component `TraceWeergave` wordt ook door de e-mailtester gebruikt.
 
 **Bekend verschil tussen de tiers (niet door #1568 veroorzaakt):** `BouwTemplateAntwoord` op de
 Postgres-tier kent de plannerresponse-tak `wedstrijdAlIngepland` niet, terwijl `VerwerkMetPlannerAsync`

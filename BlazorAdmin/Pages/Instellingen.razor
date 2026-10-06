@@ -98,6 +98,14 @@
                         </p>
                         <p><strong>Fouten:</strong> @_emailFouten</p>
                         <p><strong>Buiten scope:</strong> @_emailBuitenScope</p>
+                        <button type="button" class="btn btn-sm btn-outline-secondary mb-2"
+                                @onclick="() => _toonEmailLog = !_toonEmailLog">
+                            @(_toonEmailLog ? "Verberg berichten en traces" : "Toon berichten en traces")
+                        </button>
+                        @if (_toonEmailLog)
+                        {
+                            <EmailLogLijst Items="_emailLog.Items" />
+                        }
                     }
                 </div>
             </div>
