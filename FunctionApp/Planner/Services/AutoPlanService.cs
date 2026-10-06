@@ -247,7 +247,8 @@ internal static class AutoPlanService
                     Veld = w.Veld,
                     Competitiesoort = w.Competitiesoort,
                     LeeftijdsCategorie = w.LeeftijdsCategorie,
-                    DuurMinuten = speeltijdInfo?.WedstrijdTotaal ?? 0,
+                    // #1547: Sportlinks eigen speelduur is leidend; speeltijden alleen als terugval.
+                    DuurMinuten = VeldbezettingDuur.Bepaal(w.SportlinkSpeelduur, speeltijdInfo?.WedstrijdTotaal),
                     Veldafmeting = speeltijdInfo?.Veldafmeting ?? 1.00m
                 };
             })

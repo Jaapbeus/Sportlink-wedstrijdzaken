@@ -22,6 +22,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Speeltijden: **Bewerken** opent het formulier nu direct onder de regel die u bewerkt, en **Nieuwe categorie** bovenaan de tabel. Voorheen verscheen het formulier onderaan een lange pagina, buiten beeld, waardoor het leek alsof de knop niets deed (#1543).
 - Een e-mailverzoek met een team zonder J/M ervoor (bijvoorbeeld "14-2") kreeg het antwoord "Helaas geen veld beschikbaar", ook als er ruimte genoeg was. Als er maar één passend team is, wordt de leeftijdscategorie nu van dat team overgenomen en wordt de beschikbaarheid echt gecontroleerd (#1545).
 - Een voorkeurstijd of voorkeursveld voor één team (bijvoorbeeld JO23-4 om 15:30) werd niet gevonden als Sportlink het team anders schrijft ("O23-4" met de clubnaam ervoor). Alle schrijfwijzen van hetzelfde team vinden nu de instelling; teams zonder eigen voorkeurstijd houden de standaardtijd van hun leeftijdscategorie (#1545).
+- De veldbezetting op **Planning** sluit weer aan op de Sportlink-veldplanner (#1547):
+  - De speelduur komt uit Sportlink (plus vijftien minuten, zoals Sportlink het blok tekent) in plaats van de standaard per leeftijdscategorie — een team met een afwijkende speelduur kreeg een veel te lang blok.
+  - De tegenstander verdwijnt niet meer uit een blok met een lange wedstrijdnaam.
+  - Wedstrijden die na een haperende synchronisatie als verwijderd gemarkeerd bleven, komen terug zodra Sportlink ze weer levert.
+  - Gespeelde wedstrijden verdwijnen niet meer uit afgelopen speeldagen: de synchronisatie markeerde ze als verwijderd en overschreef datum, veld en team met lege waarden.
+  - Wedstrijdinformatie van clubwedstrijden met hetzelfde Sportlink-wedstrijdnummer overschrijft elkaar niet meer.
 
 ## [3.11.1.0] — 2026-10-04
 

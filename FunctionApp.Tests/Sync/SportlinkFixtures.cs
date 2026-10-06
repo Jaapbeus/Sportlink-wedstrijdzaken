@@ -120,8 +120,8 @@ public static class SportlinkFixtures
         server.RespondWithJson("/wedstrijd-informatie", $$"""
             {
               "wedstrijdinformatie": {
-                "wedstrijdnummer": {{wedstrijdcode}},
-                "wedstijdnummerintern": 19780,
+                "wedstrijdnummer": 19780,
+                "wedstijdnummerintern": {{wedstrijdcode}},
                 "veldnaam": "veld 3",
                 "veldlocatie": "Veld",
                 "vertrektijd": "08:35",

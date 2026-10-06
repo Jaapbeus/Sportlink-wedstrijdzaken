@@ -118,6 +118,14 @@ gepland staat: een tijdlijn per veld, met daaronder een tabel met dezelfde wedst
 staat op deze pagina ook een Sportlink-kolom, op dezelfde manier als op Veld optimalisatie
 hieronder — zie hoofdstuk 19 voor de Sportlink Web Extension zelf.
 
+**Sportlink is leidend (#1547).** De tijdlijn toont elke wedstrijd zoals de veldplanner in
+Sportlink Club hem toont: hetzelfde veld, dezelfde aanvangstijd, en een blok dat even lang is —
+Sportlinks speelduur plus vijftien minuten. De speelduur komt dus uit Sportlink, niet uit
+**Speeltijden**; die tabel is alleen nog de terugval voor een wedstrijd waarvan Sportlink geen
+speelduur kent, en blijft de basis voor **Veld optimalisatie**. Een lange wedstrijdnaam loopt over
+twee regels door; de volledige naam staat ook in de tooltip. Ziet u toch een verschil met Sportlink,
+start dan eerst een synchronisatie — de Planning toont de stand van de laatste sync.
+
 - **Hover-highlight:** beweeg de muis over een rij in de tabel, of over een blok in de
   tijdlijn — de bijbehorende wedstrijd licht in beide oranje op. Zo is snel terug te vinden
   waar een wedstrijd uit de lijst zich visueel op het veld bevindt, en andersom. Sinds #1398

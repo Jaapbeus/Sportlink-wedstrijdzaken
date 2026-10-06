@@ -2086,7 +2086,7 @@ DECLARE @hisTabellen TABLE ([Tabel] SYSNAME, [Bk] SYSNAME);
 INSERT INTO @hisTabellen ([Tabel], [Bk]) VALUES
     ('teams',        'bk_teams'),
     ('matches',      'bk_matches'),
-    ('matchdetails', 'bk_WedstrijdCode');
+    ('matchdetails', 'bk_InternCode');
 
 DECLARE @tabel SYSNAME, @bk SYSNAME, @sql NVARCHAR(MAX), @objId INT, @duplicaten INT;
 DECLARE hisCur CURSOR LOCAL FAST_FORWARD FOR SELECT [Tabel], [Bk] FROM @hisTabellen;
@@ -2197,7 +2197,7 @@ INSERT INTO [mta].[source_target_mapping]
 SELECT v.* FROM (VALUES
     (0, 'SportlinkSqlDb', 'stg', 'teams',        '[teamcode],[lokaleteamcode],[poulecode]', 0, 'SportlinkSqlDb', 'his', 'teams',        'bk_teams NVARCHAR(100)'),
     (0, 'SportlinkSqlDb', 'stg', 'matches',      '[wedstrijdcode]',                         0, 'SportlinkSqlDb', 'his', 'matches',      'bk_matches NVARCHAR(100)'),
-    (0, 'SportlinkSqlDb', 'stg', 'matchdetails', '[WedstrijdCode]',                         0, 'SportlinkSqlDb', 'his', 'matchdetails', 'bk_WedstrijdCode INT')
+    (0, 'SportlinkSqlDb', 'stg', 'matchdetails', '[InternCode]',                            0, 'SportlinkSqlDb', 'his', 'matchdetails', 'bk_InternCode INT')
 ) AS v([source_type], [source_root], [source_schema], [source_entity], [source_pk],
        [target_type], [target_root], [target_schema], [target_entity], [target_pk])
 WHERE NOT EXISTS (
@@ -3718,4 +3718,43 @@ BEGIN
 
     SELECT @Geanonimiseerd AS [Geanonimiseerd], @Telemetrie AS [TelemetrieVerwijderd], @Inzage AS [InzageVerwijderd];
 END;
+GO
+
+-- ============================================================
+-- #1547: business key van his.matchdetails — WedstrijdCode -> InternCode.
+--
+-- /wedstrijd-informatie noemt het wedstrijdNUMMER "wedstrijdnummer" (kolom WedstrijdCode). Dat is niet
+-- uniek: clubwedstrijden hebben vaak nummer 1, waardoor detailrijen van verschillende wedstrijden
+-- elkaar overschreven. InternCode is gelijk aan his.matches.wedstrijdcode en wél uniek.
+-- Idempotent: draait alleen zolang de oude bk-kolom bestaat. his.* bestaat pas na de eerste sync.
+-- Rijen zonder InternCode zijn niet aan een wedstrijd te koppelen en worden verwijderd; dubbele
+-- InternCodes worden teruggebracht tot de meest recente rij. De volgende sync vult de details aan.
+-- ============================================================
+UPDATE [mta].[source_target_mapping]
+SET [source_pk] = '[InternCode]', [target_pk] = 'bk_InternCode INT'
+WHERE [source_schema] = 'stg' AND [source_entity] = 'matchdetails'
+  AND [target_schema] = 'his' AND [target_entity] = 'matchdetails'
+  AND ([source_pk] <> '[InternCode]' OR [target_pk] <> 'bk_InternCode INT');
+GO
+
+IF OBJECT_ID('his.matchdetails') IS NOT NULL
+   AND COL_LENGTH('his.matchdetails', 'bk_WedstrijdCode') IS NOT NULL
+   AND COL_LENGTH('his.matchdetails', 'bk_InternCode') IS NULL
+BEGIN
+    EXEC(N'DELETE FROM [his].[matchdetails] WHERE [InternCode] IS NULL;');
+    EXEC(N'
+        WITH r AS (
+            SELECT ROW_NUMBER() OVER (PARTITION BY [InternCode]
+                                      ORDER BY [mta_modified] DESC, [mta_inserted] DESC) AS rn
+            FROM [his].[matchdetails])
+        DELETE FROM r WHERE rn > 1;');
+    IF EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('his.matchdetails') AND name = 'UQ_matchdetails_bk')
+        EXEC(N'DROP INDEX [UQ_matchdetails_bk] ON [his].[matchdetails];');
+    IF EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('his.matchdetails') AND name = 'IX_matchdetails_bk')
+        EXEC(N'DROP INDEX [IX_matchdetails_bk] ON [his].[matchdetails];');
+    EXEC sp_rename N'his.matchdetails.bk_WedstrijdCode', N'bk_InternCode', N'COLUMN';
+    EXEC(N'UPDATE [his].[matchdetails] SET [bk_InternCode] = [InternCode];');
+    EXEC(N'CREATE UNIQUE NONCLUSTERED INDEX [UQ_matchdetails_bk] ON [his].[matchdetails] ([bk_InternCode]);');
+    PRINT 'his.matchdetails: business key omgebouwd naar InternCode (#1547).';
+END
 GO
