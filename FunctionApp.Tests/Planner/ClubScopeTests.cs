@@ -40,7 +40,14 @@ public class ClubScopeTests
         // primaire club; zonder die tolerantie zouden legacy-wedstrijden uit de bezetting vallen.
         var filter = ClubScope.HisFilter("m");
 
-        filter.Should().Be("ISNULL(m.[ClubCode], @primaireClubCode) = @clubCode");
+        filter.Should().Be("ISNULL(m.[ClubCode], @primaireClubCode) = @clubCode AND m.[mta_deleted] IS NULL");
+    }
+
+    [Fact]
+    public void HisFilter_SluitZachtVerwijderdeRijenUit()
+    {
+        // #1558: een door de reconciliatie als verdwenen gemarkeerde rij hoort in geen lezende query terug.
+        ClubScope.HisFilter("m").Should().EndWith("m.[mta_deleted] IS NULL");
     }
 
     [Fact]

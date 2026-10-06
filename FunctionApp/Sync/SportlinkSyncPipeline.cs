@@ -26,14 +26,23 @@ internal static class SportlinkSyncPipeline
         if (string.IsNullOrWhiteSpace(clubCode))
             throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings — sync kan niet doorgaan zonder ClubCode.");
 
-        partialFailure |= await FetchTeamsPhaseAsync(sportlinkApiUrl, sportlinkClientId, clubCode, log);
-        partialFailure |= await FetchProgrammaPhaseAsync(fromWeekOffset, toWeekOffset, sportlinkApiUrl, sportlinkClientId, clubCode, log);
-        partialFailure |= await FetchUitslagenPhaseAsync(fromWeekOffset, sportlinkApiUrl, sportlinkClientId, clubCode, log);
+        var teamsFailed = await FetchTeamsPhaseAsync(sportlinkApiUrl, sportlinkClientId, clubCode, log);
+        partialFailure |= teamsFailed;
+        var programmaFailed = await FetchProgrammaPhaseAsync(fromWeekOffset, toWeekOffset, sportlinkApiUrl, sportlinkClientId, clubCode, log);
+        var uitslagenFailed = await FetchUitslagenPhaseAsync(fromWeekOffset, sportlinkApiUrl, sportlinkClientId, clubCode, log);
+        var matchesFailed = programmaFailed || uitslagenFailed;
+        partialFailure |= matchesFailed;
         // #1547: een gespeelde wedstrijd komt alleen nog via /uitslagen binnen, zonder veld/datum/team.
         await SportlinkStagingRepository.VulUitslagRijenAanUitHisAsync(clubCode, log);
         partialFailure |= await FetchMatchDetailsPhaseAsync(sportlinkApiUrl, sportlinkClientId, clubCode, log);
 
         await MergeAllToHisAsync(log);
+
+        // Reconciliatie (#1558, pariteit met #1193): verdwenen teams/wedstrijden zacht verwijderen.
+        // Best-effort; draait vóór de canonicalisatie zodat die met opgeschoonde data werkt.
+        await SqlServerReconciliation.ReconcileVerdwenenAsync(
+            clubCode, teamsFailed, matchesFailed, global::Planner.Shared.Sync.ReconciliatieOndergrens.Nu(), log);
+
         await RefreshTeamCanonicalisatieAsync(clubCode, log);
 
         await Planner.PlannerDataAccess.MarkeerVervallenGeplandeWedstrijdenAsync(log);
@@ -51,9 +60,11 @@ internal static class SportlinkSyncPipeline
         await CreateStagingTable.ExecuteAsync("teams");
         try
         {
-            await FetchAndStoreTeamsAsync($"{sportlinkApiUrl}/teams?{sportlinkClientId}", clubCode, log);
+            var volledig = await FetchAndStoreTeamsAsync($"{sportlinkApiUrl}/teams?{sportlinkClientId}", clubCode, log);
             log.LogInformation("TEAMS - GET endpoint=/teams");
-            return false;
+            // #1558 R1-F1: een lege of ontbrekende respons is geen geldige snapshot; dat telt als
+            // mislukte fetch, zodat reconciliatie niet alle teams als verdwenen markeert.
+            return !volledig;
         }
         catch (Exception ex)
         {
@@ -172,13 +183,13 @@ internal static class SportlinkSyncPipeline
         }
     }
 
-    private static async Task FetchAndStoreTeamsAsync(string apiUrl, string clubCode, ILogger log)
+    internal static async Task<bool> FetchAndStoreTeamsAsync(string apiUrl, string clubCode, ILogger log, HttpClient? httpClient = null)
     {
-        var response = await _client.GetAsync(apiUrl);
+        var response = await (httpClient ?? _client).GetAsync(apiUrl);
         response.EnsureSuccessStatusCode();
         var json  = await response.Content.ReadAsStringAsync();
         var teams = JsonConvert.DeserializeObject<List<Team>>(json, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
-        if (teams != null)
+        if (teams is { Count: > 0 })
         {
             log.LogInformation("TEAMS - {Count} gevonden.", teams.Count);
             await SportlinkStagingRepository.SaveTeamsAsync(teams, clubCode, log);
@@ -187,6 +198,7 @@ internal static class SportlinkSyncPipeline
         {
             log.LogWarning("TEAMS - geen data gevonden.");
         }
+        return global::Planner.Shared.Sync.ReconciliatieOndergrens.IsVolledigeTeamsSnapshot(teams?.Count);
     }
 
     private static async Task FetchAndStoreProgrammaAsync(string apiUrl, string clubCode, ILogger log)

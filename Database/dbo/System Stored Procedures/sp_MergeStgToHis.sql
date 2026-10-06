@@ -10,6 +10,7 @@ BEGIN
     1.0     | 12-01-2025 | Jaap van Beusekom | Initial setup
     1.1     | 25-01-2025 | Jaap van Beusekom | NULL handling for non-string columns using CAST AS NVARCHAR(MAX)
     1.2     | 2025       | Jaap van Beusekom | Multi-column business key support using CONCAT
+    1.3     | 2026-10    | #1558             | Herstel mta_deleted bij terugkeer in stg (reconciliatie)
     */
     SET NOCOUNT ON;
     -- Create the target table from source structure if it does not yet exist
@@ -120,9 +121,21 @@ WHEN MATCHED AND (';
         SET @Index += 1;
     END
 
-    SET @SqlString += ')
+    -- Sportlink is leidend (#1558): een rij die opnieuw in stg verschijnt wordt hersteld
+    -- (mta_deleted = NULL), ook zonder inhoudelijke wijziging. Spiegel van de Postgres-upsert (#1547).
+    -- Alleen als de doeltabel de kolom heeft (oudere/dynamisch aangemaakte tabellen).
+    DECLARE @RestoreCond NVARCHAR(MAX) = '';
+    DECLARE @RestoreSet  NVARCHAR(MAX) = '';
+    IF COL_LENGTH('[' + @TargetSchema + '].[' + @TargetName + ']', 'mta_deleted') IS NOT NULL
+    BEGIN
+        SET @RestoreCond = ' OR target.mta_deleted IS NOT NULL';
+        SET @RestoreSet  = '
+    target.mta_deleted = NULL,';
+    END
+
+    SET @SqlString += @RestoreCond + ')
 THEN UPDATE SET '
-        + @SqlStringTmp + '
+        + @SqlStringTmp + @RestoreSet + '
     target.mta_modified = GETUTCDATE()';
 
     SET @SqlString += '

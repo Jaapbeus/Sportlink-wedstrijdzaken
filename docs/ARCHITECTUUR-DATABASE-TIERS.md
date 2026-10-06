@@ -4626,6 +4626,32 @@ Bewust niet gedaan: wedstrijden met thuisteam gelijk aan uitteam (op 10 oktober 
 toont) blijven in de Planning. Een toernooi heeft dezelfde vorm, dus een filter zonder Sportlink-bewijs van de
 toernooidagen kan een echte wedstrijd verbergen (#1560).
 
+## 80. Reconciliatie op de SQL Server-tier: pariteit met #1193 (#1558)
+
+§79 liet de SQL Server-tier zonder reconciliatie: een door Sportlink geschrapte wedstrijd bleef in
+`his.matches` staan en in de Planning zichtbaar. Dat is opgeheven; beide gebouwde tiers gedragen zich nu gelijk.
+
+| Onderdeel | SQL Server | Postgres |
+|---|---|---|
+| Soft-delete | `SqlServerReconciliation` (`FunctionApp/Sync/`), aangeroepen door `SportlinkSyncPipeline` na de merge | `PostgresMergeOrchestrator.ReconcileWindowedAsync`/`ReconcileFullScopeAsync` |
+| Ondergrens (morgen, Nederlandse tijd) en `VandaagInNederland` | `Planner.Shared.Sync.ReconciliatieOndergrens` | idem — de enige kopie van de regel |
+| Terugkeer van een rij | `sp_MergeStgToHis` zet `mta_deleted` terug op NULL (ook in de kopie in `Script.PostDeployment1.sql`, die de echte deploy draait) | `GenerateUpsertFromStgToHis` |
+| Lezers sluiten verwijderde rijen uit | `ClubScope.HisFilter` voegt `mta_deleted IS NULL` toe | `PostgresClubScope.HisFilter` |
+
+Regels, gelijk aan Postgres: alleen de gesyncte club (nooit AllStars of rijen zonder clubstempel), matches
+alleen binnen het MIN/MAX-venster van `kaledatum` in `stg` en nooit vóór morgen, teams over de volledige
+snapshot, niets bij een mislukte fetch-fase of een lege `stg`-snapshot. Sinds review R1-F1 telt ook een
+`null`-, lege of ontbrekende teams-respons als mislukte fetch op beide tiers
+(`ReconciliatieOndergrens.IsVolledigeTeamsSnapshot`: minstens één team), zodat zo'n respons bestaande
+teams nooit als verdwenen markeert. Verder: best-effort zodat een fout de
+geslaagde ETL niet laat falen. `matchdetails` reconcilieert bewust niet mee (zie §79).
+
+**Gemeten.** `SqlServerReconciliationIntegrationTests` draait tegen een echte SQL Server 2022 (zie de
+klasse-doc-comment): een verdwenen toekomstige wedstrijd en een verdwenen team worden gemarkeerd, een
+wedstrijd van vandaag en een andere club blijven staan, een tweede run is stil, en een terugkerende
+wedstrijd wordt door de merge hersteld. De bijgewerkte PostDeployment is tweemaal uitgevoerd op een verse
+database zonder fout.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

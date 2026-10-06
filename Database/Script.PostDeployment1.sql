@@ -2644,9 +2644,21 @@ WHEN MATCHED AND (';
         SET @Index += 1;
     END
 
-    SET @SqlString += ')
+    -- Sportlink is leidend (#1558): een rij die opnieuw in stg verschijnt wordt hersteld
+    -- (mta_deleted = NULL), ook zonder inhoudelijke wijziging. Spiegel van de Postgres-upsert (#1547).
+    -- Alleen als de doeltabel de kolom heeft (oudere/dynamisch aangemaakte tabellen).
+    DECLARE @RestoreCond NVARCHAR(MAX) = '';
+    DECLARE @RestoreSet  NVARCHAR(MAX) = '';
+    IF COL_LENGTH('[' + @TargetSchema + '].[' + @TargetName + ']', 'mta_deleted') IS NOT NULL
+    BEGIN
+        SET @RestoreCond = ' OR target.mta_deleted IS NOT NULL';
+        SET @RestoreSet  = '
+    target.mta_deleted = NULL,';
+    END
+
+    SET @SqlString += @RestoreCond + ')
 THEN UPDATE SET '
-        + @SqlStringTmp + '
+        + @SqlStringTmp + @RestoreSet + '
     target.mta_modified = GETUTCDATE()';
 
     SET @SqlString += '
@@ -3905,8 +3917,8 @@ GO
 --   - veld uit his.matchdetails.VeldNaam (via InternCode), UITSLUITEND voor al gespeelde
 --     wedstrijden: voor toekomstige wedstrijden is /programma de bron en mag een oude waarde nooit
 --     Sportlinks eigen (lege) veld overschrijven. Daardoor is dit blok bij elke deploy herhaalbaar.
--- Stap 2 van 036 (mta_deleted herstellen) bestaat hier niet: de SQL Server-tier heeft geen
--- reconciliatie (#1193), dus er wordt nooit iets als verwijderd gemarkeerd.
+-- Stap 2 van 036 (mta_deleted herstellen) bestaat hier niet als losse stap: sinds #1558 heeft de
+-- SQL Server-tier reconciliatie en herstelt sp_MergeStgToHis zelf een rij die terugkeert in stg.
 -- Idempotent; his.* bestaat pas na de eerste sync.
 -- ============================================================
 IF OBJECT_ID('his.matches') IS NOT NULL
