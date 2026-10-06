@@ -84,6 +84,34 @@ public class ZekerheidsPoortTests
         ZekerheidsPoort.Bepaal(true, trace).Tegenhouden.Should().BeTrue();
     }
 
+    private static TraceBuilder Herplan(string plannerResponse)
+        => new TraceBuilder()
+            .Classificatie("HerplanVerzoek", true, true, 1, true)
+            .TeamHerkenning(TraceCodes.TeamHerkenning, "JO 13/2", "Alias", 1.0, null, "JO13-2")
+            .Antwoordkeuze("HerplanVerzoek", plannerResponse);
+
+    /// <summary>M3: team herkend maar geen wedstrijd gevonden, of team/datum ontbreekt: een mens moet het zien.</summary>
+    [Theory]
+    [InlineData("{\"gevonden\":false,\"reden\":\"geen\"}", "geen-wedstrijd")]
+    [InlineData("{\"error\":\"Onvoldoende gegevens voor herplanverzoek (team en datum nodig)\"}", "onvoldoende-gegevens")]
+    public void Herplan_ZonderWedstrijdOfDatum_HoudtTegen(string plannerResponse, string uitkomst)
+    {
+        var trace = Herplan(plannerResponse);
+
+        ZekerheidsPoort.Bepaal(true, trace).Tegenhouden.Should().BeTrue();
+        trace.Stappen.Single(s => s.Code == TraceCodes.HerplanUitkomst).Details["uitkomst"].Should().Be(uitkomst);
+        trace.Stappen.Single(s => s.Code == TraceCodes.HerplanUitkomst).Details["sjabloon"].Should().Be("herplan_verzoek");
+    }
+
+    /// <summary>Negatieve controle: elke geslaagde herplantak blijft Zeker en wordt dus niet tegengehouden.</summary>
+    [Theory]
+    [InlineData("{\"wedstrijd\":{\"wedstrijdcode\":1},\"herplanOpties\":{}}")]
+    [InlineData("{\"wedstrijd\":{\"wedstrijdcode\":1},\"gewensteDatum\":\"2026-11-01\",\"beschikbaarheid\":{}}")]
+    [InlineData("{\"herplanTeLaat\":true,\"wedstrijd\":{\"wedstrijdcode\":1},\"deadlineDagen\":8,\"dagenTotWedstrijd\":3}")]
+    [InlineData("{\"verzetZonderDatum\":true,\"wedstrijd\":{\"wedstrijdcode\":1},\"vrijeZaterdagen\":[]}")]
+    public void Herplan_GeslaagdeTakken_BlijvenZeker(string plannerResponse)
+        => ZekerheidsPoort.Bepaal(true, Herplan(plannerResponse)).Tegenhouden.Should().BeFalse();
+
     [Fact]
     public void ZonderTrace_LaatDoor()
         => ZekerheidsPoort.Bepaal(true, null).Tegenhouden.Should().BeFalse();

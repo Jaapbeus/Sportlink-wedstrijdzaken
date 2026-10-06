@@ -138,10 +138,36 @@ public sealed class TraceBuilder
     {
         var tak = SjabloonSleutel.PlannerTak(plannerResponseJson);
         Voeg(TraceCodes.Tak, "Gekozen verwerkingstak", tak, ZekerheidsNiveau.Zeker, new[] { D("plannerResponseVlag", tak) });
+        if (type == "HerplanVerzoek") HerplanUitkomst(plannerResponseJson);
         var sleutel = SjabloonSleutel.Bepaal(type, plannerResponseJson);
         _sjabloonIndex = _stappen.Count;
         return Voeg(TraceCodes.Sjabloon, "Antwoordsjabloon", $"Ingebouwd sjabloon {sleutel}", ZekerheidsNiveau.Zeker,
             new[] { D("sjabloon", sleutel), D("bron", "generator") });
+    }
+
+    /// <summary>
+    /// Legt vast of een herplanverzoek tot een bruikbare uitkomst leidde (M3): zonder gevonden wedstrijd
+    /// (<c>gevonden=false</c>) of zonder team/datum (<c>error</c>) is het antwoord een tekst zonder inhoud en
+    /// hoort een mens het te zien. Alle geslaagde takken (opties, gewenste datum, te laat, verzet zonder datum)
+    /// blijven <see cref="ZekerheidsNiveau.Zeker"/>.
+    /// </summary>
+    private void HerplanUitkomst(string plannerResponseJson)
+    {
+        var (uitkomst, wedstrijdGevonden, datumAanwezig) = SjabloonSleutel.HerplanUitkomst(plannerResponseJson);
+        var zeker = uitkomst == "gelukt";
+        Voeg(TraceCodes.HerplanUitkomst, "Herplanverzoek: wedstrijd en datum",
+            uitkomst switch
+            {
+                "geen-wedstrijd" => "Geen wedstrijd gevonden voor team en datum",
+                "onvoldoende-gegevens" => "Team of datum ontbreekt voor het herplanverzoek",
+                _ => "Wedstrijd gevonden"
+            },
+            zeker ? ZekerheidsNiveau.Zeker : ZekerheidsNiveau.Onzeker,
+            new[]
+            {
+                D("uitkomst", uitkomst), D("wedstrijdGevonden", JaNee(wedstrijdGevonden)),
+                D("datumAanwezig", JaNee(datumAanwezig)), D("sjabloon", SjabloonSleutel.Bepaal("HerplanVerzoek", plannerResponseJson))
+            });
     }
 
     /// <summary>Meldt dat een sjabloon uit de database (override) is gebruikt; vervangt het ingebouwde sjabloon.</summary>

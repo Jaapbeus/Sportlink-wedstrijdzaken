@@ -40,6 +40,12 @@ public static class ZekerheidsBeoordeling
             && s.Details.TryGetValue("wedstrijdGevonden", out var g) && g == TraceBuilder.Nee))
             redenen.Add("Via de tegenstander is geen wedstrijd gevonden");
 
+        foreach (var s in lijst.Where(s => s.Code == TraceCodes.HerplanUitkomst
+            && s.Details.TryGetValue("uitkomst", out var u) && u != "gelukt"))
+            redenen.Add(s.Details["uitkomst"] == "geen-wedstrijd"
+                ? "Voor het herplanverzoek is geen wedstrijd gevonden"
+                : "Het herplanverzoek mist team of datum");
+
         foreach (var s in lijst.Where(s => s.Code == TraceCodes.Sjabloon
             && s.Details.TryGetValue("sjabloon", out var sj) && (sj == "teamOnbekend" || sj == "datumOnbekend")))
             redenen.Add(s.Details["sjabloon"] == "teamOnbekend"

@@ -28,6 +28,25 @@ public static class SjabloonSleutel
         return "standaard";
     }
 
+    /// <summary>
+    /// Uitkomst van de herplan-plannertak: <c>gelukt</c>, <c>geen-wedstrijd</c> (<c>gevonden=false</c>) of
+    /// <c>onvoldoende-gegevens</c> (<c>error</c>). Ongeldige of onbekende JSON geldt conservatief als <c>onvoldoende-gegevens</c>.
+    /// </summary>
+    public static (string Uitkomst, bool WedstrijdGevonden, bool DatumAanwezig) HerplanUitkomst(string plannerResponseJson)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(plannerResponseJson);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return ("onvoldoende-gegevens", false, false);
+            if (root.TryGetProperty("error", out _)) return ("onvoldoende-gegevens", false, false);
+            if (root.TryGetProperty("gevonden", out var g) && g.ValueKind == JsonValueKind.False) return ("geen-wedstrijd", false, true);
+            if (root.TryGetProperty("wedstrijd", out var w) && w.ValueKind == JsonValueKind.Object) return ("gelukt", true, true);
+        }
+        catch (JsonException) { }
+        return ("onvoldoende-gegevens", false, false);
+    }
+
     public static string Bepaal(string type, string plannerResponseJson)
     {
         var tak = PlannerTak(plannerResponseJson);
