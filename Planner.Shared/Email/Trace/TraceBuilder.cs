@@ -58,6 +58,12 @@ public sealed class TraceBuilder
     /// <summary>Of dit verzoektype een herkend eigen team nodig heeft om zeker te kunnen zijn.</summary>
     public static bool IsTeamVereist(string type) => type is "BeschikbaarheidCheck" or "HerplanVerzoek";
 
+    /// <summary>Meldt hoeveel gevalideerde leermomenten als few-shot voorbeeld aan de classificatie zijn meegegeven.</summary>
+    public TraceBuilder Leermomenten(int aantal)
+        => Voeg(TraceCodes.Leermomenten, "Geleerde voorbeelden", aantal == 0 ? "Geen leermomenten meegegeven"
+            : $"{aantal} leermoment(en) meegegeven aan de classificatie", ZekerheidsNiveau.Zeker,
+            new[] { D("aantal", aantal.ToString()) });
+
     public TraceBuilder Classificatie(string type, string? team, string? tegenstander,
         int aantalDatums, string? aanvangsTijd)
         => Classificatie(type, !string.IsNullOrWhiteSpace(team), !string.IsNullOrWhiteSpace(tegenstander),

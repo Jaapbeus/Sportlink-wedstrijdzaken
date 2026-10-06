@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Npgsql;
+using Planner.Endpoints.Leren;
 
 namespace FunctionApp.Postgres.Admin;
 
@@ -11,9 +12,6 @@ namespace FunctionApp.Postgres.Admin;
 /// </summary>
 public static class AdminTeamAliassenFunction
 {
-    private const int DefaultLimit = 100;
-    private const int MaxLimit     = 500;
-
     [Function("AdminTeamAliassenGet")]
     public static Task<IActionResult> Get(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/teamaliassen")] HttpRequest req,
@@ -21,17 +19,8 @@ public static class AdminTeamAliassenFunction
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminTeamAliassenGet"), "teamaliassen ophalen",
             async clubCode =>
             {
-                var statusFilter = req.Query["status"].ToString();
-                if (!string.IsNullOrWhiteSpace(statusFilter) &&
-                    !AdminTeamAliassenRepository.GeldigeStatussen.Contains(statusFilter))
-                    return new BadRequestObjectResult(new
-                    {
-                        error = "Ongeldige status. Gebruik 'pending', 'validated' of 'rejected'."
-                    });
-
-                int limit = DefaultLimit;
-                if (int.TryParse(req.Query["limit"].ToString(), out var l))
-                    limit = Math.Min(MaxLimit, Math.Max(1, l));
+                var (statusFilter, limit, fout) = TeamAliasEndpointCore.LeesLijstFilter(req.Query);
+                if (fout is not null) return fout;
 
                 var cs = PostgresDatabaseConfig.ConnectionString;
                 try
@@ -51,39 +40,29 @@ public static class AdminTeamAliassenFunction
                 }
             });
 
+    private static PostgresTeamAliasStore AliasStore() => new(PostgresDatabaseConfig.ConnectionString);
+    private static PostgresOnbekendeTeamTekstStore Wachtrij() => new(PostgresDatabaseConfig.ConnectionString);
+
+    /// <summary>Aanmaken door een beheerder (#1568 deel C): bron <c>CoordinatorCorrectie</c>, direct <c>validated</c>.</summary>
+    [Function("AdminTeamAliassenPost")]
+    public static Task<IActionResult> Post(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/teamaliassen")] HttpRequest req,
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminTeamAliassenPost"), "teamalias aanmaken",
+            async clubCode => await TeamAliasEndpointCore.AanmakenAsync(
+                clubCode, await TeamAliasEndpointCore.LeesBodyAsync(req), EasyAuthHelper.GetLerenAanroeper(req),
+                AliasStore(), Wachtrij(), context.GetLogger("AdminTeamAliassenPost")));
+
     [Function("AdminTeamAliassenValideer")]
     public static Task<IActionResult> Valideer(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "beheer/teamaliassen/{id:int}/valideer")] HttpRequest req,
         int id,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminTeamAliassenValideer"), "teamalias valideren",
-            async clubCode =>
-            {
-                string body;
-                using (var sr = new System.IO.StreamReader(req.Body))
-                    body = await sr.ReadToEndAsync();
-
-                string? status = null;
-                try
-                {
-                    using var doc = System.Text.Json.JsonDocument.Parse(body);
-                    if (doc.RootElement.TryGetProperty("status", out var s))
-                        status = s.GetString();
-                }
-                catch { /* ongeldige JSON → valt hieronder in de 400 */ }
-
-                if (status != "validated" && status != "rejected")
-                    return new BadRequestObjectResult(new
-                    {
-                        error = "Ongeldige status. Gebruik 'validated' of 'rejected'."
-                    });
-
-                var rows = await AdminTeamAliassenRepository.ZetStatusAsync(
-                    id, status, clubCode, PostgresDatabaseConfig.ConnectionString);
-                if (rows == 0)
-                    return new NotFoundObjectResult(new { error = $"Teamalias {id} niet gevonden." });
-                return new OkObjectResult(new { id, status });
-            });
+            async clubCode => await TeamAliasEndpointCore.ValideerAsync(
+                id, await TeamAliasEndpointCore.LeesBodyAsync(req), EasyAuthHelper.GetLerenAanroeper(req),
+                (aliasId, status, wie) => AdminTeamAliassenRepository.ZetStatusAsync(
+                    aliasId, status, clubCode, wie, PostgresDatabaseConfig.ConnectionString)));
 
     [Function("AdminTeamAliassenDelete")]
     public static Task<IActionResult> Delete(
@@ -91,12 +70,7 @@ public static class AdminTeamAliassenFunction
         int id,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminTeamAliassenDelete"), "teamalias verwijderen",
-            async clubCode =>
-            {
-                var rows = await AdminTeamAliassenRepository.DeleteAsync(
-                    id, clubCode, PostgresDatabaseConfig.ConnectionString);
-                if (rows == 0)
-                    return new NotFoundObjectResult(new { error = $"Teamalias {id} niet gevonden." });
-                return new OkObjectResult(new { deleted = true, id });
-            });
+            clubCode => TeamAliasEndpointCore.VerwijderAsync(
+                id, EasyAuthHelper.GetLerenAanroeper(req), context.GetLogger("AdminTeamAliassenDelete"),
+                aliasId => AdminTeamAliassenRepository.DeleteAsync(aliasId, clubCode, PostgresDatabaseConfig.ConnectionString)));
 }

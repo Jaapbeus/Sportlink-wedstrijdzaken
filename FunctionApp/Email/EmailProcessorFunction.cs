@@ -443,8 +443,14 @@ public class EmailProcessorFunction
                 () => BerichtPipeline.BouwTemplateAntwoord(classificatie, plannerResponseJson, email, log, trace: trace),
                 SanitizeFoutMelding,
                 log);
-        }, t => persistenceService.UpsertTraceAsync(
-            verwerkingId, classificatie.Type.ToString(), t, EmailTraceRecord.VersieVan(typeof(EmailProcessorFunction).Assembly)),
+        }, async t =>
+            {
+                // #1568 deel C: onbekende teamteksten naar de wachtrij; een fout hier breekt de trace-opslag niet.
+                await OnbekendeTeamTekstOpslag.BewaarVeiligAsync(t, persistenceService.ResolveClubCode(), verwerkingId,
+                    new Admin.SqlOnbekendeTeamTekstStore(SystemUtilities.DatabaseConfig.ConnectionString), log);
+                await persistenceService.UpsertTraceAsync(
+                    verwerkingId, classificatie.Type.ToString(), t, EmailTraceRecord.VersieVan(typeof(EmailProcessorFunction).Assembly));
+            },
             log, verwerkingId);
 
         if (replyUitkomst != ReplyVerwerkingUitkomst.AntwoordVerstuurd)

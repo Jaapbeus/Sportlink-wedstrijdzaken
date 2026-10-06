@@ -1,4 +1,5 @@
 using Npgsql;
+using Planner.Shared.Leren;
 
 namespace FunctionApp.Postgres.Admin;
 
@@ -12,8 +13,6 @@ namespace FunctionApp.Postgres.Admin;
 /// </summary>
 internal static class AdminTeamAliassenRepository
 {
-    internal static readonly string[] GeldigeStatussen = ["pending", "validated", "rejected"];
-
     internal static async Task<(int count, int limit, List<Dictionary<string, object?>> items)> GetAsync(
         string clubCode, string? statusFilter, int limit, string cs)
     {
@@ -22,7 +21,9 @@ internal static class AdminTeamAliassenRepository
                     ta.id, ta.ruwetekst, ta.ruwetekstgenormaliseerd,
                     ta.teamid, t.teamnaam, t.leeftijdscategorie,
                     ta.bron, ta.status, ta.aantalkeergebruikt,
-                    ta.mta_inserted, ta.mta_modified
+                    ta.mta_inserted, ta.mta_modified,
+                    ta.aangemaaktdoornaam, ta.aangemaaktop, ta.herkomstverwerkingid, ta.reden,
+                    ta.beoordeelddoornaam, ta.beoordeeldop
                 FROM public.teamaliassen ta
                 LEFT JOIN public.teams t
                     ON t.teamid = ta.teamid AND t.clubcode = ta.clubcode
@@ -66,16 +67,20 @@ internal static class AdminTeamAliassenRepository
                 r.IsDBNull(2) ? 0 : (int)r.GetInt64(2));
     }
 
-    internal static async Task<int> ZetStatusAsync(int id, string status, string clubCode, string cs)
+    /// <summary>Zet de status en legt vast wie (object-ID + naammomentopname) en wanneer (UTC) dat deed (#1568 deel C).</summary>
+    internal static async Task<int> ZetStatusAsync(int id, string status, string clubCode, LerenAanroeper wie, string cs)
     {
         await using var conn = new NpgsqlConnection(cs);
         await conn.OpenAsync();
         await using var cmd = new NpgsqlCommand(@"
             UPDATE public.teamaliassen
-            SET status = @status, mta_modified = NOW()
+            SET status = @status, mta_modified = NOW(),
+                beoordeelddoor = @door, beoordeelddoornaam = @naam, beoordeeldop = NOW()
             WHERE id = @id AND clubcode = @cc", conn);
         cmd.Parameters.AddWithValue("id", id);
         cmd.Parameters.AddWithValue("status", status);
+        cmd.Parameters.AddWithValue("door", wie.DoorId);
+        cmd.Parameters.AddWithValue("naam", (object?)wie.DoorNaam ?? DBNull.Value);
         cmd.Parameters.AddWithValue("cc", clubCode);
         return await cmd.ExecuteNonQueryAsync();
     }
@@ -104,12 +109,24 @@ internal static class AdminTeamAliassenRepository
         ["aantalKeerGebruikt"] = r.GetInt32(r.GetOrdinal("aantalkeergebruikt")),
         ["mtaInserted"] = NullableDateTime(r, "mta_inserted"),
         ["mtaModified"] = NullableDateTime(r, "mta_modified"),
+        ["aangemaaktDoorNaam"] = Nullable(r, "aangemaaktdoornaam"),
+        ["aangemaaktOp"] = NullableDateTime(r, "aangemaaktop"),
+        ["herkomstVerwerkingId"] = NullableInt(r, "herkomstverwerkingid"),
+        ["reden"] = Nullable(r, "reden"),
+        ["beoordeeldDoorNaam"] = Nullable(r, "beoordeelddoornaam"),
+        ["beoordeeldOp"] = NullableDateTime(r, "beoordeeldop"),
     };
 
     private static string? Nullable(NpgsqlDataReader r, string kolom)
     {
         var i = r.GetOrdinal(kolom);
         return r.IsDBNull(i) ? null : r.GetString(i);
+    }
+
+    private static int? NullableInt(NpgsqlDataReader r, string kolom)
+    {
+        var i = r.GetOrdinal(kolom);
+        return r.IsDBNull(i) ? null : r.GetInt32(i);
     }
 
     private static DateTime? NullableDateTime(NpgsqlDataReader r, string kolom)

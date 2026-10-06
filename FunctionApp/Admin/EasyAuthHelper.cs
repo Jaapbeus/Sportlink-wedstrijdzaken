@@ -132,6 +132,10 @@ internal static class EasyAuthHelper
     public static string? GetCallerObjectId(HttpRequest req)
         => GetClaimValue(req, "oid", "http://schemas.microsoft.com/identity/claims/objectidentifier");
 
+    /// <summary>De aanroeper voor leeracties en hun auditspoor (#1568 deel C): object-ID + naammomentopname, geen e-mailadres.</summary>
+    public static global::Planner.Shared.Leren.LerenAanroeper GetLerenAanroeper(HttpRequest req)
+        => new(GetCallerObjectId(req), GetCallerName(req));
+
     /// <summary>
     /// Haalt het e-mailadres van de aanroeper op uit de Entra ID claims.
     /// Uitsluitend voor server-side gebruik (Reply-To in doorstuur-email). Nooit in response terugsturen.

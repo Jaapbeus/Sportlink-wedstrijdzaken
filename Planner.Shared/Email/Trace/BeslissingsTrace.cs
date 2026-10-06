@@ -58,6 +58,7 @@ public sealed record BeslissingsTrace(
 public static class TraceCodes
 {
     public const string Classificatie = "classificatie";
+    public const string Leermomenten = "leermomenten";
     public const string TeamHerkenning = "team-herkenning";
     public const string TegenstanderHerkenning = "tegenstander-herkenning";
     public const string TeamWissel = "team-wissel";

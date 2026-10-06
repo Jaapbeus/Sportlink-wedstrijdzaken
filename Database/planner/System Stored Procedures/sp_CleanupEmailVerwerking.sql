@@ -59,7 +59,8 @@ BEGIN
     -- voor de correctheid.
     DELETE cc
     FROM [planner].[ClassificatieCorrectie] cc
-    WHERE EXISTS (
+    WHERE cc.[Herkomst] = N'Reply'   -- #1568 deel C: een admin-leermoment heeft geen FK en is permanent
+      AND EXISTS (
         SELECT 1
         FROM [planner].[EmailVerwerking] ev
         WHERE ev.[Id] IN (cc.[OrigineleVerwerkingId], cc.[CorrectionVerwerkingId])
@@ -69,4 +70,11 @@ BEGIN
     -- Fase 2b: verwijder rijen ouder dan 90 dagen
     DELETE FROM [planner].[EmailVerwerking]
     WHERE [mta_inserted] < @VerwijderVoor;
+
+    -- #1568 deel C: de wachtrij met onbekende teamteksten bewaart een gesaneerde teamschrijfwijze plus een
+    -- verwerking-id als aanwijzing. Een regel die 90 dagen niet meer is gezien is verlopen, ook als hij nog
+    -- 'open' staat — de aanwijzing verwijst dan toch naar een verwijderde verwerking.
+    IF OBJECT_ID(N'[planner].[OnbekendeTeamTekst]', N'U') IS NOT NULL
+        DELETE FROM [planner].[OnbekendeTeamTekst]
+        WHERE [LaatstGezien] < @VerwijderVoor;
 END;

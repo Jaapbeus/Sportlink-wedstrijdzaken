@@ -1588,6 +1588,80 @@ END
 GO
 
 -- ============================================================
+-- #1568 deel C: leren vanuit de trace — planner.ClassificatieCorrectie krijgt herkomst en audit, en de wachtrij
+-- planner.OnbekendeTeamTekst ontstaat. Postgres-tegenhanger: Database.Postgres/migrations/039_leren_van_de_trace.sql;
+-- bronbestanden: Database/planner/Tables/ClassificatieCorrectie.sql en OnbekendeTeamTekst.sql.
+--
+-- Dit blok staat BEWUST hier, direct na het aanmaken van de tabel en vóór de CREATE OR ALTER-procedures verderop:
+-- sp_CleanupClassificatieCorrectie/sp_CleanupEmailVerwerking verwijzen naar [Herkomst], en een verwijzing naar een
+-- kolom van een bestaande tabel (anders dan een ontbrekende tabel) valideert SQL Server wél bij het aanmaken.
+--
+-- Een admin-leermoment heeft geen reply-paar: beide verwerkings-id's worden nullable. De CHECK dwingt ze af voor
+-- herkomst 'Reply'. UQ_ClassificatieCorrectie_Paar wordt een gefilterde unique index, want SQL Server telt NULL's
+-- bij een UNIQUE-constraint als gelijk en twee admin-leermomenten zouden elkaar blokkeren.
+-- ============================================================
+SET QUOTED_IDENTIFIER ON;
+GO
+IF COL_LENGTH('planner.ClassificatieCorrectie', 'Herkomst') IS NULL
+    ALTER TABLE [planner].[ClassificatieCorrectie] ADD
+        [Herkomst]             NVARCHAR(10)  NOT NULL CONSTRAINT [DF_ClassificatieCorrectie_Herkomst] DEFAULT N'Reply',
+        [AangemaaktDoor]       NVARCHAR(64)  NULL,
+        [AangemaaktDoorNaam]   NVARCHAR(100) NULL,
+        [AangemaaktOp]         DATETIME2     NULL,
+        [HerkomstVerwerkingId] INT           NULL;
+GO
+IF EXISTS (SELECT 1 FROM sys.key_constraints
+           WHERE name = 'UQ_ClassificatieCorrectie_Paar' AND parent_object_id = OBJECT_ID('planner.ClassificatieCorrectie'))
+    ALTER TABLE [planner].[ClassificatieCorrectie] DROP CONSTRAINT [UQ_ClassificatieCorrectie_Paar];
+GO
+IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('planner.ClassificatieCorrectie')
+           AND name = 'OrigineleVerwerkingId' AND is_nullable = 0)
+    ALTER TABLE [planner].[ClassificatieCorrectie] ALTER COLUMN [OrigineleVerwerkingId] INT NULL;
+GO
+IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('planner.ClassificatieCorrectie')
+           AND name = 'CorrectionVerwerkingId' AND is_nullable = 0)
+    ALTER TABLE [planner].[ClassificatieCorrectie] ALTER COLUMN [CorrectionVerwerkingId] INT NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints
+               WHERE name = 'CK_ClassificatieCorrectie_Herkomst' AND parent_object_id = OBJECT_ID('planner.ClassificatieCorrectie'))
+    ALTER TABLE [planner].[ClassificatieCorrectie]
+        ADD CONSTRAINT [CK_ClassificatieCorrectie_Herkomst] CHECK ([Herkomst] IN (N'Reply', N'Admin'));
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints
+               WHERE name = 'CK_ClassificatieCorrectie_ReplyPaar' AND parent_object_id = OBJECT_ID('planner.ClassificatieCorrectie'))
+    ALTER TABLE [planner].[ClassificatieCorrectie]
+        ADD CONSTRAINT [CK_ClassificatieCorrectie_ReplyPaar]
+        CHECK ([Herkomst] <> N'Reply' OR ([OrigineleVerwerkingId] IS NOT NULL AND [CorrectionVerwerkingId] IS NOT NULL));
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes
+               WHERE name = 'UX_ClassificatieCorrectie_Paar' AND object_id = OBJECT_ID('planner.ClassificatieCorrectie'))
+    CREATE UNIQUE NONCLUSTERED INDEX [UX_ClassificatieCorrectie_Paar]
+        ON [planner].[ClassificatieCorrectie] ([OrigineleVerwerkingId], [CorrectionVerwerkingId])
+        WHERE [OrigineleVerwerkingId] IS NOT NULL AND [CorrectionVerwerkingId] IS NOT NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('planner.OnbekendeTeamTekst'))
+BEGIN
+    CREATE TABLE [planner].[OnbekendeTeamTekst] (
+        [Id]                      INT            IDENTITY (1, 1) NOT NULL,
+        [ClubCode]                NVARCHAR (20)  NOT NULL CONSTRAINT [CK_OnbekendeTeamTekst_ClubCode] CHECK (LEN([ClubCode]) > 0),
+        [RuweTekstGenormaliseerd] NVARCHAR (200) NOT NULL,
+        [VoorbeeldTekst]          NVARCHAR (80)  NOT NULL,
+        [Aantal]                  INT            NOT NULL CONSTRAINT [DF_OnbekendeTeamTekst_Aantal] DEFAULT (1),
+        [EerstGezien]             DATETIME2      NOT NULL CONSTRAINT [DF_OnbekendeTeamTekst_EerstGezien] DEFAULT (GETUTCDATE()),
+        [LaatstGezien]            DATETIME2      NOT NULL CONSTRAINT [DF_OnbekendeTeamTekst_LaatstGezien] DEFAULT (GETUTCDATE()),
+        [LaatsteVerwerkingId]     INT            NULL,
+        [Status]                  NVARCHAR (12)  NOT NULL CONSTRAINT [DF_OnbekendeTeamTekst_Status] DEFAULT (N'open')
+            CONSTRAINT [CK_OnbekendeTeamTekst_Status] CHECK ([Status] IN (N'open', N'afgehandeld', N'genegeerd')),
+        CONSTRAINT [PK_OnbekendeTeamTekst] PRIMARY KEY CLUSTERED ([Id] ASC),
+        CONSTRAINT [UQ_OnbekendeTeamTekst_Club_Sleutel] UNIQUE ([ClubCode], [RuweTekstGenormaliseerd])
+    );
+    CREATE NONCLUSTERED INDEX [IX_OnbekendeTeamTekst_Club_Status]
+        ON [planner].[OnbekendeTeamTekst] ([ClubCode], [Status], [LaatstGezien] DESC);
+END
+GO
+
+-- ============================================================
 -- #324: AllStars FC — multi-club infrastructure
 -- ============================================================
 -- ClubCode kolom in his.* tabellen (idempotent).
@@ -2854,12 +2928,17 @@ BEGIN
     DECLARE @AnonimiseerVanaf DATETIME = DATEADD(DAY, -30, GETUTCDATE());
     DECLARE @VerwijderVoor    DATETIME = DATEADD(DAY, -90, GETUTCDATE());
 
+    -- #1568 deel C: uitsluitend herkomst 'Reply'. Een admin-leermoment is permanent (besluit eigenaar
+    -- 2026-10-06): de samenvatting is door de beheerder geredigeerd en door de PII-arme sanering gehaald,
+    -- en het leermoment verliest zijn waarde als het na 30 dagen leeg wordt of na 90 dagen verdwijnt.
+
     -- Fase 1: anonimiseer samenvattingen in records 30-90 dagen oud
     UPDATE [planner].[ClassificatieCorrectie]
     SET [OrigineleSamenvatting] = NULL,
         [CorrectieSamenvatting] = NULL,
         [mta_modified]          = GETUTCDATE()
-    WHERE [mta_inserted] < @AnonimiseerVanaf
+    WHERE [Herkomst] = N'Reply'
+      AND [mta_inserted] < @AnonimiseerVanaf
       AND [mta_inserted] >= @VerwijderVoor
       AND ([OrigineleSamenvatting] IS NOT NULL
            OR [CorrectieSamenvatting] IS NOT NULL);
@@ -2868,7 +2947,8 @@ BEGIN
     -- Correctierijen die jonger zijn maar naar een te verwijderen e-mailrij verwijzen, worden
     -- opgeruimd door sp_CleanupEmailVerwerking (fase 2a).
     DELETE FROM [planner].[ClassificatieCorrectie]
-    WHERE [mta_inserted] < @VerwijderVoor;
+    WHERE [Herkomst] = N'Reply'
+      AND [mta_inserted] < @VerwijderVoor;
 END;
 GO
 
@@ -2934,7 +3014,8 @@ BEGIN
     -- voor de correctheid.
     DELETE cc
     FROM [planner].[ClassificatieCorrectie] cc
-    WHERE EXISTS (
+    WHERE cc.[Herkomst] = N'Reply'   -- #1568 deel C: een admin-leermoment heeft geen FK en is permanent
+      AND EXISTS (
         SELECT 1
         FROM [planner].[EmailVerwerking] ev
         WHERE ev.[Id] IN (cc.[OrigineleVerwerkingId], cc.[CorrectionVerwerkingId])
@@ -2944,6 +3025,13 @@ BEGIN
     -- Fase 2b: verwijder rijen ouder dan 90 dagen
     DELETE FROM [planner].[EmailVerwerking]
     WHERE [mta_inserted] < @VerwijderVoor;
+
+    -- #1568 deel C: de wachtrij met onbekende teamteksten bewaart een gesaneerde teamschrijfwijze plus een
+    -- verwerking-id als aanwijzing. Een regel die 90 dagen niet meer is gezien is verlopen, ook als hij nog
+    -- 'open' staat — de aanwijzing verwijst dan toch naar een verwijderde verwerking.
+    IF OBJECT_ID(N'[planner].[OnbekendeTeamTekst]', N'U') IS NOT NULL
+        DELETE FROM [planner].[OnbekendeTeamTekst]
+        WHERE [LaatstGezien] < @VerwijderVoor;
 END;
 GO
 
@@ -3476,6 +3564,12 @@ IF EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('planner.Classif
    AND NOT EXISTS (SELECT 1 FROM sys.key_constraints
                    WHERE name = 'UQ_ClassificatieCorrectie_Paar'
                      AND parent_object_id = OBJECT_ID('planner.ClassificatieCorrectie'))
+   -- #1568 deel C: sinds de gefilterde index UX_ClassificatieCorrectie_Paar (zie het blok bij de tabel) bestaat
+   -- de UNIQUE-constraint bewust niet meer. Zonder deze guard zou elke deploy hem opnieuw aanleggen — en het
+   -- ontdubbelen hieronder zou admin-leermomenten (paar NULL, NULL) als duplicaten verwijderen.
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes
+                   WHERE name = 'UX_ClassificatieCorrectie_Paar'
+                     AND object_id = OBJECT_ID('planner.ClassificatieCorrectie'))
 BEGIN
     DECLARE @DubbeleLeermomenten INT = 0;
 
@@ -3892,4 +3986,23 @@ BEGIN
         CONSTRAINT [UQ_EmailTrace_VerwerkingId] UNIQUE ([VerwerkingId])
     );
 END
+GO
+
+-- #1568 deel C: auditspoor op dbo.TeamAliassen voor aliassen die een beheerder aanmaakt of beoordeelt.
+-- Postgres-tegenhanger: Database.Postgres/migrations/039_leren_van_de_trace.sql. Bron: Database/dbo/Tables/TeamAliassen.sql.
+-- AangemaaktDoor/BeoordeeldDoor = Entra object-ID (pseudoniem), *Naam = momentopname van de weergavenaam,
+-- uitsluitend uit het Easy Auth-principal. NULL = door het systeem (sync/AI) aangemaakt. Geen e-mailadres.
+-- QUOTED_IDENTIFIER moet AAN zijn: de tabel heeft persisted computed columns (#1280) met indexen.
+SET QUOTED_IDENTIFIER ON;
+GO
+IF OBJECT_ID('dbo.TeamAliassen', 'U') IS NOT NULL AND COL_LENGTH('dbo.TeamAliassen', 'AangemaaktDoor') IS NULL
+    ALTER TABLE [dbo].[TeamAliassen] ADD
+        [AangemaaktDoor]       NVARCHAR(64)  NULL,
+        [AangemaaktDoorNaam]   NVARCHAR(100) NULL,
+        [AangemaaktOp]         DATETIME2     NULL,
+        [HerkomstVerwerkingId] INT           NULL,
+        [Reden]                NVARCHAR(200) NULL,
+        [BeoordeeldDoor]       NVARCHAR(64)  NULL,
+        [BeoordeeldDoorNaam]   NVARCHAR(100) NULL,
+        [BeoordeeldOp]         DATETIME2     NULL;
 GO

@@ -26,6 +26,17 @@ CREATE TABLE [dbo].[TeamAliassen] (
     [AantalKeerGebruikt]        INT NOT NULL CONSTRAINT [DF_TeamAliassen_AantalKeerGebruikt] DEFAULT 0,
     [mta_inserted]              DATETIME NOT NULL CONSTRAINT [DF_TeamAliassen_Inserted] DEFAULT GETUTCDATE(),
     [mta_modified]              DATETIME NOT NULL CONSTRAINT [DF_TeamAliassen_Modified] DEFAULT GETUTCDATE(),
+    -- #1568 deel C: auditspoor voor aliassen die een beheerder aanmaakt of beoordeelt. AangemaaktDoor /
+    -- BeoordeeldDoor = Entra object-ID (pseudoniem), *Naam = momentopname van de weergavenaam, uitsluitend
+    -- uit het Easy Auth-principal (nooit uit de requestbody, nooit een e-mailadres). NULL = systeem (sync/AI).
+    [AangemaaktDoor]            NVARCHAR(64)  NULL,
+    [AangemaaktDoorNaam]        NVARCHAR(100) NULL,
+    [AangemaaktOp]              DATETIME2     NULL,
+    [HerkomstVerwerkingId]      INT           NULL,   -- aanwijzing, bewust geen FK (verwerkingen worden opgeruimd)
+    [Reden]                     NVARCHAR(200) NULL,
+    [BeoordeeldDoor]            NVARCHAR(64)  NULL,
+    [BeoordeeldDoorNaam]        NVARCHAR(100) NULL,
+    [BeoordeeldOp]              DATETIME2     NULL,
     CONSTRAINT [PK_TeamAliassen] PRIMARY KEY CLUSTERED ([Id] ASC),
     CONSTRAINT [FK_TeamAliassen_Teams] FOREIGN KEY ([TeamId]) REFERENCES [dbo].[Teams]([TeamId]),
     CONSTRAINT [UQ_TeamAliassen_Club_RuweTekst] UNIQUE ([ClubCode], [RuweTekst])

@@ -1,4 +1,5 @@
 using Npgsql;
+using Planner.Shared.Leren;
 
 namespace FunctionApp.Postgres.Admin;
 
@@ -31,6 +32,8 @@ internal static class AdminLeermomentenRepository
                     cc.originelesamenvatting AS ""OrigineleSamenvatting"",
                     cc.correctiesamenvatting AS ""CorrectieSamenvatting"",
                     cc.isgevalideerd AS ""IsGevalideerd"", cc.isafgewezen AS ""IsAfgewezen"",
+                    cc.herkomst AS ""Herkomst"", cc.aangemaaktdoornaam AS ""AangemaaktDoorNaam"",
+                    cc.aangemaaktop AS ""AangemaaktOp"", cc.herkomstverwerkingid AS ""HerkomstVerwerkingId"",
                     cc.mta_inserted, cc.mta_modified
                 FROM planner.classificatiecorrectie cc
                 WHERE cc.clubcode = @cc {whereExtra}
@@ -81,5 +84,31 @@ internal static class AdminLeermomentenRepository
         cmd.Parameters.AddWithValue("isaf", isAfgewezen);
         cmd.Parameters.AddWithValue("cc", clubCode);
         return await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>
+    /// Een leermoment door een beheerder (#1568 deel C): direct gevalideerd, herkomst <c>Admin</c>, zonder
+    /// reply-paar (beide verwerkings-id's NULL). De door de beheerder geredigeerde samenvatting staat in
+    /// <c>originelesamenvatting</c> — dat is het veld dat de few-shot-prompt als "Samenvatting" toont.
+    /// </summary>
+    internal static async Task<int> MaakAdminLeermomentAsync(AdminLeermomentOpdracht o, string cs)
+    {
+        await using var conn = new NpgsqlConnection(cs);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(@"
+            INSERT INTO planner.classificatiecorrectie
+                (origineleverwerkingid, correctionverwerkingid, origineelverzoektype, afgeleidjuisttype,
+                 originelesamenvatting, isgevalideerd, clubcode, herkomst,
+                 aangemaaktdoor, aangemaaktdoornaam, aangemaaktop, herkomstverwerkingid)
+            VALUES (NULL, NULL, @origineel, @juist, @samenvatting, TRUE, @cc, 'Admin', @door, @naam, NOW(), @verwerking)
+            RETURNING id", conn);
+        cmd.Parameters.AddWithValue("origineel", o.OrigineelType);
+        cmd.Parameters.AddWithValue("juist", o.JuistType);
+        cmd.Parameters.AddWithValue("samenvatting", o.Samenvatting);
+        cmd.Parameters.AddWithValue("cc", o.ClubCode);
+        cmd.Parameters.AddWithValue("door", o.Wie.DoorId);
+        cmd.Parameters.AddWithValue("naam", (object?)o.Wie.DoorNaam ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("verwerking", (object?)o.HerkomstVerwerkingId ?? DBNull.Value);
+        return (int)(await cmd.ExecuteScalarAsync())!;
     }
 }
