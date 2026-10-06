@@ -37,6 +37,15 @@
             </button>
         </div>
     }
+    @if (!string.IsNullOrEmpty(_dubbelzinnig))
+    {
+        <div class="alert alert-warning mt-2 mb-0">
+            <strong>Let op, deze schrijfwijze is dubbelzinnig.</strong> @_dubbelzinnig
+            <button type="button" class="btn btn-sm btn-warning ms-2" disabled="@(!KanOpslaan)" @onclick="() => OpslaanAsync(false, true)">
+                Ja, alle mails met deze schrijfwijze naar dit team
+            </button>
+        </div>
+    }
     @if (!string.IsNullOrEmpty(_fout))
     {
         <div class="alert alert-danger mt-2 mb-0">@_fout</div>

@@ -88,4 +88,15 @@ public class LerenAanroeperTests
         wie.DoorNaam!.Length.Should().Be(LerenAanroeper.MaxNaamLengte);
         new LerenAanroeper(new string('o', 300), null).DoorId.Length.Should().Be(LerenAanroeper.MaxIdLengte);
     }
+
+    [Fact]
+    public void AliasDubbelzinnigheid_MeerdereKandidatenZonderExacteTeamnaam_IsDubbelzinnig()
+        => AliasDubbelzinnigheid.Kandidaten(false, ["JO13-1", "MO13-1"]).Should().Equal("JO13-1", "MO13-1");
+
+    [Theory]
+    [InlineData(true, 2)]
+    [InlineData(false, 1)]
+    [InlineData(false, 0)]
+    public void AliasDubbelzinnigheid_ExacteTeamnaamOfHoogstensEenKandidaat_IsNietDubbelzinnig(bool exact, int aantal)
+        => AliasDubbelzinnigheid.Kandidaten(exact, Enumerable.Range(1, aantal).Select(i => $"T{i}").ToList()).Should().BeEmpty();
 }

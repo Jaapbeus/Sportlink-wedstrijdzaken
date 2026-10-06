@@ -28,4 +28,23 @@ public partial class AdminApiClient
         }
         return $"Het verzoek is mislukt (HTTP {statusCode}).";
     }
+
+    /// <summary>Leest het optionele <c>code</c>-veld uit een JSON-foutrespons; <c>null</c> als het ontbreekt of de body geen JSON is.</summary>
+    public static string? FoutCode(string? body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            return doc.RootElement.ValueKind == JsonValueKind.Object &&
+                   doc.RootElement.TryGetProperty("code", out var code) &&
+                   code.ValueKind == JsonValueKind.String
+                ? code.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 }

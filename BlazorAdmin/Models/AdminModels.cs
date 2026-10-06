@@ -814,6 +814,8 @@ public class TeamAliasAanmaakDto
     public int TeamId { get; set; }
     /// <summary>Alleen <c>true</c> na een expliciete bevestiging van de beheerder (anders volgt bij een bestaande alias een 409).</summary>
     public bool Herkoppel { get; set; }
+    /// <summary>Alleen <c>true</c> na een expliciete bevestiging dat de tekst bij meerdere teams past (409 met code <c>dubbelzinnig</c>).</summary>
+    public bool BevestigDubbelzinnig { get; set; }
     public int? HerkomstVerwerkingId { get; set; }
     public string? Reden { get; set; }
 }

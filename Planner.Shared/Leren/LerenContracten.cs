@@ -28,17 +28,35 @@ public sealed record LerenAanroeper(string? ObjectId, string? Naam)
         => string.IsNullOrWhiteSpace(waarde) ? null : waarde.Length <= max ? waarde : waarde[..max];
 }
 
-public enum AliasAanmaakStatus { Aangemaakt, Herkoppeld, BestaatAl, Conflict, TeamOnbekend }
+public enum AliasAanmaakStatus
+{
+    Aangemaakt, Herkoppeld, BestaatAl, Conflict, TeamOnbekend,
+    /// <summary>De tekst past zonder alias bij meerdere teams; alleen met <c>BevestigDubbelzinnig</c> wordt toch een alias gemaakt.</summary>
+    Dubbelzinnig,
+    /// <summary>Een gelijktijdige aanroep maakte dezelfde alias net eerder aan (unique-violation).</summary>
+    GelijktijdigAangemaakt
+}
 
 /// <param name="Genormaliseerd">Uitkomst van <c>TeamNaamNormalisatie.NormaliseerVoorVergelijking</c>; nooit zelf berekend door de tier.</param>
 /// <param name="Herkoppel">Alleen als de beheerder dat expliciet vroeg: een bestaande alias met dezelfde sleutel wijst dan naar dit team.</param>
 public sealed record AliasAanmaakOpdracht(
     string ClubCode, string RuweTekst, string Genormaliseerd, int TeamId, bool Herkoppel,
-    LerenAanroeper Wie, int? HerkomstVerwerkingId, string? Reden);
+    LerenAanroeper Wie, int? HerkomstVerwerkingId, string? Reden, bool BevestigDubbelzinnig = false);
 
+/// <param name="Kandidaten">Bij <see cref="AliasAanmaakStatus.Dubbelzinnig"/>: de teams waar de tekst nu al bij past.</param>
+/// <param name="AantalRijenGeraakt">Bij een conflict/herkoppeling: hoeveel alias-rijen herkoppelen raakt (nooit de Sync-aliassen).</param>
 public sealed record AliasAanmaakUitkomst(
     AliasAanmaakStatus Status, int? Id = null, string? Teamnaam = null,
-    int? BestaandTeamId = null, string? BestaandTeamnaam = null, string? BestaandeStatus = null);
+    int? BestaandTeamId = null, string? BestaandTeamnaam = null, string? BestaandeStatus = null,
+    IReadOnlyList<string>? Kandidaten = null, int? AantalRijenGeraakt = null);
+
+/// <summary>De ene plek die bepaalt wanneer een nieuwe alias dubbelzinnig is (zelfde volgorde als de resolver: exacte teamnaam wint).</summary>
+public static class AliasDubbelzinnigheid
+{
+    /// <summary>De kandidaatnamen als de tekst zonder alias bij méér dan één team past; anders een lege lijst.</summary>
+    public static IReadOnlyList<string> Kandidaten(bool exacteTeamnaamBestaat, IReadOnlyList<string> kandidaatNamen)
+        => !exacteTeamnaamBestaat && kandidaatNamen.Count > 1 ? kandidaatNamen : [];
+}
 
 /// <summary>Tier-eigen opslag voor het aanmaken van een gevalideerde alias (bron <c>CoordinatorCorrectie</c>).</summary>
 public interface ITeamAliasStore

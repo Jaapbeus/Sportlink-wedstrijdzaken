@@ -1,5 +1,7 @@
 using Microsoft.Data.SqlClient;
+using Planner.Shared;
 using Planner.Shared.Leren;
+using SportlinkFunction.TeamResolution;
 
 namespace SportlinkFunction.Admin;
 
@@ -24,8 +26,23 @@ internal sealed class SqlTeamAliasStore(string connectionString) : ITeamAliasSto
         var bestaand = await ZoekBestaandeAsync(conn, o);
         if (bestaand is null)
         {
-            var id = await VoegToeAsync(conn, o);
-            return new AliasAanmaakUitkomst(AliasAanmaakStatus.Aangemaakt, id, teamnaam);
+            if (!o.BevestigDubbelzinnig)
+            {
+                var kandidaten = await DubbelzinnigeKandidatenAsync(o);
+                if (kandidaten.Count > 0)
+                    return new AliasAanmaakUitkomst(AliasAanmaakStatus.Dubbelzinnig, Kandidaten: kandidaten);
+            }
+
+            try
+            {
+                var id = await VoegToeAsync(conn, o);
+                return new AliasAanmaakUitkomst(AliasAanmaakStatus.Aangemaakt, id, teamnaam);
+            }
+            catch (SqlException ex) when (ex.Number is 2601 or 2627)
+            {
+                // Unique-violation door een gelijktijdige aanmaak: een 409, geen 500.
+                return new AliasAanmaakUitkomst(AliasAanmaakStatus.GelijktijdigAangemaakt);
+            }
         }
 
         if (bestaand.TeamId == o.TeamId)
@@ -34,12 +51,38 @@ internal sealed class SqlTeamAliasStore(string connectionString) : ITeamAliasSto
             return new AliasAanmaakUitkomst(AliasAanmaakStatus.BestaatAl, bestaand.Id, teamnaam);
         }
 
+        var aantalRijen = await TelHerkoppelRijenAsync(conn, o, bestaand.Id);
         if (!o.Herkoppel)
             return new AliasAanmaakUitkomst(AliasAanmaakStatus.Conflict, bestaand.Id, null,
-                bestaand.TeamId, bestaand.Teamnaam, bestaand.Status);
+                bestaand.TeamId, bestaand.Teamnaam, bestaand.Status, AantalRijenGeraakt: aantalRijen);
 
         await ZetOpGevalideerdAsync(conn, o, bestaand.Id, herkoppel: true);
-        return new AliasAanmaakUitkomst(AliasAanmaakStatus.Herkoppeld, bestaand.Id, teamnaam);
+        return new AliasAanmaakUitkomst(AliasAanmaakStatus.Herkoppeld, bestaand.Id, teamnaam, AantalRijenGeraakt: aantalRijen);
+    }
+
+    /// <summary>De teams waar de tekst nu al bij past, in dezelfde volgorde als de resolver (exacte teamnaam wint, dan leeftijd+nummer).</summary>
+    private static async Task<IReadOnlyList<string>> DubbelzinnigeKandidatenAsync(AliasAanmaakOpdracht o)
+    {
+        var repository = new TeamCandidateRepository();
+        var exact = await repository.FindExactTeamAsync(o.ClubCode, o.Genormaliseerd) is not null;
+        var componenten = TeamNaamNormalisatie.Parse(o.RuweTekst, o.ClubCode);
+        if (exact || componenten is null) return [];
+        var kandidaten = await repository.FindKandidatenAsync(o.ClubCode, componenten);
+        return AliasDubbelzinnigheid.Kandidaten(exact, kandidaten.Select(k => k.Teamnaam).ToList());
+    }
+
+    /// <summary>Het aantal rijen dat herkoppelen raakt: de ene bestaande rij plus rijen met dezelfde sleutel die niet uit de Sportlink-sync komen.</summary>
+    private static async Task<int> TelHerkoppelRijenAsync(SqlConnection conn, AliasAanmaakOpdracht o, int id)
+    {
+        using var cmd = new SqlCommand(@"
+            SELECT COUNT(*) FROM [dbo].[TeamAliassen]
+            WHERE [ClubCode] = @Cc AND ([Id] = @Id OR ([Bron] <> 'Sync' AND (UPPER([RuweTekstGenormaliseerd]) = UPPER(@Sleutel)
+                                                                       OR UPPER([RuweTekst]) = UPPER(@Ruw))))", conn);
+        cmd.Parameters.AddWithValue("@Cc", o.ClubCode);
+        cmd.Parameters.AddWithValue("@Id", id);
+        cmd.Parameters.AddWithValue("@Sleutel", o.Genormaliseerd);
+        cmd.Parameters.AddWithValue("@Ruw", o.RuweTekst);
+        return Convert.ToInt32(await cmd.ExecuteScalarAsync());
     }
 
     private sealed record Bestaand(int Id, int TeamId, string? Teamnaam, string Status);
@@ -87,7 +130,7 @@ internal sealed class SqlTeamAliasStore(string connectionString) : ITeamAliasSto
         return (int)(await cmd.ExecuteScalarAsync())!;
     }
 
-    /// <summary>Zet de rij (of bij herkoppelen alle rijen met dezelfde sleutel) op gevalideerd en naar het gekozen team.</summary>
+    /// <summary>Zet de rij (of bij herkoppelen alle rijen met dezelfde sleutel, behalve die uit de Sportlink-synchronisatie) op gevalideerd en naar het gekozen team.</summary>
     private static async Task ZetOpGevalideerdAsync(SqlConnection conn, AliasAanmaakOpdracht o, int id, bool herkoppel)
     {
         using var cmd = new SqlCommand(@"
@@ -95,8 +138,8 @@ internal sealed class SqlTeamAliasStore(string connectionString) : ITeamAliasSto
             SET [TeamId] = @TeamId, [Status] = 'validated', [Bron] = CASE WHEN @Herkoppel = 1 THEN @Bron ELSE [Bron] END,
                 [mta_modified] = GETUTCDATE(), [BeoordeeldDoor] = @Door, [BeoordeeldDoorNaam] = @Naam, [BeoordeeldOp] = GETUTCDATE(),
                 [HerkomstVerwerkingId] = COALESCE(@Verwerking, [HerkomstVerwerkingId]), [Reden] = COALESCE(@Reden, [Reden])
-            WHERE [ClubCode] = @Cc AND ([Id] = @Id OR (@Herkoppel = 1 AND (UPPER([RuweTekstGenormaliseerd]) = UPPER(@Sleutel)
-                                                                       OR UPPER([RuweTekst]) = UPPER(@Ruw))))", conn);
+            WHERE [ClubCode] = @Cc AND ([Id] = @Id OR (@Herkoppel = 1 AND [Bron] <> 'Sync' AND (UPPER([RuweTekstGenormaliseerd]) = UPPER(@Sleutel)
+                                                                                           OR UPPER([RuweTekst]) = UPPER(@Ruw))))", conn);
         cmd.Parameters.AddWithValue("@Cc", o.ClubCode);
         cmd.Parameters.AddWithValue("@Id", id);
         cmd.Parameters.AddWithValue("@Ruw", o.RuweTekst);

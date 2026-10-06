@@ -15,6 +15,8 @@ public sealed class TeamAliasAanmaakRequest
     public int TeamId { get; set; }
     /// <summary>Alleen <c>true</c> als de beheerder expliciet een bestaande alias naar dit team wil herkoppelen.</summary>
     public bool Herkoppel { get; set; }
+    /// <summary>Alleen <c>true</c> na een expliciete bevestiging dat de tekst bij meerdere teams past en voortaan altijd naar dit team gaat.</summary>
+    public bool BevestigDubbelzinnig { get; set; }
     public int? HerkomstVerwerkingId { get; set; }
     public string? Reden { get; set; }
 }
@@ -63,21 +65,39 @@ public static class TeamAliasEndpointCore
 
         var reden = string.IsNullOrWhiteSpace(dto.Reden) ? null : TraceBuilder.Saneer(dto.Reden, MaxRedenLengte);
         var uitkomst = await store.MaakAanAsync(new AliasAanmaakOpdracht(
-            clubCode, ruw, genormaliseerd, dto.TeamId, dto.Herkoppel, wie, dto.HerkomstVerwerkingId, reden));
+            clubCode, ruw, genormaliseerd, dto.TeamId, dto.Herkoppel, wie, dto.HerkomstVerwerkingId, reden, dto.BevestigDubbelzinnig));
 
         switch (uitkomst.Status)
         {
             case AliasAanmaakStatus.TeamOnbekend:
                 return new NotFoundObjectResult(new { error = $"Team {dto.TeamId} niet gevonden." });
+            case AliasAanmaakStatus.Dubbelzinnig:
+                var kandidaten = uitkomst.Kandidaten ?? [];
+                return new ConflictObjectResult(new
+                {
+                    code = "dubbelzinnig",
+                    error = $"Deze schrijfwijze past bij meerdere teams ({string.Join(", ", kandidaten)}). " +
+                            "Als je doorgaat, gaan álle mails met deze schrijfwijze voortaan naar het gekozen team.",
+                    kandidaten
+                });
+            case AliasAanmaakStatus.GelijktijdigAangemaakt:
+                return new ConflictObjectResult(new
+                {
+                    code = "bestaat-al",
+                    error = "Deze schrijfwijze is zojuist al gekoppeld. Ververs het scherm en controleer het bestaande alias."
+                });
             case AliasAanmaakStatus.Conflict:
                 return new ConflictObjectResult(new
                 {
+                    code = "conflict",
                     error = $"Deze schrijfwijze hoort al bij team {uitkomst.BestaandTeamnaam ?? "onbekend"}. " +
-                            "Kies bewust 'herkoppelen' om hem naar het nieuwe team te verplaatsen.",
+                            $"Kies bewust 'herkoppelen' om hem naar het nieuwe team te verplaatsen; dat raakt {uitkomst.AantalRijenGeraakt ?? 1} alias-rij(en) " +
+                            "(aliassen uit de Sportlink-synchronisatie blijven ongemoeid).",
                     bestaandeAliasId = uitkomst.Id,
                     bestaandTeamId = uitkomst.BestaandTeamId,
                     bestaandTeamnaam = uitkomst.BestaandTeamnaam,
-                    bestaandeStatus = uitkomst.BestaandeStatus
+                    bestaandeStatus = uitkomst.BestaandeStatus,
+                    aantalRijen = uitkomst.AantalRijenGeraakt
                 });
         }
 
@@ -91,7 +111,7 @@ public static class TeamAliasEndpointCore
         var antwoord = new
         {
             id = uitkomst.Id, status, ruweTekst = ruw, ruweTekstGenormaliseerd = genormaliseerd,
-            teamId = dto.TeamId, teamnaam = uitkomst.Teamnaam
+            teamId = dto.TeamId, teamnaam = uitkomst.Teamnaam, aantalRijen = uitkomst.AantalRijenGeraakt
         };
         return uitkomst.Status == AliasAanmaakStatus.Aangemaakt
             ? new ObjectResult(antwoord) { StatusCode = 201 }

@@ -43,7 +43,8 @@
     </div>
 }
 
-<OnbekendeTeamTeksten OnGekoppeld="HerlaadNaKoppelenAsync" />
+@* @key: de componenten laden bij het opstarten; zonder sleutel blijven de wachtrij en de teamlijst van de vorige club staan na een clubwissel. *@
+<OnbekendeTeamTeksten @key="ClubSelector.SelectedClubCode" OnGekoppeld="HerlaadNaKoppelenAsync" />
 
 <div class="mb-3">
     <button type="button" class="btn btn-outline-primary" @onclick="WisselToevoegen">
@@ -51,7 +52,7 @@
     </button>
     @if (_toevoegenOpen)
     {
-        <TeamKoppelFormulier OnGekoppeld="NaToevoegenAsync" OnAnnuleer="WisselToevoegen" />
+        <TeamKoppelFormulier @key="ClubSelector.SelectedClubCode" OnGekoppeld="NaToevoegenAsync" OnAnnuleer="WisselToevoegen" />
     }
 </div>
 

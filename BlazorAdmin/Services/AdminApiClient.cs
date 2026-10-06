@@ -477,7 +477,7 @@ public partial class AdminApiClient
     {
         var text = await resp.Content.ReadAsStringAsync();
         if (!resp.IsSuccessStatusCode)
-            return ApiResult<T>.Fail(FoutTekst((int)resp.StatusCode, text), (int)resp.StatusCode);
+            return ApiResult<T>.Fail(FoutTekst((int)resp.StatusCode, text), (int)resp.StatusCode, FoutCode(text));
 
         if (string.IsNullOrWhiteSpace(text))
             return ApiResult<T>.Ok(default!, (int)resp.StatusCode);

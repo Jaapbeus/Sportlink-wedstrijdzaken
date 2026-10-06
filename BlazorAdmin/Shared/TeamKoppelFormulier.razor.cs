@@ -28,6 +28,7 @@ public partial class TeamKoppelFormulier
     private bool _bezig;
     private string? _fout;
     private string? _conflict;
+    private string? _dubbelzinnig;
     private string? _teamsFout;
 
     private bool KanOpslaan => !_bezig && _gekozenTeamId > 0 && !string.IsNullOrWhiteSpace(_tekst);
@@ -42,21 +43,24 @@ public partial class TeamKoppelFormulier
             : r.ErrorMessage ?? "Teams ophalen mislukt";
     }
 
-    private async Task OpslaanAsync(bool herkoppel)
+    private async Task OpslaanAsync(bool herkoppel, bool bevestigDubbelzinnig = false)
     {
         _bezig = true;
         _fout = null;
         _conflict = null;
+        _dubbelzinnig = null;
         var r = await Api.MaakTeamAliasAsync(new TeamAliasAanmaakDto
         {
             RuweTekst = _tekst.Trim(),
             TeamId = _gekozenTeamId,
             Herkoppel = herkoppel,
+            BevestigDubbelzinnig = bevestigDubbelzinnig,
             HerkomstVerwerkingId = HerkomstVerwerkingId
         });
         _bezig = false;
 
         if (r.Success && r.Data is not null) await OnGekoppeld.InvokeAsync(r.Data);
+        else if (r.StatusCode == 409 && r.Code == "dubbelzinnig") _dubbelzinnig = r.ErrorMessage;
         else if (r.StatusCode == 409) _conflict = r.ErrorMessage;
         else _fout = r.ErrorMessage ?? "Koppelen mislukt";
     }

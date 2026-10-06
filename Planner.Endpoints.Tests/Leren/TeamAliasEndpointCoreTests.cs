@@ -168,6 +168,51 @@ public class TeamAliasEndpointCoreTests
         (await TeamAliasEndpointCore.VerwijderAsync(3, NullLogger.Instance, _ => Task.FromResult(0))).Should().BeOfType<NotFoundObjectResult>();
     }
 
+    [Fact]
+    public async Task Aanmaken_Dubbelzinnig_Geeft409MetCodeEnKandidaten_ZonderBevestiging()
+    {
+        var alias = new FakeAliasStore { Uitkomst = new(AliasAanmaakStatus.Dubbelzinnig, Kandidaten: ["TESTCLUB JO13-1", "TESTCLUB MO13-1"]) };
+
+        var result = await Aanmaken(Body("13-1"), alias, new FakeWachtrij());
+
+        var conflict = result.Should().BeOfType<ConflictObjectResult>().Subject;
+        var json = Newtonsoft.Json.JsonConvert.SerializeObject(conflict.Value);
+        json.Should().Contain("\"code\":\"dubbelzinnig\"").And.Contain("JO13-1").And.Contain("MO13-1").And.Contain("álle mails");
+        alias.Opdracht!.BevestigDubbelzinnig.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Aanmaken_MetBevestigDubbelzinnig_GaatMeeNaarDeStore()
+    {
+        var alias = new FakeAliasStore();
+        await Aanmaken("{\"ruweTekst\":\"13-1\",\"teamId\":4,\"bevestigDubbelzinnig\":true}", alias, new FakeWachtrij());
+        alias.Opdracht!.BevestigDubbelzinnig.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Aanmaken_Conflict_NoemtHetAantalGeraaktteRijen()
+    {
+        var alias = new FakeAliasStore { Uitkomst = new(AliasAanmaakStatus.Conflict, 9, null, 2, "TESTCLUB O10-1", "validated", AantalRijenGeraakt: 2) };
+
+        var result = await Aanmaken(Body(), alias, new FakeWachtrij());
+
+        var json = Newtonsoft.Json.JsonConvert.SerializeObject(result.Should().BeOfType<ConflictObjectResult>().Subject.Value);
+        json.Should().Contain("\"code\":\"conflict\"").And.Contain("2 alias-rij(en)").And.Contain("\"aantalRijen\":2");
+    }
+
+    [Fact]
+    public async Task Aanmaken_GelijktijdigAangemaakt_Geeft409BestaatAl_GeenAfhandelingVanDeWachtrij()
+    {
+        var alias = new FakeAliasStore { Uitkomst = new(AliasAanmaakStatus.GelijktijdigAangemaakt) };
+        var wachtrij = new FakeWachtrij();
+
+        var result = await Aanmaken(Body(), alias, wachtrij);
+
+        Newtonsoft.Json.JsonConvert.SerializeObject(result.Should().BeOfType<ConflictObjectResult>().Subject.Value)
+            .Should().Contain("\"code\":\"bestaat-al\"");
+        wachtrij.Afgehandeld.Should().BeEmpty();
+    }
+
     /// <summary>AVG (M2): het log bevat het alias-id, nooit een identificator van de beheerder.</summary>
     [Fact]
     public async Task Verwijder_LogtGeenIdentificatorVanDeBeheerder()
