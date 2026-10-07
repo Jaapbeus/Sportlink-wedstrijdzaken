@@ -601,6 +601,30 @@ prioriteit 10.
    en de 60-minutenregel van een eerste elftal simpelweg werd overgeslagen. Dat viel pas op toen dat pad
    door de precedence-wijziging de normale route werd.
 
+### Twee duurbronnen: weergave volgt Sportlink, optimalisatie volgt Speeltijden (#1559, #1560)
+
+Sinds #1547 toont de Planning voor wedstrijden die al in Sportlink staan de netto speelduur uit Sportlink
+plus 15 minuten (`VeldbezettingDuur`, zoals de Sportlink-veldplanner het blok tekent). **Veld optimalisatie**
+(`FieldScheduler`, `AutoPlanService`) rekent daarentegen met de speeltijdentabel inclusief buffer
+(besluit #291). Gevolg: voor hetzelfde team kan het blok op de twee schermen verschillen, en de
+optimalisatie kan een andere duur plannen dan Sportlink daarna toont.
+
+**Gekozen stand (tot een eigenaarsbesluit anders bepaalt): de bronnen blijven gescheiden.** Reden: de
+"speelduur + 15" is gemeten op wedstrijden van 50 tot 90 minuten; of dat ook geldt voor korte
+toernooivormen (bijvoorbeeld 20 minuten, elk halfuur een wedstrijd) is niet bevestigd (#1560, punt 2).
+De optimalisatie op een onbewezen aanname baseren legt die vast in het planningsalgoritme, terwijl een
+weergavefout eenvoudig te corrigeren is.
+
+Open besluit (#1559), twee alternatieven:
+- optimalisatie gebruikt Sportlinks duur voor bestaande wedstrijden en Speeltijden alleen voor nieuwe
+  (raakt `FieldScheduler` en `AutoPlanService` op beide tiers);
+- Speeltijden verdwijnt als bron voor bestaande wedstrijden (raakt besluit #291).
+
+Open verificatiepunten (#1560), alleen met Sportlink Club zelf te beantwoorden: bestaan clubwedstrijden
+zonder tegenstander (thuis- gelijk aan uitteam) in Sportlink Club en moeten ze in de Planning; hoe tekent
+de Sportlink-veldplanner blokken van één periode met toernooivorm; en na een productie-deploy vijf
+opeenvolgende zaterdagen blok voor blok vergelijken (veld, tijd, duur, beide teams).
+
 ### Handmatig verslepen in de tijdlijn
 
 De berekende planning is met de muis aan te passen: een wedstrijdblok kan naar een andere tijd (stappen
