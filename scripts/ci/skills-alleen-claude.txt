@@ -1,0 +1,5 @@
+# Skills die uitsluitend voor Claude Code bestaan (#1579): één bron in .claude/skills/, geen kopie.
+# Alle andere skills hebben hun bron in .agents/skills/ (scripts/ci/sync-skills.py).
+# Een naam hier mag niet ook in .agents/skills/ staan.
+supabase-check   # roept de Supabase-MCP-tools van Claude Code aan
+zelftest         # roept de mcp__playwright__*-tools van Claude Code aan

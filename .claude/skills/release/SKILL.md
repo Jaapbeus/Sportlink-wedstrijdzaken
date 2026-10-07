@@ -43,7 +43,7 @@ Eén van deze ⇒ de release stopt vóór er iets gecommit wordt:
 3. Open code-scanning-alert (CodeQL of Trivy) met security-severity **high** of **critical**.
 4. Open secret-scanning-alert.
 5. Security Gate op de HEAD van `origin/develop` niet groen.
-6. Kostenwijziging gedetecteerd (zie R3) — meldingsformat uit CLAUDE.md, "Kostenbeleid".
+6. Kostenwijziging gedetecteerd (zie R3) — meldingsformat uit AGENTS.md, "Kostenbeleid".
 
 Een STOP hef je niet op door de bevinding weg te redeneren. Wél toegestaan: een bevinding die bij
 nadere controle aantoonbaar onjuist is, als vals-positief markeren. Leg dan in het rapport aan de
@@ -53,7 +53,7 @@ eigenaar uit waarom, met bestand en regel. De eigenaar beslist, niet jij.
 
 ## R0 — Voorbereiding (worktree + scope)
 
-1. **Stap S0 uit CLAUDE.md** — reserveer release-scope (versiebestanden, CHANGELOG en
+1. **Stap S0 uit AGENTS.md** — reserveer release-scope (versiebestanden, CHANGELOG en
    OpenAPI) zodat geen andere sessie daar tegelijk schrijft. Eigen worktree vanaf `origin/develop`:
    ```bash
    git fetch origin develop main --tags
@@ -78,7 +78,7 @@ eigenaar uit waarom, met bestand en regel. De eigenaar beslist, niet jij.
    comm -23 <(git show origin/main:CHANGELOG.md | grep -oE '^## \[[^]]+\]' | sort -u) \
             <(git show origin/develop:CHANGELOG.md | grep -oE '^## \[[^]]+\]' | sort -u)
    ```
-   Treffer ⇒ ⚠️ backport-check uit CLAUDE.md ("Een hotfix is pas af als hij ook terug in
+   Treffer ⇒ ⚠️ backport-check uit AGENTS.md ("Een hotfix is pas af als hij ook terug in
    `develop` staat"). Een niet-teruggebrachte codewijziging is ❌.
 
 ---
@@ -141,7 +141,7 @@ welke route je hebt genomen. Een review die maar een deel heeft gezien, telt nie
 | **MEDIUM** | ⚠️ Leg elke bevinding met `AskUserQuestion` voor: *nu fixen (release stopt)* of *bewust accepteren en vervolgissue*. |
 | **LOW / geen** | ✅ Noteer het aantal in het rapport. |
 
-**Publicatieregel (CLAUDE.md, veiligheidsregel 4a).** Een **nog niet verholpen** bevinding komt
+**Publicatieregel (AGENTS.md, veiligheidsregel 4a).** Een **nog niet verholpen** bevinding komt
 niet inhoudelijk in een publiek issue, PR of commitbericht: geen vindplaats, geen
 exploiteerscenario, geen omvang. In een issue staan hoogstens de klasse en het codepad, en pas
 nadat de fix gemerged is. Het releasedossier in de PR-body (R5) bevat alleen **aantallen per
@@ -168,14 +168,14 @@ Reviewscope: origin/main...<sha kort> (<bestanden> bestanden), route: volledig |
 
 - Lees `## [Unreleased]` in `CHANGELOG.md`. Leeg terwijl er `feat:`/`fix:`-commits zijn ⇒ ❌, vul
   eerst aan via een gewone PR.
-- Nieuw nummer volgens CLAUDE.md "Fase 2 — release": minimaal één `feat:` ⇒ MINOR, PATCH en
+- Nieuw nummer volgens AGENTS.md "Fase 2 — release": minimaal één `feat:` ⇒ MINOR, PATCH en
   REVISION naar 0; alleen fixes ⇒ PATCH, REVISION naar 0; BREAKING CHANGE ⇒ MAJOR, en dan eerst
   de eigenaar vragen.
 - Basis is de **huidige versie op `develop`**, niet die van `main`.
 
 ---
 
-## R3 — Kostencheck (CLAUDE.md, "Kostenbeleid")
+## R3 — Kostencheck (AGENTS.md, "Kostenbeleid")
 
 ```bash
 git diff --name-only origin/main...HEAD -- infrastructure/ .github/workflows/
@@ -196,7 +196,7 @@ In de worktree:
    `FunctionApp/fa-dev-sportlink-01.csproj`, `FunctionApp.Postgres/FunctionApp.Postgres.csproj`,
    `BlazorAdmin/BlazorAdmin.csproj`.
 2. `info.version` in `docs/api-standaarden/openapi.yaml`, daarna `openapi.json` regenereren met de
-   one-liner uit CLAUDE.md ("API-standaarden").
+   one-liner uit AGENTS.md ("API-standaarden").
 3. `CHANGELOG.md`: `## [Unreleased]` ⇒ `## [x.y.z.r] — YYYY-MM-DD`, met een lege `## [Unreleased]`
    erboven. De kop moet exact gelijk zijn aan de tag zonder `v`, anders vindt `release.yml` geen
    notes.
@@ -226,7 +226,7 @@ geen fout die je zelf wegwerkt. Bij groen én afgeronde review van de actuele re
 
 ---
 
-## R6 — Deploy verifiëren (CLAUDE.md, veiligheidsregels 2 en 2a)
+## R6 — Deploy verifiëren (AGENTS.md, veiligheidsregels 2 en 2a)
 
 1. `gh run list --branch main --workflow deploy.yml --limit 1` ⇒ `gh run watch <id> --exit-status`
    (niet op de achtergrond).

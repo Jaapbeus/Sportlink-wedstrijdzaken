@@ -208,7 +208,7 @@ het `turn:`-label naar `turn: owner`, met remove+add in één operatie. Gebruik 
 Verwerk de uitvoerbare issues in volgorde van prioriteit (laagste nummer eerst, tenzij
 er afhankelijkheden zijn).
 
-Voor elk issue — volg de autonome ontwikkelcyclus uit CLAUDE.md:
+Voor elk issue — volg de autonome ontwikkelcyclus uit AGENTS.md:
 
 ### Per-issue stappen
 
@@ -252,8 +252,8 @@ Loop onderstaande twee categorieën na. Lees elk relevant bestand, vergelijk met
 
 | Bestand | Bijwerken bij |
 |---|---|
-| `CLAUDE.md` | Architectuurregel, buildproces, conventie of deployment-constraint gewijzigd |
-| `FunctionApp/CLAUDE.md` | Endpoint, datamodel, API-veld of FunctionApp-configuratie gewijzigd |
+| `AGENTS.md` | Architectuurregel, buildproces, conventie of deployment-constraint gewijzigd |
+| `FunctionApp/AGENTS.md` | Endpoint, datamodel, API-veld of FunctionApp-configuratie gewijzigd |
 | `docs/API.md` | Endpoint toegevoegd, gewijzigd of verwijderd |
 | `docs/api-standaarden/openapi.yaml` | Idem — sync met API.md |
 | `docs/ARCHITECTUUR-PLANNER.md` | Planner-logica, pipeline of kanaalstrategie gewijzigd |
@@ -342,7 +342,7 @@ gh run view <run-id> --json jobs --jq '.jobs[] | {name: .name, conclusion: .conc
 > awaiting-release`-label op een gesloten issue achterlaat. Rapporteer dit issue pas als gesloten
 > zodra die workflow na een release-tag daadwerkelijk groen is gedraaid
 > (`gh run list --workflow close-released-issues.yml --limit 1 --json conclusion`) — conform de
-> hotfix-uitzondering in CLAUDE.md, "Issue-lifecycle: awaiting-release". Is er nog geen release-tag
+> hotfix-uitzondering in AGENTS.md, "Issue-lifecycle: awaiting-release". Is er nog geen release-tag
 > gepland? Dan blijft het issue open met `status: awaiting-release` totdat die er komt.
 
 ### Één branch per batch of per issue?
