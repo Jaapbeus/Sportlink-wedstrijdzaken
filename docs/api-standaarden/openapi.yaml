@@ -33,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.11.5.0
+  version: 3.11.6.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -2173,6 +2173,32 @@ components:
               type: string
             body:
               type: string
+        eindoordeel:
+          type: object
+          description: |
+            Definitief eindoordeel (#1583): wat er in productie met deze mail zou gebeuren, met de actuele
+            clubinstelling `ZekerheidspoortActief` meegewogen. Zelfde volgorde als de productieverwerking:
+            eerst de algemene reviewmodus, dan het reply-beleid, daarna de zekerheidspoort.
+          properties:
+            uitkomst:
+              type: string
+              enum: [AutomatischVerstuurd, Review, GeenAntwoord]
+            titel:
+              type: string
+              example: "Gaat naar Review — er wordt géén antwoord verstuurd"
+            toelichting:
+              type: string
+            waarschuwing:
+              type: boolean
+              description: true bij een onzeker oordeel terwijl de zekerheidspoort uit staat
+            conceptLabel:
+              type: string
+              description: Kop boven `voorbeeldAntwoord` (concept bij review, of het antwoord dat verstuurd zou worden)
+            zekerheidspoortActief:
+              type: boolean
+            reviewModusActief:
+              type: boolean
+              description: De algemene reviewmodus (`EmailReviewMode`, omgevingsbreed) staat aan; het eindoordeel is dan altijd Review
         trace:
           type: object
           description: |
@@ -6533,6 +6559,8 @@ paths:
         Sinds #1568 deel C volgt de tester dezelfde stappen als productie: de gevalideerde leermomenten gaan als
         few-shot voorbeelden mee naar de classificatie (het aantal staat als trace-stap `leermomenten`) en de
         dry-run schrijft niets — alleen een nog lege teamlijst van de gekozen club wordt eenmalig opgebouwd.
+        Sinds #1583 bevat de respons ook `eindoordeel`: een definitieve uitkomst (automatisch verstuurd, review of
+        geen antwoord) waarin de actuele instelling van de zekerheidspoort is meegewogen.
 
         Rate limiting: max 10 aanroepen per minuut.
       security:

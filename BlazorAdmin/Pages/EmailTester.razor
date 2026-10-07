@@ -58,7 +58,20 @@
                 <pre class="bg-light p-3">@System.Text.Json.JsonSerializer.Serialize(response.PlannerResponse, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })</pre>
             }
 
-            <h5 class="mt-4">Voorbeeld-antwoord (zou-worden-verstuurd)</h5>
+            @if (response.Eindoordeel is { } eindoordeel)
+            {
+                <h5 class="mt-4">Eindoordeel</h5>
+                <div class="@EindoordeelKlasse" role="status" id="tester-eindoordeel">
+                    <strong>@eindoordeel.Titel</strong>
+                    <div>@eindoordeel.Toelichting</div>
+                    <small class="text-muted d-block mt-1">
+                        Zekerheidspoort staat nu <strong>@(eindoordeel.ZekerheidspoortActief ? "aan" : "uit")</strong> (Instellingen);
+                        reviewmodus (hele omgeving) staat <strong>@(eindoordeel.ReviewModusActief ? "aan" : "uit")</strong>.
+                    </small>
+                </div>
+            }
+
+            <h5 class="mt-4">@VoorbeeldKop</h5>
             <p><strong>Onderwerp:</strong> @response.VoorbeeldAntwoord?.Onderwerp</p>
             <pre class="bg-light p-3">@response.VoorbeeldAntwoord?.Body</pre>
 

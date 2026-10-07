@@ -19,6 +19,13 @@ public sealed class TestEmailRequest
 }
 
 /// <summary>
+/// De beleidsgegevens die het eindoordeel van de tester bepalen (#1583): de actuele clubinstelling
+/// <c>ZekerheidspoortActief</c>, de uitkomst van het reply-beleid (dat per tier een eigen type heeft) en de algemene
+/// reviewmodus (<c>EmailReviewMode</c>, gelezen met <see cref="Planner.Shared.Email.EmailReviewModus"/> zoals de processor).
+/// </summary>
+public sealed record TesterBeleid(bool PoortActief, bool ReplyMoetVersturen, string? ReplyReden, bool ReviewModus);
+
+/// <summary>
 /// Tier-onafhankelijke aansluiting van de e-mailtester (dry-run): rate limiting (max 10 per minuut), het lezen
 /// en valideren van de request, de foutvertaling en de vorm van het antwoord. De classificatie en de pipeline
 /// blijven per tier (eigen databasetoegang en <c>BerichtPipeline</c>). Samengebracht in #1568 deel C, toen de
@@ -74,17 +81,39 @@ public static class EmailTestEndpointCore
     /// <summary>
     /// Het antwoord van de tester. <c>leersuggestie</c> is de gesaneerde samenvatting als voorzet voor "Verzoektype
     /// corrigeren" (#1568 deel C); de beheerder redigeert hem en de server saneert hem bij het opslaan nogmaals.
+    /// <para>
+    /// #1583: het <c>eindoordeel</c> weegt de actuele instelling van de zekerheidspoort mee en volgt de volgorde van de
+    /// productieverwerking: eerst het reply-beleid, daarna de poort. Alleen als het reply-beleid een antwoord toestaat
+    /// komt de poortstap in de trace (zoals in productie). De tester blijft een dry-run: er wordt niets opgeslagen.
+    /// </para>
     /// </summary>
     public static IActionResult Antwoord(
         object classificatie, string verzoekType, string samenvatting, string plannerResponseJson,
-        BeslissingsTrace trace, string voorbeeldOnderwerp, string voorbeeldBody)
-        => new OkObjectResult(new
+        TraceBuilder trace, TesterBeleid beleid, string voorbeeldOnderwerp, string voorbeeldBody)
+    {
+        var (poortActief, replyMoetVersturen, replyReden, reviewModus) = beleid;
+        // Zoals in productie: bij reviewmodus komt het antwoord nooit bij de poort, dus geen poortstap in de trace.
+        if (replyMoetVersturen && !reviewModus) ZekerheidsPoort.Bepaal(poortActief, trace);
+        var bouw = trace.Bouw();
+        var eindoordeel = TesterEindoordeel.Bepaal(reviewModus, replyMoetVersturen, replyReden, poortActief, bouw.Oordeel.IsZeker);
+
+        return new OkObjectResult(new
         {
             dryRun = true,
             opmerking = "Dit verstuurt niets en slaat niets op",
             classificatie,
             plannerResponse = JsonDocument.Parse(plannerResponseJson).RootElement,
-            trace = trace.ToJsonElement(),
+            trace = bouw.ToJsonElement(),
+            eindoordeel = new
+            {
+                uitkomst = eindoordeel.Uitkomst.ToString(),
+                titel = eindoordeel.Titel,
+                toelichting = eindoordeel.Toelichting,
+                waarschuwing = eindoordeel.Waarschuwing,
+                conceptLabel = eindoordeel.ConceptLabel,
+                zekerheidspoortActief = poortActief,
+                reviewModusActief = reviewModus
+            },
             leersuggestie = new
             {
                 verzoekType,
@@ -92,4 +121,5 @@ public static class EmailTestEndpointCore
             },
             voorbeeldAntwoord = new { onderwerp = voorbeeldOnderwerp, body = voorbeeldBody }
         });
+    }
 }
