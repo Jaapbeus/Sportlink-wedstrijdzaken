@@ -56,7 +56,7 @@ namespace Planner.Shared.Deel
                     var w = model.Wedstrijden[i];
                     sb.Append("<tr>");
                     var zebra = i % 2 == 1;
-                    Cel(sb, w.Tijd, zebra); Cel(sb, w.Team, zebra); Cel(sb, w.Tegenstander, zebra);
+                    Cel(sb, w.Tijd, zebra); Cel(sb, w.TeamWeergave, zebra); Cel(sb, w.Tegenstander, zebra);
                     Cel(sb, w.Veld, zebra); Cel(sb, w.Competitie, zebra);
                     if (metScheids) Cel(sb, w.Scheidsrechter, zebra);
                     sb.Append("</tr>");

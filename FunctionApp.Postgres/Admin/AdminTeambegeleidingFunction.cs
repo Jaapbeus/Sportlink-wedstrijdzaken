@@ -25,7 +25,7 @@ namespace FunctionApp.Postgres.Admin;
 /// niet-atomische delete + per-rij-insert-lus + losse auditlog-insert — terwijl #824 precies deze
 /// laag al had gebouwd, gereviewd en empirisch getest mét transactionele atomiciteit. Twee
 /// onafhankelijke implementaties van dezelfde AVG-gevoelige databasebewerking op dezelfde tier is
-/// exact het soort duplicatie dat CLAUDE.md's architectuurregels willen voorkomen — nu opgelost
+/// exact het soort duplicatie dat AGENTS.md's architectuurregels willen voorkomen — nu opgelost
 /// door deze klasse uitsluitend nog CSV te parsen en de al bestaande, geharde implementatie aan te
 /// roepen.
 /// </para>

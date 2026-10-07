@@ -96,6 +96,9 @@ sp_merge_current.txt
 # settings.json is gecommit (gedeeld) en bevat project-brede permissies voor alle developers.
 .claude/settings.local.json
 .claude/memory/
+# CLAUDE.local.md zijn persoonlijke Claude-instructies: een tweede instructiebron naast AGENTS.md
+# die Codex niet leest — nooit committen (#1579).
+CLAUDE.local.md
 # Sessie-overdrachtsnotities (top-level .md direct in .claude/, bijv. OVERDRACHT-SESSIE.md) zijn
 # werkaantekeningen tussen sessies, geen projectdocumentatie — nooit committen. Skills/commands
 # blijven wél gedeeld (die staan in submappen, buiten bereik van dit patroon).
@@ -154,7 +157,7 @@ __MACOSX/
 
 # ── MCP-serverconfiguratie (#1222) ────────────────────────────────────────────
 # .mcp.json bevat de project-ref in de server-URL, en die identificeert de club — deze
-# repository is publiek (CLAUDE.md regel 4a). Het sjabloon met {{SUPABASE_PROJECT_REF}}
+# repository is publiek (AGENTS.md regel 4a). Het sjabloon met {{SUPABASE_PROJECT_REF}}
 # staat wél in git: .mcp.json.template.
 .mcp.json
 

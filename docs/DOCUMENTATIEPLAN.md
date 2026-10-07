@@ -72,7 +72,7 @@ Azure-productieomgeving. Eenmalig uit te voeren, daarna niet meer dagelijks nodi
 | [SPORTLINK-AUTOLOGIN.md](SPORTLINK-AUTOLOGIN.md) | Automatische Sportlink-login (#1411): implementatie, productie-setup, TOTP-verwerking |
 | [ARCHITECTUUR-PLANNER.md](ARCHITECTUUR-PLANNER.md) | Planner API: algoritme, velddefinities, API-contract |
 | [API.md](API.md) | Alle HTTP-endpoints: routes, parameters, response-formaten |
-| [api-standaarden/openapi.yaml](api-standaarden/openapi.yaml) | Machine-readable OpenAPI 3.0 spec — bewaakt op actualiteit via CLAUDE.md |
+| [api-standaarden/openapi.yaml](api-standaarden/openapi.yaml) | Machine-readable OpenAPI 3.0 spec — bewaakt op actualiteit via AGENTS.md |
 | [api-standaarden/openapi.json](api-standaarden/openapi.json) | Zelfde spec in JSON-formaat |
 | [EMAIL-VERWERKING.md](EMAIL-VERWERKING.md) | E-mailpipeline, AI-classificatie, templates, kanaalstrategie |
 | [VERSIONING.md](VERSIONING.md) | Semver-regels, conventional commits, release-workflow, CHANGELOG-richtlijnen |
@@ -135,7 +135,7 @@ git log -1 --format=%ad -- docs/<bestand>.md   # werkt altijd, ook zonder footer
 
 > **Deze conventie wordt nauwelijks gevolgd: 2 van de 29 documenten in `docs/` dragen de footer.**
 > Een marker die 27 keer ontbreekt geeft geen betrouwbaar signaal over actualiteit; `git log` wel.
-> Of de conventie wordt afgedwongen via de CLAUDE.md Stap 2b-checklist, óf ze wordt geschrapt —
+> Of de conventie wordt afgedwongen via de AGENTS.md Stap 2b-checklist, óf ze wordt geschrapt —
 > dat is een openstaand besluit voor de eigenaar.
 
 ---
@@ -149,7 +149,7 @@ git log -1 --format=%ad -- docs/<bestand>.md   # werkt altijd, ook zonder footer
 | **Developers** | Nieuw endpoint, gewijzigde architectuur, nieuw algoritme, gewijzigde buildstap |
 | **Setup** | Nieuwe prerequisite, gewijzigde GitHub secret/variable, configuratiestap gewijzigd |
 
-Deze regels zijn **aanvullend op** CLAUDE.md Stap 2b (de volledige documentatiechecklist
+Deze regels zijn **aanvullend op** AGENTS.md Stap 2b (de volledige documentatiechecklist
 per bestand). Dit plan beschrijft de structuur; Stap 2b beschrijft welk bestand bij
 welke wijziging.
 

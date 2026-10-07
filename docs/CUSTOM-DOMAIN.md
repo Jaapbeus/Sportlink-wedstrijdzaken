@@ -12,7 +12,7 @@ automatisch vernieuwende SSL/TLS-certificaten**. Geen tier-upgrade nodig.
 Bron: [Azure Static Web Apps hosting plans](https://learn.microsoft.com/azure/static-web-apps/plans)
 
 > Loop je tegen de limiet van 2 aan, dan is de Standard tier **niet** gratis. Dat valt buiten het
-> kostenbeleid van dit project — zie het kostenbeleid in de root-`CLAUDE.md`.
+> kostenbeleid van dit project — zie het kostenbeleid in de root-`AGENTS.md`.
 
 ## Alleen een DNS-record is niet genoeg
 
@@ -154,7 +154,7 @@ Twee praktische punten:
   kennen, wat de veiligste variant is.
 - Zet je club-specifieke waarden in `.githooks/sensitive-patterns.txt` (lokaal, staat in
   `.gitignore`). De git-hooks blokkeren dan een commit of push die zo'n waarde bevat. Zie de
-  security-setup in de root-`CLAUDE.md`.
+  security-setup in de root-`AGENTS.md`.
 
 > Let op: een hostnaam blijft niet geheim. Zodra er een publiek vertrouwd certificaat voor wordt
 > uitgegeven, verschijnt hij in de openbare
@@ -167,5 +167,5 @@ Twee praktische punten:
 - [`../SETUP-NIEUWE-CLUB.md`](../SETUP-NIEUWE-CLUB.md) — volledige installatie voor een nieuwe club
   (staat in de repo-root, niet in `docs/`)
 - [`ENTRA-AUTH-BEHEER.md`](ENTRA-AUTH-BEHEER.md) — Entra-configuratie en de verplichte
-  gebruikersrollentest (in `CLAUDE.md` de "3-user-test")
+  gebruikersrollentest (in `AGENTS.md` de "3-user-test")
 - [`ARCHITECTUUR.md`](ARCHITECTUUR.md) — architectuuroverzicht, inclusief de auth-lagen (§8.2)

@@ -18,7 +18,7 @@ public partial class Authentication
         // Na een succesvolle logout-callback en als er een PostLogoutRedirectUrl is
         // geconfigureerd → na korte UX-pauze redirecten naar de clubwebsite.
         // URL komt uit appsettings.Production.json zodat dit per club configureerbaar is
-        // (geen hardcoded club-strings in code — zie CLAUDE.md).
+        // (geen hardcoded club-strings in code — zie AGENTS.md).
         if (firstRender
             && !_redirectScheduled
             && string.Equals(Action, "logout-callback", StringComparison.OrdinalIgnoreCase)

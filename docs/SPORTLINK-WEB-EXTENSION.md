@@ -244,7 +244,7 @@ Vier dingen om te onthouden:
 > gedocumenteerde premisse dat de SQL Server-tier "rollback-only" zou zijn, is ingetrokken — beide
 > tiers zijn gelijkwaardig.
 
-> **Sinds de review van #1122 gelden twee vaste plekken** (zie ook CLAUDE.md, "Sportlink Web
+> **Sinds de review van #1122 gelden twee vaste plekken** (zie ook AGENTS.md, "Sportlink Web
 > Extension — één helper op de server, geen code in de Razor-pagina's"):
 > - `FunctionApp.Postgres/Sportlink/SportlinkEndpointSupport.cs` en zijn tegenhanger
 >   `FunctionApp/Sportlink/SportlinkEndpointSupport.cs` — toggle+EgressGuard-controle,

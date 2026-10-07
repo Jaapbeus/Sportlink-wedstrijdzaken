@@ -35,7 +35,7 @@ Closes #
 ### Documentatie
 - [ ] CHANGELOG.md bijgewerkt onder `## [Unreleased]`
 - [ ] Relevante docs bijgewerkt waar van toepassing: `docs/DEVELOPER-SETUP.md`, `docs/API.md` +
-      OpenAPI, `docs/BEHEERDER-HANDLEIDING.md`, `CLAUDE.md`/gegenereerde `AGENTS.md`, of andere
+      OpenAPI, `docs/BEHEERDER-HANDLEIDING.md`, `AGENTS.md` (de enige bron van de agentinstructies), of andere
       doelgroepdocs
 
 ## Testbeschrijving

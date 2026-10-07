@@ -11,7 +11,7 @@ Observability, alerting en debugging voor de Sportlink Wedstrijdzaken applicatie
 > Free Tier is op **1 juli 2022** vervallen voor nieuwe workspaces. Het enige gratis budget is de
 > **5 GB/maand data-allowance per billing account**, gedeeld over álle workspaces in dat account.
 >
-> `CLAUDE.md` plaatst Application Insights daarom in de tabel *Potentieel betaald — expliciete
+> `AGENTS.md` plaatst Application Insights daarom in de tabel *Potentieel betaald — expliciete
 > goedkeuring vereist*. Drie verplichtingen volgen daaruit:
 >
 > 1. **Daily cap van maximaal 100 MB/dag.** Die zet je niet op de Application Insights-resource maar
@@ -19,7 +19,7 @@ Observability, alerting en debugging voor de Sportlink Wedstrijdzaken applicatie
 >    Azure die workspace zelf beheert en hij niet in onze Bicep staat, is dit **handwerk in de
 >    portal**: Log Analytics workspace → Usage and estimated costs → Daily cap.
 > 2. **Expliciete goedkeuring van de eigenaar** vóór een nieuwe Application Insights-resource of
->    workspace wordt aangemaakt — conform het kostenbeleid in `CLAUDE.md`.
+>    workspace wordt aangemaakt — conform het kostenbeleid in `AGENTS.md`.
 > 3. **Sampling aanzetten** vóórdat het telemetrievolume groeit; zie
 >    [host.json (sampling)](#hostjson-sampling). Dat is de enige kostenrem die in dit repo zelf ligt.
 >
@@ -221,7 +221,7 @@ niets te melden valt.
 ### Configuratie
 
 Twee repository-secrets, **allebei als Secret en niet als Variable** — deze repository is publiek,
-Actions-logs zijn dat ook, en de project-ref identificeert de club (`CLAUDE.md` regel 4a; ditzelfde
+Actions-logs zijn dat ook, en de project-ref identificeert de club (`AGENTS.md` regel 4a; ditzelfde
 lek werd bij #1204 voor zes andere waarden gedicht):
 
 | Secret | Inhoud |
@@ -247,7 +247,7 @@ draaien bij zo'n run onverkort door.
 ### Kosten
 
 Management API en GitHub Actions zijn beide gratis binnen de huidige plannen; twee HTTPS-calls per
-run. Geen Azure-resource, geen tierwijziging — dit valt buiten het kostenbeleid in `CLAUDE.md`.
+run. Geen Azure-resource, geen tierwijziging — dit valt buiten het kostenbeleid in `AGENTS.md`.
 
 ---
 
@@ -317,7 +317,7 @@ overgeslagen.
 **`deployment-summary` (#1370, retro v3.6.0.0)** draait altijd als laatste, ook als een job
 hierboven faalt of wordt overgeslagen, en zet een tabel met resultaat + skip-reden per job in
 het job summary van de run (zichtbaar op het "Summary"-tabblad, zonder de `gh run view --json
-jobs --jq ...`-aanroep uit CLAUDE.md's Stap C handmatig te hoeven samenstellen). Hij faalt zelf
+jobs --jq ...`-aanroep uit AGENTS.md's Stap C handmatig te hoeven samenstellen). Hij faalt zelf
 hard als de **actieve** tier zijn eigen migratiejob niet met `success` heeft afgerond — dat is
 altijd een anomalie (verkeerd geconfigureerde variabele, of `build` faalde), nooit de normale
 "andere tier"-skip. Omdat deze job pas ná `deploy` draait, kan hij een slechte deploy niet meer
@@ -360,7 +360,7 @@ Dit maakt aan:
 **Vroege waarschuwing (Metric Alert — controleer kosten eerst):**
 Azure Portal → SQL Database → Monitoring → Metrics → Metric: `Free amount remaining`
 → New alert rule → Threshold: `10.000` (= 10% van maandlimiet).
-Controleer actuele kosten via het kostenbeleid in `CLAUDE.md` vóór aanmaken.
+Controleer actuele kosten via het kostenbeleid in `AGENTS.md` vóór aanmaken.
 
 ### Onafhankelijke database-uitvalmonitor (#831)
 
@@ -700,5 +700,5 @@ bewaakte de leeftijd van de laatste synchronisatie. Beide gaten zijn nu gedicht 
 faalt zichtbaar én de leeftijd is opvraagbaar.
 
 **Bewust geen metric alert.** Een Azure metric alert rule wordt per gemonitorde tijdreeks berekend
-en valt daarmee buiten het kostenbeleid in CLAUDE.md. Deze velden zijn gratis op te vragen; wie er
+en valt daarmee buiten het kostenbeleid in AGENTS.md. Deze velden zijn gratis op te vragen; wie er
 een melding op wil, kan `/api/health` periodiek pollen vanaf een bestaande gratis voorziening.

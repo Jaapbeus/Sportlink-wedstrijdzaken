@@ -728,6 +728,12 @@ public class VeldbezettingItemDto
     public string? LeeftijdsCategorie { get; set; }
     public int DuurMinuten { get; set; }
     public decimal Veldafmeting { get; set; }
+    /// <summary>De andere kant van de wedstrijd ten opzichte van <see cref="TeamNaam"/> (#1582).</summary>
+    public string? Tegenstander { get; set; }
+    /// <summary>Onze eigen regel die de Sportlink-veldplanner niet kent: een afwijking (#1582).</summary>
+    public bool NietInSportlink { get; set; }
+    /// <summary>"Sportlink" als de regel uit de veldplanner komt (#1582).</summary>
+    public string? Bron { get; set; }
 }
 
 public class AutoPlanToepassenRequestDto

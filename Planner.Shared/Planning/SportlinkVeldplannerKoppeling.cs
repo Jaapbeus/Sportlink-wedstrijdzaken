@@ -47,6 +47,9 @@ public static class SportlinkVeldplannerKoppeling
         }
     }
 
+    /// <summary>Zijn deze twee ploegnamen dezelfde ploeg, op een extra clubvoorvoegsel na? Categorie en teamnummer blijven exact.</summary>
+    internal static bool ZijnZelfdePloeg(string a, string b) => ZelfdeBehalveVoorvoegsel(Woorden(a), Woorden(b));
+
     /// <summary>Thuis- én uitploeg moeten overeenkomen, waarbij het ene label hooguit een extra clubvoorvoegsel heeft.</summary>
     private static bool ZijnZelfdeWedstrijd(string a, string b)
     {

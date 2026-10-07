@@ -46,7 +46,7 @@ if (!string.IsNullOrEmpty(tenantId) && !string.IsNullOrEmpty(clientId) && !strin
             sp.GetRequiredService<ILoggerFactory>().CreateLogger<EmailGraphService>()));
 }
 
-// IChatClient: provider-agnostische AI-abstractie (CLAUDE.md architectuurregel).
+// IChatClient: provider-agnostische AI-abstractie (AGENTS.md architectuurregel).
 // Provider: OpenAI direct — geen Azure OpenAI.
 // Modelnaam komt uit de app setting `AiModelName` zodat een model-upgrade geen code-wijziging
 // vereist (zie docs/ARCHITECTUUR-AI-SERVICES.md). Niet uit dbo.AppSettings: de DI-registratie

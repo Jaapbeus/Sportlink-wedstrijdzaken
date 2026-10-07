@@ -21,7 +21,7 @@ namespace Database.Postgres;
 /// </summary>
 public static class DemodataSeeder
 {
-    /// <summary>Vaste democlubcode — zie CLAUDE.md, "AllStars FC".</summary>
+    /// <summary>Vaste democlubcode — zie AGENTS.md, "AllStars FC".</summary>
     public const string DemoClubCode = "ALLSTARS";
 
     /// <summary>Wat de democlub na afloop bevat. -1 = tabel bestaat nog niet.</summary>

@@ -152,7 +152,7 @@ sleutelafleiding, de seedvertaling.
   introduceren is expliciet verboden in `docs/ARCHITECTUUR-DATABASE-TIERS.md` §2.
 - **De bestaande, draaiende tier.** Een wijziging daar om een nieuwe tier groen te krijgen is een
   regressie in wording.
-- **Een cloudresource aanmaken of opwaarderen.** Kostenbeleid, zie CLAUDE.md.
+- **Een cloudresource aanmaken of opwaarderen.** Kostenbeleid, zie AGENTS.md.
 - **Een assertie verzwakken of schrappen.** Blijkt een assertie zélf fout, dan mag je hem
   corrigeren, maar: aparte commit, expliciete motivering in het rapport, en meer dan twee van dit
   soort correcties in één run betekent automatisch escaleren. Anders schuift de test naar de code
@@ -216,7 +216,7 @@ Meld tot slot expliciet:
 ## Altijd van toepassing
 
 - **Nooit club-specifieke gegevens in een issue, PR of comment.** Resourcenamen, domeinen,
-  tenant-identificatoren, e-mailadressen: altijd een placeholder. Zie CLAUDE.md.
+  tenant-identificatoren, e-mailadressen: altijd een placeholder. Zie AGENTS.md.
 - **Schermafbeeldingen kunnen persoonsgegevens bevatten.** De zelftest draait op demodata, maar
   controleer vóór je een afbeelding deelt dat er geen echte club in beeld staat. `artifacts/` staat
   daarom in `.gitignore`.

@@ -14,7 +14,7 @@
 // Log Analytics-workspace. Er is geen Legacy Free Tier meer beschikbaar voor
 // nieuwe workspaces (vervallen 1 juli 2022) — het enige gratis budget is de
 // 5 GB/maand gratis data-allowance per billing account (gedeeld over alle
-// workspaces in dat account). Zie CLAUDE.md architectuurregels (kostenbeleid).
+// workspaces in dat account). Zie AGENTS.md architectuurregels (kostenbeleid).
 //
 // Daadwerkelijke beheersmaatregelen tegen onverwacht hoog volume:
 // - samplingPercentage op 10% via host.json in de FunctionApp (beperkt volume

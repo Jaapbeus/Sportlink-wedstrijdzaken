@@ -6,14 +6,14 @@
 #
 #   * bestaat het script?
 #   * is het uitvoerbaar (alleen .sh — git bewaart de executable-bit, en een niet-uitvoerbare
-#     guard wordt op macOS stilzwijgend overgeslagen, zie CLAUDE.md over git-hooks)?
+#     guard wordt op macOS stilzwijgend overgeslagen, zie AGENTS.md over git-hooks)?
 #   * wordt het daadwerkelijk aangeroepen in de workflow die het register noemt?
 #
 # En omgekeerd: elke guard in scripts/ci/ staat in het register.
 #
 # WAAROM DIT SCRIPT BESTAAT
 # -------------------------
-# Bij het onderzoek naar #1248 bleken eenentwintig harde regels in CLAUDE.md geen enkele
+# Bij het onderzoek naar #1248 bleken eenentwintig harde regels in AGENTS.md geen enkele
 # geautomatiseerde controle te hebben. Niet omdat iemand besloot ze niet te bewaken, maar omdat
 # "regel opschrijven" en "controle bouwen" twee losse handelingen zijn waarvan alleen de eerste
 # vanzelf gebeurt. Dit script maakt de tweede zichtbaar: een regel toevoegen zonder guard, of een
@@ -96,7 +96,7 @@ while IFS= read -r rij; do
 done < "$register"
 
 # Omgekeerd: elke guard in scripts/ci/ moet in het register staan.
-for script in $(git ls-files -- 'scripts/ci/check-*.sh' 'scripts/ci/check-*.py' 'scripts/ci/genereer-*.py'); do
+for script in $(git ls-files -- 'scripts/ci/check-*.sh' 'scripts/ci/check-*.py' 'scripts/ci/sync-*.py'); do
   if ! grep -qxF "$script" "$genoemd"; then
     echo "::error file=$script::Deze guard staat niet in het register van $DOC. Voeg hem toe met de regel die hij afdwingt en de workflow waarin hij draait."
     fail=1

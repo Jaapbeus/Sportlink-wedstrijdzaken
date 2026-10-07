@@ -252,6 +252,12 @@ namespace SportlinkFunction.Planner
         public string? LeeftijdsCategorie { get; set; }
         public int DuurMinuten { get; set; }
         public decimal Veldafmeting { get; set; }
+        /// <summary>De andere kant van <see cref="Wedstrijd"/> ten opzichte van <see cref="TeamNaam"/> (#1582).</summary>
+        public string? Tegenstander { get; set; }
+        /// <summary>Onze eigen regel die de Sportlink-veldplanner niet kent (#1582): een afwijking, zichtbaar gemaakt.</summary>
+        public bool NietInSportlink { get; set; }
+        /// <summary>"Sportlink" als veld, tijd en duur uit de veldplanner komen (#1582).</summary>
+        public string? Bron { get; set; }
     }
 
     // IPlanWedstrijdRegel (#1363): zie VeldbezettingItem hierboven.

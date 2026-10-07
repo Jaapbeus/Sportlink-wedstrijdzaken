@@ -899,7 +899,12 @@ gesynchroniseerde Sportlink-data — **zonder** de scheduling-optimalisatie te d
 **Veld, tijd en blokduur uit Sportlink (#1563):** is de Sportlink Web Extension aan en bereikbaar, dan komen `veld`,
 `aanvangsTijd`, `veldafmeting` en `duurMinuten` van een wedstrijd rechtstreeks uit de Sportlink-veldplanner (blokduur =
 speelduur + pauze + in-/uitloop). Wat Sportlink niet kent, of als Sportlink niet bereikbaar is, behoudt de eigen berekening;
-het antwoord kent daardoor nooit een extra foutstatus. De vorm van het antwoord is ongewijzigd.
+het antwoord kent daardoor nooit een extra foutstatus.
+
+**Sportlink is leidend (#1582):** een Sportlink-blok zonder eigen regel (bijvoorbeeld een wedstrijd van een andere club op
+hetzelfde park) komt als eigen regel in het antwoord (`wedstrijdCode` is dan `null`, `bron` is `Sportlink`). Een eigen regel die
+Sportlink niet kent blijft staan met `nietInSportlink: true`. `tegenstander` is de andere kant van `wedstrijd` ten opzichte van
+`teamNaam`. De drie velden `tegenstander`, `nietInSportlink` en `bron` zijn nieuw; de rest van de vorm is ongewijzigd.
 
 **Autorisatie (#1400):** `Admin/User` (`AdminEndpoint.ExecuteAuthenticatedAsync`) — dit is het enige
 endpoint in dit bestand dat niet uitsluitend admin vereist, want de Planning-pagina moet voor elke

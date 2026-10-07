@@ -5,7 +5,7 @@ disable-model-invocation: true
 argument-hint: "[--dry-run]"
 ---
 
-> **Gezamenlijke agentregels zijn leidend (CLAUDE.md/AGENTS.md).** Deze skill geldt voor Codex
+> **Gezamenlijke agentregels zijn leidend (AGENTS.md).** Deze skill geldt voor Codex
 > en Claude Code. Werk uitsluitend aan de toegewezen taak in de eigen geverifieerde worktree;
 > claim of wijzig geen taak, branch, worktree of services van een andere actieve sessie.
 > Behoud `source:` als herkomst; registreer implementer, reviewer, fase en sessie afzonderlijk.

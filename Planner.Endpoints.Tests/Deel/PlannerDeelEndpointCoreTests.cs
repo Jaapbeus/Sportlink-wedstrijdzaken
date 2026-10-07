@@ -238,6 +238,8 @@ public class PlannerDeelEndpointCoreTests
         public string? Uitteam => "Gasten JO10-2";
         public string? Veld => "veld 3 A";
         public string? Competitiesoort => "competitie";
+        public string? Tegenstander => null;
+        public bool NietInSportlink => false;
     }
 
     private sealed class PlanRegel : IPlanWedstrijdRegel

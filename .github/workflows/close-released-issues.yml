@@ -3,7 +3,7 @@ name: Sluit gereleasede issues
 # Zodra een release-tag naar main wordt gepusht (zelfde trigger als release.yml),
 # doorzoekt deze workflow de commits sinds de vorige release-tag op #NNN-referenties,
 # verwijdert het label 'status: awaiting-release' en sluit die issues definitief.
-# Zie CLAUDE.md, sectie "Issue-lifecycle: awaiting-release".
+# Zie AGENTS.md, sectie "Issue-lifecycle: awaiting-release".
 
 on:
   push:
@@ -68,7 +68,7 @@ jobs:
           # release zaten. De CHANGELOG is de gecureerde lijst van wat er daadwerkelijk in zit.
           #
           # Alleen haakjesgroepen die UITSLUITEND issuenummers bevatten — '(#574)' of '(#599, #595)' —
-          # conform de attributie-conventie uit CLAUDE.md. Zo blijven kruisverwijzingen in prozavorm
+          # conform de attributie-conventie uit AGENTS.md. Zo blijven kruisverwijzingen in prozavorm
           # buiten beeld: '(zie #569)' en 'conform het patroon van issue #242' mogen niets sluiten.
           #
           # #1179: inline code-spans worden eerst weggestreept. Een CHANGELOG-entry die de conventie
@@ -225,7 +225,7 @@ jobs:
               // had die guard niet. Eén opgeleverd deelissue zou de hele epic kunnen sluiten.
               // Niet alleen niet sluiten maar volledig overslaan: ook het status-label van een
               // epic hoort niet door een release-run te worden opgeruimd (zie isEpic in
-              // issue-status.js). Dit is het scenario uit CLAUDE.md bij v2.18.0.1, waar drie
+              // issue-status.js). Dit is het scenario uit AGENTS.md bij v2.18.0.1, waar drie
               // issues onterecht werden gesloten en met de hand heropend moesten worden.
               if (isEpic(issue)) {
                 core.notice(`#${number}: epic — overgeslagen (geen release-eenheid)`);
