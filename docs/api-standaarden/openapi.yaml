@@ -33,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.11.3.0
+  version: 3.11.5.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -3372,6 +3372,17 @@ components:
           type: number
           format: decimal
           description: Aandeel van een heel veld dat deze wedstrijd gebruikt (1.00 = heel veld)
+        tegenstander:
+          type: string
+          nullable: true
+          description: De andere kant van `wedstrijd` ten opzichte van `teamNaam` (#1582)
+        nietInSportlink:
+          type: boolean
+          description: Eigen regel die de Sportlink-veldplanner niet kent — een zichtbare afwijking (#1582)
+        bron:
+          type: string
+          nullable: true
+          description: "`Sportlink` als veld, tijd en duur uit de veldplanner komen of de regel alleen daar staat (#1582)"
 
     AutoPlanResponse:
       type: object

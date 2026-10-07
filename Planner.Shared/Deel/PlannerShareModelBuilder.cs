@@ -21,7 +21,7 @@ namespace Planner.Shared.Deel
 
         /// <summary>
         /// Voor de Planning-pagina: wat er nu in Sportlink gepland staat (<c>GET /api/planner/veldbezetting</c>).
-        /// De tegenstander is <see cref="IVeldbezettingRegel.Uitteam"/> — dezelfde kolom die
+        /// De tegenstander is <see cref="IVeldbezettingRegel.Tegenstander"/> (de andere kant van de wedstrijd, #1582; terugval op <see cref="IVeldbezettingRegel.Uitteam"/>) — dezelfde kolom die
         /// <c>BlazorAdmin/Pages/Planning.razor</c> als "Tegenstander" toont.
         /// </summary>
         public static PlannerShareModel VanVeldbezetting(
@@ -33,10 +33,11 @@ namespace Planner.Shared.Deel
                 .Select(i => new PlannerShareWedstrijd(
                     Tijd: TijdOfPlaatshouder(i.AanvangsTijd),
                     Team: i.TeamNaam,
-                    Tegenstander: LeegAlsNull(i.Uitteam),
+                    Tegenstander: LeegAlsNull(i.Tegenstander ?? i.Uitteam),
                     Veld: LeegAlsNull(i.Veld),
                     Competitie: LeegAlsNull(i.Competitiesoort),
-                    Scheidsrechter: null))
+                    Scheidsrechter: null,
+                    NietInSportlink: i.NietInSportlink))
                 .ToList();
 
             return new PlannerShareModel(

@@ -29,7 +29,12 @@ namespace Planner.Shared.Deel
         string? Tegenstander,
         string? Veld,
         string? Competitie,
-        string? Scheidsrechter);
+        string? Scheidsrechter,
+        bool NietInSportlink = false)
+    {
+        /// <summary>De teamnaam zoals het document hem toont: een regel die Sportlink niet kent is als zodanig gemarkeerd (#1582).</summary>
+        public string TeamWeergave => NietInSportlink ? $"{Team} (niet in Sportlink)" : Team;
+    }
 
     /// <summary>
     /// De velden die <see cref="PlannerShareModelBuilder.VanVeldbezetting"/> van één regel uit
@@ -52,6 +57,10 @@ namespace Planner.Shared.Deel
         string? Uitteam { get; }
         string? Veld { get; }
         string? Competitiesoort { get; }
+        /// <summary>De andere kant van <see cref="Wedstrijd"/> ten opzichte van <see cref="TeamNaam"/> (#1582); <c>null</c> = onbekend, dan geldt <see cref="Uitteam"/>.</summary>
+        string? Tegenstander { get; }
+        /// <summary>Eigen regel die de Sportlink-veldplanner niet kent (#1582): een afwijking die ook in het gedeelde document zichtbaar moet blijven.</summary>
+        bool NietInSportlink { get; }
     }
 
     /// <summary>

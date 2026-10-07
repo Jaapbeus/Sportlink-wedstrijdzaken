@@ -14,7 +14,8 @@ namespace Planner.Endpoints.Sportlink;
 /// <b>Altijd een terugval, nooit een fout.</b> Staat de extensie uit, is uitgaand verkeer niet toegestaan, is Sportlink
 /// onbereikbaar of onbekend de accommodatie, dan geeft <see cref="HaalBlokkenAsync"/> <c>null</c> en houdt de
 /// Planning de eigen berekening (<see cref="Planner.Shared.VeldbezettingDuur"/>). Een Planning die om een
-/// Sportlink-storing leeg blijft is erger dan een Planning met een berekende duur.
+/// Sportlink-storing leeg blijft is erger dan een Planning met een berekende duur. Is Sportlink wél bereikbaar, dan is
+/// hij leidend (#1582): <c>SamenvoegAsync</c>.
 /// </para>
 /// </summary>
 public static class VeldplannerOverlayCore
@@ -64,38 +65,38 @@ public static class VeldplannerOverlayCore
     /// De aanroep die beide tiers doen: zelfde toggle-, EgressGuard- en clientregels als elk ander Sportlink-endpoint
     /// (<see cref="SportlinkEndpointSupportCore"/>), met de tier-eigen instellingenlezer en EgressGuard als parameter.
     /// </summary>
-    public static Task<IReadOnlyDictionary<int, SportlinkVeldplannerBlok>> KoppelAsync(
-        IReadOnlyList<(string Label, string? Starttijd)> eigen, string clubCode, FunctionContext context,
-        Func<string, string?> leesInstelling, Func<bool> egressToegestaan, DateOnly datum, ILogger log)
-        => KoppelAsync(eigen, clubCode,
+    public static Task<IReadOnlyList<T>> SamenvoegAsync<T>(
+        IReadOnlyList<T> eigen, string clubCode, FunctionContext context,
+        Func<string, string?> leesInstelling, Func<bool> egressToegestaan, DateOnly datum, ILogger log,
+        Func<T, (string Label, string? Starttijd)> sleutel, Func<T, SportlinkVeldplannerBlok, T> overschrijf,
+        Func<SportlinkVeldplannerBlok, T> nieuw, Func<T, T> nietInSportlink, Func<T, string?> sorteerTijd)
+        => SamenvoegAsync(eigen, clubCode,
             () => SportlinkEndpointSupportCore.ControleerToggleEnEgress(leesInstelling, egressToegestaan),
             () => SportlinkEndpointSupportCore.ClientOfFout(context),
-            SportlinkEndpointSupportCore.RolWedstrijdzaken, leesInstelling("accommodatie"), datum, log);
+            SportlinkEndpointSupportCore.RolWedstrijdzaken, leesInstelling("accommodatie"), datum, log,
+            sleutel, overschrijf, nieuw, nietInSportlink, sorteerTijd);
 
     /// <summary>
-    /// Haalt de blokken op en koppelt ze aan onze regels; per index het blok dat de regel overschrijft. Leeg als de
-    /// terugval geldt, ook voor de democlub (<c>ALLSTARS</c> staat niet in Sportlink en mag er nooit om vragen).
+    /// Haalt de Sportlink-veldplanner op en voegt hem samen met onze regels (#1582): Sportlink is leidend, zie
+    /// <see cref="SportlinkVeldbezettingSamenvoeging"/>. Zonder bereikbare Sportlink, en voor de democlub
+    /// (<c>ALLSTARS</c> staat niet in Sportlink en mag er nooit om vragen), blijven de eigen regels ongewijzigd.
+    /// Ook bij nul eigen regels wordt Sportlink gevraagd: de velden kunnen door anderen bezet zijn.
     /// </summary>
-    public static async Task<IReadOnlyDictionary<int, SportlinkVeldplannerBlok>> KoppelAsync(
-        IReadOnlyList<(string Label, string? Starttijd)> eigen, string clubCode,
+    public static async Task<IReadOnlyList<T>> SamenvoegAsync<T>(
+        IReadOnlyList<T> eigen, string clubCode,
         Func<IActionResult?> controleerToggleEnEgress,
         Func<(ISportlinkClubClient? Client, IActionResult? Fout)> clientOfFout,
-        string rolNaam, string? accommodatie, DateOnly datum, ILogger log)
+        string rolNaam, string? accommodatie, DateOnly datum, ILogger log,
+        Func<T, (string Label, string? Starttijd)> sleutel, Func<T, SportlinkVeldplannerBlok, T> overschrijf,
+        Func<SportlinkVeldplannerBlok, T> nieuw, Func<T, T> nietInSportlink, Func<T, string?> sorteerTijd)
     {
-        if (eigen.Count == 0 || clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase))
-            return new Dictionary<int, SportlinkVeldplannerBlok>();
+        if (clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase)) return eigen;
         var blokken = await HaalBlokkenAsync(controleerToggleEnEgress, clientOfFout, rolNaam, accommodatie, datum, log);
-        return Koppel(eigen, blokken);
+        return SportlinkVeldbezettingSamenvoeging.Voeg(eigen, blokken, sleutel, overschrijf, nieuw, nietInSportlink, sorteerTijd);
     }
 
     /// <summary>Sorteersleutel van de Planning: op aanvangstijd, regels zonder tijd achteraan.</summary>
     public static string SorteerSleutel(string? aanvangsTijd) => string.IsNullOrWhiteSpace(aanvangsTijd) ? "99:99" : aanvangsTijd;
-
-    internal static IReadOnlyDictionary<int, SportlinkVeldplannerBlok> Koppel(
-        IReadOnlyList<(string Label, string? Starttijd)> eigen, IReadOnlyList<SportlinkVeldplannerBlok>? blokken)
-        => blokken == null || blokken.Count == 0
-            ? new Dictionary<int, SportlinkVeldplannerBlok>()
-            : SportlinkVeldplannerKoppeling.Koppel(eigen, blokken);
 
     private static async Task<string?> ZoekFacilityIdAsync(
         ISportlinkClubClient client, string rolNaam, string accommodatie, DateTime nu, ILogger log)
