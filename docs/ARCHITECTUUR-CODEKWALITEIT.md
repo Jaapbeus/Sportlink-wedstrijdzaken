@@ -2,8 +2,8 @@
 
 > Vastgelegd naar aanleiding van **#1248** (thema-logica woordelijk gedupliceerd over twee
 > database-tiers) en **#1252** (de platformafhankelijke bug die daardoor maandenlang onzichtbaar
-> bleef). Dit document is de bron voor alle codekwaliteitsregels in dit project. CLAUDE.md vat ze
-> samen en verwijst hierheen; AGENTS.md wordt uit CLAUDE.md afgeleid.
+> bleef). Dit document is de bron voor alle codekwaliteitsregels in dit project. AGENTS.md vat ze
+> samen en verwijst hierheen; AGENTS.md is de enige bron van de agentinstructies (#1579).
 
 ---
 
@@ -278,17 +278,22 @@ opgepakt als issue #1309; de `GETUTCDATE()`-correctie was juist ongeacht die uit
 > `fix-merge-procedure.sql`) waren losse patches op stored procedures waarvan de gezaghebbende
 > definitie in het SSDT-project staat — een derde schemakopie die stil uit de pas kon lopen.
 
-### Regel 5 — Eén regelboek, afgeleid in plaats van gekopieerd
+### Regel 5 — Eén regelboek: AGENTS.md is de enige bron
 
-CLAUDE.md is de bron. AGENTS.md wordt eruit gegenereerd met
-`python3 scripts/ci/genereer-agents-md.py --schrijf` en wordt nooit met de hand bewerkt — zelfde
-patroon als `openapi.json` uit `openapi.yaml`.
+AGENTS.md is de enige bron van de agentinstructies, voor Codex én Claude Code. CLAUDE.md (in de
+root en in elke submap met een AGENTS.md) is een stub met alleen de import `@AGENTS.md` en één
+verwijzende zin. Claude Code leest een AGENTS.md niet zelf zodra er een CLAUDE.md is, ook niet in
+een submap; de stub laadt de inhoud via de import (vastgesteld bij #1579). Skills volgen hetzelfde
+principe: `.agents/skills/` is de bron en `.claude/skills/` een identieke kopie die
+`scripts/ci/sync-skills.py --schrijf` schrijft.
 
 Dit is regel 1, toegepast op de documentatie zelf. Twee documenten die hetzelfde moeten zeggen en
 met de hand worden bijgehouden, lopen uiteen; dat is hier ook gebeurd, met negen ontbrekende regels
-als gevolg.
+als gevolg. Tot #1579 werd AGENTS.md daarom uit CLAUDE.md gegenereerd; met één bron valt er niets
+meer af te leiden en is de generator vervallen.
 
-*Guard: `scripts/ci/genereer-agents-md.py` (zonder `--schrijf`).*
+*Guards: `scripts/ci/check-agent-instructies.py` (stubs, bron, codeblokken) en
+`scripts/ci/sync-skills.py` (skillkopieën).*
 
 ### Regel 6 — Een nieuwe regel krijgt een guard, of wordt als onbewaakt gemarkeerd
 
@@ -490,7 +495,7 @@ Sinds de instructiewijziging van 2026-10-04 mogen Codex en Claude Code beide ont
 `CLAUDE.md` legt één implementer per taak, een eigen branch/worktree per sessie, gescheiden
 scopes en wederzijdse review op een vastgelegde head-SHA vast. `source:` blijft herkomst;
 implementer, reviewer en fase staan afzonderlijk bij de taak. De taak-/runtime-afspraken zijn geen technische locks. De CI-guard `check-agent-instructies.py`
-bewaakt wel skilltweelingen en afgesloten codeblokken; negatieve tests bewijzen dat overtredingen falen.
+bewaakt wel dat CLAUDE.md-stubs leeg blijven, skillkopieën gelijk zijn aan hun bron en codeblokken zijn afgesloten; negatieve tests bewijzen dat overtredingen falen.
 
 Een issuecomment is geen atomische taakclaim; voorlopig mogen alleen vooraf toegewezen,
 gescheiden taken parallel starten. Gedeelde contracten/schema's tellen als overlap, ook zonder
@@ -548,13 +553,14 @@ bash scripts/ci/check-gelinkte-bronbestanden.sh
 bash scripts/ci/check-codekwaliteit-valkuilen.sh
 bash scripts/ci/check-bestandsgrootte.sh
 bash scripts/ci/check-regelregister.sh
-python3 scripts/ci/genereer-agents-md.py
+python3 scripts/ci/check-agent-instructies.py
+python3 scripts/ci/sync-skills.py
 
 # Deze ene bouwt de hele solution en duurt dus langer dan de rest bij elkaar:
 bash scripts/ci/check-analyzer-complexiteit.sh
 
-# CLAUDE.md gewijzigd? Regenereer AGENTS.md:
-python3 scripts/ci/genereer-agents-md.py --schrijf
+# Skill in .agents/skills/ gewijzigd? Schrijf de kopie voor Claude Code:
+python3 scripts/ci/sync-skills.py --schrijf
 ```
 
 Alle guards behalve de laatste lezen enkel bestanden — geen database, geen secrets, geen SDK.
@@ -577,10 +583,14 @@ gekopieerd blok, en geen van vijf zou zijn opgevallen.
 
 ### Grenzen van instructiehandhaving
 
-De skillguard vergelijkt de vier verplichte en overige gedeelde `SKILL.md`-bestanden, niet alle
-onderliggende resources of uitsluitend aan één agent geïnstalleerde skills. De fencecheck controleert
-alleen top-level fences (maximaal drie spaties inspringing) in die skills, niet alle Markdown in docs
-of geneste lijst-/blockquote-fences. Het is geen volledige Markdown-parser of inhoudelijke reviewer.
+De skillguard vergelijkt alle bestanden van elke skill met zijn kopie; skills die uitsluitend voor
+Claude Code bestaan staan op `scripts/ci/skills-alleen-claude.txt` en hebben geen kopie. De stubguard
+bewijst dat een stub leeg is, niet dat Claude Code de import laadt (handmatig vastgesteld bij #1579)
+en niet dat Codex het hele bestand ziet: Codex leest standaard maximaal 32 KiB aan `AGENTS.md`
+(`project_doc_max_bytes`); een projectniveau-`.codex/config.toml` werd daarvoor in de test van
+#1579 niet gehonoreerd, de gebruikersinstelling wel. De
+fencecheck controleert alleen top-level fences (maximaal drie spaties inspringing) in skills en
+`AGENTS.md`, niet alle Markdown in docs of geneste lijst-/blockquote-fences. Het is geen volledige Markdown-parser of inhoudelijke reviewer.
 De guard leest UTF-8 expliciet voor Windows/macOS; zijn tests en registervermelding draaien in CI.
 
 De gedeelde Claude-allowlist geeft geen algemene automatische toestemming meer voor merge,

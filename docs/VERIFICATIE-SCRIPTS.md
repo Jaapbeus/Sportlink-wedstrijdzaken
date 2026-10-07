@@ -73,7 +73,7 @@ volgorde waarin ze draaien.
 | 7 | Blazor pagina checks | 8 routes op `:5242` | nee (geen Blazor-foutindicatoren) |
 | 8 | SWA emulator checks | `/.auth/login/aad` op `:4280` | nee |
 
-Secties 5 t/m 8 worden automatisch overgeslagen als de bijbehorende service niet draait. CLAUDE.md
+Secties 5 t/m 8 worden automatisch overgeslagen als de bijbehorende service niet draait. AGENTS.md
 verwijst naar "secties 4+5+6" van dit script; dat zijn hier de secties die een draaiende service
 nodig hebben (5 t/m 8).
 
@@ -629,9 +629,9 @@ node scripts/ci/check-theme-js-contract.js
 ```
 
 Tot #1155 faalden drie van de toenmalige vier lokaal (`declare: -A: invalid option`, `mapfile: command not
-found`), zodat de CLAUDE.md-regel "lokaal verifiëren vóór een push" voor deze guards alleen met
+found`), zodat de AGENTS.md-regel "lokaal verifiëren vóór een push" voor deze guards alleen met
 Homebrew-bash én GNU grep vooraan in `PATH` haalbaar was. De scripts gebruiken nu uitsluitend
-bash-3.2- en POSIX-constructies; de regels daarvoor staan in CLAUDE.md onder "Cross-platform
+bash-3.2- en POSIX-constructies; de regels daarvoor staan in AGENTS.md onder "Cross-platform
 scripts". Wil je de CI-runner exact nabootsen, dan kan dat in een container:
 
 ```bash
@@ -650,7 +650,7 @@ hebben gekregen, dus een grep over de migratiemap kan dit niet beantwoorden.
 
 | Script | Bewaakt | Faalt op |
 |---|---|---|
-| `check-rls-enabled.sh` | Elke tabel in `public`/`avg`/`planner` heeft `relrowsecurity` (CLAUDE.md, Supabase-RLS-regel 1) | Eén of meer tabellen zonder RLS, met de exacte `ALTER TABLE`-regel als oplossing in de uitvoer |
+| `check-rls-enabled.sh` | Elke tabel in `public`/`avg`/`planner` heeft `relrowsecurity` (AGENTS.md, Supabase-RLS-regel 1) | Eén of meer tabellen zonder RLS, met de exacte `ALTER TABLE`-regel als oplossing in de uitvoer |
 | `check-splinter-lints.sh` | Supabase's eigen linter (splinter), vastgepind op commit-SHA + SHA-256 | `rls_disabled_in_public`, `policy_exists_rls_disabled`, `security_definer_view`, `function_search_path_mutable`, `duplicate_index` |
 
 Verbinding via de standaard libpq-variabelen — **niet** via `POSTGRES_CONNECTION_STRING`, want dat

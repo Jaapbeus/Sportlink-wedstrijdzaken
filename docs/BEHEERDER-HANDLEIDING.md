@@ -430,7 +430,7 @@ Browser (Blazor WASM)
 
 Dit bestand wordt **automatisch aangemaakt door CI** (`deploy.yml`) vanuit
 `appsettings.Production.template.json` + GitHub Variables. **Nooit handmatig committen —
-het staat in `.gitignore` en mag niet in de repository.** Zie `CLAUDE.md` tabel
+het staat in `.gitignore` en mag niet in de repository.** Zie `AGENTS.md` tabel
 "Wat bevatten de bestanden in git?".
 
 ### Verificatie na elke auth-wijziging

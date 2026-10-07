@@ -165,7 +165,7 @@ public class DatabaseUitvalMonitorFunctionTests
     }
 
     /// <summary>
-    /// De noodmail mag geen waarde bevatten die de club identificeert (CLAUDE.md regel 4a) en geen
+    /// De noodmail mag geen waarde bevatten die de club identificeert (AGENTS.md regel 4a) en geen
     /// e-mailadres (SECURITY.md Laag 5).
     /// </summary>
     [Fact]

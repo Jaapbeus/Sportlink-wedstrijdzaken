@@ -16,7 +16,7 @@ name: Issue-status bijhouden
 #   PR gesloten zonder merge           → status: triage
 #
 # De merge naar develop is NIET van deze workflow: die zet 'awaiting-release' via
-# label-awaiting-release.yml. Zie CLAUDE.md, sectie "Issue-lifecycle".
+# label-awaiting-release.yml. Zie AGENTS.md, sectie "Issue-lifecycle".
 #
 # Handmatig gezette statussen (blocked, wont-fix, waiting-owner) worden nooit
 # overschreven — zie PROTECTED in .github/scripts/issue-status.js.

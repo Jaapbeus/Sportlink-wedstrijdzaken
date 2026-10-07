@@ -27,7 +27,7 @@
 #
 # Draagbaarheid (#1155): dit script moet identiek werken op de Linux-CI-runner (bash 5, GNU grep)
 # én lokaal op macOS met de standaard /bin/bash 3.2 en BSD grep/sed. Daarom géén `grep -P`,
-# géén associatieve arrays (`declare -A`), geen `mapfile` en geen `${var,,}` — zie CLAUDE.md
+# géén associatieve arrays (`declare -A`), geen `mapfile` en geen `${var,,}` — zie AGENTS.md
 # "Cross-platform scripts". Sets zijn newline-gescheiden strings met een exacte-regel-lookup.
 set -euo pipefail
 

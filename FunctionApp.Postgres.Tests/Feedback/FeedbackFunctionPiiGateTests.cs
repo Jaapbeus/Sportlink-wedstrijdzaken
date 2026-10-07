@@ -33,7 +33,7 @@ public class FeedbackFunctionPiiGateTests
     // Planner.Endpoints.Tests/Feedback/FeedbackEndpointCoreTests (inclusief de voormalige
     // SubmitCoreAsync-gevallen). Hier blijven de tier-specifieke validate/preview-vertalingen.
 
-    // Synthetisch testadres — goedgekeurde AVG-veilige placeholder (CLAUDE.md), geen bestaand persoon.
+    // Synthetisch testadres — goedgekeurde AVG-veilige placeholder (AGENTS.md), geen bestaand persoon.
     private const string PiiMarker = "trainer@voorbeeld.nl";
 
     private static FeedbackRequest MaakSchoonRequest() => new()

@@ -34,7 +34,7 @@
 # WAAROM PYTHON VOOR DE MEETSTAP
 # ------------------------------
 # De voor de hand liggende oplossing, `diff --unchanged-group-format`, is een GNU-uitbreiding. De
-# BSD-diff van macOS kent hem niet. Dat is exact de val uit CLAUDE.md "Cross-platform scripts": de
+# BSD-diff van macOS kent hem niet. Dat is exact de val uit AGENTS.md "Cross-platform scripts": de
 # guard was groen geweest op de Linux-CI en had lokaal een onbegrijpelijke fout gegeven. difflib
 # hoort bij de standaardbibliotheek van Python 3 en gedraagt zich op beide platforms identiek.
 #

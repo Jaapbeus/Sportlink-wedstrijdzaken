@@ -12,7 +12,7 @@
 
     TIP: Metric Alert "Free amount remaining < 10.000 vCore-seconden" (vroege waarschuwing)
     is beschikbaar via Azure Portal -> SQL Database -> Metrics -> New alert rule.
-    Controleer de actuele kosten in CLAUDE.md (kostenbeleid) voor aanmaken.
+    Controleer de actuele kosten in AGENTS.md (kostenbeleid) voor aanmaken.
 #>
 param(
     [Parameter(Mandatory)][string]$ResourceGroup,
@@ -110,7 +110,7 @@ Write-Host ""
 Write-Host "TIP: Vroege waarschuwing (voor limiet bereikt):" -ForegroundColor Cyan
 Write-Host "  Azure Portal -> SQL Database '$DatabaseName' -> Monitoring -> Metrics"
 Write-Host "  Metric: 'Free amount remaining' -> New alert rule -> Threshold: 10.000"
-Write-Host "  Controleer kosten in CLAUDE.md (kostenbeleid) voor aanmaken."
+Write-Host "  Controleer kosten in AGENTS.md (kostenbeleid) voor aanmaken."
 Write-Host ""
 Write-Host "Vergeet niet als GitHub variabele toe te voegen:"
 Write-Host "  AZURE_SQL_DATABASE_NAME = $DatabaseName"

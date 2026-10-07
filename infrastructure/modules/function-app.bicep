@@ -77,7 +77,7 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
     serverFarmId: appServicePlan.id
     siteConfig: {
       // KRITIEK: linuxFxVersion mag NOOIT worden gewijzigd naar net10.0
-      // Zie CLAUDE.md architectuurregels — Linux Consumption Plan constraint
+      // Zie AGENTS.md architectuurregels — Linux Consumption Plan constraint
       linuxFxVersion: 'DOTNET-ISOLATED|9.0'
       minTlsVersion: '1.2'
       ftpsState: 'Disabled'

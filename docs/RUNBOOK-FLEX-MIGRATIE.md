@@ -2,7 +2,7 @@
 
 Draaiboek voor de eigenaar: de exacte volgorde van FLEX-05 tot en met FLEX-09, daarna de
 `net10.0`-upgrade (issue #1073). Alle commando's zijn **sjablonen**: vul de placeholders lokaal in en
-plak de echte waarden nooit terug in een issue, PR of commit (CLAUDE.md §4a).
+plak de echte waarden nooit terug in een issue, PR of commit (AGENTS.md §4a).
 
 | Placeholder | Betekenis |
 |---|---|
@@ -62,7 +62,7 @@ omdat Microsoft gratis tiers zonder aankondiging wijzigt.
 2. **Prijspagina** — <https://azure.microsoft.com/pricing/details/functions/>, sectie *Flex
    Consumption*: controleer de zin over de maandelijkse free grant.
 3. Leg datum + uitkomst vast als comment op #1068. Bij **elke** afwijking: harde stop met het
-   meldingsformat uit CLAUDE.md ("KOSTENWIJZIGING GEDETECTEERD — DEPLOYMENT GESTOPT").
+   meldingsformat uit AGENTS.md ("KOSTENWIJZIGING GEDETECTEERD — DEPLOYMENT GESTOPT").
 
 Laatst uitgevoerd **2026-10-02**: *"a monthly free grant of 250,000 executions and 100,000 GB-s of
 resource consumption per month per subscription in pay-as-you-go on-demand pricing across all
@@ -280,7 +280,7 @@ niet bij de Function App. De taak *"SPA redirect URI toevoegen voor de nieuwe ho
 is daarom niet nodig — tenzij het testpad van §6.4 een tijdelijke localhost-URI nodig heeft.
 `scripts/azure/Configure-EntraApp.ps1` raakt geen redirect-URI's.
 
-Daarna: de verplichte 3-user-test (admin / user / geen rol) per CLAUDE.md en
+Daarna: de verplichte 3-user-test (admin / user / geen rol) per AGENTS.md en
 [ENTRA-AUTH-BEHEER.md](ENTRA-AUTH-BEHEER.md), in een verse incognito-sessie. Die test kan pas ná
 FLEX-07 (er moet code op de app staan), maar Easy Auth zelf staat dan al aan.
 
@@ -421,7 +421,7 @@ De CI-job *Club-infrastructuur patrooncheck* (`security-scan.yml`) bewaakt dit d
 push met het patroon `[a-z0-9-]+-sportlink\.azurewebsites\.net`.
 
 Eén onjuiste opmerking gecorrigeerd: `FunctionApp/Program.cs` stelde dat CORS in productie niet
-nodig is *"omdat SWA proxying alles op dezelfde origin houdt"*. Er is geen SWA-proxying (CLAUDE.md,
+nodig is *"omdat SWA proxying alles op dezelfde origin houdt"*. Er is geen SWA-proxying (AGENTS.md,
 v2.0-architectuur): de browser roept de Function App rechtstreeks aan, dus CORS is juist verplicht.
 
 ### 6.3 CORS op de Flex-app
@@ -447,7 +447,7 @@ Twee opties, beide tijdelijk en na afloop terug te draaien:
   Tijdelijk nodig: CORS-origin `http://localhost:4280` op de Flex-app en een SPA redirect-URI
   `http://localhost:4280/authentication/login-callback` in de App Registration. Beide direct na de
   test weer verwijderen.
-- **B — direct bij de cutover.** Geen testpad; de live-check van CLAUDE.md regel 2a is dan de eerste
+- **B — direct bij de cutover.** Geen testpad; de live-check van AGENTS.md regel 2a is dan de eerste
   echte browsertest, met de rollback van §7.4 als vangnet.
 
 ---
@@ -477,7 +477,7 @@ buiten een wedstrijdweekend.
    Flex-app (`az functionapp keys list -g "$RG" -n "$APP"` — niet loggen). **Uitsluitend als Secret, nooit als Variable** (#1204): Variables worden niet gemaskeerd in de publieke Actions-logs. Staat een van deze namen nog als Variable, verwijder die dan; sinds #1237 lezen de workflows uitsluitend `secrets.X`.
 4. **De tijdelijke workflow verwijderen**: `deploy-flex-test.yml` (nooit toegevoegd; bijlage A is verwijderd) in dezelfde PR als stap 1,
    of direct erna.
-5. **Volledige deploy vanaf `main`**, daarna per job (CLAUDE.md regel 2, stap C) en de live
+5. **Volledige deploy vanaf `main`**, daarna per job (AGENTS.md regel 2, stap C) en de live
    browsercheck (regel 2a). `blazor-deploy` zet de nieuwe URL in `FunctionBaseUrl` én in de CSP.
 6. **Oude app stoppen, niet verwijderen**: `az functionapp stop -g "$RG" -n "func-[clubcode]-sportlink"`.
 7. **Een volledige cyclus observeren**: minimaal één uurlijkse keepalive en één dagelijkse sync

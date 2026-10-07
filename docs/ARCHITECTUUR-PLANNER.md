@@ -471,7 +471,7 @@ veld alleen via een directe database-wijziging worden toegevoegd.
 
 | Kolom | Beschrijving |
 |-------|-------------|
-| VeldNummer | Uniek nummer (PK — deployment-breed, niet per club, zie "Deployment-model" in CLAUDE.md) |
+| VeldNummer | Uniek nummer (PK — deployment-breed, niet per club, zie "Deployment-model" in AGENTS.md) |
 | VeldNaam | Weergavenaam (bijv. "veld 1") |
 | VeldType | Vrije tekst (bijv. `kunstgras` of `natuurgras`) — bepaalt welke velden ontlast worden bij de grasveld-ontlasten optimalisatie. Puur beschrijvend, geen vaste enum. |
 | HeeftKunstlicht | Verlichting beschikbaar — bepaalt zonsondergang-beperking |

@@ -48,7 +48,7 @@ internal static class AdminVeldBeschikbaarheidRepository
 
     /// <summary>
     /// VeldNummer is de PK van dbo.Velden zonder ClubCode (single-primary-club-per-deployment
-    /// model, zie CLAUDE.md) — uniciteit moet dus deployment-breed gecontroleerd worden, niet
+    /// model, zie AGENTS.md) — uniciteit moet dus deployment-breed gecontroleerd worden, niet
     /// per club, anders faalt de insert op een onduidelijke PK-violation.
     /// </summary>
     internal static async Task<bool> VeldNummerBestaatAsync(int veldNummer, string cs)

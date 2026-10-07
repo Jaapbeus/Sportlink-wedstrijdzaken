@@ -22,7 +22,7 @@ namespace FunctionApp.Postgres.Admin;
 /// stabiel over processen/herstarts heen — <b>nooit</b> <c>string.GetHashCode()</c>, die is sinds
 /// .NET Core per proces gerandomiseerd) om in een <c>wedstrijdcode</c> in het bereik
 /// <c>900.000.000+</c> — ruim buiten zowel echte Sportlink-wedstrijdcodes (zie
-/// <c>FunctionApp/CLAUDE.md</c>, voorbeeld 8 cijfers) als het gezaaide demobereik
+/// <c>FunctionApp/AGENTS.md</c>, voorbeeld 8 cijfers) als het gezaaide demobereik
 /// <c>9.000.001-9.000.224</c> (<c>scripts/migrations/003-seed-allstars-demo-matches-postgres.sql</c>).
 /// Is de aangeboden sleutel al numeriek (het geval ná een paginaherlaad, wanneer de pagina de door
 /// de database afgeleide <c>bk_matches</c>-waarde heeft teruggekregen), dan wordt die rechtstreeks

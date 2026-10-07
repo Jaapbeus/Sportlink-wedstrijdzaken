@@ -1,7 +1,7 @@
 # Dagelijkse controle van Supabase's Security- en Performance Advisor (#1221, epic #1219).
 #
 # DE EERSTE WORKFLOW IN DIT REPO MET EEN SCHEDULE-TRIGGER. Reden: regel 3 van de Supabase-RLS-sectie
-# in CLAUDE.md schrijft voor het dashboard "periodiek" te controleren, en die regel leunde volledig
+# in AGENTS.md schrijft voor het dashboard "periodiek" te controleren, en die regel leunde volledig
 # op een mens die eraan denkt. #1198 liet zien wat dat kost — het besluit stond correct
 # gedocumenteerd, de blootstelling stond twaalf dagen open, en het was Supabase's eigen advisor die
 # hem vond, niet een codereview.
@@ -67,7 +67,7 @@ jobs:
             echo "::error::Ontbrekende repository-secret(s):$ONTBREEKT"
             echo "Aanmaken onder Settings → Secrets and variables → Actions. Beide als SECRET,"
             echo "niet als Variable: deze repository is publiek en Actions-logs zijn dat ook, en de"
-            echo "project-ref identificeert de club (CLAUDE.md regel 4a)."
+            echo "project-ref identificeert de club (AGENTS.md regel 4a)."
             exit 1
           fi
           echo "Beide secrets aanwezig."
@@ -115,7 +115,7 @@ jobs:
       # issue — dat is hoe een periodieke controle in ruis verandert en genegeerd wordt.
       #
       # Bewust GEEN status:-label meegeven: label-issue-status.yml zet zelf status: triage
-      # (invariant 1 van de issue-lifecycle in CLAUDE.md).
+      # (invariant 1 van de issue-lifecycle in AGENTS.md).
       - name: Issue aanmaken of bijwerken
         if: env.NIEUW != '0'
         env:

@@ -275,7 +275,7 @@ jobs:
       # Zonder deze argumenten meldt sqlcmd exitcode 0, óók bij fouten van severity 16, en meldt
       # azure/sql-action daarna "Successfully executed SQL file on target database". Bij twee
       # opeenvolgende releases stonden er zo tien echte fouten in het log terwijl deze job groen was:
-      # een tabel die niet bestond en twee mislukte seeds (#738). Elke per-job controle uit CLAUDE.md
+      # een tabel die niet bestond en twee mislukte seeds (#738). Elke per-job controle uit AGENTS.md
       # leunt op de conclusie van deze job, dus een groene job zonder deze vlaggen bewees niets.
       #
       #   -b      → sqlcmd stopt en geeft een exitcode terug bij een fout
@@ -689,7 +689,7 @@ jobs:
           if [ "$STATUS" -ge 500 ]; then echo "FOUT: SWA gaf $STATUS"; exit 1; fi
 
   # ── Deploymentrapportage (#1370, retro v3.6.0.0, bevinding 6) ───────────────
-  # Vóór deze job moest 'success'/'skipped' handmatig per job worden opgezocht (CLAUDE.md,
+  # Vóór deze job moest 'success'/'skipped' handmatig per job worden opgezocht (AGENTS.md,
   # "Stap C is verplicht" bij elke release). Deze job zet dat in het job summary, MET reden
   # per skip gekoppeld aan de actieve tier — en faalt zelf hard (niet de 'deploy'-job, die al
   # gedraaid heeft tegen de tijd dat dit hier loopt) als de actieve tier zijn eigen

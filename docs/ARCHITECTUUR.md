@@ -19,9 +19,9 @@
 
 Tot 2026-09-19 stonden de architectuurafspraken van dit project verspreid over een reeks
 documenten — waaronder twee top-level architectuurdocumenten met een Engelse en een Nederlandse
-naam — en als doorlopende tekst in de projectinstructies (`CLAUDE.md`). Dat werkt voor wie het
+naam — en als doorlopende tekst in de projectinstructies (`AGENTS.md`). Dat werkt voor wie het
 geschreven heeft en slecht voor iedereen daarna — mens of agent. Sommige regels stonden zelfs
-woordelijk op drie plekken tegelijk (`CLAUDE.md`, `ARCHITECTURE.md` en een samenvatting hier), wat
+woordelijk op drie plekken tegelijk (`AGENTS.md`, `ARCHITECTURE.md` en een samenvatting hier), wat
 bij een wijziging bijna gegarandeerd tot drift leidt. Deze beschrijving lost dat op met vier keuzes:
 
 1. **ISO/IEC/IEEE 42010:2022** als formele basis. Die standaard scheidt de *architectuur* van de
@@ -522,7 +522,7 @@ Performance Advisor ophaalt en nieuwe EXTERNAL-bevindingen op ERROR/WARN-niveau 
 
 **Na een PR-merge naar `main`:** elke deploy-job wordt individueel geverifieerd (niet alleen het
 totale run-resultaat), en gevolgd door een browser-rendercheck op de live Admin GUI — groene CI en
-HTTP 200 bewijzen niet dat de Blazor-app daadwerkelijk rendert. Zie **WZ-QUA-05** en CLAUDE.md voor
+HTTP 200 bewijzen niet dat de Blazor-app daadwerkelijk rendert. Zie **WZ-QUA-05** en AGENTS.md voor
 de exacte commando's.
 
 ### 7.4 Versiebeheer
@@ -897,7 +897,7 @@ tegen de actuele leveranciersdocumentatie — nooit uit geheugen, omdat een leve
 tier zonder aankondiging kan beëindigen. Kostbare onderdelen staan in de infrastructuurdefinitie
 achter een schakelaar die standaard uit staat en alleen met een expliciete keuze aan kan, zodat de
 beslissing een reviewbare wijziging is. Het volledige, actiegerichte kostenprotocol (verplichte
-MS-Docs-prijscheck, stopprocedure bij twijfel) staat in `CLAUDE.md` — dat is Claude's operationele
+MS-Docs-prijscheck, stopprocedure bij twijfel) staat in `AGENTS.md` — dat is de operationele
 uitvoering van dit principe, niet een tweede architectuurbron.
 
 ### 8.7 Kwaliteit en bewijs
@@ -981,7 +981,7 @@ Dit is het hoofdstuk waar een agent of reviewer begint. Kolom **Bewijs** zegt ho
 | WZ-SEC-06 | Injectie | ASVS V5 | Uitsluitend geparametriseerde query's | Reviewcontrole |
 | WZ-SEC-07 | Uitgaande aanroep op invoer | ASVS V12 | Een door de gebruiker opgegeven adres passeert de beveiligde client met adrescontrole en begrensde doorverwijzingen | Bestaande tests |
 | WZ-SEC-08 | Publicatiecontrole | — | Een tekst zonder echte waarden kan nog een vindaanwijzing zijn; bij een nog niet verholpen bevinding alleen klasse en codepad | Reviewcontrole |
-| WZ-SEC-09 | Agent-tokengrens | — | Een coding agent leest, bewaart of gebruikt nooit zelf een Sportlink-token; een zichtbaar geworden token geldt als verbrand (§5.5) | Procesregel in CLAUDE.md + reviewcontrole |
+| WZ-SEC-09 | Agent-tokengrens | — | Een coding agent leest, bewaart of gebruikt nooit zelf een Sportlink-token; een zichtbaar geworden token geldt als verbrand (§5.5) | Procesregel in AGENTS.md + reviewcontrole |
 
 ### 10.3 API
 
@@ -1103,7 +1103,7 @@ gegevensbescherming, de kostenlimiet of de tierstrategie raakt.
 ### 13.1 Waar hoort een nieuwe architectuurregel? (routeringsregel, vastgelegd na #1291)
 
 Vóór #1291 stonden architectuurregels op drie plekken tegelijk: hier, in een los
-uitvoeringsdocument, en woordelijk herhaald in `CLAUDE.md`. Om dat niet te laten terugkomen, geldt
+uitvoeringsdocument, en woordelijk herhaald in `AGENTS.md`. Om dat niet te laten terugkomen, geldt
 vanaf nu één beslisregel:
 
 1. **Een kwaliteitsdoel, randvoorwaarde, architectuurbesluit, of een regel die voor het hele systeem
@@ -1113,18 +1113,18 @@ vanaf nu één beslisregel:
 2. **Diepgaand, onderwerp-specifiek uitvoeringsdetail** dat een eigen, groeiend document rechtvaardigt
    (bijv. de volledige multi-tier-strategie, de codekwaliteitsguards, teamresolutie, AI-services, de
    e-mailmodule, de Sportlink Web Extension) hoort in het bijbehorende `ARCHITECTUUR-<ONDERWERP>.md`
-   of onderwerpdocument uit `docs/INDEX.md` — **niet hier en niet in `CLAUDE.md`.** Dit document
+   of onderwerpdocument uit `docs/INDEX.md` — **niet hier en niet in `AGENTS.md`.** Dit document
    verwijst er samenvattend naar (zoals §5.4, §5.5 en §8.4 al doen).
 3. **Een instructie voor hóe Claude Code zelf moet werken** (build-commando's, git-workflow,
-   statuslabels, de verificatielus) hoort in `CLAUDE.md`. Leunt die instructie op een
+   statuslabels, de verificatielus) hoort in `AGENTS.md`. Leunt die instructie op een
    architectuurprincipe (bijv. het kostenplafond in §8.6, of de agent-tokengrens in §5.5), dan geeft
-   `CLAUDE.md` een korte samenvatting plus een verwijzing hierheen — nooit de volledige regel nogmaals
+   `AGENTS.md` een korte samenvatting plus een verwijzing hierheen — nooit de volledige regel nogmaals
    uitgeschreven.
 
 Een regel op twee plekken volledig uitschrijven "voor de zekerheid" is geen redundantie zonder
 nadeel: het is precies de plek waar de volgende wijziging er één vergeet bij te werken. `AGENTS.md`
-volgt dit automatisch, want dat bestand wordt uit `CLAUDE.md` gegenereerd en nooit met de hand
-bewerkt.
+is de enige bron van de agentinstructies; `CLAUDE.md` is een stub die hem importeert, dus er is
+geen tweede kopie die kan achterlopen.
 
 ### 13.2 Twee onderhoudsregels uit de toetsing van september 2026
 

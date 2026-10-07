@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # check-rls-enabled.sh (#1220, onderdeel van #1219)
 #
-# Dwingt regel 1 van de Supabase/RLS-sectie in CLAUDE.md af: "elke nieuwe tabel in een
+# Dwingt regel 1 van de Supabase/RLS-sectie in AGENTS.md af: "elke nieuwe tabel in een
 # Postgres-migratie krijgt in dezelfde migratie een ALTER TABLE ... ENABLE ROW LEVEL SECURITY".
 #
 # WAAROM DIT SCRIPT BESTAAT: die regel was tot nu toe door niets afgedwongen. Een migratie die het
@@ -36,7 +36,7 @@
 # een conninfo-string als eerste argument. BEWUST NIET via POSTGRES_CONNECTION_STRING: dat is de
 # Npgsql-keyword-vorm (Host=...;Username=...), die psql niet begrijpt. Een wachtwoord gaat nooit als
 # argument mee — argumenten zijn op beide platforms zichtbaar in de processenlijst (zelfde regel als
-# SQLCMDPASSWORD in CLAUDE.md).
+# SQLCMDPASSWORD in AGENTS.md).
 #
 #   Lokaal:  PGHOST=localhost PGUSER=$POSTGRES_USER PGPASSWORD=... PGDATABASE=sportlink \
 #              ./scripts/ci/check-rls-enabled.sh
@@ -103,7 +103,7 @@ done
 OVERTREDERS=$(printf '%s' "$OVERTREDERS" | sed '/^$/d')
 
 if [ -n "$OVERTREDERS" ]; then
-  echo "::error::Tabellen zonder Row-Level Security (CLAUDE.md, Supabase-RLS-regel 1): $(printf '%s' "$OVERTREDERS" | tr '\n' ' ')"
+  echo "::error::Tabellen zonder Row-Level Security (AGENTS.md, Supabase-RLS-regel 1): $(printf '%s' "$OVERTREDERS" | tr '\n' ' ')"
   echo ""
   echo "Zonder RLS is een tabel in een door Supabase ontsloten schema extern leesbaar, schrijfbaar"
   echo "en verwijderbaar via de automatisch gegenereerde PostgREST-API — met de bewust publieke"

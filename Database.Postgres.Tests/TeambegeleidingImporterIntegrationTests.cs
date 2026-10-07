@@ -10,7 +10,7 @@ namespace Database.Postgres.Tests;
 /// <see cref="PostgresMergeOrchestratorIntegrationTests"/> (zie die klasse-doc-comment voor de
 /// wegwerpcontainer-instructies).
 /// <para>
-/// <b>AVG/GDPR:</b> alle testdata hieronder is fictief, conform CLAUDE.md's goedgekeurde
+/// <b>AVG/GDPR:</b> alle testdata hieronder is fictief, conform AGENTS.md's goedgekeurde
 /// uitzonderingen ("Jan de Vries", "trainer@voorbeeld.nl", <c>.test</c>-domeinen) — nooit een echte
 /// naam, e-mailadres of telefoonnummer.
 /// </para>

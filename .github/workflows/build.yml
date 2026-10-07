@@ -28,7 +28,7 @@ on:
 # één FAILURE (de geannuleerde, oudere run) en één SUCCESS, met `mergeStateStatus: BLOCKED`.
 # Een job die halverwege wordt geannuleerd kan dus een PERMANENTE FAILURE achterlaten op een
 # vereiste check, ook al voltooit de nieuwere run daarna succesvol. Dit is precies het risico
-# dat CLAUDE.md's regel "Security Gate is leidend, nooit omzeilen" beoogt te voorkomen — een
+# dat AGENTS.md's regel "Security Gate is leidend, nooit omzeilen" beoogt te voorkomen — een
 # CI-dedupfix mag dat zelf niet ondermijnen. Bevinding 2 blijft dus openstaan; zie de reactie op
 # #1370 voor de analyse en een alternatieve aanpak (bijv. de twee events niet dedupliceren maar
 # ontkoppelen — één workflow triggert alleen op 'pull_request', de andere blijft 'push').
@@ -916,7 +916,7 @@ jobs:
           # de "primaire club" via één rij — CROSS JOIN LATERAL ... WHERE syncenabled = true ORDER BY
           # clubcode LIMIT 1 — en filtert DAARNA elke wedstrijd van ELKE club op DIE ene club se
           # accommodatie. Dat klopt in productie (daar is precies één syncenabled-club, zie de
-          # "één fork, één primaire club"-architectuurkeuze in CLAUDE.md) maar niet hier: met
+          # "één fork, één primaire club"-architectuurkeuze in AGENTS.md) maar niet hier: met
           # syncenabled=true zou 'CIPRIMARY' (geen accommodatie, sorteert vóór elke 'testclub-*')
           # de gekozen rij worden, waardoor ELK Competitie-wedstrijdonderzoek in
           # FunctionApp.Postgres.Tests silently leeg terugkomt (geen foutmelding — gewoon een lege
