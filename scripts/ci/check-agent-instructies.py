@@ -146,7 +146,7 @@ if __name__ == "__main__":
     if grootte > CODEX_MAX_BYTES:
         # Geen fout: een repositorybestand kan de gebruikersinstelling van Codex niet verhogen.
         print(f"::notice::AGENTS.md is {grootte} bytes; Codex leest standaard maximaal {CODEX_MAX_BYTES} "
-              "(project_doc_max_bytes) en ziet de rest niet zonder verhoogde instelling. Zie #1579.")
+              "(project_doc_max_bytes) en ziet de rest niet zonder verhoogde instelling. Zie #1580.")
     if not fouten:
         print("OK — AGENTS.md is de enige bron; stubs bevatten niets; skills hebben één bron; codeblokken afgesloten.")
     raise SystemExit(bool(fouten))

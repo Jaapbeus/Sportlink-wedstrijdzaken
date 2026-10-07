@@ -587,7 +587,7 @@ De skillguard vergelijkt alle bestanden van elke skill met zijn kopie; skills di
 Claude Code bestaan staan op `scripts/ci/skills-alleen-claude.txt` en hebben geen kopie. De stubguard
 bewijst dat een stub leeg is, niet dat Claude Code de import laadt (handmatig vastgesteld bij #1579)
 en niet dat Codex het hele bestand ziet: Codex leest standaard maximaal 32 KiB aan `AGENTS.md`
-(`project_doc_max_bytes`); een projectniveau-`.codex/config.toml` werd daarvoor in de test van
+(`project_doc_max_bytes`, zie #1580); een projectniveau-`.codex/config.toml` werd daarvoor in de test van
 #1579 niet gehonoreerd, de gebruikersinstelling wel. De
 fencecheck controleert alleen top-level fences (maximaal drie spaties inspringing) in skills en
 `AGENTS.md`, niet alle Markdown in docs of geneste lijst-/blockquote-fences. Het is geen volledige Markdown-parser of inhoudelijke reviewer.
