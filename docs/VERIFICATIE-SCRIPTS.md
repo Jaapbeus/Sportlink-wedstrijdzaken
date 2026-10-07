@@ -210,6 +210,31 @@ gesynchroniseerde teams heeft; dat geeft een 409. Het script stuurt de header da
 
 ---
 
+## Test-DebugGo.ps1 (#1576)
+
+De GO/NO-GO van de debugomgeving; `Start-Debug.ps1` draait hem aan het einde zelf. Pas een GO (exit 0)
+betekent dat de omgeving werkt: services luisteren (ook na een wachttijd en na de browsercontrole), de
+draaiende versie is die van de code én van `origin/develop`, health is `ok`, sync-status en
+Sportlink-extensie antwoorden en de primaire club is live-klaar (tenzij `-Offline`), en een echte
+headless Chromium (Playwright, `debug-browsercheck.cjs`) opent de belangrijkste schermen zonder
+foutbanner, 5xx- of mislukte API-aanroep, console-fout of verkeerd versienummer.
+
+```powershell
+.\scripts\dev\Test-DebugGo.ps1                # volledig
+.\scripts\dev\Test-DebugGo.ps1 -Offline       # extensie hoeft niet live-klaar te zijn
+.\scripts\dev\Test-DebugGo.ps1 -ZonderBrowser # zonder Playwright
+```
+
+Draai hem in een agent-sessie in een **volgende** aanroep na de start: services die in dezelfde aanroep
+nog draaien hoeven die aanroep niet te overleven (de aanleiding van #1576: Azurite en de FunctionApp
+vielen weg, BlazorAdmin bleef, en elk scherm gaf "Failed to fetch"). `Start-Debug.ps1` start de services
+sinds #1576 in een eigen sessie en kent `-Bewaak`: Azurite verdween vastgesteld binnen twee seconden na het
+einde van het startscript, dus een agent laat het script in een achtergrondaanroep doorlopen; het herstart
+een weggevallen service. Playwright wordt eenmalig in de tijdelijke map geïnstalleerd en
+gebruikt een al aanwezige Chromium.
+
+---
+
 ## Start-Debug.ps1
 
 Start Azurite, FunctionApp en BlazorAdmin, en **wacht tot ze daadwerkelijk reageren** —
@@ -228,7 +253,9 @@ develop-worktree, dan start er niets. `-HuidigeWerkmap` slaat dit over en draait
 .\scripts\dev\Start-Debug.ps1 -Swa       # inclusief SWA emulator op :4280
 .\scripts\dev\Start-Debug.ps1 -NoWatch   # BlazorAdmin zonder hot reload
 .\scripts\dev\Start-Debug.ps1 -Clean     # dotnet clean BlazorAdmin vóór het starten
-.\scripts\dev\Start-Debug.ps1 -SportlinkLive  # lokale instellingen klaar voor live Sportlink-verkeer van de primaire club (#1466)
+.\scripts\dev\Start-Debug.ps1 -Offline   # zonder live Sportlink-verkeer (sinds #1576 is live de standaard)
+.\scripts\dev\Start-Debug.ps1 -Bewaak    # blijf draaien en herstart een weggevallen service (verplicht voor agents, #1576)
+.\scripts\dev\Start-Debug.ps1 -ZonderGoCheck  # sla Test-DebugGo.ps1 over (geen GO zonder die controle)
 ```
 
 `-SportlinkLive` zet `AllowExternalIntegrations=true` en een lokale `SportlinkAutoLoginEncryptionKey` klaar
