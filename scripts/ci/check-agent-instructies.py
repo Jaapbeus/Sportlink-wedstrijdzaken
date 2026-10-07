@@ -1,12 +1,43 @@
 #!/usr/bin/env python3
-"""Read-only guard voor gelijke agent-skills en afgesloten Markdown-codeblokken."""
+"""check-agent-instructies.py (#1579) — read-only guard: één bron voor agentinstructies en skills.
+
+WAAROM DEZE GUARD BESTAAT
+-------------------------
+`AGENTS.md` is de enige bron van de agentinstructies, voor Codex én Claude Code. Claude Code leest
+een `AGENTS.md` niet zelf zodra er een `CLAUDE.md` in of boven de werkmap staat — ook niet in een
+submap — dus naast elke `AGENTS.md` staat een `CLAUDE.md`-stub die alleen `@AGENTS.md` importeert.
+Staat er inhoud in een stub, dan bestaat die instructie op twee plekken en loopt ze vanzelf uiteen.
+
+De guard dwingt af:
+  1. naast elke `AGENTS.md` staat een `CLAUDE.md`, en andersom;
+  2. een `CLAUDE.md` bevat uitsluitend de import `@AGENTS.md` en hoogstens één verwijzende zin,
+     blijft onder STUB_MAX_BYTES, en herhaalt geen regel uit de `AGENTS.md` ernaast;
+  3. `AGENTS.md` is geen gegenereerd bestand meer (de oude generatorkop is weg);
+  4. skills hebben één bron: `.agents/skills/` met een identieke kopie in `.claude/skills/`, of staan
+     in `scripts/ci/skills-alleen-claude.txt` (zie `scripts/ci/sync-skills.py`);
+  5. Markdown-codeblokken in skills en `AGENTS.md` zijn afgesloten.
+
+Wat dit NIET bewijst: dat de inhoud juist is, of dat de agent hem leest. Dat Claude Code de import
+laadt is handmatig vastgesteld bij #1579 en staat in dat issue.
+"""
 
 from __future__ import annotations
 
+import os
 import re
+import runpy
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+SYNC = runpy.run_path(str(Path(__file__).with_name("sync-skills.py")))
+
+STUB_MAX_BYTES = 300
+STUB_IMPORT = "@AGENTS.md"
+STUB_ZIN_MAX_TEKENS = 160
+VERPLICHTE_SKILLS = {"autonoom", "release", "sluitsessie", "startdebug"}
+CODEX_MAX_BYTES = 32 * 1024  # project_doc_max_bytes, standaard
+NEGEER_MAPPEN = {".git", "node_modules", "bin", "obj", "packages", ".venv", "artifacts"}
 
 
 def onafgesloten_codeblok(tekst: str) -> int | None:
@@ -26,32 +57,96 @@ def onafgesloten_codeblok(tekst: str) -> int | None:
     return opening[2] if opening else None
 
 
-def controleer(root: Path) -> list[str]:
+def vind(root: Path, bestandsnaam: str) -> list[Path]:
+    """Alle bestanden met deze naam, zonder worktrees van andere sessies en buildmappen."""
+    gevonden = []
+    for map_, submappen, namen in os.walk(root):
+        pad = Path(map_)
+        submappen[:] = [
+            d for d in submappen
+            if d not in NEGEER_MAPPEN and not (d == "worktrees" and pad.name in {".claude", ".codex"})
+        ]
+        if bestandsnaam in namen:
+            gevonden.append(pad / bestandsnaam)
+    return sorted(gevonden)
+
+
+def controleer_stub(stub: Path, root: Path) -> list[str]:
+    rel = stub.relative_to(root)
+    agents = stub.with_name("AGENTS.md")
     fouten = []
-    claude = root / ".claude/skills"
-    codex = root / ".agents/skills"
-    namen = {"autonoom", "release", "sluitsessie", "startdebug"} | {p.parent.name for basis in (claude, codex) for p in basis.glob("*/SKILL.md")}
-    for naam in sorted(namen):
-        links, rechts = claude / naam / "SKILL.md", codex / naam / "SKILL.md"
-        # Some tools are intentionally installed for only one agent.
-        if not links.exists() or not rechts.exists():
-            if naam in {"autonoom", "release", "sluitsessie", "startdebug"}:
-                fouten.append(f"{naam}: verplichte skilltweeling ontbreekt")
-            continue
-        if links.read_text(encoding="utf-8").replace("CLAUDE.md", "AGENTS.md") != rechts.read_text(encoding="utf-8").replace("CLAUDE.md", "AGENTS.md"):
-            fouten.append(f"{naam}: skilltweelingen verschillen inhoudelijk")
-    for basis in (claude, codex):
-        for pad in sorted(basis.glob("*/SKILL.md")):
+    if not agents.is_file():
+        return [f"{rel}: geen AGENTS.md ernaast — een stub zonder bron laadt niets"]
+
+    tekst = stub.read_text(encoding="utf-8")
+    regels = [r.strip() for r in tekst.splitlines() if r.strip()]
+    if len(tekst.encode("utf-8")) > STUB_MAX_BYTES:
+        fouten.append(f"{rel}: stub is langer dan {STUB_MAX_BYTES} bytes — instructies horen in AGENTS.md")
+    if not regels or regels[0] != STUB_IMPORT:
+        fouten.append(f"{rel}: eerste regel moet exact '{STUB_IMPORT}' zijn")
+    extra = regels[1:]
+    if len(extra) > 1:
+        fouten.append(f"{rel}: stub bevat {len(extra)} regels na de import; toegestaan is hoogstens één verwijzende zin")
+    bron_regels = {r.strip() for r in agents.read_text(encoding="utf-8").splitlines() if r.strip()}
+    for regel in extra[:1]:
+        if regel[0] in "#@-|>`*" or len(regel) > STUB_ZIN_MAX_TEKENS or "AGENTS.md" not in regel:
+            fouten.append(f"{rel}: de zin na de import moet gewone tekst zijn die naar AGENTS.md verwijst (max {STUB_ZIN_MAX_TEKENS} tekens)")
+    for regel in extra:
+        if regel in bron_regels:
+            fouten.append(f"{rel}: stub herhaalt een regel die ook in AGENTS.md staat — één waarheid")
+    return fouten
+
+
+def controleer_instructiebestanden(root: Path) -> list[str]:
+    fouten = []
+    agents = vind(root, "AGENTS.md")
+    stubs = vind(root, "CLAUDE.md")
+    if root / "AGENTS.md" not in agents:
+        fouten.append("AGENTS.md: ontbreekt in de repositoryroot — dit is de enige bron")
+    for pad in agents:
+        rel = pad.relative_to(root)
+        tekst = pad.read_text(encoding="utf-8")
+        if not tekst.strip():
+            fouten.append(f"{rel}: leeg")
+        if "GEGENEREERD BESTAND" in tekst:
+            fouten.append(f"{rel}: bevat de oude generatorkop — AGENTS.md is geen afgeleid bestand meer")
+        if not pad.with_name("CLAUDE.md").is_file():
+            fouten.append(f"{rel}: geen CLAUDE.md-stub ernaast — Claude Code leest deze AGENTS.md anders niet")
+        regel = onafgesloten_codeblok(tekst)
+        if regel:
+            fouten.append(f"{rel}:{regel}: onafgesloten codeblok")
+    for stub in stubs:
+        fouten.extend(controleer_stub(stub, root))
+    return fouten
+
+
+def controleer_skills(root: Path) -> list[str]:
+    fouten = list(SYNC["verschillen"](root))
+    bron = root / SYNC["BRON"]
+    for naam in sorted(VERPLICHTE_SKILLS):
+        if not (bron / naam / "SKILL.md").is_file():
+            fouten.append(f"{naam}: verplichte skill ontbreekt in de bron ({SYNC['BRON']})")
+    for basis in (SYNC["BRON"], SYNC["KOPIE"]):
+        for pad in sorted((root / basis).glob("*/SKILL.md")):
             regel = onafgesloten_codeblok(pad.read_text(encoding="utf-8"))
             if regel:
                 fouten.append(f"{pad.relative_to(root)}:{regel}: onafgesloten codeblok")
     return fouten
 
 
+def controleer(root: Path) -> list[str]:
+    return controleer_instructiebestanden(root) + controleer_skills(root)
+
+
 if __name__ == "__main__":
     fouten = controleer(ROOT)
     for fout in fouten:
         print(f"::error::{fout}")
+    grootte = (ROOT / "AGENTS.md").stat().st_size if (ROOT / "AGENTS.md").is_file() else 0
+    if grootte > CODEX_MAX_BYTES:
+        # Geen fout: een repositorybestand kan de gebruikersinstelling van Codex niet verhogen.
+        print(f"::notice::AGENTS.md is {grootte} bytes; Codex leest standaard maximaal {CODEX_MAX_BYTES} "
+              "(project_doc_max_bytes) en ziet de rest niet zonder verhoogde instelling. Zie #1579.")
     if not fouten:
-        print("OK — skilltweelingen gelijk; Markdown-codeblokken afgesloten.")
+        print("OK — AGENTS.md is de enige bron; stubs bevatten niets; skills hebben één bron; codeblokken afgesloten.")
     raise SystemExit(bool(fouten))

@@ -86,16 +86,18 @@ jobs:
       - name: Codekwaliteit — interne duplicatie stijgt niet
         run: bash scripts/ci/check-interne-duplicatie.sh
 
-      # AGENTS.md wordt uit CLAUDE.md afgeleid. Toen beide nog met de hand werden bijgehouden,
-      # miste AGENTS.md negen secties — waaronder de tier-regel, de teamnormalisatieregel en de
-      # EgressGuard-regel. De tweede reviewer van dit project werkte er dus zonder.
-      - name: Codekwaliteit — AGENTS.md afgeleid uit CLAUDE.md
-        run: python3 scripts/ci/genereer-agents-md.py
-
-      - name: Agentinstructies — skilltweelingen en codeblokken
+      # AGENTS.md is de enige bron van de agentinstructies (#1579); CLAUDE.md is een stub die hem
+      # importeert. Toen beide nog met de hand werden bijgehouden, miste AGENTS.md negen secties —
+      # waaronder de tier-regel, de teamnormalisatieregel en de EgressGuard-regel. De tweede
+      # reviewer van dit project werkte er dus zonder. Skills: .agents/skills/ is de bron,
+      # .claude/skills/ een identieke kopie.
+      - name: Agentinstructies — AGENTS.md enige bron, stubs, skills en codeblokken
         run: |
           python3 scripts/ci/check-agent-instructies.py
           python3 scripts/ci/check-agent-instructies.test.py
+
+      - name: Agentinstructies — skillkopieën identiek aan de bron
+        run: python3 scripts/ci/sync-skills.py
 
       # Meta-guard: elke regel in het register heeft een bestaand, uitvoerbaar script dat ook echt
       # in de genoemde workflow draait — en elke guard in scripts/ci/ staat in het register.
