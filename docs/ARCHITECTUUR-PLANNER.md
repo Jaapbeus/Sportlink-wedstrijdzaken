@@ -959,7 +959,17 @@ Niet alle verzoeken gaan over veldbeschikbaarheid. De volgende typen verzoeken v
 
 > Begrepen. De wedstrijd [wedstrijd] blijft staan op [datum] om [tijd] op [veld].
 
-## Planning leest veld, tijd en blokduur uit Sportlink (#1563)
+## Planning leest veld, tijd en blokduur uit Sportlink (#1563, #1582)
+
+> **Sinds #1582 is Sportlink leidend, geen overlay meer (WZ-ADR-012, ARCHITECTUUR.md §8.8).** `GET /api/planner/veldbezetting`
+> voegt onze regels samen met de Sportlink-veldplanner via `SportlinkVeldbezettingSamenvoeging` (`Planner.Shared/Planning/`):
+> een gekoppelde regel neemt veld, tijd, afmeting en duur over (`bron` = `Sportlink`); een Sportlink-blok zonder eigen regel
+> wordt zelf een regel (`wedstrijdCode` leeg, `bron` = `Sportlink`; bijvoorbeeld een wedstrijd van een andere club op hetzelfde
+> park); een eigen regel die Sportlink niet kent blijft staan met `nietInSportlink` = `true`. Sportlink onbereikbaar of
+> democlub: de eigen regels ongewijzigd. Elke dag wordt ook gevraagd als onze database geen enkele wedstrijd heeft. De kolom
+> Tegenstander is de andere kant van het label (`tegenstander`), niet meer de uitploeg. De tekst hieronder beschrijft de koppeling
+> zelf, die ongewijzigd is.
+
 
 De weergave `GET /api/planner/veldbezetting` is sinds #1563 een **overlay**: de eigen regels (uit `his.matches`) worden
 gekoppeld aan de blokken van de Sportlink-veldplanner, en wat Sportlink levert overschrijft veld, aanvangstijd,

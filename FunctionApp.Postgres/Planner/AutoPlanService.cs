@@ -10,7 +10,8 @@ namespace FunctionApp.Postgres.Planner;
 internal sealed record VeldbezettingItem(
     long? WedstrijdCode, string Wedstrijd, string TeamNaam, string? Uitteam,
     string? AanvangsTijd, string? Veld, string? Competitiesoort, string? LeeftijdsCategorie,
-    int DuurMinuten, decimal Veldafmeting) : IVeldbezettingRegel;
+    int DuurMinuten, decimal Veldafmeting,
+    string? Tegenstander = null, bool NietInSportlink = false, string? Bron = null) : IVeldbezettingRegel;
 
 /// <summary>
 /// Postgres-tier-tegenhanger van <c>FunctionApp/Planner/Services/AutoPlanService.cs</c> (#888).
@@ -393,7 +394,8 @@ internal static class AutoPlanService
                     LeeftijdsCategorie: w.LeeftijdsCategorie,
                     // #1547: Sportlinks eigen speelduur is leidend; speeltijden alleen als terugval.
                     DuurMinuten: VeldbezettingDuur.Bepaal(w.SportlinkSpeelduur, speeltijdInfo?.WedstrijdTotaal),
-                    Veldafmeting: VeldafmetingVoorWedstrijd(w.Veld, veldNamen, speeltijdInfo?.Veldafmeting ?? 1.00m));
+                    Veldafmeting: VeldafmetingVoorWedstrijd(w.Veld, veldNamen, speeltijdInfo?.Veldafmeting ?? 1.00m),
+                    Tegenstander: SportlinkVeldbezettingSamenvoeging.Tegenstander(w.Wedstrijd, w.TeamNaam, w.Uitteam));
             })
             .OrderBy(w => string.IsNullOrWhiteSpace(w.AanvangsTijd) ? "99:99" : w.AanvangsTijd)
             .ToList();

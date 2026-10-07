@@ -84,19 +84,49 @@ public class VeldplannerOverlayCoreTests
         mock.Verify(c => c.GetVeldplannerAsync(It.IsAny<string>(), "F-7", datum, It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
-    private static Task<IReadOnlyDictionary<int, SportlinkVeldplannerBlok>> Koppel(ISportlinkClubClient client, string clubCode, string accommodatie)
-        => VeldplannerOverlayCore.KoppelAsync(new[] { ("A - B", (string?)"09:00") }, clubCode, () => null,
-            () => (client, null), "Rol", accommodatie, new DateOnly(2030, 5, 4), NullLogger.Instance);
+    private sealed record Regel(string Wedstrijd, string? Tijd, bool NietInSportlink = false, string? Bron = null);
+
+    private static Task<IReadOnlyList<Regel>> Samenvoeg(ISportlinkClubClient client, string clubCode, string accommodatie, params Regel[] eigen)
+        => VeldplannerOverlayCore.SamenvoegAsync<Regel>(eigen, clubCode, () => null, () => (client, null), "Rol", accommodatie,
+            new DateOnly(2030, 5, 4), NullLogger.Instance,
+            sleutel: r => (r.Wedstrijd, r.Tijd),
+            overschrijf: (r, b) => r with { Tijd = b.StartTijd, Bron = "Sportlink" },
+            nieuw: b => new Regel(b.Label, b.StartTijd, false, "Sportlink"),
+            nietInSportlink: r => r with { NietInSportlink = true },
+            sorteerTijd: r => r.Tijd);
 
     [Fact]
-    public async Task KoppelAsync_KoppeltEenBekendeWedstrijd()
-        => (await Koppel(Client("F-8").Object, "CLUB", Naam("F-8"))).Should().ContainKey(0);
+    public async Task SamenvoegAsync_KoppeltEenBekendeWedstrijd_EnToontDeRest()
+    {
+        var resultaat = await Samenvoeg(Client("F-8").Object, "CLUB", Naam("F-8"), new Regel("A - B", "09:30"));
+
+        resultaat.Should().ContainSingle().Which.Should().Be(new Regel("A - B", "09:00", false, "Sportlink"));
+    }
 
     [Fact]
-    public async Task KoppelAsync_Democlub_VraagNooitNaarSportlink()
+    public async Task SamenvoegAsync_ZonderEigenRegels_ToontToch_HetSportlinkBlok()
+        => (await Samenvoeg(Client("F-10").Object, "CLUB", Naam("F-10"))).Should().ContainSingle()
+            .Which.Bron.Should().Be("Sportlink", "de velden kunnen door een andere club bezet zijn (#1582)");
+
+    [Fact]
+    public async Task SamenvoegAsync_EenRegelDieSportlinkNietKent_KrijgtEenMarkering()
+        => (await Samenvoeg(Client("F-11").Object, "CLUB", Naam("F-11"), new Regel("Ander - Team", "12:00")))
+            .Should().Contain(r => r.Wedstrijd == "Ander - Team" && r.NietInSportlink);
+
+    [Fact]
+    public async Task SamenvoegAsync_SportlinkOnbereikbaar_LaatDePlanningOngewijzigd()
+    {
+        var eigen = new Regel("A - B", "09:30");
+        var resultaat = await Samenvoeg(Client("F-12", status: SportlinkClubCallStatus.NetwerkFout).Object, "CLUB", Naam("F-12"), eigen);
+        resultaat.Should().ContainSingle().Which.Should().Be(eigen);
+    }
+
+    [Fact]
+    public async Task SamenvoegAsync_Democlub_VraagNooitNaarSportlink()
     {
         var mock = Client("F-9");
-        (await Koppel(mock.Object, "allstars", Naam("F-9"))).Should().BeEmpty();
+        var eigen = new Regel("A - B", "09:30");
+        (await Samenvoeg(mock.Object, "allstars", Naam("F-9"), eigen)).Should().ContainSingle().Which.Should().Be(eigen);
         mock.VerifyNoOtherCalls();
     }
 

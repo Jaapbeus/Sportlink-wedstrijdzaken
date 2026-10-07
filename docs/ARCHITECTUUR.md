@@ -922,6 +922,24 @@ ondersteunt — nooit een knop die op de andere tier een 404 geeft.
 
 ---
 
+### 8.8 Sportlink is de bron van waarheid voor wedstrijden en velden
+
+Wedstrijden, aanvangstijden, speelduur en velden komen uit Sportlink; onze database is een kopie en een
+aanvulling, nooit de baas. Waar Sportlink bereikbaar is, bepaalt de veldplanner van Sportlink Club wat
+de Planning toont (**WZ-ADR-012**, #1582):
+
+- Een Sportlink-blok zonder eigen regel wordt zelf een regel. Wedstrijden van een andere club op hetzelfde park
+  bezetten de velden ook en horen dus in de Planning.
+- Veld, aanvangstijd, afmeting en blokduur van een gekoppelde regel worden uit Sportlink overgenomen, niet berekend.
+- Een eigen regel die Sportlink niet kent blijft staan, maar wordt als afwijking gemarkeerd. Een verschil tussen
+  Sportlink en onze gegevens is zichtbaar, nooit stil.
+- De synchronisatie overschrijft altijd. Een nieuwe functie die een wedstrijdtijd, een speelduur of een veld toont of
+  gebruikt, leest die uit Sportlink en rekent hem alleen zelf uit als terugval wanneer Sportlink niet bereikbaar is.
+
+De samenvoeglogica staat één keer in `Planner.Shared/Planning/SportlinkVeldbezettingSamenvoeging.cs`; beide
+databasetiers geven alleen het regelmodel mee. Uitwerking: `docs/ARCHITECTUUR-PLANNER.md`, "Planning leest veld, tijd en
+blokduur uit Sportlink".
+
 ## 9. Architectuurbesluiten
 
 Elk besluit: context, keuze, gevolg. Een besluit wordt niet herschreven — een koerswijziging is een
@@ -940,6 +958,7 @@ nieuw besluit dat het oude vervangt.
 | **WZ-ADR-009** | Foutmodel volgens RFC 9457 | Internationale standaard in plaats van een eigen formaat. Gevolg: één herbruikbaar schema in de specificatie; bestaande ad-hoc foutobjecten migreren. |
 | **WZ-ADR-010** | Geen waarden van de installatie in de repository | Volgt uit B1. Gevolg: de eerste authenticatie-uitrol gebeurt lokaal met een privéparameterbestand; automatisering mag die waarden niet opslaan. |
 | **WZ-ADR-011** | Eén fork = één productieclub + demo-club, geen shared hosting | Vastgelegd na review van #393 (2026-05-31). Gevolg: geen server-side multi-user-clubautorisatie nodig; `X-Club-Code` is UX, geen beveiligingsgrens; shared hosting vereist een volledige herontwerpslag en is expliciet niet het doel. Zie §2.1. |
+| **WZ-ADR-012** | Sportlink is de bron van waarheid voor wedstrijden, tijden, speelduur en velden | Vastgesteld 07-10-2026 (releasetest 3.12, #1582). De Planning was database-eerst en gebruikte Sportlink alleen om eigen regels bij te werken; 12 van de 20 blokken van een speeldag ontbraken. Keuze: Sportlink-eerst, zie §8.8. Gevolg: een Sportlink-blok zonder eigen regel is een regel, een eigen regel zonder blok is een zichtbare afwijking. |
 | **WZ-ADR-012** | PDF-export met QuestPDF uit een eigen documentmodel, niet via HTML→PDF | Besluit eigenaar 2026-09-26 (epic #1365), uitgevoerd in #1363. Gevolg: server-side generatie in `Planner.Shared/Deel/`, de HTML-export blijft ongemoeid. Twee afwijkingen van de rest van de stack, beide bewust: QuestPDF is *source-available* onder een omzetgebonden Community License (< USD 1 mln; elke club toetst dat zelf), en het levert native bibliotheken per platform mee (+39,5 MB zip per deploypakket). Zie [ARCHITECTUUR-PDF-EXPORT.md](ARCHITECTUUR-PDF-EXPORT.md). |
 
 ### Afwijkingsregister

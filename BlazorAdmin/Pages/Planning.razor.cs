@@ -93,6 +93,9 @@ public partial class Planning : ClubSelectorPageBase
 
     // Gantt-blokken voor de directe veldbezetting-weergave (#566) — geen optimalisatie, alleen wat er
     // al gepland staat. Hergebruikt dezelfde GanttItem/helpers als Veld optimalisatie.
+    /// <summary>Eigen regels die Sportlink niet kent (#1582): een zichtbare afwijking tussen onze gegevens en de veldplanner.</summary>
+    private int AantalNietInSportlink => _veldbezetting.Count(w => w.NietInSportlink);
+
     private List<DagplanningWeergaveHelpers.GanttItem> BouwVeldbezettingGanttItems()
     {
         var items = new List<DagplanningWeergaveHelpers.GanttItem>();
@@ -103,7 +106,7 @@ public partial class Planning : ClubSelectorPageBase
             var (veldBase, sub) = DagplanningWeergaveHelpers.GanttSplitVeld(w.Veld);
             items.Add(new DagplanningWeergaveHelpers.GanttItem(veldBase, sub, t, t.AddMinutes(w.DuurMinuten),
                 w.Veldafmeting, DagplanningWeergaveHelpers.GanttMatchLabel(w.Wedstrijd, w.TeamNaam),
-                "ongewijzigd", w.DuurMinuten, null, null, WedstrijdCode: w.WedstrijdCode));
+                w.NietInSportlink ? "wijziging" : "ongewijzigd", w.DuurMinuten, null, null, WedstrijdCode: w.WedstrijdCode));
         }
         return items;
     }
