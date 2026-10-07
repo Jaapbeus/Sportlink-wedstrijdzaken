@@ -13,7 +13,7 @@ public class PlannerShareModelBuilderTests
 
     private sealed record Bezetting(
         string? AanvangsTijd, string TeamNaam, string Wedstrijd, string? Uitteam,
-        string? Veld, string? Competitiesoort) : IVeldbezettingRegel;
+        string? Veld, string? Competitiesoort, string? Tegenstander = null, bool NietInSportlink = false) : IVeldbezettingRegel;
 
     private sealed record Plan(
         string TeamNaam, string Wedstrijd, string? Competitiesoort,
@@ -31,6 +31,37 @@ public class PlannerShareModelBuilderTests
         model.Peildatum.Should().Be(Zaterdag);
         model.Wedstrijden.Should().ContainSingle().Which.Should().Be(
             new PlannerShareWedstrijd("09:30", "JO10-1", "Gasten JO10-2", "veld 3 A", "competitie", null));
+    }
+
+    [Fact]
+    public void VanVeldbezetting_GebruiktDeTegenstanderVanDePagina_NietDeUitploeg()
+    {
+        // Een uitwedstrijd: de uitploeg is het eigen team. Pagina en document tonen dezelfde andere ploeg (#1582).
+        var model = PlannerShareModelBuilder.VanVeldbezetting(
+            new[] { new Bezetting("10:00", "Eigen 35+1", "Thuis 35+2 - Eigen 35+1", "Eigen 35+1", "veld 1", "regulier", Tegenstander: "Thuis 35+2") },
+            Zaterdag, "ALLSTARS");
+
+        model.Wedstrijden.Single().Tegenstander.Should().Be("Thuis 35+2");
+    }
+
+    [Fact]
+    public void VanVeldbezetting_ZonderTegenstander_ValtTerugOpDeUitploeg()
+        => PlannerShareModelBuilder.VanVeldbezetting(
+                new[] { new Bezetting("10:00", "JO10-1", "w", "Gasten JO10-2", null, null) }, Zaterdag, "ALLSTARS")
+            .Wedstrijden.Single().Tegenstander.Should().Be("Gasten JO10-2");
+
+    [Fact]
+    public void VanVeldbezetting_BehoudtDeAfwijkingEnToontHaarInHetDocument()
+    {
+        // Een eigen regel die Sportlink niet kent mag in het gedeelde document niet als gewone bezetting verschijnen.
+        var model = PlannerShareModelBuilder.VanVeldbezetting(
+            new[] { new Bezetting("10:00", "Eigen 35+1", "Eigen 35+1 - Gast 35+1", "Gast 35+1", "veld 1", null, NietInSportlink: true) },
+            Zaterdag, "ALLSTARS");
+
+        var regel = model.Wedstrijden.Single();
+        regel.NietInSportlink.Should().BeTrue();
+        regel.TeamWeergave.Should().Be("Eigen 35+1 (niet in Sportlink)");
+        PlannerShareHtmlGenerator.Genereer(model).Should().Contain("Eigen 35+1 (niet in Sportlink)");
     }
 
     [Fact]

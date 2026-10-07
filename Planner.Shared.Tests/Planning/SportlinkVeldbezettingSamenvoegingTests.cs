@@ -80,30 +80,30 @@ public class SportlinkVeldbezettingSamenvoegingTests
     }
 
     [Theory]
-    [InlineData("DOVO 35+3 - VRC 35+2", "VRC 35+2", "DOVO 35+3")]          // eigen team is uit: de tegenstander is de thuisploeg
-    [InlineData("VRC 35+2 - Candia 35+1", "VRC 35+2", "Candia 35+1")]      // eigen team is thuis
-    [InlineData("FC Uit 35+1 - v.v. VRC 35+1", "VRC 35+1", "FC Uit 35+1")] // extra clubvoorvoegsel bij precies één kant
+    [InlineData("Tegen 35+3 - Eigen 35+2", "Eigen 35+2", "Tegen 35+3")]          // eigen team is uit: de tegenstander is de thuisploeg
+    [InlineData("Eigen 35+2 - Gast 35+1", "Eigen 35+2", "Gast 35+1")]      // eigen team is thuis
+    [InlineData("Thuis 35+1 - v.v. Eigen 35+1", "Eigen 35+1", "Thuis 35+1")] // extra clubvoorvoegsel bij precies één kant
     public void Tegenstander_IsDeAndereKantVanHetLabel(string wedstrijd, string team, string verwacht)
-        => SportlinkVeldbezettingSamenvoeging.Tegenstander(wedstrijd, team, uitteam: "VRC 35+2").Should().Be(verwacht);
+        => SportlinkVeldbezettingSamenvoeging.Tegenstander(wedstrijd, team, uitteam: "Eigen 35+2").Should().Be(verwacht);
 
     [Fact]
     public void Tegenstander_BijUitwedstrijd_IsNietMeerDeEigenPloeg()
     {
         // Voorheen: kolom Tegenstander = uitteam = de eigen ploeg.
-        SportlinkVeldbezettingSamenvoeging.Tegenstander("FC Uit 35+2 - VRC 35+1", "VRC 35+1", uitteam: "VRC 35+1")
-            .Should().Be("FC Uit 35+2");
+        SportlinkVeldbezettingSamenvoeging.Tegenstander("Thuis 35+2 - Eigen 35+1", "Eigen 35+1", uitteam: "Eigen 35+1")
+            .Should().Be("Thuis 35+2");
     }
 
     [Theory]
-    [InlineData("Onbekend - Anders", "VRC 35+1")]   // geen van beide kanten is het eigen team: terugval op de uitploeg
-    [InlineData("Alleen een naam", "VRC 35+1")]     // geen scheidingsteken
+    [InlineData("Onbekend - Anders", "Eigen 35+1")]   // geen van beide kanten is het eigen team: terugval op de uitploeg
+    [InlineData("Alleen een naam", "Eigen 35+1")]     // geen scheidingsteken
     public void Tegenstander_ZonderEenduidigeKant_ValtTerugOpUitteam(string wedstrijd, string team)
         => SportlinkVeldbezettingSamenvoeging.Tegenstander(wedstrijd, team, "Uitteam").Should().Be("Uitteam");
 
     [Fact]
     public void Tegenstander_ZonderLabelOfTeam_ValtTerugOpUitteam()
     {
-        SportlinkVeldbezettingSamenvoeging.Tegenstander(null, "VRC 35+1", "X").Should().Be("X");
+        SportlinkVeldbezettingSamenvoeging.Tegenstander(null, "Eigen 35+1", "X").Should().Be("X");
         SportlinkVeldbezettingSamenvoeging.Tegenstander("A - B", null, "X").Should().Be("X");
     }
 

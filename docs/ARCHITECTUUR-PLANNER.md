@@ -961,7 +961,7 @@ Niet alle verzoeken gaan over veldbeschikbaarheid. De volgende typen verzoeken v
 
 ## Planning leest veld, tijd en blokduur uit Sportlink (#1563, #1582)
 
-> **Sinds #1582 is Sportlink leidend, geen overlay meer (WZ-ADR-012, ARCHITECTUUR.md §8.8).** `GET /api/planner/veldbezetting`
+> **Sinds #1582 is Sportlink leidend, geen overlay meer (WZ-ADR-013, ARCHITECTUUR.md §8.8).** `GET /api/planner/veldbezetting`
 > voegt onze regels samen met de Sportlink-veldplanner via `SportlinkVeldbezettingSamenvoeging` (`Planner.Shared/Planning/`):
 > een gekoppelde regel neemt veld, tijd, afmeting en duur over (`bron` = `Sportlink`); een Sportlink-blok zonder eigen regel
 > wordt zelf een regel (`wedstrijdCode` leeg, `bron` = `Sportlink`; bijvoorbeeld een wedstrijd van een andere club op hetzelfde

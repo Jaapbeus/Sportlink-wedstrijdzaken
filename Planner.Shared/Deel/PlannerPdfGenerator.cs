@@ -153,7 +153,7 @@ namespace Planner.Shared.Deel
                     var w = model.Wedstrijden[i];
                     var zebra = i % 2 == 1;
                     Cel(tabel.Cell(), w.Tijd, zebra);
-                    Cel(tabel.Cell(), w.Team, zebra);
+                    Cel(tabel.Cell(), w.TeamWeergave, zebra);
                     Cel(tabel.Cell(), w.Tegenstander, zebra);
                     Cel(tabel.Cell(), w.Veld, zebra);
                     Cel(tabel.Cell(), w.Competitie, zebra);
