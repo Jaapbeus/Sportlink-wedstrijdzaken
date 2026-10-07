@@ -67,7 +67,9 @@ public static class PlannerFunction
                 log.LogInformation("Veldbezetting: datum={Datum}, club={Club}", LogWaarde.Schoon(datumParam), clubCode);
                 return await PlannerDeelEndpointCore.VerwerkAsync(req.Query["format"], null, datumParam,
                     () => PdfExportInstelling.IsIngeschakeldAsync(clubCode),
-                    () => AutoPlanService.VeldbezettingAsync( PostgresDatabaseConfig.ConnectionString, datum, clubCode),
+                    async () => await VeldbezettingSportlinkOverlay.PasToeAsync(
+                        await AutoPlanService.VeldbezettingAsync(PostgresDatabaseConfig.ConnectionString, datum, clubCode),
+                        context, datum, clubCode, log),
                     (deel, items) => deel.VanVeldbezetting(items, clubCode), items => new OkObjectResult(items));
             });
     }

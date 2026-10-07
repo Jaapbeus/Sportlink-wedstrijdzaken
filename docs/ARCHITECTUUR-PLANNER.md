@@ -958,3 +958,31 @@ Niet alle verzoeken gaan over veldbeschikbaarheid. De volgende typen verzoeken v
 **Standaard antwoord bij afwijzing verplaatsing (aanvrager zegt "nee"):**
 
 > Begrepen. De wedstrijd [wedstrijd] blijft staan op [datum] om [tijd] op [veld].
+
+## Planning leest veld, tijd en blokduur uit Sportlink (#1563)
+
+De weergave `GET /api/planner/veldbezetting` is sinds #1563 een **overlay**: de eigen regels (uit `his.matches`) worden
+gekoppeld aan de blokken van de Sportlink-veldplanner, en wat Sportlink levert overschrijft veld, aanvangstijd,
+veldafmeting en `DuurMinuten`. Sportlink tekent een blok als `StartUpInterval + Duration + Interval + FollowUpInterval`;
+precies die som is `DuurMinuten`, en de starttijd schuift met het inloopdeel mee.
+
+| Onderdeel | Plaats |
+|---|---|
+| Leesaanroep `competition/facilityoccupation/FacilityOccupation` (alleen GET) | `Planner.Shared/Integrations/SportlinkClub/SportlinkClubClient.Veldplanner.cs`, via `ExecuteWithTokenRetryAsync` |
+| Respons naar blokken (`SportlinkVeldplannerParser`) | `Planner.Shared/Integrations/SportlinkClub/SportlinkVeldplannerBlok.cs` |
+| Koppeling aan onze regels | `Planner.Shared/Planning/SportlinkVeldplannerKoppeling.cs` |
+| Orkestratie: facility-opzoeking, cache, toggle, EgressGuard, terugval | `Planner.Endpoints/Sportlink/VeldplannerOverlayCore.cs` |
+| Toepassing op het tier-eigen item | `Planner/VeldbezettingSportlinkOverlay.cs` op beide tiers |
+
+- **Koppeling op teamlabel, niet op wedstrijdnummer.** `ExternalMatchId` van Sportlink is bij clubwedstrijden vaak 1 en dus
+  niet uniek. Ronde 1 vergelijkt het genormaliseerde label "Thuis - Uit" (alleen letters en cijfers); ronde 2 laat een
+  ploegnaam de andere bevatten ("v.v. Uit 35+2" tegenover "Uit 35+2"). Bij meerdere blokken met hetzelfde label
+  wint de dichtstbijzijnde starttijd, en elk blok koppelt aan hooguit één regel.
+- **Altijd een terugval, nooit een fout.** Extensie uit, EgressGuard dicht, Sportlink onbereikbaar, onbekende accommodatie of
+  onbekende wedstrijd: de regel behoudt `VeldbezettingDuur.Bepaal` (Sportlinks speelduur + 15, dan Speeltijden). De democlub
+  `ALLSTARS` vraagt nooit naar Sportlink.
+- **Facility-ID** komt uit de Sportlink-locatielijst op naam van de instelling `accommodatie` (6 uur onthouden); de blokken van
+  een dag worden 60 seconden onthouden. Het FacilityId staat nergens in code of configuratie.
+- **Bekende grens:** Sportlinks veldplanner toont ook wedstrijden tussen andere clubs op uw accommodatie. Die staan niet in onze
+  database en worden niet toegevoegd; dat is een afzonderlijk productbesluit.
+- **Veld optimalisatie** (`FieldScheduler`, besluit #291) blijft op de speeltijdentabel rekenen; zie issue #1559.

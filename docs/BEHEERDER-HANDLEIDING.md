@@ -118,13 +118,18 @@ gepland staat: een tijdlijn per veld, met daaronder een tabel met dezelfde wedst
 staat op deze pagina ook een Sportlink-kolom, op dezelfde manier als op Veld optimalisatie
 hieronder — zie hoofdstuk 19 voor de Sportlink Web Extension zelf.
 
-**Sportlink is leidend (#1547).** De tijdlijn toont elke wedstrijd zoals de veldplanner in
-Sportlink Club hem toont: hetzelfde veld, dezelfde aanvangstijd, en een blok dat even lang is —
-Sportlinks speelduur plus vijftien minuten. De speelduur komt dus uit Sportlink, niet uit
-**Speeltijden**; die tabel is alleen nog de terugval voor een wedstrijd waarvan Sportlink geen
-speelduur kent, en blijft de basis voor **Veld optimalisatie**. Een lange wedstrijdnaam loopt over
-twee regels door, met de aanvangstijd vóór de naam op dezelfde regel; de volledige naam staat ook in de tooltip. Ziet u toch een verschil met Sportlink,
-start dan eerst een synchronisatie — de Planning toont de stand van de laatste sync.
+**Sportlink is leidend (#1547, #1563).** De tijdlijn toont elke wedstrijd zoals de veldplanner in
+Sportlink Club hem toont: hetzelfde veld, dezelfde aanvangstijd en een blok van dezelfde lengte. Veld,
+tijd en blokduur worden sinds #1563 bij elk openen van de dag rechtstreeks bij Sportlink opgehaald
+(één leesaanroep per accommodatie en dag, kort onthouden): speelduur plus pauze, met het in- en
+uitloopdeel van Sportlink erbij. De pauze is dus niet altijd vijftien minuten — bij 35+ is hij tien.
+Is Sportlink niet bereikbaar, staat de Sportlink Web Extension uit, of kent Sportlink een wedstrijd
+niet, dan rekent de Planning zoals voorheen: Sportlinks speelduur plus vijftien minuten, en bij
+ontbreken daarvan **Speeltijden**. **Veld optimalisatie** blijft op **Speeltijden** rekenen. Wedstrijden
+tussen andere clubs op uw accommodatie staan wel in Sportlinks veldplanner maar niet in onze database
+en verschijnen hier dus nog niet. Een lange wedstrijdnaam loopt over twee regels door, met de
+aanvangstijd vóór de naam op dezelfde regel; de volledige naam staat ook in de tooltip. Ziet u toch een
+verschil met Sportlink, start dan eerst een synchronisatie.
 
 - **Hover-highlight:** beweeg de muis over een rij in de tabel, of over een blok in de
   tijdlijn — de bijbehorende wedstrijd licht in beide oranje op. Zo is snel terug te vinden

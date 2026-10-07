@@ -21,7 +21,7 @@ namespace Planner.Shared;
 /// <para>
 /// Eén regel voor elke wedstrijd, ook voor 35+ en VR30+ (één keer twintig minuten): de rust tussen twee
 /// wedstrijden is geen speeltijd en telt dus niet apart mee (eigenaarsbesluit #1561). Een uitzondering per
-/// duur is bewust niet gebouwd; de exacte blokduur rechtstreeks uit Sportlink volgt in #1563.
+/// duur is bewust niet gebouwd. Sinds #1563 neemt de Planning de exacte blokduur rechtstreeks uit de Sportlink-veldplanner over (<c>VeldplannerOverlayCore</c>); deze regel is daarmee alleen nog de terugval als Sportlink niet bereikbaar is of de wedstrijd niet kent.
 /// </para>
 /// <para>
 /// Dit geldt uitsluitend voor de weergave van wat er al gepland staat. De optimalisatie

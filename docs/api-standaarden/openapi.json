@@ -11572,7 +11572,7 @@
         ],
         "operationId": "veldbezetting",
         "summary": "Wedstrijden op een datum ophalen, zonder optimalisatie",
-        "description": "Geeft de wedstrijden terug die op een datum al gepland staan, rechtstreeks uit de\nlaatst gesynchroniseerde Sportlink-data — zonder de scheduling-optimalisatie die\n`/planner/auto-plan` uitvoert. Bedoeld als snelle,\ngoedkope \"wat staat er nu al gepland\"-weergave. Voedt de Planning-pagina, die sinds #1400\ngeneriek zichtbaar is voor elke ingelogde gebruiker — vereist daarom alleen `admin` óf\n`user` (voorheen uitsluitend `admin`); in deze tag geldt dat verder alleen voor\n`/planner/pdf-export` (#1459).\n",
+        "description": "Geeft de wedstrijden terug die op een datum al gepland staan, rechtstreeks uit de\nlaatst gesynchroniseerde Sportlink-data — zonder de scheduling-optimalisatie die\n`/planner/auto-plan` uitvoert. Bedoeld als snelle,\ngoedkope \"wat staat er nu al gepland\"-weergave. Voedt de Planning-pagina, die sinds #1400\ngeneriek zichtbaar is voor elke ingelogde gebruiker — vereist daarom alleen `admin` óf\n`user` (voorheen uitsluitend `admin`); in deze tag geldt dat verder alleen voor\n`/planner/pdf-export` (#1459).\n\nSinds #1563 komen `veld`, `aanvangsTijd`, `veldafmeting` en `duurMinuten` van een wedstrijd uit de\nSportlink-veldplanner als de Sportlink Web Extension aan en bereikbaar is; anders (of voor een wedstrijd\ndie Sportlink niet kent) blijft de eigen berekening. De vorm van het antwoord is ongewijzigd.\n",
         "security": [
           {
             "easyAuth": []

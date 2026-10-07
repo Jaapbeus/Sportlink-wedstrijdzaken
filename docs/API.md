@@ -896,6 +896,11 @@ gesynchroniseerde Sportlink-data — **zonder** de scheduling-optimalisatie te d
 `/planner/auto-plan` uitvoert. Bedoeld als snelle, goedkope
 "wat staat er nu al gepland"-weergave (zie de pagina Planning in de Admin GUI, sinds #1361).
 
+**Veld, tijd en blokduur uit Sportlink (#1563):** is de Sportlink Web Extension aan en bereikbaar, dan komen `veld`,
+`aanvangsTijd`, `veldafmeting` en `duurMinuten` van een wedstrijd rechtstreeks uit de Sportlink-veldplanner (blokduur =
+speelduur + pauze + in-/uitloop). Wat Sportlink niet kent, of als Sportlink niet bereikbaar is, behoudt de eigen berekening;
+het antwoord kent daardoor nooit een extra foutstatus. De vorm van het antwoord is ongewijzigd.
+
 **Autorisatie (#1400):** `Admin/User` (`AdminEndpoint.ExecuteAuthenticatedAsync`) — dit is het enige
 endpoint in dit bestand dat niet uitsluitend admin vereist, want de Planning-pagina moet voor elke
 ingelogde gebruiker zichtbaar zijn.
