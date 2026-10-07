@@ -18,6 +18,7 @@
 #   .\Start-Debug.ps1 -NoWatch   → BlazorAdmin zonder hot reload (dotnet run i.p.v. dotnet watch)
 #   .\Start-Debug.ps1 -Tail      → één samengevoegde logstroom i.p.v. losse vensters
 #   .\Start-Debug.ps1 -Clean     → stop + dotnet clean BlazorAdmin vóór het starten
+#   .\Start-Debug.ps1 -HuidigeWerkmap → start vanuit de map van dit script i.p.v. de develop-worktree (#1574)
 #   .\Start-Debug.ps1 -SportlinkLive → zet local.settings.json klaar voor live Sportlink-verkeer
 #                                    van de PRIMAIRE club (#1466) — zie de toelichting hieronder
 #
@@ -28,6 +29,11 @@
 # script: de democlub ALLSTARS krijgt nooit een koppeling. Inloggegevens voert alleen de eigenaar
 # in, via menu Sportlink Ext. (pagina Sportlink Web Extension). Na het starten meldt dit script altijd of de
 # primaire club live-klaar is, ook zonder -SportlinkLive.
+#
+# STANDAARD = LAATSTE DEVELOP (#1574): het script zoekt de worktree waarin 'develop' staat, werkt
+# die fast-forward bij naar origin/develop en start de services vanuit die worktree — ook als je
+# het vanuit een main-checkout of feature-worktree aanroept. Zo toont de GUI nooit een achterlopende
+# versie. -HuidigeWerkmap schakelt dit uit (bijv. om een feature-branch te testen).
 #
 # Exit code: 0 = alle services bereikbaar, 1 = minstens één service niet opgestart.
 #
@@ -53,10 +59,39 @@ param(
     [switch]$NoWatch,  # Gebruik dotnet run i.p.v. dotnet watch voor BlazorAdmin
     [switch]$Tail,     # Voeg alle service-output samen in één venster
     [switch]$Clean,    # dotnet clean op BlazorAdmin vóór het starten
-    [switch]$SportlinkLive  # Live Sportlink-verkeer voor de primaire club toestaan (#1466)
+    [switch]$SportlinkLive,  # Live Sportlink-verkeer voor de primaire club toestaan (#1466)
+    [switch]$HuidigeWerkmap  # Niet naar de develop-worktree overschakelen (#1574)
 )
 
 $root    = Resolve-Path (Join-Path $PSScriptRoot "../..")
+
+# --- Standaard op de laatste develop draaien (#1574) -------------------------
+# Vóór al het andere: bepaal de develop-worktree, werk hem fast-forward bij en voer van daaruit
+# de (dan ook actuele) versie van dit script uit. Een afgeweken develop of een ontbrekende
+# develop-worktree stopt de start; stilzwijgend terugvallen op de huidige map is precies de fout
+# (achterlopende GUI-versie) die dit voorkomt.
+if (-not $HuidigeWerkmap) {
+    Import-Module (Join-Path $PSScriptRoot 'DevServices.psm1') -Force
+    $developPad = Get-DevelopWorktree -RepoRoot $root
+    if (-not $developPad) {
+        Write-Host "Geen worktree op 'develop' gevonden. Maak er eenmalig één buiten de repo-boom:" -ForegroundColor Red
+        Write-Host "  git worktree add ../Sportlink-wedstrijdzaken-develop develop" -ForegroundColor Yellow
+        Write-Host "of start met -HuidigeWerkmap om vanuit deze map te draaien." -ForegroundColor Yellow
+        exit 1
+    }
+    Write-Host "develop-worktree: $developPad — bijwerken naar origin/develop..." -ForegroundColor Cyan
+    if (-not (Update-DevelopWorktree -WorktreePath $developPad)) {
+        Write-Host "Bijwerken mislukt (fetch of fast-forward) — develop is lokaal afgeweken of origin onbereikbaar. Niets gestart." -ForegroundColor Red
+        exit 1
+    }
+    if ((Resolve-Path $developPad).Path -ne $root.Path) {
+        $params = @{}
+        foreach ($k in $PSBoundParameters.Keys) { $params[$k] = $PSBoundParameters[$k] }
+        $params['HuidigeWerkmap'] = [switch]::Present
+        & (Join-Path $developPad 'scripts/dev/Start-Debug.ps1') @params
+        exit $LASTEXITCODE
+    }
+}
 $logDir  = Join-Path ([System.IO.Path]::GetTempPath()) 'sportlink-debug-logs'
 $started = Get-Date
 

@@ -215,8 +215,14 @@ gesynchroniseerde teams heeft; dat geeft een 409. Het script stuurt de header da
 Start Azurite, FunctionApp en BlazorAdmin, en **wacht tot ze daadwerkelijk reageren** —
 geen vaste `Start-Sleep` meer (#684).
 
+**Standaard draait dit op de laatste `develop` (#1574):** het script zoekt de worktree waarin
+`develop` staat, werkt die fast-forward bij naar `origin/develop` en start de services vanuit die
+worktree, ook als je het vanuit een andere map aanroept. Faalt de fast-forward of bestaat er geen
+develop-worktree, dan start er niets. `-HuidigeWerkmap` slaat dit over en draait vanuit de eigen map.
+
 ```powershell
 .\scripts\dev\Start-Debug.ps1            # Postgres-tier (standaard), losse vensters per service
+.\scripts\dev\Start-Debug.ps1 -HuidigeWerkmap  # niet naar develop overschakelen (bijv. feature-branch testen)
 .\scripts\dev\Start-Debug.ps1 -Tier SqlServer   # de andere tier
 .\scripts\dev\Start-Debug.ps1 -Tail      # één samengevoegde logstroom
 .\scripts\dev\Start-Debug.ps1 -Swa       # inclusief SWA emulator op :4280
