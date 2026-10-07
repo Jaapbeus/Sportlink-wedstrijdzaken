@@ -116,6 +116,12 @@ def controleer_instructiebestanden(root: Path) -> list[str]:
             fouten.append(f"{rel}:{regel}: onafgesloten codeblok")
     for stub in stubs:
         fouten.extend(controleer_stub(stub, root))
+    # Claude Code laadt ook `.claude/rules/*.md`; Codex niet. Zo'n bestand is een tweede
+    # instructiebron naast AGENTS.md. (`CLAUDE.local.md` staat in .gitignore en komt niet in git.)
+    regels_map = root / ".claude" / "rules"
+    if regels_map.is_dir():
+        for pad in sorted(regels_map.rglob("*.md")):
+            fouten.append(f"{pad.relative_to(root)}: regelbestanden voor alleen Claude Code zijn een tweede instructiebron — zet de regel in AGENTS.md")
     return fouten
 
 

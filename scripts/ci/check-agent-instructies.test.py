@@ -117,6 +117,16 @@ class AgentInstructiesTests(unittest.TestCase):
         self.schrijf(root, "CLAUDE.md", "@AGENTS.md en lees daarna ook @docs/INDEX.md\n")
         self.assertIn("CLAUDE.md: een stub bestaat uit exact", self.fouten(root))
 
+    def test_claude_regelbestand_wordt_geweigerd(self):
+        root = self.fixture()
+        self.schrijf(root, ".claude/rules/testen.md", "Voer altijd alle tests uit.\n")
+        self.assertIn(".claude/rules/testen.md: regelbestanden voor alleen Claude Code", self.fouten(root))
+
+    def test_claude_md_in_dotclaude_zonder_agents_md_wordt_geweigerd(self):
+        root = self.fixture()
+        self.schrijf(root, ".claude/CLAUDE.md", "Eigen regels.\n")
+        self.assertIn(".claude/CLAUDE.md: geen AGENTS.md ernaast", self.fouten(root))
+
     def test_kop_in_stub_wordt_geweigerd(self):
         root = self.fixture()
         self.schrijf(root, "CLAUDE.md", "@AGENTS.md\n# AGENTS.md\n")
