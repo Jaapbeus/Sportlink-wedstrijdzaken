@@ -4626,6 +4626,112 @@ Bewust niet gedaan: wedstrijden met thuisteam gelijk aan uitteam (op 10 oktober 
 toont) blijven in de Planning. Een toernooi heeft dezelfde vorm, dus een filter zonder Sportlink-bewijs van de
 toernooidagen kan een echte wedstrijd verbergen (#1560).
 
+## 80. Reconciliatie op de SQL Server-tier: pariteit met #1193 (#1558)
+
+§79 liet de SQL Server-tier zonder reconciliatie: een door Sportlink geschrapte wedstrijd bleef in
+`his.matches` staan en in de Planning zichtbaar. Dat is opgeheven; beide gebouwde tiers gedragen zich nu gelijk.
+
+| Onderdeel | SQL Server | Postgres |
+|---|---|---|
+| Soft-delete | `SqlServerReconciliation` (`FunctionApp/Sync/`), aangeroepen door `SportlinkSyncPipeline` na de merge | `PostgresMergeOrchestrator.ReconcileWindowedAsync`/`ReconcileFullScopeAsync` |
+| Ondergrens (morgen, Nederlandse tijd) en `VandaagInNederland` | `Planner.Shared.Sync.ReconciliatieOndergrens` | idem — de enige kopie van de regel |
+| Terugkeer van een rij | `sp_MergeStgToHis` zet `mta_deleted` terug op NULL (ook in de kopie in `Script.PostDeployment1.sql`, die de echte deploy draait) | `GenerateUpsertFromStgToHis` |
+| Lezers sluiten verwijderde rijen uit | `ClubScope.HisFilter` voegt `mta_deleted IS NULL` toe | `PostgresClubScope.HisFilter` |
+
+Regels, gelijk aan Postgres: alleen de gesyncte club (nooit AllStars of rijen zonder clubstempel), matches
+alleen binnen het MIN/MAX-venster van `kaledatum` in `stg` en nooit vóór morgen, teams over de volledige
+snapshot, niets bij een mislukte fetch-fase of een lege `stg`-snapshot. Sinds review R1-F1 telt ook een
+`null`-, lege of ontbrekende teams-respons als mislukte fetch op beide tiers
+(`ReconciliatieOndergrens.IsVolledigeTeamsSnapshot`: minstens één team), zodat zo'n respons bestaande
+teams nooit als verdwenen markeert. Verder: best-effort zodat een fout de
+geslaagde ETL niet laat falen. `matchdetails` reconcilieert bewust niet mee (zie §79).
+
+**Gemeten.** `SqlServerReconciliationIntegrationTests` draait tegen een echte SQL Server 2022 (zie de
+klasse-doc-comment): een verdwenen toekomstige wedstrijd en een verdwenen team worden gemarkeerd, een
+wedstrijd van vandaag en een andere club blijven staan, een tweede run is stil, en een terugkerende
+wedstrijd wordt door de merge hersteld. De bijgewerkte PostDeployment is tweemaal uitgevoerd op een verse
+database zonder fout.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).
+
+---
+
+## 80. Beslissingstrace per e-mailverwerking: permanente tabel op beide tiers (#1568)
+
+De trace van de e-mailpipeline (zie [EMAIL-VERWERKING.md](EMAIL-VERWERKING.md) §3c) wordt per verwerkt
+bericht bewaard. Eigenaarsbesluit 2026-10-06: **permanent**, mits zonder persoonsgegevens of vrije mailtekst — en dat
+legt de opslagprojectie vast (hieronder), niet alleen een afspraak.
+
+| Onderdeel | Postgres | SQL Server |
+|---|---|---|
+| Tabel | `planner.emailtrace` — `038_planner_emailtrace.sql`, met `ENABLE ROW LEVEL SECURITY` in dezelfde migratie | `planner.EmailTrace` — `Database/planner/Tables/EmailTrace.sql` én idempotent `Script.PostDeployment1.sql` |
+| `TraceJson` | `JSONB` | `NVARCHAR(MAX)` met `CHECK (ISJSON(...) = 1)` |
+| Idempotentie | `UNIQUE (verwerkingid)` + `INSERT ... ON CONFLICT DO UPDATE` | `UNIQUE ([VerwerkingId])` + `MERGE ... WITH (HOLDLOCK)` |
+| Repository | `FunctionApp.Postgres/Email/EmailTraceRepository.cs` | `FunctionApp/Email/EmailTraceRepository.cs` |
+| Endpoint | `GET /api/beheer/email-log/{id}/trace` (`AdminEmailLogFunction`) | idem |
+
+**Bewust geen foreign key naar `EmailVerwerking`.** De wekelijkse cleanup verwijdert verwerkingen na
+90 dagen; een FK zou die DELETE blokkeren of de trace meenemen. De tabel heeft daarom geen retentietimer
+en de opzoeking voegt de verwerking met een LEFT JOIN toe (status is `null` na de cleanup). Het
+tier-onafhankelijke deel (record, JSON-mapping, "opslag faalt stil", queryparameters en vertaling naar
+HTTP) staat in `Planner.Shared/Email/Trace/EmailTraceOpslag.cs` en
+`Planner.Endpoints/Admin/EmailLogEndpointCore.cs`.
+
+**De opslagprojectie is bepalend (Codex R1-F1).** `EmailTraceRecord.Van` bewaart `trace.VoorOpslag().ToJson()`:
+`TraceOpslagProjectie` laat per stapcode alleen allowlist-sleutels in een strikte waardevorm door en vervangt de ruwe,
+door de AI uit de mail gehaalde teamtekst door een vormkenmerk. Die ene aansluiting is tier-onafhankelijk
+(`Planner.Shared`) en wordt door beide tiers via `EmailTraceRecord.Van` gebruikt; er is dus geen tierverschil in wat
+permanent landt. De niet-herkende tekst staat uitsluitend in de wachtrij (§81), achter een structurele vormguard en
+met 90 dagen retentie. Een nieuw tracedetail vereist een allowlist-regel mét waardevorm en een test.
+
+---
+
+## 81. Leren vanuit de trace: alias-audit, wachtrij en admin-leermomenten op beide tiers (#1568 deel C)
+
+De beheerder leert het systeem vanuit de trace (zie [EMAIL-VERWERKING.md](EMAIL-VERWERKING.md) §3d en
+[ARCHITECTUUR-TEAMRESOLUTIE.md](ARCHITECTUUR-TEAMRESOLUTIE.md)). Drie schemawijzigingen, alle additief en
+idempotent, op beide tiers tegelijk (regel 3 van de multi-tier-strategie):
+
+| Onderdeel | Postgres (`039_leren_van_de_trace.sql`) | SQL Server (`Database/` + `Script.PostDeployment1.sql`) |
+|---|---|---|
+| Auditkolommen `teamaliassen` | `aangemaaktdoor`, `aangemaaktdoornaam`, `aangemaaktop`, `herkomstverwerkingid`, `reden`, `beoordeelddoor`, `beoordeelddoornaam`, `beoordeeldop` | `dbo.TeamAliassen`: dezelfde kolommen in PascalCase; `ALTER TABLE ... ADD` achter `COL_LENGTH`, met `SET QUOTED_IDENTIFIER ON` (persisted computed columns, #1280) |
+| Wachtrij | `planner.onbekendeteamtekst`, `UNIQUE (clubcode, ruwetekstgenormaliseerd)`, RLS in dezelfde migratie | `planner.OnbekendeTeamTekst` (`Database/planner/Tables/OnbekendeTeamTekst.sql`, `IF NOT EXISTS CREATE TABLE`) |
+| Herkomst leermoment | `herkomst VARCHAR(10) DEFAULT 'Reply'`, `CHECK`; beide verwerkings-id's `DROP NOT NULL` | `Herkomst NVARCHAR(10) DEFAULT N'Reply'`, `CHECK`; beide id's `ALTER COLUMN ... NULL` |
+| Reply-paar uniek | `UNIQUE (origineleverwerkingid, correctionverwerkingid)` blijft: Postgres telt `NULL`'s als verschillend | `UQ_ClassificatieCorrectie_Paar` (`UNIQUE`-constraint) wordt **gefilterde unique index** `UX_ClassificatieCorrectie_Paar` (`WHERE ... IS NOT NULL`): SQL Server telt `NULL`'s als gelijk en twee admin-leermomenten zouden elkaar blokkeren |
+| Invariant reply | `CHECK (herkomst <> 'Reply' OR (beide id's NOT NULL))` | `CK_ClassificatieCorrectie_ReplyPaar` |
+| Retentie | `PostgresCleanupProcedures`: drie statements filteren op `herkomst = 'Reply'`; wachtrij: DELETE `laatstgezien` > 90 dagen in `CleanupEmailVerwerkingAsync` | `sp_CleanupClassificatieCorrectie` en `sp_CleanupEmailVerwerking` (fase 2a + wachtrij): `[Herkomst] = N'Reply'` |
+
+**Valkuilen die dit gaf:**
+
+* **Plaats in `Script.PostDeployment1.sql` telt.** De `CREATE OR ALTER`-procedures verwijzen naar de nieuwe kolom
+  `[Herkomst]`. SQL Server valideert een kolomverwijzing van een bestáánde tabel wél bij het aanmaken (alleen een
+  ontbrekende *tabel* wordt uitgesteld). Het blok dat de kolom toevoegt staat daarom vóór de procedures,
+  direct na het aanmaken van `ClassificatieCorrectie`.
+* **Het oude ontdubbelblok (#715) zou admin-leermomenten verwijderd hebben.** Het leidt zijn `UQ`-aanleg af uit
+  het ontbreken van de constraint en ontdubbelt op `PARTITION BY (OrigineleVerwerkingId, CorrectionVerwerkingId)`;
+  alle admin-rijen (`NULL`, `NULL`) vallen in één partitie. Het blok is nu overgeslagen zodra de gefilterde
+  index bestaat.
+* **De wachtrij is de aparte opslag voor ruwe teamtekst, met een vormguard (Codex R1-F1).** Alleen een tekst die
+  `OnbekendeTeamTekstExtractie.ZietEruitAlsTeamlabel` passeert (≤ 24 tekens, letters/cijfers/spatie/`-`/`/`/`.`/`+`,
+  hoogstens twee tokens met letters, minstens één cijfer, ook de genormaliseerde sleutel) wordt als voorbeeldtekst
+  bewaard, op beide tiers via dezelfde `OnbekendeTeamTekstOpslag`. Dit is validatie, geen nieuwe normalisatieregel
+  (regel 1 van de teamnaamregels blijft: normalisatie uitsluitend in `TeamNaamNormalisatie`).
+* **Geen FK voor `HerkomstVerwerkingId`/`LaatsteVerwerkingId`** (zelfde reden als §80 en #424).
+* **Kolomnaam-typo gevangen door de guard.** Een Postgres-kolom `beoordeeldoor` (één `d` te weinig) werd door
+  `check-postgres-column-coverage.sh` afgevangen tegen de SQL Server-kolom `BeoordeeldDoor`; de guard bewijst
+  hier dus echt iets.
+
+**Gedeelde laag (tier-onafhankelijk):** `Planner.Shared/Leren/` (contracten: aanroeper, alias-opdracht,
+store-interfaces), `Planner.Shared/Email/LeermomentInvoer.cs` (validatie + saneren + few-shot-regel) en
+`Planner.Shared/Email/Trace/OnbekendeTeamTekstExtractie.cs`; `Planner.Endpoints/Leren/` en
+`Planner.Endpoints/Admin/EmailTestEndpointCore.cs` (orkestratie, HTTP-vertaling, rate limiting van de tester).
+Per tier blijft alleen SQL (`Sql…`/`Postgres…TeamAliasStore`, `…OnbekendeTeamTekstStore`,
+`AdminLeermomentenRepository.MaakAdminLeermomentAsync`) en de route-registratie. De tier-duplicatie daalde
+daardoor van 5213 naar 5194.
+
+**Niet bewezen in deze PR:** de databasegebonden tests (`LerenVanTraceIntegrationTests`) zijn geschreven en
+compileren, maar draaien alleen in de CI-job met een levende Postgres; voor de SQL Server-tier bestaat geen
+equivalente integratietest (de SQL is handmatig gespiegeld, de statische controle is de schema-drift check en
+de job *PostDeployment op verse database*).

@@ -42,6 +42,10 @@ public static class AppSettingsValidatieCore
         if (changes.TryGetValue("PdfExportIngeschakeld", out var nieuwePdf) && nieuwePdf is not ("0" or "1" or "true" or "false"))
             return Fout("PdfExportIngeschakeld moet 0/1 (aan/uit) zijn.");
 
+        // #1568 deel D: zelfde regel; een ontbrekende waarde telt elders als aan, dus nooit een vrije tekst toelaten.
+        if (changes.TryGetValue("ZekerheidspoortActief", out var nieuwePoort) && nieuwePoort is not ("0" or "1" or "true" or "false"))
+            return Fout("ZekerheidspoortActief moet 0/1 (aan/uit) zijn.");
+
         return null;
     }
 

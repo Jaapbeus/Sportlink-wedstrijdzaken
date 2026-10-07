@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
+using Planner.Endpoints.Leren;
 
 namespace SportlinkFunction.Admin;
 
@@ -10,12 +11,10 @@ namespace SportlinkFunction.Admin;
 /// GET /api/beheer/leermomenten?status=pending|validated|rejected&amp;limit=50
 /// GET /api/beheer/leermomenten/stats
 /// PUT /api/beheer/leermomenten/{id}/valideer  body: { "actie": "valideer" | "afwijzen" }
+/// POST /api/beheer/leermomenten  (#1568 deel C) — leermoment door een beheerder: direct gevalideerd, herkomst Admin
 /// </summary>
 public static class AdminLeermomentenFunction
 {
-    private const int DefaultLimit = 50;
-    private const int MaxLimit     = 200;
-
     [Function("AdminLeermomentenGet")]
     public static Task<IActionResult> Get(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/leermomenten")] HttpRequest req,
@@ -23,11 +22,7 @@ public static class AdminLeermomentenFunction
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminLeermomentenGet"), "leermomenten ophalen",
             async clubCode =>
             {
-                var statusFilter = req.Query["status"].ToString();
-                int limit = DefaultLimit;
-                if (int.TryParse(req.Query["limit"].ToString(), out var l))
-                    limit = Math.Min(MaxLimit, Math.Max(1, l));
-
+                var (statusFilter, limit) = LeermomentEndpointCore.LeesLijstFilter(req.Query);
                 var (count, lim, items) = await AdminLeermomentenRepository.GetAsync(
                     clubCode, statusFilter, limit, SystemUtilities.DatabaseConfig.ConnectionString);
                 return new OkObjectResult(new { count, limit = lim, items });
@@ -45,35 +40,36 @@ public static class AdminLeermomentenFunction
                 return new OkObjectResult(new { pending, validated, rejected });
             });
 
+    /// <summary>Een leermoment door een beheerder (#1568 deel C): direct gevalideerd, herkomst <c>Admin</c>, permanent.</summary>
+    [Function("AdminLeermomentenPost")]
+    public static Task<IActionResult> Post(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/leermomenten")] HttpRequest req,
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminLeermomentenPost"), "leermoment toevoegen",
+            async clubCode => await LeermomentEndpointCore.AanmakenAsync(
+                clubCode, await TeamAliasEndpointCore.LeesBodyAsync(req), EasyAuthHelper.GetLerenAanroeper(req),
+                o => AdminLeermomentenRepository.MaakAdminLeermomentAsync(o, SystemUtilities.DatabaseConfig.ConnectionString)));
+
     [Function("AdminLeermomentenValideer")]
     public static Task<IActionResult> Valideer(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "beheer/leermomenten/{id}/valideer")] HttpRequest req,
         int id,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminLeermomentenValideer"), "leermoment valideren",
-            async clubCode =>
-            {
-                string body;
-                using (var sr = new System.IO.StreamReader(req.Body))
-                    body = await sr.ReadToEndAsync();
+            async clubCode => await LeermomentEndpointCore.ValideerAsync(
+                id, await TeamAliasEndpointCore.LeesBodyAsync(req),
+                (leermomentId, isGevalideerd, isAfgewezen) => AdminLeermomentenRepository.ValideerAsync(
+                    leermomentId, isGevalideerd, isAfgewezen, clubCode, SystemUtilities.DatabaseConfig.ConnectionString)));
 
-                string? actie = null;
-                try
-                {
-                    using var doc = System.Text.Json.JsonDocument.Parse(body);
-                    if (doc.RootElement.TryGetProperty("actie", out var a))
-                        actie = a.GetString();
-                }
-                catch { }
-
-                if (actie != "valideer" && actie != "afwijzen")
-                    return new BadRequestObjectResult(new { error = "Ongeldige actie. Gebruik 'valideer' of 'afwijzen'." });
-
-                var rows = await AdminLeermomentenRepository.ValideerAsync(
-                    id, actie == "valideer", actie == "afwijzen",
-                    clubCode, SystemUtilities.DatabaseConfig.ConnectionString);
-                if (rows == 0)
-                    return new NotFoundObjectResult(new { error = $"Leermoment {id} niet gevonden." });
-                return new OkObjectResult(new { id, actie });
-            });
+    /// <summary>Verwijdert een door een beheerder toegevoegd leermoment (AVG); een leermoment uit een beantwoorde mail geeft 409.</summary>
+    [Function("AdminLeermomentenDelete")]
+    public static Task<IActionResult> Delete(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "beheer/leermomenten/{id:int}")] HttpRequest req,
+        int id,
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminLeermomentenDelete"), "leermoment verwijderen",
+            clubCode => LeermomentEndpointCore.VerwijderAsync(
+                id,
+                leermomentId => AdminLeermomentenRepository.VerwijderAdminLeermomentAsync(leermomentId, clubCode, SystemUtilities.DatabaseConfig.ConnectionString),
+                leermomentId => AdminLeermomentenRepository.BestaatLeermomentAsync(leermomentId, clubCode, SystemUtilities.DatabaseConfig.ConnectionString)));
 }

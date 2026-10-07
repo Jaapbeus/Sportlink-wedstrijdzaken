@@ -1,6 +1,7 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Planner.Shared.Email.Trace;
 using SportlinkFunction.Processing;
 
 namespace SportlinkFunction.Email;
@@ -48,6 +49,9 @@ internal interface IEmailPersistenceRepository
         string? correctieSamenvatting,
         string clubCode);
     Task<List<ClassificatieCorrectieVoorbeeld>> HaalLeermomentVoorbeeldenOpAsync(string clubCode, ILogger log);
+
+    /// <summary>Slaat een PII-arme beslissingstrace idempotent op in <c>planner.EmailTrace</c> (#1568, deel B).</summary>
+    Task UpsertTraceAsync(EmailTraceRecord record);
 
     /// <summary>
     /// Audit-trail voor een handmatige teambegeleiding-doorstuur (#765). Zie
@@ -424,6 +428,8 @@ internal sealed class SqlEmailPersistenceRepository : IEmailPersistenceRepositor
             originaleSamenvatting,
             correctieSamenvatting,
             clubCode);
+
+    public Task UpsertTraceAsync(EmailTraceRecord record) => EmailTraceRepository.UpsertAsync(record);
 
     public Task<List<ClassificatieCorrectieVoorbeeld>> HaalLeermomentVoorbeeldenOpAsync(string clubCode, ILogger log)
         => LearningMomentRepository.HaalVoorbeeldenOpAsync(clubCode, log);

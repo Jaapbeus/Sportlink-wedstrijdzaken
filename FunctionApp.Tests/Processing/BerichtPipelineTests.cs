@@ -1,6 +1,7 @@
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Planner.Shared;
+using Planner.Shared.Email.Trace;
 using SportlinkFunction.Email;
 using SportlinkFunction.Processing;
 using SportlinkFunction.TeamResolution;
@@ -524,6 +525,49 @@ public class BerichtPipelineTests
         body.Should().Contain("Jan");
         body.Should().Contain("datum");
         body.Should().Contain("TESTCLUB Veldplanner");
+    }
+
+    // ── Beslissingstrace (#1568) ──
+
+    [Fact]
+    public async Task Trace_TeamNietHerkendEnDatumOnbekend_LegtStappenVastEnIsOnzeker()
+    {
+        var classificatie = new BerichtClassificatie
+        {
+            Type = VerzoekType.BeschikbaarheidCheck,
+            TeamNaam = "Onbekend 13-2",
+            Tegenstander = "Tegenpartij 13-1"
+        };
+        var bericht = new InkomendBericht
+        {
+            Onderwerp = "Oefenwedstrijd",
+            Body = "Kunnen we ergens in mei nog een oefenwedstrijd spelen? Groet, Jan"
+        };
+        var trace = new TraceBuilder();
+
+        var json = await BerichtPipeline.VerwerkMetPlannerAsync(
+            classificatie, bericht, NullLogger.Instance, new GeenTeamResolver(), "TESTCLUB", null, trace);
+        var clubSettings = new ClubAppSettingsSnapshot("TESTCLUB Veldplanner", null, null, null, null);
+        await BerichtPipeline.BouwTemplateAntwoord(classificatie, json, bericht, null, clubSettings, null, trace);
+        var resultaat = trace.Bouw();
+
+        resultaat.Stappen.Select(s => s.Code).Should().Equal(
+            "classificatie", "team-herkenning", "tegenstander-herkenning", "datum", "tak", "sjabloon", "eindoordeel");
+        resultaat.Stappen.Single(s => s.Code == "tak").Uitkomst.Should().Be("datumOnbekend");
+        resultaat.Stappen.Single(s => s.Code == "sjabloon").Details["sjabloon"].Should().Be("datumOnbekend");
+        resultaat.Oordeel.IsZeker.Should().BeFalse();
+        resultaat.ToJson().Should().NotContain("oefenwedstrijd spelen").And.NotContain("Jan");
+    }
+
+    [Fact]
+    public async Task Trace_ZonderTraceParameter_GedraagtZichAlsVoorheen()
+    {
+        var classificatie = new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck, TeamNaam = "JO13-2" };
+        var bericht = new InkomendBericht { Onderwerp = "Oefenwedstrijd", Body = "Kan dat?" };
+
+        var json = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, bericht, NullLogger.Instance, new GeenTeamResolver());
+
+        json.Should().Contain("datumOnbekend");
     }
 
     // De clubCode-override uit #677 wordt nu bewezen in FunctionApp.Tests/TeamResolution/:

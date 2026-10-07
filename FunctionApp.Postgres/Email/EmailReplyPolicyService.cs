@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using FunctionApp.Postgres.Planner;
 using FunctionApp.Postgres.Sync;
 using Planner.Shared;
+using Planner.Shared.Email.Trace;
 
 namespace FunctionApp.Postgres.Email;
 
@@ -41,6 +42,12 @@ internal enum ReplyVerwerkingUitkomst
 
 internal sealed class EmailReplyPolicyService
 {
+    /// <summary>De opslag van de reply-afhandeling; standaard de Postgres-repository, een test geeft een fake mee (geen database nodig).</summary>
+    private readonly Func<string, IReplyPersistentie> _persistentie;
+
+    internal EmailReplyPolicyService(Func<string, IReplyPersistentie>? persistentie = null)
+        => _persistentie = persistentie ?? (cs => new SqlReplyPersistentie(cs));
+
     private const string HandmatigePlanningLabel = "Handmatige planning";
 
     internal async Task<ReplyVerwerkingUitkomst> HandelReplyFlowAfAsync(
@@ -54,7 +61,9 @@ internal sealed class EmailReplyPolicyService
         IEmailGraphService graphService,
         Func<Task<(string onderwerp, string body)>> bouwTemplateAntwoordAsync,
         Func<string, string> sanitizeFoutMelding,
-        ILogger log)
+        ILogger log,
+        TraceBuilder? trace = null,
+        bool zekerheidspoortActief = true)
     {
         // Review mode blijft de eerste check: er gaat nooit een antwoord naar de originele
         // afzender. Het voorgestelde antwoord wordt opgebouwd en opgeslagen — zonder dat valt er
@@ -68,7 +77,7 @@ internal sealed class EmailReplyPolicyService
                 graphService, bouwTemplateAntwoordAsync, sanitizeFoutMelding, log)
             : await HandelNormaalVerstuurAsync(
                 connectionString, verwerkingId, email, classificatie, plannerResponseJson,
-                graphService, bouwTemplateAntwoordAsync, sanitizeFoutMelding, log);
+                graphService, bouwTemplateAntwoordAsync, sanitizeFoutMelding, log, trace, zekerheidspoortActief, reviewRecipient);
     }
 
     private async Task<ReplyVerwerkingUitkomst> HandelReviewModeAsync(
@@ -81,13 +90,14 @@ internal sealed class EmailReplyPolicyService
         IEmailGraphService graphService,
         Func<Task<(string onderwerp, string body)>> bouwTemplateAntwoordAsync,
         Func<string, string> sanitizeFoutMelding,
-        ILogger log)
+        ILogger log,
+        bool tegengehouden = false)
     {
         var reviewBesluit = ReplyPolicy.Bepaal(classificatie, plannerResponseJson);
         if (reviewBesluit.MoetVersturen)
         {
             var (voorgesteldOnderwerp, voorgesteldeBody) = await bouwTemplateAntwoordAsync();
-            await SqlEmailPersistenceRepository.UpdateVoorgesteldAntwoordAsync(connectionString, verwerkingId, voorgesteldeBody);
+            await _persistentie(connectionString).UpdateVoorgesteldAntwoordAsync(verwerkingId, voorgesteldeBody);
             log.LogInformation(
                 "Email {Id} review mode — voorgesteld antwoord opgeslagen ter beoordeling", verwerkingId);
 
@@ -95,7 +105,8 @@ internal sealed class EmailReplyPolicyService
             {
                 try
                 {
-                    await graphService.SendReplyAsync(reviewRecipient, voorgesteldOnderwerp, voorgesteldeBody, email.ConversationId);
+                    await graphService.SendReplyAsync(reviewRecipient, voorgesteldOnderwerp,
+                        tegengehouden ? ZekerheidsPoort.MetReviewKop(voorgesteldeBody) : voorgesteldeBody, email.ConversationId);
                     log.LogInformation(
                         "Email {Id} review mode — testantwoord verstuurd naar EmailReviewRecipient", verwerkingId);
                 }
@@ -114,7 +125,7 @@ internal sealed class EmailReplyPolicyService
         }
         else
         {
-            await SqlEmailPersistenceRepository.UpdateStatusAsync(connectionString, verwerkingId, EmailStatus.Review, null);
+            await _persistentie(connectionString).UpdateStatusAsync(verwerkingId, EmailStatus.Review, null);
             log.LogInformation(
                 "Email {Id} review mode — geen antwoord voorgesteld: {Reden}", verwerkingId, reviewBesluit.Reden);
         }
@@ -124,8 +135,10 @@ internal sealed class EmailReplyPolicyService
             // Alleen labelen als er géén voorstel is opgebouwd (#1244). Is er wél een voorstel, dan
             // ís er een AI-antwoord — het wacht enkel op beoordeling. Het label onvoorwaardelijk
             // zetten maakte het betekenisloos: in review-mode kreeg élke verwerkte mail het, ook
-            // die waarvoor net een voorstel naar de review-ontvanger was gemaild.
-            if (!reviewBesluit.MoetVersturen)
+            // die waarvoor net een voorstel naar de review-ontvanger was gemaild. Uitzondering: een door
+            // de zekerheidspoort tegengehouden voorstel (#1568) krijgt het label wél — de afzender kreeg geen
+            // antwoord en de mail wacht op een mens.
+            if (!reviewBesluit.MoetVersturen || tegengehouden)
             {
                 await graphService.EnsureMasterCategoryAsync(EmailCategorieLabels.GeenAiAntwoord, EmailCategorieLabels.GeenAiAntwoordKleur);
                 await graphService.SetCategoriesAsync(email.MessageId, EmailCategorieLabels.GeenAiAntwoord);
@@ -136,7 +149,7 @@ internal sealed class EmailReplyPolicyService
         catch (Exception ex)
         {
             log.LogError(ex, "Graph-categorie mislukt voor verwerking {Id} in review mode", verwerkingId);
-            try { await SqlEmailPersistenceRepository.UpdateFoutAsync(connectionString, verwerkingId, sanitizeFoutMelding(ex.Message)); }
+            try { await _persistentie(connectionString).UpdateFoutAsync(verwerkingId, sanitizeFoutMelding(ex.Message)); }
             catch (Exception logEx) { log.LogWarning(logEx, "Kon foutstatus niet vastleggen voor verwerking {Id}", verwerkingId); }
         }
 
@@ -152,12 +165,15 @@ internal sealed class EmailReplyPolicyService
         IEmailGraphService graphService,
         Func<Task<(string onderwerp, string body)>> bouwTemplateAntwoordAsync,
         Func<string, string> sanitizeFoutMelding,
-        ILogger log)
+        ILogger log,
+        TraceBuilder? trace,
+        bool zekerheidspoortActief,
+        string? reviewRecipient)
     {
         var replyBesluit = ReplyPolicy.Bepaal(classificatie, plannerResponseJson);
         if (!replyBesluit.MoetVersturen)
         {
-            await SqlEmailPersistenceRepository.UpdateStatusAsync(connectionString, verwerkingId, EmailStatus.GeenAntwoordNodig, null);
+            await _persistentie(connectionString).UpdateStatusAsync(verwerkingId, EmailStatus.GeenAntwoordNodig, null);
             try
             {
                 await graphService.EnsureMasterCategoryAsync(HandmatigePlanningLabel, "preset5");
@@ -176,12 +192,19 @@ internal sealed class EmailReplyPolicyService
 
         var (onderwerp, antwoordBody) = await bouwTemplateAntwoordAsync();
 
+        // Zekerheidspoort (#1568 deel D): een onzeker antwoord gaat niet naar de afzender maar ter review.
+        var poort = ZekerheidsPoort.Bepaal(zekerheidspoortActief, trace);
+        if (poort.Tegenhouden)
+            return await HandelReviewModeAsync(
+                connectionString, verwerkingId, email, classificatie, plannerResponseJson, reviewRecipient,
+                graphService, () => Task.FromResult((onderwerp, antwoordBody)), sanitizeFoutMelding, log, tegengehouden: true);
+
         // Verzendintentie vóór het versturen. Wordt de invocatie hierna hard afgebroken
         // (functie-time-out, host-recycle, scale-in), dan is dit het enige spoor dat er misschien al
         // een antwoord de deur uit is — de volgende poll stuurt dan geen tweede antwoord meer maar legt
         // het bericht ter beoordeling neer. Mislukt het vastleggen van de intentie zelf, dan wordt er
         // niet verstuurd: zonder die grens is een dubbel antwoord mogelijk.
-        await SqlEmailPersistenceRepository.MarkeerVerzendPogingAsync(connectionString, verwerkingId);
+        await _persistentie(connectionString).MarkeerVerzendPogingAsync(verwerkingId);
 
         IReadOnlyList<string>? bcc = null;
         EmailBijlage? bijlage = null;
@@ -239,7 +262,7 @@ internal sealed class EmailReplyPolicyService
 
                 try
                 {
-                    await SqlEmailPersistenceRepository.UpdateStatusAsync(connectionString, verwerkingId, EmailStatus.Review, null);
+                    await _persistentie(connectionString).UpdateStatusAsync(verwerkingId, EmailStatus.Review, null);
                 }
                 catch (Exception statusEx)
                 {
@@ -271,14 +294,14 @@ internal sealed class EmailReplyPolicyService
             // Het versturen is aantoonbaar mislukt, dus de intentie moet weg: anders is dit scenario —
             // waarin juist wél opnieuw geprobeerd moet worden — niet te onderscheiden van een
             // onbekende uitkomst en belandt het bericht onnodig op Review.
-            try { await SqlEmailPersistenceRepository.WisVerzendPogingAsync(connectionString, verwerkingId); }
+            try { await _persistentie(connectionString).WisVerzendPogingAsync(verwerkingId); }
             catch (Exception wisEx)
             {
                 log.LogWarning(wisEx,
                     "Verzendintentie kon niet gewist worden voor verwerking {Id} — een volgende poll legt dit "
                     + "bericht ter beoordeling neer in plaats van opnieuw te versturen", verwerkingId);
             }
-            try { await SqlEmailPersistenceRepository.UpdateFoutAsync(connectionString, verwerkingId, sanitizeFoutMelding(ex.Message)); }
+            try { await _persistentie(connectionString).UpdateFoutAsync(verwerkingId, sanitizeFoutMelding(ex.Message)); }
             catch (Exception logEx) { log.LogWarning(logEx, "Kon foutstatus niet vastleggen voor verwerking {Id}", verwerkingId); }
             return ReplyVerwerkingUitkomst.VerzendFout;
         }
@@ -288,7 +311,7 @@ internal sealed class EmailReplyPolicyService
         // wordt de fout alleen gelogd en gaat het als-gelezen-markeren altijd door.
         try
         {
-            await SqlEmailPersistenceRepository.UpdateAntwoordVerstuurdAsync(connectionString, verwerkingId, email.Afzender, antwoordBody);
+            await _persistentie(connectionString).UpdateAntwoordVerstuurdAsync(verwerkingId, email.Afzender, antwoordBody);
         }
         catch (Exception ex)
         {

@@ -22,4 +22,13 @@ public static class AdminTeamsFunction
                     clubCode, SystemUtilities.DatabaseConfig.ConnectionString);
                 return new OkObjectResult(teams);
             });
+
+    /// <summary>Keuzelijst met teamId + canonieke naam (#1568 deel C), voor het koppelen van een teamtekst aan een team.</summary>
+    [Function("AdminTeamsKeuzelijst")]
+    public static Task<IActionResult> Keuzelijst(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/teams/keuzelijst")] HttpRequest req,
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminTeamsKeuzelijst"), "teamkeuzelijst ophalen",
+            async clubCode => new OkObjectResult(await AdminTeamsRepository.GetKeuzelijstAsync(
+                clubCode, SystemUtilities.DatabaseConfig.ConnectionString)));
 }

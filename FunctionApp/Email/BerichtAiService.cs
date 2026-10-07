@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using Planner.Shared.Email;
 using System.Text.Json;
 
 namespace SportlinkFunction.Email;
@@ -168,7 +169,7 @@ public class BerichtAiService
         sb.AppendLine("Let extra op deze patronen — eerder is de classificatie hier fout gegaan:");
         foreach (var v in voorbeelden)
         {
-            sb.AppendLine($"- Samenvatting: \"{v.OrigineleSamenvatting}\" → was geclassificeerd als {v.OrigineelType}, maar was eigenlijk {v.JuistType}. Correctie: \"{v.CorrectieSamenvatting}\"");
+            sb.AppendLine(LeermomentInvoer.FewShotRegel(v.OrigineelType, v.JuistType, v.OrigineleSamenvatting, v.CorrectieSamenvatting));
         }
         return sb.ToString();
     }
