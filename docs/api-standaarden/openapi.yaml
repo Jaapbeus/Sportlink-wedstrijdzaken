@@ -2178,7 +2178,7 @@ components:
           description: |
             Definitief eindoordeel (#1583): wat er in productie met deze mail zou gebeuren, met de actuele
             clubinstelling `ZekerheidspoortActief` meegewogen. Zelfde volgorde als de productieverwerking:
-            eerst het reply-beleid, daarna de zekerheidspoort.
+            eerst de algemene reviewmodus, dan het reply-beleid, daarna de zekerheidspoort.
           properties:
             uitkomst:
               type: string
@@ -2196,6 +2196,9 @@ components:
               description: Kop boven `voorbeeldAntwoord` (concept bij review, of het antwoord dat verstuurd zou worden)
             zekerheidspoortActief:
               type: boolean
+            reviewModusActief:
+              type: boolean
+              description: De algemene reviewmodus (`EmailReviewMode`, omgevingsbreed) staat aan; het eindoordeel is dan altijd Review
         trace:
           type: object
           description: |

@@ -19,10 +19,11 @@ public sealed class TestEmailRequest
 }
 
 /// <summary>
-/// De twee beleidsgegevens die het eindoordeel van de tester bepalen (#1583): de actuele clubinstelling
-/// <c>ZekerheidspoortActief</c> en de uitkomst van het reply-beleid (dat per tier een eigen type heeft).
+/// De beleidsgegevens die het eindoordeel van de tester bepalen (#1583): de actuele clubinstelling
+/// <c>ZekerheidspoortActief</c>, de uitkomst van het reply-beleid (dat per tier een eigen type heeft) en de algemene
+/// reviewmodus (<c>EmailReviewMode</c>, gelezen met <see cref="Planner.Shared.Email.EmailReviewModus"/> zoals de processor).
 /// </summary>
-public sealed record TesterBeleid(bool PoortActief, bool ReplyMoetVersturen, string? ReplyReden);
+public sealed record TesterBeleid(bool PoortActief, bool ReplyMoetVersturen, string? ReplyReden, bool ReviewModus);
 
 /// <summary>
 /// Tier-onafhankelijke aansluiting van de e-mailtester (dry-run): rate limiting (max 10 per minuut), het lezen
@@ -90,10 +91,11 @@ public static class EmailTestEndpointCore
         object classificatie, string verzoekType, string samenvatting, string plannerResponseJson,
         TraceBuilder trace, TesterBeleid beleid, string voorbeeldOnderwerp, string voorbeeldBody)
     {
-        var (poortActief, replyMoetVersturen, replyReden) = beleid;
-        if (replyMoetVersturen) ZekerheidsPoort.Bepaal(poortActief, trace);
+        var (poortActief, replyMoetVersturen, replyReden, reviewModus) = beleid;
+        // Zoals in productie: bij reviewmodus komt het antwoord nooit bij de poort, dus geen poortstap in de trace.
+        if (replyMoetVersturen && !reviewModus) ZekerheidsPoort.Bepaal(poortActief, trace);
         var bouw = trace.Bouw();
-        var eindoordeel = TesterEindoordeel.Bepaal(replyMoetVersturen, replyReden, poortActief, bouw.Oordeel.IsZeker);
+        var eindoordeel = TesterEindoordeel.Bepaal(reviewModus, replyMoetVersturen, replyReden, poortActief, bouw.Oordeel.IsZeker);
 
         return new OkObjectResult(new
         {
@@ -109,7 +111,8 @@ public static class EmailTestEndpointCore
                 toelichting = eindoordeel.Toelichting,
                 waarschuwing = eindoordeel.Waarschuwing,
                 conceptLabel = eindoordeel.ConceptLabel,
-                zekerheidspoortActief = poortActief
+                zekerheidspoortActief = poortActief,
+                reviewModusActief = reviewModus
             },
             leersuggestie = new
             {

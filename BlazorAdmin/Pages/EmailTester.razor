@@ -65,7 +65,8 @@
                     <strong>@eindoordeel.Titel</strong>
                     <div>@eindoordeel.Toelichting</div>
                     <small class="text-muted d-block mt-1">
-                        Zekerheidspoort staat nu <strong>@(eindoordeel.ZekerheidspoortActief ? "aan" : "uit")</strong> (Instellingen).
+                        Zekerheidspoort staat nu <strong>@(eindoordeel.ZekerheidspoortActief ? "aan" : "uit")</strong> (Instellingen);
+                        reviewmodus (hele omgeving) staat <strong>@(eindoordeel.ReviewModusActief ? "aan" : "uit")</strong>.
                     </small>
                 </div>
             }

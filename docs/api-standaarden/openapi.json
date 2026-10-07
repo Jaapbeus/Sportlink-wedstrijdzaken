@@ -2748,7 +2748,7 @@
           },
           "eindoordeel": {
             "type": "object",
-            "description": "Definitief eindoordeel (#1583): wat er in productie met deze mail zou gebeuren, met de actuele\nclubinstelling `ZekerheidspoortActief` meegewogen. Zelfde volgorde als de productieverwerking:\neerst het reply-beleid, daarna de zekerheidspoort.\n",
+            "description": "Definitief eindoordeel (#1583): wat er in productie met deze mail zou gebeuren, met de actuele\nclubinstelling `ZekerheidspoortActief` meegewogen. Zelfde volgorde als de productieverwerking:\neerst de algemene reviewmodus, dan het reply-beleid, daarna de zekerheidspoort.\n",
             "properties": {
               "uitkomst": {
                 "type": "string",
@@ -2775,6 +2775,10 @@
               },
               "zekerheidspoortActief": {
                 "type": "boolean"
+              },
+              "reviewModusActief": {
+                "type": "boolean",
+                "description": "De algemene reviewmodus (`EmailReviewMode`, omgevingsbreed) staat aan; het eindoordeel is dan altijd Review"
               }
             }
           },

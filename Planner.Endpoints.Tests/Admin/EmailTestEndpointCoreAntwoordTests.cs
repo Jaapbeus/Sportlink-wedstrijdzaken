@@ -22,11 +22,11 @@ public class EmailTestEndpointCoreAntwoordTests
             .TeamHerkenning(TraceCodes.TeamHerkenning, "JO 13/2", "Alias", 1.0, null, "JO13-2")
             .Antwoordkeuze("BeschikbaarheidCheck", "{\"beschikbaar\":true}");
 
-    private static JsonElement Antwoord(TraceBuilder trace, bool poortActief, bool replyMoetVersturen = true)
+    private static JsonElement Antwoord(TraceBuilder trace, bool poortActief, bool replyMoetVersturen = true, bool reviewModus = false)
     {
         var result = EmailTestEndpointCore.Antwoord(
             new { }, "BeschikbaarheidCheck", "Vraag om een oefenwedstrijd", "{}", trace,
-            new TesterBeleid(poortActief, replyMoetVersturen, "reden"), "Onderwerp", "Body");
+            new TesterBeleid(poortActief, replyMoetVersturen, "reden", reviewModus), "Onderwerp", "Body");
         var ok = result.Should().BeOfType<OkObjectResult>().Subject;
         return JsonSerializer.SerializeToElement(ok.Value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
     }
@@ -82,5 +82,41 @@ public class EmailTestEndpointCoreAntwoordTests
         json.GetProperty("dryRun").GetBoolean().Should().BeTrue();
         json.GetProperty("voorbeeldAntwoord").GetProperty("onderwerp").GetString().Should().Be("Onderwerp");
         json.GetProperty("leersuggestie").GetProperty("verzoekType").GetString().Should().Be("BeschikbaarheidCheck");
+    }
+
+    private static IEnumerable<string?> Stapcodes(JsonElement json)
+        => json.GetProperty("trace").GetProperty("stappen").EnumerateArray().Select(s => s.GetProperty("code").GetString());
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public void ReviewModusAan_ZekereTrace_GaatToch_NaarReview_ZonderPoortstap(bool poortActief, bool replyMoetVersturen)
+    {
+        var json = Antwoord(HerkendTeam(), poortActief, replyMoetVersturen, reviewModus: true);
+
+        var e = json.GetProperty("eindoordeel");
+        e.GetProperty("uitkomst").GetString().Should().Be("Review");
+        e.GetProperty("reviewModusActief").GetBoolean().Should().BeTrue();
+        Stapcodes(json).Should().NotContain(TraceCodes.Zekerheidspoort);
+    }
+
+    [Fact]
+    public void ReviewModusAan_OnzekereTrace_PoortUit_IsNog_Review_ZonderWaarschuwing()
+    {
+        var e = Antwoord(OnbekendTeam(), poortActief: false, reviewModus: true).GetProperty("eindoordeel");
+
+        e.GetProperty("uitkomst").GetString().Should().Be("Review");
+        e.GetProperty("waarschuwing").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
+    public void ReviewModusUit_BlijftHetBestaandeGedrag_EnMeldtDeModus()
+    {
+        var json = Antwoord(HerkendTeam(), poortActief: true, reviewModus: false);
+
+        json.GetProperty("eindoordeel").GetProperty("uitkomst").GetString().Should().Be("AutomatischVerstuurd");
+        json.GetProperty("eindoordeel").GetProperty("reviewModusActief").GetBoolean().Should().BeFalse();
     }
 }

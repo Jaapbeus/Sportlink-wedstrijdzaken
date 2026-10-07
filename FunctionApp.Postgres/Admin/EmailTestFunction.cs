@@ -4,6 +4,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Planner.Endpoints.Admin;
+using Planner.Shared.Email;
 using Planner.Shared.Email.Trace;
 using Npgsql;
 using FunctionApp.Postgres.Email;
@@ -109,7 +110,7 @@ public static class EmailTestFunction
         var (poortActief, reply) = (await ZekerheidspoortInstelling.IsActiefAsync(PostgresDatabaseConfig.ConnectionString, clubCode, log), ReplyPolicy.Bepaal(classificatie, plannerResponseJson));
 
         return EmailTestEndpointCore.Antwoord(classificatie, classificatie.Type.ToString(), classificatie.Samenvatting,
-            plannerResponseJson, trace, new TesterBeleid(poortActief, reply.MoetVersturen, reply.Reden), voorbeeldOnderwerp, voorbeeldBody);
+            plannerResponseJson, trace, new TesterBeleid(poortActief, reply.MoetVersturen, reply.Reden, EmailReviewModus.IsActief()), voorbeeldOnderwerp, voorbeeldBody);
     }
 
     private static async Task<BerichtClassificatie> ClassificeerAsync(

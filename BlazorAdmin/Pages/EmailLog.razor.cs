@@ -15,9 +15,11 @@ public partial class EmailLog : ClubSelectorPageBase
 
     private string _status = "";
     private string _periode = "7d";
-    private EmailLogResponse? _log;
-    private bool _bezig;
-    private string? _fout;
+    private EmailLogLader _lader = default!;
+
+    private EmailLogResponse? _log => _lader.Log;
+    private bool _bezig => _lader.Bezig;
+    private string? _fout => _lader.Fout;
 
     private string Samenvatting => _log is null
         ? ""
@@ -25,37 +27,21 @@ public partial class EmailLog : ClubSelectorPageBase
             ? $"{_log.Items.Count} berichten (de limiet is bereikt: kies een kortere periode of een status om verder in te zoomen)"
             : $"{_log.Items.Count} berichten";
 
-    protected override Task OnInitializedAsync() => LaadAsync();
-
-    protected override Task OnClubChangedAsync() => LaadAsync();
-
-    private async Task LaadAsync()
+    protected override Task OnInitializedAsync()
     {
-        _bezig = true;
-        _fout = null;
-        StateHasChanged();
+        _lader = new EmailLogLader((vanaf, status, limiet) => Api.GetEmailLogAsync(vanaf: vanaf, status: status, limit: limiet));
+        return LaadAsync();
+    }
 
-        try
-        {
-            var r = await Api.GetEmailLogAsync(
-                vanaf: EmailLogFilter.Vanaf(_periode, DateTime.Today),
-                status: EmailLogFilter.StatusParameter(_status),
-                limit: EmailLogFilter.MaxRegels);
-            if (r.Success) _log = r.Data;
-            else
-            {
-                _log = null;
-                _fout = r.ErrorMessage ?? "Ophalen mislukt";
-            }
-        }
-        catch (Exception ex)
-        {
-            _log = null;
-            _fout = ex.Message;
-        }
-        finally
-        {
-            _bezig = false;
-        }
+    // Een clubwissel leegt de lijst van de vorige club en laat een nog lopende aanvraag van die club vervallen.
+    protected override Task OnClubChangedAsync() => LaadAsync(wisHuidige: true);
+
+    private Task LaadAsync() => LaadAsync(wisHuidige: false);
+
+    private async Task LaadAsync(bool wisHuidige)
+    {
+        var laden = _lader.LaadAsync(_status, _periode, DateTime.Today, wisHuidige);
+        StateHasChanged();
+        await laden;
     }
 }

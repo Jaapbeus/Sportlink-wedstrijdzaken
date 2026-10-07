@@ -26,11 +26,32 @@ public sealed record TesterEindoordeel(
     TesterUitkomst Uitkomst, string Titel, string Toelichting, bool Waarschuwing, string ConceptLabel)
 {
     /// <summary>
-    /// Zelfde volgorde als de productieverwerking (<c>EmailReplyPolicyService</c>): eerst het reply-beleid, daarna de
-    /// zekerheidspoort. <paramref name="poortActief"/> is de actuele clubinstelling <c>ZekerheidspoortActief</c>.
+    /// Zelfde volgorde als de productieverwerking (<c>EmailReplyPolicyService.HandelReplyFlowAfAsync</c>): eerst de
+    /// algemene reviewmodus (<paramref name="reviewModus"/>, <see cref="Planner.Shared.Email.EmailReviewModus"/>), dan het
+    /// reply-beleid, daarna de zekerheidspoort. <paramref name="poortActief"/> is de actuele clubinstelling
+    /// <c>ZekerheidspoortActief</c>.
     /// </summary>
-    public static TesterEindoordeel Bepaal(bool replyMoetVersturen, string? replyReden, bool poortActief, bool isZeker)
+    public static TesterEindoordeel Bepaal(
+        bool reviewModus, bool replyMoetVersturen, string? replyReden, bool poortActief, bool isZeker)
     {
+        // Reviewmodus gaat voor alles (ook voor een zekere trace): er gaat nooit een antwoord naar de afzender.
+        if (reviewModus)
+            return replyMoetVersturen
+                ? new TesterEindoordeel(
+                    TesterUitkomst.Review,
+                    "Gaat naar Review — er wordt géén antwoord verstuurd",
+                    "De algemene reviewmodus (EmailReviewMode) staat aan: elk antwoord wordt ter beoordeling opgeslagen en gaat nooit naar de afzender, ook niet bij een zeker oordeel.",
+                    false,
+                    "Concept-antwoord (alleen zichtbaar bij review, wordt niet naar de afzender verstuurd)")
+                : new TesterEindoordeel(
+                    TesterUitkomst.Review,
+                    "Gaat naar Review — er wordt géén antwoord verstuurd",
+                    "De algemene reviewmodus (EmailReviewMode) staat aan. Het reply-beleid zou hier normaal zwijgen"
+                    + (string.IsNullOrWhiteSpace(replyReden) ? "" : $" ({replyReden})")
+                    + ", dus er wordt zelfs geen voorstel opgeslagen: de mail krijgt alleen de status Review.",
+                    false,
+                    "Voorbeeld-antwoord (wordt in dit geval niet opgeslagen en niet verstuurd)");
+
         if (!replyMoetVersturen)
             return new TesterEindoordeel(
                 TesterUitkomst.GeenAntwoord,

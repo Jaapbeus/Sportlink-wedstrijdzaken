@@ -522,6 +522,7 @@ public class TesterEindoordeelDto
     public bool Waarschuwing { get; set; }
     public string ConceptLabel { get; set; } = "";
     public bool ZekerheidspoortActief { get; set; }
+    public bool ReviewModusActief { get; set; }
 }
 
 public class LeersuggestieDto

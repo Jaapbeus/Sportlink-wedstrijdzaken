@@ -420,8 +420,7 @@ public class EmailProcessorFunction
             await SqlEmailPersistenceRepository.UpdatePlannerResponseAsync(cs, verwerkingId, plannerResponseJson);
             await SqlEmailPersistenceRepository.UpdateStatusAsync(cs, verwerkingId, EmailStatus.Verwerkt, null);
 
-            var reviewMode = string.Equals(
-                Environment.GetEnvironmentVariable("EmailReviewMode"), "true", StringComparison.OrdinalIgnoreCase);
+            var reviewMode = EmailReviewModus.IsActief();
             var reviewRecipient = Environment.GetEnvironmentVariable("EmailReviewRecipient");
             return await replyPolicyService.HandelReplyFlowAfAsync(
                 cs,

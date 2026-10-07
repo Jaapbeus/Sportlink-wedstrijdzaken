@@ -1623,6 +1623,7 @@ wat er bij een échte mail met deze inhoud zou gebeuren:
 | **Wordt automatisch verstuurd** | Alle beslissingen zijn zeker; het voorbeeld-antwoord is wat de afzender zou krijgen |
 | **Gaat naar Review — er wordt géén antwoord verstuurd** | Het oordeel is onzeker en de zekerheidspoort staat aan; het voorbeeld-antwoord is een *concept dat alleen bij review zichtbaar is* |
 | **Wordt automatisch verstuurd — maar het oordeel is onzeker** (rood) | Het oordeel is onzeker, maar de zekerheidspoort staat uit (Instellingen): het antwoord gaat dan toch naar de afzender |
+| **Gaat naar Review** (door de reviewmodus) | De algemene reviewmodus (`EmailReviewMode`, geldt voor de hele omgeving) staat aan: elk antwoord wordt ter beoordeling bewaard en gaat nooit naar de afzender, ook niet bij een zeker oordeel. Zwijgt het reply-beleid dan, dan wordt zelfs geen voorstel bewaard |
 | **Er wordt geen automatisch antwoord verstuurd** | Het reply-beleid zwijgt bewust (bijv. een planning die handmatig moet); de poort speelt dan geen rol |
 
 De trace

@@ -5,6 +5,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Planner.Endpoints.Admin;
+using Planner.Shared.Email;
 using Planner.Shared.Email.Trace;
 using SportlinkFunction.Email;
 using SportlinkFunction.Processing;
@@ -113,7 +114,7 @@ public static class EmailTestFunction
         var (poortActief, reply) = (await ZekerheidspoortInstelling.IsActiefAsync(clubCode, log), ReplyPolicy.Bepaal(classificatie, plannerResponseJson));
 
         return EmailTestEndpointCore.Antwoord(classificatie, classificatie.Type.ToString(), classificatie.Samenvatting,
-            plannerResponseJson, trace, new TesterBeleid(poortActief, reply.MoetVersturen, reply.Reden), voorbeeldOnderwerp, voorbeeldBody);
+            plannerResponseJson, trace, new TesterBeleid(poortActief, reply.MoetVersturen, reply.Reden, EmailReviewModus.IsActief()), voorbeeldOnderwerp, voorbeeldBody);
     }
 
     private static async Task<BerichtClassificatie> ClassificeerAsync(
