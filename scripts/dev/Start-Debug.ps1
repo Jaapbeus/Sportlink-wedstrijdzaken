@@ -64,6 +64,7 @@ param(
     [switch]$Clean,    # dotnet clean op BlazorAdmin vóór het starten
     [switch]$SportlinkLive,  # Verouderd: live Sportlink is sinds #1576 de standaard; gebruik -Offline om het uit te zetten
     [switch]$Offline,        # Zonder live Sportlink-verkeer starten (#1576)
+    [switch]$ZonderAI,       # E-mailtester hoeft niet te werken: GO zonder OpenAiApiKey (#1576)
     [switch]$Bewaak,         # Blijf draaien en herstart een weggevallen service (voor agent-sessies, #1576)
     [switch]$ZonderGoCheck,  # Sla Test-DebugGo.ps1 aan het einde over (alleen voor snel handwerk; geen GO zonder die check)
     [switch]$HuidigeWerkmap  # Niet naar de develop-worktree overschakelen (#1574)
@@ -482,7 +483,7 @@ Write-Host "Stoppen: .\scripts\dev\Stop-Debug.ps1  (of -Clean om ook fingerprint
 # ──────────────────────────────────────────────────────────────────────
 if (-not $ZonderGoCheck) {
     Write-Host ""
-    & (Join-Path $PSScriptRoot 'Test-DebugGo.ps1') -Root $root.Path -Tier $Tier -Offline:$Offline -HuidigeWerkmap:$HuidigeWerkmap
+    & (Join-Path $PSScriptRoot 'Test-DebugGo.ps1') -Root $root.Path -Tier $Tier -Offline:$Offline -ZonderAI:$ZonderAI -HuidigeWerkmap:$HuidigeWerkmap
     if ($LASTEXITCODE -ne 0) { exit 1 }
 }
 

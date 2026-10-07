@@ -215,7 +215,8 @@ gesynchroniseerde teams heeft; dat geeft een 409. Het script stuurt de header da
 De GO/NO-GO van de debugomgeving; `Start-Debug.ps1` draait hem aan het einde zelf. Pas een GO (exit 0)
 betekent dat de omgeving werkt: services luisteren (ook na een wachttijd en na de browsercontrole), de
 draaiende versie is die van de code én van `origin/develop`, health is `ok`, sync-status en
-Sportlink-extensie antwoorden en de primaire club is live-klaar (tenzij `-Offline`), en een echte
+Sportlink-extensie antwoorden, de primaire club is live-klaar (tenzij `-Offline`), `OpenAiApiKey` is lokaal ingesteld (anders
+geeft de e-mailtester "IChatClient niet geconfigureerd"; tenzij `-ZonderAI`; alleen de aanwezigheid wordt gecontroleerd, nooit de waarde), en een echte
 headless Chromium (Playwright, `debug-browsercheck.cjs`) opent de belangrijkste schermen zonder
 foutbanner, 5xx- of mislukte API-aanroep, console-fout of verkeerd versienummer.
 

@@ -15,6 +15,7 @@
 #   4. Standaard sync en Sportlink-extensie: /api/beheer/sync/status en
 #      /api/beheer/sportlink-extensie/health antwoorden 200; en, tenzij -Offline, de primaire club is
 #      live-klaar (Get-SportlinkLiveBlockers leeg).
+#   4b. AI: OpenAiApiKey aanwezig (alleen aanwezigheid, nooit de waarde), anders werkt de e-mailtester niet.
 #   5. Stabiliteit: na -Stabiliteit seconden luisteren dezelfde services nog.
 #   6. Browser (Playwright, headless Chromium): de belangrijkste schermen renderen zonder
 #      foutbanner, zonder mislukte of 5xx-aanroep naar de API, zonder console-fout, met het juiste
@@ -27,6 +28,7 @@
 # Gebruik:
 #   .\Test-DebugGo.ps1                    # volledige controle
 #   .\Test-DebugGo.ps1 -Offline           # extensie hoeft niet live-klaar te zijn
+#   .\Test-DebugGo.ps1 -ZonderAI         # e-mailtester hoeft niet te werken (geen OpenAiApiKey)
 #   .\Test-DebugGo.ps1 -ZonderBrowser     # alleen stap 1-5 en 7 (geen Playwright)
 #   .\Test-DebugGo.ps1 -HuidigeWerkmap    # niet eisen dat de worktree op origin/develop staat
 #
@@ -39,6 +41,7 @@ param(
     [int]$Stabiliteit = 15,
     [switch]$Offline,
     [switch]$ZonderBrowser,
+    [switch]$ZonderAI,       # De e-mailtester en classificatie hoeven niet te werken (geen OpenAiApiKey lokaal)
     [switch]$HuidigeWerkmap,
     [string]$UitvoerMap = (Join-Path ([System.IO.Path]::GetTempPath()) 'sportlink-debug-go')
 )
@@ -132,6 +135,27 @@ if (-not $slHealth) {
             $fouten.Add('Sportlink niet live-klaar (start zonder -Offline, of gebruik -Offline bij deze test)')
         }
     }
+}
+
+# 4b — AI voor de e-mailtester
+# De e-mailtester classificeert via een taalmodel. Zonder lokale OpenAiApiKey registreert de host geen
+# IChatClient en geeft elke dry-run "IChatClient niet geconfigureerd". Dat gaat om een geheim van de
+# eigenaar (en betaald verkeer), dus dit script controleert alleen of de sleutel er is — nooit de waarde.
+$sleutelAanwezig = -not [string]::IsNullOrWhiteSpace($env:OpenAiApiKey)
+if (-not $sleutelAanwezig -and $tierInfo.Exists) {
+    $lsPad = Join-Path (Split-Path -Parent $tierInfo.FullPath) 'local.settings.json'
+    $waarde = try { (Get-Content $lsPad -Raw | ConvertFrom-Json).Values.OpenAiApiKey } catch { $null }
+    $sleutelAanwezig = -not [string]::IsNullOrWhiteSpace($waarde)
+}
+if ($sleutelAanwezig) {
+    Write-Host "  OK     OpenAiApiKey is ingesteld (e-mailtester kan classificeren)" -ForegroundColor Green
+} elseif ($ZonderAI) {
+    Write-Host "  LET OP OpenAiApiKey ontbreekt — e-mailtester en classificatie werken niet (-ZonderAI)" -ForegroundColor DarkYellow
+    $waarsch.Add('e-mailtester werkt niet (geen OpenAiApiKey)')
+} else {
+    Write-Host "  FOUT   OpenAiApiKey ontbreekt in local.settings.json: de e-mailtester geeft 'IChatClient niet geconfigureerd'" -ForegroundColor Red
+    Write-Host "         Vul de sleutel in FunctionApp.Postgres/local.settings.json van de draaiende worktree (door jou, nooit door een agent) en herstart, of gebruik -ZonderAI." -ForegroundColor Yellow
+    $fouten.Add('OpenAiApiKey ontbreekt (e-mailtester)')
 }
 
 # 5 — stabiliteit

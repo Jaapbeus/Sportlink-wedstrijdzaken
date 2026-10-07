@@ -267,7 +267,8 @@ nogmaals, want dat is het enige bewijs dat de services de startaanroep overleven
 Wat hij afdwingt: services luisteren (ook na 15 s en na de browsercontrole); `/api/health.version` is
 de versie in het csproj van de draaiende worktree én die worktree staat op `origin/develop`; health
 `ok` en geen openstaande migraties; `/api/beheer/sync/status` en `/api/beheer/sportlink-extensie/health`
-antwoorden en de primaire club is live-klaar (tenzij `-Offline`); en een echte headless Chromium
+antwoorden en de primaire club is live-klaar (tenzij `-Offline`); `OpenAiApiKey` is lokaal ingesteld, want zonder werkt de
+e-mailtester niet ("IChatClient niet geconfigureerd"; tenzij `-ZonderAI`; de waarde van de sleutel leest geen agent); en een echte headless Chromium
 (Playwright, `debug-browsercheck.cjs`) opent Start, Instellingen, Planning, E-mailtester, Teamaliassen,
 Sportlink-extensie en Speeltijden zonder foutbanner, zonder mislukte of 5xx-aanroep naar de API,
 zonder console-fout en met het juiste versienummer. Screenshots staan in `sportlink-debug-go` onder
