@@ -136,16 +136,23 @@ vooraf afgestemd met de actieve runtime-eigenaar.
 
 ### Werkinstructies wijzigen
 
-Bij expliciete opdracht mogen beide agents blijvende werkinstructies aanpassen. `CLAUDE.md`
-is de bron; `AGENTS.md` wordt uitsluitend gegenereerd. Draai na iedere bronwijziging
-`python3 scripts/ci/genereer-agents-md.py --schrijf` en daarna dezelfde opdracht zonder `--schrijf`.
-De generator bewaart agentnamen, bevoegdheden, paden en URL's: alleen de documenttitel verschilt.
+Bij expliciete opdracht mogen beide agents blijvende werkinstructies aanpassen. `AGENTS.md`
+is de enige bron: instructies worden uitsluitend daar bewerkt (en in een `AGENTS.md` in een
+submap). Elk `CLAUDE.md`-bestand is een stub met alleen de import `@AGENTS.md` en één verwijzende
+zin; zet er nooit instructies in. Reden: Claude Code leest een `AGENTS.md` niet zelf zodra er een
+`CLAUDE.md` is, ook niet in submappen — de stub laadt de inhoud via de import.
+
+**Skills hebben één bron: `.agents/skills/<naam>/`** (Codex leest die map rechtstreeks).
+`.claude/skills/<naam>/` is een byte-identieke kopie voor Claude Code, geschreven met
+`python3 scripts/ci/sync-skills.py --schrijf`; bewerk die kopie nooit. Een skill die uitsluitend
+voor Claude Code bestaat, staat alleen in `.claude/skills/` en in
+`scripts/ci/skills-alleen-claude.txt`.
 
 **Instructiecontrole vóór iedere overdracht:** draai `python3 scripts/ci/check-agent-instructies.py`
-en `python3 scripts/ci/check-agent-instructies.test.py`. De CI controleert de vier verplichte en overige gedeelde `SKILL.md`-tweelingen op
-identieke inhoud (alleen documentverwijzingen mogen verschillen) en op onafgesloten Markdown-
-codeblokken. Wijzig bij een skillaanpassing beide kopieën; een afwijkende kopie blokkeert CI.
-Dit bewijst structurele consistentie, geen semantische juistheid of taak-/runtime-exclusiviteit.
+en `python3 scripts/ci/check-agent-instructies.test.py`. De CI controleert dat naast elke
+`AGENTS.md` een stub staat die niets anders bevat dan de verwijzing, dat elke skillkopie identiek
+is aan de bron, en dat Markdown-codeblokken zijn afgesloten. Dit bewijst structurele consistentie,
+geen semantische juistheid of taak-/runtime-exclusiviteit.
 
 **Reviewbewijs hoort bij de PR.** Leg reviewer, ronde, aangeboden/beoordeelde SHA, uitkomst en
 bevindingenafhandeling vast in een PR-comment of -review. Memory en chat verwijzen naar dat bewijs;
@@ -496,9 +503,9 @@ bewust worden bekeken.
 
 | Documentatiebestand | Bijwerken bij |
 |---|---|
-| `CLAUDE.md` | Buildproces, git-workflow, statuslabels of een agentinstructie gewijzigd (géén architectuurregel — zie §13.1 van ARCHITECTUUR.md) |
+| `AGENTS.md` | Buildproces, git-workflow, statuslabels of een agentinstructie gewijzigd (géén architectuurregel — zie §13.1 van ARCHITECTUUR.md) |
 | `docs/ARCHITECTUUR.md` | Kwaliteitsdoel, randvoorwaarde, architectuurbesluit, of een systeembrede regel (auth, UTC, ClubCode, secrets, CI/CD) gewijzigd |
-| `FunctionApp/CLAUDE.md` | Endpoint, datamodel, API-veld of FunctionApp-configuratie gewijzigd |
+| `FunctionApp/AGENTS.md` | Endpoint, datamodel, API-veld of FunctionApp-configuratie gewijzigd |
 | `docs/ARCHITECTUUR-PLANNER.md` | Planner-logica, pipeline of kanaalstrategie gewijzigd |
 | `docs/ENTRA-AUTH-BEHEER.md` | Auth-configuratie, Easy Auth, Entra App Registration of rollen gewijzigd |
 | `docs/CUSTOM-DOMAIN.md` | Eigen domein, SWA-hostnames, CORS-origins of redirect-URI's gewijzigd |
@@ -517,7 +524,7 @@ bewust worden bekeken.
 | `docs/VERIFICATIE-SCRIPTS.md` | Testscript, schema-controle of endpoint-verificatie gewijzigd |
 | `docs/MONITORING.md` | Alerting-drempelwaarden, KQL-queries of escalatiematrix gewijzigd |
 | `docs/DEVELOPER-SETUP.md` | Lokale setup of configuratiestappen gewijzigd |
-| `AGENTS.md` | **Nooit met de hand** — afgeleid uit CLAUDE.md via `python3 scripts/ci/genereer-agents-md.py --schrijf` |
+| `CLAUDE.md`, `FunctionApp/CLAUDE.md` | **Nooit inhoud toevoegen** — stubs met `@AGENTS.md`; `check-agent-instructies.py` bewaakt dit |
 | `docs/INDEX.md` | **Altijd bij een nieuw, hernoemd of verwijderd document in `docs/`** — de index is de wegwijzer; een ontbrekend document is onvindbaar |
 | `docs/DOCUMENTATIEPLAN.md` | Idem: categorie-indeling of documentatieregels gewijzigd |
 | `CHANGELOG.md` | **Altijd** — elke feature of fix krijgt een entry onder `[Unreleased]` |
@@ -860,10 +867,11 @@ Negen regels, alle negen met een exit-code:
    `UriKind.Absolute` als URL-test (op Unix parseert `"/pad"` als `file:`-URI — #1252),
    `DateTime.Now` en `GETDATE()` waar UTC hoort (#246), en `<input type="time">` in plaats van
    `<TimeInput>`.
-5. **CLAUDE.md is de bron; AGENTS.md wordt eruit afgeleid.** Bewerk AGENTS.md nooit met de hand:
-   `python3 scripts/ci/genereer-agents-md.py --schrijf`. Toen beide met de hand werden bijgehouden,
-   miste AGENTS.md negen secties — waaronder déze tier-regel, de teamnormalisatieregel en de
-   EgressGuard-regel. De tweede reviewer van dit project werkte er dus zonder.
+5. **AGENTS.md is de enige bron; CLAUDE.md is een stub.** Voeg nooit instructies toe aan een
+   `CLAUDE.md` (root of submap): `check-agent-instructies.py` faalt erop. Toen beide bestanden met
+   de hand werden bijgehouden, miste AGENTS.md negen secties — waaronder déze tier-regel, de
+   teamnormalisatieregel en de EgressGuard-regel. De tweede reviewer van dit project werkte er dus
+   zonder. Met één bron kunnen ze niet meer uiteenlopen.
 6. **Een nieuwe harde regel krijgt een guard, of wordt als onbewaakt gemarkeerd in het register.**
    Er is geen derde mogelijkheid. Zo ontstonden er eenentwintig regels die alleen in dit bestand
    stonden en door niets werden gecontroleerd.
@@ -1532,7 +1540,7 @@ Het versienummer heeft vier cijfers: `MAJOR.MINOR.PATCH.REVISION`
 | `fix:` of `security:` — bugfix | REVISION bump | `2.15.1.0 → 2.15.1.1` |
 | Kleine fix, CSS, UX, chore **met zichtbaar effect** | REVISION bump | `2.15.1.0 → 2.15.1.1` |
 | `BREAKING CHANGE:` in commit-body | MAJOR bump | `2.15.x.x → 3.0.0.0` |
-| Puur intern (refactor zonder effect, docs, CLAUDE.md) | Geen bump | — |
+| Puur intern (refactor zonder effect, docs, AGENTS.md) | Geen bump | — |
 
 **Fase 2 — release (develop → main PR, één keer per release):**
 
@@ -1589,7 +1597,7 @@ twee verandert dan mee, en niets waarschuwt ervoor. Gebeurd bij #859/#952/#939 (
 
 ### Release-workflow — altijd via de skill `/release` (#1470)
 
-**Een release naar productie loopt uitsluitend via `/release`** (`.claude/skills/release/SKILL.md`).
+**Een release naar productie loopt uitsluitend via `/release`** (`.agents/skills/release/SKILL.md`).
 `/autonoom --release` roept die skill aan en heeft geen eigen kopie van de stappen meer. De skill is
 de ene plek voor de volgorde: securitypoort → versie en CHANGELOG → kostencheck → versiebump-PR naar
 `develop` → release-PR `develop` → `main` → deploycontrole per job + live rendercheck → tag.
@@ -1817,7 +1825,7 @@ Documentatie:
 | Uitslagen | `/uitslagen?clientId=&weekoffset=` | Alleen scoreverrijking voor verleden wedstrijden. Mag geen toekomstige wedstrijden toevoegen of programma-velden overschrijven |
 | Match details | `/wedstrijd-informatie?clientId=&wedstrijdcode=` | Per-match detail |
 
-See `FunctionApp/CLAUDE.md` for detailed field reference including all `/programma` fields.
+See `FunctionApp/AGENTS.md` for detailed field reference including all `/programma` fields.
 
 ## Exports — Teambegeleiding
 
