@@ -49,6 +49,11 @@ Alle commando's hieronder draaien in PowerShell 7 (`pwsh` op macOS, `powershell`
 > volgende stap (1 t/m 7) voer je uit vanuit de develop-worktree die je hier bepaalt** — niet vanuit
 > de map waarin de sessie toevallig startte.
 
+> **Sinds #1574 doet `Start-Debug.ps1` zelf 0a, 0b en 0d** (develop-worktree zoeken, fast-forward
+> naar `origin/develop`, daar starten), ook bij een aanroep vanuit een andere map. `-HuidigeWerkmap`
+> schakelt dat uit. Stap 0a/0b hieronder blijven nodig voor 0c (migraties, vóór het starten) en als
+> je de worktree-keuze wilt controleren.
+
 **Vóór 0a:** reserveer de gedeelde runtime én de develop-acceptatieworktree; controleer
 dat geen andere sessie daar schrijft of services beheert. Zonder reservering geen fetch/merge,
 migratie, clean of start in die omgeving. `/startdebug` reserveert niet automatisch andermans omgeving.
@@ -132,7 +137,8 @@ Rapporteer welke poorten al bezet zijn.
 in één pass — op beide platforms. Voer het daarom **niet** met de hand voor in losse stappen.
 
 Bepaal op basis van `$ARGUMENTS`:
-- Standaard: `./scripts/dev/Start-Debug.ps1 -Clean -SportlinkLive`
+- Standaard: `./scripts/dev/Start-Debug.ps1 -Clean -SportlinkLive` (draait vanzelf op de laatste develop, #1574)
+- Argument bevat "huidig": voeg `-HuidigeWerkmap` toe (bewust niet op develop, bijv. een feature-branch)
 - Argument bevat "swa": voeg `-Swa` toe
 - Argument bevat "offline": laat `-SportlinkLive` weg (lokaal dan geen Sportlink-verkeer, zie Stap 3b)
 
