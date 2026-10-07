@@ -19,7 +19,10 @@
 #   .\Start-Debug.ps1 -Tail      → één samengevoegde logstroom i.p.v. losse vensters
 #   .\Start-Debug.ps1 -Clean     → stop + dotnet clean BlazorAdmin vóór het starten
 #   .\Start-Debug.ps1 -HuidigeWerkmap → start vanuit de map van dit script i.p.v. de develop-worktree (#1574)
-#   .\Start-Debug.ps1 -SportlinkLive → zet local.settings.json klaar voor live Sportlink-verkeer
+#   .\Start-Debug.ps1 -Offline  → zonder live Sportlink-verkeer (standaard sinds #1576 wél live)
+#   .\Start-Debug.ps1 -Bewaak   → blijf draaien en herstart weggevallen services (voor agent-sessies)
+#   .\Start-Debug.ps1 -ZonderGoCheck → sla de GO-controle (Test-DebugGo.ps1) over
+#   (verouderd) -SportlinkLive → zet local.settings.json klaar voor live Sportlink-verkeer
 #                                    van de PRIMAIRE club (#1466) — zie de toelichting hieronder
 #
 # SPORTLINK LIVE (#1466): lokaal staat extern verkeer standaard uit (EgressGuard, #857). Met
@@ -59,7 +62,11 @@ param(
     [switch]$NoWatch,  # Gebruik dotnet run i.p.v. dotnet watch voor BlazorAdmin
     [switch]$Tail,     # Voeg alle service-output samen in één venster
     [switch]$Clean,    # dotnet clean op BlazorAdmin vóór het starten
-    [switch]$SportlinkLive,  # Live Sportlink-verkeer voor de primaire club toestaan (#1466)
+    [switch]$SportlinkLive,  # Verouderd: live Sportlink is sinds #1576 de standaard; gebruik -Offline om het uit te zetten
+    [switch]$Offline,        # Zonder live Sportlink-verkeer starten (#1576)
+    [switch]$ZonderAI,       # E-mailtester hoeft niet te werken: GO zonder OpenAiApiKey (#1576)
+    [switch]$Bewaak,         # Blijf draaien en herstart een weggevallen service (voor agent-sessies, #1576)
+    [switch]$ZonderGoCheck,  # Sla Test-DebugGo.ps1 aan het einde over (alleen voor snel handwerk; geen GO zonder die check)
     [switch]$HuidigeWerkmap  # Niet naar de develop-worktree overschakelen (#1574)
 )
 
@@ -87,7 +94,6 @@ if (-not $HuidigeWerkmap) {
     if ((Resolve-Path $developPad).Path -ne $root.Path) {
         $params = @{}
         foreach ($k in $PSBoundParameters.Keys) { $params[$k] = $PSBoundParameters[$k] }
-        $params['HuidigeWerkmap'] = [switch]::Present
         & (Join-Path $developPad 'scripts/dev/Start-Debug.ps1') @params
         exit $LASTEXITCODE
     }
@@ -137,7 +143,7 @@ if (-not (Test-Path $funcSettings)) {
     exit 1
 }
 
-if ($SportlinkLive) {
+if (-not $Offline) {
     $gewijzigd = Set-SportlinkLiveLocalSettings -SettingsPath $funcSettings
     if ($gewijzigd.Count -gt 0) {
         Write-Host "Sportlink live: local.settings.json bijgewerkt ($($gewijzigd -join ', '))." -ForegroundColor Cyan
@@ -209,20 +215,38 @@ function Start-Service {
         [Parameter(Mandatory)][string]$Command,
         [string]$Banner = '',
         [string]$BannerColor = 'Cyan',
-        [switch]$Minimized
+        [switch]$Minimized,
+        # Op macOS/Linux het programma rechtstreeks starten, zonder pwsh-tussenlaag (#1576). Azurite
+        # stopte vastgesteld binnen twee seconden na het einde van dit script wanneer een pwsh-wrapper
+        # ertussen zat (de wrapper verdween, Azurite eindigde mee); rechtstreeks gestart blijft hij staan.
+        [string[]]$DirectArgs
     )
 
     if ($useLogFiles) {
         $logFile = Join-Path $logDir "$Name.log"
+        # Op macOS/Linux in een EIGEN sessie starten (#1576): zonder dat ontvangt de service het
+        # sluitsignaal van de procesgroep zodra de aanroep eindigt die dit script startte. Vastgesteld
+        # in een agent-sessie: Azurite en de FunctionApp stopten direct na de start, BlazorAdmin bleef
+        # draaien, en élk beheerscherm gaf daarna "Failed to fetch". perl is op macOS en Linux standaard
+        # aanwezig; setsid() maakt het proces leider van een nieuwe sessie, exec behoudt de PID. Het
+        # perl-programma bevat bewust geen spaties: Start-Process quote't argumenten op Unix niet.
+        $servicePad  = if ($onWindows) { $shellExe } else { 'perl' }
+        $serviceArgs = if ($onWindows) { @('-NoProfile', '-Command', $Command) }
+                       elseif ($DirectArgs) { @('-MPOSIX', '-e', 'POSIX::setsid();exec(@ARGV)', '--') + $DirectArgs }
+                       else { @('-MPOSIX', '-e', 'POSIX::setsid();exec(@ARGV)', '--', $shellExe, '-NoProfile', '-Command', $Command) }
         $startArgs = @{
-            FilePath               = $shellExe
-            ArgumentList           = @('-NoProfile', '-Command', $Command)
+            FilePath               = $servicePad
+            ArgumentList           = $serviceArgs
             PassThru               = $true
             RedirectStandardOutput = $logFile
             RedirectStandardError  = "$logFile.err"
         }
         # -WindowStyle bestaat alleen zinvol op Windows; op macOS wordt de parameter genegeerd.
         if ($onWindows) { $startArgs.WindowStyle = 'Hidden' }
+        # Stdin loskoppelen (#1576): een service die stdin van de startende aanroep erft, krijgt een
+        # EOF zodra die aanroep eindigt. Azurite (node) stopte daar vastgesteld op, ook mét eigen
+        # sessie; de FunctionApp en BlazorAdmin niet.
+        else { $startArgs.RedirectStandardInput = '/dev/null' }
         $proc = Start-Process @startArgs
         $logSources[$Name] = $logFile
     } else {
@@ -238,17 +262,39 @@ function Start-Service {
     return $proc
 }
 
+function Start-AzuriteDienst {
+    $azuriteDir = Join-Path ([System.IO.Path]::GetTempPath()) 'azurite'
+    if (-not (Test-Path $azuriteDir)) { New-Item -ItemType Directory -Path $azuriteDir | Out-Null }
+    $azuriteLog = Join-Path $azuriteDir 'debug.log'
+    Start-Service -Name 'azurite' -Minimized `
+        -Command "azurite --skipApiVersionCheck --location '$azuriteDir' --debug '$azuriteLog'" `
+        -DirectArgs @('azurite', '--skipApiVersionCheck', '--location', $azuriteDir, '--debug', $azuriteLog) | Out-Null
+}
+
+function Start-FuncDienst {
+    Start-Service -Name 'func' `
+        -Banner "FunctionApp $Tier - poort $($ports.FunctionApp)  (geen hot reload - herstart vereist na codewijziging)" `
+        -Command "Set-Location '$funcProjectDir'; func start --port $($ports.FunctionApp)" | Out-Null
+}
+
+function Start-BlazorDienst {
+    if ($NoWatch) {
+        Start-Service -Name 'blazor' `
+            -Banner "BlazorAdmin - poort $($ports.BlazorAdmin)  (geen hot reload)" `
+            -Command "Set-Location '$root/BlazorAdmin'; dotnet run --launch-profile http" | Out-Null
+    } else {
+        Start-Service -Name 'blazor' -BannerColor 'Green' `
+            -Banner "BlazorAdmin - poort $($ports.BlazorAdmin)  (hot reload: wijzigingen in .razor/.cs/.css herladen automatisch)" `
+            -Command "Set-Location '$root/BlazorAdmin'; `$env:MSBUILDDISABLENODEREUSE = '1'; dotnet watch run --launch-profile http --non-interactive" | Out-Null
+    }
+}
+
 # --- Azurite ---
 if (Test-PortListening -Port $ports.Azurite) {
     Write-Host "Azurite actief (poort $($ports.Azurite))." -ForegroundColor DarkGray
 } else {
     Write-Host "Azurite niet gevonden - starten..." -ForegroundColor Yellow
-    $azuriteDir = Join-Path ([System.IO.Path]::GetTempPath()) 'azurite'
-    if (-not (Test-Path $azuriteDir)) { New-Item -ItemType Directory -Path $azuriteDir | Out-Null }
-    $azuriteLog = Join-Path $azuriteDir 'debug.log'
-    Start-Service -Name 'azurite' -Minimized `
-        -Command "azurite --skipApiVersionCheck --location '$azuriteDir' --debug '$azuriteLog'" | Out-Null
-
+    Start-AzuriteDienst
     if (-not (Wait-ForPort -Port $ports.Azurite -TimeoutSeconds 30 -Label 'Azurite')) {
         Write-Host "Azurite is niet binnen 30s gestart." -ForegroundColor Red
         Write-Host "  Installeer eenmalig via: npm install -g azurite" -ForegroundColor Yellow
@@ -260,22 +306,15 @@ if (Test-PortListening -Port $ports.Azurite) {
 # --- FunctionApp ---
 Write-Host "FunctionApp ($Tier-tier) starten op http://localhost:$($ports.FunctionApp) ..." -ForegroundColor Cyan
 Write-Host "  FunctionApp heeft GEEN hot reload. Na codewijzigingen: Stop-Debug.ps1 + Start-Debug.ps1." -ForegroundColor DarkYellow
-Start-Service -Name 'func' `
-    -Banner "FunctionApp $Tier - poort $($ports.FunctionApp)  (geen hot reload - herstart vereist na codewijziging)" `
-    -Command "Set-Location '$funcProjectDir'; func start --port $($ports.FunctionApp)" | Out-Null
+Start-FuncDienst
 
 # --- BlazorAdmin ---
 if ($NoWatch) {
     Write-Host "BlazorAdmin starten op http://localhost:$($ports.BlazorAdmin) (geen hot reload) ..." -ForegroundColor Cyan
-    Start-Service -Name 'blazor' `
-        -Banner "BlazorAdmin - poort $($ports.BlazorAdmin)  (geen hot reload)" `
-        -Command "Set-Location '$root/BlazorAdmin'; dotnet run --launch-profile http" | Out-Null
 } else {
     Write-Host "BlazorAdmin starten op http://localhost:$($ports.BlazorAdmin) (hot reload actief) ..." -ForegroundColor Cyan
-    Start-Service -Name 'blazor' -BannerColor 'Green' `
-        -Banner "BlazorAdmin - poort $($ports.BlazorAdmin)  (hot reload: wijzigingen in .razor/.cs/.css herladen automatisch)" `
-        -Command "Set-Location '$root/BlazorAdmin'; `$env:MSBUILDDISABLENODEREUSE = '1'; dotnet watch run --launch-profile http --non-interactive" | Out-Null
 }
+Start-BlazorDienst
 
 # --- SWA emulator (optioneel) ---
 $swaStarted = $false
@@ -434,10 +473,52 @@ if ($swaStarted) {
 }
 
 Write-Host ""
-Write-Host "HTTP 200 bewijst NIET dat de Blazor-app rendert. Open de GUI en controleer op" -ForegroundColor DarkYellow
-Write-Host "een foutbanner + zichtbaar versienummer voordat je iets oplevert." -ForegroundColor DarkYellow
+Write-Host "HTTP 200 bewijst NIET dat de Blazor-app rendert: Test-DebugGo.ps1 (hieronder) opent de" -ForegroundColor DarkYellow
+Write-Host "schermen in een echte browser. Alleen een GO daarvan telt." -ForegroundColor DarkYellow
 Write-Host ""
 Write-Host "Stoppen: .\scripts\dev\Stop-Debug.ps1  (of -Clean om ook fingerprints op te ruimen)" -ForegroundColor DarkGray
+
+# ──────────────────────────────────────────────────────────────────────
+# GO/NO-GO (#1576) — pas dit script zegt of de debugomgeving echt werkt
+# ──────────────────────────────────────────────────────────────────────
+if (-not $ZonderGoCheck) {
+    Write-Host ""
+    & (Join-Path $PSScriptRoot 'Test-DebugGo.ps1') -Root $root.Path -Tier $Tier -Offline:$Offline -ZonderAI:$ZonderAI -HuidigeWerkmap:$HuidigeWerkmap
+    if ($LASTEXITCODE -ne 0) { exit 1 }
+}
+
+# ──────────────────────────────────────────────────────────────────────
+# BEWAKING (-Bewaak, #1576) — blijf draaien en herstart een weggevallen service
+# ──────────────────────────────────────────────────────────────────────
+# Vastgesteld in een agent-sessie: Azurite verdween binnen twee seconden nadat dit script was
+# geëindigd, terwijl de FunctionApp en BlazorAdmin bleven staan. Zolang dit script zelf blijft
+# draaien blijft Azurite staan, en valt er toch een service weg, dan start deze lus hem opnieuw.
+# Agents starten dit script daarom met -Bewaak in een achtergrondaanroep. Stoppen: Stop-Debug.ps1
+# (stopt de services; deze lus stopt zodra geen enkele service meer luistert) of Ctrl+C.
+if ($Bewaak) {
+    Write-Host ""
+    Write-Host "Bewaking actief: een weggevallen service wordt automatisch herstart (Ctrl+C of Stop-Debug.ps1 om te stoppen)." -ForegroundColor Cyan
+    $dienst = [ordered]@{
+        'Azurite'     = @{ Port = $ports.Azurite;      Start = { Start-AzuriteDienst } }
+        'FunctionApp' = @{ Port = $ports.FunctionApp;  Start = { Start-FuncDienst } }
+        'BlazorAdmin' = @{ Port = $ports.BlazorAdmin;  Start = { Start-BlazorDienst } }
+    }
+    $mis = @{}
+    while ($true) {
+        Start-Sleep -Seconds 5
+        $levend = 0
+        foreach ($naam in $dienst.Keys) {
+            if (Test-PortListening -Port $dienst[$naam].Port) { $levend++; $mis[$naam] = 0; continue }
+            $mis[$naam] = 1 + [int]$mis[$naam]
+            if ($mis[$naam] -ge 2) {   # twee metingen achter elkaar, zodat een herstart door dotnet watch niet meetelt
+                Write-Host ("{0}  {1} is weggevallen - herstarten..." -f (Get-Date -Format 'HH:mm:ss'), $naam) -ForegroundColor Yellow
+                & $dienst[$naam].Start
+                $mis[$naam] = 0
+            }
+        }
+        if ($levend -eq 0 -and -not (Test-Path $pidFile)) { break }   # Stop-Debug.ps1 ruimde alles op
+    }
+}
 
 # ──────────────────────────────────────────────────────────────────────
 # GEAGGREGEERDE LOGSTROOM (-Tail)
