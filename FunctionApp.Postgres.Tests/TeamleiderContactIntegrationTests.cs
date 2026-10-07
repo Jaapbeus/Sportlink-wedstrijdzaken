@@ -144,7 +144,7 @@ public class TeamleiderContactIntegrationTests : IDisposable
     }
 
     /// <remarks>
-    /// AVG: uitsluitend fictieve gegevens — <c>@allstars-fc.test</c> is de in CLAUDE.md vastgelegde
+    /// AVG: uitsluitend fictieve gegevens — <c>@allstars-fc.test</c> is de in AGENTS.md vastgelegde
     /// AllStars FC-demodata-conventie (RFC 2606-gereserveerd TLD, kan nooit een echt adres zijn),
     /// voornamen zonder achternaam.
     /// </remarks>

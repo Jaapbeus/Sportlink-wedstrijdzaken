@@ -65,7 +65,7 @@ public static class PostgresReconciliationGenerator
 
         // Defense in depth: de NOT EXISTS-subquery scoopt zelf óók op clubcode wanneer de entiteit
         // die kolom heeft. In de huidige deployment (#1193-context: één primaire club per
-        // installatie, zie CLAUDE.md "Deployment-model") bevat stg altijd al maar één club per
+        // installatie, zie AGENTS.md "Deployment-model") bevat stg altijd al maar één club per
         // sync-run, dus dit verandert vandaag geen enkel resultaat — maar zonder deze extra clausule
         // zou een toevallige business-key-botsing tussen twee clubs (bijv. een Sportlink-teamcode
         // die niet clubbreed uniek blijkt) een his-rij van de ene club onterecht als "nog aanwezig"

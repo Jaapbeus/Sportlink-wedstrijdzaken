@@ -208,7 +208,7 @@ die u werkelijk gekozen heeft.
 ## AVG en security
 
 - De ALLSTARS-testdata bevat **geen echte persoonsgegevens** — alle namen en tijden zijn fictief.
-- De namen en e-mailadressen in de demodata volgen het [John Doe-principe](../CLAUDE.md):
+- De namen en e-mailadressen in de demodata volgen het [John Doe-principe](../AGENTS.md):
   voornamen zonder achternaam (`Frenkie`, `Bas`, `Guus`) op het gereserveerde domein
   `@allstars-fc.test`, dat nooit een echt e-mailadres kan zijn. Teamnamen hebben de vorm
   `AllStars JO13 1`.

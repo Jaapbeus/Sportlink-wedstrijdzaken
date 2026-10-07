@@ -100,7 +100,7 @@ public class PostgresDatabaseStatusReaderTests
 
     /// <summary>
     /// De uitkomst mag geen host, gebruikersnaam of wachtwoord bevatten: hij belandt in het log en in
-    /// de noodmail, en een hostnaam identificeert de club (CLAUDE.md regel 4a).
+    /// de noodmail, en een hostnaam identificeert de club (AGENTS.md regel 4a).
     /// </summary>
     [Fact]
     public async Task UitkomstBevatGeenVerbindingsgegevens()

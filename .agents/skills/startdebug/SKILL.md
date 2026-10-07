@@ -5,7 +5,7 @@ disable-model-invocation: true
 argument-hint: "[swa] [offline]"
 ---
 
-> **Gezamenlijke agentregels zijn leidend (CLAUDE.md/AGENTS.md).** Deze skill geldt voor Codex
+> **Gezamenlijke agentregels zijn leidend (AGENTS.md).** Deze skill geldt voor Codex
 > en Claude Code. Werk uitsluitend aan de toegewezen taak in de eigen geverifieerde worktree;
 > claim of wijzig geen taak, branch, worktree of services van een andere actieve sessie.
 > Behoud `source:` als herkomst; registreer implementer, reviewer, fase en sessie afzonderlijk.
@@ -45,7 +45,7 @@ Alle commando's hieronder draaien in PowerShell 7 (`pwsh` op macOS, `powershell`
 > dan draait de GUI op de productieversie — of erger, op een achterlopende main (voorbeeld: GUI
 > toonde v3.8.0.0 terwijl `origin/develop` al op v3.9.6.1 stond, 32 commits verder) — terwijl je
 > bijna altijd de nieuwste integratiestand wilt testen. `develop` is de integratiebranch voor lokaal
-> testen (zie CLAUDE.md, "Branch-strategie"); dáár hoort de debug-omgeving op te draaien. **Elke
+> testen (zie AGENTS.md, "Branch-strategie"); dáár hoort de debug-omgeving op te draaien. **Elke
 > volgende stap (1 t/m 7) voer je uit vanuit de develop-worktree die je hier bepaalt** — niet vanuit
 > de map waarin de sessie toevallig startte.
 
@@ -201,7 +201,7 @@ try {
 `syncenabled = TRUE` in `public.appsettings` (de primaire club van de installatie). De democlub
 `ALLSTARS` heeft geen Sportlink-koppeling en de extensie staat er uit. Hij gaat dus nooit live.
 Elke fork werkt ongewijzigd met de eigen primaire club. Noem in issues/PR's/commits nooit de
-naam of code van die club (CLAUDE.md veiligheidsregel 4a).
+naam of code van die club (AGENTS.md veiligheidsregel 4a).
 
 **Wat `-SportlinkLive` doet** (`Set-SportlinkLiveLocalSettings` in `scripts/dev/DevServices.psm1`):
 1. zet `AllowExternalIntegrations` op `true` in `local.settings.json` van de tier;

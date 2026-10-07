@@ -101,7 +101,7 @@ schrijfacties. Een berekend planningsvoorstel wordt niet vanzelf een wijziging i
 
 Meer weten? Lees de [architectuur](docs/ARCHITECTUUR.md),
 [databasekeuze](docs/ARCHITECTUUR-DATABASE-TIERS.md) of [API-referentie](docs/API.md).
-AI-agents vinden hun werkinstructies in [CLAUDE.md](CLAUDE.md) en de daaruit gegenereerde [AGENTS.md](AGENTS.md).
+AI-agents (Codex en Claude Code) vinden hun werkinstructies in [AGENTS.md](AGENTS.md); `CLAUDE.md` is een stub die ernaar verwijst.
 
 ## Gegevens en privacy
 

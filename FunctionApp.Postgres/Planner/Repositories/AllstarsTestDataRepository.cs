@@ -16,7 +16,7 @@ namespace FunctionApp.Postgres.Planner;
 /// origineel: dat vergelijkt met een eigen <c>REPLACE(...,' ','')REPLACE(...,'-','')</c>-sleutel
 /// rechtstreeks in T-SQL; hier wordt in plaats daarvan
 /// <see cref="TeamNaamNormalisatie.NormaliseerVoorVergelijking"/> gebruikt — de enige toegestane
-/// teamnaam-normalisatielaag (CLAUDE.md, #692/#889) — toegepast in C# op elke kandidaatrij, in
+/// teamnaam-normalisatielaag (AGENTS.md, #692/#889) — toegepast in C# op elke kandidaatrij, in
 /// plaats van een tweede ad-hoc regex/REPLACE-implementatie in SQL te bouwen. Zelfde precedent als
 /// <c>PlannerMatchRepository.TeamSchrijfwijzenAsync</c>/<c>FindMatchByOpponentAsync</c> (#1139).
 /// Functioneel gelijk gedrag: zowel de lokale notatie ("JO13-1") als de KNVB-notatie ("O13-1")

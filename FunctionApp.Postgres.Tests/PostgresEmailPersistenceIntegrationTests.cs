@@ -38,7 +38,7 @@ public class PostgresEmailPersistenceIntegrationTests
     {
         MessageId = messageId,
         ConversationId = conversationId,
-        // Fictieve waarden conform CLAUDE.md's AVG-uitzonderingenlijst — nooit echte adressen.
+        // Fictieve waarden conform AGENTS.md's AVG-uitzonderingenlijst — nooit echte adressen.
         Afzender = "trainer@voorbeeld.nl",
         Onderwerp = "Verzoek verplaatsen wedstrijd",
         OntvangstDatum = new DateTime(2026, 3, 14, 10, 0, 0, DateTimeKind.Utc),

@@ -5,7 +5,7 @@ disable-model-invocation: false
 argument-hint: "[--dry-run] [--features] [--release]"
 ---
 
-> **Gezamenlijke agentregels zijn leidend (CLAUDE.md/AGENTS.md).** Deze skill geldt voor Codex
+> **Gezamenlijke agentregels zijn leidend (AGENTS.md).** Deze skill geldt voor Codex
 > en Claude Code. Werk uitsluitend aan de toegewezen taak in de eigen geverifieerde worktree;
 > claim of wijzig geen taak, branch, worktree of services van een andere actieve sessie.
 > Behoud `source:` als herkomst; registreer implementer, reviewer, fase en sessie afzonderlijk.
@@ -208,7 +208,7 @@ het `turn:`-label naar `turn: owner`, met remove+add in één operatie. Gebruik 
 Verwerk de uitvoerbare issues in volgorde van prioriteit (laagste nummer eerst, tenzij
 er afhankelijkheden zijn).
 
-Voor elk issue — volg de autonome ontwikkelcyclus uit CLAUDE.md:
+Voor elk issue — volg de autonome ontwikkelcyclus uit AGENTS.md:
 
 ### Per-issue stappen
 
@@ -252,8 +252,8 @@ Loop onderstaande twee categorieën na. Lees elk relevant bestand, vergelijk met
 
 | Bestand | Bijwerken bij |
 |---|---|
-| `CLAUDE.md` | Architectuurregel, buildproces, conventie of deployment-constraint gewijzigd |
-| `FunctionApp/CLAUDE.md` | Endpoint, datamodel, API-veld of FunctionApp-configuratie gewijzigd |
+| `AGENTS.md` | Architectuurregel, buildproces, conventie of deployment-constraint gewijzigd |
+| `FunctionApp/AGENTS.md` | Endpoint, datamodel, API-veld of FunctionApp-configuratie gewijzigd |
 | `docs/API.md` | Endpoint toegevoegd, gewijzigd of verwijderd |
 | `docs/api-standaarden/openapi.yaml` | Idem — sync met API.md |
 | `docs/ARCHITECTUUR-PLANNER.md` | Planner-logica, pipeline of kanaalstrategie gewijzigd |
@@ -342,7 +342,7 @@ gh run view <run-id> --json jobs --jq '.jobs[] | {name: .name, conclusion: .conc
 > awaiting-release`-label op een gesloten issue achterlaat. Rapporteer dit issue pas als gesloten
 > zodra die workflow na een release-tag daadwerkelijk groen is gedraaid
 > (`gh run list --workflow close-released-issues.yml --limit 1 --json conclusion`) — conform de
-> hotfix-uitzondering in CLAUDE.md, "Issue-lifecycle: awaiting-release". Is er nog geen release-tag
+> hotfix-uitzondering in AGENTS.md, "Issue-lifecycle: awaiting-release". Is er nog geen release-tag
 > gepland? Dan blijft het issue open met `status: awaiting-release` totdat die er komt.
 
 ### Één branch per batch of per issue?
@@ -473,7 +473,7 @@ Als iets mist én deze sessie de exclusieve runtime-eigenaar is → start opnieu
 Bij andere/onbekende eigenaar: rapporteer de ontbrekende check en laat services intact:
 ```powershell
 # Nooit Stop-Process -Name: dat sloopt élk dotnet/node-proces op de machine, en 'dotnet watch'
-# herstart zijn kindproces meteen — poort 5242 is dan direct weer bezet (CLAUDE.md).
+# herstart zijn kindproces meteen — poort 5242 is dan direct weer bezet (AGENTS.md).
 ./scripts/dev/Start-Debug.ps1 -Clean   # stopt, cleant de stale fingerprints en start opnieuw
 
 # Start-Debug pollt zelf tot de services gereed zijn; een vaste Start-Sleep is niet nodig.

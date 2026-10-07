@@ -54,7 +54,7 @@ if (!string.IsNullOrWhiteSpace(tenantId)
             sp.GetRequiredService<ILoggerFactory>().CreateLogger<EmailGraphService>()));
 }
 
-// IChatClient: provider-agnostische AI-abstractie (CLAUDE.md architectuurregel), uitsluitend nodig
+// IChatClient: provider-agnostische AI-abstractie (AGENTS.md architectuurregel), uitsluitend nodig
 // voor FeedbackFunction (#966) op deze tier — BerichtAiService/teamdisambiguatie zijn hier nog niet
 // vertaald (#889). Zelfde patroon als FunctionApp/Program.cs: EgressGuard (#857) houdt dit
 // onvoorwaardelijk ongeregistreerd buiten productie, ook als OpenAiApiKey lokaal geconfigureerd is.

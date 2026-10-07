@@ -484,7 +484,7 @@ if ($Tier -eq 'Postgres') {
                         "AccommodatieLongitude"{ "FLOAT NULL" }
                         "EmailVoetnoot"        { "NVARCHAR(MAX) NULL" }
                         "ClubCode"             { "NVARCHAR(20) NOT NULL CONSTRAINT [DF_${table}_ClubCode] DEFAULT ''" }
-                        # UTC, nooit GETDATE() — zie de UTC-regel in CLAUDE.md en PR #246.
+                        # UTC, nooit GETDATE() — zie de UTC-regel in AGENTS.md en PR #246.
                         "mta_inserted"         { "DATETIME2 NOT NULL CONSTRAINT [DF_${table}_Inserted] DEFAULT GETUTCDATE()" }
                         "mta_modified"         { "DATETIME2 NOT NULL CONSTRAINT [DF_${table}_Modified] DEFAULT GETUTCDATE()" }
                         "Actief"               { "BIT NOT NULL CONSTRAINT [DF_${table}_Actief] DEFAULT 1" }
@@ -523,7 +523,7 @@ $blazorProj = Join-Path $root "BlazorAdmin/BlazorAdmin.csproj"
 # BlazorAdmin genereert content-hash fingerprints per compilatie. Een tweede compilatiepas
 # naast de draaiende 'dotnet watch' levert een tweede set fingerprints op → 404 op
 # framework-JS → "An unhandled error has occurred. Reload" in de browser. Dit is dezelfde
-# KRITIEKE REGEL als in CLAUDE.md; het script hield zich er zelf niet aan.
+# KRITIEKE REGEL als in AGENTS.md; het script hield zich er zelf niet aan.
 $blazorLive = Test-PortListening -Port 5242
 
 foreach ($proj in @($funcProj, $blazorProj)) {

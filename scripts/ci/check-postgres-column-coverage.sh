@@ -38,7 +38,7 @@
 #
 # Draagbaarheid (#1155): identiek gedrag op de Linux-CI-runner (bash 5, GNU grep/sed) én op macOS
 # met /bin/bash 3.2 en BSD grep/sed. Daarom geen `declare -A`, `mapfile`, `${var,,}` of de
-# GNU-only sed-vlag `I` — zie CLAUDE.md "Cross-platform scripts". Sets zijn newline-gescheiden
+# GNU-only sed-vlag `I` — zie AGENTS.md "Cross-platform scripts". Sets zijn newline-gescheiden
 # strings met een exacte-regel-lookup; de awk-parsers hieronder zijn al POSIX.
 set -euo pipefail
 

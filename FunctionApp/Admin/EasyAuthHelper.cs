@@ -186,7 +186,7 @@ internal static class EasyAuthHelper
     public static string GetClubCodeFromRequest(HttpRequest req)
     {
         // #1122 (CISO): de header is een UX-schakelaar (productie ↔ AllStars-demodata), geen
-        // autorisatiegrens (CLAUDE.md, deployment-model). Wel een vormcontrole: een ClubCode is
+        // autorisatiegrens (AGENTS.md, deployment-model). Wel een vormcontrole: een ClubCode is
         // max 20 tekens [A-Za-z0-9_-] (kolomdefinitie). Iets anders gaat niet als clubcode de
         // database in — dan geldt de primaire club.
         if (req.Headers.TryGetValue("X-Club-Code", out var headerVal) &&

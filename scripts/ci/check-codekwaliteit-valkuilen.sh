@@ -2,7 +2,7 @@
 # check-codekwaliteit-valkuilen.sh (#1262)
 #
 # Vangt vier patronen die in dit project aantoonbaar stille fouten hebben opgeleverd. Alle vier
-# stonden al als harde regel in CLAUDE.md; geen van vier werd door iets gecontroleerd.
+# stonden al als harde regel in AGENTS.md; geen van vier werd door iets gecontroleerd.
 #
 #   uri-absolute   Uri.TryCreate(..., UriKind.Absolute, ...) als "is dit een URL"-test. Op Unix —
 #                  en dus op de Linux-host én op een macOS-ontwikkelmachine — parseert
@@ -19,7 +19,7 @@
 # beoordelen en groeit vanzelf uit tot "we zetten het gewoon in de lijst".
 #
 # Commentaarregels tellen niet mee — anders zou dit bestand zichzelf laten falen, en zouden de
-# CLAUDE.md-citaten in de codebase de guard permanent rood houden. Testprojecten tellen evenmin
+# AGENTS.md-citaten in de codebase de guard permanent rood houden. Testprojecten tellen evenmin
 # mee: een test die het patroon noemt, tóétst het juist — daar is het aanwezig zijn het doel.
 #
 # Draagbaarheid (#1155): bash 3.2 én bash 5, POSIX ERE (grep -E, nooit -P).
