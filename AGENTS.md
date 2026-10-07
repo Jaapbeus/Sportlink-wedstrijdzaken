@@ -1,15 +1,3 @@
-<!-- GEGENEREERD BESTAND — NIET MET DE HAND BEWERKEN.
-
-     Afgeleid uit CLAUDE.md door scripts/ci/genereer-agents-md.py (#1262).
-     Wijzig CLAUDE.md en draai daarna:
-
-         python3 scripts/ci/genereer-agents-md.py --schrijf
-
-     De CI-job 'Build FunctionApp + BlazorAdmin' faalt als dit bestand niet overeenkomt met
-     CLAUDE.md. Reden: AGENTS.md liep 280 regels en negen hele secties achter toen beide
-     bestanden nog met de hand werden bijgehouden — zie de scriptkop.
--->
-
 # AGENTS.md
 
 This file provides guidance to the repository's AI coding assistant when working with code.
