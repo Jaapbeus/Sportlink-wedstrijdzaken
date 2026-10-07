@@ -122,6 +122,17 @@ class AgentInstructiesTests(unittest.TestCase):
         self.schrijf(root, ".claude/rules/testen.md", "Voer altijd alle tests uit.\n")
         self.assertIn(".claude/rules/testen.md: regelbestanden voor alleen Claude Code", self.fouten(root))
 
+    # Regressie review ronde 2 (Codex, P2): ook een regelmap in een submap is een tweede bron.
+    def test_geneste_claude_regelmap_wordt_geweigerd(self):
+        root = self.fixture()
+        self.schrijf(root, "sub/.claude/rules/api.md", "Gebruik altijd async.\n")
+        self.assertIn("sub/.claude/rules/api.md: regelbestanden voor alleen Claude Code", self.fouten(root))
+
+    def test_regelmap_in_andermans_worktree_wordt_genegeerd(self):
+        root = self.fixture()
+        self.schrijf(root, ".claude/worktrees/x/.claude/rules/api.md", "Van een andere sessie.\n")
+        self.assertEqual(guard["controleer"](root), [])
+
     def test_claude_md_in_dotclaude_zonder_agents_md_wordt_geweigerd(self):
         root = self.fixture()
         self.schrijf(root, ".claude/CLAUDE.md", "Eigen regels.\n")

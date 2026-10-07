@@ -60,17 +60,28 @@ def onafgesloten_codeblok(tekst: str) -> int | None:
     return opening[2] if opening else None
 
 
-def vind(root: Path, bestandsnaam: str) -> list[Path]:
-    """Alle bestanden met deze naam, zonder worktrees van andere sessies en buildmappen."""
-    gevonden = []
+def doorloop(root: Path):
+    """os.walk zonder worktrees van andere sessies en buildmappen."""
     for map_, submappen, namen in os.walk(root):
         pad = Path(map_)
         submappen[:] = [
             d for d in submappen
             if d not in NEGEER_MAPPEN and not (d == "worktrees" and pad.name in {".claude", ".codex"})
         ]
-        if bestandsnaam in namen:
-            gevonden.append(pad / bestandsnaam)
+        yield pad, submappen, namen
+
+
+def vind(root: Path, bestandsnaam: str) -> list[Path]:
+    """Alle bestanden met deze naam, op elk niveau van de boom."""
+    return sorted(pad / bestandsnaam for pad, _, namen in doorloop(root) if bestandsnaam in namen)
+
+
+def vind_regelbestanden(root: Path) -> list[Path]:
+    """Alle *.md in een `.claude/rules/`-map, op elk niveau (Claude Code laadt ook geneste)."""
+    gevonden = []
+    for pad, submappen, _ in doorloop(root):
+        if pad.name == ".claude" and "rules" in submappen:
+            gevonden.extend((pad / "rules").rglob("*.md"))
     return sorted(gevonden)
 
 
@@ -117,11 +128,11 @@ def controleer_instructiebestanden(root: Path) -> list[str]:
     for stub in stubs:
         fouten.extend(controleer_stub(stub, root))
     # Claude Code laadt ook `.claude/rules/*.md`; Codex niet. Zo'n bestand is een tweede
-    # instructiebron naast AGENTS.md. (`CLAUDE.local.md` staat in .gitignore en komt niet in git.)
-    regels_map = root / ".claude" / "rules"
-    if regels_map.is_dir():
-        for pad in sorted(regels_map.rglob("*.md")):
-            fouten.append(f"{pad.relative_to(root)}: regelbestanden voor alleen Claude Code zijn een tweede instructiebron — zet de regel in AGENTS.md")
+    # instructiebron naast AGENTS.md, ook in een submap (`FunctionApp/.claude/rules/`).
+    # Grens: `CLAUDE.local.md` staat in .gitignore maar wordt niet geïnventariseerd; een bestand dat
+    # met -f toch is toegevoegd ziet deze guard niet (een lokaal bestand zou lokaal rood geven).
+    for pad in vind_regelbestanden(root):
+        fouten.append(f"{pad.relative_to(root)}: regelbestanden voor alleen Claude Code zijn een tweede instructiebron — zet de regel in AGENTS.md")
     return fouten
 
 
