@@ -2746,6 +2746,38 @@
               }
             }
           },
+          "eindoordeel": {
+            "type": "object",
+            "description": "Definitief eindoordeel (#1583): wat er in productie met deze mail zou gebeuren, met de actuele\nclubinstelling `ZekerheidspoortActief` meegewogen. Zelfde volgorde als de productieverwerking:\neerst het reply-beleid, daarna de zekerheidspoort.\n",
+            "properties": {
+              "uitkomst": {
+                "type": "string",
+                "enum": [
+                  "AutomatischVerstuurd",
+                  "Review",
+                  "GeenAntwoord"
+                ]
+              },
+              "titel": {
+                "type": "string",
+                "example": "Gaat naar Review — er wordt géén antwoord verstuurd"
+              },
+              "toelichting": {
+                "type": "string"
+              },
+              "waarschuwing": {
+                "type": "boolean",
+                "description": "true bij een onzeker oordeel terwijl de zekerheidspoort uit staat"
+              },
+              "conceptLabel": {
+                "type": "string",
+                "description": "Kop boven `voorbeeldAntwoord` (concept bij review, of het antwoord dat verstuurd zou worden)"
+              },
+              "zekerheidspoortActief": {
+                "type": "boolean"
+              }
+            }
+          },
           "trace": {
             "type": "object",
             "description": "Beslissingstrace van de pipeline (#1568), PII-arm (geen mailbody of afzender).\nGeordende stappen plus een eindoordeel over de zekerheid.\n",
@@ -8919,7 +8951,7 @@
         ],
         "operationId": "testEmailDryRun",
         "summary": "E-mailclassificatie dry-run",
-        "description": "Simuleert de volledige e-mailverwerkingspipeline zonder iets te versturen of op te slaan.\nGeeft classificatie (AI), mogelijke planneractie, een voorbeeldantwoord en de beslissingstrace terug.\nSinds #1568 deel C volgt de tester dezelfde stappen als productie: de gevalideerde leermomenten gaan als\nfew-shot voorbeelden mee naar de classificatie (het aantal staat als trace-stap `leermomenten`) en de\ndry-run schrijft niets — alleen een nog lege teamlijst van de gekozen club wordt eenmalig opgebouwd.\n\nRate limiting: max 10 aanroepen per minuut.\n",
+        "description": "Simuleert de volledige e-mailverwerkingspipeline zonder iets te versturen of op te slaan.\nGeeft classificatie (AI), mogelijke planneractie, een voorbeeldantwoord en de beslissingstrace terug.\nSinds #1568 deel C volgt de tester dezelfde stappen als productie: de gevalideerde leermomenten gaan als\nfew-shot voorbeelden mee naar de classificatie (het aantal staat als trace-stap `leermomenten`) en de\ndry-run schrijft niets — alleen een nog lege teamlijst van de gekozen club wordt eenmalig opgebouwd.\nSinds #1583 bevat de respons ook `eindoordeel`: een definitieve uitkomst (automatisch verstuurd, review of\ngeen antwoord) waarin de actuele instelling van de zekerheidspoort is meegewogen.\n\nRate limiting: max 10 aanroepen per minuut.\n",
         "security": [
           {
             "easyAuth": []

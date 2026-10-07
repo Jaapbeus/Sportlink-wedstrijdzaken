@@ -28,6 +28,10 @@ public partial class EmailTester
     private IReadOnlyList<TraceVergelijkingRij>? vergelijking;
     private bool heeftGeleerd;
 
+    private string EindoordeelKlasse => TesterEindoordeelWeergave.AlertKlasse(response?.Eindoordeel);
+
+    private string VoorbeeldKop => TesterEindoordeelWeergave.VoorbeeldKop(response?.Eindoordeel);
+
     private string OpnieuwKnopKlasse => heeftGeleerd ? "btn btn-primary" : "btn btn-outline-primary";
 
     private async Task TestAsync()

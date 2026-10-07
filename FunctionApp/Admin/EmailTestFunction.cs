@@ -108,8 +108,12 @@ public static class EmailTestFunction
         var (voorbeeldOnderwerp, voorbeeldBody) = await BerichtPipeline.BouwTemplateAntwoord(
             classificatie, plannerResponseJson, fakeEmail, log, clubSettings, clubCode, trace);
 
+        // #1583: het eindoordeel weegt de ACTUELE zekerheidspoort-instelling van de gekozen club mee en volgt de
+        // volgorde van de productieverwerking (reply-beleid, dan poort). Alleen lezen; de dry-run slaat niets op.
+        var (poortActief, reply) = (await ZekerheidspoortInstelling.IsActiefAsync(clubCode, log), ReplyPolicy.Bepaal(classificatie, plannerResponseJson));
+
         return EmailTestEndpointCore.Antwoord(classificatie, classificatie.Type.ToString(), classificatie.Samenvatting,
-            plannerResponseJson, trace.Bouw(), voorbeeldOnderwerp, voorbeeldBody);
+            plannerResponseJson, trace, new TesterBeleid(poortActief, reply.MoetVersturen, reply.Reden), voorbeeldOnderwerp, voorbeeldBody);
     }
 
     private static async Task<BerichtClassificatie> ClassificeerAsync(

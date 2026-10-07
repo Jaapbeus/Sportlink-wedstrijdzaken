@@ -504,8 +504,24 @@ public class TestEmailResponse
     public VoorbeeldAntwoord? VoorbeeldAntwoord { get; set; }
     /// <summary>Beslissingstrace van de pipeline (#1568); <c>null</c> bij een oudere server.</summary>
     public BeslissingsTraceDto? Trace { get; set; }
+    /// <summary>
+    /// Definitief eindoordeel met de actuele zekerheidspoort-instelling meegewogen (#1583); <c>null</c> bij een
+    /// oudere server.
+    /// </summary>
+    public TesterEindoordeelDto? Eindoordeel { get; set; }
     /// <summary>Voorzet voor "Verzoektype corrigeren" (#1568 deel C): gesaneerde samenvatting van de classificatie.</summary>
     public LeersuggestieDto? Leersuggestie { get; set; }
+}
+
+/// <summary>Spiegel van <c>Planner.Shared.Email.Trace.TesterEindoordeel</c>; Uitkomst als tekst (AutomatischVerstuurd/Review/GeenAntwoord).</summary>
+public class TesterEindoordeelDto
+{
+    public string Uitkomst { get; set; } = "";
+    public string Titel { get; set; } = "";
+    public string Toelichting { get; set; } = "";
+    public bool Waarschuwing { get; set; }
+    public string ConceptLabel { get; set; } = "";
+    public bool ZekerheidspoortActief { get; set; }
 }
 
 public class LeersuggestieDto

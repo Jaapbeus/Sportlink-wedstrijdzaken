@@ -1,0 +1,52 @@
+@page "/email-log"
+@inherits ClubSelectorPageBase
+
+<PageTitle>E-maillog — Beheer</PageTitle>
+
+<h1>E-maillog</h1>
+
+<p class="text-muted">
+    Alle verwerkte e-mails van de gekozen club, met per regel de beslissingstrace: waarom het systeem dit antwoord koos
+    of waarom het bericht in Review kwam. Zoek eerst op status of periode en klik daarna op <em>Trace</em>.
+    De lijst toont bewust geen afzender of onderwerp.
+</p>
+
+<div class="row g-2 align-items-end mb-3">
+    <div class="col-md-4">
+        <label class="form-label" for="emaillog-status">Status</label>
+        <select id="emaillog-status" class="form-select" @bind="_status" @bind:after="LaadAsync">
+            @foreach (var (waarde, label) in EmailLogFilter.Statussen)
+            {
+                <option value="@waarde">@label</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-4">
+        <label class="form-label" for="emaillog-periode">Periode</label>
+        <select id="emaillog-periode" class="form-select" @bind="_periode" @bind:after="LaadAsync">
+            @foreach (var (sleutel, label) in EmailLogFilter.Perioden)
+            {
+                <option value="@sleutel">@label</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-4">
+        <button type="button" class="btn btn-outline-secondary" disabled="@_bezig" @onclick="LaadAsync">
+            @(_bezig ? "Bezig..." : "Vernieuwen")
+        </button>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(_fout))
+{
+    <div class="alert alert-danger">@_fout</div>
+}
+else if (_bezig && _log is null)
+{
+    <p class="text-muted">Laden...</p>
+}
+else if (_log is not null)
+{
+    <p class="small text-muted" id="emaillog-teller">@Samenvatting</p>
+    <EmailLogLijst Items="_log.Items" />
+}

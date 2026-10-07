@@ -1059,6 +1059,7 @@ weergave per e-maillog-regel (zie "Opslag" hieronder).**
 | Zekerheidsoordeel (pure functie) | `ZekerheidsBeoordeling.Beoordeel` |
 | Instrumentatie | `BerichtPipeline.VerwerkMetPlannerAsync` en `BouwTemplateAntwoord` op beide tiers: optionele parameter `TraceBuilder? trace = null` (zonder trace gedraagt alles zich als voorheen) |
 | Weergave | e-mailtester: `trace` in de respons van `POST /api/test/email` en de lijst in `/email-tester` |
+| Eindoordeel van de tester (#1583) | `Planner.Shared/Email/Trace/TesterEindoordeel.cs` (tekst en beslislogica, beide tiers) en `EmailTestEndpointCore.Antwoord` (`Planner.Endpoints`): zelfde volgorde als productie — eerst het reply-beleid, dan `ZekerheidsPoort.Bepaal` met de *actuele* clubinstelling `ZekerheidspoortActief` (per tier gelezen via `ZekerheidspoortInstelling`). Respons-veld `eindoordeel`; de poortstap staat alleen in de trace als het reply-beleid een antwoord toestaat, zoals in productie. De tester blijft een dry-run |
 
 **Stappen** (stabiele codes, in volgorde): `classificatie` (type, welke velden aanwezig ja/nee),
 `team-herkenning`, `tegenstander-herkenning`, `team-wissel`, `opponent-pad` (#1139: tak en of een
@@ -1123,8 +1124,9 @@ reproduceerbaarheid: welke code nam de beslissing).
   (`Planner.Shared`) vangt elke fout af en logt alleen het fouttype.
 * **Endpoint:** `GET /api/beheer/email-log/{id}/trace` (admin, beide tiers); `id` is het `Id` uit
   `GET /api/beheer/email-log`, dat sinds #1568 per regel `HeeftTrace` meegeeft. Zie docs/API.md.
-* **Weergave:** Instellingen, kaart "Email verwerking", knop *Toon berichten en traces*; per regel de
-  knop *Trace*. Het component `TraceWeergave` wordt ook door de e-mailtester gebruikt.
+* **Weergave:** menu-item *E-maillog* (`/email-log`, admin-only, #1583: filter op status en periode) en, als
+  oudere ingang, Instellingen → kaart "Email verwerking" → knop *Toon berichten en traces*; per regel de
+  knop *Trace*. Beide gebruiken het component `EmailLogLijst`; `TraceWeergave` wordt ook door de e-mailtester gebruikt.
 
 **Opgelost verschil tussen de tiers (#1568 deel D):** `BouwTemplateAntwoord` op de Postgres-tier kende de
 plannerresponse-tak `wedstrijdAlIngepland` niet, terwijl `VerwerkMetPlannerAsync` hem bij het opponent-pad
@@ -1139,8 +1141,8 @@ staat er nu ook, identiek aan de SQL Server-tier, met een test.
 De trace maakt zichtbaar *waarom* een antwoord zo uitviel; deel C laat de beheerder het systeem daar zonder
 code of SQL van laten leren. De lus:
 
-1. **Trace bekijken** — in de e-mailtester (`/email-tester`) of per e-maillog-regel (Instellingen → *Toon
-   berichten en traces*).
+1. **Trace bekijken** — in de e-mailtester (`/email-tester`) of per e-maillog-regel (menu *E-maillog*, of
+   Instellingen → *Toon berichten en traces*).
 2. **Corrigeren** — knoppen in de trace, alleen voor beheerders:
    * bij een niet-herkend team (`team-herkenning` of `tegenstander-herkenning` met `Onopgelost` of
      `MeerdereKandidaten`): in de **e-mailtester** *Koppel '…' aan team…* → keuze uit de teams → een goedgekeurde

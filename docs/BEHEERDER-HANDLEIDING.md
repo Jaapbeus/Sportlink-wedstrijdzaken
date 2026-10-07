@@ -663,7 +663,7 @@ Boven elk scherm staat een smalle balk met, van links naar rechts:
 
 De zijbalk links bevat in deze volgorde: **Dashboard**, **Teambegeleiding**, **Planning**,
 dan (alleen onder een voorwaarde, zie hieronder) **Wedstr. aanmaken** en **Wijzigingsverzoeken**,
-daarna **Veld optimalisatie**, **Leermomenten**, **Teamaliassen**, **Feedback** (alleen voor beheerders, zie §23a), **Email-tester**, en tot slot het uitklapbare menu
+daarna **Veld optimalisatie**, **Leermomenten**, **Teamaliassen**, **Feedback** (alleen voor beheerders, zie §23a), **E-maillog** (alleen voor beheerders, zie §20), **Email-tester**, en tot slot het uitklapbare menu
 **Instellingen** met daarin *Instellingen*, *Speeltijden*, *Velden*, *Begeleiding importeren*,
 *Voorkeurstijden*, *E-mailtemplates*, *Thema*, *Sportlink Ext.* (het menu-item; de functie zelf
 heet Sportlink Web Extension, zie §19) en *Rechten per rol* (zie §19a).
@@ -1605,16 +1605,28 @@ classificatie-instelling te verifiëren na een wijziging in de e-mailtemplates.
 Onder het voorbeeld-antwoord toont de tester de **beslissingstrace** (#1568): een genummerde lijst
 met de stappen die de verwerking zette — wat de AI herkende, welk team is gevonden (en met welke
 zekerheid), of de tegenstander is opgezocht, welke datum(s) zijn gebruikt en welk antwoordsjabloon is
-gekozen. Stappen die onzeker of mislukt zijn, hebben een gele of rode markering. Daarboven staat een
-samenvatting: **Zou automatisch verstuurd worden** of **Zou in review gaan**, met de redenen. Deze
-samenvatting is in de tester informatief (de tester verstuurt nooit); bij een echt bericht bepaalt dezelfde beoordeling
-of de zekerheidspoort het antwoord tegenhoudt (zie hieronder). De trace
+gekozen. Stappen die onzeker of mislukt zijn, hebben een gele of rode markering. Daarboven staat de
+zekerheid van de beslissingen, met de redenen als iets onzeker is. Boven het voorbeeld-antwoord staat het
+**Eindoordeel** (#1583): een definitieve uitkomst waarin de *actuele* instelling van de zekerheidspoort
+is meegewogen (zie hieronder). De tester verstuurt zelf nooit iets en slaat niets op; het eindoordeel zegt
+wat er bij een échte mail met deze inhoud zou gebeuren:
+
+| Eindoordeel | Betekenis |
+|---|---|
+| **Wordt automatisch verstuurd** | Alle beslissingen zijn zeker; het voorbeeld-antwoord is wat de afzender zou krijgen |
+| **Gaat naar Review — er wordt géén antwoord verstuurd** | Het oordeel is onzeker en de zekerheidspoort staat aan; het voorbeeld-antwoord is een *concept dat alleen bij review zichtbaar is* |
+| **Wordt automatisch verstuurd — maar het oordeel is onzeker** (rood) | Het oordeel is onzeker, maar de zekerheidspoort staat uit (Instellingen): het antwoord gaat dan toch naar de afzender |
+| **Er wordt geen automatisch antwoord verstuurd** | Het reply-beleid zwijgt bewust (bijv. een planning die handmatig moet); de poort speelt dan geen rol |
+
+De trace
 toont in de tester de teamschrijfwijze die de AI vond (u typte die mail zelf). De permanent bewaarde trace
 (e-maillog) bevat nooit de tekst van het bericht, de afzender, telefoonnummers of de ruwe teamtekst uit de mail —
 alleen vaste codes, tellingen, datums, herkende teamnamen en een vormkenmerk van wat niet herkend werd.
 
-**Trace van een echt verwerkt bericht.** Op de Instellingen-pagina staat bij de kaart *Email
-verwerking* de knop **Toon berichten en traces**. Die toont de berichten van de laatste 24 uur met
+**Trace van een echt verwerkt bericht.** Het menu-item **E-maillog** (`/email-log`, alleen voor
+beheerders, #1583) toont de verwerkte berichten van de gekozen club; kies een status (bijvoorbeeld
+*Review*) en een periode. Dezelfde lijst staat ook op de Instellingen-pagina, kaart *Email
+verwerking*, achter de knop **Toon berichten en traces** (berichten van de laatste 24 uur). De lijst toont
 ontvangstmoment, type en status — bewust zonder afzender of onderwerp. Bij elke regel met een trace staat
 de knop **Trace**; die klapt dezelfde stappenlijst uit, nu met de samenvatting *Eindoordeel: zeker* of
 *onzeker, handmatige controle nodig*, en daaronder wanneer de trace is gemaakt, met welke versie van de

@@ -10,7 +10,7 @@ public partial class TraceWeergave
     [Parameter] public BeslissingsTraceDto? Trace { get; set; }
 
     /// <summary>
-    /// <c>true</c> voor een proefrun (e-mailtester: "zou worden verstuurd"); <c>false</c> voor een
+    /// <c>true</c> voor een proefrun (e-mailtester; het definitieve eindoordeel staat op de pagina zelf); <c>false</c> voor een
     /// werkelijk verwerkt bericht uit het e-maillog (vaststelling in de verleden tijd).
     /// </summary>
     [Parameter] public bool Proefrun { get; set; }
@@ -68,10 +68,13 @@ public partial class TraceWeergave
 
     private bool TraceIsZeker => Trace?.Oordeel?.IsZeker ?? false;
 
+    // Een proefrun toont hier alleen de zekerheid van de beslissingen; wat dat voor de mail betekent (Review of
+    // automatisch verstuurd, met de actuele zekerheidspoort-instelling) staat definitief in het Eindoordeel van
+    // de e-mailtester (#1583).
     private string ZekerheidSamenvatting => (Proefrun, TraceIsZeker) switch
     {
-        (true, true) => "Zeker: zou automatisch verstuurd worden, tenzij het reply-beleid (bijv. een planning die handmatig moet) geen antwoord toestaat",
-        (true, false) => "Onzeker: zou in review gaan als de zekerheidspoort aan staat (Instellingen); staat die uit, dan wordt het antwoord toch automatisch verstuurd",
+        (true, true) => "Alle beslissingen zijn zeker",
+        (true, false) => "Een of meer beslissingen zijn onzeker (zie de redenen)",
         (false, true) => "Eindoordeel: zeker",
         (false, false) => "Eindoordeel: onzeker, handmatige controle nodig"
     };
