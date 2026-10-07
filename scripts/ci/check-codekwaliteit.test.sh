@@ -61,7 +61,7 @@ verwacht_slagen "valkuilen"            bash scripts/ci/check-codekwaliteit-valku
 verwacht_slagen "bestandsgrootte"      bash scripts/ci/check-bestandsgrootte.sh
 verwacht_slagen "gelinkte bronbestanden" bash scripts/ci/check-gelinkte-bronbestanden.sh
 verwacht_slagen "regelregister"        bash scripts/ci/check-regelregister.sh
-verwacht_slagen "AGENTS.md afgeleid"   python3 scripts/ci/genereer-agents-md.py
+verwacht_slagen "agentinstructies"     python3 scripts/ci/check-agent-instructies.py
 verwacht_slagen "tier-pariteit"        bash scripts/ci/check-tier-pariteit.sh
 verwacht_slagen "endpoint-autorisatie" bash scripts/ci/check-endpoint-autorisatie.sh
 
@@ -250,12 +250,12 @@ printf 'direct   ProefBestaatNiet1350  FunctionApp.Postgres/Admin/AdminThemeFunc
 verwacht_falen "dode regel in de autorisatie-allowlist" bash scripts/ci/check-endpoint-autorisatie.sh
 cp "$TMP_B" "$proef_allow"
 
-# 7. AGENTS.md: een handmatige bewerking moet gezien worden.
-printf '\n<!-- handmatige proefbewerking -->\n' >> AGENTS.md
-verwacht_falen "handmatige bewerking van AGENTS.md" python3 scripts/ci/genereer-agents-md.py
-# Herstel via de generator, niet via git checkout: AGENTS.md is een afgeleid bestand, en een
-# checkout zou het terugzetten naar de laatste commit in plaats van naar de huidige CLAUDE.md.
-python3 scripts/ci/genereer-agents-md.py --schrijf >/dev/null
+# 7. CLAUDE.md is een stub (#1579): instructies die daar belanden moeten gezien worden.
+#    Herstel uit een tijdelijke kopie, niet via een checkout die ongestagede wijzigingen wist.
+cp CLAUDE.md "$TMP_B"
+printf '\n## Eigen regels\n- Een instructie die alleen hier staat.\n' >> CLAUDE.md
+verwacht_falen "inhoud in de CLAUDE.md-stub" python3 scripts/ci/check-agent-instructies.py
+cp "$TMP_B" CLAUDE.md
 
 # 8. Analyzers (#1300): de guard moet weigeren te meten zodra .editorconfig de drie regels niet
 #    meer aanzet. Dat is de gevaarlijke faalwijze — zonder die controle telt hij stilzwijgend nul

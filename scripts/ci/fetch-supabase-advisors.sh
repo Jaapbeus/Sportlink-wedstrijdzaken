@@ -6,7 +6,7 @@
 # Maakt zelf GEEN issue aan en praat niet met GitHub — dat doet de workflow. Eén ding per script.
 #
 # ── Waarom dit bestaat ──────────────────────────────────────────────────────────────────────────
-# Regel 3 van de Supabase-RLS-sectie in CLAUDE.md schrijft voor om het dashboard "periodiek" onder
+# Regel 3 van de Supabase-RLS-sectie in AGENTS.md schrijft voor om het dashboard "periodiek" onder
 # Advisors → Security te controleren. Die regel leunde volledig op een mens die eraan denkt. #1198
 # liet zien wat dat kost: het besluit stond correct gedocumenteerd, de blootstelling stond twaalf
 # dagen open. #1220 dekt af wat vóór de merge zichtbaar is; dit script dekt af wat alleen de
@@ -19,7 +19,7 @@
 #                           volledige accounttoegang — zie de afweging in #1221.
 #   SUPABASE_PROJECT_REF    Project ref. MOET een GitHub Secret zijn, geen Variable: deze
 #                           repository is publiek, Actions-logs zijn publiek, en de ref
-#                           identificeert de club (CLAUDE.md regel 4a — hetzelfde lek dat #1204
+#                           identificeert de club (AGENTS.md regel 4a — hetzelfde lek dat #1204
 #                           voor zes andere waarden dichtte).
 #
 #   ADVISOR_TESTLINT        Optioneel, alleen om de MELDKETEN te verifiëren. Vervangt het
@@ -152,7 +152,7 @@ fi
 
 # ── Redactie-gate ───────────────────────────────────────────────────────────────────────────────
 # Wat hier uitkomt belandt in een GitHub-issue op een PUBLIEKE repository — permanent en binnen
-# minuten geïndexeerd (CLAUDE.md regel 4a). Tabel- en kolomnamen zijn toegestaan: die staan al
+# minuten geïndexeerd (AGENTS.md regel 4a). Tabel- en kolomnamen zijn toegestaan: die staan al
 # publiek in Database.Postgres/migrations/. De project-ref, de pooler-hostname en het token niet.
 if grep -qiF "$SUPABASE_PROJECT_REF" "$WERKMAP/gefilterd.json"; then
   echo "::error::Redactie-gate: de project-ref staat in de advisor-uitvoer. Niets gepubliceerd."

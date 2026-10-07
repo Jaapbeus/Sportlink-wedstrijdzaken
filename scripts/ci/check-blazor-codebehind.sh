@@ -7,7 +7,7 @@
 #
 # WAAROM DIT SCRIPT BESTAAT
 # -------------------------
-# De regel bestond al — CLAUDE.md legt hem sinds #1122 op aan de vier Sportlink-extensiepagina's —
+# De regel bestond al — AGENTS.md legt hem sinds #1122 op aan de vier Sportlink-extensiepagina's —
 # maar er was niets dat hem controleerde. Resultaat: vier pagina's volgen hem, dertien niet, samen
 # ruim 1.600 regels logica die buiten elk testproject valt. Een @code-blok is niet los te testen:
 # BlazorAdmin.Tests kan een partial class instantiëren, een @code-blok niet.

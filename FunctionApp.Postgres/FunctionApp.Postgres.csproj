@@ -58,7 +58,7 @@
     <PackageReference Include="Microsoft.Graph" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Timer" />
     <!-- #966: uitsluitend voor FeedbackFunction (IChatClient — provider-agnostisch,
-         CLAUDE.md-architectuurregel). Zelfde versies als de SQL Server-tier (centraal beheerd). -->
+         AGENTS.md-architectuurregel). Zelfde versies als de SQL Server-tier (centraal beheerd). -->
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
     <PackageReference Include="OpenAI" />
   </ItemGroup>

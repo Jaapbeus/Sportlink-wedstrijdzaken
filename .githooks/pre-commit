@@ -21,7 +21,7 @@ PATTERN_FILE="$SCRIPT_DIR/sensitive-patterns.txt"
 #                "PGPASSWORD=$Password", '$env:SQLCMDPASSWORD = $sqlPass',
 #                'Password=$pgPassword'. Het echte wachtwoord staat per definitie ergens
 #                anders; wat hier staat is een naam. Dit is bovendien precies het patroon dat
-#                CLAUDE.md voorschrijft (wachtwoord via omgevingsvariabele van het kindproces,
+#                AGENTS.md voorschrijft (wachtwoord via omgevingsvariabele van het kindproces,
 #                nooit als argument) — de hook strafte dus het gewenste gedrag af.
 #                LET OP de vorm: het sleutelwoord moet ER DIRECT VOOR staan. Een kale
 #                '=\$' volstaat NIET. pre-push filtert namelijk hele REGELS, en '=\$' komt

@@ -15,7 +15,7 @@ namespace Planner.Endpoints.Tests.Feedback;
 /// </summary>
 public class FeedbackEndpointCoreTests
 {
-    // Synthetisch testadres — goedgekeurde AVG-veilige placeholder (CLAUDE.md).
+    // Synthetisch testadres — goedgekeurde AVG-veilige placeholder (AGENTS.md).
     private const string PiiMarker = "trainer@voorbeeld.nl";
     private const string ClubCode = "ALLSTARS";
 

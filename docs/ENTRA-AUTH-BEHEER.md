@@ -189,7 +189,7 @@ Als je dezelfde browser gebruikt voor een persoonlijk Microsoft-account én `adm
 
 ## Verificatie — gebruikersrollentest (verplicht na elke auth-wijziging)
 
-Dit is de test die `CLAUDE.md` de **3-user-test** noemt. Sinds #988 telt hij vijf profielen; de
+Dit is de test die `AGENTS.md` de **3-user-test** noemt. Sinds #988 telt hij vijf profielen; de
 eerste drie rijen zijn die oorspronkelijke drie. Eén test, drie namen in omloop — houd deze tabel
 aan als de bron.
 
@@ -246,4 +246,4 @@ Maak er dus nog geen Entra-appRole-toewijzingen voor aan. `admin` heeft altijd a
 
 - Issue [#185](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/185) — Frontend role-gate (Layer 4) — gesloten, geleverd in v2.1.1
 - Issue [#187](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/187) — Idempotente Entra-setup scripts (deze docs) — gesloten, geleverd in v2.1.1
-- CLAUDE.md sectie "Defense in depth — vijf auth-lagen, allemaal verplicht"
+- AGENTS.md sectie "Defense in depth — vijf auth-lagen, allemaal verplicht"

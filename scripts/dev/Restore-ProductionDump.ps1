@@ -11,7 +11,7 @@
 # geen persoonsgegevens buiten wat Sportlink zelf al levert. Deze dump-route is er specifiek voor
 # als je ook de rest van de echte productiedatabase nodig hebt (dbo.AppSettings met het echte
 # SportlinkClientId, avg.Teambegeleiding, planner.EmailVerwerking, etc.) — en dat betekent dat er
-# ECHTE PERSOONSGEGEVENS lokaal terechtkomen. Zie de CISO/DPO-regels in CLAUDE.md.
+# ECHTE PERSOONSGEGEVENS lokaal terechtkomen. Zie de CISO/DPO-regels in AGENTS.md.
 #
 # VEILIGHEIDSMAATREGELEN IN DIT SCRIPT:
 # - De productie-connectiestring wordt opgevraagd via Read-Host -AsSecureString: niets op het
@@ -20,7 +20,7 @@
 # - De connectiestring wordt NOOIT als commandoregel-argument aan `docker exec`/`pg_dump`
 #   meegegeven (zichtbaar via `ps aux` op de host zolang het proces loopt) — hij gaat via stdin
 #   naar een `read`-shellbuiltin in de container, dezelfde reden als de SQLCMDPASSWORD-regel in
-#   CLAUDE.md ("nooit via -P — argumenten zijn zichtbaar in de procesenlijst").
+#   AGENTS.md ("nooit via -P — argumenten zijn zichtbaar in de procesenlijst").
 # - Het dumpbestand wordt NOOIT in de repo geschreven — uitsluitend in /tmp ín de container zelf,
 #   en dat bestand wordt aan het eind altijd verwijderd (ook bij een fout, via try/finally). Er
 #   komt dus geen dumpbestand op de hostschijf en zeker niet onder git-tracking.
@@ -166,7 +166,7 @@ Write-Host "Klaar. Vervolgstappen:" -ForegroundColor Green
 Write-Host "  1. .\scripts\dev\Start-Debug.ps1              (start FunctionApp.Postgres + BlazorAdmin lokaal)"
 Write-Host "  2. Invoke-RestMethod 'http://localhost:7094/api/sync-matches?reset=true&season=<jaar>'"
 Write-Host "     -> haalt de laatste live Sportlink-data op voor VRC (clientId staat al in de gerestorede AppSettings)"
-Write-Host "  3. .\scripts\dev\Test-App.ps1                 (verificatielus, zie CLAUDE.md)"
+Write-Host "  3. .\scripts\dev\Test-App.ps1                 (verificatielus, zie AGENTS.md)"
 Write-Host ""
 Write-Host "DPO-herinnering: dit is een eenmalige kopie voor een acceptatietest. Draai 'docker compose down -v'" -ForegroundColor Yellow
 Write-Host "zodra je klaar bent, zodat de persoonsgegevens niet onnodig lang lokaal blijven staan." -ForegroundColor Yellow

@@ -38,7 +38,7 @@ account.
 > **Harde, niet-onderhandelbare eis:** elk Cosmos DB-account dat voor tier 4 wordt aangemaakt MOET
 > expliciet de gratis-tier-korting geactiveerd hebben bij aanmaak, én provisioned of autoscale
 > throughput gebruiken — **nooit** serverless-modus, anders is het account stilzwijgend niet
-> gratis. Conform CLAUDE.md's kostenbeleid: nooit een nieuwe Azure-resource aanmaken zonder
+> gratis. Conform AGENTS.md's kostenbeleid: nooit een nieuwe Azure-resource aanmaken zonder
 > expliciete bevestiging van de gebruiker, en de prijspagina opnieuw verifiëren vlak vóór aanmaak
 > (gratis-tier-voorwaarden kunnen zonder aankondiging wijzigen).
 
@@ -53,7 +53,7 @@ het echte schema).
 
 ## 4. Partition-key: open ontwerpvraagstuk (bewust niet opgelost)
 
-Het deployment-model "één echte club + AllStars FC als demo/testclub per fork" (zie CLAUDE.md,
+Het deployment-model "één echte club + AllStars FC als demo/testclub per fork" (zie AGENTS.md,
 "Deployment-model") betekent:
 
 - **Optie A — `ClubCode` als partition key.** Zou in elke deployment maar ~2 distincte waarden
@@ -123,7 +123,7 @@ ontwerppunt, niet opgelost door retry alleen.
 
 Zie sectie 2 hierboven — dit document maakt zelf geen Azure-resource aan, dus is er geen
 verificatiemoment nodig om dít document af te ronden. Bij daadwerkelijke implementatie is de
-volledige CLAUDE.md-kostenchecklist (inclusief een hernieuwde MS Docs-prijsverificatie, want
+volledige AGENTS.md-kostenchecklist (inclusief een hernieuwde MS Docs-prijsverificatie, want
 gratis-tier-voorwaarden kunnen zonder aankondiging wijzigen) verplicht vóór aanmaak.
 
 ## Gerelateerd

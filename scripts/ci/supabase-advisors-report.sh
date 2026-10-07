@@ -97,7 +97,7 @@ fi
   echo "1. **Oplossen** — meestal een nieuwe migratie in \`Database.Postgres/migrations/\`. Nooit rechtstreeks in het Supabase-dashboard of via MCP \`apply_migration\`: dat omzeilt \`MigrationRunner\` (geen \`schema_migrations\`-rij, geen checksum) en laat \`/api/health\`'s \`pendingMigrations\` uit de pas lopen met de werkelijkheid."
   echo "2. **Accepteren** — voeg de baseline-sleutel toe aan \`.github/supabase-advisors-baseline.json\` mét \`reden\` en \`issue\`. Daarna meldt deze controle hem niet opnieuw."
   echo ""
-  echo "> Automatisch aangemaakt door \`.github/workflows/supabase-advisors.yml\` (#1221). Bevindingen zijn geaggregeerd; er staan bewust geen e-mailadressen, IP's of gebruikers-id's in — zie CLAUDE.md regel 4a."
+  echo "> Automatisch aangemaakt door \`.github/workflows/supabase-advisors.yml\` (#1221). Bevindingen zijn geaggregeerd; er staan bewust geen e-mailadressen, IP's of gebruikers-id's in — zie AGENTS.md regel 4a."
 } > "$BODY"
 
 # ── Redactie-gate, tweede keer ──────────────────────────────────────────────────────────────────

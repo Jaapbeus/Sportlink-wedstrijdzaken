@@ -41,7 +41,7 @@ namespace FunctionApp.Postgres.Monitoring;
 /// </list>
 ///
 /// <para>
-/// <b>Geheimen en AVG:</b> de project-ref identificeert de club (CLAUDE.md regel 4a) en het token is
+/// <b>Geheimen en AVG:</b> de project-ref identificeert de club (AGENTS.md regel 4a) en het token is
 /// een geheim. Geen van beide komt in een log, een foutmelding of de noodmail terecht.
 /// </para>
 /// </summary>

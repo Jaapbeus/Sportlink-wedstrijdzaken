@@ -113,7 +113,7 @@ public static class ThemeCore
 {
     // De standaardkleuren van de applicatie. Bewust géén clubkleuren: dit is wat een club ziet
     // vóórdat er een eigen thema is ingesteld (Bootstrap-blauw), niet de kleur van een
-    // specifieke vereniging — zie de regel "geen club-specifieke strings in code" in CLAUDE.md.
+    // specifieke vereniging — zie de regel "geen club-specifieke strings in code" in AGENTS.md.
     public const string DefaultPrimaryColor      = "#1b6ec2";
     public const string DefaultSecondaryColor    = "#6c757d";
     public const string DefaultAccentColor       = "#0071c1";

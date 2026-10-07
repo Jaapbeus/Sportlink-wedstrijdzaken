@@ -109,7 +109,7 @@ Voor nieuwe clubs en developers die de app voor het eerst inrichten.
 | [README](../README.md) | Projectoverzicht, quick start, architectuurdiagram |
 | [CHANGELOG](../CHANGELOG.md) | Versiehistorie — alle features en fixes per release |
 | [SECURITY](../SECURITY.md) | Security-beleid, AVG-regels, secrets-protocol |
-| [CLAUDE.md](../CLAUDE.md) | Instructies voor Claude Code — architectuurregels, buildproces |
+| [AGENTS.md](../AGENTS.md) | De enige bron van de agentinstructies (Codex én Claude Code) — architectuurregels, buildproces; `CLAUDE.md` is een stub die ernaar verwijst |
 
 ---
 

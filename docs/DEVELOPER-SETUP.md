@@ -787,7 +787,7 @@ export SUPABASE_ACCESS_TOKEN='...'
 ```
 
 `.mcp.json` staat in `.gitignore` — de URL bevat de project-ref en die identificeert de club
-(`CLAUDE.md` regel 4a). Hetzelfde patroon als `local.settings.template.json`.
+(`AGENTS.md` regel 4a). Hetzelfde patroon als `local.settings.template.json`.
 
 **Token:** maak er één aan op <https://supabase.com/dashboard/account/tokens>. Kies als het kan een
 **scoped** token met alleen leesrechten: Advisors=Read, Logs=Read, Database Security=Read. Scoped

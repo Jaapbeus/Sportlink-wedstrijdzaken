@@ -202,7 +202,7 @@ Write-Section 'Layer 5 — Backend RequireAdmin (EasyAuthHelper) — code-side'
 #   1. Er werd één tier gescand (FunctionApp/Admin). Sinds #1266 zijn beide tiers gelijkwaardig
 #      (built=true in scripts/ci/database-tiers.json), dus juist de tier die déze installatie
 #      draait kon ongecontroleerd blijven. De tierlijst komt nu uit dat bestand — nooit een
-#      tweede hardcoded lijst, zie de tier-regels in CLAUDE.md.
+#      tweede hardcoded lijst, zie de tier-regels in AGENTS.md.
 #   2. -ErrorAction SilentlyContinue maakte $adminFns leeg als het pad niet oploste, en er was
 #      geen else-tak. Het script zei dan NIETS over laag 5, wat leest als "in orde". Een
 #      onoplosbaar pad is nu een Write-Fail.

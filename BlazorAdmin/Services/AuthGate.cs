@@ -21,7 +21,7 @@ public enum AppState
 }
 
 /// <summary>
-/// Auth-laag 4 — de frontend role-gate uit de defense-in-depth-tabel in <c>CLAUDE.md</c>.
+/// Auth-laag 4 — de frontend role-gate uit de defense-in-depth-tabel in <c>AGENTS.md</c>.
 /// </summary>
 /// <remarks>
 /// <para>
