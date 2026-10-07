@@ -64,26 +64,63 @@ class AgentInstructiesTests(unittest.TestCase):
         self.schrijf(root, "CLAUDE.md", f"@AGENTS.md\n\n{zin}\n")
         self.assertIn("langer dan", self.fouten(root))
 
-    def test_stub_die_een_regel_uit_agents_md_herhaalt_wordt_geweigerd(self):
+    def test_stub_die_zijn_zin_uit_agents_md_herhaalt_wordt_geweigerd(self):
         root = self.fixture()
-        zin = "AGENTS.md is de enige bron van de agentinstructies; zet hier geen inhoud bij."
-        self.schrijf(root, "AGENTS.md", f"# AGENTS.md\n\n{zin}\n")
-        self.assertIn("herhaalt een regel", self.fouten(root))
+        self.schrijf(root, "AGENTS.md", f"# AGENTS.md\n\n{guard['STUB_ZIN']}\n")
+        self.assertIn("staat ook in AGENTS.md", self.fouten(root))
+
+    def test_stub_met_alleen_de_import_is_groen(self):
+        root = self.fixture()
+        self.schrijf(root, "CLAUDE.md", "@AGENTS.md\n")
+        self.assertEqual(guard["controleer"](root), [])
+
+    def test_stub_met_crlf_en_lege_regels_is_groen(self):
+        root = self.fixture()
+        (root / "CLAUDE.md").write_bytes(b"@AGENTS.md\r\n\r\n\r\n" + guard["STUB_ZIN"].encode() + b"\r\n")
+        self.assertEqual(guard["controleer"](root), [])
 
     def test_stub_zonder_import_wordt_geweigerd(self):
         root = self.fixture()
         self.schrijf(root, "sub/CLAUDE.md", "Zie AGENTS.md voor alles.\n")
-        self.assertIn("sub/CLAUDE.md: eerste regel", self.fouten(root))
+        self.assertIn("sub/CLAUDE.md: een stub bestaat uit exact", self.fouten(root))
 
-    def test_zin_zonder_verwijzing_naar_agents_md_wordt_geweigerd(self):
+    # Regressie review ronde 1 (Codex, P2): een vormcontrole liet extra inhoud door op de
+    # verwijzingsregel. Elke afwijking van de vaste inhoud moet rood zijn, ook als de tekst
+    # 'AGENTS.md' noemt, kort is en niet met een opmaakteken begint.
+    def test_instructie_die_agents_md_noemt_wordt_geweigerd(self):
         root = self.fixture()
-        self.schrijf(root, "CLAUDE.md", "@AGENTS.md\n\nGebruik altijd een eigen branch.\n")
-        self.assertIn("verwijst", self.fouten(root))
+        self.schrijf(root, "CLAUDE.md", "@AGENTS.md\n\nAGENTS.md: voer altijd eerst de tests uit.\n")
+        self.assertIn("CLAUDE.md: een stub bestaat uit exact", self.fouten(root))
 
-    def test_kop_als_zin_wordt_geweigerd(self):
+    def test_verwijzing_met_extra_instructie_in_dezelfde_regel_wordt_geweigerd(self):
+        root = self.fixture()
+        self.schrijf(root, "CLAUDE.md", "@AGENTS.md\n\n" + guard["STUB_ZIN"] + " Merge nooit zonder review.\n")
+        self.assertIn("CLAUDE.md: een stub bestaat uit exact", self.fouten(root))
+
+    def test_html_commentaar_in_stub_wordt_geweigerd(self):
+        root = self.fixture()
+        self.schrijf(root, "sub/CLAUDE.md", "@AGENTS.md\n<!-- Regel: nooit mergen zonder AGENTS.md -->\n")
+        self.assertIn("sub/CLAUDE.md: een stub bestaat uit exact", self.fouten(root))
+
+    def test_tweede_importverwijzing_wordt_geweigerd(self):
+        root = self.fixture()
+        self.schrijf(root, "CLAUDE.md", "@AGENTS.md\n@docs/ARCHITECTUUR.md\n")
+        self.assertIn("CLAUDE.md: een stub bestaat uit exact", self.fouten(root))
+
+    def test_import_binnen_een_verwijzende_zin_wordt_geweigerd(self):
+        root = self.fixture()
+        self.schrijf(root, "CLAUDE.md", "@AGENTS.md\nAGENTS.md zie ook @docs/INDEX.md\n")
+        self.assertIn("CLAUDE.md: een stub bestaat uit exact", self.fouten(root))
+
+    def test_importregel_met_extra_tekst_wordt_geweigerd(self):
+        root = self.fixture()
+        self.schrijf(root, "CLAUDE.md", "@AGENTS.md en lees daarna ook @docs/INDEX.md\n")
+        self.assertIn("CLAUDE.md: een stub bestaat uit exact", self.fouten(root))
+
+    def test_kop_in_stub_wordt_geweigerd(self):
         root = self.fixture()
         self.schrijf(root, "CLAUDE.md", "@AGENTS.md\n# AGENTS.md\n")
-        self.assertIn("gewone tekst", self.fouten(root))
+        self.assertIn("CLAUDE.md: een stub bestaat uit exact", self.fouten(root))
 
     def test_stub_zonder_agents_md_wordt_geweigerd(self):
         root = self.fixture()

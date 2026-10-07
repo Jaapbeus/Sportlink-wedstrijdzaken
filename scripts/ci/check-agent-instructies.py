@@ -10,8 +10,10 @@ Staat er inhoud in een stub, dan bestaat die instructie op twee plekken en loopt
 
 De guard dwingt af:
   1. naast elke `AGENTS.md` staat een `CLAUDE.md`, en andersom;
-  2. een `CLAUDE.md` bevat uitsluitend de import `@AGENTS.md` en hoogstens één verwijzende zin,
-     blijft onder STUB_MAX_BYTES, en herhaalt geen regel uit de `AGENTS.md` ernaast;
+  2. een `CLAUDE.md` bestaat uit exact de import `@AGENTS.md`, eventueel gevolgd door exact de
+     vaste zin STUB_ZIN (lege regels mogen), blijft onder STUB_MAX_BYTES, en de zin staat niet ook
+     in de `AGENTS.md` ernaast. Elke andere regel — ook een verwijzing, commentaar of tweede
+     import — faalt: niets mag een tweede instructiebron worden;
   3. `AGENTS.md` is geen gegenereerd bestand meer (de oude generatorkop is weg);
   4. skills hebben één bron: `.agents/skills/` met een identieke kopie in `.claude/skills/`, of staan
      in `scripts/ci/skills-alleen-claude.txt` (zie `scripts/ci/sync-skills.py`);
@@ -34,7 +36,8 @@ SYNC = runpy.run_path(str(Path(__file__).with_name("sync-skills.py")))
 
 STUB_MAX_BYTES = 300
 STUB_IMPORT = "@AGENTS.md"
-STUB_ZIN_MAX_TEKENS = 160
+STUB_ZIN = "AGENTS.md is de enige bron van de agentinstructies; zet hier geen inhoud bij."
+TOEGESTANE_STUBS = ([STUB_IMPORT], [STUB_IMPORT, STUB_ZIN])
 VERPLICHTE_SKILLS = {"autonoom", "release", "sluitsessie", "startdebug"}
 CODEX_MAX_BYTES = 32 * 1024  # project_doc_max_bytes, standaard
 NEGEER_MAPPEN = {".git", "node_modules", "bin", "obj", "packages", ".venv", "artifacts"}
@@ -82,18 +85,14 @@ def controleer_stub(stub: Path, root: Path) -> list[str]:
     regels = [r.strip() for r in tekst.splitlines() if r.strip()]
     if len(tekst.encode("utf-8")) > STUB_MAX_BYTES:
         fouten.append(f"{rel}: stub is langer dan {STUB_MAX_BYTES} bytes — instructies horen in AGENTS.md")
-    if not regels or regels[0] != STUB_IMPORT:
-        fouten.append(f"{rel}: eerste regel moet exact '{STUB_IMPORT}' zijn")
-    extra = regels[1:]
-    if len(extra) > 1:
-        fouten.append(f"{rel}: stub bevat {len(extra)} regels na de import; toegestaan is hoogstens één verwijzende zin")
+    # Geen vormcontrole maar een vaste toegestane inhoud: elke andere regel — ook een zin die
+    # 'AGENTS.md' noemt, commentaar of een tweede import — is een mogelijke tweede instructiebron.
+    if regels not in TOEGESTANE_STUBS:
+        fouten.append(f"{rel}: een stub bestaat uit exact '{STUB_IMPORT}', eventueel gevolgd door exact de zin "
+                      f"'{STUB_ZIN}' — alles anders hoort in AGENTS.md")
     bron_regels = {r.strip() for r in agents.read_text(encoding="utf-8").splitlines() if r.strip()}
-    for regel in extra[:1]:
-        if regel[0] in "#@-|>`*" or len(regel) > STUB_ZIN_MAX_TEKENS or "AGENTS.md" not in regel:
-            fouten.append(f"{rel}: de zin na de import moet gewone tekst zijn die naar AGENTS.md verwijst (max {STUB_ZIN_MAX_TEKENS} tekens)")
-    for regel in extra:
-        if regel in bron_regels:
-            fouten.append(f"{rel}: stub herhaalt een regel die ook in AGENTS.md staat — één waarheid")
+    if STUB_ZIN in bron_regels:
+        fouten.append(f"{rel}: de stubzin staat ook in AGENTS.md — één waarheid")
     return fouten
 
 
