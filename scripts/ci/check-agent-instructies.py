@@ -22,33 +22,47 @@ De guard dwingt af:
   4. skills hebben één bron: `.agents/skills/` met een identieke kopie in `.claude/skills/`, of staan
      in `scripts/ci/skills-alleen-claude.txt` (zie `scripts/ci/sync-skills.py`);
   5. Markdown-codeblokken in skills en `AGENTS.md` zijn afgesloten;
-  6. er bestaat geen tweede laadpad voor instructies (zie "Toegestaan en verboden" hieronder);
+  6. er bestaat geen BEKEND tweede laadpad voor instructies (de toelatingsmatrix hieronder);
   7. de omvang past binnen het plafond per bestand en per keten (`agent-instructies-plafonds.txt`).
 
-TOEGESTAAN EN VERBODEN (de ene lijst; docs/ARCHITECTUUR-CODEKWALITEIT.md verwijst hierheen)
------------------------------------------------------------------------------------------
-Toegestaan: `AGENTS.md` (root en submappen) met een stub-`CLAUDE.md` ernaast; skills uit
-`.agents/skills/` met een identieke kopie in `.claude/skills/`, alleen in de repositoryroot;
-Claude-only skills uit `scripts/ci/skills-alleen-claude.txt`; `.claude/settings.json` zonder de
-sleutels uit SETTINGS_VERBODEN; een `.codex/config.toml` zonder de sleutels uit CODEX_VERBODEN.
+TOELATINGSMATRIX (de ene lijst; docs/ARCHITECTUUR-CODEKWALITEIT.md verwijst hierheen)
+----------------------------------------------------------------------------------
+Bron van de matrix: de actuele documentatie van beide clients (Claude Code: memory- en settings-referentie;
+Codex: config-referentie en config-basics), geraadpleegd bij #1580. Documentatie is geen runtimegarantie, en
+een kanaal dat nog niet gedocumenteerd of niet bekend is, kan deze guard niet zien.
 
-Verboden, in de repositoryroot én in elke submap, aanwezig óf door git getrackt (ook in een map die
-de doorloop overslaat, zoals bin/obj/node_modules — `git ls-files` is leidend):
-  * `.claude/rules/`, `.claude/commands/`, `.claude/agents/`, `.claude/output-styles/` — Claude Code
-    laadt ze als prompt/instructie zodra ze ontdekt of geactiveerd worden, Codex niet;
+TOEGESTAAN
+  * `AGENTS.md` (root en submappen) met een stub-`CLAUDE.md` ernaast, nooit in een metadatamap;
+  * skills uit `.agents/skills/` met een identieke kopie in `.claude/skills/`, alleen in de repositoryroot, plus
+    Claude-only skills uit `scripts/ci/skills-alleen-claude.txt`;
+  * een getrackt `.claude/settings.json` met UITSLUITEND de sleutels `$schema` en `permissions` (daarbinnen alleen
+    `allow`, `deny`, `ask`) — een toelatingslijst, geen verbodslijst: ook een nieuwe of een alias-sleutel faalt;
+  * een `.codex/config.toml` zonder een sleutel of tabel uit CODEX_VERBODEN_SLEUTELS / CODEX_VERBODEN_TABELLEN
+    (gelezen als TOML-structuur, dus ook gequote, gepunte, in een profiel of in een inline-tabel).
+
+VERBODEN, in de repositoryroot én in elke submap, aanwezig óf door git getrackt (ook in een map die de doorloop
+overslaat, zoals bin/obj/node_modules — `git ls-files` is leidend):
+  * `.claude/rules/`, `.claude/commands/`, `.claude/agents/`, `.claude/output-styles/` — Claude Code laadt ze als
+    prompt/instructie zodra ze ontdekt of geactiveerd worden, Codex niet;
+  * een instructiebestand (`AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.override.md`) direct onder een
+    metadatamap `.claude/`, `.agents/` of `.codex/`: Claude Code leest `.claude/CLAUDE.md` en `.claude/AGENTS.md`
+    als projectinstructies, een Codex-sessie in de root volgt alleen root → werkmap — twee bronketens;
   * een `.claude/skills/` of `.agents/skills/` in een submap (geneste skills);
-  * `.codex/skills|prompts|agents|rules|commands/`;
+  * `.codex/skills|prompts|agents|rules|commands/` en `.codex/hooks.json`;
   * `AGENTS.override.md` — vervangt de AGENTS.md in dezelfde map en maakt het één-bronbeleid stuk;
-  * een symlink op elk van deze plekken, op `AGENTS.md`, `CLAUDE.md` of in `.claude/`, `.agents/`,
-    `.codex/` — we volgen geen symlinks, dus we weigeren ze (geen cyclus- of padgrenzen nodig).
-Verboden uitsluitend wanneer door git getrackt (lokaal is het een persoonlijk, genegeerd bestand):
-  `CLAUDE.local.md` (alleen `.gitignore` houdt het eruit; `git add -f` ging ongezien),
-  `.claude/settings.local.json` en `.mcp.json` (bevat de projectverwijzing).
-Een legitieme toekomstige subagent, command of config vraagt een eigenaarsbesluit én een wijziging
-van déze guard — dat is de uitzondering, als diff die iemand goedkeurt.
+  * een symlink op elk van deze plekken, op `AGENTS.md`, `CLAUDE.md` of in `.claude/`, `.agents/`, `.codex/` —
+    we volgen geen symlinks, dus we weigeren ze (geen cyclus- of padgrenzen nodig).
+Verboden zodra git het trackt, in elke vorm in de index (gewoon bestand, symlink, index-mode 120000, ook als
+het uit de werkboom is verwijderd): `CLAUDE.local.md`, `.claude/settings.local.json` en `.mcp.json`. Lokaal
+zijn dit persoonlijke, genegeerde bestanden en blijven ze bewust buiten de garantie.
+Een aanwezige maar kapotte Git-verwijzing (bijvoorbeeld een dangling `.git`-symlink) is een fout; alleen een
+werkelijk afwezige repository (de unit-fixtures) valt terug op de werkboom.
+Een legitieme toekomstige subagent, command, hook of config vraagt een eigenaarsbesluit én een wijziging van
+déze guard — dat is de uitzondering, als diff die iemand goedkeurt.
 
-Wat dit NIET bewijst: dat de inhoud juist is, dat de agent hem leest, of dat een gebruikersinstelling
-op een andere machine het budget verhoogt of verlaagt. Dat Claude Code de import laadt is handmatig
+Wat dit NIET bewijst: dat de inhoud juist is, dat de agent hem leest, dat een niet-gedocumenteerd
+kanaal niet bestaat, of dat een gebruikersinstelling (of een niet-vertrouwd project) op een andere
+machine het budget of de bronselectie verandert. Dat Claude Code de import laadt is handmatig
 vastgesteld bij #1579 en staat in dat issue.
 """
 
@@ -92,13 +106,37 @@ VERBODEN_KANAALMAPPEN = {
     (".codex", "commands"): "Codex-commands",
 }
 SKILLMAPPEN = {(".claude", "skills"), (".agents", "skills")}
-# Sleutels waarmee een settings-/configbestand zelf instructies of extra laadpaden toevoegt.
-SETTINGS_VERBODEN = {"hooks", "outputStyle", "agent", "enabledPlugins", "extraKnownMarketplaces"}
-CODEX_VERBODEN = {
-    "project_doc_max_bytes", "project_doc_fallback_filenames", "project_root_markers",
-    "developer_instructions", "model_instructions_file", "experimental_instructions_file",
-    "compact_prompt",
+# Toelatingsmatrix voor een in git getrackt `.claude/settings.json` (#1580): ALLEEN deze sleutels zijn
+# toegestaan; elke andere sleutel faalt, ook een die vandaag nog niet bestaat of een alias is. Onderaan staat
+# per bekende sleutel waarom hij een tweede instructiebron of laadpad is (bron: Claude Code settings-referentie
+# en memory-documentatie; documentatie is geen runtimegarantie).
+SETTINGS_TOEGESTAAN = {"$schema", "permissions"}
+PERMISSIONS_TOEGESTAAN = {"allow", "deny", "ask"}  # niet: additionalDirectories (laadt CLAUDE.md/rules van een andere map)
+SETTINGS_BEKEND = {
+    "hooks": "hooks injecteren context of gedrag", "outputStyle": "output styles wijzigen rol en toon",
+    "agent": "start elke sessie als een subagent met eigen prompt", "enabledPlugins": "plugins brengen skills, agents en hooks mee",
+    "extraKnownMarketplaces": "registreert pluginbronnen", "additionalMarketplaces": "alias van extraKnownMarketplaces",
+    "strictKnownMarketplaces": "pluginbronnen", "pluginConfigs": "stelt o.a. in welke instructiebronnen worden gelezen "
+    "(cc-plugin-agents-md@builtin: claude-md-and-agents-md/managed-only sluit AGENTS.md uit)",
+    "claudeMd": "injecteert instructies", "claudeMdExcludes": "sluit gedeelde instructiebestanden uit",
+    "autoMemoryDirectory": "leidt het geheugen om naar een andere map", "autoMemoryEnabled": "wijzigt het geheugen",
+    "env": "kan instructieladen wijzigen (CLAUDE_CODE_*)", "skillOverrides": "wijzigt welke skills zichtbaar zijn",
+    "enabledMcpjsonServers": "MCP-servers leveren instructies", "enableAllProjectMcpServers": "MCP-servers leveren instructies",
+    "disabledMcpjsonServers": "MCP-servers", "includeGitInstructions": "wijzigt de ingebouwde prompt",
+    "language": "wijzigt de promptinstructie voor de antwoordtaal", "statusLine": "voert een commando uit",
+    "fileSuggestion": "voert een commando uit", "disableAllHooks": "wijzigt hookgedrag",
 }
+# `.codex/config.toml`: sleutels (laatste segment, op elk niveau, dus ook in een profiel of inline-tabel) en
+# tabellen die instructies injecteren, bronselectie of budget wijzigen, of extra lagen/plugins/hooks activeren.
+CODEX_VERBODEN_SLEUTELS = {
+    "project_doc_max_bytes", "project_doc_fallback_filenames", "project_root_markers",
+    "developer_instructions", "model_instructions_file", "experimental_instructions_file", "instructions",
+    "compact_prompt", "experimental_compact_prompt_file", "config_file",
+}
+CODEX_VERBODEN_TABELLEN = [
+    ("hooks",), ("plugins",), ("marketplaces",), ("agents",), ("skills",), ("projects",), ("mcp_servers",),
+    ("features", "hooks"), ("features", "codex_hooks"), ("features", "remote_plugin"),
+]
 
 
 def onafgesloten_codeblok(tekst: str) -> Optional[int]:
@@ -131,6 +169,7 @@ class Inventaris:
         self.aanwezig: Set[str] = set()
         self.symlinks: Set[str] = set()
         self.getrackt: Set[str] = set()
+        self.index: Set[str] = set()  # alles wat git trackt, ook als het uit de werkboom is verwijderd
         self.git_fout: Optional[str] = None
         self._doorloop()
         self._git()
@@ -151,7 +190,9 @@ class Inventaris:
                     self.aanwezig.add(rel)
 
     def _git(self) -> None:
-        if not (self.root / ".git").exists():
+        # lexists, niet exists: een aanwezige maar kapotte verwijzing (dangling symlink, .git-bestand naar niets)
+        # is geen afwezige repository — git faalt dan en dat moet zichtbaar worden.
+        if not os.path.lexists(self.root / ".git"):
             return
         try:
             uitvoer = subprocess.run(
@@ -168,6 +209,7 @@ class Inventaris:
                 continue
             kop, _, pad = item.partition(b"\t")
             rel = pad.decode("utf-8", "surrogateescape")
+            self.index.add(rel)
             if not os.path.lexists(self.root / rel):
                 continue  # getrackt maar uit de werkboom verwijderd: niets om te laden
             self.getrackt.add(rel)
@@ -258,12 +300,24 @@ def controleer_kanalen(inv: Inventaris) -> List[str]:
         else:
             if delen[-1] == "AGENTS.override.md":
                 fouten.append(f"{pad}: AGENTS.override.md vervangt de AGENTS.md in dezelfde map en omzeilt het één-bronbeleid")
-    for pad in sorted(inv.getrackt - inv.symlinks):
+    # Metadatamappen: Claude Code leest `.claude/CLAUDE.md` en `.claude/AGENTS.md` als projectinstructies; een
+    # sessie in de root van Codex volgt alleen root → werkmap en leest ze niet. Dat zijn dus twee verschillende
+    # bronketens (#1580): niet toegestaan. Aanwezig óf getrackt.
+    for pad in sorted(inv.bestanden()):
+        delen = pad.split("/")
+        if len(delen) >= 2 and delen[-2] in INSTRUCTIEMAPPEN and delen[-1] in INSTRUCTIEBESTANDEN:
+            fouten.append(f"{pad}: instructiebestand onder de metadatamap {delen[-2]}/ — Claude Code laadt het, een Codex-sessie in "
+                          "de root niet; instructies staan alleen in AGENTS.md naast een stub-CLAUDE.md")
+        if pad == ".codex/hooks.json" or pad.endswith("/.codex/hooks.json"):
+            fouten.append(f"{pad}: Codex-hookbestand — hooks zijn een tweede instructie-/gedragskanaal naast AGENTS.md")
+    # Het trackingverbod geldt voor ELKE vorm in de index: gewoon bestand, symlink, index-mode 120000, en ook
+    # als het bestand uit de werkboom is verwijderd (een verse checkout levert het weer op).
+    for pad in sorted(inv.index):
         if pad.split("/")[-1] == "CLAUDE.local.md":
             fouten.append(f"{pad}: CLAUDE.local.md is persoonlijk en hoort niet in git (ook niet met git add -f)")
         if pad == ".mcp.json" or pad.endswith("/.mcp.json"):
             fouten.append(f"{pad}: .mcp.json bevat de projectverwijzing en hoort niet in git — gebruik .mcp.json.template")
-        if pad.split("/")[-2:] == [".claude", "settings.local.json"] or pad == ".claude/settings.local.json":
+        if pad.split("/")[-2:] == [".claude", "settings.local.json"]:
             fouten.append(f"{pad}: settings.local.json is persoonlijk en hoort niet in git")
     return fouten
 
@@ -277,12 +331,217 @@ def controleer_symlinks(inv: Inventaris) -> List[str]:
     return fouten
 
 
-def lees_json_sleutels(pad: Path) -> Optional[Set[str]]:
+# ── TOML-structuur (Python 3.9: geen tomllib) ───────────────────────────────────────────────────
+class TomlFout(ValueError):
+    """De tekst is geen TOML die deze eenvoudige structuurlezer kan volgen — de guard faalt dan dicht."""
+
+
+_BARE = re.compile(r"[A-Za-z0-9_-]+")
+_ESCAPES = {"b": "\b", "t": "\t", "n": "\n", "f": "\f", "r": "\r", '"': '"', "\\": "\\", "e": "\x1b"}
+
+
+def toml_sleutelpaden(tekst: str) -> List[Tuple[str, ...]]:
+    """Alle sleutelpaden (tabelkoppen, sleutels, gepunte sleutels, inline-tabellen) van een TOML-document.
+
+    Geen waardevalidatie: alleen de structuur die nodig is om te zien WELKE sleutels er staan, ook als ze
+    gequote (`"a.b" = 1`), gepunt (`a."b".c = 1`), in een tabel (`[a.b]`, `[[a]]`), in een profiel of in een
+    inline-tabel staan — en om tekst binnen een (meerregelige) string NIET als sleutel te lezen. Ongeldige
+    TOML geeft TomlFout; de aanroeper behandelt dat als fout (een onleesbare config bewaakt niets).
+    """
+    s = tekst.lstrip("\ufeff")  # een lone \r telt als witruimte (ws), dus CRLF hoeft niet genormaliseerd
+    n = len(s)
+    paden: List[Tuple[str, ...]] = []
+
+    def fout(i: int, wat: str) -> TomlFout:
+        return TomlFout(f"{wat} (regel {s.count(chr(10), 0, i) + 1})")
+
+    def ws(i: int, regels: bool = False) -> int:
+        while i < n:
+            c = s[i]
+            if c in " \t\r" or (regels and c == "\n"):
+                i += 1
+            elif c == "#":
+                while i < n and s[i] != "\n":
+                    i += 1
+            else:
+                break
+        return i
+
+    def tekenreeks(i: int) -> Tuple[str, int]:
+        """Eén- of meerregelige basic/literal string vanaf i; geeft (inhoud, positie erna)."""
+        q = s[i]
+        meerregelig = s.startswith(q * 3, i)
+        i += 3 if meerregelig else 1
+        uit: List[str] = []
+        while i < n:
+            c = s[i]
+            if q == '"' and c == "\\":
+                if i + 1 >= n:
+                    break
+                e = s[i + 1]
+                if e in _ESCAPES:
+                    uit.append(_ESCAPES[e]); i += 2
+                elif e in "uU":
+                    lengte = 4 if e == "u" else 8
+                    hex_ = s[i + 2:i + 2 + lengte]
+                    try:
+                        uit.append(chr(int(hex_, 16)))
+                    except (ValueError, OverflowError):
+                        raise fout(i, "ongeldige escape in string")
+                    i += 2 + lengte
+                elif meerregelig and e in " \t\n":  # regeleinde-backslash: slikt witruimte
+                    i += 1
+                    while i < n and s[i] in " \t\n":
+                        i += 1
+                else:
+                    raise fout(i, "ongeldige escape in string")
+                continue
+            if meerregelig:
+                if c == q:
+                    run = 1
+                    while i + run < n and s[i + run] == q:
+                        run += 1
+                    if run >= 3:
+                        if run > 5:
+                            raise fout(i, "te veel aanhalingstekens")
+                        uit.append(q * (run - 3))
+                        return "".join(uit), i + run
+                    uit.append(q * run); i += run
+                    continue
+            else:
+                if c == q:
+                    return "".join(uit), i + 1
+                if c == "\n":
+                    raise fout(i, "string niet afgesloten op dezelfde regel")
+            uit.append(c); i += 1
+        raise fout(i, "string niet afgesloten")
+
+    def sleutel(i: int) -> Tuple[List[str], int]:
+        delen: List[str] = []
+        while True:
+            i = ws(i)
+            if i >= n:
+                raise fout(i, "sleutel verwacht")
+            if s[i] in "\"'":
+                tekst_, i = tekenreeks(i)
+                delen.append(tekst_)
+            else:
+                m = _BARE.match(s, i)
+                if not m:
+                    raise fout(i, "ongeldige sleutel")
+                delen.append(m.group(0)); i = m.end()
+            i = ws(i)
+            if i < n and s[i] == ".":
+                i += 1
+                continue
+            return delen, i
+
+    def waarde(i: int, pad: Tuple[str, ...]) -> int:
+        i = ws(i)
+        if i >= n:
+            raise fout(i, "waarde verwacht")
+        c = s[i]
+        if c in "\"'":
+            return tekenreeks(i)[1]
+        if c == "[":
+            i = ws(i + 1, True)
+            while True:
+                if i >= n:
+                    raise fout(i, "array niet afgesloten")
+                if s[i] == "]":
+                    return i + 1
+                i = ws(waarde(i, pad), True)
+                if i < n and s[i] == ",":
+                    i = ws(i + 1, True)
+                elif i < n and s[i] == "]":
+                    return i + 1
+                else:
+                    raise fout(i, "komma of ] verwacht in array")
+        if c == "{":
+            i = ws(i + 1, True)
+            while True:
+                if i >= n:
+                    raise fout(i, "inline-tabel niet afgesloten")
+                if s[i] == "}":
+                    return i + 1
+                delen, i = sleutel(i)
+                i = ws(i)
+                if i >= n or s[i] != "=":
+                    raise fout(i, "= verwacht in inline-tabel")
+                nieuw = pad + tuple(delen)
+                paden.append(nieuw)
+                i = ws(waarde(i + 1, nieuw), True)
+                if i < n and s[i] == ",":
+                    i = ws(i + 1, True)
+                elif i < n and s[i] == "}":
+                    return i + 1
+                else:
+                    raise fout(i, "komma of } verwacht in inline-tabel")
+        start = i
+        while i < n and s[i] not in ",]}#\n":
+            i += 1
+        if not s[start:i].strip():
+            raise fout(start, "waarde verwacht")
+        return i
+
+    i = 0
+    tabel: Tuple[str, ...] = ()
+    while True:
+        i = ws(i, True)
+        if i >= n:
+            return paden
+        if s.startswith("[[", i) or s[i] == "[":
+            dubbel = s.startswith("[[", i)
+            delen, j = sleutel(i + (2 if dubbel else 1))
+            sluit = "]]" if dubbel else "]"
+            if not s.startswith(sluit, j):
+                raise fout(j, f"{sluit} verwacht")
+            tabel = tuple(delen)
+            paden.append(tabel)
+            i = j + len(sluit)
+        else:
+            delen, j = sleutel(i)
+            j = ws(j)
+            if j >= n or s[j] != "=":
+                raise fout(j, "= verwacht")
+            pad = tabel + tuple(delen)
+            paden.append(pad)
+            i = waarde(j + 1, pad)
+        i = ws(i)
+        if i < n and s[i] != "\n":
+            raise fout(i, "onverwachte tekst na de waarde")
+
+
+def codex_overtredingen(paden: List[Tuple[str, ...]]) -> List[str]:
+    """Sleutels/tabellen uit de verbodsmatrix; een profiel (`profiles.<naam>.…`) telt als het hoofdniveau."""
+    gevonden: List[str] = []
+    for pad in paden:
+        kandidaten = [pad] + ([pad[2:]] if pad[0] == "profiles" and len(pad) > 2 else [])
+        for kandidaat in kandidaten:
+            if kandidaat and kandidaat[-1] in CODEX_VERBODEN_SLEUTELS:
+                gevonden.append(f"sleutel '{kandidaat[-1]}'")
+            for tabel in CODEX_VERBODEN_TABELLEN:
+                if kandidaat[:len(tabel)] == tabel:
+                    gevonden.append(f"'{'.'.join(tabel)}'")
+    return sorted(set(gevonden))
+
+
+def controleer_settings(pad: str, bestand: Path) -> List[str]:
     try:
-        data = json.loads(pad.read_bytes().decode("utf-8-sig"))
+        data = json.loads(bestand.read_bytes().decode("utf-8-sig"))
     except (ValueError, OSError):
-        return None
-    return set(data) if isinstance(data, dict) else set()
+        return [f"{pad}: geen geldige JSON — settings die niet te lezen zijn kunnen niet worden bewaakt"]
+    if not isinstance(data, dict):
+        return [f"{pad}: geen JSON-object"]
+    fouten = []
+    for sleutel in sorted(set(data) - SETTINGS_TOEGESTAAN):
+        reden = SETTINGS_BEKEND.get(sleutel, "niet op de toelatingsmatrix; voeg alleen toe na beoordeling in de guard")
+        fouten.append(f"{pad}: sleutel '{sleutel}' is niet toegestaan ({reden}) — alleen {sorted(SETTINGS_TOEGESTAAN)} is toegelaten")
+    rechten = data.get("permissions")
+    if isinstance(rechten, dict):
+        for sleutel in sorted(set(rechten) - PERMISSIONS_TOEGESTAAN):
+            fouten.append(f"{pad}: permissions.{sleutel} is niet toegestaan — alleen {sorted(PERMISSIONS_TOEGESTAAN)}")
+    return fouten
 
 
 def controleer_configuratie(inv: Inventaris) -> List[str]:
@@ -291,18 +550,16 @@ def controleer_configuratie(inv: Inventaris) -> List[str]:
     for pad in sorted(inv.bestanden()):
         delen = pad.split("/")
         if delen[-2:] == [".claude", "settings.json"]:
-            sleutels = lees_json_sleutels(inv.root / pad)
-            if sleutels is None:
-                fouten.append(f"{pad}: geen geldige JSON — settings die niet te lezen zijn kunnen niet worden bewaakt")
-                continue
-            for sleutel in sorted(sleutels & SETTINGS_VERBODEN):
-                fouten.append(f"{pad}: sleutel '{sleutel}' voegt instructies of laadpaden toe naast AGENTS.md")
+            fouten.extend(controleer_settings(pad, inv.root / pad))
         if delen[-2:] == [".codex", "config.toml"]:
-            tekst = lees_tekst(inv.root / pad)
-            for sleutel in sorted(CODEX_VERBODEN):
-                if re.search(rf"^\s*{re.escape(sleutel)}\s*=", tekst, re.MULTILINE):
-                    fouten.append(f"{pad}: sleutel '{sleutel}' wijzigt de bronselectie of het budget van de projectinstructies — "
-                                  "het budget moet binnen de standaardinstelling van Codex passen (#1580)")
+            try:
+                paden = toml_sleutelpaden(lees_tekst(inv.root / pad))
+            except TomlFout as fout:
+                fouten.append(f"{pad}: geen leesbare TOML ({fout}) — een config die niet te lezen is kan niet worden bewaakt")
+                continue
+            for wat in codex_overtredingen(paden):
+                fouten.append(f"{pad}: {wat} wijzigt de bronselectie of het budget van de projectinstructies of activeert een "
+                              "extra instructie-/hook-/pluginlaag — het budget moet binnen de standaardinstelling van Codex passen (#1580)")
     return fouten
 
 
@@ -419,6 +676,6 @@ if __name__ == "__main__":
     for fout in fouten:
         print(f"::error::{fout}")
     if not fouten:
-        print("OK — AGENTS.md is de enige bron; stubs bevatten niets; geen tweede laadpad; skills hebben één bron; "
+        print("OK — AGENTS.md is de enige bron; stubs bevatten niets; geen bekend tweede laadpad; skills hebben één bron; "
               "codeblokken afgesloten; omvang binnen het plafond.")
     raise SystemExit(bool(fouten))

@@ -22,6 +22,7 @@ in een tijdelijke map.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -63,9 +64,6 @@ MUTATIES: List[Mutatie] = [
     Mutatie("geneste skills toegestaan", "SKILLMAPPEN and i > 0:", "SKILLMAPPEN and False:"),
     Mutatie("alleen .claude/skills als geneste skillmap", 'SKILLMAPPEN = {(".claude", "skills"), (".agents", "skills")}', 'SKILLMAPPEN = {(".claude", "skills")}'),
     Mutatie("AGENTS.override.md toegestaan", 'if delen[-1] == "AGENTS.override.md":', "if False:"),
-    Mutatie("getrackte CLAUDE.local.md toegestaan", 'if pad.split("/")[-1] == "CLAUDE.local.md":', "if False:"),
-    Mutatie("getrackte .mcp.json toegestaan", 'if pad == ".mcp.json" or pad.endswith("/.mcp.json"):', "if False:"),
-    Mutatie("getrackte settings.local.json toegestaan", 'if pad.split("/")[-2:] == [".claude", "settings.local.json"] or pad == ".claude/settings.local.json":', "if False:"),
     # ── git-tracking en uitgesloten mappen ──────────────────────────────────────────────────────
     Mutatie("falende git stil overgeslagen", "    git_fouten = [f\"git ls-files faalt", "    git_fouten = [] if True else [f\"git ls-files faalt"),
     Mutatie("git-tracking genegeerd", "            self.getrackt.add(rel)\n", "            pass\n"),
@@ -83,11 +81,6 @@ MUTATIES: List[Mutatie] = [
     Mutatie("CLAUDE.local.md niet als instructiebestand gezien", 'INSTRUCTIEBESTANDEN = {"AGENTS.md", "CLAUDE.md", "CLAUDE.local.md", "AGENTS.override.md"}', 'INSTRUCTIEBESTANDEN = {"AGENTS.md", "CLAUDE.md", "AGENTS.override.md"}'),
     Mutatie("AGENTS.override.md niet als instructiebestand gezien", 'INSTRUCTIEBESTANDEN = {"AGENTS.md", "CLAUDE.md", "CLAUDE.local.md", "AGENTS.override.md"}', 'INSTRUCTIEBESTANDEN = {"AGENTS.md", "CLAUDE.md", "CLAUDE.local.md"}'),
     # ── settings en config ──────────────────────────────────────────────────────────────────────
-    Mutatie("settings niet gecontroleerd", 'if delen[-2:] == [".claude", "settings.json"]:', "if False:"),
-    Mutatie("ongeldige settings-JSON toegestaan", "            if sleutels is None:\n", "            if False:\n"),
-    Mutatie("verboden settings-sleutels genegeerd", "for sleutel in sorted(sleutels & SETTINGS_VERBODEN):", "for sleutel in sorted(sleutels & set()):"),
-    Mutatie("codex-config niet gecontroleerd", 'if delen[-2:] == [".codex", "config.toml"]:', "if False:"),
-    Mutatie("codex-sleutels genegeerd", "                if re.search(rf\"^\\s*{re.escape(sleutel)}\\s*=\", tekst, re.MULTILINE):", "                if False:"),
     # ── leeg en witruimte ───────────────────────────────────────────────────────────────────────
     Mutatie("leegtecontrole uitgeschakeld", 'if not tekst.replace("\\ufeff", "").strip():', "if False:"),
     Mutatie("witruimte telt als inhoud", 'if not tekst.replace("\\ufeff", "").strip():', 'if not tekst.replace("\\ufeff", ""):'),
@@ -122,17 +115,75 @@ MUTATIES: List[Mutatie] = [
     Mutatie("verplichte skill mag ontbreken", "        if not (bron / naam / \"SKILL.md\").is_file():", "        if False:"),
     Mutatie("onafgesloten codeblok in skill toegestaan", "            regel = onafgesloten_codeblok(lees_tekst(pad))", "            regel = None"),
     Mutatie("skillkopieën niet vergeleken", 'fouten = list(SYNC["verschillen"](root))', "fouten = []"),
+    # ── tracking in elke vorm, kapotte git, metadatamap (review ronde 1) ───────────────────────────
+    Mutatie("tracking alleen voor gewone bestanden", "    for pad in sorted(inv.index):", "    for pad in sorted(inv.getrackt - inv.symlinks):"),
+    Mutatie("index wordt niet gevuld", "            self.index.add(rel)\n", "            pass\n"),
+    Mutatie("getrackte CLAUDE.local.md toegestaan", 'if pad.split("/")[-1] == "CLAUDE.local.md":\n            fouten.append(f"{pad}: CLAUDE.local.md is persoonlijk', 'if False:\n            fouten.append(f"{pad}: CLAUDE.local.md is persoonlijk'),
+    Mutatie("getrackte .mcp.json toegestaan", 'if pad == ".mcp.json" or pad.endswith("/.mcp.json"):', "if False:"),
+    Mutatie("getrackte settings.local.json toegestaan", 'if pad.split("/")[-2:] == [".claude", "settings.local.json"]:', "if False:"),
+    Mutatie("kapotte git-verwijzing telt als afwezig", 'if not os.path.lexists(self.root / ".git"):', 'if not (self.root / ".git").exists():'),
+    Mutatie("instructiebestand onder metadatamap toegestaan", "if len(delen) >= 2 and delen[-2] in INSTRUCTIEMAPPEN and delen[-1] in INSTRUCTIEBESTANDEN:", "if False:"),
+    Mutatie("metadatamap alleen .claude", "if len(delen) >= 2 and delen[-2] in INSTRUCTIEMAPPEN and", 'if len(delen) >= 2 and delen[-2] == ".claude" and'),
+    Mutatie("Codex-hookbestand toegestaan", 'if pad == ".codex/hooks.json" or pad.endswith("/.codex/hooks.json"):', "if False:"),
+    # ── toelatingsmatrix settings (review ronde 1) ──────────────────────────────────────────────────
+    Mutatie("settings niet gecontroleerd", 'if delen[-2:] == [".claude", "settings.json"]:', "if False:"),
+    Mutatie("ongeldige settings-JSON toegestaan", "    except (ValueError, OSError):\n        return [f\"{pad}: geen geldige JSON", "    except (ValueError, OSError):\n        return []  # [f\"{pad}: geen geldige JSON"),
+    Mutatie("settings die geen object zijn toegestaan", "    if not isinstance(data, dict):\n        return [f\"{pad}: geen JSON-object\"]", "    if not isinstance(data, dict):\n        return []"),
+    Mutatie("settings-matrix genegeerd", "for sleutel in sorted(set(data) - SETTINGS_TOEGESTAAN):", "for sleutel in sorted(set(data) & set()):"),
+    Mutatie("permissions-matrix genegeerd", "for sleutel in sorted(set(rechten) - PERMISSIONS_TOEGESTAAN):", "for sleutel in sorted(set(rechten) & set()):"),
+    Mutatie("permissions.additionalDirectories toegestaan", 'PERMISSIONS_TOEGESTAAN = {"allow", "deny", "ask"}', 'PERMISSIONS_TOEGESTAAN = {"allow", "deny", "ask", "additionalDirectories"}'),
+    # ── Codex-config via TOML-structuur (review ronde 1) ─────────────────────────────────────────────
+    Mutatie("codex-config niet gecontroleerd", 'if delen[-2:] == [".codex", "config.toml"]:', "if False:"),
+    Mutatie("ongeldige TOML toegestaan", "            except TomlFout as fout:\n                fouten.append(", "            except TomlFout as fout:\n                continue\n                fouten.append("),
+    Mutatie("verboden codex-sleutels genegeerd", "if kandidaat and kandidaat[-1] in CODEX_VERBODEN_SLEUTELS:", "if False:"),
+    Mutatie("verboden codex-tabellen genegeerd", "if kandidaat[:len(tabel)] == tabel:", "if False:"),
+    Mutatie("profielen niet als hoofdniveau gezien", 'if pad[0] == "profiles" and len(pad) > 2', "if False and len(pad) > 2"),
+    Mutatie("TOML: commentaar niet overgeslagen", '            elif c == "#":', "            elif False:"),
+    Mutatie("TOML: gepunte sleutels niet gevolgd", '            if i < n and s[i] == ".":', "            if False:"),
+    Mutatie("TOML: unicode-escape niet gedecodeerd", '                elif e in "uU":', "                elif False:"),
+    Mutatie("TOML: inline-tabelsleutels niet verzameld", "                paden.append(nieuw)\n", "                pass\n"),
+    Mutatie("TOML: array-tabellen niet gelezen", '        if s.startswith("[[", i) or s[i] == "[":\n            dubbel = s.startswith("[[", i)', '        if s[i] == "[":\n            dubbel = False'),
+    Mutatie("TOML: meerregelige string eindigt te vroeg", "            if meerregelig:\n                if c == q:", "            if False:\n                if c == q:"),
+    Mutatie("TOML: tabelkop niet vastgelegd", "            paden.append(tabel)\n", "            pass\n"),
+    Mutatie("TOML: gequote sleutels niet gelezen", '            if s[i] in "\\"\'":\n                tekst_, i = tekenreeks(i)', '            if False:\n                tekst_, i = tekenreeks(i)'),
+    Mutatie("TOML: BOM niet verwijderd", 'tekst.lstrip("\\ufeff")', "tekst"),
+    Mutatie("TOML: backslash ook in literal string als escape", '            if q == \'"\' and c == "\\\\":', '            if c == "\\\\":'),
+    # ── budget, krimpmarge, verplichte skills en waarschuwingen (review ronde 1) ────────────────────
+    Mutatie("Codex-budget verdubbeld", "CODEX_MAX_BYTES = 32 * 1024 ", "CODEX_MAX_BYTES = 64 * 1024 "),
+    Mutatie("Codex-budget een byte te ruim", "CODEX_MAX_BYTES = 32 * 1024 ", "CODEX_MAX_BYTES = 32 * 1024 + 1 "),
+    Mutatie("krimpmarge verruimd", "PLAFOND_RUIMTE = 1024 ", "PLAFOND_RUIMTE = 2048 "),
+    Mutatie("krimpmarge een byte te krap", "PLAFOND_RUIMTE = 1024 ", "PLAFOND_RUIMTE = 1023 "),
+    Mutatie("scheidingstekens tellen drie bytes", "KETEN_SCHEIDING_BYTES = 2 ", "KETEN_SCHEIDING_BYTES = 3 "),
+    Mutatie("bestandwaarschuwing uitgeschakeld", 'if sleutel.startswith("bestand:") and meting > CODEX_MAX_BYTES:', "if False:"),
+    Mutatie("ketenwaarschuwing uitgeschakeld", 'if sleutel.startswith("keten:") and meting > CODEX_MAX_BYTES:', "if False:"),
+    Mutatie("skill autonoom niet verplicht", 'VERPLICHTE_SKILLS = {"autonoom", "release", "sluitsessie", "startdebug"}', 'VERPLICHTE_SKILLS = {"release", "sluitsessie", "startdebug"}'),
+    Mutatie("skill release niet verplicht", 'VERPLICHTE_SKILLS = {"autonoom", "release", "sluitsessie", "startdebug"}', 'VERPLICHTE_SKILLS = {"autonoom", "sluitsessie", "startdebug"}'),
+    Mutatie("skill sluitsessie niet verplicht", 'VERPLICHTE_SKILLS = {"autonoom", "release", "sluitsessie", "startdebug"}', 'VERPLICHTE_SKILLS = {"autonoom", "release", "startdebug"}'),
+    Mutatie("skill startdebug niet verplicht", 'VERPLICHTE_SKILLS = {"autonoom", "release", "sluitsessie", "startdebug"}', 'VERPLICHTE_SKILLS = {"autonoom", "release", "sluitsessie"}'),
 ]
 
 
-SETTINGS_SLEUTELS = ("hooks", "outputStyle", "agent", "enabledPlugins", "extraKnownMarketplaces")
-CODEX_SLEUTELS = (
-    "project_doc_max_bytes", "project_doc_fallback_filenames", "project_root_markers",
-    "developer_instructions", "model_instructions_file", "experimental_instructions_file", "compact_prompt",
+SETTINGS_SLEUTELS = (
+    "hooks", "outputStyle", "agent", "enabledPlugins", "extraKnownMarketplaces", "additionalMarketplaces",
+    "strictKnownMarketplaces", "pluginConfigs", "claudeMd", "claudeMdExcludes", "autoMemoryDirectory",
+    "autoMemoryEnabled", "env", "skillOverrides", "enabledMcpjsonServers", "enableAllProjectMcpServers",
+    "includeGitInstructions", "language", "statusLine", "nieuweOnbekendeSleutel",
 )
-# Elke verboden sleutel afzonderlijk uitschakelen: één vergeten sleutel in de lijst mag niet ongemerkt blijven.
-MUTATIES += [Mutatie(f"settings-sleutel {k} toegestaan", f'"{k}"', f'"x-{k}"') for k in SETTINGS_SLEUTELS]
-MUTATIES += [Mutatie(f"codex-sleutel {k} toegestaan", f'"{k}"', f'"x-{k}"') for k in CODEX_SLEUTELS]
+CODEX_SLEUTELS = (
+    "project_doc_max_bytes", "project_doc_fallback_filenames", "project_root_markers", "developer_instructions",
+    "model_instructions_file", "experimental_instructions_file", "instructions", "compact_prompt",
+    "experimental_compact_prompt_file", "config_file",
+)
+CODEX_TABELLEN = (
+    "hooks", "plugins", "marketplaces", "agents", "skills", "projects", "mcp_servers",
+)
+# Elke sleutel afzonderlijk op de toelatingsmatrix zetten: één vergeten sleutel mag niet ongemerkt blijven.
+MUTATIES += [Mutatie(f"settings-sleutel {k} toegestaan", 'SETTINGS_TOEGESTAAN = {"$schema", "permissions"}',
+                     'SETTINGS_TOEGESTAAN = {"$schema", "permissions", "%s"}' % k) for k in SETTINGS_SLEUTELS]
+MUTATIES += [Mutatie(f"codex-sleutel {k} toegestaan", '"%s"' % k, '"x-%s"' % k) for k in CODEX_SLEUTELS]
+MUTATIES += [Mutatie(f"codex-tabel {k} toegestaan", '("%s",)' % k, '("x-%s",)' % k) for k in CODEX_TABELLEN]
+MUTATIES += [Mutatie(f"codex-tabel features.{k} toegestaan", '("features", "%s")' % k, '("features", "x-%s")' % k)
+             for k in ("hooks", "codex_hooks", "remote_plugin")]
 
 
 def draai_suite(map_: Path) -> subprocess.CompletedProcess:
@@ -182,7 +233,7 @@ def main() -> int:
             print("::error::de ongewijzigde guard faalt zijn eigen tests — mutaties zeggen dan niets")
             print(basislijn.stdout + basislijn.stderr)
             return 1
-        with ThreadPoolExecutor(max_workers=4) as pool:
+        with ThreadPoolExecutor(max_workers=max(4, min(8, os.cpu_count() or 4))) as pool:
             uitkomsten = list(pool.map(lambda ix: probeer(basis, ix[0], ix[1], bron), enumerate(MUTATIES)))
     for regel in uitkomsten:
         print(regel)

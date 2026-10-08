@@ -292,16 +292,25 @@ met de hand worden bijgehouden, lopen uiteen; dat is hier ook gebeurd, met negen
 als gevolg. Tot #1579 werd AGENTS.md daarom uit CLAUDE.md gegenereerd; met één bron valt er niets
 meer af te leiden en is de generator vervallen.
 
-**Geen tweede laadpad (#1580).** Een regel die alleen voor één agent leesbaar is, is een tweede
-bron. De guard weigert daarom — in de root en in elke submap, aanwezig of door git getrackt — Claude's
-`.claude/rules`, `.claude/commands`, `.claude/agents` en `.claude/output-styles`, geneste skillmappen,
-`.codex/{skills,prompts,agents,rules,commands}`, `AGENTS.override.md`, een getrackte `CLAUDE.local.md`,
-`.mcp.json` of `settings.local.json`, settings-sleutels die hooks, output styles of plugins toevoegen
-(`hooks`, `outputStyle`, `agent`, `enabledPlugins`, `extraKnownMarketplaces`), codex-configsleutels die
-het budget of de bronselectie wijzigen, en elke symlink op een instructiepad. De volledige lijst
-met toegestane en verboden bronnen staat in de kop van `check-agent-instructies.py`; dat is de enige
-plek, zodat ze niet uit de pas kan lopen met wat de guard afdwingt. Een legitieme toekomstige
-subagent of command vraagt een eigenaarsbesluit én een wijziging van die guard.
+**Geen bekend tweede laadpad (#1580).** Een regel die alleen voor één agent leesbaar is, is een tweede
+bron. De guard hanteert daarom een **toelatingsmatrix**, afgeleid uit de actuele documentatie van beide
+clients (documentatie, geen runtimegarantie; een kanaal dat nog niet gedocumenteerd of bekend is, kan hij niet
+zien). In de root en in elke submap, aanwezig of door git getrackt, weigert hij: `.claude/{rules,commands,
+agents,output-styles}`, geneste skillmappen, `.codex/{skills,prompts,agents,rules,commands}` en
+`.codex/hooks.json`, `AGENTS.override.md`, een instructiebestand direct onder een metadatamap (`.claude/`,
+`.agents/`, `.codex/` — Claude leest `.claude/AGENTS.md`, een Codex-sessie in de root niet, lokaal vastgesteld),
+en elke symlink op een instructiepad. Een getrackt `.claude/settings.json` mag alleen `$schema` en
+`permissions` (daarbinnen `allow`/`deny`/`ask`) bevatten: een toelatingslijst, dus ook een nieuwe sleutel of
+alias (hooks, outputstijl, agent, plugins en marketplaces, `pluginConfigs` dat bronselectie van AGENTS.md
+instelt, `claudeMdExcludes`, `autoMemoryDirectory`, `env`, …) faalt. Een `.codex/config.toml` wordt als
+TOML-structuur gelezen en mag geen sleutel of tabel bevatten die het budget, de bronselectie of de
+instructies wijzigt of hooks, plugins, agents, skills, MCP-servers of projectvertrouwen activeert, ook niet
+gequote, gepunt, in een profiel of in een inline-tabel. `CLAUDE.local.md`, `.claude/settings.local.json` en
+`.mcp.json` mogen in geen enkele vorm in de git-index staan (gewoon bestand, symlink, index-mode 120000, ook
+als verwijderd uit de werkboom). Een kapotte Git-verwijzing is een fout. De volledige lijst staat in de kop van
+`check-agent-instructies.py`; dat is de enige plek, zodat ze niet uit de pas kan lopen met wat de guard
+afdwingt. Een legitieme toekomstige subagent, command, hook of config vraagt een eigenaarsbesluit én een
+wijziging van die guard.
 
 *Waarom git-tracking leidend is.* De doorloop slaat `bin`, `obj`, `packages`, `.venv`, `artifacts` en
 `node_modules` over. Een bestand dat git trackt wordt toch gelezen — `git add -f` omzeilt zowel
@@ -316,9 +325,11 @@ een bestand zonder plafond of een plafond zonder bestand faalt, en de scheidings
 Verhogen is een diff die de eigenaar goedkeurt, geen tolerantie.
 
 *Guards: `scripts/ci/check-agent-instructies.py` (stubs, bron, laadpaden, omvang, codeblokken),
-`scripts/ci/check-agent-instructies.test.py` (fixturetests) en `scripts/ci/check-agent-instructies.mutaties.py`
-(schakelt elke guardregel afzonderlijk uit en eist dat de tests dan falen) en
-`scripts/ci/sync-skills.py` (skillkopieën).*
+`scripts/ci/check-agent-instructies.test.py` (fixturetests; de verwachtingen over budget, krimpmarge,
+verplichte skills en verboden sleutels staan daar uitgeschreven en komen niet uit de guard) en
+`scripts/ci/check-agent-instructies.mutaties.py` (geselecteerde mutaties: schakelt per genoemde guardregel
+één mutant uit en eist dat de tests dan falen — dat bewijst regressiedetectie voor die mutanten, niet dat
+elke regel of elke foutmelding gedekt is) en `scripts/ci/sync-skills.py` (skillkopieën).*
 
 ### Regel 6 — Een nieuwe regel krijgt een guard, of wordt als onbewaakt gemarkeerd
 
@@ -466,9 +477,9 @@ endpoint laat hem ook falen. Dezelfde knip als de Layer-5-scan in
 | 3b — geen `<style>`-blok of statische inline style in Blazor-pagina's (#1329) | `scripts/ci/check-blazor-inline-styles.sh` | `build.yml` |
 | 3c — gelinkte bronbestanden in BlazorAdmin: alleen `using System*`, geen `RegexOptions.Compiled` (#1461) | `scripts/ci/check-gelinkte-bronbestanden.sh` | `build.yml` |
 | 4 — platformafhankelijke valkuilen | `scripts/ci/check-codekwaliteit-valkuilen.sh` | `build.yml` |
-| 5 — AGENTS.md enige bron, CLAUDE.md-stubs leeg, skills één bron, codeblokken afgesloten (#1579); geen tweede laadpad, geen symlinks, ook niet in uitgesloten mappen; omvangplafond per bestand en per keten (#1580) | `scripts/ci/check-agent-instructies.py` | `build.yml` |
+| 5 — AGENTS.md enige bron, CLAUDE.md-stubs leeg, skills één bron, codeblokken afgesloten (#1579); geen bekend tweede laadpad (toelatingsmatrix), geen symlinks, ook niet in uitgesloten mappen; omvangplafond per bestand en per keten (#1580) | `scripts/ci/check-agent-instructies.py` | `build.yml` |
 | 5 — negatieve/positieve fixturetests van de agentinstructiecontrole | `scripts/ci/check-agent-instructies.test.py` | `build.yml` |
-| 5 — mutatietest: elke guardregel uitschakelen maakt de tests rood (#1580) | `scripts/ci/check-agent-instructies.mutaties.py` | `build.yml` |
+| 5 — mutatietest: geselecteerde guardregels afzonderlijk uitschakelen maakt de tests rood (#1580) | `scripts/ci/check-agent-instructies.mutaties.py` | `build.yml` |
 | 5 — skillkopieën in `.claude/skills/` identiek aan de bron in `.agents/skills/` (#1579) | `scripts/ci/sync-skills.py` | `build.yml` |
 | 6 — elke regel heeft een guard | `scripts/ci/check-regelregister.sh` | `build.yml` |
 | 7, 8 — bestandsgrootte en methodelengte stijgen niet | `scripts/ci/check-bestandsgrootte.sh` | `build.yml` |
@@ -521,7 +532,7 @@ Sinds de instructiewijziging van 2026-10-04 mogen Codex en Claude Code beide ont
 `AGENTS.md` legt één implementer per taak, een eigen branch/worktree per sessie, gescheiden
 scopes en wederzijdse review op een vastgelegde head-SHA vast. `source:` blijft herkomst;
 implementer, reviewer en fase staan afzonderlijk bij de taak. De taak-/runtime-afspraken zijn geen technische locks. De CI-guard `check-agent-instructies.py`
-bewaakt wel dat CLAUDE.md-stubs leeg blijven, skillkopieën gelijk zijn aan hun bron, codeblokken zijn afgesloten, er geen tweede laadpad bestaat en de omvang binnen het plafond blijft; negatieve tests en een mutatietest bewijzen dat overtredingen falen.
+bewaakt wel dat CLAUDE.md-stubs leeg blijven, skillkopieën gelijk zijn aan hun bron, codeblokken zijn afgesloten, er geen bekend tweede laadpad bestaat en de omvang binnen het plafond blijft; negatieve tests en een mutatietest bewijzen voor die gevallen dat overtredingen falen.
 
 Een issuecomment is geen atomische taakclaim; voorlopig mogen alleen vooraf toegewezen,
 gescheiden taken parallel starten. Gedeelde contracten/schema's tellen als overlap, ook zonder
@@ -620,7 +631,11 @@ en niet dat Codex het hele bestand ziet: Codex leest standaard maximaal 32 KiB a
 (`project_doc_max_bytes`, zie #1580). De omvangcontrole bewaakt de bytes in de repository; ze bewijst
 niet wat een gebruikersinstelling op een andere machine doet, en een vertrouwd project met een
 projectconfig kan het budget wél verhogen — daarom weigert de guard die sleutels in `.codex/config.toml`:
-het budget moet binnen de standaard passen. De
+het budget moet binnen de standaard passen. **Stand van deel A:** de plafondwaarden staan nog op de meting
+vóór de verkleining (124.770 en 140.947 bytes) en liggen dus boven het budget van Codex; de guard voorkomt
+alleen verdere groei en geeft een waarschuwing. De absolute grens volgt bij deel C van #1580. De
+toelatingsmatrix hierboven volgt de documentatie van de clientversies waartegen is getoetst (Claude Code 2.1.x,
+Codex 0.158.0); native Windows, junctions en case-insensitieve bronselectie zijn niet beproefd. De
 fencecheck controleert alleen top-level fences (maximaal drie spaties inspringing) in skills en
 `AGENTS.md`, niet alle Markdown in docs of geneste lijst-/blockquote-fences. Het is geen volledige Markdown-parser of inhoudelijke reviewer.
 De guard leest UTF-8 expliciet voor Windows/macOS; zijn tests en registervermelding draaien in CI.
