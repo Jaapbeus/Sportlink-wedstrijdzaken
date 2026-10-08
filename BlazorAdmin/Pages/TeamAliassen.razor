@@ -130,15 +130,25 @@ else
                     <th>Hoort bij team</th>
                     <th>Bron</th>
                     <th>Status</th>
-                    <th class="text-end">Keer gebruikt</th>
-                    <th>Aangemaakt</th>
+                    <th class="text-end" aria-sort="@Sortering.AriaSort(TeamAliasSorteerKolom.AantalKeerGebruikt)">
+                        <button type="button" class="sorteer-knop"
+                                @onclick="() => SorteerOp(TeamAliasSorteerKolom.AantalKeerGebruikt)">
+                            Keer gebruikt <span class="sorteer-indicator" aria-hidden="true">@Sortering.Indicator(TeamAliasSorteerKolom.AantalKeerGebruikt)</span>
+                        </button>
+                    </th>
+                    <th aria-sort="@Sortering.AriaSort(TeamAliasSorteerKolom.Aangemaakt)">
+                        <button type="button" class="sorteer-knop"
+                                @onclick="() => SorteerOp(TeamAliasSorteerKolom.Aangemaakt)">
+                            Aangemaakt <span class="sorteer-indicator" aria-hidden="true">@Sortering.Indicator(TeamAliasSorteerKolom.Aangemaakt)</span>
+                        </button>
+                    </th>
                     <th>Door</th>
                     <th>Beoordeeld</th>
                     <th>Actie</th>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var item in _items)
+                @foreach (var item in GesorteerdeItems)
                 {
                     var id = item.Id;
                     <tr>

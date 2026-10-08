@@ -22,6 +22,12 @@ public partial class TeamAliassen : ClubSelectorPageBase
 
     private bool _toevoegenOpen;
 
+    // #1549: client-side sortering op 'keer gebruikt' en 'aangemaakt' — geen nieuwe API-aanroep.
+    private TeamAliasSortering Sortering { get; } = new();
+    private List<TeamAliasDto> GesorteerdeItems => Sortering.Sorteer(_items);
+
+    private void SorteerOp(TeamAliasSorteerKolom kolom) => Sortering.Klik(kolom);
+
     private void WisselToevoegen() => _toevoegenOpen = !_toevoegenOpen;
 
     private async Task NaToevoegenAsync(TeamAliasAanmaakResultaatDto resultaat)
