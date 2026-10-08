@@ -1,4 +1,5 @@
 using AwesomeAssertions;
+using Planner.Shared.Email;
 using Microsoft.Extensions.Logging.Abstractions;
 using FunctionApp.Postgres.Email;
 using Xunit;

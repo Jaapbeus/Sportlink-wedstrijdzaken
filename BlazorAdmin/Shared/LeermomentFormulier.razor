@@ -1,0 +1,38 @@
+@* Leermoment door een beheerder (#1568 deel C): "dit bericht hoort een ander verzoektype te zijn". Direct
+   gevalideerd en permanent bewaard; alleen een korte samenvatting, nooit de mail zelf. *@
+<div class="card card-body mt-2">
+    <div class="row g-2">
+        <div class="col-md-4">
+            <label class="form-label" for="@_typeId">Juist verzoektype</label>
+            <select id="@_typeId" class="form-select" @bind="_juistType">
+                <option value="">Kies een type…</option>
+                @foreach (var type in VerzoekTypes)
+                {
+                    <option value="@type">@type</option>
+                }
+            </select>
+            @if (!string.IsNullOrWhiteSpace(OrigineelType))
+            {
+                <div class="form-text">De pipeline koos: @OrigineelType</div>
+            }
+        </div>
+        <div class="col-md-8">
+            <label class="form-label" for="@_samenvattingId">Korte samenvatting van het bericht</label>
+            <textarea id="@_samenvattingId" class="form-control" rows="3" maxlength="500" @bind="_samenvatting" @bind:event="oninput"></textarea>
+            <div class="form-text">
+                Redigeer zelf: geen namen, e-mailadressen of telefoonnummers. Deze tekst wordt als voorbeeld aan de AI
+                meegegeven en permanent bewaard.
+            </div>
+        </div>
+    </div>
+    <div class="d-flex gap-2 mt-2">
+        <button type="button" class="btn btn-primary" disabled="@(!KanOpslaan)" @onclick="OpslaanAsync">
+            @(_bezig ? "Bezig..." : "Leermoment opslaan")
+        </button>
+        <button type="button" class="btn btn-outline-secondary" @onclick="AnnuleerAsync">Annuleer</button>
+    </div>
+    @if (!string.IsNullOrEmpty(_fout))
+    {
+        <div class="alert alert-danger mt-2 mb-0">@_fout</div>
+    }
+</div>

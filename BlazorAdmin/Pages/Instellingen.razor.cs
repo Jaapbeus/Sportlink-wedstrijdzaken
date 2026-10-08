@@ -30,7 +30,16 @@ public partial class Instellingen : ClubSelectorPageBase
     private string? _syncResult;
     private bool _toonResetBevestiging;
     private int _resetSeizoen = HuidigSeizoenStartjaar();
+    private bool _toonEmailLog;
     private int _emailVerwerkt, _emailFouten, _emailBuitenScope, _emailGeenAntwoord;
+
+    // Wacht op beoordeling: alle berichten met status Review, ongeacht leeftijd (niet beperkt tot de laatste 24u).
+    // Een door de zekerheidspoort tegengehouden mail is als gelezen gemarkeerd en komt dus nergens anders meer langs.
+    private EmailLogResponse? _reviewLog;
+    private bool _toonReview;
+    private int _emailReview => _reviewLog?.Items.Count ?? 0;
+    private string _emailReviewTekst => _reviewLog is { Items.Count: >= EmailReviewMax } ? $"{EmailReviewMax}+" : _emailReview.ToString();
+    private const int EmailReviewMax = 200;
 
     private bool _isTestmodus => ClubSelector.SelectedClubCode == "ALLSTARS";
 
@@ -55,8 +64,12 @@ public partial class Instellingen : ClubSelectorPageBase
         var settingsTask = Api.GetSettingsAsync();
         var syncTask    = Api.GetSyncStatusAsync();
         var emailTask   = Api.GetEmailLogAsync(vanaf: DateTime.Today.AddDays(-1), limit: 200);
+        var reviewTask  = Api.GetEmailLogAsync(status: "Review", limit: EmailReviewMax);
 
-        await Task.WhenAll(settingsTask, syncTask, emailTask);
+        await Task.WhenAll(settingsTask, syncTask, emailTask, reviewTask);
+
+        var reviewResult = await reviewTask;
+        _reviewLog = reviewResult.Success ? reviewResult.Data : null;
 
         var r = await settingsTask;
         if (r.Success) settings = r.Data;
@@ -250,6 +263,7 @@ public partial class Instellingen : ClubSelectorPageBase
                 ["KnvbPdfBijlageIngeschakeld"] = s.KnvbPdfBijlageIngeschakeld ? "1" : "0",
                 ["KnvbStandaardRegio"] = s.KnvbStandaardRegio,
                 ["PdfExportIngeschakeld"] = s.PdfExportIngeschakeld ? "1" : "0",
+                ["ZekerheidspoortActief"] = s.ZekerheidspoortActief ? "1" : "0",
             }
         };
     }

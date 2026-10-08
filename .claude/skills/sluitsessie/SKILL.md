@@ -4,7 +4,7 @@ description: "Sluit de sessie gestructureerd af — triage eerst, daarna gates, 
 disable-model-invocation: true
 ---
 
-> **Gezamenlijke agentregels zijn leidend (CLAUDE.md/AGENTS.md).** Deze skill geldt voor Codex
+> **Gezamenlijke agentregels zijn leidend (AGENTS.md).** Deze skill geldt voor Codex
 > en Claude Code. Werk uitsluitend aan de toegewezen taak in de eigen geverifieerde worktree;
 > claim of wijzig geen taak, branch, worktree of services van een andere actieve sessie.
 > Behoud `source:` als herkomst; registreer implementer, reviewer, fase en sessie afzonderlijk.
@@ -79,7 +79,7 @@ leg de overdracht en memory vast. Ga nooit andermans werk herstellen om de sessi
 > `lsof -nP -iTCP:5242 -sTCP:LISTEN` (macOS/Linux) of `Get-NetTCPConnection -LocalPort 5242`
 > (Windows) laat dat zien. Een tweede `dotnet build` naast of vlak na die draaiende server
 > genereert een tweede set content-hash fingerprints → 404 op framework-JS → "An unhandled
-> error has occurred. Reload" (zie CLAUDE.md-verificatielus stap b en de `startdebug`-skill).
+> error has occurred. Reload" (zie AGENTS.md-verificatielus stap b en de `startdebug`-skill).
 >
 > - Server draait niet → bouw gewoon: `dotnet build BlazorAdmin/BlazorAdmin.csproj --no-restore 2>&1 | tail -8`
 > - Server draait wel → sla deze build over (Fase 1a dekt de compileerbaarheid al voor de
@@ -105,7 +105,7 @@ Lees eerste 60 regels van `CHANGELOG.md` — entry aanwezig en passend? ✅ / le
 | FunctionApp/**/*.cs | docs/API.md |
 | FunctionApp/Planner/** | docs/ARCHITECTUUR-PLANNER.md |
 | BlazorAdmin/**/*.razor | docs/BEHEERDER-HANDLEIDING.md |
-| Architectuurregel/conventie | CLAUDE.md |
+| Architectuurregel/conventie | AGENTS.md |
 | Setup/configuratie | docs/DEVELOPER-SETUP.md |
 | Testscript | docs/VERIFICATIE-SCRIPTS.md |
 | Email-pipeline | docs/EMAIL-VERWERKING.md |
@@ -140,7 +140,7 @@ gh issue view <nr> --json number,title,state,labels 2>/dev/null
 - `state: CLOSED` → ✅
 - `state: OPEN` met label `status: awaiting-release` → ✅ **dit is de juiste eindtoestand** na een
   merge naar `develop` — NIET sluiten. `close-released-issues.yml` sluit het pas bij de
-  eerstvolgende productie-tag op `main` (CLAUDE.md, "Issue-lifecycle: awaiting-release").
+  eerstvolgende productie-tag op `main` (AGENTS.md, "Issue-lifecycle: awaiting-release").
 - `state: OPEN` zonder enig `status:`-label, terwijl de bijbehorende PR wél gemerged is → ⚠️
   noteer in het eindrapport en vraag de gebruiker het na te lopen — dit hoort niet voor te komen
   (`label-awaiting-release.yml` zet het label automatisch).

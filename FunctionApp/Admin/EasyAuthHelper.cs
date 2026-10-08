@@ -132,6 +132,10 @@ internal static class EasyAuthHelper
     public static string? GetCallerObjectId(HttpRequest req)
         => GetClaimValue(req, "oid", "http://schemas.microsoft.com/identity/claims/objectidentifier");
 
+    /// <summary>De aanroeper voor leeracties en hun auditspoor (#1568 deel C): object-ID + naammomentopname, geen e-mailadres.</summary>
+    public static global::Planner.Shared.Leren.LerenAanroeper GetLerenAanroeper(HttpRequest req)
+        => new(GetCallerObjectId(req), GetCallerName(req)) { HeeftPrincipal = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME")) };
+
     /// <summary>
     /// Haalt het e-mailadres van de aanroeper op uit de Entra ID claims.
     /// Uitsluitend voor server-side gebruik (Reply-To in doorstuur-email). Nooit in response terugsturen.
@@ -182,7 +186,7 @@ internal static class EasyAuthHelper
     public static string GetClubCodeFromRequest(HttpRequest req)
     {
         // #1122 (CISO): de header is een UX-schakelaar (productie ↔ AllStars-demodata), geen
-        // autorisatiegrens (CLAUDE.md, deployment-model). Wel een vormcontrole: een ClubCode is
+        // autorisatiegrens (AGENTS.md, deployment-model). Wel een vormcontrole: een ClubCode is
         // max 20 tekens [A-Za-z0-9_-] (kolomdefinitie). Iets anders gaat niet als clubcode de
         // database in — dan geldt de primaire club.
         if (req.Headers.TryGetValue("X-Club-Code", out var headerVal) &&

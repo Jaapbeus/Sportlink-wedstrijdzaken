@@ -7,7 +7,7 @@
     "          export SUPABASE_ACCESS_TOKEN=... in je shellprofiel (NOOIT in een bestand hier)",
     "",
     "WAAROM EEN SJABLOON EN NIET .mcp.json ZELF: de URL bevat de project-ref, en die identificeert",
-    "de club. Deze repository is publiek (CLAUDE.md regel 4a). Zelfde patroon als",
+    "de club. Deze repository is publiek (AGENTS.md regel 4a). Zelfde patroon als",
     "local.settings.template.json en appsettings.Production.template.json; .mcp.json staat in",
     ".gitignore.",
     "",

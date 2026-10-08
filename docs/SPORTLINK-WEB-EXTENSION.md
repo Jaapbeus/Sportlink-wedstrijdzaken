@@ -244,7 +244,7 @@ Vier dingen om te onthouden:
 > gedocumenteerde premisse dat de SQL Server-tier "rollback-only" zou zijn, is ingetrokken — beide
 > tiers zijn gelijkwaardig.
 
-> **Sinds de review van #1122 gelden twee vaste plekken** (zie ook CLAUDE.md, "Sportlink Web
+> **Sinds de review van #1122 gelden twee vaste plekken** (zie ook AGENTS.md, "Sportlink Web
 > Extension — één helper op de server, geen code in de Razor-pagina's"):
 > - `FunctionApp.Postgres/Sportlink/SportlinkEndpointSupport.cs` en zijn tegenhanger
 >   `FunctionApp/Sportlink/SportlinkEndpointSupport.cs` — toggle+EgressGuard-controle,
@@ -850,6 +850,7 @@ de kernfeiten. Bij een discrepantie is de code leidend; werk dan dit overzicht b
 | `competition/match/clubmatch/ClubMatch` | **POST** | Oefenwedstrijd aanmaken — **sinds #1319 live bevestigd (#997)**, zie §4.2. Geen guard mogelijk vóór aanmaak (er is nog geen wedstrijd) — alleen eigen-DB-checks i.p.v. een Sportlink-permissievlag | — (eigen toggle/EgressGuard i.p.v. `SportlinkMutationGuard`, zie §4.2) |
 | `competition/match/clubmatch/PickListsTeams` | GET | Picklist teams voor het aanmaak-formulier (#997) — read-only, echt aangeroepen | — |
 | `competition/match/clubmatch/PickListsLocation` | GET | Picklist locaties voor het aanmaak-formulier (#997) — read-only, echt aangeroepen | — |
+| `competition/facilityoccupation/FacilityOccupation` (`?FacilityId=&GameDate=&IsSeasonStartAllowed=`) | GET | De Sportlink-veldplanner voor één accommodatie en dag (#1563): veld, starttijd en blokduur (`Duration + Interval`, met `StartUpInterval`/`FollowUpInterval`). Alleen `ScheduledMatches` wordt gelezen. **Live bevestigd 2026-10-07** met de lokale autologin; voedt `GET /api/planner/veldbezetting` — zie `docs/ARCHITECTUUR-PLANNER.md`. Alleen lezen, nooit de bijbehorende PUT | — |
 | `competition/match/clubmatch/ClubMatchDelete` (`?PublicMatchId=`, geen body) | **DELETE** | Clubwedstrijd verwijderen (#1440). Live sinds #1458 (`ClubMatchDeleteLiveBevestigd = true`, respons `{PublicMatchId, IsSuccess}`), volgt `sportlinkDryRun`, zie §6.4. Alleen aangeboden op het resultaat van "Wedstrijd aanmaken" | `SportlinkMutationSoort.Verwijderen` (`IsKernelMatch = false`, fail-closed, plus `IsHomeMatch`) |
 | `competition/match/clubmatch/ClubMatchScore` | — | **Bewust NIET aangesloten (#997)** — uitslag vastleggen, buiten scope | — |
 | `competition/match/clubmatch/ClubMatchDefaults`, `PickListsMatchInformation`, `codetable/AgeClassList` | — | **Bewust NIET aangesloten (#997)** — drie extra onbevestigde endpoints tegelijk is te veel gok in één ronde | — |

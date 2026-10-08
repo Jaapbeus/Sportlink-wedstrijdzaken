@@ -1,10 +1,11 @@
-using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
+using Planner.Endpoints.Admin;
+using Planner.Shared.Email;
+using Planner.Shared.Email.Trace;
 using Npgsql;
 using FunctionApp.Postgres.Email;
 using FunctionApp.Postgres.Processing;
@@ -18,16 +19,16 @@ namespace FunctionApp.Postgres.Admin;
 /// scope-afwijkingen (opponent-lookup, teamcontact-opvragen, verzet-zonder-datum).
 ///
 /// <para>
-/// Geen <c>TeamlijstGereedheid</c> op deze tier: <c>AdminTeamsHerstelFunction</c> roept
-/// <c>TeamCanonicalisatieService.RefreshAsync</c> hier onvoorwaardelijk aan (zie die klasse se
-/// eigen documentatie), dus deze functie doet hetzelfde vóór teamresolutie — idempotent, "kan
-/// zonder bezwaar herhaald worden".
+/// Geen <c>TeamlijstGereedheid</c> op deze tier. Sinds #1568 deel C roept de dry-run
+/// <c>TeamCanonicalisatieService.RefreshAsync</c> alleen nog aan als de teamlijst van de gekozen club leeg is
+/// (de productieprocessor ververst hem wel elke batch): een dry-run hoort niet te schrijven.
 /// </para>
 ///
 /// POST /api/test/email
 /// Body: { "onderwerp": "...", "afzender": "...", "body": "..." }
 ///
-/// Verstuurt NIETS en slaat NIETS op. Retourneert:
+/// Verstuurt NIETS en slaat NIETS op (de enige schrijfactie: een lege teamlijst van de gekozen club wordt eenmalig
+/// opgebouwd, zie het commentaar bij de teamresolutie). Retourneert:
 ///   - classificatie (AI-output)
 ///   - mogelijke planner-actie (puur info, geen DB-mutatie)
 ///   - voorbeeldantwoord (zou-worden-verstuurd via templates)
@@ -36,10 +37,6 @@ namespace FunctionApp.Postgres.Admin;
 /// </summary>
 public static class EmailTestFunction
 {
-    private const int MaxCallsPerMinute = 10;
-    private static readonly ConcurrentQueue<DateTime> _calls = new();
-    private static readonly object _lock = new();
-
     [Function("EmailTestDryRun")]
     public static Task<IActionResult> DryRun(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "test/email")] HttpRequest req,
@@ -52,83 +49,82 @@ public static class EmailTestFunction
         return AdminEndpoint.ExecuteAsync(req, log, "dry-run e-mail",
             async clubCode =>
             {
-                if (!TryAcquireSlot())
-                {
-                    return new ObjectResult(new { error = $"Rate limit overschreden: max {MaxCallsPerMinute}/min" })
-                    {
-                        StatusCode = 429
-                    };
-                }
+                if (EmailTestEndpointCore.ControleerLimiet() is { } begrensd) return begrensd;
 
-                // Eigen catch naast de wrapper (#1350): lokaal is het exceptietype in de melding het
-                // enige diagnosemiddel van de e-mailtester; in productie blijft de tekst generiek.
+                // Eigen catch naast de wrapper (#1350), zie EmailTestEndpointCore.Fout.
                 try
                 {
-                    using var bodyReader = new StreamReader(req.Body);
-                    var bodyText = await bodyReader.ReadToEndAsync();
-                    var dto = JsonConvert.DeserializeObject<TestEmailRequest>(bodyText);
-                    if (dto == null || string.IsNullOrWhiteSpace(dto.Body))
-                        return new BadRequestObjectResult(new { error = "Onderwerp/afzender/body verplicht" });
-
-                    var clubSettings = await LoadClubSettingsSnapshotAsync(clubCode);
-
-                    var chatClient = context.InstanceServices.GetService<Microsoft.Extensions.AI.IChatClient>()
-                        ?? throw new InvalidOperationException("IChatClient niet geconfigureerd — controleer OpenAiApiKey env var");
-                    var aiService = new BerichtAiService(
-                        context.InstanceServices.GetRequiredService<ILoggerFactory>().CreateLogger<BerichtAiService>(),
-                        chatClient);
-
-                    var onderwerp = dto.Onderwerp ?? "";
-                    var afzender = dto.Afzender ?? "trainer@voorbeeld.nl";
-                    var body = dto.Body ?? "";
-
-                    var classificatie = await aiService.ClassificeerBerichtAsync(body, onderwerp, afzender);
-
-                    var fakeEmail = new InkomendBericht
-                    {
-                        MessageId = "dry-run-" + Guid.NewGuid().ToString("N"),
-                        ConversationId = "",
-                        Afzender = afzender,
-                        AfzenderNaam = dto.AfzenderNaam ?? afzender.Split('@').FirstOrDefault() ?? afzender,
-                        Onderwerp = onderwerp,
-                        OntvangstDatum = DateTime.UtcNow,
-                        Body = body
-                    };
-
-                    BerichtPipeline.ValideerDagDatum(classificatie, body, onderwerp);
-
-                    // Teamresolutie ook in de dry-run (#700/#889): eerst de canonieke teamlijst verzekeren
-                    // (zelfde herstelpad als AdminTeamsHerstelFunction, idempotent), dan pas resolven — de
-                    // democlub wordt hier net zo goed getest als de primaire club.
-                    await TeamCanonicalisatieService.RefreshAsync(PostgresDatabaseConfig.ConnectionString, clubCode, log);
-                    var teamResolver = new TeamResolver(new TeamCandidateRepository(PostgresDatabaseConfig.ConnectionString));
-
-                    var plannerResponseJson = await BerichtPipeline.VerwerkMetPlannerAsync(
-                        classificatie, fakeEmail, log, teamResolver, clubCode, clubSettings);
-                    var (voorbeeldOnderwerp, voorbeeldBody) = await BerichtPipeline.BouwTemplateAntwoord(
-                        classificatie, plannerResponseJson, fakeEmail, log, clubSettings, clubCode);
-
-                    return new OkObjectResult(new
-                    {
-                        dryRun = true,
-                        opmerking = "Dit verstuurt niets en slaat niets op",
-                        classificatie,
-                        plannerResponse = System.Text.Json.JsonDocument.Parse(plannerResponseJson).RootElement,
-                        voorbeeldAntwoord = new
-                        {
-                            onderwerp = voorbeeldOnderwerp,
-                            body = voorbeeldBody
-                        }
-                    });
+                    var (dto, fout) = await EmailTestEndpointCore.LeesRequestAsync(req);
+                    return dto is null ? fout! : await VoerUitAsync(dto, context, log, clubCode);
                 }
                 catch (Exception ex)
                 {
-                    log.LogError(ex, "Fout bij dry-run email");
-                    var isLocal = string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME"));
-                    var errorMsg = isLocal ? $"Dry-run mislukt: {ex.GetType().Name}: {ex.Message}" : "Dry-run mislukt";
-                    return new ObjectResult(new { error = errorMsg }) { StatusCode = 500 };
+                    return EmailTestEndpointCore.Fout(ex, log);
                 }
             });
+    }
+
+    private static async Task<IActionResult> VoerUitAsync(
+        TestEmailRequest dto, FunctionContext context, ILogger log, string clubCode)
+    {
+        var clubSettings = await LoadClubSettingsSnapshotAsync(clubCode);
+
+        var onderwerp = dto.Onderwerp ?? "";
+        var afzender = dto.Afzender ?? "trainer@voorbeeld.nl";
+        var body = dto.Body ?? "";
+
+        // #1568 deel C: dezelfde stappen als productie. De processor classificeert met de gevalideerde
+        // leermomenten als few-shot voorbeelden; de tester doet dat nu ook (en meldt het aantal in de trace).
+        var trace = new TraceBuilder();
+        var classificatie = await ClassificeerAsync(context, clubCode, log, trace, body, onderwerp, afzender);
+
+        var fakeEmail = new InkomendBericht
+        {
+            MessageId = "dry-run-" + Guid.NewGuid().ToString("N"),
+            ConversationId = "",
+            Afzender = afzender,
+            AfzenderNaam = dto.AfzenderNaam ?? afzender.Split('@').FirstOrDefault() ?? afzender,
+            Onderwerp = onderwerp,
+            OntvangstDatum = DateTime.UtcNow,
+            Body = body
+        };
+
+        BerichtPipeline.ValideerDagDatum(classificatie, body, onderwerp);
+
+        // Teamresolutie ook in de dry-run (#700/#889); de democlub wordt hier net zo goed getest als de
+        // primaire club. De dry-run schrijft niets (#1568 deel C): de teamlijst wordt daarom alleen
+        // opgebouwd als hij voor deze club nog helemaal leeg is (bijv. een democlub die nooit gesynchroniseerd
+        // is) — anders resolvet niets. Is hij gevuld, dan blijft hij onaangeroerd; de nachtelijke sync en de
+        // processor houden hem actueel.
+        var teamRepository = new TeamCandidateRepository(PostgresDatabaseConfig.ConnectionString);
+        if (!await teamRepository.HeeftActieveTeamsAsync(clubCode))
+            await TeamCanonicalisatieService.RefreshAsync(PostgresDatabaseConfig.ConnectionString, clubCode, log);
+
+        var plannerResponseJson = await BerichtPipeline.VerwerkMetPlannerAsync(
+            classificatie, fakeEmail, log, new TeamResolver(teamRepository), clubCode, clubSettings, trace);
+        var (voorbeeldOnderwerp, voorbeeldBody) = await BerichtPipeline.BouwTemplateAntwoord(
+            classificatie, plannerResponseJson, fakeEmail, log, clubSettings, clubCode, trace);
+
+        // #1583: het eindoordeel weegt de ACTUELE zekerheidspoort-instelling van de gekozen club mee en volgt de
+        // volgorde van de productieverwerking (reply-beleid, dan poort). Alleen lezen; de dry-run slaat niets op.
+        var (poortActief, reply) = (await ZekerheidspoortInstelling.IsActiefAsync(PostgresDatabaseConfig.ConnectionString, clubCode, log), ReplyPolicy.Bepaal(classificatie, plannerResponseJson));
+
+        return EmailTestEndpointCore.Antwoord(classificatie, classificatie.Type.ToString(), classificatie.Samenvatting,
+            plannerResponseJson, trace, new TesterBeleid(poortActief, reply.MoetVersturen, reply.Reden, EmailReviewModus.IsActief()), voorbeeldOnderwerp, voorbeeldBody);
+    }
+
+    private static async Task<BerichtClassificatie> ClassificeerAsync(
+        FunctionContext context, string clubCode, ILogger log, TraceBuilder trace, string body, string onderwerp, string afzender)
+    {
+        var chatClient = context.InstanceServices.GetService<Microsoft.Extensions.AI.IChatClient>()
+            ?? throw new InvalidOperationException("IChatClient niet geconfigureerd — controleer OpenAiApiKey env var");
+        var aiService = new BerichtAiService(
+            context.InstanceServices.GetRequiredService<ILoggerFactory>().CreateLogger<BerichtAiService>(), chatClient);
+
+        var voorbeelden = await LearningMomentRepository.HaalVoorbeeldenOpAsync(
+            PostgresDatabaseConfig.ConnectionString, clubCode, log);
+        trace.Leermomenten(voorbeelden.Count);
+        return await aiService.ClassificeerBerichtAsync(body, onderwerp, afzender, voorbeelden.Count > 0 ? voorbeelden : null);
     }
 
     /// <summary>
@@ -163,28 +159,5 @@ public static class EmailTestFunction
             HerplanDeadlineDagen: reader.IsDBNull(4) ? null : reader.GetInt32(4),
             KnvbPdfBijlageIngeschakeld: reader.IsDBNull(5) ? null : reader.GetBoolean(5),
             KnvbStandaardRegio: reader.IsDBNull(6) ? null : reader.GetString(6));
-    }
-
-    private static bool TryAcquireSlot()
-    {
-        lock (_lock)
-        {
-            var cutoff = DateTime.UtcNow.AddMinutes(-1);
-            while (_calls.TryPeek(out var first) && first < cutoff)
-            {
-                _calls.TryDequeue(out _);
-            }
-            if (_calls.Count >= MaxCallsPerMinute) return false;
-            _calls.Enqueue(DateTime.UtcNow);
-            return true;
-        }
-    }
-
-    public class TestEmailRequest
-    {
-        public string? Onderwerp { get; set; }
-        public string? Afzender { get; set; }
-        public string? AfzenderNaam { get; set; }
-        public string? Body { get; set; }
     }
 }

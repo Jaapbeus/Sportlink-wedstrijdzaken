@@ -355,7 +355,7 @@ foutmeldingen per ongeldig fragment).
 > **Opgelost.** Deze sectie meldde dat `docs/API.md` de endpoints `/beheer/email-log`,
 > `/beheer/uitgesloten-emails` en `/beheer/templates` niet documenteerde. Dat klopt niet meer:
 > alle drie staan er inmiddels in (`docs/API.md`, de admin-endpointtabel). Ook het aantal in het
-> root-`CLAUDE.md` is bijgesteld — de spec dekt daar nu 74 routes, niet 51.
+> root-`AGENTS.md` is bijgesteld — de spec dekt daar nu 74 routes, niet 51.
 >
 > Wat blijft staan is de onderliggende regel, en die is normatief: een nieuw
 > `/api/beheer/email/send`-endpoint uit §6.7 hoort in dezelfde commit in `docs/API.md` én in
@@ -609,7 +609,7 @@ expliciete `Richting`-kolom in plaats van impliciet afgeleid uit `VerzoekType ==
   `{ ontvangers, onderwerp, bericht, bronScherm, afzender: "systeem" | "zelf" }`. Valideert via
   `OntvangerResolutieService`, roept `IEmailVerzendService.VerstuurAsync` aan.
 - **Frontend:** nieuw herbruikbaar component `BlazorAdmin/Shared/EmailComposer.razor`, analoog aan
-  het bestaande `TimeInput.razor`-patroon (CLAUDE.md, "Tijdinvoer-normalisering — altijd via
+  het bestaande `TimeInput.razor`-patroon (AGENTS.md, "Tijdinvoer-normalisering — altijd via
   TimeHelper + TimeInput"). Eén component bundelt: het ontvangersveld + live-validatie (het patroon
   dat nu inline in `Teambegeleiding.razor:72-110`/`OnbekendeAdressen()` (in `Teambegeleiding.razor.cs`,
   regel 133-142) staat) +
@@ -655,18 +655,18 @@ auth-boilerplate — het scherm levert alleen de ontvangerslijst en een `BronSch
 > (`X-MS-TOKEN-AAD-ACCESS-TOKEN`, zie *"Manage OAuth tokens in Azure App Service"*) beschrijft een
 > ANDER scenario: Easy Auth voert daar zelf de login-redirect uit en beheert een eigen token store.
 > Dit project gebruikt die flow niet — de SPA doet zelf MSAL en stuurt een kant-en-klaar bearer-token
-> mee; Easy Auth valideert alleen ("AllowAnonymous"-modus, zie root-`CLAUDE.md`). Of de originele,
+> mee; Easy Auth valideert alleen ("AllowAnonymous"-modus, zie root-`AGENTS.md`). Of de originele,
 > ruwe `Authorization`-header in die configuratie ongewijzigd bij de Function-code aankomt (nodig als
 > OBO-assertion) is in dit project **niet geverifieerd**. **Vereiste spike vóór implementatie:** log
 > in een testfunctie de ruwe `Authorization`-header van een binnenkomend admin-request en controleer
 > of dat token bruikbaar is als OBO-assertion (`aud`-claim, scope). Dit is exact het soort
-> Azure-auth-mechaniek waarvoor het root-`CLAUDE.md` verplicht stelt Microsoft Learn te raadplegen
+> Azure-auth-mechaniek waarvoor het root-`AGENTS.md` verplicht stelt Microsoft Learn te raadplegen
 > vóór implementatie — dat is hierboven gedaan, met als uitkomst "een expliciete verificatiestap
 > nodig", geen kant-en-klaar antwoord.
 
 **Kostenimplicatie:** geen. Mail.Send (delegated) valt, net als de huidige app-only permission,
 binnen de bestaande M365-licentie — er komt geen nieuwe Azure-resource bij. Wel: een nieuwe Entra
-API-permission-configuratie, die volgens CLAUDE.md's regel "Azure Entra setup — verify/configure via
+API-permission-configuratie, die volgens AGENTS.md's regel "Azure Entra setup — verify/configure via
 scripts, nooit handmatig" via `scripts/azure/Configure-EntraApp.ps1` moet lopen, niet via handmatige
 Portal-clicks. Een nieuwe delegated Graph-permission + een OBO-token-exchange is een nieuwe
 aanvalsoppervlakte (tokenlekken, scope-creep) en vereist een expliciete CISO security-review vóór
@@ -724,8 +724,8 @@ Blazor MSAL vraagt een extra scope aan (`https://graph.microsoft.com/Mail.Send`)
 `graph.microsoft.com/v1.0/me/sendMail` aan met dat token, ofwel geeft het dat Graph-token door aan de
 Function App die het doorzet.
 
-**Beoordeling tegen "server is de waarheid" (root-`CLAUDE.md`, Layer 5 leidend):** dit is een
-architecturale uitzondering, geen gelijkwaardig alternatief. CLAUDE.md's vijf-lagen-model stelt
+**Beoordeling tegen "server is de waarheid" (root-`AGENTS.md`, Layer 5 leidend):** dit is een
+architecturale uitzondering, geen gelijkwaardig alternatief. AGENTS.md's vijf-lagen-model stelt
 expliciet dat de Blazor WASM-client door een aanvaller gemodificeerd kan worden en dat
 databescherming daarom nooit op de client mag leunen. Optie B laat Blazor zélf rechtstreeks tegen
 Microsoft Graph praten (of een Graph-token doorgeven) buiten `EasyAuthHelper.RequireAdmin()` om.
@@ -787,7 +787,7 @@ vóórdat hij het token gebruikt — Blazor levert alleen het token aan, beslist
 - **Risico:** middel — dit is de enige bestaande call-site met productieverkeer (recent gemerged,
   #765).
 - **Verificatie:** bestaande/nieuwe tests voor deze flow + handmatige smoke test via
-  `Teambegeleiding.razor` in de lokale verificatielus (root-CLAUDE.md, Stap 2) + controleer dat de
+  `Teambegeleiding.razor` in de lokale verificatielus (root-AGENTS.md, Stap 2) + controleer dat de
   Email-log-pagina de nieuwe rij toont met `Richting=Uitgaand`, `Oorsprong=TeambegeleidingDoorsturen`.
 
 ### Fase 2 — Generiek endpoint + Blazor-component (nog geen nieuw scherm)
@@ -798,20 +798,20 @@ vóórdat hij het token gebruikt — Blazor levert alleen het token aan, beslist
   nieuw scherm het gebruikt.
 - **Risico:** middel — `Teambegeleiding.razor`'s bestaande UI-gedrag (Herstel-knop, Kopieer-knop,
   `OnbekendeAdressen`-waarschuwing) moet exact behouden blijven in het component.
-- **Verificatie:** browser-rendercheck (root-CLAUDE.md, Stap 2.h) op `/teambegeleiding`, alle
+- **Verificatie:** browser-rendercheck (root-AGENTS.md, Stap 2.h) op `/teambegeleiding`, alle
   bestaande knoppen/gedrag handmatig doorlopen vóór en na de migratie vergelijken.
 
 ### Fase 3 — Afzenderstrategie (OBO), pas ná de spike uit §3.6
 
 - Alleen starten als de tokenforwarding-vraag (§3.6) beantwoord is.
 - Entra-configuratie via `scripts/azure/Configure-EntraApp.ps1` (nieuwe permission + secret), CISO
-  security-review, de bestaande 3-user-test (root-CLAUDE.md, defense-in-depth) uitgebreid met een 4e
+  security-review, de bestaande 3-user-test (root-AGENTS.md, defense-in-depth) uitgebreid met een 4e
   scenario: "ingelogde gebruiker kiest 'verzenden als mezelf', Mail.Send-consent nog niet gegeven" →
   moet een nette foutmelding geven, geen crash.
 - `EmailComposer.razor` krijgt de "Van"-dropdown, alleen zichtbaar/bruikbaar als de backend meldt dat
   OBO geconfigureerd is (feature-detection via een nieuwe instelling, geen hardcoded aanname).
 - **Risico:** hoog — nieuwe auth-mechaniek, nieuwe Entra-permissions, potentiële escalatie conform
-  root-CLAUDE.md ("AVG/CISO-blokkade die codekeuze vereist").
+  root-AGENTS.md ("AVG/CISO-blokkade die codekeuze vereist").
 - **Verificatie:** volledige 4-scenario-test + Security Gate groen + browser-rendercheck.
 
 ### Fase 4 — Opruimen
@@ -840,7 +840,7 @@ vóórdat hij het token gebruikt — Blazor levert alleen het token aan, beslist
    les over gemaskeerde SQL-fouten bij deploys in het projectgeheugen).
 4. **Wat als een gebruiker "verzenden als mezelf" kiest maar geen bruikbare mailbox heeft** (bijv. een
    gedeeld/functioneel account zonder eigen postvak)? Het deployment-model van dit project
-   (root-`CLAUDE.md`, "Deployment-model") gaat uit van een klein aantal individuele Entra-gebruikers
+   (root-`AGENTS.md`, "Deployment-model") gaat uit van een klein aantal individuele Entra-gebruikers
    per club, dus dit scenario is waarschijnlijk zeldzaam — maar de UI moet een duidelijke
    foutmelding geven in plaats van een crash of stille mislukking. **Zelfde eis geldt voor Optie A2
    (§3.6):** kiest een gebruiker een gedeeld postvak waar hij geen Send As/Send on Behalf-recht op
@@ -863,7 +863,7 @@ vóórdat hij het token gebruikt — Blazor levert alleen het token aan, beslist
    bestaat, dus dit veld mag bij Send As nooit `NULL` zijn — een ontbrekende waarde hier is een
    onherstelbaar audit-gat, niet later te reconstrueren uit Microsoft-zijde.
 7. **`dbo.EmailLog` is nieuw** en moet, net als elke andere tabel, bij codereview op de
-   multi-club-invarianten uit root-`CLAUDE.md` gecontroleerd worden (ClubCode-discriminator, geen
+   multi-club-invarianten uit root-`AGENTS.md` gecontroleerd worden (ClubCode-discriminator, geen
    club-specifieke fallback-strings).
 8. **Het nieuwe `email/send`-endpoint hoort in dezelfde commit in `docs/API.md` én
    `docs/api-standaarden/openapi.yaml`/`.json`.** De gap die §1.10 oorspronkelijk meldde is

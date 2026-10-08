@@ -471,7 +471,7 @@ veld alleen via een directe database-wijziging worden toegevoegd.
 
 | Kolom | Beschrijving |
 |-------|-------------|
-| VeldNummer | Uniek nummer (PK — deployment-breed, niet per club, zie "Deployment-model" in CLAUDE.md) |
+| VeldNummer | Uniek nummer (PK — deployment-breed, niet per club, zie "Deployment-model" in AGENTS.md) |
 | VeldNaam | Weergavenaam (bijv. "veld 1") |
 | VeldType | Vrije tekst (bijv. `kunstgras` of `natuurgras`) — bepaalt welke velden ontlast worden bij de grasveld-ontlasten optimalisatie. Puur beschrijvend, geen vaste enum. |
 | HeeftKunstlicht | Verlichting beschikbaar — bepaalt zonsondergang-beperking |
@@ -600,6 +600,30 @@ prioriteit 10.
    uitsluitend naar capaciteit, waardoor wedstrijden rug-aan-rug werden ingepland met nul minuten ertussen
    en de 60-minutenregel van een eerste elftal simpelweg werd overgeslagen. Dat viel pas op toen dat pad
    door de precedence-wijziging de normale route werd.
+
+### Twee duurbronnen: weergave volgt Sportlink, optimalisatie volgt Speeltijden (#1559, #1560)
+
+Sinds #1547 toont de Planning voor wedstrijden die al in Sportlink staan de netto speelduur uit Sportlink
+plus 15 minuten (`VeldbezettingDuur`, zoals de Sportlink-veldplanner het blok tekent). **Veld optimalisatie**
+(`FieldScheduler`, `AutoPlanService`) rekent daarentegen met de speeltijdentabel inclusief buffer
+(besluit #291). Gevolg: voor hetzelfde team kan het blok op de twee schermen verschillen, en de
+optimalisatie kan een andere duur plannen dan Sportlink daarna toont.
+
+**Gekozen stand (tot een eigenaarsbesluit anders bepaalt): de bronnen blijven gescheiden.** Reden: de
+"speelduur + 15" is gemeten op wedstrijden van 50 tot 90 minuten; of dat ook geldt voor korte
+toernooivormen (bijvoorbeeld 20 minuten, elk halfuur een wedstrijd) is niet bevestigd (#1560, punt 2).
+De optimalisatie op een onbewezen aanname baseren legt die vast in het planningsalgoritme, terwijl een
+weergavefout eenvoudig te corrigeren is.
+
+Open besluit (#1559), twee alternatieven:
+- optimalisatie gebruikt Sportlinks duur voor bestaande wedstrijden en Speeltijden alleen voor nieuwe
+  (raakt `FieldScheduler` en `AutoPlanService` op beide tiers);
+- Speeltijden verdwijnt als bron voor bestaande wedstrijden (raakt besluit #291).
+
+Open verificatiepunten (#1560), alleen met Sportlink Club zelf te beantwoorden: bestaan clubwedstrijden
+zonder tegenstander (thuis- gelijk aan uitteam) in Sportlink Club en moeten ze in de Planning; hoe tekent
+de Sportlink-veldplanner blokken van één periode met toernooivorm; en na een productie-deploy vijf
+opeenvolgende zaterdagen blok voor blok vergelijken (veld, tijd, duur, beide teams).
 
 ### Handmatig verslepen in de tijdlijn
 
@@ -934,3 +958,41 @@ Niet alle verzoeken gaan over veldbeschikbaarheid. De volgende typen verzoeken v
 **Standaard antwoord bij afwijzing verplaatsing (aanvrager zegt "nee"):**
 
 > Begrepen. De wedstrijd [wedstrijd] blijft staan op [datum] om [tijd] op [veld].
+
+## Planning leest veld, tijd en blokduur uit Sportlink (#1563, #1582)
+
+> **Sinds #1582 is Sportlink leidend, geen overlay meer (WZ-ADR-013, ARCHITECTUUR.md §8.8).** `GET /api/planner/veldbezetting`
+> voegt onze regels samen met de Sportlink-veldplanner via `SportlinkVeldbezettingSamenvoeging` (`Planner.Shared/Planning/`):
+> een gekoppelde regel neemt veld, tijd, afmeting en duur over (`bron` = `Sportlink`); een Sportlink-blok zonder eigen regel
+> wordt zelf een regel (`wedstrijdCode` leeg, `bron` = `Sportlink`; bijvoorbeeld een wedstrijd van een andere club op hetzelfde
+> park); een eigen regel die Sportlink niet kent blijft staan met `nietInSportlink` = `true`. Sportlink onbereikbaar of
+> democlub: de eigen regels ongewijzigd. Elke dag wordt ook gevraagd als onze database geen enkele wedstrijd heeft. De kolom
+> Tegenstander is de andere kant van het label (`tegenstander`), niet meer de uitploeg. De tekst hieronder beschrijft de koppeling
+> zelf, die ongewijzigd is.
+
+
+De weergave `GET /api/planner/veldbezetting` is sinds #1563 een **overlay**: de eigen regels (uit `his.matches`) worden
+gekoppeld aan de blokken van de Sportlink-veldplanner, en wat Sportlink levert overschrijft veld, aanvangstijd,
+veldafmeting en `DuurMinuten`. Sportlink tekent een blok als `StartUpInterval + Duration + Interval + FollowUpInterval`;
+precies die som is `DuurMinuten`, en de starttijd schuift met het inloopdeel mee.
+
+| Onderdeel | Plaats |
+|---|---|
+| Leesaanroep `competition/facilityoccupation/FacilityOccupation` (alleen GET) | `Planner.Shared/Integrations/SportlinkClub/SportlinkClubClient.Veldplanner.cs`, via `ExecuteWithTokenRetryAsync` |
+| Respons naar blokken (`SportlinkVeldplannerParser`) | `Planner.Shared/Integrations/SportlinkClub/SportlinkVeldplannerBlok.cs` |
+| Koppeling aan onze regels | `Planner.Shared/Planning/SportlinkVeldplannerKoppeling.cs` |
+| Orkestratie: facility-opzoeking, cache, toggle, EgressGuard, terugval | `Planner.Endpoints/Sportlink/VeldplannerOverlayCore.cs` |
+| Toepassing op het tier-eigen item | `Planner/VeldbezettingSportlinkOverlay.cs` op beide tiers |
+
+- **Koppeling op teamlabel, niet op wedstrijdnummer.** `ExternalMatchId` van Sportlink is bij clubwedstrijden vaak 1 en dus
+  niet uniek. Ronde 1 vergelijkt het genormaliseerde label "Thuis - Uit" (alleen letters en cijfers); ronde 2 laat een
+  ploegnaam de andere bevatten ("v.v. Uit 35+2" tegenover "Uit 35+2"). Bij meerdere blokken met hetzelfde label
+  wint de dichtstbijzijnde starttijd, en elk blok koppelt aan hooguit één regel.
+- **Altijd een terugval, nooit een fout.** Extensie uit, EgressGuard dicht, Sportlink onbereikbaar, onbekende accommodatie of
+  onbekende wedstrijd: de regel behoudt `VeldbezettingDuur.Bepaal` (Sportlinks speelduur + 15, dan Speeltijden). De democlub
+  `ALLSTARS` vraagt nooit naar Sportlink.
+- **Facility-ID** komt uit de Sportlink-locatielijst op naam van de instelling `accommodatie` (6 uur onthouden); de blokken van
+  een dag worden 60 seconden onthouden. Het FacilityId staat nergens in code of configuratie.
+- **Bekende grens:** Sportlinks veldplanner toont ook wedstrijden tussen andere clubs op uw accommodatie. Die staan niet in onze
+  database en worden niet toegevoegd; dat is een afzonderlijk productbesluit.
+- **Veld optimalisatie** (`FieldScheduler`, besluit #291) blijft op de speeltijdentabel rekenen; zie issue #1559.

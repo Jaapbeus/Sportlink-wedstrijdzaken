@@ -58,9 +58,57 @@
                 <pre class="bg-light p-3">@System.Text.Json.JsonSerializer.Serialize(response.PlannerResponse, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })</pre>
             }
 
-            <h5 class="mt-4">Voorbeeld-antwoord (zou-worden-verstuurd)</h5>
+            @if (response.Eindoordeel is { } eindoordeel)
+            {
+                <h5 class="mt-4">Eindoordeel</h5>
+                <div class="@EindoordeelKlasse" role="status" id="tester-eindoordeel">
+                    <strong>@eindoordeel.Titel</strong>
+                    <div>@eindoordeel.Toelichting</div>
+                    <small class="text-muted d-block mt-1">
+                        Zekerheidspoort staat nu <strong>@(eindoordeel.ZekerheidspoortActief ? "aan" : "uit")</strong> (Instellingen);
+                        reviewmodus (hele omgeving) staat <strong>@(eindoordeel.ReviewModusActief ? "aan" : "uit")</strong>.
+                    </small>
+                </div>
+            }
+
+            <h5 class="mt-4">@VoorbeeldKop</h5>
             <p><strong>Onderwerp:</strong> @response.VoorbeeldAntwoord?.Onderwerp</p>
             <pre class="bg-light p-3">@response.VoorbeeldAntwoord?.Body</pre>
+
+            @if (response.Trace is { Stappen.Count: > 0 })
+            {
+                <h5 class="mt-4">Beslissingstrace <small class="text-muted">(waarom dit antwoord?)</small></h5>
+                <TraceWeergave Trace="response.Trace" Proefrun="true" Corrigeerbaar="true"
+                               SuggestieSamenvatting="@response.Leersuggestie?.Samenvatting"
+                               OnGeleerd="OnGeleerdAsync" />
+                <div class="d-flex align-items-center gap-2 mt-3">
+                    <button type="button" class="@OpnieuwKnopKlasse" disabled="@busy" @onclick="OpnieuwBeoordelenAsync">
+                        @(busy ? "Bezig..." : "Opnieuw beoordelen")
+                    </button>
+                    <small class="text-muted">
+                        Draait dezelfde invoer nogmaals (roept de AI aan) en toont wat er veranderde, bijvoorbeeld na een nieuwe alias of een leermoment.
+                    </small>
+                </div>
+            }
+            @if (vergelijking is { Count: > 0 })
+            {
+                <h5 class="mt-4">Vergelijking vóór ↔ na</h5>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead><tr><th>Onderdeel</th><th>Vóór</th><th>Na</th></tr></thead>
+                        <tbody>
+                            @foreach (var rij in vergelijking)
+                            {
+                                <tr class="@(rij.Gewijzigd ? "table-warning" : "")">
+                                    <td>@rij.Label</td>
+                                    <td>@rij.Voor</td>
+                                    <td>@rij.Na @(rij.Gewijzigd ? "(gewijzigd)" : "")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
         </div>
     </div>
 }

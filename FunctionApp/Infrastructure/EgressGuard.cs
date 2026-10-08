@@ -9,7 +9,7 @@ namespace SportlinkFunction.Infrastructure;
 /// <b>Productie-detectie:</b> de aanwezigheid van <c>WEBSITE_SITE_NAME</c> — dezelfde signaal die
 /// <see cref="SportlinkFunction.Admin.EasyAuthHelper"/> al gebruikt om lokale ontwikkeling te
 /// herkennen (Azure zet deze variabele altijd op een gehoste Function App; lokaal en in CI is hij
-/// afwezig). Dit project kent één Azure-deployment per fork/club (zie CLAUDE.md,
+/// afwezig). Dit project kent één Azure-deployment per fork/club (zie AGENTS.md,
 /// "Deployment-model"), dus Azure-hosting is hier gelijk aan productie.
 /// </para>
 /// <para>

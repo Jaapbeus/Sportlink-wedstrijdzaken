@@ -136,6 +136,13 @@ FASE 2 — database wordt gewekt
         ├─ Onderdrukken → status GeenAntwoordNodig + label "Handmatige planning"
         │
         ▼
+┌─ Zekerheidspoort (#1568 deel D) — ZekerheidsPoort.Bepaal ────────────────────┐
+│  Antwoord opgebouwd, maar de beslissingstrace is Onzeker of Mislukt           │
+│  (en de poort staat aan)  → status Review, voorstel bewaard, GEEN antwoord    │
+│  naar de afzender; label "Geen AI antwoord" + mark as read (§1e)              │
+└──────────────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
    Antwoord versturen naar de afzender (reply in dezelfde conversatie)
         │
         ▼  alleen NA een daadwerkelijk verstuurd antwoord:
@@ -161,6 +168,10 @@ Wanneer een afzender repliet op een AI-antwoord en het verzoek was verkeerd gecl
 
 **Beheer via Admin GUI:** `/leermomenten` — toont pending/validated/rejected correcties met valideer/afwijzen knoppen.
 
+Sinds #1568 deel C kan een beheerder ook zelf een leermoment toevoegen ("Leermoment toevoegen", of vanuit de
+trace: *Verzoektype corrigeren…*) — zie [§3d](#3d-leren-vanuit-de-trace-1568-deel-c). Zo'n leermoment heeft
+herkomst `Admin`, is direct gevalideerd en wordt nooit door de retentie geraakt.
+
 ### Teamherkenning (#692)
 
 Welk team een bericht betreft, wordt niet meer per plek met eigen tekstregels bepaald. Er is één
@@ -177,6 +188,11 @@ staat — niet meer door te raden op spaties of clubprefix.
 
 Bij een aanduiding die écht dubbelzinnig is — "13-1" kan JO13-1 of MO13-1 zijn — wordt niet gegokt:
 er volgt óf een keuze uit een korte kandidatenlijst, óf de vraag wordt teruggelegd.
+
+Een teamtekst die niet herkend wordt (`Onopgelost` of `MeerdereKandidaten`) komt sinds #1568 deel C in de
+wachtrij **Onbekende teamteksten** (scherm Teamaliassen) — mits de tekst eruitziet als een teamlabel; een zin
+of naam uit de mail wordt niet bewaard. De beheerder koppelt hem daar met één klik aan
+een team door een goedgekeurde alias aan te maken — zie [§3d](#3d-leren-vanuit-de-trace-1568-deel-c).
 
 Is de teamlijst leeg (bijvoorbeeld direct na een deploy, vóór de eerste nachtelijke synchronisatie),
 dan wordt hij eenmalig alsnog opgebouwd. Lukt dat niet, dan wordt er níet verwerkt — dat is beter dan
@@ -271,6 +287,50 @@ Emails met **meerdere datums voor hetzelfde team** zijn géén BuitenScope — d
 Het tweede geval bestaat omdat de herclassificatie met leermomenten alsnog "buiten scope" kan
 opleveren. Zonder die afhandeling ging er tóch een automatisch antwoord uit, puur afhankelijk van
 of er gevalideerde leermomenten in de database stonden.
+
+### 1e. Zekerheidspoort — onzeker antwoord gaat ter review (#1568 deel D)
+
+> **Gedragswijziging.** Vóór #1568 deel D ging elk opgebouwd antwoord automatisch naar de afzender,
+> ook als het systeem het team niet herkende of de afzender in het antwoord om het team of de datum
+> moest vragen. Nu houdt de zekerheidspoort zulke antwoorden tegen. Staat de poort uit
+> (instelling hieronder), dan geldt het oude gedrag.
+
+Na het opbouwen van het antwoord beoordeelt `ZekerheidsBeoordeling` (§3c) de trace tot dat punt. Is het
+oordeel **Onzeker** of **Mislukt**, dan gebeurt het volgende, op beide tiers identiek:
+
+* Er gaat **niets naar de afzender**. Er wordt geen verzendintentie gezet en er wordt niets als verstuurd
+  geregistreerd; `isbeantwoord` blijft 0 en `VerstuurdNaar` blijft leeg.
+* De rij krijgt status **`Review`** met het voorstel in `AntwoordEmail` (dezelfde 30-dagenretentie als
+  bij review-mode). Het bericht krijgt het Outlook-label *Geen AI antwoord* en wordt als gelezen
+  gemarkeerd, zodat de volgende poll het niet opnieuw oppakt (idempotentie, #715). **Bewust niet ongelezen
+  laten:** `Review` is geen definitieve status voor de idempotentiecheck, dus een ongelezen Review-mail zou
+  elke poll opnieuw worden verwerkt (tot drie pogingen, met nieuwe AI-aanroepen en de kans op een automatisch
+  antwoord zodra de uitkomst wijzigt) en de tien-oudste-ongelezen-wachtrij bezetten. Zichtbaarheid loopt
+  daarom via de teller **Wacht op beoordeling (Review)** op Instellingen (kaart *Email verwerking*, alle
+  Review-berichten ongeacht leeftijd, met knop naar de berichtenlijst en trace) en de Outlook-categorie.
+  **Zonder ingestelde `EmailReviewRecipient`** staat een tegengehouden mail dus alleen in die teller, in het
+  e-maillog en onder de Outlook-categorie — er gaat geen mail naar een mens.
+* Is `EmailReviewRecipient` geconfigureerd, dan krijgt die het voorstel met bovenaan de vaste regel
+  *"LET OP: dit antwoord is NIET naar de afzender verstuurd. De zekerheidspoort hield het tegen ..."*.
+  De mail bevat geen trace-details of persoonsgegevens; de reden staat in de trace.
+* De trace krijgt de stap **`zekerheidspoort`** met uitkomst *Tegengehouden* en de redenen, zodat de beheerder
+  in het e-maillog ziet waarom er geen antwoord ging.
+* De vervolgnotificaties (teamleider bij een herplanverzoek, doorsturen naar de coach) volgen alleen op een
+  daadwerkelijk verstuurd antwoord en blijven dus uit.
+
+**Onzeker** is het resultaat van een van deze situaties: een verzoektype dat een team nodig heeft (beschikbaarheid,
+herplannen) zonder herkend team of zonder gevonden wedstrijd via de tegenstander, `MeerdereKandidaten`, een
+opponent-pad zonder wedstrijd, de sjablonen `teamOnbekend` en `datumOnbekend`, of een andere mislukte stap.
+Een **zeker** antwoord gaat ongewijzigd automatisch door (ook in review-mode, die onveranderd blijft).
+
+**Terugkoppeling.** Koppelt de beheerder via de trace een alias aan het team (§3d), dan wordt dezelfde mail bij
+een volgende verwerking *zeker* en gaat het antwoord weer automatisch.
+
+**Schakelaar.** Instellingen → *E-mailantwoorden* → *Onzekere antwoorden eerst laten beoordelen
+(zekerheidspoort)*; veld `ZekerheidspoortActief` in `dbo.AppSettings` / `public.appsettings.zekerheidspoortactief`
+(migratie 040), per club. Standaard **aan**; een ontbrekende rij of kolom, of een leesfout, telt als aan
+(fail-safe: liever een mens laten kijken dan een onzeker antwoord versturen). Staat de poort uit, dan wordt in de
+trace alsnog vermeld dat het antwoord onzeker was (`poortActief = nee`).
 
 ### 1c. Stille skip — geen antwoord, geen verdere verwerking
 
@@ -371,8 +431,10 @@ invocatie zelf hard wordt afgebroken vóórdat deze afhandeling draait.
 Omdat een hervatte verwerking dezelfde rij hergebruikt, draaide de correctiedetectie bij elke poging
 opnieuw en leverde hetzelfde (origineel, correctie)-paar tot drie identieke leermomenten op. Die moest
 de beheerder allemaal apart valideren, en meervoudig goedgekeurd woog hetzelfde voorbeeld zwaarder in
-de AI-prompt dan bedoeld. `UQ_ClassificatieCorrectie_Paar` is nu de harde grens; de repository doet er
-een `IF NOT EXISTS` voor zodat de normale herhaling geen fout oplevert.
+de AI-prompt dan bedoeld. De unieke combinatie (origineel, correctie) is nu de harde grens — sinds #1568 deel C op de SQL Server-tier
+een gefilterde unique index `UX_ClassificatieCorrectie_Paar` (een `UNIQUE`-constraint telt `NULL`'s als
+gelijk en zou twee admin-leermomenten blokkeren); de repository doet er een `IF NOT EXISTS` voor zodat de
+normale herhaling geen fout oplevert.
 
 ---
 
@@ -971,7 +1033,7 @@ verschil zelf expliciet, dus zoek daar niet. De acht waarden zijn op beide tiers
 | `Geclassificeerd` | AI-classificatie vastgelegd | Nee |
 | `Verwerkt` | Plannerlogica gedraaid, nog geen antwoordbesluit | Nee |
 | `AntwoordVerstuurd` | Antwoord de deur uit; `IsBeantwoord` = 1 | **Ja** |
-| `Review` | Voorstel opgeslagen in `AntwoordEmail`, niets verstuurd — review-mode, of onbekende verzenduitkomst (#716, #1133) | Nee |
+| `Review` | Voorstel opgeslagen in `AntwoordEmail`, niets verstuurd — review-mode, onbekende verzenduitkomst (#716, #1133) of door de zekerheidspoort tegengehouden (§1e, #1568) | Nee |
 | `Fout` | Verwerking mislukt of opgegeven na 3 pogingen | Nee |
 | `BuitenScope` | Buiten scope bevonden ná herclassificatie | **Ja** |
 | `GeenAntwoordNodig` | Bewust geen antwoord: planning is mogelijk (#572) | **Ja** |
@@ -979,6 +1041,128 @@ verschil zelf expliciet, dus zoek daar niet. De acht waarden zijn op beide tiers
 "Definitief" bepaalt of een volgende poll het bericht overslaat (§1d). `IsBeantwoord` is daarbij óók
 leidend: staat die op 1, dan wordt er nooit een tweede antwoord gestuurd, ongeacht de status. Die
 kolom overleeft de AVG-anonimisering, `VerstuurdNaar` niet (#718).
+
+---
+
+### 3c. Beslissingstrace (#1568)
+
+Een mail kan een antwoord krijgen dat "verkeerd" voelt (bijvoorbeeld het sjabloon `teamOnbekend`
+bij een oefenwedstrijd tussen twee teams in een niet-herkende schrijfwijze) zonder dat zichtbaar is
+*waarom*. De beslissingstrace legt de keuzes van de pipeline vast als geordende stappen.
+
+**Deel A: in-memory model, instrumentatie, e-mailtester. Deel B: permanente opslag, endpoint en
+weergave per e-maillog-regel (zie "Opslag" hieronder).**
+
+| Onderdeel | Plek |
+|---|---|
+| Model, builder, JSON, sanitize | `Planner.Shared/Email/Trace/` (`BeslissingsTrace`, `TraceBuilder`) |
+| Zekerheidsoordeel (pure functie) | `ZekerheidsBeoordeling.Beoordeel` |
+| Instrumentatie | `BerichtPipeline.VerwerkMetPlannerAsync` en `BouwTemplateAntwoord` op beide tiers: optionele parameter `TraceBuilder? trace = null` (zonder trace gedraagt alles zich als voorheen) |
+| Weergave | e-mailtester: `trace` in de respons van `POST /api/test/email` en de lijst in `/email-tester` |
+| Eindoordeel van de tester (#1583) | `Planner.Shared/Email/Trace/TesterEindoordeel.cs` (tekst en beslislogica, beide tiers) en `EmailTestEndpointCore.Antwoord` (`Planner.Endpoints`): zelfde volgorde als productie — eerst het reply-beleid, dan `ZekerheidsPoort.Bepaal` met de *actuele* clubinstelling `ZekerheidspoortActief` (per tier gelezen via `ZekerheidspoortInstelling`). Volgorde: reviewmodus (`EmailReviewMode`, gelezen via `Planner.Shared/Email/EmailReviewModus`, dezelfde lezer als beide processors), reply-beleid, poort. Respons-veld `eindoordeel`; de poortstap staat alleen in de trace als het reply-beleid een antwoord toestaat, zoals in productie. De tester blijft een dry-run |
+
+**Stappen** (stabiele codes, in volgorde): `classificatie` (type, welke velden aanwezig ja/nee),
+`team-herkenning`, `tegenstander-herkenning`, `team-wissel`, `opponent-pad` (#1139: tak en of een
+wedstrijd is gevonden), `opponent-team-herkenning`, `datum`, `tak` (plannerresponse-vlag),
+`sjabloon` (database-override of ingebouwd, met sleutel) en `eindoordeel`. Elke stap heeft een
+zekerheid (`Zeker`, `Onzeker`, `Mislukt`).
+
+**Twee vormen van dezelfde trace (Codex R1-F1).** De *transiënte* trace (respons van de e-mailtester) loopt door
+`TraceBuilder.Saneer` (control-chars weg, e-mailadressen en cijferreeksen van negen of meer cijfers gemaskeerd,
+afgekapt op 80 tekens) en toont ook de ruwe teamschrijfwijze die de AI uit de mail haalde: de beheerder typte die
+mail zelf en niets wordt opgeslagen. De *bewaarde* trace is `BeslissingsTrace.VoorOpslag()`
+(`Planner.Shared/Email/Trace/TraceOpslagProjectie.cs`): een allowlist per stapcode met een strikte waardevorm.
+Alles wat AI-vrije tekst kan bevatten valt af; een onbekende sleutel of stapcode wordt weggelaten.
+
+Toegestane detailsleutels per stapcode in de bewaarde trace:
+
+| Stapcode | Bewaarde details |
+|---|---|
+| `classificatie` | `type`, `teamVereist`, `teamGenoemd`, `tegenstanderGenoemd`, `aantalDatums`, `tijdGenoemd` |
+| `leermomenten` | `aantal` |
+| `team-herkenning`, `tegenstander-herkenning`, `opponent-team-herkenning` | `bron`, `confidence`, `aantalKandidaten`, `kandidaten` (clubteams), `canoniekeNaam`, `vorm`, `reden` (alleen `geen clubcode`) |
+| `team-wissel` | `team` (canoniek), `tegenstanderVorm` |
+| `opponent-pad` | `tak`, `wedstrijdGevonden` |
+| `datum` | `aantalDatums`, `datums` (alleen `yyyy-MM-dd`) |
+| `tak` | `plannerResponseVlag`, `reden` (alleen de vaste buiten-scope-reden) |
+| `herplan-uitkomst` | `uitkomst`, `wedstrijdGevonden`, `datumAanwezig`, `sjabloon` |
+| `sjabloon` | `sjabloon`, `bron` |
+| `eindoordeel`, `zekerheidspoort` | `redenen` (opnieuw afgeleid uit de bewaarde stappen), `poortActief` |
+| `verwerking-fout` | geen |
+
+`vorm` en `tegenstanderVorm` zijn vormkenmerken zonder tekst (`6 tekens: letters+cijfers+streepje`). De
+niet-herkende teamtekst zelf staat alleen in de wachtrij met begrensde retentie (§3d).
+
+**Zekerheidsoordeel.** `ZekerheidsBeoordeling` markeert een resultaat als onzeker bij: een verzoektype
+dat een team nodig heeft (beschikbaarheid, herplannen) zonder herkend team (ook bij
+`MeerdereKandidaten`) en zonder wedstrijd via de tegenstander op de gevraagde datum; een opponent-pad
+zonder wedstrijd; een herplanverzoek zonder gevonden wedstrijd voor team en datum of zonder team/datum (stap
+`herplan-uitkomst`, uitkomst `geen-wedstrijd` of `onvoldoende-gegevens`; een geslaagde herplan blijft zeker);
+sjabloon `teamOnbekend` of `datumOnbekend`; of een andere mislukte stap. Bij twijfel onzeker. Deel D gebruikt dit als zekerheidspoort (§1e); in de tester is het uitsluitend informatief (de tester verstuurt nooit).
+
+**Opslag (deel B).** `EmailProcessorFunction` maakt per bericht een `TraceBuilder`, geeft hem mee aan
+`VerwerkMetPlannerAsync`/`BouwTemplateAntwoord` en bewaart de trace daarna in `planner.EmailTrace`
+(Postgres: `planner.emailtrace`, migratie `038_planner_emailtrace.sql`; SQL Server:
+`Database/planner/Tables/EmailTrace.sql` + `Script.PostDeployment1.sql`). Ook een bericht dat
+buiten scope valt krijgt een korte trace (classificatie + reden), en een verwerking die faalt ná het aanmaken
+van de trace bewaart de trace tot en met de mislukte stap. Een fout vóór dat punt (bijvoorbeeld een mislukte
+classificatie of een bericht dat nog niet is geregistreerd) levert dus géén trace op. Per verwerking één rij (`UNIQUE (VerwerkingId)`), dus een retry
+vervangt de eerdere trace. Kolommen: `VerwerkingId`, `ClubCode`, `Aangemaakt` (UTC), `VerzoekType`,
+`Zekerheid` (`Zeker`/`Onzeker`/`Mislukt`), `SjabloonSleutel`, `TraceJson` en `AppVersie` (voor
+reproduceerbaarheid: welke code nam de beslissing).
+
+* **Permanent en PII-arm (besluit eigenaar 2026-10-06).** Anders dan `planner.EmailVerwerking`, die na
+  30 dagen wordt geanonimiseerd en na 90 dagen wordt verwijderd, wordt `planner.EmailTrace` nooit
+  opgeruimd: de bewaarde trace bevat alleen allowlist-velden (`BeslissingsTrace.VoorOpslag()`), nooit body,
+  afzender, onderwerp of de ruwe teamtekst uit de mail, en is daarmee geen persoonsgegeven. Dat maakt hem bruikbaar om maanden later te
+  beoordelen waarom een antwoord zo uitviel. Er is bewust geen retentietimer.
+* **Geen foreign key naar `EmailVerwerking`.** Een FK zou de cleanup van de verwerking laten falen of
+  de trace meenemen (CASCADE); `VerwerkingId` is een identity-waarde die nooit hergebruikt wordt. Het
+  endpoint leest de status via een LEFT JOIN, dus na de cleanup is die `null` en blijft de trace
+  zelf beschikbaar.
+* **Een mislukte opslag laat de verwerking nooit falen.** `EmailTraceOpslag.BewaarVeiligAsync`
+  (`Planner.Shared`) vangt elke fout af en logt alleen het fouttype.
+* **Endpoint:** `GET /api/beheer/email-log/{id}/trace` (admin, beide tiers); `id` is het `Id` uit
+  `GET /api/beheer/email-log`, dat sinds #1568 per regel `HeeftTrace` meegeeft. Zie docs/API.md.
+* **Weergave:** menu-item *E-maillog* (`/email-log`, admin-only, #1583: filter op status en periode) en, als
+  oudere ingang, Instellingen → kaart "Email verwerking" → knop *Toon berichten en traces*; per regel de
+  knop *Trace*. Beide gebruiken het component `EmailLogLijst`; `TraceWeergave` wordt ook door de e-mailtester gebruikt.
+
+**Opgelost verschil tussen de tiers (#1568 deel D):** `BouwTemplateAntwoord` op de Postgres-tier kende de
+plannerresponse-tak `wedstrijdAlIngepland` niet, terwijl `VerwerkMetPlannerAsync` hem bij het opponent-pad
+(#1139) wél teruggeeft. Het antwoord viel daardoor door naar het standaard-beschikbaarheidsantwoord met een lege
+`CheckAvailabilityResponse` (een "niet planbaar"-antwoord in plaats van "de wedstrijd staat al ingepland"). De tak
+staat er nu ook, identiek aan de SQL Server-tier, met een test.
+
+---
+
+### 3d. Leren vanuit de trace (#1568 deel C)
+
+De trace maakt zichtbaar *waarom* een antwoord zo uitviel; deel C laat de beheerder het systeem daar zonder
+code of SQL van laten leren. De lus:
+
+1. **Trace bekijken** — in de e-mailtester (`/email-tester`) of per e-maillog-regel (menu *E-maillog*, of
+   Instellingen → *Toon berichten en traces*).
+2. **Corrigeren** — knoppen in de trace, alleen voor beheerders:
+   * bij een niet-herkend team (`team-herkenning` of `tegenstander-herkenning` met `Onopgelost` of
+     `MeerdereKandidaten`): in de **e-mailtester** *Koppel '…' aan team…* → keuze uit de teams → een goedgekeurde
+     alias. In de **e-maillog-trace** staat de ruwe tekst bewust niet (zie §3c); daar verwijst de stap met *Open
+     wachtrij onbekende teamteksten* naar het scherm Teamaliassen, waar *Koppel aan team* hetzelfde doet;
+   * bij de classificatie: *Verzoektype corrigeren…* → juist type + korte samenvatting → een admin-leermoment.
+3. **Opnieuw beoordelen** (alleen in de tester) — draait dezelfde invoer nogmaals en zet de uitkomst naast die
+   van vóór de correctie: verzoektype, herkend team, zekerheid, antwoordsjabloon en het aantal meegegeven
+   leermomenten. Dat roept de AI opnieuw aan (kost credits; rate limit 10 per minuut).
+
+| Onderdeel | Gedrag |
+|---|---|
+| **Alias aanmaken** (`POST /api/beheer/teamaliassen`) | Bron `CoordinatorCorrectie`, direct `validated`. De sleutel komt uitsluitend uit `TeamNaamNormalisatie`. Bestaat de sleutel al voor een ander team → `409`; herkoppelen gebeurt alleen als de beheerder dat expliciet aangeeft. Audit: `AangemaaktDoor` (object-ID), `AangemaaktDoorNaam` (momentopname), `AangemaaktOp` (UTC), `HerkomstVerwerkingId`, `Reden`; valideren/afwijzen legt `BeoordeeldDoor(Naam)`/`BeoordeeldOp` vast. Alles uit het Easy Auth-principal, nooit uit de body, geen e-mailadres. |
+| **Wachtrij onbekende teamteksten** (`planner.OnbekendeTeamTekst`) | De processor schrijft na elke verwerking elke onbekende teamtekst die de vormguard `ZietEruitAlsTeamlabel` passeert (kort, alleen letters/cijfers/spatie/`-`/`/`/`.`/`+`, hoogstens twee tokens met letters, minstens één cijfer; ook de genormaliseerde sleutel — zinnen en namen vallen af; gesaneerd, afgekapt op 80 tekens, geen mailbody) als upsert op (club, genormaliseerde tekst): aantal, eerst/laatst gezien, laatste verwerking (geen FK). Een retry telt niet dubbel. Een fout bij het schrijven laat de verwerking nooit falen. Een alias met dezelfde sleutel zet de open regel automatisch op `afgehandeld`; een afgehandelde regel die terugkomt gaat weer open, een genegeerde blijft genegeerd. Regels die 90 dagen niet meer zijn gezien worden door de e-mail-cleanup verwijderd. |
+| **Admin-leermoment** (`POST /api/beheer/leermomenten`) | Herkomst `Admin`, direct gevalideerd, zonder reply-paar (`OrigineleVerwerkingId`/`CorrectionVerwerkingId` zijn `NULL`; `HerkomstVerwerkingId` is een los getal zonder FK, zodat de retentie-DELETE van de verwerking (#424) nooit blokkeert of meeneemt). De samenvatting (max 500) gaat door `TraceBuilder.Saneer` — dezelfde PII-arme sanering als de trace, geen tweede sanitizer. **Permanent**: de cleanup (`sp_CleanupClassificatieCorrectie`, `sp_CleanupEmailVerwerking` fase 2a, en `PostgresCleanupProcedures`) raakt alleen herkomst `Reply`. |
+| **Few-shot** | `HaalVoorbeeldenOpAsync` neemt alle gevalideerde, niet-afgewezen leermomenten mee (limiet 20); admin-voorbeelden staan eerst. Een admin-leermoment staat in de prompt als `Samenvatting "…" → is een <type>.` (of "was geclassificeerd als X, maar was eigenlijk Y" als het oorspronkelijke type bekend is). |
+| **Tester-pariteit** | De tester classificeert met dezelfde leermomenten als de processor (de trace meldt het aantal in de stap `leermomenten`) en schrijft niets. De enige uitzondering: is de teamlijst van de gekozen club nog helemaal leeg (bijvoorbeeld een democlub die nooit gesynchroniseerd is), dan bouwt de tester hem eenmalig op — anders resolvet niets. Een gevulde lijst blijft onaangeroerd; de nachtelijke sync en de processor houden hem actueel. |
+
+**Beperking:** het verwijderen van een alias laat geen auditregel achter in de tabel (de rij is weg); wie het
+deed staat alleen als pseudoniem (object-ID) in het applicatielog.
 
 ---
 

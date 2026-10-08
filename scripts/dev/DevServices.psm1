@@ -967,6 +967,35 @@ function Get-SportlinkLiveBlockers {
     , $blokkades
 }
 
+function Get-DevelopWorktree {
+    <#
+        Zoekt de worktree waarin 'develop' is uitgecheckt (#1574). Develop kan maar in één
+        worktree tegelijk staan. Geeft $null terug als er geen is.
+    #>
+    param([Parameter(Mandatory)][string]$RepoRoot)
+
+    $pad = $null
+    foreach ($regel in (git -C $RepoRoot worktree list --porcelain)) {
+        if     ($regel -like 'worktree *')              { $pad = $regel.Substring(9) }
+        elseif ($regel -eq 'branch refs/heads/develop') { return $pad }
+    }
+    $null
+}
+
+function Update-DevelopWorktree {
+    <#
+        Werkt de develop-worktree bij naar origin/develop, uitsluitend fast-forward (#1574).
+        Nooit forceren, mergen of resetten: een afgeweken develop faalt bewust en de aanroeper
+        stopt dan. Geeft $true bij succes.
+    #>
+    param([Parameter(Mandatory)][string]$WorktreePath)
+
+    git -C $WorktreePath fetch origin develop 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { return $false }
+    git -C $WorktreePath merge --ff-only origin/develop 2>&1 | Out-Null
+    $LASTEXITCODE -eq 0
+}
+
 Export-ModuleMember -Function Get-DebugTempDir, Get-DebugPidFile, Get-DebugPorts,
     Test-PortListening, Get-PortOwner, Get-PortOwnerId, Get-ParentProcessId,
     Get-ChildProcessId, Get-ProcessTree, Stop-ProcessTree, Wait-ForPort, Wait-ForHealth,
@@ -974,4 +1003,5 @@ Export-ModuleMember -Function Get-DebugTempDir, Get-DebugPidFile, Get-DebugPorts
     Get-SelftestPorts, Test-DockerAvailable, Get-ContainerState, Wait-ForPostgres,
     Invoke-Psql, New-SelftestPassword, Get-SelftestArtifactRoot, Get-DatabaseTierProject,
     Start-SelftestAzurite, Start-FunctionHost, Stop-FunctionHost,
-    Set-SportlinkLiveLocalSettings, Test-SportlinkEncryptionKey, Get-SportlinkLiveBlockers
+    Set-SportlinkLiveLocalSettings, Test-SportlinkEncryptionKey, Get-SportlinkLiveBlockers,
+    Get-DevelopWorktree, Update-DevelopWorktree

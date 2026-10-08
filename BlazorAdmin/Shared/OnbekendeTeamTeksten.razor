@@ -1,0 +1,86 @@
+@* Wachtrij met teamteksten die de e-mailpipeline niet kon koppelen (#1568 deel C). "Koppel aan team" maakt
+   direct een goedgekeurde alias aan en handelt de regel af. *@
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">
+            Onbekende teamteksten
+            @if (_open > 0)
+            {
+                <span class="badge bg-warning text-dark ms-2">@_open open</span>
+            }
+        </h5>
+        <p class="card-text text-muted">
+            Teamteksten uit binnengekomen e-mails die niet aan een team gekoppeld konden worden. Koppel ze aan een team,
+            of negeer ze als het geen eigen team is. Regels die 90 dagen niet meer zijn gezien verdwijnen vanzelf.
+        </p>
+        <div class="mb-3 d-flex gap-2 flex-wrap">
+            @foreach (var (waarde, label) in Filters)
+            {
+                <button type="button" class="btn btn-outline-secondary @(_filter == waarde ? "active" : "")"
+                        @onclick="() => LaadAsync(waarde)">@label</button>
+            }
+        </div>
+        @if (!string.IsNullOrEmpty(_melding))
+        {
+            <div class="alert alert-success">@_melding</div>
+        }
+        @if (!string.IsNullOrEmpty(_fout))
+        {
+            <div class="alert alert-danger">@_fout</div>
+        }
+        @if (_bezig)
+        {
+            <div class="text-muted">Laden...</div>
+        }
+        else if (_items.Count == 0)
+        {
+            <div class="alert alert-info mb-0">Geen onbekende teamteksten in deze weergave.</div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead>
+                        <tr><th>Teamtekst</th><th class="text-end">Keer gezien</th><th>Laatst gezien</th><th>Status</th><th>Actie</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in _items)
+                        {
+                            <tr>
+                                <td><code>@item.Voorbeeld</code></td>
+                                <td class="text-end">@item.Aantal</td>
+                                <td><small>@item.LaatstGezien.ToLocalTime().ToString("dd-MM-yyyy HH:mm")</small></td>
+                                <td><span class="badge @StatusKlasse(item.Status)">@item.Status</span></td>
+                                <td>
+                                    @if (item.Status != "afgehandeld")
+                                    {
+                                        <button type="button" class="btn btn-sm btn-primary me-1" @onclick="() => WisselKoppelen(item.Id)">
+                                            Koppel aan team
+                                        </button>
+                                    }
+                                    @if (item.Status == "open")
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick='() => ZetStatusAsync(item.Id, "genegeerd")'>Negeren</button>
+                                    }
+                                    @if (item.Status == "genegeerd")
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick='() => ZetStatusAsync(item.Id, "open")'>Heropenen</button>
+                                    }
+                                </td>
+                            </tr>
+                            @if (_koppelId == item.Id)
+                            {
+                                <tr>
+                                    <td colspan="5">
+                                        <TeamKoppelFormulier RuweTekst="@item.Voorbeeld" HerkomstVerwerkingId="item.LaatsteVerwerkingId"
+                                                             OnGekoppeld="GekoppeldAsync" OnAnnuleer="SluitKoppelen" />
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>

@@ -15,6 +15,16 @@ public partial class Leermomenten : ClubSelectorPageBase
     private string? _fout;
     private readonly HashSet<int> _actieBezigId = new();
 
+    private bool _toevoegenOpen;
+
+    private void WisselToevoegen() => _toevoegenOpen = !_toevoegenOpen;
+
+    private async Task NaToevoegenAsync()
+    {
+        _toevoegenOpen = false;
+        await LaadAsync(_filterStatus);
+    }
+
     protected override async Task OnInitializedAsync()
     {
         await LaadAsync("pending");
@@ -51,6 +61,35 @@ public partial class Leermomenten : ClubSelectorPageBase
         finally
         {
             _bezig = false;
+        }
+    }
+
+    private int? _verwijderBevestigId;
+
+    private void VraagVerwijderen(int id) => _verwijderBevestigId = id;
+
+    private void AnnuleerVerwijderen() => _verwijderBevestigId = null;
+
+    private async Task VerwijderAsync(int id)
+    {
+        _actieBezigId.Add(id);
+        StateHasChanged();
+        try
+        {
+            var result = await Api.VerwijderLeermomentAsync(id);
+            _verwijderBevestigId = null;
+            if (!result.Success)
+                _fout = result.ErrorMessage ?? "Verwijderen mislukt";
+            else
+                await LaadAsync(_filterStatus);
+        }
+        catch (Exception ex)
+        {
+            _fout = ex.Message;
+        }
+        finally
+        {
+            _actieBezigId.Remove(id);
         }
     }
 

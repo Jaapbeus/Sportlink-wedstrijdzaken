@@ -36,7 +36,7 @@ public class AdminTestDataFunctionTests
         var code = AdminTestDataFunction.DeriveWedstrijdcode("ALLSTARS-3f9a2b1c4d5e");
 
         // Gezaaid demobereik (003-seed-allstars-demo-matches-postgres.sql): 9.000.001-9.000.224.
-        // Echte Sportlink-wedstrijdcodes (FunctionApp/CLAUDE.md-voorbeeld): 8 cijfers, dus < 100.000.000.
+        // Echte Sportlink-wedstrijdcodes (FunctionApp/AGENTS.md-voorbeeld): 8 cijfers, dus < 100.000.000.
         code.Should().BeGreaterThanOrEqualTo(900_000_000L);
         code.Should().BeLessThan(990_000_000L);
     }

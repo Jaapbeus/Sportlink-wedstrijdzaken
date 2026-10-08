@@ -73,7 +73,7 @@ volgorde waarin ze draaien.
 | 7 | Blazor pagina checks | 8 routes op `:5242` | nee (geen Blazor-foutindicatoren) |
 | 8 | SWA emulator checks | `/.auth/login/aad` op `:4280` | nee |
 
-Secties 5 t/m 8 worden automatisch overgeslagen als de bijbehorende service niet draait. CLAUDE.md
+Secties 5 t/m 8 worden automatisch overgeslagen als de bijbehorende service niet draait. AGENTS.md
 verwijst naar "secties 4+5+6" van dit script; dat zijn hier de secties die een draaiende service
 nodig hebben (5 t/m 8).
 
@@ -210,19 +210,53 @@ gesynchroniseerde teams heeft; dat geeft een 409. Het script stuurt de header da
 
 ---
 
+## Test-DebugGo.ps1 (#1576)
+
+De GO/NO-GO van de debugomgeving; `Start-Debug.ps1` draait hem aan het einde zelf. Pas een GO (exit 0)
+betekent dat de omgeving werkt: services luisteren (ook na een wachttijd en na de browsercontrole), de
+draaiende versie is die van de code én van `origin/develop`, health is `ok`, sync-status en
+Sportlink-extensie antwoorden, de primaire club is live-klaar (tenzij `-Offline`), `OpenAiApiKey` is lokaal ingesteld (anders
+geeft de e-mailtester "IChatClient niet geconfigureerd"; tenzij `-ZonderAI`; alleen de aanwezigheid wordt gecontroleerd, nooit de waarde), en een echte
+headless Chromium (Playwright, `debug-browsercheck.cjs`) opent de belangrijkste schermen zonder
+foutbanner, 5xx- of mislukte API-aanroep, console-fout of verkeerd versienummer.
+
+```powershell
+.\scripts\dev\Test-DebugGo.ps1                # volledig
+.\scripts\dev\Test-DebugGo.ps1 -Offline       # extensie hoeft niet live-klaar te zijn
+.\scripts\dev\Test-DebugGo.ps1 -ZonderBrowser # zonder Playwright
+```
+
+Draai hem in een agent-sessie in een **volgende** aanroep na de start: services die in dezelfde aanroep
+nog draaien hoeven die aanroep niet te overleven (de aanleiding van #1576: Azurite en de FunctionApp
+vielen weg, BlazorAdmin bleef, en elk scherm gaf "Failed to fetch"). `Start-Debug.ps1` start de services
+sinds #1576 in een eigen sessie en kent `-Bewaak`: Azurite verdween vastgesteld binnen twee seconden na het
+einde van het startscript, dus een agent laat het script in een achtergrondaanroep doorlopen; het herstart
+een weggevallen service. Playwright wordt eenmalig in de tijdelijke map geïnstalleerd en
+gebruikt een al aanwezige Chromium.
+
+---
+
 ## Start-Debug.ps1
 
 Start Azurite, FunctionApp en BlazorAdmin, en **wacht tot ze daadwerkelijk reageren** —
 geen vaste `Start-Sleep` meer (#684).
 
+**Standaard draait dit op de laatste `develop` (#1574):** het script zoekt de worktree waarin
+`develop` staat, werkt die fast-forward bij naar `origin/develop` en start de services vanuit die
+worktree, ook als je het vanuit een andere map aanroept. Faalt de fast-forward of bestaat er geen
+develop-worktree, dan start er niets. `-HuidigeWerkmap` slaat dit over en draait vanuit de eigen map.
+
 ```powershell
 .\scripts\dev\Start-Debug.ps1            # Postgres-tier (standaard), losse vensters per service
+.\scripts\dev\Start-Debug.ps1 -HuidigeWerkmap  # niet naar develop overschakelen (bijv. feature-branch testen)
 .\scripts\dev\Start-Debug.ps1 -Tier SqlServer   # de andere tier
 .\scripts\dev\Start-Debug.ps1 -Tail      # één samengevoegde logstroom
 .\scripts\dev\Start-Debug.ps1 -Swa       # inclusief SWA emulator op :4280
 .\scripts\dev\Start-Debug.ps1 -NoWatch   # BlazorAdmin zonder hot reload
 .\scripts\dev\Start-Debug.ps1 -Clean     # dotnet clean BlazorAdmin vóór het starten
-.\scripts\dev\Start-Debug.ps1 -SportlinkLive  # lokale instellingen klaar voor live Sportlink-verkeer van de primaire club (#1466)
+.\scripts\dev\Start-Debug.ps1 -Offline   # zonder live Sportlink-verkeer (sinds #1576 is live de standaard)
+.\scripts\dev\Start-Debug.ps1 -Bewaak    # blijf draaien en herstart een weggevallen service (verplicht voor agents, #1576)
+.\scripts\dev\Start-Debug.ps1 -ZonderGoCheck  # sla Test-DebugGo.ps1 over (geen GO zonder die controle)
 ```
 
 `-SportlinkLive` zet `AllowExternalIntegrations=true` en een lokale `SportlinkAutoLoginEncryptionKey` klaar
@@ -595,9 +629,9 @@ node scripts/ci/check-theme-js-contract.js
 ```
 
 Tot #1155 faalden drie van de toenmalige vier lokaal (`declare: -A: invalid option`, `mapfile: command not
-found`), zodat de CLAUDE.md-regel "lokaal verifiëren vóór een push" voor deze guards alleen met
+found`), zodat de AGENTS.md-regel "lokaal verifiëren vóór een push" voor deze guards alleen met
 Homebrew-bash én GNU grep vooraan in `PATH` haalbaar was. De scripts gebruiken nu uitsluitend
-bash-3.2- en POSIX-constructies; de regels daarvoor staan in CLAUDE.md onder "Cross-platform
+bash-3.2- en POSIX-constructies; de regels daarvoor staan in AGENTS.md onder "Cross-platform
 scripts". Wil je de CI-runner exact nabootsen, dan kan dat in een container:
 
 ```bash
@@ -616,7 +650,7 @@ hebben gekregen, dus een grep over de migratiemap kan dit niet beantwoorden.
 
 | Script | Bewaakt | Faalt op |
 |---|---|---|
-| `check-rls-enabled.sh` | Elke tabel in `public`/`avg`/`planner` heeft `relrowsecurity` (CLAUDE.md, Supabase-RLS-regel 1) | Eén of meer tabellen zonder RLS, met de exacte `ALTER TABLE`-regel als oplossing in de uitvoer |
+| `check-rls-enabled.sh` | Elke tabel in `public`/`avg`/`planner` heeft `relrowsecurity` (AGENTS.md, Supabase-RLS-regel 1) | Eén of meer tabellen zonder RLS, met de exacte `ALTER TABLE`-regel als oplossing in de uitvoer |
 | `check-splinter-lints.sh` | Supabase's eigen linter (splinter), vastgepind op commit-SHA + SHA-256 | `rls_disabled_in_public`, `policy_exists_rls_disabled`, `security_definer_view`, `function_search_path_mutable`, `duplicate_index` |
 
 Verbinding via de standaard libpq-variabelen — **niet** via `POSTGRES_CONNECTION_STRING`, want dat

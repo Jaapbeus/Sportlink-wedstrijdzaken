@@ -33,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.11.2.0
+  version: 3.12.0.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -804,6 +804,13 @@ components:
             KNVB-speeldagenkalender als PDF-bijlage + een paar vrije zaterdagen mee, met de
             begeleiding van het eigen team in BCC (#561). Uit = bestaand herplan-gedrag ongewijzigd.
           default: true
+        ZekerheidspoortActief:
+          type: boolean
+          description: |
+            Zekerheidspoort (#1568): een e-mailantwoord dat de beslissingstrace als onzeker of mislukt
+            beoordeelt gaat niet automatisch naar de afzender maar krijgt status Review. Standaard true;
+            false = het oude gedrag (altijd automatisch antwoorden).
+          default: true
         PdfExportIngeschakeld:
           type: boolean
           description: |
@@ -1420,7 +1427,8 @@ components:
         Witte lijst: HerplanDeadlineDagen, BufferMinuten, PlannerAfzenderNaam, CoordinatorNaam,
         CoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,
         AccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi,
-        KnvbPdfBijlageIngeschakeld, KnvbStandaardRegio, SportlinkExtensionEnabled, PdfExportIngeschakeld
+        KnvbPdfBijlageIngeschakeld, KnvbStandaardRegio, SportlinkExtensionEnabled, PdfExportIngeschakeld,
+        ZekerheidspoortActief
         (waarde `0`/`1`/`true`/`false`, anders 400).
 
         De audit-actor (wie de wijziging doorvoerde) wordt uitsluitend server-side bepaald uit de
@@ -1635,6 +1643,9 @@ components:
         FoutMelding:
           type: string
           nullable: true
+        HeeftTrace:
+          type: boolean
+          description: Er is een beslissingstrace opgeslagen (`GET /beheer/email-log/{id}/trace`)
         mta_inserted:
           type: string
           format: date-time
@@ -1642,6 +1653,65 @@ components:
           type: string
           format: date-time
           nullable: true
+
+    EmailTraceResponse:
+      type: object
+      description: Permanente, PII-arme beslissingstrace van één verwerking (#1568).
+      properties:
+        verwerkingId:
+          type: integer
+        verzoekType:
+          type: string
+        status:
+          type: string
+          nullable: true
+          description: Status van de verwerking; null als die inmiddels is opgeruimd
+        ontvangstDatum:
+          type: string
+          format: date-time
+          nullable: true
+        aangemaakt:
+          type: string
+          format: date-time
+        zekerheid:
+          type: string
+          enum: [Zeker, Onzeker, Mislukt]
+        sjabloonSleutel:
+          type: string
+          nullable: true
+        appVersie:
+          type: string
+        trace:
+          type: object
+          nullable: true
+          properties:
+            stappen:
+              type: array
+              items:
+                type: object
+                properties:
+                  code:
+                    type: string
+                  titel:
+                    type: string
+                  uitkomst:
+                    type: string
+                  zekerheid:
+                    type: string
+                    enum: [Zeker, Onzeker, Mislukt]
+                  details:
+                    type: object
+                    additionalProperties:
+                      type: string
+            oordeel:
+              type: object
+              properties:
+                isZeker:
+                  type: boolean
+                redenen:
+                  type: array
+                  items:
+                    type: string
 
     EmailLogResponse:
       type: object
@@ -2102,6 +2172,79 @@ components:
             onderwerp:
               type: string
             body:
+              type: string
+        eindoordeel:
+          type: object
+          description: |
+            Definitief eindoordeel (#1583): wat er in productie met deze mail zou gebeuren, met de actuele
+            clubinstelling `ZekerheidspoortActief` meegewogen. Zelfde volgorde als de productieverwerking:
+            eerst de algemene reviewmodus, dan het reply-beleid, daarna de zekerheidspoort.
+          properties:
+            uitkomst:
+              type: string
+              enum: [AutomatischVerstuurd, Review, GeenAntwoord]
+            titel:
+              type: string
+              example: "Gaat naar Review — er wordt géén antwoord verstuurd"
+            toelichting:
+              type: string
+            waarschuwing:
+              type: boolean
+              description: true bij een onzeker oordeel terwijl de zekerheidspoort uit staat
+            conceptLabel:
+              type: string
+              description: Kop boven `voorbeeldAntwoord` (concept bij review, of het antwoord dat verstuurd zou worden)
+            zekerheidspoortActief:
+              type: boolean
+            reviewModusActief:
+              type: boolean
+              description: De algemene reviewmodus (`EmailReviewMode`, omgevingsbreed) staat aan; het eindoordeel is dan altijd Review
+        trace:
+          type: object
+          description: |
+            Beslissingstrace van de pipeline (#1568), PII-arm (geen mailbody of afzender).
+            Geordende stappen plus een eindoordeel over de zekerheid.
+          properties:
+            stappen:
+              type: array
+              items:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    example: team-herkenning
+                  titel:
+                    type: string
+                  uitkomst:
+                    type: string
+                  zekerheid:
+                    type: string
+                    enum: [Zeker, Onzeker, Mislukt]
+                  details:
+                    type: object
+                    additionalProperties:
+                      type: string
+            oordeel:
+              type: object
+              properties:
+                isZeker:
+                  type: boolean
+                  description: false = het antwoord zou in review gaan
+                redenen:
+                  type: array
+                  items:
+                    type: string
+
+        leersuggestie:
+          type: object
+          description: |
+            Voorzet voor "Verzoektype corrigeren" in de e-mailtester (#1568 deel C): het door de classificatie gekozen
+            verzoektype en een met de PII-arme sanering behandelde samenvatting. De beheerder redigeert hem;
+            `POST /beheer/leermomenten` saneert hem opnieuw.
+          properties:
+            verzoekType:
+              type: string
+            samenvatting:
               type: string
 
     # ── Feedback ──────────────────────────────────────────────────────────────
@@ -2630,9 +2773,27 @@ components:
         OrigineleVerwerkingId:
           type: integer
           nullable: true
+          description: Alleen bij herkomst `Reply`; een admin-leermoment heeft geen reply-paar.
         CorrectionVerwerkingId:
           type: integer
           nullable: true
+          description: Alleen bij herkomst `Reply`.
+        Herkomst:
+          type: string
+          enum: [Reply, Admin]
+          description: "`Reply` = AI-herkende reply-correctie (wordt na 30 dagen geanonimiseerd, na 90 dagen verwijderd); `Admin` = door een beheerder toegevoegd (permanent, #1568 deel C)."
+        AangemaaktDoorNaam:
+          type: string
+          nullable: true
+          description: Momentopname van de weergavenaam van de beheerder (alleen herkomst `Admin`).
+        AangemaaktOp:
+          type: string
+          format: date-time
+          nullable: true
+        HerkomstVerwerkingId:
+          type: integer
+          nullable: true
+          description: Aanwijzing naar de verwerking waaruit het leermoment is voortgekomen; geen foreign key (de verwerking wordt opgeruimd).
         OrigineelVerzoekType:
           type: string
           nullable: true
@@ -2735,6 +2896,29 @@ components:
           type: string
           format: date-time
           nullable: true
+        aangemaaktDoorNaam:
+          type: string
+          nullable: true
+          description: Momentopname van de weergavenaam van de beheerder die de alias aanmaakte (#1568 deel C); null = door het systeem (sync of AI).
+        aangemaaktOp:
+          type: string
+          format: date-time
+          nullable: true
+        herkomstVerwerkingId:
+          type: integer
+          nullable: true
+          description: Aanwijzing naar de verwerking waaruit de alias is voortgekomen (geen foreign key).
+        reden:
+          type: string
+          nullable: true
+        beoordeeldDoorNaam:
+          type: string
+          nullable: true
+          description: Wie de alias het laatst goedkeurde of afwees.
+        beoordeeldOp:
+          type: string
+          format: date-time
+          nullable: true
 
     TeamAliasListResponse:
       type: object
@@ -2767,6 +2951,135 @@ components:
           type: string
           enum: [validated, rejected]
           description: "'validated' = alias vertrouwen; 'rejected' = alias negeren"
+
+    TeamAliasAanmaakRequest:
+      type: object
+      required: [ruweTekst, teamId]
+      description: De aanmaker staat er bewust niet in; die komt uit het Easy Auth-principal.
+      properties:
+        ruweTekst:
+          type: string
+          maxLength: 200
+          example: "j10-04"
+        teamId:
+          type: integer
+        herkoppel:
+          type: boolean
+          default: false
+          description: |
+            Alleen `true` als de beheerder expliciet een bestaande alias met dezelfde genormaliseerde tekst naar dit team wil
+            verplaatsen. Raakt de bestaande rij en rijen met dezelfde sleutel die niet uit de Sportlink-synchronisatie komen
+            (bron `Sync` blijft ongemoeid); het `409`-antwoord noemt het aantal rijen (`aantalRijen`).
+        bevestigDubbelzinnig:
+          type: boolean
+          default: false
+          description: |
+            Alleen `true` na een expliciete bevestiging dat de tekst zonder alias bij meerdere teams past (bijv. `13-1`
+            voor JO13-1 én MO13-1) en dat voortaan álle mails met deze schrijfwijze naar het gekozen team gaan.
+        herkomstVerwerkingId:
+          type: integer
+          nullable: true
+        reden:
+          type: string
+          maxLength: 200
+          nullable: true
+
+    TeamAliasAanmaakResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        status:
+          type: string
+          enum: [aangemaakt, herkoppeld, bestaat-al]
+        ruweTekst:
+          type: string
+        ruweTekstGenormaliseerd:
+          type: string
+        teamId:
+          type: integer
+        teamnaam:
+          type: string
+
+    TeamKeuzeItem:
+      type: object
+      properties:
+        teamId:
+          type: integer
+        teamnaam:
+          type: string
+        leeftijdsCategorie:
+          type: string
+          nullable: true
+
+    OnbekendeTeamTekstItem:
+      type: object
+      description: Een teamtekst uit een binnengekomen e-mail die niet aan een team gekoppeld kon worden (#1568 deel C).
+      properties:
+        id:
+          type: integer
+        voorbeeld:
+          type: string
+          description: Gesaneerde, afgekapte schrijfwijze zoals aangetroffen (geen e-mailadressen of nummers).
+        genormaliseerd:
+          type: string
+        aantal:
+          type: integer
+        eerstGezien:
+          type: string
+          format: date-time
+        laatstGezien:
+          type: string
+          format: date-time
+        laatsteVerwerkingId:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          enum: [open, afgehandeld, genegeerd]
+
+    OnbekendeTeamTekstListResponse:
+      type: object
+      properties:
+        count:
+          type: integer
+        limit:
+          type: integer
+        open:
+          type: integer
+          description: Aantal open regels van de club (ongefilterd)
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OnbekendeTeamTekstItem'
+
+    OnbekendeTeamTekstStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [open, afgehandeld, genegeerd]
+
+    LeermomentAanmaakRequest:
+      type: object
+      required: [juistVerzoekType, samenvatting]
+      description: De aanmaker staat er bewust niet in; die komt uit het Easy Auth-principal.
+      properties:
+        origineelVerzoekType:
+          type: string
+          nullable: true
+          description: Wat de pipeline ervan maakte; leeg = "Onbekend".
+        juistVerzoekType:
+          type: string
+          enum: [BeschikbaarheidCheck, HerplanVerzoek, Bevestiging, TeamContactOpvragen, BuitenScope]
+        samenvatting:
+          type: string
+          maxLength: 500
+          description: Door de beheerder geredigeerde, korte omschrijving; wordt door de PII-arme sanering gehaald (e-mailadressen en nummers gemaskeerd, aanhalingstekens weg).
+        herkomstVerwerkingId:
+          type: integer
+          nullable: true
 
     # ── Beheer — Teambegeleiding ──────────────────────────────────────────────
 
@@ -3085,6 +3398,17 @@ components:
           type: number
           format: decimal
           description: Aandeel van een heel veld dat deze wedstrijd gebruikt (1.00 = heel veld)
+        tegenstander:
+          type: string
+          nullable: true
+          description: De andere kant van `wedstrijd` ten opzichte van `teamNaam` (#1582)
+        nietInSportlink:
+          type: boolean
+          description: Eigen regel die de Sportlink-veldplanner niet kent — een zichtbare afwijking (#1582)
+        bron:
+          type: string
+          nullable: true
+          description: "`Sportlink` als veld, tijd en duur uit de veldplanner komen of de regel alleen daar staat (#1582)"
 
     AutoPlanResponse:
       type: object
@@ -4946,6 +5270,32 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /beheer/teams/keuzelijst:
+    get:
+      tags: [beheer]
+      operationId: getTeamKeuzelijst
+      summary: Teamkeuzelijst met id ophalen
+      description: |
+        Actieve teams van de club met `teamId` en canonieke naam (#1568 deel C), voor het koppelen van een
+        teamtekst aan een team (`POST /beheer/teamaliassen`). `GET /beheer/teams` geeft alleen de namen.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Teams
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TeamKeuzeItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /beheer/teams:
     get:
       tags: [beheer]
@@ -5150,6 +5500,46 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/email-log/{id}/trace:
+    get:
+      tags: [beheer]
+      operationId: getEmailLogTrace
+      summary: Beslissingstrace van een verwerkt bericht ophalen
+      description: |
+        Geeft de permanente, PII-arme beslissingstrace (#1568) van één verwerking uit
+        `planner.EmailTrace`: welke keuzes de e-mailpipeline maakte (classificatie, team- en
+        tegenstanderherkenning, datum, gekozen sjabloon) en hoe zeker elke stap was.
+
+        AVG: bevat nooit berichttekst, afzender, onderwerp of de teamtekst die de AI uit de mail haalde (alleen een allowlist van vaste codes, tellingen, datums, herkende teamnamen en een vormkenmerk). De trace blijft bestaan nadat de
+        verwerking zelf is geanonimiseerd/verwijderd; `status` en `ontvangstDatum` zijn dan `null`.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Verwerking-id (`Id` uit `GET /beheer/email-log`)
+      responses:
+        '200':
+          description: Trace van de verwerking
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailTraceResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Er is geen trace voor deze verwerking van deze club
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -6165,7 +6555,12 @@ paths:
       summary: E-mailclassificatie dry-run
       description: |
         Simuleert de volledige e-mailverwerkingspipeline zonder iets te versturen of op te slaan.
-        Geeft classificatie (AI), mogelijke planneractie en een voorbeeldantwoord terug.
+        Geeft classificatie (AI), mogelijke planneractie, een voorbeeldantwoord en de beslissingstrace terug.
+        Sinds #1568 deel C volgt de tester dezelfde stappen als productie: de gevalideerde leermomenten gaan als
+        few-shot voorbeelden mee naar de classificatie (het aantal staat als trace-stap `leermomenten`) en de
+        dry-run schrijft niets — alleen een nog lege teamlijst van de gekozen club wordt eenmalig opgebouwd.
+        Sinds #1583 bevat de respons ook `eindoordeel`: een definitieve uitkomst (automatisch verstuurd, review of
+        geen antwoord) waarin de actuele instelling van de zekerheidspoort is meegewogen.
 
         Rate limiting: max 10 aanroepen per minuut.
       security:
@@ -6927,6 +7322,52 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+    post:
+      tags: [beheer]
+      operationId: createLeermoment
+      summary: Leermoment toevoegen (beheerder)
+      description: |
+        Een leermoment door een beheerder (#1568 deel C): "dit bericht hoort een ander verzoektype te zijn".
+        Direct gevalideerd, herkomst `Admin`, zonder reply-paar. De samenvatting wordt door dezelfde PII-arme
+        sanering gehaald als de beslissingstrace. De aanmaker (object-ID + naammomentopname) komt uit het
+        Easy Auth-principal, nooit uit de body. **Permanent**: de retentie raakt alleen herkomst `Reply`.
+        Gevalideerde leermomenten gaan als few-shot voorbeeld mee naar de classificatie; admin-voorbeelden eerst
+        binnen de limiet van 20.
+      security:
+        - easyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeermomentAanmaakRequest'
+      responses:
+        '201':
+          description: Leermoment opgeslagen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  status:
+                    type: string
+                    example: validated
+                  herkomst:
+                    type: string
+                    example: Admin
+                  samenvatting:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /beheer/leermomenten/stats:
     get:
       tags: [beheer]
@@ -6946,6 +7387,55 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/leermomenten/{id}:
+    delete:
+      tags: [beheer]
+      operationId: deleteLeermoment
+      summary: Leermoment van een beheerder verwijderen
+      description: |
+        Verwijdert een door een beheerder toegevoegd leermoment (herkomst `Admin`) definitief, zodat de AI het niet meer
+        als voorbeeld gebruikt (AVG: wat een beheerder zelf invoerde moet weer weg kunnen). Uitsluitend binnen de eigen
+        club (`X-Club-Code`); een id van een andere club geeft `404`. Een leermoment uit een beantwoorde mail
+        (herkomst `Reply`) geeft `409`: die valt onder de gewone retentie.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Leermoment ID
+      responses:
+        '200':
+          description: Verwijderd
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+                  id:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Het leermoment komt uit een beantwoorde mail (herkomst `Reply`) en kan niet worden verwijderd
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -7049,6 +7539,85 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+    post:
+      tags: [beheer]
+      operationId: createTeamAlias
+      summary: Teamalias aanmaken (beheerder)
+      description: |
+        Koppelt een teamtekst aan een team (#1568 deel C): bron `CoordinatorCorrectie`, direct `validated`. De
+        genormaliseerde sleutel komt uit `TeamNaamNormalisatie` (de enige normalisatieplek). Bestaat al een alias
+        met dezelfde genormaliseerde tekst (of dezelfde ruwe tekst): voor hetzelfde team → `200` met status
+        `bestaat-al` (een niet-gevalideerde alias wordt dan gevalideerd); voor een ander team → `409`, tenzij
+        `herkoppel` expliciet `true` is (dan `200`, status `herkoppeld`). Past de tekst zonder alias bij meerdere teams
+        (bijv. `13-1`), dan volgt `409` met code `dubbelzinnig` tenzij `bevestigDubbelzinnig` `true` is. Een
+        unique-violation door een gelijktijdige aanroep is `409` met code `bestaat-al`, geen `500`. Een open regel in de wachtrij met
+        onbekende teamteksten met dezelfde sleutel wordt automatisch `afgehandeld`. De aanmaker (object-ID +
+        naammomentopname, geen e-mailadres) komt uit het Easy Auth-principal en wordt samen met de UTC-aanmaaktijd
+        vastgelegd.
+      security:
+        - easyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamAliasAanmaakRequest'
+      responses:
+        '200':
+          description: Alias bestond al (`bestaat-al`) of is herkoppeld (`herkoppeld`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamAliasAanmaakResponse'
+        '201':
+          description: Alias aangemaakt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamAliasAanmaakResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            Drie varianten, te onderscheiden aan `code`: `conflict` (de schrijfwijze hoort al bij een ander team en
+            `herkoppel` was niet `true`), `dubbelzinnig` (de tekst past bij meerdere teams en `bevestigDubbelzinnig` was
+            niet `true`; `kandidaten` noemt de teams) en `bestaat-al` (een gelijktijdige aanroep maakte dezelfde alias net
+            eerder aan; unique-violation).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    enum: [conflict, dubbelzinnig, bestaat-al]
+                  error:
+                    type: string
+                  kandidaten:
+                    type: array
+                    items:
+                      type: string
+                    description: Alleen bij `dubbelzinnig`.
+                  aantalRijen:
+                    type: integer
+                    description: Alleen bij `conflict`; het aantal alias-rijen dat herkoppelen raakt.
+                  bestaandeAliasId:
+                    type: integer
+                  bestaandTeamId:
+                    type: integer
+                  bestaandTeamnaam:
+                    type: string
+                  bestaandeStatus:
+                    type: string
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /beheer/teamaliassen/{id}/valideer:
     put:
       tags: [beheer]
@@ -7056,7 +7625,8 @@ paths:
       summary: Teamalias goedkeuren of afwijzen
       description: |
         Zet `Status` op de alias. `validated` → de alias geldt vanaf dat moment als vertrouwde
-        exacte match bij teamnaam-resolutie. `rejected` → de alias wordt genegeerd.
+        exacte match bij teamnaam-resolutie. `rejected` → de alias wordt genegeerd. Wie (object-ID +
+        naammomentopname) en wanneer (UTC) wordt vastgelegd (#1568 deel C).
       security:
         - easyAuth: []
       parameters:
@@ -7104,7 +7674,8 @@ paths:
       operationId: deleteTeamAlias
       summary: Teamalias verwijderen
       description: |
-        Verwijdert de alias definitief. Uitsluitend binnen de eigen club (`X-Club-Code`).
+        Verwijdert de alias definitief. Uitsluitend binnen de eigen club (`X-Club-Code`). Er staat nergens een
+        identificator van de beheerder in het log; de tabel bewaart geen auditregel van een verwijderde rij.
         De alias kan opnieuw als `pending` verschijnen wanneer de schrijfwijze weer wordt
         aangetroffen.
       security:
@@ -7131,6 +7702,94 @@ paths:
                     type: boolean
                   id:
                     type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ── Beheer — Wachtrij onbekende teamteksten (#1568 deel C) ────────────────────
+
+  /beheer/onbekende-teamteksten:
+    get:
+      tags: [beheer]
+      operationId: getOnbekendeTeamTeksten
+      summary: Wachtrij met onbekende teamteksten ophalen
+      description: |
+        Teamteksten uit binnengekomen e-mails die de pipeline niet aan een eigen team kon koppelen
+        (trace-stap `team-herkenning` met uitkomst `Onopgelost` of `MeerdereKandidaten`). Open regels staan
+        bovenaan. Koppelen gaat via `POST /beheer/teamaliassen`, dat de open regel zelf afhandelt. Regels die
+        90 dagen niet meer zijn gezien worden door de wekelijkse e-mail-cleanup verwijderd.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [open, afgehandeld, genegeerd]
+          description: Leeg = alles.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 500
+      responses:
+        '200':
+          description: Wachtrij
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnbekendeTeamTekstListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/onbekende-teamteksten/{id}/status:
+    put:
+      tags: [beheer]
+      operationId: zetOnbekendeTeamTekstStatus
+      summary: Wachtrijregel afhandelen, negeren of heropenen
+      security:
+        - easyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OnbekendeTeamTekstStatusRequest'
+      responses:
+        '200':
+          description: Status bijgewerkt
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  status:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -7712,6 +8371,10 @@ paths:
         generiek zichtbaar is voor elke ingelogde gebruiker — vereist daarom alleen `admin` óf
         `user` (voorheen uitsluitend `admin`); in deze tag geldt dat verder alleen voor
         `/planner/pdf-export` (#1459).
+
+        Sinds #1563 komen `veld`, `aanvangsTijd`, `veldafmeting` en `duurMinuten` van een wedstrijd uit de
+        Sportlink-veldplanner als de Sportlink Web Extension aan en bereikbaar is; anders (of voor een wedstrijd
+        die Sportlink niet kent) blijft de eigen berekening. De vorm van het antwoord is ongewijzigd.
       security:
         - easyAuth: []
       parameters:

@@ -6,7 +6,7 @@
 // Waarom gedeeld: een issue mag hoogstens één 'status: '-label hebben. Zonder één
 // centrale plek voor die regel dupliceren drie workflows dezelfde remove/add-dans en
 // lopen ze onvermijdelijk uiteen — dan stapelen labels zich op of verdwijnen ze.
-// Zie CLAUDE.md, sectie "Issue-lifecycle".
+// Zie AGENTS.md, sectie "Issue-lifecycle".
 
 const STATUS_PREFIX = 'status: ';
 
@@ -27,7 +27,7 @@ const PROTECTED = [
   'status: waiting-owner',
   // Codex draait als handmatig aangeroepen, read-only reviewsweep zonder webhook — dit label
   // wordt dus altijd door Claude Code (of de eigenaar) gezet/verwijderd, nooit automatisering.
-  // Zie CLAUDE.md, sectie "Issue-lifecycle" (#1336).
+  // Zie AGENTS.md, sectie "Issue-lifecycle" (#1336).
   'status: waiting-codex',
 ];
 
@@ -75,7 +75,7 @@ function isEpic(issue) {
  *   'docs(#1051): CHANGELOG-verwijzing naar #1048 gebruikte per ongeluk haakjesnotatie'
  *        #1048 is het onderwerp van de zin, niet het opgeleverde werk.
  *
- * Haakjes als scheidslijn is precies de conventie die CLAUDE.md al vastlegt voor de
+ * Haakjes als scheidslijn is precies de conventie die AGENTS.md al vastlegt voor de
  * CHANGELOG — '(#N)' is attributie van opgeleverd werk, een kaal '#N' in proza is een
  * kruisverwijzing — en die de bronnen 1 en 2 van close-released-issues.yml al hanteren.
  * Deze functie sluit daar nu op aan in plaats van hem te ondergraven.
@@ -87,7 +87,7 @@ function isEpic(issue) {
  *
  * Bewust conservatief: een kaal nummer in de titel wordt genegeerd. Een gemist issue
  * blijft open staan en valt op; een ten onrechte gesloten issue moet met de hand worden
- * heropend (v2.18.0.1, zie CLAUDE.md). Die asymmetrie bepaalt de richting van de twijfel.
+ * heropend (v2.18.0.1, zie AGENTS.md). Die asymmetrie bepaalt de richting van de twijfel.
  */
 function extractIssueRefs(title, body) {
   const safeTitle = title || '';

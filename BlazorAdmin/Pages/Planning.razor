@@ -75,6 +75,14 @@
                 <p class="text-muted small">Nog geen wedstrijden met veld, tijd én bekende duur voor deze datum — zie de lijst hieronder.</p>
             }
 
+            @if (AantalNietInSportlink > 0)
+            {
+                <div class="alert alert-warning py-2 small" role="status">
+                    @AantalNietInSportlink @(AantalNietInSportlink == 1 ? "wedstrijd staat" : "wedstrijden staan") in onze gegevens maar niet in de veldplanner van Sportlink.
+                    Sportlink is leidend: controleer of de wedstrijd daar is verwijderd of verplaatst en voer zo nodig een synchronisatie uit.
+                </div>
+            }
+
             <div class="table-responsive">
                 <table class="table table-sm table-hover mb-0">
                     <thead>
@@ -97,8 +105,20 @@
                                 @onmouseover="() => _hover.Zet(item.WedstrijdCode)"
                                 @onmouseout="() => _hover.Wis()">
                                 <td>@(item.AanvangsTijd ?? "—")</td>
-                                <td>@item.TeamNaam</td>
-                                <td>@(item.Uitteam ?? "—")</td>
+                                <td>
+                                    @item.TeamNaam
+                                    @if (item.NietInSportlink)
+                                    {
+                                        <span class="badge bg-warning text-dark ms-1"
+                                              title="Deze wedstrijd staat in onze gegevens maar niet in de veldplanner van Sportlink.">Niet in Sportlink</span>
+                                    }
+                                    else if (item.WedstrijdCode == null && item.Bron == "Sportlink")
+                                    {
+                                        <span class="badge bg-secondary ms-1"
+                                              title="Staat in de veldplanner van Sportlink maar niet in onze eigen gegevens, bijvoorbeeld een wedstrijd van een andere club op hetzelfde park.">Alleen in Sportlink</span>
+                                    }
+                                </td>
+                                <td>@(item.Tegenstander ?? item.Uitteam ?? "—")</td>
                                 <td>@(item.Veld ?? "—")</td>
                                 <td>@(item.Competitiesoort ?? "—")</td>
                                 @* ── Sportlink-kolom (#1361): dezelfde Toon/Open-in-Sportlink-acties als

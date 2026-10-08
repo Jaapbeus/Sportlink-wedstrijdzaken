@@ -62,7 +62,7 @@ case-sensitief voor tabelnamen op de meeste platforms maar niet gegarandeerd op 
 ## 6. Open architectuurbesluit: persistente opslag op Linux Consumption (historische titel; productie draait inmiddels op Flex)
 
 Dit project draait op het Linux Azure Functions Consumption-plan (destijds net9.0 isolated worker; sinds 2026-10-03 Flex Consumption, sinds v3.11.0.0 net10.0) — zie
-CLAUDE.md, sectie ".NET versie". **Dit document stelt niet voor om die beperking te heroverwegen.**
+AGENTS.md, sectie ".NET versie". **Dit document stelt niet voor om die beperking te heroverwegen.**
 
 > **Stand 2026-10-04 — de aanname onder dit hoofdstuk is vervallen.** De migratie naar Flex Consumption
 > (epic #1063) is afgerond; productie draait sinds 2026-10-03 op Flex. Flex Consumption ondersteunt
@@ -113,7 +113,7 @@ moment dat tier 3 daadwerkelijk wordt opgepakt.
 > (Microsoft Learn, zie sectie 6). Gratis-tier-voorwaarden en plan-eigenschappen wijzigen zonder
 > aankondiging vooraf. **Verifieer ze opnieuw via de Microsoft Learn MCP server vóór je er een
 > besluit of een resource op baseert** — dat is niet optioneel, het is de kostenbeleidsregel uit
-> CLAUDE.md.
+> AGENTS.md.
 
 Dit document creëert en wijzigt geen Azure-resources — geen prijscheck vereist om het af te
 ronden. Optie B en C uit sectie 6 hebben wél kostenimpact zodra ze daadwerkelijk gekozen worden —

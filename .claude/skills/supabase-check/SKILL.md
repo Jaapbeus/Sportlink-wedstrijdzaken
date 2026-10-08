@@ -32,7 +32,7 @@ directe actie.
 Je neemt **nooit** een logwaarde letterlijk over in een issue, een comment, een commit, een bestand
 of je eindrapport. Je groepeert op status- of foutcode, op endpoint, op tijdvak — nooit op persoon.
 Een GitHub-issue op deze publieke repository is permanent en binnen minuten geïndexeerd
-(`CLAUDE.md` regel 4a). Bij twijfel: aggregeer, of laat het weg.
+(`AGENTS.md` regel 4a). Bij twijfel: aggregeer, of laat het weg.
 
 Datzelfde geldt voor de project-ref, de pooler-hostname en elke andere waarde die de club
 identificeert. Gebruik placeholders: `[project-ref]`, `[club-domein]`.

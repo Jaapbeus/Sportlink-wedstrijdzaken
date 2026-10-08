@@ -1,4 +1,5 @@
 using Microsoft.Data.SqlClient;
+using Planner.Shared.Leren;
 
 namespace SportlinkFunction.Admin;
 
@@ -19,6 +20,7 @@ internal static class AdminLeermomentenRepository
                     cc.[OrigineelVerzoekType], cc.[AfgeleidJuistType],
                     cc.[OrigineleSamenvatting], cc.[CorrectieSamenvatting],
                     cc.[IsGevalideerd], cc.[IsAfgewezen],
+                    cc.[Herkomst], cc.[AangemaaktDoorNaam], cc.[AangemaaktOp], cc.[HerkomstVerwerkingId],
                     cc.[mta_inserted], cc.[mta_modified]
                 FROM [planner].[ClassificatieCorrectie] cc
                 WHERE cc.[ClubCode] = @Cc {whereExtra}
@@ -65,5 +67,53 @@ internal static class AdminLeermomentenRepository
         cmd.Parameters.AddWithValue("@IsAf", isAfgewezen);
         cmd.Parameters.AddWithValue("@Cc",   clubCode);
         return await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>
+    /// Een leermoment door een beheerder (#1568 deel C): direct gevalideerd, herkomst <c>Admin</c>, zonder
+    /// reply-paar (beide verwerkings-id's NULL). De door de beheerder geredigeerde samenvatting staat in
+    /// <c>OrigineleSamenvatting</c> — dat is het veld dat de few-shot-prompt als "Samenvatting" toont.
+    /// </summary>
+    internal static async Task<int> MaakAdminLeermomentAsync(AdminLeermomentOpdracht o, string cs)
+    {
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
+        using var cmd = new SqlCommand(@"
+            INSERT INTO [planner].[ClassificatieCorrectie]
+                ([OrigineleVerwerkingId], [CorrectionVerwerkingId], [OrigineelVerzoekType], [AfgeleidJuistType],
+                 [OrigineleSamenvatting], [IsGevalideerd], [ClubCode], [Herkomst],
+                 [AangemaaktDoor], [AangemaaktDoorNaam], [AangemaaktOp], [HerkomstVerwerkingId])
+            OUTPUT INSERTED.[Id]
+            VALUES (NULL, NULL, @Origineel, @Juist, @Samenvatting, 1, @Cc, N'Admin', @Door, @Naam, GETUTCDATE(),
+                    (SELECT [Id] FROM [planner].[EmailVerwerking] WHERE [Id] = @Verwerking AND [ClubCode] = @Cc))", conn);
+        cmd.Parameters.AddWithValue("@Origineel", o.OrigineelType);
+        cmd.Parameters.AddWithValue("@Juist", o.JuistType);
+        cmd.Parameters.AddWithValue("@Samenvatting", o.Samenvatting);
+        cmd.Parameters.AddWithValue("@Cc", o.ClubCode);
+        cmd.Parameters.AddWithValue("@Door", o.Wie.DoorId);
+        cmd.Parameters.AddWithValue("@Naam", (object?)o.Wie.DoorNaam ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@Verwerking", (object?)o.HerkomstVerwerkingId ?? DBNull.Value);
+        return (int)(await cmd.ExecuteScalarAsync())!;
+    }
+
+    /// <summary>Verwijdert uitsluitend een leermoment met herkomst <c>Admin</c> van de eigen club (AVG, #1568); geeft het aantal verwijderde rijen.</summary>
+    internal static async Task<int> VerwijderAdminLeermomentAsync(int id, string clubCode, string cs)
+    {
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
+        using var cmd = new SqlCommand(
+            "DELETE FROM [planner].[ClassificatieCorrectie] WHERE [Id] = @Id AND [ClubCode] = @Cc AND [Herkomst] = N'Admin'", conn);
+        cmd.Parameters.AddWithValue("@Id", id);
+        cmd.Parameters.AddWithValue("@Cc", clubCode);
+        return await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>Bestaat dit leermoment (elke herkomst) bij de eigen club? Onderscheidt een <c>Reply</c>-rij (409) van een onbekend id (404).</summary>
+    internal static async Task<bool> BestaatLeermomentAsync(int id, string clubCode, string cs)
+    {
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
+        using var cmd = new SqlCommand(
+            "SELECT 1 FROM [planner].[ClassificatieCorrectie] WHERE [Id] = @Id AND [ClubCode] = @Cc", conn);
+        cmd.Parameters.AddWithValue("@Id", id);
+        cmd.Parameters.AddWithValue("@Cc", clubCode);
+        return await cmd.ExecuteScalarAsync() is not null;
     }
 }

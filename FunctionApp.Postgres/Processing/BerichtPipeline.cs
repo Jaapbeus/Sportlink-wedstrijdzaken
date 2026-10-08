@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Planner.Shared;
+using Planner.Shared.Email;
+using Planner.Shared.Email.Trace;
 using FunctionApp.Postgres.Email;
 using FunctionApp.Postgres.Planner;
 using FunctionApp.Postgres.Planner.Repositories;
@@ -38,7 +40,7 @@ internal static class BerichtPipeline
         var eigenTekst = StripCitaatEnOndertekening(emailBody);
 
         var onderwerpDatum = ExtractExpliciteDatum(onderwerp);
-        var onderwerpMagWinnen = string.IsNullOrEmpty(classificatie.Datum) || !HeeftReplyPrefix(onderwerp);
+        var onderwerpMagWinnen = string.IsNullOrEmpty(classificatie.Datum) || !BerichtTekstHeuristiek.HeeftReplyPrefix(onderwerp);
         if (onderwerpDatum.HasValue && onderwerpMagWinnen)
         {
             classificatie.Datum = onderwerpDatum.Value.ToString("yyyy-MM-dd");
@@ -96,13 +98,14 @@ internal static class BerichtPipeline
     internal static async Task<string> VerwerkMetPlannerAsync(
         BerichtClassificatie classificatie, InkomendBericht bericht, ILogger log,
         ITeamResolver teamResolver,
-        string? clubCode = null, ClubAppSettingsSnapshot? clubSettings = null)
+        string? clubCode = null, ClubAppSettingsSnapshot? clubSettings = null, TraceBuilder? trace = null)
     {
         ArgumentNullException.ThrowIfNull(teamResolver);
+        trace?.Classificatie(classificatie.Type.ToString(), classificatie.TeamNaam, classificatie.Tegenstander, classificatie.GetAlleDatums().Count, classificatie.AanvangsTijd);
 
         var cs = PostgresDatabaseConfig.ConnectionString;
         var cc = ResolveHeuristicClubCode(clubCode);
-        var eigenTeamHerkend = await BepaalEigenTeamEnTegenstanderAsync(classificatie, teamResolver, cc, log);
+        var eigenTeamHerkend = await BepaalEigenTeamEnTegenstanderAsync(classificatie, teamResolver, cc, log, trace);
         if (eigenTeamHerkend) classificatie.LeeftijdsCategorie = TeamNaamNormalisatie.VulLeeftijdsCategorieAan(classificatie.LeeftijdsCategorie, classificatie.TeamNaam, cc);
 
         switch (classificatie.Type)
@@ -110,6 +113,7 @@ internal static class BerichtPipeline
             case VerzoekType.BeschikbaarheidCheck:
                 var alleDatums = ExpandDoordeweeksDatums(
                     classificatie.GetAlleDatums(), bericht.Onderwerp, bericht.Body ?? "");
+                trace?.Datum(alleDatums);
 
                 // #1139: "opponent kan ons team alsnog vinden"-pad. Is ons eigen team niet
                 // herkend maar wel een tegenstander genoemd, dan kan de wedstrijd nog via die
@@ -122,16 +126,18 @@ internal static class BerichtPipeline
                 {
                     var wedstrijdOpDatum = await PlannerMatchRepository.FindMatchByOpponentAsync(
                         cs, classificatie.Tegenstander!, opponentCheckDatum, clubCode);
+                    if (wedstrijdOpDatum != null) trace?.OpponentPad("opponent-op-datum", true);
                     if (wedstrijdOpDatum != null)
                         return JsonConvert.SerializeObject(new { wedstrijdAlIngepland = true, wedstrijd = wedstrijdOpDatum });
 
                     var wedstrijdAndereDatum = await PlannerMatchRepository.FindMatchByOpponentAsync(
                         cs, classificatie.Tegenstander!, null, clubCode);
+                    trace?.OpponentPad(wedstrijdAndereDatum == null ? "niet-gevonden" : "opponent-andere-datum", wedstrijdAndereDatum != null);
                     if (wedstrijdAndereDatum == null)
                         return JsonConvert.SerializeObject(new { teamOnbekend = true, tegenstander = classificatie.Tegenstander });
 
                     var eigenTeam = await BepaalEigenTeamUitWedstrijdAsync(
-                        wedstrijdAndereDatum.Wedstrijd, teamResolver, cc, log);
+                        wedstrijdAndereDatum.Wedstrijd, teamResolver, cc, log, trace);
                     if (eigenTeam != null)
                     {
                         classificatie.TeamNaam = eigenTeam;
@@ -232,7 +238,7 @@ internal static class BerichtPipeline
                             {
                                 Wedstrijdcode = wedstrijd.Wedstrijdcode,
                                 VoorkeurTijd = classificatie.AanvangsTijd,
-                                Richting = DetecteerRichting(bericht.Onderwerp, bericht.Body ?? "")
+                                Richting = BerichtTekstHeuristiek.DetecteerRichting(bericht.Onderwerp, bericht.Body ?? "")
                             };
                             var herplanResponse = await RescheduleService.CheckRescheduleAvailabilityAsync(cs, herplanRequest, log, clubCode);
                             return JsonConvert.SerializeObject(new { wedstrijd, herplanOpties = herplanResponse });
@@ -365,12 +371,24 @@ internal static class BerichtPipeline
         InkomendBericht bericht,
         ILogger? log = null,
         ClubAppSettingsSnapshot? clubSettings = null,
-        string? clubCode = null)
+        string? clubCode = null,
+        TraceBuilder? trace = null)
     {
+        trace?.Antwoordkeuze(classificatie.Type.ToString(), plannerResponseJson);
         switch (classificatie.Type)
         {
             case VerzoekType.BeschikbaarheidCheck:
                 var jobj = Newtonsoft.Json.Linq.JObject.Parse(plannerResponseJson);
+
+                // #1568: zelfde tak als de SQL Server-tier. VerwerkMetPlannerAsync geeft deze vlag terug
+                // bij het opponent-pad (#1139); zonder deze tak viel het antwoord door naar het standaard-
+                // beschikbaarheidsantwoord met een lege CheckAvailabilityResponse ("niet planbaar").
+                if (jobj["wedstrijdAlIngepland"]?.ToObject<bool>() == true)
+                {
+                    var ingeplandWedstrijd = jobj["wedstrijd"]?.ToObject<ZoekWedstrijdResponse>();
+                    return BerichtResponseGenerator.BouwWedstrijdAlIngeplandAntwoord(
+                        ingeplandWedstrijd, classificatie, bericht, clubSettings);
+                }
 
                 if (jobj["teamOnbekend"]?.ToObject<bool>() == true)
                 {
@@ -408,7 +426,7 @@ internal static class BerichtPipeline
 
                 var beschikbaarheidTemplate = await Email.EmailTemplateService.GetTemplateAsync("beschikbaarheid_check", clubCode, log);
                 if (beschikbaarheidTemplate != null)
-                    return BerichtResponseGenerator.BouwAangepasteAntwoord(beschikbaarheidTemplate, classificatie, bericht, clubSettings);
+                    return trace.MeldOverride("beschikbaarheid_check", BerichtResponseGenerator.BouwAangepasteAntwoord(beschikbaarheidTemplate, classificatie, bericht, clubSettings));
 
                 var checkResponse = JsonConvert.DeserializeObject<CheckAvailabilityResponse>(plannerResponseJson);
                 return BerichtResponseGenerator.BouwBeschikbaarheidAntwoord(
@@ -443,7 +461,7 @@ internal static class BerichtPipeline
 
                 var herplanTemplate = await Email.EmailTemplateService.GetTemplateAsync("herplan_verzoek", clubCode, log);
                 if (herplanTemplate != null)
-                    return BerichtResponseGenerator.BouwAangepasteAntwoord(herplanTemplate, classificatie, bericht, clubSettings);
+                    return trace.MeldOverride("herplan_verzoek", BerichtResponseGenerator.BouwAangepasteAntwoord(herplanTemplate, classificatie, bericht, clubSettings));
 
                 var herplanOpties = herplanData["herplanOpties"]?.ToObject<HerplanCheckResponse>();
                 return BerichtResponseGenerator.BouwHerplanAntwoord(
@@ -452,19 +470,19 @@ internal static class BerichtPipeline
             case VerzoekType.TeamContactOpvragen:
                 var teamContactTemplate = await Email.EmailTemplateService.GetTemplateAsync("team_contact_opvragen", clubCode, log);
                 if (teamContactTemplate != null)
-                    return BerichtResponseGenerator.BouwAangepasteAntwoord(teamContactTemplate, classificatie, bericht, clubSettings);
+                    return trace.MeldOverride("team_contact_opvragen", BerichtResponseGenerator.BouwAangepasteAntwoord(teamContactTemplate, classificatie, bericht, clubSettings));
                 return BerichtResponseGenerator.BouwTeamContactAutoReply(classificatie, bericht, clubSettings);
 
             case VerzoekType.Bevestiging:
                 var bevestigingTemplate = await Email.EmailTemplateService.GetTemplateAsync("bevestiging", clubCode, log);
                 if (bevestigingTemplate != null)
-                    return BerichtResponseGenerator.BouwAangepasteAntwoord(bevestigingTemplate, classificatie, bericht, clubSettings);
+                    return trace.MeldOverride("bevestiging", BerichtResponseGenerator.BouwAangepasteAntwoord(bevestigingTemplate, classificatie, bericht, clubSettings));
                 return BerichtResponseGenerator.BouwBevestigingAntwoord(bericht, classificatie, clubSettings);
 
             default:
                 var buitenScopeTemplate = await Email.EmailTemplateService.GetTemplateAsync("buiten_scope", clubCode, log);
                 if (buitenScopeTemplate != null)
-                    return BerichtResponseGenerator.BouwAangepasteAntwoord(buitenScopeTemplate, classificatie, bericht, clubSettings);
+                    return trace.MeldOverride("buiten_scope", BerichtResponseGenerator.BouwAangepasteAntwoord(buitenScopeTemplate, classificatie, bericht, clubSettings));
                 return BerichtResponseGenerator.BouwBuitenScopeAntwoord(bericht, clubSettings);
         }
     }
@@ -536,27 +554,6 @@ internal static class BerichtPipeline
         return string.IsNullOrWhiteSpace(eigenTekst) ? tekst : eigenTekst;
     }
 
-    private static bool HeeftReplyPrefix(string onderwerp)
-        => !string.IsNullOrWhiteSpace(onderwerp)
-           && System.Text.RegularExpressions.Regex.IsMatch(
-               onderwerp, @"^\s*(?:(?:re|fw|fwd|aw)\s*:\s*)+",
-               System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-    private static DateOnly? EerstvolgendVoorkomen(int dag, int maand)
-    {
-        const int verledenTolerantieDagen = 30;
-        var ondergrens = DateOnly.FromDateTime(DateTime.Today).AddDays(-verledenTolerantieDagen);
-
-        for (int jaarOffset = 0; jaarOffset <= 1; jaarOffset++)
-        {
-            DateOnly kandidaat;
-            try { kandidaat = new DateOnly(DateTime.Today.Year + jaarOffset, maand, dag); }
-            catch { continue; }
-            if (kandidaat >= ondergrens) return kandidaat;
-        }
-        return null;
-    }
-
     private static DateOnly? ExtractExpliciteDatum(string tekst)
     {
         if (string.IsNullOrWhiteSpace(tekst)) return null;
@@ -605,7 +602,7 @@ internal static class BerichtPipeline
                 }
                 else
                 {
-                    var kandidaat = EerstvolgendVoorkomen(d, maandNr);
+                    var kandidaat = BerichtTekstHeuristiek.EerstvolgendVoorkomen(d, maandNr);
                     if (kandidaat.HasValue) return kandidaat;
                 }
             }
@@ -627,10 +624,11 @@ internal static class BerichtPipeline
     /// canonieke naam uit de teamlijst (#700/#889).
     /// </summary>
     private static async Task<bool> BepaalEigenTeamEnTegenstanderAsync(
-        BerichtClassificatie classificatie, ITeamResolver resolver, string clubCode, ILogger log)
+        BerichtClassificatie classificatie, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace)
     {
         if (string.IsNullOrWhiteSpace(clubCode))
         {
+            trace?.TeamHerkenningOvergeslagen("geen clubcode");
             log.LogWarning("TEAMRESOLUTIE - geen clubCode beschikbaar; teamherkenning overgeslagen");
             return false;
         }
@@ -638,7 +636,7 @@ internal static class BerichtPipeline
         var team = (classificatie.TeamNaam ?? "").Trim();
         var tegenstander = (classificatie.Tegenstander ?? "").Trim();
 
-        var teamUitkomst = await ProbeerResolveAsync(resolver, team, clubCode, log);
+        var teamUitkomst = await ProbeerResolveAsync(resolver, team, clubCode, log, trace, TraceCodes.TeamHerkenning);
 
         if (teamUitkomst is not null && teamUitkomst.IsOpgelost)
         {
@@ -647,11 +645,12 @@ internal static class BerichtPipeline
             return true;
         }
 
-        var tegenstanderUitkomst = await ProbeerResolveAsync(resolver, tegenstander, clubCode, log);
+        var tegenstanderUitkomst = await ProbeerResolveAsync(resolver, tegenstander, clubCode, log, trace, TraceCodes.TegenstanderHerkenning);
         if (tegenstanderUitkomst is not null && tegenstanderUitkomst.IsOpgelost)
         {
             classificatie.TeamNaam = tegenstanderUitkomst.CanoniekeTeamnaam;
             classificatie.Tegenstander = team;
+            trace?.TeamWissel(classificatie.TeamNaam, team);
             log.LogInformation("TEAMRESOLUTIE - team en tegenstander verwisseld op basis van de teamlijst");
             LogUitkomst(log, tegenstanderUitkomst);
             return true;
@@ -673,13 +672,13 @@ internal static class BerichtPipeline
     /// onbekend". Er wordt nooit een naam gegokt.
     /// </summary>
     private static async Task<string?> BepaalEigenTeamUitWedstrijdAsync(
-        string? wedstrijd, ITeamResolver resolver, string clubCode, ILogger log)
+        string? wedstrijd, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace)
     {
         if (string.IsNullOrWhiteSpace(wedstrijd)) return null;
 
         foreach (var kant in wedstrijd.Split(" - ", 2, StringSplitOptions.TrimEntries))
         {
-            var uitkomst = await ProbeerResolveAsync(resolver, kant, clubCode, log);
+            var uitkomst = await ProbeerResolveAsync(resolver, kant, clubCode, log, trace, TraceCodes.OpponentTeamHerkenning);
             if (uitkomst is not null && uitkomst.IsOpgelost)
                 return uitkomst.CanoniekeTeamnaam;
         }
@@ -687,17 +686,20 @@ internal static class BerichtPipeline
     }
 
     private static async Task<TeamResolutionResult?> ProbeerResolveAsync(
-        ITeamResolver resolver, string ruweTekst, string clubCode, ILogger log)
+        ITeamResolver resolver, string ruweTekst, string clubCode, ILogger log, TraceBuilder? trace, string code)
     {
         if (string.IsNullOrWhiteSpace(ruweTekst)) return null;
 
         try
         {
-            return await resolver.ResolveAsync(new TeamResolutionRequest(ruweTekst, null, null, clubCode));
+            var u = await resolver.ResolveAsync(new TeamResolutionRequest(ruweTekst, null, null, clubCode));
+            trace?.TeamHerkenning(code, ruweTekst, u.Bron.ToString(), u.Confidence, u.Kandidaten.Select(k => k.Teamnaam), u.IsOpgelost ? u.CanoniekeTeamnaam : null);
+            return u;
         }
         catch (Exception ex)
         {
             log.LogError(ex, "TEAMRESOLUTIE - resolutie mislukt");
+            trace?.TeamHerkenning(code, ruweTekst, null, 0, null, null);
             return null;
         }
     }
@@ -706,16 +708,4 @@ internal static class BerichtPipeline
         => log.LogInformation(
             "TEAMRESOLUTIE - teamId={TeamId} bron={Bron} confidence={Confidence}",
             uitkomst.TeamId, uitkomst.Bron, uitkomst.Confidence);
-
-    private static string? DetecteerRichting(string onderwerp, string body)
-    {
-        var tekst = ((onderwerp ?? "") + " " + (body ?? "")).ToLowerInvariant();
-        bool vervroegen = tekst.Contains("vervroeg") || tekst.Contains("eerder")
-                       || tekst.Contains("naar voren");
-        bool verlaten = tekst.Contains("verlaat") || tekst.Contains("verlat")
-                     || tekst.Contains(" later") || tekst.Contains("naar achter");
-        if (vervroegen && !verlaten) return "vervroegen";
-        if (verlaten && !vervroegen) return "verlaten";
-        return null;
-    }
 }

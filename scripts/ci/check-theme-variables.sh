@@ -10,7 +10,7 @@
 # [data-theme="dark"]). Eén vergeten plek is exact zo'n stille fout.
 #
 # Bash 3.2-compatibel (de standaard /bin/bash van macOS): geen declare -A, geen mapfile,
-# geen ${var,,}. Zie de cross-platform-regels in CLAUDE.md.
+# geen ${var,,}. Zie de cross-platform-regels in AGENTS.md.
 
 set -euo pipefail
 

@@ -83,7 +83,7 @@ niet voor de developer. De kernvraag is:
 | Refactoring zonder gedragswijziging | ❌ Nee | Geen merkbaar effect voor gebruiker |
 | Hernoemen van interne klassen | ❌ Nee | Puur intern (bijv. EmailAiService → BerichtAiService) |
 | Test-script verbeteringen (Test-App.ps1) | ❌ Nee | Ontwikkeltool, niet applicatiefunctionaliteit |
-| CLAUDE.md / documentatie bijwerken | ❌ Nee | Intern ontwikkeldocument |
+| AGENTS.md / documentatie bijwerken | ❌ Nee | Intern ontwikkeldocument |
 | Build-configuratie (csproj, niet-deploy workflows) | ❌ Nee | Intern |
 | Typo's in code-comments | ❌ Nee | Intern |
 | Aanpassing in een test die fout positief gaf | ❌ Nee | De applicatie veranderde niet, de test was fout |
@@ -285,7 +285,7 @@ Development — wat is er gewijzigd?
 ├── Kleine fix, CSS, UX-verbetering of chore met zichtbaar effect?
 │   └── JA → REVISION (2.15.1.x)
 │
-└── Alleen intern (refactor zonder effect, docs, tooling, CLAUDE.md)?
+└── Alleen intern (refactor zonder effect, docs, tooling, AGENTS.md)?
     └── Geen versie-bump
 ```
 
@@ -378,7 +378,7 @@ release-notes vindt.
    - `close-released-issues.yml` — sluit de issues uit die sectie (en uit de commit-subjects sinds
      de vorige tag) en verwijdert hun label `status: awaiting-release`.
 6. **Controleer de deploy per job** en doe de live browser-rendercheck op de Admin GUI — zie de
-   veiligheidsregels in `CLAUDE.md`. Een groene workflow bewijst niet dat de GUI rendert.
+   veiligheidsregels in `AGENTS.md`. Een groene workflow bewijst niet dat de GUI rendert.
 
 Alternatief voor stap 5: `release.yml` handmatig starten via *Actions → Release aanmaken → Run
 workflow* met het versienummer als input.

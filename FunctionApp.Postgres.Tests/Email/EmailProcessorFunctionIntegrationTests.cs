@@ -44,7 +44,7 @@ public class EmailProcessorFunctionIntegrationTests
     private static InkomendBericht Bericht(string messageId, string afzender = "trainer@voorbeeld.nl") => new()
     {
         MessageId = messageId,
-        // Fictieve waarden conform CLAUDE.md's AVG-uitzonderingenlijst — nooit echte adressen.
+        // Fictieve waarden conform AGENTS.md's AVG-uitzonderingenlijst — nooit echte adressen.
         Afzender = afzender,
         Onderwerp = "Verzoek verplaatsen wedstrijd",
         OntvangstDatum = new DateTime(2026, 3, 14, 10, 0, 0, DateTimeKind.Utc),

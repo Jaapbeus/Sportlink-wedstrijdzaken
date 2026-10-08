@@ -106,7 +106,7 @@ $candidate"
     done < "$PATTERN_FILE"
   fi
   # ── 3. gitleaks op dezelfde commit-range als hierboven ─────────────────────
-  # gitleaks is optioneel (zie CLAUDE.md), dus ontbreken mag de push niet blokkeren. Maar het stil
+  # gitleaks is optioneel (zie AGENTS.md), dus ontbreken mag de push niet blokkeren. Maar het stil
   # overslaan gaf een vals gevoel van dekking: de patroonscan hierboven is aanzienlijk beperkter dan
   # gitleaks. Nu wordt het expliciet gemeld, net zoals #514 dat deed voor een ontbrekende
   # sensitive-patterns.txt. (#649)

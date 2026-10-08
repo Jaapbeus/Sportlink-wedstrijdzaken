@@ -5,7 +5,7 @@ disable-model-invocation: true
 argument-hint: "[swa] [offline]"
 ---
 
-> **Gezamenlijke agentregels zijn leidend (CLAUDE.md/AGENTS.md).** Deze skill geldt voor Codex
+> **Gezamenlijke agentregels zijn leidend (AGENTS.md).** Deze skill geldt voor Codex
 > en Claude Code. Werk uitsluitend aan de toegewezen taak in de eigen geverifieerde worktree;
 > claim of wijzig geen taak, branch, worktree of services van een andere actieve sessie.
 > Behoud `source:` als herkomst; registreer implementer, reviewer, fase en sessie afzonderlijk.
@@ -45,9 +45,14 @@ Alle commando's hieronder draaien in PowerShell 7 (`pwsh` op macOS, `powershell`
 > dan draait de GUI op de productieversie — of erger, op een achterlopende main (voorbeeld: GUI
 > toonde v3.8.0.0 terwijl `origin/develop` al op v3.9.6.1 stond, 32 commits verder) — terwijl je
 > bijna altijd de nieuwste integratiestand wilt testen. `develop` is de integratiebranch voor lokaal
-> testen (zie CLAUDE.md, "Branch-strategie"); dáár hoort de debug-omgeving op te draaien. **Elke
+> testen (zie AGENTS.md, "Branch-strategie"); dáár hoort de debug-omgeving op te draaien. **Elke
 > volgende stap (1 t/m 7) voer je uit vanuit de develop-worktree die je hier bepaalt** — niet vanuit
 > de map waarin de sessie toevallig startte.
+
+> **Sinds #1574 doet `Start-Debug.ps1` zelf 0a, 0b en 0d** (develop-worktree zoeken, fast-forward
+> naar `origin/develop`, daar starten), ook bij een aanroep vanuit een andere map. `-HuidigeWerkmap`
+> schakelt dat uit. Stap 0a/0b hieronder blijven nodig voor 0c (migraties, vóór het starten) en als
+> je de worktree-keuze wilt controleren.
 
 **Vóór 0a:** reserveer de gedeelde runtime én de develop-acceptatieworktree; controleer
 dat geen andere sessie daar schrijft of services beheert. Zonder reservering geen fetch/merge,
@@ -132,9 +137,10 @@ Rapporteer welke poorten al bezet zijn.
 in één pass — op beide platforms. Voer het daarom **niet** met de hand voor in losse stappen.
 
 Bepaal op basis van `$ARGUMENTS`:
-- Standaard: `./scripts/dev/Start-Debug.ps1 -Clean -SportlinkLive`
+- Standaard: `./scripts/dev/Start-Debug.ps1 -Clean` (als agent met `-Bewaak`, zie hieronder; draait vanzelf op de laatste develop, #1574, met live Sportlink en de GO-controle, #1576)
+- Argument bevat "huidig": voeg `-HuidigeWerkmap` toe (bewust niet op develop, bijv. een feature-branch)
 - Argument bevat "swa": voeg `-Swa` toe
-- Argument bevat "offline": laat `-SportlinkLive` weg (lokaal dan geen Sportlink-verkeer, zie Stap 3b)
+- Argument bevat "offline": voeg `-Offline` toe (lokaal dan geen Sportlink-verkeer, zie Stap 3b)
 
 > **Waarom `-SportlinkLive` standaard is (#1466).** De eigenaar test op localhost de Sportlink Web
 > Extension tegen de échte Sportlink Club van de eigen club, inclusief schrijfacties zoals
@@ -154,14 +160,15 @@ Platformverschil in de output, geen fout:
   gebruiker; het script meldt het pad. Gebruik `-Tail` voor één samengevoegde logstroom in de
   huidige terminal.
 
-> **Binnen een Claude Code-sessie (agent, niet de eigenaar in een eigen terminal):** services die
-> `Start-Debug.ps1` start, overleven het einde van die ene tool-aanroep niet. Vastgesteld bij
-> #1466: health was groen en één aanroep later waren de FunctionApp en Azurite weg. Draai daar dus
-> Start-Debug voor de controle en de readiness-meldingen, en start daarna elke service die
-> verdwenen is als **eigen** achtergrondaanroep (`run_in_background`), vanuit de develop-worktree:
-> `azurite --silent --location <tempdir>/azurite`, en
-> `func start --port 7094` in `FunctionApp.Postgres/`. Controleer daarna in een **volgende**
-> aanroep of de poort nog luistert. Een controle in dezelfde aanroep bewijst niets.
+> **Binnen een Claude Code-sessie (#1576).** Start-Debug start de services sinds #1576 in een eigen
+> sessie, maar dat bleek niet genoeg: Azurite verdween binnen twee seconden nadat het startscript was
+> geëindigd (de FunctionApp en BlazorAdmin bleven staan), en daarna gaf elk scherm "Failed to fetch".
+> Zolang het script zelf blijft draaien blijft Azurite staan. **Start het daarom als agent altijd met
+> `-Bewaak` in een eigen achtergrondaanroep (`run_in_background`)**: het script blijft dan draaien en
+> herstart een weggevallen service automatisch.
+> **Een controle in dezelfde aanroep als de start bewijst niets.** Draai `Test-DebugGo.ps1` (Stap 3c)
+> altijd in een **volgende** aanroep, en start nooit handmatig losse services als reparatie: een
+> losse `func start` omzeilt de versie- en sessiecontrole. Stop met `Stop-Debug.ps1 -All`.
 
 Faalt de start (exit 1)? Lees de logs (macOS/Linux) of het bijbehorende venster (Windows) en
 rapporteer de fout. Veelvoorkomend: .NET 10 SDK/runtime ontbreekt, of de database draait niet
@@ -194,7 +201,7 @@ try {
 `syncenabled = TRUE` in `public.appsettings` (de primaire club van de installatie). De democlub
 `ALLSTARS` heeft geen Sportlink-koppeling en de extensie staat er uit. Hij gaat dus nooit live.
 Elke fork werkt ongewijzigd met de eigen primaire club. Noem in issues/PR's/commits nooit de
-naam of code van die club (CLAUDE.md veiligheidsregel 4a).
+naam of code van die club (AGENTS.md veiligheidsregel 4a).
 
 **Wat `-SportlinkLive` doet** (`Set-SportlinkLiveLocalSettings` in `scripts/dev/DevServices.psm1`):
 1. zet `AllowExternalIntegrations` op `true` in `local.settings.json` van de tier;
@@ -245,6 +252,32 @@ $sl = try { Invoke-RestMethod "http://localhost:7094/api/beheer/sportlink-extens
 Get-SportlinkLiveBlockers -SettingsPath FunctionApp.Postgres/local.settings.json -Health $sl
 # Lege uitvoer = live-klaar. $sl.dryRun zegt of schrijfacties gesimuleerd worden.
 ```
+
+## Stap 3c — GO/NO-GO met `Test-DebugGo.ps1` (verplicht, #1576)
+
+**Zonder een GO van dit script mag niemand zeggen dat de debugomgeving werkt.** Health 200 en HTTP 200
+op `index.html` bewijzen niets over een Blazor WASM-app: ze rendert client-side en haalt data bij de
+API op. `Start-Debug.ps1` draait de controle aan het einde zelf; draai hem in een **volgende** aanroep
+nogmaals, want dat is het enige bewijs dat de services de startaanroep overleven.
+
+```powershell
+./scripts/dev/Test-DebugGo.ps1             # volledig; -Offline als de start offline was
+```
+
+Wat hij afdwingt: services luisteren (ook na 15 s en na de browsercontrole); `/api/health.version` is
+de versie in het csproj van de draaiende worktree én die worktree staat op `origin/develop`; health
+`ok` en geen openstaande migraties; `/api/beheer/sync/status` en `/api/beheer/sportlink-extensie/health`
+antwoorden en de primaire club is live-klaar (tenzij `-Offline`); `OpenAiApiKey` is lokaal ingesteld, want zonder werkt de
+e-mailtester niet ("IChatClient niet geconfigureerd"; tenzij `-ZonderAI`; de waarde van de sleutel leest geen agent); en een echte headless Chromium
+(Playwright, `debug-browsercheck.cjs`) opent Start, Instellingen, Planning, E-mailtester, Teamaliassen,
+Sportlink-extensie en Speeltijden zonder foutbanner, zonder mislukte of 5xx-aanroep naar de API,
+zonder console-fout en met het juiste versienummer. Screenshots staan in `sportlink-debug-go` onder
+de tijdelijke map.
+
+- **GO (exit 0)** → pas dan Stap 7 invullen en melden.
+- **NO-GO (exit 1)** → lees de regels met `FOUT`, herstel de oorzaak in script of code, en herstart met
+  `Stop-Debug.ps1 -All -Clean` + `Start-Debug.ps1`, tot het script GO geeft. Meld nooit "werkt" met
+  een NO-GO, en schuif de controle nooit door naar de gebruiker.
 
 ## Stap 4 — Blazor fingerprint consistency check
 
@@ -312,7 +345,7 @@ try {
 }
 ```
 
-## Stap 6 — Browser verificatie (verplicht na elke start)
+## Stap 6 — Browser verificatie (verplicht na elke start; de agent doet dit zelf via Stap 3c)
 
 > ⚠️ **HTTP 200 op de root ≠ Blazor werkt in de browser.**
 > Blazor WASM laadt en rendert volledig client-side — HTTP 200 bewijst alleen dat `index.html` wordt geserveerd.
@@ -320,7 +353,7 @@ try {
 > statisch aanwezige, normaal verborgen foutbanner in de HTML. De enige definitieve verificatie is
 > een echte browser.
 
-Instrueer de gebruiker (kies de toetscombinatie van het platform waarop de sessie draait):
+Stap 3c heeft dit al in een echte browser gedaan; vraag de gebruiker dit dus niet over te doen. Wil de gebruiker zelf kijken (kies de toetscombinatie van het platform):
 
 | Platform | Hard refresh |
 |---|---|
@@ -343,6 +376,7 @@ Als "An unhandled error" toch verschijnt na hard refresh:
 
 | Service | URL | Status |
 |---|---|---|
+| GO-controle | `Test-DebugGo.ps1` (Stap 3c) | ✅ GO / ❌ NO-GO — zonder GO geen melding dat het werkt |
 | Branch / versie | develop → `/api/health`.version | ✅ laatste develop (fast-forward van origin/develop) |
 | Azurite | poort 10000 | ✅/❌ |
 | FunctionApp | http://localhost:7094/api/health | ✅/❌ versie: ... |

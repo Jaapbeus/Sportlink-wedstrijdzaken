@@ -404,7 +404,7 @@ jobs:
           echo "Aantal gescande NuGet-manifesten (lang-pkgs/nuget): $SCANNED"
           if [ "$SCANNED" -lt 1 ]; then
             echo "::error::Trivy heeft 0 NuGet-manifesten gescand — de dependency-scan dekt niets."
-            echo "::error::Zie CLAUDE.md/SECURITY.md § Dependency Vulnerability Scan (#1126)."
+            echo "::error::Zie AGENTS.md/SECURITY.md § Dependency Vulnerability Scan (#1126)."
             exit 1
           fi
           echo "✅ Trivy heeft $SCANNED NuGet-manifest(en) daadwerkelijk gescand."

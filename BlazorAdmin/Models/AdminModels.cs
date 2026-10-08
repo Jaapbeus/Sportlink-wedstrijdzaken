@@ -32,6 +32,8 @@ public class AppSettingsDto
     public string? SportlinkSpelactiviteit { get; set; }
     /// <summary>#1459: PDF-export (QuestPDF Community) per club; standaard uit tot een beheerder de licentievoorwaarden bevestigt.</summary>
     public bool PdfExportIngeschakeld { get; set; }
+    /// <summary>#1568: zekerheidspoort — onzekere antwoorden gaan ter review i.p.v. naar de afzender. Standaard aan.</summary>
+    public bool ZekerheidspoortActief { get; set; } = true;
 }
 
 /// <summary>#1459: antwoord van <c>GET api/planner/pdf-export</c> (voor elke ingelogde rol).</summary>
@@ -459,6 +461,23 @@ public class EmailLogDto
     public string? Status { get; set; }
     public string? VerstuurdNaar { get; set; }
     public string? FoutMelding { get; set; }
+    /// <summary>Er is een beslissingstrace opgeslagen voor dit bericht (#1568).</summary>
+    public bool HeeftTrace { get; set; }
+}
+
+/// <summary>Opgeslagen beslissingstrace van één verwerking (#1568); PII-arm, zonder body/afzender/onderwerp.</summary>
+public class EmailTraceDto
+{
+    public int VerwerkingId { get; set; }
+    public string VerzoekType { get; set; } = "";
+    /// <summary>Status van de verwerking; <c>null</c> als die inmiddels is opgeruimd.</summary>
+    public string? Status { get; set; }
+    public DateTime? OntvangstDatum { get; set; }
+    public DateTime Aangemaakt { get; set; }
+    public string Zekerheid { get; set; } = "";
+    public string? SjabloonSleutel { get; set; }
+    public string AppVersie { get; set; } = "";
+    public BeslissingsTraceDto? Trace { get; set; }
 }
 
 public class EmailLogResponse
@@ -483,6 +502,55 @@ public class TestEmailResponse
     public object? Classificatie { get; set; }
     public object? PlannerResponse { get; set; }
     public VoorbeeldAntwoord? VoorbeeldAntwoord { get; set; }
+    /// <summary>Beslissingstrace van de pipeline (#1568); <c>null</c> bij een oudere server.</summary>
+    public BeslissingsTraceDto? Trace { get; set; }
+    /// <summary>
+    /// Definitief eindoordeel met de actuele zekerheidspoort-instelling meegewogen (#1583); <c>null</c> bij een
+    /// oudere server.
+    /// </summary>
+    public TesterEindoordeelDto? Eindoordeel { get; set; }
+    /// <summary>Voorzet voor "Verzoektype corrigeren" (#1568 deel C): gesaneerde samenvatting van de classificatie.</summary>
+    public LeersuggestieDto? Leersuggestie { get; set; }
+}
+
+/// <summary>Spiegel van <c>Planner.Shared.Email.Trace.TesterEindoordeel</c>; Uitkomst als tekst (AutomatischVerstuurd/Review/GeenAntwoord).</summary>
+public class TesterEindoordeelDto
+{
+    public string Uitkomst { get; set; } = "";
+    public string Titel { get; set; } = "";
+    public string Toelichting { get; set; } = "";
+    public bool Waarschuwing { get; set; }
+    public string ConceptLabel { get; set; } = "";
+    public bool ZekerheidspoortActief { get; set; }
+    public bool ReviewModusActief { get; set; }
+}
+
+public class LeersuggestieDto
+{
+    public string VerzoekType { get; set; } = "";
+    public string Samenvatting { get; set; } = "";
+}
+
+/// <summary>Spiegel van <c>Planner.Shared.Email.Trace.BeslissingsTrace</c>; Zekerheid als tekst (Zeker/Onzeker/Mislukt).</summary>
+public class BeslissingsTraceDto
+{
+    public List<TraceStapDto> Stappen { get; set; } = new();
+    public TraceOordeelDto? Oordeel { get; set; }
+}
+
+public class TraceStapDto
+{
+    public string Code { get; set; } = "";
+    public string Titel { get; set; } = "";
+    public string Uitkomst { get; set; } = "";
+    public string Zekerheid { get; set; } = "Zeker";
+    public Dictionary<string, string> Details { get; set; } = new();
+}
+
+public class TraceOordeelDto
+{
+    public bool IsZeker { get; set; }
+    public List<string> Redenen { get; set; } = new();
 }
 
 public class VoorbeeldAntwoord
@@ -661,6 +729,12 @@ public class VeldbezettingItemDto
     public string? LeeftijdsCategorie { get; set; }
     public int DuurMinuten { get; set; }
     public decimal Veldafmeting { get; set; }
+    /// <summary>De andere kant van de wedstrijd ten opzichte van <see cref="TeamNaam"/> (#1582).</summary>
+    public string? Tegenstander { get; set; }
+    /// <summary>Onze eigen regel die de Sportlink-veldplanner niet kent: een afwijking (#1582).</summary>
+    public bool NietInSportlink { get; set; }
+    /// <summary>"Sportlink" als de regel uit de veldplanner komt (#1582).</summary>
+    public string? Bron { get; set; }
 }
 
 public class AutoPlanToepassenRequestDto
@@ -681,15 +755,31 @@ public class AutoPlanToepassenResponseDto
 public class LeermomentDto
 {
     public int Id { get; set; }
-    public int OrigineleVerwerkingId { get; set; }
-    public int CorrectionVerwerkingId { get; set; }
+    /// <summary>Alleen bij herkomst Reply; een admin-leermoment (#1568 deel C) heeft geen reply-paar.</summary>
+    public int? OrigineleVerwerkingId { get; set; }
+    public int? CorrectionVerwerkingId { get; set; }
     public string OrigineelVerzoekType { get; set; } = "";
     public string? AfgeleidJuistType { get; set; }
     public string? OrigineleSamenvatting { get; set; }
     public string? CorrectieSamenvatting { get; set; }
     public bool IsGevalideerd { get; set; }
     public bool IsAfgewezen { get; set; }
+    /// <summary><c>Reply</c> (AI-herkende reply-correctie) of <c>Admin</c> (door een beheerder, permanent).</summary>
+    public string Herkomst { get; set; } = "Reply";
+    /// <summary>Weergavenaam (momentopname) van de beheerder; <c>null</c> bij herkomst Reply.</summary>
+    public string? AangemaaktDoorNaam { get; set; }
+    public DateTime? AangemaaktOp { get; set; }
+    public int? HerkomstVerwerkingId { get; set; }
     public DateTime MtaInserted { get; set; }
+}
+
+/// <summary>Body van <c>POST /api/beheer/leermomenten</c> (#1568 deel C). De aanmaker bepaalt de server.</summary>
+public class LeermomentAanmaakDto
+{
+    public string? OrigineelVerzoekType { get; set; }
+    public string JuistVerzoekType { get; set; } = "";
+    public string Samenvatting { get; set; } = "";
+    public int? HerkomstVerwerkingId { get; set; }
 }
 
 public class LeermomentenResponse
@@ -723,6 +813,63 @@ public class TeamAliasDto
     /// <summary>UTC uit de database — altijd .ToLocalTime() vóór weergave.</summary>
     public DateTime? MtaInserted { get; set; }
     public DateTime? MtaModified { get; set; }
+    // #1568 deel C: wie/wanneer. Alleen de weergavenaam (momentopname); null = door het systeem (sync/AI).
+    public string? AangemaaktDoorNaam { get; set; }
+    public DateTime? AangemaaktOp { get; set; }
+    public int? HerkomstVerwerkingId { get; set; }
+    public string? Reden { get; set; }
+    public string? BeoordeeldDoorNaam { get; set; }
+    public DateTime? BeoordeeldOp { get; set; }
+}
+
+/// <summary>Een team uit <c>GET /api/beheer/teams/keuzelijst</c> (#1568 deel C).</summary>
+public class TeamKeuzeDto
+{
+    public int TeamId { get; set; }
+    public string Teamnaam { get; set; } = "";
+    public string? LeeftijdsCategorie { get; set; }
+}
+
+/// <summary>Body van <c>POST /api/beheer/teamaliassen</c> (#1568 deel C). De aanmaker bepaalt de server.</summary>
+public class TeamAliasAanmaakDto
+{
+    public string RuweTekst { get; set; } = "";
+    public int TeamId { get; set; }
+    /// <summary>Alleen <c>true</c> na een expliciete bevestiging van de beheerder (anders volgt bij een bestaande alias een 409).</summary>
+    public bool Herkoppel { get; set; }
+    /// <summary>Alleen <c>true</c> na een expliciete bevestiging dat de tekst bij meerdere teams past (409 met code <c>dubbelzinnig</c>).</summary>
+    public bool BevestigDubbelzinnig { get; set; }
+    public int? HerkomstVerwerkingId { get; set; }
+    public string? Reden { get; set; }
+}
+
+public class TeamAliasAanmaakResultaatDto
+{
+    public int Id { get; set; }
+    /// <summary><c>aangemaakt</c>, <c>herkoppeld</c> of <c>bestaat-al</c>.</summary>
+    public string Status { get; set; } = "";
+    public string RuweTekst { get; set; } = "";
+    public string Teamnaam { get; set; } = "";
+}
+
+/// <summary>Een regel uit de wachtrij met onbekende teamteksten (#1568 deel C).</summary>
+public class OnbekendeTeamTekstDto
+{
+    public int Id { get; set; }
+    public string Voorbeeld { get; set; } = "";
+    public string Genormaliseerd { get; set; } = "";
+    public int Aantal { get; set; }
+    public DateTime EerstGezien { get; set; }
+    public DateTime LaatstGezien { get; set; }
+    public int? LaatsteVerwerkingId { get; set; }
+    public string Status { get; set; } = "open";
+}
+
+public class OnbekendeTeamTekstenResponse
+{
+    public int Count { get; set; }
+    public int Open { get; set; }
+    public List<OnbekendeTeamTekstDto> Items { get; set; } = new();
 }
 
 /// <summary>

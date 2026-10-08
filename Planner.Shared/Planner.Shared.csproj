@@ -13,7 +13,7 @@
     <PackageReference Include="Azure.Storage.Queues" />
     <!-- #1130: alleen de provider-agnostische abstractions (IChatClient, ChatMessage, ...) — geen
          OpenAI/Anthropic-specifiek pakket hier, conform de AI-services-architectuurregel in
-         CLAUDE.md. Versie centraal in Directory.Packages.props (#1129), gelijk aan wat beide tiers
+         AGENTS.md. Versie centraal in Directory.Packages.props (#1129), gelijk aan wat beide tiers
          transitief via Microsoft.Extensions.AI.OpenAI resolven. -->
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />

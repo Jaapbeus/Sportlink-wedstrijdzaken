@@ -54,7 +54,7 @@ internal static class LearningMomentRepository
                        originelesamenvatting, correctiesamenvatting
                 FROM planner.classificatiecorrectie
                 WHERE isgevalideerd = TRUE AND isafgewezen = FALSE AND clubcode = @clubcode
-                ORDER BY mta_modified DESC
+                ORDER BY CASE WHEN herkomst = 'Admin' THEN 0 ELSE 1 END, mta_modified DESC
                 LIMIT {MaxLeermomentVoorbeelden}", conn);
             cmd.Parameters.AddWithValue("clubcode", clubCode);
 

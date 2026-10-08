@@ -30,6 +30,13 @@ namespace Database.Postgres;
 /// (replydetectie kent geen tijdgrens), dus <see cref="CleanupClassificatieCorrectieAsync"/>'s eigen
 /// 90-dagengrens ruimt zo'n rij niet vanzelf op.
 /// </para>
+/// <para>
+/// <b>Admin-leermomenten zijn permanent (#1568 deel C, besluit eigenaar 2026-10-06).</b> Alle drie de
+/// statements die <c>planner.classificatiecorrectie</c> raken (anonimiseren, eigen 90-dagen-DELETE en de
+/// FK-opruiming van fase 2a) filteren op <c>herkomst = 'Reply'</c>. Een admin-leermoment heeft bovendien
+/// geen FK naar <c>planner.emailverwerking</c> (<c>herkomstverwerkingid</c> is een los getal), dus ook de
+/// retentie-DELETE van de ouderrij kan hem nooit blokkeren of meenemen.
+/// </para>
 /// </summary>
 public static class PostgresCleanupProcedures
 {
@@ -67,7 +74,8 @@ public static class PostgresCleanupProcedures
 
         await using (var deleteCorrecties = new NpgsqlCommand(@"
             DELETE FROM planner.classificatiecorrectie cc
-            WHERE EXISTS (
+            WHERE cc.herkomst = 'Reply'
+              AND EXISTS (
                 SELECT 1 FROM planner.emailverwerking ev
                 WHERE ev.id IN (cc.origineleverwerkingid, cc.correctionverwerkingid)
                   AND ev.mta_inserted < @verwijderVoor
@@ -77,10 +85,19 @@ public static class PostgresCleanupProcedures
             await deleteCorrecties.ExecuteNonQueryAsync(ct);
         }
 
-        await using var deleteEmails = new NpgsqlCommand(
-            "DELETE FROM planner.emailverwerking WHERE mta_inserted < @verwijderVoor", connection);
-        deleteEmails.Parameters.AddWithValue("verwijderVoor", verwijderVoor);
-        await deleteEmails.ExecuteNonQueryAsync(ct);
+        await using (var deleteEmails = new NpgsqlCommand(
+            "DELETE FROM planner.emailverwerking WHERE mta_inserted < @verwijderVoor", connection))
+        {
+            deleteEmails.Parameters.AddWithValue("verwijderVoor", verwijderVoor);
+            await deleteEmails.ExecuteNonQueryAsync(ct);
+        }
+
+        // #1568 deel C: een wachtrijregel die 90 dagen niet meer is gezien is verlopen, ook als hij nog 'open'
+        // staat — zijn laatsteverwerkingid verwijst dan toch naar een verwijderde verwerking.
+        await using var deleteWachtrij = new NpgsqlCommand(
+            "DELETE FROM planner.onbekendeteamtekst WHERE laatstgezien < @verwijderVoor", connection);
+        deleteWachtrij.Parameters.AddWithValue("verwijderVoor", verwijderVoor);
+        await deleteWachtrij.ExecuteNonQueryAsync(ct);
     }
 
     public static async Task CleanupClassificatieCorrectieAsync(NpgsqlConnection connection, CancellationToken ct = default)
@@ -94,7 +111,8 @@ public static class PostgresCleanupProcedures
             SET originelesamenvatting = NULL,
                 correctiesamenvatting = NULL,
                 mta_modified = @now
-            WHERE mta_inserted < @anonimiseerVanaf
+            WHERE herkomst = 'Reply'
+              AND mta_inserted < @anonimiseerVanaf
               AND mta_inserted >= @verwijderVoor
               AND (originelesamenvatting IS NOT NULL OR correctiesamenvatting IS NOT NULL)", connection))
         {
@@ -105,7 +123,7 @@ public static class PostgresCleanupProcedures
         }
 
         await using var delete = new NpgsqlCommand(
-            "DELETE FROM planner.classificatiecorrectie WHERE mta_inserted < @verwijderVoor", connection);
+            "DELETE FROM planner.classificatiecorrectie WHERE herkomst = 'Reply' AND mta_inserted < @verwijderVoor", connection);
         delete.Parameters.AddWithValue("verwijderVoor", verwijderVoor);
         await delete.ExecuteNonQueryAsync(ct);
     }

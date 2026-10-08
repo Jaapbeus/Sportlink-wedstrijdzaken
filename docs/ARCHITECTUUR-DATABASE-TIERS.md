@@ -136,7 +136,7 @@ op dezelfde manier heeft, lekken typisch door op precies de plekken waar het pij
 dynamische schema-generatie en upsert-semantiek.
 
 Omdat er nooit meer dan één tier tegelijk actief is binnen één deployment (precies één echte club +
-AllStars FC als demo-club per fork, zie "Deployment-model" in CLAUDE.md), is er ook geen
+AllStars FC als demo-club per fork, zie "Deployment-model" in AGENTS.md), is er ook geen
 functioneel voordeel dat het risico zou rechtvaardigen.
 
 **Consequentie:** volledig gescheiden, parallelle implementatiebomen per tier
@@ -700,7 +700,7 @@ geen Postgres-migratie heeft (zelfde gat als #861's `sp_UpdateSeasonTable`-uitst
   `INSERT … WHERE NOT EXISTS (…)`, dezelfde vorm als het origineel.
 
 **Architectuurbeslissing — `TeamNaamNormalisatie` verhuisd naar `Planner.Shared`, in
-tegenstelling tot #888's `LeeftijdNormalisatie`-precedent.** CLAUDE.md legt hard vast:
+tegenstelling tot #888's `LeeftijdNormalisatie`-precedent.** AGENTS.md legt hard vast:
 "Normalisatieregels horen uitsluitend in `FunctionApp/TeamResolution/TeamNaamNormalisatie.cs` —
 een nieuwe teamnaam-regex elders is een architectuurschending." Een tweede, onafhankelijke kopie
 bouwen (zoals bij `LeeftijdNormalisatie` bewust wél gedaan, gedocumenteerd als tijdelijke schuld)
@@ -1183,7 +1183,7 @@ rechtstreeks aanroept: **36 asserties, 0 gefaald.** Onder meer:
   zijn twee onderliggende typen mee en raakt dus de SQL Server-boom. Zelfde afweging en hetzelfde
   antwoord als bij `LeeftijdNormalisatie.Normaliseer` in §16: een aparte refactor-beslissing, hier
   opnieuw vastgelegd als bekende schuld. `TeamNaamNormalisatie` valt hier nadrukkelijk **niet** onder
-  — daarvoor geldt de "precies één plek"-regel uit CLAUDE.md, en die wordt hier gewoon uit
+  — daarvoor geldt de "precies één plek"-regel uit AGENTS.md, en die wordt hier gewoon uit
   `Planner.Shared` gebruikt (transitief via `Database.Postgres`).
 
 ## 26. Kleinere zusterbevinding van sectie 23: onvolledig audit-spoor op beide tiers (#916)
@@ -1354,7 +1354,7 @@ juist ONgeguard blijft (§21).
 | Constructie | Vertaling | Wat er misgaat bij de naïeve variant |
 |---|---|---|
 | `MERGE ... ON (ClubCode, TeamnaamGenormaliseerd)` | `INSERT ... ON CONFLICT (clubcode, upper(teamnaamgenormaliseerd)) DO UPDATE` | Zie hieronder — de kale kolomvariant werkt niet eens |
-| `WHEN MATCHED AND target.[Bron] = 'Sync'` | `WHERE teamaliassen.bron = 'Sync'` op `DO UPDATE` | Een geleerde alias met status `pending` wordt door de sync op `validated` gezet — een directe schending van CLAUDE.md's regel "een geleerde alias is pas waarheid na goedkeuring" |
+| `WHEN MATCHED AND target.[Bron] = 'Sync'` | `WHERE teamaliassen.bron = 'Sync'` op `DO UPDATE` | Een geleerde alias met status `pending` wordt door de sync op `validated` gezet — een directe schending van AGENTS.md's regel "een geleerde alias is pas waarheid na goedkeuring" |
 | `DECLARE @teamId ... IF NULL ... RETURN` | CTE die nul rijen levert | Bestaat buiten een functie/DO-blok niet in Postgres; zelfde precedent als `TeamSchrijfwijzenAsync` (§25) |
 | `GETUTCDATE()`, `LTRIM(RTRIM(...))` | `NOW()` (kolommen zijn `TIMESTAMPTZ`, #854), `TRIM(...)` | — |
 
@@ -1397,7 +1397,7 @@ drie `Normaliseer`-tests mee verhuisd naar `Planner.Shared.Tests`. **Geen regres
 `FunctionApp.Tests` 429 geslaagd / 5 environment-gated geskipt, `Planner.Shared.Tests` 83 geslaagd.
 
 Het onderscheid met §17's `TeamNaamNormalisatie`-verhuizing blijft betekenisvol: daar dwong
-CLAUDE.md's harde "precies één plek"-regel de verhuizing af, hier is het een eigen afweging die de
+AGENTS.md's harde "precies één plek"-regel de verhuizing af, hier is het een eigen afweging die de
 epic zelf al twee keer had opgeschreven als openstaand.
 
 ### Empirische verificatie
@@ -1426,7 +1426,7 @@ De service is rechtstreeks aangeroepen vanuit een wegwerp-consoleproject met een
 | # | Naïeve variant | Gemeten gevolg |
 |---|---|---|
 | 1 | `ON CONFLICT (clubcode, teamnaamgenormaliseerd)` (kale kolommen) | `42P10: there is no unique or exclusion constraint matching the ON CONFLICT specification`; élk team belandt in de per-team-catch en `public.teams` blijft leeg — A1 t/m A5 rood |
-| 2 | `WHERE teamaliassen.bron = 'Sync'` weggelaten | C1 rood: de geleerde alias springt van `pending` naar `validated` — de goedkeuringsregel uit CLAUDE.md sneuvelt stil |
+| 2 | `WHERE teamaliassen.bron = 'Sync'` weggelaten | C1 rood: de geleerde alias springt van `pending` naar `validated` — de goedkeuringsregel uit AGENTS.md sneuvelt stil |
 | 3 | `bestaand`-CTE weggelaten | Logregel gaat van `3 bronschrijfwijzen gekoppeld, 1 niet herleidbaar` naar `2 gekoppeld, 2 niet herleidbaar`: een correct gekoppelde alias wordt als onherleidbaar geteld |
 
 Controle 1 is de belangrijkste les van deze ronde: op de Postgres-tier is de collatie-keuze uit #820
@@ -2215,7 +2215,7 @@ collectie terug voor iets dat wél in `his.matches` stond. Reproductie lokaal (v
 exact dezelfde migratie-/seedstappen als de workflow) bevestigde: `planner.alle_wedstrijden_op_veld_ruw`
 kiest de "primaire club" via `CROSS JOIN LATERAL ... WHERE syncenabled = true ORDER BY clubcode
 LIMIT 1` — identiek aan het SQL Server-origineel (`Database/planner/Views/AlleWedstrijdenOpVeld.sql`),
-correct zolang er precies één `syncenabled`-club is (§"Deployment-model" in CLAUDE.md). De
+correct zolang er precies één `syncenabled`-club is (§"Deployment-model" in AGENTS.md). De
 CI-workflow zette echter een tweede, synthetische club (`CIPRIMARY`, alleen bedoeld als
 kopieerbron voor #862's speeltijden-seed) óók op `syncenabled = true`, zonder accommodatie —
 sorteert vóór elke `testclub-*`, dus werd DIE rij de "gekozen" primaire club, en filterde elke
@@ -2663,7 +2663,7 @@ tier`) uitsluiten. Optie B houdt de wijziging volledig binnen de nieuwe Postgres
   wedstrijdcode opleveren, waardoor een upsert de bestaande rij niet meer terugvindt en een
   duplicaat aanmaakt in plaats van bij te werken.
 - Bereik `900.000.000+` ligt ruim buiten zowel echte Sportlink-wedstrijdcodes (8 cijfers, zie
-  `FunctionApp/CLAUDE.md`) als het gezaaide demobereik `9.000.001-9.000.224`
+  `FunctionApp/AGENTS.md`) als het gezaaide demobereik `9.000.001-9.000.224`
   (`scripts/migrations/003-seed-allstars-demo-matches-postgres.sql`).
 
 De upsert gebruikt `ON CONFLICT (bk_matches) DO UPDATE` — hetzelfde patroon als
@@ -2773,7 +2773,7 @@ volgorde:
 5. **`DatabaseTier` én `DatabaseTierSwitchConfirmation`** in GitHub Settings → Actions → Variables
    allebei op `Postgres` zetten (zie het tier-switch-veiligheidsmechanisme hierboven) — in
    dezelfde actie, anders faalt de eerstvolgende deploy met exitcode 3.
-6. **Deploy + volledige verificatielus uit CLAUDE.md**, inclusief de verplichte browser-
+6. **Deploy + volledige verificatielus uit AGENTS.md**, inclusief de verplichte browser-
    rendercheck op de LIVE Admin GUI (§2a) — groene CI-jobs en HTTP 200 bewijzen niets over de GUI.
 7. **Rollbackpad**: `DatabaseTier`/`DatabaseTierSwitchConfirmation` terug naar `SqlServer` +
    opnieuw deployen — de SQL Server-database zelf wordt door deze cutover niet aangeraakt of
@@ -2814,7 +2814,7 @@ gevalideerd.
 
 Onderscheid tussen lokaal en productie gebeurt dus op basis van de **daadwerkelijk benaderde host**,
 niet op basis van welk proces de verbinding opent — bewust consistent met hoe `EgressGuard`
-(`FunctionApp.Postgres/Infrastructure/EgressGuard.cs`, #857 — zie CLAUDE.md, "Uitgaande
+(`FunctionApp.Postgres/Infrastructure/EgressGuard.cs`, #857 — zie AGENTS.md, "Uitgaande
 integraties — altijd via EgressGuard") lokaal van productie onderscheidt
 (env-gebaseerd), maar toegepast op de vraag die hier telt: TLS-vertrouwen hoort af te hangen van
 de server aan de andere kant van de verbinding. Dit geldt daardoor identiek voor
@@ -2967,7 +2967,7 @@ inbegrepen.
 **2. `/api/health` wist het al, maar niemand keek.** De endpoint gaf keurig
 `status: degraded, settingsLoaded: false` (#859) — en `Start-Debug.ps1` meldde er "FunctionApp OK"
 overheen, omdat het alleen op een HTTP-antwoord controleerde. Dat is dezelfde klasse fout als §2a
-van CLAUDE.md beschrijft voor de live GUI: een 200 is geen bewijs. Het script leest die twee velden
+van AGENTS.md beschrijft voor de live GUI: een 200 is geen bewijs. Het script leest die twee velden
 nu, en wijst bij `degraded` rechtstreeks naar het seed-script hierboven.
 
 **3. Tier-provenance als startvoorwaarde.** `/api/health` meldt zijn eigen tier uit de
@@ -3081,7 +3081,7 @@ fake-gebaseerd en woordelijk gelijk aan de SQL Server-tier se testsuite.
 **Vereist handmatige verificatie na deploy:** `EMAIL_POLL_SCHEDULE` en `EmailProcessorEnabled` als
 Function App-instelling op de productie-resource — die stonden er vóór de tier-cutover al voor de
 SQL Server-tier, maar zijn niet geverifieerd voor deze deploy (agents mogen App Settings niet zelf
-lezen/zetten, zie CLAUDE.md's kostenbeleid-sectie).
+lezen/zetten, zie AGENTS.md's kostenbeleid-sectie).
 
 ## 53. Een gewijzigd migratiebestand faalt nu in CI in plaats van pas in productie (#1062)
 
@@ -3346,7 +3346,7 @@ Actions-runner-ranges toestaan of de restrictie heroverwegen.
 Een review vanuit vier rollen (architect, developer, CISO, DPO) van de Sportlink Web Extension,
 feitelijk getoetst tegen een verse Postgres 17-wegwerpinstantie met alle migraties en de
 AllStars-demodata. De code-bevindingen staan in `docs/SPORTLINK-WEB-EXTENSION.md` §4.2 en
-CLAUDE.md; hier alleen wat de database raakte.
+AGENTS.md; hier alleen wat de database raakte.
 
 **Geen schema-afwijking.** Elke SQL-string in de extensie is vergeleken met `\d` van de vijf
 extensietabellen plus `appsettings`/`teams`/`teamaliassen`/`velden`: kolomnamen, casing, types en
@@ -3666,7 +3666,7 @@ redenering zelf klopte, voor de vraag die ze stelde:
   gebruik van Supabase's PostgREST/JWT-auth-flow.
 - Autorisatie zit volledig in de applicatielaag (Entra ID/Easy Auth, vijf lagen defense-in-depth).
 - `ClubCode` wordt gefilterd in C#, niet via databasepolicies — en dat is prima, want er is
-  precies één (productie)club per deployment (zie "Deployment-model" in CLAUDE.md).
+  precies één (productie)club per deployment (zie "Deployment-model" in AGENTS.md).
 
 **De vraag die #985 niet stelde:** wat stelt Supabase als *platform* zelf standaard open, los van
 of onze applicatie dat gebruikt? Supabase genereert voor élke tabel in het `public`-schema
@@ -3714,7 +3714,7 @@ Dezelfde twee triggers als in #985 al genoemd, plus een derde:
    FunctionApp als enige gatekeeper → dan moeten er policies komen die op `auth.uid()` filteren.
 3. **Nieuw, uit dit issue:** bij elke toekomstige architectuurbeoordeling van een hostingplatform
    (Supabase of anders) hoort expliciet de vraag "wat ontsluit dit platform zelf standaard, los
-   van onze eigen code?" — zie de nieuwe harde regel in CLAUDE.md/AGENTS.md onder "Supabase
+   van onze eigen code?" — zie de nieuwe harde regel in AGENTS.md onder "Supabase
    Postgres — Row-Level Security verplicht op elke tabel".
 
 ## 66. `rls_auto_enable()` — een vangnet blijkt geen overbodig artefact (vervolg op #1198)
@@ -3790,7 +3790,7 @@ herhaal het exacte scenario, in plaats van te vertrouwen op "de migratie gaf gee
 ## 68. De RLS-regel afgedwongen in plaats van opgeschreven — en waarom een lokale test hem niet kan bewijzen (#1220)
 
 §65 tot §67 losten het RLS-gat op en legden de regel vast: elke nieuwe tabel krijgt in dezelfde
-migratie een `ENABLE ROW LEVEL SECURITY`. Die regel stond daarna correct in `CLAUDE.md` en
+migratie een `ENABLE ROW LEVEL SECURITY`. Die regel stond daarna correct in `AGENTS.md` en
 `AGENTS.md` — en werd door niets gecontroleerd.
 
 Dat is dezelfde vorm als het oorspronkelijke probleem. §65 verwoordde het al:
@@ -3939,7 +3939,7 @@ die fix terugdraaien. **Een advisor die "nooit gebruikt" meldt, kan niet zien da
 niet live is** — dat onderscheid moet altijd handmatig gemaakt worden.
 
 **`IX_matchdetails_clubcode`: nutteloos, maar droppen levert niets op.** In het vastgelegde
-deploymentmodel (§"Deployment-model" in `CLAUDE.md`) draait één primaire club per deployment, dus
+deploymentmodel (§"Deployment-model" in `AGENTS.md`) draait één primaire club per deployment, dus
 `clubcode` heeft in de praktijk één distinct waarde — lokaal geverifieerd: alle rijen in
 `his.matches` dezelfde waarde. Een index met die selectiviteit wordt nooit gekozen. Dat geldt even
 goed voor `IX_matches_clubcode` en `IX_teams_clubcode`, die de advisor níet noemde — reden te meer
@@ -3965,7 +3965,7 @@ De advisor meldt dit onder *no primary key / performance*. Met twee rijen is dat
 het echte punt is dat `pg_constraint` voor deze tabel **nul rijen** teruggeeft — geen PK én geen
 unique op `clubcode`. Niets verhindert twee rijen met dezelfde `clubcode`, terwijl de code
 instellingen leest met `SELECT ... LIMIT 1`. Een dubbele rij geeft dan geen fout maar stilzwijgend
-de verkeerde configuratie — precies wat de regel "geen stille fallback" in `CLAUDE.md` wil
+de verkeerde configuratie — precies wat de regel "geen stille fallback" in `AGENTS.md` wil
 voorkomen.
 
 Bewust niet in migratie 024 opgelost: een `CREATE UNIQUE INDEX` in een migratie die automatisch bij
@@ -4003,7 +4003,7 @@ Het verschil van 642× hierboven is daarmee representatief, niet theoretisch.
 een advisor heeft die ongebruikte indexen meldt. Op de SQL Server-tier is er geen equivalent dat
 ongevraagd kijkt, en een index die deels gebruikt wordt valt sowieso buiten zo'n melding. Dat is een
 observatie over het *meetinstrument*, niet over de code — en precies de reden dat de regel in
-`CLAUDE.md` zegt dat je het queryplan moet controleren in plaats van af te gaan op "de query werkt".
+`AGENTS.md` zegt dat je het queryplan moet controleren in plaats van af te gaan op "de query werkt".
 
 Geen migratie in deze PR: het herstellen van de index is een schemawijziging met eigen afwegingen
 per tier (op Postgres een expressie-index, op SQL Server de keuze tussen expressie-index via een
@@ -4141,7 +4141,7 @@ verklaart waarom het aantal verbindingen tijdens een controle één hoger ligt d
 De democlub AllStars FC was zowel lokaal als in productie een halve club: wél een instellingenrij,
 velden, veldbeschikbaarheid en een teamregel uit migratie 006 — maar **0 teams, 0 wedstrijden,
 0 teambegeleiding en 0 speeltijden**. De teamregel die 006 aanmaakt verwijst naar `AllStars Heren 1`,
-een team dat nergens bestond. Dat wijkt af van het deploymentmodel in `CLAUDE.md` ("precies één
+een team dat nergens bestond. Dat wijkt af van het deploymentmodel in `AGENTS.md` ("precies één
 echte club + AllStars FC als demo/testdata — in dezelfde database").
 
 ### Twee onafhankelijke oorzaken
@@ -4274,7 +4274,7 @@ licht/donker-set; een bestaande installatie merkt van deze migratie dus niets.
 De waarde belandt in de browser in een CSS custom property (`--theme-<sleutel>-light`), samengesteld
 uit door een admin ingevoerde tekst. `ThemeCore` legt daarom vast: een sleutel matcht
 `^[a-z][a-zA-Z0-9-]{0,39}$`, een waarde `^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$`, maximaal 40 sleutels
-per palet. Een admin is binnen het deploymentmodel van #393 (zie CLAUDE.md, "Deployment-model — één
+per palet. Een admin is binnen het deploymentmodel van #393 (zie AGENTS.md, "Deployment-model — één
 fork, één primaire club") vertrouwd, dus dit is geen
 autorisatiegrens — maar een waarde die ongefilterd een stylesheet-property vult hoort een vaste vorm
 te hebben, en een vrije `rgba(...)`-string zou dat niet zijn. De acht-cijferige hexvariant bestaat
@@ -4626,6 +4626,112 @@ Bewust niet gedaan: wedstrijden met thuisteam gelijk aan uitteam (op 10 oktober 
 toont) blijven in de Planning. Een toernooi heeft dezelfde vorm, dus een filter zonder Sportlink-bewijs van de
 toernooidagen kan een echte wedstrijd verbergen (#1560).
 
+## 80. Reconciliatie op de SQL Server-tier: pariteit met #1193 (#1558)
+
+§79 liet de SQL Server-tier zonder reconciliatie: een door Sportlink geschrapte wedstrijd bleef in
+`his.matches` staan en in de Planning zichtbaar. Dat is opgeheven; beide gebouwde tiers gedragen zich nu gelijk.
+
+| Onderdeel | SQL Server | Postgres |
+|---|---|---|
+| Soft-delete | `SqlServerReconciliation` (`FunctionApp/Sync/`), aangeroepen door `SportlinkSyncPipeline` na de merge | `PostgresMergeOrchestrator.ReconcileWindowedAsync`/`ReconcileFullScopeAsync` |
+| Ondergrens (morgen, Nederlandse tijd) en `VandaagInNederland` | `Planner.Shared.Sync.ReconciliatieOndergrens` | idem — de enige kopie van de regel |
+| Terugkeer van een rij | `sp_MergeStgToHis` zet `mta_deleted` terug op NULL (ook in de kopie in `Script.PostDeployment1.sql`, die de echte deploy draait) | `GenerateUpsertFromStgToHis` |
+| Lezers sluiten verwijderde rijen uit | `ClubScope.HisFilter` voegt `mta_deleted IS NULL` toe | `PostgresClubScope.HisFilter` |
+
+Regels, gelijk aan Postgres: alleen de gesyncte club (nooit AllStars of rijen zonder clubstempel), matches
+alleen binnen het MIN/MAX-venster van `kaledatum` in `stg` en nooit vóór morgen, teams over de volledige
+snapshot, niets bij een mislukte fetch-fase of een lege `stg`-snapshot. Sinds review R1-F1 telt ook een
+`null`-, lege of ontbrekende teams-respons als mislukte fetch op beide tiers
+(`ReconciliatieOndergrens.IsVolledigeTeamsSnapshot`: minstens één team), zodat zo'n respons bestaande
+teams nooit als verdwenen markeert. Verder: best-effort zodat een fout de
+geslaagde ETL niet laat falen. `matchdetails` reconcilieert bewust niet mee (zie §79).
+
+**Gemeten.** `SqlServerReconciliationIntegrationTests` draait tegen een echte SQL Server 2022 (zie de
+klasse-doc-comment): een verdwenen toekomstige wedstrijd en een verdwenen team worden gemarkeerd, een
+wedstrijd van vandaag en een andere club blijven staan, een tweede run is stil, en een terugkerende
+wedstrijd wordt door de merge hersteld. De bijgewerkte PostDeployment is tweemaal uitgevoerd op een verse
+database zonder fout.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).
+
+---
+
+## 80. Beslissingstrace per e-mailverwerking: permanente tabel op beide tiers (#1568)
+
+De trace van de e-mailpipeline (zie [EMAIL-VERWERKING.md](EMAIL-VERWERKING.md) §3c) wordt per verwerkt
+bericht bewaard. Eigenaarsbesluit 2026-10-06: **permanent**, mits zonder persoonsgegevens of vrije mailtekst — en dat
+legt de opslagprojectie vast (hieronder), niet alleen een afspraak.
+
+| Onderdeel | Postgres | SQL Server |
+|---|---|---|
+| Tabel | `planner.emailtrace` — `038_planner_emailtrace.sql`, met `ENABLE ROW LEVEL SECURITY` in dezelfde migratie | `planner.EmailTrace` — `Database/planner/Tables/EmailTrace.sql` én idempotent `Script.PostDeployment1.sql` |
+| `TraceJson` | `JSONB` | `NVARCHAR(MAX)` met `CHECK (ISJSON(...) = 1)` |
+| Idempotentie | `UNIQUE (verwerkingid)` + `INSERT ... ON CONFLICT DO UPDATE` | `UNIQUE ([VerwerkingId])` + `MERGE ... WITH (HOLDLOCK)` |
+| Repository | `FunctionApp.Postgres/Email/EmailTraceRepository.cs` | `FunctionApp/Email/EmailTraceRepository.cs` |
+| Endpoint | `GET /api/beheer/email-log/{id}/trace` (`AdminEmailLogFunction`) | idem |
+
+**Bewust geen foreign key naar `EmailVerwerking`.** De wekelijkse cleanup verwijdert verwerkingen na
+90 dagen; een FK zou die DELETE blokkeren of de trace meenemen. De tabel heeft daarom geen retentietimer
+en de opzoeking voegt de verwerking met een LEFT JOIN toe (status is `null` na de cleanup). Het
+tier-onafhankelijke deel (record, JSON-mapping, "opslag faalt stil", queryparameters en vertaling naar
+HTTP) staat in `Planner.Shared/Email/Trace/EmailTraceOpslag.cs` en
+`Planner.Endpoints/Admin/EmailLogEndpointCore.cs`.
+
+**De opslagprojectie is bepalend (Codex R1-F1).** `EmailTraceRecord.Van` bewaart `trace.VoorOpslag().ToJson()`:
+`TraceOpslagProjectie` laat per stapcode alleen allowlist-sleutels in een strikte waardevorm door en vervangt de ruwe,
+door de AI uit de mail gehaalde teamtekst door een vormkenmerk. Die ene aansluiting is tier-onafhankelijk
+(`Planner.Shared`) en wordt door beide tiers via `EmailTraceRecord.Van` gebruikt; er is dus geen tierverschil in wat
+permanent landt. De niet-herkende tekst staat uitsluitend in de wachtrij (§81), achter een structurele vormguard en
+met 90 dagen retentie. Een nieuw tracedetail vereist een allowlist-regel mét waardevorm en een test.
+
+---
+
+## 81. Leren vanuit de trace: alias-audit, wachtrij en admin-leermomenten op beide tiers (#1568 deel C)
+
+De beheerder leert het systeem vanuit de trace (zie [EMAIL-VERWERKING.md](EMAIL-VERWERKING.md) §3d en
+[ARCHITECTUUR-TEAMRESOLUTIE.md](ARCHITECTUUR-TEAMRESOLUTIE.md)). Drie schemawijzigingen, alle additief en
+idempotent, op beide tiers tegelijk (regel 3 van de multi-tier-strategie):
+
+| Onderdeel | Postgres (`039_leren_van_de_trace.sql`) | SQL Server (`Database/` + `Script.PostDeployment1.sql`) |
+|---|---|---|
+| Auditkolommen `teamaliassen` | `aangemaaktdoor`, `aangemaaktdoornaam`, `aangemaaktop`, `herkomstverwerkingid`, `reden`, `beoordeelddoor`, `beoordeelddoornaam`, `beoordeeldop` | `dbo.TeamAliassen`: dezelfde kolommen in PascalCase; `ALTER TABLE ... ADD` achter `COL_LENGTH`, met `SET QUOTED_IDENTIFIER ON` (persisted computed columns, #1280) |
+| Wachtrij | `planner.onbekendeteamtekst`, `UNIQUE (clubcode, ruwetekstgenormaliseerd)`, RLS in dezelfde migratie | `planner.OnbekendeTeamTekst` (`Database/planner/Tables/OnbekendeTeamTekst.sql`, `IF NOT EXISTS CREATE TABLE`) |
+| Herkomst leermoment | `herkomst VARCHAR(10) DEFAULT 'Reply'`, `CHECK`; beide verwerkings-id's `DROP NOT NULL` | `Herkomst NVARCHAR(10) DEFAULT N'Reply'`, `CHECK`; beide id's `ALTER COLUMN ... NULL` |
+| Reply-paar uniek | `UNIQUE (origineleverwerkingid, correctionverwerkingid)` blijft: Postgres telt `NULL`'s als verschillend | `UQ_ClassificatieCorrectie_Paar` (`UNIQUE`-constraint) wordt **gefilterde unique index** `UX_ClassificatieCorrectie_Paar` (`WHERE ... IS NOT NULL`): SQL Server telt `NULL`'s als gelijk en twee admin-leermomenten zouden elkaar blokkeren |
+| Invariant reply | `CHECK (herkomst <> 'Reply' OR (beide id's NOT NULL))` | `CK_ClassificatieCorrectie_ReplyPaar` |
+| Retentie | `PostgresCleanupProcedures`: drie statements filteren op `herkomst = 'Reply'`; wachtrij: DELETE `laatstgezien` > 90 dagen in `CleanupEmailVerwerkingAsync` | `sp_CleanupClassificatieCorrectie` en `sp_CleanupEmailVerwerking` (fase 2a + wachtrij): `[Herkomst] = N'Reply'` |
+
+**Valkuilen die dit gaf:**
+
+* **Plaats in `Script.PostDeployment1.sql` telt.** De `CREATE OR ALTER`-procedures verwijzen naar de nieuwe kolom
+  `[Herkomst]`. SQL Server valideert een kolomverwijzing van een bestáánde tabel wél bij het aanmaken (alleen een
+  ontbrekende *tabel* wordt uitgesteld). Het blok dat de kolom toevoegt staat daarom vóór de procedures,
+  direct na het aanmaken van `ClassificatieCorrectie`.
+* **Het oude ontdubbelblok (#715) zou admin-leermomenten verwijderd hebben.** Het leidt zijn `UQ`-aanleg af uit
+  het ontbreken van de constraint en ontdubbelt op `PARTITION BY (OrigineleVerwerkingId, CorrectionVerwerkingId)`;
+  alle admin-rijen (`NULL`, `NULL`) vallen in één partitie. Het blok is nu overgeslagen zodra de gefilterde
+  index bestaat.
+* **De wachtrij is de aparte opslag voor ruwe teamtekst, met een vormguard (Codex R1-F1).** Alleen een tekst die
+  `OnbekendeTeamTekstExtractie.ZietEruitAlsTeamlabel` passeert (≤ 24 tekens, letters/cijfers/spatie/`-`/`/`/`.`/`+`,
+  hoogstens twee tokens met letters, minstens één cijfer, ook de genormaliseerde sleutel) wordt als voorbeeldtekst
+  bewaard, op beide tiers via dezelfde `OnbekendeTeamTekstOpslag`. Dit is validatie, geen nieuwe normalisatieregel
+  (regel 1 van de teamnaamregels blijft: normalisatie uitsluitend in `TeamNaamNormalisatie`).
+* **Geen FK voor `HerkomstVerwerkingId`/`LaatsteVerwerkingId`** (zelfde reden als §80 en #424).
+* **Kolomnaam-typo gevangen door de guard.** Een Postgres-kolom `beoordeeldoor` (één `d` te weinig) werd door
+  `check-postgres-column-coverage.sh` afgevangen tegen de SQL Server-kolom `BeoordeeldDoor`; de guard bewijst
+  hier dus echt iets.
+
+**Gedeelde laag (tier-onafhankelijk):** `Planner.Shared/Leren/` (contracten: aanroeper, alias-opdracht,
+store-interfaces), `Planner.Shared/Email/LeermomentInvoer.cs` (validatie + saneren + few-shot-regel) en
+`Planner.Shared/Email/Trace/OnbekendeTeamTekstExtractie.cs`; `Planner.Endpoints/Leren/` en
+`Planner.Endpoints/Admin/EmailTestEndpointCore.cs` (orkestratie, HTTP-vertaling, rate limiting van de tester).
+Per tier blijft alleen SQL (`Sql…`/`Postgres…TeamAliasStore`, `…OnbekendeTeamTekstStore`,
+`AdminLeermomentenRepository.MaakAdminLeermomentAsync`) en de route-registratie. De tier-duplicatie daalde
+daardoor van 5213 naar 5194.
+
+**Niet bewezen in deze PR:** de databasegebonden tests (`LerenVanTraceIntegrationTests`) zijn geschreven en
+compileren, maar draaien alleen in de CI-job met een levende Postgres; voor de SQL Server-tier bestaat geen
+equivalente integratietest (de SQL is handmatig gespiegeld, de statische controle is de schema-drift check en
+de job *PostDeployment op verse database*).

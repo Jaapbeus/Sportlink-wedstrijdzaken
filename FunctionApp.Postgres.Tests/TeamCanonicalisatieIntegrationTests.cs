@@ -72,7 +72,7 @@ public class TeamCanonicalisatieIntegrationTests
     }
 
     /// <summary>
-    /// CLAUDE.md's harde regel: *"een geleerde alias is pas waarheid na goedkeuring"*. De sync mag
+    /// AGENTS.md's harde regel: *"een geleerde alias is pas waarheid na goedkeuring"*. De sync mag
     /// een alias met <c>bron &lt;&gt; 'Sync'</c> dus niet aanraken.
     /// <para>
     /// Negatieve controle uit §28: zonder de <c>WHERE</c>-clausule op <c>DO UPDATE</c> springt de
@@ -95,7 +95,7 @@ public class TeamCanonicalisatieIntegrationTests
         (await ScalarAsync<string?>("SELECT status FROM public.teamaliassen WHERE clubcode = @club"))
             .Should().Be("pending",
                 "een geleerde alias is pas waarheid na goedkeuring door een coordinator — de sync mag hem "
-                + "niet stilzwijgend op 'validated' zetten (CLAUDE.md, regel 4 onder Teamnaam-resolutie)");
+                + "niet stilzwijgend op 'validated' zetten (AGENTS.md, regel 4 onder Teamnaam-resolutie)");
         (await ScalarAsync<string?>("SELECT bron FROM public.teamaliassen WHERE clubcode = @club"))
             .Should().Be("Leren");
     }

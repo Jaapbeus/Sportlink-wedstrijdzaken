@@ -119,7 +119,7 @@ public class TeambegeleidingDoorsturenIntegrationTests
     }
 
     /// <remarks>
-    /// AVG: uitsluitend fictieve gegevens — <c>voorbeeld.nl</c> is de in CLAUDE.md vastgelegde
+    /// AVG: uitsluitend fictieve gegevens — <c>voorbeeld.nl</c> is de in AGENTS.md vastgelegde
     /// placeholder en bestaat niet publiek.
     /// </remarks>
     private static async Task ZetBegeleiderAsync(NpgsqlConnection conn, string teamrol, string? emailadres)
