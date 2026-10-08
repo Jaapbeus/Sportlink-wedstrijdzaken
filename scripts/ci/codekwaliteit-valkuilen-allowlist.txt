@@ -16,7 +16,7 @@ uri-absolute  Planner.Shared/Feedback/FeedbackCore.cs         Repository-URL uit
 # --- DateTime.Now (UTC-regel) -------------------------------------------------------------------
 # De AI-services-regel schrijft juist lokale tijd voor in de system prompt: het model redeneert
 # over "vandaag" in NL-context. Alle overige tijdstempels horen UtcNow/GETUTCDATE te zijn.
-datetime-now  FunctionApp/Email/BerichtAiService.cs            Datum in de system prompt hoort NL-lokaal — zie AGENTS.md "AI-services", regel 2.
+datetime-now  FunctionApp/Email/BerichtAiService.cs            Datum in de system prompt hoort NL-lokaal — zie AGENTS.md "Architectuurinvarianten" (AI) en docs/ARCHITECTUUR-AI-SERVICES.md.
 datetime-now  FunctionApp.Postgres/Email/BerichtAiService.cs   Idem.
 
 # --- GETDATE() in SQL ---------------------------------------------------------------------------

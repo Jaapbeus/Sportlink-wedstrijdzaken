@@ -97,8 +97,6 @@ class AgentInstructiesTests(unittest.TestCase):
         except (OSError, NotImplementedError):
             self.skipTest("symlinks niet beschikbaar op dit platform")
 
-    def waarschuwingen(self, root: Path) -> str:
-        return "\n".join(guard["controleer_alles"](root)[1])
 
     def vul(self, root: Path, pad: str, bytes_totaal: int) -> None:
         """Schrijf een AGENTS.md van exact `bytes_totaal` bytes (ASCII)."""
@@ -682,6 +680,11 @@ class AgentInstructiesTests(unittest.TestCase):
         "gequote sleutel met punt": '"project_doc_max_bytes.x" = 1\n',
         "toegestane tabelnaam als sleutel in een andere tabel": '[x]\nmodel = "y"\n',
         "subsleutel van een toegestane scalar": 'model.x = 1\n',
+        "onbekende subsleutel van granular": 'approval_policy = { granular = { rules = true, nieuwe_sleutel = true } }\n',
+        "onbekende subsleutel naast granular": 'approval_policy.anders = 1\n',
+        "diepere subsleutel onder een granular-boolean": 'approval_policy.granular.rules.x = 1\n',
+        "granular in een andere hoofdsleutel": 'model.granular = 1\n',
+        "granular-boolean zonder granular": 'approval_policy.rules = true\n',
         "config_file los": '[x]\nconfig_file = "y"\n',
         "config_file top-level": 'config_file = "y"\n',
         "hooks in profiel": '[profiles.ci.hooks]\n',
@@ -736,6 +739,11 @@ class AgentInstructiesTests(unittest.TestCase):
         "leeg bestand": "",
         "datums en getallen in een toegestane sleutel": 'model_reasoning_effort = 1_000\napproval_policy = 1979-05-27 07:32:00\n',
         "escapes in waarden": 'model = "x\\"y\\\\z"\nsandbox_mode = \'C:\\pad\'\n',
+        "granular approval_policy": 'approval_policy = { granular = { sandbox_approval = true, rules = true, mcp_elicitations = true, skill_approval = false } }\n',
+        "granular approval_policy gepunt": 'approval_policy.granular.rules = true\napproval_policy.granular.sandbox_approval = false\n',
+        "granular approval_policy als tabel": '[approval_policy.granular]\nrules = true\nmcp_elicitations = true\nsandbox_approval = true\n',
+        "granular approval_policy in profiel": '[profiles.ci]\napproval_policy = { granular = { rules = true } }\n',
+        "approval_policy als string": 'approval_policy = "on-request"\n',
         "linecontinuation LF": 'model = """a \\\n   b"""\n',
         "linecontinuation CRLF": 'model = """a \\\r\n   b"""\r\napproval_policy = "never"\r\n',
         "linecontinuation met spaties vóór het regeleinde": 'model = """a \\   \r\n   b"""\n',
@@ -748,6 +756,41 @@ class AgentInstructiesTests(unittest.TestCase):
                 root = self.fixture()
                 self.schrijf(root, ".codex/config.toml", tekst)
                 self.assertEqual(guard["controleer"](root), [], tekst)
+
+    # Review deel C, ronde 1 (Codex, P2): het schema van Codex 0.158.0 (`GranularApprovalConfig`) kent vijf velden; de
+    # guard kende er vier. Onafhankelijke lijst hieronder, niet uit de guard afgeleid; elke vorm per veld.
+    GRANULAR_VELDEN = ("sandbox_approval", "rules", "mcp_elicitations", "request_permissions", "skill_approval")
+
+    def test_elk_granular_veld_is_toegestaan_in_elke_vorm(self):
+        for veld in self.GRANULAR_VELDEN:
+            vormen = {
+                "inline": f"approval_policy = {{ granular = {{ {veld} = true }} }}\n",
+                "gepunt": f"approval_policy.granular.{veld} = false\n",
+                "tabel": f"[approval_policy.granular]\n{veld} = true\n",
+                "profiel": f"[profiles.ci]\napproval_policy = {{ granular = {{ {veld} = true }} }}\n",
+                "profieltabel": f"[profiles.ci.approval_policy.granular]\n{veld} = true\n",
+            }
+            for vorm, tekst in vormen.items():
+                with self.subTest(veld=veld, vorm=vorm):
+                    root = self.fixture()
+                    self.schrijf(root, ".codex/config.toml", tekst)
+                    self.assertEqual(guard["controleer"](root), [], tekst)
+
+    def test_alle_vijf_granular_velden_samen_zijn_groen(self):
+        root = self.fixture()
+        velden = ", ".join(f"{veld} = true" for veld in self.GRANULAR_VELDEN)
+        self.schrijf(root, ".codex/config.toml", f"approval_policy = {{ granular = {{ {velden} }} }}\n")
+        self.assertEqual(guard["controleer"](root), [])
+
+    def test_onbekende_en_diepere_granular_sleutels_blijven_rood(self):
+        for tekst in ("approval_policy.granular.request_permissions.x = 1\n",
+                      "approval_policy.granular.nieuwe_sleutel = true\n",
+                      "approval_policy.granular.request_permission = true\n",  # typfout-variant
+                      "[profiles.ci.approval_policy.granular]\nnieuwe_sleutel = true\n"):
+            with self.subTest(tekst=tekst):
+                root = self.fixture()
+                self.schrijf(root, ".codex/config.toml", tekst)
+                self.assertIn(".codex/config.toml: ", self.fouten(root))
 
     def test_ongeldige_toml_wordt_geweigerd_dicht(self):
         for tekst in ("a = \n", "[x\n", 'a = "x\n', "a = {b = 1\n", "a b = 1\n", "a = [1, 2\n", 'a = """x\n', "[[x]\n", "= 1\n",
@@ -894,30 +937,70 @@ class AgentInstructiesTests(unittest.TestCase):
         meting = guard["meet_omvang"](root, sorted(root.rglob("AGENTS.md")))
         self.assertEqual(meting["keten:zus/AGENTS.md"], meting["bestand:AGENTS.md"] + meting["bestand:zus/AGENTS.md"] + 2)
 
-    # Review ronde 1 (Codex, P3): budget, krimpmarge, verplichte skills en waarschuwingen mogen niet uit de guard
-    # zelf worden afgeleid — een verdubbeld budget liet alle tests slagen. Vaste verwachtingen hieronder.
-    def test_keten_waarschuwing_valt_precies_boven_32768_bytes(self):
+    # ── structurele maxima (#1580): root 27 KiB, submap 4 KiB, keten 30 KiB incl. scheidingstekens ───
+    ROOT_MAX, SUBMAP_MAX, KETEN_MAX = 27 * 1024, 4 * 1024, 30 * 1024  # bewust uitgeschreven, niet uit de guard
+
+    def test_structurele_maxima_staan_zoals_afgesproken(self):
+        self.assertEqual((guard["ROOT_MAX_BYTES"], guard["SUBMAP_MAX_BYTES"], guard["KETEN_MAX_BYTES"]),
+                         (self.ROOT_MAX, self.SUBMAP_MAX, self.KETEN_MAX))
+        self.assertLess(self.KETEN_MAX, CODEX_BUDGET)  # marge onder het Codex-budget
+        self.assertEqual(guard["CODEX_MAX_BYTES"], CODEX_BUDGET)  # alleen nog in de foutmelding, maar wel juist
+
+    def test_root_precies_op_het_maximum_is_groen_en_een_byte_meer_faalt(self):
         root = self.fixture()
-        self.vul(root, "AGENTS.md", 30000)
-        self.vul(root, "sub/AGENTS.md", CODEX_BUDGET - 30000 - SCHEIDING)  # keten = 32768
+        self.vul(root, "AGENTS.md", self.ROOT_MAX)
         self.zet_plafonds(root)
         self.assertEqual(guard["controleer"](root), [])
-        self.assertNotIn("keten:sub/AGENTS.md", self.waarschuwingen(root))
-        self.vul(root, "sub/AGENTS.md", CODEX_BUDGET - 30000 - SCHEIDING + 1)  # keten = 32769
-        self.zet_plafonds(root)
-        self.assertIn("keten:sub/AGENTS.md: 32769 bytes; Codex leest standaard maximaal 32768", self.waarschuwingen(root))
+        self.vul(root, "AGENTS.md", self.ROOT_MAX + 1)
+        self.zet_plafonds(root)  # plafond precies op de meting: alleen het structurele maximum kan nu falen
+        self.assertIn("bestand:AGENTS.md: 27649 bytes is hoger dan het structurele maximum 27648", self.fouten(root))
 
-    def test_bestandwaarschuwing_valt_precies_boven_32768_bytes(self):
+    def test_submap_precies_op_het_maximum_is_groen_en_een_byte_meer_faalt(self):
         root = self.fixture()
-        for pad in ("sub/AGENTS.md", "sub/CLAUDE.md"):
-            (root / pad).unlink()
-        self.vul(root, "AGENTS.md", CODEX_BUDGET)
+        self.vul(root, "sub/AGENTS.md", self.SUBMAP_MAX)
         self.zet_plafonds(root)
-        self.assertEqual(self.waarschuwingen(root), "")
-        self.vul(root, "AGENTS.md", CODEX_BUDGET + 1)
+        self.assertEqual(guard["controleer"](root), [])
+        self.vul(root, "sub/AGENTS.md", self.SUBMAP_MAX + 1)
         self.zet_plafonds(root)
-        self.assertIn("bestand:AGENTS.md: 32769 bytes is op zichzelf al meer dan Codex", self.waarschuwingen(root))
+        self.assertIn("bestand:sub/AGENTS.md: 4097 bytes is hoger dan het structurele maximum 4096", self.fouten(root))
 
+    def test_keten_precies_op_het_maximum_is_groen_en_een_byte_meer_faalt(self):
+        root = self.fixture()
+        self.vul(root, "AGENTS.md", 27000)
+        self.vul(root, "sub/AGENTS.md", self.KETEN_MAX - 27000 - SCHEIDING)  # 3718: keten = 30720
+        self.zet_plafonds(root)
+        self.assertEqual(guard["meet_omvang"](root, sorted(root.rglob("AGENTS.md")))["keten:sub/AGENTS.md"], self.KETEN_MAX)
+        self.assertEqual(guard["controleer"](root), [])
+        self.vul(root, "sub/AGENTS.md", self.KETEN_MAX - 27000 - SCHEIDING + 1)
+        self.zet_plafonds(root)
+        self.assertIn("keten:sub/AGENTS.md: 30721 bytes is hoger dan het structurele maximum 30720", self.fouten(root))
+
+    def test_keten_van_drie_niveaus_valt_onder_hetzelfde_maximum(self):
+        root = self.fixture()
+        self.schrijf(root, "sub/diep/AGENTS.md", "# AGENTS.md\n\nDiep.\n")
+        self.schrijf(root, "sub/diep/CLAUDE.md", STUB)
+        self.vul(root, "AGENTS.md", 26000)
+        self.vul(root, "sub/AGENTS.md", 3000)
+        self.vul(root, "sub/diep/AGENTS.md", 1722)  # 26000 + 3000 + 1722 + 2*2 = 30726
+        self.zet_plafonds(root)
+        self.assertIn("keten:sub/diep/AGENTS.md: 30726 bytes is hoger dan het structurele maximum 30720", self.fouten(root))
+
+    def test_plafond_boven_het_structurele_maximum_wordt_geweigerd_ook_als_de_meting_klein_is(self):
+        for sleutel, maximum in (("bestand:AGENTS.md", self.ROOT_MAX), ("bestand:sub/AGENTS.md", self.SUBMAP_MAX),
+                                 ("keten:sub/AGENTS.md", self.KETEN_MAX)):
+            with self.subTest(sleutel=sleutel):
+                root = self.fixture()
+                self.plafond(root, sleutel, maximum + 1)
+                self.assertIn(f"{sleutel}: het plafond {maximum + 1}", self.fouten(root))
+
+    def test_plafond_exact_op_het_structurele_maximum_is_toegestaan_mits_meting_dichtbij(self):
+        root = self.fixture()
+        self.vul(root, "AGENTS.md", self.ROOT_MAX)
+        self.zet_plafonds(root)
+        self.assertEqual(guard["controleer"](root), [])
+
+    # Review ronde 1 (Codex, P3): budget, krimpmarge, verplichte skills en waarschuwingen mogen niet uit de guard
+    # zelf worden afgeleid — een verdubbeld budget liet alle tests slagen. Vaste verwachtingen hieronder.
     def test_krimpmarge_is_precies_1024_bytes(self):
         root = self.fixture()
         meting = guard["meet_omvang"](root, sorted(root.rglob("AGENTS.md")))["bestand:AGENTS.md"]

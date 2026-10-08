@@ -683,7 +683,7 @@ hebben gekregen, dus een grep over de migratiemap kan dit niet beantwoorden.
 
 | Script | Bewaakt | Faalt op |
 |---|---|---|
-| `check-rls-enabled.sh` | Elke tabel in `public`/`avg`/`planner` heeft `relrowsecurity` (AGENTS.md, Supabase-RLS-regel 1) | Eén of meer tabellen zonder RLS, met de exacte `ALTER TABLE`-regel als oplossing in de uitvoer |
+| `check-rls-enabled.sh` | Elke tabel in `public`/`avg`/`planner` heeft `relrowsecurity` (AGENTS.md, Supabase #1198) | Eén of meer tabellen zonder RLS, met de exacte `ALTER TABLE`-regel als oplossing in de uitvoer |
 | `check-splinter-lints.sh` | Supabase's eigen linter (splinter), vastgepind op commit-SHA + SHA-256 | `rls_disabled_in_public`, `policy_exists_rls_disabled`, `security_definer_view`, `function_search_path_mutable`, `duplicate_index` |
 
 Verbinding via de standaard libpq-variabelen — **niet** via `POSTGRES_CONNECTION_STRING`, want dat

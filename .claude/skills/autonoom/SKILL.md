@@ -342,7 +342,7 @@ gh run view <run-id> --json jobs --jq '.jobs[] | {name: .name, conclusion: .conc
 > awaiting-release`-label op een gesloten issue achterlaat. Rapporteer dit issue pas als gesloten
 > zodra die workflow na een release-tag daadwerkelijk groen is gedraaid
 > (`gh run list --workflow close-released-issues.yml --limit 1 --json conclusion`) — conform de
-> hotfix-uitzondering in AGENTS.md, "Issue-lifecycle: awaiting-release". Is er nog geen release-tag
+> hotfix-uitzondering in AGENTS.md, "Ontwikkelcyclus" (alinea "Labels") en docs/VERSIONING.md §6b. Is er nog geen release-tag
 > gepland? Dan blijft het issue open met `status: awaiting-release` totdat die er komt.
 
 ### Één branch per batch of per issue?

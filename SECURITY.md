@@ -318,7 +318,7 @@ naar wát er sinds de vorige release is veranderd. Daarom begint elke release me
 `/release`, en die begint met een harde poort: `/security-review` op de volledige releasediff
 (`origin/main...origin/develop`), plus nul open Dependabot-, code-scanning- (high/critical) en
 secret-scanning-alerts. Eén HIGH-bevinding stopt de release vóór de versiebump. De review draait
-lokaal in Claude Code, dus zonder API-kosten. Zie `AGENTS.md`, "Release-workflow".
+lokaal in Claude Code, dus zonder API-kosten. Zie `AGENTS.md`, "Versiebeheer en release".
 
 **Op welke events de Security Scan draait (#1202):** `push` naar élke branch, én `pull_request`
 naar `main` en naar `develop` — die twee branches staan letterlijk zo in de `on:`-sectie van

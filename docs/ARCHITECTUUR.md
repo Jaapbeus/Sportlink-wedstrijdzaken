@@ -1201,6 +1201,13 @@ vanaf nu één beslisregel:
    `AGENTS.md` een korte samenvatting plus een verwijzing hierheen — nooit de volledige regel nogmaals
    uitgeschreven.
 
+**Het budget van de agentinstructies.** `AGENTS.md` (en `FunctionApp/AGENTS.md`) moeten binnen het
+leesbudget van de agents blijven: Codex leest standaard maximaal 32 KiB van de projectinstructies over de
+hele keten en kapt de rest stilzwijgend af (#1580). `scripts/ci/check-agent-instructies.py` faalt bij
+overschrijding; zie `ARCHITECTUUR-CODEKWALITEIT.md` (regel 5). Een harde regel blijft dus compact inline in
+`AGENTS.md`; toelichting, voorbeelden en uitvoeringsdetail verhuizen naar het document uit punt 1 of 2 met
+een concreet leesmoment in `AGENTS.md`.
+
 Een regel op twee plekken volledig uitschrijven "voor de zekerheid" is geen redundantie zonder
 nadeel: het is precies de plek waar de volgende wijziging er één vergeet bij te werken. `AGENTS.md`
 is de enige bron van de agentinstructies; `CLAUDE.md` is een stub die hem importeert, dus er is
