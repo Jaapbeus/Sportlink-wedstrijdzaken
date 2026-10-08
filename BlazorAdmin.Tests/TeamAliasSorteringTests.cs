@@ -28,7 +28,7 @@ public class TeamAliasSorteringTests
 
         s.Kolom.Should().Be(TeamAliasSorteerKolom.Geen);
         Namen(s.Sorteer(items)).Should().Equal("a", "b", "c");
-        s.AriaSort(TeamAliasSorteerKolom.AantalKeerGebruikt).Should().Be("none");
+        s.AriaSort(TeamAliasSorteerKolom.AantalKeerGebruikt).Should().BeNull();
         s.Indicator(TeamAliasSorteerKolom.Aangemaakt).Should().BeEmpty();
     }
 
@@ -63,7 +63,7 @@ public class TeamAliasSorteringTests
 
         s.Kolom.Should().Be(TeamAliasSorteerKolom.Aangemaakt);
         s.Oplopend.Should().BeTrue();
-        s.AriaSort(TeamAliasSorteerKolom.AantalKeerGebruikt).Should().Be("none");
+        s.AriaSort(TeamAliasSorteerKolom.AantalKeerGebruikt).Should().BeNull();
         s.AriaSort(TeamAliasSorteerKolom.Aangemaakt).Should().Be("ascending");
     }
 

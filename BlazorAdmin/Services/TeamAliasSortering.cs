@@ -47,9 +47,12 @@ public sealed class TeamAliasSortering
         }
     }
 
-    /// <summary>Waarde voor het <c>aria-sort</c>-attribuut van de kolomkop.</summary>
-    public string AriaSort(TeamAliasSorteerKolom kolom) =>
-        Kolom != kolom ? "none" : Oplopend ? "ascending" : "descending";
+    /// <summary>
+    /// Waarde voor het <c>aria-sort</c>-attribuut van de kolomkop. <c>null</c> voor een niet-actieve kolom: Blazor laat
+    /// het attribuut dan weg, zodat er hoogstens één kop per tabel <c>aria-sort</c> draagt (WAI-ARIA 1.2).
+    /// </summary>
+    public string? AriaSort(TeamAliasSorteerKolom kolom) =>
+        Kolom != kolom ? null : Oplopend ? "ascending" : "descending";
 
     /// <summary>Zichtbaar teken naast de kolomtitel; leeg zolang de kolom niet actief is.</summary>
     public string Indicator(TeamAliasSorteerKolom kolom) =>

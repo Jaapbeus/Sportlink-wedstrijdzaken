@@ -570,28 +570,3 @@ code {
     color: var(--theme-warning-border) !important;
     background-color: var(--theme-warning-hover-bg);
 }
-
-/* ── Sorteerbare kolomkoppen (#1549) ───────────────────────────── */
-
-/* Kolomkop als knop: ziet eruit als tekst, blijft toetsenbord-bedienbaar */
-.sorteer-knop {
-    background: none;
-    border: 0;
-    padding: 0;
-    margin: 0;
-    font: inherit;
-    color: inherit;
-    cursor: pointer;
-    white-space: nowrap;
-}
-
-.sorteer-knop:hover,
-.sorteer-knop:focus-visible {
-    text-decoration: underline;
-}
-
-/* Reserveert ruimte zodat de kolombreedte niet verspringt bij het wisselen van richting */
-.sorteer-indicator {
-    display: inline-block;
-    min-width: 1em;
-}
