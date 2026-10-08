@@ -16,9 +16,11 @@ automatische login in [SPORTLINK-AUTOLOGIN.md](SPORTLINK-AUTOLOGIN.md).
 - Basis-URL: `https://data.sportlink.com`. Authenticatie met de queryparameter `clientId=<waarde>`;
   de waarde staat in `dbo.AppSettings.SportlinkClientId` (SQL Server-tier) of
   `public.appsettings` (Postgres-tier), nooit in code of configuratiebestanden.
-- **Een request-URL is een geheim.** De dataservice authenticeert via de `clientId` in de URL, dus de URL
-  zelf lekt de sleutel. Log nooit een Sportlink-request-URL; log het endpoint plus de `wedstrijdcode` (of
-  een andere niet-geheime identificatie). CI blokkeert een logtemplate met een URL-placeholder (#1200).
+- **Log of commit nooit een Sportlink-request-URL.** De `clientId` is geclassificeerd als publieke identifier
+  (restrisico, geen secret; besluit eigenaar 2026-10-05, zie `SECURITY.md`, "Classificatie: Sportlink-clientId"),
+  maar die classificatie is geen vrijstelling: de waarde komt niet in git, logs of telemetrie. De URL bevat
+  de `clientId`; log daarom het endpoint plus de `wedstrijdcode` (of een andere niet-identificerende
+  aanduiding). CI blokkeert een logtemplate met een URL-placeholder (#1200).
 - Documentatie van Sportlink:
   - alle endpoints: <https://sportlinkservices.freshdesk.com/nl/support/solutions/articles/9000062942-lijst-met-artikelen-van-club-dataservice>
   - online testtool: <https://sportlinkservices.github.io/navajofeeds-json-parser/article/?programma>

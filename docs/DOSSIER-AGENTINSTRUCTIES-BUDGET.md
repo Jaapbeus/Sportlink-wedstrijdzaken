@@ -98,10 +98,10 @@ in `AGENTS.md`, compacter. De laatste kolom noemt wat verhuisde of vervalt, en w
 | 40 | API-standaarden en controles (1502–1528) | 1.450 | HARD | inline (kort) | Checklist en regeneratie-opdracht → `API.md` |
 | 41 | Versiebeheer: semver, commits, changelog (1529–1597) | 3.600 | HARD + UITLEG | kern inline | Staat in `VERSIONING.md`; CHANGELOG-plicht → `VERSIONING.md` §7 |
 | 42 | Release-workflow (1598–1641) | 3.240 | HARD | poort inline | Volgorde staat in de skill `/release` |
-| 43 | Versienummer in code, Build & Run, Security Setup (1642–1698) | 2.750 | UITVOERING | verwijzing | Staat in `DEVELOPER-SETUP.md` en `CONTRIBUTING.md` |
+| 43 | Versienummer in code, Build & Run, Security Setup (1642–1698) | 2.750 | UITVOERING | verwijzing | Versienummer in code: `VERSIONING.md` (vier cijfers); gitleaks-installatie: `SECURITY.md`; Build & Run en setup: `DEVELOPER-SETUP.md` en `CONTRIBUTING.md` |
 | 44 | Architecture, v2.0 Architectuur, Auth-architectuur (1699–1753) | 3.000 | UITLEG | vervalt | Achterhaald, of aanwezig in `ARCHITECTUUR.md` |
 | 45 | Admin API-endpoints en backlog (1754–1783) | 1.870 | UITVOERING | vervalt | Staat in `API.md` en OpenAPI; de backlog is achterhaald |
-| 46 | Solution Structure, Code Conventions (1784–1811) | 1.660 | UITVOERING | vervalt | Staat in `DEVELOPER-SETUP.md` §8; aantal projecten daar rechtgezet (16) |
+| 46 | Solution Structure, Code Conventions (1784–1811) | 1.660 | UITVOERING | vervalt | Projectenoverzicht in `DEVELOPER-SETUP.md` §8 (aantal rechtgezet: 16); de vijf codeconventies (camelCase, exacte SQL-casing, async I/O, excepties bij entry-points, instellingen in de settingstabel) in `ARCHITECTUUR.md` (Naamconventies, Async/await) |
 | 47 | Sportlink API (1812–1829) | 1.110 | UITVOERING | vervalt | → `SPORTLINK-DATASERVICE.md` (nieuw) |
 | 48 | Exports — Teambegeleiding (1830–1850) | 1.420 | HARD | inline (kort) | De AVG-regel voor exports blijft inline |
 | 49 | `FunctionApp/AGENTS.md` (16.175 bytes) | 16.175 | HARD + UITVOERING | ≤ 4 KiB | Veldreferentie, nieuwe-databron-checklist en debug-SQL → `SPORTLINK-DATASERVICE.md`; `Pooling=false`-onderbouwing → `ARCHITECTUUR-DATABASE-TIERS.md` |
