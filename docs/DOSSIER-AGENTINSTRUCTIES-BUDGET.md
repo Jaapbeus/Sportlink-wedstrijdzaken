@@ -112,9 +112,9 @@ De bytes zijn bij benadering; de exacte sectiegrenzen staan in het Codex-rapport
 
 | | Vóór | Na | Grens |
 |---|---:|---:|---:|
-| `AGENTS.md` (root) | 124.770 B | 27.522 B | 27 KiB (guard), doel was circa 24 KiB |
-| `FunctionApp/AGENTS.md` | 16.175 B | 2.093 B | 4 KiB |
-| keten root → `FunctionApp/` | 140.947 B | 29.617 B | 30 KiB inclusief scheidingstekens (Codex: 32 KiB) |
+| `AGENTS.md` (root) | 124.770 B | 27.587 B | 27 KiB (guard), doel was circa 24 KiB |
+| `FunctionApp/AGENTS.md` | 16.175 B | 2.163 B | 4 KiB |
+| keten root → `FunctionApp/` | 140.947 B | 29.752 B | 30 KiB inclusief scheidingstekens (Codex: 32 KiB) |
 
 De root komt ruim 2,5 KiB boven het streefgetal van circa 24 KiB uit. De bindende grens is de keten van 30 KiB;
 de root is niet verder ingekort omdat daarvoor een harde regel (bevoegdheid, isolatie, reviewbeurt, security/AVG,
@@ -126,9 +126,9 @@ wijzigen* verplaatsen; de guard houdt de omvang tot dan op het huidige plafond.
 
 **Codex 0.158.0** — `codex debug prompt-input` zonder byte-override, in een worktree van deze repository:
 
-- cwd = repositoryroot: de instructietekst is 27.524 bytes; eerste en laatste regel van `AGENTS.md` staan erin, ook de
+- cwd = repositoryroot: de instructietekst is 27.589 bytes; eerste en laatste regel van `AGENTS.md` staan erin, ook de
   publicatieregel (de zin over vindaanwijzingen) en de tabel *Leesmomenten*.
-- cwd = `FunctionApp/`: de instructietekst is 29.619 bytes (= 27.522 + 2 + 2.093 + 2 bytes wrapper); beide bestanden volledig,
+- cwd = `FunctionApp/`: de instructietekst is 29.754 bytes (= 27.587 + 2 + 2.163 + 2 bytes wrapper); beide bestanden volledig,
   inclusief de laatste regel van `FunctionApp/AGENTS.md`.
 - Voor de wijziging eindigde de zichtbare tekst bij byte 32.768, midden in *Stap 2b*; de veiligheidsregels ontbraken.
 

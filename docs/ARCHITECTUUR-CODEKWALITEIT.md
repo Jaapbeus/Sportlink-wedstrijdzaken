@@ -675,7 +675,7 @@ en niet dat Codex het hele bestand ziet: Codex leest standaard maximaal 32 KiB a
 niet wat een gebruikersinstelling op een andere machine doet, en een vertrouwd project met een
 projectconfig kan het budget wél verhogen — daarom weigert de guard die sleutels in `.codex/config.toml`:
 het budget moet binnen de standaard passen. **Stand na deel C:** de plafonds staan op de gemeten omvang van de
-compacte kern (27.522 en 29.617 bytes, onder de structurele maxima en onder het budget van Codex); de
+compacte kern (27.587 en 29.752 bytes, onder de structurele maxima en onder het budget van Codex); de
 absolute grens zit in de guard. De
 toelatingsmatrix hierboven volgt de documentatie van de clientversies waartegen is getoetst (Claude Code 2.1.x,
 Codex 0.158.0); native Windows, junctions en case-insensitieve bronselectie zijn niet beproefd. De
