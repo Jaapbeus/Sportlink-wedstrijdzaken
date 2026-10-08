@@ -95,11 +95,10 @@ public static class BerichtResponseGenerator
         }
         else
         {
-            inhoud = $"{aanhef} {voornaam},\n\n"
-                   + $"Op {datumTekst} is helaas geen veld beschikbaar.";
-            if (!string.IsNullOrEmpty(response.Reden))
-                inhoud += $" {response.Reden}";
+            inhoud = $"{aanhef} {voornaam},\n\n" + DagdeelVenster.GeenVeldZin(datumTekst, response.GecontroleerdDagdeel, response.Reden);
         }
+
+        inhoud = DagdeelVenster.VoegControleZinToe(inhoud, response.GecontroleerdDagdeel);
 
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email, clubSettings);
     }
@@ -121,6 +120,8 @@ public static class BerichtResponseGenerator
         {
             inhoud += BouwDatumSectie(datum, response, classificatie) + "\n";
         }
+
+        inhoud += DagdeelVenster.ControleAlinea(resultaten.Select(r => r.response.GecontroleerdDagdeel));
 
         inhoud += BouwMultiDatumAfsluitzin(clubSettings);
 
@@ -195,10 +196,7 @@ public static class BerichtResponseGenerator
         if (response.TeamConflict != null)
             return $"**{datumTekst}:** {response.Reden} Hierdoor kan op deze dag geen oefenwedstrijd worden ingepland.\n";
 
-        var fallback = $"**{datumTekst}:** Helaas geen veld beschikbaar.";
-        if (!string.IsNullOrEmpty(response.Reden))
-            fallback += $" {response.Reden}";
-        return fallback + "\n";
+        return DagdeelVenster.GeenVeldRegel(datumTekst, response.GecontroleerdDagdeel, response.Reden);
     }
 
     // ── Herplannen ──
@@ -397,9 +395,7 @@ public static class BerichtResponseGenerator
         {
             inhoud = $"{aanhef} {voornaam},\n\n"
                    + $"De wedstrijd {wedstrijd.Wedstrijd} staat momenteel gepland op {FormatDatum(wedstrijd.Datum)} om {wedstrijd.AanvangsTijd} op {wedstrijd.VeldNaam}.\n\n"
-                   + $"Helaas is er op {gewenstDatumTekst} geen ruimte beschikbaar.";
-            if (!string.IsNullOrEmpty(beschikbaarheid?.Reden))
-                inhoud += $" {beschikbaarheid.Reden}";
+                   + DagdeelVenster.GeenRuimteOpGewensteDatum(gewenstDatumTekst, beschikbaarheid?.GecontroleerdDagdeel, beschikbaarheid?.Reden);
         }
         else if (beschikbaarheid.BeschikbareVensters?.Count > 0)
         {
@@ -426,6 +422,8 @@ public static class BerichtResponseGenerator
                    + $"De wedstrijd {wedstrijd.Wedstrijd} staat momenteel gepland op {FormatDatum(wedstrijd.Datum)} om {wedstrijd.AanvangsTijd} op {wedstrijd.VeldNaam}.\n\n"
                    + $"Op {gewenstDatumTekst} is er ruimte beschikbaar.";
         }
+
+        inhoud = DagdeelVenster.VoegControleZinToe(inhoud, beschikbaarheid?.GecontroleerdDagdeel);
 
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email, clubSettings);
     }
@@ -549,7 +547,7 @@ public static class BerichtResponseGenerator
 
     /// <summary>
     /// Past een EmailTemplate toe op de classificatie. Placeholders: {{voornaam}}, {{aanhef}},
-    /// {{datum}}, {{team}}, {{tegenstander}}, {{aanvangstijd}}.
+    /// {{datum}}, {{team}}, {{tegenstander}}, {{aanvangstijd}}, {{dagdeel}}.
     /// Valt terug op de standaard handtekening + review-wrapper.
     /// Niet-destructief: bestaande Bouw* methoden blijven beschikbaar als fallback.
     /// </summary>
@@ -558,7 +556,8 @@ public static class BerichtResponseGenerator
         BerichtClassificatie classificatie,
         InkomendBericht email,
         ClubAppSettingsSnapshot? clubSettings = null,
-        IDictionary<string, string>? extraPlaceholders = null)
+        IDictionary<string, string>? extraPlaceholders = null,
+        string? gecontroleerdDagdeel = null)
     {
         var placeholders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -568,6 +567,9 @@ public static class BerichtResponseGenerator
             ["team"] = classificatie.TeamNaam ?? "",
             ["tegenstander"] = classificatie.Tegenstander ?? "",
             ["aanvangstijd"] = classificatie.AanvangsTijd ?? "",
+            // #1587: "de ochtend (08:30 - 12:00)" of leeg. Uitsluitend het dagdeel dat de planner werkelijk heeft
+            // gecontroleerd, nooit het gevraagde dagdeel uit de classificatie (dat kan vervallen zijn).
+            ["dagdeel"] = DagdeelVenster.Omschrijving(gecontroleerdDagdeel) ?? "",
         };
 
         if (extraPlaceholders != null)
@@ -578,6 +580,8 @@ public static class BerichtResponseGenerator
 
         var onderwerpInvulling = EmailTemplateService.ApplyPlaceholders(template.Onderwerp, placeholders);
         var bodyInvulling = EmailTemplateService.ApplyPlaceholders(template.Body, placeholders);
+        // Noemt het sjabloon het dagdeel zelf niet, dan komt de standaardzin alsnog onder de sjabloontekst.
+        bodyInvulling = DagdeelVenster.VoegControleZinToeTenzijVermeld(bodyInvulling, gecontroleerdDagdeel, template.Body);
 
         var onderwerp = !string.IsNullOrWhiteSpace(onderwerpInvulling)
             ? onderwerpInvulling

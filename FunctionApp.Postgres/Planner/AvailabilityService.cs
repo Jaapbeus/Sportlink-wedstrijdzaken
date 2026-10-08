@@ -70,9 +70,14 @@ public static class AvailabilityService
 
         TimeOnly? sunset = await PlannerSettingsRepository.ResolveEnPasZonsondergangToeAsync(connectionString, date, availableFields);
 
+        // #1587: vensters, exacte tijd en kandidaten hieronder zijn beperkt tot dit dagdeel (start én einde); het
+        // antwoord vermeldt dat. Een exacte tijd buiten het dagdeel wint: dan geldt het dagdeel niet.
+        TimeOnly? preferredTime = TimeOnly.TryParse(request.AanvangsTijd, out var parsed) ? parsed : null;
+        var dagdeel = response.GecontroleerdDagdeel = DagdeelVenster.ToepasbaarDagdeel(request.Dagdeel, preferredTime);
+
         if (string.IsNullOrEmpty(request.AanvangsTijd))
         {
-            var windowsResponse = BuildWindowsResponse(date, availableFields, occupations, velden, sunset, request.Dagdeel);
+            var windowsResponse = BuildWindowsResponse(date, availableFields, occupations, velden, sunset, dagdeel);
             if (windowsResponse.BeschikbareVensters != null && duurMinuten > 0)
             {
                 windowsResponse.BeschikbareVensters = windowsResponse.BeschikbareVensters
@@ -84,20 +89,16 @@ public static class AvailabilityService
             return windowsResponse;
         }
 
-        TimeOnly? preferredTime = null;
-        if (!string.IsNullOrEmpty(request.AanvangsTijd) && TimeOnly.TryParse(request.AanvangsTijd, out var parsed))
-            preferredTime = parsed;
+        (TimeOnly dagdeelVan, TimeOnly dagdeelTot) = ResolveDagdeelVenster(dagdeel, new(8, 30), new(22, 0));
 
-        (TimeOnly dagdeelVan, TimeOnly dagdeelTot) = ResolveDagdeelVenster(request.Dagdeel, new(8, 30), new(22, 0));
-
-        var venstersResponse = BuildWindowsResponse(date, availableFields, occupations, velden, sunset, request.Dagdeel);
+        var venstersResponse = BuildWindowsResponse(date, availableFields, occupations, velden, sunset, dagdeel);
         if (duurMinuten > 0 && venstersResponse.BeschikbareVensters != null)
             venstersResponse.BeschikbareVensters = venstersResponse.BeschikbareVensters.Where(w => w.MaxDuurMinuten >= duurMinuten).ToList();
 
         if (preferredTime.HasValue)
         {
             var exactMatch = PlannerShared.TryExactTime(preferredTime.Value, availableFields, occupations, velden,
-                                           allTeamRules, teamRules, veldFractie, duurMinuten, sunset);
+                                           allTeamRules, teamRules, veldFractie, duurMinuten, sunset, dagdeel != null ? dagdeelTot : null);
             if (exactMatch != null)
             {
                 response.Beschikbaar = true;
@@ -111,7 +112,7 @@ public static class AvailabilityService
         }
 
         var candidates = PlannerShared.FindAllSlots(availableFields, occupations, velden, allTeamRules, teamRules,
-                                      veldFractie, duurMinuten, dagdeelVan, dagdeelTot, sunset);
+                                      veldFractie, duurMinuten, dagdeelVan, dagdeelTot, sunset, eindBinnenDagdeel: dagdeel != null);
         if (candidates.Count > 0)
         {
             var ordered = preferredTime.HasValue
@@ -314,18 +315,7 @@ public static class AvailabilityService
     /// <c>RescheduleService.CheckRescheduleAvailabilityAsync</c> — vandaar internal i.p.v. private.
     /// </summary>
     internal static (TimeOnly Van, TimeOnly Tot) ResolveDagdeelVenster(string? dagdeel, TimeOnly defaultVan, TimeOnly defaultTot)
-    {
-        var van = defaultVan;
-        var tot = defaultTot;
-        if (!string.IsNullOrEmpty(dagdeel))
-            switch (dagdeel.ToLowerInvariant())
-            {
-                case "ochtend": van = new(8, 30); tot = new(12, 0); break;
-                case "middag": van = new(12, 0); tot = new(17, 0); break;
-                case "avond": van = new(17, 0); tot = new(22, 0); break;
-            }
-        return (van, tot);
-    }
+        => DagdeelVenster.Bepaal(dagdeel, defaultVan, defaultTot);
 
     private static SlotToewijzing ToSlotMetVeldType(
         DateOnly date, CandidateSlot slot, int duurMinuten, List<VeldInfo> velden)
@@ -335,12 +325,12 @@ public static class AvailabilityService
         return toewijzing;
     }
 
-    private static CheckAvailabilityResponse BuildWindowsResponse(
+    internal static CheckAvailabilityResponse BuildWindowsResponse(
         DateOnly date, List<VeldBeschikbaarheidInfo> fields,
         List<BestaandeWedstrijd> occupations, List<VeldInfo> velden,
         TimeOnly? sunset, string? dagdeel)
     {
-        var response = new CheckAvailabilityResponse();
+        var response = new CheckAvailabilityResponse { GecontroleerdDagdeel = DagdeelVenster.Normaliseer(dagdeel) };
         var windows = new List<BeschikbaarVenster>();
         (TimeOnly filterVan, TimeOnly filterTot) = ResolveDagdeelVenster(dagdeel, new(0, 0), new(23, 59));
         foreach (var field in fields)
