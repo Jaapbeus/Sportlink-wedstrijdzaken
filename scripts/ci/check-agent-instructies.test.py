@@ -13,6 +13,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
+try:
+    import tomllib  # Python >= 3.11
+except ImportError:  # Python 3.9/3.10: de orakeltests hieronder worden dan overgeslagen
+    tomllib = None
+
 guard = runpy.run_path(str(Path(__file__).with_name("check-agent-instructies.py")))
 
 STUB = "@AGENTS.md\n\nAGENTS.md is de enige bron van de agentinstructies; zet hier geen inhoud bij.\n"
@@ -658,6 +663,25 @@ class AgentInstructiesTests(unittest.TestCase):
         "skills": '[[skills.config]]\npath = "x"\nenabled = true\n',
         "project vertrouwen": '[projects."/pad/naar/repo"]\ntrust_level = "trusted"\n',
         "mcp-server": '[mcp_servers.x]\ncommand = "x"\n',
+        "modelcatalogus kaal": 'model_catalog_json = "catalogus.json"\n',
+        "modelcatalogus gequote": '"model_catalog_json" = "catalogus.json"\n',
+        "modelcatalogus gepunt": 'x.model_catalog_json = "catalogus.json"\n',
+        "modelcatalogus in profiel": '[profiles.ci]\nmodel_catalog_json = "catalogus.json"\n',
+        "modelcatalogus profiel inline": 'profiles = { ci = { model_catalog_json = "c.json" } }\n',
+        "modelcatalogus naast toegestane sleutel": 'model = "x"\nmodel_catalog_json = "c.json"\n',
+        "personality": 'personality = "friendly"\n',
+        "auto-review beleid": '[auto_review]\npolicy = "beleid.md"\n',
+        "auto-review extra beleid": 'auto_review.extra_policy = "extra.md"\n',
+        "notify": 'notify = ["script"]\n',
+        "model_providers": '[model_providers.x.auth]\ncommand = "tok"\n',
+        "memories": '[memories]\nextract_model = "x"\n',
+        "extra developer-instructies": 'additional_developer_instructions = "x"\n',
+        "onbekende toekomstige sleutel": 'nieuwe_sleutel_van_morgen = true\n',
+        "lijkend voorvoegsel": 'project_doc_max_bytes_niet = 1\n',
+        "features tabel met onschuldige sleutel": '[features]\nunified_exec = true\n',
+        "gequote sleutel met punt": '"project_doc_max_bytes.x" = 1\n',
+        "toegestane tabelnaam als sleutel in een andere tabel": '[x]\nmodel = "y"\n',
+        "subsleutel van een toegestane scalar": 'model.x = 1\n',
         "config_file los": '[x]\nconfig_file = "y"\n',
         "config_file top-level": 'config_file = "y"\n',
         "hooks in profiel": '[profiles.ci.hooks]\n',
@@ -674,26 +698,48 @@ class AgentInstructiesTests(unittest.TestCase):
                 self.schrijf(root, ".codex/config.toml", tekst)
                 fouten = self.fouten(root)
                 self.assertIn(".codex/config.toml: ", fouten)
-                self.assertIn("wijzigt de bronselectie of het budget", fouten)
+                self.assertIn("staat niet op de toelatingsmatrix voor .codex/config.toml", fouten)
+
+    # Elke bekende of mogelijke instructie-/laadsleutel ook ZONDER subpad (de toelatingslijst oordeelt per pad):
+    # `naam = waarde`, `naam = {}` en de kale tabelkop `[naam]`. Uitgeschreven, niet uit de guard gelezen.
+    CODEX_HOOFDNAMEN = (
+        "project_doc_max_bytes", "project_doc_fallback_filenames", "project_root_markers", "developer_instructions",
+        "additional_developer_instructions", "model_instructions_file", "experimental_instructions_file", "instructions",
+        "compact_prompt", "experimental_compact_prompt_file", "model_catalog_json", "personality", "config_file",
+        "hooks", "plugins", "marketplaces", "agents", "skills", "projects", "mcp_servers", "features", "auto_review",
+        "notify", "memories", "model_providers", "nieuwe_sleutel_van_morgen",
+    )
+
+    def test_elke_hoofdnaam_wordt_los_geweigerd_als_sleutel_inline_tabel_en_tabelkop(self):
+        for naam in self.CODEX_HOOFDNAMEN:
+            for vorm in (f"{naam} = 1\n", f"{naam} = {{}}\n", f"[{naam}]\n", f"[profiles.ci]\n{naam} = 1\n"):
+                with self.subTest(naam=naam, vorm=vorm):
+                    root = self.fixture()
+                    self.schrijf(root, ".codex/config.toml", vorm)
+                    self.assertIn(f"'{naam}'", self.fouten(root))
 
     def test_codex_geneste_config_wordt_ook_gecontroleerd(self):
         root = self.fixture()
         self.schrijf(root, "sub/.codex/config.toml", "project_doc_max_bytes = 1\n")
-        self.assertIn("sub/.codex/config.toml: sleutel 'project_doc_max_bytes'", self.fouten(root))
+        self.assertIn("sub/.codex/config.toml: 'project_doc_max_bytes'", self.fouten(root))
 
     CODEX_POSITIEF = {
         "alleen model": 'model = "x"\n',
+        "alle toegestane hoofdsleutels": 'model = "x"\nmodel_reasoning_effort = "high"\napproval_policy = "on-request"\nsandbox_mode = "workspace-write"\n',
+        "toegestane tabel met vrije subsleutels": '[sandbox_workspace_write]\nnetwork_access = false\nwritable_roots = ["/x"]\n',
+        "profiel met toegestane sleutels": '[profiles.ci]\nmodel = "x"\napproval_policy = "never"\n',
+        "profiel inline met toegestane sleutels": 'profiles = { ci = { model = "x" } }\n',
         "commentaar": '# project_doc_max_bytes = 1 staat hier alleen als commentaar\nmodel = "x"\n',
-        "in een meerregelige string": 'x = """\nproject_doc_max_bytes = 1\n[hooks]\n"""\nmodel = "x"\n',
-        "in een literal meerregelige string": "x = '''\ndeveloper_instructions = 1\n'''\n",
-        "in een stringwaarde": 'beschrijving = "zet project_doc_max_bytes = 1 niet"\n',
-        "in een array van strings": 'lijst = ["project_doc_max_bytes", "hooks"]\n',
-        "tabel met onschuldige sleutels": '[features]\nunified_exec = true\n\n[sandbox_workspace_write]\nnetwork_access = false\n',
-        "lijkend voorvoegsel": 'project_doc_max_bytes_niet = 1\nhooks_aantal = 2\n',
-        "gequote sleutel met punt": '"project_doc_max_bytes.x" = 1\n',
+        "verboden tekst in een meerregelige string": 'model = """\nproject_doc_max_bytes = 1\n[hooks]\nmodel_catalog_json = "x"\n"""\n',
+        "verboden tekst in een literal meerregelige string": "model = \'\'\'\ndeveloper_instructions = 1\n\'\'\'\n",
+        "verboden tekst in een stringwaarde": 'model = "zet project_doc_max_bytes = 1 niet"\n',
         "leeg bestand": "",
-        "datums en getallen": 'a = 1979-05-27 07:32:00\nb = 1_000\nc = 0x1F\nd = [1.5, true]\n',
-        "escapes in waarden": 'a = "x\\"y\\\\z"\nb = \'C:\\pad\'\n',
+        "datums en getallen in een toegestane sleutel": 'model_reasoning_effort = 1_000\napproval_policy = 1979-05-27 07:32:00\n',
+        "escapes in waarden": 'model = "x\\"y\\\\z"\nsandbox_mode = \'C:\\pad\'\n',
+        "linecontinuation LF": 'model = """a \\\n   b"""\n',
+        "linecontinuation CRLF": 'model = """a \\\r\n   b"""\r\napproval_policy = "never"\r\n',
+        "linecontinuation met spaties vóór het regeleinde": 'model = """a \\   \r\n   b"""\n',
+        "linecontinuation gevolgd door lege regels": 'model = """a \\\r\n\r\n   b"""\n',
     }
 
     def test_geldige_toml_zonder_verboden_structuur_is_groen(self):
@@ -704,11 +750,47 @@ class AgentInstructiesTests(unittest.TestCase):
                 self.assertEqual(guard["controleer"](root), [], tekst)
 
     def test_ongeldige_toml_wordt_geweigerd_dicht(self):
-        for tekst in ("a = \n", "[x\n", 'a = "x\n', "a = {b = 1\n", "a b = 1\n", "a = [1, 2\n", 'a = """x\n', "[[x]\n", "= 1\n"):
+        for tekst in ("a = \n", "[x\n", 'a = "x\n', "a = {b = 1\n", "a b = 1\n", "a = [1, 2\n", 'a = """x\n', "[[x]\n", "= 1\n",
+                      'a = """x\\ y"""\n', 'a = """x\\q"""\n', 'a = "x\\\ny"\n'):
             with self.subTest(tekst=tekst):
                 root = self.fixture()
                 self.schrijf(root, ".codex/config.toml", tekst)
                 self.assertIn("geen leesbare TOML", self.fouten(root))
+
+    # Onafhankelijk orakel (review ronde 2): waar `tomllib` bestaat (Python >= 3.11, dus in CI) moet de structuurlezer
+    # op elke fixture exact dezelfde sleutelpaden opleveren als de standaardbibliotheek, en elke ongeldige invoer weigeren.
+    @unittest.skipUnless(tomllib is not None, "tomllib bestaat pas vanaf Python 3.11 (op 3.9 wordt dit overgeslagen)")
+    def test_structuurlezer_komt_overeen_met_tomllib(self):
+        def vlak(d, pre=()):
+            uit = set()
+            if isinstance(d, dict):
+                for k, v in d.items():
+                    uit.add(pre + (k,)); uit |= vlak(v, pre + (k,))
+            elif isinstance(d, list):
+                for v in d:
+                    uit |= vlak(v, pre)
+            return uit
+
+        def sluit(paden):
+            return {p[:i] for p in paden for i in range(1, len(p) + 1)}  # tomllib noemt ook de impliciete tussentabellen
+
+        extra = ['a."b.c".d = 1\n[x.y]\nz = { p = 1, q = [ { r = 2 } ] }\n[[w]]\nv = 0\n',
+                 'a = """x \\\n   y"""\nb = \'\'\'z\n[q]\n\'\'\'\n', '[a]\n[a.b]\nc = [[1,2],[3]]\n',
+                 'a = """x \\\r\n   y"""\r\nb = 1\r\n']
+        bronnen = list(self.CODEX_NEGATIEF.items()) + list(self.CODEX_POSITIEF.items()) + [(f"extra{i}", t) for i, t in enumerate(extra)]
+        for naam, tekst in bronnen:
+            with self.subTest(vorm=naam):
+                self.assertEqual(sluit(guard["toml_sleutelpaden"](tekst)), vlak(tomllib.loads(tekst.lstrip("\ufeff"))))
+
+    @unittest.skipUnless(tomllib is not None, "tomllib bestaat pas vanaf Python 3.11 (op 3.9 wordt dit overgeslagen)")
+    def test_ongeldige_toml_wordt_door_lezer_en_tomllib_beide_geweigerd(self):
+        for tekst in ("a = \n", "[x\n", 'a = "x\n', "a = {b = 1\n", "a b = 1\n", "a = [1, 2\n", 'a = """x\n', "[[x]\n", "= 1\n",
+                      'a = """x\\ y"""\n', 'a = """x\\q"""\n'):
+            with self.subTest(tekst=tekst):
+                with self.assertRaises(Exception):
+                    tomllib.loads(tekst)
+                with self.assertRaises(guard["TomlFout"]):
+                    guard["toml_sleutelpaden"](tekst)
 
     def test_toml_structuurlezer_geeft_de_verwachte_sleutelpaden(self):
         lezer = guard["toml_sleutelpaden"]

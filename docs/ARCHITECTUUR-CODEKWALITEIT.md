@@ -303,9 +303,14 @@ en elke symlink op een instructiepad. Een getrackt `.claude/settings.json` mag a
 `permissions` (daarbinnen `allow`/`deny`/`ask`) bevatten: een toelatingslijst, dus ook een nieuwe sleutel of
 alias (hooks, outputstijl, agent, plugins en marketplaces, `pluginConfigs` dat bronselectie van AGENTS.md
 instelt, `claudeMdExcludes`, `autoMemoryDirectory`, `env`, …) faalt. Een `.codex/config.toml` wordt als
-TOML-structuur gelezen en mag geen sleutel of tabel bevatten die het budget, de bronselectie of de
-instructies wijzigt of hooks, plugins, agents, skills, MCP-servers of projectvertrouwen activeert, ook niet
-gequote, gepunt, in een profiel of in een inline-tabel. `CLAUDE.local.md`, `.claude/settings.local.json` en
+TOML-structuur gelezen en mag UITSLUITEND `model`, `model_reasoning_effort`, `approval_policy`, `sandbox_mode`
+en de tabel `sandbox_workspace_write` bevatten (ook binnen een profiel): een toelatingslijst, geen
+verbodslijst. Dat is bewust ruimer dan een lijst van bekende instructiesleutels: `model_catalog_json` laadt
+via een modelcatalogus extra instructievelden en bleef bij een verbodslijst ongezien (Codex-review ronde 2,
+lokaal met `codex debug prompt-input` bevestigd). De lezer is een structuurlezer, geen volledige
+TOML-validator: dubbele sleutels, ongeldige waarden en tabelconflicten worden niet geweigerd. Voor
+`pluginConfigs` in Claude-settings geldt een conservatief projectverbod: volgens de referentie telt het sinds
+Claude Code 2.1.207 alleen in user- of managed-settings, dus dit is geen bewezen actuele injectieroute. `CLAUDE.local.md`, `.claude/settings.local.json` en
 `.mcp.json` mogen in geen enkele vorm in de git-index staan (gewoon bestand, symlink, index-mode 120000, ook
 als verwijderd uit de werkboom). Een kapotte Git-verwijzing is een fout. De volledige lijst staat in de kop van
 `check-agent-instructies.py`; dat is de enige plek, zodat ze niet uit de pas kan lopen met wat de guard

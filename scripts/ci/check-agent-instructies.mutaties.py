@@ -135,9 +135,6 @@ MUTATIES: List[Mutatie] = [
     # ── Codex-config via TOML-structuur (review ronde 1) ─────────────────────────────────────────────
     Mutatie("codex-config niet gecontroleerd", 'if delen[-2:] == [".codex", "config.toml"]:', "if False:"),
     Mutatie("ongeldige TOML toegestaan", "            except TomlFout as fout:\n                fouten.append(", "            except TomlFout as fout:\n                continue\n                fouten.append("),
-    Mutatie("verboden codex-sleutels genegeerd", "if kandidaat and kandidaat[-1] in CODEX_VERBODEN_SLEUTELS:", "if False:"),
-    Mutatie("verboden codex-tabellen genegeerd", "if kandidaat[:len(tabel)] == tabel:", "if False:"),
-    Mutatie("profielen niet als hoofdniveau gezien", 'if pad[0] == "profiles" and len(pad) > 2', "if False and len(pad) > 2"),
     Mutatie("TOML: commentaar niet overgeslagen", '            elif c == "#":', "            elif False:"),
     Mutatie("TOML: gepunte sleutels niet gevolgd", '            if i < n and s[i] == ".":', "            if False:"),
     Mutatie("TOML: unicode-escape niet gedecodeerd", '                elif e in "uU":', "                elif False:"),
@@ -148,6 +145,15 @@ MUTATIES: List[Mutatie] = [
     Mutatie("TOML: gequote sleutels niet gelezen", '            if s[i] in "\\"\'":\n                tekst_, i = tekenreeks(i)', '            if False:\n                tekst_, i = tekenreeks(i)'),
     Mutatie("TOML: BOM niet verwijderd", 'tekst.lstrip("\\ufeff")', "tekst"),
     Mutatie("TOML: backslash ook in literal string als escape", '            if q == \'"\' and c == "\\\\":', '            if c == "\\\\":'),
+    Mutatie("Codex-toelatingslijst genegeerd", "        if pad[0] in CODEX_TOEGESTAAN and (len(pad) == 1 or pad[0] in CODEX_TOEGESTAAN_TABELLEN):\n            continue", "        if True:\n            continue"),
+    Mutatie("Codex-subsleutels van een scalar toegestaan", "(len(pad) == 1 or pad[0] in CODEX_TOEGESTAAN_TABELLEN)", "(True)"),
+    Mutatie("Codex-tabel zonder vrije subsleutels", 'CODEX_TOEGESTAAN_TABELLEN = {"sandbox_workspace_write"}', "CODEX_TOEGESTAAN_TABELLEN = set()"),
+    Mutatie("Codex-profielen niet als hoofdniveau gezien", 'if pad[0] == "profiles":\n            if len(pad) <= 2:', 'if False:\n            if len(pad) <= 2:'),
+    Mutatie("Codex-profielkop wordt geweigerd", "            if len(pad) <= 2:\n                continue", "            if len(pad) <= 1:\n                continue"),
+    Mutatie("Codex-profielinhoud niet gestript", "            pad = pad[2:]\n", "            pass\n"),
+    Mutatie("TOML: CR vóór regeleinde bij linecontinuation niet herkend", 'elif meerregelig and e in " \\t\\r\\n":', 'elif meerregelig and e in " \\t\\n":'),
+    Mutatie("TOML: backslash zonder regeleinde toegestaan", '                    if not (s.startswith("\\n", j) or s.startswith("\\r\\n", j)):', "                    if False:"),
+    Mutatie("TOML: CRLF-linecontinuation alleen met LF", 's.startswith("\\r\\n", j)', "False"),
     # ── budget, krimpmarge, verplichte skills en waarschuwingen (review ronde 1) ────────────────────
     Mutatie("Codex-budget verdubbeld", "CODEX_MAX_BYTES = 32 * 1024 ", "CODEX_MAX_BYTES = 64 * 1024 "),
     Mutatie("Codex-budget een byte te ruim", "CODEX_MAX_BYTES = 32 * 1024 ", "CODEX_MAX_BYTES = 32 * 1024 + 1 "),
@@ -169,21 +175,19 @@ SETTINGS_SLEUTELS = (
     "autoMemoryEnabled", "env", "skillOverrides", "enabledMcpjsonServers", "enableAllProjectMcpServers",
     "includeGitInstructions", "language", "statusLine", "nieuweOnbekendeSleutel",
 )
-CODEX_SLEUTELS = (
+CODEX_TOEGESTAAN_REGEL = 'CODEX_TOEGESTAAN = {"model", "model_reasoning_effort", "approval_policy", "sandbox_mode", "sandbox_workspace_write"}'
+# Elke bekende of mogelijke instructiesleutel/-tabel afzonderlijk op de toelatingslijst zetten (dan moet een test falen).
+CODEX_KANDIDATEN = (
     "project_doc_max_bytes", "project_doc_fallback_filenames", "project_root_markers", "developer_instructions",
-    "model_instructions_file", "experimental_instructions_file", "instructions", "compact_prompt",
-    "experimental_compact_prompt_file", "config_file",
+    "additional_developer_instructions", "model_instructions_file", "experimental_instructions_file", "instructions",
+    "compact_prompt", "experimental_compact_prompt_file", "model_catalog_json", "personality", "config_file",
+    "hooks", "plugins", "marketplaces", "agents", "skills", "projects", "mcp_servers", "features", "auto_review",
+    "notify", "memories", "model_providers", "nieuwe_sleutel_van_morgen",
 )
-CODEX_TABELLEN = (
-    "hooks", "plugins", "marketplaces", "agents", "skills", "projects", "mcp_servers",
-)
-# Elke sleutel afzonderlijk op de toelatingsmatrix zetten: één vergeten sleutel mag niet ongemerkt blijven.
 MUTATIES += [Mutatie(f"settings-sleutel {k} toegestaan", 'SETTINGS_TOEGESTAAN = {"$schema", "permissions"}',
                      'SETTINGS_TOEGESTAAN = {"$schema", "permissions", "%s"}' % k) for k in SETTINGS_SLEUTELS]
-MUTATIES += [Mutatie(f"codex-sleutel {k} toegestaan", '"%s"' % k, '"x-%s"' % k) for k in CODEX_SLEUTELS]
-MUTATIES += [Mutatie(f"codex-tabel {k} toegestaan", '("%s",)' % k, '("x-%s",)' % k) for k in CODEX_TABELLEN]
-MUTATIES += [Mutatie(f"codex-tabel features.{k} toegestaan", '("features", "%s")' % k, '("features", "x-%s")' % k)
-             for k in ("hooks", "codex_hooks", "remote_plugin")]
+MUTATIES += [Mutatie(f"codex-toelating {k}", CODEX_TOEGESTAAN_REGEL, CODEX_TOEGESTAAN_REGEL.replace('"sandbox_workspace_write"}', '"sandbox_workspace_write", "%s"}' % k))
+             for k in CODEX_KANDIDATEN]
 
 
 def draai_suite(map_: Path) -> subprocess.CompletedProcess:

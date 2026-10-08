@@ -37,8 +37,9 @@ TOEGESTAAN
     Claude-only skills uit `scripts/ci/skills-alleen-claude.txt`;
   * een getrackt `.claude/settings.json` met UITSLUITEND de sleutels `$schema` en `permissions` (daarbinnen alleen
     `allow`, `deny`, `ask`) — een toelatingslijst, geen verbodslijst: ook een nieuwe of een alias-sleutel faalt;
-  * een `.codex/config.toml` zonder een sleutel of tabel uit CODEX_VERBODEN_SLEUTELS / CODEX_VERBODEN_TABELLEN
-    (gelezen als TOML-structuur, dus ook gequote, gepunte, in een profiel of in een inline-tabel).
+  * een `.codex/config.toml` met UITSLUITEND de hoofdsleutels/-tabellen uit CODEX_TOEGESTAAN (gelezen als
+    TOML-structuur, dus ook gequote, gepunte, in een profiel of in een inline-tabel): een toelatingslijst, geen
+    verbodslijst — ook een nieuwe of nog niet gedocumenteerde sleutel faalt (`model_catalog_json` bleef anders groen).
 
 VERBODEN, in de repositoryroot én in elke submap, aanwezig óf door git getrackt (ook in een map die de doorloop
 overslaat, zoals bin/obj/node_modules — `git ls-files` is leidend):
@@ -116,8 +117,9 @@ SETTINGS_BEKEND = {
     "hooks": "hooks injecteren context of gedrag", "outputStyle": "output styles wijzigen rol en toon",
     "agent": "start elke sessie als een subagent met eigen prompt", "enabledPlugins": "plugins brengen skills, agents en hooks mee",
     "extraKnownMarketplaces": "registreert pluginbronnen", "additionalMarketplaces": "alias van extraKnownMarketplaces",
-    "strictKnownMarketplaces": "pluginbronnen", "pluginConfigs": "stelt o.a. in welke instructiebronnen worden gelezen "
-    "(cc-plugin-agents-md@builtin: claude-md-and-agents-md/managed-only sluit AGENTS.md uit)",
+    "strictKnownMarketplaces": "pluginbronnen", "pluginConfigs": "conservatief projectverbod: volgens de referentie sinds "
+    "2.1.207 alleen user/managed (project-entries worden genegeerd), en het stelt anders de bronselectie van AGENTS.md in "
+    "(cc-plugin-agents-md@builtin)",
     "claudeMd": "injecteert instructies", "claudeMdExcludes": "sluit gedeelde instructiebestanden uit",
     "autoMemoryDirectory": "leidt het geheugen om naar een andere map", "autoMemoryEnabled": "wijzigt het geheugen",
     "env": "kan instructieladen wijzigen (CLAUDE_CODE_*)", "skillOverrides": "wijzigt welke skills zichtbaar zijn",
@@ -126,17 +128,26 @@ SETTINGS_BEKEND = {
     "language": "wijzigt de promptinstructie voor de antwoordtaal", "statusLine": "voert een commando uit",
     "fileSuggestion": "voert een commando uit", "disableAllHooks": "wijzigt hookgedrag",
 }
-# `.codex/config.toml`: sleutels (laatste segment, op elk niveau, dus ook in een profiel of inline-tabel) en
-# tabellen die instructies injecteren, bronselectie of budget wijzigen, of extra lagen/plugins/hooks activeren.
-CODEX_VERBODEN_SLEUTELS = {
-    "project_doc_max_bytes", "project_doc_fallback_filenames", "project_root_markers",
-    "developer_instructions", "model_instructions_file", "experimental_instructions_file", "instructions",
-    "compact_prompt", "experimental_compact_prompt_file", "config_file",
+# Toelatingsmatrix voor `.codex/config.toml` (#1580, ronde 2): ALLEEN deze hoofdsleutels/-tabellen zijn toegestaan,
+# ook binnen een profiel (`profiles.<naam>.…`). Een verbodslijst bleek onvolledig (`model_catalog_json` laadt via
+# een catalogus extra instructievelden en bleef groen); een toelatingslijst weigert ook wat nog niet bekend is.
+CODEX_TOEGESTAAN = {"model", "model_reasoning_effort", "approval_policy", "sandbox_mode", "sandbox_workspace_write"}
+CODEX_TOEGESTAAN_TABELLEN = {"sandbox_workspace_write"}  # tabel: de subsleutels zijn vrij
+# Waarom een bekende sleutel of tabel een instructie-, bron- of laadkanaal is (bron: Codex config-referentie en
+# config-basics, Codex 0.158.0); alleen voor de foutmelding — de toelatingslijst bepaalt wat faalt.
+CODEX_REDEN = {
+    "project_doc_max_bytes": "wijzigt het budget van de projectinstructies", "project_doc_fallback_filenames": "wijzigt de bronselectie",
+    "project_root_markers": "wijzigt de bronselectie", "developer_instructions": "injecteert instructies",
+    "additional_developer_instructions": "injecteert instructies", "model_instructions_file": "vervangt de ingebouwde instructies",
+    "experimental_instructions_file": "gedeprecieerde alias van model_instructions_file", "instructions": "gereserveerd voor instructies",
+    "compact_prompt": "vervangt de compactieprompt", "experimental_compact_prompt_file": "vervangt de compactieprompt",
+    "model_catalog_json": "laadt een modelcatalogus met instructievelden", "personality": "wijzigt de promptstijl",
+    "config_file": "laadt een extra configuratielaag", "agents": "agentrollen met eigen configuratielaag",
+    "hooks": "hooks injecteren gedrag", "plugins": "plugins brengen skills/hooks mee", "marketplaces": "pluginbronnen",
+    "skills": "skillactivering", "projects": "projectvertrouwen activeert `.codex/`-lagen", "mcp_servers": "MCP-servers leveren instructies",
+    "features": "schakelt hooks/plugins in", "auto_review": "Markdown-beleid voor automatische review", "notify": "voert een commando uit",
+    "memories": "geheugenmodellen", "model_providers": "provider met auth-commando", "profiles": "profielen",
 }
-CODEX_VERBODEN_TABELLEN = [
-    ("hooks",), ("plugins",), ("marketplaces",), ("agents",), ("skills",), ("projects",), ("mcp_servers",),
-    ("features", "hooks"), ("features", "codex_hooks"), ("features", "remote_plugin"),
-]
 
 
 def onafgesloten_codeblok(tekst: str) -> Optional[int]:
@@ -343,7 +354,9 @@ _ESCAPES = {"b": "\b", "t": "\t", "n": "\n", "f": "\f", "r": "\r", '"': '"', "\\
 def toml_sleutelpaden(tekst: str) -> List[Tuple[str, ...]]:
     """Alle sleutelpaden (tabelkoppen, sleutels, gepunte sleutels, inline-tabellen) van een TOML-document.
 
-    Geen waardevalidatie: alleen de structuur die nodig is om te zien WELKE sleutels er staan, ook als ze
+    Geen waardevalidatie en GEEN volledige TOML-validator: dubbele sleutels, ongeldige getallen/datums en
+    tabelconflicten worden niet geweigerd (Codex of tomllib doet dat wel). Alleen de structuur die nodig is om
+    te zien WELKE sleutels er staan, ook als ze
     gequote (`"a.b" = 1`), gepunt (`a."b".c = 1`), in een tabel (`[a.b]`, `[[a]]`), in een profiel of in een
     inline-tabel staan — en om tekst binnen een (meerregelige) string NIET als sleutel te lezen. Ongeldige
     TOML geeft TomlFout; de aanroeper behandelt dat als fout (een onleesbare config bewaakt niets).
@@ -389,9 +402,16 @@ def toml_sleutelpaden(tekst: str) -> List[Tuple[str, ...]]:
                     except (ValueError, OverflowError):
                         raise fout(i, "ongeldige escape in string")
                     i += 2 + lengte
-                elif meerregelig and e in " \t\n":  # regeleinde-backslash: slikt witruimte
-                    i += 1
-                    while i < n and s[i] in " \t\n":
+                elif meerregelig and e in " \t\r\n":
+                    # Regeleinde-backslash: `\`, optioneel spaties/tabs, dan LF of CRLF; slikt alle witruimte erna.
+                    # Een backslash gevolgd door tekst zonder regeleinde blijft een ongeldige escape.
+                    j = i + 1
+                    while j < n and s[j] in " \t":
+                        j += 1
+                    if not (s.startswith("\n", j) or s.startswith("\r\n", j)):
+                        raise fout(i, "ongeldige escape in string")
+                    i = j
+                    while i < n and s[i] in " \t\r\n":
                         i += 1
                 else:
                     raise fout(i, "ongeldige escape in string")
@@ -513,17 +533,18 @@ def toml_sleutelpaden(tekst: str) -> List[Tuple[str, ...]]:
 
 
 def codex_overtredingen(paden: List[Tuple[str, ...]]) -> List[str]:
-    """Sleutels/tabellen uit de verbodsmatrix; een profiel (`profiles.<naam>.…`) telt als het hoofdniveau."""
-    gevonden: List[str] = []
+    """Alles in een Codex-config dat niet op de toelatingsmatrix staat; een profiel telt als hoofdniveau."""
+    gevonden: Set[str] = set()
     for pad in paden:
-        kandidaten = [pad] + ([pad[2:]] if pad[0] == "profiles" and len(pad) > 2 else [])
-        for kandidaat in kandidaten:
-            if kandidaat and kandidaat[-1] in CODEX_VERBODEN_SLEUTELS:
-                gevonden.append(f"sleutel '{kandidaat[-1]}'")
-            for tabel in CODEX_VERBODEN_TABELLEN:
-                if kandidaat[:len(tabel)] == tabel:
-                    gevonden.append(f"'{'.'.join(tabel)}'")
-    return sorted(set(gevonden))
+        if pad[0] == "profiles":
+            if len(pad) <= 2:
+                continue  # `profiles` zelf en de profielnaam: pas de inhoud wordt getoetst
+            pad = pad[2:]
+        if pad[0] in CODEX_TOEGESTAAN and (len(pad) == 1 or pad[0] in CODEX_TOEGESTAAN_TABELLEN):
+            continue
+        reden = CODEX_REDEN.get(pad[0]) or CODEX_REDEN.get(pad[-1]) or "niet op de toelatingsmatrix"
+        gevonden.add(f"'{'.'.join(pad)}' ({reden})")
+    return sorted(gevonden)
 
 
 def controleer_settings(pad: str, bestand: Path) -> List[str]:
@@ -558,8 +579,9 @@ def controleer_configuratie(inv: Inventaris) -> List[str]:
                 fouten.append(f"{pad}: geen leesbare TOML ({fout}) — een config die niet te lezen is kan niet worden bewaakt")
                 continue
             for wat in codex_overtredingen(paden):
-                fouten.append(f"{pad}: {wat} wijzigt de bronselectie of het budget van de projectinstructies of activeert een "
-                              "extra instructie-/hook-/pluginlaag — het budget moet binnen de standaardinstelling van Codex passen (#1580)")
+                fouten.append(f"{pad}: {wat} staat niet op de toelatingsmatrix voor .codex/config.toml (alleen "
+                              f"{', '.join(sorted(CODEX_TOEGESTAAN))}) — instructies, bronselectie, budget en extra lagen "
+                              "horen niet in een projectconfig (#1580)")
     return fouten
 
 
