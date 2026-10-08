@@ -33,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.12.0.0
+  version: 3.12.1.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -347,7 +347,9 @@ components:
           type: string
           nullable: true
           enum: [ochtend, middag, avond]
-          description: Dagdeelfilter
+          description: |
+            Dagdeelfilter: ochtend 08:30-12:00, middag 12:00-17:00, avond 17:00-22:00. Vensters en alternatieven
+            blijven binnen dat dagdeel; een onbekende waarde wordt genegeerd.
         leeftijdsCategorie:
           type: string
           nullable: true
@@ -388,6 +390,13 @@ components:
         reden:
           type: string
           nullable: true
+        gecontroleerdDagdeel:
+          type: string
+          nullable: true
+          enum: [ochtend, middag, avond]
+          description: |
+            Het dagdeel waarbinnen de vensters en alternatieven zijn berekend; null als er geen dagdeel is
+            toegepast of de controle niet is uitgevoerd. Het e-mailantwoord vermeldt dit dagdeel.
         alternatieven:
           type: array
           items:

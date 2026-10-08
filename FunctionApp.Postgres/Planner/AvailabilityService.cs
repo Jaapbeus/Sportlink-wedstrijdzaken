@@ -70,6 +70,9 @@ public static class AvailabilityService
 
         TimeOnly? sunset = await PlannerSettingsRepository.ResolveEnPasZonsondergangToeAsync(connectionString, date, availableFields);
 
+        // #1587: de vensters en kandidaten hieronder zijn beperkt tot dit dagdeel; het antwoord vermeldt dat.
+        response.GecontroleerdDagdeel = DagdeelVenster.Normaliseer(request.Dagdeel);
+
         if (string.IsNullOrEmpty(request.AanvangsTijd))
         {
             var windowsResponse = BuildWindowsResponse(date, availableFields, occupations, velden, sunset, request.Dagdeel);
@@ -314,18 +317,7 @@ public static class AvailabilityService
     /// <c>RescheduleService.CheckRescheduleAvailabilityAsync</c> — vandaar internal i.p.v. private.
     /// </summary>
     internal static (TimeOnly Van, TimeOnly Tot) ResolveDagdeelVenster(string? dagdeel, TimeOnly defaultVan, TimeOnly defaultTot)
-    {
-        var van = defaultVan;
-        var tot = defaultTot;
-        if (!string.IsNullOrEmpty(dagdeel))
-            switch (dagdeel.ToLowerInvariant())
-            {
-                case "ochtend": van = new(8, 30); tot = new(12, 0); break;
-                case "middag": van = new(12, 0); tot = new(17, 0); break;
-                case "avond": van = new(17, 0); tot = new(22, 0); break;
-            }
-        return (van, tot);
-    }
+        => DagdeelVenster.Bepaal(dagdeel, defaultVan, defaultTot);
 
     private static SlotToewijzing ToSlotMetVeldType(
         DateOnly date, CandidateSlot slot, int duurMinuten, List<VeldInfo> velden)
@@ -335,12 +327,12 @@ public static class AvailabilityService
         return toewijzing;
     }
 
-    private static CheckAvailabilityResponse BuildWindowsResponse(
+    internal static CheckAvailabilityResponse BuildWindowsResponse(
         DateOnly date, List<VeldBeschikbaarheidInfo> fields,
         List<BestaandeWedstrijd> occupations, List<VeldInfo> velden,
         TimeOnly? sunset, string? dagdeel)
     {
-        var response = new CheckAvailabilityResponse();
+        var response = new CheckAvailabilityResponse { GecontroleerdDagdeel = DagdeelVenster.Normaliseer(dagdeel) };
         var windows = new List<BeschikbaarVenster>();
         (TimeOnly filterVan, TimeOnly filterTot) = ResolveDagdeelVenster(dagdeel, new(0, 0), new(23, 59));
         foreach (var field in fields)

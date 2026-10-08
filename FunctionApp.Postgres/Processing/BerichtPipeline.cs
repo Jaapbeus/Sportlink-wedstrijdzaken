@@ -151,15 +151,7 @@ internal static class BerichtPipeline
                     var multiResults = new List<object>();
                     foreach (var datum in alleDatums)
                     {
-                        var req = new CheckAvailabilityRequest
-                        {
-                            Datum = datum,
-                            AanvangsTijd = classificatie.AanvangsTijd,
-                            LeeftijdsCategorie = classificatie.LeeftijdsCategorie,
-                            TeamNaam = classificatie.TeamNaam,
-                            Tegenstander = classificatie.Tegenstander,
-                            HeelVeld = classificatie.HeelVeld
-                        };
+                        var req = BouwBeschikbaarheidRequest(classificatie, datum);
                         var resp = await AvailabilityService.CheckAvailabilityAsync(cs, req, log, clubCode);
                         multiResults.Add(new { datum, response = resp });
                     }
@@ -172,15 +164,7 @@ internal static class BerichtPipeline
                 }
                 classificatie.Datum = primaireDatum;
 
-                var checkRequest = new CheckAvailabilityRequest
-                {
-                    Datum = primaireDatum,
-                    AanvangsTijd = classificatie.AanvangsTijd,
-                    LeeftijdsCategorie = classificatie.LeeftijdsCategorie,
-                    TeamNaam = classificatie.TeamNaam,
-                    Tegenstander = classificatie.Tegenstander,
-                    HeelVeld = classificatie.HeelVeld
-                };
+                var checkRequest = BouwBeschikbaarheidRequest(classificatie, primaireDatum);
                 var checkResponse = await AvailabilityService.CheckAvailabilityAsync(cs, checkRequest, log, clubCode);
                 return JsonConvert.SerializeObject(checkResponse);
 
@@ -228,7 +212,8 @@ internal static class BerichtPipeline
                                 {
                                     Datum = classificatie.GewensteDatum,
                                     LeeftijdsCategorie = classificatie.LeeftijdsCategorie,
-                                    TeamNaam = classificatie.TeamNaam
+                                    TeamNaam = classificatie.TeamNaam,
+                                    Dagdeel = classificatie.Dagdeel
                                 };
                                 var beschikbaarheid = await AvailabilityService.CheckAvailabilityAsync(cs, gewenstRequest, log, clubCode);
                                 return JsonConvert.SerializeObject(new { wedstrijd, gewensteDatum = classificatie.GewensteDatum, beschikbaarheid });
@@ -238,6 +223,7 @@ internal static class BerichtPipeline
                             {
                                 Wedstrijdcode = wedstrijd.Wedstrijdcode,
                                 VoorkeurTijd = classificatie.AanvangsTijd,
+                                Dagdeel = classificatie.Dagdeel,
                                 Richting = BerichtTekstHeuristiek.DetecteerRichting(bericht.Onderwerp, bericht.Body ?? "")
                             };
                             var herplanResponse = await RescheduleService.CheckRescheduleAvailabilityAsync(cs, herplanRequest, log, clubCode);
@@ -521,6 +507,23 @@ internal static class BerichtPipeline
             .Select(d => d.ToString("yyyy-MM-dd"))
             .ToList();
     }
+
+    /// <summary>
+    /// Het plannerverzoek voor één datum van een beschikbaarheidscheck. Geeft het door de afzender genoemde
+    /// dagdeel door (#1587), zodat de planner vensters en alternatieven binnen dat dagdeel zoekt in plaats
+    /// van het standaardvenster van de hele dag.
+    /// </summary>
+    internal static CheckAvailabilityRequest BouwBeschikbaarheidRequest(BerichtClassificatie classificatie, string datum)
+        => new()
+        {
+            Datum = datum,
+            AanvangsTijd = classificatie.AanvangsTijd,
+            Dagdeel = classificatie.Dagdeel,
+            LeeftijdsCategorie = classificatie.LeeftijdsCategorie,
+            TeamNaam = classificatie.TeamNaam,
+            Tegenstander = classificatie.Tegenstander,
+            HeelVeld = classificatie.HeelVeld
+        };
 
     internal static string? KiesPrimaireDatum(List<string> alleDatums, string? aiDatum)
         => alleDatums.Count > 0 ? alleDatums[0] : aiDatum;

@@ -316,7 +316,7 @@ ALLSTARS-rijen zijn altijd expliciet gestempeld en lekken dus nooit mee.
 |------|-----------|-------------|
 | datum | Ja | Gewenste datum (ISO format) |
 | aanvangsTijd | Nee | Gewenste aanvangstijd ("HH:mm"), null = zoek beste slot |
-| dagdeel | Nee | "ochtend", "middag", of "avond" — gebruikt als geen exact tijdstip |
+| dagdeel | Nee | "ochtend" (08:30-12:00), "middag" (12:00-17:00) of "avond" (17:00-22:00) — beperkt vensters en alternatieven tot dat dagdeel; de grenzen staan in `Planner.Shared/DagdeelVenster.cs` (#1587). De response meldt het toegepaste dagdeel in `gecontroleerdDagdeel` |
 | leeftijdsCategorie | Nee | Bepaalt duur + veldfractie. Zonder: retourneert beschikbare vensters |
 | teamNaam | Nee | Voor team-conflictcheck en team-specifieke regels |
 | tegenstander | Nee | Administratief |

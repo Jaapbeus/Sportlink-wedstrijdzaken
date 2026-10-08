@@ -94,6 +94,9 @@ internal static class AvailabilityService
 
         var sunset = await BepaalEnPasZonsondergangToeAsync(date, availableFields);
 
+        // #1587: de vensters en kandidaten hieronder zijn beperkt tot dit dagdeel; het antwoord vermeldt dat.
+        response.GecontroleerdDagdeel = DagdeelVenster.Normaliseer(request.Dagdeel);
+
         if (string.IsNullOrEmpty(request.AanvangsTijd))
         {
             var windowsResponse = BuildWindowsResponse(date, availableFields, occupations, velden, sunset, request.Dagdeel);
@@ -292,16 +295,7 @@ internal static class AvailabilityService
     /// aanroeper.
     /// </summary>
     internal static (TimeOnly Van, TimeOnly Tot) BepaalDagdeelVenster(string? dagdeel, TimeOnly standaardVan, TimeOnly standaardTot)
-    {
-        if (string.IsNullOrEmpty(dagdeel)) return (standaardVan, standaardTot);
-        return dagdeel.ToLowerInvariant() switch
-        {
-            "ochtend" => (new TimeOnly(8, 30), new TimeOnly(12, 0)),
-            "middag"  => (new TimeOnly(12, 0), new TimeOnly(17, 0)),
-            "avond"   => (new TimeOnly(17, 0), new TimeOnly(22, 0)),
-            _ => (standaardVan, standaardTot)
-        };
-    }
+        => DagdeelVenster.Bepaal(dagdeel, standaardVan, standaardTot);
 
     /// <summary>
     /// Haalt de zonsondergangstijd op (met terugval op <see cref="SunsetCalculator"/> als
@@ -364,12 +358,12 @@ internal static class AvailabilityService
         return toewijzing;
     }
 
-    private static CheckAvailabilityResponse BuildWindowsResponse(
+    internal static CheckAvailabilityResponse BuildWindowsResponse(
         DateOnly date, List<VeldBeschikbaarheidInfo> fields,
         List<BestaandeWedstrijd> occupations, List<VeldInfo> velden,
         TimeOnly? sunset, string? dagdeel)
     {
-        var response = new CheckAvailabilityResponse();
+        var response = new CheckAvailabilityResponse { GecontroleerdDagdeel = DagdeelVenster.Normaliseer(dagdeel) };
         var windows = new List<BeschikbaarVenster>();
         (TimeOnly filterVan, TimeOnly filterTot) = BepaalDagdeelVenster(dagdeel, new TimeOnly(0, 0), new TimeOnly(23, 59));
         foreach (var field in fields)

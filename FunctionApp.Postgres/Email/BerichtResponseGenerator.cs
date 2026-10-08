@@ -95,11 +95,10 @@ public static class BerichtResponseGenerator
         }
         else
         {
-            inhoud = $"{aanhef} {voornaam},\n\n"
-                   + $"Op {datumTekst} is helaas geen veld beschikbaar.";
-            if (!string.IsNullOrEmpty(response.Reden))
-                inhoud += $" {response.Reden}";
+            inhoud = $"{aanhef} {voornaam},\n\n" + DagdeelVenster.GeenVeldZin(datumTekst, response.GecontroleerdDagdeel, response.Reden);
         }
+
+        inhoud = DagdeelVenster.VoegControleZinToe(inhoud, response.GecontroleerdDagdeel);
 
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email, clubSettings);
     }
@@ -121,6 +120,8 @@ public static class BerichtResponseGenerator
         {
             inhoud += BouwDatumSectie(datum, response, classificatie) + "\n";
         }
+
+        inhoud += DagdeelVenster.ControleAlinea(resultaten.Select(r => r.response.GecontroleerdDagdeel));
 
         inhoud += BouwMultiDatumAfsluitzin(clubSettings);
 
@@ -195,10 +196,7 @@ public static class BerichtResponseGenerator
         if (response.TeamConflict != null)
             return $"**{datumTekst}:** {response.Reden} Hierdoor kan op deze dag geen oefenwedstrijd worden ingepland.\n";
 
-        var fallback = $"**{datumTekst}:** Helaas geen veld beschikbaar.";
-        if (!string.IsNullOrEmpty(response.Reden))
-            fallback += $" {response.Reden}";
-        return fallback + "\n";
+        return DagdeelVenster.GeenVeldRegel(datumTekst, response.GecontroleerdDagdeel, response.Reden);
     }
 
     // ── Herplannen ──
@@ -427,6 +425,8 @@ public static class BerichtResponseGenerator
                    + $"Op {gewenstDatumTekst} is er ruimte beschikbaar.";
         }
 
+        inhoud = DagdeelVenster.VoegControleZinToe(inhoud, beschikbaarheid?.GecontroleerdDagdeel);
+
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email, clubSettings);
     }
 
@@ -549,7 +549,7 @@ public static class BerichtResponseGenerator
 
     /// <summary>
     /// Past een EmailTemplate toe op de classificatie. Placeholders: {{voornaam}}, {{aanhef}},
-    /// {{datum}}, {{team}}, {{tegenstander}}, {{aanvangstijd}}.
+    /// {{datum}}, {{team}}, {{tegenstander}}, {{aanvangstijd}}, {{dagdeel}}.
     /// Valt terug op de standaard handtekening + review-wrapper.
     /// Niet-destructief: bestaande Bouw* methoden blijven beschikbaar als fallback.
     /// </summary>
@@ -568,6 +568,8 @@ public static class BerichtResponseGenerator
             ["team"] = classificatie.TeamNaam ?? "",
             ["tegenstander"] = classificatie.Tegenstander ?? "",
             ["aanvangstijd"] = classificatie.AanvangsTijd ?? "",
+            // #1587: "de ochtend (08:30 - 12:00)" of leeg — voor een template dat zelf wil melden welk dagdeel is gevraagd.
+            ["dagdeel"] = DagdeelVenster.Omschrijving(classificatie.Dagdeel) ?? "",
         };
 
         if (extraPlaceholders != null)
