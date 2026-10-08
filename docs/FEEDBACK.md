@@ -98,7 +98,10 @@ Er worden nooit schermafbeeldingen, formulierinhoud, cookies of `localStorage` v
 
 **Redactie — op twee plekken, uit één bron** (`Planner.Shared/Feedback/FeedbackRedactie.cs`, in de
 browser gelinkt als bronbestand, #1461): eerst in de browser (wat het paneel toont is al geredigeerd),
-daarna opnieuw op de server (een client wordt niet vertrouwd). Idempotent.
+daarna opnieuw op de server (een client wordt niet vertrouwd). Idempotent. **Een nieuwe contextbron
+loopt altijd door `FeedbackRedactie`/`FeedbackTelemetrieSaneerder`** (`Planner.Shared/Feedback/`); een
+tweede set regex-regels voor redactie of saneren elders is dezelfde fout als #692 (teamnormalisatie) en
+een architectuurschending.
 
 | Wat | Wordt |
 |---|---|
