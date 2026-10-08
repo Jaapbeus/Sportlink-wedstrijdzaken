@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- **Agentinstructies bewaakt op omvang en laadpaden**: CI weigert nu elk tweede pad waarlangs instructies een agent kunnen bereiken buiten `AGENTS.md` om (Claude-commands, -agents en -output-styles, geneste skills, `AGENTS.override.md`, een met `git add -f` toegevoegde `CLAUDE.local.md`, symlinks, en instructiebestanden in mappen als `bin` of `node_modules`), en laat de bouw falen wanneer `AGENTS.md` verder groeit: Codex leest standaard maar 32 KiB van de projectinstructies en kapt de rest stilzwijgend af, zie issue #1580. De verkleining zelf volgt in een aparte wijziging.
+
 ## [3.12.0.0] — 2026-10-07
 
 ### Added

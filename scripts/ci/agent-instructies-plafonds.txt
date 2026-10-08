@@ -1,0 +1,26 @@
+# agent-instructies-plafonds.txt (#1580)
+#
+# Eén regel per meting: <sleutel> <bytes> <toelichting>.
+#   bestand:<pad>  de grootte van een AGENTS.md in bytes
+#   keten:<pad>    de gecombineerde grootte van alle AGENTS.md van de root tot en met <pad>, plus
+#                  twee bytes per scheiding (Codex voegt de bestanden samen; zie het guardkopje)
+#
+# Dit zijn RATCHET-waarden, geen doelen — dezelfde afspraak als scripts/ci/codekwaliteit-plafonds.txt.
+# check-agent-instructies.py faalt zodra een meting het plafond overschrijdt, faalt óók wanneer
+# de meting meer dan 1024 bytes onder het plafond ligt (winst die niet wordt vastgezet lekt weg),
+# en faalt op een bestand zonder plafond of een plafond zonder bestand. Verhogen kan alleen in een
+# PR die uitlegt waarom — dat is een diff die de eigenaar goedkeurt, geen stilzwijgende tolerantie.
+#
+# WAAROM: Codex leest van de projectinstructies standaard maximaal 32768 bytes (project_doc_max_bytes),
+# over de hele keten samen, en kapt de rest stilzwijgend af. Het doel is dat elke keten binnen
+# 30720 bytes past (circa 24 KiB root, maximaal 4 KiB per submap), zonder verhoogde gebruikersinstelling.
+#
+# TUSSENSTAND (PR A van #1580): de waarden hieronder zijn de meting vóór de verkleining en liggen dus
+# nog BOVEN het budget van Codex — dit plafond voorkomt alleen verdere groei. De verkleining (PR C)
+# verlaagt ze en voegt de absolute grens aan de guard toe.
+#
+# Nulmeting: 2026-10-08, op develop (9859f823).
+
+bestand:AGENTS.md                  124770  tussenstand voor de verkleining; Codex ziet hier de eerste ~32 KiB van
+bestand:FunctionApp/AGENTS.md       16175  tussenstand voor de verkleining
+keten:FunctionApp/AGENTS.md        140947  124770 + 2 + 16175; sessie in FunctionApp/ laadt beide
