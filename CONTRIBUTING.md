@@ -80,6 +80,8 @@ develop  ←── feature/#<issue>-<slug>  (via PR: nieuwe features en bugfixes
 
 - **Altijd** een GitHub Issue aanmaken vóór je begint — de branch-naam bevat het issue-nummer
 - **Nooit** direct committen naar `main` of `develop`
+- Hangt branch B af van branch A? Maak B vanuit A, merge A naar `develop`, en rebase daarna B op
+  `develop` (`git rebase develop`)
 - Feature-branches starten vanuit `develop` (niet vanuit `main`)
 - Branch-naam altijd beginnen met `feature/` of `hotfix/`
 - Na merge wordt de feature-branch verwijderd
@@ -176,6 +178,10 @@ bij — `Closes #<nr>` in de PR-titel of -body is genoeg.
 | PR gesloten zonder merge | `status: triage` |
 | **PR gemerged naar `develop`** | **`status: awaiting-release` — het issue blijft open** |
 | Release-tag gepusht naar `main` | status-labels weg, issue gesloten |
+
+**Waarom een PR als draft beginnen.** Zonder `--draft` zet de automatisering meteen `status:
+review-needed`, terwijl CI nog moet bevestigen dat alles groen is. Open de PR dus als draft en haal hem
+pas uit draft (`gh pr ready`) als CI groen is en de review is afgerond.
 
 **Een merge naar `develop` sluit je issue dus niet, en dat is opzet.** `develop` is de
 integratiebranch; er staat op dat moment nog niets van je wijziging live. Het issue blijft open met

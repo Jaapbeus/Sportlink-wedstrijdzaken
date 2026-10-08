@@ -1,5 +1,23 @@
 # Sportlink API Documentatie
 
+> **De specificatie bijhouden (verplicht bij elk nieuw, gewijzigd of verwijderd endpoint).** Nooit een
+> endpoint-wijziging committen zonder de spec bij te werken: ze is het contract voor andere systemen,
+> consumers en toekomstige agentsessies, en een verouderde spec misleidt (erger dan geen spec).
+>
+> ```
+> □ docs/api-standaarden/openapi.yaml bijgewerkt (nieuwe route, gewijzigde parameters, nieuwe response)?
+> □ docs/api-standaarden/openapi.json gesynchroniseerd — altijd uit de YAML gegenereerd, nooit met de hand?
+> □ info.version in openapi.yaml bijgewerkt naar de huidige appversie?
+> □ dit document (endpointtabel + voorbeelden) bijgewerkt?
+> ```
+>
+> `openapi.json` regenereer je uit de YAML (vereist Python met PyYAML, `pip install pyyaml`):
+>
+> ```bash
+> python3 -c "import yaml,json,io; s=yaml.safe_load(io.open('docs/api-standaarden/openapi.yaml',encoding='utf-8')); json.dump(s, io.open('docs/api-standaarden/openapi.json','w',encoding='utf-8'), indent=2, ensure_ascii=False)"
+> ```
+> (Op Windows kan `python` in plaats van `python3` heten.)
+
 **Basis-URL (lokaal):** `http://localhost:7094/api`
 **Basis-URL (productie):** `https://<function-app-hostnaam>/api` — de hostnaam van de Function App
 van jouw deployment; zie `servers` in `docs/api-standaarden/openapi.yaml`.
@@ -320,7 +338,7 @@ Controleer of een veld beschikbaar is voor een oefenwedstrijd. Geeft een specifi
 |------|------|-----------|-------------|
 | `datum` | `string` | **Ja** | Datum in `yyyy-MM-dd` formaat |
 | `aanvangsTijd` | `string` | Nee | Gewenste aftrapttijd `HH:mm`. Weglaten om beste slot te vinden |
-| `dagdeel` | `string` | Nee | Dagdeelfilter: `"ochtend"`, `"middag"`, of `"avond"` |
+| `dagdeel` | `string` | Nee | Dagdeelfilter: `"ochtend"` (08:30 - 12:00), `"middag"` (12:00 - 17:00) of `"avond"` (17:00 - 22:00). Vensters en alternatieven blijven binnen dat dagdeel; een onbekende waarde wordt genegeerd |
 | `leeftijdsCategorie` | `string` | Nee | Leeftijdscategorie (bijv. `JO11`, `MO17`, `VR`, `1-99`). Bepaalt wedstrijdduur en veldgrootte. Weglaten voor beschikbare vensters |
 | `teamNaam` | `string` | Nee | Teamnaam voor conflictcontrole en teamspecifieke regels |
 | `tegenstander` | `string` | Nee | Tegenstander (alleen voor administratie) |
@@ -462,6 +480,7 @@ Als de gevraagde dag geen wedstrijden toelaat (vrijdag/zondag):
 | `toewijzing` | `object\|null` | Toegewezen slot (alleen Modus 1) |
 | `teamConflict` | `object\|null` | Bestaande wedstrijd voor het team op deze datum |
 | `reden` | `string\|null` | Reden als niet beschikbaar |
+| `gecontroleerdDagdeel` | `string\|null` | Het dagdeel (`ochtend`, `middag`, `avond`) waarbinnen de vensters en alternatieven zijn berekend; `null` als er geen dagdeel is toegepast of de controle niet is uitgevoerd (#1587). Het e-mailantwoord vermeldt dit dagdeel |
 | `alternatieven` | `array` | Tot 3 alternatieve tijdsloten |
 | `beschikbareVensters` | `array\|null` | Beschikbare vensters per veld (alleen Modus 2) |
 | `waarschuwingen` | `array` | Waarschuwingen (zonsondergangmarge, doordeweekse beperkingen) |

@@ -23,6 +23,8 @@ public class BerichtClassificatie
     public VerzoekType Type { get; set; }
     public string? Datum { get; set; }           // yyyy-MM-dd — eerste/primaire datum
     public string? AanvangsTijd { get; set; }    // HH:mm
+    // ochtend | middag | avond — alleen als de afzender een dagdeel noemt (#1587); nooit afgeleid uit een tijd
+    public string? Dagdeel { get; set; }
     public string? GewensteDatum { get; set; }   // yyyy-MM-dd — gewenste nieuwe datum (bij herplan)
     public List<string>? Datums { get; set; }    // Meerdere datums bij multi-datum verzoek
     public string? TeamNaam { get; set; }

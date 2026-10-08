@@ -115,7 +115,7 @@ jobs:
       # issue — dat is hoe een periodieke controle in ruis verandert en genegeerd wordt.
       #
       # Bewust GEEN status:-label meegeven: label-issue-status.yml zet zelf status: triage
-      # (invariant 1 van de issue-lifecycle in AGENTS.md).
+      # (de statusregel onder "Labels" in AGENTS.md).
       - name: Issue aanmaken of bijwerken
         if: env.NIEUW != '0'
         env:

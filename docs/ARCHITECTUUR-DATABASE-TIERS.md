@@ -117,6 +117,19 @@ vCore-second-budget. Bij uitputting pauzeert Azure de database geforceerd tot de
 kalendermaand, zonder mogelijkheid om daaromheen te werken — dit gebeurde ~10 dagen in augustus
 2026. Een tweede tier-optie met een ander faalmodel is de structurele oplossing, geen workaround.
 
+**Voorwaarde voor een dérde tier (#1271, stap 1 van epic #826).** Vóór de SQLite-tier zijn endpoints
+krijgt, komt eerst de gedeelde endpoint-orkestratie in `Planner.Endpoints`: een endpoint bestaat uit
+aansluitwerk (routeparameter lezen, rollen controleren, client uit DI halen, resultaat naar
+`IActionResult` vertalen) en uit de databasevraag; alleen het tweede deel is tier-gebonden. Bij twee
+tiers is het aansluitwerk 660 woordelijk gedupliceerde regels (gemeten bij #1266) — 775 van de 907
+regels in de hele `Sportlink/`-boom bij een hermeting op #1271 — bij drie wordt het ongeveer het
+dubbele. Bouw die laag dus eerst; anders ontstaat een derde kopie die daarna weer opgeruimd moet
+worden. `Planner.Endpoints` mag op ASP.NET Core en de Azure Functions Worker leunen,
+`Planner.Shared` blijft framework-vrij; de databasetoegang gaat als delegate mee, dus dit is geen
+gedeelde providerabstractie en botst niet met §2. Stand: `SportlinkEndpointSupportCore` is het
+eerste stuk; zie [SPORTLINK-WEB-EXTENSION.md](SPORTLINK-WEB-EXTENSION.md) voor het overzicht per
+bestand. (Verplaatst uit `AGENTS.md`, #1580.)
+
 **Waarom deze volgorde vaststaat:**
 - Postgres eerst — de meest volwassen relationele optie, met een gratis cloud-variant (Supabase)
   die qua faalmodel (7-dagen-pauzebeleid bij inactiviteit) fundamenteel anders is dan Azure SQL
@@ -136,7 +149,7 @@ op dezelfde manier heeft, lekken typisch door op precies de plekken waar het pij
 dynamische schema-generatie en upsert-semantiek.
 
 Omdat er nooit meer dan één tier tegelijk actief is binnen één deployment (precies één echte club +
-AllStars FC als demo-club per fork, zie "Deployment-model" in AGENTS.md), is er ook geen
+AllStars FC als demo-club per fork, zie `ARCHITECTUUR.md` §2.1), is er ook geen
 functioneel voordeel dat het risico zou rechtvaardigen.
 
 **Consequentie:** volledig gescheiden, parallelle implementatiebomen per tier
@@ -409,6 +422,14 @@ auto-pause niet te blokkeren (#808). Dat is een eigenschap van díe hostingkeuze
 algemene regel — zonder bevestiging dat de Postgres-tier op een vergelijkbare auto-pausende laag
 draait, is Npgsql's standaard pooling (efficiënter hergebruik van verbindingen) de juiste default.
 Herzie dit zodra de daadwerkelijke Postgres-hosting vaststaat.
+
+*De SQL Server-tier forceert `Pooling=false` in `SystemUtilities.DatabaseConfig` (`FunctionApp/Utilities.cs`)
+en dat mag niet worden verwijderd:* een gepoolde verbinding blijft na `Dispose()` als actieve sessie op de
+server staan, wat de auto-pause van de gratis database blokkeert en het maandelijkse vCore-seconden-
+budget kan opmaken terwijl de app verder niets doet (#808). Die klasse en haar Azure SQL-serverless-
+specifieke retrylogica (`WaitForDatabaseAsync`) zijn SQL Server-specifiek; een toekomstige tier krijgt
+zijn eigen equivalent in zijn eigen projectboom, geen gedeelde abstractie. (Verplaatst uit
+`FunctionApp/AGENTS.md`, #1580.)
 
 **`/api/health` heeft geen `"paused"`-status:** de SQL Server-tier herkent Azure SQL's auto-pause
 aan foutnummer 40613 — Azure-SQL-specifiek. Zonder een bevestigd, vergelijkbaar auto-pause-concept
@@ -2215,7 +2236,7 @@ collectie terug voor iets dat wél in `his.matches` stond. Reproductie lokaal (v
 exact dezelfde migratie-/seedstappen als de workflow) bevestigde: `planner.alle_wedstrijden_op_veld_ruw`
 kiest de "primaire club" via `CROSS JOIN LATERAL ... WHERE syncenabled = true ORDER BY clubcode
 LIMIT 1` — identiek aan het SQL Server-origineel (`Database/planner/Views/AlleWedstrijdenOpVeld.sql`),
-correct zolang er precies één `syncenabled`-club is (§"Deployment-model" in AGENTS.md). De
+correct zolang er precies één `syncenabled`-club is (`ARCHITECTUUR.md` §2.1). De
 CI-workflow zette echter een tweede, synthetische club (`CIPRIMARY`, alleen bedoeld als
 kopieerbron voor #862's speeltijden-seed) óók op `syncenabled = true`, zonder accommodatie —
 sorteert vóór elke `testclub-*`, dus werd DIE rij de "gekozen" primaire club, en filterde elke
@@ -2814,8 +2835,8 @@ gevalideerd.
 
 Onderscheid tussen lokaal en productie gebeurt dus op basis van de **daadwerkelijk benaderde host**,
 niet op basis van welk proces de verbinding opent — bewust consistent met hoe `EgressGuard`
-(`FunctionApp.Postgres/Infrastructure/EgressGuard.cs`, #857 — zie AGENTS.md, "Uitgaande
-integraties — altijd via EgressGuard") lokaal van productie onderscheidt
+(`FunctionApp.Postgres/Infrastructure/EgressGuard.cs`, #857 — zie AGENTS.md,
+"Architectuurinvarianten", EgressGuard) lokaal van productie onderscheidt
 (env-gebaseerd), maar toegepast op de vraag die hier telt: TLS-vertrouwen hoort af te hangen van
 de server aan de andere kant van de verbinding. Dit geldt daardoor identiek voor
 `PostgresDatabaseConfig` (Function App), `Database.Postgres.Cli` (migratiepad) én
@@ -3081,7 +3102,7 @@ fake-gebaseerd en woordelijk gelijk aan de SQL Server-tier se testsuite.
 **Vereist handmatige verificatie na deploy:** `EMAIL_POLL_SCHEDULE` en `EmailProcessorEnabled` als
 Function App-instelling op de productie-resource — die stonden er vóór de tier-cutover al voor de
 SQL Server-tier, maar zijn niet geverifieerd voor deze deploy (agents mogen App Settings niet zelf
-lezen/zetten, zie AGENTS.md's kostenbeleid-sectie).
+lezen/zetten, zie `ARCHITECTUUR.md` §8.6 en AGENTS.md, "Kostenbeleid").
 
 ## 53. Een gewijzigd migratiebestand faalt nu in CI in plaats van pas in productie (#1062)
 
@@ -3666,7 +3687,7 @@ redenering zelf klopte, voor de vraag die ze stelde:
   gebruik van Supabase's PostgREST/JWT-auth-flow.
 - Autorisatie zit volledig in de applicatielaag (Entra ID/Easy Auth, vijf lagen defense-in-depth).
 - `ClubCode` wordt gefilterd in C#, niet via databasepolicies — en dat is prima, want er is
-  precies één (productie)club per deployment (zie "Deployment-model" in AGENTS.md).
+  precies één (productie)club per deployment (zie `ARCHITECTUUR.md` §2.1).
 
 **De vraag die #985 niet stelde:** wat stelt Supabase als *platform* zelf standaard open, los van
 of onze applicatie dat gebruikt? Supabase genereert voor élke tabel in het `public`-schema
@@ -3714,8 +3735,7 @@ Dezelfde twee triggers als in #985 al genoemd, plus een derde:
    FunctionApp als enige gatekeeper → dan moeten er policies komen die op `auth.uid()` filteren.
 3. **Nieuw, uit dit issue:** bij elke toekomstige architectuurbeoordeling van een hostingplatform
    (Supabase of anders) hoort expliciet de vraag "wat ontsluit dit platform zelf standaard, los
-   van onze eigen code?" — zie de nieuwe harde regel in AGENTS.md onder "Supabase
-   Postgres — Row-Level Security verplicht op elke tabel".
+   van onze eigen code?" — zie de harde regel in AGENTS.md onder "Architectuurinvarianten" (Supabase #1198).
 
 ## 66. `rls_auto_enable()` — een vangnet blijkt geen overbodig artefact (vervolg op #1198)
 
@@ -3927,6 +3947,15 @@ pad, en dat is exact het geval dat de volledige scan afdwingt.
 diezelfde uitdrukking. Wijzig je een vergelijking naar `UPPER(...)`, dan is het bijwerken van de
 bijbehorende index onderdeel van diezelfde wijziging — niet iets voor later.
 
+**Hoe je het controleert.** Geen van de gebruikelijke signalen laat dit zien: "de query werkt", "de
+build is groen" en "de tests slagen" zijn alle drie waar met én zonder bruikbare index. Het verschil
+is alleen zichtbaar in het queryplan, op voldoende rijen.
+
+| Tier | Controle | Wat "goed" is |
+|---|---|---|
+| Postgres | `EXPLAIN (ANALYZE, BUFFERS)` | `Index Scan` of `Index Only Scan`, geen `Seq Scan` |
+| SQL Server | `SET SHOWPLAN_TEXT ON` en `SET STATISTICS IO ON` | de kolom staat in het **SEEK**-predicaat, niet in het residuele `WHERE` |
+
 ### Wat bewust niet gewijzigd is
 
 **Zeven "unused index"-meldingen: de feature draait nog niet.** `ix_sportlinkpublicmatchidcache_*`,
@@ -3939,7 +3968,7 @@ die fix terugdraaien. **Een advisor die "nooit gebruikt" meldt, kan niet zien da
 niet live is** — dat onderscheid moet altijd handmatig gemaakt worden.
 
 **`IX_matchdetails_clubcode`: nutteloos, maar droppen levert niets op.** In het vastgelegde
-deploymentmodel (§"Deployment-model" in `AGENTS.md`) draait één primaire club per deployment, dus
+deploymentmodel (`ARCHITECTUUR.md` §2.1) draait één primaire club per deployment, dus
 `clubcode` heeft in de praktijk één distinct waarde — lokaal geverifieerd: alle rijen in
 `his.matches` dezelfde waarde. Een index met die selectiviteit wordt nooit gekozen. Dat geldt even
 goed voor `IX_matches_clubcode` en `IX_teams_clubcode`, die de advisor níet noemde — reden te meer
@@ -4274,7 +4303,7 @@ licht/donker-set; een bestaande installatie merkt van deze migratie dus niets.
 De waarde belandt in de browser in een CSS custom property (`--theme-<sleutel>-light`), samengesteld
 uit door een admin ingevoerde tekst. `ThemeCore` legt daarom vast: een sleutel matcht
 `^[a-z][a-zA-Z0-9-]{0,39}$`, een waarde `^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$`, maximaal 40 sleutels
-per palet. Een admin is binnen het deploymentmodel van #393 (zie AGENTS.md, "Deployment-model — één
+per palet. Een admin is binnen het deploymentmodel van #393 (zie `ARCHITECTUUR.md` §2.1, "één
 fork, één primaire club") vertrouwd, dus dit is geen
 autorisatiegrens — maar een waarde die ongefilterd een stylesheet-property vult hoort een vaste vorm
 te hebben, en een vrije `rgba(...)`-string zou dat niet zijn. De acht-cijferige hexvariant bestaat

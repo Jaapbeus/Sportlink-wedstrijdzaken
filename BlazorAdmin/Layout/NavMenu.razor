@@ -209,6 +209,8 @@
         Navigation.LocationChanged += OnLocationChanged;
         ThemeService.OnThemeChanged += OnThemeChanged;
         ClubSelector.OnChange += OnClubChanged;
+        ClubSelector.OnClubNameChange += OnMenuWeergaveChanged;
+        ClubSelector.OnSportlinkExtensionChange += OnMenuWeergaveChanged;
         // Club-naam via ClubSelector.SelectedClubName (gevuld door MainLayout) — geen eigen API-call
     }
 
@@ -230,8 +232,12 @@
         Navigation.LocationChanged -= OnLocationChanged;
         ThemeService.OnThemeChanged -= OnThemeChanged;
         ClubSelector.OnChange -= OnClubChanged;
+        ClubSelector.OnClubNameChange -= OnMenuWeergaveChanged;
+        ClubSelector.OnSportlinkExtensionChange -= OnMenuWeergaveChanged;
     }
 
+    // #1578: naam- en vlagwijzigingen hertekenen alleen het menu; pagina's herladen er niet op.
+    private void OnMenuWeergaveChanged() => _ = InvokeAsync(StateHasChanged);
     private void OnThemeChanged() => _ = InvokeAsync(StateHasChanged);
     private void OnClubChanged() => _ = InvokeAsync(async () => { await LaadExtensieVlagAsync(); StateHasChanged(); });
 

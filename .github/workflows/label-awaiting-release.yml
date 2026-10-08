@@ -5,7 +5,7 @@ name: Label issues awaiting release
 # dit label (en desnoods heropening) voorkomt dat een issue als 'klaar' oogt
 # terwijl de fix nog niet live staat. Het label wordt weer verwijderd door
 # close-released-issues.yml zodra de fix daadwerkelijk naar main gaat.
-# Zie AGENTS.md, sectie "Issue-lifecycle: awaiting-release".
+# Zie AGENTS.md, "Ontwikkelcyclus" (alinea "Labels") en docs/VERSIONING.md §6b.
 
 on:
   pull_request:

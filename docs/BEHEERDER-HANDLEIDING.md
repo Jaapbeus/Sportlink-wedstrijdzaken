@@ -298,7 +298,10 @@ Teams met een grijze "Onbekend"-badge blokkeren wel hun tijdslot voor andere tea
 
 1. Branch aanmaken vanaf `main`: `git checkout -b hotfix/#<nr>-<slug> main`
 2. Fix + PR naar `main`
-3. Na merge ook PR `main` → `develop` aanmaken zodat `develop` gesynchroniseerd blijft
+3. Na merge de fix terugbrengen in `develop` met een aparte `feature/#<nr>-backport-…`-branch vanuit
+   `develop` die uitsluitend de code, tests en documentatie van de hotfix bevat — **niet** het
+   versienummer en niet de CHANGELOG-sectie van de release (een PR `main` → `develop` zou die
+   meenemen). Procedure en controle: `docs/VERSIONING.md`, sectie *Hotfix en backport naar develop*
 4. CI op `main` controleert de deploy (`.github/workflows/deploy.yml`)
 
 ---
@@ -437,8 +440,8 @@ Browser (Blazor WASM)
 
 Dit bestand wordt **automatisch aangemaakt door CI** (`deploy.yml`) vanuit
 `appsettings.Production.template.json` + GitHub Variables. **Nooit handmatig committen —
-het staat in `.gitignore` en mag niet in de repository.** Zie `AGENTS.md` tabel
-"Wat bevatten de bestanden in git?".
+het staat in `.gitignore` en mag niet in de repository.** Zie `docs/ARCHITECTUUR.md` §8.2.4 (tabel
+"Secrets en configuratie").
 
 ### Verificatie na elke auth-wijziging
 
@@ -1722,7 +1725,9 @@ Het formulier heeft de velden **Template key** (bij een bestaande template vast)
 
 In de tekst staan **plaatshouders** tussen dubbele accolades. Die vult het systeem bij verzending
 in met de echte waarde. Beschikbaar zijn: `{{voornaam}}`, `{{aanhef}}`, `{{datum}}`, `{{team}}`,
-`{{tegenstander}}` en `{{aanvangstijd}}`. Laat de accolades en de naam ertussen precies staan zoals
+`{{tegenstander}}`, `{{aanvangstijd}}` en `{{dagdeel}}` (het gecontroleerde dagdeel met tijdvenster, bijvoorbeeld
+"de ochtend (08:30 - 12:00)"; leeg als er geen dagdeel is gecontroleerd; staat de plaatshouder er niet in, dan voegt het systeem
+zelf een zin toe die het gecontroleerde dagdeel noemt). Laat de accolades en de naam ertussen precies staan zoals
 ze zijn — typt u er iets anders, dan komt er letterlijk `{{team}}` in de mail te staan. De voetnoot
 uit het vak bovenaan wordt automatisch onder de body geplakt; die hoeft u hier dus niet te
 herhalen.

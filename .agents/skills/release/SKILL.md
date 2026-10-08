@@ -78,8 +78,8 @@ eigenaar uit waarom, met bestand en regel. De eigenaar beslist, niet jij.
    comm -23 <(git show origin/main:CHANGELOG.md | grep -oE '^## \[[^]]+\]' | sort -u) \
             <(git show origin/develop:CHANGELOG.md | grep -oE '^## \[[^]]+\]' | sort -u)
    ```
-   Treffer ⇒ ⚠️ backport-check uit AGENTS.md ("Een hotfix is pas af als hij ook terug in
-   `develop` staat"). Een niet-teruggebrachte codewijziging is ❌.
+   Treffer ⇒ ⚠️ backport-check uit AGENTS.md ("Een hotfix is pas af als hij terug in
+   `develop` staat"; procedure in docs/VERSIONING.md). Een niet-teruggebrachte codewijziging is ❌.
 
 ---
 
@@ -168,7 +168,7 @@ Reviewscope: origin/main...<sha kort> (<bestanden> bestanden), route: volledig |
 
 - Lees `## [Unreleased]` in `CHANGELOG.md`. Leeg terwijl er `feat:`/`fix:`-commits zijn ⇒ ❌, vul
   eerst aan via een gewone PR.
-- Nieuw nummer volgens AGENTS.md "Fase 2 — release": minimaal één `feat:` ⇒ MINOR, PATCH en
+- Nieuw nummer volgens docs/VERSIONING.md "Fase 2 — release": minimaal één `feat:` ⇒ MINOR, PATCH en
   REVISION naar 0; alleen fixes ⇒ PATCH, REVISION naar 0; BREAKING CHANGE ⇒ MAJOR, en dan eerst
   de eigenaar vragen.
 - Basis is de **huidige versie op `develop`**, niet die van `main`.

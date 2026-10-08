@@ -15,7 +15,7 @@
 # Bewust geen eval, geen externe afhankelijkheden buiten git/grep/awk/bash zelf.
 #
 # Draagbaarheid (#1155): identiek gedrag op de Linux-CI-runner (bash 5) én lokaal op macOS met
-# /bin/bash 3.2 — daarom geen `mapfile` en geen `declare -A` (zie AGENTS.md "Cross-platform
+# /bin/bash 3.2 — daarom geen `mapfile` en geen `declare -A` (zie AGENTS.md "Windows én macOS
 # scripts"). De case-insensitieve lookup zit in een POSIX-awk-array, één awk-aanroep per bestand.
 
 set -euo pipefail

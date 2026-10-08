@@ -146,15 +146,7 @@ public static class BerichtPipeline
                     var multiResults = new List<object>();
                     foreach (var datum in alleDatums)
                     {
-                        var req = new CheckAvailabilityRequest
-                        {
-                            Datum = datum,
-                            AanvangsTijd = classificatie.AanvangsTijd,
-                            LeeftijdsCategorie = classificatie.LeeftijdsCategorie,
-                            TeamNaam = classificatie.TeamNaam,
-                            Tegenstander = classificatie.Tegenstander,
-                            HeelVeld = classificatie.HeelVeld
-                        };
+                        var req = BouwBeschikbaarheidRequest(classificatie, datum);
                         var resp = await PlannerService.CheckAvailabilityAsync(req, log, clubCode);
                         multiResults.Add(new { datum, response = resp });
                     }
@@ -172,15 +164,7 @@ public static class BerichtPipeline
                 }
                 classificatie.Datum = primaireDatum;
 
-                var checkRequest = new CheckAvailabilityRequest
-                {
-                    Datum = primaireDatum,
-                    AanvangsTijd = classificatie.AanvangsTijd,
-                    LeeftijdsCategorie = classificatie.LeeftijdsCategorie,
-                    TeamNaam = classificatie.TeamNaam,
-                    Tegenstander = classificatie.Tegenstander,
-                    HeelVeld = classificatie.HeelVeld
-                };
+                var checkRequest = BouwBeschikbaarheidRequest(classificatie, primaireDatum);
                 var checkResponse = await PlannerService.CheckAvailabilityAsync(checkRequest, log, clubCode);
                 return JsonConvert.SerializeObject(checkResponse);
 
@@ -228,7 +212,8 @@ public static class BerichtPipeline
                                 {
                                     Datum = classificatie.GewensteDatum,
                                     LeeftijdsCategorie = classificatie.LeeftijdsCategorie,
-                                    TeamNaam = classificatie.TeamNaam
+                                    TeamNaam = classificatie.TeamNaam,
+                                    Dagdeel = classificatie.Dagdeel
                                 };
                                 var beschikbaarheid = await PlannerService.CheckAvailabilityAsync(gewenstRequest, log, clubCode);
                                 return JsonConvert.SerializeObject(new { wedstrijd, gewensteDatum = classificatie.GewensteDatum, beschikbaarheid });
@@ -238,6 +223,7 @@ public static class BerichtPipeline
                             {
                                 Wedstrijdcode = wedstrijd.Wedstrijdcode,
                                 VoorkeurTijd = classificatie.AanvangsTijd,
+                                Dagdeel = classificatie.Dagdeel,
                                 Richting = BerichtTekstHeuristiek.DetecteerRichting(bericht.Onderwerp, bericht.Body)
                             };
                             var herplanResponse = await PlannerService.CheckRescheduleAvailabilityAsync(herplanRequest, log, clubCode);
@@ -347,11 +333,12 @@ public static class BerichtPipeline
                         resultaten, classificatie, bericht, clubSettings);
                 }
 
+                var checkResponse = JsonConvert.DeserializeObject<CheckAvailabilityResponse>(plannerResponseJson);
                 var beschikbaarheidTemplate = await Email.EmailTemplateService.GetTemplateAsync("beschikbaarheid_check", clubCode, log);
                 if (beschikbaarheidTemplate != null)
-                    return trace.MeldOverride("beschikbaarheid_check", BerichtResponseGenerator.BouwAangepasteAntwoord(beschikbaarheidTemplate, classificatie, bericht, clubSettings));
+                    return trace.MeldOverride("beschikbaarheid_check", BerichtResponseGenerator.BouwAangepasteAntwoord(
+                        beschikbaarheidTemplate, classificatie, bericht, clubSettings, gecontroleerdDagdeel: checkResponse?.GecontroleerdDagdeel));
 
-                var checkResponse = JsonConvert.DeserializeObject<CheckAvailabilityResponse>(plannerResponseJson);
                 return BerichtResponseGenerator.BouwBeschikbaarheidAntwoord(
                     checkResponse ?? new CheckAvailabilityResponse(), classificatie, bericht, clubSettings);
 
@@ -541,6 +528,23 @@ public static class BerichtPipeline
             seizoen
         });
     }
+
+    /// <summary>
+    /// Het plannerverzoek voor één datum van een beschikbaarheidscheck. Geeft het door de afzender genoemde
+    /// dagdeel door (#1587), zodat de planner vensters en alternatieven binnen dat dagdeel zoekt in plaats
+    /// van het standaardvenster van de hele dag.
+    /// </summary>
+    internal static CheckAvailabilityRequest BouwBeschikbaarheidRequest(BerichtClassificatie classificatie, string datum)
+        => new()
+        {
+            Datum = datum,
+            AanvangsTijd = classificatie.AanvangsTijd,
+            Dagdeel = classificatie.Dagdeel,
+            LeeftijdsCategorie = classificatie.LeeftijdsCategorie,
+            TeamNaam = classificatie.TeamNaam,
+            Tegenstander = classificatie.Tegenstander,
+            HeelVeld = classificatie.HeelVeld
+        };
 
     /// <summary>
     /// De datum waarover een enkelvoudig verzoek gaat: de eerste datum uit de (mogelijk door
