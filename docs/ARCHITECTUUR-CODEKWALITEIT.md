@@ -240,6 +240,13 @@ Een uitzondering staat in `scripts/ci/codekwaliteit-valkuilen-allowlist.txt`, pe
 reden**. Een regel zonder reden laat de guard falen: een uitzondering die niemand kan beoordelen,
 groeit vanzelf uit tot gewoonte.
 
+**Tijdinvoer gaat altijd via `<TimeInput>`.** Elk invoerveld voor een tijd in Blazor gebruikt het
+component `BlazorAdmin/Shared/TimeInput.razor`. Dat roept `TimeHelper.Normalize()`
+(`BlazorAdmin/Services/TimeHelper.cs`) aan en accepteert `830`, `0830` en `8:30`, allemaal omgezet naar
+`HH:mm`. Een `<input type="time">` of een kale `<input @bind="...Tijd">` voor tijdinvoer is dus een
+architectuurschending; een nieuw tijdveld schrijf je als `<TimeInput @bind-Value="..." />`. (Verplaatst
+uit `AGENTS.md` bij #1580.)
+
 *Guard: `scripts/ci/check-codekwaliteit-valkuilen.sh`.*
 
 
@@ -451,6 +458,17 @@ databasewacht vóór die controle zetten. Ze roepen dezelfde `RequireAdmin`-poor
 met die reden in `scripts/ci/endpoint-autorisatie-allowlist.txt`. `Health` is het enige anonieme
 endpoint en staat daar als zodanig.
 
+**Derde variant, sinds #1330: `AdminEndpoint.ExecuteAuthenticatedAsync`.** Zelfde poort, maar hij
+accepteert elke ingelogde rol (`admin` én `user`) in plaats van uitsluitend `admin`. Uitsluitend voor
+endpoints die een eigenaar expliciet heeft aangewezen als "voor alle gebruikers, niet beheerder-only":
+de drie Teambegeleiding-lookup/doorstuur-endpoints (de CSV-import blijft bewust admin-only), de
+Planning-/Sportlink-viewing-endpoints (#1400) en sinds #764 de drie `/api/feedback/*`-endpoints. De
+nieuwe naam is bewust — geen parameter op `ExecuteAsync`, om dezelfde reden als bij de andere twee
+varianten (#1272). `scripts/ci/check-endpoint-autorisatie.sh` herkent hem expliciet als wrapper, en
+`EndpointAutorisatieTests.MetAlleenUserRol_Geeft403` (per tier) bewijst via de `AuthenticatedRoutes`-lijst
+zowel dat de aangewezen endpoints de rol `user` doorlaten als dat elk ander endpoint hem nog steeds
+weigert. Een nieuw endpoint op deze variant vraagt dus een eigenaarsbesluit én een regel in die lijst.
+
 **De test bewijst het per endpoint, zonder database.** `EndpointAutorisatieTests` (één per tier)
 vindt via reflectie élk `[Function]` met een `HttpTrigger` en roept het aan: zonder principal moet
 dat `401` geven, met alleen de rol `user` `403`, en met de vereiste rol(len) moet de aanroep de
@@ -525,7 +543,8 @@ Eerlijk vermeld, zodat niemand denkt dat het gedekt is.
 |---|---|---|
 | Testdekking per productiemap | `BlazorAdmin.Tests` heeft weinig tests tegenover bijna 7.000 regels Razor; dat groeit pas als regel 3 (code-behind) verder is doorgevoerd. De drie mappen zonder testproject zijn bij #1302 wél voorzien — zie hieronder. | Regel 3 |
 | Expressie-index bij een `UPPER()`-vergelijking (#1232) — **deels bewaakt sinds #1280** | In het algemeen niet schema-statisch te bepalen zonder de queries te parsen; de splinter-gate sluit `unused_index` bewust uit (§68 van `ARCHITECTUUR-DATABASE-TIERS.md`). De regel staat in `AGENTS.md`, de meting per tier in §69 en §75 daarvan. Voor de drie sleutelkolommen van de teamresolutie is het wél afdwingbaar gebleken, omdat de vergelijkingen op één plek staan. | `FunctionApp.Tests/TeamResolution/TeamCandidateIndexSargabilityTests.cs` voor de teamresolutiekolommen; daarbuiten handmatig: `EXPLAIN (ANALYZE, BUFFERS)` resp. `SHOWPLAN_TEXT` bij zo'n wijziging |
-| Precies één `source:`-label per issue (#1336) | Herkomst wordt handmatig gezet door de opsteller (Codex of Claude Code) — er is geen `setIssueStatus()`-achtige helper die dit afdwingt, en geen periodieke scan die een issue zonder of met dubbel `source:`-label signaleert. | Los issue indien gewenst: een periodieke workflow (zelfde vorm als `supabase-advisors.yml`) die open issues zonder precies één `source:`-label rapporteert |
+| Services, autorisatieregels (#1272) en achtergrondlogica zonder trigger in de tier-pariteit | `check-tier-pariteit.sh` bewaakt routes en timers in beide richtingen, niet wat geregistreerd wordt of draait zonder trigger. Een ontbrekende service of timer geeft niemand een 404; de database-uitvalmonitor (#831) stond zo jarenlang alleen op de SQL Server-tier. | Bij twijfel is een handmatige vergelijking van beide `Program.cs`-bestanden de snelste toets |
+| Precies één `source:`-label per issue (#1336) | Herkomst is een label en geen auteursveld: Codex en Claude Code werken via `gh issue create`/`gh api` onder credentials die niet per se een uniek account per assistent zijn, dus `issue.user.login` onderscheidt ze niet betrouwbaar. Herkomst wordt handmatig gezet door de opsteller (Codex of Claude Code) — er is geen `setIssueStatus()`-achtige helper die dit afdwingt, en geen periodieke scan die een issue zonder of met dubbel `source:`-label signaleert. | Los issue indien gewenst: een periodieke workflow (zelfde vorm als `supabase-advisors.yml`) die open issues zonder precies één `source:`-label rapporteert |
 | Verweesde `status: waiting-codex` (#1336, gedeprecieerd sinds #1343) | Historische wachtstatus zonder betrouwbare afrondingstrigger; de huidige wederzijdse reviews gebruiken expliciete fase/beurt en PR-bewijs. Een issue dat op `waiting-codex` blijft staan omdat niemand terugkomt, valt niet automatisch op. Sinds #1343 is dit label gedeprecieerd (zie `AGENTS.md`); de rij blijft staan zolang het label en zijn `PROTECTED`-vermelding nog bestaan. | Los issue indien gewenst: dagelijkse/wekelijkse cron die `status: waiting-codex`-issues ouder dan N dagen signaleert, of verwijder het label + de `PROTECTED`-vermelding zodra bevestigd is dat niets er meer naar verwijst |
 | Precies één `turn:`-label per issue (#1343) | Net als bij `source:` (zie rij hierboven): geen `setIssueStatus()`-achtige helper dwingt exclusiviteit af voor `turn: claude-code`/`turn: codex`/`turn: owner`, en er is geen periodieke scan die een issue zonder of met dubbel `turn:`-label signaleert. | Los issue indien gewenst: dezelfde periodieke workflow als voor `source:` uitbreiden met een `turn:`-check |
 | `/security-review` vóór elke release (#1470) | Afgedwongen door de skill `/release` (stap R1), niet door CI: een review in GitHub Actions vraagt een Anthropic API-sleutel en dus API-kosten. Een release buiten `/release` om (handmatig mergen van een `develop` → `main`-PR) slaat de review over. De automatische ondergrens is de Security Gate met CodeQL, die wél verplicht is op `main`. | Geen; bewust zo gelaten. Vangrail is de verplichte Security Gate |
@@ -628,6 +647,13 @@ ruimte waarin echte groei ongemerkt past: vijf PR's van elk twee regels zijn sam
 gekopieerd blok, en geen van vijf zou zijn opgevallen.
 
 ### Grenzen van instructiehandhaving
+
+**Instructies versus memory.** Het expliciete eigenaarsbesluit is leidend. Een memory-notitie over
+een besluit vermeldt besluitdatum, PR, geldende afspraak en uitrolstatus (draft/ongemerged, develop,
+main): een nog ongemergede PR betekent dat de gedeelde branches nog de vorige tekst bevatten. Bij
+sessiestart wordt die status gecontroleerd en worden oude verboden niet als actuele instructie herhaald.
+Memory geeft geen extra merge- of deploybevoegdheid. (Verplaatst uit `AGENTS.md` bij #1580; de
+kernregel staat daar nog.)
 
 De skillguard vergelijkt alle bestanden van elke skill met zijn kopie; skills die uitsluitend voor
 Claude Code bestaan staan op `scripts/ci/skills-alleen-claude.txt` en hebben geen kopie. De stubguard

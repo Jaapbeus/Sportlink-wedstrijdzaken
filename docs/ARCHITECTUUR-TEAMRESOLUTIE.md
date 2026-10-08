@@ -366,7 +366,9 @@ Zie ook `docs/ARCHITECTUUR-DATABASE-TIERS.md` §28.
    terug. Komt er ooit weer een disambiguator (mens of AI), dan gelden dezelfde twee eisen als
    vóór #1268: hij mag **alleen kiezen uit aangeboden kandidaten**, met die keuze altijd in C#
    gevalideerd tegen die lijst — nooit vrije generatie van een teamnaam — en hij landt op beide
-   tiers tegelijk (regel 6), nooit als functionaliteit van één tier.
+   tiers tegelijk (regel 6), nooit als functionaliteit van één tier. Een daaruit geleerde alias is
+   daarnaast **pas waarheid na goedkeuring** door een coördinator (status `validated`), zodat een
+   foutieve gok zich niet kan zelfversterken.
 4. **Nieuwe naamvormen eerst tegen echte data verifiëren** vóór je de normalisatie aanpast:
    `stg.teams` én `his.teams` op SQL Server, **alleen `his.teams` op Postgres** — daar bestaat
    geen `stg`-schema (de migraties kennen uitsluitend `his.teams`, `his.matches` en
@@ -376,6 +378,10 @@ Zie ook `docs/ARCHITECTUUR-DATABASE-TIERS.md` §28.
 6. **Wijzig beide tiers.** De normalisatie is gedeeld, maar `TeamResolver`,
    `TeamCandidateRepository`, `TeamAliasLearningService` en `TeamCanonicalisatieService` bestaan
    per tier in een eigen kopie. Een wijziging in één boom is onaf (#1266).
+7. **Ruim `TeamAliasLearningService` en `ResolutionBron.AiDisambiguatie` niet op zonder de vraag uit
+   regel 3 te beantwoorden.** Ze staan er nog, ongebruikt, op beide tiers (`AiDisambiguatie` bestaat
+   in beide `TeamResolutionModels.cs`) en zijn het aanknopingspunt als een disambiguator terugkomt;
+   ze weghalen bij één tier zou de pariteit opnieuw breken. (Verplaatst uit `AGENTS.md`, #1580.)
 
 ## Postgres-collatie-kanttekening (#820)
 

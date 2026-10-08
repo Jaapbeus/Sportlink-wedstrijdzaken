@@ -58,6 +58,22 @@ GOED (beschrijft het probleem zonder enige waarde):
   clubnaam als default-waarde. Dit schendt het multi-club principe."
 ```
 
+Twee varianten van dezelfde fout, omdat ze minder opvallen dan een resourcenaam:
+
+```
+FOUT (de tekst noemt de waarde niet, maar wél waar die te vinden is):
+  "tenantId: [TENANT_ID] staat in scripts/Configure-EntraApp.ps1"
+
+GOED:
+  "scripts/Configure-EntraApp.ps1 regel 35: TenantId is hardcoded als parameter-default"
+
+FOUT (de tekst noemt het type waarde en maakt zo de zoekterm duidelijk):
+  "SWA URL: [swa-url].azurestaticapps.net staat hardcoded in script"
+
+GOED:
+  "scripts/deploy.ps1 regel 290: SWA-URL is hardcoded in plaats van via een omgevingsvariabele"
+```
+
 ### Controleplicht vóór elk gh-commando dat naar GitHub schrijft
 
 Vóór `gh issue create`, `gh issue comment`, `gh pr create`, `gh pr comment`:
