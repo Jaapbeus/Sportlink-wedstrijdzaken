@@ -313,8 +313,9 @@ en elke symlink op een instructiepad. Een getrackt `.claude/settings.json` mag a
 `permissions` (daarbinnen `allow`/`deny`/`ask`) bevatten: een toelatingslijst, dus ook een nieuwe sleutel of
 alias (hooks, outputstijl, agent, plugins en marketplaces, `pluginConfigs` dat bronselectie van AGENTS.md
 instelt, `claudeMdExcludes`, `autoMemoryDirectory`, `env`, …) faalt. Een `.codex/config.toml` wordt als
-TOML-structuur gelezen en mag UITSLUITEND `model`, `model_reasoning_effort`, `approval_policy`, `sandbox_mode`
-en de tabel `sandbox_workspace_write` bevatten (ook binnen een profiel): een toelatingslijst, geen
+TOML-structuur gelezen en mag UITSLUITEND `model`, `model_reasoning_effort`, `approval_policy` (een string, of de
+`granular`-vorm met exact de vier booleans `mcp_elicitations`, `rules`, `sandbox_approval` en `skill_approval`),
+`sandbox_mode` en de tabel `sandbox_workspace_write` bevatten (ook binnen een profiel): een toelatingslijst, geen
 verbodslijst. Dat is bewust ruimer dan een lijst van bekende instructiesleutels: `model_catalog_json` laadt
 via een modelcatalogus extra instructievelden en bleef bij een verbodslijst ongezien (Codex-review ronde 2,
 lokaal met `codex debug prompt-input` bevestigd). De lezer is een structuurlezer, geen volledige
@@ -339,6 +340,14 @@ vast: groei faalt, winst van meer dan 1024 bytes moet in dezelfde PR in het plaf
 een bestand zonder plafond of een plafond zonder bestand faalt, en de scheidingstekens tellen mee.
 Verhogen is een diff die de eigenaar goedkeurt, geen tolerantie.
 
+*Structurele maxima, niet te verhogen via het plafondbestand.* De guard kent drie absolute grenzen:
+root-`AGENTS.md` 27 KiB, een `AGENTS.md` in een submap 4 KiB en elke keten van root tot werkmap 30 KiB
+inclusief scheidingstekens (2 KiB marge onder het Codex-budget van 32 KiB). Een plafond boven zo'n
+maximum faalt, en een meting boven het maximum ook: ze staan in de guard omdat een
+bestandswijziging alleen geen eigenaarsbesluit is. Wat boven het budget uitkomt, hoort in `docs/`
+(zie §13.1 van `ARCHITECTUUR.md`) met een leesmoment in `AGENTS.md`. De route daarheen en de
+regel→bestemming-matrix staan in `DOSSIER-AGENTINSTRUCTIES-BUDGET.md`.
+
 *Guards: `scripts/ci/check-agent-instructies.py` (stubs, bron, laadpaden, omvang, codeblokken),
 `scripts/ci/check-agent-instructies.test.py` (fixturetests; de verwachtingen over budget, krimpmarge,
 verplichte skills en verboden sleutels staan daar uitgeschreven en komen niet uit de guard) en
@@ -349,7 +358,7 @@ elke regel of elke foutmelding gedekt is) en `scripts/ci/sync-skills.py` (skillk
 ### Regel 6 — Een nieuwe regel krijgt een guard, of wordt als onbewaakt gemarkeerd
 
 Dit is de regel die de andere zeven overeind houdt, en de directe les van dit onderzoek. Wie een
-harde regel toevoegt aan CLAUDE.md of aan dit document, doet één van twee dingen:
+harde regel toevoegt aan AGENTS.md of aan dit document, doet één van twee dingen:
 
 1. schrijft er een guard bij en zet die in het register hieronder; of
 2. zet hem in het register met `handmatig` en één zin over waarom een controle niet kan.
@@ -665,9 +674,9 @@ en niet dat Codex het hele bestand ziet: Codex leest standaard maximaal 32 KiB a
 (`project_doc_max_bytes`, zie #1580). De omvangcontrole bewaakt de bytes in de repository; ze bewijst
 niet wat een gebruikersinstelling op een andere machine doet, en een vertrouwd project met een
 projectconfig kan het budget wél verhogen — daarom weigert de guard die sleutels in `.codex/config.toml`:
-het budget moet binnen de standaard passen. **Stand van deel A:** de plafondwaarden staan nog op de meting
-vóór de verkleining (124.770 en 140.947 bytes) en liggen dus boven het budget van Codex; de guard voorkomt
-alleen verdere groei en geeft een waarschuwing. De absolute grens volgt bij deel C van #1580. De
+het budget moet binnen de standaard passen. **Stand na deel C:** de plafonds staan op de gemeten omvang van de
+compacte kern (27.522 en 29.617 bytes, onder de structurele maxima en onder het budget van Codex); de
+absolute grens zit in de guard. De
 toelatingsmatrix hierboven volgt de documentatie van de clientversies waartegen is getoetst (Claude Code 2.1.x,
 Codex 0.158.0); native Windows, junctions en case-insensitieve bronselectie zijn niet beproefd. De
 fencecheck controleert alleen top-level fences (maximaal drie spaties inspringing) in skills en

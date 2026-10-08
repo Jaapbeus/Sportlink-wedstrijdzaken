@@ -59,7 +59,7 @@ in `AGENTS.md`, compacter. De laatste kolom noemt wat verhuisde of vervalt, en w
 | 1 | Rollen (5–19) | 910 | HARD | inline | — |
 | 2 | Eigenaarschap en overlap (20–54) | 2.950 | HARD | inline | — |
 | 3 | Bevoegdheden en merge/deploy (55–76) | 1.610 | HARD | inline | — |
-| 4 | Wederzijdse review en `turn:` (77–119) | 3.170 | HARD | inline | Alleen herformulering; geen inhoud verplaatst |
+| 4 | Wederzijdse review en `turn:` (77–119) | 3.170 | HARD | inline | Herformulering; "automatische ontwikkelruns" en "raak geen andere issues/PR's aan" teruggezet na de onafhankelijke controle (§7) |
 | 5 | Gedeelde debugomgeving (120–136) | 1.280 | HARD | inline | — |
 | 6 | Werkinstructies wijzigen (137–171) | 2.440 | HARD | inline | Formaat memory-notitie → `ARCHITECTUUR-CODEKWALITEIT.md` ("Grenzen van instructiehandhaving") |
 | 7 | Kostenbeleid: harde regels (174–201) | 1.380 | HARD | inline | Meldingsformat blijft inline (andere documenten citeren het) |
@@ -108,7 +108,60 @@ in `AGENTS.md`, compacter. De laatste kolom noemt wat verhuisde of vervalt, en w
 
 De bytes zijn bij benadering; de exacte sectiegrenzen staan in het Codex-rapport bij #1580.
 
-## 5. Wat niet is herzien, en wat open blijft
+## 5. Resultaat
+
+| | Vóór | Na | Grens |
+|---|---:|---:|---:|
+| `AGENTS.md` (root) | 124.770 B | 27.522 B | 27 KiB (guard), doel was circa 24 KiB |
+| `FunctionApp/AGENTS.md` | 16.175 B | 2.093 B | 4 KiB |
+| keten root → `FunctionApp/` | 140.947 B | 29.617 B | 30 KiB inclusief scheidingstekens (Codex: 32 KiB) |
+
+De root komt ruim 2,5 KiB boven het streefgetal van circa 24 KiB uit. De bindende grens is de keten van 30 KiB;
+de root is niet verder ingekort omdat daarvoor een harde regel (bevoegdheid, isolatie, reviewbeurt, security/AVG,
+publicatieregel 4a, kostenstop of een architectuur-/live-testgrens) achter een link had moeten verdwijnen. Een
+volgende verkleining kan de resterende toelichting in de alinea's *Architectuurinvarianten* en *Werkinstructies
+wijzigen* verplaatsen; de guard houdt de omvang tot dan op het huidige plafond.
+
+## 6. Verificatie (lokaal, zonder betaalde model-API)
+
+**Codex 0.158.0** — `codex debug prompt-input` zonder byte-override, in een worktree van deze repository:
+
+- cwd = repositoryroot: de instructietekst is 27.524 bytes; eerste en laatste regel van `AGENTS.md` staan erin, ook de
+  publicatieregel (de zin over vindaanwijzingen) en de tabel *Leesmomenten*.
+- cwd = `FunctionApp/`: de instructietekst is 29.619 bytes (= 27.522 + 2 + 2.093 + 2 bytes wrapper); beide bestanden volledig,
+  inclusief de laatste regel van `FunctionApp/AGENTS.md`.
+- Voor de wijziging eindigde de zichtbare tekst bij byte 32.768, midden in *Stap 2b*; de veiligheidsregels ontbraken.
+
+**Claude Code 2.1.293** — `claude -p "/context"` met een `InstructionsLoaded`-hook (geen modelaanroep) toont per geladen bestand
+pad en `load_reason`:
+
+- cwd = root: `CLAUDE.md` (session_start) en `AGENTS.md` (include) — dezelfde kern als Codex.
+- cwd = `FunctionApp/`, standaardinstelling van de gebruiker: `FunctionApp/CLAUDE.md`, `FunctionApp/AGENTS.md` en de root-`CLAUDE.md`,
+  maar **niet** de root-`AGENTS.md`: de `@`-import van een ancestor-`CLAUDE.md` buiten de werkmap vraagt per project
+  goedkeuring (`hasClaudeMdExternalIncludesApproved` in `~/.claude.json`). Een gebruikersinstelling die de repository niet kan
+  afdwingen. Mitigatie: `FunctionApp/AGENTS.md` begint met een leesmoment ("lees `../AGENTS.md` als de rootregels niet in je
+  context staan").
+- cwd = `FunctionApp/` met die goedkeuring (tijdelijke `CLAUDE_CONFIG_DIR`, projectsleutel van de hoofdrepository én de worktree):
+  alle vier de bestanden worden geladen. Een worktree onder `.claude/worktrees/` hoort bij het project van de hoofdrepository.
+
+## 7. Onafhankelijke controle op regelbehoud
+
+Een tweede, niet door de implementer gestuurde controle (Opus, met alleen het oude en het nieuwe bestand en het criterium van de
+eigenaar) vond na de eerste verkleining: twee verdwenen bevoegdheidsregels ("een onderzoeksopdracht verleent geen
+implementatieopdracht"; "een automatische ontwikkelrun vraagt een aparte eigenaarsopdracht"), één feitelijk onjuiste regel (een
+verwijzing naar `IEmailVerzendService`, dat nog niet bestaat) en zes afgezwakte regels (blokkadegeval bij review, release-securitypoort
+voor secret-alerts, AVG-delen van Feedback, "een guard moet rood kunnen worden", de plicht tot dashboardcontrole, hostcontrole bij SSRF).
+Alle negen zijn hersteld; extra teruggezet zijn de `source:`-aanvulregel, "duplicatie alleen omlaag", het verbod om een Sportlink-request-URL te
+loggen (stond alleen in de submap-instructie van één tier) en de executable-bit van hooks. De overige lichte punten staan in een document met
+een leesmoment en zijn bewust niet teruggezet. Het compenseren van ~700 bytes gebeurde door formuleringen te verkorten.
+
+## 8. Wat niet is geverifieerd
+
+Niet getest: Codex-desktop en cloud-runs, Windows, de interactieve goedkeuringsdialoog van Claude Code (de instelling is
+alleen uit configuratie en gedrag afgeleid), de Claude-desktop-app en andere clients. Een model dat de regels leest volgt ze
+niet daarmee; dit bewijst alleen wat er in de context komt.
+
+## 9. Wat niet is herzien, en wat open blijft
 
 - De actualiteit van de kostentabellen (de Function App draait op Flex; of de rij *Azure SQL Database Free
   offer* nog geldt) is **niet herzien** maar ongewijzigd overgenomen, met een opmerking in
@@ -116,5 +169,5 @@ De bytes zijn bij benadering; de exacte sectiegrenzen staan in het Codex-rapport
 - De procedure voor een hotfix-backport in `BEHEERDER-HANDLEIDING.md` (een PR `main` → `develop`) wees af
   van de regel in `AGENTS.md` (aparte backport-branch zonder versie en CHANGELOG). Ze is gelijkgetrokken
   met `AGENTS.md`; dat is een herstel van een tegenstrijdigheid, geen nieuw besluit.
-- Verwijzingen in andere documenten, skills en workflows naar `AGENTS.md`-kopjes die bij de verkleining
-  verdwijnen worden in PR C nagelopen.
+- Verwijzingen in andere documenten, skills, workflows en code-opmerkingen naar `AGENTS.md`-kopjes die bij de
+  verkleining verdwenen zijn, zijn aangepast (alleen tekst; geen gedrag).

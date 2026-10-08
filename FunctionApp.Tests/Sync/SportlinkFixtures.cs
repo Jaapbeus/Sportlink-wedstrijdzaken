@@ -2,8 +2,7 @@ namespace FunctionApp.Tests.Sync;
 
 /// <summary>
 /// Opgenomen Sportlink-API-antwoorden in het echte gegevensformaat (#867) — veldnamen en -vormen
-/// (datumformaten, query-opbouw) zijn overgenomen uit FunctionApp/AGENTS.md's "Sportlink API
-/// Reference" (live gevalideerd tegen <c>https://data.sportlink.com</c>), niet bedacht. Bewust géén
+/// (datumformaten, query-opbouw) zijn overgenomen uit docs/SPORTLINK-DATASERVICE.md (veldreferentie) (live gevalideerd tegen <c>https://data.sportlink.com</c>), niet bedacht. Bewust géén
 /// demodata-vorm: de demodataseed (<c>Script.PostDeployment1.sql</c>) schrijft datums in een ander
 /// formaat dan de echte bron levert, en juist datuminterpretatie is een bekend verschil tussen
 /// database-engines (#867-issuetekst) — een test die alleen tegen demodata draait, mist dat.
@@ -82,7 +81,7 @@ public static class SportlinkFixtures
             """);
 
         // /uitslagen verrijkt de bestaande /programma-rij alleen met scorevelden — zelfde
-        // wedstrijdcode, geen nieuwe wedstrijd (zie FunctionApp/AGENTS.md, "Sync strategie").
+        // wedstrijdcode, geen nieuwe wedstrijd (zie docs/SPORTLINK-DATASERVICE.md, "Synchronisatiestrategie").
         server.RespondWithJson("/uitslagen", UitslagenJson(wedstrijdcode, clubCode));
 
         server.RespondWithJson("/wedstrijd-informatie", $$"""

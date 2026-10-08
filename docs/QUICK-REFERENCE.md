@@ -33,7 +33,7 @@ Geldt voor **Windows** en **macOS (Apple Silicon)** (#800); zie
 
 > **Nooit** `Stop-Process -Name "dotnet"` (of `"func","dotnet","node"`) gebruiken — dat sloopt élk
 > dotnet-proces op de machine, en `dotnet watch` start zijn kindproces meteen weer op (poort 5242
-> raakt dan meteen weer bezet in plaats van vrij). Zie AGENTS.md Stap 2i.
+> raakt dan meteen weer bezet in plaats van vrij). Zie AGENTS.md, Stap 2 (`Stop-Debug.ps1`).
 
 ## Verificatie
 

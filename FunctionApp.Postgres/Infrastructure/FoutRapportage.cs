@@ -9,8 +9,8 @@ namespace FunctionApp.Postgres.Infrastructure;
 /// Postgres-tier-aansluiting op de gedeelde <see cref="GedeeldeIssueReporter"/>
 /// (#1268). Tot dit bestand bestond had alleen de SQL Server-tier automatische foutrapportage,
 /// terwijl de Postgres-tier degene is die in productie draait: runtimefouten bleven daar een
-/// logregel die niemand las. Beide tiers zijn gelijkwaardig (AGENTS.md, "Multi-tier
-/// databasestrategie"), dus de rapportage hoort op beide.
+/// logregel die niemand las. Beide tiers zijn gelijkwaardig (AGENTS.md, "Architectuurinvarianten",
+/// Databasetiers), dus de rapportage hoort op beide.
 /// <para>
 /// Hier staat alleen wat per tier verschilt: de <see cref="EgressGuard"/> van déze Function App
 /// (#857) en het namespace-voorvoegsel waarmee de fingerprint de eerste eigen stackframe herkent.

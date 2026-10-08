@@ -122,7 +122,7 @@ ontwerppunt, niet opgelost door retry alleen.
 
 Zie sectie 2 hierboven — dit document maakt zelf geen Azure-resource aan, dus is er geen
 verificatiemoment nodig om dít document af te ronden. Bij daadwerkelijke implementatie is de
-volledige AGENTS.md-kostenchecklist (inclusief een hernieuwde MS Docs-prijsverificatie, want
+volledige kostenchecklist (`ARCHITECTUUR.md` §8.6) (inclusief een hernieuwde MS Docs-prijsverificatie, want
 gratis-tier-voorwaarden kunnen zonder aankondiging wijzigen) verplicht vóór aanmaak.
 
 ## Gerelateerd
