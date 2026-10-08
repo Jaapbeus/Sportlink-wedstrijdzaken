@@ -192,7 +192,10 @@ wat #1322 al voorspelde: twaalf pagina's herhaalden woordelijk dezelfde clubwiss
 (abonneren op `ClubSelectorService.OnChange`, `InvokeAsync`, `StateHasChanged`, afmelden bij
 Dispose). Die is bij #1328 gecentraliseerd in `BlazorAdmin/Pages/ClubSelectorPageBase.cs` — een
 pagina die op een clubwissel moet reageren, erft daarvan over en overschrijft alleen
-`OnClubChangedAsync()`.
+`OnClubChangedAsync()`. Sinds #1578 gaat `OnChange` alleen af bij een echte wijziging van de
+clubcode (naamsynchronisatie en de menuvlag Sportlink-extensie hebben eigen gebeurtenissen:
+`OnClubNameChange`, `OnSportlinkExtensionChange`) en slaat de basis een herlaadronde over als de
+club gelijk is aan die waarvoor de pagina is geladen (`ClubWisselTracker`).
 
 ### Regel 3b — CSS isolation, geen `<style>`-blok of statische inline style
 
