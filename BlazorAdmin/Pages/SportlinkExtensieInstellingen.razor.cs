@@ -48,13 +48,19 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
         settings = null;
         if (_isTestmodus) return;
 
+        // #1578: vier onafhankelijke aanroepen (elk vult eigen velden) parallel in plaats van na elkaar.
+        await Task.WhenAll(
+            LaadInstellingenAsync(),
+            LaadSportlinkExtensieRollenAsync(),
+            LaadAutoLoginStatusAsync(),
+            LaadSportlinkHealthAsync());
+    }
+
+    private async Task LaadInstellingenAsync()
+    {
         var r = await Api.GetSettingsAsync();
         if (r.Success) settings = r.Data;
         else errorMessage = r.ErrorMessage;
-
-        await LaadSportlinkExtensieRollenAsync();
-        await LaadAutoLoginStatusAsync();
-        await LaadSportlinkHealthAsync();
     }
 
     private async Task LaadAutoLoginStatusAsync()

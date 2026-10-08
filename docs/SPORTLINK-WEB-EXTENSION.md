@@ -756,7 +756,8 @@ test getriggerd wordt:
 - **Menu-zichtbaarheid (#1122):** "Wijzigingsverzoeken" en "Wedstrijden" (menu-item voor het scherm
   "Oefenwedstrijd aanmaken", #1321) staan alleen in het menu als de extensie aan staat
   (`ClubSelectorService.SportlinkExtensionEnabled`, gevuld door
-  NavMenu bij laden/clubwissel en bijgewerkt door de instellingenpagina na opslaan). Een directe
+  NavMenu bij laden/clubwissel en bijgewerkt door de instellingenpagina na opslaan; sinds #1578
+  via de eigen gebeurtenis `OnSportlinkExtensionChange`, zodat pagina's er niet op herladen). Een directe
   URL werkt nog wel; de API antwoordt dan 409 "Sportlink Web Extension staat uit."
 
 - Onofficiële integratie: kan bij een Sportlink-release breken (bundle-hashes wijzigen al vaker dan

@@ -43,7 +43,10 @@
         </div>
 
         <article class="content px-4">
-            @Body
+            @if (_geinitialiseerd)
+            {
+                @Body
+            }
         </article>
     </main>
 </div>
@@ -51,6 +54,7 @@
 @code {
     private List<ClubDto> _clubs = new();
     private bool _backendBezig = true;
+    private bool _geinitialiseerd;
     private CancellationTokenSource _cts = new();
 
     private bool IsTestmodus =>
@@ -59,7 +63,12 @@
     protected override async Task OnInitializedAsync()
     {
         ClubSelector.OnChange += OnClubSelectorChanged;
+        ClubSelector.OnClubNameChange += OnClubSelectorChanged;
         await ClubSelector.InitializeAsync();
+        // De gekozen club is nu bekend: pas daarna Body renderen, anders laadt elke pagina eerst
+        // zonder club en daarna nog eens mét club (#1578).
+        _geinitialiseerd = true;
+        StateHasChanged(); // niet wachten tot de clublijst binnen is (koude start kan 36 s duren)
         await LaadClubsAsync(_cts.Token);
     }
 
@@ -82,10 +91,10 @@
                 }
                 else
                 {
-                    // Naam synchroniseren voor de al-geselecteerde club (bijv. na pagina-refresh)
+                    // Naam synchroniseren voor de al-geselecteerde club (bijv. na pagina-refresh).
+                    // Stil: dit mag de pagina's niet laten herladen (#1578).
                     var naam = _clubs.FirstOrDefault(c => c.ClubCode == ClubSelector.SelectedClubCode)?.ClubName;
-                    if (!string.IsNullOrWhiteSpace(naam))
-                        await ClubSelector.SelectClubAsync(ClubSelector.SelectedClubCode!, naam);
+                    ClubSelector.SynchroniseerClubNaam(naam);
                 }
                 _backendBezig = false;
                 return;
@@ -114,5 +123,6 @@
     {
         _cts.Cancel();
         ClubSelector.OnChange -= OnClubSelectorChanged;
+        ClubSelector.OnClubNameChange -= OnClubSelectorChanged;
     }
 }
