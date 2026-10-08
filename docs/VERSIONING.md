@@ -377,15 +377,82 @@ release-notes vindt.
    - `release.yml` — maakt de GitHub Release aan met de notes uit de CHANGELOG-sectie.
    - `close-released-issues.yml` — sluit de issues uit die sectie (en uit de commit-subjects sinds
      de vorige tag) en verwijdert hun label `status: awaiting-release`.
-6. **Controleer de deploy per job** en doe de live browser-rendercheck op de Admin GUI — zie de
-   veiligheidsregels in `AGENTS.md`. Een groene workflow bewijst niet dat de GUI rendert.
+
+   *Waarom een issue pas bij de tag sluit en niet bij de merge naar `develop`.* Op 2026-07-26 werden
+   issues gesloten zodra hun fix-PR naar `develop` mergde, terwijl `develop` soms weken en tientallen
+   commits achterloopt op `main`: ze oogden "opgelost" terwijl de fix niet in productie stond. Een
+   develop-merge zet daarom alleen `status: awaiting-release` (workflow `label-awaiting-release.yml`);
+   een agent sluit nooit zelf een issue direct na zo'n merge. Enige uitzondering: een hotfix-PR naar
+   `main` mag na een succesvolle merge plus een groene `close-released-issues.yml`-run als gesloten
+   worden gerapporteerd, want die code staat dan al live.
+6. **Controleer de deploy per job** en doe de live browser-rendercheck op de Admin GUI. Een groene
+   workflow bewijst niet dat de GUI rendert. (De per-job controle staat in `AGENTS.md`, absolute
+   veiligheidsregel 2; de commando's ook in de skill `/release`.)
+
+   **Checklist live rendercheck** (echte browser — Playwright of een verse incognito-sessie — op de
+   productie-URL van de Admin GUI, ná de per-job controle en vóór je "geslaagd" meldt):
+
+   ```
+   □ Console (F12): ZERO fouten — let specifiek op:
+       - "violates the following Content Security Policy directive"  → inline script geblokkeerd (#659)
+       - "Failed to start platform"                                  → Blazor start niet
+       - "Failed to load resource: 404" op iets in /_framework/       → asset niet resolvebaar
+   □ De pagina hangt NIET op het laadscherm: window.Blazor bestaat
+   □ Er is een redirect naar login.microsoftonline.com, óf de UI rendert voor een ingelogde sessie
+   □ Geen "An unhandled error has occurred"-banner
+   □ Na inloggen: een pagina met gegevens laadt daadwerkelijk gegevens (bewijst dat CORS klopt)
+   ```
+
+   Faalt één punt? Dan is de release **niet** geslaagd: direct een hotfix vanuit `main`, en melden
+   aan de gebruiker. Achtergrond: `ARCHITECTUUR.md` §7.3 (incident v2.17.2.0).
 
 Alternatief voor stap 5: `release.yml` handmatig starten via *Actions → Release aanmaken → Run
 workflow* met het versienummer als input.
 
+### Hotfix en backport naar develop (#1287)
+
+Een hotfix (`hotfix/#<nr>-…` of `codex/hotfix-<nr>-…`) is pas af als hij ook terug in `develop` staat.
+De `hotfix/`-branch gaat naar `main` en daarmee de lucht in, maar `develop` heeft die commit dan niet.
+Het gaat niet fout bij de eerstvolgende release: `develop` raakte het bestand niet aan, dus de merge
+behoudt de versie van `main` en de fix wordt niet teruggedraaid. Het gaat fout bij wie daarna aan dat
+stuk code verder werkt: die leest op `develop` de oude code, de oude documentatie en een testsuite die
+de fout niet tegenhoudt.
+
+**Procedure.** Direct na de merge naar `main`: een `feature/#<nr>-backport-…`-branch vanuit `develop`,
+met daarin uitsluitend de codewijziging, de tests en de documentatie van de hotfix — **niet** het
+versienummer en **niet** de CHANGELOG-sectie van de release, want die twee lopen op `develop` vooruit.
+(Dit is dus bewust geen PR `main` → `develop`: die zou beide meenemen.)
+
+**Controleer op inhoud, niet op commits.** `git log --oneline origin/develop..origin/main` vindt de
+achterstand, maar blijft de hotfix-commits daarna tonen: een backport is inhoudelijk gelijk, niet
+dezelfde commit, en `--cherry-mark` ziet dat ook niet omdat het versienummer en de CHANGELOG bewust niet
+mee overkomen. Toets dus per bestand:
+
+```bash
+# 1. Wat zit er op main en niet op develop?  Alleen release-merges is goed.
+git log --oneline origin/develop..origin/main
+
+# 2. Is een commit uit die lijst inhoudelijk wél overgekomen?
+for f in $(git show --name-only --format= <sha> | grep -vE '\.csproj$|^CHANGELOG\.md$'); do
+    git diff --quiet origin/develop origin/main -- "$f" || echo "nog niet overgenomen: $f"
+done
+```
+
+Stap 2 levert een **lijst om na te lopen, geen oordeel**. Een bestand dat hij noemt is óf nog niet
+overgenomen, óf een bestand waar `develop` inmiddels terecht verder is dan `main`. Bij codebestanden
+is dat vrijwel altijd het eerste; bij documentatie vaak het tweede (bij de backport van #1244 bleef
+`docs/EMAIL-VERWERKING.md` in de lijst staan terwijl de hotfix-alinea er wél in zat — `develop` had daar de
+nieuwere tekst van #1269). Neem van een document daarom altijd alleen de hunk van de hotfix over
+(`git show <sha> -- <pad> | git apply --3way`) en controleer die met de hand. **Nooit
+`git checkout main -- <pad>`**: dat zou nieuwere documentatie terugdraaien.
+
 ---
 
 ## 7. Changelog-stijlgids
+
+**Plicht.** Elke commit die een feature of fix bevat voegt een entry toe onder `## [Unreleased]`, in
+een van de secties `### Added`, `### Changed`, `### Fixed`, `### Security` of `### Removed`. Schrijf voor
+de gebruiker, niet voor de developer ("Beheerders kunnen nu X", niet "Methode Y refactored").
 
 ### Schrijf voor de beheerder, niet de developer
 

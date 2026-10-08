@@ -298,7 +298,10 @@ Teams met een grijze "Onbekend"-badge blokkeren wel hun tijdslot voor andere tea
 
 1. Branch aanmaken vanaf `main`: `git checkout -b hotfix/#<nr>-<slug> main`
 2. Fix + PR naar `main`
-3. Na merge ook PR `main` → `develop` aanmaken zodat `develop` gesynchroniseerd blijft
+3. Na merge de fix terugbrengen in `develop` met een aparte `feature/#<nr>-backport-…`-branch vanuit
+   `develop` die uitsluitend de code, tests en documentatie van de hotfix bevat — **niet** het
+   versienummer en niet de CHANGELOG-sectie van de release (een PR `main` → `develop` zou die
+   meenemen). Procedure en controle: `docs/VERSIONING.md`, sectie *Hotfix en backport naar develop*
 4. CI op `main` controleert de deploy (`.github/workflows/deploy.yml`)
 
 ---

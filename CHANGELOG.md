@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- **Documentatie**: toelichting, voorbeelden en uitvoeringsdetail die alleen in het instructiebestand `AGENTS.md` stonden, staan nu ook in de gezaghebbende documenten: de kostentabellen en deployment-checklist (`ARCHITECTUUR.md` §8.6), de hotfix-backportprocedure en de checklist voor de live rendercheck (`VERSIONING.md`), de shell- en PowerShell-portabiliteitsregels (`VERIFICATIE-SCRIPTS.md`, `DEVELOPER-SETUP.md`) en de updatechecklist per document (`DOCUMENTATIEPLAN.md`). Nieuw is `SPORTLINK-DATASERVICE.md` met de veldreferentie van de Sportlink-dataservice, en de procedure voor een hotfix in de beheerdershandleiding is gelijkgetrokken met de geldende regel. Dit is stap 2 van issue #1580; de verkleining van `AGENTS.md` zelf volgt daarna.
+
 ## [3.12.0.0] — 2026-10-07
 
 ### Added

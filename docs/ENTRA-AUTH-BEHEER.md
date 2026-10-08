@@ -2,6 +2,14 @@
 
 Dit document beschrijft de volledige authenticatie- en autorisatieconfiguratie van de Blazor Admin GUI in Azure Entra ID, en hoe je deze met één commando idempotent kunt verifiëren en herstellen.
 
+> **Nooit via de Azure Portal aanpassen in productie.** Verschillen tussen tenants, instellingen die
+> wegvallen of één verkeerd geklikte checkbox kunnen alle gebruikers buitensluiten. Gebruik altijd de
+> scripts in `scripts/azure/` (`Verify-AzureAuthSetup.ps1` is read-only; `Configure-EntraApp.ps1` is
+> idempotent en heeft `-WhatIf`). Het script faalt snel als de Azure CLI niet op de juiste tenant zit.
+> Sluit na elke wijziging alle browser-tabs van de Admin GUI en log opnieuw in in een verse
+> incognito-sessie: MSAL bewaart het ID-token in `localStorage`, dus zonder verse sessie blijft de
+> oude (rolloze) token in gebruik.
+
 > **TL;DR — bij elke wijziging in auth-config:**
 >
 > ```powershell

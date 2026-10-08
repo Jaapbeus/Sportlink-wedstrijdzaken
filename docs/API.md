@@ -1,5 +1,23 @@
 # Sportlink API Documentatie
 
+> **De specificatie bijhouden (verplicht bij elk nieuw, gewijzigd of verwijderd endpoint).** Nooit een
+> endpoint-wijziging committen zonder de spec bij te werken: ze is het contract voor andere systemen,
+> consumers en toekomstige agentsessies, en een verouderde spec misleidt (erger dan geen spec).
+>
+> ```
+> □ docs/api-standaarden/openapi.yaml bijgewerkt (nieuwe route, gewijzigde parameters, nieuwe response)?
+> □ docs/api-standaarden/openapi.json gesynchroniseerd — altijd uit de YAML gegenereerd, nooit met de hand?
+> □ info.version in openapi.yaml bijgewerkt naar de huidige appversie?
+> □ dit document (endpointtabel + voorbeelden) bijgewerkt?
+> ```
+>
+> `openapi.json` regenereer je uit de YAML (vereist Python met PyYAML, `pip install pyyaml`):
+>
+> ```bash
+> python3 -c "import yaml,json,io; s=yaml.safe_load(io.open('docs/api-standaarden/openapi.yaml',encoding='utf-8')); json.dump(s, io.open('docs/api-standaarden/openapi.json','w',encoding='utf-8'), indent=2, ensure_ascii=False)"
+> ```
+> (Op Windows kan `python` in plaats van `python3` heten.)
+
 **Basis-URL (lokaal):** `http://localhost:7094/api`
 **Basis-URL (productie):** `https://<function-app-hostnaam>/api` — de hostnaam van de Function App
 van jouw deployment; zie `servers` in `docs/api-standaarden/openapi.yaml`.
