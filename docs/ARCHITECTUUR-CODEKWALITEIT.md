@@ -299,7 +299,32 @@ met de hand worden bijgehouden, lopen uiteen; dat is hier ook gebeurd, met negen
 als gevolg. Tot #1579 werd AGENTS.md daarom uit CLAUDE.md gegenereerd; met één bron valt er niets
 meer af te leiden en is de generator vervallen.
 
-*Guards: `scripts/ci/check-agent-instructies.py` (stubs, bron, codeblokken) en
+**Geen tweede laadpad (#1580).** Een regel die alleen voor één agent leesbaar is, is een tweede
+bron. De guard weigert daarom — in de root en in elke submap, aanwezig of door git getrackt — Claude's
+`.claude/rules`, `.claude/commands`, `.claude/agents` en `.claude/output-styles`, geneste skillmappen,
+`.codex/{skills,prompts,agents,rules,commands}`, `AGENTS.override.md`, een getrackte `CLAUDE.local.md`,
+`.mcp.json` of `settings.local.json`, settings-sleutels die hooks, output styles of plugins toevoegen
+(`hooks`, `outputStyle`, `agent`, `enabledPlugins`, `extraKnownMarketplaces`), codex-configsleutels die
+het budget of de bronselectie wijzigen, en elke symlink op een instructiepad. De volledige lijst
+met toegestane en verboden bronnen staat in de kop van `check-agent-instructies.py`; dat is de enige
+plek, zodat ze niet uit de pas kan lopen met wat de guard afdwingt. Een legitieme toekomstige
+subagent of command vraagt een eigenaarsbesluit én een wijziging van die guard.
+
+*Waarom git-tracking leidend is.* De doorloop slaat `bin`, `obj`, `packages`, `.venv`, `artifacts` en
+`node_modules` over. Een bestand dat git trackt wordt toch gelezen — `git add -f` omzeilt zowel
+`.gitignore` als een mapnaam. Symlinks volgt de guard niet: ze breken op Windows zonder Developer
+Mode en een gevolgde symlink vraagt cyclus- en padgrenzen; weigeren is eenvoudiger en sluitender.
+
+**Omvang (#1580).** Codex leest standaard maximaal 32768 bytes (`project_doc_max_bytes`) aan
+projectinstructies, over de hele keten van de root tot de werkmap samen, en kapt de rest stilzwijgend
+af. `scripts/ci/agent-instructies-plafonds.txt` legt per `AGENTS.md` en per keten een ratchet-plafond
+vast: groei faalt, winst van meer dan 1024 bytes moet in dezelfde PR in het plafond worden vastgezet,
+een bestand zonder plafond of een plafond zonder bestand faalt, en de scheidingstekens tellen mee.
+Verhogen is een diff die de eigenaar goedkeurt, geen tolerantie.
+
+*Guards: `scripts/ci/check-agent-instructies.py` (stubs, bron, laadpaden, omvang, codeblokken),
+`scripts/ci/check-agent-instructies.test.py` (fixturetests) en `scripts/ci/check-agent-instructies.mutaties.py`
+(schakelt elke guardregel afzonderlijk uit en eist dat de tests dan falen) en
 `scripts/ci/sync-skills.py` (skillkopieën).*
 
 ### Regel 6 — Een nieuwe regel krijgt een guard, of wordt als onbewaakt gemarkeerd
@@ -459,8 +484,9 @@ endpoint laat hem ook falen. Dezelfde knip als de Layer-5-scan in
 | 3b — geen `<style>`-blok of statische inline style in Blazor-pagina's (#1329) | `scripts/ci/check-blazor-inline-styles.sh` | `build.yml` |
 | 3c — gelinkte bronbestanden in BlazorAdmin: alleen `using System*`, geen `RegexOptions.Compiled` (#1461) | `scripts/ci/check-gelinkte-bronbestanden.sh` | `build.yml` |
 | 4 — platformafhankelijke valkuilen | `scripts/ci/check-codekwaliteit-valkuilen.sh` | `build.yml` |
-| 5 — AGENTS.md enige bron, CLAUDE.md-stubs leeg, skills één bron, codeblokken afgesloten (#1579) | `scripts/ci/check-agent-instructies.py` | `build.yml` |
+| 5 — AGENTS.md enige bron, CLAUDE.md-stubs leeg, skills één bron, codeblokken afgesloten (#1579); geen tweede laadpad, geen symlinks, ook niet in uitgesloten mappen; omvangplafond per bestand en per keten (#1580) | `scripts/ci/check-agent-instructies.py` | `build.yml` |
 | 5 — negatieve/positieve fixturetests van de agentinstructiecontrole | `scripts/ci/check-agent-instructies.test.py` | `build.yml` |
+| 5 — mutatietest: elke guardregel uitschakelen maakt de tests rood (#1580) | `scripts/ci/check-agent-instructies.mutaties.py` | `build.yml` |
 | 5 — skillkopieën in `.claude/skills/` identiek aan de bron in `.agents/skills/` (#1579) | `scripts/ci/sync-skills.py` | `build.yml` |
 | 6 — elke regel heeft een guard | `scripts/ci/check-regelregister.sh` | `build.yml` |
 | 7, 8 — bestandsgrootte en methodelengte stijgen niet | `scripts/ci/check-bestandsgrootte.sh` | `build.yml` |
@@ -500,21 +526,21 @@ Eerlijk vermeld, zodat niemand denkt dat het gedekt is.
 | Onderwerp | Waarom niet | Vervolg |
 |---|---|---|
 | Testdekking per productiemap | `BlazorAdmin.Tests` heeft weinig tests tegenover bijna 7.000 regels Razor; dat groeit pas als regel 3 (code-behind) verder is doorgevoerd. De drie mappen zonder testproject zijn bij #1302 wél voorzien — zie hieronder. | Regel 3 |
-| Expressie-index bij een `UPPER()`-vergelijking (#1232) — **deels bewaakt sinds #1280** | In het algemeen niet schema-statisch te bepalen zonder de queries te parsen; de splinter-gate sluit `unused_index` bewust uit (§68 van `ARCHITECTUUR-DATABASE-TIERS.md`). De regel staat in `CLAUDE.md`, de meting per tier in §69 en §75 daarvan. Voor de drie sleutelkolommen van de teamresolutie is het wél afdwingbaar gebleken, omdat de vergelijkingen op één plek staan. | `FunctionApp.Tests/TeamResolution/TeamCandidateIndexSargabilityTests.cs` voor de teamresolutiekolommen; daarbuiten handmatig: `EXPLAIN (ANALYZE, BUFFERS)` resp. `SHOWPLAN_TEXT` bij zo'n wijziging |
+| Expressie-index bij een `UPPER()`-vergelijking (#1232) — **deels bewaakt sinds #1280** | In het algemeen niet schema-statisch te bepalen zonder de queries te parsen; de splinter-gate sluit `unused_index` bewust uit (§68 van `ARCHITECTUUR-DATABASE-TIERS.md`). De regel staat in `AGENTS.md`, de meting per tier in §69 en §75 daarvan. Voor de drie sleutelkolommen van de teamresolutie is het wél afdwingbaar gebleken, omdat de vergelijkingen op één plek staan. | `FunctionApp.Tests/TeamResolution/TeamCandidateIndexSargabilityTests.cs` voor de teamresolutiekolommen; daarbuiten handmatig: `EXPLAIN (ANALYZE, BUFFERS)` resp. `SHOWPLAN_TEXT` bij zo'n wijziging |
 | Services, autorisatieregels (#1272) en achtergrondlogica zonder trigger in de tier-pariteit | `check-tier-pariteit.sh` bewaakt routes en timers in beide richtingen, niet wat geregistreerd wordt of draait zonder trigger. Een ontbrekende service of timer geeft niemand een 404; de database-uitvalmonitor (#831) stond zo jarenlang alleen op de SQL Server-tier. | Bij twijfel is een handmatige vergelijking van beide `Program.cs`-bestanden de snelste toets |
 | Precies één `source:`-label per issue (#1336) | Herkomst is een label en geen auteursveld: Codex en Claude Code werken via `gh issue create`/`gh api` onder credentials die niet per se een uniek account per assistent zijn, dus `issue.user.login` onderscheidt ze niet betrouwbaar. Herkomst wordt handmatig gezet door de opsteller (Codex of Claude Code) — er is geen `setIssueStatus()`-achtige helper die dit afdwingt, en geen periodieke scan die een issue zonder of met dubbel `source:`-label signaleert. | Los issue indien gewenst: een periodieke workflow (zelfde vorm als `supabase-advisors.yml`) die open issues zonder precies één `source:`-label rapporteert |
-| Verweesde `status: waiting-codex` (#1336, gedeprecieerd sinds #1343) | Historische wachtstatus zonder betrouwbare afrondingstrigger; de huidige wederzijdse reviews gebruiken expliciete fase/beurt en PR-bewijs. Een issue dat op `waiting-codex` blijft staan omdat niemand terugkomt, valt niet automatisch op. Sinds #1343 is dit label gedeprecieerd (zie `CLAUDE.md`); de rij blijft staan zolang het label en zijn `PROTECTED`-vermelding nog bestaan. | Los issue indien gewenst: dagelijkse/wekelijkse cron die `status: waiting-codex`-issues ouder dan N dagen signaleert, of verwijder het label + de `PROTECTED`-vermelding zodra bevestigd is dat niets er meer naar verwijst |
+| Verweesde `status: waiting-codex` (#1336, gedeprecieerd sinds #1343) | Historische wachtstatus zonder betrouwbare afrondingstrigger; de huidige wederzijdse reviews gebruiken expliciete fase/beurt en PR-bewijs. Een issue dat op `waiting-codex` blijft staan omdat niemand terugkomt, valt niet automatisch op. Sinds #1343 is dit label gedeprecieerd (zie `AGENTS.md`); de rij blijft staan zolang het label en zijn `PROTECTED`-vermelding nog bestaan. | Los issue indien gewenst: dagelijkse/wekelijkse cron die `status: waiting-codex`-issues ouder dan N dagen signaleert, of verwijder het label + de `PROTECTED`-vermelding zodra bevestigd is dat niets er meer naar verwijst |
 | Precies één `turn:`-label per issue (#1343) | Net als bij `source:` (zie rij hierboven): geen `setIssueStatus()`-achtige helper dwingt exclusiviteit af voor `turn: claude-code`/`turn: codex`/`turn: owner`, en er is geen periodieke scan die een issue zonder of met dubbel `turn:`-label signaleert. | Los issue indien gewenst: dezelfde periodieke workflow als voor `source:` uitbreiden met een `turn:`-check |
 | `/security-review` vóór elke release (#1470) | Afgedwongen door de skill `/release` (stap R1), niet door CI: een review in GitHub Actions vraagt een Anthropic API-sleutel en dus API-kosten. Een release buiten `/release` om (handmatig mergen van een `develop` → `main`-PR) slaat de review over. De automatische ondergrens is de Security Gate met CodeQL, die wél verplicht is op `main`. | Geen; bewust zo gelaten. Vangrail is de verplichte Security Gate |
-| Maximaal twee wederzijdse reviewrondes per PR zonder eigenaarsbesluit | De rondelimiet uit de wederzijdse reviewworkflow in `CLAUDE.md` geldt voor beide agents; CI houdt nog geen teller per PR bij. | Los issue indien gewenst, pas ná de handmatige simulatie/proefautomatisering uit fase 2/3 van #1343 — te vroeg bouwen zou een teller afdwingen vóórdat bekend is hoe de Codex-app dit in de praktijk gebruikt |
+| Maximaal twee wederzijdse reviewrondes per PR zonder eigenaarsbesluit | De rondelimiet uit de wederzijdse reviewworkflow in `AGENTS.md` geldt voor beide agents; CI houdt nog geen teller per PR bij. | Los issue indien gewenst, pas ná de handmatige simulatie/proefautomatisering uit fase 2/3 van #1343 — te vroeg bouwen zou een teller afdwingen vóórdat bekend is hoe de Codex-app dit in de praktijk gebruikt |
 
 ### Agent-isolatie — afspraken, nog geen technische locks
 
 Sinds de instructiewijziging van 2026-10-04 mogen Codex en Claude Code beide ontwikkelen.
-`CLAUDE.md` legt één implementer per taak, een eigen branch/worktree per sessie, gescheiden
+`AGENTS.md` legt één implementer per taak, een eigen branch/worktree per sessie, gescheiden
 scopes en wederzijdse review op een vastgelegde head-SHA vast. `source:` blijft herkomst;
 implementer, reviewer en fase staan afzonderlijk bij de taak. De taak-/runtime-afspraken zijn geen technische locks. De CI-guard `check-agent-instructies.py`
-bewaakt wel dat CLAUDE.md-stubs leeg blijven, skillkopieën gelijk zijn aan hun bron en codeblokken zijn afgesloten; negatieve tests bewijzen dat overtredingen falen.
+bewaakt wel dat CLAUDE.md-stubs leeg blijven, skillkopieën gelijk zijn aan hun bron, codeblokken zijn afgesloten, er geen tweede laadpad bestaat en de omvang binnen het plafond blijft; negatieve tests en een mutatietest bewijzen dat overtredingen falen.
 
 Een issuecomment is geen atomische taakclaim; voorlopig mogen alleen vooraf toegewezen,
 gescheiden taken parallel starten. Gedeelde contracten/schema's tellen als overlap, ook zonder
@@ -573,7 +599,11 @@ bash scripts/ci/check-codekwaliteit-valkuilen.sh
 bash scripts/ci/check-bestandsgrootte.sh
 bash scripts/ci/check-regelregister.sh
 python3 scripts/ci/check-agent-instructies.py
+python3 scripts/ci/check-agent-instructies.test.py
 python3 scripts/ci/sync-skills.py
+
+# Alleen als je de guard zelf wijzigt (draait ~40 s): mist een test voor een regel, dan overleeft een mutant
+python3 scripts/ci/check-agent-instructies.mutaties.py
 
 # Deze ene bouwt de hele solution en duurt dus langer dan de rest bij elkaar:
 bash scripts/ci/check-analyzer-complexiteit.sh
@@ -612,9 +642,11 @@ kernregel staat daar nog.)
 De skillguard vergelijkt alle bestanden van elke skill met zijn kopie; skills die uitsluitend voor
 Claude Code bestaan staan op `scripts/ci/skills-alleen-claude.txt` en hebben geen kopie. De stubguard
 bewijst dat een stub leeg is, niet dat Claude Code de import laadt (handmatig vastgesteld bij #1579)
-en niet dat Codex het hele bestand ziet: Codex leest standaard maximaal 32 KiB aan `AGENTS.md`
-(`project_doc_max_bytes`, zie #1580); een projectniveau-`.codex/config.toml` werd daarvoor in de test van
-#1579 niet gehonoreerd, de gebruikersinstelling wel. De
+en niet dat Codex het hele bestand ziet: Codex leest standaard maximaal 32 KiB aan projectinstructies
+(`project_doc_max_bytes`, zie #1580). De omvangcontrole bewaakt de bytes in de repository; ze bewijst
+niet wat een gebruikersinstelling op een andere machine doet, en een vertrouwd project met een
+projectconfig kan het budget wél verhogen — daarom weigert de guard die sleutels in `.codex/config.toml`:
+het budget moet binnen de standaard passen. De
 fencecheck controleert alleen top-level fences (maximaal drie spaties inspringing) in skills en
 `AGENTS.md`, niet alle Markdown in docs of geneste lijst-/blockquote-fences. Het is geen volledige Markdown-parser of inhoudelijke reviewer.
 De guard leest UTF-8 expliciet voor Windows/macOS; zijn tests en registervermelding draaien in CI.
