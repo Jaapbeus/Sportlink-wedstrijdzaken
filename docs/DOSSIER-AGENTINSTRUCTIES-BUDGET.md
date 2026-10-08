@@ -71,7 +71,7 @@ in `AGENTS.md`, compacter. De laatste kolom noemt wat verhuisde of vervalt, en w
 | 13 | Stap 2 verificatielus (369–496) | 7.530 | HARD + UITVOERING | grenzen inline | Handmatige start → `DEVELOPER-SETUP.md`; CSP-regel en uitleg → `ARCHITECTUUR.md` §8.2.3 rij 12; criterium "geslaagd" → `DEVELOPER-SETUP.md` §7 |
 | 14 | Stap 2b documentatie nalopen (498–536) | 3.780 | UITVOERING | plicht + verwijzing | Matrix document ↔ trigger → `DOCUMENTATIEPLAN.md` ("Updateregels per document") |
 | 15 | Stap 3 commit en PR (538–554) | 810 | HARD + VOORBEELD | inline (compact) | Reden voor `--draft` → `CONTRIBUTING.md` |
-| 16 | Herkomstlabel `source:` (556–575) | 1.400 | HARD | inline | Reden label-boven-auteursveld → `ARCHITECTUUR-CODEKWALITEIT.md` §6 |
+| 16 | Herkomstlabel `source:` (556–575) | 1.400 | HARD | inline | Vier herkomsten, één per issue: `source: codex|claude-code|owner` of `via: feedback-widget` (dan geen extra `source:`). Reden label-boven-auteursveld → `ARCHITECTUUR-CODEKWALITEIT.md` §6 |
 | 17 | Issue-lifecycle en statuslabels (577–639) | 4.630 | HARD + UITLEG | invarianten inline | Historie (#690, `waiting-codex`) vervalt; `issue-status.test.js` → `VERIFICATIE-SCRIPTS.md` |
 | 18 | Lifecycle awaiting-release (641–658) | 1.500 | HARD + UITLEG | inline (kort) | Reden en incident 2026-07-26 → `VERSIONING.md` §6b |
 | 19 | Stap 4 en 5, escalatie (660–695) | 2.050 | HARD | inline | — |
@@ -112,9 +112,9 @@ De bytes zijn bij benadering; de exacte sectiegrenzen staan in het Codex-rapport
 
 | | Vóór | Na | Grens |
 |---|---:|---:|---:|
-| `AGENTS.md` (root) | 124.770 B | 27.587 B | 27 KiB (guard), doel was circa 24 KiB |
+| `AGENTS.md` (root) | 124.770 B | 27.588 B | 27 KiB (guard), doel was circa 24 KiB |
 | `FunctionApp/AGENTS.md` | 16.175 B | 2.163 B | 4 KiB |
-| keten root → `FunctionApp/` | 140.947 B | 29.752 B | 30 KiB inclusief scheidingstekens (Codex: 32 KiB) |
+| keten root → `FunctionApp/` | 140.947 B | 29.753 B | 30 KiB inclusief scheidingstekens (Codex: 32 KiB) |
 
 De root komt ruim 2,5 KiB boven het streefgetal van circa 24 KiB uit. De bindende grens is de keten van 30 KiB;
 de root is niet verder ingekort omdat daarvoor een harde regel (bevoegdheid, isolatie, reviewbeurt, security/AVG,
@@ -126,9 +126,9 @@ wijzigen* verplaatsen; de guard houdt de omvang tot dan op het huidige plafond.
 
 **Codex 0.158.0** — `codex debug prompt-input` zonder byte-override, in een worktree van deze repository:
 
-- cwd = repositoryroot: de instructietekst is 27.589 bytes; eerste en laatste regel van `AGENTS.md` staan erin, ook de
+- cwd = repositoryroot: de instructietekst is 27.590 bytes; eerste en laatste regel van `AGENTS.md` staan erin, ook de
   publicatieregel (de zin over vindaanwijzingen) en de tabel *Leesmomenten*.
-- cwd = `FunctionApp/`: de instructietekst is 29.754 bytes (= 27.587 + 2 + 2.163 + 2 bytes wrapper); beide bestanden volledig,
+- cwd = `FunctionApp/`: de instructietekst is 29.755 bytes (= 27.588 + 2 + 2.163 + 2 bytes wrapper); beide bestanden volledig,
   inclusief de laatste regel van `FunctionApp/AGENTS.md`.
 - Voor de wijziging eindigde de zichtbare tekst bij byte 32.768, midden in *Stap 2b*; de veiligheidsregels ontbraken.
 
@@ -154,6 +154,12 @@ voor secret-alerts, AVG-delen van Feedback, "een guard moet rood kunnen worden",
 Alle negen zijn hersteld; extra teruggezet zijn de `source:`-aanvulregel, "duplicatie alleen omlaag", het verbod om een Sportlink-request-URL te
 loggen (stond alleen in de submap-instructie van één tier) en de executable-bit van hooks. De overige lichte punten staan in een document met
 een leesmoment en zijn bewust niet teruggezet. Het compenseren van ~700 bytes gebeurde door formuleringen te verkorten.
+
+De Codex-review van deze PR (ronde 1) vond daarna nog twee verloren details: de herkomstuitzondering `via: feedback-widget`
+(widgetherkomst dekt de herkomst, géén extra `source:`; hersteld in de regel *Labels*, rij 16 van de matrix aangevuld) en de
+vijfde `granular`-sleutel `request_permissions` in de guard (het schema van Codex 0.158.0 kent vijf velden, niet vier). Ook de
+padverwijzing is gepreciseerd: documenten zonder pad staan in `docs/`, de vijf rootbestanden worden met naam genoemd. De
+compensatie voor de extra tekst was opnieuw het verkorten van formuleringen (herhalingen van de aanvulregel, gereedschapsdetails).
 
 ## 8. Wat niet is geverifieerd
 

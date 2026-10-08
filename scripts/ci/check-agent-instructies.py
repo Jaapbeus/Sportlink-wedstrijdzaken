@@ -138,13 +138,15 @@ SETTINGS_BEKEND = {
 # een catalogus extra instructievelden en bleef groen); een toelatingslijst weigert ook wat nog niet bekend is.
 CODEX_TOEGESTAAN = {"model", "model_reasoning_effort", "approval_policy", "sandbox_mode", "sandbox_workspace_write"}
 CODEX_TOEGESTAAN_TABELLEN = {"sandbox_workspace_write"}  # tabel: de subsleutels zijn vrij
-# `approval_policy` is een string, of de `granular`-vorm met exact deze vier booleans (Codex 0.158.0-schema,
-# `AskForApproval` → `GranularApprovalConfig`; het zijn goedkeuringsinstellingen, geen instructiekanaal). Alles
+# `approval_policy` is een string, of de `granular`-vorm met exact deze vijf booleans (Codex 0.158.0-schema,
+# `AskForApproval` → `GranularApprovalConfig`: sandbox_approval, rules, mcp_elicitations, request_permissions,
+# skill_approval; het zijn goedkeuringsinstellingen, geen instructiekanaal). Alles
 # eronder wordt exact genoemd en dus niet "vrij" toegelaten: een nieuwe subsleutel vraagt een beoordeling (#1580).
 CODEX_TOEGESTAAN_SUBPADEN = {
     ("approval_policy", "granular"),
     ("approval_policy", "granular", "mcp_elicitations"), ("approval_policy", "granular", "rules"),
     ("approval_policy", "granular", "sandbox_approval"), ("approval_policy", "granular", "skill_approval"),
+    ("approval_policy", "granular", "request_permissions"),
 }
 # Waarom een bekende sleutel of tabel een instructie-, bron- of laadkanaal is (bron: Codex config-referentie en
 # config-basics, Codex 0.158.0); alleen voor de foutmelding — de toelatingslijst bepaalt wat faalt.

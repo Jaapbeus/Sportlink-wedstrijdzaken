@@ -757,6 +757,41 @@ class AgentInstructiesTests(unittest.TestCase):
                 self.schrijf(root, ".codex/config.toml", tekst)
                 self.assertEqual(guard["controleer"](root), [], tekst)
 
+    # Review deel C, ronde 1 (Codex, P2): het schema van Codex 0.158.0 (`GranularApprovalConfig`) kent vijf velden; de
+    # guard kende er vier. Onafhankelijke lijst hieronder, niet uit de guard afgeleid; elke vorm per veld.
+    GRANULAR_VELDEN = ("sandbox_approval", "rules", "mcp_elicitations", "request_permissions", "skill_approval")
+
+    def test_elk_granular_veld_is_toegestaan_in_elke_vorm(self):
+        for veld in self.GRANULAR_VELDEN:
+            vormen = {
+                "inline": f"approval_policy = {{ granular = {{ {veld} = true }} }}\n",
+                "gepunt": f"approval_policy.granular.{veld} = false\n",
+                "tabel": f"[approval_policy.granular]\n{veld} = true\n",
+                "profiel": f"[profiles.ci]\napproval_policy = {{ granular = {{ {veld} = true }} }}\n",
+                "profieltabel": f"[profiles.ci.approval_policy.granular]\n{veld} = true\n",
+            }
+            for vorm, tekst in vormen.items():
+                with self.subTest(veld=veld, vorm=vorm):
+                    root = self.fixture()
+                    self.schrijf(root, ".codex/config.toml", tekst)
+                    self.assertEqual(guard["controleer"](root), [], tekst)
+
+    def test_alle_vijf_granular_velden_samen_zijn_groen(self):
+        root = self.fixture()
+        velden = ", ".join(f"{veld} = true" for veld in self.GRANULAR_VELDEN)
+        self.schrijf(root, ".codex/config.toml", f"approval_policy = {{ granular = {{ {velden} }} }}\n")
+        self.assertEqual(guard["controleer"](root), [])
+
+    def test_onbekende_en_diepere_granular_sleutels_blijven_rood(self):
+        for tekst in ("approval_policy.granular.request_permissions.x = 1\n",
+                      "approval_policy.granular.nieuwe_sleutel = true\n",
+                      "approval_policy.granular.request_permission = true\n",  # typfout-variant
+                      "[profiles.ci.approval_policy.granular]\nnieuwe_sleutel = true\n"):
+            with self.subTest(tekst=tekst):
+                root = self.fixture()
+                self.schrijf(root, ".codex/config.toml", tekst)
+                self.assertIn(".codex/config.toml: ", self.fouten(root))
+
     def test_ongeldige_toml_wordt_geweigerd_dicht(self):
         for tekst in ("a = \n", "[x\n", 'a = "x\n', "a = {b = 1\n", "a b = 1\n", "a = [1, 2\n", 'a = """x\n', "[[x]\n", "= 1\n",
                       'a = """x\\ y"""\n', 'a = """x\\q"""\n', 'a = "x\\\ny"\n'):

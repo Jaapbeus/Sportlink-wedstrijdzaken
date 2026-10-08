@@ -314,7 +314,8 @@ en elke symlink op een instructiepad. Een getrackt `.claude/settings.json` mag a
 alias (hooks, outputstijl, agent, plugins en marketplaces, `pluginConfigs` dat bronselectie van AGENTS.md
 instelt, `claudeMdExcludes`, `autoMemoryDirectory`, `env`, …) faalt. Een `.codex/config.toml` wordt als
 TOML-structuur gelezen en mag UITSLUITEND `model`, `model_reasoning_effort`, `approval_policy` (een string, of de
-`granular`-vorm met exact de vier booleans `mcp_elicitations`, `rules`, `sandbox_approval` en `skill_approval`),
+`granular`-vorm met exact de vijf booleans `mcp_elicitations`, `request_permissions`, `rules`, `sandbox_approval` en
+`skill_approval`),
 `sandbox_mode` en de tabel `sandbox_workspace_write` bevatten (ook binnen een profiel): een toelatingslijst, geen
 verbodslijst. Dat is bewust ruimer dan een lijst van bekende instructiesleutels: `model_catalog_json` laadt
 via een modelcatalogus extra instructievelden en bleef bij een verbodslijst ongezien (Codex-review ronde 2,
@@ -675,7 +676,7 @@ en niet dat Codex het hele bestand ziet: Codex leest standaard maximaal 32 KiB a
 niet wat een gebruikersinstelling op een andere machine doet, en een vertrouwd project met een
 projectconfig kan het budget wél verhogen — daarom weigert de guard die sleutels in `.codex/config.toml`:
 het budget moet binnen de standaard passen. **Stand na deel C:** de plafonds staan op de gemeten omvang van de
-compacte kern (27.587 en 29.752 bytes, onder de structurele maxima en onder het budget van Codex); de
+compacte kern (27.588 en 29.753 bytes, onder de structurele maxima en onder het budget van Codex); de
 absolute grens zit in de guard. De
 toelatingsmatrix hierboven volgt de documentatie van de clientversies waartegen is getoetst (Claude Code 2.1.x,
 Codex 0.158.0); native Windows, junctions en case-insensitieve bronselectie zijn niet beproefd. De

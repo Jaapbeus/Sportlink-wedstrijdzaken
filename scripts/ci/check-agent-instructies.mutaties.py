@@ -167,6 +167,7 @@ MUTATIES: List[Mutatie] = [
     Mutatie("Codex granular.rules niet toegestaan", '("approval_policy", "granular", "rules"),\n', "\n"),
     Mutatie("Codex granular.sandbox_approval niet toegestaan", '("approval_policy", "granular", "sandbox_approval"), ', ""),
     Mutatie("Codex granular.skill_approval niet toegestaan", ', ("approval_policy", "granular", "skill_approval"),\n', ",\n"),
+    Mutatie("Codex granular.request_permissions niet toegestaan", '    ("approval_policy", "granular", "request_permissions"),\n', ""),
     Mutatie("Codex granular: vrije subsleutels", '    ("approval_policy", "granular"),\n', '    ("approval_policy", "granular"),\n    ("approval_policy", "granular", "nieuwe_sleutel"),\n'),
     # ── budget, krimpmarge, verplichte skills en waarschuwingen (review ronde 1) ────────────────────
     Mutatie("Codex-budget verdubbeld", "CODEX_MAX_BYTES = 32 * 1024 ", "CODEX_MAX_BYTES = 64 * 1024 "),
