@@ -270,6 +270,19 @@ Vier dingen om te onthouden:
 >   `BlazorAdmin/Models/SportlinkActieStatus.cs` — status van één actie plus de ene vertaling van
 >   mutatieresultaat naar melding (`Verwerk`); `BlazorAdmin/Shared/Melding.razor` toont hem. De
 >   vier extensie-pagina's hebben een code-behind en geen `@code`.
+> - **Normatieve regels (harde regels; de samenvatting staat in `AGENTS.md`).** Een nieuw
+>   Sportlink-endpoint of een nieuwe Sportlink-timer roept altijd `SportlinkEndpointSupport` aan; een
+>   eigen kopie van de toggle+EgressGuard-controle, de statusvertaling, de rolnaam of de
+>   audit-afronding is een architectuurschending — dat was precies de toestand vóór #1122 (zes kopieën
+>   van de toggle-check, drie van de statusvertaling). Elke Sportlink-aanroep in `Planner.Shared` loopt
+>   via `SportlinkClubClient.ExecuteWithTokenRetryAsync` en `ZetSportlinkHeaders`, nooit via een eigen
+>   token-refresh/401-retry of eigen Navajo-headers. In Blazor hebben de extensie-pagina's
+>   (`Planning`, `Wijzigingsverzoeken`, `OefenwedstrijdAanmaken`, `SportlinkExtensieInstellingen`)
+>   **geen `@code`-blok**: de logica staat in een code-behind (`<Pagina>.razor.cs`, `public partial
+>   class`, `[Inject]` in plaats van `@inject`). De status van een actie (bezig/melding/fout/dry-run)
+>   is altijd een `SportlinkActieStatus`, met `Verwerk(...)` als de ene plek die een mutatieresultaat
+>   naar een melding vertaalt, en `<Melding Status="..." />` toont hem. Een nieuwe
+>   `Dictionary<long, bool> _xBezig` of een `@code`-blok in zo'n pagina is een architectuurschending.
 > - In `Planner.Shared`: `SportlinkClubClient.ExecuteWithTokenRetryAsync` is het ene
 >   token-refresh/401-retry-pad voor lezen én schrijven; `ZetSportlinkHeaders` de ene plek voor de
 >   Navajo-headers; `TokenEndpoint`/`ClientId` zijn publiek. Nieuwe volledige sessies lopen via de
@@ -756,7 +769,8 @@ test getriggerd wordt:
 - **Menu-zichtbaarheid (#1122):** "Wijzigingsverzoeken" en "Wedstrijden" (menu-item voor het scherm
   "Oefenwedstrijd aanmaken", #1321) staan alleen in het menu als de extensie aan staat
   (`ClubSelectorService.SportlinkExtensionEnabled`, gevuld door
-  NavMenu bij laden/clubwissel en bijgewerkt door de instellingenpagina na opslaan). Een directe
+  NavMenu bij laden/clubwissel en bijgewerkt door de instellingenpagina na opslaan; sinds #1578
+  via de eigen gebeurtenis `OnSportlinkExtensionChange`, zodat pagina's er niet op herladen). Een directe
   URL werkt nog wel; de API antwoordt dan 409 "Sportlink Web Extension staat uit."
 
 - Onofficiële integratie: kan bij een Sportlink-release breken (bundle-hashes wijzigen al vaker dan
