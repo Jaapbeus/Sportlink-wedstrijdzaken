@@ -840,7 +840,7 @@ vóórdat hij het token gebruikt — Blazor levert alleen het token aan, beslist
    les over gemaskeerde SQL-fouten bij deploys in het projectgeheugen).
 4. **Wat als een gebruiker "verzenden als mezelf" kiest maar geen bruikbare mailbox heeft** (bijv. een
    gedeeld/functioneel account zonder eigen postvak)? Het deployment-model van dit project
-   (root-`AGENTS.md`, "Deployment-model") gaat uit van een klein aantal individuele Entra-gebruikers
+   (`docs/ARCHITECTUUR.md` §2.1, deploymentmodel) gaat uit van een klein aantal individuele Entra-gebruikers
    per club, dus dit scenario is waarschijnlijk zeldzaam — maar de UI moet een duidelijke
    foutmelding geven in plaats van een crash of stille mislukking. **Zelfde eis geldt voor Optie A2
    (§3.6):** kiest een gebruiker een gedeeld postvak waar hij geen Send As/Send on Behalf-recht op
