@@ -322,6 +322,14 @@ vast: groei faalt, winst van meer dan 1024 bytes moet in dezelfde PR in het plaf
 een bestand zonder plafond of een plafond zonder bestand faalt, en de scheidingstekens tellen mee.
 Verhogen is een diff die de eigenaar goedkeurt, geen tolerantie.
 
+*Structurele maxima, niet te verhogen via het plafondbestand.* De guard kent drie absolute grenzen:
+root-`AGENTS.md` 27 KiB, een `AGENTS.md` in een submap 4 KiB en elke keten van root tot werkmap 30 KiB
+inclusief scheidingstekens (2 KiB marge onder het Codex-budget van 32 KiB). Een plafond boven zo'n
+maximum faalt, en een meting boven het maximum ook: ze staan in de guard omdat een
+bestandswijziging alleen geen eigenaarsbesluit is. Wat boven het budget uitkomt, hoort in `docs/`
+(zie §13.1 van `ARCHITECTUUR.md`) met een leesmoment in `AGENTS.md`. De route daarheen en de
+regel→bestemming-matrix staan in `DOSSIER-AGENTINSTRUCTIES-BUDGET.md`.
+
 *Guards: `scripts/ci/check-agent-instructies.py` (stubs, bron, laadpaden, omvang, codeblokken),
 `scripts/ci/check-agent-instructies.test.py` (fixturetests) en `scripts/ci/check-agent-instructies.mutaties.py`
 (schakelt elke guardregel afzonderlijk uit en eist dat de tests dan falen) en
@@ -330,7 +338,7 @@ Verhogen is een diff die de eigenaar goedkeurt, geen tolerantie.
 ### Regel 6 — Een nieuwe regel krijgt een guard, of wordt als onbewaakt gemarkeerd
 
 Dit is de regel die de andere zeven overeind houdt, en de directe les van dit onderzoek. Wie een
-harde regel toevoegt aan CLAUDE.md of aan dit document, doet één van twee dingen:
+harde regel toevoegt aan AGENTS.md of aan dit document, doet één van twee dingen:
 
 1. schrijft er een guard bij en zet die in het register hieronder; of
 2. zet hem in het register met `handmatig` en één zin over waarom een controle niet kan.

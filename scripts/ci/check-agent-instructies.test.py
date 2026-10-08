@@ -81,8 +81,6 @@ class AgentInstructiesTests(unittest.TestCase):
         except (OSError, NotImplementedError):
             self.skipTest("symlinks niet beschikbaar op dit platform")
 
-    def waarschuwingen(self, root: Path) -> str:
-        return "\n".join(guard["controleer_alles"](root)[1])
 
     def fouten(self, root: Path) -> str:
         return "\n".join(guard["controleer"](root))
@@ -584,12 +582,72 @@ class AgentInstructiesTests(unittest.TestCase):
         meting = guard["meet_omvang"](root, sorted(root.rglob("AGENTS.md")))
         self.assertEqual(meting["keten:zus/AGENTS.md"], meting["bestand:AGENTS.md"] + meting["bestand:zus/AGENTS.md"] + 2)
 
-    def test_keten_boven_het_codexbudget_geeft_een_waarschuwing_maar_geen_fout_zolang_het_plafond_klopt(self):
+    # ── structurele maxima (#1580): root 27 KiB, submap 4 KiB, keten 30 KiB incl. scheidingstekens ───
+    ROOT_MAX, SUBMAP_MAX, KETEN_MAX = 27 * 1024, 4 * 1024, 30 * 1024  # bewust uitgeschreven, niet uit de guard
+
+    def vul(self, root: Path, pad: str, bytes_totaal: int) -> None:
+        """Schrijf een AGENTS.md van exact `bytes_totaal` bytes (ASCII)."""
+        kop = "# AGENTS.md\n\n"
+        self.schrijf(root, pad, kop + "x" * (bytes_totaal - len(kop) - 1) + "\n")
+        self.assertEqual((root / pad).stat().st_size, bytes_totaal)
+
+    def test_structurele_maxima_staan_zoals_afgesproken(self):
+        self.assertEqual((guard["ROOT_MAX_BYTES"], guard["SUBMAP_MAX_BYTES"], guard["KETEN_MAX_BYTES"]),
+                         (self.ROOT_MAX, self.SUBMAP_MAX, self.KETEN_MAX))
+        self.assertLess(guard["KETEN_MAX_BYTES"], guard["CODEX_MAX_BYTES"])
+
+    def test_root_precies_op_het_maximum_is_groen_en_een_byte_meer_faalt(self):
         root = self.fixture()
-        self.schrijf(root, "AGENTS.md", "# AGENTS.md\n\n" + "x" * guard["CODEX_MAX_BYTES"] + "\n")
+        self.vul(root, "AGENTS.md", self.ROOT_MAX)
         self.zet_plafonds(root)
         self.assertEqual(guard["controleer"](root), [])
-        self.assertIn("Codex leest standaard maximaal", self.waarschuwingen(root))
+        self.vul(root, "AGENTS.md", self.ROOT_MAX + 1)
+        self.zet_plafonds(root)  # plafond precies op de meting: alleen het structurele maximum kan nu falen
+        self.assertIn("bestand:AGENTS.md: 27649 bytes is hoger dan het structurele maximum 27648", self.fouten(root))
+
+    def test_submap_precies_op_het_maximum_is_groen_en_een_byte_meer_faalt(self):
+        root = self.fixture()
+        self.vul(root, "sub/AGENTS.md", self.SUBMAP_MAX)
+        self.zet_plafonds(root)
+        self.assertEqual(guard["controleer"](root), [])
+        self.vul(root, "sub/AGENTS.md", self.SUBMAP_MAX + 1)
+        self.zet_plafonds(root)
+        self.assertIn("bestand:sub/AGENTS.md: 4097 bytes is hoger dan het structurele maximum 4096", self.fouten(root))
+
+    def test_keten_precies_op_het_maximum_is_groen_en_een_byte_meer_faalt(self):
+        root = self.fixture()
+        self.vul(root, "AGENTS.md", 27000)
+        self.vul(root, "sub/AGENTS.md", self.KETEN_MAX - 27000 - guard["KETEN_SCHEIDING_BYTES"])  # 3718: keten = 30720
+        self.zet_plafonds(root)
+        self.assertEqual(guard["meet_omvang"](root, sorted(root.rglob("AGENTS.md")))["keten:sub/AGENTS.md"], self.KETEN_MAX)
+        self.assertEqual(guard["controleer"](root), [])
+        self.vul(root, "sub/AGENTS.md", self.KETEN_MAX - 27000 - guard["KETEN_SCHEIDING_BYTES"] + 1)
+        self.zet_plafonds(root)
+        self.assertIn("keten:sub/AGENTS.md: 30721 bytes is hoger dan het structurele maximum 30720", self.fouten(root))
+
+    def test_keten_van_drie_niveaus_valt_onder_hetzelfde_maximum(self):
+        root = self.fixture()
+        self.schrijf(root, "sub/diep/AGENTS.md", "# AGENTS.md\n\nDiep.\n")
+        self.schrijf(root, "sub/diep/CLAUDE.md", STUB)
+        self.vul(root, "AGENTS.md", 26000)
+        self.vul(root, "sub/AGENTS.md", 3000)
+        self.vul(root, "sub/diep/AGENTS.md", 1722)  # 26000 + 3000 + 1722 + 2*2 = 30726
+        self.zet_plafonds(root)
+        self.assertIn("keten:sub/diep/AGENTS.md: 30726 bytes is hoger dan het structurele maximum 30720", self.fouten(root))
+
+    def test_plafond_boven_het_structurele_maximum_wordt_geweigerd_ook_als_de_meting_klein_is(self):
+        for sleutel, maximum in (("bestand:AGENTS.md", self.ROOT_MAX), ("bestand:sub/AGENTS.md", self.SUBMAP_MAX),
+                                 ("keten:sub/AGENTS.md", self.KETEN_MAX)):
+            with self.subTest(sleutel=sleutel):
+                root = self.fixture()
+                self.plafond(root, sleutel, maximum + 1)
+                self.assertIn(f"{sleutel}: het plafond {maximum + 1}", self.fouten(root))
+
+    def test_plafond_exact_op_het_structurele_maximum_is_toegestaan_mits_meting_dichtbij(self):
+        root = self.fixture()
+        self.vul(root, "AGENTS.md", self.ROOT_MAX)
+        self.zet_plafonds(root)
+        self.assertEqual(guard["controleer"](root), [])
 
 
 if __name__ == "__main__":

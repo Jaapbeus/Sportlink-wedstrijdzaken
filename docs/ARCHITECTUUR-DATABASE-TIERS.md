@@ -2835,8 +2835,8 @@ gevalideerd.
 
 Onderscheid tussen lokaal en productie gebeurt dus op basis van de **daadwerkelijk benaderde host**,
 niet op basis van welk proces de verbinding opent — bewust consistent met hoe `EgressGuard`
-(`FunctionApp.Postgres/Infrastructure/EgressGuard.cs`, #857 — zie AGENTS.md, "Uitgaande
-integraties — altijd via EgressGuard") lokaal van productie onderscheidt
+(`FunctionApp.Postgres/Infrastructure/EgressGuard.cs`, #857 — zie AGENTS.md,
+"Architectuurinvarianten", EgressGuard) lokaal van productie onderscheidt
 (env-gebaseerd), maar toegepast op de vraag die hier telt: TLS-vertrouwen hoort af te hangen van
 de server aan de andere kant van de verbinding. Dit geldt daardoor identiek voor
 `PostgresDatabaseConfig` (Function App), `Database.Postgres.Cli` (migratiepad) én
@@ -3102,7 +3102,7 @@ fake-gebaseerd en woordelijk gelijk aan de SQL Server-tier se testsuite.
 **Vereist handmatige verificatie na deploy:** `EMAIL_POLL_SCHEDULE` en `EmailProcessorEnabled` als
 Function App-instelling op de productie-resource — die stonden er vóór de tier-cutover al voor de
 SQL Server-tier, maar zijn niet geverifieerd voor deze deploy (agents mogen App Settings niet zelf
-lezen/zetten, zie AGENTS.md's kostenbeleid-sectie).
+lezen/zetten, zie `ARCHITECTUUR.md` §8.6 en AGENTS.md, "Kostenbeleid").
 
 ## 53. Een gewijzigd migratiebestand faalt nu in CI in plaats van pas in productie (#1062)
 
@@ -3735,8 +3735,7 @@ Dezelfde twee triggers als in #985 al genoemd, plus een derde:
    FunctionApp als enige gatekeeper → dan moeten er policies komen die op `auth.uid()` filteren.
 3. **Nieuw, uit dit issue:** bij elke toekomstige architectuurbeoordeling van een hostingplatform
    (Supabase of anders) hoort expliciet de vraag "wat ontsluit dit platform zelf standaard, los
-   van onze eigen code?" — zie de nieuwe harde regel in AGENTS.md onder "Supabase
-   Postgres — Row-Level Security verplicht op elke tabel".
+   van onze eigen code?" — zie de harde regel in AGENTS.md onder "Architectuurinvarianten" (Supabase #1198).
 
 ## 66. `rls_auto_enable()` — een vangnet blijkt geen overbodig artefact (vervolg op #1198)
 

@@ -137,7 +137,7 @@ git log -1 --format=%ad -- docs/<bestand>.md   # werkt altijd, ook zonder footer
 
 > **Deze conventie wordt nauwelijks gevolgd: 2 van de 29 documenten in `docs/` dragen de footer.**
 > Een marker die 27 keer ontbreekt geeft geen betrouwbaar signaal over actualiteit; `git log` wel.
-> Of de conventie wordt afgedwongen via de AGENTS.md Stap 2b-checklist, óf ze wordt geschrapt —
+> Of de conventie wordt afgedwongen via de checklist "Updateregels per document" hieronder, óf ze wordt geschrapt —
 > dat is een openstaand besluit voor de eigenaar.
 
 ---

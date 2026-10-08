@@ -73,6 +73,11 @@ TOEGESTANE_STUBS = ([STUB_IMPORT], [STUB_IMPORT, STUB_ZIN])
 VERPLICHTE_SKILLS = {"autonoom", "release", "sluitsessie", "startdebug"}
 CODEX_MAX_BYTES = 32 * 1024  # project_doc_max_bytes, standaard; telt de bestandsbytes, niet de scheidingstekens
 KETEN_SCHEIDING_BYTES = 2    # Codex voegt "\n\n" tussen twee bestanden; ruim meegeteld (#1580)
+# Structurele maxima (#1580): ook een plafond in het plafondbestand mag er niet boven komen, zodat
+# "verhogen" nooit een bestandswijziging alleen is. De keten houdt 2 KiB marge onder het Codex-budget.
+ROOT_MAX_BYTES = 27 * 1024    # root-AGENTS.md (doel ≈ 24 KiB; elke harde regel staat er nog inline)
+SUBMAP_MAX_BYTES = 4 * 1024   # AGENTS.md in een submap
+KETEN_MAX_BYTES = 30 * 1024   # root + submappen op één pad, inclusief scheidingstekens
 PLAFONDS = "scripts/ci/agent-instructies-plafonds.txt"
 PLAFOND_RUIMTE = 1024        # winst groter dan dit moet in hetzelfde PR in het plafond worden vastgezet
 NEGEER_MAPPEN = {".git", "node_modules", "bin", "obj", "packages", ".venv", "artifacts"}
@@ -358,22 +363,36 @@ def meet_omvang(root: Path, agents: List[Path]) -> Dict[str, int]:
     return gemeten
 
 
-def controleer_omvang(inv: Inventaris) -> Tuple[List[str], List[str]]:
-    """(fouten, waarschuwingen). Een plafond is een ratchet: groei faalt, flinke winst moet worden vastgezet."""
+def structureel_maximum(sleutel: str) -> int:
+    """Het absolute maximum voor een meting; een plafond mag er niet boven."""
+    soort, _, pad = sleutel.partition(":")
+    if soort == "keten":
+        return KETEN_MAX_BYTES
+    return ROOT_MAX_BYTES if pad == "AGENTS.md" else SUBMAP_MAX_BYTES
+
+
+def controleer_omvang(inv: Inventaris) -> List[str]:
+    """Een plafond is een ratchet: groei faalt, flinke winst moet worden vastgezet; het structurele maximum is absoluut."""
     root = inv.root
     agents = inv.vind("AGENTS.md")
     if not agents:
-        return [], []
+        return []
     gelezen = lees_plafonds(root)
     if gelezen is None:
-        return [f"{PLAFONDS}: ontbreekt — zonder plafond kan de omvang van de instructies ongemerkt groeien (#1580)"], []
+        return [f"{PLAFONDS}: ontbreekt — zonder plafond kan de omvang van de instructies ongemerkt groeien (#1580)"]
     plafonds, ongeldig = gelezen
     fouten: List[str] = [f"{PLAFONDS}: ongeldige regel '{regel}' — verwacht '<sleutel> <bytes> <toelichting>'" for regel in ongeldig]
-    waarschuwingen: List[str] = []
     gemeten = meet_omvang(root, agents)
     for sleutel in sorted(gemeten):
         meting = gemeten[sleutel]
         plafond = plafonds.get(sleutel)
+        maximum = structureel_maximum(sleutel)
+        if meting > maximum:
+            fouten.append(f"{sleutel}: {meting} bytes is hoger dan het structurele maximum {maximum} — Codex leest standaard "
+                          f"maar {CODEX_MAX_BYTES} bytes en kapt de rest af (#1580); verplaats toelichting naar docs/")
+        if plafond is not None and plafond > maximum:
+            fouten.append(f"{sleutel}: het plafond {plafond} in {PLAFONDS} is hoger dan het structurele maximum {maximum} — "
+                          "dat maximum staat in de guard en is een eigenaarsbesluit")
         if plafond is None:
             fouten.append(f"{sleutel}: heeft geen plafond in {PLAFONDS} — voeg een regel toe op de meting ({meting} bytes) in dezelfde PR")
         elif meting > plafond:
@@ -382,40 +401,27 @@ def controleer_omvang(inv: Inventaris) -> Tuple[List[str], List[str]]:
         elif plafond - meting > PLAFOND_RUIMTE:
             fouten.append(f"{sleutel}: {meting} bytes ligt {plafond - meting} onder het plafond {plafond} — verlaag het plafond in "
                           f"{PLAFONDS} naar de meting zodat de winst vastligt")
-        if sleutel.startswith("keten:") and meting > CODEX_MAX_BYTES:
-            waarschuwingen.append(f"{sleutel}: {meting} bytes; Codex leest standaard maximaal {CODEX_MAX_BYTES} "
-                                  "(project_doc_max_bytes) en ziet de rest niet. Zie #1580.")
-        if sleutel.startswith("bestand:") and meting > CODEX_MAX_BYTES:
-            waarschuwingen.append(f"{sleutel}: {meting} bytes is op zichzelf al meer dan Codex standaard leest ({CODEX_MAX_BYTES}). Zie #1580.")
     for sleutel in sorted(set(plafonds) - set(gemeten)):
         fouten.append(f"{sleutel}: staat in {PLAFONDS} maar bestaat niet meer — verwijder de regel")
-    return fouten, waarschuwingen
+    return fouten
 
 
-def controleer_alles(root: Path) -> Tuple[List[str], List[str]]:
+def controleer(root: Path) -> List[str]:
     inv = Inventaris(root)
-    omvang_fouten, waarschuwingen = controleer_omvang(inv)
     git_fouten = [f"git ls-files faalt ({inv.git_fout}) — getrackte instructiebestanden kunnen niet worden gecontroleerd"] if inv.git_fout else []
-    fouten = (
+    return (
         git_fouten
         + controleer_instructiebestanden(inv)
         + controleer_kanalen(inv)
         + controleer_symlinks(inv)
         + controleer_configuratie(inv)
         + controleer_skills(root)
-        + omvang_fouten
+        + controleer_omvang(inv)
     )
-    return fouten, waarschuwingen
-
-
-def controleer(root: Path) -> List[str]:
-    return controleer_alles(root)[0]
 
 
 if __name__ == "__main__":
-    fouten, waarschuwingen = controleer_alles(ROOT)
-    for waarschuwing in waarschuwingen:
-        print(f"::warning::{waarschuwing}")
+    fouten = controleer(ROOT)
     for fout in fouten:
         print(f"::error::{fout}")
     if not fouten:

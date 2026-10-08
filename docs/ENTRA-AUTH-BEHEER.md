@@ -254,4 +254,4 @@ Maak er dus nog geen Entra-appRole-toewijzingen voor aan. `admin` heeft altijd a
 
 - Issue [#185](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/185) — Frontend role-gate (Layer 4) — gesloten, geleverd in v2.1.1
 - Issue [#187](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/187) — Idempotente Entra-setup scripts (deze docs) — gesloten, geleverd in v2.1.1
-- AGENTS.md sectie "Defense in depth — vijf auth-lagen, allemaal verplicht"
+- `docs/ARCHITECTUUR.md` §8.2.1 "Defense in depth — vijf lagen, allemaal verplicht"

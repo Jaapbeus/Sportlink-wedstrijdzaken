@@ -45,7 +45,7 @@ Alle commando's hieronder draaien in PowerShell 7 (`pwsh` op macOS, `powershell`
 > dan draait de GUI op de productieversie — of erger, op een achterlopende main (voorbeeld: GUI
 > toonde v3.8.0.0 terwijl `origin/develop` al op v3.9.6.1 stond, 32 commits verder) — terwijl je
 > bijna altijd de nieuwste integratiestand wilt testen. `develop` is de integratiebranch voor lokaal
-> testen (zie AGENTS.md, "Branch-strategie"); dáár hoort de debug-omgeving op te draaien. **Elke
+> testen (zie AGENTS.md, "Sessie-isolatie, branches en worktrees"); dáár hoort de debug-omgeving op te draaien. **Elke
 > volgende stap (1 t/m 7) voer je uit vanuit de develop-worktree die je hier bepaalt** — niet vanuit
 > de map waarin de sessie toevallig startte.
 

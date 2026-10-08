@@ -6,7 +6,7 @@
 # Maakt zelf GEEN issue aan en praat niet met GitHub — dat doet de workflow. Eén ding per script.
 #
 # ── Waarom dit bestaat ──────────────────────────────────────────────────────────────────────────
-# Regel 3 van de Supabase-RLS-sectie in AGENTS.md schrijft voor om het dashboard "periodiek" onder
+# De Supabase-regel (#1198) in AGENTS.md schrijft voor om het dashboard "periodiek" onder
 # Advisors → Security te controleren. Die regel leunde volledig op een mens die eraan denkt. #1198
 # liet zien wat dat kost: het besluit stond correct gedocumenteerd, de blootstelling stond twaalf
 # dagen open. #1220 dekt af wat vóór de merge zichtbaar is; dit script dekt af wat alleen de

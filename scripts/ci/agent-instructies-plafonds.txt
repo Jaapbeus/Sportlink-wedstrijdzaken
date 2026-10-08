@@ -13,14 +13,13 @@
 #
 # WAAROM: Codex leest van de projectinstructies standaard maximaal 32768 bytes (project_doc_max_bytes),
 # over de hele keten samen, en kapt de rest stilzwijgend af. Het doel is dat elke keten binnen
-# 30720 bytes past (circa 24 KiB root, maximaal 4 KiB per submap), zonder verhoogde gebruikersinstelling.
+# 30720 bytes past, zonder verhoogde gebruikersinstelling. De structurele maxima staan in de guard
+# (root 27 KiB, submap 4 KiB, keten 30 KiB inclusief scheidingstekens): een plafond hieronder mag er niet
+# boven, en elke meting ook niet.
 #
-# TUSSENSTAND (PR A van #1580): de waarden hieronder zijn de meting vóór de verkleining en liggen dus
-# nog BOVEN het budget van Codex — dit plafond voorkomt alleen verdere groei. De verkleining (PR C)
-# verlaagt ze en voegt de absolute grens aan de guard toe.
-#
-# Nulmeting: 2026-10-08, op develop (9859f823).
+# Nulmeting 2026-10-08 op develop (9859f823): root 124770, FunctionApp 16175, keten 140947 bytes.
+# Na de verkleining (#1580) gemeten op de eindtoestand van die PR:
 
-bestand:AGENTS.md                  124770  tussenstand voor de verkleining; Codex ziet hier de eerste ~32 KiB van
-bestand:FunctionApp/AGENTS.md       16175  tussenstand voor de verkleining
-keten:FunctionApp/AGENTS.md        140947  124770 + 2 + 16175; sessie in FunctionApp/ laadt beide
+bestand:AGENTS.md                  26842  compacte kern; alle harde regels inline, uitleg in docs/
+bestand:FunctionApp/AGENTS.md       2093  compacte kern voor de SQL Server-tier
+keten:FunctionApp/AGENTS.md        28937  26842 + 2 + 2093; sessie in FunctionApp/ laadt beide (Codex-grens 32768)
