@@ -43,9 +43,16 @@
         </div>
 
         <article class="content px-4">
-            @if (_geinitialiseerd)
+            @if (_poort.IsVrij)
             {
                 @Body
+            }
+            else
+            {
+                <div class="text-muted d-flex align-items-center gap-2 py-3" role="status">
+                    <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                    Gegevens laden…
+                </div>
             }
         </article>
     </main>
@@ -54,7 +61,7 @@
 @code {
     private List<ClubDto> _clubs = new();
     private bool _backendBezig = true;
-    private bool _geinitialiseerd;
+    private readonly PaginaStartPoort _poort = new();
     private CancellationTokenSource _cts = new();
 
     private bool IsTestmodus =>
@@ -64,12 +71,22 @@
     {
         ClubSelector.OnChange += OnClubSelectorChanged;
         ClubSelector.OnClubNameChange += OnClubSelectorChanged;
-        await ClubSelector.InitializeAsync();
-        // De gekozen club is nu bekend: pas daarna Body renderen, anders laadt elke pagina eerst
-        // zonder club en daarna nog eens mét club (#1578).
-        _geinitialiseerd = true;
-        StateHasChanged(); // niet wachten tot de clublijst binnen is (koude start kan 36 s duren)
-        await LaadClubsAsync(_cts.Token);
+        await ClubSelector.InitializeAsync(); // eigen time-out: komt altijd terug
+        // Body pas renderen als de effectieve club vaststaat (#1578): met een opgeslagen club meteen,
+        // zonder opgeslagen club pas als de clublijst is opgehaald en de primaire club gekozen is
+        // (of het ophalen definitief faalde). Anders laadt elke pagina eerst zonder club en daarna
+        // nog eens mét club.
+        _poort.MarkeerOpslagGelezen(ClubSelector.SelectedClubCode);
+        StateHasChanged();
+        try
+        {
+            await LaadClubsAsync(_cts.Token);
+        }
+        finally
+        {
+            // Ook bij fout/time-out/lege lijst: pagina's tonen dan hun eigen foutafhandeling.
+            _poort.MarkeerClublijstAfgerond(ClubSelector.SelectedClubCode);
+        }
     }
 
     private void OnClubSelectorChanged() => _ = InvokeAsync(StateHasChanged);

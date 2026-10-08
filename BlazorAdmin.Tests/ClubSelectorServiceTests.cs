@@ -97,6 +97,31 @@ public class ClubSelectorServiceTests
         service.SportlinkExtensionEnabled.Should().BeFalse();
     }
 
+    private sealed class HangendeJs : IJSRuntime
+    {
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
+            => new(new TaskCompletionSource<TValue>().Task);
+
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
+        {
+            var tcs = new TaskCompletionSource<TValue>();
+            cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken));
+            return new(tcs.Task);
+        }
+    }
+
+    [Fact]
+    public async Task InitializeAsync_NooitVoltooideOpslag_KomtNaTimeoutTerugZonderClub()
+    {
+        var service = new ClubSelectorService(new HangendeJs());
+
+        var taak = service.InitializeAsync(TimeSpan.FromMilliseconds(50));
+        var klaar = await Task.WhenAny(taak, Task.Delay(TimeSpan.FromSeconds(10)));
+
+        klaar.Should().BeSameAs(taak);
+        service.SelectedClubCode.Should().BeNull();
+    }
+
     [Fact]
     public async Task InitializeAsync_OpgeslagenClubWijktAf_VuurtOnChangeEenmaal()
     {
@@ -140,5 +165,106 @@ public class ClubWisselTrackerTests
         tracker.Markeer(null);
 
         tracker.MoetHerladen("AAA").Should().BeTrue();
+    }
+}
+
+/// <summary>
+/// #1578: de drie opstartscenario's als logica-keten (service + startpoort + tracker). Dit bewijst de
+/// beslislogica, niet de Blazor-component-lifecycle zelf (daar is geen componenttest voor).
+/// </summary>
+public class PaginaStartPoortTests
+{
+    private sealed class Pagina
+    {
+        private readonly ClubWisselTracker _tracker = new();
+        public int Laadrondes { get; private set; }
+
+        public Pagina(ClubSelectorService service)
+        {
+            // Nabootsing van ClubSelectorPageBase + de eerste load in OnInitializedAsync.
+            _tracker.Markeer(service.SelectedClubCode);
+            Laadrondes = 1;
+            service.OnChange += () => { if (_tracker.MoetHerladen(service.SelectedClubCode)) Laadrondes++; };
+        }
+    }
+
+    private sealed class OpslagJs(string? opgeslagen) : IJSRuntime
+    {
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
+            => new(identifier == "localStorage.getItem" ? (TValue)(object?)opgeslagen! : default!);
+
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
+            => InvokeAsync<TValue>(identifier, args);
+    }
+
+    [Fact]
+    public async Task LegeOpslag_PaginaWachtOpClublijst_PreciesEenLaadronde()
+    {
+        var service = new ClubSelectorService(new OpslagJs(null));
+        var poort = new PaginaStartPoort();
+
+        await service.InitializeAsync();
+        poort.MarkeerOpslagGelezen(service.SelectedClubCode);
+        poort.IsVrij.Should().BeFalse("zonder club en zonder clublijst mag de pagina nog niet laden");
+
+        await service.SelectClubAsync("AAA", "Club A"); // primaire club uit de clublijst
+        poort.MarkeerClublijstAfgerond(service.SelectedClubCode);
+        poort.IsVrij.Should().BeTrue();
+
+        var pagina = new Pagina(service);
+        service.SynchroniseerClubNaam("Club A");
+
+        pagina.Laadrondes.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task GeldigeOpgeslagenClub_PaginaLaadtMeteen_PreciesEenLaadronde()
+    {
+        var service = new ClubSelectorService(new OpslagJs("AAA"));
+        var poort = new PaginaStartPoort();
+
+        await service.InitializeAsync();
+        poort.MarkeerOpslagGelezen(service.SelectedClubCode);
+        poort.IsVrij.Should().BeTrue();
+
+        var pagina = new Pagina(service);
+        await service.SelectClubAsync("AAA", "Club A"); // naamsync na clublijst
+        service.SynchroniseerClubNaam("Club A");
+        poort.MarkeerClublijstAfgerond(service.SelectedClubCode);
+
+        pagina.Laadrondes.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task EchteClubwissel_HerlaadtDePaginaEenmaal()
+    {
+        var service = new ClubSelectorService(new OpslagJs("AAA"));
+        await service.InitializeAsync();
+        var pagina = new Pagina(service);
+
+        await service.SelectClubAsync("BBB", "Club B");
+
+        pagina.Laadrondes.Should().Be(2);
+    }
+
+    [Fact]
+    public void ClublijstMislukt_PoortKomtTochVrij_ZodatPaginasHunFoutTonen()
+    {
+        var poort = new PaginaStartPoort();
+        poort.MarkeerOpslagGelezen(null);
+        poort.IsVrij.Should().BeFalse();
+
+        poort.MarkeerClublijstAfgerond(null);
+
+        poort.IsVrij.Should().BeTrue();
+    }
+
+    [Fact]
+    public void OpslagNogNietGelezen_PoortBlijftDicht_OokAlIsDeClublijstAfgerond()
+    {
+        var poort = new PaginaStartPoort();
+        poort.MarkeerClublijstAfgerond("AAA");
+
+        poort.IsVrij.Should().BeFalse();
     }
 }

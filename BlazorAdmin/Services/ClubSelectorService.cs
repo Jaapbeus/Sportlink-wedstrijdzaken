@@ -47,11 +47,16 @@ public class ClubSelectorService
         OnSportlinkExtensionChange?.Invoke();
     }
 
-    public async Task InitializeAsync()
+    /// <summary>Standaardtijd die het lezen van localStorage mag duren voordat we doorgaan zonder opgeslagen club.</summary>
+    public static readonly TimeSpan StandaardOpslagTimeout = TimeSpan.FromSeconds(5);
+
+    public async Task InitializeAsync(TimeSpan? timeout = null)
     {
         try
         {
-            var stored = await _js.InvokeAsync<string?>("localStorage.getItem", StorageKey);
+            // Een nooit voltooiende interop mag de layout niet eeuwig vasthouden (#1578).
+            using var cts = new CancellationTokenSource(timeout ?? StandaardOpslagTimeout);
+            var stored = await _js.InvokeAsync<string?>("localStorage.getItem", cts.Token, new object?[] { StorageKey });
             if (!string.IsNullOrWhiteSpace(stored) && !string.Equals(_clubCode, stored, StringComparison.Ordinal))
             {
                 _clubCode = stored;
