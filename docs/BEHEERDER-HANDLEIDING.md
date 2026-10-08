@@ -1133,6 +1133,13 @@ niet vastzetten en steeds opnieuw naar hetzelfde verkeerde team wijzen.
 | **Door** | Wie de alias aanmaakte (de naam van de beheerder) en wanneer, met eventueel een korte reden. *systeem* betekent: automatisch aangemaakt door de sync of de AI |
 | **Beoordeeld** | Wie de alias het laatst goedkeurde of afwees, en wanneer |
 
+De kolommen **Keer gebruikt** en **Aangemaakt** zijn sorteerbaar (#1549): klik op de kolomkop om
+oplopend te sorteren, klik nogmaals voor aflopend (en weer voor oplopend). Een pijltje (▲ oplopend,
+▼ aflopend) toont welke kolom actief is; een klik op de andere kolom begint opnieuw oplopend.
+Sorteren gebeurt direct op de getoonde lijst, zonder de pagina te herladen, en geldt voor de
+aliassen van het gekozen filter. Aliassen zonder aanmaakmoment komen bij sorteren op *Aangemaakt* altijd
+onderaan.
+
 Bovenaan staan drie tellers (te beoordelen / goedgekeurd / afgewezen) en filterknoppen. De pagina
 opent standaard op **Alleen te beoordelen**; met **Alles** ziet u ook de al beoordeelde aliassen.
 
