@@ -246,9 +246,10 @@ public static class PlannerShared
         List<VeldInfo> velden,
         Dictionary<string, List<TeamRegel>> allTeamRules,
         List<TeamRegel> requestingTeamRules,
-        decimal veldFractie, int duurMinuten, TimeOnly? sunset)
+        decimal veldFractie, int duurMinuten, TimeOnly? sunset, TimeOnly? uiterlijkEinde = null)
     {
         var endTime = preferredTime.AddMinutes(duurMinuten);
+        if (uiterlijkEinde.HasValue && endTime > uiterlijkEinde.Value) return null; // einde valt buiten het dagdeel (#1587)
         // Kunstgras eerst om grasvelden te ontlasten. Classificatie via VeldInfo.IsKunstgras — één
         // definitie van "kunstgras" voor de hele codebase (#707); een eigen stringvergelijking hier
         // noemde "Kunstgras 2" géén kunstgras en zette dat veld dus achteraan.
@@ -277,7 +278,7 @@ public static class PlannerShared
         List<TeamRegel> requestingTeamRules,
         decimal veldFractie, int duurMinuten,
         TimeOnly dagdeelVan, TimeOnly dagdeelTot,
-        TimeOnly? sunset)
+        TimeOnly? sunset, bool eindBinnenDagdeel = false)
     {
         var candidates = new List<CandidateSlot>();
         foreach (var field in availableFields)
@@ -285,7 +286,9 @@ public static class PlannerShared
             var fieldOccs = occupations.Where(o => o.VeldNummer == field.VeldNummer).ToList();
             var windowStart = dagdeelVan < field.BeschikbaarVanaf ? field.BeschikbaarVanaf : dagdeelVan;
             var windowEnd   = dagdeelTot > field.BeschikbaarTot   ? field.BeschikbaarTot   : dagdeelTot;
-            for (var time = windowStart; time < windowEnd && time.AddMinutes(duurMinuten) <= field.BeschikbaarTot; time = time.AddMinutes(5))
+            // Binnen een dagdeel (#1587) moet ook het einde binnen het dagdeel vallen, niet alleen de start.
+            var uiterlijkEinde = eindBinnenDagdeel ? windowEnd : field.BeschikbaarTot;
+            for (var time = windowStart; time < windowEnd && time.AddMinutes(duurMinuten) <= uiterlijkEinde; time = time.AddMinutes(5))
             {
                 var endTime = time.AddMinutes(duurMinuten);
                 if (CanFitMatch(time, endTime, veldFractie, field.VeldNummer,

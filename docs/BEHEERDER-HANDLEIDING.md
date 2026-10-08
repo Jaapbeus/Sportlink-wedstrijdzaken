@@ -1718,7 +1718,9 @@ Het formulier heeft de velden **Template key** (bij een bestaande template vast)
 
 In de tekst staan **plaatshouders** tussen dubbele accolades. Die vult het systeem bij verzending
 in met de echte waarde. Beschikbaar zijn: `{{voornaam}}`, `{{aanhef}}`, `{{datum}}`, `{{team}}`,
-`{{tegenstander}}` en `{{aanvangstijd}}`. Laat de accolades en de naam ertussen precies staan zoals
+`{{tegenstander}}`, `{{aanvangstijd}}` en `{{dagdeel}}` (het gecontroleerde dagdeel met tijdvenster, bijvoorbeeld
+"de ochtend (08:30 - 12:00)"; leeg als er geen dagdeel is gecontroleerd; staat de plaatshouder er niet in, dan voegt het systeem
+zelf een zin toe die het gecontroleerde dagdeel noemt). Laat de accolades en de naam ertussen precies staan zoals
 ze zijn — typt u er iets anders, dan komt er letterlijk `{{team}}` in de mail te staan. De voetnoot
 uit het vak bovenaan wordt automatisch onder de body geplakt; die hoeft u hier dus niet te
 herhalen.

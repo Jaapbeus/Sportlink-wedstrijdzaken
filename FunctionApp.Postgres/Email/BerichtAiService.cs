@@ -17,7 +17,6 @@ namespace FunctionApp.Postgres.Email;
 /// nog aangeroepen met échte few-shot-voorbeelden. <see cref="DetecteerCorrectieAsync"/> is bij
 /// diezelfde gelegenheid toegevoegd (woordelijke kopie van het SQL Server-origineel).
 /// </para>
-///
 /// Service voor het classificeren van inkomende emails en het genereren van antwoorden
 /// met behulp van OpenAI GPT-4o-mini.
 /// </summary>
@@ -223,6 +222,7 @@ public class BerichtAiService
               "datum": "yyyy-MM-dd of null (eerste/primaire datum)",
               "datums": ["yyyy-MM-dd", ...] of null (ALLE gevraagde datums als er meerdere zijn),
               "aanvangsTijd": "HH:mm of null",
+              "dagdeel": "ochtend | middag | avond of null — alleen als de afzender zelf een dagdeel noemt ('s ochtends/voormiddag = ochtend, 's middags/namiddag = middag, 's avonds = avond); nooit afleiden uit een aanvangstijd of wedstrijdtype; mag naast aanvangsTijd bestaan; bij geen of meerdere dagdelen null",
               "gewensteDatum": "yyyy-MM-dd of null",
               "teamNaam": "teamnaam of null",
               "leeftijdsCategorie": "bijv. JO11 of null",
@@ -424,6 +424,7 @@ public class BerichtAiService
             Type = MapVerzoekType(typeString),
             Datum = GetOptionalString(root, "datum"),
             AanvangsTijd = GetOptionalString(root, "aanvangsTijd"),
+            Dagdeel = global::Planner.Shared.DagdeelVenster.Normaliseer(GetOptionalString(root, "dagdeel")), // #1587: onbekend = null
             GewensteDatum = GetOptionalString(root, "gewensteDatum"),
             Datums = GetOptionalStringArray(root, "datums"),
             TeamNaam = GetOptionalString(root, "teamNaam"),

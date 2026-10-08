@@ -42,6 +42,12 @@ namespace SportlinkFunction.Planner
         public SlotToewijzing? Toewijzing { get; set; }
         public TeamConflictInfo? TeamConflict { get; set; }
         public string? Reden { get; set; }
+        /// <summary>
+        /// Het dagdeel ("ochtend", "middag", "avond") waarop de vensters en alternatieven zijn beperkt, of null als
+        /// er geen dagdeel is toegepast (#1587). Het antwoord aan de afzender vermeldt dit, zodat duidelijk is dat
+        /// andere dagdelen niet zijn gecontroleerd.
+        /// </summary>
+        public string? GecontroleerdDagdeel { get; set; }
         public List<SlotToewijzing> Alternatieven { get; set; } = new();
         public List<BeschikbaarVenster>? BeschikbareVensters { get; set; }
         public List<string> Waarschuwingen { get; set; } = new();
