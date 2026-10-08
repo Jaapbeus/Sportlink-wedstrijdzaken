@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- **Agentinstructies bewaakt op omvang en bekende extra laadpaden**: CI weigert nu de bekende paden waarlangs instructies een agent kunnen bereiken buiten `AGENTS.md` om — Claude-commands, -agents en -output-styles, geneste skills, `AGENTS.override.md`, instructiebestanden onder de Claude-metadatamap, Codex-hooks, instellingen die plugins, hooks of de keuze van instructiebronnen wijzigen (een toelatingslijst voor `.claude/settings.json` en voor `.codex/config.toml`, die als echte TOML-structuur wordt gelezen), een met `git add -f` toegevoegde `CLAUDE.local.md`, `.mcp.json` of `settings.local.json` in elke vorm (ook als symlink), symlinks op instructiepaden en instructiebestanden in mappen als `bin` of `node_modules` — en laat de bouw falen wanneer `AGENTS.md` verder groeit. Een kapotte Git-verwijzing is voortaan een fout. Dit is geen garantie tegen onbekende kanalen; de plafonds staan nog op de huidige omvang (boven de 32 KiB van Codex) en de verkleining zelf volgt in een aparte wijziging, zie issue #1580.
+
 ## [3.12.0.0] — 2026-10-07
 
 ### Added
