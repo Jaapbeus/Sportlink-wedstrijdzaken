@@ -209,15 +209,92 @@ public class DagdeelAntwoordTests
         body.Should().Contain("alleen de middag (12:00 - 17:00) gecontroleerd");
     }
 
+    // ── Aangepast sjabloon (review-ronde 1, P2-2) ──
+
     [Fact]
-    public void TemplateAntwoord_KentDeDagdeelPlaceholder()
+    public void Sjabloon_MetPlaceholder_VultHetWerkelijkGecontroleerdeDagdeel_ZonderDubbeleZin()
     {
         var template = new EmailTemplate("beschikbaarheid_check", "Re: {{dagdeel}}", "Gecontroleerd: {{dagdeel}}.");
 
         var (onderwerp, body) = BerichtResponseGenerator.BouwAangepasteAntwoord(
-            template, MaakClassificatie("avond"), MaakEmail(), ClubSettings);
+            template, MaakClassificatie("avond"), MaakEmail(), ClubSettings, gecontroleerdDagdeel: "avond");
 
         onderwerp.Should().Be("Re: de avond (17:00 - 22:00)");
         body.Should().Contain("Gecontroleerd: de avond (17:00 - 22:00).");
+        body.Should().NotContain("Let op: we hebben alleen");
+    }
+
+    [Fact]
+    public void Sjabloon_ZonderPlaceholder_KrijgtDeStandaardzinErAutomatischBij()
+    {
+        var template = new EmailTemplate("beschikbaarheid_check", "Re: oefenwedstrijd", "Wij kijken ernaar.");
+
+        var (_, body) = BerichtResponseGenerator.BouwAangepasteAntwoord(
+            template, MaakClassificatie("ochtend"), MaakEmail(), ClubSettings, gecontroleerdDagdeel: "ochtend");
+
+        body.Should().Contain("Wij kijken ernaar.");
+        body.Should().Contain("alleen de ochtend (08:30 - 12:00) gecontroleerd");
+        body.IndexOf("alleen de ochtend", StringComparison.Ordinal)
+            .Should().BeLessThan(body.IndexOf("Testomgeving", StringComparison.Ordinal), "de zin hoort vóór de voetnoot");
+    }
+
+    [Fact]
+    public void Sjabloon_GevraagdDagdeelMaarNietGecontroleerd_GeeftGeenClaimEnLegePlaceholder()
+    {
+        // Teamconflict of vroege return van de planner: GecontroleerdDagdeel is null, ook al vroeg de mail om een dagdeel.
+        var template = new EmailTemplate("beschikbaarheid_check", "Re: x", "Dagdeel: [{{dagdeel}}]");
+
+        var (_, body) = BerichtResponseGenerator.BouwAangepasteAntwoord(
+            template, MaakClassificatie("ochtend"), MaakEmail(), ClubSettings, gecontroleerdDagdeel: null);
+
+        body.Should().Contain("Dagdeel: []");
+        body.Should().NotContain("gecontroleerd");
+
+        var zonderPlaceholder = BerichtResponseGenerator.BouwAangepasteAntwoord(
+            new EmailTemplate("beschikbaarheid_check", "Re: x", "Hallo."), MaakClassificatie("ochtend"), MaakEmail(), ClubSettings);
+        zonderPlaceholder.body.Should().NotContain("gecontroleerd");
+    }
+
+    // ── Herplan met gewenste datum, negatief (review-ronde 1, P3) ──
+
+    private static ZoekWedstrijdResponse Wedstrijd() => new()
+    {
+        Wedstrijd = "A - B", Datum = "2026-10-03", AanvangsTijd = "10:00", VeldNaam = "veld 2"
+    };
+
+    [Fact]
+    public void HerplanGewensteDatum_NietsVrijInHetDagdeel_IsNietDagbreedGeformuleerd()
+    {
+        var beschikbaarheid = new CheckAvailabilityResponse
+        {
+            Beschikbaar = false,
+            GecontroleerdDagdeel = "ochtend",
+            BeschikbareVensters = new List<BeschikbaarVenster>(),
+            Reden = "Geen beschikbare vensters op zaterdag 10 oktober."
+        };
+
+        var (_, body) = BerichtResponseGenerator.BouwHerplanGewensteDatumAntwoord(
+            Wedstrijd(), "2026-10-10", beschikbaarheid, MaakClassificatie(), MaakEmail(), ClubSettings);
+
+        body.Should().Contain("in de ochtend (08:30 - 12:00) is helaas niets beschikbaar");
+        body.Should().Contain("alleen de ochtend (08:30 - 12:00) gecontroleerd");
+        body.Should().NotContain("geen ruimte beschikbaar").And.NotContain("Geen beschikbare vensters");
+    }
+
+    [Fact]
+    public void HerplanGewensteDatum_DatumFoutZonderDagdeelcontrole_BehoudtDeRedenEnClaimtGeenDagdeel()
+    {
+        var beschikbaarheid = new CheckAvailabilityResponse
+        {
+            Beschikbaar = false,
+            Reden = "De gewenste datum 2026-10-10 kan niet verwerkt worden."
+        };
+
+        var (_, body) = BerichtResponseGenerator.BouwHerplanGewensteDatumAntwoord(
+            Wedstrijd(), "2026-10-10", beschikbaarheid, MaakClassificatie("ochtend"), MaakEmail(), ClubSettings);
+
+        body.Should().Contain("geen ruimte beschikbaar");
+        body.Should().Contain("kan niet verwerkt worden");
+        body.Should().NotContain("gecontroleerd");
     }
 }

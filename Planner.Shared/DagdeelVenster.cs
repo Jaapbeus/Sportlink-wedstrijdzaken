@@ -59,6 +59,20 @@ public static class DagdeelVenster
     public static (TimeOnly Van, TimeOnly Tot) Bepaal(string? dagdeel, TimeOnly standaardVan, TimeOnly standaardTot)
         => ZoekVenster(dagdeel) ?? (standaardVan, standaardTot);
 
+    /// <summary>
+    /// Het dagdeel dat voor een aanvraag mag gelden. Een exacte voorkeurstijd wint van het dagdeel (#1587): ligt die
+    /// buiten het venster van het dagdeel, dan vervalt het dagdeel voor deze aanvraag (null) en wordt dagbreed
+    /// gezocht, zodat het antwoord nooit beweert alleen dat dagdeel te hebben gecontroleerd terwijl de gevraagde tijd
+    /// daarbuiten valt. De bovengrens hoort bij het volgende dagdeel (12:00 valt dus in de middag).
+    /// </summary>
+    public static string? ToepasbaarDagdeel(string? dagdeel, TimeOnly? voorkeurTijd)
+    {
+        var venster = ZoekVenster(dagdeel);
+        if (venster == null) return null;
+        if (voorkeurTijd.HasValue && (voorkeurTijd.Value < venster.Value.Van || voorkeurTijd.Value >= venster.Value.Tot)) return null;
+        return Normaliseer(dagdeel);
+    }
+
     /// <summary>"de ochtend (08:30 - 12:00)", of null bij een leeg of onbekend dagdeel.</summary>
     public static string? Omschrijving(string? dagdeel)
     {
@@ -122,6 +136,22 @@ public static class DagdeelVenster
         var zin = $"Op {datumTekst} is helaas geen veld beschikbaar.";
         return string.IsNullOrEmpty(reden) ? zin : $"{zin} {reden}";
     }
+
+    /// <summary>
+    /// Zoals <see cref="VoegControleZinToe"/>, voor een e-mailsjabloon: noemt het sjabloon het dagdeel zelf al via
+    /// <c>{{dagdeel}}</c>, dan blijft de tekst ongewijzigd en komt er geen dubbele melding.
+    /// </summary>
+    public static string VoegControleZinToeTenzijVermeld(string inhoud, string? dagdeel, string sjabloonBody)
+        => sjabloonBody.Contains("{{dagdeel}}", StringComparison.OrdinalIgnoreCase) ? inhoud : VoegControleZinToe(inhoud, dagdeel);
+
+    /// <summary>
+    /// De negatieve zin bij een herplanverzoek met gewenste datum: binnen één dagdeel gezocht dan "in de ochtend
+    /// ... is helaas niets beschikbaar", anders de dagbrede zin met de plannerreden (datumfout, teamconflict).
+    /// </summary>
+    public static string GeenRuimteOpGewensteDatum(string datumTekst, string? dagdeel, string? reden)
+        => Normaliseer(dagdeel) != null
+            ? GeenVeldZin(datumTekst, dagdeel, null)
+            : $"Helaas is er op {datumTekst} geen ruimte beschikbaar." + (string.IsNullOrEmpty(reden) ? "" : $" {reden}");
 
     /// <summary>
     /// De "geen veld beschikbaar"-regel van één datum in een antwoord met meerdere datums (met datumkop en

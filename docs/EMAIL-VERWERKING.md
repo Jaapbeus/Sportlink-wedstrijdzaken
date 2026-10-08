@@ -544,6 +544,30 @@ Is er in dat dagdeel niets vrij, dan staat dat expliciet in het antwoord (`Op {d
 dagdeel. Bij meerdere datums staat de afsluitende zin één keer onder alle datums. Een teamconflict blijft een
 dagbrede reden en noemt geen dagdeel.
 
+**Dagdeel én exacte aanvangstijd (aanname, door de eigenaar bij te sturen).** De exacte aanvangstijd wint:
+
+- Ligt de tijd *binnen* het dagdeel (`DagdeelVenster.ToepasbaarDagdeel`; ondergrens inclusief, bovengrens
+  exclusief, dus 12:00 hoort bij de middag en 17:00 bij de avond), dan wordt de tijd exact getoetst en blijven de
+  alternatieven beperkt tot het dagdeel. De "alleen dit dagdeel gecontroleerd"-claim blijft staan.
+- Ligt de tijd *buiten* het dagdeel, dan vervalt het dagdeel voor deze aanvraag: er wordt dagbreed gezocht en
+  `gecontroleerdDagdeel` is `null`, zodat het antwoord nooit iets beweert dat niet klopt.
+
+**Een slot dat als binnen het dagdeel gecontroleerd wordt gepresenteerd, valt volledig binnen dat dagdeel:** start
+én einde (`FindAllSlots(..., eindBinnenDagdeel: true)` en `TryExactTime(..., uiterlijkEinde)`). Een exacte tijd
+binnen het dagdeel waarvan de wedstrijd na het dagdeel eindigt (bijvoorbeeld 11:30 bij 75 minuten) wordt dus niet
+als exacte match toegewezen; het antwoord biedt dan alternatieven binnen het dagdeel.
+
+**Aangepast sjabloon (`beschikbaarheid_check`).** De pipeline geeft ook bij een sjabloon-override het werkelijk
+gecontroleerde dagdeel (`CheckAvailabilityResponse.GecontroleerdDagdeel`) door. `{{dagdeel}}` komt uitsluitend
+daaruit en nooit uit het gevraagde dagdeel in de classificatie. Bevat het sjabloon `{{dagdeel}}` niet en is er een
+dagdeel gecontroleerd, dan voegt het systeem de standaardzin ("Let op: we hebben alleen ... gecontroleerd") zelf toe
+onder de sjabloontekst, vóór de voetnoot. Bij een teamconflict of vroege return (geen dagdeelcontrole) is
+`{{dagdeel}}` leeg en komt er geen claim.
+
+**Herplanverzoek met gewenste datum, niets vrij:** binnen een dagdeel gezocht staat er "Op {datum} in de ochtend
+(08:30 - 12:00) is helaas niets beschikbaar" (zonder de dagbrede plannerreden); een datumfout of teamconflict
+behoudt zijn eigen reden en noemt geen dagdeel.
+
 > **Herplanverzoek zonder gewenste datum:** het dagdeel gaat mee naar de herplan-berekening, maar de
 > "eerdere/latere mogelijkheden" zijn daar niet strikt tot dat dagdeel beperkt (bij "vervroegen" geldt
 > alleen een ondergrens), dus dat antwoord bevat bewust géén gecontroleerd-dagdeelzin.
@@ -1034,7 +1058,7 @@ letterlijk in de mail staan. De Admin GUI toont dezelfde zeven onder het body-ve
 | `{{team}}` | Genormaliseerde teamnaam uit de classificatie |
 | `{{tegenstander}}` | Tegenstander uit de classificatie |
 | `{{aanvangstijd}}` | Gevraagde aanvangstijd uit de classificatie |
-| `{{dagdeel}}` | Gevraagd dagdeel met venster, bijvoorbeeld `de ochtend (08:30 - 12:00)`; leeg als er geen dagdeel is gevraagd (#1587) |
+| `{{dagdeel}}` | Het werkelijk gecontroleerde dagdeel met venster, bijvoorbeeld `de ochtend (08:30 - 12:00)`; leeg als er geen dagdeel is gecontroleerd (#1587) |
 
 Substitutie is case-insensitief; een niet-gevulde waarde wordt een lege string. Ook het veld
 **Onderwerp** ondersteunt deze placeholders. Blijft het onderwerp leeg, dan wordt het

@@ -395,9 +395,7 @@ public static class BerichtResponseGenerator
         {
             inhoud = $"{aanhef} {voornaam},\n\n"
                    + $"De wedstrijd {wedstrijd.Wedstrijd} staat momenteel gepland op {FormatDatum(wedstrijd.Datum)} om {wedstrijd.AanvangsTijd} op {wedstrijd.VeldNaam}.\n\n"
-                   + $"Helaas is er op {gewenstDatumTekst} geen ruimte beschikbaar.";
-            if (!string.IsNullOrEmpty(beschikbaarheid?.Reden))
-                inhoud += $" {beschikbaarheid.Reden}";
+                   + DagdeelVenster.GeenRuimteOpGewensteDatum(gewenstDatumTekst, beschikbaarheid?.GecontroleerdDagdeel, beschikbaarheid?.Reden);
         }
         else if (beschikbaarheid.BeschikbareVensters?.Count > 0)
         {
@@ -558,7 +556,8 @@ public static class BerichtResponseGenerator
         BerichtClassificatie classificatie,
         InkomendBericht email,
         ClubAppSettingsSnapshot? clubSettings = null,
-        IDictionary<string, string>? extraPlaceholders = null)
+        IDictionary<string, string>? extraPlaceholders = null,
+        string? gecontroleerdDagdeel = null)
     {
         var placeholders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -568,8 +567,9 @@ public static class BerichtResponseGenerator
             ["team"] = classificatie.TeamNaam ?? "",
             ["tegenstander"] = classificatie.Tegenstander ?? "",
             ["aanvangstijd"] = classificatie.AanvangsTijd ?? "",
-            // #1587: "de ochtend (08:30 - 12:00)" of leeg — voor een template dat zelf wil melden welk dagdeel is gevraagd.
-            ["dagdeel"] = DagdeelVenster.Omschrijving(classificatie.Dagdeel) ?? "",
+            // #1587: "de ochtend (08:30 - 12:00)" of leeg. Uitsluitend het dagdeel dat de planner werkelijk heeft
+            // gecontroleerd, nooit het gevraagde dagdeel uit de classificatie (dat kan vervallen zijn).
+            ["dagdeel"] = DagdeelVenster.Omschrijving(gecontroleerdDagdeel) ?? "",
         };
 
         if (extraPlaceholders != null)
@@ -580,6 +580,8 @@ public static class BerichtResponseGenerator
 
         var onderwerpInvulling = EmailTemplateService.ApplyPlaceholders(template.Onderwerp, placeholders);
         var bodyInvulling = EmailTemplateService.ApplyPlaceholders(template.Body, placeholders);
+        // Noemt het sjabloon het dagdeel zelf niet, dan komt de standaardzin alsnog onder de sjabloontekst.
+        bodyInvulling = DagdeelVenster.VoegControleZinToeTenzijVermeld(bodyInvulling, gecontroleerdDagdeel, template.Body);
 
         var onderwerp = !string.IsNullOrWhiteSpace(onderwerpInvulling)
             ? onderwerpInvulling

@@ -333,11 +333,12 @@ public static class BerichtPipeline
                         resultaten, classificatie, bericht, clubSettings);
                 }
 
+                var checkResponse = JsonConvert.DeserializeObject<CheckAvailabilityResponse>(plannerResponseJson);
                 var beschikbaarheidTemplate = await Email.EmailTemplateService.GetTemplateAsync("beschikbaarheid_check", clubCode, log);
                 if (beschikbaarheidTemplate != null)
-                    return trace.MeldOverride("beschikbaarheid_check", BerichtResponseGenerator.BouwAangepasteAntwoord(beschikbaarheidTemplate, classificatie, bericht, clubSettings));
+                    return trace.MeldOverride("beschikbaarheid_check", BerichtResponseGenerator.BouwAangepasteAntwoord(
+                        beschikbaarheidTemplate, classificatie, bericht, clubSettings, gecontroleerdDagdeel: checkResponse?.GecontroleerdDagdeel));
 
-                var checkResponse = JsonConvert.DeserializeObject<CheckAvailabilityResponse>(plannerResponseJson);
                 return BerichtResponseGenerator.BouwBeschikbaarheidAntwoord(
                     checkResponse ?? new CheckAvailabilityResponse(), classificatie, bericht, clubSettings);
 
