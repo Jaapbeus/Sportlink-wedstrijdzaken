@@ -302,7 +302,8 @@ remote-delete of terugdraaien van andermans werk. Een rode Security Gate blokkee
 
 Features gaan naar `develop`; deze productiechecklist geldt alleen voor afzonderlijk
 geautoriseerde hotfix/release-merges naar `main`. Voor iedere merge: huidige head-SHA
-reviewen door de andere agent en bevindingen verwerken. Controleer vóór productie bovendien:
+reviewen door de andere agent en bevindingen verwerken (niet bij een release via `/release`:
+de release is one-shot, #1604). Controleer vóór productie bovendien:
 
 ```
 □ CI volledig groen (alle jobs ✅ of skipped — inclusief Security Gate)
@@ -318,7 +319,7 @@ reviewen door de andere agent en bevindingen verwerken. Controleer vóór produc
    naam-velden in SQL-queries die als JSON teruggaan)
 ```
 
-Alle vakjes ✅, wederzijdse review afgerond en merge expliciet geautoriseerd? → **GO: merge**
+Alle vakjes ✅, wederzijdse review afgerond (niet bij `/release`, #1604) en merge expliciet geautoriseerd? → **GO: merge**
 ```powershell
 gh pr merge <pr-nr> --merge --delete-branch
 ```

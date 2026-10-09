@@ -9,8 +9,10 @@ argument-hint: "[--dry-run]"
 > en Claude Code. Werk uitsluitend aan de toegewezen taak in de eigen geverifieerde worktree;
 > claim of wijzig geen taak, branch, worktree of services van een andere actieve sessie.
 > Behoud `source:` als herkomst; registreer implementer, reviewer, fase en sessie afzonderlijk.
-> Vóór merge: wederzijdse review van de huidige head-SHA, relevante checks én afzonderlijke
-> eigenaarsautorisatie. Deze skill omzeilt die grenzen niet.
+> Vóór merge: relevante checks én afzonderlijke eigenaarsautorisatie. Een release is one-shot:
+> er wordt voor de release zelf (versiebump, CHANGELOG, release-PR) geen review van de andere agent
+> gevraagd (#1604). Voor ontwikkelwerk blijft de wederzijdse review gelden. Deze skill omzeilt die
+> grenzen niet.
 > Een expliciete eigenaarsaanroep `/release` (of `/autonoom --release`) autoriseert alleen
 > de releaseprocedure. Reserveer release-scope en gedeelde runtime vóór R0. Is `/security-review`
 > niet beschikbaar voor de uitvoerende agent, dan is R1 niet voltooid: draag de securityreview
@@ -202,8 +204,8 @@ In de worktree:
    notes.
 4. Commit (`chore(#<nr>): release vX.Y.Z.R — versiebump, CHANGELOG-sectie, OpenAPI-versie`),
    push, `gh pr create --draft --base develop`, met de kostencheck in de body.
-5. Wederzijdse review op huidige head-SHA ⇒ bevindingen verwerkt ⇒
-   `gh pr checks <pr> --watch` groen ⇒ `gh pr ready` ⇒ geautoriseerde merge (`--merge`).
+5. Geen review van de andere agent (#1604): `gh pr checks <pr> --watch` groen ⇒ `gh pr ready` ⇒
+   geautoriseerde merge (`--merge`).
 
 Het starten van `/release` door de eigenaar is de autorisatie voor de merges en de tag in deze
 procedure. Twijfel over iets wat niet in deze skill staat ⇒ vraag het.
@@ -222,7 +224,7 @@ R1-resultaatregel** (alleen aantallen).
 
 `gh pr checks <pr> --watch`. Daarop draaien de Security Gate (inclusief CodeQL), `pre-release-check`
 en `pre-release-db-check`. Rood ⇒ niet mergen. Een rode Security Gate is een STOP die je meldt,
-geen fout die je zelf wegwerkt. Bij groen én afgeronde review van de actuele release-head: `gh pr merge <pr> --merge`.
+geen fout die je zelf wegwerkt. Bij groen op de actuele release-head, zonder reviewaanvraag (#1604): `gh pr merge <pr> --merge`.
 
 ---
 

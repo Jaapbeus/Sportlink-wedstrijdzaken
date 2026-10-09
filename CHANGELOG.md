@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- **Een release vraagt geen review van de andere agent meer**: de release (versiebump, CHANGELOG, release-PR) gaat in één keer door de skill `/release`, zonder reviewronde tussen Codex en Claude Code. De securitypoort, CI en Security Gate blijven gelden en merge en tag blijven afhankelijk van het startcommando van de eigenaar. Voor ontwikkelwerk blijft de wederzijdse review ongewijzigd (#1604).
+
 ## [3.13.0.0] — 2026-10-09
 
 ### Added

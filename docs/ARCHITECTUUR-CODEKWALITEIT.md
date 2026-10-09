@@ -567,7 +567,8 @@ Eerlijk vermeld, zodat niemand denkt dat het gedekt is.
 
 Sinds de instructiewijziging van 2026-10-04 mogen Codex en Claude Code beide ontwikkelen.
 `AGENTS.md` legt één implementer per taak, een eigen branch/worktree per sessie, gescheiden
-scopes en wederzijdse review op een vastgelegde head-SHA vast. `source:` blijft herkomst;
+scopes en wederzijdse review op een vastgelegde head-SHA vast; een release via `/release` is
+uitgezonderd en gaat one-shot zonder review van de andere agent (#1604). `source:` blijft herkomst;
 implementer, reviewer en fase staan afzonderlijk bij de taak. De taak-/runtime-afspraken zijn geen technische locks. De CI-guard `check-agent-instructies.py`
 bewaakt wel dat CLAUDE.md-stubs leeg blijven, skillkopieën gelijk zijn aan hun bron, codeblokken zijn afgesloten, er geen bekend tweede laadpad bestaat en de omvang binnen het plafond blijft; negatieve tests en een mutatietest bewijzen voor die gevallen dat overtredingen falen.
 
