@@ -3,7 +3,7 @@ name: Sluit gereleasede issues
 # Zodra een release-tag naar main wordt gepusht (zelfde trigger als release.yml),
 # doorzoekt deze workflow de commits sinds de vorige release-tag op #NNN-referenties,
 # verwijdert het label 'status: awaiting-release' en sluit die issues definitief.
-# Zie AGENTS.md, sectie "Issue-lifecycle: awaiting-release".
+# Zie AGENTS.md, "Ontwikkelcyclus" (alinea "Labels") en docs/VERSIONING.md §6b.
 
 on:
   push:

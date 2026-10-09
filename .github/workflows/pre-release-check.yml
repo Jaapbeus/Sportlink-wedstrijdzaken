@@ -103,7 +103,7 @@ jobs:
             exit 0
           fi
 
-          echo "::warning::main's CHANGELOG.md heeft versiekopje(s) die develop nog niet heeft — vermoedelijk een hotfix-release die nog niet is teruggebracht. Zie AGENTS.md, sectie 'Een hotfix is pas af als hij ook terug in develop staat'. Kopjes: ${ONTBREEKT}"
+          echo "::warning::main's CHANGELOG.md heeft versiekopje(s) die develop nog niet heeft — vermoedelijk een hotfix-release die nog niet is teruggebracht. Zie AGENTS.md, 'Sessie-isolatie' (regel 'Een hotfix is pas af als hij terug in develop staat') en docs/VERSIONING.md. Kopjes: ${ONTBREEKT}"
 
           {
             echo "### ⚠️ Release-branchdivergentie: CHANGELOG-versiekopje ontbreekt in develop"
@@ -123,8 +123,8 @@ jobs:
   # bevinding in een repo waar de Security Gate leidend is en persoonsgegevens verwerkt worden.
   #
   # Bewust GEEN drempel op bestands-/regelaantal voor de waarschuwing: bij deze branch-strategie
-  # (meerdere features samen naar één release-PR, zie AGENTS.md "Sessie-isolatie —
-  # branch-strategie") is een grote release-PR de NORM, niet de uitzondering. Een aantalsdrempel
+  # (meerdere features samen naar één release-PR, zie AGENTS.md "Sessie-isolatie,
+  # branches en worktrees") is een grote release-PR de NORM, niet de uitzondering. Een aantalsdrempel
   # zou dus bij vrijwel elke release afgaan — exact het "meldketen die altijd meldt, dus
   # genegeerd wordt"-patroon dat release-branch-divergence hierboven al bewust vermeed en dat
   # ook bij de Supabase-advisor-INFO-filtering is vastgelegd

@@ -7,7 +7,7 @@
 @implements IDisposable
 
 @*
-    Auth-gate: zie AGENTS.md sectie "Blazor auth-gate" en "Defense in depth security model".
+    Auth-gate: zie docs/ARCHITECTUUR.md §8.2.1 (defense in depth) en §8.2.2 (Blazor auth-gate).
     MainLayout (sidebar/nav/FeedbackWidget) wordt NOOIT gerenderd zonder geldige auth EN admin/user rol.
     Verplichte 3-user test bij elke wijziging:
       - admin (jaapadmin) → AppState.Authenticated → volledige UI

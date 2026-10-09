@@ -54,6 +54,7 @@ document van het onderdeel waaraan je werkt.
 | [PDF-export](ARCHITECTUUR-PDF-EXPORT.md) | QuestPDF-generator in `Planner.Shared/Deel/`: licentievoorwaarde per club, native assets, pakketgrootte, platformbewijs |
 | [E-mailverwerking](EMAIL-VERWERKING.md) | Pipeline, AI-classificatie, templates, kanaalstrategie |
 | [E-mailmodule (doelarchitectuur)](ARCHITECTUUR-EMAIL-MODULE.md) | Verzendlaag, afzenderstrategie, e-maillogging — ontwerp, migratie nog niet gestart |
+| [Sportlink-dataservice (lezen)](SPORTLINK-DATASERVICE.md) | Leesrichting: endpoints, sync-strategie programma/uitslagen, volledige veldreferentie van `/programma`, nieuwe databron toevoegen |
 | [Sportlink Web Extension](SPORTLINK-WEB-EXTENSION.md) | Schrijfrichting webapp → Sportlink Club: protocol, endpoints, agent-tokengrens |
 | [Feedback](FEEDBACK.md) | Feedbackwidget voor alle gebruikers, beheeroverzicht, technische context en redactie, bewaartermijnen, inzagelog, verwerkingsregister (#764) |
 | [Automatische Sportlink-login](SPORTLINK-AUTOLOGIN.md) | Automatic login met TOTP (#1411): implementatie, productie-setup, beveiliging |
@@ -73,6 +74,7 @@ document van het onderdeel waaraan je werkt.
 | [Versioning & CHANGELOG](VERSIONING.md) | Semver-regels, conventional commits, release-workflow |
 | [Verificatie-scripts](VERIFICATIE-SCRIPTS.md) | Test-App.ps1 + Start-Debug.ps1: schema-controle, endpoints, Blazor-pagina's |
 | [Lokaal debuggen](LOKAAL-DEBUGGEN.md) | Services starten, poorten, hot-reload, func start |
+| [Dossier agentinstructies binnen het budget](DOSSIER-AGENTINSTRUCTIES-BUDGET.md) | Gedateerd werkdossier van #1580: meting van het Codex-budget, beslisregels, regel→bestemming-matrix per sectie van `AGENTS.md`, verificatie |
 | [Dossier Speeltijden inline formulier](DOSSIER-SPEELTIJDEN-INLINE-FORMULIER.md) | Gedateerd werkjournaal van #1552/#1553/#1554: besluiten (opslag per bewerksessie, kaartweergave, labelkoppeling), verificatiebewijs, reviewafhandeling, restbeperkingen |
 
 **Onderzoek en ontwerp — nog geen gebouwde code**

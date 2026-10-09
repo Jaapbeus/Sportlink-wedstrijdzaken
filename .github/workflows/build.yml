@@ -91,10 +91,15 @@ jobs:
       # waaronder de tier-regel, de teamnormalisatieregel en de EgressGuard-regel. De tweede
       # reviewer van dit project werkte er dus zonder. Skills: .agents/skills/ is de bron,
       # .claude/skills/ een identieke kopie.
-      - name: Agentinstructies — AGENTS.md enige bron, stubs, skills en codeblokken
+      # #1580: ook geen bekend tweede laadpad (toelatingsmatrix: commands, agents, output styles, geneste
+      # skills, override, metadatamap, settings/config, symlinks, ook in mappen die de doorloop overslaat)
+      # en een omvangplafond: Codex leest standaard maximaal 32 KiB van de projectinstructies. De
+      # mutatietest schakelt geselecteerde guardregels afzonderlijk uit en eist dat de tests dan falen.
+      - name: Agentinstructies — AGENTS.md enige bron, stubs, laadpaden, omvang, skills en codeblokken
         run: |
           python3 scripts/ci/check-agent-instructies.py
           python3 scripts/ci/check-agent-instructies.test.py
+          python3 scripts/ci/check-agent-instructies.mutaties.py
 
       - name: Agentinstructies — skillkopieën identiek aan de bron
         run: python3 scripts/ci/sync-skills.py

@@ -316,7 +316,7 @@ ALLSTARS-rijen zijn altijd expliciet gestempeld en lekken dus nooit mee.
 |------|-----------|-------------|
 | datum | Ja | Gewenste datum (ISO format) |
 | aanvangsTijd | Nee | Gewenste aanvangstijd ("HH:mm"), null = zoek beste slot |
-| dagdeel | Nee | "ochtend", "middag", of "avond" — gebruikt als geen exact tijdstip |
+| dagdeel | Nee | "ochtend" (08:30-12:00), "middag" (12:00-17:00) of "avond" (17:00-22:00) — beperkt vensters en alternatieven tot dat dagdeel; de grenzen staan in `Planner.Shared/DagdeelVenster.cs` (#1587). De response meldt het toegepaste dagdeel in `gecontroleerdDagdeel` |
 | leeftijdsCategorie | Nee | Bepaalt duur + veldfractie. Zonder: retourneert beschikbare vensters |
 | teamNaam | Nee | Voor team-conflictcheck en team-specifieke regels |
 | tegenstander | Nee | Administratief |
@@ -471,7 +471,7 @@ veld alleen via een directe database-wijziging worden toegevoegd.
 
 | Kolom | Beschrijving |
 |-------|-------------|
-| VeldNummer | Uniek nummer (PK — deployment-breed, niet per club, zie "Deployment-model" in AGENTS.md) |
+| VeldNummer | Uniek nummer (PK — deployment-breed, niet per club, zie `docs/ARCHITECTUUR.md` §2.1) |
 | VeldNaam | Weergavenaam (bijv. "veld 1") |
 | VeldType | Vrije tekst (bijv. `kunstgras` of `natuurgras`) — bepaalt welke velden ontlast worden bij de grasveld-ontlasten optimalisatie. Puur beschrijvend, geen vaste enum. |
 | HeeftKunstlicht | Verlichting beschikbaar — bepaalt zonsondergang-beperking |

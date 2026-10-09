@@ -6,7 +6,7 @@
 // Waarom gedeeld: een issue mag hoogstens één 'status: '-label hebben. Zonder één
 // centrale plek voor die regel dupliceren drie workflows dezelfde remove/add-dans en
 // lopen ze onvermijdelijk uiteen — dan stapelen labels zich op of verdwijnen ze.
-// Zie AGENTS.md, sectie "Issue-lifecycle".
+// Zie AGENTS.md, "Ontwikkelcyclus" (alinea "Labels").
 
 const STATUS_PREFIX = 'status: ';
 
@@ -27,7 +27,7 @@ const PROTECTED = [
   'status: waiting-owner',
   // Codex draait als handmatig aangeroepen, read-only reviewsweep zonder webhook — dit label
   // wordt dus altijd door Claude Code (of de eigenaar) gezet/verwijderd, nooit automatisering.
-  // Zie AGENTS.md, sectie "Issue-lifecycle" (#1336).
+  // Zie AGENTS.md, "Ontwikkelcyclus" (alinea "Labels") (#1336).
   'status: waiting-codex',
 ];
 

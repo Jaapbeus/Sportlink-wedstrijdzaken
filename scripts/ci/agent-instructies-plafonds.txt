@@ -1,0 +1,25 @@
+# agent-instructies-plafonds.txt (#1580)
+#
+# Eén regel per meting: <sleutel> <bytes> <toelichting>.
+#   bestand:<pad>  de grootte van een AGENTS.md in bytes
+#   keten:<pad>    de gecombineerde grootte van alle AGENTS.md van de root tot en met <pad>, plus
+#                  twee bytes per scheiding (Codex voegt de bestanden samen; zie het guardkopje)
+#
+# Dit zijn RATCHET-waarden, geen doelen — dezelfde afspraak als scripts/ci/codekwaliteit-plafonds.txt.
+# check-agent-instructies.py faalt zodra een meting het plafond overschrijdt, faalt óók wanneer
+# de meting meer dan 1024 bytes onder het plafond ligt (winst die niet wordt vastgezet lekt weg),
+# en faalt op een bestand zonder plafond of een plafond zonder bestand. Verhogen kan alleen in een
+# PR die uitlegt waarom — dat is een diff die de eigenaar goedkeurt, geen stilzwijgende tolerantie.
+#
+# WAAROM: Codex leest van de projectinstructies standaard maximaal 32768 bytes (project_doc_max_bytes),
+# over de hele keten samen, en kapt de rest stilzwijgend af. Het doel is dat elke keten binnen
+# 30720 bytes past, zonder verhoogde gebruikersinstelling. De structurele maxima staan in de guard
+# (root 27 KiB, submap 4 KiB, keten 30 KiB inclusief scheidingstekens): een plafond hieronder mag er niet
+# boven, en elke meting ook niet.
+#
+# Nulmeting 2026-10-08 op develop (9859f823): root 124770, FunctionApp 16175, keten 140947 bytes.
+# Na de verkleining (#1580) gemeten op de eindtoestand van die PR:
+
+bestand:AGENTS.md                  27588  compacte kern; alle harde regels inline, uitleg in docs/
+bestand:FunctionApp/AGENTS.md       2163  compacte kern voor de SQL Server-tier
+keten:FunctionApp/AGENTS.md        29753  27588 + 2 + 2163; sessie in FunctionApp/ laadt beide (Codex-grens 32768)

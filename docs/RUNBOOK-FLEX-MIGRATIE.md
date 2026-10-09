@@ -477,7 +477,7 @@ buiten een wedstrijdweekend.
    Flex-app (`az functionapp keys list -g "$RG" -n "$APP"` — niet loggen). **Uitsluitend als Secret, nooit als Variable** (#1204): Variables worden niet gemaskeerd in de publieke Actions-logs. Staat een van deze namen nog als Variable, verwijder die dan; sinds #1237 lezen de workflows uitsluitend `secrets.X`.
 4. **De tijdelijke workflow verwijderen**: `deploy-flex-test.yml` (nooit toegevoegd; bijlage A is verwijderd) in dezelfde PR als stap 1,
    of direct erna.
-5. **Volledige deploy vanaf `main`**, daarna per job (AGENTS.md regel 2, stap C) en de live
+5. **Volledige deploy vanaf `main`**, daarna per job (AGENTS.md veiligheidsregel 2) en de live
    browsercheck (regel 2a). `blazor-deploy` zet de nieuwe URL in `FunctionBaseUrl` én in de CSP.
 6. **Oude app stoppen, niet verwijderen**: `az functionapp stop -g "$RG" -n "func-[clubcode]-sportlink"`.
 7. **Een volledige cyclus observeren**: minimaal één uurlijkse keepalive en één dagelijkse sync

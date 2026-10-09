@@ -522,8 +522,17 @@ Performance Advisor ophaalt en nieuwe EXTERNAL-bevindingen op ERROR/WARN-niveau 
 
 **Na een PR-merge naar `main`:** elke deploy-job wordt individueel geverifieerd (niet alleen het
 totale run-resultaat), en gevolgd door een browser-rendercheck op de live Admin GUI — groene CI en
-HTTP 200 bewijzen niet dat de Blazor-app daadwerkelijk rendert. Zie **WZ-QUA-05** en AGENTS.md voor
-de exacte commando's.
+HTTP 200 bewijzen niet dat de Blazor-app daadwerkelijk rendert. Zie **WZ-QUA-05**; de exacte
+commando's en de checklist van de live rendercheck staan in [VERSIONING.md](VERSIONING.md) §6b en in de
+release-skill (`/release`).
+
+*Waarom dit een eigen stap is (incident v2.17.2.0, #659).* Bij die release waren alle zes
+deploy-jobs `success`, gaf de SWA HTTP 200 en stond het woord "blazor" in de HTML — terwijl de GUI
+permanent op het laadscherm hing. Een Blazor WASM-app levert op élke route dezelfde `index.html` met
+status 200; een controle op die status kan de fout per definitie niet zien. De CSP komt uit
+`staticwebapp.config.json` en wordt alleen door Azure SWA toegepast, dus de lokale verificatielus
+dekt dit statisch af op de publish-output (§8.2.3 rij 12) maar de live check blijft het enige bewijs.
+Faalt één punt van die check, dan is de release **niet** geslaagd: direct een hotfix vanuit `main`.
 
 ### 7.4 Versiebeheer
 
@@ -593,7 +602,9 @@ of `DateTime.UtcNow`; elke API-response heeft een `Z`-suffix; elke Blazor-weerga
 
 Elke tabel met club-specifieke data krijgt een ClubCode-kolom (SQL Server: `ClubCode`; Postgres:
 `clubcode`, casing per §5.4). Queries filteren altijd op de ClubCode uit de settingstabel van de
-actieve tier.
+actieve tier. Bij codereview geldt voor elke nieuwe tabel: óf zij heeft een ClubCode-kolom, óf de
+configuratie komt in de instellingentabel (`dbo.AppSettings` / `public.appsettings`) in plaats van in
+een eigen tabel.
 
 ```sql
 -- SQL Server — correct
@@ -789,6 +800,7 @@ vastlopende login.
 | 9 | `Authentication.razor` op `@page "/authentication/{action}"` met `<RemoteAuthenticatorView>` | `Pages/` | Verwerkt MSAL login/logout-callback |
 | 10 | Easy Auth ingeschakeld + `EasyAuthHelper.RequireAdmin()` op elk admin-endpoint, via `AdminEndpoint.ExecuteAsync` (#1350) | Azure Portal + `FunctionApp*/Admin/` | Server-side validatie van Bearer token en admin-rol |
 | 11 | `Cache-Control: no-cache` voor `/index.html` en `/` | `staticwebapp.config.json` | Zonder dit cachet de browser een oude `index.html` die naar assets uit een eerdere deploy verwijst → 404's en SRI-mismatches |
+| 12 | Geen import-map en geen inline `<script>` in de publish-output; `OverrideHtmlAssetPlaceholders` blijft `false`; inline scripts staan in een extern bestand onder `wwwroot/js/` (#659) | `BlazorAdmin/wwwroot/index.html`, `BlazorAdmin.csproj` | De productie-CSP van Azure SWA staat `script-src 'self' 'wasm-unsafe-eval'` toe, zonder `unsafe-inline`: een inline script wordt geblokkeerd. Bij de import-map betekende dat `dotnet.js` niet resolvebaar → 404 → Blazor start nooit → permanent laadscherm. Dit is lokaal **niet** zichtbaar: noch de dev-server (:5242) noch de SWA CLI-emulator (:4280) zet de CSP-header. Daarom controleert de CI-job *Build FunctionApp + BlazorAdmin* de publish-output statisch, en blijft de live rendercheck (§7.3) het enige echte bewijs |
 
 #### 8.2.4 Secrets en configuratie
 
@@ -797,7 +809,7 @@ configuratie automatisch vanuit templates en GitHub Secrets/Variables.
 
 | Bestand | In git? | Toelichting |
 |---|---|---|
-| `BlazorAdmin/wwwroot/appsettings.Production.template.json` | ✓ | Bevat alleen `{{PLACEHOLDER}}`-tokens |
+| `BlazorAdmin/wwwroot/appsettings.Production.template.json` | ✓ | Bevat alleen `{{PLACEHOLDER}}`-tokens; een nieuw configuratieveld krijgt in dezelfde PR een token hier (controleer dit bij codereview) |
 | `BlazorAdmin/wwwroot/appsettings.Production.json` | ✗ | Gegenereerd door CI vanuit template + GitHub Secrets |
 | `BlazorAdmin/wwwroot/appsettings.json` | ✓ | Localhost-config, geen secrets |
 | `FunctionApp/local.settings.json` | ✗ | Bevat `SqlConnectionString` en andere secrets |
@@ -865,6 +877,12 @@ tier een installatie draait, is een uitrolkeuze en zegt niets over de status van
 Providergebonden implementaties mogen verschillen; pure, betekenisgelijke logica wordt gedeeld zodra
 zij geen providerkennis bevat.
 
+**Een tier degraderen is een expliciet besluit**, vastgelegd door `built` op `false` te zetten in
+`scripts/ci/database-tiers.json` — nooit een zin in een document. Zolang `built: true` staat, geldt
+pariteit onverkort. Dit staat bewust hier, bij de regel zelf: de aanname "de SQL Server-tier is
+rollback-only" is ooit als beschrijving van de situatie binnengeslopen, daarna als norm gebruikt en
+heeft twaalf endpoints gekost (#1266).
+
 Pariteit wordt geautomatiseerd bewaakt, **in beide richtingen**. De bestaande schemacontroles keken
 maar één kant op; dat klopte toen de ene tier leidend was, en bij de omslag draaiden de rollen om
 maar de controles niet.
@@ -897,8 +915,51 @@ tegen de actuele leveranciersdocumentatie — nooit uit geheugen, omdat een leve
 tier zonder aankondiging kan beëindigen. Kostbare onderdelen staan in de infrastructuurdefinitie
 achter een schakelaar die standaard uit staat en alleen met een expliciete keuze aan kan, zodat de
 beslissing een reviewbare wijziging is. Het volledige, actiegerichte kostenprotocol (verplichte
-MS-Docs-prijscheck, stopprocedure bij twijfel) staat in `AGENTS.md` — dat is de operationele
-uitvoering van dit principe, niet een tweede architectuurbron.
+MS-Docs-prijscheck, stopprocedure bij twijfel) staat compact in `AGENTS.md` — dat is de operationele
+uitvoering van dit principe, niet een tweede architectuurbron. De bronnentabellen en de
+deployment-checklist staan hieronder; ze zijn bij #1580 uit `AGENTS.md` hierheen verplaatst zodat het
+instructiebestand binnen het budget van de agents past.
+
+**Gratis (huidige stack — geverifieerd via MS Docs).** Controleer de bron vóór je erop leunt; zie
+ook de opmerking onder de tabellen.
+
+| Resource | Gratis-grens | Geverifieerde bron |
+|---|---|---|
+| Azure Functions Consumption Plan | 1M executions + 400K GB-s/maand | [MS Docs](https://learn.microsoft.com/azure/azure-functions/functions-consumption-costs) |
+| Azure Static Web Apps Free tier | 100 GB bandbreedte/mnd, 500 MB opslag | [MS Docs](https://learn.microsoft.com/azure/static-web-apps/quotas) |
+| Azure SQL Database Free offer | Bestaande resource — bevestig bij verlenging | Azure portal |
+| Azure Entra ID | Gratis via M365-licentie | — |
+| GitHub Actions | Gratis voor dit repo | — |
+| Activity Log Alerts / Resource Health Alerts | Altijd gratis | [MS Docs](https://learn.microsoft.com/azure/azure-monitor/fundamentals/best-practices-cost#alerts) |
+
+**Potentieel betaald — expliciete goedkeuring vereist.**
+
+| Resource | Kostenrisico | Verificatieplicht |
+|---|---|---|
+| Log Analytics workspace | Pay-as-you-go; Legacy Free Tier niet meer beschikbaar voor nieuwe workspaces (gestopt 1 juli 2022); 5 GB/mnd vrij per billing account — gedeeld | Controleer [prijspagina](https://learn.microsoft.com/azure/azure-monitor/logs/cost-logs) vóór aanmaak |
+| Application Insights (workspace-based) | Billing loopt via Log Analytics workspace | Idem; stel daily cap in (max 100 MB/dag) |
+| Metric Alert Rules | Betaald per gemonitord time series | Gebruik Activity Log Alerts als gratis alternatief |
+| Key Vault | Standaard betaald per operatie | Controleer [prijspagina](https://azure.microsoft.com/pricing/details/key-vault/) |
+| Flex Consumption Plan | Heeft wél een gratis tegoed, maar kleiner dan Consumption: 250.000 executies + 100.000 GB-s/mnd per subscription (Consumption: 1M + 400K). Bij **always-ready instances vervalt het tegoed volledig**. | Prijscheck via MS Docs vóór aanmaak; nooit een plan wijzigen zonder goedkeuring — migratie loopt via epic #1063 |
+| Premium/Standard-tier van bestaande resource | Directe kostenwijziging | Altijd vragen |
+
+> **Opmerking (bij #1580, niet inhoudelijk herzien).** De tabellen zijn ongewijzigd overgenomen. De
+> Function App draait sinds de Flex-migratie op het Flex Consumption-plan; de eerste rij van de
+> gratis-tabel beschrijft het oude Consumption-plan. Of de rij `Azure SQL Database Free offer`
+> alleen nog voor de SQL Server-tier geldt, is niet vastgesteld. Een eigenaar beoordeelt beide
+> bij de eerstvolgende kostencontrole; dat is een besluit, geen verplaatsing.
+
+**Verificatiemoment — checklist vóór elke `git push` naar `main` of productie-deployment:**
+
+```
+□ Zijn er nieuwe Azure-resources toegevoegd in deze PR? → zo ja: prijscheck via MS Docs
+□ Zijn bestaande resources geconfigureerd gewijzigd (tier, retention, plan)? → zo ja: prijscheck
+□ Heeft Microsoft in de afgelopen 30 dagen tier-wijzigingen aangekondigd voor resources die wij gebruiken?
+  → Controleer via de Microsoft Learn-zoekopdracht "Azure Functions pricing changes" (zonder jaartal,
+    zodat de zoekopdracht niet veroudert)
+□ Alle checks groen? → deployment mag doorgaan
+□ Eén twijfel? → STOP en meld aan gebruiker
+```
 
 ### 8.7 Kwaliteit en bewijs
 
@@ -1139,6 +1200,13 @@ vanaf nu één beslisregel:
    architectuurprincipe (bijv. het kostenplafond in §8.6, of de agent-tokengrens in §5.5), dan geeft
    `AGENTS.md` een korte samenvatting plus een verwijzing hierheen — nooit de volledige regel nogmaals
    uitgeschreven.
+
+**Het budget van de agentinstructies.** `AGENTS.md` (en `FunctionApp/AGENTS.md`) moeten binnen het
+leesbudget van de agents blijven: Codex leest standaard maximaal 32 KiB van de projectinstructies over de
+hele keten en kapt de rest stilzwijgend af (#1580). `scripts/ci/check-agent-instructies.py` faalt bij
+overschrijding; zie `ARCHITECTUUR-CODEKWALITEIT.md` (regel 5). Een harde regel blijft dus compact inline in
+`AGENTS.md`; toelichting, voorbeelden en uitvoeringsdetail verhuizen naar het document uit punt 1 of 2 met
+een concreet leesmoment in `AGENTS.md`.
 
 Een regel op twee plekken volledig uitschrijven "voor de zekerheid" is geen redundantie zonder
 nadeel: het is precies de plek waar de volgende wijziging er één vergeet bij te werken. `AGENTS.md`

@@ -140,7 +140,7 @@ gh issue view <nr> --json number,title,state,labels 2>/dev/null
 - `state: CLOSED` → ✅
 - `state: OPEN` met label `status: awaiting-release` → ✅ **dit is de juiste eindtoestand** na een
   merge naar `develop` — NIET sluiten. `close-released-issues.yml` sluit het pas bij de
-  eerstvolgende productie-tag op `main` (AGENTS.md, "Issue-lifecycle: awaiting-release").
+  eerstvolgende productie-tag op `main` (AGENTS.md, "Ontwikkelcyclus", alinea "Labels"; docs/VERSIONING.md §6b).
 - `state: OPEN` zonder enig `status:`-label, terwijl de bijbehorende PR wél gemerged is → ⚠️
   noteer in het eindrapport en vraag de gebruiker het na te lopen — dit hoort niet voor te komen
   (`label-awaiting-release.yml` zet het label automatisch).

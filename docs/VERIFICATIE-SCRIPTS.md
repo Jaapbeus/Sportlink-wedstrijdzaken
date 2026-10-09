@@ -153,6 +153,14 @@ houden dat tegen, en één in [.github/workflows/deploy.yml](../.github/workflow
 leunen worden via dynamische SQL aangemaakt. Op een database waar de eerste sync nog niet gelopen
 heeft, worden die blokken netjes overgeslagen; de volgende deploy maakt ze aan.
 
+### GitHub-automatisering: `issue-status.test.js`
+
+`node .github/scripts/issue-status.test.js` test de helper `.github/scripts/issue-status.js` achter de
+drie lifecycle-workflows (`label-issue-status.yml`, `label-awaiting-release.yml`,
+`close-released-issues.yml`) en draait bij elke PR in de CI-job *Build FunctionApp + BlazorAdmin*. Dat
+is nodig omdat de workflows zelf alleen op hun eigen trigger draaien: zonder deze test zou een fout pas
+bij een echte merge of release blijken.
+
 ### BlazorAdmin-build wordt overgeslagen bij een draaiende dev server
 
 Draait er iets op poort 5242, dan slaat sectie 3 de BlazorAdmin-build over. Een tweede
@@ -310,7 +318,9 @@ kindproces herstart zodra dat wegvalt: alleen de poort-eigenaar killen liet de w
 die poort 5242 daarna opnieuw bond. Het script wacht tot de poorten echt vrij zijn en geeft
 exit 1 als dat niet lukt. Idempotent: draaien zonder actieve services doet niets.
 
-Gedeelde logica staat in `scripts/dev/DevServices.psm1`, cross-platform sinds #800:
+Gedeelde logica staat in `scripts/dev/DevServices.psm1`, cross-platform sinds #800. **Nieuw
+platformspecifiek gedrag hoort altijd achter een functie in dit bestand — nooit inline in een script**,
+zodat er één plek is waar de OS-verschillen staan:
 
 | Functie | Doel |
 |---|---|
@@ -631,8 +641,31 @@ node scripts/ci/check-theme-js-contract.js
 Tot #1155 faalden drie van de toenmalige vier lokaal (`declare: -A: invalid option`, `mapfile: command not
 found`), zodat de AGENTS.md-regel "lokaal verifiëren vóór een push" voor deze guards alleen met
 Homebrew-bash én GNU grep vooraan in `PATH` haalbaar was. De scripts gebruiken nu uitsluitend
-bash-3.2- en POSIX-constructies; de regels daarvoor staan in AGENTS.md onder "Cross-platform
-scripts". Wil je de CI-runner exact nabootsen, dan kan dat in een container:
+bash-3.2- en POSIX-constructies. De regels daarvoor staan hieronder — dit is de bron, `AGENTS.md`
+bevat alleen een samenvatting.
+
+### Portabiliteitsregels voor `scripts/ci/*.sh` en git-hooks (Windows én macOS, #800, #1155, #1090)
+
+- **bash 3.2 (de standaard `/bin/bash` van macOS).** Geen `declare -A` (associatieve arrays), geen
+  `mapfile`/`readarray`, geen `${var,,}`/`${var^^}` en geen GNU-only `sed`-vlag `I`. Gebruik in plaats
+  daarvan een newline-gescheiden string met `grep -qxF` als set, een POSIX-awk-array voor lookups, een
+  `while read`-lus in plaats van `mapfile`, en `tr '[:upper:]' '[:lower:]'` voor lowercase.
+- **Een lege array uitlezen onder `set -u`** (`"${arr[@]}"`) is in bash 3.2 een "unbound
+  variable"-fout. Schrijf `${arr[@]+"${arr[@]}"}`.
+- **Geen `grep -P`.** De BSD-grep van macOS kent geen PCRE; gebruik `grep -E`. Dit is extra riskant in
+  de hooks, waar een `|| true` de fout stil maakt.
+- **`\s` en `\d` buiten een bracket-expressie werken in BSD-grep `-E`** (`[Pp]assword\s*=`), **maar
+  binnen niet**: POSIX-bracket-expressies interpreteren `\` niet speciaal, dus `[^;'"`\s<>{}]` sluit
+  letterlijk de tekens `\` en `s` uit. Gebruik binnen een bracket-expressie altijd de POSIX-klasse
+  `[:space:]` (`[^;'"`[:space:]<>{}]`); die werkt identiek op BSD-grep, GNU grep en `git grep`. Dit liet de
+  pre-commit/pre-push-hook een testwaarde als `Password=<testwaarde>` stilzwijgend doorlaten op macOS
+  terwijl dezelfde regex op Linux/CI wél blokkeerde (#1090).
+- **Git-hooks moeten de executable-bit hebben** (`git update-index --chmod=+x`); git slaat een
+  niet-executable hook op macOS stilzwijgend over, waarna de secrets- en AVG-scan niet draait.
+- **Test lokaal met `/bin/bash scripts/ci/<script>.sh`**; het resultaat moet identiek zijn aan de
+  Linux-CI-runner.
+
+Wil je de CI-runner exact nabootsen, dan kan dat in een container:
 
 ```bash
 docker run --rm -v "$PWD":/w -w /w mcr.microsoft.com/dotnet/sdk:9.0 \
@@ -650,7 +683,7 @@ hebben gekregen, dus een grep over de migratiemap kan dit niet beantwoorden.
 
 | Script | Bewaakt | Faalt op |
 |---|---|---|
-| `check-rls-enabled.sh` | Elke tabel in `public`/`avg`/`planner` heeft `relrowsecurity` (AGENTS.md, Supabase-RLS-regel 1) | Eén of meer tabellen zonder RLS, met de exacte `ALTER TABLE`-regel als oplossing in de uitvoer |
+| `check-rls-enabled.sh` | Elke tabel in `public`/`avg`/`planner` heeft `relrowsecurity` (AGENTS.md, Supabase #1198) | Eén of meer tabellen zonder RLS, met de exacte `ALTER TABLE`-regel als oplossing in de uitvoer |
 | `check-splinter-lints.sh` | Supabase's eigen linter (splinter), vastgepind op commit-SHA + SHA-256 | `rls_disabled_in_public`, `policy_exists_rls_disabled`, `security_definer_view`, `function_search_path_mutable`, `duplicate_index` |
 
 Verbinding via de standaard libpq-variabelen — **niet** via `POSTGRES_CONNECTION_STRING`, want dat

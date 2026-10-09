@@ -287,7 +287,7 @@ public class GitHubIssueReporterDeduplicatieTests
     [Fact]
     public async Task ReportAsync_EgressGeblokkeerd_DoetNiets()
     {
-        // AGENTS.md "Uitgaande integraties": de GitHub-aanroep is uitgaand verkeer en mag buiten
+        // AGENTS.md, "Architectuurinvarianten" (EgressGuard): de GitHub-aanroep is uitgaand verkeer en mag buiten
         // productie nooit vertrekken. De guard zit per tier; hier komt hij als delegate binnen.
         // Deze test bewijst dat die delegate ook echt leidend is — en dat ReportAsync bij een
         // gesloten poort niet eens aan de omgevingsvariabelen komt.

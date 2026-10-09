@@ -95,7 +95,7 @@ public class TeamCanonicalisatieIntegrationTests
         (await ScalarAsync<string?>("SELECT status FROM public.teamaliassen WHERE clubcode = @club"))
             .Should().Be("pending",
                 "een geleerde alias is pas waarheid na goedkeuring door een coordinator — de sync mag hem "
-                + "niet stilzwijgend op 'validated' zetten (AGENTS.md, regel 4 onder Teamnaam-resolutie)");
+                + "niet stilzwijgend op 'validated' zetten (docs/ARCHITECTUUR-TEAMRESOLUTIE.md, \"Regels bij wijzigingen\" 3)");
         (await ScalarAsync<string?>("SELECT bron FROM public.teamaliassen WHERE clubcode = @club"))
             .Should().Be("Leren");
     }

@@ -609,8 +609,8 @@ expliciete `Richting`-kolom in plaats van impliciet afgeleid uit `VerzoekType ==
   `{ ontvangers, onderwerp, bericht, bronScherm, afzender: "systeem" | "zelf" }`. Valideert via
   `OntvangerResolutieService`, roept `IEmailVerzendService.VerstuurAsync` aan.
 - **Frontend:** nieuw herbruikbaar component `BlazorAdmin/Shared/EmailComposer.razor`, analoog aan
-  het bestaande `TimeInput.razor`-patroon (AGENTS.md, "Tijdinvoer-normalisering — altijd via
-  TimeHelper + TimeInput"). Eén component bundelt: het ontvangersveld + live-validatie (het patroon
+  het bestaande `TimeInput.razor`-patroon (AGENTS.md, "Architectuurinvarianten" (codekwaliteit regel 4): altijd via
+  TimeHelper + TimeInput). Eén component bundelt: het ontvangersveld + live-validatie (het patroon
   dat nu inline in `Teambegeleiding.razor:72-110`/`OnbekendeAdressen()` (in `Teambegeleiding.razor.cs`,
   regel 133-142) staat) +
   onderwerp/body + verstuur-knop + (na §3.6) een "Van"-dropdown.
@@ -666,8 +666,8 @@ auth-boilerplate — het scherm levert alleen de ontvangerslijst en een `BronSch
 
 **Kostenimplicatie:** geen. Mail.Send (delegated) valt, net als de huidige app-only permission,
 binnen de bestaande M365-licentie — er komt geen nieuwe Azure-resource bij. Wel: een nieuwe Entra
-API-permission-configuratie, die volgens AGENTS.md's regel "Azure Entra setup — verify/configure via
-scripts, nooit handmatig" via `scripts/azure/Configure-EntraApp.ps1` moet lopen, niet via handmatige
+API-permission-configuratie, die volgens de AGENTS.md-regel "Entra nooit via de Portal" (verify/configure via
+scripts) via `scripts/azure/Configure-EntraApp.ps1` moet lopen, niet via handmatige
 Portal-clicks. Een nieuwe delegated Graph-permission + een OBO-token-exchange is een nieuwe
 aanvalsoppervlakte (tokenlekken, scope-creep) en vereist een expliciete CISO security-review vóór
 productie, conform de Security Gate.
@@ -787,7 +787,7 @@ vóórdat hij het token gebruikt — Blazor levert alleen het token aan, beslist
 - **Risico:** middel — dit is de enige bestaande call-site met productieverkeer (recent gemerged,
   #765).
 - **Verificatie:** bestaande/nieuwe tests voor deze flow + handmatige smoke test via
-  `Teambegeleiding.razor` in de lokale verificatielus (root-AGENTS.md, Stap 2) + controleer dat de
+  `Teambegeleiding.razor` in de lokale verificatielus (root-AGENTS.md, Stap 2, verificatielus) + controleer dat de
   Email-log-pagina de nieuwe rij toont met `Richting=Uitgaand`, `Oorsprong=TeambegeleidingDoorsturen`.
 
 ### Fase 2 — Generiek endpoint + Blazor-component (nog geen nieuw scherm)
@@ -798,7 +798,7 @@ vóórdat hij het token gebruikt — Blazor levert alleen het token aan, beslist
   nieuw scherm het gebruikt.
 - **Risico:** middel — `Teambegeleiding.razor`'s bestaande UI-gedrag (Herstel-knop, Kopieer-knop,
   `OnbekendeAdressen`-waarschuwing) moet exact behouden blijven in het component.
-- **Verificatie:** browser-rendercheck (root-AGENTS.md, Stap 2.h) op `/teambegeleiding`, alle
+- **Verificatie:** browser-rendercheck (root-AGENTS.md, Stap 2, browser-rendercheck) op `/teambegeleiding`, alle
   bestaande knoppen/gedrag handmatig doorlopen vóór en na de migratie vergelijken.
 
 ### Fase 3 — Afzenderstrategie (OBO), pas ná de spike uit §3.6
@@ -840,7 +840,7 @@ vóórdat hij het token gebruikt — Blazor levert alleen het token aan, beslist
    les over gemaskeerde SQL-fouten bij deploys in het projectgeheugen).
 4. **Wat als een gebruiker "verzenden als mezelf" kiest maar geen bruikbare mailbox heeft** (bijv. een
    gedeeld/functioneel account zonder eigen postvak)? Het deployment-model van dit project
-   (root-`AGENTS.md`, "Deployment-model") gaat uit van een klein aantal individuele Entra-gebruikers
+   (`docs/ARCHITECTUUR.md` §2.1, deploymentmodel) gaat uit van een klein aantal individuele Entra-gebruikers
    per club, dus dit scenario is waarschijnlijk zeldzaam — maar de UI moet een duidelijke
    foutmelding geven in plaats van een crash of stille mislukking. **Zelfde eis geldt voor Optie A2
    (§3.6):** kiest een gebruiker een gedeeld postvak waar hij geen Send As/Send on Behalf-recht op

@@ -22,16 +22,20 @@ public abstract class ClubSelectorPageBase : ComponentBase, IDisposable
 {
     [Inject] protected ClubSelectorService ClubSelector { get; set; } = default!;
 
+    private readonly ClubWisselTracker _clubTracker = new();
     private bool _disposed;
 
     protected override void OnInitialized()
     {
         base.OnInitialized();
+        _clubTracker.Markeer(ClubSelector.SelectedClubCode);
         ClubSelector.OnChange += HandleClubChanged;
     }
 
+    // #1578: alleen herladen als de club werkelijk anders is dan die waarvoor de pagina is geladen.
     private void HandleClubChanged() => _ = InvokeAsync(async () =>
     {
+        if (!_clubTracker.MoetHerladen(ClubSelector.SelectedClubCode)) return;
         await OnClubChangedAsync();
         StateHasChanged();
     });
