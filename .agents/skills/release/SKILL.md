@@ -14,7 +14,9 @@ argument-hint: "[--dry-run]"
 > gevraagd (#1604). Voor ontwikkelwerk blijft de wederzijdse review gelden. Deze skill omzeilt die
 > grenzen niet.
 > Een expliciete eigenaarsaanroep `/release` (of `/autonoom --release`) autoriseert alleen
-> de releaseprocedure. Reserveer release-scope en gedeelde runtime vóór R0. Is `/security-review`
+> de releaseprocedure. De eigenaar start alleen `/release`; de agent voert R0 t/m R7 zelf uit en
+> stopt uitsluitend op een harde stopconditie of een ⚠️-beslispunt (#1604).
+> Reserveer release-scope en gedeelde runtime vóór R0. Is `/security-review`
 > niet beschikbaar voor de uitvoerende agent, dan is R1 niet voltooid: draag de securityreview
 > expliciet over aan Claude Code; geen versiebump/merge/deploy totdat het bewijs beschikbaar is.
 
@@ -236,7 +238,9 @@ geen fout die je zelf wegwerkt. Bij groen op de actuele release-head, zonder rev
    of `skipped` uitsluitend voor de migratiejob van de níet-actieve databasetier.
 3. Live browser-rendercheck op de productie-Admin GUI met Playwright: geen CSP-fouten, geen
    `/_framework/`-404, `window.Blazor` aanwezig, redirect naar de Microsoft-login. Faalt iets ⇒
-   geen tag, hotfix vanuit `main`, melden.
+   geen tag, hotfix vanuit `main`, melden. De productie-URL staat nooit in git (en in Actions
+   alleen als Secret, dus niet uitleesbaar): haal hem uit het lokale agentgeheugen van de eigenaar
+   en vraag hem al bij R0 als hij ontbreekt — niet pas bij R6 (#1604).
 
 ---
 
