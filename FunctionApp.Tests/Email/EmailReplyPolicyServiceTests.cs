@@ -131,16 +131,20 @@ public class EmailReplyPolicyServiceTests
         graph.MarkedAsReadIds.Should().ContainSingle(id => id == "m1d");
     }
 
+    /// <summary>
+    /// #1608: planning is mogelijk op de gevraagde datum → de policy onderdrukt het antwoord (#572). Dat is
+    /// een beleidsbesluit, geen AI-uitval: ook in review mode status GeenAntwoordNodig en label
+    /// "Handmatige planning", precies als <see cref="GeenReplyNodig_ZetStatusEnHandmatigePlanningLabel"/>.
+    /// Vóór #1608 werd dit "Review" + "Geen AI antwoord" — een leeg item in de reviewwachtrij.
+    /// </summary>
     [Fact]
-    public async Task ReviewMode_ZonderAntwoordNodig_ZetStatusReview_EnBouwtGeenAntwoord()
+    public async Task ReviewMode_ZonderAntwoordNodig_ZetGeenAntwoordNodig_EnHandmatigePlanningLabel()
     {
         var service = new EmailReplyPolicyService();
         var graph = new FakeEmailGraphService();
         var persistence = new RecordingEmailPersistenceService();
         var buildCalled = false;
 
-        // Planning is mogelijk op de gevraagde datum → de policy onderdrukt het antwoord. Er is dan
-        // ook in review mode niets voor te stellen, maar de status moet wél Review zijn.
         var result = await service.HandelReplyFlowAfAsync(
             verwerkingId: 43,
             email: new InkomendBericht { MessageId = "m1b", Afzender = "afzender@voorbeeld.test", Onderwerp = "Test" },
@@ -162,12 +166,11 @@ public class EmailReplyPolicyServiceTests
         buildCalled.Should().BeFalse();
         persistence.VoorgesteldeAntwoorden.Should().BeEmpty();
         persistence.StatusUpdates.Should().ContainSingle(u =>
-            u.VerwerkingId == 43 && u.Status == EmailStatus.Review && u.GeextraheerdeData == null);
+            u.VerwerkingId == 43 && u.Status == EmailStatus.GeenAntwoordNodig && u.GeextraheerdeData == null);
         graph.SentReplies.Should().BeEmpty();
 
-        // Zonder voorstel is er daadwerkelijk geen AI-antwoord — dit is het enige pad in review-mode
-        // waar het label hoort (#1244).
-        graph.CategoryUpdates.Should().ContainSingle(c => c.Categories.Contains("Geen AI antwoord"));
+        graph.CategoryUpdates.Should().ContainSingle(c => c.Categories.Contains("Handmatige planning"));
+        graph.CategoryUpdates.Should().NotContain(c => c.Categories.Contains("Geen AI antwoord"));
         graph.MarkedAsReadIds.Should().ContainSingle(id => id == "m1b");
     }
 

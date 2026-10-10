@@ -88,16 +88,29 @@ public class EmailTestEndpointCoreAntwoordTests
         => json.GetProperty("trace").GetProperty("stappen").EnumerateArray().Select(s => s.GetProperty("code").GetString());
 
     [Theory]
-    [InlineData(true, true)]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    [InlineData(false, false)]
-    public void ReviewModusAan_ZekereTrace_GaatToch_NaarReview_ZonderPoortstap(bool poortActief, bool replyMoetVersturen)
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ReviewModusAan_ZekereTrace_GaatToch_NaarReview_ZonderPoortstap(bool poortActief)
     {
-        var json = Antwoord(HerkendTeam(), poortActief, replyMoetVersturen, reviewModus: true);
+        var json = Antwoord(HerkendTeam(), poortActief, replyMoetVersturen: true, reviewModus: true);
 
         var e = json.GetProperty("eindoordeel");
         e.GetProperty("uitkomst").GetString().Should().Be("Review");
+        e.GetProperty("reviewModusActief").GetBoolean().Should().BeTrue();
+        Stapcodes(json).Should().NotContain(TraceCodes.Zekerheidspoort);
+    }
+
+    /// <summary>#1608: een onderdrukt antwoord is ook in reviewmodus "Handmatige planning", zoals de productieverwerking.</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ReviewModusAan_ReplyBeleidZwijgt_IsHandmatigePlanning_ZonderPoortstap(bool poortActief)
+    {
+        var json = Antwoord(HerkendTeam(), poortActief, replyMoetVersturen: false, reviewModus: true);
+
+        var e = json.GetProperty("eindoordeel");
+        e.GetProperty("uitkomst").GetString().Should().Be("GeenAntwoord");
+        e.GetProperty("titel").GetString().Should().Contain("Handmatige planning");
         e.GetProperty("reviewModusActief").GetBoolean().Should().BeTrue();
         Stapcodes(json).Should().NotContain(TraceCodes.Zekerheidspoort);
     }
