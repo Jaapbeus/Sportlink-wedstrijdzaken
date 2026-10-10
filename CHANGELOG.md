@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- **Claude Code pakt een issue automatisch op zodra het label `turn: claude-code` erop komt**: een nieuwe workflow start in GitHub Actions een run die het issue uitwerkt op een eigen branch `feature/#<nr>-...` vanaf `develop` en een draft-PR opent. Daarna vraagt de run review aan bij Codex. Komen er reviewbevindingen terug, dan verwerkt een volgende run die op dezelfde branch. De run loopt op het Claude-abonnement van de eigenaar, niet op API-facturering. Hij merget en deployt nooit en laat de PR altijd in draft. Een vaste poort laat de run alleen starten bij issues met `source: claude-code` of `source: owner` en zonder `discipline: architect`, en geeft na drie runs op hetzelfde issue de beurt aan de eigenaar. Codex wordt niet zo geautomatiseerd: de CI-voorwaarden van OpenAI staan een abonnementslogin op een publieke repository niet toe (#1601).
+
 ### Changed
 - **Een release vraagt geen review van de andere agent meer**: de release (versiebump, CHANGELOG, release-PR) gaat in één keer door de skill `/release`, zonder reviewronde tussen Codex en Claude Code. De securitypoort, CI en Security Gate blijven gelden en merge en tag blijven afhankelijk van het startcommando van de eigenaar. Voor ontwikkelwerk blijft de wederzijdse review ongewijzigd (#1604).
 
