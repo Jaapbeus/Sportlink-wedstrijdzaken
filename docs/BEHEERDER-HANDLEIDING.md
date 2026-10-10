@@ -1633,8 +1633,8 @@ wat er bij een échte mail met deze inhoud zou gebeuren:
 | **Wordt automatisch verstuurd** | Alle beslissingen zijn zeker; het voorbeeld-antwoord is wat de afzender zou krijgen |
 | **Gaat naar Review — er wordt géén antwoord verstuurd** | Het oordeel is onzeker en de zekerheidspoort staat aan; het voorbeeld-antwoord is een *concept dat alleen bij review zichtbaar is* |
 | **Wordt automatisch verstuurd — maar het oordeel is onzeker** (rood) | Het oordeel is onzeker, maar de zekerheidspoort staat uit (Instellingen): het antwoord gaat dan toch naar de afzender |
-| **Gaat naar Review** (door de reviewmodus) | De algemene reviewmodus (`EmailReviewMode`, geldt voor de hele omgeving) staat aan: elk antwoord wordt ter beoordeling bewaard en gaat nooit naar de afzender, ook niet bij een zeker oordeel. Zwijgt het reply-beleid dan, dan wordt zelfs geen voorstel bewaard |
-| **Er wordt geen automatisch antwoord verstuurd** | Het reply-beleid zwijgt bewust (bijv. een planning die handmatig moet); de poort speelt dan geen rol |
+| **Gaat naar Review** (door de reviewmodus) | De algemene reviewmodus (`EmailReviewMode`, geldt voor de hele omgeving) staat aan: elk antwoord wordt ter beoordeling bewaard en gaat nooit naar de afzender, ook niet bij een zeker oordeel |
+| **Handmatige planning — er wordt geen automatisch antwoord verstuurd** | Het reply-beleid zwijgt bewust: de wedstrijd kan op de gevraagde datum worden ingepland en u plant en antwoordt zelf. De mail krijgt het label *Handmatige planning*, ook met de reviewmodus aan; de poort speelt geen rol (#1608) |
 
 De trace
 toont in de tester de teamschrijfwijze die de AI vond (u typte die mail zelf). De permanent bewaarde trace
@@ -1668,6 +1668,13 @@ inbox. Is er geen `EmailReviewRecipient` ingesteld, dan ziet u hem alleen in de 
 (Review)** op Instellingen (kaart *Email verwerking*; telt alle Review-berichten, ook van vóór de laatste 24 uur,
 met een knop naar de berichten en hun trace) en aan het Outlook-label *Geen AI antwoord*. Loop die teller dus
 regelmatig na, of stel een review-ontvanger in.
+
+**"Handmatige planning" is iets anders dan "Geen AI antwoord" (#1608).** Vraagt een afzender of er een veld vrij
+is en kán de wedstrijd op de gevraagde datum worden ingepland, dan stuurt het systeem bewust geen antwoord: u plant
+de wedstrijd zelf in en reageert zelf. Zo'n mail krijgt in Outlook het label *Handmatige planning* en in het
+e-maillog de status *Handmatige planning (geen antwoord)*. De AI heeft het verzoek dan wél goed begrepen; in de
+e-mailtester ziet u bij die mail welk veld en welke tijd beschikbaar zijn. Dit geldt ook als de reviewmodus aan
+staat: zo'n mail komt niet in de teller *Wacht op beoordeling*, want er is niets te beoordelen.
 
 **Schakelaar:** Instellingen → *E-mailantwoorden* → *Onzekere antwoorden eerst laten beoordelen
 (zekerheidspoort)*. Staat standaard **aan**. Zet u hem uit, dan gaan ook onzekere antwoorden weer automatisch

@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **"Geen AI antwoord" bij een veldaanvraag die gewoon kan**: vraagt iemand of er een veld vrij is en kan de wedstrijd op de gevraagde datum worden ingepland, dan stuurt het systeem bewust geen antwoord en plant de coördinator zelf. Met de reviewmodus aan kreeg zo'n mail toch het label *Geen AI antwoord* en de status *Review*. Dat leek op een storing terwijl de AI het verzoek goed had begrepen, en het gaf een leeg item in de teller *Wacht op beoordeling*. Zo'n mail krijgt nu ook met de reviewmodus aan het label *Handmatige planning* en de status *Handmatige planning (geen antwoord)*, net als zonder reviewmodus. De e-mailtester zegt in dat geval voortaan hetzelfde, in plaats van "Gaat naar Review". Een antwoord dat de zekerheidspoort tegenhoudt houdt *Geen AI antwoord*. Geldt voor beide databasetiers (#1608).
+
 ### Changed
 - **Een release vraagt geen review van de andere agent meer**: de release (versiebump, CHANGELOG, release-PR) gaat in één keer door de skill `/release`, zonder reviewronde tussen Codex en Claude Code. De securitypoort, CI en Security Gate blijven gelden en merge en tag blijven afhankelijk van het startcommando van de eigenaar. Voor ontwikkelwerk blijft de wederzijdse review ongewijzigd (#1604).
 
