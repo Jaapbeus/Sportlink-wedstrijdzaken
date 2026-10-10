@@ -1,0 +1,185 @@
+name: Claude Code — issue-beurt
+
+# Issue #1601: laat Claude Code een toegewezen issue automatisch oppakken zodra het label
+# `turn: claude-code` erop komt, in plaats van te wachten tot een lokale `/autonoom`-sessie.
+#
+# Scope (besluit 1-4 op #1601, vastgelegd 2026-10-10):
+#   - Authenticatie via CLAUDE_CODE_OAUTH_TOKEN (abonnement), geen ANTHROPIC_API_KEY.
+#   - Alleen `turn: claude-code` triggert deze workflow. `turn: codex` blijft handmatig/lokaal:
+#     OpenAI's eigen CI/CD-voorwaarden staan een ChatGPT-abonnementslogin op een publieke repo
+#     niet toe (zie de besluit-2-comment op #1601) — zonder API-budget is er voor Codex geen
+#     conforme CI-route.
+#   - Nooit mergen, nooit deployen, nooit het `source:`-label wijzigen (AGENTS.md).
+#   - Draait op een kale, kortlevende runner: geen Start-Debug.ps1/Test-App.ps1, geen
+#     browser-rendercheck. CI (dotnet build) is het enige bewijs — de PR blijft daarom altijd
+#     draft totdat een mens hem beoordeelt.
+#
+# claude-issue-turn-gate.js dwingt vóór elke Claude-aanroep drie dingen deterministisch af
+# (een losse `if:` in deze workflow kan dat niet): scope-restrictie op source:/discipline:-
+# labels, een rondelimiet tegen thrashing, en fasedetectie (implementatie vs. verwerking van
+# reviewcommentaar) via dezelfde 'strong'-issuereferentie als de bestaande status-automatisering.
+
+on:
+  issues:
+    types: [labeled]
+
+# Eén run tegelijk per issue; een tweede labeling terwijl de eerste run nog bezig is wacht
+# op die run in plaats van ernaast te draaien (voorkomt dubbele branches/PR's op hetzelfde issue).
+concurrency:
+  group: claude-issue-turn-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Poort — scope, rondelimiet en fase
+    # Geheel gequote: een kale ': ' in een YAML-plain-scalar is ongeldig (de labelnaam bevat er een).
+    if: "github.event.label.name == 'turn: claude-code'"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+      actions: read
+    outputs:
+      proceed: ${{ steps.evaluate.outputs.proceed }}
+      phase: ${{ steps.evaluate.outputs.phase }}
+      pr_number: ${{ steps.evaluate.outputs.pr_number }}
+      pr_branch: ${{ steps.evaluate.outputs.pr_branch }}
+    steps:
+      - name: Checkout (voor .github/scripts)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Poort evalueren
+        id: evaluate
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { evaluateGate } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/claude-issue-turn-gate.js`);
+            const result = await evaluateGate({
+              github,
+              context,
+              core,
+              issueNumber: context.payload.issue.number,
+            });
+            core.setOutput('proceed', String(result.proceed));
+            core.setOutput('phase', result.phase || '');
+            core.setOutput('pr_number', result.prNumber ? String(result.prNumber) : '');
+            core.setOutput('pr_branch', result.prBranch || '');
+            if (!result.proceed) {
+              core.notice(`Poort geblokkeerd: ${result.reason}`);
+            }
+
+  claude:
+    name: Claude Code uitvoeren
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          ref: ${{ needs.gate.outputs.phase == 'verwerking' && needs.gate.outputs.pr_branch || 'develop' }}
+
+      - name: .NET 10 SDK (zelfde pin als build.yml)
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Claude Code
+        uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1 (2026-10-10)
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          base_branch: develop
+          # Standaard leeg = alleen schrijfbevoegde mensen, geen bots — bewust niet verruimd
+          # (AGENTS.md: "allowed_non_write_users nooit op '*'").
+          # In automation mode heeft Claude zonder --allowedTools geen shell- of GitHub-toegang.
+          # Bewust beperkt tot wat de prompt nodig heeft: git, gh, dotnet, node en de bestaande
+          # CI-guards — geen curl/wget, geen pwsh (de lokale debugscripts horen hier niet).
+          claude_args: >-
+            --max-turns 60
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git *),Bash(gh *),Bash(dotnet *),Bash(node *),Bash(python3 *),Bash(bash scripts/ci/*),Bash(ls *),Bash(cat *),Bash(grep *),Bash(find *),Bash(wc *),Bash(head *),Bash(tail *)"
+          prompt: |
+            Je werkt deze beurt uit namens de repository-eigenaar, op een kale, kortlevende
+            GitHub Actions-runner. Er is geen lokale debugomgeving: roep nooit
+            scripts/dev/Start-Debug.ps1, Stop-Debug.ps1 of Test-App.ps1 aan, en doe geen
+            browser-rendercheck. `dotnet build` en de bestaande geautomatiseerde tests zijn het
+            enige bewijs dat je hier hebt. Volg AGENTS.md/CLAUDE.md, met deze CI-aanpassingen.
+
+            Issue: #${{ github.event.issue.number }}
+            Fase (vooraf deterministisch bepaald, niet zelf opnieuw inschatten): ${{ needs.gate.outputs.phase }}
+            Gekoppelde open PR (alleen gezet bij fase verwerking): #${{ needs.gate.outputs.pr_number }}
+            PR-branch (alleen gezet bij fase verwerking, en al uitgecheckt): ${{ needs.gate.outputs.pr_branch }}
+
+            ALS fase = implementatie:
+            1. Lees het volledige issue met `gh issue view ${{ github.event.issue.number }}`.
+            2. De checkout staat al op `develop`. Maak daarvandaan een branch
+               `feature/#${{ github.event.issue.number }}-<korte-slug>` — gebruik niet de
+               standaard `claude/`-branchprefix van deze action.
+            3. Implementeer alle betrokken lagen samen (DB → API → Blazor GUI), uitsluitend
+               binnen de scope van dit issue. Controleer: ClubCode-discriminator, UTC in de
+               database, GUI synchroon met de code, geen club-specifieke strings.
+            4. Build-verificatielus, max 3 pogingen:
+               `dotnet build FunctionApp.Postgres/FunctionApp.Postgres.csproj -c Debug`
+               (bij wijzigingen die ook de SQL Server-tier raken, ook
+               `dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug`), en
+               `dotnet build BlazorAdmin/BlazorAdmin.csproj -c Debug` als dat project bestaat.
+               Lukt het niet binnen 3 pogingen, ga naar stap 7 (blokkade melden).
+            5. Werk `CHANGELOG.md` (`## [Unreleased]`) en de relevante documentatie bij
+               (zie AGENTS.md, "Documentatie nalopen").
+            6. Commit specifieke bestanden — nooit `git add -A` of `git add .` — met
+               `feat(#${{ github.event.issue.number }}): ...` of
+               `fix(#${{ github.event.issue.number }}): ...`. Push de branch en open een
+               **draft**-PR naar `develop` waarvan de titel naar dit issue verwijst
+               (conventie `fix(#<nr>): ...` / `feat(#<nr>): ...`).
+            7. Haal de PR nooit uit draft, merge nooit, deploy nooit, wijzig nooit het
+               `source:`-label. Lukt de implementatie niet, of is er een architectuur-/AVG-/
+               kostenbeslissing nodig? Plaats een duidelijke comment met de blokkade op het
+               issue en wissel met één aanroep
+               `gh issue edit ${{ github.event.issue.number }} --remove-label "turn: claude-code" --add-label "turn: owner"`.
+               Lukt de implementatie wel en staat de draft-PR open en is CI groen
+               (`gh pr checks <pr-nr> --watch`)? Vraag dan review aan volgens AGENTS.md
+               ("Wederzijdse review en turn:-workflow", stap 1): plaats op het issue een comment
+               met precies deze regels —
+                 Fase: review
+                 PR: #<pr-nr>
+                 Implementer: Claude Code (CI-run claude-issue-turn.yml)
+                 Reviewer: Codex
+                 Aangeboden head-SHA: <volledige SHA van de PR-head>
+               — en wissel daarna op dezelfde manier naar `turn: codex`. Push na die aanvraag
+               niets meer op de branch tot Codex de beurt teruggeeft.
+
+            ALS fase = verwerking:
+            1. Je staat al op de bestaande branch `${{ needs.gate.outputs.pr_branch }}`
+               (PR #${{ needs.gate.outputs.pr_number }}).
+            2. Lees de laatste reviewcommentaren met
+               `gh pr view ${{ needs.gate.outputs.pr_number }} --comments` en verwerk elke
+               bevinding: "opgelost (commit/verwijzing)" of "niet overgenomen (reden)" — exact
+               zoals AGENTS.md voorschrijft voor de wederzijdse review.
+            3. Herhaal de build-verificatielus uit implementatiestap 4 hierboven.
+            4. Commit en push de verwerking op dezelfde branch (specifieke bestanden, geen
+               `git add -A`).
+            5. Plaats op de PR een comment die per bevinding de afhandeling vermeldt, met de
+               beoordeelde SHA. Bepaal daarna de volgende beurt (AGENTS.md, rondelimiet):
+               - Geen codewijziging nodig (geen bevindingen, of alle "niet overgenomen"), óf dit
+                 was al de tweede reviewronde op deze PR → wacht op groene CI en zet op het
+                 issue een comment `Fase: eigenaarsbesluit` en wissel naar `turn: owner`.
+               - Wel codewijzigingen en dit was de eerste ronde → wacht op groene CI, plaats een
+                 nieuwe reviewaanvraag (zelfde vijf regels als implementatiestap 7, met de nieuwe
+                 head-SHA) en wissel naar `turn: codex`.
+               Tel de rondes aan de hand van de reviewaanvragen ("Fase: review") op het issue.
+
+            Altijd, in beide fasen:
+            - Geen clubspecifieke namen, domeinen, resource-ID's, tenant-/client-ID's of
+              persoonsgegevens in commits, PR's, issues of comments — gebruik placeholders
+              (AGENTS.md, "Absolute veiligheidsregels", §4a). Deze Actions-run en alles wat je
+              post is publiek.
+            - Nooit mergen, nooit deployen, nooit `main` aanraken.
+            - Geen secrets of tokens in bestanden, logs, commits of comments.

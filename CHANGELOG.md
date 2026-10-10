@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- **Claude Code pakt een issue automatisch op zodra het label `turn: claude-code` erop komt**: een nieuwe workflow start in GitHub Actions een run die het issue uitwerkt op een eigen branch `feature/#<nr>-...` vanaf `develop` en een draft-PR opent. Daarna vraagt de run review aan bij Codex. Komen er reviewbevindingen terug, dan verwerkt een volgende run die op dezelfde branch. De run loopt op het Claude-abonnement van de eigenaar, niet op API-facturering. Hij merget en deployt nooit en laat de PR altijd in draft. Een vaste poort laat de run alleen starten bij issues met `source: claude-code` of `source: owner` en zonder `discipline: architect`, en geeft na drie runs op hetzelfde issue de beurt aan de eigenaar. Codex wordt niet zo geautomatiseerd: de CI-voorwaarden van OpenAI staan een abonnementslogin op een publieke repository niet toe (#1601).
+
 ### Fixed
 - **"Geen AI antwoord" bij een veldaanvraag die gewoon kan**: vraagt iemand of er een veld vrij is en kan de wedstrijd op de gevraagde datum worden ingepland, dan stuurt het systeem bewust geen antwoord en plant de coördinator zelf. Met de reviewmodus aan kreeg zo'n mail toch het label *Geen AI antwoord* en de status *Review*. Dat leek op een storing terwijl de AI het verzoek goed had begrepen, en het gaf een leeg item in de teller *Wacht op beoordeling*. Zo'n mail krijgt nu ook met de reviewmodus aan het label *Handmatige planning* en de status *Handmatige planning (geen antwoord)*, net als zonder reviewmodus. De e-mailtester zegt in dat geval voortaan hetzelfde, in plaats van "Gaat naar Review". Een antwoord dat de zekerheidspoort tegenhoudt houdt *Geen AI antwoord*. Geldt voor beide databasetiers (#1608).
 
