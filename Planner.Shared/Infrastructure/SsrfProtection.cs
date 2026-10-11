@@ -128,7 +128,7 @@ public static class SsrfProtection
 
     /// <summary>
     /// IPv6-prefixen die nooit een publieke bestemming zijn: unspecified (::), discard-only
-    /// (100::/64), documentatie (2001:db8::/32), Teredo (2001:0::/32) en NAT64 voor lokaal
+    /// (100::/64), documentatie (2001:db8::/32), Teredo (2001:0::/32), speciale anycast-toewijzingen (2001:1::/32) en NAT64 voor lokaal
     /// gebruik (64:ff9b:1::/48). Teredo en NAT64-lokaal worden bewust volledig geblokkeerd in
     /// plaats van de ingebedde IPv4-adressen te ontleden: simpeler en fail-closed.
     /// </summary>
@@ -138,8 +138,9 @@ public static class SsrfProtection
         if (b[0] == 0x01 && b.Skip(1).Take(7).All(x => x == 0)) return true;                  // 100::/64
         if (b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x0D && b[3] == 0xB8) return true;        // 2001:db8::/32
         if (b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x00 && b[3] == 0x00) return true;        // 2001:0::/32 Teredo
+        if (b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x00 && b[3] == 0x01) return true;        // 2001:1::/32 speciale anycast-toewijzingen
         if (b[0] == 0x00 && b[1] == 0x64 && b[2] == 0xFF && b[3] == 0x9B && b[4] == 0x00 && b[5] == 0x01)
-            return true;                                                                       // 64:ff9b:1::/48
+            return true;                                                                      // 64:ff9b:1::/48
         return false;
     }
 
