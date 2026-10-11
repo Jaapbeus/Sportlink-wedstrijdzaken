@@ -358,8 +358,10 @@ internal static class BerichtPipeline
         ILogger? log = null,
         ClubAppSettingsSnapshot? clubSettings = null,
         string? clubCode = null,
-        TraceBuilder? trace = null)
+        TraceBuilder? trace = null,
+        Func<string, Task<EmailTemplate?>>? sjabloonBron = null)
     {
+        sjabloonBron ??= sleutel => Email.EmailTemplateService.GetTemplateAsync(sleutel, clubCode, log);
         trace?.Antwoordkeuze(classificatie.Type.ToString(), plannerResponseJson);
         switch (classificatie.Type)
         {
@@ -411,7 +413,7 @@ internal static class BerichtPipeline
                 }
 
                 var checkResponse = JsonConvert.DeserializeObject<CheckAvailabilityResponse>(plannerResponseJson);
-                var beschikbaarheidTemplate = await Email.EmailTemplateService.GetTemplateAsync("beschikbaarheid_check", clubCode, log);
+                var beschikbaarheidTemplate = await sjabloonBron("beschikbaarheid_check");
                 if (beschikbaarheidTemplate != null)
                     return trace.MeldOverride("beschikbaarheid_check", BerichtResponseGenerator.BouwAangepasteAntwoord(
                         beschikbaarheidTemplate, classificatie, bericht, clubSettings, gecontroleerdDagdeel: checkResponse?.GecontroleerdDagdeel));
@@ -446,7 +448,7 @@ internal static class BerichtPipeline
                         wedstrijd, gewensteDatum, beschikbaarheid, classificatie, bericht, clubSettings);
                 }
 
-                var herplanTemplate = await Email.EmailTemplateService.GetTemplateAsync("herplan_verzoek", clubCode, log);
+                var herplanTemplate = await sjabloonBron("herplan_verzoek");
                 if (herplanTemplate != null)
                     return trace.MeldOverride("herplan_verzoek", BerichtResponseGenerator.BouwAangepasteAntwoord(herplanTemplate, classificatie, bericht, clubSettings));
 
@@ -455,19 +457,19 @@ internal static class BerichtPipeline
                     wedstrijd, herplanOpties, classificatie, bericht, clubSettings);
 
             case VerzoekType.TeamContactOpvragen:
-                var teamContactTemplate = await Email.EmailTemplateService.GetTemplateAsync("team_contact_opvragen", clubCode, log);
+                var teamContactTemplate = await sjabloonBron("team_contact_opvragen");
                 if (teamContactTemplate != null)
                     return trace.MeldOverride("team_contact_opvragen", BerichtResponseGenerator.BouwAangepasteAntwoord(teamContactTemplate, classificatie, bericht, clubSettings));
                 return BerichtResponseGenerator.BouwTeamContactAutoReply(classificatie, bericht, clubSettings);
 
             case VerzoekType.Bevestiging:
-                var bevestigingTemplate = await Email.EmailTemplateService.GetTemplateAsync("bevestiging", clubCode, log);
+                var bevestigingTemplate = await sjabloonBron("bevestiging");
                 if (bevestigingTemplate != null)
                     return trace.MeldOverride("bevestiging", BerichtResponseGenerator.BouwAangepasteAntwoord(bevestigingTemplate, classificatie, bericht, clubSettings));
                 return BerichtResponseGenerator.BouwBevestigingAntwoord(bericht, classificatie, clubSettings);
 
             default:
-                var buitenScopeTemplate = await Email.EmailTemplateService.GetTemplateAsync("buiten_scope", clubCode, log);
+                var buitenScopeTemplate = await sjabloonBron("buiten_scope");
                 if (buitenScopeTemplate != null)
                     return trace.MeldOverride("buiten_scope", BerichtResponseGenerator.BouwAangepasteAntwoord(buitenScopeTemplate, classificatie, bericht, clubSettings));
                 return BerichtResponseGenerator.BouwBuitenScopeAntwoord(bericht, clubSettings);
