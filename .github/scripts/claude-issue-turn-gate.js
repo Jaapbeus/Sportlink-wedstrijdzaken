@@ -141,7 +141,9 @@ async function findLinkedOpenPr({ github, context, issueNumber }) {
     if (!strong.has(issueNumber)) continue;
     if (pr.head?.repo?.full_name !== ownRepo) continue;
     if (!(pr.head.ref || '').startsWith(branchPrefix)) continue;
-    if (!isTrusted(pr.author_association)) continue;
+    // isTrustedAuthor, niet isTrusted: de PR die de CI-run zelf opent staat op naam van
+    // claude[bot] (associatie NONE) en moet in de verwerkingsfase wél herkend worden (#1633).
+    if (!isTrustedAuthor(pr)) continue;
     return { number: pr.number, branch: pr.head.ref };
   }
   return null;

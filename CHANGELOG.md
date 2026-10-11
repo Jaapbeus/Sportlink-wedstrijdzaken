@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **De automatische issue-beurt herkent zijn eigen PR weer bij het verwerken van reviewcommentaar**: een PR die de CI-run zelf opent, staat op naam van de Claude GitHub App. Die herkende de poort niet als bevoegd, waardoor een verwerkingsronde een tweede PR zou beginnen in plaats van de bestaande bij te werken (#1633).
+
 ### Changed
 - **`DEVELOPER-SETUP.md` beschrijft de automatische issue-beurt**: nieuwe subsectie 9.5 legt uit wat het label `turn: claude-code` doet, welke voorwaarden de poort stelt, dat de eigenaar het secret `CLAUDE_CODE_OAUTH_TOKEN` zelf aanmaakt en dat Codex lokaal blijft reviewen (zie issue #1620).
 
