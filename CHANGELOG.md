@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- **`DEVELOPER-SETUP.md` beschrijft de automatische issue-beurt**: nieuwe subsectie 9.5 legt uit wat het label `turn: claude-code` doet, welke voorwaarden de poort stelt, dat de eigenaar het secret `CLAUDE_CODE_OAUTH_TOKEN` zelf aanmaakt en dat Codex lokaal blijft reviewen (zie issue #1620).
+
 ## [3.13.1.0] — 2026-10-11
 
 ### Added
