@@ -2133,6 +2133,114 @@ public class SportlinkClubClientTests
             .And.Contain("\"FacilityId\":\"BBCF989\"");
     }
 
+    // ── Golden-tests body-opbouw (#1626): alle 22 MatchData-velden gevuld met herkenbare, unieke
+    // waarden, zodat een veldverwisseling in de (gedeelde) body-opbouw direct zichtbaar wordt. ──
+
+    private const string GoldenSnapshotJson = """
+        {
+            "AgeClassCode": "AGE-A",
+            "Duration": 111,
+            "MatchStatus": "STATUS-A",
+            "ExternalMatchId": 4242,
+            "MatchDate": {"Date": "2030-01-02", "StartTime": "09:15:00"},
+            "Field": {"FieldId": "FIELD-SNAP", "FieldSize": 2.0, "FieldOffset": 7},
+            "MatchField": {"FacilityId": "FAC-SNAP"},
+            "Sport": {"IdTag": "SPORT-TAG"},
+            "Teams": {
+                "Home": {"TeamName": "THUIS-NAAM", "PublicTeamId": "T-HOME"},
+                "Away": {"TeamName": "UIT-NAAM", "PublicTeamId": "T-AWAY"}
+            },
+            "Result": {"HomeScore": 3, "AwayScore": 5},
+            "MatchDetails": {
+                "Description": {"Value": "OMSCHRIJVING"},
+                "MatchDetailsHome": {"AssemblyTime": {"Value": "08:45"}}
+            }
+        }
+        """;
+
+    private const string GOLDEN_CHANGEREQUEST_OVERSCHREVEN =
+        """
+        {"ConfirmationNeeded":null,"IsForceUpdate":false,"IsMatchChangeRequestMandatory":true,"IsOwnFacility":true,"IsPlannableByClub":false,"IsSuccess":false,"PublicApplicantId":"","PublicMatchId":"PUBLIC-MATCH","MatchData":{"AgeClassCode":"AGE-A","AssemblyTime":"08:45","AwayScore":5,"AwayTeam":"UIT-NAAM","DepartureTime":null,"Description":"OMSCHRIJVING","Drivers":"","Duration":111,"ExternalMatchId":4242,"FacilityId":"FAC-NIEUW","FieldId":"FIELD-SNAP","FieldOffset":7,"FieldSize":"2.0","HomeScore":3,"HomeTeam":"THUIS-NAAM","MatchChangeRequestRemarks":"TOELICHTING","MatchDate":"2031-03-04","MatchStatus":"STATUS-A","PublicAwayTeamId":"T-AWAY","PublicHomeTeamId":"T-HOME","SportIdTag":"SPORT-TAG","StartTime":"14:30:00"}}
+        """;
+    private const string GOLDEN_CHANGEREQUEST_SNAPSHOT =
+        """
+        {"ConfirmationNeeded":null,"IsForceUpdate":false,"IsMatchChangeRequestMandatory":true,"IsOwnFacility":true,"IsPlannableByClub":false,"IsSuccess":false,"PublicApplicantId":"","PublicMatchId":"PUBLIC-MATCH","MatchData":{"AgeClassCode":"AGE-A","AssemblyTime":"08:45","AwayScore":5,"AwayTeam":"UIT-NAAM","DepartureTime":null,"Description":"OMSCHRIJVING","Drivers":"","Duration":111,"ExternalMatchId":4242,"FacilityId":"FAC-SNAP","FieldId":"FIELD-SNAP","FieldOffset":7,"FieldSize":"2.0","HomeScore":3,"HomeTeam":"THUIS-NAAM","MatchChangeRequestRemarks":"TOELICHTING","MatchDate":"2030-01-02","MatchStatus":"STATUS-A","PublicAwayTeamId":"T-AWAY","PublicHomeTeamId":"T-HOME","SportIdTag":"SPORT-TAG","StartTime":"09:15:00"}}
+        """;
+    private const string GOLDEN_PUT_OVERSCHREVEN =
+        """
+        {"ConfirmationNeeded":null,"IsForceUpdate":true,"IsMatchChangeRequestMandatory":false,"IsOwnFacility":true,"IsPlannableByClub":false,"IsSuccess":false,"PublicApplicantId":"","PublicMatchId":"PUBLIC-MATCH","MatchData":{"AgeClassCode":"AGE-A","AssemblyTime":"08:45","AwayScore":5,"AwayTeam":"UIT-NAAM","DepartureTime":null,"Description":"OMSCHRIJVING","Drivers":"","Duration":111,"ExternalMatchId":4242,"FacilityId":"FAC-SNAP","FieldId":"FIELD-NIEUW","FieldOffset":9,"FieldSize":"3.0","HomeScore":3,"HomeTeam":"THUIS-NAAM","MatchChangeRequestRemarks":"","MatchDate":"2030-01-02","MatchStatus":"STATUS-A","PublicAwayTeamId":"T-AWAY","PublicHomeTeamId":"T-HOME","SportIdTag":"SPORT-TAG","StartTime":"09:15:00"}}
+        """;
+    private const string GOLDEN_PUT_SNAPSHOT =
+        """
+        {"ConfirmationNeeded":null,"IsForceUpdate":false,"IsMatchChangeRequestMandatory":false,"IsOwnFacility":true,"IsPlannableByClub":false,"IsSuccess":false,"PublicApplicantId":"","PublicMatchId":"PUBLIC-MATCH","MatchData":{"AgeClassCode":"AGE-A","AssemblyTime":"08:45","AwayScore":5,"AwayTeam":"UIT-NAAM","DepartureTime":null,"Description":"OMSCHRIJVING","Drivers":"","Duration":111,"ExternalMatchId":4242,"FacilityId":"FAC-SNAP","FieldId":"FIELD-SNAP","FieldOffset":7,"FieldSize":"2","HomeScore":3,"HomeTeam":"THUIS-NAAM","MatchChangeRequestRemarks":"","MatchDate":"2030-01-02","MatchStatus":"STATUS-A","PublicAwayTeamId":"T-AWAY","PublicHomeTeamId":"T-HOME","SportIdTag":"SPORT-TAG","StartTime":"09:15:00"}}
+        """;
+
+    private static SportlinkClubClient.SportlinkMatchDetailsSnapshot MaakGoldenSnapshot() => new(
+        AgeClassCode: "AGE-A",
+        Duration: 111,
+        MatchStatus: "STATUS-A",
+        ExternalMatchId: 4242,
+        MatchDate: new SportlinkClubClient.SportlinkMatchDateRaw("2030-01-02", "09:15:00"),
+        Field: new SportlinkClubClient.SportlinkFieldRaw("FIELD-SNAP", "2.0", 7),
+        MatchField: new SportlinkMatchField { FacilityId = "FAC-SNAP" },
+        Sport: new SportlinkClubClient.SportlinkSportRaw("SPORT-TAG"),
+        Teams: new SportlinkClubClient.SportlinkTeamsRaw(
+            new SportlinkClubClient.SportlinkTeamRaw("THUIS-NAAM", "T-HOME"),
+            new SportlinkClubClient.SportlinkTeamRaw("UIT-NAAM", "T-AWAY")),
+        Result: new SportlinkClubClient.SportlinkResultRaw(3, 5),
+        MatchDetails: new SportlinkClubClient.SportlinkMatchDetailsFieldsRaw(
+            new SportlinkClubClient.SportlinkEditableFieldRaw("OMSCHRIJVING"),
+            new SportlinkClubClient.SportlinkMatchDetailsHomeRaw(new SportlinkClubClient.SportlinkEditableFieldRaw("08:45"))));
+
+    [Fact]
+    public void BuildMatchChangeRequestBody_Golden_VolledigGevuldeSnapshotMetAlleOverschrijvingen()
+    {
+        var body = SportlinkClubClient.BuildMatchChangeRequestBody(
+            "PUBLIC-MATCH", MaakGoldenSnapshot(),
+            nieuweDatum: new DateOnly(2031, 3, 4), nieuweStartTijd: new TimeOnly(14, 30), nieuweFacilityId: "FAC-NIEUW",
+            toelichting: "TOELICHTING");
+
+        JsonSerializer.Serialize(body).Should().Be(GOLDEN_CHANGEREQUEST_OVERSCHREVEN);
+    }
+
+    [Fact]
+    public void BuildMatchChangeRequestBody_Golden_VolledigGevuldeSnapshotZonderOverschrijvingen()
+    {
+        var body = SportlinkClubClient.BuildMatchChangeRequestBody(
+            "PUBLIC-MATCH", MaakGoldenSnapshot(),
+            nieuweDatum: null, nieuweStartTijd: null, nieuweFacilityId: null, toelichting: "TOELICHTING");
+
+        JsonSerializer.Serialize(body).Should().Be(GOLDEN_CHANGEREQUEST_SNAPSHOT);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task UpdateFieldAsync_Golden_VolledigGevuldeSnapshotMetVeldOverschrijvingen(bool overschrijf)
+    {
+        string? capturedBody = null;
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("UpdateMatchDetails") == true)
+            {
+                capturedBody = req.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? "";
+                return JsonResponse(DressingRoomsSuccessResponse());
+            }
+            if (req.RequestUri?.AbsoluteUri.Contains("club.sportlink.com") == true)
+                return JsonResponse(GoldenSnapshotJson);
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        await sut.UpdateFieldAsync(TestFunctioneleRol, "PUBLIC-MATCH",
+            overschrijf ? "FIELD-NIEUW" : null, overschrijf ? "3.0" : null, overschrijf ? 9 : null, isForceUpdate: overschrijf);
+
+        capturedBody.Should().Be(overschrijf ? GOLDEN_PUT_OVERSCHREVEN : GOLDEN_PUT_SNAPSHOT);
+    }
+
     // ── ParseMatchChangeValidatie (#995, epic #986) — ONBEVESTIGDE responsvorm, zie issue #995 ──
 
     [Fact]
