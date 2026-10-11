@@ -1,15 +1,39 @@
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
-using System.Net.Http.Headers;
 using System.Text.Json;
-using System.Text.Json.Serialization;
+using static Planner.Shared.Integrations.SportlinkClub.SportlinkClubHttp;
 
 namespace Planner.Shared.Integrations.SportlinkClub;
 
-/// <summary>Tokenbeheer per functionele rol (refresh, cache, validatie) (#1493) — zelfde klasse, alleen verplaatst. Geen gedragswijziging.</summary>
-public partial class SportlinkClubClient
+/// <summary>Tokenbeheer per functionele rol: refresh, in-memory cache en per-rol locking (#1631, verplaatst uit het vroegere SportlinkClubClient.Tokens-bestand).</summary>
+internal sealed class SportlinkClubTokenBeheer
 {
-    private async Task<(SportlinkClubCallStatus Status, string? AccessToken, string? FoutmeldingVoorLog)> RefreshTokenIfNeededAsync(
+    private readonly HttpClient _httpClient;
+    private readonly ISportlinkClubTokenStore _tokenStore;
+    private readonly SportlinkAutoLoginCoordinator? _autoLogin;
+    private readonly ILogger _logger;
+
+    internal SportlinkClubTokenBeheer(HttpClient httpClient, ISportlinkClubTokenStore tokenStore, SportlinkAutoLoginCoordinator? autoLogin, ILogger logger)
+    {
+        _httpClient = httpClient;
+        _tokenStore = tokenStore;
+        _autoLogin = autoLogin;
+        _logger = logger;
+    }
+
+    // Per-role in-memory cache met access token + expiry
+    private record CachedRoleToken(string AccessToken, DateTimeOffset ExpiresAtUtc, string HuidigRefreshToken);
+
+    private readonly ConcurrentDictionary<string, CachedRoleToken> _tokenCache
+        = new(StringComparer.OrdinalIgnoreCase);
+
+    // Per-rol SemaphoreSlim om gelijktijdige refresh-aanroepen te serialiseren
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _rolSemaphores
+        = new(StringComparer.OrdinalIgnoreCase);
+
+    private const int TokenExpiryMarginSeconds = 60;
+
+    internal async Task<(SportlinkClubCallStatus Status, string? AccessToken, string? FoutmeldingVoorLog)> RefreshTokenIfNeededAsync(
         string functioneleRol,
         CancellationToken cancellationToken,
         bool forceRefresh = false)
@@ -64,7 +88,7 @@ public partial class SportlinkClubClient
             var refreshResult = await CallTokenEndpointAsync(refreshToken, cancellationToken);
             if (refreshResult.Status == SportlinkClubCallStatus.NetwerkFout)
             {
-                await WachtVoorTransienteRetryAsync($"token-endpoint, rol '{functioneleRol}'", cancellationToken);
+                await WachtVoorTransienteRetryAsync(_logger, $"token-endpoint, rol '{functioneleRol}'", cancellationToken);
                 refreshResult = await CallTokenEndpointAsync(refreshToken, cancellationToken);
             }
             if (refreshResult.Status == SportlinkClubCallStatus.HerkoppelingVereist && _autoLogin is not null)
@@ -187,6 +211,26 @@ public partial class SportlinkClubClient
             return new TokenEndpointResult(SportlinkClubCallStatus.SportlinkFout, null, null, null, "Onverwachte fout bij token endpoint");
         }
     }
+
+    internal void InvalidateTokenCache(string functioneleRol)
+    {
+        _tokenCache.TryRemove(functioneleRol, out _);
+    }
+
+    public async Task<SportlinkClubCallStatus> VerversTokenAsync(
+        string functioneleRol,
+        CancellationToken cancellationToken = default)
+    {
+        // forceRefresh: true — een keep-alive moet de refresh_token-grant echt uitoefenen bij
+        // Keycloak, niet stoppen bij een nog geldig geachte in-memory access-tokencache (die cache
+        // bewijst niets over of de onderliggende refresh_token nog actief is bij Keycloak zelf).
+        var result = await RefreshTokenIfNeededAsync(functioneleRol, cancellationToken, forceRefresh: true);
+        if (result.Status != SportlinkClubCallStatus.Ok)
+            _logger.LogWarning("Keep-alive-refresh voor rol '{Rol}' gaf status {Status}: {Fout}",
+                functioneleRol, result.Status, result.FoutmeldingVoorLog);
+        return result.Status;
+    }
+
     /// <summary>
     /// Eén refresh_token-grant bij Keycloak om een zojuist aangeleverd refresh-token te valideren
     /// vóór opslag (#991; hier gecentraliseerd bij #1122 zodat de tokenregistratie geen eigen kopie
@@ -220,10 +264,5 @@ public partial class SportlinkClubClient
         {
             return false;
         }
-    }
-
-    private void InvalidateTokenCache(string functioneleRol)
-    {
-        _tokenCache.TryRemove(functioneleRol, out _);
     }
 }

@@ -11,7 +11,7 @@ namespace Planner.Shared.Integrations.SportlinkClub;
 /// als de exacte persoonsidentifier-naam (hier aangenomen: <c>PersoonId</c>) kunnen afwijken van
 /// wat Sportlink werkelijk verwacht. Deze aanname blijft in gebruik totdat een mens (nooit een
 /// agent, zie docs/SPORTLINK-WEB-EXTENSION.md §4.4) een live trace heeft gedaan — zie
-/// <c>SportlinkClubClient.MatchOfficialsActionLiveBevestigd</c>.
+/// <c>SportlinkMutaties.MatchOfficialsActionLiveBevestigd</c>.
 /// </para>
 /// </summary>
 /// <param name="OfficialPosition">Positiecode zoals Sportlink die hanteert (bijv. scheidsrechter/AR1/AR2 — exacte waarden ONBEVESTIGD).</param>

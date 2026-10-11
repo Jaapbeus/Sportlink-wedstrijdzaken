@@ -978,7 +978,7 @@ precies die som is `DuurMinuten`, en de starttijd schuift met het inloopdeel mee
 
 | Onderdeel | Plaats |
 |---|---|
-| Leesaanroep `competition/facilityoccupation/FacilityOccupation` (alleen GET) | `Planner.Shared/Integrations/SportlinkClub/SportlinkClubClient.Veldplanner.cs`, via `ExecuteWithTokenRetryAsync` |
+| Leesaanroep `competition/facilityoccupation/FacilityOccupation` (alleen GET) | `Planner.Shared/Integrations/SportlinkClub/SportlinkWedstrijdLezer.cs`, via `SportlinkClubTransport.ExecuteWithTokenRetryAsync` |
 | Respons naar blokken (`SportlinkVeldplannerParser`) | `Planner.Shared/Integrations/SportlinkClub/SportlinkVeldplannerBlok.cs` |
 | Koppeling aan onze regels | `Planner.Shared/Planning/SportlinkVeldplannerKoppeling.cs` |
 | Orkestratie: facility-opzoeking, cache, toggle, EgressGuard, terugval | `Planner.Endpoints/Sportlink/VeldplannerOverlayCore.cs` |

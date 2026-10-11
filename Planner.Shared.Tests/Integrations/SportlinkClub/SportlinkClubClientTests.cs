@@ -1917,7 +1917,7 @@ public class SportlinkClubClientTests
         // elementstructuur ("OfficialPosition"/"PersoonId") is nooit met een netwerktrace gezien,
         // zie SportlinkOfficialToewijzing.cs. Deze test houdt de aanname grijpbaar/regressie-vast,
         // niet een bevestigd contract.
-        var body = SportlinkClubClient.BuildMatchOfficialsBody(
+        var body = SportlinkMutatieBodies.BuildMatchOfficialsBody(
             TestPublicMatchId,
             new List<SportlinkOfficialToewijzing> { new("Referee", "123456"), new("AssistantReferee1", "654321") });
 
@@ -1944,7 +1944,7 @@ public class SportlinkClubClientTests
             """;
         var basisResultaat = new SportlinkMutationResult(IsSuccess: true, Violations: null);
 
-        var verrijkt = SportlinkClubClient.VerrijkOfficialsResultaat(json, basisResultaat);
+        var verrijkt = SportlinkMutatieBodies.VerrijkOfficialsResultaat(json, basisResultaat);
 
         verrijkt.IsSuccess.Should().BeFalse("minstens één official had een ValidationDescription — Sportlink toont dit als 'opgeslagen met fouten'");
         verrijkt.Violations.Should().ContainSingle().Which.Should().Be("Persoon heeft al een aanstelling voor deze wedstrijd");
@@ -1956,7 +1956,7 @@ public class SportlinkClubClientTests
         var json = """{"Officials": [{"OfficialPosition": "Referee", "ValidationDescription": null}]}""";
         var basisResultaat = new SportlinkMutationResult(IsSuccess: true, Violations: null);
 
-        var verrijkt = SportlinkClubClient.VerrijkOfficialsResultaat(json, basisResultaat);
+        var verrijkt = SportlinkMutatieBodies.VerrijkOfficialsResultaat(json, basisResultaat);
 
         verrijkt.IsSuccess.Should().BeTrue();
         verrijkt.Violations.Should().BeNullOrEmpty();
@@ -1969,7 +1969,7 @@ public class SportlinkClubClientTests
         // JSON is), mag dit geen extra fout stapelen bovenop het generieke resultaat.
         var basisResultaat = new SportlinkMutationResult(IsSuccess: true, Violations: null);
 
-        var verrijkt = SportlinkClubClient.VerrijkOfficialsResultaat("""{"Error": true}""", basisResultaat);
+        var verrijkt = SportlinkMutatieBodies.VerrijkOfficialsResultaat("""{"Error": true}""", basisResultaat);
 
         verrijkt.Should().Be(basisResultaat);
     }
@@ -2078,27 +2078,27 @@ public class SportlinkClubClientTests
     // doc-comment op BuildMatchChangeRequestBody zelf. Deze tests leggen vast wélke velden
     // overschreven worden en welke uit de snapshot komen — geen bevestigd Sportlink-contract.
 
-    private static SportlinkClubClient.SportlinkMatchDetailsSnapshot MaakTestSnapshot() => new(
+    private static SportlinkMatchDetailsSnapshot MaakTestSnapshot() => new(
         AgeClassCode: "001",
         Duration: 105,
         MatchStatus: "SCHEDULED",
         ExternalMatchId: 69,
-        MatchDate: new SportlinkClubClient.SportlinkMatchDateRaw("2026-09-27", "10:30:00"),
-        Field: new SportlinkClubClient.SportlinkFieldRaw("BBCF989-OUTDOOR_FIELD-6", "1.0", 0),
+        MatchDate: new SportlinkMatchDateRaw("2026-09-27", "10:30:00"),
+        Field: new SportlinkFieldRaw("BBCF989-OUTDOOR_FIELD-6", "1.0", 0),
         MatchField: new SportlinkMatchField { FacilityId = "BBCF989" },
-        Sport: new SportlinkClubClient.SportlinkSportRaw("SOCCER-VE-AL/SUNDAY"),
-        Teams: new SportlinkClubClient.SportlinkTeamsRaw(
-            new SportlinkClubClient.SportlinkTeamRaw("TEST 1", "T2010269033"),
-            new SportlinkClubClient.SportlinkTeamRaw("TEST 2", "T2010269034")),
-        Result: new SportlinkClubClient.SportlinkResultRaw(null, null),
-        MatchDetails: new SportlinkClubClient.SportlinkMatchDetailsFieldsRaw(
-            new SportlinkClubClient.SportlinkEditableFieldRaw("Oefenwedstrijd"),
-            new SportlinkClubClient.SportlinkMatchDetailsHomeRaw(new SportlinkClubClient.SportlinkEditableFieldRaw(null))));
+        Sport: new SportlinkSportRaw("SOCCER-VE-AL/SUNDAY"),
+        Teams: new SportlinkTeamsRaw(
+            new SportlinkTeamRaw("TEST 1", "T2010269033"),
+            new SportlinkTeamRaw("TEST 2", "T2010269034")),
+        Result: new SportlinkResultRaw(null, null),
+        MatchDetails: new SportlinkMatchDetailsFieldsRaw(
+            new SportlinkEditableFieldRaw("Oefenwedstrijd"),
+            new SportlinkMatchDetailsHomeRaw(new SportlinkEditableFieldRaw(null))));
 
     [Fact]
     public void BuildMatchChangeRequestBody_OverschrijftAlleenDatumTijdFacilityEnToelichting_RestKomtUitSnapshot()
     {
-        var body = SportlinkClubClient.BuildMatchChangeRequestBody(
+        var body = SportlinkWedstrijdDetailsBody.BuildMatchChangeRequestBody(
             TestPublicMatchId, MaakTestSnapshot(),
             nieuweDatum: new DateOnly(2026, 10, 4), nieuweStartTijd: new TimeOnly(11, 0), nieuweFacilityId: "BBCF990",
             toelichting: "Veld is niet beschikbaar door onderhoud");
@@ -2121,7 +2121,7 @@ public class SportlinkClubClientTests
     [Fact]
     public void BuildMatchChangeRequestBody_GeenNieuweWaarden_ValtVolledigTerugOpSnapshot()
     {
-        var body = SportlinkClubClient.BuildMatchChangeRequestBody(
+        var body = SportlinkWedstrijdDetailsBody.BuildMatchChangeRequestBody(
             TestPublicMatchId, MaakTestSnapshot(),
             nieuweDatum: null, nieuweStartTijd: null, nieuweFacilityId: null,
             toelichting: "Toelichting");
@@ -2175,27 +2175,27 @@ public class SportlinkClubClientTests
         {"ConfirmationNeeded":null,"IsForceUpdate":false,"IsMatchChangeRequestMandatory":false,"IsOwnFacility":true,"IsPlannableByClub":false,"IsSuccess":false,"PublicApplicantId":"","PublicMatchId":"PUBLIC-MATCH","MatchData":{"AgeClassCode":"AGE-A","AssemblyTime":"08:45","AwayScore":5,"AwayTeam":"UIT-NAAM","DepartureTime":null,"Description":"OMSCHRIJVING","Drivers":"","Duration":111,"ExternalMatchId":4242,"FacilityId":"FAC-SNAP","FieldId":"FIELD-SNAP","FieldOffset":7,"FieldSize":"2","HomeScore":3,"HomeTeam":"THUIS-NAAM","MatchChangeRequestRemarks":"","MatchDate":"2030-01-02","MatchStatus":"STATUS-A","PublicAwayTeamId":"T-AWAY","PublicHomeTeamId":"T-HOME","SportIdTag":"SPORT-TAG","StartTime":"09:15:00"}}
         """;
 
-    private static SportlinkClubClient.SportlinkMatchDetailsSnapshot MaakGoldenSnapshot() => new(
+    private static SportlinkMatchDetailsSnapshot MaakGoldenSnapshot() => new(
         AgeClassCode: "AGE-A",
         Duration: 111,
         MatchStatus: "STATUS-A",
         ExternalMatchId: 4242,
-        MatchDate: new SportlinkClubClient.SportlinkMatchDateRaw("2030-01-02", "09:15:00"),
-        Field: new SportlinkClubClient.SportlinkFieldRaw("FIELD-SNAP", "2.0", 7),
+        MatchDate: new SportlinkMatchDateRaw("2030-01-02", "09:15:00"),
+        Field: new SportlinkFieldRaw("FIELD-SNAP", "2.0", 7),
         MatchField: new SportlinkMatchField { FacilityId = "FAC-SNAP" },
-        Sport: new SportlinkClubClient.SportlinkSportRaw("SPORT-TAG"),
-        Teams: new SportlinkClubClient.SportlinkTeamsRaw(
-            new SportlinkClubClient.SportlinkTeamRaw("THUIS-NAAM", "T-HOME"),
-            new SportlinkClubClient.SportlinkTeamRaw("UIT-NAAM", "T-AWAY")),
-        Result: new SportlinkClubClient.SportlinkResultRaw(3, 5),
-        MatchDetails: new SportlinkClubClient.SportlinkMatchDetailsFieldsRaw(
-            new SportlinkClubClient.SportlinkEditableFieldRaw("OMSCHRIJVING"),
-            new SportlinkClubClient.SportlinkMatchDetailsHomeRaw(new SportlinkClubClient.SportlinkEditableFieldRaw("08:45"))));
+        Sport: new SportlinkSportRaw("SPORT-TAG"),
+        Teams: new SportlinkTeamsRaw(
+            new SportlinkTeamRaw("THUIS-NAAM", "T-HOME"),
+            new SportlinkTeamRaw("UIT-NAAM", "T-AWAY")),
+        Result: new SportlinkResultRaw(3, 5),
+        MatchDetails: new SportlinkMatchDetailsFieldsRaw(
+            new SportlinkEditableFieldRaw("OMSCHRIJVING"),
+            new SportlinkMatchDetailsHomeRaw(new SportlinkEditableFieldRaw("08:45"))));
 
     [Fact]
     public void BuildMatchChangeRequestBody_Golden_VolledigGevuldeSnapshotMetAlleOverschrijvingen()
     {
-        var body = SportlinkClubClient.BuildMatchChangeRequestBody(
+        var body = SportlinkWedstrijdDetailsBody.BuildMatchChangeRequestBody(
             "PUBLIC-MATCH", MaakGoldenSnapshot(),
             nieuweDatum: new DateOnly(2031, 3, 4), nieuweStartTijd: new TimeOnly(14, 30), nieuweFacilityId: "FAC-NIEUW",
             toelichting: "TOELICHTING");
@@ -2206,7 +2206,7 @@ public class SportlinkClubClientTests
     [Fact]
     public void BuildMatchChangeRequestBody_Golden_VolledigGevuldeSnapshotZonderOverschrijvingen()
     {
-        var body = SportlinkClubClient.BuildMatchChangeRequestBody(
+        var body = SportlinkWedstrijdDetailsBody.BuildMatchChangeRequestBody(
             "PUBLIC-MATCH", MaakGoldenSnapshot(),
             nieuweDatum: null, nieuweStartTijd: null, nieuweFacilityId: null, toelichting: "TOELICHTING");
 
@@ -2246,7 +2246,7 @@ public class SportlinkClubClientTests
     [Fact]
     public void ParseMatchChangeValidatie_ConfirmationNeededNull_GeeftFalseEnLegeLijst()
     {
-        var result = SportlinkClubClient.ParseMatchChangeValidatie("""{"ConfirmationNeeded": null}""");
+        var result = SportlinkMatchChangeValidatieLezer.ParseMatchChangeValidatie("""{"ConfirmationNeeded": null}""");
 
         result.Should().NotBeNull();
         result!.ConfirmationNeeded.Should().BeFalse();
@@ -2257,7 +2257,7 @@ public class SportlinkClubClientTests
     [Fact]
     public void ParseMatchChangeValidatie_ConfirmationNeededOntbreekt_GeeftFalseEnLegeLijst()
     {
-        var result = SportlinkClubClient.ParseMatchChangeValidatie("""{"IsSuccess": true}""");
+        var result = SportlinkMatchChangeValidatieLezer.ParseMatchChangeValidatie("""{"IsSuccess": true}""");
 
         result.Should().NotBeNull();
         result!.ConfirmationNeeded.Should().BeFalse();
@@ -2273,7 +2273,7 @@ public class SportlinkClubClientTests
             }}
             """;
 
-        var result = SportlinkClubClient.ParseMatchChangeValidatie(json);
+        var result = SportlinkMatchChangeValidatieLezer.ParseMatchChangeValidatie(json);
 
         result.Should().NotBeNull();
         result!.ConfirmationNeeded.Should().BeTrue();
@@ -2297,7 +2297,7 @@ public class SportlinkClubClientTests
             }}
             """;
 
-        var result = SportlinkClubClient.ParseMatchChangeValidatie(json);
+        var result = SportlinkMatchChangeValidatieLezer.ParseMatchChangeValidatie(json);
 
         result.Should().NotBeNull();
         result!.ConfirmationNeeded.Should().BeTrue();
@@ -2313,7 +2313,7 @@ public class SportlinkClubClientTests
         // toplevel vast (naast de primaire, geneste locatie onder ConfirmationNeeded).
         var json = """{"ConfirmationNeeded": {"ValidationResultMessages": []}, "HasBlockingMessages": true}""";
 
-        var result = SportlinkClubClient.ParseMatchChangeValidatie(json);
+        var result = SportlinkMatchChangeValidatieLezer.ParseMatchChangeValidatie(json);
 
         result.Should().NotBeNull();
         result!.HasBlockingMessages.Should().BeTrue();
@@ -2322,7 +2322,7 @@ public class SportlinkClubClientTests
     [Fact]
     public void ParseMatchChangeValidatie_OnherkenbareJson_GeeftNull()
     {
-        var result = SportlinkClubClient.ParseMatchChangeValidatie("dit is geen json");
+        var result = SportlinkMatchChangeValidatieLezer.ParseMatchChangeValidatie("dit is geen json");
 
         result.Should().BeNull();
     }
@@ -2344,7 +2344,7 @@ public class SportlinkClubClientTests
             }
             """;
 
-        var result = SportlinkClubClient.ParseMatchChangeValidatie(json);
+        var result = SportlinkMatchChangeValidatieLezer.ParseMatchChangeValidatie(json);
 
         result.Should().NotBeNull();
         result!.IsSuccess.Should().BeFalse();
@@ -2356,7 +2356,7 @@ public class SportlinkClubClientTests
     [Fact]
     public void ParseMatchChangeValidatie_ToplevelBooleansOntbreken_GevenNullNooitEenGok()
     {
-        var result = SportlinkClubClient.ParseMatchChangeValidatie("""{"ConfirmationNeeded": null}""");
+        var result = SportlinkMatchChangeValidatieLezer.ParseMatchChangeValidatie("""{"ConfirmationNeeded": null}""");
 
         result.Should().NotBeNull();
         result!.IsSuccess.Should().BeNull();
@@ -2370,7 +2370,7 @@ public class SportlinkClubClientTests
     {
         // Defensief: een onverwacht type (hier een string) op een van de vier velden mag niet
         // stilzwijgend als true/false geïnterpreteerd worden.
-        var result = SportlinkClubClient.ParseMatchChangeValidatie("""{"IsSuccess": "ja"}""");
+        var result = SportlinkMatchChangeValidatieLezer.ParseMatchChangeValidatie("""{"IsSuccess": "ja"}""");
 
         result.Should().NotBeNull();
         result!.IsSuccess.Should().BeNull();
@@ -2516,7 +2516,7 @@ public class SportlinkClubClientTests
         // #1427: Sportlink Club gaf HTTP 200 + PublicMatchId op precies deze vorm (console-trace
         // 01-10-2026). De vorige, gereverse-engineerde vorm (MatchDate met tijd, geen StartTime,
         // dataservice-teamcode als PublicHomeTeamId) gaf HTTP 602.
-        var json = JsonSerializer.Serialize(SportlinkClubClient.BuildClubMatchBody(TestAanvraag()));
+        var json = JsonSerializer.Serialize(SportlinkMutatieBodies.BuildClubMatchBody(TestAanvraag()));
 
         json.Should().Contain("\"MatchDate\":\"2026-10-04\"").And.Contain("\"StartTime\":\"12:00:00\"");
         json.Should().Contain("\"HomeTeam\":\"TEST1\"").And.Contain("\"AwayTeam\":\"TEST2\"");
@@ -2678,7 +2678,7 @@ public class SportlinkClubClientTests
     {
         var root = JsonDocument.Parse("""{"Geheim": "waarde-x", "Lijst": [1, 2, 3]}""").RootElement;
 
-        var structuur = SportlinkClubClient.BeschrijfJsonStructuur(root);
+        var structuur = SportlinkJsonHulp.BeschrijfJsonStructuur(root);
 
         structuur.Should().Be("Object{Geheim:String,Lijst:Array[3]}");
         structuur.Should().NotContain("waarde-x");
@@ -2718,7 +2718,7 @@ public class SportlinkClubClientTests
         // Defensief pad: onherkenbare/onbekende veldnamen mogen geen exception geven, alleen null.
         var element = JsonDocument.Parse("""{"SomeOtherField": "x"}""").RootElement;
 
-        var item = SportlinkClubClient.ParsePickListItem(element);
+        var item = SportlinkJsonHulp.ParsePickListItem(element);
 
         item.Id.Should().BeNull();
         item.Naam.Should().BeNull();

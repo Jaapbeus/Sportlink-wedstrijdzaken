@@ -94,7 +94,7 @@ public class SportlinkClubMatchDeleteTests
     public void ClubMatchDeleteLiveBevestigd_StaatOpTrue()
     {
         // Vangnet: een stille omzetting van de vlag faalt hier met naam.
-        var veld = typeof(SportlinkClubClient).GetField("ClubMatchDeleteLiveBevestigd",
+        var veld = typeof(SportlinkMutaties).GetField("ClubMatchDeleteLiveBevestigd",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
 
         veld.Should().NotBeNull("de vlag moet grep-baar bij naam bestaan, zelfde patroon als ClubMatchLiveBevestigd");
@@ -107,7 +107,7 @@ public class SportlinkClubMatchDeleteTests
     public void BouwClubMatchDeleteUrl_ZetPublicMatchIdAlsQueryParameter()
     {
         // Bundle: deleteMatch → {method:`DELETE`, params:{PublicMatchId}, url:`competition/match/clubmatch/ClubMatchDelete`}.
-        SportlinkClubClient.BouwClubMatchDeleteUrl("M12 3&x")
+        SportlinkMutatieBodies.BouwClubMatchDeleteUrl("M12 3&x")
             .Should().Be("https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/clubmatch/ClubMatchDelete?PublicMatchId=M12%203%26x");
     }
 
@@ -121,6 +121,6 @@ public class SportlinkClubMatchDeleteTests
     public void IsLegeSuccesRespons_AlleenEen2xxZonderBodyIsZonderMeerGeslaagd(HttpStatusCode status, string body, bool verwacht)
     {
         // De bundle leest de succesbody niet; een lege 2xx mag dus geen "onherkenbare respons"-fout geven.
-        SportlinkClubClient.IsLegeSuccesRespons(status, body).Should().Be(verwacht);
+        SportlinkMutatieUitvoerder.IsLegeSuccesRespons(status, body).Should().Be(verwacht);
     }
 }
