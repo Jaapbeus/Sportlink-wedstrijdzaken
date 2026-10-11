@@ -1324,6 +1324,15 @@ gh run view <run-id> --json jobs --jq '.jobs[] | {name: .name, conclusion: .conc
 # Alle jobs moeten "success" of "skipped" zijn
 ```
 
+### 9.5 Automatische issue-beurt (Claude Code in GitHub Actions)
+
+Het label `turn: claude-code` op een issue start de workflow `.github/workflows/claude-issue-turn.yml`: die implementeert het issue op `feature/#<nr>-<slug>` vanaf `develop` en opent een **draft**-PR (#1601).
+
+- **Poort:** het issue heeft `source: claude-code` of `source: owner`, géén `discipline: architect`, en er zijn hoogstens drie runs per issue; daarna gaat de beurt naar de eigenaar.
+- **Secret:** de run heeft het repository-secret `CLAUDE_CODE_OAUTH_TOKEN` nodig. De eigenaar maakt dat zelf aan met `claude setup-token`; een agent doet dit nooit.
+- **Grenzen:** de run merget en deployt nooit en laat de PR in draft.
+- **Codex:** is niet zo geautomatiseerd (zie #1601) en blijft lokaal reviewen.
+
 ---
 
 ## 10. Troubleshooting
