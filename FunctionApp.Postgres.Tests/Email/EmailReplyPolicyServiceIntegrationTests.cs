@@ -304,13 +304,12 @@ public class EmailReplyPolicyServiceIntegrationTests
     }
 
     /// <summary>
-    /// De tegenhanger van #1244: onderdrukt de reply-policy het antwoord, dan is er in review-mode
-    /// daadwerkelijk geen AI-antwoord. Dit is het enige pad in review-mode waar het label
-    /// "Geen AI antwoord" hoort. Vóór #1244 kreeg élke in review-mode verwerkte mail het label,
-    /// ook die waarvoor net een voorstel naar de review-ontvanger was gemaild.
+    /// #1608: onderdrukt de reply-policy het antwoord (#572), dan is dat een beleidsbesluit en geen AI-uitval.
+    /// Ook in review mode dus status GeenAntwoordNodig en label "Handmatige planning", precies als buiten
+    /// review mode. Vóór #1608 werd dit "Review" + "Geen AI antwoord" — een leeg item in de reviewwachtrij.
     /// </summary>
     [PostgresFact]
-    public async Task ReviewMode_ZonderVoorstel_ZetWelGeenAiAntwoordLabel()
+    public async Task ReviewMode_ZonderVoorstel_ZetHandmatigePlanningLabel()
     {
         await SchoonAsync();
         var service = new EmailReplyPolicyService();
@@ -341,11 +340,12 @@ public class EmailReplyPolicyServiceIntegrationTests
         result.Should().Be(ReplyVerwerkingUitkomst.AfgerondZonderAntwoord);
         buildCalled.Should().BeFalse();
         graph.SentReplies.Should().BeEmpty();
-        graph.CategoryUpdates.Should().ContainSingle(c => c.Categories.Contains("Geen AI antwoord"));
+        graph.CategoryUpdates.Should().ContainSingle(c => c.Categories.Contains("Handmatige planning"));
+        graph.CategoryUpdates.Should().NotContain(c => c.Categories.Contains("Geen AI antwoord"));
         graph.MarkedAsReadIds.Should().ContainSingle(mid => mid == messageId);
 
         var stand = await SqlEmailPersistenceRepository.HaalVerwerkingStandOpAsync(ConnectionString, messageId);
-        stand!.Status.Should().Be("Review");
+        stand!.Status.Should().Be("GeenAntwoordNodig");
     }
 
     /// <summary>

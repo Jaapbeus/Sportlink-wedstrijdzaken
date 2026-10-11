@@ -383,6 +383,12 @@ jobs:
       - name: Issue-lifecycle helper testen
         run: node .github/scripts/issue-status.test.js
 
+      # #1601: poortstap van claude-issue-turn.yml. Die workflow draait alleen op een
+      # gelabeld issue, dus zonder deze test blijkt een fout in scope-, rondelimiet- of
+      # fasedetectie pas bij een echte run — als er al een agent aan het werk is.
+      - name: Claude issue-beurt poort testen
+        run: node .github/scripts/claude-issue-turn-gate.test.js
+
       # ──────────────────────────────────────────────────────────────────────
       # #595: schema-drift guard.
       #

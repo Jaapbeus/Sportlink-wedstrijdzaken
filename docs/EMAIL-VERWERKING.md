@@ -244,19 +244,28 @@ In review-mode wordt het voorgestelde antwoord wél opgebouwd en opgeslagen (#71
 `VerstuurdNaar` leeg. Voorheen werd het antwoord in deze modus helemaal niet gebouwd en bleef de
 status op `Verwerkt` staan — dezelfde waarde als een mislukte verzending — waardoor er niets te
 reviewen viel. Zou de reply-policy het antwoord onderdrukken, dan wordt er in review-mode ook geen
-voorstel gebouwd: de rij krijgt dan status `Review` zonder `AntwoordEmail`.
+voorstel gebouwd: de rij krijgt dan, net als buiten review-mode, status `GeenAntwoordNodig` (#1608).
 
 Het bericht wordt in review-mode altijd als gelezen gemarkeerd. Het label hangt af van of er een
-voorstel is opgebouwd (#1244):
+voorstel is opgebouwd (#1244) en waarom niet (#1608):
 
-| Situatie in review-mode | Label op de originele e-mail |
-|---|---|
-| Voorstel opgebouwd en opgeslagen (eventueel gemaild naar `EmailReviewRecipient`) | **geen label** — er ís een AI-antwoord, het wacht enkel op beoordeling |
-| Reply-policy onderdrukt het antwoord, dus geen voorstel | **"Geen AI antwoord"** (niet "Handmatige planning") |
+| Situatie in review-mode | Status | Label op de originele e-mail |
+|---|---|---|
+| Voorstel opgebouwd en opgeslagen (eventueel gemaild naar `EmailReviewRecipient`) | `Review` | **geen label** — er ís een AI-antwoord, het wacht enkel op beoordeling |
+| Reply-policy onderdrukt het antwoord (planning mogelijk), dus geen voorstel | `GeenAntwoordNodig` | **"Handmatige planning"** — identiek aan buiten review-mode |
+| Zekerheidspoort houdt een onzeker voorstel tegen (§1e) | `Review` | **"Geen AI antwoord"** |
+
+`EmailReviewMode` bepaalt dus alleen wat er gebeurt met een antwoord dat **wél** verstuurd zou
+worden. Een bewust onderdrukt antwoord ziet er in beide modi hetzelfde uit.
 
 Tot #1244 kreeg élk in review-mode verwerkt bericht het label "Geen AI antwoord", ook direct nadat
 het voorstel naar de review-ontvanger was gemaild. Daarmee was het label betekenisloos: het stond
 zowel op berichten zonder AI-antwoord als op berichten mét een voorstel ter beoordeling.
+
+Tot #1608 kreeg een onderdrukt antwoord in review-mode nog status `Review` en het label "Geen AI
+antwoord". Dat leek op een storing van de AI terwijl de classificatie en de planning klopten, en het
+gaf een leeg item in de reviewwachtrij: er was niets te beoordelen. De e-mailtester toonde in
+hetzelfde geval "Gaat naar Review", ook dat is gelijkgetrokken.
 
 > **Let op:** het voorstel is nog niet in de Admin GUI zichtbaar. `AdminEmailLogRepository` geeft
 > `AntwoordEmail` bewust nooit terug (AVG: de body kan persoonsgegevens bevatten), dus het voorstel

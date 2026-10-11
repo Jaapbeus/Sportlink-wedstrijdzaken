@@ -18,6 +18,21 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.13.1.0] — 2026-10-11
+
+### Added
+- **Claude Code pakt een issue automatisch op zodra het label `turn: claude-code` erop komt**: een nieuwe workflow start in GitHub Actions een run die het issue uitwerkt op een eigen branch `feature/#<nr>-...` vanaf `develop` en een draft-PR opent. Daarna vraagt de run review aan bij Codex. Komen er reviewbevindingen terug, dan verwerkt een volgende run die op dezelfde branch. De run loopt op het Claude-abonnement van de eigenaar, niet op API-facturering. Hij merget en deployt nooit en laat de PR altijd in draft. Een vaste poort laat de run alleen starten bij issues met `source: claude-code` of `source: owner` en zonder `discipline: architect`, en geeft na drie runs op hetzelfde issue de beurt aan de eigenaar. Codex wordt niet zo geautomatiseerd: de CI-voorwaarden van OpenAI staan een abonnementslogin op een publieke repository niet toe (#1601).
+
+### Security
+- **De automatische issue-beurt werkt alleen met invoer uit vertrouwde bronnen**: de poort koppelt een beurt alleen aan een PR uit deze repository, van een bevoegde auteur en op de eigen branch `feature/#<nr>-`. De agent krijgt alleen tekst van schrijvers met schrijfrechten; hij haalt zelf geen issue- of PR-commentaar meer op. Zijn shellrechten zijn per opdracht beperkt (geen `gh api` of `gh pr merge`) en pushen naar `main` of `develop` is uitdrukkelijk verboden. Ook geteld: de rondelimiet kijkt nu naar de exacte run-titel, zodat runs voor een ander label of een ander issue niet meetellen. Verholpen voordat de workflow op `main` actief werd (#1612).
+- **Geen automatische issue-beurt voor een issue van iemand zonder schrijfrechten**: ook als zo'n issue het juiste `source:`-label heeft, start de run niet en gaat de beurt naar de eigenaar. Titel en tekst blijven namelijk van de auteur, die ze ook na het labelen nog kan wijzigen (#1615).
+
+### Fixed
+- **"Geen AI antwoord" bij een veldaanvraag die gewoon kan**: vraagt iemand of er een veld vrij is en kan de wedstrijd op de gevraagde datum worden ingepland, dan stuurt het systeem bewust geen antwoord en plant de coördinator zelf. Met de reviewmodus aan kreeg zo'n mail toch het label *Geen AI antwoord* en de status *Review*. Dat leek op een storing terwijl de AI het verzoek goed had begrepen, en het gaf een leeg item in de teller *Wacht op beoordeling*. Zo'n mail krijgt nu ook met de reviewmodus aan het label *Handmatige planning* en de status *Handmatige planning (geen antwoord)*, net als zonder reviewmodus. De e-mailtester zegt in dat geval voortaan hetzelfde, in plaats van "Gaat naar Review". Een antwoord dat de zekerheidspoort tegenhoudt houdt *Geen AI antwoord*. Geldt voor beide databasetiers (#1608).
+
+### Changed
+- **Een release vraagt geen review van de andere agent meer**: de release (versiebump, CHANGELOG, release-PR) gaat in één keer door de skill `/release`, zonder reviewronde tussen Codex en Claude Code. De securitypoort, CI en Security Gate blijven gelden en merge en tag blijven afhankelijk van het startcommando van de eigenaar. Voor ontwikkelwerk blijft de wederzijdse review ongewijzigd (#1604).
+
 ## [3.13.0.0] — 2026-10-09
 
 ### Added

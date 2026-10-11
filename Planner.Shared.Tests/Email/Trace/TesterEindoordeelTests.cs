@@ -59,7 +59,7 @@ public class TesterEindoordeelTests
         e.Waarschuwing.Should().BeFalse();
     }
 
-    // ── Algemene reviewmodus (EmailReviewMode): gaat voor reply-beleid en poort ──
+    // ── Algemene reviewmodus (EmailReviewMode): gaat voor de poort, niet voor een onderdrukt antwoord (#1608) ──
 
     [Theory]
     [InlineData(true, true)]
@@ -77,16 +77,22 @@ public class TesterEindoordeelTests
         e.ConceptLabel.Should().Contain("Concept");
     }
 
+    /// <summary>
+    /// #1608: een onderdrukt antwoord is ook in reviewmodus "Handmatige planning", niet "Review" — de tester moet
+    /// hetzelfde zeggen als de productieverwerking, die dan status GeenAntwoordNodig en dat label zet.
+    /// </summary>
     [Theory]
     [InlineData(true, true)]
     [InlineData(false, false)]
-    public void ReviewModusAan_ReplyBeleidZwijgt_IsToch_Review_ZonderVoorstel(bool poortActief, bool isZeker)
+    public void ReviewModusAan_ReplyBeleidZwijgt_IsHandmatigePlanning_NetAlsZonderReviewModus(bool poortActief, bool isZeker)
     {
-        var e = TesterEindoordeel.Bepaal(true, false, "Planning mogelijk op de gevraagde datum", poortActief, isZeker);
+        var metReview = TesterEindoordeel.Bepaal(true, false, "Planning mogelijk op de gevraagde datum", poortActief, isZeker);
+        var zonderReview = TesterEindoordeel.Bepaal(false, false, "Planning mogelijk op de gevraagde datum", poortActief, isZeker);
 
-        e.Uitkomst.Should().Be(TesterUitkomst.Review);
-        e.Toelichting.Should().Contain("Planning mogelijk op de gevraagde datum").And.Contain("geen voorstel");
-        e.ConceptLabel.Should().Contain("niet opgeslagen");
+        metReview.Uitkomst.Should().Be(TesterUitkomst.GeenAntwoord);
+        metReview.Titel.Should().Contain("Handmatige planning");
+        metReview.Toelichting.Should().Contain("Planning mogelijk op de gevraagde datum").And.Contain("Handmatige planning");
+        metReview.Should().Be(zonderReview);
     }
 
     [Theory]
@@ -96,8 +102,8 @@ public class TesterEindoordeelTests
     [InlineData(false, false, false, TesterUitkomst.GeenAntwoord)]
     [InlineData(true, true, true, TesterUitkomst.Review)]
     [InlineData(true, true, false, TesterUitkomst.Review)]
-    [InlineData(true, false, true, TesterUitkomst.Review)]
-    [InlineData(true, false, false, TesterUitkomst.Review)]
+    [InlineData(true, false, true, TesterUitkomst.GeenAntwoord)]
+    [InlineData(true, false, false, TesterUitkomst.GeenAntwoord)]
     public void Matrix_ReviewModus_Antwoord_Zekerheid_MetPoortAan(bool reviewModus, bool replyMoetVersturen, bool isZeker, TesterUitkomst verwacht)
         => TesterEindoordeel.Bepaal(reviewModus, replyMoetVersturen, "reden", poortActief: true, isZeker: isZeker)
             .Uitkomst.Should().Be(verwacht);

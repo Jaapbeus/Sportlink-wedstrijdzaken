@@ -125,23 +125,23 @@ internal sealed class EmailReplyPolicyService
         }
         else
         {
-            await _persistentie(connectionString).UpdateStatusAsync(verwerkingId, EmailStatus.Review, null);
+            // Onderdrukken is een beleidsbesluit (#572), geen AI-uitval: zelfde status als buiten review mode (#1608).
+            await _persistentie(connectionString).UpdateStatusAsync(verwerkingId, EmailStatus.GeenAntwoordNodig, null);
             log.LogInformation(
-                "Email {Id} review mode — geen antwoord voorgesteld: {Reden}", verwerkingId, reviewBesluit.Reden);
+                "Email {Id} review mode — geen antwoord nodig, handmatige planning: {Reden}", verwerkingId, reviewBesluit.Reden);
         }
 
         try
         {
-            // Alleen labelen als er géén voorstel is opgebouwd (#1244). Is er wél een voorstel, dan
-            // ís er een AI-antwoord — het wacht enkel op beoordeling. Het label onvoorwaardelijk
-            // zetten maakte het betekenisloos: in review-mode kreeg élke verwerkte mail het, ook
-            // die waarvoor net een voorstel naar de review-ontvanger was gemaild. Uitzondering: een door
-            // de zekerheidspoort tegengehouden voorstel (#1568) krijgt het label wél — de afzender kreeg geen
-            // antwoord en de mail wacht op een mens.
-            if (!reviewBesluit.MoetVersturen || tegengehouden)
+            // Een voorstel dat op beoordeling wacht krijgt geen label (#1244). "Geen AI antwoord" alleen bij een
+            // door de zekerheidspoort tegengehouden voorstel (#1568); een onderdrukt antwoord krijgt
+            // "Handmatige planning", net als buiten review mode (#1608).
+            var (label, kleur) = tegengehouden ? (EmailCategorieLabels.GeenAiAntwoord, EmailCategorieLabels.GeenAiAntwoordKleur)
+                : reviewBesluit.MoetVersturen ? (null, null) : (HandmatigePlanningLabel, "preset5");
+            if (label != null)
             {
-                await graphService.EnsureMasterCategoryAsync(EmailCategorieLabels.GeenAiAntwoord, EmailCategorieLabels.GeenAiAntwoordKleur);
-                await graphService.SetCategoriesAsync(email.MessageId, EmailCategorieLabels.GeenAiAntwoord);
+                await graphService.EnsureMasterCategoryAsync(label, kleur!);
+                await graphService.SetCategoriesAsync(email.MessageId, label);
             }
 
             await graphService.MarkAsReadAsync(email.MessageId);

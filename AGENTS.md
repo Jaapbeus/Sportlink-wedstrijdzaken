@@ -101,7 +101,7 @@ Uitwerking: `ARCHITECTUUR.md` en de documenten uit **Leesmomenten**.
 
 - Versie `MAJOR.MINOR.PATCH.REVISION`: `feat` → PATCH, `fix`/`security` → REVISION, `BREAKING CHANGE` → MAJOR, puur intern geen bump; release: MINOR bij ≥ 1 `feat`, anders PATCH. Zet de versie in **alle drie** csproj's (`FunctionApp/fa-dev-sportlink-01.csproj`, `BlazorAdmin/BlazorAdmin.csproj`, `FunctionApp.Postgres/FunctionApp.Postgres.csproj`; de derde wordt gemist) en controleer na elke rebase (`VERSIONING.md`).
 - `CHANGELOG.md`: elke feature/fix een entry onder `[Unreleased]`; `(#N)` sluit het issue bij de release, dus alleen voor werk in die versie (kruisverwijzing: `zie issue #N`).
-- **Release uitsluitend via `/release`**, door de eigenaar gestart; securitypoort eerst: `/security-review` op `origin/main...origin/develop`, geen open high/critical Dependabot-/code-scanning-alert en geen enkele open secret-scanning-alert, Security Gate + CodeQL groen op HEAD van `origin/develop`; één HIGH stopt de release; release-PR alleen met aantallen per severity (4a). `deploy.yml` past migraties zelf toe vóór de code (geen migratie die de vorige code breekt in dezelfde release); demodata hoort in het idempotente seedscript.
+- **Release uitsluitend via `/release`**, door de eigenaar gestart, one-shot, geen agentreview; securitypoort eerst: `/security-review` op `origin/main...origin/develop`, geen open high/critical Dependabot-/code-scanning-alert en geen open secret-scanning-alert, Security Gate + CodeQL groen op develop-HEAD; één HIGH stopt de release; release-PR alleen aantallen per severity (4a). `deploy.yml` past migraties zelf toe vóór de code (geen migratie die de vorige code breekt in dezelfde release); demodata in het idempotente seedscript.
 
 ## Leesmomenten
 
