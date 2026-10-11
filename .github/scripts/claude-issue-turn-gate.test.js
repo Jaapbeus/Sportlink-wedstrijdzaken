@@ -31,7 +31,9 @@ function fakeGithub({
     },
     rest: {
       issues: {
-        get: async () => ({ data: { labels: labels.map((name) => ({ name })), ...issue } }),
+        get: async () => ({
+          data: { author_association: 'OWNER', labels: labels.map((name) => ({ name })), ...issue },
+        }),
         listComments: async ({ issue_number }) => ({ data: commentsByNumber[issue_number] || [] }),
         addLabels: async ({ labels: l }) => { calls.added.push(...l); },
         removeLabel: async ({ name }) => { calls.removed.push(name); },
@@ -236,10 +238,33 @@ function fakeGithub({
 
   {
     const github = fakeGithub({
-      issue: { title: 'T', body: 'kwaadaardige body', author_association: 'NONE' },
+      issue: { title: 'kwaadaardige titel', body: 'kwaadaardige body', author_association: 'NONE' },
     });
     const r = await collectTrustedContext({ github, context: ctx, issueNumber: 61 });
     check('issuetekst van niet-bevoegde auteur weggelaten', r.text.includes('kwaadaardige body'), false);
+    check('issuetitel van niet-bevoegde auteur weggelaten (#1615)', r.text.includes('kwaadaardige titel'), false);
+  }
+
+  // ---------- #1615: issue van niet-bevoegde auteur start nooit een run ----------
+  console.log('\nevaluateGate (#1615):');
+  {
+    const github = fakeGithub({
+      labels: ['source: owner'],
+      issue: { author_association: 'CONTRIBUTOR', title: 'x' },
+    });
+    const result = await evaluateGate({ github, context: ctx, core, issueNumber: 64 });
+    check('niet-bevoegde auteur, ook met source-label: proceed=false', result.proceed, false);
+    check('niet-bevoegde auteur: label naar turn: owner', github.calls.added, ['turn: owner']);
+    check('niet-bevoegde auteur: toelichting geplaatst', github.calls.comments.length, 1);
+  }
+
+  {
+    const github = fakeGithub({
+      labels: ['source: claude-code'],
+      issue: { author_association: 'NONE', user: { login: 'claude[bot]', type: 'Bot' } },
+    });
+    const result = await evaluateGate({ github, context: ctx, core, issueNumber: 65 });
+    check('issue van de Claude GitHub App mag wel', result.proceed, true);
   }
 
   {

@@ -231,10 +231,12 @@ async function collectTrustedContext({ github, context, issueNumber, prNumber })
   }
   const truncated = entries.length - kept.length;
 
+  // Titel en tekst samen: een auteur kan beide op elk moment wijzigen (#1615).
+  const issueTrusted = isTrustedAuthor(issue);
   const header = [
-    `## Issue #${issueNumber}: ${issue.title}`,
+    `## Issue #${issueNumber}: ${issueTrusted ? issue.title : '(titel weggelaten: geen bevoegde auteur)'}`,
     '',
-    isTrusted(issue.author_association) ? issue.body || '(lege issuetekst)' : '(issuetekst weggelaten: geen bevoegde auteur)',
+    issueTrusted ? issue.body || '(lege issuetekst)' : '(issuetekst weggelaten: geen bevoegde auteur)',
     '',
     `## Comments en reviews van bevoegde schrijvers (${kept.length})`,
     skipped ? `_${skipped} bijdrage(n) van niet-bevoegde schrijvers weggelaten._` : '',
@@ -266,6 +268,18 @@ async function evaluateGate({ github, context, core, issueNumber }) {
       `Geen CI-run gestart: dit issue mist een van ${REQUIRED_SOURCE_LABELS.join(' / ')}. ` +
       'Besluit 3 op #1601 beperkt automatische oppak tot issues met een agent- of ' +
       'eigenaarherkomst (bijv. geen `via: feedback-widget`-issues).';
+    await postComment({ github, context, core, issueNumber, body: reason });
+    await setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
+    return { proceed: false, reason };
+  }
+
+  // #1615: een `source:`-label wordt door een maintainer gezet, maar titel en tekst blijven van
+  // de auteur, die ze op elk moment kan wijzigen, ook ná het labelen. Een issue van iemand
+  // zonder schrijfrechten start daarom nooit een run, ongeacht de labels.
+  if (!isTrustedAuthor(issue)) {
+    const reason =
+      'Geen CI-run gestart: de auteur van dit issue heeft geen schrijfrechten op deze ' +
+      'repository (#1615). Een eigenaar kan het werk overnemen in een eigen issue.';
     await postComment({ github, context, core, issueNumber, body: reason });
     await setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
     return { proceed: false, reason };
