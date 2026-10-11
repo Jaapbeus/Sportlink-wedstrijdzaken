@@ -153,5 +153,29 @@ public class BouwTemplateAntwoordKarakterisatieTests
         body.Should().Be(verwacht.Body);
         traceSamenvatting.Should().Be(verwacht.Trace);
     }
-}
 
+    // Foutpad (#1627, Codex ronde 1 P2): de oude BouwTemplateAntwoord zette de wedstrijd-DTO bij een herplanverzoek
+    // direct na het parsen om, vóór takkeuze en sjabloonophaling. Een ongeldige DTO gaf dus een
+    // JsonSerializationException zonder dat het sjabloon werd opgehaald, met en zonder override.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BouwTemplateAntwoord_HerplanMetOngeldigeWedstrijd_FaaltVoorSjabloonophaling(bool metSjabloon)
+    {
+        var classificatie = new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek, TeamNaam = "JO13-2" };
+        var bericht = new InkomendBericht { Afzender = "trainer@voorbeeld.nl", AfzenderNaam = "Jan de Vries", Onderwerp = "Oefenwedstrijd", Body = "Verzetten?" };
+        var sjabloonAanroepen = 0;
+
+        var act = () => BerichtPipeline.BouwTemplateAntwoord(
+            classificatie, "{\"wedstrijd\":\"geen-object\"}", bericht, null,
+            new ClubAppSettingsSnapshot("ALLSTARS Veldplanner", null, null, null, null), "ALLSTARS", new TraceBuilder(),
+            k =>
+            {
+                sjabloonAanroepen++;
+                return Task.FromResult<EmailTemplate?>(metSjabloon ? new EmailTemplate(k, "Onderwerp", "Tekst") : null);
+            });
+
+        await act.Should().ThrowAsync<Newtonsoft.Json.JsonSerializationException>();
+        sjabloonAanroepen.Should().Be(0);
+    }
+}

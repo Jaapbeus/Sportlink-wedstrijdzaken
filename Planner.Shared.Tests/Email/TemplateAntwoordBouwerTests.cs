@@ -16,11 +16,19 @@ public class TemplateAntwoordBouwerTests
     {
         public List<string> Aanroepen { get; } = new();
         public HashSet<string> Sjablonen { get; } = new();
+        public int Validaties { get; private set; }
 
         private (string onderwerp, string body) Gekozen(string naam)
         {
             Aanroepen.Add(naam);
             return (naam, naam);
+        }
+
+        public void ValideerWedstrijd(JToken? wedstrijd)
+        {
+            Validaties++;
+            if (wedstrijd is { Type: JTokenType.String })
+                throw new Newtonsoft.Json.JsonSerializationException("ongeldige wedstrijd-DTO");
         }
 
         public (string onderwerp, string body) WedstrijdAlIngepland(JToken? wedstrijd) => Gekozen("wedstrijdAlIngepland");
@@ -142,5 +150,22 @@ public class TemplateAntwoordBouwerTests
         var act = () => Bouw("BeschikbaarheidCheck", "geen json");
 
         await act.Should().ThrowAsync<Newtonsoft.Json.JsonReaderException>();
+    }
+
+    // Foutpad (#1627, Codex ronde 1 P2): de wedstrijd-DTO wordt bij herplan direct na het parsen gevalideerd,
+    // vóór takkeuze en sjabloonophaling; een ongeldige DTO breekt af zonder sjabloonophaling (met en zonder override).
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Herplan_OngeldigeWedstrijd_FaaltVoorTakkeuzeEnSjabloonophaling(bool metSjabloon)
+    {
+        var bron = new OpnemendeBron();
+        if (metSjabloon) bron.Sjablonen.Add("herplan_verzoek");
+
+        var act = () => TemplateAntwoordBouwer.BouwAsync("HerplanVerzoek", "{\"wedstrijd\":\"geen-object\"}", bron, null);
+
+        await act.Should().ThrowAsync<Newtonsoft.Json.JsonSerializationException>();
+        bron.Validaties.Should().Be(1);
+        bron.Aanroepen.Should().BeEmpty();
     }
 }
