@@ -28,6 +28,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ### Security
 - Aanscherping van de adresbereikcontrole in `SsrfProtection.IsPublicIpAddress` (IPv6-tak en één Azure-specifiek IPv4-adres), met uitgebreide grenswaardetests (#1622).
+
 ### Fixed
 - **De automatische issue-beurt herkent zijn eigen PR weer bij het verwerken van reviewcommentaar**: een PR die de CI-run zelf opent, staat op naam van de Claude GitHub App. Die herkende de poort niet als bevoegd, waardoor een verwerkingsronde een tweede PR zou beginnen in plaats van de bestaande bij te werken (#1633).
 

@@ -52,7 +52,7 @@ public static class CronLeesbaar
 
     private static string? Weekdag(Velden v)
         => v.Dag == "*" && v.Maand == "*"
-           && Getal(v.Min, out var min) && Getal(v.Uur, out var uur) && Getal(v.Week, out var wd) && wd <= 7
+           && Getal(v.Min, out var min) && Getal(v.Uur, out var uur) && Getal(v.Week, out var wd) && wd <= 6
             ? $"Elke {DagNamen[wd]} om {uur:D2}:{min:D2}" : null;
 
     private static bool Getal(string tekst, out int waarde)
