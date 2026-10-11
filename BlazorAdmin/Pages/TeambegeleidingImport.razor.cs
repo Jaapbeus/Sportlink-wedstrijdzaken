@@ -12,7 +12,7 @@ namespace BlazorAdmin.Pages;
 /// </summary>
 public partial class TeambegeleidingImport
 {
-    [Inject] private AdminApiClient Api { get; set; } = default!;
+    [Inject] private TeamsApiClient Api { get; set; } = default!;
 
     private CsvPreviewModel? _csvPreview;
     private string? _csvContent;

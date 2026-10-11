@@ -6,7 +6,7 @@ namespace BlazorAdmin.Shared;
 
 public partial class OnbekendeTeamTeksten
 {
-    [Inject] private AdminApiClient Api { get; set; } = default!;
+    [Inject] private LerenApiClient Api { get; set; } = default!;
 
     /// <summary>Wordt aangeroepen na het koppelen, zodat de aliaslijst op de pagina ververst kan worden.</summary>
     [Parameter] public EventCallback OnGekoppeld { get; set; }

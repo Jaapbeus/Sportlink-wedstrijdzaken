@@ -6,7 +6,8 @@ namespace BlazorAdmin.Pages;
 
 public partial class EmailTemplates : ClubSelectorPageBase
 {
-    [Inject] private AdminApiClient Api { get; set; } = default!;
+    [Inject] private EmailApiClient EmailApi { get; set; } = default!;
+    [Inject] private InstellingenApiClient InstellingenApi { get; set; } = default!;
 
     private List<TemplateDto> templates = new();
     private TemplateDto? editing;
@@ -30,13 +31,13 @@ public partial class EmailTemplates : ClubSelectorPageBase
 
     private async Task LoadTemplatesAsync()
     {
-        var r = await Api.GetTemplatesAsync();
+        var r = await EmailApi.GetTemplatesAsync();
         templates = r.Success ? r.Data ?? new() : new();
     }
 
     private async Task LoadVoetnootAsync()
     {
-        var r = await Api.GetSettingsAsync();
+        var r = await InstellingenApi.GetSettingsAsync();
         if (r.Success && r.Data != null)
             voetnoot = r.Data.EmailVoetnoot ?? "";
     }
@@ -47,7 +48,7 @@ public partial class EmailTemplates : ClubSelectorPageBase
         {
             Velden = new Dictionary<string, string?> { ["EmailVoetnoot"] = voetnoot }
         };
-        var r = await Api.UpdateSettingsAsync(dto);
+        var r = await InstellingenApi.UpdateSettingsAsync(dto);
         voetnootMessage = r.Success ? "Voetnoot opgeslagen." : "Fout: " + r.ErrorMessage;
         await Task.Delay(3000);
         voetnootMessage = null;
@@ -123,7 +124,7 @@ public partial class EmailTemplates : ClubSelectorPageBase
             templateMessage = "Template key verplicht";
             return;
         }
-        var r = await Api.UpdateTemplateAsync(editing.TemplateKey, editing);
+        var r = await EmailApi.UpdateTemplateAsync(editing.TemplateKey, editing);
         templateMessage = r.Success ? "Opgeslagen." : "Fout: " + r.ErrorMessage;
         if (r.Success)
         {
@@ -134,7 +135,7 @@ public partial class EmailTemplates : ClubSelectorPageBase
 
     private async Task ResetAsync(string key)
     {
-        var r = await Api.ResetTemplateAsync(key);
+        var r = await EmailApi.ResetTemplateAsync(key);
         templateMessage = r.Success ? $"Template '{key}' gereset naar default." : "Fout: " + r.ErrorMessage;
         await LoadTemplatesAsync();
     }

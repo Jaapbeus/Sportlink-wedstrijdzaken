@@ -6,7 +6,8 @@ namespace BlazorAdmin.Pages;
 
 public partial class TeamAliassen : ClubSelectorPageBase
 {
-    [Inject] private AdminApiClient Api { get; set; } = default!;
+    [Inject] private LerenApiClient LerenApi { get; set; } = default!;
+    [Inject] private TeamsApiClient TeamsApi { get; set; } = default!;
 
     private List<TeamAliasDto> _items = new();
     private TeamAliassenResponse? _stats;
@@ -64,7 +65,7 @@ public partial class TeamAliassen : ClubSelectorPageBase
 
         try
         {
-            var result = await Api.HerstelTeamlijstAsync();
+            var result = await TeamsApi.HerstelTeamlijstAsync();
             if (result.Success && result.Data != null)
             {
                 _herstelResultaat = result.Data;
@@ -98,7 +99,7 @@ public partial class TeamAliassen : ClubSelectorPageBase
 
         try
         {
-            var result = await Api.GetTeamAliassenAsync(string.IsNullOrEmpty(status) ? null : status);
+            var result = await LerenApi.GetTeamAliassenAsync(string.IsNullOrEmpty(status) ? null : status);
             if (result.Success && result.Data != null)
             {
                 _stats = result.Data;
@@ -127,7 +128,7 @@ public partial class TeamAliassen : ClubSelectorPageBase
 
         try
         {
-            var result = await Api.ValideerTeamAliasAsync(id, status);
+            var result = await LerenApi.ValideerTeamAliasAsync(id, status);
             if (!result.Success)
                 _fout = result.ErrorMessage ?? "Actie mislukt";
             else
@@ -154,7 +155,7 @@ public partial class TeamAliassen : ClubSelectorPageBase
 
         try
         {
-            var result = await Api.DeleteTeamAliasAsync(id);
+            var result = await LerenApi.DeleteTeamAliasAsync(id);
             if (!result.Success)
                 _fout = result.ErrorMessage ?? "Verwijderen mislukt";
             else

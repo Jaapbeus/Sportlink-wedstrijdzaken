@@ -6,7 +6,7 @@ namespace BlazorAdmin.Shared;
 
 public partial class EmailLogLijst
 {
-    [Inject] private AdminApiClient Api { get; set; } = default!;
+    [Inject] private EmailApiClient Api { get; set; } = default!;
 
     [Parameter, EditorRequired] public IReadOnlyList<EmailLogDto> Items { get; set; } = Array.Empty<EmailLogDto>();
 

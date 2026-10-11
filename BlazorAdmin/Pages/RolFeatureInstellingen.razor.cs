@@ -23,7 +23,7 @@ namespace BlazorAdmin.Pages;
 /// </remarks>
 public partial class RolFeatureInstellingen : ClubSelectorPageBase
 {
-    [Inject] private AdminApiClient Api { get; set; } = default!;
+    [Inject] private InstellingenApiClient Api { get; set; } = default!;
 
     /// <summary>Eén rij van de matrix — puur UI-metadata, geen logica.</summary>
     private sealed record MatrixRij(string Groep, string FeatureKey, string Label, string? Beschrijving, bool Avg);

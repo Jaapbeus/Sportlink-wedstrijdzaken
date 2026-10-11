@@ -7,7 +7,8 @@ namespace BlazorAdmin.Pages;
 /// <summary>Code-behind van <c>SportlinkExtensieInstellingen.razor</c> (#988/#991/#998/#1113, code-behind sinds #1122).</summary>
 public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
 {
-    [Inject] private AdminApiClient Api { get; set; } = default!;
+    [Inject] private InstellingenApiClient InstellingenApi { get; set; } = default!;
+    [Inject] private SportlinkApiClient SportlinkApi { get; set; } = default!;
 
     private AppSettingsDto? settings;
     private bool saving;
@@ -58,7 +59,7 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
 
     private async Task LaadInstellingenAsync()
     {
-        var r = await Api.GetSettingsAsync();
+        var r = await InstellingenApi.GetSettingsAsync();
         if (r.Success) settings = r.Data;
         else errorMessage = r.ErrorMessage;
     }
@@ -66,7 +67,7 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
     private async Task LaadAutoLoginStatusAsync()
     {
         autoLoginError = null;
-        var r = await Api.GetSportlinkAutoLoginStatusAsync(AutoLoginRolNaam);
+        var r = await SportlinkApi.GetSportlinkAutoLoginStatusAsync(AutoLoginRolNaam);
         autoLoginStatus = r.Success ? r.Data : null;
         if (!r.Success) autoLoginError = "Status van automatisch inloggen kon niet worden opgehaald.";
     }
@@ -112,7 +113,7 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
         autoLoginMessage = null;
         try
         {
-            var r = await Api.SetSportlinkAutoLoginAsync(AutoLoginRolNaam, autoLoginForm);
+            var r = await SportlinkApi.SetSportlinkAutoLoginAsync(AutoLoginRolNaam, autoLoginForm);
             if (r.Success)
             {
                 autoLoginStatus = r.Data;
@@ -143,7 +144,7 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
         autoLoginMessage = null;
         try
         {
-            var r = await Api.DeleteSportlinkAutoLoginAsync(AutoLoginRolNaam);
+            var r = await SportlinkApi.DeleteSportlinkAutoLoginAsync(AutoLoginRolNaam);
             if (r.Success)
             {
                 autoLoginStatus = r.Data;
@@ -165,7 +166,7 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
 
     private async Task LaadSportlinkExtensieRollenAsync()
     {
-        var r = await Api.GetSportlinkExtensieRollenAsync();
+        var r = await SportlinkApi.GetSportlinkExtensieRollenAsync();
         sportlinkRollen = r.Success ? r.Data ?? new() : new();
     }
 
@@ -176,7 +177,7 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
         StateHasChanged();
         try
         {
-            var r = await Api.GetSportlinkExtensieHealthAsync(live);
+            var r = await SportlinkApi.GetSportlinkExtensieHealthAsync(live);
             if (r.Success) sportlinkHealth = r.Data;
             else sportlinkHealthError = r.ErrorMessage ?? "Onbekende fout bij ophalen status.";
         }
@@ -205,7 +206,7 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
             }
         };
 
-        var r = await Api.UpdateSettingsAsync(update);
+        var r = await InstellingenApi.UpdateSettingsAsync(update);
         if (r.Success)
         {
             successMessage = "Instellingen opgeslagen.";
@@ -226,7 +227,7 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
     private async Task BevestigRegistreerKoppelingAsync()
     {
         if (registreerRol == null) return;
-        var r = await Api.RegistreerSportlinkKoppelingAsync(registreerRol.RolNaam, registreerSportlinkAccountNaam);
+        var r = await SportlinkApi.RegistreerSportlinkKoppelingAsync(registreerRol.RolNaam, registreerSportlinkAccountNaam);
         if (r.Success)
         {
             registreerRol = null;

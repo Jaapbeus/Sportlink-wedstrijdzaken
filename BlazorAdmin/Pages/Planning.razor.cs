@@ -12,7 +12,9 @@ namespace BlazorAdmin.Pages;
 /// <see cref="SportlinkActieKolomState"/>.</summary>
 public partial class Planning : ClubSelectorPageBase
 {
-    [Inject] private AdminApiClient Api { get; set; } = default!;
+    [Inject] private InstellingenApiClient InstellingenApi { get; set; } = default!;
+    [Inject] private PlanningApiClient PlanningApi { get; set; } = default!;
+    [Inject] private SportlinkApiClient SportlinkApi { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
 
     private DateTime _datumDt;
@@ -53,7 +55,7 @@ public partial class Planning : ClubSelectorPageBase
         await LoadVeldbezettingAsync();
 
         // #989: geen Sportlink-kolom/-knoppen tonen als de extension uit staat (DoD).
-        var settings = await Api.GetSettingsAsync();
+        var settings = await InstellingenApi.GetSettingsAsync();
         _sportlinkExtensionEnabled = settings.Success && settings.Data?.SportlinkExtensionEnabled == true;
         await LaadPdfExportStatusAsync();
     }
@@ -66,7 +68,7 @@ public partial class Planning : ClubSelectorPageBase
         _veldbezettingError = null;
         try
         {
-            var result = await Api.GetVeldbezettingAsync(DatumStr);
+            var result = await PlanningApi.GetVeldbezettingAsync(DatumStr);
             if (result.Success)
                 _veldbezetting = result.Data ?? new();
             else
@@ -89,7 +91,7 @@ public partial class Planning : ClubSelectorPageBase
     /// (standaard uit). Via het voor elke ingelogde rol open endpoint — niet via de admin-only
     /// instellingen — en opnieuw bij een clubwissel.
     /// </summary>
-    private async Task LaadPdfExportStatusAsync() => _pdfExportIngeschakeld = await Api.IsPdfExportIngeschakeldAsync();
+    private async Task LaadPdfExportStatusAsync() => _pdfExportIngeschakeld = await PlanningApi.IsPdfExportIngeschakeldAsync();
 
     // Gantt-blokken voor de directe veldbezetting-weergave (#566) — geen optimalisatie, alleen wat er
     // al gepland staat. Hergebruikt dezelfde GanttItem/helpers als Veld optimalisatie.

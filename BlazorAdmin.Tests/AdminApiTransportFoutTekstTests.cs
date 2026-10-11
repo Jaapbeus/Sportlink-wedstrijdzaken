@@ -5,12 +5,12 @@ using Xunit;
 namespace BlazorAdmin.Tests;
 
 /// <summary>Foutmeldingen uit API-responsen tonen de <c>error</c>-tekst, nooit ruwe JSON (#1529).</summary>
-public class AdminApiClientFoutTekstTests
+public class AdminApiTransportFoutTekstTests
 {
     [Fact]
     public void JsonMetError_GeeftAlleenDeMelding()
     {
-        var tekst = AdminApiClient.FoutTekst(503, "{\"error\":\"Nu niet beschikbaar.\",\"aiBeschikbaar\":false}");
+        var tekst = AdminApiTransport.FoutTekst(503, "{\"error\":\"Nu niet beschikbaar.\",\"aiBeschikbaar\":false}");
         tekst.Should().Be("Nu niet beschikbaar.");
     }
 
@@ -21,7 +21,7 @@ public class AdminApiClientFoutTekstTests
     [InlineData("{\"andere\":1}")]
     public void GeenBruikbareError_GeeftNeutraleTekstMetStatus(string? body)
     {
-        var tekst = AdminApiClient.FoutTekst(502, body);
+        var tekst = AdminApiTransport.FoutTekst(502, body);
         tekst.Should().Contain("502").And.NotContain("{").And.NotContain("<html>");
     }
 
@@ -32,5 +32,5 @@ public class AdminApiClientFoutTekstTests
     [InlineData("<html>", null)]
     [InlineData(null, null)]
     public void FoutCode_LeestHetCodeVeldUitDeRespons(string? body, string? verwacht)
-        => AdminApiClient.FoutCode(body).Should().Be(verwacht);
+        => AdminApiTransport.FoutCode(body).Should().Be(verwacht);
 }

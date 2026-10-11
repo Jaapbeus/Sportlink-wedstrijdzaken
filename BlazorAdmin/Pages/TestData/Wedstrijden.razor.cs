@@ -6,7 +6,9 @@ namespace BlazorAdmin.Pages.TestData;
 
 public partial class Wedstrijden : ClubSelectorPageBase
 {
-    [Inject] private AdminApiClient Api { get; set; } = default!;
+    [Inject] private InstellingenApiClient InstellingenApi { get; set; } = default!;
+    [Inject] private TeamsApiClient TeamsApi { get; set; } = default!;
+    [Inject] private VeldenApiClient VeldenApi { get; set; } = default!;
 
     // ── Model ──
 
@@ -173,10 +175,10 @@ public partial class Wedstrijden : ClubSelectorPageBase
         _loading = true;
         _error   = null;
 
-        var tWedstrijden = Api.GetAllstarsWedstrijdenAsync();
-        var tTeams       = Api.GetAllstarsTeamsAsync();
-        var tVelden      = Api.GetVeldenAsync();
-        var tSpeeltijden = Api.GetSpeeltijdenAsync();
+        var tWedstrijden = InstellingenApi.GetAllstarsWedstrijdenAsync();
+        var tTeams       = InstellingenApi.GetAllstarsTeamsAsync();
+        var tVelden      = VeldenApi.GetVeldenAsync();
+        var tSpeeltijden = TeamsApi.GetSpeeltijdenAsync();
         await Task.WhenAll(tWedstrijden, tTeams, tVelden, tSpeeltijden);
 
         var wedstrijden = await tWedstrijden;
@@ -225,7 +227,7 @@ public partial class Wedstrijden : ClubSelectorPageBase
         _verplaatsFout      = null;
         StateHasChanged();
 
-        var result = await Api.VerplaatsAllstarsDatumAsync(_verplaatsVan, _verplaatsNaar);
+        var result = await InstellingenApi.VerplaatsAllstarsDatumAsync(_verplaatsVan, _verplaatsNaar);
 
         if (result.Success)
         {
@@ -276,7 +278,7 @@ public partial class Wedstrijden : ClubSelectorPageBase
         rij.SaveError = null;
         StateHasChanged();
 
-        var result = await Api.UpsertAllstarsWedstrijdAsync(rij.ToDto());
+        var result = await InstellingenApi.UpsertAllstarsWedstrijdAsync(rij.ToDto());
 
         rij.IsSaving     = false;
         rij.IsOpgeslagen = result.Success;
@@ -331,7 +333,7 @@ public partial class Wedstrijden : ClubSelectorPageBase
     private async Task VerwijderRijAsync(WedstrijdRij rij)
     {
         if (rij.IsOpgeslagen)
-            await Api.DeleteAllstarsWedstrijdAsync(rij.BkMatches);
+            await InstellingenApi.DeleteAllstarsWedstrijdAsync(rij.BkMatches);
         _rijen.Remove(rij);
     }
 
@@ -341,7 +343,7 @@ public partial class Wedstrijden : ClubSelectorPageBase
         _bezig = true;
         var van = string.IsNullOrEmpty(_filterVan) ? null : _filterVan;
         var tot = string.IsNullOrEmpty(_filterTot) ? null : _filterTot;
-        await Api.DeleteAlleAllstarsWedstrijdenAsync(van, tot);
+        await InstellingenApi.DeleteAlleAllstarsWedstrijdenAsync(van, tot);
         _rijen.RemoveAll(r =>
             (van == null || string.Compare(r.Datum, van, StringComparison.Ordinal) >= 0) &&
             (tot == null || string.Compare(r.Datum, tot, StringComparison.Ordinal) <= 0));

@@ -20,7 +20,9 @@ public partial class WedstrijdAanmakenFormulier
     internal const string DryRunAanTekst = "Dryrun is aan. Geen data wordt naar Sportlink geschreven.";
     internal const string DryRunUitTekst = "Dryrun is uit. Wijzigingen worden direct in Sportlink weggeschreven.";
 
-    [Inject] private AdminApiClient Api { get; set; } = default!;
+    [Inject] private SportlinkApiClient SportlinkApi { get; set; } = default!;
+    [Inject] private TeamsApiClient TeamsApi { get; set; } = default!;
+    [Inject] private VeldenApiClient VeldenApi { get; set; } = default!;
 
     /// <summary>Actuele dry-run-stand; <c>null</c> zolang onbekend (dan geen banner).</summary>
     private bool? _dryRun;
@@ -63,10 +65,10 @@ public partial class WedstrijdAanmakenFormulier
     protected override async Task OnInitializedAsync()
     {
         _form.Leegmaken(BeginDatum);
-        var teamsTaak = Api.GetTeamsAsync();
-        var veldenTaak = Api.GetVeldenAsync();
-        var dryRunTaak = Api.GetSportlinkDryRunStatusAsync();
-        var formulierTaak = Api.GetOefenwedstrijdFormulierAsync();
+        var teamsTaak = TeamsApi.GetTeamsAsync();
+        var veldenTaak = VeldenApi.GetVeldenAsync();
+        var dryRunTaak = SportlinkApi.GetSportlinkDryRunStatusAsync();
+        var formulierTaak = SportlinkApi.GetOefenwedstrijdFormulierAsync();
         await Task.WhenAll(teamsTaak, veldenTaak, dryRunTaak, formulierTaak);
 
         var dryRun = dryRunTaak.Result;
@@ -152,7 +154,7 @@ public partial class WedstrijdAanmakenFormulier
         SportlinkMutatieResultaatDto? data = null;
         try
         {
-            var r = await Api.DeleteOefenwedstrijdAsync(publicMatchId);
+            var r = await SportlinkApi.DeleteOefenwedstrijdAsync(publicMatchId);
             data = r.Success ? r.Data : null;
             var geslaagd = _verwijderStatus.Verwerk(r.Success, r.ErrorMessage, r.Data, "Wedstrijd verwijderd uit Sportlink Club.", "Sportlink heeft het verwijderen afgewezen");
             if (geslaagd && !_verwijderStatus.IsDryRun)
@@ -171,7 +173,7 @@ public partial class WedstrijdAanmakenFormulier
         StateHasChanged();
         try
         {
-            var r = await Api.PostOefenwedstrijdAsync(
+            var r = await SportlinkApi.PostOefenwedstrijdAsync(
                 _form.Datum.Date + TimeSpan.Parse(_form.Tijd!), _form.Duur, _form.TeamNaam!, _form.IsVrijeTekst,
                 _form.Tegenstander!, _form.VeldNummer, _form.Omschrijving, _form.Velddeel, _form.AgeClassCode);
             _resultaat = r.Success ? r.Data : null;

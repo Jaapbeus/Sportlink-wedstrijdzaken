@@ -12,7 +12,7 @@ namespace BlazorAdmin.Shared;
 /// </summary>
 public partial class FeedbackWidget
 {
-    [Inject] private AdminApiClient Api { get; set; } = default!;
+    [Inject] private FeedbackApiClient Api { get; set; } = default!;
     [Inject] private IAuthService Auth { get; set; } = default!;
     [Inject] private NavigationManager Nav { get; set; } = default!;
     [Inject] private ClientTelemetryService Telemetrie { get; set; } = default!;

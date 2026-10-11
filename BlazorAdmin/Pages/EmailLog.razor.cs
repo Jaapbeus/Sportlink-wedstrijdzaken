@@ -11,7 +11,7 @@ namespace BlazorAdmin.Pages;
 /// </summary>
 public partial class EmailLog : ClubSelectorPageBase
 {
-    [Inject] private AdminApiClient Api { get; set; } = default!;
+    [Inject] private EmailApiClient Api { get; set; } = default!;
 
     private string _status = "";
     private string _periode = "7d";

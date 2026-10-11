@@ -7,7 +7,8 @@ namespace BlazorAdmin.Pages;
 
 public partial class Instellingen : ClubSelectorPageBase
 {
-    [Inject] private AdminApiClient Api { get; set; } = default!;
+    [Inject] private EmailApiClient EmailApi { get; set; } = default!;
+    [Inject] private InstellingenApiClient InstellingenApi { get; set; } = default!;
 
     private AppSettingsDto? settings;
     private bool saving;
@@ -62,10 +63,10 @@ public partial class Instellingen : ClubSelectorPageBase
             return;
         }
 
-        var settingsTask = Api.GetSettingsAsync();
-        var syncTask    = Api.GetSyncStatusAsync();
-        var emailTask   = Api.GetEmailLogAsync(vanaf: DateTime.Today.AddDays(-1), limit: 200);
-        var reviewTask  = Api.GetEmailLogAsync(status: "Review", limit: EmailReviewMax);
+        var settingsTask = InstellingenApi.GetSettingsAsync();
+        var syncTask    = InstellingenApi.GetSyncStatusAsync();
+        var emailTask   = EmailApi.GetEmailLogAsync(vanaf: DateTime.Today.AddDays(-1), limit: 200);
+        var reviewTask  = EmailApi.GetEmailLogAsync(status: "Review", limit: EmailReviewMax);
 
         await Task.WhenAll(settingsTask, syncTask, emailTask, reviewTask);
 
@@ -121,7 +122,7 @@ public partial class Instellingen : ClubSelectorPageBase
     {
         _syncing = true;
         _syncResult = null;
-        var r = await Api.TriggerSyncAsync(seizoenStartjaar);
+        var r = await InstellingenApi.TriggerSyncAsync(seizoenStartjaar);
         if (!r.Success || r.Data?.JobId is not Guid jobId)
         {
             _syncResult = $"Sync starten mislukt: {r.ErrorMessage}";
@@ -136,7 +137,7 @@ public partial class Instellingen : ClubSelectorPageBase
         while (DateTime.UtcNow < deadline)
         {
             await Task.Delay(3000);
-            var statusResult = await Api.GetSyncStatusAsync(jobId);
+            var statusResult = await InstellingenApi.GetSyncStatusAsync(jobId);
             var job = statusResult.Success ? statusResult.Data?.Job : null;
             if (job?.Status == "succeeded")
             {
@@ -165,7 +166,7 @@ public partial class Instellingen : ClubSelectorPageBase
 
     private async Task LaadUitgeslotenEmailsAsync()
     {
-        var r = await Api.GetUitgeslotenEmailsAsync();
+        var r = await EmailApi.GetUitgeslotenEmailsAsync();
         uitgeslotenEmails = r.Success ? r.Data ?? new() : new();
     }
 
@@ -182,7 +183,7 @@ public partial class Instellingen : ClubSelectorPageBase
             uitgeslotenMessage = "E-mailadres is verplicht.";
             return;
         }
-        var r = await Api.CreateUitgeslotenEmailAsync(nieuwAdres);
+        var r = await EmailApi.CreateUitgeslotenEmailAsync(nieuwAdres);
         if (r.Success)
         {
             nieuwAdres = null;
@@ -197,7 +198,7 @@ public partial class Instellingen : ClubSelectorPageBase
 
     private async Task VerwijderAdresAsync(int id)
     {
-        var r = await Api.DeleteUitgeslotenEmailAsync(id);
+        var r = await EmailApi.DeleteUitgeslotenEmailAsync(id);
         uitgeslotenMessage = r.Success ? null : "Fout: " + r.ErrorMessage;
         await LaadUitgeslotenEmailsAsync();
     }
@@ -208,7 +209,7 @@ public partial class Instellingen : ClubSelectorPageBase
         geocoding = true;
         geocodeMessage = null;
         geocodeError = false;
-        var r = await Api.GeocodeAsync(settings.AccommodatiePlaats);
+        var r = await InstellingenApi.GeocodeAsync(settings.AccommodatiePlaats);
         if (r.Success && r.Data != null)
         {
             settings.AccommodatieLatitude = r.Data.Lat;
@@ -257,7 +258,7 @@ public partial class Instellingen : ClubSelectorPageBase
         herstartMessage = null;
         errorMessage = null;
 
-        var r = await Api.UpdateSettingsAsync(BouwUpdate(settings));
+        var r = await InstellingenApi.UpdateSettingsAsync(BouwUpdate(settings));
         if (r.Success)
         {
             successMessage = "Instellingen opgeslagen.";

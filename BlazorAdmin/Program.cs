@@ -44,16 +44,16 @@ if (builder.HostEnvironment.IsProduction())
     .AddAccountClaimsPrincipalFactory<CustomUserFactory>();
     builder.Services.AddScoped<IAuthService, EntraAuthService>();
 
-    // AdminApiClient met Bearer token: AuthorizationMessageHandler voegt automatisch
+    // AdminApiTransport (onder alle domeinclients) met Bearer token: AuthorizationMessageHandler voegt automatisch
     // het Entra ID access token toe aan elk request richting de Function App URL.
     var capturedFunctionBaseUrl = functionBaseUrl;
     var capturedScope = apiScope;
 
     // Plain HttpClient zonder auth — DatabaseStatusService krijgt deze via DI voor de health check.
-    // AdminApiClient krijgt een eigen HttpClient mét AuthorizationMessageHandler (zie hieronder). (#610)
+    // AdminApiTransport krijgt een eigen HttpClient mét AuthorizationMessageHandler (zie hieronder). (#610)
     builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(capturedFunctionBaseUrl) });
 
-    builder.Services.AddScoped<AdminApiClient>(sp =>
+    builder.Services.AddScoped<AdminApiTransport>(sp =>
     {
         var authHandler = sp.GetRequiredService<AuthorizationMessageHandler>()
             .ConfigureHandler(
@@ -70,7 +70,7 @@ if (builder.HostEnvironment.IsProduction())
             InnerHandler = authHandler
         };
         var http = new HttpClient(clubHandler) { BaseAddress = new Uri(capturedFunctionBaseUrl) };
-        return new AdminApiClient(http, sp.GetRequiredService<ApiStatusService>(), sp.GetRequiredService<ClientTelemetryService>());
+        return new AdminApiTransport(http, sp.GetRequiredService<ClientTelemetryService>());
     });
 }
 else
@@ -80,16 +80,26 @@ else
     builder.Services.AddScoped<AuthenticationStateProvider, AlwaysAuthenticatedStateProvider>();
     builder.Services.AddScoped<IAuthService, LocalAuthService>();
     builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(functionBaseUrl) });
-    builder.Services.AddScoped<AdminApiClient>(sp =>
+    builder.Services.AddScoped<AdminApiTransport>(sp =>
     {
         var clubHandler = new ClubCodeHeaderHandler(sp.GetRequiredService<ClubSelectorService>())
         {
             InnerHandler = new HttpClientHandler()
         };
         var http = new HttpClient(clubHandler) { BaseAddress = new Uri(functionBaseUrl) };
-        return new AdminApiClient(http, sp.GetRequiredService<ApiStatusService>(), sp.GetRequiredService<ClientTelemetryService>());
+        return new AdminApiTransport(http, sp.GetRequiredService<ClientTelemetryService>());
     });
 }
+
+// Domeinclients (#1630): dunne laag per domein bovenop de gedeelde AdminApiTransport hierboven.
+builder.Services.AddScoped<InstellingenApiClient>();
+builder.Services.AddScoped<SportlinkApiClient>();
+builder.Services.AddScoped<EmailApiClient>();
+builder.Services.AddScoped<TeamsApiClient>();
+builder.Services.AddScoped<VeldenApiClient>();
+builder.Services.AddScoped<PlanningApiClient>();
+builder.Services.AddScoped<LerenApiClient>();
+builder.Services.AddScoped<FeedbackApiClient>();
 
 builder.Services.AddScoped<ClubSelectorService>();
 builder.Services.AddScoped<ThemeService>();

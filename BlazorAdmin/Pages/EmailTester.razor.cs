@@ -7,7 +7,7 @@ namespace BlazorAdmin.Pages;
 
 public partial class EmailTester
 {
-    [Inject] private AdminApiClient Api { get; set; } = default!;
+    [Inject] private EmailApiClient Api { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
 
     private TestEmailRequest request = new()
