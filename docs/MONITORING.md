@@ -104,9 +104,25 @@ Sinds 2026-10-03 draait de Function App op Flex Consumption. Vier gevolgen voor 
 
 - **Kosten.** Flex kent geen automatische kostenrem; het gratis tegoed is 250.000 executies en
   100.000 GB-s per maand per subscription, en vervalt bij always-ready instances (die staan bewust uit).
-  Er staat een eurobudget (5 euro per maand, meldingen bij 85% en 100%). Een metric alert op het tegoed zelf
-  is betaald en wacht op akkoord van de eigenaar (#1075). `maximumInstanceCount` (standaard 5) begrenst het
-  worstgeval.
+  Er staat een Cost Management-budget (5 euro per maand op de resourcegroep, meldingen bij 85% werkelijk
+  en 100% voorspeld; gratis). **Eigenaarsbesluit 2026-10-11 (zie issue #1075):** geen betaalde metric
+  alert op het tegoed; het budget is de bewaking. Let op wat dat betekent: een budget meldt pas als er
+  kosten zijn, dus pas nadat het tegoed op is. `maximumInstanceCount` (5) en `instanceMemoryMB` (2048)
+  begrenzen het worstgeval.
+
+  Handmatige controle (maandelijks, agendapunt eigenaar; eerste volledige maand is oktober 2026):
+  Function App → Monitoring → Metrics, aggregatie *Sum* over de hele kalendermaand
+  ([MS Docs](https://learn.microsoft.com/azure/azure-functions/functions-consumption-costs#viewing-and-estimating-costs-from-metrics)):
+
+  | Metric | Omrekening | Tegoed | Melden vanaf |
+  |---|---|---|---|
+  | `On Demand Function Execution Count` | direct | 250.000 | 125.000 (50%) |
+  | `On Demand Function Execution Units` (MB-ms) | ÷ 1.024.000 = GB-s | 100.000 GB-s | 50.000 GB-s (50%) |
+  | `Always Ready Units` | ÷ 1.024.000 = GB-s | geen tegoed | **elke waarde > 0** |
+
+  Controleer daarnaast dat de factuurregel voor Azure Functions € 0,00 is. FLEX-02 (#1065) voorspelde bij
+  2048 MB 58–72% van het GB-s-tegoed; een uitkomst boven 50% is een bevinding met voorstel, geen stilzwijgende
+  acceptatie. Boven 85%: eigenaar informeren en een planwijziging (kleinere instantie, minder timers) afwegen.
 - **Timers verifieert u niet alleen via `requests`.** Application Insights is gesampled; een ontbrekende
   request bewijst niet dat een timer niet draaide. Controleer via `traces` of via de regels die de timer in
   de database schrijft (bijvoorbeeld `public.sportlinkcontractcheck`).

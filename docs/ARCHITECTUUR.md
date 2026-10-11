@@ -266,7 +266,9 @@ Azure Functions v4 · Blazor WebAssembly · Azure SQL / Postgres · Microsoft Gr
 **Runtimeversie en hosting (#1073, #1074, #1063).** Alle projecten targeten `net10.0`. De Function App
 draait sinds 2026-10-03 op een **Flex Consumption Plan** met stack `DOTNET-ISOLATED|10.0` (v3.10.0.0 op
 Flex, v3.11.0.0 op .NET 10); csproj-target en stack moeten overeenkomen (anders 503 "Function host is
-not running"). De oude Linux Consumption-app is gestopt maar bewaard tot minimaal 2027-01-03 (#1076).
+not running"). De oude Linux Consumption-app is gestopt en wordt bewaard tot minimaal 2027-01-03; het
+opruimen (app, plan, Entra-redirect-URI's, oude Files-share) is sinds 2026-10-11 een agendapunt van de
+eigenaar, geen open issue meer (zie issue #1076).
 Een planwijziging vraagt altijd expliciete goedkeuring van de eigenaar (kostenbeleid). Migratiehistorie:
 epic #1063 en `docs/RUNBOOK-FLEX-MIGRATIE.md`. Drie Flex-specifieke ontwerpkeuzes:
 
@@ -920,17 +922,19 @@ uitvoering van dit principe, niet een tweede architectuurbron. De bronnentabelle
 deployment-checklist staan hieronder; ze zijn bij #1580 uit `AGENTS.md` hierheen verplaatst zodat het
 instructiebestand binnen het budget van de agents past.
 
-**Gratis (huidige stack — geverifieerd via MS Docs).** Controleer de bron vóór je erop leunt; zie
-ook de opmerking onder de tabellen.
+**Gratis (huidige stack — geverifieerd via MS Docs, laatste controle 2026-10-11, #1598).**
+Controleer de bron vóór je erop leunt; de kolom "Gecontroleerd" is de datum van de laatste
+prijscheck via de Microsoft Learn MCP.
 
-| Resource | Gratis-grens | Geverifieerde bron |
-|---|---|---|
-| Azure Functions Consumption Plan | 1M executions + 400K GB-s/maand | [MS Docs](https://learn.microsoft.com/azure/azure-functions/functions-consumption-costs) |
-| Azure Static Web Apps Free tier | 100 GB bandbreedte/mnd, 500 MB opslag | [MS Docs](https://learn.microsoft.com/azure/static-web-apps/quotas) |
-| Azure SQL Database Free offer | Bestaande resource — bevestig bij verlenging | Azure portal |
-| Azure Entra ID | Gratis via M365-licentie | — |
-| GitHub Actions | Gratis voor dit repo | — |
-| Activity Log Alerts / Resource Health Alerts | Altijd gratis | [MS Docs](https://learn.microsoft.com/azure/azure-monitor/fundamentals/best-practices-cost#alerts) |
+| Resource | Gratis-grens | Geverifieerde bron | Gecontroleerd |
+|---|---|---|---|
+| Azure Functions **Flex Consumption** (productie sinds 2026-10-03, epic #1063) | On-demand: 250.000 executies + 100.000 GB-s/maand per subscription. **Always-ready instances: geen enkel tegoed** — billing vanaf de eerste seconde; daarom bewust uit. Begrensd door `maximumInstanceCount` 5 en `instanceMemoryMB` 2048 (`infrastructure/modules/function-app-flex.bicep`). | [Billing](https://learn.microsoft.com/azure/azure-functions/flex-consumption-plan#billing), [tegoedbedragen op de prijspagina](https://azure.microsoft.com/pricing/details/functions/) | 2026-10-11 |
+| Azure Static Web Apps Free tier | 100 GB bandbreedte/mnd, 500 MB opslag | [MS Docs](https://learn.microsoft.com/azure/static-web-apps/quotas) | 2026-10-08 (#1580, verplaatst) |
+| Azure SQL Database Free offer (alleen SQL Server-tier; de Postgres-tier draait op Supabase) | Per database 100.000 vCore-seconden + 32 GB data + 32 GB back-up per maand, **voor de levensduur van de subscription** — geen verlenging. Gedrag bij bereiken limiet is een instelling: *auto-pause tot volgende maand* (gratis) of *doorgaan tegen kosten*. | [Free offer](https://learn.microsoft.com/azure/azure-sql/database/free-offer), [FAQ](https://learn.microsoft.com/azure/azure-sql/database/free-offer-faq) | 2026-10-11; eigenaar bevestigt in de portal dat de bestaande database onder dit aanbod valt én op auto-pause staat |
+| Cost Management-budget met e-mailmeldingen | Gratis; meldt alleen, stopt niets | [Budgets](https://learn.microsoft.com/azure/cost-management-billing/costs/tutorial-acm-create-budgets) | 2026-10-11 |
+| Azure Entra ID | Gratis via M365-licentie | — | — |
+| GitHub Actions | Gratis voor dit repo | — | — |
+| Activity Log Alerts / Resource Health Alerts | Altijd gratis | [MS Docs](https://learn.microsoft.com/azure/azure-monitor/alerts/best-practices-alerts#cost-optimization) | 2026-10-11 |
 
 **Potentieel betaald — expliciete goedkeuring vereist.**
 
@@ -938,16 +942,11 @@ ook de opmerking onder de tabellen.
 |---|---|---|
 | Log Analytics workspace | Pay-as-you-go; Legacy Free Tier niet meer beschikbaar voor nieuwe workspaces (gestopt 1 juli 2022); 5 GB/mnd vrij per billing account — gedeeld | Controleer [prijspagina](https://learn.microsoft.com/azure/azure-monitor/logs/cost-logs) vóór aanmaak |
 | Application Insights (workspace-based) | Billing loopt via Log Analytics workspace | Idem; stel daily cap in (max 100 MB/dag) |
-| Metric Alert Rules | Betaald per gemonitord time series | Gebruik Activity Log Alerts als gratis alternatief |
+| Metric Alert Rules | Betaald per gemonitord time series ([MS Docs](https://learn.microsoft.com/azure/azure-monitor/alerts/alerts-types), 2026-10-11) | Gebruik Activity Log Alerts of een Cost Management-budget als gratis alternatief. **Eigenaarsbesluit 2026-10-11:** geen metric alert op het Flex-tegoed; het eurobudget is de bewaking (`MONITORING.md`) |
 | Key Vault | Standaard betaald per operatie | Controleer [prijspagina](https://azure.microsoft.com/pricing/details/key-vault/) |
-| Flex Consumption Plan | Heeft wél een gratis tegoed, maar kleiner dan Consumption: 250.000 executies + 100.000 GB-s/mnd per subscription (Consumption: 1M + 400K). Bij **always-ready instances vervalt het tegoed volledig**. | Prijscheck via MS Docs vóór aanmaak; nooit een plan wijzigen zonder goedkeuring — migratie loopt via epic #1063 |
+| Flex Consumption: always-ready instances, `instanceMemoryMB` 4096 of een hogere `maximumInstanceCount` | Always-ready schakelt het tegoed uit; 4096 MB past niet in het tegoed (FLEX-02, #1065); meer instanties vergroten de maximale verbrandingssnelheid | Elke wijziging aan `function-app-flex.bicep`-parameters is een planwijziging: prijscheck + eigenaarsgoedkeuring |
+| Oude Linux Consumption Plan (`function-app.bicep`) | Gestopt sinds 2026-10-03, kost stilstaand niets; .NET 9 is er vanaf 10 november 2026 zonder support | Nooit herstarten of een `net10.0`-build op zetten; verwijderen niet vóór 2027-01-03 en alleen door de eigenaar (zie issue #1076) |
 | Premium/Standard-tier van bestaande resource | Directe kostenwijziging | Altijd vragen |
-
-> **Opmerking (bij #1580, niet inhoudelijk herzien).** De tabellen zijn ongewijzigd overgenomen. De
-> Function App draait sinds de Flex-migratie op het Flex Consumption-plan; de eerste rij van de
-> gratis-tabel beschrijft het oude Consumption-plan. Of de rij `Azure SQL Database Free offer`
-> alleen nog voor de SQL Server-tier geldt, is niet vastgesteld. Een eigenaar beoordeelt beide
-> bij de eerstvolgende kostencontrole; dat is een besluit, geen verplaatsing.
 
 **Verificatiemoment — checklist vóór elke `git push` naar `main` of productie-deployment:**
 
@@ -1152,8 +1151,10 @@ moet worden — precies het probleem onder punt 2).
   tier-pariteit-allowlist; uitlijnen heeft een breaking-change-kant en is daarom een aparte wijziging.
 - **Hosting op Flex Consumption heeft geen automatische kostenrem (epic #1063).** Flex kent geen
   spending limit; kosten worden begrensd door `maximumInstanceCount` (5) en bewaakt door een
-  eurobudget met meldingen (#1075). Een metric alert op het gratis tegoed is betaald en wacht op
-  akkoord van de eigenaar.
+  eurobudget met meldingen (zie issue #1075). **Eigenaarsbesluit 2026-10-11:** geen betaalde metric
+  alert op het gratis tegoed; het budget is de bewaking. Gevolg: de eerste melding komt pas als het
+  tegoed al op is. De meting over de eerste volledige kalendermaand (oktober 2026) is een agendapunt
+  van de eigenaar; metrieknamen en drempels staan in `MONITORING.md`.
 
 ---
 

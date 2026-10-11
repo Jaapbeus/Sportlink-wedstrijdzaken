@@ -122,7 +122,8 @@ De productie-app draait sinds 2026-10-03 op Flex Consumption met stack `dotnet-i
 stackwaarde moeten altijd overeenkomen, anders volgt een 503 "Function host is not running".
 
 `function-app.bicep` beschrijft de **oude Linux Consumption-app** (`DOTNET-ISOLATED|9.0`). Die app is gestopt
-maar bewaard tot minimaal 2027-01-03 (#1076) en wordt daarna opgeruimd; zet er nooit een `net10.0`-build op.
+maar bewaard tot minimaal 2027-01-03; opruimen daarna is een agendapunt van de eigenaar (zie issue #1076,
+gesloten 2026-10-11) en gebeurt alleen op diens bevestiging. Zet er nooit een `net10.0`-build op.
 Voor een **nieuwe club** rol je uitsluitend `function-app-flex.bicep` uit (zie
 [SETUP-NIEUWE-CLUB.md](../SETUP-NIEUWE-CLUB.md) §2a). De migratiegeschiedenis staat in
 [docs/RUNBOOK-FLEX-MIGRATIE.md](../docs/RUNBOOK-FLEX-MIGRATIE.md).
