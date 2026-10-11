@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Security
+- Aanscherping van de adresbereikcontrole in `SsrfProtection.IsPublicIpAddress` (IPv6-tak en één Azure-specifiek IPv4-adres), met uitgebreide grenswaardetests (#1622).
+
 ## [3.13.1.0] — 2026-10-11
 
 ### Added

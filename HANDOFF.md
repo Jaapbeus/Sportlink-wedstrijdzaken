@@ -1,3 +1,13 @@
+# HANDOFF — epic #1632 CA1502/CA1506 wegwerken (gestart 2026-10-11)
+
+**Eigenaarsbesluit:** alle fases worden uitgevoerd; Claude bouwt, Codex reviewt; gestapelde PR-keten; de wijzigingen liften mee met de volgende release.
+
+**Volgorde:** #1622 → #1623 → #1624 → #1625 → #1626 → #1627 → #1628 → #1629 → #1630 → #1631 → afsluiting (plafond 0, severity error).
+
+**Stand:** #1622 in PR (branch `feature/#1622-ssrf-ipv6-bereiken`, v3.13.1.1).
+
+---
+
 # HANDOFF — #1547 veldbezetting volgt Sportlink (2026-10-06, op develop, nog niet gereleased)
 
 **Wat er op develop staat (v3.11.1.5):** de Planning toont de veldbezetting zoals de Sportlink-veldplanner (veld, tijd,

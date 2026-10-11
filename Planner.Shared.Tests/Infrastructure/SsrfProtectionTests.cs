@@ -73,6 +73,62 @@ public class SsrfProtectionTests
         SsrfProtection.IsPublicIpAddress(address).Should().BeTrue();
     }
 
+    // #1622 — aanscherping adresbereikcontrole.
+
+    [Theory]
+    [InlineData("::")]                                     // unspecified
+    [InlineData("::a00:1")]                                // IPv4-compatible, ingebed 10.0.0.1
+    [InlineData("::7f00:1")]                               // IPv4-compatible, ingebed loopback
+    [InlineData("::c0a8:101")]                             // IPv4-compatible, ingebed 192.168.1.1
+    [InlineData("::ffff:0:a00:1")]                         // IPv4-translated, ingebed 10.0.0.1
+    [InlineData("::ffff:0:a9fe:a9fe")]                     // IPv4-translated, ingebed link-local
+    [InlineData("64:ff9b::a00:1")]                         // NAT64, ingebed 10.0.0.1
+    [InlineData("64:ff9b::7f00:1")]                        // NAT64, ingebed loopback
+    [InlineData("64:ff9b::a9fe:a9fe")]                     // NAT64, ingebed link-local
+    [InlineData("64:ff9b:1::a00:1")]                       // NAT64 lokaal gebruik
+    [InlineData("64:ff9b:1::808:808")]                     // NAT64 lokaal gebruik, volledig geblokkeerd
+    [InlineData("2002:a00:1::1")]                          // 6to4, ingebed 10.0.0.1
+    [InlineData("2002:7f00:1::1")]                         // 6to4, ingebed loopback
+    [InlineData("2002:a9fe:a9fe::1")]                      // 6to4, ingebed link-local
+    [InlineData("2001::1")]                                // Teredo
+    [InlineData("2001:0:4136:e378:8000:63bf:3fff:fdd2")]   // Teredo, publieke server en client
+    [InlineData("2001:0:a00:1::1")]                        // Teredo, privé serveradres
+    [InlineData("2001:db8::1")]                            // documentatie
+    [InlineData("2001:db8:ffff::1")]                       // documentatie, bovenkant
+    [InlineData("100::1")]                                 // discard-only
+    [InlineData("100::ffff:ffff:ffff:ffff")]               // discard-only, bovenkant
+    [InlineData("168.63.129.16")]                          // Azure-platformadres
+    public void IsPublicIpAddress_AangescherpteBereiken_IsFalse(string ip)
+    {
+        SsrfProtection.IsPublicIpAddress(IPAddress.Parse(ip)).Should().BeFalse($"{ip} is geen publiek adres");
+    }
+
+    [Theory]
+    [InlineData("2606:4700::1111")]
+    [InlineData("2a00:1450:4001::1")]
+    [InlineData("::ffff:8.8.8.8")]
+    [InlineData("64:ff9b::808:808")]                       // NAT64, publiek ingebed adres
+    [InlineData("2002:808:808::1")]                        // 6to4, publiek ingebed adres
+    [InlineData("::808:808")]                              // IPv4-compatible, publiek ingebed adres
+    [InlineData("::ffff:0:808:808")]                       // IPv4-translated, publiek ingebed adres
+    [InlineData("2001:1::1")]                              // net buiten Teredo-prefix
+    [InlineData("2001:db9::1")]                            // net buiten documentatieprefix
+    [InlineData("100:0:0:1::1")]                           // net buiten discard-prefix
+    [InlineData("168.63.129.15")]                          // buren van het Azure-platformadres
+    [InlineData("168.63.129.17")]
+    [InlineData("100.63.255.255")]
+    [InlineData("100.128.0.0")]
+    [InlineData("172.15.255.255")]
+    [InlineData("172.32.0.0")]
+    [InlineData("169.253.0.1")]
+    [InlineData("198.17.0.1")]
+    [InlineData("198.20.0.1")]
+    [InlineData("192.169.0.1")]
+    public void IsPublicIpAddress_GrensnegatievenEnPubliekeAdressen_IsTrue(string ip)
+    {
+        SsrfProtection.IsPublicIpAddress(IPAddress.Parse(ip)).Should().BeTrue($"{ip} is een publiek adres");
+    }
+
     // ---------------------------------------------------------------------------------------
     // Poort- en schemavalidatie ("ongewenste poort").
     // ---------------------------------------------------------------------------------------

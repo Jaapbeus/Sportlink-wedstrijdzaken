@@ -98,6 +98,7 @@ public static class SsrfProtection
             if (b[0] == 100 && b[1] >= 64 && b[1] <= 127) return false;     // 100.64.0.0/10 CGNAT
             if (b[0] == 127) return false;                                 // 127.0.0.0/8 loopback
             if (b[0] == 169 && b[1] == 254) return false;                  // 169.254.0.0/16 link-local
+            if (b[0] == 168 && b[1] == 63 && b[2] == 129 && b[3] == 16) return false; // Azure-platformadres (wireserver)
             if (b[0] == 172 && b[1] >= 16 && b[1] <= 31) return false;     // 172.16.0.0/12
             if (b[0] == 192 && b[1] == 0 && b[2] == 0) return false;       // 192.0.0.0/24 IETF
             if (b[0] == 192 && b[1] == 168) return false;                  // 192.168.0.0/16
@@ -112,6 +113,63 @@ public static class SsrfProtection
                 return false;
             var b = address.GetAddressBytes();
             if ((b[0] & 0xFE) == 0xFC) return false; // fc00::/7 unique local
+            if (IsGeblokkeerdIpv6Prefix(b)) return false;
+
+            // Overgangsmechanismen die een IPv4-adres inbedden: beoordeel dat IPv4-adres met
+            // dezelfde regels, zodat een privé/gereserveerd IPv4-adres niet via IPv6 binnenkomt.
+            if (TryIngebeddeIpv4(b, out var ingebed))
+                return IsPublicIpAddress(ingebed);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// IPv6-prefixen die nooit een publieke bestemming zijn: unspecified (::), discard-only
+    /// (100::/64), documentatie (2001:db8::/32), Teredo (2001:0::/32) en NAT64 voor lokaal
+    /// gebruik (64:ff9b:1::/48). Teredo en NAT64-lokaal worden bewust volledig geblokkeerd in
+    /// plaats van de ingebedde IPv4-adressen te ontleden: simpeler en fail-closed.
+    /// </summary>
+    private static bool IsGeblokkeerdIpv6Prefix(byte[] b)
+    {
+        if (b.Take(16).All(x => x == 0)) return true;                                         // ::
+        if (b[0] == 0x01 && b.Skip(1).Take(7).All(x => x == 0)) return true;                  // 100::/64
+        if (b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x0D && b[3] == 0xB8) return true;        // 2001:db8::/32
+        if (b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x00 && b[3] == 0x00) return true;        // 2001:0::/32 Teredo
+        if (b[0] == 0x00 && b[1] == 0x64 && b[2] == 0xFF && b[3] == 0x9B && b[4] == 0x00 && b[5] == 0x01)
+            return true;                                                                       // 64:ff9b:1::/48
+        return false;
+    }
+
+    /// <summary>
+    /// Haalt het ingebedde IPv4-adres uit IPv4-compatible (::a.b.c.d), IPv4-translated
+    /// (::ffff:0:a.b.c.d), NAT64 (64:ff9b::/96) en 6to4 (2002::/16).
+    /// </summary>
+    private static bool TryIngebeddeIpv4(byte[] b, out IPAddress ipv4)
+    {
+        ipv4 = IPAddress.None;
+        var eerste8Nul = b.Take(8).All(x => x == 0);
+
+        // ::a.b.c.d (IPv4-compatible): eerste 12 bytes nul.
+        var compatible = eerste8Nul && b[8] == 0 && b[9] == 0 && b[10] == 0 && b[11] == 0;
+        // ::ffff:0:a.b.c.d (IPv4-translated).
+        var translated = eerste8Nul && b[8] == 0xFF && b[9] == 0xFF && b[10] == 0 && b[11] == 0;
+        // 64:ff9b::/96 (NAT64).
+        var nat64 = b[0] == 0x00 && b[1] == 0x64 && b[2] == 0xFF && b[3] == 0x9B
+                    && b.Skip(4).Take(8).All(x => x == 0);
+
+        if (compatible || translated || nat64)
+        {
+            ipv4 = new IPAddress(new[] { b[12], b[13], b[14], b[15] });
+            return true;
+        }
+
+        // 2002::/16 (6to4): IPv4 in bytes 2-5.
+        if (b[0] == 0x20 && b[1] == 0x02)
+        {
+            ipv4 = new IPAddress(new[] { b[2], b[3], b[4], b[5] });
             return true;
         }
 
