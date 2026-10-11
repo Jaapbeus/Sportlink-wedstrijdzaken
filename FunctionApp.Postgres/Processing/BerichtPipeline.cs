@@ -28,7 +28,7 @@ namespace FunctionApp.Postgres.Processing;
 /// en <see cref="PostgresSeasonHelper.GetCurrentKnvbSeizoenAsync"/>.
 /// </para>
 /// </summary>
-internal static class BerichtPipeline
+internal static partial class BerichtPipeline
 {
     /// <summary>
     /// Extraheert datums uit onderwerp en body, en corrigeert de AI-classificatie.
@@ -111,145 +111,14 @@ internal static class BerichtPipeline
         switch (classificatie.Type)
         {
             case VerzoekType.BeschikbaarheidCheck:
-                var alleDatums = ExpandDoordeweeksDatums(
-                    classificatie.GetAlleDatums(), bericht.Onderwerp, bericht.Body ?? "");
-                trace?.Datum(alleDatums);
-
-                // #1139: "opponent kan ons team alsnog vinden"-pad. Is ons eigen team niet
-                // herkend maar wel een tegenstander genoemd, dan kan de wedstrijd nog via die
-                // tegenstander gevonden worden — daar staat ons team in. Zelfde tweestaps-
-                // zoekvolgorde als het SQL Server-origineel: eerst op datum, dan zonder datum.
-                bool heeftExterneTegenstander = !string.IsNullOrWhiteSpace(classificatie.Tegenstander);
-
-                if (heeftExterneTegenstander && !eigenTeamHerkend && alleDatums.Count == 1
-                    && DateOnly.TryParse(alleDatums[0], out var opponentCheckDatum))
-                {
-                    var wedstrijdOpDatum = await PlannerMatchRepository.FindMatchByOpponentAsync(
-                        cs, classificatie.Tegenstander!, opponentCheckDatum, clubCode);
-                    if (wedstrijdOpDatum != null) trace?.OpponentPad("opponent-op-datum", true);
-                    if (wedstrijdOpDatum != null)
-                        return JsonConvert.SerializeObject(new { wedstrijdAlIngepland = true, wedstrijd = wedstrijdOpDatum });
-
-                    var wedstrijdAndereDatum = await PlannerMatchRepository.FindMatchByOpponentAsync(
-                        cs, classificatie.Tegenstander!, null, clubCode);
-                    trace?.OpponentPad(wedstrijdAndereDatum == null ? "niet-gevonden" : "opponent-andere-datum", wedstrijdAndereDatum != null);
-                    if (wedstrijdAndereDatum == null)
-                        return JsonConvert.SerializeObject(new { teamOnbekend = true, tegenstander = classificatie.Tegenstander });
-
-                    var eigenTeam = await BepaalEigenTeamUitWedstrijdAsync(
-                        wedstrijdAndereDatum.Wedstrijd, teamResolver, cc, log, trace);
-                    if (eigenTeam != null)
-                    {
-                        classificatie.TeamNaam = eigenTeam;
-                        eigenTeamHerkend = true;
-                        classificatie.LeeftijdsCategorie = TeamNaamNormalisatie.VulLeeftijdsCategorieAan(classificatie.LeeftijdsCategorie, classificatie.TeamNaam, cc);
-                    }
-                }
-
-                if (alleDatums.Count > 1)
-                {
-                    var multiResults = new List<object>();
-                    foreach (var datum in alleDatums)
-                    {
-                        var req = BouwBeschikbaarheidRequest(classificatie, datum);
-                        var resp = await AvailabilityService.CheckAvailabilityAsync(cs, req, log, clubCode);
-                        multiResults.Add(new { datum, response = resp });
-                    }
-                    return JsonConvert.SerializeObject(new { multiDatum = true, resultaten = multiResults });
-                }
-                var primaireDatum = KiesPrimaireDatum(alleDatums, classificatie.Datum);
-                if (string.IsNullOrWhiteSpace(primaireDatum) || !DateOnly.TryParse(primaireDatum, out _))
-                {
-                    return JsonConvert.SerializeObject(new { datumOnbekend = true });
-                }
-                classificatie.Datum = primaireDatum;
-
-                var checkRequest = BouwBeschikbaarheidRequest(classificatie, primaireDatum);
-                var checkResponse = await AvailabilityService.CheckAvailabilityAsync(cs, checkRequest, log, clubCode);
-                return JsonConvert.SerializeObject(checkResponse);
+                return await VerwerkBeschikbaarheidAsync(
+                    cs, classificatie, bericht, log, teamResolver, cc, eigenTeamHerkend, clubCode, trace);
 
             case VerzoekType.HerplanVerzoek:
-                if (!string.IsNullOrEmpty(classificatie.TeamNaam) && !string.IsNullOrEmpty(classificatie.Datum))
-                {
-                    if (DateOnly.TryParse(classificatie.Datum, out var datum))
-                    {
-                        var wedstrijd = await PlannerMatchRepository.FindMatchAsync(cs, classificatie.TeamNaam, datum, clubCode);
-                        if (wedstrijd != null)
-                        {
-                            var deadlineDagen = clubSettings?.HerplanDeadlineDagen
-                                ?? (int.TryParse(PostgresAppSettings.GetSetting("herplanDeadlineDagen"), out var dd) ? dd : 8);
-                            if (DateOnly.TryParse(wedstrijd.Datum, out var wedstrijdDatum))
-                            {
-                                var dagenTotWedstrijd = (wedstrijdDatum.ToDateTime(TimeOnly.MinValue) - DateTime.Today).TotalDays;
-                                if (dagenTotWedstrijd < deadlineDagen)
-                                {
-                                    return JsonConvert.SerializeObject(new
-                                    {
-                                        herplanTeLaat = true,
-                                        wedstrijd,
-                                        deadlineDagen,
-                                        dagenTotWedstrijd = (int)dagenTotWedstrijd
-                                    });
-                                }
-                            }
-
-                            // #561/#1141: een tegenstander die om herplannen vraagt zonder concrete
-                            // nieuwe datum krijgt géén toegezegde datum van de AI — dat moet eerst
-                            // met de begeleiding van ons eigen team worden afgestemd. Val terug op
-                            // het bestaande gedrag als deze flow niet (volledig) geconfigureerd is.
-                            if (classificatie.NamensWie == NamensWie.Tegenstander
-                                && string.IsNullOrWhiteSpace(classificatie.GewensteDatum))
-                            {
-                                var verzetZonderDatumJson = await BouwVerzetZonderDatumResponseAsync(
-                                    cs, classificatie, wedstrijd, deadlineDagen, clubSettings, cc, log);
-                                if (verzetZonderDatumJson != null)
-                                    return verzetZonderDatumJson;
-                            }
-
-                            if (!string.IsNullOrEmpty(classificatie.GewensteDatum))
-                            {
-                                var gewenstRequest = new CheckAvailabilityRequest
-                                {
-                                    Datum = classificatie.GewensteDatum,
-                                    LeeftijdsCategorie = classificatie.LeeftijdsCategorie,
-                                    TeamNaam = classificatie.TeamNaam,
-                                    Dagdeel = classificatie.Dagdeel
-                                };
-                                var beschikbaarheid = await AvailabilityService.CheckAvailabilityAsync(cs, gewenstRequest, log, clubCode);
-                                return JsonConvert.SerializeObject(new { wedstrijd, gewensteDatum = classificatie.GewensteDatum, beschikbaarheid });
-                            }
-
-                            var herplanRequest = new HerplanCheckRequest
-                            {
-                                Wedstrijdcode = wedstrijd.Wedstrijdcode,
-                                VoorkeurTijd = classificatie.AanvangsTijd,
-                                Dagdeel = classificatie.Dagdeel,
-                                Richting = BerichtTekstHeuristiek.DetecteerRichting(bericht.Onderwerp, bericht.Body ?? "")
-                            };
-                            var herplanResponse = await RescheduleService.CheckRescheduleAvailabilityAsync(cs, herplanRequest, log, clubCode);
-                            return JsonConvert.SerializeObject(new { wedstrijd, herplanOpties = herplanResponse });
-                        }
-                        return JsonConvert.SerializeObject(new { gevonden = false, reden = $"Geen wedstrijd gevonden voor {classificatie.TeamNaam} op {classificatie.Datum}" });
-                    }
-                }
-                return JsonConvert.SerializeObject(new { error = "Onvoldoende gegevens voor herplanverzoek (team en datum nodig)" });
+                return await VerwerkHerplanAsync(cs, classificatie, bericht, log, cc, clubCode, clubSettings);
 
             case VerzoekType.TeamContactOpvragen:
-                if (!string.IsNullOrWhiteSpace(classificatie.TeamNaam))
-                {
-                    // clubCode meegeven zodat een dry-run met de demoklub geselecteerd niet de
-                    // begeleidingscontacten van de productieclub raadpleegt (#677/#706), zelfde
-                    // reden als het SQL Server-origineel.
-                    var contact = await AllstarsTestDataRepository.GetTeamleiderContactAsync(
-                        cs, classificatie.TeamNaam, clubCode);
-                    return JsonConvert.SerializeObject(new
-                    {
-                        teamContactOpgevraagd = true,
-                        teamNaam = classificatie.TeamNaam,
-                        coachGevonden = contact != null
-                    });
-                }
-                return JsonConvert.SerializeObject(new { teamContactOpgevraagd = true, teamNaam = (string?)null, coachGevonden = false });
+                return await VerwerkTeamContactAsync(cs, classificatie, clubCode);
 
             case VerzoekType.Bevestiging:
                 return JsonConvert.SerializeObject(new { status = "Bevestiging ontvangen", opmerking = "Bevestigingen vereisen handmatige afhandeling door de coördinator" });

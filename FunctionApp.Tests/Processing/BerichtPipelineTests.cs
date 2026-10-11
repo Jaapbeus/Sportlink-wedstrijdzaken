@@ -570,6 +570,104 @@ public class BerichtPipelineTests
         json.Should().Contain("datumOnbekend");
     }
 
+    // ── Karakterisatie takken van VerwerkMetPlannerAsync (#1628), zonder database ──
+    // Alleen de takken die geen PlannerDataAccess raken kunnen hier draaien (de planner-
+    // datatoegang is statisch en vraagt een SQL Server). De database-afhankelijke takken
+    // (opponent-pad, multi-datum, herplanTeLaat, gewensteDatum, herplanopties) staan als
+    // integratietests op de Postgres-tier (BerichtPipelinePlannerTakkenIntegrationTests).
+
+    [Fact]
+    public async Task VerwerkMetPlannerAsync_HerplanZonderTeam_GeeftOnvoldoendeGegevens()
+    {
+        var classificatie = new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek, Datum = "2026-06-06" };
+
+        var json = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, NieuwBericht(), NullLogger.Instance, new GeenTeamResolver());
+
+        json.Should().Be("{\"error\":\"Onvoldoende gegevens voor herplanverzoek (team en datum nodig)\"}");
+    }
+
+    [Fact]
+    public async Task VerwerkMetPlannerAsync_HerplanZonderDatum_GeeftOnvoldoendeGegevens()
+    {
+        var classificatie = new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek, TeamNaam = "JO13-2" };
+
+        var json = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, NieuwBericht(), NullLogger.Instance, new GeenTeamResolver());
+
+        json.Should().Be("{\"error\":\"Onvoldoende gegevens voor herplanverzoek (team en datum nodig)\"}");
+    }
+
+    [Fact]
+    public async Task VerwerkMetPlannerAsync_HerplanMetOnparseerbareDatum_GeeftOnvoldoendeGegevens()
+    {
+        var classificatie = new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek, TeamNaam = "JO13-2", Datum = "geen-datum" };
+
+        var json = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, NieuwBericht(), NullLogger.Instance, new GeenTeamResolver());
+
+        json.Should().Be("{\"error\":\"Onvoldoende gegevens voor herplanverzoek (team en datum nodig)\"}");
+    }
+
+    [Fact]
+    public async Task VerwerkMetPlannerAsync_TeamContactZonderTeam_GeeftLegeUitkomst()
+    {
+        var classificatie = new BerichtClassificatie { Type = VerzoekType.TeamContactOpvragen };
+
+        var json = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, NieuwBericht(), NullLogger.Instance, new GeenTeamResolver());
+
+        json.Should().Be("{\"teamContactOpgevraagd\":true,\"teamNaam\":null,\"coachGevonden\":false}");
+    }
+
+    [Fact]
+    public async Task VerwerkMetPlannerAsync_Bevestiging_GeeftHandmatigeAfhandeling()
+    {
+        var classificatie = new BerichtClassificatie { Type = VerzoekType.Bevestiging };
+
+        var json = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, NieuwBericht(), NullLogger.Instance, new GeenTeamResolver());
+
+        json.Should().Be("{\"status\":\"Bevestiging ontvangen\",\"opmerking\":\"Bevestigingen vereisen handmatige afhandeling door de coördinator\"}");
+    }
+
+    [Fact]
+    public async Task VerwerkMetPlannerAsync_BuitenScope_GeeftNietVerwerkt()
+    {
+        var classificatie = new BerichtClassificatie { Type = VerzoekType.BuitenScope };
+
+        var json = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, NieuwBericht(), NullLogger.Instance, new GeenTeamResolver());
+
+        json.Should().Be("{\"status\":\"Niet verwerkt\"}");
+    }
+
+    [Fact]
+    public async Task VerwerkMetPlannerAsync_BeschikbaarheidMetEnkeleOnparseerbareDatum_GeeftDatumOnbekendEnLaatDatumOngemoeid()
+    {
+        // Geen tegenstander, dus geen opponent-pad; één onparseerbare datum, dus de enkelvoudige tak.
+        var classificatie = new BerichtClassificatie
+        {
+            Type = VerzoekType.BeschikbaarheidCheck,
+            TeamNaam = "JO13-2",
+            Datum = "2026-06-06",
+            Datums = new List<string> { "geen-datum" },
+        };
+
+        var json = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, NieuwBericht(), NullLogger.Instance, new GeenTeamResolver());
+
+        json.Should().Be("{\"datumOnbekend\":true}");
+        classificatie.Datum.Should().Be("2026-06-06", "de datumOnbekend-guard komt vóór de toewijzing aan classificatie.Datum");
+    }
+
+    [Fact]
+    public async Task Trace_HerplanZonderTeam_LegtClassificatieEnTeamherkenningVast()
+    {
+        var classificatie = new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek, Datum = "2026-06-06" };
+        var trace = new TraceBuilder();
+
+        await BerichtPipeline.VerwerkMetPlannerAsync(
+            classificatie, NieuwBericht(), NullLogger.Instance, new GeenTeamResolver(), "TESTCLUB", null, trace);
+
+        trace.Bouw().Stappen.Select(s => s.Code).Should().Equal("classificatie", "eindoordeel");
+    }
+
+    private static InkomendBericht NieuwBericht() => new() { Onderwerp = "Oefenwedstrijd", Body = "Kan dat?" };
+
     // De clubCode-override uit #677 wordt nu bewezen in FunctionApp.Tests/TeamResolution/:
     // teamherkenning loopt sinds #700 volledig via TeamNaamNormalisatie en TeamResolver, en
     // BerichtPipeline.NormaliseerTeamNaam bestaat niet meer.
