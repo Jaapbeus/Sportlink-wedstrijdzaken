@@ -6,7 +6,7 @@ namespace BlazorAdmin.Shared;
 
 public partial class TeamKoppelFormulier
 {
-    [Inject] private AdminApiClient Api { get; set; } = default!;
+    [Inject] private LerenApiClient Api { get; set; } = default!;
 
     /// <summary>Voorgevulde teamtekst (bijv. uit de trace of de wachtrij).</summary>
     [Parameter] public string RuweTekst { get; set; } = "";

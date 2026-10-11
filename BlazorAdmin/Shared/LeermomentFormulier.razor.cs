@@ -10,7 +10,7 @@ public partial class LeermomentFormulier
     public static readonly IReadOnlyList<string> VerzoekTypes =
         ["BeschikbaarheidCheck", "HerplanVerzoek", "Bevestiging", "TeamContactOpvragen", "BuitenScope"];
 
-    [Inject] private AdminApiClient Api { get; set; } = default!;
+    [Inject] private LerenApiClient Api { get; set; } = default!;
 
     /// <summary>Wat de pipeline ervan maakte; leeg als dat niet bekend is.</summary>
     [Parameter] public string? OrigineelType { get; set; }

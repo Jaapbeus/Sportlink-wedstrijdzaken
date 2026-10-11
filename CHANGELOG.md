@@ -19,6 +19,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Changed
+- De Admin-API-client in de beheer-app is opgesplitst in domeinclients rond één gedeelde transportkern; endpointpaden en gedrag zijn ongewijzigd (#1630).
 - De e-mailverwerker is op beide databasetiers opgesplitst in een lichte fase (ophalen, filteren, classificeren) en een zware fase (database en verwerking), en de verwerking per bericht in leermoment-, buiten-scope- en antwoordstappen (#1629).
 - De verwerking van beschikbaarheids-, herplan- en teamcontactverzoeken in de e-mailpipeline is per verzoektype opgesplitst op beide databasetiers, met karakterisatietests (#1628).
 - Het opbouwen van sjabloon-antwoorden op binnenkomende e-mail staat nu één keer in Planner.Shared in plaats van per databasetier, opgesplitst per verzoektype, met karakterisatietests per tak (#1627).

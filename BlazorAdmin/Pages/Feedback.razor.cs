@@ -13,7 +13,7 @@ namespace BlazorAdmin.Pages;
 /// </summary>
 public partial class Feedback : ClubSelectorPageBase
 {
-    [Inject] private AdminApiClient Api { get; set; } = default!;
+    [Inject] private FeedbackApiClient Api { get; set; } = default!;
 
     private enum Tab { Meldingen, Inzagelog }
 

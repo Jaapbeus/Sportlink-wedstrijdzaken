@@ -576,9 +576,11 @@ try {
         [regex]::Replace($zonderLosseSuffix, '\{[^}]*\}', '{*}')
     }
 
-    $apiClientPad = Join-Path $RepoRoot 'BlazorAdmin' 'Services' 'AdminApiClient.cs'
+    # Sinds #1630 staan de routes verspreid over de domeinclients (BlazorAdmin/Services/Api/*ApiClient.cs).
+    $apiClientMap = Join-Path $RepoRoot 'BlazorAdmin' 'Services' 'Api'
     $clientRoutes = @(
-        [regex]::Matches((Get-Content $apiClientPad -Raw), '\$?"(api/[^"]*)"') |
+        Get-ChildItem -Path $apiClientMap -Filter '*ApiClient.cs' |
+            ForEach-Object { [regex]::Matches((Get-Content $_.FullName -Raw), '\$?"(api/[^"]*)"') } |
             ForEach-Object { Get-GenormaliseerdeRoute $_.Groups[1].Value }
     ) | Sort-Object -Unique
 
@@ -679,7 +681,7 @@ try {
                 -Message 'Ontwikkeldatabase gestopt en poort dicht.'
         }
 
-        $env:SELFTEST_PG_PASSWORD = New-SelftestPassword
+        $env:SELFTEST_PG_PASSWORD = $(New-SelftestPassword)
         $env:SELFTEST_PG_TZ       = $Expect.containerTimeZone
         & docker compose -p $ComposeProject -f $ComposeFile up -d 2>&1 | Out-Null
 

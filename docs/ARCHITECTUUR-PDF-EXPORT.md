@@ -30,7 +30,7 @@ valideren, `PlannerShareModel` → `FileContentResult`/`ContentResult`) staat in
 HTML-geëncodeerd, geen script). Elke `PlannerFunction.cs` doet alleen nog de databasevraag en één
 `if (format != null)`. Autorisatie ongewijzigd: `veldbezetting` blijft `admin`+`user`
 (`ExecuteAuthenticatedAsync`), `auto-plan` blijft `admin` (`ExecuteAsync`). De Blazor-kant gebruikt
-`AdminApiClient.Deel.cs`; Veld optimalisatie laat de server de PDF opnieuw berekenen met de datum en
+`PlanningApiClient.cs`; Veld optimalisatie laat de server de PDF opnieuw berekenen met de datum en
 buffer waarmee het getoonde plan is gemaakt (`AutoPlanAsync` is een pure leesbewerking).
 
 **Persoonsgegevens:** dezelfde velden als de pagina vandaag al toont (epic #1365, besluit 3). Geen

@@ -367,7 +367,7 @@
                                             <button type="button" class="btn btn-sm btn-outline-primary ms-1"
                                                     title="Open deze wedstrijd in Sportlink Club (nieuw tabblad)"
                                                     disabled="@_sportlinkKolom.Deeplink(item.WedstrijdCode.Value).Bezig"
-                                                    @onclick="() => _sportlinkKolom.OpenInSportlinkAsync(item.WedstrijdCode.Value, Api, JS)">
+                                                    @onclick="() => _sportlinkKolom.OpenInSportlinkAsync(item.WedstrijdCode.Value, SportlinkApi, JS)">
                                                 Open in Sportlink
                                             </button>
                                             @if (_sportlinkKolom.Deeplink(item.WedstrijdCode.Value).Bezig)

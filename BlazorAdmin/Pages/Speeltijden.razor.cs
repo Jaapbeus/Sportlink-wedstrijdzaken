@@ -6,7 +6,7 @@ namespace BlazorAdmin.Pages;
 
 public partial class Speeltijden : ClubSelectorPageBase
 {
-    [Inject] private AdminApiClient Api { get; set; } = default!;
+    [Inject] private TeamsApiClient Api { get; set; } = default!;
 
     private readonly SpeeltijdBewerking _bewerking = new();
     private bool _loading = true;

@@ -6,7 +6,7 @@ namespace BlazorAdmin.Pages;
 
 public partial class Velden : ClubSelectorPageBase
 {
-    [Inject] private AdminApiClient Api { get; set; } = default!;
+    [Inject] private VeldenApiClient Api { get; set; } = default!;
 
     private List<VeldDto> velden = new();
     private List<VeldBeschikbaarheidDto> beschikbaarheid = new();

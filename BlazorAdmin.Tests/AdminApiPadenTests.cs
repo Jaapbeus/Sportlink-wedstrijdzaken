@@ -46,4 +46,24 @@ public class AdminApiPadenTests
 
         werkelijk.Should().Equal(AdminApiPadenGolden.Regels);
     }
+
+    [Fact]
+    public void ElkePubliekeClientMethode_StaatInDeGoldenAanroepen()
+    {
+        var c = AdminApiPadenAanroepen.Maak(new HttpClient(new OpnameHandler()) { BaseAddress = new Uri("http://localhost/") });
+        var gedekt = AdminApiPadenAanroepen.Alle(c)
+            .Select(a => a.Naam.Split('(')[0])
+            .ToHashSet();
+
+        var clientTypes = typeof(AdminApiTransport).Assembly.GetTypes()
+            .Where(t => t.Namespace == "BlazorAdmin.Services" && t.Name.EndsWith("ApiClient", StringComparison.Ordinal));
+        var publiek = clientTypes
+            .SelectMany(t => t.GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.DeclaredOnly))
+            .Select(m => m.Name)
+            .Distinct()
+            .ToList();
+
+        publiek.Should().NotBeEmpty();
+        publiek.Where(n => !gedekt.Contains(n)).Should().BeEmpty("elke publieke clientmethode hoort in AdminApiPadenAanroepen");
+    }
 }

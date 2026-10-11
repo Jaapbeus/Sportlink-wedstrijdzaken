@@ -6,7 +6,7 @@ namespace BlazorAdmin.Pages;
 
 public partial class Leermomenten : ClubSelectorPageBase
 {
-    [Inject] private AdminApiClient Api { get; set; } = default!;
+    [Inject] private LerenApiClient Api { get; set; } = default!;
 
     private List<LeermomentDto> _items = new();
     private LeermomentenStatsDto? _stats;

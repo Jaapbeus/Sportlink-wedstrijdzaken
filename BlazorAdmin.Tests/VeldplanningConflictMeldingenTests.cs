@@ -108,7 +108,7 @@ public class VeldplanningConflictMeldingenTests
     [Fact]
     public void ContractVanDeServer_WordtMetDeTeambuffersGedeserialiseerd()
     {
-        // Zelfde opties als AdminApiClient; de servertests leggen deze draadvorm aan hun kant vast.
+        // Zelfde opties als AdminApiTransport; de servertests leggen deze draadvorm aan hun kant vast.
         var dto = JsonSerializer.Deserialize<AutoPlanWedstrijdItemDto>(
             """{"teamNaam":"A","teamBufferVoor":45,"teamBufferNa":null}""",
             new JsonSerializerOptions(JsonSerializerDefaults.Web));

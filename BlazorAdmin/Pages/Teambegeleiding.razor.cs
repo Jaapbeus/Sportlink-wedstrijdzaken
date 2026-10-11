@@ -12,7 +12,7 @@ namespace BlazorAdmin.Pages;
 /// </summary>
 public partial class Teambegeleiding : ClubSelectorPageBase
 {
-    [Inject] private AdminApiClient Api { get; set; } = default!;
+    [Inject] private TeamsApiClient Api { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
 
     private List<string> _teams = new();

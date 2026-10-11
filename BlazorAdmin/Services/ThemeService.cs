@@ -9,7 +9,7 @@ namespace BlazorAdmin.Services;
 /// </summary>
 public class ThemeService
 {
-    private readonly AdminApiClient _api;
+    private readonly InstellingenApiClient _api;
     private readonly IJSRuntime _js;
 
     public string? LogoUrl    { get; private set; }
@@ -20,7 +20,7 @@ public class ThemeService
     /// <summary>Wordt gemeld zodra de licht/donker-modus wijzigt, zodat de schakelaar meeloopt.</summary>
     public event Action<string>? OnModeChanged;
 
-    public ThemeService(AdminApiClient api, IJSRuntime js)
+    public ThemeService(InstellingenApiClient api, IJSRuntime js)
     {
         _api = api;
         _js = js;
