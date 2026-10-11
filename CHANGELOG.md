@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- Tijdschema's worden op de instellingenpagina en in de API door één gedeelde vertaler leesbaar gemaakt; weekdag-, interval- en maandpatronen werken nu overal (#1623).
+
 ### Security
 - Aanscherping van de adresbereikcontrole in `SsrfProtection.IsPublicIpAddress` (IPv6-tak en één Azure-specifiek IPv4-adres), met uitgebreide grenswaardetests (#1622).
 
