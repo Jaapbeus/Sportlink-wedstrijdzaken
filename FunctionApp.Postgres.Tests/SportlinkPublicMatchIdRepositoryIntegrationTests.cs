@@ -20,7 +20,8 @@ public class SportlinkPublicMatchIdRepositoryIntegrationTests
     // getal moet uniek zijn over ALLE testklassen in deze suite, niet alleen binnen deze klasse.
     // 9100001/9200001-9200004/9300001-9300004/9400001-9400009/9500001-9500006/9999999 zijn al in
     // gebruik door andere testklassen; 9600002-9600005 gereserveerd voor de #1017-warmuptests
-    // hieronder, 9600006-9600007 voor de #1111-reverse-lookuptests.
+    // hieronder, 9600006-9600007 voor de #1111-reverse-lookuptests; 9700001-9700006 voor
+    // BerichtPipelinePlannerTakkenIntegrationTests (#1628).
     private const long Wedstrijdcode = 9600001;
 
     private static string ConnectionString => PostgresTestEnvironment.ConnectionStringOrNull
