@@ -4,7 +4,7 @@
 
 **Volgorde:** #1622 → #1623 → #1624 → #1625 → #1626 → #1627 → #1628 → #1629 → #1630 → #1631 → afsluiting (plafond 0, severity error).
 
-**Stand:** #1622 in PR #1636 (review Codex); #1623 in PR (branch `feature/#1623-cron-leesbaar-shared`, gestapeld op #1636, v3.13.1.2).
+**Stand:** #1622 in PR #1636 (review Codex); #1623 in PR #1638 (gestapeld op #1636); #1624 in PR, gestapeld op #1638 (branch `feature/#1624-staging-parameterbinding`, geen versiebump).
 
 ---
 
