@@ -1,26 +1,27 @@
 #!/usr/bin/env bash
 # check-analyzer-complexiteit.sh (#1300)
 #
-# Ratchet op de drie Roslyn maintainability-analyzers: CA1502 (cyclomatische complexiteit),
+# Tweede slot op de drie Roslyn maintainability-analyzers: CA1502 (cyclomatische complexiteit),
 # CA1505 (maintainability index) en CA1506 (class coupling).
 #
-# WAAROM DEZE DRIE APART AANGEZET MOETEN WORDEN
-# ---------------------------------------------
+# STAND: AFGEROND BIJ #1651 (epic #1632)
+# --------------------------------------
+# De ratchet is op 0 afgerond: de nulmeting van #1300 (19 overtredingen) is in tien PR's verholpen.
+# Sinds #1651 staan CA1502/CA1505/CA1506 in .editorconfig op 'error' (testprojecten: 'none'). Een
+# nieuwe overtreding is dus een BUILDFOUT; deze guard meldt dan "De build faalde" (exit 1) en toont
+# de CA150x-regels. Dat is gewenst gedrag, geen guard-defect.
+#
+# WAAROM DE GUARD BLIJFT
+# ----------------------
+# - Hij faalt ook als .editorconfig de drie regels niet meer zet (dan telt de build stilzwijgend nul).
+# - Hij bewaakt dat het aantal waarschuwingen 0 blijft als iemand de severity ooit terugzet naar
+#   'warning': het plafond (analyzer-overtredingen in codekwaliteit-plafonds.txt) is dan het slot.
+#
+# WAAROM DE DRIE APART AANGEZET MOETEN WORDEN
+# -------------------------------------------
 # Ze zitten wél in Microsoft.CodeAnalysis.NetAnalyzers (die sinds .NET 5 standaard meekomt), maar
 # staan uit — ook bij <AnalysisMode>All</AnalysisMode>. Microsoft zet ze bewust uit omdat de
-# drempels projectafhankelijk zijn. Ze aanzetten gebeurt per regel in .editorconfig; dat bestand
-# in de repo-root doet dat, en zet ze op 'warning'.
-#
-# WAAROM EEN RATCHET EN NIET METEEN 'error'
-# -----------------------------------------
-# De nulmeting is 19 overtredingen (13x CA1502, 6x CA1506, 0x CA1505). Direct op 'error' zetten
-# maakt de build rood tot alle negentien zijn herschreven — en daar zitten methodes bij met een
-# cyclomatische complexiteit van 43, 46 en 58. Dat zijn echte refactors met productierisico
-# (BerichtPipeline verwerkt binnenkomende e-mail), geen opruimwerk dat in een chore-PR past.
-#
-# Een gate die de eerstvolgende PR rood maakt zonder dat iemand die overtredingen heeft gezien,
-# wordt binnen twee PR's weer uitgezet. Dan bewaakt hij niets meer. Vandaar hetzelfde patroon als
-# check-bestandsgrootte.sh: bestaande code mag blijven, het AANTAL mag niet groeien.
+# drempels projectafhankelijk zijn. Ze aanzetten gebeurt per regel in .editorconfig in de repo-root.
 #
 # CA1505 STAAT OP NUL EN DAT IS GEEN TOEVAL OM TE NEGEREN
 # -------------------------------------------------------
@@ -47,13 +48,16 @@ cd "$repo_root"
 
 plafond="$(lees_plafond analyzer-overtredingen)"
 
-if [ ! -f .editorconfig ]; then
+editorconfig="${EDITORCONFIG_PAD:-.editorconfig}"
+if [ ! -f "$editorconfig" ]; then
   echo "::error::.editorconfig ontbreekt — zonder dat bestand staan CA1502/1505/1506 uit en telt deze guard altijd nul."
   exit 1
 fi
+# Alleen de productiesectie [*.cs] telt: de testsectie zet dezelfde regels bewust op 'none'.
+productieblok="$(awk '/^\[/ { actief = ($0 == "[*.cs]"); next } actief' "$editorconfig")"
 for regel in CA1502 CA1505 CA1506; do
-  if ! grep -q "dotnet_diagnostic.${regel}.severity" .editorconfig; then
-    echo "::error::.editorconfig zet ${regel} niet — deze guard zou dan stilzwijgend nul tellen."
+  if ! printf '%s\n' "$productieblok" | grep -Eq "^dotnet_diagnostic\.${regel}\.severity[[:space:]]*=[[:space:]]*(error|warning)[[:space:]]*$"; then
+    echo "::error::.editorconfig zet ${regel} in de sectie [*.cs] niet op error/warning — de regel staat dan uit voor productiecode en deze guard zou stilzwijgend nul tellen."
     exit 1
   fi
 done
@@ -66,6 +70,8 @@ trap 'rm -f "$bouwlog"' EXIT
 if ! dotnet build sportlink-wedstrijdzaken.slnf --configuration Release --no-incremental -v n \
      > "$bouwlog" 2>&1; then
   echo "::error::De build faalde; deze guard kan dan niets meten. Zie de gewone buildstap."
+  echo "::error::Staat hieronder een CA1502/CA1505/CA1506-fout, dan is een methode te complex of een type te sterk gekoppeld (severity error sinds #1651)."
+  grep -E 'error CA150[256]' "$bouwlog" | sed -E 's/^[[:space:]]*[0-9]+>//' | sed -E 's/^[[:space:]]+//' | sed -E 's/\[\/.*$//' | sort -u || true
   tail -30 "$bouwlog"
   exit 1
 fi
