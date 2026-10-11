@@ -10,6 +10,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Npgsql;
 using Planner.Endpoints.Admin;
+using Planner.Shared.Scheduling;
 using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text;
@@ -149,7 +150,7 @@ public static class AdminSettingsFunction
 
                 if (result.TryGetValue("FetchSchedule", out var sched) && sched is string schedStr && !string.IsNullOrWhiteSpace(schedStr))
                 {
-                    result["fetchScheduleLeesbaar"] = VertaalCronNaarLeesbaar(schedStr);
+                    result["fetchScheduleLeesbaar"] = CronLeesbaar.Vertaal(schedStr);
                     result["volgendeMomenten"] = BerekenVolgendeMomenten(schedStr, 3);
                 }
 
@@ -234,7 +235,7 @@ public static class AdminSettingsFunction
                     herstartAutomatisch,
                     opmerking = herstartOpmerking,
                     fetchScheduleLeesbaar = fetchScheduleChanged && nieuweSchedule != null
-                        ? VertaalCronNaarLeesbaar(nieuweSchedule) : null,
+                        ? CronLeesbaar.Vertaal(nieuweSchedule) : null,
                     volgendeMomenten = fetchScheduleChanged && nieuweSchedule != null
                         ? BerekenVolgendeMomenten(nieuweSchedule, 3) : null
                 });
@@ -429,33 +430,6 @@ public static class AdminSettingsFunction
             log.LogError(ex, "Fout bij aanroepen Azure Management API voor herstart");
             return null;
         }
-    }
-
-    internal static string VertaalCronNaarLeesbaar(string cron)
-    {
-        if (string.IsNullOrWhiteSpace(cron)) return cron;
-        var parts = cron.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length != 6) return cron;
-
-        var (sec, min, uur, dag, maand, week) = (parts[0], parts[1], parts[2], parts[3], parts[4], parts[5]);
-
-        if (sec == "0" && dag == "*" && maand == "*" && week == "*"
-            && int.TryParse(min, out var m) && int.TryParse(uur, out var h))
-            return $"Elke dag om {h:D2}:{m:D2}";
-
-        if (sec == "0" && uur == "*" && dag == "*" && maand == "*" && week == "*"
-            && int.TryParse(min, out var hmin))
-            return $"Elk uur op minuut :{hmin:D2}";
-
-        if (sec == "0" && uur == "*" && dag == "*" && maand == "*" && week == "*"
-            && min.StartsWith("*/") && int.TryParse(min[2..], out var interval))
-            return $"Elke {interval} minuten";
-
-        if (sec == "0" && maand == "*" && week == "*"
-            && int.TryParse(min, out var mm) && int.TryParse(uur, out var hh) && int.TryParse(dag, out var dd))
-            return $"Maandelijks op dag {dd} om {hh:D2}:{mm:D2}";
-
-        return cron;
     }
 
     internal static List<string> BerekenVolgendeMomenten(string cron, int aantal)

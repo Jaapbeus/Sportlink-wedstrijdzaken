@@ -1,6 +1,7 @@
 using BlazorAdmin.Models;
 using BlazorAdmin.Services;
 using Microsoft.AspNetCore.Components;
+using Planner.Shared.Scheduling;
 
 namespace BlazorAdmin.Pages;
 
@@ -160,27 +161,7 @@ public partial class Instellingen : ClubSelectorPageBase
     }
 
     private static string CronNaarNederlands(string? cron)
-    {
-        if (string.IsNullOrWhiteSpace(cron)) return "Onbekend schema";
-        var p = cron.Trim().Split(' ');
-        if (p.Length != 6) return cron;
-        var (sec, min, hour, day, month, weekday) = (p[0], p[1], p[2], p[3], p[4], p[5]);
-        if (sec == "0" && day == "*" && month == "*" && weekday == "*")
-        {
-            if (int.TryParse(hour, out var h) && int.TryParse(min, out var m))
-                return m == 0 ? $"Elke dag om {h:D2}:00" : $"Elke dag om {h:D2}:{m:D2}";
-        }
-        if (sec == "0" && min == "0" && hour == "*" && day == "*" && month == "*" && weekday == "*")
-            return "Elk uur";
-        string[] dagNamen = { "", "maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag" };
-        if (sec == "0" && min == "0" && day == "*" && month == "*"
-            && int.TryParse(hour, out var h2) && int.TryParse(weekday, out var wd) && wd >= 0 && wd <= 7)
-        {
-            var dag = wd == 0 ? dagNamen[7] : wd < dagNamen.Length ? dagNamen[wd] : $"dag {wd}";
-            return $"Elke {dag} om {h2:D2}:00";
-        }
-        return cron;
-    }
+        => string.IsNullOrWhiteSpace(cron) ? "Onbekend schema" : CronLeesbaar.Vertaal(cron);
 
     private async Task LaadUitgeslotenEmailsAsync()
     {
