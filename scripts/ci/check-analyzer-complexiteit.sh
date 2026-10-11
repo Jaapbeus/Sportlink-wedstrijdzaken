@@ -48,13 +48,16 @@ cd "$repo_root"
 
 plafond="$(lees_plafond analyzer-overtredingen)"
 
-if [ ! -f .editorconfig ]; then
+editorconfig="${EDITORCONFIG_PAD:-.editorconfig}"
+if [ ! -f "$editorconfig" ]; then
   echo "::error::.editorconfig ontbreekt — zonder dat bestand staan CA1502/1505/1506 uit en telt deze guard altijd nul."
   exit 1
 fi
+# Alleen de productiesectie [*.cs] telt: de testsectie zet dezelfde regels bewust op 'none'.
+productieblok="$(awk '/^\[/ { actief = ($0 == "[*.cs]"); next } actief' "$editorconfig")"
 for regel in CA1502 CA1505 CA1506; do
-  if ! grep -q "dotnet_diagnostic.${regel}.severity" .editorconfig; then
-    echo "::error::.editorconfig zet ${regel} niet — deze guard zou dan stilzwijgend nul tellen."
+  if ! printf '%s\n' "$productieblok" | grep -Eq "^dotnet_diagnostic\.${regel}\.severity[[:space:]]*=[[:space:]]*(error|warning)[[:space:]]*$"; then
+    echo "::error::.editorconfig zet ${regel} in de sectie [*.cs] niet op error/warning — de regel staat dan uit voor productiecode en deze guard zou stilzwijgend nul tellen."
     exit 1
   fi
 done

@@ -448,7 +448,9 @@ en voor altijd groen staan, precies het no-op-patroon uit §67 van
 nulmeting zijn in tien PR's verholpen (19 → 0; per PR is het plafond in
 `scripts/ci/codekwaliteit-plafonds.txt` verlaagd). Sinds #1651 staan CA1502, CA1505 en CA1506 in
 `.editorconfig` op `error` (testprojecten blijven `none`): een nieuwe overtreding is een buildfout.
-De guard blijft als tweede slot: hij faalt als `.editorconfig` de regels niet meer zet en bewaakt
+De guard blijft als tweede slot: hij faalt als de sectie `[*.cs]` van `.editorconfig` een van de
+drie regels niet meer op `error`/`warning` zet (de `none`-regels van de testsectie tellen niet mee;
+voor een proef kan `EDITORCONFIG_PAD` naar een ander bestand wijzen) en bewaakt
 dat het aantal op 0 blijft als de severity ooit teruggezet wordt; bij een overtreding meldt hij
 "De build faalde" en toont de CA150x-regels. Nazorg (fase-skelet en tier-duplicatie): #1650.
 
