@@ -3,6 +3,12 @@ using Newtonsoft.Json;
 namespace Planner.Shared.Email;
 
 /// <summary>
+/// Uitkomst van het opponent-pad (#1139): óf een kant-en-klaar antwoord, óf het via de tegenstander
+/// herkende eigen team, óf (default) niets omdat het pad niet van toepassing is.
+/// </summary>
+public readonly record struct TegenstanderZoekUitkomst(string? Antwoord, string? EigenTeam);
+
+/// <summary>
 /// De JSON-antwoorden die <c>BerichtPipeline.VerwerkMetPlannerAsync</c> per verzoektype teruggeeft
 /// (#1628). Ze bevatten geen databasetoegang en zijn op beide databasetiers identiek, dus staan ze
 /// hier één keer; de tiers bepalen alleen <i>welk</i> antwoord van toepassing is. Veldnamen en

@@ -1,13 +1,12 @@
+using FunctionApp.Postgres.Email;
+using FunctionApp.Postgres.Planner;
+using FunctionApp.Postgres.Planner.Repositories;
+using FunctionApp.Postgres.TeamResolution;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Planner.Shared;
 using Planner.Shared.Email;
 using Planner.Shared.Email.Trace;
-using FunctionApp.Postgres.Email;
-using FunctionApp.Postgres.Planner;
-using FunctionApp.Postgres.Planner.Repositories;
-using FunctionApp.Postgres.Sync;
-using FunctionApp.Postgres.TeamResolution;
 
 namespace FunctionApp.Postgres.Processing;
 
@@ -15,9 +14,6 @@ namespace FunctionApp.Postgres.Processing;
 // controles, JSON-uitvoer en trace-regels als voorheen. Alleen de indeling is veranderd.
 internal static partial class BerichtPipeline
 {
-    /// <summary>Uitkomst van <see cref="ZoekViaTegenstanderAsync"/>: óf een kant-en-klaar antwoord, óf het via de tegenstander herkende eigen team.</summary>
-    private readonly record struct TegenstanderZoekUitkomst(string? Antwoord, string? EigenTeam);
-
     /// <summary>
     /// Beschikbaarheidscheck: eerst (indien nodig) het opponent-pad, dan multi-datum of de
     /// enkelvoudige check. Een via de tegenstander herkend eigen team wordt hier op de classificatie
@@ -41,7 +37,16 @@ internal static partial class BerichtPipeline
         }
 
         if (alleDatums.Count > 1)
-            return await VerwerkMultiDatumAsync(cs, classificatie, alleDatums, clubCode, log);
+        {
+            var multiResults = new List<(string Datum, object? Response)>();
+            foreach (var datum in alleDatums)
+            {
+                var resp = await AvailabilityService.CheckAvailabilityAsync(
+                    cs, BouwBeschikbaarheidRequest(classificatie, datum), log, clubCode);
+                multiResults.Add((datum, resp));
+            }
+            return PlannerAntwoordJson.MultiDatum(multiResults);
+        }
 
         // Dezelfde datum als de tegenstander-lookup hierboven gebruikt: anders loopt de
         // plannercheck over een andere datum dan de rest van de verwerking.
@@ -55,8 +60,8 @@ internal static partial class BerichtPipeline
         }
         classificatie.Datum = primaireDatum;
 
-        var checkRequest = BouwBeschikbaarheidRequest(classificatie, primaireDatum);
-        var checkResponse = await AvailabilityService.CheckAvailabilityAsync(cs, checkRequest, log, clubCode);
+        var checkResponse = await AvailabilityService.CheckAvailabilityAsync(
+            cs, BouwBeschikbaarheidRequest(classificatie, primaireDatum), log, clubCode);
         return JsonConvert.SerializeObject(checkResponse);
     }
 
@@ -73,19 +78,18 @@ internal static partial class BerichtPipeline
         string cs, BerichtClassificatie classificatie, List<string> alleDatums, ITeamResolver teamResolver,
         string cc, bool eigenTeamHerkend, string? clubCode, ILogger log, TraceBuilder? trace)
     {
-        bool heeftExterneTegenstander = !string.IsNullOrWhiteSpace(classificatie.Tegenstander);
-        if (!(heeftExterneTegenstander && !eigenTeamHerkend && alleDatums.Count == 1
-              && DateOnly.TryParse(alleDatums[0], out var opponentCheckDatum)))
+        if (string.IsNullOrWhiteSpace(classificatie.Tegenstander) || eigenTeamHerkend || alleDatums.Count != 1
+            || !DateOnly.TryParse(alleDatums[0], out var opponentCheckDatum))
             return default;
 
         var wedstrijdOpDatum = await PlannerMatchRepository.FindMatchByOpponentAsync(
-                cs, classificatie.Tegenstander!, opponentCheckDatum, clubCode);
+            cs, classificatie.Tegenstander!, opponentCheckDatum, clubCode);
         if (wedstrijdOpDatum != null) trace?.OpponentPad("opponent-op-datum", true);
         if (wedstrijdOpDatum != null)
             return new(PlannerAntwoordJson.WedstrijdAlIngepland(wedstrijdOpDatum), null);
 
         var wedstrijdAndereDatum = await PlannerMatchRepository.FindMatchByOpponentAsync(
-                cs, classificatie.Tegenstander!, null, clubCode);
+            cs, classificatie.Tegenstander!, null, clubCode);
         trace?.OpponentPad(wedstrijdAndereDatum == null ? "niet-gevonden" : "opponent-andere-datum", wedstrijdAndereDatum != null);
         if (wedstrijdAndereDatum == null)
             return new(PlannerAntwoordJson.TeamOnbekend(classificatie.Tegenstander), null);
@@ -93,19 +97,6 @@ internal static partial class BerichtPipeline
         var eigenTeam = await BepaalEigenTeamUitWedstrijdAsync(
             wedstrijdAndereDatum.Wedstrijd, teamResolver, cc, log, trace);
         return new(null, eigenTeam);
-    }
-
-    private static async Task<string> VerwerkMultiDatumAsync(
-        string cs, BerichtClassificatie classificatie, List<string> alleDatums, string? clubCode, ILogger log)
-    {
-        var multiResults = new List<(string Datum, object? Response)>();
-        foreach (var datum in alleDatums)
-        {
-            var req = BouwBeschikbaarheidRequest(classificatie, datum);
-            var resp = await AvailabilityService.CheckAvailabilityAsync(cs, req, log, clubCode);
-            multiResults.Add((datum, resp));
-        }
-        return PlannerAntwoordJson.MultiDatum(multiResults);
     }
 
     /// <summary>
@@ -137,18 +128,11 @@ internal static partial class BerichtPipeline
             && string.IsNullOrWhiteSpace(classificatie.GewensteDatum))
         {
             var verzetZonderDatumJson = await BouwVerzetZonderDatumResponseAsync(
-            cs, classificatie, wedstrijd, deadlineDagen, clubSettings, cc, log);
+                cs, classificatie, wedstrijd, deadlineDagen, clubSettings, cc, log);
             if (verzetZonderDatumJson != null)
                 return verzetZonderDatumJson;
         }
 
-        return await BouwHerplanAntwoordAsync(cs, classificatie, bericht, wedstrijd, clubCode, log);
-    }
-
-    private static async Task<string> BouwHerplanAntwoordAsync(
-        string cs, BerichtClassificatie classificatie, InkomendBericht bericht, ZoekWedstrijdResponse wedstrijd,
-        string? clubCode, ILogger log)
-    {
         if (!string.IsNullOrEmpty(classificatie.GewensteDatum))
         {
             var gewenstRequest = new CheckAvailabilityRequest

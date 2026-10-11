@@ -13,9 +13,6 @@ namespace SportlinkFunction.Processing;
 // controles, JSON-uitvoer en trace-regels als voorheen. Alleen de indeling is veranderd.
 public static partial class BerichtPipeline
 {
-    /// <summary>Uitkomst van <see cref="ZoekViaTegenstanderAsync"/>: óf een kant-en-klaar antwoord, óf het via de tegenstander herkende eigen team.</summary>
-    private readonly record struct TegenstanderZoekUitkomst(string? Antwoord, string? EigenTeam);
-
     /// <summary>
     /// Beschikbaarheidscheck: eerst (indien nodig) het opponent-pad, dan multi-datum of de
     /// enkelvoudige check. Een via de tegenstander herkend eigen team wordt hier op de classificatie
@@ -39,7 +36,16 @@ public static partial class BerichtPipeline
         }
 
         if (alleDatums.Count > 1)
-            return await VerwerkMultiDatumAsync(classificatie, alleDatums, clubCode, log);
+        {
+            var multiResults = new List<(string Datum, object? Response)>();
+            foreach (var datum in alleDatums)
+            {
+                var resp = await PlannerService.CheckAvailabilityAsync(
+                    BouwBeschikbaarheidRequest(classificatie, datum), log, clubCode);
+                multiResults.Add((datum, resp));
+            }
+            return PlannerAntwoordJson.MultiDatum(multiResults);
+        }
 
         // Dezelfde datum als de tegenstander-lookup hierboven gebruikt: anders loopt de
         // plannercheck over een andere datum dan de rest van de verwerking.
@@ -53,8 +59,8 @@ public static partial class BerichtPipeline
         }
         classificatie.Datum = primaireDatum;
 
-        var checkRequest = BouwBeschikbaarheidRequest(classificatie, primaireDatum);
-        var checkResponse = await PlannerService.CheckAvailabilityAsync(checkRequest, log, clubCode);
+        var checkResponse = await PlannerService.CheckAvailabilityAsync(
+            BouwBeschikbaarheidRequest(classificatie, primaireDatum), log, clubCode);
         return JsonConvert.SerializeObject(checkResponse);
     }
 
@@ -70,19 +76,18 @@ public static partial class BerichtPipeline
         BerichtClassificatie classificatie, List<string> alleDatums, ITeamResolver teamResolver,
         string cc, bool eigenTeamHerkend, string? clubCode, ILogger log, TraceBuilder? trace)
     {
-        bool heeftExterneTegenstander = !string.IsNullOrWhiteSpace(classificatie.Tegenstander);
-        if (!(heeftExterneTegenstander && !eigenTeamHerkend && alleDatums.Count == 1
-              && DateOnly.TryParse(alleDatums[0], out var opponentCheckDatum)))
+        if (string.IsNullOrWhiteSpace(classificatie.Tegenstander) || eigenTeamHerkend || alleDatums.Count != 1
+            || !DateOnly.TryParse(alleDatums[0], out var opponentCheckDatum))
             return default;
 
         var wedstrijdOpDatum = await PlannerDataAccess.FindMatchByOpponentAsync(
-                classificatie.Tegenstander!, opponentCheckDatum, clubCode);
+            classificatie.Tegenstander!, opponentCheckDatum, clubCode);
         if (wedstrijdOpDatum != null) trace?.OpponentPad("opponent-op-datum", true);
         if (wedstrijdOpDatum != null)
             return new(PlannerAntwoordJson.WedstrijdAlIngepland(wedstrijdOpDatum), null);
 
         var wedstrijdAndereDatum = await PlannerDataAccess.FindMatchByOpponentAsync(
-                classificatie.Tegenstander!, null, clubCode);
+            classificatie.Tegenstander!, null, clubCode);
         trace?.OpponentPad(wedstrijdAndereDatum == null ? "niet-gevonden" : "opponent-andere-datum", wedstrijdAndereDatum != null);
         if (wedstrijdAndereDatum == null)
             return new(PlannerAntwoordJson.TeamOnbekend(classificatie.Tegenstander), null);
@@ -90,19 +95,6 @@ public static partial class BerichtPipeline
         var eigenTeam = await BepaalEigenTeamUitWedstrijdAsync(
             wedstrijdAndereDatum.Wedstrijd, teamResolver, cc, log, trace);
         return new(null, eigenTeam);
-    }
-
-    private static async Task<string> VerwerkMultiDatumAsync(
-        BerichtClassificatie classificatie, List<string> alleDatums, string? clubCode, ILogger log)
-    {
-        var multiResults = new List<(string Datum, object? Response)>();
-        foreach (var datum in alleDatums)
-        {
-            var req = BouwBeschikbaarheidRequest(classificatie, datum);
-            var resp = await PlannerService.CheckAvailabilityAsync(req, log, clubCode);
-            multiResults.Add((datum, resp));
-        }
-        return PlannerAntwoordJson.MultiDatum(multiResults);
     }
 
     /// <summary>
@@ -134,18 +126,11 @@ public static partial class BerichtPipeline
             && string.IsNullOrWhiteSpace(classificatie.GewensteDatum))
         {
             var verzetZonderDatumJson = await BouwVerzetZonderDatumResponseAsync(
-            classificatie, wedstrijd, deadlineDagen, clubSettings, clubCode, log);
+                classificatie, wedstrijd, deadlineDagen, clubSettings, clubCode, log);
             if (verzetZonderDatumJson != null)
                 return verzetZonderDatumJson;
         }
 
-        return await BouwHerplanAntwoordAsync(classificatie, bericht, wedstrijd, clubCode, log);
-    }
-
-    private static async Task<string> BouwHerplanAntwoordAsync(
-        BerichtClassificatie classificatie, InkomendBericht bericht, ZoekWedstrijdResponse wedstrijd,
-        string? clubCode, ILogger log)
-    {
         if (!string.IsNullOrEmpty(classificatie.GewensteDatum))
         {
             var gewenstRequest = new CheckAvailabilityRequest
