@@ -19,6 +19,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Changed
+- Alle 19 maintainability-overtredingen (CA1502/CA1506) uit de nulmeting van #1300 zijn verholpen; de drie Roslyn-regels staan nu op fout in plaats van waarschuwing, zodat nieuwe gevallen de build breken (#1651, epic #1632).
 - De Admin-API-client in de beheer-app is opgesplitst in domeinclients rond één gedeelde transportkern; endpointpaden en gedrag zijn ongewijzigd (#1630).
 - De Sportlink-client is opgesplitst in een token-/transportkern en domeinklassen voor programma, wedstrijddetails en mutaties; gedrag en de enige route naar Sportlink zijn ongewijzigd (#1631).
 - De e-mailverwerker is op beide databasetiers opgesplitst in een lichte fase (ophalen, filteren, classificeren) en een zware fase (database en verwerking), en de verwerking per bericht in leermoment-, buiten-scope- en antwoordstappen (#1629).

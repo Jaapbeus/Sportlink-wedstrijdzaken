@@ -444,6 +444,14 @@ als `.editorconfig` de drie regels niet aanzet: zonder die controle zou hij stil
 en voor altijd groen staan, precies het no-op-patroon uit §67 van
 `ARCHITECTUUR-DATABASE-TIERS.md`.*
 
+**Afsluiting (2026-10-11, epic #1632).** De ratchet is afgerond: de 19 overtredingen uit de
+nulmeting zijn in tien PR's verholpen (19 → 0; per PR is het plafond in
+`scripts/ci/codekwaliteit-plafonds.txt` verlaagd). Sinds #1651 staan CA1502, CA1505 en CA1506 in
+`.editorconfig` op `error` (testprojecten blijven `none`): een nieuwe overtreding is een buildfout.
+De guard blijft als tweede slot: hij faalt als `.editorconfig` de regels niet meer zet en bewaakt
+dat het aantal op 0 blijft als de severity ooit teruggezet wordt; bij een overtreding meldt hij
+"De build faalde" en toont de CA150x-regels. Nazorg (fase-skelet en tier-duplicatie): #1650.
+
 ### Regel 9 — Elk HTTP-endpoint autoriseert via de wrapper, nooit via een eigen poort (#1350)
 
 Een endpoint met de admin-rol loopt via `AdminEndpoint.ExecuteAsync` (of
@@ -519,7 +527,7 @@ endpoint laat hem ook falen. Dezelfde knip als de Layer-5-scan in
 | 5 — skillkopieën in `.claude/skills/` identiek aan de bron in `.agents/skills/` (#1579) | `scripts/ci/sync-skills.py` | `build.yml` |
 | 6 — elke regel heeft een guard | `scripts/ci/check-regelregister.sh` | `build.yml` |
 | 7, 8 — bestandsgrootte en methodelengte stijgen niet | `scripts/ci/check-bestandsgrootte.sh` | `build.yml` |
-| 7, 8 — maintainability-analyzers stijgen niet (#1300) | `scripts/ci/check-analyzer-complexiteit.sh` | `build.yml` |
+| 7, 8 — maintainability-analyzers: ratchet op 0 afgerond, severity `error` (#1300, #1651) | `scripts/ci/check-analyzer-complexiteit.sh` | `build.yml` |
 | 9 — elk HTTP-endpoint autoriseert via de wrapper, op Anonymous (#1350) | `scripts/ci/check-endpoint-autorisatie.sh` | `build.yml` |
 | Alle regels — de guards worden zelf getest | `scripts/ci/check-codekwaliteit.test.sh` | `build.yml` |
 
