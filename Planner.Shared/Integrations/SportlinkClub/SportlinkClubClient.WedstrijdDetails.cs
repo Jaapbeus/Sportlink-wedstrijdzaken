@@ -37,29 +37,8 @@ public partial class SportlinkClubClient
         string? fieldId, string? fieldSize, int? fieldOffset, bool isForceUpdate,
         string token, CancellationToken cancellationToken)
     {
-        var matchData = new MatchDataBody(
-            AgeClassCode: snapshot.AgeClassCode,
-            AssemblyTime: snapshot.MatchDetails?.MatchDetailsHome?.AssemblyTime?.Value,
-            AwayScore: snapshot.Result?.AwayScore,
-            AwayTeam: snapshot.Teams?.Away?.TeamName,
-            DepartureTime: null,
-            Description: snapshot.MatchDetails?.Description?.Value,
-            Drivers: "",
-            Duration: snapshot.Duration,
-            ExternalMatchId: snapshot.ExternalMatchId,
-            FacilityId: snapshot.MatchField?.FacilityId,
-            FieldId: fieldId ?? snapshot.Field?.FieldId,
-            FieldOffset: fieldOffset ?? snapshot.Field?.FieldOffset,
-            FieldSize: fieldSize ?? snapshot.Field?.FieldSize,
-            HomeScore: snapshot.Result?.HomeScore,
-            HomeTeam: snapshot.Teams?.Home?.TeamName,
-            MatchChangeRequestRemarks: "",
-            MatchDate: snapshot.MatchDate?.Date,
-            MatchStatus: snapshot.MatchStatus,
-            PublicAwayTeamId: snapshot.Teams?.Away?.PublicTeamId,
-            PublicHomeTeamId: snapshot.Teams?.Home?.PublicTeamId,
-            SportIdTag: snapshot.Sport?.IdTag,
-            StartTime: snapshot.MatchDate?.StartTime);
+        var matchData = BouwMatchData(snapshot, new MatchDataOverschrijving(
+            FieldId: fieldId, FieldSize: fieldSize, FieldOffset: fieldOffset));
 
         var body = new UpdateMatchDetailsBody(
             ConfirmationNeeded: null,
@@ -83,7 +62,9 @@ public partial class SportlinkClubClient
     /// Bouwt en verstuurt de <c>UpdateMatchDetails</c>-envelope voor een datum/tijd/accommodatie-
     /// wijzigingsverzoek (#995) — bewust GEEN parametrisering van <see cref="PutMatchDetailsAsync"/>
     /// (#993's live-bevestigde veld-wijzigingspad), zie de doc-comment op
-    /// <see cref="RequestMatchChangeAsync"/>. Sinds #1319 volgt deze aanroep de gewone
+    /// <see cref="RequestMatchChangeAsync"/>. Eigenaarsbesluit (survey 2026-10-11, #1626): de twee
+    /// publieke paden blijven gescheiden; alleen het interne samenstellen van de <c>MatchData</c>
+    /// wordt gedeeld via <see cref="BouwMatchData"/>. Sinds #1319 volgt deze aanroep de gewone
     /// club-instelling <c>sportlinkDryRun</c> (zie <see cref="UpdateMatchDetailsChangeRequestLiveBevestigd"/>):
     /// bij een echte PUT loopt de respons door <see cref="ParseMatchChangeValidatie"/> via de
     /// <c>verrijkResultaat</c>-hook; bij een gesimuleerde (dry-run) aanroep gebeurt dat niet, want
@@ -124,7 +105,8 @@ public partial class SportlinkClubClient
     /// overschreven), maar met <c>MatchDate</c>/<c>StartTime</c>/<c>FacilityId</c>/
     /// <c>MatchChangeRequestRemarks</c> als overschrijfbare velden in plaats van het veld. Hergebruikt
     /// bewust de bestaande <see cref="MatchDataBody"/>/<see cref="UpdateMatchDetailsBody"/>-records
-    /// (pure databehouders, geen logica) — alleen de BOUW-methode is een eigen kopie.
+    /// (pure databehouders, geen logica); het samenstellen van de <c>MatchData</c> loopt sinds #1626
+    /// via de gedeelde <see cref="BouwMatchData"/>, de envelope zelf blijft een eigen bouw.
     /// <para>
     /// <b>ONBEVESTIGD (#995):</b> <c>IsMatchChangeRequestMandatory: true</c> en een lege
     /// <c>PublicApplicantId</c> zijn aannames — #993's veld-wijziging gebruikt <c>false</c> resp. een
@@ -136,29 +118,11 @@ public partial class SportlinkClubClient
         string publicMatchId, SportlinkMatchDetailsSnapshot snapshot,
         DateOnly? nieuweDatum, TimeOnly? nieuweStartTijd, string? nieuweFacilityId, string toelichting)
     {
-        var matchData = new MatchDataBody(
-            AgeClassCode: snapshot.AgeClassCode,
-            AssemblyTime: snapshot.MatchDetails?.MatchDetailsHome?.AssemblyTime?.Value,
-            AwayScore: snapshot.Result?.AwayScore,
-            AwayTeam: snapshot.Teams?.Away?.TeamName,
-            DepartureTime: null,
-            Description: snapshot.MatchDetails?.Description?.Value,
-            Drivers: "",
-            Duration: snapshot.Duration,
-            ExternalMatchId: snapshot.ExternalMatchId,
-            FacilityId: nieuweFacilityId ?? snapshot.MatchField?.FacilityId,
-            FieldId: snapshot.Field?.FieldId,
-            FieldOffset: snapshot.Field?.FieldOffset,
-            FieldSize: snapshot.Field?.FieldSize,
-            HomeScore: snapshot.Result?.HomeScore,
-            HomeTeam: snapshot.Teams?.Home?.TeamName,
-            MatchChangeRequestRemarks: toelichting,
-            MatchDate: nieuweDatum?.ToString("yyyy-MM-dd") ?? snapshot.MatchDate?.Date,
-            MatchStatus: snapshot.MatchStatus,
-            PublicAwayTeamId: snapshot.Teams?.Away?.PublicTeamId,
-            PublicHomeTeamId: snapshot.Teams?.Home?.PublicTeamId,
-            SportIdTag: snapshot.Sport?.IdTag,
-            StartTime: nieuweStartTijd?.ToString("HH:mm:ss") ?? snapshot.MatchDate?.StartTime);
+        var matchData = BouwMatchData(snapshot, new MatchDataOverschrijving(
+            FacilityId: nieuweFacilityId,
+            MatchDate: nieuweDatum?.ToString("yyyy-MM-dd"),
+            StartTime: nieuweStartTijd?.ToString("HH:mm:ss"),
+            MatchChangeRequestRemarks: toelichting));
 
         return new UpdateMatchDetailsBody(
             ConfirmationNeeded: null,
@@ -284,6 +248,48 @@ public partial class SportlinkClubClient
             _logger.LogWarning(ex, "Onverwachte fout bij match-details-snapshot");
             return new SportlinkClubResponse<SportlinkMatchDetailsSnapshot>(SportlinkClubCallStatus.NetwerkFout, null, "Netwerk fout bij match-details-snapshot", null);
         }
+    }
+
+    /// <summary>
+    /// Alleen de velden die een pad mag overschrijven; <c>null</c> = waarde uit de snapshot houden (#1626).
+    /// Een lege tekst of nul telt dus als overschrijving, alleen <c>null</c> niet.
+    /// </summary>
+    private sealed record MatchDataOverschrijving(
+        string? FieldId = null, string? FieldSize = null, int? FieldOffset = null,
+        string? FacilityId = null, string? MatchDate = null, string? StartTime = null,
+        string? MatchChangeRequestRemarks = null);
+
+    /// <summary>
+    /// Gedeelde opbouw van <c>MatchData</c> voor beide schrijfpaden (#1626): alles uit de snapshot,
+    /// behalve de overschreven velden. De volgorde van de argumenten is de wire-volgorde van
+    /// <see cref="MatchDataBody"/>; de golden-tests leggen die vast.
+    /// </summary>
+    private static MatchDataBody BouwMatchData(SportlinkMatchDetailsSnapshot snapshot, MatchDataOverschrijving o)
+    {
+        var (veld, tijd) = (snapshot.Field, snapshot.MatchDate);
+        return new MatchDataBody(
+            AgeClassCode: snapshot.AgeClassCode,
+            AssemblyTime: snapshot.MatchDetails?.MatchDetailsHome?.AssemblyTime?.Value,
+            AwayScore: snapshot.Result?.AwayScore,
+            AwayTeam: snapshot.Teams?.Away?.TeamName,
+            DepartureTime: null,
+            Description: snapshot.MatchDetails?.Description?.Value,
+            Drivers: "",
+            Duration: snapshot.Duration,
+            ExternalMatchId: snapshot.ExternalMatchId,
+            FacilityId: o.FacilityId ?? snapshot.MatchField?.FacilityId,
+            FieldId: o.FieldId ?? veld?.FieldId,
+            FieldOffset: o.FieldOffset ?? veld?.FieldOffset,
+            FieldSize: o.FieldSize ?? veld?.FieldSize,
+            HomeScore: snapshot.Result?.HomeScore,
+            HomeTeam: snapshot.Teams?.Home?.TeamName,
+            MatchChangeRequestRemarks: o.MatchChangeRequestRemarks ?? "",
+            MatchDate: o.MatchDate ?? tijd?.Date,
+            MatchStatus: snapshot.MatchStatus,
+            PublicAwayTeamId: snapshot.Teams?.Away?.PublicTeamId,
+            PublicHomeTeamId: snapshot.Teams?.Home?.PublicTeamId,
+            SportIdTag: snapshot.Sport?.IdTag,
+            StartTime: o.StartTime ?? tijd?.StartTime);
     }
 
     // ── Rauwe modellen voor UpdateMatchDetails — uitsluitend intern, nooit publiek. Elk veld hier
