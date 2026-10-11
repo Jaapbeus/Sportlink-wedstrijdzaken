@@ -192,8 +192,10 @@ public class AvailabilityServiceIntegrationTests : IDisposable
         var sunset = await PlannerSettingsRepository.GetSunsetAsync(ConnectionString, Zaterdag);
 
         sunset.Should().NotBeNull();
-        // September in Nederland: zonsondergang ergens tussen 19:00 en 21:00 lokale tijd.
-        sunset!.Value.Should().BeAfter(new TimeOnly(18, 0)).And.BeBefore(new TimeOnly(21, 30));
+        // Zaterdag ligt steeds twee weken vooruit en schuift dus door het jaar. In Nederland valt
+        // de zon het hele jaar tussen ca. 16:25 (december) en 22:05 (juni) lokale tijd onder;
+        // een vast seizoensvenster faalde zodra de testdatum in de wintertijd viel (#1614).
+        sunset!.Value.Should().BeAfter(new TimeOnly(16, 0)).And.BeBefore(new TimeOnly(22, 30));
     }
 
     [PostgresFact]
