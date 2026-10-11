@@ -51,7 +51,7 @@ internal static partial class BerichtPipeline
             // Zonder bruikbare datum heeft een plannercheck geen zin: die levert een
             // interne foutstring ("Ongeldige datum: .") op die in het antwoord aan de
             // afzender zou belanden.
-            return JsonConvert.SerializeObject(new { datumOnbekend = true });
+            return PlannerAntwoordJson.DatumOnbekend();
         }
         classificatie.Datum = primaireDatum;
 
@@ -82,13 +82,13 @@ internal static partial class BerichtPipeline
                 cs, classificatie.Tegenstander!, opponentCheckDatum, clubCode);
         if (wedstrijdOpDatum != null) trace?.OpponentPad("opponent-op-datum", true);
         if (wedstrijdOpDatum != null)
-            return new(JsonConvert.SerializeObject(new { wedstrijdAlIngepland = true, wedstrijd = wedstrijdOpDatum }), null);
+            return new(PlannerAntwoordJson.WedstrijdAlIngepland(wedstrijdOpDatum), null);
 
         var wedstrijdAndereDatum = await PlannerMatchRepository.FindMatchByOpponentAsync(
                 cs, classificatie.Tegenstander!, null, clubCode);
         trace?.OpponentPad(wedstrijdAndereDatum == null ? "niet-gevonden" : "opponent-andere-datum", wedstrijdAndereDatum != null);
         if (wedstrijdAndereDatum == null)
-            return new(JsonConvert.SerializeObject(new { teamOnbekend = true, tegenstander = classificatie.Tegenstander }), null);
+            return new(PlannerAntwoordJson.TeamOnbekend(classificatie.Tegenstander), null);
 
         var eigenTeam = await BepaalEigenTeamUitWedstrijdAsync(
             wedstrijdAndereDatum.Wedstrijd, teamResolver, cc, log, trace);
@@ -98,14 +98,14 @@ internal static partial class BerichtPipeline
     private static async Task<string> VerwerkMultiDatumAsync(
         string cs, BerichtClassificatie classificatie, List<string> alleDatums, string? clubCode, ILogger log)
     {
-        var multiResults = new List<object>();
+        var multiResults = new List<(string Datum, object? Response)>();
         foreach (var datum in alleDatums)
         {
             var req = BouwBeschikbaarheidRequest(classificatie, datum);
             var resp = await AvailabilityService.CheckAvailabilityAsync(cs, req, log, clubCode);
-            multiResults.Add(new { datum, response = resp });
+            multiResults.Add((datum, resp));
         }
-        return JsonConvert.SerializeObject(new { multiDatum = true, resultaten = multiResults });
+        return PlannerAntwoordJson.MultiDatum(multiResults);
     }
 
     /// <summary>
@@ -118,15 +118,15 @@ internal static partial class BerichtPipeline
     {
         if (string.IsNullOrEmpty(classificatie.TeamNaam) || string.IsNullOrEmpty(classificatie.Datum)
             || !DateOnly.TryParse(classificatie.Datum, out var datum))
-            return JsonConvert.SerializeObject(new { error = "Onvoldoende gegevens voor herplanverzoek (team en datum nodig)" });
+            return PlannerAntwoordJson.OnvoldoendeHerplanGegevens();
 
         var wedstrijd = await PlannerMatchRepository.FindMatchAsync(cs, classificatie.TeamNaam, datum, clubCode);
         if (wedstrijd == null)
-            return JsonConvert.SerializeObject(new { gevonden = false, reden = $"Geen wedstrijd gevonden voor {classificatie.TeamNaam} op {classificatie.Datum}" });
+            return PlannerAntwoordJson.HerplanWedstrijdNietGevonden(classificatie.TeamNaam, classificatie.Datum);
 
         var deadlineDagen = clubSettings?.HerplanDeadlineDagen
             ?? (int.TryParse(PostgresAppSettings.GetSetting("herplanDeadlineDagen"), out var dd) ? dd : 8);
-        var teLaat = BepaalHerplanTeLaat(wedstrijd, deadlineDagen);
+        var teLaat = PlannerAntwoordJson.HerplanTeLaat(wedstrijd, wedstrijd.Datum, deadlineDagen);
         if (teLaat != null) return teLaat;
 
         // #561: een tegenstander die om herplannen vraagt zonder concrete
@@ -145,23 +145,6 @@ internal static partial class BerichtPipeline
         return await BouwHerplanAntwoordAsync(cs, classificatie, bericht, wedstrijd, clubCode, log);
     }
 
-    /// <summary>Antwoord <c>herplanTeLaat</c> als de wedstrijd binnen de deadline valt, anders <c>null</c>.</summary>
-    private static string? BepaalHerplanTeLaat(ZoekWedstrijdResponse wedstrijd, int deadlineDagen)
-    {
-        if (!DateOnly.TryParse(wedstrijd.Datum, out var wedstrijdDatum)) return null;
-
-        var dagenTotWedstrijd = (wedstrijdDatum.ToDateTime(TimeOnly.MinValue) - DateTime.Today).TotalDays;
-        if (dagenTotWedstrijd >= deadlineDagen) return null;
-
-        return JsonConvert.SerializeObject(new
-        {
-            herplanTeLaat = true,
-            wedstrijd,
-            deadlineDagen,
-            dagenTotWedstrijd = (int)dagenTotWedstrijd
-        });
-    }
-
     private static async Task<string> BouwHerplanAntwoordAsync(
         string cs, BerichtClassificatie classificatie, InkomendBericht bericht, ZoekWedstrijdResponse wedstrijd,
         string? clubCode, ILogger log)
@@ -176,7 +159,7 @@ internal static partial class BerichtPipeline
                 Dagdeel = classificatie.Dagdeel
             };
             var beschikbaarheid = await AvailabilityService.CheckAvailabilityAsync(cs, gewenstRequest, log, clubCode);
-            return JsonConvert.SerializeObject(new { wedstrijd, gewensteDatum = classificatie.GewensteDatum, beschikbaarheid });
+            return PlannerAntwoordJson.HerplanMetGewensteDatum(wedstrijd, classificatie.GewensteDatum, beschikbaarheid);
         }
 
         var herplanRequest = new HerplanCheckRequest
@@ -187,25 +170,20 @@ internal static partial class BerichtPipeline
             Richting = BerichtTekstHeuristiek.DetecteerRichting(bericht.Onderwerp, bericht.Body ?? "")
         };
         var herplanResponse = await RescheduleService.CheckRescheduleAvailabilityAsync(cs, herplanRequest, log, clubCode);
-        return JsonConvert.SerializeObject(new { wedstrijd, herplanOpties = herplanResponse });
+        return PlannerAntwoordJson.HerplanOpties(wedstrijd, herplanResponse);
     }
 
     private static async Task<string> VerwerkTeamContactAsync(
         string cs, BerichtClassificatie classificatie, string? clubCode)
     {
         if (string.IsNullOrWhiteSpace(classificatie.TeamNaam))
-            return JsonConvert.SerializeObject(new { teamContactOpgevraagd = true, teamNaam = (string?)null, coachGevonden = false });
+            return PlannerAntwoordJson.TeamContact(null, false);
 
         // clubCode meegeven zodat een dry-run met de demoklub geselecteerd niet de
         // begeleidingscontacten van de productieclub raadpleegt (#677/#706), zelfde
         // reden als het SQL Server-origineel.
         var contact = await AllstarsTestDataRepository.GetTeamleiderContactAsync(
             cs, classificatie.TeamNaam, clubCode);
-        return JsonConvert.SerializeObject(new
-        {
-            teamContactOpgevraagd = true,
-            teamNaam = classificatie.TeamNaam,
-            coachGevonden = contact != null
-        });
+        return PlannerAntwoordJson.TeamContact(classificatie.TeamNaam, contact != null);
     }
 }
