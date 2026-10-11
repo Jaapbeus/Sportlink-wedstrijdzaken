@@ -79,6 +79,14 @@ public static class SsrfProtection
     /// loopback, RFC1918-privéreeksen, link-local (169.254.x.x/fe80::/10), CGNAT (100.64.0.0/10),
     /// unique-local IPv6 (fc00::/7), multicast/gereserveerd, en de IPv4-mapped-IPv6-equivalenten
     /// daarvan (::ffff:10.0.0.1 wordt eerst naar IPv4 uitgepakt).
+    /// <para>
+    /// IPv6-beleid (#1622): een adres is alleen publiek binnen 2000::/3 (globaal unicast, RFC 4291).
+    /// De daaropvolgende prefixcontroles (fc00::/7, link-local, NAT64, IPv4-compatible, enz.) liggen
+    /// grotendeels buiten 2000::/3 en zijn daardoor redundant; ze blijven bewust staan als
+    /// defense in depth, zodat een latere versoepeling van de poort niet stilzwijgend een bereik opent.
+    /// Binnen 2000::/3 blokkeren ze nog 2001:db8::/32, Teredo, 2001:1::/32 en 6to4 met een
+    /// niet-publiek ingebed IPv4-adres.
+    /// </para>
     /// </summary>
     public static bool IsPublicIpAddress(IPAddress address)
     {
@@ -112,6 +120,10 @@ public static class SsrfProtection
             if (address.IsIPv6LinkLocal || address.IsIPv6SiteLocal || address.IsIPv6Multicast)
                 return false;
             var b = address.GetAddressBytes();
+            // Beleidspoort (#1622): alleen globaal unicast 2000::/3 kan publiek zijn (RFC 4291).
+            // Alles daarbuiten (::, ::/96-compatible, ::ffff:0:0/96-translated, 64:ff9b::/96 NAT64,
+            // 100::/64, fc00::/7, fe80::/10, ff00::/8, ...) is fail-closed geblokkeerd.
+            if ((b[0] & 0xE0) != 0x20) return false;
             if ((b[0] & 0xFE) == 0xFC) return false; // fc00::/7 unique local
             if (IsGeblokkeerdIpv6Prefix(b)) return false;
 
