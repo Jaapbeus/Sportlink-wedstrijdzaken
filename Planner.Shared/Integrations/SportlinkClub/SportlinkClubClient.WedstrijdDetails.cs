@@ -261,36 +261,47 @@ public partial class SportlinkClubClient
 
     /// <summary>
     /// Gedeelde opbouw van <c>MatchData</c> voor beide schrijfpaden (#1626): alles uit de snapshot,
-    /// behalve de overschreven velden. De volgorde van de argumenten is de wire-volgorde van
-    /// <see cref="MatchDataBody"/>; de golden-tests leggen die vast.
+    /// behalve de overschreven velden. In twee stappen om elke stap klein te houden: eerst een
+    /// volledige kopie van de snapshot, dan alleen de overschrijfbare velden. De golden-tests
+    /// leggen de volledige body van beide paden vast.
     /// </summary>
     private static MatchDataBody BouwMatchData(SportlinkMatchDetailsSnapshot snapshot, MatchDataOverschrijving o)
+        => PasOverschrijvingToe(MatchDataUitSnapshot(snapshot), o);
+
+    private static MatchDataBody MatchDataUitSnapshot(SportlinkMatchDetailsSnapshot snapshot) => new(
+        AgeClassCode: snapshot.AgeClassCode,
+        AssemblyTime: snapshot.MatchDetails?.MatchDetailsHome?.AssemblyTime?.Value,
+        AwayScore: snapshot.Result?.AwayScore,
+        AwayTeam: snapshot.Teams?.Away?.TeamName,
+        DepartureTime: null,
+        Description: snapshot.MatchDetails?.Description?.Value,
+        Drivers: "",
+        Duration: snapshot.Duration,
+        ExternalMatchId: snapshot.ExternalMatchId,
+        FacilityId: snapshot.MatchField?.FacilityId,
+        FieldId: snapshot.Field?.FieldId,
+        FieldOffset: snapshot.Field?.FieldOffset,
+        FieldSize: snapshot.Field?.FieldSize,
+        HomeScore: snapshot.Result?.HomeScore,
+        HomeTeam: snapshot.Teams?.Home?.TeamName,
+        MatchChangeRequestRemarks: "",
+        MatchDate: snapshot.MatchDate?.Date,
+        MatchStatus: snapshot.MatchStatus,
+        PublicAwayTeamId: snapshot.Teams?.Away?.PublicTeamId,
+        PublicHomeTeamId: snapshot.Teams?.Home?.PublicTeamId,
+        SportIdTag: snapshot.Sport?.IdTag,
+        StartTime: snapshot.MatchDate?.StartTime);
+
+    private static MatchDataBody PasOverschrijvingToe(MatchDataBody basis, MatchDataOverschrijving o) => basis with
     {
-        var (veld, tijd) = (snapshot.Field, snapshot.MatchDate);
-        return new MatchDataBody(
-            AgeClassCode: snapshot.AgeClassCode,
-            AssemblyTime: snapshot.MatchDetails?.MatchDetailsHome?.AssemblyTime?.Value,
-            AwayScore: snapshot.Result?.AwayScore,
-            AwayTeam: snapshot.Teams?.Away?.TeamName,
-            DepartureTime: null,
-            Description: snapshot.MatchDetails?.Description?.Value,
-            Drivers: "",
-            Duration: snapshot.Duration,
-            ExternalMatchId: snapshot.ExternalMatchId,
-            FacilityId: o.FacilityId ?? snapshot.MatchField?.FacilityId,
-            FieldId: o.FieldId ?? veld?.FieldId,
-            FieldOffset: o.FieldOffset ?? veld?.FieldOffset,
-            FieldSize: o.FieldSize ?? veld?.FieldSize,
-            HomeScore: snapshot.Result?.HomeScore,
-            HomeTeam: snapshot.Teams?.Home?.TeamName,
-            MatchChangeRequestRemarks: o.MatchChangeRequestRemarks ?? "",
-            MatchDate: o.MatchDate ?? tijd?.Date,
-            MatchStatus: snapshot.MatchStatus,
-            PublicAwayTeamId: snapshot.Teams?.Away?.PublicTeamId,
-            PublicHomeTeamId: snapshot.Teams?.Home?.PublicTeamId,
-            SportIdTag: snapshot.Sport?.IdTag,
-            StartTime: o.StartTime ?? tijd?.StartTime);
-    }
+        FacilityId = o.FacilityId ?? basis.FacilityId,
+        FieldId = o.FieldId ?? basis.FieldId,
+        FieldOffset = o.FieldOffset ?? basis.FieldOffset,
+        FieldSize = o.FieldSize ?? basis.FieldSize,
+        MatchChangeRequestRemarks = o.MatchChangeRequestRemarks ?? basis.MatchChangeRequestRemarks,
+        MatchDate = o.MatchDate ?? basis.MatchDate,
+        StartTime = o.StartTime ?? basis.StartTime
+    };
 
     // ── Rauwe modellen voor UpdateMatchDetails — uitsluitend intern, nooit publiek. Elk veld hier
     // is live bevestigd aanwezig in Sportlinks eigen Match-GET-respons (2026-09-06, #1047),

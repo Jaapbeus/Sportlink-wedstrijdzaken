@@ -19,6 +19,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Changed
+- Sportlink-client: formulierverwerking van de automatische login en de opbouw van wedstrijddetails opgesplitst in kleine stappen; de twee schrijfpaden blijven gescheiden, met golden-tests (#1626).
 - Parameterbinding voor Sportlink-wedstrijddetails op de SQL Server-tier opgesplitst naar het Postgres-patroon, met karakterisatietest (#1624).
 - Planningsbuffers, categorietabel-HTML en SSRF-adrescontrole opgesplitst in kleine benoemde stappen, met karakterisatietests (#1625).
 
