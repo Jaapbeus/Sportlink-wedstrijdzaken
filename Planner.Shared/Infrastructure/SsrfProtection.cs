@@ -99,43 +99,50 @@ public static class SsrfProtection
             return false;
 
         if (address.AddressFamily == AddressFamily.InterNetwork)
-        {
-            var b = address.GetAddressBytes();
-            if (b[0] == 0) return false;                                   // 0.0.0.0/8
-            if (b[0] == 10) return false;                                  // 10.0.0.0/8
-            if (b[0] == 100 && b[1] >= 64 && b[1] <= 127) return false;     // 100.64.0.0/10 CGNAT
-            if (b[0] == 127) return false;                                 // 127.0.0.0/8 loopback
-            if (b[0] == 169 && b[1] == 254) return false;                  // 169.254.0.0/16 link-local
-            if (b[0] == 168 && b[1] == 63 && b[2] == 129 && b[3] == 16) return false; // Azure-platformadres (wireserver)
-            if (b[0] == 172 && b[1] >= 16 && b[1] <= 31) return false;     // 172.16.0.0/12
-            if (b[0] == 192 && b[1] == 0 && b[2] == 0) return false;       // 192.0.0.0/24 IETF
-            if (b[0] == 192 && b[1] == 168) return false;                  // 192.168.0.0/16
-            if (b[0] == 198 && (b[1] == 18 || b[1] == 19)) return false;   // 198.18.0.0/15 benchmark
-            if (b[0] >= 224) return false;                                 // multicast/gereserveerd/broadcast
-            return true;
-        }
+            return IsPublicIpv4(address.GetAddressBytes());
 
         if (address.AddressFamily == AddressFamily.InterNetworkV6)
-        {
-            if (address.IsIPv6LinkLocal || address.IsIPv6SiteLocal || address.IsIPv6Multicast)
-                return false;
-            var b = address.GetAddressBytes();
-            // Beleidspoort (#1622): alleen globaal unicast 2000::/3 kan publiek zijn (RFC 4291).
-            // Alles daarbuiten (::, ::/96-compatible, ::ffff:0:0/96-translated, 64:ff9b::/96 NAT64,
-            // 100::/64, fc00::/7, fe80::/10, ff00::/8, ...) is fail-closed geblokkeerd.
-            if ((b[0] & 0xE0) != 0x20) return false;
-            if ((b[0] & 0xFE) == 0xFC) return false; // fc00::/7 unique local
-            if (IsGeblokkeerdIpv6Prefix(b)) return false;
-
-            // Overgangsmechanismen die een IPv4-adres inbedden: beoordeel dat IPv4-adres met
-            // dezelfde regels, zodat een privé/gereserveerd IPv4-adres niet via IPv6 binnenkomt.
-            if (TryIngebeddeIpv4(b, out var ingebed))
-                return IsPublicIpAddress(ingebed);
-
-            return true;
-        }
+            return IsPublicIpv6(address);
 
         return false;
+    }
+
+    /// <summary>IPv4-regels van <see cref="IsPublicIpAddress"/> (bytes van een gewoon IPv4-adres).</summary>
+    private static bool IsPublicIpv4(byte[] b)
+    {
+        if (b[0] == 0) return false;                                   // 0.0.0.0/8
+        if (b[0] == 10) return false;                                  // 10.0.0.0/8
+        if (b[0] == 100 && b[1] >= 64 && b[1] <= 127) return false;     // 100.64.0.0/10 CGNAT
+        if (b[0] == 127) return false;                                 // 127.0.0.0/8 loopback
+        if (b[0] == 169 && b[1] == 254) return false;                  // 169.254.0.0/16 link-local
+        if (b[0] == 168 && b[1] == 63 && b[2] == 129 && b[3] == 16) return false; // Azure-platformadres (wireserver)
+        if (b[0] == 172 && b[1] >= 16 && b[1] <= 31) return false;     // 172.16.0.0/12
+        if (b[0] == 192 && b[1] == 0 && b[2] == 0) return false;       // 192.0.0.0/24 IETF
+        if (b[0] == 192 && b[1] == 168) return false;                  // 192.168.0.0/16
+        if (b[0] == 198 && (b[1] == 18 || b[1] == 19)) return false;   // 198.18.0.0/15 benchmark
+        if (b[0] >= 224) return false;                                 // multicast/gereserveerd/broadcast
+        return true;
+    }
+
+    /// <summary>IPv6-regels van <see cref="IsPublicIpAddress"/> (adres is geen IPv4-mapped adres meer).</summary>
+    private static bool IsPublicIpv6(IPAddress address)
+    {
+        if (address.IsIPv6LinkLocal || address.IsIPv6SiteLocal || address.IsIPv6Multicast)
+            return false;
+        var b = address.GetAddressBytes();
+        // Beleidspoort (#1622): alleen globaal unicast 2000::/3 kan publiek zijn (RFC 4291).
+        // Alles daarbuiten (::, ::/96-compatible, ::ffff:0:0/96-translated, 64:ff9b::/96 NAT64,
+        // 100::/64, fc00::/7, fe80::/10, ff00::/8, ...) is fail-closed geblokkeerd.
+        if ((b[0] & 0xE0) != 0x20) return false;
+        if ((b[0] & 0xFE) == 0xFC) return false; // fc00::/7 unique local
+        if (IsGeblokkeerdIpv6Prefix(b)) return false;
+
+        // Overgangsmechanismen die een IPv4-adres inbedden: beoordeel dat IPv4-adres met
+        // dezelfde regels, zodat een privé/gereserveerd IPv4-adres niet via IPv6 binnenkomt.
+        if (TryIngebeddeIpv4(b, out var ingebed))
+            return IsPublicIpAddress(ingebed);
+
+        return true;
     }
 
     // Prefix (eerste bytes) + prefixlengte in bits.
