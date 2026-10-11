@@ -33,6 +33,8 @@ internal sealed class TemplateAntwoordBron : ITemplateAntwoordBron
         _haalSjabloonOp = haalSjabloonOp;
     }
 
+    public void ValideerWedstrijd(JToken? wedstrijd) => wedstrijd?.ToObject<ZoekWedstrijdResponse>();
+
     public (string onderwerp, string body) WedstrijdAlIngepland(JToken? wedstrijd)
         => BerichtResponseGenerator.BouwWedstrijdAlIngeplandAntwoord(
             wedstrijd?.ToObject<ZoekWedstrijdResponse>(), _classificatie, _bericht, _clubSettings);
@@ -44,8 +46,7 @@ internal sealed class TemplateAntwoordBron : ITemplateAntwoordBron
     public (string onderwerp, string body) DatumOnbekend()
     {
         var datumOnbekendTemplate = new EmailTemplate(
-            "datum_onbekend",
-            "",
+            "datum_onbekend", "",
             "{{aanhef}} {{voornaam}},\n\n"
             + "Bedankt voor je bericht. We konden er geen concrete datum uit opmaken. "
             + "Kun je aangeven welke datum of datums je in gedachten hebt? "
