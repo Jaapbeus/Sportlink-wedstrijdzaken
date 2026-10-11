@@ -138,10 +138,32 @@ public static class SsrfProtection
         return false;
     }
 
+    // Prefix (eerste bytes) + prefixlengte in bits.
+    private static readonly (byte[] Prefix, int Bits)[] IanaNietGlobaalBereikbaar =
+    {
+        (new byte[] { 0x20, 0x01, 0x00, 0x02, 0x00, 0x00 }, 48),  // 2001:2::/48 Benchmarking (RFC 5180)
+        (new byte[] { 0x20, 0x01, 0x00, 0x10 }, 28),  // 2001:10::/28 ORCHID (gedeprecieerd)
+        (new byte[] { 0x20, 0x01, 0x00, 0x20 }, 28),  // 2001:20::/28 ORCHIDv2 (RFC 7343)
+        (new byte[] { 0x20, 0x01, 0x00, 0x30 }, 28),  // 2001:30::/28 Drone Remote ID (RFC 9374)
+        (new byte[] { 0x3F, 0xFF, 0x00 }, 20),        // 3fff::/20 Documentation (RFC 9637)
+    };
+
+    private static bool HeeftPrefix(byte[] b, byte[] prefix, int bits)
+    {
+        for (var i = 0; i < bits / 8; i++)
+            if (b[i] != prefix[i]) return false;
+        var rest = bits % 8;
+        if (rest == 0) return true;
+        var masker = (byte)(0xFF << (8 - rest));
+        return (b[bits / 8] & masker) == (prefix[bits / 8] & masker);
+    }
+
     /// <summary>
     /// IPv6-prefixen die nooit een publieke bestemming zijn: unspecified (::), discard-only
     /// (100::/64), documentatie (2001:db8::/32), Teredo (2001:0::/32), speciale anycast-toewijzingen (2001:1::/32) en NAT64 voor lokaal
-    /// gebruik (64:ff9b:1::/48). Teredo en NAT64-lokaal worden bewust volledig geblokkeerd in
+    /// gebruik (64:ff9b:1::/48). Binnen 2000::/3 bovendien alle IANA special-purpose-toewijzingen met
+    /// Globally Reachable = False (benchmarking, ORCHID/ORCHIDv2, Drone Remote ID, documentatie 3fff::/20; SRv6 5f00::/16 valt buiten 2000::/3).
+    /// Teredo en NAT64-lokaal worden bewust volledig geblokkeerd in
     /// plaats van de ingebedde IPv4-adressen te ontleden: simpeler en fail-closed.
     /// </summary>
     private static bool IsGeblokkeerdIpv6Prefix(byte[] b)
@@ -153,6 +175,12 @@ public static class SsrfProtection
         if (b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x00 && b[3] == 0x01) return true;        // 2001:1::/32 speciale anycast-toewijzingen
         if (b[0] == 0x00 && b[1] == 0x64 && b[2] == 0xFF && b[3] == 0x9B && b[4] == 0x00 && b[5] == 0x01)
             return true;                                                                      // 64:ff9b:1::/48
+
+        // Binnen 2000::/3: alle IANA IPv6 Special-Purpose-toewijzingen met Globally Reachable = False.
+        // Globally Reachable = True (bewust NIET geblokkeerd): 2001:3::/32 AMT, 2001:4:112::/48 en 2620:4f:8000::/48 AS112.
+        foreach (var (prefix, bits) in IanaNietGlobaalBereikbaar)
+            if (HeeftPrefix(b, prefix, bits)) return true;
+        // 5f00::/16 (SRv6 SIDs, RFC 9602) ligt buiten 2000::/3 en is al geblokkeerd door de 2000::/3-poort.
         return false;
     }
 

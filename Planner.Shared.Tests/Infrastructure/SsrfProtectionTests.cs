@@ -246,11 +246,20 @@ public class SsrfProtectionTests
     [Theory]
     [InlineData("2001:db8::", 32, true, true)]
     [InlineData("2001::", 32, true, false)]
-    [InlineData("2001:1::", 32, false, true)]
+    [InlineData("2001:1::", 32, false, false)]
     [InlineData("100::", 64, false, false)]
     [InlineData("64:ff9b::", 96, false, false)]
     [InlineData("64:ff9b:1::", 48, false, false)]
     [InlineData("fc00::", 7, false, false)]
+    // IANA special-purpose (Globally Reachable = False) binnen 2000::/3. Aangrenzend geblokkeerd:
+    // voorganger van 2001:2::/48 (2001:1:ffff:..) valt in 2001:1::/32; opvolger van 2001:10::/28 is 2001:20::,
+    // van 2001:20::/28 is 2001:30:: (beide geblokkeerd). 2001:30::/28 -> 2001:40:: publiek.
+    [InlineData("2001:2::", 48, false, true)]
+    [InlineData("2001:10::", 28, true, false)]
+    [InlineData("2001:20::", 28, false, false)]
+    [InlineData("2001:30::", 28, false, true)]
+    [InlineData("3fff::", 20, true, true)] // 3fff:0000::-3fff:0fff:: ; voorganger 3ffe:ffff:.. en opvolger 3fff:1000:: publiek
+    [InlineData("5f00::", 16, false, false)] // buiten 2000::/3: ook de buren zijn geblokkeerd
     public void Prefixgrenzen_WordenExactBewaakt(string prefix, int lengte, bool voorgangerPubliek, bool opvolgerPubliek)
     {
         var (eerste, laatste, voorganger, opvolger) = Grenzen(prefix, lengte);
@@ -264,11 +273,25 @@ public class SsrfProtectionTests
     [Theory]
     [InlineData("1fff:ffff:ffff:ffff:ffff:ffff:ffff:ffff", false)] // direct onder 2000::/3
     [InlineData("2000::", true)]                                    // eerste adres 2000::/3
-    [InlineData("3fff:ffff:ffff:ffff:ffff:ffff:ffff:ffff", true)]   // laatste adres 2000::/3
+    [InlineData("3ffe:ffff:ffff:ffff:ffff:ffff:ffff:ffff", true)]   // direct onder 3fff::/20
+    [InlineData("3fff:1000::", true)]                               // direct boven 3fff::/20, nog binnen 2000::/3
+    [InlineData("3fff::", false)]                                   // eerste adres 3fff::/20 documentatie (RFC 9637)
+    [InlineData("3fff:fff:ffff:ffff:ffff:ffff:ffff:ffff", false)]   // laatste adres 3fff::/20
+    [InlineData("3fff:ffff:ffff:ffff:ffff:ffff:ffff:ffff", true)]   // laatste adres 2000::/3; ligt NIET in 3fff::/20 (die loopt tot 3fff:0fff:..)
     [InlineData("4000::", false)]                                   // direct boven 2000::/3
     public void GlobaalUnicastGrenzen_2000Slash3(string ip, bool verwachtPubliek)
     {
         SsrfProtection.IsPublicIpAddress(IPAddress.Parse(ip)).Should().Be(verwachtPubliek);
+    }
+
+    // IANA Special-Purpose Registry: Globally Reachable = True, dus bewust publiek (beleid in beide richtingen).
+    [Theory]
+    [InlineData("2001:3::1")]       // 2001:3::/32 AMT (RFC 7450)
+    [InlineData("2001:4:112::1")]   // 2001:4:112::/48 AS112-v6 (RFC 7534)
+    [InlineData("2620:4f:8000::1")] // 2620:4f:8000::/48 Direct Delegation AS112 (RFC 7534)
+    public void GloballyReachableSpecialPurpose_BlijftPubliek(string ip)
+    {
+        SsrfProtection.IsPublicIpAddress(IPAddress.Parse(ip)).Should().BeTrue($"{ip} is in IANA Globally Reachable = True");
     }
 
     // 6to4 (2002::/16) met ingebed IPv4: laatste adres van elk privé-/gereserveerd bereik geblokkeerd,
