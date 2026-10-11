@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- Parameterbinding voor Sportlink-wedstrijddetails op de SQL Server-tier opgesplitst naar het Postgres-patroon, met karakterisatietest (#1624).
+
 ### Fixed
 - Tijdschema's worden op de instellingenpagina en in de API door één gedeelde vertaler leesbaar gemaakt; weekdag-, interval- en maandpatronen werken nu overal (#1623).
 
