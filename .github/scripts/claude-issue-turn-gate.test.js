@@ -171,6 +171,26 @@ function fakeGithub({
     check('nieuwere aanvaller-PR wint niet van de eigen PR', result.prNumber, 600);
   }
 
+  // ---------- #1633: de eigen PR van de Claude GitHub App wordt herkend ----------
+  {
+    const botPr = ownPr(55, {
+      number: 610, author_association: 'NONE', user: { login: 'claude[bot]', type: 'Bot' },
+    });
+    const github = fakeGithub({ labels: ['source: claude-code'], openPrs: [botPr] });
+    const result = await evaluateGate({ github, context: ctx, core, issueNumber: 55 });
+    check('PR van claude[bot] (associatie NONE): fase verwerking', result.phase, 'verwerking');
+    check('PR van claude[bot]: pr-nummer doorgegeven', result.prNumber, 610);
+  }
+
+  {
+    const fakeBot = ownPr(56, {
+      number: 611, author_association: 'NONE', user: { login: 'claude[bot]', type: 'User' },
+    });
+    const github = fakeGithub({ labels: ['source: claude-code'], openPrs: [fakeBot] });
+    const result = await evaluateGate({ github, context: ctx, core, issueNumber: 56 });
+    check('PR van een gebruiker die zich claude[bot] noemt telt niet', result.phase, 'implementatie');
+  }
+
   // ---------- #1612: rondelimiet telt exact, niet op deelstring ----------
   {
     check('runTitle-vorm', runTitle(4), 'Claude issue-beurt #4');

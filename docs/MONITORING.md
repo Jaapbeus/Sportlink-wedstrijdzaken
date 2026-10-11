@@ -102,11 +102,36 @@ Of via Azure Portal → Function App → Settings → Environment variables.
 
 Sinds 2026-10-03 draait de Function App op Flex Consumption. Vier gevolgen voor bewaking:
 
-- **Kosten.** Flex kent geen automatische kostenrem; het gratis tegoed is 250.000 executies en
-  100.000 GB-s per maand per subscription, en vervalt bij always-ready instances (die staan bewust uit).
-  Er staat een eurobudget (5 euro per maand, meldingen bij 85% en 100%). Een metric alert op het tegoed zelf
-  is betaald en wacht op akkoord van de eigenaar (#1075). `maximumInstanceCount` (standaard 5) begrenst het
-  worstgeval.
+- **Kosten.** Flex kent geen automatische kostenrem. De billingmodus geldt per instantie: on-demand-instanties
+  hebben een gratis tegoed van 250.000 executies en 100.000 GB-s per maand per subscription; always-ready-instanties
+  hebben zelf geen tegoed (baseline én executies betaald), het on-demand-tegoed blijft daarbij bestaan. Deze app
+  heeft bewust nul always-ready-instanties. Er staat een Cost Management-budget (5 euro per maand op de resourcegroep, meldingen bij 85% werkelijk
+  en 100% voorspeld; gratis). **Eigenaarsbesluit 2026-10-11 (zie issue #1075):** geen betaalde metric
+  alert op het tegoed; het budget is de bewaking. Let op wat dat betekent: een budget meldt pas als er
+  kosten zijn, dus pas nadat het tegoed op is. `maximumInstanceCount` (5) en `instanceMemoryMB` (2048)
+  begrenzen het worstgeval.
+
+  Handmatige controle (maandelijks, agendapunt eigenaar; eerste volledige maand is oktober 2026):
+  Function App → Monitoring → Metrics, aggregatie *Sum*
+  ([MS Docs](https://learn.microsoft.com/azure/azure-functions/functions-consumption-costs#viewing-and-estimating-costs-from-metrics)).
+  **Eén chart toont maximaal 30 dagen** (platformmetrics worden 93 dagen bewaard, maar de tijdkiezer accepteert
+  per chart hoogstens 30 dagen; een langere periode geeft een lege of onvolledige grafiek —
+  [MS Docs](https://learn.microsoft.com/azure/azure-monitor/metrics/data-platform-metrics#retention-of-metrics)).
+  Meet een kalendermaand daarom in twee aansluitende, niet-overlappende perioden met expliciete tijdzone (UTC,
+  zoals de facturatie) en tel de totalen op. Voorbeeld oktober 2026 (31 dagen): periode A = 1 okt 00:00 t/m
+  30 okt 23:59 UTC (30 dagen), periode B = 31 okt 00:00 t/m 31 okt 23:59 UTC (1 dag); elke dag telt precies één
+  keer mee. Voor een maand van 30 dagen volstaat één chart met de maandgrenzen als aangepast tijdbereik.
+  Reken pas om en vergelijk pas met de drempels nadat A en B zijn opgeteld:
+
+  | Metric | Omrekening | Tegoed | Melden vanaf |
+  |---|---|---|---|
+  | `On Demand Function Execution Count` | direct | 250.000 | 125.000 (50%) |
+  | `On Demand Function Execution Units` (MB-ms) | ÷ 1.024.000 = GB-s | 100.000 GB-s | 50.000 GB-s (50%) |
+  | `Always Ready Units` | ÷ 1.024.000 = GB-s | geen tegoed | **elke waarde > 0** |
+
+  Controleer daarnaast dat de factuurregel voor Azure Functions € 0,00 is. FLEX-02 (#1065) voorspelde bij
+  2048 MB 58–72% van het GB-s-tegoed; een uitkomst boven 50% is een bevinding met voorstel, geen stilzwijgende
+  acceptatie. Boven 85%: eigenaar informeren en een planwijziging (kleinere instantie, minder timers) afwegen.
 - **Timers verifieert u niet alleen via `requests`.** Application Insights is gesampled; een ontbrekende
   request bewijst niet dat een timer niet draaide. Controleer via `traces` of via de regels die de timer in
   de database schrijft (bijvoorbeeld `public.sportlinkcontractcheck`).
