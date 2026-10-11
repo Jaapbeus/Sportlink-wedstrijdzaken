@@ -73,6 +73,259 @@ public class SsrfProtectionTests
         SsrfProtection.IsPublicIpAddress(address).Should().BeTrue();
     }
 
+    // #1622 — aanscherping adresbereikcontrole.
+
+    [Theory]
+    [InlineData("::")]                                     // unspecified
+    [InlineData("::a00:1")]                                // IPv4-compatible, ingebed 10.0.0.1
+    [InlineData("::7f00:1")]                               // IPv4-compatible, ingebed loopback
+    [InlineData("::c0a8:101")]                             // IPv4-compatible, ingebed 192.168.1.1
+    [InlineData("::ffff:0:a00:1")]                         // IPv4-translated, ingebed 10.0.0.1
+    [InlineData("::ffff:0:a9fe:a9fe")]                     // IPv4-translated, ingebed link-local
+    [InlineData("64:ff9b::a00:1")]                         // NAT64, ingebed 10.0.0.1
+    [InlineData("64:ff9b::7f00:1")]                        // NAT64, ingebed loopback
+    [InlineData("64:ff9b::a9fe:a9fe")]                     // NAT64, ingebed link-local
+    [InlineData("64:ff9b:1::a00:1")]                       // NAT64 lokaal gebruik
+    [InlineData("64:ff9b:1::808:808")]                     // NAT64 lokaal gebruik, volledig geblokkeerd
+    [InlineData("2002:a00:1::1")]                          // 6to4, ingebed 10.0.0.1
+    [InlineData("2002:7f00:1::1")]                         // 6to4, ingebed loopback
+    [InlineData("2002:a9fe:a9fe::1")]                      // 6to4, ingebed link-local
+    [InlineData("2001::1")]                                // Teredo
+    [InlineData("2001:0:4136:e378:8000:63bf:3fff:fdd2")]   // Teredo, publieke server en client
+    [InlineData("2001:0:a00:1::1")]                        // Teredo, privé serveradres
+    [InlineData("2001:db8::1")]                            // documentatie
+    [InlineData("2001:db8:ffff::1")]                       // documentatie, bovenkant
+    [InlineData("100::1")]                                 // discard-only
+    [InlineData("100::ffff:ffff:ffff:ffff")]               // discard-only, bovenkant
+    [InlineData("168.63.129.16")]                          // Azure-platformadres
+    public void IsPublicIpAddress_AangescherpteBereiken_IsFalse(string ip)
+    {
+        SsrfProtection.IsPublicIpAddress(IPAddress.Parse(ip)).Should().BeFalse($"{ip} is geen publiek adres");
+    }
+
+    [Theory]
+    [InlineData("2606:4700::1111")]
+    [InlineData("2a00:1450:4001::1")]
+    [InlineData("::ffff:8.8.8.8")]
+    [InlineData("2002:808:808::1")]                        // 6to4, publiek ingebed adres
+    [InlineData("2001:4860:4860::8888")]                   // gewoon publiek adres net boven Teredo
+    [InlineData("2001:db9::1")]                            // net buiten documentatieprefix
+    [InlineData("168.63.129.15")]                          // buren van het Azure-platformadres
+    [InlineData("168.63.129.17")]
+    [InlineData("100.63.255.255")]
+    [InlineData("100.128.0.0")]
+    [InlineData("172.15.255.255")]
+    [InlineData("172.32.0.0")]
+    [InlineData("169.253.0.1")]
+    [InlineData("198.17.0.1")]
+    [InlineData("198.20.0.1")]
+    [InlineData("192.169.0.1")]
+    public void IsPublicIpAddress_GrensnegatievenEnPubliekeAdressen_IsTrue(string ip)
+    {
+        SsrfProtection.IsPublicIpAddress(IPAddress.Parse(ip)).Should().BeTrue($"{ip} is een publiek adres");
+    }
+
+    // #1622 review ronde 1 — grenswaarden per prefix: begin, einde en direct aangrenzende waarde.
+    // Een fout in prefixlengte of bytepositie laat minstens één van deze gevallen falen.
+
+    [Theory]
+    [InlineData("100::")]                                              // 100::/64 begin
+    [InlineData("2001:db8::")]                                         // 2001:db8::/32 begin
+    [InlineData("2001:db8:ffff:ffff:ffff:ffff:ffff:ffff")]             // einde
+    [InlineData("2001::")]                                             // Teredo begin
+    [InlineData("2001:0:ffff:ffff:ffff:ffff:ffff:ffff")]               // Teredo einde
+    [InlineData("2001:1::")]                                           // 2001:1::/32 (speciale anycast-toewijzing) begin
+    [InlineData("2001:1::1")]                                          // PCP-anycast: bewust geblokkeerd
+    [InlineData("2001:1:ffff:ffff:ffff:ffff:ffff:ffff")]               // einde
+    [InlineData("64:ff9b:1::")]                                        // 64:ff9b:1::/48 begin
+    [InlineData("64:ff9b:1:ffff:ffff:ffff:ffff:ffff")]                 // einde
+    [InlineData("fc00::")]                                             // fc00::/7 begin
+    [InlineData("fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")]            // einde
+    [InlineData("64:ff9b::")]                                          // NAT64, ingebed 0.0.0.0
+    [InlineData("64:ff9b::ffff:ffff")]                                 // NAT64, ingebed 255.255.255.255
+    [InlineData("64:ff9b::a00:0")]                                     // NAT64, ingebed 10.0.0.0
+    [InlineData("64:ff9b::aff:ffff")]                                  // NAT64, ingebed 10.255.255.255
+    [InlineData("::a00:0")]                                            // compatible, 10.0.0.0
+    [InlineData("::aff:ffff")]                                         // compatible, 10.255.255.255
+    [InlineData("::ffff:0:aff:ffff")]                                  // translated, 10.255.255.255
+    [InlineData("2002:a00:0:1::")]                                     // 6to4, 10.0.0.0
+    [InlineData("2002:aff:ffff::1")]                                   // 6to4, 10.255.255.255
+    [InlineData("2002:ac10:0::1")]                                     // 6to4, 172.16.0.0
+    [InlineData("2002:ac1f:ffff::1")]                                  // 6to4, 172.31.255.255
+    [InlineData("2002:6440:0::1")]                                     // 6to4, 100.64.0.0
+    [InlineData("2002:647f:ffff::1")]                                  // 6to4, 100.127.255.255
+    [InlineData("2002:c0a8:0::1")]                                     // 6to4, 192.168.0.0
+    [InlineData("2002:c0a8:ffff::1")]                                  // 6to4, 192.168.255.255
+    [InlineData("2002:a9fe:0::1")]                                     // 6to4, 169.254.0.0
+    [InlineData("2002:0:0::1")]                                        // 6to4, 0.0.0.0
+    [InlineData("2002:e000:0::1")]                                     // 6to4, 224.0.0.0
+    public void IsPublicIpAddress_GrenzenAangescherptePrefixen_IsFalse(string ip)
+    {
+        SsrfProtection.IsPublicIpAddress(IPAddress.Parse(ip)).Should().BeFalse($"{ip} valt binnen een geblokkeerd bereik");
+    }
+
+    [Theory]
+    [InlineData("2001:db7:ffff:ffff:ffff:ffff:ffff:ffff")]             // direct onder documentatie
+    [InlineData("2001:db9::")]                                         // direct boven documentatie
+    [InlineData("2000:ffff:ffff:ffff:ffff:ffff:ffff:ffff")]            // direct onder Teredo
+    [InlineData("2001:2:1::1")]                                        // direct boven 2001:1::/32
+    [InlineData("2001:3::1")]                                          // verder boven 2001:1::/32
+    [InlineData("2002:9ff:ffff::1")]                                   // 6to4, 9.255.255.255
+    [InlineData("2002:b00:0::1")]                                      // 6to4, 11.0.0.0
+    [InlineData("2002:ac0f:ffff::1")]                                  // 6to4, 172.15.255.255
+    [InlineData("2002:ac20:0::1")]                                     // 6to4, 172.32.0.0
+    [InlineData("2002:643f:ffff::1")]                                  // 6to4, 100.63.255.255
+    [InlineData("2002:6480:0::1")]                                     // 6to4, 100.128.0.0
+    [InlineData("2002:c0a7:ffff::1")]                                  // 6to4, 192.167.255.255
+    [InlineData("2002:c0a9:0::1")]                                     // 6to4, 192.169.0.0
+    [InlineData("2002:a9ff:0::1")]                                     // 6to4, 169.255.0.0
+    [InlineData("2002:dfff:ffff::1")]                                  // 6to4, 223.255.255.255
+    [InlineData("2001:ffff:ffff:ffff:ffff:ffff:ffff:ffff")]            // direct onder 2002::/16
+    [InlineData("2003::")]                                             // direct boven 2002::/16
+    public void IsPublicIpAddress_GrenzenBuitenAangescherptePrefixen_IsTrue(string ip)
+    {
+        SsrfProtection.IsPublicIpAddress(IPAddress.Parse(ip)).Should().BeTrue($"{ip} ligt buiten alle geblokkeerde bereiken");
+    }
+
+    // #1622 review ronde 2 — beleid: een IPv6-adres kan alleen publiek zijn binnen het globale
+    // unicastbereik 2000::/3 (RFC 4291). Deze gevallen stonden eerder als "publiek" en zijn hierheen
+    // verplaatst: ze liggen buiten 2000::/3, niet globaal unicast, dus fail-closed geblokkeerd.
+    [Theory]
+    [InlineData("64:ff9b::808:808")]                       // NAT64, publiek ingebed adres
+    [InlineData("::808:808")]                              // IPv4-compatible, publiek ingebed adres
+    [InlineData("::ffff:0:808:808")]                       // IPv4-translated, publiek ingebed adres
+    [InlineData("100:0:0:1::1")]                           // net buiten discard-prefix
+    [InlineData("ff:ffff:ffff:ffff::")]                                // direct onder 100::/64 (byte 0 afwijkend)
+    [InlineData("101::")]                                              // direct boven 100::/64 (byte 1 afwijkend)
+    [InlineData("100:0:0:1::")]                                        // net buiten 100::/64
+    [InlineData("64:ff9b:2::")]                                        // direct boven 64:ff9b:1::/48
+    [InlineData("64:ff9b:0:1::")]                                      // geen NAT64-/96, geen lokaal /48
+    [InlineData("fbff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")]            // direct onder fc00::/7
+    [InlineData("fe00::")]                                             // direct boven fc00::/7
+    [InlineData("64:ff9b::9ff:ffff")]                                  // NAT64, 9.255.255.255
+    [InlineData("64:ff9b::b00:0")]                                     // NAT64, 11.0.0.0
+    [InlineData("64:ff9b:0:0:0:1:808:808")]                            // net buiten NAT64 /96
+    [InlineData("::9ff:ffff")]                                         // compatible, 9.255.255.255
+    [InlineData("::b00:0")]                                            // compatible, 11.0.0.0
+    [InlineData("::1:a00:1")]                                          // geen compatible
+    [InlineData("0:0:0:1::808:808")]                                   // geen compatible/translated
+    [InlineData("::fffe:0:808:808")]                                   // geen translated
+    [InlineData("::ffff:1:808:808")]                                   // geen translated
+    [InlineData("::ffff:0:b00:0")]                                     // translated, 11.0.0.0
+    public void IsPublicIpAddress_BuitenGlobaalUnicast2000Slash3_IsFalse(string ip)
+    {
+        SsrfProtection.IsPublicIpAddress(IPAddress.Parse(ip)).Should().BeFalse($"{ip} ligt buiten 2000::/3, niet globaal unicast");
+    }
+
+    // #1622 review ronde 2 — grenzen systematisch uit (prefix, lengte) berekend, niet met de hand gekozen.
+
+    private static (IPAddress Eerste, IPAddress Laatste, IPAddress? Voorganger, IPAddress? Opvolger) Grenzen(string prefix, int lengte)
+    {
+        var basis = new System.Numerics.BigInteger(IPAddress.Parse(prefix).GetAddressBytes(), isUnsigned: true, isBigEndian: true);
+        var grootte = System.Numerics.BigInteger.One << (128 - lengte);
+        var eerste = basis & ~(grootte - 1);
+        var laatste = eerste + grootte - 1;
+        var max = (System.Numerics.BigInteger.One << 128) - 1;
+        static IPAddress Naar(System.Numerics.BigInteger n)
+        {
+            var bytes = n.ToByteArray(isUnsigned: true, isBigEndian: true);
+            var vol = new byte[16];
+            Array.Copy(bytes, 0, vol, 16 - bytes.Length, bytes.Length);
+            return new IPAddress(vol);
+        }
+        return (Naar(eerste), Naar(laatste),
+            eerste.IsZero ? null : Naar(eerste - 1),
+            laatste == max ? null : Naar(laatste + 1));
+    }
+
+    // Binnen 2000::/3: eerste en laatste geblokkeerd; voorganger/opvolger publiek, behalve waar de
+    // buur zelf in een ander geblokkeerd bereik valt. 2001::/32 (Teredo) en 2001:1::/32 grenzen aan
+    // elkaar: de opvolger van Teredo en de voorganger van 2001:1::/32 zijn dus geblokkeerd.
+    // Buiten 2000::/3 (100::/64, 64:ff9b::/96, 64:ff9b:1::/48, fc00::/7): alles, ook de buren,
+    // geblokkeerd door de 2000::/3-poort (64:ff9b:1::/48 en 64:ff9b::/96 liggen bovendien tegen elkaar).
+    [Theory]
+    [InlineData("2001:db8::", 32, true, true)]
+    [InlineData("2001::", 32, true, false)]
+    [InlineData("2001:1::", 32, false, false)]
+    [InlineData("100::", 64, false, false)]
+    [InlineData("64:ff9b::", 96, false, false)]
+    [InlineData("64:ff9b:1::", 48, false, false)]
+    [InlineData("fc00::", 7, false, false)]
+    // IANA special-purpose (applicatiebeleid (#1622), geen IANA-classificatie) binnen 2000::/3. Aangrenzend geblokkeerd:
+    // voorganger van 2001:2::/48 (2001:1:ffff:..) valt in 2001:1::/32; opvolger van 2001:10::/28 is 2001:20::,
+    // van 2001:20::/28 is 2001:30:: (beide geblokkeerd). 2001:30::/28 -> 2001:40:: publiek.
+    [InlineData("2001:2::", 48, false, true)]
+    [InlineData("2001:10::", 28, true, false)]
+    [InlineData("2001:20::", 28, false, false)]
+    [InlineData("2001:30::", 28, false, true)]
+    [InlineData("3fff::", 20, true, true)] // 3fff:0000::-3fff:0fff:: ; voorganger 3ffe:ffff:.. en opvolger 3fff:1000:: publiek
+    [InlineData("5f00::", 16, false, false)] // buiten 2000::/3: ook de buren zijn geblokkeerd
+    public void Prefixgrenzen_WordenExactBewaakt(string prefix, int lengte, bool voorgangerPubliek, bool opvolgerPubliek)
+    {
+        var (eerste, laatste, voorganger, opvolger) = Grenzen(prefix, lengte);
+
+        SsrfProtection.IsPublicIpAddress(eerste).Should().BeFalse($"eerste adres {eerste} van {prefix}/{lengte}");
+        SsrfProtection.IsPublicIpAddress(laatste).Should().BeFalse($"laatste adres {laatste} van {prefix}/{lengte}");
+        SsrfProtection.IsPublicIpAddress(voorganger!).Should().Be(voorgangerPubliek, $"voorganger {voorganger} van {prefix}/{lengte}");
+        SsrfProtection.IsPublicIpAddress(opvolger!).Should().Be(opvolgerPubliek, $"opvolger {opvolger} van {prefix}/{lengte}");
+    }
+
+    [Theory]
+    [InlineData("1fff:ffff:ffff:ffff:ffff:ffff:ffff:ffff", false)] // direct onder 2000::/3
+    [InlineData("2000::", true)]                                    // eerste adres 2000::/3
+    [InlineData("3ffe:ffff:ffff:ffff:ffff:ffff:ffff:ffff", true)]   // direct onder 3fff::/20
+    [InlineData("3fff:1000::", true)]                               // direct boven 3fff::/20, nog binnen 2000::/3
+    [InlineData("3fff::", false)]                                   // eerste adres 3fff::/20 documentatie (RFC 9637)
+    [InlineData("3fff:fff:ffff:ffff:ffff:ffff:ffff:ffff", false)]   // laatste adres 3fff::/20
+    [InlineData("3fff:ffff:ffff:ffff:ffff:ffff:ffff:ffff", true)]   // laatste adres 2000::/3; ligt NIET in 3fff::/20 (die loopt tot 3fff:0fff:..)
+    [InlineData("4000::", false)]                                   // direct boven 2000::/3
+    public void GlobaalUnicastGrenzen_2000Slash3(string ip, bool verwachtPubliek)
+    {
+        SsrfProtection.IsPublicIpAddress(IPAddress.Parse(ip)).Should().Be(verwachtPubliek);
+    }
+
+    // IANA Special-Purpose Registry: Globally Reachable = True, dus bewust publiek (beleid in beide richtingen).
+    [Theory]
+    [InlineData("2001:3::1")]       // 2001:3::/32 AMT (RFC 7450)
+    [InlineData("2001:4:112::1")]   // 2001:4:112::/48 AS112-v6 (RFC 7534)
+    [InlineData("2620:4f:8000::1")] // 2620:4f:8000::/48 Direct Delegation AS112 (RFC 7534)
+    public void GloballyReachableSpecialPurpose_BlijftPubliek(string ip)
+    {
+        SsrfProtection.IsPublicIpAddress(IPAddress.Parse(ip)).Should().BeTrue($"{ip} is in IANA Globally Reachable = True");
+    }
+
+    // 6to4 (2002::/16) met ingebed IPv4: laatste adres van elk privé-/gereserveerd bereik geblokkeerd,
+    // het eerste adres erna publiek (uitgezonderd 224.0.0.0: multicast/gereserveerd).
+    [Theory]
+    [InlineData("10.255.255.255", false)]
+    [InlineData("11.0.0.0", true)]
+    [InlineData("172.31.255.255", false)]
+    [InlineData("172.32.0.0", true)]
+    [InlineData("192.168.255.255", false)]
+    [InlineData("192.169.0.0", true)]
+    [InlineData("100.127.255.255", false)]
+    [InlineData("100.128.0.0", true)]
+    [InlineData("169.254.255.255", false)]
+    [InlineData("169.255.0.0", true)]
+    [InlineData("198.19.255.255", false)]
+    [InlineData("198.20.0.0", true)]
+    [InlineData("192.0.0.255", false)]
+    [InlineData("192.0.1.0", true)]
+    [InlineData("127.255.255.255", false)]
+    [InlineData("128.0.0.0", true)]
+    [InlineData("0.255.255.255", false)]
+    [InlineData("1.0.0.0", true)]
+    [InlineData("223.255.255.255", true)]
+    [InlineData("224.0.0.0", false)]
+    public void Ipv4Grenzen_DirectEnIngebedIn6to4(string ipv4, bool verwachtPubliek)
+    {
+        var v4 = IPAddress.Parse(ipv4).GetAddressBytes();
+        var zesNaarVier = new IPAddress(new byte[] { 0x20, 0x02, v4[0], v4[1], v4[2], v4[3], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+
+        SsrfProtection.IsPublicIpAddress(IPAddress.Parse(ipv4)).Should().Be(verwachtPubliek, $"direct IPv4 {ipv4}");
+        SsrfProtection.IsPublicIpAddress(zesNaarVier).Should().Be(verwachtPubliek, $"6to4 met ingebed {ipv4}");
+    }
+
     // ---------------------------------------------------------------------------------------
     // Poort- en schemavalidatie ("ongewenste poort").
     // ---------------------------------------------------------------------------------------

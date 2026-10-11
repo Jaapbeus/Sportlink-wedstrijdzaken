@@ -79,6 +79,14 @@ public static class SsrfProtection
     /// loopback, RFC1918-privéreeksen, link-local (169.254.x.x/fe80::/10), CGNAT (100.64.0.0/10),
     /// unique-local IPv6 (fc00::/7), multicast/gereserveerd, en de IPv4-mapped-IPv6-equivalenten
     /// daarvan (::ffff:10.0.0.1 wordt eerst naar IPv4 uitgepakt).
+    /// <para>
+    /// IPv6-beleid (#1622): een adres is alleen publiek binnen 2000::/3 (globaal unicast, RFC 4291).
+    /// De daaropvolgende prefixcontroles (fc00::/7, link-local, NAT64, IPv4-compatible, enz.) liggen
+    /// grotendeels buiten 2000::/3 en zijn daardoor redundant; ze blijven bewust staan als
+    /// defense in depth, zodat een latere versoepeling van de poort niet stilzwijgend een bereik opent.
+    /// Binnen 2000::/3 blokkeren ze nog 2001:db8::/32, Teredo, 2001:1::/32 en 6to4 met een
+    /// niet-publiek ingebed IPv4-adres.
+    /// </para>
     /// </summary>
     public static bool IsPublicIpAddress(IPAddress address)
     {
@@ -98,6 +106,7 @@ public static class SsrfProtection
             if (b[0] == 100 && b[1] >= 64 && b[1] <= 127) return false;     // 100.64.0.0/10 CGNAT
             if (b[0] == 127) return false;                                 // 127.0.0.0/8 loopback
             if (b[0] == 169 && b[1] == 254) return false;                  // 169.254.0.0/16 link-local
+            if (b[0] == 168 && b[1] == 63 && b[2] == 129 && b[3] == 16) return false; // Azure-platformadres (wireserver)
             if (b[0] == 172 && b[1] >= 16 && b[1] <= 31) return false;     // 172.16.0.0/12
             if (b[0] == 192 && b[1] == 0 && b[2] == 0) return false;       // 192.0.0.0/24 IETF
             if (b[0] == 192 && b[1] == 168) return false;                  // 192.168.0.0/16
@@ -111,7 +120,104 @@ public static class SsrfProtection
             if (address.IsIPv6LinkLocal || address.IsIPv6SiteLocal || address.IsIPv6Multicast)
                 return false;
             var b = address.GetAddressBytes();
+            // Beleidspoort (#1622): alleen globaal unicast 2000::/3 kan publiek zijn (RFC 4291).
+            // Alles daarbuiten (::, ::/96-compatible, ::ffff:0:0/96-translated, 64:ff9b::/96 NAT64,
+            // 100::/64, fc00::/7, fe80::/10, ff00::/8, ...) is fail-closed geblokkeerd.
+            if ((b[0] & 0xE0) != 0x20) return false;
             if ((b[0] & 0xFE) == 0xFC) return false; // fc00::/7 unique local
+            if (IsGeblokkeerdIpv6Prefix(b)) return false;
+
+            // Overgangsmechanismen die een IPv4-adres inbedden: beoordeel dat IPv4-adres met
+            // dezelfde regels, zodat een privé/gereserveerd IPv4-adres niet via IPv6 binnenkomt.
+            if (TryIngebeddeIpv4(b, out var ingebed))
+                return IsPublicIpAddress(ingebed);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    // Prefix (eerste bytes) + prefixlengte in bits.
+    // APPLICATIEBELEID (#1622, eigenaarsbesluit 2026-10-11): conservatieve blokkades binnen 2000::/3.
+    // Dit is géén afspiegeling van de IANA-kolom "Globally Reachable": per het IANA IPv6 Special-Purpose
+    // Address Registry staan Benchmarking en Documentation op False, ORCHIDv2 en Drone Remote ID op True,
+    // en is het veld bij de vervallen ORCHID-toewijzing leeg. Deze app hoeft geen van deze bereiken ooit te
+    // bereiken (het zijn protocol-/testtoewijzingen, geen webservers), dus blokkeren is fail-closed en
+    // kost niets. Versoepelen alleen met een nieuw eigenaarsbesluit.
+    private static readonly (byte[] Prefix, int Bits)[] BeleidsmatigGeblokkeerdBinnenGlobaalUnicast =
+    {
+        (new byte[] { 0x20, 0x01, 0x00, 0x02, 0x00, 0x00 }, 48),  // 2001:2::/48 Benchmarking (RFC 5180)
+        (new byte[] { 0x20, 0x01, 0x00, 0x10 }, 28),  // 2001:10::/28 ORCHID (gedeprecieerd)
+        (new byte[] { 0x20, 0x01, 0x00, 0x20 }, 28),  // 2001:20::/28 ORCHIDv2 (RFC 7343)
+        (new byte[] { 0x20, 0x01, 0x00, 0x30 }, 28),  // 2001:30::/28 Drone Remote ID (RFC 9374)
+        (new byte[] { 0x3F, 0xFF, 0x00 }, 20),        // 3fff::/20 Documentation (RFC 9637)
+    };
+
+    private static bool HeeftPrefix(byte[] b, byte[] prefix, int bits)
+    {
+        for (var i = 0; i < bits / 8; i++)
+            if (b[i] != prefix[i]) return false;
+        var rest = bits % 8;
+        if (rest == 0) return true;
+        var masker = (byte)(0xFF << (8 - rest));
+        return (b[bits / 8] & masker) == (prefix[bits / 8] & masker);
+    }
+
+    /// <summary>
+    /// IPv6-prefixen die nooit een publieke bestemming zijn: unspecified (::), discard-only
+    /// (100::/64), documentatie (2001:db8::/32), Teredo (2001:0::/32), speciale anycast-toewijzingen (2001:1::/32) en NAT64 voor lokaal
+    /// gebruik (64:ff9b:1::/48). Binnen 2000::/3 bovendien, als applicatiebeleid en niet als IANA-classificatie,
+    /// de protocol-/testtoewijzingen benchmarking, ORCHID/ORCHIDv2, Drone Remote ID en documentatie 3fff::/20
+    /// (zie de toelichting bij de tabel; SRv6 5f00::/16 valt al buiten 2000::/3).
+    /// Teredo en NAT64-lokaal worden bewust volledig geblokkeerd in
+    /// plaats van de ingebedde IPv4-adressen te ontleden: simpeler en fail-closed.
+    /// </summary>
+    private static bool IsGeblokkeerdIpv6Prefix(byte[] b)
+    {
+        if (b.Take(16).All(x => x == 0)) return true;                                         // ::
+        if (b[0] == 0x01 && b.Skip(1).Take(7).All(x => x == 0)) return true;                  // 100::/64
+        if (b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x0D && b[3] == 0xB8) return true;        // 2001:db8::/32
+        if (b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x00 && b[3] == 0x00) return true;        // 2001:0::/32 Teredo
+        if (b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x00 && b[3] == 0x01) return true;        // 2001:1::/32 speciale anycast-toewijzingen
+        if (b[0] == 0x00 && b[1] == 0x64 && b[2] == 0xFF && b[3] == 0x9B && b[4] == 0x00 && b[5] == 0x01)
+            return true;                                                                      // 64:ff9b:1::/48
+
+        // Binnen 2000::/3: alle IANA IPv6 Special-Purpose-toewijzingen met Globally Reachable = False.
+        // Globally Reachable = True (bewust NIET geblokkeerd): 2001:3::/32 AMT, 2001:4:112::/48 en 2620:4f:8000::/48 AS112.
+        foreach (var (prefix, bits) in BeleidsmatigGeblokkeerdBinnenGlobaalUnicast)
+            if (HeeftPrefix(b, prefix, bits)) return true;
+        // 5f00::/16 (SRv6 SIDs, RFC 9602) ligt buiten 2000::/3 en is al geblokkeerd door de 2000::/3-poort.
+        return false;
+    }
+
+    /// <summary>
+    /// Haalt het ingebedde IPv4-adres uit IPv4-compatible (::a.b.c.d), IPv4-translated
+    /// (::ffff:0:a.b.c.d), NAT64 (64:ff9b::/96) en 6to4 (2002::/16).
+    /// </summary>
+    private static bool TryIngebeddeIpv4(byte[] b, out IPAddress ipv4)
+    {
+        ipv4 = IPAddress.None;
+        var eerste8Nul = b.Take(8).All(x => x == 0);
+
+        // ::a.b.c.d (IPv4-compatible): eerste 12 bytes nul.
+        var compatible = eerste8Nul && b[8] == 0 && b[9] == 0 && b[10] == 0 && b[11] == 0;
+        // ::ffff:0:a.b.c.d (IPv4-translated).
+        var translated = eerste8Nul && b[8] == 0xFF && b[9] == 0xFF && b[10] == 0 && b[11] == 0;
+        // 64:ff9b::/96 (NAT64).
+        var nat64 = b[0] == 0x00 && b[1] == 0x64 && b[2] == 0xFF && b[3] == 0x9B
+                    && b.Skip(4).Take(8).All(x => x == 0);
+
+        if (compatible || translated || nat64)
+        {
+            ipv4 = new IPAddress(new[] { b[12], b[13], b[14], b[15] });
+            return true;
+        }
+
+        // 2002::/16 (6to4): IPv4 in bytes 2-5.
+        if (b[0] == 0x20 && b[1] == 0x02)
+        {
+            ipv4 = new IPAddress(new[] { b[2], b[3], b[4], b[5] });
             return true;
         }
 
