@@ -199,7 +199,7 @@ public static class PostgresAppSettings
         // ("Je bent een assistent voor de coördinator thuiswedstrijden van {clubNaam}") — zonder
         // deze kolom gooit die prompt-opbouw een InvalidOperationException.
         // sportlinkextensionenabled erbij (#988): Sportlink Web Extension-schakelaar, standaard false.
-        // sportlinkdryrun erbij (#998): dry-run-schakelaar voor SportlinkClubClient.PutMutationAsync
+        // sportlinkdryrun erbij (#998): dry-run-schakelaar voor SportlinkMutatieUitvoerder.PutMutationAsync
         // — gelezen bij ELKE mutatie-aanroep via de Func<bool>-delegate in Program.cs, dus de
         // Instellingen-toggle heeft direct effect zodra deze cache ververst is (LoadSettingsAsync
         // wordt na elke AdminSettingsPut opnieuw aangeroepen). Kolomnamen worden via GetOrdinal

@@ -4,7 +4,7 @@ namespace Planner.Shared.Integrations.SportlinkClub;
 /// Eén item uit een Sportlink-picklist (#997) — id + weergavenaam. ONBEVESTIGD: de werkelijke
 /// JSON-veldnamen per picklist-endpoint zijn nooit met een netwerktrace gezien; <see
 /// cref="ISportlinkClubClient.GetClubMatchPickListsAsync"/> probeert daarom defensief een paar
-/// aannemelijke veldnamen (zie <c>SportlinkClubClient.ParsePickListItem</c>) in plaats van een
+/// aannemelijke veldnamen (zie <c>SportlinkJsonHulp.ParsePickListItem</c>) in plaats van een
 /// strikt contract af te dwingen.
 /// </summary>
 public sealed record SportlinkPickListItem(string? Id, string? Naam);

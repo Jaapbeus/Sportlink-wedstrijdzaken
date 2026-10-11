@@ -66,7 +66,7 @@ public static class SportlinkMatchContract
         }
 
         // #1518: de wire-vorm van Sportlink is PascalCase (PublicMatchId, IsHomeMatch, ...), en de
-        // echte lezer (SportlinkClubClient.JsonOptions) deserialiseert hoofdletterongevoelig.
+        // echte lezer (SportlinkClubHttp.JsonOptions) deserialiseert hoofdletterongevoelig.
         // JsonElement.TryGetProperty is hoofdlettergevoelig en meldde daardoor alle velden als
         // afwijkend. Hier dus dezelfde hoofdletterongevoelige naamvergelijking als de echte lezer.
         var aanwezig = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);

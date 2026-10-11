@@ -13,7 +13,7 @@ namespace Planner.Shared.Integrations.SportlinkClub;
 /// <b>ONBEVESTIGD:</b> de exacte JSON-vorm is nooit met een netwerktrace gezien (zie issue #995 —
 /// de handmatige proef met netwerk-meekijken moest nog gebeuren). <see cref="ValidationResultMessages"/>
 /// wordt daarom defensief geparsed: elementen kunnen kale strings zijn óf objecten met een
-/// <c>Message</c>- of <c>Description</c>-veld — zie <c>SportlinkClubClient.ParseMatchChangeValidatie</c>.
+/// <c>Message</c>- of <c>Description</c>-veld — zie <c>SportlinkMatchChangeValidatieLezer.ParseMatchChangeValidatie</c>.
 /// </para>
 /// </summary>
 /// <param name="ConfirmationNeeded">
@@ -83,7 +83,7 @@ public sealed record SportlinkMatchWijzigingsverzoekTrace(
 /// <param name="Mutatie">Transport-/dry-run-uitkomst — zelfde semantiek als bij elke andere Sportlink-mutatie.</param>
 /// <param name="Validatie">
 /// <c>null</c> zolang deze mutatie forceDryRun-gelockt is (geen echte respons om te parsen) — zie
-/// <c>SportlinkClubClient.UpdateMatchDetailsChangeRequestLiveBevestigd</c>. Bij een toekomstige,
+/// <c>SportlinkWedstrijdDetails.UpdateMatchDetailsChangeRequestLiveBevestigd</c>. Bij een toekomstige,
 /// live bevestigde aanroep: het geparste <c>ConfirmationNeeded</c>-resultaat.
 /// </param>
 public sealed record SportlinkMatchChangeRequestResult(
