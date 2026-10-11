@@ -71,6 +71,8 @@ public static class TemplateAntwoordBouwer
         string plannerResponseJson, ITemplateAntwoordBron bron)
     {
         var json = JObject.Parse(plannerResponseJson);
+        // Validatie vóór takkeuze en sjabloonophaling, zoals de oude BouwTemplateAntwoord (Codex #1644, P2).
+        bron.ValideerWedstrijd(json["wedstrijd"]);
         var tak = HerplanTakken.FirstOrDefault(t => t.Geldt(json));
         if (tak != null) return tak.Bouw(json, bron);
 

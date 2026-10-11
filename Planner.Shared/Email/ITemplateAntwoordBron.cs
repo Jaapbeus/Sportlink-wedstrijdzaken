@@ -15,6 +15,12 @@ namespace Planner.Shared.Email;
 /// </summary>
 public interface ITemplateAntwoordBron
 {
+    /// <summary>
+    /// Zet de wedstrijd-DTO om en gooit bij een ongeldige DTO (<c>JsonSerializationException</c>). Wordt bij een
+    /// herplanverzoek direct na het parsen aangeroepen, vóór takkeuze en sjabloonophaling (gedrag van voor #1627).
+    /// </summary>
+    void ValideerWedstrijd(JToken? wedstrijd);
+
     (string onderwerp, string body) WedstrijdAlIngepland(JToken? wedstrijd);
 
     /// <param name="tegenstander">Tegenstander uit het plannerresponse; <c>null</c> = val terug op de classificatie.</param>
