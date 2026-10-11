@@ -28,6 +28,10 @@ namespace FunctionApp.Postgres.Tests;
 public class BerichtPipelinePlannerTakkenIntegrationTests : IAsyncLifetime
 {
     private const string Club = "plannertakken";
+    // Wedstrijdcodes 9700001-9700006 zijn voor deze klasse gereserveerd: his.matches.wedstrijdcode is
+    // een GLOBAAL unieke sleutel (UQ_matches_bk op bk_matches), niet clubcode-gescoped. Een code
+    // hergebruiken uit een andere testklasse (9600001-9600007 van SportlinkPublicMatchIdRepository-
+    // IntegrationTests) geeft 23505 afhankelijk van de volgorde waarin klassen draaien (#1628).
     private const string Accommodatie = "Sportpark Takken Test";
     private const string Team = "JO13-1";
     private const string Tegenstander = "SV Tegenstander";
@@ -79,7 +83,7 @@ public class BerichtPipelinePlannerTakkenIntegrationTests : IAsyncLifetime
     public async Task Opponent_WedstrijdOpGevraagdeDatum_GeeftWedstrijdAlIngepland()
     {
         var datum = Over(60);
-        await ZetMatchAsync(9600001, $"{Team} - {Tegenstander}", datum);
+        await ZetMatchAsync(9700001, $"{Team} - {Tegenstander}", datum);
         var classificatie = Beschikbaarheid("Onbekend 13-2", Tegenstander, datum);
         var trace = new TraceBuilder();
 
@@ -117,7 +121,7 @@ public class BerichtPipelinePlannerTakkenIntegrationTests : IAsyncLifetime
     public async Task Opponent_AndereDatumMetHerkendTeam_VultTeamEnLeeftijdsCategorieEnVoertCheckUit()
     {
         var gevraagd = Over(60);
-        await ZetMatchAsync(9600002, $"{Team} - {AndereDatumTegenstander}", Over(67));
+        await ZetMatchAsync(9700002, $"{Team} - {AndereDatumTegenstander}", Over(67));
         var classificatie = Beschikbaarheid("Onbekend 13-2", AndereDatumTegenstander, gevraagd);
         var trace = new TraceBuilder();
 
@@ -143,7 +147,7 @@ public class BerichtPipelinePlannerTakkenIntegrationTests : IAsyncLifetime
     public async Task Opponent_AndereDatumZonderHerkendTeam_LaatClassificatieOngemoeidEnVoertCheckUit()
     {
         var gevraagd = Over(60);
-        await ZetMatchAsync(9600003, $"{Team} - {AndereDatumTegenstander}", Over(67));
+        await ZetMatchAsync(9700003, $"{Team} - {AndereDatumTegenstander}", Over(67));
         var classificatie = Beschikbaarheid("Onbekend 13-2", AndereDatumTegenstander, gevraagd);
 
         var json = await Verwerk(classificatie, new GeenTeamResolver());
@@ -241,7 +245,7 @@ public class BerichtPipelinePlannerTakkenIntegrationTests : IAsyncLifetime
     public async Task Herplan_BinnenDeadline_GeeftHerplanTeLaat()
     {
         var d = Over(2);
-        await ZetMatchAsync(9600004, $"{Team} - {Tegenstander}", d);
+        await ZetMatchAsync(9700004, $"{Team} - {Tegenstander}", d);
         var c = new BerichtClassificatie
         {
             Type = VerzoekType.HerplanVerzoek, TeamNaam = Team, Datum = d.ToString("yyyy-MM-dd"),
@@ -254,7 +258,7 @@ public class BerichtPipelinePlannerTakkenIntegrationTests : IAsyncLifetime
         r["herplanTeLaat"]!.Value<bool>().Should().BeTrue();
         r["deadlineDagen"]!.Value<int>().Should().Be(8);
         r["dagenTotWedstrijd"]!.Value<int>().Should().Be(2);
-        Veld(r["wedstrijd"]!, "wedstrijdcode").Value<long>().Should().Be(9600004);
+        Veld(r["wedstrijd"]!, "wedstrijdcode").Value<long>().Should().Be(9700004);
     }
 
     [PostgresFact]
@@ -262,7 +266,7 @@ public class BerichtPipelinePlannerTakkenIntegrationTests : IAsyncLifetime
     {
         var d = Over(60);
         var gewenst = Over(67);
-        await ZetMatchAsync(9600005, $"{Team} - {Tegenstander}", d);
+        await ZetMatchAsync(9700005, $"{Team} - {Tegenstander}", d);
         var c = new BerichtClassificatie
         {
             Type = VerzoekType.HerplanVerzoek, TeamNaam = Team, Datum = d.ToString("yyyy-MM-dd"),
@@ -274,7 +278,7 @@ public class BerichtPipelinePlannerTakkenIntegrationTests : IAsyncLifetime
         var r = JObject.Parse(json);
         r["gewensteDatum"]!.ToString().Should().Be(gewenst.ToString("yyyy-MM-dd"));
         r["beschikbaarheid"].Should().NotBeNull();
-        Veld(r["wedstrijd"]!, "wedstrijdcode").Value<long>().Should().Be(9600005);
+        Veld(r["wedstrijd"]!, "wedstrijdcode").Value<long>().Should().Be(9700005);
         r["herplanOpties"].Should().BeNull();
     }
 
@@ -282,7 +286,7 @@ public class BerichtPipelinePlannerTakkenIntegrationTests : IAsyncLifetime
     public async Task Herplan_ZonderGewensteDatum_GeeftHerplanOpties()
     {
         var d = Over(60);
-        await ZetMatchAsync(9600006, $"{Team} - {Tegenstander}", d);
+        await ZetMatchAsync(9700006, $"{Team} - {Tegenstander}", d);
         var c = new BerichtClassificatie
         {
             Type = VerzoekType.HerplanVerzoek, TeamNaam = Team, Datum = d.ToString("yyyy-MM-dd"),
@@ -293,7 +297,7 @@ public class BerichtPipelinePlannerTakkenIntegrationTests : IAsyncLifetime
 
         var r = JObject.Parse(json);
         r["herplanOpties"].Should().NotBeNull();
-        Veld(r["wedstrijd"]!, "wedstrijdcode").Value<long>().Should().Be(9600006);
+        Veld(r["wedstrijd"]!, "wedstrijdcode").Value<long>().Should().Be(9700006);
         r["gewensteDatum"].Should().BeNull();
     }
 
