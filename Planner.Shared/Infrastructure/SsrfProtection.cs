@@ -139,7 +139,13 @@ public static class SsrfProtection
     }
 
     // Prefix (eerste bytes) + prefixlengte in bits.
-    private static readonly (byte[] Prefix, int Bits)[] IanaNietGlobaalBereikbaar =
+    // APPLICATIEBELEID (#1622, eigenaarsbesluit 2026-10-11): conservatieve blokkades binnen 2000::/3.
+    // Dit is géén afspiegeling van de IANA-kolom "Globally Reachable": per het IANA IPv6 Special-Purpose
+    // Address Registry staan Benchmarking en Documentation op False, ORCHIDv2 en Drone Remote ID op True,
+    // en is het veld bij de vervallen ORCHID-toewijzing leeg. Deze app hoeft geen van deze bereiken ooit te
+    // bereiken (het zijn protocol-/testtoewijzingen, geen webservers), dus blokkeren is fail-closed en
+    // kost niets. Versoepelen alleen met een nieuw eigenaarsbesluit.
+    private static readonly (byte[] Prefix, int Bits)[] BeleidsmatigGeblokkeerdBinnenGlobaalUnicast =
     {
         (new byte[] { 0x20, 0x01, 0x00, 0x02, 0x00, 0x00 }, 48),  // 2001:2::/48 Benchmarking (RFC 5180)
         (new byte[] { 0x20, 0x01, 0x00, 0x10 }, 28),  // 2001:10::/28 ORCHID (gedeprecieerd)
@@ -161,8 +167,9 @@ public static class SsrfProtection
     /// <summary>
     /// IPv6-prefixen die nooit een publieke bestemming zijn: unspecified (::), discard-only
     /// (100::/64), documentatie (2001:db8::/32), Teredo (2001:0::/32), speciale anycast-toewijzingen (2001:1::/32) en NAT64 voor lokaal
-    /// gebruik (64:ff9b:1::/48). Binnen 2000::/3 bovendien alle IANA special-purpose-toewijzingen met
-    /// Globally Reachable = False (benchmarking, ORCHID/ORCHIDv2, Drone Remote ID, documentatie 3fff::/20; SRv6 5f00::/16 valt buiten 2000::/3).
+    /// gebruik (64:ff9b:1::/48). Binnen 2000::/3 bovendien, als applicatiebeleid en niet als IANA-classificatie,
+    /// de protocol-/testtoewijzingen benchmarking, ORCHID/ORCHIDv2, Drone Remote ID en documentatie 3fff::/20
+    /// (zie de toelichting bij de tabel; SRv6 5f00::/16 valt al buiten 2000::/3).
     /// Teredo en NAT64-lokaal worden bewust volledig geblokkeerd in
     /// plaats van de ingebedde IPv4-adressen te ontleden: simpeler en fail-closed.
     /// </summary>
@@ -178,7 +185,7 @@ public static class SsrfProtection
 
         // Binnen 2000::/3: alle IANA IPv6 Special-Purpose-toewijzingen met Globally Reachable = False.
         // Globally Reachable = True (bewust NIET geblokkeerd): 2001:3::/32 AMT, 2001:4:112::/48 en 2620:4f:8000::/48 AS112.
-        foreach (var (prefix, bits) in IanaNietGlobaalBereikbaar)
+        foreach (var (prefix, bits) in BeleidsmatigGeblokkeerdBinnenGlobaalUnicast)
             if (HeeftPrefix(b, prefix, bits)) return true;
         // 5f00::/16 (SRv6 SIDs, RFC 9602) ligt buiten 2000::/3 en is al geblokkeerd door de 2000::/3-poort.
         return false;

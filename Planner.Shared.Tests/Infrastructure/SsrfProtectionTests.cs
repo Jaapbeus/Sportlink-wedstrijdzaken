@@ -251,7 +251,7 @@ public class SsrfProtectionTests
     [InlineData("64:ff9b::", 96, false, false)]
     [InlineData("64:ff9b:1::", 48, false, false)]
     [InlineData("fc00::", 7, false, false)]
-    // IANA special-purpose (Globally Reachable = False) binnen 2000::/3. Aangrenzend geblokkeerd:
+    // IANA special-purpose (applicatiebeleid (#1622), geen IANA-classificatie) binnen 2000::/3. Aangrenzend geblokkeerd:
     // voorganger van 2001:2::/48 (2001:1:ffff:..) valt in 2001:1::/32; opvolger van 2001:10::/28 is 2001:20::,
     // van 2001:20::/28 is 2001:30:: (beide geblokkeerd). 2001:30::/28 -> 2001:40:: publiek.
     [InlineData("2001:2::", 48, false, true)]
