@@ -19,6 +19,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Changed
+- **Werkinstructies: zelfmerge na schone agentreview**: na een agentreview zonder bevindingen op een agent-aangemaakt issue merget de implementer zelf naar `develop`; release en deploy blijven eigenaarswerk (#1637).
 - **`DEVELOPER-SETUP.md` beschrijft de automatische issue-beurt**: nieuwe subsectie 9.5 legt uit wat het label `turn: claude-code` doet, welke voorwaarden de poort stelt, dat de eigenaar het secret `CLAUDE_CODE_OAUTH_TOKEN` zelf aanmaakt en dat Codex lokaal blijft reviewen (zie issue #1620).
 
 ## [3.13.1.0] — 2026-10-11
