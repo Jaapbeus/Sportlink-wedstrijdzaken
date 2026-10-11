@@ -28,6 +28,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ### Security
 - Aanscherping van de adresbereikcontrole in `SsrfProtection.IsPublicIpAddress` (IPv6-tak en één Azure-specifiek IPv4-adres), met uitgebreide grenswaardetests (#1622).
 
+### Fixed
+- **De automatische issue-beurt herkent zijn eigen PR weer bij het verwerken van reviewcommentaar**: een PR die de CI-run zelf opent, staat op naam van de Claude GitHub App. Die herkende de poort niet als bevoegd, waardoor een verwerkingsronde een tweede PR zou beginnen in plaats van de bestaande bij te werken (#1633).
+
+### Changed
+- **Werkinstructies: zelfmerge na schone agentreview**: na een agentreview zonder bevindingen op een agent-aangemaakt issue merget de implementer zelf naar `develop`; release en deploy blijven eigenaarswerk (#1637).
+- **Kostentabellen en Flex-bewaking in de documentatie actueel**: de tabel met gratis tiers in `ARCHITECTUUR.md` §8.6 beschrijft nu het Flex Consumption-plan waarop de Function App sinds 3 oktober draait (on-demand-instanties: 250.000 executies en 100.000 GB-s per maand; always-ready-instanties hebben zelf geen tegoed en staan daarom uit) in plaats van het oude Consumption-plan, met per rij van beide tabellen de bron en de datum van de prijscheck via Microsoft Learn (GitHub Actions via de GitHub-documentatie); alleen de regel "Premium/Standard-tier" blijft een beleidsregel zonder eigen prijsrij. De rij voor het gratis aanbod van Azure SQL Database is gecorrigeerd: dat aanbod geldt voor de levensduur van de subscription en vraagt geen verlenging. `MONITORING.md` noemt de drie Flex-billingmetrics met omrekening en drempels voor de maandelijkse controle (gemeten in perioden van hoogstens 30 dagen, omdat één Metrics-chart niet meer toont), en legt het besluit vast dat het gratis Cost Management-budget de kostenbewaking is, zonder betaalde metric alert. De nazorg van de Flex-migratie (maandmeting en het opruimen van de oude app na 3 januari 2027) is daarmee geen open issue meer maar een agendapunt van de eigenaar; zie de issues #1075 en #1076 en epic #1063 (#1598).
+- **`DEVELOPER-SETUP.md` beschrijft de automatische issue-beurt**: nieuwe subsectie 9.5 legt uit wat het label `turn: claude-code` doet, welke voorwaarden de poort stelt, dat de eigenaar het secret `CLAUDE_CODE_OAUTH_TOKEN` zelf aanmaakt en dat Codex lokaal blijft reviewen (zie issue #1620).
+
 ## [3.13.1.0] — 2026-10-11
 
 ### Added
