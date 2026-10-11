@@ -6,7 +6,7 @@ namespace Planner.Shared.Integrations.SportlinkClub;
 /// hieronder komt uit een console-trace van Sportlink Clubs eigen formulier (01-10-2026), dat met
 /// deze body HTTP 200 en een nieuw <c>PublicMatchId</c> kreeg. Vóór #1427 was de body
 /// gereverse-engineerd en gaf hij HTTP 602. Wordt opgebouwd door
-/// <see cref="ClubMatchAanvraagBouwer"/>; zie <see cref="SportlinkClubClient.BuildClubMatchBody"/>
+/// <see cref="ClubMatchAanvraagBouwer"/>; zie <see cref="SportlinkMutatieBodies.BuildClubMatchBody"/>
 /// voor de exacte JSON-notatie.
 /// </summary>
 /// <param name="MatchDate">Speeldatum; gaat als <c>yyyy-MM-dd</c>.</param>

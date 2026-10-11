@@ -192,7 +192,7 @@ public static class SportlinkEndpointCore
     /// afwijzing door Sportlink zelf (502, ongewijzigde tekst).
     /// <para>
     /// #1417: voor een <i>mutatie</i> is "probeer het opnieuw" het verkeerde advies — de client
-    /// herhaalt een PUT/POST bewust niet (zie <c>SportlinkClubClient.RetryBeleid.Mutatie</c>), omdat
+    /// herhaalt een PUT/POST bewust niet (zie <c>RetryBeleid.Mutatie</c>), omdat
     /// Sportlink de aanvraag al verwerkt kan hebben vóórdat de timeout viel. De mutatievariant
     /// (<paramref name="isMutatie"/>) vraagt daarom eerst om controle in Sportlink; zie
     /// <see cref="MutatieNetwerkFoutMelding"/>.

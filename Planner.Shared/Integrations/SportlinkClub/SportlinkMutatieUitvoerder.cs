@@ -1,18 +1,27 @@
 using Microsoft.Extensions.Logging;
-using System.Collections.Concurrent;
-using System.Net.Http.Headers;
 using System.Text.Json;
-using System.Text.Json.Serialization;
+using static Planner.Shared.Integrations.SportlinkClub.SportlinkClubHttp;
 
 namespace Planner.Shared.Integrations.SportlinkClub;
 
-/// <summary>Gedeelde uitvoering en responsinterpretatie van mutaties (PutMutationAsync) (#1493) — zelfde klasse, alleen verplaatst. Geen gedragswijziging.</summary>
-public partial class SportlinkClubClient
+/// <summary>Gedeelde verzenduitvoering en responsinterpretatie van alle mutatie-endpoints (#1631, verplaatst uit het vroegere SportlinkClubClient.MutatieUitvoering-bestand). Wordt aangeroepen binnen <see cref="SportlinkClubTransport.ExecuteWithTokenRetryAsync{T}"/>.</summary>
+internal sealed class SportlinkMutatieUitvoerder
 {
+    private readonly HttpClient _httpClient;
+    private readonly ILogger _logger;
+    private readonly Func<bool> _isDryRun;
+
+    internal SportlinkMutatieUitvoerder(SportlinkClubTransport transport)
+    {
+        _httpClient = transport.Http;
+        _logger = transport.Logger;
+        _isDryRun = transport.IsDryRun;
+    }
+
     /// <summary>
     /// Gedeelde verzenduitvoering + responsparsing voor alle mutatie-endpoints — derde bijna-
     /// identieke kopie (na #992/#993) was de trigger om ook dit deel te consolideren, zie de
-    /// doc-comment op <see cref="ExecuteWithTokenRetryAsync"/>. Sinds #997 ook voor POST (zie
+    /// doc-comment op <see cref="SportlinkClubTransport.ExecuteWithTokenRetryAsync{T}"/>. Sinds #997 ook voor POST (zie
     /// <paramref name="method"/>) — de drie bestaande PUT-aanroepen (#992/#993/#996) en de PUT van
     /// #994 geven <paramref name="method"/> niet mee en blijven dus ongewijzigd <c>HttpMethod.Put</c>
     /// gebruiken (default), alleen #997's <c>CreateClubMatchAsync</c> geeft expliciet
@@ -20,7 +29,7 @@ public partial class SportlinkClubClient
     /// alle bestaande call sites moeten aanraken voor een verandering die zuiver optioneel is, meer
     /// regressierisico op de drie bevestigde PUT-paden dan een simpele parameter-toevoeging.
     /// </summary>
-    private async Task<SportlinkClubResponse<SportlinkMutationResult>> PutMutationAsync(
+    internal async Task<SportlinkClubResponse<SportlinkMutationResult>> PutMutationAsync(
         string endpoint, string entityName, object? body, string token, CancellationToken cancellationToken,
         MutatieOpties? opties = null)
     {
@@ -64,17 +73,6 @@ public partial class SportlinkClubClient
             return new SportlinkClubResponse<SportlinkMutationResult>(SportlinkClubCallStatus.SportlinkFout, null, $"Onverwachte fout bij {entityName} endpoint", null);
         }
     }
-
-    /// <summary>Opties van één mutatieaanroep (#1493, vervangt de losse vlagparameters).</summary>
-    /// <param name="ForceDryRun">Code-niveau lock: altijd simuleren, ongeacht de club-instelling.</param>
-    /// <param name="VerrijkResultaat">Optionele nabewerking op de ruwe JSON + het basisresultaat.</param>
-    /// <param name="Method">Standaard <c>PUT</c>; POST (#997) of DELETE (#1440).</param>
-    /// <param name="LegeSuccesBodyIsSucces">Een 2xx zonder body telt als succes (DELETE, #1440).</param>
-    private sealed record MutatieOpties(
-        bool ForceDryRun = false,
-        Func<string, SportlinkMutationResult, SportlinkMutationResult>? VerrijkResultaat = null,
-        HttpMethod? Method = null,
-        bool LegeSuccesBodyIsSucces = false);
 
     private static HttpRequestMessage BouwMutatieRequest(
         string endpoint, string entityName, string? serializedBody, string token, HttpMethod httpMethod)
@@ -174,6 +172,14 @@ public partial class SportlinkClubClient
             SportlinkClubCallStatus.Ok, mutationResult, null, status);
     }
 
+    /// <summary>
+    /// #1440: een 2xx zonder body is voor een verwijderaanroep een geslaagde mutatie. Sportlinks eigen
+    /// frontend leest de succesbody van <c>ClubMatchDelete</c> niet; zonder deze uitzondering zou een
+    /// lege respons als "onherkenbare respons" (fout) gelden terwijl de wedstrijd wél weg is.
+    /// </summary>
+    internal static bool IsLegeSuccesRespons(System.Net.HttpStatusCode status, string body)
+        => (int)status is >= 200 and <= 299 && string.IsNullOrWhiteSpace(body);
+
     // Rauwe deserialisatievorm — nooit publiek: de aanroeper krijgt SportlinkMutationResult
     // (opgeschoonde Violations-lijst), niet deze rauwe vorm. Live vastgesteld op een afgewezen
     // UpdateMatchDressingRooms-aanroep (2026-09-06, wedstrijdnummer 69) — zie het commentaar bij
@@ -188,3 +194,14 @@ public partial class SportlinkClubClient
         // — optioneel, dus geen effect op de bestaande #992/#993/#994/#996-mutatieresponsen.
         string? PublicMatchId);
 }
+
+/// <summary>Opties van één mutatieaanroep (#1493, vervangt de losse vlagparameters).</summary>
+/// <param name="ForceDryRun">Code-niveau lock: altijd simuleren, ongeacht de club-instelling.</param>
+/// <param name="VerrijkResultaat">Optionele nabewerking op de ruwe JSON + het basisresultaat.</param>
+/// <param name="Method">Standaard <c>PUT</c>; POST (#997) of DELETE (#1440).</param>
+/// <param name="LegeSuccesBodyIsSucces">Een 2xx zonder body telt als succes (DELETE, #1440).</param>
+internal sealed record MutatieOpties(
+    bool ForceDryRun = false,
+    Func<string, SportlinkMutationResult, SportlinkMutationResult>? VerrijkResultaat = null,
+    HttpMethod? Method = null,
+    bool LegeSuccesBodyIsSucces = false);

@@ -1,21 +1,42 @@
 using Microsoft.Extensions.Logging;
-using System.Collections.Concurrent;
-using System.Net.Http.Headers;
 using System.Text.Json;
-using System.Text.Json.Serialization;
+using static Planner.Shared.Integrations.SportlinkClub.SportlinkClubHttp;
+using static Planner.Shared.Integrations.SportlinkClub.SportlinkJsonHulp;
 
 namespace Planner.Shared.Integrations.SportlinkClub;
 
-/// <summary>Read-only clubwedstrijd-aanroepen (context en keuzelijsten) (#1493) — zelfde klasse, alleen verplaatst. Geen gedragswijziging.</summary>
-public partial class SportlinkClubClient
+/// <summary>Read-only aanroepen voor het clubwedstrijd-aanmaakformulier: context en keuzelijsten (#1631, verplaatst uit SportlinkClubClient).</summary>
+internal sealed class SportlinkClubFormulierLezer
 {
+    private readonly SportlinkClubTransport _transport;
+    private readonly HttpClient _httpClient;
+    private readonly ILogger _logger;
+
+    internal SportlinkClubFormulierLezer(SportlinkClubTransport transport)
+    {
+        _transport = transport;
+        _httpClient = transport.Http;
+        _logger = transport.Logger;
+    }
+
+    // #997: de twee ondersteunende picklist-GETs die in deze ronde bewust WEL zijn aangesloten
+    // (bewust beperkte scope, zie PR-beschrijving) — read-only, persoonsgegevensvrij.
+    private const string PickListsTeamsEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/clubmatch/PickListsTeams";
+
+    private const string PickListsLocationEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/clubmatch/PickListsLocation";
+
+    // #1427: de twee overige lijsten van Sportlinks eigen aanmaakformulier (live vastgesteld 01-10-2026).
+    private const string ClubMatchDefaultsEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/clubmatch/ClubMatchDefaults";
+
+    private const string PickListsMatchInformationEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/clubmatch/PickListsMatchInformation";
+
     /// <summary>
     /// Haalt de vier lijsten op waarmee Sportlinks eigen formulier een oefenwedstrijd opbouwt (#1427)
     /// — zie <see cref="ISportlinkClubClient.GetClubMatchContextAsync"/>. Read-only.
     /// </summary>
     public Task<SportlinkClubResponse<SportlinkClubMatchContext>> GetClubMatchContextAsync(
         string functioneleRol, CancellationToken cancellationToken = default)
-        => ExecuteWithTokenRetryAsync(functioneleRol, RetryBeleid.Lezen,
+        => _transport.ExecuteWithTokenRetryAsync(functioneleRol, RetryBeleid.Lezen,
             (token, ct) => FetchClubMatchContextAsync(token, ct), cancellationToken);
 
     private async Task<SportlinkClubResponse<SportlinkClubMatchContext>> FetchClubMatchContextAsync(
@@ -45,7 +66,9 @@ public partial class SportlinkClubClient
     }
 
     private sealed record ClubTeamsRaw(List<SportlinkClubTeam>? ClubTeams);
+
     private sealed record FacilitiesRaw(List<SportlinkClubFacility>? Facilities);
+
     private sealed record MatchInformationRaw(List<SportlinkClubActivity>? Activities, List<SportlinkClubAgeClass>? AgeClasses);
 
     /// <summary>Eén read-only clubmatch-GET met getypeerde deserialisatie (#1427). Logt bij een
@@ -100,7 +123,7 @@ public partial class SportlinkClubClient
         string functioneleRol,
         CancellationToken cancellationToken = default)
     {
-        return await ExecuteWithTokenRetryAsync(functioneleRol, RetryBeleid.Lezen,
+        return await _transport.ExecuteWithTokenRetryAsync(functioneleRol, RetryBeleid.Lezen,
             (token, ct) => FetchClubMatchPickListsAsync(token, ct), cancellationToken);
     }
 
@@ -132,7 +155,7 @@ public partial class SportlinkClubClient
     /// <summary>
     /// Rauwe fetch voor één picklist-endpoint — ONBEVESTIGD qua respons-vorm (kale array, of genest
     /// onder een envelope-property), zelfde defensieve aanpak als
-    /// <see cref="FetchMatchProgramOverviewRawAsync"/>/<see cref="FetchChangeRequestsAsync"/>.
+    /// <c>FetchMatchProgramOverviewRawAsync</c>/<c>FetchChangeRequestsAsync</c>.
     /// </summary>
     private async Task<SportlinkClubResponse<IReadOnlyList<SportlinkPickListItem>>> FetchPickListAsync(
         string endpoint, string entityName, string token, CancellationToken cancellationToken)
@@ -198,32 +221,5 @@ public partial class SportlinkClubClient
             _logger.LogWarning(ex, "Onverwachte fout bij {Entity} endpoint", entityName);
             return new SportlinkClubResponse<IReadOnlyList<SportlinkPickListItem>>(SportlinkClubCallStatus.SportlinkFout, null, $"Onverwachte fout bij {entityName} endpoint", null);
         }
-    }
-
-    /// <summary>
-    /// ONBEVESTIGD: welke JSON-veldnamen een picklist-item daadwerkelijk gebruikt is nooit met een
-    /// netwerktrace gezien — probeert daarom een paar aannemelijke namen per waarde, in volgorde
-    /// van waarschijnlijkheid, in plaats van een strikt contract af te dwingen dat mogelijk meteen
-    /// breekt op de eerste live respons.
-    /// </summary>
-    internal static SportlinkPickListItem ParsePickListItem(JsonElement item)
-    {
-        var id = FirstStringProperty(item, "Id", "PublicTeamId", "PublicLocationId", "FacilityId", "Value", "Code");
-        var naam = FirstStringProperty(item, "Name", "TeamName", "NormalizedName", "LocationName", "FacilityName", "Text", "Description", "Naam");
-        return new SportlinkPickListItem(id, naam);
-    }
-
-    private static string? FirstStringProperty(JsonElement element, params string[] propertyNames)
-    {
-        if (element.ValueKind != JsonValueKind.Object)
-            return null;
-
-        foreach (var name in propertyNames)
-        {
-            if (element.TryGetProperty(name, out var property) && property.ValueKind == JsonValueKind.String)
-                return property.GetString();
-        }
-
-        return null;
     }
 }
