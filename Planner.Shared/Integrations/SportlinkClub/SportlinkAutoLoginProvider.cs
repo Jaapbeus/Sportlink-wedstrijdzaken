@@ -220,55 +220,61 @@ public sealed class SportlinkAutoLoginProvider : ISportlinkAutoLoginProvider
         var submissionFields = new Dictionary<string, string>(StringComparer.Ordinal);
         var submitCount = 0;
         foreach (var input in form.QuerySelectorAll("input"))
-        {
-            var name = input.GetAttribute("name");
-            var type = (input.GetAttribute("type") ?? "text").ToLowerInvariant();
-            switch (type)
-            {
-                case "hidden":
-                    AddUniqueField(submissionFields, name, input.GetAttribute("value") ?? string.Empty);
-                    break;
-                case "submit":
-                    if (name != "login") throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);
-                    AddUniqueField(submissionFields, name, input.GetAttribute("value") ?? string.Empty);
-                    submitCount++;
-                    break;
-                case "checkbox":
-                    if (name != "rememberMe") throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);
-                    if (input.HasAttribute("checked")) AddUniqueField(submissionFields, name, input.GetAttribute("value") ?? "on");
-                    break;
-                case "text":
-                case "email":
-                case "password":
-                case "tel":
-                case "number":
-                    break;
-                default:
-                    throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);
-            }
-        }
+            VerwerkInput(input, submissionFields, ref submitCount);
         foreach (var button in form.QuerySelectorAll("button"))
-        {
-            var type = (button.GetAttribute("type") ?? "submit").ToLowerInvariant();
-            if (type == "button" &&
-                (button.HasAttribute("data-password-toggle") || button.GetAttribute("aria-controls") == "password"))
-                continue;
-
-            // Keycloak currently renders its login action as a button (name=login, no value),
-            // while older/form-fixture pages use input[type=submit]. In HTML the button's
-            // displayed text is not a submitted value, so preserve the actual empty value.
-            if (type == "submit" && button.GetAttribute("name") == "login")
-            {
-                AddUniqueField(submissionFields, "login", button.GetAttribute("value") ?? string.Empty);
-                submitCount++;
-                continue;
-            }
-
-            throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);
-        }
+            VerwerkButton(button, submissionFields, ref submitCount);
         if (submitCount != 1)
             throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);
         return submissionFields;
+    }
+
+    private static void VerwerkInput(AngleSharp.Dom.IElement input, Dictionary<string, string> submissionFields, ref int submitCount)
+    {
+        var name = input.GetAttribute("name");
+        var type = (input.GetAttribute("type") ?? "text").ToLowerInvariant();
+        switch (type)
+        {
+            case "hidden":
+                AddUniqueField(submissionFields, name, input.GetAttribute("value") ?? string.Empty);
+                break;
+            case "submit":
+                if (name != "login") throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);
+                AddUniqueField(submissionFields, name, input.GetAttribute("value") ?? string.Empty);
+                submitCount++;
+                break;
+            case "checkbox":
+                if (name != "rememberMe") throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);
+                if (input.HasAttribute("checked")) AddUniqueField(submissionFields, name, input.GetAttribute("value") ?? "on");
+                break;
+            case "text":
+            case "email":
+            case "password":
+            case "tel":
+            case "number":
+                break;
+            default:
+                throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);
+        }
+    }
+
+    private static void VerwerkButton(AngleSharp.Dom.IElement button, Dictionary<string, string> submissionFields, ref int submitCount)
+    {
+        var type = (button.GetAttribute("type") ?? "submit").ToLowerInvariant();
+        if (type == "button" &&
+            (button.HasAttribute("data-password-toggle") || button.GetAttribute("aria-controls") == "password"))
+            return;
+
+        // Keycloak currently renders its login action as a button (name=login, no value),
+        // while older/form-fixture pages use input[type=submit]. In HTML the button's
+        // displayed text is not a submitted value, so preserve the actual empty value.
+        if (type == "submit" && button.GetAttribute("name") == "login")
+        {
+            AddUniqueField(submissionFields, "login", button.GetAttribute("value") ?? string.Empty);
+            submitCount++;
+            return;
+        }
+
+        throw new SportlinkLoginException(SportlinkLoginFailure.UnsupportedChallenge);
     }
 
     private static void AddUniqueField(Dictionary<string, string> fields, string? name, string value)
