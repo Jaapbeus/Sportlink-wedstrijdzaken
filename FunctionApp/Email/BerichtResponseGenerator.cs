@@ -1,4 +1,5 @@
 using Planner.Shared;
+using Planner.Shared.Email;
 using System.Globalization;
 using SportlinkFunction.Planner;
 
@@ -6,7 +7,6 @@ namespace SportlinkFunction.Email;
 
 public static class BerichtResponseGenerator
 {
-    private static readonly CultureInfo NL = new("nl-NL");
     internal const string NlTijdzoneId = "W. Europe Standard Time";
 
     // ── Beschikbaarheid ──
@@ -219,7 +219,7 @@ public static class BerichtResponseGenerator
         if (wedstrijd == null)
         {
             inhoud = $"{aanhef} {voornaam},\n\n"
-                   + $"Er is geen wedstrijd gevonden voor {classificatie.TeamNaam ?? "het opgegeven team"} "
+                   + $"Er is geen wedstrijd gevonden voor {AiVeldSanering.TeamNaamWeergave(classificatie.TeamNaam, classificatie.TeamNaamOnbevestigd) ?? "het opgegeven team"} "
                    + $"op {FormatDatum(classificatie.Datum)}. "
                    + "Controleer de teamnaam en datum en probeer het opnieuw.";
         }
@@ -340,7 +340,7 @@ public static class BerichtResponseGenerator
         if (wedstrijd == null)
         {
             inhoud = $"{aanhef} {voornaam},\n\n"
-                   + $"Er is geen wedstrijd gevonden voor {classificatie.TeamNaam ?? "het opgegeven team"} "
+                   + $"Er is geen wedstrijd gevonden voor {AiVeldSanering.TeamNaamWeergave(classificatie.TeamNaam, classificatie.TeamNaamOnbevestigd) ?? "het opgegeven team"} "
                    + $"op {FormatDatum(classificatie.Datum)}.";
         }
         else
@@ -392,7 +392,7 @@ public static class BerichtResponseGenerator
         if (wedstrijd == null)
         {
             inhoud = $"{aanhef} {voornaam},\n\n"
-                   + $"Er is geen wedstrijd gevonden voor {classificatie.TeamNaam ?? "het opgegeven team"} "
+                   + $"Er is geen wedstrijd gevonden voor {AiVeldSanering.TeamNaamWeergave(classificatie.TeamNaam, classificatie.TeamNaamOnbevestigd) ?? "het opgegeven team"} "
                    + $"op {FormatDatum(classificatie.Datum)}.";
         }
         else if (beschikbaarheid == null || !beschikbaarheid.Beschikbaar)
@@ -439,8 +439,9 @@ public static class BerichtResponseGenerator
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
-        var teamTekst = !string.IsNullOrWhiteSpace(classificatie.TeamNaam)
-            ? $"de begeleiding van {classificatie.TeamNaam}"
+        var teamWeergave = AiVeldSanering.TeamNaamWeergave(classificatie.TeamNaam, classificatie.TeamNaamOnbevestigd);
+        var teamTekst = teamWeergave != null
+            ? $"de begeleiding van {teamWeergave}"
             : "de begeleiding van het opgegeven team";
 
         var inhoud = $"{aanhef} {voornaam},\n\n"
@@ -525,7 +526,7 @@ public static class BerichtResponseGenerator
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
 
         var inhoud = $"{aanhef} {voornaam},\n\n"
-                   + $"We kunnen de wedstrijd van {tegenstander} niet vinden in ons programma. "
+                   + $"We kunnen de wedstrijd van {AiVeldSanering.TegenstanderOfGeneriek(tegenstander, "de opgegeven tegenstander")} niet vinden in ons programma. "
                    + "Tegen welk van onze teams zou deze wedstrijd zijn? "
                    + "Dan kunnen we de beschikbaarheid voor je controleren.";
 
@@ -568,8 +569,8 @@ public static class BerichtResponseGenerator
             ["voornaam"] = ExtractVoornaam(email.AfzenderNaam),
             ["aanhef"] = GetTijdsgebondenAanhef(),
             ["datum"] = FormatDatum(classificatie.Datum),
-            ["team"] = classificatie.TeamNaam ?? "",
-            ["tegenstander"] = classificatie.Tegenstander ?? "",
+            ["team"] = AiVeldSanering.TeamNaamOfGeneriek(classificatie.TeamNaam, classificatie.TeamNaamOnbevestigd),
+            ["tegenstander"] = AiVeldSanering.TegenstanderOfGeneriek(classificatie.Tegenstander),
             ["aanvangstijd"] = classificatie.AanvangsTijd ?? "",
             // #1587: "de ochtend (08:30 - 12:00)" of leeg. Uitsluitend het dagdeel dat de planner werkelijk heeft
             // gecontroleerd, nooit het gevraagde dagdeel uit de classificatie (dat kan vervallen zijn).
@@ -623,14 +624,7 @@ public static class BerichtResponseGenerator
     private static string FormatAlternatievenLijst(IEnumerable<SlotToewijzing> alternatieven)
         => string.Concat(alternatieven.Take(3).Select(alt => $"- {alt.VeldNaam} om {alt.AanvangsTijd} (eindigt {alt.EindTijd})\n"));
 
-    public static string GetTijdsgebondenAanhef()
-    {
-        var nlZone = TimeZoneInfo.FindSystemTimeZoneById(NlTijdzoneId);
-        var uur = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, nlZone).Hour;
-        if (uur < 12) return "Goedemorgen";
-        if (uur < 18) return "Goedemiddag";
-        return "Goedenavond";
-    }
+    public static string GetTijdsgebondenAanhef() => AntwoordTekst.Aanhef(DateTime.UtcNow);
 
     /// <summary>
     /// Beperkt de alternatieven tot kunstgras zodra er drie of meer kunstgrasvelden beschikbaar zijn:
@@ -647,18 +641,7 @@ public static class BerichtResponseGenerator
     /// aantoonbaar beschikbaar, en dat weglaten is schadelijker dan een optie te veel aanbieden.</para>
     /// </summary>
     private static List<SlotToewijzing> FilterAlternatieven(List<SlotToewijzing> alternatieven)
-    {
-        var kunstgrasVelden = alternatieven
-            .Where(a => VeldTypeClassificatie.IsKunstgras(a.VeldType))
-            .Select(a => a.VeldNummer).Distinct().Count();
-        if (kunstgrasVelden < 3)
-            return alternatieven;
-
-        // Bewust IsNatuurgras en niet !IsKunstgras: onbekend is geen natuurgras en blijft staan.
-        return alternatieven
-            .Where(a => !VeldTypeClassificatie.IsNatuurgras(a.VeldType))
-            .ToList();
-    }
+        => AntwoordTekst.FilterAlternatieven(alternatieven);
 
     /// <summary>
     /// Laat natuurgrasvensters weg zodra er drie of meer kunstgrasvensters zijn, behalve als een
@@ -697,17 +680,9 @@ public static class BerichtResponseGenerator
     /// <summary>
     /// Eindtijd >= 21:00 betekent effectief "einde dag" (sluittijd sportpark).
     /// </summary>
-    private static bool IsEindeDag(string tot)
-    {
-        return TimeOnly.TryParse(tot, out var tijd) && tijd >= new TimeOnly(21, 0);
-    }
+    private static bool IsEindeDag(string tot) => TimeOnly.TryParse(tot, out var tijd) && tijd >= new TimeOnly(21, 0);
 
-    private static string FormatDatum(string? datumString)
-    {
-        if (DateOnly.TryParse(datumString, out var datum))
-            return $"{datum.ToString("dddd d MMMM yyyy", NL)}";
-        return datumString ?? "de opgegeven datum";
-    }
+    private static string FormatDatum(string? datumString) => AntwoordTekst.Datum(datumString);
 
     private static (string onderwerp, string body) WrapMetReviewEnHandtekening(
         string inhoud, BerichtClassificatie classificatie, InkomendBericht email,
@@ -773,11 +748,5 @@ public static class BerichtResponseGenerator
         return handtekening;
     }
 
-    private static string ExtractVoornaam(string volledigeNaam)
-    {
-        if (string.IsNullOrWhiteSpace(volledigeNaam))
-            return "";
-        var delen = volledigeNaam.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return delen[0];
-    }
+    private static string ExtractVoornaam(string volledigeNaam) => AntwoordTekst.Voornaam(volledigeNaam);
 }

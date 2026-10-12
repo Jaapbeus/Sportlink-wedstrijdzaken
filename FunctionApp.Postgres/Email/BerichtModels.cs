@@ -43,6 +43,10 @@ public class BerichtClassificatie
 
     // Door de pipeline gezet (niet door AI) wanneer een KNVB-bijlage + BCC van toepassing is
     // (#561/#1141) — zie BerichtPipeline.BouwVerzetZonderDatumResponseAsync.
+    // Door de pipeline gezet (niet door AI) als de teamresolutie TeamNaam niet kon bevestigen: antwoorden
+    // gebruiken dan generieke tekst in plaats van de vrije modeltekst.
+    public bool TeamNaamOnbevestigd { get; set; }
+
     public bool VoegKnvbPdfBijlageToe { get; set; }
     public string? KnvbBijlageRegio { get; set; }
 

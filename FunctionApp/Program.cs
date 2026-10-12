@@ -118,4 +118,7 @@ builder.Services.AddSingleton<ISportlinkMutationAuditService, SqlSportlinkMutati
 // rechtstreeks aan op een andere origin. De toegestane origins staan als platforminstelling op de
 // Function App (az functionapp cors), niet in code of bicep — zie docs/RUNBOOK-FLEX-MIGRATIE.md §5.
 
-builder.Build().Run();
+var host = builder.Build();
+// #1689: geaggregeerde foutlog (zonder waarden) als het laden van de clublijst structureel faalt.
+SportlinkFunction.Admin.EasyAuthHelper.KoppelClubLijstLog(host.Services.GetRequiredService<ILoggerFactory>());
+host.Run();

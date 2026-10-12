@@ -109,6 +109,11 @@ internal sealed class RecordingEmailPersistenceService : IEmailPersistenceServic
         DetecteerReplyOpOnsAntwoordAsync(string conversationId, ILogger log)
         => Task.FromResult((false, (int?)null, (string?)null, (string?)null));
 
+    public int VerzondenAntwoordenInConversatie { get; set; }
+
+    public Task<int> TelVerzondenAntwoordenInConversatieAsync(string conversationId)
+        => Task.FromResult(VerzondenAntwoordenInConversatie);
+
     public Task UpdateReplyStatusAsync(int verwerkingId, bool isReply, int replyOpVerwerkingId)
         => Task.CompletedTask;
 

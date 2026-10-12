@@ -196,6 +196,16 @@ release resteert. Een issue blijft dus nooit onder `status: in-progress`, `statu
 een Dependabot-batch met een registratie-issue, dan raakt de workflow het issue niet aan: zet de merger dan zelf
 `status: awaiting-release` en verwijder het `turn:`-label.
 
+**Parallelle schrijvers en de turn-labels (#1686).** `turn-label-exclusief.yml` houdt het laatst gezette
+`turn:`-label en verwijdert de andere (laatste schrijver wint). Spreken de labels en de issue-events elkaar
+tegen, of is niet vast te stellen welke toevoeging de laatste was, dan verwijdert de workflow niets (meer) en
+faalt de run zichtbaar: zet het juiste `turn:`-label dan handmatig. Een handmatige sessie die een issue verwerkt
+dat ook de CI-bot kan oppakken, leest eerst álle `turn:`-labels, vervangt ze in één `gh issue edit` (elk
+bestaand `--remove-label` plus het nieuwe `--add-label`) en controleert daarna dat er precies één staat.
+Verwijst een reviewteruggave naar een besloten notitie, dan start de poort van `claude-issue-turn.yml` geen
+agent en gaat de beurt naar de eigenaar tot die notitie beschikbaar is. Beide workflows draaien op een
+`issues`-event vanaf de default branch en zijn dus pas actief na de eerstvolgende release naar `main`.
+
 ### Security Gate
 
 De Security Gate job in CI is **leidend**. Zolang deze rood is, wordt een PR niet gemerged — ook niet als andere checks groen zijn. De gate controleert:

@@ -39,6 +39,9 @@ internal interface IEmailPersistenceRepository
     Task UpdateFoutAsync(int verwerkingId, string foutMelding);
     Task<(bool IsReply, int? OrigineleVerwerkingId, string? OrigineelType, string? OriginaleSamenvatting)>
         DetecteerReplyOpOnsAntwoordAsync(string conversationId, string clubCode, ILogger log);
+
+    /// <summary>Aantal eerder verzonden antwoorden in een conversatie (antwoordlusbeveiliging).</summary>
+    Task<int> TelVerzondenAntwoordenInConversatieAsync(string conversationId, string clubCode);
     Task UpdateReplyStatusAsync(int verwerkingId, bool isReply, int replyOpVerwerkingId);
     Task InsertClassificatieCorrectieAsync(
         int origineleVerwerkingId,
@@ -396,6 +399,21 @@ internal sealed class SqlEmailPersistenceRepository : IEmailPersistenceRepositor
             log.LogWarning(ex, "Reply-detectie kon niet worden uitgevoerd — doorgaan als nieuw bericht");
             return (false, null, null, null);
         }
+    }
+
+    public async Task<int> TelVerzondenAntwoordenInConversatieAsync(string conversationId, string clubCode)
+    {
+        using var conn = new SqlConnection(Cs);
+        await conn.OpenAsync();
+        using var cmd = new SqlCommand(@"
+            SELECT COUNT(*)
+            FROM [planner].[EmailVerwerking]
+            WHERE [ConversationId] = @ConversationId
+              AND ([IsBeantwoord] = 1 OR [VerstuurdNaar] IS NOT NULL)
+              AND [ClubCode] = @ClubCode", conn);
+        cmd.Parameters.AddWithValue("@ConversationId", conversationId);
+        cmd.Parameters.AddWithValue("@ClubCode", clubCode);
+        return Convert.ToInt32(await cmd.ExecuteScalarAsync());
     }
 
     public async Task UpdateReplyStatusAsync(int verwerkingId, bool isReply, int replyOpVerwerkingId)

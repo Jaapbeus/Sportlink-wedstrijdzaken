@@ -401,6 +401,11 @@ jobs:
       - name: Claude issue-beurt poort testen
         run: node .github/scripts/claude-issue-turn-gate.test.js
 
+      # #1686: helper van turn-label-exclusief.yml (hoogstens één turn:-label). Ook die workflow
+      # draait alleen op een gelabeld issue; zonder deze test blijkt een fout pas bij een echte beurtwissel.
+      - name: Turn-label exclusief testen
+        run: node .github/scripts/turn-label-exclusief.test.js
+
       # ──────────────────────────────────────────────────────────────────────
       # #595: schema-drift guard.
       #

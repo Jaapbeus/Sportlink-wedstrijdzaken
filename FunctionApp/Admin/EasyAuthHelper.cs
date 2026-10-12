@@ -177,28 +177,28 @@ internal static class EasyAuthHelper
         return actor;
     }
 
-    /// <summary>
-    /// Leest de club-code uit de X-Club-Code request header.
-    /// Terugval op ClubCode uit dbo.AppSettings als de header ontbreekt.
-    /// </summary>
     private static readonly BekendeClubs Clubs = new(() => BekendeClubs.LeesCodes(
         new Microsoft.Data.SqlClient.SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString),
         "SELECT [ClubCode] FROM [dbo].[AppSettings]"));
 
-    public static string GetClubCodeFromRequest(HttpRequest req)
-    {
-        // #1122 (CISO): de header is een UX-schakelaar (productie ↔ AllStars-demodata), geen
-        // autorisatiegrens (AGENTS.md, deployment-model). De waarde wordt getoetst aan de bekende
-        // clubs (#1677, vorm en bestaan); een onbekende waarde geeft de primaire club. Is de lijst nog
-        // niet te toetsen, dan geldt de geldige waarde zoals voorheen (ClubZoekResultaat.CodeVoorVerzoek).
-        if (req.Headers.TryGetValue("X-Club-Code", out var headerVal) &&
-            !string.IsNullOrWhiteSpace(headerVal) &&
-            Clubs.Zoek(headerVal.ToString()).CodeVoorVerzoek is { } clubCode)
-            return clubCode;
+    /// <summary>Koppelt de geaggregeerde foutlog van de clublijst; eenmaal bij het opstarten (#1689).</summary>
+    public static void KoppelClubLijstLog(Microsoft.Extensions.Logging.ILoggerFactory loggers)
+        => Clubs.Log = loggers.CreateLogger(nameof(BekendeClubs));
 
-        return SystemUtilities.AppSettings.GetSetting("clubCode")
-            ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
-    }
+    /// <summary>
+    /// De clubcode voor dit verzoek. De header <c>X-Club-Code</c> is een UX-schakelaar tussen de
+    /// primaire club en de democlub, geen autorisatiegrens (#1122, AGENTS.md). De waarde wordt getoetst
+    /// aan de bekende clubs (#1677, vorm en bestaan; #1689 begrensd herladen bij een onbekende waarde):
+    /// een onbekende of ontbrekende waarde geeft de primaire club; is de lijst nog niet te toetsen, dan
+    /// geldt de syntactisch geldige waarde zoals voorheen (<see cref="ClubZoekResultaat.CodeVoorVerzoek"/>).
+    /// </summary>
+    public static string GetClubCodeFromRequest(HttpRequest req)
+        => GetClubCodeFromRequest(req, Clubs, () => SystemUtilities.AppSettings.GetSetting("clubCode")
+            ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings"));
+
+    /// <summary>Tier-bedrading met injecteerbare lijst en primaire club; bedoeld voor tests (#1689).</summary>
+    internal static string GetClubCodeFromRequest(HttpRequest req, BekendeClubs clubs, Func<string> primaireClub)
+        => clubs.ClubCodeVoorVerzoek(req.Headers["X-Club-Code"].ToString(), primaireClub);
 
     /// <summary>
     /// Leest x-correlation-id uit de request header, of genereert een nieuwe GUID.
