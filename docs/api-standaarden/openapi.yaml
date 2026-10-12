@@ -8347,7 +8347,7 @@ paths:
       summary: Welke menu-items mag de ingelogde gebruiker zien?
       description: |
         #1647: geeft de menu-sleutels (`menu.*`) terug die de aanroeper in het hoofdmenu van de Admin GUI
-        mag zien. `admin` krijgt alle sleutels; een andere rol de unie van de sleutels die zijn rol(len)
+        mag zien, plus de menuvlag `sportlinkExtensieActief`. `admin` krijgt alle sleutels; een andere rol de unie van de sleutels die zijn rol(len)
         bij deze club in de toegangsmatrix (`/beheer/rolfeatureinstellingen`) aan heeft staan, zonder de
         groep DEBUG (`menu.emailtester`, `menu.leermomenten`). Zonder opgeslagen keuze staan alleen de
         hoofditems aan. Open voor elke ingelogde rol (`admin` óf `user`), want de matrix zelf is
@@ -8364,13 +8364,18 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [featureKeys]
+                required: [featureKeys, sportlinkExtensieActief]
                 properties:
                   featureKeys:
                     type: array
                     items:
                       type: string
                       example: menu.planning
+                  sportlinkExtensieActief:
+                    type: boolean
+                    description: |
+                      Staat de Sportlink Web Extension aan voor de club? Niet-gevoelige menuvlag, hier meegegeven
+                      zodat een niet-admin-rol hem krijgt zonder de admin-only `/beheer/settings` te lezen.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':

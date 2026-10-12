@@ -52,7 +52,11 @@ public sealed class ClubInstellingenCache : IDisposable
     public async Task<ApiResult<SettingsUpdateResultDto>> UpdateSettingsAsync(SettingsUpdateDto dto)
     {
         var resultaat = await _api.UpdateSettingsAsync(dto);
-        if (resultaat.Success) _settings.Wis();
+        if (resultaat.Success)
+        {
+            _settings.Wis();
+            _menuToegang.Wis(); // bevat de extensievlag
+        }
         return resultaat;
     }
 

@@ -80,6 +80,18 @@ internal static class RolFeatureInstellingenRepository
         return resultaat;
     }
 
+    /// <summary>#1647: staat de Sportlink Web Extension aan voor deze club (uitsluitend de menuvlag; geen rij of kolom = uit).</summary>
+    internal static async Task<bool> IsExtensieActiefAsync(string clubCode, string cs)
+    {
+        await using var conn = new NpgsqlConnection(cs);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(
+            "SELECT sportlinkextensionenabled FROM public.appsettings WHERE clubcode = @cc LIMIT 1", conn);
+        cmd.Parameters.AddWithValue("cc", clubCode);
+        try { return await cmd.ExecuteScalarAsync() is true; }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UndefinedColumn) { return false; }
+    }
+
     internal static async Task SetAsync(string clubCode, string rolNaam, string featureKey, bool enabled, string cs)
     {
         await using var conn = new NpgsqlConnection(cs);

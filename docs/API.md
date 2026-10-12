@@ -134,7 +134,7 @@ verwerking plaats.
 | `POST` | `/planner/auto-plan/deel` | **Admin** | Planning delen zoals getoond op het scherm (HTML/PDF, stateless, #1460) |
 | `POST` | `/planner/auto-plan/toepassen` | **Admin** | Berekende planning wegschrijven (alleen testmodus ALLSTARS) |
 | `GET` | `/planner/pdf-export` | **Admin/User** | Of PDF-export voor de gekozen club aan staat: `{ "pdfExportIngeschakeld": bool }` — Planning toont de PDF-knop alleen dan, ook voor de rol `user` (#1459) |
-| `GET` | `/planner/menu-toegang` | **Admin/User** | Menu-sleutels die de ingelogde gebruiker mag zien: `{ "featureKeys": ["menu.planning", …] }` — `admin` krijgt alle, andere rollen de sleutels die hun rol in "Rechten per rol" aan heeft staan (zonder DEBUG). Alleen UI-gemak voor het hoofdmenu; elk endpoint autoriseert zelf (#1647) |
+| `GET` | `/planner/menu-toegang` | **Admin/User** | Menu-sleutels die de ingelogde gebruiker mag zien: `{ "featureKeys": ["menu.planning", …], "sportlinkExtensieActief": bool }` — `admin` krijgt alle, andere rollen de sleutels die hun rol in "Rechten per rol" aan heeft staan (zonder DEBUG); `sportlinkExtensieActief` is de niet-gevoelige menuvlag voor de Sportlink Web Extension (zodat niet-admins hem krijgen zonder `/beheer/settings`). Alleen UI-gemak voor het hoofdmenu; elk endpoint autoriseert zelf (#1647) |
 | `GET` | `/planner/veldbezetting?datum=` | **Admin/User** | Wedstrijden op een datum, zonder optimalisatie-berekening — voedt de Planning-pagina, sinds #1400 generiek zichtbaar voor elke ingelogde gebruiker |
 | `GET` | `/planner/team-schedule` | **Admin** | Wedstrijdschema per team — gescoped op `X-Club-Code` header |
 | `GET` | `/beheer/teambegeleiding` | **Admin + user** | Alle teams met begeleiding in database (#1330: elke ingelogde rol) |

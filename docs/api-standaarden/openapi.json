@@ -11589,7 +11589,7 @@
         ],
         "operationId": "getMenuToegang",
         "summary": "Welke menu-items mag de ingelogde gebruiker zien?",
-        "description": "#1647: geeft de menu-sleutels (`menu.*`) terug die de aanroeper in het hoofdmenu van de Admin GUI\nmag zien. `admin` krijgt alle sleutels; een andere rol de unie van de sleutels die zijn rol(len)\nbij deze club in de toegangsmatrix (`/beheer/rolfeatureinstellingen`) aan heeft staan, zonder de\ngroep DEBUG (`menu.emailtester`, `menu.leermomenten`). Zonder opgeslagen keuze staan alleen de\nhoofditems aan. Open voor elke ingelogde rol (`admin` óf `user`), want de matrix zelf is\nadmin-only. Uitsluitend UI-gemak: elk endpoint autoriseert zelf server-side. Club via `X-Club-Code`.\n",
+        "description": "#1647: geeft de menu-sleutels (`menu.*`) terug die de aanroeper in het hoofdmenu van de Admin GUI\nmag zien, plus de menuvlag `sportlinkExtensieActief`. `admin` krijgt alle sleutels; een andere rol de unie van de sleutels die zijn rol(len)\nbij deze club in de toegangsmatrix (`/beheer/rolfeatureinstellingen`) aan heeft staan, zonder de\ngroep DEBUG (`menu.emailtester`, `menu.leermomenten`). Zonder opgeslagen keuze staan alleen de\nhoofditems aan. Open voor elke ingelogde rol (`admin` óf `user`), want de matrix zelf is\nadmin-only. Uitsluitend UI-gemak: elk endpoint autoriseert zelf server-side. Club via `X-Club-Code`.\n",
         "security": [
           {
             "easyAuth": []
@@ -11608,7 +11608,8 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "featureKeys"
+                    "featureKeys",
+                    "sportlinkExtensieActief"
                   ],
                   "properties": {
                     "featureKeys": {
@@ -11617,6 +11618,10 @@
                         "type": "string",
                         "example": "menu.planning"
                       }
+                    },
+                    "sportlinkExtensieActief": {
+                      "type": "boolean",
+                      "description": "Staat de Sportlink Web Extension aan voor de club? Niet-gevoelige menuvlag, hier meegegeven\nzodat een niet-admin-rol hem krijgt zonder de admin-only `/beheer/settings` te lezen.\n"
                     }
                   }
                 }

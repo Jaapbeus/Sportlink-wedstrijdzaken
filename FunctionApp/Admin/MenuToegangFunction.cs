@@ -7,7 +7,7 @@ using Planner.Shared.Autorisatie;
 namespace SportlinkFunction.Admin;
 
 /// <summary>
-/// <c>GET /api/planner/menu-toegang</c> (#1647) — welke menu-sleutels de aanroeper mag zien: voor
+/// <c>GET /api/planner/menu-toegang</c> (#1647) — welke menu-sleutels de aanroeper mag zien (plus de niet-gevoelige vlag "Sportlink Web Extension aan"): voor
 /// <c>admin</c> alle, voor andere rollen de unie van de sleutels die hun rol(len) in de toegangsmatrix
 /// aan hebben staan ("Rechten per rol"), zonder de groep DEBUG. Open voor elke ingelogde rol, want de
 /// matrix zelf is admin-only. Uitsluitend UI-gemak voor het hoofdmenu: elk endpoint autoriseert zelf
@@ -23,11 +23,11 @@ public static class MenuToegangFunction
         AdminEndpoint.ExecuteAuthenticatedAsync(req, context.GetLogger("SqlMenuToegangGet"), "menu-toegang ophalen",
             async clubCode =>
             {
-                var keys = await MenuToegangCore.BepaalToegestaneKeysAsync(
+                var toegang = await MenuToegangCore.BepaalAsync(
                     EasyAuthHelper.IsAdmin(req),
                     rol => EasyAuthHelper.IsInRole(req, rol),
-                    async () => await RolFeatureInstellingenRepository.GetMatrixAsync(
-                        clubCode, SystemUtilities.DatabaseConfig.ConnectionString));
-                return new OkObjectResult(new { FeatureKeys = keys });
+                    async () => await RolFeatureInstellingenRepository.GetMatrixAsync(clubCode, SystemUtilities.DatabaseConfig.ConnectionString),
+                    () => RolFeatureInstellingenRepository.IsExtensieActiefAsync(clubCode, SystemUtilities.DatabaseConfig.ConnectionString));
+                return new OkObjectResult(toegang);
             });
 }

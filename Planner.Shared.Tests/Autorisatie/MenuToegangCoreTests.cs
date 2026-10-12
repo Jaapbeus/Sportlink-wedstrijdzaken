@@ -75,4 +75,28 @@ public class MenuToegangCoreTests
         MenuFeatureKeys.StandaardAan.Should().NotContain(MenuFeatureKeys.AlleenAdmin);
         MenuFeatureKeys.StandaardAan.Should().NotContain(k => k.StartsWith("menu.instellingen."));
     }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Bepaal_GeeftDeExtensievlagMee_OokVoorEenNietAdmin(bool extensie)
+    {
+        var toegang = await MenuToegangCore.BepaalAsync(
+            false, r => r == RolNamen.User,
+            () => Matrix((RolNamen.User, MenuFeatureKeys.WedstrijdAanmaken, true)),
+            () => Task.FromResult(extensie));
+
+        toegang.FeatureKeys.Should().Equal(MenuFeatureKeys.WedstrijdAanmaken);
+        toegang.SportlinkExtensieActief.Should().Be(extensie);
+    }
+
+    [Fact]
+    public async Task Bepaal_Admin_KrijgtAlleSleutelsEnDeVlag()
+    {
+        var toegang = await MenuToegangCore.BepaalAsync(
+            true, _ => false, () => throw new InvalidOperationException(), () => Task.FromResult(true));
+
+        toegang.FeatureKeys.Should().BeEquivalentTo(MenuFeatureKeys.Alle);
+        toegang.SportlinkExtensieActief.Should().BeTrue();
+    }
 }

@@ -83,6 +83,17 @@ internal static class RolFeatureInstellingenRepository
         return resultaat;
     }
 
+    /// <summary>#1647: staat de Sportlink Web Extension aan voor deze club (uitsluitend de menuvlag; geen rij = uit).</summary>
+    internal static async Task<bool> IsExtensieActiefAsync(string clubCode, string cs)
+    {
+        using var conn = new SqlConnection(cs);
+        await conn.OpenAsync();
+        using var cmd = new SqlCommand(
+            $"SELECT TOP 1 [SportlinkExtensionEnabled] FROM [dbo].[AppSettings] WHERE [ClubCode] = {ClubScope.ClubCodeParam}", conn);
+        ClubScope.AddClubParam(cmd, clubCode);
+        return await cmd.ExecuteScalarAsync() is true;
+    }
+
     internal static async Task SetAsync(string clubCode, string rolNaam, string featureKey, bool enabled, string cs)
     {
         using var conn = new SqlConnection(cs);

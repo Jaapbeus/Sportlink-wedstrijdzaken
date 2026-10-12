@@ -159,6 +159,9 @@ public class SportlinkPublicMatchIdDto
 public class MenuToegangDto
 {
     public List<string> FeatureKeys { get; set; } = new();
+    /// <summary>Niet-gevoelige menuvlag: staat de Sportlink Web Extension aan voor de club? Komt hier vandaan
+    /// omdat de instellingenroute admin-only is en een niet-admin-rol de vlag anders nooit zou krijgen.</summary>
+    public bool SportlinkExtensieActief { get; set; }
 }
 
 /// <summary>#1341: één FeatureKey met zijn huidige aan/uit-stand voor de Wedstrijdzaken-rol bij

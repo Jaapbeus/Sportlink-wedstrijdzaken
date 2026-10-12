@@ -7,6 +7,18 @@ namespace Planner.Shared.Autorisatie;
 /// </summary>
 public static class MenuToegangCore
 {
+    /// <summary>Antwoord van <c>GET planner/menu-toegang</c>: de toegestane menu-sleutels en de niet-gevoelige
+    /// menuvlag "Sportlink Web Extension aan" (#1647) — zodat het menu die vlag niet uit de admin-only
+    /// instellingenroute hoeft te halen.</summary>
+    public sealed record MenuToegang(IReadOnlyList<string> FeatureKeys, bool SportlinkExtensieActief);
+
+    public static async Task<MenuToegang> BepaalAsync(
+        bool isAdmin,
+        Func<string, bool> heeftRol,
+        Func<Task<IReadOnlyDictionary<(string RolNaam, string FeatureKey), bool>>> leesMatrix,
+        Func<Task<bool>> leesExtensieActief) =>
+        new(await BepaalToegestaneKeysAsync(isAdmin, heeftRol, leesMatrix), await leesExtensieActief());
+
     /// <summary>
     /// <c>admin</c>: alle menu-sleutels, zonder de matrix te raadplegen. Anders: de unie van de sleutels
     /// die minstens één van de instelbare rollen van de aanroeper aan heeft staan, minus de uitsluitend
