@@ -11,8 +11,15 @@ name: Security Scan
 on:
   push:
     branches: ['**']
+  # #1641: geen `branches`-filter, zodat ook een PR tegen een featurebranch (gestapelde PR) bouwt;
+  # Bewust zonder `edited`: dat vuurt ook bij elke titel-/tekstwijziging (volledige run per `gh pr edit`);
+  # na een base-retarget: `gh workflow run build.yml --ref <branch>`. GitHub start GEEN pull_request-run zolang de PR een
+  # merge-conflict heeft ("Workflows will not run on `pull_request` activity if the pull request has
+  # a merge conflict", docs.github.com, events-that-trigger-workflows). Eerst develop mergen.
   pull_request:
-    branches: [main, develop]
+    types: [opened, synchronize, reopened, ready_for_review]
+  # #1641: bewust geen workflow_dispatch: de push-run hierboven zet de Security Gate al op elke
+  # gepushte SHA; alleen Build (PR) kan ontbreken en die heeft workflow_dispatch in build.yml.
 
 # #1370 (retro v3.6.0.0, bevinding 2) — GEPROBEERD EN BEWUST TERUGGEDRAAID.
 # Zelfde dedupmechanisme als build.yml (zie de toelichting daar): een concurrency-groep op
