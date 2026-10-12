@@ -33,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.13.4.13
+  version: 3.13.4.16
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -2726,9 +2726,19 @@ components:
         faviconUrl:
           type: string
           nullable: true
+          maxLength: 300
+          description: |
+            Absolute `https://`-URL van de favicon, maximaal 300 tekens. Witruimte eromheen vervalt
+            en een absolute `http://`-URL wordt als `https://` opgeslagen. Leeg of `null` = geen favicon.
+          example: "https://www.[clubdomein].nl/favicon.ico"
         logoUrl:
           type: string
           nullable: true
+          maxLength: 300
+          description: |
+            Absolute `https://`-URL van het logo, maximaal 300 tekens. Witruimte eromheen vervalt
+            en een absolute `http://`-URL wordt als `https://` opgeslagen. Leeg of `null` = geen logo.
+          example: "https://www.[clubdomein].nl/logo.png"
         lightColors:
           type: object
           nullable: true
@@ -7234,6 +7244,10 @@ paths:
         De vier platte kleurwaarden worden gevalideerd op `#rrggbb`. Elke sleutel en waarde in
         `lightColors`/`darkColors` wordt afzonderlijk gevalideerd; één ongeldige waarde wijst het
         hele verzoek af met HTTP 400.
+        `faviconUrl` en `logoUrl` zijn optioneel; een ingevulde waarde wordt getrimd, een absolute
+        `http://`-URL wordt als `https://` opgeslagen (zelfde host, pad en query), en daarna moet de
+        waarde een absolute `https://`-URL met host zijn, zonder controletekens en van maximaal
+        300 tekens. Anders volgt HTTP 400 met een melding die zegt hoe het veld te herstellen is.
       security:
         - easyAuth: []
       requestBody:
