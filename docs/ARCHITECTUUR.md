@@ -909,7 +909,8 @@ kalenderjaar — anders ondermijnt het voorbeeld stilletjes de dynamische datum.
 **Doorgifte van persoonsgegevens aan een externe AI-verwerker wordt vastgelegd**: welke velden, op
 welke grondslag, met welke bewaartermijn aan de kant van de verwerker. Een automatisch filter op
 persoonsgegevens is een vangnet en **nooit** een garantie; zijn bekende blinde vlekken worden
-uitputtend opgeschreven náást het filter.
+uitputtend opgeschreven náást het filter. Waar dat staat: de e-mailpijplijn in
+[EMAIL-VERWERKING.md](EMAIL-VERWERKING.md) §5, de feedbackwidget in [FEEDBACK.md](FEEDBACK.md) §8.
 
 ### 8.6 Kosten
 
@@ -1095,7 +1096,7 @@ Dit is het hoofdstuk waar een agent of reviewer begint. Kolom **Bewijs** zegt ho
 | WZ-AI-02 | Dynamische datum | — | Tijdgevoelige instructies krijgen de datum mee; voorbeelden zonder vast jaar | Reviewcontrole |
 | WZ-AI-03 | Uitsluiting vóór verzending | AVG art. 21 | Uitsluitingsregels opnieuw toepassen vlak vóór de externe aanroep; faalt dicht | Bestaande code |
 | WZ-AI-04 | Publicatiegrens | — | De bevestiging draagt de getoonde tekst terug; het filter is nooit een garantie | Bestaande code |
-| WZ-AI-05 | Doorgifte vastgelegd | AVG art. 30 | Velden, grondslag en bewaartermijn bij de verwerker staan beschreven | **ontbreekt** |
+| WZ-AI-05 | Doorgifte vastgelegd | AVG art. 30 | Velden, grondslag en bewaartermijn bij de verwerker staan beschreven | Documentatie + reviewcontrole: registerrij en doorgiftetabel in `EMAIL-VERWERKING.md` §5 (e-mail, #1699) en `FEEDBACK.md` §8 (feedback); grondslag, verwerkersovereenkomst, bewaartermijn bij de verwerker en doorgifte-instrument van de e-mailrij zijn daar eigenaarsvelden |
 
 ### 10.6 Infrastructuur, kosten en uitrol
 
@@ -1131,7 +1132,7 @@ werkvoorraad.
 | 2 | Geen pariteitscontrole op de codebomen | WZ-ARC-03 | Vier gedocumenteerde storingen komen hieruit voort | ± 1 dag |
 | 3 | Laaggrenzen niet vastgeklikt | WZ-ARC-01 | De regels zijn vandaag al waar; borging kost geen codewijziging | ± 1 dag |
 | 4 | Autorisatiedekking niet afgedwongen | WZ-SEC-01 | Negenennegentig handmatige aanroepen; niets bewaakt de honderdste | valt samen met 3 |
-| 5 | Doorgifte aan AI-verwerker niet vastgelegd | WZ-AI-05 | Verantwoordingsplicht; geen code nodig | documentatie |
+| 5 | ~~Doorgifte aan AI-verwerker niet vastgelegd~~ — vastgelegd: registerrij en doorgiftetabel voor de e-mailpijplijn in `EMAIL-VERWERKING.md` §5 (#1699); de eigenaarsvelden daarin (grondslag, verwerkersovereenkomst, bewaartermijn bij de verwerker, doorgifte-instrument) vult de eigenaar in | WZ-AI-05 | Verantwoordingsplicht; geen code nodig | — |
 | 6 | ~~Rollenmatrix loopt uiteen met de code~~ — afgerond: matrix en tests zijn gelijkgetrokken (#1390, #1400; getoetst bij #1423) | WZ-SEC-05 | Een verplichte test waarvan een stap niet kan slagen, leert afwijkingen negeren | — |
 | 7 | Aanmelding van automatisering zonder geheim | WZ-DEP-04 | Kost niets en de rechten staan al klaar | ± halve dag |
 | 8 | Infrastructuur belooft wat ze niet uitrolt | WZ-DEP-02 | Voorbeeldmodus zou hier blijvend verschil moeten tonen | ± 2 uur |
