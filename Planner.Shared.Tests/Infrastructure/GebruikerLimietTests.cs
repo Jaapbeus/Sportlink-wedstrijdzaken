@@ -77,4 +77,45 @@ public class GebruikerLimietTests
         limiet.TryAcquire("AbC-123").Should().BeTrue();
         limiet.TryAcquire("abc-123").Should().BeFalse();
     }
+
+    [Fact]
+    public void TerugGeven_MaaktEenSlotWeerVrij()
+    {
+        var limiet = new GebruikerLimiet(1, TimeSpan.FromMinutes(10), () => Start);
+
+        limiet.TryAcquire("gebruiker-a").Should().BeTrue();
+        limiet.TerugGeven("Gebruiker-A");
+
+        limiet.TryAcquire("gebruiker-a").Should().BeTrue();
+        limiet.TryAcquire("gebruiker-a").Should().BeFalse();
+    }
+
+    [Fact]
+    public void TerugGeven_GeeftAlleenHetLaatsteSlotTerug()
+    {
+        var limiet = new GebruikerLimiet(2, TimeSpan.FromMinutes(10), () => Start);
+        limiet.TryAcquire("gebruiker-a");
+        limiet.TryAcquire("gebruiker-a");
+
+        limiet.TerugGeven("gebruiker-a");
+
+        limiet.TryAcquire("gebruiker-a").Should().BeTrue();
+        limiet.TryAcquire("gebruiker-a").Should().BeFalse();
+    }
+
+    [Fact]
+    public void TerugGeven_BijOnbekendeSleutelOfLegeTeller_HeeftGeenEffect()
+    {
+        var limiet = new GebruikerLimiet(1, TimeSpan.FromMinutes(10), () => Start);
+
+        limiet.TerugGeven("onbekende-sleutel");
+        limiet.TerugGeven(null);
+        limiet.TryAcquire("gebruiker-a").Should().BeTrue();
+        limiet.TerugGeven("gebruiker-a");
+        limiet.TerugGeven("gebruiker-a");
+
+        limiet.TryAcquire("gebruiker-a").Should().BeTrue();
+        limiet.TryAcquire("gebruiker-a").Should().BeFalse();
+        limiet.TryAcquire("gebruiker-b").Should().BeTrue();
+    }
 }

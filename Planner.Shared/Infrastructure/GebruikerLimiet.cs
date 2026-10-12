@@ -38,4 +38,19 @@ public sealed class GebruikerLimiet(int maxPerVenster, TimeSpan venster, Func<Da
             return true;
         }
     }
+
+    /// <summary>
+    /// Geeft het laatst genomen slot van deze sleutel terug, bijv. als de handeling waarvoor het slot
+    /// werd genomen niet is gelukt. Geen effect bij een onbekende sleutel of een lege teller.
+    /// </summary>
+    public void TerugGeven(string? sleutel)
+    {
+        var key = string.IsNullOrWhiteSpace(sleutel) ? "onbekend" : sleutel;
+        lock (_lock)
+        {
+            if (!_perSleutel.TryGetValue(key, out var wachtrij) || wachtrij.Count == 0)
+                return;
+            _perSleutel[key] = new Queue<DateTime>(wachtrij.Take(wachtrij.Count - 1));
+        }
+    }
 }

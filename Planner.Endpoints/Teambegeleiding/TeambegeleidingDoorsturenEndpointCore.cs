@@ -22,7 +22,8 @@ public static class TeambegeleidingDoorsturenEndpointCore
     /// <summary>
     /// De volgorde van het doorsturen, gedeeld door beide tiers: ontvangers bepalen (400/403/503),
     /// e-mailservice beschikbaar (503), dan pas een limietslot (429) en de verzending. Zo verbruikt
-    /// alleen een poging die daadwerkelijk verstuurd wordt een slot.
+    /// alleen een poging die daadwerkelijk verstuurd wordt een slot; mislukt de verzending, dan gaat
+    /// het slot terug en wordt de fout doorgegeven.
     /// </summary>
     public static async Task<IActionResult> VoerUitAsync(
         Aanvrager aanvrager,
@@ -44,7 +45,16 @@ public static class TeambegeleidingDoorsturenEndpointCore
 
         if (NeemVerzendslot(aanvrager.IsAdmin, aanvrager.ObjectId, limiet) is { } limietFout) return limietFout;
 
-        await verstuur(ontvangers!);
+        try
+        {
+            await verstuur(ontvangers!);
+        }
+        catch
+        {
+            // Een mislukte verzending telt niet mee: het slot gaat terug.
+            if (!aanvrager.IsAdmin) (limiet ?? Limiet).TerugGeven(aanvrager.ObjectId);
+            throw;
+        }
         return new OkObjectResult(new
         {
             success = true,

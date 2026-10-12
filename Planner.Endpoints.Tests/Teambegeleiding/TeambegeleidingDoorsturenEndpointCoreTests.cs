@@ -220,6 +220,37 @@ public class TeambegeleidingDoorsturenEndpointCoreTests
     }
 
     [Fact]
+    public async Task User_MisluktVerzending_GeeftHetSlotTerugEnGeeftDeFoutDoor()
+    {
+        var limiet = NieuweLimiet();
+        var verzender = new Verzender();
+
+        for (var i = 0; i < 3; i++)
+        {
+            var poging = () => TeambegeleidingDoorsturenEndpointCore.VoerUitAsync(
+                new Aanvrager(false, "gebruiker@allstars-fc.test", "gebruiker-a"),
+                () => Task.FromResult<(List<string>?, IActionResult?)>((["trainer@voorbeeld.nl"], null)),
+                true, _ => throw new InvalidOperationException("verzending mislukt"), "JO13-1", NullLogger.Instance, limiet);
+            await poging.Should().ThrowAsync<InvalidOperationException>();
+        }
+
+        Status(await VoerUit(false, limiet, verzender)).Should().Be(200);
+        verzender.Aantal.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task User_GeslaagdeVerzending_HoudtHetSlotBezet()
+    {
+        var limiet = NieuweLimiet(1);
+        var verzender = new Verzender();
+
+        Status(await VoerUit(false, limiet, verzender)).Should().Be(200);
+
+        Status(await VoerUit(false, limiet, verzender)).Should().Be(429);
+        verzender.Aantal.Should().Be(1);
+    }
+
+    [Fact]
     public async Task Admin_ValtBuitenDeLimiet()
     {
         var limiet = NieuweLimiet(1);
