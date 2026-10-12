@@ -3468,11 +3468,17 @@
           },
           "faviconUrl": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "maxLength": 300,
+            "description": "Absolute `https://`-URL van de favicon, maximaal 300 tekens. Witruimte eromheen vervalt\nen een absolute `http://`-URL wordt als `https://` opgeslagen. Leeg of `null` = geen favicon.\n",
+            "example": "https://www.[clubdomein].nl/favicon.ico"
           },
           "logoUrl": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "maxLength": 300,
+            "description": "Absolute `https://`-URL van het logo, maximaal 300 tekens. Witruimte eromheen vervalt\nen een absolute `http://`-URL wordt als `https://` opgeslagen. Leeg of `null` = geen logo.\n",
+            "example": "https://www.[clubdomein].nl/logo.png"
           },
           "lightColors": {
             "type": "object",
@@ -9953,7 +9959,7 @@
         ],
         "operationId": "updateTheme",
         "summary": "Club-thema opslaan",
-        "description": "Slaat themakleuren, favicon-URL, logo-URL en de licht/donker-paletten op in\n`dbo.AppSettings` (Postgres-tier: `public.appsettings`).\nDe vier platte kleurwaarden worden gevalideerd op `#rrggbb`. Elke sleutel en waarde in\n`lightColors`/`darkColors` wordt afzonderlijk gevalideerd; één ongeldige waarde wijst het\nhele verzoek af met HTTP 400.\n",
+        "description": "Slaat themakleuren, favicon-URL, logo-URL en de licht/donker-paletten op in\n`dbo.AppSettings` (Postgres-tier: `public.appsettings`).\nDe vier platte kleurwaarden worden gevalideerd op `#rrggbb`. Elke sleutel en waarde in\n`lightColors`/`darkColors` wordt afzonderlijk gevalideerd; één ongeldige waarde wijst het\nhele verzoek af met HTTP 400.\n`faviconUrl` en `logoUrl` zijn optioneel; een ingevulde waarde wordt getrimd, een absolute\n`http://`-URL wordt als `https://` opgeslagen (zelfde host, pad en query), en daarna moet de\nwaarde een absolute `https://`-URL met host zijn, zonder controletekens en van maximaal\n300 tekens. Anders volgt HTTP 400 met een melding die zegt hoe het veld te herstellen is.\n",
         "security": [
           {
             "easyAuth": []
