@@ -101,4 +101,7 @@ builder.Services.AddSingleton<INoodmailThrottleStore>(sp =>
 // dat is bewust, anders is de monitor dood voor elke club die geen managementtoken wil zetten.
 builder.Services.AddSingleton<IDatabaseStatusReader, PostgresDatabaseStatusReader>();
 
-builder.Build().Run();
+var host = builder.Build();
+// #1689: geaggregeerde foutlog (zonder waarden) als het laden van de clublijst structureel faalt.
+FunctionApp.Postgres.Admin.EasyAuthHelper.KoppelClubLijstLog(host.Services.GetRequiredService<ILoggerFactory>());
+host.Run();
