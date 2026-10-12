@@ -24,8 +24,9 @@ namespace Planner.Shared;
 /// duur is bewust niet gebouwd. Sinds #1563 neemt de Planning de exacte blokduur rechtstreeks uit de Sportlink-veldplanner over (<c>VeldplannerOverlayCore</c>); deze regel is daarmee alleen nog de terugval als Sportlink niet bereikbaar is of de wedstrijd niet kent.
 /// </para>
 /// <para>
-/// Dit geldt uitsluitend voor de weergave van wat er al gepland staat. De optimalisatie
-/// (<see cref="FieldScheduler"/>, besluit #291) rekent nog met de speeltijdentabel inclusief buffer.
+/// Sinds #1559 gebruikt ook de optimalisatie (<c>AutoPlanService</c> → <see cref="FieldScheduler"/>)
+/// deze regel voor wedstrijden die al in Sportlink staan; de speeltijdentabel (besluit #291) bepaalt de duur
+/// alleen nog voor wedstrijden waar Sportlink geen speelduur voor kent.
 /// </para>
 /// </summary>
 public static class VeldbezettingDuur

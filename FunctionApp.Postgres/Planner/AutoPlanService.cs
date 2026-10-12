@@ -224,13 +224,15 @@ internal static class AutoPlanService
             int? voorkeurAfwijking = null;
             int teamBufVoor = PlanningBufferRegels.Effectief(buffer,
                 teamBuffers.TryGetValue(wedstrijd.TeamNaam, out var tb) ? tb.bufferVoor : null);
+            // #1559: Sportlink is leidend voor wedstrijden die er al zijn; speeltijden alleen als terugval.
+            int duurMinuten = VeldbezettingDuur.Bepaal(wedstrijd.SportlinkSpeelduur, speeltijdInfo.WedstrijdTotaal);
 
             if (doel.DoelTijd.HasValue)
             {
                 var doelTijd = doel.DoelTijd.Value;
                 voorkeurTijdStr = doelTijd.ToString("HH:mm");
                 slot = scheduler.FindAndOccupyNearTime(doelTijd, veldafmeting,
-                    speeltijdInfo.WedstrijdTotaal, teamBufVoor, wedstrijd.TeamNaam,
+                    duurMinuten, teamBufVoor, wedstrijd.TeamNaam,
                     voorkeurVeldNummer: doel.VoorkeurVeldNummer);
                 if (slot != null)
                     voorkeurAfwijking = (int)(slot.AanvangsTijd.ToTimeSpan() - doelTijd.ToTimeSpan()).TotalMinutes;
@@ -239,9 +241,9 @@ internal static class AutoPlanService
             {
                 slot = doel.VoorkeurVeldNummer.HasValue
                     ? scheduler.FindAndOccupyNearTime(FieldScheduler.DagStart, veldafmeting,
-                        speeltijdInfo.WedstrijdTotaal, teamBufVoor, wedstrijd.TeamNaam,
+                        duurMinuten, teamBufVoor, wedstrijd.TeamNaam,
                         voorkeurVeldNummer: doel.VoorkeurVeldNummer)
-                    : scheduler.FindAndOccupyNextSlot(veldafmeting, speeltijdInfo.WedstrijdTotaal,
+                    : scheduler.FindAndOccupyNextSlot(veldafmeting, duurMinuten,
                         teamBufVoor, wedstrijd.TeamNaam);
             }
 
@@ -254,7 +256,7 @@ internal static class AutoPlanService
                     TeamNaam = wedstrijd.TeamNaam,
                     LeeftijdsCategorie = wedstrijd.LeeftijdsCategorie,
                     Competitiesoort = wedstrijd.Competitiesoort,
-                    DuurMinuten = speeltijdInfo.WedstrijdTotaal,
+                    DuurMinuten = duurMinuten,
                     Veldafmeting = veldafmeting,
                     HuidigeVeld = wedstrijd.Veld,
                     HuidigeTijd = wedstrijd.AanvangsTijd,
@@ -284,7 +286,7 @@ internal static class AutoPlanService
                 TeamNaam = wedstrijd.TeamNaam,
                 LeeftijdsCategorie = string.IsNullOrWhiteSpace(leeftijd) ? null : leeftijd,
                 Competitiesoort = wedstrijd.Competitiesoort,
-                DuurMinuten = speeltijdInfo.WedstrijdTotaal,
+                DuurMinuten = duurMinuten,
                 Veldafmeting = veldafmeting,
                 HuidigeVeld = wedstrijd.Veld,
                 HuidigeTijd = wedstrijd.AanvangsTijd,

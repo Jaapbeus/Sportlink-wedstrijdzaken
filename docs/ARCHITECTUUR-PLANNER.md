@@ -601,24 +601,21 @@ prioriteit 10.
    en de 60-minutenregel van een eerste elftal simpelweg werd overgeslagen. Dat viel pas op toen dat pad
    door de precedence-wijziging de normale route werd.
 
-### Twee duurbronnen: weergave volgt Sportlink, optimalisatie volgt Speeltijden (#1559, #1560)
+### Duurbron: Sportlink is leidend, Speeltijden alleen als terugval (#1559, #1560)
 
-Sinds #1547 toont de Planning voor wedstrijden die al in Sportlink staan de netto speelduur uit Sportlink
-plus 15 minuten (`VeldbezettingDuur`, zoals de Sportlink-veldplanner het blok tekent). **Veld optimalisatie**
-(`FieldScheduler`, `AutoPlanService`) rekent daarentegen met de speeltijdentabel inclusief buffer
-(besluit #291). Gevolg: voor hetzelfde team kan het blok op de twee schermen verschillen, en de
-optimalisatie kan een andere duur plannen dan Sportlink daarna toont.
+Eigenaarsbesluit #1559 (2026-10-12): wedstrijden die al in Sportlink staan zijn leidend en houden geen
+rekening met app-instellingen (speeltijd en buffer tussen wedstrijden). Speeltijden en buffer gelden alleen
+als Sportlink niet voorziet, dus voor een planning of wedstrijd die vanuit de app wordt aangemaakt.
 
-**Gekozen stand (tot een eigenaarsbesluit anders bepaalt): de bronnen blijven gescheiden.** Reden: de
-"speelduur + 15" is gemeten op wedstrijden van 50 tot 90 minuten; of dat ook geldt voor korte
-toernooivormen (bijvoorbeeld 20 minuten, elk halfuur een wedstrijd) is niet bevestigd (#1560, punt 2).
-De optimalisatie op een onbewezen aanname baseren legt die vast in het planningsalgoritme, terwijl een
-weergavefout eenvoudig te corrigeren is.
+Gevolg voor de duur: de Planning én **Veld optimalisatie** (`AutoPlanService` op beide tiers, via
+`FieldScheduler`) bepalen de blokduur met `VeldbezettingDuur.Bepaal`: de netto speelduur uit Sportlink
+plus 15 minuten (zoals #1547 de Sportlink-veldplanner nameet), en pas als Sportlink geen speelduur kent de
+`WedstrijdTotaal` uit de speeltijdentabel (besluit #291). Hetzelfde team heeft dus op beide schermen
+hetzelfde blok.
 
-Open besluit (#1559), twee alternatieven:
-- optimalisatie gebruikt Sportlinks duur voor bestaande wedstrijden en Speeltijden alleen voor nieuwe
-  (raakt `FieldScheduler` en `AutoPlanService` op beide tiers);
-- Speeltijden verdwijnt als bron voor bestaande wedstrijden (raakt besluit #291).
+Nog open: de buffer tussen wedstrijden uit de app-instellingen telt in de optimalisatie nog steeds mee,
+ook tussen wedstrijden die al in Sportlink staan; en of "speelduur + 15" voor korte toernooivormen
+(bijvoorbeeld 20 minuten) klopt is niet bevestigd (#1560, punt 2).
 
 Open verificatiepunten (#1560), alleen met Sportlink Club zelf te beantwoorden: bestaan clubwedstrijden
 zonder tegenstander (thuis- gelijk aan uitteam) in Sportlink Club en moeten ze in de Planning; hoe tekent
@@ -995,4 +992,4 @@ precies die som is `DuurMinuten`, en de starttijd schuift met het inloopdeel mee
   een dag worden 60 seconden onthouden. Het FacilityId staat nergens in code of configuratie.
 - **Bekende grens:** Sportlinks veldplanner toont ook wedstrijden tussen andere clubs op uw accommodatie. Die staan niet in onze
   database en worden niet toegevoegd; dat is een afzonderlijk productbesluit.
-- **Veld optimalisatie** (`FieldScheduler`, besluit #291) blijft op de speeltijdentabel rekenen; zie issue #1559.
+- **Veld optimalisatie** (`FieldScheduler`) gebruikt voor bestaande wedstrijden dezelfde duurregel; zie "Duurbron" (#1559).
