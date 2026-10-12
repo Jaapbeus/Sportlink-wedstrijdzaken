@@ -1,3 +1,4 @@
+using SportlinkFunction.Infrastructure;
 using Planner.Shared;
 using Azure.Core;
 using Azure.Identity;
@@ -298,6 +299,7 @@ public static class AdminSettingsFunction
             return new BadRequestObjectResult(new { error = "plaatsnaam is verplicht" });
         if (plaatsnaam.Length > 100)
             return new BadRequestObjectResult(new { error = "plaatsnaam te lang (max 100 tekens)" });
+        if (UitgaandVerkeerCore.Blokkeer(EgressGuard.ExternalIntegrationsAllowed) is { } geblokkeerd) return geblokkeerd;
 
         try
         {
@@ -349,6 +351,12 @@ public static class AdminSettingsFunction
     /// </summary>
     private static async Task<string?> TriggerFunctionAppRestartAsync(string nieuweSchedule, ILogger log)
     {
+        if (!EgressGuard.ExternalIntegrationsAllowed())
+        {
+            log.LogInformation("EgressGuard: uitgaande integraties geblokkeerd buiten productie — automatische herstart overgeslagen (#857).");
+            return null;
+        }
+
         var subscriptionId = Environment.GetEnvironmentVariable("AzureSubscriptionId");
         var resourceGroup  = Environment.GetEnvironmentVariable("AzureResourceGroupName");
         var functionAppName = Environment.GetEnvironmentVariable("AzureFunctionAppName");

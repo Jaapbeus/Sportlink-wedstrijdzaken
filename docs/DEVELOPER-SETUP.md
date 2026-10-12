@@ -424,7 +424,8 @@ placeholder-club `CLUB`) haalt `.\scripts\dev\Restore-ProductionDump.ps1` eenmal
 dump van de productie-Postgres (Supabase) op en zet die lokaal terug — inclusief het echte
 `SportlinkClientId`, zodat je daarna handmatig een volledige sync kunt draaien om verse data bij de
 echte Sportlink API op te halen (hetzelfde synchronisatiepad als productie, zie sectie 7). Deze
-paragraaf gaat over de Postgres-tier, en daar is de route `GET /api/postgres/sync-matches`:
+paragraaf gaat over de Postgres-tier, en daar is de route `GET /api/postgres/sync-matches`. Die
+sync vraagt lokaal tijdelijk `AllowExternalIntegrations=true` (sectie 5.3), anders geeft hij 503:
 
 ```powershell
 Invoke-RestMethod "http://localhost:7094/api/postgres/sync-matches?reset=true&season=<jaar>"
@@ -727,9 +728,21 @@ Sportlink-timer handmatig testen tegen de productie-API)? Zet dan in `local.sett
 ```
 
 Zet dit nooit standaard aan — dat zou de bescherming voor de rest van je lokale werk tenietdoen.
-Zonder deze instelling blijft alles hierboven geblokkeerd. `SyncMatchesHttp` (de handmatige
-sync-trigger op `/api/sync-matches`, zie sectie 7) is bewust **niet** door deze poort geraakt: dat
-endpoint bestaat juist om desgewenst bewust tegen de echte Sportlink-API te testen.
+Zonder deze instelling blijft alles hierboven geblokkeerd.
+
+**Ook deze functies vragen lokaal `AllowExternalIntegrations=true` (#1676)**; zonder de
+instelling geven ze HTTP 503 of slaan ze de externe aanroep over. Alles geldt op beide tiers,
+behalve waar anders staat:
+
+- thema-extractie van de clubwebsite (`/api/beheer/theme/extract`, 503),
+- geocodering van een plaatsnaam (`/api/beheer/geocode`, 503),
+- de sync-knop (`/api/beheer/sync/trigger`, 503) en de queue-verwerking daarachter (de job wordt
+  als mislukt vastgelegd), en de handmatige HTTP-sync `/api/sync-matches` resp.
+  `/api/postgres/sync-matches` (sectie 7, 503),
+- de realtime veldbezetting uit de Sportlink-API (alleen de SQL Server-tier; valt terug op de database),
+- de automatische herstart na een gewijzigd sync-schema (wordt overgeslagen).
+
+Zet de instelling daarvoor alleen tijdelijk aan, zoals hierboven beschreven.
 
 > `Test-App.ps1` en de CI-jobs draaien dus altijd met de blokkade aan, zonder dat daar iets voor
 > geconfigureerd hoeft te worden.

@@ -383,6 +383,7 @@ if ($health) {
     if ($alleenSyncOud) {
         Write-Host "  Health 'degraded' alleen door een verouderde sync (laatste: $($health.lastSync))." -ForegroundColor DarkYellow
         Write-Host "    Lokale data verversen: GET http://localhost:$($ports.FunctionApp)/api/sync-matches (leest live uit Sportlink)." -ForegroundColor DarkYellow
+        Write-Host "    Vereist AllowExternalIntegrations=true (zoals -SportlinkLive zet), anders HTTP 503." -ForegroundColor DarkYellow
     } elseif (-not ($statusOk -and $settingsOk)) {
         Write-Host "  Health meldt status '$($health.status)' (settingsLoaded=$($health.settingsLoaded))." -ForegroundColor Red
         if ($pending.Count -gt 0) {

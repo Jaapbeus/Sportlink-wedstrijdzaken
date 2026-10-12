@@ -1,3 +1,4 @@
+using SportlinkFunction.Infrastructure;
 using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
@@ -39,6 +40,8 @@ public static class SyncJobProcessor
             return;
         }
 
+        if (await BlokkeerBuitenProductieAsync(job, log, EgressGuard.ExternalIntegrationsAllowed, SyncJobsRepository.MarkCompletedAsync)) return;
+
         using var traceScope = log.BeginScope(new Dictionary<string, object> { ["SyncJobId"] = job.JobId });
         await SyncJobsRepository.MarkRunningAsync(job.JobId);
         log.LogInformation("SyncJobProcessor: job {JobId} gestart, range {From} .. {To}", job.JobId, job.WeekOffsetFrom, job.WeekOffsetTo);
@@ -75,5 +78,22 @@ public static class SyncJobProcessor
             log.LogError(ex, "SyncJobProcessor: job {JobId} mislukt", job.JobId);
             await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false, errorMessage: ex.Message);
         }
+    }
+
+    /// <summary>
+    /// #1676: een bericht dat buiten productie binnenkomt wordt niet uitgevoerd en niet opnieuw
+    /// aangeboden; de job wordt als mislukt vastgelegd zodat de beheerder de reden ziet.
+    /// <c>true</c> betekent: <see cref="Run"/> stopt hier, vóór MarkRunning en de sync.
+    /// De poort en de opslag komen binnen, zodat de test dit zonder database kan bewijzen.
+    /// </summary>
+    internal static async Task<bool> BlokkeerBuitenProductieAsync(
+        SyncJobMessage job, ILogger log, Func<bool> externeIntegratiesToegestaan,
+        Func<Guid, bool, string?, Task> markeerAfgerond)
+    {
+        if (externeIntegratiesToegestaan()) return false;
+
+        log.LogInformation("EgressGuard: uitgaande integraties geblokkeerd buiten productie — job {JobId} overgeslagen in dbo.SyncJobs (#857).", job.JobId);
+        await markeerAfgerond(job.JobId, false, "Uitgaande integraties zijn buiten productie uitgeschakeld.");
+        return true;
     }
 }
