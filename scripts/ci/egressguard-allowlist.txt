@@ -1,10 +1,31 @@
 # egressguard-allowlist.txt (#1676)
 #
-# Eén regel per uitzondering: <bestandspad> <reden>. Een bestand met HttpClient-gebruik zonder
-# EgressGuard-aanroep hoort hier alleen als de poort aantoonbaar bij elke aanroeper zit.
+# Eén regel per uitzondering: <bestandspad> <reden>. Een bestand met HttpClient-/handlergebruik
+# zonder EgressGuard-aanroep hoort hier alleen als de poort aantoonbaar bij elke aanroeper zit; de
+# reden noemt die aanroepers, zodat een reviewer hem kan nalopen. Planner.Shared kent de
+# tier-eigen EgressGuard niet en krijgt de poort daarom altijd van de aanroepende tier.
 # De guard (scripts/ci/check-egressguard-dekking.sh) faalt op een regel zonder reden en op een
-# regel die naar een bestand wijst dat geen uitzondering meer nodig heeft.
+# regel die naar een bestand wijst dat geen uitzondering (meer) nodig heeft.
 
+# ── Tiers: sync-pipelines en monitoring ──────────────────────────────────────────────────────────
 FunctionApp/Sync/SportlinkSyncPipeline.cs  Pipeline wordt alleen aangeroepen vanuit de timer (Function1.cs), SyncMatchesHttp (Function1.cs) en SyncJobProcessor, die elk EgressGuard controleren.
 FunctionApp.Postgres/Sync/PostgresSyncPipeline.cs  Pipeline wordt alleen aangeroepen via SyncFunction.RunConfiguredSyncAsync (timer, HTTP, SyncJobProcessor), die elk EgressGuard controleren.
 FunctionApp/Monitoring/ArmDatabaseStatusReader.cs  Alleen aangeroepen vanuit DatabaseUitvalMonitorFunction, die zonder IEmailGraphService (alleen geregistreerd onder EgressGuard) terugkeert vóór de aanroep.
+
+# ── Planner.Shared: GitHub ───────────────────────────────────────────────────────────────────────
+Planner.Shared/Infrastructure/GitHubIssueReporter.cs  HTTP alleen na de egressToegestaan-controle in ReportAsync; enige aanroeper is FoutRapportage (beide tiers), die EgressGuard.ExternalIntegrationsAllowed meegeeft.
+Planner.Shared/Feedback/FeedbackGitHub.cs  Internal; alleen via FeedbackCore.MaakGitHubIssueAsync/HaalIssueSluitingAsync, die alleen de delegates van FeedbackEndpointCore.MaakGitHubIssueDelegate/MaakIssueSluitingDelegate aanroepen; die delegates zijn null zonder de EgressGuard-uitkomst van FeedbackFunction, AdminFeedbackFunction en CleanupFeedbackFunction (beide tiers).
+
+# ── Planner.Shared: thema-extractie ──────────────────────────────────────────────────────────────
+Planner.Shared/Theming/ThemeCore.cs  HTTP alleen in ExtraheerAsync; enige aanroeper is AdminThemeFunction.Extract (beide tiers), die eerst UitgaandVerkeerCore.Blokkeer(EgressGuard.ExternalIntegrationsAllowed) controleert.
+Planner.Shared/Infrastructure/SsrfProtection.cs  CreateHttpClient en GetWithBoundedRedirectsAsync worden alleen door ThemeCore gebruikt (zie de reden daar).
+
+# ── Planner.Shared: Sportlink-client ─────────────────────────────────────────────────────────────
+Planner.Shared/Integrations/SportlinkClub/SportlinkClubClient.cs  Alleen geconstrueerd in Sql-/PostgresSportlinkAuthenticationRegistration binnen if (EgressGuard.ExternalIntegrationsAllowed()); de statische ValideerRefreshTokenAsync heeft geen aanroeper buiten Planner.Shared.
+Planner.Shared/Integrations/SportlinkClub/SportlinkAutoLoginProvider.cs  Alleen geconstrueerd in Sql-/PostgresSportlinkAuthenticationRegistration binnen if (EgressGuard.ExternalIntegrationsAllowed()).
+Planner.Shared/Integrations/SportlinkClub/SportlinkClubTransport.cs  Internal; alleen geconstrueerd door SportlinkClubClient (zie de reden daar).
+Planner.Shared/Integrations/SportlinkClub/SportlinkClubTokenBeheer.cs  Internal; alleen geconstrueerd door SportlinkClubTransport, en ValideerRefreshTokenAsync wordt alleen door SportlinkClubClient doorgegeven (zie de reden daar).
+Planner.Shared/Integrations/SportlinkClub/SportlinkClubFormulierLezer.cs  Internal; alleen geconstrueerd door SportlinkClubClient met diens transport (zie de reden daar).
+Planner.Shared/Integrations/SportlinkClub/SportlinkMutatieUitvoerder.cs  Internal; alleen geconstrueerd door SportlinkClubClient met diens transport (zie de reden daar).
+Planner.Shared/Integrations/SportlinkClub/SportlinkMutaties.cs  Internal; alleen geconstrueerd door SportlinkClubClient met diens transport (zie de reden daar).
+Planner.Shared/Integrations/SportlinkClub/SportlinkWedstrijdLezer.cs  Internal; alleen geconstrueerd door SportlinkClubClient met diens transport (zie de reden daar).

@@ -40,7 +40,7 @@ public static class SyncJobProcessor
             return;
         }
 
-        if (await BlokkeerBuitenProductieAsync(job, log)) return;
+        if (await BlokkeerBuitenProductieAsync(job, log, EgressGuard.ExternalIntegrationsAllowed, SyncJobsRepository.MarkCompletedAsync)) return;
 
         using var traceScope = log.BeginScope(new Dictionary<string, object> { ["SyncJobId"] = job.JobId });
         await SyncJobsRepository.MarkRunningAsync(job.JobId);
@@ -83,13 +83,17 @@ public static class SyncJobProcessor
     /// <summary>
     /// #1676: een bericht dat buiten productie binnenkomt wordt niet uitgevoerd en niet opnieuw
     /// aangeboden; de job wordt als mislukt vastgelegd zodat de beheerder de reden ziet.
+    /// <c>true</c> betekent: <see cref="Run"/> stopt hier, vóór MarkRunning en de sync.
+    /// De poort en de opslag komen binnen, zodat de test dit zonder database kan bewijzen.
     /// </summary>
-    private static async Task<bool> BlokkeerBuitenProductieAsync(SyncJobMessage job, ILogger log)
+    internal static async Task<bool> BlokkeerBuitenProductieAsync(
+        SyncJobMessage job, ILogger log, Func<bool> externeIntegratiesToegestaan,
+        Func<Guid, bool, string?, Task> markeerAfgerond)
     {
-        if (EgressGuard.ExternalIntegrationsAllowed()) return false;
+        if (externeIntegratiesToegestaan()) return false;
 
         log.LogInformation("EgressGuard: uitgaande integraties geblokkeerd buiten productie — job {JobId} overgeslagen in dbo.SyncJobs (#857).", job.JobId);
-        await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false, errorMessage: "Uitgaande integraties zijn buiten productie uitgeschakeld.");
+        await markeerAfgerond(job.JobId, false, "Uitgaande integraties zijn buiten productie uitgeschakeld.");
         return true;
     }
 }
