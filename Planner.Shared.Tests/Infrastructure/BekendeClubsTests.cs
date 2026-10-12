@@ -126,7 +126,7 @@ public class BekendeClubsTests
             gestart.Set();
             vrij.Wait(Wacht);
             return ["NIEUW"];
-        }, TimeSpan.FromSeconds(10), () => nu);
+        }, TimeSpan.FromSeconds(10), () => nu, eersteLadingTimeout: TimeSpan.FromMilliseconds(50));
         clubs.Zoek("OUD").Should().Be(ClubZoekResultaat.Bekend("OUD"));
 
         nu = nu.AddSeconds(11);

@@ -81,6 +81,7 @@ internal interface IEmailPersistenceService
     Task UpdateFoutAsync(int verwerkingId, string foutMelding);
     Task<(bool IsReply, int? OrigineleVerwerkingId, string? OrigineelType, string? OriginaleSamenvatting)>
         DetecteerReplyOpOnsAntwoordAsync(string conversationId, ILogger log);
+    Task<int> TelVerzondenAntwoordenInConversatieAsync(string conversationId);
     Task UpdateReplyStatusAsync(int verwerkingId, bool isReply, int replyOpVerwerkingId);
     Task InsertClassificatieCorrectieAsync(
         int origineleVerwerkingId,
@@ -164,6 +165,9 @@ internal sealed class EmailPersistenceService : IEmailPersistenceService
     public Task<(bool IsReply, int? OrigineleVerwerkingId, string? OrigineelType, string? OriginaleSamenvatting)>
         DetecteerReplyOpOnsAntwoordAsync(string conversationId, ILogger log)
         => _repository.DetecteerReplyOpOnsAntwoordAsync(conversationId, ResolveClubCode(), log);
+
+    public Task<int> TelVerzondenAntwoordenInConversatieAsync(string conversationId)
+        => _repository.TelVerzondenAntwoordenInConversatieAsync(conversationId, ResolveClubCode());
 
     public Task UpdateReplyStatusAsync(int verwerkingId, bool isReply, int replyOpVerwerkingId)
         => _repository.UpdateReplyStatusAsync(verwerkingId, isReply, replyOpVerwerkingId);

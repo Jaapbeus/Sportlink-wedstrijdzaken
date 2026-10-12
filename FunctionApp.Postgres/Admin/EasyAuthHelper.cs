@@ -148,20 +148,24 @@ internal static class EasyAuthHelper
         new Npgsql.NpgsqlConnection(PostgresDatabaseConfig.ConnectionString),
         "SELECT clubcode FROM public.appsettings"));
 
-    public static string GetClubCodeFromRequest(HttpRequest req)
-    {
-        // #1122 (CISO): de header is een UX-schakelaar (productie ↔ AllStars-demodata), geen
-        // autorisatiegrens (AGENTS.md, deployment-model). De waarde wordt getoetst aan de bekende
-        // clubs (#1677, vorm en bestaan); een onbekende waarde geeft de primaire club. Is de lijst nog
-        // niet te toetsen, dan geldt de geldige waarde zoals voorheen (ClubZoekResultaat.CodeVoorVerzoek).
-        if (req.Headers.TryGetValue("X-Club-Code", out var headerVal) &&
-            !string.IsNullOrWhiteSpace(headerVal) &&
-            Clubs.Zoek(headerVal.ToString()).CodeVoorVerzoek is { } clubCode)
-            return clubCode;
+    /// <summary>Koppelt de geaggregeerde foutlog van de clublijst; eenmaal bij het opstarten (#1689).</summary>
+    public static void KoppelClubLijstLog(Microsoft.Extensions.Logging.ILoggerFactory loggers)
+        => Clubs.Log = loggers.CreateLogger(nameof(BekendeClubs));
 
-        return PostgresAppSettings.GetSetting("clubCode")
-            ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in public.appsettings");
-    }
+    /// <summary>
+    /// De clubcode voor dit verzoek. De header <c>X-Club-Code</c> is een UX-schakelaar tussen de
+    /// primaire club en de democlub, geen autorisatiegrens (#1122, AGENTS.md). De waarde wordt getoetst
+    /// aan de bekende clubs (#1677, vorm en bestaan; #1689 begrensd herladen bij een onbekende waarde):
+    /// een onbekende of ontbrekende waarde geeft de primaire club; is de lijst nog niet te toetsen, dan
+    /// geldt de syntactisch geldige waarde zoals voorheen (<see cref="ClubZoekResultaat.CodeVoorVerzoek"/>).
+    /// </summary>
+    public static string GetClubCodeFromRequest(HttpRequest req)
+        => GetClubCodeFromRequest(req, Clubs, () => PostgresAppSettings.GetSetting("clubCode")
+            ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in public.appsettings"));
+
+    /// <summary>Tier-bedrading met injecteerbare lijst en primaire club; bedoeld voor tests (#1689).</summary>
+    internal static string GetClubCodeFromRequest(HttpRequest req, BekendeClubs clubs, Func<string> primaireClub)
+        => clubs.ClubCodeVoorVerzoek(req.Headers["X-Club-Code"].ToString(), primaireClub);
 
     public static string ExtractOrCreateCorrelationId(HttpRequest req)
     {

@@ -33,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.13.4.13
+  version: 3.13.4.19
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -2726,9 +2726,19 @@ components:
         faviconUrl:
           type: string
           nullable: true
+          maxLength: 300
+          description: |
+            Absolute `https://`-URL van de favicon, maximaal 300 tekens. Witruimte eromheen vervalt
+            en een absolute `http://`-URL wordt als `https://` opgeslagen. Leeg of `null` = geen favicon.
+          example: "https://www.[clubdomein].nl/favicon.ico"
         logoUrl:
           type: string
           nullable: true
+          maxLength: 300
+          description: |
+            Absolute `https://`-URL van het logo, maximaal 300 tekens. Witruimte eromheen vervalt
+            en een absolute `http://`-URL wordt als `https://` opgeslagen. Leeg of `null` = geen logo.
+          example: "https://www.[clubdomein].nl/logo.png"
         lightColors:
           type: object
           nullable: true
@@ -3138,7 +3148,9 @@ components:
             #765: vrije-tekst-regel met de gewenste ontvangers, gescheiden door `;` of `,`. Elk
             fragment mag `"Naam" <adres>` of een kaal adres zijn. Server-side geparsed, gevalideerd
             (geldige syntax, max 15, gededupliceerd) en gecontroleerd tegen de uitsluitingslijst
-            (`dbo.UitgeslotenEmailAdressen`) vóór verzending.
+            (`dbo.UitgeslotenEmailAdressen`) vóór verzending. Voor een andere rol dan `admin` moet
+            elk adres bij het gekozen team horen (begeleiders van dat team, de coördinator of de
+            aanvrager zelf), anders `403` (#1671).
 
             Leeg of afwezig → ongewijzigd fallback-gedrag: server-side opzoeken van de
             hoogst-geprioriteerde begeleider (Trainer > Coach > Teamleider), met de coördinator als
@@ -7234,6 +7246,10 @@ paths:
         De vier platte kleurwaarden worden gevalideerd op `#rrggbb`. Elke sleutel en waarde in
         `lightColors`/`darkColors` wordt afzonderlijk gevalideerd; één ongeldige waarde wijst het
         hele verzoek af met HTTP 400.
+        `faviconUrl` en `logoUrl` zijn optioneel; een ingevulde waarde wordt getrimd, een absolute
+        `http://`-URL wordt als `https://` opgeslagen (zelfde host, pad en query), en daarna moet de
+        waarde een absolute `https://`-URL met host zijn, zonder controletekens en van maximaal
+        300 tekens. Anders volgt HTTP 400 met een melding die zegt hoe het veld te herstellen is.
       security:
         - easyAuth: []
       requestBody:
@@ -7956,9 +7972,28 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          description: |
+            Geen toegang. Voor een andere rol dan `admin` moet elk adres in `ontvangers` bij het
+            gekozen team horen: een begeleider van dat team, de coördinator of de aanvrager zelf.
+            Een leeg veld gebruikt de server-side lookup.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Geen begeleiding gevonden voor het opgegeven team
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: |
+            Te veel doorgestuurde vragen door dezelfde gebruiker: de limiet is 3 verzendingen per
+            10 minuten. Alleen een daadwerkelijke verzending telt mee (een mislukte verzending geeft
+            haar eigen slot terug); de rol `admin` valt buiten de limiet. De teller is in-memory en
+            geldt per instantie van de Function App: bij uitschalen naar meerdere instanties of na een
+            herstart kan het totaal hoger uitvallen. Het is een rem op herhaald gebruik, geen globale
+            kwotering.
           content:
             application/json:
               schema:

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Planner.Shared.Email;
+using Planner.Shared.Email.Trace;
 
 namespace SportlinkFunction.Email;
 
@@ -66,5 +67,22 @@ internal static class EmailVerwerkingKoppeling
         => EmailVerwerkingsAfhandeling.HandelBuitenScopeAsync(
             verwerkingId, messageId, isBuitenScope,
             () => persistence.UpdateStatusAsync(verwerkingId, EmailStatus.BuitenScope, classificatieJson),
+            new EmailMailboxAdapter(graph), log);
+
+    /// <summary>
+    /// Antwoordlusbeveiliging (<see cref="AntwoordLimiet"/>): <c>true</c> als het bericht zonder antwoord is
+    /// afgehandeld; status, label en korte trace staan dan vast.
+    /// </summary>
+    internal static Task<bool> HandelAntwoordLimietAsync(
+        int verwerkingId, InkomendBericht email, BerichtClassificatie classificatie, string classificatieJson,
+        IEmailGraphService graph, IEmailPersistenceService persistence, ILogger log)
+        => EmailVerwerkingsAfhandeling.HandelAntwoordLimietAsync(
+            new(verwerkingId, email.MessageId, email.ConversationId, classificatie.Type.ToString(), classificatie.TeamNaam,
+                classificatie.Tegenstander, classificatie.GetAlleDatums().Count, classificatie.AanvangsTijd),
+            classificatie.Type == VerzoekType.Bevestiging,
+            () => persistence.TelVerzondenAntwoordenInConversatieAsync(email.ConversationId!),
+            () => persistence.UpdateStatusAsync(verwerkingId, EmailStatus.GeenAntwoordNodig, classificatieJson),
+            trace => persistence.UpsertTraceAsync(
+                verwerkingId, classificatie.Type.ToString(), trace, EmailTraceRecord.VersieVan(typeof(EmailVerwerkingKoppeling).Assembly)),
             new EmailMailboxAdapter(graph), log);
 }

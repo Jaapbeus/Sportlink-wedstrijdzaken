@@ -139,7 +139,7 @@ verwerking plaats.
 | `GET` | `/planner/team-schedule` | **Admin** | Wedstrijdschema per team — gescoped op `X-Club-Code` header |
 | `GET` | `/beheer/teambegeleiding` | **Admin + user** | Alle teams met begeleiding in database (#1330: elke ingelogde rol) |
 | `GET` | `/beheer/teambegeleiding/{team}` | **Admin + user** | Begeleiders van team (naam + rol + functie, nooit e-mail) (#1330: elke ingelogde rol) |
-| `POST` | `/beheer/teambegeleiding/doorsturen` | **Admin + user** | Vraag doorsturen (BCC coördinator). `ontvangers` bepaalt de ontvangers (max 15, gevalideerd, uitsluitingslijst gecontroleerd); leeg → server-side coach-lookup (#765) (#1330: elke ingelogde rol) |
+| `POST` | `/beheer/teambegeleiding/doorsturen` | **Admin + user** | Vraag doorsturen (BCC coördinator). `ontvangers` bepaalt de ontvangers (max 15, gevalideerd, uitsluitingslijst gecontroleerd); voor een andere rol dan `admin` moet elk adres bij het team horen (begeleiders, coördinator of de aanvrager zelf), anders 403; leeg → server-side coach-lookup (#765) (#1330: elke ingelogde rol). Max 3 verzendingen per gebruiker per 10 minuten, anders 429; alleen een daadwerkelijke verzending telt (een mislukte verzending geeft haar eigen slot terug), `admin` valt erbuiten; de teller is in-memory en geldt per instantie (bij uitschalen of na een herstart kan het totaal hoger uitvallen; geen globale kwotering) (#1671) |
 | `POST` | `/beheer/teambegeleiding/import` | **Admin** | CSV-import van begeleiders — vervangt de rijen van de club atomisch (DELETE + inserts + audit-rij in één transactie, rollback bij elke fout; #1131/#1132). Kolomlengtes worden vóór elke destructieve stap gevalideerd; een te lange waarde geeft `400` met `{ error, fouten: [...] }` (rij/kolom-omschrijving per overtreding) en laat de vorige import ongemoeid. Postgres-tier serialiseert vervangingen per club (`pg_advisory_xact_lock`) zodat twee gelijktijdige imports elkaar nooit tot een vereniging van beide batches kunnen combineren. CSV wordt in-memory verwerkt en nooit opgeslagen; `avg.ImportLog` bevat alleen metadata — geen PII |
 | `GET/POST` | `/beheer/speeltijden` | **Admin** | Speeltijden per leeftijdscategorie: lijst ophalen / toevoegen |
 | `PUT/DELETE` | `/beheer/speeltijden/{leeftijd}` | **Admin** | Speeltijd van één leeftijdscategorie wijzigen / verwijderen |
@@ -156,7 +156,7 @@ verwerking plaats.
 | `PUT` | `/beheer/teamaliassen/{id}/valideer` | **Admin** | Alias goedkeuren of afwijzen (`{ "status": "validated"\|"rejected" }`); legt wie en wanneer vast |
 | `DELETE` | `/beheer/teamaliassen/{id}` | **Admin** | Alias definitief verwijderen |
 | `GET` | `/beheer/theme` | **Admin** | Club-thema ophalen (kleuren + website-URL + `lightColors`/`darkColors`) — gefilterd op `X-Club-Code` header. De paletten zijn `null` zolang er geen licht/donker-set is ingesteld; de client valt dan terug op de vier platte kleuren |
-| `PUT` | `/beheer/theme` | **Admin** | Club-thema opslaan (`{ primary, secondary, accent, textOnPrimary, clubWebsiteUrl, faviconUrl, logoUrl, lightColors, darkColors }`) — gefilterd op `X-Club-Code` header. `lightColors`/`darkColors` zijn sleutel→hex-objecten voor het volledige palet per modus (#1254); elke sleutel moet `^[a-z][a-zA-Z0-9-]{0,39}$` zijn en elke waarde `#rrggbb` of `#rrggbbaa`, maximaal 40 per palet |
+| `PUT` | `/beheer/theme` | **Admin** | Club-thema opslaan (`{ primary, secondary, accent, textOnPrimary, clubWebsiteUrl, faviconUrl, logoUrl, lightColors, darkColors }`) — gefilterd op `X-Club-Code` header. `lightColors`/`darkColors` zijn sleutel→hex-objecten voor het volledige palet per modus (#1254); elke sleutel moet `^[a-z][a-zA-Z0-9-]{0,39}$` zijn en elke waarde `#rrggbb` of `#rrggbbaa`, maximaal 40 per palet. `faviconUrl`/`logoUrl` zijn optioneel; een ingevulde waarde wordt getrimd, `http://` wordt als `https://` opgeslagen, en daarna moet het een absolute `https://`-URL van maximaal 300 tekens zijn (anders HTTP 400) |
 | `POST` | `/beheer/theme/extract?url=` | **Admin** | Kleuren extraheren uit club-website (SSRF-beschermd) |
 | `GET` | `/beheer/clubs` | **Admin** | Lijst van beschikbare clubs (`[{ clubCode, clubName }]`) voor de GUI-selector |
 | `GET` | `/beheer/sportlink-extensie/rollen` | **Admin** | Sportlink Web Extension (#986/#988): per functionele rol tonen of een eigen Sportlink-serviceaccount gekoppeld is, door wie en wanneer |
@@ -318,6 +318,16 @@ Controleer of een veld beschikbaar is voor een oefenwedstrijd. Geeft een specifi
 > `ALLSTARS`-demodata) worden nooit meegenomen. Dit geldt ook voor
 > `/planner/zoek-wedstrijd`, `/planner/herplan-check`, `/planner/doordeweeks-beschikbaar`
 > en `/planner/team-schedule`.
+>
+> **Onbekende waarde (#1677, #1689):** de headerwaarde wordt getoetst aan de clubs in de
+> instellingentabel (maximaal 20 tekens `A-Z`, `a-z`, `0-9`, `_`, `-`). Een ongeldige vorm of een
+> club die niet bestaat geeft geen fout maar dezelfde terugval als zonder header: de primaire club.
+> Een bestaande club wordt in de opgeslagen schrijfwijze gebruikt (een exacte match gaat voor; bij
+> meerdere varianten in hoofdletters altijd dezelfde). De clublijst wordt hoogstens 60 seconden
+> gecachet; een onbekende waarde laat haar opnieuw laden (hoogstens eens per 10 seconden), zodat een
+> pas toegevoegde club direct herkend wordt. Is de lijst nog nooit te laden geweest (database
+> onbereikbaar), dan geldt een syntactisch geldige waarde zoals vóór #1677. Geldt voor alle
+> endpoints die `X-Club-Code` lezen, op beide databasetiers.
 
 ### Aanvraag
 
