@@ -22,6 +22,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Het hoofdmenu is opnieuw ingedeeld in Dashboard, DEBUG (alleen voor beheerders), de hoofdschermen, WZ Instellingen en Admin, en toont per rol alleen de items waar "Rechten per rol" recht op geeft; "Instellingen" heet nu "App instellingen" (#1647).
 
 ### Changed
+- De frontend auth-gate herkent de authenticatieroutes op het URL-pad en rendert op die route alleen de authenticatiepagina (#1672).
 - Veld optimalisatie rekent voor wedstrijden die al in Sportlink staan met dezelfde blokduur als de Planning (Sportlinks speelduur) en zonder app-buffer (club of team) rondom die wedstrijd; speeltijdentabel en buffer gelden alleen nog voor wedstrijden waar Sportlink geen duur voor kent, op beide databasetiers; een wedstrijd met Sportlink-duur wordt ook ingepland als de leeftijdscategorie geen speeltijdenrij heeft (zie issue #1559).
 - De afhandeling rond de verwerkingsrij van een inkomende e-mail (idempotentiebesluit, opgeven na te veel pogingen, beoordeling na een onbekende verzenduitkomst, vastleggen van classificatie- en verwerkingsfouten, buiten-scope-afhandeling) en de foutcategorisering staan nu één keer in Planner.Shared in plaats van per databasetier; gedrag ongewijzigd, met eigen unit-tests (#1650).
 - De instellingen worden per paginaopening één keer opgehaald in plaats van twee keer, via een gedeelde per-club cache voor het menu en de pagina's (#1599).
