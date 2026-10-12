@@ -165,6 +165,27 @@ Voeg bij elke feature of fix ook een regel toe onder `## [Unreleased]` in
 
 De eigenaar beoordeelt PRs binnen redelijke tijd. Feedback wordt in de PR gegeven. Een PR kan worden afgewezen als het niet aansluit bij de projectdoelen of architectuurregels.
 
+### Beurtlabels en de CI-bot (#1692)
+
+`turn: claude-code` start de automatische issue-beurt (`claude-issue-turn.yml`). Zet dat label dus
+alleen als je wilt dat de bot het issue oppakt of reviewcommentaar verwerkt. Een interactieve
+Claude Code-sessie die zelf aan een issue werkt, zet het niet om te laten zien dat zij aan zet is:
+dan werken de bot en de sessie tegelijk aan hetzelfde issue en dezelfde PR. Leg de sessie vast in de
+opdrachtcomment op het issue (AGENTS.md, "Leg de opdracht vast bij het issue").
+
+**Een schone Codex-review geeft de beurt aan de implementer.** Geeft de reviewer "geen bevindingen"
+op de huidige head-SHA, dan gaat de beurt terug naar de implementer (fase `verwerking`), niet naar de
+eigenaar. De implementer controleert de voorwaarden van de zelfmerge-regel en merget zelf naar
+`develop` als hij dat mag (AGENTS.md, "Zelfmerge na schone review", #1637). Alleen als een voorwaarde
+van die regel niet geldt, volgt fase `eigenaarsbesluit` met `turn: owner`. Was de CI-bot de implementer,
+dan merget de reviewer volgens diezelfde regel, want de bot merget nooit.
+
+**De bot schrijft zijn eindlabel als vergelijk-en-zet.** Hij zet `turn: codex` of `turn: owner` aan
+het eind van zijn run alleen als het issue open is, geen `status: awaiting-release` heeft, het
+turn-label nog `turn: claude-code` is en geen gekoppelde PR intussen is gemerged of gesloten. Een
+issue dat een sessie tijdens de run heeft afgerond, krijgt dus geen verouderd label meer. Is een
+gekoppelde PR al gemerged, dan start de bot helemaal niet. Uitwerking: `docs/DEVELOPER-SETUP.md` §9.5.
+
 ### Wat er na de merge met je issue gebeurt
 
 Automatisering houdt precies één `status:`-label per issue bij. Zet er zelf nooit met de hand een
