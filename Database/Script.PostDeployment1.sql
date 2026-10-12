@@ -1108,7 +1108,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.VeldBe
     ALTER TABLE [dbo].[VeldBeschikbaarheid] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_VeldBeschikbaarheid_ClubCode] DEFAULT 'CLUB'; -- neutrale placeholder, constraint wordt direct hierna gedropt (#598/#610)
 GO
 
--- #435: verwijder VRC-default constraints — clubnaam heeft geen plek als DB-default
+-- #435: verwijder club-specifieke default-constraints — clubnaam heeft geen plek als DB-default
 IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_Speeltijden_ClubCode')
     ALTER TABLE [dbo].[Speeltijden] DROP CONSTRAINT [DF_Speeltijden_ClubCode];
 GO
@@ -1226,7 +1226,7 @@ BEGIN
     );
 END
 GO
--- #501: Verwijder club-specifieke DEFAULT 'VRC' uit AppSettingsAudit.ClubCode
+-- #501: Verwijder club-specifieke ClubCode-default uit AppSettingsAudit.ClubCode
 IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_AppSettingsAudit_ClubCode')
     ALTER TABLE [dbo].[AppSettingsAudit] DROP CONSTRAINT [DF_AppSettingsAudit_ClubCode];
 GO
@@ -1415,7 +1415,7 @@ BEGIN
     );
 END
 GO
--- #501: Verwijder club-specifieke DEFAULT 'VRC' uit TeamVoorkeurTijden.ClubCode
+-- #501: Verwijder club-specifieke ClubCode-default uit TeamVoorkeurTijden.ClubCode
 IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_TeamVoorkeurTijden_ClubCode')
     ALTER TABLE [dbo].[TeamVoorkeurTijden] DROP CONSTRAINT [DF_TeamVoorkeurTijden_ClubCode];
 GO
@@ -1458,7 +1458,7 @@ BEGIN
     );
 END
 GO
--- #501: Verwijder club-specifieke DEFAULT 'VRC' uit UitgeslotenEmailAdressen.ClubCode
+-- #501: Verwijder club-specifieke ClubCode-default uit UitgeslotenEmailAdressen.ClubCode
 IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_UitgeslotenEmailAdressen_ClubCode')
     ALTER TABLE [dbo].[UitgeslotenEmailAdressen] DROP CONSTRAINT [DF_UitgeslotenEmailAdressen_ClubCode];
 GO
