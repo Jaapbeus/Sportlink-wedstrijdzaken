@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Planner.Shared.Email;
 
 namespace FunctionApp.Postgres.Email;
 
@@ -28,6 +29,11 @@ internal sealed class EmailBatchFilterService
             {
                 log.LogInformation("Email {MessageId} van uitgesloten adres (cache), overslaan (afzender niet gelogd — AVG #210)", email.MessageId);
                 await graphService.MarkAsReadAsync(email.MessageId);
+            }
+            else if (AutomatischeAfzenderHerkenning.IsAutomatisch(email.InternetHeaders))
+            {
+                await EmailVerwerkingsAfhandeling.HandelAutomatischeAfzenderAsync(
+                    email.MessageId, email.InternetHeaders, new EmailMailboxAdapter(graphService), log);
             }
             else
             {

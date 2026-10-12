@@ -41,8 +41,12 @@ namespace FunctionApp.Postgres.Tests;
 ///
 /// <para>Zie <see cref="PostgresSyncFixtureIntegrationTests"/> voor de lokale containeropzet.</para>
 /// </summary>
-public class PlannerMatchSearchRepositoryIntegrationTests
+public class PlannerMatchSearchRepositoryIntegrationTests : IDisposable
 {
+    // OpstellingAsync zet de procesbrede PostgresAppSettings-cache (clubCode); zonder opruimen lekt
+    // die primaire club naar latere testklassen in hetzelfde proces (#1673).
+    public void Dispose() => PostgresAppSettings.ResetForTests();
+
     private const string Club = "testclub-matchsearch";
     private static readonly DateOnly Zaterdag = new(2026, 9, 5);
     private const string Team = "T-matchsearch JO13-1";

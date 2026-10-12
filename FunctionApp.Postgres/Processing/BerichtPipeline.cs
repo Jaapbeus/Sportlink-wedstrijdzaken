@@ -106,6 +106,7 @@ internal static partial class BerichtPipeline
         var cs = PostgresDatabaseConfig.ConnectionString;
         var cc = ResolveHeuristicClubCode(clubCode);
         var eigenTeamHerkend = await BepaalEigenTeamEnTegenstanderAsync(classificatie, teamResolver, cc, log, trace);
+        classificatie.TeamNaamOnbevestigd = !eigenTeamHerkend; // antwoorden noemen een niet-bevestigd team nooit bij naam
         if (eigenTeamHerkend) classificatie.LeeftijdsCategorie = TeamNaamNormalisatie.VulLeeftijdsCategorieAan(classificatie.LeeftijdsCategorie, classificatie.TeamNaam, cc);
 
         switch (classificatie.Type)
