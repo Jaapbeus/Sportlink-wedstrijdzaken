@@ -19,7 +19,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Changed
+- Veld optimalisatie rekent voor wedstrijden die al in Sportlink staan met dezelfde blokduur als de Planning (Sportlinks speelduur) en zonder app-buffer (club of team) rondom die wedstrijd; speeltijdentabel en buffer gelden alleen nog voor wedstrijden waar Sportlink geen duur voor kent, op beide databasetiers; een wedstrijd met Sportlink-duur wordt ook ingepland als de leeftijdscategorie geen speeltijdenrij heeft (zie issue #1559).
+- De afhandeling rond de verwerkingsrij van een inkomende e-mail (idempotentiebesluit, opgeven na te veel pogingen, beoordeling na een onbekende verzenduitkomst, vastleggen van classificatie- en verwerkingsfouten, buiten-scope-afhandeling) en de foutcategorisering staan nu één keer in Planner.Shared in plaats van per databasetier; gedrag ongewijzigd, met eigen unit-tests (#1650).
 - ci(#1641): `Build (PR)` en Security Scan draaien ook op PR's tegen een featurebranch (na een base-retarget: workflow dispatchen); de zelfmerge-regel en de automatische issue-beurt eisen dat beide check-runs op de head-SHA aanwezig zijn (een PR met merge-conflict krijgt geen pull_request-run)
+
+### Fixed
+- fix(#1597): widgetissues krijgen het canonieke label `via: feedback-widget` (voorheen `via-feedback-widget`), zodat ze aansluiten bij de labelset in `.github/labels.json`.
 
 ## [3.13.2.0] — 2026-10-11
 
