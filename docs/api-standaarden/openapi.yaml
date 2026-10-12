@@ -33,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.13.4.16
+  version: 3.13.4.17
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -3148,7 +3148,9 @@ components:
             #765: vrije-tekst-regel met de gewenste ontvangers, gescheiden door `;` of `,`. Elk
             fragment mag `"Naam" <adres>` of een kaal adres zijn. Server-side geparsed, gevalideerd
             (geldige syntax, max 15, gededupliceerd) en gecontroleerd tegen de uitsluitingslijst
-            (`dbo.UitgeslotenEmailAdressen`) vóór verzending.
+            (`dbo.UitgeslotenEmailAdressen`) vóór verzending. Voor een andere rol dan `admin` moet
+            elk adres bij het gekozen team horen (begeleiders van dat team, de coördinator of de
+            aanvrager zelf), anders `403` (#1671).
 
             Leeg of afwezig → ongewijzigd fallback-gedrag: server-side opzoeken van de
             hoogst-geprioriteerde begeleider (Trainer > Coach > Teamleider), met de coördinator als
@@ -7970,9 +7972,28 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          description: |
+            Geen toegang. Voor een andere rol dan `admin` moet elk adres in `ontvangers` bij het
+            gekozen team horen: een begeleider van dat team, de coördinator of de aanvrager zelf.
+            Een leeg veld gebruikt de server-side lookup.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Geen begeleiding gevonden voor het opgegeven team
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: |
+            Te veel doorgestuurde vragen door dezelfde gebruiker: de limiet is 3 verzendingen per
+            10 minuten. Alleen een daadwerkelijke verzending telt mee (een mislukte verzending geeft
+            haar eigen slot terug); de rol `admin` valt buiten de limiet. De teller is in-memory en
+            geldt per instantie van de Function App: bij uitschalen naar meerdere instanties of na een
+            herstart kan het totaal hoger uitvallen. Het is een rem op herhaald gebruik, geen globale
+            kwotering.
           content:
             application/json:
               schema:
