@@ -1,9 +1,4 @@
-@inject IAuthService Auth
-@inject BlazorAdmin.Services.InstellingenApiClient Api
-@inject BlazorAdmin.Services.ThemeService ThemeService
-@inject BlazorAdmin.Services.ClubSelectorService ClubSelector
-@inject NavigationManager Navigation
-@implements IDisposable
+@* Alle logica staat in NavMenu.razor.cs (#1647). *@
 
 @* ── ALLSTARS testmodus-banner: altijd zichtbaar bovenin de sidebar ── *@
 @if (IsTestmodus)
@@ -29,144 +24,214 @@
     </div>
 </div>
 
+@* Menuvolgorde en -groepen volgens #1647. Een item verschijnt alleen als de rol er volgens "Rechten per rol"
+   recht op heeft (UI-gemak; de server autoriseert elk endpoint zelf). Conventie sidebar-labels (#1314):
+   een label wrapt nooit op twee regels — lange labels worden afgekapt (.nav-label) en staan volledig in de tooltip. *@
 <div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
     <nav class="nav flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <i class="bi bi-speedometer2 me-1" aria-hidden="true"></i> Dashboard
-            </NavLink>
-        </div>
+        @if (Zichtbaar.Mag(MenuKeys.Dashboard))
+        {
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                    <i class="bi bi-speedometer2 me-1" aria-hidden="true"></i> Dashboard
+                </NavLink>
+            </div>
+        }
+
+        @* DEBUG: uitsluitend voor een beheerder (de server dwingt de rol per endpoint af; dit is UX). *@
+        @if (Auth.IsAdmin)
+        {
+            <div class="nav-item px-3">
+                <button class="nav-link btn btn-link text-start w-100 d-flex justify-content-between align-items-center px-0 py-1"
+                        @onclick="() => ToggleGroep(GroepDebug)" @onclick:stopPropagation="true" aria-expanded="@IsOpen(GroepDebug)">
+                    <span><i class="bi bi-bug me-1" aria-hidden="true"></i> DEBUG</span>
+                    <i class="bi @(IsOpen(GroepDebug) ? "bi-chevron-down" : "bi-chevron-right") ms-1 small" aria-hidden="true"></i>
+                </button>
+                @if (IsOpen(GroepDebug))
+                {
+                    <div class="nav-subitems ps-2">
+                        <div class="nav-item">
+                            <NavLink class="nav-link py-1" href="email-tester" title="Email-tester (dry-run)">
+                                <i class="bi bi-envelope-check me-1" aria-hidden="true"></i> <span class="nav-label">Email-tester (dry-run)</span>
+                            </NavLink>
+                        </div>
+                        <div class="nav-item">
+                            <NavLink class="nav-link py-1" href="leermomenten" title="AI-leermomenten">
+                                <i class="bi bi-lightbulb me-1" aria-hidden="true"></i> <span class="nav-label">AI-leermomenten</span>
+                            </NavLink>
+                        </div>
+                        <div class="nav-item">
+                            <NavLink class="nav-link py-1" href="feedback" title="Feedback">
+                                <i class="bi bi-chat-dots me-1" aria-hidden="true"></i> <span class="nav-label">Feedback</span>
+                            </NavLink>
+                        </div>
+                        <div class="nav-item">
+                            <NavLink class="nav-link py-1" href="email-log" title="E-maillog">
+                                <i class="bi bi-inbox me-1" aria-hidden="true"></i> <span class="nav-label">E-maillog</span>
+                            </NavLink>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
         @* Teambegeleiding staat bewust vooraan: meest gebruikte scherm (#669) *@
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="teambegeleiding">
-                <i class="bi bi-people me-1" aria-hidden="true"></i> Teambegeleiding
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="planning">
-                <i class="bi bi-calendar-week me-1" aria-hidden="true"></i> Planning
-            </NavLink>
-        </div>
+        @if (Zichtbaar.Mag(MenuKeys.Teambegeleiding))
+        {
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="teambegeleiding">
+                    <i class="bi bi-people me-1" aria-hidden="true"></i> Teambegeleiding
+                </NavLink>
+            </div>
+        }
+        @if (Zichtbaar.Mag(MenuKeys.Planning))
+        {
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="planning">
+                    <i class="bi bi-calendar-week me-1" aria-hidden="true"></i> Planning
+                </NavLink>
+            </div>
+        }
         @* #1122/#1468: de twee extensie-schermen alleen tonen als de Sportlink Web Extension aan staat —
-           zelfde regel als de Sportlink-kolom in Planning (#989). Ze staan direct onder Planning,
-           omdat daar mee gewerkt wordt. Inschakelen gebeurt via het submenu Instellingen →
-           Sportlink Web Extension, dat altijd zichtbaar blijft. *@
-        @if (ClubSelector.SportlinkExtensionEnabled)
+           zelfde regel als de Sportlink-kolom in Planning (#989) — én als de rol er recht op heeft.
+           Inschakelen gebeurt via Admin → Sportlink Web Extension, dat voor een beheerder altijd zichtbaar blijft. *@
+        @if (ClubSelector.SportlinkExtensionEnabled && Zichtbaar.Mag(MenuKeys.WedstrijdAanmaken))
         {
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="wedstrijd-aanmaken">
-                    <i class="bi bi-calendar-plus me-1" aria-hidden="true"></i> Wedstr. aanmaken
+                    <i class="bi bi-calendar-plus me-1" aria-hidden="true"></i> Wedstrijd aanmaken
                 </NavLink>
             </div>
+        }
+        @if (ClubSelector.SportlinkExtensionEnabled && Zichtbaar.Mag(MenuKeys.Wijzigingsverzoeken))
+        {
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="wijzigingsverzoeken">
                     <i class="bi bi-arrow-left-right me-1" aria-hidden="true"></i> Wijzigingsverzoeken
                 </NavLink>
             </div>
         }
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="veld-optimalisatie">
-                <i class="bi bi-sliders me-1" aria-hidden="true"></i> Veld optimalisatie
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="leermomenten">
-                <i class="bi bi-lightbulb me-1" aria-hidden="true"></i> Leermomenten
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="teamaliassen">
-                <i class="bi bi-tags me-1" aria-hidden="true"></i> Teamaliassen
-            </NavLink>
-        </div>
-        @* #764: het feedbackoverzicht bevat namen van collega's en is admin-only (de server dwingt dat af;
-           dit is UX). Alleen zichtbaar voor een beheerder. *@
-        @if (Auth.IsAdmin)
+        @if (Zichtbaar.Mag(MenuKeys.VeldOptimalisatie))
         {
             <div class="nav-item px-3">
-                <NavLink class="nav-link" href="feedback">
-                    <i class="bi bi-chat-dots me-1" aria-hidden="true"></i> Feedback
+                <NavLink class="nav-link" href="veld-optimalisatie">
+                    <i class="bi bi-sliders me-1" aria-hidden="true"></i> Veld optimalisatie
                 </NavLink>
             </div>
         }
-        @* #1583: het e-maillog met de beslissingstrace per bericht had geen eigen menu-item (alleen een knop op
-           Instellingen). De server bewaakt de rol; de pagina is admin-only, net als het feedbackoverzicht. *@
-        @if (Auth.IsAdmin)
-        {
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="email-log">
-                    <i class="bi bi-inbox me-1" aria-hidden="true"></i> E-maillog
-                </NavLink>
-            </div>
-        }
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="email-tester">
-                <i class="bi bi-envelope-check me-1" aria-hidden="true"></i> Email-tester
-            </NavLink>
-        </div>
-        @* Conventie sidebar-labels (#1314): een label mag nooit op twee regels wrappen — de
-           sidebar-breedte is smal en een dubbele regel oogt inconsistent met de andere items.
-           Kies bij een lang label een korte, herkenbare afkorting (zoals "Sportlink Ext."
-           hieronder) in plaats van de volledige naam. *@
 
-        @* Collapsible Instellingen submenu *@
-        <div class="nav-item px-3">
-            <button class="nav-link btn btn-link text-start w-100 d-flex justify-content-between align-items-center px-0 py-1"
-                    @onclick="ToggleInstellingen" @onclick:stopPropagation="true">
-                <span><i class="bi bi-gear me-1" aria-hidden="true"></i> Instellingen</span>
-                <i class="bi @(_instellingenOpen ? "bi-chevron-down" : "bi-chevron-right") ms-1 small" aria-hidden="true"></i>
-            </button>
-            @if (_instellingenOpen)
-            {
-                <div class="ps-2">
-                    <div class="nav-item">
-                        <NavLink class="nav-link py-1" href="instellingen" Match="NavLinkMatch.All">
-                            <i class="bi bi-sliders me-1" aria-hidden="true"></i> Instellingen
-                        </NavLink>
+        @if (ToonWzInstellingen)
+        {
+            <div class="nav-item px-3">
+                <button class="nav-link btn btn-link text-start w-100 d-flex justify-content-between align-items-center px-0 py-1"
+                        @onclick="() => ToggleGroep(GroepWz)" @onclick:stopPropagation="true" aria-expanded="@IsOpen(GroepWz)">
+                    <span><i class="bi bi-gear me-1" aria-hidden="true"></i> WZ Instellingen</span>
+                    <i class="bi @(IsOpen(GroepWz) ? "bi-chevron-down" : "bi-chevron-right") ms-1 small" aria-hidden="true"></i>
+                </button>
+                @if (IsOpen(GroepWz))
+                {
+                    <div class="nav-subitems ps-2">
+                        @if (Zichtbaar.Mag(MenuKeys.Speeltijden))
+                        {
+                            <div class="nav-item">
+                                <NavLink class="nav-link py-1" href="instellingen/speeltijden" title="Speeltijden">
+                                    <i class="bi bi-clock me-1" aria-hidden="true"></i> <span class="nav-label">Speeltijden</span>
+                                </NavLink>
+                            </div>
+                        }
+                        @if (Zichtbaar.Mag(MenuKeys.Velden))
+                        {
+                            <div class="nav-item">
+                                <NavLink class="nav-link py-1" href="instellingen/velden" title="Velden">
+                                    <i class="bi bi-grid-3x3 me-1" aria-hidden="true"></i> <span class="nav-label">Velden</span>
+                                </NavLink>
+                            </div>
+                        }
+                        @if (Zichtbaar.Mag(MenuKeys.Voorkeurstijden))
+                        {
+                            <div class="nav-item">
+                                <NavLink class="nav-link py-1" href="voorkeurstijden" title="Team voorkeurstijden">
+                                    <i class="bi bi-clock-history me-1" aria-hidden="true"></i> <span class="nav-label">Team voorkeurstijden</span>
+                                </NavLink>
+                            </div>
+                        }
                     </div>
-                    <div class="nav-item">
-                        <NavLink class="nav-link py-1" href="instellingen/speeltijden">
-                            <i class="bi bi-clock me-1" aria-hidden="true"></i> Speeltijden
-                        </NavLink>
+                }
+            </div>
+        }
+
+        @if (ToonAdmin)
+        {
+            <div class="nav-item px-3">
+                <button class="nav-link btn btn-link text-start w-100 d-flex justify-content-between align-items-center px-0 py-1"
+                        @onclick="() => ToggleGroep(GroepAdmin)" @onclick:stopPropagation="true" aria-expanded="@IsOpen(GroepAdmin)">
+                    <span><i class="bi bi-shield-check me-1" aria-hidden="true"></i> Admin</span>
+                    <i class="bi @(IsOpen(GroepAdmin) ? "bi-chevron-down" : "bi-chevron-right") ms-1 small" aria-hidden="true"></i>
+                </button>
+                @if (IsOpen(GroepAdmin))
+                {
+                    <div class="nav-subitems ps-2">
+                        @if (Zichtbaar.Mag(MenuKeys.AppInstellingen))
+                        {
+                            <div class="nav-item">
+                                <NavLink class="nav-link py-1" href="instellingen" Match="NavLinkMatch.All" title="App instellingen">
+                                    <i class="bi bi-sliders me-1" aria-hidden="true"></i> <span class="nav-label">App instellingen</span>
+                                </NavLink>
+                            </div>
+                        }
+                        @if (Zichtbaar.Mag(MenuKeys.SportlinkExtensie))
+                        {
+                            <div class="nav-item">
+                                <NavLink class="nav-link py-1" href="sportlink-extension-settings" title="Sportlink Web Extension">
+                                    <i class="bi bi-arrow-left-right me-1" aria-hidden="true"></i> <span class="nav-label">Sportlink Web Extension</span>
+                                </NavLink>
+                            </div>
+                        }
+                        @if (Zichtbaar.Mag(MenuKeys.BegeleidingImport))
+                        {
+                            <div class="nav-item">
+                                <NavLink class="nav-link py-1" href="instellingen/teambegeleiding-import" title="Teambegeleiding importeren">
+                                    <i class="bi bi-upload me-1" aria-hidden="true"></i> <span class="nav-label">Teambegeleiding importeren</span>
+                                </NavLink>
+                            </div>
+                        }
+                        @if (Zichtbaar.Mag(MenuKeys.EmailTemplates))
+                        {
+                            <div class="nav-item">
+                                <NavLink class="nav-link py-1" href="email-templates" title="E-mailtemplates">
+                                    <i class="bi bi-file-text me-1" aria-hidden="true"></i> <span class="nav-label">E-mailtemplates</span>
+                                </NavLink>
+                            </div>
+                        }
+                        @* "Rechten per rol" heeft bewust geen eigen sleutel: altijd admin-only (anders kan een rol zichzelf rechten geven). *@
+                        @if (Auth.IsAdmin)
+                        {
+                            <div class="nav-item">
+                                <NavLink class="nav-link py-1" href="sportlink-rol-instellingen" title="Rechten per rol">
+                                    <i class="bi bi-shield-lock me-1" aria-hidden="true"></i> <span class="nav-label">Rechten per rol</span>
+                                </NavLink>
+                            </div>
+                        }
+                        @if (Zichtbaar.Mag(MenuKeys.Teamaliassen))
+                        {
+                            <div class="nav-item">
+                                <NavLink class="nav-link py-1" href="teamaliassen" title="Teamaliassen">
+                                    <i class="bi bi-tags me-1" aria-hidden="true"></i> <span class="nav-label">Teamaliassen</span>
+                                </NavLink>
+                            </div>
+                        }
+                        @if (Zichtbaar.Mag(MenuKeys.Thema))
+                        {
+                            <div class="nav-item">
+                                <NavLink class="nav-link py-1" href="instellingen/thema" title="Club-thema">
+                                    <i class="bi bi-palette me-1" aria-hidden="true"></i> <span class="nav-label">Club-thema</span>
+                                </NavLink>
+                            </div>
+                        }
                     </div>
-                    <div class="nav-item">
-                        <NavLink class="nav-link py-1" href="instellingen/velden">
-                            <i class="bi bi-grid-3x3 me-1" aria-hidden="true"></i> Velden
-                        </NavLink>
-                    </div>
-                    <div class="nav-item">
-                        <NavLink class="nav-link py-1" href="instellingen/teambegeleiding-import">
-                            <i class="bi bi-upload me-1" aria-hidden="true"></i> Begeleiding importeren
-                        </NavLink>
-                    </div>
-                    <div class="nav-item">
-                        <NavLink class="nav-link py-1" href="voorkeurstijden">
-                            <i class="bi bi-clock-history me-1" aria-hidden="true"></i> Voorkeurstijden
-                        </NavLink>
-                    </div>
-                    <div class="nav-item">
-                        <NavLink class="nav-link py-1" href="email-templates">
-                            <i class="bi bi-file-text me-1" aria-hidden="true"></i> E-mailtemplates
-                        </NavLink>
-                    </div>
-                    <div class="nav-item">
-                        <NavLink class="nav-link py-1" href="instellingen/thema">
-                            <i class="bi bi-palette me-1" aria-hidden="true"></i> Thema
-                        </NavLink>
-                    </div>
-                    <div class="nav-item">
-                        <NavLink class="nav-link py-1" href="sportlink-extension-settings">
-                            <i class="bi bi-arrow-left-right me-1" aria-hidden="true"></i> Sportlink Ext.
-                        </NavLink>
-                    </div>
-                    <div class="nav-item">
-                        <NavLink class="nav-link py-1" href="sportlink-rol-instellingen">
-                            <i class="bi bi-shield-lock me-1" aria-hidden="true"></i> Rechten per rol
-                        </NavLink>
-                    </div>
-                </div>
-            }
-        </div>
+                }
+            </div>
+        }
 
         @* ── Testmodus-sectie: alleen zichtbaar bij ALLSTARS ── *@
         @if (IsTestmodus)
@@ -190,69 +255,3 @@
         }
     </nav>
 </div>
-
-@code {
-    private bool collapseNavMenu = true;
-    private bool _instellingenOpen;
-
-    private bool IsTestmodus =>
-        string.Equals(ClubSelector.SelectedClubCode, "ALLSTARS", StringComparison.OrdinalIgnoreCase);
-
-    private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
-
-    private static readonly string[] InstellingenRoutes = ["/instellingen", "/voorkeurstijden", "/email-templates", "/sportlink-extension-settings", "/sportlink-rol-instellingen"];
-    // "/instellingen/velden" matcht al via de "/instellingen"-prefix hierboven.
-
-    protected override void OnInitialized()
-    {
-        _instellingenOpen = IsInstellingenRoute(Navigation.Uri);
-        Navigation.LocationChanged += OnLocationChanged;
-        ThemeService.OnThemeChanged += OnThemeChanged;
-        ClubSelector.OnChange += OnClubChanged;
-        ClubSelector.OnClubNameChange += OnMenuWeergaveChanged;
-        ClubSelector.OnSportlinkExtensionChange += OnMenuWeergaveChanged;
-        // Club-naam via ClubSelector.SelectedClubName (gevuld door MainLayout) — geen eigen API-call
-    }
-
-    protected override Task OnInitializedAsync() => LaadExtensieVlagAsync();
-
-    // #1122: één instellingen-GET bij laden en bij clubwissel; de extensie-instellingenpagina
-    // werkt de vlag na opslaan zelf bij via ClubSelector.ZetSportlinkExtensionEnabled.
-    private string? _extensieVlagVoorClub;
-    private async Task LaadExtensieVlagAsync()
-    {
-        if (_extensieVlagVoorClub == ClubSelector.SelectedClubCode) return;
-        _extensieVlagVoorClub = ClubSelector.SelectedClubCode;
-        var r = await Api.GetSettingsAsync();
-        ClubSelector.ZetSportlinkExtensionEnabled(r.Success && r.Data?.SportlinkExtensionEnabled == true);
-    }
-
-    public void Dispose()
-    {
-        Navigation.LocationChanged -= OnLocationChanged;
-        ThemeService.OnThemeChanged -= OnThemeChanged;
-        ClubSelector.OnChange -= OnClubChanged;
-        ClubSelector.OnClubNameChange -= OnMenuWeergaveChanged;
-        ClubSelector.OnSportlinkExtensionChange -= OnMenuWeergaveChanged;
-    }
-
-    // #1578: naam- en vlagwijzigingen hertekenen alleen het menu; pagina's herladen er niet op.
-    private void OnMenuWeergaveChanged() => _ = InvokeAsync(StateHasChanged);
-    private void OnThemeChanged() => _ = InvokeAsync(StateHasChanged);
-    private void OnClubChanged() => _ = InvokeAsync(async () => { await LaadExtensieVlagAsync(); StateHasChanged(); });
-
-    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
-    {
-        if (IsInstellingenRoute(e.Location))
-            _instellingenOpen = true;
-        _ = InvokeAsync(StateHasChanged);
-    }
-
-    private static bool IsInstellingenRoute(string uri) =>
-        InstellingenRoutes.Any(r => uri.Contains(r, StringComparison.OrdinalIgnoreCase));
-
-    private void ToggleNavMenu() => collapseNavMenu = !collapseNavMenu;
-    private void ToggleInstellingen() => _instellingenOpen = !_instellingenOpen;
-
-    private async Task LogoutAsync() => await Auth.LogoutAsync();
-}

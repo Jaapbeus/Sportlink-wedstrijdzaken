@@ -755,7 +755,7 @@ primaire club live-klaar is en zo niet, waarom niet (`Get-SportlinkLiveBlockers`
 - **Welke club live gaat, bepaalt de database:** de club met `syncenabled = TRUE` in
   `public.appsettings`. De democlub `ALLSTARS` heeft geen koppeling en de extensie staat er uit.
   Er staat dus geen clubnaam in code of scripts, en een andere fork werkt ongewijzigd.
-- **Inloggegevens en dry-run zijn mensenwerk:** menu **Sportlink Ext.** → kaart
+- **Inloggegevens en dry-run zijn mensenwerk:** menu **Admin → Sportlink Web Extension** → kaart
   **Automatisch inloggen — rol Wedstrijdzaken**. Lokaal en productie hebben elk een eigen sleutel,
   dus na een nieuwe lokale sleutel voer je de gegevens daar eenmalig opnieuw in.
 - **De code-locks (`…LiveBevestigd` in `SportlinkClubClient.cs`) blijven leidend**, ook lokaal.
@@ -1334,6 +1334,7 @@ Het label `turn: claude-code` op een issue start de workflow `.github/workflows/
 - **Contextlimiet (#1666):** de prompt gaat als omgevingsvariabele naar een shellstap (Linux: 128 KiB per string, in bytes). De volledige context (issuetitel en -tekst, kopregels, separators, comments en reviews) wordt in UTF-8-bytes begrensd op 96 KiB (`MAX_CONTEXT_BYTES`; de vaste prompt is ~5,2 KiB). De issuetekst krijgt maximaal de helft; daarna blijven de nieuwste comments/reviews behouden en vallen de oudste af, en elke afkapping is gemarkeerd. Een transport via een promptbestand is een optie zodra een gepinde `claude-code-action`-versie dat ondersteunt; de huidige pin heeft geen `prompt_file`-input.
 - **Secret:** de run heeft het repository-secret `CLAUDE_CODE_OAUTH_TOKEN` nodig. De eigenaar maakt dat zelf aan met `claude setup-token`; een agent doet dit nooit.
 - **Grenzen:** de run merget en deployt nooit en laat de PR in draft.
+- **CI-bewijs (#1641):** GitHub start geen `pull_request`-run zolang de PR een merge-conflict heeft (bewezen op #1636/#1638/#1640: elke head zonder run had een conflict met `develop`, elke head mét run niet; dit verklaart ook de bot-push zonder run). Het ontbreken van `Build FunctionApp + BlazorAdmin` in `gh pr checks` is daarom een signaal "CI niet bewezen", geen bewijs van een conflict (ook padfilters, `[skip ci]`, goedkeuringsregels voor forks of een uitgeschakelde workflow geven geen run): controleer het conflict apart met `gh pr view <nr> --json mergeable` of `git merge-tree`. Een conflict los je op door `develop` te mergen; `build.yml` en `security-scan.yml` hebben geen `branches`-filter meer, dus ook een PR tegen een featurebranch bouwt. "CI groen" en de zelfmerge-regel (AGENTS.md) eisen dat `Build (PR)` én Security Gate op de head-SHA aanwezig zijn. De verwerkingsstap meldt anders "CI niet bewezen"; een handmatige `gh workflow run build.yml --ref <branch>` blijft het noodmiddel voor `Build (PR)`; de Security Gate komt van de `push`-run van `security-scan.yml` en staat dus op elke gepushte SHA (die workflow heeft bewust geen `workflow_dispatch`; zie SECURITY.md). De bot dispatcht zelf niet (eigenaarsbesluit over botrechten, zie PR #1661).
 - **Codex:** is niet zo geautomatiseerd (zie #1601) en blijft lokaal reviewen.
 
 ---

@@ -246,8 +246,9 @@ rol) — vandaar dat rij 2 (gewone `user`) sindsdien al viewing krijgt, ook zond
 
 **Rollen `Sectiehoofd` en `Ledenadministratie` (#1390).** Naast `user` en `Wedstrijdzaken` kent
 `Planner.Shared/Autorisatie/RolNamen.cs` deze twee rollen als kolom in de toegangsmatrix
-(Instellingen → Rechten per rol). Ze worden **nog niet afgedwongen**: geen endpoint en geen
-app-roldefinitie in Entra gebruikt ze, en de matrix legt alleen vast wat een rol zou mogen zien.
+(Admin → Rechten per rol). Ze worden **nog niet afgedwongen**: geen endpoint en geen
+app-roldefinitie in Entra gebruikt ze; de matrix stuurt (sinds #1647) alleen de menu-zichtbaarheid van een rol die de
+server wél in het token ziet.
 Maak er dus nog geen Entra-appRole-toewijzingen voor aan. `admin` heeft altijd alles en is niet instelbaar.
 
 ## Tracking

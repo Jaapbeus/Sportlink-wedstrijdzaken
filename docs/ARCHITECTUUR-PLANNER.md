@@ -23,7 +23,7 @@ Geautomatiseerde veldbeschikbaarheidscontrole voor oefenwedstrijden op **[Sportp
 ## Velddefinities — voorbeeldconfiguratie van één club
 
 De onderstaande indeling is seeddata uit `dbo.Velden`/`dbo.VeldBeschikbaarheid`, beheerbaar via
-**Instellingen → Velden** (#679). Een fork vult hier zijn eigen sportpark in.
+**WZ Instellingen → Velden** (#679). Een fork vult hier zijn eigen sportpark in.
 
 | Veld | Kunstlicht | Beschikbaar voor planner | Opmerkingen |
 |------|-----------|-------------------------|-------------|
@@ -83,7 +83,7 @@ Voorkeurstijden per team staan niet in `dbo.TeamRegels` maar in `dbo.TeamVoorkeu
 ### Standaard voorkeurstijd per leeftijdscategorie (zachte regel)
 
 Per leeftijdscategorie staat een standaard voorkeurstijd in `dbo.Speeltijden.StandaardVoorkeurTijd`,
-instelbaar per club via **Beheer → Instellingen → Speeltijden** (#666). De auto-planner gebruikt die tijd
+instelbaar per club via **WZ Instellingen → Speeltijden** (#666). De auto-planner gebruikt die tijd
 voor teams die géén eigen rij in `dbo.TeamVoorkeurTijden` hebben.
 
 Leeg laten betekent: geen streeftijd — de planner kiest dan het eerst beschikbare slot. De waarden zijn
@@ -189,7 +189,7 @@ kwartveldwedstrijd bewust op `A2` gezet kan worden in plaats van op de eerste vr
 
 > **Dit is seeddata, geen architectuurregel.** De waarden hieronder zijn de seed uit
 > `Database/Script.PostDeployment1.sql` (`dbo.Speeltijden`); elke club past ze aan via
-> **Instellingen → Speeltijden**. Ze staan hier zodat het algoritme hieronder leesbaar is.
+> **WZ Instellingen → Speeltijden**. Ze staan hier zodat het algoritme hieronder leesbaar is.
 
 | Categorie | Veldafmeting | Totaal (min) | Helft (min) | Rust (min) |
 |-----------|-------------|-------------|-------------|------------|
@@ -466,7 +466,7 @@ van 0 minuten gaf stilzwijgend een lege reservering.
 ### dbo.Velden
 Velddefinities met type (vrije tekst, bijv. kunstgras/natuurgras) en verlichting. Elke vereniging
 configureert dit naar eigen situatie — inclusief clubs met een ander aantal velden of uitsluitend
-natuurgras. Volledig beheerbaar via Instellingen → Velden in de Admin GUI (#679); daarvoor kon een
+natuurgras. Volledig beheerbaar via WZ Instellingen → Velden in de Admin GUI (#679); daarvoor kon een
 veld alleen via een directe database-wijziging worden toegevoegd.
 
 | Kolom | Beschrijving |
@@ -481,7 +481,7 @@ Voorbeeld seeddata: veld 1–4 kunstgras + kunstlicht, veld 5 natuurgras zonder 
 
 ### dbo.VeldBeschikbaarheid
 Beschikbaarheidsvensters per dag van de week per veld. Bepaalt welke velden op welke dagen
-beschikbaar zijn. Beheerbaar via Instellingen → Velden (#679).
+beschikbaar zijn. Beheerbaar via WZ Instellingen → Velden (#679).
 
 Optioneel gekoppeld aan een `dbo.VeldPeriode` via `PeriodeId` (#581): `NULL` is het
 standaardregime en geldt buiten elke actieve periode (exact het gedrag van vóór #581). Is er voor
