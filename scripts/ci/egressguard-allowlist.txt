@@ -1,0 +1,10 @@
+# egressguard-allowlist.txt (#1676)
+#
+# Eén regel per uitzondering: <bestandspad> <reden>. Een bestand met HttpClient-gebruik zonder
+# EgressGuard-aanroep hoort hier alleen als de poort aantoonbaar bij elke aanroeper zit.
+# De guard (scripts/ci/check-egressguard-dekking.sh) faalt op een regel zonder reden en op een
+# regel die naar een bestand wijst dat geen uitzondering meer nodig heeft.
+
+FunctionApp/Sync/SportlinkSyncPipeline.cs  Pipeline wordt alleen aangeroepen vanuit de timer (Function1.cs), SyncMatchesHttp (Function1.cs) en SyncJobProcessor, die elk EgressGuard controleren.
+FunctionApp.Postgres/Sync/PostgresSyncPipeline.cs  Pipeline wordt alleen aangeroepen via SyncFunction.RunConfiguredSyncAsync (timer, HTTP, SyncJobProcessor), die elk EgressGuard controleren.
+FunctionApp/Monitoring/ArmDatabaseStatusReader.cs  Alleen aangeroepen vanuit DatabaseUitvalMonitorFunction, die zonder IEmailGraphService (alleen geregistreerd onder EgressGuard) terugkeert vóór de aanroep.

@@ -1,3 +1,4 @@
+using FunctionApp.Postgres.Infrastructure;
 using Planner.Shared;
 using Azure.Core;
 using Azure.Identity;
@@ -332,6 +333,7 @@ public static class AdminSettingsFunction
             return new BadRequestObjectResult(new { error = "plaatsnaam is verplicht" });
         if (plaatsnaam.Length > 100)
             return new BadRequestObjectResult(new { error = "plaatsnaam te lang (max 100 tekens)" });
+        if (UitgaandVerkeerCore.Blokkeer(EgressGuard.ExternalIntegrationsAllowed) is { } egressAntwoord) return egressAntwoord;
 
         try
         {

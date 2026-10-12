@@ -1,3 +1,4 @@
+using Planner.Endpoints.Admin;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -91,6 +92,8 @@ public static class SyncFunction
             async _ =>
             {
                 log.LogInformation("HTTP trigger PostgresSyncMatchesHttp uitgevoerd om: {Now}", DateTime.UtcNow);
+
+                if (UitgaandVerkeerCore.Blokkeer(EgressGuard.ExternalIntegrationsAllowed) is { } egressAntwoord) return egressAntwoord;
 
                 var isReset = string.Equals(req.Query["reset"], "true", StringComparison.OrdinalIgnoreCase);
                 string? seasonParam = req.Query["season"];

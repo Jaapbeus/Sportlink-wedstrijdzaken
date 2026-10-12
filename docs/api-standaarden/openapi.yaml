@@ -33,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.13.4.0
+  version: 3.13.4.6
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -109,6 +109,12 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
     Forbidden:
       description: Geen admin-rol in het token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ExternalIntegrationsDisabled:
+      description: Uitgaande integraties zijn buiten productie uitgeschakeld (EgressGuard, #857)
       content:
         application/json:
           schema:
@@ -3573,6 +3579,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ExternalIntegrationsDisabled'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -3621,6 +3629,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ExternalIntegrationsDisabled'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -5123,6 +5133,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ExternalIntegrationsDisabled'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '502':
@@ -5206,6 +5218,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ExternalIntegrationsDisabled'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -7285,6 +7299,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ExternalIntegrationsDisabled'
         '500':
           $ref: '#/components/responses/InternalServerError'
 

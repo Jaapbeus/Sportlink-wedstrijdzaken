@@ -358,6 +358,35 @@ public class EndpointAutorisatieTests
         public Task ExecuteResultAsync(ActionContext context) => Task.CompletedTask;
     }
 
+    // ── EgressGuard (#1676) ────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task UitgaandeEndpoints_BuitenProductieZonderOptIn_GevenServiceUnavailable()
+    {
+        var origSite = Environment.GetEnvironmentVariable(AzureVar);
+        var origAllow = Environment.GetEnvironmentVariable("AllowExternalIntegrations");
+        try
+        {
+            Environment.SetEnvironmentVariable(AzureVar, null);
+            Environment.SetEnvironmentVariable("AllowExternalIntegrations", null);
+
+            var geocode = Verzoek(null);
+            geocode.QueryString = new QueryString("?plaatsnaam=Voorbeeldstad");
+            StatusVan(await AdminSettingsFunction.Geocode(geocode, FunctieContext()))
+                .Should().Be(503, "uitgaande integraties zijn buiten productie uitgeschakeld");
+
+            var extract = Verzoek(null);
+            extract.QueryString = new QueryString("?url=https://voorbeeld.nl");
+            StatusVan(await AdminThemeFunction.Extract(extract, FunctieContext()))
+                .Should().Be(503, "uitgaande integraties zijn buiten productie uitgeschakeld");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(AzureVar, origSite);
+            Environment.SetEnvironmentVariable("AllowExternalIntegrations", origAllow);
+        }
+    }
+
     private static async Task MetProductieOmgeving(Func<Task> test)
     {
         var origSite = Environment.GetEnvironmentVariable(AzureVar);

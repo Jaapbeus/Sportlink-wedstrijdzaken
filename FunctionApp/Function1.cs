@@ -1,3 +1,4 @@
+using Planner.Endpoints.Admin;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -80,6 +81,8 @@ namespace SportlinkFunction
                 async _ =>
                 {
                     log.LogInformation("HTTP trigger SyncMatchesHttp executed at: {Now}", DateTime.UtcNow);
+
+                    if (UitgaandVerkeerCore.Blokkeer(EgressGuard.ExternalIntegrationsAllowed) is { } geblokkeerd) return geblokkeerd;
 
                     // Eigen catch naast de wrapper: de automatische foutrapportage hoort bij dit
                     // endpoint en niet bij de generieke 500 van de wrapper.

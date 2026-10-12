@@ -1,3 +1,5 @@
+using Planner.Endpoints.Admin;
+using FunctionApp.Postgres.Infrastructure;
 using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
@@ -35,6 +37,16 @@ public static class SyncJobProcessor
         if (job is null || job.JobId == Guid.Empty)
         {
             log.LogError("SyncJobProcessor: leeg of ongeldig bericht overgeslagen: {Message}", message);
+            return;
+        }
+
+        // #1676: een bericht dat buiten productie binnenkomt wordt niet uitgevoerd en niet opnieuw
+        // aangeboden; de job wordt als mislukt vastgelegd zodat de beheerder de reden ziet.
+        if (UitgaandVerkeerCore.Blokkeer(EgressGuard.ExternalIntegrationsAllowed) is not null)
+        {
+            log.LogInformation("EgressGuard: uitgaande integraties geblokkeerd buiten productie — job {JobId} overgeslagen in syncjobs (#857).", job.JobId);
+            await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false,
+                errorMessage: "Uitgaande integraties zijn buiten productie uitgeschakeld.");
             return;
         }
 

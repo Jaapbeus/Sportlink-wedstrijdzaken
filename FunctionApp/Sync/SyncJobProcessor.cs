@@ -1,3 +1,4 @@
+using SportlinkFunction.Infrastructure;
 using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
@@ -39,6 +40,8 @@ public static class SyncJobProcessor
             return;
         }
 
+        if (await BlokkeerBuitenProductieAsync(job, log)) return;
+
         using var traceScope = log.BeginScope(new Dictionary<string, object> { ["SyncJobId"] = job.JobId });
         await SyncJobsRepository.MarkRunningAsync(job.JobId);
         log.LogInformation("SyncJobProcessor: job {JobId} gestart, range {From} .. {To}", job.JobId, job.WeekOffsetFrom, job.WeekOffsetTo);
@@ -75,5 +78,18 @@ public static class SyncJobProcessor
             log.LogError(ex, "SyncJobProcessor: job {JobId} mislukt", job.JobId);
             await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false, errorMessage: ex.Message);
         }
+    }
+
+    /// <summary>
+    /// #1676: een bericht dat buiten productie binnenkomt wordt niet uitgevoerd en niet opnieuw
+    /// aangeboden; de job wordt als mislukt vastgelegd zodat de beheerder de reden ziet.
+    /// </summary>
+    private static async Task<bool> BlokkeerBuitenProductieAsync(SyncJobMessage job, ILogger log)
+    {
+        if (EgressGuard.ExternalIntegrationsAllowed()) return false;
+
+        log.LogInformation("EgressGuard: uitgaande integraties geblokkeerd buiten productie — job {JobId} overgeslagen in dbo.SyncJobs (#857).", job.JobId);
+        await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false, errorMessage: "Uitgaande integraties zijn buiten productie uitgeschakeld.");
+        return true;
     }
 }
