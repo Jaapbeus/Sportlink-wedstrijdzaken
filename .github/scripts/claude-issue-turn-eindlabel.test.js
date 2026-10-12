@@ -27,14 +27,16 @@ const pr = (number, extra = {}) => ({
 
 /**
  * Nep-octokit. `states` is een lijst toestanden die issues.get achtereenvolgens teruggeeft (de laatste
- * blijft gelden), zodat een verandering tússen controle en schrijven te simuleren is.
+ * blijft gelden), zodat een verandering tússen controle en schrijven te simuleren is. `removeErrors`
+ * laat removeLabel alleen voor de genoemde labelnaam falen, zodat precies één DELETE (bijvoorbeeld
+ * de terugdraai-DELETE van het eigen eindlabel) een fout geeft en de andere slagen.
  */
 function fakeGithub({
   states = [{ labels: ['turn: claude-code', 'status: in-progress'] }],
   comments = [bot('2026-10-12T14:48:00Z', 'Fase: review\nVolgende beurt: turn: codex')],
-  startPr = null, closedPrs = [], removeError = null,
+  startPr = null, closedPrs = [], removeErrors = {},
 } = {}) {
-  const calls = { added: [], removed: [], gets: 0 };
+  const calls = { added: [], removed: [], removeAttempts: [], gets: 0 };
   return {
     calls,
     paginate: async (fn, params) => (await fn(params)).data,
@@ -48,7 +50,8 @@ function fakeGithub({
         listComments: async () => ({ data: comments }),
         addLabels: async ({ labels }) => { calls.added.push(...labels); },
         removeLabel: async ({ name }) => {
-          if (removeError) throw removeError;
+          calls.removeAttempts.push(name);
+          if (removeErrors[name]) throw removeErrors[name];
           calls.removed.push(name);
         },
       },
@@ -155,22 +158,29 @@ const run = (github, extra = {}) => applyEndLabel({
     check('beurt gewijzigd: reden vermeldt turn-label', /turn-label/.test(r.reason), true);
   }
   {
-    // Review P2-2: falende DELETE bij terugdraaien is een fout, geen succes.
+    // Review P2-2 (ronde 2): de eerste DELETE (`turn: claude-code`) slaagt, de nacontrole ziet
+    // awaiting-release en uitsluitend de terugdraai-DELETE van het eigen eindlabel geeft HTTP 500.
+    // Die fout moet propageren; geen succesmelding voor het terugdraaien.
     const github = fakeGithub({
       states: [{ labels: ['turn: claude-code'] }, { labels: ['turn: codex', 'status: awaiting-release'] }],
-      removeError: Object.assign(new Error('boom'), { status: 500 }),
+      removeErrors: { 'turn: codex': Object.assign(new Error('boom'), { status: 500 }) },
     });
-    let threw = false;
-    try { await run(github); } catch { threw = true; }
-    check('falende rollback-DELETE propageert', threw, true);
+    let thrown = null, result;
+    try { result = await run(github); } catch (err) { thrown = err; }
+    check('rollback-500: beide DELETE-pogingen gedaan', github.calls.removeAttempts, ['turn: claude-code', 'turn: codex']);
+    check('rollback-500: alleen claude-code daadwerkelijk verwijderd', github.calls.removed, ['turn: claude-code']);
+    check('rollback-500: fout propageert met status 500', thrown?.status, 500);
+    check('rollback-500: geen resultaat met rolledBack', result, undefined);
   }
   {
+    // 404 op de terugdraai-DELETE: het label is al weg, dus idempotent succes.
     const github = fakeGithub({
       states: [{ labels: ['turn: claude-code'] }, { labels: ['turn: codex', 'status: awaiting-release'] }],
-      removeError: Object.assign(new Error('nf'), { status: 404 }),
+      removeErrors: { 'turn: codex': Object.assign(new Error('nf'), { status: 404 }) },
     });
     const r = await run(github);
-    check('404 bij rollback = idempotent', [r.written, r.rolledBack], [false, true]);
+    check('rollback-404: beide DELETE-pogingen gedaan', github.calls.removeAttempts, ['turn: claude-code', 'turn: codex']);
+    check('rollback-404: idempotent teruggedraaid', [r.written, r.rolledBack], [false, true]);
   }
 
   // De vergelijk-en-zet werkt alleen als de agent zelf geen labelpad heeft en de job altijd draait.
