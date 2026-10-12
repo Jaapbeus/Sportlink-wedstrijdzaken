@@ -33,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.13.4.0
+  version: 3.13.4.2
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -7936,9 +7936,21 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          description: |
+            Geen toegang. Het vrije veld `ontvangers` is alleen beschikbaar voor de rol `admin`;
+            de rol `user` gebruikt de server-side lookup (veld leeg laten).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Geen begeleiding gevonden voor het opgegeven team
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Te veel doorgestuurde vragen door dezelfde gebruiker; de limiet is 3 per 10 minuten.
           content:
             application/json:
               schema:

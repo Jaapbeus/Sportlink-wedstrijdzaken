@@ -109,6 +109,8 @@ public static class AdminTeambegeleidingFunction
                 if (string.IsNullOrWhiteSpace(dto.Bericht))
                     return new BadRequestObjectResult(new { error = "Bericht is vereist" });
 
+                if (TeambegeleidingDoorsturenEndpointCore.Controleer(EasyAuthHelper.IsAdmin(req), dto.Ontvangers, EasyAuthHelper.GetCallerObjectId(req)) is { } toegangsfout) return toegangsfout;
+
                 // Naam + email aanvrager uit Entra claims (server-side — nooit in response)
                 var aanvragerNaam = EasyAuthHelper.GetCallerName(req) ?? "een club-gebruiker";
                 var aanvragerEmail = EasyAuthHelper.GetCallerEmail(req);
