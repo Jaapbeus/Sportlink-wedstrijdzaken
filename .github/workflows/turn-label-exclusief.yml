@@ -1,8 +1,9 @@
 name: Turn-label exclusief houden
 
 # #1686: hoogstens één `turn:`-label per issue (AGENTS.md, "Review en turn:"). Zet iemand of iets een
-# nieuw `turn:`-label, dan blijft dat label (het meest recente `labeled`-event) staan en worden de
-# andere `turn:`-labels verwijderd: laatste schrijver wint. Zo kan een gerichte vervanging van één
+# nieuw `turn:`-label, dan blijft het label met de meest recente toevoeging staan en worden de
+# andere `turn:`-labels verwijderd: laatste schrijver wint. Bij twijfel (labels en events spreken elkaar
+# tegen) verwijdert de helper niets en faalt de run zichtbaar (zie .github/scripts/turn-label-exclusief.js). Zo kan een gerichte vervanging van één
 # label nooit een tweede, verouderd label laten staan, en blokkeert de issue-beurt-poort niet meer
 # op "niet exclusief".
 #
@@ -43,5 +44,4 @@ jobs:
               context,
               core,
               issueNumber: context.payload.issue.number,
-              ontvangenLabel: context.payload.label.name,
             });
