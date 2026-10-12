@@ -318,6 +318,16 @@ Controleer of een veld beschikbaar is voor een oefenwedstrijd. Geeft een specifi
 > `ALLSTARS`-demodata) worden nooit meegenomen. Dit geldt ook voor
 > `/planner/zoek-wedstrijd`, `/planner/herplan-check`, `/planner/doordeweeks-beschikbaar`
 > en `/planner/team-schedule`.
+>
+> **Onbekende waarde (#1677, #1689):** de headerwaarde wordt getoetst aan de clubs in de
+> instellingentabel (maximaal 20 tekens `A-Z`, `a-z`, `0-9`, `_`, `-`). Een ongeldige vorm of een
+> club die niet bestaat geeft geen fout maar dezelfde terugval als zonder header: de primaire club.
+> Een bestaande club wordt in de opgeslagen schrijfwijze gebruikt (een exacte match gaat voor; bij
+> meerdere varianten in hoofdletters altijd dezelfde). De clublijst wordt hoogstens 60 seconden
+> gecachet; een onbekende waarde laat haar opnieuw laden (hoogstens eens per 10 seconden), zodat een
+> pas toegevoegde club direct herkend wordt. Is de lijst nog nooit te laden geweest (database
+> onbereikbaar), dan geldt een syntactisch geldige waarde zoals vóór #1677. Geldt voor alle
+> endpoints die `X-Club-Code` lezen, op beide databasetiers.
 
 ### Aanvraag
 
