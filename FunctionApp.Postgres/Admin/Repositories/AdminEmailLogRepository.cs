@@ -21,7 +21,7 @@ internal static class AdminEmailLogRepository
         string clubCode, DateTime? vanaf, DateTime? tot, string? statusFilter, int limit, string cs)
     {
         var sql = @"SELECT id AS ""Id"", messageid AS ""MessageId"", conversationid AS ""ConversationId"",
-                           afzender AS ""Afzender"", onderwerp AS ""Onderwerp"",
+                           afzender AS ""Afzender"",
                            ontvangstdatum AS ""OntvangstDatum"", verzoektype AS ""VerzoekType"",
                            status AS ""Status"", verstuurdnaar AS ""VerstuurdNaar"",
                            mta_inserted, mta_modified,
@@ -52,7 +52,7 @@ internal static class AdminEmailLogRepository
 
             // AVG (#858): hoofdletterongevoelig én luidruchtig — ontbreekt de kolom, dan gooit
             // dit in plaats van stilzwijgend een onvermaskerd adres door te laten.
-            AvgMaskering.MaskeerAfzender(row);
+            AvgMaskering.MaskeerEmailLogRij(row);
             list.Add(row);
         }
         return list;

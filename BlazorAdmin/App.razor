@@ -27,10 +27,13 @@
     }
     else if (_state == AppState.OnAuthRoute)
     {
-        @* MSAL-callback (/authentication/...) — geen layout. *@
+        @* MSAL-callback (/authentication/...) — geen layout; alleen de authenticatiepagina rendert. *@
         <Router AppAssembly="@typeof(App).Assembly">
             <Found Context="routeData">
-                <RouteView RouteData="@routeData" />
+                @if (routeData.PageType == typeof(Authentication))
+                {
+                    <RouteView RouteData="@routeData" />
+                }
             </Found>
         </Router>
     }
