@@ -37,6 +37,11 @@ internal sealed class FakeEmailPersistenceRepository : IEmailPersistenceReposito
         return Task.FromResult(DetecteerResult);
     }
 
+    public int VerzondenAntwoordenInConversatie { get; set; }
+
+    public Task<int> TelVerzondenAntwoordenInConversatieAsync(string conversationId, string clubCode)
+        => Task.FromResult(VerzondenAntwoordenInConversatie);
+
     public Task InsertClassificatieCorrectieAsync(
         int origineleVerwerkingId,
         int correctionVerwerkingId,

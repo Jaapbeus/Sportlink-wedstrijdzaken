@@ -1479,6 +1479,17 @@ IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_EmailVerwerk
     ALTER TABLE [planner].[EmailVerwerking] ADD CONSTRAINT [CK_EmailVerwerking_ClubCode] CHECK (LEN([ClubCode]) > 0);
 GO
 
+-- #1674: index voor de opzoekingen per conversatie (antwoordlimiet en replydetectie filteren op
+-- ClubCode + ConversationId). Additief en niet-uniek; staat ná het toevoegen van ClubCode zodat ook
+-- een database van vóór #119 hem krijgt. Postgres-tegenhanger: migratie 041_emailverwerking_conversatie_index.sql.
+IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('planner.EmailVerwerking') AND name = 'ClubCode')
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes
+                   WHERE name = 'IX_EmailVerwerking_Club_Conversatie'
+                     AND object_id = OBJECT_ID('planner.EmailVerwerking'))
+    CREATE NONCLUSTERED INDEX [IX_EmailVerwerking_Club_Conversatie]
+        ON [planner].[EmailVerwerking] ([ClubCode], [ConversationId]);
+GO
+
 -- avg schema + avg.Teambegeleiding (AVG/GDPR persoonsgegevens teambegeleiders)
 IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'avg')
     EXEC('CREATE SCHEMA [avg]');

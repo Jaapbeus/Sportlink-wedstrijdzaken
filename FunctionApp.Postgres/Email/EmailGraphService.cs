@@ -4,6 +4,7 @@ using Microsoft.Graph.Models;
 using Microsoft.Graph.Users.Item.SendMail;
 using Microsoft.Graph.Users.Item.Outlook.MasterCategories;
 using Planner.Shared;
+using Planner.Shared.Email;
 
 namespace FunctionApp.Postgres.Email;
 
@@ -89,7 +90,7 @@ public sealed class EmailGraphService : IEmailGraphService
                     config.QueryParameters.Filter = "isRead eq false";
                     config.QueryParameters.Top = 10;
                     config.QueryParameters.Orderby = ["receivedDateTime"];
-                    config.QueryParameters.Select = ["id", "conversationId", "from", "subject", "receivedDateTime", "body"];
+                    config.QueryParameters.Select = ["id", "conversationId", "from", "subject", "receivedDateTime", "body", "internetMessageHeaders"];
                 });
 
             if (messages?.Value is null)
@@ -112,7 +113,8 @@ public sealed class EmailGraphService : IEmailGraphService
                         // .UtcDateTime (niet .DateTime): dat laatste geeft Kind=Unspecified en bij een
                         // niet-nul offset de lokale tijd van die offset. Projectregel: UTC in de DB.
                         OntvangstDatum = message.ReceivedDateTime?.UtcDateTime ?? DateTime.MinValue,
-                        Body = EmailSanitizer.StripHtml(message.Body?.Content ?? "")
+                        Body = EmailSanitizer.StripHtml(message.Body?.Content ?? ""),
+                        InternetHeaders = [.. (message.InternetMessageHeaders ?? []).Select(h => new KeyValuePair<string, string>(h.Name ?? "", h.Value ?? ""))]
                     };
 
                     resultaat.Add(email);
@@ -240,6 +242,8 @@ public sealed class EmailGraphService : IEmailGraphService
                         EmailAddress = new EmailAddress { Address = to }
                     }
                 ]
+            ,
+                InternetMessageHeaders = UitgaandeHeaders()
             };
 
             if (!string.IsNullOrEmpty(conversationId))
@@ -300,6 +304,8 @@ public sealed class EmailGraphService : IEmailGraphService
                     Content = EmailSanitizer.BouwVeiligeHtmlBody(body)
                 },
                 ToRecipients = [.. ontvangers.Select(o => new Recipient { EmailAddress = new EmailAddress { Address = o } })]
+            ,
+                InternetMessageHeaders = UitgaandeHeaders()
             };
 
             if (!string.IsNullOrEmpty(aanvragerEmail))
@@ -322,4 +328,7 @@ public sealed class EmailGraphService : IEmailGraphService
             throw;
         }
     }
+
+    /// <summary>Elke uitgaande mail van de pijplijn onderdrukt automatische antwoorden van de ontvanger (afwezigheidsmeldingen).</summary>
+    private static List<InternetMessageHeader> UitgaandeHeaders() => [.. AutomatischeAfzenderHerkenning.UitgaandeHeaders.Select(h => new InternetMessageHeader { Name = h.Key, Value = h.Value })];
 }
