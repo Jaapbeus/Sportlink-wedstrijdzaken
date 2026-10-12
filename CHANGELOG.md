@@ -21,6 +21,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ### Added
 - Het hoofdmenu is opnieuw ingedeeld in Dashboard, DEBUG (alleen voor beheerders), de hoofdschermen, WZ Instellingen en Admin, en toont per rol alleen de items waar "Rechten per rol" recht op geeft; "Instellingen" heet nu "App instellingen" (#1647).
 
+### Changed
+- De instellingen worden per paginaopening één keer opgehaald in plaats van twee keer, via een gedeelde per-club cache voor het menu en de pagina's (#1599).
+
 ## [3.13.2.0] — 2026-10-11
 
 ### Changed

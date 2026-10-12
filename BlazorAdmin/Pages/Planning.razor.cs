@@ -12,7 +12,7 @@ namespace BlazorAdmin.Pages;
 /// <see cref="SportlinkActieKolomState"/>.</summary>
 public partial class Planning : ClubSelectorPageBase
 {
-    [Inject] private InstellingenApiClient InstellingenApi { get; set; } = default!;
+    [Inject] private ClubInstellingenCache InstellingenCache { get; set; } = default!;
     [Inject] private PlanningApiClient PlanningApi { get; set; } = default!;
     [Inject] private SportlinkApiClient SportlinkApi { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
@@ -55,7 +55,7 @@ public partial class Planning : ClubSelectorPageBase
         await LoadVeldbezettingAsync();
 
         // #989: geen Sportlink-kolom/-knoppen tonen als de extension uit staat (DoD).
-        var settings = await InstellingenApi.GetSettingsAsync();
+        var settings = await InstellingenCache.GetSettingsAsync();
         _sportlinkExtensionEnabled = settings.Success && settings.Data?.SportlinkExtensionEnabled == true;
         await LaadPdfExportStatusAsync();
     }
