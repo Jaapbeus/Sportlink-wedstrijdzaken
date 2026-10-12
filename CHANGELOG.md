@@ -26,6 +26,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - De afhandeling rond de verwerkingsrij van een inkomende e-mail (idempotentiebesluit, opgeven na te veel pogingen, beoordeling na een onbekende verzenduitkomst, vastleggen van classificatie- en verwerkingsfouten, buiten-scope-afhandeling) en de foutcategorisering staan nu één keer in Planner.Shared in plaats van per databasetier; gedrag ongewijzigd, met eigen unit-tests (#1650).
 - De instellingen worden per paginaopening één keer opgehaald in plaats van twee keer, via een gedeelde per-club cache voor het menu en de pagina's (#1599).
 - ci(#1641): `Build (PR)` en Security Scan draaien ook op PR's tegen een featurebranch (na een base-retarget: workflow dispatchen); de zelfmerge-regel en de automatische issue-beurt eisen dat beide check-runs op de head-SHA aanwezig zijn (een PR met merge-conflict krijgt geen pull_request-run)
+- ci(#1669): een merge naar `develop` verwijdert het `turn:`-label van het issue naast het zetten van `status: awaiting-release`; AGENTS.md en CONTRIBUTING.md leggen vast dat die status nooit onder `in-progress`, `waiting-owner` of een `turn:`-label blijft staan
 
 ### Fixed
 - De poort van de automatische issue-beurt start geen verouderde of wachtende run meer: het issue moet op dat moment open zijn en precies één beurtlabel hebben, `turn: claude-code`; anders stopt de run zonder labelwijziging (#1664)
