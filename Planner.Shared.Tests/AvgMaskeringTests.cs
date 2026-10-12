@@ -82,4 +82,22 @@ public class AvgMaskeringTests
         AvgMaskering.Maskeer(null).Should().BeNull();
         AvgMaskering.Maskeer("  ").Should().Be("  ");
     }
+
+    [Fact]
+    public void MaskeerOntvangers_MaskeertElkAdresInDeLijst()
+    {
+        var rij = new Dictionary<string, object?> { ["VerstuurdNaar"] = "trainer@voorbeeld.nl; jan@allstars-fc.test" };
+        AvgMaskering.MaskeerOntvangers(rij);
+        rij["VerstuurdNaar"].Should().Be("***@voorbeeld.nl; ***@allstars-fc.test");
+    }
+
+    [Fact]
+    public void MaskeerOntvangers_NullBlijftNull_EnOntbrekendeKolomGooit()
+    {
+        var rij = new Dictionary<string, object?> { ["verstuurdnaar"] = null };
+        AvgMaskering.MaskeerOntvangers(rij);
+        rij["verstuurdnaar"].Should().BeNull();
+        var act = () => AvgMaskering.MaskeerOntvangers(new Dictionary<string, object?>());
+        act.Should().Throw<InvalidOperationException>();
+    }
 }

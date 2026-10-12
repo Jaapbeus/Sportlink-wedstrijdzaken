@@ -81,4 +81,44 @@ public class AuthGateTests
     [Fact]
     public void Beide_rollen_tegelijk_geeft_gewoon_toegang()
         => AuthGate.Bepaal(AppUri, Gebruiker("admin", "user")).Should().Be(AppState.Authenticated);
+
+    // ── Detectie gebeurt op het pad, niet op query of fragment (#1672) ───────
+
+    [Theory]
+    [InlineData("https://example.invalid/authentication/login")]
+    [InlineData("https://example.invalid/Authentication/Login-Callback")]
+    [InlineData("https://example.invalid/AUTHENTICATION/logout")]
+    [InlineData("https://example.invalid/authentication/login?returnUrl=%2Fdagplanning")]
+    [InlineData("https://example.invalid/authentication/login#fragment")]
+    [InlineData("/authentication/login-callback")]
+    [InlineData("/authentication/login-callback?code=x")]
+    [InlineData("/Authentication/login#x")]
+    public void Het_pad_van_de_MSAL_routes_wordt_herkend(string uri)
+        => AuthGate.IsAuthRoute(uri).Should().BeTrue();
+
+    [Theory]
+    [InlineData("https://example.invalid/dagplanning?x=/authentication/login")]
+    [InlineData("https://example.invalid/dagplanning#/authentication/login")]
+    [InlineData("https://example.invalid/dagplanning?x=/authentication/#/authentication/")]
+    [InlineData("/dagplanning?x=/authentication/login")]
+    [InlineData("/dagplanning#/authentication/login")]
+    [InlineData("https://example.invalid//authentication/login")]
+    [InlineData("//authentication/login")]
+    [InlineData("https://example.invalid/pad/authentication/login")]
+    [InlineData("/pad/authentication/login")]
+    [InlineData("https://example.invalid/authentication")]
+    [InlineData("https://example.invalid/authenticationx/login")]
+    [InlineData("authentication/login")]
+    [InlineData("")]
+    public void Query_fragment_en_andere_paden_zijn_geen_MSAL_route(string uri)
+        => AuthGate.IsAuthRoute(uri).Should().BeFalse();
+
+    [Theory]
+    [InlineData("https://example.invalid/dagplanning?x=/authentication/login")]
+    [InlineData("/dagplanning#/authentication/login")]
+    public void Zonder_MSAL_pad_blijft_de_rolcontrole_gelden(string uri)
+    {
+        AuthGate.Bepaal(uri, Anoniem()).Should().Be(AppState.RedirectingToLogin);
+        AuthGate.Bepaal(uri, Gebruiker()).Should().Be(AppState.AccessDenied);
+    }
 }

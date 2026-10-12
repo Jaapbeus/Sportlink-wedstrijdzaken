@@ -23,10 +23,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ### Changed
 - Het doorsturen van een teambegeleiding-vraag accepteert voor een andere rol dan admin alleen ontvangers die bij het gekozen team horen (begeleiders, coördinator of de aanvrager zelf) en kent een gebruikslimiet van 3 verzendingen per 10 minuten per gebruiker, waarbij alleen een daadwerkelijke verzending meetelt en admin buiten de limiet valt, op beide databasetiers (#1671).
+- Zoekpatronen voor tegenstander en accommodatie, de beveiligingsheaders van de beheer-app, de afhandeling van een niet beschikbaar toegangstoken in de beheer-app en de e-maillog-respons (gemaskeerde ontvangers, geen onderwerp) zijn aangescherpt, op beide databasetiers (#1678).
+- De frontend auth-gate herkent de authenticatieroutes op het URL-pad en rendert op die route alleen de authenticatiepagina (#1672).
 - Veld optimalisatie rekent voor wedstrijden die al in Sportlink staan met dezelfde blokduur als de Planning (Sportlinks speelduur) en zonder app-buffer (club of team) rondom die wedstrijd; speeltijdentabel en buffer gelden alleen nog voor wedstrijden waar Sportlink geen duur voor kent, op beide databasetiers; een wedstrijd met Sportlink-duur wordt ook ingepland als de leeftijdscategorie geen speeltijdenrij heeft (zie issue #1559).
 - De afhandeling rond de verwerkingsrij van een inkomende e-mail (idempotentiebesluit, opgeven na te veel pogingen, beoordeling na een onbekende verzenduitkomst, vastleggen van classificatie- en verwerkingsfouten, buiten-scope-afhandeling) en de foutcategorisering staan nu één keer in Planner.Shared in plaats van per databasetier; gedrag ongewijzigd, met eigen unit-tests (#1650).
 - De instellingen worden per paginaopening één keer opgehaald in plaats van twee keer, via een gedeelde per-club cache voor het menu en de pagina's (#1599).
 - ci(#1641): `Build (PR)` en Security Scan draaien ook op PR's tegen een featurebranch (na een base-retarget: workflow dispatchen); de zelfmerge-regel en de automatische issue-beurt eisen dat beide check-runs op de head-SHA aanwezig zijn (een PR met merge-conflict krijgt geen pull_request-run)
+- ci(#1669): een merge naar `develop` verwijdert het `turn:`-label van het issue naast het zetten van `status: awaiting-release`; AGENTS.md en CONTRIBUTING.md leggen vast dat die status nooit onder `in-progress`, `waiting-owner` of een `turn:`-label blijft staan
 
 ### Fixed
 - De poort van de automatische issue-beurt start geen verouderde of wachtende run meer: het issue moet op dat moment open zijn en precies één beurtlabel hebben, `turn: claude-code`; anders stopt de run zonder labelwijziging (#1664)

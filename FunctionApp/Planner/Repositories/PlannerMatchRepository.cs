@@ -278,14 +278,14 @@ internal static class PlannerMatchRepository
         cmd.Connection = conn;
         cmd.CommandText = ZoekWedstrijdSelectEnJoin + $@"
             WHERE CAST(m.[kaledatum] AS DATE) = @date
-              AND m.[accommodatie] LIKE @accommodatiePattern
+              AND m.[accommodatie] LIKE @accommodatiePattern ESCAPE '\'
               AND m.[status] <> 'Afgelast'
               AND {teamFilter}
               AND {ClubScope.HisFilter("m")}
             ORDER BY m.[aanvangstijd]
         ";
         cmd.Parameters.AddWithValue("@date", date.ToDateTime(TimeOnly.MinValue));
-        cmd.Parameters.AddWithValue("@accommodatiePattern", $"%{accommodatie}%");
+        cmd.Parameters.AddWithValue("@accommodatiePattern", LikePatroon.Bevat(accommodatie));
         ClubScope.AddHisParams(cmd, clubCode);
         using var reader = await cmd.ExecuteReaderAsync();
         return await reader.ReadAsync() ? MapZoekWedstrijdResponse(reader, datumOverride: date) : null;
@@ -300,18 +300,18 @@ internal static class PlannerMatchRepository
 
         // Zoek in his.matches
         using (var cmd = new SqlCommand(ZoekWedstrijdSelectEnJoin + $@"
-            WHERE m.[accommodatie] LIKE @accommodatiePattern
+            WHERE m.[accommodatie] LIKE @accommodatiePattern ESCAPE '\'
               AND m.[status] <> 'Afgelast'
-              AND m.[wedstrijd] LIKE @tegPattern
+              AND m.[wedstrijd] LIKE @tegPattern ESCAPE '\'
               AND (@datum IS NULL OR CAST(m.[kaledatum] AS DATE) = @datum)
               AND {ClubScope.HisFilter("m")}
             ORDER BY m.[kaledatum]
         ", conn))
         {
-            cmd.Parameters.AddWithValue("@tegPattern", $"%{tegenstander}%");
+            cmd.Parameters.AddWithValue("@tegPattern", LikePatroon.Bevat(tegenstander));
             cmd.Parameters.Add("@datum", System.Data.SqlDbType.Date).Value =
                 datum.HasValue ? datum.Value.ToDateTime(TimeOnly.MinValue) : DBNull.Value;
-            cmd.Parameters.AddWithValue("@accommodatiePattern", $"%{accommodatie}%");
+            cmd.Parameters.AddWithValue("@accommodatiePattern", LikePatroon.Bevat(accommodatie));
             ClubScope.AddHisParams(cmd, clubCode);
             using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
@@ -333,13 +333,13 @@ internal static class PlannerMatchRepository
             LEFT JOIN [dbo].[Velden] v ON v.[VeldNummer] = gw.[VeldNummer]
                  AND v.[ClubCode] = {ClubScope.ClubCodeParam}
             WHERE gw.[Status] <> 'Geannuleerd'
-              AND gw.[Tegenstander] LIKE @tegPattern
+              AND gw.[Tegenstander] LIKE @tegPattern ESCAPE '\'
               AND (@datum IS NULL OR gw.[Datum] = @datum)
               AND gw.[ClubCode] = {ClubScope.ClubCodeParam}
             ORDER BY gw.[Datum]
         ", conn))
         {
-            cmd2.Parameters.AddWithValue("@tegPattern", $"%{tegenstander}%");
+            cmd2.Parameters.AddWithValue("@tegPattern", LikePatroon.Bevat(tegenstander));
             cmd2.Parameters.Add("@datum", System.Data.SqlDbType.Date).Value =
                 datum.HasValue ? datum.Value.ToDateTime(TimeOnly.MinValue) : DBNull.Value;
             ClubScope.AddClubParam(cmd2, clubCode);
@@ -372,11 +372,11 @@ internal static class PlannerMatchRepository
         var accommodatie = await ClubScope.RequireAccommodatieAsync(conn, ClubScope.Resolve(clubCode));
         using var cmd = new SqlCommand(ZoekWedstrijdSelectEnJoin + $@"
             WHERE CAST(m.[wedstrijdcode] AS BIGINT) = @code
-              AND m.[accommodatie] LIKE @accommodatiePattern
+              AND m.[accommodatie] LIKE @accommodatiePattern ESCAPE '\'
               AND {ClubScope.HisFilter("m")}
         ", conn);
         cmd.Parameters.AddWithValue("@code", wedstrijdcode);
-        cmd.Parameters.AddWithValue("@accommodatiePattern", $"%{accommodatie}%");
+        cmd.Parameters.AddWithValue("@accommodatiePattern", LikePatroon.Bevat(accommodatie));
         ClubScope.AddHisParams(cmd, clubCode);
         using var reader = await cmd.ExecuteReaderAsync();
         return await reader.ReadAsync() ? MapZoekWedstrijdResponse(reader) : null;
@@ -538,9 +538,9 @@ internal static class PlannerMatchRepository
             WHERE gw.[IsVervallen] = 0
               AND gw.[Status] <> 'Geannuleerd'
               AND gw.[ClubCode] = {ClubScope.ClubCodeParam}
-              AND m.[accommodatie] LIKE @accommodatiePattern
+              AND m.[accommodatie] LIKE @accommodatiePattern ESCAPE '\'
         ", conn);
-        cmd.Parameters.AddWithValue("@accommodatiePattern", $"%{accommodatie}%");
+        cmd.Parameters.AddWithValue("@accommodatiePattern", LikePatroon.Bevat(accommodatie));
         ClubScope.AddHisParams(cmd, clubCode);
         var rows = await cmd.ExecuteNonQueryAsync();
         if (rows > 0)
