@@ -45,6 +45,42 @@ public static class FeedbackEndpointCore
     public const int StandaardLimit = 50;
     public const int MaxLimit = 200;
 
+    /// <summary>Grens op de body-lengte (tekens) vóór deserialisatie; erboven 413.</summary>
+    public const int MaxBodyTekens = 65536;
+    public const int MaxVragen = FeedbackCore.MaxAanvulVragen;
+    public const int MaxVraagTekens = 500;
+    public const int MaxAntwoordTekens = 2000;
+
+    public const string BodyTeGrootMelding = "De melding is te groot.";
+    public const string TeveelVragenMelding = "Er zijn te veel vragen en antwoorden meegestuurd.";
+
+    /// <summary>Leest en deserialiseert de body (begrensd, zie <see cref="LeesBodyAsync"/>); <c>(null, 413)</c> bij een te grote body.</summary>
+    public static async Task<(FeedbackRequest? Dto, IActionResult? Afwijzing)> LeesRequestAsync(Microsoft.AspNetCore.Http.HttpRequest req)
+    {
+        var (body, afwijzing) = await LeesBodyAsync(req);
+        return afwijzing is not null ? (null, afwijzing) : (JsonConvert.DeserializeObject<FeedbackRequest>(body!), null);
+    }
+
+    /// <summary>
+    /// Leest de requestbody met een harde lengtegrens (ook zonder Content-Length). Geeft
+    /// <c>(body, null)</c>, of <c>(null, 413)</c> als de grens is overschreden.
+    /// </summary>
+    public static async Task<(string? Body, IActionResult? Afwijzing)> LeesBodyAsync(Microsoft.AspNetCore.Http.HttpRequest req)
+    {
+        using var reader = new StreamReader(req.Body);
+        var buffer = new char[MaxBodyTekens + 1];
+        var gelezen = 0;
+        while (gelezen < buffer.Length)
+        {
+            var aantal = await reader.ReadAsync(buffer.AsMemory(gelezen));
+            if (aantal == 0) break;
+            gelezen += aantal;
+        }
+        if (gelezen > MaxBodyTekens)
+            return (null, new ObjectResult(new { error = BodyTeGrootMelding }) { StatusCode = 413 });
+        return (new string(buffer, 0, gelezen), null);
+    }
+
     public const string LimietGebruikerMelding =
         "Je hebt net al een paar meldingen gestuurd. Probeer het over 10 minuten nog eens.";
 
@@ -142,6 +178,10 @@ public static class FeedbackEndpointCore
         if (dto == null || string.IsNullOrWhiteSpace(dto.Beschrijving))
             return new BadRequestObjectResult(new { error = ontbreektMelding });
 
+        if (dto.VragenAntwoorden is { Count: > MaxVragen })
+            return new BadRequestObjectResult(new { error = TeveelVragenMelding });
+        BegrensVragen(dto);
+
         if (!FeedbackRateLimiter.TryAcquireAiSlot(wie.LimietSleutel))
             return new ObjectResult(new { error = LimietGebruikerMelding }) { StatusCode = 429 };
 
@@ -149,6 +189,20 @@ public static class FeedbackEndpointCore
         VerwijderBevestigingAlsGeenBeheerder(dto, wie);
         return null;
     }
+
+    private static void BegrensVragen(FeedbackRequest dto)
+    {
+        if (dto.VragenAntwoorden is not { } lijst) return;
+        lijst.RemoveAll(v => v is null);
+        foreach (var v in lijst)
+        {
+            v.Vraag = Kap(v.Vraag, MaxVraagTekens);
+            v.Antwoord = Kap(v.Antwoord, MaxAntwoordTekens);
+        }
+    }
+
+    private static string Kap(string? tekst, int max)
+        => tekst is null ? "" : tekst.Length > max ? tekst[..max] : tekst;
 
     /// <summary>
     /// Alleen een beheerder mag de AI-velden zelf aanleveren (bevestigingsstap, #1205). De rol komt uit

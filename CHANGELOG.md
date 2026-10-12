@@ -22,6 +22,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Het hoofdmenu is opnieuw ingedeeld in Dashboard, DEBUG (alleen voor beheerders), de hoofdschermen, WZ Instellingen en Admin, en toont per rol alleen de items waar "Rechten per rol" recht op geeft; "Instellingen" heet nu "App instellingen" (#1647).
 
 ### Changed
+- De clubcode uit het verzoek wordt getoetst aan de bekende clubs (onbekend: de primaire club geldt; is de clublijst nog niet te laden, dan geldt een geldige waarde zoals voorheen) en het aantal en de lengte van de vragen en antwoorden in een feedbackmelding, het aantal voorgestelde aanvulvragen en de lengte van de verzoekbody worden begrensd, op beide databasetiers (#1677).
 - Uitgaande integraties (synchronisatie via HTTP en queue, geocodering, thema-extractie, realtime veldbezetting) controleren op beide databasetiers `EgressGuard.ExternalIntegrationsAllowed()`; een nieuwe CI-guard bewaakt dat bestanden met uitgaand HTTP-verkeer die controle bevatten of met een reden zijn uitgezonderd (#1676).
 - Zoekpatronen voor tegenstander en accommodatie, de beveiligingsheaders van de beheer-app, de afhandeling van een niet beschikbaar toegangstoken in de beheer-app en de e-maillog-respons (gemaskeerde ontvangers, geen onderwerp) zijn aangescherpt, op beide databasetiers (#1678).
 - De frontend auth-gate herkent de authenticatieroutes op het URL-pad en rendert op die route alleen de authenticatiepagina (#1672).
