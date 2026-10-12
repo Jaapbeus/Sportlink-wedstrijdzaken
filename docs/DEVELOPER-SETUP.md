@@ -1331,6 +1331,7 @@ Het label `turn: claude-code` op een issue start de workflow `.github/workflows/
 - **Poort:** het issue heeft `source: claude-code` of `source: owner`, géén `discipline: architect`, en er zijn hoogstens drie runs per issue; daarna gaat de beurt naar de eigenaar.
 - **Secret:** de run heeft het repository-secret `CLAUDE_CODE_OAUTH_TOKEN` nodig. De eigenaar maakt dat zelf aan met `claude setup-token`; een agent doet dit nooit.
 - **Grenzen:** de run merget en deployt nooit en laat de PR in draft.
+- **CI-bewijs (#1641):** GitHub start geen `pull_request`-run zolang de PR een merge-conflict heeft (bewezen op #1636/#1638/#1640: elke head zonder run had een conflict met `develop`, elke head mét run niet; dit verklaart ook de bot-push zonder run). Een conflict zie je dus aan het ontbreken van `Build FunctionApp + BlazorAdmin` in `gh pr checks`. Los het op door `develop` te mergen; `build.yml` en `security-scan.yml` hebben geen `branches`-filter meer, dus ook een PR tegen een featurebranch bouwt. "CI groen" en de zelfmerge-regel (AGENTS.md) eisen dat `Build (PR)` én Security Gate op de head-SHA aanwezig zijn. De verwerkingsstap meldt anders "CI niet bewezen"; een handmatige `gh workflow run build.yml --ref <branch>` blijft het noodmiddel.
 - **Codex:** is niet zo geautomatiseerd (zie #1601) en blijft lokaal reviewen.
 
 ---

@@ -10,8 +10,12 @@ name: Build (PR)
 # PostDeployment-script. Geen secrets, geen Azure-login, geen database — draait dus ook op forks.
 
 on:
+  # #1641: geen `branches`-filter, zodat ook een PR tegen een featurebranch (gestapelde PR) bouwt;
+  # `edited` dekt een base-retarget. Let op: GitHub start GEEN pull_request-run zolang de PR een
+  # merge-conflict heeft ("Workflows will not run on `pull_request` activity if the pull request has
+  # a merge conflict", docs.github.com, events-that-trigger-workflows). Eerst develop mergen.
   pull_request:
-    branches: [main, develop]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
   push:
     branches: [develop]
   workflow_dispatch:

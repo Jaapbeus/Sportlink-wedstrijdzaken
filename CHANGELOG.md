@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- ci(#1641): `Build (PR)` en Security Scan draaien ook op PR's tegen een featurebranch en na een base-retarget; de zelfmerge-regel en de automatische issue-beurt eisen dat beide check-runs op de head-SHA aanwezig zijn (een PR met merge-conflict krijgt geen pull_request-run)
+
 ## [3.13.2.0] — 2026-10-11
 
 ### Changed

@@ -175,8 +175,12 @@ jobs:
                kostenbeslissing nodig? Plaats een duidelijke comment met de blokkade op het
                issue en wissel met één aanroep
                `gh issue edit ${{ github.event.issue.number }} --remove-label "turn: claude-code" --add-label "turn: owner"`.
-               Lukt de implementatie wel en staat de draft-PR open en is CI groen
-               (`gh pr checks <pr-nr> --watch`)? Vraag dan review aan volgens AGENTS.md
+               Lukt de implementatie wel en staat de draft-PR open en is CI groen? "CI groen"
+               geldt alleen als op de head-SHA de checks `Build FunctionApp + BlazorAdmin` én
+               `Security Gate — blokkeert merge bij fout` AANWEZIG en groen zijn
+               (`gh pr checks <pr-nr> --watch`). Ontbreekt een van beide (GitHub start geen
+               pull_request-run bij een merge-conflict of na een push met een bot-token, #1641),
+               meld dan "CI niet bewezen" en wissel naar `turn: owner`, nooit "CI groen". Vraag dan review aan volgens AGENTS.md
                ("Wederzijdse review en turn:-workflow", stap 1): plaats op het issue een comment
                met precies deze regels —
                  Fase: review
@@ -199,9 +203,9 @@ jobs:
             5. Plaats op de PR een comment die per bevinding de afhandeling vermeldt, met de
                beoordeelde SHA. Bepaal daarna de volgende beurt (AGENTS.md, rondelimiet):
                - Geen codewijziging nodig (geen bevindingen, of alle "niet overgenomen"), óf dit
-                 was al de tweede reviewronde op deze PR → wacht op groene CI en zet op het
+                 was al de tweede reviewronde op deze PR → wacht op groene CI (beide check-runs aanwezig, zie hierboven) en zet op het
                  issue een comment `Fase: eigenaarsbesluit` en wissel naar `turn: owner`.
-               - Wel codewijzigingen en dit was de eerste ronde → wacht op groene CI, plaats een
+               - Wel codewijzigingen en dit was de eerste ronde → wacht op groene CI (beide check-runs aanwezig), plaats een
                  nieuwe reviewaanvraag (zelfde vijf regels als implementatiestap 7, met de nieuwe
                  head-SHA) en wissel naar `turn: codex`.
                Tel de rondes aan de hand van de reviewaanvragen ("Fase: review") op het issue.
