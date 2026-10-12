@@ -102,6 +102,8 @@ builder.Services.AddScoped<LerenApiClient>();
 builder.Services.AddScoped<FeedbackApiClient>();
 
 builder.Services.AddScoped<ClubSelectorService>();
+builder.Services.AddScoped<MenuStandLader>();
+builder.Services.AddScoped<ClubInstellingenCache>(); // #1599: één instellingen-GET per club, gedeeld door menu en pagina's
 builder.Services.AddScoped<ThemeService>();
 builder.Services.AddScoped<ApiStatusService>();
 // #764: verzamelt de technische context (mislukte API-aanroepen, navigatiespoor) voor de feedbackwidget.

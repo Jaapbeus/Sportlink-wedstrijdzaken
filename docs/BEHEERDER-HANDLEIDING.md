@@ -209,7 +209,7 @@ bruikbaar.
 
 De **wedstrijdenlijst** staat altijd gesorteerd op aanvangstijd, vroeg naar laat (#1331). Staan er
 meerdere wedstrijden op dezelfde tijd, dan bepaalt de veldvolgorde die voor uw club is ingesteld
-(Instellingen → Velden) de volgorde binnen die tijd — dit werkt hetzelfde ongeacht of uw velden
+(WZ Instellingen → Velden) de volgorde binnen die tijd — dit werkt hetzelfde ongeacht of uw velden
 namen als "Veld 1"/"Veld 2" of "A"/"B"/"C" hebben. Een wedstrijd zonder (geldige) tijd of veld
 staat altijd onderaan.
 
@@ -671,22 +671,31 @@ Boven elk scherm staat een smalle balk met, van links naar rechts:
 
 ### De zijbalk
 
-De zijbalk links bevat in deze volgorde: **Dashboard**, **Teambegeleiding**, **Planning**,
-dan (alleen onder een voorwaarde, zie hieronder) **Wedstr. aanmaken** en **Wijzigingsverzoeken**,
-daarna **Veld optimalisatie**, **Leermomenten**, **Teamaliassen**, **Feedback** (alleen voor beheerders, zie §23a), **E-maillog** (alleen voor beheerders, zie §20), **Email-tester**, en tot slot het uitklapbare menu
-**Instellingen** met daarin *Instellingen*, *Speeltijden*, *Velden*, *Begeleiding importeren*,
-*Voorkeurstijden*, *E-mailtemplates*, *Thema*, *Sportlink Ext.* (het menu-item; de functie zelf
-heet Sportlink Web Extension, zie §19) en *Rechten per rol* (zie §19a).
+De zijbalk links bevat in deze volgorde (indeling #1647): **Dashboard**; het uitklapbare menu
+**DEBUG** (alleen voor beheerders) met *Email-tester (dry-run)*, *AI-leermomenten*, *Feedback* (zie
+§23a) en *E-maillog* (zie §20); daarna **Teambegeleiding**, **Planning**, dan (alleen onder een
+voorwaarde, zie hieronder) **Wedstrijd aanmaken** en **Wijzigingsverzoeken**, en **Veld
+optimalisatie**. Daaronder staan twee uitklapbare menu's: **WZ Instellingen** met *Speeltijden*,
+*Velden* en *Team voorkeurstijden*, en **Admin** met *App instellingen* (voorheen "Instellingen"),
+*Sportlink Web Extension* (zie §19), *Teambegeleiding importeren*, *E-mailtemplates*, *Rechten per
+rol* (zie §19a), *Teamaliassen* en *Club-thema*. Een menu klapt vanzelf open als u op een van zijn
+schermen bent.
 
-Planning en Veld optimalisatie staan voor elke ingelogde gebruiker in het menu. Vier menu-items
-verschijnen alleen onder een voorwaarde:
+**Wie ziet wat.** Een beheerder ziet alles. Een andere gebruiker ziet alleen de items waar zijn rol
+volgens **Rechten per rol** (§19a) recht op heeft; een menu zonder zichtbare items verdwijnt
+helemaal. DEBUG en *Rechten per rol* zijn uitsluitend voor beheerders en niet instelbaar. Zolang
+niets is ingesteld ziet een gewone gebruiker de items van het hoofdmenu (Dashboard, Teambegeleiding,
+Planning, Wedstrijd aanmaken, Wijzigingsverzoeken, Veld optimalisatie) maar niet WZ Instellingen en
+Admin. Het verbergen van een item is gebruiksgemak: de server beveiligt elk scherm en elke aanroep
+zelf.
 
-- **Wedstr. aanmaken** (menu-item voor het scherm "Wedstrijd aanmaken",
-  zie §18a) en **Wijzigingsverzoeken** staan er alleen als de Sportlink Web Extension is ingeschakeld
-  (hoofdstuk 19). Ze staan bewust direct onder Planning, want daar werkt u ook mee (#1468).
-- **Feedback** (het feedbackoverzicht, §23a) staat er alleen voor een beheerder.
-- Onder het menu Instellingen komt nog het kopje **TESTMODUS** met daaronder **Testdata**; dat
-  staat er alleen als AllStars FC in de club-keuzelijst is gekozen.
+Twee menu-items verschijnen bovendien alleen onder een voorwaarde:
+
+- **Wedstrijd aanmaken** (zie §18a) en **Wijzigingsverzoeken** staan er alleen als de Sportlink Web
+  Extension is ingeschakeld (hoofdstuk 19) én de rol er recht op heeft. Ze staan bewust direct onder
+  Planning, want daar werkt u ook mee (#1468).
+- Onder het menu Admin komt nog het kopje **TESTMODUS** met daaronder **Testdata**; dat staat er
+  alleen als AllStars FC in de club-keuzelijst is gekozen.
 
 Onderaan de zijbalk staat wie er is ingelogd, met de knop **Uitloggen**.
 
@@ -762,7 +771,7 @@ CSV-bulkimport-endpoint blijft wél admin-only, zie §10a hieronder.
 Losgekoppeld van de team selectie/weergave-pagina bij #1322: CSV-import is een incidentele
 beheerdersactie (vervangt de teambegeleiding van de club volledig), geen dagelijks scherm — daarom
 staat deze pagina onder Instellingen in plaats van in het hoofdmenu. Bereikbaar via
-**Instellingen → Begeleiding importeren** in het submenu (de pagina zelf heet "Teambegeleiding
+**Admin → Teambegeleiding importeren** in het submenu (de pagina zelf heet "Teambegeleiding
 importeren"), of via de kaart op de Instellingen-pagina zelf.
 
 - CSV-export uit Sportlink inlezen; het scherm bevat de exportstappen en een voorbeeldweergave vóór
@@ -888,7 +897,7 @@ De pagina `/testdata/wedstrijden` toont een invoergrid voor het aanmaken van fic
 | Tegenstander | Vrij tekstveld voor de naam van de tegenstander |
 | Starttijd | Aanvangstijd (↓ fill-down beschikbaar) |
 | Veld | Veldnaam selecteren uit de dropdown |
-| Velddeel | Deelveld-keuzelijst — verschijnt alleen als het team op een deel van een veld speelt. Welke delen u kunt kiezen volgt uit **Veldafmeting** bij Instellingen → Speeltijden voor de leeftijdscategorie van het team: een half veld geeft A/B, een derde veld A/B/C en een kwart veld A1/A2/B1/B2. Staat er een heel veld (1,00), dan blijft deze kolom leeg. |
+| Velddeel | Deelveld-keuzelijst — verschijnt alleen als het team op een deel van een veld speelt. Welke delen u kunt kiezen volgt uit **Veldafmeting** bij WZ Instellingen → Speeltijden voor de leeftijdscategorie van het team: een half veld geeft A/B, een derde veld A/B/C en een kwart veld A1/A2/B1/B2. Staat er een heel veld (1,00), dan blijft deze kolom leeg. |
 | Soort | Competitie / Oefenwedstrijd / Toernooi / Vriendschappelijk |
 
 **Globale invoerbalk** (boven de tabel): stel **Datum**, **Soort**, **Tegenstander**, **Starttijd**
@@ -1503,7 +1512,7 @@ geslaagde login.
 > [docs/SPORTLINK-WEB-EXTENSION.md](SPORTLINK-WEB-EXTENSION.md) voor de actuele stand per
 > deelfunctie vóór u hierop vertrouwt.
 
-U opent dit scherm via **Instellingen → Sportlink Ext.** in de zijbalk, of via de knop
+U opent dit scherm via **Admin → Sportlink Web Extension** in de zijbalk, of via de knop
 **Openen →** op de doorverwijskaart onderaan de Instellingen-pagina. De instellingen staan sinds
 #1122 dus niet meer op Instellingen zelf.
 
@@ -1583,32 +1592,34 @@ bevestigstap gebouwd. Staat dry-run aan, dan wordt de aanroep gesimuleerd.
 
 ## 19a. Rechten per rol (`/sportlink-rol-instellingen`) — toegangsmatrix (#1390)
 
-U opent dit scherm via **Instellingen → Rechten per rol** in de zijbalk. Het scherm heet
+U opent dit scherm via **Admin → Rechten per rol** in de zijbalk. Het scherm heet
 **"Rechten per rol"** en toont een matrix: elk menu-item van de Admin GUI is een rij, en elke
 instelbare rol is een kolom. Een rol kan zo per onderdeel aan of uit gezet worden.
 
 **De kolommen:** **Gebruiker (standaard)**, **Wedstrijdzaken**, **Sectiehoofd** en
 **Ledenadministratie**. De rol **Admin** heeft bewust geen kolom: die rol heeft altijd alles aan.
 
-**De rijen** zijn gegroepeerd in **Algemeen** (Dashboard, Teambegeleiding, Planning, Veld
-optimalisatie, Leermomenten, Teamaliassen, Email-tester), **Sportlink extensie**
-(Wijzigingsverzoeken, Wedstrijd aanmaken, Kleedkamers toewijzen, Scheidsrechters toewijzen, Veld
-wijzigen) en **Instellingen** (Speeltijden, Velden, Begeleiding importeren, Voorkeurstijden,
-E-mailtemplates, Thema, Sportlink-instellingen). Een rij met persoonsgegevens —
-**Teambegeleiding** en **Begeleiding importeren** — heeft een gele **AVG**-badge: geef die alleen aan
-rollen die deze gegevens echt nodig hebben.
+**De rijen** volgen het menu: **Hoofdmenu** (Dashboard, Teambegeleiding, Planning, Wedstrijd aanmaken,
+Wijzigingsverzoeken, Veld optimalisatie), **Sportlink-acties** (Kleedkamers toewijzen,
+Scheidsrechters toewijzen, Veld wijzigen), **WZ Instellingen** (Speeltijden, Velden, Team
+voorkeurstijden) en **Admin** (App instellingen, Sportlink Web Extension, Teambegeleiding
+importeren, E-mailtemplates, Teamaliassen, Club-thema). De groep **DEBUG** en *Rechten per rol*
+staan er bewust niet in: die zijn alleen voor beheerders. Een rij met persoonsgegevens —
+**Teambegeleiding** en **Teambegeleiding importeren** — heeft een gele **AVG**-badge: geef die alleen
+aan rollen die deze gegevens echt nodig hebben.
 
 **Bedienen:** zet de schakelaar in een cel aan of uit. Elke wijziging wordt direct opgeslagen; u
 ziet de melding "Instelling opgeslagen." en klikt niet apart op Opslaan. De matrix geldt voor de
 club die bovenin is gekozen.
 
-**Vastleggen is niet hetzelfde als afdwingen.** Alleen de drie Sportlink-acties **Kleedkamers
-toewijzen**, **Scheidsrechters toewijzen** en **Veld wijzigen** werken vandaag al echt per rol: een
-uitgeschakelde actie is in het Sportlink-paneel niet beschikbaar ("... staat uit voor jouw rol bij
-deze club") en wordt ook door de server geweigerd. Voor de overige rijen (de menu-items) legt deze
-pagina alleen vast wát een rol zou mogen zien; het daadwerkelijk verbergen van menu-items per rol en
-het toewijzen van de rollen Sectiehoofd en Ledenadministratie aan gebruikers volgen in een apart
-vervolgtraject. Zet u daar dus nu een schakelaar uit, dan verdwijnt het menu-item nog niet.
+**Menu verbergen is geen beveiliging (#1647).** Een uitgezette rij verbergt het menu-item voor die rol
+bij het eerstvolgende laden van de pagina; een aangezette rij geeft een rol nooit meer toegang dan de
+server toestaat — de meeste schermen blijven server-side alleen voor beheerders. Zonder opgeslagen
+keuze staan alleen de items van het **Hoofdmenu** aan; **WZ Instellingen** en **Admin** zijn dan alleen
+voor beheerders. De drie Sportlink-acties werken wél echt per rol: een uitgeschakelde actie is in het
+Sportlink-paneel niet beschikbaar ("... staat uit voor jouw rol bij deze club") en wordt ook door de
+server geweigerd. De rollen Sectiehoofd en Ledenadministratie worden nog niet aan gebruikers
+toegewezen (zie `ENTRA-AUTH-BEHEER.md`).
 
 ---
 
@@ -1703,7 +1714,7 @@ leermomenten als de echte verwerking; de trace noemt in de stap *Geleerde voorbe
 
 Hier past u de standaardteksten aan die het systeem automatisch verstuurt — bijvoorbeeld het
 antwoord op een verzoek om een wedstrijd te verzetten. U opent het scherm via
-**Instellingen → E-mailtemplates** in de zijbalk.
+**Admin → E-mailtemplates** in de zijbalk.
 
 ### Gedeelde e-mail voetnoot
 

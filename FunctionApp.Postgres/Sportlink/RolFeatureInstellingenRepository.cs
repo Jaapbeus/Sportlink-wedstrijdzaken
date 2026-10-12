@@ -52,7 +52,7 @@ internal static class RolFeatureInstellingenRepository
     /// <summary>
     /// De volledige toegangsmatrix voor deze club (#1390): elke combinatie van
     /// <see cref="RolNamen.Alle"/> × (<see cref="SportlinkRolFeature.Alle"/> ∪ <see cref="MenuFeatureKeys.Alle"/>),
-    /// fail-closed (ontbrekende rij = <c>false</c>). Los van <see cref="GetAllAsync"/>, dat uitsluitend
+    /// fail-closed (ontbrekende rij = <c>false</c>, behalve de hoofditems in <see cref="MenuFeatureKeys.StandaardAan"/>, #1647). Los van <see cref="GetAllAsync"/>, dat uitsluitend
     /// de 3 Sportlink-FeatureKeys voor één rol teruggeeft en door <c>SportlinkMatchFunction</c> wordt
     /// gebruikt — dat pad blijft ongewijzigd.
     /// </summary>
@@ -61,7 +61,7 @@ internal static class RolFeatureInstellingenRepository
         var resultaat = new Dictionary<(string, string), bool>();
         foreach (var rol in RolNamen.Alle)
             foreach (var featureKey in RolFeatureMatrixCore.AlleFeatureKeys)
-                resultaat[(rol, featureKey)] = false;
+                resultaat[(rol, featureKey)] = MenuFeatureKeys.StandaardAan.Contains(featureKey); // #1647: hoofditems standaard aan
 
         await using var conn = new NpgsqlConnection(cs);
         await conn.OpenAsync();
@@ -78,6 +78,18 @@ internal static class RolFeatureInstellingenRepository
                 resultaat[sleutel] = r.GetBoolean(2);
         }
         return resultaat;
+    }
+
+    /// <summary>#1647: staat de Sportlink Web Extension aan voor deze club (uitsluitend de menuvlag; geen rij of kolom = uit).</summary>
+    internal static async Task<bool> IsExtensieActiefAsync(string clubCode, string cs)
+    {
+        await using var conn = new NpgsqlConnection(cs);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(
+            "SELECT sportlinkextensionenabled FROM public.appsettings WHERE clubcode = @cc LIMIT 1", conn);
+        cmd.Parameters.AddWithValue("cc", clubCode);
+        try { return await cmd.ExecuteScalarAsync() is true; }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UndefinedColumn) { return false; }
     }
 
     internal static async Task SetAsync(string clubCode, string rolNaam, string featureKey, bool enabled, string cs)
