@@ -152,11 +152,12 @@ internal static class EasyAuthHelper
     {
         // #1122 (CISO): de header is een UX-schakelaar (productie ↔ AllStars-demodata), geen
         // autorisatiegrens (AGENTS.md, deployment-model). De waarde wordt getoetst aan de bekende
-        // clubs (#1677, vorm en bestaan); een onbekende waarde of een mislukte lading geeft de primaire club.
+        // clubs (#1677, vorm en bestaan); een onbekende waarde geeft de primaire club. Is de lijst nog
+        // niet te toetsen, dan geldt de geldige waarde zoals voorheen (ClubZoekResultaat.CodeVoorVerzoek).
         if (req.Headers.TryGetValue("X-Club-Code", out var headerVal) &&
             !string.IsNullOrWhiteSpace(headerVal) &&
-            Clubs.Zoek(headerVal.ToString()) is { } bekendeClub)
-            return bekendeClub;
+            Clubs.Zoek(headerVal.ToString()).CodeVoorVerzoek is { } clubCode)
+            return clubCode;
 
         return PostgresAppSettings.GetSetting("clubCode")
             ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in public.appsettings");

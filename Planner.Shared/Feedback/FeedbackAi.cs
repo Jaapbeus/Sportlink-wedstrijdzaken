@@ -77,7 +77,7 @@ internal static class FeedbackAi
 
         var parsed = await RoepAiJsonAanAsync(chatClient, messages, 0.1f, "Validate", log);
         var volledig = parsed["volledig"]?.Value<bool>() ?? false;
-        var vragen = parsed["vragen"]?.ToObject<List<string>>() ?? [];
+        var vragen = (parsed["vragen"]?.ToObject<List<string>>() ?? []).Take(FeedbackCore.MaxAanvulVragen).ToList();
 
         return new ValidateResponse(volledig, vragen);
     }

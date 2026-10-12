@@ -47,7 +47,7 @@ public static class FeedbackEndpointCore
 
     /// <summary>Grens op de body-lengte (tekens) vóór deserialisatie; erboven 413.</summary>
     public const int MaxBodyTekens = 65536;
-    public const int MaxVragen = 5;
+    public const int MaxVragen = FeedbackCore.MaxAanvulVragen;
     public const int MaxVraagTekens = 500;
     public const int MaxAntwoordTekens = 2000;
 

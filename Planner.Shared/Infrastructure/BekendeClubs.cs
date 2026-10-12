@@ -1,30 +1,56 @@
 namespace Planner.Shared.Infrastructure;
 
+/// <summary>Uitkomst van <see cref="BekendeClubs.Zoek"/> (#1677).</summary>
+public enum ClubZoekStatus
+{
+    /// <summary>De lijst is geladen en bevat de code.</summary>
+    Bekend,
+    /// <summary>De lijst is geladen maar bevat de code niet, of de vorm is ongeldig.</summary>
+    Onbekend,
+    /// <summary>Er is nog nooit een lijst succesvol geladen (eerste lading loopt nog, mislukte of duurde te lang).</summary>
+    NietBeschikbaar,
+}
+
+/// <summary>Resultaat van een opzoeking in de bekende clubs (#1677).</summary>
+/// <param name="Status">Bekend, onbekend of (nog) niet te toetsen.</param>
+/// <param name="Code">Bij <see cref="ClubZoekStatus.Bekend"/> de opgeslagen schrijfwijze; bij
+/// <see cref="ClubZoekStatus.NietBeschikbaar"/> de (syntactisch geldige) gevraagde waarde; anders <c>null</c>.</param>
+public readonly record struct ClubZoekResultaat(ClubZoekStatus Status, string? Code)
+{
+    public static ClubZoekResultaat Bekend(string code) => new(ClubZoekStatus.Bekend, code);
+    public static readonly ClubZoekResultaat Onbekend = new(ClubZoekStatus.Onbekend, null);
+    public static ClubZoekResultaat NietBeschikbaar(string code) => new(ClubZoekStatus.NietBeschikbaar, code);
+
+    /// <summary>
+    /// De clubcode die voor het verzoek geldt, of <c>null</c> als de aanroeper de primaire club
+    /// gebruikt. Kan de lijst (nog) niet getoetst worden, dan geldt de syntactisch geldige waarde
+    /// zoals vóór #1677: een tijdelijk onbereikbare database wisselt nooit stil van club.
+    /// </summary>
+    public string? CodeVoorVerzoek => Status is ClubZoekStatus.Bekend or ClubZoekStatus.NietBeschikbaar ? Code : null;
+}
+
 /// <summary>
 /// Kleine, gecachete lijst van de bekende clubcodes (de rijen van de instellingentabel), per tier
 /// gevoed met een eigen laad-delegate (#1677). De <c>X-Club-Code</c>-waarde wordt hieraan getoetst
-/// voordat ze als clubcode wordt gebruikt; een onbekende waarde geeft <c>null</c> zodat de
-/// aanroeper op de primaire club terugvalt.
+/// voordat ze als clubcode wordt gebruikt (zie <see cref="ClubZoekResultaat.CodeVoorVerzoek"/>).
 /// <para>
 /// Foutgedrag en blokkeren: een verlopen lijst wordt direct teruggegeven terwijl precies één
 /// achtergrondverversing loopt (stale-while-revalidate); een mislukte verversing laat de oude lijst
-/// staan. Alleen de allereerste lading is blokkerend, voor één lader en hoogstens
-/// <see cref="EersteLadingTimeout"/>; gelijktijdige lezers wachten niet maar krijgen "onbekend"
-/// (de aanroeper valt dan terug op de primaire club). Mislukt of duurt de eerste lading te lang, dan
-/// geldt tot de volgende poging (na <see cref="FoutTerugval"/>) dezelfde terugval. Er wordt nooit
-/// een uitzondering doorgegeven.
+/// staan. Zolang er nog nooit een lijst geladen is, wachten alle lezers op dezelfde laadtaak,
+/// hoogstens <see cref="EersteLadingTimeout"/>; daarna, en na een mislukte eerste lading tot de
+/// volgende poging (na <see cref="FoutTerugval"/>), is het resultaat
+/// <see cref="ClubZoekStatus.NietBeschikbaar"/>. Er wordt nooit een uitzondering doorgegeven.
 /// </para>
 /// </summary>
 public sealed class BekendeClubs
 {
     public static readonly TimeSpan StandaardGeldigheid = TimeSpan.FromSeconds(60);
     public static readonly TimeSpan FoutTerugval = TimeSpan.FromSeconds(15);
+    public static readonly TimeSpan EersteLadingTimeout = TimeSpan.FromSeconds(5);
 
     // Een ClubCode is max 20 tekens [A-Za-z0-9_-] (kolomdefinitie): iets anders is nooit bekend.
     private static readonly System.Text.RegularExpressions.Regex GeldigeVorm =
         new("^[A-Za-z0-9_-]{1,20}$", System.Text.RegularExpressions.RegexOptions.Compiled);
-
-    public static readonly TimeSpan EersteLadingTimeout = TimeSpan.FromSeconds(5);
 
     private readonly Func<IReadOnlyCollection<string>> _laad;
     private readonly TimeSpan _geldigheid;
@@ -62,12 +88,13 @@ public sealed class BekendeClubs
         }
     }
 
-    /// <summary>De bekende clubcode (zoals opgeslagen) of <c>null</c> als de waarde niet bekend is.</summary>
-    public string? Zoek(string? clubCode)
+    /// <summary>Toetst <paramref name="clubCode"/> aan de bekende clubs; een ongeldige vorm is altijd onbekend.</summary>
+    public ClubZoekResultaat Zoek(string? clubCode)
     {
-        if (string.IsNullOrWhiteSpace(clubCode) || !GeldigeVorm.IsMatch(clubCode)) return null;
-        var clubs = Momentopname();
-        return clubs.TryGetValue(clubCode.Trim(), out var bekend) ? bekend : null;
+        if (string.IsNullOrWhiteSpace(clubCode) || !GeldigeVorm.IsMatch(clubCode)) return ClubZoekResultaat.Onbekend;
+        var (clubs, geladen) = Momentopname();
+        if (!geladen) return ClubZoekResultaat.NietBeschikbaar(clubCode);
+        return clubs.TryGetValue(clubCode, out var bekend) ? ClubZoekResultaat.Bekend(bekend) : ClubZoekResultaat.Onbekend;
     }
 
     /// <summary>Wacht tot een lopende verversing klaar is; bedoeld voor tests en afsluiten.</summary>
@@ -78,20 +105,32 @@ public sealed class BekendeClubs
         return taak.Wait(max);
     }
 
-    private Dictionary<string, string> Momentopname()
+    private (Dictionary<string, string> Clubs, bool Geladen) Momentopname()
     {
-        bool eerste;
         Task taak;
         lock (_slot)
         {
-            if (_nuUtc() < _volgendeLadingUtc || _verversingBezig) return _clubs;
-            _verversingBezig = true;
-            eerste = !_geladen;
-            _lopend = taak = Task.Run(Ververs);
+            if (_nuUtc() >= _volgendeLadingUtc && !_verversingBezig) StartVerversing();
+            if (_geladen) return (_clubs, true);
+            taak = _lopend;
         }
-        // Alleen de allereerste lading wacht (begrensd); anders blijft de oude lijst direct beschikbaar.
-        if (eerste) taak.Wait(_eersteLadingTimeout);
-        lock (_slot) return _clubs;
+        // Nog nooit geladen: wacht (begrensd) op de gedeelde laadtaak, ook als een andere lezer hem startte.
+        taak.Wait(_eersteLadingTimeout);
+        lock (_slot) return (_clubs, _geladen);
+    }
+
+    // Aanroepen binnen _slot. De wachtende lezers wachten op een TaskCompletionSource, zodat een
+    // Wait nooit de lading zelf inline (en dus onbegrensd) op de eigen thread uitvoert.
+    private void StartVerversing()
+    {
+        _verversingBezig = true;
+        var klaar = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _lopend = klaar.Task;
+        _ = Task.Run(() =>
+        {
+            try { Ververs(); }
+            finally { klaar.TrySetResult(); }
+        });
     }
 
     private void Ververs()
