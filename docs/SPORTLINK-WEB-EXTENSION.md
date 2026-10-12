@@ -78,7 +78,7 @@ JSON-API die hun eigen React-SPA gebruikt. Staat daarom standaard **UIT** per cl
 
 ### 3.1 Inschakelen
 De extensie heeft sinds #1122 een **eigen scherm**: Instellingen → kaart "Sportlink Web Extension"
-→ **Openen**, of via het menu Instellingen → Sportlink Ext. (route
+→ **Openen**, of via het menu Admin → Sportlink Web Extension (route
 `/sportlink-extension-settings`, `BlazorAdmin/Pages/SportlinkExtensieInstellingen.razor`). Alle
 schakelaars en knoppen uit deze paragraaf staan op dát scherm — op de Instellingen-pagina zelf
 staat alleen nog de kaart met de Openen-knop.
@@ -177,7 +177,7 @@ aanroeper zelf `admin` óf `Wedstrijdzaken` is (`EasyAuthHelper.IsInRole`) — e
 `SportlinkMatchPanel` (die blijven puur UX — de mutatie-endpoints zelf blijven de leidende controle).
 
 ### 3.5 Toegangsmatrix per rol (#1390, opvolger van #1341/epic #1338)
-Een beheerder kan op **Instellingen → Rechten per rol** een matrix instellen: rijen zijn elk
+Een beheerder kan op **Admin → Rechten per rol** een matrix instellen: rijen zijn elk
 menu-item/functie (inclusief de drie Sportlink-mutatieacties kleedkamers/scheidsrechter/veld),
 kolommen zijn de vier instelbare rollen `user`/`Wedstrijdzaken`/`Sectiehoofd`/`Ledenadministratie`.
 Bewust geen kolom voor `admin`: admin heeft dit altijd allemaal aan. Dit is de opvolger van de
@@ -191,11 +191,15 @@ Vier dingen om te onthouden:
   HTTP 409, ook bij een directe API-aanroep buiten de Blazor-UI om, voor de rol `Wedstrijdzaken`.
   De UI verbergt de bijbehorende sectie in `SportlinkMatchPanel` alleen om een voorspelbare 409 te
   voorkomen.
-- **De overige rijen (menu-zichtbaarheid, buiten Planning) zijn vandaag uitsluitend configuratie,
-  geen handhaving.** Er bestaat nog geen endpoint waarmee een niet-admin-gebruiker zijn éigen
-  rechten kan opvragen, en `BlazorAdmin/Services/AuthGate.cs` laat uitsluitend `admin`/`user` de
-  app-shell in — een matrixrij uitzetten verbergt dus (nog) geen ander menu-item en blokkeert geen
-  ander endpoint. **Uitzondering sinds #1400: Planning/het Sportlink-paneel viewen is hard-coded
+- **De menu-rijen sturen sinds #1647 de zichtbaarheid van het hoofdmenu, maar zijn geen handhaving.**
+  `GET /api/planner/menu-toegang` (open voor `admin`+`user`, beide tiers; logica in
+  `Planner.Shared/Autorisatie/MenuToegangCore.cs`) geeft de menu-sleutels die de rol(len) van de
+  aanroeper aan hebben staan; `admin` krijgt alles, de groep DEBUG (`menu.emailtester`,
+  `menu.leermomenten`) nooit voor een niet-admin. Zonder opgeslagen rij staan alleen de hoofditems
+  (`MenuFeatureKeys.StandaardAan`) aan, anders zou de fail-closed matrix het hele menu van alle
+  gebruikers verbergen. Dit verbergt alleen een menu-item: elk endpoint autoriseert zelf
+  (`AdminEndpoint`), en `BlazorAdmin/Services/AuthGate.cs` laat uitsluitend `admin`/`user` de app-shell
+  in. **Uitzondering sinds #1400: Planning/het Sportlink-paneel viewen is hard-coded
   generiek open voor `admin`+`user`** (niet via deze matrix instelbaar — zie §3.4) en de drie
   Sportlink-mutatieacties zijn hard-coded `admin`-of-`Wedstrijdzaken` (de AND-gate-fix van #1379).
   Het uitbreiden van de autorisatiewrapper naar de twee nieuwe rollen `Sectiehoofd`/
@@ -778,10 +782,11 @@ test getriggerd wordt:
 
 ## 5. Risico's en beperkingen
 
-- **Menu-zichtbaarheid (#1122):** "Wijzigingsverzoeken" en "Wedstrijden" (menu-item voor het scherm
+- **Menu-zichtbaarheid (#1122):** "Wijzigingsverzoeken" en "Wedstrijd aanmaken" (menu-item voor het scherm
   "Oefenwedstrijd aanmaken", #1321) staan alleen in het menu als de extensie aan staat
   (`ClubSelectorService.SportlinkExtensionEnabled`, gevuld door
-  NavMenu bij laden/clubwissel en bijgewerkt door de instellingenpagina na opslaan; sinds #1578
+  NavMenu bij laden/clubwissel (via de gedeelde `ClubInstellingenCache`, #1599: één
+  instellingen-GET per club en paginaopening) en bijgewerkt door de instellingenpagina na opslaan; sinds #1578
   via de eigen gebeurtenis `OnSportlinkExtensionChange`, zodat pagina's er niet op herladen). Een directe
   URL werkt nog wel; de API antwoordt dan 409 "Sportlink Web Extension staat uit."
 

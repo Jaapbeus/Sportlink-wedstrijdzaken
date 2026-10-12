@@ -33,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.13.2.0
+  version: 3.13.4.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -3995,7 +3995,9 @@ paths:
         `Ledenadministratie`) bij deze club de huidige stand van elke functie: de drie
         Sportlink-mutatieacties (kleedkamers/scheidsrechter/veld) én de menu-zichtbaarheid van elk
         Admin GUI-scherm. `admin` heeft dit altijd aan en komt hier niet in voor — alleen de vier
-        instelbare rollen. Fail-closed: een niet-teruggegeven combinatie betekent uitgeschakeld.
+        instelbare rollen. Fail-closed: een niet-teruggegeven combinatie betekent uitgeschakeld,
+        behalve de hoofditems van het menu (Dashboard, Teambegeleiding, Planning, Veld optimalisatie,
+        Wijzigingsverzoeken, Wedstrijd aanmaken) die zonder opgeslagen keuze aan staan (#1647).
       security:
         - easyAuth: []
       responses:
@@ -4024,9 +4026,9 @@ paths:
         Zet één rol × functie-combinatie aan/uit bij deze club. Voor de drie Sportlink-
         mutatieacties (`sportlink.kleedkamers`, `sportlink.scheidsrechter`, `sportlink.veld`) is
         dit de server-side leidende controle: `SportlinkMatchFunction` wijst een uitgeschakelde
-        actie ook af als de UI-toggle omzeild wordt. Voor de overige (`menu.*`) FeatureKeys legt
-        dit endpoint vandaag uitsluitend configuratie vast — er is nog geen server-side handhaving
-        van menu-zichtbaarheid (zie `docs/SPORTLINK-WEB-EXTENSION.md` §3.5).
+        actie ook af als de UI-toggle omzeild wordt. De overige (`menu.*`) FeatureKeys bepalen sinds
+        #1647 via `GET /planner/menu-toegang` welke menu-items een rol ziet; dat is UI-gemak, de
+        endpoints autoriseren zelf (zie `docs/SPORTLINK-WEB-EXTENSION.md` §3.5).
       security:
         - easyAuth: []
       requestBody:
@@ -4062,6 +4064,7 @@ paths:
                     - menu.instellingen.emailtemplates
                     - menu.instellingen.thema
                     - menu.instellingen.sportlinkextensie
+                    - menu.instellingen.app
                 Enabled:
                   type: boolean
       responses:
@@ -8334,6 +8337,44 @@ paths:
           description: "`?format=pdf` terwijl de clubinstelling PdfExportIngeschakeld uit staat (#1459)"
         '413':
           description: Request body te groot
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /planner/menu-toegang:
+    get:
+      tags: [planner]
+      operationId: getMenuToegang
+      summary: Welke menu-items mag de ingelogde gebruiker zien?
+      description: |
+        #1647: geeft de menu-sleutels (`menu.*`) terug die de aanroeper in het hoofdmenu van de Admin GUI
+        mag zien. `admin` krijgt alle sleutels; een andere rol de unie van de sleutels die zijn rol(len)
+        bij deze club in de toegangsmatrix (`/beheer/rolfeatureinstellingen`) aan heeft staan, zonder de
+        groep DEBUG (`menu.emailtester`, `menu.leermomenten`). Zonder opgeslagen keuze staan alleen de
+        hoofditems aan. Open voor elke ingelogde rol (`admin` óf `user`), want de matrix zelf is
+        admin-only. Uitsluitend UI-gemak: elk endpoint autoriseert zelf server-side. Club via `X-Club-Code`.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: De toegestane menu-sleutels
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [featureKeys]
+                properties:
+                  featureKeys:
+                    type: array
+                    items:
+                      type: string
+                      example: menu.planning
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '500':
           $ref: '#/components/responses/InternalServerError'
 

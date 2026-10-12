@@ -154,6 +154,13 @@ public class SportlinkPublicMatchIdDto
     public string? PublicMatchId { get; set; }
 }
 
+/// <summary>#1647: spiegelt de respons van <c>GET /api/planner/menu-toegang</c> — de menu-sleutels
+/// (<c>menu.*</c>) die de ingelogde gebruiker volgens "Rechten per rol" mag zien.</summary>
+public class MenuToegangDto
+{
+    public List<string> FeatureKeys { get; set; } = new();
+}
+
 /// <summary>#1341: één FeatureKey met zijn huidige aan/uit-stand voor de Wedstrijdzaken-rol bij
 /// deze club — spiegelt de anonieme respons van <c>GET /api/beheer/rolfeatureinstellingen</c>.</summary>
 public class RolFeatureInstellingDto

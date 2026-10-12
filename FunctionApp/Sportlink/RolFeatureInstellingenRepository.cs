@@ -52,7 +52,7 @@ internal static class RolFeatureInstellingenRepository
     /// <summary>
     /// De volledige toegangsmatrix voor deze club (#1390): elke combinatie van
     /// <see cref="RolNamen.Alle"/> × (<see cref="SportlinkRolFeature.Alle"/> ∪ <see cref="MenuFeatureKeys.Alle"/>),
-    /// fail-closed (ontbrekende rij = <c>false</c>). Los van <see cref="GetAllAsync"/>, dat uitsluitend
+    /// fail-closed (ontbrekende rij = <c>false</c>, behalve de hoofditems in <see cref="MenuFeatureKeys.StandaardAan"/>, #1647). Los van <see cref="GetAllAsync"/>, dat uitsluitend
     /// de 3 Sportlink-FeatureKeys voor één rol teruggeeft en door <c>SportlinkMatchFunction</c> wordt
     /// gebruikt — dat pad blijft ongewijzigd. Filtert op instelbare rollen in C# (geen array-parameter
     /// nodig) omdat <c>Microsoft.Data.SqlClient</c> geen native array-binding kent.
@@ -63,7 +63,7 @@ internal static class RolFeatureInstellingenRepository
         var resultaat = new Dictionary<(string, string), bool>();
         foreach (var rol in RolNamen.Alle)
             foreach (var featureKey in RolFeatureMatrixCore.AlleFeatureKeys)
-                resultaat[(rol, featureKey)] = false;
+                resultaat[(rol, featureKey)] = MenuFeatureKeys.StandaardAan.Contains(featureKey); // #1647: hoofditems standaard aan
 
         using var conn = new SqlConnection(cs);
         await conn.OpenAsync();

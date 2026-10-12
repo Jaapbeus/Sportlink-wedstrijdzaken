@@ -90,7 +90,7 @@ draait — je hoeft ze niet meer met de hand aan te maken. Lokaal: `scripts/dev/
 De democlub heeft **eigen speeltijdenrijen** met `ClubCode='ALLSTARS'` — hij deelt de tabel dus niet
 met de echte club (#1246; de eerdere tekst hier beweerde dat wel). Die rijen worden gekopieerd van
 de primaire club door `scripts/migrations/003-seed-allstars-demo-matches-postgres.sql`, dat bij elke
-Postgres-deploy draait. Voer de speeltijden dus gewoon in via **Instellingen → Speeltijden** in
+Postgres-deploy draait. Voer de speeltijden dus gewoon in via **WZ Instellingen → Speeltijden** in
 normale modus; de democlub volgt bij de eerstvolgende deploy vanzelf.
 
 De koppeling in de planner werkt op teamnaam-prefix: `JO9-2` matcht op `JO9`.
