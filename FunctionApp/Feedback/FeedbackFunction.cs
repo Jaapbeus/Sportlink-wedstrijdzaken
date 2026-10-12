@@ -61,8 +61,8 @@ public static class FeedbackFunction
             {
                 var chatClient = context.InstanceServices.GetService<IChatClient>();
                 if (FeedbackEndpointCore.ControleerAiBeschikbaar(chatClient, log) is { } zonderAi) return zonderAi;
-                var body = await new StreamReader(req.Body).ReadToEndAsync();
-                var dto = JsonConvert.DeserializeObject<FeedbackRequest>(body);
+                var (dto, teGroot) = await FeedbackEndpointCore.LeesRequestAsync(req);
+                if (teGroot is not null) return teGroot;
                 if (FeedbackEndpointCore.ControleerEnSaneer(dto, Aanroeper(req), "Type en beschrijving zijn verplicht.") is { } afwijzing)
                     return afwijzing;
 
@@ -101,8 +101,8 @@ public static class FeedbackFunction
             {
                 var chatClient = context.InstanceServices.GetService<IChatClient>();
                 if (FeedbackEndpointCore.ControleerAiBeschikbaar(chatClient, log) is { } zonderAi) return zonderAi;
-                var body = await new StreamReader(req.Body).ReadToEndAsync();
-                var dto = JsonConvert.DeserializeObject<FeedbackRequest>(body);
+                var (dto, teGroot) = await FeedbackEndpointCore.LeesRequestAsync(req);
+                if (teGroot is not null) return teGroot;
                 if (FeedbackEndpointCore.ControleerEnSaneer(dto, Aanroeper(req), "Beschrijving is verplicht.") is { } afwijzing)
                     return afwijzing;
 
@@ -147,8 +147,8 @@ public static class FeedbackFunction
             {
                 var chatClient = context.InstanceServices.GetService<IChatClient>();
                 if (FeedbackEndpointCore.ControleerAiBeschikbaar(chatClient, log) is { } zonderAi) return zonderAi;
-                var body = await new StreamReader(req.Body).ReadToEndAsync();
-                var dto = JsonConvert.DeserializeObject<FeedbackRequest>(body);
+                var (dto, teGroot) = await FeedbackEndpointCore.LeesRequestAsync(req);
+                if (teGroot is not null) return teGroot;
                 var wie = Aanroeper(req);
                 if (FeedbackEndpointCore.ControleerEnSaneer(dto, wie, "Beschrijving is verplicht.") is { } afwijzing)
                     return afwijzing;
