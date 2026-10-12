@@ -19,7 +19,7 @@ const ctx = { repo: { owner: 'o', repo: 'r' }, runId: 999999 };
 const core = { notice: () => {}, warning: () => {} };
 
 function fakeGithub({
-  labels = [], openPrs = [], priorRunTitles = [],
+  labels = [], openPrs = [], closedPrs = [], priorRunTitles = [],
   issue = {}, commentsByNumber = {}, reviews = [], inlineComments = [],
 } = {}) {
   const calls = { added: [], removed: [], comments: [] };
@@ -42,7 +42,12 @@ function fakeGithub({
         createComment: async ({ body }) => { calls.comments.push(body); },
       },
       pulls: {
-        list: async () => ({ data: openPrs }),
+        // #1692: gesloten PR's apart en per pagina (de poort pagineert die zelf).
+        list: async ({ state, page = 1 }) => {
+          calls.closedPages = (calls.closedPages || 0) + (state === 'closed' ? 1 : 0);
+          if (state !== 'closed') return { data: openPrs };
+          return { data: closedPrs.slice((page - 1) * 100, page * 100) };
+        },
         listReviews: async () => ({ data: reviews }),
         listReviewComments: async () => ({ data: inlineComments }),
       },
@@ -400,6 +405,52 @@ function fakeGithub({
       const result = await evaluateGate({ github, context: ctx, core, issueNumber: 81 });
       check('één geldige + één ongeldige PR: verwerking op de geldige', [result.proceed, result.phase, result.prNumber], [true, 'verwerking', 811]);
     }
+  }
+
+  // ---------- #1692: al afgerond werk ----------
+  console.log('\nevaluateGate (#1692 al gemerged):');
+  {
+    const merged = ownPr(90, { number: 901, state: 'closed', merged_at: '2026-10-12T14:49:37Z', updated_at: '2026-10-12T14:49:37Z' });
+    const github = fakeGithub({ labels: ['source: owner'], closedPrs: [merged] });
+    const result = await evaluateGate({ github, context: ctx, core, issueNumber: 90 });
+    check('gemergede gekoppelde PR: proceed=false', result.proceed, false);
+    check('gemergede gekoppelde PR: reden noemt de PR', /#901 is al gemerged/.test(result.reason), true);
+    check('gemergede gekoppelde PR: geen label of comment', [github.calls.added, github.calls.removed, github.calls.comments], [[], [], []]);
+  }
+  {
+    const github = fakeGithub({ labels: ['source: owner', 'status: awaiting-release'] });
+    const result = await evaluateGate({ github, context: ctx, core, issueNumber: 91 });
+    check('awaiting-release: proceed=false', result.proceed, false);
+    check('awaiting-release: geen label of comment', [github.calls.added, github.calls.removed, github.calls.comments], [[], [], []]);
+  }
+  {
+    const afgewezen = ownPr(92, { number: 921, state: 'closed', merged_at: null, closed_at: '2026-10-11T10:00:00Z' });
+    const github = fakeGithub({ labels: ['source: owner'], closedPrs: [afgewezen] });
+    const result = await evaluateGate({ github, context: ctx, core, issueNumber: 92 });
+    check('gesloten zonder merge blokkeert niet: implementatie', [result.proceed, result.phase], [true, 'implementatie']);
+  }
+  {
+    const vreemd = ownPr(93, {
+      number: 931, merged_at: '2026-10-12T10:00:00Z', head: { ref: 'feature/#93-x', repo: { full_name: 'aanvaller/r' } }, author_association: 'NONE',
+    });
+    const github = fakeGithub({ labels: ['source: owner'], closedPrs: [vreemd] });
+    const result = await evaluateGate({ github, context: ctx, core, issueNumber: 93 });
+    check('gemergede fork-PR telt niet (zelfde filters als open PR\'s)', result.proceed, true);
+  }
+  {
+    // Paginering: de gemergede PR staat op pagina 2 en wordt toch gevonden.
+    const filler = Array.from({ length: 100 }, (_, i) => ({ number: 2000 + i, title: 'iets anders', body: '', head: { ref: 'x', repo: { full_name: 'o/r' } }, updated_at: '2026-10-12T15:00:00Z' }));
+    const merged = ownPr(94, { number: 941, merged_at: '2026-10-12T09:00:00Z', updated_at: '2026-10-12T09:00:00Z' });
+    const github = fakeGithub({ labels: ['source: owner'], closedPrs: [...filler, merged] });
+    const result = await evaluateGate({ github, context: ctx, core, issueNumber: 94 });
+    check('gemergede PR op pagina 2 gevonden', result.proceed, false);
+  }
+  {
+    // Vroeg stoppen: PR's bijgewerkt vóór het aanmaken van het issue kunnen er niet naar verwijzen.
+    const old = Array.from({ length: 100 }, (_, i) => ({ number: 3000 + i, title: 'oud', body: '', head: { ref: 'x', repo: { full_name: 'o/r' } }, updated_at: '2026-01-01T00:00:00Z' }));
+    const github = fakeGithub({ labels: ['source: owner'], issue: { created_at: '2026-10-01T00:00:00Z' }, closedPrs: [...old, ...old] });
+    await evaluateGate({ github, context: ctx, core, issueNumber: 95 });
+    check('scan stopt bij PR\'s van vóór het issue (één pagina)', github.calls.closedPages, 1);
   }
 
   // ---------- setTurnLabel: remove+add, oude turn-labels weg ----------

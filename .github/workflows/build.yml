@@ -394,6 +394,10 @@ jobs:
       - name: Claude issue-beurt poort testen
         run: node .github/scripts/claude-issue-turn-gate.test.js
 
+      # #1692: vergelijk-en-zet van het eindlabel van claude-issue-turn.yml (zelfde reden als hierboven).
+      - name: Claude issue-beurt eindlabel testen
+        run: node .github/scripts/claude-issue-turn-eindlabel.test.js
+
       # ──────────────────────────────────────────────────────────────────────
       # #595: schema-drift guard.
       #
