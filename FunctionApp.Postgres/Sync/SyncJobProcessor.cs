@@ -1,3 +1,5 @@
+using Planner.Endpoints.Admin;
+using FunctionApp.Postgres.Infrastructure;
 using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
@@ -38,6 +40,12 @@ public static class SyncJobProcessor
             return;
         }
 
+        // #1676: een bericht dat buiten productie binnenkomt wordt niet uitgevoerd en niet opnieuw
+        // aangeboden; de job wordt als mislukt vastgelegd zodat de beheerder de reden ziet.
+        if (await OverslaanZonderUitgaandVerkeerAsync(job.JobId, log,
+                EgressGuard.ExternalIntegrationsAllowed, SyncJobsRepository.MarkCompletedAsync))
+            return;
+
         using var traceScope = log.BeginScope(new Dictionary<string, object> { ["SyncJobId"] = job.JobId });
         await SyncJobsRepository.MarkRunningAsync(job.JobId);
         log.LogInformation("SyncJobProcessor: job {JobId} gestart, range {From} .. {To}", job.JobId, job.WeekOffsetFrom, job.WeekOffsetTo);
@@ -61,5 +69,23 @@ public static class SyncJobProcessor
             log.LogError(ex, "SyncJobProcessor: job {JobId} mislukt", job.JobId);
             await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false, errorMessage: ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Geeft <c>true</c> als de job buiten productie niet mag draaien; de job staat dan als mislukt
+    /// in syncjobs en <see cref="Run"/> keert terug vóór MarkRunning en RunConfiguredSyncAsync.
+    /// Poort en opslag als parameters, zodat een unit-test dit zonder database bewijst (#1676).
+    /// </summary>
+    internal static async Task<bool> OverslaanZonderUitgaandVerkeerAsync(
+        Guid jobId, ILogger log, Func<bool> uitgaandVerkeerToegestaan,
+        Func<Guid, bool, string?, Task> vastleggen)
+    {
+        var geblokkeerd = UitgaandVerkeerCore.Blokkeer(uitgaandVerkeerToegestaan) is not null;
+        if (geblokkeerd)
+        {
+            log.LogInformation("EgressGuard: uitgaande integraties geblokkeerd buiten productie — job {JobId} overgeslagen in syncjobs (#857).", jobId);
+            await vastleggen(jobId, false, "Uitgaande integraties zijn buiten productie uitgeschakeld.");
+        }
+        return geblokkeerd;
     }
 }

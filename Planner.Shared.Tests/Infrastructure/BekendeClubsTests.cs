@@ -113,31 +113,67 @@ public class BekendeClubsTests
         aanroepen.Should().Be(2);
     }
 
+    // De lezers mogen hier langer wachten dan de verversing hangt: een lezer die bij een verlopen
+    // lijst ten onrechte op de verversing wacht, krijgt dan de nieuwe lijst (OUD onbekend) in plaats
+    // van het stale antwoord. Zo hangt de test niet af van timing; de eerste lading is gewoon klaar (#1696).
     [Fact]
     public void VerlopenLijst_GeeftStaleDirect_EnVerverstOpDeAchtergrond()
     {
-        var nu = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        using var gestart = new ManualResetEventSlim();
-        using var vrij = new ManualResetEventSlim();
-        var aanroepen = 0;
-        var clubs = new BekendeClubs(() =>
-        {
-            if (Interlocked.Increment(ref aanroepen) == 1) return ["OUD"];
-            gestart.Set();
-            vrij.Wait(Wacht);
-            return ["NIEUW"];
-        }, TimeSpan.FromSeconds(10), () => nu, eersteLadingTimeout: TimeSpan.FromMilliseconds(50));
+        using var v = new HangendeVerversing();
+        var clubs = v.Maak(eersteLadingTimeout: Wacht * 3);
         clubs.Zoek("OUD").Should().Be(ClubZoekResultaat.Bekend("OUD"));
 
-        nu = nu.AddSeconds(11);
-        clubs.Zoek("OUD").Should().Be(ClubZoekResultaat.Bekend("OUD"));   // stale, de verversing hangt nog
-        gestart.Wait(Wacht).Should().BeTrue();
-        clubs.Zoek("NIEUW").Should().Be(Onbekend);
-        aanroepen.Should().Be(2);                         // geen tweede verversing tijdens de eerste
+        v.Nu = v.Nu.AddSeconds(11);
+        clubs.Zoek("OUD").Should().Be(ClubZoekResultaat.Bekend("OUD"));   // stale, zonder op de verversing te wachten
+        v.Gestart.Wait(Wacht).Should().BeTrue();
+        clubs.Zoek("OUD").Should().Be(ClubZoekResultaat.Bekend("OUD"));   // de verversing hangt nog: oude lijst
+        v.Aanroepen.Should().Be(2);                       // geen tweede verversing tijdens de eerste
 
-        vrij.Set();
+        v.Vrij.Set();
         clubs.WachtOpVerversing(Wacht).Should().BeTrue();
         clubs.Zoek("NIEUW").Should().Be(ClubZoekResultaat.Bekend("NIEUW"));
+    }
+
+    [Fact]
+    public void OnbekendeWaarde_TijdensHangendeVerversing_GeeftNaBegrensdeWachtOnbekend()
+    {
+        using var v = new HangendeVerversing();
+        var clubs = v.Maak(eersteLadingTimeout: TimeSpan.FromMilliseconds(50));
+        clubs.Zoek("OUD");                                // start de eerste lading; de korte wacht kan verlopen
+        clubs.WachtOpVerversing(Wacht).Should().BeTrue();
+        clubs.Zoek("OUD").Should().Be(ClubZoekResultaat.Bekend("OUD"));
+
+        v.Nu = v.Nu.AddSeconds(11);
+        clubs.Zoek("OUD");                                // start de (hangende) verversing
+        v.Gestart.Wait(Wacht).Should().BeTrue();
+        clubs.Zoek("NIEUW").Should().Be(Onbekend);        // begrensde wacht, de lading hangt nog
+        v.Aanroepen.Should().Be(2);
+
+        v.Vrij.Set();
+        clubs.WachtOpVerversing(Wacht).Should().BeTrue();
+        clubs.Zoek("NIEUW").Should().Be(ClubZoekResultaat.Bekend("NIEUW"));
+    }
+
+    /// <summary>Eerste lading geeft direct OUD; elke volgende hangt tot <see cref="Vrij"/> en geeft NIEUW.</summary>
+    private sealed class HangendeVerversing : IDisposable
+    {
+        public ManualResetEventSlim Gestart { get; } = new();
+        public ManualResetEventSlim Vrij { get; } = new();
+        public DateTime Nu { get; set; } = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        public int Aanroepen => Volatile.Read(ref _aanroepen);
+        private int _aanroepen;
+
+        public BekendeClubs Maak(TimeSpan eersteLadingTimeout) => new(() =>
+        {
+            if (Interlocked.Increment(ref _aanroepen) == 1) return ["OUD"];
+            Gestart.Set();
+            Vrij.Wait(Wacht);
+            return ["NIEUW"];
+        }, TimeSpan.FromSeconds(10), () => Nu, eersteLadingTimeout);
+
+        // Laat een eventueel nog hangende lading los; de events zelf blijven voor de GC (een
+        // achtergrondlading kan er nog op wachten).
+        public void Dispose() => Vrij.Set();
     }
 
     [Fact]

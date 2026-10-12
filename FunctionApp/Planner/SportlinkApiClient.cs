@@ -1,3 +1,4 @@
+using SportlinkFunction.Infrastructure;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -20,9 +21,10 @@ namespace SportlinkFunction.Planner
             DateOnly date, ILogger log, string? clubCodeScope = null)
         {
             var useRealtime = SystemUtilities.AppSettings.GetSetting("useRealtimeApi");
-            if (useRealtime == "0" || string.Equals(useRealtime, "false", StringComparison.OrdinalIgnoreCase))
+            if (useRealtime == "0" || string.Equals(useRealtime, "false", StringComparison.OrdinalIgnoreCase)
+                || !EgressGuard.ExternalIntegrationsAllowed())
             {
-                log.LogDebug("SportlinkApiClient: real-time API uitgeschakeld, gebruik DB.");
+                log.LogDebug("SportlinkApiClient: real-time API uitgeschakeld of uitgaand verkeer geblokkeerd (EgressGuard), gebruik DB.");
                 return await PlannerDataAccess.GetFieldOccupationsAsync(date, clubCodeScope);
             }
 

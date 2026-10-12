@@ -76,6 +76,11 @@ Drie beveiligingsniveaus:
 > de databasewacht van de wrapper. **Sinds #1350 accepteert geen enkel endpoint nog een Function key
 > of Master key** — ook de twee sync-routes niet meer (zie hieronder).
 >
+> **Uitgaande integraties (#857, #1676):** een endpoint dat een externe dienst aanroept (de twee sync-routes,
+> `POST /api/beheer/sync/trigger`, `GET /api/beheer/geocode`, `POST /api/beheer/theme/extract`) antwoordt
+> `503` met `{ "error": ... }` zolang `EgressGuard.ExternalIntegrationsAllowed()` onwaar is (buiten Azure-hosting
+> zonder expliciete opt-in).
+>
 > `EasyAuthHelper.RequireAuthenticated` (`admin` óf `user`) is bij #1350 verwijderd omdat hij toen
 > nergens werd aangeroepen. Sinds #1330 bestaat die combinatie weer, nu als de expliciet genoemde
 > poort `AdminEndpoint.ExecuteAuthenticatedAsync` — zie de rij **Admin/User** hierboven voor welke

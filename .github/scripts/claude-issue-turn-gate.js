@@ -20,7 +20,10 @@
 //  3a. Actuele beurt (#1664): een wachtende of verlate run start alleen als het issue nu open is
 //     en precies één turn:-label heeft, `turn: claude-code`. Meerdere gekoppelde PR's (#1665)
 //     stoppen de poort zonder agent of labelwijziging.
-//  3b. Besloten reviewnotitie (#1686): verwijst de laatste reviewteruggave op de gekoppelde PR naar
+//  3b. Al afgerond werk (#1692): een gekoppelde PR die al gemerged is, of `status: awaiting-release`
+//     op het issue, stopt de poort zonder agent of labelwijziging. Een interactieve sessie kan het
+//     issue intussen hebben afgerond; vervolgwerk na een merge hoort in een nieuw issue.
+//  3c. Besloten reviewnotitie (#1686): verwijst de laatste reviewteruggave op de gekoppelde PR naar
 //     een besloten notitie, dan kan de agent die bevinding niet inzien. Geen run, beurt naar de eigenaar.
 //  4. Vertrouwde invoer (#1612): op een publieke repo kan iedereen een PR openen en commentaar
 //     plaatsen. Alleen PR's uit deze repo van een bevoegde auteur tellen, en de agent krijgt
@@ -41,6 +44,7 @@ const MAX_RUNS = 3;
 const WORKFLOW_FILE = 'claude-issue-turn.yml';
 const TURN_LABEL_PREFIX = 'turn: ';
 const TURN_LABEL_CLAUDE = 'turn: claude-code';
+const STATUS_AWAITING_RELEASE = 'status: awaiting-release';
 
 // Moet exact gelijk zijn aan de `run-name` in claude-issue-turn.yml voor een turn-label.
 const RUN_TITLE_PREFIX = 'Claude issue-beurt #';
@@ -149,6 +153,16 @@ function isTrustedAuthor(item) {
  * Zonder die drie voorwaarden kan iedereen met een fork-PR `fix(#N): ...` bepalen welke PR
  * de schrijfbevoegde agent als zijn werk behandelt.
  */
+function isOwnLinkedPr(pr, { context, issueNumber }) {
+  const { strong } = extractIssueRefs(pr.title, pr.body);
+  if (!strong.has(issueNumber)) return false;
+  if (pr.head?.repo?.full_name !== `${context.repo.owner}/${context.repo.repo}`) return false;
+  if (!(pr.head?.ref || '').startsWith(`feature/#${issueNumber}-`)) return false;
+  // isTrustedAuthor, niet isTrusted: de PR die de CI-run zelf opent staat op naam van
+  // claude[bot] (associatie NONE) en moet in de verwerkingsfase wél herkend worden (#1633).
+  return isTrustedAuthor(pr);
+}
+
 async function findLinkedOpenPrs({ github, context, issueNumber }) {
   const prs = await github.paginate(github.rest.pulls.list, {
     owner: context.repo.owner,
@@ -158,21 +172,42 @@ async function findLinkedOpenPrs({ github, context, issueNumber }) {
     headers: API_VERSION_HEADERS,
   });
 
-  const ownRepo = `${context.repo.owner}/${context.repo.repo}`;
-  const branchPrefix = `feature/#${issueNumber}-`;
-
-  const linked = [];
-  for (const pr of prs) {
-    const { strong } = extractIssueRefs(pr.title, pr.body);
-    if (!strong.has(issueNumber)) continue;
-    if (pr.head?.repo?.full_name !== ownRepo) continue;
-    if (!(pr.head.ref || '').startsWith(branchPrefix)) continue;
-    // isTrustedAuthor, niet isTrusted: de PR die de CI-run zelf opent staat op naam van
-    // claude[bot] (associatie NONE) en moet in de verwerkingsfase wél herkend worden (#1633).
-    if (!isTrustedAuthor(pr)) continue;
-    linked.push({ number: pr.number, branch: pr.head.ref });
-  }
+  const linked = prs
+    .filter((pr) => isOwnLinkedPr(pr, { context, issueNumber }))
+    .map((pr) => ({ number: pr.number, branch: pr.head.ref }));
   // Vaste volgorde: de uitkomst hangt niet van de API-volgorde af.
+  return linked.sort((a, b) => a.number - b.number);
+}
+
+const CLOSED_PAGE_SIZE = 100;
+
+/**
+ * Gesloten (gemergede of afgewezen) PR's van déze beurt, met dezelfde filters als
+ * findLinkedOpenPrs (#1692). Nieuwst bijgewerkt eerst; stopt zodra een pagina PR's bevat die vóór
+ * `since` zijn bijgewerkt. Een PR die naar het issue verwijst is altijd ná het aanmaken van het
+ * issue gemaakt of bewerkt, dus `since` = aanmaakmoment van het issue mist er geen.
+ */
+async function findLinkedClosedPrs({ github, context, issueNumber, since }) {
+  const linked = [];
+  for (let page = 1; ; page += 1) {
+    const { data } = await github.rest.pulls.list({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      state: 'closed',
+      sort: 'updated',
+      direction: 'desc',
+      per_page: CLOSED_PAGE_SIZE,
+      page,
+      headers: API_VERSION_HEADERS,
+    });
+    for (const pr of data) {
+      if (since && pr.updated_at && pr.updated_at < since) continue;
+      if (!isOwnLinkedPr(pr, { context, issueNumber })) continue;
+      linked.push({ number: pr.number, mergedAt: pr.merged_at || null, closedAt: pr.closed_at || null });
+    }
+    const oldest = data.length ? data[data.length - 1].updated_at : null;
+    if (data.length < CLOSED_PAGE_SIZE || (since && oldest && oldest < since)) break;
+  }
   return linked.sort((a, b) => a.number - b.number);
 }
 
@@ -365,6 +400,22 @@ async function evaluateGate({ github, context, core, issueNumber }) {
     };
   }
 
+  // #1692: een interactieve sessie kan het werk al hebben afgerond terwijl deze run wachtte. Geen
+  // agent en geen labelwijziging: de merge-automatisering heeft de beurt al opgeruimd.
+  if (labels.includes(STATUS_AWAITING_RELEASE)) {
+    return { proceed: false, reason: `Geen CI-run gestart: het issue heeft \`${STATUS_AWAITING_RELEASE}\` (werk al gemerged).` };
+  }
+  const merged = (await findLinkedClosedPrs({ github, context, issueNumber, since: issue.created_at }))
+    .filter((pr) => pr.mergedAt);
+  if (merged.length) {
+    return {
+      proceed: false,
+      reason:
+        `Geen CI-run gestart: gekoppelde PR ${merged.map((p) => `#${p.number}`).join(', ')} is al gemerged; ` +
+        'vervolgwerk hoort in een nieuw issue.',
+    };
+  }
+
   const hasRequiredSource = REQUIRED_SOURCE_LABELS.some((l) => labels.includes(l));
   if (!hasRequiredSource) {
     const reason =
@@ -446,6 +497,13 @@ module.exports = {
   evaluateGate,
   setTurnLabel,
   findLinkedOpenPrs,
+  findLinkedClosedPrs,
+  isTrustedAuthor,
+  labelNames,
+  API_VERSION_HEADERS,
+  TURN_LABEL_PREFIX,
+  TURN_LABEL_CLAUDE,
+  STATUS_AWAITING_RELEASE,
   findLatestReviewReturn,
   countPriorRuns,
   collectTrustedContext,
