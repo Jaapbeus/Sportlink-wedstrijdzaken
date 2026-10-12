@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- fix(#1597): widgetissues krijgen het canonieke label `via: feedback-widget` (voorheen `via-feedback-widget`), zodat ze aansluiten bij de labelset in `.github/labels.json`.
+
 ## [3.13.2.0] — 2026-10-11
 
 ### Changed
