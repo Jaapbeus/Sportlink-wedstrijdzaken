@@ -22,6 +22,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Het hoofdmenu is opnieuw ingedeeld in Dashboard, DEBUG (alleen voor beheerders), de hoofdschermen, WZ Instellingen en Admin, en toont per rol alleen de items waar "Rechten per rol" recht op geeft; "Instellingen" heet nu "App instellingen" (#1647).
 
 ### Changed
+- De clubcode uit het verzoek wordt getoetst aan de bekende clubs (onbekend: de primaire club geldt; is de clublijst nog niet te laden, dan geldt een geldige waarde zoals voorheen) en het aantal en de lengte van de vragen en antwoorden in een feedbackmelding, het aantal voorgestelde aanvulvragen en de lengte van de verzoekbody worden begrensd, op beide databasetiers (#1677).
 - Het doorsturen van een teambegeleiding-vraag accepteert voor een andere rol dan admin alleen ontvangers die bij het gekozen team horen (begeleiders, coördinator of de aanvrager zelf) en kent een gebruikslimiet van 3 verzendingen per 10 minuten per gebruiker, waarbij alleen een daadwerkelijke verzending meetelt en admin buiten de limiet valt, op beide databasetiers (#1671).
 - Zoekpatronen voor tegenstander en accommodatie, de beveiligingsheaders van de beheer-app, de afhandeling van een niet beschikbaar toegangstoken in de beheer-app en de e-maillog-respons (gemaskeerde ontvangers, geen onderwerp) zijn aangescherpt, op beide databasetiers (#1678).
 - De frontend auth-gate herkent de authenticatieroutes op het URL-pad en rendert op die route alleen de authenticatiepagina (#1672).

@@ -122,6 +122,15 @@ public class FeedbackCoreTests
         fake.AantalAanroepen.Should().Be(1);
     }
 
+    [Fact]
+    public async Task ValidateAsync_TeveelAiVragen_WordtGecaptOpMaximum()
+    {
+        var vragen = string.Join(",", Enumerable.Range(1, FeedbackCore.MaxAanvulVragen + 2).Select(i => $"\"Vraag {i}?\""));
+        var result = await FeedbackCore.ValidateAsync(MaakSchoonRequest(), new FakeChatClient($$"""{"volledig": false, "vragen": [{{vragen}}]}"""), NullLogger.Instance);
+
+        result.Vragen.Should().HaveCount(FeedbackCore.MaxAanvulVragen).And.StartWith("Vraag 1?");
+    }
+
     // ── Submit: eerste gate blokkeert vóór de AI-aanroep ───────────────────────
 
     [Fact]
