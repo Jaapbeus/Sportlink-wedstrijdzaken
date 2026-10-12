@@ -308,6 +308,9 @@ public static class ThemeCore
         return new ThemeValidatieResultaat(ThemeValidatieStatus.Ok, null);
     }
 
+    /// <summary>Totale tijdlimiet voor één extractie (alle hops en leesacties).</summary>
+    internal static readonly TimeSpan TotaleTijdlimiet = TimeSpan.FromSeconds(15);
+
     /// <summary>Maximale lengte van een opgeslagen favicon-/logo-URL.</summary>
     internal const int MaxAssetUrlLengte = 300;
 
@@ -360,7 +363,9 @@ public static class ThemeCore
         string? url,
         Func<Task<string?>> toegestaneHostProvider,
         ILogger log,
-        HttpClient? httpClientOverride = null)
+        HttpClient? httpClientOverride = null,
+        TimeSpan? totaleTijdlimiet = null,
+        CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(url))
             return new ThemeExtractieResultaat(ThemeExtractieStatus.OngeldigeUrl, "Parameter 'url' ontbreekt.");
@@ -376,16 +381,20 @@ public static class ThemeCore
             return new ThemeExtractieResultaat(ThemeExtractieStatus.HostNietToegestaan,
                 "URL-domein is niet toegestaan. Stel eerst de club-website in via het thema-scherm.");
 
+        // Eén tijdlimiet en één bytebudget voor de héle extractie (alle hops en leesacties).
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(totaleTijdlimiet ?? TotaleTijdlimiet);
+        var budget = new ResponseBudget(SsrfProtection.MaxResponseBytes);
         try
         {
             // De daadwerkelijke IP-validatie zit in de ConnectCallback van de client en geldt dus
             // voor elke hop, niet alleen deze initiële URL (#1007).
-            // Ook elke redirect-hop wordt opnieuw aan de host-allowlist getoetst en de body is begrensd.
             using var response = await SsrfProtection.GetWithBoundedRedirectsAsync(
                 httpClientOverride ?? HttpClient, parsedUri,
-                isAllowedHop: hop => IsToegestaneHop(hop, toegestaneHost));
+                isAllowedHop: hop => IsToegestaneHop(hop, toegestaneHost), ct: deadline.Token);
             response.EnsureSuccessStatusCode();
-            var html = await SsrfProtection.ReadBoundedStringAsync(response.Content);
+            var html = await SsrfProtection.ReadBoundedStringAsync(
+                response.Content, ct: deadline.Token, budget: budget);
 
             var colors = ExtractColors(html);
             var faviconUrl = ExtractFaviconUrl(html, parsedUri);

@@ -234,4 +234,108 @@ public class ThemeCoreSsrfVerhardingTests
     [Fact]
     public void Extractie_HttpBasisZonderIcoon_GeeftGeenHttpFavicon() =>
         ThemeCore.ExtractFaviconUrl("<html></html>", new Uri("http://club.example.com/")).Should().BeNull();
+
+    // --- begrenzing over de hele extractie ----------------------------------------------------
+
+    private sealed class TraagStream : Stream
+    {
+        public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken ct)
+        {
+            await Task.Delay(Timeout.Infinite, ct);
+            return 0;
+        }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
+        {
+            await Task.Delay(Timeout.Infinite, ct);
+            return 0;
+        }
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    [Fact]
+    public async Task ExtraheerAsync_TraagStromendAntwoord_EindigtBinnenTotaleTijdlimiet()
+    {
+        var antwoord = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new TraagStream()) };
+        using var client = new HttpClient(new StubHandler(antwoord));
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        var resultaat = await ThemeCore.ExtraheerAsync(
+            "https://club.example.com/", () => Task.FromResult<string?>("club.example.com"),
+            NullLogger.Instance, client, totaleTijdlimiet: TimeSpan.FromMilliseconds(200));
+
+        resultaat.Status.Should().Be(ThemeExtractieStatus.OphalenMislukt);
+        sw.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task ExtraheerAsync_SnelAntwoord_BinnenTijdlimiet_IsOk()
+    {
+        using var client = new HttpClient(new StubHandler(Ok("<html></html>")));
+
+        var resultaat = await ThemeCore.ExtraheerAsync(
+            "https://club.example.com/", () => Task.FromResult<string?>("club.example.com"),
+            NullLogger.Instance, client, totaleTijdlimiet: TimeSpan.FromSeconds(5));
+
+        resultaat.Status.Should().Be(ThemeExtractieStatus.Ok);
+    }
+
+    [Fact]
+    public async Task ReadBoundedStringAsync_CumulatiefBudget_GeldtOverMeerdereAntwoorden()
+    {
+        var budget = new ResponseBudget(10);
+
+        (await SsrfProtection.ReadBoundedStringAsync(new StringContent("123456"), budget: budget)).Should().Be("123456");
+        budget.Remaining.Should().Be(4);
+
+        var act = () => SsrfProtection.ReadBoundedStringAsync(new StringContent("123456"), budget: budget);
+        await act.Should().ThrowAsync<SsrfBlockedException>();
+    }
+
+    [Fact]
+    public async Task ReadBoundedStringAsync_CumulatiefBudget_TweeAntwoordenBinnenBudget_Slagen()
+    {
+        var budget = new ResponseBudget(10);
+
+        await SsrfProtection.ReadBoundedStringAsync(new StringContent("12345"), budget: budget);
+        await SsrfProtection.ReadBoundedStringAsync(new StringContent("12345"), budget: budget);
+
+        budget.Remaining.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ReadBoundedStringAsync_GedecomprimeerdeBom_WordtOpGedecomprimeerdeBytesBegrensd()
+    {
+        var gzip = new MemoryStream();
+        await using (var z = new System.IO.Compression.GZipStream(gzip, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true))
+            await z.WriteAsync(new byte[1_000_000]);
+        gzip.Position = 0;
+        gzip.Length.Should().BeLessThan(10_000);
+        using var uitgepakt = new System.IO.Compression.GZipStream(gzip, System.IO.Compression.CompressionMode.Decompress);
+        var content = new StreamContent(uitgepakt); // geen Content-Length, zoals chunked
+
+        var act = () => SsrfProtection.ReadBoundedStringAsync(content, maxBytes: 100_000);
+
+        await act.Should().ThrowAsync<SsrfBlockedException>();
+    }
+
+    [Fact]
+    public void CreateHandler_ZetAutomatischeDecompressieEnProxyEnRedirectsUit()
+    {
+        using var handler = SsrfProtection.CreateHandler();
+
+        handler.AutomaticDecompression.Should().Be(DecompressionMethods.None);
+        handler.UseProxy.Should().BeFalse();
+        handler.AllowAutoRedirect.Should().BeFalse();
+    }
 }

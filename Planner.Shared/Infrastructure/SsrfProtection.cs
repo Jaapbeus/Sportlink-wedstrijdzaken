@@ -20,6 +20,17 @@ public sealed class SsrfBlockedException : Exception
     public SsrfBlockedException(string message) : base(message) { }
 }
 
+/// <summary>Gedeeld bytebudget voor alle gelezen antwoorden van één samenhangende ophaalactie.</summary>
+public sealed class ResponseBudget
+{
+    public ResponseBudget(int bytes) => Remaining = bytes;
+
+    /// <summary>Aantal bytes dat nog gelezen mag worden.</summary>
+    public int Remaining { get; private set; }
+
+    internal void Consume(int bytes) => Remaining -= bytes;
+}
+
 /// <summary>
 /// Centrale SSRF-bescherming voor uitgaande HTTP-aanroepen naar door de admin opgegeven URL's
 /// (#1007 — thema-extractor). Los van <see cref="EgressGuard"/>: die schakelt uitgaande
@@ -344,6 +355,24 @@ public static class SsrfProtection
     internal const string DefaultAcceptLanguage = "nl-NL,nl;q=0.9,en;q=0.8";
 
     /// <summary>
+    /// De handler achter <see cref="CreateHttpClient"/>: geen automatische redirects, geen
+    /// systeemproxy en geen automatische decompressie (de gelezen bytes zijn dus de bytes op de lijn,
+    /// waarop <see cref="ReadBoundedStringAsync"/> begrenst).
+    /// </summary>
+    internal static SocketsHttpHandler CreateHandler(
+        Func<string, CancellationToken, Task<IPAddress[]>>? resolverOverride = null,
+        Func<IPAddress, int, bool>? isAllowedEndpointOverride = null,
+        Func<int, bool>? isAllowedPortOverride = null) => new()
+    {
+        AllowAutoRedirect = false,
+        UseProxy = false, // geen omweg langs een omgevings-/systeemproxy: de ConnectCallback valideert het echte doeladres
+        AutomaticDecompression = DecompressionMethods.None,
+        ConnectCallback = (context, ct) => ConnectCoreAsync(
+            context.DnsEndPoint.Host, context.DnsEndPoint.Port, ct,
+            resolverOverride, isAllowedEndpointOverride, null, isAllowedPortOverride)
+    };
+
+    /// <summary>
     /// Bouwt een <see cref="HttpClient"/> met redirects uit en een <c>ConnectCallback</c> die elke
     /// verbinding (initieel én elke handmatig gevolgde redirect-hop) resolvet en valideert vlak
     /// vóór het openen van de TCP-verbinding. De optionele overrides zijn uitsluitend voor tests —
@@ -356,14 +385,7 @@ public static class SsrfProtection
         Func<IPAddress, int, bool>? isAllowedEndpointOverride = null,
         Func<int, bool>? isAllowedPortOverride = null)
     {
-        var handler = new SocketsHttpHandler
-        {
-            AllowAutoRedirect = false,
-            UseProxy = false, // geen omweg langs een omgevings-/systeemproxy: de ConnectCallback valideert het echte doeladres
-            ConnectCallback = (context, ct) => ConnectCoreAsync(
-                context.DnsEndPoint.Host, context.DnsEndPoint.Port, ct,
-                resolverOverride, isAllowedEndpointOverride, null, isAllowedPortOverride)
-        };
+        var handler = CreateHandler(resolverOverride, isAllowedEndpointOverride, isAllowedPortOverride);
         var client = new HttpClient(handler) {
             Timeout = timeout ?? TimeSpan.FromSeconds(10),
             MaxResponseContentBufferSize = MaxResponseBytes
@@ -391,7 +413,8 @@ public static class SsrfProtection
     public static async Task<HttpResponseMessage> GetWithBoundedRedirectsAsync(
         HttpClient client, Uri startUri, int maxRedirects = MaxRedirects,
         Func<int, bool>? isAllowedPortOverride = null,
-        Func<Uri, bool>? isAllowedHop = null)
+        Func<Uri, bool>? isAllowedHop = null,
+        CancellationToken ct = default)
     {
         var current = startUri;
         for (var hop = 0; hop <= maxRedirects; hop++)
@@ -404,7 +427,7 @@ public static class SsrfProtection
             HttpResponseMessage response;
             try
             {
-                response = await client.GetAsync(current, HttpCompletionOption.ResponseHeadersRead);
+                response = await client.GetAsync(current, HttpCompletionOption.ResponseHeadersRead, ct);
             }
             catch (HttpRequestException ex) when (ex.InnerException is SsrfBlockedException blocked)
             {
@@ -437,8 +460,10 @@ public static class SsrfProtection
     /// een <see cref="SsrfBlockedException"/> in plaats van volledig in het geheugen te komen.
     /// </summary>
     public static async Task<string> ReadBoundedStringAsync(
-        HttpContent content, int maxBytes = MaxResponseBytes, CancellationToken ct = default)
+        HttpContent content, int maxBytes = MaxResponseBytes, CancellationToken ct = default,
+        ResponseBudget? budget = null)
     {
+        if (budget != null) maxBytes = Math.Min(maxBytes, budget.Remaining);
         if (content.Headers.ContentLength is { } lengte && lengte > maxBytes)
             throw new SsrfBlockedException("Antwoord is te groot.");
 
@@ -452,6 +477,7 @@ public static class SsrfProtection
                 throw new SsrfBlockedException("Antwoord is te groot.");
             buffer.Write(blok, 0, gelezen);
         }
+        budget?.Consume((int)buffer.Length);
         return System.Text.Encoding.UTF8.GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
     }
 
