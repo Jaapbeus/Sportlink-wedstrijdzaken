@@ -282,73 +282,88 @@ internal static class SportlinkStagingRepository
         log.LogInformation("MATCHDETAILS - stg.matchdetails rij opgeslagen.");
     }
 
-    private static void BindMatchDetailsParameters(SqlCommand cmd, MatchDetails matchDetails, string clubCode)
+    internal static void BindMatchDetailsParameters(SqlCommand cmd, MatchDetails matchDetails, string clubCode)
     {
-        cmd.Parameters.AddWithValue("@ClubCode", clubCode ?? (object)DBNull.Value);
+        Voeg(cmd, "@ClubCode", clubCode);
+        AddWedstrijdinformatieParams(cmd, matchDetails.Wedstrijdinformatie);
+        AddOfficialsParams(cmd, matchDetails.Officials, matchDetails.Matchofficials, matchDetails.Kleedkamers);
+        AddAccommodatieEnTeamParams(cmd, matchDetails.Accommodatie, matchDetails.Thuisteam, matchDetails.Uitteam);
+    }
 
-        var wi = matchDetails.Wedstrijdinformatie;
-        cmd.Parameters.AddWithValue("@WedstrijdCode",               wi.Wedstrijdnummer);
-        cmd.Parameters.AddWithValue("@InternCode",                  wi.Wedstijdnummerintern);
-        cmd.Parameters.AddWithValue("@VeldNaam",                    wi.Veldnaam             ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@VeldLocatie",                 wi.Veldlocatie          ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@VertrekTijd",                 wi.Vertrektijd          ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@Rijder",                      wi.Rijder               ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@ThuisScore",                  wi.Thuisscore           ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@ThuisScoreRegulier",          wi.ThuisscoreRegulier   ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@ThuisScoreNV",                wi.ThuisscoreNv         ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@ThuisScoreS",                 wi.ThuisscoreS          ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@UitScore",                    wi.Uitscore             ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@UitScoreRegulier",            wi.UitscoreRegulier     ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@UitScoreNV",                  wi.UitscoreNv           ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@UitScoreS",                   wi.UitscoreS            ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@Klasse",                      wi.Klasse               ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@WedstrijdType",               wi.Wedstrijdtype        ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@CompetitieType",              wi.Competitietype       ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@Categorie",                   wi.Categorie            ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@MatchDateTime",               wi.Wedstrijddatetime    ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@MatchDate",                   wi.Wedstrijddatum       ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@Aanvangstijd",
-            TimeSpan.TryParse(wi.Aanvangstijd, out var ts) ? (object)ts : DBNull.Value);
-        cmd.Parameters.AddWithValue("@Duration",                    wi.Duur                 ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@SpelType",                    wi.Speltype             ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@Aanduiding",                  wi.Aanduiding           ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@PouleCode",
-            int.TryParse(wi.Poulecode, out var pc) ? (object)pc : DBNull.Value);
-        cmd.Parameters.AddWithValue("@Poule",                       wi.Poule                ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@ThuisTeamID",                 wi.Thuisteamid);
-        cmd.Parameters.AddWithValue("@ThuisTeam",                   wi.Thuisteam            ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@UitTeamID",                   wi.Uitteamid);
-        cmd.Parameters.AddWithValue("@UitTeam",                     wi.Uitteam              ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@Opmerkingen",                 wi.Opmerkingen          ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@VerenigingScheidsrechterCode", matchDetails.Officials.Verenigingsscheidsrechtercode ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@VerenigingScheidsrechter",     matchDetails.Officials.Verenigingsscheidsrechter     ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@OverigeOfficialCode",          matchDetails.Officials.Overigeofficialcode           ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@OverigeOfficial",              matchDetails.Officials.Overigeofficial               ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@Scheidsrechters",              matchDetails.Matchofficials.Scheidsrechters           ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@KleedkamerThuis",              matchDetails.Kleedkamers.Thuis                        ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@KleedkamerUit",                matchDetails.Kleedkamers.Uit                          ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@KleedkamerOfficial",           matchDetails.Kleedkamers.Official                     ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@AccommodatieNaam",             matchDetails.Accommodatie.Naam                        ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@AccommodatieStraat",           matchDetails.Accommodatie.Straat                      ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@AccommodatiePlaats",           matchDetails.Accommodatie.Plaats                      ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@AccommodatieTelefoon",         matchDetails.Accommodatie.Telefoon                    ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@AccommodatieRouteplanner",     matchDetails.Accommodatie.Routeplanner                ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@ThuisTeamNaam",                matchDetails.Thuisteam.Naam                           ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@ThuisTeamCode",                matchDetails.Thuisteam.Code                           ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@ThuisTeamWebsite",             matchDetails.Thuisteam.Website                        ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@ThuisTeamShirtKleur",          matchDetails.Thuisteam.Shirtkleur                     ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@ThuisTeamStraat",              matchDetails.Thuisteam.Straat                         ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@ThuisTeamPostcodePlaats",      matchDetails.Thuisteam.Postcodeplaats                 ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@ThuisTeamTelefoon",            matchDetails.Thuisteam.Telefoon                       ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@ThuisTeamEmail",               matchDetails.Thuisteam.Email                          ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@UitTeamNaam",                  matchDetails.Uitteam.Naam                             ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@UitTeamCode",                  matchDetails.Uitteam.Code                             ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@UitTeamWebsite",               matchDetails.Uitteam.Website                          ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@UitTeamShirtKleur",            matchDetails.Uitteam.Shirtkleur                       ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@UitTeamStraat",                matchDetails.Uitteam.Straat                           ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@UitTeamPostcodePlaats",        matchDetails.Uitteam.Postcodeplaats                   ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@UitTeamTelefoon",              matchDetails.Uitteam.Telefoon                         ?? (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("@UitTeamEmail",                 matchDetails.Uitteam.Email                            ?? (object)DBNull.Value);
+    // Null wordt DBNull; de hulpmethode houdt de ??-vertakkingen uit de binders (CA1502, #1624).
+    private static void Voeg(SqlCommand cmd, string naam, object? waarde) =>
+        cmd.Parameters.AddWithValue(naam, waarde ?? DBNull.Value);
+
+    private static void AddWedstrijdinformatieParams(SqlCommand cmd, Wedstrijdinformatie wi)
+    {
+        Voeg(cmd, "@WedstrijdCode", wi.Wedstrijdnummer);
+        Voeg(cmd, "@InternCode", wi.Wedstijdnummerintern);
+        Voeg(cmd, "@VeldNaam", wi.Veldnaam);
+        Voeg(cmd, "@VeldLocatie", wi.Veldlocatie);
+        Voeg(cmd, "@VertrekTijd", wi.Vertrektijd);
+        Voeg(cmd, "@Rijder", wi.Rijder);
+        Voeg(cmd, "@ThuisScore", wi.Thuisscore);
+        Voeg(cmd, "@ThuisScoreRegulier", wi.ThuisscoreRegulier);
+        Voeg(cmd, "@ThuisScoreNV", wi.ThuisscoreNv);
+        Voeg(cmd, "@ThuisScoreS", wi.ThuisscoreS);
+        Voeg(cmd, "@UitScore", wi.Uitscore);
+        Voeg(cmd, "@UitScoreRegulier", wi.UitscoreRegulier);
+        Voeg(cmd, "@UitScoreNV", wi.UitscoreNv);
+        Voeg(cmd, "@UitScoreS", wi.UitscoreS);
+        Voeg(cmd, "@Klasse", wi.Klasse);
+        Voeg(cmd, "@WedstrijdType", wi.Wedstrijdtype);
+        Voeg(cmd, "@CompetitieType", wi.Competitietype);
+        Voeg(cmd, "@Categorie", wi.Categorie);
+        Voeg(cmd, "@MatchDateTime", wi.Wedstrijddatetime);
+        Voeg(cmd, "@MatchDate", wi.Wedstrijddatum);
+        Voeg(cmd, "@Aanvangstijd", TimeSpan.TryParse(wi.Aanvangstijd, out var ts) ? ts : null);
+        Voeg(cmd, "@Duration", wi.Duur);
+        Voeg(cmd, "@SpelType", wi.Speltype);
+        Voeg(cmd, "@Aanduiding", wi.Aanduiding);
+        Voeg(cmd, "@PouleCode", int.TryParse(wi.Poulecode, out var pc) ? pc : null);
+        Voeg(cmd, "@Poule", wi.Poule);
+        Voeg(cmd, "@ThuisTeamID", wi.Thuisteamid);
+        Voeg(cmd, "@ThuisTeam", wi.Thuisteam);
+        Voeg(cmd, "@UitTeamID", wi.Uitteamid);
+        Voeg(cmd, "@UitTeam", wi.Uitteam);
+        Voeg(cmd, "@Opmerkingen", wi.Opmerkingen);
+    }
+
+    private static void AddOfficialsParams(SqlCommand cmd, Officials officials, Matchofficials matchofficials, Kleedkamers kleedkamers)
+    {
+        Voeg(cmd, "@VerenigingScheidsrechterCode", officials.Verenigingsscheidsrechtercode);
+        Voeg(cmd, "@VerenigingScheidsrechter", officials.Verenigingsscheidsrechter);
+        Voeg(cmd, "@OverigeOfficialCode", officials.Overigeofficialcode);
+        Voeg(cmd, "@OverigeOfficial", officials.Overigeofficial);
+        Voeg(cmd, "@Scheidsrechters", matchofficials.Scheidsrechters);
+        Voeg(cmd, "@KleedkamerThuis", kleedkamers.Thuis);
+        Voeg(cmd, "@KleedkamerUit", kleedkamers.Uit);
+        Voeg(cmd, "@KleedkamerOfficial", kleedkamers.Official);
+    }
+
+    private static void AddAccommodatieEnTeamParams(SqlCommand cmd, Accommodatie accommodatie, Thuisteam thuisteam, Uitteam uitteam)
+    {
+        Voeg(cmd, "@AccommodatieNaam", accommodatie.Naam);
+        Voeg(cmd, "@AccommodatieStraat", accommodatie.Straat);
+        Voeg(cmd, "@AccommodatiePlaats", accommodatie.Plaats);
+        Voeg(cmd, "@AccommodatieTelefoon", accommodatie.Telefoon);
+        Voeg(cmd, "@AccommodatieRouteplanner", accommodatie.Routeplanner);
+        Voeg(cmd, "@ThuisTeamNaam", thuisteam.Naam);
+        Voeg(cmd, "@ThuisTeamCode", thuisteam.Code);
+        Voeg(cmd, "@ThuisTeamWebsite", thuisteam.Website);
+        Voeg(cmd, "@ThuisTeamShirtKleur", thuisteam.Shirtkleur);
+        Voeg(cmd, "@ThuisTeamStraat", thuisteam.Straat);
+        Voeg(cmd, "@ThuisTeamPostcodePlaats", thuisteam.Postcodeplaats);
+        Voeg(cmd, "@ThuisTeamTelefoon", thuisteam.Telefoon);
+        Voeg(cmd, "@ThuisTeamEmail", thuisteam.Email);
+        Voeg(cmd, "@UitTeamNaam", uitteam.Naam);
+        Voeg(cmd, "@UitTeamCode", uitteam.Code);
+        Voeg(cmd, "@UitTeamWebsite", uitteam.Website);
+        Voeg(cmd, "@UitTeamShirtKleur", uitteam.Shirtkleur);
+        Voeg(cmd, "@UitTeamStraat", uitteam.Straat);
+        Voeg(cmd, "@UitTeamPostcodePlaats", uitteam.Postcodeplaats);
+        Voeg(cmd, "@UitTeamTelefoon", uitteam.Telefoon);
+        Voeg(cmd, "@UitTeamEmail", uitteam.Email);
     }
 
     // Gedeelde basisvelden voor programma én uitslagen.

@@ -18,8 +18,10 @@ plak de echte waarden nooit terug in een issue, PR of commit (AGENTS.md §4a).
 > **Huidige stand (2026-10-04) — de migratie is voltooid; dit document is een historisch verslag.**
 > Productie draait op de **Flex Consumption-app** met **.NET 10** (`dotnet-isolated 10.0`):
 > cutover FLEX-09 op 2026-10-03 (v3.10.0.0), .NET 10 in v3.11.0.0 (#1073, #1074). De oude
-> Linux Consumption-app is **gestopt, niet verwijderd** en wordt bewaard tot minimaal 2027-01-03
-> (#1076); opruimen (FLEX-13) volgt daarna. De rollback uit §7.4 is niet meer van toepassing (een
+> Linux Consumption-app is **gestopt, niet verwijderd** en wordt bewaard tot minimaal 2027-01-03.
+> Op 2026-10-11 heeft de eigenaar het epic afgesloten: FLEX-12 (kostenbewaking, zie issue #1075) en
+> FLEX-13 (opruimen, zie issue #1076) zijn gesloten; de maandmeting en het opruimen na 2027-01-03 zijn
+> agendapunten van de eigenaar, niet langer open issues. De rollback uit §7.4 is niet meer van toepassing (een
 > `net10.0`-build draait niet op die oude app). Na de cutover zijn twee Flex-specifieke fouten gevonden en
 > opgelost: host-opslag via managed identity (#1512) en instellingen per instantie (#1515, laatste
 > sectie). Wie een **nieuwe club** inricht, volgt dit runbook niet: maak de Flex-app direct aan

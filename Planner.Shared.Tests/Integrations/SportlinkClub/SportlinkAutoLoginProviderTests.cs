@@ -222,6 +222,31 @@ public sealed class SportlinkAutoLoginProviderTests
         Assert.Equal(0, tokenRequests);
     }
 
+    [Theory]
+    [InlineData("<input type='file' name='upload'><input type='submit' name='login' value='x'>")]          // onbekend inputtype
+    [InlineData("<input type='submit' name='anders' value='x'>")]                                          // submit met andere naam
+    [InlineData("<input type='checkbox' name='anders'><input type='submit' name='login' value='x'>")]      // checkbox met andere naam
+    [InlineData("")]                                                                                       // geen submit-knop
+    [InlineData("<input type='submit' name='login' value='a'><input type='submit' name='login' value='b'>")] // twee submit-inputs
+    [InlineData("<input type='submit' name='login' value='a'><button type='submit' name='login'>b</button>")] // input + button
+    [InlineData("<button type='submit' name='login'>a</button><button type='submit' name='login'>b</button>")] // twee buttons
+    [InlineData("<button type='submit' name='anders'>a</button>")]                                         // button met andere naam
+    [InlineData("<button type='reset' name='login'>a</button><input type='submit' name='login' value='a'>")] // button van onbekend type
+    [InlineData("<button type='button'>a</button><input type='submit' name='login' value='a'>")]           // button zonder toggle-kenmerk
+    public async Task LoginAsync_OnondersteundFormulier_FailsBeforePostingCredentials(string extraVelden)
+    {
+        var postCount = 0;
+        var provider = MakeProvider(request =>
+        {
+            if (request.Method == HttpMethod.Post) postCount++;
+            return Html("<form method='post' action='/realms/sportlink/login-actions/authenticate'><input name='username'><input type='password' name='password'>" + extraVelden + "</form>");
+        });
+
+        var error = await Assert.ThrowsAsync<SportlinkLoginException>(() => provider.LoginAsync(Credentials()));
+        Assert.Equal(SportlinkLoginFailure.UnsupportedChallenge, error.Failure);
+        Assert.Equal(0, postCount);
+    }
+
     private static SportlinkAutoLoginProvider MakeProvider(Func<HttpRequestMessage, HttpResponseMessage> reply) =>
         new(_ => new DelegateHandler(reply), new FixedTimeProvider(Now));
 

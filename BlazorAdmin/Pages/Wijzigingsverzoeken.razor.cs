@@ -7,7 +7,7 @@ namespace BlazorAdmin.Pages;
 /// <summary>Code-behind van <c>Wijzigingsverzoeken.razor</c> (#996/#1111, code-behind sinds #1122).</summary>
 public partial class Wijzigingsverzoeken
 {
-    [Inject] private AdminApiClient Api { get; set; } = default!;
+    [Inject] private SportlinkApiClient Api { get; set; } = default!;
 
     private bool _laden = true;
     private string? _fout;

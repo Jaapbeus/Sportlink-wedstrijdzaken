@@ -274,7 +274,7 @@ Vier dingen om te onthouden:
 >   eigen kopie van de toggle+EgressGuard-controle, de statusvertaling, de rolnaam of de
 >   audit-afronding is een architectuurschending — dat was precies de toestand vóór #1122 (zes kopieën
 >   van de toggle-check, drie van de statusvertaling). Elke Sportlink-aanroep in `Planner.Shared` loopt
->   via `SportlinkClubClient.ExecuteWithTokenRetryAsync` en `ZetSportlinkHeaders`, nooit via een eigen
+>   via `SportlinkClubTransport.ExecuteWithTokenRetryAsync` en `SportlinkClubHttp.ZetSportlinkHeaders`, nooit via een eigen
 >   token-refresh/401-retry of eigen Navajo-headers. In Blazor hebben de extensie-pagina's
 >   (`Planning`, `Wijzigingsverzoeken`, `OefenwedstrijdAanmaken`, `SportlinkExtensieInstellingen`)
 >   **geen `@code`-blok**: de logica staat in een code-behind (`<Pagina>.razor.cs`, `public partial
@@ -282,8 +282,8 @@ Vier dingen om te onthouden:
 >   is altijd een `SportlinkActieStatus`, met `Verwerk(...)` als de ene plek die een mutatieresultaat
 >   naar een melding vertaalt, en `<Melding Status="..." />` toont hem. Een nieuwe
 >   `Dictionary<long, bool> _xBezig` of een `@code`-blok in zo'n pagina is een architectuurschending.
-> - In `Planner.Shared`: `SportlinkClubClient.ExecuteWithTokenRetryAsync` is het ene
->   token-refresh/401-retry-pad voor lezen én schrijven; `ZetSportlinkHeaders` de ene plek voor de
+> - In `Planner.Shared`: `SportlinkClubTransport.ExecuteWithTokenRetryAsync` is het ene
+>   token-refresh/401-retry-pad voor lezen én schrijven; `SportlinkClubHttp.ZetSportlinkHeaders` de ene plek voor de
 >   Navajo-headers; `TokenEndpoint`/`ClientId` zijn publiek. Nieuwe volledige sessies lopen via de
 >   automatische-loginprovider.
 - ~~`Tools/SportlinkTokenCapture`~~ — verwijderd in #1411; één automatische-loginroute is leidend.
@@ -292,6 +292,19 @@ Vier dingen om te onthouden:
   `FunctionApp/Admin/SportlinkExtensieRollenFunction.cs` — rol↔serviceaccount-koppelingsstatus
   (#988), geen live Sportlink-aanroep, op beide tiers. De oude `PUT
   .../rollen/{rolNaam}/token`-route is verwijderd in #1411.
+- **Klasse-indeling (#1631).** `SportlinkClubClient` is een dunne façade die `ISportlinkClubClient`
+  implementeert en alleen delegeert; de constructor en de DI-registratie in beide tiers zijn
+  ongewijzigd. De logica staat in internal klassen in dezelfde map, elk onder de 60 gekoppelde typen:
+  `SportlinkClubTransport` (de ENE route: `ExecuteWithTokenRetryAsync`, 401-retry, `RetryBeleid`,
+  de Match-GET), `SportlinkClubTokenBeheer` (cache, per-rol lock, refresh), `SportlinkClubHttp`
+  (stateloos: `ZetSportlinkHeaders`, timeouts, `JsonOptions`), `SportlinkWedstrijdLezer` (match,
+  programma, veldplanner, wijzigingsverzoeken lezen), `SportlinkClubFormulierLezer` (clubwedstrijd-
+  context en keuzelijsten), `SportlinkWedstrijdDetails` (kleedkamers, veld, wijzigingsverzoek),
+  `SportlinkMutaties` (verzoekactie, officials, clubwedstrijd aanmaken/verwijderen) en
+  `SportlinkMutatieUitvoerder` (dry-run, verzenden en responsinterpretatie, `PutMutationAsync`).
+  Bodies en parsers staan als stateloze hulpklassen ernaast (`SportlinkMutatieBodies`,
+  `SportlinkWedstrijdDetailsBody`, `SportlinkMatchChangeValidatieLezer`, `SportlinkJsonHulp`). Een
+  nieuw endpoint komt in de domeinklasse waar het thuishoort en gebruikt uitsluitend de transportkern.
 - `Planner.Shared/Integrations/SportlinkClub/SportlinkClubClient.cs` (#991) — read-only
   Sportlink-client, in `Planner.Shared` (providervrije logica: geen directe DB-toegang, alleen via
   de geïnjecteerde `ISportlinkClubTokenStore`) zodat beide tiers hem via DI kunnen gebruiken. Sinds
@@ -356,7 +369,7 @@ Vier dingen om te onthouden:
   `SportlinkMatch` mee, niet alleen `PublicMatchId`). **`.../field` (#993) herontworpen naar
   `UpdateMatchDetails` (#1047) en volledig end-to-end live bevestigd werkend, 2026-09-06.**
   `UpdateFieldAsync` haalt eerst een verse Match-GET-snapshot op
-  (`SportlinkClubClient.SportlinkMatchDetailsSnapshot` — uitsluitend intern, geen
+  (`SportlinkMatchDetailsSnapshot` — uitsluitend intern, geen
   persoonsgegevens), stuurt die terug met alléén het gewijzigde veld overschreven — exact
   Sportlinks eigen UI-patroon. `PublicApplicantId` gaat leeg mee (`""`, niet `null`) — live
   bevestigd geaccepteerd voor een eigen-veld-wijziging (#1048), dus géén aanroep naar
@@ -406,7 +419,7 @@ Vier dingen om te onthouden:
   bewust GEEN bevestigknop, ook geen disabled-variant (dat zou een niet-gebouwde stap 2 suggereren).
 - **Sinds #1339 prefill van het huidige veld + veld-dropdown op onze eigen veldnaam bij `GET
   .../match/{wedstrijdcode}`.** `SportlinkMatch.Field` (nieuw, spiegelt het al langer intern
-  gebruikte `SportlinkClubClient.SportlinkFieldRaw`) geeft het huidige `FieldId`/`FieldSize` van de
+  gebruikte `SportlinkFieldRaw`) geeft het huidige `FieldId`/`FieldSize` van de
   wedstrijd mee — dit stond al live bevestigd in dezelfde Match-GET-respons (2026-09-06, #1047),
   maar werd tot nu toe alleen intern gebruikt bij een veldwijziging, nooit teruggegeven aan de UI.
   `SportlinkMatchFunction.BouwPaneelResponse` (beide tiers) voegt daar `veldOpties`
@@ -594,7 +607,7 @@ Vier dingen om te onthouden:
      omschrijving. Een team kiezen vult duur, leeftijdscategorie en velddeel voor (aanpasbaar);
      **Leegmaken** zet alles terug (`OefenwedstrijdFormulierState`); na een echte aanmaak staat er een
      link "Open wedstrijd in Sportlink Club" (`https://club.sportlink.com/competition-affairs/match-details/{PublicMatchId}`).
-- **Dry-run-modus (#998).** De vertakking zit in `SportlinkClubClient.PutMutationAsync` — het ÉNE
+- **Dry-run-modus (#998).** De vertakking zit in `SportlinkMutatieUitvoerder.PutMutationAsync` — het ÉNE
   punt waar alle **zes** mutatiepaden doorheen lopen (kleedkamers, veld, officials,
   wijzigingsverzoek, change-request-actie en de ClubMatch-POST) — niet per tier/endpoint apart. Dat garandeert dat token-refresh en de voorbereidende snapshot-/UserInfo-
   GETs ook in dry-run écht gebeuren (realistische simulatie); alleen de daadwerkelijke PUT/POST
@@ -899,7 +912,7 @@ Elke aanroep zet drie headers: `X-Navajo-Entity` (het aangeroepen pad, geen vast
   HasBlockingMessages } }` — nooit met een netwerktrace gezien; elementen van
   `ValidationResultMessages` kunnen kale strings of objecten met een `Message`-/`Description`-veld
   zijn, en de positie van `HasBlockingMessages` (genest of toplevel) is evenmin bevestigd — zie
-  `SportlinkClubClient.ParseMatchChangeValidatie` voor de defensieve aanpak. Deze parser wordt in de
+  `SportlinkMatchChangeValidatieLezer.ParseMatchChangeValidatie` voor de defensieve aanpak. Deze parser wordt in de
   praktijk nooit aangeroepen zolang de code-lock actief is.
 - **Afwijzingsvorm (HTTP 420, live bevestigd #1040)**: `{"Error":true,"Status":"420",
   "Message":"Validation exception : <code>","ViolationCodes":["<code>", ...],

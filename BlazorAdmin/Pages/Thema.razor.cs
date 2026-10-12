@@ -17,7 +17,7 @@ namespace BlazorAdmin.Pages;
 /// </remarks>
 public partial class Thema : ClubSelectorPageBase
 {
-    [Inject] private AdminApiClient Api { get; set; } = default!;
+    [Inject] private InstellingenApiClient Api { get; set; } = default!;
     [Inject] private ThemeService ThemeService { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
 

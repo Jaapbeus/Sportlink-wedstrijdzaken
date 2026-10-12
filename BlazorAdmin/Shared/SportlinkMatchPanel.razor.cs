@@ -12,7 +12,7 @@ namespace BlazorAdmin.Shared;
 /// </summary>
 public partial class SportlinkMatchPanel
 {
-    [Inject] private AdminApiClient Api { get; set; } = default!;
+    [Inject] private SportlinkApiClient Api { get; set; } = default!;
 
     /// <summary>Onze eigen wedstrijdcode (his.matches) — de server resolvet daaruit het PublicMatchId.</summary>
     [Parameter, EditorRequired] public long WedstrijdCode { get; set; }

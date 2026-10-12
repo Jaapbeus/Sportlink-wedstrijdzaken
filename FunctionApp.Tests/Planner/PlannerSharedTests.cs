@@ -131,6 +131,128 @@ public class PlannerSharedTests
             .Should().BeFalse();
     }
 
+    // Karakterisatie (#1625): leggen vast hoe CanFitMatch buffers van aanvrager en bezetter combineert.
+
+    private static List<TeamRegel> Regels(string regelType, int? minuten) =>
+        new() { new TeamRegel { TeamNaam = "TEST JO14-1", RegelType = regelType, WaardeMinuten = minuten } };
+
+    private static bool Past(string start, string einde, decimal fractie,
+        List<BestaandeWedstrijd> occs, Dictionary<string, List<TeamRegel>>? allRules = null,
+        List<TeamRegel>? eigen = null) =>
+        PlannerShared.CanFitMatch(
+            TimeOnly.Parse(start), TimeOnly.Parse(einde), fractie, 1,
+            occs, allRules ?? GeenTeamRegels, eigen ?? new List<TeamRegel>());
+
+    [Theory]
+    [InlineData(45, true)]   // 11:00 + 45 = 11:45, vóór de bezetter van 12:00
+    [InlineData(60, true)]   // precies 12:00: grens, geen overlap
+    [InlineData(61, false)]  // 12:01 raakt de bezetter
+    public void CanFitMatch_BufferNaVanAanvrager_Verruimt(int minuten, bool verwacht)
+    {
+        var occs = new List<BestaandeWedstrijd> { Bezetting(1, "12:00", "13:00") };
+
+        Past("10:00", "11:00", 1.00m, occs, eigen: Regels("BufferNa", minuten)).Should().Be(verwacht);
+    }
+
+    [Theory]
+    [InlineData(60, true)]
+    [InlineData(61, false)]
+    public void CanFitMatch_BufferVoorVanAanvrager_Verruimt(int minuten, bool verwacht)
+    {
+        var occs = new List<BestaandeWedstrijd> { Bezetting(1, "10:00", "11:00") };
+
+        Past("12:00", "13:00", 1.00m, occs, eigen: Regels("BufferVoor", minuten)).Should().Be(verwacht);
+    }
+
+    [Theory]
+    [InlineData("BufferVoor", 45, "11:00", "12:30", false)] // beschermd gebied begint 12:15
+    [InlineData("BufferVoor", 45, "11:00", "12:15", true)]
+    [InlineData("BufferNa", 45, "14:30", "15:30", false)]   // beschermd gebied eindigt 14:45
+    [InlineData("BufferNa", 45, "14:45", "15:45", true)]
+    public void CanFitMatch_TeamRegelsVanBezetter_BepalenBeschermdGebied(
+        string regelType, int minuten, string start, string einde, bool verwacht)
+    {
+        var occs = new List<BestaandeWedstrijd> { Bezetting(1, "13:00", "14:00", team: "TEST JO14-1") };
+        var allRules = new Dictionary<string, List<TeamRegel>> { ["TEST JO14-1"] = Regels(regelType, minuten) };
+
+        Past(start, einde, 1.00m, occs, allRules).Should().Be(verwacht);
+    }
+
+    [Fact]
+    public void CanFitMatch_RegelZonderWaarde_WordtGenegeerd()
+    {
+        var occs = new List<BestaandeWedstrijd> { Bezetting(1, "10:00", "11:00", team: "TEST JO14-1") };
+        var allRules = new Dictionary<string, List<TeamRegel>> { ["TEST JO14-1"] = Regels("BufferNa", null) };
+
+        // standaardbuffer 15: 11:15 mag precies, 11:14 niet; null verandert dat niet
+        Past("11:15", "12:00", 1.00m, occs, allRules, Regels("BufferVoor", null)).Should().BeTrue();
+        Past("11:14", "12:00", 1.00m, occs, allRules, Regels("BufferVoor", null)).Should().BeFalse();
+    }
+
+    [Fact]
+    public void CanFitMatch_RegelKleinerDanStandaard_VerkleintBufferNiet()
+    {
+        var occs = new List<BestaandeWedstrijd> { Bezetting(1, "10:00", "11:00", team: "TEST JO14-1") };
+        var allRules = new Dictionary<string, List<TeamRegel>> { ["TEST JO14-1"] = Regels("BufferNa", 5) };
+
+        Past("11:14", "12:00", 1.00m, occs, allRules).Should().BeFalse();
+    }
+
+    [Fact]
+    public void CanFitMatch_BezetterZonderTeamnaamOfRegels_GebruiktStandaardBuffer()
+    {
+        var zonderNaam = new List<BestaandeWedstrijd> { Bezetting(1, "10:00", "11:00") };
+        var onbekend = new List<BestaandeWedstrijd> { Bezetting(1, "10:00", "11:00", team: "ONBEKEND") };
+        var allRules = new Dictionary<string, List<TeamRegel>> { ["TEST JO14-1"] = Regels("BufferNa", 90) };
+
+        Past("11:15", "12:00", 1.00m, zonderNaam, allRules).Should().BeTrue();
+        Past("11:15", "12:00", 1.00m, onbekend, allRules).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(1.00, 0.50)] // hele wedstrijd tegen deelveld-wedstrijd
+    [InlineData(0.50, 1.00)] // deelveld-wedstrijd tegen hele wedstrijd
+    public void CanFitMatch_GelijktijdigMetHeleOfDeelBezetting_PastNiet(double aanvraag, double bezetting)
+    {
+        var occs = new List<BestaandeWedstrijd> { Bezetting(1, "10:00", "11:15", deel: (decimal)bezetting) };
+
+        Past("10:30", "11:45", (decimal)aanvraag, occs).Should().BeFalse();
+    }
+
+    [Fact]
+    public void CanFitMatch_DeelveldCapaciteit_BepaaldPerTijdsblokHetMaximum()
+    {
+        // Twee halve bezettingen na elkaar (nooit tegelijk) laten ruimte voor een derde halve wedstrijd
+        var sequentieel = new List<BestaandeWedstrijd>
+        {
+            Bezetting(1, "10:00", "10:30", deel: 0.50m),
+            Bezetting(1, "10:30", "11:00", deel: 0.50m)
+        };
+        Past("10:00", "11:00", 0.50m, sequentieel).Should().BeTrue();
+
+        // Overlappen er twee halve bezettingen binnen het slot, dan is het veld vol
+        var overlap = new List<BestaandeWedstrijd>
+        {
+            Bezetting(1, "10:00", "10:30", deel: 0.50m),
+            Bezetting(1, "10:20", "10:40", deel: 0.50m)
+        };
+        Past("10:15", "11:00", 0.50m, overlap).Should().BeFalse();
+    }
+
+    [Fact]
+    public void CanFitMatch_Deelveld_BufferChecksVervallenBijGelijktijdigheid()
+    {
+        // Een gelijktijdige deelveld-bezetting slaat de bufferchecks over (continue); de tweede
+        // bezetting direct erna (binnen standaardbuffer) blokkeert wel.
+        var occs = new List<BestaandeWedstrijd>
+        {
+            Bezetting(1, "10:00", "11:00", deel: 0.50m),
+            Bezetting(1, "11:05", "12:00", deel: 1.00m)
+        };
+
+        Past("10:00", "11:00", 0.50m, occs).Should().BeFalse();
+    }
+
     // ── TryExactTime ──
 
     [Fact]

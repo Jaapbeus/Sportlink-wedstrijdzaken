@@ -1,9 +1,9 @@
 root = true
 
 [*.cs]
-dotnet_diagnostic.CA1502.severity = warning
-dotnet_diagnostic.CA1505.severity = warning
-dotnet_diagnostic.CA1506.severity = warning
+dotnet_diagnostic.CA1502.severity = error
+dotnet_diagnostic.CA1505.severity = error
+dotnet_diagnostic.CA1506.severity = error
 
 [{*.Tests,*.Tests.*}/**.cs]
 dotnet_diagnostic.CA1502.severity = none

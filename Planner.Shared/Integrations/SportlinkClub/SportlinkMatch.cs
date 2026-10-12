@@ -87,7 +87,7 @@ public sealed record SportlinkMatch
     public SportlinkMatchField? MatchField { get; set; }
 
     // #1339: het huidige veld(deel) van de wedstrijd — al live bevestigd aanwezig in dezelfde
-    // Match-GET-respons (2026-09-06, #1047, zie SportlinkClubClient.SportlinkFieldRaw, tot nu toe
+    // Match-GET-respons (2026-09-06, #1047, zie SportlinkFieldRaw, tot nu toe
     // uitsluitend intern gebruikt bij een veldwijziging). Toevoegen aan dit publieke read-model
     // zodat SportlinkMatchPanel het huidige FieldId/FieldSize kan voorafvullen in plaats van leeg
     // te laten — geen persoonsgegeven, puur een accommodatiecode/-afmeting.
@@ -159,7 +159,7 @@ public sealed record SportlinkMatchOfficial
 }
 
 /// <summary>Huidig veld(deel) van een wedstrijd — geen persoonsgegevens, alleen accommodatiecodes.
-/// Zelfde vorm als het interne <c>SportlinkClubClient.SportlinkFieldRaw</c> dat al voor de
+/// Zelfde vorm als het interne <c>SportlinkFieldRaw</c> dat al voor de
 /// veldwijziging gebruikt wordt; hier publiek zodat het read-model (<see cref="SportlinkMatch"/>)
 /// het kan tonen.</summary>
 public sealed record SportlinkMatchFieldSnapshot

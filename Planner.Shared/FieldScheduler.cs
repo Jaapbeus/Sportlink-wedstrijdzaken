@@ -15,7 +15,7 @@ namespace Planner.Shared;
 /// te veranderen. Een risicoarme verhuizing weegt hier zwaarder dan een cosmetisch andere naam.
 /// </para>
 /// </summary>
-public static class PlannerShared
+public static partial class PlannerShared
 {
     public const int StandardBufferMinutes = 15;
     public const double MaxBezettingsPercentageVoorOverslaan = 50.0;
@@ -187,44 +187,16 @@ public static class PlannerShared
         Dictionary<string, List<TeamRegel>> allTeamRules,
         List<TeamRegel> requestingTeamRules)
     {
-        int bufferVoor = StandardBufferMinutes;
-        int bufferNa   = StandardBufferMinutes;
-        foreach (var rule in requestingTeamRules)
-        {
-            if (rule.RegelType == "BufferVoor" && rule.WaardeMinuten.HasValue)
-                bufferVoor = Math.Max(bufferVoor, rule.WaardeMinuten.Value);
-            if (rule.RegelType == "BufferNa" && rule.WaardeMinuten.HasValue)
-                bufferNa = Math.Max(bufferNa, rule.WaardeMinuten.Value);
-        }
+        var (bufferVoor, bufferNa) = BufferVoorEnNa(requestingTeamRules);
         foreach (var occ in fieldOccupations)
         {
-            int occBufVoor = StandardBufferMinutes;
-            int occBufNa   = StandardBufferMinutes;
-            if (!string.IsNullOrEmpty(occ.TeamNaam) && allTeamRules.TryGetValue(occ.TeamNaam, out var existing))
-            {
-                foreach (var rule in existing)
-                {
-                    if (rule.RegelType == "BufferVoor" && rule.WaardeMinuten.HasValue)
-                        occBufVoor = Math.Max(occBufVoor, rule.WaardeMinuten.Value);
-                    if (rule.RegelType == "BufferNa" && rule.WaardeMinuten.HasValue)
-                        occBufNa = Math.Max(occBufNa, rule.WaardeMinuten.Value);
-                }
-            }
+            var (occBufVoor, occBufNa) = BufferVoorEnNaVanBezetter(occ, allTeamRules);
             bool gelijktijdig = occ.AanvangsTijd < end && occ.EindTijd > start;
             if (gelijktijdig)
             {
                 if (veldFractie < 1.0m && occ.VeldDeelGebruik < 1.0m)
                 {
-                    decimal maxCap = 0;
-                    for (var t = start; t < end; t = t.AddMinutes(5))
-                    {
-                        var te = t.AddMinutes(5);
-                        decimal cap = fieldOccupations
-                            .Where(o => o.VeldDeelGebruik < 1.0m && o.AanvangsTijd < te && o.EindTijd > t)
-                            .Sum(o => o.VeldDeelGebruik);
-                        maxCap = Math.Max(maxCap, cap);
-                    }
-                    if (maxCap + veldFractie > 1.0m) return false;
+                    if (MaxDeelCapaciteit(start, end, fieldOccupations) + veldFractie > 1.0m) return false;
                     continue;
                 }
                 return false;

@@ -2,7 +2,7 @@ namespace BlazorAdmin.Services;
 
 /// <summary>
 /// DelegatingHandler die automatisch de X-Club-Code header toevoegt aan elk API-request.
-/// Geregistreerd als InnerHandler van de AdminApiClient's HttpClient in Program.cs.
+/// Geregistreerd als InnerHandler van de AdminApiTransport's HttpClient in Program.cs.
 /// </summary>
 public class ClubCodeHeaderHandler : DelegatingHandler
 {

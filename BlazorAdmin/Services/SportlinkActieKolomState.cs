@@ -25,7 +25,7 @@ public sealed class SportlinkActieKolomState
         => _deeplinks.TryGetValue(wedstrijdCode, out var s) ? s : _deeplinks[wedstrijdCode] = new SportlinkActieStatus();
 
     // #989: haalt alleen het PublicMatchId op (lichtgewicht endpoint) en opent meteen een nieuw tabblad.
-    public async Task OpenInSportlinkAsync(long wedstrijdCode, AdminApiClient api, IJSRuntime js)
+    public async Task OpenInSportlinkAsync(long wedstrijdCode, SportlinkApiClient api, IJSRuntime js)
     {
         var status = Deeplink(wedstrijdCode);
         status.Start();

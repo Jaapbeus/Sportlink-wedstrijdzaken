@@ -372,7 +372,7 @@ allebei volledig op de Postgres-tier, onopgemerkt, omdat de browsersweep (G7) al
 controleert.
 
 `G0b` dekt het technische deel deterministisch, zonder browser: elke API-route die
-`BlazorAdmin/Services/AdminApiClient.cs` aanroept wordt genormaliseerd (padparameters naar een
+een van de domeinclients in `BlazorAdmin/Services/Api/*ApiClient.cs` aanroept wordt genormaliseerd (padparameters naar een
 vaste token, querystrings eraf) en vergeleken met elke `Route = "..."` die de geteste tier
 daadwerkelijk registreert. Een client-route zonder backend-tegenhanger is `blocked` als
 `selftest-expectations.psd1`'s `knownActionGaps` er een issuenummer bij noemt, en anders `fail` —

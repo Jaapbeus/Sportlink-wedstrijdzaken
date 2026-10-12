@@ -350,7 +350,7 @@ public class SportlinkMatchWijzigingsverzoekResultaatDto
 
 /// <summary>#995: ONBEVESTIGD — geparsed uit Sportlinks <c>ConfirmationNeeded</c>-veld, nooit met
 /// een netwerktrace gezien. <c>null</c> zolang de code-lock actief is (zie
-/// SportlinkClubClient.UpdateMatchDetailsChangeRequestLiveBevestigd).</summary>
+/// SportlinkWedstrijdDetails.UpdateMatchDetailsChangeRequestLiveBevestigd).</summary>
 public class SportlinkMatchChangeValidatieDto
 {
     public bool ConfirmationNeeded { get; set; }

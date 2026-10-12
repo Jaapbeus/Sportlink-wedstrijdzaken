@@ -16,7 +16,9 @@ namespace BlazorAdmin.Pages;
 /// <see cref="Shared.SportlinkMatchPanel"/>.</summary>
 public partial class VeldOptimalisatie : ClubSelectorPageBase
 {
-    [Inject] private AdminApiClient Api { get; set; } = default!;
+    [Inject] private PlanningApiClient PlanningApi { get; set; } = default!;
+    [Inject] private InstellingenApiClient InstellingenApi { get; set; } = default!;
+    [Inject] private SportlinkApiClient SportlinkApi { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
 
     private const int KleineAfwijkingDrempelMinuten = 15;
@@ -77,12 +79,12 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     }
 
     private Task<string> HtmlOphalenAsync() => HeeftHandmatigeAanpassing
-        ? Api.GetAutoPlanDeelHtmlAsync(_planDatum, _visTab, GetoondeRegels())
+        ? PlanningApi.GetAutoPlanDeelHtmlAsync(_planDatum, _visTab, GetoondeRegels())
         : Task.FromResult(HuidigeExportHtml ?? "");
 
     private Task<byte[]> PdfOphalenAsync() => HeeftHandmatigeAanpassing
-        ? Api.GetAutoPlanDeelPdfAsync(_planDatum, _visTab, GetoondeRegels())
-        : Api.GetAutoPlanPdfAsync(_planDatum, _planBuffer, _visTab);
+        ? PlanningApi.GetAutoPlanDeelPdfAsync(_planDatum, _visTab, GetoondeRegels())
+        : PlanningApi.GetAutoPlanPdfAsync(_planDatum, _planBuffer, _visTab);
 
     private string ExportBestandsNaam => $"veld-optimalisatie-{DatumStr}";
     private string ExportSleutel => $"{_visTab}|{DatumStr}|{_plan?.GetHashCode()}|{HandmatigeStand()}";
@@ -107,7 +109,7 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     protected override async Task OnInitializedAsync()
     {
         // #989: geen Sportlink-kolom/-knoppen tonen als de extension uit staat (DoD).
-        var settings = await Api.GetSettingsAsync();
+        var settings = await InstellingenApi.GetSettingsAsync();
         _sportlinkExtensionEnabled = settings.Success && settings.Data?.SportlinkExtensionEnabled == true;
         await LaadPdfExportStatusAsync();
 
@@ -142,7 +144,7 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     /// #1459: de PDF-knop verschijnt alleen als de gekozen club PDF-export heeft ingeschakeld
     /// (standaard uit). Via het voor elke ingelogde rol open endpoint, opnieuw bij een clubwissel.
     /// </summary>
-    private async Task LaadPdfExportStatusAsync() => _pdfExportIngeschakeld = await Api.IsPdfExportIngeschakeldAsync();
+    private async Task LaadPdfExportStatusAsync() => _pdfExportIngeschakeld = await PlanningApi.IsPdfExportIngeschakeldAsync();
 
     private async Task AutoPlanAsync()
     {
@@ -152,7 +154,7 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
         try
         {
             var req = new AutoPlanRequestDto { Datum = DatumStr, BufferMinuten = _bufferMinuten };
-            var result = await Api.AutoPlanAsync(req);
+            var result = await PlanningApi.AutoPlanAsync(req);
             if (result.Success)
             {
                 _plan = result.Data;
@@ -176,7 +178,7 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
         try
         {
             var req = new AutoPlanToepassenRequestDto { Datum = DatumStr, BufferMinuten = _bufferMinuten };
-            var result = await Api.AutoPlanToepassenAsync(req);
+            var result = await PlanningApi.AutoPlanToepassenAsync(req);
             if (result.Success && result.Data != null)
             {
                 var d = result.Data;

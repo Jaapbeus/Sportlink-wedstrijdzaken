@@ -416,7 +416,7 @@ Browser (Blazor WASM)
   │    Token bevat 'roles' claim met 'admin'
   │    CustomUserFactory pakt JSON-array uit naar losse claims
   │
-  └─ AdminApiClient stuurt Bearer token mee via AuthorizationMessageHandler
+  └─ De domeinclients (via AdminApiTransport) sturen het Bearer token mee via AuthorizationMessageHandler
        │
        ▼
   Azure Function App (func-<clubcode>-sportlink)
