@@ -144,6 +144,13 @@ jobs:
       - name: Autorisatie — elk HTTP-endpoint via de wrapper
         run: bash scripts/ci/check-endpoint-autorisatie.sh
 
+      # #1676: elk bestand met uitgaand HTTP-verkeer controleert EgressGuard of staat met reden in
+      # scripts/ci/egressguard-allowlist.txt; de test bewijst dat de guard rood kan worden.
+      - name: EgressGuard — uitgaand HTTP-verkeer gedekt
+        run: |
+          bash scripts/ci/check-egressguard-dekking.sh
+          bash scripts/ci/check-egressguard-dekking.test.sh
+
       # #864: bewaakt de identifier-casing-conventie (docs/ARCHITECTUUR-DATABASE-TIERS.md sectie
       # 3) binnen de Postgres-migratiebestanden zelf — een ander risico dan de bestandsnaam-
       # casing hierboven (#825). Geen database, geen secrets.
@@ -393,6 +400,10 @@ jobs:
       # fasedetectie pas bij een echte run — als er al een agent aan het werk is.
       - name: Claude issue-beurt poort testen
         run: node .github/scripts/claude-issue-turn-gate.test.js
+
+      # #1692: vergelijk-en-zet van het eindlabel van claude-issue-turn.yml (zelfde reden als hierboven).
+      - name: Claude issue-beurt eindlabel testen
+        run: node .github/scripts/claude-issue-turn-eindlabel.test.js
 
       # #1686: helper van turn-label-exclusief.yml (hoogstens één turn:-label). Ook die workflow
       # draait alleen op een gelabeld issue; zonder deze test blijkt een fout pas bij een echte beurtwissel.

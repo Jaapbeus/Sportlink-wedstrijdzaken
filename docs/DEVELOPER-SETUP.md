@@ -424,7 +424,8 @@ placeholder-club `CLUB`) haalt `.\scripts\dev\Restore-ProductionDump.ps1` eenmal
 dump van de productie-Postgres (Supabase) op en zet die lokaal terug — inclusief het echte
 `SportlinkClientId`, zodat je daarna handmatig een volledige sync kunt draaien om verse data bij de
 echte Sportlink API op te halen (hetzelfde synchronisatiepad als productie, zie sectie 7). Deze
-paragraaf gaat over de Postgres-tier, en daar is de route `GET /api/postgres/sync-matches`:
+paragraaf gaat over de Postgres-tier, en daar is de route `GET /api/postgres/sync-matches`. Die
+sync vraagt lokaal tijdelijk `AllowExternalIntegrations=true` (sectie 5.3), anders geeft hij 503:
 
 ```powershell
 Invoke-RestMethod "http://localhost:7094/api/postgres/sync-matches?reset=true&season=<jaar>"
@@ -727,9 +728,21 @@ Sportlink-timer handmatig testen tegen de productie-API)? Zet dan in `local.sett
 ```
 
 Zet dit nooit standaard aan — dat zou de bescherming voor de rest van je lokale werk tenietdoen.
-Zonder deze instelling blijft alles hierboven geblokkeerd. `SyncMatchesHttp` (de handmatige
-sync-trigger op `/api/sync-matches`, zie sectie 7) is bewust **niet** door deze poort geraakt: dat
-endpoint bestaat juist om desgewenst bewust tegen de echte Sportlink-API te testen.
+Zonder deze instelling blijft alles hierboven geblokkeerd.
+
+**Ook deze functies vragen lokaal `AllowExternalIntegrations=true` (#1676)**; zonder de
+instelling geven ze HTTP 503 of slaan ze de externe aanroep over. Alles geldt op beide tiers,
+behalve waar anders staat:
+
+- thema-extractie van de clubwebsite (`/api/beheer/theme/extract`, 503),
+- geocodering van een plaatsnaam (`/api/beheer/geocode`, 503),
+- de sync-knop (`/api/beheer/sync/trigger`, 503) en de queue-verwerking daarachter (de job wordt
+  als mislukt vastgelegd), en de handmatige HTTP-sync `/api/sync-matches` resp.
+  `/api/postgres/sync-matches` (sectie 7, 503),
+- de realtime veldbezetting uit de Sportlink-API (alleen de SQL Server-tier; valt terug op de database),
+- de automatische herstart na een gewijzigd sync-schema (wordt overgeslagen).
+
+Zet de instelling daarvoor alleen tijdelijk aan, zoals hierboven beschreven.
 
 > `Test-App.ps1` en de CI-jobs draaien dus altijd met de blokkade aan, zonder dat daar iets voor
 > geconfigureerd hoeft te worden.
@@ -1332,6 +1345,7 @@ Het label `turn: claude-code` op een issue start de workflow `.github/workflows/
 - **Actuele beurt (#1664):** de poort leest het issue opnieuw en start alleen als het issue open is en precies één `turn:`-label heeft, namelijk `turn: claude-code`. Een verouderde of wachtende run (issue gesloten, beurt teruggenomen of dubbel gelabeld) stopt zonder labelwijziging en zonder het issue te heropenen. De `concurrency`-groep blijft `cancel-in-progress: false`: GitHub houdt per groep al één wachtende run over, en `true` zou een lopende implementatie afbreken.
 - **Meerdere PR-koppelingen (#1665):** de poort verzamelt alle geldige open PR's (bevoegde auteur, zelfde repository, sterke referentie, branch `feature/#<nr>-`). Nul: implementatie; één: verwerking; meer dan één: geen run, geen labelwijziging, eigenaarsbesluit, onafhankelijk van de API-volgorde.
 - **Contextlimiet (#1666):** de prompt gaat als omgevingsvariabele naar een shellstap (Linux: 128 KiB per string, in bytes). De volledige context (issuetitel en -tekst, kopregels, separators, comments en reviews) wordt in UTF-8-bytes begrensd op 96 KiB (`MAX_CONTEXT_BYTES`; de vaste prompt is ~5,2 KiB). De issuetekst krijgt maximaal de helft; daarna blijven de nieuwste comments/reviews behouden en vallen de oudste af, en elke afkapping is gemarkeerd. Een transport via een promptbestand is een optie zodra een gepinde `claude-code-action`-versie dat ondersteunt; de huidige pin heeft geen `prompt_file`-input.
+- **Eindlabel als vergelijk-en-zet (#1692):** de agent schrijft zelf geen `turn:`-label (geen `gh issue edit` in `--allowedTools`). Hij sluit zijn laatste issuecomment af met `Volgende beurt: turn: codex` of `Volgende beurt: turn: owner`. De job `eindlabel` zet dat label op code van de default branch, alleen als het issue nog open is, geen `status: awaiting-release` heeft, het enige `turn:`-label nog `turn: claude-code` is en de start-PR nog open is en geen gekoppelde PR gemerged of tijdens de run gesloten is. Anders schrijft hij niets en staat de reden in de run-samenvatting. Na het schrijven controleert hij opnieuw en haalt hij bij een merge in dat venster zijn eigen label weer weg. Zonder geldige beurtregel gaat de beurt naar de eigenaar. De poort start geen run als een gekoppelde PR al gemerged is of het issue `status: awaiting-release` heeft.
 - **Secret:** de run heeft het repository-secret `CLAUDE_CODE_OAUTH_TOKEN` nodig. De eigenaar maakt dat zelf aan met `claude setup-token`; een agent doet dit nooit.
 - **Grenzen:** de run merget en deployt nooit en laat de PR in draft.
 - **CI-bewijs (#1641):** GitHub start geen `pull_request`-run zolang de PR een merge-conflict heeft (bewezen op #1636/#1638/#1640: elke head zonder run had een conflict met `develop`, elke head mét run niet; dit verklaart ook de bot-push zonder run). Het ontbreken van `Build FunctionApp + BlazorAdmin` in `gh pr checks` is daarom een signaal "CI niet bewezen", geen bewijs van een conflict (ook padfilters, `[skip ci]`, goedkeuringsregels voor forks of een uitgeschakelde workflow geven geen run): controleer het conflict apart met `gh pr view <nr> --json mergeable` of `git merge-tree`. Een conflict los je op door `develop` te mergen; `build.yml` en `security-scan.yml` hebben geen `branches`-filter meer, dus ook een PR tegen een featurebranch bouwt. "CI groen" en de zelfmerge-regel (AGENTS.md) eisen dat `Build (PR)` én Security Gate op de head-SHA aanwezig zijn. De verwerkingsstap meldt anders "CI niet bewezen"; een handmatige `gh workflow run build.yml --ref <branch>` blijft het noodmiddel voor `Build (PR)`; de Security Gate komt van de `push`-run van `security-scan.yml` en staat dus op elke gepushte SHA (die workflow heeft bewust geen `workflow_dispatch`; zie SECURITY.md). De bot dispatcht zelf niet (eigenaarsbesluit over botrechten, zie PR #1661).
