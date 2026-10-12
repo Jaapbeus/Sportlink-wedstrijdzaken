@@ -1,6 +1,6 @@
 ---
 name: autonoom
-description: "Ontwikkel toegewezen issues in eigen worktrees, laat de andere agent reviewen en bewaak CI. Merge uitsluitend met aparte eigenaarsautorisatie; reserveer de gedeelde debugomgeving vóór gebruik."
+description: "Ontwikkel toegewezen issues in eigen worktrees, laat de andere agent reviewen en bewaak CI. Merge naar develop volgens de zelfmerge-regel; main, Azure/kosten, schema en werkinstructies/skills blijven bij de eigenaar. Reserveer de gedeelde debugomgeving vóór gebruik."
 disable-model-invocation: false
 argument-hint: "[--dry-run] [--features] [--release]"
 ---
@@ -9,10 +9,15 @@ argument-hint: "[--dry-run] [--features] [--release]"
 > en Claude Code. Werk uitsluitend aan de toegewezen taak in de eigen geverifieerde worktree;
 > claim of wijzig geen taak, branch, worktree of services van een andere actieve sessie.
 > Behoud `source:` als herkomst; registreer implementer, reviewer, fase en sessie afzonderlijk.
-> Vóór merge: wederzijdse review van de huidige head-SHA, relevante checks én afzonderlijke
-> eigenaarsautorisatie. Deze skill omzeilt die grenzen niet.
-> `/autonoom` zonder verdere mergeopdracht autoriseert ontwikkeling en PR's, geen merges.
-> Sla merge-/cleanupstappen zonder aparte autorisatie over en rapporteer de klaarstaande PR's.
+> Merge naar `develop` volgt de zelfmerge-regel (AGENTS.md, "Zelfmerge na schone review", #1690):
+> de reviewer gaf "geen bevindingen" op de huidige head-SHA, alle checks groen (incl. `Build (PR)`
+> en Security Gate op die head) en geen openstaand eigenaarspunt. Altijd naar de eigenaar: `main`
+> (alleen via een door de eigenaar gestarte `/release`), Azure-resources/kosten,
+> databaseschema/migraties en werkinstructies/skills. Deze skill omzeilt die grenzen niet.
+> `/autonoom` autoriseert ontwikkeling en PR's; een merge naar `develop` mag alleen als de PR aan
+> de zelfmerge-regel voldoet. Geen merge naar `main`, geen deploy en geen merge van een uitzondering
+> zonder `/release` of eigenaarsbesluit. Voldoet een PR niet, rapporteer hem met het eigenaarspunt
+> (fase `eigenaarsbesluit` + `turn: owner`).
 > Alleen vooraf toegewezen, gescheiden issues behoren tot deze cyclus; nieuw gevonden werk
 > dat overlapt of door een andere sessie is geclaimd wordt niet automatisch opgepakt.
 > Start/stop/clean/migraties vereisen vooraf exclusief runtime-eigenaarschap. De huidige
@@ -27,7 +32,7 @@ klaar voor de volgende iteratie.
 **Argumenten:**
 - `--dry-run` — toon wat er zou gebeuren zonder daadwerkelijk te wijzigen
 - `--features` — voer ook grote feature-issues uit (label `enhancement` of `type: feature`); zonder dit argument worden die overgeslagen
-- `--release` — voer Fase 3.5 uit: die roept de skill `release` aan (securitypoort met `/security-review`, versie-bump, CHANGELOG afsluiten, PR develop→main, productie-deploy bewaken, tag). **Zonder dit argument wordt Fase 3.5 overgeslagen** — de toegewezen PR's worden klaargezet; merges vereisen aparte autorisatie. Dit geeft ruimte om de wijzigingen eerst lokaal te testen vóór release.
+- `--release` — voer Fase 3.5 uit: die roept de skill `release` aan (securitypoort met `/security-review`, versie-bump, CHANGELOG afsluiten, PR develop→main, productie-deploy bewaken, tag). **Zonder dit argument wordt Fase 3.5 overgeslagen** — PR's gaan hoogstens via de zelfmerge-regel naar `develop`; niets gaat naar `main`. Dit geeft ruimte om de wijzigingen eerst lokaal te testen vóór release.
 
 > **Standaard = develop-only.** Productie-deploy vereist bewuste `--release` keuze.
 
@@ -56,7 +61,7 @@ Symbolen:
 
 **Lus-structuur:**
 ```
-Fase 0   Geautoriseerde PR's beoordelen; alleen eigen afgerond werk opruimen
+Fase 0   PR's die alleen op de merge wachten (zelfmerge-regel) mergen; alleen eigen afgerond werk opruimen
 Fase 0.5 Securityissues inventariseren; alleen toegewezen fixes uitvoeren
 Fase 1   Toegewezen scope triageren en overlap controleren
 Fase 2   Per taak eigen worktree, implementatie, checks en wederzijdse review
@@ -72,23 +77,36 @@ Een nog open `awaiting-release`-issue betekent niet dat implementatie opnieuw mo
 
 ---
 
-## FASE 0 — Geautoriseerde PR's en uitsluitend eigen afgerond werk
+## FASE 0 — PR's die op de merge wachten en uitsluitend eigen afgerond werk
 
-### 0a. Open PR's met groene CI samenvoegen
+### 0a. Open PR's volgens de zelfmerge-regel samenvoegen
 
 ```powershell
-gh pr list --state open --json number,title,headRefName,statusCheckRollup
+gh pr list --state open --base develop --json number,title,headRefName,isDraft,statusCheckRollup
+# Door de CI-bot afgeronde issues die alleen op de merge wachten (#1702): geen turn:-label,
+# laatste workflowcomment "Wacht op merge door de implementer".
+gh issue list --state open --search '"Wacht op merge door de implementer" in:comments' --json number,title,labels
 ```
 
-Voor elke expliciet voor merge geautoriseerde PR (andere PR's alleen rapporteren):
-1. Haal CI-status op: `gh pr checks <nr>`
-2. Is de wederzijdse review op de huidige SHA afgerond, merge geautoriseerd, Security Gate ✅
-   en zijn alle toepasselijke checks ✅ (skipped alleen waar toegestaan)? → merge:
+Kandidaten: PR's van je eigen implementatie, en PR's waarvan de CI-bot de implementer was (die
+merget zelf nooit; de eerstvolgende interactieve sessie doet het). Andermans PR's alleen rapporteren.
+Voor elke kandidaat:
+1. Controleer de zelfmerge-regel (AGENTS.md, "Zelfmerge na schone review"):
+   - de reviewer gaf "geen bevindingen" op de **huidige** head-SHA (reviewbewijs als PR-comment);
+   - `gh pr checks <nr>`: alle checks ✅, inclusief aanwezige `Build (PR)` én Security Gate op die head;
+   - geen openstaand eigenaarspunt (keuze, acceptatie, risico, onverwerkte bevinding; een
+     controle die pas na de release kan telt niet);
+   - geen uitzondering: base is `develop` (nooit `main`), geen Azure-resources/kosten, geen
+     databaseschema/migraties, geen werkinstructies/skills (`AGENTS.md`, `CLAUDE.md`, `.agents/`, `.claude/`).
+2. Alles ✅ → `gh pr ready <nr>` (indien draft), dan
    ```powershell
    gh pr merge <nr> --merge --delete-branch
    ```
-3. Is Security Gate ❌? → sla over, noteer als blocker.
-4. Zijn sommige checks nog pending? → sla over (later in de cyclus controleren).
+   en leg fase `gemerged` vast. Alleen de eigen branch verwijderen; bij een bot-PR is de branch
+   van de bot en mag hij weg na de merge.
+3. Eigenaarspunt of uitzondering → niet mergen; fase `eigenaarsbesluit` + `turn: owner` met het punt.
+4. Is Security Gate ❌? → sla over, noteer als blocker.
+5. Zijn sommige checks nog pending? → sla over (later in de cyclus controleren).
 
 Rapporteer: welke PR's gemerged, welke overgeslagen en waarom.
 
@@ -300,8 +318,8 @@ remote-delete of terugdraaien van andermans werk. Een rode Security Gate blokkee
 > **main IS productie** — elke merge triggert een automatische deploy naar Azure.
 > Dit is een harde checklist, geen aanbeveling.
 
-Features gaan naar `develop`; deze productiechecklist geldt alleen voor afzonderlijk
-geautoriseerde hotfix/release-merges naar `main`. Voor iedere merge: huidige head-SHA
+Features gaan naar `develop` (zelfmerge-regel, zie Fase 0a); deze productiechecklist geldt alleen
+voor hotfix/release-merges naar `main`, en die lopen uitsluitend via een door de eigenaar gestarte `/release`. Voor iedere merge: huidige head-SHA
 reviewen door de andere agent en bevindingen verwerken (niet bij een release via `/release`:
 de release is one-shot, #1604). Controleer vóór productie bovendien:
 
@@ -319,7 +337,7 @@ de release is one-shot, #1604). Controleer vóór productie bovendien:
    naam-velden in SQL-queries die als JSON teruggaan)
 ```
 
-Alle vakjes ✅, wederzijdse review afgerond (niet bij `/release`, #1604) en merge expliciet geautoriseerd? → **GO: merge**
+Alle vakjes ✅, wederzijdse review afgerond (niet bij `/release`, #1604) en de merge naar `main` door de eigenaar via `/release` geautoriseerd? → **GO: merge**
 ```powershell
 gh pr merge <pr-nr> --merge --delete-branch
 ```
@@ -388,7 +406,7 @@ Rapporteer resterende open issues; neem andermans werk niet over om de globale l
 
 ## FASE 3 — SYNC CHECK: lokaal = online
 
-Na afronding van de toegewezen PR's en groene CI (merges alleen indien geautoriseerd):
+Na afronding van de toegewezen PR's en groene CI (merges naar `develop` alleen volgens de zelfmerge-regel):
 
 ### 3a. Remote stand lezen
 
@@ -423,7 +441,7 @@ Wacht op groen als er net een merge was. Verplichte per-job check (zie Fase 0d).
 >
 > Zonder `--release`: sla Fase 3.5 volledig over en ga direct naar Fase 4.
 > Meld dan aan de gebruiker:
-> "✅ Toegewezen ontwikkelscope afgerond — rapporteer afzonderlijk welke PR's klaarstaan en welke geautoriseerd zijn gemerged.
+> "✅ Toegewezen ontwikkelscope afgerond — rapporteer afzonderlijk welke PR's via de zelfmerge-regel naar `develop` zijn gemerged en welke op een eigenaarspunt wachten.
 > Start `/release` (of `/autonoom --release`) als je klaar bent om naar productie te gaan."
 
 Met `--release`: **roep de skill `release` aan** (`Skill({ skill: "release" })`) en volg die
