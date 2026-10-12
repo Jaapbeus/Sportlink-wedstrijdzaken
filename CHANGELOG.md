@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- Veld optimalisatie rekent voor wedstrijden die al in Sportlink staan met dezelfde blokduur als de Planning (Sportlinks speelduur) en zonder app-buffer (club of team) rondom die wedstrijd; speeltijdentabel en buffer gelden alleen nog voor wedstrijden waar Sportlink geen duur voor kent, op beide databasetiers; een wedstrijd met Sportlink-duur wordt ook ingepland als de leeftijdscategorie geen speeltijdenrij heeft (zie issue #1559).
+
 ## [3.13.2.0] — 2026-10-11
 
 ### Changed
