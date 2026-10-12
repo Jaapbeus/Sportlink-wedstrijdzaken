@@ -39,6 +39,9 @@ public static class FeedbackCore
 
     public static bool IsOngeldigType(string? type) => !ToegestaneTypes.Contains(type);
 
+    /// <summary>Maximaal aantal aanvulvragen: de AI-vraaglijst wordt hierop gecapt en de endpoints weigeren meer (#1677).</summary>
+    public const int MaxAanvulVragen = 5;
+
     // ── Validate ──────────────────────────────────────────────────────────────
 
     /// <summary>

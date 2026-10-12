@@ -33,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.13.4.8
+  version: 3.13.4.13
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -2261,8 +2261,10 @@ components:
       properties:
         vraag:
           type: string
+          description: Wordt op 500 tekens afgekapt (#1677)
         antwoord:
           type: string
+          description: Wordt op 2000 tekens afgekapt (#1677)
 
     FeedbackContext:
       type: object
@@ -2293,6 +2295,8 @@ components:
         vragenAntwoorden:
           type: array
           nullable: true
+          maxItems: 5
+          description: Maximaal 5 vraag/antwoord-paren; meer geeft 400 (#1677)
           items:
             $ref: '#/components/schemas/VraagAntwoord'
         context:
@@ -6638,6 +6642,12 @@ paths:
                 $ref: '#/components/schemas/FeedbackValidateResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '413':
+          description: Request-body groter dan 65536 tekens (#1677); er is niets verwerkt. Body `{ error }`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -6687,6 +6697,12 @@ paths:
                 $ref: '#/components/schemas/FeedbackPreviewResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '413':
+          description: Request-body groter dan 65536 tekens (#1677); er is niets verwerkt. Body `{ error }`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -6748,6 +6764,12 @@ paths:
                 $ref: '#/components/schemas/FeedbackSubmitResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '413':
+          description: Request-body groter dan 65536 tekens (#1677); er is niets verwerkt. Body `{ error }`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
