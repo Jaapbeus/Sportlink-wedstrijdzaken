@@ -68,6 +68,8 @@ public class EndpointAutorisatieTests
         "SqlSportlinkMatchGet",
         "SqlSportlinkMatchPublicMatchIdGet",
         "PdfExportStatus",
+        // #1647: menu-toegang voor elke ingelogde rol (de matrix zelf is admin-only).
+        "SqlMenuToegangGet",
         // #764: de feedbackwidget is open voor elke ingelogde rol; een melding van een gewone
         // gebruiker wordt nooit rechtstreeks gepubliceerd (zie FeedbackEndpointCore). Het
         // beheeroverzicht (AdminFeedback*) blijft admin-only.

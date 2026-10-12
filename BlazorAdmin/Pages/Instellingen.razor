@@ -2,10 +2,10 @@
 @inherits ClubSelectorPageBase
 @using BlazorAdmin.Services
 
-<PageTitle>Instellingen — Beheer</PageTitle>
+<PageTitle>App instellingen — Beheer</PageTitle>
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="mb-0">Instellingen</h1>
+    <h1 class="mb-0">App instellingen</h1>
     @if (settings != null && string.IsNullOrEmpty(errorMessage))
     {
         <button type="submit" form="settings-form" class="btn btn-primary" disabled="@saving">

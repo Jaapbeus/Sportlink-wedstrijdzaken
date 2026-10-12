@@ -755,7 +755,7 @@ primaire club live-klaar is en zo niet, waarom niet (`Get-SportlinkLiveBlockers`
 - **Welke club live gaat, bepaalt de database:** de club met `syncenabled = TRUE` in
   `public.appsettings`. De democlub `ALLSTARS` heeft geen koppeling en de extensie staat er uit.
   Er staat dus geen clubnaam in code of scripts, en een andere fork werkt ongewijzigd.
-- **Inloggegevens en dry-run zijn mensenwerk:** menu **Sportlink Ext.** → kaart
+- **Inloggegevens en dry-run zijn mensenwerk:** menu **Admin → Sportlink Web Extension** → kaart
   **Automatisch inloggen — rol Wedstrijdzaken**. Lokaal en productie hebben elk een eigen sleutel,
   dus na een nieuwe lokale sleutel voer je de gegevens daar eenmalig opnieuw in.
 - **De code-locks (`…LiveBevestigd` in `SportlinkClubClient.cs`) blijven leidend**, ook lokaal.

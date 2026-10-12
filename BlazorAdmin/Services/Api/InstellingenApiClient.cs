@@ -26,6 +26,10 @@ public sealed class InstellingenApiClient
         => await _t.PutAsync<object>("api/beheer/rolfeatureinstellingen",
             new { RolNaam = rolNaam, FeatureKey = featureKey, Enabled = enabled });
 
+    /// <summary>#1647: menu-sleutels die de ingelogde gebruiker mag zien (open voor elke ingelogde rol).</summary>
+    public async Task<ApiResult<MenuToegangDto>> GetMenuToegangAsync()
+        => await _t.GetAsync<MenuToegangDto>("api/planner/menu-toegang");
+
     // ── Sync ──
 
     public async Task<ApiResult<SyncStatusDto>> GetSyncStatusAsync(Guid? jobId = null)
