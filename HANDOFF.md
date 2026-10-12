@@ -1,3 +1,32 @@
+# HANDOFF — Sprint A #1607 en nazorg (2026-10-12 ~12:45)
+
+Geverifieerd om ~11:35 UTC met `gh pr list`/`gh pr view`/`gh issue view` en `git log origin/develop`; niets hiervan is gereleased (`develop` op 292f5771, versie 3.13.4.8).
+
+**Gemerged op `develop` vandaag:** #1654/#1656 (release-voorbereiding 3.13.2.0, terugmerge hotfix), #1659 (#1559), #1660 (#1597), #1663 (#1650), #1662 (#1647/#1599), #1661 (#1641), #1667 (#1664/#1665/#1666), #1658 en #1657 (Dependabot), #1670 (#1669: merge verwijdert het `turn:`-label) en #1681 (#1678: kleine verhardingen). #1669 en #1678 staan op `status: awaiting-release`.
+
+**Open PR's (alle zes `DIRTY` of `BLOCKED` na de merge van #1681: eerst `develop` mergen, daarna CI opnieuw):**
+
+| PR | Issue(s) | Fase volgens laatste fasecomment | `turn:`-label nu |
+|---|---|---|---|
+| #1680 | #1671 | eigenaarsbesluit (twee Codex-rondes, head e9b29050) | `turn: owner` |
+| #1684 (ready) | #1672 | eigenaarsbesluit (Codex r1 op 8de413ee, raakt auth-gate); daarna twee develop-merges, head nu a9675977 | `turn: owner` |
+| #1679 | #1675 | eigenaarsbesluit (twee Codex-rondes, head e364d4de) | `turn: owner` |
+| #1683 | #1676 | eigenaarsbesluit (twee Codex-rondes, head 479fef32) | `turn: owner` |
+| #1685 | #1673 + #1674 | eigenaarsbesluit (Codex r1: details alleen in de besloten notitie); verificatiecomment 11:28 met open punten | `turn: claude-code` (11:19; bot-runs 11:19–11:20 zonder nieuwe fasecomment) |
+| #1682 | #1677 | eigenaarsbesluit (Codex r1 deels verwerkt, rest alleen in de besloten notitie); verificatiecomment 11:28 met open punten | `turn: claude-code` (idem) |
+
+Label en fasecomment spreken elkaar bij #1673/#1674/#1677 tegen; los dat eerst op (één `gh issue edit` die alle `turn:`-labels vervangt). Issue #1686 (deze sessie: `turn:`-label exclusief, poort blokkeert bij een besloten reviewnotitie) staat als draft-PR open; workflows werken pas na de release naar `main`.
+
+**Openstaande eigenaarsbesluiten:**
+1. Verruiming van de zelfmerge-regel: uitzonderingslijst (auth, workflows, CI-guards, `source: owner`) en de tegenspraak met "een CI-run merget niet".
+2. R-01, R-02, R-04, R-13 en R-15 uit het besloten dossier (alleen de nummers; inhoud nooit publiek).
+3. GitHub-repo-instellingen (R-10): door de eigenaar zelf.
+4. Na de release: live 3-user-test van de auth, MSAL-login met `form-action` in productie, e-mailtester-DryRun met AI.
+
+**Modelroutering:** Fable-limiet ~95% op 2026-10-12: werk en verificatie met Opus; Fable alleen voor orkestratie; bij naderende limiet geen nieuwe agents en hervatten vanaf HANDOFF.md op de resettijd (onbekend: vraag de eigenaar of lees `/usage`).
+
+---
+
 # HANDOFF — nazorg na v3.13.2.0 (2026-10-12, orchestratorsessie; alles op `develop`, nog niet gereleased)
 
 **Gemerged op `develop` (2026-10-12):** #1659 (#1559: optimalisatie volgt Sportlinks blokduur, geen app-buffer voor Sportlink-wedstrijden; v3.13.3.0), #1660 (#1597: widgetlabel `via: feedback-widget`, oude label verwijderd en vijf historische issues gemigreerd; v3.13.3.1), #1663 (#1650: tier-onafhankelijke delen van `EmailProcessorFunction` naar `Planner.Shared/Email`, tier-duplicatie 5287 → 5171; de volledige fase-orkestratie achter een poort blijft bij #1271 wegens per-tier domeintypes), #1662 (#1647 hoofdmenu in groepen met rechten per rol + #1599 instellingen één keer per paginaopening; nieuw endpoint `GET /api/planner/menu-toegang`; v3.13.4.0).

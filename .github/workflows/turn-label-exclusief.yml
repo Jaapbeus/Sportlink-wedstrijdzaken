@@ -1,0 +1,47 @@
+name: Turn-label exclusief houden
+
+# #1686: hoogstens één `turn:`-label per issue (AGENTS.md, "Review en turn:"). Zet iemand of iets een
+# nieuw `turn:`-label, dan blijft dat label (het meest recente `labeled`-event) staan en worden de
+# andere `turn:`-labels verwijderd: laatste schrijver wint. Zo kan een gerichte vervanging van één
+# label nooit een tweede, verouderd label laten staan, en blokkeert de issue-beurt-poort niet meer
+# op "niet exclusief".
+#
+# Let op: een `issues`-event draait de workflow van de default branch (main); deze workflow werkt
+# dus pas na de eerstvolgende release naar main. Geen branch-/PR-triggers: er valt niets te sluiten.
+# Een label dat met de GITHUB_TOKEN wordt gezet (zoals setTurnLabel() in de issue-beurt-poort) start
+# geen workflow; setTurnLabel() verwijdert daarom zelf alle andere turn:-labels. Ook de verwijderingen
+# hieronder starten niets, dus deze workflow kan zichzelf niet opnieuw aanroepen.
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: read
+  issues: write
+
+# Per issue serieel, zodat twee snel opeenvolgende labels elkaar niet in de weg zitten.
+concurrency:
+  group: turn-label-exclusief-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  exclusief:
+    if: "startsWith(github.event.label.name, 'turn: ')"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (voor .github/scripts)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Overbodige turn-labels verwijderen
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { maakTurnExclusief } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/turn-label-exclusief.js`);
+            await maakTurnExclusief({
+              github,
+              context,
+              core,
+              issueNumber: context.payload.issue.number,
+              ontvangenLabel: context.payload.label.name,
+            });
