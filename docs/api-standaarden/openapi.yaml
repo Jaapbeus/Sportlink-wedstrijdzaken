@@ -3136,7 +3136,9 @@ components:
             #765: vrije-tekst-regel met de gewenste ontvangers, gescheiden door `;` of `,`. Elk
             fragment mag `"Naam" <adres>` of een kaal adres zijn. Server-side geparsed, gevalideerd
             (geldige syntax, max 15, gededupliceerd) en gecontroleerd tegen de uitsluitingslijst
-            (`dbo.UitgeslotenEmailAdressen`) vóór verzending.
+            (`dbo.UitgeslotenEmailAdressen`) vóór verzending. Voor een andere rol dan `admin` moet
+            elk adres bij het gekozen team horen (begeleiders van dat team, de coördinator of de
+            aanvrager zelf), anders `403` (#1671).
 
             Leeg of afwezig → ongewijzigd fallback-gedrag: server-side opzoeken van de
             hoogst-geprioriteerde begeleider (Trainer > Coach > Teamleider), met de coördinator als
@@ -7937,8 +7939,9 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           description: |
-            Geen toegang. Het vrije veld `ontvangers` is alleen beschikbaar voor de rol `admin`;
-            de rol `user` gebruikt de server-side lookup (veld leeg laten).
+            Geen toegang. Voor een andere rol dan `admin` moet elk adres in `ontvangers` bij het
+            gekozen team horen: een begeleider van dat team, de coördinator of de aanvrager zelf.
+            Een leeg veld gebruikt de server-side lookup.
           content:
             application/json:
               schema:
@@ -7950,7 +7953,10 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '429':
-          description: Te veel doorgestuurde vragen door dezelfde gebruiker; de limiet is 3 per 10 minuten.
+          description: |
+            Te veel doorgestuurde vragen door dezelfde gebruiker: de limiet is 3 verzendingen per
+            10 minuten. Alleen een daadwerkelijke verzending telt mee; de rol `admin` valt buiten de
+            limiet.
           content:
             application/json:
               schema:

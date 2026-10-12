@@ -109,8 +109,6 @@ public static class AdminTeambegeleidingFunction
                 if (string.IsNullOrWhiteSpace(dto.Bericht))
                     return new BadRequestObjectResult(new { error = "Bericht is vereist" });
 
-                if (TeambegeleidingDoorsturenEndpointCore.Controleer(EasyAuthHelper.IsAdmin(req), dto.Ontvangers, EasyAuthHelper.GetCallerObjectId(req)) is { } toegangsfout) return toegangsfout;
-
                 // Naam + email aanvrager uit Entra claims (server-side — nooit in response)
                 var aanvragerNaam = EasyAuthHelper.GetCallerName(req) ?? "een club-gebruiker";
                 var aanvragerEmail = EasyAuthHelper.GetCallerEmail(req);
@@ -122,21 +120,26 @@ public static class AdminTeambegeleidingFunction
                 // Coördinator-email ophalen uit AppSettings (BCC — ongewijzigd)
                 var coordinatorEmail = SystemUtilities.AppSettings.GetSetting("plannerEmailAdres");
 
-                var (ontvangers, ontvangersFout) = await ResolveOntvangersAsync(dto, clubCode, coordinatorEmail, persistenceRepository, log);
-                if (ontvangersFout != null) return ontvangersFout;
-
+                var aanvrager = new Aanvrager(EasyAuthHelper.IsAdmin(req), aanvragerEmail, EasyAuthHelper.GetCallerObjectId(req));
+                var bronnen = new OntvangerBronnen(
+                    async () => await HaalBegeleiderAdressenAsync(dto.TeamNaam, clubCode),
+                    () => ZoekBegeleiderEmailAsync(dto.TeamNaam, clubCode),
+                    () => persistenceRepository.GetExcludedEmailAddressesAsync(clubCode));
                 var graphClient = context.InstanceServices.GetService<GraphServiceClient>();
-                if (graphClient == null)
-                {
-                    log.LogWarning("Graph SDK niet geconfigureerd — e-mail doorsturen niet mogelijk");
-                    return new ObjectResult(new { error = "E-mail service niet geconfigureerd" }) { StatusCode = 503 };
-                }
 
-                var loggerFactory = context.InstanceServices.GetRequiredService<ILoggerFactory>();
-                var emailService = new EmailGraphService(graphClient, loggerFactory.CreateLogger<EmailGraphService>());
+                // #1671: de gedeelde kern bepaalt de volgorde (ontvangers, 503, dan pas het limietslot
+                // en de verzending).
+                return await TeambegeleidingDoorsturenEndpointCore.VoerUitAsync(
+                    aanvrager,
+                    () => TeambegeleidingDoorsturenEndpointCore.BepaalOntvangersAsync(dto.Ontvangers, aanvrager, coordinatorEmail, bronnen, log),
+                    graphClient != null,
+                    async ontvangers =>
+                    {
+                        var loggerFactory = context.InstanceServices.GetRequiredService<ILoggerFactory>();
+                        var emailService = new EmailGraphService(graphClient!, loggerFactory.CreateLogger<EmailGraphService>());
 
-                var subject = $"[{dto.TeamNaam}] Vraag van {aanvragerNaam}";
-                var htmlBody = $@"<p>Er is een vraag binnengekomen over de begeleiding van <strong>{System.Net.WebUtility.HtmlEncode(dto.TeamNaam)}</strong>.</p>
+                        var subject = $"[{dto.TeamNaam}] Vraag van {aanvragerNaam}";
+                        var htmlBody = $@"<p>Er is een vraag binnengekomen over de begeleiding van <strong>{System.Net.WebUtility.HtmlEncode(dto.TeamNaam)}</strong>.</p>
 <p><strong>Vraagsteller:</strong> {System.Net.WebUtility.HtmlEncode(aanvragerNaam)}</p>
 <p><strong>Onderwerp:</strong> {System.Net.WebUtility.HtmlEncode(dto.Onderwerp ?? "")}</p>
 <hr />
@@ -144,76 +147,53 @@ public static class AdminTeambegeleidingFunction
 <hr />
 <p><em>U kunt direct antwoorden op dit bericht — uw antwoord gaat naar de vraagsteller.</em></p>";
 
-                await VerstuurEnAuditeerAsync(
-                    emailService, ontvangers!, subject, htmlBody, aanvragerEmail, coordinatorEmail,
-                    persistenceRepository, dto.TeamNaam, clubCode, log);
-
-                return new OkObjectResult(new
-                {
-                    success = true,
-                    bericht = $"Uw vraag over de begeleiding van {dto.TeamNaam} is doorgestuurd. De begeleider neemt rechtstreeks contact met u op."
-                });
+                        await VerstuurEnAuditeerAsync(
+                            emailService, ontvangers, subject, htmlBody, aanvragerEmail, coordinatorEmail,
+                            persistenceRepository, dto.TeamNaam, clubCode, log);
+                    },
+                    dto.TeamNaam, log);
             });
     }
 
     /// <summary>
-    /// #765: "Email Aan" bepaalt de ontvangers zodra het veld gevuld is. Leeg/afwezig veld
-    /// houdt het oude gedrag (server-side TOP 1-lookup + coördinator-fallback) intact —
-    /// bestaande API-consumers blijven werken zonder het nieuwe veld mee te sturen.
+    /// Coach-e-mail server-side (NOOIT in response): de voorkeursbegeleider van een team, trainer
+    /// vóór coach vóór teamleider vóór de rest.
     /// </summary>
-    private static async Task<(List<string>? Ontvangers, IActionResult? Fout)> ResolveOntvangersAsync(
-        DoorsturenRequest dto, string clubCode, string? coordinatorEmail, IEmailPersistenceRepository persistenceRepository, ILogger log)
+    private static async Task<string?> ZoekBegeleiderEmailAsync(string teamNaam, string clubCode)
     {
-        if (!string.IsNullOrWhiteSpace(dto.Ontvangers))
-        {
-            var parseResultaat = OntvangerParser.Parse(dto.Ontvangers);
-            if (!parseResultaat.IsValid)
-                return (null, new BadRequestObjectResult(new { error = parseResultaat.FoutMelding }));
+        using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+        await connection.OpenAsync();
+        using var cmd = new SqlCommand(@"
+            SELECT TOP 1 [Emailadres]
+            FROM [avg].[Teambegeleiding]
+            WHERE [Team] = @team
+              AND [Emailadres] IS NOT NULL
+              AND [ClubCode] = @ClubCode
+            ORDER BY
+                CASE WHEN [Teamrol] LIKE '%Trainer%' THEN 1
+                     WHEN [Teamrol] LIKE '%Coach%' THEN 2
+                     WHEN [Teamrol] LIKE '%Teamleider%' THEN 3
+                     ELSE 4 END
+        ", connection);
+        cmd.Parameters.AddWithValue("@team", teamNaam);
+        cmd.Parameters.AddWithValue("@ClubCode", clubCode);
+        return await cmd.ExecuteScalarAsync() as string;
+    }
 
-            var uitgesloten = await persistenceRepository.GetExcludedEmailAddressesAsync(clubCode);
-            var geweigerdAdres = parseResultaat.Emailadressen.FirstOrDefault(uitgesloten.Contains);
-            if (geweigerdAdres != null)
-                return (null, new BadRequestObjectResult(new
-                {
-                    error = $"E-mailadres \"{geweigerdAdres}\" staat op de uitsluitingslijst en kan niet als ontvanger worden gebruikt."
-                }));
-
-            return ([.. parseResultaat.Emailadressen], null);
-        }
-
-        // Coach-email server-side ophalen (NOOIT in response)
-        string? coachEmail = null;
-        using (var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString))
-        {
-            await connection.OpenAsync();
-            using var cmd = new SqlCommand(@"
-                SELECT TOP 1 [Emailadres]
-                FROM [avg].[Teambegeleiding]
-                WHERE [Team] = @team
-                  AND [Emailadres] IS NOT NULL
-                  AND [ClubCode] = @ClubCode
-                ORDER BY
-                    CASE WHEN [Teamrol] LIKE '%Trainer%' THEN 1
-                         WHEN [Teamrol] LIKE '%Coach%' THEN 2
-                         WHEN [Teamrol] LIKE '%Teamleider%' THEN 3
-                         ELSE 4 END
-            ", connection);
-            cmd.Parameters.AddWithValue("@team", dto.TeamNaam);
-            cmd.Parameters.AddWithValue("@ClubCode", clubCode);
-            var result = await cmd.ExecuteScalarAsync();
-            coachEmail = result as string;
-        }
-
-        if (string.IsNullOrEmpty(coachEmail))
-        {
-            // Geen coach gevonden: stuur naar coördinator als fallback
-            if (string.IsNullOrEmpty(coordinatorEmail))
-                return (null, new ObjectResult(new { error = "Geen begeleider en geen coördinator geconfigureerd" }) { StatusCode = 503 });
-            coachEmail = coordinatorEmail;
-            log.LogWarning("Geen coach-email gevonden voor team — doorgestuurd naar coordinator");
-        }
-
-        return ([coachEmail], null);
+    /// <summary>Alle e-mailadressen van de begeleiders van een team (AVG: nooit in respons of log).</summary>
+    private static async Task<List<string>> HaalBegeleiderAdressenAsync(string teamNaam, string clubCode)
+    {
+        using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+        await connection.OpenAsync();
+        using var cmd = new SqlCommand(
+            "SELECT [Emailadres] FROM [avg].[Teambegeleiding] WHERE [Team] = @team AND [Emailadres] IS NOT NULL AND [ClubCode] = @ClubCode", connection);
+        cmd.Parameters.AddWithValue("@team", teamNaam);
+        cmd.Parameters.AddWithValue("@ClubCode", clubCode);
+        var adressen = new List<string>();
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            adressen.Add(reader.GetString(0));
+        return adressen;
     }
 
     /// <summary>

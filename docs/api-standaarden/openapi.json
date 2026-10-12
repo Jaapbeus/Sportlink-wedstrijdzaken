@@ -4020,7 +4020,7 @@
           "ontvangers": {
             "type": "string",
             "nullable": true,
-            "description": "#765: vrije-tekst-regel met de gewenste ontvangers, gescheiden door `;` of `,`. Elk\nfragment mag `\"Naam\" <adres>` of een kaal adres zijn. Server-side geparsed, gevalideerd\n(geldige syntax, max 15, gededupliceerd) en gecontroleerd tegen de uitsluitingslijst\n(`dbo.UitgeslotenEmailAdressen`) vóór verzending.\n\nLeeg of afwezig → ongewijzigd fallback-gedrag: server-side opzoeken van de\nhoogst-geprioriteerde begeleider (Trainer > Coach > Teamleider), met de coördinator als\nfallback wanneer niemand gevonden wordt.\n"
+            "description": "#765: vrije-tekst-regel met de gewenste ontvangers, gescheiden door `;` of `,`. Elk\nfragment mag `\"Naam\" <adres>` of een kaal adres zijn. Server-side geparsed, gevalideerd\n(geldige syntax, max 15, gededupliceerd) en gecontroleerd tegen de uitsluitingslijst\n(`dbo.UitgeslotenEmailAdressen`) vóór verzending. Voor een andere rol dan `admin` moet\nelk adres bij het gekozen team horen (begeleiders van dat team, de coördinator of de\naanvrager zelf), anders `403` (#1671).\n\nLeeg of afwezig → ongewijzigd fallback-gedrag: server-side opzoeken van de\nhoogst-geprioriteerde begeleider (Trainer > Coach > Teamleider), met de coördinator als\nfallback wanneer niemand gevonden wordt.\n"
           }
         }
       },
@@ -10967,7 +10967,7 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "description": "Geen toegang. Het vrije veld `ontvangers` is alleen beschikbaar voor de rol `admin`;\nde rol `user` gebruikt de server-side lookup (veld leeg laten).\n",
+            "description": "Geen toegang. Voor een andere rol dan `admin` moet elk adres in `ontvangers` bij het\ngekozen team horen: een begeleider van dat team, de coördinator of de aanvrager zelf.\nEen leeg veld gebruikt de server-side lookup.\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -10987,7 +10987,7 @@
             }
           },
           "429": {
-            "description": "Te veel doorgestuurde vragen door dezelfde gebruiker; de limiet is 3 per 10 minuten.",
+            "description": "Te veel doorgestuurde vragen door dezelfde gebruiker: de limiet is 3 verzendingen per\n10 minuten. Alleen een daadwerkelijke verzending telt mee; de rol `admin` valt buiten de\nlimiet.\n",
             "content": {
               "application/json": {
                 "schema": {
