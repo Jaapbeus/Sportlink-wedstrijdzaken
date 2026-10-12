@@ -26,6 +26,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - De afhandeling rond de verwerkingsrij van een inkomende e-mail (idempotentiebesluit, opgeven na te veel pogingen, beoordeling na een onbekende verzenduitkomst, vastleggen van classificatie- en verwerkingsfouten, buiten-scope-afhandeling) en de foutcategorisering staan nu één keer in Planner.Shared in plaats van per databasetier; gedrag ongewijzigd, met eigen unit-tests (#1650).
 - De instellingen worden per paginaopening één keer opgehaald in plaats van twee keer, via een gedeelde per-club cache voor het menu en de pagina's (#1599).
 - ci(#1641): `Build (PR)` en Security Scan draaien ook op PR's tegen een featurebranch (na een base-retarget: workflow dispatchen); de zelfmerge-regel en de automatische issue-beurt eisen dat beide check-runs op de head-SHA aanwezig zijn (een PR met merge-conflict krijgt geen pull_request-run)
+- Vrije modelvelden in antwoordmails (KNVB-notitie, aanvangstijd, team en tegenstander) en in reply-leermomenten worden begrensd en gevalideerd voordat ze worden gebruikt; een niet-bevestigd team wordt niet bij naam genoemd (#1673).
+- Berichten van automatische afzenders worden niet automatisch beantwoord, uitgaande mail vraagt om geen automatische antwoorden, het aantal automatische antwoorden per conversatie is begrensd en de berichttekst wordt voor de AI-aanroep begrensd (#1674).
 
 ### Fixed
 - De poort van de automatische issue-beurt start geen verouderde of wachtende run meer: het issue moet op dat moment open zijn en precies één beurtlabel hebben, `turn: claude-code`; anders stopt de run zonder labelwijziging (#1664)

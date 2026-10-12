@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Planner.Shared.Email.Trace;
 
 namespace Planner.Shared.Email;
 
@@ -27,6 +28,11 @@ public interface IEmailVerwerkingOpslag
     /// <summary>Zet de verwerking op status Review (zonder classificatie).</summary>
     Task ZetOpReviewAsync(int verwerkingId);
 }
+
+/// <summary>Gegevens van het bericht dat de antwoordlusbeveiliging beoordeelt (het type als <c>VerzoekType</c>-naam, voor de korte trace).</summary>
+public sealed record AntwoordLimietInvoer(
+    int VerwerkingId, string MessageId, string? ConversationId,
+    string Type, string? Team, string? Tegenstander, int AantalDatums, string? AanvangsTijd);
 
 /// <summary>Mailboxacties die de gedeelde afhandeling nodig heeft (#1650); de tier vertaalt naar Graph.</summary>
 public interface IEmailMailboxActies
@@ -215,6 +221,44 @@ public static class EmailVerwerkingsAfhandeling
         catch (Exception ex)
         {
             log.LogWarning(ex, "Outlook-labeling buiten scope mislukt voor {MessageId} — status is wel vastgelegd", messageId);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Antwoordlusbeveiliging (<see cref="AntwoordLimiet"/>): telt de eerder verzonden antwoorden in de
+    /// conversatie en laat het bericht zonder antwoord als de limiet is bereikt of als een bevestiging
+    /// op ons eigen antwoord reageert. Legt de status en een korte trace vast, labelt en markeert als
+    /// gelezen. Retourneert <c>true</c> als het bericht hiermee is afgehandeld.
+    /// </summary>
+    public static async Task<bool> HandelAntwoordLimietAsync(
+        AntwoordLimietInvoer bericht, bool isBevestiging,
+        Func<Task<int>> telVerzondenAntwoordenAsync, Func<Task> legGeenAntwoordNodigVastAsync,
+        Func<BeslissingsTrace, Task> bewaarTraceAsync, IEmailMailboxActies mailbox, ILogger log)
+    {
+        if (string.IsNullOrWhiteSpace(bericht.ConversationId))
+            return false;
+
+        var reden = AntwoordLimiet.Reden(AntwoordLimiet.Beoordeel(await telVerzondenAntwoordenAsync(), isBevestiging));
+        if (reden is null)
+            return false;
+
+        await legGeenAntwoordNodigVastAsync();
+        log.LogInformation("Email {Id} overgeslagen: {Reden}", bericht.VerwerkingId, reden);
+
+        var trace = EmailTraceOpslag.BouwKorteTrace(
+            bericht.Type, bericht.Team, bericht.Tegenstander, bericht.AantalDatums, bericht.AanvangsTijd, reden);
+        await EmailTraceOpslag.BewaarVeiligAsync(() => bewaarTraceAsync(trace), log, bericht.VerwerkingId);
+
+        try
+        {
+            await mailbox.LabelGeenAiAntwoordAsync(bericht.MessageId);
+            await mailbox.MarkeerGelezenAsync(bericht.MessageId);
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Outlook-labeling na antwoordlimiet mislukt voor {MessageId} — status is wel vastgelegd", bericht.MessageId);
         }
 
         return true;

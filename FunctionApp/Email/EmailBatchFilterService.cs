@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Planner.Shared.Email;
 
 namespace SportlinkFunction.Email;
 
@@ -23,6 +24,11 @@ internal sealed class EmailBatchFilterService
             else if (uitgeslotenCache.Contains(email.Afzender))
             {
                 log.LogInformation("Email {MessageId} van uitgesloten adres (cache), overslaan (afzender niet gelogd — AVG #210)", email.MessageId);
+                await graphService.MarkAsReadAsync(email.MessageId);
+            }
+            else if (AutomatischeAfzenderHerkenning.IsAutomatisch(email.InternetHeaders))
+            {
+                log.LogInformation("Email {MessageId}: {Reden}, overslaan", email.MessageId, AutomatischeAfzenderHerkenning.Reden);
                 await graphService.MarkAsReadAsync(email.MessageId);
             }
             else

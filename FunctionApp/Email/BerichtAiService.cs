@@ -140,7 +140,7 @@ public class BerichtAiService
         => $"{DataMarkerStart(markerId)}\n"
            + $"Van: {NeutraliseerDataMarkers(afzender)}\n"
            + $"Onderwerp: {NeutraliseerDataMarkers(subject)}\n\n"
-           + $"{NeutraliseerDataMarkers(body)}\n"
+           + $"{NeutraliseerDataMarkers(BerichtBodyBegrenzing.Kap(body))}\n"
            + DataMarkerEinde(markerId);
 
     /// <summary>
@@ -352,7 +352,7 @@ public class BerichtAiService
             + "Reply:\n"
             + $"{DataMarkerStart(dataMarkerId)}\n"
             + $"Onderwerp: {NeutraliseerDataMarkers(subject)}\n\n"
-            + $"{NeutraliseerDataMarkers(body)}\n"
+            + $"{NeutraliseerDataMarkers(BerichtBodyBegrenzing.Kap(body))}\n"
             + DataMarkerEinde(dataMarkerId);
 
         var messages = new List<Microsoft.Extensions.AI.ChatMessage>
@@ -382,7 +382,8 @@ public class BerichtAiService
             var samenvatting = GetOptionalString(root, "samenvatting");
 
             _logger.LogInformation("Correctie-detectie: isCorrectie={IsCorrectie}", isCorrectie);
-            return (isCorrectie, afgeleidType, samenvatting);
+            // Vrije modeluitvoer wordt een bekend verzoektype en een gesaneerde samenvatting (zelfde regels als het admin-pad).
+            return (isCorrectie, LeermomentInvoer.MapAfgeleidType(afgeleidType), AiVeldSanering.SamenvattingOfNull(samenvatting));
         }
         catch (Exception ex)
         {
@@ -411,18 +412,18 @@ public class BerichtAiService
         {
             Type = MapVerzoekType(typeString),
             Datum = GetOptionalString(root, "datum"),
-            AanvangsTijd = GetOptionalString(root, "aanvangsTijd"),
+            AanvangsTijd = AiVeldSanering.AanvangsTijd(GetOptionalString(root, "aanvangsTijd")),
             Dagdeel = DagdeelVenster.Normaliseer(GetOptionalString(root, "dagdeel")), // #1587: onbekend = null
             GewensteDatum = GetOptionalString(root, "gewensteDatum"),
             Datums = GetOptionalStringArray(root, "datums"),
             TeamNaam = GetOptionalString(root, "teamNaam"),
             LeeftijdsCategorie = GetOptionalString(root, "leeftijdsCategorie"),
             Tegenstander = GetOptionalString(root, "tegenstander"),
-            Samenvatting = GetOptionalString(root, "samenvatting") ?? "",
+            Samenvatting = AiVeldSanering.Samenvatting(GetOptionalString(root, "samenvatting")),
             NamensWie = MapNamensWie(namensWieString),
             // Verlopen KNVB-regels nooit als geldend advies doorgeven — ook niet als het model de
             // staleness-instructie negeert. (#608)
-            KnvbNotitie = KnvbRegelsZijnVerlopen(today) ? null : GetOptionalString(root, "knvbNotitie"),
+            KnvbNotitie = KnvbRegelsZijnVerlopen(today) ? null : AiVeldSanering.KnvbNotitie(GetOptionalString(root, "knvbNotitie")),
             HeelVeld = root.ValueKind == JsonValueKind.Object
                 && root.TryGetProperty("heelVeld", out var hvProp)
                 && hvProp.ValueKind == JsonValueKind.True ? true : null
