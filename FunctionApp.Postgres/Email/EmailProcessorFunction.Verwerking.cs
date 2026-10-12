@@ -243,64 +243,22 @@ public partial class EmailProcessorFunction
     }
 
     /// <summary>
-    /// Bepaalt onder welk verwerkingId dit bericht verder verwerkt wordt: hergebruik van een
-    /// niet-afgeronde rij, of een nieuwe rij. Retourneert <c>null</c> als de verwerking hier moet
-    /// stoppen.
+    /// Bepaalt onder welk verwerkingId dit bericht verder verwerkt wordt, of <c>null</c> als de
+    /// verwerking hier moet stoppen; zie <see cref="EmailVerwerkingsAfhandeling.BepaalVerwerkingIdAsync"/> (#1650).
     /// </summary>
-    internal static async Task<int?> BepaalVerwerkingIdAsync(
+    internal static Task<int?> BepaalVerwerkingIdAsync(
         string cs,
         string clubCode,
         InkomendBericht email,
         IEmailGraphService graphService,
         ILogger log)
-    {
-        var stand = await SqlEmailPersistenceRepository.HaalVerwerkingStandOpAsync(cs, email.MessageId);
-
-        switch (EmailIdempotentie.Bepaal(stand))
-        {
-            case VerwerkingsBesluit.OverslaanAlAfgerond:
-                log.LogInformation("Email {MessageId} is al definitief afgehandeld (status {Status}), overslaan",
-                    email.MessageId, stand!.Status);
-                await graphService.MarkAsReadAsync(email.MessageId);
-                return null;
-
-            case VerwerkingsBesluit.OpgevenNaMaxPogingen:
-                await GeefVerwerkingOpAsync(
-                    cs, email, stand!.VerwerkingId, stand.Pogingen, "verwerking", graphService, log);
-                return null;
-
-            case VerwerkingsBesluit.OnbeslistNaVerzendPoging:
-                await LegVoorBeoordelingNaVerzendPogingAsync(
-                    cs, email, stand!.VerwerkingId, graphService, log);
-                return null;
-
-            case VerwerkingsBesluit.HerhaalVerwerking:
-                await SqlEmailPersistenceRepository.VerhoogPogingenAsync(cs, stand!.VerwerkingId);
-                log.LogWarning(
-                    "Email {MessageId} was niet afgerond (status {Status}) — verwerking {Id} wordt hervat, poging {Poging} van {Max}",
-                    email.MessageId, stand.Status, stand.VerwerkingId, stand.Pogingen + 1, EmailIdempotentie.MaxPogingen);
-                return stand.VerwerkingId;
-
-            default:
-                try
-                {
-                    return await SqlEmailPersistenceRepository.InsertEmailVerwerkingAsync(cs, email, clubCode);
-                }
-                catch (DubbeleMessageIdException)
-                {
-                    log.LogWarning(
-                        "Email {MessageId} is gelijktijdig door een andere verwerking geregistreerd — deze poging stopt zonder foutstatus",
-                        email.MessageId);
-                    return null;
-                }
-        }
-    }
+        => EmailVerwerkingKoppeling.BepaalVerwerkingIdAsync(cs, clubCode, email, graphService, log);
 
     /// <summary>
     /// Handelt een buiten-scope classificatie af: status vastleggen, labelen, als gelezen markeren,
     /// géén antwoord. Retourneert <c>true</c> als het bericht hiermee is afgehandeld.
     /// </summary>
-    internal static async Task<bool> HandelBuitenScopeAsync(
+    internal static Task<bool> HandelBuitenScopeAsync(
         string cs,
         int verwerkingId,
         string messageId,
@@ -308,28 +266,7 @@ public partial class EmailProcessorFunction
         string classificatieJson,
         IEmailGraphService graphService,
         ILogger log)
-    {
-        if (classificatie.Type != VerzoekType.BuitenScope)
-            return false;
-
-        await SqlEmailPersistenceRepository.UpdateStatusAsync(cs, verwerkingId, EmailStatus.BuitenScope, classificatieJson);
-        log.LogInformation("Email {Id} buiten scope na herclassificatie — geen antwoord verstuurd", verwerkingId);
-        await LabelBuitenScopeAsync(graphService, messageId, log);
-        return true;
-    }
-
-    private static async Task LabelBuitenScopeAsync(
-        IEmailGraphService graphService, string messageId, ILogger log)
-    {
-        try
-        {
-            await graphService.EnsureMasterCategoryAsync(EmailCategorieLabels.GeenAiAntwoord, EmailCategorieLabels.GeenAiAntwoordKleur);
-            await graphService.SetCategoriesAsync(messageId, EmailCategorieLabels.GeenAiAntwoord);
-            await graphService.MarkAsReadAsync(messageId);
-        }
-        catch (Exception ex)
-        {
-            log.LogWarning(ex, "Outlook-labeling buiten scope mislukt voor {MessageId} — status is wel vastgelegd", messageId);
-        }
-    }
+        => EmailVerwerkingKoppeling.HandelBuitenScopeAsync(
+            cs, verwerkingId, messageId, classificatie.Type == VerzoekType.BuitenScope, classificatieJson,
+            graphService, log);
 }

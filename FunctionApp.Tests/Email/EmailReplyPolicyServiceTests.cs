@@ -5,6 +5,7 @@ using Newtonsoft.Json;
 using SportlinkFunction.Email;
 using SportlinkFunction.Planner;
 using Xunit;
+using Planner.Shared.Email; // #1650: VerwerkingsBesluit staat in Planner.Shared
 
 namespace FunctionApp.Tests.Email;
 

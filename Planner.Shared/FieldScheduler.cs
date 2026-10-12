@@ -347,6 +347,12 @@ public class IngeplandSlot
     public decimal Fractie { get; set; }
     public string VeldSubpositie { get; set; } = string.Empty;
     public string? TeamNaam { get; set; }
+
+    /// <summary>
+    /// #1559: de wedstrijd staat al in Sportlink en is leidend. Zo'n slot draagt zijn eigen buffer
+    /// van 0 minuten (geen clubbuffer, geen teamregel) — de buffer is per slot, niet per team.
+    /// </summary>
+    public bool SportlinkLeidend { get; set; }
 }
 
 /// <summary>
@@ -390,8 +396,16 @@ public class FieldScheduler
         PlanningBufferRegels.Effectief(_buffer,
             teamNaam != null && _teamBuffers.TryGetValue(teamNaam, out var b) ? b.bufferNa : null);
 
-    private int EffectieveBuffer(string? occTeamNaam, int nieuwBufVoor) =>
-        PlanningBufferRegels.VereisteTussenruimte(TeamBufferNa(occTeamNaam), nieuwBufVoor);
+    // #1559: een Sportlink-leidend slot draagt zijn eigen buffer (0); alleen app-slots volgen de
+    // club-/teambuffer. Zo eist een app-wedstrijd naast een Sportlink-wedstrijd alleen zijn eigen buffer.
+    private int SlotBufferVoor(IngeplandSlot occ) => occ.SportlinkLeidend ? 0 : TeamBufferVoor(occ.TeamNaam);
+
+    private int SlotBufferNa(IngeplandSlot occ) => occ.SportlinkLeidend ? 0 : TeamBufferNa(occ.TeamNaam);
+
+    private int NieuweBufferNa(string? teamNaam, bool sportlinkLeidend) => sportlinkLeidend ? 0 : TeamBufferNa(teamNaam);
+
+    private int EffectieveBuffer(IngeplandSlot occ, int nieuwBufVoor) =>
+        PlanningBufferRegels.VereisteTussenruimte(SlotBufferNa(occ), nieuwBufVoor);
 
     /// <summary>
     /// Botst een nieuwe wedstrijd <c>[start, end)</c> in tijd met een bestaande bezetting, inclusief
@@ -403,8 +417,8 @@ public class FieldScheduler
         int nStart = PlanningBufferRegels.Minuut(start), nEind = PlanningBufferRegels.Minuut(end);
         int oStart = PlanningBufferRegels.Minuut(occ.AanvangsTijd), oEind = PlanningBufferRegels.Minuut(occ.EindTijd);
         return oEind <= nStart
-            ? PlanningBufferRegels.BufferTeKort(oEind, TeamBufferNa(occ.TeamNaam), nStart, nieuwBufVoor)
-            : PlanningBufferRegels.BufferTeKort(nEind, nieuwBufNa, oStart, TeamBufferVoor(occ.TeamNaam));
+            ? PlanningBufferRegels.BufferTeKort(oEind, SlotBufferNa(occ), nStart, nieuwBufVoor)
+            : PlanningBufferRegels.BufferTeKort(nEind, nieuwBufNa, oStart, SlotBufferVoor(occ));
     }
 
     private static bool Overlapt(IngeplandSlot occ, TimeOnly start, TimeOnly end) =>
@@ -422,10 +436,10 @@ public class FieldScheduler
     /// wedstrijden van hetzelfde team geldt nog steeds de grootste van de twee teambuffers — een
     /// team kan niet direct aansluitend op twee velden tegelijk spelen.</para>
     /// </summary>
-    private bool TeamHeeftConflict(string? teamNaam, TimeOnly start, TimeOnly end, int nieuwBufVoor)
+    private bool TeamHeeftConflict(string? teamNaam, TimeOnly start, TimeOnly end, int nieuwBufVoor, bool sportlinkLeidend)
     {
         if (string.IsNullOrEmpty(teamNaam)) return false;
-        int nieuwBufNa = TeamBufferNa(teamNaam);
+        int nieuwBufNa = NieuweBufferNa(teamNaam, sportlinkLeidend);
         foreach (var occs in _occupations.Values)
         {
             foreach (var occ in occs)
@@ -454,12 +468,12 @@ public class FieldScheduler
     /// buffer-voor/na-regel.</para>
     /// </summary>
     private bool PastOpVeld(int veldNummer, TimeOnly start, TimeOnly end, decimal fractie,
-        int nieuwBufVoor, string? teamNaam, out string subpositie)
+        int nieuwBufVoor, string? teamNaam, bool sportlinkLeidend, out string subpositie)
     {
         subpositie = string.Empty;
-        if (TeamHeeftConflict(teamNaam, start, end, nieuwBufVoor)) return false;
+        if (TeamHeeftConflict(teamNaam, start, end, nieuwBufVoor, sportlinkLeidend)) return false;
         var occs = _occupations.TryGetValue(veldNummer, out var list) ? list : new List<IngeplandSlot>();
-        int nieuwBufNa = TeamBufferNa(teamNaam);
+        int nieuwBufNa = NieuweBufferNa(teamNaam, sportlinkLeidend);
         var bezet = new bool[4];
 
         foreach (var occ in occs)
@@ -484,7 +498,7 @@ public class FieldScheduler
         return true;
     }
 
-    private IngeplandSlot? FindBestEarliestSlot(decimal fractie, int duurMinuten, int nieuwBufVoor, string? teamNaam = null)
+    private IngeplandSlot? FindBestEarliestSlot(decimal fractie, int duurMinuten, int nieuwBufVoor, string? teamNaam = null, bool sportlinkLeidend = false)
     {
         var sorted = _velden.OrderByDescending(v => v.IsKunstgras).ThenBy(v => v.VeldNummer).ToList();
         IngeplandSlot? best = null;
@@ -493,7 +507,7 @@ public class FieldScheduler
             var besch = _beschikbaarheid.FirstOrDefault(b => b.VeldNummer == veld.VeldNummer);
             if (besch == null) continue;
             var van = besch.BeschikbaarVanaf < StartTijd ? StartTijd : besch.BeschikbaarVanaf;
-            var slot = FindEarliestSlot(veld.VeldNummer, fractie, duurMinuten, van, besch.BeschikbaarTot, nieuwBufVoor, teamNaam);
+            var slot = FindEarliestSlot(veld.VeldNummer, fractie, duurMinuten, van, besch.BeschikbaarTot, nieuwBufVoor, teamNaam, sportlinkLeidend);
             if (slot != null && (best == null || slot.AanvangsTijd < best.AanvangsTijd))
             {
                 best = slot;
@@ -503,11 +517,13 @@ public class FieldScheduler
         return best;
     }
 
-    public IngeplandSlot? FindAndOccupyNextSlot(decimal fractie, int duurMinuten, int nieuwBufVoor = -1, string? teamNaam = null)
+    public IngeplandSlot? FindAndOccupyNextSlot(decimal fractie, int duurMinuten, int nieuwBufVoor = -1, string? teamNaam = null,
+        bool sportlinkLeidend = false)
     {
         if (nieuwBufVoor < 0) nieuwBufVoor = _buffer;
-        var best = FindBestEarliestSlot(fractie, duurMinuten, nieuwBufVoor, teamNaam);
-        if (best != null) { best.TeamNaam = teamNaam; _occupations[best.VeldNummer].Add(best); }
+        if (sportlinkLeidend) nieuwBufVoor = 0;
+        var best = FindBestEarliestSlot(fractie, duurMinuten, nieuwBufVoor, teamNaam, sportlinkLeidend);
+        if (best != null) { best.TeamNaam = teamNaam; best.SportlinkLeidend = sportlinkLeidend; _occupations[best.VeldNummer].Add(best); }
         return best;
     }
 
@@ -522,12 +538,16 @@ public class FieldScheduler
     /// <para>De voorkeurstijd is hier het doel — er wordt niet naar het vroegste gat van de dag
     /// gezocht. De kandidaatlijst hieronder loopt van de voorkeurstijd naar buiten (±5, ±10, …),
     /// dus het dichtstbijzijnde haalbare tijdslot wint, met eerder vóór later bij gelijke afstand.</para>
+    ///
+    /// <para><paramref name="sportlinkLeidend"/> (#1559): de wedstrijd staat al in Sportlink; die houdt
+    /// geen rekening met club- of teambuffer en draagt zelf een buffer van 0 minuten.</para>
     /// </summary>
     public IngeplandSlot? FindAndOccupyNearTime(TimeOnly voorkeurTijd, decimal fractie, int duurMinuten,
         int nieuwBufVoor = -1, string? teamNaam = null, int tolerantieMinuten = 90,
-        int? voorkeurVeldNummer = null)
+        int? voorkeurVeldNummer = null, bool sportlinkLeidend = false)
     {
         if (nieuwBufVoor < 0) nieuwBufVoor = _buffer;
+        if (sportlinkLeidend) nieuwBufVoor = 0;
         var candidates = new List<TimeOnly> { voorkeurTijd };
         for (int delta = 5; delta <= tolerantieMinuten; delta += 5)
         {
@@ -557,16 +577,17 @@ public class FieldScheduler
                 var start = PlannerShared.RondAfOp5Min(kandidaatTijd < van ? van : kandidaatTijd);
                 var end   = start.AddMinutes(duurMinuten);
                 if (end > besch.BeschikbaarTot || end <= start) continue;
-                if (!PastOpVeld(veld.VeldNummer, start, end, fractie, nieuwBufVoor, teamNaam, out var subpos)) continue;
-                var slot = new IngeplandSlot { VeldNummer = veld.VeldNummer, AanvangsTijd = start, EindTijd = end, Fractie = fractie, VeldSubpositie = subpos, TeamNaam = teamNaam };
+                if (!PastOpVeld(veld.VeldNummer, start, end, fractie, nieuwBufVoor, teamNaam, sportlinkLeidend, out var subpos)) continue;
+                var slot = new IngeplandSlot { VeldNummer = veld.VeldNummer, AanvangsTijd = start, EindTijd = end, Fractie = fractie, VeldSubpositie = subpos, TeamNaam = teamNaam, SportlinkLeidend = sportlinkLeidend };
                 _occupations[veld.VeldNummer].Add(slot);
                 return slot;
             }
         }
-        return FindAndOccupyNextSlot(fractie, duurMinuten, nieuwBufVoor, teamNaam);
+        return FindAndOccupyNextSlot(fractie, duurMinuten, nieuwBufVoor, teamNaam, sportlinkLeidend);
     }
 
-    private IngeplandSlot? FindEarliestSlot(int veldNummer, decimal fractie, int duurMinuten, TimeOnly van, TimeOnly tot, int nieuwBufVoor = -1, string? teamNaam = null)
+    private IngeplandSlot? FindEarliestSlot(int veldNummer, decimal fractie, int duurMinuten, TimeOnly van, TimeOnly tot, int nieuwBufVoor = -1, string? teamNaam = null,
+        bool sportlinkLeidend = false)
     {
         if (nieuwBufVoor < 0) nieuwBufVoor = _buffer;
         var occs = _occupations.TryGetValue(veldNummer, out var list) ? list.OrderBy(o => o.AanvangsTijd).ToList() : new List<IngeplandSlot>();
@@ -574,7 +595,7 @@ public class FieldScheduler
         foreach (var occ in occs)
         {
             candidates.Add(occ.AanvangsTijd);
-            var afterEnd = occ.EindTijd.AddMinutes(EffectieveBuffer(occ.TeamNaam, nieuwBufVoor));
+            var afterEnd = occ.EindTijd.AddMinutes(EffectieveBuffer(occ, nieuwBufVoor));
             if (afterEnd > van) candidates.Add(afterEnd);
         }
         foreach (var candidate in candidates.OrderBy(t => t))
@@ -586,7 +607,7 @@ public class FieldScheduler
             if (end > tot || end <= start) continue;
             // Zelfde bufferbewuste check als het voorkeurstijd-pad — de kandidaattijden hierboven zijn
             // buffer-aware, maar de eindcontrole moet dat ook zijn (bijv. bij een wedstrijd die volgt).
-            if (!PastOpVeld(veldNummer, start, end, fractie, nieuwBufVoor, teamNaam, out var subpos)) continue;
+            if (!PastOpVeld(veldNummer, start, end, fractie, nieuwBufVoor, teamNaam, sportlinkLeidend, out var subpos)) continue;
             return new IngeplandSlot { VeldNummer = veldNummer, AanvangsTijd = start, EindTijd = end, Fractie = fractie, VeldSubpositie = subpos };
         }
         return null;

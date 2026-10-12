@@ -23,7 +23,7 @@ Geautomatiseerde veldbeschikbaarheidscontrole voor oefenwedstrijden op **[Sportp
 ## Velddefinities — voorbeeldconfiguratie van één club
 
 De onderstaande indeling is seeddata uit `dbo.Velden`/`dbo.VeldBeschikbaarheid`, beheerbaar via
-**Instellingen → Velden** (#679). Een fork vult hier zijn eigen sportpark in.
+**WZ Instellingen → Velden** (#679). Een fork vult hier zijn eigen sportpark in.
 
 | Veld | Kunstlicht | Beschikbaar voor planner | Opmerkingen |
 |------|-----------|-------------------------|-------------|
@@ -83,7 +83,7 @@ Voorkeurstijden per team staan niet in `dbo.TeamRegels` maar in `dbo.TeamVoorkeu
 ### Standaard voorkeurstijd per leeftijdscategorie (zachte regel)
 
 Per leeftijdscategorie staat een standaard voorkeurstijd in `dbo.Speeltijden.StandaardVoorkeurTijd`,
-instelbaar per club via **Beheer → Instellingen → Speeltijden** (#666). De auto-planner gebruikt die tijd
+instelbaar per club via **WZ Instellingen → Speeltijden** (#666). De auto-planner gebruikt die tijd
 voor teams die géén eigen rij in `dbo.TeamVoorkeurTijden` hebben.
 
 Leeg laten betekent: geen streeftijd — de planner kiest dan het eerst beschikbare slot. De waarden zijn
@@ -189,7 +189,7 @@ kwartveldwedstrijd bewust op `A2` gezet kan worden in plaats van op de eerste vr
 
 > **Dit is seeddata, geen architectuurregel.** De waarden hieronder zijn de seed uit
 > `Database/Script.PostDeployment1.sql` (`dbo.Speeltijden`); elke club past ze aan via
-> **Instellingen → Speeltijden**. Ze staan hier zodat het algoritme hieronder leesbaar is.
+> **WZ Instellingen → Speeltijden**. Ze staan hier zodat het algoritme hieronder leesbaar is.
 
 | Categorie | Veldafmeting | Totaal (min) | Helft (min) | Rust (min) |
 |-----------|-------------|-------------|-------------|------------|
@@ -466,7 +466,7 @@ van 0 minuten gaf stilzwijgend een lege reservering.
 ### dbo.Velden
 Velddefinities met type (vrije tekst, bijv. kunstgras/natuurgras) en verlichting. Elke vereniging
 configureert dit naar eigen situatie — inclusief clubs met een ander aantal velden of uitsluitend
-natuurgras. Volledig beheerbaar via Instellingen → Velden in de Admin GUI (#679); daarvoor kon een
+natuurgras. Volledig beheerbaar via WZ Instellingen → Velden in de Admin GUI (#679); daarvoor kon een
 veld alleen via een directe database-wijziging worden toegevoegd.
 
 | Kolom | Beschrijving |
@@ -481,7 +481,7 @@ Voorbeeld seeddata: veld 1–4 kunstgras + kunstlicht, veld 5 natuurgras zonder 
 
 ### dbo.VeldBeschikbaarheid
 Beschikbaarheidsvensters per dag van de week per veld. Bepaalt welke velden op welke dagen
-beschikbaar zijn. Beheerbaar via Instellingen → Velden (#679).
+beschikbaar zijn. Beheerbaar via WZ Instellingen → Velden (#679).
 
 Optioneel gekoppeld aan een `dbo.VeldPeriode` via `PeriodeId` (#581): `NULL` is het
 standaardregime en geldt buiten elke actieve periode (exact het gedrag van vóór #581). Is er voor
@@ -601,24 +601,35 @@ prioriteit 10.
    en de 60-minutenregel van een eerste elftal simpelweg werd overgeslagen. Dat viel pas op toen dat pad
    door de precedence-wijziging de normale route werd.
 
-### Twee duurbronnen: weergave volgt Sportlink, optimalisatie volgt Speeltijden (#1559, #1560)
+### Duurbron: Sportlink is leidend, Speeltijden alleen als terugval (#1559, #1560)
 
-Sinds #1547 toont de Planning voor wedstrijden die al in Sportlink staan de netto speelduur uit Sportlink
-plus 15 minuten (`VeldbezettingDuur`, zoals de Sportlink-veldplanner het blok tekent). **Veld optimalisatie**
-(`FieldScheduler`, `AutoPlanService`) rekent daarentegen met de speeltijdentabel inclusief buffer
-(besluit #291). Gevolg: voor hetzelfde team kan het blok op de twee schermen verschillen, en de
-optimalisatie kan een andere duur plannen dan Sportlink daarna toont.
+Eigenaarsbesluit #1559 (2026-10-12): wedstrijden die al in Sportlink staan zijn leidend en houden geen
+rekening met app-instellingen (speeltijd en buffer tussen wedstrijden). Speeltijden en buffer gelden alleen
+als Sportlink niet voorziet, dus voor een planning of wedstrijd die vanuit de app wordt aangemaakt.
 
-**Gekozen stand (tot een eigenaarsbesluit anders bepaalt): de bronnen blijven gescheiden.** Reden: de
-"speelduur + 15" is gemeten op wedstrijden van 50 tot 90 minuten; of dat ook geldt voor korte
-toernooivormen (bijvoorbeeld 20 minuten, elk halfuur een wedstrijd) is niet bevestigd (#1560, punt 2).
-De optimalisatie op een onbewezen aanname baseren legt die vast in het planningsalgoritme, terwijl een
-weergavefout eenvoudig te corrigeren is.
+Gevolg voor de duur: de Planning én **Veld optimalisatie** (`AutoPlanService` op beide tiers, via
+`FieldScheduler`) bepalen de blokduur met `VeldbezettingDuur.Bepaal`: de netto speelduur uit Sportlink
+plus 15 minuten (zoals #1547 de Sportlink-veldplanner nameet), en pas als Sportlink geen speelduur kent de
+`WedstrijdTotaal` uit de speeltijdentabel (besluit #291). De Sportlink-duur geldt ook zonder
+speeltijdenrij voor de leeftijdscategorie: alleen een wedstrijd zonder Sportlink-duur én zonder
+speeltijdenrij blijft `onbekend-team`.
 
-Open besluit (#1559), twee alternatieven:
-- optimalisatie gebruikt Sportlinks duur voor bestaande wedstrijden en Speeltijden alleen voor nieuwe
-  (raakt `FieldScheduler` en `AutoPlanService` op beide tiers);
-- Speeltijden verdwijnt als bron voor bestaande wedstrijden (raakt besluit #291).
+Beperking: de gelijkheid van beide schermen geldt voor deze `Bepaal`-regel (dataservice-duur + 15).
+De Planning kan bij een actieve `VeldbezettingSportlinkOverlay` de exacte blokduur uit de
+Sportlink-veldplanner overnemen; de optimalisatie gebruikt die overlay niet en rekent altijd met
+dataservice-duur + 15. Bij een actieve overlay is gelijkheid dus niet bewezen: daarvoor is de
+blokvergelijking uit #1560 (vijf zaterdagen, blok voor blok) nodig.
+
+Gevolg voor de buffer: een wedstrijd met een Sportlink-speelduur (`VeldbezettingDuur.IsSportlinkLeidend`)
+wordt in de optimalisatie met een buffer van 0 minuten geplaatst, zowel vóór als ná: geen clubbuffer en
+geen teamregel (`BufferVoor`/`BufferNa`). De buffer is **per slot**, niet per team: `IngeplandSlot.SportlinkLeidend`
+laat een Sportlink-slot zijn eigen 0-buffer dragen, zodat een app-wedstrijd die naast een Sportlink-wedstrijd
+komt alleen zijn eigen buffer eist. Wedstrijden zonder Sportlink-duur (app-eigen, of Sportlink kent ze niet)
+behouden speeltijdentabel en club-/teambuffer. De rekenregels blijven in `PlanningBufferRegels`; de
+handmatige conflictcontrole in de Admin GUI is niet gewijzigd.
+
+Nog open: of "speelduur + 15" voor korte toernooivormen (bijvoorbeeld 20 minuten) klopt is niet
+bevestigd (#1560, punt 2).
 
 Open verificatiepunten (#1560), alleen met Sportlink Club zelf te beantwoorden: bestaan clubwedstrijden
 zonder tegenstander (thuis- gelijk aan uitteam) in Sportlink Club en moeten ze in de Planning; hoe tekent
@@ -995,4 +1006,4 @@ precies die som is `DuurMinuten`, en de starttijd schuift met het inloopdeel mee
   een dag worden 60 seconden onthouden. Het FacilityId staat nergens in code of configuratie.
 - **Bekende grens:** Sportlinks veldplanner toont ook wedstrijden tussen andere clubs op uw accommodatie. Die staan niet in onze
   database en worden niet toegevoegd; dat is een afzonderlijk productbesluit.
-- **Veld optimalisatie** (`FieldScheduler`, besluit #291) blijft op de speeltijdentabel rekenen; zie issue #1559.
+- **Veld optimalisatie** (`FieldScheduler`) gebruikt voor bestaande wedstrijden dezelfde duurregel; zie "Duurbron" (#1559).

@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
-using Newtonsoft.Json;
 using Planner.Shared.Autorisatie;
 using Planner.Shared.Integrations.SportlinkClub;
 using SportlinkFunction.Sportlink;
@@ -29,8 +28,7 @@ public static class AdminRolFeatureInstellingenFunction
             {
                 var matrix = await RolFeatureInstellingenRepository.GetMatrixAsync(
                     clubCode, SystemUtilities.DatabaseConfig.ConnectionString);
-                var result = matrix.Select(kv => new { RolNaam = kv.Key.RolNaam, FeatureKey = kv.Key.FeatureKey, Enabled = kv.Value });
-                return new OkObjectResult(result);
+                return new OkObjectResult(RolFeatureMatrixCore.NaarResponse(matrix));
             });
 
     [Function("SqlAdminRolFeatureInstellingenPut")]
@@ -40,34 +38,9 @@ public static class AdminRolFeatureInstellingenFunction
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("SqlAdminRolFeatureInstellingenPut"), "rol-feature-instelling wijzigen",
             async clubCode =>
             {
-                var dto = JsonConvert.DeserializeObject<ZetInstellingDto>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
-
-                var validatiefout = ValideerRolEnFeatureKey(dto?.RolNaam, dto?.FeatureKey);
-                if (validatiefout is not null) return validatiefout;
-
-                await RolFeatureInstellingenRepository.SetAsync(
-                    clubCode, dto!.RolNaam!, dto.FeatureKey!, dto.Enabled, SystemUtilities.DatabaseConfig.ConnectionString);
-
-                return new OkObjectResult(new { dto.RolNaam, dto.FeatureKey, dto.Enabled });
+                var (cel, fout) = await RolFeatureMatrixCore.VerwerkZetAsync(
+                    await new StreamReader(req.Body).ReadToEndAsync(),
+                    (rol, sleutel, aan) => RolFeatureInstellingenRepository.SetAsync(clubCode, rol, sleutel, aan, SystemUtilities.DatabaseConfig.ConnectionString));
+                return cel is null ? new BadRequestObjectResult(new { error = fout }) : new OkObjectResult(cel);
             });
-
-    /// <summary>
-    /// Losgetrokken van <see cref="Put"/> zodat de validatie zonder databaseverbinding getest kan
-    /// worden. De validatie zelf staat in <see cref="RolFeatureMatrixCore.Valideer"/>
-    /// (tier-onafhankelijk); hier alleen de vertaling naar een HTTP-respons. Retourneert
-    /// <c>null</c> als beide waarden geldig zijn.
-    /// </summary>
-    internal static BadRequestObjectResult? ValideerRolEnFeatureKey(string? rolNaam, string? featureKey)
-    {
-        var fout = RolFeatureMatrixCore.Valideer(rolNaam, featureKey);
-        return fout is null ? null : new BadRequestObjectResult(new { error = fout });
-    }
-
-    private sealed class ZetInstellingDto
-    {
-        public string? RolNaam { get; set; }
-        public string? FeatureKey { get; set; }
-        public bool Enabled { get; set; }
-    }
 }

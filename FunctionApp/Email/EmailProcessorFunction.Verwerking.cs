@@ -248,68 +248,15 @@ public partial class EmailProcessorFunction
     }
 
     /// <summary>
-    /// Bepaalt onder welk verwerkingId dit bericht verder verwerkt wordt: hergebruik van een
-    /// niet-afgeronde rij, of een nieuwe rij. Retourneert <c>null</c> als de verwerking hier moet
-    /// stoppen.
-    /// <para>
-    /// De guard kijkt naar de EINDSTATUS en niet naar het bestaan van de rij (#712): een rij met een
-    /// niet-definitieve status betekent dat een eerdere poging is afgebroken, en die rij wordt dan
-    /// hergebruikt.
-    /// </para>
+    /// Bepaalt onder welk verwerkingId dit bericht verder verwerkt wordt, of <c>null</c> als de
+    /// verwerking hier moet stoppen (#712); zie <see cref="EmailVerwerkingsAfhandeling.BepaalVerwerkingIdAsync"/> (#1650).
     /// </summary>
-    internal static async Task<int?> BepaalVerwerkingIdAsync(
+    internal static Task<int?> BepaalVerwerkingIdAsync(
         InkomendBericht email,
         IEmailGraphService graphService,
         IEmailPersistenceService persistenceService,
         ILogger log)
-    {
-        var stand = await persistenceService.HaalVerwerkingStandOpAsync(email.MessageId);
-
-        switch (EmailIdempotentie.Bepaal(stand))
-        {
-            case VerwerkingsBesluit.OverslaanAlAfgerond:
-                log.LogInformation("Email {MessageId} is al definitief afgehandeld (status {Status}), overslaan",
-                    email.MessageId, stand!.Status);
-                await graphService.MarkAsReadAsync(email.MessageId);
-                return null;
-
-            case VerwerkingsBesluit.OpgevenNaMaxPogingen:
-                await GeefVerwerkingOpAsync(
-                    email, stand!.VerwerkingId, stand.Pogingen, "verwerking", graphService, persistenceService, log);
-                return null;
-
-            case VerwerkingsBesluit.OnbeslistNaVerzendPoging:
-                await LegVoorBeoordelingNaVerzendPogingAsync(
-                    email, stand!.VerwerkingId, graphService, persistenceService, log);
-                return null;
-
-            case VerwerkingsBesluit.HerhaalVerwerking:
-                await persistenceService.VerhoogPogingenAsync(stand!.VerwerkingId);
-                log.LogWarning(
-                    "Email {MessageId} was niet afgerond (status {Status}) — verwerking {Id} wordt hervat, poging {Poging} van {Max}",
-                    email.MessageId, stand.Status, stand.VerwerkingId, stand.Pogingen + 1, EmailIdempotentie.MaxPogingen);
-                return stand.VerwerkingId;
-
-            default:
-                try
-                {
-                    // DB INSERT — classificatie is al gedaan in fase 1, resultaat wordt evt. verfijnd in fase 2
-                    return await persistenceService.InsertEmailVerwerkingAsync(email);
-                }
-                catch (DubbeleMessageIdException)
-                {
-                    // Check-then-act: tussen het lezen van de stand en deze INSERT heeft een andere
-                    // invocatie hetzelfde bericht geregistreerd. Dit mag géén fout worden: UpdateFoutAsync
-                    // zoekt op MessageId en zou de rij van die andere verwerking op 'Fout' zetten, terwijl
-                    // die het antwoord juist wél kan versturen. Bericht ongelezen laten — de andere
-                    // verwerking handelt het af. (#707)
-                    log.LogWarning(
-                        "Email {MessageId} is gelijktijdig door een andere verwerking geregistreerd — deze poging stopt zonder foutstatus",
-                        email.MessageId);
-                    return null;
-                }
-        }
-    }
+        => EmailVerwerkingKoppeling.BepaalVerwerkingIdAsync(email, graphService, persistenceService, log);
 
     /// <summary>
     /// Handelt een buiten-scope classificatie af: status vastleggen, labelen, als gelezen markeren,
@@ -321,7 +268,7 @@ public partial class EmailProcessorFunction
     /// puur afhankelijk van of er gevalideerde leermomenten in de database staan. (#712)
     /// </para>
     /// </summary>
-    internal static async Task<bool> HandelBuitenScopeAsync(
+    internal static Task<bool> HandelBuitenScopeAsync(
         int verwerkingId,
         string messageId,
         BerichtClassificatie classificatie,
@@ -329,33 +276,7 @@ public partial class EmailProcessorFunction
         IEmailGraphService graphService,
         IEmailPersistenceService persistenceService,
         ILogger log)
-    {
-        if (classificatie.Type != VerzoekType.BuitenScope)
-            return false;
-
-        await persistenceService.UpdateStatusAsync(verwerkingId, EmailStatus.BuitenScope, classificatieJson);
-        log.LogInformation("Email {Id} buiten scope na herclassificatie — geen antwoord verstuurd", verwerkingId);
-        await LabelBuitenScopeAsync(graphService, messageId, log);
-        return true;
-    }
-
-    /// <summary>
-    /// Labelt een buiten-scope bericht in Outlook en markeert het als gelezen. Zelfde eindresultaat
-    /// als het voorfilter van fase 1. Labelen mag niet fataal zijn: de status in de database is al
-    /// definitief, dus een volgende poll slaat het bericht over en markeert het dan als gelezen.
-    /// </summary>
-    private static async Task LabelBuitenScopeAsync(
-        IEmailGraphService graphService, string messageId, ILogger log)
-    {
-        try
-        {
-            await graphService.EnsureMasterCategoryAsync(EmailCategorieLabels.GeenAiAntwoord, EmailCategorieLabels.GeenAiAntwoordKleur);
-            await graphService.SetCategoriesAsync(messageId, EmailCategorieLabels.GeenAiAntwoord);
-            await graphService.MarkAsReadAsync(messageId);
-        }
-        catch (Exception ex)
-        {
-            log.LogWarning(ex, "Outlook-labeling buiten scope mislukt voor {MessageId} — status is wel vastgelegd", messageId);
-        }
-    }
+        => EmailVerwerkingKoppeling.HandelBuitenScopeAsync(
+            verwerkingId, messageId, classificatie.Type == VerzoekType.BuitenScope, classificatieJson,
+            graphService, persistenceService, log);
 }

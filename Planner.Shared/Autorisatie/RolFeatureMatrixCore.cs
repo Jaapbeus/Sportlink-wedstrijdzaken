@@ -14,6 +14,37 @@ public static class RolFeatureMatrixCore
     public static readonly IReadOnlyList<string> AlleFeatureKeys =
         Integrations.SportlinkClub.SportlinkRolFeature.Alle.Concat(MenuFeatureKeys.Alle).ToArray();
 
+    /// <summary>Eén cel van de matrix zoals de GET hem teruggeeft (zelfde JSON als de eerdere anonieme vorm).</summary>
+    public sealed record CelResponse(string RolNaam, string FeatureKey, bool Enabled);
+
+    /// <summary>Request-body van de PUT: één cel aan/uit zetten.</summary>
+    public sealed class ZetInstellingDto
+    {
+        public string? RolNaam { get; set; }
+        public string? FeatureKey { get; set; }
+        public bool Enabled { get; set; }
+    }
+
+    /// <summary>Vertaalt de matrix naar de lijst voor de GET-respons (tier-onafhankelijk, #1647).</summary>
+    public static IReadOnlyList<CelResponse> NaarResponse(IReadOnlyDictionary<(string RolNaam, string FeatureKey), bool> matrix) =>
+        matrix.Select(kv => new CelResponse(kv.Key.RolNaam, kv.Key.FeatureKey, kv.Value)).ToArray();
+
+    /// <summary>
+    /// De hele PUT-afhandeling zonder database- of HTTP-kennis: leest de body, valideert rol en sleutel en
+    /// laat <paramref name="schrijf"/> de cel opslaan. Retourneert de bewaarde cel, of een leesbare fout
+    /// (de aanroeper vertaalt die naar HTTP 400). Eén plek voor beide databasetiers (#1647).
+    /// </summary>
+    public static async Task<(CelResponse? Cel, string? Fout)> VerwerkZetAsync(
+        string json, Func<string, string, bool, Task> schrijf)
+    {
+        var dto = Newtonsoft.Json.JsonConvert.DeserializeObject<ZetInstellingDto>(json);
+        var fout = Valideer(dto?.RolNaam, dto?.FeatureKey);
+        if (fout is not null) return (null, fout);
+
+        await schrijf(dto!.RolNaam!, dto.FeatureKey!, dto.Enabled);
+        return (new CelResponse(dto.RolNaam!, dto.FeatureKey!, dto.Enabled), null);
+    }
+
     /// <summary>Retourneert <c>null</c> als beide waarden geldig zijn, anders een leesbare foutmelding.</summary>
     public static string? Valideer(string? rolNaam, string? featureKey)
     {

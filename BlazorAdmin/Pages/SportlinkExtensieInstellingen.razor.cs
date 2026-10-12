@@ -7,7 +7,7 @@ namespace BlazorAdmin.Pages;
 /// <summary>Code-behind van <c>SportlinkExtensieInstellingen.razor</c> (#988/#991/#998/#1113, code-behind sinds #1122).</summary>
 public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
 {
-    [Inject] private InstellingenApiClient InstellingenApi { get; set; } = default!;
+    [Inject] private ClubInstellingenCache InstellingenCache { get; set; } = default!;
     [Inject] private SportlinkApiClient SportlinkApi { get; set; } = default!;
 
     private AppSettingsDto? settings;
@@ -59,7 +59,7 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
 
     private async Task LaadInstellingenAsync()
     {
-        var r = await InstellingenApi.GetSettingsAsync();
+        var r = await InstellingenCache.GetSettingsAsync();
         if (r.Success) settings = r.Data;
         else errorMessage = r.ErrorMessage;
     }
@@ -206,7 +206,7 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
             }
         };
 
-        var r = await InstellingenApi.UpdateSettingsAsync(update);
+        var r = await InstellingenCache.UpdateSettingsAsync(update);
         if (r.Success)
         {
             successMessage = "Instellingen opgeslagen.";

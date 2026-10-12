@@ -250,9 +250,9 @@ public static class FeedbackCore
 
     public static string[] KiesLabels(string type) => type switch
     {
-        "Fout" => ["bug", "type: bug", "via-feedback-widget", "needs-triage"],
-        "Verzoek" => ["enhancement", "type: feature", "via-feedback-widget", "needs-triage"],
-        _ => ["question", "via-feedback-widget", "needs-triage"]
+        "Fout" => ["bug", "type: bug", "via: feedback-widget", "needs-triage"],
+        "Verzoek" => ["enhancement", "type: feature", "via: feedback-widget", "needs-triage"],
+        _ => ["question", "via: feedback-widget", "needs-triage"]
     };
 
     public static string VerzamelTeCheckenTekst(FeedbackRequest dto) => FeedbackTekst.VerzamelTeCheckenTekst(dto);
