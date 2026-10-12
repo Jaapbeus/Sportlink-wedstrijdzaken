@@ -139,7 +139,7 @@ verwerking plaats.
 | `GET` | `/planner/team-schedule` | **Admin** | Wedstrijdschema per team — gescoped op `X-Club-Code` header |
 | `GET` | `/beheer/teambegeleiding` | **Admin + user** | Alle teams met begeleiding in database (#1330: elke ingelogde rol) |
 | `GET` | `/beheer/teambegeleiding/{team}` | **Admin + user** | Begeleiders van team (naam + rol + functie, nooit e-mail) (#1330: elke ingelogde rol) |
-| `POST` | `/beheer/teambegeleiding/doorsturen` | **Admin + user** | Vraag doorsturen (BCC coördinator). `ontvangers` bepaalt de ontvangers (max 15, gevalideerd, uitsluitingslijst gecontroleerd); leeg → server-side coach-lookup (#765) (#1330: elke ingelogde rol) |
+| `POST` | `/beheer/teambegeleiding/doorsturen` | **Admin + user** | Vraag doorsturen (BCC coördinator). `ontvangers` bepaalt de ontvangers (max 15, gevalideerd, uitsluitingslijst gecontroleerd); voor een andere rol dan `admin` moet elk adres bij het team horen (begeleiders, coördinator of de aanvrager zelf), anders 403; leeg → server-side coach-lookup (#765) (#1330: elke ingelogde rol). Max 3 verzendingen per gebruiker per 10 minuten, anders 429; alleen een daadwerkelijke verzending telt (een mislukte verzending geeft haar eigen slot terug), `admin` valt erbuiten; de teller is in-memory en geldt per instantie (bij uitschalen of na een herstart kan het totaal hoger uitvallen; geen globale kwotering) (#1671) |
 | `POST` | `/beheer/teambegeleiding/import` | **Admin** | CSV-import van begeleiders — vervangt de rijen van de club atomisch (DELETE + inserts + audit-rij in één transactie, rollback bij elke fout; #1131/#1132). Kolomlengtes worden vóór elke destructieve stap gevalideerd; een te lange waarde geeft `400` met `{ error, fouten: [...] }` (rij/kolom-omschrijving per overtreding) en laat de vorige import ongemoeid. Postgres-tier serialiseert vervangingen per club (`pg_advisory_xact_lock`) zodat twee gelijktijdige imports elkaar nooit tot een vereniging van beide batches kunnen combineren. CSV wordt in-memory verwerkt en nooit opgeslagen; `avg.ImportLog` bevat alleen metadata — geen PII |
 | `GET/POST` | `/beheer/speeltijden` | **Admin** | Speeltijden per leeftijdscategorie: lijst ophalen / toevoegen |
 | `PUT/DELETE` | `/beheer/speeltijden/{leeftijd}` | **Admin** | Speeltijd van één leeftijdscategorie wijzigen / verwijderen |
@@ -318,6 +318,16 @@ Controleer of een veld beschikbaar is voor een oefenwedstrijd. Geeft een specifi
 > `ALLSTARS`-demodata) worden nooit meegenomen. Dit geldt ook voor
 > `/planner/zoek-wedstrijd`, `/planner/herplan-check`, `/planner/doordeweeks-beschikbaar`
 > en `/planner/team-schedule`.
+>
+> **Onbekende waarde (#1677, #1689):** de headerwaarde wordt getoetst aan de clubs in de
+> instellingentabel (maximaal 20 tekens `A-Z`, `a-z`, `0-9`, `_`, `-`). Een ongeldige vorm of een
+> club die niet bestaat geeft geen fout maar dezelfde terugval als zonder header: de primaire club.
+> Een bestaande club wordt in de opgeslagen schrijfwijze gebruikt (een exacte match gaat voor; bij
+> meerdere varianten in hoofdletters altijd dezelfde). De clublijst wordt hoogstens 60 seconden
+> gecachet; een onbekende waarde laat haar opnieuw laden (hoogstens eens per 10 seconden), zodat een
+> pas toegevoegde club direct herkend wordt. Is de lijst nog nooit te laden geweest (database
+> onbereikbaar), dan geldt een syntactisch geldige waarde zoals vóór #1677. Geldt voor alle
+> endpoints die `X-Club-Code` lezen, op beide databasetiers.
 
 ### Aanvraag
 
