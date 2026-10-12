@@ -289,6 +289,59 @@ public class FeedbackEndpointCoreTests
     }
 
     [Fact]
+    public void ControleerEnSaneer_TeveelVragen_Geeft400()
+    {
+        var dto = MaakRequest();
+        dto.VragenAntwoorden = Enumerable.Range(0, FeedbackEndpointCore.MaxVragen + 1)
+            .Select(i => new VraagAntwoord { Vraag = "v" + i, Antwoord = "a" }).ToList();
+
+        FeedbackEndpointCore.ControleerEnSaneer(dto, Gebruiker, "verplicht").Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public void ControleerEnSaneer_LangeVraagEnAntwoord_WordenAfgekapt()
+    {
+        var wie = new FeedbackAanroeper("test-" + Guid.NewGuid(), "Jan de Vries", false);
+        var dto = MaakRequest();
+        dto.VragenAntwoorden = [new VraagAntwoord
+        {
+            Vraag = new string('v', FeedbackEndpointCore.MaxVraagTekens + 50),
+            Antwoord = new string('a', FeedbackEndpointCore.MaxAntwoordTekens + 50)
+        }];
+
+        FeedbackEndpointCore.ControleerEnSaneer(dto, wie, "verplicht").Should().BeNull();
+
+        dto.VragenAntwoorden[0].Vraag.Length.Should().Be(FeedbackEndpointCore.MaxVraagTekens);
+        dto.VragenAntwoorden[0].Antwoord.Length.Should().Be(FeedbackEndpointCore.MaxAntwoordTekens);
+    }
+
+    private static Microsoft.AspNetCore.Http.HttpRequest RequestMetBody(string body)
+    {
+        var ctx = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+        ctx.Request.Body = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(body));
+        return ctx.Request;
+    }
+
+    [Fact]
+    public async Task LeesBody_BinnenGrens_GeeftBody()
+    {
+        var (body, afwijzing) = await FeedbackEndpointCore.LeesBodyAsync(RequestMetBody("{\"a\":1}"));
+
+        afwijzing.Should().BeNull();
+        body.Should().Be("{\"a\":1}");
+    }
+
+    [Fact]
+    public async Task LeesBody_BovenGrens_Geeft413()
+    {
+        var (body, afwijzing) = await FeedbackEndpointCore.LeesBodyAsync(
+            RequestMetBody(new string('x', FeedbackEndpointCore.MaxBodyTekens + 1)));
+
+        body.Should().BeNull();
+        afwijzing.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(413);
+    }
+
+    [Fact]
     public void ControleerEnSaneer_LegeBeschrijving_Geeft400()
     {
         var dto = MaakRequest(); dto.Beschrijving = " ";
