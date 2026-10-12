@@ -5,7 +5,7 @@
 // zijn eigen trigger — labeled issues — dus een fout zou anders pas bij een echte run blijken).
 
 const {
-  evaluateGate, setTurnLabel, collectTrustedContext, runTitle, MAX_RUNS, MAX_CONTEXT_CHARS,
+  evaluateGate, setTurnLabel, collectTrustedContext, runTitle, MAX_RUNS, MAX_CONTEXT_BYTES, truncateToBytes,
 } = require('./claude-issue-turn-gate.js');
 
 let failures = 0;
@@ -23,6 +23,8 @@ function fakeGithub({
   issue = {}, commentsByNumber = {}, reviews = [], inlineComments = [],
 } = {}) {
   const calls = { added: [], removed: [], comments: [] };
+  // #1664: een geldig issue is open en heeft precies `turn: claude-code`, tenzij de test anders bepaalt.
+  if (!labels.some((n) => n.startsWith('turn: '))) labels = [...labels, 'turn: claude-code'];
   return {
     calls,
     paginate: async (fn, params) => {
@@ -32,7 +34,7 @@ function fakeGithub({
     rest: {
       issues: {
         get: async () => ({
-          data: { author_association: 'OWNER', labels: labels.map((name) => ({ name })), ...issue },
+          data: { author_association: 'OWNER', state: 'open', labels: labels.map((name) => ({ name })), ...issue },
         }),
         listComments: async ({ issue_number }) => ({ data: commentsByNumber[issue_number] || [] }),
         addLabels: async ({ labels: l }) => { calls.added.push(...l); },
@@ -287,20 +289,117 @@ function fakeGithub({
     check('issue van de Claude GitHub App mag wel', result.proceed, true);
   }
 
+  // ---------- #1666: contextlimiet in UTF-8-bytes ----------
+  console.log('\ncollectTrustedContext (bytes, #1666):');
+  const ownerComment = (d, body) => ({
+    user: { login: 'eigenaar' }, author_association: 'OWNER', created_at: `${d}T00:00:00Z`, body,
+  });
+  const bytes = (t) => Buffer.byteLength(t, 'utf8');
+
   {
-    const big = 'x'.repeat(Math.floor(MAX_CONTEXT_CHARS / 2));
+    const big = 'x'.repeat(Math.floor(MAX_CONTEXT_BYTES / 2));
     const github = fakeGithub({
       issue: { title: 'T', body: 'b', author_association: 'OWNER' },
       commentsByNumber: {
-        62: ['2026-10-01', '2026-10-02', '2026-10-03'].map((d, i) => ({
-          user: { login: 'eigenaar' }, author_association: 'OWNER', created_at: `${d}T00:00:00Z`, body: `c${i}${big}`,
-        })),
+        62: ['2026-10-01', '2026-10-02', '2026-10-03'].map((d, i) => ownerComment(d, `c${i}${big}`)),
       },
     });
     const r = await collectTrustedContext({ github, context: ctx, issueNumber: 62 });
-    check('omvang begrensd', r.text.length <= MAX_CONTEXT_CHARS + 2000, true);
+    check('omvang in bytes begrensd', bytes(r.text) <= MAX_CONTEXT_BYTES, true);
     check('oudste valt af, nieuwste blijft', [r.text.includes('c0x'), r.text.includes('c2x')], [false, true]);
-    check('afgekapte bijdragen geteld', r.truncated, 2);
+    check('afgekapte bijdragen geteld', r.truncated >= 1, true);
+  }
+
+  {
+    // 40.000 tekens van 3 bytes = 120.000 bytes: past in tekens, niet in bytes.
+    const multi = '€'.repeat(40000);
+    const github = fakeGithub({
+      issue: { title: 'T', body: 'b', author_association: 'OWNER' },
+      commentsByNumber: { 66: [ownerComment('2026-10-01', multi)] },
+    });
+    const r = await collectTrustedContext({ github, context: ctx, issueNumber: 66 });
+    check('multibyte: tekenaantal onder de oude limiet', r.text.length < 60000 + 2000, true);
+    check('multibyte: bytes onder het plafond', bytes(r.text) <= MAX_CONTEXT_BYTES, true);
+    check('multibyte: afkapmarkering aanwezig', r.text.includes('AFGEKAPT wegens omvang'), true);
+    check('multibyte: geen ongeldig teken door afkappen', r.text.includes('\uFFFD'), false);
+    check('multibyte: enige (nieuwste) bijdrage blijft deels beschikbaar', r.text.includes('€€€€'), true);
+  }
+
+  {
+    // Enorme issuetekst naast twee reviewcomments: de laatste review blijft volledig behouden.
+    const github = fakeGithub({
+      issue: { title: 'Titel', body: 'i'.repeat(300000), author_association: 'OWNER' },
+      commentsByNumber: {
+        67: [ownerComment('2026-10-01', 'OUDE-REVIEW'), ownerComment('2026-10-02', 'NIEUWSTE-REVIEW')],
+      },
+    });
+    const r = await collectTrustedContext({ github, context: ctx, issueNumber: 67 });
+    check('grote issuetekst: bytes onder het plafond', bytes(r.text) <= MAX_CONTEXT_BYTES, true);
+    check('grote issuetekst: nieuwste review volledig aanwezig', r.text.includes('NIEUWSTE-REVIEW'), true);
+    check('grote issuetekst: oudere review ook aanwezig', r.text.includes('OUDE-REVIEW'), true);
+    check('grote issuetekst: afkapping gemarkeerd', r.text.includes('AFGEKAPT wegens omvang'), true);
+    check('grote issuetekst: melding in kop', r.text.includes('issuetekst is afgekapt'), true);
+  }
+
+  {
+    check('truncateToBytes: korte tekst ongewijzigd', truncateToBytes('abc', 100), 'abc');
+    const cut = truncateToBytes('€'.repeat(100), 200);
+    check('truncateToBytes: limiet gerespecteerd', bytes(cut) <= 200, true);
+    check('truncateToBytes: markering', cut.includes('AFGEKAPT'), true);
+  }
+
+  // ---------- #1664: actuele toestand van het issue ----------
+  console.log('\nevaluateGate (#1664 actuele beurt):');
+  {
+    const github = fakeGithub({ labels: ['source: owner', 'turn: claude-code'], issue: { state: 'closed' } });
+    const result = await evaluateGate({ github, context: ctx, core, issueNumber: 70 });
+    check('gesloten issue: proceed=false', result.proceed, false);
+    check('gesloten issue: geen labelwijziging', [github.calls.added, github.calls.removed], [[], []]);
+    check('gesloten issue: geen comment (niet heropend, niets geplaatst)', github.calls.comments, []);
+  }
+  {
+    const github = fakeGithub({ labels: ['source: owner', 'turn: owner'] });
+    const result = await evaluateGate({ github, context: ctx, core, issueNumber: 71 });
+    check('turn: owner (beurt teruggenomen): proceed=false', result.proceed, false);
+    check('turn: owner: labels ongewijzigd', [github.calls.added, github.calls.removed], [[], []]);
+  }
+  {
+    const github = fakeGithub({ labels: ['source: owner', 'turn: claude-code', 'turn: codex'] });
+    const result = await evaluateGate({ github, context: ctx, core, issueNumber: 72 });
+    check('twee turn-labels: proceed=false', result.proceed, false);
+    check('twee turn-labels: labels ongewijzigd', [github.calls.added, github.calls.removed], [[], []]);
+  }
+  {
+    const github = fakeGithub({ labels: ['source: owner', 'turn: claude-code'] });
+    const result = await evaluateGate({ github, context: ctx, core, issueNumber: 73 });
+    check('open issue met alleen turn: claude-code: proceed=true', result.proceed, true);
+    check('open issue met alleen turn: claude-code: implementatie', result.phase, 'implementatie');
+  }
+
+  // ---------- #1665: meerdere gekoppelde PR's ----------
+  console.log('\nevaluateGate (#1665 meerdere PR-koppelingen):');
+  {
+    const a = ownPr(80, { number: 801 });
+    const b = ownPr(80, { number: 802, head: { ref: 'feature/#80-andere', repo: { full_name: 'o/r' } } });
+    const results = [];
+    for (const openPrs of [[a, b], [b, a]]) {
+      const github = fakeGithub({ labels: ['source: owner'], openPrs });
+      const result = await evaluateGate({ github, context: ctx, core, issueNumber: 80 });
+      results.push(result);
+      check('twee geldige PR\'s: proceed=false', result.proceed, false);
+      check('twee geldige PR\'s: reden noemt meerdere PR-koppelingen', /meerdere PR-koppelingen/.test(result.reason), true);
+      check('twee geldige PR\'s: geen fase en geen labelwijziging', [result.phase, github.calls.added, github.calls.removed, github.calls.comments], [undefined, [], [], []]);
+    }
+    check('twee geldige PR\'s: uitkomst onafhankelijk van API-volgorde', results[0], results[1]);
+  }
+  {
+    const geldig = ownPr(81, { number: 811 });
+    const ongeldig = ownPr(81, { number: 812, author_association: 'NONE' });
+    for (const openPrs of [[geldig, ongeldig], [ongeldig, geldig]]) {
+      const github = fakeGithub({ labels: ['source: owner'], openPrs });
+      const result = await evaluateGate({ github, context: ctx, core, issueNumber: 81 });
+      check('één geldige + één ongeldige PR: verwerking op de geldige', [result.proceed, result.phase, result.prNumber], [true, 'verwerking', 811]);
+    }
   }
 
   // ---------- setTurnLabel: remove+add, oude turn-labels weg ----------

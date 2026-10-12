@@ -23,6 +23,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - De afhandeling rond de verwerkingsrij van een inkomende e-mail (idempotentiebesluit, opgeven na te veel pogingen, beoordeling na een onbekende verzenduitkomst, vastleggen van classificatie- en verwerkingsfouten, buiten-scope-afhandeling) en de foutcategorisering staan nu één keer in Planner.Shared in plaats van per databasetier; gedrag ongewijzigd, met eigen unit-tests (#1650).
 
 ### Fixed
+- De poort van de automatische issue-beurt start geen verouderde of wachtende run meer: het issue moet op dat moment open zijn en precies één beurtlabel hebben, `turn: claude-code`; anders stopt de run zonder labelwijziging (#1664)
+- De poort van de automatische issue-beurt stopt bij meerdere gekoppelde open PR's in plaats van er op API-volgorde één te kiezen, en meldt een eigenaarsbesluit (#1665)
+- De context voor de automatische issue-beurt wordt in UTF-8-bytes begrensd (96 KiB, inclusief issuetekst, kopregels en separators) en kapt zichtbaar af, met behoud van de nieuwste reviewcomments (#1666)
 - fix(#1597): widgetissues krijgen het canonieke label `via: feedback-widget` (voorheen `via-feedback-widget`), zodat ze aansluiten bij de labelset in `.github/labels.json`.
 
 ## [3.13.2.0] — 2026-10-11

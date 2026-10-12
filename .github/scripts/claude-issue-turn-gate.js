@@ -17,6 +17,9 @@
 //  3. Fasedetectie (implementatiestap 3 van #1601): heeft dit issue al een open PR
 //     (via een 'strong' referentie, zie extractIssueRefs), dan is de beurt een
 //     verwerkingsronde op die branch — anders een verse implementatie vanaf develop.
+//  3a. Actuele beurt (#1664): een wachtende of verlate run start alleen als het issue nu open is
+//     en precies één turn:-label heeft, `turn: claude-code`. Meerdere gekoppelde PR's (#1665)
+//     stoppen de poort zonder agent of labelwijziging.
 //  4. Vertrouwde invoer (#1612): op een publieke repo kan iedereen een PR openen en commentaar
 //     plaatsen. Alleen PR's uit deze repo van een bevoegde auteur tellen, en de agent krijgt
 //     uitsluitend tekst van bevoegde schrijvers aangereikt (collectTrustedContext).
@@ -35,6 +38,7 @@ const MAX_RUNS = 3;
 
 const WORKFLOW_FILE = 'claude-issue-turn.yml';
 const TURN_LABEL_PREFIX = 'turn: ';
+const TURN_LABEL_CLAUDE = 'turn: claude-code';
 
 // Moet exact gelijk zijn aan de `run-name` in claude-issue-turn.yml voor een turn-label.
 const RUN_TITLE_PREFIX = 'Claude issue-beurt #';
@@ -49,9 +53,21 @@ const TRUSTED_ASSOCIATIONS = ['OWNER', 'MEMBER', 'COLLABORATOR'];
 // niet tellen. Een login met '[bot]' is voorbehouden aan GitHub Apps en dus niet na te bootsen.
 const TRUSTED_BOTS = ['claude[bot]'];
 
-// De invoer gaat via een workflow-input naar de action en daar als omgevingsvariabele naar
-// het proces. Linux begrenst één variabele op 128 KiB; ruim daaronder blijven.
-const MAX_CONTEXT_CHARS = 60000;
+// De invoer gaat via een workflow-input naar de action en daar als omgevingsvariabele (PROMPT)
+// naar een shellstap. Linux begrenst één string op MAX_ARG_STRLEN = 128 KiB, gemeten in BYTES
+// (#1666). De vaste workflowprompt is ~5,2 KiB (gemeten op de tekst in claude-issue-turn.yml);
+// de context (issuetitel/-body, headers, separators en comments, alles inbegrepen) blijft daarom
+// op ten hoogste 96 KiB, zodat prompt + context ruim onder 128 KiB eindigt.
+const MAX_CONTEXT_BYTES = 96 * 1024;
+
+// Aandeel van het budget voor titel + body van het issue; de rest is voor comments en reviews, zodat
+// een enorme issuetekst de laatste reviewronde nooit kan verdringen.
+const ISSUE_BUDGET_BYTES = Math.floor(MAX_CONTEXT_BYTES / 2);
+
+// Ruimte voor de kopregels, scheidingstekens en afkapmarkeringen (die pas na het afkappen bekend zijn).
+const OVERHEAD_RESERVE_BYTES = 1024;
+
+const TRUNCATION_MARKER = '\n\n[… AFGEKAPT wegens omvang: de rest van deze tekst is weggelaten …]';
 
 function labelNames(issue) {
   return (issue.labels || []).map((l) => (typeof l === 'string' ? l : l.name));
@@ -119,12 +135,12 @@ function isTrustedAuthor(item) {
 }
 
 /**
- * Zoekt de open PR van déze beurt: een 'strong' referentie naar het issue én (#1612) een
+ * Zoekt álle open PR's van déze beurt (#1665): een 'strong' referentie naar het issue én (#1612) een
  * branch in deze repository met de eigen conventie `feature/#<nr>-`, van een bevoegde auteur.
  * Zonder die drie voorwaarden kan iedereen met een fork-PR `fix(#N): ...` bepalen welke PR
  * de schrijfbevoegde agent als zijn werk behandelt.
  */
-async function findLinkedOpenPr({ github, context, issueNumber }) {
+async function findLinkedOpenPrs({ github, context, issueNumber }) {
   const prs = await github.paginate(github.rest.pulls.list, {
     owner: context.repo.owner,
     repo: context.repo.repo,
@@ -136,6 +152,7 @@ async function findLinkedOpenPr({ github, context, issueNumber }) {
   const ownRepo = `${context.repo.owner}/${context.repo.repo}`;
   const branchPrefix = `feature/#${issueNumber}-`;
 
+  const linked = [];
   for (const pr of prs) {
     const { strong } = extractIssueRefs(pr.title, pr.body);
     if (!strong.has(issueNumber)) continue;
@@ -144,9 +161,10 @@ async function findLinkedOpenPr({ github, context, issueNumber }) {
     // isTrustedAuthor, niet isTrusted: de PR die de CI-run zelf opent staat op naam van
     // claude[bot] (associatie NONE) en moet in de verwerkingsfase wél herkend worden (#1633).
     if (!isTrustedAuthor(pr)) continue;
-    return { number: pr.number, branch: pr.head.ref };
+    linked.push({ number: pr.number, branch: pr.head.ref });
   }
-  return null;
+  // Vaste volgorde: de uitkomst hangt niet van de API-volgorde af.
+  return linked.sort((a, b) => a.number - b.number);
 }
 
 /** De run-name van claude-issue-turn.yml — beide plekken moeten exact gelijk blijven. */
@@ -170,6 +188,25 @@ async function countPriorRuns({ github, context, issueNumber }) {
 
   const title = runTitle(issueNumber);
   return runs.filter((r) => r.id !== context.runId && r.display_title === title).length;
+}
+
+function byteLength(text) {
+  return Buffer.byteLength(text, 'utf8');
+}
+
+/**
+ * Kapt af op maximaal `maxBytes` UTF-8-bytes, nooit midden in een teken, en voegt dan een
+ * expliciete markering toe (de markering telt mee in de limiet). Past de tekst al: ongewijzigd.
+ */
+function truncateToBytes(text, maxBytes) {
+  if (byteLength(text) <= maxBytes) return text;
+  const markerBytes = byteLength(TRUNCATION_MARKER);
+  if (maxBytes <= markerBytes) return Buffer.from(TRUNCATION_MARKER, 'utf8').subarray(0, Math.max(0, maxBytes)).toString('utf8');
+  const buf = Buffer.from(text, 'utf8');
+  let end = maxBytes - markerBytes;
+  // Een UTF-8-vervolgbyte is 10xxxxxx: terug tot het begin van een teken.
+  while (end > 0 && (buf[end] & 0xc0) === 0x80) end -= 1;
+  return buf.subarray(0, end).toString('utf8') + TRUNCATION_MARKER;
 }
 
 function formatEntry(kind, item) {
@@ -222,30 +259,47 @@ async function collectTrustedContext({ github, context, issueNumber, prNumber })
   const byTime = (e) => e.item.submitted_at || e.item.created_at || '';
   entries.sort((a, b) => (byTime(a) < byTime(b) ? -1 : byTime(a) > byTime(b) ? 1 : 0));
 
-  // Nieuwste eerst behouden tot de limiet: de laatste reviewronde is wat telt.
+  // Titel en tekst samen: een auteur kan beide op elk moment wijzigen (#1615).
+  const issueTrusted = isTrustedAuthor(issue);
+  const issueTitle = issueTrusted ? issue.title : '(titel weggelaten: geen bevoegde auteur)';
+  const issueBody = issueTrusted ? issue.body || '(lege issuetekst)' : '(issuetekst weggelaten: geen bevoegde auteur)';
+  const issueHead = `## Issue #${issueNumber}: ${issueTitle}`;
+
+  // #1666: alles in UTF-8-bytes. De issuetekst krijgt een eigen deel van het budget.
+  const issuePart = truncateToBytes(`${issueHead}\n\n${issueBody}`, ISSUE_BUDGET_BYTES);
+  const commentBudget = MAX_CONTEXT_BYTES - OVERHEAD_RESERVE_BYTES - byteLength(issuePart);
+  const separator = '\n\n---\n\n';
+
+  // Nieuwste eerst behouden tot de limiet: de laatste reviewronde is wat telt. Past zelfs de
+  // nieuwste bijdrage niet, dan wordt die afgekapt in plaats van weggelaten.
   const kept = [];
   let size = 0;
   for (let i = entries.length - 1; i >= 0; i -= 1) {
-    const text = formatEntry(entries[i].kind, entries[i].item);
-    if (size + text.length > MAX_CONTEXT_CHARS) break;
+    const cost = (kept.length ? byteLength(separator) : 0);
+    let text = formatEntry(entries[i].kind, entries[i].item);
+    const room = commentBudget - size - cost;
+    if (byteLength(text) > room) {
+      if (kept.length === 0 && room > 0) kept.unshift(truncateToBytes(text, room));
+      break;
+    }
     kept.unshift(text);
-    size += text.length;
+    size += byteLength(text) + cost;
   }
   const truncated = entries.length - kept.length;
+  const issueTruncated = issuePart !== `${issueHead}\n\n${issueBody}`;
 
-  // Titel en tekst samen: een auteur kan beide op elk moment wijzigen (#1615).
-  const issueTrusted = isTrustedAuthor(issue);
   const header = [
-    `## Issue #${issueNumber}: ${issueTrusted ? issue.title : '(titel weggelaten: geen bevoegde auteur)'}`,
-    '',
-    issueTrusted ? issue.body || '(lege issuetekst)' : '(issuetekst weggelaten: geen bevoegde auteur)',
-    '',
     `## Comments en reviews van bevoegde schrijvers (${kept.length})`,
     skipped ? `_${skipped} bijdrage(n) van niet-bevoegde schrijvers weggelaten._` : '',
     truncated ? `_${truncated} oudere bijdrage(n) weggelaten wegens omvang._` : '',
+    issueTruncated ? '_De issuetekst is afgekapt wegens omvang._' : '',
   ].filter((line) => line !== '').join('\n');
 
-  return { text: `${header}\n\n${kept.join('\n\n---\n\n')}`.trim(), skipped, truncated };
+  let text = `${issuePart}\n\n${header}\n\n${kept.join(separator)}`.trim();
+  // Vangnet: de som mag nooit boven de limiet uitkomen.
+  text = truncateToBytes(text, MAX_CONTEXT_BYTES);
+
+  return { text, skipped, truncated, bytes: byteLength(text) };
 }
 
 /**
@@ -263,6 +317,23 @@ async function evaluateGate({ github, context, core, issueNumber }) {
   ).data;
 
   const labels = labelNames(issue);
+
+  // #1664: het label-event waarop deze run startte kan inmiddels achterhaald zijn (de run wachtte
+  // in de concurrency-groep, of de eigenaar sloot het issue of nam de beurt terug). Alleen een open
+  // issue met precies één turn:-label, en dat is `turn: claude-code`, start een agent. Bewust zonder
+  // labelwijziging of heropenen: de actuele toestand is de bedoeling van de eigenaar.
+  const turnLabels = labels.filter((n) => n.startsWith(TURN_LABEL_PREFIX));
+  if (issue.state !== 'open') {
+    return { proceed: false, reason: `Geen CI-run gestart: het issue is niet meer open (state: ${issue.state}).` };
+  }
+  if (turnLabels.length !== 1 || turnLabels[0] !== TURN_LABEL_CLAUDE) {
+    return {
+      proceed: false,
+      reason:
+        `Geen CI-run gestart: de actuele beurt is niet exclusief \`${TURN_LABEL_CLAUDE}\` ` +
+        `(huidige turn-labels: ${turnLabels.length ? turnLabels.join(', ') : 'geen'}); verouderde run.`,
+    };
+  }
 
   const hasRequiredSource = REQUIRED_SOURCE_LABELS.some((l) => labels.includes(l));
   if (!hasRequiredSource) {
@@ -308,7 +379,16 @@ async function evaluateGate({ github, context, core, issueNumber }) {
     return { proceed: false, reason };
   }
 
-  const linkedPr = await findLinkedOpenPr({ github, context, issueNumber });
+  const linkedPrs = await findLinkedOpenPrs({ github, context, issueNumber });
+  if (linkedPrs.length > 1) {
+    // #1665: kiezen op API-volgorde zou de verkeerde branch wijzigen; het reviewprotocol vereist
+    // stoppen. Bewust geen agent en geen labelwijziging: de beurt blijft zoals de eigenaar hem zette.
+    const reason =
+      `Geen CI-run gestart: meerdere PR-koppelingen (${linkedPrs.map((p) => `#${p.number}`).join(', ')}), ` +
+      'eigenaarsbesluit nodig welke PR bij dit issue hoort.';
+    return { proceed: false, reason };
+  }
+  const linkedPr = linkedPrs[0];
   if (linkedPr) {
     return {
       proceed: true,
@@ -324,10 +404,11 @@ async function evaluateGate({ github, context, core, issueNumber }) {
 module.exports = {
   evaluateGate,
   setTurnLabel,
-  findLinkedOpenPr,
+  findLinkedOpenPrs,
   countPriorRuns,
   collectTrustedContext,
   runTitle,
   MAX_RUNS,
-  MAX_CONTEXT_CHARS,
+  MAX_CONTEXT_BYTES,
+  truncateToBytes,
 };
