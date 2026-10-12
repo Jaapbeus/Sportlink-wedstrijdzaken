@@ -402,6 +402,20 @@ public class FeedbackCoreTests
         public void Dispose() { }
     }
 
+    // ── Herkomstlabel van widgetissues (#1597) ─────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("Fout")]
+    [InlineData("Verzoek")]
+    [InlineData("Vraag")]
+    public void KiesLabels_zetHetCanoniekeHerkomstlabel(string type)
+    {
+        var labels = FeedbackCore.KiesLabels(type);
+
+        labels.Should().Contain("via: feedback-widget");
+        labels.Should().NotContain("via-feedback-widget");
+    }
+
     private sealed class FakeGitHubIssueCreator
     {
         public int AantalAanroepen { get; private set; }
