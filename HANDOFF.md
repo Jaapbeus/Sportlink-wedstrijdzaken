@@ -1,3 +1,15 @@
+# HANDOFF — nazorg na v3.13.2.0 (2026-10-12, orchestratorsessie; alles op `develop`, nog niet gereleased)
+
+**Gemerged op `develop` (2026-10-12):** #1659 (#1559: optimalisatie volgt Sportlinks blokduur, geen app-buffer voor Sportlink-wedstrijden; v3.13.3.0), #1660 (#1597: widgetlabel `via: feedback-widget`, oude label verwijderd en vijf historische issues gemigreerd; v3.13.3.1), #1663 (#1650: tier-onafhankelijke delen van `EmailProcessorFunction` naar `Planner.Shared/Email`, tier-duplicatie 5287 → 5171; de volledige fase-orkestratie achter een poort blijft bij #1271 wegens per-tier domeintypes), #1662 (#1647 hoofdmenu in groepen met rechten per rol + #1599 instellingen één keer per paginaopening; nieuw endpoint `GET /api/planner/menu-toegang`; v3.13.4.0).
+
+**Open PR's voor de eigenaar:** #1661 (#1641: `Build (PR)`/Security Scan zonder `branches`-filter, issue-beurt-prompt en zelfmerge-regel eisen beide check-runs op de head; squash-merge aanbevolen; eigenaarsbesluiten: bot-dispatch vs. escalatie, besloten notitie per SECURITY.md) en #1667 (#1664/#1665/#1666: issue-beurt-poort eist actuele exclusieve beurt, stopt bij meerdere PR-koppelingen, contextlimiet in UTF-8-bytes; v3.13.3.2 — bij merge na #1662 hernummeren naar 3.13.4.1). Beide raken `.github/workflows/claude-issue-turn.yml` (samenloop handmatig oplossen); de workflow werkt pas na release naar `main`.
+
+**Eigenaarspunten na release:** (1) aanwijzing van `GET /api/planner/menu-toegang` als `ExecuteAuthenticatedAsync`-route (AGENTS.md); (2) standaardstand van de menu-matrix zonder opgeslagen rij (hoofditems aan voor alle rollen, WZ Instellingen/Admin alleen admin); (3) live 3-user-test van het menu; (4) blokvergelijking Planning vs. Veld optimalisatie (#1560) en bevestiging van de aanname "Sportlink-leidend = SportlinkSpeelduur > 0, blokduur speelduur + 15, app-buffer 0"; (5) e-mailtester-DryRun mét AI (uit de vorige HANDOFF).
+
+**Lessen:** een `pull_request`-run start niet bij een merge-conflict (bewezen op tien heads, #1641); de bot-run van de issue-beurt verwerkt niet altijd (workflow-PR's, architect-issues) — eerst `gh run list --workflow claude-issue-turn.yml` en de branch-head controleren; een "waarom werkt dit niet"-uitleg in workflow-commentaar is publicatie (alleen het triggercontract benoemen); `Stop-Debug.ps1` crasht in deze omgeving op `AssemblyName.Parse` en stopt de `-Bewaak`-bewakers niet.
+
+---
+
 # HANDOFF — epic #1632 CA1502/CA1506 wegwerken (gestart 2026-10-11; code op `develop`, afsluit-PR #1652 open)
 
 **Eigenaarsbesluit:** alle fases worden uitgevoerd; Claude bouwt, Codex reviewt; gestapelde PR-keten; de wijzigingen liften mee met de volgende release.

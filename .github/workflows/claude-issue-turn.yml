@@ -22,6 +22,9 @@ run-name: "${{ github.event.label.name == 'turn: claude-code' && format('Claude 
 # (een losse `if:` in deze workflow kan dat niet): scope-restrictie op source:/discipline:-
 # labels, een rondelimiet tegen thrashing, en fasedetectie (implementatie vs. verwerking van
 # reviewcommentaar) via dezelfde 'strong'-issuereferentie als de bestaande status-automatisering.
+# Daarnaast (#1664) de actuele issue-state/turn-label, bij meerdere gekoppelde PR's (#1665) een
+# stop zonder agent, en een contextplafond in UTF-8-bytes (#1666: PROMPT is een omgevingsvariabele
+# met een Linux-limiet van 128 KiB per string; de action heeft op deze pin geen prompt-bestandsinput).
 
 on:
   issues:
@@ -29,6 +32,10 @@ on:
 
 # Eén run tegelijk per issue; een tweede labeling terwijl de eerste run nog bezig is wacht
 # op die run in plaats van ernaast te draaien (voorkomt dubbele branches/PR's op hetzelfde issue).
+# #1664: bewust cancel-in-progress: false. GitHub houdt per groep al maar één wachtende run over
+# (oudere wachtende runs worden geannuleerd); `true` zou een lopende implementatie midden in het
+# werk afbreken zodra iemand het label opnieuw zet. Een verouderde wachtende run stopt in de poort,
+# die de actuele toestand (open + exclusief `turn: claude-code`) opnieuw leest.
 concurrency:
   group: claude-issue-turn-${{ github.event.issue.number }}
   cancel-in-progress: false

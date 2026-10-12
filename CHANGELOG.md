@@ -28,6 +28,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - ci(#1641): `Build (PR)` en Security Scan draaien ook op PR's tegen een featurebranch (na een base-retarget: workflow dispatchen); de zelfmerge-regel en de automatische issue-beurt eisen dat beide check-runs op de head-SHA aanwezig zijn (een PR met merge-conflict krijgt geen pull_request-run)
 
 ### Fixed
+- De poort van de automatische issue-beurt start geen verouderde of wachtende run meer: het issue moet op dat moment open zijn en precies één beurtlabel hebben, `turn: claude-code`; anders stopt de run zonder labelwijziging (#1664)
+- De poort van de automatische issue-beurt stopt bij meerdere gekoppelde open PR's in plaats van er op API-volgorde één te kiezen, en meldt een eigenaarsbesluit (#1665)
+- De context voor de automatische issue-beurt wordt in UTF-8-bytes begrensd (96 KiB, inclusief issuetekst, kopregels en separators) en kapt zichtbaar af, met behoud van de nieuwste reviewcomments (#1666)
 - fix(#1597): widgetissues krijgen het canonieke label `via: feedback-widget` (voorheen `via-feedback-widget`), zodat ze aansluiten bij de labelset in `.github/labels.json`.
 
 ## [3.13.2.0] — 2026-10-11
