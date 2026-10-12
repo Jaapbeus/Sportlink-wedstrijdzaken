@@ -9,7 +9,8 @@ namespace Planner.Shared.Tests.Theming;
 
 /// <summary>
 /// Tests voor de verharding van de uitgaande thema-extractie (#1675): host-controle per hop,
-/// begrensde antwoordomvang, regexen zonder backtracking en validatie van favicon-/logo-URL.
+/// begrensde antwoordomvang, charset-bewust lezen, regexen zonder backtracking, de eind-URL als
+/// basis voor relatieve assets en validatie/normalisatie van favicon-/logo-URL.
 /// Uitsluitend <c>example.com</c>-achtige testhosts.
 /// </summary>
 public class ThemeCoreSsrfVerhardingTests
@@ -108,26 +109,26 @@ public class ThemeCoreSsrfVerhardingTests
     }
 
     [Fact]
-    public async Task ReadBoundedStringAsync_BovenLimiet_GooitSsrfBlockedException()
+    public async Task ReadBoundedStringAsync_BovenLimiet_GooitResponseTooLargeException()
     {
         var act = () => SsrfProtection.ReadBoundedStringAsync(new StringContent(new string('a', 100)), maxBytes: 10);
 
-        await act.Should().ThrowAsync<SsrfBlockedException>();
+        await act.Should().ThrowAsync<ResponseTooLargeException>();
     }
 
     [Fact]
-    public async Task ReadBoundedStringAsync_BovenLimietZonderContentLength_GooitSsrfBlockedException()
+    public async Task ReadBoundedStringAsync_BovenLimietZonderContentLength_GooitResponseTooLargeException()
     {
         using var stream = new MemoryStream(new byte[100]);
         var content = new StreamContent(stream);
 
         var act = () => SsrfProtection.ReadBoundedStringAsync(content, maxBytes: 10);
 
-        await act.Should().ThrowAsync<SsrfBlockedException>();
+        await act.Should().ThrowAsync<ResponseTooLargeException>();
     }
 
     [Fact]
-    public async Task ExtraheerAsync_TeGroteBody_GeeftBestemmingGeblokkeerd()
+    public async Task ExtraheerAsync_TeGroteBody_GeeftAntwoordTeGroot()
     {
         var groot = new string('a', SsrfProtection.MaxResponseBytes + 1);
         using var client = new HttpClient(new StubHandler(Ok(groot)));
@@ -136,15 +137,61 @@ public class ThemeCoreSsrfVerhardingTests
             "https://club.example.com/", () => Task.FromResult<string?>("club.example.com"),
             NullLogger.Instance, client);
 
-        resultaat.Status.Should().Be(ThemeExtractieStatus.BestemmingGeblokkeerd);
+        resultaat.Status.Should().Be(ThemeExtractieStatus.AntwoordTeGroot);
+        resultaat.Foutmelding.Should().Be("De website geeft een te groot antwoord.");
+    }
+
+    // --- charset-bewust lezen ---------------------------------------------------------------
+
+    private static ByteArrayContent Tekst(byte[] bytes, string? charset)
+    {
+        var content = new ByteArrayContent(bytes);
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/html") { CharSet = charset };
+        return content;
     }
 
     [Fact]
-    public void CreateHttpClient_BeperktBufferGrootte()
+    public async Task ReadBoundedStringAsync_Iso88591_DecodeertNietAsciiTeken()
     {
-        using var client = SsrfProtection.CreateHttpClient();
+        var bytes = System.Text.Encoding.Latin1.GetBytes("<title>Caf\u00e9</title>");
 
-        client.MaxResponseContentBufferSize.Should().Be(SsrfProtection.MaxResponseBytes);
+        var tekst = await SsrfProtection.ReadBoundedStringAsync(Tekst(bytes, "ISO-8859-1"));
+
+        tekst.Should().Be("<title>Caf\u00e9</title>");
+    }
+
+    [Fact]
+    public async Task ReadBoundedStringAsync_Windows1252_DecodeertCodepagina()
+    {
+        var tekst = await SsrfProtection.ReadBoundedStringAsync(Tekst(new byte[] { 0x80 }, "windows-1252"));
+
+        tekst.Should().Be("\u20ac");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("geen-bestaande-charset")]
+    public async Task ReadBoundedStringAsync_ZonderOfOnbekendeCharset_ValtTerugOpUtf8(string? charset)
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes("Caf\u00e9");
+
+        var tekst = await SsrfProtection.ReadBoundedStringAsync(Tekst(bytes, charset));
+
+        tekst.Should().Be("Caf\u00e9");
+    }
+
+    [Fact]
+    public async Task ExtraheerAsync_Iso88591Pagina_GeeftAssetUrlMetNietAsciiTeken()
+    {
+        var html = "<link rel=\"icon\" href=\"/caf\u00e9.png\">";
+        var antwoord = new HttpResponseMessage(HttpStatusCode.OK) { Content = Tekst(System.Text.Encoding.Latin1.GetBytes(html), "iso-8859-1") };
+        using var client = new HttpClient(new StubHandler(antwoord));
+
+        var resultaat = await ThemeCore.ExtraheerAsync(
+            "https://club.example.com/", () => Task.FromResult<string?>("club.example.com"),
+            NullLogger.Instance, client);
+
+        resultaat.FaviconUrl.Should().Be("https://club.example.com/caf\u00e9.png");
     }
 
     // --- (3) regexen ------------------------------------------------------------------------
@@ -177,7 +224,7 @@ public class ThemeCoreSsrfVerhardingTests
     [InlineData("")]
     [InlineData("https://club.example.com/favicon.ico")]
     public void ValideerAssetUrl_Geldig_GeeftNull(string? url) =>
-        ThemeCore.ValideerAssetUrl(url, "favicon-URL").Should().BeNull();
+        ThemeAssetUrl.ValideerAssetUrl(url, "favicon-URL").Should().BeNull();
 
     [Theory]
     [InlineData("http://club.example.com/f.ico")]
@@ -188,16 +235,69 @@ public class ThemeCoreSsrfVerhardingTests
     [InlineData("file:///etc/passwd")]
     [InlineData("https://club.example.com/a\nb")]
     public void ValideerAssetUrl_Ongeldig_GeeftFoutmelding(string url) =>
-        ThemeCore.ValideerAssetUrl(url, "favicon-URL").Should().NotBeNull();
+        ThemeAssetUrl.ValideerAssetUrl(url, "favicon-URL").Should().NotBeNull();
 
     [Fact]
     public void ValideerAssetUrl_TeLang_GeeftFoutmelding() =>
-        ThemeCore.ValideerAssetUrl("https://club.example.com/" + new string('a', 300), "logo-URL").Should().NotBeNull();
+        ThemeAssetUrl.ValideerAssetUrl("https://club.example.com/" + new string('a', 300), "logo-URL").Should().NotBeNull();
+
+    [Theory]
+    [InlineData("http://club.example.com/f.ico?v=2", "https://club.example.com/f.ico?v=2")]
+    [InlineData("HTTP://club.example.com/f.ico", "https://club.example.com/f.ico")]
+    [InlineData("http://club.example.com:80/f.ico", "https://club.example.com/f.ico")]
+    [InlineData("https://club.example.com/f.ico", "https://club.example.com/f.ico")]
+    [InlineData("/favicon.ico", "/favicon.ico")]
+    [InlineData("javascript:alert(1)", "javascript:alert(1)")]
+    [InlineData("", "")]
+    [InlineData(null, null)]
+    public void NaarHttps_ZetAlleenAbsoluteHttpUrlOm(string? invoer, string? verwacht) =>
+        ThemeAssetUrl.NaarHttps(invoer).Should().Be(verwacht);
 
     [Fact]
-    public async Task ValideerUpdateAsync_OngeldigeFavicon_WordtGeweigerd()
+    public async Task ValideerUpdateAsync_HttpFaviconEnLogo_WordenAlsHttpsOpgeslagen()
     {
-        var resultaat = await ThemeCore.ValideerUpdateAsync(new ThemeUpdateRequest { FaviconUrl = "http://club.example.com/f.ico" });
+        var dto = new ThemeUpdateRequest
+        {
+            FaviconUrl = "http://club.example.com/f.ico",
+            LogoUrl = "http://club.example.com/img/logo.png?v=3"
+        };
+
+        var resultaat = await ThemeCore.ValideerUpdateAsync(dto);
+
+        resultaat.Status.Should().Be(ThemeValidatieStatus.Ok);
+        dto.FaviconUrl.Should().Be("https://club.example.com/f.ico");
+        dto.LogoUrl.Should().Be("https://club.example.com/img/logo.png?v=3");
+    }
+
+    [Fact]
+    public async Task ValideerUpdateAsync_KleurwijzigingMetOpgeslagenHttpAsset_Slaagt()
+    {
+        var dto = new ThemeUpdateRequest { Primary = "#123456", FaviconUrl = "http://club.example.com/f.ico" };
+
+        var resultaat = await ThemeCore.ValideerUpdateAsync(dto);
+
+        resultaat.Status.Should().Be(ThemeValidatieStatus.Ok);
+        dto.FaviconUrl.Should().Be("https://club.example.com/f.ico");
+    }
+
+    [Theory]
+    [InlineData("/favicon.ico")]
+    [InlineData("ftp://club.example.com/f.ico")]
+    [InlineData("data:image/png;base64,AAAA")]
+    public async Task ValideerUpdateAsync_OngeldigeFavicon_WordtGeweigerd(string favicon)
+    {
+        var resultaat = await ThemeCore.ValideerUpdateAsync(new ThemeUpdateRequest { FaviconUrl = favicon });
+
+        resultaat.Status.Should().Be(ThemeValidatieStatus.OngeldigeAssetUrl);
+    }
+
+    [Fact]
+    public async Task ValideerUpdateAsync_HttpFaviconDieNaOmzettingTeLangIs_WordtGeweigerd()
+    {
+        var favicon = "http://club.example.com/" + new string('a', ThemeAssetUrl.MaxAssetUrlLengte - 24);
+        favicon.Length.Should().Be(ThemeAssetUrl.MaxAssetUrlLengte);
+
+        var resultaat = await ThemeCore.ValideerUpdateAsync(new ThemeUpdateRequest { FaviconUrl = favicon });
 
         resultaat.Status.Should().Be(ThemeValidatieStatus.OngeldigeAssetUrl);
     }
@@ -223,17 +323,66 @@ public class ThemeCoreSsrfVerhardingTests
     }
 
     [Fact]
-    public void Extractie_HttpAssets_WordenNietVoorgesteld()
+    public void Extractie_HttpAssets_WordenAlsHttpsVoorgesteld()
     {
         const string html = "<link rel=\"icon\" href=\"http://club.example.com/f.png\"><meta property=\"og:image\" content=\"http://club.example.com/l.png\">";
 
-        ThemeCore.ExtractFaviconUrl(html, new Uri("https://club.example.com/")).Should().BeNull();
-        ThemeCore.ExtractLogoUrl(html, new Uri("https://club.example.com/")).Should().BeNull();
+        ThemeCore.ExtractFaviconUrl(html, new Uri("https://club.example.com/")).Should().Be("https://club.example.com/f.png");
+        ThemeCore.ExtractLogoUrl(html, new Uri("https://club.example.com/")).Should().Be("https://club.example.com/l.png");
     }
 
     [Fact]
-    public void Extractie_HttpBasisZonderIcoon_GeeftGeenHttpFavicon() =>
-        ThemeCore.ExtractFaviconUrl("<html></html>", new Uri("http://club.example.com/")).Should().BeNull();
+    public void Extractie_HttpBasisZonderIcoon_GeeftHttpsFavicon() =>
+        ThemeCore.ExtractFaviconUrl("<html></html>", new Uri("http://club.example.com/"))
+            .Should().Be("https://club.example.com/favicon.ico");
+
+    [Fact]
+    public void Extractie_NietOpslaanbaarAsset_WordtNietVoorgesteld() =>
+        ThemeCore.ExtractLogoUrl("<meta property=\"og:image\" content=\"data:image/png;base64,AAAA\">", new Uri("https://club.example.com/"))
+            .Should().BeNull();
+
+    // --- eind-URL als basis voor relatieve assets ---------------------------------------------
+
+    [Fact]
+    public async Task GetWithBoundedRedirectsAndFinalUriAsync_GeeftBestemmingVanLaatsteHop()
+    {
+        using var client = new HttpClient(new StubHandler(Redirect("/nl/"), Ok()));
+
+        var (response, eindUri) = await SsrfProtection.GetWithBoundedRedirectsAndFinalUriAsync(
+            client, new Uri("https://club.example.com/"));
+        using (response)
+        {
+            eindUri.Should().Be(new Uri("https://club.example.com/nl/"));
+        }
+    }
+
+    [Fact]
+    public async Task ExtraheerAsync_RedirectHttpsNaarHttps_LostRelatieveFaviconOpTegenEindUrl()
+    {
+        using var client = new HttpClient(new StubHandler(
+            Redirect("https://www.club.example.com/nl/"), Ok("<link rel=\"icon\" href=\"icon.png\">")));
+
+        var resultaat = await ThemeCore.ExtraheerAsync(
+            "https://club.example.com/", () => Task.FromResult<string?>("club.example.com"),
+            NullLogger.Instance, client);
+
+        resultaat.Status.Should().Be(ThemeExtractieStatus.Ok);
+        resultaat.FaviconUrl.Should().Be("https://www.club.example.com/nl/icon.png");
+    }
+
+    [Fact]
+    public async Task ExtraheerAsync_RedirectHttpNaarHttps_GeeftHttpsFaviconVanEindUrl()
+    {
+        using var client = new HttpClient(new StubHandler(
+            Redirect("https://www.club.example.com/"), Ok("<html></html>")));
+
+        var resultaat = await ThemeCore.ExtraheerAsync(
+            "http://club.example.com/", () => Task.FromResult<string?>("club.example.com"),
+            NullLogger.Instance, client);
+
+        resultaat.Status.Should().Be(ThemeExtractieStatus.Ok);
+        resultaat.FaviconUrl.Should().Be("https://www.club.example.com/favicon.ico");
+    }
 
     // --- begrenzing over de hele extractie ----------------------------------------------------
 
@@ -299,7 +448,7 @@ public class ThemeCoreSsrfVerhardingTests
         budget.Remaining.Should().Be(4);
 
         var act = () => SsrfProtection.ReadBoundedStringAsync(new StringContent("123456"), budget: budget);
-        await act.Should().ThrowAsync<SsrfBlockedException>();
+        await act.Should().ThrowAsync<ResponseTooLargeException>();
     }
 
     [Fact]
@@ -314,7 +463,7 @@ public class ThemeCoreSsrfVerhardingTests
     }
 
     [Fact]
-    public async Task ReadBoundedStringAsync_GedecomprimeerdeBom_WordtOpGedecomprimeerdeBytesBegrensd()
+    public async Task ReadBoundedStringAsync_UitpakkendeStreamZonderContentLength_WordtOpGelezenBytesBegrensd()
     {
         var gzip = new MemoryStream();
         await using (var z = new System.IO.Compression.GZipStream(gzip, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true))
@@ -326,7 +475,7 @@ public class ThemeCoreSsrfVerhardingTests
 
         var act = () => SsrfProtection.ReadBoundedStringAsync(content, maxBytes: 100_000);
 
-        await act.Should().ThrowAsync<SsrfBlockedException>();
+        await act.Should().ThrowAsync<ResponseTooLargeException>();
     }
 
     [Fact]

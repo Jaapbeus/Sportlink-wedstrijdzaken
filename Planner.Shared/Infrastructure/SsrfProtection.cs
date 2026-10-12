@@ -20,17 +20,6 @@ public sealed class SsrfBlockedException : Exception
     public SsrfBlockedException(string message) : base(message) { }
 }
 
-/// <summary>Gedeeld bytebudget voor alle gelezen antwoorden van één samenhangende ophaalactie.</summary>
-public sealed class ResponseBudget
-{
-    public ResponseBudget(int bytes) => Remaining = bytes;
-
-    /// <summary>Aantal bytes dat nog gelezen mag worden.</summary>
-    public int Remaining { get; private set; }
-
-    internal void Consume(int bytes) => Remaining -= bytes;
-}
-
 /// <summary>
 /// Centrale SSRF-bescherming voor uitgaande HTTP-aanroepen naar door de admin opgegeven URL's
 /// (#1007 — thema-extractor). Los van <see cref="EgressGuard"/>: die schakelt uitgaande
@@ -52,7 +41,7 @@ public sealed class ResponseBudget
 /// dus elke aanroep (initieel én elke redirect-hop) loopt hierdoor.</item>
 /// </list>
 /// </summary>
-public static class SsrfProtection
+public static partial class SsrfProtection
 {
     /// <summary>Maximum aantal redirect-hops dat handmatig gevolgd wordt.</summary>
     public const int MaxRedirects = 5;
@@ -355,9 +344,9 @@ public static class SsrfProtection
     internal const string DefaultAcceptLanguage = "nl-NL,nl;q=0.9,en;q=0.8";
 
     /// <summary>
-    /// De handler achter <see cref="CreateHttpClient"/>: geen automatische redirects, geen
-    /// systeemproxy en geen automatische decompressie (de gelezen bytes zijn dus de bytes op de lijn,
-    /// waarop <see cref="ReadBoundedStringAsync"/> begrenst).
+    /// De handler achter <see cref="CreateHttpClient"/>: geen automatische redirects en geen
+    /// systeemproxy. Automatische decompressie staat expliciet uit (gelijk aan de standaard), zodat
+    /// die keuze zichtbaar is en niet stil verandert.
     /// </summary>
     internal static SocketsHttpHandler CreateHandler(
         Func<string, CancellationToken, Task<IPAddress[]>>? resolverOverride = null,
@@ -386,7 +375,11 @@ public static class SsrfProtection
         Func<int, bool>? isAllowedPortOverride = null)
     {
         var handler = CreateHandler(resolverOverride, isAllowedEndpointOverride, isAllowedPortOverride);
-        var client = new HttpClient(handler) {
+        // MaxResponseContentBufferSize geldt alleen voor gebufferd lezen (bijv. GetStringAsync).
+        // Wie met ResponseHeadersRead leest, zoals GetWithBoundedRedirectsAsync, begrenst de body
+        // met ReadBoundedStringAsync.
+        var client = new HttpClient(handler)
+        {
             Timeout = timeout ?? TimeSpan.FromSeconds(10),
             MaxResponseContentBufferSize = MaxResponseBytes
         };
@@ -411,6 +404,22 @@ public static class SsrfProtection
     /// </para>
     /// </summary>
     public static async Task<HttpResponseMessage> GetWithBoundedRedirectsAsync(
+        HttpClient client, Uri startUri, int maxRedirects = MaxRedirects,
+        Func<int, bool>? isAllowedPortOverride = null,
+        Func<Uri, bool>? isAllowedHop = null,
+        CancellationToken ct = default)
+    {
+        var (response, _) = await GetWithBoundedRedirectsAndFinalUriAsync(
+            client, startUri, maxRedirects, isAllowedPortOverride, isAllowedHop, ct);
+        return response;
+    }
+
+    /// <summary>
+    /// Als <see cref="GetWithBoundedRedirectsAsync"/>, en geeft daarnaast de bestemming van de
+    /// laatste hop terug: de basis waartegen relatieve verwijzingen in het antwoord horen te worden
+    /// opgelost.
+    /// </summary>
+    public static async Task<(HttpResponseMessage Response, Uri FinalUri)> GetWithBoundedRedirectsAndFinalUriAsync(
         HttpClient client, Uri startUri, int maxRedirects = MaxRedirects,
         Func<int, bool>? isAllowedPortOverride = null,
         Func<Uri, bool>? isAllowedHop = null,
@@ -450,35 +459,9 @@ public static class SsrfProtection
                 current = volgende;
                 continue;
             }
-            return response;
+            return (response, current);
         }
         throw new SsrfBlockedException("Te veel redirects.");
-    }
-
-    /// <summary>
-    /// Leest de body als tekst en stopt bij <paramref name="maxBytes"/>: een groter antwoord geeft
-    /// een <see cref="SsrfBlockedException"/> in plaats van volledig in het geheugen te komen.
-    /// </summary>
-    public static async Task<string> ReadBoundedStringAsync(
-        HttpContent content, int maxBytes = MaxResponseBytes, CancellationToken ct = default,
-        ResponseBudget? budget = null)
-    {
-        if (budget != null) maxBytes = Math.Min(maxBytes, budget.Remaining);
-        if (content.Headers.ContentLength is { } lengte && lengte > maxBytes)
-            throw new SsrfBlockedException("Antwoord is te groot.");
-
-        using var bron = await content.ReadAsStreamAsync(ct);
-        using var buffer = new MemoryStream();
-        var blok = new byte[8192];
-        int gelezen;
-        while ((gelezen = await bron.ReadAsync(blok, ct)) > 0)
-        {
-            if (buffer.Length + gelezen > maxBytes)
-                throw new SsrfBlockedException("Antwoord is te groot.");
-            buffer.Write(blok, 0, gelezen);
-        }
-        budget?.Consume((int)buffer.Length);
-        return System.Text.Encoding.UTF8.GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
     }
 
     private static bool IsRedirectStatus(HttpStatusCode code) => code is

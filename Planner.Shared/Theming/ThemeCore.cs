@@ -70,7 +70,10 @@ public enum ThemeExtractieStatus
     BestemmingGeblokkeerd,
 
     /// <summary>De website gaf geen bruikbaar antwoord (HTTP 502).</summary>
-    OphalenMislukt
+    OphalenMislukt,
+
+    /// <summary>Het antwoord van de website is groter dan de toegestane omvang (HTTP 400).</summary>
+    AntwoordTeGroot
 }
 
 /// <summary>Resultaat van <see cref="ThemeCore.ExtraheerAsync"/>.</summary>
@@ -266,6 +269,10 @@ public static class ThemeCore
     /// Die laatste controle staat bewust al bij het opslaan en niet pas bij extractie (#1007):
     /// anders kan dezelfde admin die de allowlist beheert hem op een intern adres zetten.
     /// </para>
+    /// <para>
+    /// Een http-favicon of -logo wordt vooraf op <paramref name="dto"/> zelf naar https omgezet
+    /// (<see cref="ThemeAssetUrl.NaarHttps"/>), zodat de tier de opslaanbare vorm wegschrijft.
+    /// </para>
     /// </summary>
     public static async Task<ThemeValidatieResultaat> ValideerUpdateAsync(
         ThemeUpdateRequest dto,
@@ -287,7 +294,10 @@ public static class ThemeCore
         if (paletFout != null)
             return new ThemeValidatieResultaat(ThemeValidatieStatus.OngeldigPalet, paletFout);
 
-        var assetFout = ValideerAssetUrl(dto.FaviconUrl, "favicon-URL") ?? ValideerAssetUrl(dto.LogoUrl, "logo-URL");
+        dto.FaviconUrl = ThemeAssetUrl.NaarHttps(dto.FaviconUrl);
+        dto.LogoUrl = ThemeAssetUrl.NaarHttps(dto.LogoUrl);
+        var assetFout = ThemeAssetUrl.ValideerAssetUrl(dto.FaviconUrl, "favicon-URL")
+                     ?? ThemeAssetUrl.ValideerAssetUrl(dto.LogoUrl, "logo-URL");
         if (assetFout != null)
             return new ThemeValidatieResultaat(ThemeValidatieStatus.OngeldigeAssetUrl, assetFout);
 
@@ -310,23 +320,6 @@ public static class ThemeCore
 
     /// <summary>Totale tijdlimiet voor één extractie (alle hops en leesacties).</summary>
     internal static readonly TimeSpan TotaleTijdlimiet = TimeSpan.FromSeconds(15);
-
-    /// <summary>Maximale lengte van een opgeslagen favicon-/logo-URL.</summary>
-    internal const int MaxAssetUrlLengte = 300;
-
-    /// <summary>
-    /// Valideert een optionele favicon-/logo-URL: leeg mag, anders absoluut https, niet langer dan
-    /// <see cref="MaxAssetUrlLengte"/>, een niet-lege host en geen controletekens. Geeft de
-    /// foutmelding of <c>null</c>. Geparsed met <see cref="UriKind.RelativeOrAbsolute"/> (#1252).
-    /// </summary>
-    internal static string? ValideerAssetUrl(string? url, string naam)
-    {
-        if (string.IsNullOrWhiteSpace(url)) return null;
-        var fout = $"Ongeldige {naam}.";
-        if (url.Length > MaxAssetUrlLengte || url.Any(char.IsControl)) return fout;
-        if (!Uri.TryCreate(url, UriKind.RelativeOrAbsolute, out var uri) || !uri.IsAbsoluteUri) return fout;
-        return uri.Scheme == Uri.UriSchemeHttps && !string.IsNullOrEmpty(uri.Host) ? null : fout;
-    }
 
     /// <summary>
     /// Vertaalt de opgeslagen <c>ThemeClubWebsiteUrl</c> naar de hostnaam die de allowlist voor
@@ -389,16 +382,18 @@ public static class ThemeCore
         {
             // De daadwerkelijke IP-validatie zit in de ConnectCallback van de client en geldt dus
             // voor elke hop, niet alleen deze initiële URL (#1007).
-            using var response = await SsrfProtection.GetWithBoundedRedirectsAsync(
+            var (antwoord, eindUri) = await SsrfProtection.GetWithBoundedRedirectsAndFinalUriAsync(
                 httpClientOverride ?? HttpClient, parsedUri,
                 isAllowedHop: hop => IsToegestaneHop(hop, toegestaneHost), ct: deadline.Token);
+            using var response = antwoord;
             response.EnsureSuccessStatusCode();
             var html = await SsrfProtection.ReadBoundedStringAsync(
                 response.Content, ct: deadline.Token, budget: budget);
 
+            // Relatieve verwijzingen horen bij de pagina die na de redirects is opgehaald.
             var colors = ExtractColors(html);
-            var faviconUrl = ExtractFaviconUrl(html, parsedUri);
-            var logoUrl = ExtractLogoUrl(html, parsedUri);
+            var faviconUrl = ExtractFaviconUrl(html, eindUri);
+            var logoUrl = ExtractLogoUrl(html, eindUri);
             log.LogInformation("Assets geëxtraheerd uit {Host}: {Count} kleuren, favicon={Fav}, logo={Logo}",
                 LogWaarde.Schoon(parsedUri.Host), colors.Count, faviconUrl != null, logoUrl != null);
             return new ThemeExtractieResultaat(ThemeExtractieStatus.Ok, null, colors, faviconUrl, logoUrl);
@@ -407,6 +402,11 @@ public static class ThemeCore
         {
             log.LogWarning(ex, "Extractie geweigerd door SSRF-bescherming: {Host}", LogWaarde.Schoon(parsedUri.Host));
             return new ThemeExtractieResultaat(ThemeExtractieStatus.BestemmingGeblokkeerd, "URL-bestemming is niet toegestaan.");
+        }
+        catch (ResponseTooLargeException ex)
+        {
+            log.LogWarning(ex, "Antwoord van website te groot: {Host}", LogWaarde.Schoon(parsedUri.Host));
+            return new ThemeExtractieResultaat(ThemeExtractieStatus.AntwoordTeGroot, "De website geeft een te groot antwoord.");
         }
         catch (Exception ex)
         {
@@ -450,7 +450,7 @@ public static class ThemeCore
         var m = _faviconRegex.Match(html);
         if (!m.Success) m = _faviconAltRegex.Match(html);
         var href = m.Success ? m.Groups[1].Value : "/favicon.ico";
-        return AlleenOpslaanbaar(ResolveUrl(href, baseUri));
+        return ThemeAssetUrl.AlleenOpslaanbaar(ResolveUrl(href, baseUri));
     }
 
     /// <summary>Zoekt achtereenvolgens <c>og:image</c> en <c>apple-touch-icon</c>.</summary>
@@ -460,12 +460,8 @@ public static class ThemeCore
         if (!m.Success) m = _ogImageAltRegex.Match(html);
         if (!m.Success) m = _appleTouchRegex.Match(html);
         if (!m.Success) return null;
-        return AlleenOpslaanbaar(ResolveUrl(m.Groups[1].Value, baseUri));
+        return ThemeAssetUrl.AlleenOpslaanbaar(ResolveUrl(m.Groups[1].Value, baseUri));
     }
-
-    /// <summary>Stelt alleen een asset-URL voor die <see cref="ValideerAssetUrl"/> bij opslaan accepteert.</summary>
-    private static string? AlleenOpslaanbaar(string? url) =>
-        url != null && ValideerAssetUrl(url, "asset-URL") == null ? url : null;
 
     /// <summary>
     /// Maakt een absolute http/https-URL van een mogelijk relatieve verwijzing. Een ander schema
