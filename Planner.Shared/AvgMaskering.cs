@@ -47,6 +47,32 @@ public static class AvgMaskering
     /// plaats van stilzwijgend niets te maskeren.
     /// </exception>
     public static void MaskeerAfzender(Dictionary<string, object?> rij, string kolomNaam = "Afzender")
+        => MaskeerKolom(rij, kolomNaam, Maskeer);
+
+    /// <summary>Maskeert <c>Afzender</c> én <c>VerstuurdNaar</c> van een e-maillogrij (beide verplicht aanwezig).</summary>
+    public static void MaskeerEmailLogRij(Dictionary<string, object?> rij)
+    {
+        MaskeerAfzender(rij);
+        MaskeerOntvangers(rij);
+    }
+
+    /// <summary>
+    /// Maskeert de ontvangersregel (<c>VerstuurdNaar</c>): één of meer adressen gescheiden door
+    /// <c>;</c>, <c>,</c> of witruimte; elk adres wordt afzonderlijk gemaskeerd. Ontbreekt de kolom,
+    /// dan gooit dit (zie <see cref="MaskeerAfzender"/>).
+    /// </summary>
+    public static void MaskeerOntvangers(Dictionary<string, object?> rij, string kolomNaam = "VerstuurdNaar")
+        => MaskeerKolom(rij, kolomNaam, MaskeerLijst);
+
+    /// <summary>Maskeert elk adres in een door <c>;</c>, <c>,</c> of witruimte gescheiden lijst.</summary>
+    public static string? MaskeerLijst(string? adressen)
+    {
+        if (string.IsNullOrWhiteSpace(adressen)) return adressen;
+        var delen = adressen.Split(new[] { ';', ',', ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        return string.Join("; ", delen.Select(d => Maskeer(d)));
+    }
+
+    private static void MaskeerKolom(Dictionary<string, object?> rij, string kolomNaam, Func<string?, string?> maskeer)
     {
         ArgumentNullException.ThrowIfNull(rij);
 
@@ -56,7 +82,7 @@ public static class AvgMaskering
                 "niets gemaskeerd. Dit is een fout in de query — controleer of de SELECT de kolom " +
                 "nog oplevert. Stilzwijgend doorgaan zou een onvermaskerd adres naar de browser sturen.");
 
-        rij[sleutel] = Maskeer(rij[sleutel] as string);
+        rij[sleutel] = maskeer(rij[sleutel] as string);
     }
 
     /// <summary>

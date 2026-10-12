@@ -1,3 +1,4 @@
+using Planner.Shared;
 using Microsoft.Data.SqlClient;
 using Planner.Shared.Feedback;
 
@@ -166,8 +167,7 @@ internal sealed class SqlFeedbackStore : IFeedbackStore
     }
 
     /// <summary>Wildcards uit de zoektekst onschadelijk maken (\ % _ [), zodat ze letterlijk gezocht worden.</summary>
-    internal static string EscapeLike(string tekst) =>
-        tekst.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_").Replace("[", "\\[");
+    internal static string EscapeLike(string tekst) => LikePatroon.Escape(tekst);
 
     private static FeedbackSamenvatting LeesSamenvatting(SqlDataReader r) => new(
         r.GetGuid(r.GetOrdinal("FeedbackId")),
