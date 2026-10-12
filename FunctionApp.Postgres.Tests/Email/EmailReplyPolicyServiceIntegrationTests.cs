@@ -6,6 +6,7 @@ using Npgsql;
 using FunctionApp.Postgres.Email;
 using FunctionApp.Postgres.Tests.Email.TestDoubles;
 using Xunit;
+using Planner.Shared.Email; // #1650: VerwerkingsBesluit staat in Planner.Shared
 
 namespace FunctionApp.Postgres.Tests.Email;
 
