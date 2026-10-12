@@ -3830,7 +3830,7 @@ aangemaakt en pas in 021 RLS hebben gekregen:
 
 | Script | Vraag die het beantwoordt |
 |---|---|
-| `scripts/ci/check-rls-enabled.sh` | Heeft elke tabel in `public`/`avg`/`planner` `relrowsecurity = true`? |
+| `scripts/ci/check-rls-enabled.sh` | Heeft elke tabel in `public`/`avg`/`planner` (sinds #1698 ook `his`/`stg`, zie §82) `relrowsecurity = true`? |
 | `scripts/ci/check-splinter-lints.sh` | Meldt Supabase's eigen linter iets op de punten die vóór livegang te beoordelen zijn? |
 
 Splinter (`supabase/splinter`) is de motor onder de Security- en Performance Advisor in het
@@ -4764,3 +4764,52 @@ daardoor van 5213 naar 5194.
 compileren, maar draaien alleen in de CI-job met een levende Postgres; voor de SQL Server-tier bestaat geen
 equivalente integratietest (de SQL is handmatig gespiegeld, de statische controle is de schema-drift check en
 de job *PostDeployment op verse database*).
+
+## 82. Persoonskolommen in de historietabellen: seizoensretentie en RLS vanuit de generator (#1698)
+
+`his.matches` en `his.matchdetails` bewaren wat Sportlink per wedstrijd teruggeeft, inclusief
+persoonskolommen (officials, rijders, vrije opmerkingen, contacttelefoon/-e-mail). Geen feature leest
+ze. Eigenaarsbesluit 2026-10-12: bewaren tot het einde van het seizoen waarin de wedstrijd valt,
+daarna leegmaken. Bewaartermijn, grondslag en kolomlijst staan in `SECURITY.md` (Laag 6); hier de
+technische keuzes.
+
+| Onderdeel | Gedeeld (`Planner.Shared/Avg/HisPersoonsgegevensRetentie.cs`) | Postgres | SQL Server |
+|---|---|---|---|
+| Regel | `BepaalGrens`: laatste seizoenseinde vóór vandaag; kolomlijsten | — | — |
+| Seizoenen | — | `public.season.dateuntil` | `dbo.Season.DateUntil` |
+| Query | — | `Database.Postgres/PostgresHisRetentie.cs` | `FunctionApp/Admin/SqlServerHisRetentie.cs` |
+| Timer | `VoerTimerUitAsync`/`VoerUitAsync` (wachten, verbinding, orkestratie, foutafhandeling, geaggregeerd log) | `CleanupHisPersoonsgegevens`, dagelijks 05:00 UTC; alleen verbinding openen en query's | idem |
+| Test | `HisPersoonsgegevensRetentieTests` | `PostgresHisRetentieIntegrationTests` (CI) | `SqlServerHisRetentieIntegrationTests` (lokaal, wegwerpcontainer) |
+
+**Geen schemawijziging, dus geen migratie.** De retentie is een `UPDATE ... SET kolom = NULL` op
+bestaande kolommen en heeft geen eigen tabel of statusregel nodig: hij is idempotent omdat hij alleen
+rijen raakt waarin nog een persoonskolom gevuld is. Een historietabel die nog niet bestaat (verse
+installatie vóór de eerste sync) wordt overgeslagen.
+
+**Datum per tabel.** `his.matches.wedstrijddatum` is tekst. Postgres vergelijkt de eerste tien tekens
+als tekst na een vormcontrole (`~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'`): Postgres garandeert geen
+evaluatievolgorde binnen een `AND`, dus een cast kon op een afwijkende waarde alsnog falen; op het
+ISO-formaat is tekstvolgorde gelijk aan datumvolgorde. SQL Server gebruikt `TRY_CONVERT(date, ..., 23)`.
+`his.matchdetails` gebruikt `matchdate`, anders `matchdatetime`; een rij zonder beide blijft staan.
+
+**RLS vanuit de generator.** `his`/`stg` maakt geen migratie aan, dus de regel "elke tabel RLS, geen
+policies" (§65) hoort in `PostgresSchemaGenerator`. `GenerateStgTable` zet RLS direct aan (de tabel is
+net door dezelfde rol aangemaakt). `GenerateHisTable` doet dat in een `DO`-blok **alleen als RLS nog
+uit staat**: die DDL draait bij elke sync opnieuw, en `ALTER TABLE` vereist eigenaarschap, ook als
+RLS al aan staat. Een tabel die ooit door een andere rol is aangemaakt, laat de sync zo niet falen.
+Bestaande installaties krijgen RLS via `--ensure-his-tables` in de deploy (§72).
+
+**Guard-reikwijdte.** `check-rls-enabled.sh` bewaakt nu `public`, `avg`, `planner`, `his` en `stg`. Op
+`sportlink_ci` (alleen migraties) bestaan geen his-tabellen; daarom draait `build.yml` de guard ook op
+de seed-database van #1246 na `--ensure-his-tables`, met een negatieve controle (RLS uit op
+`his.matches` → guard rood) en het herstel door de generator. Lokaal bewezen op een verse
+`postgres:17`-container (de les van §68): de oude guard bleef groen bij `his.matches` zonder RLS, de
+nieuwe werd rood.
+
+**Tier-duplicatie +6 (plafond 5167 → 5173, ter goedkeuring door de eigenaar).** Het timercontract
+(klassedeclaratie, `[Function]`, `TimerTrigger`-signatuur, logger, aanroep van de gedeelde run) moet op
+beide tiers gelijk zijn en meet daardoor als zes identieke regels; al het overige staat in
+`Planner.Shared`.
+
+**Niet bewezen in deze PR:** de SQL Server-integratietest draait niet in CI (geen SQL Server-job met
+een levende database voor unit-tests); hij is lokaal tegen een wegwerpcontainer gedraaid.

@@ -562,11 +562,13 @@ daar staat hoe je het controleert.**
 Clubgegevens dragen een clubdiscriminator en bewerkingen filteren daarop. Tijdstempels worden in UTC
 opgeslagen en pas in de interface omgezet. Nieuwe tabellen in de Postgres-tier schakelen rij-niveau
 beveiliging in binnen dezelfde migratie — niet als applicatie-autorisatie, maar om te voorkomen dat
-het platform de tabel via zijn eigen automatisch gegenereerde interface openstelt.
+het platform de tabel via zijn eigen automatisch gegenereerde interface openstelt. Tabellen die de
+code zelf aanmaakt (historie en staging) krijgen dat van de schemagenerator (#1698).
 
 **Elke tabel met persoonsgegevens heeft een vastgelegde bewaartermijn, een fase en een motivering** —
 inclusief het geval waarin de motivering "geen termijn" luidt; die krijgt dan een herzieningstrigger.
 De termijn is configuratie, zodat de verantwoordelijke hem kan vaststellen zonder nieuwe versie.
+Overzicht per tabel: `SECURITY.md`, Laag 6 (daar ook de seizoensretentie van de Sportlink-historie, #1698).
 
 Persoonsgegevens, exports en lokale geheimen gaan nooit in de repository.
 

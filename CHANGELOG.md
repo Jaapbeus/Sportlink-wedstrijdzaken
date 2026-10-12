@@ -48,6 +48,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - De context voor de automatische issue-beurt wordt in UTF-8-bytes begrensd (96 KiB, inclusief issuetekst, kopregels en separators) en kapt zichtbaar af, met behoud van de nieuwste reviewcomments (#1666)
 - fix(#1597): widgetissues krijgen het canonieke label `via: feedback-widget` (voorheen `via-feedback-widget`), zodat ze aansluiten bij de labelset in `.github/labels.json`.
 
+### Security
+- De persoonsgegevens in de Sportlink-historietabellen (officials, rijders, vrije opmerkingen, contacttelefoon en -e-mail) worden na het einde van het seizoen waarin de wedstrijd valt dagelijks leeggemaakt, op beide databasetiers; het seizoenseinde komt uit de seizoensconfiguratie en de wedstrijd zelf blijft staan. De historie- en stagingtabellen op de Postgres-tier krijgen Row-Level Security vanuit de code en de RLS-guard bewaakt ze, met een negatieve controle in CI (#1698).
+
 ## [3.13.2.0] — 2026-10-11
 
 ### Changed

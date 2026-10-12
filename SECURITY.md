@@ -384,6 +384,14 @@ Twee regels die hieruit volgen:
    RLS hoe dan ook. RLS is hier uitsluitend de schakelaar die de PostgREST-rollen buitensluit —
    geen per-rij-autorisatie. Voeg dus geen policies toe zonder expliciete aanleiding.
 
+**De historie- en stagingtabellen (`his.*`, `stg.*`) krijgen RLS uit de code (#1698).** Die tabellen
+maakt geen migratie aan maar `PostgresSchemaGenerator` (tijdens de sync en via
+`Database.Postgres.Cli --ensure-his-tables` bij elke deploy). De generator zet RLS aan, zonder
+policies; daarvoor hing de bescherming af van Supabase's platformtrigger `ensure_rls`, die geen diff
+in git achterlaat. `check-rls-enabled.sh` bewaakt ook `his` en `stg`; CI draait hem na
+`--ensure-his-tables` en bewijst met een negatieve controle dat hij op een his-tabel zonder RLS rood
+wordt.
+
 Controleer bij een gehost platform periodiek het beveiligingsadvies van de provider: configuratie
 die je in een dashboard wijzigt, laat geen diff in git achter en is daardoor onzichtbaar voor
 codereview.
@@ -531,6 +539,38 @@ beleid** — de repo-eigenaar kan dit aanpassen via `dbo.AppSettings.AppSettings
 zonder redeploy. De cleanup wordt maandelijks (1e van de maand, 04:30 UTC) uitgevoerd door
 `CleanupAppSettingsAuditFunction`. De stored procedure `dbo.sp_CleanupAppSettingsAudit` is
 idempotent.
+
+### Sportlink-historietabellen (`his.matches`, `his.matchdetails`, #1698)
+
+De synchronisatie bewaart wat Sportlink over elke wedstrijd teruggeeft in de historietabellen. Een
+deel van die kolommen zijn persoonsgegevens van clubleden en vrijwilligers. Geen scherm of endpoint
+leest ze; Sportlink blijft de bron.
+
+| Tabel | Persoonskolommen |
+|---|---|
+| `his.matches` | `scheidsrechters`, `scheidsrechter`, `rijders` |
+| `his.matchdetails` | `rijder`, `opmerkingen` (vrije tekst), `verenigingscheidsrechter(code)`, `overigeofficial(code)`, `scheidsrechters`, `accommodatietelefoon`, `thuisteamtelefoon`, `thuisteamemail`, `uitteamtelefoon`, `uitteamemail` |
+
+| Fase | Wanneer | Actie |
+|---|---|---|
+| Leegmaken | Na het einde van het seizoen waarin de wedstrijd valt (eigenaarsbesluit 2026-10-12) | Alleen de persoonskolommen → `NULL`; de wedstrijd zelf (teams, datum, uitslag) blijft staan |
+
+* **Termijn = configuratie.** Het seizoenseinde komt uit de seizoenstabel (`dbo.Season` /
+  `public.season`), die op zijn beurt uit de clubinstelling `SeasonStartMonth` wordt opgebouwd. Een
+  seizoen telt als afgerond vanaf de dag ná de einddatum. Zonder afgerond seizoen gebeurt er niets.
+* **Welke datum.** `his.matches`: de eerste tien tekens van `wedstrijddatum` (ISO-datum); een waarde
+  in een andere vorm wordt niet geraden en niet leeggemaakt. `his.matchdetails`: `MatchDate`, anders
+  de datum van `MatchDateTime`. **Restrisico:** een detailrij zonder beide datums wordt niet
+  leeggemaakt.
+* **Uitvoering.** Timer `CleanupHisPersoonsgegevens`, dagelijks 05:00 UTC, op beide tiers met
+  dezelfde regel (`Planner.Shared/Avg/HisPersoonsgegevensRetentie.cs`; query's in
+  `PostgresHisRetentie` en `SqlServerHisRetentie`). Idempotent; het log bevat alleen de grensdatum en
+  aantallen. Dagelijks omdat het sync-venster een week terugkijkt en een reset-sync een oud seizoen
+  opnieuw ophaalt: beide vullen de kolommen weer, de volgende run maakt ze weer leeg.
+* **Grondslag.** Art. 6 lid 1 sub f AVG (gerechtvaardigd belang van de club bij de organisatie van
+  de wedstrijden van het lopende seizoen); opslagbeperking (art. 5 lid 1 sub e) via deze termijn.
+* **Toegang.** Alleen via de applicatierol; RLS op `his` en `stg` sluit de PostgREST-rollen buiten
+  (Laag 4).
 
 ### Sportlink-mutatie-audit (`SportlinkMutationAudit`, #1114)
 

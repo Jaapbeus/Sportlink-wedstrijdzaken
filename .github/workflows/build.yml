@@ -1193,6 +1193,33 @@ jobs:
             --seed-demodata scripts/migrations/003-seed-allstars-demo-matches-postgres.sql
           echo "Demodata-seed (#1246): echte volgorde, idempotentie en fork-zonder-democlub bevestigd."
 
+      # #1698: his/stg maakt geen migratie aan maar PostgresSchemaGenerator (sync) en
+      # --ensure-his-tables (deploy), dus de RLS-guard hierboven ziet ze op sportlink_ci niet. Hier
+      # draait hij op de database van de stap hierboven, waar --ensure-his-tables al gelopen heeft.
+      # Daarna de negatieve controle: zonder RLS op een his-tabel moet de guard rood worden, en een
+      # nieuwe --ensure-his-tables moet hem via de generator weer herstellen.
+      - name: RLS-invariant op de door de generator aangemaakte his-tabellen (#1698)
+        env:
+          PGHOST: localhost
+          PGPORT: "5432"
+          PGUSER: ci_postgres
+          PGPASSWORD: ci-wegwerpwachtwoord-niet-geheim
+          PGDATABASE: sportlink_ci_seed1246
+        run: |
+          CONN="Host=localhost;Port=5432;Username=ci_postgres;Password=ci-wegwerpwachtwoord-niet-geheim;Database=sportlink_ci_seed1246"
+          ./scripts/ci/check-rls-enabled.sh
+
+          psql -v ON_ERROR_STOP=1 -c "ALTER TABLE his.matches DISABLE ROW LEVEL SECURITY;"
+          if ./scripts/ci/check-rls-enabled.sh; then
+            echo "::error::check-rls-enabled.sh bleef groen terwijl his.matches geen RLS had (#1698): de guard bewaakt his niet."
+            exit 1
+          fi
+          echo "Negatieve controle geslaagd: de guard wordt rood op een his-tabel zonder RLS."
+
+          POSTGRES_CONNECTION_STRING="$CONN" dotnet run --project Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release -- --ensure-his-tables
+          ./scripts/ci/check-rls-enabled.sh
+          echo "PostgresSchemaGenerator zet RLS op een bestaande his-tabel terug (#1698)."
+
       - name: Bewijzen dat sportlink_ci onaangetast is gebleven (#925)
         run: |
           psql_ci() { PGPASSWORD=ci-wegwerpwachtwoord-niet-geheim psql -h localhost -U ci_postgres -d sportlink_ci -t -A "$@"; }
