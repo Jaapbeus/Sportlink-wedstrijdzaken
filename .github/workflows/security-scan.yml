@@ -18,6 +18,8 @@ on:
   # a merge conflict", docs.github.com, events-that-trigger-workflows). Eerst develop mergen.
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  # #1641: handmatig herstelpad (na base-retarget of ontbrekende pull_request-run), zoals build.yml.
+  workflow_dispatch:
 
 # #1370 (retro v3.6.0.0, bevinding 2) — GEPROBEERD EN BEWUST TERUGGEDRAAID.
 # Zelfde dedupmechanisme als build.yml (zie de toelichting daar): een concurrency-groep op

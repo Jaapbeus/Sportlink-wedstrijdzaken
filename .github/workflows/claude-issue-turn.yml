@@ -208,6 +208,11 @@ jobs:
                - Wel codewijzigingen en dit was de eerste ronde → wacht op groene CI (beide check-runs aanwezig), plaats een
                  nieuwe reviewaanvraag (zelfde vijf regels als implementatiestap 7, met de nieuwe
                  head-SHA) en wissel naar `turn: codex`.
+               - Ontbreekt na je push binnen 10 minuten `Build FunctionApp + BlazorAdmin` of de
+                 Security Gate op de nieuwe head-SHA (merge-conflict met `develop`, of geen
+                 pull_request-run om een andere reden; deze run mag geen workflow dispatchen, #1641)
+                 → geen reviewaanvraag: plaats op de PR "CI niet bewezen op <SHA>" met wat
+                 ontbreekt, zet `Fase: eigenaarsbesluit` op het issue en wissel naar `turn: owner`.
                Tel de rondes aan de hand van de reviewaanvragen ("Fase: review") op het issue.
 
             Altijd, in beide fasen:
