@@ -66,6 +66,8 @@ De 10 OUDSTE ongelezen berichten uit de inbox (Graph: top=10, orderby receivedDa
 ┌─ Voorfilters (EmailBatchFilterService) ───────────────────────────────────────┐
 │  1. Van eigen mailbox (GraphMailbox)?  → overslaan (mark as read)             │
 │  2. Afzender uitgesloten (cache)?      → overslaan (mark as read)             │
+│  3. Automatische afzender (headers)?   → label "Geen AI antwoord" + gelezen   │
+│     (Auto-Submitted ≠ no; Precedence bulk/junk/auto_reply; niet: list)        │
 │  Cold start: uitsluitingslijst eerst laden (fail-closed) en opnieuw filteren  │
 └──────────────────────────────────────────────────────────────────────────────┘
         │
@@ -343,21 +345,27 @@ trace alsnog vermeld dat het antwoord onzeker was (`poortActief = nee`).
 
 ### 1c. Stille skip — geen antwoord, geen verdere verwerking
 
-Deze emails worden stil overgeslagen (mark as read, verder niets):
+Deze emails worden overgeslagen zonder antwoord (mark as read; een automatische afzender krijgt daarnaast een label):
 
 | Reden | Conditie | Rij in de DB? |
 |---|---|---|
 | Eigen mailbox | Afzender = de mailbox zelf (`GraphMailbox`) — voorkomt loops | Nee |
 | Uitgesloten adres | Afzender staat in `dbo.UitgeslotenEmailAdressen` (`Actief = 1`) | Nee |
+| Automatische afzender (#1674) | Header `Auto-Submitted` met een andere waarde dan `no`, of `Precedence` = `bulk`/`junk`/`auto_reply` (`AutomatischeAfzenderHerkenning`). Het bericht krijgt het label "Geen AI antwoord" en een logregel met de headernaam, zodat de coördinator het terugvindt; mislukt het labelen, dan blijft het ongelezen voor de volgende poll. `Precedence: list` en een inkomende `X-Auto-Response-Suppress` tellen bewust niet: een lijstalias of ticketsysteem kan een gewoon verzoek doorsturen | Nee |
 | Al afgerond | Het MessageId staat in `planner.EmailVerwerking` **met een definitieve eindstatus** (idempotent) | Ja — die bestond al |
 
 > Drie correcties op een eerdere versie van deze tabel:
 > - Een filter "van intern domein → overslaan" bestaat niet in de code. `EmailBatchFilterService`
->   kent alleen de eigen mailbox en de uitsluitingslijst (#708).
+>   kent de eigen mailbox, de uitsluitingslijst (#708) en sinds #1674 de automatische afzenders.
 > - "Al verwerkt" was te ruim: het bestaan van een rij is niet genoeg meer. Zie §1d — een rij met
 >   een niet-definitieve status wordt juist opnieuw verwerkt (#712).
 > - "Al afgerond" is géén voorfilter: die check zit in fase 2, ná de AI-classificatie. Zo'n bericht
 >   kost dus nog wel een AI-call. De eerste twee filters draaien wél vóór de AI (#708).
+
+Omgekeerd krijgt elke uitgaande mail van de pijplijn de header `X-Auto-Response-Suppress: OOF, AutoReply`
+(`AutomatischeAfzenderHerkenning.UitgaandeHeaders`): de ontvanger stuurt dan geen afwezigheidsmelding of
+autoreply terug. Bewust niet `All`: dat onderdrukt bij Exchange-ontvangers ook onbestelbaarheids- en
+bezorgberichten, en een niet-bezorgd antwoord moet voor de coördinator zichtbaar blijven (#1674).
 
 De uitsluitingslijst wordt twee keer gecontroleerd: eerst tegen de proces-cache (fase 1, vóór de
 AI), daarna nog eens tegen de verse DB-lijst (fase 2). De cache heeft een geldigheidsduur van vijftien

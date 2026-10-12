@@ -41,10 +41,13 @@ public sealed class SsrfBlockedException : Exception
 /// dus elke aanroep (initieel én elke redirect-hop) loopt hierdoor.</item>
 /// </list>
 /// </summary>
-public static class SsrfProtection
+public static partial class SsrfProtection
 {
     /// <summary>Maximum aantal redirect-hops dat handmatig gevolgd wordt.</summary>
     public const int MaxRedirects = 5;
+
+    /// <summary>Maximale omvang van een antwoordbody die gelezen wordt (2 MB).</summary>
+    public const int MaxResponseBytes = 2 * 1024 * 1024;
 
     private static readonly HashSet<int> AllowedPorts = new() { 80, 443 };
 
@@ -341,6 +344,24 @@ public static class SsrfProtection
     internal const string DefaultAcceptLanguage = "nl-NL,nl;q=0.9,en;q=0.8";
 
     /// <summary>
+    /// De handler achter <see cref="CreateHttpClient"/>: geen automatische redirects en geen
+    /// systeemproxy. Automatische decompressie staat expliciet uit (gelijk aan de standaard), zodat
+    /// die keuze zichtbaar is en niet stil verandert.
+    /// </summary>
+    internal static SocketsHttpHandler CreateHandler(
+        Func<string, CancellationToken, Task<IPAddress[]>>? resolverOverride = null,
+        Func<IPAddress, int, bool>? isAllowedEndpointOverride = null,
+        Func<int, bool>? isAllowedPortOverride = null) => new()
+    {
+        AllowAutoRedirect = false,
+        UseProxy = false, // geen omweg langs een omgevings-/systeemproxy: de ConnectCallback valideert het echte doeladres
+        AutomaticDecompression = DecompressionMethods.None,
+        ConnectCallback = (context, ct) => ConnectCoreAsync(
+            context.DnsEndPoint.Host, context.DnsEndPoint.Port, ct,
+            resolverOverride, isAllowedEndpointOverride, null, isAllowedPortOverride)
+    };
+
+    /// <summary>
     /// Bouwt een <see cref="HttpClient"/> met redirects uit en een <c>ConnectCallback</c> die elke
     /// verbinding (initieel én elke handmatig gevolgde redirect-hop) resolvet en valideert vlak
     /// vóór het openen van de TCP-verbinding. De optionele overrides zijn uitsluitend voor tests —
@@ -353,14 +374,15 @@ public static class SsrfProtection
         Func<IPAddress, int, bool>? isAllowedEndpointOverride = null,
         Func<int, bool>? isAllowedPortOverride = null)
     {
-        var handler = new SocketsHttpHandler
+        var handler = CreateHandler(resolverOverride, isAllowedEndpointOverride, isAllowedPortOverride);
+        // MaxResponseContentBufferSize geldt alleen voor gebufferd lezen (bijv. GetStringAsync).
+        // Wie met ResponseHeadersRead leest, zoals GetWithBoundedRedirectsAsync, begrenst de body
+        // met ReadBoundedStringAsync.
+        var client = new HttpClient(handler)
         {
-            AllowAutoRedirect = false,
-            ConnectCallback = (context, ct) => ConnectCoreAsync(
-                context.DnsEndPoint.Host, context.DnsEndPoint.Port, ct,
-                resolverOverride, isAllowedEndpointOverride, null, isAllowedPortOverride)
+            Timeout = timeout ?? TimeSpan.FromSeconds(10),
+            MaxResponseContentBufferSize = MaxResponseBytes
         };
-        var client = new HttpClient(handler) { Timeout = timeout ?? TimeSpan.FromSeconds(10) };
         client.DefaultRequestHeaders.Add("User-Agent", userAgent);
         client.DefaultRequestHeaders.Accept.ParseAdd(DefaultAccept);
         client.DefaultRequestHeaders.AcceptLanguage.ParseAdd(DefaultAcceptLanguage);
@@ -373,21 +395,48 @@ public static class SsrfProtection
     /// hier maar in de <c>ConnectCallback</c> van de meegegeven client — dus ook op elke hop,
     /// gebonden aan de daadwerkelijke connectie. <paramref name="isAllowedPortOverride"/> is
     /// uitsluitend voor tests (zie <see cref="TryValidateUriShape"/>).
+    /// <para>
+    /// <paramref name="isAllowedHop"/> (optioneel) toetst elke bestemming, de start-URL en elke
+    /// redirect-hop, opnieuw aan het beleid van de aanroeper (bijv. een host-allowlist). Een
+    /// redirect van https naar http wordt altijd geweigerd. Antwoorden worden na de headers
+    /// teruggegeven (<see cref="HttpCompletionOption.ResponseHeadersRead"/>); lees de body met
+    /// <see cref="ReadBoundedStringAsync"/>.
+    /// </para>
     /// </summary>
     public static async Task<HttpResponseMessage> GetWithBoundedRedirectsAsync(
         HttpClient client, Uri startUri, int maxRedirects = MaxRedirects,
-        Func<int, bool>? isAllowedPortOverride = null)
+        Func<int, bool>? isAllowedPortOverride = null,
+        Func<Uri, bool>? isAllowedHop = null,
+        CancellationToken ct = default)
+    {
+        var (response, _) = await GetWithBoundedRedirectsAndFinalUriAsync(
+            client, startUri, maxRedirects, isAllowedPortOverride, isAllowedHop, ct);
+        return response;
+    }
+
+    /// <summary>
+    /// Als <see cref="GetWithBoundedRedirectsAsync"/>, en geeft daarnaast de bestemming van de
+    /// laatste hop terug: de basis waartegen relatieve verwijzingen in het antwoord horen te worden
+    /// opgelost.
+    /// </summary>
+    public static async Task<(HttpResponseMessage Response, Uri FinalUri)> GetWithBoundedRedirectsAndFinalUriAsync(
+        HttpClient client, Uri startUri, int maxRedirects = MaxRedirects,
+        Func<int, bool>? isAllowedPortOverride = null,
+        Func<Uri, bool>? isAllowedHop = null,
+        CancellationToken ct = default)
     {
         var current = startUri;
         for (var hop = 0; hop <= maxRedirects; hop++)
         {
             if (!TryValidateUriShape(current, out var shapeError, isAllowedPortOverride))
                 throw new SsrfBlockedException(shapeError!);
+            if (isAllowedHop != null && !isAllowedHop(current))
+                throw new SsrfBlockedException("Redirect-bestemming is niet toegestaan.");
 
             HttpResponseMessage response;
             try
             {
-                response = await client.GetAsync(current);
+                response = await client.GetAsync(current, HttpCompletionOption.ResponseHeadersRead, ct);
             }
             catch (HttpRequestException ex) when (ex.InnerException is SsrfBlockedException blocked)
             {
@@ -404,10 +453,13 @@ public static class SsrfProtection
                 response.Dispose();
                 if (location == null)
                     throw new SsrfBlockedException("Redirect zonder Location-header.");
-                current = location.IsAbsoluteUri ? location : new Uri(current, location);
+                var volgende = location.IsAbsoluteUri ? location : new Uri(current, location);
+                if (current.Scheme == Uri.UriSchemeHttps && volgende.Scheme != Uri.UriSchemeHttps)
+                    throw new SsrfBlockedException("Redirect naar een onveilig schema is niet toegestaan.");
+                current = volgende;
                 continue;
             }
-            return response;
+            return (response, current);
         }
         throw new SsrfBlockedException("Te veel redirects.");
     }

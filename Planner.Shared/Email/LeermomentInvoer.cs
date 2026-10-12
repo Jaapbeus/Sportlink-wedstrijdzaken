@@ -1,5 +1,3 @@
-using Planner.Shared.Email.Trace;
-
 namespace Planner.Shared.Email;
 
 /// <summary>Gevalideerde, gesaneerde invoer van een admin-leermoment (#1568 deel C).</summary>
@@ -13,7 +11,7 @@ public sealed record LeermomentGeldig(string OrigineelType, string JuistType, st
 /// </summary>
 public static class LeermomentInvoer
 {
-    public const int MaxSamenvattingLengte = 500;
+    public const int MaxSamenvattingLengte = AiVeldSanering.MaxSamenvattingLengte;
     public const string OnbekendType = "Onbekend";
 
     /// <summary>
@@ -22,6 +20,19 @@ public static class LeermomentInvoer
     /// </summary>
     public static readonly IReadOnlyList<string> GeldigeVerzoekTypes =
         ["BeschikbaarheidCheck", "HerplanVerzoek", "Bevestiging", "TeamContactOpvragen", "BuitenScope"];
+
+    /// <summary>
+    /// Zet een verzoektype uit modeluitvoer ("herplan_verzoek", "HerplanVerzoek") om naar de naam van
+    /// <c>VerzoekType</c>; alles wat daar niet mee overeenkomt geeft <c>null</c>.
+    /// </summary>
+    public static string? MapAfgeleidType(string? vrij)
+    {
+        var sleutel = Sleutel(vrij);
+        return sleutel.Length == 0 ? null : GeldigeVerzoekTypes.FirstOrDefault(t => Sleutel(t) == sleutel);
+    }
+
+    private static string Sleutel(string? tekst)
+        => new((tekst ?? "").Where(char.IsLetter).Select(char.ToLowerInvariant).ToArray());
 
     public static (LeermomentGeldig? Waarde, string? Fout) Valideer(string? origineel, string? juist, string? samenvatting)
     {
@@ -35,7 +46,7 @@ public static class LeermomentInvoer
             return (null, $"Ongeldig origineel verzoektype. Laat leeg of gebruik een van: {string.Join(", ", GeldigeVerzoekTypes)}.");
 
         // Aanhalingstekens vallen weg: de samenvatting staat in de prompt tussen dubbele aanhalingstekens.
-        var schoon = TraceBuilder.Saneer(samenvatting, MaxSamenvattingLengte).Replace('"', '\'');
+        var schoon = AiVeldSanering.Samenvatting(samenvatting);
         if (schoon.Length == 0)
             return (null, "Samenvatting is verplicht (korte omschrijving van het bericht, zonder namen of adressen).");
 
@@ -50,7 +61,11 @@ public static class LeermomentInvoer
     /// </summary>
     public static string FewShotRegel(string origineelType, string juistType, string? origineleSamenvatting, string? correctieSamenvatting)
     {
-        var o = origineleSamenvatting ?? "";
+        // Alle tekst in de prompt gaat door dezelfde sanering, ook oudere opgeslagen leermomenten.
+        origineelType = MapAfgeleidType(origineelType) ?? OnbekendType;
+        juistType = MapAfgeleidType(juistType) ?? OnbekendType;
+        var o = AiVeldSanering.Samenvatting(origineleSamenvatting);
+        correctieSamenvatting = AiVeldSanering.Samenvatting(correctieSamenvatting);
         if (!string.IsNullOrWhiteSpace(o) && string.IsNullOrWhiteSpace(correctieSamenvatting))
             return origineelType == OnbekendType || origineelType == juistType
                 ? $"- Samenvatting: \"{o}\" → is een {juistType}."
