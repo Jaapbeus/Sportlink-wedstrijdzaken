@@ -196,6 +196,7 @@ bij — `Closes #<nr>` in de PR-titel of -body is genoeg.
 | Issue aangemaakt of heropend | `status: triage` |
 | Draft-PR geopend | `status: in-progress` |
 | PR *ready for review* | `status: review-needed` |
+| Agent rondt Stap 5 af zonder escalatie (AGENTS.md) | `status: pr-aangemaakt` — de PR wacht op de merge, niet op de eigenaar, tenzij er een eigenaarspunt openstaat |
 | PR gesloten zonder merge | `status: triage` |
 | **PR gemerged naar `develop`** | **`status: awaiting-release` en geen `turn:`-label — het issue blijft open** |
 | Release-tag gepusht naar `main` | status-labels weg, issue gesloten |
@@ -216,6 +217,32 @@ release resteert. Een issue blijft dus nooit onder `status: in-progress`, `statu
 `turn: owner` staan. Heeft de PR geen sterke `#nr`-verwijzing (titel `fix(#nr): …` of `Closes #nr`), bijvoorbeeld
 een Dependabot-batch met een registratie-issue, dan raakt de workflow het issue niet aan: zet de merger dan zelf
 `status: awaiting-release` en verwijder het `turn:`-label.
+
+### Zelfmerge door een agent (#1637, #1690)
+
+De harde regel staat in `AGENTS.md` ("Zelfmerge na schone review"); hier staat de toelichting.
+Sinds het eigenaarsbesluit van 2026-10-12 merget de implementer een PR zelf naar `develop` zodra hij
+alleen nog op de merge wacht: de reviewer gaf "geen bevindingen" op de **huidige** head-SHA, alle
+checks zijn groen (inclusief aanwezige `Build (PR)` en Security Gate op die head, zie #1641) en er staat
+geen eigenaarspunt open. Een eigenaarspunt is een keuze, een acceptatie, een risico of een bevinding die
+niet is verwerkt. Een controle die pas na de release kan (bijvoorbeeld een ingelogde browsercheck in
+productie) is nazorg, geen besluit, en houdt de merge dus niet tegen.
+
+**Wat altijd naar de eigenaar gaat:** een merge naar `main` (release en hotfix, uitsluitend via
+`/release`), alles wat Azure-resources of kosten raakt, een wijziging van het databaseschema (migraties)
+en werkinstructies of skills (`AGENTS.md`, `.agents/skills/`; de machtigingslaag van de agent blokkeert
+die merge ook zelf). Auth/Entra, workflows, CI-guards en issues met `source: owner` zijn sinds #1690
+**geen** uitzondering meer: daarvoor gelden dezelfde drie voorwaarden.
+
+**Fase `eigenaarsbesluit`** (met `turn: owner`) is alleen voor een echt openstaand besluit of een van de
+uitzonderingen hierboven. Een PR die alleen op de merge wacht, krijgt die fase niet.
+
+**De CI-bot als implementer.** De automatische issue-beurt (`claude-issue-turn.yml`, zie
+`docs/DEVELOPER-SETUP.md` §9.5) merget nooit, en een geplande reviewrun ook niet. Was de bot de
+implementer, dan merget de eerstvolgende interactieve sessie de PR na dezelfde controles. De
+bot-prompt zet na een verwerkingsronde zonder codewijziging technisch `Fase: eigenaarsbesluit` en
+`turn: owner` (de bot kan zelf niet mergen); staat er dan geen eigenaarspunt open, dan is dat een
+wachtende merge en geen besluit, en mag die interactieve sessie mergen.
 
 **Parallelle schrijvers en de turn-labels (#1686).** `turn-label-exclusief.yml` houdt het laatst gezette
 `turn:`-label en verwijdert de andere (laatste schrijver wint). Spreken de labels en de issue-events elkaar
