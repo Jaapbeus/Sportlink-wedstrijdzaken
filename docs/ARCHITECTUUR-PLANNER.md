@@ -610,8 +610,15 @@ als Sportlink niet voorziet, dus voor een planning of wedstrijd die vanuit de ap
 Gevolg voor de duur: de Planning én **Veld optimalisatie** (`AutoPlanService` op beide tiers, via
 `FieldScheduler`) bepalen de blokduur met `VeldbezettingDuur.Bepaal`: de netto speelduur uit Sportlink
 plus 15 minuten (zoals #1547 de Sportlink-veldplanner nameet), en pas als Sportlink geen speelduur kent de
-`WedstrijdTotaal` uit de speeltijdentabel (besluit #291). Hetzelfde team heeft dus op beide schermen
-hetzelfde blok.
+`WedstrijdTotaal` uit de speeltijdentabel (besluit #291). De Sportlink-duur geldt ook zonder
+speeltijdenrij voor de leeftijdscategorie: alleen een wedstrijd zonder Sportlink-duur én zonder
+speeltijdenrij blijft `onbekend-team`.
+
+Beperking: de gelijkheid van beide schermen geldt voor deze `Bepaal`-regel (dataservice-duur + 15).
+De Planning kan bij een actieve `VeldbezettingSportlinkOverlay` de exacte blokduur uit de
+Sportlink-veldplanner overnemen; de optimalisatie gebruikt die overlay niet en rekent altijd met
+dataservice-duur + 15. Bij een actieve overlay is gelijkheid dus niet bewezen: daarvoor is de
+blokvergelijking uit #1560 (vijf zaterdagen, blok voor blok) nodig.
 
 Gevolg voor de buffer: een wedstrijd met een Sportlink-speelduur (`VeldbezettingDuur.IsSportlinkLeidend`)
 wordt in de optimalisatie met een buffer van 0 minuten geplaatst, zowel vóór als ná: geen clubbuffer en

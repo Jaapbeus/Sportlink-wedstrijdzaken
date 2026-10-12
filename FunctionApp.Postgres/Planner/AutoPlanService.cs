@@ -179,7 +179,7 @@ internal static class AutoPlanService
     /// slot toe via de gedeelde <see cref="FieldScheduler"/> — geëxtraheerd uit
     /// <see cref="AutoPlanAsync"/> als de meest zelfstandige sub-stap.
     /// </summary>
-    private static List<AutoPlanWedstrijdItem> PlanWedstrijden(
+    internal static List<AutoPlanWedstrijdItem> PlanWedstrijden(
         List<(WedstrijdRaw Wedstrijd, PlanDoel Doel)> metDoel, FieldScheduler scheduler,
         Dictionary<string, Speeltijd> speeltijden, Dictionary<int, VeldInfo> veldInfoLookup,
         Dictionary<string, (int bufferVoor, int bufferNa)> teamBuffers, int buffer)
@@ -191,8 +191,11 @@ internal static class AutoPlanService
         {
             var leeftijd = doel.Leeftijd;
             speeltijden.TryGetValue(leeftijd, out var speeltijdInfo);
+            // #1559: Sportlink is leidend; de onbekend-team-terugval geldt alleen zonder Sportlink-duur
+            // én zonder speeltijdenrij, dus een bestaande wedstrijd hangt niet af van de speeltijdentabel.
+            bool sportlinkLeidend = VeldbezettingDuur.IsSportlinkLeidend(wedstrijd.SportlinkSpeelduur);
 
-            if (speeltijdInfo == null)
+            if (speeltijdInfo == null && !sportlinkLeidend)
             {
                 items.Add(new AutoPlanWedstrijdItem
                 {
@@ -217,7 +220,7 @@ internal static class AutoPlanService
             // Stuurt zowel de scheduler hieronder als het gerapporteerde Veldafmeting-veld aan: vóór
             // deze fix blokkeerde een halve-veld-wedstrijd van een team met "heel veld" als default
             // (bijv. "V+1", dat vaak zelfs geen eigen speeltijden-rij heeft) onterecht het hele veld.
-            var veldafmeting = VeldafmetingVoorWedstrijd(wedstrijd.Veld, veldNamen, speeltijdInfo.Veldafmeting);
+            var veldafmeting = VeldafmetingVoorWedstrijd(wedstrijd.Veld, veldNamen, speeltijdInfo?.Veldafmeting ?? 1.00m);
 
             IngeplandSlot? slot;
             string? voorkeurTijdStr = null;
@@ -225,9 +228,8 @@ internal static class AutoPlanService
             int teamBufVoor = PlanningBufferRegels.Effectief(buffer,
                 teamBuffers.TryGetValue(wedstrijd.TeamNaam, out var tb) ? tb.bufferVoor : null);
             // #1559: Sportlink is leidend voor wedstrijden die er al zijn; speeltijden alleen als terugval.
-            int duurMinuten = VeldbezettingDuur.Bepaal(wedstrijd.SportlinkSpeelduur, speeltijdInfo.WedstrijdTotaal);
-            // #1559: en dan geldt ook geen app-buffer (club of team) rond die wedstrijd.
-            bool sportlinkLeidend = VeldbezettingDuur.IsSportlinkLeidend(wedstrijd.SportlinkSpeelduur);
+            // Dan geldt ook geen app-buffer (club of team) rond die wedstrijd (sportlinkLeidend).
+            int duurMinuten = VeldbezettingDuur.Bepaal(wedstrijd.SportlinkSpeelduur, speeltijdInfo?.WedstrijdTotaal);
 
             if (doel.DoelTijd.HasValue)
             {
