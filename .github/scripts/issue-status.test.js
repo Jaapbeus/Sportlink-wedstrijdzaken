@@ -276,6 +276,38 @@ async function run() {
   turns = await clearTurnLabels({ github: gh, context: ctx, core, issueNumber: 1 });
   check('ophaalfout: waarschuwing, geen crash', { turns, removed: gh.calls.removed }, { turns: [], removed: [] });
 
+
+  // #1669 (Codex r1): een mislukte verwijdering mag niet als succes eindigen.
+  function fakeGithubRemoveFout(labels, statusPerLabel) {
+    const calls = { removed: [] };
+    return {
+      calls,
+      rest: { issues: {
+        get: async () => ({ data: { labels: labels.map(name => ({ name })) } }),
+        removeLabel: async ({ name }) => {
+          const st = statusPerLabel[name];
+          if (st) { const e = new Error('fout ' + st); e.status = st; throw e; }
+          calls.removed.push(name);
+        },
+      } },
+    };
+  }
+  async function verwachtFout(naam, promise, verwachteTekst) {
+    let msg = null;
+    try { await promise; } catch (e) { msg = e.message; }
+    check(naam, msg !== null && msg.includes(verwachteTekst), true);
+  }
+  gh = fakeGithubRemoveFout(['turn: owner'], { 'turn: owner': 500 });
+  await verwachtFout('500-fout bij verwijderen: de helper faalt hard', clearTurnLabels({ github: gh, context: ctx, core, issueNumber: 1 }), 'turn: owner');
+
+  gh = fakeGithubRemoveFout(['turn: owner', 'turn: codex'], { 'turn: owner': 500 });
+  await verwachtFout('gedeeltelijke mislukking: faalt, maar het andere label is wel verwijderd', clearTurnLabels({ github: gh, context: ctx, core, issueNumber: 1 }), 'turn: owner');
+  check('gedeeltelijke mislukking: overige labels toch geprobeerd', gh.calls.removed, ['turn: codex']);
+
+  gh = fakeGithubRemoveFout(['turn: owner'], { 'turn: owner': 404 });
+  turns = await clearTurnLabels({ github: gh, context: ctx, core, issueNumber: 1 });
+  check('404 (al afwezig) is idempotent en geen fout', turns, ['turn: owner']);
+
   console.log(failures === 0 ? '\nALLE TESTS GESLAAGD' : `\n${failures} TEST(S) GEFAALD`);
   process.exit(failures === 0 ? 0 : 1);
 }

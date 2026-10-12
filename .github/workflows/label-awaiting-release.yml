@@ -47,6 +47,7 @@ jobs:
             // aanpakt — hetzelfde onderscheid dat #630 al voor heropenen vastlegde.
             const { strong } = extractIssueRefs(pr.title, pr.body);
             const numbers = [...strong];
+            const turnFouten = [];
 
             if (numbers.length === 0) {
               core.notice('Geen sterke #issuenummer-referentie (titel of sluitend keyword) gevonden — niets te labelen.');
@@ -98,7 +99,13 @@ jobs:
               });
 
               // #1669: na de merge is niemand meer aan zet; alleen de release resteert.
-              await clearTurnLabels({ github, context, core, issueNumber: number });
+              // Een mislukte verwijdering stopt de lus niet (andere issues, heropenen), maar laat de
+              // run aan het eind wel falen.
+              try {
+                await clearTurnLabels({ github, context, core, issueNumber: number });
+              } catch (e) {
+                turnFouten.push(e.message);
+              }
 
               if (issue.state === 'closed') {
                 await github.rest.issues.update({
@@ -120,4 +127,8 @@ jobs:
               } else {
                 core.notice(`#${number}: gelabeld`);
               }
+            }
+
+            if (turnFouten.length > 0) {
+              core.setFailed(`turn-labels niet opgeschoond: ${turnFouten.join(' | ')}`);
             }

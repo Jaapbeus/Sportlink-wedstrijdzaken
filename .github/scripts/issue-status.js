@@ -236,17 +236,34 @@ async function clearTurnLabels({ github, context, core, issueNumber }) {
   if (issue.pull_request) return [];
 
   const turns = labelNames(issue).filter(n => n.startsWith(TURN_PREFIX));
+  const removed = [];
+  const failed = [];
   for (const stale of turns) {
-    await github.rest.issues.removeLabel({
-      owner: context.repo.owner,
-      repo: context.repo.repo,
-      issue_number: issueNumber,
-      name: stale,
-      headers: API_VERSION_HEADERS,
-    }).catch(() => {});
+    try {
+      await github.rest.issues.removeLabel({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        issue_number: issueNumber,
+        name: stale,
+        headers: API_VERSION_HEADERS,
+      });
+      removed.push(stale);
+    } catch (e) {
+      // Aantoonbaar al afwezig (404) is idempotent en onschuldig; elke andere fout is een mislukking.
+      if (e && e.status === 404) {
+        removed.push(stale);
+      } else {
+        failed.push(stale);
+        core.warning(`#${issueNumber}: '${stale}' verwijderen mislukt (${e && e.message})`);
+      }
+    }
   }
-  if (turns.length > 0) core.notice(`#${issueNumber}: turn-labels verwijderd (${turns.join(', ')})`);
-  return turns;
+  if (removed.length > 0) core.notice(`#${issueNumber}: turn-labels verwijderd (${removed.join(', ')})`);
+  if (failed.length > 0) {
+    // Alle labels zijn geprobeerd; nu hard falen zodat de workflowrun niet onterecht groen eindigt.
+    throw new Error(`#${issueNumber}: turn-label(s) niet verwijderd: ${failed.join(', ')}`);
+  }
+  return removed;
 }
 
 module.exports = {
