@@ -142,13 +142,13 @@ public static class ThemeCore
         darkColors     = waarden.DarkColors
     };
 
-    private static readonly Regex _hexColorRegex      = new(@"#([0-9a-fA-F]{6})\b", RegexOptions.Compiled);
-    private static readonly Regex _hexColorValidRegex = new(@"^#[0-9a-fA-F]{6}$", RegexOptions.Compiled);
-    private static readonly Regex _faviconRegex       = new(@"<link[^>]*rel=[""'](?:shortcut icon|icon)[""'][^>]*href=[""']([^""']+)[""']", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex _faviconAltRegex    = new(@"<link[^>]*href=[""']([^""']+)[""'][^>]*rel=[""'](?:shortcut icon|icon)[""']", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex _ogImageRegex       = new(@"<meta[^>]*property=[""']og:image[""'][^>]*content=[""']([^""']+)[""']", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex _ogImageAltRegex    = new(@"<meta[^>]*content=[""']([^""']+)[""'][^>]*property=[""']og:image[""']", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex _appleTouchRegex    = new(@"<link[^>]*rel=[""']apple-touch-icon[""'][^>]*href=[""']([^""']+)[""']", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex _hexColorRegex      = new(@"#([0-9a-fA-F]{6})\b", RegexOptions.NonBacktracking);
+    private static readonly Regex _hexColorValidRegex = new(@"^#[0-9a-fA-F]{6}$", RegexOptions.NonBacktracking);
+    private static readonly Regex _faviconRegex       = new(@"<link[^>]*rel=[""'](?:shortcut icon|icon)[""'][^>]*href=[""']([^""']+)[""']", RegexOptions.IgnoreCase | RegexOptions.NonBacktracking);
+    private static readonly Regex _faviconAltRegex    = new(@"<link[^>]*href=[""']([^""']+)[""'][^>]*rel=[""'](?:shortcut icon|icon)[""']", RegexOptions.IgnoreCase | RegexOptions.NonBacktracking);
+    private static readonly Regex _ogImageRegex       = new(@"<meta[^>]*property=[""']og:image[""'][^>]*content=[""']([^""']+)[""']", RegexOptions.IgnoreCase | RegexOptions.NonBacktracking);
+    private static readonly Regex _ogImageAltRegex    = new(@"<meta[^>]*content=[""']([^""']+)[""'][^>]*property=[""']og:image[""']", RegexOptions.IgnoreCase | RegexOptions.NonBacktracking);
+    private static readonly Regex _appleTouchRegex    = new(@"<link[^>]*rel=[""']apple-touch-icon[""'][^>]*href=[""']([^""']+)[""']", RegexOptions.IgnoreCase | RegexOptions.NonBacktracking);
 
     // Te algemeen om een merkkleur te zijn: die komen op vrijwel elke site voor en zouden de
     // frequentielijst domineren.
@@ -167,12 +167,12 @@ public static class ThemeCore
     // daarna alleen letters, cijfers en koppeltekens. Een admin is binnen dit deploymentmodel
     // vertrouwd (#393), dus dit is geen autorisatiegrens — maar een waarde die ongefilterd in een
     // stylesheet-property belandt hoort wél een vaste vorm te hebben.
-    private static readonly Regex _paletSleutelRegex = new(@"^[a-z][a-zA-Z0-9-]{0,39}$", RegexOptions.Compiled);
+    private static readonly Regex _paletSleutelRegex = new(@"^[a-z][a-zA-Z0-9-]{0,39}$", RegexOptions.NonBacktracking);
 
     // #rrggbb of #rrggbbaa. De alpha-variant is nodig voor kleuren als de hover-schaduw, die in
     // app.css nu een rgba()-literal is; een vrije rgba()-string toestaan zou een willekeurige
     // tekenreeks in een CSS-property laten belanden.
-    private static readonly Regex _paletWaardeRegex = new(@"^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$", RegexOptions.Compiled);
+    private static readonly Regex _paletWaardeRegex = new(@"^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$", RegexOptions.NonBacktracking);
 
     /// <summary>
     /// De gedeelde, SSRF-beschermde <see cref="HttpClient"/> voor thema-extractie (#1007):
@@ -284,6 +284,10 @@ public static class ThemeCore
         if (paletFout != null)
             return new ThemeValidatieResultaat(ThemeValidatieStatus.OngeldigPalet, paletFout);
 
+        var assetFout = ValideerAssetUrl(dto.FaviconUrl, "favicon-URL") ?? ValideerAssetUrl(dto.LogoUrl, "logo-URL");
+        if (assetFout != null)
+            return new ThemeValidatieResultaat(ThemeValidatieStatus.OngeldigeWebsiteUrl, assetFout);
+
         if (string.IsNullOrWhiteSpace(dto.ClubWebsiteUrl))
             return new ThemeValidatieResultaat(ThemeValidatieStatus.Ok, null);
 
@@ -299,6 +303,23 @@ public static class ThemeCore
                 "Club-website-URL resolveert niet naar een toegestaan publiek adres.");
 
         return new ThemeValidatieResultaat(ThemeValidatieStatus.Ok, null);
+    }
+
+    /// <summary>Maximale lengte van een opgeslagen favicon-/logo-URL.</summary>
+    internal const int MaxAssetUrlLengte = 300;
+
+    /// <summary>
+    /// Valideert een optionele favicon-/logo-URL: leeg mag, anders absoluut https, niet langer dan
+    /// <see cref="MaxAssetUrlLengte"/>, een niet-lege host en geen controletekens. Geeft de
+    /// foutmelding of <c>null</c>. Geparsed met <see cref="UriKind.RelativeOrAbsolute"/> (#1252).
+    /// </summary>
+    internal static string? ValideerAssetUrl(string? url, string naam)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return null;
+        var fout = $"Ongeldige {naam}.";
+        if (url.Length > MaxAssetUrlLengte || url.Any(char.IsControl)) return fout;
+        if (!Uri.TryCreate(url, UriKind.RelativeOrAbsolute, out var uri) || !uri.IsAbsoluteUri) return fout;
+        return uri.Scheme == Uri.UriSchemeHttps && !string.IsNullOrEmpty(uri.Host) ? null : fout;
     }
 
     /// <summary>
@@ -356,10 +377,12 @@ public static class ThemeCore
         {
             // De daadwerkelijke IP-validatie zit in de ConnectCallback van de client en geldt dus
             // voor elke hop, niet alleen deze initiële URL (#1007).
+            // Ook elke redirect-hop wordt opnieuw aan de host-allowlist getoetst en de body is begrensd.
             using var response = await SsrfProtection.GetWithBoundedRedirectsAsync(
-                httpClientOverride ?? HttpClient, parsedUri);
+                httpClientOverride ?? HttpClient, parsedUri,
+                isAllowedHop: hop => IsToegestaneHop(hop, toegestaneHost));
             response.EnsureSuccessStatusCode();
-            var html = await response.Content.ReadAsStringAsync();
+            var html = await SsrfProtection.ReadBoundedStringAsync(response.Content);
 
             var colors = ExtractColors(html);
             var faviconUrl = ExtractFaviconUrl(html, parsedUri);
@@ -379,6 +402,16 @@ public static class ThemeCore
             return new ThemeExtractieResultaat(ThemeExtractieStatus.OphalenMislukt, "Website kon niet worden opgehaald.");
         }
     }
+
+    /// <summary>
+    /// True als <paramref name="hop"/> dezelfde host heeft als de allowlist-host, waarbij een
+    /// voorafgaande <c>www.</c> aan één van beide kanten niet telt.
+    /// </summary>
+    internal static bool IsToegestaneHop(Uri hop, string toegestaneHost) =>
+        ZonderWww(hop.Host).Equals(ZonderWww(toegestaneHost), StringComparison.OrdinalIgnoreCase);
+
+    private static string ZonderWww(string host) =>
+        host.StartsWith("www.", StringComparison.OrdinalIgnoreCase) ? host[4..] : host;
 
     /// <summary>
     /// De meest voorkomende hexkleuren in de ruwe HTML, aflopend op frequentie. Leest bewust
