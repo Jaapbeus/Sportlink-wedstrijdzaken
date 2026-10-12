@@ -362,6 +362,32 @@ foutmeldingen per ongeldig fragment).
 > `/api/beheer/email/send`-endpoint uit §6.7 hoort in dezelfde commit in `docs/API.md` én in
 > `docs/api-standaarden/openapi.yaml`/`.json` te landen.
 
+### 1.11 Gedeelde afhandeling rond de verwerkingsrij (#1650)
+
+De afhandeling rond de verwerkingsrij van één inkomend bericht staat sinds #1650 één keer in
+`Planner.Shared/Email/` in plaats van woordelijk per tier in `EmailProcessorFunction.Fouten.cs`,
+`.Verwerking.cs` en `.Noodmail.cs`:
+
+| Gedeeld bestand | Inhoud |
+|---|---|
+| `VerwerkingsBesluit.cs` | het besluit-enum, de regelvolgorde van het idempotentiebesluit (#712/#716) en `MaxPogingen`; plus het typevrije record `EmailVerwerkingStandInfo` |
+| `EmailVerwerkingsAfhandeling.cs` | verwerkingsId bepalen, classificatiefout vastleggen, verwerkingsfout vastleggen, buiten-scope-afhandeling, opgeven na te veel pogingen en een onbekende verzenduitkomst ter beoordeling neerleggen; achter de poorten `IEmailVerwerkingOpslag` en `IEmailMailboxActies` |
+| `EmailFoutCategorie.cs` | herkenning van een OpenAI-quotafout en de privacy-veilige foutomschrijving (#425) |
+
+Per tier blijft een dunne adapter in `Email/EmailVerwerkingAdapters.cs`. Die vertaalt naar de eigen
+persistentie (`IEmailPersistenceService` op SQL Server, `SqlEmailPersistenceRepository` met
+verbinding en clubcode op Postgres), naar de eigen statusenum en exceptionklasse
+(`DubbeleMessageIdException`), en naar Graph. `EmailIdempotentie.IsDefinitief` blijft per tier
+omdat het de tier-eigen `EmailStatus` parseert. De interne methodes van `EmailProcessorFunction`
+behouden hun signatuur, dus de bestaande tests per tier dekken het gedrag ongewijzigd.
+
+**Waarom niet de volledige fase-orkestratie.** `Planner.Shared` heeft geen projectreferenties, en
+de domeintypes van de verwerking (`InkomendBericht`, `BerichtClassificatie`,
+`EmailVerwerkingStand`, `IEmailGraphService`, `EmailRunContext`, `BerichtPipeline`,
+`BerichtAiService`, `EmailReplyPolicyService`, …) bestaan per tier in eigen namespaces. De fasen
+achter één poort zetten vraagt eerst het samenvoegen van die typen. Dat hoort bij de gedeelde
+endpoint-orkestratie van #1271 en past niet in één chore.
+
 ---
 
 ## 2. Probleemanalyse

@@ -11,28 +11,6 @@ using Planner.Shared.Email.Trace;
 
 namespace SportlinkFunction.Email;
 
-/// <summary>Wat er met een inkomend bericht moet gebeuren op basis van een eerdere verwerking.</summary>
-internal enum VerwerkingsBesluit
-{
-    /// <summary>Nog niet eerder gezien — nieuwe verwerkingsrij aanmaken.</summary>
-    NieuweVerwerking,
-
-    /// <summary>Eerdere poging is niet afgerond — bestaande rij hergebruiken en opnieuw verwerken.</summary>
-    HerhaalVerwerking,
-
-    /// <summary>Definitief afgehandeld — niets meer doen (en dus zeker niet opnieuw antwoorden).</summary>
-    OverslaanAlAfgerond,
-
-    /// <summary>Te vaak mislukt — opgeven zodat het bericht de wachtrij niet blijft blokkeren.</summary>
-    OpgevenNaMaxPogingen,
-
-    /// <summary>
-    /// Er is een verzendpoging vastgelegd waarvan de uitkomst onbekend is (#716). Niet opnieuw
-    /// versturen — het eerste antwoord kan de deur al uit zijn — maar ter beoordeling neerleggen.
-    /// </summary>
-    OnbeslistNaVerzendPoging
-}
-
 /// <summary>
 /// Idempotentiebesluit voor de e-mailverwerking (#712).
 ///
@@ -50,13 +28,8 @@ internal enum VerwerkingsBesluit
 /// </summary>
 internal static class EmailIdempotentie
 {
-    /// <summary>
-    /// Maximaal aantal verwerkingspogingen per bericht. Drie is genoeg om tijdelijke fouten (Graph
-    /// 429/503, een net gepauzeerde database, een time-out) uit te zitten, en laag genoeg dat een
-    /// structurele fout de wachtrij niet lang bezet houdt: de poll pakt de 10 oudste ongelezen
-    /// berichten, dus tien blijvend falende berichten zouden anders alle nieuwe post tegenhouden.
-    /// </summary>
-    internal const int MaxPogingen = 3;
+    /// <summary>Maximaal aantal verwerkingspogingen per bericht; de waarde en onderbouwing staan in <see cref="VerwerkingsBesluitRegels.MaxPogingen"/> (#1650).</summary>
+    internal const int MaxPogingen = VerwerkingsBesluitRegels.MaxPogingen;
 
     /// <summary>Statussen waarna een bericht niet opnieuw verwerkt mag worden.</summary>
     private static readonly EmailStatus[] DefinitieveStatussen =
@@ -76,24 +49,15 @@ internal static class EmailIdempotentie
            || (Enum.TryParse<EmailStatus>(stand.Status, out var status)
                && DefinitieveStatussen.Contains(status));
 
+    /// <summary>De volgorde van de regels staat in <see cref="VerwerkingsBesluitRegels"/> (#1650).</summary>
     internal static VerwerkingsBesluit Bepaal(EmailVerwerkingStand? stand)
-    {
-        if (stand is null)
-            return VerwerkingsBesluit.NieuweVerwerking;
+        => stand is null
+            ? VerwerkingsBesluit.NieuweVerwerking
+            : VerwerkingsBesluitRegels.BepaalVoorBestaandeRij(IsDefinitief(stand), stand.VerzendPogingOnbeslist, stand.Pogingen);
 
-        if (IsDefinitief(stand))
-            return VerwerkingsBesluit.OverslaanAlAfgerond;
-
-        // Vóór de pogingengrens: een onbekende verzenduitkomst is geen "mislukte poging" die je nog een
-        // keer mag proberen. Zou dit ná de grens staan, dan zou een bericht met twee eerdere pogingen
-        // alsnog opnieuw verstuurd worden — precies wat #716 moet voorkomen.
-        if (stand.VerzendPogingOnbeslist)
-            return VerwerkingsBesluit.OnbeslistNaVerzendPoging;
-
-        return stand.Pogingen >= MaxPogingen
-            ? VerwerkingsBesluit.OpgevenNaMaxPogingen
-            : VerwerkingsBesluit.HerhaalVerwerking;
-    }
+    /// <summary>Typevrije stand voor <see cref="EmailVerwerkingsAfhandeling"/> (#1650), inclusief besluit.</summary>
+    internal static EmailVerwerkingStandInfo? NaarStandInfo(EmailVerwerkingStand? stand)
+        => stand is null ? null : new(stand.VerwerkingId, stand.Status, stand.Pogingen, Bepaal(stand));
 }
 
 public partial class EmailProcessorFunction
