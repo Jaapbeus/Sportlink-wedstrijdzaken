@@ -565,8 +565,8 @@ public static class BerichtResponseGenerator
             ["voornaam"] = ExtractVoornaam(email.AfzenderNaam),
             ["aanhef"] = GetTijdsgebondenAanhef(),
             ["datum"] = FormatDatum(classificatie.Datum),
-            ["team"] = AiVeldSanering.TeamNaamWeergave(classificatie.TeamNaam, classificatie.TeamNaamOnbevestigd) ?? "",
-            ["tegenstander"] = AiVeldSanering.TegenstanderWeergave(classificatie.Tegenstander) ?? "",
+            ["team"] = AiVeldSanering.TeamNaamOfGeneriek(classificatie.TeamNaam, classificatie.TeamNaamOnbevestigd),
+            ["tegenstander"] = AiVeldSanering.TegenstanderOfGeneriek(classificatie.Tegenstander),
             ["aanvangstijd"] = classificatie.AanvangsTijd ?? "",
             // #1587: "de ochtend (08:30 - 12:00)" of leeg. Uitsluitend het dagdeel dat de planner werkelijk heeft
             // gecontroleerd, nooit het gevraagde dagdeel uit de classificatie (dat kan vervallen zijn).

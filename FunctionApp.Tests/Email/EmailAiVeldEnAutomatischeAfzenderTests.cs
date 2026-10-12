@@ -1,6 +1,9 @@
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Planner.Shared.Email;
 using SportlinkFunction.Email;
+using SportlinkFunction.Processing;
+using SportlinkFunction.TeamResolution;
 using FunctionApp.Tests.Email.TestDoubles;
 using Xunit;
 
@@ -128,8 +131,40 @@ public class EmailAiVeldEnAutomatischeAfzenderTests
 
         var (onderwerp, body) = BerichtResponseGenerator.BouwAangepasteAntwoord(template, classificatie, MaakEmail(), ClubSettings);
 
-        onderwerp.TrimEnd().Should().Be("Onderwerp");
-        body.Should().Contain("Team: ; tegenstander: ; tijd: 14:30").And.NotContain("voorbeeld.test").And.NotContain("JO13-2");
+        onderwerp.Should().Be("Onderwerp het opgegeven team");
+        body.Should().Contain("Team: het opgegeven team; tegenstander: de opgegeven tegenstander; tijd: 14:30")
+            .And.NotContain("voorbeeld.test").And.NotContain("JO13-2");
+    }
+
+    [Fact]
+    public void Sjabloon_BevestigingMetOnbevestigdTeamKrijgtGeneriekeTekstInPlaatsVanLeeg()
+    {
+        // Zelfde vorm als het seed-sjabloon voor een bevestiging.
+        var template = new EmailTemplate("bevestiging", "Bevestiging wedstrijd {{datum}} — {{team}} vs {{tegenstander}}", "Team {{team}} tegen {{tegenstander}}.");
+        var classificatie = new BerichtClassificatie
+        {
+            Type = VerzoekType.Bevestiging,
+            Datum = "2026-06-06",
+            TeamNaam = "JO13-2",
+            TeamNaamOnbevestigd = true,
+            Tegenstander = "FC Voorbeeld (Noord)"
+        };
+
+        var (onderwerp, body) = BerichtResponseGenerator.BouwAangepasteAntwoord(template, classificatie, MaakEmail(), ClubSettings);
+
+        onderwerp.Should().EndWith("— het opgegeven team vs FC Voorbeeld (Noord)").And.NotContain("—  vs");
+        body.Should().Contain("Team het opgegeven team tegen FC Voorbeeld (Noord).");
+    }
+
+    [Fact]
+    public void Sjabloon_ZonderTeamEnTegenstanderBlijvenPlaatshoudersLeeg()
+    {
+        var template = new EmailTemplate("test", "Onderwerp", "Team: {{team}}; tegenstander: {{tegenstander}};");
+
+        var (_, body) = BerichtResponseGenerator.BouwAangepasteAntwoord(
+            template, new BerichtClassificatie { TeamNaamOnbevestigd = true }, MaakEmail(), ClubSettings);
+
+        body.Should().Contain("Team: ; tegenstander: ;");
     }
 
     [Fact]
@@ -153,13 +188,79 @@ public class EmailAiVeldEnAutomatischeAfzenderTests
             new() { MessageId = "m1", Afzender = "a@voorbeeld.nl", InternetHeaders = [new("Auto-Submitted", "auto-replied")] },
             new() { MessageId = "m2", Afzender = "b@voorbeeld.nl", InternetHeaders = [new("Precedence", "bulk")] },
             new() { MessageId = "m3", Afzender = "c@voorbeeld.nl", InternetHeaders = [new("Auto-Submitted", "no")] },
-            new() { MessageId = "m4", Afzender = "d@voorbeeld.nl" }
+            new() { MessageId = "m4", Afzender = "d@voorbeeld.nl" },
+            new() { MessageId = "m5", Afzender = "e@voorbeeld.nl", InternetHeaders = [new("Precedence", "list")] },
+            new() { MessageId = "m6", Afzender = "f@voorbeeld.nl", InternetHeaders = [new("X-Auto-Response-Suppress", "All")] }
         };
 
         var result = await service.PreFilterVoorClassificatieAsync(
             emails, "coordinator@voorbeeld.nl", new HashSet<string>(), graph, NullLogger.Instance);
 
-        result.Select(e => e.MessageId).Should().Equal(["m3", "m4"]);
+        // Een mailinglijst of een inkomende suppress-header is geen automatische afzender: normale verwerking.
+        result.Select(e => e.MessageId).Should().Equal(["m3", "m4", "m5", "m6"]);
         graph.MarkedAsReadIds.Should().BeEquivalentTo(["m1", "m2"]);
+    }
+
+    [Fact]
+    public async Task PreFilter_AutomatischBerichtKrijgtLabelVoorDeCoordinator()
+    {
+        var graph = new FakeEmailGraphService();
+        var emails = new List<InkomendBericht>
+        {
+            new() { MessageId = "m1", Afzender = "a@voorbeeld.nl", InternetHeaders = [new("Auto-Submitted", "auto-replied")] },
+            new() { MessageId = "m2", Afzender = "b@voorbeeld.nl" }
+        };
+
+        await new EmailBatchFilterService().PreFilterVoorClassificatieAsync(
+            emails, "coordinator@voorbeeld.nl", new HashSet<string>(), graph, NullLogger.Instance);
+
+        graph.CategoryUpdates.Should().ContainSingle().Which.MessageId.Should().Be("m1");
+        graph.CategoryUpdates[0].Categories.Should().Equal([EmailCategorieLabels.GeenAiAntwoord]);
+        graph.EnsuredCategories.Select(c => c.Name).Should().Contain(EmailCategorieLabels.GeenAiAntwoord);
+    }
+
+    // ── Pipeline: team zonder bevestiging door de teamresolutie (#1673) ──
+
+    [Theory]
+    [InlineData(VerzoekType.Bevestiging)]
+    [InlineData(VerzoekType.BuitenScope)]
+    public async Task Pipeline_TeamresolutieZonderUitkomst_ZetTeamNaamOnbevestigd(VerzoekType type)
+    {
+        var classificatie = new BerichtClassificatie { Type = type, TeamNaam = "JO13-2", Tegenstander = "FC Voorbeeld" };
+
+        await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, MaakEmail(), NullLogger.Instance, new VasteResolver(null), "TESTCLUB");
+
+        classificatie.TeamNaamOnbevestigd.Should().BeTrue();
+        AiVeldSanering.TeamNaamWeergave(classificatie.TeamNaam, classificatie.TeamNaamOnbevestigd).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Pipeline_TeamresolutieMetUitkomst_LaatTeamNaamBevestigd()
+    {
+        var classificatie = new BerichtClassificatie { Type = VerzoekType.Bevestiging, TeamNaam = "jo13 2", TeamNaamOnbevestigd = true };
+
+        await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, MaakEmail(), NullLogger.Instance, new VasteResolver("JO13-2"), "TESTCLUB");
+
+        classificatie.TeamNaamOnbevestigd.Should().BeFalse();
+        classificatie.TeamNaam.Should().Be("JO13-2");
+    }
+
+    [Fact]
+    public async Task Pipeline_ZonderClubcode_ZetTeamNaamOnbevestigd()
+    {
+        var classificatie = new BerichtClassificatie { Type = VerzoekType.Bevestiging, TeamNaam = "JO13-2" };
+
+        await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, MaakEmail(), NullLogger.Instance, new VasteResolver("JO13-2"), " ");
+
+        classificatie.TeamNaamOnbevestigd.Should().BeTrue();
+    }
+
+    /// <summary>Lost elke aanvraag op naar <c>canoniek</c>, of niets als die <c>null</c> is.</summary>
+    private sealed class VasteResolver(string? canoniek) : ITeamResolver
+    {
+        public Task<TeamResolutionResult> ResolveAsync(TeamResolutionRequest request)
+            => Task.FromResult(canoniek is null
+                ? TeamResolutionResult.Onopgelost
+                : new TeamResolutionResult(1, canoniek, 1.0, Array.Empty<TeamCandidate>(), ResolutionBron.ExacteMatch));
     }
 }

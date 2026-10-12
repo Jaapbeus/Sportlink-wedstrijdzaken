@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 
 namespace Planner.Shared.Email;
 
@@ -15,12 +16,24 @@ public static partial class AiVeldSanering
     public const int MaxTegenstanderLengte = 60;
     public const int MaxSamenvattingLengte = 500;
 
+    /// <summary>Generieke tekst in een antwoord als de teamnaam niet getoond mag worden.</summary>
+    public const string GeneriekTeam = "het opgegeven team";
+
+    /// <summary>Generieke tekst in een antwoord als de tegenstander niet getoond mag worden.</summary>
+    public const string GeneriekeTegenstander = "de opgegeven tegenstander";
+
     private const string AanvangsTijdFormaat = "HH:mm";
 
-    [GeneratedRegex(@"[\p{L}\p{N}\-]\.\p{L}{2,}", RegexOptions.CultureInvariant)]
+    // Een domeinnaam: een label van minstens twee tekens, een punt en minstens twee letters
+    // ("voorbeeld.nl"), of een label van één teken dat niet zelf achter een punt staat, gevolgd door
+    // een kleine-letter-extensie ("t.co"). Puntafkortingen zonder spatie ("v.v.Voorbeeld", "S.V.")
+    // hebben alleen labels van één teken en tellen daardoor niet als domein.
+    [GeneratedRegex(@"[\p{L}\p{N}\-]{2,}\.\p{L}{2,}|(?<![\p{L}\p{N}.\-])[\p{L}\p{N}]\.\p{Ll}{2,}(?![\p{L}\p{N}])", RegexOptions.CultureInvariant)]
     private static partial Regex DomeinPatroon();
 
-    [GeneratedRegex(@"^[\p{L}\p{N}][\p{L}\p{N} .+/\-'&]*$", RegexOptions.CultureInvariant)]
+    // Naamvorm van een club of team: optioneel een apostrof vooraan ("'t Voorbeeld", "'s-Voorbeeld"),
+    // dan een letter of cijfer, daarna letters, cijfers, spatie en . + / - ' ’ & ( ) ,
+    [GeneratedRegex(@"^['’]?[\p{L}\p{N}][\p{L}\p{N} .+/\-'’&(),]*$", RegexOptions.CultureInvariant)]
     private static partial Regex NaamPatroon();
 
     /// <summary>
@@ -35,6 +48,14 @@ public static partial class AiVeldSanering
 
         return BevatLinkOfMarkup(tekst) ? null : tekst;
     }
+
+    /// <summary><see cref="KnvbNotitie(string?)"/>, met een logregel (zonder inhoud) als een ingevulde waarde vervalt.</summary>
+    public static string? KnvbNotitie(string? waarde, ILogger? log)
+        => LogAlsVervallen(waarde, KnvbNotitie(waarde), "knvbNotitie", log);
+
+    /// <summary><see cref="AanvangsTijd(string?)"/>, met een logregel (zonder inhoud) als een ingevulde waarde vervalt.</summary>
+    public static string? AanvangsTijd(string? waarde, ILogger? log)
+        => LogAlsVervallen(waarde, AanvangsTijd(waarde), "aanvangsTijd", log);
 
     /// <summary>Aanvangstijd uit het model als <c>HH:mm</c>; alles wat daar niet strikt op lijkt vervalt.</summary>
     public static string? AanvangsTijd(string? waarde)
@@ -56,6 +77,13 @@ public static partial class AiVeldSanering
     public static string? TeamNaamWeergave(string? waarde, bool onbevestigd)
         => onbevestigd ? null : Weergavenaam(waarde, MaxTeamNaamLengte);
 
+    /// <summary>
+    /// Teamnaam voor lopende tekst en sjablonen: de bevestigde, veilige naam, <paramref name="generiek"/> als er
+    /// wel een waarde is die niet getoond mag worden, en leeg als er niets is ingevuld.
+    /// </summary>
+    public static string TeamNaamOfGeneriek(string? waarde, bool onbevestigd, string generiek = GeneriekTeam)
+        => TeamNaamWeergave(waarde, onbevestigd) ?? (string.IsNullOrWhiteSpace(waarde) ? "" : generiek);
+
     /// <summary>Tegenstander zoals die in een antwoord mag staan: korte naamvorm zonder URL of markup, anders <c>null</c>.</summary>
     public static string? TegenstanderWeergave(string? waarde) => Weergavenaam(waarde, MaxTegenstanderLengte);
 
@@ -63,7 +91,7 @@ public static partial class AiVeldSanering
     /// Tegenstander voor lopende tekst: de veilige naam, <paramref name="generiek"/> als er wel een waarde is die niet
     /// door de sanering komt, en de ongewijzigde lege waarde als er niets is ingevuld.
     /// </summary>
-    public static string TegenstanderOfGeneriek(string? waarde, string generiek)
+    public static string TegenstanderOfGeneriek(string? waarde, string generiek = GeneriekeTegenstander)
         => TegenstanderWeergave(waarde) ?? (string.IsNullOrWhiteSpace(waarde) ? waarde ?? "" : generiek);
 
     /// <summary>Korte samenvatting uit het model: één regel, begrensd, zonder aanhalingstekens die een prompt kunnen doorbreken.</summary>
@@ -88,6 +116,13 @@ public static partial class AiVeldSanering
             return null;
 
         return NaamPatroon().IsMatch(tekst) && !BevatLinkOfMarkup(tekst) ? tekst : null;
+    }
+
+    private static string? LogAlsVervallen(string? ruw, string? schoon, string veld, ILogger? log)
+    {
+        if (schoon is null && !string.IsNullOrWhiteSpace(ruw))
+            log?.LogInformation("Modelveld {Veld} vervallen: voldoet niet aan de toegestane vorm", veld);
+        return schoon;
     }
 
     private static bool BevatLinkOfMarkup(string tekst)

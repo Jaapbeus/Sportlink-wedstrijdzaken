@@ -136,11 +136,11 @@ public class BerichtAiService
     /// (prompt-injectie) en bijvoorbeeld een classificatie op een door de afzender gekozen team
     /// forceren.
     /// </summary>
-    internal static string BouwClassificatieUserPrompt(string afzender, string subject, string body, string markerId)
+    internal static string BouwClassificatieUserPrompt(string afzender, string subject, string body, string markerId, ILogger? log = null)
         => $"{DataMarkerStart(markerId)}\n"
            + $"Van: {NeutraliseerDataMarkers(afzender)}\n"
            + $"Onderwerp: {NeutraliseerDataMarkers(subject)}\n\n"
-           + $"{NeutraliseerDataMarkers(BerichtBodyBegrenzing.Kap(body))}\n"
+           + $"{NeutraliseerDataMarkers(BerichtBodyBegrenzing.Kap(body, log))}\n"
            + DataMarkerEinde(markerId);
 
     /// <summary>
@@ -283,7 +283,7 @@ public class BerichtAiService
         // Per aanroep een nieuwe marker: de afzender kan hem niet raden en het datablok dus niet
         // afsluiten om instructies te injecteren.
         var dataMarkerId = GenereerDataMarkerId();
-        var userPrompt = BouwClassificatieUserPrompt(afzender, subject, body, dataMarkerId);
+        var userPrompt = BouwClassificatieUserPrompt(afzender, subject, body, dataMarkerId, _logger);
 
         var messages = new List<Microsoft.Extensions.AI.ChatMessage>
         {
@@ -304,7 +304,7 @@ public class BerichtAiService
 
             _logger.LogInformation("OpenAI classificatie response ontvangen");
 
-            var classificatie = ParseClassificatieResponse(jsonResponse, today);
+            var classificatie = ParseClassificatieResponse(jsonResponse, today, _logger);
             return classificatie;
         }
         catch (Exception ex)
@@ -352,7 +352,7 @@ public class BerichtAiService
             + "Reply:\n"
             + $"{DataMarkerStart(dataMarkerId)}\n"
             + $"Onderwerp: {NeutraliseerDataMarkers(subject)}\n\n"
-            + $"{NeutraliseerDataMarkers(BerichtBodyBegrenzing.Kap(body))}\n"
+            + $"{NeutraliseerDataMarkers(BerichtBodyBegrenzing.Kap(body, _logger))}\n"
             + DataMarkerEinde(dataMarkerId);
 
         var messages = new List<Microsoft.Extensions.AI.ChatMessage>
@@ -400,7 +400,7 @@ public class BerichtAiService
     /// eeuwig, en elke keer met een nieuwe (betaalde) AI-aanroep. Ontbrekend <c>type</c> valt terug
     /// op <c>buiten_scope</c>: liever geen automatisch antwoord dan een verkeerd antwoord.
     /// </summary>
-    internal static BerichtClassificatie ParseClassificatieResponse(string jsonResponse, DateTime today)
+    internal static BerichtClassificatie ParseClassificatieResponse(string jsonResponse, DateTime today, ILogger? log = null)
     {
         using var doc = JsonDocument.Parse(jsonResponse);
         var root = doc.RootElement;
@@ -412,7 +412,7 @@ public class BerichtAiService
         {
             Type = MapVerzoekType(typeString),
             Datum = GetOptionalString(root, "datum"),
-            AanvangsTijd = AiVeldSanering.AanvangsTijd(GetOptionalString(root, "aanvangsTijd")),
+            AanvangsTijd = AiVeldSanering.AanvangsTijd(GetOptionalString(root, "aanvangsTijd"), log),
             Dagdeel = DagdeelVenster.Normaliseer(GetOptionalString(root, "dagdeel")), // #1587: onbekend = null
             GewensteDatum = GetOptionalString(root, "gewensteDatum"),
             Datums = GetOptionalStringArray(root, "datums"),
@@ -423,7 +423,7 @@ public class BerichtAiService
             NamensWie = MapNamensWie(namensWieString),
             // Verlopen KNVB-regels nooit als geldend advies doorgeven — ook niet als het model de
             // staleness-instructie negeert. (#608)
-            KnvbNotitie = KnvbRegelsZijnVerlopen(today) ? null : AiVeldSanering.KnvbNotitie(GetOptionalString(root, "knvbNotitie")),
+            KnvbNotitie = KnvbRegelsZijnVerlopen(today) ? null : AiVeldSanering.KnvbNotitie(GetOptionalString(root, "knvbNotitie"), log),
             HeelVeld = root.ValueKind == JsonValueKind.Object
                 && root.TryGetProperty("heelVeld", out var hvProp)
                 && hvProp.ValueKind == JsonValueKind.True ? true : null

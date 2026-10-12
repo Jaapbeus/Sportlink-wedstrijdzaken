@@ -227,6 +227,30 @@ public static class EmailVerwerkingsAfhandeling
     }
 
     /// <summary>
+    /// Handelt een bericht van een automatische afzender af (<see cref="AutomatischeAfzenderHerkenning"/>):
+    /// géén AI-aanroep en géén antwoord, maar wel een spoor voor de coördinator: het label
+    /// "Geen AI antwoord" in Outlook plus een logregel met de herkenningsheader. Net als bij de
+    /// buiten-scope-labeling in de lichte fase blijft het bericht ongelezen als labelen mislukt, zodat
+    /// een volgende poll het opnieuw probeert (zonder AI-kosten) en het nooit ongemerkt verdwijnt.
+    /// </summary>
+    public static async Task HandelAutomatischeAfzenderAsync(
+        string messageId, IEnumerable<KeyValuePair<string, string>>? headers, IEmailMailboxActies mailbox, ILogger log)
+    {
+        log.LogInformation("Email {MessageId}: {Reden} (herkend op header {Header}) — gelabeld 'Geen AI antwoord'",
+            messageId, AutomatischeAfzenderHerkenning.Reden, AutomatischeAfzenderHerkenning.HerkenningsHeader(headers));
+
+        try
+        {
+            await mailbox.LabelGeenAiAntwoordAsync(messageId);
+            await mailbox.MarkeerGelezenAsync(messageId);
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Outlook-labeling van automatisch bericht {MessageId} mislukt — blijft ongelezen voor de volgende poll", messageId);
+        }
+    }
+
+    /// <summary>
     /// Antwoordlusbeveiliging (<see cref="AntwoordLimiet"/>): telt de eerder verzonden antwoorden in de
     /// conversatie en laat het bericht zonder antwoord als de limiet is bereikt of als een bevestiging
     /// op ons eigen antwoord reageert. Legt de status en een korte trace vast, labelt en markeert als

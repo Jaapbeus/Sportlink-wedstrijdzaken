@@ -28,8 +28,8 @@ internal sealed class EmailBatchFilterService
             }
             else if (AutomatischeAfzenderHerkenning.IsAutomatisch(email.InternetHeaders))
             {
-                log.LogInformation("Email {MessageId}: {Reden}, overslaan", email.MessageId, AutomatischeAfzenderHerkenning.Reden);
-                await graphService.MarkAsReadAsync(email.MessageId);
+                await EmailVerwerkingsAfhandeling.HandelAutomatischeAfzenderAsync(
+                    email.MessageId, email.InternetHeaders, new EmailMailboxAdapter(graphService), log);
             }
             else
             {
