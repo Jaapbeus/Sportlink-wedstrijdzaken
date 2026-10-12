@@ -89,7 +89,8 @@ Start-Process powershell -ArgumentList "-NoExit -Command azurite --skipApiVersio
 Start-Sleep -Seconds 3
 
 # 2. FunctionApp — Postgres-tier (standaard); op de SQL Server-tier: Set-Location FunctionApp
-Start-Process powershell -ArgumentList "-NoExit -Command Set-Location FunctionApp.Postgres; func start --port 7094"
+#    LOCAL_AUTH_BYPASS=true: de lokale rolbypass is een expliciete keuze (#1700); zonder geeft de host 401.
+Start-Process powershell -ArgumentList "-NoExit -Command `$env:LOCAL_AUTH_BYPASS='true'; Set-Location FunctionApp.Postgres; func start --port 7094"
 
 # 3. BlazorAdmin met hot reload
 Start-Process powershell -ArgumentList "-NoExit -Command Set-Location BlazorAdmin; dotnet watch run --launch-profile http"
@@ -104,8 +105,9 @@ mkdir -p /tmp/azurite-sportlink && azurite --skipApiVersionCheck --location /tmp
 ```
 ```bash
 # Tab 2 — FunctionApp — Postgres-tier (standaard)
-cd FunctionApp.Postgres && func start --port 7094
-# SQL Server-tier: cd FunctionApp && func start --port 7094
+# LOCAL_AUTH_BYPASS=true: de lokale rolbypass is een expliciete keuze (#1700); zonder geeft de host 401.
+cd FunctionApp.Postgres && LOCAL_AUTH_BYPASS=true func start --port 7094
+# SQL Server-tier: cd FunctionApp && LOCAL_AUTH_BYPASS=true func start --port 7094
 ```
 ```bash
 # Tab 3 — BlazorAdmin met hot reload
@@ -286,9 +288,10 @@ twee uitwedstrijden — dat is correct gedrag, geen ontbrekende data.
 
 ## API-endpoints
 
-Alle admin-endpoints vereisen Entra ID auth in productie. Lokaal (zonder `WEBSITE_SITE_NAME`)
-worden ze altijd toegestaan; planner-endpoints vereisen in productie een function key en zijn
-lokaal vrij.
+Alle admin-endpoints vereisen Entra ID auth in productie. Lokaal worden ze alleen toegestaan met
+de expliciete schakelaar `LOCAL_AUTH_BYPASS=true` (die `Start-Debug.ps1` zet, #1700); zonder
+schakelaar geeft de host ook lokaal 401/403. Planner-endpoints vereisen in productie een function key
+en zijn lokaal vrij.
 
 **De volledige, actuele endpointlijst staat in [API.md](API.md)** en machine-leesbaar in
 `docs/api-standaarden/openapi.yaml`. Hier stond eerder een handmatig bijgehouden kopie; die liep

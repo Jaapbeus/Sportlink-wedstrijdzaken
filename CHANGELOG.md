@@ -48,6 +48,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - De context voor de automatische issue-beurt wordt in UTF-8-bytes begrensd (96 KiB, inclusief issuetekst, kopregels en separators) en kapt zichtbaar af, met behoud van de nieuwste reviewcomments (#1666)
 - fix(#1597): widgetissues krijgen het canonieke label `via: feedback-widget` (voorheen `via-feedback-widget`), zodat ze aansluiten bij de labelset in `.github/labels.json`.
 
+### Security
+- De lokale autorisatiebypass is een expliciete keuze: alleen met `LOCAL_AUTH_BYPASS=true` en nooit als de app in Azure draait. Zonder die schakelaar geldt de rolcontrole overal, ook buiten Azure; voorheen viel elke rolcontrole open zodra de platformvariabele van Azure ontbrak. De lokale schakelaar opent uitgaand verkeer nooit, ook niet in Azure. De beslisregel staat één keer in Planner.Shared voor beide databasetiers; de host meldt bij het opstarten zonder waarden of de bypass actief of geweigerd is. `Start-Debug.ps1`, de selftest-functiehost en de `local.settings`-sjablonen zetten de schakelaar expliciet. De Flex-infrastructuur weigert een lege tenant- of client-ID, zodat Easy Auth niet stilletjes ontbreekt, en `Verify-AzureAuthSetup.ps1` controleert als laag 0 dat platform-auth aan staat (#1700).
+
 ## [3.13.2.0] — 2026-10-11
 
 ### Changed

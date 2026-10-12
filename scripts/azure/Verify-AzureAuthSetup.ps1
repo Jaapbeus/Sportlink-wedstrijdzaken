@@ -4,8 +4,9 @@
     Read-only diagnose van de Entra ID auth-configuratie voor de Sportlink Admin GUI.
 
 .DESCRIPTION
-    Loopt alle vijf defense-in-depth lagen langs en print per laag de actuele
-    state. Maakt GEEN wijzigingen. Te gebruiken vóór en na Configure-EntraApp.ps1.
+    Loopt alle vijf defense-in-depth lagen langs, plus laag 0 (platform-auth aan op de
+    Function App, #1700), en print per laag de actuele state. Maakt GEEN wijzigingen.
+    Te gebruiken vóór en na Configure-EntraApp.ps1.
 
     Verplichte pre-conditie: 'az login' op het juiste account in de tenant van
     jouw club. Wordt aan het begin gecontroleerd; als de tenant niet matcht stopt
@@ -24,9 +25,17 @@
 .PARAMETER AdminUserPrincipalName
     UPN van de te controleren admin-gebruiker (optioneel).
 
+.PARAMETER FunctionAppName
+    Naam van de Function App (bijv. func-[clubcode]-sportlink). Nodig voor laag 0: zonder deze
+    parameter is platform-auth NIET gecontroleerd en telt dat als probleem (#1700).
+
+.PARAMETER ResourceGroupName
+    Resourcegroep van de Function App. Nodig voor laag 0.
+
 .EXAMPLE
     .\scripts\Verify-AzureAuthSetup.ps1 -ClientId '<jouw-app-id>' -ExpectedTenantId '<jouw-tenant-id>'
     .\scripts\Verify-AzureAuthSetup.ps1 -ClientId '<jouw-app-id>' -ExpectedTenantId '<jouw-tenant-id>' -AdminUserPrincipalName 'admin@jouwclub.nl'
+    .\scripts\azure\Verify-AzureAuthSetup.ps1 -ClientId '<jouw-app-id>' -ExpectedTenantId '<jouw-tenant-id>' -FunctionAppName 'func-<clubcode>-sportlink' -ResourceGroupName '<resourcegroep>'
 
 .NOTES
     Zie SETUP-NIEUWE-CLUB.md en docs/ENTRA-AUTH-BEHEER.md voor het volledige protocol.
@@ -39,7 +48,11 @@ param(
     [Parameter(Mandatory = $true, HelpMessage = 'Tenant ID uit Microsoft Entra ID › Overview')]
     [string] $ExpectedTenantId,
 
-    [string] $AdminUserPrincipalName = ''
+    [string] $AdminUserPrincipalName = '',
+
+    [string] $FunctionAppName = '',
+
+    [string] $ResourceGroupName = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -80,6 +93,58 @@ if ($account.tenantId -ne $ExpectedTenantId) {
 Write-Pass "Tenant: $($account.tenantDefaultDomain) ($($account.tenantId))"
 Write-Pass "Subscription: $($account.name)"
 Write-Pass "Ingelogd als: $($account.user.name)"
+
+# ── Layer 0 — Platform-auth (Easy Auth) aan op de Function App (#1700) ─────────
+# De rolcontrole in EasyAuthHelper (laag 5) leest X-MS-CLIENT-PRINCIPAL. Die header is alleen
+# betrouwbaar als Easy Auth op het platform aan staat: dan zet Easy Auth hem zelf en stript het een
+# meegestuurde versie. Staat platform-auth uit, dan kan elke aanroeper de header zelf meesturen.
+# Read-only: GET op config/authsettingsV2 (de variant zonder secrets) en alleen de NAAM van een
+# app-instelling; er wordt geen waarde getoond.
+Write-Section 'Layer 0 — Platform-auth (Easy Auth) op de Function App'
+
+if ([string]::IsNullOrWhiteSpace($FunctionAppName) -or [string]::IsNullOrWhiteSpace($ResourceGroupName)) {
+    Write-Fail 'Laag 0 is NIET gecontroleerd: -FunctionAppName en -ResourceGroupName ontbreken'
+    Write-Info "Run opnieuw met -FunctionAppName 'func-<clubcode>-sportlink' -ResourceGroupName '<resourcegroep>'"
+} else {
+    $authUri = "/subscriptions/$($account.id)/resourceGroups/$ResourceGroupName/providers/Microsoft.Web/sites/$FunctionAppName/config/authsettingsV2?api-version=2023-01-01"
+    $auth = az rest --method GET --url $authUri 2>$null | ConvertFrom-Json
+    if (-not $auth) {
+        Write-Fail "authsettingsV2 van de Function App niet leesbaar — platform-auth is NIET gecontroleerd"
+    } else {
+        $props = $auth.properties
+        if ($props.platform.enabled -eq $true) {
+            Write-Pass 'platform.enabled = true (Easy Auth aan)'
+        } else {
+            Write-Fail 'platform.enabled is niet true — Easy Auth staat UIT; X-MS-CLIENT-PRINCIPAL is dan vervalsbaar'
+            Write-Info 'Fix: rol infrastructure/modules/function-app-flex.bicep uit met tenantId/clientId (zie docs/RUNBOOK-FLEX-MIGRATIE.md)'
+        }
+
+        $aad = $props.identityProviders.azureActiveDirectory
+        if ($aad.enabled -eq $true -and $aad.registration.clientId -eq $ClientId) {
+            Write-Pass 'Entra ID-provider aan, met de clientId van deze App Registration'
+        } else {
+            Write-Fail 'Entra ID-provider staat uit of verwijst naar een andere App Registration'
+        }
+
+        if (@($aad.validation.allowedAudiences) -contains "api://$ClientId") {
+            Write-Pass "allowedAudiences bevat api://<clientId>"
+        } else {
+            Write-Fail 'allowedAudiences mist api://<clientId> — de Bearer-tokens van de Admin GUI worden dan niet geaccepteerd'
+        }
+    }
+
+    # De lokale ontwikkelschakelaar hoort nooit op een gehoste app. De code weigert hem daar al
+    # (LokaleOntwikkelomgeving), maar een gezette schakelaar sluit wel alle uitgaande integraties af.
+    $schakelaar = az functionapp config appsettings list --name $FunctionAppName --resource-group $ResourceGroupName `
+        --query "[?name=='LOCAL_AUTH_BYPASS'].name" -o tsv 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Fail 'App-instellingen niet leesbaar — de controle op LOCAL_AUTH_BYPASS is NIET uitgevoerd'
+    } elseif ([string]::IsNullOrWhiteSpace($schakelaar)) {
+        Write-Pass 'LOCAL_AUTH_BYPASS staat niet in de app-instellingen'
+    } else {
+        Write-Fail 'LOCAL_AUTH_BYPASS staat in de app-instellingen — verwijder hem (de app weigert hem en sluit uitgaand verkeer af)'
+    }
+}
 
 # ── Layer 1 — App Registration (Single tenant) ────────────────────────────────
 Write-Section 'Layer 1 — App Registration (Single tenant)'
@@ -325,7 +390,7 @@ if ($script:Failures -gt 0) {
     Write-Host '  Tot slot: sluit alle browser-tabs, verse Incognito, opnieuw inloggen.' -ForegroundColor DarkGray
 } else {
     Write-Host ''
-    Write-Host '  ✓ Alle 5 lagen + admin-assignment correct. Geen actie nodig.' -ForegroundColor Green
+    Write-Host '  ✓ Laag 0 (platform-auth) + alle 5 lagen + admin-assignment correct. Geen actie nodig.' -ForegroundColor Green
     Write-Host '  Als login alsnog faalt: verse Incognito sessie (MSAL bewaart oude tokens in localStorage).' -ForegroundColor DarkGray
 }
 Write-Host ''

@@ -21,7 +21,8 @@ info:
       `/sportlink/`), via `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`. Netto: een gewone
       `user` (zonder `Wedstrijdzaken`, zonder `admin`) kan Planning en het Sportlink-paneel bekijken
       maar geen Sportlink-mutatie triggeren; dat laatste vereist `Wedstrijdzaken` óf `admin`. Lokaal
-      omzeild wanneer de omgevingsvariabele `WEBSITE_SITE_NAME` afwezig is.
+      alleen omzeild met de expliciete schakelaar `LOCAL_AUTH_BYPASS=true`; in Azure wordt die
+      geweigerd (#1700).
 
     Zonder token volgt `401`. Met een geldig token maar zonder de vereiste rol volgt `403` met
     `{ "error": "Forbidden: vereiste rol ontbreekt" }`.
@@ -33,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.13.4.21
+  version: 3.13.4.23
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -85,7 +86,7 @@ components:
         meeste /beheer/-, /planner/-, /feedback/- en /test/-endpoints (en de twee syncroutes);
         `admin` of `user` op /planner/veldbezetting en de twee Sportlink-viewing-endpoints (#1400);
         `Wedstrijdzaken` of `admin` op de Sportlink-mutatie-endpoints (beide poorten sinds #1400).
-        Lokaal altijd toegestaan als WEBSITE_SITE_NAME afwezig is.
+        Lokaal alleen toegestaan met LOCAL_AUTH_BYPASS=true; in Azure wordt die schakelaar geweigerd (#1700).
 
   # ───────────────────────────────────────────────────────────────────────────
   # Herbruikbare headers
