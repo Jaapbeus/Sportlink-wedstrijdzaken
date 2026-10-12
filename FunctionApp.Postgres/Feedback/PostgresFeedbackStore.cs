@@ -1,3 +1,4 @@
+using Planner.Shared;
 using Database.Postgres;
 using Npgsql;
 using Planner.Shared.Feedback;
@@ -165,8 +166,7 @@ internal sealed class PostgresFeedbackStore : IFeedbackStore
     }
 
     /// <summary>Wildcards uit de zoektekst onschadelijk maken (\ % _), zodat ze letterlijk gezocht worden.</summary>
-    internal static string EscapeLike(string tekst) =>
-        tekst.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+    internal static string EscapeLike(string tekst) => LikePatroon.Escape(tekst);
 
     private static FeedbackSamenvatting LeesSamenvatting(NpgsqlDataReader r) => new(
         r.GetGuid(r.GetOrdinal("feedbackid")),

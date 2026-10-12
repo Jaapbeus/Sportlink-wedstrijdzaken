@@ -361,7 +361,7 @@ internal static class PlannerMatchRepository
             LEFT JOIN public.speeltijden s ON s.leeftijd = {Database.Postgres.PostgresLeeftijdNormalisatie.SqlExpr("t.leeftijdscategorie")}
                  AND s.clubcode = {PostgresClubScope.ClubCodeParam}
             WHERE m.kaledatum::date = @date
-              AND m.accommodatie ILIKE @accommodatiepattern
+              AND m.accommodatie ILIKE @accommodatiepattern ESCAPE '\'
               AND UPPER(m.status) <> 'AFGELAST'
               AND UPPER(TRIM(m.teamnaam)) = ANY(@sleutels)
               AND {PostgresClubScope.HisFilter("m")}
@@ -369,7 +369,7 @@ internal static class PlannerMatchRepository
             LIMIT 1
         ", conn);
         cmd.Parameters.AddWithValue("date", date.ToDateTime(TimeOnly.MinValue).Date);
-        cmd.Parameters.AddWithValue("accommodatiepattern", $"%{accommodatie}%");
+        cmd.Parameters.AddWithValue("accommodatiepattern", LikePatroon.Bevat(accommodatie));
         cmd.Parameters.AddWithValue("sleutels", sleutels);
         PostgresClubScope.AddHisParams(cmd, clubCode);
 
@@ -404,12 +404,12 @@ internal static class PlannerMatchRepository
             LEFT JOIN public.speeltijden s ON s.leeftijd = {Database.Postgres.PostgresLeeftijdNormalisatie.SqlExpr("t.leeftijdscategorie")}
                  AND s.clubcode = {PostgresClubScope.ClubCodeParam}
             WHERE m.wedstrijdcode = @code
-              AND m.accommodatie ILIKE @accommodatiepattern
+              AND m.accommodatie ILIKE @accommodatiepattern ESCAPE '\'
               AND {PostgresClubScope.HisFilter("m")}
             LIMIT 1
         ", conn);
         cmd.Parameters.AddWithValue("code", wedstrijdcode);
-        cmd.Parameters.AddWithValue("accommodatiepattern", $"%{accommodatie}%");
+        cmd.Parameters.AddWithValue("accommodatiepattern", LikePatroon.Bevat(accommodatie));
         PostgresClubScope.AddHisParams(cmd, clubCode);
 
         await using var reader = await cmd.ExecuteReaderAsync();
@@ -497,18 +497,18 @@ internal static class PlannerMatchRepository
                  AND {PostgresClubScope.HisFilter("t")}
             LEFT JOIN public.speeltijden s ON s.leeftijd = {Database.Postgres.PostgresLeeftijdNormalisatie.SqlExpr("t.leeftijdscategorie")}
                  AND s.clubcode = {PostgresClubScope.ClubCodeParam}
-            WHERE m.accommodatie ILIKE @accommodatiepattern
+            WHERE m.accommodatie ILIKE @accommodatiepattern ESCAPE '\'
               AND UPPER(m.status) <> 'AFGELAST'
-              AND m.wedstrijd ILIKE @tegpattern
+              AND m.wedstrijd ILIKE @tegpattern ESCAPE '\'
               AND (@datum::date IS NULL OR m.kaledatum::date = @datum::date)
               AND {PostgresClubScope.HisFilter("m")}
             ORDER BY m.kaledatum::date
             LIMIT 1
         ", conn))
         {
-            cmd.Parameters.AddWithValue("tegpattern", $"%{tegenstander}%");
+            cmd.Parameters.AddWithValue("tegpattern", LikePatroon.Bevat(tegenstander));
             cmd.Parameters.AddWithValue("datum", datumParam);
-            cmd.Parameters.AddWithValue("accommodatiepattern", $"%{accommodatie}%");
+            cmd.Parameters.AddWithValue("accommodatiepattern", LikePatroon.Bevat(accommodatie));
             PostgresClubScope.AddHisParams(cmd, clubCode);
 
             await using var reader = await cmd.ExecuteReaderAsync();
@@ -526,14 +526,14 @@ internal static class PlannerMatchRepository
             FROM planner.geplandewedstrijden gw
             LEFT JOIN public.velden v ON v.veldnummer = gw.veldnummer AND v.clubcode = @clubcode
             WHERE gw.status <> 'Geannuleerd'
-              AND gw.tegenstander ILIKE @tegpattern
+              AND gw.tegenstander ILIKE @tegpattern ESCAPE '\'
               AND (@datum::date IS NULL OR gw.datum = @datum::date)
               AND gw.clubcode = @clubcode
             ORDER BY gw.datum
             LIMIT 1
         ", conn))
         {
-            cmd2.Parameters.AddWithValue("tegpattern", $"%{tegenstander}%");
+            cmd2.Parameters.AddWithValue("tegpattern", LikePatroon.Bevat(tegenstander));
             cmd2.Parameters.AddWithValue("datum", datumParam);
             cmd2.Parameters.AddWithValue("clubcode", cc);
 
@@ -740,9 +740,9 @@ internal static class PlannerMatchRepository
               AND gw.isvervallen = FALSE
               AND gw.status <> 'Geannuleerd'
               AND gw.clubcode = {PostgresClubScope.ClubCodeParam}
-              AND m.accommodatie ILIKE @accommodatiepattern
+              AND m.accommodatie ILIKE @accommodatiepattern ESCAPE '\'
         ", conn);
-        cmd.Parameters.AddWithValue("accommodatiepattern", $"%{accommodatie}%");
+        cmd.Parameters.AddWithValue("accommodatiepattern", LikePatroon.Bevat(accommodatie));
         PostgresClubScope.AddHisParams(cmd, clubCode);
         var rows = await cmd.ExecuteNonQueryAsync();
         if (rows > 0)

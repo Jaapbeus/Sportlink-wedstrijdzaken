@@ -176,7 +176,7 @@ bij — `Closes #<nr>` in de PR-titel of -body is genoeg.
 | Draft-PR geopend | `status: in-progress` |
 | PR *ready for review* | `status: review-needed` |
 | PR gesloten zonder merge | `status: triage` |
-| **PR gemerged naar `develop`** | **`status: awaiting-release` — het issue blijft open** |
+| **PR gemerged naar `develop`** | **`status: awaiting-release` en geen `turn:`-label — het issue blijft open** |
 | Release-tag gepusht naar `main` | status-labels weg, issue gesloten |
 
 **Waarom een PR als draft beginnen.** Zonder `--draft` zet de automatisering meteen `status:
@@ -188,6 +188,13 @@ integratiebranch; er staat op dat moment nog niets van je wijziging live. Het is
 `status: awaiting-release` tot de eerstvolgende release naar `main`, waarna
 `close-released-issues.yml` het automatisch sluit. Je bijdrage is niet vergeten — ze wacht op een
 releasemoment.
+
+**Na een merge staat er alleen `status: awaiting-release`** (#1669). `label-awaiting-release.yml` zet die
+status en verwijdert in dezelfde stap elk `turn:`-label: na de merge is niemand meer aan zet, alleen de
+release resteert. Een issue blijft dus nooit onder `status: in-progress`, `status: waiting-owner` of
+`turn: owner` staan. Heeft de PR geen sterke `#nr`-verwijzing (titel `fix(#nr): …` of `Closes #nr`), bijvoorbeeld
+een Dependabot-batch met een registratie-issue, dan raakt de workflow het issue niet aan: zet de merger dan zelf
+`status: awaiting-release` en verwijder het `turn:`-label.
 
 ### Security Gate
 

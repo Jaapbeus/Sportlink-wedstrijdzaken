@@ -47,7 +47,29 @@ public static class AuthGate
     /// bewust géén authenticatiestatus ophaalt — die route brengt de sessie juist tot stand.
     /// </summary>
     public static bool IsAuthRoute(string huidigeUri) =>
-        huidigeUri.Contains("/authentication/", StringComparison.OrdinalIgnoreCase);
+        AfleidPad(huidigeUri).StartsWith(AuthPadPrefix, StringComparison.OrdinalIgnoreCase);
+
+    private const string AuthPadPrefix = "/authentication/";
+
+    /// <summary>
+    /// Leidt het pad af zonder querystring en fragment. Een relatieve URI die met één slash begint
+    /// wordt handmatig afgekapt (op Unix leest <see cref="Uri"/> zo'n pad als <c>file:</c>); een
+    /// absolute URI gaat via <see cref="Uri.AbsolutePath"/>. Onleesbare invoer geeft een leeg pad.
+    /// </summary>
+    private static string AfleidPad(string uri)
+    {
+        if (string.IsNullOrEmpty(uri)) return string.Empty;
+
+        if (uri.StartsWith('/') && !uri.StartsWith("//", StringComparison.Ordinal))
+        {
+            var einde = uri.AsSpan().IndexOfAny('?', '#');
+            return einde < 0 ? uri : uri[..einde];
+        }
+
+        return Uri.TryCreate(uri, UriKind.RelativeOrAbsolute, out var parsed) && parsed.IsAbsoluteUri
+            ? parsed.AbsolutePath
+            : string.Empty;
+    }
 
     /// <summary>
     /// Bepaalt welke toestand <c>App.razor</c> moet renderen.
