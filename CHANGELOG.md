@@ -38,6 +38,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - chore(#1688): het ontwikkelscript `scripts/dev/Restore-ProductionDump.ps1` noemt in toelichting, waarschuwing en vervolgstappen geen clubafkorting meer maar spreekt neutraal over "je club" (multi-club-regel).
 
 ### Fixed
+- De regressietest voor de verlopen clublijst hing af van een eerste lading binnen 50 ms en faalde daardoor af en toe op een belaste CI-runner; de test wacht nu niet meer op timing, bewijst ook dat een bekende waarde bij een verlopen lijst het oude antwoord krijgt zonder op de verversing te wachten, en de begrensde wacht voor een onbekende waarde tijdens een hangende verversing heeft een eigen test; productiecode ongewijzigd (#1696).
 - De toetsing van de clubcode uit het verzoek herlaadt de clublijst begrensd bij een onbekende waarde (hoogstens eens per 10 seconden), zodat een pas toegevoegde club direct herkend wordt; bij varianten in hoofdletters gaat een exacte match voor en is de keuze verder vast; structureel falen van het laden van de lijst geeft een geaggregeerde logregel zonder waarden, op beide databasetiers (#1689).
 - De poort van de automatische issue-beurt start geen verouderde of wachtende run meer: het issue moet op dat moment open zijn en precies één beurtlabel hebben, `turn: claude-code`; anders stopt de run zonder labelwijziging (#1664)
 - De poort van de automatische issue-beurt stopt bij meerdere gekoppelde open PR's in plaats van er op API-volgorde één te kiezen, en meldt een eigenaarsbesluit (#1665)
