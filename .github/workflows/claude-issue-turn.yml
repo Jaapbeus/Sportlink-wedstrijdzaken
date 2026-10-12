@@ -25,6 +25,13 @@ run-name: "${{ github.event.label.name == 'turn: claude-code' && format('Claude 
 # Daarnaast (#1664) de actuele issue-state/turn-label, bij meerdere gekoppelde PR's (#1665) een
 # stop zonder agent, en een contextplafond in UTF-8-bytes (#1666: PROMPT is een omgevingsvariabele
 # met een Linux-limiet van 128 KiB per string; de action heeft op deze pin geen prompt-bestandsinput).
+#
+# #1692: de agent schrijft zelf geen `turn:`-label meer (geen `gh issue edit` in --allowedTools). Hij
+# sluit zijn laatste issuecomment af met `Volgende beurt: turn: codex|owner`; de job `eindlabel` zet
+# dat label op code van de default branch als vergelijk-en-zet: alleen als het issue open is, geen
+# `status: awaiting-release` heeft, het turn-label nog `turn: claude-code` is en geen gekoppelde PR
+# intussen gemerged of gesloten is (claude-issue-turn-eindlabel.js). De poort slaat een run over als
+# een gekoppelde PR al gemerged is.
 
 on:
   issues:
@@ -57,6 +64,7 @@ jobs:
       pr_number: ${{ steps.evaluate.outputs.pr_number }}
       pr_branch: ${{ steps.evaluate.outputs.pr_branch }}
       context: ${{ steps.evaluate.outputs.context }}
+      started_at: ${{ steps.evaluate.outputs.started_at }}
     steps:
       - name: Checkout (voor .github/scripts)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -66,6 +74,8 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
+            // #1692: referentiemoment voor de vergelijk-en-zet in de job `eindlabel`.
+            core.setOutput('started_at', new Date().toISOString());
             const { evaluateGate, collectTrustedContext } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/claude-issue-turn-gate.js`);
             const result = await evaluateGate({
               github,
@@ -131,12 +141,13 @@ jobs:
           # Per subcommando toegestaan (#1612), niet `git *`/`gh *`/`node *`: die maken van elke
           # geslaagde prompt-injectie willekeurige code-uitvoering (`git -c core.fsmonitor=`,
           # `gh api`, `node -e`, `find -exec`). Geen `gh issue view`/`gh pr view`/`gh api`: alle
-          # leesinvoer komt gefilterd uit de poort. Geen `gh pr merge`/`gh pr ready`.
+          # leesinvoer komt gefilterd uit de poort. Geen `gh pr merge`/`gh pr ready`. Geen
+          # `gh issue edit` (#1692): het beurtlabel zet de job `eindlabel` als vergelijk-en-zet.
           # Pushen naar main/develop is daarnaast al geblokkeerd door de branch protection
           # (verplichte checks, ook voor admins); de deny-regels hieronder zijn een tweede slot.
           claude_args: >-
             --max-turns 60
-            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git status *),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(git add *),Bash(git commit *),Bash(git push *),Bash(git switch -c *),Bash(git checkout -b *),Bash(git rev-parse *),Bash(git branch *),Bash(git fetch *),Bash(gh issue edit *),Bash(gh issue comment *),Bash(gh pr create *),Bash(gh pr checks *),Bash(gh pr comment *),Bash(dotnet build *),Bash(dotnet test *),Bash(dotnet restore *),Bash(node .github/scripts/*),Bash(python3 scripts/ci/*),Bash(bash scripts/ci/*),Bash(ls *),Bash(grep *),Bash(wc *),Bash(head *),Bash(tail *)"
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git status *),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(git add *),Bash(git commit *),Bash(git push *),Bash(git switch -c *),Bash(git checkout -b *),Bash(git rev-parse *),Bash(git branch *),Bash(git fetch *),Bash(gh issue comment *),Bash(gh pr create *),Bash(gh pr checks *),Bash(gh pr comment *),Bash(dotnet build *),Bash(dotnet test *),Bash(dotnet restore *),Bash(node .github/scripts/*),Bash(python3 scripts/ci/*),Bash(bash scripts/ci/*),Bash(ls *),Bash(grep *),Bash(wc *),Bash(head *),Bash(tail *)"
             --disallowedTools "Bash(git push * main),Bash(git push * develop),Bash(git push *:main),Bash(git push *:develop),Bash(git push *:refs/heads/main),Bash(git push *:refs/heads/develop),Bash(git push *--force*),Bash(git push * -f *),Bash(git push -f *),Bash(git push *--delete*),Bash(git push *--mirror*),Bash(git push *--tags*),Bash(git push *:refs/tags/*)"
           prompt: |
             Je werkt deze beurt uit namens de repository-eigenaar, op een kale, kortlevende
@@ -179,15 +190,15 @@ jobs:
                (conventie `fix(#<nr>): ...` / `feat(#<nr>): ...`).
             7. Haal de PR nooit uit draft, merge nooit, deploy nooit, wijzig nooit het
                `source:`-label. Lukt de implementatie niet, of is er een architectuur-/AVG-/
-               kostenbeslissing nodig? Plaats een duidelijke comment met de blokkade op het
-               issue en wissel met één aanroep
-               `gh issue edit ${{ github.event.issue.number }} --remove-label "turn: claude-code" --add-label "turn: owner"`.
+               kostenbeslissing nodig? Plaats op het issue een duidelijke comment met de
+               blokkade, met als laatste regel `Volgende beurt: turn: owner`.
                Lukt de implementatie wel en staat de draft-PR open en is CI groen? "CI groen"
                geldt alleen als op de head-SHA de checks `Build FunctionApp + BlazorAdmin` én
                `Security Gate — blokkeert merge bij fout` AANWEZIG en groen zijn
                (`gh pr checks <pr-nr> --watch`). Ontbreekt een van beide (GitHub start geen
                pull_request-run bij een merge-conflict of na een push met een bot-token, #1641),
-               meld dan "CI niet bewezen" en wissel naar `turn: owner`, nooit "CI groen". Vraag dan review aan volgens AGENTS.md
+               meld dan in een issuecomment "CI niet bewezen", met als laatste regel
+               `Volgende beurt: turn: owner`, nooit "CI groen". Vraag dan review aan volgens AGENTS.md
                ("Wederzijdse review en turn:-workflow", stap 1): plaats op het issue een comment
                met precies deze regels —
                  Fase: review
@@ -195,7 +206,8 @@ jobs:
                  Implementer: Claude Code (CI-run claude-issue-turn.yml)
                  Reviewer: Codex
                  Aangeboden head-SHA: <volledige SHA van de PR-head, via `git rev-parse HEAD`>
-               — en wissel daarna op dezelfde manier naar `turn: codex`. Push na die aanvraag
+                 Volgende beurt: turn: codex
+               Push na die aanvraag
                niets meer op de branch tot Codex de beurt teruggeeft.
 
             ALS fase = verwerking:
@@ -211,18 +223,23 @@ jobs:
                beoordeelde SHA. Bepaal daarna de volgende beurt (AGENTS.md, rondelimiet):
                - Geen codewijziging nodig (geen bevindingen, of alle "niet overgenomen"), óf dit
                  was al de tweede reviewronde op deze PR → wacht op groene CI (beide check-runs aanwezig, zie hierboven) en zet op het
-                 issue een comment `Fase: eigenaarsbesluit` en wissel naar `turn: owner`.
+                 issue een comment `Fase: eigenaarsbesluit` met als laatste regel
+                 `Volgende beurt: turn: owner`.
                - Wel codewijzigingen en dit was de eerste ronde → wacht op groene CI (beide check-runs aanwezig), plaats een
-                 nieuwe reviewaanvraag (zelfde vijf regels als implementatiestap 7, met de nieuwe
-                 head-SHA) en wissel naar `turn: codex`.
+                 nieuwe reviewaanvraag op het issue (zelfde zes regels als implementatiestap 7,
+                 met de nieuwe head-SHA, eindigend op `Volgende beurt: turn: codex`).
                - Ontbreekt na je push binnen 10 minuten `Build FunctionApp + BlazorAdmin` of de
                  Security Gate op de nieuwe head-SHA (merge-conflict met `develop`, of geen
                  pull_request-run om een andere reden; deze run mag geen workflow dispatchen, #1641)
                  → geen reviewaanvraag: plaats op de PR "CI niet bewezen op <SHA>" met wat
-                 ontbreekt, zet `Fase: eigenaarsbesluit` op het issue en wissel naar `turn: owner`.
+                 ontbreekt, zet op het issue `Fase: eigenaarsbesluit` met als laatste regel
+                 `Volgende beurt: turn: owner`.
                Tel de rondes aan de hand van de reviewaanvragen ("Fase: review") op het issue.
 
             Altijd, in beide fasen:
+            - Wijzig zelf nooit een label. Na deze stap zet de workflow het beurtlabel uit de
+              regel `Volgende beurt: …` in je laatste issuecomment, alleen als niemand het issue
+              intussen heeft afgerond; ontbreekt die regel, dan gaat de beurt naar de eigenaar.
             - Geen clubspecifieke namen, domeinen, resource-ID's, tenant-/client-ID's of
               persoonsgegevens in commits, PR's, issues of comments — gebruik placeholders
               (AGENTS.md, "Absolute veiligheidsregels", §4a). Deze Actions-run en alles wat je
@@ -233,3 +250,47 @@ jobs:
             ===== VERTROUWDE CONTEXT (gefilterd door de poort, #1612) =====
             ${{ needs.gate.outputs.context }}
             ===== EINDE VERTROUWDE CONTEXT =====
+
+  # #1692: vergelijk-en-zet van het eindlabel. Eigen job op code van de default branch (zoals de
+  # poort, #1612): de claude-job staat in de verwerkingsfase op een PR-branch, waarvan de scripts
+  # verouderd of door de agent gewijzigd kunnen zijn. Draait ook als de agent faalde of afbrak.
+  eindlabel:
+    name: Eindlabel — alleen bij ongewijzigde toestand
+    needs: [gate, claude]
+    if: always() && needs.gate.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    steps:
+      - name: Checkout (voor .github/scripts)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Eindlabel vergelijken en zetten
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          STARTED_AT: ${{ needs.gate.outputs.started_at }}
+          START_PR: ${{ needs.gate.outputs.pr_number }}
+          CLAUDE_RESULT: ${{ needs.claude.result }}
+        with:
+          script: |
+            const { applyEndLabel } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/claude-issue-turn-eindlabel.js`);
+            const issueNumber = context.payload.issue.number;
+            const r = await applyEndLabel({
+              github,
+              context,
+              core,
+              issueNumber,
+              startPrNumber: process.env.START_PR ? Number(process.env.START_PR) : null,
+              startedAt: process.env.STARTED_AT,
+            });
+            const uitkomst = r.written
+              ? `\`${r.label}\` gezet (${r.source}).`
+              : `Niets geschreven${r.rolledBack ? ' (teruggedraaid)' : ''}: ${r.reason}. Gevraagd was \`${r.label || '-'}\`.`;
+            await core.summary
+              .addHeading(`Eindlabel #${issueNumber}`, 3)
+              .addRaw(`Agent-job: ${process.env.CLAUDE_RESULT}. ${uitkomst}`)
+              .write();

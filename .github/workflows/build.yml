@@ -401,6 +401,10 @@ jobs:
       - name: Claude issue-beurt poort testen
         run: node .github/scripts/claude-issue-turn-gate.test.js
 
+      # #1692: vergelijk-en-zet van het eindlabel van claude-issue-turn.yml (zelfde reden als hierboven).
+      - name: Claude issue-beurt eindlabel testen
+        run: node .github/scripts/claude-issue-turn-eindlabel.test.js
+
       # #1686: helper van turn-label-exclusief.yml (hoogstens één turn:-label). Ook die workflow
       # draait alleen op een gelabeld issue; zonder deze test blijkt een fout pas bij een echte beurtwissel.
       - name: Turn-label exclusief testen
