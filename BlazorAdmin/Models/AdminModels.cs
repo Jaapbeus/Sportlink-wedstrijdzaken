@@ -465,7 +465,6 @@ public class EmailLogDto
     public int Id { get; set; }
     public string? MessageId { get; set; }
     public string? Afzender { get; set; }
-    public string? Onderwerp { get; set; }
     public DateTime OntvangstDatum { get; set; }
     public string? VerzoekType { get; set; }
     public string? Status { get; set; }
