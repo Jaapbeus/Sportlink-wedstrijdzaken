@@ -730,15 +730,16 @@ Sportlink-timer handmatig testen tegen de productie-API)? Zet dan in `local.sett
 Zet dit nooit standaard aan — dat zou de bescherming voor de rest van je lokale werk tenietdoen.
 Zonder deze instelling blijft alles hierboven geblokkeerd.
 
-**Ook deze functies vragen lokaal `AllowExternalIntegrations=true` (#1676)**, op beide tiers;
-zonder de instelling geven ze HTTP 503 of slaan ze de externe aanroep over:
+**Ook deze functies vragen lokaal `AllowExternalIntegrations=true` (#1676)**; zonder de
+instelling geven ze HTTP 503 of slaan ze de externe aanroep over. Alles geldt op beide tiers,
+behalve waar anders staat:
 
 - thema-extractie van de clubwebsite (`/api/beheer/theme/extract`, 503),
 - geocodering van een plaatsnaam (`/api/beheer/geocode`, 503),
 - de sync-knop (`/api/beheer/sync/trigger`, 503) en de queue-verwerking daarachter (de job wordt
   als mislukt vastgelegd), en de handmatige HTTP-sync `/api/sync-matches` resp.
   `/api/postgres/sync-matches` (sectie 7, 503),
-- de realtime veldbezetting uit Sportlink (valt terug op de database),
+- de realtime veldbezetting uit de Sportlink-API (alleen de SQL Server-tier; valt terug op de database),
 - de automatische herstart na een gewijzigd sync-schema (wordt overgeslagen).
 
 Zet de instelling daarvoor alleen tijdelijk aan, zoals hierboven beschreven.

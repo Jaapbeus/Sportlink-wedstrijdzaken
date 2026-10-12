@@ -125,9 +125,10 @@ namespace SportlinkFunction
                 });
         }
 
-        // Publieke entry-point voor SyncJobProcessor (#1138, voorheen AdminSyncFunction's fire-and-forget
+        // Entry-point voor SyncJobProcessor (#1138, voorheen AdminSyncFunction's fire-and-forget
         // Task.Run). Retourneert partialFailure zodat de aanroeper de job-status correct kan zetten.
-        public static async Task<bool> RunSyncAsync(
+        // Internal (#1676): de enige aanroeper, SyncJobProcessor, controleert EgressGuard vooraf.
+        internal static async Task<bool> RunSyncAsync(
             int fromWeekOffset, int toWeekOffset,
             string sportlinkApiUrl, string sportlinkClientId,
             ILogger log)

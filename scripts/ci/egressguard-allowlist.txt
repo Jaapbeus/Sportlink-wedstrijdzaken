@@ -8,7 +8,7 @@
 # regel die naar een bestand wijst dat geen uitzondering (meer) nodig heeft.
 
 # ── Tiers: sync-pipelines en monitoring ──────────────────────────────────────────────────────────
-FunctionApp/Sync/SportlinkSyncPipeline.cs  Pipeline wordt alleen aangeroepen vanuit de timer (Function1.cs), SyncMatchesHttp (Function1.cs) en SyncJobProcessor, die elk EgressGuard controleren.
+FunctionApp/Sync/SportlinkSyncPipeline.cs  Pipeline wordt alleen aangeroepen vanuit de timer (Function1.cs), SyncMatchesHttp (Function1.cs) en SyncJobProcessor (via het internal Function1.RunSyncAsync), die elk EgressGuard controleren.
 FunctionApp.Postgres/Sync/PostgresSyncPipeline.cs  Pipeline wordt alleen aangeroepen via SyncFunction.RunConfiguredSyncAsync (timer, HTTP, SyncJobProcessor), die elk EgressGuard controleren.
 FunctionApp/Monitoring/ArmDatabaseStatusReader.cs  Alleen aangeroepen vanuit DatabaseUitvalMonitorFunction, die zonder IEmailGraphService (alleen geregistreerd onder EgressGuard) terugkeert vóór de aanroep.
 
@@ -18,7 +18,7 @@ Planner.Shared/Feedback/FeedbackGitHub.cs  Internal; alleen via FeedbackCore.Maa
 
 # ── Planner.Shared: thema-extractie ──────────────────────────────────────────────────────────────
 Planner.Shared/Theming/ThemeCore.cs  HTTP alleen in ExtraheerAsync; enige aanroeper is AdminThemeFunction.Extract (beide tiers), die eerst UitgaandVerkeerCore.Blokkeer(EgressGuard.ExternalIntegrationsAllowed) controleert.
-Planner.Shared/Infrastructure/SsrfProtection.cs  CreateHttpClient en GetWithBoundedRedirectsAsync worden alleen door ThemeCore gebruikt (zie de reden daar).
+Planner.Shared/Infrastructure/SsrfProtection.cs  De HTTP-client en de redirect-helpers worden alleen via ThemeCore gebruikt (zie de reden daar).
 
 # ── Planner.Shared: Sportlink-client ─────────────────────────────────────────────────────────────
 Planner.Shared/Integrations/SportlinkClub/SportlinkClubClient.cs  Alleen geconstrueerd in Sql-/PostgresSportlinkAuthenticationRegistration binnen if (EgressGuard.ExternalIntegrationsAllowed()); de statische ValideerRefreshTokenAsync heeft geen aanroeper buiten Planner.Shared.

@@ -166,6 +166,7 @@ Write-Host "Klaar. Vervolgstappen:" -ForegroundColor Green
 Write-Host "  1. .\scripts\dev\Start-Debug.ps1              (start FunctionApp.Postgres + BlazorAdmin lokaal)"
 Write-Host "  2. Invoke-RestMethod 'http://localhost:7094/api/sync-matches?reset=true&season=<jaar>'"
 Write-Host "     -> haalt de laatste live Sportlink-data op voor VRC (clientId staat al in de gerestorede AppSettings)"
+Write-Host "     -> vraagt lokaal tijdelijk AllowExternalIntegrations=true in local.settings.json, anders HTTP 503 (docs/DEVELOPER-SETUP.md 5.3)"
 Write-Host "  3. .\scripts\dev\Test-App.ps1                 (verificatielus, zie AGENTS.md)"
 Write-Host ""
 Write-Host "DPO-herinnering: dit is een eenmalige kopie voor een acceptatietest. Draai 'docker compose down -v'" -ForegroundColor Yellow

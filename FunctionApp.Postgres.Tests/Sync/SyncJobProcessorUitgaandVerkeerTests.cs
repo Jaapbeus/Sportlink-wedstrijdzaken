@@ -8,7 +8,8 @@ namespace FunctionApp.Postgres.Tests.Sync;
 /// <summary>
 /// #1676, Postgres-tier: zonder toestemming voor uitgaand verkeer zet de queue-verwerking de job
 /// op mislukt en keert <see cref="SyncJobProcessor.Run"/> terug vóór RunConfiguredSyncAsync.
-/// Geen database nodig: de opslag is een lijst.
+/// Geen database nodig: de opslag is een lijst. De aanroepvolgorde in Run (helper vóór
+/// MarkRunningAsync) bewaakt scripts/ci/check-egressguard-dekking.sh in de brontekst.
 /// </summary>
 public class SyncJobProcessorUitgaandVerkeerTests
 {

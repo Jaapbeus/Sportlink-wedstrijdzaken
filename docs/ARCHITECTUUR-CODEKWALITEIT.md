@@ -550,7 +550,7 @@ uit een workflow kan verdwijnen zonder dat iemand het merkt.
 | Supabase-lints (#1220) | `scripts/ci/check-splinter-lints.sh` | `build.yml` |
 | Thema-CSS-variabelen consistent (#1255) | `scripts/ci/check-theme-variables.sh` | `build.yml` |
 | Beide tiers bieden dezelfde routes en timers (#1266, #1268) | `scripts/ci/check-tier-pariteit.sh` | `build.yml` |
-| Bestanden met HttpClient-/handlergebruik in FunctionApp*, Planner.Shared en Planner.Endpoints controleren EgressGuard of staan met reden op de allowlist; bestandsniveau (#857, #1676) | `scripts/ci/check-egressguard-dekking.sh` | `build.yml` |
+| Bestanden met HttpClient-/handlergebruik in FunctionApp*, Planner.Shared en Planner.Endpoints controleren EgressGuard of staan met reden op de allowlist (bestandsniveau); SyncJobProcessor.Run beslist vóór MarkRunningAsync (#857, #1676) | `scripts/ci/check-egressguard-dekking.sh` | `build.yml` |
 | De EgressGuard-dekkingsguard kan ook rood worden (#1676) | `scripts/ci/check-egressguard-dekking.test.sh` | `build.yml` |
 | Verify-AzureAuthSetup.ps1 lekt geen PII bij lege parameter (#1474) | `scripts/ci/check-verify-script-guards.sh` | `build.yml` |
 | Een infra-deploy mag geen bestaande app setting wissen (#1455) | `scripts/ci/check-whatif-appsettings.sh` | `infrastructure.yml` |
@@ -560,15 +560,20 @@ uit een workflow kan verdwijnen zonder dat iemand het merkt.
 
 `check-egressguard-dekking.sh` werkt op bestandsniveau. **Gescand:** elk `.cs`-bestand (behalve `bin/`/`obj/`) in
 `FunctionApp/`, `FunctionApp.Postgres/` (inclusief `Infrastructure/`), `Planner.Shared/` en `Planner.Endpoints/` waarvan de
-code `HttpClient`, `IHttpClientFactory`, `AddHttpClient`, `SocketsHttpHandler` of `HttpClientHandler` bevat. **Geëist:** een
-aanroep of methodereferentie van `EgressGuard.ExternalIntegrationsAllowed` in dat bestand (commentaar, ook een `//`-staart na
-code, `nameof(...)` en stringliterals tellen niet), of een regel met reden in `scripts/ci/egressguard-allowlist.txt` die de
-gepoorte aanroepers noemt; `Planner.Shared` kent de tier-eigen poort niet en staat daarom altijd met reden op de lijst. Een
-regel zonder reden, voor een verdwenen bestand, een bestand zonder HTTP-token of mét eigen poort, faalt.
-**Niet bewezen:** dekking per codepad (één poort in een bestand maakt het hele bestand groen), poorten in bestanden zonder
-HTTP-token (bijvoorbeeld de endpoints die een pipeline of client in een ander bestand aanroepen; daarvoor zijn de
-allowlistredenen en, waar redelijk, unit-tests de borging; de sync-trigger en de HTTP-sync hebben geen route-test omdat
-`AdminEndpoint.ExecuteAsync` eerst op de database wacht) en uitgaand verkeer via andere typen (Graph- of Azure-SDK-clients).
+code zonder commentaar `HttpClient`, `IHttpClientFactory`, `AddHttpClient`, `SocketsHttpHandler` of `HttpClientHandler` bevat
+(tekst in strings telt hier mee). **Geëist:** de naam `EgressGuard.ExternalIntegrationsAllowed` als geheel woord in code
+(aanroep of methodereferentie), of een regel met reden in `scripts/ci/egressguard-allowlist.txt` die de gepoorte aanroepers
+noemt; `Planner.Shared` kent de tier-eigen poort niet en staat daarom altijd met reden op de lijst. Een awk-toestandsmachine
+bepaalt wat code is. Niet als code tellen: commentaar (`//`, `/* … */`, ook meerregelig), stringliterals (gewoon, verbatim met
+`""` als escape, raw `"""…"""`, interpolated, inclusief de interpolatiegaten), karakterliterals, preprocessorregels en alles
+tussen `#if` en `#endif` (elke tak), en `nameof(...)` op één regel. Een allowlistregel zonder reden, dubbel, voor een verdwenen
+bestand, een bestand zonder HTTP-token of mét eigen poort, faalt. Daarnaast eist de guard dat `SyncJobProcessor.Run` op beide
+tiers de poortbeslissing vóór de eerste `MarkRunningAsync` aanroept (volgorde in de brontekst, niet of het resultaat tot een
+`return` leidt). **Niet bewezen:** de guard ontleedt geen C# (de naam wordt gecontroleerd, niet het type of de
+bereikbaarheid); dekking per codepad (één poort maakt het hele bestand groen); poorten in bestanden zonder HTTP-token
+(bijvoorbeeld de endpoints die een pipeline of client in een ander bestand aanroepen; daarvoor zijn de allowlistredenen en,
+waar redelijk, unit-tests de borging; de sync-trigger en de HTTP-sync hebben geen route-test omdat
+`AdminEndpoint.ExecuteAsync` eerst op de database wacht); uitgaand verkeer via andere typen (Graph- of Azure-SDK-clients).
 
 ---
 

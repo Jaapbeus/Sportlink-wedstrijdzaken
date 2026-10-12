@@ -18,9 +18,15 @@ PROEF_PG="FunctionApp.Postgres/Admin/ProefEgressDekking1676.cs"
 PROEF_EP="Planner.Endpoints/Admin/ProefEgressDekking1676.cs"
 PROEF_SH="Planner.Shared/Infrastructure/ProefEgressDekking1676.cs"
 PROEF_INF="FunctionApp/Infrastructure/ProefEgressDekking1676.cs"
-TMP_B="$(mktemp)"
-cp "$ALLOWLIST" "$TMP_B"
-opruimen() { rm -f "$PROEF" "$PROEF_PG" "$PROEF_EP" "$PROEF_SH" "$PROEF_INF"; cp "$TMP_B" "$ALLOWLIST"; rm -f "$TMP_B"; }
+SJP_SQL="FunctionApp/Sync/SyncJobProcessor.cs"
+SJP_PG="FunctionApp.Postgres/Sync/SyncJobProcessor.cs"
+TMP_B="$(mktemp)"; TMP_SQL="$(mktemp)"; TMP_PG="$(mktemp)"
+cp "$ALLOWLIST" "$TMP_B"; cp "$SJP_SQL" "$TMP_SQL"; cp "$SJP_PG" "$TMP_PG"
+opruimen() {
+  rm -f "$PROEF" "$PROEF_PG" "$PROEF_EP" "$PROEF_SH" "$PROEF_INF"
+  cp "$TMP_B" "$ALLOWLIST"; cp "$TMP_SQL" "$SJP_SQL"; cp "$TMP_PG" "$SJP_PG"
+  rm -f "$TMP_B" "$TMP_SQL" "$TMP_PG"
+}
 trap opruimen EXIT
 
 mislukt=0
@@ -76,6 +82,35 @@ printf 'namespace Proef;\npublic static class P { static readonly HttpClient C =
 verwacht slagen "aanroep na een URL-string op dezelfde regel telt"
 rm -f "$PROEF"
 
+# Niet-uitvoerbare code over meerdere regels, verbatim strings en #if-blokken.
+printf 'namespace Proef;\npublic static class P { static readonly HttpClient C = new();\n/* uitgeschakeld:\n   bool Ok() => EgressGuard.ExternalIntegrationsAllowed();\n*/ }\n' > "$PROEF"
+verwacht falen "EgressGuard alleen in een meerregelig blokcommentaar zonder * aan het regelbegin"
+rm -f "$PROEF"
+
+printf 'namespace Proef;\npublic static class P { static readonly HttpClient C = new();\nconst string R = """\n  EgressGuard.ExternalIntegrationsAllowed()\n  """; }\n' > "$PROEF"
+verwacht falen "EgressGuard alleen in een raw string over meerdere regels"
+rm -f "$PROEF"
+
+printf 'namespace Proef;\npublic static class P { static readonly HttpClient C = new(); const string Pad = @"c:\\"; const string S = "EgressGuard.ExternalIntegrationsAllowed()"; }\n' > "$PROEF"
+verwacht falen "verbatim string die op een backslash eindigt, daarna de naam in een string"
+rm -f "$PROEF"
+
+printf 'namespace Proef;\npublic static class P { static readonly HttpClient C = new();\n#if NOOIT\n  static bool Ok() => EgressGuard.ExternalIntegrationsAllowed();\n#endif\n}\n' > "$PROEF"
+verwacht falen "EgressGuard alleen binnen #if ... #endif"
+rm -f "$PROEF"
+
+printf 'namespace Proef;\npublic static class P { static readonly HttpClient C = new(); static string T() => $"{EgressGuard.ExternalIntegrationsAllowed()}"; }\n' > "$PROEF"
+verwacht falen "EgressGuard alleen in een interpolatiegat (telt bewust niet)"
+rm -f "$PROEF"
+
+printf 'namespace Proef;\npublic static class P { static readonly HttpClient C = new(); static bool Ok() => EgressGuard.ExternalIntegrationsAllowedOoit(); }\n' > "$PROEF"
+verwacht falen "andere naam met hetzelfde voorvoegsel is geen aanroep"
+rm -f "$PROEF"
+
+printf 'namespace Proef;\npublic static class P { static readonly HttpClient C = new(); const string R = """x"""; const string V = @"a""b\\"; static bool Ok() => EgressGuard.ExternalIntegrationsAllowed(); }\n' > "$PROEF"
+verwacht slagen "aanroep na een raw en een verbatim string op dezelfde regel telt"
+rm -f "$PROEF"
+
 # Scope: Planner.Endpoints, Planner.Shared, Infrastructure/ en de handler-typen.
 printf 'namespace Proef;\npublic static class P { static readonly HttpClient C = new(); }\n' > "$PROEF_EP"
 verwacht falen "HttpClient zonder EgressGuard in Planner.Endpoints"
@@ -103,6 +138,19 @@ cp "$TMP_B" "$ALLOWLIST"
 { cat "$TMP_B"; printf 'FunctionApp/Admin/AdminSyncFunction.cs\n'; } > "$ALLOWLIST"
 verwacht falen "allowlistregel zonder reden"
 cp "$TMP_B" "$ALLOWLIST"
+
+{ cat "$TMP_B"; grep -E '^FunctionApp/Sync/SportlinkSyncPipeline.cs ' "$TMP_B"; } > "$ALLOWLIST"
+verwacht falen "dubbele allowlistregel"
+cp "$TMP_B" "$ALLOWLIST"
+
+# Volgorde in SyncJobProcessor.Run: zonder aanroep van de poortbeslissing vóór MarkRunningAsync rood.
+sed 's/if (await BlokkeerBuitenProductieAsync(/if (await Uitgeschakeld(/' "$TMP_SQL" > "$SJP_SQL"
+verwacht falen "SyncJobProcessor.Run (SQL Server) zonder poortbeslissing vóór MarkRunningAsync"
+cp "$TMP_SQL" "$SJP_SQL"
+
+sed 's/if (await OverslaanZonderUitgaandVerkeerAsync(/if (await Uitgeschakeld(/' "$TMP_PG" > "$SJP_PG"
+verwacht falen "SyncJobProcessor.Run (Postgres) zonder poortbeslissing vóór MarkRunningAsync"
+cp "$TMP_PG" "$SJP_PG"
 
 verwacht slagen "hersteld: schone werkboom is weer groen"
 
