@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- ci(#1669): een merge naar `develop` verwijdert het `turn:`-label van het issue naast het zetten van `status: awaiting-release`; AGENTS.md en CONTRIBUTING.md leggen vast dat die status nooit onder `in-progress`, `waiting-owner` of een `turn:`-label blijft staan
+
 ### Added
 - Het hoofdmenu is opnieuw ingedeeld in Dashboard, DEBUG (alleen voor beheerders), de hoofdschermen, WZ Instellingen en Admin, en toont per rol alleen de items waar "Rechten per rol" recht op geeft; "Instellingen" heet nu "App instellingen" (#1647).
 

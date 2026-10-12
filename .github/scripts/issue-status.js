@@ -9,6 +9,7 @@
 // Zie AGENTS.md, "Ontwikkelcyclus" (alinea "Labels").
 
 const STATUS_PREFIX = 'status: ';
+const TURN_PREFIX = 'turn: ';
 
 // #1370: Octokit logt sinds ~september 2026 een deprecation-warning op elke onversioneerde
 // REST-aanroep ("... is deprecated. It is scheduled to be removed on Fri, 10 Mar 2028").
@@ -212,8 +213,45 @@ async function clearIssueStatus({ github, context, core, issueNumber }) {
   });
 }
 
+/**
+ * Verwijdert alle `turn:`-labels van een issue (#1669). Na een merge naar develop is niemand meer
+ * aan zet: alleen de release resteert. Zonder deze stap bleef `turn: owner` (of `codex`) na de
+ * overdracht op een issue staan dat al op `status: awaiting-release` wacht.
+ *
+ * @returns {Promise<string[]>} de verwijderde labels
+ */
+async function clearTurnLabels({ github, context, core, issueNumber }) {
+  let issue;
+  try {
+    issue = (await github.rest.issues.get({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      issue_number: issueNumber,
+      headers: API_VERSION_HEADERS,
+    })).data;
+  } catch (e) {
+    core.warning(`#${issueNumber}: kon issue niet ophalen (${e.message}) — turn-labels niet opgeschoond`);
+    return [];
+  }
+  if (issue.pull_request) return [];
+
+  const turns = labelNames(issue).filter(n => n.startsWith(TURN_PREFIX));
+  for (const stale of turns) {
+    await github.rest.issues.removeLabel({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      issue_number: issueNumber,
+      name: stale,
+      headers: API_VERSION_HEADERS,
+    }).catch(() => {});
+  }
+  if (turns.length > 0) core.notice(`#${issueNumber}: turn-labels verwijderd (${turns.join(', ')})`);
+  return turns;
+}
+
 module.exports = {
   STATUS_PREFIX,
+  TURN_PREFIX,
   PROTECTED,
   EPIC_LABEL,
   API_VERSION_HEADERS,
@@ -223,4 +261,5 @@ module.exports = {
   extractIssueRefs,
   setIssueStatus,
   clearIssueStatus,
+  clearTurnLabels,
 };

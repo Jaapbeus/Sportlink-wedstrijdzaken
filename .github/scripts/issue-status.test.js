@@ -1,7 +1,7 @@
 // Unit-tests voor issue-status.js — draaien zonder GitHub, zonder token, zonder netwerk.
 // Uitvoeren: node .github/scripts/issue-status.test.js   (exit 0 = alles groen)
 // Wordt bij elke PR gedraaid door de job 'Build FunctionApp + BlazorAdmin' in build.yml.
-const { extractIssueRefs, setIssueStatus, clearIssueStatus, isEpic } = require('./issue-status.js');
+const { extractIssueRefs, setIssueStatus, clearIssueStatus, clearTurnLabels, isEpic } = require('./issue-status.js');
 
 let failures = 0;
 function check(name, actual, expected) {
@@ -253,6 +253,28 @@ async function run() {
     ),
     [],
   );
+
+
+  // #1669: een merge naar develop haalt elk turn:-label weg; status en andere labels blijven staan.
+  gh = fakeGithub(['status: awaiting-release', 'turn: owner', 'type: bug']);
+  let turns = await clearTurnLabels({ github: gh, context: ctx, core, issueNumber: 1 });
+  check('turn: owner wordt na merge verwijderd', { turns, removed: gh.calls.removed }, { turns: ['turn: owner'], removed: ['turn: owner'] });
+
+  gh = fakeGithub(['turn: codex', 'turn: claude-code', 'source: owner']);
+  turns = await clearTurnLabels({ github: gh, context: ctx, core, issueNumber: 1 });
+  check('meerdere turn-labels allemaal verwijderd, source blijft', { removed: gh.calls.removed }, { removed: ['turn: codex', 'turn: claude-code'] });
+
+  gh = fakeGithub(['status: awaiting-release', 'type: bug']);
+  turns = await clearTurnLabels({ github: gh, context: ctx, core, issueNumber: 1 });
+  check('geen turn-label: niets te doen', { turns, removed: gh.calls.removed }, { turns: [], removed: [] });
+
+  gh = fakeGithub(['turn: owner'], { isPr: true });
+  turns = await clearTurnLabels({ github: gh, context: ctx, core, issueNumber: 1 });
+  check('een PR wordt overgeslagen', { turns, removed: gh.calls.removed }, { turns: [], removed: [] });
+
+  gh = fakeGithub(['turn: owner'], { throws: true });
+  turns = await clearTurnLabels({ github: gh, context: ctx, core, issueNumber: 1 });
+  check('ophaalfout: waarschuwing, geen crash', { turns, removed: gh.calls.removed }, { turns: [], removed: [] });
 
   console.log(failures === 0 ? '\nALLE TESTS GESLAAGD' : `\n${failures} TEST(S) GEFAALD`);
   process.exit(failures === 0 ? 0 : 1);

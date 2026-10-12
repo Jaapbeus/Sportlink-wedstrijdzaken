@@ -32,7 +32,7 @@ jobs:
             // 'status: '-label op een issue staat. Voorheen werd 'awaiting-release'
             // alleen toegevoegd, waardoor een issue dat al op 'in-progress' of
             // 'review-needed' stond twee statussen tegelijk kreeg (#690).
-            const { extractIssueRefs, setIssueStatus, isEpic, API_VERSION_HEADERS } =
+            const { extractIssueRefs, setIssueStatus, clearTurnLabels, isEpic, API_VERSION_HEADERS } =
               require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/issue-status.js`);
 
             const label = 'status: awaiting-release';
@@ -96,6 +96,9 @@ jobs:
                 status: label,
                 respectProtected: false,
               });
+
+              // #1669: na de merge is niemand meer aan zet; alleen de release resteert.
+              await clearTurnLabels({ github, context, core, issueNumber: number });
 
               if (issue.state === 'closed') {
                 await github.rest.issues.update({
