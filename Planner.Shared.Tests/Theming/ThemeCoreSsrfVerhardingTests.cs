@@ -180,6 +180,30 @@ public class ThemeCoreSsrfVerhardingTests
         tekst.Should().Be("Caf\u00e9");
     }
 
+    [Theory]
+    [InlineData("utf-8")]
+    [InlineData("utf-16LE")]
+    [InlineData("utf-16BE")]
+    [InlineData("utf-32LE")]
+    [InlineData("utf-32BE")]
+    public async Task ReadBoundedStringAsync_MetBom_GebruiktBomEnLaatHemWeg(string encodingNaam)
+    {
+        var encoding = encodingNaam switch
+        {
+            "utf-8" => new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
+            "utf-16LE" => new System.Text.UnicodeEncoding(bigEndian: false, byteOrderMark: true),
+            "utf-16BE" => new System.Text.UnicodeEncoding(bigEndian: true, byteOrderMark: true),
+            "utf-32LE" => new System.Text.UTF32Encoding(bigEndian: false, byteOrderMark: true),
+            _ => (System.Text.Encoding)new System.Text.UTF32Encoding(bigEndian: true, byteOrderMark: true)
+        };
+        var bytes = encoding.GetPreamble().Concat(encoding.GetBytes("<title>Caf\u00e9</title>")).ToArray();
+
+        // De header noemt bewust een andere charset: de BOM gaat voor.
+        var tekst = await SsrfProtection.ReadBoundedStringAsync(Tekst(bytes, "iso-8859-1"));
+
+        tekst.Should().Be("<title>Caf\u00e9</title>");
+    }
+
     [Fact]
     public async Task ExtraheerAsync_Iso88591Pagina_GeeftAssetUrlMetNietAsciiTeken()
     {
@@ -267,6 +291,39 @@ public class ThemeCoreSsrfVerhardingTests
         resultaat.Status.Should().Be(ThemeValidatieStatus.Ok);
         dto.FaviconUrl.Should().Be("https://club.example.com/f.ico");
         dto.LogoUrl.Should().Be("https://club.example.com/img/logo.png?v=3");
+    }
+
+    [Fact]
+    public async Task ValideerUpdateAsync_HttpsAssetMetWitruimte_WordtGetrimdOpgeslagen()
+    {
+        var dto = new ThemeUpdateRequest { FaviconUrl = "  https://club.example.com/f.ico ", LogoUrl = " http://club.example.com/l.png\t" };
+
+        var resultaat = await ThemeCore.ValideerUpdateAsync(dto);
+
+        resultaat.Status.Should().Be(ThemeValidatieStatus.Ok);
+        dto.FaviconUrl.Should().Be("https://club.example.com/f.ico");
+        dto.LogoUrl.Should().Be("https://club.example.com/l.png");
+    }
+
+    [Theory]
+    [InlineData("/img/logo.png")]
+    [InlineData("data:image/png;base64,AAAA")]
+    public async Task ValideerUpdateAsync_OpgeslagenOnherstelbaarLogo_GeeftBruikbareMelding(string logo)
+    {
+        var resultaat = await ThemeCore.ValideerUpdateAsync(new ThemeUpdateRequest { Primary = "#123456", LogoUrl = logo });
+
+        resultaat.Status.Should().Be(ThemeValidatieStatus.OngeldigeAssetUrl);
+        resultaat.Foutmelding.Should().Be(
+            "De logo-URL is ongeldig of te lang (maximaal 300 tekens, https). Leeg het veld of vul een geldige https-URL in.");
+    }
+
+    [Fact]
+    public async Task ValideerUpdateAsync_TeLangeFavicon_GeeftBruikbareMelding()
+    {
+        var resultaat = await ThemeCore.ValideerUpdateAsync(
+            new ThemeUpdateRequest { FaviconUrl = "https://club.example.com/" + new string('a', 400) });
+
+        resultaat.Foutmelding.Should().StartWith("De favicon-URL is ongeldig of te lang").And.Contain("Leeg het veld");
     }
 
     [Fact]
@@ -364,6 +421,22 @@ public class ThemeCoreSsrfVerhardingTests
 
         var resultaat = await ThemeCore.ExtraheerAsync(
             "https://club.example.com/", () => Task.FromResult<string?>("club.example.com"),
+            NullLogger.Instance, client);
+
+        resultaat.Status.Should().Be(ThemeExtractieStatus.Ok);
+        resultaat.FaviconUrl.Should().Be("https://www.club.example.com/nl/icon.png");
+    }
+
+    [Fact]
+    public async Task ExtraheerAsync_MeerdereRedirects_GebruiktEindUrlVanLaatsteHop()
+    {
+        using var client = new HttpClient(new StubHandler(
+            Redirect("https://www.club.example.com/"),
+            Redirect("/nl/home/"),
+            Ok("<link rel=\"icon\" href=\"../icon.png\">")));
+
+        var resultaat = await ThemeCore.ExtraheerAsync(
+            "http://club.example.com/", () => Task.FromResult<string?>("club.example.com"),
             NullLogger.Instance, client);
 
         resultaat.Status.Should().Be(ThemeExtractieStatus.Ok);

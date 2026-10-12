@@ -32,8 +32,9 @@ public static partial class SsrfProtection
     /// <summary>
     /// Leest de body als tekst en stopt bij <paramref name="maxBytes"/>: een groter antwoord geeft
     /// een <see cref="ResponseTooLargeException"/> in plaats van volledig in het geheugen te komen.
-    /// De bytes worden gedecodeerd met de charset uit de <c>Content-Type</c>-header, met UTF-8 als
-    /// terugval (zie <see cref="BepaalEncoding"/>).
+    /// Een byte order mark bepaalt de encoding en wordt niet in de tekst opgenomen; zonder BOM
+    /// geldt de charset uit de <c>Content-Type</c>-header, met UTF-8 als terugval (zie
+    /// <see cref="HerkenBom"/> en <see cref="BepaalEncoding"/>).
     /// </summary>
     public static async Task<string> ReadBoundedStringAsync(
         HttpContent content, int maxBytes = MaxResponseBytes, CancellationToken ct = default,
@@ -54,8 +55,30 @@ public static partial class SsrfProtection
             buffer.Write(blok, 0, gelezen);
         }
         budget?.Consume((int)buffer.Length);
-        var encoding = BepaalEncoding(content.Headers.ContentType?.CharSet);
-        return encoding.GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
+        var bytes = new ReadOnlySpan<byte>(buffer.GetBuffer(), 0, (int)buffer.Length);
+        var (bomEncoding, bomLengte) = HerkenBom(bytes);
+        var encoding = bomEncoding ?? BepaalEncoding(content.Headers.ContentType?.CharSet);
+        return encoding.GetString(bytes[bomLengte..]);
+    }
+
+    /// <summary>
+    /// Herkent een byte order mark voor UTF-8, UTF-16 (LE/BE) en UTF-32 (LE/BE) en geeft de
+    /// bijbehorende encoding en de lengte van de BOM; zonder BOM <c>(null, 0)</c>. UTF-32LE wordt
+    /// vóór UTF-16LE getoetst, omdat die BOM met dezelfde twee bytes begint.
+    /// </summary>
+    internal static (Encoding? Encoding, int Lengte) HerkenBom(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.StartsWith(new byte[] { 0xFF, 0xFE, 0x00, 0x00 }))
+            return (new UTF32Encoding(bigEndian: false, byteOrderMark: true), 4);
+        if (bytes.StartsWith(new byte[] { 0x00, 0x00, 0xFE, 0xFF }))
+            return (new UTF32Encoding(bigEndian: true, byteOrderMark: true), 4);
+        if (bytes.StartsWith(new byte[] { 0xEF, 0xBB, 0xBF }))
+            return (Encoding.UTF8, 3);
+        if (bytes.StartsWith(new byte[] { 0xFF, 0xFE }))
+            return (Encoding.Unicode, 2);
+        if (bytes.StartsWith(new byte[] { 0xFE, 0xFF }))
+            return (Encoding.BigEndianUnicode, 2);
+        return (null, 0);
     }
 
     /// <summary>

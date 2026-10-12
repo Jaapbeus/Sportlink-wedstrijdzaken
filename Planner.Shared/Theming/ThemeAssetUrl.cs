@@ -15,11 +15,14 @@ internal static class ThemeAssetUrl
     /// Valideert een optionele favicon-/logo-URL: leeg mag, anders absoluut https, niet langer dan
     /// <see cref="MaxAssetUrlLengte"/>, een niet-lege host en geen controletekens. Geeft de
     /// foutmelding of <c>null</c>. Geparsed met <see cref="UriKind.RelativeOrAbsolute"/> (#1252).
+    /// De melding zegt wat er mag en hoe de beheerder verder kan, omdat een opgeslagen waarde die
+    /// niet aan de eisen voldoet elke volgende opslag tegenhoudt tot het veld is aangepast.
     /// </summary>
     internal static string? ValideerAssetUrl(string? url, string naam)
     {
         if (string.IsNullOrWhiteSpace(url)) return null;
-        var fout = $"Ongeldige {naam}.";
+        var fout = $"De {naam} is ongeldig of te lang (maximaal {MaxAssetUrlLengte} tekens, https). "
+                 + "Leeg het veld of vul een geldige https-URL in.";
         if (url.Length > MaxAssetUrlLengte || url.Any(char.IsControl)) return fout;
         if (!Uri.TryCreate(url, UriKind.RelativeOrAbsolute, out var uri) || !uri.IsAbsoluteUri) return fout;
         return uri.Scheme == Uri.UriSchemeHttps && !string.IsNullOrEmpty(uri.Host) ? null : fout;
@@ -47,12 +50,18 @@ internal static class ThemeAssetUrl
     }
 
     /// <summary>
-    /// De vorm waarin een voorgestelde asset-URL opgeslagen zou worden (http wordt https), of
+    /// De vorm waarin een asset-URL wordt opgeslagen: witruimte eromheen vervalt en een absolute
+    /// http-URL wordt https (<see cref="NaarHttps"/>). <c>null</c> blijft <c>null</c>.
+    /// </summary>
+    internal static string? Normaliseer(string? url) => url == null ? null : NaarHttps(url.Trim());
+
+    /// <summary>
+    /// De vorm waarin een voorgestelde asset-URL opgeslagen zou worden (zie <see cref="Normaliseer"/>), of
     /// <c>null</c> als <see cref="ValideerAssetUrl"/> die vorm bij opslaan zou weigeren.
     /// </summary>
     internal static string? AlleenOpslaanbaar(string? url)
     {
-        var kandidaat = NaarHttps(url);
+        var kandidaat = Normaliseer(url);
         if (kandidaat == null)
             return null;
         return ValideerAssetUrl(kandidaat, "asset-URL") == null ? kandidaat : null;

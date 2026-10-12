@@ -270,8 +270,8 @@ public static class ThemeCore
     /// anders kan dezelfde admin die de allowlist beheert hem op een intern adres zetten.
     /// </para>
     /// <para>
-    /// Een http-favicon of -logo wordt vooraf op <paramref name="dto"/> zelf naar https omgezet
-    /// (<see cref="ThemeAssetUrl.NaarHttps"/>), zodat de tier de opslaanbare vorm wegschrijft.
+    /// Favicon en logo worden vooraf op <paramref name="dto"/> zelf genormaliseerd (getrimd, http
+    /// wordt https; <see cref="ThemeAssetUrl.Normaliseer"/>), zodat de tier die vorm wegschrijft.
     /// </para>
     /// </summary>
     public static async Task<ThemeValidatieResultaat> ValideerUpdateAsync(
@@ -294,8 +294,8 @@ public static class ThemeCore
         if (paletFout != null)
             return new ThemeValidatieResultaat(ThemeValidatieStatus.OngeldigPalet, paletFout);
 
-        dto.FaviconUrl = ThemeAssetUrl.NaarHttps(dto.FaviconUrl);
-        dto.LogoUrl = ThemeAssetUrl.NaarHttps(dto.LogoUrl);
+        dto.FaviconUrl = ThemeAssetUrl.Normaliseer(dto.FaviconUrl);
+        dto.LogoUrl = ThemeAssetUrl.Normaliseer(dto.LogoUrl);
         var assetFout = ThemeAssetUrl.ValideerAssetUrl(dto.FaviconUrl, "favicon-URL")
                      ?? ThemeAssetUrl.ValideerAssetUrl(dto.LogoUrl, "logo-URL");
         if (assetFout != null)
