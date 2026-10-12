@@ -11,7 +11,7 @@ internal static class AdminEmailLogRepository
         string clubCode, DateTime? vanaf, DateTime? tot, string? statusFilter, int limit, string cs)
     {
         // HeeftTrace (#1568): alleen een vlag, de trace zelf haalt de GUI op per regel.
-        var sql = @"SELECT TOP (@Limit) v.[Id], v.[MessageId], v.[ConversationId], v.[Afzender], v.[Onderwerp],
+        var sql = @"SELECT TOP (@Limit) v.[Id], v.[MessageId], v.[ConversationId], v.[Afzender],
                            v.[OntvangstDatum], v.[VerzoekType], v.[Status], v.[VerstuurdNaar],
                            v.[mta_inserted], v.[mta_modified],
                            CAST(CASE WHEN EXISTS (SELECT 1 FROM [planner].[EmailTrace] t
@@ -40,7 +40,7 @@ internal static class AdminEmailLogRepository
             var row = AdminRepositoryHelpers.LeesAlleKolommenMetUtcDatums(r);
             // AVG (#858): via het gedeelde AvgMaskering — hoofdletterongevoelig, en het gooit
             // als er niets te maskeren viel in plaats van stil door te gaan.
-            AvgMaskering.MaskeerAfzender(row);
+            AvgMaskering.MaskeerEmailLogRij(row);
             list.Add(row);
         }
         return list;

@@ -9,6 +9,7 @@
 // Zie AGENTS.md, "Ontwikkelcyclus" (alinea "Labels").
 
 const STATUS_PREFIX = 'status: ';
+const TURN_PREFIX = 'turn: ';
 
 // #1370: Octokit logt sinds ~september 2026 een deprecation-warning op elke onversioneerde
 // REST-aanroep ("... is deprecated. It is scheduled to be removed on Fri, 10 Mar 2028").
@@ -212,8 +213,62 @@ async function clearIssueStatus({ github, context, core, issueNumber }) {
   });
 }
 
+/**
+ * Verwijdert alle `turn:`-labels van een issue (#1669). Na een merge naar develop is niemand meer
+ * aan zet: alleen de release resteert. Zonder deze stap bleef `turn: owner` (of `codex`) na de
+ * overdracht op een issue staan dat al op `status: awaiting-release` wacht.
+ *
+ * @returns {Promise<string[]>} de verwijderde labels
+ */
+async function clearTurnLabels({ github, context, core, issueNumber }) {
+  let issue;
+  try {
+    issue = (await github.rest.issues.get({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      issue_number: issueNumber,
+      headers: API_VERSION_HEADERS,
+    })).data;
+  } catch (e) {
+    core.warning(`#${issueNumber}: kon issue niet ophalen (${e.message}) — turn-labels niet opgeschoond`);
+    return [];
+  }
+  if (issue.pull_request) return [];
+
+  const turns = labelNames(issue).filter(n => n.startsWith(TURN_PREFIX));
+  const removed = [];
+  const failed = [];
+  for (const stale of turns) {
+    try {
+      await github.rest.issues.removeLabel({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        issue_number: issueNumber,
+        name: stale,
+        headers: API_VERSION_HEADERS,
+      });
+      removed.push(stale);
+    } catch (e) {
+      // Aantoonbaar al afwezig (404) is idempotent en onschuldig; elke andere fout is een mislukking.
+      if (e && e.status === 404) {
+        removed.push(stale);
+      } else {
+        failed.push(stale);
+        core.warning(`#${issueNumber}: '${stale}' verwijderen mislukt (${e && e.message})`);
+      }
+    }
+  }
+  if (removed.length > 0) core.notice(`#${issueNumber}: turn-labels verwijderd (${removed.join(', ')})`);
+  if (failed.length > 0) {
+    // Alle labels zijn geprobeerd; nu hard falen zodat de workflowrun niet onterecht groen eindigt.
+    throw new Error(`#${issueNumber}: turn-label(s) niet verwijderd: ${failed.join(', ')}`);
+  }
+  return removed;
+}
+
 module.exports = {
   STATUS_PREFIX,
+  TURN_PREFIX,
   PROTECTED,
   EPIC_LABEL,
   API_VERSION_HEADERS,
@@ -223,4 +278,5 @@ module.exports = {
   extractIssueRefs,
   setIssueStatus,
   clearIssueStatus,
+  clearTurnLabels,
 };
