@@ -45,7 +45,10 @@ public enum ThemeValidatieStatus
     OngeldigeWebsiteUrl,
 
     /// <summary>Een sleutel of waarde in het licht-/donkerpalet is niet toegestaan (HTTP 400).</summary>
-    OngeldigPalet
+    OngeldigPalet,
+
+    /// <summary>De favicon- of logo-URL voldoet niet aan de eisen (https, absoluut, lengte) (HTTP 400).</summary>
+    OngeldigeAssetUrl
 }
 
 /// <summary>Resultaat van <see cref="ThemeCore.ValideerUpdateAsync"/>.</summary>
@@ -286,7 +289,7 @@ public static class ThemeCore
 
         var assetFout = ValideerAssetUrl(dto.FaviconUrl, "favicon-URL") ?? ValideerAssetUrl(dto.LogoUrl, "logo-URL");
         if (assetFout != null)
-            return new ThemeValidatieResultaat(ThemeValidatieStatus.OngeldigeWebsiteUrl, assetFout);
+            return new ThemeValidatieResultaat(ThemeValidatieStatus.OngeldigeAssetUrl, assetFout);
 
         if (string.IsNullOrWhiteSpace(dto.ClubWebsiteUrl))
             return new ThemeValidatieResultaat(ThemeValidatieStatus.Ok, null);
@@ -438,7 +441,7 @@ public static class ThemeCore
         var m = _faviconRegex.Match(html);
         if (!m.Success) m = _faviconAltRegex.Match(html);
         var href = m.Success ? m.Groups[1].Value : "/favicon.ico";
-        return ResolveUrl(href, baseUri);
+        return AlleenOpslaanbaar(ResolveUrl(href, baseUri));
     }
 
     /// <summary>Zoekt achtereenvolgens <c>og:image</c> en <c>apple-touch-icon</c>.</summary>
@@ -448,8 +451,12 @@ public static class ThemeCore
         if (!m.Success) m = _ogImageAltRegex.Match(html);
         if (!m.Success) m = _appleTouchRegex.Match(html);
         if (!m.Success) return null;
-        return ResolveUrl(m.Groups[1].Value, baseUri);
+        return AlleenOpslaanbaar(ResolveUrl(m.Groups[1].Value, baseUri));
     }
+
+    /// <summary>Stelt alleen een asset-URL voor die <see cref="ValideerAssetUrl"/> bij opslaan accepteert.</summary>
+    private static string? AlleenOpslaanbaar(string? url) =>
+        url != null && ValideerAssetUrl(url, "asset-URL") == null ? url : null;
 
     /// <summary>
     /// Maakt een absolute http/https-URL van een mogelijk relatieve verwijzing. Een ander schema

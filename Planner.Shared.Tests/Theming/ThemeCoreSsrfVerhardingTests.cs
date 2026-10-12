@@ -199,7 +199,7 @@ public class ThemeCoreSsrfVerhardingTests
     {
         var resultaat = await ThemeCore.ValideerUpdateAsync(new ThemeUpdateRequest { FaviconUrl = "http://club.example.com/f.ico" });
 
-        resultaat.Status.Should().Be(ThemeValidatieStatus.OngeldigeWebsiteUrl);
+        resultaat.Status.Should().Be(ThemeValidatieStatus.OngeldigeAssetUrl);
     }
 
     [Fact]
@@ -207,7 +207,7 @@ public class ThemeCoreSsrfVerhardingTests
     {
         var resultaat = await ThemeCore.ValideerUpdateAsync(new ThemeUpdateRequest { LogoUrl = "javascript:alert(1)" });
 
-        resultaat.Status.Should().Be(ThemeValidatieStatus.OngeldigeWebsiteUrl);
+        resultaat.Status.Should().Be(ThemeValidatieStatus.OngeldigeAssetUrl);
     }
 
     [Fact]
@@ -221,4 +221,17 @@ public class ThemeCoreSsrfVerhardingTests
 
         resultaat.Status.Should().Be(ThemeValidatieStatus.Ok);
     }
+
+    [Fact]
+    public void Extractie_HttpAssets_WordenNietVoorgesteld()
+    {
+        const string html = "<link rel=\"icon\" href=\"http://club.example.com/f.png\"><meta property=\"og:image\" content=\"http://club.example.com/l.png\">";
+
+        ThemeCore.ExtractFaviconUrl(html, new Uri("https://club.example.com/")).Should().BeNull();
+        ThemeCore.ExtractLogoUrl(html, new Uri("https://club.example.com/")).Should().BeNull();
+    }
+
+    [Fact]
+    public void Extractie_HttpBasisZonderIcoon_GeeftGeenHttpFavicon() =>
+        ThemeCore.ExtractFaviconUrl("<html></html>", new Uri("http://club.example.com/")).Should().BeNull();
 }
