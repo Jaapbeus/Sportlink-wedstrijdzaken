@@ -251,6 +251,10 @@ public class EmailAiVeldEnAutomatischeAfzenderTests
     [PostgresFact]
     public async Task Pipeline_ZonderClubcode_ZetTeamNaamOnbevestigd()
     {
+        // Een lege clubcode valt in de pipeline terug op de primaire club uit de procesbrede
+        // PostgresAppSettings-cache. "Zonder clubcode" betekent dus: ook die cache leeg. Expliciet
+        // leegmaken, anders hangt de uitkomst af van welke testklasse eerder de cache vulde.
+        PostgresAppSettings.ResetForTests();
         var classificatie = new BerichtClassificatie { Type = VerzoekType.Bevestiging, TeamNaam = "JO13-2" };
 
         await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, MaakEmail(), NullLogger.Instance, new VasteResolver("JO13-2"), " ");
