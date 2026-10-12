@@ -378,6 +378,12 @@ public static class AdminSettingsFunction
 
     private static async Task<string?> TriggerFunctionAppRestartAsync(string nieuweSchedule, ILogger log)
     {
+        if (UitgaandVerkeerCore.Blokkeer(EgressGuard.ExternalIntegrationsAllowed) is not null)
+        {
+            log.LogInformation("EgressGuard: Azure Management-aanroep geblokkeerd buiten productie — automatische herstart overgeslagen (#857).");
+            return default;
+        }
+
         var subscriptionId = Environment.GetEnvironmentVariable("AzureSubscriptionId");
         var resourceGroup  = Environment.GetEnvironmentVariable("AzureResourceGroupName");
         var functionAppName = Environment.GetEnvironmentVariable("AzureFunctionAppName");

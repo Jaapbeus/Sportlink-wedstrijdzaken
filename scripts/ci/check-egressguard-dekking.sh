@@ -6,8 +6,8 @@
 # WAT DE GUARD CONTROLEERT
 # ------------------------
 # Elk .cs-bestand in FunctionApp/ en FunctionApp.Postgres/, buiten een map Infrastructure/, dat
-# HttpClient, IHttpClientFactory of AddHttpClient gebruikt, bevat ook een aanroep van EgressGuard
-# (niet alleen in commentaar), of staat met reden in scripts/ci/egressguard-allowlist.txt.
+# HttpClient, IHttpClientFactory of AddHttpClient gebruikt, bevat ook een aanroep of methodereferentie van
+# EgressGuard.ExternalIntegrationsAllowed (een naamvermelding of commentaar telt niet), of staat met reden in scripts/ci/egressguard-allowlist.txt.
 #
 # De controle is per bestand, niet per aanroep: hij bewijst dat de poort in het bestand
 # voorkomt, niet dat elk codepad erlangs loopt. Een bestand waarvan de poort bij de aanroepers
@@ -32,7 +32,7 @@ if ! awk '!/^[[:space:]]*#/ && NF > 0 && NF < 2 { print NR": "$0; gevonden = 1 }
 fi
 
 HTTP_PATROON='(^|[^A-Za-z0-9_])(HttpClient|IHttpClientFactory|AddHttpClient)([^A-Za-z0-9_]|$)'
-EGRESS_PATROON='EgressGuard'
+EGRESS_PATROON='EgressGuard\.ExternalIntegrationsAllowed'
 
 # Zonder commentaarregels (//, ///, *, /*).
 zonder_commentaar() {

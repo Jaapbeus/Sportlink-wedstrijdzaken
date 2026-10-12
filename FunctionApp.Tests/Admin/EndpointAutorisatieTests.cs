@@ -387,6 +387,42 @@ public class EndpointAutorisatieTests
         }
     }
 
+    [Fact]
+    public async Task HerstartAanroep_BuitenProductieZonderOptIn_WordtOvergeslagen()
+    {
+        string[] namen = ["WEBSITE_SITE_NAME", "AllowExternalIntegrations", "AzureSubscriptionId", "AzureResourceGroupName", "AzureFunctionAppName"];
+        var origineel = namen.ToDictionary(n => n, Environment.GetEnvironmentVariable);
+        try
+        {
+            foreach (var n in namen) Environment.SetEnvironmentVariable(n, null);
+            Environment.SetEnvironmentVariable("AzureSubscriptionId", "proef");
+            Environment.SetEnvironmentVariable("AzureResourceGroupName", "proef");
+            Environment.SetEnvironmentVariable("AzureFunctionAppName", "proef");
+
+            var log = new LogVerzamelaar();
+            var methode = typeof(AdminSettingsFunction).GetMethod(
+                "TriggerFunctionAppRestartAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
+            var resultaat = await (Task<string?>)methode.Invoke(null, ["0 0 4 * * *", log])!;
+
+            resultaat.Should().BeNull();
+            log.Berichten.Should().Contain(b => b.Contains("EgressGuard"),
+                "buiten productie wordt de Management-aanroep door de EgressGuard geblokkeerd");
+        }
+        finally
+        {
+            foreach (var n in namen) Environment.SetEnvironmentVariable(n, origineel[n]);
+        }
+    }
+
+    private sealed class LogVerzamelaar : Microsoft.Extensions.Logging.ILogger
+    {
+        public List<string> Berichten { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId,
+            TState state, Exception? exception, Func<TState, Exception?, string> formatter) => Berichten.Add(formatter(state, exception));
+    }
+
     private static async Task MetProductieOmgeving(Func<Task> test)
     {
         var origSite = Environment.GetEnvironmentVariable(AzureVar);

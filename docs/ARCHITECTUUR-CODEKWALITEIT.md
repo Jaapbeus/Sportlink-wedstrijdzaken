@@ -558,6 +558,10 @@ uit een workflow kan verdwijnen zonder dat iemand het merkt.
 
 <!-- REGELREGISTER-EINDE -->
 
+`check-egressguard-dekking.sh` werkt op bestandsniveau: een bestand met uitgaand HTTP-verkeer moet een aanroep of
+methodereferentie van `EgressGuard.ExternalIntegrationsAllowed` bevatten (commentaar en een naamvermelding tellen niet),
+of met reden in `scripts/ci/egressguard-allowlist.txt` staan. Hij bewijst geen dekking per codepad.
+
 ---
 
 ## 6. Wat bewust (nog) niet wordt afgedwongen

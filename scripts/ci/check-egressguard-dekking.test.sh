@@ -47,6 +47,10 @@ printf '// EgressGuard hoort hier\nnamespace Proef;\npublic static class P { sta
 verwacht falen "EgressGuard alleen in commentaar"
 rm -f "$PROEF"
 
+printf 'namespace Proef;\npublic static class P { static readonly HttpClient C = new(); const string EgressGuard = "naam"; }\n' > "$PROEF"
+verwacht falen "EgressGuard alleen als naam (geen aanroep)"
+rm -f "$PROEF"
+
 printf 'namespace Proef;\npublic static class P { static readonly HttpClient C = new(); static bool Ok() => EgressGuard.ExternalIntegrationsAllowed(); }\n' > "$PROEF"
 verwacht slagen "HttpClient mét EgressGuard-aanroep"
 rm -f "$PROEF"
