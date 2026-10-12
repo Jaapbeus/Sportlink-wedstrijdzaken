@@ -32,7 +32,7 @@ const pr = (number, extra = {}) => ({
 function fakeGithub({
   states = [{ labels: ['turn: claude-code', 'status: in-progress'] }],
   comments = [bot('2026-10-12T14:48:00Z', 'Fase: review\nVolgende beurt: turn: codex')],
-  startPr = null, closedPrs = [],
+  startPr = null, closedPrs = [], removeError = null,
 } = {}) {
   const calls = { added: [], removed: [], gets: 0 };
   return {
@@ -47,7 +47,10 @@ function fakeGithub({
         },
         listComments: async () => ({ data: comments }),
         addLabels: async ({ labels }) => { calls.added.push(...labels); },
-        removeLabel: async ({ name }) => { calls.removed.push(name); },
+        removeLabel: async ({ name }) => {
+          if (removeError) throw removeError;
+          calls.removed.push(name);
+        },
       },
       pulls: {
         get: async () => ({ data: startPr }),
@@ -56,6 +59,9 @@ function fakeGithub({
     },
   };
 }
+
+// Toestanden: vóór het schrijven claude-code, daarna het eigen eindlabel.
+const after = (label) => [{ labels: ['turn: claude-code'] }, { labels: [label] }];
 
 const run = (github, extra = {}) => applyEndLabel({
   github, context: ctx, core, issueNumber: ISSUE, startedAt: START, ...extra,
@@ -81,20 +87,20 @@ const run = (github, extra = {}) => applyEndLabel({
 
   console.log('\napplyEndLabel — toestand ongewijzigd:');
   {
-    const github = fakeGithub({ startPr: pr(501) });
+    const github = fakeGithub({ startPr: pr(501), states: after('turn: codex') });
     const r = await run(github, { startPrNumber: 501 });
     check('ongewijzigd: geschreven', [r.written, r.label], [true, 'turn: codex']);
     check('ongewijzigd: codex toegevoegd', github.calls.added, ['turn: codex']);
     check('ongewijzigd: claude-code verwijderd', github.calls.removed, ['turn: claude-code']);
   }
   {
-    const github = fakeGithub({ comments: [] });
+    const github = fakeGithub({ comments: [], states: after('turn: owner') });
     const r = await run(github);
     check('geen beurtregel: owner geschreven', [r.written, r.label, r.source], [true, 'turn: owner', 'geen beurtregel gevonden']);
   }
   {
     // Een PR die al vóór de run gesloten was (zonder merge) blokkeert niet.
-    const github = fakeGithub({ closedPrs: [pr(490, { state: 'closed', closed_at: '2026-10-11T10:00:00Z' })] });
+    const github = fakeGithub({ closedPrs: [pr(490, { state: 'closed', closed_at: '2026-10-11T10:00:00Z' })], states: after('turn: codex') });
     const r = await run(github);
     check('oude afgewezen PR: geschreven', r.written, true);
   }
@@ -127,7 +133,6 @@ const run = (github, extra = {}) => applyEndLabel({
     const github = fakeGithub({
       states: [
         { labels: ['turn: claude-code'] }, // controle vóór schrijven
-        { labels: ['turn: claude-code'] }, // setTurnLabel leest zelf ook
         { labels: ['turn: codex', 'status: awaiting-release'] }, // controle ná schrijven
       ],
     });
@@ -136,9 +141,36 @@ const run = (github, extra = {}) => applyEndLabel({
     check('merge tijdens schrijven: eigen label weer weg', github.calls.removed, ['turn: claude-code', 'turn: codex']);
   }
   {
-    const github = fakeGithub({ states: [{ labels: ['turn: claude-code'] }, { labels: ['turn: claude-code'] }, { labels: ['turn: codex'] }] });
+    const github = fakeGithub({ states: [{ labels: ['turn: claude-code'] }, { labels: ['turn: codex'] }] });
     const r = await run(github);
     check('na schrijven ongewijzigd: niet teruggedraaid', [r.written, r.rolledBack], [true, undefined]);
+  }
+
+  {
+    // Review P2-1: een beurtwijziging na de voorcontrole mag niet worden overschreven.
+    const github = fakeGithub({ states: [{ labels: ['turn: claude-code'] }, { labels: ['turn: owner'] }] });
+    const r = await run(github);
+    check('beurt gewijzigd na voorcontrole: niet als geschreven gemeld', r.written, false);
+    check('beurt gewijzigd: owner-label blijft staan', github.calls.removed.filter((n) => n === 'turn: owner'), []);
+    check('beurt gewijzigd: reden vermeldt turn-label', /turn-label/.test(r.reason), true);
+  }
+  {
+    // Review P2-2: falende DELETE bij terugdraaien is een fout, geen succes.
+    const github = fakeGithub({
+      states: [{ labels: ['turn: claude-code'] }, { labels: ['turn: codex', 'status: awaiting-release'] }],
+      removeError: Object.assign(new Error('boom'), { status: 500 }),
+    });
+    let threw = false;
+    try { await run(github); } catch { threw = true; }
+    check('falende rollback-DELETE propageert', threw, true);
+  }
+  {
+    const github = fakeGithub({
+      states: [{ labels: ['turn: claude-code'] }, { labels: ['turn: codex', 'status: awaiting-release'] }],
+      removeError: Object.assign(new Error('nf'), { status: 404 }),
+    });
+    const r = await run(github);
+    check('404 bij rollback = idempotent', [r.written, r.rolledBack], [false, true]);
   }
 
   // De vergelijk-en-zet werkt alleen als de agent zelf geen labelpad heeft en de job altijd draait.

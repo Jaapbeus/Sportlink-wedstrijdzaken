@@ -21,7 +21,7 @@
 // veranderd, dan haalt deze stap uitsluitend het eigen, zojuist gezette label weer weg.
 
 const {
-  findLinkedClosedPrs, isTrustedAuthor, labelNames, setTurnLabel,
+  findLinkedClosedPrs, isTrustedAuthor, labelNames,
   API_VERSION_HEADERS, TURN_LABEL_PREFIX, TURN_LABEL_CLAUDE, STATUS_AWAITING_RELEASE,
 } = require('./claude-issue-turn-gate.js');
 
@@ -60,7 +60,7 @@ function requestedEndLabel(comments, startedAt) {
  * worden, of null als de toestand sinds de start ongewijzigd is.
  */
 async function changedSinceStart({
-  github, context, issueNumber, startPrNumber, startedAt, checkTurnLabel = true,
+  github, context, issueNumber, startPrNumber, startedAt, expectedTurn = TURN_LABEL_CLAUDE,
 }) {
   const base = { owner: context.repo.owner, repo: context.repo.repo, headers: API_VERSION_HEADERS };
   const issue = (await github.rest.issues.get({ ...base, issue_number: issueNumber })).data;
@@ -70,8 +70,8 @@ async function changedSinceStart({
   if (labels.includes(STATUS_AWAITING_RELEASE)) return `het issue heeft \`${STATUS_AWAITING_RELEASE}\``;
 
   const turnLabels = labels.filter((n) => n.startsWith(TURN_LABEL_PREFIX));
-  if (checkTurnLabel && (turnLabels.length !== 1 || turnLabels[0] !== TURN_LABEL_CLAUDE)) {
-    return `het turn-label is niet meer exclusief \`${TURN_LABEL_CLAUDE}\` ` +
+  if (turnLabels.length !== 1 || turnLabels[0] !== expectedTurn) {
+    return `het turn-label is niet meer exclusief \`${expectedTurn}\` ` +
       `(nu: ${turnLabels.length ? turnLabels.join(', ') : 'geen'})`;
   }
 
@@ -89,6 +89,14 @@ async function changedSinceStart({
   if (closedDuringRun) return `gekoppelde PR #${closedDuringRun.number} is tijdens de run gesloten`;
 
   return null;
+}
+
+async function removeIfPresent({ github, base, issueNumber, name }) {
+  try {
+    await github.rest.issues.removeLabel({ ...base, issue_number: issueNumber, name });
+  } catch (err) {
+    if (err?.status !== 404) throw err;
+  }
 }
 
 /**
@@ -112,17 +120,23 @@ async function applyEndLabel({ github, context, core, issueNumber, startPrNumber
     return { written: false, label, source, reason: before };
   }
 
-  await setTurnLabel({ github, context, core, issueNumber, label });
+  // Bewust geen setTurnLabel(): die leest het issue opnieuw en zou een beurtwijziging die na de
+  // voorcontrole is gezet alsnog overschrijven. De voorcontrole bewees dat `turn: claude-code` het
+  // enige turn-label was; alleen dat label vervangen we, zonder tweede lezing.
+  await github.rest.issues.addLabels({
+    ...base, issue_number: issueNumber, labels: [label],
+  });
+  await removeIfPresent({ github, base, issueNumber, name: TURN_LABEL_CLAUDE });
+  core.notice(`#${issueNumber}: turn-label → '${label}'`);
 
-  // Venster tussen lezen en schrijven: opnieuw controleren. Het eigen label is nu gezet, dus het
-  // turn-label-criterium geldt hier niet; alleen een merge of afsluiting tijdens het schrijven telt.
+  // Venster tussen lezen en schrijven: opnieuw controleren. Nu moet het eigen label het enige
+  // turn-label zijn; een door een ander gezet label (of merge/afsluiting) betekent terugdraaien.
   const after = await changedSinceStart({
-    github, context, issueNumber, startPrNumber, startedAt, checkTurnLabel: false,
+    github, context, issueNumber, startPrNumber, startedAt, expectedTurn: label,
   });
   if (after) {
-    await github.rest.issues
-      .removeLabel({ ...base, issue_number: issueNumber, name: label })
-      .catch(() => {});
+    // Een mislukte verwijdering propageert (job faalt zichtbaar); alleen "al weg" (404) is succes.
+    await removeIfPresent({ github, base, issueNumber, name: label });
     core.warning(`#${issueNumber}: eindlabel '${label}' teruggedraaid: ${after}`);
     return { written: false, label, source, reason: after, rolledBack: true };
   }
