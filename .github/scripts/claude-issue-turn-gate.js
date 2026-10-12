@@ -23,6 +23,8 @@
 //  3b. Al afgerond werk (#1692): een gekoppelde PR die al gemerged is, of `status: awaiting-release`
 //     op het issue, stopt de poort zonder agent of labelwijziging. Een interactieve sessie kan het
 //     issue intussen hebben afgerond; vervolgwerk na een merge hoort in een nieuw issue.
+//  3c. Besloten reviewnotitie (#1686): verwijst de laatste reviewteruggave op de gekoppelde PR naar
+//     een besloten notitie, dan kan de agent die bevinding niet inzien. Geen run, beurt naar de eigenaar.
 //  4. Vertrouwde invoer (#1612): op een publieke repo kan iedereen een PR openen en commentaar
 //     plaatsen. Alleen PR's uit deze repo van een bevoegde auteur tellen, en de agent krijgt
 //     uitsluitend tekst van bevoegde schrijvers aangereikt (collectTrustedContext).
@@ -72,6 +74,13 @@ const ISSUE_BUDGET_BYTES = Math.floor(MAX_CONTEXT_BYTES / 2);
 const OVERHEAD_RESERVE_BYTES = 1024;
 
 const TRUNCATION_MARKER = '\n\n[… AFGEKAPT wegens omvang: de rest van deze tekst is weggelaten …]';
+
+// #1686: een reviewteruggave noemt de ronde en de uitkomst; een reviewaanvraag of verwerking niet als
+// teruggave tellen, ook als die woorden erin staan. De verwijzing dekt 'besloten (lokale) (review)notitie'.
+const REVIEW_RONDE = /review[\s-]*ronde/i;
+const REVIEW_UITKOMST = /\buitkomst\b/i;
+const GEEN_TERUGGAVE = /^[\s*_#>]*(?:verwerking|reviewaanvraag|afronding)/i;
+const BESLOTEN_NOTITIE = /besloten[^\n.]{0,60}notitie/i;
 
 function labelNames(issue) {
   return (issue.labels || []).map((l) => (typeof l === 'string' ? l : l.name));
@@ -200,6 +209,27 @@ async function findLinkedClosedPrs({ github, context, issueNumber, since }) {
     if (data.length < CLOSED_PAGE_SIZE || (since && oldest && oldest < since)) break;
   }
   return linked.sort((a, b) => a.number - b.number);
+}
+
+function isReviewTeruggave(body) {
+  return REVIEW_RONDE.test(body) && REVIEW_UITKOMST.test(body) && !GEEN_TERUGGAVE.test(body);
+}
+
+/** De nieuwste reviewteruggave van een bevoegde schrijver op de PR (#1686), of null. */
+async function findLatestReviewReturn({ github, context, prNumber }) {
+  const comments = await github.paginate(github.rest.issues.listComments, {
+    owner: context.repo.owner,
+    repo: context.repo.repo,
+    issue_number: prNumber,
+    per_page: 100,
+    headers: API_VERSION_HEADERS,
+  });
+  let latest = null;
+  for (const c of comments) {
+    if (!c.body || !isTrustedAuthor(c) || !isReviewTeruggave(c.body)) continue;
+    if (!latest || (c.created_at || '') >= (latest.created_at || '')) latest = c;
+  }
+  return latest;
 }
 
 /** De run-name van claude-issue-turn.yml — beide plekken moeten exact gelijk blijven. */
@@ -441,6 +471,17 @@ async function evaluateGate({ github, context, core, issueNumber }) {
   }
   const linkedPr = linkedPrs[0];
   if (linkedPr) {
+    // #1686: algemene bewoording; de inhoud van de bevinding hoort niet in een publiek issue (regel 4a).
+    const teruggave = await findLatestReviewReturn({ github, context, prNumber: linkedPr.number });
+    if (teruggave && BESLOTEN_NOTITIE.test(teruggave.body)) {
+      const reason =
+        `Geen CI-run gestart: de laatste reviewteruggave op PR #${linkedPr.number} verwijst naar een besloten ` +
+        'reviewnotitie die deze run niet kan inzien; een bevinding verwerken zonder die notitie zou gokken zijn. ' +
+        'De eigenaar stelt de notitie beschikbaar of besluit.';
+      await postComment({ github, context, core, issueNumber, body: reason });
+      await setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
+      return { proceed: false, reason };
+    }
     return {
       proceed: true,
       phase: 'verwerking',
@@ -463,6 +504,7 @@ module.exports = {
   TURN_LABEL_PREFIX,
   TURN_LABEL_CLAUDE,
   STATUS_AWAITING_RELEASE,
+  findLatestReviewReturn,
   countPriorRuns,
   collectTrustedContext,
   runTitle,

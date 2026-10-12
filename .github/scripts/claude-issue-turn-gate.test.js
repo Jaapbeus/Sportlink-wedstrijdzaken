@@ -452,6 +452,60 @@ function fakeGithub({
     await evaluateGate({ github, context: ctx, core, issueNumber: 95 });
     check('scan stopt bij PR\'s van vóór het issue (één pagina)', github.calls.closedPages, 1);
   }
+  // ---------- #1686: reviewteruggave verwijst naar een besloten reviewnotitie ----------
+  console.log('\nevaluateGate (#1686 besloten reviewnotitie):');
+  const prComment = (body, tijd, extra = {}) => ({
+    user: { login: 'eigenaar' }, author_association: 'OWNER', created_at: tijd, body, ...extra,
+  });
+  const gewoon = 'Onafhankelijke review ronde 1 — reviewer Codex.\n\nUitkomst: één P2-bevinding in `a.js:12`.';
+  const besloten = (variant) => `Onafhankelijke review ronde 1 — reviewer Codex.\n\nUitkomst: één P1-bevinding; details in de ${variant}.`;
+  const runMetComments = async (n, comments) => {
+    const github = fakeGithub({
+      labels: ['source: owner'], openPrs: [ownPr(n, { number: 900 + n })], commentsByNumber: { [900 + n]: comments },
+    });
+    const result = await evaluateGate({ github, context: ctx, core, issueNumber: n });
+    return { github, result };
+  };
+  for (const variant of ['besloten lokale reviewnotitie', 'besloten reviewnotitie', 'Besloten notitie']) {
+    const { github, result } = await runMetComments(90, [prComment(besloten(variant), '2026-10-12T10:00:00Z')]);
+    check(`'${variant}': geen run`, [result.proceed, result.phase], [false, undefined]);
+    check(`'${variant}': reden noemt de besloten reviewnotitie`, /besloten reviewnotitie/.test(result.reason), true);
+    check(`'${variant}': één comment, beurt naar turn: owner`, [github.calls.comments.length, github.calls.added, github.calls.removed],
+      [1, ['turn: owner'], ['turn: claude-code']]);
+    check(`'${variant}': comment bevat de inhoud van de bevinding niet`, github.calls.comments[0].includes('P1'), false);
+  }
+  {
+    const { github, result } = await runMetComments(91, [prComment(gewoon, '2026-10-12T10:00:00Z')]);
+    check('gewone teruggave: verwerking ongewijzigd', [result.proceed, result.phase, result.prNumber], [true, 'verwerking', 991]);
+    check('gewone teruggave: geen comment of labelwijziging', [github.calls.comments, github.calls.added], [[], []]);
+  }
+  {
+    const { result } = await runMetComments(92, []);
+    check('geen teruggave: verwerking ongewijzigd', [result.proceed, result.phase], [true, 'verwerking']);
+  }
+  {
+    // API-volgorde bewust omgekeerd: de tijdstempel bepaalt welke teruggave de nieuwste is.
+    const { github, result } = await runMetComments(93, [
+      prComment('Onafhankelijke review ronde 2 — reviewer Codex.\n\nUitkomst: opgelost, geen nieuwe bevindingen.', '2026-10-12T11:00:00Z'),
+      prComment(besloten('besloten reviewnotitie'), '2026-10-12T10:00:00Z'),
+    ]);
+    check('oudere teruggave met verwijzing, nieuwere zonder: ongewijzigd', [result.proceed, result.phase], [true, 'verwerking']);
+    check('oudere teruggave met verwijzing: geen comment', github.calls.comments, []);
+  }
+  {
+    const { github, result } = await runMetComments(94, [
+      prComment(besloten('besloten reviewnotitie'), '2026-10-12T10:00:00Z', { user: { login: 'vreemde' }, author_association: 'NONE' }),
+    ]);
+    check('verwijzing van niet-bevoegde auteur telt niet', [result.proceed, result.phase], [true, 'verwerking']);
+    check('niet-bevoegde auteur: geen comment of labelwijziging', [github.calls.comments, github.calls.added], [[], []]);
+  }
+  {
+    const { result } = await runMetComments(95, [
+      prComment(besloten('besloten reviewnotitie'), '2026-10-12T10:00:00Z'),
+      prComment('Verwerking Codex-review ronde 1: de besloten notitie is verwerkt. Uitkomst: opgelost.', '2026-10-12T11:00:00Z'),
+    ]);
+    check('verwerkingscomment telt niet als teruggave: nieuwste teruggave blijft blokkeren', result.proceed, false);
+  }
 
   // ---------- setTurnLabel: remove+add, oude turn-labels weg ----------
   {

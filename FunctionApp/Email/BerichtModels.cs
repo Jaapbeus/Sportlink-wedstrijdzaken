@@ -40,6 +40,10 @@ public class BerichtClassificatie
     // Door de pipeline gezet (niet door AI) wanneer een KNVB-bijlage + BCC van toepassing is (#561).
     // Houd dit klein (strings, geen bytes): classificatie wordt via JsonConvert.SerializeObject naar
     // planner.EmailVerwerking gelogd — grote binaire payloads horen daar niet in.
+    // Door de pipeline gezet (niet door AI) als de teamresolutie TeamNaam niet kon bevestigen: antwoorden
+    // gebruiken dan generieke tekst in plaats van de vrije modeltekst.
+    public bool TeamNaamOnbevestigd { get; set; }
+
     public bool VoegKnvbPdfBijlageToe { get; set; }
     public string? KnvbBijlageRegio { get; set; }
 
@@ -66,6 +70,8 @@ public class InkomendBericht
     public string Onderwerp { get; set; } = "";
     public DateTime OntvangstDatum { get; set; }
     public string Body { get; set; } = "";
+    /// <summary>Internetheaders van het bericht (naam, waarde); alleen gevuld door de Graph-adapter, gebruikt om automatische afzenders te herkennen.</summary>
+    public IReadOnlyList<KeyValuePair<string, string>> InternetHeaders { get; set; } = [];
 }
 
 // Verwerking status

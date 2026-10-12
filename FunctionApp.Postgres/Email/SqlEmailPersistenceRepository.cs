@@ -281,6 +281,22 @@ internal static class SqlEmailPersistenceRepository
         }
     }
 
+    internal static async Task<int> TelVerzondenAntwoordenInConversatieAsync(
+        string connectionString, string conversationId, string clubCode)
+    {
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(@"
+            SELECT COUNT(*)
+            FROM planner.emailverwerking
+            WHERE conversationid = @conversationid
+              AND (isbeantwoord = TRUE OR verstuurdnaar IS NOT NULL)
+              AND clubcode = @clubcode", conn);
+        cmd.Parameters.AddWithValue("conversationid", conversationId);
+        cmd.Parameters.AddWithValue("clubcode", clubCode);
+        return Convert.ToInt32(await cmd.ExecuteScalarAsync());
+    }
+
     internal static async Task UpdateReplyStatusAsync(
         string connectionString, int verwerkingId, bool isReply, int replyOpVerwerkingId)
     {

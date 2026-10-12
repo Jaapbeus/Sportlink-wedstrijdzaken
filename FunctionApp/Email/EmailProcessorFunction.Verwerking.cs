@@ -39,6 +39,10 @@ public partial class EmailProcessorFunction
                 verwerkingId, email, classificatie, classificatieJson, graphService, persistenceService, log))
             return;
 
+        if (await EmailVerwerkingKoppeling.HandelAntwoordLimietAsync(
+                verwerkingId, email, classificatie, classificatieJson, graphService, persistenceService, log))
+            return;
+
         await persistenceService.UpdateStatusAsync(verwerkingId, EmailStatus.Geclassificeerd, classificatieJson);
         log.LogInformation("Email {Id} geregistreerd als {Type}, datum={Datum}",
             verwerkingId, classificatie.Type, LogWaarde.Schoon(classificatie.Datum));
