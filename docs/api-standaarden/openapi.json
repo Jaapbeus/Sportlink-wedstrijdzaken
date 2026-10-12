@@ -11018,7 +11018,7 @@
             }
           },
           "429": {
-            "description": "Te veel doorgestuurde vragen door dezelfde gebruiker: de limiet is 3 verzendingen per\n10 minuten. Alleen een daadwerkelijke verzending telt mee; de rol `admin` valt buiten de\nlimiet.\n",
+            "description": "Te veel doorgestuurde vragen door dezelfde gebruiker: de limiet is 3 verzendingen per\n10 minuten. Alleen een daadwerkelijke verzending telt mee (een mislukte verzending geeft\nhaar eigen slot terug); de rol `admin` valt buiten de limiet. De teller is in-memory en\ngeldt per instantie van de Function App: bij uitschalen naar meerdere instanties of na een\nherstart kan het totaal hoger uitvallen. Het is een rem op herhaald gebruik, geen globale\nkwotering.\n",
             "content": {
               "application/json": {
                 "schema": {

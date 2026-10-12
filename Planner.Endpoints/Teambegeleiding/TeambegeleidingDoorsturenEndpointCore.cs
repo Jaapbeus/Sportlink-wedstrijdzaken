@@ -43,7 +43,8 @@ public static class TeambegeleidingDoorsturenEndpointCore
             return new ObjectResult(new { error = "E-mail service niet geconfigureerd" }) { StatusCode = 503 };
         }
 
-        if (NeemVerzendslot(aanvrager.IsAdmin, aanvrager.ObjectId, limiet) is { } limietFout) return limietFout;
+        var gebruikteLimiet = limiet ?? Limiet;
+        if (NeemVerzendslot(aanvrager.IsAdmin, aanvrager.ObjectId, gebruikteLimiet, out var slot) is { } limietFout) return limietFout;
 
         try
         {
@@ -51,8 +52,8 @@ public static class TeambegeleidingDoorsturenEndpointCore
         }
         catch
         {
-            // Een mislukte verzending telt niet mee: het slot gaat terug.
-            if (!aanvrager.IsAdmin) (limiet ?? Limiet).TerugGeven(aanvrager.ObjectId);
+            // Een mislukte verzending telt niet mee: precies het eigen slot gaat terug.
+            if (slot is { } genomen) gebruikteLimiet.TerugGeven(genomen);
             throw;
         }
         return new OkObjectResult(new
@@ -134,12 +135,18 @@ public static class TeambegeleidingDoorsturenEndpointCore
 
     /// <summary>
     /// Neemt direct vóór de verzending een slot uit de limiet: 429 als een niet-beheerder de limiet
-    /// heeft bereikt, anders <c>null</c>. Beheerders vallen buiten de limiet.
+    /// heeft bereikt, anders <c>null</c> met het genomen slot in <paramref name="slot"/>. Beheerders
+    /// vallen buiten de limiet (geen slot).
     /// </summary>
-    public static IActionResult? NeemVerzendslot(bool isAdmin, string? limietSleutel, GebruikerLimiet? limiet = null)
+    public static IActionResult? NeemVerzendslot(bool isAdmin, string? limietSleutel, GebruikerLimiet limiet, out GebruikerLimiet.Slot? slot)
     {
-        if (isAdmin || (limiet ?? Limiet).TryAcquire(limietSleutel))
+        slot = null;
+        if (isAdmin) return null;
+        if (limiet.TryAcquire(limietSleutel, out var genomen))
+        {
+            slot = genomen;
             return null;
+        }
         return new ObjectResult(new { error = "Er zijn net veel vragen doorgestuurd. Probeer het over enkele minuten nog eens." }) { StatusCode = 429 };
     }
 }

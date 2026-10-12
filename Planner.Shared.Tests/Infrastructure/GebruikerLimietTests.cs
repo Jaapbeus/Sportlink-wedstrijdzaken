@@ -79,40 +79,59 @@ public class GebruikerLimietTests
     }
 
     [Fact]
-    public void TerugGeven_MaaktEenSlotWeerVrij()
+    public void TerugGeven_MaaktHetEigenSlotWeerVrij()
     {
         var limiet = new GebruikerLimiet(1, TimeSpan.FromMinutes(10), () => Start);
 
-        limiet.TryAcquire("gebruiker-a").Should().BeTrue();
-        limiet.TerugGeven("Gebruiker-A");
+        limiet.TryAcquire("gebruiker-a", out var slot).Should().BeTrue();
+        limiet.TerugGeven(slot);
 
-        limiet.TryAcquire("gebruiker-a").Should().BeTrue();
+        limiet.TryAcquire("Gebruiker-A").Should().BeTrue();
         limiet.TryAcquire("gebruiker-a").Should().BeFalse();
     }
 
     [Fact]
-    public void TerugGeven_GeeftAlleenHetLaatsteSlotTerug()
+    public void TerugGeven_VanEenOuderSlot_LaatHetNieuwereTijdstipStaan()
+    {
+        var nu = Start;
+        var limiet = new GebruikerLimiet(3, TimeSpan.FromMinutes(10), () => nu);
+        limiet.TryAcquire("gebruiker-a", out var oud).Should().BeTrue();   // t0, mislukt later
+        nu = Start.AddMinutes(9);
+        limiet.TryAcquire("gebruiker-a").Should().BeTrue();                // t0+9
+        limiet.TryAcquire("gebruiker-a").Should().BeTrue();                // t0+9
+
+        limiet.TerugGeven(oud);
+
+        nu = Start.AddMinutes(10).AddSeconds(1);
+        limiet.TryAcquire("gebruiker-a").Should().BeTrue();
+        limiet.TryAcquire("gebruiker-a").Should().BeFalse();               // de twee t0+9-slots tellen nog
+    }
+
+    [Fact]
+    public void TerugGeven_VanEenVerlopenSlot_HeeftGeenEffect()
+    {
+        var nu = Start;
+        var limiet = new GebruikerLimiet(1, TimeSpan.FromMinutes(10), () => nu);
+        limiet.TryAcquire("gebruiker-a", out var oud).Should().BeTrue();
+        nu = Start.AddMinutes(10).AddSeconds(1);
+        limiet.TryAcquire("gebruiker-a").Should().BeTrue();
+
+        limiet.TerugGeven(oud);
+
+        limiet.TryAcquire("gebruiker-a").Should().BeFalse();
+    }
+
+    [Fact]
+    public void TerugGeven_TweeKeerOfLeegSlot_HeeftGeenExtraEffect()
     {
         var limiet = new GebruikerLimiet(2, TimeSpan.FromMinutes(10), () => Start);
-        limiet.TryAcquire("gebruiker-a");
-        limiet.TryAcquire("gebruiker-a");
 
-        limiet.TerugGeven("gebruiker-a");
-
+        limiet.TerugGeven(default);
+        limiet.TerugGeven(new GebruikerLimiet.Slot("onbekende-sleutel", 1));
+        limiet.TryAcquire("gebruiker-a", out var eerste).Should().BeTrue();
         limiet.TryAcquire("gebruiker-a").Should().BeTrue();
-        limiet.TryAcquire("gebruiker-a").Should().BeFalse();
-    }
-
-    [Fact]
-    public void TerugGeven_BijOnbekendeSleutelOfLegeTeller_HeeftGeenEffect()
-    {
-        var limiet = new GebruikerLimiet(1, TimeSpan.FromMinutes(10), () => Start);
-
-        limiet.TerugGeven("onbekende-sleutel");
-        limiet.TerugGeven(null);
-        limiet.TryAcquire("gebruiker-a").Should().BeTrue();
-        limiet.TerugGeven("gebruiker-a");
-        limiet.TerugGeven("gebruiker-a");
+        limiet.TerugGeven(eerste);
+        limiet.TerugGeven(eerste);
 
         limiet.TryAcquire("gebruiker-a").Should().BeTrue();
         limiet.TryAcquire("gebruiker-a").Should().BeFalse();

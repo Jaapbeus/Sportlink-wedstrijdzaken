@@ -238,6 +238,54 @@ public class TeambegeleidingDoorsturenEndpointCoreTests
         verzender.Aantal.Should().Be(1);
     }
 
+    // Gelijktijdige verzendingen van dezelfde gebruiker: een mislukte verzending geeft precies haar
+    // eigen slot terug, niet dat van een andere (nieuwere) geslaagde verzending.
+    private static Task<IActionResult> VoerUitMet(GebruikerLimiet limiet, Func<List<string>, Task> verstuur) =>
+        TeambegeleidingDoorsturenEndpointCore.VoerUitAsync(
+            new Aanvrager(false, "gebruiker@allstars-fc.test", "gebruiker-a"),
+            () => Task.FromResult<(List<string>?, IActionResult?)>((["trainer@voorbeeld.nl"], null)),
+            true, verstuur, "JO13-1", NullLogger.Instance, limiet);
+
+    [Fact]
+    public async Task User_MisluktOudereVerzendingNaNieuwere_LimietBlijftBinnenElkVenster()
+    {
+        var nu = new DateTime(2026, 10, 12, 12, 0, 0, DateTimeKind.Utc);
+        var limiet = new GebruikerLimiet(3, TimeSpan.FromMinutes(10), () => nu);
+        var verzender = new Verzender();
+        var traag = new TaskCompletionSource();
+
+        var oudePoging = VoerUitMet(limiet, _ => traag.Task);               // slot op t0, verzending loopt nog
+        nu = nu.AddMinutes(9);
+        Status(await VoerUit(false, limiet, verzender)).Should().Be(200);    // t0+9
+        Status(await VoerUit(false, limiet, verzender)).Should().Be(200);    // t0+9
+        traag.SetException(new InvalidOperationException("verzending mislukt"));
+        await ((Func<Task>)(() => oudePoging)).Should().ThrowAsync<InvalidOperationException>();
+
+        nu = nu.AddMinutes(1).AddSeconds(1);                                 // t0+10:01: het t0-slot is verlopen
+        Status(await VoerUit(false, limiet, verzender)).Should().Be(200);    // derde binnen (t0+9, t0+10:01]
+        Status(await VoerUit(false, limiet, verzender)).Should().Be(429);    // vierde zou de limiet breken
+        verzender.Aantal.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task User_MisluktVerzendingNaVerlopenSlot_GeeftGeenAnderSlotTerug()
+    {
+        var nu = new DateTime(2026, 10, 12, 12, 0, 0, DateTimeKind.Utc);
+        var limiet = new GebruikerLimiet(3, TimeSpan.FromMinutes(10), () => nu);
+        var verzender = new Verzender();
+        var traag = new TaskCompletionSource();
+
+        var oudePoging = VoerUitMet(limiet, _ => traag.Task);               // slot op t0
+        nu = nu.AddMinutes(10).AddSeconds(1);                                // het t0-slot is verlopen
+        for (var i = 0; i < 3; i++)
+            Status(await VoerUit(false, limiet, verzender)).Should().Be(200);
+        traag.SetException(new InvalidOperationException("verzending mislukt"));
+        await ((Func<Task>)(() => oudePoging)).Should().ThrowAsync<InvalidOperationException>();
+
+        Status(await VoerUit(false, limiet, verzender)).Should().Be(429);
+        verzender.Aantal.Should().Be(3);
+    }
+
     [Fact]
     public async Task User_GeslaagdeVerzending_HoudtHetSlotBezet()
     {
@@ -266,8 +314,11 @@ public class TeambegeleidingDoorsturenEndpointCoreTests
     {
         var limiet = NieuweLimiet(1);
 
-        TeambegeleidingDoorsturenEndpointCore.NeemVerzendslot(false, "gebruiker-a", limiet).Should().BeNull();
-        Status(TeambegeleidingDoorsturenEndpointCore.NeemVerzendslot(false, "gebruiker-a", limiet)).Should().Be(429);
-        TeambegeleidingDoorsturenEndpointCore.NeemVerzendslot(true, "gebruiker-a", limiet).Should().BeNull();
+        TeambegeleidingDoorsturenEndpointCore.NeemVerzendslot(false, "gebruiker-a", limiet, out var slot).Should().BeNull();
+        slot.Should().NotBeNull();
+        Status(TeambegeleidingDoorsturenEndpointCore.NeemVerzendslot(false, "gebruiker-a", limiet, out slot)).Should().Be(429);
+        slot.Should().BeNull();
+        TeambegeleidingDoorsturenEndpointCore.NeemVerzendslot(true, "gebruiker-a", limiet, out slot).Should().BeNull();
+        slot.Should().BeNull();
     }
 }
