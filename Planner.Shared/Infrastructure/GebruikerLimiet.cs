@@ -9,7 +9,7 @@ public sealed class GebruikerLimiet(int maxPerVenster, TimeSpan venster, Func<Da
 {
     private const int OpruimDrempel = 500;
     private readonly Func<DateTime> _nu = nu ?? (() => DateTime.UtcNow);
-    private readonly Dictionary<string, Queue<DateTime>> _perSleutel = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Queue<DateTime>> _perSleutel = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _lock = new();
 
     public int MaxPerVenster { get; } = maxPerVenster;
@@ -25,7 +25,9 @@ public sealed class GebruikerLimiet(int maxPerVenster, TimeSpan venster, Func<Da
             if (!_perSleutel.TryGetValue(key, out var wachtrij))
             {
                 if (_perSleutel.Count > OpruimDrempel)
-                    foreach (var oud in _perSleutel.Where(kv => kv.Value.Count == 0 || kv.Value.Peek() < cutoff).Select(kv => kv.Key).ToList())
+                    // Alleen sleutels waarvan ALLE items verlopen zijn: een wachtrij met nog geldige items hoort bij een
+                    // lopende limiet en mag niet worden weggegooid (dat zou de teller resetten).
+                    foreach (var oud in _perSleutel.Where(kv => kv.Value.Count == 0 || kv.Value.Last() < cutoff).Select(kv => kv.Key).ToList())
                         _perSleutel.Remove(oud);
                 wachtrij = _perSleutel[key] = new Queue<DateTime>();
             }
