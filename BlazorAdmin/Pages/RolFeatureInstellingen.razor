@@ -6,16 +6,18 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="mb-0">Rechten per rol</h1>
-    <a class="btn btn-outline-secondary btn-sm" href="instellingen">← Terug naar Instellingen</a>
+    <a class="btn btn-outline-secondary btn-sm" href="instellingen">← Terug naar App instellingen</a>
 </div>
 
 <p class="text-muted">
-    Bepaalt per rol welke schermen en Sportlink-acties zichtbaar zijn. <strong>Admin</strong> heeft
-    dit altijd allemaal aan en staat daarom niet als kolom in de matrix. Voor de drie
-    Sportlink-mutatieacties (kleedkamers/scheidsrechter/veld) is deze instelling de leidende
-    controle — een uitgeschakelde actie wordt ook door de server geweigerd. Voor de overige rijen
-    (menu-zichtbaarheid) legt deze pagina vandaag alleen vast wát een rol zou mogen zien; het
-    daadwerkelijk verbergen van menu-items per rol volgt in een apart vervolgtraject (#1390).
+    Bepaalt per rol welke menu-items zichtbaar zijn en welke Sportlink-acties mogen. <strong>Admin</strong> heeft
+    dit altijd allemaal aan en staat daarom niet als kolom in de matrix; alleen een admin ziet de groep
+    <strong>DEBUG</strong> en <strong>Rechten per rol</strong>. Het verbergen van een menu-item is
+    gebruiksgemak: elk scherm en elke aanroep blijft server-side beveiligd, dus een aangezette rij geeft een
+    rol nooit meer toegang dan de server toestaat. Voor de drie Sportlink-acties is deze instelling wel de
+    leidende controle — een uitgeschakelde actie wordt ook door de server geweigerd. Zonder opgeslagen keuze
+    staan alleen de items van het hoofdmenu aan; <strong>WZ Instellingen</strong> en <strong>Admin</strong>
+    zijn standaard alleen voor admin.
 </p>
 
 @if (_laden)

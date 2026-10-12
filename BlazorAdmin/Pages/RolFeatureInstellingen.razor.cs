@@ -28,34 +28,39 @@ public partial class RolFeatureInstellingen : ClubSelectorPageBase
     /// <summary>Eén rij van de matrix — puur UI-metadata, geen logica.</summary>
     private sealed record MatrixRij(string Groep, string FeatureKey, string Label, string? Beschrijving, bool Avg);
 
+    // #1647: groepen en volgorde volgen het hoofdmenu. De groep DEBUG (Email-tester, AI-leermomenten, Feedback,
+    // E-maillog) en "Rechten per rol" staan hier bewust niet in: uitsluitend admin, niet instelbaar.
+    // Zonder opgeslagen rij staan alleen de hoofditems aan (zie MenuFeatureKeys.StandaardAan op de server).
     private static readonly IReadOnlyList<MatrixRij> Rijen = new[]
     {
-        new MatrixRij("Algemeen", "menu.dashboard", "Dashboard", null, false),
-        new MatrixRij("Algemeen", "menu.teambegeleiding", "Teambegeleiding",
+        new MatrixRij("Hoofdmenu", MenuKeys.Dashboard, "Dashboard", null, false),
+        new MatrixRij("Hoofdmenu", MenuKeys.Teambegeleiding, "Teambegeleiding",
             "Namen, contactgegevens en rollen per team.", true),
-        new MatrixRij("Algemeen", "menu.planning", "Planning", null, false),
-        new MatrixRij("Algemeen", "menu.veldoptimalisatie", "Veld optimalisatie", null, false),
-        new MatrixRij("Algemeen", "menu.leermomenten", "Leermomenten", null, false),
-        new MatrixRij("Algemeen", "menu.teamaliassen", "Teamaliassen", null, false),
-        new MatrixRij("Algemeen", "menu.emailtester", "Email-tester", null, false),
+        new MatrixRij("Hoofdmenu", MenuKeys.Planning, "Planning", null, false),
+        new MatrixRij("Hoofdmenu", MenuKeys.WedstrijdAanmaken, "Wedstrijd aanmaken",
+            "Alleen zichtbaar als de Sportlink Web Extension aan staat.", false),
+        new MatrixRij("Hoofdmenu", MenuKeys.Wijzigingsverzoeken, "Wijzigingsverzoeken",
+            "Alleen zichtbaar als de Sportlink Web Extension aan staat.", false),
+        new MatrixRij("Hoofdmenu", MenuKeys.VeldOptimalisatie, "Veld optimalisatie", null, false),
 
-        new MatrixRij("Sportlink extensie", "menu.wijzigingsverzoeken", "Wijzigingsverzoeken", null, false),
-        new MatrixRij("Sportlink extensie", "menu.wedstrijdaanmaken", "Wedstrijd aanmaken", null, false),
-        new MatrixRij("Sportlink extensie", "sportlink.kleedkamers", "Kleedkamers toewijzen",
+        new MatrixRij("Sportlink-acties", "sportlink.kleedkamers", "Kleedkamers toewijzen",
             "Kleedkamer-nummers invoeren en opslaan bij een wedstrijd.", false),
-        new MatrixRij("Sportlink extensie", "sportlink.scheidsrechter", "Scheidsrechters toewijzen",
+        new MatrixRij("Sportlink-acties", "sportlink.scheidsrechter", "Scheidsrechters toewijzen",
             "Relatiecode van scheidsrechter/AR1/AR2 invoeren en opslaan.", false),
-        new MatrixRij("Sportlink extensie", "sportlink.veld", "Veld wijzigen",
+        new MatrixRij("Sportlink-acties", "sportlink.veld", "Veld wijzigen",
             "FieldId/FieldSize van een wedstrijd wijzigen.", false),
 
-        new MatrixRij("Instellingen", "menu.instellingen.speeltijden", "Speeltijden", null, false),
-        new MatrixRij("Instellingen", "menu.instellingen.velden", "Velden", null, false),
-        new MatrixRij("Instellingen", "menu.instellingen.begeleidingimport", "Begeleiding importeren",
+        new MatrixRij("WZ Instellingen", MenuKeys.Speeltijden, "Speeltijden", null, false),
+        new MatrixRij("WZ Instellingen", MenuKeys.Velden, "Velden", null, false),
+        new MatrixRij("WZ Instellingen", MenuKeys.Voorkeurstijden, "Team voorkeurstijden", null, false),
+
+        new MatrixRij("Admin", MenuKeys.AppInstellingen, "App instellingen", null, false),
+        new MatrixRij("Admin", MenuKeys.SportlinkExtensie, "Sportlink Web Extension", null, false),
+        new MatrixRij("Admin", MenuKeys.BegeleidingImport, "Teambegeleiding importeren",
             "Volledige CSV met persoonsgegevens van begeleiders.", true),
-        new MatrixRij("Instellingen", "menu.instellingen.voorkeurstijden", "Voorkeurstijden", null, false),
-        new MatrixRij("Instellingen", "menu.instellingen.emailtemplates", "E-mailtemplates", null, false),
-        new MatrixRij("Instellingen", "menu.instellingen.thema", "Thema", null, false),
-        new MatrixRij("Instellingen", "menu.instellingen.sportlinkextensie", "Sportlink-instellingen", null, false),
+        new MatrixRij("Admin", MenuKeys.EmailTemplates, "E-mailtemplates", null, false),
+        new MatrixRij("Admin", MenuKeys.Teamaliassen, "Teamaliassen", null, false),
+        new MatrixRij("Admin", MenuKeys.Thema, "Club-thema", null, false),
     };
 
     /// <summary>Rolkolommen in weergavevolgorde — bewust zonder <c>admin</c> (zie klassecomment).</summary>

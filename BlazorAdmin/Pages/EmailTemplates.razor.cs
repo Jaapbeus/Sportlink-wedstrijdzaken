@@ -7,7 +7,7 @@ namespace BlazorAdmin.Pages;
 public partial class EmailTemplates : ClubSelectorPageBase
 {
     [Inject] private EmailApiClient EmailApi { get; set; } = default!;
-    [Inject] private InstellingenApiClient InstellingenApi { get; set; } = default!;
+    [Inject] private ClubInstellingenCache InstellingenCache { get; set; } = default!;
 
     private List<TemplateDto> templates = new();
     private TemplateDto? editing;
@@ -37,7 +37,7 @@ public partial class EmailTemplates : ClubSelectorPageBase
 
     private async Task LoadVoetnootAsync()
     {
-        var r = await InstellingenApi.GetSettingsAsync();
+        var r = await InstellingenCache.GetSettingsAsync();
         if (r.Success && r.Data != null)
             voetnoot = r.Data.EmailVoetnoot ?? "";
     }
@@ -48,7 +48,7 @@ public partial class EmailTemplates : ClubSelectorPageBase
         {
             Velden = new Dictionary<string, string?> { ["EmailVoetnoot"] = voetnoot }
         };
-        var r = await InstellingenApi.UpdateSettingsAsync(dto);
+        var r = await InstellingenCache.UpdateSettingsAsync(dto);
         voetnootMessage = r.Success ? "Voetnoot opgeslagen." : "Fout: " + r.ErrorMessage;
         await Task.Delay(3000);
         voetnootMessage = null;

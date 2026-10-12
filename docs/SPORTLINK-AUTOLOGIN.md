@@ -82,7 +82,7 @@ Geen token, responsebody, cookie of wachtwoord in supportmeldingen opnemen.
 
 ### Als automatische login vastloopt of de sessie breekt
 
-1. Open **Instellingen → Sportlink Ext.** en lees alleen de generieke status en tijdstippen.
+1. Open **Admin → Sportlink Web Extension** en lees alleen de generieke status en tijdstippen.
    Kopieer geen logs met requestdetails of responsebody naar een issue.
 2. Controleer bij een tijdelijke fout of de uurtimer na de cooldown opnieuw probeert. Controleer
    ook dat de bestaande EgressGuard toestemming en de extensie-instelling actief zijn.
