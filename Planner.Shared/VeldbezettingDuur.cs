@@ -34,6 +34,12 @@ public static class VeldbezettingDuur
     /// <summary>Minuten die de Sportlink-veldplanner bovenop de netto speelduur als bezetting toont.</summary>
     public const int SportlinkBezettingBovenopSpeelduur = 15;
 
+    /// <summary>
+    /// Kent Sportlink een speelduur voor deze wedstrijd (#1559)? Dan staat de wedstrijd in Sportlink en is die
+    /// leidend: blokduur uit <see cref="Bepaal"/> en geen app-buffer (club of team) rondom de wedstrijd.
+    /// </summary>
+    public static bool IsSportlinkLeidend(int? sportlinkSpeelduur) => sportlinkSpeelduur is > 0;
+
     /// <param name="sportlinkSpeelduur">Netto speelduur volgens Sportlink, of <c>null</c>/0 als onbekend.</param>
     /// <param name="speeltijdenTotaal">Terugval uit de speeltijdentabel, of <c>null</c> als de categorie ontbreekt.</param>
     /// <returns>Bezettingsduur in minuten; 0 als geen van beide bronnen iets weet.</returns>

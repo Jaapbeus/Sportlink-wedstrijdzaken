@@ -613,9 +613,16 @@ plus 15 minuten (zoals #1547 de Sportlink-veldplanner nameet), en pas als Sportl
 `WedstrijdTotaal` uit de speeltijdentabel (besluit #291). Hetzelfde team heeft dus op beide schermen
 hetzelfde blok.
 
-Nog open: de buffer tussen wedstrijden uit de app-instellingen telt in de optimalisatie nog steeds mee,
-ook tussen wedstrijden die al in Sportlink staan; en of "speelduur + 15" voor korte toernooivormen
-(bijvoorbeeld 20 minuten) klopt is niet bevestigd (#1560, punt 2).
+Gevolg voor de buffer: een wedstrijd met een Sportlink-speelduur (`VeldbezettingDuur.IsSportlinkLeidend`)
+wordt in de optimalisatie met een buffer van 0 minuten geplaatst, zowel vóór als ná: geen clubbuffer en
+geen teamregel (`BufferVoor`/`BufferNa`). De buffer is **per slot**, niet per team: `IngeplandSlot.SportlinkLeidend`
+laat een Sportlink-slot zijn eigen 0-buffer dragen, zodat een app-wedstrijd die naast een Sportlink-wedstrijd
+komt alleen zijn eigen buffer eist. Wedstrijden zonder Sportlink-duur (app-eigen, of Sportlink kent ze niet)
+behouden speeltijdentabel en club-/teambuffer. De rekenregels blijven in `PlanningBufferRegels`; de
+handmatige conflictcontrole in de Admin GUI is niet gewijzigd.
+
+Nog open: of "speelduur + 15" voor korte toernooivormen (bijvoorbeeld 20 minuten) klopt is niet
+bevestigd (#1560, punt 2).
 
 Open verificatiepunten (#1560), alleen met Sportlink Club zelf te beantwoorden: bestaan clubwedstrijden
 zonder tegenstander (thuis- gelijk aan uitteam) in Sportlink Club en moeten ze in de Planning; hoe tekent

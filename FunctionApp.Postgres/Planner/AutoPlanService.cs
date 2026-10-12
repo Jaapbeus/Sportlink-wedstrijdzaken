@@ -226,6 +226,8 @@ internal static class AutoPlanService
                 teamBuffers.TryGetValue(wedstrijd.TeamNaam, out var tb) ? tb.bufferVoor : null);
             // #1559: Sportlink is leidend voor wedstrijden die er al zijn; speeltijden alleen als terugval.
             int duurMinuten = VeldbezettingDuur.Bepaal(wedstrijd.SportlinkSpeelduur, speeltijdInfo.WedstrijdTotaal);
+            // #1559: en dan geldt ook geen app-buffer (club of team) rond die wedstrijd.
+            bool sportlinkLeidend = VeldbezettingDuur.IsSportlinkLeidend(wedstrijd.SportlinkSpeelduur);
 
             if (doel.DoelTijd.HasValue)
             {
@@ -233,7 +235,7 @@ internal static class AutoPlanService
                 voorkeurTijdStr = doelTijd.ToString("HH:mm");
                 slot = scheduler.FindAndOccupyNearTime(doelTijd, veldafmeting,
                     duurMinuten, teamBufVoor, wedstrijd.TeamNaam,
-                    voorkeurVeldNummer: doel.VoorkeurVeldNummer);
+                    voorkeurVeldNummer: doel.VoorkeurVeldNummer, sportlinkLeidend: sportlinkLeidend);
                 if (slot != null)
                     voorkeurAfwijking = (int)(slot.AanvangsTijd.ToTimeSpan() - doelTijd.ToTimeSpan()).TotalMinutes;
             }
@@ -242,9 +244,9 @@ internal static class AutoPlanService
                 slot = doel.VoorkeurVeldNummer.HasValue
                     ? scheduler.FindAndOccupyNearTime(FieldScheduler.DagStart, veldafmeting,
                         duurMinuten, teamBufVoor, wedstrijd.TeamNaam,
-                        voorkeurVeldNummer: doel.VoorkeurVeldNummer)
+                        voorkeurVeldNummer: doel.VoorkeurVeldNummer, sportlinkLeidend: sportlinkLeidend)
                     : scheduler.FindAndOccupyNextSlot(veldafmeting, duurMinuten,
-                        teamBufVoor, wedstrijd.TeamNaam);
+                        teamBufVoor, wedstrijd.TeamNaam, sportlinkLeidend: sportlinkLeidend);
             }
 
             if (slot == null)
