@@ -33,7 +33,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.13.4.0
+  version: 3.13.4.8
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -1634,9 +1634,6 @@ components:
           type: string
           description: Gemaskeerd — alleen domein, bijv. "***@voorbeeld.nl"
           example: "***@voorbeeld.nl"
-        Onderwerp:
-          type: string
-          nullable: true
         OntvangstDatum:
           type: string
           format: date-time
@@ -1649,6 +1646,7 @@ components:
         VerstuurdNaar:
           type: string
           nullable: true
+          description: Gemaskeerd — per adres alleen het domein, bijv. "***@voorbeeld.nl"
         FoutMelding:
           type: string
           nullable: true
@@ -5465,7 +5463,7 @@ paths:
         Geeft metadata van verwerkte emails uit `planner.EmailVerwerking`.
 
         AVG: `EmailBody` en `AntwoordEmail` worden nooit teruggegeven.
-        `Afzender` wordt gemaskeerd tot alleen het domein (bijv. `***@voorbeeld.nl`).
+        `Afzender` en `VerstuurdNaar` worden gemaskeerd tot alleen het domein (bijv. `***@voorbeeld.nl`). Het onderwerp wordt niet teruggegeven.
       security:
         - easyAuth: []
       parameters:

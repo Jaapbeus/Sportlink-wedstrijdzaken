@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using BlazorAdmin.Models;
+using Microsoft.AspNetCore.Components.WebAssembly.Authentication;
 
 namespace BlazorAdmin.Services;
 
@@ -56,6 +57,13 @@ public sealed class AdminApiTransport
         // #1136: een bewust geannuleerde aanroep (aanroeper heeft een nieuwere lookup gestart)
         // hoort geen foutmelding op te leveren — de aanroeper gooit dit resultaat toch weg.
         catch (OperationCanceledException) { return ApiResult<T>.Fail("Geannuleerd"); }
+        // Geen (geldig) toegangstoken: laat de MSAL-redirectafhandeling lopen in plaats van de fout als
+        // gewone netwerkfout te verzwijgen.
+        catch (AccessTokenNotAvailableException ex)
+        {
+            ex.Redirect();
+            return ApiResult<T>.Fail("Sessie verlopen: opnieuw inloggen.");
+        }
         catch (Exception ex)
         {
             // Netwerkfout zonder antwoord: status 0 (#764 — technische context bij feedback).
