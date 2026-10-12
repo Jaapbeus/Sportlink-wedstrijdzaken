@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- De afhandeling rond de verwerkingsrij van een inkomende e-mail (idempotentiebesluit, opgeven na te veel pogingen, beoordeling na een onbekende verzenduitkomst, vastleggen van classificatie- en verwerkingsfouten, buiten-scope-afhandeling) en de foutcategorisering staan nu één keer in Planner.Shared in plaats van per databasetier; gedrag ongewijzigd, met eigen unit-tests (#1650).
+
 ## [3.13.2.0] — 2026-10-11
 
 ### Changed
