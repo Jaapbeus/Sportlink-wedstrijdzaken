@@ -29,3 +29,4 @@ Planner.Shared/Integrations/SportlinkClub/SportlinkClubFormulierLezer.cs  Intern
 Planner.Shared/Integrations/SportlinkClub/SportlinkMutatieUitvoerder.cs  Internal; alleen geconstrueerd door SportlinkClubClient met diens transport (zie de reden daar).
 Planner.Shared/Integrations/SportlinkClub/SportlinkMutaties.cs  Internal; alleen geconstrueerd door SportlinkClubClient met diens transport (zie de reden daar).
 Planner.Shared/Integrations/SportlinkClub/SportlinkWedstrijdLezer.cs  Internal; alleen geconstrueerd door SportlinkClubClient met diens transport (zie de reden daar).
+Planner.Shared/Integrations/SportlinkClub/SportlinkClubHttp.cs  Internal, stateloos en zelf zonder netwerkverkeer: zet alleen headers op een HttpRequestMessage en begrenst de tijd van een meegegeven aanroep; enige gebruikers zijn SportlinkClubTransport, -TokenBeheer, -FormulierLezer, SportlinkMutatieUitvoerder, SportlinkMutaties en SportlinkWedstrijdLezer (zie de reden bij SportlinkClubClient).

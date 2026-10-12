@@ -131,6 +131,50 @@ rm -f "$PROEF_INF"
 verwacht falen "groot bestand met HttpClient bovenaan zonder EgressGuard"
 rm -f "$PROEF_SH"
 
+# Interpolated strings (#1676 ronde 3): een string ín een interpolatiegat sluit de omringende
+# string niet af, een gat mag over meerdere regels lopen (C# 11), en een preprocessorregel opent
+# geen commentaar.
+printf 'namespace Proef;\npublic static class P { static readonly HttpClient C = new(); static string T(bool b) => $"{(b ? "EgressGuard.ExternalIntegrationsAllowed()" : "x")}"; }\n' > "$PROEF"
+verwacht falen "EgressGuard alleen in een string binnen een interpolatiegat"
+rm -f "$PROEF"
+
+printf 'namespace Proef;\npublic static class P { static readonly HttpClient C = new(); static string T(bool b) => $@"{(b ? "EgressGuard.ExternalIntegrationsAllowed()" : "x")}"; }\n' > "$PROEF"
+verwacht falen "EgressGuard alleen in een string binnen een verbatim interpolatiegat"
+rm -f "$PROEF"
+
+printf 'namespace Proef;\npublic static class P { static readonly HttpClient C = new(); static string T(int x) => $"a {\n  x } EgressGuard.ExternalIntegrationsAllowed() "; }\n' > "$PROEF"
+verwacht falen "EgressGuard alleen in stringtekst na een interpolatiegat over meerdere regels"
+rm -f "$PROEF"
+
+printf 'namespace Proef;\n#region Endpoints /api/*\npublic static class P { static readonly HttpClient C = new(); }\n#endregion\n' > "$PROEF"
+verwacht falen "HttpClient na een #region-regel met /* (geen blokcommentaar)"
+rm -f "$PROEF"
+
+printf 'namespace Proef;\npublic static class P { static readonly HttpClient C = new(); static bool Ok(bool b, System.DateTime t) => $"{(b ? "a" : "b")} {t:HH'"'"':'"'"'mm} {t:dd//MM} {{x}} {global::System.Math.Abs(1)}" != "" && $$"""{ {{b}} "q" }""" != "" && EgressGuard.ExternalIntegrationsAllowed(); }\n' > "$PROEF"
+verwacht slagen "aanroep na interpolated strings met geneste strings, opmaak, {{ en raw \$\$ telt"
+rm -f "$PROEF"
+
+# Andere typen voor uitgaand verkeer en HttpClient-methoden zonder typenaam in het bestand.
+printf 'namespace Proef;\npublic static class P { static string T() => new System.Net.WebClient().DownloadString("x"); }\n' > "$PROEF"
+verwacht falen "WebClient zonder EgressGuard"
+rm -f "$PROEF"
+
+printf 'namespace Proef;\npublic static class P { static object T() => System.Net.WebRequest.Create("x"); }\n' > "$PROEF"
+verwacht falen "WebRequest zonder EgressGuard"
+rm -f "$PROEF"
+
+printf 'namespace Proef;\npublic static class P { static readonly System.Net.Sockets.TcpClient T = new(); }\n' > "$PROEF"
+verwacht falen "TcpClient zonder EgressGuard"
+rm -f "$PROEF"
+
+printf 'namespace Proef;\npublic static class P { static readonly System.Net.Http.HttpMessageInvoker I = new(null!); }\n' > "$PROEF"
+verwacht falen "HttpMessageInvoker zonder EgressGuard"
+rm -f "$PROEF"
+
+printf 'namespace Proef;\npublic partial class P { System.Threading.Tasks.Task<string> T() => _http.GetStringAsync("x"); }\n' > "$PROEF"
+verwacht falen "GetStringAsync op een elders getypeerde client (partial class) zonder EgressGuard"
+rm -f "$PROEF"
+
 printf 'FunctionApp/Admin/BestaatNiet1676.cs  proefregel voor een bestand dat niet bestaat\n' >> "$ALLOWLIST"
 verwacht falen "dode regel in de allowlist"
 cp "$TMP_B" "$ALLOWLIST"
@@ -151,6 +195,27 @@ cp "$TMP_SQL" "$SJP_SQL"
 sed 's/if (await OverslaanZonderUitgaandVerkeerAsync(/if (await Uitgeschakeld(/' "$TMP_PG" > "$SJP_PG"
 verwacht falen "SyncJobProcessor.Run (Postgres) zonder poortbeslissing vóór MarkRunningAsync"
 cp "$TMP_PG" "$SJP_PG"
+
+# Alleen een echte aanroep ná de signatuur van Run telt: geen naam met voorvoegsel, geen
+# definitie en geen aanroep in een methode boven Run.
+sed 's/if (await OverslaanZonderUitgaandVerkeerAsync(/if (await NietOverslaanZonderUitgaandVerkeerAsync(/' "$TMP_PG" > "$SJP_PG"
+verwacht falen "SyncJobProcessor.Run (Postgres) roept alleen een naam met hetzelfde achtervoegsel aan"
+cp "$TMP_PG" "$SJP_PG"
+
+sed 's/if (await BlokkeerBuitenProductieAsync(/if (await Uitgeschakeld(/' "$TMP_SQL" \
+  | awk '/\[Function\("SyncJobProcessor"\)\]/ { print "    internal static Task<bool> BlokkeerBuitenProductieAsync(int x) => Task.FromResult(false);" } { print }' > "$SJP_SQL"
+verwacht falen "SyncJobProcessor (SQL Server): alleen een definitie van de helper boven Run"
+cp "$TMP_SQL" "$SJP_SQL"
+
+sed 's/if (await BlokkeerBuitenProductieAsync(/if (await Uitgeschakeld(/' "$TMP_SQL" \
+  | awk '/\[Function\("SyncJobProcessor"\)\]/ { print "    static async Task Elders() { if (await BlokkeerBuitenProductieAsync(null!, null!, null!, null!)) return; }" } { print }' > "$SJP_SQL"
+verwacht falen "SyncJobProcessor (SQL Server): helperaanroep alleen in een methode boven Run"
+cp "$TMP_SQL" "$SJP_SQL"
+
+sed 's/if (await BlokkeerBuitenProductieAsync(/if (await Uitgeschakeld(/' "$TMP_SQL" \
+  | awk '{ print } /if \(await Uitgeschakeld\(/ { print "        static Task<bool> BlokkeerBuitenProductieAsync(int x) => Task.FromResult(false);" }' > "$SJP_SQL"
+verwacht falen "SyncJobProcessor.Run (SQL Server): alleen een lokale definitie van de helper vóór MarkRunningAsync"
+cp "$TMP_SQL" "$SJP_SQL"
 
 verwacht slagen "hersteld: schone werkboom is weer groen"
 
