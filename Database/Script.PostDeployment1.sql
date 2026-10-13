@@ -1108,7 +1108,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.VeldBe
     ALTER TABLE [dbo].[VeldBeschikbaarheid] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_VeldBeschikbaarheid_ClubCode] DEFAULT 'CLUB'; -- neutrale placeholder, constraint wordt direct hierna gedropt (#598/#610)
 GO
 
--- #435: verwijder VRC-default constraints — clubnaam heeft geen plek als DB-default
+-- #435: verwijder club-specifieke default-constraints — clubnaam heeft geen plek als DB-default
 IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_Speeltijden_ClubCode')
     ALTER TABLE [dbo].[Speeltijden] DROP CONSTRAINT [DF_Speeltijden_ClubCode];
 GO
@@ -1226,7 +1226,7 @@ BEGIN
     );
 END
 GO
--- #501: Verwijder club-specifieke DEFAULT 'VRC' uit AppSettingsAudit.ClubCode
+-- #501: Verwijder club-specifieke ClubCode-default uit AppSettingsAudit.ClubCode
 IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_AppSettingsAudit_ClubCode')
     ALTER TABLE [dbo].[AppSettingsAudit] DROP CONSTRAINT [DF_AppSettingsAudit_ClubCode];
 GO
@@ -1415,7 +1415,7 @@ BEGIN
     );
 END
 GO
--- #501: Verwijder club-specifieke DEFAULT 'VRC' uit TeamVoorkeurTijden.ClubCode
+-- #501: Verwijder club-specifieke ClubCode-default uit TeamVoorkeurTijden.ClubCode
 IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_TeamVoorkeurTijden_ClubCode')
     ALTER TABLE [dbo].[TeamVoorkeurTijden] DROP CONSTRAINT [DF_TeamVoorkeurTijden_ClubCode];
 GO
@@ -1458,7 +1458,7 @@ BEGIN
     );
 END
 GO
--- #501: Verwijder club-specifieke DEFAULT 'VRC' uit UitgeslotenEmailAdressen.ClubCode
+-- #501: Verwijder club-specifieke ClubCode-default uit UitgeslotenEmailAdressen.ClubCode
 IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_UitgeslotenEmailAdressen_ClubCode')
     ALTER TABLE [dbo].[UitgeslotenEmailAdressen] DROP CONSTRAINT [DF_UitgeslotenEmailAdressen_ClubCode];
 GO
@@ -3849,6 +3849,44 @@ BEGIN
     SET @Inzage = @@ROWCOUNT;
 
     SELECT @Geanonimiseerd AS [Geanonimiseerd], @Telemetrie AS [TelemetrieVerwijderd], @Inzage AS [InzageVerwijderd];
+END;
+GO
+
+-- #1701: inzagelog van de contactgegevens van teambegeleiding (avg-schema). Wie (Entra object-ID +
+-- naam-momentopname, uit het Easy Auth-principal) vroeg wanneer de begeleiders van welk team op, en hoeveel
+-- kaarten dat opleverde; nooit gegevens van de ingeziene begeleiders. Bewaartermijn 12 maanden via de
+-- maandelijkse timer CleanupTeambegeleiding. Postgres-tegenhanger:
+-- Database.Postgres/migrations/042_avg_teambegeleidinginzagelog.sql. Bron: Database/avg/Tables/TeambegeleidingInzageLog.sql
+-- en Database/avg/System Stored Procedures/sp_CleanupTeambegeleidingInzageLog.sql.
+IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'avg')
+    EXEC('CREATE SCHEMA [avg]');
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('avg.TeambegeleidingInzageLog'))
+BEGIN
+    CREATE TABLE [avg].[TeambegeleidingInzageLog] (
+        [Id]                 INT            IDENTITY (1, 1) NOT NULL,
+        [ClubCode]           NVARCHAR (20)  NOT NULL,
+        [InzienDoorObjectId] NVARCHAR (64)  NULL,
+        [InzienDoorNaam]     NVARCHAR (200) NULL,
+        [Team]               NVARCHAR (100) NOT NULL,
+        [AantalRijen]        INT            NOT NULL,
+        [mta_inserted]       DATETIME2      NOT NULL CONSTRAINT [DF_avg_TeambegeleidingInzageLog_mta_inserted] DEFAULT (GETUTCDATE()),
+        CONSTRAINT [PK_avg_TeambegeleidingInzageLog] PRIMARY KEY CLUSTERED ([Id] ASC)
+    );
+    CREATE NONCLUSTERED INDEX [IX_avg_TeambegeleidingInzageLog_Club_Datum] ON [avg].[TeambegeleidingInzageLog] ([ClubCode] ASC, [mta_inserted] DESC);
+END
+GO
+-- Bron: Database/avg/System Stored Procedures/sp_CleanupTeambegeleidingInzageLog.sql  (#1701)
+CREATE OR ALTER PROCEDURE [avg].[sp_CleanupTeambegeleidingInzageLog]
+    @NuUtc         DATETIME2,
+    @InzageMaanden INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DELETE FROM [avg].[TeambegeleidingInzageLog] WHERE [mta_inserted] < DATEADD(MONTH, -@InzageMaanden, @NuUtc);
+
+    SELECT @@ROWCOUNT AS [InzageVerwijderd];
 END;
 GO
 

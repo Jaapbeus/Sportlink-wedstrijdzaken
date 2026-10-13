@@ -54,11 +54,16 @@ param appInsightsConnectionString string = ''
 @secure()
 param sqlConnectionString string = ''
 
-@description('Entra ID tenant ID voor Easy Auth (single-tenant) — via GitHub Variable AZURE_AD_TENANT_ID')
-param tenantId string = ''
+// #1700: verplicht en niet leeg. Zonder tenant- en client-ID zou Easy Auth (authsettingsV2 hieronder)
+// stilletjes ontbreken, en dan is X-MS-CLIENT-PRINCIPAL een header die elke aanroeper zelf kan meesturen.
+// Een lege waarde laat de uitrol nu vooraf falen in plaats van een app zonder platform-auth op te leveren.
+@description('Entra ID tenant ID voor Easy Auth (single-tenant) — via GitHub Variable AZURE_AD_TENANT_ID. Verplicht (#1700).')
+@minLength(1)
+param tenantId string
 
-@description('Entra ID client ID van de App Registration — via GitHub Variable AZURE_AD_CLIENT_ID')
-param clientId string = ''
+@description('Entra ID client ID van de App Registration — via GitHub Variable AZURE_AD_CLIENT_ID. Verplicht (#1700).')
+@minLength(1)
+param clientId string
 
 // ── Bestaand storage account hergebruiken — NIET opnieuw declareren ────────────
 // 'existing' voorkomt een dubbele resource-declaratie van dezelfde storageAccountName als in
@@ -192,9 +197,10 @@ resource roleAssignmentTableDataContributor 'Microsoft.Authorization/roleAssignm
 // Zelfde resource-vorm als de Consumption-app (modules/function-app.bicep) — Flex-compatibel,
 // want authsettingsV2 hangt onder Microsoft.Web/sites/config ongeacht het hostingplan.
 // FLEX-04 raakt alleen de vorm; de inhoudelijke herconfiguratie (registration, 3-user-test)
-// gebeurt in FLEX-06.
+// gebeurt in FLEX-06. Sinds #1700 onvoorwaardelijk: tenantId/clientId zijn verplicht (@minLength(1)),
+// dus deze module levert nooit meer een Function App zonder platform-auth op.
 
-resource flexFunctionAppAuthSettings 'Microsoft.Web/sites/config@2023-01-01' = if (!empty(tenantId) && !empty(clientId)) {
+resource flexFunctionAppAuthSettings 'Microsoft.Web/sites/config@2023-01-01' = {
   name: 'authsettingsV2'
   parent: flexFunctionApp
   properties: {

@@ -37,7 +37,7 @@ namespace Database.Postgres;
 /// <para>
 /// <b>Empirisch gevonden bug: hoofdlettergevoeligheid.</b> Een eerste versie gebruikte de
 /// hoofdlettergevoelige operator <c>~</c> — de un-skipped integratietest met teamnaam
-/// <c>"VRC G7-1"</c> tegen clubcode <c>"vrc"</c> (representatief: de clubcode-kolom en
+/// <c>"TESTCLUB G7-1"</c> tegen clubcode <c>"testclub"</c> (representatief: de clubcode-kolom en
 /// Sportlink-teamnamen komen uit verschillende bronnen en hun casing-conventies zijn niet
 /// gegarandeerd gelijk) faalde stil — geen crash, gewoon nul rijen, want de G-tak matchte nooit en
 /// de daaropvolgende <c>Speeltijden</c>-join op de generieke leeftijdscategorie vond ook niets.

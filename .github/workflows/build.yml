@@ -45,6 +45,10 @@ jobs:
   build:
     name: Build FunctionApp + BlazorAdmin
     runs-on: ubuntu-latest
+    # #1700: de lokale autorisatiebypass staat in CI expliciet uit. Tests draaien met productiegedrag
+    # (rolcontrole verplicht) en zetten LOCAL_AUTH_BYPASS alleen zelf aan waar ze de bypass bewijzen.
+    env:
+      LOCAL_AUTH_BYPASS: "false"
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -736,6 +740,8 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       POSTGRES_CONNECTION_STRING: "Host=localhost;Port=5432;Username=ci_postgres;Password=ci-wegwerpwachtwoord-niet-geheim;Database=sportlink_ci"
+      # #1700: lokale autorisatiebypass expliciet uit; zie de toelichting bij de job build.
+      LOCAL_AUTH_BYPASS: "false"
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

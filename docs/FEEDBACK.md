@@ -193,6 +193,10 @@ aan als de afweging anders uitvalt.
 
 ## 9. Verzoeken van betrokkenen
 
+Dit hoofdstuk gaat over feedback. Voor alle andere tabellen (teambegeleiding en het inzagelog daarvan,
+e-mail, auditlogs, wedstrijddata) staat de procedure per tabel in
+[ADMIN-VERZOEK-VAN-BETROKKENE.md](ADMIN-VERZOEK-VAN-BETROKKENE.md).
+
 **Inzage/rectificatie:** zoek de melding(en) van de betrokkene in het overzicht (de naam is zichtbaar
 zolang de melding niet is geanonimiseerd).
 

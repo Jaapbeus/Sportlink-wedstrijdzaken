@@ -24,7 +24,7 @@ public class PostgresPlannerViewIntegrationTests : IAsyncLifetime
         ?? throw new InvalidOperationException($"{ConnectionStringEnvVar} niet gezet — zie PostgresMergeOrchestratorIntegrationTests.");
 
     private PostgresMergeOrchestrator Orchestrator => new(ConnectionString);
-    private const string ClubCode = "vrc";
+    private const string ClubCode = "testclub";
 
     public async Task InitializeAsync()
     {
@@ -136,8 +136,8 @@ public class PostgresPlannerViewIntegrationTests : IAsyncLifetime
         await SeedVeldAsync(connection, 1, "Veld 1");
         await SeedVeldAsync(connection, 10, "Veld 10");
         await SeedSpeeltijdenAsync(connection, "JO13", 75);
-        await SeedTeamAsync(connection, "VRC JO13-1", "Onder 13");
-        await SeedMatchAsync(connection, 111, "VRC JO13-1", "Veld 10");
+        await SeedTeamAsync(connection, "TESTCLUB JO13-1", "Onder 13");
+        await SeedMatchAsync(connection, 111, "TESTCLUB JO13-1", "Veld 10");
         await Orchestrator.MergeStgToHisAsync(KnownEntities.Matches);
         await Orchestrator.MergeStgToHisAsync(KnownEntities.Teams);
 
@@ -158,8 +158,8 @@ public class PostgresPlannerViewIntegrationTests : IAsyncLifetime
         await SeedAppSettingsAsync(connection);
         await SeedVeldAsync(connection, 1, "Veld 1");
         await SeedSpeeltijdenAsync(connection, "JO13", 75);
-        await SeedTeamAsync(connection, "VRC JO13-1", "Onder 13");
-        await SeedMatchAsync(connection, 222, "VRC JO13-1", "Onbekend Veld X");
+        await SeedTeamAsync(connection, "TESTCLUB JO13-1", "Onder 13");
+        await SeedMatchAsync(connection, 222, "TESTCLUB JO13-1", "Onbekend Veld X");
         await Orchestrator.MergeStgToHisAsync(KnownEntities.Matches);
         await Orchestrator.MergeStgToHisAsync(KnownEntities.Teams);
 
@@ -181,7 +181,7 @@ public class PostgresPlannerViewIntegrationTests : IAsyncLifetime
         await SeedSpeeltijdenAsync(connection, "G", 50); // G-teams: eigen, kortere speeltijd
         await SeedSpeeltijdenAsync(connection, "JO9", 60);
         // Geen team-rij nodig: G-detectie loopt via teamnaam zelf, niet via leeftijdscategorie.
-        await SeedMatchAsync(connection, 333, "VRC G7-1", "Veld 1");
+        await SeedMatchAsync(connection, 333, "TESTCLUB G7-1", "Veld 1");
         await Orchestrator.MergeStgToHisAsync(KnownEntities.Matches);
 
         var rijen = await PostgresPlannerAvailabilityReader.GetFieldOccupationsAsync(
@@ -204,7 +204,7 @@ public class PostgresPlannerViewIntegrationTests : IAsyncLifetime
         await ExecAsync(connection, """
             INSERT INTO planner.geplandewedstrijden
                 (datum, aanvangstijd, eindtijd, veldnummer, teamnaam, tegenstander, status, isvervallen, clubcode)
-            VALUES ('2026-09-05', '18:00', '19:15', 3, 'VRC JO15-1', 'Gastteam', 'Te bevestigen', false, @club)
+            VALUES ('2026-09-05', '18:00', '19:15', 3, 'TESTCLUB JO15-1', 'Gastteam', 'Te bevestigen', false, @club)
             """, p => p.AddWithValue("club", ClubCode));
 
         var rijen = await PostgresPlannerAvailabilityReader.GetFieldOccupationsAsync(
@@ -213,6 +213,6 @@ public class PostgresPlannerViewIntegrationTests : IAsyncLifetime
         rijen.Should().ContainSingle();
         rijen[0].VeldNummer.Should().Be(3);
         rijen[0].Bron.Should().Be("Planner");
-        rijen[0].Wedstrijd.Should().Be("VRC JO15-1 - Gastteam");
+        rijen[0].Wedstrijd.Should().Be("TESTCLUB JO15-1 - Gastteam");
     }
 }

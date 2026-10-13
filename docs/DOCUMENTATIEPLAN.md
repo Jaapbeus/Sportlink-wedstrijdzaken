@@ -52,6 +52,7 @@ Azure-productieomgeving. Eenmalig uit te voeren, daarna niet meer dagelijks nodi
 | Bestand | Onderwerp |
 |---------|-----------|
 | [ADMIN-TEAMBEGELEIDING-IMPORT.md](ADMIN-TEAMBEGELEIDING-IMPORT.md) | AVG-veilig exporteren van teambegeleidersgegevens uit Sportlink |
+| [ADMIN-VERZOEK-VAN-BETROKKENE.md](ADMIN-VERZOEK-VAN-BETROKKENE.md) | Verzoek van betrokkene (AVG art. 15-17, 21): per tabel zoeksleutel, inzage, wissing en automatische termijn |
 | [TESTMODUS-ALLSTARS.md](TESTMODUS-ALLSTARS.md) | ALLSTARS-testmodus: activeren, fictieve wedstrijden, planner testen |
 | [MONITORING.md](MONITORING.md) | Resource Health Alerts, KQL-queries, escalatiematrix — beheer van alerts |
 | [knvb-speeldagenkalenders/README.md](knvb-speeldagenkalenders/README.md) | Importeren van KNVB-speeldagenkalenders |
