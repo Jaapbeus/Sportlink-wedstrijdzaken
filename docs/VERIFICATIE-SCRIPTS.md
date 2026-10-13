@@ -846,5 +846,8 @@ de repository-Gitleaksconfiguratie: opaque, stateless en langere tokens, negatie
 teruggezette oude patronen. Geen tokenwaarden of scanner-rapporten in de uitvoer. Exit 0 betekent
 dat deze patrooncontroles slagen; geen bewijs voor live GitHub App-authenticatie. Dezelfde
 controle draait in de `gitleaks`-job van `security-scan.yml`, na installatie van Gitleaks door
-de bestaande action. Lokale eigen hookpatronen blijven behouden bij een template-update
+de bestaande action. Een aanvullende CI-stap controleert het door GitHub uitgegeven
+workflow-token via alleen `GET /rate_limit`; meldt alleen de vorm en succes, nooit het token
+of de responsebody. Dit forceert geen formaat en vervangt de enabled/disabled-test met eigen
+App-authenticatie niet. Lokale eigen hookpatronen blijven behouden bij een template-update
 ([DEVELOPER-SETUP.md](DEVELOPER-SETUP.md#32-gevoelige-patronen-configureren)).

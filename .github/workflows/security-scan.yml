@@ -63,6 +63,18 @@ jobs:
       - name: GitHub-tokenformaten synthetisch verifiëren
         run: python3 scripts/ci/test-github-token-formats.py
 
+      - name: GitHub-token met een leesaanroep verifiëren
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const token = core.getInput('github-token', { required: true });
+            core.setSecret(token);
+            const vorm = token.startsWith('ghs_') && token.split('.').length === 3
+              ? 'stateless' : 'opaque of ander formaat';
+            const r = await github.request('GET /rate_limit');
+            if (r.status !== 200) throw new Error('GitHub-token leescontrole mislukt');
+            core.info(`GitHub-token leescontrole geslaagd (${vorm}); geen tokenwaarde gelogd.`);
+
       - name: Resultaat samenvatting
         if: failure()
         run: |
