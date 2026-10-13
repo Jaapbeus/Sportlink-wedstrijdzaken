@@ -8,6 +8,7 @@ using Newtonsoft.Json;
 using Npgsql;
 using Planner.Endpoints.Teambegeleiding;
 using Planner.Shared;
+using Planner.Shared.Teambegeleiding;
 
 namespace FunctionApp.Postgres.Admin;
 
@@ -45,7 +46,7 @@ public static class AdminTeambegeleidingFunction
     // aangeleverde CSV-import, dus een rol in kleine letters komt in de praktijk voor — met LIKE
     // viel die stilzwijgend in de ELSE-tak en stond de trainer onderaan in plaats van bovenaan.
     // Zelfde klasse fout als #820.
-    private const string RolVoorkeurCase =
+    internal const string RolVoorkeurCase =
         "CASE WHEN teamrol ILIKE '%Trainer%' THEN 1 WHEN teamrol ILIKE '%Coach%' THEN 2 WHEN teamrol ILIKE '%Teamleider%' THEN 3 ELSE 4 END";
 
     [Function("AdminTeambegeleidingTeams")]
@@ -69,40 +70,18 @@ public static class AdminTeambegeleidingFunction
             });
 
     // AVG: de teamnaam komt bewust niet in de errorContext — die belandt in het foutlog.
+    // #1701: elke opvraging legt een inzageregel vast (wie, wanneer, welk team, hoeveel rijen) in
+    // avg.teambegeleidinginzagelog; zonder geslaagde inzageregel gaan er geen gegevens terug.
     [Function("AdminTeambegeleidingGet")]
     public static Task<IActionResult> GetBegeleiders(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/teambegeleiding/{team}")] HttpRequest req,
         string team,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAuthenticatedAsync(req, context.GetLogger("AdminTeambegeleidingGet"), "begeleiders ophalen (team niet gelogd — AVG)",
-            async clubCode =>
-            {
-                await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
-                await connection.OpenAsync();
-                await using var command = new NpgsqlCommand($@"
-                    SELECT naam, teamrol, emailadres, telefoonnummer, functie
-                    FROM avg.teambegeleiding
-                    WHERE team = @team
-                      AND clubcode = @clubcode
-                    ORDER BY {RolVoorkeurCase}, naam
-                ", connection);
-                command.Parameters.AddWithValue("team", team);
-                command.Parameters.AddWithValue("clubcode", clubCode);
-                await using var reader = await command.ExecuteReaderAsync();
-                var list = new List<object>();
-                while (await reader.ReadAsync())
-                {
-                    list.Add(new
-                    {
-                        Naam = reader.IsDBNull(0) ? "" : reader.GetString(0),
-                        Teamrol = reader.IsDBNull(1) ? "" : reader.GetString(1),
-                        Emailadres = reader.IsDBNull(2) ? null : reader.GetString(2),
-                        Telefoonnummer = reader.IsDBNull(3) ? null : reader.GetString(3),
-                        Functie = reader.IsDBNull(4) ? null : reader.GetString(4)
-                    });
-                }
-                return new OkObjectResult(list);
-            });
+            clubCode => TeambegeleidingInzageEndpointCore.ContactgegevensAsync(
+                clubCode, team,
+                new TeambegeleidingInzager(EasyAuthHelper.GetCallerObjectId(req), EasyAuthHelper.GetCallerName(req)),
+                new PostgresTeambegeleidingInzageStore(PostgresDatabaseConfig.ConnectionString)));
 
     /// <summary>
     /// Stuurt een vraag over teambegeleiding door naar de begeleider(s) — Postgres-vertaling van

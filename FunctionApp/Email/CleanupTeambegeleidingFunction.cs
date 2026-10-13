@@ -12,7 +12,7 @@ public static class CleanupTeambegeleidingFunction
         FunctionContext context)
     {
         var log = context.GetLogger("CleanupTeambegeleiding");
-        log.LogInformation("AVG-cleanup gestart: avg.Teambegeleiding + avg.ImportLog");
+        log.LogInformation("AVG-cleanup gestart: avg.Teambegeleiding + avg.ImportLog + avg.TeambegeleidingInzageLog");
 
         try
         {
@@ -38,10 +38,14 @@ public static class CleanupTeambegeleidingFunction
                 await cmd2.ExecuteNonQueryAsync();
                 log.LogInformation("AVG-cleanup ImportLog geslaagd");
             }
+
+            // #1701: inzagelog van de contactgegevens — alleen een telling in het log, nooit inhoud.
+            var inzage = await SportlinkFunction.Admin.SqlTeambegeleidingInzageStore.VerwijderVerlopenInzageAsync(conn, DateTime.UtcNow);
+            log.LogInformation("AVG-cleanup TeambegeleidingInzageLog geslaagd: {Aantal} regels verwijderd", inzage);
         }
         catch (Exception ex)
         {
-            log.LogError(ex, "AVG-cleanup Teambegeleiding/ImportLog mislukt");
+            log.LogError(ex, "AVG-cleanup Teambegeleiding/ImportLog/InzageLog mislukt");
             throw;
         }
     }

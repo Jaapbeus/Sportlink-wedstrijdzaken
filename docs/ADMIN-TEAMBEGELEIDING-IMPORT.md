@@ -154,7 +154,7 @@ Klopt het aantal met wat je in Sportlink Club hebt gezien? Dan is alles goed geg
 
 ## Hoe vaak moet dit?
 
-Deze export wordt **wekelijks** uitgevoerd — kies een vast moment dat past bij jouw club. Zo is de lijst altijd actueel met nieuwe leden, gewijzigde rollen en vertrokken begeleiders.
+Importeer **aan het begin van elk seizoen** en daarna **regelmatig tijdens het seizoen** — aanbevolen is wekelijks, op een vast moment dat past bij jouw club, of zodra de begeleiding van een team verandert. Elke import vervangt de lijst volledig, dus nieuwe begeleiders komen erbij, gewijzigde rollen worden bijgewerkt en vertrokken begeleiders verdwijnen meteen. Wordt er langere tijd niet geïmporteerd, dan blijft de lijst staan tot het vangnet hem na 1 jaar verwijdert (zie SECURITY.md, Laag 6); het PowerShell-script (optie B) waarschuwt al als de gegevens ouder zijn dan 90 dagen.
 
 ---
 
