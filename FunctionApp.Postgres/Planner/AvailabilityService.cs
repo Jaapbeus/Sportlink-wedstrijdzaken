@@ -1,6 +1,7 @@
 using FunctionApp.Postgres.Planner.Repositories;
 using Microsoft.Extensions.Logging;
 using Planner.Shared;
+using Planner.Shared.Email;
 
 namespace FunctionApp.Postgres.Planner;
 
@@ -26,7 +27,8 @@ public static class AvailabilityService
         var response = new CheckAvailabilityResponse();
         var cc = PostgresClubScope.Resolve(clubCode);
 
-        if (!DateOnly.TryParse(request.Datum, out var date))
+        // #1730: strikt jjjj-MM-dd (API-contract én modelgrens); geen cultuurafhankelijke lezing.
+        if (!ModelDatum.TryParse(request.Datum, out var date))
         {
             response.Reden = "Ongeldige datum.";
             return response;

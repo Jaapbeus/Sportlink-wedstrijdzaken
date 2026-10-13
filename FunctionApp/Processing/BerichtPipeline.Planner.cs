@@ -41,16 +41,8 @@ public static partial class BerichtPipeline
         if (datums.Count == 0) return PlannerAntwoordJson.DatumOnbekend();
 
         if (datums.Count > 1)
-        {
-            var multiResults = new List<(string Datum, object? Response)>();
-            foreach (var datum in datums)
-            {
-                var resp = await PlannerService.CheckAvailabilityAsync(
-                    BouwBeschikbaarheidRequest(classificatie, datum), log, clubCode);
-                multiResults.Add((datum, resp));
-            }
-            return PlannerAntwoordJson.MultiDatum(multiResults);
-        }
+            return await PlannerAntwoordJson.MultiDatumAsync(datums, async datum =>
+                await PlannerService.CheckAvailabilityAsync(BouwBeschikbaarheidRequest(classificatie, datum), log, clubCode));
 
         // Dezelfde datum als de tegenstander-lookup hierboven gebruikt: anders loopt de
         // plannercheck over een andere datum dan de rest van de verwerking.
@@ -74,7 +66,7 @@ public static partial class BerichtPipeline
         string cc, bool eigenTeamHerkend, string? clubCode, ILogger log, TraceBuilder? trace)
     {
         if (string.IsNullOrWhiteSpace(classificatie.Tegenstander) || eigenTeamHerkend || alleDatums.Count != 1
-            || !DateOnly.TryParse(alleDatums[0], out var opponentCheckDatum))
+            || !ModelDatum.TryParse(alleDatums[0], out var opponentCheckDatum))
             return default;
 
         var wedstrijdOpDatum = await PlannerDataAccess.FindMatchByOpponentAsync(
@@ -103,7 +95,7 @@ public static partial class BerichtPipeline
         ClubAppSettingsSnapshot? clubSettings)
     {
         if (string.IsNullOrEmpty(classificatie.TeamNaam) || string.IsNullOrEmpty(classificatie.Datum)
-            || !DateOnly.TryParse(classificatie.Datum, out var datum))
+            || !ModelDatum.TryParse(classificatie.Datum, out var datum))
             return PlannerAntwoordJson.OnvoldoendeHerplanGegevens();
 
         var wedstrijd = await PlannerDataAccess.FindMatchAsync(classificatie.TeamNaam, datum, clubCode);

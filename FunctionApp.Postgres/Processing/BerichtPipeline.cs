@@ -55,7 +55,7 @@ internal static partial class BerichtPipeline
         }
 
         if (string.IsNullOrEmpty(classificatie.Datum)) return;
-        if (!DateOnly.TryParse(classificatie.Datum, out var datum)) return;
+        if (!ModelDatum.TryParse(classificatie.Datum, out var datum)) return;
 
         var tekst = (onderwerp + " " + eigenTekst).ToLowerInvariant();
         var dagNamen = new (string naam, DayOfWeek dag)[]
@@ -101,6 +101,8 @@ internal static partial class BerichtPipeline
         string? clubCode = null, ClubAppSettingsSnapshot? clubSettings = null, TraceBuilder? trace = null)
     {
         ArgumentNullException.ThrowIfNull(teamResolver);
+        // #1730: de ene strikte grens voor alle modeldatumvelden, vóór trace, teamherkenning en verwerking.
+        (classificatie.Datum, classificatie.GewensteDatum, classificatie.Datums) = ModelDatum.Grens(classificatie.Datum, classificatie.GewensteDatum, classificatie.Datums);
         trace?.Classificatie(classificatie.Type.ToString(), classificatie.TeamNaam, classificatie.Tegenstander, classificatie.GetAlleDatums().Count, classificatie.AanvangsTijd);
 
         var cs = PostgresDatabaseConfig.ConnectionString;
@@ -252,7 +254,7 @@ internal static partial class BerichtPipeline
             return aiDatums;
 
         DateOnly weekStart;
-        if (aiDatums.Count > 0 && DateOnly.TryParse(aiDatums[0], out var firstDate))
+        if (aiDatums.Count > 0 && ModelDatum.TryParse(aiDatums[0], out var firstDate))
         {
             int daysFromMonday = ((int)firstDate.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
             weekStart = firstDate.AddDays(-daysFromMonday);
