@@ -57,9 +57,11 @@ public class DatabaseUitvalMonitorFunction
     internal static readonly TimeSpan MinimaleHerhalingsinterval = DatabaseUitvalCore.MinimaleHerhalingsinterval;
 
     // #1718: letterlijke cron; reden en uitzetten: zie docs/MONITORING.md.
+    internal const string Schedule = "0 0 8 * * *";
+
     [Function("DatabaseUitvalMonitor")]
     public async Task Run(
-        [TimerTrigger("0 0 8 * * *")] TimerInfo timer,
+        [TimerTrigger(Schedule)] TimerInfo timer,
         FunctionContext context)
     {
         var log = context.GetLogger("DatabaseUitvalMonitor");
