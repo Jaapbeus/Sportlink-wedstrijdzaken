@@ -19,7 +19,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Fixed
-- Skill `autonoom`: bij 'wacht op merge' en reviewbewijs telt alleen een comment van een vertrouwde auteur (OWNER/MEMBER/COLLABORATOR of `claude[bot]`), gelijk aan de turn-gate (#1733)
+- Skill `autonoom`: de slotzin 'wacht op merge' telt alleen van `github-actions[bot]` (type Bot) met de exacte kop uit `claude-issue-turn-eindlabel.js`, reviewbewijs alleen van een vertrouwde auteur (OWNER/MEMBER/COLLABORATOR of `claude[bot]`), gelezen via REST omdat `gh --json comments` het `[bot]`-suffix en `user.type` weglaat (#1733)
 - Wedstrijd aanmaken: een team uit de dropdown (bondsnotatie, bijv. `[club] O14-2`) wordt nu gevonden in Sportlinks teamlijst (lokale notatie, bijv. `JO14-2`) in plaats van de fout "niet (eenduidig) gevonden" (#1737)
 
 ### Changed
