@@ -227,33 +227,42 @@ jobs:
             4. Commit en push de verwerking op dezelfde branch (specifieke bestanden, geen
                `git add -A`).
             5. Plaats op de PR een comment die per bevinding de afhandeling vermeldt, met de
-               beoordeelde SHA. Bepaal daarna de volgende beurt (AGENTS.md, rondelimiet):
-               - De reviewer gaf op de huidige head-SHA "geen bevindingen", je hebt dus niets
-                 gewijzigd, én er staat geen eigenaarspunt open (keuze, acceptatie, risico of
-                 onverwerkte bevinding; een controle die pas na de release kan telt niet) → wacht
-                 op groene CI (beide check-runs aanwezig, zie hierboven) en zet op het issue een
-                 comment `Fase: verwerking — wacht op merge`, met de PR, de beoordeelde SHA en als
-                 laatste regel `Volgende beurt: merge door implementer`. De beurt blijft zo bij de
-                 implementer; de eerstvolgende interactieve sessie merget na de controles van de
-                 zelfmerge-regel (AGENTS.md, "Zelfmerge na schone review"). Jij merget niet en
-                 haalt de PR niet uit draft. Uitzondering: raakt de PR `main`, Azure-resources of
-                 kosten, het databaseschema of migraties, of werkinstructies/skills (`AGENTS.md`,
-                 `CLAUDE.md`, `.agents/`, `.claude/`), dan gaat de beurt naar de eigenaar (volgende
-                 regel). De workflow controleert dat ook zelf.
-               - Wel een eigenaarspunt of harde uitzondering, alle bevindingen "niet overgenomen"
-                 zonder codewijziging (de reviewer beoordeelde die SHA al), óf dit was al de
-                 tweede reviewronde op deze PR → wacht op groene CI (beide check-runs aanwezig)
-                 en zet op het issue een comment `Fase: eigenaarsbesluit` met het openstaande punt
-                 en als laatste regel `Volgende beurt: turn: owner`.
-               - Wel codewijzigingen en dit was de eerste ronde → wacht op groene CI (beide check-runs aanwezig), plaats een
-                 nieuwe reviewaanvraag op het issue (zelfde zes regels als implementatiestap 7,
-                 met de nieuwe head-SHA, eindigend op `Volgende beurt: turn: codex`).
-               - Ontbreekt na je push binnen 10 minuten `Build FunctionApp + BlazorAdmin` of de
-                 Security Gate op de nieuwe head-SHA (merge-conflict met `develop`, of geen
+               beoordeelde SHA. Bepaal daarna de volgende beurt (AGENTS.md, rondelimiet). Loop de
+               takken in deze volgorde af en voer alleen de eerste tak die geldt uit; de takken
+               sluiten elkaar zo uit. "Schone review" = de reviewer gaf op de huidige head-SHA
+               "geen bevindingen" en je hebt dus niets gewijzigd.
+               - Ontbreekt op de head-SHA (na je push: binnen 10 minuten) `Build FunctionApp +
+                 BlazorAdmin` of de Security Gate (merge-conflict met `develop`, of geen
                  pull_request-run om een andere reden; deze run mag geen workflow dispatchen, #1641)
                  → geen reviewaanvraag: plaats op de PR "CI niet bewezen op <SHA>" met wat
                  ontbreekt, zet op het issue `Fase: eigenaarsbesluit` met als laatste regel
                  `Volgende beurt: turn: owner`.
+               - Schone review, er staat geen eigenaarspunt open (keuze, acceptatie, risico of
+                 onverwerkte bevinding; een controle die pas na de release kan telt niet) en geen
+                 harde uitzondering → wacht op groene CI (beide check-runs aanwezig, zie hierboven)
+                 en zet op het issue een comment `Fase: verwerking — wacht op merge`, met de PR, de
+                 beoordeelde SHA en als laatste regel `Volgende beurt: merge door implementer`. Dit
+                 geldt ongeacht het rondenummer: ook na de tweede ronde gaat een schone review niet
+                 naar de eigenaar (AGENTS.md, #1690). De beurt blijft zo bij de implementer; de
+                 eerstvolgende interactieve sessie merget na de controles van de zelfmerge-regel
+                 (AGENTS.md, "Zelfmerge na schone review"). Jij merget niet en haalt de PR niet uit
+                 draft. Harde uitzondering: de PR raakt `main`, Azure-resources of kosten, het
+                 databaseschema of migraties, of werkinstructies/skills (`AGENTS.md`, `CLAUDE.md`,
+                 `.agents/`, `.claude/`); die valt onder de volgende tak. De workflow controleert
+                 dat ook zelf.
+               - Wel een eigenaarspunt of harde uitzondering, of alle bevindingen "niet
+                 overgenomen" zonder codewijziging (de reviewer beoordeelde die SHA al) → wacht op
+                 groene CI (beide check-runs aanwezig) en zet op het issue een comment
+                 `Fase: eigenaarsbesluit` met het openstaande punt en als laatste regel
+                 `Volgende beurt: turn: owner`.
+               - Wel codewijzigingen en dit was de eerste ronde → wacht op groene CI (beide
+                 check-runs aanwezig), plaats een nieuwe reviewaanvraag op het issue (zelfde zes
+                 regels als implementatiestap 7, met de nieuwe head-SHA, eindigend op
+                 `Volgende beurt: turn: codex`).
+               - Wel codewijzigingen en dit was al de tweede reviewronde (er is dus geen schone
+                 review op de head) → wacht op groene CI (beide check-runs aanwezig) en zet op het
+                 issue een comment `Fase: eigenaarsbesluit` (rondelimiet bereikt) met als laatste
+                 regel `Volgende beurt: turn: owner`.
                Tel de rondes aan de hand van de reviewaanvragen ("Fase: review") op het issue.
 
             Altijd, in beide fasen:
