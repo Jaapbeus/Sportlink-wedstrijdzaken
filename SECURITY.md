@@ -546,6 +546,21 @@ zonder redeploy. De cleanup wordt maandelijks (1e van de maand, 04:30 UTC) uitge
 `CleanupAppSettingsAuditFunction`. De stored procedure `dbo.sp_CleanupAppSettingsAudit` is
 idempotent.
 
+### E-mail naar de AI-provider: verwerkingsregister (AVG art. 30, #1699)
+
+De e-mailpijplijn stuurt gegevens uit inkomende berichten naar een externe AI-provider om ze te
+classificeren. Velden per aanroep, wat er vooraf mee gebeurt, de doorgiftevoorwaarden en de volledige
+registerrij: **[docs/EMAIL-VERWERKING.md](docs/EMAIL-VERWERKING.md) §5**. Samengevat:
+
+| Veld | Inhoud |
+|---|---|
+| Verwerking | Classificatie van inkomende e-mail (incl. correctiedetectie op replies en de e-mailtester) |
+| Velden naar de provider | E-mailadres van de afzender, onderwerp en berichttekst (begrensd; HTML verwijderd bij mailboxberichten, niet bij de tester; persoonsgegevens in de tekst worden niet gemaskeerd); clubnaam en datum in de instructies; gesaneerde samenvattingen van leermomenten |
+| Verwerker | OpenAI (OpenAI-API, rechtstreeks); model uit de app setting `AiModelName`; alleen waar `EgressGuard` uitgaande integraties toestaat |
+| Grondslag | Door de eigenaar in te vullen (EMAIL-VERWERKING.md §5c) |
+| Verwerkersovereenkomst, bewaartermijn bij de verwerker, doorgifte-instrument | Door de eigenaar in te vullen (EMAIL-VERWERKING.md §5c) |
+| Bewaartermijn in de applicatie | `planner.EmailVerwerking`: anonimiseren na 30–90 dagen, verwijderen na 90 dagen (Laag 6) |
+
 ### Sportlink-mutatie-audit (`SportlinkMutationAudit`, #1114)
 
 `dbo.SportlinkMutationAudit` / `public.sportlinkmutationaudit` legt bij elke Sportlink-mutatiepoging

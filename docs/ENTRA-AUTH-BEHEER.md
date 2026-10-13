@@ -76,6 +76,7 @@ PR-CI bewaakt wordt — laag 4. De overige vier zijn alleen tegen Entra zelf of 
 
 | Laag | Bewaakt door | Wanneer | Automatisch? |
 |---|---|---|---|
+| 0 — Platform-auth aan (#1700) | `Verify-AzureAuthSetup.ps1` met `-FunctionAppName`/`-ResourceGroupName` (leest `authsettingsV2`, zonder secrets); daarnaast weigert `function-app-flex.bicep` een lege `tenantId`/`clientId` (`@minLength(1)`) | Handmatig, tegen Azure; de Bicep-regel bij elke uitrol | ❌ |
 | 1 — Single tenant | `Verify-AzureAuthSetup.ps1` | Handmatig, tegen Entra | ❌ |
 | 2 — Assignment required | `Verify-AzureAuthSetup.ps1` | Handmatig, tegen Entra | ❌ |
 | 3a — App Roles | `Verify-AzureAuthSetup.ps1` | Handmatig, tegen Entra | ❌ |
@@ -101,7 +102,33 @@ Beide testklassen zijn mutatiegetest: met de rolcontrole uitgeschakeld vallen er
 uitpakken van de rollen uitgeschakeld drie. Een groene test die niet rood kán worden, bewaakt niets.
 
 `Verify-AzureAuthSetup.ps1` blijft daarnaast de enige plek waar alle vijf lagen in één keer
-langskomen — inclusief de vier die alleen tegen Entra zelf te controleren zijn.
+langskomen — inclusief de vier die alleen tegen Entra zelf te controleren zijn — plus laag 0.
+
+### Lokale ontwikkelbypass (#1700)
+
+De rolcontrole van laag 5 valt alleen weg met de expliciete schakelaar `LOCAL_AUTH_BYPASS=true`, en
+nooit als de app in Azure draait (`WEBSITE_SITE_NAME` gezet). De beslisregel staat één keer in
+`Planner.Shared/Infrastructure/LokaleOntwikkelomgeving.cs`; `EasyAuthHelper` en `EgressGuard` van beide
+tiers zijn er dunne adapters op.
+
+| Omgeving | Rolcontrole | Uitgaand verkeer (EgressGuard) |
+|---|---|---|
+| Azure, geen schakelaar (productie) | Verplicht | Open |
+| Buiten Azure, geen schakelaar (CI, losse `func start`, andere hosting) | Verplicht | Dicht, tenzij `AllowExternalIntegrations=true` |
+| Buiten Azure, `LOCAL_AUTH_BYPASS=true` (`Start-Debug.ps1`) | Overgeslagen; audit-actor `lokale-ontwikkelaar` | Dicht, tenzij `AllowExternalIntegrations=true` |
+| Azure, `LOCAL_AUTH_BYPASS=true` | Verplicht (schakelaar geweigerd, waarschuwing bij opstarten) | Dicht, tenzij `AllowExternalIntegrations=true` |
+
+Alleen de letterlijke waarde `true` (hoofdletterongevoelig) telt; elke andere waarde faalt dicht. De
+host logt bij het opstarten eenmalig, zonder waarden, of de bypass actief is of geweigerd.
+
+**Wat de tests van de 3-user-test afdekken.** `EndpointAutorisatieTests` (beide tiers) roept elk
+HTTP-endpoint aan zonder principal (verwacht 401), met alleen `user` (403, behalve de bewuste
+uitzonderingen) en met de vereiste rol (poort gepasseerd), en doet dat in de drie omgevingen waarin
+de rolcontrole verplicht is: productie, buiten Azure zonder schakelaar, en Azure met een geweigerde
+schakelaar. De bypass zelf is per endpoint bewezen met de schakelaar buiten Azure. Wat alleen live te
+bewijzen is: dat Easy Auth in Azure echt aan staat en een meegestuurde header wegstript (laag 0 en de
+smoke tests in `deploy.yml`), en de browserkant van de tabel hierboven (Entra-toewijzing, tokens,
+`NoAccess`-pagina).
 
 ## Identifiers (club-specifiek — haal op via Azure Portal)
 
@@ -213,9 +240,10 @@ aan als de bron.
 
 Documenteer de uitkomst per release. Geen gebruikersrollentest → geen acceptatie.
 
-**Kanttekening bij rij 5 (#988):** de server-side handhaving (`EasyAuthHelper.RequireRole`) is
-lokaal niet te testen — die geeft altijd `null` (toegestaan) terug zolang `WEBSITE_SITE_NAME`
-ontbreekt (elke lokale dev-run). Voor #988 zelf volstaat bevestigen dat de rol in Entra bestaat en
+**Kanttekening bij rij 5 (#988):** tot #1700 was de server-side handhaving (`EasyAuthHelper.RequireRole`)
+lokaal niet te testen, omdat de rolcontrole openviel zolang `WEBSITE_SITE_NAME` ontbrak. Sinds #1700
+is de bypass een expliciete schakelaar: start de functiehost zonder `LOCAL_AUTH_BYPASS` en de
+rolcontrole geldt ook lokaal (zie "Lokale ontwikkelbypass" hieronder). Voor #988 zelf volstaat bevestigen dat de rol in Entra bestaat en
 toewijsbaar is; de server-side handhaving wordt inhoudelijk pas getest zodra #991 het eerste
 `RequireRole(req, "Wedstrijdzaken")`-endpoint oplevert (via de SWA-CLI-emulator of een echte
 staging-deploy met deze testgebruiker).

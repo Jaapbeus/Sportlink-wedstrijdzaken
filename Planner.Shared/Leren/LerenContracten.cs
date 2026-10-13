@@ -18,7 +18,7 @@ public sealed record LerenAanroeper(string? ObjectId, string? Naam)
     public string DoorId => Kap(!string.IsNullOrWhiteSpace(ObjectId) ? ObjectId
         : HeeftPrincipal || !string.IsNullOrWhiteSpace(Naam) ? "onbekend" : "lokale-ontwikkelaar", MaxIdLengte)!;
 
-    /// <summary>Of er een Easy Auth-principal hoort te zijn (productie: <c>WEBSITE_SITE_NAME</c> gezet); alleen lokaal is dat <c>false</c>.</summary>
+    /// <summary>Of er een Easy Auth-principal hoort te zijn; alleen met de lokale bypass (#1700) is dat <c>false</c>.</summary>
     public bool HeeftPrincipal { get; init; }
 
     /// <summary>Momentopname van de weergavenaam; <c>null</c> als die ontbreekt.</summary>

@@ -300,7 +300,7 @@ Sportlink REST API → Azure Function → stg.* (staging, per run leeggemaakt)
 | Frontend | MSAL (`AddMsalAuthentication`) + `AuthorizationMessageHandler` |
 | Transport | Bearer token in `Authorization`-header |
 | Function App | Azure Easy Auth (AllowAnonymous mode) + `EasyAuthHelper.RequireAdmin()` |
-| Lokaal (dev) | Bypass: `WEBSITE_SITE_NAME` afwezig → altijd toestaan |
+| Lokaal (dev) | Bypass alleen met de expliciete schakelaar `LOCAL_AUTH_BYPASS=true`, en geweigerd zodra de app in Azure draait (`Planner.Shared/Infrastructure/LokaleOntwikkelomgeving.cs`, #1700). Zonder schakelaar geldt ook lokaal 401/403 |
 
 ### 5.4 Database — schema's en conventies per tier
 
@@ -730,6 +730,14 @@ security-incident.
 **De server is de waarheid.** Een aanvaller kan de Blazor WASM modificeren. Laag 5 is leidend voor
 databeveiliging. Laag 4 is voor UX (geen app-shell voor niet-geautoriseerde gebruikers).
 
+**Laag 5 steunt op platform-auth (#1700).** `X-MS-CLIENT-PRINCIPAL` is alleen betrouwbaar als Easy
+Auth op het platform aan staat. Daarom: `tenantId`/`clientId` zijn verplicht in
+`infrastructure/modules/function-app-flex.bicep` (`@minLength(1)`, de `authsettingsV2`-resource is
+onvoorwaardelijk) en `Verify-AzureAuthSetup.ps1` controleert als laag 0 dat platform-auth aan staat.
+De lokale ontwikkelbypass is een expliciete keuze (`LOCAL_AUTH_BYPASS=true`, gezet door
+`Start-Debug.ps1`) en wordt geweigerd zodra `WEBSITE_SITE_NAME` gezet is; zonder schakelaar is er geen
+bypass, ook niet buiten Azure. De schakelaar opent uitgaand verkeer nooit (EgressGuard, #857).
+
 **Verplichte 3-user-test bij elke auth-gerelateerde wijziging:**
 
 | Testgebruiker | Configuratie | Verwacht resultaat |
@@ -909,7 +917,8 @@ kalenderjaar — anders ondermijnt het voorbeeld stilletjes de dynamische datum.
 **Doorgifte van persoonsgegevens aan een externe AI-verwerker wordt vastgelegd**: welke velden, op
 welke grondslag, met welke bewaartermijn aan de kant van de verwerker. Een automatisch filter op
 persoonsgegevens is een vangnet en **nooit** een garantie; zijn bekende blinde vlekken worden
-uitputtend opgeschreven náást het filter.
+uitputtend opgeschreven náást het filter. Waar dat staat: de e-mailpijplijn in
+[EMAIL-VERWERKING.md](EMAIL-VERWERKING.md) §5, de feedbackwidget in [FEEDBACK.md](FEEDBACK.md) §8.
 
 ### 8.6 Kosten
 
@@ -1095,7 +1104,7 @@ Dit is het hoofdstuk waar een agent of reviewer begint. Kolom **Bewijs** zegt ho
 | WZ-AI-02 | Dynamische datum | — | Tijdgevoelige instructies krijgen de datum mee; voorbeelden zonder vast jaar | Reviewcontrole |
 | WZ-AI-03 | Uitsluiting vóór verzending | AVG art. 21 | Uitsluitingsregels opnieuw toepassen vlak vóór de externe aanroep; faalt dicht | Bestaande code |
 | WZ-AI-04 | Publicatiegrens | — | De bevestiging draagt de getoonde tekst terug; het filter is nooit een garantie | Bestaande code |
-| WZ-AI-05 | Doorgifte vastgelegd | AVG art. 30 | Velden, grondslag en bewaartermijn bij de verwerker staan beschreven | **ontbreekt** |
+| WZ-AI-05 | Doorgifte vastgelegd | AVG art. 30 | Velden, grondslag en bewaartermijn bij de verwerker staan beschreven | Documentatie + reviewcontrole: registerrij en doorgiftetabel in `EMAIL-VERWERKING.md` §5 (e-mail, #1699) en `FEEDBACK.md` §8 (feedback); grondslag, verwerkersovereenkomst, bewaartermijn bij de verwerker en doorgifte-instrument van de e-mailrij zijn daar eigenaarsvelden |
 
 ### 10.6 Infrastructuur, kosten en uitrol
 
@@ -1131,7 +1140,7 @@ werkvoorraad.
 | 2 | Geen pariteitscontrole op de codebomen | WZ-ARC-03 | Vier gedocumenteerde storingen komen hieruit voort | ± 1 dag |
 | 3 | Laaggrenzen niet vastgeklikt | WZ-ARC-01 | De regels zijn vandaag al waar; borging kost geen codewijziging | ± 1 dag |
 | 4 | Autorisatiedekking niet afgedwongen | WZ-SEC-01 | Negenennegentig handmatige aanroepen; niets bewaakt de honderdste | valt samen met 3 |
-| 5 | Doorgifte aan AI-verwerker niet vastgelegd | WZ-AI-05 | Verantwoordingsplicht; geen code nodig | documentatie |
+| 5 | ~~Doorgifte aan AI-verwerker niet vastgelegd~~ — vastgelegd: registerrij en doorgiftetabel voor de e-mailpijplijn in `EMAIL-VERWERKING.md` §5 (#1699); de eigenaarsvelden daarin (grondslag, verwerkersovereenkomst, bewaartermijn bij de verwerker, doorgifte-instrument) vult de eigenaar in | WZ-AI-05 | Verantwoordingsplicht; geen code nodig | — |
 | 6 | ~~Rollenmatrix loopt uiteen met de code~~ — afgerond: matrix en tests zijn gelijkgetrokken (#1390, #1400; getoetst bij #1423) | WZ-SEC-05 | Een verplichte test waarvan een stap niet kan slagen, leert afwijkingen negeren | — |
 | 7 | Aanmelding van automatisering zonder geheim | WZ-DEP-04 | Kost niets en de rechten staan al klaar | ± halve dag |
 | 8 | Infrastructuur belooft wat ze niet uitrolt | WZ-DEP-02 | Voorbeeldmodus zou hier blijvend verschil moeten tonen | ± 2 uur |

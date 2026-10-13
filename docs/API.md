@@ -90,9 +90,10 @@ Zonder token → `401 Unauthorized`. Mét geldig token maar zonder de vereiste r
 met body `{ "error": "Forbidden: vereiste rol ontbreekt" }`. In beide gevallen vindt er geen
 verwerking plaats.
 
-> **Lokaal:** ontbreekt de omgevingsvariabele `WEBSITE_SITE_NAME` (dus buiten Azure), dan slaat
-> `RequireRole` de controle over en is elk endpoint zonder token bereikbaar. Dat is een
-> bewuste dev-bypass en geldt nooit in productie.
+> **Lokaal:** alleen met de expliciete schakelaar `LOCAL_AUTH_BYPASS=true` (gezet door
+> `Start-Debug.ps1`) slaat `RequireRole` de controle over en is elk endpoint zonder token bereikbaar.
+> Zonder schakelaar geldt de controle ook lokaal, en zodra de app in Azure draait
+> (`WEBSITE_SITE_NAME` gezet) wordt de schakelaar geweigerd (#1700).
 
 ---
 

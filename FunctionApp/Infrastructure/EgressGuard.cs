@@ -1,3 +1,5 @@
+using Planner.Shared.Infrastructure;
+
 namespace SportlinkFunction.Infrastructure;
 
 /// <summary>
@@ -6,11 +8,12 @@ namespace SportlinkFunction.Infrastructure;
 /// AI-diensten. Vervangt vier losse, impliciete "is dit geconfigureerd?"-controles door één
 /// expliciete, environment-gebaseerde poort.
 /// <para>
-/// <b>Productie-detectie:</b> de aanwezigheid van <c>WEBSITE_SITE_NAME</c> — dezelfde signaal die
-/// <see cref="SportlinkFunction.Admin.EasyAuthHelper"/> al gebruikt om lokale ontwikkeling te
-/// herkennen (Azure zet deze variabele altijd op een gehoste Function App; lokaal en in CI is hij
-/// afwezig). Dit project kent één Azure-deployment per fork/club (zie AGENTS.md,
-/// "Deployment-model"), dus Azure-hosting is hier gelijk aan productie.
+/// <b>Beslisregel (#1700):</b> een dunne adapter op
+/// <see cref="LokaleOntwikkelomgeving.ExterneIntegratiesToegestaan()"/>, gedeeld met de Postgres-tier.
+/// Open in productie: Azure-hosting (<c>WEBSITE_SITE_NAME</c> gezet) zónder de lokale schakelaar
+/// <c>LOCAL_AUTH_BYPASS</c>. Dit project kent één Azure-deployment per fork/club, dus Azure-hosting is
+/// hier gelijk aan productie. De lokale schakelaar opent uitgaand verkeer nooit; staat hij in Azure
+/// toch aan, dan blijft het dicht (bij twijfel dicht).
 /// </para>
 /// <para>
 /// <b>Waarom dit meer is dan de bestaande "niet geconfigureerd → niet actief"-controles</b>
@@ -27,21 +30,9 @@ namespace SportlinkFunction.Infrastructure;
 /// </summary>
 public static class EgressGuard
 {
-    private const string AllowSettingName = "AllowExternalIntegrations";
-    private const string AzureHostingSettingName = "WEBSITE_SITE_NAME";
-
     /// <summary>
-    /// True als uitgaande integraties toegestaan zijn: altijd in Azure-hosting (productie), en
-    /// daarbuiten alleen met de expliciete opt-in.
+    /// True als uitgaande integraties toegestaan zijn: in productie (Azure zonder lokale schakelaar),
+    /// en daarbuiten alleen met de expliciete opt-in.
     /// </summary>
-    public static bool ExternalIntegrationsAllowed()
-    {
-        if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable(AzureHostingSettingName)))
-            return true;
-
-        return string.Equals(
-            Environment.GetEnvironmentVariable(AllowSettingName),
-            "true",
-            StringComparison.OrdinalIgnoreCase);
-    }
+    public static bool ExternalIntegrationsAllowed() => LokaleOntwikkelomgeving.ExterneIntegratiesToegestaan();
 }
