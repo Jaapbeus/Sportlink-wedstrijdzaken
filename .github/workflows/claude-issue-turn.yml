@@ -657,5 +657,11 @@ jobs:
               .addHeading(`Eindlabel #${issueNumber}`, 3)
               .addRaw(`Agent-job: ${dryRun ? process.env.DRYRUN_RESULT : process.env.CLAUDE_RESULT}. ${uitkomst}`)
               .write();
-            // Vaste marker voor het acceptatiecriterium van de proef: elke job eindigt op success.
-            if (dryRun) await core.summary.addRaw('\n\nclaude-issue-turn dry-run: eindlabel OK').write();
+            // Vaste marker voor het acceptatiecriterium van de proef: alleen een geslaagd berekend
+            // resultaat (r.dryRun === true) krijgt de marker; een blokkade (gewijzigde beurt, gesloten
+            // issue, ontbrekende starttijd) laat de job falen en is nooit bewijs (#1721, Codex ronde 1).
+            if (dryRun && r.dryRun === true) {
+              await core.summary.addRaw('\n\nclaude-issue-turn dry-run: eindlabel OK').write();
+            } else if (dryRun) {
+              core.setFailed(`Testmodus geblokkeerd: ${r.reason || 'onbekende reden'}; geen acceptatiemarker.`);
+            }

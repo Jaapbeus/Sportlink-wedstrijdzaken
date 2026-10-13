@@ -308,6 +308,31 @@ const run = (github, extra = {}) => applyEndLabel({
     check('dryRun bij "wacht op merge": geen label en geen comment', [github.calls.removed, github.calls.comments], [[], []]);
   }
 
+  // #1721 Codex ronde 1 (P2): het echte workflowscript, uitgevoerd met stubs; een blokkade krijgt geen marker.
+  console.log('\nworkflowscript dry-run-marker (#1721):');
+  {
+    const yml = require('fs').readFileSync(require('path').join(__dirname, '../workflows/claude-issue-turn.yml'), 'utf8');
+    const stap = yml.split('Eindlabel vergelijken en zetten')[1] || '';
+    const script = (stap.match(/script: \|\n((?:            .*\n|\n)+)/) || [])[1] || '';
+    check('workflowscript gevonden', script.includes('applyEndLabel'), true);
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+    const draai = async (github) => {
+      const summary = []; const failed = [];
+      const sc = { addHeading() { return sc; }, addRaw(t) { summary.push(t); return sc; }, async write() { return sc; } };
+      const c = { summary: sc, setFailed: (m) => failed.push(m), info() {}, warning() {}, notice() {} };
+      const oud = { ...process.env };
+      Object.assign(process.env, { GITHUB_WORKSPACE: require('path').join(__dirname, '../..'), ISSUE_NUMBER: String(ISSUE), DRY_RUN: 'true', STARTED_AT: START, START_PR: '', CLAUDE_RESULT: 'skipped', DRYRUN_RESULT: 'success' });
+      try { await new AsyncFunction('require', 'github', 'context', 'core', script)(require, github, ctx, c); } finally { process.env = oud; }
+      return { marker: summary.join('').includes('dry-run: eindlabel OK'), failed };
+    };
+    const ok = await draai(fakeGithub({ comments: [bot('2026-10-12T14:48:00Z', 'Volgende beurt: turn: codex')] }));
+    check('geslaagde dry-run: marker, geen failure', [ok.marker, ok.failed.length], [true, 0]);
+    const geblokkeerd = await draai(fakeGithub({ comments: [bot('2026-10-12T14:48:00Z', 'Volgende beurt: turn: codex')], states: [{ labels: ['turn: owner'] }] }));
+    check('geblokkeerde dry-run (beurt gewijzigd): geen marker, job faalt', [geblokkeerd.marker, geblokkeerd.failed.length], [false, 1]);
+    const gesloten = await draai(fakeGithub({ comments: [bot('2026-10-12T14:48:00Z', 'Volgende beurt: turn: codex')], states: [{ labels: ['turn: claude-code'], state: 'closed' }] }));
+    check('geblokkeerde dry-run (gesloten issue): geen marker, job faalt', [gesloten.marker, gesloten.failed.length], [false, 1]);
+  }
+
   // De vergelijk-en-zet werkt alleen als de agent zelf geen labelpad heeft en de job altijd draait.
   console.log('\nclaude-issue-turn.yml (#1692):');
   {
