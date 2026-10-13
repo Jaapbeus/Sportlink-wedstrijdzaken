@@ -165,6 +165,29 @@ Voeg bij elke feature of fix ook een regel toe onder `## [Unreleased]` in
 
 De eigenaar beoordeelt PRs binnen redelijke tijd. Feedback wordt in de PR gegeven. Een PR kan worden afgewezen als het niet aansluit bij de projectdoelen of architectuurregels.
 
+### Herkomstlabels en automatische meldingen (#1711)
+
+Elk issue heeft precies één herkomst (AGENTS.md, "Labels"): `source: codex`, `source: claude-code` of
+`source: owner` als een agent of de eigenaar het issue opstelde, of een `via:`-label als het issue
+automatisch ontstond. Er zijn twee `via:`-labels: `via: feedback-widget` (melding uit de feedbackwidget)
+en `via: auto-exception` (onafgevangen exception, gemeld door
+`Planner.Shared/Infrastructure/GitHubIssueReporter.cs` op beide tiers). Een `via:`-issue krijgt geen
+extra `source:`.
+
+De exception-reporter maakt een issue met precies `type: bug`, `priority: medium` en
+`via: auto-exception`, zonder `status:` (de automatiek zet `status: triage`) en zonder het oude
+`bug`-label. Direct daarna plaatst hij een vaste opdrachtcomment: implementer Claude Code, reviewer
+Codex, fase triage (eigenaarsbesluit op #1711). De eerstvolgende interactieve Claude Code-sessie pakt de
+melding op en legt dan sessie, branch en worktree vast. De reporter zet bewust geen `turn: claude-code`:
+dat label start de CI-bot als tweede implementer naast die sessie (zie hieronder), en de poort van de bot
+weigert een issue zonder `source: claude-code` of `source: owner` toch (met een comment en `turn: owner`).
+
+Een herhaling van dezelfde fout (dezelfde `[fp:…]`-markering in de titel) krijgt een comment op het
+bestaande issue, dat zo nodig wordt heropend. De reporter zoekt achtereenvolgens issues met
+`via: auto-exception`, issues met het oude `bug`-label (meldingen van vóór #1711) en, zonder labelfilter,
+de 500 recentste issues en PR's. Labels van een melding mag je corrigeren; laat de `[fp:…]`-markering in
+de titel staan, anders volgt bij de volgende melding een nieuw issue.
+
 ### Beurtlabels en de CI-bot (#1692)
 
 `turn: claude-code` start de automatische issue-beurt (`claude-issue-turn.yml`). Zet dat label dus
