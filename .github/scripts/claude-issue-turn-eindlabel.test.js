@@ -266,6 +266,25 @@ const run = (github, extra = {}) => applyEndLabel({
     check('review: reden in source', /reviewrun/.test(r.source), true);
   }
 
+  {
+    // #1727 ronde 1 (P2): label uit de reviewpublicatie, gebonden aan de beoordeelde SHA.
+    const sha = 'a'.repeat(40);
+    const codexPr = pr(724, { head: { ref: `codex/${ISSUE}-werk`, sha, repo: { full_name: 'o/r' } } });
+    const ok = fakeGithub({ comments: [], startPr: codexPr, states: after('turn: codex') });
+    const r1 = await run(ok, { startPrNumber: 724, phase: 'review', requestedLabel: 'turn: codex', expectedSha: sha });
+    check('reviewpublicatie: label zonder agentcomment', [r1.written, r1.label, r1.source], [true, 'turn: codex', 'reviewpublicatie']);
+    const gewijzigd = fakeGithub({
+      comments: [], states: after('turn: codex'),
+      startPr: pr(724, { head: { ref: `codex/${ISSUE}-werk`, sha: 'b'.repeat(40), repo: { full_name: 'o/r' } } }),
+    });
+    const r2 = await run(gewijzigd, { startPrNumber: 724, phase: 'review', requestedLabel: 'turn: codex', expectedSha: sha });
+    check('reviewpublicatie: head gewijzigd → niets geschreven', [r2.written, gewijzigd.calls.added, gewijzigd.calls.removed], [false, [], []]);
+    check('reviewpublicatie: reden noemt de SHA', /beoordeelde SHA/.test(r2.reason), true);
+    const ongeldig = fakeGithub({ comments: [], startPr: codexPr, states: after('turn: owner') });
+    const r3 = await run(ongeldig, { startPrNumber: 724, requestedLabel: 'turn: claude-code', expectedSha: sha });
+    check('reviewpublicatie: ongeldig label wordt owner', [r3.written, r3.label], [true, 'turn: owner']);
+  }
+
   console.log('\nownerOnlyReason:');
   check('gewone code: geen uitzondering', ownerOnlyReason('Planner.Shared/X.cs'), null);
   check('workflow is geen uitzondering meer (#1690)', ownerOnlyReason('.github/workflows/build.yml'), null);
@@ -278,7 +297,29 @@ const run = (github, extra = {}) => applyEndLabel({
     const yml = require('fs').readFileSync(require('path').join(__dirname, '../workflows/claude-issue-turn.yml'), 'utf8');
     check('agent heeft geen gh issue edit in --allowedTools', /Bash\(gh issue edit/.test(yml), false);
     check('prompt laat de agent geen label zetten', /--add-label|--remove-label/.test(yml), false);
-    check('job eindlabel draait ook na een falende agent', /\n  eindlabel:[\s\S]*?\n    if: always\(\) && needs\.gate\.outputs\.proceed == 'true'\n/.test(yml), true);
+    check('job eindlabel draait ook na een falende agent', /\n  eindlabel:[\s\S]*?\n    if: always\(\) && needs\.gate\.outputs\.proceed == 'true' && needs\.gate\.outputs\.phase != 'review'\n/.test(yml), true);
+
+    // #1727 (Codex-review ronde 1, P1): de reviewjob is read-only buiten de uitgecheckte code om.
+    const job = (naam) => {
+      const m = yml.match(new RegExp(`\\n  ${naam}:\\n([\\s\\S]*?)(?=\\n  [a-z-]+:\\n|$)`));
+      return m ? m[1] : '';
+    };
+    const review = job('review');
+    const allowed = (review.match(/--allowedTools "([^"]*)"/) || [])[1] || '';
+    check('reviewjob gevonden', review.length > 0, true);
+    check('reviewjob: workflowtoken i.p.v. App-token', /github_token: \$\{\{ github\.token \}\}/.test(review), true);
+    check('reviewjob: geen id-token (geen OIDC-ruil)', /id-token:/.test(review), false);
+    check('reviewjob: geen enkel schrijfrecht', /:\s*write\b/.test((review.match(/permissions:\n((?:      .*\n)+)/) || [])[1] || 'write'), false);
+    check('reviewjob: geen instellingen uit de checkout', /--setting-sources user\n/.test(review), true);
+    check('reviewjob: geen schrijvende of publicerende tools',
+      /\bEdit\b|\bWrite\b|gh pr comment|gh issue comment|git commit|git push|git add|dotnet|node |python3|bash /.test(allowed), false);
+    const schema = (review.match(/--json-schema '([^']*)'/) || [])[1] || '';
+    check('reviewjob: JSON-schema gelijk aan REVIEW_SCHEMA',
+      schema && JSON.stringify(JSON.parse(schema)) === JSON.stringify(require('./claude-issue-turn-review.js').REVIEW_SCHEMA), true);
+    const publiceren = job('review-publiceren');
+    check('publicatiejob draait op de default branch (geen ref)', /persist-credentials: false/.test(publiceren) && !/\bref:/.test(publiceren), true);
+    check('publicatiejob gebruikt claude-issue-turn-review.js', /claude-issue-turn-review\.js/.test(publiceren), true);
+    check('implementatiejob laadt ook geen instellingen uit de checkout', /--setting-sources user\n/.test(job('claude')), true);
     check('job eindlabel gebruikt de vergelijk-en-zet', /claude-issue-turn-eindlabel\.js/.test(yml), true);
     check('poort geeft de starttijd door', /started_at: \$\{\{ steps\.evaluate\.outputs\.started_at \}\}/.test(yml), true);
     // #1702: een schone verwerkingsronde eindigt niet meer standaard bij de eigenaar.

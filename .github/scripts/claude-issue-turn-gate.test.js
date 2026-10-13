@@ -6,7 +6,7 @@
 
 const {
   evaluateGate, setTurnLabel, collectTrustedContext, runTitle, MAX_RUNS, MAX_CONTEXT_BYTES, truncateToBytes,
-  parseFaseComment, MAX_REVIEW_ROUNDS,
+  parseFaseComment, MAX_REVIEW_ROUNDS, reviewMarker,
 } = require('./claude-issue-turn-gate.js');
 
 let failures = 0;
@@ -526,10 +526,12 @@ function fakeGithub({
   const issueComment = (body, tijd, extra = {}) => ({
     user: { login: 'eigenaar' }, author_association: 'OWNER', created_at: tijd, body, ...extra,
   });
-  const runReview = async (n, { labels = ['source: codex'], openPrs, issueComments = [], prComments = [], closedPrs = [] } = {}) => {
+  const runReview = async (n, {
+    labels = ['source: codex'], openPrs, issueComments = [], prComments = [], closedPrs = [], reviews = [],
+  } = {}) => {
     const prs = openPrs || [codexPr(n)];
     const github = fakeGithub({
-      labels, openPrs: prs, closedPrs,
+      labels, openPrs: prs, closedPrs, reviews,
       commentsByNumber: { [n]: issueComments, [700 + n]: prComments },
     });
     const result = await evaluateGate({ github, context: ctx, core, issueNumber: n });
@@ -635,6 +637,51 @@ function fakeGithub({
     const { result } = await runReview(14, { openPrs: [], closedPrs: [merged], issueComments: [issueComment(aanvraag(714), '2026-10-13T10:00:00Z')] });
     check('gemergede Codex-PR: geen run', [result.proceed, /al gemerged/.test(result.reason)], [false, true]);
   }
+  // ---------- #1727 Codex-review ronde 1 (P2): formele reviews en botreviews tellen als beoordeeld ----------
+  for (const state of ['APPROVED', 'CHANGES_REQUESTED', 'COMMENTED', 'PENDING']) {
+    const { github, result } = await runReview(20, {
+      issueComments: [issueComment(aanvraag(720), '2026-10-13T10:00:00Z')],
+      reviews: [{ user: { login: 'eigenaar' }, author_association: 'OWNER', state, commit_id: SHA_A, body: 'review' }],
+    });
+    check(`formele review ${state} op de SHA: geen review, alarm`, [result.proceed, result.alarm, /al beoordeeld/.test(result.reason)], [false, true, true]);
+    check(`formele review ${state}: niets gepubliceerd of gelabeld`, [github.calls.comments, github.calls.added], [[], []]);
+  }
+  {
+    const { result } = await runReview(21, {
+      issueComments: [issueComment(aanvraag(721), '2026-10-13T10:00:00Z')],
+      reviews: [
+        { user: { login: 'vreemde' }, author_association: 'NONE', state: 'APPROVED', commit_id: SHA_A, body: '' },
+        { user: { login: 'eigenaar' }, author_association: 'OWNER', state: 'COMMENTED', commit_id: SHA_B, body: '' },
+      ],
+    });
+    check('formele review van niet-bevoegde of op andere SHA telt niet', [result.proceed, result.phase], [true, 'review']);
+  }
+  {
+    const bot = { login: 'github-actions[bot]', type: 'Bot' };
+    const met = await runReview(22, {
+      issueComments: [issueComment(aanvraag(722), '2026-10-13T10:00:00Z')],
+      prComments: [issueComment(`Reviewteruggave\n${reviewMarker(SHA_A)}`, '2026-10-13T11:00:00Z', { user: bot, author_association: 'NONE' })],
+    });
+    check('eerdere botreview met markering: al beoordeeld', [met.result.proceed, met.result.alarm], [false, true]);
+    const zonder = await runReview(23, {
+      issueComments: [issueComment(aanvraag(723), '2026-10-13T10:00:00Z')],
+      prComments: [issueComment(`Reviewronde 1, Uitkomst: ok, SHA ${SHA_A}`, '2026-10-13T11:00:00Z', { user: bot, author_association: 'NONE' })],
+    });
+    check('github-actions-comment zonder markering telt niet', [zonder.result.proceed, zonder.result.phase], [true, 'review']);
+    const nep = await runReview(24, {
+      issueComments: [issueComment(aanvraag(724), '2026-10-13T10:00:00Z')],
+      prComments: [issueComment(reviewMarker(SHA_A), '2026-10-13T11:00:00Z', { user: { login: 'github-actions[bot]', type: 'User' }, author_association: 'NONE' })],
+    });
+    check('nep-bot (type User) met markering telt niet', [nep.result.proceed, nep.result.phase], [true, 'review']);
+  }
+  {
+    const hotfix = codexPr(25, { head: { ref: 'codex/hotfix-25-x', sha: SHA_A, repo: { full_name: 'o/r' } }, base: { ref: 'main' } });
+    const { result } = await runReview(25, { openPrs: [hotfix], issueComments: [issueComment(aanvraag(725), '2026-10-13T10:00:00Z')] });
+    check('hotfix-PR: basis main wordt doorgegeven', [result.proceed, result.prBase], [true, 'main']);
+    const { result: gewoon } = await runReview(26, { issueComments: [issueComment(aanvraag(726), '2026-10-13T10:00:00Z')] });
+    check('PR zonder basis in de API-respons: develop', gewoon.prBase, 'develop');
+  }
+
   {
     const p = parseFaseComment('- **Fase:** review\n- **Reviewer:** Claude Code\n- **PR:** #5\n- **Aangeboden head-SHA:** `' + SHA_A + '`');
     check('parseFaseComment: opsomming, nadruk en code-opmaak', [p.fase, p.reviewer, p.prNumber, p.sha], ['review', 'Claude Code', 5, SHA_A]);

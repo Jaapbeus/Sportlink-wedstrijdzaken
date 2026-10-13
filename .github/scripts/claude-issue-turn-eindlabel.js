@@ -30,9 +30,10 @@
 // dat volgens de zelfmerge-regel altijd naar de eigenaar gaat (werkinstructies/skills,
 // databaseschema/migraties, Azure-infrastructuur); anders wordt het alsnog `turn: owner`.
 //
-// #1727: in de reviewfase (Claude Code reviewt een Codex-PR) geeft de agent de beurt terug met
-// `turn: codex`, of `turn: owner` bij een blokkade. "Merge door implementer" is daar geen geldige
-// uitkomst en wordt `turn: owner`. De start-PR is dan de Codex-PR; dezelfde vergelijk-en-zet geldt.
+// #1727: in de reviewfase (Claude Code reviewt een Codex-PR) roept de publicatiestap
+// (claude-issue-turn-review.js) deze vergelijk-en-zet aan met een expliciet label (`turn: codex`, of
+// `turn: owner` bij een blokkade) en de beoordeelde SHA: verandert de head van de start-PR, dan
+// schrijft hij niets of draait hij zijn label terug. "Merge door implementer" wordt daar `turn: owner`.
 
 const {
   findLinkedClosedPrs, isTrustedAuthor, labelNames,
@@ -96,7 +97,7 @@ function requestedEndLabel(comments, startedAt) {
  * worden, of null als de toestand sinds de start ongewijzigd is.
  */
 async function changedSinceStart({
-  github, context, issueNumber, startPrNumber, startedAt, expectedTurn = TURN_LABEL_CLAUDE,
+  github, context, issueNumber, startPrNumber, startedAt, expectedTurn = TURN_LABEL_CLAUDE, expectedSha = '',
 }) {
   const base = { owner: context.repo.owner, repo: context.repo.repo, headers: API_VERSION_HEADERS };
   const issue = (await github.rest.issues.get({ ...base, issue_number: issueNumber })).data;
@@ -118,6 +119,10 @@ async function changedSinceStart({
     const pr = (await github.rest.pulls.get({ ...base, pull_number: startPrNumber })).data;
     if (pr.merged_at) return `PR #${startPrNumber} is gemerged`;
     if (pr.state !== 'open') return `PR #${startPrNumber} is gesloten`;
+    // #1727: een review geldt alleen voor de beoordeelde SHA (AGENTS.md, "Review en turn:" regel 3).
+    if (expectedSha && (pr.head?.sha || '').toLowerCase() !== expectedSha.toLowerCase()) {
+      return `de head van PR #${startPrNumber} is niet meer de beoordeelde SHA`;
+    }
   }
 
   const start = iso(startedAt);
@@ -185,16 +190,26 @@ async function removeIfPresent({ github, base, issueNumber, name }) {
  * @returns {Promise<{written: boolean, label: string, source: string, reason?: string,
  *   rolledBack?: boolean}>}
  */
-async function applyEndLabel({ github, context, core, issueNumber, startPrNumber, startedAt, phase = '' }) {
+async function applyEndLabel({
+  github, context, core, issueNumber, startPrNumber, startedAt, phase = '', requestedLabel = '', expectedSha = '',
+}) {
   if (!startedAt || Number.isNaN(new Date(startedAt).getTime())) {
     // Zonder starttijd valt "veranderd tijdens de run" niet te bepalen: niets schrijven.
     return { written: false, label: '', source: '', reason: 'starttijd van de run ontbreekt' };
   }
   const base = { owner: context.repo.owner, repo: context.repo.repo, headers: API_VERSION_HEADERS };
-  const comments = await github.paginate(github.rest.issues.listComments, {
-    ...base, issue_number: issueNumber, since: iso(startedAt), per_page: 100,
-  });
-  let { label, source } = requestedEndLabel(comments, startedAt);
+  let label;
+  let source;
+  if (requestedLabel) {
+    // #1727: de reviewpublicatie bepaalt het label zelf uit de gevalideerde uitvoer; geen agentcomment.
+    label = ALLOWED_END_LABELS.includes(requestedLabel) ? requestedLabel : FALLBACK_END_LABEL;
+    source = ALLOWED_END_LABELS.includes(requestedLabel) ? 'reviewpublicatie' : `ongeldig label '${requestedLabel}'`;
+  } else {
+    const comments = await github.paginate(github.rest.issues.listComments, {
+      ...base, issue_number: issueNumber, since: iso(startedAt), per_page: 100,
+    });
+    ({ label, source } = requestedEndLabel(comments, startedAt));
+  }
 
   if (phase === REVIEW_PHASE && label === WAIT_FOR_MERGE) {
     // #1727: de reviewer geeft altijd terug aan de implementer (AGENTS.md, "Review en turn:" regel 3),
@@ -211,7 +226,7 @@ async function applyEndLabel({ github, context, core, issueNumber, startPrNumber
     }
   }
 
-  const before = await changedSinceStart({ github, context, issueNumber, startPrNumber, startedAt });
+  const before = await changedSinceStart({ github, context, issueNumber, startPrNumber, startedAt, expectedSha });
   if (before) {
     core.notice(`#${issueNumber}: eindlabel '${label}' niet geschreven: ${before}`);
     return { written: false, label, source, reason: before };
@@ -247,7 +262,7 @@ async function applyEndLabel({ github, context, core, issueNumber, startPrNumber
   // Venster tussen lezen en schrijven: opnieuw controleren. Nu moet het eigen label het enige
   // turn-label zijn; een door een ander gezet label (of merge/afsluiting) betekent terugdraaien.
   const after = await changedSinceStart({
-    github, context, issueNumber, startPrNumber, startedAt, expectedTurn: label,
+    github, context, issueNumber, startPrNumber, startedAt, expectedTurn: label, expectedSha,
   });
   if (after) {
     // Een mislukte verwijdering propageert (job faalt zichtbaar); alleen "al weg" (404) is succes.

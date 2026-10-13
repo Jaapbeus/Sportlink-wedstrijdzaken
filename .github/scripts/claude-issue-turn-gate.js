@@ -206,7 +206,9 @@ async function findLinkedOpenPrsByKind({ github, context, issueNumber }) {
   const result = { own: [], codex: [] };
   for (const pr of prs) {
     const kind = linkedPrKind(pr, { context, issueNumber });
-    if (kind) result[kind].push({ number: pr.number, branch: pr.head.ref, headSha: pr.head.sha });
+    if (kind) {
+      result[kind].push({ number: pr.number, branch: pr.head.ref, headSha: pr.head.sha, baseRef: pr.base?.ref || '' });
+    }
   }
   result.own.sort((a, b) => a.number - b.number);
   result.codex.sort((a, b) => a.number - b.number);
@@ -319,17 +321,38 @@ async function findReviewRequest({ github, context, issueNumber }) {
   return { ...latest.parsed, rondes: shas.size };
 }
 
-/** Een reviewteruggave van een bevoegde schrijver op de PR die deze SHA noemt (eenmaal per SHA). */
+// #1727: de reviewteruggave van de bot publiceert de workflow zelf met de GITHUB_TOKEN, dus als
+// github-actions[bot]. Die login is geen bevoegde schrijver voor context of fasecomments (ook andere
+// workflows schrijven onder die naam), maar deze markering telt wél als "al beoordeeld": dat maakt de
+// poort alleen strenger.
+const BOT_REVIEW_LOGIN = 'github-actions[bot]';
+function reviewMarker(sha) {
+  return `<!-- claude-issue-turn-review sha=${sha} -->`;
+}
+
+/**
+ * Is deze SHA al beoordeeld (eenmaal per SHA)? Telt (1) een reviewteruggave als PR-comment van een
+ * bevoegde schrijver die de SHA noemt, (2) elke formele review van een bevoegde schrijver op die
+ * commit, in elke toestand, ook PENDING (een lopende review), en (3) een eerdere botreview met de
+ * markering voor die SHA.
+ */
 async function isShaAlreadyReviewed({ github, context, prNumber, sha }) {
+  const base = { owner: context.repo.owner, repo: context.repo.repo, headers: API_VERSION_HEADERS };
   const comments = await github.paginate(github.rest.issues.listComments, {
-    owner: context.repo.owner,
-    repo: context.repo.repo,
-    issue_number: prNumber,
-    per_page: 100,
-    headers: API_VERSION_HEADERS,
+    ...base, issue_number: prNumber, per_page: 100,
   });
-  return comments.some((c) => c.body && isTrustedAuthor(c) && isReviewTeruggave(c.body)
-    && c.body.toLowerCase().includes(sha));
+  const marker = reviewMarker(sha);
+  const viaComment = comments.some((c) => {
+    if (!c.body) return false;
+    if (c.user?.type === 'Bot' && c.user?.login === BOT_REVIEW_LOGIN) return c.body.includes(marker);
+    return isTrustedAuthor(c) && isReviewTeruggave(c.body) && c.body.toLowerCase().includes(sha);
+  });
+  if (viaComment) return true;
+
+  const reviews = await github.paginate(github.rest.pulls.listReviews, {
+    ...base, pull_number: prNumber, per_page: 100,
+  });
+  return reviews.some((r) => isTrustedAuthor(r) && (r.commit_id || '').toLowerCase() === sha);
 }
 
 /**
@@ -377,6 +400,8 @@ async function evaluateReviewRequest({ github, context, core, issueNumber, reque
     phase: 'review',
     prNumber: pr.number,
     prBranch: pr.branch,
+    // De diff gaat tegen de echte basis: een Codex-hotfix (`codex/hotfix-…`) gaat naar main.
+    prBase: pr.baseRef || 'develop',
     reviewSha: request.sha,
     ronde: request.rondes,
   };
@@ -672,6 +697,9 @@ module.exports = {
   findLinkedOpenPrs,
   findLinkedOpenPrsByKind,
   findReviewRequest,
+  evaluateReviewRequest,
+  isShaAlreadyReviewed,
+  reviewMarker,
   parseFaseComment,
   MAX_REVIEW_ROUNDS,
   findLinkedClosedPrs,
