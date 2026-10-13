@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.14.0.0] — 2026-10-13
+
 ### Added
 - Het hoofdmenu is opnieuw ingedeeld in Dashboard, DEBUG (alleen voor beheerders), de hoofdschermen, WZ Instellingen en Admin, en toont per rol alleen de items waar "Rechten per rol" recht op geeft; "Instellingen" heet nu "App instellingen" (#1647).
 
