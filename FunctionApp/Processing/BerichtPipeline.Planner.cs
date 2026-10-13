@@ -35,17 +35,15 @@ public static partial class BerichtPipeline
             classificatie.LeeftijdsCategorie = TeamNaamNormalisatie.VulLeeftijdsCategorieAan(classificatie.LeeftijdsCategorie, classificatie.TeamNaam, cc);
         }
 
-        if (alleDatums.Count > 1)
-        {
-            // Meer-datum-pad (#1730): elke modeldatum strikt valideren vóór gebruik in plannercheck en antwoord.
-            alleDatums = ModelDatum.Normaliseer(alleDatums);
-            if (alleDatums.Count == 0) return PlannerAntwoordJson.DatumOnbekend();
-        }
+        // #1730: elke modeldatum wordt strikt gevalideerd vóór plannercheck en antwoord; de keuze
+        // (lijst vóór losse datum, zonder bruikbare datum "datumOnbekend") staat in Planner.Shared.
+        var datums = ModelDatum.VoorBeschikbaarheid(alleDatums, classificatie.Datum);
+        if (datums.Count == 0) return PlannerAntwoordJson.DatumOnbekend();
 
-        if (alleDatums.Count > 1)
+        if (datums.Count > 1)
         {
             var multiResults = new List<(string Datum, object? Response)>();
-            foreach (var datum in alleDatums)
+            foreach (var datum in datums)
             {
                 var resp = await PlannerService.CheckAvailabilityAsync(
                     BouwBeschikbaarheidRequest(classificatie, datum), log, clubCode);
@@ -56,18 +54,10 @@ public static partial class BerichtPipeline
 
         // Dezelfde datum als de tegenstander-lookup hierboven gebruikt: anders loopt de
         // plannercheck over een andere datum dan de rest van de verwerking.
-        var primaireDatum = KiesPrimaireDatum(alleDatums, classificatie.Datum);
-        if (string.IsNullOrWhiteSpace(primaireDatum) || !DateOnly.TryParse(primaireDatum, out _))
-        {
-            // Zonder bruikbare datum heeft een plannercheck geen zin: die levert een
-            // interne foutstring ("Ongeldige datum: .") op die in het antwoord aan de
-            // afzender zou belanden.
-            return PlannerAntwoordJson.DatumOnbekend();
-        }
-        classificatie.Datum = primaireDatum;
+        classificatie.Datum = datums[0];
 
         var checkResponse = await PlannerService.CheckAvailabilityAsync(
-            BouwBeschikbaarheidRequest(classificatie, primaireDatum), log, clubCode);
+            BouwBeschikbaarheidRequest(classificatie, datums[0]), log, clubCode);
         return JsonConvert.SerializeObject(checkResponse);
     }
 

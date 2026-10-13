@@ -310,14 +310,6 @@ public static partial class BerichtPipeline
         };
 
     /// <summary>
-    /// De datum waarover een enkelvoudig verzoek gaat: de eerste datum uit de (mogelijk door
-    /// <see cref="ExpandDoordeweeksDatums"/> aangepaste) lijst, zodat plannercheck, tegenstander-lookup
-    /// en antwoord altijd dezelfde datum gebruiken. Valt terug op de AI-datum als de lijst leeg is.
-    /// </summary>
-    internal static string? KiesPrimaireDatum(List<string> alleDatums, string? aiDatum)
-        => alleDatums.Count > 0 ? alleDatums[0] : aiDatum;
-
-    /// <summary>
     /// Knipt de tekst af bij de eerste citaat- of doorstuurkop, zodat alleen de eigen tekst van de
     /// afzender wordt geanalyseerd. Blijft er niets over (het bericht is volledig een citaat), dan
     /// is de originele tekst het enige beschikbare materiaal en wordt die teruggegeven.

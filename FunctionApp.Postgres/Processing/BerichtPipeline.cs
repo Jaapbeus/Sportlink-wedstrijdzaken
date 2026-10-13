@@ -290,9 +290,6 @@ internal static partial class BerichtPipeline
             HeelVeld = classificatie.HeelVeld
         };
 
-    internal static string? KiesPrimaireDatum(List<string> alleDatums, string? aiDatum)
-        => alleDatums.Count > 0 ? alleDatums[0] : aiDatum;
-
     internal static string StripCitaatEnOndertekening(string tekst)
     {
         if (string.IsNullOrWhiteSpace(tekst)) return tekst ?? "";

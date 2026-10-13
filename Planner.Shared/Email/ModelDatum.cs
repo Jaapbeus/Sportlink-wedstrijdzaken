@@ -20,4 +20,13 @@ public static class ModelDatum
     /// <summary>De geldige, unieke datums uit de lijst in de oorspronkelijke volgorde; ongeldige waarden vallen af.</summary>
     public static List<string> Normaliseer(IEnumerable<string?> waarden)
         => waarden.Select(Normaliseer).OfType<string>().Distinct().ToList();
+
+    /// <summary>
+    /// De datums waarover een beschikbaarheidscheck gaat: de (eventueel uitgebreide) datumlijst van het
+    /// model, of de losse modeldatum als die lijst leeg is — strikt gevalideerd en uniek, in volgorde.
+    /// Een lijst met uitsluitend ongeldige waarden valt NIET terug op de losse datum: dan zou de
+    /// plannercheck over een andere datum lopen dan de tegenstander-lookup. Leeg betekent "datum onbekend".
+    /// </summary>
+    public static List<string> VoorBeschikbaarheid(IReadOnlyList<string> alleDatums, string? modelDatum)
+        => Normaliseer(alleDatums.Count > 0 ? alleDatums : new[] { modelDatum });
 }
