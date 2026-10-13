@@ -36,6 +36,7 @@ MAPPING=(
   "avg.sp_CleanupTeambegeleiding|Database.Postgres/PostgresCleanupProcedures.cs|CleanupTeambegeleidingAsync"
   "avg.sp_CleanupFeedback|Database.Postgres/PostgresCleanupProcedures.cs|CleanupFeedbackAsync"
   "avg.sp_CleanupImportLog|Database.Postgres/PostgresCleanupProcedures.cs|CleanupImportLogAsync"
+  "avg.sp_CleanupTeambegeleidingInzageLog|Database.Postgres/PostgresCleanupProcedures.cs|CleanupTeambegeleidingInzageLogAsync"
   "dbo.sp_CreateTargetTableFromSource|Database.Postgres/PostgresMergeOrchestrator.cs|EnsureHisTableAsync"
   "dbo.sp_MergeStgToHis|Database.Postgres/PostgresMergeOrchestrator.cs|MergeStgToHisAsync"
   "dbo.sp_UpdateSeasonTable|Database.Postgres/PostgresSeasonProcedures.cs|EnsureSeasonsAsync"

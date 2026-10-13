@@ -165,6 +165,29 @@ Voeg bij elke feature of fix ook een regel toe onder `## [Unreleased]` in
 
 De eigenaar beoordeelt PRs binnen redelijke tijd. Feedback wordt in de PR gegeven. Een PR kan worden afgewezen als het niet aansluit bij de projectdoelen of architectuurregels.
 
+### Herkomstlabels en automatische meldingen (#1711)
+
+Elk issue heeft precies één herkomst (AGENTS.md, "Labels"): `source: codex`, `source: claude-code` of
+`source: owner` als een agent of de eigenaar het issue opstelde, of een `via:`-label als het issue
+automatisch ontstond. Er zijn twee `via:`-labels: `via: feedback-widget` (melding uit de feedbackwidget)
+en `via: auto-exception` (onafgevangen exception, gemeld door
+`Planner.Shared/Infrastructure/GitHubIssueReporter.cs` op beide tiers). Een `via:`-issue krijgt geen
+extra `source:`.
+
+De exception-reporter maakt een issue met precies `type: bug`, `priority: medium` en
+`via: auto-exception`, zonder `status:` (de automatiek zet `status: triage`) en zonder het oude
+`bug`-label. Direct daarna plaatst hij een vaste opdrachtcomment: implementer Claude Code, reviewer
+Codex, fase triage (eigenaarsbesluit op #1711). De eerstvolgende interactieve Claude Code-sessie pakt de
+melding op en legt dan sessie, branch en worktree vast. De reporter zet bewust geen `turn: claude-code`:
+dat label start de CI-bot als tweede implementer naast die sessie (zie hieronder), en de poort van de bot
+weigert een issue zonder `source: claude-code` of `source: owner` toch (met een comment en `turn: owner`).
+
+Een herhaling van dezelfde fout (dezelfde `[fp:…]`-markering in de titel) krijgt een comment op het
+bestaande issue, dat zo nodig wordt heropend. De reporter zoekt achtereenvolgens issues met
+`via: auto-exception`, issues met het oude `bug`-label (meldingen van vóór #1711) en, zonder labelfilter,
+de 500 recentste issues en PR's. Labels van een melding mag je corrigeren; laat de `[fp:…]`-markering in
+de titel staan, anders volgt bij de volgende melding een nieuw issue.
+
 ### Beurtlabels en de CI-bot (#1692)
 
 `turn: claude-code` start de automatische issue-beurt (`claude-issue-turn.yml`). Zet dat label dus
@@ -178,13 +201,15 @@ op de huidige head-SHA, dan gaat de beurt terug naar de implementer (fase `verwe
 eigenaar. De implementer controleert de voorwaarden van de zelfmerge-regel en merget zelf naar
 `develop` als hij dat mag (AGENTS.md, "Zelfmerge na schone review", #1637). Alleen als een voorwaarde
 van die regel niet geldt, volgt fase `eigenaarsbesluit` met `turn: owner`. Was de CI-bot de implementer,
-dan merget de reviewer volgens diezelfde regel, want de bot merget nooit.
+dan merget de eerstvolgende interactieve sessie volgens diezelfde regel, want de bot merget nooit.
 
 **De bot schrijft zijn eindlabel als vergelijk-en-zet.** Hij zet `turn: codex` of `turn: owner` aan
 het eind van zijn run alleen als het issue open is, geen `status: awaiting-release` heeft, het
 turn-label nog `turn: claude-code` is en geen gekoppelde PR intussen is gemerged of gesloten. Een
 issue dat een sessie tijdens de run heeft afgerond, krijgt dus geen verouderd label meer. Is een
-gekoppelde PR al gemerged, dan start de bot helemaal niet. Uitwerking: `docs/DEVELOPER-SETUP.md` §9.5.
+gekoppelde PR al gemerged, dan start de bot helemaal niet. De derde uitkomst is **wacht op merge**
+(#1702): onder dezelfde voorwaarden haalt hij alleen `turn: claude-code` weg, zet hij géén `turn:`-label
+en plaatst hij een comment "Wacht op merge door de implementer". Uitwerking: `docs/DEVELOPER-SETUP.md` §9.5.
 
 ### Wat er na de merge met je issue gebeurt
 
@@ -239,10 +264,19 @@ uitzonderingen hierboven. Een PR die alleen op de merge wacht, krijgt die fase n
 
 **De CI-bot als implementer.** De automatische issue-beurt (`claude-issue-turn.yml`, zie
 `docs/DEVELOPER-SETUP.md` §9.5) merget nooit, en een geplande reviewrun ook niet. Was de bot de
-implementer, dan merget de eerstvolgende interactieve sessie de PR na dezelfde controles. De
-bot-prompt zet na een verwerkingsronde zonder codewijziging technisch `Fase: eigenaarsbesluit` en
-`turn: owner` (de bot kan zelf niet mergen); staat er dan geen eigenaarspunt open, dan is dat een
-wachtende merge en geen besluit, en mag die interactieve sessie mergen.
+implementer, dan merget de eerstvolgende interactieve sessie de PR na dezelfde controles. Gaf de
+reviewer "geen bevindingen" op de head en staat er geen eigenaarspunt of uitzondering open, dan sluit
+de bot af met `Volgende beurt: merge door implementer` (#1702). De beurt blijft dan bij de implementer,
+maar zonder label: `turn: claude-code` zou de bot opnieuw starten en `turn: owner` zou een wachtende
+merge als besluit tonen. De job `eindlabel` haalt `turn: claude-code` weg en plaatst het comment "Wacht
+op merge door de implementer". Zo'n issue heeft dus geen `turn:`-label, een open draft-PR en dat comment
+als laatste workflowbericht; zoek het met
+`gh issue list --state open --search '"Wacht op merge door de implementer" in:comments'`. De job controleert zelf de uitzonderingen die aan paden te zien zijn (base
+niet `develop`; `AGENTS.md`/`CLAUDE.md`, `.agents/`, `.claude/`, `Database/`, `Database.Postgres/`,
+`scripts/migrations/`, `infrastructure/`, `scripts/azure/`) en maakt er dan `turn: owner` van; kosten of
+een schemawijziging buiten die paden beoordeelt de bot in de prompt en de mergende sessie opnieuw. Fase
+`eigenaarsbesluit` + `turn: owner` blijft voor een echt openstaand punt, voor alle bevindingen "niet
+overgenomen" zonder codewijziging, voor een tweede ronde zonder schone review en voor "CI niet bewezen".
 
 **Parallelle schrijvers en de turn-labels (#1686).** `turn-label-exclusief.yml` houdt het laatst gezette
 `turn:`-label en verwijdert de andere (laatste schrijver wint). Spreken de labels en de issue-events elkaar

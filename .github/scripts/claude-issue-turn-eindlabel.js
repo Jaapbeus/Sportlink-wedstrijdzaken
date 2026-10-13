@@ -19,6 +19,16 @@
 // GitHub kent geen voorwaardelijke labelschrijfactie; tussen lezen en schrijven blijft een venster
 // van één API-aanroep. Daarom wordt na het schrijven opnieuw gelezen: is de toestand dan alsnog
 // veranderd, dan haalt deze stap uitsluitend het eigen, zojuist gezette label weer weg.
+//
+// #1702: wacht een PR na een schone review alleen nog op de merge, dan sluit de agent af met
+// `Volgende beurt: merge door implementer`. Dat is geen label: `turn: claude-code` zou een nieuwe
+// bot-run starten en `turn: owner` zou een wachtende merge als eigenaarsbesluit presenteren
+// (zelfmerge-regel, AGENTS.md, #1690). Deze stap haalt dan alleen `turn: claude-code` weg, zet géén
+// `turn:`-label en plaatst een issuecomment dat de eerstvolgende interactieve sessie de
+// zelfmerge-voorwaarden controleert en merget (de bot merget nooit). Dat mag alleen in de
+// verwerkingsfase (er is een start-PR) en alleen als die PR naar `develop` gaat en geen pad raakt
+// dat volgens de zelfmerge-regel altijd naar de eigenaar gaat (werkinstructies/skills,
+// databaseschema/migraties, Azure-infrastructuur); anders wordt het alsnog `turn: owner`.
 
 const {
   findLinkedClosedPrs, isTrustedAuthor, labelNames,
@@ -28,7 +38,27 @@ const {
 // De bot geeft de beurt nooit aan zichzelf (dat zou een nieuwe run starten).
 const ALLOWED_END_LABELS = ['turn: codex', 'turn: owner'];
 const FALLBACK_END_LABEL = 'turn: owner';
-const MARKER = /^\s*Volgende beurt:\s*`?(turn: [a-z-]+)`?\s*$/gm;
+// #1702: geen label maar een uitkomst — de beurt blijft bij de implementer, die alleen nog merget.
+const WAIT_FOR_MERGE = 'merge door implementer';
+const MARKER = /^\s*Volgende beurt:\s*`?(turn: [a-z-]+|merge door implementer)`?\s*$/gm;
+// Basisbranch waarop de implementer zelf mag mergen (zelfmerge-regel, AGENTS.md).
+const SELF_MERGE_BASE = 'develop';
+// Paden die volgens de zelfmerge-regel altijd naar de eigenaar gaan. Bewust ruim: een vals
+// positief kost alleen een eigenaarsbeurt. `name` matcht een bestandsnaam in elke map.
+const OWNER_ONLY_PATHS = [
+  { name: 'AGENTS.md', reden: 'werkinstructies' },
+  { name: 'CLAUDE.md', reden: 'werkinstructies' },
+  { prefix: '.agents/', reden: 'skills' },
+  { prefix: '.claude/', reden: 'skills/agentconfiguratie' },
+  { prefix: 'Database/', reden: 'databaseschema' },
+  { prefix: 'Database.Postgres/', reden: 'databaseschema/migraties' },
+  { prefix: 'scripts/migrations/', reden: 'databaseschema/migraties' },
+  { prefix: 'infrastructure/', reden: 'Azure-resources/kosten' },
+  { prefix: 'scripts/azure/', reden: 'Azure-resources/kosten' },
+];
+// Boven deze grens geeft de API de bestandslijst niet volledig terug: dan niet zelf beslissen.
+const MAX_LISTED_FILES = 3000;
+const WAIT_COMMENT_HEADING = 'Wacht op merge door de implementer';
 
 function iso(value) {
   return value ? new Date(value).toISOString() : '';
@@ -49,7 +79,7 @@ function requestedEndLabel(comments, startedAt) {
     const found = [...(own[i].body || '').matchAll(MARKER)].map((m) => m[1]);
     if (!found.length) continue;
     const label = found[found.length - 1];
-    if (ALLOWED_END_LABELS.includes(label)) return { label, source: 'beurtregel' };
+    if (ALLOWED_END_LABELS.includes(label) || label === WAIT_FOR_MERGE) return { label, source: 'beurtregel' };
     return { label: FALLBACK_END_LABEL, source: `ongeldige beurtregel '${label}'` };
   }
   return { label: FALLBACK_END_LABEL, source: 'geen beurtregel gevonden' };
@@ -70,9 +100,12 @@ async function changedSinceStart({
   if (labels.includes(STATUS_AWAITING_RELEASE)) return `het issue heeft \`${STATUS_AWAITING_RELEASE}\``;
 
   const turnLabels = labels.filter((n) => n.startsWith(TURN_LABEL_PREFIX));
-  if (turnLabels.length !== 1 || turnLabels[0] !== expectedTurn) {
-    return `het turn-label is niet meer exclusief \`${expectedTurn}\` ` +
-      `(nu: ${turnLabels.length ? turnLabels.join(', ') : 'geen'})`;
+  const nu = `(nu: ${turnLabels.length ? turnLabels.join(', ') : 'geen'})`;
+  if (expectedTurn === null) {
+    // #1702: na "wacht op merge" hoort er geen enkel turn-label meer te staan.
+    if (turnLabels.length) return `er is intussen een turn-label gezet ${nu}`;
+  } else if (turnLabels.length !== 1 || turnLabels[0] !== expectedTurn) {
+    return `het turn-label is niet meer exclusief \`${expectedTurn}\` ${nu}`;
   }
 
   if (startPrNumber) {
@@ -89,6 +122,49 @@ async function changedSinceStart({
   if (closedDuringRun) return `gekoppelde PR #${closedDuringRun.number} is tijdens de run gesloten`;
 
   return null;
+}
+
+/**
+ * #1702: geeft de reden terug waarom "wacht op merge" niet mag (de beurt gaat dan naar de eigenaar),
+ * of null. Deterministische tweede slot naast de prompt: base `develop` en geen eigenaarspad.
+ */
+function ownerOnlyReason(filename) {
+  const base = filename.split('/').pop();
+  const hit = OWNER_ONLY_PATHS.find((p) => (p.name ? base === p.name : filename.startsWith(p.prefix)));
+  return hit ? `${hit.reden} (\`${filename}\`)` : null;
+}
+
+async function waitForMergeBlocker({ github, base, prNumber }) {
+  if (!prNumber) return 'geen gekoppelde PR (alleen de verwerkingsfase kan op een merge wachten)';
+  const pr = (await github.rest.pulls.get({ ...base, pull_number: prNumber })).data;
+  if (pr.base?.ref !== SELF_MERGE_BASE) {
+    return `PR #${prNumber} gaat naar \`${pr.base?.ref || '?'}\`, niet naar \`${SELF_MERGE_BASE}\``;
+  }
+  const files = await github.paginate(github.rest.pulls.listFiles, {
+    ...base, pull_number: prNumber, per_page: 100,
+  });
+  if (files.length >= MAX_LISTED_FILES || (pr.changed_files && files.length < pr.changed_files)) {
+    return `bestandslijst van PR #${prNumber} is onvolledig (${files.length}/${pr.changed_files})`;
+  }
+  for (const f of files) {
+    for (const name of [f.filename, f.previous_filename].filter(Boolean)) {
+      const reden = ownerOnlyReason(name);
+      if (reden) return `harde uitzondering: ${reden}`;
+    }
+  }
+  return null;
+}
+
+function waitForMergeComment(prNumber) {
+  return [
+    `**${WAIT_COMMENT_HEADING}** (PR #${prNumber})`,
+    '',
+    'De CI-run sloot af zonder openstaand eigenaarspunt en zonder harde uitzondering. Daarom staat',
+    'er bewust geen `turn:`-label: `turn: claude-code` zou een nieuwe bot-run starten en dit is geen',
+    'eigenaarsbesluit. De eerstvolgende interactieve sessie controleert de zelfmerge-voorwaarden',
+    '(AGENTS.md, "Zelfmerge na schone review"), zet de PR op ready en merget naar `develop`;',
+    'ontbreekt een voorwaarde, dan fase `eigenaarsbesluit` met `turn: owner`. De bot merget nooit (#1702).',
+  ].join('\n');
 }
 
 async function removeIfPresent({ github, base, issueNumber, name }) {
@@ -112,12 +188,38 @@ async function applyEndLabel({ github, context, core, issueNumber, startPrNumber
   const comments = await github.paginate(github.rest.issues.listComments, {
     ...base, issue_number: issueNumber, since: iso(startedAt), per_page: 100,
   });
-  const { label, source } = requestedEndLabel(comments, startedAt);
+  let { label, source } = requestedEndLabel(comments, startedAt);
+
+  if (label === WAIT_FOR_MERGE) {
+    const blocker = await waitForMergeBlocker({ github, base, prNumber: startPrNumber });
+    if (blocker) {
+      label = FALLBACK_END_LABEL;
+      source = `merge door implementer geweigerd: ${blocker}`;
+    }
+  }
 
   const before = await changedSinceStart({ github, context, issueNumber, startPrNumber, startedAt });
   if (before) {
     core.notice(`#${issueNumber}: eindlabel '${label}' niet geschreven: ${before}`);
     return { written: false, label, source, reason: before };
+  }
+
+  if (label === WAIT_FOR_MERGE) {
+    // Alleen het startlabel weghalen; geen eigen label, dus bij een latere verandering valt er
+    // niets terug te draaien. Het comment volgt pas als de nacontrole niets veranderd ziet.
+    await removeIfPresent({ github, base, issueNumber, name: TURN_LABEL_CLAUDE });
+    const after = await changedSinceStart({
+      github, context, issueNumber, startPrNumber, startedAt, expectedTurn: null,
+    });
+    if (after) {
+      core.warning(`#${issueNumber}: 'wacht op merge' niet vastgelegd: ${after}`);
+      return { written: false, label, source, reason: after };
+    }
+    await github.rest.issues.createComment({
+      ...base, issue_number: issueNumber, body: waitForMergeComment(startPrNumber),
+    });
+    core.notice(`#${issueNumber}: geen turn-label; wacht op merge door de implementer (PR #${startPrNumber})`);
+    return { written: true, label, source };
   }
 
   // Bewust geen setTurnLabel(): die leest het issue opnieuw en zou een beurtwijziging die na de
@@ -143,4 +245,7 @@ async function applyEndLabel({ github, context, core, issueNumber, startPrNumber
   return { written: true, label, source };
 }
 
-module.exports = { applyEndLabel, requestedEndLabel, changedSinceStart, ALLOWED_END_LABELS };
+module.exports = {
+  applyEndLabel, requestedEndLabel, changedSinceStart, ownerOnlyReason,
+  ALLOWED_END_LABELS, WAIT_FOR_MERGE, WAIT_COMMENT_HEADING,
+};

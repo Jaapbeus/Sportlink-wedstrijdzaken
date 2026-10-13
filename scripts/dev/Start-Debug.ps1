@@ -272,9 +272,12 @@ function Start-AzuriteDienst {
 }
 
 function Start-FuncDienst {
+    # LOCAL_AUTH_BYPASS=true (#1700): de lokale rolbypass is een expliciete keuze van dit script, alleen
+    # voor het eigen functiehostproces. Zonder de schakelaar geldt de rolcontrole ook lokaal (401/403).
+    # De host weigert de schakelaar zelf zodra hij in Azure draait.
     Start-Service -Name 'func' `
         -Banner "FunctionApp $Tier - poort $($ports.FunctionApp)  (geen hot reload - herstart vereist na codewijziging)" `
-        -Command "Set-Location '$funcProjectDir'; func start --port $($ports.FunctionApp)" | Out-Null
+        -Command "`$env:LOCAL_AUTH_BYPASS = 'true'; Set-Location '$funcProjectDir'; func start --port $($ports.FunctionApp)" | Out-Null
 }
 
 function Start-BlazorDienst {
@@ -407,7 +410,7 @@ if ($health) {
 }
 
 # Sportlink-livemodus (#1466): informatief, nooit een startfout. Zonder X-Club-Code antwoordt het
-# endpoint voor de primaire club; lokaal geldt de rolbypass (WEBSITE_SITE_NAME ontbreekt).
+# endpoint voor de primaire club; lokaal geldt de rolbypass (LOCAL_AUTH_BYPASS=true, zie Start-FuncDienst).
 if ($health) {
     $slHealth = try {
         Invoke-RestMethod "http://localhost:$($ports.FunctionApp)/api/beheer/sportlink-extensie/health" -TimeoutSec 10 -ErrorAction Stop

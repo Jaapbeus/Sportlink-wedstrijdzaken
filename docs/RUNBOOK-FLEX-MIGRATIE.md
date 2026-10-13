@@ -47,7 +47,9 @@ plak de echte waarden nooit terug in een issue, PR of commit (AGENTS.md §4a).
 betrouwbaar als Easy Auth hem zelf zet en een meegestuurde versie wegstript. Staat Easy Auth op de
 Flex-app nog uit, dan geeft één vervalste header — precies wat de smoke test in `deploy.yml` stuurt —
 **admin-toegang tot de productiedatabase**, want de Flex-app krijgt dezelfde connectiestring. De
-lokale bypass (`WEBSITE_SITE_NAME` afwezig) speelt hier niet: Azure zet die variabele op elke app.
+lokale bypass speelt hier niet: die vraagt sinds #1700 de expliciete schakelaar `LOCAL_AUTH_BYPASS=true`
+en wordt geweigerd zodra `WEBSITE_SITE_NAME` gezet is. De Flex-module weigert bovendien een lege
+`tenantId`/`clientId` (`@minLength(1)`), zodat de module geen app zonder Easy Auth meer oplevert.
 De testdeploy-workflow uit bijlage A weigert daarom te deployen zolang Easy Auth uit staat.
 
 ---

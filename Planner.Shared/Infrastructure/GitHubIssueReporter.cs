@@ -11,7 +11,8 @@ namespace Planner.Shared.Infrastructure;
 /// Deduplicatie op fingerprint (zie <see cref="ComputeFingerprint"/>):
 ///   - Bestaand open issue → voeg comment toe
 ///   - Bestaand gesloten issue → heropen + voeg comment toe (de fout is opnieuw opgetreden)
-///   - Geen bestaand issue → maak nieuw issue aan
+///   - Geen bestaand issue → maak nieuw issue aan met de conventielabels (<see cref="NieuwIssueLabels"/>)
+///     en plaats daarna de vaste opdrachtregel (<see cref="OpdrachtRegel"/>, #1711)
 ///   - Al gerapporteerd binnen 24u → overslaan (rate-limiting, issue #106)
 ///
 /// <para>
@@ -60,6 +61,33 @@ public static class GitHubIssueReporter
     private static readonly object _lock = new();
 
     private const int RateLimitHours = 24;
+
+    /// <summary>Herkomstlabel van een automatisch gemelde exception (#1711), naar het voorbeeld
+    /// van <c>via: feedback-widget</c>: herkomst is geen persoon, dus geen <c>source:</c>.</summary>
+    internal const string HerkomstLabel = "via: auto-exception";
+
+    /// <summary>Label dat deze reporter tot #1711 zette; oude meldingen zijn er nog op te vinden.</summary>
+    internal const string OudLabel = "bug";
+
+    /// <summary>
+    /// Labels van een nieuw issue (#1711), volgens de labelconventie in CONTRIBUTING.md: precies
+    /// één <c>type:</c>, één <c>priority:</c> en één herkomstlabel. Bewust zonder <c>status:</c>
+    /// (de automatiek zet <c>status: triage</c>), zonder het oude <c>bug</c> en zonder
+    /// <c>turn: claude-code</c>: dat label start de CI-bot (<c>claude-issue-turn.yml</c>) als
+    /// tweede implementer naast de interactieve sessie die de opdracht krijgt (#1692, #1702).
+    /// </summary>
+    internal static readonly IReadOnlyList<string> NieuwIssueLabels =
+        new[] { "type: bug", "priority: medium", HerkomstLabel };
+
+    /// <summary>
+    /// Vaste opdrachtregel (eigenaarsbesluit op #1711): als eerste comment geplaatst, met dezelfde
+    /// <c>issues:write</c>-rechten als het issue zelf. Vaste tekst zonder runtimewaarden (SECURITY.md).
+    /// </summary>
+    internal const string OpdrachtRegel =
+        "Opdracht vastgelegd (automatische melding, #1711): implementer Claude Code, reviewer Codex, fase triage. "
+        + "Verwerking door de eerstvolgende interactieve Claude Code-sessie; die legt bij oppak sessie, branch "
+        + "en worktree vast (AGENTS.md). Bewust geen `turn: claude-code`: dat label start de CI-bot als tweede "
+        + "implementer (CONTRIBUTING.md, #1692).";
 
     /// <param name="egressToegestaan">De <c>EgressGuard</c> van de aanroepende tier (#857).</param>
     /// <param name="eigenNamespacePrefix">Namespace-voorvoegsel van de eigen code van die tier,
@@ -197,16 +225,25 @@ public static class GitHubIssueReporter
         return http;
     }
 
-    // Bovengrens aan het aantal pagina's dat doorzocht wordt — voorkomt onbegrensd doorbladeren
-    // bij een repo met veel 'bug'-gelabelde issues. 5 pagina's × 100 = 500 issues.
+    // Bovengrens aan het aantal pagina's per zoekslag — voorkomt onbegrensd doorbladeren.
+    // 5 pagina's × 100 = 500 issues per zoekslag, hoogstens drie zoekslagen.
     private const int SearchMaxPages = 5;
     private const int SearchPerPage = 100;
+
+    /// <summary>
+    /// Zoekslagen van de dedup-lookup (#1711), in deze volgorde: issues met het herkomstlabel
+    /// (meldingen vanaf #1711), issues met het oude label <c>bug</c> (meldingen van daarvoor) en
+    /// tot slot zonder labelfilter de recentste issues, zodat ook een melding wordt gevonden
+    /// waarvan iemand de labels heeft gewijzigd. <c>null</c> = geen labelfilter.
+    /// </summary>
+    private static readonly string?[] ZoekLabelFilters = { HerkomstLabel, OudLabel, null };
 
     /// <summary>
     /// Zoekt een bestaand issue (open of gesloten) met de fingerprint-tag <c>[fp:{fp}]</c> in de
     /// titel. Gebruikt bewust de Issues List API in plaats van de GitHub Search API — zie #830
     /// voor de reden (Search API onbetrouwbaar met een fine-grained PAT die alleen
-    /// <c>issues:write</c>-scope heeft).
+    /// <c>issues:write</c>-scope heeft). De zoekslagen staan in <see cref="ZoekLabelFilters"/>;
+    /// een mislukte aanroep stopt de hele lookup (<c>null</c>, zoals vóór #1711).
     /// <c>internal</c> zodat Planner.Shared.Tests deze dedup-lookup rechtstreeks kan afdekken
     /// (InternalsVisibleTo) zonder de publieke <see cref="ReportAsync"/>-signatuur te hoeven
     /// verbouwen.
@@ -214,16 +251,28 @@ public static class GitHubIssueReporter
     internal static async Task<(int number, bool isClosed)?> SearchIssueAsync(
         HttpClient http, string owner, string repo, string fp, ILogger log)
     {
+        foreach (var labelFilter in ZoekLabelFilters)
+        {
+            var (mislukt, treffer) = await ZoekInIssuelijstAsync(http, owner, repo, fp, labelFilter, log);
+            if (mislukt) return null;
+            if (treffer.HasValue) return treffer;
+        }
+        return null;
+    }
+
+    private static async Task<(bool mislukt, (int number, bool isClosed)? treffer)> ZoekInIssuelijstAsync(
+        HttpClient http, string owner, string repo, string fp, string? labelFilter, ILogger log)
+    {
         var marker = $"[fp:{fp}]";
+        var filter = labelFilter is null ? "" : "&labels=" + Uri.EscapeDataString(labelFilter);
 
         for (var page = 1; page <= SearchMaxPages; page++)
         {
             // state=all → doorzoekt open én gesloten issues, zodat een eerder gesloten issue
             // (de fout is opnieuw opgetreden) ook gevonden wordt in plaats van een duplicaat aan
-            // te maken. labels=bug beperkt de resultaten tot issues die deze reporter zelf
-            // aanmaakt (zie CreateIssueAsync).
+            // te maken.
             var url = "https://api.github.com/repos/" + owner + "/" + repo + "/issues"
-                    + $"?state=all&labels=bug&per_page={SearchPerPage}&page={page}&sort=created&direction=desc";
+                    + $"?state=all{filter}&per_page={SearchPerPage}&page={page}&sort=created&direction=desc";
 
             HttpResponseMessage resp;
             try
@@ -233,13 +282,13 @@ public static class GitHubIssueReporter
             catch (Exception ex)
             {
                 log.LogWarning(ex, "GitHub issues-lijst API: netwerkfout bij opzoeken fp:{Fp}", fp);
-                return null;
+                return (true, null);
             }
 
             if (!resp.IsSuccessStatusCode)
             {
                 log.LogWarning("GitHub issues-lijst API: HTTP {Status} bij opzoeken fp:{Fp}", (int)resp.StatusCode, fp);
-                return null;
+                return (true, null);
             }
 
             var json = await resp.Content.ReadAsStringAsync();
@@ -259,13 +308,13 @@ public static class GitHubIssueReporter
                 var state = item["state"]!.Value<string>();
                 var isClosed = state == "closed";
                 log.LogInformation("Bestaand GitHub issue #{Nr} ({State}) gevonden voor fp:{Fp}", number, state, fp);
-                return (number, isClosed);
+                return (false, (number, isClosed));
             }
 
             if (items.Count < SearchPerPage) break; // laatste pagina bereikt
         }
 
-        return null;
+        return (false, null);
     }
 
     private static async Task ReopenIssueAsync(
@@ -321,22 +370,37 @@ public static class GitHubIssueReporter
         {
             title,
             body,
-            labels = new[] { "bug", "type: bug" }
+            labels = NieuwIssueLabels
         });
 
         var url = $"https://api.github.com/repos/{owner}/{repo}/issues";
         var resp = await http.PostAsync(url, new StringContent(payload, Encoding.UTF8, "application/json"));
 
-        if (resp.IsSuccessStatusCode)
-        {
-            var json = await resp.Content.ReadAsStringAsync();
-            dynamic created = JsonConvert.DeserializeObject<dynamic>(json)!;
-            log.LogInformation("GitHub issue #{Nr} aangemaakt voor fp:{Fp}", (int)created.number, fp);
-        }
-        else
+        if (!resp.IsSuccessStatusCode)
         {
             log.LogWarning("GitHub issue aanmaken mislukt: HTTP {Status}", (int)resp.StatusCode);
+            return;
         }
+
+        var json = await resp.Content.ReadAsStringAsync();
+        var nummer = JObject.Parse(json)["number"]?.Value<int>();
+        if (nummer is not int issueNummer)
+        {
+            log.LogWarning("GitHub issue aangemaakt voor fp:{Fp}, maar zonder nummer in het antwoord — opdrachtregel niet geplaatst", fp);
+            return;
+        }
+        log.LogInformation("GitHub issue #{Nr} aangemaakt voor fp:{Fp}", issueNummer, fp);
+        await PlaatsOpdrachtRegelAsync(http, owner, repo, issueNummer, log);
+    }
+
+    private static async Task PlaatsOpdrachtRegelAsync(
+        HttpClient http, string owner, string repo, int issueNumber, ILogger log)
+    {
+        var payload = JsonConvert.SerializeObject(new { body = OpdrachtRegel });
+        var url = $"https://api.github.com/repos/{owner}/{repo}/issues/{issueNumber}/comments";
+        var resp = await http.PostAsync(url, new StringContent(payload, Encoding.UTF8, "application/json"));
+        if (!resp.IsSuccessStatusCode)
+            log.LogWarning("Opdrachtregel op GitHub issue #{Nr} plaatsen mislukt: HTTP {Status}", issueNumber, (int)resp.StatusCode);
     }
 
     private static DateTime NederlandseTijdNu()

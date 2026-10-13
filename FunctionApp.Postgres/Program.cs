@@ -102,6 +102,7 @@ builder.Services.AddSingleton<INoodmailThrottleStore>(sp =>
 builder.Services.AddSingleton<IDatabaseStatusReader, PostgresDatabaseStatusReader>();
 
 var host = builder.Build();
-// #1689: geaggregeerde foutlog (zonder waarden) als het laden van de clublijst structureel faalt.
-FunctionApp.Postgres.Admin.EasyAuthHelper.KoppelClubLijstLog(host.Services.GetRequiredService<ILoggerFactory>());
+// #1689: geaggregeerde foutlog (zonder waarden) als het laden van de clublijst structureel faalt;
+// #1700: eenmalige melding (zonder waarden) als de lokale bypass actief is of in Azure is geweigerd.
+FunctionApp.Postgres.Admin.EasyAuthHelper.KoppelOpstartLogs(host.Services.GetRequiredService<ILoggerFactory>());
 host.Run();

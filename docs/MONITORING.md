@@ -52,6 +52,7 @@ Dit document beschrijft bewaking voor **beide** databasetiers. Niet elk vangnet 
 | Vangnet | SQL Server-tier | Postgres-tier (productie) |
 |---|---|---|
 | Application Insights (traces, exceptions, KQL) | ✅ | ✅ |
+| GitHub-issue bij een onafgevangen exception (`via: auto-exception`, alleen in productie, #1268/#1711) | ✅ | ✅ |
 | `GET /api/health` (`database`, `pendingMigrations`, `lastSync`) | ✅ | ✅ |
 | `db-check` in `deploy.yml` (ARM-status vóór migratie/deploy) | ✅ | ❌ — job is tier-gegate op `SqlServer` |
 | `DatabaseUitvalMonitorFunction` (dagelijkse uitvalmail) | ✅ | ✅ sinds #1268 — eigen statusbron, zie hieronder |
@@ -640,6 +641,7 @@ requests
 | P1 — Kritiek | Security Gate CI rood na push naar main | STOP — geen merge, directe fix | Onmiddellijk |
 | P2 — Hoog | > 5% HTTP 5xx in 2 min | Onderzoek Azure Portal + App Insights | < 2 uur |
 | P2 — Hoog | Deploy-fout in GitHub Actions | Bekijk workflow-log, hotfix aanmaken | < 4 uur |
+| P3 — Normaal | Nieuw issue met `via: auto-exception` (onafgevangen exception, #1711) | De eerstvolgende interactieve Claude Code-sessie pakt het op volgens de opdrachtcomment op het issue; diagnostiek staat in Application Insights, niet in het issue (labels en dedup: `CONTRIBUTING.md`) | Volgende werkdag |
 | P3 — Normaal | Dagelijkse sync mislukt | Controleer App Insights, handmatig herstarten | Volgende werkdag |
 | P3 — Normaal | Email-verwerking gestopt | Controleer EmailProcessor logs | Volgende werkdag |
 | P3 — Normaal | Sportlink contract-check meldt een afwijking (#998) | Controleer `public.sportlinkcontractcheck` en de statussectie op Instellingen — vermoedelijk een Sportlink-release die de responsvorm wijzigde | Volgende werkdag |

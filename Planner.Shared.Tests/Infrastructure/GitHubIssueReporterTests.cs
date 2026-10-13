@@ -237,22 +237,24 @@ public class GitHubIssueReporterTests
     [MemberData(nameof(SyntheticSqlFoutvormen))]
     public async Task CreateIssueAsync_SyntheticSqlFout_VerzondenRequestBodyBevatMarkerNergens(Exception ex, string[] markers)
     {
-        // Bewijst de daadwerkelijk naar de GitHub API verzonden request-body (title + body),
-        // niet alleen de geïsoleerde builder-functie.
-        string? capturedRequestBody = null;
+        // Bewijst de daadwerkelijk naar de GitHub API verzonden request-bodies (title + body, en
+        // sinds #1711 ook de opdrachtcomment die direct na het aanmaken volgt), niet alleen de
+        // geïsoleerde builder-functie.
+        var capturedRequestBodies = new List<string>();
         var client = MakeClient(req =>
         {
-            capturedRequestBody = req.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
+            capturedRequestBodies.Add(req.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? "");
             return JsonResponse("""{"number": 4242}""");
         });
 
         await GitHubIssueReporter.CreateIssueAsync(
             client, Owner, Repo, Fingerprint, ex, "FetchAndStoreApiData", NullLogger.Instance);
 
-        capturedRequestBody.Should().NotBeNull();
-        foreach (var marker in markers)
-            capturedRequestBody.Should().NotContain(marker, "de verzonden issue-titel/body mag de synthetische marker nooit bevatten (#1008)");
-        capturedRequestBody.Should().Contain(Fingerprint);
+        capturedRequestBodies.Should().NotBeEmpty();
+        foreach (var body in capturedRequestBodies)
+            foreach (var marker in markers)
+                body.Should().NotContain(marker, "geen enkele verzonden issue-titel/body/comment mag de synthetische marker bevatten (#1008)");
+        capturedRequestBodies[0].Should().Contain(Fingerprint);
     }
 
     [Theory]
