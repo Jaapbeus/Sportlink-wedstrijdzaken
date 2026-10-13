@@ -25,7 +25,6 @@
     "AzureFunctionAppName": "",
     "AzureSqlServerName": "",
     "AzureSqlDatabaseName": "",
-    "DATABASE_STATUS_MONITOR_SCHEDULE": "0 0 8 * * *",
     "GitHubPat": "",
     "GitHubOwner": "",
     "GitHubRepo": "Sportlink-wedstrijdzaken",

@@ -1007,7 +1007,7 @@ daar terechtkomt — komt er tijdens een uitval geen (of alleen buiten-scope) e-
 de databaseverbinding nooit geprobeerd en de uitval dus ook nooit gedetecteerd. Dit bleek de
 eigenlijke oorzaak van de stilte in augustus 2026. `DatabaseUitvalMonitorFunction`
 (`FunctionApp/Monitoring/`) draait daarom onafhankelijk, standaard 1x per dag
-(`DATABASE_STATUS_MONITOR_SCHEDULE`), en leest de status rechtstreeks via de Azure Management API
+(vaste cron in code, #1718), en leest de status rechtstreeks via de Azure Management API
 (géén databaseverbinding, dus niet zelf slachtoffer van dezelfde storing). Optioneel: zonder de
 vier env vars `AzureSubscriptionId`/`AzureResourceGroupName`/`AzureSqlServerName`/
 `AzureSqlDatabaseName` slaat deze functie zichzelf over — zie

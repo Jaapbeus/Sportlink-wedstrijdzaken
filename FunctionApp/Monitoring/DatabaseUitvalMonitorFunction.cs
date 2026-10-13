@@ -56,9 +56,12 @@ public class DatabaseUitvalMonitorFunction
     /// <summary>Zie <see cref="DatabaseUitvalCore.MinimaleHerhalingsinterval"/>.</summary>
     internal static readonly TimeSpan MinimaleHerhalingsinterval = DatabaseUitvalCore.MinimaleHerhalingsinterval;
 
+    // #1718: vaste schedule in code, zoals op de Postgres-tier. Een `%…%`-verwijzing wordt bij het
+    // indexeren opgelost; ontbrak de app setting, dan kwam de hele Function App niet omhoog.
+    // Uitzetten kan met de standaard-app-setting AzureWebJobs.DatabaseUitvalMonitor.Disabled.
     [Function("DatabaseUitvalMonitor")]
     public async Task Run(
-        [TimerTrigger("%DATABASE_STATUS_MONITOR_SCHEDULE%")] TimerInfo timer,
+        [TimerTrigger("0 0 8 * * *")] TimerInfo timer,
         FunctionContext context)
     {
         var log = context.GetLogger("DatabaseUitvalMonitor");
