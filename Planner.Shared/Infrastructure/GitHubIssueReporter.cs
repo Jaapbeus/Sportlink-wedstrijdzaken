@@ -262,8 +262,20 @@ public static class GitHubIssueReporter
 
     /// <summary>
     /// Vertrouwde auteurs voor de dedup-lookup (#1732): <c>author_association</c> OWNER, MEMBER of
-    /// COLLABORATOR (het account achter de PAT heeft schrijfrechten en valt hier ook onder).
-    /// Ontbrekend of onbekend = niet vertrouwd.
+    /// COLLABORATOR. Ontbrekend of onbekend = niet vertrouwd.
+    /// <para>
+    /// <b>Eigen account van de reporter.</b> Deze klasse authenticeert uitsluitend met de statische
+    /// <c>GitHubPat</c> (fine-grained PAT van een gebruikersaccount met <c>issues:write</c>, zie de
+    /// klassedocumentatie en <c>SETUP-NIEUWE-CLUB.md</c>). Issues die de reporter zelf aanmaakt
+    /// krijgen daardoor het PAT-account als auteur, met associatie OWNER (eigenaar van de fork) of
+    /// COLLABORATOR/MEMBER (account met schrijfrechten): ze vallen dus altijd onder deze toets. Een
+    /// aparte "eigen app-account"-uitzondering (bot-login, <c>user.type</c> Bot) bestaat bewust
+    /// niet: er is geen GitHub App-authenticatie (JWT/installatietoken) in deze klasse, en een
+    /// installatietoken verloopt na een uur, zodat het niet als statische app-instelling te
+    /// gebruiken is. Komt zo'n authenticatiepad ooit wél, dan hoort hier een expliciete,
+    /// geconfigureerde identiteit bij (login + type) en niet een algemene bot-vrijstelling:
+    /// andere bots (Dependabot en co.) zijn CONTRIBUTOR en blijven onvertrouwd.
+    /// </para>
     /// </summary>
     internal static bool IsVertrouwdeAuteur(string? authorAssociation)
         => authorAssociation is "OWNER" or "MEMBER" or "COLLABORATOR";
