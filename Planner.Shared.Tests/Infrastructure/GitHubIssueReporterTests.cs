@@ -40,13 +40,15 @@ public class GitHubIssueReporterTests
         Content = new StringContent(json)
     };
 
-    private static string IssueJson(int number, string state, string title, bool isPullRequest = false)
+    private static string IssueJson(int number, string state, string title, bool isPullRequest = false,
+        string authorAssociation = "OWNER")
     {
         var prField = isPullRequest ? "\"pull_request\": { \"url\": \"https://api.github.com/x\" }," : "";
         return $$"""
             {
                 "number": {{number}},
                 "state": "{{state}}",
+                "author_association": "{{authorAssociation}}",
                 "title": {{System.Text.Json.JsonSerializer.Serialize(title)}},
                 {{prField}}
                 "body": "irrelevant"
@@ -304,5 +306,41 @@ public class GitHubIssueReporterTests
 
         diagnostics.Should().NotContain(innerMarker);
         diagnostics.Should().Contain(nameof(InvalidOperationException));
+    }
+
+    [Theory]
+    [InlineData("OWNER", true)]
+    [InlineData("MEMBER", true)]
+    [InlineData("COLLABORATOR", true)]
+    [InlineData("CONTRIBUTOR", false)]
+    [InlineData("FIRST_TIMER", false)]
+    [InlineData("NONE", false)]
+    [InlineData(null, false)]
+    public void IsVertrouwdeAuteur_AlleenOwnerMemberCollaborator(string? association, bool verwacht)
+        => GitHubIssueReporter.IsVertrouwdeAuteur(association).Should().Be(verwacht);
+
+    [Theory]
+    [InlineData("NONE")]
+    [InlineData("CONTRIBUTOR")]
+    public async Task SearchIssueAsync_IssueVanOnvertrouwdeAuteur_TeltInGeenEnkeleZoekslagMee(string association)
+    {
+        // #1732: ook de laatste zoekslag (zonder labelfilter) mag een issue van een onbekende
+        // auteur niet als dedup-treffer gebruiken.
+        var client = MakeClient(_ => JsonResponse("[" + IssueJson(9, "open", $"[bug][fp:{Fingerprint}] x", authorAssociation: association) + "]"));
+
+        var result = await GitHubIssueReporter.SearchIssueAsync(client, Owner, Repo, Fingerprint, NullLogger.Instance);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task SearchIssueAsync_IssueZonderAuthorAssociation_TeltNietMee()
+    {
+        var client = MakeClient(_ => JsonResponse(
+            $$"""[{"number": 9, "state": "open", "title": "[bug][fp:{{Fingerprint}}] x"}]"""));
+
+        var result = await GitHubIssueReporter.SearchIssueAsync(client, Owner, Repo, Fingerprint, NullLogger.Instance);
+
+        result.Should().BeNull();
     }
 }

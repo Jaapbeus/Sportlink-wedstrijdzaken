@@ -19,6 +19,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Fixed
+- Foutmelding-deduplicatie (`GitHubIssueReporter`): in elke zoekslag, ook die zonder labelfilter, tellen alleen issues van een vertrouwde auteur (`author_association` OWNER, MEMBER of COLLABORATOR) mee, zodat onvertrouwde invoer niet bepaalt waar een productiemelding terechtkomt (#1732)
 - Wedstrijd aanmaken: een team uit de dropdown (bondsnotatie, bijv. `[club] O14-2`) wordt nu gevonden in Sportlinks teamlijst (lokale notatie, bijv. `JO14-2`) in plaats van de fout "niet (eenduidig) gevonden" (#1737)
 
 ### Changed
