@@ -69,9 +69,13 @@ const EMAIL_RE = /[A-Z0-9._%+-]+@([A-Z0-9.-]+\.[A-Z]{2,})/gi;
 // Toegestane testdomeinen (ARCHITECTUUR.md §8.1.5) en gereserveerde voorbeelddomeinen.
 const TOEGESTANE_DOMEINEN = /^(?:voorbeeld\.nl|allstars-fc\.test|[a-z0-9.-]+\.test|example\.(?:com|org|net))$/i;
 
-/** Ingevoegde tekst mag geen HTML-commentaar openen (markering) of de opmaak breken. */
+/**
+ * Ingevoegde tekst mag geen HTML openen: geen markering nabootsen, geen commentaar of tag die de
+ * opmaak breekt. Elke `<` en `>` wordt een gelijkend, onschuldig teken; verwijderen van alleen
+ * `<!--` is te omzeilen (`<!<!---- ` wordt dan weer `<!--`, CodeQL js/incomplete-multi-character-sanitization).
+ */
 function schoon(text, max, { eenRegel = false } = {}) {
-  let t = String(text ?? '').replace(/<!--|-->/g, '').replace(/\r/g, '');
+  let t = String(text ?? '').replace(/</g, '‹').replace(/>/g, '›').replace(/\r/g, '');
   if (eenRegel) t = t.replace(/\s*\n\s*/g, ' ');
   t = t.trim();
   return t.length > max ? `${t.slice(0, max - 1)}…` : t;

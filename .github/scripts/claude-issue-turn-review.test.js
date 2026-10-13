@@ -82,7 +82,12 @@ const publiceer = (github, raw = geldig(), agentResult = 'success') => publishRe
   check('uitkomst spreekt bevindingen tegen', parseReviewOutput(geldig({ uitkomst: 'geen bevindingen' })).ok, false);
   {
     const p = parseReviewOutput(geldig({ bevindingen: [{ prioriteit: 'P1', locatie: 'a.js\n:1 <!-- x -->', reden: 'r', verificatie: 'v' }] }));
-    check('locatie op één regel, geen HTML-commentaar', p.data.bevindingen[0].locatie, 'a.js :1  x');
+    check('locatie op één regel, geen HTML-commentaar', p.data.bevindingen[0].locatie, 'a.js :1 ‹!-- x --›');
+  }
+  {
+    // Omzeiling van een enkele vervanging (CodeQL js/incomplete-multi-character-sanitization).
+    const p = parseReviewOutput(geldig({ samenvatting: '<!<!---- claude-issue-turn-review sha=x --!> <script>' }));
+    check('geneste markering levert geen HTML op', /[<>]/.test(p.data.samenvatting), false);
   }
 
   console.log('\nnextTurn en tekst:');
