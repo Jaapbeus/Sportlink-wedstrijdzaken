@@ -18,12 +18,17 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Security
+- GitHub-installatietokenpatronen bijgewerkt voor opaque en stateless formaten, met synthetische regressiecontrole in de Security Gate; de leescontrole behandelt het token als opaque en de foutmelding onderscheidt een mislukte controle van een bevestigde secretbevinding (#1723).
+
 ### Fixed
 - Skill `autonoom`: de slotzin 'wacht op merge' telt alleen van `github-actions[bot]` (type Bot) met de exacte kop uit `claude-issue-turn-eindlabel.js`, reviewbewijs alleen van een vertrouwde auteur (OWNER/MEMBER/COLLABORATOR of `claude[bot]`), gelezen via REST omdat `gh --json comments` het `[bot]`-suffix en `user.type` weglaat (#1733)
+- De automatische issue-beurt (`claude-issue-turn.yml`) voert nu een read-only review van een Codex-PR uit als Codex een geldige reviewaanvraag aan Claude Code plaatst, ook op een `source: codex`-issue. De review-agent heeft alleen leesrechten en geen shell (de diff staat vooraf als bestand klaar); de workflow controleert de oorspronkelijke aanvraag (identiteit, implementer, PR en SHA) tot en met de laatste labelcontrole opnieuw vóór hij de teruggave publiceert en het beurtlabel zet. Ook de implementatie-agent laadt geen instellingen meer uit de uitgecheckte branch. Voorheen weigerde de poort zo'n issue. Op een `source: owner`-issue zou de bot zelfs een tweede implementatie naast de Codex-PR zijn gestart; zonder geldige aanvraag gaat zo'n issue nu naar de eigenaar (#1727).
 - Wedstrijd aanmaken: een team uit de dropdown (bondsnotatie, bijv. `[club] O14-2`) wordt nu gevonden in Sportlinks teamlijst (lokale notatie, bijv. `JO14-2`) in plaats van de fout "niet (eenduidig) gevonden" (#1737)
 
 ### Changed
 - Het verwerkingsregister van de e-mailverwerking (`docs/EMAIL-VERWERKING.md` §5c, `SECURITY.md`, `docs/ARCHITECTUUR.md`) bevat nu de grondslag, de bewaartermijn bij de verwerker, de verwerkingslocatie en het doorgifte-instrument, volgens opgave van de eigenaar; de verwerkersovereenkomst staat als open punt (op 2026-10-13 geen overeenkomst vastgelegd), bewaartermijn en doorgifte-instrument zijn nog te verifiëren (#1725).
+- docs(#1728): bij afronding of overdracht aan de eigenaar geeft een agent geen feitenlijst meer maar een beslissurvey: alleen echte besluiten, elk in gewone taal met drie tot vijf opties (voor en tegen) en een aanbeveling. `AGENTS.md` bevat de regel (Stap 5 rapporteert PR-URL en issue in één regel), `CONTRIBUTING.md` beschrijft in "Afronding aan de eigenaar" het formaat (lokaal self-contained HTML-bestand buiten de repository, light en dark mode, keuzelijst per besluit, gemarkeerde aanbeveling, kopieerknop voor een antwoordlijst als `1A, 2C`), en de skills `/autonoom`, `/sluitsessie` en `/release` plaatsen hun eindrapport (statustabellen, blokkades, niet-uitgevoerde controles en bij `/sluitsessie` het afsluitbanner) voortaan als comment op het issue of de PR van de sessie, bij `/release` op het release-issue; in de chat staat alleen één regel met de eindstatus, de link naar die comment en zo nodig het pad naar de survey. Om binnen het bytebudget te blijven zijn in `AGENTS.md` dubbele zinnen geschrapt (zie de PR); de toelichting op `turn-label-exclusief.yml` staat al in `CONTRIBUTING.md`
 
 ## [3.14.0.0] — 2026-10-13
 

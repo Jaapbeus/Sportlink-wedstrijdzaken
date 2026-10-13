@@ -575,6 +575,13 @@ BlazorAdmin hot reload via `dotnet watch` — draait automatisch bij Stap 2B als
 
 Sluit af met: aanbevolen volgende actie voor de gebruiker (bijv. testen van geïmplementeerde features, of een issue dat wacht op hun beslissing).
 
+**Waar het rapport staat (#1728).** Dit eindrapport gaat als één comment op het issue of de PR van
+de run, niet in de chat; bij meerdere issues bij het eerste, met een verwijzing vanuit de andere;
+zonder issue of PR in de sessie-overdracht in memory. Regel 4a uit `AGENTS.md` geldt voor die
+comment. Wat de eigenaar moet beslissen, staat in een beslissurvey. In de chat komt één regel:
+eindstatus, link naar de comment en, als er een besluit openstaat, het pad naar de survey
+(`CONTRIBUTING.md`, "Afronding aan de eigenaar").
+
 ---
 
 ## Escaleer naar gebruiker bij (en alleen bij)
