@@ -1,5 +1,6 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
+using Planner.Shared.Sync;
 using static SportlinkFunction.SystemUtilities;
 
 namespace SportlinkFunction;
@@ -29,9 +30,14 @@ internal static class SportlinkStagingRepository
 
     internal static async Task SaveTeamsAsync(List<Team> teams, string clubCode, ILogger log)
     {
+        // #1712: een dubbele sleutel in stg.teams laat sp_MergeStgToHis falen (fout 8672 of een
+        // unieke-indexfout op bk_teams); MergeStgToHis logt dat alleen, dus his.teams bleef dan stil
+        // ongewijzigd.
+        var uniek = StagingOntdubbeling.LaatsteWint(teams,
+            t => StagingOntdubbeling.TeamSleutel(t.teamcode, t.lokaleteamcode, t.poulecode), log, "TEAMS");
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
-        foreach (var team in teams)
+        foreach (var team in uniek)
         {
             using var cmd = new SqlCommand(@"
                 INSERT INTO [stg].[teams]
@@ -62,7 +68,7 @@ internal static class SportlinkStagingRepository
             cmd.Parameters.AddWithValue("@more",              team.more              ?? (object)DBNull.Value);
             await cmd.ExecuteNonQueryAsync();
         }
-        log.LogInformation("TEAMS - {Count} rows inserted into staging.", teams.Count);
+        log.LogInformation("TEAMS - {Count} rows inserted into staging.", uniek.Count);
     }
 
     internal static async Task<int> SaveProgrammaAsync(List<Match> matches, string clubCode, ILogger log)
