@@ -225,8 +225,15 @@ Update ook de `session_latest`-regel in MEMORY.md.
 
 Sluit af met één aanbevolen volgende actie.
 
+**Waar het rapport staat (#1728).** Dit eindrapport (tabel, eindstatus, ⚠️/❌-toelichting,
+aanbevolen volgende actie en eventueel het banner) gaat als één comment op het issue of de PR van de
+sessie, niet in de chat; zonder issue of PR (read-only sessie) in de sessie-overdracht uit Fase 4.
+Regel 4a uit `AGENTS.md` geldt voor die comment. Wat de eigenaar moet beslissen, staat in een
+beslissurvey. In de chat komt één regel: eindstatus, link naar de comment en, als er een besluit
+openstaat, het pad naar de survey (`CONTRIBUTING.md`, "Afronding aan de eigenaar").
+
 **Alleen als alle checks ✅ zijn** (volledig groen, geen enkele ⚠️ of ❌): plaats na de
-aanbevolen volgende actie, als allerlaatste in de response, dit banner in een code block:
+aanbevolen volgende actie, als allerlaatste in de eindrapport-comment, dit banner in een code block:
 
 ```
   ██████╗ ██╗  ██╗ █████╗ ██╗   ██╗
