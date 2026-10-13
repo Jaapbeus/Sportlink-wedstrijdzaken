@@ -29,6 +29,10 @@
 // verwerkingsfase (er is een start-PR) en alleen als die PR naar `develop` gaat en geen pad raakt
 // dat volgens de zelfmerge-regel altijd naar de eigenaar gaat (werkinstructies/skills,
 // databaseschema/migraties, Azure-infrastructuur); anders wordt het alsnog `turn: owner`.
+//
+// #1727: in de reviewfase (Claude Code reviewt een Codex-PR) geeft de agent de beurt terug met
+// `turn: codex`, of `turn: owner` bij een blokkade. "Merge door implementer" is daar geen geldige
+// uitkomst en wordt `turn: owner`. De start-PR is dan de Codex-PR; dezelfde vergelijk-en-zet geldt.
 
 const {
   findLinkedClosedPrs, isTrustedAuthor, labelNames,
@@ -38,6 +42,8 @@ const {
 // De bot geeft de beurt nooit aan zichzelf (dat zou een nieuwe run starten).
 const ALLOWED_END_LABELS = ['turn: codex', 'turn: owner'];
 const FALLBACK_END_LABEL = 'turn: owner';
+// #1727: fase van de poort; een reviewrun eindigt alleen op `turn: codex` of `turn: owner`.
+const REVIEW_PHASE = 'review';
 // #1702: geen label maar een uitkomst — de beurt blijft bij de implementer, die alleen nog merget.
 const WAIT_FOR_MERGE = 'merge door implementer';
 const MARKER = /^\s*Volgende beurt:\s*`?(turn: [a-z-]+|merge door implementer)`?\s*$/gm;
@@ -179,7 +185,7 @@ async function removeIfPresent({ github, base, issueNumber, name }) {
  * @returns {Promise<{written: boolean, label: string, source: string, reason?: string,
  *   rolledBack?: boolean}>}
  */
-async function applyEndLabel({ github, context, core, issueNumber, startPrNumber, startedAt }) {
+async function applyEndLabel({ github, context, core, issueNumber, startPrNumber, startedAt, phase = '' }) {
   if (!startedAt || Number.isNaN(new Date(startedAt).getTime())) {
     // Zonder starttijd valt "veranderd tijdens de run" niet te bepalen: niets schrijven.
     return { written: false, label: '', source: '', reason: 'starttijd van de run ontbreekt' };
@@ -189,6 +195,13 @@ async function applyEndLabel({ github, context, core, issueNumber, startPrNumber
     ...base, issue_number: issueNumber, since: iso(startedAt), per_page: 100,
   });
   let { label, source } = requestedEndLabel(comments, startedAt);
+
+  if (phase === REVIEW_PHASE && label === WAIT_FOR_MERGE) {
+    // #1727: de reviewer geeft altijd terug aan de implementer (AGENTS.md, "Review en turn:" regel 3),
+    // ook zonder bevindingen; of er gemerged wordt, beoordeelt de implementer.
+    label = FALLBACK_END_LABEL;
+    source = 'merge door implementer is geen uitkomst van een reviewrun';
+  }
 
   if (label === WAIT_FOR_MERGE) {
     const blocker = await waitForMergeBlocker({ github, base, prNumber: startPrNumber });

@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- De automatische issue-beurt (`claude-issue-turn.yml`) voert nu een read-only review van een Codex-PR uit als Codex een geldige reviewaanvraag aan Claude Code plaatst, ook op een `source: codex`-issue. Voorheen weigerde de poort zo'n issue. Op een `source: owner`-issue zou de bot zelfs een tweede implementatie naast de Codex-PR zijn gestart; zonder geldige aanvraag gaat zo'n issue nu naar de eigenaar (#1727).
+
 ## [3.14.0.0] — 2026-10-13
 
 ### Added

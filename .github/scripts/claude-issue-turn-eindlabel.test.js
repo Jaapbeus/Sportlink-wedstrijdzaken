@@ -249,6 +249,23 @@ const run = (github, extra = {}) => applyEndLabel({
     const r = await run(github, { startPrNumber: 501 });
     check('wacht op merge, merge in het venster: geen comment', [r.written, github.calls.comments], [false, []]);
   }
+  console.log('\napplyEndLabel — reviewfase (#1727):');
+  {
+    const codexPr = pr(724, { head: { ref: `codex/${ISSUE}-werk`, repo: { full_name: 'o/r' } } });
+    const github = fakeGithub({
+      comments: [bot('2026-10-12T14:48:00Z', 'Fase: verwerking\nUitkomst: geen bevindingen\nVolgende beurt: turn: codex')],
+      startPr: codexPr, states: after('turn: codex'),
+    });
+    const r = await run(github, { startPrNumber: 724, phase: 'review' });
+    check('review: beurt terug naar Codex', [r.written, r.label, github.calls.added], [true, 'turn: codex', ['turn: codex']]);
+  }
+  {
+    const github = fakeGithub({ comments: waitBot, startPr: pr(724), states: after('turn: owner') });
+    const r = await run(github, { startPrNumber: 724, phase: 'review' });
+    check('review: merge door implementer wordt owner', [r.written, r.label, github.calls.comments], [true, 'turn: owner', []]);
+    check('review: reden in source', /reviewrun/.test(r.source), true);
+  }
+
   console.log('\nownerOnlyReason:');
   check('gewone code: geen uitzondering', ownerOnlyReason('Planner.Shared/X.cs'), null);
   check('workflow is geen uitzondering meer (#1690)', ownerOnlyReason('.github/workflows/build.yml'), null);
