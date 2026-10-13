@@ -37,6 +37,13 @@ public static partial class BerichtPipeline
 
         if (alleDatums.Count > 1)
         {
+            // Meer-datum-pad (#1730): elke modeldatum strikt valideren vóór gebruik in plannercheck en antwoord.
+            alleDatums = ModelDatum.Normaliseer(alleDatums);
+            if (alleDatums.Count == 0) return PlannerAntwoordJson.DatumOnbekend();
+        }
+
+        if (alleDatums.Count > 1)
+        {
             var multiResults = new List<(string Datum, object? Response)>();
             foreach (var datum in alleDatums)
             {
