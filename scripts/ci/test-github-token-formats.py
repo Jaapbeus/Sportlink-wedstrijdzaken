@@ -34,7 +34,7 @@ def fixtures():
 
 
 def hook_matches(pattern, value):
-    result = subprocess.run(["grep", "-Eq", pattern], input=value + "\n",
+    result = subprocess.run(["grep", "-Eiq", pattern], input=value + "\n",
                             text=True, capture_output=True)
     if result.returncode not in (0, 1):
         raise RuntimeError("grep-patrooncontrole mislukt")
@@ -75,6 +75,7 @@ class TokenFormats(unittest.TestCase):
         for index, token in enumerate(self.tokens):
             with self.subTest(format=index):
                 self.assertTrue(hook_matches(self.pattern, token))
+                self.assertTrue(hook_matches(self.pattern, token.upper()))
 
     def test_gitleaks_detects_all_formats(self):
         for index, token in enumerate(self.tokens):

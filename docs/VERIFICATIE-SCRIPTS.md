@@ -844,10 +844,11 @@ echte uitvoering.
 ontbreekt. Controleert met uitsluitend onbruikbare waarden in geheugen het hooktemplate en
 de repository-Gitleaksconfiguratie: opaque, stateless en langere tokens, negatieve gevallen en
 teruggezette oude patronen. Geen tokenwaarden of scanner-rapporten in de uitvoer. Exit 0 betekent
-dat deze patrooncontroles slagen; geen bewijs voor live GitHub App-authenticatie. Dezelfde
+dat deze patrooncontroles slagen; geen bewijs voor live GitHub App-authenticatie of volledige
+hookuitvoering. De grep-controle gebruikt dezelfde hoofdletterongevoelige vlag als de hooks. Dezelfde
 controle draait in de `gitleaks`-job van `security-scan.yml`, na installatie van Gitleaks door
 de bestaande action. Een aanvullende CI-stap controleert het door GitHub uitgegeven
-workflow-token via alleen `GET /rate_limit`; meldt alleen de vorm en succes, nooit het token
+workflow-token via alleen `GET /rate_limit`; behandelt het token als opaque en meldt alleen succes, nooit het token
 of de responsebody. Dit forceert geen formaat en vervangt de enabled/disabled-test met eigen
 App-authenticatie niet. Lokale eigen hookpatronen blijven behouden bij een template-update
 ([DEVELOPER-SETUP.md](DEVELOPER-SETUP.md#32-gevoelige-patronen-configureren)).
