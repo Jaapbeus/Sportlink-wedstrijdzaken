@@ -587,8 +587,10 @@ leest ze; Sportlink blijft de bron.
 * **Termijn = configuratie.** Het seizoenseinde komt uit de seizoenstabel (`dbo.Season` /
   `public.season`), die op zijn beurt uit de clubinstelling `SeasonStartMonth` wordt opgebouwd. Een
   seizoen telt als afgerond vanaf de dag ná de einddatum. Zonder afgerond seizoen gebeurt er niets.
-* **Welke datum.** `his.matches`: de eerste tien tekens van `wedstrijddatum` (ISO-datum); een waarde
-  in een andere vorm wordt niet geraden en niet leeggemaakt. `his.matchdetails`: `MatchDate`, anders
+* **Welke datum.** `his.matches`: de eerste tien tekens van `wedstrijddatum`, alleen als die strikt
+  `yyyy-MM-dd` zijn (ASCII-cijfers, bestaande kalenderdatum); een waarde in een andere vorm wordt niet
+  geraden en niet leeggemaakt. De keuze maakt één gedeelde functie voor beide tiers
+  (`HisPersoonsgegevensRetentie.IsGeldigDatumdeel`), niet de database. `his.matchdetails`: `MatchDate`, anders
   de datum van `MatchDateTime`. **Restrisico:** een detailrij zonder beide datums wordt niet
   leeggemaakt.
 * **Uitvoering.** Als tweede stap in de bestaande dagelijkse AVG-timer `CleanupFeedback` (05:15

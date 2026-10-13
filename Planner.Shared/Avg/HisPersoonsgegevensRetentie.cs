@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Extensions.Logging;
 
 namespace Planner.Shared.Avg;
@@ -57,6 +58,59 @@ public static class HisPersoonsgegevensRetentie
         "thuisteamtelefoon", "thuisteamemail",
         "uitteamtelefoon", "uitteamemail",
     ];
+
+    /// <summary>
+    /// Is <paramref name="datumdeel"/> (de eerste tien tekens van <c>his.matches.wedstrijddatum</c>, zoals
+    /// de tier ze leest) een datum? Strikt en voor beide tiers dezelfde regel (Codex-review ronde 2 op
+    /// #1698: gelijke selectie, niet raden): precies tien tekens <c>yyyy-MM-dd</c>, alleen ASCII-cijfers
+    /// en koppeltekens op vaste plaatsen, en een bestaande kalenderdatum (jaar 0001–9999). Geen spaties,
+    /// andere scheidingstekens, basisvorm zonder streepjes of Unicode-cijfers. Een conversie in SQL was
+    /// ruimer en per tier anders (SQL Server's <c>TRY_CONVERT(date, ..., 23)</c> nam o.a. een lege tekst
+    /// als 1900-01-01 en <c>2026/06/30</c> aan), daarom kiest deze functie en niet de database.
+    /// </summary>
+    public static bool IsGeldigDatumdeel(string? datumdeel, out DateOnly datum)
+    {
+        datum = default;
+        if (datumdeel is not { Length: 10 }) return false;
+        for (var i = 0; i < 10; i++)
+        {
+            var teken = datumdeel[i];
+            var klopt = i is 4 or 7 ? teken == '-' : teken is >= '0' and <= '9';
+            if (!klopt) return false;
+        }
+        return DateOnly.TryParseExact(datumdeel, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out datum);
+    }
+
+    /// <summary>
+    /// Uit de datumdelen die de tier in <c>his.matches</c> aantreft de delen die een geldige datum
+    /// (<see cref="IsGeldigDatumdeel"/>) tot en met <paramref name="grens"/> zijn; uniek en ordinaal
+    /// gesorteerd. De tier wist daarna alleen rijen waarvan de eerste tien tekens binair gelijk zijn aan
+    /// een gekozen deel.
+    /// </summary>
+    public static IReadOnlyList<string> SelecteerTeWissenDatumdelen(IEnumerable<string?> datumdelen, DateOnly grens)
+        => datumdelen
+            .Where(deel => IsGeldigDatumdeel(deel, out var datum) && datum <= grens)
+            .Select(deel => deel!)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+    /// <summary>
+    /// De wisstap voor <c>his.matches</c> op beide tiers: datumdelen lezen, hier kiezen
+    /// (<see cref="SelecteerTeWissenDatumdelen"/>) en alleen bij een niet-lege keuze de tier laten wissen.
+    /// </summary>
+    /// <param name="leesDatumdelen">De verschillende eerste tien tekens van <c>wedstrijddatum</c> in rijen
+    /// met nog een gevulde persoonskolom (geen andere kolom).</param>
+    /// <param name="wis">Maakt de persoonskolommen leeg in rijen waarvan de eerste tien tekens binair gelijk
+    /// zijn aan een van de gekozen delen; geeft het aantal geraakte rijen terug.</param>
+    public static async Task<int> WisMatchesAsync(
+        Func<Task<IReadOnlyList<string?>>> leesDatumdelen,
+        Func<IReadOnlyList<string>, Task<int>> wis,
+        DateOnly grens)
+    {
+        var teWissen = SelecteerTeWissenDatumdelen(await leesDatumdelen(), grens);
+        return teWissen.Count == 0 ? 0 : await wis(teWissen);
+    }
 
     /// <summary>
     /// De laatste seizoenseinddatum die vóór <paramref name="vandaag"/> ligt, of <c>null</c> als er geen

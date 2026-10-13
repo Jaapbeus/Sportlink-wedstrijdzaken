@@ -2,6 +2,7 @@ using AwesomeAssertions;
 using FunctionApp.Tests.Feedback;
 using Microsoft.Data.SqlClient;
 using Planner.Shared.Avg;
+using Planner.Shared.Tests.Avg;
 using SportlinkFunction.Admin;
 using Xunit;
 
@@ -57,6 +58,28 @@ public class SqlServerHisRetentieIntegrationTests
         (await Tekst(conn, "matchdetails", "InternCode", 14, "Rijder")).Should().Be("Jan de Vries");
 
         (await SqlServerHisRetentie.WisTotEnMetAsync(conn, Grens)).Should().Be((0, 0));
+    }
+
+    [SqlServerFact]
+    public async Task WisTotEnMet_DatuminvoerVolgtDeGedeeldeTabel_GelijkAanPostgres()
+    {
+        // Codex-review ronde 2: welke waarden als datum tellen, ligt vast in één tabel die ook de
+        // Postgres-suite en de unit-test draaien. Waarden die onder de standaard-collation gelijk
+        // zijn aan een geldige datum (fullwidth, superscript) staan ernaast en blijven staan.
+        await using var conn = new SqlConnection(Cs);
+        await conn.OpenAsync();
+        await MaakHisTabellen(conn);
+        var gevallen = HisWedstrijddatumGevallen.Alle;
+        for (var i = 0; i < gevallen.Count; i++)
+            await VoegMatchToe(conn, 100 + i, gevallen[i].Waarde);
+
+        var (matches, _) = await SqlServerHisRetentie.WisTotEnMetAsync(conn, HisWedstrijddatumGevallen.Grens);
+
+        for (var i = 0; i < gevallen.Count; i++)
+            (await Tekst(conn, "matches", "wedstrijdcode", 100 + i, "scheidsrechter")).Should().Be(
+                gevallen[i].Wissen ? null : "Jan de Vries", $"geval {i}: {gevallen[i].Reden}");
+        matches.Should().Be(gevallen.Count(g => g.Wissen));
+        (await SqlServerHisRetentie.WisTotEnMetAsync(conn, HisWedstrijddatumGevallen.Grens)).Should().Be((0, 0));
     }
 
     [SqlServerFact]
@@ -117,14 +140,14 @@ public class SqlServerHisRetentieIntegrationTests
         return map?.FullName ?? throw new InvalidOperationException("Repositorywortel niet gevonden.");
     }
 
-    private static async Task VoegMatchToe(SqlConnection c, long code, string datum)
+    private static async Task VoegMatchToe(SqlConnection c, long code, string? datum)
     {
         await using var cmd = new SqlCommand(
             "INSERT INTO [his].[matches] ([bk_matches], [wedstrijdcode], [wedstrijddatum], [thuisteam], [scheidsrechter], " +
             "[scheidsrechters], [rijders], [ClubCode]) " +
             "VALUES (CAST(@code AS NVARCHAR(100)), @code, @datum, N'AllStars JO11-1', N'Jan de Vries', N'Jan de Vries', N'Jan de Vries', N'ALLSTARS')", c);
         cmd.Parameters.AddWithValue("@code", code);
-        cmd.Parameters.AddWithValue("@datum", datum);
+        cmd.Parameters.Add(new SqlParameter("@datum", System.Data.SqlDbType.NVarChar, 50) { Value = (object?)datum ?? DBNull.Value });
         await cmd.ExecuteNonQueryAsync();
     }
 

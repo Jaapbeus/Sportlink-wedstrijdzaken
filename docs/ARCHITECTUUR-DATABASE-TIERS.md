@@ -101,6 +101,7 @@ niet bijwerken naar de huidige toestand, wel doorzoekbaar houden.
 | [§74](#74-kleurenpalet-per-modus-als-json--en-waar-een-sql-server-schemawijziging-écht-hoort-1254) | Kleurenpalet per modus als JSON — en waar een SQL Server-schemawijziging écht hoort (#1254) | **geldend** |
 | [§78](#78-feedbackmeldingen-opslag-bewaartermijn-en-inzagelog-op-beide-tiers-764) | Feedbackmeldingen: opslag, bewaartermijn en inzagelog op beide tiers (#764) | **geldend** |
 | [§82](#82-inzagelog-van-teambegeleiding-tabel-bewaartermijn-en-orkestratie-op-beide-tiers-1701) | Inzagelog van teambegeleiding: tabel, bewaartermijn en orkestratie op beide tiers (#1701) | **geldend** |
+| [§83](#83-persoonskolommen-in-de-historietabellen-seizoensretentie-en-rls-vanuit-de-generator-1698) | Persoonskolommen in de historietabellen: seizoensretentie en RLS vanuit de generator (#1698) | **geldend** |
 
 ## 1. Bouwvolgorde (vier tiers, vaste volgorde)
 
@@ -3831,7 +3832,7 @@ aangemaakt en pas in 021 RLS hebben gekregen:
 
 | Script | Vraag die het beantwoordt |
 |---|---|
-| `scripts/ci/check-rls-enabled.sh` | Heeft elke tabel in `public`/`avg`/`planner` (sinds #1698 ook `his`/`stg`, zie §82) `relrowsecurity = true`? |
+| `scripts/ci/check-rls-enabled.sh` | Heeft elke tabel in `public`/`avg`/`planner` (sinds #1698 ook `his`/`stg`, zie §83) `relrowsecurity = true`? |
 | `scripts/ci/check-splinter-lints.sh` | Meldt Supabase's eigen linter iets op de punten die vóór livegang te beoordelen zijn? |
 
 Splinter (`supabase/splinter`) is de motor onder de Security- en Performance Advisor in het
@@ -4824,11 +4825,22 @@ bestaande kolommen en heeft geen eigen tabel of statusregel nodig: hij is idempo
 rijen raakt waarin nog een persoonskolom gevuld is. Een historietabel die nog niet bestaat (verse
 installatie vóór de eerste sync) wordt overgeslagen.
 
-**Datum per tabel.** `his.matches.wedstrijddatum` is tekst. Postgres vergelijkt de eerste tien tekens
-als tekst na een vormcontrole (`~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'`): Postgres garandeert geen
-evaluatievolgorde binnen een `AND`, dus een cast kon op een afwijkende waarde alsnog falen; op het
-ISO-formaat is tekstvolgorde gelijk aan datumvolgorde. SQL Server gebruikt `TRY_CONVERT(date, ..., 23)`.
-`his.matchdetails` gebruikt `matchdate`, anders `matchdatetime`; een rij zonder beide blijft staan.
+**Datum per tabel.** `his.matches.wedstrijddatum` is tekst. Welke waarde als datum telt, beslist
+**één** functie voor beide tiers: `HisPersoonsgegevensRetentie.IsGeldigDatumdeel` (precies de eerste tien
+tekens, strikt `yyyy-MM-dd`, ASCII-cijfers, bestaande kalenderdatum, jaar 0001–9999). De tier leest alleen
+de verschillende eerste tien tekens (`SELECT DISTINCT`), `SelecteerTeWissenDatumdelen` kiest de geldige
+delen tot en met de grens, en de tier wist rijen waarvan de eerste tien tekens **binair** gelijk zijn aan
+een gekozen deel (Postgres `= ANY(@datums)`; SQL Server `COLLATE Latin1_General_BIN2 IN (STRING_SPLIT(...))`).
+Waarom niet in SQL (Codex-review ronde 2): `TRY_CONVERT(date, ..., 23)` was ruimer dan de Postgres-regex
+en dus een andere selectie. Gemeten op SQL Server 2022 met synthetische waarden: een lege tekst werd
+1900-01-01, `2026/06/30`, `2026.06.30` en `20260630` telden als datum, `2026-06-3` en `2026-06-5 10:00`
+werden aangevuld, en een voorloopspatie of -tab leverde een andere datum op. Ook de binaire vergelijking
+is nodig: onder de standaard-collation (hoofdletter- en breedte-ongevoelig) is een waarde met
+fullwidth-cijfers gelijk aan de ASCII-datum, zodat zonder `BIN2` zowel de `DISTINCT` als het wissen de
+verkeerde rij kon raken. De invoertabel met verwachting staat één keer in
+`Planner.Shared.Tests/Avg/HisWedstrijddatumGevallen.cs` en draait in de unit-test én, als gelinkt
+bronbestand, in beide database-integratiesuites. `his.matchdetails` gebruikt de getypeerde kolommen
+`matchdate`, anders `matchdatetime`; een rij zonder beide blijft staan.
 
 **RLS vanuit de generator.** `his`/`stg` maakt geen migratie aan, dus de regel "elke tabel RLS, geen
 policies" (§65) hoort in `PostgresSchemaGenerator`. `GenerateStgTable` zet RLS direct aan (de tabel is
@@ -4851,9 +4863,12 @@ en mat als zes extra identieke regels. De retentie is daarom een stap in de best
 AVG-timer `CleanupFeedback`: `DagelijkseAvgRetentie` draait eerst de feedbackretentie en daarna de
 his-retentie, elk met eigen foutafhandeling, en gooit een fout pas aan het eind door (bij twee
 fouten als `AggregateException`). Per tier verandert alleen het argument dat de eigen opslag
-meegeeft; de meting blijft 5167. Afweging: de functienaam `CleanupFeedback` dekt de lading niet
+meegeeft; de meting steeg niet (5167, na de merge van develop 5150 = plafond). Afweging: de functienaam `CleanupFeedback` dekt de lading niet
 meer helemaal, maar blijft staan zodat bestaande bewaking en logs aansluiten; de tijd schuift van
 05:00 naar 05:15 UTC, wat voor een dagelijkse, idempotente run niets uitmaakt.
 
 **Niet bewezen in deze PR:** de SQL Server-integratietest draait niet in CI (geen SQL Server-job met
-een levende database voor unit-tests); hij is lokaal tegen een wegwerpcontainer gedraaid.
+een levende database voor unit-tests); hij is lokaal tegen een wegwerpcontainer (SQL Server 2022,
+standaard-collation `SQL_Latin1_General_CP1_CI_AS`) gedraaid, de Postgres-suite ook in CI. Dat de
+datumselectie op beide tiers gelijk is, bewaakt in CI dus de unit-test op de gedeelde functie; de
+gedeelde invoertabel op SQL Server alleen lokaal.

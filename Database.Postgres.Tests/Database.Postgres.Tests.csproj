@@ -27,4 +27,9 @@
     <ProjectReference Include="..\Database.Postgres\Database.Postgres.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Gedeelde invoertabel van de his-retentie (#1698): dezelfde gevallen als de unit-test en de andere tier. -->
+    <Compile Include="..\Planner.Shared.Tests\Avg\HisWedstrijddatumGevallen.cs" Link="Avg\HisWedstrijddatumGevallen.cs" />
+  </ItemGroup>
+
 </Project>

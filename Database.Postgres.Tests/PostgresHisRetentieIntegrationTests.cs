@@ -1,6 +1,7 @@
 using AwesomeAssertions;
 using Npgsql;
 using Planner.Shared.Avg;
+using Planner.Shared.Tests.Avg;
 using Xunit;
 
 namespace Database.Postgres.Tests;
@@ -72,6 +73,29 @@ public class PostgresHisRetentieIntegrationTests : IAsyncLifetime
     }
 
     [PostgresFact]
+    public async Task WisTotEnMet_DatuminvoerVolgtDeGedeeldeTabel_GelijkAanSqlServer()
+    {
+        // Codex-review ronde 2: welke waarden als datum tellen, ligt vast in één tabel die ook de
+        // SQL Server-suite en de unit-test draaien.
+        var orchestrator = new PostgresMergeOrchestrator(ConnectionString);
+        await orchestrator.EnsureHisTableAsync(KnownEntities.Matches);
+        await orchestrator.EnsureHisTableAsync(KnownEntities.MatchDetails);
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        var gevallen = HisWedstrijddatumGevallen.Alle;
+        for (var i = 0; i < gevallen.Count; i++)
+            await VoegMatchToe(connection, 100 + i, gevallen[i].Waarde);
+
+        var (matches, _) = await PostgresHisRetentie.WisTotEnMetAsync(connection, HisWedstrijddatumGevallen.Grens);
+
+        for (var i = 0; i < gevallen.Count; i++)
+            (await Tekst(connection, "matches", "wedstrijdcode", 100 + i, "scheidsrechter")).Should().Be(
+                gevallen[i].Wissen ? null : "Jan de Vries", $"geval {i}: {gevallen[i].Reden}");
+        matches.Should().Be(gevallen.Count(g => g.Wissen));
+        (await PostgresHisRetentie.WisTotEnMetAsync(connection, HisWedstrijddatumGevallen.Grens)).Should().Be((0, 0));
+    }
+
+    [PostgresFact]
     public async Task WisTotEnMet_ZonderHistorietabellen_DoetNiets()
     {
         await using var connection = new NpgsqlConnection(ConnectionString);
@@ -128,14 +152,14 @@ public class PostgresHisRetentieIntegrationTests : IAsyncLifetime
         (await HeeftRls(connection, "stg", "matches")).Should().BeTrue();
     }
 
-    private static async Task VoegMatchToe(NpgsqlConnection c, long code, string datum)
+    private static async Task VoegMatchToe(NpgsqlConnection c, long code, string? datum)
     {
         await using var cmd = new NpgsqlCommand(
             "INSERT INTO his.\"matches\" (\"wedstrijdcode\", \"wedstrijddatum\", \"thuisteam\", \"scheidsrechter\", " +
             "\"scheidsrechters\", \"rijders\", \"clubcode\", \"mta_inserted\", \"mta_modified\") " +
             "VALUES (@code, @datum, 'AllStars JO11-1', 'Jan de Vries', 'Jan de Vries', 'Jan de Vries', 'ALLSTARS', NOW(), NOW())", c);
         cmd.Parameters.AddWithValue("code", code);
-        cmd.Parameters.AddWithValue("datum", datum);
+        cmd.Parameters.Add(new NpgsqlParameter("datum", NpgsqlTypes.NpgsqlDbType.Varchar) { Value = (object?)datum ?? DBNull.Value });
         await cmd.ExecuteNonQueryAsync();
     }
 
