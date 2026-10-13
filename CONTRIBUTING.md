@@ -192,7 +192,10 @@ de titel staan, anders volgt bij de volgende melding een nieuw issue.
 ### Beurtlabels en de CI-bot (#1692)
 
 `turn: claude-code` start de automatische issue-beurt (`claude-issue-turn.yml`). Zet dat label dus
-alleen als je wilt dat de bot het issue oppakt of reviewcommentaar verwerkt. Een interactieve
+alleen als je wilt dat de bot het issue oppakt of reviewcommentaar verwerkt. Het kan ook betekenen dat
+de bot een Codex-PR read-only moet reviewen. Dan moet de laatste fasecomment op het issue de
+reviewaanvraag zijn, met `Fase: review`, `PR: #<nr>`, `Implementer: Codex`, `Reviewer: Claude Code` en
+`Aangeboden head-SHA: <volledige SHA>` (#1727, `docs/DEVELOPER-SETUP.md` §9.5). Een interactieve
 Claude Code-sessie die zelf aan een issue werkt, zet het niet om te laten zien dat zij aan zet is:
 dan werken de bot en de sessie tegelijk aan hetzelfde issue en dezelfde PR. Leg de sessie vast in de
 opdrachtcomment op het issue (AGENTS.md, "Leg de opdracht vast bij het issue").
