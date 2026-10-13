@@ -1378,11 +1378,11 @@ Toelichting bij de bewerkingen:
 |---|---|
 | Verwerker | OpenAI (OpenAI-API, rechtstreeks) |
 | Rol | Verwerker in de zin van art. 28 AVG: classificatie in opdracht van de club |
-| Grondslag | *Door de eigenaar in te vullen.* In deze repository is voor deze verwerking geen grondslagbesluit vastgelegd. Ter vergelijking: feedback (FEEDBACK.md §7) en het leren vanuit de trace (SECURITY.md, Laag 6) steunen op art. 6 lid 1 sub f |
-| Verwerkersovereenkomst | *Door de eigenaar in te vullen*: vorm en datum van de overeenkomst met de provider voor het account waaronder `OpenAiApiKey` valt |
-| Bewaartermijn bij de verwerker | *Door de eigenaar in te vullen*: hoe lang de provider invoer en uitvoer van de API bewaart en of die voor andere doeleinden wordt gebruikt, volgens de overeenkomst en de accountinstellingen. De code zet hier niets voor |
-| Verwerkingslocatie | Standaardendpoint van de SDK, zonder regio-instelling in de code; of er buiten de EER wordt verwerkt, hangt af van account en voorwaarden — *door de eigenaar te bevestigen* |
-| Doorgifte-instrument | *Door de eigenaar in te vullen.* FEEDBACK.md §8 noemt voor dezelfde provider de standaardcontractbepalingen; bevestig of dat ook voor dit account en deze verwerking geldt |
+| Grondslag | Gerechtvaardigd belang (art. 6 lid 1 sub f AVG), bevestigd door de eigenaar op 2026-10-13; gelijk aan feedback (FEEDBACK.md §7) en het leren vanuit de trace (SECURITY.md, Laag 6) |
+| Verwerkersovereenkomst | **Open.** Volgens opgave van de eigenaar op 2026-10-13 is er voor het account waaronder `OpenAiApiKey` valt geen verwerkersovereenkomst vastgelegd. Een vervolgactie (overeenkomst sluiten of de verwerking aanpassen) is nog niet besloten; tot die tijd is deze rij niet volledig |
+| Bewaartermijn bij de verwerker | Volgens opgave van de eigenaar op 2026-10-13: geen bewaring van invoer en uitvoer (zero data retention). *Nog te verifiëren* tegen de accountinstellingen en de voorwaarden, en afhankelijk van de verwerkersovereenkomst die nog open staat. De code zet hier niets voor |
+| Verwerkingslocatie | Buiten de EER (Verenigde Staten), volgens opgave van de eigenaar op 2026-10-13; de code gebruikt het standaardendpoint van de SDK zonder regio-instelling |
+| Doorgifte-instrument | Standaardcontractbepalingen (SCC), volgens opgave van de eigenaar op 2026-10-13; *nog te verifiëren* zolang de verwerkersovereenkomst open staat; FEEDBACK.md §8 noemt hetzelfde instrument voor dezelfde provider |
 
 ### 5d. Registerrij (AVG art. 30)
 
@@ -1391,17 +1391,17 @@ Toelichting bij de bewerkingen:
 | Verwerking | Classificatie van inkomende e-mail in de coördinatormailbox met een externe AI-provider, inclusief correctiedetectie op replies en de e-mailtester |
 | Verwerkingsverantwoordelijke | De club die deze installatie beheert (eigen fork en eigen Azure-resources) |
 | Doel | Vaststellen wat voor verzoek een bericht is en de planninggegevens (datum, tijd, team, tegenstander) eruit halen, zodat een antwoord kan worden opgebouwd of het bericht bij de coördinator terechtkomt |
-| Grondslag | Zie §5c, *door de eigenaar in te vullen* |
+| Grondslag | Gerechtvaardigd belang (art. 6 lid 1 sub f AVG), zie §5c |
 | Betrokkenen | Afzenders van berichten aan de coördinatormailbox (onder meer wedstrijdsecretarissen van andere clubs, trainers, leden, ouders) en personen die in een bericht worden genoemd, mogelijk minderjarigen |
 | Categorieën persoonsgegevens | E-mailadres van de afzender, onderwerp, berichttekst; afgeleid: classificatie en gesaneerde samenvatting |
 | Bijzondere categorieën | Niet gevraagd en niet gestructureerd verwerkt. Vrije tekst kan er toevallig een bevatten (bijvoorbeeld een blessure in een afmelding); die gaat dan mee in de berichttekst |
 | Ontvangers | OpenAI (verwerker, §5c) · Microsoft (mailbox via Graph, hosting van de Function App) · de databasedienst van de actieve tier (opslag van de verwerkingsrij) |
-| Doorgifte buiten de EER | Zie §5c: verwerkingslocatie en doorgifte-instrument, *door de eigenaar in te vullen* |
-| Bewaartermijnen | In de applicatie: `planner.EmailVerwerking` geanonimiseerd na 30–90 dagen en verwijderd na 90 dagen (SECURITY.md, Laag 6); leermomenten met herkomst `Reply` volgen die retentie, admin-leermomenten zijn permanent maar verwijderbaar (§3d); de bewaarde trace bevat geen ruwe mailtekst (§3c). Bij de provider: zie §5c, *door de eigenaar in te vullen* |
+| Doorgifte buiten de EER | Ja, naar de Verenigde Staten; instrument: standaardcontractbepalingen, volgens opgave van de eigenaar en nog te verifiëren (§5c) |
+| Bewaartermijnen | In de applicatie: `planner.EmailVerwerking` geanonimiseerd na 30–90 dagen en verwijderd na 90 dagen (SECURITY.md, Laag 6); leermomenten met herkomst `Reply` volgen die retentie, admin-leermomenten zijn permanent maar verwijderbaar (§3d); de bewaarde trace bevat geen ruwe mailtekst (§3c). Bij de provider: volgens opgave van de eigenaar geen bewaring (zero data retention), nog te verifiëren (§5c) |
 | Beveiliging | Aanroepen alleen waar `EgressGuard` uitgaande integraties toestaat · sleutel als app setting · voorfilters en uitsluitingslijst vóór de aanroep · begrenzing van de tekst · datablok met willekeurige markers · geen berichtinhoud, onderwerp of adres in logs (SECURITY.md, Laag 5) · modeluitvoer gesaneerd vóór gebruik · antwoord uit sjablonen |
 
 Bij een nieuwe club-installatie: neem deze rij en de voorwaarden uit §5c over in het eigen register en
-vul de eigenaarsvelden in.
+vul de eigenaarsvelden (grondslag, overeenkomst, bewaartermijn, locatie, instrument) voor die club in.
 
 ---
 
