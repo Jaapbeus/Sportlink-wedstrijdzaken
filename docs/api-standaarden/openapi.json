@@ -51,7 +51,7 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT",
-        "description": "Azure Easy Auth Bearer token (Entra ID). Geldt voor alle endpoints behalve `/health`,\ninclusief `/postgres/sync-matches` en `/sync-matches` (sinds #1350 — tot dan een Function\nkey/Master key via `?code=`). De Function App valideert dit token via Easy Auth en\ninjecteert `X-MS-CLIENT-PRINCIPAL`. EasyAuthHelper controleert daarna de rol: `admin` op de\nmeeste /beheer/-, /planner/-, /feedback/- en /test/-endpoints (en de twee syncroutes);\n`admin` of `user` op /planner/veldbezetting en de twee Sportlink-viewing-endpoints (#1400);\n`Wedstrijdzaken` of `admin` op de Sportlink-mutatie-endpoints (beide poorten sinds #1400).\nLokaal altijd toegestaan als WEBSITE_SITE_NAME afwezig is.\n"
+        "description": "Azure Easy Auth Bearer token (Entra ID). Geldt voor alle endpoints behalve `/health`,\ninclusief `/postgres/sync-matches` en `/sync-matches` (sinds #1350 — tot dan een Function\nkey/Master key via `?code=`). De Function App valideert dit token via Easy Auth en\ninjecteert `X-MS-CLIENT-PRINCIPAL`. EasyAuthHelper controleert daarna de rol: `admin` op de\nmeeste /beheer/-, /planner/-, /feedback/- en /test/-endpoints (en de twee syncroutes);\n`admin` of `user` op /planner/veldbezetting en de twee Sportlink-viewing-endpoints (#1400);\n`Wedstrijdzaken` of `admin` op de Sportlink-mutatie-endpoints (beide poorten sinds #1400).\nLokaal alleen toegestaan met LOCAL_AUTH_BYPASS=true; in Azure wordt die schakelaar geweigerd (#1700).\n"
       }
     },
     "headers": {

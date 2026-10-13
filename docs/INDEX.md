@@ -30,6 +30,7 @@ Voor de beheerder die beheertaken uitvoert buiten de dagelijkse GUI-flow.
 | Document | Inhoud |
 |----------|--------|
 | [Teambegeleiding import](ADMIN-TEAMBEGELEIDING-IMPORT.md) | AVG-veilig exporteren uit Sportlink en importeren in SQL |
+| [Verzoek van betrokkene](ADMIN-VERZOEK-VAN-BETROKKENE.md) | Inzage, rectificatie en wissing per tabel: zoeksleutel, stappen en automatische termijn, ook het inzagelog van teambegeleiding (#1701) |
 | [Testmodus — ALLSTARS](TESTMODUS-ALLSTARS.md) | Fictieve wedstrijden invoeren, planner testen zonder echte data |
 | [Monitoring & alerts](MONITORING.md) | Resource Health Alerts, KQL-queries, escalatiematrix |
 | [KNVB speeldagenkalenders](knvb-speeldagenkalenders/README.md) | KNVB-speeldagenkalenders importeren |

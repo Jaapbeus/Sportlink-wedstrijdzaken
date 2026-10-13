@@ -8,32 +8,36 @@ namespace FunctionApp.Tests.Infrastructure;
 /// Tests voor de #857-egressblokkade: de ene schakelaar die alle uitgaande integraties
 /// (Sportlink-sync, GitHub-issue-rapportage, e-mail, AI-diensten) buiten productie tegenhoudt.
 /// <para>
-/// Manipuleert bewust de procesbrede omgevingsvariabelen <c>WEBSITE_SITE_NAME</c> en
-/// <c>AllowExternalIntegrations</c> — elke test herstelt de oorspronkelijke waarde in een
-/// <c>finally</c>-blok. Deze klasse is de enige in <c>FunctionApp.Tests</c> die deze twee
-/// variabelen aanraakt; xUnit draait testmethoden binnen één klasse niet parallel aan elkaar
-/// (alleen andere testklassen lopen parallel), dus dit is veilig zonder extra serialisatie.
+/// Manipuleert bewust de procesbrede omgevingsvariabelen <c>WEBSITE_SITE_NAME</c>,
+/// <c>LOCAL_AUTH_BYPASS</c> (#1700) en <c>AllowExternalIntegrations</c> — elke test herstelt de
+/// oorspronkelijke waarde in een <c>finally</c>-blok. De assembly draait sequentieel
+/// (<c>DisableTestParallelization</c> in AssemblyInfo.cs). De volledige beslismatrix staat in
+/// <c>Planner.Shared.Tests/Infrastructure/LokaleOntwikkelomgevingTests.cs</c>; dit bewijst de bedrading.
 /// </para>
 /// </summary>
 public class EgressGuardTests
 {
     private const string AllowVar = "AllowExternalIntegrations";
     private const string AzureVar = "WEBSITE_SITE_NAME";
+    private const string SchakelaarVar = "LOCAL_AUTH_BYPASS";
 
-    private static void WithEnv(string? azureHosting, string? allowOverride, Action assert)
+    private static void WithEnv(string? azureHosting, string? allowOverride, Action assert, string? schakelaar = null)
     {
         var origAzure = Environment.GetEnvironmentVariable(AzureVar);
         var origAllow = Environment.GetEnvironmentVariable(AllowVar);
+        var origSchakelaar = Environment.GetEnvironmentVariable(SchakelaarVar);
         try
         {
             Environment.SetEnvironmentVariable(AzureVar, azureHosting);
             Environment.SetEnvironmentVariable(AllowVar, allowOverride);
+            Environment.SetEnvironmentVariable(SchakelaarVar, schakelaar);
             assert();
         }
         finally
         {
             Environment.SetEnvironmentVariable(AzureVar, origAzure);
             Environment.SetEnvironmentVariable(AllowVar, origAllow);
+            Environment.SetEnvironmentVariable(SchakelaarVar, origSchakelaar);
         }
     }
 
@@ -76,5 +80,23 @@ public class EgressGuardTests
     {
         WithEnv(azureHosting: null, allowOverride: waarde,
             () => EgressGuard.ExternalIntegrationsAllowed().Should().BeTrue());
+    }
+
+    // ── Lokale schakelaar (#1700): opent nooit uitgaand verkeer ──
+
+    [Fact]
+    public void ExternalIntegrationsAllowed_LokaleSchakelaar_BlijftGeblokkeerd()
+    {
+        WithEnv(azureHosting: null, allowOverride: null, schakelaar: "true",
+            assert: () => EgressGuard.ExternalIntegrationsAllowed().Should().BeFalse(
+                "de lokale bypass geldt voor autorisatie, niet voor uitgaand verkeer"));
+    }
+
+    [Fact]
+    public void ExternalIntegrationsAllowed_SchakelaarInAzure_IsGeblokkeerd()
+    {
+        WithEnv(azureHosting: "aanwezig", allowOverride: null, schakelaar: "true",
+            assert: () => EgressGuard.ExternalIntegrationsAllowed().Should().BeFalse(
+                "een gehoste app met de lokale schakelaar is verkeerd geconfigureerd: bij twijfel dicht"));
     }
 }

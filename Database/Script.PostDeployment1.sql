@@ -3852,6 +3852,44 @@ BEGIN
 END;
 GO
 
+-- #1701: inzagelog van de contactgegevens van teambegeleiding (avg-schema). Wie (Entra object-ID +
+-- naam-momentopname, uit het Easy Auth-principal) vroeg wanneer de begeleiders van welk team op, en hoeveel
+-- kaarten dat opleverde; nooit gegevens van de ingeziene begeleiders. Bewaartermijn 12 maanden via de
+-- maandelijkse timer CleanupTeambegeleiding. Postgres-tegenhanger:
+-- Database.Postgres/migrations/042_avg_teambegeleidinginzagelog.sql. Bron: Database/avg/Tables/TeambegeleidingInzageLog.sql
+-- en Database/avg/System Stored Procedures/sp_CleanupTeambegeleidingInzageLog.sql.
+IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'avg')
+    EXEC('CREATE SCHEMA [avg]');
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('avg.TeambegeleidingInzageLog'))
+BEGIN
+    CREATE TABLE [avg].[TeambegeleidingInzageLog] (
+        [Id]                 INT            IDENTITY (1, 1) NOT NULL,
+        [ClubCode]           NVARCHAR (20)  NOT NULL,
+        [InzienDoorObjectId] NVARCHAR (64)  NULL,
+        [InzienDoorNaam]     NVARCHAR (200) NULL,
+        [Team]               NVARCHAR (100) NOT NULL,
+        [AantalRijen]        INT            NOT NULL,
+        [mta_inserted]       DATETIME2      NOT NULL CONSTRAINT [DF_avg_TeambegeleidingInzageLog_mta_inserted] DEFAULT (GETUTCDATE()),
+        CONSTRAINT [PK_avg_TeambegeleidingInzageLog] PRIMARY KEY CLUSTERED ([Id] ASC)
+    );
+    CREATE NONCLUSTERED INDEX [IX_avg_TeambegeleidingInzageLog_Club_Datum] ON [avg].[TeambegeleidingInzageLog] ([ClubCode] ASC, [mta_inserted] DESC);
+END
+GO
+-- Bron: Database/avg/System Stored Procedures/sp_CleanupTeambegeleidingInzageLog.sql  (#1701)
+CREATE OR ALTER PROCEDURE [avg].[sp_CleanupTeambegeleidingInzageLog]
+    @NuUtc         DATETIME2,
+    @InzageMaanden INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DELETE FROM [avg].[TeambegeleidingInzageLog] WHERE [mta_inserted] < DATEADD(MONTH, -@InzageMaanden, @NuUtc);
+
+    SELECT @@ROWCOUNT AS [InzageVerwijderd];
+END;
+GO
+
 -- ============================================================
 -- #1547: business key van his.matchdetails — WedstrijdCode -> InternCode.
 --

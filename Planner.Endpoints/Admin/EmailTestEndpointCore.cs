@@ -68,12 +68,13 @@ public static class EmailTestEndpointCore
 
     /// <summary>
     /// Lokaal is het exceptietype in de melding het enige diagnosemiddel van de e-mailtester; in productie blijft de
-    /// tekst generiek (#1350).
+    /// tekst generiek (#1350). "Lokaal" betekent sinds #1700 de expliciete lokale bypass, niet het ontbreken van een
+    /// platformvariabele: zonder schakelaar blijft de tekst generiek.
     /// </summary>
     public static IActionResult Fout(Exception ex, ILogger log)
     {
         log.LogError(ex, "Fout bij dry-run email");
-        var isLocal = string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME"));
+        var isLocal = Planner.Shared.Infrastructure.LokaleOntwikkelomgeving.BypassActief();
         var errorMsg = isLocal ? $"Dry-run mislukt: {ex.GetType().Name}: {ex.Message}" : "Dry-run mislukt";
         return new ObjectResult(new { error = errorMsg }) { StatusCode = 500 };
     }
