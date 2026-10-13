@@ -270,5 +270,12 @@ gh run list --workflow close-released-issues.yml --limit 1 # ⇒ watch tot groen
 | Issues gesloten     | <aantal> via close-released-issues |
 ```
 
-Bij een STOP: welke stopconditie, wat de eigenaar moet beslissen, en de zin
-"Er is niets gecommit of gepusht" (of precies wat er al wel gebeurd is).
+Bij een STOP: welke stopconditie en de zin "Er is niets gecommit of gepusht" (of precies wat er al
+wel gebeurd is).
+
+**Waar het rapport staat (#1728).** Dit eindrapport, ook bij een STOP, gaat als één comment op het
+release-issue uit R0, niet in de chat. Regel 4a uit `AGENTS.md` geldt: de securitypoort staat er
+alleen als R1-resultaatregel met aantallen; details van een HIGH meld je de eigenaar in het gesprek
+(R1-c), nooit in de comment. Wat de eigenaar moet beslissen, staat in een
+beslissurvey. In de chat komt één regel: eindstatus, link naar de comment en, als er een besluit
+openstaat, het pad naar de survey (`CONTRIBUTING.md`, "Afronding aan de eigenaar").
