@@ -291,6 +291,23 @@ const run = (github, extra = {}) => applyEndLabel({
   check('docs met AGENTS in de naam: geen uitzondering', ownerOnlyReason('docs/AGENTS-UITLEG.md'), null);
   check('geneste CLAUDE.md: werkinstructies', (ownerOnlyReason('FunctionApp/CLAUDE.md') || '').startsWith('werkinstructies'), true);
 
+  // ---------- #1721 fase 1: testmodus schrijft niets ----------
+  console.log('\ndryRun (#1721):');
+  {
+    const github = fakeGithub({ comments: [bot('2026-10-12T14:48:00Z', 'Volgende beurt: turn: codex')] });
+    const r = await applyEndLabel({ github, context: ctx, core, issueNumber: ISSUE, startPrNumber: null, startedAt: START, dryRun: true });
+    check('dryRun: berekent het label, schrijft niets', [r.written, r.dryRun, r.label], [false, true, 'turn: codex']);
+    check('dryRun: geen label toegevoegd of verwijderd, geen comment', [github.calls.added, github.calls.removed, github.calls.comments], [[], [], []]);
+    const echt = fakeGithub({ comments: [bot('2026-10-12T14:48:00Z', 'Volgende beurt: turn: codex')], states: [{ labels: ['turn: claude-code'] }, { labels: ['turn: codex'] }] });
+    const r2 = await applyEndLabel({ github: echt, context: ctx, core, issueNumber: ISSUE, startPrNumber: null, startedAt: START });
+    check('zonder dryRun: schrijft wel', [r2.written, echt.calls.added], [true, ['turn: codex']]);
+  }
+  {
+    const github = fakeGithub({ comments: [bot('2026-10-12T14:48:00Z', 'Volgende beurt: merge door implementer')], states: [{ labels: ['turn: claude-code'] }] });
+    const r = await applyEndLabel({ github, context: ctx, core, issueNumber: ISSUE, startPrNumber: null, startedAt: START, dryRun: true });
+    check('dryRun bij "wacht op merge": geen label en geen comment', [github.calls.removed, github.calls.comments], [[], []]);
+  }
+
   // De vergelijk-en-zet werkt alleen als de agent zelf geen labelpad heeft en de job altijd draait.
   console.log('\nclaude-issue-turn.yml (#1692):');
   {
