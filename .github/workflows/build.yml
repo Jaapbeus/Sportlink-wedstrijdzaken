@@ -415,6 +415,10 @@ jobs:
       - name: Claude issue-beurt eindlabel testen
         run: node .github/scripts/claude-issue-turn-eindlabel.test.js
 
+      # #1727: publicatie van een Claude-review op een Codex-PR (hercontrole, SHA-binding, scan).
+      - name: Claude issue-beurt reviewpublicatie testen
+        run: node .github/scripts/claude-issue-turn-review.test.js
+
       # #1686: helper van turn-label-exclusief.yml (hoogstens één turn:-label). Ook die workflow
       # draait alleen op een gelabeld issue; zonder deze test blijkt een fout pas bij een echte beurtwissel.
       - name: Turn-label exclusief testen
