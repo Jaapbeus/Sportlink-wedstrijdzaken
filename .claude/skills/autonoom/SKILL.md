@@ -89,7 +89,7 @@ gh issue list --state open --search '"Wacht op merge door de implementer" in:com
 # Een zoekhit is alleen een kandidaat: lees de comments via REST met login, type en association
 # (#1733). Niet `gh issue view --json comments`: dat geeft botlogins zónder `[bot]`-suffix
 # (`claude`, `github-actions`) en geen `user.type`, dus een vergelijking met `claude[bot]` matcht nooit.
-gh api "repos/{owner}/{repo}/issues/<nr>/comments" --paginate \
+gh api "repos/{owner}/{repo}/issues/<nr>/comments" --paginate `
   --jq '.[] | {login: .user.login, type: .user.type, association: .author_association, body}'
 ```
 
