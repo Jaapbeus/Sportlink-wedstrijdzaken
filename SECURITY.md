@@ -565,8 +565,8 @@ registerrij: **[docs/EMAIL-VERWERKING.md](docs/EMAIL-VERWERKING.md) §5**. Samen
 | Verwerking | Classificatie van inkomende e-mail (incl. correctiedetectie op replies en de e-mailtester) |
 | Velden naar de provider | E-mailadres van de afzender, onderwerp en berichttekst (begrensd; HTML verwijderd bij mailboxberichten, niet bij de tester; persoonsgegevens in de tekst worden niet gemaskeerd); clubnaam en datum in de instructies; gesaneerde samenvattingen van leermomenten |
 | Verwerker | OpenAI (OpenAI-API, rechtstreeks); model uit de app setting `AiModelName`; alleen waar `EgressGuard` uitgaande integraties toestaat |
-| Grondslag | Door de eigenaar in te vullen (EMAIL-VERWERKING.md §5c) |
-| Verwerkersovereenkomst, bewaartermijn bij de verwerker, doorgifte-instrument | Door de eigenaar in te vullen (EMAIL-VERWERKING.md §5c) |
+| Grondslag | Gerechtvaardigd belang, art. 6 lid 1 sub f (EMAIL-VERWERKING.md §5c) |
+| Verwerkersovereenkomst, bewaartermijn bij de verwerker, doorgifte-instrument | Verwerkersovereenkomst: open (op 2026-10-13 is er geen overeenkomst vastgelegd) · bewaartermijn en doorgifte-instrument volgens opgave van de eigenaar, nog te verifiëren · verwerking buiten de EER (EMAIL-VERWERKING.md §5c) |
 | Bewaartermijn in de applicatie | `planner.EmailVerwerking`: anonimiseren na 30–90 dagen, verwijderen na 90 dagen (Laag 6) |
 
 ### Sportlink-historietabellen (`his.matches`, `his.matchdetails`, #1698)
