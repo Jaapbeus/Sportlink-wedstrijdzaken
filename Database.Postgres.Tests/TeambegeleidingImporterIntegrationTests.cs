@@ -96,10 +96,10 @@ public class TeambegeleidingImporterIntegrationTests : IAsyncLifetime
         var aantalAndere = (long)(await countAndere.ExecuteScalarAsync())!;
         aantalAndere.Should().Be(2, "de import voor 'testclub' mag rijen van 'andereclub' niet raken");
 
-        await using var countVrc = new NpgsqlCommand(
+        await using var countTestclub = new NpgsqlCommand(
             "SELECT COUNT(*) FROM avg.teambegeleiding WHERE clubcode = 'testclub'", connection);
-        var aantalVrc = (long)(await countVrc.ExecuteScalarAsync())!;
-        aantalVrc.Should().Be(2);
+        var aantalTestclub = (long)(await countTestclub.ExecuteScalarAsync())!;
+        aantalTestclub.Should().Be(2);
     }
 
     /// <summary>#1360: Functie komt via de binaire COPY in avg.teambegeleiding.functie; leeg blijft NULL.</summary>
@@ -257,13 +257,13 @@ public class TeambegeleidingImporterIntegrationTests : IAsyncLifetime
         await using var connection = new NpgsqlConnection(ConnectionString);
         await connection.OpenAsync();
 
-        await using (var insertVrc = new NpgsqlCommand("""
+        await using (var insertTestclub = new NpgsqlCommand("""
             INSERT INTO avg.teambegeleiding (naam, clubcode, mta_imported)
             VALUES ('Jan de Vries', 'testclub', NOW() - (@dagen || ' days')::interval)
             """, connection))
         {
-            insertVrc.Parameters.AddWithValue("dagen", dagenOud);
-            await insertVrc.ExecuteNonQueryAsync();
+            insertTestclub.Parameters.AddWithValue("dagen", dagenOud);
+            await insertTestclub.ExecuteNonQueryAsync();
         }
 
         // Andere club heeft een veel oudere rij — mag de scoping voor 'testclub' niet beïnvloeden.

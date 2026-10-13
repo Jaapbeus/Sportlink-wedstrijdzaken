@@ -111,8 +111,8 @@ public static class TeamNaamNormalisatie
 
         var rest = tekst[prefix.Length..].TrimStart(' ', '-', '_');
 
-        // Alleen strippen als er daadwerkelijk een teamaanduiding overblijft. "VRC" alleen mag
-        // nooit tot een lege sleutel leiden.
+        // Alleen strippen als er daadwerkelijk een teamaanduiding overblijft. Een tekst met alleen het
+        // clubprefix mag nooit tot een lege sleutel leiden.
         return rest.Length == 0 ? tekst : rest;
     }
 
