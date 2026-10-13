@@ -884,6 +884,12 @@ Iemand vraagt wie de trainer, coach, begeleider of teamleider van een team is.
 
 **Wanneer:** Altijd bij dit type. Contactgegevens worden nooit gedeeld met de vraagsteller.
 
+> **Afzender van een e-mail versus ingelogde gebruiker.** "Nooit gedeeld" geldt voor wie de club mailt: de
+> auto-reply noemt geen naam, adres of telefoonnummer van een begeleider. Ingelogde gebruikers van de
+> beheertoepassing (rol `admin` of `user`) zien die gegevens wél op het scherm *Teambegeleiding*
+> ([BEHEERDER-HANDLEIDING.md](BEHEERDER-HANDLEIDING.md) §10); elke opvraging daar komt in het inzagelog
+> `avg.TeambegeleidingInzageLog` (#1701).
+
 ```
 {aanhef} {voornaam},
 
@@ -919,6 +925,15 @@ naar de coach. Is er geen coach gevonden in `avg.Teambegeleiding`, dan gebeurt d
 > `VerzoekType = TeambegeleidingDoorsturen` (een synthetische audit-rij, geen echt inkomend bericht —
 > `MessageId` is gegenereerd, niet afkomstig van Graph). Filter op `VerzoekType` om de twee in de
 > Email-log uit elkaar te houden.
+>
+> **Wat er van een handmatige doorstuur-actie bewaard blijft — twee sporen.**
+> 1. **De audit-rij** in `planner.EmailVerwerking`: het e-mailadres van de aanvrager (`Afzender`), alle
+>    ontvangers (`VerstuurdNaar`), het team in het vaste onderwerp `[team] Vraag doorgestuurd` en het tijdstip.
+>    **Niet** de berichttekst en niet het onderwerp dat de aanvrager typte. Termijn: na 30 dagen geanonimiseerd
+>    (adressen en onderwerp), na 90 dagen verwijderd (SECURITY.md, Laag 6).
+> 2. **De BCC-kopie** van het volledige bericht aan het *Planner e-mailadres* (`plannerEmailAdres`), net als
+>    bij de automatische doorsturing hierboven. Die staat in de mailbox van de coördinator; de bewaartermijnen
+>    van de applicatie gelden daar niet.
 
 ---
 

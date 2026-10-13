@@ -496,22 +496,36 @@ geserialiseerd per club).
 en welk bestand daarbij hoorde (`CsvBestand`, kan herleidbare informatie bevatten). Beide zijn
 persoonsgegevens.
 
-Daarnaast geldt voor beide tabellen een automatische retentie:
+`avg.TeambegeleidingInzageLog` (#1701) legt elke opvraging van contactgegevens vast
+(`GET /api/beheer/teambegeleiding/{team}`, open voor elke ingelogde rol): wie (Entra object-ID als
+pseudoniem en de weergavenaam als momentopname, uitsluitend uit het Easy Auth-principal), wanneer, welk
+team en hoeveel kaarten. Het bevat nooit gegevens van de ingeziene begeleiders (afgedwongen door het
+record `TeambegeleidingInzageNieuw` in `Planner.Shared`, dat daar geen veld voor heeft). Het vastleggen is
+fail-closed: lukt het niet, dan gaan er geen contactgegevens terug. Grondslag en doel: verantwoording
+(art. 5 lid 2) richting de begeleiders, wier gegevens voor alle ingelogde gebruikers zichtbaar zijn.
+Opvragen per betrokkene: [docs/ADMIN-VERZOEK-VAN-BETROKKENE.md](docs/ADMIN-VERZOEK-VAN-BETROKKENE.md).
+
+Daarnaast geldt voor deze tabellen een automatische retentie:
 
 | Tabel | Fase | Wanneer | Actie |
 |---|---|---|---|
 | `avg.Teambegeleiding` | Verwijderen | > 1 jaar na de import (`mta_imported` / `ImportDatum`) | Hele rij verwijderd |
 | `avg.ImportLog` | Anonimiseren | > 90 dagen na de import | `ImporterendeDoor` en `CsvBestand` → NULL |
 | `avg.ImportLog` | Verwijderen | > 1 jaar na de import | Hele rij verwijderd |
+| `avg.TeambegeleidingInzageLog` | Verwijderen | > 12 maanden na de opvraging (`TeambegeleidingInzageRetentie`) | Hele rij verwijderd |
 
 De cleanup draait maandelijks (1e van de maand, 04:00 UTC) via `CleanupTeambegeleidingFunction`, op
 beide tiers en met dezelfde termijnen; de Postgres-variant gebruikt
-`PostgresCleanupProcedures.CleanupTeambegeleidingAsync` / `CleanupImportLogAsync`, de SQL
-Server-variant de stored procedures `avg.sp_CleanupTeambegeleiding` en `avg.sp_CleanupImportLog`.
-Beide zijn idempotent.
+`PostgresCleanupProcedures.CleanupTeambegeleidingAsync` / `CleanupImportLogAsync` /
+`CleanupTeambegeleidingInzageLogAsync`, de SQL Server-variant de stored procedures
+`avg.sp_CleanupTeambegeleiding`, `avg.sp_CleanupImportLog` en `avg.sp_CleanupTeambegeleidingInzageLog`.
+Alle zijn idempotent.
 
-Importeer alleen aan het begin van een nieuw seizoen. Het importscript waarschuwt als de data ouder
-is dan 90 dagen.
+Importeer aan het begin van elk seizoen en daarna regelmatig tijdens het seizoen (aanbevolen: wekelijks,
+of zodra de begeleiding verandert; zie [ADMIN-TEAMBEGELEIDING-IMPORT.md](docs/ADMIN-TEAMBEGELEIDING-IMPORT.md),
+"Hoe vaak moet dit?"). Elke import vervangt de rijen van de club, dus een vertrokken begeleider verdwijnt bij
+de eerstvolgende import; de termijn van 1 jaar hierboven is het vangnet als er niet meer wordt geïmporteerd.
+Het importscript waarschuwt als de data ouder is dan 90 dagen.
 
 `dbo.AppSettingsAudit` bevat een auditlog van elke instellingenwijziging (#781). `GewijzigdDoor` is
 een Entra-gebruikersnaam/UPN; `OudeWaarde`/`NieuweWaarde` kunnen e-mailadressen bevatten (bijv. bij

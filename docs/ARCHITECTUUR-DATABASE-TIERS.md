@@ -100,6 +100,7 @@ niet bijwerken naar de huidige toestand, wel doorzoekbaar houden.
 | [§73](#73-thema-logica-gedeeld--en-de-platformafhankelijke-bug-die-de-duplicatie-verborgen-hield-1248-1252) | Thema-logica gedeeld — en de platformafhankelijke bug die de duplicatie verborgen hield (#1248, #1252) | **geldend** |
 | [§74](#74-kleurenpalet-per-modus-als-json--en-waar-een-sql-server-schemawijziging-écht-hoort-1254) | Kleurenpalet per modus als JSON — en waar een SQL Server-schemawijziging écht hoort (#1254) | **geldend** |
 | [§78](#78-feedbackmeldingen-opslag-bewaartermijn-en-inzagelog-op-beide-tiers-764) | Feedbackmeldingen: opslag, bewaartermijn en inzagelog op beide tiers (#764) | **geldend** |
+| [§82](#82-inzagelog-van-teambegeleiding-tabel-bewaartermijn-en-orkestratie-op-beide-tiers-1701) | Inzagelog van teambegeleiding: tabel, bewaartermijn en orkestratie op beide tiers (#1701) | **geldend** |
 
 ## 1. Bouwvolgorde (vier tiers, vaste volgorde)
 
@@ -4764,3 +4765,38 @@ daardoor van 5213 naar 5194.
 compileren, maar draaien alleen in de CI-job met een levende Postgres; voor de SQL Server-tier bestaat geen
 equivalente integratietest (de SQL is handmatig gespiegeld, de statische controle is de schema-drift check en
 de job *PostDeployment op verse database*).
+
+---
+
+## 82. Inzagelog van teambegeleiding: tabel, bewaartermijn en orkestratie op beide tiers (#1701)
+
+Elke opvraging van `GET /api/beheer/teambegeleiding/{team}` legt een inzageregel vast, naar het model van
+het feedback-inzagelog (§78). Betrokkenenprocedure: [ADMIN-VERZOEK-VAN-BETROKKENE.md](ADMIN-VERZOEK-VAN-BETROKKENE.md).
+
+| Onderdeel | Postgres | SQL Server |
+|---|---|---|
+| Tabel | `avg.teambegeleidinginzagelog` — `042_avg_teambegeleidinginzagelog.sql`, met `ENABLE ROW LEVEL SECURITY` in dezelfde migratie | `avg.TeambegeleidingInzageLog` — `Database/avg/Tables/` én idempotent `Script.PostDeployment1.sql` |
+| Bewaartermijn (12 maanden) | `PostgresCleanupProcedures.CleanupTeambegeleidingInzageLogAsync` (grens in C#) | `avg.sp_CleanupTeambegeleidingInzageLog` (parameters `@NuUtc`, `@InzageMaanden`) |
+| Opslag | `PostgresTeambegeleidingInzageStore` | `SqlTeambegeleidingInzageStore` |
+| Timer | bestaande maandelijkse `CleanupTeambegeleiding` (1e van de maand, 04:00 UTC) | idem |
+
+**Gedeeld, niet per tier.** Het record, de bewaartermijn en het lezen van een contactrij staan in
+`Planner.Shared/Teambegeleiding/TeambegeleidingInzage.cs` (`TeambegeleiderContact.LeesVan` werkt op een
+`DbDataReader`, dus beide tiers delen de rijvertaling die eerder per tier gedupliceerd was); de orkestratie
+(eerst ophalen, dan vastleggen, dan antwoorden) in `Planner.Endpoints/Teambegeleiding/TeambegeleidingInzageEndpointCore`.
+Per tier blijft alleen de SQL. Het opslagcontract `ITeambegeleidingInzageStore` is net als `IFeedbackStore`
+geen runtime-switch.
+
+**Geen persoonsgegevens van de ingeziene begeleiders.** `TeambegeleidingInzageNieuw` heeft alleen
+clubcode, inziener (object-ID en naam uit het Easy Auth-principal), team en aantal rijen; een test op de
+eigenschappen van het record en een test op de kolommen van de tabel (beide tiers) laten een nieuw veld
+niet ongemerkt binnen.
+
+**Fail-closed.** De inzageregel wordt vóór het antwoord geschreven; een databasefout geeft een `500`
+zonder gegevens. De ontwerpkeuze kost één extra databaseverbinding per opvraging (op SQL Server zonder
+pooling, #808); dat is bewust boven één gecombineerde tier-query verkozen, zodat de volgorde op één plek
+staat en getest is.
+
+**Gemeten.** Postgres 17 en SQL Server 2022 in wegwerpcontainers: store, kern-tegen-echte-database en
+retentie (11 maanden blijft, 13 maanden verdwijnt) op beide tiers; het #1701-blok van de PostDeployment
+tweemaal toegepast (idempotent); `check-rls-enabled.sh` groen en aantoonbaar rood met RLS uit.

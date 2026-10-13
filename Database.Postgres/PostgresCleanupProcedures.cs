@@ -137,6 +137,21 @@ public static class PostgresCleanupProcedures
         await delete.ExecuteNonQueryAsync(ct);
     }
 
+    /// <summary>
+    /// Postgres-tegenhanger van <c>avg.sp_CleanupTeambegeleidingInzageLog</c> (#1701): verwijdert
+    /// inzageregels van de teambegeleiding-contactgegevens ouder dan <paramref name="inzageMaanden"/>
+    /// (de aanroeper geeft <c>TeambegeleidingInzageRetentie.InzageLogMaanden</c> mee). De grens wordt
+    /// eenmalig in C# berekend. Geeft uitsluitend het aantal verwijderde rijen terug.
+    /// </summary>
+    public static async Task<int> CleanupTeambegeleidingInzageLogAsync(
+        NpgsqlConnection connection, DateTime nuUtc, int inzageMaanden, CancellationToken ct = default)
+    {
+        await using var delete = new NpgsqlCommand(
+            "DELETE FROM avg.teambegeleidinginzagelog WHERE mta_inserted < @grens", connection);
+        delete.Parameters.AddWithValue("grens", nuUtc.AddMonths(-inzageMaanden));
+        return await delete.ExecuteNonQueryAsync(ct);
+    }
+
     public static async Task CleanupImportLogAsync(NpgsqlConnection connection, CancellationToken ct = default)
     {
         var now = DateTime.UtcNow;

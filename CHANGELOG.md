@@ -48,6 +48,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - De context voor de automatische issue-beurt wordt in UTF-8-bytes begrensd (96 KiB, inclusief issuetekst, kopregels en separators) en kapt zichtbaar af, met behoud van de nieuwste reviewcomments (#1666)
 - fix(#1597): widgetissues krijgen het canonieke label `via: feedback-widget` (voorheen `via-feedback-widget`), zodat ze aansluiten bij de labelset in `.github/labels.json`.
 
+### Security
+- Het ophalen van contactgegevens op Teambegeleiding wordt vastgelegd in een inzagelog (wie, wanneer, welk team en hoeveel begeleiders; nooit de gegevens van de begeleiders zelf), op beide databasetiers; zonder geslaagde inzageregel gaan er geen gegevens terug, en de regels worden na 12 maanden automatisch verwijderd door de bestaande maandelijkse opschoning. Nieuw beheerdersdocument "Verzoek van betrokkene" met per tabel de zoeksleutel en de stappen voor inzage en wissing; de documentatie over hoe vaak de teambegeleiding wordt geïmporteerd, wat een doorgestuurde teambegeleiding-vraag achterlaat en welke gegevens het endpoint teruggeeft is gelijkgetrokken (#1701).
+
 ## [3.13.2.0] — 2026-10-11
 
 ### Changed

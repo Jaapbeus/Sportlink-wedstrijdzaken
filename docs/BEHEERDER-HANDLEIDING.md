@@ -715,6 +715,12 @@ De pagina `/teambegeleiding` stelt beheerders én gebruikers met de **user-rol**
    uit de Sportlink-export, bijvoorbeeld "Technische staf - Trainer/coach" (#1360); zo ziet u
    doordeweeks de trainer en in het weekend de teammanager. Staat er alleen de brede teamrol, dan is de
    begeleidersgroep nog niet opnieuw geïmporteerd met de kolom *Functie* (zie 10a).
+   **Inzagelog (#1701).** Elke keer dat de kaarten van een team worden opgehaald, legt de app vast wie dat
+   deed (Entra object-ID en weergavenaam), wanneer, voor welk team en hoeveel kaarten — nooit de gegevens
+   van de begeleiders zelf. Zo kan de club een begeleider vertellen wie zijn gegevens heeft ingezien. Lukt
+   het vastleggen niet, dan geeft de server geen gegevens terug (de pagina toont dan geen kaarten). De regels worden na 12
+   maanden automatisch verwijderd; opvragen per persoon staat in
+   [ADMIN-VERZOEK-VAN-BETROKKENE.md](ADMIN-VERZOEK-VAN-BETROKKENE.md).
 3. **"Email Aan"-veld** — bewerkbaar tekstveld, standaard gevuld met alle begeleiders van het team in
    `"Naam" <adres>; ...`-notatie. Dit veld bepaalt **daadwerkelijk** wie de mail bij "Vraag doorsturen"
    ontvangt (#765) — er is dus geen verschil meer tussen wat u ziet en wat er verstuurd wordt.
@@ -738,9 +744,13 @@ De pagina `/teambegeleiding` stelt beheerders én gebruikers met de **user-rol**
      begeleiders) en verstuur een testvraag — u ontvangt de mail dan zelf en kunt controleren of
      "Beantwoorden" in Outlook naar u terugkomt. Klik daarna "Herstel" om het veld weer op de echte
      begeleiders te zetten
-   - Elke verzending — automatisch opgezocht of zelf opgegeven — wordt vastgelegd in het
-     e-mailoverzicht van de app, hetzelfde overzicht als de automatische e-mailafhandeling, en na
-     30 dagen automatisch geanonimiseerd. De teller "e-mailverwerking" op de Instellingen-pagina
+   - Elke verzending — automatisch opgezocht of zelf opgegeven — laat twee sporen na
+     ([EMAIL-VERWERKING.md](EMAIL-VERWERKING.md), "Te onderscheiden van de handmatige doorstuur-actie"):
+     een regel in het e-mailoverzicht van de app (hetzelfde overzicht als de automatische
+     e-mailafhandeling) met het e-mailadres van de aanvrager, de ontvangers, het team en het tijdstip —
+     **niet** de berichttekst — die na 30 dagen wordt geanonimiseerd en na 90 dagen verwijderd; en de
+     BCC-kopie van het volledige bericht in de mailbox van het *Planner e-mailadres*, waar de
+     bewaartermijnen van de app niet gelden. De teller "e-mailverwerking" op de Instellingen-pagina
      telt deze verzendingen op dit moment gewoon mee — er is (nog) geen aparte detailweergave per
      bericht
 
@@ -754,7 +764,7 @@ De pagina `/teambegeleiding` stelt beheerders én gebruikers met de **user-rol**
 | Endpoint | Beschrijving |
 |---|---|
 | `GET /api/beheer/teambegeleiding` | Alle teams met begeleiding |
-| `GET /api/beheer/teambegeleiding/{team}` | Begeleiders van team (naam, rol, e-mailadres, telefoonnummer) |
+| `GET /api/beheer/teambegeleiding/{team}` | Begeleiders van team (naam, rol, e-mailadres, telefoonnummer); elke opvraging komt in het inzagelog (#1701) |
 | `POST /api/beheer/teambegeleiding/doorsturen` | Doorsturen van vraag; `ontvangers` bepaalt de ontvangers (leeg → server-side coach-lookup) |
 
 Auth: `AdminEndpoint.ExecuteAuthenticatedAsync` — toegankelijk voor elke ingelogde rol (admin +
