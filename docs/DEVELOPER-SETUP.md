@@ -715,10 +715,11 @@ een secret hebt ingevuld:
   feedbackwidget draaien dan niet). Teamresolutie staat hier bewust niet meer bij: die is sinds
   #1268 op beide tiers volledig deterministisch en gebruikt geen taalmodel.
 
-Dit is één centrale poort (`FunctionApp/Infrastructure/EgressGuard.cs`), niet vier losse
-controles. De poort herkent productie aan `WEBSITE_SITE_NAME` (Azure zet die altijd; lokaal en in
-CI is hij afwezig) — dus je hoeft hiervoor niets te configureren, en het blijft ook geblokkeerd als
-je bijvoorbeeld `OpenAiApiKey` of `GitHubPat` lokaal hebt staan voor een andere test.
+Dit is één centrale poort (`EgressGuard.cs` per tier, met de beslisregel in
+`Planner.Shared/Infrastructure/LokaleOntwikkelomgeving.cs`), niet vier losse controles. Open is hij
+alleen in productie: `WEBSITE_SITE_NAME` gezet (Azure zet die altijd) én geen lokale schakelaar
+`LOCAL_AUTH_BYPASS` (#1700). Lokaal en in CI hoef je hiervoor dus niets te configureren, en het blijft
+ook geblokkeerd als je bijvoorbeeld `OpenAiApiKey` of `GitHubPat` lokaal hebt staan voor een andere test.
 
 Wil je bewust, eenmalig, tóch een echte externe dienst vanaf je eigen machine aanroepen (bijv. de
 Sportlink-timer handmatig testen tegen de productie-API)? Zet dan in `local.settings.json`:
@@ -893,7 +894,8 @@ Start-Sleep -Seconds 3
 
 # 2. FunctionApp (geen hot reload) — Postgres-tier (standaard).
 #    Op de SQL Server-tier: Set-Location FunctionApp
-Start-Process powershell -ArgumentList "-NoExit -Command Set-Location FunctionApp.Postgres; func start --port 7094"
+#    LOCAL_AUTH_BYPASS=true: de lokale rolbypass is een expliciete keuze (#1700); zonder geeft de host 401.
+Start-Process powershell -ArgumentList "-NoExit -Command `$env:LOCAL_AUTH_BYPASS='true'; Set-Location FunctionApp.Postgres; func start --port 7094"
 
 # 3. BlazorAdmin met hot reload
 Start-Process powershell -ArgumentList "-NoExit -Command Set-Location BlazorAdmin; dotnet watch run --launch-profile http"
@@ -908,8 +910,9 @@ mkdir -p /tmp/azurite-sportlink && azurite --skipApiVersionCheck --location /tmp
 ```
 ```bash
 # Tab 2 — FunctionApp (geen hot reload) — Postgres-tier (standaard)
-cd FunctionApp.Postgres && func start --port 7094
-# SQL Server-tier: cd FunctionApp && func start --port 7094
+# LOCAL_AUTH_BYPASS=true: de lokale rolbypass is een expliciete keuze (#1700); zonder geeft de host 401.
+cd FunctionApp.Postgres && LOCAL_AUTH_BYPASS=true func start --port 7094
+# SQL Server-tier: cd FunctionApp && LOCAL_AUTH_BYPASS=true func start --port 7094
 ```
 ```bash
 # Tab 3 — BlazorAdmin met hot reload
@@ -1009,8 +1012,9 @@ vast, zodat dit zonder handmatige keuzes herhaalbaar is. Open de gegenereerde ma
   ingesteld (`?code={{apiKey}}`). Lokaal (`func start`) is dit niet verplicht.
 - `beheer`/`feedback`/`sync`-endpoints (Easy Auth Bearer/Entra ID, sinds #1350 ook `sync-matches`):
   zet in Bruno de auth van dat specifieke request handmatig op "Bearer Token" met een geldig token,
-  of laat leeg — lokaal wordt de admin-rolcheck overgeslagen wanneer `WEBSITE_SITE_NAME` afwezig is
-  (zie `EasyAuthHelper.cs`).
+  of laat leeg — lokaal wordt de admin-rolcheck alleen overgeslagen met `LOCAL_AUTH_BYPASS=true`
+  (`Start-Debug.ps1` zet die; zie `EasyAuthHelper.cs` en #1700). Zonder schakelaar geeft de host ook
+  lokaal 401.
 
 ### Synchronisatiepad testen zonder de echte Sportlink-API (#867)
 

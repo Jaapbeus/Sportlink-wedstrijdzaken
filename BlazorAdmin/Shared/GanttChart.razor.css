@@ -104,7 +104,7 @@
 
 /* #1561: de aanvangstijd staat vóór de wedstrijdnaam op dezelfde regel, zoals in de Sportlink-veldplanner.
    Tot #1561 stonden tijd en naam onder elkaar: in een blok van één deelveld (de helft van de rij) bleef
-   dan nog maar één regel over, en de tegenstander verdween ("VRC O12-5 -"). Nu past de naam op de
+   dan nog maar één regel over, en de tegenstander verdween ("TESTCLUB O12-5 -"). Nu past de naam op de
    tweede regel. De tooltip toont altijd de volledige tekst. */
 .gantt-blok-tijd {
     font-weight: 700;
