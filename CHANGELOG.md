@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- Wedstrijd aanmaken: een team uit de dropdown (bondsnotatie, bijv. `[club] O14-2`) wordt nu gevonden in Sportlinks teamlijst (lokale notatie, bijv. `JO14-2`) in plaats van de fout "niet (eenduidig) gevonden" (#1737)
+
 ### Changed
 - Het verwerkingsregister van de e-mailverwerking (`docs/EMAIL-VERWERKING.md` §5c, `SECURITY.md`, `docs/ARCHITECTUUR.md`) bevat nu de grondslag, de bewaartermijn bij de verwerker, de verwerkingslocatie en het doorgifte-instrument, volgens opgave van de eigenaar; de verwerkersovereenkomst staat als open punt (op 2026-10-13 geen overeenkomst vastgelegd), bewaartermijn en doorgifte-instrument zijn nog te verifiëren (#1725).
 
