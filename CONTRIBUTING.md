@@ -344,13 +344,25 @@ survey en volstaat de ene regel in de chat.
 - Opgeslagen **buiten de repository**, bijvoorbeeld in de privé onderzoeksmap van de eigenaar. Een
   survey wordt nooit gecommit en hoort niet in een issue of PR.
 
-**In de chat** staat daarna één regel: de PR-URL en het issue als die er zijn, en het pad naar het
+**Eindrapporten van skills.** De eindrapporten van `/autonoom`, `/sluitsessie` en `/release` blijven
+bestaan als controlebewijs, maar staan niet in de chat. De agent plaatst het volledige eindrapport
+(statustabellen, eindstatus, blokkades en niet-uitgevoerde controles, aanbevolen volgende actie en bij
+`/sluitsessie` het afsluitbanner) als **één comment op het issue of de PR van de sessie**; bij
+`/release` op het release-issue. Behandelde de run meerdere issues, dan staat het rapport bij het
+eerste en verwijzen de andere ernaar. Heeft de sessie geen issue of PR (bijvoorbeeld een read-only
+sessie), dan staat het rapport in de sessie-overdracht in memory. De comment is publiek: regel 4a uit
+`AGENTS.md` geldt volledig. Details van een nog niet verholpen securitybevinding (zoals een HIGH uit
+`/release`, R1-c) horen niet in de comment en niet in de survey; die meldt de agent de eigenaar in het
+gesprek (de enige uitzondering op de ene regel hieronder), en het besluit erover loopt via de survey
+zonder die details.
+
+**In de chat** staat daarna één regel: de eindstatus in een paar woorden, de PR-URL en het issue als die
+er zijn, de link naar de eindrapport-comment en, als er een besluit openstaat, het pad naar het
 surveybestand. Het antwoord van de eigenaar (bijvoorbeeld `1A, 2C`) is het besluit; de agent legt het
 vast op de plek waar het hoort (issue, PR-comment of memory) zonder de survey zelf te publiceren.
 
-Deze regel is onbewaakt: geen guard controleert of een afronding een survey is of wat erin staat. De
-eindrapporten van `/autonoom`, `/sluitsessie` en `/release` houden hun statustabel; de besluiten daaruit
-gaan via de survey.
+Deze regel is onbewaakt: geen guard controleert of een afronding een survey is, wat erin staat en
+of het eindrapport als comment is geplaatst.
 
 ---
 
