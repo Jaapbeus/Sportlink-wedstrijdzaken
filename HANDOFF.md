@@ -8,7 +8,7 @@ Geverifieerd met `gh pr list`/`gh pr view`/`gh issue view` en `git log origin/de
 
 | PR | Issue(s) | Stand | Wie aan zet |
 |---|---|---|---|
-| #1682 | #1677 | Codex ronde 2 schoon op 7b996b49 (besloten bevinding gedekt); raakt de clubcode-lezing in de auth-helper; vervolgpunten in #1689 | eigenaar merget |
+| #1682 | #1677 | Codex ronde 2 schoon op 7b996b49; vervolgpunten in #1689 | eigenaar merget |
 | #1685 | #1673 + #1674 | Codex ronde 2 schoon op 925e290e; bevat een index-migratie op beide tiers (schema) | eigenaar merget |
 | #1680 | #1671 | herontwerp na onafhankelijke verificatie (head 9abf7ed9, draft); Codex-rondes 1-2 gingen over oudere heads | eigenaar beslist: Codex ronde 3 of de Opus-verificatie als finale review |
 | #1679 | #1675 | verwerkt na onafhankelijke verificatie (head 66a5f505, draft); Codex-rondes 1-2 over oudere heads; open keuze: strenge hostregel (alleen dezelfde host met/zonder www) | eigenaar (zelfde besluit als #1680) |
