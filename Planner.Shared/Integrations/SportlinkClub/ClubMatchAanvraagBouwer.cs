@@ -113,7 +113,18 @@ public static class ClubMatchAanvraagBouwer
         var achtervoegsel = bruikbaar
             .Where(t => naam.EndsWith(" " + t.TeamName!.Trim(), StringComparison.OrdinalIgnoreCase))
             .ToList();
-        return achtervoegsel.Count == 1 ? achtervoegsel[0] : null;
+        if (achtervoegsel.Count > 0) return achtervoegsel.Count == 1 ? achtervoegsel[0] : null;
+
+        // #1737: onze database kent een team in bondsnotatie ("[club] O14-2") en lokale notatie ("JO14-2");
+        // Sportlinks teamlijst gebruikt de lokale. Vergelijk daarom op de genormaliseerde sleutel,
+        // met en zonder leidend clubwoord.
+        var sleutels = new List<string> { TeamNaamNormalisatie.NormaliseerVoorVergelijking(naam) };
+        var spatie = naam.IndexOf(' ');
+        if (spatie > 0) sleutels.Add(TeamNaamNormalisatie.NormaliseerVoorVergelijking(naam[(spatie + 1)..]));
+        var genormaliseerd = bruikbaar
+            .Where(t => sleutels.Contains(TeamNaamNormalisatie.NormaliseerVoorVergelijking(t.TeamName), StringComparer.Ordinal))
+            .ToList();
+        return genormaliseerd.Count == 1 ? genormaliseerd[0] : null;
     }
 
     /// <summary>Accommodatie: op naam (instelling <c>accommodatie</c>), anders de door Sportlink als
