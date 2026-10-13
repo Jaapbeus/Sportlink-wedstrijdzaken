@@ -1396,8 +1396,8 @@ Toelichting bij de bewerkingen:
 | Categorieën persoonsgegevens | E-mailadres van de afzender, onderwerp, berichttekst; afgeleid: classificatie en gesaneerde samenvatting |
 | Bijzondere categorieën | Niet gevraagd en niet gestructureerd verwerkt. Vrije tekst kan er toevallig een bevatten (bijvoorbeeld een blessure in een afmelding); die gaat dan mee in de berichttekst |
 | Ontvangers | OpenAI (verwerker, §5c) · Microsoft (mailbox via Graph, hosting van de Function App) · de databasedienst van de actieve tier (opslag van de verwerkingsrij) |
-| Doorgifte buiten de EER | Ja, naar de Verenigde Staten; instrument: standaardcontractbepalingen (§5c) |
-| Bewaartermijnen | In de applicatie: `planner.EmailVerwerking` geanonimiseerd na 30–90 dagen en verwijderd na 90 dagen (SECURITY.md, Laag 6); leermomenten met herkomst `Reply` volgen die retentie, admin-leermomenten zijn permanent maar verwijderbaar (§3d); de bewaarde trace bevat geen ruwe mailtekst (§3c). Bij de provider: geen bewaring (zero data retention, §5c) |
+| Doorgifte buiten de EER | Ja, naar de Verenigde Staten; instrument: standaardcontractbepalingen, volgens opgave van de eigenaar en nog te verifiëren (§5c) |
+| Bewaartermijnen | In de applicatie: `planner.EmailVerwerking` geanonimiseerd na 30–90 dagen en verwijderd na 90 dagen (SECURITY.md, Laag 6); leermomenten met herkomst `Reply` volgen die retentie, admin-leermomenten zijn permanent maar verwijderbaar (§3d); de bewaarde trace bevat geen ruwe mailtekst (§3c). Bij de provider: volgens opgave van de eigenaar geen bewaring (zero data retention), nog te verifiëren (§5c) |
 | Beveiliging | Aanroepen alleen waar `EgressGuard` uitgaande integraties toestaat · sleutel als app setting · voorfilters en uitsluitingslijst vóór de aanroep · begrenzing van de tekst · datablok met willekeurige markers · geen berichtinhoud, onderwerp of adres in logs (SECURITY.md, Laag 5) · modeluitvoer gesaneerd vóór gebruik · antwoord uit sjablonen |
 
 Bij een nieuwe club-installatie: neem deze rij en de voorwaarden uit §5c over in het eigen register en
