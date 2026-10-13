@@ -119,6 +119,7 @@ builder.Services.AddSingleton<ISportlinkMutationAuditService, SqlSportlinkMutati
 // Function App (az functionapp cors), niet in code of bicep — zie docs/RUNBOOK-FLEX-MIGRATIE.md §5.
 
 var host = builder.Build();
-// #1689: geaggregeerde foutlog (zonder waarden) als het laden van de clublijst structureel faalt.
-SportlinkFunction.Admin.EasyAuthHelper.KoppelClubLijstLog(host.Services.GetRequiredService<ILoggerFactory>());
+// #1689: geaggregeerde foutlog (zonder waarden) als het laden van de clublijst structureel faalt;
+// #1700: eenmalige melding (zonder waarden) als de lokale bypass actief is of in Azure is geweigerd.
+SportlinkFunction.Admin.EasyAuthHelper.KoppelOpstartLogs(host.Services.GetRequiredService<ILoggerFactory>());
 host.Run();

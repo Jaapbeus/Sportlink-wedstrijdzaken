@@ -29,6 +29,7 @@
     "GitHubOwner": "",
     "GitHubRepo": "Sportlink-wedstrijdzaken",
     "APPLICATIONINSIGHTS_CONNECTION_STRING": "",
-    "AllowExternalIntegrations": "false"
+    "AllowExternalIntegrations": "false",
+    "LOCAL_AUTH_BYPASS": "true"
   }
 }

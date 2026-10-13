@@ -88,8 +88,10 @@ Controleer daarna met:
 .\scripts\dev\Test-App.ps1 -Fix     # herstelt schema-drift automatisch
 ```
 
-In lokale omgeving is `WEBSITE_SITE_NAME` niet aanwezig, waardoor `EasyAuthHelper` alle
-`/api/beheer/*` calls altijd doorlaat — je bent automatisch admin zonder login.
+`Start-Debug.ps1` start de lokale functiehost met `LOCAL_AUTH_BYPASS=true`, waardoor
+`EasyAuthHelper` alle `/api/beheer/*` calls doorlaat — je bent lokaal automatisch admin zonder login.
+Zonder die schakelaar geldt de rolcontrole ook lokaal, en in Azure wordt de schakelaar altijd
+geweigerd (#1700).
 
 ---
 
