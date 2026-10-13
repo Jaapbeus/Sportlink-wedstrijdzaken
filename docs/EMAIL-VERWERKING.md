@@ -1307,8 +1307,10 @@ gaan via een apart pad naar dezelfde provider; die registerrij staat in [FEEDBAC
   `Program.cs`. Welk model een installatie gebruikt, staat dus in haar configuratie, niet in dit document.
 * **Sleutel:** app setting `OpenAiApiKey`.
 * **Alleen waar uitgaande integraties zijn toegestaan.** `IChatClient` wordt alleen geregistreerd als
-  `OpenAiApiKey` gevuld is én `EgressGuard.ExternalIntegrationsAllowed()` dat toestaat (#857). Buiten
-  productie gaat er niets naar de provider; de verwerking stopt dan met een logregel.
+  `OpenAiApiKey` gevuld is én `EgressGuard.ExternalIntegrationsAllowed()` dat toestaat (#857). Die
+  functie staat uitgaande integraties altijd toe bij Azure-hosting en daarbuiten standaard niet; alleen de
+  expliciete opt-in `AllowExternalIntegrations=true` (`DEVELOPER-SETUP.md` §5.3) staat ze daar toe. Zonder
+  toestemming gaat er niets naar de provider; de verwerking stopt dan met een logregel.
 * **Per aanroep:** temperatuur 0,1 en antwoordformaat JSON. Alle aanroepen staan in
   `BerichtAiService` (`FunctionApp/Email/` en `FunctionApp.Postgres/Email/`, inhoudelijk gelijk).
 
@@ -1332,7 +1334,7 @@ plannergegevens en gesaneerde modelvelden (`AiVeldSanering`).
 |---|---|---|---|
 | E-mailadres van de afzender (het `From`-adres; niet de weergavenaam) | 1, 2, 4 | Ja | Geen; markernaam geneutraliseerd |
 | Onderwerp | 1, 2, 3, 4 | Kan (vrije tekst) | Geen; markernaam geneutraliseerd |
-| Berichttekst | 1, 2, 3, 4 | Kan (vrije tekst: namen, contactgegevens, toevallig een gezondheidsgegeven, mogelijk over minderjarigen) | HTML verwijderd (`EmailSanitizer.StripHtml`); begrensd op `BerichtBodyBegrenzing.MaxBodyTekens` tekens; markernaam geneutraliseerd |
+| Berichttekst | 1, 2, 3, 4 | Kan (vrije tekst: namen, contactgegevens, toevallig een gezondheidsgegeven, mogelijk over minderjarigen) | Mailboxberichten (1, 2, 3): HTML verwijderd (`EmailSanitizer.StripHtml`, in `EmailGraphService`). Alle aanroepen: begrensd op `BerichtBodyBegrenzing.MaxBodyTekens` tekens en markernaam geneutraliseerd. Tester (4): de ingevoerde tekst gaat zonder HTML-verwijdering naar de classificatie |
 | Clubnaam (instelling `clubName`) en datum van vandaag, in de system prompt | 1, 2, 4 | Nee | — |
 | Leermomenten: verzoektypes en samenvattingen | 2, 4 | Kan (samenvatting) | Samenvatting door `AiVeldSanering.Samenvatting` (`TraceBuilder.Saneer`: e-mailadressen en nummerreeksen gemaskeerd, begrensd) |
 | Oorspronkelijk verzoektype en samenvatting van het beantwoorde bericht | 3 | Kan (samenvatting) | Samenvatting is bij opslag al door `AiVeldSanering.Samenvatting` gegaan |

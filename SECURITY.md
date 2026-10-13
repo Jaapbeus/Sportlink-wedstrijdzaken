@@ -541,7 +541,7 @@ registerrij: **[docs/EMAIL-VERWERKING.md](docs/EMAIL-VERWERKING.md) §5**. Samen
 | Veld | Inhoud |
 |---|---|
 | Verwerking | Classificatie van inkomende e-mail (incl. correctiedetectie op replies en de e-mailtester) |
-| Velden naar de provider | E-mailadres van de afzender, onderwerp en berichttekst (HTML verwijderd, begrensd; persoonsgegevens in de tekst worden niet gemaskeerd); clubnaam en datum in de instructies; gesaneerde samenvattingen van leermomenten |
+| Velden naar de provider | E-mailadres van de afzender, onderwerp en berichttekst (begrensd; HTML verwijderd bij mailboxberichten, niet bij de tester; persoonsgegevens in de tekst worden niet gemaskeerd); clubnaam en datum in de instructies; gesaneerde samenvattingen van leermomenten |
 | Verwerker | OpenAI (OpenAI-API, rechtstreeks); model uit de app setting `AiModelName`; alleen waar `EgressGuard` uitgaande integraties toestaat |
 | Grondslag | Door de eigenaar in te vullen (EMAIL-VERWERKING.md §5c) |
 | Verwerkersovereenkomst, bewaartermijn bij de verwerker, doorgifte-instrument | Door de eigenaar in te vullen (EMAIL-VERWERKING.md §5c) |
