@@ -14,18 +14,19 @@
 # Zonder deze guard komt zo'n omissie pas aan het licht wanneer Supabase's Security Advisor hem in
 # PRODUCTIE meldt. Bij #1198 duurde dat twaalf dagen. Deze guard ziet hem bij de PR.
 #
-# ── Reikwijdte: public, avg, planner ────────────────────────────────────────────────────────────
-# Exact de drie schema's die migratie 021 dekt. Alleen `public` is standaard door Supabase via
-# PostgREST ontsloten, maar 021 zette RLS bewust ook op `avg` en `planner` aan (defense in depth:
-# de "Exposed schemas"-instelling is platformconfiguratie die geen diff in git achterlaat, dus de
-# code mag er niet op vertrouwen dat die op `public` blijft staan).
+# ── Reikwijdte: public, avg, planner, his, stg ──────────────────────────────────────────────────
+# public/avg/planner: exact de schema's die migratie 021 dekt. Alleen `public` is standaard door
+# Supabase via PostgREST ontsloten, maar 021 zette RLS bewust ook op `avg` en `planner` aan (defense
+# in depth: de "Exposed schemas"-instelling is platformconfiguratie die geen diff in git achterlaat,
+# dus de code mag er niet op vertrouwen dat die op `public` blijft staan).
 #
-# `his` en `stg` staan hier BEWUST NIET in. Die tabellen worden niet door een migratie aangemaakt
-# maar tijdens runtime door PostgresSchemaGenerator/EnsureHisTableAsync (#818, #1060). Een
-# migratie-tijd-guard kan ze per definitie niet zien: op een verse CI-database bestaan ze nog niet.
-# Ze vallen onder de dagelijkse advisorcontrole tegen productie (#1221), die wél tegen de levende
-# database draait en ze dus wél ziet. Dat is de taakverdeling tussen de twee lagen van #1219.
-#
+# his/stg (#1698): die tabellen maakt geen migratie aan, maar PostgresSchemaGenerator tijdens de
+# sync en Database.Postgres.Cli --ensure-his-tables bij de deploy (#818, #1060). Sinds #1698 zet de
+# generator er zelf RLS op; daarvoor hing het af van Supabase's platformtrigger `ensure_rls`. Op een
+# database met alleen migraties bestaan ze nog niet en telt deze guard ze dus niet; build.yml draait
+# hem daarom ook na --ensure-his-tables (job fresh-db-postgres, stap #1698), inclusief een negatieve
+# controle die bewijst dat de guard op een his-tabel zonder RLS rood wordt.
+
 # ── Extensie-tabellen worden overgeslagen ───────────────────────────────────────────────────────
 # Een tabel die bij een Postgres-extensie hoort (pg_depend deptype 'e') is niet van ons en mag niet
 # gewijzigd worden. Supabase's eigen lint doet dezelfde uitsluiting; zonder deze filter zou een
@@ -60,20 +61,24 @@ psql_q() {
 # ── UITZONDERINGEN ──────────────────────────────────────────────────────────────────────────────
 # Formaat: "schema.tabel|reden". Elke regel hier is een bewuste, navolgbare beslissing.
 #
-# Vandaag is deze lijst LEEG, en dat hoort zo: migratie 021 dekt alle 29 tabellen in de drie
-# schema's. Een nieuwe regel hier betekent dat een tabel bewust extern benaderbaar mag zijn via
+# Vandaag is deze lijst LEEG, en dat hoort zo: migratie 021 en later dekken alle tabellen in
+# public/avg/planner, en de generator dekt his/stg (#1698). Een nieuwe regel hier betekent dat een tabel bewust extern benaderbaar mag zijn via
 # Supabase's PostgREST-API — dat is een CISO-beslissing, geen implementatiedetail. Motiveer hem
 # hier én in docs/ARCHITECTUUR-DATABASE-TIERS.md, met issuenummer.
 UITZONDERINGEN=()
 
-echo "RLS-invariant controleren op schema's public, avg, planner..."
+# Eén plek voor de reikwijdte, zodat de controle- en de telquery niet uit de pas kunnen lopen.
+SCHEMAS_SQL="'public','avg','planner','his','stg'"
+SCHEMA_LABEL="public/avg/planner/his/stg"
+
+echo "RLS-invariant controleren op schema's $SCHEMA_LABEL..."
 
 ZONDER_RLS=$(psql_q "
   SELECT n.nspname || '.' || c.relname
   FROM pg_class c
   JOIN pg_namespace n ON n.oid = c.relnamespace
   WHERE c.relkind IN ('r','p')
-    AND n.nspname IN ('public','avg','planner')
+    AND n.nspname IN (${SCHEMAS_SQL})
     AND NOT c.relrowsecurity
     AND NOT EXISTS (
       SELECT 1 FROM pg_depend d
@@ -110,7 +115,7 @@ if [ -n "$OVERTREDERS" ]; then
   echo "anon-key, ongeacht of deze applicatie die API ooit gebruikt. Zie #1198 en"
   echo "docs/ARCHITECTUUR-DATABASE-TIERS.md §65."
   echo ""
-  echo "Oplossing: voeg in DEZELFDE migratie als de CREATE TABLE toe:"
+  echo "Oplossing: voeg in DEZELFDE migratie als de CREATE TABLE toe (his/stg: in PostgresSchemaGenerator):"
   printf '%s\n' "$OVERTREDERS" | while IFS= read -r T; do
     [ -n "$T" ] && echo "    ALTER TABLE ${T} ENABLE ROW LEVEL SECURITY;"
   done
@@ -124,8 +129,8 @@ AANTAL=$(psql_q "
   FROM pg_class c
   JOIN pg_namespace n ON n.oid = c.relnamespace
   WHERE c.relkind IN ('r','p')
-    AND n.nspname IN ('public','avg','planner')
+    AND n.nspname IN (${SCHEMAS_SQL})
     AND c.relrowsecurity;
 ")
 
-echo "RLS-invariant bevestigd: alle $AANTAL tabellen in public/avg/planner hebben Row-Level Security aan."
+echo "RLS-invariant bevestigd: alle $AANTAL tabellen in $SCHEMA_LABEL hebben Row-Level Security aan."

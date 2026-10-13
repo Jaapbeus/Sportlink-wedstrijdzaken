@@ -101,6 +101,7 @@ niet bijwerken naar de huidige toestand, wel doorzoekbaar houden.
 | [§74](#74-kleurenpalet-per-modus-als-json--en-waar-een-sql-server-schemawijziging-écht-hoort-1254) | Kleurenpalet per modus als JSON — en waar een SQL Server-schemawijziging écht hoort (#1254) | **geldend** |
 | [§78](#78-feedbackmeldingen-opslag-bewaartermijn-en-inzagelog-op-beide-tiers-764) | Feedbackmeldingen: opslag, bewaartermijn en inzagelog op beide tiers (#764) | **geldend** |
 | [§82](#82-inzagelog-van-teambegeleiding-tabel-bewaartermijn-en-orkestratie-op-beide-tiers-1701) | Inzagelog van teambegeleiding: tabel, bewaartermijn en orkestratie op beide tiers (#1701) | **geldend** |
+| [§83](#83-persoonskolommen-in-de-historietabellen-seizoensretentie-en-rls-vanuit-de-generator-1698) | Persoonskolommen in de historietabellen: seizoensretentie en RLS vanuit de generator (#1698) | **geldend** |
 
 ## 1. Bouwvolgorde (vier tiers, vaste volgorde)
 
@@ -3831,7 +3832,7 @@ aangemaakt en pas in 021 RLS hebben gekregen:
 
 | Script | Vraag die het beantwoordt |
 |---|---|
-| `scripts/ci/check-rls-enabled.sh` | Heeft elke tabel in `public`/`avg`/`planner` `relrowsecurity = true`? |
+| `scripts/ci/check-rls-enabled.sh` | Heeft elke tabel in `public`/`avg`/`planner` (sinds #1698 ook `his`/`stg`, zie §83) `relrowsecurity = true`? |
 | `scripts/ci/check-splinter-lints.sh` | Meldt Supabase's eigen linter iets op de punten die vóór livegang te beoordelen zijn? |
 
 Splinter (`supabase/splinter`) is de motor onder de Security- en Performance Advisor in het
@@ -4800,3 +4801,74 @@ staat en getest is.
 **Gemeten.** Postgres 17 en SQL Server 2022 in wegwerpcontainers: store, kern-tegen-echte-database en
 retentie (11 maanden blijft, 13 maanden verdwijnt) op beide tiers; het #1701-blok van de PostDeployment
 tweemaal toegepast (idempotent); `check-rls-enabled.sh` groen en aantoonbaar rood met RLS uit.
+
+---
+
+## 83. Persoonskolommen in de historietabellen: seizoensretentie en RLS vanuit de generator (#1698)
+
+`his.matches` en `his.matchdetails` bewaren wat Sportlink per wedstrijd teruggeeft, inclusief
+persoonskolommen (officials, rijders, vrije opmerkingen, contacttelefoon/-e-mail). Geen feature leest
+ze. Eigenaarsbesluit 2026-10-12: bewaren tot het einde van het seizoen waarin de wedstrijd valt,
+daarna leegmaken. Bewaartermijn, grondslag en kolomlijst staan in `SECURITY.md` (Laag 6); hier de
+technische keuzes.
+
+| Onderdeel | Gedeeld (`Planner.Shared/Avg/HisPersoonsgegevensRetentie.cs`) | Postgres | SQL Server |
+|---|---|---|---|
+| Regel | `BepaalGrens`: laatste seizoenseinde vóór vandaag; kolomlijsten | — | — |
+| Seizoenen | — | `public.season.dateuntil` | `dbo.Season.DateUntil` |
+| Query | — | `Database.Postgres/PostgresHisRetentie.cs` | `FunctionApp/Admin/SqlServerHisRetentie.cs` |
+| Run | `VoerStapUitAsync`/`VoerUitAsync` (peildatum, orkestratie, foutafhandeling, geaggregeerd log) via de poort `IHisRetentieOpslag` | stap in de bestaande timer `CleanupFeedback` (dagelijks 05:15 UTC, `Planner.Endpoints/Avg/DagelijkseAvgRetentie.cs`); de tier geeft alleen `new PostgresHisRetentie(connectiestring)` mee | idem, `new SqlServerHisRetentie(...)` |
+| Test | `HisPersoonsgegevensRetentieTests` | `PostgresHisRetentieIntegrationTests` (CI) | `SqlServerHisRetentieIntegrationTests` (lokaal, wegwerpcontainer) |
+
+**Geen schemawijziging, dus geen migratie.** De retentie is een `UPDATE ... SET kolom = NULL` op
+bestaande kolommen en heeft geen eigen tabel of statusregel nodig: hij is idempotent omdat hij alleen
+rijen raakt waarin nog een persoonskolom gevuld is. Een historietabel die nog niet bestaat (verse
+installatie vóór de eerste sync) wordt overgeslagen.
+
+**Datum per tabel.** `his.matches.wedstrijddatum` is tekst. Welke waarde als datum telt, beslist
+**één** functie voor beide tiers: `HisPersoonsgegevensRetentie.IsGeldigDatumdeel` (precies de eerste tien
+tekens, strikt `yyyy-MM-dd`, ASCII-cijfers, bestaande kalenderdatum, jaar 0001–9999). De tier leest alleen
+de verschillende eerste tien tekens (`SELECT DISTINCT`), `SelecteerTeWissenDatumdelen` kiest de geldige
+delen tot en met de grens, en de tier wist rijen waarvan de eerste tien tekens **binair** gelijk zijn aan
+een gekozen deel (Postgres `= ANY(@datums)`; SQL Server `COLLATE Latin1_General_BIN2 IN (STRING_SPLIT(...))`).
+Waarom niet in SQL (Codex-review ronde 2): `TRY_CONVERT(date, ..., 23)` was ruimer dan de Postgres-regex
+en dus een andere selectie. Gemeten op SQL Server 2022 met synthetische waarden: een lege tekst werd
+1900-01-01, `2026/06/30`, `2026.06.30` en `20260630` telden als datum, `2026-06-3` en `2026-06-5 10:00`
+werden aangevuld, en een voorloopspatie of -tab leverde een andere datum op. Ook de binaire vergelijking
+is nodig: onder de standaard-collation (hoofdletter- en breedte-ongevoelig) is een waarde met
+fullwidth-cijfers gelijk aan de ASCII-datum, zodat zonder `BIN2` zowel de `DISTINCT` als het wissen de
+verkeerde rij kon raken. De invoertabel met verwachting staat één keer in
+`Planner.Shared.Tests/Avg/HisWedstrijddatumGevallen.cs` en draait in de unit-test én, als gelinkt
+bronbestand, in beide database-integratiesuites. `his.matchdetails` gebruikt de getypeerde kolommen
+`matchdate`, anders `matchdatetime`; een rij zonder beide blijft staan.
+
+**RLS vanuit de generator.** `his`/`stg` maakt geen migratie aan, dus de regel "elke tabel RLS, geen
+policies" (§65) hoort in `PostgresSchemaGenerator`. `GenerateStgTable` zet RLS direct aan (de tabel is
+net door dezelfde rol aangemaakt). `GenerateHisTable` doet dat in een `DO`-blok **alleen als RLS nog
+uit staat**: die DDL draait bij elke sync opnieuw, en `ALTER TABLE` vereist eigenaarschap, ook als
+RLS al aan staat. Een tabel die ooit door een andere rol is aangemaakt, laat de sync zo niet falen.
+Bestaande installaties krijgen RLS via `--ensure-his-tables` in de deploy (§72).
+
+**Guard-reikwijdte.** `check-rls-enabled.sh` bewaakt nu `public`, `avg`, `planner`, `his` en `stg`. Op
+`sportlink_ci` (alleen migraties) bestaan geen his-tabellen; daarom draait `build.yml` de guard ook op
+de seed-database van #1246 na `--ensure-his-tables`, met een negatieve controle (RLS uit op
+`his.matches` → guard rood) en het herstel door de generator. Lokaal bewezen op een verse
+`postgres:17`-container (de les van §68): de oude guard bleef groen bij `his.matches` zonder RLS, de
+nieuwe werd rood.
+
+**Geen eigen timer (eigenaarsbesluit 2026-10-13: het tier-duplicatieplafond stijgt niet).** Een
+timer `CleanupHisPersoonsgegevens` per tier herhaalde het timercontract (klassedeclaratie,
+`[Function]`, `TimerTrigger`-signatuur, logger, aanroep van de gedeelde run) woordelijk op beide tiers
+en mat als zes extra identieke regels. De retentie is daarom een stap in de bestaande dagelijkse
+AVG-timer `CleanupFeedback`: `DagelijkseAvgRetentie` draait eerst de feedbackretentie en daarna de
+his-retentie, elk met eigen foutafhandeling, en gooit een fout pas aan het eind door (bij twee
+fouten als `AggregateException`). Per tier verandert alleen het argument dat de eigen opslag
+meegeeft; de meting steeg niet (5167, na de merge van develop 5150 = plafond). Afweging: de functienaam `CleanupFeedback` dekt de lading niet
+meer helemaal, maar blijft staan zodat bestaande bewaking en logs aansluiten; de tijd schuift van
+05:00 naar 05:15 UTC, wat voor een dagelijkse, idempotente run niets uitmaakt.
+
+**Niet bewezen in deze PR:** de SQL Server-integratietest draait niet in CI (geen SQL Server-job met
+een levende database voor unit-tests); hij is lokaal tegen een wegwerpcontainer (SQL Server 2022,
+standaard-collation `SQL_Latin1_General_CP1_CI_AS`) gedraaid, de Postgres-suite ook in CI. Dat de
+datumselectie op beide tiers gelijk is, bewaakt in CI dus de unit-test op de gedeelde functie; de
+gedeelde invoertabel op SQL Server alleen lokaal.

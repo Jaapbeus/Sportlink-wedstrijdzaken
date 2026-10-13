@@ -136,8 +136,11 @@ PII-gate-pad op de uiteindelijke titel/body blijft onverkort draaien.
 | Technische context | 90 dagen | idem |
 | Inzagelog | 24 maanden | idem |
 
-**Timer `CleanupFeedback`** (beide tiers, dagelijks 05:15 UTC; code: `Planner.Endpoints/Feedback/FeedbackEndpointCore.VoerRetentieTimerAsync`
-→ `Planner.Shared/Feedback/FeedbackRetentieCore`):
+**Timer `CleanupFeedback`** (beide tiers, dagelijks 05:15 UTC; code: `Planner.Endpoints/Avg/DagelijkseAvgRetentie`
+→ `Planner.Endpoints/Feedback/FeedbackEndpointCore.VoerRetentieTimerAsync` → `Planner.Shared/Feedback/FeedbackRetentieCore`).
+Sinds #1698 draait dezelfde timer na de feedbackretentie ook de seizoensretentie van de
+Sportlink-historietabellen (`SECURITY.md`, Laag 6); de twee stappen zijn onafhankelijk, een fout in
+de ene houdt de andere niet tegen. De feedbackstap:
 
 1. **Eerst** de issuestatus synchroniseren: voor maximaal 200 gepubliceerde, nog niet geanonimiseerde
    meldingen (oudst-gecontroleerd eerst) leest de timer via de GitHub API of het issue gesloten is en
