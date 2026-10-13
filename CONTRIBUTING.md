@@ -12,6 +12,7 @@ distributierechten met de eigenaar af voordat je de software voor je club gebrui
 - [Branch-strategie](#branch-strategie)
 - [Commit-conventies](#commit-conventies)
 - [Pull Request-proces](#pull-request-proces)
+- [Afronding aan de eigenaar](#afronding-aan-de-eigenaar)
 - [Security](#security)
 - [Lokale ontwikkelomgeving](#lokale-ontwikkelomgeving)
 
@@ -305,6 +306,67 @@ Dependabot houdt NuGet-pakketten en GitHub Actions wekelijks bij (PR's naar `dev
 De gate draait op elke push én op elke pull request naar `main` of `develop` — ook op een PR vanuit
 een fork. Een fork-PR krijgt van GitHub een read-only token zonder secrets; de scan is daar bewust
 op ingericht en draait dus volledig (zie SECURITY.md, "Laag 2 — GitHub Actions").
+
+---
+
+## Afronding aan de eigenaar
+
+De harde regel staat in `AGENTS.md` ("Afronding en overdracht aan de eigenaar", #1728); hier staat de
+uitwerking. Rondt een agent een taak af, draagt hij werk over of sluit hij een sessie, dan krijgt de
+eigenaar geen opsomming van feiten, status of opmerkingen, maar een **beslissurvey**: alleen wat de
+eigenaar moet beslissen, zo gesteld dat hij in een paar minuten kan kiezen.
+
+**Per besluit één vraag**, met:
+
+- **Wat er beslist moet worden**, in gewone Nederlandse taal: geen jargon, commit-SHA's of
+  labelnamen als het besluit ze niet nodig heeft. Eén onderwerp per vraag.
+- **Context** in een of twee zinnen: alleen wat nodig is om te kunnen kiezen.
+- **Drie tot vijf opties**, elk met voor en tegen. "Niets doen" of "later beslissen" is een optie als
+  dat echt kan.
+- **Een aanbeveling** van de agent, met de reden in één zin.
+
+**Wat er wél in hoort:** keuzes, acceptaties van een risico of beperking, merge- of releasemomenten die
+bij de eigenaar liggen, en bevindingen die niet zijn overgenomen en dus een oordeel vragen.
+
+**Wat er niet in hoort:** feiten waar niets over te beslissen valt (welke checks groen zijn, welke
+bestanden zijn gewijzigd, wat er is getest). Die staan in de PR of het issue. Is een feit toch nodig
+voor een besluit, dan staat het als context bij die vraag. Is er niets te beslissen, dan is er geen
+survey en volstaat de ene regel in de chat.
+
+**Formaat.**
+
+- Eén lokaal, self-contained HTML-bestand: geen externe scripts, stylesheets of lettertypen, zodat het
+  zonder netwerk opent.
+- Leesbaar in light én dark mode (`prefers-color-scheme`).
+- Per besluit een keuzelijst met de opties; de aanbevolen optie is zichtbaar gemarkeerd.
+- Een knop die de keuzes als compacte antwoordlijst kopieert (bijvoorbeeld `1A, 2C, 3B`), zodat de
+  eigenaar die in één regel terug kan plakken.
+- Keuzes mogen in `localStorage` bewaard worden, maar elke lees- en schrijfactie staat in een
+  `try/catch`; de pagina werkt ook als opslag geblokkeerd is.
+- Geen clubwaarden, persoonsgegevens, geheimen of andere waarden die AGENTS.md regel 4a uit GitHub weert.
+- Opgeslagen **buiten de repository**, bijvoorbeeld in de privé onderzoeksmap van de eigenaar. Een
+  survey wordt nooit gecommit en hoort niet in een issue of PR.
+
+**Eindrapporten van skills.** De eindrapporten van `/autonoom`, `/sluitsessie` en `/release` blijven
+bestaan als controlebewijs, maar staan niet in de chat. De agent plaatst het volledige eindrapport
+(statustabellen, eindstatus, blokkades en niet-uitgevoerde controles, aanbevolen volgende actie en bij
+`/sluitsessie` het afsluitbanner) als **één comment op het issue of de PR van de sessie**; bij
+`/release` op het release-issue. Behandelde de run meerdere issues, dan staat het rapport bij het
+eerste en verwijzen de andere ernaar. Heeft de sessie geen issue of PR (bijvoorbeeld een read-only
+sessie), dan staat het rapport in de sessie-overdracht in memory. De comment is publiek: regel 4a uit
+`AGENTS.md` geldt volledig. Details van een nog niet verholpen securitybevinding (zoals een HIGH uit
+`/release`, R1-c) horen niet in de comment en niet in de survey; die meldt de agent de eigenaar in het
+gesprek (de enige uitzondering op de ene regel hieronder), en het besluit erover loopt via de survey
+zonder die details.
+
+**In de chat** staat daarna één regel: de eindstatus in een paar woorden, de PR-URL en het issue als die
+er zijn, de link naar de eindrapport-comment en, als er een besluit openstaat, het pad naar het
+surveybestand. Het antwoord van de eigenaar (bijvoorbeeld `1A, 2C`) is het besluit; de agent legt het
+vast op de plek waar het hoort (issue, PR-comment of memory) zonder de survey zelf te publiceren.
+
+Deze regel is onbewaakt: geen guard controleert of een afronding een survey is, wat erin staat en
+of het eindrapport als comment is geplaatst. Ze staat als `handmatig` in het register van
+`docs/ARCHITECTUUR-CODEKWALITEIT.md` (onbewaakte onderwerpen), met de handmatige controle per afronding.
 
 ---
 
