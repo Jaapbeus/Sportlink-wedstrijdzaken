@@ -60,6 +60,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_SUMMARY: true
 
+      - name: GitHub-tokenformaten synthetisch verifiëren
+        run: python3 scripts/ci/test-github-token-formats.py
+
       - name: Resultaat samenvatting
         if: failure()
         run: |

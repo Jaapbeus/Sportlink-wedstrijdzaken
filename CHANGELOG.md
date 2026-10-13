@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Security
+- GitHub-installatietokenpatronen bijgewerkt voor opaque en stateless formaten, met synthetische regressiecontrole in de Security Gate (#1723).
+
 ## [3.14.0.0] — 2026-10-13
 
 ### Added

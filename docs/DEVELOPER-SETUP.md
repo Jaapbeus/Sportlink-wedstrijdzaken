@@ -195,6 +195,16 @@ cp .githooks/sensitive-patterns.template.txt .githooks/sensitive-patterns.txt
 
 Vul `sensitive-patterns.txt` aan met je eigen waarden: servernaam, SQL-login, Sportlink Client ID, Azure resource namen.
 
+Bij een update van `.githooks/sensitive-patterns.template.txt`: neem gewijzigde generieke
+patronen over in je bestaande lokale bestand, zonder eigen patronen te overschrijven.
+Verifieer de GitHub-installatietokenpatronen met
+`python3 scripts/ci/test-github-token-formats.py` (Gitleaks op PATH vereist). De test gebruikt
+uitsluitend onbruikbare synthetische waarden in geheugen en controleert ook dat teruggezette
+oude regels falen; dezelfde test draait na Gitleaks in de Security Gate. Dit bewijst
+patroondetectie, geen live tokenuitgifte of authenticatie. Voor een eigen GitHub App kan de
+tijdelijke header bij tokenuitgifte beide formaten selecteren; zie
+[GitHub Changelog](https://github.blog/changelog/2026-05-15-github-app-installation-tokens-per-request-override-header/).
+
 ### 3.3 Verificatie
 
 ```bash
