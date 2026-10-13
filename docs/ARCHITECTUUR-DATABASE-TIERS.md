@@ -4778,7 +4778,7 @@ technische keuzes.
 | Regel | `BepaalGrens`: laatste seizoenseinde vóór vandaag; kolomlijsten | — | — |
 | Seizoenen | — | `public.season.dateuntil` | `dbo.Season.DateUntil` |
 | Query | — | `Database.Postgres/PostgresHisRetentie.cs` | `FunctionApp/Admin/SqlServerHisRetentie.cs` |
-| Timer | `VoerTimerUitAsync`/`VoerUitAsync` (wachten, verbinding, orkestratie, foutafhandeling, geaggregeerd log) | `CleanupHisPersoonsgegevens`, dagelijks 05:00 UTC; alleen verbinding openen en query's | idem |
+| Run | `VoerStapUitAsync`/`VoerUitAsync` (peildatum, orkestratie, foutafhandeling, geaggregeerd log) via de poort `IHisRetentieOpslag` | stap in de bestaande timer `CleanupFeedback` (dagelijks 05:15 UTC, `Planner.Endpoints/Avg/DagelijkseAvgRetentie.cs`); de tier geeft alleen `new PostgresHisRetentie(connectiestring)` mee | idem, `new SqlServerHisRetentie(...)` |
 | Test | `HisPersoonsgegevensRetentieTests` | `PostgresHisRetentieIntegrationTests` (CI) | `SqlServerHisRetentieIntegrationTests` (lokaal, wegwerpcontainer) |
 
 **Geen schemawijziging, dus geen migratie.** De retentie is een `UPDATE ... SET kolom = NULL` op
@@ -4806,10 +4806,16 @@ de seed-database van #1246 na `--ensure-his-tables`, met een negatieve controle 
 `postgres:17`-container (de les van §68): de oude guard bleef groen bij `his.matches` zonder RLS, de
 nieuwe werd rood.
 
-**Tier-duplicatie +6 (plafond 5167 → 5173, ter goedkeuring door de eigenaar).** Het timercontract
-(klassedeclaratie, `[Function]`, `TimerTrigger`-signatuur, logger, aanroep van de gedeelde run) moet op
-beide tiers gelijk zijn en meet daardoor als zes identieke regels; al het overige staat in
-`Planner.Shared`.
+**Geen eigen timer (eigenaarsbesluit 2026-10-13: het tier-duplicatieplafond stijgt niet).** Een
+timer `CleanupHisPersoonsgegevens` per tier herhaalde het timercontract (klassedeclaratie,
+`[Function]`, `TimerTrigger`-signatuur, logger, aanroep van de gedeelde run) woordelijk op beide tiers
+en mat als zes extra identieke regels. De retentie is daarom een stap in de bestaande dagelijkse
+AVG-timer `CleanupFeedback`: `DagelijkseAvgRetentie` draait eerst de feedbackretentie en daarna de
+his-retentie, elk met eigen foutafhandeling, en gooit een fout pas aan het eind door (bij twee
+fouten als `AggregateException`). Per tier verandert alleen het argument dat de eigen opslag
+meegeeft; de meting blijft 5167. Afweging: de functienaam `CleanupFeedback` dekt de lading niet
+meer helemaal, maar blijft staan zodat bestaande bewaking en logs aansluiten; de tijd schuift van
+05:00 naar 05:15 UTC, wat voor een dagelijkse, idempotente run niets uitmaakt.
 
 **Niet bewezen in deze PR:** de SQL Server-integratietest draait niet in CI (geen SQL Server-job met
 een levende database voor unit-tests); hij is lokaal tegen een wegwerpcontainer gedraaid.

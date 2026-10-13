@@ -14,8 +14,12 @@ namespace SportlinkFunction.Admin;
 /// historietabel wordt overgeslagen: die maakt <c>sp_CreateTargetTableFromSource</c> pas bij de
 /// eerste sync aan.
 /// </para>
+/// <para>
+/// Als <see cref="IHisRetentieOpslag"/> opent elke aanroep een eigen verbinding; de dagelijkse
+/// AVG-retentierun (<c>CleanupFeedbackFunction</c>) geeft alleen de connectiestring mee.
+/// </para>
 /// </summary>
-internal static class SqlServerHisRetentie
+internal sealed class SqlServerHisRetentie(string connectionString) : IHisRetentieOpslag
 {
     private static readonly string MatchesSql =
         "IF OBJECT_ID(N'[his].[matches]', N'U') IS NOT NULL " +
@@ -28,6 +32,25 @@ internal static class SqlServerHisRetentie
         $"UPDATE [his].[matchdetails] SET {SetLijst(HisPersoonsgegevensRetentie.MatchDetailsKolommen)} " +
         "WHERE COALESCE([MatchDate], CAST([MatchDateTime] AS date)) <= @grens " +
         $"AND ({NietLeeg(HisPersoonsgegevensRetentie.MatchDetailsKolommen)});";
+
+    public async Task<IReadOnlyList<DateOnly>> LeesSeizoenseindenAsync()
+    {
+        await using var connection = await OpenAsync();
+        return await LeesSeizoenseindenAsync(connection);
+    }
+
+    public async Task<(int Matches, int MatchDetails)> WisTotEnMetAsync(DateOnly grens)
+    {
+        await using var connection = await OpenAsync();
+        return await WisTotEnMetAsync(connection, grens);
+    }
+
+    private async Task<SqlConnection> OpenAsync()
+    {
+        var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        return connection;
+    }
 
     /// <summary>Alle seizoenseinddatums uit <c>dbo.Season</c>.</summary>
     internal static async Task<IReadOnlyList<DateOnly>> LeesSeizoenseindenAsync(SqlConnection connection)

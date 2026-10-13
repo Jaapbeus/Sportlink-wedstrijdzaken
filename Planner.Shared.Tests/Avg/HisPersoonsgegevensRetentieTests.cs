@@ -1,4 +1,5 @@
 using AwesomeAssertions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Planner.Shared.Avg;
 using Xunit;
@@ -89,40 +90,68 @@ public class HisPersoonsgegevensRetentieTests
         doorgegeven.Should().Be(new DateOnly(2026, 6, 30));
         resultaat.Should().Be(new HisRetentieResultaat(new DateOnly(2026, 6, 30), 3, 2));
     }
-    [Fact]
-    public async Task VoerTimerUitAsync_WachtOpDeDatabase_GebruiktEenVerbinding_EnSluitHem()
-    {
-        var volgorde = new List<string>();
-        var verbinding = new NepVerbinding();
-        await HisPersoonsgegevensRetentie.VoerTimerUitAsync(
-            () => { volgorde.Add("wacht"); return Task.CompletedTask; },
-            () => { volgorde.Add("open"); return Task.FromResult(verbinding); },
-            v => { v.Should().BeSameAs(verbinding); return Task.FromResult<IReadOnlyList<DateOnly>>([new DateOnly(2000, 6, 30)]); },
-            (v, _) => { v.Should().BeSameAs(verbinding); volgorde.Add("wis"); return Task.FromResult((0, 0)); },
-            NullLogger.Instance);
 
-        volgorde.Should().Equal("wacht", "open", "wis");
-        verbinding.Gesloten.Should().BeTrue();
+    [Fact]
+    public async Task VoerStapUitAsync_GebruiktDeOpslagVanDeTier_EnGeeftHetResultaatTerug()
+    {
+        var opslag = new NepOpslag([new DateOnly(2026, 6, 30)], (4, 5));
+
+        var resultaat = await HisPersoonsgegevensRetentie.VoerStapUitAsync(opslag, NullLogger.Instance, Vandaag);
+
+        opslag.GewistTotEnMet.Should().Be(new DateOnly(2026, 6, 30));
+        resultaat.Should().Be(new HisRetentieResultaat(new DateOnly(2026, 6, 30), 4, 5));
     }
 
     [Fact]
-    public async Task VoerTimerUitAsync_FoutWordtDoorgegooid_EnDeVerbindingGesloten()
+    public async Task VoerStapUitAsync_ZonderDatum_RekentMetVandaagInUtc()
     {
-        var verbinding = new NepVerbinding();
-        var act = () => HisPersoonsgegevensRetentie.VoerTimerUitAsync(
-            () => Task.CompletedTask,
-            () => Task.FromResult(verbinding),
-            _ => throw new InvalidOperationException("seizoenstabel onbereikbaar"),
-            (_, _) => Task.FromResult((0, 0)),
-            NullLogger.Instance);
+        // Een seizoen dat gisteren (UTC) eindigde, is afgerond; een dat morgen eindigt nog niet.
+        // Zonder expliciete datum moet de stap dus vandaag als peildatum nemen, niet een vaste,
+        // minimale of maximale datum. Ook rond middernacht UTC blijft de verwachting gelijk.
+        var vandaagUtc = DateOnly.FromDateTime(DateTime.UtcNow);
+        var gisteren = vandaagUtc.AddDays(-1);
+        var opslag = new NepOpslag([gisteren, vandaagUtc.AddDays(1)], (1, 0));
+
+        var resultaat = await HisPersoonsgegevensRetentie.VoerStapUitAsync(opslag, NullLogger.Instance);
+
+        resultaat.Grens.Should().Be(gisteren);
+    }
+
+    [Fact]
+    public async Task VoerStapUitAsync_FoutWordtGelogdEnDoorgegooid()
+    {
+        var log = new TelLogger();
+        var act = () => HisPersoonsgegevensRetentie.VoerStapUitAsync(
+            new NepOpslag(null, (0, 0)), log, Vandaag);
 
         await act.Should().ThrowAsync<InvalidOperationException>("de Functions-host moet een mislukte run zien");
-        verbinding.Gesloten.Should().BeTrue();
+        log.Fouten.Should().Be(1);
     }
 
-    private sealed class NepVerbinding : IAsyncDisposable
+    private sealed class NepOpslag(IReadOnlyList<DateOnly>? seizoenseinden, (int, int) gewist) : IHisRetentieOpslag
     {
-        public bool Gesloten { get; private set; }
-        public ValueTask DisposeAsync() { Gesloten = true; return ValueTask.CompletedTask; }
+        public DateOnly? GewistTotEnMet { get; private set; }
+
+        public Task<IReadOnlyList<DateOnly>> LeesSeizoenseindenAsync()
+            => seizoenseinden is null
+                ? throw new InvalidOperationException("seizoenstabel onbereikbaar")
+                : Task.FromResult(seizoenseinden);
+
+        public Task<(int Matches, int MatchDetails)> WisTotEnMetAsync(DateOnly grens)
+        {
+            GewistTotEnMet = grens;
+            return Task.FromResult(gewist);
+        }
+    }
+
+    private sealed class TelLogger : ILogger
+    {
+        public int Fouten { get; private set; }
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel == LogLevel.Error) Fouten++;
+        }
     }
 }

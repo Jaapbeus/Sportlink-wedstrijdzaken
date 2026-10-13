@@ -86,6 +86,29 @@ public class PostgresHisRetentieIntegrationTests : IAsyncLifetime
     }
 
     [PostgresFact]
+    public async Task AlsOpslag_OpentEenEigenVerbinding_VoorLezenEnWissen()
+    {
+        // Zo roept de dagelijkse AVG-retentierun (CleanupFeedback) de tier aan: alleen met de
+        // connectiestring, via de poort IHisRetentieOpslag.
+        var orchestrator = new PostgresMergeOrchestrator(ConnectionString);
+        await orchestrator.EnsureHisTableAsync(KnownEntities.Matches);
+        await orchestrator.EnsureHisTableAsync(KnownEntities.MatchDetails);
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        await VoegMatchToe(connection, 1, "2026-06-30T14:30:00+02:00");
+        await VoegDetailToe(connection, 11, new DateOnly(2026, 5, 2), null);
+        await using var telling = new NpgsqlCommand("SELECT COUNT(*) FROM public.season WHERE dateuntil IS NOT NULL", connection);
+        var seizoenen = Convert.ToInt32(await telling.ExecuteScalarAsync());
+
+        IHisRetentieOpslag opslag = new PostgresHisRetentie(ConnectionString);
+
+        (await opslag.LeesSeizoenseindenAsync()).Should().HaveCount(seizoenen);
+        (await opslag.WisTotEnMetAsync(Grens)).Should().Be((1, 1));
+        (await Tekst(connection, "matches", "wedstrijdcode", 1, "scheidsrechter")).Should().BeNull();
+        (await opslag.WisTotEnMetAsync(Grens)).Should().Be((0, 0));
+    }
+
+    [PostgresFact]
     public async Task Generator_ZetRowLevelSecurityAanOpHisEnStg_OokBijHerhaling()
     {
         var orchestrator = new PostgresMergeOrchestrator(ConnectionString);

@@ -562,8 +562,10 @@ leest ze; Sportlink blijft de bron.
   in een andere vorm wordt niet geraden en niet leeggemaakt. `his.matchdetails`: `MatchDate`, anders
   de datum van `MatchDateTime`. **Restrisico:** een detailrij zonder beide datums wordt niet
   leeggemaakt.
-* **Uitvoering.** Timer `CleanupHisPersoonsgegevens`, dagelijks 05:00 UTC, op beide tiers met
-  dezelfde regel (`Planner.Shared/Avg/HisPersoonsgegevensRetentie.cs`; query's in
+* **Uitvoering.** Als tweede stap in de bestaande dagelijkse AVG-timer `CleanupFeedback` (05:15
+  UTC, beide tiers; orkestratie in `Planner.Endpoints/Avg/DagelijkseAvgRetentie.cs`), na de
+  feedbackretentie en daarvan onafhankelijk: een fout in de ene stap houdt de andere niet tegen. Op
+  beide tiers dezelfde regel (`Planner.Shared/Avg/HisPersoonsgegevensRetentie.cs`; query's in
   `PostgresHisRetentie` en `SqlServerHisRetentie`). Idempotent; het log bevat alleen de grensdatum en
   aantallen. Dagelijks omdat het sync-venster een week terugkijkt en een reset-sync een oud seizoen
   opnieuw ophaalt: beide vullen de kolommen weer, de volgende run maakt ze weer leeg.

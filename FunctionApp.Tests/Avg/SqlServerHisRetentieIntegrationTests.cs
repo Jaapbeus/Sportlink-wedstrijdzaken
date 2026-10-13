@@ -1,6 +1,7 @@
 using AwesomeAssertions;
 using FunctionApp.Tests.Feedback;
 using Microsoft.Data.SqlClient;
+using Planner.Shared.Avg;
 using SportlinkFunction.Admin;
 using Xunit;
 
@@ -71,6 +72,27 @@ public class SqlServerHisRetentieIntegrationTests
         var verwacht = (int)(await telling.ExecuteScalarAsync())!;
 
         (await SqlServerHisRetentie.LeesSeizoenseindenAsync(conn)).Should().HaveCount(verwacht);
+    }
+
+    [SqlServerFact]
+    public async Task AlsOpslag_OpentEenEigenVerbinding_VoorLezenEnWissen()
+    {
+        // Zo roept de dagelijkse AVG-retentierun (CleanupFeedback) de tier aan: alleen met de
+        // connectiestring, via de poort IHisRetentieOpslag.
+        await using var conn = new SqlConnection(Cs);
+        await conn.OpenAsync();
+        await MaakHisTabellen(conn);
+        await VoegMatchToe(conn, 1, "2026-06-30T14:30:00+02:00");
+        await VoegDetailToe(conn, 11, new DateTime(2026, 5, 2), null);
+        await using var telling = new SqlCommand("SELECT COUNT(*) FROM [dbo].[Season] WHERE [DateUntil] IS NOT NULL", conn);
+        var seizoenen = (int)(await telling.ExecuteScalarAsync())!;
+
+        IHisRetentieOpslag opslag = new SqlServerHisRetentie(Cs);
+
+        (await opslag.LeesSeizoenseindenAsync()).Should().HaveCount(seizoenen);
+        (await opslag.WisTotEnMetAsync(Grens)).Should().Be((1, 1));
+        (await Tekst(conn, "matches", "wedstrijdcode", 1, "scheidsrechter")).Should().BeNull();
+        (await opslag.WisTotEnMetAsync(Grens)).Should().Be((0, 0));
     }
 
     private static async Task MaakHisTabellen(SqlConnection conn)

@@ -7,6 +7,21 @@ namespace Planner.Shared.Avg;
 public sealed record HisRetentieResultaat(DateOnly? Grens, int MatchesGewist, int MatchDetailsGewist);
 
 /// <summary>
+/// De tier-eigen kant van de his-retentie: alleen de query's, elk over een eigen verbinding.
+/// Implementaties: <c>Database.Postgres/PostgresHisRetentie</c> en
+/// <c>FunctionApp/Admin/SqlServerHisRetentie</c>.
+/// </summary>
+public interface IHisRetentieOpslag
+{
+    /// <summary>Alle seizoenseinddatums uit de seizoenstabel van de tier.</summary>
+    Task<IReadOnlyList<DateOnly>> LeesSeizoenseindenAsync();
+
+    /// <summary>Maakt de persoonskolommen leeg voor wedstrijden tot en met <paramref name="grens"/>;
+    /// geeft uitsluitend het aantal geraakte rijen per tabel terug.</summary>
+    Task<(int Matches, int MatchDetails)> WisTotEnMetAsync(DateOnly grens);
+}
+
+/// <summary>
 /// Seizoensretentie voor de persoonskolommen in <c>his.matches</c> en <c>his.matchdetails</c> (#1698,
 /// eigenaarsbesluit 2026-10-12): bewaren tot het einde van het seizoen waarin de wedstrijd valt,
 /// daarna leegmaken. Sportlink blijft de bron; de rij zelf (wedstrijd, teams, uitslag) blijft staan.
@@ -61,25 +76,21 @@ public static class HisPersoonsgegevensRetentie
     }
 
     /// <summary>
-    /// De timerrun van beide tiers: wachten op de database, één verbinding openen, <see cref="VoerUitAsync"/>
-    /// met de datum van vandaag (om 05:00 UTC gelijk aan de Nederlandse datum), en een fout loggen en
+    /// De stap in de dagelijkse AVG-retentierun van beide tiers (timer <c>CleanupFeedback</c>, 05:15
+    /// UTC; orkestratie in <c>Planner.Endpoints/Avg/DagelijkseAvgRetentie</c>): <see cref="VoerUitAsync"/>
+    /// met de datum van vandaag (om 05:15 UTC gelijk aan de Nederlandse datum), en een fout loggen en
     /// doorgooien zodat de Functions-host hem als mislukte run ziet. De tier levert alleen de query's.
+    /// Geen eigen timer: dat zou het timercontract op beide tiers woordelijk herhalen
+    /// (tier-duplicatie, eigenaarsbesluit 2026-10-13).
     /// </summary>
-    public static async Task VoerTimerUitAsync<TVerbinding>(
-        Func<Task> wachtOpDatabase,
-        Func<Task<TVerbinding>> openVerbinding,
-        Func<TVerbinding, Task<IReadOnlyList<DateOnly>>> leesSeizoenseinden,
-        Func<TVerbinding, DateOnly, Task<(int Matches, int MatchDetails)>> wisTotEnMet,
-        ILogger log)
-        where TVerbinding : IAsyncDisposable
+    public static async Task<HisRetentieResultaat> VoerStapUitAsync(
+        IHisRetentieOpslag opslag, ILogger log, DateOnly? vandaag = null)
     {
         try
         {
-            await wachtOpDatabase();
-            await using var verbinding = await openVerbinding();
-            await VoerUitAsync(
-                () => leesSeizoenseinden(verbinding), grens => wisTotEnMet(verbinding, grens),
-                log, DateOnly.FromDateTime(DateTime.UtcNow));
+            return await VoerUitAsync(
+                opslag.LeesSeizoenseindenAsync, opslag.WisTotEnMetAsync,
+                log, vandaag ?? DateOnly.FromDateTime(DateTime.UtcNow));
         }
         catch (Exception ex)
         {

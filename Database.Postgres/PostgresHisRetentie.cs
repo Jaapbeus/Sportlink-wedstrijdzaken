@@ -14,8 +14,12 @@ namespace Database.Postgres;
 /// tweede run telt nul. Een historietabel die nog niet bestaat (verse installatie vóór de eerste
 /// sync) wordt overgeslagen.
 /// </para>
+/// <para>
+/// Als <see cref="IHisRetentieOpslag"/> opent elke aanroep een eigen verbinding; de dagelijkse
+/// AVG-retentierun (<c>CleanupFeedbackFunction</c>) geeft alleen de connectiestring mee.
+/// </para>
 /// </summary>
-public static class PostgresHisRetentie
+public sealed class PostgresHisRetentie(string connectionString) : IHisRetentieOpslag
 {
     // wedstrijddatum is tekst ("yyyy-MM-ddTHH:mm..."). Bewust een tekstvergelijking na een
     // vormcontrole in plaats van een cast: Postgres garandeert geen evaluatievolgorde binnen een
@@ -31,6 +35,25 @@ public static class PostgresHisRetentie
         $"UPDATE his.\"matchdetails\" SET {SetLijst(HisPersoonsgegevensRetentie.MatchDetailsKolommen)} " +
         "WHERE COALESCE(\"matchdate\", \"matchdatetime\"::date) <= @grens " +
         $"AND ({NietLeeg(HisPersoonsgegevensRetentie.MatchDetailsKolommen)});";
+
+    public async Task<IReadOnlyList<DateOnly>> LeesSeizoenseindenAsync()
+    {
+        await using var connection = await OpenAsync();
+        return await LeesSeizoenseindenAsync(connection);
+    }
+
+    public async Task<(int Matches, int MatchDetails)> WisTotEnMetAsync(DateOnly grens)
+    {
+        await using var connection = await OpenAsync();
+        return await WisTotEnMetAsync(connection, grens);
+    }
+
+    private async Task<NpgsqlConnection> OpenAsync()
+    {
+        var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        return connection;
+    }
 
     /// <summary>Alle seizoenseinddatums uit <c>public.season</c>.</summary>
     public static async Task<IReadOnlyList<DateOnly>> LeesSeizoenseindenAsync(NpgsqlConnection connection, CancellationToken ct = default)
