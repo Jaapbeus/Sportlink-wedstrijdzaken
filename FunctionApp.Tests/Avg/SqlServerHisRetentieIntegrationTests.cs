@@ -29,6 +29,9 @@ public class SqlServerHisRetentieIntegrationTests
         await VoegMatchToe(conn, 1, "2026-06-30T14:30:00+02:00");
         await VoegMatchToe(conn, 2, "2026-07-01T14:30:00+02:00");
         await VoegMatchToe(conn, 3, "onbekend");
+        await VoegMatchToe(conn, 4, "2026-02-30T10:00:00+01:00"); // onmogelijke datum: niet wissen
+        await VoegMatchToe(conn, 5, "2024-02-29T10:00:00+01:00"); // geldige schrikkeldag: wel wissen
+        await VoegMatchToe(conn, 6, "2025-02-29T10:00:00+01:00"); // geen schrikkeljaar: niet wissen
         await VoegDetailToe(conn, 11, new DateTime(2026, 5, 2), null);
         await VoegDetailToe(conn, 12, new DateTime(2026, 8, 2), null);
         await VoegDetailToe(conn, 13, null, new DateTime(2026, 4, 4, 12, 0, 0));
@@ -36,13 +39,16 @@ public class SqlServerHisRetentieIntegrationTests
 
         var (matches, details) = await SqlServerHisRetentie.WisTotEnMetAsync(conn, Grens);
 
-        matches.Should().Be(1);
+        matches.Should().Be(2);
         details.Should().Be(2);
         (await Tekst(conn, "matches", "wedstrijdcode", 1, "scheidsrechter")).Should().BeNull();
         (await Tekst(conn, "matches", "wedstrijdcode", 1, "rijders")).Should().BeNull();
         (await Tekst(conn, "matches", "wedstrijdcode", 1, "thuisteam")).Should().Be("AllStars JO11-1");
         (await Tekst(conn, "matches", "wedstrijdcode", 2, "scheidsrechter")).Should().Be("Jan de Vries");
         (await Tekst(conn, "matches", "wedstrijdcode", 3, "scheidsrechter")).Should().Be("Jan de Vries");
+        (await Tekst(conn, "matches", "wedstrijdcode", 4, "scheidsrechter")).Should().Be("Jan de Vries");
+        (await Tekst(conn, "matches", "wedstrijdcode", 5, "scheidsrechter")).Should().BeNull();
+        (await Tekst(conn, "matches", "wedstrijdcode", 6, "scheidsrechter")).Should().Be("Jan de Vries");
         (await Tekst(conn, "matchdetails", "InternCode", 11, "ThuisTeamEmail")).Should().BeNull();
         (await Tekst(conn, "matchdetails", "InternCode", 11, "Opmerkingen")).Should().BeNull();
         (await Tekst(conn, "matchdetails", "InternCode", 11, "ThuisTeam")).Should().Be("AllStars JO11-1");

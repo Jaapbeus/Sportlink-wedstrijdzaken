@@ -22,13 +22,26 @@ namespace Database.Postgres;
 public sealed class PostgresHisRetentie(string connectionString) : IHisRetentieOpslag
 {
     // wedstrijddatum is tekst ("yyyy-MM-ddTHH:mm..."). Bewust een tekstvergelijking na een
-    // vormcontrole in plaats van een cast: Postgres garandeert geen evaluatievolgorde binnen een
-    // AND, dus een cast kon op een afwijkende waarde alsnog falen. Op het ISO-formaat is de
-    // tekstvolgorde gelijk aan de datumvolgorde.
+    // kalendercontrole in plaats van een cast: een cast faalt op een onmogelijke datum (30 februari)
+    // en Postgres garandeert geen evaluatievolgorde binnen een AND. De controle spiegelt
+    // TRY_CONVERT(date, ..., 23) op SQL Server: een onmogelijke datum wordt niet gewist (niet raden).
+    // De regex dekt de dagen per maand; 29 februari wordt apart op schrikkeljaar getoetst binnen een
+    // CASE (gegarandeerde volgorde). Op het ISO-formaat is de tekstvolgorde gelijk aan de datumvolgorde.
+    private const string DatumDeel = "left(\"wedstrijddatum\", 10)";
+
+    private const string GeldigeDatumRegex =
+        "'^(?!0000)[0-9]{4}-((0[13578]|1[02])-(0[1-9]|[12][0-9]|3[01])|(0[469]|11)-(0[1-9]|[12][0-9]|30)|02-(0[1-9]|1[0-9]|2[0-8]))$'";
+
+    private const string SchrikkeldagRegex = "'^(?!0000)[0-9]{4}-02-29$'";
+
     private static readonly string MatchesSql =
         $"UPDATE his.\"matches\" SET {SetLijst(HisPersoonsgegevensRetentie.MatchesKolommen)} " +
-        "WHERE \"wedstrijddatum\" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' " +
-        "AND left(\"wedstrijddatum\", 10) <= @grens " +
+        "WHERE CASE " +
+        $"WHEN {DatumDeel} ~ {GeldigeDatumRegex} THEN {DatumDeel} <= @grens " +
+        $"WHEN {DatumDeel} ~ {SchrikkeldagRegex} THEN " +
+        $"((left({DatumDeel}, 4)::int % 4 = 0 AND left({DatumDeel}, 4)::int % 100 <> 0) OR left({DatumDeel}, 4)::int % 400 = 0) " +
+        $"AND {DatumDeel} <= @grens " +
+        "ELSE false END " +
         $"AND ({NietLeeg(HisPersoonsgegevensRetentie.MatchesKolommen)});";
 
     private static readonly string MatchDetailsSql =

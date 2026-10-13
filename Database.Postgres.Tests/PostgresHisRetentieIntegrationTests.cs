@@ -41,6 +41,9 @@ public class PostgresHisRetentieIntegrationTests : IAsyncLifetime
         await VoegMatchToe(connection, 1, "2026-06-30T14:30:00+02:00"); // laatste dag van het afgeronde seizoen
         await VoegMatchToe(connection, 2, "2026-07-01T14:30:00+02:00"); // nieuw seizoen
         await VoegMatchToe(connection, 3, "onbekend");                   // afwijkende vorm: niet raden
+        await VoegMatchToe(connection, 4, "2026-02-30T10:00:00+01:00"); // onmogelijke datum: niet wissen
+        await VoegMatchToe(connection, 5, "2024-02-29T10:00:00+01:00"); // geldige schrikkeldag: wel wissen
+        await VoegMatchToe(connection, 6, "2025-02-29T10:00:00+01:00"); // geen schrikkeljaar: niet wissen
         await VoegDetailToe(connection, 11, new DateOnly(2026, 5, 2), null);
         await VoegDetailToe(connection, 12, new DateOnly(2026, 8, 2), null);
         await VoegDetailToe(connection, 13, null, new DateTime(2026, 4, 4, 12, 0, 0)); // alleen matchdatetime
@@ -48,13 +51,16 @@ public class PostgresHisRetentieIntegrationTests : IAsyncLifetime
 
         var (matches, details) = await PostgresHisRetentie.WisTotEnMetAsync(connection, Grens);
 
-        matches.Should().Be(1);
+        matches.Should().Be(2);
         details.Should().Be(2);
         (await Tekst(connection, "matches", "wedstrijdcode", 1, "scheidsrechter")).Should().BeNull();
         (await Tekst(connection, "matches", "wedstrijdcode", 1, "rijders")).Should().BeNull();
         (await Tekst(connection, "matches", "wedstrijdcode", 1, "thuisteam")).Should().Be("AllStars JO11-1", "de wedstrijd zelf blijft staan");
         (await Tekst(connection, "matches", "wedstrijdcode", 2, "scheidsrechter")).Should().Be("Jan de Vries");
         (await Tekst(connection, "matches", "wedstrijdcode", 3, "scheidsrechter")).Should().Be("Jan de Vries");
+        (await Tekst(connection, "matches", "wedstrijdcode", 4, "scheidsrechter")).Should().Be("Jan de Vries");
+        (await Tekst(connection, "matches", "wedstrijdcode", 5, "scheidsrechter")).Should().BeNull();
+        (await Tekst(connection, "matches", "wedstrijdcode", 6, "scheidsrechter")).Should().Be("Jan de Vries");
         (await Tekst(connection, "matchdetails", "interncode", 11, "thuisteamemail")).Should().BeNull();
         (await Tekst(connection, "matchdetails", "interncode", 11, "opmerkingen")).Should().BeNull();
         (await Tekst(connection, "matchdetails", "interncode", 11, "thuisteam")).Should().Be("AllStars JO11-1");
