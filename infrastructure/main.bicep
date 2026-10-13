@@ -50,11 +50,11 @@ param azureWebJobsStorage string = ''
 @description('Monitoring deployen? Alleen instellen op true na expliciete kostengoedkeuring eigenaar.')
 param deployMonitoring bool = false
 
-@description('Entra ID tenant ID voor Easy Auth — via GitHub Variable AZURE_AD_TENANT_ID. Verplicht voor beide modules (#1700, #1731).')
+@description('Entra ID tenant ID voor Easy Auth — via GitHub secret AZURE_AD_TENANT_ID. Verplicht voor beide modules (#1700, #1731).')
 @minLength(1)
 param tenantId string
 
-@description('Entra ID client ID van de App Registration — via GitHub Variable AZURE_AD_CLIENT_ID. Verplicht voor beide modules (#1700, #1731).')
+@description('Entra ID client ID van de App Registration — via GitHub secret AZURE_AD_CLIENT_ID. Verplicht voor beide modules (#1700, #1731).')
 @minLength(1)
 param clientId string
 

@@ -76,7 +76,7 @@ PR-CI bewaakt wordt — laag 4. De overige vier zijn alleen tegen Entra zelf of 
 
 | Laag | Bewaakt door | Wanneer | Automatisch? |
 |---|---|---|---|
-| 0 — Platform-auth aan (#1700) | `Verify-AzureAuthSetup.ps1` met `-FunctionAppName`/`-ResourceGroupName` (leest `authsettingsV2`, zonder secrets); daarnaast weigert `function-app-flex.bicep` een lege `tenantId`/`clientId` (`@minLength(1)`) | Handmatig, tegen Azure; de Bicep-regel bij elke uitrol | ❌ |
+| 0 — Platform-auth aan (#1700) | `Verify-AzureAuthSetup.ps1` met `-FunctionAppName`/`-ResourceGroupName` (leest `authsettingsV2`, zonder secrets); daarnaast weigeren `function-app.bicep` (#1731) en `function-app-flex.bicep` een lege `tenantId`/`clientId` (`@minLength(1)`) | Handmatig, tegen Azure; de Bicep-regel bij elke uitrol | ❌ |
 | 1 — Single tenant | `Verify-AzureAuthSetup.ps1` | Handmatig, tegen Entra | ❌ |
 | 2 — Assignment required | `Verify-AzureAuthSetup.ps1` | Handmatig, tegen Entra | ❌ |
 | 3a — App Roles | `Verify-AzureAuthSetup.ps1` | Handmatig, tegen Entra | ❌ |
