@@ -127,8 +127,13 @@ while IFS= read -r rij; do
   if [ ! -f ".github/workflows/$workflow" ]; then
     echo "::error file=$DOC::Het register verwijst naar .github/workflows/$workflow, maar die workflow bestaat niet."
     fail=1
-  elif ! grep -qF -- "- name: $stap" ".github/workflows/$workflow" \
-    && ! grep -qF -- "- name: \"$stap\"" ".github/workflows/$workflow"; then
+  elif ! awk -v naam="$stap" '
+      { regel = $0; sub(/^[ \t]+/, "", regel); sub(/[ \t\r]+$/, "", regel) }
+      regel ~ /^- name:[ \t]*/ {
+        sub(/^- name:[ \t]*/, "", regel)
+        if (regel == naam || regel == "\"" naam "\"" || regel == "'"'"'" naam "'"'"'") gevonden = 1
+      }
+      END { exit gevonden ? 0 : 1 }' ".github/workflows/$workflow"; then
     echo "::error file=.github/workflows/$workflow::Het register noemt de inline-stap '$stap', maar die stap bestaat niet (meer) in deze workflow. Een guard die niet draait, bewaakt niets."
     fail=1
   fi

@@ -16,7 +16,7 @@ import re
 import subprocess
 import sys
 
-METHODEN = {"get", "post", "put", "delete", "patch"}
+METHODEN = {"get", "put", "post", "delete", "options", "head", "patch", "trace"}  # OpenAPI 3.0.3 path item
 
 
 def norm(pad: str) -> str:

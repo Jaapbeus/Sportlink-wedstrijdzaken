@@ -23,7 +23,8 @@ cd "$repo_root"
 geslaagd=0
 mislukt=0
 TMP_B="$(mktemp)"
-trap 'rm -f "$TMP_B"' EXIT
+TMP_C="$(mktemp)"
+trap 'rm -f "$TMP_B" "$TMP_C"' EXIT
 
 # verwacht_falen <omschrijving> <commando...>
 verwacht_falen() {
@@ -188,6 +189,9 @@ cp .github/workflows/build.yml "$TMP_B"
 sed 's/- name: CSP-guard — geen inline scripts in gepubliceerde index.html/- name: CSP-controle hernoemd/' "$TMP_B" > .github/workflows/build.yml
 verwacht_falen "inline-stap verdwenen uit de workflow" bash scripts/ci/check-regelregister.sh
 cp "$TMP_B" .github/workflows/build.yml
+sed 's/^\( *\)- name: CSP-guard — geen inline scripts in gepubliceerde index.html/\1# - name: CSP-guard — geen inline scripts in gepubliceerde index.html/' "$TMP_B" > .github/workflows/build.yml
+verwacht_falen "uitgecommentarieerde inline-stap telt niet als actief" bash scripts/ci/check-regelregister.sh
+cp "$TMP_B" .github/workflows/build.yml
 printf '      - name: Proef-guard zonder registerregel\n        run: echo proef\n' >> .github/workflows/build.yml
 verwacht_falen "guard-stap zonder registerregel" bash scripts/ci/check-regelregister.sh
 cp "$TMP_B" .github/workflows/build.yml
@@ -201,6 +205,24 @@ cp docs/API.md "$TMP_B"
 grep -v '^| `GET` | `/health`' "$TMP_B" > docs/API.md
 verwacht_falen "endpoint ontbreekt in API.md" python3 scripts/ci/check-api-md-sync.py
 cp "$TMP_B" docs/API.md
+# Alle OpenAPI-operatiemethoden: een ongedocumenteerde head/options/trace moet rood worden,
+# dezelfde operatie mét tabelregel groen.
+cp docs/api-standaarden/openapi.json "$TMP_B"
+cp docs/API.md "$TMP_C"
+for m in head options trace; do
+  python3 - "$m" <<'PY'
+import json, sys
+p = "docs/api-standaarden/openapi.json"
+d = json.load(open(p, encoding="utf-8"))
+d["paths"]["/proef-methode"] = {sys.argv[1]: {"responses": {"200": {"description": "ok"}}}}
+json.dump(d, open(p, "w", encoding="utf-8"))
+PY
+  verwacht_falen "ongedocumenteerde $m-operatie" python3 scripts/ci/check-api-md-sync.py
+  printf '| `%s` | `/proef-methode` | proef |\n' "$(echo "$m" | tr a-z A-Z)" >> docs/API.md
+  verwacht_slagen "gedocumenteerde $m-operatie" python3 scripts/ci/check-api-md-sync.py
+  cp "$TMP_B" docs/api-standaarden/openapi.json
+  cp "$TMP_C" docs/API.md
+done
 
 # 5c. Versiesynchronisatie (#1717): een afwijkende csproj-versie.
 cp BlazorAdmin/BlazorAdmin.csproj "$TMP_B"
