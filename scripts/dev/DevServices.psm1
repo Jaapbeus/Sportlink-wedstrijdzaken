@@ -585,7 +585,7 @@ function Start-FunctionHost {
     <#
         Start 'func start' voor één functieproject en wacht tot /api/health antwoordt.
 
-        DRIE DINGEN DIE HIER EMPIRISCH ZIJN VASTGESTELD (#909)
+        VIER DINGEN OM TE WETEN (#909, #1700)
 
         1. 'func' is op Windows een npm-shim (func.ps1/func.cmd), geen executable.
            Start-Process -FilePath 'func' faalt daarop met "%1 is not a valid Win32
@@ -597,7 +597,11 @@ function Start-FunctionHost {
            $env:... vóór de aanroep; er hoeft niets naar schijf en het bestand van de
            ontwikkelaar blijft ongemoeid.
 
-        3. De procesboom is drie lagen diep (shell -> npm-shim -> func -> dotnet-worker).
+        3. De lokale rolbypass staat alleen aan met LOCAL_AUTH_BYPASS=true (#1700). Deze helper zet hem
+           expliciet in de opdracht van het kindproces, zodat de selftest de beheer-endpoints kan
+           aanroepen; de sessie van de aanroeper blijft ongemoeid.
+
+        4. De procesboom is drie lagen diep (shell -> npm-shim -> func -> dotnet-worker).
            Alleen het teruggegeven wrapper-PID stoppen is niet genoeg; gebruik
            Stop-FunctionHost, die de hele boom neemt.
 
@@ -620,7 +624,7 @@ function Start-FunctionHost {
     }
 
     $shellExe = if ($script:OnWindows) { 'powershell' } else { 'pwsh' }
-    $command  = "Set-Location '$ProjectDir'; func start --port $Port"
+    $command  = "`$env:LOCAL_AUTH_BYPASS = 'true'; Set-Location '$ProjectDir'; func start --port $Port"
 
     $startArgs = @{
         FilePath               = $shellExe

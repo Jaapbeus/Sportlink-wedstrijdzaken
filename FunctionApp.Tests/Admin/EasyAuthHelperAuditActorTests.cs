@@ -14,7 +14,8 @@ namespace FunctionApp.Tests.Admin;
 /// querystring. Vóór deze fix kon een geldige admin-token <c>GewijzigdDoor</c> vrij kiezen via
 /// <c>updateRequest.GewijzigdDoor ?? req.Query["gewijzigdDoor"]</c>.
 /// <para>
-/// Manipuleert bewust de procesbrede omgevingsvariabele <c>WEBSITE_SITE_NAME</c> — hersteld in een
+/// Manipuleert bewust de procesbrede omgevingsvariabelen <c>WEBSITE_SITE_NAME</c> en
+/// <c>LOCAL_AUTH_BYPASS</c> (#1700) — hersteld in een
 /// <c>finally</c>-blok via <see cref="WithEnv"/>. Zelfde precedent als
 /// <c>FunctionApp.Tests/Infrastructure/EgressGuardTests.cs</c>: xUnit draait testmethoden binnen één
 /// klasse niet parallel aan elkaar, dus dit is veilig zonder extra serialisatie.
@@ -23,18 +24,23 @@ namespace FunctionApp.Tests.Admin;
 public class EasyAuthHelperAuditActorTests
 {
     private const string AzureVar = "WEBSITE_SITE_NAME";
+    private const string SchakelaarVar = "LOCAL_AUTH_BYPASS";
 
-    private static void WithEnv(string? azureHosting, Action assert)
+    /// <summary>Zet de platformvariabele en de lokale schakelaar (#1700); beide worden hersteld.</summary>
+    private static void WithEnv(string? azureHosting, Action assert, string? schakelaar = null)
     {
         var orig = Environment.GetEnvironmentVariable(AzureVar);
+        var origSchakelaar = Environment.GetEnvironmentVariable(SchakelaarVar);
         try
         {
             Environment.SetEnvironmentVariable(AzureVar, azureHosting);
+            Environment.SetEnvironmentVariable(SchakelaarVar, schakelaar);
             assert();
         }
         finally
         {
             Environment.SetEnvironmentVariable(AzureVar, orig);
+            Environment.SetEnvironmentVariable(SchakelaarVar, origSchakelaar);
         }
     }
 
@@ -61,7 +67,7 @@ public class EasyAuthHelperAuditActorTests
     [Fact]
     public void GetAuditActor_LokaleOntwikkeling_GeeftHerkenbareSynthetischeIdentiteitOngeachtInput()
     {
-        WithEnv(azureHosting: null, () =>
+        WithEnv(azureHosting: null, schakelaar: "true", assert: () =>
         {
             // Vervalste queryparameter aanwezig — mag geen enkele invloed hebben.
             var req = BuildRequest(queryString: "?gewijzigdDoor=IemandAnders");
@@ -243,7 +249,7 @@ public class EasyAuthHelperAuditActorTests
     [Fact]
     public void IsAdmin_LokaleOntwikkeling_IsAltijdWaar()
     {
-        WithEnv(azureHosting: null, () =>
+        WithEnv(azureHosting: null, schakelaar: "true", assert: () =>
         {
             var req = BuildRequest();
 
@@ -285,4 +291,61 @@ public class EasyAuthHelperAuditActorTests
             EasyAuthHelper.IsAdmin(req).Should().BeFalse();
         });
     }
+
+    // ── Lokale bypass alleen met de schakelaar en nooit in Azure (#1700) ──
+
+    public static IEnumerable<object?[]> AfgedwongenOmgevingen() =>
+    [
+        [null, null],           // buiten Azure zonder schakelaar (CI, losse func start, andere hosting)
+        ["func-test-01", "true"], // Azure met een geweigerde schakelaar
+        ["func-test-01", null],   // productie
+    ];
+
+    [Theory]
+    [MemberData(nameof(AfgedwongenOmgevingen))]
+    public void RequireAdmin_ZonderBypass_ZonderPrincipal_IsUnauthorized(string? azure, string? schakelaar)
+        => WithEnv(azure, schakelaar: schakelaar, assert: () =>
+            EasyAuthHelper.RequireAdmin(BuildRequest()).Should().BeOfType<UnauthorizedResult>());
+
+    [Theory]
+    [MemberData(nameof(AfgedwongenOmgevingen))]
+    public void RequireAdmin_ZonderBypass_AlleenUserRol_Geeft403(string? azure, string? schakelaar)
+        => WithEnv(azure, schakelaar: schakelaar, assert: () =>
+            EasyAuthHelper.RequireAdmin(BuildRequest(EncodePrincipal(("roles", "user"))))
+                .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(403));
+
+    [Theory]
+    [MemberData(nameof(AfgedwongenOmgevingen))]
+    public void IsAdmin_ZonderBypass_ZonderPrincipal_IsOnwaar(string? azure, string? schakelaar)
+        => WithEnv(azure, schakelaar: schakelaar, assert: () =>
+            EasyAuthHelper.IsAdmin(BuildRequest()).Should().BeFalse());
+
+    [Theory]
+    [MemberData(nameof(AfgedwongenOmgevingen))]
+    public void GetAuditActor_ZonderBypass_ZonderPrincipal_GooitException(string? azure, string? schakelaar)
+        => WithEnv(azure, schakelaar: schakelaar, assert: () =>
+        {
+            Action act = () => EasyAuthHelper.GetAuditActor(BuildRequest());
+            act.Should().Throw<InvalidOperationException>("zonder bypass is er nooit een synthetische identiteit");
+        });
+
+    [Theory]
+    [MemberData(nameof(AfgedwongenOmgevingen))]
+    public void GetLerenAanroeper_ZonderBypass_VerwachtEenPrincipal(string? azure, string? schakelaar)
+        => WithEnv(azure, schakelaar: schakelaar, assert: () =>
+            EasyAuthHelper.GetLerenAanroeper(BuildRequest()).DoorId.Should().Be("onbekend",
+                "zonder bypass wordt een aanroeper zonder principal nooit als lokale ontwikkelaar vastgelegd"));
+
+    [Fact]
+    public void GetLerenAanroeper_LokaalMetSchakelaar_IsDeLokaleOntwikkelaar()
+        => WithEnv(azureHosting: null, schakelaar: "true", assert: () =>
+            EasyAuthHelper.GetLerenAanroeper(BuildRequest()).DoorId.Should().Be("lokale-ontwikkelaar"));
+
+    [Theory]
+    [InlineData("false")]
+    [InlineData("1")]
+    [InlineData("")]
+    public void RequireAdmin_LokaalMetAndereSchakelaarwaarde_BlijftDicht(string waarde)
+        => WithEnv(azureHosting: null, schakelaar: waarde, assert: () =>
+            EasyAuthHelper.RequireAdmin(BuildRequest()).Should().BeOfType<UnauthorizedResult>());
 }

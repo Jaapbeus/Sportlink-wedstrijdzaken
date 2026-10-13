@@ -300,7 +300,7 @@ Sportlink REST API → Azure Function → stg.* (staging, per run leeggemaakt)
 | Frontend | MSAL (`AddMsalAuthentication`) + `AuthorizationMessageHandler` |
 | Transport | Bearer token in `Authorization`-header |
 | Function App | Azure Easy Auth (AllowAnonymous mode) + `EasyAuthHelper.RequireAdmin()` |
-| Lokaal (dev) | Bypass: `WEBSITE_SITE_NAME` afwezig → altijd toestaan |
+| Lokaal (dev) | Bypass alleen met de expliciete schakelaar `LOCAL_AUTH_BYPASS=true`, en geweigerd zodra de app in Azure draait (`Planner.Shared/Infrastructure/LokaleOntwikkelomgeving.cs`, #1700). Zonder schakelaar geldt ook lokaal 401/403 |
 
 ### 5.4 Database — schema's en conventies per tier
 
@@ -729,6 +729,14 @@ security-incident.
 
 **De server is de waarheid.** Een aanvaller kan de Blazor WASM modificeren. Laag 5 is leidend voor
 databeveiliging. Laag 4 is voor UX (geen app-shell voor niet-geautoriseerde gebruikers).
+
+**Laag 5 steunt op platform-auth (#1700).** `X-MS-CLIENT-PRINCIPAL` is alleen betrouwbaar als Easy
+Auth op het platform aan staat. Daarom: `tenantId`/`clientId` zijn verplicht in
+`infrastructure/modules/function-app-flex.bicep` (`@minLength(1)`, de `authsettingsV2`-resource is
+onvoorwaardelijk) en `Verify-AzureAuthSetup.ps1` controleert als laag 0 dat platform-auth aan staat.
+De lokale ontwikkelbypass is een expliciete keuze (`LOCAL_AUTH_BYPASS=true`, gezet door
+`Start-Debug.ps1`) en wordt geweigerd zodra `WEBSITE_SITE_NAME` gezet is; zonder schakelaar is er geen
+bypass, ook niet buiten Azure. De schakelaar opent uitgaand verkeer nooit (EgressGuard, #857).
 
 **Verplichte 3-user-test bij elke auth-gerelateerde wijziging:**
 

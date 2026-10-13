@@ -50,10 +50,10 @@ param azureWebJobsStorage string = ''
 @description('Monitoring deployen? Alleen instellen op true na expliciete kostengoedkeuring eigenaar.')
 param deployMonitoring bool = false
 
-@description('Entra ID tenant ID voor Easy Auth — via GitHub Variable AZURE_AD_TENANT_ID. Leeg = Easy Auth niet declaratief geconfigureerd.')
+@description('Entra ID tenant ID voor Easy Auth — via GitHub Variable AZURE_AD_TENANT_ID. Leeg = Easy Auth niet declaratief geconfigureerd op de Consumption-app; de Flex-module weigert een lege waarde (#1700).')
 param tenantId string = ''
 
-@description('Entra ID client ID van de App Registration — via GitHub Variable AZURE_AD_CLIENT_ID. Leeg = Easy Auth niet declaratief geconfigureerd.')
+@description('Entra ID client ID van de App Registration — via GitHub Variable AZURE_AD_CLIENT_ID. Leeg = Easy Auth niet declaratief geconfigureerd op de Consumption-app; de Flex-module weigert een lege waarde (#1700).')
 param clientId string = ''
 
 // ── Flex Consumption-migratie (epic #1063, FLEX-04) ─────────────────────────────
