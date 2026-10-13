@@ -124,6 +124,7 @@
     <Build Include="avg\Tables\Feedback.sql" />
     <Build Include="avg\Tables\FeedbackTelemetrie.sql" />
     <Build Include="avg\Tables\FeedbackInzageLog.sql" />
+    <Build Include="avg\Tables\TeambegeleidingInzageLog.sql" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Script1.sql" />

@@ -9,6 +9,7 @@ using Newtonsoft.Json;
 using SportlinkFunction.Email;
 using Planner.Endpoints.Teambegeleiding;
 using Planner.Shared;
+using Planner.Shared.Teambegeleiding;
 
 namespace SportlinkFunction.Admin;
 
@@ -45,7 +46,9 @@ public static class AdminTeambegeleidingFunction
 
     /// <summary>
     /// GET /api/beheer/teambegeleiding/{team} — begeleiders voor een specifiek team.
-    /// Response bevat Naam, Teamrol, Emailadres en Telefoonnummer — alleen voor ingelogde beheerders (#299).
+    /// Response bevat Naam, Teamrol, Emailadres en Telefoonnummer — alleen voor ingelogde gebruikers (#299, #1330).
+    /// #1701: elke opvraging legt een inzageregel vast (wie, wanneer, welk team, hoeveel rijen) in
+    /// [avg].[TeambegeleidingInzageLog]; zonder geslaagde inzageregel gaan er geen gegevens terug.
     /// </summary>
     // AVG: de teamnaam komt bewust niet in de errorContext — die belandt in het foutlog.
     [Function("AdminTeambegeleidingGet")]
@@ -54,39 +57,10 @@ public static class AdminTeambegeleidingFunction
         string team,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAuthenticatedAsync(req, context.GetLogger("AdminTeambegeleidingGet"), "begeleiders ophalen (team niet gelogd — AVG)",
-            async clubCode =>
-            {
-                using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-                await connection.OpenAsync();
-                using var command = new SqlCommand(@"
-                    SELECT [Naam], [Teamrol], [Emailadres], [Telefoonnummer], [Functie]
-                    FROM [avg].[Teambegeleiding]
-                    WHERE [Team] = @team
-                      AND [ClubCode] = @ClubCode
-                    ORDER BY
-                        CASE WHEN [Teamrol] LIKE '%Trainer%' THEN 1
-                             WHEN [Teamrol] LIKE '%Coach%' THEN 2
-                             WHEN [Teamrol] LIKE '%Teamleider%' THEN 3
-                             ELSE 4 END,
-                        [Naam]
-                ", connection);
-                command.Parameters.AddWithValue("@team", team);
-                command.Parameters.AddWithValue("@ClubCode", clubCode);
-                using var reader = await command.ExecuteReaderAsync();
-                var list = new List<object>();
-                while (await reader.ReadAsync())
-                {
-                    list.Add(new
-                    {
-                        Naam = reader.IsDBNull(0) ? "" : reader.GetString(0),
-                        Teamrol = reader.IsDBNull(1) ? "" : reader.GetString(1),
-                        Emailadres = reader.IsDBNull(2) ? null : reader.GetString(2),
-                        Telefoonnummer = reader.IsDBNull(3) ? null : reader.GetString(3),
-                        Functie = reader.IsDBNull(4) ? null : reader.GetString(4)
-                    });
-                }
-                return new OkObjectResult(list);
-            });
+            clubCode => TeambegeleidingInzageEndpointCore.ContactgegevensAsync(
+                clubCode, team,
+                new TeambegeleidingInzager(EasyAuthHelper.GetCallerObjectId(req), EasyAuthHelper.GetCallerName(req)),
+                new SqlTeambegeleidingInzageStore(SystemUtilities.DatabaseConfig.ConnectionString)));
 
     /// <summary>
     /// POST /api/beheer/teambegeleiding/doorsturen — stuurt een vraag door naar de begeleiding.
