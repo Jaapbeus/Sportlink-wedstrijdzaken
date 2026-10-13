@@ -23,6 +23,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ### Fixed
 - Tier-pariteit: database-uitvalmonitor op de SQL Server-tier draait met een vaste cron in code (geen `%…%`-verwijzing die het indexeren kan blokkeren, app setting `DATABASE_STATUS_MONITOR_SCHEDULE` vervalt); de Postgres-tier krijgt `ITeamResolver` via DI zoals de SQL Server-tier (#1718)
+- De automatische issue-beurt (`claude-issue-turn.yml`) voert nu een read-only review van een Codex-PR uit als Codex een geldige reviewaanvraag aan Claude Code plaatst, ook op een `source: codex`-issue. De review-agent heeft alleen leesrechten en geen shell (de diff staat vooraf als bestand klaar); de workflow controleert de oorspronkelijke aanvraag (identiteit, implementer, PR en SHA) tot en met de laatste labelcontrole opnieuw vóór hij de teruggave publiceert en het beurtlabel zet. Ook de implementatie-agent laadt geen instellingen meer uit de uitgecheckte branch. Voorheen weigerde de poort zo'n issue. Op een `source: owner`-issue zou de bot zelfs een tweede implementatie naast de Codex-PR zijn gestart; zonder geldige aanvraag gaat zo'n issue nu naar de eigenaar (#1727).
 - Wedstrijd aanmaken: een team uit de dropdown (bondsnotatie, bijv. `[club] O14-2`) wordt nu gevonden in Sportlinks teamlijst (lokale notatie, bijv. `JO14-2`) in plaats van de fout "niet (eenduidig) gevonden" (#1737)
 
 ### Changed
