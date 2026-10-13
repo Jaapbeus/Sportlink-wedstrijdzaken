@@ -182,6 +182,26 @@ verwacht_falen "guard buiten het register" bash scripts/ci/check-regelregister.s
 git rm -q --cached "$proef_guard" >/dev/null 2>&1 || true
 rm -f "$proef_guard"
 
+# 5b. Regelregister (#1717): een inline-stap die uit de workflow verdwijnt, een guard-achtige stap
+#     zonder registerregel, en een onbewaakte regel zonder reden. Alle drie via een tijdelijke edit.
+cp .github/workflows/build.yml "$TMP_B"
+sed 's/- name: CSP-guard — geen inline scripts in gepubliceerde index.html/- name: CSP-controle hernoemd/' "$TMP_B" > .github/workflows/build.yml
+verwacht_falen "inline-stap verdwenen uit de workflow" bash scripts/ci/check-regelregister.sh
+cp "$TMP_B" .github/workflows/build.yml
+printf '      - name: Proef-guard zonder registerregel\n        run: echo proef\n' >> .github/workflows/build.yml
+verwacht_falen "guard-stap zonder registerregel" bash scripts/ci/check-regelregister.sh
+cp "$TMP_B" .github/workflows/build.yml
+cp docs/ARCHITECTUUR-CODEKWALITEIT.md "$TMP_B"
+sed 's/| onbewaakt: semantisch oordeel[^|]*|/| onbewaakt: kort |/' "$TMP_B" > docs/ARCHITECTUUR-CODEKWALITEIT.md
+verwacht_falen "onbewaakte regel zonder reden" bash scripts/ci/check-regelregister.sh
+cp "$TMP_B" docs/ARCHITECTUUR-CODEKWALITEIT.md
+
+# 5c. Versiesynchronisatie (#1717): een afwijkende csproj-versie.
+cp BlazorAdmin/BlazorAdmin.csproj "$TMP_B"
+sed 's|<FileVersion>[^<]*</FileVersion>|<FileVersion>0.0.0.1</FileVersion>|' "$TMP_B" > BlazorAdmin/BlazorAdmin.csproj
+verwacht_falen "csproj-versie wijkt af" bash scripts/ci/check-versie-synchroon.sh
+cp "$TMP_B" BlazorAdmin/BlazorAdmin.csproj
+
 # 6. Tier-pariteit op TIMERS: een achtergrondtaak die maar op één tier bestaat.
 #    Toegevoegd bij #1268. Die richting was tot dan ongedekt: de guard keek alleen naar HTTP-routes,
 #    en juist daardoor kon de database-uitvalmonitor jarenlang op één tier staan zonder dat iets het

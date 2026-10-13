@@ -118,6 +118,9 @@ jobs:
       - name: Codekwaliteit — regelregister klopt
         run: bash scripts/ci/check-regelregister.sh
 
+      - name: Versies — csproj's synchroon, OpenAPI-versie YAML = JSON
+        run: bash scripts/ci/check-versie-synchroon.sh
+
       # Een groene guard bewijst niets — hij kan ook groen zijn omdat hij niets ziet. Deze tests
       # maken van elke overtreding tijdelijk een echte, en eisen dat de guard rood wordt. Twee van
       # de vijf negatieve tests sloegen bij het schrijven ervan eerst ten onrechte niet aan.

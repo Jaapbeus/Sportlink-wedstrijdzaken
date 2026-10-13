@@ -555,6 +555,19 @@ uit een workflow kan verdwijnen zonder dat iemand het merkt.
 | Verify-AzureAuthSetup.ps1 lekt geen PII bij lege parameter (#1474) | `scripts/ci/check-verify-script-guards.sh` | `build.yml` |
 | Een infra-deploy mag geen bestaande app setting wissen (#1455) | `scripts/ci/check-whatif-appsettings.sh` | `infrastructure.yml` |
 | De what-if-poort kan ook rood worden (#1455) | `scripts/ci/check-whatif-appsettings.test.sh` | `build.yml` |
+| csproj-versies (Version/AssemblyVersion/FileVersion in alle drie de csproj's) synchroon; OpenAPI-versie YAML = JSON (#1717) | `scripts/ci/check-versie-synchroon.sh` | `build.yml` |
+| Geen inline script in de gepubliceerde `index.html` (CSP, #659) | inline-stap: `CSP-guard — geen inline scripts in gepubliceerde index.html` | `build.yml` |
+| Elke tabel staat in PostDeployment tenzij bewust uitgezonderd | inline-stap: `Schema-drift check (DB-project vs PostDeployment)` | `build.yml` |
+| Infra-drift zichtbaar maken (informatief, faalt niet op drift; de poort is de regel hierboven) | inline-stap: `What-if — drift detecteren (geen wijzigingen)` | `infrastructure.yml` |
+| Lock-bestanden aanwezig en gevuld voor de NuGet-scan | inline-stap: `Guard — lock-bestanden aanwezig en gevuld` | `security-scan.yml` |
+| Trivy heeft daadwerkelijk NuGet-manifesten gescand | inline-stap: `Guard — Trivy heeft daadwerkelijk NuGet-manifesten gescand` | `security-scan.yml` |
+| CodeQL: geen bevinding met security-severity >= 7.0 | inline-stap: `Drempel — geen bevindingen met security-severity >= 7.0` | `security-scan.yml` |
+| AI: `IChatClient`, systeemprompt begint met de datumzin, geen vast jaar in few-shots (#1717) | onbewaakt: semantisch oordeel over promptinhoud; een tekstguard zou alleen de eerste regel zien, beoordeling bij review | n.v.t. |
+| Multi-club: geen clubwaarde in een `?? "…"`-fallback (#1717) | onbewaakt: vergt dataflow- of semantische analyse; alleen de `sensitive-patterns`-scan (security-scan.yml) vangt letterlijke clubwaarden | n.v.t. |
+| Multi-club: nieuwe tabel heeft `ClubCode` of komt via de instellingentabel (#1717) | onbewaakt: de ClubCode-dekking in `build.yml` geldt alleen voor bestaande configuratietabellen, niet voor nieuwe tabellen in het algemeen; beoordeling bij review | n.v.t. |
+| Teamnaam-normalisatie alleen in `TeamNaamNormalisatie.cs` (geen nieuwe teamnaam-regex elders, #1717) | onbewaakt: een regex is niet betrouwbaar als teamnaam-regex te herkennen zonder veel vals-positieven; beoordeling bij review | n.v.t. |
+| Endpoint-wijziging werkt `openapi.yaml`, `openapi.json` (uit de YAML) en `docs/API.md` bij (#1717) | onbewaakt: alleen de versie van YAML en JSON wordt vergeleken (hierboven); de inhoud van `API.md` is een tekstdocument zonder machineleesbare koppeling aan de spec | n.v.t. |
+| Elke feature/fix een entry onder `[Unreleased]` in `CHANGELOG.md` (#1717) | onbewaakt: of een wijziging een entry verdient is een inhoudelijk oordeel; `pre-release-check.yml` bewaakt alleen de versiekopjes | n.v.t. |
 
 <!-- REGELREGISTER-EINDE -->
 
