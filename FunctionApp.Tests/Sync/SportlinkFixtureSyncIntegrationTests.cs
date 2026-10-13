@@ -187,6 +187,36 @@ public class SportlinkFixtureSyncIntegrationTests : IAsyncLifetime
         ((string?)await cmd.ExecuteScalarAsync()).Should().Be("2026-09-06 00:00:00.00");
     }
 
+    /// <summary>
+    /// #1712, tegenhanger van <c>PostgresTeamsDubbeleSleutelIntegrationTests</c>: een team dat
+    /// <c>/teams</c> twee keer met dezelfde sleutel levert, liet <c>sp_MergeStgToHis</c> falen
+    /// (unieke-indexfout op <c>bk_teams</c>, of fout 8672 als de rij al bestond).
+    /// <c>MergeStgToHis</c> logt die fout alleen, dus zonder ontdubbeling bleef his.teams stil leeg.
+    /// </summary>
+    [Fact(Skip = "Vereist lokale SQL Server met volledig schema (zie klasse-doc-comment) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    public async Task RunSyncAsync_TeamTweeKeerInTeamsRespons_LaatsteWint()
+    {
+        using var fixtureServer = SportlinkFixtures.BuildServer(Wedstrijdcode, ClubCode);
+        fixtureServer.RespondWithJson("/teams", $$"""
+            [
+              { "teamcode": 97120, "lokaleteamcode": 1, "poulecode": null, "teamnaam": "{{ClubCode}} JO13-1", "competitienaam": "Eerste vermelding" },
+              { "teamcode": 97121, "lokaleteamcode": 2, "poulecode": null, "teamnaam": "{{ClubCode}} JO13-2", "competitienaam": "Ander team" },
+              { "teamcode": 97120, "lokaleteamcode": 1, "poulecode": null, "teamnaam": "{{ClubCode}} JO13-1", "competitienaam": "Tweede vermelding" }
+            ]
+            """);
+
+        await RunAsync(fixtureServer);
+
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        (await CountAsync(connection, "SELECT COUNT(*) FROM [his].[teams] WHERE ClubCode = @club", ClubCode))
+            .Should().Be(2, "twee unieke business keys in de respons geven twee his-rijen");
+        await using var cmd = new SqlCommand(
+            "SELECT [competitienaam] FROM [his].[teams] WHERE ClubCode = @club AND teamcode = 97120", connection);
+        cmd.Parameters.AddWithValue("@club", ClubCode);
+        ((string?)await cmd.ExecuteScalarAsync()).Should().Be("Tweede vermelding", "bij een dubbele sleutel wint de laatste vermelding");
+    }
+
     private static Task RunAsync(SportlinkFixtureServer server) =>
         SportlinkSyncPipeline.RunSyncAsync(
             fromWeekOffset: 0, toWeekOffset: 0,
