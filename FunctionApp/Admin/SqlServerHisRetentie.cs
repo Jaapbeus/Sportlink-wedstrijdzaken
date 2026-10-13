@@ -76,11 +76,11 @@ internal sealed class SqlServerHisRetentie : IHisRetentieOpslag
         return connection;
     }
 
-    /// <summary>Alle seizoenseinddatums uit <c>dbo.Season</c>, per club (#1715).</summary>
+    /// <summary>Alle seizoenseinddatums uit <c>dbo.ClubSeason</c>, per club (#1715).</summary>
     internal static async Task<IReadOnlyList<ClubSeizoenEinde>> LeesSeizoenseindenAsync(SqlConnection connection)
     {
         var einden = new List<ClubSeizoenEinde>();
-        await using var command = new SqlCommand("SELECT [ClubCode], [DateUntil] FROM [dbo].[Season] WHERE [DateUntil] IS NOT NULL", connection);
+        await using var command = new SqlCommand("SELECT [ClubCode], [DateUntil] FROM [dbo].[ClubSeason] WHERE [DateUntil] IS NOT NULL", connection);
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
             einden.Add(new ClubSeizoenEinde(reader.GetString(0), DateOnly.FromDateTime(reader.GetDateTime(1))));

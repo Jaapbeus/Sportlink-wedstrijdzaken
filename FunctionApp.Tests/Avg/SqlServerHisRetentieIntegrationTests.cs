@@ -120,7 +120,7 @@ public class SqlServerHisRetentieIntegrationTests
     {
         await using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
-        await using var telling = new SqlCommand("SELECT COUNT(*) FROM [dbo].[Season] WHERE [DateUntil] IS NOT NULL", conn);
+        await using var telling = new SqlCommand("SELECT COUNT(*) FROM [dbo].[ClubSeason] WHERE [DateUntil] IS NOT NULL", conn);
         var verwacht = (int)(await telling.ExecuteScalarAsync())!;
 
         (await SqlServerHisRetentie.LeesSeizoenseindenAsync(conn)).Should().HaveCount(verwacht);
@@ -136,7 +136,7 @@ public class SqlServerHisRetentieIntegrationTests
         await MaakHisTabellen(conn);
         await VoegMatchToe(conn, 1, "2026-06-30T14:30:00+02:00");
         await VoegDetailToe(conn, 11, new DateTime(2026, 5, 2), null);
-        await using var telling = new SqlCommand("SELECT COUNT(*) FROM [dbo].[Season] WHERE [DateUntil] IS NOT NULL", conn);
+        await using var telling = new SqlCommand("SELECT COUNT(*) FROM [dbo].[ClubSeason] WHERE [DateUntil] IS NOT NULL", conn);
         var seizoenen = (int)(await telling.ExecuteScalarAsync())!;
 
         IHisRetentieOpslag opslag = new SqlServerHisRetentie(Cs);

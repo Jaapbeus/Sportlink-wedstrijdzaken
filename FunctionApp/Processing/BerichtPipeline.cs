@@ -216,7 +216,7 @@ public static partial class BerichtPipeline
     /// begeleiding van ons team in BCC komt (zie <see cref="Email.EmailReplyPolicyService"/>).
     ///
     /// Retourneert <c>null</c> als <c>knvbStandaardRegio</c> ontbreekt, de PDF-bijlage-instelling uit
-    /// staat, of er geen (toekomstig) seizoen in <c>dbo.Season</c> staat — de aanroepende tak valt dan
+    /// staat, of er geen (toekomstig) seizoen in <c>dbo.ClubSeason</c> staat — de aanroepende tak valt dan
     /// terug op het bestaande gedrag (<see cref="PlannerService.CheckRescheduleAvailabilityAsync"/>).
     /// Nooit een regio gokken of hardcoden: ontbreekt de instelling, dan is er geen bijlage/flow.
     /// </summary>
@@ -254,7 +254,7 @@ public static partial class BerichtPipeline
         var seizoen = await SystemUtilities.SeasonHelper.GetCurrentKnvbSeizoenAsync(log, clubCode);
         if (string.IsNullOrWhiteSpace(seizoen))
         {
-            log.LogInformation("VERZET-ZONDER-DATUM - geen (toekomstig) seizoen gevonden in dbo.Season; val terug op het standaard herplan-pad");
+            log.LogInformation("VERZET-ZONDER-DATUM - geen (toekomstig) seizoen gevonden in dbo.ClubSeason; val terug op het standaard herplan-pad");
             return null;
         }
 

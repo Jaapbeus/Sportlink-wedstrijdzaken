@@ -897,8 +897,10 @@ is de dag vóór de start van het volgende seizoen (start in juli: einde op 30 j
 - **Let op:** verschuift het seizoenseinde naar eerder (bijvoorbeeld van september naar juli), dan worden
   persoonsgegevens in wedstrijden van tot dan lopende seizoen eerder leeggemaakt. Dat is niet terug te
   draaien; Sportlink blijft wel de bron van de wedstrijd zelf.
-- **Technisch:** beide databasetiers hebben een `ClubCode` in de seizoenstabel; er wordt nergens meer een
-  waarde over alle clubs heen afgeleid (geen `MIN()`/`MAX()`). Zie `ARCHITECTUUR-DATABASE-TIERS.md` (#1715).
+- **Technisch:** de seizoenen staan per club in `public.clubseason` / `dbo.ClubSeason`; er wordt nergens meer
+  een waarde over alle clubs heen afgeleid (geen `MIN()`/`MAX()`). Maand, auditregel en seizoenen worden samen
+  opgeslagen: mislukt het opbouwen van de seizoenen, dan blijft ook de oude maand staan. Zie
+  `ARCHITECTUUR-DATABASE-TIERS.md` §84 (#1715).
 
 ## 13. Test data modus (ALLSTARS) — `/testdata/wedstrijden`
 

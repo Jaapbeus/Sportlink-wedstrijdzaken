@@ -7,12 +7,12 @@ namespace FunctionApp.Postgres.Sync;
 
 /// <summary>
 /// Postgres-tier-tegenhanger van <c>SystemUtilities.SeasonHelper</c> (#890) — leest
-/// seizoensgrenzen uit <c>public.season</c> (migratie 008, #890), per club (#1715: kolom <c>clubcode</c>, migratie 043).
+/// seizoensgrenzen per club uit <c>public.clubseason</c> (#1715, migratie 043; tot en met v3.14 clubneutraal in <c>public.season</c>, migratie 008, #890).
 /// <para>
 /// <b><c>GetCurrentKnvbSeizoenAsync</c> (#1141):</b> tegenhanger van de gelijknamige methode op de
 /// SQL Server-tier, nodig voor het "verzet zonder datum"-pad (#561) —
 /// <see cref="FunctionApp.Postgres.Processing.BerichtPipeline"/>/<see cref="FunctionApp.Postgres.Email.EmailReplyPolicyService"/>.
-/// Zelfde semantiek: het eerste seizoen in <c>public.season</c> waarvan <c>dateuntil</c> nog niet
+/// Zelfde semantiek: het eerste seizoen in <c>public.clubseason</c> waarvan <c>dateuntil</c> nog niet
 /// verstreken is, geformatteerd als "startjaar/eindjaar". Retourneert <c>null</c> als er geen
 /// (toekomstig) seizoen in de tabel staat — de aanroeper valt dan terug op het bestaande gedrag
 /// zonder KNVB-bijlage.
@@ -26,12 +26,12 @@ namespace FunctionApp.Postgres.Sync;
 internal static class PostgresSeasonHelper
 {
     // Zelfde gedocumenteerde fallbackwaarden als SystemUtilities.SeasonHelper op de SQL
-    // Server-tier gebruikt wanneer public.season niet bereikbaar is of leeg is.
+    // Server-tier gebruikt wanneer public.clubseason niet bereikbaar is of leeg is.
     internal const int DefaultToWeekOffset = 30;
     internal const int DefaultFromWeekOffset = -40;
 
     /// <summary>
-    /// Rolt <c>public.season</c> zo nodig door vóór de offsets hieronder gelezen worden (#861) —
+    /// Rolt <c>public.clubseason</c> zo nodig door vóór de offsets hieronder gelezen worden (#861) —
     /// de tegenhanger van de <c>sp_UpdateSeasonTable</c>-aanroep die
     /// <c>Script.PostDeployment1.sql</c> op de SQL Server-tier bij élke deploy doet.
     ///
@@ -56,22 +56,22 @@ internal static class PostgresSeasonHelper
             var toegevoegd = await PostgresSeasonProcedures.EnsureSeasonsAsync(
                 connection, DateOnly.FromDateTime(DateTime.UtcNow.Date));
             if (toegevoegd > 0)
-                log.LogInformation("SEIZOENEN - {Aantal} seizoensrij(en) toegevoegd aan public.season", toegevoegd);
+                log.LogInformation("SEIZOENEN - {Aantal} seizoensrij(en) toegevoegd aan public.clubseason", toegevoegd);
         }
         catch (Exception ex)
         {
-            log.LogError(ex, "Fout bij het doorrollen van public.season — sync gaat door met de bestaande seizoenen");
+            log.LogError(ex, "Fout bij het doorrollen van public.clubseason — sync gaat door met de bestaande seizoenen");
         }
     }
 
-    /// <summary>Aantal weken van vandaag tot het einde van het laatste seizoen in public.season.</summary>
+    /// <summary>Aantal weken van vandaag tot het einde van het laatste seizoen in public.clubseason.</summary>
     internal static async Task<int> GetSeasonEndWeekOffsetAsync(ILogger log, string? clubCode = null)
     {
         try
         {
             await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
             await connection.OpenAsync();
-            await using var command = new NpgsqlCommand("SELECT MAX(dateuntil) FROM public.season WHERE clubcode = @clubcode", connection);
+            await using var command = new NpgsqlCommand("SELECT MAX(dateuntil) FROM public.clubseason WHERE clubcode = @clubcode", connection);
             PostgresClubScope.AddClubParam(command, clubCode);
             var result = await command.ExecuteScalarAsync();
             // DateOnly, niet DateTime: Npgsql 10 leest een DATE-kolom via ExecuteScalar als
@@ -82,7 +82,7 @@ internal static class PostgresSeasonHelper
         }
         catch (Exception ex)
         {
-            log.LogError(ex, "Fout bij ophalen seizoenseinde uit public.season");
+            log.LogError(ex, "Fout bij ophalen seizoenseinde uit public.clubseason");
         }
         return DefaultToWeekOffset;
     }
@@ -111,7 +111,7 @@ internal static class PostgresSeasonHelper
         await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand(
-            "SELECT MIN(datefrom) FROM public.season WHERE clubcode = @clubcode AND EXTRACT(YEAR FROM datefrom) = @jaar", connection);
+            "SELECT MIN(datefrom) FROM public.clubseason WHERE clubcode = @clubcode AND EXTRACT(YEAR FROM datefrom) = @jaar", connection);
         PostgresClubScope.AddClubParam(command, clubCode);
         command.Parameters.AddWithValue("jaar", startYear);
         var result = await command.ExecuteScalarAsync();
@@ -123,9 +123,9 @@ internal static class PostgresSeasonHelper
 
     /// <summary>
     /// Bepaalt het huidige KNVB-seizoen ("{startjaar}/{eindjaar}", bijv. "2026/2027") uit
-    /// public.season (#1141) — nooit hardcoded, want een hardcoded jaartal in de
+    /// public.clubseason (#1141) — nooit hardcoded, want een hardcoded jaartal in de
     /// KNVB-kalenderlogica (#561) zou na elk seizoen stilzwijgend verkeerde data opleveren.
-    /// Retourneert <c>null</c> als er geen (toekomstig) seizoen in public.season staat — de
+    /// Retourneert <c>null</c> als er geen (toekomstig) seizoen in public.clubseason staat — de
     /// aanroeper valt dan terug op het bestaande gedrag zonder KNVB-bijlage.
     /// </summary>
     internal static async Task<string?> GetCurrentKnvbSeizoenAsync(ILogger log, string? clubCode = null)
@@ -135,7 +135,7 @@ internal static class PostgresSeasonHelper
             await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
             await connection.OpenAsync();
             await using var command = new NpgsqlCommand(
-                "SELECT datefrom, dateuntil FROM public.season WHERE clubcode = @clubcode AND dateuntil >= @vandaag ORDER BY datefrom ASC LIMIT 1",
+                "SELECT datefrom, dateuntil FROM public.clubseason WHERE clubcode = @clubcode AND dateuntil >= @vandaag ORDER BY datefrom ASC LIMIT 1",
                 connection);
             PostgresClubScope.AddClubParam(command, clubCode);
             command.Parameters.AddWithValue("vandaag", DateTime.UtcNow.Date);
@@ -149,7 +149,7 @@ internal static class PostgresSeasonHelper
         }
         catch (Exception ex)
         {
-            log.LogError(ex, "Fout bij ophalen huidig KNVB-seizoen uit public.season");
+            log.LogError(ex, "Fout bij ophalen huidig KNVB-seizoen uit public.clubseason");
         }
         return null;
     }

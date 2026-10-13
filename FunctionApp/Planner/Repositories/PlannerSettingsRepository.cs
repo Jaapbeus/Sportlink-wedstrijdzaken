@@ -150,7 +150,7 @@ internal static class PlannerSettingsRepository
     {
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
-        using var cmd = new SqlCommand("SELECT MAX(DateUntil) FROM [dbo].[Season] WHERE [ClubCode] = @ClubCode", conn);
+        using var cmd = new SqlCommand("SELECT MAX(DateUntil) FROM [dbo].[ClubSeason] WHERE [ClubCode] = @ClubCode", conn);
         cmd.Parameters.AddWithValue("@ClubCode", ClubScope.Resolve(clubCode));
         var result = await cmd.ExecuteScalarAsync();
         if (result != null && result != DBNull.Value)

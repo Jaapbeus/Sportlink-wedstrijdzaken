@@ -13,7 +13,7 @@ namespace FunctionApp.Postgres.Tests;
 /// voor het "verzet zonder datum"-pad (#561).
 ///
 /// <para>
-/// <b>Isolatie zonder de tabel te wipen:</b> <c>public.season</c> wordt door meerdere testklassen in dit project gedeeld (o.a. via
+/// <b>Isolatie zonder de tabel te wipen:</b> <c>public.clubseason</c> wordt door meerdere testklassen in dit project gedeeld (o.a. via
 /// <c>PostgresSeasonProceduresIntegrationTests</c> in <c>Database.Postgres.Tests</c>, dat wél een
 /// eigen database heeft — dit project niet). In plaats van de tabel leeg te maken (zou andere,
 /// gelijktijdig draaiende testklassen kunnen breken), zet <see cref="ZaaiAsync"/> een rij met een
@@ -42,7 +42,7 @@ public class PostgresSeasonHelperKnvbSeizoenIntegrationTests : IAsyncLifetime
         await using var conn = new NpgsqlConnection(ConnectionString);
         await conn.OpenAsync();
         await using var cmd = new NpgsqlCommand(
-            "DELETE FROM public.season WHERE clubcode = @club AND name = @naam", conn);
+            "DELETE FROM public.clubseason WHERE clubcode = @club AND name = @naam", conn);
         cmd.Parameters.AddWithValue("club", Club);
         cmd.Parameters.AddWithValue("naam", DominantSeizoenNaam);
         await cmd.ExecuteNonQueryAsync();
@@ -53,7 +53,7 @@ public class PostgresSeasonHelperKnvbSeizoenIntegrationTests : IAsyncLifetime
         await using var conn = new NpgsqlConnection(ConnectionString);
         await conn.OpenAsync();
         await using var cmd = new NpgsqlCommand("""
-            INSERT INTO public.season (clubcode, name, datefrom, dateuntil)
+            INSERT INTO public.clubseason (clubcode, name, datefrom, dateuntil)
             VALUES (@club, @naam, @datefrom, @dateuntil)
             ON CONFLICT (clubcode, name) DO UPDATE SET datefrom = EXCLUDED.datefrom, dateuntil = EXCLUDED.dateuntil
             """, conn);
@@ -94,7 +94,7 @@ public class PostgresSeasonHelperKnvbSeizoenIntegrationTests : IAsyncLifetime
             await using var conn = new NpgsqlConnection(ConnectionString);
             await conn.OpenAsync();
             await using var cmd = new NpgsqlCommand(
-                "DELETE FROM public.season WHERE clubcode = @club AND name = @naam", conn);
+                "DELETE FROM public.clubseason WHERE clubcode = @club AND name = @naam", conn);
             cmd.Parameters.AddWithValue("club", Club);
             cmd.Parameters.AddWithValue("naam", "1800-9998");
             await cmd.ExecuteNonQueryAsync();

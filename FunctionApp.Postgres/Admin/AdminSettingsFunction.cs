@@ -208,7 +208,7 @@ public static class AdminSettingsFunction
                 await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
                 await connection.OpenAsync();
 
-                await ApplyChangesAsync(connection, changes, gewijzigdDoor, clubCode);
+                await ApplyChangesAsync(connection, changes, gewijzigdDoor, clubCode, DateOnly.FromDateTime(DateTime.UtcNow));
 
                 await PostgresAppSettings.LoadSettingsAsync(log);
 
@@ -273,8 +273,10 @@ public static class AdminSettingsFunction
         return AppSettingsValidatieCore.Valideer(changes);
     }
 
-    private static async Task ApplyChangesAsync(
-        NpgsqlConnection connection, Dictionary<string, string?> changes, string gewijzigdDoor, string clubCode)
+    /// <summary>Wijzigingen + audit + (bij <c>SeasonStartMonth</c>) seizoensherbouw in één transactie, met de
+    /// clubrij vergrendeld (<c>FOR UPDATE</c>): samen slagen of samen terugdraaien (#1715, Codex-review #1743).</summary>
+    internal static async Task ApplyChangesAsync(
+        NpgsqlConnection connection, Dictionary<string, string?> changes, string gewijzigdDoor, string clubCode, DateOnly vandaag)
     {
         await using var transaction = await connection.BeginTransactionAsync();
 
@@ -308,6 +310,9 @@ public static class AdminSettingsFunction
                 await auditCmd.DisposeAsync();
             }
 
+            if (changes.ContainsKey("SeasonStartMonth"))
+                await PostgresSeasonProcedures.HerbouwSeizoenenVoorClubAsync(connection, transaction, clubCode, vandaag);
+
             await transaction.CommitAsync();
         }
         catch
@@ -315,10 +320,6 @@ public static class AdminSettingsFunction
             await transaction.RollbackAsync();
             throw;
         }
-
-        // #1715: de seizoenen van deze club volgen de nieuwe startmaand (gevalideerd 1-12), na de commit.
-        if (changes.TryGetValue("SeasonStartMonth", out var maand))
-            await PostgresSeasonProcedures.HerbouwSeizoenenVoorClubAsync(connection, clubCode, int.Parse(maand!, CultureInfo.InvariantCulture), DateOnly.FromDateTime(DateTime.UtcNow));
     }
 
     // #1350: bewust NIET via AdminEndpoint.ExecuteAsync — geocoding raakt de database niet en hoort
@@ -472,7 +473,7 @@ public static class AdminSettingsFunction
         var result = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         if (safe.Count == 0) return result;
 
-        var sql = $"SELECT {string.Join(", ", safe)} FROM public.appsettings WHERE clubcode = @clubcode LIMIT 1";
+        var sql = $"SELECT {string.Join(", ", safe)} FROM public.appsettings WHERE clubcode = @clubcode LIMIT 1 FOR UPDATE";
         await using var cmd = new NpgsqlCommand(sql, connection, transaction);
         cmd.Parameters.AddWithValue("clubcode", clubCode);
         await using var reader = await cmd.ExecuteReaderAsync();

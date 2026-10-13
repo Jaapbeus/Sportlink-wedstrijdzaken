@@ -4882,31 +4882,51 @@ Eigenaarsbesluit 2026-10-13: de seizoensstartmaand (`public.appsettings.seasonst
 betreffende club. Er wordt niet meer gegokt met `MIN()`/`MAX()` over de rijen van alle clubs. Dit vervangt
 de beschrijving in §21 en in migratie 008 (`MIN(seasonstartmonth)`); die tekst blijft historie.
 
-**Beslissing (b): de seizoenstabel krijgt een `ClubCode`.** Alternatief was één gedeelde tabel met een
+**Beslissing (b): de seizoenen staan per club in een eigen tabel.** Alternatief was één gedeelde tabel met een
 expliciete afleiding per club; dat laat elke lezer opnieuw kiezen welke club telt. Nu is de sleutel
 `(clubcode, name)` en leest elke consument alleen de rijen van zijn club.
 
+**Expand/contract (Codex-review #1743 ronde 1, §57).** `deploy.yml` past het schema toe vóór de nieuwe code, dus
+de vorige codeversie draait even op het nieuwe schema. Die schrijft op Postgres in `public.season` met
+`ON CONFLICT (name)` en zonder clubcode, en leest op beide tiers het clubneutrale seizoen. Een sleutel- of
+`NOT NULL`-wijziging op die tabel zou haar breken. Daarom is de wijziging additief: een **nieuwe tabel**
+`public.clubseason` / `dbo.ClubSeason` (sleutel `(clubcode, name)`, RLS aan in dezelfde migratie), eenmalig per
+club gevuld uit de oude tabel. `public.season`, `dbo.Season` en `dbo.sp_UpdateSeasonTable` blijven in deze release
+ongewijzigd staan en worden door de nieuwe code niet meer gelezen of geschreven; `Script.PostDeployment1.sql` roept
+de oude procedure (met `MIN()` over clubs) niet meer aan. Opruimen is de contract-stap in een latere release (#1747).
+
 | Onderdeel | Postgres | SQL Server |
 |---|---|---|
-| Schema | migratie `043_season_per_club.sql`: kolom `clubcode`, unieke `(clubcode, name)` in plaats van `name`, bestaande rijen per club herberekend uit de eigen maand, daarna `NOT NULL` (geen nieuwe tabel, RLS sinds 021) | `Database/dbo/Tables/Season.sql` én idempotent `Script.PostDeployment1.sql` (kolom toevoegen, rijen per club omzetten, `UQ_Season_ClubCode_Name`) |
-| Doorrol | `PostgresSeasonProcedures.EnsureSeasonsAsync` loopt over alle clubs, elk met de eigen maand | `sp_UpdateSeasonTable @ClubCode, @SeasonStartMonth`, aangeroepen per club (cursor) in `Script.PostDeployment1.sql` direct na de definitie |
+| Schema | migratie `043_clubseason.sql`: `CREATE TABLE IF NOT EXISTS public.clubseason`, `ENABLE ROW LEVEL SECURITY`, eenmalige vulling per club (alleen clubs zonder rijen) | `Database/dbo/Tables/ClubSeason.sql` én idempotent in `Script.PostDeployment1.sql` (tabel, eenmalige vulling uit `dbo.Season`) |
+| Doorrol | `PostgresSeasonProcedures.EnsureSeasonsAsync`: per club een transactie, startmaand gelezen met `FOR SHARE` | `dbo.sp_UpdateClubSeasonTable @ClubCode [, @Vandaag]`: startmaand gelezen met `UPDLOCK, HOLDLOCK`, per club aangeroepen (cursor) in `Script.PostDeployment1.sql` |
 | Lezers | `PostgresSeasonHelper` (`GetSeasonEndWeekOffsetAsync`, `GetSeasonStartWeekOffsetAsync`/`OrNull`, `GetCurrentKnvbSeizoenAsync`) en `PlannerSettingsRepository.GetSeasonEndDateAsync`, alle met `clubCode` (zonder waarde: de primaire club) | `SystemUtilities.SeasonHelper` en `PlannerSettingsRepository.GetSeasonEndDateAsync`, idem |
-| Wijzigen | `PUT /api/beheer/settings` (`SeasonStartMonth`, validatie in `AppSettingsValidatieCore`, auditregel zoals andere velden) en daarna `HerbouwSeizoenenVoorClubAsync` (verwijderen + opnieuw plaatsen, één transactie, alleen die club) | idem via `SqlServerSeizoenHerbouw` (bewust niet via `sp_UpdateSeasonTable`: die herbouwt ook `dbo.DateTable` met `DROP TABLE`) |
+| Wijzigen | `PUT /api/beheer/settings` (`SeasonStartMonth`, validatie in `AppSettingsValidatieCore`): `ApplyChangesAsync` vergrendelt de clubrij (`FOR UPDATE`), schrijft waarde en auditregel en herbouwt de seizoenen van die club (`HerbouwSeizoenenVoorClubAsync`) in **dezelfde transactie** | idem via `PasWijzigingenToeAsync` (`UPDLOCK, HOLDLOCK`) en `SqlServerSeizoenHerbouw` (bewust niet via de procedure: die herbouwt ook `dbo.DateTable` met `DROP TABLE`) |
 | Bewaartermijn #1698 | `IHisRetentieOpslag` leest en wist per club: elke club heeft zijn eigen grens; rijen zonder clubstempel horen bij de primaire club (`syncenabled`, laagste clubcode) | idem |
+
+**Integriteit (Codex-review #1743 ronde 1).** Configuratie, audit en afgeleide kalender horen samen te kloppen,
+ook bij een afgebroken of een overlappende wijziging. Eerder werd de kalender pas ná de commit in een eigen
+transactie herbouwd en werd de oude waarde voor de audit zonder lock gelezen: een fout bij het herbouwen liet de
+nieuwe maand staan met de oude kalender, en twee gelijktijdige wijzigingen konden allebei dezelfde oude waarde
+auditen of de kalender van de verliezende wijziging achterlaten. Nu: één transactie met een rijlock op de
+instellingen van de club; de doorrol (sync, deploy) leest de maand onder een gedeelde lock. Regressietests op beide
+tiers: `AdminSettingsSeizoenIntegrationTests` (Postgres) en `SqlServerSeizoenIntegrationTests` (SQL Server).
 
 **Gedeelde regel:** `Planner.Shared/Sync/SeizoenStartMaand.cs` (standaard, geldige reeks, maandnamen; ook als gelinkt
 bronbestand in BlazorAdmin) en `SeizoenKalender.cs` (seizoensnaam en -grenzen uit de maand, doorroldatum met
-intervalrekenkunde, zodat januari/februari geen ongeldige maand geven). `dbo.DateTable` blijft een kalender zonder club
-(bereik over alle seizoenen); `pub.DateTable` heeft er een kolom `ClubCode` bij, zodat een rapportage per club kan filteren.
+intervalrekenkunde). **Januari/februari:** de doorroldatum van het seizoen dat volgend jaar begint, ligt dan op
+1 november resp. 1 december van dit jaar; `SeizoenKalender.DoorTeRollenStartjaren` kijkt daarom naar dit én
+volgend kalenderjaar (de T-SQL-procedure doet hetzelfde). Voor maart t/m december verandert er niets, ook niet voor
+juli. `dbo.DateTable` blijft een kalender zonder club (bereik over alle seizoenen); `pub.DateTable` leest
+`dbo.ClubSeason` en heeft een kolom `ClubCode`, zodat een rapportage per club kan filteren.
 
-**Gedrag bestaande installaties.** Elke club houdt dezelfde seizoensnamen; de datums volgen nu de eigen maand
-(standaard 7, dus gelijk aan de oude `MIN()`). Een ongeldige of ontbrekende maand telt als juli. De
-Postgres-migratie wordt vóór de code toegepast; de vorige codeversie kan daarna `public.season` niet meer
-bijvullen (`ON CONFLICT (name)` bestaat niet meer), wat zij best-effort afvangt en logt: de bestaande rijen blijven
-leesbaar, en de nieuwe code zaait bij de eerste run ontbrekende seizoenen.
+**Gedrag bestaande installaties.** Elke club krijgt dezelfde seizoensnamen; de datums volgen de eigen maand
+(standaard 7, dus gelijk aan de oude `MIN()`). Een ongeldige of ontbrekende maand telt als juli.
 
 **Wijzigen heeft gevolgen.** Verschuift het seizoenseinde naar eerder, dan worden persoonskolommen in
 `his.matches`/`his.matchdetails` eerder leeggemaakt (onomkeerbaar); de pagina waarschuwt daarvoor vóór het opslaan.
 
-**Niet bewezen in deze PR:** de integratietests tegen een echte database (Postgres-suite, SQL Server-suite, migratie en
-PostDeployment-pad) zijn lokaal niet gedraaid (gedeelde debugomgeving, geen Docker); dat bewijs komt van CI. Zie het PR-verslag.
+**Bewijs.** CI draait de Postgres-integratietests (incl. overgang: het schrijfstatement van de vorige code op het
+nieuwe schema, daarna de nieuwe code en een herhaalde migratie), de verse PostDeployment (2x), een overgang
+PostDeployment-basis → deze PR op een bestaande database (job `fresh-db`), en sinds deze PR ook de
+SQL Server-integratietests (`SQLSERVER_TEST_CONNECTION_STRING` in `fresh-db`). Niet in CI: de browser-rendercheck
+van `/instellingen`.

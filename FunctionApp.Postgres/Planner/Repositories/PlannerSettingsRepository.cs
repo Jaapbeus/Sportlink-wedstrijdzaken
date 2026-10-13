@@ -20,7 +20,7 @@ namespace FunctionApp.Postgres.Planner;
 internal static class PlannerSettingsRepository
 {
     /// <summary>
-    /// Einddatum van het laatst bekende seizoen van de club (#1715), of <c>null</c> als <c>public.season</c> leeg is.
+    /// Einddatum van het laatst bekende seizoen van de club (#1715), of <c>null</c> als <c>public.clubseason</c> leeg is.
     /// <para>
     /// Bewust <c>null</c> bij een lege tabel en géén stille terugval hier: de aanroeper hoort te
     /// beslissen wat "geen seizoen bekend" betekent. Vergelijk <c>PostgresSeasonHelper</c>, dat op
@@ -43,7 +43,7 @@ internal static class PlannerSettingsRepository
     {
         await using var conn = new NpgsqlConnection(connectionString);
         await conn.OpenAsync();
-        await using var cmd = new NpgsqlCommand("SELECT MAX(dateuntil) FROM public.season WHERE clubcode = @clubcode", conn);
+        await using var cmd = new NpgsqlCommand("SELECT MAX(dateuntil) FROM public.clubseason WHERE clubcode = @clubcode", conn);
         PostgresClubScope.AddClubParam(cmd, clubCode);
         var result = await cmd.ExecuteScalarAsync();
         return result is DateOnly einde ? einde : null;

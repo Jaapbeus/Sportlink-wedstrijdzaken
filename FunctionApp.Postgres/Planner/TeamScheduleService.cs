@@ -18,7 +18,7 @@ internal static class TeamScheduleService
         if (!await PlannerMatchRepository.TeamExistsAsync(connectionString, team, clubCode))
             return null;
 
-        // Dezelfde terugval als het origineel wanneer public.season leeg is: drie maanden vooruit.
+        // Dezelfde terugval als het origineel wanneer public.clubseason leeg is: drie maanden vooruit.
         // Bewust hier en niet in de repository — zo blijft "geen seizoen bekend" zichtbaar als een
         // afwezige waarde in de datalaag in plaats van als een verzonnen datum.
         var seizoenEinde = await PlannerSettingsRepository.GetSeasonEndDateAsync(connectionString, clubCode)

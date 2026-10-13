@@ -26,7 +26,7 @@ namespace FunctionApp.Postgres.Tests;
 /// </para>
 ///
 /// <para>
-/// Isolatie volgt <see cref="PostgresSeasonHelperKnvbSeizoenIntegrationTests"/>: <c>public.season</c>
+/// Isolatie volgt <see cref="PostgresSeasonHelperKnvbSeizoenIntegrationTests"/>: <c>public.clubseason</c>
 /// is per club, dus in plaats van de tabel te legen wordt één rij met een
 /// extreem ver-in-de-toekomst <c>dateuntil</c> gezet die <c>MAX(dateuntil)</c> altijd domineert,
 /// ongeacht welke echte seizoensrijen aanwezig zijn.
@@ -34,7 +34,7 @@ namespace FunctionApp.Postgres.Tests;
 /// </summary>
 public class PostgresTemporeleScalarMappingIntegrationTests : IAsyncLifetime
 {
-    // Max. 9 tekens — public.season.name is VARCHAR(9), zelfde vorm als een echte seizoensnaam.
+    // Max. 9 tekens — public.clubseason.name is VARCHAR(9), zelfde vorm als een echte seizoensnaam.
     private const string DominantSeizoenNaam = "9998/9999";
     // #1715: seizoenen zijn per club; de rij van deze testklasse hoort bij een eigen testclub.
     private const string Club = "TEMPORELETEST";
@@ -52,7 +52,7 @@ public class PostgresTemporeleScalarMappingIntegrationTests : IAsyncLifetime
         await using var conn = new NpgsqlConnection(ConnectionString);
         await conn.OpenAsync();
         await using var cmd = new NpgsqlCommand(
-            "DELETE FROM public.season WHERE clubcode = @club AND name = @naam", conn);
+            "DELETE FROM public.clubseason WHERE clubcode = @club AND name = @naam", conn);
         cmd.Parameters.AddWithValue("club", Club);
         cmd.Parameters.AddWithValue("naam", DominantSeizoenNaam);
         await cmd.ExecuteNonQueryAsync();
@@ -63,7 +63,7 @@ public class PostgresTemporeleScalarMappingIntegrationTests : IAsyncLifetime
         await using var conn = new NpgsqlConnection(ConnectionString);
         await conn.OpenAsync();
         await using var cmd = new NpgsqlCommand("""
-            INSERT INTO public.season (clubcode, name, datefrom, dateuntil)
+            INSERT INTO public.clubseason (clubcode, name, datefrom, dateuntil)
             VALUES (@club, @naam, @datefrom, @dateuntil)
             ON CONFLICT (clubcode, name) DO UPDATE SET datefrom = EXCLUDED.datefrom, dateuntil = EXCLUDED.dateuntil
             """, conn);

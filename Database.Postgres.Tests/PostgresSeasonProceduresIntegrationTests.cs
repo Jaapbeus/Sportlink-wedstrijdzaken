@@ -197,7 +197,12 @@ public class PostgresSeasonProceduresIntegrationTests
         var vandaag = new DateOnly(2026, 10, 13);
         await PostgresSeasonProcedures.EnsureSeasonsAsync(conn, vandaag);
 
-        await PostgresSeasonProcedures.HerbouwSeizoenenVoorClubAsync(conn, Club, 9, vandaag);
+        await using (var tx = await conn.BeginTransactionAsync())
+        {
+            await ZetMaandAsync(conn, tx, Club, 9);
+            await PostgresSeasonProcedures.HerbouwSeizoenenVoorClubAsync(conn, tx, Club, vandaag);
+            await tx.CommitAsync();
+        }
 
         (await GrenzenAsync(conn, "2026-2027", Club)).Tot.Should().Be(new DateTime(2027, 8, 31));
         (await GrenzenAsync(conn, "2026-2027", "SEASONTWEE")).Tot.Should().Be(new DateTime(2027, 6, 30), "een andere club blijft ongemoeid");
@@ -219,7 +224,148 @@ public class PostgresSeasonProceduresIntegrationTests
         (await GrenzenAsync(conn, "2026-2027")).Van.Should().Be(new DateTime(2026, 7, 1));
     }
 
+    // ── Codex-review #1743 ronde 1 ──────────────────────────────────────────────────────────────
+
+    /// <summary>P2: een januari-/februariclub krijgt het seizoen van volgend jaar al vóór de jaarwisseling.</summary>
+    [PostgresTheory]
+    [InlineData(1, 10, 31, 11, 1)]
+    [InlineData(2, 11, 30, 12, 1)]
+    public async Task EnsureSeasonsAsync_JanuariOfFebruari_RoltVoorDeJaarwisselingDoor(
+        int startMaand, int maandVoor, int dagVoor, int maandOp, int dagOp)
+    {
+        await using var conn = await OpenSchoonAsync(startMaand);
+
+        await PostgresSeasonProcedures.EnsureSeasonsAsync(conn, new DateOnly(2026, maandVoor, dagVoor));
+        (await NamenAsync(conn)).Should().NotContain("2027-2028", "één dag vóór de drempel");
+
+        (await PostgresSeasonProcedures.EnsureSeasonsAsync(conn, new DateOnly(2026, maandOp, dagOp))).Should().Be(1);
+        (await NamenAsync(conn)).Should().Contain("2027-2028", "op de drempel, twee maanden vóór de start in 2027");
+        (await GrenzenAsync(conn, "2027-2028")).Van.Should().Be(new DateTime(2027, startMaand, 1));
+    }
+
+    /// <summary>
+    /// P1, overgang: de vorige codeversie schrijft tijdens de deploy nog met haar eigen statement in
+    /// <c>public.season</c> (letterlijk overgenomen uit origin/main, <c>PostgresSeasonProcedures.VoegSeizoenToeAsync</c>
+    /// vóór #1715). Na migratie 043 moet dat blijven werken, de nieuwe code moet daarna haar eigen tabel vullen,
+    /// en een herhaalde uitvoering van de migratie mag niets veranderen.
+    /// </summary>
+    [PostgresFact]
+    public async Task Overgang_VorigeCodeSchrijftNogInPublicSeason_NieuweCodeEnHerhaaldeMigratieWerken()
+    {
+        const string VorigeWriter = @"
+            INSERT INTO public.season (name, datefrom, dateuntil)
+            VALUES (@name, @datefrom, @dateuntil)
+            ON CONFLICT (name) DO NOTHING";
+        await using var conn = await OpenSchoonAsync(9);
+        await using (var leeg = new NpgsqlCommand("DELETE FROM public.season", conn))
+            await leeg.ExecuteNonQueryAsync();
+
+        // 1. Vorige code op het schema van deze PR: een insert en een herhaling (conflict) slagen allebei.
+        for (var i = 0; i < 2; i++)
+        {
+            await using var oud = new NpgsqlCommand(VorigeWriter, conn);
+            oud.Parameters.AddWithValue("name", "2025-2026");
+            oud.Parameters.AddWithValue("datefrom", new DateTime(2025, 7, 1));
+            oud.Parameters.AddWithValue("dateuntil", new DateTime(2026, 6, 30));
+            (await oud.ExecuteNonQueryAsync()).Should().Be(i == 0 ? 1 : 0);
+        }
+
+        // 2. Herhaalde migratie op een database met clubloze rijen: de club zonder rijen krijgt ze per eigen maand.
+        await VoerMigratie043UitAsync(conn);
+        (await GrenzenAsync(conn, "2025-2026")).Should().Be((new DateTime(2025, 9, 1), new DateTime(2026, 8, 31)));
+
+        // 3. Nieuwe code: vult de eigen tabel aan, raakt public.season niet.
+        await PostgresSeasonProcedures.EnsureSeasonsAsync(conn, new DateOnly(2026, 10, 13));
+        (await NamenAsync(conn)).Should().Equal("2025-2026", "2026-2027");
+        await using (var oudTelling = new NpgsqlCommand("SELECT COUNT(*) FROM public.season", conn))
+            ((long)(await oudTelling.ExecuteScalarAsync())!).Should().Be(1, "de nieuwe code schrijft niet meer in de oude tabel");
+
+        // 4. Nog een keer de migratie: de club heeft rijen, dus niets verandert (ook niet na een herbouw).
+        var voor = await NamenAsync(conn);
+        await VoerMigratie043UitAsync(conn);
+        (await NamenAsync(conn)).Should().Equal(voor);
+    }
+
+    /// <summary>
+    /// P2, overlappende wijzigingen: twee transacties die elk de maand wijzigen en in dezelfde transactie de
+    /// seizoenen herbouwen, gelijktijdig. De tweede wacht op de rijlock van de eerste; de eindtoestand hoort bij
+    /// de laatst vastgelegde maand. Het eindpunt-niveau (AdminSettingsFunction) staat in
+    /// FunctionApp.Postgres.Tests/AdminSettingsSeizoenIntegrationTests.
+    /// </summary>
+    [PostgresFact]
+    public async Task HerbouwSeizoenenVoorClubAsync_TweeOverlappendeWijzigingen_KalenderVolgtDeLaatsteMaand()
+    {
+        await using var conn = await OpenSchoonAsync(7);
+        var vandaag = new DateOnly(2026, 10, 13);
+        await PostgresSeasonProcedures.EnsureSeasonsAsync(conn, vandaag);
+
+        await using var eerste = new NpgsqlConnection(ConnectionString);
+        await eerste.OpenAsync();
+        await using var tx1 = await eerste.BeginTransactionAsync();
+        await ZetMaandAsync(eerste, tx1, Club, 8);
+        await PostgresSeasonProcedures.HerbouwSeizoenenVoorClubAsync(eerste, tx1, Club, vandaag);
+
+        var tweede = Task.Run(async () =>
+        {
+            await using var c2 = new NpgsqlConnection(ConnectionString);
+            await c2.OpenAsync();
+            await using var tx2 = await c2.BeginTransactionAsync();
+            await ZetMaandAsync(c2, tx2, Club, 9);
+            await PostgresSeasonProcedures.HerbouwSeizoenenVoorClubAsync(c2, tx2, Club, vandaag);
+            await tx2.CommitAsync();
+        });
+        await Task.Delay(300);
+        tweede.IsCompleted.Should().BeFalse("de tweede wijziging wacht op de rijlock van de eerste");
+        await tx1.CommitAsync();
+        await tweede;
+
+        (await GrenzenAsync(conn, "2026-2027")).Should().Be((new DateTime(2026, 9, 1), new DateTime(2027, 8, 31)));
+        (await NamenAsync(conn)).Should().Equal("2024-2025", "2025-2026", "2026-2027");
+    }
+
+    /// <summary>P2, afgebroken wijziging: wordt de transactie teruggedraaid, dan blijven maand en kalender samen staan.</summary>
+    [PostgresFact]
+    public async Task HerbouwSeizoenenVoorClubAsync_AfgebrokenWijziging_LaatMaandEnKalenderOngemoeid()
+    {
+        await using var conn = await OpenSchoonAsync(7);
+        var vandaag = new DateOnly(2026, 10, 13);
+        await PostgresSeasonProcedures.EnsureSeasonsAsync(conn, vandaag);
+
+        await using (var tx = await conn.BeginTransactionAsync())
+        {
+            await ZetMaandAsync(conn, tx, Club, 9);
+            await PostgresSeasonProcedures.HerbouwSeizoenenVoorClubAsync(conn, tx, Club, vandaag);
+            await tx.RollbackAsync();
+        }
+
+        (await GrenzenAsync(conn, "2026-2027")).Should().Be((new DateTime(2026, 7, 1), new DateTime(2027, 6, 30)));
+        await using var maand = new NpgsqlCommand("SELECT seasonstartmonth FROM public.appsettings WHERE clubcode = @c", conn);
+        maand.Parameters.AddWithValue("c", Club);
+        ((int)(await maand.ExecuteScalarAsync())!).Should().Be(7);
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────────────────────
+
+    private static async Task ZetMaandAsync(NpgsqlConnection conn, NpgsqlTransaction tx, string club, int maand)
+    {
+        await using var cmd = new NpgsqlCommand(
+            "UPDATE public.appsettings SET seasonstartmonth = @m WHERE clubcode = @c", conn, tx);
+        cmd.Parameters.AddWithValue("m", maand);
+        cmd.Parameters.AddWithValue("c", club);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>Voert het migratiebestand 043 letterlijk opnieuw uit (zoals een herhaalde deploy zonder ledger).</summary>
+    private static async Task VoerMigratie043UitAsync(NpgsqlConnection conn)
+    {
+        var map = new DirectoryInfo(AppContext.BaseDirectory);
+        while (map is not null && !File.Exists(Path.Combine(map.FullName, "AGENTS.md")))
+            map = map.Parent;
+        var pad = Path.Combine(map?.FullName ?? throw new InvalidOperationException("Repositorywortel niet gevonden."),
+            "Database.Postgres", "migrations", "043_clubseason.sql");
+        await using var cmd = new NpgsqlCommand(await File.ReadAllTextAsync(pad), conn);
+        await cmd.ExecuteNonQueryAsync();
+    }
 
     private static async Task<NpgsqlConnection> OpenSchoonAsync(int seasonStartMonth = 7)
     {
@@ -247,7 +393,7 @@ public class PostgresSeasonProceduresIntegrationTests
         // startmaand, #1715), dus élke andere rij moet weg — anders voegt een restant van een andere
         // testklasse seizoenen toe die deze tests niet verwachten.
         await using (var reset = new NpgsqlCommand(
-            "DELETE FROM public.season; " +
+            "DELETE FROM public.clubseason; " +
             "DELETE FROM public.appsettings; " +
             "INSERT INTO public.appsettings (clubcode, clubname, seasonstartmonth) VALUES (@club, 'Season Test', @maand);", conn))
         {
@@ -261,7 +407,7 @@ public class PostgresSeasonProceduresIntegrationTests
     private static async Task ZaaiAsync(NpgsqlConnection conn, int jaar)
     {
         await using var cmd = new NpgsqlCommand(
-            "INSERT INTO public.season (clubcode, name, datefrom, dateuntil) VALUES (@c, @n, @v, @t) ON CONFLICT (clubcode, name) DO NOTHING", conn);
+            "INSERT INTO public.clubseason (clubcode, name, datefrom, dateuntil) VALUES (@c, @n, @v, @t) ON CONFLICT (clubcode, name) DO NOTHING", conn);
         cmd.Parameters.AddWithValue("c", Club);
         cmd.Parameters.AddWithValue("n", $"{jaar}-{jaar + 1}");
         cmd.Parameters.AddWithValue("v", new DateTime(jaar, 7, 1));
@@ -271,7 +417,7 @@ public class PostgresSeasonProceduresIntegrationTests
 
     private static async Task<List<string>> NamenAsync(NpgsqlConnection conn, string club = Club)
     {
-        await using var cmd = new NpgsqlCommand("SELECT name FROM public.season WHERE clubcode = @c ORDER BY name", conn);
+        await using var cmd = new NpgsqlCommand("SELECT name FROM public.clubseason WHERE clubcode = @c ORDER BY name", conn);
         cmd.Parameters.AddWithValue("c", club);
         var namen = new List<string>();
         await using var reader = await cmd.ExecuteReaderAsync();
@@ -287,7 +433,7 @@ public class PostgresSeasonProceduresIntegrationTests
     /// </summary>
     private static async Task<int> WeekOffsetTotSeizoenseindeAsync(NpgsqlConnection conn, DateOnly vandaag)
     {
-        await using var cmd = new NpgsqlCommand("SELECT MAX(dateuntil) FROM public.season WHERE clubcode = @c", conn);
+        await using var cmd = new NpgsqlCommand("SELECT MAX(dateuntil) FROM public.clubseason WHERE clubcode = @c", conn);
         cmd.Parameters.AddWithValue("c", Club);
         var result = await cmd.ExecuteScalarAsync();
         // DateOnly, niet DateTime: Npgsql 10 leest een DATE-kolom via ExecuteScalar als DateOnly.
@@ -301,7 +447,7 @@ public class PostgresSeasonProceduresIntegrationTests
     private static async Task<(DateTime Van, DateTime Tot)> GrenzenAsync(NpgsqlConnection conn, string naam, string club = Club)
     {
         await using var cmd = new NpgsqlCommand(
-            "SELECT datefrom, dateuntil FROM public.season WHERE clubcode = @c AND name = @n", conn);
+            "SELECT datefrom, dateuntil FROM public.clubseason WHERE clubcode = @c AND name = @n", conn);
         cmd.Parameters.AddWithValue("c", club);
         cmd.Parameters.AddWithValue("n", naam);
         await using var reader = await cmd.ExecuteReaderAsync();

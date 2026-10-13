@@ -12,5 +12,5 @@ SELECT dt.[Date]
 	  ,s.Name           As Season
 	  ,s.ClubCode       As ClubCode
   FROM [dbo].[DateTable] dt
-  INNER JOIN [dbo].[Season] s
+  INNER JOIN [dbo].[ClubSeason] s
 	ON dt.Date BETWEEN s.DateFrom AND s.DateUntil;

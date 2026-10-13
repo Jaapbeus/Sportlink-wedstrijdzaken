@@ -72,11 +72,11 @@ public sealed class PostgresHisRetentie : IHisRetentieOpslag
         return connection;
     }
 
-    /// <summary>Alle seizoenseinddatums uit <c>public.season</c>, per club (#1715).</summary>
+    /// <summary>Alle seizoenseinddatums uit <c>public.clubseason</c>, per club (#1715).</summary>
     public static async Task<IReadOnlyList<ClubSeizoenEinde>> LeesSeizoenseindenAsync(NpgsqlConnection connection, CancellationToken ct = default)
     {
         var einden = new List<ClubSeizoenEinde>();
-        await using var command = new NpgsqlCommand("SELECT clubcode, dateuntil FROM public.season WHERE dateuntil IS NOT NULL", connection);
+        await using var command = new NpgsqlCommand("SELECT clubcode, dateuntil FROM public.clubseason WHERE dateuntil IS NOT NULL", connection);
         await using var reader = await command.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
             einden.Add(new ClubSeizoenEinde(reader.GetString(0), reader.GetFieldValue<DateOnly>(1)));

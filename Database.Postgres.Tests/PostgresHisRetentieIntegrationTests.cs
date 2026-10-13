@@ -135,7 +135,7 @@ public class PostgresHisRetentieIntegrationTests : IAsyncLifetime
     {
         await using var connection = new NpgsqlConnection(ConnectionString);
         await connection.OpenAsync();
-        await using var telling = new NpgsqlCommand("SELECT COUNT(*) FROM public.season WHERE dateuntil IS NOT NULL", connection);
+        await using var telling = new NpgsqlCommand("SELECT COUNT(*) FROM public.clubseason WHERE dateuntil IS NOT NULL", connection);
         var verwacht = Convert.ToInt32(await telling.ExecuteScalarAsync());
 
         (await PostgresHisRetentie.LeesSeizoenseindenAsync(connection)).Should().HaveCount(verwacht);
@@ -153,7 +153,7 @@ public class PostgresHisRetentieIntegrationTests : IAsyncLifetime
         await connection.OpenAsync();
         await VoegMatchToe(connection, 1, "2026-06-30T14:30:00+02:00");
         await VoegDetailToe(connection, 11, new DateOnly(2026, 5, 2), null);
-        await using var telling = new NpgsqlCommand("SELECT COUNT(*) FROM public.season WHERE dateuntil IS NOT NULL", connection);
+        await using var telling = new NpgsqlCommand("SELECT COUNT(*) FROM public.clubseason WHERE dateuntil IS NOT NULL", connection);
         var seizoenen = Convert.ToInt32(await telling.ExecuteScalarAsync());
 
         IHisRetentieOpslag opslag = new PostgresHisRetentie(ConnectionString);

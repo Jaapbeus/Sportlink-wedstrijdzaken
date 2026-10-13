@@ -1,40 +1,29 @@
 ﻿CREATE PROCEDURE [dbo].[sp_UpdateSeasonTable]
-    @ClubCode NVARCHAR(20),
     @SeasonStartMonth INT
 AS
 BEGIN
-	-- #1715: de seizoenen worden per club bijgehouden (dbo.Season.ClubCode) met de eigen
-	-- SeasonStartMonth van die club. Een ongeldige maand valt terug op juli (de kolomdefault).
-	-- De datumrekenkunde gebruikt DATEADD i.p.v. DATEFROMPARTS(.., @SeasonStartMonth-1/-2, ..): die
-	-- vorm gaf bij januari/februari een ongeldige maand (0, -1) en liet de deploy falen.
-	IF @SeasonStartMonth IS NULL OR @SeasonStartMonth NOT BETWEEN 1 AND 12
-		SET @SeasonStartMonth = 7;
-
 	DECLARE @YearStart INT;
 	DECLARE @YearEnd   INT;
 
-	-- No seasons found for this club! Add last two seasons
-	IF NOT EXISTS (SELECT 1 FROM [dbo].[Season] WHERE [ClubCode] = @ClubCode)
+	-- No seasons found! Add last two seasons
+	IF (SELECT YEAR(MAX(DateUntil)) FROM [dbo].[Season]) IS NULL 
 	BEGIN
 		INSERT INTO [dbo].[Season]
 			(
-			[ClubCode],
 			[Name],
 			[DateFrom],
 			[DateUntil]
 			)
 		VALUES 
 			(
-			@ClubCode,
 			CONCAT(YEAR(GETDATE())-2,'-',YEAR(GETDATE())-1),
 			DATEFROMPARTS(YEAR(GETDATE())-2,@SeasonStartMonth,1),
-			DATEADD(DAY,-1,DATEFROMPARTS(YEAR(GETDATE())-1,@SeasonStartMonth,1))
+			EOMONTH(DATEFROMPARTS(YEAR(GETDATE())-1,@SeasonStartMonth-1,1))
 			),
 			(
-			@ClubCode,
 			CONCAT(YEAR(GETDATE())-1,'-',YEAR(GETDATE())),
 			DATEFROMPARTS(YEAR(GETDATE())-1,@SeasonStartMonth,1),
-			DATEADD(DAY,-1,DATEFROMPARTS(YEAR(GETDATE()),@SeasonStartMonth,1))
+			EOMONTH(DATEFROMPARTS(YEAR(GETDATE()),@SeasonStartMonth-1,1))
 			);
 	END
 
@@ -48,27 +37,24 @@ BEGIN
 	-- werkt ook met toekomstige seizoenen in de tabel.
 	DECLARE @NewSeasonName NCHAR(9) = CONCAT(YEAR(GETDATE()),'-',YEAR(GETDATE())+1);
 
-	IF NOT EXISTS (SELECT 1 FROM [dbo].[Season] WHERE [ClubCode] = @ClubCode AND [Name] = @NewSeasonName)
-		AND CAST(GETDATE() AS DATE) >= DATEADD(MONTH,@SeasonStartMonth-3,DATEFROMPARTS(YEAR(GETDATE()),1,1))
+	IF NOT EXISTS (SELECT 1 FROM [dbo].[Season] WHERE [Name] = @NewSeasonName)
+		AND GETDATE() >= DATEFROMPARTS(YEAR(GETDATE()),@SeasonStartMonth-2,1)
 	BEGIN
 		INSERT INTO [dbo].[Season]
 			(
-			[ClubCode],
 			[Name],
 			[DateFrom],
 			[DateUntil]
 			)
 		 VALUES
 			(
-			@ClubCode,
 			@NewSeasonName,
 			DATEFROMPARTS(YEAR(GETDATE()),@SeasonStartMonth,1),
-			DATEADD(DAY,-1,DATEFROMPARTS(YEAR(GETDATE())+1,@SeasonStartMonth,1))
+			EOMONTH(DATEFROMPARTS(YEAR(GETDATE())+1,@SeasonStartMonth-1,1))
 			)
 	END;
 
-	-- Create a new DateTable based on the new start and enddate in seasons table. De DateTable is een
-	-- kalender zonder club en omvat daarom het bereik van de seizoenen van alle clubs.
+	-- Create a new DateTable based on the new start and enddate in seasons table
 	SELECT @YearStart = YEAR(MIN(DateFrom))  FROM [dbo].[Season];
 	SELECT @YearEnd   = YEAR(MAX(DateUntil)) FROM [dbo].[Season];
 	EXEC [dbo].[sp_CreateDateTable] @YearStart, @YearEnd;

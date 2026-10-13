@@ -328,7 +328,7 @@ namespace SportlinkFunction
             private const int DefaultSeasonStartWeeksBack = -40;
 
             /// <summary>
-            /// Returns the number of weeks from today to the end of the latest season of the club in dbo.Season
+            /// Returns the number of weeks from today to the end of the latest season of the club in dbo.ClubSeason
             /// (#1715: per club; without <paramref name="clubCode"/> the primary club of the deployment).
             /// </summary>
             public static async Task<int> GetSeasonEndWeekOffsetAsync(ILogger log, string? clubCode = null)
@@ -337,7 +337,7 @@ namespace SportlinkFunction
                 {
                     using var connection = new SqlConnection(DatabaseConfig.ConnectionString);
                     await connection.OpenAsync();
-                    using var command = new SqlCommand("SELECT MAX(DateUntil) FROM [dbo].[Season] WHERE [ClubCode] = @ClubCode", connection);
+                    using var command = new SqlCommand("SELECT MAX(DateUntil) FROM [dbo].[ClubSeason] WHERE [ClubCode] = @ClubCode", connection);
                     command.Parameters.AddWithValue("@ClubCode", ClubScope.Resolve(clubCode));
                     var result = await command.ExecuteScalarAsync();
                     if (result != null && result != DBNull.Value)
@@ -377,7 +377,7 @@ namespace SportlinkFunction
                 using var connection = new SqlConnection(DatabaseConfig.ConnectionString);
                 await connection.OpenAsync();
                 using var command = new SqlCommand(
-                    "SELECT MIN(DateFrom) FROM [dbo].[Season] WHERE [ClubCode] = @ClubCode AND YEAR(DateFrom) = @Year", connection);
+                    "SELECT MIN(DateFrom) FROM [dbo].[ClubSeason] WHERE [ClubCode] = @ClubCode AND YEAR(DateFrom) = @Year", connection);
                 command.Parameters.AddWithValue("@ClubCode", ClubScope.Resolve(clubCode));
                 command.Parameters.AddWithValue("@Year", startYear);
                 var result = await command.ExecuteScalarAsync();
@@ -391,9 +391,9 @@ namespace SportlinkFunction
 
             /// <summary>
             /// Bepaalt het huidige KNVB-seizoen ("{startjaar}/{eindjaar}", bijv. "2026/2027") uit
-            /// dbo.Season — nooit hardcoded, want een hardcoded jaartal in de KNVB-kalenderlogica
+            /// dbo.ClubSeason — nooit hardcoded, want een hardcoded jaartal in de KNVB-kalenderlogica
             /// (#561) zou na elk seizoen stilzwijgend verkeerde data opleveren.
-            /// Retourneert <c>null</c> als er geen (toekomstig) seizoen in dbo.Season staat — de
+            /// Retourneert <c>null</c> als er geen (toekomstig) seizoen in dbo.ClubSeason staat — de
             /// aanroeper valt dan terug op het bestaande gedrag zonder KNVB-bijlage.
             /// </summary>
             public static async Task<string?> GetCurrentKnvbSeizoenAsync(ILogger log, string? clubCode = null)
@@ -403,7 +403,7 @@ namespace SportlinkFunction
                     using var connection = new SqlConnection(DatabaseConfig.ConnectionString);
                     await connection.OpenAsync();
                     using var command = new SqlCommand(
-                        "SELECT TOP 1 [DateFrom], [DateUntil] FROM [dbo].[Season] WHERE [ClubCode] = @ClubCode AND [DateUntil] >= @today ORDER BY [DateFrom] ASC",
+                        "SELECT TOP 1 [DateFrom], [DateUntil] FROM [dbo].[ClubSeason] WHERE [ClubCode] = @ClubCode AND [DateUntil] >= @today ORDER BY [DateFrom] ASC",
                         connection);
                     command.Parameters.AddWithValue("@ClubCode", ClubScope.Resolve(clubCode));
                     command.Parameters.AddWithValue("@today", DateTime.Today);
