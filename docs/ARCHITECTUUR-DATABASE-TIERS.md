@@ -688,7 +688,7 @@ hier zodat #888 dit niet opnieuw hoeft te ontdekken.
 **Empirisch geverifieerd** tegen een wegwerp-Postgres-container: zowel het ALLSTARS-democlubpad
 (`ExtractLeeftijdFromTeamNaam`-fallback, geen `his.teams`-koppeling nodig) als het pad van een
 "echte" primaire club (`his.teams`-`LATERAL JOIN` + `LeeftijdNormalisatie`-vertaling) leverden de
-verwachte leeftijdscategorie en duur op — voor de primaire club: teamnaam "VRC JO13-1" met
+verwachte leeftijdscategorie en duur op — voor de primaire club: teamnaam "TESTCLUB JO13-1" met
 `leeftijdscategorie = 'Onder 13'` in `his.teams` leverde via de `LATERAL JOIN` +
 `PostgresLeeftijdNormalisatie.SqlExpr` correct `"leeftijdsCategorie":"JO13"` en de bijbehorende
 `duurMinuten`/`veldafmeting` uit `public.speeltijden` op.
