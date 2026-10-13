@@ -14,8 +14,8 @@
     <DockerfileContext>.</DockerfileContext>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Version>3.14.0.2</Version>
-    <AssemblyVersion>3.14.0.1</AssemblyVersion>
-    <FileVersion>3.14.0.1</FileVersion>
+    <AssemblyVersion>3.14.0.2</AssemblyVersion>
+    <FileVersion>3.14.0.2</FileVersion>
   </PropertyGroup>
   <ItemGroup>
     <!-- Test-project heeft toegang tot internal members — zelfde patroon als de SQL Server-tier
