@@ -1379,10 +1379,10 @@ Toelichting bij de bewerkingen:
 | Verwerker | OpenAI (OpenAI-API, rechtstreeks) |
 | Rol | Verwerker in de zin van art. 28 AVG: classificatie in opdracht van de club |
 | Grondslag | Gerechtvaardigd belang (art. 6 lid 1 sub f AVG), bevestigd door de eigenaar op 2026-10-13; gelijk aan feedback (FEEDBACK.md §7) en het leren vanuit de trace (SECURITY.md, Laag 6) |
-| Verwerkersovereenkomst | Met de provider is een verwerkersovereenkomst geaccepteerd voor het account waaronder `OpenAiApiKey` valt (bevestigd door de eigenaar op 2026-10-13). *Datum en vorm van de overeenkomst: nog door de eigenaar vast te leggen* |
-| Bewaartermijn bij de verwerker | Geen bewaring van invoer en uitvoer door de provider (zero data retention), volgens opgave van de eigenaar op 2026-10-13 en de accountinstellingen; opnieuw controleren bij een wijziging van het account of de voorwaarden. De code zet hier niets voor |
+| Verwerkersovereenkomst | **Open.** Volgens opgave van de eigenaar op 2026-10-13 is er voor het account waaronder `OpenAiApiKey` valt geen verwerkersovereenkomst vastgelegd. Een vervolgactie (overeenkomst sluiten of de verwerking aanpassen) is nog niet besloten; tot die tijd is deze rij niet volledig |
+| Bewaartermijn bij de verwerker | Volgens opgave van de eigenaar op 2026-10-13: geen bewaring van invoer en uitvoer (zero data retention). *Nog te verifiëren* tegen de accountinstellingen en de voorwaarden, en afhankelijk van de verwerkersovereenkomst die nog open staat. De code zet hier niets voor |
 | Verwerkingslocatie | Buiten de EER (Verenigde Staten), volgens opgave van de eigenaar op 2026-10-13; de code gebruikt het standaardendpoint van de SDK zonder regio-instelling |
-| Doorgifte-instrument | Standaardcontractbepalingen (SCC), bevestigd door de eigenaar op 2026-10-13; gelijk aan FEEDBACK.md §8 voor dezelfde provider |
+| Doorgifte-instrument | Standaardcontractbepalingen (SCC), volgens opgave van de eigenaar op 2026-10-13; *nog te verifiëren* zolang de verwerkersovereenkomst open staat; FEEDBACK.md §8 noemt hetzelfde instrument voor dezelfde provider |
 
 ### 5d. Registerrij (AVG art. 30)
 
