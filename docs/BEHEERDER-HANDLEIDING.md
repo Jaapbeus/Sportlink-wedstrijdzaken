@@ -882,6 +882,24 @@ Bij een API-fout (time-out, netwerk, service onbeschikbaar) schakelt de planner 
 
 ---
 
+## 12a. Seizoen start in (`/instellingen`, #1715)
+
+Bij **App instellingen** staat de keuzelijst **Seizoen start in** met de twaalf maanden; standaard staat
+**juli** geselecteerd. De waarde geldt per club: elke club heeft zijn eigen seizoenen. Het seizoenseinde
+is de dag vóór de start van het volgende seizoen (start in juli: einde op 30 juni).
+
+- **Wat het beïnvloedt:** het synchronisatievenster (tot het einde van het seizoen), de seizoenstabel, de
+  KNVB-kalenderbijlage in e-mails en **wanneer persoonsgegevens in oude wedstrijden worden leeggemaakt**
+  (de dagelijkse bewaartermijn gebruikt het seizoenseinde van de club van de wedstrijd).
+- **Wijzigen:** kies een andere maand en sla op. Er verschijnt eerst een waarschuwing in het scherm. Bij het
+  opslaan worden de seizoenen van uw club opnieuw opgebouwd; andere clubs blijven ongemoeid. De wijziging
+  staat in de auditlog.
+- **Let op:** verschuift het seizoenseinde naar eerder (bijvoorbeeld van september naar juli), dan worden
+  persoonsgegevens in wedstrijden van tot dan lopende seizoen eerder leeggemaakt. Dat is niet terug te
+  draaien; Sportlink blijft wel de bron van de wedstrijd zelf.
+- **Technisch:** beide databasetiers hebben een `ClubCode` in de seizoenstabel; er wordt nergens meer een
+  waarde over alle clubs heen afgeleid (geen `MIN()`/`MAX()`). Zie `ARCHITECTUUR-DATABASE-TIERS.md` (#1715).
+
 ## 13. Test data modus (ALLSTARS) — `/testdata/wedstrijden`
 
 De **Testmodus** maakt het mogelijk fictieve wedstrijden aan te maken die worden gebruikt voor lokale tests van Planning en Veld optimalisatie, zonder productiewedstrijden te raken.

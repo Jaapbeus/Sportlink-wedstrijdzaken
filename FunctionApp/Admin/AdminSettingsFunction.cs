@@ -48,7 +48,7 @@ public static class AdminSettingsFunction
         "Accommodatie", "FetchSchedule", "EmailVoetnoot",
         "AccommodatiePlaats", "AccommodatieLatitude", "AccommodatieLongitude",
         "UseRealtimeApi", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio",
-        "SportlinkExtensionEnabled", "SportlinkSpelactiviteit", "PdfExportIngeschakeld", "ZekerheidspoortActief"
+        "SportlinkExtensionEnabled", "SportlinkSpelactiviteit", "PdfExportIngeschakeld", "ZekerheidspoortActief", "SeasonStartMonth"
     };
 
     private const string ManagementApiVersion = "2022-03-01";
@@ -179,6 +179,10 @@ public static class AdminSettingsFunction
                     await transaction.RollbackAsync();
                     throw;
                 }
+
+                // #1715: de seizoenen van deze club volgen de nieuwe startmaand (gevalideerd 1-12).
+                if (changes.TryGetValue("SeasonStartMonth", out var maand))
+                    await SqlServerSeizoenHerbouw.HerbouwAsync(connection, clubCode, int.Parse(maand!, CultureInfo.InvariantCulture), DateOnly.FromDateTime(DateTime.UtcNow));
 
                 await SystemUtilities.AppSettings.LoadSettingsAsync(log);
 

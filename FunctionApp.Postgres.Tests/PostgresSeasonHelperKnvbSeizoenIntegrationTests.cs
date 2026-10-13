@@ -13,8 +13,7 @@ namespace FunctionApp.Postgres.Tests;
 /// voor het "verzet zonder datum"-pad (#561).
 ///
 /// <para>
-/// <b>Isolatie zonder de tabel te wipen:</b> <c>public.season</c> heeft geen ClubCode-discriminator
-/// en wordt door meerdere testklassen in dit project gedeeld (o.a. via
+/// <b>Isolatie zonder de tabel te wipen:</b> <c>public.season</c> wordt door meerdere testklassen in dit project gedeeld (o.a. via
 /// <c>PostgresSeasonProceduresIntegrationTests</c> in <c>Database.Postgres.Tests</c>, dat wél een
 /// eigen database heeft — dit project niet). In plaats van de tabel leeg te maken (zou andere,
 /// gelijktijdig draaiende testklassen kunnen breken), zet <see cref="ZaaiAsync"/> een rij met een
@@ -29,6 +28,8 @@ namespace FunctionApp.Postgres.Tests;
 public class PostgresSeasonHelperKnvbSeizoenIntegrationTests : IAsyncLifetime
 {
     private const string DominantSeizoenNaam = "1900-9999";
+    // #1715: seizoenen zijn per club; de rijen van deze testklasse horen bij een eigen testclub.
+    private const string Club = "KNVBSEIZOEN";
 
     private static string ConnectionString => PostgresTestEnvironment.ConnectionStringOrNull
         ?? throw new InvalidOperationException(
@@ -41,7 +42,8 @@ public class PostgresSeasonHelperKnvbSeizoenIntegrationTests : IAsyncLifetime
         await using var conn = new NpgsqlConnection(ConnectionString);
         await conn.OpenAsync();
         await using var cmd = new NpgsqlCommand(
-            "DELETE FROM public.season WHERE name = @naam", conn);
+            "DELETE FROM public.season WHERE clubcode = @club AND name = @naam", conn);
+        cmd.Parameters.AddWithValue("club", Club);
         cmd.Parameters.AddWithValue("naam", DominantSeizoenNaam);
         await cmd.ExecuteNonQueryAsync();
     }
@@ -51,10 +53,11 @@ public class PostgresSeasonHelperKnvbSeizoenIntegrationTests : IAsyncLifetime
         await using var conn = new NpgsqlConnection(ConnectionString);
         await conn.OpenAsync();
         await using var cmd = new NpgsqlCommand("""
-            INSERT INTO public.season (name, datefrom, dateuntil)
-            VALUES (@naam, @datefrom, @dateuntil)
-            ON CONFLICT (name) DO UPDATE SET datefrom = EXCLUDED.datefrom, dateuntil = EXCLUDED.dateuntil
+            INSERT INTO public.season (clubcode, name, datefrom, dateuntil)
+            VALUES (@club, @naam, @datefrom, @dateuntil)
+            ON CONFLICT (clubcode, name) DO UPDATE SET datefrom = EXCLUDED.datefrom, dateuntil = EXCLUDED.dateuntil
             """, conn);
+        cmd.Parameters.AddWithValue("club", Club);
         cmd.Parameters.AddWithValue("naam", naam);
         cmd.Parameters.AddWithValue("datefrom", new DateTime(datefromJaar, datefromMaand, 1));
         cmd.Parameters.AddWithValue("dateuntil", new DateTime(dateuntilJaar, dateuntilMaand, 1));
@@ -68,7 +71,7 @@ public class PostgresSeasonHelperKnvbSeizoenIntegrationTests : IAsyncLifetime
         // ongeacht welke echte (migratie-008-geseede) seizoensrijen toevallig aanwezig zijn.
         await ZaaiAsync(1900, 1, 9999, 1, DominantSeizoenNaam);
 
-        var seizoen = await PostgresSeasonHelper.GetCurrentKnvbSeizoenAsync(NullLogger.Instance);
+        var seizoen = await PostgresSeasonHelper.GetCurrentKnvbSeizoenAsync(NullLogger.Instance, Club);
 
         seizoen.Should().Be("1900/9999", "de methode formatteert als '{datefrom.Jaar}/{dateuntil.Jaar}'");
     }
@@ -82,7 +85,7 @@ public class PostgresSeasonHelperKnvbSeizoenIntegrationTests : IAsyncLifetime
         await ZaaiAsync(1800, 1, 9998, 1, "1800-9998");
         try
         {
-            var seizoen = await PostgresSeasonHelper.GetCurrentKnvbSeizoenAsync(NullLogger.Instance);
+            var seizoen = await PostgresSeasonHelper.GetCurrentKnvbSeizoenAsync(NullLogger.Instance, Club);
 
             seizoen.Should().Be("1800/9998");
         }
@@ -91,7 +94,8 @@ public class PostgresSeasonHelperKnvbSeizoenIntegrationTests : IAsyncLifetime
             await using var conn = new NpgsqlConnection(ConnectionString);
             await conn.OpenAsync();
             await using var cmd = new NpgsqlCommand(
-                "DELETE FROM public.season WHERE name = @naam", conn);
+                "DELETE FROM public.season WHERE clubcode = @club AND name = @naam", conn);
+            cmd.Parameters.AddWithValue("club", Club);
             cmd.Parameters.AddWithValue("naam", "1800-9998");
             await cmd.ExecuteNonQueryAsync();
         }

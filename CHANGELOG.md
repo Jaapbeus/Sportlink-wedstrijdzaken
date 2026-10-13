@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- Beheer > Instellingen: de seizoensstartmaand is per club instelbaar met een keuzelijst van twaalf maanden (standaard juli). De seizoenstabel (`public.season` / `dbo.Season`) heeft een `ClubCode` (Postgres-migratie 043, idempotent in `Script.PostDeployment1.sql`), het seizoen wordt niet meer uit `MIN(seasonstartmonth)` over alle clubs afgeleid, het synchronisatievenster, de KNVB-seizoenskeuze, de planner en de bewaartermijn van persoonskolommen in de historietabellen (#1698) gebruiken het seizoenseinde van de eigen club, en een wijziging bouwt de seizoenen van die club opnieuw op en komt in de auditlog; bestaande installaties behouden hun gedrag (standaard 7) (#1715)
+
 ### Fixed
 - Wedstrijd aanmaken: een team uit de dropdown (bondsnotatie, bijv. `[club] O14-2`) wordt nu gevonden in Sportlinks teamlijst (lokale notatie, bijv. `JO14-2`) in plaats van de fout "niet (eenduidig) gevonden" (#1737)
 

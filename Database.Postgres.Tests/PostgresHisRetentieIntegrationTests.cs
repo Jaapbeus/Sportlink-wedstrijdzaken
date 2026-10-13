@@ -14,6 +14,7 @@ namespace Database.Postgres.Tests;
 /// </summary>
 public class PostgresHisRetentieIntegrationTests : IAsyncLifetime
 {
+    private const string Club = "ALLSTARS";
     private static readonly DateOnly Grens = new(2026, 6, 30);
     private string ConnectionString => PostgresTestEnvironment.ConnectionStringOrNull
         ?? throw new InvalidOperationException($"{PostgresTestEnvironment.ConnectionStringEnvVar} niet gezet.");
@@ -50,7 +51,7 @@ public class PostgresHisRetentieIntegrationTests : IAsyncLifetime
         await VoegDetailToe(connection, 13, null, new DateTime(2026, 4, 4, 12, 0, 0)); // alleen matchdatetime
         await VoegDetailToe(connection, 14, null, null);                                // geen datum
 
-        var (matches, details) = await PostgresHisRetentie.WisTotEnMetAsync(connection, Grens);
+        var (matches, details) = await PostgresHisRetentie.WisTotEnMetAsync(connection, Club, Grens);
 
         matches.Should().Be(2);
         details.Should().Be(2);
@@ -69,7 +70,7 @@ public class PostgresHisRetentieIntegrationTests : IAsyncLifetime
         (await Tekst(connection, "matchdetails", "interncode", 13, "rijder")).Should().BeNull();
         (await Tekst(connection, "matchdetails", "interncode", 14, "rijder")).Should().Be("Jan de Vries");
 
-        (await PostgresHisRetentie.WisTotEnMetAsync(connection, Grens)).Should().Be((0, 0), "een tweede run raakt niets meer");
+        (await PostgresHisRetentie.WisTotEnMetAsync(connection, Club, Grens)).Should().Be((0, 0), "een tweede run raakt niets meer");
     }
 
     [PostgresFact]
@@ -86,13 +87,38 @@ public class PostgresHisRetentieIntegrationTests : IAsyncLifetime
         for (var i = 0; i < gevallen.Count; i++)
             await VoegMatchToe(connection, 100 + i, gevallen[i].Waarde);
 
-        var (matches, _) = await PostgresHisRetentie.WisTotEnMetAsync(connection, HisWedstrijddatumGevallen.Grens);
+        var (matches, _) = await PostgresHisRetentie.WisTotEnMetAsync(connection, Club, HisWedstrijddatumGevallen.Grens);
 
         for (var i = 0; i < gevallen.Count; i++)
             (await Tekst(connection, "matches", "wedstrijdcode", 100 + i, "scheidsrechter")).Should().Be(
                 gevallen[i].Wissen ? null : "Jan de Vries", $"geval {i}: {gevallen[i].Reden}");
         matches.Should().Be(gevallen.Count(g => g.Wissen));
-        (await PostgresHisRetentie.WisTotEnMetAsync(connection, HisWedstrijddatumGevallen.Grens)).Should().Be((0, 0));
+        (await PostgresHisRetentie.WisTotEnMetAsync(connection, Club, HisWedstrijddatumGevallen.Grens)).Should().Be((0, 0));
+    }
+
+    [PostgresFact]
+    public async Task WisTotEnMet_RaaktAlleenDeOpgegevenClub_BijTweeClubsMetVerschillendeSeizoenseinde()
+    {
+        // #1715: de retentie leest per club het seizoenseinde. Zelfde wedstrijddatum, twee clubs: alleen
+        // de club waarvoor de grens is aangeleverd wordt leeggemaakt, de andere blijft staan.
+        var orchestrator = new PostgresMergeOrchestrator(ConnectionString);
+        await orchestrator.EnsureHisTableAsync(KnownEntities.Matches);
+        await orchestrator.EnsureHisTableAsync(KnownEntities.MatchDetails);
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        await VoegMatchToe(connection, 201, "2026-07-15T14:30:00+02:00", "ALLSTARS");
+        await VoegMatchToe(connection, 202, "2026-07-15T14:30:00+02:00", "CLUBTWEE");
+        await VoegDetailToe(connection, 211, new DateOnly(2026, 7, 15), null, "ALLSTARS");
+        await VoegDetailToe(connection, 212, new DateOnly(2026, 7, 15), null, "CLUBTWEE");
+        var julGrens = new DateOnly(2026, 8, 31); // club met septemberstart: seizoen tot en met 31 augustus
+
+        var (matches, details) = await PostgresHisRetentie.WisTotEnMetAsync(connection, "CLUBTWEE", julGrens);
+
+        (matches, details).Should().Be((1, 1));
+        (await Tekst(connection, "matches", "wedstrijdcode", 202, "scheidsrechter")).Should().BeNull();
+        (await Tekst(connection, "matches", "wedstrijdcode", 201, "scheidsrechter")).Should().Be("Jan de Vries");
+        (await Tekst(connection, "matchdetails", "interncode", 212, "rijder")).Should().BeNull();
+        (await Tekst(connection, "matchdetails", "interncode", 211, "rijder")).Should().Be("Jan de Vries");
     }
 
     [PostgresFact]
@@ -101,7 +127,7 @@ public class PostgresHisRetentieIntegrationTests : IAsyncLifetime
         await using var connection = new NpgsqlConnection(ConnectionString);
         await connection.OpenAsync();
 
-        (await PostgresHisRetentie.WisTotEnMetAsync(connection, Grens)).Should().Be((0, 0));
+        (await PostgresHisRetentie.WisTotEnMetAsync(connection, Club, Grens)).Should().Be((0, 0));
     }
 
     [PostgresFact]
@@ -133,9 +159,9 @@ public class PostgresHisRetentieIntegrationTests : IAsyncLifetime
         IHisRetentieOpslag opslag = new PostgresHisRetentie(ConnectionString);
 
         (await opslag.LeesSeizoenseindenAsync()).Should().HaveCount(seizoenen);
-        (await opslag.WisTotEnMetAsync(Grens)).Should().Be((1, 1));
+        (await opslag.WisTotEnMetAsync(Club, Grens)).Should().Be((1, 1));
         (await Tekst(connection, "matches", "wedstrijdcode", 1, "scheidsrechter")).Should().BeNull();
-        (await opslag.WisTotEnMetAsync(Grens)).Should().Be((0, 0));
+        (await opslag.WisTotEnMetAsync(Club, Grens)).Should().Be((0, 0));
     }
 
     [PostgresFact]
@@ -152,25 +178,27 @@ public class PostgresHisRetentieIntegrationTests : IAsyncLifetime
         (await HeeftRls(connection, "stg", "matches")).Should().BeTrue();
     }
 
-    private static async Task VoegMatchToe(NpgsqlConnection c, long code, string? datum)
+    private static async Task VoegMatchToe(NpgsqlConnection c, long code, string? datum, string clubCode = Club)
     {
         await using var cmd = new NpgsqlCommand(
             "INSERT INTO his.\"matches\" (\"wedstrijdcode\", \"wedstrijddatum\", \"thuisteam\", \"scheidsrechter\", " +
             "\"scheidsrechters\", \"rijders\", \"clubcode\", \"mta_inserted\", \"mta_modified\") " +
-            "VALUES (@code, @datum, 'AllStars JO11-1', 'Jan de Vries', 'Jan de Vries', 'Jan de Vries', 'ALLSTARS', NOW(), NOW())", c);
+            "VALUES (@code, @datum, 'AllStars JO11-1', 'Jan de Vries', 'Jan de Vries', 'Jan de Vries', @club, NOW(), NOW())", c);
         cmd.Parameters.AddWithValue("code", code);
+        cmd.Parameters.AddWithValue("club", clubCode);
         cmd.Parameters.Add(new NpgsqlParameter("datum", NpgsqlTypes.NpgsqlDbType.Varchar) { Value = (object?)datum ?? DBNull.Value });
         await cmd.ExecuteNonQueryAsync();
     }
 
-    private static async Task VoegDetailToe(NpgsqlConnection c, int interncode, DateOnly? datum, DateTime? datumtijd)
+    private static async Task VoegDetailToe(NpgsqlConnection c, int interncode, DateOnly? datum, DateTime? datumtijd, string clubCode = Club)
     {
         await using var cmd = new NpgsqlCommand(
             "INSERT INTO his.\"matchdetails\" (\"wedstrijdcode\", \"interncode\", \"matchdate\", \"matchdatetime\", \"thuisteam\", " +
             "\"rijder\", \"opmerkingen\", \"thuisteamemail\", \"clubcode\", \"mta_inserted\", \"mta_modified\") " +
             "VALUES (1, @interncode, @datum, @datumtijd, 'AllStars JO11-1', 'Jan de Vries', 'Jan de Vries rijdt', " +
-            "'trainer@voorbeeld.nl', 'ALLSTARS', NOW(), NOW())", c);
+            "'trainer@voorbeeld.nl', @club, NOW(), NOW())", c);
         cmd.Parameters.AddWithValue("interncode", interncode);
+        cmd.Parameters.AddWithValue("club", clubCode);
         cmd.Parameters.Add(new NpgsqlParameter("datum", NpgsqlTypes.NpgsqlDbType.Date) { Value = (object?)datum ?? DBNull.Value });
         cmd.Parameters.Add(new NpgsqlParameter("datumtijd", NpgsqlTypes.NpgsqlDbType.Timestamp) { Value = (object?)datumtijd ?? DBNull.Value });
         await cmd.ExecuteNonQueryAsync();

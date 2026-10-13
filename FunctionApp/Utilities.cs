@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using Microsoft.Data.SqlClient;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using SportlinkFunction.Planner;
 
 namespace SportlinkFunction
 {
@@ -327,15 +328,17 @@ namespace SportlinkFunction
             private const int DefaultSeasonStartWeeksBack = -40;
 
             /// <summary>
-            /// Returns the number of weeks from today to the end of the latest season in dbo.Season.
+            /// Returns the number of weeks from today to the end of the latest season of the club in dbo.Season
+            /// (#1715: per club; without <paramref name="clubCode"/> the primary club of the deployment).
             /// </summary>
-            public static async Task<int> GetSeasonEndWeekOffsetAsync(ILogger log)
+            public static async Task<int> GetSeasonEndWeekOffsetAsync(ILogger log, string? clubCode = null)
             {
                 try
                 {
                     using var connection = new SqlConnection(DatabaseConfig.ConnectionString);
                     await connection.OpenAsync();
-                    using var command = new SqlCommand("SELECT MAX(DateUntil) FROM [dbo].[Season]", connection);
+                    using var command = new SqlCommand("SELECT MAX(DateUntil) FROM [dbo].[Season] WHERE [ClubCode] = @ClubCode", connection);
+                    command.Parameters.AddWithValue("@ClubCode", ClubScope.Resolve(clubCode));
                     var result = await command.ExecuteScalarAsync();
                     if (result != null && result != DBNull.Value)
                     {
@@ -354,11 +357,11 @@ namespace SportlinkFunction
             /// Returns the week offset from today to the start of the season whose DateFrom year matches startYear.
             /// The returned value is negative when the season start is in the past.
             /// </summary>
-            public static async Task<int> GetSeasonStartWeekOffsetAsync(int startYear, ILogger log)
+            public static async Task<int> GetSeasonStartWeekOffsetAsync(int startYear, ILogger log, string? clubCode = null)
             {
                 try
                 {
-                    return await GetSeasonStartWeekOffsetOrNullAsync(startYear) ?? DefaultSeasonStartWeeksBack;
+                    return await GetSeasonStartWeekOffsetOrNullAsync(startYear, clubCode) ?? DefaultSeasonStartWeeksBack;
                 }
                 catch (Exception ex)
                 {
@@ -369,12 +372,13 @@ namespace SportlinkFunction
 
             /// <summary>Als <see cref="GetSeasonStartWeekOffsetAsync"/>, maar <c>null</c> wanneer er geen seizoensrij
             /// voor dat startjaar bestaat en zonder foutafhandeling (#1461).</summary>
-            public static async Task<int?> GetSeasonStartWeekOffsetOrNullAsync(int startYear)
+            public static async Task<int?> GetSeasonStartWeekOffsetOrNullAsync(int startYear, string? clubCode = null)
             {
                 using var connection = new SqlConnection(DatabaseConfig.ConnectionString);
                 await connection.OpenAsync();
                 using var command = new SqlCommand(
-                    "SELECT MIN(DateFrom) FROM [dbo].[Season] WHERE YEAR(DateFrom) = @Year", connection);
+                    "SELECT MIN(DateFrom) FROM [dbo].[Season] WHERE [ClubCode] = @ClubCode AND YEAR(DateFrom) = @Year", connection);
+                command.Parameters.AddWithValue("@ClubCode", ClubScope.Resolve(clubCode));
                 command.Parameters.AddWithValue("@Year", startYear);
                 var result = await command.ExecuteScalarAsync();
                 if (result != null && result != DBNull.Value)
@@ -392,15 +396,16 @@ namespace SportlinkFunction
             /// Retourneert <c>null</c> als er geen (toekomstig) seizoen in dbo.Season staat — de
             /// aanroeper valt dan terug op het bestaande gedrag zonder KNVB-bijlage.
             /// </summary>
-            public static async Task<string?> GetCurrentKnvbSeizoenAsync(ILogger log)
+            public static async Task<string?> GetCurrentKnvbSeizoenAsync(ILogger log, string? clubCode = null)
             {
                 try
                 {
                     using var connection = new SqlConnection(DatabaseConfig.ConnectionString);
                     await connection.OpenAsync();
                     using var command = new SqlCommand(
-                        "SELECT TOP 1 [DateFrom], [DateUntil] FROM [dbo].[Season] WHERE [DateUntil] >= @today ORDER BY [DateFrom] ASC",
+                        "SELECT TOP 1 [DateFrom], [DateUntil] FROM [dbo].[Season] WHERE [ClubCode] = @ClubCode AND [DateUntil] >= @today ORDER BY [DateFrom] ASC",
                         connection);
+                    command.Parameters.AddWithValue("@ClubCode", ClubScope.Resolve(clubCode));
                     command.Parameters.AddWithValue("@today", DateTime.Today);
                     using var reader = await command.ExecuteReaderAsync();
                     if (await reader.ReadAsync())

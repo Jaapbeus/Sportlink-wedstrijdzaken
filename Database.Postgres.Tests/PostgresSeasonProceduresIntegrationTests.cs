@@ -22,6 +22,7 @@ namespace Database.Postgres.Tests;
 /// </summary>
 public class PostgresSeasonProceduresIntegrationTests
 {
+    private const string Club = "SEASONTEST";
     private static string ConnectionString => PostgresTestEnvironment.ConnectionStringOrNull!;
 
     [PostgresFact]
@@ -99,7 +100,7 @@ public class PostgresSeasonProceduresIntegrationTests
     /// <summary>
     /// #631 in het origineel: een niet-sluitende guard voegde hetzelfde seizoen bij elke deploy
     /// opnieuw toe — er stonden drie identieke rijen in productie. Deze implementatie leunt op
-    /// <c>ON CONFLICT (name) DO NOTHING</c>, dus herhalen is per definitie een no-op.
+    /// <c>ON CONFLICT (clubcode, name) DO NOTHING</c>, dus herhalen is per definitie een no-op.
     /// </summary>
     [PostgresFact]
     public async Task EnsureSeasonsAsync_HerhaaldAangeroepen_VoegtNietsDubbelToe()
@@ -167,6 +168,57 @@ public class PostgresSeasonProceduresIntegrationTests
             + "geldige maand zou zijn (januari)");
     }
 
+    /// <summary>
+    /// #1715, de rode test voor twee clubs: elke club krijgt de seizoenen uit zijn eigen startmaand. Met
+    /// de oude <c>MIN(seasonstartmonth)</c> over alle clubs kreeg de septemberclub juli-seizoenen.
+    /// </summary>
+    [PostgresFact]
+    public async Task EnsureSeasonsAsync_TweeClubsMetVerschillendeStartmaand_KrijgenElkEenEigenSeizoenen()
+    {
+        await using var conn = await OpenSchoonAsync(7);
+        await using (var tweede = new NpgsqlCommand(
+            "INSERT INTO public.appsettings (clubcode, clubname, seasonstartmonth) VALUES ('SEASONTWEE', 'Season Twee', 9)", conn))
+            await tweede.ExecuteNonQueryAsync();
+
+        (await PostgresSeasonProcedures.EnsureSeasonsAsync(conn, new DateOnly(2026, 10, 13))).Should().Be(6);
+
+        (await GrenzenAsync(conn, "2026-2027", Club)).Tot.Should().Be(new DateTime(2027, 6, 30), "juli-start: einde 30 juni");
+        (await GrenzenAsync(conn, "2026-2027", "SEASONTWEE")).Tot.Should().Be(new DateTime(2027, 8, 31), "september-start: einde 31 augustus");
+        (await GrenzenAsync(conn, "2026-2027", "SEASONTWEE")).Van.Should().Be(new DateTime(2026, 9, 1));
+    }
+
+    [PostgresFact]
+    public async Task HerbouwSeizoenenVoorClubAsync_PastAlleenDeEigenClubAanNaEenWijzigingVanDeMaand()
+    {
+        await using var conn = await OpenSchoonAsync(7);
+        await using (var tweede = new NpgsqlCommand(
+            "INSERT INTO public.appsettings (clubcode, clubname, seasonstartmonth) VALUES ('SEASONTWEE', 'Season Twee', 7)", conn))
+            await tweede.ExecuteNonQueryAsync();
+        var vandaag = new DateOnly(2026, 10, 13);
+        await PostgresSeasonProcedures.EnsureSeasonsAsync(conn, vandaag);
+
+        await PostgresSeasonProcedures.HerbouwSeizoenenVoorClubAsync(conn, Club, 9, vandaag);
+
+        (await GrenzenAsync(conn, "2026-2027", Club)).Tot.Should().Be(new DateTime(2027, 8, 31));
+        (await GrenzenAsync(conn, "2026-2027", "SEASONTWEE")).Tot.Should().Be(new DateTime(2027, 6, 30), "een andere club blijft ongemoeid");
+        (await NamenAsync(conn)).Should().Equal("2024-2025", "2025-2026", "2026-2027");
+    }
+
+    [PostgresFact]
+    public async Task EnsureSeasonsAsync_OngeldigeStartmaandBijDeClub_ValtTerugOpJuli()
+    {
+        await using var conn = await OpenSchoonAsync(7);
+        await using (var kapot = new NpgsqlCommand("UPDATE public.appsettings SET seasonstartmonth = 0 WHERE clubcode = @c", conn))
+        {
+            kapot.Parameters.AddWithValue("c", Club);
+            await kapot.ExecuteNonQueryAsync();
+        }
+
+        await PostgresSeasonProcedures.EnsureSeasonsAsync(conn, new DateOnly(2026, 10, 13));
+
+        (await GrenzenAsync(conn, "2026-2027")).Van.Should().Be(new DateTime(2026, 7, 1));
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────────────────────
 
     private static async Task<NpgsqlConnection> OpenSchoonAsync(int seasonStartMonth = 7)
@@ -191,14 +243,15 @@ public class PostgresSeasonProceduresIntegrationTests
             await herstel.ExecuteNonQueryAsync();
         }
 
-        // Bekende beginstand. seasonstartmonth wordt door de procedure uit appsettings gelezen als
-        // MIN(...) over alle clubs, dus élke andere rij moet weg — anders bepaalt een restant van
-        // een andere testklasse de uitkomst.
+        // Bekende beginstand. De procedure loopt over alle clubs in appsettings (elk met de eigen
+        // startmaand, #1715), dus élke andere rij moet weg — anders voegt een restant van een andere
+        // testklasse seizoenen toe die deze tests niet verwachten.
         await using (var reset = new NpgsqlCommand(
             "DELETE FROM public.season; " +
             "DELETE FROM public.appsettings; " +
-            "INSERT INTO public.appsettings (clubcode, clubname, seasonstartmonth) VALUES ('SEASONTEST', 'Season Test', @maand);", conn))
+            "INSERT INTO public.appsettings (clubcode, clubname, seasonstartmonth) VALUES (@club, 'Season Test', @maand);", conn))
         {
+            reset.Parameters.AddWithValue("club", Club);
             reset.Parameters.AddWithValue("maand", seasonStartMonth);
             await reset.ExecuteNonQueryAsync();
         }
@@ -208,16 +261,18 @@ public class PostgresSeasonProceduresIntegrationTests
     private static async Task ZaaiAsync(NpgsqlConnection conn, int jaar)
     {
         await using var cmd = new NpgsqlCommand(
-            "INSERT INTO public.season (name, datefrom, dateuntil) VALUES (@n, @v, @t) ON CONFLICT (name) DO NOTHING", conn);
+            "INSERT INTO public.season (clubcode, name, datefrom, dateuntil) VALUES (@c, @n, @v, @t) ON CONFLICT (clubcode, name) DO NOTHING", conn);
+        cmd.Parameters.AddWithValue("c", Club);
         cmd.Parameters.AddWithValue("n", $"{jaar}-{jaar + 1}");
         cmd.Parameters.AddWithValue("v", new DateTime(jaar, 7, 1));
         cmd.Parameters.AddWithValue("t", new DateTime(jaar + 1, 6, 30));
         await cmd.ExecuteNonQueryAsync();
     }
 
-    private static async Task<List<string>> NamenAsync(NpgsqlConnection conn)
+    private static async Task<List<string>> NamenAsync(NpgsqlConnection conn, string club = Club)
     {
-        await using var cmd = new NpgsqlCommand("SELECT name FROM public.season ORDER BY name", conn);
+        await using var cmd = new NpgsqlCommand("SELECT name FROM public.season WHERE clubcode = @c ORDER BY name", conn);
+        cmd.Parameters.AddWithValue("c", club);
         var namen = new List<string>();
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync()) namen.Add(reader.GetString(0));
@@ -232,7 +287,8 @@ public class PostgresSeasonProceduresIntegrationTests
     /// </summary>
     private static async Task<int> WeekOffsetTotSeizoenseindeAsync(NpgsqlConnection conn, DateOnly vandaag)
     {
-        await using var cmd = new NpgsqlCommand("SELECT MAX(dateuntil) FROM public.season", conn);
+        await using var cmd = new NpgsqlCommand("SELECT MAX(dateuntil) FROM public.season WHERE clubcode = @c", conn);
+        cmd.Parameters.AddWithValue("c", Club);
         var result = await cmd.ExecuteScalarAsync();
         // DateOnly, niet DateTime: Npgsql 10 leest een DATE-kolom via ExecuteScalar als DateOnly.
         // Deze assertie is precies de reden dat de helper hierboven de échte formule herhaalt —
@@ -242,10 +298,11 @@ public class PostgresSeasonProceduresIntegrationTests
         return (int)Math.Ceiling((eind.ToDateTime(TimeOnly.MinValue) - vandaag.ToDateTime(TimeOnly.MinValue)).TotalDays / 7.0);
     }
 
-    private static async Task<(DateTime Van, DateTime Tot)> GrenzenAsync(NpgsqlConnection conn, string naam)
+    private static async Task<(DateTime Van, DateTime Tot)> GrenzenAsync(NpgsqlConnection conn, string naam, string club = Club)
     {
         await using var cmd = new NpgsqlCommand(
-            "SELECT datefrom, dateuntil FROM public.season WHERE name = @n", conn);
+            "SELECT datefrom, dateuntil FROM public.season WHERE clubcode = @c AND name = @n", conn);
+        cmd.Parameters.AddWithValue("c", club);
         cmd.Parameters.AddWithValue("n", naam);
         await using var reader = await cmd.ExecuteReaderAsync();
         (await reader.ReadAsync()).Should().BeTrue($"seizoen {naam} moet bestaan");

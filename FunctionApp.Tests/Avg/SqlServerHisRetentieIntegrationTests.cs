@@ -17,6 +17,7 @@ namespace FunctionApp.Tests.Avg;
 /// </summary>
 public class SqlServerHisRetentieIntegrationTests
 {
+    private const string Club = "ALLSTARS";
     private static readonly DateOnly Grens = new(2026, 6, 30);
     private static string Cs => Environment.GetEnvironmentVariable(SqlServerFactAttribute.EnvVar)!;
 
@@ -38,7 +39,7 @@ public class SqlServerHisRetentieIntegrationTests
         await VoegDetailToe(conn, 13, null, new DateTime(2026, 4, 4, 12, 0, 0));
         await VoegDetailToe(conn, 14, null, null);
 
-        var (matches, details) = await SqlServerHisRetentie.WisTotEnMetAsync(conn, Grens);
+        var (matches, details) = await SqlServerHisRetentie.WisTotEnMetAsync(conn, Club, Grens);
 
         matches.Should().Be(2);
         details.Should().Be(2);
@@ -57,7 +58,7 @@ public class SqlServerHisRetentieIntegrationTests
         (await Tekst(conn, "matchdetails", "InternCode", 13, "Rijder")).Should().BeNull();
         (await Tekst(conn, "matchdetails", "InternCode", 14, "Rijder")).Should().Be("Jan de Vries");
 
-        (await SqlServerHisRetentie.WisTotEnMetAsync(conn, Grens)).Should().Be((0, 0));
+        (await SqlServerHisRetentie.WisTotEnMetAsync(conn, Club, Grens)).Should().Be((0, 0));
     }
 
     [SqlServerFact]
@@ -73,13 +74,13 @@ public class SqlServerHisRetentieIntegrationTests
         for (var i = 0; i < gevallen.Count; i++)
             await VoegMatchToe(conn, 100 + i, gevallen[i].Waarde);
 
-        var (matches, _) = await SqlServerHisRetentie.WisTotEnMetAsync(conn, HisWedstrijddatumGevallen.Grens);
+        var (matches, _) = await SqlServerHisRetentie.WisTotEnMetAsync(conn, Club, HisWedstrijddatumGevallen.Grens);
 
         for (var i = 0; i < gevallen.Count; i++)
             (await Tekst(conn, "matches", "wedstrijdcode", 100 + i, "scheidsrechter")).Should().Be(
                 gevallen[i].Wissen ? null : "Jan de Vries", $"geval {i}: {gevallen[i].Reden}");
         matches.Should().Be(gevallen.Count(g => g.Wissen));
-        (await SqlServerHisRetentie.WisTotEnMetAsync(conn, HisWedstrijddatumGevallen.Grens)).Should().Be((0, 0));
+        (await SqlServerHisRetentie.WisTotEnMetAsync(conn, Club, HisWedstrijddatumGevallen.Grens)).Should().Be((0, 0));
     }
 
     [SqlServerFact]
@@ -89,7 +90,29 @@ public class SqlServerHisRetentieIntegrationTests
         await conn.OpenAsync();
         await Exec(conn, "DROP TABLE IF EXISTS [his].[matches]; DROP TABLE IF EXISTS [his].[matchdetails];");
 
-        (await SqlServerHisRetentie.WisTotEnMetAsync(conn, Grens)).Should().Be((0, 0));
+        (await SqlServerHisRetentie.WisTotEnMetAsync(conn, Club, Grens)).Should().Be((0, 0));
+    }
+
+    [SqlServerFact]
+    public async Task WisTotEnMet_RaaktAlleenDeOpgegevenClub_BijTweeClubsMetVerschillendeSeizoenseinde()
+    {
+        // #1715: de retentie leest per club het seizoenseinde. Zelfde wedstrijddatum, twee clubs: alleen
+        // de club waarvoor de grens is aangeleverd wordt leeggemaakt, de andere blijft staan.
+        await using var conn = new SqlConnection(Cs);
+        await conn.OpenAsync();
+        await MaakHisTabellen(conn);
+        await VoegMatchToe(conn, 201, "2026-07-15T14:30:00+02:00", "ALLSTARS");
+        await VoegMatchToe(conn, 202, "2026-07-15T14:30:00+02:00", "CLUBTWEE");
+        await VoegDetailToe(conn, 211, new DateTime(2026, 7, 15), null, "ALLSTARS");
+        await VoegDetailToe(conn, 212, new DateTime(2026, 7, 15), null, "CLUBTWEE");
+
+        var (matches, details) = await SqlServerHisRetentie.WisTotEnMetAsync(conn, "CLUBTWEE", new DateOnly(2026, 8, 31));
+
+        (matches, details).Should().Be((1, 1));
+        (await Tekst(conn, "matches", "wedstrijdcode", 202, "scheidsrechter")).Should().BeNull();
+        (await Tekst(conn, "matches", "wedstrijdcode", 201, "scheidsrechter")).Should().Be("Jan de Vries");
+        (await Tekst(conn, "matchdetails", "InternCode", 212, "Rijder")).Should().BeNull();
+        (await Tekst(conn, "matchdetails", "InternCode", 211, "Rijder")).Should().Be("Jan de Vries");
     }
 
     [SqlServerFact]
@@ -119,9 +142,9 @@ public class SqlServerHisRetentieIntegrationTests
         IHisRetentieOpslag opslag = new SqlServerHisRetentie(Cs);
 
         (await opslag.LeesSeizoenseindenAsync()).Should().HaveCount(seizoenen);
-        (await opslag.WisTotEnMetAsync(Grens)).Should().Be((1, 1));
+        (await opslag.WisTotEnMetAsync(Club, Grens)).Should().Be((1, 1));
         (await Tekst(conn, "matches", "wedstrijdcode", 1, "scheidsrechter")).Should().BeNull();
-        (await opslag.WisTotEnMetAsync(Grens)).Should().Be((0, 0));
+        (await opslag.WisTotEnMetAsync(Club, Grens)).Should().Be((0, 0));
     }
 
     private static async Task MaakHisTabellen(SqlConnection conn)
@@ -140,25 +163,27 @@ public class SqlServerHisRetentieIntegrationTests
         return map?.FullName ?? throw new InvalidOperationException("Repositorywortel niet gevonden.");
     }
 
-    private static async Task VoegMatchToe(SqlConnection c, long code, string? datum)
+    private static async Task VoegMatchToe(SqlConnection c, long code, string? datum, string clubCode = Club)
     {
         await using var cmd = new SqlCommand(
             "INSERT INTO [his].[matches] ([bk_matches], [wedstrijdcode], [wedstrijddatum], [thuisteam], [scheidsrechter], " +
             "[scheidsrechters], [rijders], [ClubCode]) " +
-            "VALUES (CAST(@code AS NVARCHAR(100)), @code, @datum, N'AllStars JO11-1', N'Jan de Vries', N'Jan de Vries', N'Jan de Vries', N'ALLSTARS')", c);
+            "VALUES (CAST(@code AS NVARCHAR(100)), @code, @datum, N'AllStars JO11-1', N'Jan de Vries', N'Jan de Vries', N'Jan de Vries', @club)", c);
         cmd.Parameters.AddWithValue("@code", code);
+        cmd.Parameters.AddWithValue("@club", clubCode);
         cmd.Parameters.Add(new SqlParameter("@datum", System.Data.SqlDbType.NVarChar, 50) { Value = (object?)datum ?? DBNull.Value });
         await cmd.ExecuteNonQueryAsync();
     }
 
-    private static async Task VoegDetailToe(SqlConnection c, int interncode, DateTime? datum, DateTime? datumtijd)
+    private static async Task VoegDetailToe(SqlConnection c, int interncode, DateTime? datum, DateTime? datumtijd, string clubCode = Club)
     {
         await using var cmd = new SqlCommand(
             "INSERT INTO [his].[matchdetails] ([bk_InternCode], [WedstrijdCode], [InternCode], [MatchDate], [MatchDateTime], " +
             "[ThuisTeam], [Rijder], [Opmerkingen], [ThuisTeamEmail], [ClubCode]) " +
             "VALUES (@interncode, 1, @interncode, @datum, @datumtijd, N'AllStars JO11-1', N'Jan de Vries', N'Jan de Vries rijdt', " +
-            "N'trainer@voorbeeld.nl', N'ALLSTARS')", c);
+            "N'trainer@voorbeeld.nl', @club)", c);
         cmd.Parameters.AddWithValue("@interncode", interncode);
+        cmd.Parameters.AddWithValue("@club", clubCode);
         cmd.Parameters.Add(new SqlParameter("@datum", System.Data.SqlDbType.Date) { Value = (object?)datum ?? DBNull.Value });
         cmd.Parameters.Add(new SqlParameter("@datumtijd", System.Data.SqlDbType.DateTime) { Value = (object?)datumtijd ?? DBNull.Value });
         await cmd.ExecuteNonQueryAsync();

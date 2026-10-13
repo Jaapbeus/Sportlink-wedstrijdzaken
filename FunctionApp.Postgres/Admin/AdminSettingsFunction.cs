@@ -1,3 +1,4 @@
+using Database.Postgres;
 using FunctionApp.Postgres.Infrastructure;
 using Planner.Shared;
 using Azure.Core;
@@ -55,7 +56,7 @@ public static class AdminSettingsFunction
         "Accommodatie", "FetchSchedule", "EmailVoetnoot",
         "AccommodatiePlaats", "AccommodatieLatitude", "AccommodatieLongitude",
         "UseRealtimeApi", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio",
-        "SportlinkExtensionEnabled", "SportlinkDryRun", "SportlinkSpelactiviteit", "PdfExportIngeschakeld", "ZekerheidspoortActief"
+        "SportlinkExtensionEnabled", "SportlinkDryRun", "SportlinkSpelactiviteit", "PdfExportIngeschakeld", "ZekerheidspoortActief", "SeasonStartMonth"
     };
 
     /// <summary>
@@ -78,6 +79,7 @@ public static class AdminSettingsFunction
         ["SportlinkDryRun"] = "::boolean",
         ["PdfExportIngeschakeld"] = "::boolean",
         ["ZekerheidspoortActief"] = "::boolean",
+        ["SeasonStartMonth"] = "::integer",
     };
 
     private const string ManagementApiVersion = "2022-03-01";
@@ -313,6 +315,10 @@ public static class AdminSettingsFunction
             await transaction.RollbackAsync();
             throw;
         }
+
+        // #1715: de seizoenen van deze club volgen de nieuwe startmaand (gevalideerd 1-12), na de commit.
+        if (changes.TryGetValue("SeasonStartMonth", out var maand))
+            await PostgresSeasonProcedures.HerbouwSeizoenenVoorClubAsync(connection, clubCode, int.Parse(maand!, CultureInfo.InvariantCulture), DateOnly.FromDateTime(DateTime.UtcNow));
     }
 
     // #1350: bewust NIET via AdminEndpoint.ExecuteAsync — geocoding raakt de database niet en hoort

@@ -1,4 +1,5 @@
 using Npgsql;
+using Planner.Shared.Sync;
 
 namespace Database.Postgres;
 
@@ -40,98 +41,132 @@ namespace Database.Postgres;
 /// <c>pub.*</c>-rapportageviews zijn voor deze tier al expliciet en gemotiveerd laten vervallen
 /// (#861, nul consumenten). Een tegenhanger zou uitsluitend een tabel zijn die nergens gelezen wordt.
 /// </para>
+///
+/// <para>
+/// <b>Per club (#1715).</b> <c>public.season</c> heeft sinds migratie 043 een <c>clubcode</c> en elke club
+/// krijgt zijn seizoenen uit zijn eigen <c>seasonstartmonth</c>. Er wordt nergens meer een waarde uit de
+/// rijen van alle clubs afgeleid (geen <c>MIN()</c>/<c>MAX()</c> over clubs).
+/// </para>
 /// </summary>
 public static class PostgresSeasonProcedures
 {
-    /// <summary>Fallback voor <c>seasonstartmonth</c>, gelijk aan migratie 008.</summary>
-    private const int DefaultSeasonStartMonth = 7;
-
     /// <summary>
-    /// Vult <c>public.season</c> aan zodat het huidige en aankomende seizoen bestaan. Idempotent:
-    /// zonder werk te doen zijn dit twee SELECTs en geen enkele wijziging.
+    /// Vult <c>public.season</c> aan voor elke club in <c>public.appsettings</c> (met de eigen startmaand)
+    /// zodat het huidige en aankomende seizoen bestaan. Idempotent: zonder werk te doen zijn dit
+    /// SELECTs en geen enkele wijziging.
     /// </summary>
     /// <param name="vandaag">
     /// De datum waartegen gerekend wordt. Expliciet in plaats van <c>CURRENT_DATE</c>, zodat het
     /// gedrag rond de tweemaandsgrens toetsbaar is zonder de systeemklok te verzetten — anders zou
     /// die tak elf maanden per jaar onbewijsbaar zijn.
     /// </param>
-    /// <returns>Het aantal toegevoegde seizoensrijen (0 wanneer er niets te doen was).</returns>
+    /// <returns>Het aantal toegevoegde seizoensrijen over alle clubs (0 wanneer er niets te doen was).</returns>
     public static async Task<int> EnsureSeasonsAsync(
         NpgsqlConnection connection, DateOnly vandaag, CancellationToken ct = default)
     {
-        var startMaand = await LeesSeasonStartMonthAsync(connection, ct);
+        var toegevoegd = 0;
+        foreach (var (clubCode, startMaand) in await LeesClubsAsync(connection, ct))
+            toegevoegd += await EnsureSeasonsVoorClubAsync(connection, clubCode, startMaand, vandaag, ct);
+        return toegevoegd;
+    }
+
+    /// <summary>
+    /// Vult de seizoenen van één club aan met de opgegeven startmaand; een ongeldige maand valt terug
+    /// op <see cref="SeizoenStartMaand.Standaard"/>.
+    /// </summary>
+    public static async Task<int> EnsureSeasonsVoorClubAsync(
+        NpgsqlConnection connection, string clubCode, int startMaand, DateOnly vandaag, CancellationToken ct = default)
+    {
+        startMaand = SeizoenStartMaand.OfStandaard(startMaand);
         var jaar = vandaag.Year;
         var toegevoegd = 0;
 
         // Tak 1 — "No seasons found" uit het origineel: zaai de laatste twee afgeronde seizoenen.
-        // Op een normaal draaiende installatie doet migratie 008 dit al; deze tak is er voor een
-        // database waar de tabel om welke reden dan ook leeg is, zodat de sync niet stilvalt.
-        if (!await HeeftSeizoenenAsync(connection, ct))
+        // Op een normaal draaiende installatie doet migratie 043 dit al; deze tak is er voor een
+        // club waarvoor de tabel om welke reden dan ook leeg is, zodat de sync niet stilvalt.
+        if (!await HeeftSeizoenenAsync(connection, clubCode, ct))
         {
-            toegevoegd += await VoegSeizoenToeAsync(connection, jaar - 2, startMaand, ct);
-            toegevoegd += await VoegSeizoenToeAsync(connection, jaar - 1, startMaand, ct);
+            toegevoegd += await VoegSeizoenToeAsync(connection, clubCode, jaar - 2, startMaand, ct);
+            toegevoegd += await VoegSeizoenToeAsync(connection, clubCode, jaar - 1, startMaand, ct);
         }
 
         // Tak 2 — de doorrol: vanaf twee maanden vóór de seizoensstart bestaat het nieuwe seizoen.
-        //
-        // De drempeldatum wordt met intervalrekenkunde bepaald en niet met make_date(jaar,
-        // startMaand - 2, 1): bij startMaand 1 of 2 levert dat een ongeldige maand op. Het
-        // SQL Server-origineel heeft die fout wel (DATEFROMPARTS(..., @SeasonStartMonth-2, ...)
-        // faalt daar bij januari/februari); migratie 008 loste hem al op en deze implementatie
-        // houdt die correctie aan. Voor de gangbare startmaanden (juli/augustus) is het gedrag
-        // identiek aan het origineel.
-        var drempel = new DateTime(jaar, 1, 1).AddMonths(startMaand - 3);
-        if (vandaag >= DateOnly.FromDateTime(drempel))
-            toegevoegd += await VoegSeizoenToeAsync(connection, jaar, startMaand, ct);
+        // De drempeldatum (SeizoenKalender.DoorrolDatum) gebruikt intervalrekenkunde en niet
+        // make_date(jaar, startMaand - 2, 1): bij startMaand 1 of 2 levert dat een ongeldige maand op.
+        // Het SQL Server-origineel had die fout; die procedure rekent sinds #1715 ook met DATEADD.
+        if (vandaag >= SeizoenKalender.DoorrolDatum(jaar, startMaand))
+            toegevoegd += await VoegSeizoenToeAsync(connection, clubCode, jaar, startMaand, ct);
 
         return toegevoegd;
     }
 
     /// <summary>
-    /// Voegt het seizoen <c>&lt;jaar&gt;-&lt;jaar+1&gt;</c> toe als het nog niet bestaat.
+    /// Bouwt de seizoensrijen van één club opnieuw op uit de huidige startmaand — na een wijziging van
+    /// <c>SeasonStartMonth</c> in Beheer &gt; Instellingen (#1715). De tabel is afgeleide data: de rijen
+    /// van de club worden verwijderd en met de nieuwe maand opnieuw geplaatst, in één transactie.
+    /// Andere clubs worden niet aangeraakt.
+    /// </summary>
+    public static async Task<int> HerbouwSeizoenenVoorClubAsync(
+        NpgsqlConnection connection, string clubCode, int startMaand, DateOnly vandaag, CancellationToken ct = default)
+    {
+        await using var transactie = await connection.BeginTransactionAsync(ct);
+        await using (var verwijder = new NpgsqlCommand("DELETE FROM public.season WHERE clubcode = @clubcode", connection, transactie))
+        {
+            verwijder.Parameters.AddWithValue("clubcode", clubCode);
+            await verwijder.ExecuteNonQueryAsync(ct);
+        }
+        var toegevoegd = await EnsureSeasonsVoorClubAsync(connection, clubCode, startMaand, vandaag, ct);
+        await transactie.CommitAsync(ct);
+        return toegevoegd;
+    }
+
+    /// <summary>
+    /// Voegt het seizoen <c>&lt;jaar&gt;-&lt;jaar+1&gt;</c> van een club toe als het nog niet bestaat.
     /// <para>
-    /// De idempotentie leunt op <c>ON CONFLICT (name) DO NOTHING</c> tegen <c>ux_season_name</c>
-    /// (migratie 008) in plaats van op een <c>IF NOT EXISTS</c>-guard zoals het origineel: dat
-    /// laatste is een controle-en-daarna-schrijven met een venster ertussen, en de sync kan vanuit
-    /// meerdere invocaties tegelijk starten. #631 laat zien wat een niet-sluitende guard hier
-    /// oplevert — daar stonden drie identieke rijen voor hetzelfde seizoen in productie.
+    /// De idempotentie leunt op <c>ON CONFLICT (clubcode, name) DO NOTHING</c> tegen
+    /// <c>ux_season_clubcode_name</c> (migratie 043) in plaats van op een <c>IF NOT EXISTS</c>-guard zoals
+    /// het origineel: dat laatste is een controle-en-daarna-schrijven met een venster ertussen, en de
+    /// sync kan vanuit meerdere invocaties tegelijk starten. #631 laat zien wat een niet-sluitende guard
+    /// hier oplevert — daar stonden drie identieke rijen voor hetzelfde seizoen in productie.
     /// </para>
     /// </summary>
     private static async Task<int> VoegSeizoenToeAsync(
-        NpgsqlConnection connection, int jaar, int startMaand, CancellationToken ct)
+        NpgsqlConnection connection, string clubCode, int jaar, int startMaand, CancellationToken ct)
     {
-        var naam = $"{jaar}-{jaar + 1}";
-        var van = new DateTime(jaar, startMaand, 1);
-        // EOMONTH(DATEFROMPARTS(jaar+1, startMaand-1, 1)) uit het origineel = de dag vóór de start
-        // van het volgende seizoen. Die vorm werkt ook bij startMaand = 1, waar startMaand-1 = 0
-        // geen geldige maand is.
-        var tot = new DateTime(jaar + 1, startMaand, 1).AddDays(-1);
+        // Seizoensnaam en -grenzen uit de gedeelde seizoenskalender: het einde is de dag vóór de start
+        // van het volgende seizoen (werkt ook bij startMaand = 1, waar startMaand-1 = 0 geen maand is).
+        var seizoen = SeizoenKalender.Seizoen(jaar, startMaand);
 
         await using var cmd = new NpgsqlCommand(@"
-            INSERT INTO public.season (name, datefrom, dateuntil)
-            VALUES (@name, @datefrom, @dateuntil)
-            ON CONFLICT (name) DO NOTHING", connection);
-        cmd.Parameters.AddWithValue("name", naam);
-        cmd.Parameters.AddWithValue("datefrom", van.Date);
-        cmd.Parameters.AddWithValue("dateuntil", tot.Date);
+            INSERT INTO public.season (clubcode, name, datefrom, dateuntil)
+            VALUES (@clubcode, @name, @datefrom, @dateuntil)
+            ON CONFLICT (clubcode, name) DO NOTHING", connection);
+        cmd.Parameters.AddWithValue("clubcode", clubCode);
+        cmd.Parameters.AddWithValue("name", seizoen.Naam);
+        cmd.Parameters.AddWithValue("datefrom", seizoen.Van);
+        cmd.Parameters.AddWithValue("dateuntil", seizoen.Tot);
         return await cmd.ExecuteNonQueryAsync(ct);
     }
 
-    private static async Task<bool> HeeftSeizoenenAsync(NpgsqlConnection connection, CancellationToken ct)
+    private static async Task<bool> HeeftSeizoenenAsync(NpgsqlConnection connection, string clubCode, CancellationToken ct)
     {
-        await using var cmd = new NpgsqlCommand("SELECT 1 FROM public.season LIMIT 1", connection);
+        await using var cmd = new NpgsqlCommand("SELECT 1 FROM public.season WHERE clubcode = @clubcode LIMIT 1", connection);
+        cmd.Parameters.AddWithValue("clubcode", clubCode);
         return await cmd.ExecuteScalarAsync(ct) is not null;
     }
 
     /// <summary>
-    /// Zelfde bron en fallback als migratie 008: de laagste <c>seasonstartmonth</c> uit
-    /// <c>public.appsettings</c>, of <see cref="DefaultSeasonStartMonth"/> als die tabel geen
-    /// bruikbare waarde bevat.
+    /// Alle clubs met hun eigen startmaand uit <c>public.appsettings</c>. Een ongeldige of ontbrekende
+    /// waarde wordt <see cref="SeizoenStartMaand.Standaard"/> (juli): één regel voor de club zelf, geen
+    /// waarde uit andere clubs.
     /// </summary>
-    private static async Task<int> LeesSeasonStartMonthAsync(NpgsqlConnection connection, CancellationToken ct)
+    private static async Task<List<(string ClubCode, int StartMaand)>> LeesClubsAsync(NpgsqlConnection connection, CancellationToken ct)
     {
-        await using var cmd = new NpgsqlCommand("SELECT MIN(seasonstartmonth) FROM public.appsettings", connection);
-        var result = await cmd.ExecuteScalarAsync(ct);
-        return result is int maand && maand is >= 1 and <= 12 ? maand : DefaultSeasonStartMonth;
+        var clubs = new List<(string, int)>();
+        await using var cmd = new NpgsqlCommand("SELECT clubcode, seasonstartmonth FROM public.appsettings ORDER BY clubcode", connection);
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+            clubs.Add((reader.GetString(0), SeizoenStartMaand.OfStandaard(reader.IsDBNull(1) ? null : reader.GetInt32(1))));
+        return clubs;
     }
 }

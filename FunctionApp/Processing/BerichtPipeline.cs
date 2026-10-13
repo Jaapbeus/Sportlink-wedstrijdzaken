@@ -251,7 +251,7 @@ public static partial class BerichtPipeline
             return null;
         }
 
-        var seizoen = await SystemUtilities.SeasonHelper.GetCurrentKnvbSeizoenAsync(log);
+        var seizoen = await SystemUtilities.SeasonHelper.GetCurrentKnvbSeizoenAsync(log, clubCode);
         if (string.IsNullOrWhiteSpace(seizoen))
         {
             log.LogInformation("VERZET-ZONDER-DATUM - geen (toekomstig) seizoen gevonden in dbo.Season; val terug op het standaard herplan-pad");

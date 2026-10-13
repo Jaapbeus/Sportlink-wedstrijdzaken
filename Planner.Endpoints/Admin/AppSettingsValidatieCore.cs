@@ -1,5 +1,6 @@
 using Cronos;
 using Microsoft.AspNetCore.Mvc;
+using Planner.Shared.Sync;
 
 namespace Planner.Endpoints.Admin;
 
@@ -45,6 +46,11 @@ public static class AppSettingsValidatieCore
         // #1568 deel D: zelfde regel; een ontbrekende waarde telt elders als aan, dus nooit een vrije tekst toelaten.
         if (changes.TryGetValue("ZekerheidspoortActief", out var nieuwePoort) && nieuwePoort is not ("0" or "1" or "true" or "false"))
             return Fout("ZekerheidspoortActief moet 0/1 (aan/uit) zijn.");
+
+        // #1715: de seizoensstartmaand is een geheel getal 1 t/m 12 (de kolom is NOT NULL); een lege of
+        // vrije waarde zou het seizoenseinde en de bewaartermijn van persoonsgegevens verschuiven.
+        if (changes.TryGetValue("SeasonStartMonth", out var nieuweMaand) && !SeizoenStartMaand.TryParse(nieuweMaand, out _))
+            return Fout("SeasonStartMonth moet een maandnummer van 1 (januari) tot en met 12 (december) zijn.");
 
         return null;
     }

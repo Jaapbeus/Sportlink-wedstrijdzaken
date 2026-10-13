@@ -27,7 +27,7 @@ namespace FunctionApp.Postgres.Tests;
 ///
 /// <para>
 /// Isolatie volgt <see cref="PostgresSeasonHelperKnvbSeizoenIntegrationTests"/>: <c>public.season</c>
-/// heeft geen ClubCode-discriminator, dus in plaats van de tabel te legen wordt één rij met een
+/// is per club, dus in plaats van de tabel te legen wordt één rij met een
 /// extreem ver-in-de-toekomst <c>dateuntil</c> gezet die <c>MAX(dateuntil)</c> altijd domineert,
 /// ongeacht welke echte seizoensrijen aanwezig zijn.
 /// </para>
@@ -36,6 +36,8 @@ public class PostgresTemporeleScalarMappingIntegrationTests : IAsyncLifetime
 {
     // Max. 9 tekens — public.season.name is VARCHAR(9), zelfde vorm als een echte seizoensnaam.
     private const string DominantSeizoenNaam = "9998/9999";
+    // #1715: seizoenen zijn per club; de rij van deze testklasse hoort bij een eigen testclub.
+    private const string Club = "TEMPORELETEST";
     private static readonly DateOnly DominantDateFrom = new(9998, 1, 1);
     private static readonly DateOnly DominantDateUntil = new(9999, 6, 30);
 
@@ -50,7 +52,8 @@ public class PostgresTemporeleScalarMappingIntegrationTests : IAsyncLifetime
         await using var conn = new NpgsqlConnection(ConnectionString);
         await conn.OpenAsync();
         await using var cmd = new NpgsqlCommand(
-            "DELETE FROM public.season WHERE name = @naam", conn);
+            "DELETE FROM public.season WHERE clubcode = @club AND name = @naam", conn);
+        cmd.Parameters.AddWithValue("club", Club);
         cmd.Parameters.AddWithValue("naam", DominantSeizoenNaam);
         await cmd.ExecuteNonQueryAsync();
     }
@@ -60,10 +63,11 @@ public class PostgresTemporeleScalarMappingIntegrationTests : IAsyncLifetime
         await using var conn = new NpgsqlConnection(ConnectionString);
         await conn.OpenAsync();
         await using var cmd = new NpgsqlCommand("""
-            INSERT INTO public.season (name, datefrom, dateuntil)
-            VALUES (@naam, @datefrom, @dateuntil)
-            ON CONFLICT (name) DO UPDATE SET datefrom = EXCLUDED.datefrom, dateuntil = EXCLUDED.dateuntil
+            INSERT INTO public.season (clubcode, name, datefrom, dateuntil)
+            VALUES (@club, @naam, @datefrom, @dateuntil)
+            ON CONFLICT (clubcode, name) DO UPDATE SET datefrom = EXCLUDED.datefrom, dateuntil = EXCLUDED.dateuntil
             """, conn);
+        cmd.Parameters.AddWithValue("club", Club);
         cmd.Parameters.AddWithValue("naam", DominantSeizoenNaam);
         cmd.Parameters.AddWithValue("datefrom", DominantDateFrom.ToDateTime(TimeOnly.MinValue));
         cmd.Parameters.AddWithValue("dateuntil", DominantDateUntil.ToDateTime(TimeOnly.MinValue));
@@ -75,7 +79,7 @@ public class PostgresTemporeleScalarMappingIntegrationTests : IAsyncLifetime
     {
         await ZaaiDominantSeizoenAsync();
 
-        var einde = await PlannerSettingsRepository.GetSeasonEndDateAsync(ConnectionString);
+        var einde = await PlannerSettingsRepository.GetSeasonEndDateAsync(ConnectionString, Club);
 
         einde.Should().Be(DominantDateUntil,
             "MAX(dateuntil) is een DATE-kolom; komt hier null uit, dan past de patroonvergelijking "
@@ -87,7 +91,7 @@ public class PostgresTemporeleScalarMappingIntegrationTests : IAsyncLifetime
     {
         await ZaaiDominantSeizoenAsync();
 
-        var offset = await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(NullLogger.Instance);
+        var offset = await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(NullLogger.Instance, Club);
 
         var verwacht = (int)Math.Ceiling(
             (DominantDateUntil.ToDateTime(TimeOnly.MinValue) - DateTime.UtcNow.Date).TotalDays / 7.0);
@@ -102,7 +106,7 @@ public class PostgresTemporeleScalarMappingIntegrationTests : IAsyncLifetime
         await ZaaiDominantSeizoenAsync();
 
         var offset = await PostgresSeasonHelper.GetSeasonStartWeekOffsetAsync(
-            DominantDateFrom.Year, NullLogger.Instance);
+            DominantDateFrom.Year, NullLogger.Instance, Club);
 
         var verwacht = (int)Math.Floor(
             (DominantDateFrom.ToDateTime(TimeOnly.MinValue) - DateTime.UtcNow.Date).TotalDays / 7.0);
@@ -115,7 +119,7 @@ public class PostgresTemporeleScalarMappingIntegrationTests : IAsyncLifetime
     {
         await ZaaiDominantSeizoenAsync();
 
-        (await PostgresSeasonHelper.GetSeasonStartWeekOffsetOrNullAsync(DominantDateFrom.Year)).Should().NotBeNull();
-        (await PostgresSeasonHelper.GetSeasonStartWeekOffsetOrNullAsync(1999)).Should().BeNull();
+        (await PostgresSeasonHelper.GetSeasonStartWeekOffsetOrNullAsync(DominantDateFrom.Year, Club)).Should().NotBeNull();
+        (await PostgresSeasonHelper.GetSeasonStartWeekOffsetOrNullAsync(1999, Club)).Should().BeNull();
     }
 }

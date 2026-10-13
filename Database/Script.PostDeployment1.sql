@@ -1029,7 +1029,10 @@ GO
 -- iets kan invoegen. Volgorde is essentieel: de constraint kan pas na het opruimen, anders faalt
 -- de deploy op de bestaande duplicaten.
 -- ============================================================
+-- #1715: alleen voor de oude structuur (zonder ClubCode). Daarna is de sleutel (ClubCode, Name) en zou
+-- PARTITION BY [Name] het seizoen van een andere club als duplicaat verwijderen.
 IF EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.Season'))
+   AND COL_LENGTH('dbo.Season', 'ClubCode') IS NULL
 BEGIN
     -- Rijen zonder naam zijn onbruikbaar (de naam is de business key) en blokkeren NOT NULL.
     DELETE FROM [dbo].[Season] WHERE [Name] IS NULL;
@@ -1061,27 +1064,15 @@ BEGIN
 END
 GO
 
--- Update the Season and datetable
--- Een scalar subquery zonder aggregatie faalt met Msg 512 zodra dbo.AppSettings meer dan één rij
--- heeft — en dat is altijd het geval nadat de AllStars FC demo-club verderop in dit script is
--- geseed. Gevolg: vanaf de tweede deploy brak dit statement en werd dbo.Season/dbo.DateTable niet
--- meer bijgewerkt, waardoor een nieuw seizoen niet automatisch werd aangemaakt. Zelfde klasse
--- fout als #435.
---
--- MIN() is hier de juiste keuze: dbo.Season en dbo.DateTable zijn clubneutraal (geen ClubCode),
--- dus het bereik moet de vroegst startende club omvatten. Bewust géén filter op SyncEnabled of
--- ORDER BY [Id]: SyncEnabled wordt pas verderop in dit script toegevoegd en een Id-kolom bestaat
--- niet in dbo.AppSettings — beide zouden een compile-fout geven op oudere installaties.
---
--- #734: de procedure zelf wordt verderop in dit script aangemaakt. Op een verse database bestaat
--- hij hier dus nog niet en faalde deze aanroep met "Could not find stored procedure". De aanroep
--- staat daarom achter een bestaanscheck; direct ná de definitie verderop volgt een tweede aanroep
--- die het seizoen alsnog vult wanneer dbo.Season nog leeg is. Zo werkt zowel een bestaande
--- database (eerste aanroep) als een verse (tweede aanroep).
-DECLARE @SeasonStartMonth INT = (SELECT MIN([SeasonStartMonth]) FROM [dbo].[AppSettings]);
-
-IF @SeasonStartMonth IS NOT NULL AND OBJECT_ID('dbo.sp_UpdateSeasonTable') IS NOT NULL
-    EXEC [dbo].[sp_UpdateSeasonTable] @SeasonStartMonth;
+-- #1715: dbo.Season krijgt een ClubCode: de seizoenen worden per club bijgehouden met de eigen
+-- SeasonStartMonth van die club. De kolom wordt hier alvast toegevoegd (de seizoensprocedure verderop
+-- verwijst ernaar); het omzetten van bestaande rijen, de nieuwe sleutel en de aanroep per club staan
+-- direct na de procedure-definitie, omdat dbo.AppSettings.ClubCode pas na de sectie hieronder bestaat
+-- en de oude aanroep (EXEC sp_UpdateSeasonTable @SeasonStartMonth met MIN() over alle clubs) met de
+-- nieuwe signatuur niet meer past.
+IF EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.Season'))
+   AND COL_LENGTH('dbo.Season', 'ClubCode') IS NULL
+    ALTER TABLE [dbo].[Season] ADD [ClubCode] NVARCHAR(20) NULL;
 GO
 -- ============================================================
 -- #30: Multi-club fundament — ClubCode + Accommodatie
@@ -2245,11 +2236,13 @@ IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.Season'
 BEGIN
     -- #631: Name is NOT NULL met unique constraint, zodat een verse installatie meteen beschermd
     -- is tegen duplicaatseizoenen. Bestaande installaties worden hierboven opgeruimd en gemigreerd.
+    -- #1715: per club (ClubCode), zie het blok na sp_UpdateSeasonTable.
     CREATE TABLE [dbo].[Season] (
+        [ClubCode]  NVARCHAR(20) NOT NULL,
         [Name]      NCHAR(9) NOT NULL,
         [DateFrom]  DATE     NULL,
         [DateUntil] DATE     NULL,
-        CONSTRAINT [UQ_Season_Name] UNIQUE ([Name])
+        CONSTRAINT [UQ_Season_ClubCode_Name] UNIQUE ([ClubCode], [Name])
     );
 END
 GO
@@ -2357,31 +2350,42 @@ GO
 
 -- Bron: Database/dbo/System Stored Procedures/sp_UpdateSeasonTable.sql
 CREATE OR ALTER PROCEDURE [dbo].[sp_UpdateSeasonTable]
+    @ClubCode NVARCHAR(20),
     @SeasonStartMonth INT
 AS
 BEGIN
+	-- #1715: de seizoenen worden per club bijgehouden (dbo.Season.ClubCode) met de eigen
+	-- SeasonStartMonth van die club. Een ongeldige maand valt terug op juli (de kolomdefault).
+	-- De datumrekenkunde gebruikt DATEADD i.p.v. DATEFROMPARTS(.., @SeasonStartMonth-1/-2, ..): die
+	-- vorm gaf bij januari/februari een ongeldige maand (0, -1) en liet de deploy falen.
+	IF @SeasonStartMonth IS NULL OR @SeasonStartMonth NOT BETWEEN 1 AND 12
+		SET @SeasonStartMonth = 7;
+
 	DECLARE @YearStart INT;
 	DECLARE @YearEnd   INT;
 
-	-- No seasons found! Add last two seasons
-	IF (SELECT YEAR(MAX(DateUntil)) FROM [dbo].[Season]) IS NULL 
+	-- No seasons found for this club! Add last two seasons
+	IF NOT EXISTS (SELECT 1 FROM [dbo].[Season] WHERE [ClubCode] = @ClubCode)
 	BEGIN
 		INSERT INTO [dbo].[Season]
 			(
+			[ClubCode],
 			[Name],
 			[DateFrom],
 			[DateUntil]
 			)
 		VALUES 
 			(
+			@ClubCode,
 			CONCAT(YEAR(GETDATE())-2,'-',YEAR(GETDATE())-1),
 			DATEFROMPARTS(YEAR(GETDATE())-2,@SeasonStartMonth,1),
-			EOMONTH(DATEFROMPARTS(YEAR(GETDATE())-1,@SeasonStartMonth-1,1))
+			DATEADD(DAY,-1,DATEFROMPARTS(YEAR(GETDATE())-1,@SeasonStartMonth,1))
 			),
 			(
+			@ClubCode,
 			CONCAT(YEAR(GETDATE())-1,'-',YEAR(GETDATE())),
 			DATEFROMPARTS(YEAR(GETDATE())-1,@SeasonStartMonth,1),
-			EOMONTH(DATEFROMPARTS(YEAR(GETDATE()),@SeasonStartMonth-1,1))
+			DATEADD(DAY,-1,DATEFROMPARTS(YEAR(GETDATE()),@SeasonStartMonth,1))
 			);
 	END
 
@@ -2395,28 +2399,95 @@ BEGIN
 	-- werkt ook met toekomstige seizoenen in de tabel.
 	DECLARE @NewSeasonName NCHAR(9) = CONCAT(YEAR(GETDATE()),'-',YEAR(GETDATE())+1);
 
-	IF NOT EXISTS (SELECT 1 FROM [dbo].[Season] WHERE [Name] = @NewSeasonName)
-		AND GETDATE() >= DATEFROMPARTS(YEAR(GETDATE()),@SeasonStartMonth-2,1)
+	IF NOT EXISTS (SELECT 1 FROM [dbo].[Season] WHERE [ClubCode] = @ClubCode AND [Name] = @NewSeasonName)
+		AND CAST(GETDATE() AS DATE) >= DATEADD(MONTH,@SeasonStartMonth-3,DATEFROMPARTS(YEAR(GETDATE()),1,1))
 	BEGIN
 		INSERT INTO [dbo].[Season]
 			(
+			[ClubCode],
 			[Name],
 			[DateFrom],
 			[DateUntil]
 			)
 		 VALUES
 			(
+			@ClubCode,
 			@NewSeasonName,
 			DATEFROMPARTS(YEAR(GETDATE()),@SeasonStartMonth,1),
-			EOMONTH(DATEFROMPARTS(YEAR(GETDATE())+1,@SeasonStartMonth-1,1))
+			DATEADD(DAY,-1,DATEFROMPARTS(YEAR(GETDATE())+1,@SeasonStartMonth,1))
 			)
 	END;
 
-	-- Create a new DateTable based on the new start and enddate in seasons table
+	-- Create a new DateTable based on the new start and enddate in seasons table. De DateTable is een
+	-- kalender zonder club en omvat daarom het bereik van de seizoenen van alle clubs.
 	SELECT @YearStart = YEAR(MIN(DateFrom))  FROM [dbo].[Season];
 	SELECT @YearEnd   = YEAR(MAX(DateUntil)) FROM [dbo].[Season];
 	EXEC [dbo].[sp_CreateDateTable] @YearStart, @YearEnd;
 END;
+GO
+
+-- ============================================================
+-- #1715: bestaande dbo.Season-rijen per club omzetten en de seizoenen per club doorrollen.
+--
+-- Voorheen was dbo.Season clubneutraal en werd de procedure aangeroepen met MIN(SeasonStartMonth) over
+-- alle clubs (een gok zodra twee clubs een verschillende maand hebben). Nu heeft elke club zijn eigen
+-- rijen, berekend uit zijn eigen SeasonStartMonth (standaard 7, dus bestaand gedrag blijft gelijk).
+--
+-- Elke bestaande (clubloze) rij wordt per club opnieuw berekend; de seizoensnaam ("2026-2027") bepaalt
+-- het startjaar. Clubs met een ongeldige maand worden overgeslagen: de procedure zaait die hieronder
+-- met de standaardmaand. Idempotent: een tweede run vindt geen clubloze rijen meer.
+-- ============================================================
+IF OBJECT_ID('dbo.Season') IS NOT NULL AND COL_LENGTH('dbo.Season', 'ClubCode') IS NOT NULL
+BEGIN
+    IF EXISTS (SELECT 1 FROM sys.key_constraints
+               WHERE parent_object_id = OBJECT_ID('dbo.Season') AND name = 'UQ_Season_Name')
+        ALTER TABLE [dbo].[Season] DROP CONSTRAINT [UQ_Season_Name];
+
+    IF EXISTS (SELECT 1 FROM [dbo].[Season] WHERE [ClubCode] IS NULL)
+    BEGIN
+        INSERT INTO [dbo].[Season] ([ClubCode], [Name], [DateFrom], [DateUntil])
+        SELECT a.[ClubCode],
+               s.[Name],
+               DATEFROMPARTS(TRY_CAST(LEFT(s.[Name], 4) AS INT), a.[SeasonStartMonth], 1),
+               DATEADD(DAY, -1, DATEFROMPARTS(TRY_CAST(LEFT(s.[Name], 4) AS INT) + 1, a.[SeasonStartMonth], 1))
+        FROM [dbo].[Season] s
+        CROSS JOIN [dbo].[AppSettings] a
+        WHERE s.[ClubCode] IS NULL
+          AND s.[Name] LIKE '[0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]'
+          AND a.[SeasonStartMonth] BETWEEN 1 AND 12
+          AND NOT EXISTS (SELECT 1 FROM [dbo].[Season] x WHERE x.[ClubCode] = a.[ClubCode] AND x.[Name] = s.[Name]);
+
+        DELETE FROM [dbo].[Season] WHERE [ClubCode] IS NULL;
+    END
+
+    IF EXISTS (SELECT 1 FROM sys.columns
+               WHERE object_id = OBJECT_ID('dbo.Season') AND name = 'ClubCode' AND is_nullable = 1)
+        ALTER TABLE [dbo].[Season] ALTER COLUMN [ClubCode] NVARCHAR(20) NOT NULL;
+
+    IF NOT EXISTS (SELECT 1 FROM sys.key_constraints
+                   WHERE parent_object_id = OBJECT_ID('dbo.Season') AND name = 'UQ_Season_ClubCode_Name')
+        ALTER TABLE [dbo].[Season] ADD CONSTRAINT [UQ_Season_ClubCode_Name] UNIQUE ([ClubCode], [Name]);
+END
+GO
+
+-- Seizoenen en DateTable bijwerken, per club met de eigen startmaand. Geen aggregaat over de rijen van
+-- alle clubs: een scalar subquery zonder aggregatie faalde met Msg 512 (#435), MIN() gaf een gok (#1715).
+-- Op een verse database bestaat de procedure pas vanaf dit punt, dus de aanroep staat hier (#734).
+IF OBJECT_ID('dbo.sp_UpdateSeasonTable') IS NOT NULL
+BEGIN
+    DECLARE @SeasonClubCode NVARCHAR(20), @SeasonStartMonthClub INT;
+    DECLARE seizoen_clubs CURSOR LOCAL FAST_FORWARD FOR
+        SELECT [ClubCode], [SeasonStartMonth] FROM [dbo].[AppSettings] ORDER BY [ClubCode];
+    OPEN seizoen_clubs;
+    FETCH NEXT FROM seizoen_clubs INTO @SeasonClubCode, @SeasonStartMonthClub;
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        EXEC [dbo].[sp_UpdateSeasonTable] @SeasonClubCode, @SeasonStartMonthClub;
+        FETCH NEXT FROM seizoen_clubs INTO @SeasonClubCode, @SeasonStartMonthClub;
+    END
+    CLOSE seizoen_clubs;
+    DEALLOCATE seizoen_clubs;
+END
 GO
 
 -- Bron: Database/dbo/System Stored Procedures/sp_CreateTargetTableFromSource.sql
@@ -2718,6 +2789,7 @@ SELECT dt.[Date]
       ,dt.[MonthName]
       ,dt.[IsWeekend]
 	  ,s.Name           As Season
+	  ,s.ClubCode       As ClubCode
   FROM [dbo].[DateTable] dt
   INNER JOIN [dbo].[Season] s
 	ON dt.Date BETWEEN s.DateFrom AND s.DateUntil;

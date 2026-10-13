@@ -175,7 +175,7 @@ internal static partial class BerichtPipeline
             return null;
         }
 
-        var seizoen = await PostgresSeasonHelper.GetCurrentKnvbSeizoenAsync(log);
+        var seizoen = await PostgresSeasonHelper.GetCurrentKnvbSeizoenAsync(log, clubCode);
         if (string.IsNullOrWhiteSpace(seizoen))
         {
             log.LogInformation("VERZET-ZONDER-DATUM - geen (toekomstig) seizoen gevonden in public.season; val terug op het standaard herplan-pad");

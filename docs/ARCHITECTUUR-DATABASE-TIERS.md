@@ -102,6 +102,7 @@ niet bijwerken naar de huidige toestand, wel doorzoekbaar houden.
 | [§78](#78-feedbackmeldingen-opslag-bewaartermijn-en-inzagelog-op-beide-tiers-764) | Feedbackmeldingen: opslag, bewaartermijn en inzagelog op beide tiers (#764) | **geldend** |
 | [§82](#82-inzagelog-van-teambegeleiding-tabel-bewaartermijn-en-orkestratie-op-beide-tiers-1701) | Inzagelog van teambegeleiding: tabel, bewaartermijn en orkestratie op beide tiers (#1701) | **geldend** |
 | [§83](#83-persoonskolommen-in-de-historietabellen-seizoensretentie-en-rls-vanuit-de-generator-1698) | Persoonskolommen in de historietabellen: seizoensretentie en RLS vanuit de generator (#1698) | **geldend** |
+| [§84](#84-seizoenen-per-club-seizoensstartmaand-instelbaar-en-geen-minmax-over-clubs-1715) | Seizoenen per club: seizoensstartmaand instelbaar en geen MIN()/MAX() over clubs (#1715) | **geldend** |
 
 ## 1. Bouwvolgorde (vier tiers, vaste volgorde)
 
@@ -4872,3 +4873,40 @@ een levende database voor unit-tests); hij is lokaal tegen een wegwerpcontainer 
 standaard-collation `SQL_Latin1_General_CP1_CI_AS`) gedraaid, de Postgres-suite ook in CI. Dat de
 datumselectie op beide tiers gelijk is, bewaakt in CI dus de unit-test op de gedeelde functie; de
 gedeelde invoertabel op SQL Server alleen lokaal.
+
+## 84. Seizoenen per club: seizoensstartmaand instelbaar en geen MIN()/MAX() over clubs (#1715)
+
+Eigenaarsbesluit 2026-10-13: de seizoensstartmaand (`public.appsettings.seasonstartmonth` /
+`dbo.AppSettings.SeasonStartMonth`, standaard 7 = juli) is per club instelbaar in Beheer > Instellingen
+(keuzelijst van twaalf maanden), en seizoenseinde en alle afgeleide berekeningen lezen de waarde van de
+betreffende club. Er wordt niet meer gegokt met `MIN()`/`MAX()` over de rijen van alle clubs. Dit vervangt
+de beschrijving in §21 en in migratie 008 (`MIN(seasonstartmonth)`); die tekst blijft historie.
+
+**Beslissing (b): de seizoenstabel krijgt een `ClubCode`.** Alternatief was één gedeelde tabel met een
+expliciete afleiding per club; dat laat elke lezer opnieuw kiezen welke club telt. Nu is de sleutel
+`(clubcode, name)` en leest elke consument alleen de rijen van zijn club.
+
+| Onderdeel | Postgres | SQL Server |
+|---|---|---|
+| Schema | migratie `043_season_per_club.sql`: kolom `clubcode`, unieke `(clubcode, name)` in plaats van `name`, bestaande rijen per club herberekend uit de eigen maand, daarna `NOT NULL` (geen nieuwe tabel, RLS sinds 021) | `Database/dbo/Tables/Season.sql` én idempotent `Script.PostDeployment1.sql` (kolom toevoegen, rijen per club omzetten, `UQ_Season_ClubCode_Name`) |
+| Doorrol | `PostgresSeasonProcedures.EnsureSeasonsAsync` loopt over alle clubs, elk met de eigen maand | `sp_UpdateSeasonTable @ClubCode, @SeasonStartMonth`, aangeroepen per club (cursor) in `Script.PostDeployment1.sql` direct na de definitie |
+| Lezers | `PostgresSeasonHelper` (`GetSeasonEndWeekOffsetAsync`, `GetSeasonStartWeekOffsetAsync`/`OrNull`, `GetCurrentKnvbSeizoenAsync`) en `PlannerSettingsRepository.GetSeasonEndDateAsync`, alle met `clubCode` (zonder waarde: de primaire club) | `SystemUtilities.SeasonHelper` en `PlannerSettingsRepository.GetSeasonEndDateAsync`, idem |
+| Wijzigen | `PUT /api/beheer/settings` (`SeasonStartMonth`, validatie in `AppSettingsValidatieCore`, auditregel zoals andere velden) en daarna `HerbouwSeizoenenVoorClubAsync` (verwijderen + opnieuw plaatsen, één transactie, alleen die club) | idem via `SqlServerSeizoenHerbouw` (bewust niet via `sp_UpdateSeasonTable`: die herbouwt ook `dbo.DateTable` met `DROP TABLE`) |
+| Bewaartermijn #1698 | `IHisRetentieOpslag` leest en wist per club: elke club heeft zijn eigen grens; rijen zonder clubstempel horen bij de primaire club (`syncenabled`, laagste clubcode) | idem |
+
+**Gedeelde regel:** `Planner.Shared/Sync/SeizoenStartMaand.cs` (standaard, geldige reeks, maandnamen; ook als gelinkt
+bronbestand in BlazorAdmin) en `SeizoenKalender.cs` (seizoensnaam en -grenzen uit de maand, doorroldatum met
+intervalrekenkunde, zodat januari/februari geen ongeldige maand geven). `dbo.DateTable` blijft een kalender zonder club
+(bereik over alle seizoenen); `pub.DateTable` heeft er een kolom `ClubCode` bij, zodat een rapportage per club kan filteren.
+
+**Gedrag bestaande installaties.** Elke club houdt dezelfde seizoensnamen; de datums volgen nu de eigen maand
+(standaard 7, dus gelijk aan de oude `MIN()`). Een ongeldige of ontbrekende maand telt als juli. De
+Postgres-migratie wordt vóór de code toegepast; de vorige codeversie kan daarna `public.season` niet meer
+bijvullen (`ON CONFLICT (name)` bestaat niet meer), wat zij best-effort afvangt en logt: de bestaande rijen blijven
+leesbaar, en de nieuwe code zaait bij de eerste run ontbrekende seizoenen.
+
+**Wijzigen heeft gevolgen.** Verschuift het seizoenseinde naar eerder, dan worden persoonskolommen in
+`his.matches`/`his.matchdetails` eerder leeggemaakt (onomkeerbaar); de pagina waarschuwt daarvoor vóór het opslaan.
+
+**Niet bewezen in deze PR:** de integratietests tegen een echte database (Postgres-suite, SQL Server-suite, migratie en
+PostDeployment-pad) zijn lokaal niet gedraaid (gedeelde debugomgeving, geen Docker); dat bewijs komt van CI. Zie het PR-verslag.
