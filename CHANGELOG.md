@@ -19,6 +19,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Fixed
+- Infrastructuur: Easy Auth-parameters (tenant en client) zijn nu ook voor de Consumption-module verplicht en worden in de infrastructure-workflow uit bestaande secrets meegegeven; geen stille uitrol zonder platform-auth meer (#1731)
 - Wedstrijd aanmaken: een team uit de dropdown (bondsnotatie, bijv. `[club] O14-2`) wordt nu gevonden in Sportlinks teamlijst (lokale notatie, bijv. `JO14-2`) in plaats van de fout "niet (eenduidig) gevonden" (#1737)
 
 ### Changed
