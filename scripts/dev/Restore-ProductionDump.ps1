@@ -2,8 +2,8 @@
 #
 # Eenmalige, lokale kopie van de ECHTE productie-Postgres (Supabase) naar de lokale Docker-
 # Postgres (`sportlink-postgres`, zie docker-compose.yml), bedoeld om daarna handmatig
-# `/api/sync-matches` tegen de echte Sportlink API te draaien voor een acceptatietest met VRC's
-# eigen data — in plaats van elke keer een live-sync vanaf nul te bouwen.
+# `/api/sync-matches` tegen de echte Sportlink API te draaien voor een acceptatietest met de
+# eigen data van je club — in plaats van elke keer een live-sync vanaf nul te bouwen.
 #
 # WAAROM DEZE ROUTE EN NIET "GEWOON /api/sync-matches LOKAAL DRAAIEN":
 # /api/sync-matches haalt alleen wedstrijd-/teamdata op bij Sportlink zelf (his.matches, his.teams,
@@ -104,7 +104,7 @@ if (-not $env:PRODUCTIE_POSTGRES_CONNECTION_STRING) {
 
 Write-Host ""
 Write-Host "=== LET OP — DPO/CISO-waarschuwing ===" -ForegroundColor Red
-Write-Host "Dit haalt de VOLLEDIGE echte productiedatabase van VRC op, inclusief persoonsgegevens" -ForegroundColor Yellow
+Write-Host "Dit haalt de VOLLEDIGE echte productiedatabase van je club op, inclusief persoonsgegevens" -ForegroundColor Yellow
 Write-Host "(o.a. avg.Teambegeleiding, planner.EmailVerwerking) en overschrijft daarmee ALLES wat nu" -ForegroundColor Yellow
 Write-Host "lokaal in Postgres staat (container '$containerName', database '$env:POSTGRES_DB')." -ForegroundColor Yellow
 Write-Host ""
@@ -165,7 +165,8 @@ Write-Host ""
 Write-Host "Klaar. Vervolgstappen:" -ForegroundColor Green
 Write-Host "  1. .\scripts\dev\Start-Debug.ps1              (start FunctionApp.Postgres + BlazorAdmin lokaal)"
 Write-Host "  2. Invoke-RestMethod 'http://localhost:7094/api/sync-matches?reset=true&season=<jaar>'"
-Write-Host "     -> haalt de laatste live Sportlink-data op voor VRC (clientId staat al in de gerestorede AppSettings)"
+Write-Host "     -> haalt de laatste live Sportlink-data op voor je club (clientId staat al in de gerestorede AppSettings)"
+Write-Host "     -> vraagt lokaal tijdelijk AllowExternalIntegrations=true in local.settings.json, anders HTTP 503 (docs/DEVELOPER-SETUP.md 5.3)"
 Write-Host "  3. .\scripts\dev\Test-App.ps1                 (verificatielus, zie AGENTS.md)"
 Write-Host ""
 Write-Host "DPO-herinnering: dit is een eenmalige kopie voor een acceptatietest. Draai 'docker compose down -v'" -ForegroundColor Yellow

@@ -83,4 +83,24 @@ public class PostgresSchemaGeneratorTests
         sql.Should().Contain("\"teamcode\" VARCHAR(50),");
         sql.Should().NotContain("\"teamcode\" VARCHAR(50) NOT NULL");
     }
+    // #1698: his en stg worden niet door een migratie aangemaakt maar door deze generator, dus RLS
+    // hoort hier. Zonder dit zijn de tabellen alleen beschermd zolang een platformtrigger dat doet.
+    [Fact]
+    public void GenerateStgTable_ZetRowLevelSecurityAan_ZonderPolicy()
+    {
+        var sql = PostgresSchemaGenerator.GenerateStgTable(TestEntities.SingleKeyNoClub);
+
+        sql.Should().Contain("ALTER TABLE stg.\"matches\" ENABLE ROW LEVEL SECURITY;");
+        sql.Should().NotContain("CREATE POLICY");
+    }
+
+    [Fact]
+    public void GenerateHisTable_ZetRowLevelSecurityAanAlsDieUitStaat_ZonderPolicy()
+    {
+        var sql = PostgresSchemaGenerator.GenerateHisTable(TestEntities.SingleKeyWithClub);
+
+        sql.Should().Contain("NOT c.relrowsecurity");
+        sql.Should().Contain("ALTER TABLE his.\"matches\" ENABLE ROW LEVEL SECURITY");
+        sql.Should().NotContain("CREATE POLICY");
+    }
 }

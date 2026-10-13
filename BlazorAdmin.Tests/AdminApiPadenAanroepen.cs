@@ -41,6 +41,7 @@ internal static class AdminApiPadenAanroepen
             ("SetSportlinkAutoLoginAsync", () => c.Sportlink.SetSportlinkAutoLoginAsync("rol a", new SportlinkAutoLoginRequestDto())),
             ("DeleteSportlinkAutoLoginAsync", () => c.Sportlink.DeleteSportlinkAutoLoginAsync("rol a")),
             ("GetSportlinkMatchInfoAsync", () => c.Sportlink.GetSportlinkMatchInfoAsync("W 1")),
+            ("GetMenuToegangAsync", () => c.Instellingen.GetMenuToegangAsync()),
             ("GetRolFeatureInstellingenAsync", () => c.Instellingen.GetRolFeatureInstellingenAsync()),
             ("ZetRolFeatureInstellingAsync", () => c.Instellingen.ZetRolFeatureInstellingAsync("beheer", "sleutel", true)),
             ("GetSportlinkPublicMatchIdAsync", () => c.Sportlink.GetSportlinkPublicMatchIdAsync("W 1")),

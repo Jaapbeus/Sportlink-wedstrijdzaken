@@ -142,7 +142,7 @@ public partial class EmailProcessorFunction
         var classificationResult = await new EmailClassificationService().ClassificeerBatchAsync(
             teClassificeren,
             email => aiService.ClassificeerBerichtAsync(email.Body, email.Onderwerp, email.Afzender),
-            IsOpenAiQuotaFout,
+            EmailFoutCategorie.IsOpenAiQuotaFout,
             log);
 
         if (classificationResult.AiAborted && classificationResult.QuotaException != null)
@@ -150,7 +150,7 @@ public partial class EmailProcessorFunction
             var quotaEx = classificationResult.QuotaException;
             if (await MoetOpenAiQuotaNoodmailVersturenAsync(ctx.Throttle, DateTime.UtcNow))
             {
-                await StuurOpenAiNoodmailAsync(ctx.Graph, CategorizeerFout(quotaEx), ctx.Throttle, log);
+                await StuurOpenAiNoodmailAsync(ctx.Graph, EmailFoutCategorie.Categoriseer(quotaEx), ctx.Throttle, log);
             }
             else
             {

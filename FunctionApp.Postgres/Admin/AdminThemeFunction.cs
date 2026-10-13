@@ -1,3 +1,5 @@
+using Planner.Endpoints.Admin;
+using FunctionApp.Postgres.Infrastructure;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -125,6 +127,8 @@ public static class AdminThemeFunction
         var log = context.GetLogger("AdminThemeExtract");
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+
+        if (UitgaandVerkeerCore.Blokkeer(EgressGuard.ExternalIntegrationsAllowed) is { } egressAntwoord) return egressAntwoord;
 
         // Lui: ThemeCore controleert eerst de vorm van de URL, zodat een onbruikbare URL geen
         // databaseaanroep kost.

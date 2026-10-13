@@ -66,6 +66,8 @@ De 10 OUDSTE ongelezen berichten uit de inbox (Graph: top=10, orderby receivedDa
 ┌─ Voorfilters (EmailBatchFilterService) ───────────────────────────────────────┐
 │  1. Van eigen mailbox (GraphMailbox)?  → overslaan (mark as read)             │
 │  2. Afzender uitgesloten (cache)?      → overslaan (mark as read)             │
+│  3. Automatische afzender (headers)?   → label "Geen AI antwoord" + gelezen   │
+│     (Auto-Submitted ≠ no; Precedence bulk/junk/auto_reply; niet: list)        │
 │  Cold start: uitsluitingslijst eerst laden (fail-closed) en opnieuw filteren  │
 └──────────────────────────────────────────────────────────────────────────────┘
         │
@@ -343,21 +345,27 @@ trace alsnog vermeld dat het antwoord onzeker was (`poortActief = nee`).
 
 ### 1c. Stille skip — geen antwoord, geen verdere verwerking
 
-Deze emails worden stil overgeslagen (mark as read, verder niets):
+Deze emails worden overgeslagen zonder antwoord (mark as read; een automatische afzender krijgt daarnaast een label):
 
 | Reden | Conditie | Rij in de DB? |
 |---|---|---|
 | Eigen mailbox | Afzender = de mailbox zelf (`GraphMailbox`) — voorkomt loops | Nee |
 | Uitgesloten adres | Afzender staat in `dbo.UitgeslotenEmailAdressen` (`Actief = 1`) | Nee |
+| Automatische afzender (#1674) | Header `Auto-Submitted` met een andere waarde dan `no`, of `Precedence` = `bulk`/`junk`/`auto_reply` (`AutomatischeAfzenderHerkenning`). Het bericht krijgt het label "Geen AI antwoord" en een logregel met de headernaam, zodat de coördinator het terugvindt; mislukt het labelen, dan blijft het ongelezen voor de volgende poll. `Precedence: list` en een inkomende `X-Auto-Response-Suppress` tellen bewust niet: een lijstalias of ticketsysteem kan een gewoon verzoek doorsturen | Nee |
 | Al afgerond | Het MessageId staat in `planner.EmailVerwerking` **met een definitieve eindstatus** (idempotent) | Ja — die bestond al |
 
 > Drie correcties op een eerdere versie van deze tabel:
 > - Een filter "van intern domein → overslaan" bestaat niet in de code. `EmailBatchFilterService`
->   kent alleen de eigen mailbox en de uitsluitingslijst (#708).
+>   kent de eigen mailbox, de uitsluitingslijst (#708) en sinds #1674 de automatische afzenders.
 > - "Al verwerkt" was te ruim: het bestaan van een rij is niet genoeg meer. Zie §1d — een rij met
 >   een niet-definitieve status wordt juist opnieuw verwerkt (#712).
 > - "Al afgerond" is géén voorfilter: die check zit in fase 2, ná de AI-classificatie. Zo'n bericht
 >   kost dus nog wel een AI-call. De eerste twee filters draaien wél vóór de AI (#708).
+
+Omgekeerd krijgt elke uitgaande mail van de pijplijn de header `X-Auto-Response-Suppress: OOF, AutoReply`
+(`AutomatischeAfzenderHerkenning.UitgaandeHeaders`): de ontvanger stuurt dan geen afwezigheidsmelding of
+autoreply terug. Bewust niet `All`: dat onderdrukt bij Exchange-ontvangers ook onbestelbaarheids- en
+bezorgberichten, en een niet-bezorgd antwoord moet voor de coördinator zichtbaar blijven (#1674).
 
 De uitsluitingslijst wordt twee keer gecontroleerd: eerst tegen de proces-cache (fase 1, vóór de
 AI), daarna nog eens tegen de verse DB-lijst (fase 2). De cache heeft een geldigheidsduur van vijftien
@@ -876,6 +884,12 @@ Iemand vraagt wie de trainer, coach, begeleider of teamleider van een team is.
 
 **Wanneer:** Altijd bij dit type. Contactgegevens worden nooit gedeeld met de vraagsteller.
 
+> **Afzender van een e-mail versus ingelogde gebruiker.** "Nooit gedeeld" geldt voor wie de club mailt: de
+> auto-reply noemt geen naam, adres of telefoonnummer van een begeleider. Ingelogde gebruikers van de
+> beheertoepassing (rol `admin` of `user`) zien die gegevens wél op het scherm *Teambegeleiding*
+> ([BEHEERDER-HANDLEIDING.md](BEHEERDER-HANDLEIDING.md) §10); elke opvraging daar komt in het inzagelog
+> `avg.TeambegeleidingInzageLog` (#1701).
+
 ```
 {aanhef} {voornaam},
 
@@ -911,6 +925,15 @@ naar de coach. Is er geen coach gevonden in `avg.Teambegeleiding`, dan gebeurt d
 > `VerzoekType = TeambegeleidingDoorsturen` (een synthetische audit-rij, geen echt inkomend bericht —
 > `MessageId` is gegenereerd, niet afkomstig van Graph). Filter op `VerzoekType` om de twee in de
 > Email-log uit elkaar te houden.
+>
+> **Wat er van een handmatige doorstuur-actie bewaard blijft — twee sporen.**
+> 1. **De audit-rij** in `planner.EmailVerwerking`: het e-mailadres van de aanvrager (`Afzender`), alle
+>    ontvangers (`VerstuurdNaar`), het team in het vaste onderwerp `[team] Vraag doorgestuurd` en het tijdstip.
+>    **Niet** de berichttekst en niet het onderwerp dat de aanvrager typte. Termijn: na 30 dagen geanonimiseerd
+>    (adressen en onderwerp), na 90 dagen verwijderd (SECURITY.md, Laag 6).
+> 2. **De BCC-kopie** van het volledige bericht aan het *Planner e-mailadres* (`plannerEmailAdres`), net als
+>    bij de automatische doorsturing hierboven. Die staat in de mailbox van de coördinator; de bewaartermijnen
+>    van de applicatie gelden daar niet.
 
 ---
 
@@ -1276,6 +1299,109 @@ Dit blok wordt in review-mode opgeslagen in `AntwoordEmail` én verstuurd naar d
 `EmailReviewRecipient` (herstel van een regressie uit #543, zie #801) — de originele afzender
 krijgt nog steeds nooit iets te zien. Is `EmailReviewRecipient` niet geconfigureerd, dan wordt
 alleen opgeslagen en gelogd dat er geen testmail is verstuurd.
+
+---
+
+## 5. Doorgifte aan de AI-provider en verwerkingsregister (AVG art. 30)
+
+Deze paragraaf legt vast welke gegevens uit een bericht naar de externe AI-provider gaan, bij welke
+aanroep, wat er vooraf mee gebeurt en onder welke voorwaarden (register `WZ-AI-05` in
+[ARCHITECTUUR.md](ARCHITECTUUR.md) §10.5, principe in §8.5). Het beschrijft de code zoals die nu is;
+wijzigt een prompt of de invoer van een aanroep, dan gaat deze paragraaf in dezelfde PR mee.
+
+Velden die alleen de verwerkingsverantwoordelijke kan bevestigen, staan als *door de eigenaar in te
+vullen*. Een club die deze installatie overneemt, vult ze in haar eigen register in. Feedbackmeldingen
+gaan via een apart pad naar dezelfde provider; die registerrij staat in [FEEDBACK.md](FEEDBACK.md) §8.
+
+### 5a. Provider en model
+
+* **Provider: OpenAI, rechtstreeks via de OpenAI-API** (geen Azure OpenAI). Vastgelegd in `Program.cs`
+  van beide tiers: een `OpenAI.Chat.ChatClient`, aangeboden als `IChatClient`. De code stelt geen eigen
+  endpoint of regio in; het standaardendpoint van de SDK geldt.
+* **Model: configuratie.** App setting `AiModelName`; is die leeg, dan geldt de terugvalwaarde in
+  `Program.cs`. Welk model een installatie gebruikt, staat dus in haar configuratie, niet in dit document.
+* **Sleutel:** app setting `OpenAiApiKey`.
+* **Alleen waar uitgaande integraties zijn toegestaan.** `IChatClient` wordt alleen geregistreerd als
+  `OpenAiApiKey` gevuld is én `EgressGuard.ExternalIntegrationsAllowed()` dat toestaat (#857). Die
+  functie staat uitgaande integraties altijd toe bij Azure-hosting en daarbuiten standaard niet; alleen de
+  expliciete opt-in `AllowExternalIntegrations=true` (`DEVELOPER-SETUP.md` §5.3) staat ze daar toe. Zonder
+  toestemming gaat er niets naar de provider; de verwerking stopt dan met een logregel.
+* **Per aanroep:** temperatuur 0,1 en antwoordformaat JSON. Alle aanroepen staan in
+  `BerichtAiService` (`FunctionApp/Email/` en `FunctionApp.Postgres/Email/`, inhoudelijk gelijk).
+
+### 5b. Aanroepen
+
+| # | Aanroep | Wanneer | Terug van de provider |
+|---|---|---|---|
+| 1 | Classificatie (`ClassificeerBerichtAsync`) | Fase 1, voor elk ongelezen bericht dat de voorfilters passeert | JSON: type, datum(s), aanvangstijd, dagdeel, gewenste datum, teamnaam, leeftijdscategorie, tegenstander, samenvatting, namens wie, KNVB-notitie, heel veld |
+| 2 | Herclassificatie met leermomenten (zelfde methode, met voorbeelden) | Fase 2, alleen als de club gevalideerde leermomenten heeft | Als 1 |
+| 3 | Correctiedetectie (`DetecteerCorrectieAsync`) | Fase 2, alleen bij een reply op een eerder door ons beantwoord bericht (zelfde `ConversationId`) | JSON: is het een correctie, afgeleid type, samenvatting |
+| 4 | E-mailtester (`EmailTestFunction`, dry-run, rol `admin`) | Op verzoek van een beheerder | Als 1; de tester slaat niets op |
+
+Het antwoord aan de afzender schrijft de AI niet: dat komt uit de sjablonen van §2, gevuld met
+plannergegevens en gesaneerde modelvelden (`AiVeldSanering`).
+
+### 5c. Doorgiftetabel
+
+**Velden per aanroep** (nummers uit §5b):
+
+| Gegeven | Aanroepen | Persoonsgegeven | Bewerking vóór verzending |
+|---|---|---|---|
+| E-mailadres van de afzender (het `From`-adres; niet de weergavenaam) | 1, 2, 4 | Ja | Geen; markernaam geneutraliseerd |
+| Onderwerp | 1, 2, 3, 4 | Kan (vrije tekst) | Geen; markernaam geneutraliseerd |
+| Berichttekst | 1, 2, 3, 4 | Kan (vrije tekst: namen, contactgegevens, toevallig een gezondheidsgegeven, mogelijk over minderjarigen) | Mailboxberichten (1, 2, 3): HTML verwijderd (`EmailSanitizer.StripHtml`, in `EmailGraphService`). Alle aanroepen: begrensd op `BerichtBodyBegrenzing.MaxBodyTekens` tekens en markernaam geneutraliseerd. Tester (4): de ingevoerde tekst gaat zonder HTML-verwijdering naar de classificatie |
+| Clubnaam (instelling `clubName`) en datum van vandaag, in de system prompt | 1, 2, 4 | Nee | — |
+| Leermomenten: verzoektypes en samenvattingen | 2, 4 | Kan (samenvatting) | Samenvatting door `AiVeldSanering.Samenvatting` (`TraceBuilder.Saneer`: e-mailadressen en nummerreeksen gemaskeerd, begrensd) |
+| Oorspronkelijk verzoektype en samenvatting van het beantwoorde bericht | 3 | Kan (samenvatting) | Samenvatting is bij opslag al door `AiVeldSanering.Samenvatting` gegaan |
+
+Toelichting bij de bewerkingen:
+
+* **Wat niet naar de provider gaat.** Berichten uit de eigen mailbox, van een adres op de
+  uitsluitingslijst of van een automatische afzender worden vóór aanroep 1 uitgefilterd
+  (`EmailBatchFilterService`; zie het stroomschema hierboven). De weergavenaam van de afzender, de
+  internetheaders en bijlagen gaan niet mee.
+* **Berichttekst.** De volledige tekst zoals de mailbox hem levert, dus ook een handtekening of
+  geciteerde eerdere berichten als die in de mail staan, tot de begrenzing. Wordt er ingekort, dan
+  komt er een markering achter en een logregel met alleen lengtes.
+* **Markers.** Afzender, onderwerp en tekst staan in een datablok met per aanroep willekeurige markers;
+  de vaste markernaam wordt uit de tekst gehaald. Dat is een maatregel tegen prompt-injectie, geen
+  privacymaatregel.
+* **Persoonsgegevens in de invoer worden niet gemaskeerd.** Onderwerp en berichttekst gaan, op de
+  bewerkingen hierboven na, ongewijzigd mee. De saneringen in deze module werken op wat de provider
+  teruggeeft en wat de applicatie bewaart of toont: `AiVeldSanering` (vrije modelvelden vóór gebruik in
+  een antwoord), `TraceBuilder.Saneer` (samenvattingen, leermomenten, trace) en `AvgMaskering`
+  (afzender- en ontvangeradres in het e-maillog van de beheerinterface).
+
+**Voorwaarden van de doorgifte** (gelden voor alle velden hierboven):
+
+| Onderdeel | Inhoud |
+|---|---|
+| Verwerker | OpenAI (OpenAI-API, rechtstreeks) |
+| Rol | Verwerker in de zin van art. 28 AVG: classificatie in opdracht van de club |
+| Grondslag | *Door de eigenaar in te vullen.* In deze repository is voor deze verwerking geen grondslagbesluit vastgelegd. Ter vergelijking: feedback (FEEDBACK.md §7) en het leren vanuit de trace (SECURITY.md, Laag 6) steunen op art. 6 lid 1 sub f |
+| Verwerkersovereenkomst | *Door de eigenaar in te vullen*: vorm en datum van de overeenkomst met de provider voor het account waaronder `OpenAiApiKey` valt |
+| Bewaartermijn bij de verwerker | *Door de eigenaar in te vullen*: hoe lang de provider invoer en uitvoer van de API bewaart en of die voor andere doeleinden wordt gebruikt, volgens de overeenkomst en de accountinstellingen. De code zet hier niets voor |
+| Verwerkingslocatie | Standaardendpoint van de SDK, zonder regio-instelling in de code; of er buiten de EER wordt verwerkt, hangt af van account en voorwaarden — *door de eigenaar te bevestigen* |
+| Doorgifte-instrument | *Door de eigenaar in te vullen.* FEEDBACK.md §8 noemt voor dezelfde provider de standaardcontractbepalingen; bevestig of dat ook voor dit account en deze verwerking geldt |
+
+### 5d. Registerrij (AVG art. 30)
+
+| Veld | Inhoud |
+|---|---|
+| Verwerking | Classificatie van inkomende e-mail in de coördinatormailbox met een externe AI-provider, inclusief correctiedetectie op replies en de e-mailtester |
+| Verwerkingsverantwoordelijke | De club die deze installatie beheert (eigen fork en eigen Azure-resources) |
+| Doel | Vaststellen wat voor verzoek een bericht is en de planninggegevens (datum, tijd, team, tegenstander) eruit halen, zodat een antwoord kan worden opgebouwd of het bericht bij de coördinator terechtkomt |
+| Grondslag | Zie §5c, *door de eigenaar in te vullen* |
+| Betrokkenen | Afzenders van berichten aan de coördinatormailbox (onder meer wedstrijdsecretarissen van andere clubs, trainers, leden, ouders) en personen die in een bericht worden genoemd, mogelijk minderjarigen |
+| Categorieën persoonsgegevens | E-mailadres van de afzender, onderwerp, berichttekst; afgeleid: classificatie en gesaneerde samenvatting |
+| Bijzondere categorieën | Niet gevraagd en niet gestructureerd verwerkt. Vrije tekst kan er toevallig een bevatten (bijvoorbeeld een blessure in een afmelding); die gaat dan mee in de berichttekst |
+| Ontvangers | OpenAI (verwerker, §5c) · Microsoft (mailbox via Graph, hosting van de Function App) · de databasedienst van de actieve tier (opslag van de verwerkingsrij) |
+| Doorgifte buiten de EER | Zie §5c: verwerkingslocatie en doorgifte-instrument, *door de eigenaar in te vullen* |
+| Bewaartermijnen | In de applicatie: `planner.EmailVerwerking` geanonimiseerd na 30–90 dagen en verwijderd na 90 dagen (SECURITY.md, Laag 6); leermomenten met herkomst `Reply` volgen die retentie, admin-leermomenten zijn permanent maar verwijderbaar (§3d); de bewaarde trace bevat geen ruwe mailtekst (§3c). Bij de provider: zie §5c, *door de eigenaar in te vullen* |
+| Beveiliging | Aanroepen alleen waar `EgressGuard` uitgaande integraties toestaat · sleutel als app setting · voorfilters en uitsluitingslijst vóór de aanroep · begrenzing van de tekst · datablok met willekeurige markers · geen berichtinhoud, onderwerp of adres in logs (SECURITY.md, Laag 5) · modeluitvoer gesaneerd vóór gebruik · antwoord uit sjablonen |
+
+Bij een nieuwe club-installatie: neem deze rij en de voorwaarden uit §5c over in het eigen register en
+vul de eigenaarsvelden in.
 
 ---
 

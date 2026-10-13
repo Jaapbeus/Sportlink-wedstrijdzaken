@@ -1,3 +1,46 @@
+# HANDOFF — Sprint A #1607 en nazorg (stand 2026-10-12 ~15:00)
+
+Geverifieerd met `gh pr list`/`gh pr view`/`gh issue view` en `git log origin/develop`; niets hiervan is gereleased (`develop` op c2d60aba, versie 3.13.4.9).
+
+**Gemerged op `develop` vandaag (aanvulling op eerdere lijst):** #1670 (#1669: merge naar develop haalt `turn:` weg), #1681 (#1678 verhardingen), #1684 (#1672 auth-gate), en eerder #1659, #1660, #1661, #1662, #1663, #1667, Dependabot #1657/#1658 (#1668).
+
+**Open PR's (versies 3.13.4.10 t/m .14 zijn verdeeld; bij elke volgende merge CHANGELOG/csproj/openapi-conflicten oplossen en het plafond in `scripts/ci/codekwaliteit-plafonds.txt` optellen):**
+
+| PR | Issue(s) | Stand | Wie aan zet |
+|---|---|---|---|
+| #1682 | #1677 | Codex ronde 2 schoon op 7b996b49; vervolgpunten in #1689 | eigenaar merget |
+| #1685 | #1673 + #1674 | Codex ronde 2 schoon op 925e290e; bevat een index-migratie op beide tiers (schema) | eigenaar merget |
+| #1680 | #1671 | herontwerp na onafhankelijke verificatie (head 9abf7ed9, draft); Codex-rondes 1-2 gingen over oudere heads | eigenaar beslist: Codex ronde 3 of de Opus-verificatie als finale review |
+| #1679 | #1675 | verwerkt na onafhankelijke verificatie (head 66a5f505, draft); Codex-rondes 1-2 over oudere heads; open keuze: strenge hostregel (alleen dezelfde host met/zonder www) | eigenaar (zelfde besluit als #1680) |
+| #1683 | #1676 | verwerkt na onafhankelijke verificatie (head 68450976, draft); open eigenaarspunt: de twee tiers zijn bewust tekstueel uiteengehaald om het duplicatieplafond te ontwijken | eigenaar (zelfde besluit) |
+| #1687 | #1686 | Codex ronde 1 had één punt (race in de helper): verwerkt; ronde 2 aan te vragen op de nieuwe head | Codex (ronde 2), daarna eigenaar |
+
+**Openstaande eigenaarsbesluiten:**
+1. Verruiming van de zelfmerge-regel: uitzonderingslijst (auth, workflows, CI-guards, `source: owner`) en de tegenspraak met "een CI-run merget niet" (voorstel in de chat van 2026-10-12).
+2. Hostregel #1679 en tier-uiteenhaling #1683 (zie tabel).
+3. Rondelimiet voor #1679/#1680/#1683: Codex ronde 3, of de Opus-verificatie als finale review.
+4. R-01, R-02, R-04, R-13 en R-15 uit het besloten dossier (alleen de nummers; inhoud nooit publiek) en de GitHub-repo-instellingen (R-10).
+5. Na de release: live 3-user-test van de auth (rolgrens en auth-gate), MSAL-login met `form-action` in productie, e-mailtester-DryRun met AI, en de keuze voor oude opgeslagen favicon-/logo-waarden (#1679).
+6. Kleine issues: #1688 (clubafkorting in een dev-script), #1689 (restpunten clubcode-toetsing).
+
+**Modelroutering:** Fable-limiet ~95% op 2026-10-12: werk en verificatie met Opus; Fable alleen voor orkestratie; bij naderende limiet geen nieuwe agents en hervatten vanaf dit bestand op de resettijd (onbekend: vraag de eigenaar of lees `/usage`).
+
+**Lessen:** vóór elke reviewaanvraag alle `turn:`-labels lezen en in één `gh issue edit` vervangen; een onafhankelijke (read-only) verificatie vond vier blokkerende punten die twee Codex-rondes misten: Codex' "schoon" is geen bewijs op de huidige head; gebruik `gh pr view --json statusCheckRollup` (alle checks compleet en groen) in plaats van een vroeg terugkerende `gh pr checks --watch`.
+
+---
+
+# HANDOFF — nazorg na v3.13.2.0 (2026-10-12, orchestratorsessie; alles op `develop`, nog niet gereleased)
+
+**Gemerged op `develop` (2026-10-12):** #1659 (#1559: optimalisatie volgt Sportlinks blokduur, geen app-buffer voor Sportlink-wedstrijden; v3.13.3.0), #1660 (#1597: widgetlabel `via: feedback-widget`, oude label verwijderd en vijf historische issues gemigreerd; v3.13.3.1), #1663 (#1650: tier-onafhankelijke delen van `EmailProcessorFunction` naar `Planner.Shared/Email`, tier-duplicatie 5287 → 5171; de volledige fase-orkestratie achter een poort blijft bij #1271 wegens per-tier domeintypes), #1662 (#1647 hoofdmenu in groepen met rechten per rol + #1599 instellingen één keer per paginaopening; nieuw endpoint `GET /api/planner/menu-toegang`; v3.13.4.0).
+
+**Open PR's voor de eigenaar:** #1661 (#1641: `Build (PR)`/Security Scan zonder `branches`-filter, issue-beurt-prompt en zelfmerge-regel eisen beide check-runs op de head; squash-merge aanbevolen; eigenaarsbesluiten: bot-dispatch vs. escalatie, besloten notitie per SECURITY.md) en #1667 (#1664/#1665/#1666: issue-beurt-poort eist actuele exclusieve beurt, stopt bij meerdere PR-koppelingen, contextlimiet in UTF-8-bytes; v3.13.3.2 — bij merge na #1662 hernummeren naar 3.13.4.1). Beide raken `.github/workflows/claude-issue-turn.yml` (samenloop handmatig oplossen); de workflow werkt pas na release naar `main`.
+
+**Eigenaarspunten na release:** (1) aanwijzing van `GET /api/planner/menu-toegang` als `ExecuteAuthenticatedAsync`-route (AGENTS.md); (2) standaardstand van de menu-matrix zonder opgeslagen rij (hoofditems aan voor alle rollen, WZ Instellingen/Admin alleen admin); (3) live 3-user-test van het menu; (4) blokvergelijking Planning vs. Veld optimalisatie (#1560) en bevestiging van de aanname "Sportlink-leidend = SportlinkSpeelduur > 0, blokduur speelduur + 15, app-buffer 0"; (5) e-mailtester-DryRun mét AI (uit de vorige HANDOFF).
+
+**Lessen:** een `pull_request`-run start niet bij een merge-conflict (bewezen op tien heads, #1641); de bot-run van de issue-beurt verwerkt niet altijd (workflow-PR's, architect-issues) — eerst `gh run list --workflow claude-issue-turn.yml` en de branch-head controleren; een "waarom werkt dit niet"-uitleg in workflow-commentaar is publicatie (alleen het triggercontract benoemen); `Stop-Debug.ps1` crasht in deze omgeving op `AssemblyName.Parse` en stopt de `-Bewaak`-bewakers niet.
+
+---
+
 # HANDOFF — epic #1632 CA1502/CA1506 wegwerken (gestart 2026-10-11; code op `develop`, afsluit-PR #1652 open)
 
 **Eigenaarsbesluit:** alle fases worden uitgevoerd; Claude bouwt, Codex reviewt; gestapelde PR-keten; de wijzigingen liften mee met de volgende release.

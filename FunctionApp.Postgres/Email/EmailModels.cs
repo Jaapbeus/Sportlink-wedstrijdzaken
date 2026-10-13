@@ -18,6 +18,8 @@ public sealed class InkomendBericht
     public string Onderwerp { get; set; } = "";
     public DateTime OntvangstDatum { get; set; }
     public string? Body { get; set; }
+    /// <summary>Internetheaders van het bericht (naam, waarde); alleen gevuld door de Graph-adapter, gebruikt om automatische afzenders te herkennen.</summary>
+    public IReadOnlyList<KeyValuePair<string, string>> InternetHeaders { get; set; } = [];
 }
 
 public enum EmailStatus

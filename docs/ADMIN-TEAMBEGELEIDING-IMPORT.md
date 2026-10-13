@@ -83,7 +83,7 @@ technische kennis.
 
 ### Optie A — via de Admin GUI (aanbevolen)
 
-1. Open de Admin GUI en ga naar **Instellingen → Begeleiding importeren** (de pagina heet
+1. Open de Admin GUI en ga naar **Admin → Teambegeleiding importeren** (de pagina heet
    "Teambegeleiding importeren"; je kunt ook de kaart "Teambegeleiding importeren" op de
    Instellingen-pagina zelf aanklikken)
 2. Kies het gedownloade bestand
@@ -154,7 +154,7 @@ Klopt het aantal met wat je in Sportlink Club hebt gezien? Dan is alles goed geg
 
 ## Hoe vaak moet dit?
 
-Deze export wordt **wekelijks** uitgevoerd — kies een vast moment dat past bij jouw club. Zo is de lijst altijd actueel met nieuwe leden, gewijzigde rollen en vertrokken begeleiders.
+Importeer **aan het begin van elk seizoen** en daarna **regelmatig tijdens het seizoen** — aanbevolen is wekelijks, op een vast moment dat past bij jouw club, of zodra de begeleiding van een team verandert. Elke import vervangt de lijst volledig, dus nieuwe begeleiders komen erbij, gewijzigde rollen worden bijgewerkt en vertrokken begeleiders verdwijnen meteen. Wordt er langere tijd niet geïmporteerd, dan blijft de lijst staan tot het vangnet hem na 1 jaar verwijdert (zie SECURITY.md, Laag 6); het PowerShell-script (optie B) waarschuwt al als de gegevens ouder zijn dan 90 dagen.
 
 ---
 
@@ -175,7 +175,7 @@ Deze export wordt **wekelijks** uitgevoerd — kies een vast moment dat past bij
 ## Technische achtergrond (niet nodig om de import uit te voeren)
 
 > **Postgres-tier (#824, epic #815).** Deze handleiding is tier-neutraal: de stappen hierboven
-> (Sportlink-export + upload via **Instellingen → Begeleiding importeren**) werken identiek
+> (Sportlink-export + upload via **Admin → Teambegeleiding importeren**) werken identiek
 > op beide databasevarianten. Sinds #913 heeft de Postgres-tier dezelfde flexibele
 > CSV-kolomherkenning (aliassen, dedup, validatie — sinds #1360 één gedeelde
 > `Planner.Shared/TeambegeleidingCsv.cs`) als de SQL Server-tier, boven op het AVG-gevoelige

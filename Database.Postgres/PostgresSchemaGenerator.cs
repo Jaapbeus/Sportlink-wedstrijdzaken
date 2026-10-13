@@ -34,6 +34,8 @@ public static class PostgresSchemaGenerator
         sb.AppendLine($"CREATE TABLE stg.{table} (");
         AppendColumnLines(sb, entity.Columns, forceTrailingComma: false);
         sb.AppendLine(");");
+        // #1698: zojuist door deze rol aangemaakt, dus eigenaar; zie EnableRowLevelSecurityAlsUit.
+        sb.AppendLine($"ALTER TABLE stg.{table} ENABLE ROW LEVEL SECURITY;");
         return sb.ToString();
     }
 
@@ -89,7 +91,32 @@ public static class PostgresSchemaGenerator
                 $"ON his.{table} ({PostgresIdentifier.Quote("clubcode")});");
         }
 
+        sb.AppendLine(EnableRowLevelSecurityAlsUit("his", entity.EntityName));
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// #1698: RLS aan op een his-tabel, alleen als die nog uit staat. De his- en stg-tabellen worden
+    /// niet door een migratie maar door deze generator aangemaakt, dus de Supabase-regel (elke tabel
+    /// RLS, geen policies; AGENTS.md, #1198) hoort hier en niet in een migratie. Zonder deze regel
+    /// hing de bescherming af van Supabase's platformtrigger <c>ensure_rls</c>, die geen diff in git
+    /// achterlaat.
+    /// <para>
+    /// Voorwaardelijk omdat <c>ALTER TABLE</c> eigenaarschap vereist, ook als RLS al aan staat: deze
+    /// DDL draait bij elke sync opnieuw (<c>CREATE TABLE IF NOT EXISTS</c> op een bestaande tabel), en
+    /// een tabel die ooit door een andere rol is aangemaakt mag de sync niet laten falen zodra RLS er
+    /// al op staat. De deploy (<c>Database.Postgres.Cli --ensure-his-tables</c>) zet hem op bestaande
+    /// installaties aan.
+    /// </para>
+    /// </summary>
+    internal static string EnableRowLevelSecurityAlsUit(string schema, string tabel)
+    {
+        var gequote = $"{schema}.{PostgresIdentifier.Quote(tabel)}";
+        return "DO $rls$ BEGIN " +
+               "IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace " +
+               $"WHERE n.nspname = '{schema}' AND c.relname = '{tabel.Replace("'", "''")}' AND NOT c.relrowsecurity) THEN " +
+               $"EXECUTE '{("ALTER TABLE " + gequote + " ENABLE ROW LEVEL SECURITY").Replace("'", "''")}'; " +
+               "END IF; END $rls$;";
     }
 
     /// <summary>

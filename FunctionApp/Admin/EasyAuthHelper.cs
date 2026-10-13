@@ -1,3 +1,4 @@
+using Planner.Shared.Infrastructure;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -8,11 +9,15 @@ namespace SportlinkFunction.Admin;
 
 /// <summary>
 /// Controleert de Easy Auth claims die Azure injecteert via X-MS-CLIENT-PRINCIPAL.
-/// In lokale ontwikkeling (geen WEBSITE_SITE_NAME) altijd toegestaan.
+/// Alleen in een lokale ontwikkelomgeving met de expliciete schakelaar <c>LOCAL_AUTH_BYPASS=true</c>
+/// altijd toegestaan, en nooit als de app in Azure draait (#1700, <see cref="LokaleOntwikkelomgeving"/>).
 /// </summary>
 internal static class EasyAuthHelper
 {
     private static readonly JsonSerializerOptions _opts = new(JsonSerializerDefaults.Web);
+
+    /// <summary>De beslisregel staat in <see cref="LokaleOntwikkelomgeving"/> (#1700); zonder schakelaar geldt overal de rolcontrole.</summary>
+    private static bool LokaleBypass => LokaleOntwikkelomgeving.BypassActief();
 
     /// <summary>
     /// Controleert of de aanroeper de opgegeven rol(len) heeft.
@@ -20,9 +25,8 @@ internal static class EasyAuthHelper
     /// </summary>
     public static IActionResult? RequireRole(HttpRequest req, params string[] allowedRoles)
     {
-        // Lokale ontwikkeling: geen Easy Auth — altijd toestaan
-        var siteName = Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME");
-        if (string.IsNullOrEmpty(siteName))
+        // Lokale ontwikkelbypass (#1700): alleen met de schakelaar en nooit in Azure.
+        if (LokaleBypass)
             return null;
 
         if (!req.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL", out var encoded) ||
@@ -72,12 +76,11 @@ internal static class EasyAuthHelper
     /// Niet-gooiende variant van <see cref="RequireRole"/> (#1341) — voor een feature-toggle-check
     /// die zelf al bepaalt wat er bij "nee" gebeurt (bijv. de rol-feature-instelling raadplegen)
     /// in plaats van meteen een 401/403 te retourneren. Zelfde lokale bypass als alle
-    /// <c>Require*</c>-methoden: zonder <c>WEBSITE_SITE_NAME</c> (lokaal/CI) is elke rol "aanwezig".
+    /// <c>Require*</c>-methoden: alleen met de schakelaar (#1700) is elke rol "aanwezig".
     /// </summary>
     public static bool IsInRole(HttpRequest req, string role)
     {
-        var siteName = Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME");
-        if (string.IsNullOrEmpty(siteName)) return true;
+        if (LokaleBypass) return true;
 
         if (!req.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL", out var encoded) ||
             string.IsNullOrEmpty(encoded))
@@ -134,7 +137,7 @@ internal static class EasyAuthHelper
 
     /// <summary>De aanroeper voor leeracties en hun auditspoor (#1568 deel C): object-ID + naammomentopname, geen e-mailadres.</summary>
     public static global::Planner.Shared.Leren.LerenAanroeper GetLerenAanroeper(HttpRequest req)
-        => new(GetCallerObjectId(req), GetCallerName(req)) { HeeftPrincipal = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME")) };
+        => new(GetCallerObjectId(req), GetCallerName(req)) { HeeftPrincipal = !LokaleBypass };
 
     /// <summary>
     /// Haalt het e-mailadres van de aanroeper op uit de Entra ID claims.
@@ -149,7 +152,7 @@ internal static class EasyAuthHelper
     /// <c>GewijzigdDoor</c> in de request-body of querystring kiezen, waardoor het auditlog niet
     /// betrouwbaar was voor onderzoek naar misbruik of een gestolen beheerderssessie).
     /// <para>
-    /// Productie (<c>WEBSITE_SITE_NAME</c> aanwezig): een stabiele identiteit uit de door Easy Auth
+    /// Zonder lokale bypass (productie, en sinds #1700 ook elke omgeving zonder schakelaar): een stabiele identiteit uit de door Easy Auth
     /// gevalideerde claims — <see cref="GetCallerEmail"/> (upn/preferred_username/email) met
     /// <see cref="GetCallerName"/> als terugval. Ontbreken beide claims tóch (zou nooit mogen na een
     /// geslaagde <see cref="RequireAdmin"/>-check, want Entra levert altijd minimaal één van de twee)
@@ -157,14 +160,13 @@ internal static class EasyAuthHelper
     /// stilzwijgend als "onbekend" in het auditlog belanden.
     /// </para>
     /// <para>
-    /// Lokale ontwikkeling (geen <c>WEBSITE_SITE_NAME</c>, dus geen Easy Auth-principal beschikbaar):
+    /// Lokale ontwikkeling met <c>LOCAL_AUTH_BYPASS=true</c> buiten Azure (geen Easy Auth-principal beschikbaar):
     /// de herkenbare synthetische testidentiteit <c>"lokale-ontwikkelaar"</c> — nooit "onbekend".
     /// </para>
     /// </summary>
     public static string GetAuditActor(HttpRequest req)
     {
-        var siteName = Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME");
-        if (string.IsNullOrEmpty(siteName))
+        if (LokaleBypass)
             return "lokale-ontwikkelaar";
 
         var actor = GetCallerEmail(req) ?? GetCallerName(req);
@@ -176,27 +178,36 @@ internal static class EasyAuthHelper
         return actor;
     }
 
+    private static readonly BekendeClubs Clubs = new(() => BekendeClubs.LeesCodes(
+        new Microsoft.Data.SqlClient.SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString),
+        "SELECT [ClubCode] FROM [dbo].[AppSettings]"));
+
     /// <summary>
-    /// Leest de club-code uit de X-Club-Code request header.
-    /// Terugval op ClubCode uit dbo.AppSettings als de header ontbreekt.
+    /// Eenmaal bij het opstarten: koppelt de geaggregeerde foutlog van de clublijst (#1689) en meldt, zonder
+    /// waarden, of de lokale bypass actief is of in Azure is geweigerd (#1700). Die melding gaat naar de
+    /// standaarduitvoer: een <c>ILogger</c>-regel buiten een functieaanroep bereikt de Functions-host niet
+    /// (vastgesteld met een lokale functiehost), de standaarduitvoer van de worker wel.
     /// </summary>
-    private static readonly System.Text.RegularExpressions.Regex GeldigeClubCode =
-        new("^[A-Za-z0-9_-]{1,20}$", System.Text.RegularExpressions.RegexOptions.Compiled);
-
-    public static string GetClubCodeFromRequest(HttpRequest req)
+    public static void KoppelOpstartLogs(Microsoft.Extensions.Logging.ILoggerFactory loggers)
     {
-        // #1122 (CISO): de header is een UX-schakelaar (productie ↔ AllStars-demodata), geen
-        // autorisatiegrens (AGENTS.md, deployment-model). Wel een vormcontrole: een ClubCode is
-        // max 20 tekens [A-Za-z0-9_-] (kolomdefinitie). Iets anders gaat niet als clubcode de
-        // database in — dan geldt de primaire club.
-        if (req.Headers.TryGetValue("X-Club-Code", out var headerVal) &&
-            !string.IsNullOrWhiteSpace(headerVal) &&
-            GeldigeClubCode.IsMatch(headerVal.ToString()))
-            return headerVal.ToString();
-
-        return SystemUtilities.AppSettings.GetSetting("clubCode")
-            ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
+        Clubs.Log = loggers.CreateLogger(nameof(BekendeClubs));
+        LokaleOntwikkelomgeving.MeldOpstart(Console.Out);
     }
+
+    /// <summary>
+    /// De clubcode voor dit verzoek. De header <c>X-Club-Code</c> is een UX-schakelaar tussen de
+    /// primaire club en de democlub, geen autorisatiegrens (#1122, AGENTS.md). De waarde wordt getoetst
+    /// aan de bekende clubs (#1677, vorm en bestaan; #1689 begrensd herladen bij een onbekende waarde):
+    /// een onbekende of ontbrekende waarde geeft de primaire club; is de lijst nog niet te toetsen, dan
+    /// geldt de syntactisch geldige waarde zoals voorheen (<see cref="ClubZoekResultaat.CodeVoorVerzoek"/>).
+    /// </summary>
+    public static string GetClubCodeFromRequest(HttpRequest req)
+        => GetClubCodeFromRequest(req, Clubs, () => SystemUtilities.AppSettings.GetSetting("clubCode")
+            ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings"));
+
+    /// <summary>Tier-bedrading met injecteerbare lijst en primaire club; bedoeld voor tests (#1689).</summary>
+    internal static string GetClubCodeFromRequest(HttpRequest req, BekendeClubs clubs, Func<string> primaireClub)
+        => clubs.ClubCodeVoorVerzoek(req.Headers["X-Club-Code"].ToString(), primaireClub);
 
     /// <summary>
     /// Leest x-correlation-id uit de request header, of genereert een nieuwe GUID.

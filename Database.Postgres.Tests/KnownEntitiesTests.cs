@@ -88,6 +88,26 @@ public class KnownEntitiesTests
                 "casing letterlijk in de database en breekt elke latere, ongequote verwijzing.");
     }
 
+    // #1698: de retentie maakt deze kolommen leeg op beide tiers. Een tikfout of een niet-nullable
+    // kolom zou de dagelijkse run pas in productie laten falen; hier faalt hij bij de build.
+    [Fact]
+    public void HisRetentieKolommen_BestaanInDeEntiteitEnZijnNullable()
+    {
+        AssertKolommenNullable(KnownEntities.Matches, Planner.Shared.Avg.HisPersoonsgegevensRetentie.MatchesKolommen);
+        AssertKolommenNullable(KnownEntities.MatchDetails, Planner.Shared.Avg.HisPersoonsgegevensRetentie.MatchDetailsKolommen);
+    }
+
+    private static void AssertKolommenNullable(EntityDefinition entity, IReadOnlyList<string> kolommen)
+    {
+        foreach (var kolom in kolommen)
+        {
+            var definitie = entity.Columns.SingleOrDefault(c => c.Name == kolom);
+            definitie.Should().NotBeNull($"{entity.EntityName}.{kolom} moet bestaan");
+            definitie!.IsNullable.Should().BeTrue($"{entity.EntityName}.{kolom} wordt op NULL gezet");
+            entity.BusinessKey.Should().NotContain(kolom);
+        }
+    }
+
     public static TheoryData<EntityDefinition> AllKnownEntities() =>
         new(KnownEntities.All);
 }

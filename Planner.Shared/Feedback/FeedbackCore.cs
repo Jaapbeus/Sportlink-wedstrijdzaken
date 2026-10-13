@@ -39,6 +39,9 @@ public static class FeedbackCore
 
     public static bool IsOngeldigType(string? type) => !ToegestaneTypes.Contains(type);
 
+    /// <summary>Maximaal aantal aanvulvragen: de AI-vraaglijst wordt hierop gecapt en de endpoints weigeren meer (#1677).</summary>
+    public const int MaxAanvulVragen = 5;
+
     // ── Validate ──────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -250,9 +253,9 @@ public static class FeedbackCore
 
     public static string[] KiesLabels(string type) => type switch
     {
-        "Fout" => ["bug", "type: bug", "via-feedback-widget", "needs-triage"],
-        "Verzoek" => ["enhancement", "type: feature", "via-feedback-widget", "needs-triage"],
-        _ => ["question", "via-feedback-widget", "needs-triage"]
+        "Fout" => ["bug", "type: bug", "via: feedback-widget", "needs-triage"],
+        "Verzoek" => ["enhancement", "type: feature", "via: feedback-widget", "needs-triage"],
+        _ => ["question", "via: feedback-widget", "needs-triage"]
     };
 
     public static string VerzamelTeCheckenTekst(FeedbackRequest dto) => FeedbackTekst.VerzamelTeCheckenTekst(dto);

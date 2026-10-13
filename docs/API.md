@@ -76,6 +76,11 @@ Drie beveiligingsniveaus:
 > de databasewacht van de wrapper. **Sinds #1350 accepteert geen enkel endpoint nog een Function key
 > of Master key** — ook de twee sync-routes niet meer (zie hieronder).
 >
+> **Uitgaande integraties (#857, #1676):** een endpoint dat een externe dienst aanroept (de twee sync-routes,
+> `POST /api/beheer/sync/trigger`, `GET /api/beheer/geocode`, `POST /api/beheer/theme/extract`) antwoordt
+> `503` met `{ "error": ... }` zolang `EgressGuard.ExternalIntegrationsAllowed()` onwaar is (buiten Azure-hosting
+> zonder expliciete opt-in).
+>
 > `EasyAuthHelper.RequireAuthenticated` (`admin` óf `user`) is bij #1350 verwijderd omdat hij toen
 > nergens werd aangeroepen. Sinds #1330 bestaat die combinatie weer, nu als de expliciet genoemde
 > poort `AdminEndpoint.ExecuteAuthenticatedAsync` — zie de rij **Admin/User** hierboven voor welke
@@ -85,9 +90,10 @@ Zonder token → `401 Unauthorized`. Mét geldig token maar zonder de vereiste r
 met body `{ "error": "Forbidden: vereiste rol ontbreekt" }`. In beide gevallen vindt er geen
 verwerking plaats.
 
-> **Lokaal:** ontbreekt de omgevingsvariabele `WEBSITE_SITE_NAME` (dus buiten Azure), dan slaat
-> `RequireRole` de controle over en is elk endpoint zonder token bereikbaar. Dat is een
-> bewuste dev-bypass en geldt nooit in productie.
+> **Lokaal:** alleen met de expliciete schakelaar `LOCAL_AUTH_BYPASS=true` (gezet door
+> `Start-Debug.ps1`) slaat `RequireRole` de controle over en is elk endpoint zonder token bereikbaar.
+> Zonder schakelaar geldt de controle ook lokaal, en zodra de app in Azure draait
+> (`WEBSITE_SITE_NAME` gezet) wordt de schakelaar geweigerd (#1700).
 
 ---
 
@@ -113,10 +119,10 @@ verwerking plaats.
 | `PUT/DELETE` | `/beheer/voorkeurstijden/{id}` | **Admin** | Gewenste speeltijd wijzigen / verwijderen |
 | `GET/POST` | `/beheer/teamregels` | **Admin** | Planningsregels per team (bijv. buffertijd): lijst ophalen / toevoegen |
 | `PUT/DELETE` | `/beheer/teamregels/{id}` | **Admin** | Planningsregel wijzigen / verwijderen |
-| `GET` | `/beheer/email-log` | **Admin** | Verwerkte e-mails inzien (AVG-conform: geen berichtteksten); per regel `HeeftTrace` (#1568) |
+| `GET` | `/beheer/email-log` | **Admin** | Verwerkte e-mails inzien (AVG-conform: geen berichtteksten of onderwerp; `Afzender` en `VerstuurdNaar` gemaskeerd tot het domein); per regel `HeeftTrace` (#1568) |
 | `GET` | `/beheer/email-log/{id}/trace` | **Admin** | Permanente, PII-arme beslissingstrace van één verwerking (`id` = `Id` uit het e-maillog): `verwerkingId`, `verzoekType`, `status` (`null` als de verwerking is opgeruimd), `ontvangstDatum`, `aangemaakt`, `zekerheid`, `sjabloonSleutel`, `appVersie`, `trace` (`stappen`, `oordeel`). Geen body, afzender, onderwerp of ruwe teamtekst uit de mail (alleen allowlist-velden, `BeslissingsTrace.VoorOpslag()`). **404** als er geen trace is (#1568) |
 | `POST` | `/test/email` | **Admin** | AI-classificatie dry-run zonder e-mail te versturen (Email-tester-pagina); de respons bevat sinds #1568 ook `trace` (beslissingstrace) en `leersuggestie`, en sinds #1583 een definitief `eindoordeel` (automatisch verstuurd / review / geen antwoord, met de actuele zekerheidspoort-instelling meegewogen); de tester geeft de gevalideerde leermomenten mee aan de classificatie (zoals productie) en schrijft niets |
-| `POST` | `/feedback/validate` | **Admin/User** | Feedback-widget: voorvalidatie op volledigheid. Per gebruiker begrensd (30 AI-aanroepen per 10 min, samen met `preview`). **503** `{ error, aiBeschikbaar: false }` als de AI-dienst niet geregistreerd is (lokaal door de EgressGuard); geldt ook voor `preview` en `submit`, beide tiers gelijk (#1487) |
+| `POST` | `/feedback/validate` | **Admin/User** | Feedback-widget: voorvalidatie op volledigheid. Per gebruiker begrensd (30 AI-aanroepen per 10 min, samen met `preview`). **503** `{ error, aiBeschikbaar: false }` als de AI-dienst niet geregistreerd is (lokaal door de EgressGuard); geldt ook voor `preview` en `submit`, beide tiers gelijk (#1487). Invoerlimieten voor `validate`, `preview` en `submit` (#1677): body ≤ 65536 tekens (anders **413** `{ error }`), max 5 `vragenAntwoorden` (anders **400**), vraag ≤ 500 en antwoord ≤ 2000 tekens (afgekapt) |
 | `POST` | `/feedback/preview` | **Admin/User** | Feedback-widget: exacte titel + body van het te publiceren issue opvragen, zónder iets aan te maken (#1205) |
 | `POST` | `/feedback/submit` | **Admin/User** | Feedback-widget: melding bewaren in `avg.Feedback` (melder = Entra object-ID + naam-momentopname, nooit in het publieke issue). **Admin**: direct als openbaar GitHub-issue; met `bevestiging` wordt exact de in het voorbeeld getoonde tekst gepubliceerd. **User**: wacht op publicatie door een beheerder, de response bevat geen issueverwijzing. Optioneel `telemetrie` (technische context, geredigeerd, na 90 dagen gewist). Limiet: 3 per 10 min per gebruiker, 30 per uur per club → `429` |
 | `GET` | `/beheer/feedback` | **Admin** | Feedbackoverzicht (filters `type`, `status`, `vanaf`, `tot`, `q`, `limit`, `offset`); elke aanroep komt in het inzagelog (#764) |
@@ -134,11 +140,12 @@ verwerking plaats.
 | `POST` | `/planner/auto-plan/deel` | **Admin** | Planning delen zoals getoond op het scherm (HTML/PDF, stateless, #1460) |
 | `POST` | `/planner/auto-plan/toepassen` | **Admin** | Berekende planning wegschrijven (alleen testmodus ALLSTARS) |
 | `GET` | `/planner/pdf-export` | **Admin/User** | Of PDF-export voor de gekozen club aan staat: `{ "pdfExportIngeschakeld": bool }` — Planning toont de PDF-knop alleen dan, ook voor de rol `user` (#1459) |
+| `GET` | `/planner/menu-toegang` | **Admin/User** | Menu-sleutels die de ingelogde gebruiker mag zien: `{ "featureKeys": ["menu.planning", …], "sportlinkExtensieActief": bool }` — `admin` krijgt alle, andere rollen de sleutels die hun rol in "Rechten per rol" aan heeft staan (zonder DEBUG); `sportlinkExtensieActief` is de niet-gevoelige menuvlag voor de Sportlink Web Extension (zodat niet-admins hem krijgen zonder `/beheer/settings`). Alleen UI-gemak voor het hoofdmenu; elk endpoint autoriseert zelf (#1647) |
 | `GET` | `/planner/veldbezetting?datum=` | **Admin/User** | Wedstrijden op een datum, zonder optimalisatie-berekening — voedt de Planning-pagina, sinds #1400 generiek zichtbaar voor elke ingelogde gebruiker |
 | `GET` | `/planner/team-schedule` | **Admin** | Wedstrijdschema per team — gescoped op `X-Club-Code` header |
 | `GET` | `/beheer/teambegeleiding` | **Admin + user** | Alle teams met begeleiding in database (#1330: elke ingelogde rol) |
-| `GET` | `/beheer/teambegeleiding/{team}` | **Admin + user** | Begeleiders van team (naam + rol + functie, nooit e-mail) (#1330: elke ingelogde rol) |
-| `POST` | `/beheer/teambegeleiding/doorsturen` | **Admin + user** | Vraag doorsturen (BCC coördinator). `ontvangers` bepaalt de ontvangers (max 15, gevalideerd, uitsluitingslijst gecontroleerd); leeg → server-side coach-lookup (#765) (#1330: elke ingelogde rol) |
+| `GET` | `/beheer/teambegeleiding/{team}` | **Admin + user** | Begeleiders van team: naam, rol, functie, e-mailadres en telefoonnummer (#1330: elke ingelogde rol). Elke opvraging komt in het inzagelog `avg.TeambegeleidingInzageLog` (wie, wanneer, welk team, aantal rijen; geen gegevens van de begeleiders); lukt het vastleggen niet, dan `500` zonder gegevens (#1701) |
+| `POST` | `/beheer/teambegeleiding/doorsturen` | **Admin + user** | Vraag doorsturen (BCC coördinator). `ontvangers` bepaalt de ontvangers (max 15, gevalideerd, uitsluitingslijst gecontroleerd); voor een andere rol dan `admin` moet elk adres bij het team horen (begeleiders, coördinator of de aanvrager zelf), anders 403; leeg → server-side coach-lookup (#765) (#1330: elke ingelogde rol). Max 3 verzendingen per gebruiker per 10 minuten, anders 429; alleen een daadwerkelijke verzending telt (een mislukte verzending geeft haar eigen slot terug), `admin` valt erbuiten; de teller is in-memory en geldt per instantie (bij uitschalen of na een herstart kan het totaal hoger uitvallen; geen globale kwotering) (#1671) |
 | `POST` | `/beheer/teambegeleiding/import` | **Admin** | CSV-import van begeleiders — vervangt de rijen van de club atomisch (DELETE + inserts + audit-rij in één transactie, rollback bij elke fout; #1131/#1132). Kolomlengtes worden vóór elke destructieve stap gevalideerd; een te lange waarde geeft `400` met `{ error, fouten: [...] }` (rij/kolom-omschrijving per overtreding) en laat de vorige import ongemoeid. Postgres-tier serialiseert vervangingen per club (`pg_advisory_xact_lock`) zodat twee gelijktijdige imports elkaar nooit tot een vereniging van beide batches kunnen combineren. CSV wordt in-memory verwerkt en nooit opgeslagen; `avg.ImportLog` bevat alleen metadata — geen PII |
 | `GET/POST` | `/beheer/speeltijden` | **Admin** | Speeltijden per leeftijdscategorie: lijst ophalen / toevoegen |
 | `PUT/DELETE` | `/beheer/speeltijden/{leeftijd}` | **Admin** | Speeltijd van één leeftijdscategorie wijzigen / verwijderen |
@@ -155,7 +162,7 @@ verwerking plaats.
 | `PUT` | `/beheer/teamaliassen/{id}/valideer` | **Admin** | Alias goedkeuren of afwijzen (`{ "status": "validated"\|"rejected" }`); legt wie en wanneer vast |
 | `DELETE` | `/beheer/teamaliassen/{id}` | **Admin** | Alias definitief verwijderen |
 | `GET` | `/beheer/theme` | **Admin** | Club-thema ophalen (kleuren + website-URL + `lightColors`/`darkColors`) — gefilterd op `X-Club-Code` header. De paletten zijn `null` zolang er geen licht/donker-set is ingesteld; de client valt dan terug op de vier platte kleuren |
-| `PUT` | `/beheer/theme` | **Admin** | Club-thema opslaan (`{ primary, secondary, accent, textOnPrimary, clubWebsiteUrl, faviconUrl, logoUrl, lightColors, darkColors }`) — gefilterd op `X-Club-Code` header. `lightColors`/`darkColors` zijn sleutel→hex-objecten voor het volledige palet per modus (#1254); elke sleutel moet `^[a-z][a-zA-Z0-9-]{0,39}$` zijn en elke waarde `#rrggbb` of `#rrggbbaa`, maximaal 40 per palet |
+| `PUT` | `/beheer/theme` | **Admin** | Club-thema opslaan (`{ primary, secondary, accent, textOnPrimary, clubWebsiteUrl, faviconUrl, logoUrl, lightColors, darkColors }`) — gefilterd op `X-Club-Code` header. `lightColors`/`darkColors` zijn sleutel→hex-objecten voor het volledige palet per modus (#1254); elke sleutel moet `^[a-z][a-zA-Z0-9-]{0,39}$` zijn en elke waarde `#rrggbb` of `#rrggbbaa`, maximaal 40 per palet. `faviconUrl`/`logoUrl` zijn optioneel; een ingevulde waarde wordt getrimd, `http://` wordt als `https://` opgeslagen, en daarna moet het een absolute `https://`-URL van maximaal 300 tekens zijn (anders HTTP 400) |
 | `POST` | `/beheer/theme/extract?url=` | **Admin** | Kleuren extraheren uit club-website (SSRF-beschermd) |
 | `GET` | `/beheer/clubs` | **Admin** | Lijst van beschikbare clubs (`[{ clubCode, clubName }]`) voor de GUI-selector |
 | `GET` | `/beheer/sportlink-extensie/rollen` | **Admin** | Sportlink Web Extension (#986/#988): per functionele rol tonen of een eigen Sportlink-serviceaccount gekoppeld is, door wie en wanneer |
@@ -317,6 +324,16 @@ Controleer of een veld beschikbaar is voor een oefenwedstrijd. Geeft een specifi
 > `ALLSTARS`-demodata) worden nooit meegenomen. Dit geldt ook voor
 > `/planner/zoek-wedstrijd`, `/planner/herplan-check`, `/planner/doordeweeks-beschikbaar`
 > en `/planner/team-schedule`.
+>
+> **Onbekende waarde (#1677, #1689):** de headerwaarde wordt getoetst aan de clubs in de
+> instellingentabel (maximaal 20 tekens `A-Z`, `a-z`, `0-9`, `_`, `-`). Een ongeldige vorm of een
+> club die niet bestaat geeft geen fout maar dezelfde terugval als zonder header: de primaire club.
+> Een bestaande club wordt in de opgeslagen schrijfwijze gebruikt (een exacte match gaat voor; bij
+> meerdere varianten in hoofdletters altijd dezelfde). De clublijst wordt hoogstens 60 seconden
+> gecachet; een onbekende waarde laat haar opnieuw laden (hoogstens eens per 10 seconden), zodat een
+> pas toegevoegde club direct herkend wordt. Is de lijst nog nooit te laden geweest (database
+> onbereikbaar), dan geldt een syntactisch geldige waarde zoals vóór #1677. Geldt voor alle
+> endpoints die `X-Club-Code` lezen, op beide databasetiers.
 
 ### Aanvraag
 

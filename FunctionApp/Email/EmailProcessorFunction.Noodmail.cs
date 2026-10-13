@@ -1,4 +1,5 @@
 using Planner.Shared;
+using Planner.Shared.Email;
 using Microsoft.Extensions.Logging;
 using SportlinkFunction.Monitoring;
 
@@ -32,7 +33,7 @@ public partial class EmailProcessorFunction
         if (await throttleStore.LaatsteKeerVerstuurdAsync(DatabaseNoodmailSleutel) is null)
         {
             log.LogError(dbEx, "Database niet beschikbaar — stuur noodmail");
-            await StuurDatabaseNoodmailAsync(graphService, aantalOnverwerkt, CategorizeerFout(dbEx), throttleStore, log);
+            await StuurDatabaseNoodmailAsync(graphService, aantalOnverwerkt, EmailFoutCategorie.Categoriseer(dbEx), throttleStore, log);
         }
         else
         {
@@ -80,31 +81,6 @@ public partial class EmailProcessorFunction
         {
             log.LogError(ex, "Kon noodmail niet versturen");
         }
-    }
-
-    private static bool IsOpenAiQuotaFout(Exception ex)
-    {
-        var msg = ex.Message + (ex.InnerException?.Message ?? "");
-        return msg.Contains("insufficient_quota", StringComparison.OrdinalIgnoreCase)
-            || msg.Contains("429", StringComparison.Ordinal);
-    }
-
-    // Categoriseert een exception naar een privacy-safe foutomschrijving. (#425)
-    // Nooit ruwe ex.Message in noodmails of externe output — kan PII bevatten.
-    private static string CategorizeerFout(Exception ex)
-    {
-        var msg = (ex.Message + (ex.InnerException?.Message ?? "")).ToLowerInvariant();
-        if (msg.Contains("insufficient_quota") || msg.Contains("429"))
-            return "OpenAI quota overschreden";
-        if (msg.Contains("login failed") || msg.Contains("cannot open database") || msg.Contains("connection"))
-            return "Database niet beschikbaar";
-        if (msg.Contains("404") || msg.Contains("resourcenotfound") || msg.Contains("not found"))
-            return "Graph API: bericht niet gevonden";
-        if (msg.Contains("401") || msg.Contains("unauthorized") || msg.Contains("403") || msg.Contains("forbidden"))
-            return "Graph API: autorisatiefout";
-        if (msg.Contains("timeout") || msg.Contains("timed out"))
-            return "Time-out bij externe service";
-        return "Onverwachte verwerkingsfout";
     }
 
     // Sanitiseert een foutmelding voor opslag in de DB — verwijdert e-mailadressen en knipt af. (#420)

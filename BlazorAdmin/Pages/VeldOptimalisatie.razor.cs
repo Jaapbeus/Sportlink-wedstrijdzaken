@@ -17,7 +17,7 @@ namespace BlazorAdmin.Pages;
 public partial class VeldOptimalisatie : ClubSelectorPageBase
 {
     [Inject] private PlanningApiClient PlanningApi { get; set; } = default!;
-    [Inject] private InstellingenApiClient InstellingenApi { get; set; } = default!;
+    [Inject] private ClubInstellingenCache InstellingenCache { get; set; } = default!;
     [Inject] private SportlinkApiClient SportlinkApi { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
 
@@ -109,7 +109,7 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     protected override async Task OnInitializedAsync()
     {
         // #989: geen Sportlink-kolom/-knoppen tonen als de extension uit staat (DoD).
-        var settings = await InstellingenApi.GetSettingsAsync();
+        var settings = await InstellingenCache.GetSettingsAsync();
         _sportlinkExtensionEnabled = settings.Success && settings.Data?.SportlinkExtensionEnabled == true;
         await LaadPdfExportStatusAsync();
 

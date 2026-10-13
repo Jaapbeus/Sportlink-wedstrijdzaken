@@ -106,3 +106,15 @@
         overflow-y: auto;
     }
 }
+
+/* #1647: subitems van de groepen DEBUG, WZ Instellingen en Admin. Een label wrapt nooit (#1314): te lange
+   namen worden afgekapt, de volledige naam staat in de tooltip (title). */
+.nav-subitems ::deep a {
+    min-width: 0;
+}
+
+.nav-subitems ::deep .nav-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

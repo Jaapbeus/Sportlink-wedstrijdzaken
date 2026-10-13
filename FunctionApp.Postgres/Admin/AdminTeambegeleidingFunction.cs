@@ -8,6 +8,7 @@ using Newtonsoft.Json;
 using Npgsql;
 using Planner.Endpoints.Teambegeleiding;
 using Planner.Shared;
+using Planner.Shared.Teambegeleiding;
 
 namespace FunctionApp.Postgres.Admin;
 
@@ -45,7 +46,7 @@ public static class AdminTeambegeleidingFunction
     // aangeleverde CSV-import, dus een rol in kleine letters komt in de praktijk voor — met LIKE
     // viel die stilzwijgend in de ELSE-tak en stond de trainer onderaan in plaats van bovenaan.
     // Zelfde klasse fout als #820.
-    private const string RolVoorkeurCase =
+    internal const string RolVoorkeurCase =
         "CASE WHEN teamrol ILIKE '%Trainer%' THEN 1 WHEN teamrol ILIKE '%Coach%' THEN 2 WHEN teamrol ILIKE '%Teamleider%' THEN 3 ELSE 4 END";
 
     [Function("AdminTeambegeleidingTeams")]
@@ -69,40 +70,18 @@ public static class AdminTeambegeleidingFunction
             });
 
     // AVG: de teamnaam komt bewust niet in de errorContext — die belandt in het foutlog.
+    // #1701: elke opvraging legt een inzageregel vast (wie, wanneer, welk team, hoeveel rijen) in
+    // avg.teambegeleidinginzagelog; zonder geslaagde inzageregel gaan er geen gegevens terug.
     [Function("AdminTeambegeleidingGet")]
     public static Task<IActionResult> GetBegeleiders(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/teambegeleiding/{team}")] HttpRequest req,
         string team,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAuthenticatedAsync(req, context.GetLogger("AdminTeambegeleidingGet"), "begeleiders ophalen (team niet gelogd — AVG)",
-            async clubCode =>
-            {
-                await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
-                await connection.OpenAsync();
-                await using var command = new NpgsqlCommand($@"
-                    SELECT naam, teamrol, emailadres, telefoonnummer, functie
-                    FROM avg.teambegeleiding
-                    WHERE team = @team
-                      AND clubcode = @clubcode
-                    ORDER BY {RolVoorkeurCase}, naam
-                ", connection);
-                command.Parameters.AddWithValue("team", team);
-                command.Parameters.AddWithValue("clubcode", clubCode);
-                await using var reader = await command.ExecuteReaderAsync();
-                var list = new List<object>();
-                while (await reader.ReadAsync())
-                {
-                    list.Add(new
-                    {
-                        Naam = reader.IsDBNull(0) ? "" : reader.GetString(0),
-                        Teamrol = reader.IsDBNull(1) ? "" : reader.GetString(1),
-                        Emailadres = reader.IsDBNull(2) ? null : reader.GetString(2),
-                        Telefoonnummer = reader.IsDBNull(3) ? null : reader.GetString(3),
-                        Functie = reader.IsDBNull(4) ? null : reader.GetString(4)
-                    });
-                }
-                return new OkObjectResult(list);
-            });
+            clubCode => TeambegeleidingInzageEndpointCore.ContactgegevensAsync(
+                clubCode, team,
+                new TeambegeleidingInzager(EasyAuthHelper.GetCallerObjectId(req), EasyAuthHelper.GetCallerName(req)),
+                new PostgresTeambegeleidingInzageStore(PostgresDatabaseConfig.ConnectionString)));
 
     /// <summary>
     /// Stuurt een vraag over teambegeleiding door naar de begeleider(s) — Postgres-vertaling van
@@ -137,79 +116,46 @@ public static class AdminTeambegeleidingFunction
 
                 var coordinatorEmail = PostgresAppSettings.GetSetting("plannerEmailAdres");
 
-                var (ontvangers, ontvangerFout) = await ResolveOntvangersAsync(dto, clubCode, cs, coordinatorEmail, log);
-                if (ontvangerFout != null) return ontvangerFout;
+                var aanvrager = new Aanvrager(EasyAuthHelper.IsAdmin(req), aanvragerEmail, EasyAuthHelper.GetCallerObjectId(req));
+                var bronnen = new OntvangerBronnen(
+                    async () => await HaalBegeleiderAdressenAsync(cs, dto.TeamNaam, clubCode),
+                    () => ZoekBegeleiderEmailAsync(cs, dto.TeamNaam, clubCode),
+                    () => SqlEmailPersistenceRepository.GetExcludedEmailAddressesAsync(cs, clubCode));
 
                 // EgressGuard (#857): buiten productie is IEmailGraphService onvoorwaardelijk
                 // ongeregistreerd, ook met geconfigureerde Graph-secrets. Niet geregistreerd → 503, geen
-                // gefakete "verstuurd"-melding.
+                // gefakete "verstuurd"-melding. #1671: de gedeelde kern bepaalt de volgorde (ontvangers,
+                // 503, dan pas het limietslot en de verzending).
                 var emailService = context.InstanceServices.GetService<IEmailGraphService>();
-                if (emailService == null)
-                {
-                    log.LogWarning("Graph SDK niet geconfigureerd — e-mail doorsturen niet mogelijk");
-                    return new ObjectResult(new { error = "E-mail service niet geconfigureerd" }) { StatusCode = 503 };
-                }
-
-                var subject = $"[{dto.TeamNaam}] Vraag van {aanvragerNaam}";
-                var htmlBody = BouwDoorsturenHtml(dto.TeamNaam, aanvragerNaam, dto.Onderwerp, dto.Bericht);
-
-                await emailService.StuurTeamContactDoorAsync(ontvangers!, subject, htmlBody, aanvragerEmail, coordinatorEmail);
-
-                // Audit-trail (#765): vrij ingetypte ontvangers zijn nieuwe persoonsgegevens. De mail is
-                // hierboven al verstuurd — een fout in het wegschrijven van de audit-rij mag de
-                // geslaagde verzending niet alsnog als mislukt melden (dat zou tot een dubbele
-                // verzendpoging kunnen leiden).
-                try
-                {
-                    await SqlEmailPersistenceRepository.InsertTeambegeleidingDoorsturenAuditAsync(
-                        cs, dto.TeamNaam, aanvragerEmail ?? "onbekend", string.Join("; ", ontvangers!), clubCode);
-                }
-                catch (Exception auditEx)
-                {
-                    log.LogWarning(auditEx, "Audit-trail voor teambegeleiding-doorsturen kon niet worden weggeschreven (verzending zelf is wel geslaagd)");
-                }
-
-                return new OkObjectResult(new
-                {
-                    success = true,
-                    bericht = $"Uw vraag over de begeleiding van {dto.TeamNaam} is doorgestuurd. De begeleider neemt rechtstreeks contact met u op."
-                });
+                return await TeambegeleidingDoorsturenEndpointCore.VoerUitAsync(
+                    aanvrager,
+                    () => TeambegeleidingDoorsturenEndpointCore.BepaalOntvangersAsync(dto.Ontvangers, aanvrager, coordinatorEmail, bronnen, log),
+                    emailService != null,
+                    async ontvangers =>
+                    {
+                        var subject = $"[{dto.TeamNaam}] Vraag van {aanvragerNaam}";
+                        var htmlBody = BouwDoorsturenHtml(dto.TeamNaam, aanvragerNaam, dto.Onderwerp, dto.Bericht);
+                        await emailService!.StuurTeamContactDoorAsync(ontvangers, subject, htmlBody, aanvragerEmail, coordinatorEmail);
+                        await SchrijfAuditAsync(cs, dto.TeamNaam, aanvragerEmail, ontvangers, clubCode, log);
+                    },
+                    dto.TeamNaam, log);
             });
     }
 
-    // #765: "Email Aan" bepaalt de ontvangers zodra het veld gevuld is. Leeg/afwezig veld houdt
-    // het oude gedrag (server-side lookup + coördinator-fallback) intact.
-    private static async Task<(List<string>? Ontvangers, IActionResult? Fout)> ResolveOntvangersAsync(
-        DoorsturenRequest dto, string clubCode, string cs, string? coordinatorEmail, ILogger log)
+    // Audit-trail (#765): vrij ingetypte ontvangers zijn nieuwe persoonsgegevens. De mail is al
+    // verstuurd — een fout in het wegschrijven van de audit-rij mag de geslaagde verzending niet
+    // alsnog als mislukt melden (dat zou tot een dubbele verzendpoging kunnen leiden).
+    private static async Task SchrijfAuditAsync(string cs, string teamNaam, string? aanvragerEmail, List<string> ontvangers, string clubCode, ILogger log)
     {
-        if (!string.IsNullOrWhiteSpace(dto.Ontvangers))
+        try
         {
-            var parseResultaat = OntvangerParser.Parse(dto.Ontvangers);
-            if (!parseResultaat.IsValid)
-                return (null, new BadRequestObjectResult(new { error = parseResultaat.FoutMelding }));
-
-            var uitgesloten = await SqlEmailPersistenceRepository.GetExcludedEmailAddressesAsync(cs, clubCode);
-            var geweigerdAdres = parseResultaat.Emailadressen.FirstOrDefault(uitgesloten.Contains);
-            if (geweigerdAdres != null)
-                return (null, new BadRequestObjectResult(new
-                {
-                    error = $"E-mailadres \"{geweigerdAdres}\" staat op de uitsluitingslijst en kan niet als ontvanger worden gebruikt."
-                }));
-
-            return ([.. parseResultaat.Emailadressen], null);
+            await SqlEmailPersistenceRepository.InsertTeambegeleidingDoorsturenAuditAsync(
+                cs, teamNaam, aanvragerEmail ?? "onbekend", string.Join("; ", ontvangers), clubCode);
         }
-
-        var begeleiderEmail = await ZoekBegeleiderEmailAsync(cs, dto.TeamNaam, clubCode);
-
-        if (string.IsNullOrEmpty(begeleiderEmail))
+        catch (Exception auditEx)
         {
-            if (string.IsNullOrEmpty(coordinatorEmail))
-                return (null, new ObjectResult(new { error = "Geen begeleider en geen coördinator geconfigureerd" }) { StatusCode = 503 });
-            begeleiderEmail = coordinatorEmail;
-            log.LogWarning("Geen begeleider-e-mail gevonden voor team — doorgestuurd naar coördinator");
+            log.LogWarning(auditEx, "Audit-trail voor teambegeleiding-doorsturen kon niet worden weggeschreven (verzending zelf is wel geslaagd)");
         }
-
-        return ([begeleiderEmail], null);
     }
 
     private static string BouwDoorsturenHtml(string teamNaam, string aanvragerNaam, string? onderwerp, string bericht) => $@"<p>Er is een vraag binnengekomen over de begeleiding van <strong>{System.Net.WebUtility.HtmlEncode(teamNaam)}</strong>.</p>
@@ -242,6 +188,22 @@ public static class AdminTeambegeleidingFunction
         cmd.Parameters.AddWithValue("team", teamNaam);
         cmd.Parameters.AddWithValue("clubcode", clubCode);
         return await cmd.ExecuteScalarAsync() as string;
+    }
+
+    /// <summary>Alle e-mailadressen van de begeleiders van een team (AVG: nooit in respons of log).</summary>
+    private static async Task<List<string>> HaalBegeleiderAdressenAsync(string connectionString, string teamNaam, string clubCode)
+    {
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(
+            "SELECT emailadres FROM avg.teambegeleiding WHERE team = @team AND emailadres IS NOT NULL AND clubcode = @clubcode", conn);
+        cmd.Parameters.AddWithValue("team", teamNaam);
+        cmd.Parameters.AddWithValue("clubcode", clubCode);
+        var adressen = new List<string>();
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            adressen.Add(reader.GetString(0));
+        return adressen;
     }
 
     private record DoorsturenRequest(string TeamNaam, string? Onderwerp, string Bericht, string? Ontvangers);

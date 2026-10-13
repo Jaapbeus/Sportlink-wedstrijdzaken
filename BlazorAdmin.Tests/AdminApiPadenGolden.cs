@@ -16,6 +16,7 @@ internal static class AdminApiPadenGolden
         """SetSportlinkAutoLoginAsync | PUT api/beheer/sportlink-extensie/rollen/rol%20a/autologin | {"username":"","password":"","totpSecret":"","totpAlgorithm":"SHA1","totpDigits":6,"totpPeriodSeconds":30}""",
         """DeleteSportlinkAutoLoginAsync | DELETE api/beheer/sportlink-extensie/rollen/rol%20a/autologin | """,
         """GetSportlinkMatchInfoAsync | GET api/sportlink/match/W%201 | """,
+        """GetMenuToegangAsync | GET api/planner/menu-toegang | """,
         """GetRolFeatureInstellingenAsync | GET api/beheer/rolfeatureinstellingen | """,
         """ZetRolFeatureInstellingAsync | PUT api/beheer/rolfeatureinstellingen | {"rolNaam":"beheer","featureKey":"sleutel","enabled":true}""",
         """GetSportlinkPublicMatchIdAsync | GET api/sportlink/match/W%201/public-match-id | """,

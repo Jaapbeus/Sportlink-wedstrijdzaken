@@ -269,10 +269,11 @@ namespace SportlinkFunction
         }
 
         // Azure SQL Serverless auto-resume takes 30-90s; 20 retries = 5 min total. Buiten Azure-hosting
-        // (WEBSITE_SITE_NAME afwezig, zelfde productie-signaal als EgressGuard/EasyAuthHelper) heeft dat
-        // venster geen nut en verbergt het een configuratiefout 5 minuten lang achter een timeout (#859).
+        // heeft dat venster geen nut en verbergt het een configuratiefout 5 minuten lang achter een
+        // timeout (#859). Alleen een wachtvenster, geen beveiligingsbeslissing: die hangt sinds #1700 aan
+        // de expliciete lokale schakelaar (LokaleOntwikkelomgeving), niet aan deze platformvariabele.
         // Beide waarden zijn bovendien expliciet overschrijfbaar via omgevingsvariabelen.
-        private static readonly bool IsAzureHosted = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME"));
+        private static readonly bool IsAzureHosted = global::Planner.Shared.Infrastructure.LokaleOntwikkelomgeving.DraaitInAzure();
         private static readonly int MaxDatabaseConnectRetries =
             GetConfiguredInt("DbWaitMaxRetries", IsAzureHosted ? 20 : 3);
         private static readonly int DatabaseConnectRetryDelayMs =

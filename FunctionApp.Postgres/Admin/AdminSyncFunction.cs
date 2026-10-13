@@ -1,3 +1,4 @@
+using FunctionApp.Postgres.Infrastructure;
 using System.Text.Json;
 using Azure.Storage.Queues;
 using Microsoft.AspNetCore.Http;
@@ -84,6 +85,9 @@ public static class AdminSyncFunction
         return AdminEndpoint.ExecuteAsync(req, log, "sync starten",
             async clubCode =>
             {
+                // #1676: geen job aanmaken of op de queue zetten als de verwerking toch geblokkeerd wordt.
+                if (UitgaandVerkeerCore.Blokkeer(EgressGuard.ExternalIntegrationsAllowed) is { } egressAntwoord) return egressAntwoord;
+
                 // #1352/#1461/#1492: body + seizoensvenster via de gedeelde orkestratie (400 bij ongeldig).
                 var venster = await SyncTriggerEndpointCore.BepaalVensterAsync(
                     await new StreamReader(req.Body).ReadToEndAsync(), DateTime.UtcNow.Year,

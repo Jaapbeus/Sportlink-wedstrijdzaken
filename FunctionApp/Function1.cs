@@ -1,3 +1,4 @@
+using Planner.Endpoints.Admin;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -81,6 +82,8 @@ namespace SportlinkFunction
                 {
                     log.LogInformation("HTTP trigger SyncMatchesHttp executed at: {Now}", DateTime.UtcNow);
 
+                    if (UitgaandVerkeerCore.Blokkeer(EgressGuard.ExternalIntegrationsAllowed) is { } geblokkeerd) return geblokkeerd;
+
                     // Eigen catch naast de wrapper: de automatische foutrapportage hoort bij dit
                     // endpoint en niet bij de generieke 500 van de wrapper.
                     try
@@ -122,9 +125,10 @@ namespace SportlinkFunction
                 });
         }
 
-        // Publieke entry-point voor SyncJobProcessor (#1138, voorheen AdminSyncFunction's fire-and-forget
+        // Entry-point voor SyncJobProcessor (#1138, voorheen AdminSyncFunction's fire-and-forget
         // Task.Run). Retourneert partialFailure zodat de aanroeper de job-status correct kan zetten.
-        public static async Task<bool> RunSyncAsync(
+        // Internal (#1676): de enige aanroeper, SyncJobProcessor, controleert EgressGuard vooraf.
+        internal static async Task<bool> RunSyncAsync(
             int fromWeekOffset, int toWeekOffset,
             string sportlinkApiUrl, string sportlinkClientId,
             ILogger log)

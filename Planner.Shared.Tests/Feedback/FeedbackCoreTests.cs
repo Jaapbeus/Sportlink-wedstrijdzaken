@@ -122,6 +122,15 @@ public class FeedbackCoreTests
         fake.AantalAanroepen.Should().Be(1);
     }
 
+    [Fact]
+    public async Task ValidateAsync_TeveelAiVragen_WordtGecaptOpMaximum()
+    {
+        var vragen = string.Join(",", Enumerable.Range(1, FeedbackCore.MaxAanvulVragen + 2).Select(i => $"\"Vraag {i}?\""));
+        var result = await FeedbackCore.ValidateAsync(MaakSchoonRequest(), new FakeChatClient($$"""{"volledig": false, "vragen": [{{vragen}}]}"""), NullLogger.Instance);
+
+        result.Vragen.Should().HaveCount(FeedbackCore.MaxAanvulVragen).And.StartWith("Vraag 1?");
+    }
+
     // ── Submit: eerste gate blokkeert vóór de AI-aanroep ───────────────────────
 
     [Fact]
@@ -400,6 +409,20 @@ public class FeedbackCoreTests
         public object? GetService(Type serviceType, object? serviceKey = null) => null;
 
         public void Dispose() { }
+    }
+
+    // ── Herkomstlabel van widgetissues (#1597) ─────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("Fout")]
+    [InlineData("Verzoek")]
+    [InlineData("Vraag")]
+    public void KiesLabels_zetHetCanoniekeHerkomstlabel(string type)
+    {
+        var labels = FeedbackCore.KiesLabels(type);
+
+        labels.Should().Contain("via: feedback-widget");
+        labels.Should().NotContain("via-feedback-widget");
     }
 
     private sealed class FakeGitHubIssueCreator

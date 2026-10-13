@@ -86,7 +86,7 @@ internal static class AutoPlanService
     /// bouwt daaruit de bijbehorende <see cref="AutoPlanWedstrijdItem"/>'s op — onbekend-team,
     /// niet-inplanbaar of een geslaagd/ongewijzigd slot. Verplaatst ongewijzigd uit AutoPlanAsync.
     /// </summary>
-    private static List<AutoPlanWedstrijdItem> PlanWedstrijdItems(
+    internal static List<AutoPlanWedstrijdItem> PlanWedstrijdItems(
         List<WedstrijdRaw> gesorteerd,
         Dictionary<WedstrijdRaw, PlanDoel> doelen,
         FieldScheduler scheduler,
@@ -102,8 +102,11 @@ internal static class AutoPlanService
             var doel = doelen[wedstrijd];
             var leeftijd = doel.Leeftijd;
             speeltijden.TryGetValue(leeftijd, out var speeltijdInfo);
+            // #1559: Sportlink is leidend; de onbekend-team-terugval geldt alleen zonder Sportlink-duur
+            // én zonder speeltijdenrij, dus een bestaande wedstrijd hangt niet af van de speeltijdentabel.
+            bool sportlinkLeidend = VeldbezettingDuur.IsSportlinkLeidend(wedstrijd.SportlinkSpeelduur);
 
-            if (speeltijdInfo == null)
+            if (speeltijdInfo == null && !sportlinkLeidend)
             {
                 items.Add(new AutoPlanWedstrijdItem
                 {
@@ -128,6 +131,14 @@ internal static class AutoPlanService
             int? voorkeurAfwijking = null;
             int teamBufVoor = PlanningBufferRegels.Effectief(buffer,
                 teamBuffers.TryGetValue(wedstrijd.TeamNaam, out var tb) ? tb.bufferVoor : null);
+            // #1559: Sportlink is leidend voor wedstrijden die er al zijn; speeltijden alleen als terugval.
+            // Dan geldt ook geen app-buffer (club of team) rond die wedstrijd (sportlinkLeidend).
+            int duurMinuten = VeldbezettingDuur.Bepaal(wedstrijd.SportlinkSpeelduur, speeltijdInfo?.WedstrijdTotaal);
+            // Zonder speeltijdenrij: veldafmeting uit de Sportlink-subpositie, anders heel veld.
+            var (_, subpositie) = VeldResolver.Resolve(wedstrijd.Veld,
+                veldInfoLookup.Values.Select(v => ((string?)v.VeldNaam, v.VeldNummer)));
+            decimal veldafmeting = speeltijdInfo?.Veldafmeting
+                ?? VeldResolver.SubpositieFractie(subpositie) ?? 1.00m;
 
             if (doel.DoelTijd.HasValue)
             {
@@ -135,9 +146,9 @@ internal static class AutoPlanService
                 // dicht mogelijk daarbij, en probeer daarbij eerst het voorkeursveld als dat gezet is.
                 var doelTijd = doel.DoelTijd.Value;
                 voorkeurTijdStr = doelTijd.ToString("HH:mm");
-                slot = scheduler.FindAndOccupyNearTime(doelTijd, speeltijdInfo.Veldafmeting,
-                    speeltijdInfo.WedstrijdTotaal, teamBufVoor, wedstrijd.TeamNaam,
-                    voorkeurVeldNummer: doel.VoorkeurVeldNummer);
+                slot = scheduler.FindAndOccupyNearTime(doelTijd, veldafmeting,
+                    duurMinuten, teamBufVoor, wedstrijd.TeamNaam,
+                    voorkeurVeldNummer: doel.VoorkeurVeldNummer, sportlinkLeidend: sportlinkLeidend);
                 if (slot != null)
                     voorkeurAfwijking = (int)(slot.AanvangsTijd.ToTimeSpan() - doelTijd.ToTimeSpan()).TotalMinutes;
             }
@@ -146,11 +157,11 @@ internal static class AutoPlanService
                 // Geen streeftijd bekend: eerst beschikbare gat, zoals voorheen. Een voorkeursveld
                 // zonder tijd wordt nog steeds gerespecteerd zolang het veld ruimte heeft.
                 slot = doel.VoorkeurVeldNummer.HasValue
-                    ? scheduler.FindAndOccupyNearTime(FieldScheduler.DagStart, speeltijdInfo.Veldafmeting,
-                        speeltijdInfo.WedstrijdTotaal, teamBufVoor, wedstrijd.TeamNaam,
-                        voorkeurVeldNummer: doel.VoorkeurVeldNummer)
-                    : scheduler.FindAndOccupyNextSlot(speeltijdInfo.Veldafmeting, speeltijdInfo.WedstrijdTotaal,
-                        teamBufVoor, wedstrijd.TeamNaam);
+                    ? scheduler.FindAndOccupyNearTime(FieldScheduler.DagStart, veldafmeting,
+                        duurMinuten, teamBufVoor, wedstrijd.TeamNaam,
+                        voorkeurVeldNummer: doel.VoorkeurVeldNummer, sportlinkLeidend: sportlinkLeidend)
+                    : scheduler.FindAndOccupyNextSlot(veldafmeting, duurMinuten,
+                        teamBufVoor, wedstrijd.TeamNaam, sportlinkLeidend: sportlinkLeidend);
             }
 
             if (slot == null)
@@ -162,8 +173,8 @@ internal static class AutoPlanService
                     TeamNaam = wedstrijd.TeamNaam,
                     LeeftijdsCategorie = wedstrijd.LeeftijdsCategorie,
                     Competitiesoort = wedstrijd.Competitiesoort,
-                    DuurMinuten = speeltijdInfo.WedstrijdTotaal,
-                    Veldafmeting = speeltijdInfo.Veldafmeting,
+                    DuurMinuten = duurMinuten,
+                    Veldafmeting = veldafmeting,
                     HuidigeVeld = wedstrijd.Veld,
                     HuidigeTijd = wedstrijd.AanvangsTijd,
                     HeeftVeld = !string.IsNullOrWhiteSpace(wedstrijd.Veld),
@@ -192,8 +203,8 @@ internal static class AutoPlanService
                 TeamNaam = wedstrijd.TeamNaam,
                 LeeftijdsCategorie = string.IsNullOrWhiteSpace(leeftijd) ? null : leeftijd,
                 Competitiesoort = wedstrijd.Competitiesoort,
-                DuurMinuten = speeltijdInfo.WedstrijdTotaal,
-                Veldafmeting = speeltijdInfo.Veldafmeting,
+                DuurMinuten = duurMinuten,
+                Veldafmeting = veldafmeting,
                 HuidigeVeld = wedstrijd.Veld,
                 HuidigeTijd = wedstrijd.AanvangsTijd,
                 HeeftVeld = heeftVeld,

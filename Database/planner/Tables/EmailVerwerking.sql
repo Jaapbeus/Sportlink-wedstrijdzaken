@@ -36,3 +36,9 @@ CREATE TABLE [planner].[EmailVerwerking] (
     CONSTRAINT [PK_EmailVerwerking] PRIMARY KEY CLUSTERED ([Id] ASC),
     CONSTRAINT [UQ_EmailVerwerking_MessageId] UNIQUE ([MessageId])
 );
+GO
+
+-- #1674: opzoekingen per conversatie (antwoordlimiet, replydetectie). Idempotente tegenhanger in
+-- Script.PostDeployment1.sql; Postgres: migratie 041_emailverwerking_conversatie_index.sql.
+CREATE NONCLUSTERED INDEX [IX_EmailVerwerking_Club_Conversatie]
+    ON [planner].[EmailVerwerking] ([ClubCode], [ConversationId]);

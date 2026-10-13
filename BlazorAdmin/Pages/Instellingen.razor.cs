@@ -8,6 +8,7 @@ namespace BlazorAdmin.Pages;
 public partial class Instellingen : ClubSelectorPageBase
 {
     [Inject] private EmailApiClient EmailApi { get; set; } = default!;
+    [Inject] private ClubInstellingenCache InstellingenCache { get; set; } = default!;
     [Inject] private InstellingenApiClient InstellingenApi { get; set; } = default!;
 
     private AppSettingsDto? settings;
@@ -63,7 +64,7 @@ public partial class Instellingen : ClubSelectorPageBase
             return;
         }
 
-        var settingsTask = InstellingenApi.GetSettingsAsync();
+        var settingsTask = InstellingenCache.GetSettingsAsync(true);
         var syncTask    = InstellingenApi.GetSyncStatusAsync();
         var emailTask   = EmailApi.GetEmailLogAsync(vanaf: DateTime.Today.AddDays(-1), limit: 200);
         var reviewTask  = EmailApi.GetEmailLogAsync(status: "Review", limit: EmailReviewMax);
@@ -258,7 +259,7 @@ public partial class Instellingen : ClubSelectorPageBase
         herstartMessage = null;
         errorMessage = null;
 
-        var r = await InstellingenApi.UpdateSettingsAsync(BouwUpdate(settings));
+        var r = await InstellingenCache.UpdateSettingsAsync(BouwUpdate(settings));
         if (r.Success)
         {
             successMessage = "Instellingen opgeslagen.";

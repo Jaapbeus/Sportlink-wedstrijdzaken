@@ -1,3 +1,4 @@
+using Planner.Shared.Infrastructure;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -32,10 +33,15 @@ internal static class EasyAuthHelper
         catch { return null; }
     }
 
+    /// <summary>
+    /// Lokale ontwikkelbypass (#1700): alleen met <c>LOCAL_AUTH_BYPASS=true</c> en nooit in Azure; de beslisregel
+    /// staat in <see cref="LokaleOntwikkelomgeving"/>. Zonder schakelaar geldt overal de rolcontrole.
+    /// </summary>
+    private static bool LokaleBypass => LokaleOntwikkelomgeving.BypassActief();
+
     public static IActionResult? RequireRole(HttpRequest req, params string[] allowedRoles)
     {
-        var siteName = Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME");
-        if (string.IsNullOrEmpty(siteName))
+        if (LokaleBypass)
             return null;
 
         var principal = TryGetPrincipal(req);
@@ -57,12 +63,11 @@ internal static class EasyAuthHelper
     /// Niet-gooiende variant van <see cref="RequireRole"/> (#1341) — voor een feature-toggle-check
     /// die zelf al bepaalt wat er bij "nee" gebeurt (bijv. de rol-feature-instelling raadplegen)
     /// in plaats van meteen een 401/403 te retourneren. Zelfde lokale bypass als alle
-    /// <c>Require*</c>-methoden: zonder <c>WEBSITE_SITE_NAME</c> (lokaal/CI) is elke rol "aanwezig".
+    /// <c>Require*</c>-methoden: alleen met de schakelaar (#1700) is elke rol "aanwezig".
     /// </summary>
     public static bool IsInRole(HttpRequest req, string role)
     {
-        var siteName = Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME");
-        if (string.IsNullOrEmpty(siteName)) return true;
+        if (LokaleBypass) return true;
 
         var principal = TryGetPrincipal(req);
         return principal?.Claims?.Any(c =>
@@ -110,7 +115,7 @@ internal static class EasyAuthHelper
 
     /// <summary>De aanroeper voor leeracties en hun auditspoor (#1568 deel C): object-ID + naammomentopname, geen e-mailadres.</summary>
     public static global::Planner.Shared.Leren.LerenAanroeper GetLerenAanroeper(HttpRequest req)
-        => new(GetCallerObjectId(req), GetCallerName(req)) { HeeftPrincipal = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME")) };
+        => new(GetCallerObjectId(req), GetCallerName(req)) { HeeftPrincipal = !LokaleBypass };
 
     public static string? GetCallerEmail(HttpRequest req)
     {
@@ -130,8 +135,7 @@ internal static class EasyAuthHelper
     /// </summary>
     public static string GetAuditActor(HttpRequest req)
     {
-        var siteName = Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME");
-        if (string.IsNullOrEmpty(siteName))
+        if (LokaleBypass)
             return "lokale-ontwikkelaar";
 
         var actor = GetCallerEmail(req) ?? GetCallerName(req);
@@ -143,23 +147,36 @@ internal static class EasyAuthHelper
         return actor;
     }
 
-    private static readonly System.Text.RegularExpressions.Regex GeldigeClubCode =
-        new("^[A-Za-z0-9_-]{1,20}$", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly BekendeClubs Clubs = new(() => BekendeClubs.LeesCodes(
+        new Npgsql.NpgsqlConnection(PostgresDatabaseConfig.ConnectionString),
+        "SELECT clubcode FROM public.appsettings"));
 
-    public static string GetClubCodeFromRequest(HttpRequest req)
+    /// <summary>
+    /// Eenmaal bij het opstarten: koppelt de geaggregeerde foutlog van de clublijst (#1689) en meldt, zonder
+    /// waarden, of de lokale bypass actief is of in Azure is geweigerd (#1700). Die melding gaat naar de
+    /// standaarduitvoer: een <c>ILogger</c>-regel buiten een functieaanroep bereikt de Functions-host niet
+    /// (vastgesteld met een lokale functiehost), de standaarduitvoer van de worker wel.
+    /// </summary>
+    public static void KoppelOpstartLogs(Microsoft.Extensions.Logging.ILoggerFactory loggers)
     {
-        // #1122 (CISO): de header is een UX-schakelaar (productie ↔ AllStars-demodata), geen
-        // autorisatiegrens (AGENTS.md, deployment-model). Wel een vormcontrole: een ClubCode is
-        // max 20 tekens [A-Za-z0-9_-] (kolomdefinitie). Iets anders gaat niet als clubcode de
-        // database in — dan geldt de primaire club.
-        if (req.Headers.TryGetValue("X-Club-Code", out var headerVal) &&
-            !string.IsNullOrWhiteSpace(headerVal) &&
-            GeldigeClubCode.IsMatch(headerVal.ToString()))
-            return headerVal.ToString();
-
-        return PostgresAppSettings.GetSetting("clubCode")
-            ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in public.appsettings");
+        Clubs.Log = loggers.CreateLogger(nameof(BekendeClubs));
+        LokaleOntwikkelomgeving.MeldOpstart(Console.Out);
     }
+
+    /// <summary>
+    /// De clubcode voor dit verzoek. De header <c>X-Club-Code</c> is een UX-schakelaar tussen de
+    /// primaire club en de democlub, geen autorisatiegrens (#1122, AGENTS.md). De waarde wordt getoetst
+    /// aan de bekende clubs (#1677, vorm en bestaan; #1689 begrensd herladen bij een onbekende waarde):
+    /// een onbekende of ontbrekende waarde geeft de primaire club; is de lijst nog niet te toetsen, dan
+    /// geldt de syntactisch geldige waarde zoals voorheen (<see cref="ClubZoekResultaat.CodeVoorVerzoek"/>).
+    /// </summary>
+    public static string GetClubCodeFromRequest(HttpRequest req)
+        => GetClubCodeFromRequest(req, Clubs, () => PostgresAppSettings.GetSetting("clubCode")
+            ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in public.appsettings"));
+
+    /// <summary>Tier-bedrading met injecteerbare lijst en primaire club; bedoeld voor tests (#1689).</summary>
+    internal static string GetClubCodeFromRequest(HttpRequest req, BekendeClubs clubs, Func<string> primaireClub)
+        => clubs.ClubCodeVoorVerzoek(req.Headers["X-Club-Code"].ToString(), primaireClub);
 
     public static string ExtractOrCreateCorrelationId(HttpRequest req)
     {

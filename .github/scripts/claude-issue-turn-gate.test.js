@@ -5,7 +5,7 @@
 // zijn eigen trigger — labeled issues — dus een fout zou anders pas bij een echte run blijken).
 
 const {
-  evaluateGate, setTurnLabel, collectTrustedContext, runTitle, MAX_RUNS, MAX_CONTEXT_CHARS,
+  evaluateGate, setTurnLabel, collectTrustedContext, runTitle, MAX_RUNS, MAX_CONTEXT_BYTES, truncateToBytes,
 } = require('./claude-issue-turn-gate.js');
 
 let failures = 0;
@@ -19,10 +19,12 @@ const ctx = { repo: { owner: 'o', repo: 'r' }, runId: 999999 };
 const core = { notice: () => {}, warning: () => {} };
 
 function fakeGithub({
-  labels = [], openPrs = [], priorRunTitles = [],
+  labels = [], openPrs = [], closedPrs = [], priorRunTitles = [],
   issue = {}, commentsByNumber = {}, reviews = [], inlineComments = [],
 } = {}) {
   const calls = { added: [], removed: [], comments: [] };
+  // #1664: een geldig issue is open en heeft precies `turn: claude-code`, tenzij de test anders bepaalt.
+  if (!labels.some((n) => n.startsWith('turn: '))) labels = [...labels, 'turn: claude-code'];
   return {
     calls,
     paginate: async (fn, params) => {
@@ -32,7 +34,7 @@ function fakeGithub({
     rest: {
       issues: {
         get: async () => ({
-          data: { author_association: 'OWNER', labels: labels.map((name) => ({ name })), ...issue },
+          data: { author_association: 'OWNER', state: 'open', labels: labels.map((name) => ({ name })), ...issue },
         }),
         listComments: async ({ issue_number }) => ({ data: commentsByNumber[issue_number] || [] }),
         addLabels: async ({ labels: l }) => { calls.added.push(...l); },
@@ -40,7 +42,12 @@ function fakeGithub({
         createComment: async ({ body }) => { calls.comments.push(body); },
       },
       pulls: {
-        list: async () => ({ data: openPrs }),
+        // #1692: gesloten PR's apart en per pagina (de poort pagineert die zelf).
+        list: async ({ state, page = 1 }) => {
+          calls.closedPages = (calls.closedPages || 0) + (state === 'closed' ? 1 : 0);
+          if (state !== 'closed') return { data: openPrs };
+          return { data: closedPrs.slice((page - 1) * 100, page * 100) };
+        },
         listReviews: async () => ({ data: reviews }),
         listReviewComments: async () => ({ data: inlineComments }),
       },
@@ -287,20 +294,217 @@ function fakeGithub({
     check('issue van de Claude GitHub App mag wel', result.proceed, true);
   }
 
+  // ---------- #1666: contextlimiet in UTF-8-bytes ----------
+  console.log('\ncollectTrustedContext (bytes, #1666):');
+  const ownerComment = (d, body) => ({
+    user: { login: 'eigenaar' }, author_association: 'OWNER', created_at: `${d}T00:00:00Z`, body,
+  });
+  const bytes = (t) => Buffer.byteLength(t, 'utf8');
+
   {
-    const big = 'x'.repeat(Math.floor(MAX_CONTEXT_CHARS / 2));
+    const big = 'x'.repeat(Math.floor(MAX_CONTEXT_BYTES / 2));
     const github = fakeGithub({
       issue: { title: 'T', body: 'b', author_association: 'OWNER' },
       commentsByNumber: {
-        62: ['2026-10-01', '2026-10-02', '2026-10-03'].map((d, i) => ({
-          user: { login: 'eigenaar' }, author_association: 'OWNER', created_at: `${d}T00:00:00Z`, body: `c${i}${big}`,
-        })),
+        62: ['2026-10-01', '2026-10-02', '2026-10-03'].map((d, i) => ownerComment(d, `c${i}${big}`)),
       },
     });
     const r = await collectTrustedContext({ github, context: ctx, issueNumber: 62 });
-    check('omvang begrensd', r.text.length <= MAX_CONTEXT_CHARS + 2000, true);
+    check('omvang in bytes begrensd', bytes(r.text) <= MAX_CONTEXT_BYTES, true);
     check('oudste valt af, nieuwste blijft', [r.text.includes('c0x'), r.text.includes('c2x')], [false, true]);
-    check('afgekapte bijdragen geteld', r.truncated, 2);
+    check('afgekapte bijdragen geteld', r.truncated >= 1, true);
+  }
+
+  {
+    // 40.000 tekens van 3 bytes = 120.000 bytes: past in tekens, niet in bytes.
+    const multi = '€'.repeat(40000);
+    const github = fakeGithub({
+      issue: { title: 'T', body: 'b', author_association: 'OWNER' },
+      commentsByNumber: { 66: [ownerComment('2026-10-01', multi)] },
+    });
+    const r = await collectTrustedContext({ github, context: ctx, issueNumber: 66 });
+    check('multibyte: tekenaantal onder de oude limiet', r.text.length < 60000 + 2000, true);
+    check('multibyte: bytes onder het plafond', bytes(r.text) <= MAX_CONTEXT_BYTES, true);
+    check('multibyte: afkapmarkering aanwezig', r.text.includes('AFGEKAPT wegens omvang'), true);
+    check('multibyte: geen ongeldig teken door afkappen', r.text.includes('\uFFFD'), false);
+    check('multibyte: enige (nieuwste) bijdrage blijft deels beschikbaar', r.text.includes('€€€€'), true);
+  }
+
+  {
+    // Enorme issuetekst naast twee reviewcomments: de laatste review blijft volledig behouden.
+    const github = fakeGithub({
+      issue: { title: 'Titel', body: 'i'.repeat(300000), author_association: 'OWNER' },
+      commentsByNumber: {
+        67: [ownerComment('2026-10-01', 'OUDE-REVIEW'), ownerComment('2026-10-02', 'NIEUWSTE-REVIEW')],
+      },
+    });
+    const r = await collectTrustedContext({ github, context: ctx, issueNumber: 67 });
+    check('grote issuetekst: bytes onder het plafond', bytes(r.text) <= MAX_CONTEXT_BYTES, true);
+    check('grote issuetekst: nieuwste review volledig aanwezig', r.text.includes('NIEUWSTE-REVIEW'), true);
+    check('grote issuetekst: oudere review ook aanwezig', r.text.includes('OUDE-REVIEW'), true);
+    check('grote issuetekst: afkapping gemarkeerd', r.text.includes('AFGEKAPT wegens omvang'), true);
+    check('grote issuetekst: melding in kop', r.text.includes('issuetekst is afgekapt'), true);
+  }
+
+  {
+    check('truncateToBytes: korte tekst ongewijzigd', truncateToBytes('abc', 100), 'abc');
+    const cut = truncateToBytes('€'.repeat(100), 200);
+    check('truncateToBytes: limiet gerespecteerd', bytes(cut) <= 200, true);
+    check('truncateToBytes: markering', cut.includes('AFGEKAPT'), true);
+  }
+
+  // ---------- #1664: actuele toestand van het issue ----------
+  console.log('\nevaluateGate (#1664 actuele beurt):');
+  {
+    const github = fakeGithub({ labels: ['source: owner', 'turn: claude-code'], issue: { state: 'closed' } });
+    const result = await evaluateGate({ github, context: ctx, core, issueNumber: 70 });
+    check('gesloten issue: proceed=false', result.proceed, false);
+    check('gesloten issue: geen labelwijziging', [github.calls.added, github.calls.removed], [[], []]);
+    check('gesloten issue: geen comment (niet heropend, niets geplaatst)', github.calls.comments, []);
+  }
+  {
+    const github = fakeGithub({ labels: ['source: owner', 'turn: owner'] });
+    const result = await evaluateGate({ github, context: ctx, core, issueNumber: 71 });
+    check('turn: owner (beurt teruggenomen): proceed=false', result.proceed, false);
+    check('turn: owner: labels ongewijzigd', [github.calls.added, github.calls.removed], [[], []]);
+  }
+  {
+    const github = fakeGithub({ labels: ['source: owner', 'turn: claude-code', 'turn: codex'] });
+    const result = await evaluateGate({ github, context: ctx, core, issueNumber: 72 });
+    check('twee turn-labels: proceed=false', result.proceed, false);
+    check('twee turn-labels: labels ongewijzigd', [github.calls.added, github.calls.removed], [[], []]);
+  }
+  {
+    const github = fakeGithub({ labels: ['source: owner', 'turn: claude-code'] });
+    const result = await evaluateGate({ github, context: ctx, core, issueNumber: 73 });
+    check('open issue met alleen turn: claude-code: proceed=true', result.proceed, true);
+    check('open issue met alleen turn: claude-code: implementatie', result.phase, 'implementatie');
+  }
+
+  // ---------- #1665: meerdere gekoppelde PR's ----------
+  console.log('\nevaluateGate (#1665 meerdere PR-koppelingen):');
+  {
+    const a = ownPr(80, { number: 801 });
+    const b = ownPr(80, { number: 802, head: { ref: 'feature/#80-andere', repo: { full_name: 'o/r' } } });
+    const results = [];
+    for (const openPrs of [[a, b], [b, a]]) {
+      const github = fakeGithub({ labels: ['source: owner'], openPrs });
+      const result = await evaluateGate({ github, context: ctx, core, issueNumber: 80 });
+      results.push(result);
+      check('twee geldige PR\'s: proceed=false', result.proceed, false);
+      check('twee geldige PR\'s: reden noemt meerdere PR-koppelingen', /meerdere PR-koppelingen/.test(result.reason), true);
+      check('twee geldige PR\'s: geen fase en geen labelwijziging', [result.phase, github.calls.added, github.calls.removed, github.calls.comments], [undefined, [], [], []]);
+    }
+    check('twee geldige PR\'s: uitkomst onafhankelijk van API-volgorde', results[0], results[1]);
+  }
+  {
+    const geldig = ownPr(81, { number: 811 });
+    const ongeldig = ownPr(81, { number: 812, author_association: 'NONE' });
+    for (const openPrs of [[geldig, ongeldig], [ongeldig, geldig]]) {
+      const github = fakeGithub({ labels: ['source: owner'], openPrs });
+      const result = await evaluateGate({ github, context: ctx, core, issueNumber: 81 });
+      check('één geldige + één ongeldige PR: verwerking op de geldige', [result.proceed, result.phase, result.prNumber], [true, 'verwerking', 811]);
+    }
+  }
+
+  // ---------- #1692: al afgerond werk ----------
+  console.log('\nevaluateGate (#1692 al gemerged):');
+  {
+    const merged = ownPr(90, { number: 901, state: 'closed', merged_at: '2026-10-12T14:49:37Z', updated_at: '2026-10-12T14:49:37Z' });
+    const github = fakeGithub({ labels: ['source: owner'], closedPrs: [merged] });
+    const result = await evaluateGate({ github, context: ctx, core, issueNumber: 90 });
+    check('gemergede gekoppelde PR: proceed=false', result.proceed, false);
+    check('gemergede gekoppelde PR: reden noemt de PR', /#901 is al gemerged/.test(result.reason), true);
+    check('gemergede gekoppelde PR: geen label of comment', [github.calls.added, github.calls.removed, github.calls.comments], [[], [], []]);
+  }
+  {
+    const github = fakeGithub({ labels: ['source: owner', 'status: awaiting-release'] });
+    const result = await evaluateGate({ github, context: ctx, core, issueNumber: 91 });
+    check('awaiting-release: proceed=false', result.proceed, false);
+    check('awaiting-release: geen label of comment', [github.calls.added, github.calls.removed, github.calls.comments], [[], [], []]);
+  }
+  {
+    const afgewezen = ownPr(92, { number: 921, state: 'closed', merged_at: null, closed_at: '2026-10-11T10:00:00Z' });
+    const github = fakeGithub({ labels: ['source: owner'], closedPrs: [afgewezen] });
+    const result = await evaluateGate({ github, context: ctx, core, issueNumber: 92 });
+    check('gesloten zonder merge blokkeert niet: implementatie', [result.proceed, result.phase], [true, 'implementatie']);
+  }
+  {
+    const vreemd = ownPr(93, {
+      number: 931, merged_at: '2026-10-12T10:00:00Z', head: { ref: 'feature/#93-x', repo: { full_name: 'aanvaller/r' } }, author_association: 'NONE',
+    });
+    const github = fakeGithub({ labels: ['source: owner'], closedPrs: [vreemd] });
+    const result = await evaluateGate({ github, context: ctx, core, issueNumber: 93 });
+    check('gemergede fork-PR telt niet (zelfde filters als open PR\'s)', result.proceed, true);
+  }
+  {
+    // Paginering: de gemergede PR staat op pagina 2 en wordt toch gevonden.
+    const filler = Array.from({ length: 100 }, (_, i) => ({ number: 2000 + i, title: 'iets anders', body: '', head: { ref: 'x', repo: { full_name: 'o/r' } }, updated_at: '2026-10-12T15:00:00Z' }));
+    const merged = ownPr(94, { number: 941, merged_at: '2026-10-12T09:00:00Z', updated_at: '2026-10-12T09:00:00Z' });
+    const github = fakeGithub({ labels: ['source: owner'], closedPrs: [...filler, merged] });
+    const result = await evaluateGate({ github, context: ctx, core, issueNumber: 94 });
+    check('gemergede PR op pagina 2 gevonden', result.proceed, false);
+  }
+  {
+    // Vroeg stoppen: PR's bijgewerkt vóór het aanmaken van het issue kunnen er niet naar verwijzen.
+    const old = Array.from({ length: 100 }, (_, i) => ({ number: 3000 + i, title: 'oud', body: '', head: { ref: 'x', repo: { full_name: 'o/r' } }, updated_at: '2026-01-01T00:00:00Z' }));
+    const github = fakeGithub({ labels: ['source: owner'], issue: { created_at: '2026-10-01T00:00:00Z' }, closedPrs: [...old, ...old] });
+    await evaluateGate({ github, context: ctx, core, issueNumber: 95 });
+    check('scan stopt bij PR\'s van vóór het issue (één pagina)', github.calls.closedPages, 1);
+  }
+  // ---------- #1686: reviewteruggave verwijst naar een besloten reviewnotitie ----------
+  console.log('\nevaluateGate (#1686 besloten reviewnotitie):');
+  const prComment = (body, tijd, extra = {}) => ({
+    user: { login: 'eigenaar' }, author_association: 'OWNER', created_at: tijd, body, ...extra,
+  });
+  const gewoon = 'Onafhankelijke review ronde 1 — reviewer Codex.\n\nUitkomst: één P2-bevinding in `a.js:12`.';
+  const besloten = (variant) => `Onafhankelijke review ronde 1 — reviewer Codex.\n\nUitkomst: één P1-bevinding; details in de ${variant}.`;
+  const runMetComments = async (n, comments) => {
+    const github = fakeGithub({
+      labels: ['source: owner'], openPrs: [ownPr(n, { number: 900 + n })], commentsByNumber: { [900 + n]: comments },
+    });
+    const result = await evaluateGate({ github, context: ctx, core, issueNumber: n });
+    return { github, result };
+  };
+  for (const variant of ['besloten lokale reviewnotitie', 'besloten reviewnotitie', 'Besloten notitie']) {
+    const { github, result } = await runMetComments(90, [prComment(besloten(variant), '2026-10-12T10:00:00Z')]);
+    check(`'${variant}': geen run`, [result.proceed, result.phase], [false, undefined]);
+    check(`'${variant}': reden noemt de besloten reviewnotitie`, /besloten reviewnotitie/.test(result.reason), true);
+    check(`'${variant}': één comment, beurt naar turn: owner`, [github.calls.comments.length, github.calls.added, github.calls.removed],
+      [1, ['turn: owner'], ['turn: claude-code']]);
+    check(`'${variant}': comment bevat de inhoud van de bevinding niet`, github.calls.comments[0].includes('P1'), false);
+  }
+  {
+    const { github, result } = await runMetComments(91, [prComment(gewoon, '2026-10-12T10:00:00Z')]);
+    check('gewone teruggave: verwerking ongewijzigd', [result.proceed, result.phase, result.prNumber], [true, 'verwerking', 991]);
+    check('gewone teruggave: geen comment of labelwijziging', [github.calls.comments, github.calls.added], [[], []]);
+  }
+  {
+    const { result } = await runMetComments(92, []);
+    check('geen teruggave: verwerking ongewijzigd', [result.proceed, result.phase], [true, 'verwerking']);
+  }
+  {
+    // API-volgorde bewust omgekeerd: de tijdstempel bepaalt welke teruggave de nieuwste is.
+    const { github, result } = await runMetComments(93, [
+      prComment('Onafhankelijke review ronde 2 — reviewer Codex.\n\nUitkomst: opgelost, geen nieuwe bevindingen.', '2026-10-12T11:00:00Z'),
+      prComment(besloten('besloten reviewnotitie'), '2026-10-12T10:00:00Z'),
+    ]);
+    check('oudere teruggave met verwijzing, nieuwere zonder: ongewijzigd', [result.proceed, result.phase], [true, 'verwerking']);
+    check('oudere teruggave met verwijzing: geen comment', github.calls.comments, []);
+  }
+  {
+    const { github, result } = await runMetComments(94, [
+      prComment(besloten('besloten reviewnotitie'), '2026-10-12T10:00:00Z', { user: { login: 'vreemde' }, author_association: 'NONE' }),
+    ]);
+    check('verwijzing van niet-bevoegde auteur telt niet', [result.proceed, result.phase], [true, 'verwerking']);
+    check('niet-bevoegde auteur: geen comment of labelwijziging', [github.calls.comments, github.calls.added], [[], []]);
+  }
+  {
+    const { result } = await runMetComments(95, [
+      prComment(besloten('besloten reviewnotitie'), '2026-10-12T10:00:00Z'),
+      prComment('Verwerking Codex-review ronde 1: de besloten notitie is verwerkt. Uitkomst: opgelost.', '2026-10-12T11:00:00Z'),
+    ]);
+    check('verwerkingscomment telt niet als teruggave: nieuwste teruggave blijft blokkeren', result.proceed, false);
   }
 
   // ---------- setTurnLabel: remove+add, oude turn-labels weg ----------

@@ -10,8 +10,13 @@ name: Build (PR)
 # PostDeployment-script. Geen secrets, geen Azure-login, geen database — draait dus ook op forks.
 
 on:
+  # #1641: geen `branches`-filter, zodat ook een PR tegen een featurebranch (gestapelde PR) bouwt;
+  # Bewust zonder `edited`: dat vuurt ook bij elke titel-/tekstwijziging (volledige run per `gh pr edit`);
+  # na een base-retarget: `gh workflow run <workflow> --ref <branch>`. GitHub start GEEN pull_request-run zolang de PR een
+  # merge-conflict heeft ("Workflows will not run on `pull_request` activity if the pull request has
+  # a merge conflict", docs.github.com, events-that-trigger-workflows). Eerst develop mergen.
   pull_request:
-    branches: [main, develop]
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [develop]
   workflow_dispatch:
@@ -40,6 +45,10 @@ jobs:
   build:
     name: Build FunctionApp + BlazorAdmin
     runs-on: ubuntu-latest
+    # #1700: de lokale autorisatiebypass staat in CI expliciet uit. Tests draaien met productiegedrag
+    # (rolcontrole verplicht) en zetten LOCAL_AUTH_BYPASS alleen zelf aan waar ze de bypass bewijzen.
+    env:
+      LOCAL_AUTH_BYPASS: "false"
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -138,6 +147,13 @@ jobs:
       # staan met reden in scripts/ci/endpoint-autorisatie-allowlist.txt. Geen database, geen secrets.
       - name: Autorisatie — elk HTTP-endpoint via de wrapper
         run: bash scripts/ci/check-endpoint-autorisatie.sh
+
+      # #1676: elk bestand met uitgaand HTTP-verkeer controleert EgressGuard of staat met reden in
+      # scripts/ci/egressguard-allowlist.txt; de test bewijst dat de guard rood kan worden.
+      - name: EgressGuard — uitgaand HTTP-verkeer gedekt
+        run: |
+          bash scripts/ci/check-egressguard-dekking.sh
+          bash scripts/ci/check-egressguard-dekking.test.sh
 
       # #864: bewaakt de identifier-casing-conventie (docs/ARCHITECTUUR-DATABASE-TIERS.md sectie
       # 3) binnen de Postgres-migratiebestanden zelf — een ander risico dan de bestandsnaam-
@@ -388,6 +404,15 @@ jobs:
       # fasedetectie pas bij een echte run — als er al een agent aan het werk is.
       - name: Claude issue-beurt poort testen
         run: node .github/scripts/claude-issue-turn-gate.test.js
+
+      # #1692: vergelijk-en-zet van het eindlabel van claude-issue-turn.yml (zelfde reden als hierboven).
+      - name: Claude issue-beurt eindlabel testen
+        run: node .github/scripts/claude-issue-turn-eindlabel.test.js
+
+      # #1686: helper van turn-label-exclusief.yml (hoogstens één turn:-label). Ook die workflow
+      # draait alleen op een gelabeld issue; zonder deze test blijkt een fout pas bij een echte beurtwissel.
+      - name: Turn-label exclusief testen
+        run: node .github/scripts/turn-label-exclusief.test.js
 
       # ──────────────────────────────────────────────────────────────────────
       # #595: schema-drift guard.
@@ -715,6 +740,8 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       POSTGRES_CONNECTION_STRING: "Host=localhost;Port=5432;Username=ci_postgres;Password=ci-wegwerpwachtwoord-niet-geheim;Database=sportlink_ci"
+      # #1700: lokale autorisatiebypass expliciet uit; zie de toelichting bij de job build.
+      LOCAL_AUTH_BYPASS: "false"
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1171,6 +1198,33 @@ jobs:
           POSTGRES_CONNECTION_STRING="$CONN" dotnet run --project Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release -- \
             --seed-demodata scripts/migrations/003-seed-allstars-demo-matches-postgres.sql
           echo "Demodata-seed (#1246): echte volgorde, idempotentie en fork-zonder-democlub bevestigd."
+
+      # #1698: his/stg maakt geen migratie aan maar PostgresSchemaGenerator (sync) en
+      # --ensure-his-tables (deploy), dus de RLS-guard hierboven ziet ze op sportlink_ci niet. Hier
+      # draait hij op de database van de stap hierboven, waar --ensure-his-tables al gelopen heeft.
+      # Daarna de negatieve controle: zonder RLS op een his-tabel moet de guard rood worden, en een
+      # nieuwe --ensure-his-tables moet hem via de generator weer herstellen.
+      - name: RLS-invariant op de door de generator aangemaakte his-tabellen (#1698)
+        env:
+          PGHOST: localhost
+          PGPORT: "5432"
+          PGUSER: ci_postgres
+          PGPASSWORD: ci-wegwerpwachtwoord-niet-geheim
+          PGDATABASE: sportlink_ci_seed1246
+        run: |
+          CONN="Host=localhost;Port=5432;Username=ci_postgres;Password=ci-wegwerpwachtwoord-niet-geheim;Database=sportlink_ci_seed1246"
+          ./scripts/ci/check-rls-enabled.sh
+
+          psql -v ON_ERROR_STOP=1 -c "ALTER TABLE his.matches DISABLE ROW LEVEL SECURITY;"
+          if ./scripts/ci/check-rls-enabled.sh; then
+            echo "::error::check-rls-enabled.sh bleef groen terwijl his.matches geen RLS had (#1698): de guard bewaakt his niet."
+            exit 1
+          fi
+          echo "Negatieve controle geslaagd: de guard wordt rood op een his-tabel zonder RLS."
+
+          POSTGRES_CONNECTION_STRING="$CONN" dotnet run --project Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release -- --ensure-his-tables
+          ./scripts/ci/check-rls-enabled.sh
+          echo "PostgresSchemaGenerator zet RLS op een bestaande his-tabel terug (#1698)."
 
       - name: Bewijzen dat sportlink_ci onaangetast is gebleven (#925)
         run: |

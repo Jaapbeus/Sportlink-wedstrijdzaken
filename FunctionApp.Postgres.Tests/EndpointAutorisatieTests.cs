@@ -41,14 +41,21 @@ namespace FunctionApp.Postgres.Tests;
 /// faalt de <c>401</c>-test.
 /// </para>
 /// <para>
-/// Manipuleert de procesbrede omgevingsvariabele <c>WEBSITE_SITE_NAME</c> en de statische testhaak;
-/// beide worden in <c>finally</c> hersteld. De assembly draait sequentieel
+/// Sinds #1700 draait elke 401/403/doorlaat-verwachting in drie omgevingen waarin de rolcontrole
+/// verplicht is (<see cref="AfgedwongenOmgevingen"/>): productie, buiten Azure zonder schakelaar en
+/// Azure met een geweigerde <c>LOCAL_AUTH_BYPASS</c>. De bypass zelf wordt alleen bewezen met de
+/// schakelaar buiten Azure (<see cref="LokaalMetSchakelaar_ZonderPrincipal_PasseertDePoort"/>).
+/// </para>
+/// <para>
+/// Manipuleert de procesbrede omgevingsvariabelen <c>WEBSITE_SITE_NAME</c> en <c>LOCAL_AUTH_BYPASS</c>
+/// en de statische testhaak; alle drie worden in <c>finally</c> hersteld. De assembly draait sequentieel
 /// (<c>DisableTestParallelization</c> in AssemblyInfo.cs), dus dat is veilig.
 /// </para>
 /// </summary>
 public class EndpointAutorisatieTests
 {
     private const string AzureVar = "WEBSITE_SITE_NAME";
+    private const string SchakelaarVar = "LOCAL_AUTH_BYPASS";
 
     /// <summary>Het enige endpoint dat bewust zonder rol bereikbaar is.</summary>
     private static readonly string[] AnoniemeRoutes = ["health"];
@@ -92,6 +99,8 @@ public class EndpointAutorisatieTests
         "SportlinkMatchGet",
         "SportlinkMatchPublicMatchIdGet",
         "PdfExportStatus",
+        // #1647: menu-toegang voor elke ingelogde rol (de matrix zelf is admin-only).
+        "MenuToegangGet",
         // #764: de feedbackwidget is open voor elke ingelogde rol; een melding van een gewone
         // gebruiker wordt nooit rechtstreeks gepubliceerd (zie FeedbackEndpointCore). Het
         // beheeroverzicht (AdminFeedback*) blijft admin-only.
@@ -237,7 +246,7 @@ public class EndpointAutorisatieTests
     public async Task MetVereisteRollen_PasseertDePoortViaDeWrapper(string naam)
     {
         var endpoint = Endpoint(naam);
-        await MetProductieOmgeving(async () =>
+        await MetProductieOmgeving(async omgeving =>
         {
             AdminEndpoint.PoortGepasseerdVoorTests = _ => new PoortGepasseerdResult();
 
@@ -249,8 +258,11 @@ public class EndpointAutorisatieTests
 
             if (DirectePoortMetVerwachteStatus.TryGetValue(endpoint.Naam, out var verwachteStatus))
             {
-                StatusVan(result).Should().Be(verwachteStatus,
-                    $"{endpoint} roept de poort bewust direct aan en moet mét admin zijn eigen invoervalidatie bereiken");
+                // Buiten productie is de EgressGuard dicht: een endpoint dat eerst de poort en dan de
+                // EgressGuard controleert, geeft daar 503 in plaats van zijn invoervalidatie (#1700).
+                int[] toegestaan = omgeving.EgressOpen ? [verwachteStatus] : [verwachteStatus, 503];
+                toegestaan.Should().Contain(StatusVan(result) ?? 0,
+                    $"{endpoint} roept de poort bewust direct aan en moet mét admin voorbij de rolcontrole komen");
             }
             else
             {
@@ -258,6 +270,28 @@ public class EndpointAutorisatieTests
                     $"{endpoint} moet mét de vereiste rol de poort van AdminEndpoint passeren — een ander resultaat betekent " +
                     "óf een strengere poort dan bedoeld, óf een endpoint dat niet via de wrapper loopt");
             }
+        });
+    }
+
+    // ── Lokale ontwikkelbypass (#1700): alleen met de schakelaar, alleen buiten Azure ───────────
+
+    [Theory]
+    [MemberData(nameof(BeveiligdeEndpoints))]
+    public async Task LokaalMetSchakelaar_ZonderPrincipal_PasseertDePoort(string naam)
+    {
+        var endpoint = Endpoint(naam);
+        await MetOmgeving(azure: null, schakelaar: "true", async () =>
+        {
+            AdminEndpoint.PoortGepasseerdVoorTests = _ => new PoortGepasseerdResult();
+
+            var result = await Roep(endpoint, principal: null);
+
+            if (DirectePoortMetVerwachteStatus.ContainsKey(endpoint.Naam))
+                new[] { 401, 403 }.Should().NotContain(StatusVan(result) ?? 0,
+                    $"{endpoint} hoort met LOCAL_AUTH_BYPASS=true buiten Azure voorbij de rolcontrole te komen");
+            else
+                result.Should().BeOfType<PoortGepasseerdResult>(
+                    $"{endpoint} hoort met LOCAL_AUTH_BYPASS=true buiten Azure de poort te passeren");
         });
     }
 
@@ -387,17 +421,127 @@ public class EndpointAutorisatieTests
         public Task ExecuteResultAsync(ActionContext context) => Task.CompletedTask;
     }
 
-    private static async Task MetProductieOmgeving(Func<Task> test)
+    // ── EgressGuard (#1676) ────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task UitgaandeEndpoints_BuitenProductieZonderOptIn_GevenServiceUnavailable()
     {
         var origSite = Environment.GetEnvironmentVariable(AzureVar);
+        var origSchakelaar = Environment.GetEnvironmentVariable(SchakelaarVar);
+        var origAllow = Environment.GetEnvironmentVariable("AllowExternalIntegrations");
         try
         {
-            Environment.SetEnvironmentVariable(AzureVar, "func-test-01");
+            // Lokale ontwikkelmodus (#1700): de poort laat door, de EgressGuard blijft dicht.
+            Environment.SetEnvironmentVariable(AzureVar, null);
+            Environment.SetEnvironmentVariable(SchakelaarVar, "true");
+            Environment.SetEnvironmentVariable("AllowExternalIntegrations", null);
+
+            var geocode = Verzoek(null);
+            geocode.QueryString = new QueryString("?plaatsnaam=Voorbeeldstad");
+            StatusVan(await AdminSettingsFunction.Geocode(geocode, FunctieContext()))
+                .Should().Be(503, "uitgaande integraties zijn buiten productie uitgeschakeld");
+
+            var extract = Verzoek(null);
+            extract.QueryString = new QueryString("?url=https://voorbeeld.nl");
+            StatusVan(await AdminThemeFunction.Extract(extract, FunctieContext()))
+                .Should().Be(503, "uitgaande integraties zijn buiten productie uitgeschakeld");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(AzureVar, origSite);
+            Environment.SetEnvironmentVariable(SchakelaarVar, origSchakelaar);
+            Environment.SetEnvironmentVariable("AllowExternalIntegrations", origAllow);
+        }
+    }
+
+    [Fact]
+    public async Task HerstartAanroep_BuitenProductieZonderOptIn_WordtOvergeslagen()
+    {
+        string[] namen = ["WEBSITE_SITE_NAME", "LOCAL_AUTH_BYPASS", "AllowExternalIntegrations", "AzureSubscriptionId", "AzureResourceGroupName", "AzureFunctionAppName"];
+        var origineel = namen.ToDictionary(n => n, Environment.GetEnvironmentVariable);
+        try
+        {
+            foreach (var n in namen) Environment.SetEnvironmentVariable(n, null);
+            Environment.SetEnvironmentVariable("AzureSubscriptionId", "proef");
+            Environment.SetEnvironmentVariable("AzureResourceGroupName", "proef");
+            Environment.SetEnvironmentVariable("AzureFunctionAppName", "proef");
+
+            var log = new LogVerzamelaar();
+            var methode = typeof(AdminSettingsFunction).GetMethod(
+                "TriggerFunctionAppRestartAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
+            var resultaat = await (Task<string?>)methode.Invoke(null, ["0 0 4 * * *", log])!;
+
+            resultaat.Should().BeNull();
+            log.Berichten.Should().Contain(b => b.Contains("EgressGuard"),
+                "buiten productie wordt de Management-aanroep door de EgressGuard geblokkeerd");
+        }
+        finally
+        {
+            foreach (var n in namen) Environment.SetEnvironmentVariable(n, origineel[n]);
+        }
+    }
+
+    private sealed class LogVerzamelaar : Microsoft.Extensions.Logging.ILogger
+    {
+        public List<string> Berichten { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId,
+            TState state, Exception? exception, Func<TState, Exception?, string> formatter) => Berichten.Add(formatter(state, exception));
+    }
+
+    /// <summary>Een omgeving waarin de poort dicht hoort te zijn (#1700).</summary>
+    public sealed record AfgedwongenOmgeving(string Naam, string? Azure, string? Schakelaar)
+    {
+        /// <summary>Alleen in productie (Azure, geen schakelaar) staat de EgressGuard open.</summary>
+        public bool EgressOpen => Azure != null && Schakelaar == null;
+    }
+
+    /// <summary>
+    /// De drie omgevingen waarin platform-auth verplicht is (#1700): productie, buiten Azure zonder
+    /// schakelaar (CI, een losse <c>func start</c>, een andere hosting) en Azure mét een geweigerde
+    /// schakelaar. Elke test via <see cref="MetProductieOmgeving(Func{Task})"/> bewijst zijn
+    /// 401/403/doorlaat-verwachting in alle drie; alleen
+    /// <see cref="LokaalMetSchakelaar_ZonderPrincipal_PasseertDePoort"/> bewijst de bypass zelf.
+    /// </summary>
+    public static readonly AfgedwongenOmgeving[] AfgedwongenOmgevingen =
+    [
+        new("productie", "func-test-01", null),
+        new("buiten Azure zonder schakelaar", null, null),
+        new("Azure met geweigerde schakelaar", "func-test-01", "true"),
+    ];
+
+    private static Task MetProductieOmgeving(Func<Task> test) => MetProductieOmgeving(_ => test());
+
+    private static async Task MetProductieOmgeving(Func<AfgedwongenOmgeving, Task> test)
+    {
+        foreach (var omgeving in AfgedwongenOmgevingen)
+        {
+            try
+            {
+                await MetOmgeving(omgeving.Azure, omgeving.Schakelaar, () => test(omgeving));
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Omgeving '{omgeving.Naam}': {ex.Message}", ex);
+            }
+        }
+    }
+
+    private static async Task MetOmgeving(string? azure, string? schakelaar, Func<Task> test)
+    {
+        var origSite = Environment.GetEnvironmentVariable(AzureVar);
+        var origSchakelaar = Environment.GetEnvironmentVariable(SchakelaarVar);
+        try
+        {
+            Environment.SetEnvironmentVariable(AzureVar, azure);
+            Environment.SetEnvironmentVariable(SchakelaarVar, schakelaar);
             await test();
         }
         finally
         {
             Environment.SetEnvironmentVariable(AzureVar, origSite);
+            Environment.SetEnvironmentVariable(SchakelaarVar, origSchakelaar);
             AdminEndpoint.PoortGepasseerdVoorTests = null;
         }
     }

@@ -384,6 +384,14 @@ Twee regels die hieruit volgen:
    RLS hoe dan ook. RLS is hier uitsluitend de schakelaar die de PostgREST-rollen buitensluit —
    geen per-rij-autorisatie. Voeg dus geen policies toe zonder expliciete aanleiding.
 
+**De historie- en stagingtabellen (`his.*`, `stg.*`) krijgen RLS uit de code (#1698).** Die tabellen
+maakt geen migratie aan maar `PostgresSchemaGenerator` (tijdens de sync en via
+`Database.Postgres.Cli --ensure-his-tables` bij elke deploy). De generator zet RLS aan, zonder
+policies; daarvoor hing de bescherming af van Supabase's platformtrigger `ensure_rls`, die geen diff
+in git achterlaat. `check-rls-enabled.sh` bewaakt ook `his` en `stg`; CI draait hem na
+`--ensure-his-tables` en bewijst met een negatieve controle dat hij op een his-tabel zonder RLS rood
+wordt.
+
 Controleer bij een gehost platform periodiek het beveiligingsadvies van de provider: configuratie
 die je in een dashboard wijzigt, laat geen diff in git achter en is daardoor onzichtbaar voor
 codereview.
@@ -496,22 +504,36 @@ geserialiseerd per club).
 en welk bestand daarbij hoorde (`CsvBestand`, kan herleidbare informatie bevatten). Beide zijn
 persoonsgegevens.
 
-Daarnaast geldt voor beide tabellen een automatische retentie:
+`avg.TeambegeleidingInzageLog` (#1701) legt elke opvraging van contactgegevens vast
+(`GET /api/beheer/teambegeleiding/{team}`, open voor elke ingelogde rol): wie (Entra object-ID als
+pseudoniem en de weergavenaam als momentopname, uitsluitend uit het Easy Auth-principal), wanneer, welk
+team en hoeveel kaarten. Het bevat nooit gegevens van de ingeziene begeleiders (afgedwongen door het
+record `TeambegeleidingInzageNieuw` in `Planner.Shared`, dat daar geen veld voor heeft). Het vastleggen is
+fail-closed: lukt het niet, dan gaan er geen contactgegevens terug. Grondslag en doel: verantwoording
+(art. 5 lid 2) richting de begeleiders, wier gegevens voor alle ingelogde gebruikers zichtbaar zijn.
+Opvragen per betrokkene: [docs/ADMIN-VERZOEK-VAN-BETROKKENE.md](docs/ADMIN-VERZOEK-VAN-BETROKKENE.md).
+
+Daarnaast geldt voor deze tabellen een automatische retentie:
 
 | Tabel | Fase | Wanneer | Actie |
 |---|---|---|---|
 | `avg.Teambegeleiding` | Verwijderen | > 1 jaar na de import (`mta_imported` / `ImportDatum`) | Hele rij verwijderd |
 | `avg.ImportLog` | Anonimiseren | > 90 dagen na de import | `ImporterendeDoor` en `CsvBestand` → NULL |
 | `avg.ImportLog` | Verwijderen | > 1 jaar na de import | Hele rij verwijderd |
+| `avg.TeambegeleidingInzageLog` | Verwijderen | > 12 maanden na de opvraging (`TeambegeleidingInzageRetentie`) | Hele rij verwijderd |
 
 De cleanup draait maandelijks (1e van de maand, 04:00 UTC) via `CleanupTeambegeleidingFunction`, op
 beide tiers en met dezelfde termijnen; de Postgres-variant gebruikt
-`PostgresCleanupProcedures.CleanupTeambegeleidingAsync` / `CleanupImportLogAsync`, de SQL
-Server-variant de stored procedures `avg.sp_CleanupTeambegeleiding` en `avg.sp_CleanupImportLog`.
-Beide zijn idempotent.
+`PostgresCleanupProcedures.CleanupTeambegeleidingAsync` / `CleanupImportLogAsync` /
+`CleanupTeambegeleidingInzageLogAsync`, de SQL Server-variant de stored procedures
+`avg.sp_CleanupTeambegeleiding`, `avg.sp_CleanupImportLog` en `avg.sp_CleanupTeambegeleidingInzageLog`.
+Alle zijn idempotent.
 
-Importeer alleen aan het begin van een nieuw seizoen. Het importscript waarschuwt als de data ouder
-is dan 90 dagen.
+Importeer aan het begin van elk seizoen en daarna regelmatig tijdens het seizoen (aanbevolen: wekelijks,
+of zodra de begeleiding verandert; zie [ADMIN-TEAMBEGELEIDING-IMPORT.md](docs/ADMIN-TEAMBEGELEIDING-IMPORT.md),
+"Hoe vaak moet dit?"). Elke import vervangt de rijen van de club, dus een vertrokken begeleider verdwijnt bij
+de eerstvolgende import; de termijn van 1 jaar hierboven is het vangnet als er niet meer wordt geïmporteerd.
+Het importscript waarschuwt als de data ouder is dan 90 dagen.
 
 `dbo.AppSettingsAudit` bevat een auditlog van elke instellingenwijziging (#781). `GewijzigdDoor` is
 een Entra-gebruikersnaam/UPN; `OudeWaarde`/`NieuweWaarde` kunnen e-mailadressen bevatten (bijv. bij
@@ -531,6 +553,57 @@ beleid** — de repo-eigenaar kan dit aanpassen via `dbo.AppSettings.AppSettings
 zonder redeploy. De cleanup wordt maandelijks (1e van de maand, 04:30 UTC) uitgevoerd door
 `CleanupAppSettingsAuditFunction`. De stored procedure `dbo.sp_CleanupAppSettingsAudit` is
 idempotent.
+
+### E-mail naar de AI-provider: verwerkingsregister (AVG art. 30, #1699)
+
+De e-mailpijplijn stuurt gegevens uit inkomende berichten naar een externe AI-provider om ze te
+classificeren. Velden per aanroep, wat er vooraf mee gebeurt, de doorgiftevoorwaarden en de volledige
+registerrij: **[docs/EMAIL-VERWERKING.md](docs/EMAIL-VERWERKING.md) §5**. Samengevat:
+
+| Veld | Inhoud |
+|---|---|
+| Verwerking | Classificatie van inkomende e-mail (incl. correctiedetectie op replies en de e-mailtester) |
+| Velden naar de provider | E-mailadres van de afzender, onderwerp en berichttekst (begrensd; HTML verwijderd bij mailboxberichten, niet bij de tester; persoonsgegevens in de tekst worden niet gemaskeerd); clubnaam en datum in de instructies; gesaneerde samenvattingen van leermomenten |
+| Verwerker | OpenAI (OpenAI-API, rechtstreeks); model uit de app setting `AiModelName`; alleen waar `EgressGuard` uitgaande integraties toestaat |
+| Grondslag | Door de eigenaar in te vullen (EMAIL-VERWERKING.md §5c) |
+| Verwerkersovereenkomst, bewaartermijn bij de verwerker, doorgifte-instrument | Door de eigenaar in te vullen (EMAIL-VERWERKING.md §5c) |
+| Bewaartermijn in de applicatie | `planner.EmailVerwerking`: anonimiseren na 30–90 dagen, verwijderen na 90 dagen (Laag 6) |
+
+### Sportlink-historietabellen (`his.matches`, `his.matchdetails`, #1698)
+
+De synchronisatie bewaart wat Sportlink over elke wedstrijd teruggeeft in de historietabellen. Een
+deel van die kolommen zijn persoonsgegevens van clubleden en vrijwilligers. Geen scherm of endpoint
+leest ze; Sportlink blijft de bron.
+
+| Tabel | Persoonskolommen |
+|---|---|
+| `his.matches` | `scheidsrechters`, `scheidsrechter`, `rijders` |
+| `his.matchdetails` | `rijder`, `opmerkingen` (vrije tekst), `verenigingscheidsrechter(code)`, `overigeofficial(code)`, `scheidsrechters`, `accommodatietelefoon`, `thuisteamtelefoon`, `thuisteamemail`, `uitteamtelefoon`, `uitteamemail` |
+
+| Fase | Wanneer | Actie |
+|---|---|---|
+| Leegmaken | Na het einde van het seizoen waarin de wedstrijd valt (eigenaarsbesluit 2026-10-12) | Alleen de persoonskolommen → `NULL`; de wedstrijd zelf (teams, datum, uitslag) blijft staan |
+
+* **Termijn = configuratie.** Het seizoenseinde komt uit de seizoenstabel (`dbo.Season` /
+  `public.season`), die op zijn beurt uit de clubinstelling `SeasonStartMonth` wordt opgebouwd. Een
+  seizoen telt als afgerond vanaf de dag ná de einddatum. Zonder afgerond seizoen gebeurt er niets.
+* **Welke datum.** `his.matches`: de eerste tien tekens van `wedstrijddatum`, alleen als die strikt
+  `yyyy-MM-dd` zijn (ASCII-cijfers, bestaande kalenderdatum); een waarde in een andere vorm wordt niet
+  geraden en niet leeggemaakt. De keuze maakt één gedeelde functie voor beide tiers
+  (`HisPersoonsgegevensRetentie.IsGeldigDatumdeel`), niet de database. `his.matchdetails`: `MatchDate`, anders
+  de datum van `MatchDateTime`. **Restrisico:** een detailrij zonder beide datums wordt niet
+  leeggemaakt.
+* **Uitvoering.** Als tweede stap in de bestaande dagelijkse AVG-timer `CleanupFeedback` (05:15
+  UTC, beide tiers; orkestratie in `Planner.Endpoints/Avg/DagelijkseAvgRetentie.cs`), na de
+  feedbackretentie en daarvan onafhankelijk: een fout in de ene stap houdt de andere niet tegen. Op
+  beide tiers dezelfde regel (`Planner.Shared/Avg/HisPersoonsgegevensRetentie.cs`; query's in
+  `PostgresHisRetentie` en `SqlServerHisRetentie`). Idempotent; het log bevat alleen de grensdatum en
+  aantallen. Dagelijks omdat het sync-venster een week terugkijkt en een reset-sync een oud seizoen
+  opnieuw ophaalt: beide vullen de kolommen weer, de volgende run maakt ze weer leeg.
+* **Grondslag.** Art. 6 lid 1 sub f AVG (gerechtvaardigd belang van de club bij de organisatie van
+  de wedstrijden van het lopende seizoen); opslagbeperking (art. 5 lid 1 sub e) via deze termijn.
+* **Toegang.** Alleen via de applicatierol; RLS op `his` en `stg` sluit de PostgREST-rollen buiten
+  (Laag 4).
 
 ### Sportlink-mutatie-audit (`SportlinkMutationAudit`, #1114)
 
@@ -790,7 +863,7 @@ wanneer nieuwe code in een van deze categorieën valt:
 | 1 | **Identiteits-/auditvelden** | Wie-heeft-dit-gedaan komt altijd uit de server-gevalideerde Easy Auth-claim, nooit uit request-body of querystring. Een client mag nooit zelf claimen wie hij is. | `EasyAuthHelper.GetAuditActor()` (#1003) |
 | 2 | **Databaseverbindingen (TLS)** | Een niet-lokale (productie/staging) connectiestring moet certificaat + hostnaam valideren (`VerifyFull`/`verify-full`). Geen normalisatiestap mag dat stilzwijgend afzwakken naar `Require`, ook niet als de aanroeper het expliciet anders vroeg. | `PostgresConnectionStringNormalizer` (#1004) |
 | 3 | **PII-/secretscans vóór een externe call** | Een privacy- of secretcheck controleert de **volledige, uiteindelijke** payload (alle velden, inclusief AI-output) **vlak vóór** de externe aanroep — nooit een deelverzameling, en nooit vóór de payload nog aangevuld wordt. | Feedback-PII-gate (#1006) |
-| 4 | **Server-side HTTP-aanroepen naar een (deels) door de gebruiker bepaalde URL** | `AllowAutoRedirect=false` + iedere hop opnieuw valideren; resolve zelf en verbind met dat exacte IP (voorkomt DNS-rebinding); weiger private/loopback/link-local/CGNAT-bestemmingen en niet-standaardpoorten. Een allowlist die alleen de eerste URL checkt is geen SSRF-bescherming. | `SsrfProtection` (#1007) |
+| 4 | **Server-side HTTP-aanroepen naar een (deels) door de gebruiker bepaalde URL** | `AllowAutoRedirect=false` + iedere hop opnieuw valideren (schema, poort, adres en host-allowlist van de aanroeper; geen schema-downgrade; begrensde antwoordomvang en looptijd; geen systeemproxy); resolve zelf en verbind met dat exacte IP (voorkomt DNS-rebinding); weiger private/loopback/link-local/CGNAT-bestemmingen en niet-standaardpoorten. | `SsrfProtection` (#1007) |
 | 5 | **Publieke foutrapportage** | Nooit vrije `ex.Message`/stacktrace/inner-exceptietekst in een publiek issue/comment. Alleen een vaste allowlist van velden (categorie, exceptietype, fingerprint, tijdstip). Denylist-sanitizers missen per definitie nieuwe foutvormen. | `GitHubIssueReporter` (#1008) |
 | 6 | **CI-workflows met productiecredentials** | Een `pull_request`-workflow draait met PR-inhoud (YAML én scripts) — geef zo'n workflow nooit bruikbare productiesecrets. Een privileged stap hoort in een `workflow_run`/protected-environment-context die zijn eigen YAML en bestanden van een vertrouwde ref (main) haalt. | `pre-release-db-check.yml` (#1009) |
 | 7 | **Dynamische waarden in gegenereerde HTML** | Alles wat in HTML-tekst of een attribuut terechtkomt wordt context-specifiek geëncodeerd (tekst vs. attribuut), ook als de bron "intern" (de eigen database) lijkt. String-interpolatie zonder encoding is per definitie een injectierisico. | `PlannerHtmlGenerator` (#1010) |

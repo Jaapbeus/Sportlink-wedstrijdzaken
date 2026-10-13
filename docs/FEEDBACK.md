@@ -136,8 +136,11 @@ PII-gate-pad op de uiteindelijke titel/body blijft onverkort draaien.
 | Technische context | 90 dagen | idem |
 | Inzagelog | 24 maanden | idem |
 
-**Timer `CleanupFeedback`** (beide tiers, dagelijks 05:15 UTC; code: `Planner.Endpoints/Feedback/FeedbackEndpointCore.VoerRetentieTimerAsync`
-→ `Planner.Shared/Feedback/FeedbackRetentieCore`):
+**Timer `CleanupFeedback`** (beide tiers, dagelijks 05:15 UTC; code: `Planner.Endpoints/Avg/DagelijkseAvgRetentie`
+→ `Planner.Endpoints/Feedback/FeedbackEndpointCore.VoerRetentieTimerAsync` → `Planner.Shared/Feedback/FeedbackRetentieCore`).
+Sinds #1698 draait dezelfde timer na de feedbackretentie ook de seizoensretentie van de
+Sportlink-historietabellen (`SECURITY.md`, Laag 6); de twee stappen zijn onafhankelijk, een fout in
+de ene houdt de andere niet tegen. De feedbackstap:
 
 1. **Eerst** de issuestatus synchroniseren: voor maximaal 200 gepubliceerde, nog niet geanonimiseerde
    meldingen (oudst-gecontroleerd eerst) leest de timer via de GitHub API of het issue gesloten is en
@@ -189,6 +192,10 @@ Bij een nieuwe club-installatie: neem deze rij over in het eigen register en pas
 aan als de afweging anders uitvalt.
 
 ## 9. Verzoeken van betrokkenen
+
+Dit hoofdstuk gaat over feedback. Voor alle andere tabellen (teambegeleiding en het inzagelog daarvan,
+e-mail, auditlogs, wedstrijddata) staat de procedure per tabel in
+[ADMIN-VERZOEK-VAN-BETROKKENE.md](ADMIN-VERZOEK-VAN-BETROKKENE.md).
 
 **Inzage/rectificatie:** zoek de melding(en) van de betrokkene in het overzicht (de naam is zichtbaar
 zolang de melding niet is geanonimiseerd).

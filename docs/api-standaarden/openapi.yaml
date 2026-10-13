@@ -21,7 +21,8 @@ info:
       `/sportlink/`), via `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`. Netto: een gewone
       `user` (zonder `Wedstrijdzaken`, zonder `admin`) kan Planning en het Sportlink-paneel bekijken
       maar geen Sportlink-mutatie triggeren; dat laatste vereist `Wedstrijdzaken` óf `admin`. Lokaal
-      omzeild wanneer de omgevingsvariabele `WEBSITE_SITE_NAME` afwezig is.
+      alleen omzeild met de expliciete schakelaar `LOCAL_AUTH_BYPASS=true`; in Azure wordt die
+      geweigerd (#1700).
 
     Zonder token volgt `401`. Met een geldig token maar zonder de vereiste rol volgt `403` met
     `{ "error": "Forbidden: vereiste rol ontbreekt" }`.
@@ -33,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.13.2.0
+  version: 3.14.0.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -85,7 +86,7 @@ components:
         meeste /beheer/-, /planner/-, /feedback/- en /test/-endpoints (en de twee syncroutes);
         `admin` of `user` op /planner/veldbezetting en de twee Sportlink-viewing-endpoints (#1400);
         `Wedstrijdzaken` of `admin` op de Sportlink-mutatie-endpoints (beide poorten sinds #1400).
-        Lokaal altijd toegestaan als WEBSITE_SITE_NAME afwezig is.
+        Lokaal alleen toegestaan met LOCAL_AUTH_BYPASS=true; in Azure wordt die schakelaar geweigerd (#1700).
 
   # ───────────────────────────────────────────────────────────────────────────
   # Herbruikbare headers
@@ -109,6 +110,12 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
     Forbidden:
       description: Geen admin-rol in het token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ExternalIntegrationsDisabled:
+      description: Uitgaande integraties zijn buiten productie uitgeschakeld (EgressGuard, #857)
       content:
         application/json:
           schema:
@@ -1634,9 +1641,6 @@ components:
           type: string
           description: Gemaskeerd — alleen domein, bijv. "***@voorbeeld.nl"
           example: "***@voorbeeld.nl"
-        Onderwerp:
-          type: string
-          nullable: true
         OntvangstDatum:
           type: string
           format: date-time
@@ -1649,6 +1653,7 @@ components:
         VerstuurdNaar:
           type: string
           nullable: true
+          description: Gemaskeerd — per adres alleen het domein, bijv. "***@voorbeeld.nl"
         FoutMelding:
           type: string
           nullable: true
@@ -2263,8 +2268,10 @@ components:
       properties:
         vraag:
           type: string
+          description: Wordt op 500 tekens afgekapt (#1677)
         antwoord:
           type: string
+          description: Wordt op 2000 tekens afgekapt (#1677)
 
     FeedbackContext:
       type: object
@@ -2295,6 +2302,8 @@ components:
         vragenAntwoorden:
           type: array
           nullable: true
+          maxItems: 5
+          description: Maximaal 5 vraag/antwoord-paren; meer geeft 400 (#1677)
           items:
             $ref: '#/components/schemas/VraagAntwoord'
         context:
@@ -2724,9 +2733,19 @@ components:
         faviconUrl:
           type: string
           nullable: true
+          maxLength: 300
+          description: |
+            Absolute `https://`-URL van de favicon, maximaal 300 tekens. Witruimte eromheen vervalt
+            en een absolute `http://`-URL wordt als `https://` opgeslagen. Leeg of `null` = geen favicon.
+          example: "https://www.[clubdomein].nl/favicon.ico"
         logoUrl:
           type: string
           nullable: true
+          maxLength: 300
+          description: |
+            Absolute `https://`-URL van het logo, maximaal 300 tekens. Witruimte eromheen vervalt
+            en een absolute `http://`-URL wordt als `https://` opgeslagen. Leeg of `null` = geen logo.
+          example: "https://www.[clubdomein].nl/logo.png"
         lightColors:
           type: object
           nullable: true
@@ -3136,7 +3155,9 @@ components:
             #765: vrije-tekst-regel met de gewenste ontvangers, gescheiden door `;` of `,`. Elk
             fragment mag `"Naam" <adres>` of een kaal adres zijn. Server-side geparsed, gevalideerd
             (geldige syntax, max 15, gededupliceerd) en gecontroleerd tegen de uitsluitingslijst
-            (`dbo.UitgeslotenEmailAdressen`) vóór verzending.
+            (`dbo.UitgeslotenEmailAdressen`) vóór verzending. Voor een andere rol dan `admin` moet
+            elk adres bij het gekozen team horen (begeleiders van dat team, de coördinator of de
+            aanvrager zelf), anders `403` (#1671).
 
             Leeg of afwezig → ongewijzigd fallback-gedrag: server-side opzoeken van de
             hoogst-geprioriteerde begeleider (Trainer > Coach > Teamleider), met de coördinator als
@@ -3573,6 +3594,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ExternalIntegrationsDisabled'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -3621,6 +3644,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ExternalIntegrationsDisabled'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -3995,7 +4020,9 @@ paths:
         `Ledenadministratie`) bij deze club de huidige stand van elke functie: de drie
         Sportlink-mutatieacties (kleedkamers/scheidsrechter/veld) én de menu-zichtbaarheid van elk
         Admin GUI-scherm. `admin` heeft dit altijd aan en komt hier niet in voor — alleen de vier
-        instelbare rollen. Fail-closed: een niet-teruggegeven combinatie betekent uitgeschakeld.
+        instelbare rollen. Fail-closed: een niet-teruggegeven combinatie betekent uitgeschakeld,
+        behalve de hoofditems van het menu (Dashboard, Teambegeleiding, Planning, Veld optimalisatie,
+        Wijzigingsverzoeken, Wedstrijd aanmaken) die zonder opgeslagen keuze aan staan (#1647).
       security:
         - easyAuth: []
       responses:
@@ -4024,9 +4051,9 @@ paths:
         Zet één rol × functie-combinatie aan/uit bij deze club. Voor de drie Sportlink-
         mutatieacties (`sportlink.kleedkamers`, `sportlink.scheidsrechter`, `sportlink.veld`) is
         dit de server-side leidende controle: `SportlinkMatchFunction` wijst een uitgeschakelde
-        actie ook af als de UI-toggle omzeild wordt. Voor de overige (`menu.*`) FeatureKeys legt
-        dit endpoint vandaag uitsluitend configuratie vast — er is nog geen server-side handhaving
-        van menu-zichtbaarheid (zie `docs/SPORTLINK-WEB-EXTENSION.md` §3.5).
+        actie ook af als de UI-toggle omzeild wordt. De overige (`menu.*`) FeatureKeys bepalen sinds
+        #1647 via `GET /planner/menu-toegang` welke menu-items een rol ziet; dat is UI-gemak, de
+        endpoints autoriseren zelf (zie `docs/SPORTLINK-WEB-EXTENSION.md` §3.5).
       security:
         - easyAuth: []
       requestBody:
@@ -4062,6 +4089,7 @@ paths:
                     - menu.instellingen.emailtemplates
                     - menu.instellingen.thema
                     - menu.instellingen.sportlinkextensie
+                    - menu.instellingen.app
                 Enabled:
                   type: boolean
       responses:
@@ -5120,6 +5148,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ExternalIntegrationsDisabled'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '502':
@@ -5203,6 +5233,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ExternalIntegrationsDisabled'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -5462,7 +5494,7 @@ paths:
         Geeft metadata van verwerkte emails uit `planner.EmailVerwerking`.
 
         AVG: `EmailBody` en `AntwoordEmail` worden nooit teruggegeven.
-        `Afzender` wordt gemaskeerd tot alleen het domein (bijv. `***@voorbeeld.nl`).
+        `Afzender` en `VerstuurdNaar` worden gemaskeerd tot alleen het domein (bijv. `***@voorbeeld.nl`). Het onderwerp wordt niet teruggegeven.
       security:
         - easyAuth: []
       parameters:
@@ -6637,6 +6669,12 @@ paths:
                 $ref: '#/components/schemas/FeedbackValidateResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '413':
+          description: Request-body groter dan 65536 tekens (#1677); er is niets verwerkt. Body `{ error }`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -6686,6 +6724,12 @@ paths:
                 $ref: '#/components/schemas/FeedbackPreviewResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '413':
+          description: Request-body groter dan 65536 tekens (#1677); er is niets verwerkt. Body `{ error }`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -6747,6 +6791,12 @@ paths:
                 $ref: '#/components/schemas/FeedbackSubmitResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '413':
+          description: Request-body groter dan 65536 tekens (#1677); er is niets verwerkt. Body `{ error }`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -7211,6 +7261,10 @@ paths:
         De vier platte kleurwaarden worden gevalideerd op `#rrggbb`. Elke sleutel en waarde in
         `lightColors`/`darkColors` wordt afzonderlijk gevalideerd; één ongeldige waarde wijst het
         hele verzoek af met HTTP 400.
+        `faviconUrl` en `logoUrl` zijn optioneel; een ingevulde waarde wordt getrimd, een absolute
+        `http://`-URL wordt als `https://` opgeslagen (zelfde host, pad en query), en daarna moet de
+        waarde een absolute `https://`-URL met host zijn, zonder controletekens en van maximaal
+        300 tekens. Anders volgt HTTP 400 met een melding die zegt hoe het veld te herstellen is.
       security:
         - easyAuth: []
       requestBody:
@@ -7282,6 +7336,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ExternalIntegrationsDisabled'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -7933,9 +7989,28 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          description: |
+            Geen toegang. Voor een andere rol dan `admin` moet elk adres in `ontvangers` bij het
+            gekozen team horen: een begeleider van dat team, de coördinator of de aanvrager zelf.
+            Een leeg veld gebruikt de server-side lookup.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Geen begeleiding gevonden voor het opgegeven team
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: |
+            Te veel doorgestuurde vragen door dezelfde gebruiker: de limiet is 3 verzendingen per
+            10 minuten. Alleen een daadwerkelijke verzending telt mee (een mislukte verzending geeft
+            haar eigen slot terug); de rol `admin` valt buiten de limiet. De teller is in-memory en
+            geldt per instantie van de Function App: bij uitschalen naar meerdere instanties of na een
+            herstart kan het totaal hoger uitvallen. Het is een rem op herhaald gebruik, geen globale
+            kwotering.
           content:
             application/json:
               schema:
@@ -8334,6 +8409,49 @@ paths:
           description: "`?format=pdf` terwijl de clubinstelling PdfExportIngeschakeld uit staat (#1459)"
         '413':
           description: Request body te groot
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /planner/menu-toegang:
+    get:
+      tags: [planner]
+      operationId: getMenuToegang
+      summary: Welke menu-items mag de ingelogde gebruiker zien?
+      description: |
+        #1647: geeft de menu-sleutels (`menu.*`) terug die de aanroeper in het hoofdmenu van de Admin GUI
+        mag zien, plus de menuvlag `sportlinkExtensieActief`. `admin` krijgt alle sleutels; een andere rol de unie van de sleutels die zijn rol(len)
+        bij deze club in de toegangsmatrix (`/beheer/rolfeatureinstellingen`) aan heeft staan, zonder de
+        groep DEBUG (`menu.emailtester`, `menu.leermomenten`). Zonder opgeslagen keuze staan alleen de
+        hoofditems aan. Open voor elke ingelogde rol (`admin` óf `user`), want de matrix zelf is
+        admin-only. Uitsluitend UI-gemak: elk endpoint autoriseert zelf server-side. Club via `X-Club-Code`.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: De toegestane menu-sleutels
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [featureKeys, sportlinkExtensieActief]
+                properties:
+                  featureKeys:
+                    type: array
+                    items:
+                      type: string
+                      example: menu.planning
+                  sportlinkExtensieActief:
+                    type: boolean
+                    description: |
+                      Staat de Sportlink Web Extension aan voor de club? Niet-gevoelige menuvlag, hier meegegeven
+                      zodat een niet-admin-rol hem krijgt zonder de admin-only `/beheer/settings` te lezen.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '500':
           $ref: '#/components/responses/InternalServerError'
 

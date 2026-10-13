@@ -54,6 +54,12 @@ De timer (`FETCH_SCHEDULE`, standaard `0 0 4 * * *`) en de handmatige sync halen
 tot en met het einde van het seizoen op (uit `dbo.Season`); `?reset=true&season=YYYY` haalt een heel
 seizoen opnieuw op.
 
+`/teams` kan een team meer dan eens leveren met dezelfde sleutel (`teamcode`, `lokaleteamcode`,
+`poulecode`; een ontbrekende `poulecode` telt als één waarde). De merge naar `his.teams` raakt per
+sleutel precies één rij, dus beide tiers voegen die vermeldingen vóór staging samen: de laatste
+vermelding in de respons wint en het aantal samengevoegde vermeldingen staat als waarschuwing in het
+log, zonder sleutels of namen (`Planner.Shared/Sync/StagingOntdubbeling.cs`, #1712).
+
 ## Programma-endpoint — alle beschikbare velden
 
 Live opgehaald uit `/programma`. De voorbeeldwaarden zijn placeholders.

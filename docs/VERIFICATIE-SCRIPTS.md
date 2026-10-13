@@ -159,7 +159,9 @@ heeft, worden die blokken netjes overgeslagen; de volgende deploy maakt ze aan.
 drie lifecycle-workflows (`label-issue-status.yml`, `label-awaiting-release.yml`,
 `close-released-issues.yml`) en draait bij elke PR in de CI-job *Build FunctionApp + BlazorAdmin*. Dat
 is nodig omdat de workflows zelf alleen op hun eigen trigger draaien: zonder deze test zou een fout pas
-bij een echte merge of release blijken.
+bij een echte merge of release blijken. Om dezelfde reden draaien daar ook
+`node .github/scripts/claude-issue-turn-gate.test.js` (poort van `claude-issue-turn.yml`) en
+`node .github/scripts/turn-label-exclusief.test.js` (helper van `turn-label-exclusief.yml`, #1686).
 
 ### BlazorAdmin-build wordt overgeslagen bij een draaiende dev server
 
@@ -683,7 +685,7 @@ hebben gekregen, dus een grep over de migratiemap kan dit niet beantwoorden.
 
 | Script | Bewaakt | Faalt op |
 |---|---|---|
-| `check-rls-enabled.sh` | Elke tabel in `public`/`avg`/`planner` heeft `relrowsecurity` (AGENTS.md, Supabase #1198) | Eén of meer tabellen zonder RLS, met de exacte `ALTER TABLE`-regel als oplossing in de uitvoer |
+| `check-rls-enabled.sh` | Elke tabel in `public`/`avg`/`planner`/`his`/`stg` heeft `relrowsecurity` (AGENTS.md, Supabase #1198; `his`/`stg` sinds #1698, CI na `--ensure-his-tables`) | Eén of meer tabellen zonder RLS, met de exacte `ALTER TABLE`-regel als oplossing in de uitvoer |
 | `check-splinter-lints.sh` | Supabase's eigen linter (splinter), vastgepind op commit-SHA + SHA-256 | `rls_disabled_in_public`, `policy_exists_rls_disabled`, `security_definer_view`, `function_search_path_mutable`, `duplicate_index` |
 
 Verbinding via de standaard libpq-variabelen — **niet** via `POSTGRES_CONNECTION_STRING`, want dat
