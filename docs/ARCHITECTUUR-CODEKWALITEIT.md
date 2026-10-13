@@ -566,7 +566,8 @@ uit een workflow kan verdwijnen zonder dat iemand het merkt.
 | Multi-club: geen clubwaarde in een `?? "…"`-fallback (#1717) | onbewaakt: vergt dataflow- of semantische analyse; alleen de `sensitive-patterns`-scan (security-scan.yml) vangt letterlijke clubwaarden | n.v.t. |
 | Multi-club: nieuwe tabel heeft `ClubCode` of komt via de instellingentabel (#1717) | onbewaakt: de ClubCode-dekking in `build.yml` geldt alleen voor bestaande configuratietabellen, niet voor nieuwe tabellen in het algemeen; beoordeling bij review | n.v.t. |
 | Teamnaam-normalisatie alleen in `TeamNaamNormalisatie.cs` (geen nieuwe teamnaam-regex elders, #1717) | onbewaakt: een regex is niet betrouwbaar als teamnaam-regex te herkennen zonder veel vals-positieven; beoordeling bij review | n.v.t. |
-| Endpoint-wijziging werkt `openapi.yaml`, `openapi.json` (uit de YAML) en `docs/API.md` bij (#1717) | onbewaakt: alleen de versie van YAML en JSON wordt vergeleken (hierboven); de inhoud van `API.md` is een tekstdocument zonder machineleesbare koppeling aan de spec | n.v.t. |
+| Endpoint-wijziging werkt `openapi.yaml`, `openapi.json` (uit de YAML) en `docs/API.md` bij: operatieset van `openapi.json` = endpointtabel van `API.md` (#1717) | `scripts/ci/check-api-md-sync.py` | `build.yml` |
+| Idem: inhoud van de beschrijvingen en parameters in `API.md` en de YAML-JSON-gelijkheid buiten de versie (#1717) | onbewaakt: handgeschreven tekst; alleen de operatieset en de versie zijn machineleesbaar te vergelijken, de rest beoordeelt de reviewer | n.v.t. |
 | Elke feature/fix een entry onder `[Unreleased]` in `CHANGELOG.md` (#1717) | onbewaakt: of een wijziging een entry verdient is een inhoudelijk oordeel; `pre-release-check.yml` bewaakt alleen de versiekopjes | n.v.t. |
 
 <!-- REGELREGISTER-EINDE -->

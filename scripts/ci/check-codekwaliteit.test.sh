@@ -196,6 +196,12 @@ sed 's/| onbewaakt: semantisch oordeel[^|]*|/| onbewaakt: kort |/' "$TMP_B" > do
 verwacht_falen "onbewaakte regel zonder reden" bash scripts/ci/check-regelregister.sh
 cp "$TMP_B" docs/ARCHITECTUUR-CODEKWALITEIT.md
 
+# 5d. API.md-synchronisatie (#1717): een endpoint in de spec dat niet in de tabel staat.
+cp docs/API.md "$TMP_B"
+grep -v '^| `GET` | `/health`' "$TMP_B" > docs/API.md
+verwacht_falen "endpoint ontbreekt in API.md" python3 scripts/ci/check-api-md-sync.py
+cp "$TMP_B" docs/API.md
+
 # 5c. Versiesynchronisatie (#1717): een afwijkende csproj-versie.
 cp BlazorAdmin/BlazorAdmin.csproj "$TMP_B"
 sed 's|<FileVersion>[^<]*</FileVersion>|<FileVersion>0.0.0.1</FileVersion>|' "$TMP_B" > BlazorAdmin/BlazorAdmin.csproj
