@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- Het verwerkingsregister van de e-mailverwerking (`docs/EMAIL-VERWERKING.md` §5c, `SECURITY.md`, `docs/ARCHITECTUUR.md`) bevat nu de door de eigenaar bevestigde grondslag, de verwerkersovereenkomst, de bewaartermijn bij de verwerker, de verwerkingslocatie en het doorgifte-instrument; alleen datum en vorm van de verwerkersovereenkomst volgen nog (#1725).
+
 ## [3.14.0.0] — 2026-10-13
 
 ### Added
