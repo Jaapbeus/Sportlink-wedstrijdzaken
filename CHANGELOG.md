@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Security
+- GitHub-installatietokenpatronen bijgewerkt voor opaque en stateless formaten, met synthetische regressiecontrole in de Security Gate; de leescontrole behandelt het token als opaque en de foutmelding onderscheidt een mislukte controle van een bevestigde secretbevinding (#1723).
+
 ### Fixed
 - Wedstrijd aanmaken: een team uit de dropdown (bondsnotatie, bijv. `[club] O14-2`) wordt nu gevonden in Sportlinks teamlijst (lokale notatie, bijv. `JO14-2`) in plaats van de fout "niet (eenduidig) gevonden" (#1737)
 
