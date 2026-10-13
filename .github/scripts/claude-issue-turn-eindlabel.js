@@ -98,6 +98,7 @@ function requestedEndLabel(comments, startedAt) {
  */
 async function changedSinceStart({
   github, context, issueNumber, startPrNumber, startedAt, expectedTurn = TURN_LABEL_CLAUDE, expectedSha = '',
+  extraCheck = null,
 }) {
   const base = { owner: context.repo.owner, repo: context.repo.repo, headers: API_VERSION_HEADERS };
   const issue = (await github.rest.issues.get({ ...base, issue_number: issueNumber })).data;
@@ -132,7 +133,8 @@ async function changedSinceStart({
   const closedDuringRun = closed.find((p) => p.closedAt && iso(p.closedAt) >= start);
   if (closedDuringRun) return `gekoppelde PR #${closedDuringRun.number} is tijdens de run gesloten`;
 
-  return null;
+  // #1727: de reviewpublicatie toetst hier ook of de oorspronkelijke aanvraag nog geldt.
+  return extraCheck ? extraCheck() : null;
 }
 
 /**
@@ -192,6 +194,7 @@ async function removeIfPresent({ github, base, issueNumber, name }) {
  */
 async function applyEndLabel({
   github, context, core, issueNumber, startPrNumber, startedAt, phase = '', requestedLabel = '', expectedSha = '',
+  extraCheck = null,
 }) {
   if (!startedAt || Number.isNaN(new Date(startedAt).getTime())) {
     // Zonder starttijd valt "veranderd tijdens de run" niet te bepalen: niets schrijven.
@@ -226,7 +229,9 @@ async function applyEndLabel({
     }
   }
 
-  const before = await changedSinceStart({ github, context, issueNumber, startPrNumber, startedAt, expectedSha });
+  const before = await changedSinceStart({
+    github, context, issueNumber, startPrNumber, startedAt, expectedSha, extraCheck,
+  });
   if (before) {
     core.notice(`#${issueNumber}: eindlabel '${label}' niet geschreven: ${before}`);
     return { written: false, label, source, reason: before };
@@ -262,7 +267,7 @@ async function applyEndLabel({
   // Venster tussen lezen en schrijven: opnieuw controleren. Nu moet het eigen label het enige
   // turn-label zijn; een door een ander gezet label (of merge/afsluiting) betekent terugdraaien.
   const after = await changedSinceStart({
-    github, context, issueNumber, startPrNumber, startedAt, expectedTurn: label, expectedSha,
+    github, context, issueNumber, startPrNumber, startedAt, expectedTurn: label, expectedSha, extraCheck,
   });
   if (after) {
     // Een mislukte verwijdering propageert (job faalt zichtbaar); alleen "al weg" (404) is succes.

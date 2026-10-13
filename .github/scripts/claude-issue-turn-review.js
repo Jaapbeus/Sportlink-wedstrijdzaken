@@ -177,11 +177,29 @@ function scanPublicText(text) {
 }
 
 /**
+ * Is de oorspronkelijke aanvraag nog de nieuwste fasecomment, met dezelfde identiteit (comment),
+ * PR, SHA en implementer? Zonder `expected` ontbreekt de identiteit en wordt er niet gepubliceerd.
+ * Geeft de reden terug of null.
+ */
+async function checkRequest({ github, context, issueNumber, prNumber, sha, expected }) {
+  const request = await findReviewRequest({ github, context, issueNumber });
+  if (!request || request.prNumber !== prNumber || request.sha !== sha) {
+    return 'de reviewaanvraag is ingetrokken of vervangen (nieuwste fasecomment)';
+  }
+  if (!expected || !expected.commentId || !expected.implementer
+    || String(request.commentId) !== String(expected.commentId)
+    || request.implementer !== expected.implementer) {
+    return 'de reviewaanvraag is niet meer de oorspronkelijke aanvraag (andere aanvraag of rolverdeling)';
+  }
+  return null;
+}
+
+/**
  * Controleert de aanvraag opnieuw tegen de actuele toestand; geeft de reden terug waarom er niet
  * gepubliceerd mag worden, of null. `checkReviewed: false` na de eigen publicatie (dan staat de
  * markering er al).
  */
-async function revalidate({ github, context, issueNumber, prNumber, sha, checkReviewed = true }) {
+async function revalidate({ github, context, issueNumber, prNumber, sha, request: expected, checkReviewed = true }) {
   const base = { owner: context.repo.owner, repo: context.repo.repo, headers: API_VERSION_HEADERS };
   const issue = (await github.rest.issues.get({ ...base, issue_number: issueNumber })).data;
   const labels = labelNames(issue);
@@ -190,10 +208,8 @@ async function revalidate({ github, context, issueNumber, prNumber, sha, checkRe
   const turn = labels.filter((n) => n.startsWith(TURN_LABEL_PREFIX));
   if (turn.length !== 1 || turn[0] !== TURN_LABEL_CLAUDE) return 'de beurt is niet meer exclusief `turn: claude-code`';
 
-  const request = await findReviewRequest({ github, context, issueNumber });
-  if (!request || request.prNumber !== prNumber || request.sha !== sha) {
-    return 'de reviewaanvraag is ingetrokken of vervangen (nieuwste fasecomment)';
-  }
+  const stale = await checkRequest({ github, context, issueNumber, prNumber, sha, expected });
+  if (stale) return stale;
   const linked = await findLinkedOpenPrsByKind({ github, context, issueNumber });
   const all = [...linked.own, ...linked.codex];
   if (all.length !== 1 || !linked.codex[0] || linked.codex[0].number !== prNumber) {
@@ -210,7 +226,7 @@ async function revalidate({ github, context, issueNumber, prNumber, sha, checkRe
  * @returns {Promise<{published: boolean, reason?: string, label?: string, labelWritten?: boolean}>}
  */
 async function publishReview({
-  github, context, core, issueNumber, prNumber, sha, ronde, raw, agentResult, startedAt,
+  github, context, core, issueNumber, prNumber, sha, request, ronde, raw, agentResult, startedAt,
 }) {
   if (agentResult !== 'success') return { published: false, reason: `de review-agent eindigde met '${agentResult}'` };
   const parsed = parseReviewOutput(raw);
@@ -222,7 +238,7 @@ async function publishReview({
   const verboden = scanPublicText(`${prBody}\n${issueBody}`);
   if (verboden) return { published: false, reason: `de tekst bevat mogelijk een niet-publieke waarde (${verboden})` };
 
-  const before = await revalidate({ github, context, issueNumber, prNumber, sha });
+  const before = await revalidate({ github, context, issueNumber, prNumber, sha, request });
   if (before) return { published: false, reason: before };
 
   const base = { owner: context.repo.owner, repo: context.repo.repo, headers: API_VERSION_HEADERS };
@@ -231,7 +247,7 @@ async function publishReview({
   core.notice(`#${issueNumber}: reviewteruggave voor PR #${prNumber} (${sha}) geplaatst`);
 
   // Nog één controle van de aanvraag; de vergelijk-en-zet bewaakt daarna beurt, PR-status en SHA.
-  const after = await revalidate({ github, context, issueNumber, prNumber, sha, checkReviewed: false });
+  const after = await revalidate({ github, context, issueNumber, prNumber, sha, request, checkReviewed: false });
   if (after) {
     core.warning(`#${issueNumber}: beurtlabel niet gezet: ${after}`);
     return { published: true, label: beurt, labelWritten: false, reason: after };
@@ -239,11 +255,12 @@ async function publishReview({
   const r = await applyEndLabel({
     github, context, core, issueNumber, startPrNumber: prNumber, startedAt,
     phase: 'review', requestedLabel: beurt, expectedSha: sha,
+    extraCheck: () => checkRequest({ github, context, issueNumber, prNumber, sha, expected: request }),
   });
   return { published: true, label: r.label, labelWritten: r.written, reason: r.reason };
 }
 
 module.exports = {
-  publishReview, parseReviewOutput, composePrComment, composeIssueComment, scanPublicText, revalidate,
+  publishReview, checkRequest, parseReviewOutput, composePrComment, composeIssueComment, scanPublicText, revalidate,
   nextTurn, REVIEW_SCHEMA,
 };

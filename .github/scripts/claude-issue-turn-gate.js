@@ -309,7 +309,7 @@ async function findReviewRequest({ github, context, issueNumber }) {
   });
   const faseComments = comments
     .filter((c) => c.body && isTrustedAuthor(c))
-    .map((c) => ({ at: c.created_at || '', parsed: parseFaseComment(c.body) }))
+    .map((c) => ({ at: c.created_at || '', id: c.id, parsed: parseFaseComment(c.body) }))
     .filter((c) => c.parsed)
     .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
   const latest = faseComments[faseComments.length - 1];
@@ -318,7 +318,9 @@ async function findReviewRequest({ github, context, issueNumber }) {
   const shas = new Set(faseComments
     .filter((c) => isClaudeReviewRequest(c.parsed) && c.parsed.prNumber === latest.parsed.prNumber && c.parsed.sha)
     .map((c) => c.parsed.sha));
-  return { ...latest.parsed, rondes: shas.size };
+  // `commentId` = identiteit van de aanvraag: een vervangende aanvraag met dezelfde PR/SHA is een
+  // andere aanvraag (Codex-review ronde 2, P2) en moet bij publicatie opnieuw getoetst worden.
+  return { ...latest.parsed, commentId: latest.id, rondes: shas.size };
 }
 
 // #1727: de reviewteruggave van de bot publiceert de workflow zelf met de GITHUB_TOKEN, dus als
@@ -403,6 +405,8 @@ async function evaluateReviewRequest({ github, context, core, issueNumber, reque
     // De diff gaat tegen de echte basis: een Codex-hotfix (`codex/hotfix-…`) gaat naar main.
     prBase: pr.baseRef || 'develop',
     reviewSha: request.sha,
+    reviewImplementer: request.implementer,
+    reviewRequestId: String(request.commentId ?? ''),
     ronde: request.rondes,
   };
 }

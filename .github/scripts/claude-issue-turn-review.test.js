@@ -21,10 +21,12 @@ const PR = 1724;
 const SHA = 'a'.repeat(40);
 const START = '2026-10-13T16:45:00Z';
 
-const aanvraag = (sha = SHA) => ({
-  user: { login: 'eigenaar' }, author_association: 'OWNER', created_at: '2026-10-13T16:44:00Z',
-  body: `Fase: review\nPR: #${PR}\nImplementer: Codex\nReviewer: Claude Code\nAangeboden head-SHA: ${sha}`,
+const aanvraag = (sha = SHA, { id = 501, implementer = 'Codex', at = '2026-10-13T16:44:00Z' } = {}) => ({
+  id, user: { login: 'eigenaar' }, author_association: 'OWNER', created_at: at,
+  body: `Fase: review\nPR: #${PR}\nImplementer: ${implementer}\nReviewer: Claude Code\nAangeboden head-SHA: ${sha}`,
 });
+// Identiteit van de oorspronkelijke aanvraag zoals de poort die doorgeeft (review_request_id/implementer).
+const ORIGINEEL = { commentId: '501', implementer: 'Codex' };
 const codexPr = (sha = SHA) => ({
   number: PR, title: `security(#${ISSUE}): iets`, body: '', author_association: 'OWNER', state: 'open',
   head: { ref: `codex/${ISSUE}-tokenformat`, sha, repo: { full_name: 'o/r' } }, base: { ref: 'develop' },
@@ -35,15 +37,19 @@ const codexPr = (sha = SHA) => ({
  * Nep-octokit met veranderlijke toestand: labels wijzigen echt bij addLabels/removeLabel, en
  * `onComment` kan de toestand na een comment aanpassen (iemand pusht of trekt de aanvraag in).
  */
-function fakeGithub({ labels = ['turn: claude-code', 'source: codex'], issueComments = [aanvraag()], pr = codexPr(), reviews = [], onComment } = {}) {
+function fakeGithub({ labels = ['turn: claude-code', 'source: codex'], issueComments = [aanvraag()], pr = codexPr(), reviews = [], onComment, onGet } = {}) {
   const state = { labels: [...labels], issueComments: [...issueComments], prComments: [], pr };
-  const calls = { comments: [], added: [], removed: [] };
+  const calls = { comments: [], added: [], removed: [], gets: 0 };
   return {
     state, calls,
     paginate: async (fn, params) => (await fn(params)).data,
     rest: {
       issues: {
-        get: async () => ({ data: { state: 'open', created_at: '2026-10-01T00:00:00Z', author_association: 'OWNER', labels: state.labels.map((name) => ({ name })) } }),
+        get: async () => {
+          calls.gets += 1;
+          if (onGet) onGet(state, calls.gets);
+          return { data: { state: 'open', created_at: '2026-10-01T00:00:00Z', author_association: 'OWNER', labels: state.labels.map((name) => ({ name })) } };
+        },
         listComments: async ({ issue_number }) => ({ data: issue_number === ISSUE ? state.issueComments : state.prComments }),
         createComment: async ({ issue_number, body }) => {
           calls.comments.push({ issue_number, body });
@@ -68,8 +74,8 @@ const geldig = (extra = {}) => JSON.stringify({
   bevindingen: [{ prioriteit: 'P2', locatie: 'a.js:12', reden: 'Grensgeval ontbreekt.', verificatie: 'Test met lege lijst.' }],
   ...extra,
 });
-const publiceer = (github, raw = geldig(), agentResult = 'success') => publishReview({
-  github, context: ctx, core, issueNumber: ISSUE, prNumber: PR, sha: SHA, ronde: 1, raw, agentResult, startedAt: START,
+const publiceer = (github, raw = geldig(), agentResult = 'success', request = ORIGINEEL) => publishReview({
+  github, context: ctx, core, issueNumber: ISSUE, prNumber: PR, sha: SHA, request, ronde: 1, raw, agentResult, startedAt: START,
 });
 
 (async () => {
@@ -153,6 +159,36 @@ const publiceer = (github, raw = geldig(), agentResult = 'success') => publishRe
     const r = await publiceer(g);
     check('aanvraag ingetrokken na publicatie: geen label', [r.published, r.labelWritten, g.calls.added], [true, false, []]);
     check('aanvraag ingetrokken na publicatie: reden genoemd', /ingetrokken/.test(r.reason), true);
+  }
+
+  // Codex-review ronde 2, P2 (aanvraag-binding): dezelfde PR/SHA maar een andere aanvraag of rolverdeling.
+  {
+    const zelfreview = aanvraag(SHA, { id: 502, implementer: 'Claude Code', at: '2026-10-13T16:50:00Z' });
+    const g = fakeGithub({ issueComments: [aanvraag(), zelfreview] });
+    nietsGedaan('vervangende aanvraag met implementer Claude Code (zelfreview)', g, await publiceer(g));
+  }
+  {
+    const g = fakeGithub({ issueComments: [aanvraag(SHA, { id: 503, at: '2026-10-13T16:50:00Z' })] });
+    nietsGedaan('vervangende aanvraag op dezelfde SHA, zelfde rolverdeling', g, await publiceer(g));
+  }
+  { const g = fakeGithub(); nietsGedaan('oorspronkelijke identiteit ontbreekt', g, await publiceer(g, geldig(), 'success', null)); }
+  { const g = fakeGithub(); nietsGedaan('implementer ontbreekt in de identiteit', g, await publiceer(g, geldig(), 'success', { commentId: '501', implementer: '' })); }
+  { const g = fakeGithub(); nietsGedaan('andere implementer dan oorspronkelijk', g, await publiceer(g, geldig(), 'success', { commentId: '501', implementer: 'Claude Code' })); }
+
+  // Codex-review ronde 2, P2 (intrekking in de labelcontrole): issues.get-leesbeurten zijn 1 en 2 in
+  // de publicatiecontroles, 3 de voorcontrole en 4 de nacontrole van de vergelijk-en-zet.
+  {
+    const intrekking = { id: 600, user: { login: 'eigenaar' }, author_association: 'OWNER', created_at: '2026-10-13T17:30:00Z', body: 'Fase: implementatie\nVolgende beurt: turn: codex' };
+    const g = fakeGithub({ onGet: (state, n) => { if (n === 3) state.issueComments.push(intrekking); } });
+    const r = await publiceer(g);
+    check('intrekking vóór het schrijven van het label: niet geschreven', [r.published, r.labelWritten, g.calls.added], [true, false, []]);
+  }
+  {
+    const intrekking = { id: 601, user: { login: 'eigenaar' }, author_association: 'OWNER', created_at: '2026-10-13T17:30:00Z', body: 'Fase: implementatie\nVolgende beurt: turn: codex' };
+    const g = fakeGithub({ onGet: (state, n) => { if (n === 4) state.issueComments.push(intrekking); } });
+    const r = await publiceer(g);
+    check('intrekking na het schrijven van het label: teruggedraaid', [r.published, r.labelWritten], [true, false]);
+    check('intrekking na het schrijven: eigen label weer weg', [g.calls.added, g.calls.removed.includes('turn: codex'), g.state.labels.includes('turn: codex')], [['turn: codex'], true, false]);
   }
 
   console.log(failures === 0 ? '\nAlle checks geslaagd.' : `\n${failures} check(s) gefaald.`);
