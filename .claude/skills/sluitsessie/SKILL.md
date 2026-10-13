@@ -8,8 +8,11 @@ disable-model-invocation: true
 > en Claude Code. Werk uitsluitend aan de toegewezen taak in de eigen geverifieerde worktree;
 > claim of wijzig geen taak, branch, worktree of services van een andere actieve sessie.
 > Behoud `source:` als herkomst; registreer implementer, reviewer, fase en sessie afzonderlijk.
-> Vóór merge: wederzijdse review van de huidige head-SHA, relevante checks én afzonderlijke
-> eigenaarsautorisatie. Deze skill omzeilt die grenzen niet.
+> Merge naar `develop` volgt de zelfmerge-regel (AGENTS.md, "Zelfmerge na schone review", #1690):
+> de reviewer gaf "geen bevindingen" op de huidige head-SHA, alle checks groen (incl. `Build (PR)`
+> en Security Gate op die head) en geen openstaand eigenaarspunt. Altijd naar de eigenaar: `main`
+> (alleen via een door de eigenaar gestarte `/release`), Azure-resources/kosten,
+> databaseschema/migraties en werkinstructies/skills. Deze skill omzeilt die grenzen niet.
 > Start/stop/clean/migraties vereisen vooraf exclusief runtime-eigenaarschap. De huidige
 > debugscriptset is gedeeld: onbekende of andere runtime-eigenaar betekent geen mutaties.
 > Poorten vrij betekent niet dat databases/testdata vrij zijn. Leg reservering en vrijgave vast

@@ -242,12 +242,14 @@ public class GitHubIssueReporterDeduplicatieTests
     [Fact]
     public async Task CreateIssueAsync_VerstuurtDeLabelsWaaropDeDedupLookupFiltert()
     {
-        // SearchIssueAsync zoekt met labels=bug. Een nieuw issue dat dat label niet krijgt, wordt
-        // bij een volgende melding nooit teruggevonden — de dedup zou stil stukgaan.
-        string? verzondenBody = null;
+        // SearchIssueAsync zoekt eerst op het herkomstlabel via: auto-exception (#1711). Een nieuw
+        // issue dat dat label niet krijgt, valt terug op de ongefilterde zoekslag, die alleen de
+        // recentste issues doorzoekt — de dedup zou dan na verloop van tijd stil stukgaan.
+        string? aanmaakBody = null;
         var client = MaakClient(req =>
         {
-            verzondenBody = req.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
+            if (req.RequestUri!.AbsolutePath.EndsWith("/issues", StringComparison.Ordinal))
+                aanmaakBody = req.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"number": 1}""") };
         });
 
@@ -255,10 +257,10 @@ public class GitHubIssueReporterDeduplicatieTests
             client, Owner, Repo, "abc123abc123", new FormatException("x"),
             "PostgresSyncMatchesHttp", NullLogger.Instance);
 
-        verzondenBody.Should().NotBeNull();
-        verzondenBody.Should().Contain("\"bug\"");
-        verzondenBody.Should().Contain("type: bug");
-        verzondenBody.Should().Contain("[fp:abc123abc123]");
+        aanmaakBody.Should().NotBeNull();
+        aanmaakBody.Should().Contain("via: auto-exception");
+        aanmaakBody.Should().Contain("type: bug");
+        aanmaakBody.Should().Contain("[fp:abc123abc123]");
     }
 
     [Fact]

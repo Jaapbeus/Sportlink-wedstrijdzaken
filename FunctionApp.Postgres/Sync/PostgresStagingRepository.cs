@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Npgsql;
+using Planner.Shared.Sync;
 
 namespace FunctionApp.Postgres.Sync;
 
@@ -40,9 +41,12 @@ internal static class PostgresStagingRepository
 
     internal static async Task SaveTeamsAsync(string connectionString, List<Team> teams, string clubCode, ILogger log)
     {
+        // #1712: een dubbele sleutel in stg.teams laat de upsert naar his.teams falen met 21000.
+        var uniek = StagingOntdubbeling.LaatsteWint(teams,
+            t => StagingOntdubbeling.TeamSleutel(t.teamcode, t.lokaleteamcode, t.poulecode), log, "TEAMS");
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
-        foreach (var team in teams)
+        foreach (var team in uniek)
         {
             await using var command = new NpgsqlCommand("""
                 INSERT INTO stg.teams
@@ -74,7 +78,7 @@ internal static class PostgresStagingRepository
             command.Parameters.AddWithValue("more", team.more);
             await command.ExecuteNonQueryAsync();
         }
-        log.LogInformation("TEAMS - {Count} rows inserted into staging.", teams.Count);
+        log.LogInformation("TEAMS - {Count} rows inserted into staging.", uniek.Count);
     }
 
     internal static async Task<int> SaveProgrammaAsync(string connectionString, List<Match> matches, string clubCode, ILogger log)
