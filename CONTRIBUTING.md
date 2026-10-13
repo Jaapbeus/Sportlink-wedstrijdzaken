@@ -362,7 +362,8 @@ surveybestand. Het antwoord van de eigenaar (bijvoorbeeld `1A, 2C`) is het beslu
 vast op de plek waar het hoort (issue, PR-comment of memory) zonder de survey zelf te publiceren.
 
 Deze regel is onbewaakt: geen guard controleert of een afronding een survey is, wat erin staat en
-of het eindrapport als comment is geplaatst.
+of het eindrapport als comment is geplaatst. Ze staat als `handmatig` in het register van
+`docs/ARCHITECTUUR-CODEKWALITEIT.md` (onbewaakte onderwerpen), met de handmatige controle per afronding.
 
 ---
 
