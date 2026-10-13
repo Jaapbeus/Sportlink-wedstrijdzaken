@@ -272,3 +272,5 @@ gh run list --workflow close-released-issues.yml --limit 1 # ⇒ watch tot groen
 
 Bij een STOP: welke stopconditie, wat de eigenaar moet beslissen, en de zin
 "Er is niets gecommit of gepusht" (of precies wat er al wel gebeurd is).
+Wat de eigenaar moet beslissen, staat niet als losse opsomming in dit rapport maar in een beslissurvey
+(`AGENTS.md`, "Afronding en overdracht aan de eigenaar"; formaat in `CONTRIBUTING.md`, "Afronding aan de eigenaar", #1728).

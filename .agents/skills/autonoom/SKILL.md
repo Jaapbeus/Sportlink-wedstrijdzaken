@@ -553,6 +553,8 @@ BlazorAdmin hot reload via `dotnet watch` — draait automatisch bij Stap 2B als
 ```
 
 Sluit af met: aanbevolen volgende actie voor de gebruiker (bijv. testen van geïmplementeerde features, of een issue dat wacht op hun beslissing).
+Wat de eigenaar moet beslissen, staat niet als losse opsomming in dit rapport maar in een beslissurvey
+(`AGENTS.md`, "Afronding en overdracht aan de eigenaar"; formaat in `CONTRIBUTING.md`, "Afronding aan de eigenaar", #1728).
 
 ---
 

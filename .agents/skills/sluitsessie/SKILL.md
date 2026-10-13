@@ -224,6 +224,8 @@ Update ook de `session_latest`-regel in MEMORY.md.
 - ❌ aanwezig → `❌ NIET afgesloten — los blocker op en voer /sluitsessie opnieuw uit`
 
 Sluit af met één aanbevolen volgende actie.
+Wat de eigenaar moet beslissen, staat niet als losse opsomming in dit rapport maar in een beslissurvey
+(`AGENTS.md`, "Afronding en overdracht aan de eigenaar"; formaat in `CONTRIBUTING.md`, "Afronding aan de eigenaar", #1728).
 
 **Alleen als alle checks ✅ zijn** (volledig groen, geen enkele ⚠️ of ❌): plaats na de
 aanbevolen volgende actie, als allerlaatste in de response, dit banner in een code block:
