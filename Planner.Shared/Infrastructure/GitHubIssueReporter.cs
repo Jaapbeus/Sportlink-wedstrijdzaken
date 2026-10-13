@@ -265,16 +265,12 @@ public static class GitHubIssueReporter
     /// COLLABORATOR. Ontbrekend of onbekend = niet vertrouwd.
     /// <para>
     /// <b>Eigen account van de reporter.</b> Deze klasse authenticeert uitsluitend met de statische
-    /// <c>GitHubPat</c> (fine-grained PAT van een gebruikersaccount met <c>issues:write</c>, zie de
-    /// klassedocumentatie en <c>SETUP-NIEUWE-CLUB.md</c>). Issues die de reporter zelf aanmaakt
-    /// krijgen daardoor het PAT-account als auteur, met associatie OWNER (eigenaar van de fork) of
-    /// COLLABORATOR/MEMBER (account met schrijfrechten): ze vallen dus altijd onder deze toets. Een
-    /// aparte "eigen app-account"-uitzondering (bot-login, <c>user.type</c> Bot) bestaat bewust
-    /// niet: er is geen GitHub App-authenticatie (JWT/installatietoken) in deze klasse, en een
-    /// installatietoken verloopt na een uur, zodat het niet als statische app-instelling te
-    /// gebruiken is. Komt zo'n authenticatiepad ooit wél, dan hoort hier een expliciete,
-    /// geconfigureerde identiteit bij (login + type) en niet een algemene bot-vrijstelling:
-    /// andere bots (Dependabot en co.) zijn CONTRIBUTOR en blijven onvertrouwd.
+    /// gebruikers-PAT <c>GitHubPat</c> (<c>SETUP-NIEUWE-CLUB.md</c>); de issues die ze zelf aanmaakt
+    /// hebben dus het PAT-account als auteur (OWNER, of MEMBER/COLLABORATOR met schrijfrechten) en
+    /// vallen altijd onder deze toets. Een aparte app-/bot-uitzondering bestaat bewust niet: er is
+    /// geen GitHub App-pad (JWT/installatietoken; dat verloopt na een uur) en een algemene
+    /// bot-vrijstelling zou Dependabot en co. (CONTRIBUTOR) vertrouwen. Komt zo'n pad ooit, dan
+    /// hoort hier een expliciet geconfigureerde identiteit (login + type) bij.
     /// </para>
     /// </summary>
     internal static bool IsVertrouwdeAuteur(string? authorAssociation)
