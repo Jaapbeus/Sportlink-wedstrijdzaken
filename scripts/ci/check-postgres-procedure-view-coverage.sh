@@ -39,7 +39,7 @@ MAPPING=(
   "avg.sp_CleanupTeambegeleidingInzageLog|Database.Postgres/PostgresCleanupProcedures.cs|CleanupTeambegeleidingInzageLogAsync"
   "dbo.sp_CreateTargetTableFromSource|Database.Postgres/PostgresMergeOrchestrator.cs|EnsureHisTableAsync"
   "dbo.sp_MergeStgToHis|Database.Postgres/PostgresMergeOrchestrator.cs|MergeStgToHisAsync"
-  "dbo.sp_UpdateSeasonTable|Database.Postgres/PostgresSeasonProcedures.cs|EnsureSeasonsAsync"
+  "dbo.sp_UpdateClubSeasonTable|Database.Postgres/PostgresSeasonProcedures.cs|EnsureSeasonsAsync"
   "planner.AlleWedstrijdenOpVeld|Database.Postgres/PostgresPlannerViewGenerator.cs|ViewName"
 )
 
@@ -47,6 +47,7 @@ MAPPING=(
 # Zelfde format en discipline als check-postgres-table-coverage.sh: elke rij is een bewuste
 # beslissing met reden, geen omissie.
 EXCEPTIONS=(
+  "dbo.sp_UpdateSeasonTable|clubneutrale voorganger van sp_UpdateClubSeasonTable, blijft voor de overgang staan maar wordt niet meer aangeroepen (expand/contract, #1715); opruimen in issue 1747"
   "dbo.sp_CreateDateTable|zero consumenten — dbo.DateTable zelf staat om dezelfde reden al in check-postgres-table-coverage.sh; zie docs/ARCHITECTUUR-DATABASE-TIERS.md sectie 21/34"
   "pub.DateTable|consumentgerichte view op de SQL Server-ETL-boom, geen enkele regel applicatiecode raadpleegt hem; zie docs/ARCHITECTUUR-DATABASE-TIERS.md sectie 34"
   "pub.Matches|idem"

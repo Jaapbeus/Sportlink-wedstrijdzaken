@@ -178,7 +178,7 @@ internal static class AvailabilityService
     {
         clubCode = ClubScope.Resolve(clubCode);
         var response = new DoordeweeksBeschikbaarResponse { DagFilter = request.DagFilter };
-        var seizoenEinde = await PlannerDataAccess.GetSeasonEndDateAsync()
+        var seizoenEinde = await PlannerDataAccess.GetSeasonEndDateAsync(clubCode)
             ?? DateOnly.FromDateTime(DateTime.Today.AddMonths(6));
         response.SeizoenEinde = seizoenEinde.ToString("yyyy-MM-dd");
 

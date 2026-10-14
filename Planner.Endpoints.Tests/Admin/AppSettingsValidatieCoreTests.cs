@@ -65,4 +65,21 @@ public class AppSettingsValidatieCoreTests
     [Fact]
     public void VeldnaamIsHoofdletterOngevoelig_AlsDeTierDatZoAanlevert()
         => IsFout(Valideer("pdfexportingeschakeld", "ja"), "PdfExportIngeschakeld");
+
+    [Theory]
+    [InlineData("1", true)]
+    [InlineData("7", true)]
+    [InlineData("12", true)]
+    [InlineData("0", false)]
+    [InlineData("13", false)]
+    [InlineData("juli", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void SeasonStartMonth_AlleenMaandnummerEenTotTwaalf(string? waarde, bool geldig)
+    {
+        var uitkomst = Valideer("SeasonStartMonth", waarde);
+
+        if (geldig) uitkomst.Should().BeNull();
+        else IsFout(uitkomst, "SeasonStartMonth");
+    }
 }

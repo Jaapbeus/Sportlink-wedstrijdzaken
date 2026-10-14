@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nEén beveiligingsschema:\n\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist\n  voor alle endpoints behalve `/health`. De rolcontrole gebeurt server-side, met vier niveaus:\n  `admin` (`EasyAuthHelper.RequireAdmin`, via de wrappers `AdminEndpoint.ExecuteAsync` /\n  `ExecuteZonderDatabaseAsync`) voor de meeste `/beheer/`-, `/planner/`- en\n  `/test/`-endpoints (waaronder het feedbackoverzicht `/beheer/feedback`) — sinds #1350 óók voor `/postgres/sync-matches` en `/sync-matches`;\n  `admin` óf `user` (`AdminEndpoint.ExecuteAuthenticatedAsync`, #1330) voor `/planner/veldbezetting`\n  (#1400), de drie `/feedback/`-endpoints (#764: elke ingelogde gebruiker mag feedback geven), de twee Sportlink-viewing-endpoints (`GET /sportlink/match/{wedstrijdcode}` en\n  `.../public-match-id`, #1400) en de drie Teambegeleiding-lookup/doorstuur-endpoints; op\n  **beide** tiers identiek `Wedstrijdzaken` óf `admin` (`EasyAuthHelper.RequireWedstrijdzaken`,\n  beide poorten sinds #1400) voor de Sportlink-mutatie-endpoints (`PUT`/`POST` onder\n  `/sportlink/`), via `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`. Netto: een gewone\n  `user` (zonder `Wedstrijdzaken`, zonder `admin`) kan Planning en het Sportlink-paneel bekijken\n  maar geen Sportlink-mutatie triggeren; dat laatste vereist `Wedstrijdzaken` óf `admin`. Lokaal\n  alleen omzeild met de expliciete schakelaar `LOCAL_AUTH_BYPASS=true`; in Azure wordt die\n  geweigerd (#1700).\n\nZonder token volgt `401`. Met een geldig token maar zonder de vereiste rol volgt `403` met\n`{ \"error\": \"Forbidden: vereiste rol ontbreekt\" }`.\n\n## Tiers\n\nAlle endpoints bestaan sinds #1266 op beide databasetiers, met één uitzondering: de handmatige\nsynchronisatie heet `/postgres/sync-matches` op de Postgres-tier (productie) en\n`/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "3.14.0.0",
+    "version": "3.14.1.0",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -937,7 +937,10 @@
           },
           "SeasonStartMonth": {
             "type": "integer",
-            "nullable": true
+            "minimum": 1,
+            "maximum": 12,
+            "nullable": true,
+            "description": "Seizoensstartmaand van deze club (1 = januari ... 12 = december; standaard 7 = juli, #1715).\nHet seizoenseinde is de dag vóór de start van het volgende seizoen. Per club: elke club heeft\nzijn eigen seizoenen en seizoenseinde (de seizoenstabel heeft een `ClubCode`).\n"
           },
           "Accommodatie": {
             "type": "string",
@@ -1785,7 +1788,7 @@
       },
       "UpdateSettingsRequest": {
         "type": "object",
-        "description": "Wijzig toegestane AppSettings-velden. Velden buiten de witte lijst worden genegeerd.\nWitte lijst: HerplanDeadlineDagen, BufferMinuten, PlannerAfzenderNaam, CoordinatorNaam,\nCoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,\nAccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi,\nKnvbPdfBijlageIngeschakeld, KnvbStandaardRegio, SportlinkExtensionEnabled, PdfExportIngeschakeld,\nZekerheidspoortActief\n(waarde `0`/`1`/`true`/`false`, anders 400).\n\nDe audit-actor (wie de wijziging doorvoerde) wordt uitsluitend server-side bepaald uit de\ndoor Easy Auth gevalideerde claims — dit contract kent daarom geen \"wie\"-veld (#1003).\n",
+        "description": "Wijzig toegestane AppSettings-velden. Velden buiten de witte lijst worden genegeerd.\nWitte lijst: HerplanDeadlineDagen, BufferMinuten, PlannerAfzenderNaam, CoordinatorNaam,\nCoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,\nAccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi,\nKnvbPdfBijlageIngeschakeld, KnvbStandaardRegio, SportlinkExtensionEnabled, PdfExportIngeschakeld,\nZekerheidspoortActief, SeasonStartMonth\n(waarde `0`/`1`/`true`/`false`, anders 400).\n\n`SeasonStartMonth` (#1715): een geheel getal 1 t/m 12, anders 400. Bij een wijziging worden de\nseizoensrijen van de club opnieuw opgebouwd met de nieuwe startmaand en schuift het seizoenseinde\nmee: de bewaartermijn van persoonskolommen in de historietabellen (#1698) volgt het seizoenseinde\nvan de club van de wedstrijd. Het wijzigen wordt vastgelegd in de auditlog zoals andere velden.\n\nDe audit-actor (wie de wijziging doorvoerde) wordt uitsluitend server-side bepaald uit de\ndoor Easy Auth gevalideerde claims — dit contract kent daarom geen \"wie\"-veld (#1003).\n",
         "properties": {
           "velden": {
             "type": "object",

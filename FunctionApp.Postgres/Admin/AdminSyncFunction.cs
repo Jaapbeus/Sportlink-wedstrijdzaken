@@ -91,8 +91,8 @@ public static class AdminSyncFunction
                 // #1352/#1461/#1492: body + seizoensvenster via de gedeelde orkestratie (400 bij ongeldig).
                 var venster = await SyncTriggerEndpointCore.BepaalVensterAsync(
                     await new StreamReader(req.Body).ReadToEndAsync(), DateTime.UtcNow.Year,
-                    async () => { await PostgresSeasonHelper.EnsureSeasonsAsync(log); return await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log); },
-                    jaar => PostgresSeasonHelper.GetSeasonStartWeekOffsetOrNullAsync(jaar));
+                    async () => { await PostgresSeasonHelper.EnsureSeasonsAsync(log); return await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log, clubCode); },
+                    jaar => PostgresSeasonHelper.GetSeasonStartWeekOffsetOrNullAsync(jaar, clubCode));
                 if (venster.Fout is not null) return venster.Fout;
                 int fromWeekOffset = venster.Van, toWeekOffset = venster.Tot;
                 var jobId = Guid.NewGuid();
