@@ -1369,7 +1369,8 @@ Toelichting bij de bewerkingen:
 * **Persoonsgegevens in de invoer worden niet gemaskeerd.** Onderwerp en berichttekst gaan, op de
   bewerkingen hierboven na, ongewijzigd mee. De saneringen in deze module werken op wat de provider
   teruggeeft en wat de applicatie bewaart of toont: `AiVeldSanering` (vrije modelvelden vóór gebruik in
-  een antwoord), `TraceBuilder.Saneer` (samenvattingen, leermomenten, trace) en `AvgMaskering`
+  een antwoord), `ModelDatum.Grens` (alle datumvelden van de classificatie, strikt `jjjj-MM-dd`, eenmalig
+  vóór trace en verwerking, #1730), `TraceBuilder.Saneer` (samenvattingen, leermomenten, trace) en `AvgMaskering`
   (afzender- en ontvangeradres in het e-maillog van de beheerinterface).
 
 **Voorwaarden van de doorgifte** (gelden voor alle velden hierboven):
