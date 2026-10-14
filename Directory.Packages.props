@@ -35,6 +35,14 @@
     <!-- Database-clients -->
     <PackageVersion Include="Microsoft.Data.SqlClient" Version="7.1.1" />
     <PackageVersion Include="Npgsql" Version="10.0.3" />
+    <!--
+      #1748: directe pin van een transitieve dependency van Microsoft.Data.SqlClient (net9.0/net10.0-
+      groep) op de gefixte versie; de Dependency Vulnerability Scan (Trivy) meldde de door SqlClient
+      meegeleverde lagere versie. Verwijderen zodra een SqlClient-release zelf een gefixte versie
+      declareert (controleer met `dotnet nuget why <csproj> System.Security.Cryptography.Pkcs`).
+      Staat als PackageReference in elk project dat Microsoft.Data.SqlClient refereert.
+    -->
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
 
     <!-- AI-adapter/provider — #1129: 10.10.0 vereist exact OpenAI 2.13.0, geen NU1608 meer -->
     <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="10.10.1" />
