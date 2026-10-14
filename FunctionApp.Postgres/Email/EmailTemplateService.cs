@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using FunctionApp.Postgres.Planner;
 using Microsoft.Extensions.Logging;
 using Npgsql;
+using Planner.Shared.Email;
 
 namespace FunctionApp.Postgres.Email;
 
@@ -128,14 +129,7 @@ public static class EmailTemplateService
 
     /// <summary>Past een sjabloon toe met simpele placeholder-substitutie (<c>{{key}}</c>).</summary>
     public static string ApplyPlaceholders(string body, IDictionary<string, string> values)
-    {
-        if (string.IsNullOrEmpty(body) || values == null || values.Count == 0) return body;
-        foreach (var (key, value) in values)
-        {
-            body = body.Replace("{{" + key + "}}", value ?? "", StringComparison.OrdinalIgnoreCase);
-        }
-        return body;
-    }
+        => BerichtAntwoordGenerator.VulPlaceholdersIn(body, values);
 }
 
 /// <summary>
@@ -144,4 +138,4 @@ public static class EmailTemplateService
 /// architectuurbezwaar tegen een tweede definitie (zelfde redenering als
 /// <c>FunctionApp.Postgres/Email/EmailModels.cs</c>).
 /// </summary>
-public record EmailTemplate(string Key, string Onderwerp, string Body);
+public record EmailTemplate(string Key, string Onderwerp, string Body) : IAntwoordSjabloon;
