@@ -4,6 +4,7 @@ using FunctionApp.Postgres.Email;
 using FunctionApp.Postgres.Infrastructure;
 using FunctionApp.Postgres.Monitoring;
 using FunctionApp.Postgres.Sportlink;
+using FunctionApp.Postgres.TeamResolution;
 using Microsoft.Azure.Functions.Worker.Builder;
 using Planner.Endpoints.Instellingen;
 using Microsoft.Extensions.AI;
@@ -100,6 +101,9 @@ builder.Services.AddSingleton<INoodmailThrottleStore>(sp =>
 // rechtstreekse verbindingsprobe. Zonder die instellingen valt hij vanzelf terug op de probe —
 // dat is bewust, anders is de monitor dood voor elke club die geen managementtoken wil zetten.
 builder.Services.AddSingleton<IDatabaseStatusReader, PostgresDatabaseStatusReader>();
+
+// Teamnaam→TeamId-vertaallaag via DI (#1718), zoals op de SQL Server-tier.
+TeamResolutionRegistration.Register(builder.Services);
 
 var host = builder.Build();
 // #1689: geaggregeerde foutlog (zonder waarden) als het laden van de clublijst structureel faalt;

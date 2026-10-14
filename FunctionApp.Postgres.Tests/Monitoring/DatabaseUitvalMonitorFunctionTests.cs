@@ -191,4 +191,21 @@ public class DatabaseUitvalMonitorFunctionTests
             Environment.SetEnvironmentVariable("GraphMailbox", null);
         }
     }
+
+    /// <summary>
+    /// #1718: de schedule is een letterlijke cron op beide tiers. Een <c>%…%</c>-verwijzing wordt bij
+    /// het indexeren opgelost en laat de hele Function App niet opstarten als de setting ontbreekt.
+    /// </summary>
+    [Fact]
+    public void Run_gebruikt_een_letterlijke_cron_zonder_appsetting_verwijzing()
+    {
+        var schedule = typeof(DatabaseUitvalMonitorFunction)
+            .GetMethod("Run")!.GetParameters()
+            .Select(p => p.GetCustomAttributes(typeof(Microsoft.Azure.Functions.Worker.TimerTriggerAttribute), false)
+                .Cast<Microsoft.Azure.Functions.Worker.TimerTriggerAttribute>().FirstOrDefault())
+            .First(a => a is not null)!.Schedule;
+
+        schedule.Should().Be("0 0 8 * * *");
+        schedule.Should().NotContain("%");
+    }
 }
