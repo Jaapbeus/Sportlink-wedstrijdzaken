@@ -35,32 +35,21 @@ public static partial class BerichtPipeline
             classificatie.LeeftijdsCategorie = TeamNaamNormalisatie.VulLeeftijdsCategorieAan(classificatie.LeeftijdsCategorie, classificatie.TeamNaam, cc);
         }
 
-        if (alleDatums.Count > 1)
-        {
-            var multiResults = new List<(string Datum, object? Response)>();
-            foreach (var datum in alleDatums)
-            {
-                var resp = await PlannerService.CheckAvailabilityAsync(
-                    BouwBeschikbaarheidRequest(classificatie, datum), log, clubCode);
-                multiResults.Add((datum, resp));
-            }
-            return PlannerAntwoordJson.MultiDatum(multiResults);
-        }
+        // #1730: elke modeldatum wordt strikt gevalideerd vóór plannercheck en antwoord; de keuze
+        // (lijst vóór losse datum, zonder bruikbare datum "datumOnbekend") staat in Planner.Shared.
+        var datums = ModelDatum.VoorBeschikbaarheid(alleDatums, classificatie.Datum);
+        if (datums.Count == 0) return PlannerAntwoordJson.DatumOnbekend();
+
+        if (datums.Count > 1)
+            return await PlannerAntwoordJson.MultiDatumAsync(datums, async datum =>
+                await PlannerService.CheckAvailabilityAsync(BouwBeschikbaarheidRequest(classificatie, datum), log, clubCode));
 
         // Dezelfde datum als de tegenstander-lookup hierboven gebruikt: anders loopt de
         // plannercheck over een andere datum dan de rest van de verwerking.
-        var primaireDatum = KiesPrimaireDatum(alleDatums, classificatie.Datum);
-        if (string.IsNullOrWhiteSpace(primaireDatum) || !DateOnly.TryParse(primaireDatum, out _))
-        {
-            // Zonder bruikbare datum heeft een plannercheck geen zin: die levert een
-            // interne foutstring ("Ongeldige datum: .") op die in het antwoord aan de
-            // afzender zou belanden.
-            return PlannerAntwoordJson.DatumOnbekend();
-        }
-        classificatie.Datum = primaireDatum;
+        classificatie.Datum = datums[0];
 
         var checkResponse = await PlannerService.CheckAvailabilityAsync(
-            BouwBeschikbaarheidRequest(classificatie, primaireDatum), log, clubCode);
+            BouwBeschikbaarheidRequest(classificatie, datums[0]), log, clubCode);
         return JsonConvert.SerializeObject(checkResponse);
     }
 
@@ -77,7 +66,7 @@ public static partial class BerichtPipeline
         string cc, bool eigenTeamHerkend, string? clubCode, ILogger log, TraceBuilder? trace)
     {
         if (string.IsNullOrWhiteSpace(classificatie.Tegenstander) || eigenTeamHerkend || alleDatums.Count != 1
-            || !DateOnly.TryParse(alleDatums[0], out var opponentCheckDatum))
+            || !ModelDatum.TryParse(alleDatums[0], out var opponentCheckDatum))
             return default;
 
         var wedstrijdOpDatum = await PlannerDataAccess.FindMatchByOpponentAsync(
@@ -106,7 +95,7 @@ public static partial class BerichtPipeline
         ClubAppSettingsSnapshot? clubSettings)
     {
         if (string.IsNullOrEmpty(classificatie.TeamNaam) || string.IsNullOrEmpty(classificatie.Datum)
-            || !DateOnly.TryParse(classificatie.Datum, out var datum))
+            || !ModelDatum.TryParse(classificatie.Datum, out var datum))
             return PlannerAntwoordJson.OnvoldoendeHerplanGegevens();
 
         var wedstrijd = await PlannerDataAccess.FindMatchAsync(classificatie.TeamNaam, datum, clubCode);

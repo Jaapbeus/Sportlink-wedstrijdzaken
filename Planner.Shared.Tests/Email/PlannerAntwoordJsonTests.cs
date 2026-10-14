@@ -27,6 +27,21 @@ public class PlannerAntwoordJsonTests
             .Should().Be("{\"multiDatum\":true,\"resultaten\":[{\"datum\":\"2026-06-06\",\"response\":{\"ok\":true}},{\"datum\":\"2026-06-07\",\"response\":null}]}");
 
     [Fact]
+    public async Task MultiDatumAsync_VoertDeCheckPerDatumNaElkaarUitInVolgorde()
+    {
+        var volgorde = new List<string>();
+
+        var json = await PlannerAntwoordJson.MultiDatumAsync(new[] { "2026-06-06", "2026-06-07" }, datum =>
+        {
+            volgorde.Add(datum);
+            return Task.FromResult<object?>(datum == "2026-06-06" ? new { ok = true } : null);
+        });
+
+        volgorde.Should().Equal("2026-06-06", "2026-06-07");
+        json.Should().Be("{\"multiDatum\":true,\"resultaten\":[{\"datum\":\"2026-06-06\",\"response\":{\"ok\":true}},{\"datum\":\"2026-06-07\",\"response\":null}]}");
+    }
+
+    [Fact]
     public void OnvoldoendeHerplanGegevens_IsContract()
         => PlannerAntwoordJson.OnvoldoendeHerplanGegevens()
             .Should().Be("{\"error\":\"Onvoldoende gegevens voor herplanverzoek (team en datum nodig)\"}");
