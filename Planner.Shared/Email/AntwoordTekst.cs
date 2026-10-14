@@ -26,11 +26,11 @@ public static class AntwoordTekst
             ? ""
             : volledigeNaam.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
 
-    /// <summary>Datum als "zaterdag 10 oktober 2026"; een niet-leesbare tekst komt ongewijzigd terug.</summary>
+    /// <summary>Datum als "zaterdag 10 oktober 2026"; een niet-leesbare tekst komt nooit letterlijk terug (#1730).</summary>
     public static string Datum(string? datumString)
         => DateOnly.TryParse(datumString, out var datum)
             ? datum.ToString("dddd d MMMM yyyy", NL)
-            : datumString ?? "de opgegeven datum";
+            : "de opgegeven datum";
 
     /// <summary>
     /// Beperkt de alternatieven tot kunstgras zodra er drie of meer kunstgrasvelden beschikbaar zijn:
