@@ -32,6 +32,18 @@ public static class PlannerAntwoordJson
             resultaten = resultaten.Select(r => new { datum = r.Datum, response = r.Response }).ToList()
         });
 
+    /// <summary>
+    /// Het meer-datum-antwoord: één plannercheck per datum, in volgorde, na elkaar (#1730). De tiers
+    /// leveren alleen de check; de lus en het antwoord staan hier één keer.
+    /// </summary>
+    public static async Task<string> MultiDatumAsync(IReadOnlyList<string> datums, Func<string, Task<object?>> check)
+    {
+        var resultaten = new List<(string Datum, object? Response)>();
+        foreach (var datum in datums)
+            resultaten.Add((datum, await check(datum)));
+        return MultiDatum(resultaten);
+    }
+
     public static string OnvoldoendeHerplanGegevens()
         => JsonConvert.SerializeObject(new { error = "Onvoldoende gegevens voor herplanverzoek (team en datum nodig)" });
 
