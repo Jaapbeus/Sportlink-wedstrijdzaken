@@ -16,7 +16,7 @@ namespace FunctionApp.Tests.Email;
 public class EmailAiVeldEnAutomatischeAfzenderTests
 {
     private static readonly DateTime Vandaag =
-        BerichtAiService.KnvbRegelsGeldigTot.AddDays(-30).ToDateTime(TimeOnly.MinValue);
+        BerichtAiKern.KnvbRegelsGeldigTot.AddDays(-30).ToDateTime(TimeOnly.MinValue);
 
     private static readonly ClubAppSettingsSnapshot ClubSettings = new(
         PlannerAfzenderNaam: null, CoordinatorNaam: null, CoordinatorFunctie: null,
@@ -37,7 +37,7 @@ public class EmailAiVeldEnAutomatischeAfzenderTests
     [Fact]
     public void Parse_KnvbNotitieMetLink_WordtGenegeerd()
     {
-        var result = BerichtAiService.ParseClassificatieResponse(
+        var result = BerichtAiKern.ParseClassificatieResponse(
             """{"type":"herplan_verzoek","knvbNotitie":"Zie https://voorbeeld.test/regels"}""", Vandaag);
 
         result.KnvbNotitie.Should().BeNull();
@@ -46,7 +46,7 @@ public class EmailAiVeldEnAutomatischeAfzenderTests
     [Fact]
     public void Parse_KnvbNotitieMetRegeleinden_WordtEenRegel()
     {
-        var result = BerichtAiService.ParseClassificatieResponse(
+        var result = BerichtAiKern.ParseClassificatieResponse(
             "{\"type\":\"herplan_verzoek\",\"knvbNotitie\":\"Eerste regel\\nTweede regel\"}", Vandaag);
 
         result.KnvbNotitie.Should().Be("Eerste regel Tweede regel");
@@ -55,7 +55,7 @@ public class EmailAiVeldEnAutomatischeAfzenderTests
     [Fact]
     public void Parse_KnvbNotitieTeLang_WordtGenegeerd()
     {
-        var result = BerichtAiService.ParseClassificatieResponse(
+        var result = BerichtAiKern.ParseClassificatieResponse(
             "{\"knvbNotitie\":\"" + new string('a', 201) + "\"}", Vandaag);
 
         result.KnvbNotitie.Should().BeNull();
@@ -68,7 +68,7 @@ public class EmailAiVeldEnAutomatischeAfzenderTests
     [InlineData("25:99", null)]
     public void Parse_AanvangsTijd_WordtGenormaliseerdOfGenegeerd(string invoer, string? verwacht)
     {
-        var result = BerichtAiService.ParseClassificatieResponse(
+        var result = BerichtAiKern.ParseClassificatieResponse(
             "{\"type\":\"beschikbaarheid_check\",\"aanvangsTijd\":\"" + invoer + "\"}", Vandaag);
 
         result.AanvangsTijd.Should().Be(verwacht);
@@ -77,7 +77,7 @@ public class EmailAiVeldEnAutomatischeAfzenderTests
     [Fact]
     public void Parse_Samenvatting_WordtBegrensd()
     {
-        var result = BerichtAiService.ParseClassificatieResponse(
+        var result = BerichtAiKern.ParseClassificatieResponse(
             "{\"samenvatting\":\"" + new string('x', 900) + "\"}", Vandaag);
 
         result.Samenvatting.Length.Should().BeLessThanOrEqualTo(500);
