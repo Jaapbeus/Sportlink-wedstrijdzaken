@@ -1,7 +1,6 @@
 using Newtonsoft.Json.Linq;
-using Planner.Shared.Email;
 
-namespace SportlinkFunction.Email;
+namespace Planner.Shared.Email;
 
 /// <summary>
 /// Wat er met een verwerkt bericht moet gebeuren: automatisch antwoorden of niet.

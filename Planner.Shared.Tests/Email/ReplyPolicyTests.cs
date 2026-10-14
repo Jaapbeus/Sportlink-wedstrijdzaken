@@ -1,17 +1,24 @@
-using AwesomeAssertions;
-using Newtonsoft.Json;
-using FunctionApp.Postgres.Email;
-using FunctionApp.Postgres.Planner;
 using Planner.Shared.Email;
 using Planner.Shared;
+using AwesomeAssertions;
+using Newtonsoft.Json;
 using Xunit;
 
-namespace FunctionApp.Postgres.Tests.Email;
+namespace Planner.Shared.Tests.Email;
 
 /// <summary>
-/// Postgres-tier-tegenhanger van <c>FunctionApp.Tests/Email/ReplyPolicyTests.cs</c> (#972 — port
-/// van EmailProcessorFunction). Woordelijke kopie: <see cref="ReplyPolicy"/> is pure logica zonder
-/// databaseafhankelijkheid, dus de test-inhoud is identiek aan het SQL Server-origineel.
+/// Regressietests voor het reply-beleid (#572, #578).
+///
+/// Legt de functionele eis van de eigenaar (2026-07-25) vast:
+///   • enkele datum, planning mogelijk      → géén automatisch antwoord
+///   • enkele datum, planning niet mogelijk → wél antwoord
+///   • meerdere datums, gemengd             → wél antwoord
+///   • meerdere datums, alles mogelijk      → géén antwoord
+///   • meerdere datums, niets mogelijk      → wél antwoord
+///
+/// De JSON heeft de vorm die de plannerpipeline per tier oplevert (PascalCase DTO's, camelCase
+/// voor de multidatum-envelop); de koppeling met de echte tier-DTO's staat in de tier-tests
+/// (<c>ReplyPolicyTierSerialisatieTests</c>).
 /// </summary>
 public class ReplyPolicyTests
 {
@@ -19,12 +26,12 @@ public class ReplyPolicyTests
         new() { Type = VerzoekType.BeschikbaarheidCheck, Datum = "2026-09-12", TeamNaam = "TEST JO14-1" };
 
     private static string EnkeleDatumJson(bool beschikbaar) =>
-        JsonConvert.SerializeObject(new CheckAvailabilityResponse
+        JsonConvert.SerializeObject(new
         {
             Beschikbaar = beschikbaar,
             Reden = beschikbaar ? null : "Geen beschikbaar veld gevonden.",
             Toewijzing = beschikbaar
-                ? new SlotToewijzing { Datum = "2026-09-12", AanvangsTijd = "10:00", EindTijd = "11:45", VeldNummer = 1 }
+                ? new { Datum = "2026-09-12", AanvangsTijd = "10:00", EindTijd = "11:45", VeldNummer = 1 }
                 : null
         });
 
@@ -33,7 +40,7 @@ public class ReplyPolicyTests
         var resultaten = beschikbaarPerDatum.Select((b, i) => (object)new
         {
             datum = new DateOnly(2026, 9, 7).AddDays(i).ToString("yyyy-MM-dd"),
-            response = new CheckAvailabilityResponse
+            response = new
             {
                 Beschikbaar = b,
                 Reden = b ? null : "Geen beschikbaar veld gevonden."
@@ -65,11 +72,12 @@ public class ReplyPolicyTests
     [Fact]
     public void EnkeleDatum_TeamConflict_WelAntwoord()
     {
-        var json = JsonConvert.SerializeObject(new CheckAvailabilityResponse
+        // Teamconflict levert Beschikbaar = false met een Reden — moet antwoord opleveren
+        var json = JsonConvert.SerializeObject(new
         {
             Beschikbaar = false,
             Reden = "TEST JO14-1 heeft al een wedstrijd op 12 september.",
-            TeamConflict = new TeamConflictInfo { Wedstrijd = "TEST JO14-1 - Ander JO14-1", AanvangsTijd = "10:00" }
+            TeamConflict = new { Wedstrijd = "TEST JO14-1 - Ander JO14-1", AanvangsTijd = "10:00" }
         });
 
         ReplyPolicy.Bepaal(Beschikbaarheid(), json).MoetVersturen.Should().BeTrue();
@@ -103,6 +111,7 @@ public class ReplyPolicyTests
     [Fact]
     public void MultiDatum_EenDatumMogelijkEnEenNiet_WelAntwoord()
     {
+        // Minimale gemengde variant uit de eigenaarseis
         ReplyPolicy.Bepaal(Beschikbaarheid(), MultiDatumJson(true, false))
             .MoetVersturen.Should().BeTrue();
     }
@@ -120,10 +129,11 @@ public class ReplyPolicyTests
     [Fact]
     public void WedstrijdAlIngepland_WelAntwoord()
     {
+        // Informatief: de aanvrager moet weten dat de wedstrijd al staat
         var json = JsonConvert.SerializeObject(new
         {
             wedstrijdAlIngepland = true,
-            wedstrijd = new ZoekWedstrijdResponse { Wedstrijd = "TEST JO14-1 - Ander JO14-1", Datum = "2026-09-12" }
+            wedstrijd = new { Wedstrijd = "TEST JO14-1 - Ander JO14-1", Datum = "2026-09-12" }
         });
 
         ReplyPolicy.Bepaal(Beschikbaarheid(), json).MoetVersturen.Should().BeTrue();
@@ -153,6 +163,8 @@ public class ReplyPolicyTests
     {
         var classificatie = new BerichtClassificatie { Type = type, Datum = "2026-09-12" };
 
+        // Zelfs met een "wel beschikbaar"-payload blijft het antwoord verplicht:
+        // deze types hebben geen planbaarheidsuitkomst maar inhoudelijke informatie.
         ReplyPolicy.Bepaal(classificatie, EnkeleDatumJson(beschikbaar: true))
             .MoetVersturen.Should().BeTrue();
     }
@@ -160,6 +172,7 @@ public class ReplyPolicyTests
     [Fact]
     public void CamelCaseSerialisatie_WordtOokGelezen()
     {
+        // Robuustheid: policy mag niet omvallen als de serialisatie ooit naar camelCase gaat
         ReplyPolicy.Bepaal(Beschikbaarheid(), "{\"beschikbaar\":true}")
             .Actie.Should().Be(ReplyActie.Onderdrukken);
         ReplyPolicy.Bepaal(Beschikbaarheid(), "{\"Beschikbaar\":true}")

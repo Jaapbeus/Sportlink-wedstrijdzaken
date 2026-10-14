@@ -1,4 +1,4 @@
-namespace SportlinkFunction.Email;
+namespace Planner.Shared.Email;
 
 /// <summary>
 /// Eén e-mailbijlage, kanaal-agnostisch (#561). Klein en immutable — bevat alleen wat nodig is om
