@@ -32,11 +32,13 @@ param sqlConnectionString string = ''
 @secure()
 param azureWebJobsStorage string = ''
 
-@description('Entra ID tenant ID voor Easy Auth (single-tenant) — via GitHub Variable AZURE_AD_TENANT_ID')
-param tenantId string = ''
+@description('Entra ID tenant ID voor Easy Auth (single-tenant) — via GitHub secret AZURE_AD_TENANT_ID. Verplicht (#1731).')
+@minLength(1)
+param tenantId string
 
-@description('Entra ID client ID van de App Registration — via GitHub Variable AZURE_AD_CLIENT_ID')
-param clientId string = ''
+@description('Entra ID client ID van de App Registration — via GitHub secret AZURE_AD_CLIENT_ID. Verplicht (#1731).')
+@minLength(1)
+param clientId string
 
 // ── Bestaande resources ophalen ──────────────────────────────────────────────
 
@@ -116,10 +118,10 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
 // ── Easy Auth (authsettingsV2) ────────────────────────────────────────────────
 // AllowAnonymous: unauthenticated requests mogen door; EasyAuthHelper doet
 // endpoint-level role-checks. Niet Return401 — dat breekt health + timer endpoints.
-// tenantId/clientId zijn leeg als vars niet geconfigureerd zijn — resource wordt
-// dan overgeslagen (Bicep condition). (#418)
+// Sinds #1731 onvoorwaardelijk: tenantId/clientId zijn verplicht (@minLength(1)), zodat een
+// ontbrekende waarde de uitrol vooraf laat falen i.p.v. een app zonder platform-auth op te leveren. (#418)
 
-resource functionAppAuthSettings 'Microsoft.Web/sites/config@2023-01-01' = if (!empty(tenantId) && !empty(clientId)) {
+resource functionAppAuthSettings 'Microsoft.Web/sites/config@2023-01-01' = {
   name: 'authsettingsV2'
   parent: functionApp
   properties: {
