@@ -1,0 +1,230 @@
+using AwesomeAssertions;
+using Planner.Shared.TeamResolution;
+using Xunit;
+
+namespace Planner.Shared.Tests.TeamResolution;
+
+/// <summary>
+/// Gevallen van de gedeelde <see cref="TeamResolver"/> (#1716 slice 2). Stonden tot dan in
+/// <c>FunctionApp.Tests/TeamResolution/TeamResolverTests.cs</c> en dekten alleen de SQL Server-tier;
+/// omdat beide databasetiers nu deze ene klasse gebruiken, gelden ze ook voor de productietier.
+/// Per tier blijft alleen een test van de registratie (<c>TeamResolutionDiRegistratieTests</c>,
+/// <c>TeamResolutionRegistrationTests</c>).
+/// </summary>
+public class TeamResolverTests
+{
+    private const string Club = "TESTCLUB";
+
+    private static TeamResolutionRequest Request(string ruweTekst) => new(ruweTekst, null, null, Club);
+
+    [Fact]
+    public async Task ResolveAsync_GevalideerdeAlias_GeeftHoogsteBetrouwbaarheidTerug()
+    {
+        var fake = new FakeTeamCandidateRepository
+        {
+            ValidatedAlias = new TeamCandidate(42, "TESTCLUB O13-2", "JO13"),
+        };
+        var resolver = new TeamResolver(fake);
+
+        var resultaat = await resolver.ResolveAsync(Request("de tijgertjes"));
+
+        resultaat.TeamId.Should().Be(42);
+        resultaat.CanoniekeTeamnaam.Should().Be("TESTCLUB O13-2");
+        resultaat.Confidence.Should().Be(1.0);
+        resultaat.Bron.Should().Be(ResolutionBron.ExacteAlias);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_ExacteCanoniekeMatch_ZonderAlias_GeeftMatchTerug()
+    {
+        var fake = new FakeTeamCandidateRepository { ExactTeam = new TeamCandidate(7, "TESTCLUB O13-1", "JO13") };
+        var resolver = new TeamResolver(fake);
+
+        var resultaat = await resolver.ResolveAsync(Request("JO13-1"));
+
+        resultaat.TeamId.Should().Be(7);
+        resultaat.Bron.Should().Be(ResolutionBron.ExacteMatch);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_ZoektMetGestripteClubPrefix()
+    {
+        // Een tegenstander schrijft de KNVB-vorm mét clubprefix; de canonieke sleutel is
+        // prefixloos. De resolver moet daarop zoeken, niet op de ruwe tekst.
+        var fake = new FakeTeamCandidateRepository { ExactTeam = new TeamCandidate(7, "TESTCLUB O13-1", "JO13") };
+        var resolver = new TeamResolver(fake);
+
+        await resolver.ResolveAsync(Request("TESTCLUB O13-1"));
+
+        fake.LaatsteExactSleutel.Should().Be("JO13-1");
+    }
+
+    [Fact]
+    public async Task ResolveAsync_EenKandidaatUitLeeftijdEnNummer_WordtOpgelost()
+    {
+        // Club heeft alleen JO13-1 (geen MO13-1) — de ambiguïteit lost zichzelf op zonder gok.
+        var fake = new FakeTeamCandidateRepository
+        {
+            Kandidaten = [new TeamCandidate(9, "TESTCLUB O13-1", "JO13")],
+        };
+        var resolver = new TeamResolver(fake);
+
+        var resultaat = await resolver.ResolveAsync(Request("13-1"));
+
+        resultaat.TeamId.Should().Be(9);
+        resultaat.Bron.Should().Be(ResolutionBron.ExacteMatch);
+        resultaat.Confidence.Should().BeLessThan(1.0);
+    }
+
+    // #1268: dit is sinds de verwijdering van de AI-disambiguator het ENIGE gedrag bij meerdere
+    // kandidaten, op beide tiers. Drie tests die een keuze door een taalmodel afdekten zijn
+    // vervallen; "13-1" kan JO13-1 of MO13-1 zijn en dat raadt de applicatie niet meer.
+    [Fact]
+    public async Task ResolveAsync_MeerdereKandidaten_GeeftKandidatenTerugZonderGok()
+    {
+        var fake = new FakeTeamCandidateRepository
+        {
+            Kandidaten = [new TeamCandidate(9, "TESTCLUB O13-1", "JO13"), new TeamCandidate(10, "TESTCLUB MO13-1", "MO13")],
+        };
+        var resolver = new TeamResolver(fake);
+
+        var resultaat = await resolver.ResolveAsync(Request("13-1"));
+
+        resultaat.TeamId.Should().BeNull();
+        resultaat.Bron.Should().Be(ResolutionBron.MeerdereKandidaten);
+        resultaat.Kandidaten.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_GeenEnkeleKandidaat_GeeftOnopgelostTerug()
+    {
+        var resolver = new TeamResolver(new FakeTeamCandidateRepository());
+
+        var resultaat = await resolver.ResolveAsync(Request("JO99-9"));
+
+        resultaat.Should().Be(TeamResolutionResult.Onopgelost);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_VrijeTekst_RaadpleegtGeenKandidaten()
+    {
+        var fake = new FakeTeamCandidateRepository();
+        var resolver = new TeamResolver(fake);
+
+        var resultaat = await resolver.ResolveAsync(Request("Kan de wedstrijd verplaatst worden?"));
+
+        resultaat.Should().Be(TeamResolutionResult.Onopgelost);
+        fake.KandidatenOpgevraagd.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_LegeClubCode_GooitArgumentException()
+    {
+        var resolver = new TeamResolver(new FakeTeamCandidateRepository());
+
+        var act = async () => await resolver.ResolveAsync(new TeamResolutionRequest("JO13-1", null, null, ""));
+
+        await act.Should().ThrowAsync<ArgumentException>();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_ZoektAliasOpGetrimdeRuweTekstEnGenormaliseerdeSleutel()
+    {
+        var fake = new FakeTeamCandidateRepository();
+        var resolver = new TeamResolver(fake);
+
+        await resolver.ResolveAsync(Request("  TESTCLUB O13-1  "));
+
+        fake.LaatsteAliasRuweTekst.Should().Be("TESTCLUB O13-1");
+        fake.LaatsteAliasSleutel.Should().Be("JO13-1");
+    }
+
+    [Fact]
+    public async Task ResolveAsync_GevalideerdeAlias_WintVanExacteMatch()
+    {
+        var fake = new FakeTeamCandidateRepository
+        {
+            ValidatedAlias = new TeamCandidate(42, "TESTCLUB O13-2", "JO13"),
+            ExactTeam = new TeamCandidate(7, "TESTCLUB O13-1", "JO13"),
+        };
+        var resolver = new TeamResolver(fake);
+
+        var resultaat = await resolver.ResolveAsync(Request("JO13-1"));
+
+        resultaat.TeamId.Should().Be(42);
+        resultaat.Bron.Should().Be(ResolutionBron.ExacteAlias);
+        fake.LaatsteExactSleutel.Should().BeNull("na een aliastreffer wordt de teamtabel niet meer bevraagd");
+    }
+
+    [Fact]
+    public async Task ResolveAsync_MeerdereKandidaten_ZetGeenTeamEnGeenZekerheid()
+    {
+        var fake = new FakeTeamCandidateRepository
+        {
+            Kandidaten = [new TeamCandidate(9, "TESTCLUB O13-1", "JO13"), new TeamCandidate(10, "TESTCLUB MO13-1", "MO13")],
+        };
+        var resolver = new TeamResolver(fake);
+
+        var resultaat = await resolver.ResolveAsync(Request("13-1"));
+
+        resultaat.CanoniekeTeamnaam.Should().BeNull();
+        resultaat.Confidence.Should().Be(0.0);
+        resultaat.IsOpgelost.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task ResolveAsync_LegeTekst_RaadpleegtDeOpslagNiet(string ruweTekst)
+    {
+        var fake = new FakeTeamCandidateRepository { ValidatedAlias = new TeamCandidate(42, "TESTCLUB O13-2", "JO13") };
+        var resolver = new TeamResolver(fake);
+
+        var resultaat = await resolver.ResolveAsync(Request(ruweTekst));
+
+        resultaat.Should().Be(TeamResolutionResult.Onopgelost);
+        fake.AliasOpgevraagd.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(5, "TESTCLUB O13-1", true)]
+    [InlineData(5, " ", false)]
+    [InlineData(null, "TESTCLUB O13-1", false)]
+    public void IsOpgelost_VereistTeamIdEnCanoniekeNaam(int? teamId, string naam, bool verwacht)
+        => new TeamResolutionResult(teamId, naam, 1.0, [], ResolutionBron.ExacteMatch).IsOpgelost.Should().Be(verwacht);
+
+    private sealed class FakeTeamCandidateRepository : ITeamCandidateRepository
+    {
+        public TeamCandidate? ValidatedAlias { get; set; }
+        public TeamCandidate? ExactTeam { get; set; }
+        public IReadOnlyList<TeamCandidate> Kandidaten { get; set; } = [];
+        public bool KandidatenOpgevraagd { get; private set; }
+        public bool AliasOpgevraagd { get; private set; }
+        public string? LaatsteExactSleutel { get; private set; }
+        public string? LaatsteAliasRuweTekst { get; private set; }
+        public string? LaatsteAliasSleutel { get; private set; }
+
+        public Task<TeamCandidate?> FindValidatedAliasAsync(
+            string clubCode, string ruweTekst, string genormaliseerdeSleutel)
+        {
+            AliasOpgevraagd = true;
+            LaatsteAliasRuweTekst = ruweTekst;
+            LaatsteAliasSleutel = genormaliseerdeSleutel;
+            return Task.FromResult(ValidatedAlias);
+        }
+
+        public Task<bool> HeeftActieveTeamsAsync(string clubCode) => Task.FromResult(true);
+
+        public Task<TeamCandidate?> FindExactTeamAsync(string clubCode, string genormaliseerdeSleutel)
+        {
+            LaatsteExactSleutel = genormaliseerdeSleutel;
+            return Task.FromResult(ExactTeam);
+        }
+
+        public Task<IReadOnlyList<TeamCandidate>> FindKandidatenAsync(string clubCode, TeamNaamComponenten componenten)
+        {
+            KandidatenOpgevraagd = true;
+            return Task.FromResult(Kandidaten);
+        }
+    }
+}

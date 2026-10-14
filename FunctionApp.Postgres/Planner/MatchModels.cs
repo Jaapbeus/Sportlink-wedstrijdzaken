@@ -1,3 +1,5 @@
+using Planner.Shared.Email;
+
 namespace FunctionApp.Postgres.Planner;
 
 /// <summary>
@@ -30,7 +32,7 @@ public class ZoekWedstrijdRequest
     public string Datum { get; set; } = string.Empty;
 }
 
-public class ZoekWedstrijdResponse
+public class ZoekWedstrijdResponse : IAntwoordWedstrijd
 {
     public long Wedstrijdcode { get; set; }
     public string Wedstrijd { get; set; } = string.Empty;

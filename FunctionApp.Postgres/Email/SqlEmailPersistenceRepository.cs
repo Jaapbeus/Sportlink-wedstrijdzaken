@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
 using Npgsql;
+using Planner.Shared.Email;
 
 namespace FunctionApp.Postgres.Email;
 

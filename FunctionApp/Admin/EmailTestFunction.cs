@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Planner.Endpoints.Admin;
 using Planner.Shared.Email;
 using Planner.Shared.Email.Trace;
+using Planner.Shared.TeamResolution;
 using SportlinkFunction.Email;
 using SportlinkFunction.Processing;
 using SportlinkFunction.TeamResolution;

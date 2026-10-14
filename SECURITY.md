@@ -565,8 +565,8 @@ registerrij: **[docs/EMAIL-VERWERKING.md](docs/EMAIL-VERWERKING.md) §5**. Samen
 | Verwerking | Classificatie van inkomende e-mail (incl. correctiedetectie op replies en de e-mailtester) |
 | Velden naar de provider | E-mailadres van de afzender, onderwerp en berichttekst (begrensd; HTML verwijderd bij mailboxberichten, niet bij de tester; persoonsgegevens in de tekst worden niet gemaskeerd); clubnaam en datum in de instructies; gesaneerde samenvattingen van leermomenten |
 | Verwerker | OpenAI (OpenAI-API, rechtstreeks); model uit de app setting `AiModelName`; alleen waar `EgressGuard` uitgaande integraties toestaat |
-| Grondslag | Door de eigenaar in te vullen (EMAIL-VERWERKING.md §5c) |
-| Verwerkersovereenkomst, bewaartermijn bij de verwerker, doorgifte-instrument | Door de eigenaar in te vullen (EMAIL-VERWERKING.md §5c) |
+| Grondslag | Gerechtvaardigd belang, art. 6 lid 1 sub f (EMAIL-VERWERKING.md §5c) |
+| Verwerkersovereenkomst, bewaartermijn bij de verwerker, doorgifte-instrument | Verwerkersovereenkomst: open (op 2026-10-13 is er geen overeenkomst vastgelegd) · bewaartermijn en doorgifte-instrument volgens opgave van de eigenaar, nog te verifiëren · verwerking buiten de EER (EMAIL-VERWERKING.md §5c) |
 | Bewaartermijn in de applicatie | `planner.EmailVerwerking`: anonimiseren na 30–90 dagen, verwijderen na 90 dagen (Laag 6) |
 
 ### Sportlink-historietabellen (`his.matches`, `his.matchdetails`, #1698)
@@ -585,7 +585,7 @@ leest ze; Sportlink blijft de bron.
 | Leegmaken | Na het einde van het seizoen waarin de wedstrijd valt (eigenaarsbesluit 2026-10-12) | Alleen de persoonskolommen → `NULL`; de wedstrijd zelf (teams, datum, uitslag) blijft staan |
 
 * **Termijn = configuratie.** Het seizoenseinde komt uit de seizoenstabel (`dbo.Season` /
-  `public.season`), die op zijn beurt uit de clubinstelling `SeasonStartMonth` wordt opgebouwd. Een
+  per club in `public.clubseason` / `dbo.ClubSeason` sinds #1715), die op zijn beurt uit de clubinstelling `SeasonStartMonth` van die club wordt opgebouwd. Een
   seizoen telt als afgerond vanaf de dag ná de einddatum. Zonder afgerond seizoen gebeurt er niets.
 * **Welke datum.** `his.matches`: de eerste tien tekens van `wedstrijddatum`, alleen als die strikt
   `yyyy-MM-dd` zijn (ASCII-cijfers, bestaande kalenderdatum); een waarde in een andere vorm wordt niet

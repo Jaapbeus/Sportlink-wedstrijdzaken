@@ -7,6 +7,10 @@ namespace SportlinkFunction.Email;
 
 public partial class EmailProcessorFunction
 {
+    // Sanitiseert een foutmelding voor opslag in de DB — verwijdert e-mailadressen en knipt af. (#420)
+    private static string SanitizeFoutMelding(string message)
+        => EmailSanitizer.SanitizeFoutMelding(message);
+
     /// <summary>
     /// Legt een mislukte AI-classificatie vast en verhoogt de pogingenteller (#712); de afhandeling
     /// staat tier-onafhankelijk in <see cref="EmailVerwerkingsAfhandeling"/> (#1650).
@@ -22,7 +26,7 @@ public partial class EmailProcessorFunction
     /// Legt een verwerkingsfout vast voor een bericht waarvan het verwerkingId hier niet bekend is
     /// (#717); zie <see cref="EmailVerwerkingsAfhandeling.LegVerwerkingsFoutVastAsync"/> (#1650).
     /// </summary>
-    private static Task LegVerwerkingsFoutVastAsync(
+    internal static Task LegVerwerkingsFoutVastAsync(
         InkomendBericht email,
         string foutMelding,
         IEmailPersistenceService persistenceService,

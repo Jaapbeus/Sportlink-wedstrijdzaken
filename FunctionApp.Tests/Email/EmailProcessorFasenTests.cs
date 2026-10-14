@@ -1,48 +1,76 @@
 using AwesomeAssertions;
-using SportlinkFunction.Email;
+using FunctionApp.Tests.Email.TestDoubles;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
+using Planner.Endpoints.Email;
 using Planner.Shared.Email;
+using Planner.Shared.TeamResolution;
+using SportlinkFunction.Email;
 using Xunit;
 
 namespace FunctionApp.Tests.Email;
 
 /// <summary>
-/// Karakterisatietests voor de pure kern van fase 1 van <c>EmailProcessorFunction</c> (#1629):
-/// welke berichten na een mislukte AI-classificatie alsnog in de pogingenteller terechtkomen.
+/// Omhulseltest van de SQL Server-poort van de e-mailverwerker (#1716 slice 9). De fase-orkestratie en de
+/// noodmails zijn tier-onafhankelijk getest in <c>Planner.Endpoints.Tests/Email/</c>; hier alleen dat deze
+/// tier zijn eigen Graph-adapter, voorfilter, AI-gedrag en noodmailteksten correct aansluit.
 /// </summary>
 public class EmailProcessorFasenTests
 {
-    private static InkomendBericht Bericht(string id) => new() { MessageId = id, Afzender = "trainer@voorbeeld.nl", Onderwerp = "Test" };
+    private static InkomendBericht Bericht(string id, string afzender = "trainer@voorbeeld.nl")
+        => new() { MessageId = id, Afzender = afzender, Onderwerp = "Test" };
 
-    private static List<(InkomendBericht Email, BerichtClassificatie Classificatie)> Geclassificeerd(params InkomendBericht[] berichten)
-        => berichten.Select(b => (b, new BerichtClassificatie())).ToList();
+    private static EmailVerwerkerPoort Poort(FakeEmailGraphService graph, FakeNoodmailThrottleStore? throttle = null)
+        => new(NullLogger.Instance, Mock.Of<IServiceProvider>(), NullLoggerFactory.Instance, graph,
+            Mock.Of<ITeamResolver>(), new RecordingEmailPersistenceService(), throttle ?? new FakeNoodmailThrottleStore());
 
     [Fact]
-    public void BepaalMislukteClassificaties_BerichtZonderClassificatie_Telt()
+    public async Task Poll_UitgeslotenAfzender_MarkeertGelezenViaDeTierAdapterEnWektDeDatabaseNiet()
     {
-        var a = Bericht("a");
-        var b = Bericht("b");
+        var graph = new FakeEmailGraphService();
+        graph.UnreadEmails.Add(Bericht("m1", "uitgesloten@voorbeeld.nl"));
+        var cache = new UitsluitingslijstCache();
+        await cache.HerlaadAsync(
+            () => Task.FromResult(new HashSet<string>(["uitgesloten@voorbeeld.nl"], StringComparer.OrdinalIgnoreCase)),
+            DateTime.UtcNow);
 
-        var mislukt = EmailProcessorFunction.BepaalMislukteClassificaties([a, b], Geclassificeerd(a), aiAborted: false);
+        await EmailVerwerkerFasen.VoerUitAsync(Poort(graph), cache, NullLogger.Instance);
 
-        mislukt.Should().ContainSingle().Which.MessageId.Should().Be("b");
+        graph.MarkedAsReadIds.Should().Equal(["m1"]);
+        graph.SentReplies.Should().BeEmpty();
     }
 
     [Fact]
-    public void BepaalMislukteClassificaties_AfgebrokenBatch_TeltNiemandMee()
+    public void BereidAiVoor_ZonderChatClient_GooitZoalsVoorheen()
     {
-        var a = Bericht("a");
-        var b = Bericht("b");
+        var poort = Poort(new FakeEmailGraphService());
 
-        var mislukt = EmailProcessorFunction.BepaalMislukteClassificaties([a, b], Geclassificeerd(a), aiAborted: true);
-
-        mislukt.Should().BeEmpty();
+        poort.Invoking(p => p.BereidAiVoor()).Should().Throw<InvalidOperationException>()
+            .WithMessage("IChatClient niet geconfigureerd*");
     }
 
     [Fact]
-    public void BepaalMislukteClassificaties_AllesGeclassificeerd_IsLeeg()
+    public async Task Noodmails_BevattenDeAdviesregelsVanDezeTier()
     {
-        var a = Bericht("a");
+        var graph = new FakeEmailGraphService();
+        var poort = Poort(graph);
 
-        EmailProcessorFunction.BepaalMislukteClassificaties([a], Geclassificeerd(a), aiAborted: false).Should().BeEmpty();
+        await EmailNoodmailMelding.StuurDatabaseNoodmailAsync(graph, 1, "test", poort.Throttle, poort.NoodmailTeksten, NullLogger.Instance);
+        await EmailNoodmailMelding.StuurOpenAiNoodmailAsync(graph, "quota", poort.Throttle, poort.NoodmailTeksten, NullLogger.Instance);
+
+        graph.SentReplies.Should().HaveCount(2);
+        graph.SentReplies[0].Body.Should().Contain("Meest waarschijnlijke oorzaak: Azure SQL Serverless database was gepauzeerd")
+            .And.EndWith("\"Continue using database with additional charges\"");
+        graph.SentReplies[1].Body.Should().Contain("Acties:\n  • Controleer in Azure Portal → OpenAI resource → Overzicht → Quota\n"
+            + "  • Verhoog de quota-limiet of wacht tot de quota vernieuwt (begin volgende maand)\n  • Als de quota");
+    }
+
+    [Fact]
+    public void TierBericht_WerktMetDeGedeeldeKern()
+    {
+        InkomendBericht a = Bericht("a"), b = Bericht("b");
+
+        EmailVerwerkerFasen.BepaalMislukteClassificaties([a, b], [(a, new BerichtClassificatie())], aiAborted: false)
+            .Should().ContainSingle().Which.Should().BeSameAs(b);
     }
 }

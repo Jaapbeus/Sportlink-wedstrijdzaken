@@ -1,3 +1,5 @@
+using Planner.Endpoints.Email;
+
 namespace FunctionApp.Postgres.Monitoring;
 
 /// <summary>
@@ -8,21 +10,11 @@ namespace FunctionApp.Postgres.Monitoring;
 /// database-uitvalmonitor (<c>DatabaseUitvalMonitorFunction</c>/<c>IDatabaseStatusReader</c>, #831)
 /// is hier NIET vertaald — dat is een apart, niet-#972-gerelateerd monitoring-issue.
 /// </summary>
-public interface INoodmailThrottleStore
+/// <remarks>
+/// De leden staan sinds #1716 slice 9 in de gedeelde <see cref="INoodmailThrottlePoort"/>, zodat de
+/// tier-onafhankelijke noodmail-afhandeling (<c>Planner.Endpoints/Email/EmailNoodmailMelding.cs</c>) dezelfde
+/// opslag gebruikt; de DI-registratie van deze tier blijft ongewijzigd.
+/// </remarks>
+public interface INoodmailThrottleStore : INoodmailThrottlePoort
 {
-    /// <summary>
-    /// Tijdstip (UTC) waarop voor deze sleutel voor het laatst een noodmail is geregistreerd, of
-    /// <c>null</c> als er nog nooit een registratie voor deze sleutel is vastgelegd (of als een
-    /// eerdere registratie inmiddels is gewist via <see cref="WisAsync"/>).
-    /// </summary>
-    Task<DateTime?> LaatsteKeerVerstuurdAsync(string sleutel);
-
-    /// <summary>Registreert dat de noodmail voor deze sleutel zojuist is verstuurd.</summary>
-    Task RegistreerVerstuurdAsync(string sleutel, DateTime verstuurdOpUtc);
-
-    /// <summary>
-    /// Wist de registratie voor deze sleutel (bijv. zodra de onderliggende storing hersteld is), zodat
-    /// een volgende, nieuwe uitval weer als "nog niet gemeld" wordt behandeld.
-    /// </summary>
-    Task WisAsync(string sleutel);
 }

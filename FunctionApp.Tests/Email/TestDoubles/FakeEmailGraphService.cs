@@ -1,3 +1,4 @@
+using Planner.Shared.Email;
 using SportlinkFunction.Email;
 
 namespace FunctionApp.Tests.Email.TestDoubles;

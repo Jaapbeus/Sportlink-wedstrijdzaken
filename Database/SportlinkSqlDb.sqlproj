@@ -89,9 +89,11 @@
     <Build Include="Schemas\pub.sql" />
     <Build Include="pub\Views\DateTable.sql" />
     <Build Include="dbo\System Stored Procedures\sp_UpdateSeasonTable.sql" />
+    <Build Include="dbo\System Stored Procedures\sp_UpdateClubSeasonTable.sql" />
     <Build Include="dbo\Tables\AppSettings.sql" />
     <Build Include="dbo\Tables\DateTable.sql" />
     <Build Include="dbo\Tables\Season.sql" />
+    <Build Include="dbo\Tables\ClubSeason.sql" />
     <Build Include="dbo\Tables\Speeltijden.sql" />
     <Build Include="dbo\Tables\WedstrijdnummerTeller.sql" />
     <Build Include="dbo\Tables\SportlinkAutoLogin.sql" />

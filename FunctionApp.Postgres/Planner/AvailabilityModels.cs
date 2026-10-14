@@ -1,4 +1,5 @@
 using Planner.Shared;
+using Planner.Shared.Email;
 
 namespace FunctionApp.Postgres.Planner;
 
@@ -25,7 +26,7 @@ public class CheckAvailabilityRequest
     public bool? HeelVeld { get; set; }
 }
 
-public class CheckAvailabilityResponse
+public class CheckAvailabilityResponse : IAntwoordBeschikbaarheid
 {
     public bool Beschikbaar { get; set; }
     public SlotToewijzing? Toewijzing { get; set; }
@@ -40,6 +41,10 @@ public class CheckAvailabilityResponse
     public List<SlotToewijzing> Alternatieven { get; set; } = new();
     public List<BeschikbaarVenster>? BeschikbareVensters { get; set; }
     public List<string> Waarschuwingen { get; set; } = new();
+
+    // Poort van de gedeelde antwoordgenerator (#1758); expliciet, dus geen extra JSON-veld.
+    bool IAntwoordBeschikbaarheid.HeeftTeamConflict => TeamConflict != null;
+    IReadOnlyList<IAntwoordVenster>? IAntwoordBeschikbaarheid.BeschikbareVensters => BeschikbareVensters;
 }
 
 public class TeamConflictInfo
@@ -50,7 +55,7 @@ public class TeamConflictInfo
     public string VeldNaam { get; set; } = string.Empty;
 }
 
-public class BeschikbaarVenster
+public class BeschikbaarVenster : IAntwoordVenster
 {
     public int VeldNummer { get; set; }
     public string VeldNaam { get; set; } = string.Empty;
@@ -103,7 +108,7 @@ public class HerplanCheckRequest
     public string? Richting { get; set; }
 }
 
-public class HerplanCheckResponse
+public class HerplanCheckResponse : IAntwoordHerplanOpties
 {
     public ZoekWedstrijdResponse HuidigeWedstrijd { get; set; } = new();
     public bool Beschikbaar { get; set; }

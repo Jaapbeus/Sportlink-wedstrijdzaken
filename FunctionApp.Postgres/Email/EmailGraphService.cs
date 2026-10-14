@@ -21,23 +21,10 @@ namespace FunctionApp.Postgres.Email;
 /// van 2026-09-04. Zie <c>FunctionApp.Postgres/Email/EmailProcessorFunction.cs</c>.
 /// </para>
 /// </summary>
-public interface IEmailGraphService
+public interface IEmailGraphService : IReplyGraph
 {
     /// <summary>Haalt maximaal 10 ongelezen emails op uit de inbox van de coördinator-mailbox.</summary>
     Task<List<InkomendBericht>> GetUnreadEmailsAsync();
-
-    /// <summary>Zet een Outlook-categorie op een bericht. Bestaande categorieën worden vervangen.</summary>
-    Task SetCategoriesAsync(string messageId, params string[] categories);
-
-    /// <summary>Zorgt dat een Outlook master-categorie bestaat met de gegeven kleur-preset.</summary>
-    Task EnsureMasterCategoryAsync(string name, string colorPreset);
-
-    /// <summary>Markeert een email als gelezen in de coördinator-mailbox.</summary>
-    Task MarkAsReadAsync(string messageId);
-
-    /// <summary>Verstuurt een antwoord-email via de coördinator-mailbox.</summary>
-    Task SendReplyAsync(string to, string subject, string body, string? conversationId,
-        IReadOnlyList<string>? bcc = null, EmailBijlage? bijlage = null);
 
     /// <summary>
     /// Stuurt een vraag over teambegeleiding door naar de begeleider(s).

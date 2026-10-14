@@ -537,7 +537,7 @@ Op {datum} [om {aanvangstijd}] is helaas geen ruimte. Alternatieven:
 #### Dagdeel in het verzoek (#1587)
 
 Vraagt de afzender om een dagdeel ("zaterdagochtend", "'s middags"), dan vult de AI het classificatieveld
-`dagdeel` (`ochtend`, `middag`, `avond` of null; `BerichtAiService.ParseClassificatieResponse` laat elke
+`dagdeel` (`ochtend`, `middag`, `avond` of null; `BerichtAiKern.ParseClassificatieResponse` laat elke
 andere waarde vervallen). Het veld wordt **nooit afgeleid uit een aanvangstijd** en mag samen met
 `aanvangsTijd` voorkomen. `BerichtPipeline.BouwBeschikbaarheidRequest` geeft het door aan
 `CheckAvailabilityRequest.Dagdeel` (ook bij meerdere datums en bij een herplanverzoek met gewenste datum);
@@ -1007,7 +1007,7 @@ daar terechtkomt — komt er tijdens een uitval geen (of alleen buiten-scope) e-
 de databaseverbinding nooit geprobeerd en de uitval dus ook nooit gedetecteerd. Dit bleek de
 eigenlijke oorzaak van de stilte in augustus 2026. `DatabaseUitvalMonitorFunction`
 (`FunctionApp/Monitoring/`) draait daarom onafhankelijk, standaard 1x per dag
-(`DATABASE_STATUS_MONITOR_SCHEDULE`), en leest de status rechtstreeks via de Azure Management API
+(vaste cron in code, #1718), en leest de status rechtstreeks via de Azure Management API
 (géén databaseverbinding, dus niet zelf slachtoffer van dezelfde storing). Optioneel: zonder de
 vier env vars `AzureSubscriptionId`/`AzureResourceGroupName`/`AzureSqlServerName`/
 `AzureSqlDatabaseName` slaat deze functie zichzelf over — zie
@@ -1110,10 +1110,9 @@ Substitutie is case-insensitief; een niet-gevulde waarde wordt een lege string. 
 
 ### 3b. Statussen in `planner.EmailVerwerking`
 
-De `Status`-kolom bevat de naam van een `EmailStatus`-waarde. De enum staat per tier op een
-**andere plek**: `FunctionApp.Postgres/Email/EmailModels.cs` (productie) en
-`FunctionApp/Email/BerichtModels.cs` (SQL Server). De Postgres-`BerichtModels.cs` vermeldt dat
-verschil zelf expliciet, dus zoek daar niet. De acht waarden zijn op beide tiers identiek:
+De `Status`-kolom bevat de naam van een `EmailStatus`-waarde. De enum staat sinds #1716 (slice 5)
+één keer in `Planner.Shared/Email/EmailStatus.cs`, voor beide tiers; `BerichtDomeinTypenTests`
+bewaakt namen en volgorde. De acht waarden:
 
 | Status | Betekenis | Definitief? |
 |---|---|---|
@@ -1327,7 +1326,7 @@ gaan via een apart pad naar dezelfde provider; die registerrij staat in [FEEDBAC
   expliciete opt-in `AllowExternalIntegrations=true` (`DEVELOPER-SETUP.md` §5.3) staat ze daar toe. Zonder
   toestemming gaat er niets naar de provider; de verwerking stopt dan met een logregel.
 * **Per aanroep:** temperatuur 0,1 en antwoordformaat JSON. Alle aanroepen staan in
-  `BerichtAiService` (`FunctionApp/Email/` en `FunctionApp.Postgres/Email/`, inhoudelijk gelijk).
+  `BerichtAiKern` (`Planner.Shared/Email/`, gedeeld sinds #1759; `BerichtAiService` per tier is een omhulsel).
 
 ### 5b. Aanroepen
 
@@ -1369,7 +1368,8 @@ Toelichting bij de bewerkingen:
 * **Persoonsgegevens in de invoer worden niet gemaskeerd.** Onderwerp en berichttekst gaan, op de
   bewerkingen hierboven na, ongewijzigd mee. De saneringen in deze module werken op wat de provider
   teruggeeft en wat de applicatie bewaart of toont: `AiVeldSanering` (vrije modelvelden vóór gebruik in
-  een antwoord), `TraceBuilder.Saneer` (samenvattingen, leermomenten, trace) en `AvgMaskering`
+  een antwoord), `ModelDatum.Grens` (alle datumvelden van de classificatie, strikt `jjjj-MM-dd`, eenmalig
+  vóór trace en verwerking, #1730), `TraceBuilder.Saneer` (samenvattingen, leermomenten, trace) en `AvgMaskering`
   (afzender- en ontvangeradres in het e-maillog van de beheerinterface).
 
 **Voorwaarden van de doorgifte** (gelden voor alle velden hierboven):
@@ -1378,11 +1378,11 @@ Toelichting bij de bewerkingen:
 |---|---|
 | Verwerker | OpenAI (OpenAI-API, rechtstreeks) |
 | Rol | Verwerker in de zin van art. 28 AVG: classificatie in opdracht van de club |
-| Grondslag | *Door de eigenaar in te vullen.* In deze repository is voor deze verwerking geen grondslagbesluit vastgelegd. Ter vergelijking: feedback (FEEDBACK.md §7) en het leren vanuit de trace (SECURITY.md, Laag 6) steunen op art. 6 lid 1 sub f |
-| Verwerkersovereenkomst | *Door de eigenaar in te vullen*: vorm en datum van de overeenkomst met de provider voor het account waaronder `OpenAiApiKey` valt |
-| Bewaartermijn bij de verwerker | *Door de eigenaar in te vullen*: hoe lang de provider invoer en uitvoer van de API bewaart en of die voor andere doeleinden wordt gebruikt, volgens de overeenkomst en de accountinstellingen. De code zet hier niets voor |
-| Verwerkingslocatie | Standaardendpoint van de SDK, zonder regio-instelling in de code; of er buiten de EER wordt verwerkt, hangt af van account en voorwaarden — *door de eigenaar te bevestigen* |
-| Doorgifte-instrument | *Door de eigenaar in te vullen.* FEEDBACK.md §8 noemt voor dezelfde provider de standaardcontractbepalingen; bevestig of dat ook voor dit account en deze verwerking geldt |
+| Grondslag | Gerechtvaardigd belang (art. 6 lid 1 sub f AVG), bevestigd door de eigenaar op 2026-10-13; gelijk aan feedback (FEEDBACK.md §7) en het leren vanuit de trace (SECURITY.md, Laag 6) |
+| Verwerkersovereenkomst | **Open.** Volgens opgave van de eigenaar op 2026-10-13 is er voor het account waaronder `OpenAiApiKey` valt geen verwerkersovereenkomst vastgelegd. Een vervolgactie (overeenkomst sluiten of de verwerking aanpassen) is nog niet besloten; tot die tijd is deze rij niet volledig |
+| Bewaartermijn bij de verwerker | Volgens opgave van de eigenaar op 2026-10-13: geen bewaring van invoer en uitvoer (zero data retention). *Nog te verifiëren* tegen de accountinstellingen en de voorwaarden, en afhankelijk van de verwerkersovereenkomst die nog open staat. De code zet hier niets voor |
+| Verwerkingslocatie | Buiten de EER (Verenigde Staten), volgens opgave van de eigenaar op 2026-10-13; de code gebruikt het standaardendpoint van de SDK zonder regio-instelling |
+| Doorgifte-instrument | Standaardcontractbepalingen (SCC), volgens opgave van de eigenaar op 2026-10-13; *nog te verifiëren* zolang de verwerkersovereenkomst open staat; FEEDBACK.md §8 noemt hetzelfde instrument voor dezelfde provider |
 
 ### 5d. Registerrij (AVG art. 30)
 
@@ -1391,17 +1391,17 @@ Toelichting bij de bewerkingen:
 | Verwerking | Classificatie van inkomende e-mail in de coördinatormailbox met een externe AI-provider, inclusief correctiedetectie op replies en de e-mailtester |
 | Verwerkingsverantwoordelijke | De club die deze installatie beheert (eigen fork en eigen Azure-resources) |
 | Doel | Vaststellen wat voor verzoek een bericht is en de planninggegevens (datum, tijd, team, tegenstander) eruit halen, zodat een antwoord kan worden opgebouwd of het bericht bij de coördinator terechtkomt |
-| Grondslag | Zie §5c, *door de eigenaar in te vullen* |
+| Grondslag | Gerechtvaardigd belang (art. 6 lid 1 sub f AVG), zie §5c |
 | Betrokkenen | Afzenders van berichten aan de coördinatormailbox (onder meer wedstrijdsecretarissen van andere clubs, trainers, leden, ouders) en personen die in een bericht worden genoemd, mogelijk minderjarigen |
 | Categorieën persoonsgegevens | E-mailadres van de afzender, onderwerp, berichttekst; afgeleid: classificatie en gesaneerde samenvatting |
 | Bijzondere categorieën | Niet gevraagd en niet gestructureerd verwerkt. Vrije tekst kan er toevallig een bevatten (bijvoorbeeld een blessure in een afmelding); die gaat dan mee in de berichttekst |
 | Ontvangers | OpenAI (verwerker, §5c) · Microsoft (mailbox via Graph, hosting van de Function App) · de databasedienst van de actieve tier (opslag van de verwerkingsrij) |
-| Doorgifte buiten de EER | Zie §5c: verwerkingslocatie en doorgifte-instrument, *door de eigenaar in te vullen* |
-| Bewaartermijnen | In de applicatie: `planner.EmailVerwerking` geanonimiseerd na 30–90 dagen en verwijderd na 90 dagen (SECURITY.md, Laag 6); leermomenten met herkomst `Reply` volgen die retentie, admin-leermomenten zijn permanent maar verwijderbaar (§3d); de bewaarde trace bevat geen ruwe mailtekst (§3c). Bij de provider: zie §5c, *door de eigenaar in te vullen* |
+| Doorgifte buiten de EER | Ja, naar de Verenigde Staten; instrument: standaardcontractbepalingen, volgens opgave van de eigenaar en nog te verifiëren (§5c) |
+| Bewaartermijnen | In de applicatie: `planner.EmailVerwerking` geanonimiseerd na 30–90 dagen en verwijderd na 90 dagen (SECURITY.md, Laag 6); leermomenten met herkomst `Reply` volgen die retentie, admin-leermomenten zijn permanent maar verwijderbaar (§3d); de bewaarde trace bevat geen ruwe mailtekst (§3c). Bij de provider: volgens opgave van de eigenaar geen bewaring (zero data retention), nog te verifiëren (§5c) |
 | Beveiliging | Aanroepen alleen waar `EgressGuard` uitgaande integraties toestaat · sleutel als app setting · voorfilters en uitsluitingslijst vóór de aanroep · begrenzing van de tekst · datablok met willekeurige markers · geen berichtinhoud, onderwerp of adres in logs (SECURITY.md, Laag 5) · modeluitvoer gesaneerd vóór gebruik · antwoord uit sjablonen |
 
 Bij een nieuwe club-installatie: neem deze rij en de voorwaarden uit §5c over in het eigen register en
-vul de eigenaarsvelden in.
+vul de eigenaarsvelden (grondslag, overeenkomst, bewaartermijn, locatie, instrument) voor die club in.
 
 ---
 

@@ -1,16 +1,13 @@
+using Planner.Shared.Email;
+
 namespace SportlinkFunction.Email;
 
 /// <summary>
 /// Abstraheert Graph-operaties voor emailverwerking.
 /// </summary>
-public interface IEmailGraphService
+public interface IEmailGraphService : IReplyGraph
 {
     Task<List<InkomendBericht>> GetUnreadEmailsAsync();
-    Task SetCategoriesAsync(string messageId, params string[] categories);
-    Task EnsureMasterCategoryAsync(string name, string colorPreset);
-    Task MarkAsReadAsync(string messageId);
-    Task SendReplyAsync(string to, string subject, string body, string? conversationId,
-        IReadOnlyList<string>? bcc = null, EmailBijlage? bijlage = null);
     Task StuurTeamContactDoorAsync(
         IReadOnlyList<string> ontvangers,
         string subject,

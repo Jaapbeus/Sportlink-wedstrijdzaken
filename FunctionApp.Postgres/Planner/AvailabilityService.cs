@@ -1,6 +1,7 @@
 using FunctionApp.Postgres.Planner.Repositories;
 using Microsoft.Extensions.Logging;
 using Planner.Shared;
+using Planner.Shared.Email;
 
 namespace FunctionApp.Postgres.Planner;
 
@@ -26,14 +27,15 @@ public static class AvailabilityService
         var response = new CheckAvailabilityResponse();
         var cc = PostgresClubScope.Resolve(clubCode);
 
-        if (!DateOnly.TryParse(request.Datum, out var date))
+        // #1730: strikt jjjj-MM-dd (API-contract én modelgrens); geen cultuurafhankelijke lezing.
+        if (!ModelDatum.TryParse(request.Datum, out var date))
         {
-            response.Reden = $"Ongeldige datum: {request.Datum}";
+            response.Reden = "Ongeldige datum.";
             return response;
         }
         if (date <= DateOnly.FromDateTime(DateTime.Today))
         {
-            response.Reden = $"De gewenste datum {request.Datum} kan niet verwerkt worden. Een datum moet in de toekomst zijn.";
+            response.Reden = $"De gewenste datum {date:yyyy-MM-dd} kan niet verwerkt worden. Een datum moet in de toekomst zijn.";
             return response;
         }
 
@@ -152,7 +154,7 @@ public static class AvailabilityService
     {
         var cc = PostgresClubScope.Resolve(clubCode);
         var response = new DoordeweeksBeschikbaarResponse { DagFilter = request.DagFilter };
-        var seizoenEinde = await PlannerSettingsRepository.GetSeasonEndDateAsync(connectionString)
+        var seizoenEinde = await PlannerSettingsRepository.GetSeasonEndDateAsync(connectionString, cc)
             ?? DateOnly.FromDateTime(DateTime.Today.AddMonths(6));
         response.SeizoenEinde = seizoenEinde.ToString("yyyy-MM-dd");
 

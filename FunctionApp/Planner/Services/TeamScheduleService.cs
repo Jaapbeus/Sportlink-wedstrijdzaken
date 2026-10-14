@@ -12,7 +12,7 @@ internal static class TeamScheduleService
         if (!await PlannerDataAccess.TeamExistsAsync(team, clubCode))
             return null;
 
-        var seizoenEinde = await PlannerDataAccess.GetSeasonEndDateAsync()
+        var seizoenEinde = await PlannerDataAccess.GetSeasonEndDateAsync(clubCode)
             ?? DateOnly.FromDateTime(DateTime.Today.AddMonths(3));
         var vandaag     = DateOnly.FromDateTime(DateTime.Today);
         var wedstrijden = await PlannerDataAccess.GetFutureMatchesForTeamAsync(team, vandaag, seizoenEinde, clubCode);

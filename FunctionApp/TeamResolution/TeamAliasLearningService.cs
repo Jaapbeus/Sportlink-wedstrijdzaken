@@ -10,7 +10,7 @@ namespace SportlinkFunction.TeamResolution;
 ///
 /// Belangrijk: een alias wordt NOOIT automatisch als waarheid gebruikt. Alleen aliassen die een
 /// coördinator via de Admin-UI heeft gevalideerd (status <c>validated</c>) tellen mee in
-/// <see cref="TeamResolver"/>. Zo kan een foutieve AI-disambiguatie zich niet zelfversterken.
+/// <see cref="Planner.Shared.TeamResolution.TeamResolver"/>. Zo kan een foutieve AI-disambiguatie zich niet zelfversterken.
 /// </summary>
 /// <remarks>
 /// #1294: de exists-check en de UPDATE hieronder vergelijken <c>RuweTekstGenormaliseerd</c> nu

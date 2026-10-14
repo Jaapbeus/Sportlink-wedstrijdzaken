@@ -1,48 +1,69 @@
 using AwesomeAssertions;
 using FunctionApp.Postgres.Email;
+using FunctionApp.Postgres.Tests.Email.TestDoubles;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
+using Planner.Endpoints.Email;
 using Planner.Shared.Email;
 using Xunit;
 
 namespace FunctionApp.Postgres.Tests.Email;
 
 /// <summary>
-/// Karakterisatietests voor de pure kern van fase 1 van <c>EmailProcessorFunction</c> (#1629):
-/// welke berichten na een mislukte AI-classificatie alsnog in de pogingenteller terechtkomen.
+/// Omhulseltest van de Postgres-poort van de e-mailverwerker (#1716 slice 9). De fase-orkestratie en de
+/// noodmails zijn tier-onafhankelijk getest in <c>Planner.Endpoints.Tests/Email/</c>; hier alleen dat deze
+/// tier zijn eigen Graph-adapter, voorfilter, AI-gedrag en noodmailteksten correct aansluit.
 /// </summary>
 public class EmailProcessorFasenTests
 {
-    private static InkomendBericht Bericht(string id) => new() { MessageId = id, Afzender = "trainer@voorbeeld.nl", Onderwerp = "Test" };
+    private static InkomendBericht Bericht(string id, string afzender = "trainer@voorbeeld.nl")
+        => new() { MessageId = id, Afzender = afzender, Onderwerp = "Test" };
 
-    private static List<(InkomendBericht Email, BerichtClassificatie Classificatie)> Geclassificeerd(params InkomendBericht[] berichten)
-        => berichten.Select(b => (b, new BerichtClassificatie())).ToList();
+    private static EmailVerwerkerPoort Poort(FakeEmailGraphService graph, FakeNoodmailThrottleStore? throttle = null)
+        => new(NullLogger.Instance, Mock.Of<IServiceProvider>(), NullLoggerFactory.Instance, graph,
+            throttle ?? new FakeNoodmailThrottleStore(), "Host=niet-gebruikt");
 
     [Fact]
-    public void BepaalMislukteClassificaties_BerichtZonderClassificatie_Telt()
+    public async Task Poll_UitgeslotenAfzender_MarkeertGelezenViaDeTierAdapterEnWektDeDatabaseNiet()
     {
-        var a = Bericht("a");
-        var b = Bericht("b");
+        var graph = new FakeEmailGraphService();
+        graph.UnreadEmails.Add(Bericht("m1", "uitgesloten@voorbeeld.nl"));
+        var cache = new UitsluitingslijstCache();
+        await cache.HerlaadAsync(
+            () => Task.FromResult(new HashSet<string>(["uitgesloten@voorbeeld.nl"], StringComparer.OrdinalIgnoreCase)),
+            DateTime.UtcNow);
 
-        var mislukt = EmailProcessorFunction.BepaalMislukteClassificaties([a, b], Geclassificeerd(a), aiAborted: false);
+        await EmailVerwerkerFasen.VoerUitAsync(Poort(graph), cache, NullLogger.Instance);
 
-        mislukt.Should().ContainSingle().Which.MessageId.Should().Be("b");
+        graph.MarkedAsReadIds.Should().Equal(["m1"]);
+        graph.SentReplies.Should().BeEmpty();
     }
 
     [Fact]
-    public void BepaalMislukteClassificaties_AfgebrokenBatch_TeltNiemandMee()
+    public void BereidAiVoor_ZonderChatClient_StoptZonderTeGooien()
+        => Poort(new FakeEmailGraphService()).BereidAiVoor().Should().BeFalse(
+            "buiten productie is IChatClient onvoorwaardelijk null (#857); de poll stopt zonder fout");
+
+    [Fact]
+    public async Task Noodmails_BevattenDeAdviesregelsVanDezeTier()
     {
-        var a = Bericht("a");
-        var b = Bericht("b");
+        var graph = new FakeEmailGraphService();
+        var poort = Poort(graph);
 
-        var mislukt = EmailProcessorFunction.BepaalMislukteClassificaties([a, b], Geclassificeerd(a), aiAborted: true);
+        await EmailNoodmailMelding.StuurDatabaseNoodmailAsync(graph, 1, "test", poort.Throttle, poort.NoodmailTeksten, NullLogger.Instance);
+        await EmailNoodmailMelding.StuurOpenAiNoodmailAsync(graph, "quota", poort.Throttle, poort.NoodmailTeksten, NullLogger.Instance);
 
-        mislukt.Should().BeEmpty();
+        graph.SentReplies.Should().HaveCount(2);
+        graph.SentReplies[0].Body.Should().EndWith("Controleer de Postgres-hosting-omgeving (bijv. het Supabase-dashboard) op status en resource-limieten.");
+        graph.SentReplies[1].Body.Should().Contain("Acties:\n  • Controleer de OpenAI-dashboard-quota\n  • Verhoog de quota-limiet of wacht tot de quota vernieuwt\n  • Als de quota");
     }
 
     [Fact]
-    public void BepaalMislukteClassificaties_AllesGeclassificeerd_IsLeeg()
+    public void TierBericht_WerktMetDeGedeeldeKern()
     {
-        var a = Bericht("a");
+        InkomendBericht a = Bericht("a"), b = Bericht("b");
 
-        EmailProcessorFunction.BepaalMislukteClassificaties([a], Geclassificeerd(a), aiAborted: false).Should().BeEmpty();
+        EmailVerwerkerFasen.BepaalMislukteClassificaties([a, b], [(a, new BerichtClassificatie())], aiAborted: false)
+            .Should().ContainSingle().Which.Should().BeSameAs(b);
     }
 }

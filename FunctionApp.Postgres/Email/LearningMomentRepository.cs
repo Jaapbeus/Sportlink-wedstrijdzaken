@@ -1,3 +1,4 @@
+using Planner.Shared.Email;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 

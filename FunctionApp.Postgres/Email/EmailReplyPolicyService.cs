@@ -1,45 +1,18 @@
 using Microsoft.Extensions.Logging;
 using FunctionApp.Postgres.Planner;
 using FunctionApp.Postgres.Sync;
-using Planner.Shared;
+using Planner.Shared.Email;
 using Planner.Shared.Email.Trace;
 
 namespace FunctionApp.Postgres.Email;
 
 /// <summary>
-/// Postgres-tier-tegenhanger van <c>FunctionApp/Email/EmailReplyPolicyService.cs</c> (#972 — port
-/// van EmailProcessorFunction).
-/// <para>
-/// <b>Enige structurele afwijking t.o.v. het SQL Server-origineel:</b> in plaats van een
-/// <c>IEmailPersistenceService</c>-interface krijgt deze klasse de Postgres-connectiestring en
-/// roept ze <see cref="SqlEmailPersistenceRepository"/>'s statische methoden rechtstreeks aan —
-/// zelfde stijl als <c>FunctionApp.Postgres.Processing.BerichtPipeline</c> al gebruikt. Een nieuwe
-/// interface/DI-abstractie alleen om de SQL Server-tier 1-op-1 te spiegelen zou onnodige
-/// architectuur toevoegen voor een hotfix.
-/// </para>
-/// <para>
-/// <b>KNVB-PDF-bijlage/BCC-tak (#561, "verzet zonder datum") sinds #1141 vertaald:</b> begeleiding
-/// van ons eigen team in BCC (<see cref="AllstarsTestDataRepository.GetTeamleiderContactAsync"/>,
-/// #1140) en de KNVB-kalender-PDF als bijlage (<see cref="KnvbPdfService"/>). Beide zijn fail-safe:
-/// ontbreekt het contact of het bestand, dan verstuurt de mail gewoon zonder (nooit een crash op
-/// deze verrijking) — zelfde gedrag als het SQL Server-origineel.
-/// </para>
+/// Postgres-omhulsel van de gedeelde reply-afhandeling (#972, #1760). De beslislogica staat in
+/// <see cref="EmailReplyAfhandeling"/> (<c>Planner.Shared</c>); hier blijft alleen wat per tier verschilt:
+/// de opslag (<see cref="SqlReplyPersistentie"/> op de Postgres-connectiestring), de begeleiding-BCC en
+/// KNVB-kalenderbijlage (#561/#1141: <see cref="AllstarsTestDataRepository.GetTeamleiderContactAsync"/>,
+/// <see cref="KnvbPdfService"/>; fail-safe) en het uitlezen van de Graph-statuscode (#1133).
 /// </summary>
-internal enum ReplyVerwerkingUitkomst
-{
-    AfgerondZonderAntwoord,
-    AntwoordVerstuurd,
-    VerzendFout,
-
-    /// <summary>
-    /// De verzendpoging leverde een onbekende uitkomst op (#1133): Graph kan het bericht al hebben
-    /// geaccepteerd vóór een time-out, annulering, verbindingsverlies of 5xx-fout. De verzendintentie
-    /// blijft staan en het bericht is direct op <see cref="EmailStatus.Review"/> gezet — er is NIET
-    /// opnieuw verstuurd.
-    /// </summary>
-    OnbekendeVerzendUitkomst
-}
-
 internal sealed class EmailReplyPolicyService
 {
     /// <summary>De opslag van de reply-afhandeling; standaard de Postgres-repository, een test geeft een fake mee (geen database nodig).</summary>
@@ -48,9 +21,7 @@ internal sealed class EmailReplyPolicyService
     internal EmailReplyPolicyService(Func<string, IReplyPersistentie>? persistentie = null)
         => _persistentie = persistentie ?? (cs => new SqlReplyPersistentie(cs));
 
-    private const string HandmatigePlanningLabel = "Handmatige planning";
-
-    internal async Task<ReplyVerwerkingUitkomst> HandelReplyFlowAfAsync(
+    internal Task<ReplyVerwerkingUitkomst> HandelReplyFlowAfAsync(
         string connectionString,
         int verwerkingId,
         InkomendBericht email,
@@ -65,275 +36,25 @@ internal sealed class EmailReplyPolicyService
         TraceBuilder? trace = null,
         bool zekerheidspoortActief = true)
     {
-        // Review mode blijft de eerste check: er gaat nooit een antwoord naar de originele
-        // afzender. Het voorgestelde antwoord wordt opgebouwd en opgeslagen — zonder dat valt er
-        // niets te reviewen. Daarnaast wordt hetzelfde voorstel ook gemaild naar
-        // reviewRecipient (#801-precedent): zonder deze mail is het voorstel alleen via directe
-        // databasetoegang te lezen, omdat de Admin GUI AntwoordEmail bewust nooit teruggeeft (AVG).
-        // Een mislukte reviewmail blokkeert de opslag en labeling niet.
-        return reviewMode
-            ? await HandelReviewModeAsync(
-                connectionString, verwerkingId, email, classificatie, plannerResponseJson, reviewRecipient,
-                graphService, bouwTemplateAntwoordAsync, sanitizeFoutMelding, log)
-            : await HandelNormaalVerstuurAsync(
-                connectionString, verwerkingId, email, classificatie, plannerResponseJson,
-                graphService, bouwTemplateAntwoordAsync, sanitizeFoutMelding, log, trace, zekerheidspoortActief, reviewRecipient);
-    }
-
-    private async Task<ReplyVerwerkingUitkomst> HandelReviewModeAsync(
-        string connectionString,
-        int verwerkingId,
-        InkomendBericht email,
-        BerichtClassificatie classificatie,
-        string plannerResponseJson,
-        string? reviewRecipient,
-        IEmailGraphService graphService,
-        Func<Task<(string onderwerp, string body)>> bouwTemplateAntwoordAsync,
-        Func<string, string> sanitizeFoutMelding,
-        ILogger log,
-        bool tegengehouden = false)
-    {
-        var reviewBesluit = ReplyPolicy.Bepaal(classificatie, plannerResponseJson);
-        if (reviewBesluit.MoetVersturen)
-        {
-            var (voorgesteldOnderwerp, voorgesteldeBody) = await bouwTemplateAntwoordAsync();
-            await _persistentie(connectionString).UpdateVoorgesteldAntwoordAsync(verwerkingId, voorgesteldeBody);
-            log.LogInformation(
-                "Email {Id} review mode — voorgesteld antwoord opgeslagen ter beoordeling", verwerkingId);
-
-            if (!string.IsNullOrWhiteSpace(reviewRecipient))
-            {
-                try
-                {
-                    await graphService.SendReplyAsync(reviewRecipient, voorgesteldOnderwerp,
-                        tegengehouden ? ZekerheidsPoort.MetReviewKop(voorgesteldeBody) : voorgesteldeBody, email.ConversationId);
-                    log.LogInformation(
-                        "Email {Id} review mode — testantwoord verstuurd naar EmailReviewRecipient", verwerkingId);
-                }
-                catch (Exception ex)
-                {
-                    log.LogWarning(ex,
-                        "Email {Id} review mode — testmail naar EmailReviewRecipient mislukt, voorstel blijft wel opgeslagen in de database",
-                        verwerkingId);
-                }
-            }
-            else
-            {
-                log.LogInformation(
-                    "Email {Id} review mode — EmailReviewRecipient niet geconfigureerd, geen testmail verstuurd", verwerkingId);
-            }
-        }
-        else
-        {
-            // Onderdrukken is een beleidsbesluit (#572), geen AI-uitval: zelfde status als buiten review mode (#1608).
-            await _persistentie(connectionString).UpdateStatusAsync(verwerkingId, EmailStatus.GeenAntwoordNodig, null);
-            log.LogInformation(
-                "Email {Id} review mode — geen antwoord nodig, handmatige planning: {Reden}", verwerkingId, reviewBesluit.Reden);
-        }
-
-        try
-        {
-            // Een voorstel dat op beoordeling wacht krijgt geen label (#1244). "Geen AI antwoord" alleen bij een
-            // door de zekerheidspoort tegengehouden voorstel (#1568); een onderdrukt antwoord krijgt
-            // "Handmatige planning", net als buiten review mode (#1608).
-            var (label, kleur) = tegengehouden ? (EmailCategorieLabels.GeenAiAntwoord, EmailCategorieLabels.GeenAiAntwoordKleur)
-                : reviewBesluit.MoetVersturen ? (null, null) : (HandmatigePlanningLabel, "preset5");
-            if (label != null)
-            {
-                await graphService.EnsureMasterCategoryAsync(label, kleur!);
-                await graphService.SetCategoriesAsync(email.MessageId, label);
-            }
-
-            await graphService.MarkAsReadAsync(email.MessageId);
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Graph-categorie mislukt voor verwerking {Id} in review mode", verwerkingId);
-            try { await _persistentie(connectionString).UpdateFoutAsync(verwerkingId, sanitizeFoutMelding(ex.Message)); }
-            catch (Exception logEx) { log.LogWarning(logEx, "Kon foutstatus niet vastleggen voor verwerking {Id}", verwerkingId); }
-        }
-
-        return ReplyVerwerkingUitkomst.AfgerondZonderAntwoord;
-    }
-
-    private async Task<ReplyVerwerkingUitkomst> HandelNormaalVerstuurAsync(
-        string connectionString,
-        int verwerkingId,
-        InkomendBericht email,
-        BerichtClassificatie classificatie,
-        string plannerResponseJson,
-        IEmailGraphService graphService,
-        Func<Task<(string onderwerp, string body)>> bouwTemplateAntwoordAsync,
-        Func<string, string> sanitizeFoutMelding,
-        ILogger log,
-        TraceBuilder? trace,
-        bool zekerheidspoortActief,
-        string? reviewRecipient)
-    {
-        var replyBesluit = ReplyPolicy.Bepaal(classificatie, plannerResponseJson);
-        if (!replyBesluit.MoetVersturen)
-        {
-            await _persistentie(connectionString).UpdateStatusAsync(verwerkingId, EmailStatus.GeenAntwoordNodig, null);
-            try
-            {
-                await graphService.EnsureMasterCategoryAsync(HandmatigePlanningLabel, "preset5");
-                await graphService.SetCategoriesAsync(email.MessageId, HandmatigePlanningLabel);
-                await graphService.MarkAsReadAsync(email.MessageId);
-            }
-            catch (Exception ex)
-            {
-                log.LogWarning(ex, "Outlook-labeling mislukt voor verwerking {Id} — verwerking zelf is afgerond", verwerkingId);
-            }
-
-            log.LogInformation("Email {Id} verwerkt zonder automatisch antwoord: {Reden}",
-                verwerkingId, replyBesluit.Reden);
-            return ReplyVerwerkingUitkomst.AfgerondZonderAntwoord;
-        }
-
-        var (onderwerp, antwoordBody) = await bouwTemplateAntwoordAsync();
-
-        // Zekerheidspoort (#1568 deel D): een onzeker antwoord gaat niet naar de afzender maar ter review.
-        var poort = ZekerheidsPoort.Bepaal(zekerheidspoortActief, trace);
-        if (poort.Tegenhouden)
-            return await HandelReviewModeAsync(
-                connectionString, verwerkingId, email, classificatie, plannerResponseJson, reviewRecipient,
-                graphService, () => Task.FromResult((onderwerp, antwoordBody)), sanitizeFoutMelding, log, tegengehouden: true);
-
-        // Verzendintentie vóór het versturen. Wordt de invocatie hierna hard afgebroken
-        // (functie-time-out, host-recycle, scale-in), dan is dit het enige spoor dat er misschien al
-        // een antwoord de deur uit is — de volgende poll stuurt dan geen tweede antwoord meer maar legt
-        // het bericht ter beoordeling neer. Mislukt het vastleggen van de intentie zelf, dan wordt er
-        // niet verstuurd: zonder die grens is een dubbel antwoord mogelijk.
-        await _persistentie(connectionString).MarkeerVerzendPogingAsync(verwerkingId);
-
-        IReadOnlyList<string>? bcc = null;
-        EmailBijlage? bijlage = null;
-        if (classificatie.VoegKnvbPdfBijlageToe)
-        {
-            // #561/#1141: verzet-zonder-datum — begeleiding van ons eigen team in BCC, KNVB-
-            // kalender als bijlage. Beide zijn fail-safe: ontbreekt het contact of het bestand, dan
-            // verstuurt de mail gewoon zonder (nooit een crash op deze verrijking).
-            try
-            {
-                var contact = await AllstarsTestDataRepository.GetTeamleiderContactAsync(
-                    connectionString, classificatie.TeamNaam ?? "");
-                if (contact != null && !string.IsNullOrWhiteSpace(contact.Emailadres))
-                {
-                    bcc = new[] { contact.Emailadres };
-                }
-                else
-                {
-                    log.LogInformation("VERZET-ZONDER-DATUM - geen begeleidingscontact gevonden voor BCC, verzonden zonder BCC");
-                }
-            }
-            catch (Exception ex)
-            {
-                log.LogWarning(ex, "VERZET-ZONDER-DATUM - ophalen begeleidingscontact mislukt, verzonden zonder BCC");
-            }
-
-            if (!string.IsNullOrWhiteSpace(classificatie.KnvbBijlageRegio))
+        var haken = new ReplyTierHaken(
+            async team => (await AllstarsTestDataRepository.GetTeamleiderContactAsync(connectionString, team))?.Emailadres,
+            async regio =>
             {
                 var seizoen = await PostgresSeasonHelper.GetCurrentKnvbSeizoenAsync(log);
-                if (!string.IsNullOrWhiteSpace(seizoen))
-                    bijlage = await KnvbPdfService.GetKalenderPdfAsync(classificatie.KnvbBijlageRegio, seizoen, log);
-            }
-        }
+                return string.IsNullOrWhiteSpace(seizoen) ? null : await KnvbPdfService.GetKalenderPdfAsync(regio, seizoen, log);
+            },
+            ExtraheerGraphStatusCode);
 
-        try
-        {
-            await graphService.SendReplyAsync(email.Afzender, onderwerp, antwoordBody, email.ConversationId, bcc, bijlage);
-        }
-        catch (Exception ex)
-        {
-            // #1133: niet elke exception van SendReplyAsync bewijst dat er niets verstuurd is. Een
-            // time-out, annulering, verbindingsverlies of 5xx kan optreden ná acceptatie door Graph —
-            // alleen een HTTP-statuscode die een expliciete afwijzing bewijst mag de verzendintentie
-            // laten wissen. Zie Planner.Shared.EmailVerzendFoutClassificatie voor de volledige
-            // motivatie en de losstaande, pure tests.
-            var graphStatusCode = ExtraheerGraphStatusCode(ex);
-            var uitkomst = EmailVerzendFoutClassificatie.Classificeer(ex, graphStatusCode);
-
-            if (uitkomst == EmailVerzendUitkomst.OnbekendeUitkomst)
-            {
-                log.LogError(ex,
-                    "Graph-send onbekende uitkomst (status {StatusCode}) voor verwerking {Id} — Graph kan het "
-                    + "bericht al hebben geaccepteerd. Verzendintentie blijft staan, NIET opnieuw versturen — "
-                    + "bericht direct op Review gezet (#1133)", graphStatusCode, verwerkingId);
-
-                try
-                {
-                    await _persistentie(connectionString).UpdateStatusAsync(verwerkingId, EmailStatus.Review, null);
-                }
-                catch (Exception statusEx)
-                {
-                    log.LogWarning(statusEx,
-                        "Kon Review-status niet vastleggen voor verwerking {Id} — de onbesliste verzendintentie "
-                        + "blijft staan, dus een volgende poll legt het bericht alsnog ter beoordeling neer",
-                        verwerkingId);
-                }
-
-                try
-                {
-                    await graphService.EnsureMasterCategoryAsync(EmailCategorieLabels.GeenAiAntwoord, EmailCategorieLabels.GeenAiAntwoordKleur);
-                    await graphService.SetCategoriesAsync(email.MessageId, EmailCategorieLabels.GeenAiAntwoord);
-                }
-                catch (Exception labelEx)
-                {
-                    log.LogWarning(labelEx, "Outlook-labeling mislukt voor verwerking {Id}", verwerkingId);
-                }
-
-                // Wél als gelezen markeren: dit is een terminale beoordelingsstatus, geen fout die de
-                // volgende poll opnieuw moet oppakken via de wachtrij van ongelezen berichten.
-                await graphService.MarkAsReadAsync(email.MessageId);
-                return ReplyVerwerkingUitkomst.OnbekendeVerzendUitkomst;
-            }
-
-            log.LogError(ex,
-                "Graph-send expliciet afgewezen (status {StatusCode}) voor verwerking {Id} — VerzendFout, mail blijft ongelezen",
-                graphStatusCode, verwerkingId);
-            // Het versturen is aantoonbaar mislukt, dus de intentie moet weg: anders is dit scenario —
-            // waarin juist wél opnieuw geprobeerd moet worden — niet te onderscheiden van een
-            // onbekende uitkomst en belandt het bericht onnodig op Review.
-            try { await _persistentie(connectionString).WisVerzendPogingAsync(verwerkingId); }
-            catch (Exception wisEx)
-            {
-                log.LogWarning(wisEx,
-                    "Verzendintentie kon niet gewist worden voor verwerking {Id} — een volgende poll legt dit "
-                    + "bericht ter beoordeling neer in plaats van opnieuw te versturen", verwerkingId);
-            }
-            try { await _persistentie(connectionString).UpdateFoutAsync(verwerkingId, sanitizeFoutMelding(ex.Message)); }
-            catch (Exception logEx) { log.LogWarning(logEx, "Kon foutstatus niet vastleggen voor verwerking {Id}", verwerkingId); }
-            return ReplyVerwerkingUitkomst.VerzendFout;
-        }
-
-        // Vanaf hier is het antwoord de deur uit. Faalt het vastleggen, dan mag het bericht NIET
-        // ongelezen blijven: de volgende poll zou de afzender een tweede antwoord sturen. Daarom
-        // wordt de fout alleen gelogd en gaat het als-gelezen-markeren altijd door.
-        try
-        {
-            await _persistentie(connectionString).UpdateAntwoordVerstuurdAsync(verwerkingId, email.Afzender, antwoordBody);
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex,
-                "Antwoord verstuurd voor verwerking {Id} maar niet vastgelegd in de database — "
-                + "bericht wordt alsnog als gelezen gemarkeerd om een tweede antwoord te voorkomen", verwerkingId);
-        }
-
-        await graphService.MarkAsReadAsync(email.MessageId);
-
-        log.LogInformation("Email {Id} volledig verwerkt, antwoord verstuurd (ontvanger niet gelogd — AVG #210)",
-            verwerkingId);
-
-        return ReplyVerwerkingUitkomst.AntwoordVerstuurd;
+        return EmailReplyAfhandeling.HandelReplyFlowAfAsync(
+            verwerkingId, new ReplyBericht(email.MessageId, email.Afzender, email.ConversationId), classificatie,
+            plannerResponseJson, reviewMode, reviewRecipient, graphService, _persistentie(connectionString),
+            bouwTemplateAntwoordAsync, sanitizeFoutMelding, haken, log, trace, zekerheidspoortActief);
     }
 
     /// <summary>
     /// Haalt de HTTP-statuscode uit een Graph-foutrespons (#1133), of <c>null</c> als de exception
     /// geen respons van Graph vertegenwoordigt — bijv. een time-out of verbindingsfout vóórdat er
-    /// ooit een respons was. Alleen deze statuscode bepaalt, via
-    /// <see cref="EmailVerzendFoutClassificatie.Classificeer"/>, of een verzendfout als expliciete
-    /// afwijzing mag gelden.
+    /// ooit een respons was.
     /// </summary>
     private static int? ExtraheerGraphStatusCode(Exception ex)
         => ex is Microsoft.Graph.Models.ODataErrors.ODataError odataError && odataError.ResponseStatusCode > 0

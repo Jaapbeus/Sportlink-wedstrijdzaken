@@ -10,6 +10,7 @@ using Npgsql;
 using FunctionApp.Postgres.Email;
 using FunctionApp.Postgres.Processing;
 using FunctionApp.Postgres.TeamResolution;
+using Planner.Shared.TeamResolution;
 
 namespace FunctionApp.Postgres.Admin;
 
@@ -96,12 +97,12 @@ public static class EmailTestFunction
         // opgebouwd als hij voor deze club nog helemaal leeg is (bijv. een democlub die nooit gesynchroniseerd
         // is) — anders resolvet niets. Is hij gevuld, dan blijft hij onaangeroerd; de nachtelijke sync en de
         // processor houden hem actueel.
-        var teamRepository = new TeamCandidateRepository(PostgresDatabaseConfig.ConnectionString);
+        var teamRepository = context.InstanceServices.GetRequiredService<ITeamCandidateRepository>();
         if (!await teamRepository.HeeftActieveTeamsAsync(clubCode))
             await TeamCanonicalisatieService.RefreshAsync(PostgresDatabaseConfig.ConnectionString, clubCode, log);
 
         var plannerResponseJson = await BerichtPipeline.VerwerkMetPlannerAsync(
-            classificatie, fakeEmail, log, new TeamResolver(teamRepository), clubCode, clubSettings, trace);
+            classificatie, fakeEmail, log, context.InstanceServices.GetRequiredService<ITeamResolver>(), clubCode, clubSettings, trace);
         var (voorbeeldOnderwerp, voorbeeldBody) = await BerichtPipeline.BouwTemplateAntwoord(
             classificatie, plannerResponseJson, fakeEmail, log, clubSettings, clubCode, trace);
 

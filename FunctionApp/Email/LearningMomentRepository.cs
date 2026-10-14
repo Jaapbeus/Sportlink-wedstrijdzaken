@@ -1,3 +1,4 @@
+using Planner.Shared.Email;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using SportlinkFunction.Processing;

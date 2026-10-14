@@ -8,6 +8,12 @@ title = "Sportlink Wedstrijdzaken — Gitleaks Config"
 # Gebruik de standaard gitleaks rules als basis
 useDefault = true
 
+[[rules]]
+id = "github-installation-token-compatible"
+description = "GitHub App installation token (opaque of stateless)"
+regex = '''ghs_[A-Za-z0-9._-]{36,}'''
+keywords = ["ghs_"]
+
 # ── Club-specifieke infrastructuurpatronen ────────────────────────────────────
 # Structurele patronen: vangen clubcode-specifieke Azure-resource namen, SWA-URLs
 # en infrastructuuridentifiers. GEEN echte waarden — puur op naamconventie.

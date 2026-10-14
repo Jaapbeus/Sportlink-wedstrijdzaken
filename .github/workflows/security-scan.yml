@@ -60,11 +60,24 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_SUMMARY: true
 
+      - name: GitHub-tokenformaten synthetisch verifiëren
+        run: python3 scripts/ci/test-github-token-formats.py
+
+      - name: GitHub-token met een leesaanroep verifiëren
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const token = core.getInput('github-token', { required: true });
+            core.setSecret(token);
+            const r = await github.request('GET /rate_limit');
+            if (r.status !== 200) throw new Error('GitHub-token leescontrole mislukt');
+            core.info('GitHub-token leescontrole geslaagd; geen tokenwaarde gelogd.');
+
       - name: Resultaat samenvatting
         if: failure()
         run: |
-          echo "::error::🚨 GITLEAKS: SECRET OF TOKEN GEVONDEN IN CODE"
-          echo "::error::Verwijder het secret direct en roteer het — ook als het al gepusht is."
+          echo "::error::GITLEAKS-JOB GEFAALD: detectiescan, patrooncontrole of GitHub-leescontrole mislukt"
+          echo "::error::Controleer de gefaalde stap; verwijder en roteer alleen bij een bevestigde secretbevinding."
           echo "::error::Zie SECURITY.md § 'Wat te doen bij een gefaalde check'."
 
   # ── 2. Databestanden in repository ─────────────────────────────────────────

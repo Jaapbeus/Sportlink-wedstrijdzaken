@@ -50,7 +50,9 @@ jobs:
             --resource-group "$RESOURCE_GROUP" \
             --template-file infrastructure/main.bicep \
             --parameters infrastructure/main.parameters.json \
-            --parameters deployMonitoring=${{ inputs.deploy_monitoring }}
+            --parameters deployMonitoring=${{ inputs.deploy_monitoring }} \
+            --parameters tenantId="${{ secrets.AZURE_AD_TENANT_ID }}" \
+            --parameters clientId="${{ secrets.AZURE_AD_CLIENT_ID }}"
 
       # #1455: een ARM PUT met siteConfig.appSettings VERVANGT alle app settings van de bestaande
       # Function App. Deze poort draait what-if en faalt als een bestaande setting zou verdwijnen;
@@ -62,6 +64,8 @@ jobs:
           SQL_CS: ${{ secrets.AZURE_SQL_CONNECTION_STRING }}
           STORAGE_CS: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
           DEPLOY_MONITORING: ${{ inputs.deploy_monitoring }}
+          AD_TENANT: ${{ secrets.AZURE_AD_TENANT_ID }}
+          AD_CLIENT: ${{ secrets.AZURE_AD_CLIENT_ID }}
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/whatif.json"
@@ -73,6 +77,8 @@ jobs:
             --parameters appInsightsConnectionString="$AI_CS" \
             --parameters sqlConnectionString="$SQL_CS" \
             --parameters azureWebJobsStorage="$STORAGE_CS" \
+            --parameters tenantId="$AD_TENANT" \
+            --parameters clientId="$AD_CLIENT" \
             --result-format FullResourcePayloads --no-pretty-print --output json > "$out"
           live="$RUNNER_TEMP/live-appsettings"
           rm -rf "$live"; mkdir -p "$live"
@@ -94,4 +100,6 @@ jobs:
             --parameters deployMonitoring=${{ inputs.deploy_monitoring }} \
             --parameters appInsightsConnectionString="${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING }}" \
             --parameters sqlConnectionString="${{ secrets.AZURE_SQL_CONNECTION_STRING }}" \
-            --parameters azureWebJobsStorage="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}"
+            --parameters azureWebJobsStorage="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
+            --parameters tenantId="${{ secrets.AZURE_AD_TENANT_ID }}" \
+            --parameters clientId="${{ secrets.AZURE_AD_CLIENT_ID }}"

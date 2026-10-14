@@ -62,7 +62,7 @@ Graph-verzending kan "inpluggen" zonder ze opnieuw te bouwen.
 > | Verschil | SQL Server | Postgres (productie) |
 > |---|---|---|
 > | `IEmailGraphService` | eigen bestand `Email/IEmailGraphService.cs` | in `Email/EmailGraphService.cs` (regel 23) |
-> | `EmailStatus`, `InkomendBericht`, `ClassificatieCorrectieVoorbeeld` | `Email/BerichtModels.cs` | `Email/EmailModels.cs` |
+> | `InkomendBericht`, `ClassificatieCorrectieVoorbeeld` (`EmailStatus` is sinds #1716 slice 5 gedeeld) | `Email/BerichtModels.cs` | `Email/EmailModels.cs` |
 > | Persistentielaag | `IEmailPersistenceRepository` + `SqlEmailPersistenceRepository` + `EmailPersistenceService` (DI-wrapper) | alleen `SqlEmailPersistenceRepository` — een `internal static class`, geen interface, geen wrapper |
 > | Teamlijst-vangnet / uitvalmonitor | `TeamlijstGereedheid`, `Monitoring/DatabaseUitvalMonitorFunction` | bestaan niet (Postgres-tier roept in plaats daarvan onvoorwaardelijk `TeamCanonicalisatieService.RefreshAsync` aan, zie `docs/ARCHITECTUUR-TEAMRESOLUTIE.md`) |
 
@@ -71,18 +71,21 @@ Graph-verzending kan "inpluggen" zonder ze opnieuw te bouwen.
 | `FunctionApp/Email/EmailGraphService.cs` | Enige plek **per tier** die Microsoft Graph `SendMail` aanroept. Wrapt Graph SDK: ongelezen mail ophalen, categoriseren, `SendReplyAsync` (automatische AI-reply), `StuurTeamContactDoorAsync` (doorsturen naar begeleiding). Leest de vaste mailbox uit de env var `GraphMailbox`. Tegenhanger: `FunctionApp.Postgres/Email/EmailGraphService.cs` |
 | `FunctionApp/Email/IEmailGraphService.cs` | Het huidige contract — 6 methoden, waarvan 2 daadwerkelijk versturen. Op de Postgres-tier staat dezelfde interface in `EmailGraphService.cs` zelf |
 | `FunctionApp/Email/EmailBijlage.cs` | Immutable `record` voor één bijlage (bestandsnaam, bytes, content-type) |
-| `FunctionApp/Email/EmailProcessorFunction.cs` | Timer-getriggerde orchestrator van de volledige AI-pipeline (fase 1: Graph+AI zonder DB, fase 2: DB-state-machine); haalt `IEmailGraphService`/`IEmailPersistenceService` sinds #827 via DI op (`context.InstanceServices`), niet meer met `new`. Sinds #1629 (beide tiers, dezelfde indeling) is de klasse een `partial`: `Run` doet alleen de timer-orkestratie en roept `VoerFase1LichtAsync` en `VoerFase2ZwaarAsync` aan (`EmailProcessorFunction.Fasen.cs`, gedeelde toestand in het record `EmailRunContext`); de verwerking per bericht (`VerwerkEmailAsync`, met `DetecteerLeermomentAsync`, `VerwerkBuitenScopeAsync` en `VoerReplyFlowMetTraceAsync`) staat in `.Verwerking.cs`, de foutregistratie in `.Fouten.cs` en de noodmails in `.Noodmail.cs` |
+| `FunctionApp/Email/EmailProcessorFunction.cs` + `EmailVerwerkerPoort.cs` | Timer `ProcessIncomingEmails`. Sinds #1716 slice 9 doet `Run` per tier alleen de trigger en de DI-binding (`IEmailGraphService`, `INoodmailThrottleStore`, op SQL Server ook `ITeamResolver`/`IEmailPersistenceService`) en geeft een `EmailVerwerkerPoort` door aan de **tier-onafhankelijke fase-orkestratie** `Planner.Endpoints/Email/EmailVerwerkerFasen.cs` (fase 1: Graph+AI zonder DB, fase 2: DB wekken, uitsluitingslijst herladen, teamvoorbereiding, verwerkingslus). De poort (`IEmailVerwerkerPoort<TBericht>`, generiek over het per tier eigen `InkomendBericht` via `IInkomendBericht`) sluit per tier databasetoegang, de eigen `EmailGraphService`, de AI-service, het voorfilter en de verwerking per bericht aan. De verwerking per bericht (`VerwerkEmailAsync`, met `DetecteerLeermomentAsync`, `VerwerkBuitenScopeAsync` en `VoerReplyFlowMetTraceAsync`) staat nog per tier in `.Verwerking.cs`, de foutregistratie in `.Fouten.cs`; de noodmails staan eenmalig in `Planner.Endpoints/Email/EmailNoodmailMelding.cs` (per tier alleen de adviesregels in `EmailNoodmailTeksten`) |
 | `FunctionApp/Email/EmailPersistenceService.cs` | Dunne, DI-testbare wrapper rond `IEmailPersistenceRepository` (zie §1.5 voor de laagstructuur). **Alleen SQL Server-tier** |
 | `FunctionApp/Email/IEmailPersistenceRepository.cs` | Interface + enige productie-implementatie `SqlEmailPersistenceRepository` — bevat sinds #827 rechtstreeks de ADO.NET-toegang tot `planner.EmailVerwerking` (voorheen een aparte `EmailProcessingRepository`, nu geabsorbeerd); forwardt alleen classificatiecorrectie/leermomenten nog naar `LearningMomentRepository`. **Alleen SQL Server-tier**: Postgres heeft `Email/SqlEmailPersistenceRepository.cs` als `internal static class`, zonder interface en zonder wrapper |
 | `FunctionApp/Email/EmailBatchFilterService.cs` | Fase-1-voorfilter: eigen mailbox, gecachede uitsluitingslijst |
 | `FunctionApp/Email/EmailClassificationService.cs` | Batch-wrapper rond de AI-classificatie, vangt quota-fouten |
-| `FunctionApp/Email/EmailReplyPolicyService.cs` | Beslist óf en bouwt het antwoord, markeert verzendintentie vóór het versturen (#716), roept `EmailGraphService.SendReplyAsync` aan. Bij een verzendfout classificeert `Planner.Shared.EmailVerzendFoutClassificatie` (#1133) of dit een bewezen afwijzing is (intentie wissen, opnieuw proberen) of een onbekende uitkomst (intentie laten staan, direct naar `Review`) |
+| `Planner.Shared/Email/EmailReplyAfhandeling.cs` (omhulsel per tier: `FunctionApp*/Email/EmailReplyPolicyService.cs`, #1760) | Beslist óf en bouwt het antwoord, markeert verzendintentie vóór het versturen (#716), roept `EmailGraphService.SendReplyAsync` aan. Bij een verzendfout classificeert `Planner.Shared.EmailVerzendFoutClassificatie` (#1133) of dit een bewezen afwijzing is (intentie wissen, opnieuw proberen) of een onbekende uitkomst (intentie laten staan, direct naar `Review`) |
 | `FunctionApp/Email/EmailTemplateService.cs` | DB-templates (`dbo.EmailTemplateInstellingen`) met 5-minuten TTL-cache per `(clubCode, key)`, valt terug op hardcoded defaults, `ApplyPlaceholders` voor `{{key}}`-substitutie |
 | `FunctionApp/Email/BerichtAiService.cs` | AI-classificatie; gebruikt al `IChatClient` (regel 11-14) — goed precedent voor provider-abstractie |
-| `FunctionApp/Email/BerichtModels.cs` | `VerzoekType`, `BerichtClassificatie`, `InkomendBericht` (kanaal-agnostisch bericht-DTO), `EmailStatus` |
-| `FunctionApp/Email/BerichtResponseGenerator.cs` | Bouwt onderwerp+body per classificatietype, met/zonder DB-template-override |
+| `FunctionApp/Email/BerichtModels.cs` | `InkomendBericht` (kanaal-agnostisch bericht-DTO) en `ClassificatieCorrectieVoorbeeld`; blijven per tier omdat de vorm van `InkomendBericht` verschilt (`ConversationId`/`Body` nullable op de Postgres-tier, niet-nullable met standaard `""` op SQL Server) |
+| `Planner.Shared/Email/BerichtClassificatie.cs` + `EmailStatus.cs` | #1716 slice 5: `VerzoekType`, `NamensWie`, `BerichtClassificatie` en `EmailStatus` staan één keer hier in plaats van identiek per tier. **Tier-onafhankelijk**, zonder gedragswijziging. Contract: de classificatie gaat via Newtonsoft (enums als getal) naar `planner.EmailVerwerking`, de status als naam; volgorde, getallen, namen, standaardwaarden en JSON-vorm bewaakt `Planner.Shared.Tests/Email/BerichtDomeinTypenTests.cs`. Mutatiebewijs: `MUTATIELIJST=scripts/ci/mutatiebewijs-1716-slice5.tsv scripts/ci/mutatiebewijs-1716.sh` (13 mutanten) |
+| `Planner.Shared/Email/BerichtAntwoordGenerator.cs` (+ `.Herplan.cs`, `.Overig.cs`) + `BerichtAntwoordPoorten.cs` | #1758 (slice 6 van #1716): bouwt onderwerp+body per classificatietype, met/zonder DB-template-override. **Tier-onafhankelijk**: plannergegevens, bericht, sjabloon en clubinstellingen komen via de poorten `IAntwoordBeschikbaarheid`, `IAntwoordWedstrijd`, `IAntwoordHerplanOpties`, `IAntwoordVenster`, `IAntwoordAfzender`, `IAntwoordSjabloon` en `IAntwoordInstellingen`, die de tier-DTO's zelf implementeren (JSON-vorm ongewijzigd). De sjabloonopslag (`EmailTemplateService`, database) blijft per tier; de generator krijgt alleen de inhoud van een al opgehaald sjabloon. Gevallen in `Planner.Shared.Tests/Email/BerichtAntwoordGenerator*Tests.cs`; mutatiebewijs: `MUTATIELIJST=scripts/ci/mutatiebewijs-1716-slice6.tsv scripts/ci/mutatiebewijs-1716.sh` |
+| `FunctionApp/Email/BerichtResponseGenerator.cs` | Tier-omhulsel van `BerichtAntwoordGenerator` (#1758): zelfde publieke API, kiest de instellingenbron (club-snapshot van de e-mailtester of `SystemUtilities.AppSettings`, #677) en de foutmelding van deze tier; getest in `BerichtResponseGeneratorOmhulselTests` (per tier) |
 | `FunctionApp/Processing/BerichtPipeline.cs` | Kanaal-agnostische orchestratie tussen classificatie, `PlannerService` en templating |
 | `Planner.Shared/Email/TemplateAntwoordBouwer.cs` + `ITemplateAntwoordBron.cs` | #1627: de takkeuze van `BerichtPipeline.BouwTemplateAntwoord` (welk antwoord bij welke vlag in het plannerresponse, in een geordende lijst per verzoektype; sjabloon-override of standaard) staat één keer hier. **Tier-onafhankelijk**; elke tier levert alleen de adapter `TemplateAntwoordBron` (vertaling naar `BerichtResponseGenerator` en de eigen DTO's) en de sjabloonopslag. Karakterisatietests per tak staan in beide tier-testprojecten (`BouwTemplateAntwoordKarakterisatieTests`) |
+| `Planner.Shared/Email/BerichtDatumHeuristiek.cs` | #1716 (eerste slice van de e-mailkern naar `Planner.Shared`): de datumherkenning in de berichttekst — expliciete datum in onderwerp of eigen tekst, dagnaamcorrectie van de modeldatum, de "doordeweeks"-uitbreiding en het afknippen van de citaat-/ondertekeningsstaart. **Tier-onafhankelijk**; `BerichtPipeline.ValideerDagDatum` is per tier een omhulsel dat de uitkomst op de eigen `BerichtClassificatie` zet. De gevallen staan in `Planner.Shared.Tests/Email/BerichtDatumHeuristiekTests.cs`, het omhulsel is per tier getest (`FunctionApp.Tests/Processing/BerichtPipelineTests.cs`, `FunctionApp.Postgres.Tests/Processing/BerichtPipelineDatumTests.cs`). Mutatiebewijs reproduceerbaar: `scripts/ci/mutatiebewijs-1716.sh` (standaard de mutanten in `mutatiebewijs-1716.tsv`; een latere slice kiest zijn eigen lijst met `MUTATIELIJST`, voor slice 2 zie `ARCHITECTUUR-TEAMRESOLUTIE.md`; commit eerst, het script herstelt het gemuteerde bestand met `git checkout --`; eindcode 0 = alle 8 mutanten gedood; KILLED alleen bij een dotnet-samenvatting met Total > 0 en Failed > 0, een testhostcrash/afbreking/0 tests/buildfout is ERROR met eindcode 1, bewezen door `--zelftest`) |
 | `FunctionApp/Email/CleanupEmailVerwerkingFunction.cs` | Wekelijkse AVG-cleanup-timer (roept twee stored procedures aan) |
 | `FunctionApp/Email/ClubAppSettingsSnapshot.cs` | Club-specifieke settings-snapshot voor het dry-run-pad van de Email-tester (#677) |
 | `Planner.Shared/EmailSanitizer.cs` | HTML-sanitizing: `StripHtml` (inkomend), `SanitizeHtmlAllowlist`/`BouwVeiligeHtmlBody` (uitgaand), `SanitizeFoutMelding` (logging). **Tier-onafhankelijk** — beide bomen gebruiken deze klasse. *(De map `FunctionApp/Utilities/` bestaat niet meer.)* |
@@ -116,7 +119,7 @@ aanroepen:
 
 | Noodmailpad | Tier | Aanleiding |
 |---|---|---|
-| `Email/EmailProcessorFunction.cs` | beide | Database onbereikbaar; OpenAI-quota overschreden |
+| `Planner.Endpoints/Email/EmailNoodmailMelding.cs` (via `EmailVerwerkerFasen`, sinds #1716 slice 9; daarvoor per tier in `EmailProcessorFunction`) | beide | Database onbereikbaar; OpenAI-quota overschreden |
 | `Sportlink/SportlinkContractCheckTimerFunction.cs` | beide (Postgres #1122, SQL Server #1266) | Sportlink contract-check: afwijking gedetecteerd |
 | `Monitoring/DatabaseUitvalMonitorFunction.cs` | **alleen SQL Server** | Database staat langdurig gepauzeerd (#831) |
 
@@ -331,10 +334,11 @@ dubbel-verzend-preventie).
 
 ### 1.9 Bestaande testdekking (`FunctionApp.Tests/Email/`)
 
-`BerichtResponseGeneratorClubSettingsTests.cs`, `BerichtResponseGeneratorVeldTypeTests.cs`,
+`BerichtResponseGeneratorClubSettingsTests.cs`, `BerichtResponseGeneratorOmhulselTests.cs` (de veldtypetests staan sinds #1758 als
+`BerichtAntwoordGeneratorVeldTypeTests.cs` in `Planner.Shared.Tests/Email/`),
 `EmailBatchFilterServiceTests.cs`, `EmailClassificationServiceTests.cs`, `EmailHardeningTests.cs`,
 `EmailIdempotentieTests.cs`, `EmailPersistenceDiRegistrationTests.cs`,
-`EmailPersistenceServiceTests.cs`, `EmailProcessorFunctionNoodmailTests.cs`,
+`EmailPersistenceServiceTests.cs`, `EmailProcessorFasenTests.cs` (omhulsel van de tierpoort),
 `EmailProcessorFunctionTests.cs`, `EmailReplyPolicyServiceTests.cs`, `EmailSanitizerTests.cs`,
 `EmailTemplateServiceTests.cs`, `MultiDatumAfsluitzinTests.cs`, `ReplyPolicyTests.cs`,
 `TestDoubles/{FakeEmailGraphService,FakeEmailPersistenceRepository,FakeNoodmailThrottleStore,RecordingEmailPersistenceService,RecordingLogger}.cs`.
@@ -347,7 +351,7 @@ foutmeldingen per ongeldig fragment).
 > **De Postgres-tier heeft een eigen, parallelle testboom** onder `FunctionApp.Postgres.Tests/Email/`
 > met o.a. `ReplyPolicyTests.cs`, `EmailBatchFilterServiceTests.cs`,
 > `EmailClassificationServiceTests.cs`, `EmailHardeningTests.cs`,
-> `EmailProcessorFunctionIntegrationTests.cs`, `EmailProcessorFunctionNoodmailTests.cs`,
+> `EmailProcessorFunctionIntegrationTests.cs`, `EmailProcessorFasenTests.cs`,
 > `EmailReplyPolicyServiceIntegrationTests.cs` en een eigen `TestDoubles/`. Een wijziging aan
 > gedeeld e-mailgedrag hoort in beide testbomen te landen.
 
@@ -378,15 +382,22 @@ Per tier blijft een dunne adapter in `Email/EmailVerwerkingAdapters.cs`. Die ver
 persistentie (`IEmailPersistenceService` op SQL Server, `SqlEmailPersistenceRepository` met
 verbinding en clubcode op Postgres), naar de eigen statusenum en exceptionklasse
 (`DubbeleMessageIdException`), en naar Graph. `EmailIdempotentie.IsDefinitief` blijft per tier
-omdat het de tier-eigen `EmailStatus` parseert. De interne methodes van `EmailProcessorFunction`
+omdat het de tier-eigen `EmailVerwerkingStand` leest (de `EmailStatus`-enum zelf is sinds #1716 slice 5 gedeeld). De interne methodes van `EmailProcessorFunction`
 behouden hun signatuur, dus de bestaande tests per tier dekken het gedrag ongewijzigd.
 
-**Waarom niet de volledige fase-orkestratie.** `Planner.Shared` heeft geen projectreferenties, en
-de domeintypes van de verwerking (`InkomendBericht`, `BerichtClassificatie`,
-`EmailVerwerkingStand`, `IEmailGraphService`, `EmailRunContext`, `BerichtPipeline`,
-`BerichtAiService`, `EmailReplyPolicyService`, …) bestaan per tier in eigen namespaces. De fasen
-achter één poort zetten vraagt eerst het samenvoegen van die typen. Dat hoort bij de gedeelde
-endpoint-orkestratie van #1271 en past niet in één chore.
+**Fase-orkestratie (#1716 slice 9, samen met #1271).** De fasen van `EmailProcessorFunction` staan sinds
+slice 9 eenmalig in `Planner.Endpoints/Email/EmailVerwerkerFasen.cs`, de noodmails in `EmailNoodmailMelding.cs`.
+De oude blokkade (per tier eigen domeintypen) is opgelost zonder typesamenvoeging: de orkestratie is generiek over
+het bericht (`IInkomendBericht` in `Planner.Shared/Email/BerichtAntwoordPoorten.cs`, door beide `InkomendBericht`-
+klassen geïmplementeerd) en krijgt alles wat database, Graph, AI of instellingen raakt via de poort
+`IEmailVerwerkerPoort<TBericht>`; de tier-`INoodmailThrottleStore` erft `INoodmailThrottlePoort` (DI ongewijzigd).
+Geen gedeelde providerabstractie: er zit nergens een SQL-verbinding achter één interface, elke tier houdt zijn eigen
+databasecode, en `EmailGraphService` blijft de enige Graph-adapter per tier. Tierverschillen die bewust behouden
+zijn: een ontbrekende `IChatClient` gooit op SQL Server en stopt de poll stil op Postgres (#857); fase 2 controleert
+op SQL Server de teamlijst (`TeamlijstGereedheid`) en ververst op Postgres de canonieke teamlijst. Tests:
+`Planner.Endpoints.Tests/Email/` (orkestratie en noodmails), per tier `EmailProcessorFasenTests` (omhulsel);
+mutatiebewijs `MUTATIELIJST=scripts/ci/mutatiebewijs-1716-slice9.tsv scripts/ci/mutatiebewijs-1716.sh`. Nog per
+tier: de verwerking van één bericht (`.Verwerking.cs`), `EmailBatchFilterService` en `EmailClassificationService`.
 
 ---
 

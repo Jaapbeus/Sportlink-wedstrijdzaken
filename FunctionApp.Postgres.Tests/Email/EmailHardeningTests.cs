@@ -1,3 +1,4 @@
+using Planner.Endpoints.Email;
 using AwesomeAssertions;
 using Planner.Shared.Email;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -10,7 +11,7 @@ namespace FunctionApp.Postgres.Tests.Email;
 /// Postgres-tier-tegenhanger van <c>FunctionApp.Tests/Email/EmailHardeningTests.cs</c> (#972 —
 /// port van EmailProcessorFunction). Bevat uitsluitend de scenario's die zonder databaseafhankelijkheid
 /// getest kunnen worden (<see cref="UitsluitingslijstCache"/> en
-/// <see cref="EmailProcessorFunction.FilterMetVerseUitsluitingslijstAsync"/>).
+/// <see cref="EmailVerwerkerFasen.FilterMetVerseUitsluitingslijstAsync"/> met het voorfilter van deze tier).
 /// <para>
 /// Het SQL Server-origineel test daarnaast <c>EmailPersistenceService.ResolveClubCode</c> (#707) en
 /// <c>SqlEmailPersistenceRepository.IsUniekeSleutelFout(int)</c> — beide bestaan op deze tier niet
@@ -50,11 +51,11 @@ public class EmailHardeningTests
             Bericht("m2")
         };
 
-        var resultaat = await EmailProcessorFunction.FilterMetVerseUitsluitingslijstAsync(
+        var resultaat = await EmailVerwerkerFasen.FilterMetVerseUitsluitingslijstAsync(
             batch,
             cache,
             () => { laadPogingen++; return Task.FromResult(Lijst("netuitgesloten@voorbeeld.test")); },
-            new EmailBatchFilterService(),
+            new EmailBatchFilterService().FilterUitgeslotenAdressen,
             nu,
             NullLogger.Instance);
 
@@ -86,11 +87,11 @@ public class EmailHardeningTests
         var laadPogingen = 0;
         var batch = new List<InkomendBericht> { Bericht("m1") };
 
-        var resultaat = await EmailProcessorFunction.FilterMetVerseUitsluitingslijstAsync(
+        var resultaat = await EmailVerwerkerFasen.FilterMetVerseUitsluitingslijstAsync(
             batch,
             cache,
             () => { laadPogingen++; return Task.FromResult(Lijst()); },
-            new EmailBatchFilterService(),
+            new EmailBatchFilterService().FilterUitgeslotenAdressen,
             nu.AddMinutes(1),
             NullLogger.Instance);
 
@@ -103,11 +104,11 @@ public class EmailHardeningTests
     {
         var cache = new UitsluitingslijstCache();
 
-        var resultaat = await EmailProcessorFunction.FilterMetVerseUitsluitingslijstAsync(
+        var resultaat = await EmailVerwerkerFasen.FilterMetVerseUitsluitingslijstAsync(
             [Bericht("m1")],
             cache,
             () => throw new InvalidOperationException("database niet bereikbaar (gesimuleerd)"),
-            new EmailBatchFilterService(),
+            new EmailBatchFilterService().FilterUitgeslotenAdressen,
             new DateTime(2026, 7, 27, 12, 0, 0, DateTimeKind.Utc),
             NullLogger.Instance);
 
@@ -124,11 +125,11 @@ public class EmailHardeningTests
 
         var batch = new List<InkomendBericht> { Bericht("m1") };
 
-        var resultaat = await EmailProcessorFunction.FilterMetVerseUitsluitingslijstAsync(
+        var resultaat = await EmailVerwerkerFasen.FilterMetVerseUitsluitingslijstAsync(
             batch,
             cache,
             () => throw new InvalidOperationException("database niet bereikbaar (gesimuleerd)"),
-            new EmailBatchFilterService(),
+            new EmailBatchFilterService().FilterUitgeslotenAdressen,
             nu,
             NullLogger.Instance);
 

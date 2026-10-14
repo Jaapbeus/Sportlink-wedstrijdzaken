@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Planner.Shared.Email.Trace;
+using Planner.Shared.Email;
 using SportlinkFunction.Email;
 
 namespace FunctionApp.Tests.Email.TestDoubles;

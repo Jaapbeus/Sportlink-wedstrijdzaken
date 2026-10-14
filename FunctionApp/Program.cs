@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
 using OpenAI.Chat;
 using Planner.Shared.Integrations.SportlinkClub;
+using Planner.Shared.TeamResolution;
 using SportlinkFunction.Email;
 using SportlinkFunction.Infrastructure;
 using SportlinkFunction.Monitoring;
@@ -75,6 +76,8 @@ if (!string.IsNullOrWhiteSpace(openAiApiKey) && EgressGuard.ExternalIntegrations
 // onafhankelijke uitgaande integratie en hoort niet toevallig aan AI-configuratie vast te zitten.
 SqlSportlinkAuthenticationRegistration.Register(builder.Services);
 
+// #1716 slice 2: TeamResolver en de poort ITeamCandidateRepository staan in Planner.Shared; deze tier
+// levert alleen TeamCandidateRepository. Gespiegeld getest in TeamResolutionDiRegistratieTests.
 builder.Services.AddSingleton<ITeamCandidateRepository, TeamCandidateRepository>();
 builder.Services.AddSingleton<ITeamResolver, TeamResolver>();
 // #1268: TeamAliasLearningService is niet meer geregistreerd. Hij werd uitsluitend door

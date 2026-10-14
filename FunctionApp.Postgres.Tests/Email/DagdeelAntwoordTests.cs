@@ -2,6 +2,7 @@ using AwesomeAssertions;
 using FunctionApp.Postgres.Email;
 using FunctionApp.Postgres.Planner;
 using FunctionApp.Postgres.Processing;
+using Planner.Shared.Email;
 using Xunit;
 
 namespace FunctionApp.Postgres.Tests.Email;
@@ -15,7 +16,7 @@ namespace FunctionApp.Postgres.Tests.Email;
 public class DagdeelAntwoordTests
 {
     private static readonly DateTime Vandaag =
-        BerichtAiService.KnvbRegelsGeldigTot.AddDays(-30).ToDateTime(TimeOnly.MinValue);
+        BerichtAiKern.KnvbRegelsGeldigTot.AddDays(-30).ToDateTime(TimeOnly.MinValue);
 
     private static readonly ClubAppSettingsSnapshot ClubSettings = new(
         PlannerAfzenderNaam: null, CoordinatorNaam: null, CoordinatorFunctie: null,
@@ -49,7 +50,7 @@ public class DagdeelAntwoordTests
     [Fact]
     public void Parse_DagdeelInJson_WordtOvergenomen()
     {
-        var result = BerichtAiService.ParseClassificatieResponse(
+        var result = BerichtAiKern.ParseClassificatieResponse(
             """{"type":"beschikbaarheid_check","dagdeel":"ochtend"}""", Vandaag);
 
         result.Dagdeel.Should().Be("ochtend");
@@ -63,7 +64,7 @@ public class DagdeelAntwoordTests
     [InlineData("""{"dagdeel":12}""", null)]
     [InlineData("""{}""", null)]
     public void Parse_DagdeelWordtGenormaliseerdOfNull(string json, string? verwacht)
-        => BerichtAiService.ParseClassificatieResponse(json, Vandaag).Dagdeel.Should().Be(verwacht);
+        => BerichtAiKern.ParseClassificatieResponse(json, Vandaag).Dagdeel.Should().Be(verwacht);
 
     // ── Doorgifte naar de planner ──
 

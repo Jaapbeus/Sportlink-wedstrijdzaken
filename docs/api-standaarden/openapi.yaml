@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.14.0.0
+  version: 3.15.0.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -764,7 +764,13 @@ components:
           nullable: true
         SeasonStartMonth:
           type: integer
+          minimum: 1
+          maximum: 12
           nullable: true
+          description: |
+            Seizoensstartmaand van deze club (1 = januari ... 12 = december; standaard 7 = juli, #1715).
+            Het seizoenseinde is de dag vóór de start van het volgende seizoen. Per club: elke club heeft
+            zijn eigen seizoenen en seizoenseinde (de seizoenstabel heeft een `ClubCode`).
         Accommodatie:
           type: string
           nullable: true
@@ -1444,8 +1450,13 @@ components:
         CoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,
         AccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi,
         KnvbPdfBijlageIngeschakeld, KnvbStandaardRegio, SportlinkExtensionEnabled, PdfExportIngeschakeld,
-        ZekerheidspoortActief
+        ZekerheidspoortActief, SeasonStartMonth
         (waarde `0`/`1`/`true`/`false`, anders 400).
+
+        `SeasonStartMonth` (#1715): een geheel getal 1 t/m 12, anders 400. Bij een wijziging worden de
+        seizoensrijen van de club opnieuw opgebouwd met de nieuwe startmaand en schuift het seizoenseinde
+        mee: de bewaartermijn van persoonskolommen in de historietabellen (#1698) volgt het seizoenseinde
+        van de club van de wedstrijd. Het wijzigen wordt vastgelegd in de auditlog zoals andere velden.
 
         De audit-actor (wie de wijziging doorvoerde) wordt uitsluitend server-side bepaald uit de
         door Easy Auth gevalideerde claims — dit contract kent daarom geen "wie"-veld (#1003).

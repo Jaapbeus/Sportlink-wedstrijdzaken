@@ -30,11 +30,19 @@ az account set --subscription [SUBSCRIPTION_ID]
 az deployment group what-if \
   --resource-group myAppGroup \
   --template-file infrastructure/main.bicep \
-  --parameters infrastructure/main.parameters.json
+  --parameters infrastructure/main.parameters.json \
+  --parameters tenantId="<TENANT_ID>" clientId="<CLIENT_ID>"
 ```
 
 Toont drift zonder iets te wijzigen. Verwachte output: "No changes detected" als de
-resources overeenkomen.
+resources overeenkomen. `tenantId` en `clientId` zijn sinds #1731 verplicht (`@minLength(1)`,
+geen default, ook voor de Consumption-module) en staan bewust **niet** in `main.parameters.json`;
+zonder die twee faalt de validatie vooraf. Gebruik dezelfde waarden als de GitHub-secrets
+`AZURE_AD_TENANT_ID`/`AZURE_AD_CLIENT_ID`, nooit in een bestand in git.
+
+Controleer vóór de eerstvolgende infrastructure-deploy de "Modify"-regels die what-if op
+`authsettingsV2` van de Consumption-app toont: dat is de verwachte afdwinging van Easy Auth, geen
+drift om te negeren.
 
 ### Deploy (alleen na expliciete goedkeuring)
 
@@ -50,6 +58,7 @@ az deployment group create \
   --resource-group myAppGroup \
   --template-file infrastructure/main.bicep \
   --parameters infrastructure/main.parameters.json \
+  --parameters tenantId="<TENANT_ID>" clientId="<CLIENT_ID>" \
   --parameters appInsightsConnectionString="<uit Azure Portal>" \
                sqlConnectionString="<uit GitHub secret>"
 ```
@@ -61,6 +70,7 @@ az deployment group create \
   --resource-group myAppGroup \
   --template-file infrastructure/main.bicep \
   --parameters infrastructure/main.parameters.json \
+  --parameters tenantId="<TENANT_ID>" clientId="<CLIENT_ID>" \
   --parameters deployMonitoring=true
 ```
 

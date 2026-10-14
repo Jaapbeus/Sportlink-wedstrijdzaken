@@ -1,9 +1,8 @@
 using Npgsql;
 using Planner.Shared;
+using Planner.Shared.TeamResolution;
 
 namespace FunctionApp.Postgres.TeamResolution;
-
-public sealed record TeamCandidate(int TeamId, string Teamnaam, string? LeeftijdsCategorie);
 
 /// <summary>
 /// Postgres-tier-tegenhanger van

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Planner.Shared.TeamResolution;
 using Planner.Shared;
 using Planner.Shared.Email;
 using Planner.Shared.Email.Trace;
@@ -7,7 +8,6 @@ using FunctionApp.Postgres.Email;
 using FunctionApp.Postgres.Planner;
 using FunctionApp.Postgres.Planner.Repositories;
 using FunctionApp.Postgres.Sync;
-using FunctionApp.Postgres.TeamResolution;
 
 namespace FunctionApp.Postgres.Processing;
 
@@ -31,59 +31,12 @@ namespace FunctionApp.Postgres.Processing;
 internal static partial class BerichtPipeline
 {
     /// <summary>
-    /// Extraheert datums uit onderwerp en body, en corrigeert de AI-classificatie.
-    /// Prioriteit: expliciete datum in onderwerp > expliciete datum in body > AI datum + dag-validatie.
-    /// In een reply-thread wint de AI-datum boven de (oude) datum in het onderwerp.
+    /// Corrigeert de datum van de AI-classificatie op basis van onderwerp en body. De regels
+    /// (expliciete datum in onderwerp &gt; in de eigen tekst &gt; AI-datum met dagnaamcorrectie) staan sinds
+    /// #1716 één keer in <see cref="BerichtDatumHeuristiek.CorrigeerDagDatum"/>.
     /// </summary>
     internal static void ValideerDagDatum(BerichtClassificatie classificatie, string emailBody, string onderwerp)
-    {
-        var eigenTekst = StripCitaatEnOndertekening(emailBody);
-
-        var onderwerpDatum = ExtractExpliciteDatum(onderwerp);
-        var onderwerpMagWinnen = string.IsNullOrEmpty(classificatie.Datum) || !BerichtTekstHeuristiek.HeeftReplyPrefix(onderwerp);
-        if (onderwerpDatum.HasValue && onderwerpMagWinnen)
-        {
-            classificatie.Datum = onderwerpDatum.Value.ToString("yyyy-MM-dd");
-            return;
-        }
-
-        var bodyDatum = ExtractExpliciteDatum(eigenTekst);
-        if (bodyDatum.HasValue && string.IsNullOrEmpty(classificatie.Datum))
-        {
-            classificatie.Datum = bodyDatum.Value.ToString("yyyy-MM-dd");
-            return;
-        }
-
-        if (string.IsNullOrEmpty(classificatie.Datum)) return;
-        if (!DateOnly.TryParse(classificatie.Datum, out var datum)) return;
-
-        var tekst = (onderwerp + " " + eigenTekst).ToLowerInvariant();
-        var dagNamen = new (string naam, DayOfWeek dag)[]
-        {
-            ("maandag", DayOfWeek.Monday), ("dinsdag", DayOfWeek.Tuesday),
-            ("woensdag", DayOfWeek.Wednesday), ("donderdag", DayOfWeek.Thursday),
-            ("vrijdag", DayOfWeek.Friday), ("zaterdag", DayOfWeek.Saturday),
-            ("zondag", DayOfWeek.Sunday)
-        };
-
-        var gevondenDagen = dagNamen
-            .Where(d => tekst.Contains(d.naam))
-            .Select(d => d.dag)
-            .Distinct()
-            .ToList();
-        if (gevondenDagen.Count != 1) return;
-
-        var doelDag = gevondenDagen[0];
-        if (datum.DayOfWeek == doelDag) return;
-
-        for (int offset = 1; offset <= 7; offset++)
-        {
-            if (datum.AddDays(-offset).DayOfWeek == doelDag)
-                { classificatie.Datum = datum.AddDays(-offset).ToString("yyyy-MM-dd"); return; }
-            if (datum.AddDays(offset).DayOfWeek == doelDag)
-                { classificatie.Datum = datum.AddDays(offset).ToString("yyyy-MM-dd"); return; }
-        }
-    }
+        => classificatie.Datum = BerichtDatumHeuristiek.CorrigeerDagDatum(classificatie.Datum, emailBody, onderwerp);
 
     /// <summary>
     /// Vertaalt de AI-classificatie naar de juiste Availability-/RescheduleService-aanroep.
@@ -101,6 +54,8 @@ internal static partial class BerichtPipeline
         string? clubCode = null, ClubAppSettingsSnapshot? clubSettings = null, TraceBuilder? trace = null)
     {
         ArgumentNullException.ThrowIfNull(teamResolver);
+        // #1730: de ene strikte grens voor alle modeldatumvelden, vóór trace, teamherkenning en verwerking.
+        (classificatie.Datum, classificatie.GewensteDatum, classificatie.Datums) = ModelDatum.Grens(classificatie.Datum, classificatie.GewensteDatum, classificatie.Datums);
         trace?.Classificatie(classificatie.Type.ToString(), classificatie.TeamNaam, classificatie.Tegenstander, classificatie.GetAlleDatums().Count, classificatie.AanvangsTijd);
 
         var cs = PostgresDatabaseConfig.ConnectionString;
@@ -140,7 +95,7 @@ internal static partial class BerichtPipeline
     /// (zie <see cref="Email.EmailReplyPolicyService"/>).
     ///
     /// Retourneert <c>null</c> als <c>knvbStandaardRegio</c> ontbreekt, de PDF-bijlage-instelling
-    /// uit staat, of er geen (toekomstig) seizoen in <c>public.season</c> staat — de aanroepende tak
+    /// uit staat, of er geen (toekomstig) seizoen in <c>public.clubseason</c> staat — de aanroepende tak
     /// valt dan terug op het bestaande gedrag (<see cref="RescheduleService.CheckRescheduleAvailabilityAsync"/>).
     /// Nooit een regio gokken of hardcoden: ontbreekt de instelling, dan is er geen bijlage/flow.
     /// </summary>
@@ -175,10 +130,10 @@ internal static partial class BerichtPipeline
             return null;
         }
 
-        var seizoen = await PostgresSeasonHelper.GetCurrentKnvbSeizoenAsync(log);
+        var seizoen = await PostgresSeasonHelper.GetCurrentKnvbSeizoenAsync(log, clubCode);
         if (string.IsNullOrWhiteSpace(seizoen))
         {
-            log.LogInformation("VERZET-ZONDER-DATUM - geen (toekomstig) seizoen gevonden in public.season; val terug op het standaard herplan-pad");
+            log.LogInformation("VERZET-ZONDER-DATUM - geen (toekomstig) seizoen gevonden in public.clubseason; val terug op het standaard herplan-pad");
             return null;
         }
 
@@ -240,39 +195,6 @@ internal static partial class BerichtPipeline
 
     // ── Private helpers ──
 
-    internal static List<string> ExpandDoordeweeksDatums(
-        List<string> aiDatums, string onderwerp, string body)
-    {
-        var eigenBody = StripCitaatEnOndertekening(body);
-        var tekst = (onderwerp + " " + eigenBody).ToLowerInvariant();
-        if (!tekst.Contains("doordeweeks"))
-            return aiDatums;
-
-        if (ExtractExpliciteDatum(onderwerp).HasValue || ExtractExpliciteDatum(eigenBody).HasValue)
-            return aiDatums;
-
-        DateOnly weekStart;
-        if (aiDatums.Count > 0 && DateOnly.TryParse(aiDatums[0], out var firstDate))
-        {
-            int daysFromMonday = ((int)firstDate.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
-            weekStart = firstDate.AddDays(-daysFromMonday);
-        }
-        else
-        {
-            var today = DateOnly.FromDateTime(DateTime.Today);
-            int daysUntilMonday = ((int)DayOfWeek.Monday - (int)today.DayOfWeek + 7) % 7;
-            if (daysUntilMonday == 0) daysUntilMonday = 7;
-            weekStart = today.AddDays(daysUntilMonday);
-        }
-
-        var vandaag = DateOnly.FromDateTime(DateTime.Today);
-        return Enumerable.Range(0, 4)
-            .Select(i => weekStart.AddDays(i))
-            .Where(d => d > vandaag)
-            .Select(d => d.ToString("yyyy-MM-dd"))
-            .ToList();
-    }
-
     /// <summary>
     /// Het plannerverzoek voor één datum van een beschikbaarheidscheck. Geeft het door de afzender genoemde
     /// dagdeel door (#1587), zodat de planner vensters en alternatieven binnen dat dagdeel zoekt in plaats
@@ -290,95 +212,6 @@ internal static partial class BerichtPipeline
             HeelVeld = classificatie.HeelVeld
         };
 
-    internal static string? KiesPrimaireDatum(List<string> alleDatums, string? aiDatum)
-        => alleDatums.Count > 0 ? alleDatums[0] : aiDatum;
-
-    internal static string StripCitaatEnOndertekening(string tekst)
-    {
-        if (string.IsNullOrWhiteSpace(tekst)) return tekst ?? "";
-
-        var markers = new[]
-        {
-            @"\bvan\s*:",
-            @"\bverzonden\s*:",
-            @"\bfrom\s*:",
-            @"\bsent\s*:",
-            @"-{2,}\s*original",
-            @"\bop\b[^\n]{0,120}?\bschreef\b"
-        };
-
-        var eerstePositie = -1;
-        foreach (var marker in markers)
-        {
-            var match = System.Text.RegularExpressions.Regex.Match(
-                tekst, marker, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            if (match.Success && (eerstePositie < 0 || match.Index < eerstePositie))
-                eerstePositie = match.Index;
-        }
-
-        if (eerstePositie < 0) return tekst;
-
-        var eigenTekst = tekst[..eerstePositie];
-        return string.IsNullOrWhiteSpace(eigenTekst) ? tekst : eigenTekst;
-    }
-
-    private static DateOnly? ExtractExpliciteDatum(string tekst)
-    {
-        if (string.IsNullOrWhiteSpace(tekst)) return null;
-
-        var numericMatch = System.Text.RegularExpressions.Regex.Match(tekst, @"(\d{1,2})-(\d{1,2})-(\d{4})");
-        if (numericMatch.Success)
-        {
-            if (int.TryParse(numericMatch.Groups[1].Value, out var dag) &&
-                int.TryParse(numericMatch.Groups[2].Value, out var maand) &&
-                int.TryParse(numericMatch.Groups[3].Value, out var jaar))
-            {
-                try { return new DateOnly(jaar, maand, dag); } catch { }
-            }
-        }
-
-        var slashMatchMetJaar = System.Text.RegularExpressions.Regex.Match(tekst, @"(?<![\d/])(\d{1,2})/(\d{1,2})/(\d{4})(?!\d)");
-        if (slashMatchMetJaar.Success)
-        {
-            if (int.TryParse(slashMatchMetJaar.Groups[1].Value, out var dag) &&
-                int.TryParse(slashMatchMetJaar.Groups[2].Value, out var maand) &&
-                int.TryParse(slashMatchMetJaar.Groups[3].Value, out var jaar))
-            {
-                try { return new DateOnly(jaar, maand, dag); } catch { }
-            }
-        }
-
-        var maandNamen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["januari"] = 1, ["februari"] = 2, ["maart"] = 3, ["april"] = 4,
-            ["mei"] = 5, ["juni"] = 6, ["juli"] = 7, ["augustus"] = 8,
-            ["september"] = 9, ["oktober"] = 10, ["november"] = 11, ["december"] = 12,
-            ["jan"] = 1, ["feb"] = 2, ["mrt"] = 3, ["apr"] = 4,
-            ["jun"] = 6, ["jul"] = 7, ["aug"] = 8,
-            ["sep"] = 9, ["sept"] = 9, ["okt"] = 10, ["nov"] = 11, ["dec"] = 12
-        };
-
-        var tekstLower = tekst.ToLowerInvariant();
-        foreach (var (naam, maandNr) in maandNamen)
-        {
-            var maandMatch = System.Text.RegularExpressions.Regex.Match(tekstLower, $@"(\d{{1,2}})\s+{naam}\b\.?(?:\s+(\d{{4}}))?");
-            if (maandMatch.Success && int.TryParse(maandMatch.Groups[1].Value, out var d))
-            {
-                if (maandMatch.Groups[2].Success && int.TryParse(maandMatch.Groups[2].Value, out var expliciteJaar))
-                {
-                    try { return new DateOnly(expliciteJaar, maandNr, d); } catch { }
-                }
-                else
-                {
-                    var kandidaat = BerichtTekstHeuristiek.EerstvolgendVoorkomen(d, maandNr);
-                    if (kandidaat.HasValue) return kandidaat;
-                }
-            }
-        }
-
-        return null;
-    }
-
     /// <summary>
     /// Club-heuristiek-resolver voor niet-SQL "eigen team"-herkenning (#677/#889). Bewust geen
     /// <c>PostgresClubScope.Resolve</c>: die gooit zonder primaire club, terwijl dit pad juist een
@@ -388,92 +221,20 @@ internal static partial class BerichtPipeline
         => !string.IsNullOrWhiteSpace(clubCodeOverride) ? clubCodeOverride : (PostgresAppSettings.GetSetting("clubCode") ?? "");
 
     /// <summary>
-    /// Bepaalt welke van de twee genoemde teams het eigen team is, en zet <c>TeamNaam</c> op de
-    /// canonieke naam uit de teamlijst (#700/#889).
+    /// Tier-omhulsel van <see cref="EigenTeamBepaling.BepaalEigenTeamEnTegenstanderAsync"/> (#1716 slice 4): de
+    /// bepaling zelf staat één keer in <c>Planner.Shared</c>; hier alleen het terugzetten van de canonieke
+    /// teamnaam en de (eventueel verwisselde) tegenstander op de classificatie. Niet herkend: classificatie
+    /// ongewijzigd.
     /// </summary>
-    private static async Task<bool> BepaalEigenTeamEnTegenstanderAsync(
+    /// <returns>True als het eigen team herkend is; dan staat de canonieke naam in <c>TeamNaam</c>.</returns>
+    internal static async Task<bool> BepaalEigenTeamEnTegenstanderAsync(
         BerichtClassificatie classificatie, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace)
     {
-        if (string.IsNullOrWhiteSpace(clubCode))
-        {
-            trace?.TeamHerkenningOvergeslagen("geen clubcode");
-            log.LogWarning("TEAMRESOLUTIE - geen clubCode beschikbaar; teamherkenning overgeslagen");
-            return false;
-        }
-
-        var team = (classificatie.TeamNaam ?? "").Trim();
-        var tegenstander = (classificatie.Tegenstander ?? "").Trim();
-
-        var teamUitkomst = await ProbeerResolveAsync(resolver, team, clubCode, log, trace, TraceCodes.TeamHerkenning);
-
-        if (teamUitkomst is not null && teamUitkomst.IsOpgelost)
-        {
-            classificatie.TeamNaam = teamUitkomst.CanoniekeTeamnaam;
-            LogUitkomst(log, teamUitkomst);
-            return true;
-        }
-
-        var tegenstanderUitkomst = await ProbeerResolveAsync(resolver, tegenstander, clubCode, log, trace, TraceCodes.TegenstanderHerkenning);
-        if (tegenstanderUitkomst is not null && tegenstanderUitkomst.IsOpgelost)
-        {
-            classificatie.TeamNaam = tegenstanderUitkomst.CanoniekeTeamnaam;
-            classificatie.Tegenstander = team;
-            trace?.TeamWissel(classificatie.TeamNaam, team);
-            log.LogInformation("TEAMRESOLUTIE - team en tegenstander verwisseld op basis van de teamlijst");
-            LogUitkomst(log, tegenstanderUitkomst);
-            return true;
-        }
-
-        var kandidaten = teamUitkomst?.Kandidaten.Count ?? 0;
-        log.LogInformation(
-            "TEAMRESOLUTIE - geen eigen team herkend (bron={Bron}, kandidaten={Kandidaten})",
-            teamUitkomst?.Bron ?? ResolutionBron.Onopgelost, kandidaten);
-        return false;
+        var uitkomst = await EigenTeamBepaling.BepaalEigenTeamEnTegenstanderAsync(
+            classificatie.TeamNaam, classificatie.Tegenstander, resolver, clubCode, log, trace);
+        if (!uitkomst.Herkend) return false;
+        classificatie.TeamNaam = uitkomst.TeamNaam;
+        classificatie.Tegenstander = uitkomst.Tegenstander;
+        return true;
     }
-
-    /// <summary>
-    /// Leidt het eigen team af uit de wedstrijdnaam ("TeamA - TeamB") die de opponent-lookup
-    /// (#1139) opleverde — Postgres-tegenhanger van het gelijknamige SQL Server-origineel.
-    /// Probeert beide kanten van het streepje tegen de teamresolver; de eerste kant die
-    /// oplosbaar is naar een bekend team levert de canonieke naam. Geen van beide oplosbaar?
-    /// Dan blijft de classificatie ongewijzigd en handelt de aanroepende tak dat af als "team
-    /// onbekend". Er wordt nooit een naam gegokt.
-    /// </summary>
-    private static async Task<string?> BepaalEigenTeamUitWedstrijdAsync(
-        string? wedstrijd, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace)
-    {
-        if (string.IsNullOrWhiteSpace(wedstrijd)) return null;
-
-        foreach (var kant in wedstrijd.Split(" - ", 2, StringSplitOptions.TrimEntries))
-        {
-            var uitkomst = await ProbeerResolveAsync(resolver, kant, clubCode, log, trace, TraceCodes.OpponentTeamHerkenning);
-            if (uitkomst is not null && uitkomst.IsOpgelost)
-                return uitkomst.CanoniekeTeamnaam;
-        }
-        return null;
-    }
-
-    private static async Task<TeamResolutionResult?> ProbeerResolveAsync(
-        ITeamResolver resolver, string ruweTekst, string clubCode, ILogger log, TraceBuilder? trace, string code)
-    {
-        if (string.IsNullOrWhiteSpace(ruweTekst)) return null;
-
-        try
-        {
-            var u = await resolver.ResolveAsync(new TeamResolutionRequest(ruweTekst, null, null, clubCode));
-            trace?.TeamHerkenning(code, ruweTekst, u.Bron.ToString(), u.Confidence, u.Kandidaten.Select(k => k.Teamnaam), u.IsOpgelost ? u.CanoniekeTeamnaam : null);
-            return u;
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "TEAMRESOLUTIE - resolutie mislukt");
-            trace?.TeamHerkenning(code, ruweTekst, null, 0, null, null);
-            return null;
-        }
-    }
-
-    private static void LogUitkomst(ILogger log, TeamResolutionResult uitkomst)
-        => log.LogInformation(
-            "TEAMRESOLUTIE - teamId={TeamId} bron={Bron} confidence={Confidence}",
-            uitkomst.TeamId, uitkomst.Bron, uitkomst.Confidence);
 }

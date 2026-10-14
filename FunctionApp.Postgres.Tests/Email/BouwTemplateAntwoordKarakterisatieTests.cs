@@ -2,6 +2,7 @@ using AwesomeAssertions;
 using FunctionApp.Postgres.Email;
 using FunctionApp.Postgres.Processing;
 using Planner.Shared.Email.Trace;
+using Planner.Shared.Email;
 using Xunit;
 
 namespace FunctionApp.Postgres.Tests.Email;

@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Logging;
 using FunctionApp.Postgres.Processing;
+using Planner.Endpoints.Email;
+using Planner.Shared.Email;
 
 namespace FunctionApp.Postgres.Email;
 
@@ -7,14 +9,9 @@ namespace FunctionApp.Postgres.Email;
 /// Postgres-tier-tegenhanger van <c>FunctionApp/Email/EmailClassificationService.cs</c> (#972 —
 /// port van EmailProcessorFunction). Woordelijke kopie.
 /// </summary>
-internal sealed record EmailClassificationBatchResult(
-    List<(InkomendBericht Email, BerichtClassificatie Classificatie)> Classificaties,
-    bool AiAborted,
-    Exception? QuotaException);
-
 internal sealed class EmailClassificationService
 {
-    internal async Task<EmailClassificationBatchResult> ClassificeerBatchAsync(
+    internal async Task<EmailClassificatieBatch<InkomendBericht>> ClassificeerBatchAsync(
         IEnumerable<InkomendBericht> emails,
         Func<InkomendBericht, Task<BerichtClassificatie>> classifyAsync,
         Func<Exception, bool> isQuotaFout,
@@ -33,7 +30,7 @@ internal sealed class EmailClassificationService
             catch (Exception ex) when (isQuotaFout(ex))
             {
                 log.LogError(ex, "OpenAI quota overschreden — email processor stopt voor deze batch");
-                return new EmailClassificationBatchResult(classificaties, AiAborted: true, QuotaException: ex);
+                return new EmailClassificatieBatch<InkomendBericht>(classificaties, AiAborted: true, QuotaException: ex);
             }
             catch (Exception ex)
             {
@@ -41,6 +38,6 @@ internal sealed class EmailClassificationService
             }
         }
 
-        return new EmailClassificationBatchResult(classificaties, AiAborted: false, QuotaException: null);
+        return new EmailClassificatieBatch<InkomendBericht>(classificaties, AiAborted: false, QuotaException: null);
     }
 }

@@ -10,9 +10,23 @@ namespace FunctionApp.Postgres.Sync;
 /// </summary>
 internal static class SyncJobsRepository
 {
-    internal static async Task CreateAsync(Guid id, string clubCode, int weekOffsetFrom, int weekOffsetTo)
+    // Testnaad (#1716): elke publieke methode delegeert naar een overload met expliciete
+    // connectiestring; de standaardpaden gebruiken ongewijzigd PostgresDatabaseConfig.ConnectionString.
+    internal static Task CreateAsync(Guid id, string clubCode, int weekOffsetFrom, int weekOffsetTo)
+        => CreateAsync(PostgresDatabaseConfig.ConnectionString, id, clubCode, weekOffsetFrom, weekOffsetTo);
+
+    internal static Task MarkRunningAsync(Guid id)
+        => MarkRunningAsync(PostgresDatabaseConfig.ConnectionString, id);
+
+    internal static Task MarkCompletedAsync(Guid id, bool succeeded, string? errorMessage)
+        => MarkCompletedAsync(PostgresDatabaseConfig.ConnectionString, id, succeeded, errorMessage);
+
+    internal static Task<SyncJobStatus?> GetLatestOrByIdAsync(string clubCode, Guid? jobId)
+        => GetLatestOrByIdAsync(PostgresDatabaseConfig.ConnectionString, clubCode, jobId);
+
+    internal static async Task CreateAsync(string connectionString, Guid id, string clubCode, int weekOffsetFrom, int weekOffsetTo)
     {
-        await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+        await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand(
             "INSERT INTO public.syncjobs (id, clubcode, status, weekoffsetfrom, weekoffsetto) " +
@@ -25,9 +39,9 @@ internal static class SyncJobsRepository
         await command.ExecuteNonQueryAsync();
     }
 
-    internal static async Task MarkRunningAsync(Guid id)
+    internal static async Task MarkRunningAsync(string connectionString, Guid id)
     {
-        await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+        await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand(
             "UPDATE public.syncjobs SET status = 'running', startedat = now() WHERE id = @id",
@@ -36,9 +50,9 @@ internal static class SyncJobsRepository
         await command.ExecuteNonQueryAsync();
     }
 
-    internal static async Task MarkCompletedAsync(Guid id, bool succeeded, string? errorMessage)
+    internal static async Task MarkCompletedAsync(string connectionString, Guid id, bool succeeded, string? errorMessage)
     {
-        await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+        await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand(
             "UPDATE public.syncjobs SET status = @status, completedat = now(), errormessage = @errormessage WHERE id = @id",
@@ -53,9 +67,9 @@ internal static class SyncJobsRepository
     /// Meest recente job voor <paramref name="clubCode"/>, of de job met <paramref name="jobId"/>
     /// als die is meegegeven. <c>null</c> als er nog geen enkele job bestaat.
     /// </summary>
-    internal static async Task<SyncJobStatus?> GetLatestOrByIdAsync(string clubCode, Guid? jobId)
+    internal static async Task<SyncJobStatus?> GetLatestOrByIdAsync(string connectionString, string clubCode, Guid? jobId)
     {
-        await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+        await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand(
             "SELECT id, status, weekoffsetfrom, weekoffsetto, createdat, startedat, completedat, errormessage " +

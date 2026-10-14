@@ -1,67 +1,13 @@
+using Planner.Shared.Email;
+
 namespace SportlinkFunction.Email;
 
-// Classificatie door AI
-public enum VerzoekType
-{
-    BeschikbaarheidCheck,
-    HerplanVerzoek,
-    Bevestiging,
-    TeamContactOpvragen,  // #168: "wie is de trainer/coach van [team]?"
-    BuitenScope
-}
-
-public enum NamensWie
-{
-    Afzender,
-    Tegenstander,
-    Onbekend
-}
-
-// AI classificatie response
-public class BerichtClassificatie
-{
-    public VerzoekType Type { get; set; }
-    public string? Datum { get; set; }           // yyyy-MM-dd — eerste/primaire datum
-    public string? AanvangsTijd { get; set; }    // HH:mm
-    // ochtend | middag | avond — alleen als de afzender een dagdeel noemt (#1587); nooit afgeleid uit een tijd
-    public string? Dagdeel { get; set; }
-    public string? GewensteDatum { get; set; }   // yyyy-MM-dd — gewenste nieuwe datum (bij herplan)
-    public List<string>? Datums { get; set; }    // Meerdere datums bij multi-datum verzoek
-    public string? TeamNaam { get; set; }
-    public string? LeeftijdsCategorie { get; set; }
-    public string? Tegenstander { get; set; }
-    public string Samenvatting { get; set; } = "";
-    public NamensWie NamensWie { get; set; }
-    // Gevuld door AI als het verzoek mogelijk een KNVB-regel overtreedt (#73)
-    public string? KnvbNotitie { get; set; }
-    // Heel veld gevraagd — overschrijft de standaard veldafmeting uit Speeltijden
-    public bool? HeelVeld { get; set; }
-
-    // Door de pipeline gezet (niet door AI) wanneer een KNVB-bijlage + BCC van toepassing is (#561).
-    // Houd dit klein (strings, geen bytes): classificatie wordt via JsonConvert.SerializeObject naar
-    // planner.EmailVerwerking gelogd — grote binaire payloads horen daar niet in.
-    // Door de pipeline gezet (niet door AI) als de teamresolutie TeamNaam niet kon bevestigen: antwoorden
-    // gebruiken dan generieke tekst in plaats van de vrije modeltekst.
-    public bool TeamNaamOnbevestigd { get; set; }
-
-    public bool VoegKnvbPdfBijlageToe { get; set; }
-    public string? KnvbBijlageRegio { get; set; }
-
-    /// <summary>
-    /// Retourneert alle unieke datums: Datums als die er zijn, anders alleen Datum.
-    /// </summary>
-    public List<string> GetAlleDatums()
-    {
-        if (Datums != null && Datums.Count > 0)
-            return Datums.Distinct().ToList();
-        if (!string.IsNullOrEmpty(Datum))
-            return new List<string> { Datum };
-        return new List<string>();
-    }
-}
+// VerzoekType, NamensWie, BerichtClassificatie en EmailStatus staan sinds #1716 slice 5 eenmalig in
+// Planner.Shared/Email/ (gelijk voor beide tiers). InkomendBericht blijft per tier: de vorm verschilt
+// (ConversationId en Body zijn hier niet-nullable met standaard "", op de Postgres-tier nullable).
 
 // Inkomend bericht (kanaal-agnostisch: email, WhatsApp, dry-run, etc.)
-public class InkomendBericht
+public class InkomendBericht : IInkomendBericht
 {
     public string MessageId { get; set; } = "";
     public string ConversationId { get; set; } = "";
@@ -73,26 +19,3 @@ public class InkomendBericht
     /// <summary>Internetheaders van het bericht (naam, waarde); alleen gevuld door de Graph-adapter, gebruikt om automatische afzenders te herkennen.</summary>
     public IReadOnlyList<KeyValuePair<string, string>> InternetHeaders { get; set; } = [];
 }
-
-// Verwerking status
-public enum EmailStatus
-{
-    Ontvangen,
-    Geclassificeerd,
-    Verwerkt,
-    AntwoordVerstuurd,
-    Review,
-    Fout,
-    BuitenScope,
-    // Verwerkt, maar bewust geen automatisch antwoord verstuurd omdat planning mogelijk is —
-    // de coördinator plant handmatig in en koppelt zelf terug (#572).
-    GeenAntwoordNodig
-}
-
-// Few-shot voorbeeld voor classificatie-leren via gevalideerde correcties (#323)
-public record ClassificatieCorrectieVoorbeeld(
-    string OrigineelType,
-    string JuistType,
-    string OrigineleSamenvatting,
-    string CorrectieSamenvatting
-);

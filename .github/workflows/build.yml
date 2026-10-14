@@ -118,6 +118,12 @@ jobs:
       - name: Codekwaliteit — regelregister klopt
         run: bash scripts/ci/check-regelregister.sh
 
+      - name: Versies — csproj's synchroon, OpenAPI-versie YAML = JSON
+        run: bash scripts/ci/check-versie-synchroon.sh
+
+      - name: API.md — endpointtabel komt overeen met openapi.json
+        run: python3 scripts/ci/check-api-md-sync.py
+
       # Een groene guard bewijst niets — hij kan ook groen zijn omdat hij niets ziet. Deze tests
       # maken van elke overtreding tijdelijk een echte, en eisen dat de guard rood wordt. Twee van
       # de vijf negatieve tests sloegen bij het schrijven ervan eerst ten onrechte niet aan.
@@ -409,10 +415,24 @@ jobs:
       - name: Claude issue-beurt eindlabel testen
         run: node .github/scripts/claude-issue-turn-eindlabel.test.js
 
+      # #1727: publicatie van een Claude-review op een Codex-PR (hercontrole, SHA-binding, scan).
+      - name: Claude issue-beurt reviewpublicatie testen
+        run: node .github/scripts/claude-issue-turn-review.test.js
+
       # #1686: helper van turn-label-exclusief.yml (hoogstens één turn:-label). Ook die workflow
       # draait alleen op een gelabeld issue; zonder deze test blijkt een fout pas bij een echte beurtwissel.
       - name: Turn-label exclusief testen
         run: node .github/scripts/turn-label-exclusief.test.js
+
+      # #1721 (fase 1): routetabel en workflowstructuur van de issue-router en de aanroepbare beurtworkflow,
+      # plus de guard dat geen enkele workflow `checks: write` krijgt. Beide draaien alleen op een
+      # eigen trigger of handmatig; zonder deze tests blijkt een fout pas bij een proef.
+      - name: Issue-router testen
+        run: node .github/scripts/issue-router.test.js
+
+      # #1721: rondeteller op ID's (fail-closed, bewijs per poging) voor de issue-beurt.
+      - name: Claude issue-beurt ledger testen
+        run: node .github/scripts/claude-issue-turn-ledger.test.js
 
       # ──────────────────────────────────────────────────────────────────────
       # #595: schema-drift guard.
@@ -602,7 +622,7 @@ jobs:
           INSERT INTO @verwacht (naam) VALUES
               ('dbo.AppSettings'), ('dbo.Velden'), ('dbo.Speeltijden'), ('dbo.TeamRegels'),
               ('dbo.VeldBeschikbaarheid'), ('dbo.VeldTraining'), ('dbo.Teams'), ('dbo.TeamAliassen'),
-              ('dbo.KnvbKalenderDag'), ('dbo.Season'), ('dbo.Zonsondergang'),
+              ('dbo.KnvbKalenderDag'), ('dbo.Season'), ('dbo.ClubSeason'), ('dbo.Zonsondergang'),
               ('dbo.EmailTemplateInstellingen'), ('dbo.UitgeslotenEmailAdressen'),
               ('dbo.TeamVoorkeurTijden'), ('dbo.AppSettingsAudit'),
               ('planner.EmailVerwerking'), ('planner.GeplandeWedstrijden'),
@@ -632,6 +652,12 @@ jobs:
                WHERE [ClubCode] = 'ALLSTARS' AND [Actief] = 1 AND LEN(LTRIM(RTRIM([Onderwerp]))) > 0) < 2
               RAISERROR('dbo.EmailTemplateInstellingen heeft minder dan 2 actieve democlub-sjablonen met een niet-leeg onderwerp (#911).', 16, 1);
           SELECT 'EmailTemplates ALLSTARS: ' + [TemplateKey] FROM [dbo].[EmailTemplateInstellingen] WHERE [ClubCode] = 'ALLSTARS';
+
+          -- #1715: elke club heeft eigen seizoenen in dbo.ClubSeason (uit de eigen SeasonStartMonth).
+          IF EXISTS (SELECT 1 FROM [dbo].[AppSettings] a
+                     WHERE NOT EXISTS (SELECT 1 FROM [dbo].[ClubSeason] c WHERE c.[ClubCode] = a.[ClubCode]))
+              RAISERROR('dbo.ClubSeason heeft geen seizoenen voor minstens één club (#1715).', 16, 1);
+          SELECT 'ClubSeason: ' + [ClubCode] + ' = ' + CAST(COUNT(*) AS VARCHAR) FROM [dbo].[ClubSeason] GROUP BY [ClubCode];
           "
 
       # #856: bewijst dat scripts/migrations/003-seed-allstars-demo-matches.sql daadwerkelijk werkt
@@ -701,6 +727,90 @@ jobs:
             exit 1
           fi
           echo "AllStars-demodata (#856): 28 teams, 28 begeleiders, 224 wedstrijden — bevestigd, ook na een herhaalde run (idempotent)."
+
+      # #1715 (Codex-review #1743 ronde 1): de overgang op een BESTAANDE database. deploy.yml draait het
+      # PostDeployment-script vóór de nieuwe code, dus de vorige code leest dan nog even het oude schema.
+      # Eerst het script van de basisbranch (twee keer: pas bij de tweede run bestaat de seizoensprocedure
+      # en vult hij dbo.Season, zoals op een installatie die al een deploy achter de rug heeft), dan dat van
+      # deze PR (twee keer, idempotentie). Daarna: dbo.Season is onveranderd en clubneutraal, de leesquery's
+      # van de vorige code werken nog, en elke club heeft eigen seizoenen in dbo.ClubSeason.
+      - name: Overgang bestaande database — PostDeployment van de basis, daarna van deze PR (#1715)
+        if: github.event_name == 'pull_request'
+        env:
+          BASIS_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          sql() { docker exec sqlfresh /opt/mssql-tools18/bin/sqlcmd \
+                    -S localhost -U sa -P "$SA_PW" -C "$@"; }
+          git fetch --no-tags --depth=1 origin "$BASIS_SHA"
+          git show "$BASIS_SHA:Database/Script.PostDeployment1.sql" > /tmp/postdeployment-basis.sql
+          # #1751: het generieke deel geldt voor élke PR en blijft altijd rood kunnen worden: het
+          # PostDeployment van de basis (twee keer) en dat van deze PR (twee keer) moeten achter elkaar op
+          # dezelfde bestaande database slagen. Alleen de #1715-specifieke metingen (dbo.Season gevuld en
+          # ongewijzigd, ClubSeason per club) hebben betekenis zolang de basis ClubSeason nog mist; staat
+          # dbo.ClubSeason al in de basis (sinds #1743 op develop), dan maakt de basis het schema zelf aan.
+          # De contract-stap (#1747) herdefinieert die #1715-metingen; een volgende expand-stap voegt zijn
+          # eigen metingen toe, het generieke deel dekt de volgende overgang al.
+          if grep -q 'ClubSeason' /tmp/postdeployment-basis.sql; then
+            SPECIFIEK=0
+            echo "Overgang #1715 al uitgerold in de basis (${BASIS_SHA}): alleen het generieke deel (basis 2x, PR 2x op een bestaande database) draait; de #1715-metingen worden overgeslagen."
+          else
+            SPECIFIEK=1
+          fi
+          docker cp /tmp/postdeployment-basis.sql sqlfresh:/tmp/postdeployment-basis.sql
+          sql -Q "CREATE DATABASE SportlinkTransitie"
+          for run in 1 2; do
+            echo "───── Basis, run ${run} ─────"
+            sql -d SportlinkTransitie -b -V 11 -i /tmp/postdeployment-basis.sql
+          done
+          if [ "$SPECIFIEK" = 1 ]; then
+            voor=$(sql -d SportlinkTransitie -b -V 11 -h -1 -W -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM [dbo].[Season];")
+          fi
+          for run in 1 2; do
+            echo "───── Deze PR, run ${run} ─────"
+            sql -d SportlinkTransitie -b -V 11 -i /tmp/postdeployment.sql
+          done
+          if [ "$SPECIFIEK" != 1 ]; then
+            echo "Overgang: basis en PR slaagden elk twee keer op dezelfde bestaande database (generiek deel)."
+            exit 0
+          fi
+          na=$(sql -d SportlinkTransitie -b -V 11 -h -1 -W -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM [dbo].[Season];")
+          if [ "$voor" != "$na" ]; then
+            echo "::error::dbo.Season veranderde bij de overgang (${voor} -> ${na} rijen); de vorige code leest die tabel nog (#1715)."
+            exit 1
+          fi
+          sql -d SportlinkTransitie -b -V 11 -h -1 -W -Q "
+          SET NOCOUNT ON;
+          -- Leesquery's van de vorige codeversie (origin/main vóór #1715), letterlijk.
+          DECLARE @x DATE;
+          SELECT @x = MAX(DateUntil) FROM [dbo].[Season];
+          SELECT TOP 1 @x = [DateFrom] FROM [dbo].[Season] WHERE [DateUntil] >= CAST(SYSUTCDATETIME() AS DATE) ORDER BY [DateFrom] ASC;
+          IF COL_LENGTH('dbo.Season', 'ClubCode') IS NOT NULL
+              RAISERROR('dbo.Season kreeg een ClubCode; dat hoort pas bij de contract-stap (#1715).', 16, 1);
+          IF NOT EXISTS (SELECT 1 FROM [dbo].[Season])
+              RAISERROR('dbo.Season is leeg na twee basis-runs; de overgangstest meet dan niets (#1715).', 16, 1);
+          IF EXISTS (SELECT 1 FROM [dbo].[AppSettings] a
+                     WHERE NOT EXISTS (SELECT 1 FROM [dbo].[ClubSeason] c WHERE c.[ClubCode] = a.[ClubCode]))
+              RAISERROR('dbo.ClubSeason heeft na de overgang geen seizoenen voor minstens één club (#1715).', 16, 1);
+          SELECT 'Overgang: dbo.Season ${na} rijen (ongewijzigd); ClubSeason ' + [ClubCode] + ' = ' + CAST(COUNT(*) AS VARCHAR)
+          FROM [dbo].[ClubSeason] GROUP BY [ClubCode];
+          "
+
+      - name: .NET SDK installeren
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      # #1715 (Codex-review #1743 ronde 1): de SQL Server-integratietests sloegen zichzelf in CI over, omdat
+      # geen job SQLSERVER_TEST_CONNECTION_STRING zette. Hier draaien ze tegen deze wegwerpdatabase: seizoenen
+      # per club (doorrol rond de jaarwisseling, afgebroken en overlappende wijzigingen, overgang), de
+      # seizoensretentie (#1698), de feedbackopslag en het inzagelog. SqlServerReconciliationIntegrationTests
+      # blijft buiten deze filter: die leest de connectiestring van de Function App zelf.
+      - name: SQL Server-integratietests (FunctionApp.Tests, tegen SportlinkFresh)
+        run: |
+          SQLSERVER_TEST_CONNECTION_STRING="Server=localhost,1433;Database=SportlinkFresh;User Id=sa;Password=${SA_PW};TrustServerCertificate=True;Pooling=false" \
+            dotnet test FunctionApp.Tests/FunctionApp.Tests.csproj --configuration Release --verbosity normal \
+              --filter "FullyQualifiedName~SqlServerSeizoenIntegrationTests|FullyQualifiedName~SqlServerHisRetentieIntegrationTests|FullyQualifiedName~SqlFeedbackStoreIntegrationTests|FullyQualifiedName~SqlTeambegeleidingInzageStoreIntegrationTests"
 
       - name: Container opruimen
         if: always()
