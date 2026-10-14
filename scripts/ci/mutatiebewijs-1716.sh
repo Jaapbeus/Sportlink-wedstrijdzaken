@@ -16,6 +16,7 @@
 #   scripts/ci/mutatiebewijs-1716.sh            # alle mutanten
 #   scripts/ci/mutatiebewijs-1716.sh M3 M6      # alleen deze
 #   MUTATIELIJST=scripts/ci/mutatiebewijs-1716-slice2.tsv scripts/ci/mutatiebewijs-1716.sh  # slice 2
+#   MUTATIELIJST=scripts/ci/mutatiebewijs-1716-slice3.tsv scripts/ci/mutatiebewijs-1716.sh   # slice 3
 #   scripts/ci/mutatiebewijs-1716.sh --zelftest # bewijst dat een testhostcrash niet als KILLED telt
 set -u
 # Beoordeling van een testrun met niet-nul exit. KILLED alleen als de samenvatting van dotnet test
@@ -44,8 +45,14 @@ if [ "${1:-}" = "--zelftest" ]; then # bewijst dat een crash niet als KILLED tel
 fi
 root=$(git rev-parse --show-toplevel) || exit 2
 cd "$root" || exit 2
+# Standaard de slice-1-lijst; MUTATIELIJST kiest een andere (bijv. slice 3, vereist een Postgres-testdatabase).
 lijst="${MUTATIELIJST:-scripts/ci/mutatiebewijs-1716.tsv}"
 [ -f "$lijst" ] || { echo "STOP: mutantenlijst $lijst ontbreekt." >&2; exit 2; }
+# Een lijst kan omgevingsvariabelen eisen met een regel "#ENV NAAM"; zonder die variabele slaan de
+# PostgresFact-tests zichzelf over (groen), wat een nulmeting zonder bewijskracht zou geven.
+for v in $(sed -n 's/^#ENV[[:space:]]*//p' "$lijst"); do
+  if [ -z "$(printenv "$v")" ]; then echo "STOP: omgevingsvariabele $v ontbreekt (nodig voor $lijst)." >&2; exit 2; fi
+done
 selectie=" $* "
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/mutatie.XXXXXX") || exit 2
 huidig=""
