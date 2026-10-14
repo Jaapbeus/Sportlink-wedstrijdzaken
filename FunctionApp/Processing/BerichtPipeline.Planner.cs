@@ -22,7 +22,7 @@ public static partial class BerichtPipeline
         BerichtClassificatie classificatie, InkomendBericht bericht, ILogger log, ITeamResolver teamResolver,
         string cc, bool eigenTeamHerkend, string? clubCode, TraceBuilder? trace)
     {
-        var alleDatums = ExpandDoordeweeksDatums(
+        var alleDatums = BerichtDatumHeuristiek.ExpandDoordeweeksDatums(
             classificatie.GetAlleDatums(), bericht.Onderwerp, bericht.Body);
         trace?.Datum(alleDatums);
 
