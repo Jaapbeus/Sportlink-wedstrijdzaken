@@ -221,92 +221,20 @@ internal static partial class BerichtPipeline
         => !string.IsNullOrWhiteSpace(clubCodeOverride) ? clubCodeOverride : (PostgresAppSettings.GetSetting("clubCode") ?? "");
 
     /// <summary>
-    /// Bepaalt welke van de twee genoemde teams het eigen team is, en zet <c>TeamNaam</c> op de
-    /// canonieke naam uit de teamlijst (#700/#889).
+    /// Tier-omhulsel van <see cref="EigenTeamBepaling.BepaalEigenTeamEnTegenstanderAsync"/> (#1716 slice 4): de
+    /// bepaling zelf staat één keer in <c>Planner.Shared</c>; hier alleen het terugzetten van de canonieke
+    /// teamnaam en de (eventueel verwisselde) tegenstander op de classificatie. Niet herkend: classificatie
+    /// ongewijzigd.
     /// </summary>
-    private static async Task<bool> BepaalEigenTeamEnTegenstanderAsync(
+    /// <returns>True als het eigen team herkend is; dan staat de canonieke naam in <c>TeamNaam</c>.</returns>
+    internal static async Task<bool> BepaalEigenTeamEnTegenstanderAsync(
         BerichtClassificatie classificatie, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace)
     {
-        if (string.IsNullOrWhiteSpace(clubCode))
-        {
-            trace?.TeamHerkenningOvergeslagen("geen clubcode");
-            log.LogWarning("TEAMRESOLUTIE - geen clubCode beschikbaar; teamherkenning overgeslagen");
-            return false;
-        }
-
-        var team = (classificatie.TeamNaam ?? "").Trim();
-        var tegenstander = (classificatie.Tegenstander ?? "").Trim();
-
-        var teamUitkomst = await ProbeerResolveAsync(resolver, team, clubCode, log, trace, TraceCodes.TeamHerkenning);
-
-        if (teamUitkomst is not null && teamUitkomst.IsOpgelost)
-        {
-            classificatie.TeamNaam = teamUitkomst.CanoniekeTeamnaam;
-            LogUitkomst(log, teamUitkomst);
-            return true;
-        }
-
-        var tegenstanderUitkomst = await ProbeerResolveAsync(resolver, tegenstander, clubCode, log, trace, TraceCodes.TegenstanderHerkenning);
-        if (tegenstanderUitkomst is not null && tegenstanderUitkomst.IsOpgelost)
-        {
-            classificatie.TeamNaam = tegenstanderUitkomst.CanoniekeTeamnaam;
-            classificatie.Tegenstander = team;
-            trace?.TeamWissel(classificatie.TeamNaam, team);
-            log.LogInformation("TEAMRESOLUTIE - team en tegenstander verwisseld op basis van de teamlijst");
-            LogUitkomst(log, tegenstanderUitkomst);
-            return true;
-        }
-
-        var kandidaten = teamUitkomst?.Kandidaten.Count ?? 0;
-        log.LogInformation(
-            "TEAMRESOLUTIE - geen eigen team herkend (bron={Bron}, kandidaten={Kandidaten})",
-            teamUitkomst?.Bron ?? ResolutionBron.Onopgelost, kandidaten);
-        return false;
+        var uitkomst = await EigenTeamBepaling.BepaalEigenTeamEnTegenstanderAsync(
+            classificatie.TeamNaam, classificatie.Tegenstander, resolver, clubCode, log, trace);
+        if (!uitkomst.Herkend) return false;
+        classificatie.TeamNaam = uitkomst.TeamNaam;
+        classificatie.Tegenstander = uitkomst.Tegenstander;
+        return true;
     }
-
-    /// <summary>
-    /// Leidt het eigen team af uit de wedstrijdnaam ("TeamA - TeamB") die de opponent-lookup
-    /// (#1139) opleverde — Postgres-tegenhanger van het gelijknamige SQL Server-origineel.
-    /// Probeert beide kanten van het streepje tegen de teamresolver; de eerste kant die
-    /// oplosbaar is naar een bekend team levert de canonieke naam. Geen van beide oplosbaar?
-    /// Dan blijft de classificatie ongewijzigd en handelt de aanroepende tak dat af als "team
-    /// onbekend". Er wordt nooit een naam gegokt.
-    /// </summary>
-    private static async Task<string?> BepaalEigenTeamUitWedstrijdAsync(
-        string? wedstrijd, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace)
-    {
-        if (string.IsNullOrWhiteSpace(wedstrijd)) return null;
-
-        foreach (var kant in wedstrijd.Split(" - ", 2, StringSplitOptions.TrimEntries))
-        {
-            var uitkomst = await ProbeerResolveAsync(resolver, kant, clubCode, log, trace, TraceCodes.OpponentTeamHerkenning);
-            if (uitkomst is not null && uitkomst.IsOpgelost)
-                return uitkomst.CanoniekeTeamnaam;
-        }
-        return null;
-    }
-
-    private static async Task<TeamResolutionResult?> ProbeerResolveAsync(
-        ITeamResolver resolver, string ruweTekst, string clubCode, ILogger log, TraceBuilder? trace, string code)
-    {
-        if (string.IsNullOrWhiteSpace(ruweTekst)) return null;
-
-        try
-        {
-            var u = await resolver.ResolveAsync(new TeamResolutionRequest(ruweTekst, null, null, clubCode));
-            trace?.TeamHerkenning(code, ruweTekst, u.Bron.ToString(), u.Confidence, u.Kandidaten.Select(k => k.Teamnaam), u.IsOpgelost ? u.CanoniekeTeamnaam : null);
-            return u;
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "TEAMRESOLUTIE - resolutie mislukt");
-            trace?.TeamHerkenning(code, ruweTekst, null, 0, null, null);
-            return null;
-        }
-    }
-
-    private static void LogUitkomst(ILogger log, TeamResolutionResult uitkomst)
-        => log.LogInformation(
-            "TEAMRESOLUTIE - teamId={TeamId} bron={Bron} confidence={Confidence}",
-            uitkomst.TeamId, uitkomst.Bron, uitkomst.Confidence);
 }

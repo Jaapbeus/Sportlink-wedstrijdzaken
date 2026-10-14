@@ -81,7 +81,7 @@ public static partial class BerichtPipeline
         if (wedstrijdAndereDatum == null)
             return new(PlannerAntwoordJson.TeamOnbekend(classificatie.Tegenstander), null);
 
-        var eigenTeam = await BepaalEigenTeamUitWedstrijdAsync(
+        var eigenTeam = await EigenTeamBepaling.BepaalEigenTeamUitWedstrijdAsync(
             wedstrijdAndereDatum.Wedstrijd, teamResolver, cc, log, trace);
         return new(null, eigenTeam);
     }
