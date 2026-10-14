@@ -1,3 +1,4 @@
+using Planner.Shared.Email;
 using FunctionApp.Postgres.Email;
 
 namespace FunctionApp.Postgres.Tests.Email.TestDoubles;

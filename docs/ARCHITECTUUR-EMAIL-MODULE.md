@@ -76,7 +76,7 @@ Graph-verzending kan "inpluggen" zonder ze opnieuw te bouwen.
 | `FunctionApp/Email/IEmailPersistenceRepository.cs` | Interface + enige productie-implementatie `SqlEmailPersistenceRepository` — bevat sinds #827 rechtstreeks de ADO.NET-toegang tot `planner.EmailVerwerking` (voorheen een aparte `EmailProcessingRepository`, nu geabsorbeerd); forwardt alleen classificatiecorrectie/leermomenten nog naar `LearningMomentRepository`. **Alleen SQL Server-tier**: Postgres heeft `Email/SqlEmailPersistenceRepository.cs` als `internal static class`, zonder interface en zonder wrapper |
 | `FunctionApp/Email/EmailBatchFilterService.cs` | Fase-1-voorfilter: eigen mailbox, gecachede uitsluitingslijst |
 | `FunctionApp/Email/EmailClassificationService.cs` | Batch-wrapper rond de AI-classificatie, vangt quota-fouten |
-| `FunctionApp/Email/EmailReplyPolicyService.cs` | Beslist óf en bouwt het antwoord, markeert verzendintentie vóór het versturen (#716), roept `EmailGraphService.SendReplyAsync` aan. Bij een verzendfout classificeert `Planner.Shared.EmailVerzendFoutClassificatie` (#1133) of dit een bewezen afwijzing is (intentie wissen, opnieuw proberen) of een onbekende uitkomst (intentie laten staan, direct naar `Review`) |
+| `Planner.Shared/Email/EmailReplyAfhandeling.cs` (omhulsel per tier: `FunctionApp*/Email/EmailReplyPolicyService.cs`, #1760) | Beslist óf en bouwt het antwoord, markeert verzendintentie vóór het versturen (#716), roept `EmailGraphService.SendReplyAsync` aan. Bij een verzendfout classificeert `Planner.Shared.EmailVerzendFoutClassificatie` (#1133) of dit een bewezen afwijzing is (intentie wissen, opnieuw proberen) of een onbekende uitkomst (intentie laten staan, direct naar `Review`) |
 | `FunctionApp/Email/EmailTemplateService.cs` | DB-templates (`dbo.EmailTemplateInstellingen`) met 5-minuten TTL-cache per `(clubCode, key)`, valt terug op hardcoded defaults, `ApplyPlaceholders` voor `{{key}}`-substitutie |
 | `FunctionApp/Email/BerichtAiService.cs` | AI-classificatie; gebruikt al `IChatClient` (regel 11-14) — goed precedent voor provider-abstractie |
 | `FunctionApp/Email/BerichtModels.cs` | `InkomendBericht` (kanaal-agnostisch bericht-DTO) en `ClassificatieCorrectieVoorbeeld`; blijven per tier omdat de vorm van `InkomendBericht` verschilt (`ConversationId`/`Body` nullable op de Postgres-tier, niet-nullable met standaard `""` op SQL Server) |
@@ -386,7 +386,7 @@ behouden hun signatuur, dus de bestaande tests per tier dekken het gedrag ongewi
 **Waarom niet de volledige fase-orkestratie.** `Planner.Shared` heeft geen projectreferenties, en
 de domeintypes van de verwerking (`InkomendBericht`, `BerichtClassificatie`,
 `EmailVerwerkingStand`, `IEmailGraphService`, `EmailRunContext`, `BerichtPipeline`,
-`BerichtAiService`, `EmailReplyPolicyService`, …) bestaan per tier in eigen namespaces. De fasen
+`BerichtAiService`, het omhulsel `EmailReplyPolicyService`, …) bestaan per tier in eigen namespaces; de beslislogica van de reply-flow staat sinds #1760 in `Planner.Shared/Email/EmailReplyAfhandeling.cs` met de poorten `IReplyPersistentie` en `IReplyGraph` (de tier-`IEmailGraphService` erft `IReplyGraph`). De fasen
 achter één poort zetten vraagt eerst het samenvoegen van die typen. Dat hoort bij de gedeelde
 endpoint-orkestratie van #1271 en past niet in één chore.
 

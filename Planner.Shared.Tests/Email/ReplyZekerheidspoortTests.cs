@@ -1,20 +1,18 @@
 using AwesomeAssertions;
-using FunctionApp.Tests.Email.TestDoubles;
+using Planner.Shared.Tests.Email.TestDoubles;
 using Microsoft.Extensions.Logging.Abstractions;
 using Newtonsoft.Json;
 using Planner.Shared.Email.Trace;
 using Planner.Shared.Email;
-using SportlinkFunction.Email;
-using SportlinkFunction.Planner;
 using Xunit;
 
-namespace FunctionApp.Tests.Email;
+namespace Planner.Shared.Tests.Email;
 
 /// <summary>
-/// Zekerheidspoort (#1568 deel D) op de SQL Server-tier, met fakes en zonder database: een onzeker
+/// Zekerheidspoort (#1568 deel D) in de gedeelde reply-afhandeling (#1760), met fakes en zonder database: een onzeker
 /// antwoord gaat niet naar de afzender maar ter review; een zeker antwoord blijft automatisch gaan.
 /// </summary>
-public class ZekerheidspoortTests
+public class ReplyZekerheidspoortTests
 {
     private const string Afzender = "afzender@voorbeeld.test";
 
@@ -30,23 +28,24 @@ public class ZekerheidspoortTests
             .TeamHerkenning(TraceCodes.TeamHerkenning, "JO 13/2", "Alias", 1.0, null, "JO13-2")
             .Antwoordkeuze("BeschikbaarheidCheck", "{\"beschikbaar\":false}");
 
-    private static async Task<(ReplyVerwerkingUitkomst uitkomst, FakeEmailGraphService graph, RecordingEmailPersistenceService db)>
+    private static async Task<(ReplyVerwerkingUitkomst uitkomst, FakeReplyGraph graph, RecordingReplyPersistentie db)>
         Draai(TraceBuilder? trace, bool poortActief, bool reviewMode = false, string? reviewRecipient = null,
             string plannerJson = "{\"beschikbaar\":false}")
     {
-        var graph = new FakeEmailGraphService();
-        var db = new RecordingEmailPersistenceService();
-        var uitkomst = await new EmailReplyPolicyService().HandelReplyFlowAfAsync(
+        var graph = new FakeReplyGraph();
+        var db = new RecordingReplyPersistentie();
+        var uitkomst = await EmailReplyAfhandeling.HandelReplyFlowAfAsync(
             verwerkingId: 7,
-            email: new InkomendBericht { MessageId = "m7", Afzender = Afzender, Onderwerp = "Test", ConversationId = "conv-7" },
+            email: new ReplyBericht("m7", Afzender, "conv-7"),
             classificatie: new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck },
             plannerResponseJson: plannerJson,
             reviewMode: reviewMode,
             reviewRecipient: reviewRecipient,
             graphService: graph,
-            persistenceService: db,
+            persistentie: db,
             bouwTemplateAntwoordAsync: () => Task.FromResult(("subj", "voorgestelde-body")),
             sanitizeFoutMelding: s => s,
+            haken: TestHaken.Standaard,
             log: NullLogger.Instance,
             trace: trace,
             zekerheidspoortActief: poortActief);

@@ -31,7 +31,7 @@ internal sealed record EmailVerwerkingStand(
     bool AntwoordVerstuurd,
     bool VerzendPogingOnbeslist = false);
 
-internal interface IEmailPersistenceService
+internal interface IEmailPersistenceService : IReplyPersistentie
 {
     Task<HashSet<string>> LaadUitgeslotenAdressenAsync(ILogger log);
 
@@ -52,34 +52,8 @@ internal interface IEmailPersistenceService
     /// <summary>Verhoogt de pogingenteller van een bestaande verwerking met één.</summary>
     Task VerhoogPogingenAsync(int verwerkingId);
 
-    Task UpdateStatusAsync(int verwerkingId, EmailStatus status, string? geextraheerdeData);
     Task UpdatePlannerResponseAsync(int verwerkingId, string plannerResponseJson);
-    Task UpdateAntwoordVerstuurdAsync(int verwerkingId, string verstuurdNaar, string antwoordEmail);
 
-    /// <summary>
-    /// Slaat een voorgesteld antwoord op zonder het te versturen (review mode) en zet de status op
-    /// <see cref="EmailStatus.Review"/>. Vult bewust géén <c>VerstuurdNaar</c> — er is niets
-    /// verstuurd, en die kolom is de duplicaatgrens van de idempotentie-guard.
-    /// </summary>
-    Task UpdateVoorgesteldAntwoordAsync(int verwerkingId, string antwoordEmail);
-
-    /// <summary>
-    /// Legt de intentie vast om te gaan versturen, vóór de verzendpoging (#716). Zie
-    /// <see cref="WisVerzendPogingAsync"/> voor het wissen bij een aantoonbaar mislukte poging.
-    /// </summary>
-    Task MarkeerVerzendPogingAsync(int verwerkingId);
-
-    /// <summary>
-    /// Wist de verzendintentie omdat het versturen aantoonbaar is mislukt (#716). Alleen dán mag een
-    /// volgende poging opnieuw versturen; blijft de intentie staan, dan is de uitkomst onbekend.
-    /// </summary>
-    Task WisVerzendPogingAsync(int verwerkingId);
-
-    /// <summary>
-    /// Legt een verwerkingsfout vast op <b>verwerkingId</b> (#717), consistent met alle andere
-    /// mutaties. Overschrijft nooit een rij waarvan al vaststaat dat er een antwoord op is verstuurd.
-    /// </summary>
-    Task UpdateFoutAsync(int verwerkingId, string foutMelding);
     Task<(bool IsReply, int? OrigineleVerwerkingId, string? OrigineelType, string? OriginaleSamenvatting)>
         DetecteerReplyOpOnsAntwoordAsync(string conversationId, ILogger log);
     Task<int> TelVerzondenAntwoordenInConversatieAsync(string conversationId);
