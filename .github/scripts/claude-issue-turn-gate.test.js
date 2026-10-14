@@ -6,8 +6,9 @@
 
 const {
   evaluateGate, setTurnLabel, collectTrustedContext, runTitle, MAX_RUNS, MAX_CONTEXT_BYTES, truncateToBytes,
-  parseFaseComment, MAX_REVIEW_ROUNDS, reviewMarker,
+  parseFaseComment, MAX_REVIEW_ROUNDS, reviewMarker, resolveIssueNumber,
 } = require('./claude-issue-turn-gate.js');
+const ledgerLib = require('./claude-issue-turn-ledger.js');
 
 let failures = 0;
 function check(name, actual, expected) {
@@ -16,7 +17,7 @@ function check(name, actual, expected) {
   else { console.log(`  FAIL  ${name}\n        verwacht: ${e}\n        kreeg:    ${a}`); failures++; }
 }
 
-const ctx = { repo: { owner: 'o', repo: 'r' }, runId: 999999 };
+const ctx = { repo: { owner: 'o', repo: 'r' }, runId: 999999, eventName: 'issues' };
 const core = { notice: () => {}, warning: () => {} };
 
 function fakeGithub({
@@ -686,6 +687,74 @@ function fakeGithub({
     const p = parseFaseComment('- **Fase:** review\n- **Reviewer:** Claude Code\n- **PR:** #5\n- **Aangeboden head-SHA:** `' + SHA_A + '`');
     check('parseFaseComment: opsomming, nadruk en code-opmaak', [p.fase, p.reviewer, p.prNumber, p.sha], ['review', 'Claude Code', 5, SHA_A]);
     check('parseFaseComment: lopende tekst zonder Fase-regel', parseFaseComment('We zitten in de Fase: review, zei Codex.'), null);
+  }
+
+  // ---------- #1721 fase 1: issuenummer, aanroep buiten een issues-event, testmodus ----------
+  console.log('\n#1721 fase 1:');
+  {
+    check('input zonder payload', resolveIssueNumber({ input: '42', payloadIssueNumber: undefined }), { ok: true, issueNumber: 42 });
+    check('payload zonder input', resolveIssueNumber({ input: '', payloadIssueNumber: 42 }), { ok: true, issueNumber: 42 });
+    check('input en payload gelijk', resolveIssueNumber({ input: '42', payloadIssueNumber: 42 }).ok, true);
+    check('input wijkt af van het event: stop', resolveIssueNumber({ input: '42', payloadIssueNumber: 43 }).ok, false);
+    check('geen van beide: stop', resolveIssueNumber({ input: undefined, payloadIssueNumber: undefined }).ok, false);
+    for (const bad of ['abc', '0', '-1', '4 2', '12x', '1234567890', '42; rm', '$(id)', '4.2']) {
+      check(`ongeldige input ${JSON.stringify(bad)}: stop`, resolveIssueNumber({ input: bad, payloadIssueNumber: undefined }).ok, false);
+    }
+  }
+  {
+    const github = fakeGithub({ labels: ['source: owner'] });
+    const r = await evaluateGate({ github, context: ctx, core, issueNumber: 42, eventName: 'workflow_dispatch' });
+    check('buiten een issues-event zonder dry_run: geen run, alarm', [r.proceed, r.alarm], [false, true]);
+    check('buiten een issues-event: geen label en geen comment', [github.calls.added, github.calls.comments], [[], []]);
+  }
+  {
+    const github = fakeGithub({ labels: ['source: owner'] });
+    const r = await evaluateGate({ github, context: ctx, core, issueNumber: 42, eventName: 'issues', dryRun: true });
+    check('dry_run op een issues-event: geweigerd', [r.proceed, r.alarm], [false, true]);
+  }
+
+  /** Nep-octokit uitgebreid met de ledger-API's (zie claude-issue-turn-ledger.test.js voor de bewijsvarianten). */
+  function dryRunGithub(opts = {}) {
+    const base = fakeGithub(opts);
+    const store = { ledger: opts.ledgerBody ? [{ id: 900, body: opts.ledgerBody, user: { type: 'Bot', login: 'github-actions[bot]' }, created_at: '2026-10-14T10:00:00Z' }] : [] };
+    const own = { id: 999999, run_attempt: 1, workflow_id: 77, path: '.github/workflows/issue-router.yml@refs/heads/x', event: 'workflow_dispatch', created_at: '2026-10-14T12:00:00Z', status: 'in_progress' };
+    const listComments = base.rest.issues.listComments;
+    base.rest.issues.listComments = async (p) => ({ data: [...(await listComments(p)).data, ...store.ledger] });
+    base.rest.issues.createComment = async ({ body }) => { store.ledger.push({ id: 901, body, user: { type: 'Bot', login: 'github-actions[bot]' }, created_at: '2026-10-14T12:00:01Z' }); };
+    base.rest.issues.updateComment = async ({ comment_id, body }) => { store.ledger.find((c) => c.id === comment_id).body = body; };
+    base.rest.actions.getWorkflowRunAttempt = async () => ({ data: own });
+    base.store = store;
+    return base;
+  }
+  const dryCore = (notices) => ({ notice: (m) => notices.push(m), warning: () => {} });
+  const dryArgs = { context: { ...ctx, eventName: 'workflow_dispatch', runAttempt: 1 }, issueNumber: 42, eventName: 'workflow_dispatch', dryRun: true };
+  {
+    const notices = [];
+    const github = dryRunGithub({ labels: ['source: owner'], priorRunTitles: Array.from({ length: MAX_RUNS }, () => 'Claude issue-beurt #42') });
+    const r = await evaluateGate({ github, core: dryCore(notices), ...dryArgs });
+    check('dry_run: poort slaagt (titelteller wordt genegeerd)', [r.proceed, r.phase], [true, 'implementatie']);
+    check('dry_run: entry in de testledger', ledgerLib.parseLedger(github.store.ledger[0].body, ledgerLib.MODES.test.marker).entries.map((e) => [e.run, e.run_attempt]), [[999999, 1]]);
+    check('dry_run: annotatie voor het bewijs geplaatst', notices.includes('beurt:v1 issue=42 run=999999 attempt=1'), true);
+    check('dry_run: geen productieledger geschreven', github.store.ledger.some((c) => c.body.startsWith(ledgerLib.MODES.prod.marker)), false);
+    check('dry_run: geen label en geen comment buiten de ledger', [github.calls.added, github.calls.removed, github.calls.comments], [[], [], []]);
+  }
+  {
+    const notices = [];
+    const github = dryRunGithub({ labels: ['type: bug'] });
+    const r = await evaluateGate({ github, core: dryCore(notices), ...dryArgs });
+    check('dry_run geblokkeerd (geen source-label): geen run', r.proceed, false);
+    check('dry_run geblokkeerd: geen comment en geen turn: owner (effecten onderdrukt)', [github.calls.added, github.calls.comments], [[], []]);
+    check('dry_run geblokkeerd: geen ledgerentry en geen annotatie', [github.store.ledger.length, notices.some((m) => m.startsWith('beurt:v1'))], [0, false]);
+  }
+  {
+    const github = dryRunGithub({ labels: ['source: owner'], ledgerBody: `${ledgerLib.MODES.test.marker}\nkapot` });
+    const r = await evaluateGate({ github, core: dryCore([]), ...dryArgs });
+    check('dry_run met een kapotte testledger: stop, geen entry erbij', [r.proceed, github.store.ledger.length], [false, 1]);
+  }
+  {
+    const github = fakeGithub({ labels: ['source: owner'] });
+    const r = await evaluateGate({ github, context: ctx, core, issueNumber: 42 });
+    check('productiepad (issues-event): ongewijzigd, geen ledgerentry', [r.proceed, r.phase, github.calls.comments], [true, 'implementatie', []]);
   }
 
   // ---------- setTurnLabel: remove+add, oude turn-labels weg ----------

@@ -1,4 +1,5 @@
 using Planner.Shared;
+using Planner.Shared.Email;
 using Microsoft.Extensions.Logging;
 
 namespace SportlinkFunction.Planner;
@@ -19,14 +20,15 @@ internal static class AvailabilityService
         var response = new CheckAvailabilityResponse();
         clubCode = ClubScope.Resolve(clubCode);
 
-        if (!DateOnly.TryParse(request.Datum, out var date))
+        // #1730: strikt jjjj-MM-dd (API-contract én modelgrens); geen cultuurafhankelijke lezing.
+        if (!ModelDatum.TryParse(request.Datum, out var date))
         {
-            response.Reden = $"Ongeldige datum: {request.Datum}";
+            response.Reden = "Ongeldige datum.";
             return response;
         }
         if (date <= DateOnly.FromDateTime(DateTime.Today))
         {
-            response.Reden = $"De gewenste datum {request.Datum} kan niet verwerkt worden. Een datum moet in de toekomst zijn.";
+            response.Reden = $"De gewenste datum {date:yyyy-MM-dd} kan niet verwerkt worden. Een datum moet in de toekomst zijn.";
             return response;
         }
 

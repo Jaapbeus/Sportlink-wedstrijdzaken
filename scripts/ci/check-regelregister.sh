@@ -103,5 +103,84 @@ for script in $(git ls-files -- 'scripts/ci/check-*.sh' 'scripts/ci/check-*.py' 
   fi
 done
 
+# Inline guards (#1717): een controle die als stap in een workflow staat, zonder eigen script, hoort
+# ook in het register (kolom 2: `inline-stap: <exacte stapnaam>`). Zo'n stap kan net zo stil
+# verdwijnen als een script dat uit een workflow wordt gehaald.
+inline="$(mktemp)"
+trap 'rm -f "$register" "$genoemd" "$inline"' EXIT
+awk '/REGELREGISTER-BEGIN/ { in_reg = 1; next }
+     /REGELREGISTER-EINDE/ { in_reg = 0 }
+     in_reg && /^\|/ && /inline-stap:/ { print }' "$DOC" > "$inline"
+aantal_inline="$(grep -c '' "$inline" || true)"
+stappen="$(mktemp)"
+trap 'rm -f "$register" "$genoemd" "$inline" "$stappen"' EXIT
+
+while IFS= read -r rij; do
+  stap="$(printf '%s' "$rij" | awk -F'|' '{ print $3 }' | sed -n 's/.*inline-stap: *`\([^`]*\)`.*/\1/p')"
+  workflow="$(printf '%s' "$rij" | awk -F'|' '{ print $4 }' | sed -n 's/.*`\([A-Za-z0-9_.-]*\.yml\)`.*/\1/p')"
+  if [ -z "$stap" ] || [ -z "$workflow" ]; then
+    echo "::error file=$DOC::Inline-registerregel zonder stapnaam in backticks of zonder workflow: $rij"
+    fail=1
+    continue
+  fi
+  echo "$workflow|$stap" >> "$stappen"
+  if [ ! -f ".github/workflows/$workflow" ]; then
+    echo "::error file=$DOC::Het register verwijst naar .github/workflows/$workflow, maar die workflow bestaat niet."
+    fail=1
+  elif ! awk -v naam="$stap" '
+      { regel = $0; sub(/^[ \t]+/, "", regel); sub(/[ \t\r]+$/, "", regel) }
+      regel ~ /^- name:[ \t]*/ {
+        sub(/^- name:[ \t]*/, "", regel)
+        if (regel == naam || regel == "\"" naam "\"" || regel == "'"'"'" naam "'"'"'") gevonden = 1
+      }
+      END { exit gevonden ? 0 : 1 }' ".github/workflows/$workflow"; then
+    echo "::error file=.github/workflows/$workflow::Het register noemt de inline-stap '$stap', maar die stap bestaat niet (meer) in deze workflow. Een guard die niet draait, bewaakt niets."
+    fail=1
+  fi
+done < "$inline"
+
+# Omgekeerd: een stap waarvan de naam op een guard wijst (guard, drempel, drift) en die geen
+# scripts/ci/-bestand aanroept, moet als inline-stap in het register staan.
+for wf in .github/workflows/*.yml; do
+  wfnaam="$(basename "$wf")"
+  awk '
+    function afronden() { if (naam != "" && !roept_script) print naam }
+    /^ *- name:/ {
+      afronden()
+      naam = $0; sub(/^ *- name: */, "", naam); gsub(/^"|"$/, "", naam)
+      roept_script = 0
+      if (naam !~ /[Gg]uard|[Dd]rempel|[Dd]rift/) naam = ""
+      next
+    }
+    /scripts\/ci\// { roept_script = 1 }
+    END { afronden() }
+  ' "$wf" | while IFS= read -r naam; do
+    if ! grep -qxF "$wfnaam|$naam" "$stappen"; then
+      echo "::error file=$wf::De stap '$naam' lijkt een guard maar staat niet als inline-stap in het register van $DOC. Voeg hem toe (of geef hem een script in scripts/ci/)."
+      echo "ONTBREEKT" >> "$stappen.fout"
+    fi
+  done
+done
+if [ -f "$stappen.fout" ]; then
+  rm -f "$stappen.fout"
+  fail=1
+fi
+
+# Onbewaakte regels (#1717): `onbewaakt: <reden>` in kolom 2, kolom 3 is een streepje. Een
+# registerrij 'onbewaakt' zonder reden is geen besluit maar een vergeten guard.
+onbewaakt="$(mktemp)"
+trap 'rm -f "$register" "$genoemd" "$inline" "$stappen" "$onbewaakt"' EXIT
+awk '/REGELREGISTER-BEGIN/ { in_reg = 1; next }
+     /REGELREGISTER-EINDE/ { in_reg = 0 }
+     in_reg && /^\|/ && /onbewaakt:/ { print }' "$DOC" > "$onbewaakt"
+aantal_onbewaakt="$(grep -c '' "$onbewaakt" || true)"
+while IFS= read -r rij; do
+  reden="$(printf '%s' "$rij" | awk -F'|' '{ print $3 }' | sed -n 's/.*onbewaakt: *\(.*\)$/\1/p' | sed 's/ *$//')"
+  if [ "${#reden}" -lt 20 ]; then
+    echo "::error file=$DOC::Onbewaakte regel zonder reden (minstens een zin): $rij"
+    fail=1
+  fi
+done < "$onbewaakt"
+
 [ "$fail" -eq 0 ] || exit 1
-echo "OK — $aantal registerregels, alle guards bestaan, zijn uitvoerbaar en draaien in de genoemde workflow."
+echo "OK — $aantal registerregels, alle guards bestaan, zijn uitvoerbaar en draaien in de genoemde workflow; $aantal_inline inline-stappen bestaan; $aantal_onbewaakt onbewaakte regels hebben een reden."
