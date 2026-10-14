@@ -194,7 +194,7 @@ async function removeIfPresent({ github, base, issueNumber, name }) {
  */
 async function applyEndLabel({
   github, context, core, issueNumber, startPrNumber, startedAt, phase = '', requestedLabel = '', expectedSha = '',
-  extraCheck = null,
+  extraCheck = null, dryRun = false,
 }) {
   if (!startedAt || Number.isNaN(new Date(startedAt).getTime())) {
     // Zonder starttijd valt "veranderd tijdens de run" niet te bepalen: niets schrijven.
@@ -235,6 +235,12 @@ async function applyEndLabel({
   if (before) {
     core.notice(`#${issueNumber}: eindlabel '${label}' niet geschreven: ${before}`);
     return { written: false, label, source, reason: before };
+  }
+
+  // #1721 (testmodus): het label is uitgerekend en de toestand gecontroleerd; er wordt niets geschreven.
+  if (dryRun) {
+    core.notice(`#${issueNumber}: [dry-run] eindlabel '${label}' berekend, niets geschreven`);
+    return { written: false, dryRun: true, label, source };
   }
 
   if (label === WAIT_FOR_MERGE) {

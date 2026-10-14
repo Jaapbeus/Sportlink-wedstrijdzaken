@@ -38,6 +38,7 @@
 //     uitsluitend tekst van bevoegde schrijvers aangereikt (collectTrustedContext).
 
 const { extractIssueRefs } = require('./issue-status.js');
+const ledgerLib = require('./claude-issue-turn-ledger.js');
 
 const API_VERSION_HEADERS = { 'x-github-api-version': '2022-11-28' };
 
@@ -362,7 +363,7 @@ async function isShaAlreadyReviewed({ github, context, prNumber, sha }) {
  * reviewprotocol (AGENTS.md, "Review en turn:" regel 3) stopt zonder comment of labelwijziging en
  * laat de poortstap zichtbaar falen (`alarm`); alleen de rondelimiet gaat met uitleg naar de eigenaar.
  */
-async function evaluateReviewRequest({ github, context, core, issueNumber, request }) {
+async function evaluateReviewRequest({ github, context, core, issueNumber, request, fx = REAL_EFFECTS }) {
   const stop = (why) => ({ proceed: false, alarm: true, reason: `Geen review gestart: ${why}.` });
 
   if (!request.implementer || CLAUDE_CODE.test(request.implementer)) {
@@ -392,8 +393,8 @@ async function evaluateReviewRequest({ github, context, core, issueNumber, reque
     const reason =
       `Geen review gestart: dit is reviewronde ${request.rondes} op PR #${pr.number}; ` +
       `na ${MAX_REVIEW_ROUNDS} rondes zonder schone review beslist de eigenaar (fase \`eigenaarsbesluit\`, AGENTS.md).`;
-    await postComment({ github, context, core, issueNumber, body: reason });
-    await setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
+    await fx.postComment({ github, context, core, issueNumber, body: reason });
+    await fx.setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
     return { proceed: false, reason };
   }
 
@@ -550,7 +551,7 @@ async function collectTrustedContext({ github, context, issueNumber, prNumber })
  * @returns {Promise<{proceed: boolean, phase?: 'implementatie'|'verwerking',
  *   prNumber?: number, prBranch?: string, reason?: string}>}
  */
-async function evaluateGate({ github, context, core, issueNumber }) {
+async function evaluateGateInner({ github, context, core, issueNumber, dryRun, fx, holder }) {
   const issue = (
     await github.rest.issues.get({
       owner: context.repo.owner,
@@ -606,8 +607,8 @@ async function evaluateGate({ github, context, core, issueNumber }) {
       'Besluit 3 op #1601 beperkt automatische oppak tot issues met een agent- of ' +
       'eigenaarherkomst (bijv. geen `via: feedback-widget`-issues); `source: codex` alleen voor een ' +
       'review door Claude Code met een geldige reviewaanvraag (#1727).';
-    await postComment({ github, context, core, issueNumber, body: reason });
-    await setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
+    await fx.postComment({ github, context, core, issueNumber, body: reason });
+    await fx.setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
     return { proceed: false, reason };
   }
 
@@ -618,8 +619,8 @@ async function evaluateGate({ github, context, core, issueNumber }) {
     const reason =
       'Geen CI-run gestart: de auteur van dit issue heeft geen schrijfrechten op deze ' +
       'repository (#1615). Een eigenaar kan het werk overnemen in een eigen issue.';
-    await postComment({ github, context, core, issueNumber, body: reason });
-    await setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
+    await fx.postComment({ github, context, core, issueNumber, body: reason });
+    await fx.setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
     return { proceed: false, reason };
   }
 
@@ -628,24 +629,35 @@ async function evaluateGate({ github, context, core, issueNumber }) {
     const reason =
       `Geen CI-run gestart: label \`${blocked}\` vereist een expliciete eigenaarsopdracht ` +
       '(besluit 3 op #1601) — architectuurbeslissingen lopen niet autonoom via deze workflow.';
-    await postComment({ github, context, core, issueNumber, body: reason });
-    await setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
+    await fx.postComment({ github, context, core, issueNumber, body: reason });
+    await fx.setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
     return { proceed: false, reason };
   }
 
-  const priorRuns = await countPriorRuns({ github, context, issueNumber });
-  if (priorRuns >= MAX_RUNS) {
-    const reason =
-      `Geen CI-run gestart: al ${priorRuns} eerdere runs van deze workflow op dit issue ` +
-      `(drempel ${MAX_RUNS}, zelfde grens als "> 3 iteraties zonder voortgang" in AGENTS.md). ` +
-      'Vereist een eigenaarsbesluit vóór een volgende poging.';
-    await postComment({ github, context, core, issueNumber, body: reason });
-    await setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
-    return { proceed: false, reason };
+  if (dryRun) {
+    // Testmodus (#1721 fase 1): de testledger, niet de titelteller; de productieteller blijft onaangeraakt.
+    const evaluated = await ledgerLib.evaluateLedger({
+      github, context, issueNumber, mode: 'test', runId: context.runId, runAttempt: runAttemptOf(context),
+    });
+    if (evaluated.state === 'stop') {
+      return { proceed: false, reason: `Geen CI-run gestart (testmodus): ${evaluated.reason}.` };
+    }
+    holder.evaluated = evaluated;
+  } else {
+    const priorRuns = await countPriorRuns({ github, context, issueNumber });
+    if (priorRuns >= MAX_RUNS) {
+      const reason =
+        `Geen CI-run gestart: al ${priorRuns} eerdere runs van deze workflow op dit issue ` +
+        `(drempel ${MAX_RUNS}, zelfde grens als "> 3 iteraties zonder voortgang" in AGENTS.md). ` +
+        'Vereist een eigenaarsbesluit vóór een volgende poging.';
+      await fx.postComment({ github, context, core, issueNumber, body: reason });
+      await fx.setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
+      return { proceed: false, reason };
+    }
   }
 
   if (reviewRequest) {
-    return evaluateReviewRequest({ github, context, core, issueNumber, request: reviewRequest });
+    return evaluateReviewRequest({ github, context, core, issueNumber, request: reviewRequest, fx });
   }
 
   const linkedByKind = await findLinkedOpenPrsByKind({ github, context, issueNumber });
@@ -657,8 +669,8 @@ async function evaluateGate({ github, context, core, issueNumber }) {
       'issue en er staat geen geldige reviewaanvraag aan Claude Code als laatste fasecomment ' +
       '(`Fase: review`, `Reviewer: Claude Code`, `PR: #<nr>`, `Aangeboden head-SHA`). ' +
       'Implementatie of verwerking door de bot zou dubbel werk naast de Codex-PR geven.';
-    await postComment({ github, context, core, issueNumber, body: reason });
-    await setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
+    await fx.postComment({ github, context, core, issueNumber, body: reason });
+    await fx.setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
     return { proceed: false, reason };
   }
 
@@ -680,8 +692,8 @@ async function evaluateGate({ github, context, core, issueNumber }) {
         `Geen CI-run gestart: de laatste reviewteruggave op PR #${linkedPr.number} verwijst naar een besloten ` +
         'reviewnotitie die deze run niet kan inzien; een bevinding verwerken zonder die notitie zou gokken zijn. ' +
         'De eigenaar stelt de notitie beschikbaar of besluit.';
-      await postComment({ github, context, core, issueNumber, body: reason });
-      await setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
+      await fx.postComment({ github, context, core, issueNumber, body: reason });
+      await fx.setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
       return { proceed: false, reason };
     }
     return {
@@ -695,8 +707,79 @@ async function evaluateGate({ github, context, core, issueNumber }) {
   return { proceed: true, phase: 'implementatie' };
 }
 
+const REAL_EFFECTS = { postComment, setTurnLabel };
+
+/** Testmodus: de poort evalueert volledig maar schrijft geen comment en geen label. */
+function dryRunEffects(core) {
+  return {
+    postComment: async ({ issueNumber, body }) => core.notice(`#${issueNumber}: [dry-run] comment niet geplaatst: ${body.slice(0, 120)}`),
+    setTurnLabel: async ({ issueNumber, label }) => core.notice(`#${issueNumber}: [dry-run] label '${label}' niet gezet`),
+  };
+}
+
+function runAttemptOf(context) {
+  const n = Number(context.runAttempt ?? process.env.GITHUB_RUN_ATTEMPT ?? 1);
+  return Number.isInteger(n) && n > 0 ? n : 1;
+}
+
+/**
+ * Het issuenummer van deze run (#1721): bij een aanroep (`workflow_call`) komt het uit de input, bij het
+ * `issues`-event uit de payload. Is er allebei, dan moeten ze gelijk zijn. De input is een string
+ * `^[1-9]\d{0,8}$`; alles anders is een stop vóór elke API-aanroep.
+ * @returns {{ok: true, issueNumber: number} | {ok: false, reason: string}}
+ */
+function resolveIssueNumber({ input, payloadIssueNumber }) {
+  const hasInput = input !== undefined && input !== null && String(input) !== '';
+  if (hasInput) {
+    if (!/^[1-9]\d{0,8}$/.test(String(input))) return { ok: false, reason: 'input issue_number is geen positief geheel getal' };
+    const n = Number(input);
+    if (payloadIssueNumber !== undefined && payloadIssueNumber !== null && Number(payloadIssueNumber) !== n) {
+      return { ok: false, reason: 'input issue_number wijkt af van het issue uit het event' };
+    }
+    return { ok: true, issueNumber: n };
+  }
+  if (Number.isInteger(payloadIssueNumber) && payloadIssueNumber > 0) return { ok: true, issueNumber: payloadIssueNumber };
+  return { ok: false, reason: 'geen issuenummer (geen input en geen issue in het event)' };
+}
+
+/**
+ * @param {{github: object, context: object, core: object, issueNumber: number, dryRun?: boolean,
+ *   eventName?: string}} args  `eventName` = het event van de aanroeper (`github.event_name`).
+ * @returns {Promise<{proceed: boolean, phase?: 'implementatie'|'verwerking'|'review',
+ *   prNumber?: number, prBranch?: string, reason?: string, alarm?: boolean}>}
+ */
+async function evaluateGate({ github, context, core, issueNumber, dryRun = false, eventName = context.eventName }) {
+  // Fase 1 (#1721): alleen een `issues`-event start een echte beurt. Een aanroep vanuit de router-dispatch
+  // (workflow_dispatch) is uitsluitend een test en vereist `dry_run`.
+  if (eventName !== 'issues' && !dryRun) {
+    return {
+      proceed: false,
+      alarm: true,
+      reason: `Geen CI-run gestart: een aanroep vanuit '${eventName}' is alleen toegestaan als dry_run (testmodus).`,
+    };
+  }
+  if (dryRun && eventName === 'issues') {
+    return { proceed: false, alarm: true, reason: 'Geen CI-run gestart: dry_run is niet toegestaan op een issues-event.' };
+  }
+  const fx = dryRun ? dryRunEffects(core) : REAL_EFFECTS;
+  const holder = {};
+  const result = await evaluateGateInner({ github, context, core, issueNumber, dryRun, fx, holder });
+  if (!result.proceed || !dryRun) return result;
+
+  // Testmodus: de entry in de testledger schrijven en de annotatie plaatsen waarop het bewijs steunt.
+  const runAttempt = runAttemptOf(context);
+  const written = await ledgerLib.recordEntry({
+    github, context, issueNumber, mode: 'test', evaluated: holder.evaluated, runId: context.runId, runAttempt,
+  });
+  if (written.state === 'stop') return { proceed: false, alarm: true, reason: `Geen CI-run gestart (testmodus): ${written.reason}.` };
+  core.notice(ledgerLib.annotationText({ issueNumber, runId: context.runId, runAttempt }));
+  return result;
+}
+
 module.exports = {
   evaluateGate,
+  resolveIssueNumber,
+  dryRunEffects,
   setTurnLabel,
   findLinkedOpenPrs,
   findLinkedOpenPrsByKind,
