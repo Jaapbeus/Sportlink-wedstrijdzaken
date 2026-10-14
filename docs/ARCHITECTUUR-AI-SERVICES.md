@@ -61,7 +61,8 @@ builder.Services.AddSingleton<IChatClient>(
 
 | Component | Tier | Status |
 |-----------|------|--------|
-| `BerichtAiService` | beide (`FunctionApp.Postgres/Email/`, `FunctionApp/Email/`) | `IChatClient` via constructor |
+| `Planner.Shared/Email/BerichtAiKern` | gedeeld (#1759): prompt, datablok-markers, parsing, correctie-detectie | `IChatClient` via constructor; clubnaam en klok via delegates |
+| `BerichtAiService` | beide (`FunctionApp.Postgres/Email/`, `FunctionApp/Email/`) | omhulsel om `BerichtAiKern`: levert clubnaam en `DateTime.Now` |
 | `Planner.Shared/Feedback/FeedbackCore` | gedeeld | `IChatClient` als methodeparameter |
 | Provider-registratie | per tier één regel in `Program.cs` | `new ChatClient(aiModelName, …).AsIChatClient()` |
 | Toekomstige AI-services | — | Altijd `IChatClient` vanaf aanmaak |
@@ -195,11 +196,10 @@ Dit maakt model-upgrades (gpt-4o-mini → gpt-4.1-mini, etc.) zonder deployment 
 
 ## Jaarlijkse onderhoudsplicht: KNVB-regels
 
-De `KnvbRegelsContext` constante in `BerichtAiService.cs` bevat KNVB-verplaatsingsregels
+De `KnvbRegelsContext` constante in `Planner.Shared/Email/BerichtAiKern.cs` bevat KNVB-verplaatsingsregels
 voor één specifiek seizoen (huidig: 2026/'27 — actueel op 19-09-2026). Deze datums zijn
-jaarlijks verouderd. De constante staat **per tier** in een eigen kopie:
-`FunctionApp.Postgres/Email/BerichtAiService.cs` en `FunctionApp/Email/BerichtAiService.cs`.
-Werk beide bij.
+jaarlijks verouderd. Sinds #1759 staat de constante **eenmalig** in `BerichtAiKern` (gedeeld door beide
+tiers); werk daar ook `KnvbRegelsSeizoen` en `KnvbRegelsGeldigTot` bij.
 
 **Verplichting:** bij elke nieuwe seizoensstart (augustus/september):
 1. Controleer KNVB-website op gewijzigde verplaatsingsregels

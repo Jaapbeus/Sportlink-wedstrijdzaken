@@ -537,7 +537,7 @@ Op {datum} [om {aanvangstijd}] is helaas geen ruimte. Alternatieven:
 #### Dagdeel in het verzoek (#1587)
 
 Vraagt de afzender om een dagdeel ("zaterdagochtend", "'s middags"), dan vult de AI het classificatieveld
-`dagdeel` (`ochtend`, `middag`, `avond` of null; `BerichtAiService.ParseClassificatieResponse` laat elke
+`dagdeel` (`ochtend`, `middag`, `avond` of null; `BerichtAiKern.ParseClassificatieResponse` laat elke
 andere waarde vervallen). Het veld wordt **nooit afgeleid uit een aanvangstijd** en mag samen met
 `aanvangsTijd` voorkomen. `BerichtPipeline.BouwBeschikbaarheidRequest` geeft het door aan
 `CheckAvailabilityRequest.Dagdeel` (ook bij meerdere datums en bij een herplanverzoek met gewenste datum);
@@ -1326,7 +1326,7 @@ gaan via een apart pad naar dezelfde provider; die registerrij staat in [FEEDBAC
   expliciete opt-in `AllowExternalIntegrations=true` (`DEVELOPER-SETUP.md` §5.3) staat ze daar toe. Zonder
   toestemming gaat er niets naar de provider; de verwerking stopt dan met een logregel.
 * **Per aanroep:** temperatuur 0,1 en antwoordformaat JSON. Alle aanroepen staan in
-  `BerichtAiService` (`FunctionApp/Email/` en `FunctionApp.Postgres/Email/`, inhoudelijk gelijk).
+  `BerichtAiKern` (`Planner.Shared/Email/`, gedeeld sinds #1759; `BerichtAiService` per tier is een omhulsel).
 
 ### 5b. Aanroepen
 
