@@ -260,4 +260,27 @@ public class BerichtAiKernParseTests
         result.KnvbNotitie.Should().BeNull();
         result.HeelVeld.Should().BeTrue();
     }
+
+    [Fact]
+    public void ParseClassificatieResponse_DagdeelMetHoofdletterEnOnbekendeWaarde_WordtGenormaliseerd()
+    {
+        BerichtAiKern.ParseClassificatieResponse("""{"dagdeel":" Ochtend "}""", GeldigeDatum).Dagdeel.Should().Be("ochtend");
+        BerichtAiKern.ParseClassificatieResponse("""{"dagdeel":"nacht"}""", GeldigeDatum).Dagdeel.Should().BeNull();
+    }
+
+    [Fact]
+    public void ParseClassificatieResponse_TekstNullAlsString_IsGeenWaarde()
+    {
+        var result = BerichtAiKern.ParseClassificatieResponse("""{"datum":"null","teamNaam":"null"}""", GeldigeDatum);
+
+        result.Datum.Should().BeNull();
+        result.TeamNaam.Should().BeNull();
+    }
+
+    [Fact]
+    public void ParseClassificatieResponse_LegeOfNullDatumsLijst_GeeftNull()
+    {
+        BerichtAiKern.ParseClassificatieResponse("""{"datums":[]}""", GeldigeDatum).Datums.Should().BeNull();
+        BerichtAiKern.ParseClassificatieResponse("""{"datums":["null",""]}""", GeldigeDatum).Datums.Should().BeNull();
+    }
 }
