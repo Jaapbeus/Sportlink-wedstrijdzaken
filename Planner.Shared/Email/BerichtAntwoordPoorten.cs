@@ -15,6 +15,16 @@ public interface IAntwoordAfzender
     string Onderwerp { get; }
 }
 
+/// <summary>
+/// Een inkomend bericht zoals de fase-orkestratie van de e-mailverwerker het ziet (#1716 slice 9): de
+/// Graph-sleutel plus afzender en onderwerp. Het per tier eigen <c>InkomendBericht</c> implementeert dit;
+/// de rest van het bericht (body, headers) leest alleen de tier.
+/// </summary>
+public interface IInkomendBericht : IAntwoordAfzender
+{
+    string MessageId { get; }
+}
+
 /// <summary>Een vrij tijdvenster op één veld uit het beschikbaarheidsresponse.</summary>
 public interface IAntwoordVenster
 {

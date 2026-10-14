@@ -10,7 +10,7 @@ namespace SportlinkFunction.Email;
 
 public partial class EmailProcessorFunction
 {
-    private static async Task VerwerkEmailAsync(
+    internal static async Task VerwerkEmailAsync(
         InkomendBericht email,
         BerichtClassificatie classificatie,
         IEmailGraphService graphService,

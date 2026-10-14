@@ -11,7 +11,7 @@ namespace FunctionApp.Postgres.Email;
 
 public partial class EmailProcessorFunction
 {
-    private static async Task VerwerkEmailAsync(
+    internal static async Task VerwerkEmailAsync(
         string cs,
         string clubCode,
         InkomendBericht email,

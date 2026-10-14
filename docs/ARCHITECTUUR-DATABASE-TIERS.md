@@ -130,7 +130,8 @@ dubbele. Bouw die laag dus eerst; anders ontstaat een derde kopie die daarna wee
 worden. `Planner.Endpoints` mag op ASP.NET Core en de Azure Functions Worker leunen,
 `Planner.Shared` blijft framework-vrij; de databasetoegang gaat als delegate mee, dus dit is geen
 gedeelde providerabstractie en botst niet met §2. Stand: `SportlinkEndpointSupportCore` is het
-eerste stuk; zie [SPORTLINK-WEB-EXTENSION.md](SPORTLINK-WEB-EXTENSION.md) voor het overzicht per
+eerste stuk; de fase-orkestratie van de e-mailverwerker (`Planner.Endpoints/Email/EmailVerwerkerFasen.cs`, poort
+`IEmailVerwerkerPoort<TBericht>`, #1716 slice 9) volgt hetzelfde patroon voor een timer; zie [SPORTLINK-WEB-EXTENSION.md](SPORTLINK-WEB-EXTENSION.md) voor het overzicht per
 bestand. (Verplaatst uit `AGENTS.md`, #1580.)
 
 **Waarom deze volgorde vaststaat:**

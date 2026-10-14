@@ -12,7 +12,7 @@ namespace FunctionApp.Postgres.Email;
 /// en <c>Body</c> zijn op deze tier nullable, op de SQL Server-tier niet-nullable met standaard <c>""</c>;
 /// samenvoegen zou een standaardwaarde en daarmee opgeslagen gegevens op één tier veranderen.
 /// </summary>
-public sealed class InkomendBericht : IAntwoordAfzender
+public sealed class InkomendBericht : IInkomendBericht
 {
     public string MessageId { get; set; } = "";
     public string? ConversationId { get; set; }
