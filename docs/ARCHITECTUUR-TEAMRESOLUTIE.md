@@ -4,7 +4,10 @@
 > en stringheuristieken zijn verwijderd: deze laag is het enige pad waarlangs een team wordt herkend.
 >
 > **Twee tiers.** Dit document beschrijft standaard de SQL Server-notatie (`dbo.Teams`,
-> `FunctionApp/TeamResolution/`). De tier die in productie draait is Postgres (#1060):
+> `FunctionApp/TeamResolution/`). De beslisvolgorde zelf (`TeamResolver`, `ITeamResolver`, de poort
+> `ITeamCandidateRepository` en de request/result-typen) staat sinds #1716 (slice 2) eenmalig in
+> `Planner.Shared/TeamResolution/`; per tier blijven alleen `TeamCandidateRepository` en de
+> DI-registratie. De tier die in productie draait is Postgres (#1060):
 > lowercase identifiers in schema `public`, code onder `FunctionApp.Postgres/`. Waar het gedrag
 > écht verschilt staat dat expliciet vermeld — het belangrijkste is **een ander vangnet bij een
 > lege teamlijst**. Tot #1268 bestond er ook een verschil in teamdisambiguatie bij meerdere
@@ -322,8 +325,8 @@ tegenhanger onder `FunctionApp.Postgres/TeamResolution/` — zie de tiertabel da
 
 | Bestand | Verantwoordelijkheid |
 |---|---|
-| `FunctionApp/TeamResolution/TeamResolver.cs` | Resolutievolgorde; kiest nooit zelf bij ambiguïteit — sinds #1268 identiek aan de Postgres-tegenhanger. |
-| `FunctionApp/TeamResolution/TeamCandidateRepository.cs` | Lookups tegen `dbo.Teams`/`dbo.TeamAliassen` (Postgres: `public.teams`/`public.teamaliassen`), altijd op ClubCode. |
+| `Planner.Shared/TeamResolution/TeamResolver.cs` (+ `ITeamResolver.cs`, `ITeamCandidateRepository.cs`, `TeamResolutionModels.cs`) | Resolutievolgorde; kiest nooit zelf bij ambiguïteit. **Tier-onafhankelijk** sinds #1716 (slice 2): stond tot dan woordelijk in beide tiers (sinds #1268 identiek). De databasevraag komt via de poort `ITeamCandidateRepository`; de gevallen staan in `Planner.Shared.Tests/TeamResolution/TeamResolverTests.cs`, per tier is alleen de registratie getest (`FunctionApp.Tests/TeamResolution/TeamResolutionDiRegistratieTests.cs`, `FunctionApp.Postgres.Tests/TeamResolution/TeamResolutionRegistrationTests.cs`). Mutatiebewijs: `MUTATIELIJST=scripts/ci/mutatiebewijs-1716-slice2.tsv scripts/ci/mutatiebewijs-1716.sh` (14 mutanten). |
+| `FunctionApp/TeamResolution/TeamCandidateRepository.cs` | Implementatie van de poort `ITeamCandidateRepository` voor deze tier: lookups tegen `dbo.Teams`/`dbo.TeamAliassen` (Postgres: `public.teams`/`public.teamaliassen`), altijd op ClubCode. |
 | `FunctionApp/TeamResolution/TeamAliasLearningService.cs` | Legt nieuwe schrijfwijzen vast als `pending`. **Sinds #1268 zonder aanroeper op beide tiers** — hij werd uitsluitend ná een AI-disambiguatiekeuze gebruikt (zie hieronder), en die keuze wordt niet meer gemaakt. Ook niet meer in DI geregistreerd op de SQL Server-tier (op Postgres nooit geweest). De klasse blijft in de codebase staan uit tier-gelijkwaardigheid, niet omdat hij nog iets doet. |
 | `Planner.Endpoints/Leren/TeamAliasEndpointCore.cs`, `Planner.Shared/Leren/` | Orkestratie van alias aanmaken/valideren/verwijderen en de wachtrij (tier-onafhankelijk, #1568 deel C); de databasevraag staat per tier in `SqlTeamAliasStore`/`PostgresTeamAliasStore` en `Sql…`/`PostgresOnbekendeTeamTekstStore`. |
 | `FunctionApp/TeamResolution/TeamCanonicalisatieService.cs` | Vult de teamtabel na de sync; ontdubbelt de twee notaties; migreert opgeslagen sleutels na een normalisatiewijziging. |
@@ -338,7 +341,7 @@ tegenhanger onder `FunctionApp.Postgres/TeamResolution/` — zie de tiertabel da
 | `TeamCandidateRepository` | ✓ | ✓ | #889 deel 1 |
 | `TeamAliasLearningService` | ✓ (ongebruikt) | ✓ (ongebruikt) | #889 deel 1; sinds #1268 op beide tiers zonder aanroeper — zie hierboven |
 | `TeamCanonicalisatieService` | ✓ | ✓ | #889 deel 2 |
-| `TeamResolver` / `ITeamResolver` | ✓ | ✓ | **Sinds #1268 woordelijk gelijk — geen functioneel verschil meer** |
+| `TeamResolver` / `ITeamResolver` / `ITeamCandidateRepository` | gedeeld | gedeeld | Staat sinds #1716 (slice 2) in `Planner.Shared/TeamResolution/` — **niet** meer gedupliceerd (sinds #1268 waren de kopieën al woordelijk gelijk) |
 | `TeamAliasConstanten` | — | ✓ | Alleen Postgres |
 | `TeamlijstGereedheid` | ✓ | ✗ | Vervangen door onvoorwaardelijke `RefreshAsync` + `AdminTeamsHerstelFunction` |
 
@@ -375,12 +378,12 @@ Zie ook `docs/ARCHITECTUUR-DATABASE-TIERS.md` §28.
    `his.matchdetails`). De vormen in dit document zijn zo gevonden, niet bedacht.
 5. **Test met de clubprefix als parameter**, nooit hardcoded: de prefix komt uit de
    instellingentabel (`public.appsettings` op Postgres, `dbo.AppSettings` op SQL Server).
-6. **Wijzig beide tiers.** De normalisatie is gedeeld, maar `TeamResolver`,
-   `TeamCandidateRepository`, `TeamAliasLearningService` en `TeamCanonicalisatieService` bestaan
-   per tier in een eigen kopie. Een wijziging in één boom is onaf (#1266).
+6. **Wijzig beide tiers.** De normalisatie en (sinds #1716 slice 2) `TeamResolver` zijn gedeeld,
+   maar `TeamCandidateRepository`, `TeamAliasLearningService` en `TeamCanonicalisatieService`
+   bestaan per tier in een eigen kopie. Een wijziging in één boom is onaf (#1266).
 7. **Ruim `TeamAliasLearningService` en `ResolutionBron.AiDisambiguatie` niet op zonder de vraag uit
-   regel 3 te beantwoorden.** Ze staan er nog, ongebruikt, op beide tiers (`AiDisambiguatie` bestaat
-   in beide `TeamResolutionModels.cs`) en zijn het aanknopingspunt als een disambiguator terugkomt;
+   regel 3 te beantwoorden.** Ze staan er nog, ongebruikt, op beide tiers (`AiDisambiguatie` staat
+   sinds #1716 slice 2 in het gedeelde `Planner.Shared/TeamResolution/TeamResolutionModels.cs`) en zijn het aanknopingspunt als een disambiguator terugkomt;
    ze weghalen bij één tier zou de pariteit opnieuw breken. (Verplaatst uit `AGENTS.md`, #1580.)
 
 ## Postgres-collatie-kanttekening (#820)

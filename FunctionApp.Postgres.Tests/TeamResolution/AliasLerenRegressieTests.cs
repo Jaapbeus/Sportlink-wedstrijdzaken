@@ -1,9 +1,9 @@
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Planner.Endpoints.Leren;
+using Planner.Shared.TeamResolution;
 using Planner.Shared;
 using Planner.Shared.Leren;
-using FunctionApp.Postgres.TeamResolution;
 using Xunit;
 
 namespace FunctionApp.Postgres.Tests.TeamResolution;

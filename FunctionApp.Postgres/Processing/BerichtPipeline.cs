@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Planner.Shared.TeamResolution;
 using Planner.Shared;
 using Planner.Shared.Email;
 using Planner.Shared.Email.Trace;
@@ -7,7 +8,6 @@ using FunctionApp.Postgres.Email;
 using FunctionApp.Postgres.Planner;
 using FunctionApp.Postgres.Planner.Repositories;
 using FunctionApp.Postgres.Sync;
-using FunctionApp.Postgres.TeamResolution;
 
 namespace FunctionApp.Postgres.Processing;
 

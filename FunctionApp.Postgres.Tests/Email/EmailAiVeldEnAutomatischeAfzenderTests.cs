@@ -4,8 +4,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Planner.Shared.Email;
 using FunctionApp.Postgres.Email;
 using FunctionApp.Postgres.Processing;
-using FunctionApp.Postgres.TeamResolution;
 using FunctionApp.Postgres.Tests.Email.TestDoubles;
+using Planner.Shared.TeamResolution;
 using Xunit;
 
 namespace FunctionApp.Postgres.Tests.Email;

@@ -1,10 +1,16 @@
 using AwesomeAssertions;
-using Planner.Shared;
-using SportlinkFunction.TeamResolution;
+using Planner.Shared.TeamResolution;
 using Xunit;
 
-namespace FunctionApp.Tests.TeamResolution;
+namespace Planner.Shared.Tests.TeamResolution;
 
+/// <summary>
+/// Gevallen van de gedeelde <see cref="TeamResolver"/> (#1716 slice 2). Stonden tot dan in
+/// <c>FunctionApp.Tests/TeamResolution/TeamResolverTests.cs</c> en dekten alleen de SQL Server-tier;
+/// omdat beide databasetiers nu deze ene klasse gebruiken, gelden ze ook voor de productietier.
+/// Per tier blijft alleen een test van de registratie (<c>TeamResolutionDiRegistratieTests</c>,
+/// <c>TeamResolutionRegistrationTests</c>).
+/// </summary>
 public class TeamResolverTests
 {
     private const string Club = "TESTCLUB";
@@ -121,17 +127,91 @@ public class TeamResolverTests
         await act.Should().ThrowAsync<ArgumentException>();
     }
 
+    [Fact]
+    public async Task ResolveAsync_ZoektAliasOpGetrimdeRuweTekstEnGenormaliseerdeSleutel()
+    {
+        var fake = new FakeTeamCandidateRepository();
+        var resolver = new TeamResolver(fake);
+
+        await resolver.ResolveAsync(Request("  TESTCLUB O13-1  "));
+
+        fake.LaatsteAliasRuweTekst.Should().Be("TESTCLUB O13-1");
+        fake.LaatsteAliasSleutel.Should().Be("JO13-1");
+    }
+
+    [Fact]
+    public async Task ResolveAsync_GevalideerdeAlias_WintVanExacteMatch()
+    {
+        var fake = new FakeTeamCandidateRepository
+        {
+            ValidatedAlias = new TeamCandidate(42, "TESTCLUB O13-2", "JO13"),
+            ExactTeam = new TeamCandidate(7, "TESTCLUB O13-1", "JO13"),
+        };
+        var resolver = new TeamResolver(fake);
+
+        var resultaat = await resolver.ResolveAsync(Request("JO13-1"));
+
+        resultaat.TeamId.Should().Be(42);
+        resultaat.Bron.Should().Be(ResolutionBron.ExacteAlias);
+        fake.LaatsteExactSleutel.Should().BeNull("na een aliastreffer wordt de teamtabel niet meer bevraagd");
+    }
+
+    [Fact]
+    public async Task ResolveAsync_MeerdereKandidaten_ZetGeenTeamEnGeenZekerheid()
+    {
+        var fake = new FakeTeamCandidateRepository
+        {
+            Kandidaten = [new TeamCandidate(9, "TESTCLUB O13-1", "JO13"), new TeamCandidate(10, "TESTCLUB MO13-1", "MO13")],
+        };
+        var resolver = new TeamResolver(fake);
+
+        var resultaat = await resolver.ResolveAsync(Request("13-1"));
+
+        resultaat.CanoniekeTeamnaam.Should().BeNull();
+        resultaat.Confidence.Should().Be(0.0);
+        resultaat.IsOpgelost.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task ResolveAsync_LegeTekst_RaadpleegtDeOpslagNiet(string ruweTekst)
+    {
+        var fake = new FakeTeamCandidateRepository { ValidatedAlias = new TeamCandidate(42, "TESTCLUB O13-2", "JO13") };
+        var resolver = new TeamResolver(fake);
+
+        var resultaat = await resolver.ResolveAsync(Request(ruweTekst));
+
+        resultaat.Should().Be(TeamResolutionResult.Onopgelost);
+        fake.AliasOpgevraagd.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(5, "TESTCLUB O13-1", true)]
+    [InlineData(5, " ", false)]
+    [InlineData(null, "TESTCLUB O13-1", false)]
+    public void IsOpgelost_VereistTeamIdEnCanoniekeNaam(int? teamId, string naam, bool verwacht)
+        => new TeamResolutionResult(teamId, naam, 1.0, [], ResolutionBron.ExacteMatch).IsOpgelost.Should().Be(verwacht);
+
     private sealed class FakeTeamCandidateRepository : ITeamCandidateRepository
     {
         public TeamCandidate? ValidatedAlias { get; set; }
         public TeamCandidate? ExactTeam { get; set; }
         public IReadOnlyList<TeamCandidate> Kandidaten { get; set; } = [];
         public bool KandidatenOpgevraagd { get; private set; }
+        public bool AliasOpgevraagd { get; private set; }
         public string? LaatsteExactSleutel { get; private set; }
+        public string? LaatsteAliasRuweTekst { get; private set; }
+        public string? LaatsteAliasSleutel { get; private set; }
 
         public Task<TeamCandidate?> FindValidatedAliasAsync(
             string clubCode, string ruweTekst, string genormaliseerdeSleutel)
-            => Task.FromResult(ValidatedAlias);
+        {
+            AliasOpgevraagd = true;
+            LaatsteAliasRuweTekst = ruweTekst;
+            LaatsteAliasSleutel = genormaliseerdeSleutel;
+            return Task.FromResult(ValidatedAlias);
+        }
 
         public Task<bool> HeeftActieveTeamsAsync(string clubCode) => Task.FromResult(true);
 

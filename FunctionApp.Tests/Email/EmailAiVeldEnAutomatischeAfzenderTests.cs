@@ -1,9 +1,9 @@
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Planner.Shared.Email;
+using Planner.Shared.TeamResolution;
 using SportlinkFunction.Email;
 using SportlinkFunction.Processing;
-using SportlinkFunction.TeamResolution;
 using FunctionApp.Tests.Email.TestDoubles;
 using Xunit;
 

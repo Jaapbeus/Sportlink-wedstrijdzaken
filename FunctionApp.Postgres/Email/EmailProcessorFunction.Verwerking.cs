@@ -2,10 +2,10 @@ using Planner.Shared.Email;
 using FunctionApp.Postgres.Admin;
 using Newtonsoft.Json;
 using FunctionApp.Postgres.Processing;
+using Planner.Shared.TeamResolution;
 using Planner.Shared;
 using Planner.Shared.Email.Trace;
 using Microsoft.Extensions.Logging;
-using FunctionApp.Postgres.TeamResolution;
 
 namespace FunctionApp.Postgres.Email;
 
