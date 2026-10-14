@@ -424,6 +424,16 @@ jobs:
       - name: Turn-label exclusief testen
         run: node .github/scripts/turn-label-exclusief.test.js
 
+      # #1721 (fase 1): routetabel en workflowstructuur van de issue-router en de aanroepbare beurtworkflow,
+      # plus de guard dat geen enkele workflow `checks: write` krijgt. Beide draaien alleen op een
+      # eigen trigger of handmatig; zonder deze tests blijkt een fout pas bij een proef.
+      - name: Issue-router testen
+        run: node .github/scripts/issue-router.test.js
+
+      # #1721: rondeteller op ID's (fail-closed, bewijs per poging) voor de issue-beurt.
+      - name: Claude issue-beurt ledger testen
+        run: node .github/scripts/claude-issue-turn-ledger.test.js
+
       # ──────────────────────────────────────────────────────────────────────
       # #595: schema-drift guard.
       #
