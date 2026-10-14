@@ -162,8 +162,10 @@ is nodig omdat de workflows zelf alleen op hun eigen trigger draaien: zonder dez
 bij een echte merge of release blijken. Om dezelfde reden draaien daar ook
 `node .github/scripts/claude-issue-turn-gate.test.js` (poort van `claude-issue-turn.yml`),
 `node .github/scripts/claude-issue-turn-eindlabel.test.js` (eindlabel, #1692),
-`node .github/scripts/claude-issue-turn-review.test.js` (reviewpublicatie, #1727) en
-`node .github/scripts/turn-label-exclusief.test.js` (helper van `turn-label-exclusief.yml`, #1686).
+`node .github/scripts/claude-issue-turn-review.test.js` (reviewpublicatie, #1727),
+`node .github/scripts/turn-label-exclusief.test.js` (helper van `turn-label-exclusief.yml`, #1686),
+`node .github/scripts/issue-router.test.js` (routetabel, structuur van `issue-router.yml` en `claude-issue-turn.yml`, guard tegen `checks: write`, #1721) en
+`node .github/scripts/claude-issue-turn-ledger.test.js` (rondeteller op ID's, fail-closed, #1721).
 
 ### BlazorAdmin-build wordt overgeslagen bij een draaiende dev server
 

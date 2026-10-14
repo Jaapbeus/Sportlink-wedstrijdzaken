@@ -449,14 +449,11 @@ noodmail actief):**
    ```
    AzureSqlServerName      = [sql-servernaam]     (zonder .database.windows.net)
    AzureSqlDatabaseName    = [database-naam]
-   DATABASE_STATUS_MONITOR_SCHEDULE = 0 0 8 * * *   (VERPLICHT — zie hieronder)
    ```
-   > **`DATABASE_STATUS_MONITOR_SCHEDULE` is niet optioneel en heeft geen default in code.** De
-   > TimerTrigger is gedeclareerd als `[TimerTrigger("%DATABASE_STATUS_MONITOR_SCHEDULE%")]`, en de
-   > Functions-runtime lost die `%…%`-verwijzing op bij het **indexeren** van de functie — vóór de
-   > functiebody ooit draait. Ontbreekt de app setting, dan faalt het indexeren en komt de functie
-   > niet omhoog; dat symptoom wijst nergens naar deze instelling. De waarde `0 0 8 * * *` staat
-   > alleen als voorbeeld in `FunctionApp/local.settings.template.json`.
+   > Sinds #1718 staat de schedule (`0 0 8 * * *`) als letterlijke cron in code, op beide tiers. De
+   > eerdere app setting `DATABASE_STATUS_MONITOR_SCHEDULE` is vervallen: een ontbrekende `%…%`-verwijzing
+   > liet het indexeren van de hele Function App mislukken. Uitzetten kan met de standaard-app-setting
+   > `AzureWebJobs.DatabaseUitvalMonitor.Disabled=true`.
 2. **Eenmalige, gratis roltoewijzing:** de Function App heeft in productie al een Managed Identity
    met een rol op zijn eigen resource (Website Contributor, voor de bestaande herstartfunctie — zie
    `AdminSettingsFunction.TriggerFunctionAppRestartAsync`). Voor déze controle is alleen leestoegang
@@ -472,9 +469,8 @@ noodmail actief):**
 Zonder de **vier resource-instellingen** (`AzureSubscriptionId`, `AzureResourceGroupName`,
 `AzureSqlServerName`, `AzureSqlDatabaseName`) logt de functie een informatiebericht en doet verder
 niets — een club kan dus zonder die configuratie blijven draaien, met alleen de bestaande,
-e-mail-pipeline-afhankelijke noodmail als vangnet. Dat geldt **niet** voor
-`DATABASE_STATUS_MONITOR_SCHEDULE`: die moet altijd gezet zijn, anders kan de functie niet worden
-geïndexeerd.
+e-mail-pipeline-afhankelijke noodmail als vangnet. Een
+ontbrekende schedule-instelling kan het indexeren niet meer blokkeren (#1718).
 
 ### Uitvalmonitor op de Postgres-tier (#1268)
 

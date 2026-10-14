@@ -211,7 +211,7 @@ public partial class EmailProcessorFunction
         // Teamnaam→canonieke-teamlijst-verversing hoort hier, niet in fase 1: idempotent, kan
         // zonder bezwaar herhaald worden — zelfde pad als EmailTestFunction/AdminTeamsHerstelFunction.
         await TeamCanonicalisatieService.RefreshAsync(cs, clubCode, log);
-        var teamResolver = new TeamResolver(new TeamCandidateRepository(cs));
+        var teamResolver = ctx.Services.GetRequiredService<ITeamResolver>();
 
         // Classificatiefouten vastleggen nu de database wakker is — anders bestaat er geen teller en
         // blijven deze berichten oneindig terugkomen (zie BepaalMislukteClassificaties).

@@ -19,6 +19,8 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.SqlClient" />
+    <!-- #1748: directe pin van een transitieve SqlClient-dependency, zie Directory.Packages.props -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" />
     <PackageReference Include="Npgsql" />
   </ItemGroup>
 

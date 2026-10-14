@@ -1,0 +1,96 @@
+name: Issue-router
+run-name: "Issue-router #${{ inputs.issue_number }}${{ inputs.dry_run && ' (dry-run)' || '' }}"
+
+# #1721 fase 1 (plan v4, eigenaarsbesluiten 1c/3a/C=a): de router voor issue-events, nu alleen als
+# TESTROUTE. Geen trigger op `issues`: er komt dus geen enkele extra run bij een label. Een mens met
+# schrijfrechten start hem met
+#
+#   gh workflow run issue-router.yml --ref <branch> -f issue_number=<testissue> -f dry_run=true
+#
+# De dispatch bootst het event `labeled` + `turn: claude-code` na (issue-router.js, dispatchEvent). De
+# aanroep-job `beurt` roept claude-issue-turn.yml aan als herbruikbare workflow (`workflow_call`); de
+# poort daar weigert een aanroep die niet van een `issues`-event komt, tenzij `dry_run` aan staat, en
+# schrijft dan alleen in een aparte testledger (marker `v1-test`). Zo bewijst de proef de registratie,
+# de ref-versie, het secret via `workflow_call`, de permissie-bovengrens, de OIDC-uitgifte, de
+# actor-check van de action, de annotaties en de ledger; een skip of blokkade is nooit bewijs.
+# Wat de proef NIET dekt: het pad via een echt `issues`-event (fase 2).
+#
+# Geen `allowed_bots`: de actor blijft de mens die de dispatch startte. Het secret wordt expliciet
+# doorgegeven (nooit `secrets: inherit`) en staat ook onder `on.workflow_call.secrets` van de beurt.
+# Fase 2 (aparte PR + release) voegt de trigger op issue-events toe en haalt de `issues`-trigger uit
+# claude-issue-turn.yml in dezelfde commit, zodat oude en nieuwe triggers nooit samen actief zijn.
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: Issuenummer van het testissue (alleen cijfers)
+        type: string
+        required: true
+      dry_run:
+        description: Testmodus (testledger, onschadelijke agent, geen labelwijziging)
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  route:
+    name: Route bepalen
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      beurt: ${{ steps.route.outputs.beurt }}
+    steps:
+      - name: Checkout (voor .github/scripts)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Routetabel toepassen
+        id: route
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          INPUT_ISSUE_NUMBER: ${{ inputs.issue_number }}
+        with:
+          script: |
+            const { route, dispatchEvent } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/issue-router.js`);
+            const r = route(dispatchEvent(process.env.INPUT_ISSUE_NUMBER));
+            if (!r.valid) {
+              core.setOutput('beurt', '');
+              core.setFailed(`Route geweigerd: ${r.reason}`);
+              return;
+            }
+            core.setOutput('beurt', r.beurt);
+            // Fase 1: de handlers status/exclusief worden hier nog niet uitgevoerd (fase 2).
+            await core.summary
+              .addRaw(`issue-router: #${r.issueNumber}, rijen: ${r.handlers.join(', ') || '-'}, beurt: ${r.beurt || '-'}`)
+              .write();
+
+  # Eén lock over de hele beurt (poort, agent en eindlabel samen): de groep staat hier, op de
+  # aanroep-job, en de aangeroepen workflow heeft geen eigen job-concurrency (geen geneste locks).
+  # Latest-only: een wachtende aanroep wordt bij een nieuwere vervangen voordat zijn poort draait.
+  beurt:
+    name: beurt
+    needs: route
+    if: needs.route.outputs.beurt == 'claude-code'
+    concurrency:
+      group: claude-issue-turn-${{ inputs.issue_number }}
+      cancel-in-progress: false
+    # Bovengrens voor de aangeroepen jobs; elke aangeroepen job houdt zijn eigen smallere `permissions`.
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+      checks: read
+    uses: ./.github/workflows/claude-issue-turn.yml
+    with:
+      issue_number: ${{ inputs.issue_number }}
+      dry_run: ${{ inputs.dry_run }}
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
