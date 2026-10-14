@@ -87,8 +87,8 @@ public static class AdminSyncFunction
                 // #1352/#1461/#1492: body + seizoensvenster via de gedeelde orkestratie (400 bij ongeldig).
                 var venster = await SyncTriggerEndpointCore.BepaalVensterAsync(
                     await new StreamReader(req.Body).ReadToEndAsync(), DateTime.UtcNow.Year,
-                    () => SystemUtilities.SeasonHelper.GetSeasonEndWeekOffsetAsync(log),
-                    jaar => SystemUtilities.SeasonHelper.GetSeasonStartWeekOffsetOrNullAsync(jaar));
+                    () => SystemUtilities.SeasonHelper.GetSeasonEndWeekOffsetAsync(log, clubCode),
+                    jaar => SystemUtilities.SeasonHelper.GetSeasonStartWeekOffsetOrNullAsync(jaar, clubCode));
                 if (venster.Fout is not null) return venster.Fout;
                 int fromWeekOffset = venster.Van, toWeekOffset = venster.Tot;
                 var jobId = Guid.NewGuid();

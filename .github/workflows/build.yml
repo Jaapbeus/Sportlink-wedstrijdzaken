@@ -622,7 +622,7 @@ jobs:
           INSERT INTO @verwacht (naam) VALUES
               ('dbo.AppSettings'), ('dbo.Velden'), ('dbo.Speeltijden'), ('dbo.TeamRegels'),
               ('dbo.VeldBeschikbaarheid'), ('dbo.VeldTraining'), ('dbo.Teams'), ('dbo.TeamAliassen'),
-              ('dbo.KnvbKalenderDag'), ('dbo.Season'), ('dbo.Zonsondergang'),
+              ('dbo.KnvbKalenderDag'), ('dbo.Season'), ('dbo.ClubSeason'), ('dbo.Zonsondergang'),
               ('dbo.EmailTemplateInstellingen'), ('dbo.UitgeslotenEmailAdressen'),
               ('dbo.TeamVoorkeurTijden'), ('dbo.AppSettingsAudit'),
               ('planner.EmailVerwerking'), ('planner.GeplandeWedstrijden'),
@@ -652,6 +652,12 @@ jobs:
                WHERE [ClubCode] = 'ALLSTARS' AND [Actief] = 1 AND LEN(LTRIM(RTRIM([Onderwerp]))) > 0) < 2
               RAISERROR('dbo.EmailTemplateInstellingen heeft minder dan 2 actieve democlub-sjablonen met een niet-leeg onderwerp (#911).', 16, 1);
           SELECT 'EmailTemplates ALLSTARS: ' + [TemplateKey] FROM [dbo].[EmailTemplateInstellingen] WHERE [ClubCode] = 'ALLSTARS';
+
+          -- #1715: elke club heeft eigen seizoenen in dbo.ClubSeason (uit de eigen SeasonStartMonth).
+          IF EXISTS (SELECT 1 FROM [dbo].[AppSettings] a
+                     WHERE NOT EXISTS (SELECT 1 FROM [dbo].[ClubSeason] c WHERE c.[ClubCode] = a.[ClubCode]))
+              RAISERROR('dbo.ClubSeason heeft geen seizoenen voor minstens één club (#1715).', 16, 1);
+          SELECT 'ClubSeason: ' + [ClubCode] + ' = ' + CAST(COUNT(*) AS VARCHAR) FROM [dbo].[ClubSeason] GROUP BY [ClubCode];
           "
 
       # #856: bewijst dat scripts/migrations/003-seed-allstars-demo-matches.sql daadwerkelijk werkt
@@ -721,6 +727,71 @@ jobs:
             exit 1
           fi
           echo "AllStars-demodata (#856): 28 teams, 28 begeleiders, 224 wedstrijden — bevestigd, ook na een herhaalde run (idempotent)."
+
+      # #1715 (Codex-review #1743 ronde 1): de overgang op een BESTAANDE database. deploy.yml draait het
+      # PostDeployment-script vóór de nieuwe code, dus de vorige code leest dan nog even het oude schema.
+      # Eerst het script van de basisbranch (twee keer: pas bij de tweede run bestaat de seizoensprocedure
+      # en vult hij dbo.Season, zoals op een installatie die al een deploy achter de rug heeft), dan dat van
+      # deze PR (twee keer, idempotentie). Daarna: dbo.Season is onveranderd en clubneutraal, de leesquery's
+      # van de vorige code werken nog, en elke club heeft eigen seizoenen in dbo.ClubSeason.
+      - name: Overgang bestaande database — PostDeployment van de basis, daarna van deze PR (#1715)
+        if: github.event_name == 'pull_request'
+        env:
+          BASIS_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          sql() { docker exec sqlfresh /opt/mssql-tools18/bin/sqlcmd \
+                    -S localhost -U sa -P "$SA_PW" -C "$@"; }
+          git fetch --no-tags --depth=1 origin "$BASIS_SHA"
+          git show "$BASIS_SHA:Database/Script.PostDeployment1.sql" > /tmp/postdeployment-basis.sql
+          docker cp /tmp/postdeployment-basis.sql sqlfresh:/tmp/postdeployment-basis.sql
+          sql -Q "CREATE DATABASE SportlinkTransitie"
+          for run in 1 2; do
+            echo "───── Basis, run ${run} ─────"
+            sql -d SportlinkTransitie -b -V 11 -i /tmp/postdeployment-basis.sql
+          done
+          voor=$(sql -d SportlinkTransitie -b -V 11 -h -1 -W -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM [dbo].[Season];")
+          for run in 1 2; do
+            echo "───── Deze PR, run ${run} ─────"
+            sql -d SportlinkTransitie -b -V 11 -i /tmp/postdeployment.sql
+          done
+          na=$(sql -d SportlinkTransitie -b -V 11 -h -1 -W -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM [dbo].[Season];")
+          if [ "$voor" != "$na" ]; then
+            echo "::error::dbo.Season veranderde bij de overgang (${voor} -> ${na} rijen); de vorige code leest die tabel nog (#1715)."
+            exit 1
+          fi
+          sql -d SportlinkTransitie -b -V 11 -h -1 -W -Q "
+          SET NOCOUNT ON;
+          -- Leesquery's van de vorige codeversie (origin/main vóór #1715), letterlijk.
+          DECLARE @x DATE;
+          SELECT @x = MAX(DateUntil) FROM [dbo].[Season];
+          SELECT TOP 1 @x = [DateFrom] FROM [dbo].[Season] WHERE [DateUntil] >= CAST(SYSUTCDATETIME() AS DATE) ORDER BY [DateFrom] ASC;
+          IF COL_LENGTH('dbo.Season', 'ClubCode') IS NOT NULL
+              RAISERROR('dbo.Season kreeg een ClubCode; dat hoort pas bij de contract-stap (#1715).', 16, 1);
+          IF NOT EXISTS (SELECT 1 FROM [dbo].[Season])
+              RAISERROR('dbo.Season is leeg na twee basis-runs; de overgangstest meet dan niets (#1715).', 16, 1);
+          IF EXISTS (SELECT 1 FROM [dbo].[AppSettings] a
+                     WHERE NOT EXISTS (SELECT 1 FROM [dbo].[ClubSeason] c WHERE c.[ClubCode] = a.[ClubCode]))
+              RAISERROR('dbo.ClubSeason heeft na de overgang geen seizoenen voor minstens één club (#1715).', 16, 1);
+          SELECT 'Overgang: dbo.Season ${na} rijen (ongewijzigd); ClubSeason ' + [ClubCode] + ' = ' + CAST(COUNT(*) AS VARCHAR)
+          FROM [dbo].[ClubSeason] GROUP BY [ClubCode];
+          "
+
+      - name: .NET SDK installeren
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      # #1715 (Codex-review #1743 ronde 1): de SQL Server-integratietests sloegen zichzelf in CI over, omdat
+      # geen job SQLSERVER_TEST_CONNECTION_STRING zette. Hier draaien ze tegen deze wegwerpdatabase: seizoenen
+      # per club (doorrol rond de jaarwisseling, afgebroken en overlappende wijzigingen, overgang), de
+      # seizoensretentie (#1698), de feedbackopslag en het inzagelog. SqlServerReconciliationIntegrationTests
+      # blijft buiten deze filter: die leest de connectiestring van de Function App zelf.
+      - name: SQL Server-integratietests (FunctionApp.Tests, tegen SportlinkFresh)
+        run: |
+          SQLSERVER_TEST_CONNECTION_STRING="Server=localhost,1433;Database=SportlinkFresh;User Id=sa;Password=${SA_PW};TrustServerCertificate=True;Pooling=false" \
+            dotnet test FunctionApp.Tests/FunctionApp.Tests.csproj --configuration Release --verbosity normal \
+              --filter "FullyQualifiedName~SqlServerSeizoenIntegrationTests|FullyQualifiedName~SqlServerHisRetentieIntegrationTests|FullyQualifiedName~SqlFeedbackStoreIntegrationTests|FullyQualifiedName~SqlTeambegeleidingInzageStoreIntegrationTests"
 
       - name: Container opruimen
         if: always()

@@ -38,8 +38,8 @@ namespace SportlinkFunction.Planner
         public static Task PopulateSunsetTableAsync(DateOnly from, DateOnly to)
             => PlannerSettingsRepository.PopulateSunsetTableAsync(from, to);
 
-        public static Task<DateOnly?> GetSeasonEndDateAsync()
-            => PlannerSettingsRepository.GetSeasonEndDateAsync();
+        public static Task<DateOnly?> GetSeasonEndDateAsync(string? clubCode = null)
+            => PlannerSettingsRepository.GetSeasonEndDateAsync(clubCode);
 
         public static Task<DateTime?> GetLastSyncTimestampAsync()
             => PlannerSettingsRepository.GetLastSyncTimestampAsync();

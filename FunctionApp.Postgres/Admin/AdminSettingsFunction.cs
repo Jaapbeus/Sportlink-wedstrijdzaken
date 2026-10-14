@@ -1,3 +1,4 @@
+using Database.Postgres;
 using FunctionApp.Postgres.Infrastructure;
 using Planner.Shared;
 using Azure.Core;
@@ -55,7 +56,7 @@ public static class AdminSettingsFunction
         "Accommodatie", "FetchSchedule", "EmailVoetnoot",
         "AccommodatiePlaats", "AccommodatieLatitude", "AccommodatieLongitude",
         "UseRealtimeApi", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio",
-        "SportlinkExtensionEnabled", "SportlinkDryRun", "SportlinkSpelactiviteit", "PdfExportIngeschakeld", "ZekerheidspoortActief"
+        "SportlinkExtensionEnabled", "SportlinkDryRun", "SportlinkSpelactiviteit", "PdfExportIngeschakeld", "ZekerheidspoortActief", "SeasonStartMonth"
     };
 
     /// <summary>
@@ -78,6 +79,7 @@ public static class AdminSettingsFunction
         ["SportlinkDryRun"] = "::boolean",
         ["PdfExportIngeschakeld"] = "::boolean",
         ["ZekerheidspoortActief"] = "::boolean",
+        ["SeasonStartMonth"] = "::integer",
     };
 
     private const string ManagementApiVersion = "2022-03-01";
@@ -206,7 +208,7 @@ public static class AdminSettingsFunction
                 await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
                 await connection.OpenAsync();
 
-                await ApplyChangesAsync(connection, changes, gewijzigdDoor, clubCode);
+                await ApplyChangesAsync(connection, changes, gewijzigdDoor, clubCode, DateOnly.FromDateTime(DateTime.UtcNow));
 
                 await PostgresAppSettings.LoadSettingsAsync(log);
 
@@ -271,8 +273,10 @@ public static class AdminSettingsFunction
         return AppSettingsValidatieCore.Valideer(changes);
     }
 
-    private static async Task ApplyChangesAsync(
-        NpgsqlConnection connection, Dictionary<string, string?> changes, string gewijzigdDoor, string clubCode)
+    /// <summary>Wijzigingen + audit + (bij <c>SeasonStartMonth</c>) seizoensherbouw in één transactie, met de
+    /// clubrij vergrendeld (<c>FOR UPDATE</c>): samen slagen of samen terugdraaien (#1715, Codex-review #1743).</summary>
+    internal static async Task ApplyChangesAsync(
+        NpgsqlConnection connection, Dictionary<string, string?> changes, string gewijzigdDoor, string clubCode, DateOnly vandaag)
     {
         await using var transaction = await connection.BeginTransactionAsync();
 
@@ -305,6 +309,9 @@ public static class AdminSettingsFunction
                 await auditCmd.ExecuteNonQueryAsync();
                 await auditCmd.DisposeAsync();
             }
+
+            if (changes.ContainsKey("SeasonStartMonth"))
+                await PostgresSeasonProcedures.HerbouwSeizoenenVoorClubAsync(connection, transaction, clubCode, vandaag);
 
             await transaction.CommitAsync();
         }
@@ -466,7 +473,7 @@ public static class AdminSettingsFunction
         var result = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         if (safe.Count == 0) return result;
 
-        var sql = $"SELECT {string.Join(", ", safe)} FROM public.appsettings WHERE clubcode = @clubcode LIMIT 1";
+        var sql = $"SELECT {string.Join(", ", safe)} FROM public.appsettings WHERE clubcode = @clubcode LIMIT 1 FOR UPDATE";
         await using var cmd = new NpgsqlCommand(sql, connection, transaction);
         cmd.Parameters.AddWithValue("clubcode", clubCode);
         await using var reader = await cmd.ExecuteReaderAsync();

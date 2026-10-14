@@ -40,13 +40,15 @@ public class GitHubIssueReporterTests
         Content = new StringContent(json)
     };
 
-    private static string IssueJson(int number, string state, string title, bool isPullRequest = false)
+    private static string IssueJson(int number, string state, string title, bool isPullRequest = false,
+        string authorAssociation = "OWNER")
     {
         var prField = isPullRequest ? "\"pull_request\": { \"url\": \"https://api.github.com/x\" }," : "";
         return $$"""
             {
                 "number": {{number}},
                 "state": "{{state}}",
+                "author_association": "{{authorAssociation}}",
                 "title": {{System.Text.Json.JsonSerializer.Serialize(title)}},
                 {{prField}}
                 "body": "irrelevant"
@@ -304,5 +306,144 @@ public class GitHubIssueReporterTests
 
         diagnostics.Should().NotContain(innerMarker);
         diagnostics.Should().Contain(nameof(InvalidOperationException));
+    }
+
+    [Theory]
+    [InlineData("OWNER", true)]
+    [InlineData("MEMBER", true)]
+    [InlineData("COLLABORATOR", true)]
+    [InlineData("CONTRIBUTOR", false)]
+    [InlineData("FIRST_TIMER", false)]
+    [InlineData("NONE", false)]
+    [InlineData(null, false)]
+    public void IsVertrouwdeAuteur_AlleenOwnerMemberCollaborator(string? association, bool verwacht)
+        => GitHubIssueReporter.IsVertrouwdeAuteur(association).Should().Be(verwacht);
+
+    [Theory]
+    [InlineData("NONE")]
+    [InlineData("CONTRIBUTOR")]
+    public async Task SearchIssueAsync_IssueVanOnvertrouwdeAuteur_TeltInGeenEnkeleZoekslagMee(string association)
+    {
+        // #1732: ook de laatste zoekslag (zonder labelfilter) mag een issue van een onbekende
+        // auteur niet als dedup-treffer gebruiken.
+        var client = MakeClient(_ => JsonResponse("[" + IssueJson(9, "open", $"[bug][fp:{Fingerprint}] x", authorAssociation: association) + "]"));
+
+        var result = await GitHubIssueReporter.SearchIssueAsync(client, Owner, Repo, Fingerprint, NullLogger.Instance);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task SearchIssueAsync_IssueZonderAuthorAssociation_TeltNietMee()
+    {
+        var client = MakeClient(_ => JsonResponse(
+            $$"""[{"number": 9, "state": "open", "title": "[bug][fp:{{Fingerprint}}] x"}]"""));
+
+        var result = await GitHubIssueReporter.SearchIssueAsync(client, Owner, Repo, Fingerprint, NullLogger.Instance);
+
+        result.Should().BeNull();
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // #1732, Codex ronde 1 (P2): het eigen account van de reporter. De reporter authenticeert
+    // uitsluitend met een gebruikers-PAT; de issues die hij zelf aanmaakt hebben dus het
+    // PAT-account als auteur (user.type User, associatie OWNER bij de fork-eigenaar). Hieronder
+    // per zoekslag het bewijs dat precies dat pad geaccepteerd wordt, en dat een bot-account
+    // (login met [bot], user.type Bot, associatie CONTRIBUTOR/NONE zoals GitHub die voor
+    // Dependabot en app-installaties teruggeeft) in geen enkele zoekslag meetelt.
+    // ---------------------------------------------------------------------------------------
+
+    /// <summary>De drie zoekslagen van <c>ZoekLabelFilters</c>, herkenbaar aan de querystring.</summary>
+    public static TheoryData<string> Zoekslagen => new()
+    {
+        "labels=via%3A%20auto-exception",
+        "labels=bug",
+        "", // laatste slag: zonder labelfilter
+    };
+
+    private static string IssueJsonMetAuteur(string login, string userType, string authorAssociation)
+        => $$"""
+            {
+                "number": 9,
+                "state": "open",
+                "author_association": "{{authorAssociation}}",
+                "user": { "login": "{{login}}", "type": "{{userType}}" },
+                "title": {{System.Text.Json.JsonSerializer.Serialize($"[bug][fp:{Fingerprint}] x")}}
+            }
+            """;
+
+    /// <summary>
+    /// Antwoordt alleen in de gevraagde zoekslag met het issue; de overige slagen geven een lege
+    /// lijst. Zo bewijst de test per zoekslag afzonderlijk of de auteurstoets een treffer toelaat.
+    /// </summary>
+    private static HttpClient ClientMetTrefferInZoekslag(string zoekslag, string issueJson)
+        => MakeClient(req =>
+        {
+            var query = req.RequestUri!.Query;
+            var inDezeSlag = zoekslag.Length == 0
+                ? !query.Contains("labels=", StringComparison.Ordinal)
+                : query.Contains(zoekslag, StringComparison.Ordinal);
+            return JsonResponse(inDezeSlag ? "[" + issueJson + "]" : "[]");
+        });
+
+    [Theory]
+    [MemberData(nameof(Zoekslagen))]
+    public async Task SearchIssueAsync_EigenPatAccountAlsOwner_WordtInElkeZoekslagGevonden(string zoekslag)
+    {
+        var client = ClientMetTrefferInZoekslag(zoekslag,
+            IssueJsonMetAuteur(login: "fork-eigenaar", userType: "User", authorAssociation: "OWNER"));
+
+        var result = await GitHubIssueReporter.SearchIssueAsync(client, Owner, Repo, Fingerprint, NullLogger.Instance);
+
+        result.Should().NotBeNull($"een issue dat de reporter zelf met de PAT aanmaakte moet in zoekslag '{zoekslag}' als dedup-treffer tellen");
+        result!.Value.number.Should().Be(9);
+    }
+
+    [Theory]
+    [MemberData(nameof(Zoekslagen))]
+    public async Task SearchIssueAsync_EigenPatAccountAlsCollaborator_WordtInElkeZoekslagGevonden(string zoekslag)
+    {
+        // Een fork waar de PAT van een medewerker met schrijfrechten komt (geen eigenaar).
+        var client = ClientMetTrefferInZoekslag(zoekslag,
+            IssueJsonMetAuteur(login: "medewerker", userType: "User", authorAssociation: "COLLABORATOR"));
+
+        var result = await GitHubIssueReporter.SearchIssueAsync(client, Owner, Repo, Fingerprint, NullLogger.Instance);
+
+        result.Should().NotBeNull();
+        result!.Value.number.Should().Be(9);
+    }
+
+    [Theory]
+    [MemberData(nameof(Zoekslagen))]
+    public async Task SearchIssueAsync_BotAccount_TeltInGeenEnkeleZoekslagMee(string zoekslag)
+    {
+        // Geen algemene bot-vrijstelling: een app-/bot-account is voor GitHub CONTRIBUTOR of NONE,
+        // ook als het de fingerprint-tag in de titel draagt.
+        var client = ClientMetTrefferInZoekslag(zoekslag,
+            IssueJsonMetAuteur(login: "een-app[bot]", userType: "Bot", authorAssociation: "CONTRIBUTOR"));
+
+        var result = await GitHubIssueReporter.SearchIssueAsync(client, Owner, Repo, Fingerprint, NullLogger.Instance);
+
+        result.Should().BeNull($"een bot-account mag in zoekslag '{zoekslag}' nooit bepalen waar een productiemelding terechtkomt");
+    }
+
+    [Fact]
+    public async Task SearchIssueAsync_DoorloopDeDrieZoekslagenInVasteVolgorde()
+    {
+        // Bewijst dat Zoekslagen hierboven de echte zoekslagen dekt: zonder treffer doet de lookup
+        // precies drie aanroepen, in de volgorde herkomstlabel → oud bug-label → zonder filter.
+        var queries = new List<string>();
+        var client = MakeClient(req =>
+        {
+            queries.Add(req.RequestUri!.Query);
+            return JsonResponse("[]");
+        });
+
+        await GitHubIssueReporter.SearchIssueAsync(client, Owner, Repo, Fingerprint, NullLogger.Instance);
+
+        queries.Should().HaveCount(3);
+        queries[0].Should().Contain("labels=via%3A%20auto-exception");
+        queries[1].Should().Contain("labels=bug");
+        queries[2].Should().NotContain("labels=");
     }
 }

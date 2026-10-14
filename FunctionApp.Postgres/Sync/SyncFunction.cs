@@ -11,8 +11,8 @@ namespace FunctionApp.Postgres.Sync;
 /// <summary>
 /// Postgres-tier-tegenhanger van <c>FunctionApp/Function1.cs</c> (#890).
 /// <para>
-/// <b>Seizoensgrenzen (<c>dbo.Season</c>)</b> zijn vertaald naar <c>public.season</c> (migratie
-/// 008, #890) — zie <see cref="PostgresSeasonHelper"/>. Zowel de standaardsync (einde seizoen) als
+/// <b>Seizoensgrenzen (<c>dbo.ClubSeason</c>)</b> zijn vertaald naar <c>public.clubseason</c> (migratie
+/// 043, #1715; daarvoor <c>public.season</c>, migratie 008, #890) — zie <see cref="PostgresSeasonHelper"/>. Zowel de standaardsync (einde seizoen) als
 /// de reset-modus (<c>?reset=true&amp;season=</c>, seizoensstart) gebruiken nu de echte tabel in
 /// plaats van een geraden of geweigerde waarde.
 /// </para>
@@ -34,7 +34,7 @@ public static class SyncFunction
         try
         {
             await PostgresSystemUtilities.WaitForDatabaseAsync(log);
-            // #861: rol public.season zo nodig door vóór het venster gelezen wordt.
+            // #861: rol public.clubseason zo nodig door vóór het venster gelezen wordt.
             await PostgresSeasonHelper.EnsureSeasonsAsync(log);
             var toWeekOffset = await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log);
             var gedeeltelijkMislukt = await RunConfiguredSyncAsync(fromWeekOffset: -1, toWeekOffset, log);
@@ -102,7 +102,7 @@ public static class SyncFunction
                 // endpoint en niet bij de generieke 500 van de wrapper.
                 try
                 {
-                    // #861: rol public.season zo nodig door vóór het venster gelezen wordt.
+                    // #861: rol public.clubseason zo nodig door vóór het venster gelezen wordt.
                     await PostgresSeasonHelper.EnsureSeasonsAsync(log);
                     var toWeekOffset = await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log);
                     var fromWeekOffset = -1;

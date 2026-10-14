@@ -7,6 +7,9 @@ namespace Planner.Shared.Avg;
 /// het aantal rijen waarvan de persoonskolommen zijn leeggemaakt.</summary>
 public sealed record HisRetentieResultaat(DateOnly? Grens, int MatchesGewist, int MatchDetailsGewist);
 
+/// <summary>Het einde van een seizoen van één club (#1715): de seizoenstabel is per club.</summary>
+public sealed record ClubSeizoenEinde(string ClubCode, DateOnly Einde);
+
 /// <summary>
 /// De tier-eigen kant van de his-retentie: alleen de query's, elk over een eigen verbinding.
 /// Implementaties: <c>Database.Postgres/PostgresHisRetentie</c> en
@@ -14,18 +17,20 @@ public sealed record HisRetentieResultaat(DateOnly? Grens, int MatchesGewist, in
 /// </summary>
 public interface IHisRetentieOpslag
 {
-    /// <summary>Alle seizoenseinddatums uit de seizoenstabel van de tier.</summary>
-    Task<IReadOnlyList<DateOnly>> LeesSeizoenseindenAsync();
+    /// <summary>Alle seizoenseinddatums uit de seizoenstabel van de tier, per club (#1715).</summary>
+    Task<IReadOnlyList<ClubSeizoenEinde>> LeesSeizoenseindenAsync();
 
-    /// <summary>Maakt de persoonskolommen leeg voor wedstrijden tot en met <paramref name="grens"/>;
-    /// geeft uitsluitend het aantal geraakte rijen per tabel terug.</summary>
-    Task<(int Matches, int MatchDetails)> WisTotEnMetAsync(DateOnly grens);
+    /// <summary>Maakt de persoonskolommen leeg voor wedstrijden van <paramref name="clubCode"/> tot en met
+    /// <paramref name="grens"/> (rijen zonder clubstempel horen bij de primaire club); geeft uitsluitend het
+    /// aantal geraakte rijen per tabel terug.</summary>
+    Task<(int Matches, int MatchDetails)> WisTotEnMetAsync(string clubCode, DateOnly grens);
 }
 
 /// <summary>
 /// Seizoensretentie voor de persoonskolommen in <c>his.matches</c> en <c>his.matchdetails</c> (#1698,
 /// eigenaarsbesluit 2026-10-12): bewaren tot het einde van het seizoen waarin de wedstrijd valt,
 /// daarna leegmaken. Sportlink blijft de bron; de rij zelf (wedstrijd, teams, uitslag) blijft staan.
+/// Het seizoenseinde is dat van de club van de wedstrijd (#1715): elke club heeft een eigen startmaand.
 /// <para>
 /// Tier-onafhankelijk: hier staan de regel (welke grens, welke kolommen) en de orkestratie met
 /// geaggregeerde logging. Per tier blijft alleen de query: seizoenseinden lezen en een
@@ -154,29 +159,40 @@ public static class HisPersoonsgegevensRetentie
     }
 
     /// <summary>
-    /// Eén run: seizoenseinden lezen, grens bepalen en, alleen als er een grens is, de wisstap van de
-    /// tier aanroepen. Logt alleen datum en aantallen, nooit een waarde uit een rij (Laag 5).
+    /// Eén run: seizoenseinden per club lezen en per club (eigen startmaand, eigen seizoenseinde) de grens
+    /// bepalen en, alleen als die club een afgerond seizoen heeft, de wisstap van de tier aanroepen. Logt
+    /// alleen clubcode, datum en aantallen, nooit een waarde uit een rij (Laag 5). Het resultaat telt de
+    /// aantallen van alle clubs op; <see cref="HisRetentieResultaat.Grens"/> is de laatste grens van de clubs.
     /// </summary>
-    /// <param name="leesSeizoenseinden">Seizoenseinddatums uit de seizoenstabel van de tier.</param>
-    /// <param name="wisTotEnMet">Maakt de persoonskolommen leeg voor wedstrijden tot en met de grens;
-    /// geeft het aantal geraakte rijen per tabel terug.</param>
+    /// <param name="leesSeizoenseinden">Seizoenseinddatums uit de seizoenstabel van de tier, per club.</param>
+    /// <param name="wisTotEnMet">Maakt de persoonskolommen van een club leeg voor wedstrijden tot en met de
+    /// grens; geeft het aantal geraakte rijen per tabel terug.</param>
     public static async Task<HisRetentieResultaat> VoerUitAsync(
-        Func<Task<IReadOnlyList<DateOnly>>> leesSeizoenseinden,
-        Func<DateOnly, Task<(int Matches, int MatchDetails)>> wisTotEnMet,
+        Func<Task<IReadOnlyList<ClubSeizoenEinde>>> leesSeizoenseinden,
+        Func<string, DateOnly, Task<(int Matches, int MatchDetails)>> wisTotEnMet,
         ILogger log,
         DateOnly vandaag)
     {
-        var grens = BepaalGrens(await leesSeizoenseinden(), vandaag);
-        if (grens is not DateOnly g)
+        DateOnly? laatsteGrens = null;
+        int matchesTotaal = 0, matchDetailsTotaal = 0;
+
+        foreach (var club in (await leesSeizoenseinden()).GroupBy(e => e.ClubCode, StringComparer.OrdinalIgnoreCase).OrderBy(g => g.Key, StringComparer.Ordinal))
         {
-            log.LogInformation("His-retentie: geen afgerond seizoen gevonden, niets leeggemaakt");
-            return new HisRetentieResultaat(null, 0, 0);
+            if (BepaalGrens(club.Select(e => e.Einde), vandaag) is not DateOnly g)
+            {
+                log.LogInformation("His-retentie: club {ClubCode} heeft geen afgerond seizoen, niets leeggemaakt", club.Key);
+                continue;
+            }
+
+            var (matches, matchDetails) = await wisTotEnMet(club.Key, g);
+            log.LogInformation(
+                "His-retentie klaar voor club {ClubCode}: grens {Grens:yyyy-MM-dd}, persoonskolommen leeggemaakt in {Matches} his.matches- en {MatchDetails} his.matchdetails-rij(en)",
+                club.Key, g, matches, matchDetails);
+            matchesTotaal += matches;
+            matchDetailsTotaal += matchDetails;
+            if (laatsteGrens is null || g > laatsteGrens) laatsteGrens = g;
         }
 
-        var (matches, matchDetails) = await wisTotEnMet(g);
-        log.LogInformation(
-            "His-retentie klaar: grens {Grens:yyyy-MM-dd}, persoonskolommen leeggemaakt in {Matches} his.matches- en {MatchDetails} his.matchdetails-rij(en)",
-            g, matches, matchDetails);
-        return new HisRetentieResultaat(g, matches, matchDetails);
+        return new HisRetentieResultaat(laatsteGrens, matchesTotaal, matchDetailsTotaal);
     }
 }
