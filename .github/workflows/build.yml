@@ -744,6 +744,15 @@ jobs:
                     -S localhost -U sa -P "$SA_PW" -C "$@"; }
           git fetch --no-tags --depth=1 origin "$BASIS_SHA"
           git show "$BASIS_SHA:Database/Script.PostDeployment1.sql" > /tmp/postdeployment-basis.sql
+          # #1751: deze overgang (expand-stap van #1715) meet alleen iets zolang de basis het nieuwe schema
+          # nog mist. Staat dbo.ClubSeason al in het PostDeployment van de basis (sinds #1743 op develop),
+          # dan zou de basis zelf het schema aanmaken en meet de stap niets meer: sla over met een logregel.
+          # De contract-stap (#1747) hoort de stap bij verwijdering van dbo.Season te herdefiniëren of
+          # te schrappen; een volgende expand-stap zet hier zijn eigen herkenningsmerk (ander schema-object).
+          if grep -q 'ClubSeason' /tmp/postdeployment-basis.sql; then
+            echo "Overgangsstap #1715 overgeslagen: het PostDeployment van de basis (${BASIS_SHA}) bevat dbo.ClubSeason al; de expand-overgang is al uitgerold en er is niets meer te meten."
+            exit 0
+          fi
           docker cp /tmp/postdeployment-basis.sql sqlfresh:/tmp/postdeployment-basis.sql
           sql -Q "CREATE DATABASE SportlinkTransitie"
           for run in 1 2; do
