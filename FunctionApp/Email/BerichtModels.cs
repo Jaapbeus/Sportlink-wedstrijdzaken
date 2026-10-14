@@ -17,11 +17,3 @@ public class InkomendBericht
     /// <summary>Internetheaders van het bericht (naam, waarde); alleen gevuld door de Graph-adapter, gebruikt om automatische afzenders te herkennen.</summary>
     public IReadOnlyList<KeyValuePair<string, string>> InternetHeaders { get; set; } = [];
 }
-
-// Few-shot voorbeeld voor classificatie-leren via gevalideerde correcties (#323)
-public record ClassificatieCorrectieVoorbeeld(
-    string OrigineelType,
-    string JuistType,
-    string OrigineleSamenvatting,
-    string CorrectieSamenvatting
-);

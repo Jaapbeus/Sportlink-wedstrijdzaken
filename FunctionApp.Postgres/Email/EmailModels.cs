@@ -26,9 +26,6 @@ public sealed class InkomendBericht
     public IReadOnlyList<KeyValuePair<string, string>> InternetHeaders { get; set; } = [];
 }
 
-public sealed record ClassificatieCorrectieVoorbeeld(
-    string OrigineelType, string JuistType, string OrigineleSamenvatting, string CorrectieSamenvatting);
-
 public sealed record EmailVerwerkingStand(
     int VerwerkingId, string Status, int Pogingen, bool AntwoordVerstuurd, bool VerzendPogingOnbeslist = false);
 
