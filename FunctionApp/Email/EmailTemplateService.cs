@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
+using Planner.Shared.Email;
 
 namespace SportlinkFunction.Email;
 
@@ -100,17 +101,10 @@ public static class EmailTemplateService
     /// Past een template toe met simpele placeholder-substitutie ({{key}}).
     /// </summary>
     public static string ApplyPlaceholders(string body, IDictionary<string, string> values)
-    {
-        if (string.IsNullOrEmpty(body) || values == null || values.Count == 0) return body;
-        foreach (var (key, value) in values)
-        {
-            body = body.Replace("{{" + key + "}}", value ?? "", StringComparison.OrdinalIgnoreCase);
-        }
-        return body;
-    }
+        => BerichtAntwoordGenerator.VulPlaceholdersIn(body, values);
 }
 
 /// <summary>
 /// Eenvoudig template-record voor email-output.
 /// </summary>
-public record EmailTemplate(string Key, string Onderwerp, string Body);
+public record EmailTemplate(string Key, string Onderwerp, string Body) : IAntwoordSjabloon;
