@@ -1,13 +1,10 @@
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
+using Planner.Endpoints.Email;
 using Planner.Shared.TeamResolution;
 using SportlinkFunction.Monitoring;
-using SportlinkFunction.Processing;
-using Planner.Shared;
 using Planner.Shared.Email;
-using Planner.Shared.Email.Trace;
 
 namespace SportlinkFunction.Email;
 
@@ -62,15 +59,6 @@ internal static class EmailIdempotentie
 
 public partial class EmailProcessorFunction
 {
-    // Throttle-sleutels voor INoodmailThrottleStore (#831). Vóór #831 stond deze staat in een
-    // static/volatile veld op deze klasse (procesgeheugen) — dat reset bij een cold start van de
-    // Consumption-plan-worker, waardoor het throttle-gedrag afhing van iets wat de code zelf niet
-    // controleert: hoe vaak de host in de praktijk herstart. Zie INoodmailThrottleStore voor de
-    // volledige onderbouwing en DatabaseUitvalMonitorFunction voor de sleutel die hiermee gedeeld wordt.
-    internal const string DatabaseNoodmailSleutel = DatabaseUitvalMonitorFunction.ThrottleSleutel;
-    internal const string OpenAiQuotaNoodmailSleutel = "openai-quota-noodmail";
-    private static readonly TimeSpan OpenAiQuotaNoodmailInterval = TimeSpan.FromHours(24);
-
     // Uitsluitingslijst: geladen vóór elke AI-classificatie (fail-closed bij cold start). (#423, #709)
     private static readonly UitsluitingslijstCache _uitsluitingslijst = new();
 
@@ -112,47 +100,17 @@ public partial class EmailProcessorFunction
         // IEmailPersistenceService is onvoorwaardelijk geregistreerd (#827) — geen eigen `new` meer.
         // Persistente noodmail-throttle (#831) — onvoorwaardelijk geregistreerd, want AzureWebJobsStorage
         // is sowieso vereist voor de Functions-host zelf.
-        var ctx = new EmailRunContext(
+        var poort = new EmailVerwerkerPoort(
             log,
             context.InstanceServices,
             loggerFactory,
             graphService,
             teamResolver,
             context.InstanceServices.GetRequiredService<IEmailPersistenceService>(),
-            context.InstanceServices.GetRequiredService<INoodmailThrottleStore>(),
-            new EmailBatchFilterService(),
-            new EmailReplyPolicyService());
+            context.InstanceServices.GetRequiredService<INoodmailThrottleStore>());
 
-        // Fase 1 (licht, geen database) en fase 2 (zwaar) staan in EmailProcessorFunction.Fasen.cs.
-        var licht = await VoerFase1LichtAsync(ctx);
-        if (licht is null)
-            return;
-
-        await VoerFase2ZwaarAsync(ctx, licht);
-    }
-
-    /// <summary>
-    /// Zorgt dat de uitsluitingslijst niet verouderd is en filtert de batch ermee — vóór er één
-    /// bericht naar de AI-provider gaat (#709). Retourneert <c>null</c> als er niet geclassificeerd
-    /// mag worden omdat de lijst nooit geladen is en ook nu niet te laden is (fail-closed, #423).
-    /// </summary>
-    internal static async Task<List<InkomendBericht>?> FilterMetVerseUitsluitingslijstAsync(
-        List<InkomendBericht> teClassificeren,
-        UitsluitingslijstCache uitsluitingslijst,
-        Func<Task<HashSet<string>>> laadLijstAsync,
-        EmailBatchFilterService batchFilterService,
-        DateTime nuUtc,
-        ILogger log)
-    {
-        var stand = await uitsluitingslijst.VerversIndienVerouderdAsync(laadLijstAsync, nuUtc, log);
-
-        return stand switch
-        {
-            UitsluitingslijstStand.Ontbreekt => null,
-            // Alleen na een verse lijst kan de uitkomst van het voorfilter achterhaald zijn.
-            UitsluitingslijstStand.Ververst =>
-                batchFilterService.FilterUitgeslotenAdressen(teClassificeren, uitsluitingslijst.Adressen),
-            _ => teClassificeren
-        };
+        // Fase 1 (licht, geen database) en fase 2 (zwaar) staan tier-onafhankelijk in
+        // Planner.Endpoints/Email/EmailVerwerkerFasen.cs (#1716 slice 9); de tier-kant in EmailVerwerkerPoort.
+        await EmailVerwerkerFasen.VoerUitAsync(poort, _uitsluitingslijst, log);
     }
 }

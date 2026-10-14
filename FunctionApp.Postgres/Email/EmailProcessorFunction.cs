@@ -1,16 +1,9 @@
 using Microsoft.Azure.Functions.Worker;
-using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
 using FunctionApp.Postgres.Monitoring;
-using FunctionApp.Postgres.Admin;
-using FunctionApp.Postgres.Planner;
-using FunctionApp.Postgres.Processing;
-using FunctionApp.Postgres.TeamResolution;
-using Planner.Shared;
+using Planner.Endpoints.Email;
 using Planner.Shared.Email;
-using Planner.Shared.Email.Trace;
 
 namespace FunctionApp.Postgres.Email;
 
@@ -61,13 +54,6 @@ internal static class EmailIdempotentie
 
 public partial class EmailProcessorFunction
 {
-    // Throttle-sleutels voor INoodmailThrottleStore. Geen gedeelde sleutel met een database-
-    // uitvalmonitor op deze tier (zie klassekop, item 5) — de literal staat daarom hier vast in
-    // plaats van naar zo'n monitorklasse te verwijzen.
-    internal const string DatabaseNoodmailSleutel = "database-noodmail";
-    internal const string OpenAiQuotaNoodmailSleutel = "openai-quota-noodmail";
-    private static readonly TimeSpan OpenAiQuotaNoodmailInterval = TimeSpan.FromHours(24);
-
     // Uitsluitingslijst: geladen vóór elke AI-classificatie (fail-closed bij cold start).
     private static readonly UitsluitingslijstCache _uitsluitingslijst = new();
 
@@ -96,53 +82,16 @@ public partial class EmailProcessorFunction
             return;
         }
 
-        var ctx = new EmailRunContext(
+        var poort = new EmailVerwerkerPoort(
             log,
             context.InstanceServices,
             context.InstanceServices.GetRequiredService<ILoggerFactory>(),
             graphService,
             context.InstanceServices.GetRequiredService<INoodmailThrottleStore>(),
-            PostgresDatabaseConfig.ConnectionString,
-            new EmailBatchFilterService(),
-            new EmailReplyPolicyService());
+            PostgresDatabaseConfig.ConnectionString);
 
-        // Fase 1 (licht, geen database) en fase 2 (zwaar) staan in EmailProcessorFunction.Fasen.cs.
-        var licht = await VoerFase1LichtAsync(ctx);
-        if (licht is null)
-            return;
-
-        await VoerFase2ZwaarAsync(ctx, licht);
-    }
-
-    /// <summary>
-    /// Zorgt dat de uitsluitingslijst niet verouderd is en filtert de batch ermee — vóór er één
-    /// bericht naar de AI-provider gaat. Retourneert <c>null</c> als er niet geclassificeerd mag
-    /// worden omdat de lijst nooit geladen is en ook nu niet te laden is (fail-closed).
-    /// </summary>
-    internal static async Task<List<InkomendBericht>?> FilterMetVerseUitsluitingslijstAsync(
-        List<InkomendBericht> teClassificeren,
-        UitsluitingslijstCache uitsluitingslijst,
-        Func<Task<HashSet<string>>> laadLijstAsync,
-        EmailBatchFilterService batchFilterService,
-        DateTime nuUtc,
-        ILogger log)
-    {
-        var stand = await uitsluitingslijst.VerversIndienVerouderdAsync(laadLijstAsync, nuUtc, log);
-
-        return stand switch
-        {
-            UitsluitingslijstStand.Ontbreekt => null,
-            // Alleen na een verse lijst kan de uitkomst van het voorfilter achterhaald zijn.
-            UitsluitingslijstStand.Ververst =>
-                batchFilterService.FilterUitgeslotenAdressen(teClassificeren, uitsluitingslijst.Adressen),
-            _ => teClassificeren
-        };
-    }
-
-    private static async Task<HashSet<string>> LaadUitgeslotenAdressenAsync(string cs, string clubCode, ILogger log)
-    {
-        var adressen = await SqlEmailPersistenceRepository.GetExcludedEmailAddressesAsync(cs, clubCode);
-        log.LogInformation("Uitsluitingslijst geladen: {Aantal} adressen", adressen.Count);
-        return adressen;
+        // Fase 1 (licht, geen database) en fase 2 (zwaar) staan tier-onafhankelijk in
+        // Planner.Endpoints/Email/EmailVerwerkerFasen.cs (#1716 slice 9); de tier-kant in EmailVerwerkerPoort.
+        await EmailVerwerkerFasen.VoerUitAsync(poort, _uitsluitingslijst, log);
     }
 }

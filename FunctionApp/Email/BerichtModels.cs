@@ -7,7 +7,7 @@ namespace SportlinkFunction.Email;
 // (ConversationId en Body zijn hier niet-nullable met standaard "", op de Postgres-tier nullable).
 
 // Inkomend bericht (kanaal-agnostisch: email, WhatsApp, dry-run, etc.)
-public class InkomendBericht : IAntwoordAfzender
+public class InkomendBericht : IInkomendBericht
 {
     public string MessageId { get; set; } = "";
     public string ConversationId { get; set; } = "";

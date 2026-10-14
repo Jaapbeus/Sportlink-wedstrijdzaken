@@ -22,6 +22,7 @@
 #   MUTATIELIJST=scripts/ci/mutatiebewijs-1716-slice6.tsv scripts/ci/mutatiebewijs-1716.sh   # slice 6 (#1758)
 #   MUTATIELIJST=scripts/ci/mutatiebewijs-1716-slice7.tsv scripts/ci/mutatiebewijs-1716.sh   # slice 7
 #   MUTATIELIJST=scripts/ci/mutatiebewijs-1716-slice8.tsv scripts/ci/mutatiebewijs-1716.sh   # slice 8
+#   MUTATIELIJST=scripts/ci/mutatiebewijs-1716-slice9.tsv scripts/ci/mutatiebewijs-1716.sh   # slice 9 (fase-orkestratie)
 #   scripts/ci/mutatiebewijs-1716.sh --zelftest # bewijst dat een testhostcrash niet als KILLED telt
 set -u
 # Beoordeling van een testrun met niet-nul exit. KILLED alleen als de samenvatting van dotnet test

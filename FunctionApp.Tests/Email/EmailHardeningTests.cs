@@ -1,3 +1,4 @@
+using Planner.Endpoints.Email;
 using AwesomeAssertions;
 using Planner.Shared.Email;
 using FunctionApp.Tests.Email.TestDoubles;
@@ -162,11 +163,11 @@ public class EmailHardeningTests
             Bericht("m2")
         };
 
-        var resultaat = await EmailProcessorFunction.FilterMetVerseUitsluitingslijstAsync(
+        var resultaat = await EmailVerwerkerFasen.FilterMetVerseUitsluitingslijstAsync(
             batch,
             cache,
             () => { laadPogingen++; return Task.FromResult(Lijst("netuitgesloten@voorbeeld.test")); },
-            new EmailBatchFilterService(),
+            new EmailBatchFilterService().FilterUitgeslotenAdressen,
             nu,
             NullLogger.Instance);
 
@@ -200,11 +201,11 @@ public class EmailHardeningTests
         var laadPogingen = 0;
         var batch = new List<InkomendBericht> { Bericht("m1") };
 
-        var resultaat = await EmailProcessorFunction.FilterMetVerseUitsluitingslijstAsync(
+        var resultaat = await EmailVerwerkerFasen.FilterMetVerseUitsluitingslijstAsync(
             batch,
             cache,
             () => { laadPogingen++; return Task.FromResult(Lijst()); },
-            new EmailBatchFilterService(),
+            new EmailBatchFilterService().FilterUitgeslotenAdressen,
             nu.AddMinutes(1),
             NullLogger.Instance);
 
@@ -221,11 +222,11 @@ public class EmailHardeningTests
     {
         var cache = new UitsluitingslijstCache();
 
-        var resultaat = await EmailProcessorFunction.FilterMetVerseUitsluitingslijstAsync(
+        var resultaat = await EmailVerwerkerFasen.FilterMetVerseUitsluitingslijstAsync(
             [Bericht("m1")],
             cache,
             () => throw new InvalidOperationException("database niet bereikbaar (gesimuleerd)"),
-            new EmailBatchFilterService(),
+            new EmailBatchFilterService().FilterUitgeslotenAdressen,
             new DateTime(2026, 7, 27, 12, 0, 0, DateTimeKind.Utc),
             NullLogger.Instance);
 
@@ -247,11 +248,11 @@ public class EmailHardeningTests
 
         var batch = new List<InkomendBericht> { Bericht("m1") };
 
-        var resultaat = await EmailProcessorFunction.FilterMetVerseUitsluitingslijstAsync(
+        var resultaat = await EmailVerwerkerFasen.FilterMetVerseUitsluitingslijstAsync(
             batch,
             cache,
             () => throw new InvalidOperationException("database niet bereikbaar (gesimuleerd)"),
-            new EmailBatchFilterService(),
+            new EmailBatchFilterService().FilterUitgeslotenAdressen,
             nu,
             NullLogger.Instance);
 
