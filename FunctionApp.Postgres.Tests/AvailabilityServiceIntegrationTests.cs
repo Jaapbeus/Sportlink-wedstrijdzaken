@@ -50,6 +50,33 @@ public class AvailabilityServiceIntegrationTests : IDisposable
         ?? throw new InvalidOperationException(
             $"{PostgresTestEnvironment.ConnectionStringEnvVar} niet gezet — zie klasse-doc-comment.");
 
+    // #1730: dezelfde strikte grens als een modeldatum; keert terug vóór enige databasetoegang,
+    // daarom een gewone unit test met een niet-bestaande verbinding.
+    [Theory]
+    [InlineData("2026-4-18")]      // lenig wél leesbaar, strikt niet
+    [InlineData("18-04-2026")]
+    [InlineData("volgende week")]
+    [InlineData("")]
+    public async Task CheckAvailabilityAsync_NietStrikteDatum_GeeftOngeldigeDatumZonderDatabase(string datum)
+    {
+        var request = new CheckAvailabilityRequest { Datum = datum, LeeftijdsCategorie = "JO13" };
+
+        var response = await AvailabilityService.CheckAvailabilityAsync("Host=geen;Database=geen", request, NullLogger.Instance, Club);
+
+        response.Beschikbaar.Should().BeFalse();
+        response.Reden.Should().Be("Ongeldige datum.");
+    }
+
+    [Fact]
+    public async Task CheckAvailabilityAsync_StrikteDatumInHetVerleden_GeeftToekomstRedenZonderDatabase()
+    {
+        var request = new CheckAvailabilityRequest { Datum = "2020-01-04", LeeftijdsCategorie = "JO13" };
+
+        var response = await AvailabilityService.CheckAvailabilityAsync("Host=geen;Database=geen", request, NullLogger.Instance, Club);
+
+        response.Reden.Should().Contain("2020-01-04").And.Contain("in de toekomst");
+    }
+
     [PostgresFact]
     public async Task CheckAvailabilityAsync_VindtSlotOpVoorkeurstijd()
     {

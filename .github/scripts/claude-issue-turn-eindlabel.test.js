@@ -249,11 +249,89 @@ const run = (github, extra = {}) => applyEndLabel({
     const r = await run(github, { startPrNumber: 501 });
     check('wacht op merge, merge in het venster: geen comment', [r.written, github.calls.comments], [false, []]);
   }
+  console.log('\napplyEndLabel — reviewfase (#1727):');
+  {
+    const codexPr = pr(724, { head: { ref: `codex/${ISSUE}-werk`, repo: { full_name: 'o/r' } } });
+    const github = fakeGithub({
+      comments: [bot('2026-10-12T14:48:00Z', 'Fase: verwerking\nUitkomst: geen bevindingen\nVolgende beurt: turn: codex')],
+      startPr: codexPr, states: after('turn: codex'),
+    });
+    const r = await run(github, { startPrNumber: 724, phase: 'review' });
+    check('review: beurt terug naar Codex', [r.written, r.label, github.calls.added], [true, 'turn: codex', ['turn: codex']]);
+  }
+  {
+    const github = fakeGithub({ comments: waitBot, startPr: pr(724), states: after('turn: owner') });
+    const r = await run(github, { startPrNumber: 724, phase: 'review' });
+    check('review: merge door implementer wordt owner', [r.written, r.label, github.calls.comments], [true, 'turn: owner', []]);
+    check('review: reden in source', /reviewrun/.test(r.source), true);
+  }
+
+  {
+    // #1727 ronde 1 (P2): label uit de reviewpublicatie, gebonden aan de beoordeelde SHA.
+    const sha = 'a'.repeat(40);
+    const codexPr = pr(724, { head: { ref: `codex/${ISSUE}-werk`, sha, repo: { full_name: 'o/r' } } });
+    const ok = fakeGithub({ comments: [], startPr: codexPr, states: after('turn: codex') });
+    const r1 = await run(ok, { startPrNumber: 724, phase: 'review', requestedLabel: 'turn: codex', expectedSha: sha });
+    check('reviewpublicatie: label zonder agentcomment', [r1.written, r1.label, r1.source], [true, 'turn: codex', 'reviewpublicatie']);
+    const gewijzigd = fakeGithub({
+      comments: [], states: after('turn: codex'),
+      startPr: pr(724, { head: { ref: `codex/${ISSUE}-werk`, sha: 'b'.repeat(40), repo: { full_name: 'o/r' } } }),
+    });
+    const r2 = await run(gewijzigd, { startPrNumber: 724, phase: 'review', requestedLabel: 'turn: codex', expectedSha: sha });
+    check('reviewpublicatie: head gewijzigd → niets geschreven', [r2.written, gewijzigd.calls.added, gewijzigd.calls.removed], [false, [], []]);
+    check('reviewpublicatie: reden noemt de SHA', /beoordeelde SHA/.test(r2.reason), true);
+    const ongeldig = fakeGithub({ comments: [], startPr: codexPr, states: after('turn: owner') });
+    const r3 = await run(ongeldig, { startPrNumber: 724, requestedLabel: 'turn: claude-code', expectedSha: sha });
+    check('reviewpublicatie: ongeldig label wordt owner', [r3.written, r3.label], [true, 'turn: owner']);
+  }
+
   console.log('\nownerOnlyReason:');
   check('gewone code: geen uitzondering', ownerOnlyReason('Planner.Shared/X.cs'), null);
   check('workflow is geen uitzondering meer (#1690)', ownerOnlyReason('.github/workflows/build.yml'), null);
   check('docs met AGENTS in de naam: geen uitzondering', ownerOnlyReason('docs/AGENTS-UITLEG.md'), null);
   check('geneste CLAUDE.md: werkinstructies', (ownerOnlyReason('FunctionApp/CLAUDE.md') || '').startsWith('werkinstructies'), true);
+
+  // ---------- #1721 fase 1: testmodus schrijft niets ----------
+  console.log('\ndryRun (#1721):');
+  {
+    const github = fakeGithub({ comments: [bot('2026-10-12T14:48:00Z', 'Volgende beurt: turn: codex')] });
+    const r = await applyEndLabel({ github, context: ctx, core, issueNumber: ISSUE, startPrNumber: null, startedAt: START, dryRun: true });
+    check('dryRun: berekent het label, schrijft niets', [r.written, r.dryRun, r.label], [false, true, 'turn: codex']);
+    check('dryRun: geen label toegevoegd of verwijderd, geen comment', [github.calls.added, github.calls.removed, github.calls.comments], [[], [], []]);
+    const echt = fakeGithub({ comments: [bot('2026-10-12T14:48:00Z', 'Volgende beurt: turn: codex')], states: [{ labels: ['turn: claude-code'] }, { labels: ['turn: codex'] }] });
+    const r2 = await applyEndLabel({ github: echt, context: ctx, core, issueNumber: ISSUE, startPrNumber: null, startedAt: START });
+    check('zonder dryRun: schrijft wel', [r2.written, echt.calls.added], [true, ['turn: codex']]);
+  }
+  {
+    const github = fakeGithub({ comments: [bot('2026-10-12T14:48:00Z', 'Volgende beurt: merge door implementer')], states: [{ labels: ['turn: claude-code'] }] });
+    const r = await applyEndLabel({ github, context: ctx, core, issueNumber: ISSUE, startPrNumber: null, startedAt: START, dryRun: true });
+    check('dryRun bij "wacht op merge": geen label en geen comment', [github.calls.removed, github.calls.comments], [[], []]);
+  }
+
+  // #1721 Codex ronde 1 (P2): het echte workflowscript, uitgevoerd met stubs; een blokkade krijgt geen marker.
+  console.log('\nworkflowscript dry-run-marker (#1721):');
+  {
+    const yml = require('fs').readFileSync(require('path').join(__dirname, '../workflows/claude-issue-turn.yml'), 'utf8');
+    const stap = yml.split('Eindlabel vergelijken en zetten')[1] || '';
+    const script = (stap.match(/script: \|\n((?:            .*\n|\n)+)/) || [])[1] || '';
+    check('workflowscript gevonden', script.includes('applyEndLabel'), true);
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+    const draai = async (github) => {
+      const summary = []; const failed = [];
+      const sc = { addHeading() { return sc; }, addRaw(t) { summary.push(t); return sc; }, async write() { return sc; } };
+      const c = { summary: sc, setFailed: (m) => failed.push(m), info() {}, warning() {}, notice() {} };
+      const oud = { ...process.env };
+      Object.assign(process.env, { GITHUB_WORKSPACE: require('path').join(__dirname, '../..'), ISSUE_NUMBER: String(ISSUE), DRY_RUN: 'true', STARTED_AT: START, START_PR: '', CLAUDE_RESULT: 'skipped', DRYRUN_RESULT: 'success' });
+      try { await new AsyncFunction('require', 'github', 'context', 'core', script)(require, github, ctx, c); } finally { process.env = oud; }
+      return { marker: summary.join('').includes('dry-run: eindlabel OK'), failed };
+    };
+    const ok = await draai(fakeGithub({ comments: [bot('2026-10-12T14:48:00Z', 'Volgende beurt: turn: codex')] }));
+    check('geslaagde dry-run: marker, geen failure', [ok.marker, ok.failed.length], [true, 0]);
+    const geblokkeerd = await draai(fakeGithub({ comments: [bot('2026-10-12T14:48:00Z', 'Volgende beurt: turn: codex')], states: [{ labels: ['turn: owner'] }] }));
+    check('geblokkeerde dry-run (beurt gewijzigd): geen marker, job faalt', [geblokkeerd.marker, geblokkeerd.failed.length], [false, 1]);
+    const gesloten = await draai(fakeGithub({ comments: [bot('2026-10-12T14:48:00Z', 'Volgende beurt: turn: codex')], states: [{ labels: ['turn: claude-code'], state: 'closed' }] }));
+    check('geblokkeerde dry-run (gesloten issue): geen marker, job faalt', [gesloten.marker, gesloten.failed.length], [false, 1]);
+  }
 
   // De vergelijk-en-zet werkt alleen als de agent zelf geen labelpad heeft en de job altijd draait.
   console.log('\nclaude-issue-turn.yml (#1692):');
@@ -261,7 +339,29 @@ const run = (github, extra = {}) => applyEndLabel({
     const yml = require('fs').readFileSync(require('path').join(__dirname, '../workflows/claude-issue-turn.yml'), 'utf8');
     check('agent heeft geen gh issue edit in --allowedTools', /Bash\(gh issue edit/.test(yml), false);
     check('prompt laat de agent geen label zetten', /--add-label|--remove-label/.test(yml), false);
-    check('job eindlabel draait ook na een falende agent', /\n  eindlabel:[\s\S]*?\n    if: always\(\) && needs\.gate\.outputs\.proceed == 'true'\n/.test(yml), true);
+    check('job eindlabel draait ook na een falende agent', /\n  eindlabel:[\s\S]*?\n    if: always\(\) && needs\.gate\.outputs\.proceed == 'true' && needs\.gate\.outputs\.phase != 'review'\n/.test(yml), true);
+
+    // #1727 (Codex-review ronde 1, P1): de reviewjob is read-only buiten de uitgecheckte code om.
+    const job = (naam) => {
+      const m = yml.match(new RegExp(`\\n  ${naam}:\\n([\\s\\S]*?)(?=\\n  [a-z-]+:\\n|$)`));
+      return m ? m[1] : '';
+    };
+    const review = job('review');
+    const allowed = (review.match(/--allowedTools "([^"]*)"/) || [])[1] || '';
+    check('reviewjob gevonden', review.length > 0, true);
+    check('reviewjob: workflowtoken i.p.v. App-token', /github_token: \$\{\{ github\.token \}\}/.test(review), true);
+    check('reviewjob: geen id-token (geen OIDC-ruil)', /id-token:/.test(review), false);
+    check('reviewjob: geen enkel schrijfrecht', /:\s*write\b/.test((review.match(/permissions:\n((?:      .*\n)+)/) || [])[1] || 'write'), false);
+    check('reviewjob: geen instellingen uit de checkout', /--setting-sources user\n/.test(review), true);
+    check('reviewjob: geen schrijvende of publicerende tools',
+      /\bEdit\b|\bWrite\b|gh pr comment|gh issue comment|git commit|git push|git add|dotnet|node |python3|bash /.test(allowed), false);
+    const schema = (review.match(/--json-schema '([^']*)'/) || [])[1] || '';
+    check('reviewjob: JSON-schema gelijk aan REVIEW_SCHEMA',
+      schema && JSON.stringify(JSON.parse(schema)) === JSON.stringify(require('./claude-issue-turn-review.js').REVIEW_SCHEMA), true);
+    const publiceren = job('review-publiceren');
+    check('publicatiejob draait op de default branch (geen ref)', /persist-credentials: false/.test(publiceren) && !/\bref:/.test(publiceren), true);
+    check('publicatiejob gebruikt claude-issue-turn-review.js', /claude-issue-turn-review\.js/.test(publiceren), true);
+    check('implementatiejob laadt ook geen instellingen uit de checkout', /--setting-sources user\n/.test(job('claude')), true);
     check('job eindlabel gebruikt de vergelijk-en-zet', /claude-issue-turn-eindlabel\.js/.test(yml), true);
     check('poort geeft de starttijd door', /started_at: \$\{\{ steps\.evaluate\.outputs\.started_at \}\}/.test(yml), true);
     // #1702: een schone verwerkingsronde eindigt niet meer standaard bij de eigenaar.

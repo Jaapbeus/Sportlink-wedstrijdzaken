@@ -1007,7 +1007,7 @@ daar terechtkomt — komt er tijdens een uitval geen (of alleen buiten-scope) e-
 de databaseverbinding nooit geprobeerd en de uitval dus ook nooit gedetecteerd. Dit bleek de
 eigenlijke oorzaak van de stilte in augustus 2026. `DatabaseUitvalMonitorFunction`
 (`FunctionApp/Monitoring/`) draait daarom onafhankelijk, standaard 1x per dag
-(`DATABASE_STATUS_MONITOR_SCHEDULE`), en leest de status rechtstreeks via de Azure Management API
+(vaste cron in code, #1718), en leest de status rechtstreeks via de Azure Management API
 (géén databaseverbinding, dus niet zelf slachtoffer van dezelfde storing). Optioneel: zonder de
 vier env vars `AzureSubscriptionId`/`AzureResourceGroupName`/`AzureSqlServerName`/
 `AzureSqlDatabaseName` slaat deze functie zichzelf over — zie
@@ -1369,7 +1369,8 @@ Toelichting bij de bewerkingen:
 * **Persoonsgegevens in de invoer worden niet gemaskeerd.** Onderwerp en berichttekst gaan, op de
   bewerkingen hierboven na, ongewijzigd mee. De saneringen in deze module werken op wat de provider
   teruggeeft en wat de applicatie bewaart of toont: `AiVeldSanering` (vrije modelvelden vóór gebruik in
-  een antwoord), `TraceBuilder.Saneer` (samenvattingen, leermomenten, trace) en `AvgMaskering`
+  een antwoord), `ModelDatum.Grens` (alle datumvelden van de classificatie, strikt `jjjj-MM-dd`, eenmalig
+  vóór trace en verwerking, #1730), `TraceBuilder.Saneer` (samenvattingen, leermomenten, trace) en `AvgMaskering`
   (afzender- en ontvangeradres in het e-maillog van de beheerinterface).
 
 **Voorwaarden van de doorgifte** (gelden voor alle velden hierboven):

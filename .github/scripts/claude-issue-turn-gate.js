@@ -25,16 +25,40 @@
 //     issue intussen hebben afgerond; vervolgwerk na een merge hoort in een nieuw issue.
 //  3c. Besloten reviewnotitie (#1686): verwijst de laatste reviewteruggave op de gekoppelde PR naar
 //     een besloten notitie, dan kan de agent die bevinding niet inzien. Geen run, beurt naar de eigenaar.
+//  3d. Reviewfase (#1727): is de laatste fasecomment op het issue een reviewaanvraag met
+//     `Reviewer: Claude Code` en een andere implementer, dan is de beurt een read-only review van
+//     precies de aangeboden head-SHA van de Codex-PR. Alleen in deze fase mag het issue
+//     `source: codex` hebben. Een aanvraag die niet klopt (andere SHA, al beoordeeld, zelfreview,
+//     geen of meerdere PR-koppelingen) start geen agent en wijzigt niets (reviewprotocol in
+//     AGENTS.md, regel 3); de poortstap faalt dan zichtbaar. Zonder geldige aanvraag start een
+//     issue met een open Codex-PR nooit een implementatie of verwerking: dat zou een tweede
+//     implementatie naast die van Codex worden.
 //  4. Vertrouwde invoer (#1612): op een publieke repo kan iedereen een PR openen en commentaar
 //     plaatsen. Alleen PR's uit deze repo van een bevoegde auteur tellen, en de agent krijgt
 //     uitsluitend tekst van bevoegde schrijvers aangereikt (collectTrustedContext).
 
 const { extractIssueRefs } = require('./issue-status.js');
+const ledgerLib = require('./claude-issue-turn-ledger.js');
 
 const API_VERSION_HEADERS = { 'x-github-api-version': '2022-11-28' };
 
 const REQUIRED_SOURCE_LABELS = ['source: claude-code', 'source: owner'];
+// #1727: Claude Code reviewt ook Codex-werk; dat issue heeft `source: codex`. Alleen in de reviewfase.
+const REVIEW_SOURCE_LABELS = ['source: codex'];
 const BLOCKED_LABELS = ['discipline: architect'];
+
+// AGENTS.md, "Review en turn:" regel 4: hoogstens twee reviewrondes per PR.
+const MAX_REVIEW_ROUNDS = 2;
+
+// Regels van een fasecomment (AGENTS.md, "Leg de opdracht vast bij het issue"). Regelgebonden, met
+// ruimte voor opsommingstekens en markdown-nadruk; lopende tekst die "Fase: review" noemt telt niet.
+const FIELD_PREFIX = String.raw`^[\s>*_-]*`;
+const FASE_RE = new RegExp(`${FIELD_PREFIX}Fase:[\\s*_\`]*([a-z]+)`, 'im');
+const REVIEWER_RE = new RegExp(`${FIELD_PREFIX}Reviewer:[\\s*_\`]*(.+)$`, 'im');
+const IMPLEMENTER_RE = new RegExp(`${FIELD_PREFIX}Implementer:[\\s*_\`]*(.+)$`, 'im');
+const PR_RE = new RegExp(`${FIELD_PREFIX}PR:[\\s*_\`]*#(\\d+)\\b`, 'im');
+const SHA_RE = new RegExp(`${FIELD_PREFIX}Aangeboden head-SHA:[\\s*_\`]*([0-9a-f]{40})\\b`, 'im');
+const CLAUDE_CODE = /^claude[\s-]*code\b/i;
 
 // Zelfde drempel als AGENTS.md, "Escaleer naar gebruiker bij": "> 3 iteraties in
 // verificatielus zonder voortgang". Hier: meer dan 3 eerdere runs van déze workflow
@@ -147,23 +171,31 @@ function isTrustedAuthor(item) {
   return item.user?.type === 'Bot' && TRUSTED_BOTS.includes(item.user?.login);
 }
 
-/**
- * Zoekt álle open PR's van déze beurt (#1665): een 'strong' referentie naar het issue én (#1612) een
- * branch in deze repository met de eigen conventie `feature/#<nr>-`, van een bevoegde auteur.
- * Zonder die drie voorwaarden kan iedereen met een fork-PR `fix(#N): ...` bepalen welke PR
- * de schrijfbevoegde agent als zijn werk behandelt.
- */
-function isOwnLinkedPr(pr, { context, issueNumber }) {
-  const { strong } = extractIssueRefs(pr.title, pr.body);
-  if (!strong.has(issueNumber)) return false;
-  if (pr.head?.repo?.full_name !== `${context.repo.owner}/${context.repo.repo}`) return false;
-  if (!(pr.head?.ref || '').startsWith(`feature/#${issueNumber}-`)) return false;
-  // isTrustedAuthor, niet isTrusted: de PR die de CI-run zelf opent staat op naam van
-  // claude[bot] (associatie NONE) en moet in de verwerkingsfase wél herkend worden (#1633).
-  return isTrustedAuthor(pr);
+/** Branchsoort van een PR voor dit issue: eigen conventie `feature/#<nr>-` of Codex (`codex/[hotfix-]<nr>-`). */
+function branchKind(ref, issueNumber) {
+  if ((ref || '').startsWith(`feature/#${issueNumber}-`)) return 'own';
+  if (new RegExp(`^codex/(?:hotfix-)?${issueNumber}-`).test(ref || '')) return 'codex';
+  return null;
 }
 
-async function findLinkedOpenPrs({ github, context, issueNumber }) {
+/**
+ * Een PR van déze beurt (#1665): een 'strong' referentie naar het issue én (#1612) een branch in
+ * deze repository met een bekende conventie (eigen of, #1727, Codex), van een bevoegde auteur.
+ * Zonder die drie voorwaarden kan iedereen met een fork-PR `fix(#N): ...` bepalen welke PR
+ * de schrijfbevoegde agent als zijn werk behandelt. Geeft de branchsoort terug, of null.
+ */
+function linkedPrKind(pr, { context, issueNumber }) {
+  const { strong } = extractIssueRefs(pr.title, pr.body);
+  if (!strong.has(issueNumber)) return null;
+  if (pr.head?.repo?.full_name !== `${context.repo.owner}/${context.repo.repo}`) return null;
+  const kind = branchKind(pr.head?.ref, issueNumber);
+  // isTrustedAuthor, niet isTrusted: de PR die de CI-run zelf opent staat op naam van
+  // claude[bot] (associatie NONE) en moet in de verwerkingsfase wél herkend worden (#1633).
+  return kind && isTrustedAuthor(pr) ? kind : null;
+}
+
+/** Alle gekoppelde open PR's, per branchsoort; vaste volgorde, onafhankelijk van de API. */
+async function findLinkedOpenPrsByKind({ github, context, issueNumber }) {
   const prs = await github.paginate(github.rest.pulls.list, {
     owner: context.repo.owner,
     repo: context.repo.repo,
@@ -172,18 +204,28 @@ async function findLinkedOpenPrs({ github, context, issueNumber }) {
     headers: API_VERSION_HEADERS,
   });
 
-  const linked = prs
-    .filter((pr) => isOwnLinkedPr(pr, { context, issueNumber }))
-    .map((pr) => ({ number: pr.number, branch: pr.head.ref }));
-  // Vaste volgorde: de uitkomst hangt niet van de API-volgorde af.
-  return linked.sort((a, b) => a.number - b.number);
+  const result = { own: [], codex: [] };
+  for (const pr of prs) {
+    const kind = linkedPrKind(pr, { context, issueNumber });
+    if (kind) {
+      result[kind].push({ number: pr.number, branch: pr.head.ref, headSha: pr.head.sha, baseRef: pr.base?.ref || '' });
+    }
+  }
+  result.own.sort((a, b) => a.number - b.number);
+  result.codex.sort((a, b) => a.number - b.number);
+  return result;
+}
+
+/** Open PR's op de eigen conventie `feature/#<nr>-` (implementatie- en verwerkingsfase). */
+async function findLinkedOpenPrs(args) {
+  return (await findLinkedOpenPrsByKind(args)).own;
 }
 
 const CLOSED_PAGE_SIZE = 100;
 
 /**
  * Gesloten (gemergede of afgewezen) PR's van déze beurt, met dezelfde filters als
- * findLinkedOpenPrs (#1692). Nieuwst bijgewerkt eerst; stopt zodra een pagina PR's bevat die vóór
+ * findLinkedOpenPrsByKind (#1692; beide branchsoorten sinds #1727). Nieuwst bijgewerkt eerst; stopt zodra een pagina PR's bevat die vóór
  * `since` zijn bijgewerkt. Een PR die naar het issue verwijst is altijd ná het aanmaken van het
  * issue gemaakt of bewerkt, dus `since` = aanmaakmoment van het issue mist er geen.
  */
@@ -202,7 +244,8 @@ async function findLinkedClosedPrs({ github, context, issueNumber, since }) {
     });
     for (const pr of data) {
       if (since && pr.updated_at && pr.updated_at < since) continue;
-      if (!isOwnLinkedPr(pr, { context, issueNumber })) continue;
+      // #1727: ook een gemergede Codex-PR betekent dat het werk af is.
+      if (!linkedPrKind(pr, { context, issueNumber })) continue;
       linked.push({ number: pr.number, mergedAt: pr.merged_at || null, closedAt: pr.closed_at || null });
     }
     const oldest = data.length ? data[data.length - 1].updated_at : null;
@@ -230,6 +273,143 @@ async function findLatestReviewReturn({ github, context, prNumber }) {
     if (!latest || (c.created_at || '') >= (latest.created_at || '')) latest = c;
   }
   return latest;
+}
+
+/** Velden van een fasecomment, of null als er geen `Fase:`-regel in staat. */
+function parseFaseComment(body) {
+  const fase = (body || '').match(FASE_RE);
+  if (!fase) return null;
+  const field = (re) => ((body.match(re) || [])[1] || '').replace(/[*_`]+$/, '').trim();
+  const pr = Number(field(PR_RE));
+  return {
+    fase: fase[1].toLowerCase(),
+    reviewer: field(REVIEWER_RE),
+    implementer: field(IMPLEMENTER_RE),
+    prNumber: Number.isInteger(pr) && pr > 0 ? pr : null,
+    sha: field(SHA_RE).toLowerCase(),
+  };
+}
+
+function isClaudeReviewRequest(parsed) {
+  return Boolean(parsed) && parsed.fase === 'review' && CLAUDE_CODE.test(parsed.reviewer);
+}
+
+/**
+ * #1727: de reviewaanvraag aan Claude Code als de nieuwste fasecomment van een bevoegde schrijver
+ * er een is, anders null. Een latere fasecomment (bijv. `Fase: verwerking` na de teruggave of een
+ * overdracht) beëindigt de aanvraag. `rondes` = het aantal verschillende aangeboden SHA's in
+ * reviewaanvragen aan Claude Code voor dezelfde PR.
+ */
+async function findReviewRequest({ github, context, issueNumber }) {
+  const comments = await github.paginate(github.rest.issues.listComments, {
+    owner: context.repo.owner,
+    repo: context.repo.repo,
+    issue_number: issueNumber,
+    per_page: 100,
+    headers: API_VERSION_HEADERS,
+  });
+  const faseComments = comments
+    .filter((c) => c.body && isTrustedAuthor(c))
+    .map((c) => ({ at: c.created_at || '', id: c.id, parsed: parseFaseComment(c.body) }))
+    .filter((c) => c.parsed)
+    .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+  const latest = faseComments[faseComments.length - 1];
+  if (!latest || !isClaudeReviewRequest(latest.parsed)) return null;
+
+  const shas = new Set(faseComments
+    .filter((c) => isClaudeReviewRequest(c.parsed) && c.parsed.prNumber === latest.parsed.prNumber && c.parsed.sha)
+    .map((c) => c.parsed.sha));
+  // `commentId` = identiteit van de aanvraag: een vervangende aanvraag met dezelfde PR/SHA is een
+  // andere aanvraag (Codex-review ronde 2, P2) en moet bij publicatie opnieuw getoetst worden.
+  return { ...latest.parsed, commentId: latest.id, rondes: shas.size };
+}
+
+// #1727: de reviewteruggave van de bot publiceert de workflow zelf met de GITHUB_TOKEN, dus als
+// github-actions[bot]. Die login is geen bevoegde schrijver voor context of fasecomments (ook andere
+// workflows schrijven onder die naam), maar deze markering telt wél als "al beoordeeld": dat maakt de
+// poort alleen strenger.
+const BOT_REVIEW_LOGIN = 'github-actions[bot]';
+function reviewMarker(sha) {
+  return `<!-- claude-issue-turn-review sha=${sha} -->`;
+}
+
+/**
+ * Is deze SHA al beoordeeld (eenmaal per SHA)? Telt (1) een reviewteruggave als PR-comment van een
+ * bevoegde schrijver die de SHA noemt, (2) elke formele review van een bevoegde schrijver op die
+ * commit, in elke toestand, ook PENDING (een lopende review), en (3) een eerdere botreview met de
+ * markering voor die SHA.
+ */
+async function isShaAlreadyReviewed({ github, context, prNumber, sha }) {
+  const base = { owner: context.repo.owner, repo: context.repo.repo, headers: API_VERSION_HEADERS };
+  const comments = await github.paginate(github.rest.issues.listComments, {
+    ...base, issue_number: prNumber, per_page: 100,
+  });
+  const marker = reviewMarker(sha);
+  const viaComment = comments.some((c) => {
+    if (!c.body) return false;
+    if (c.user?.type === 'Bot' && c.user?.login === BOT_REVIEW_LOGIN) return c.body.includes(marker);
+    return isTrustedAuthor(c) && isReviewTeruggave(c.body) && c.body.toLowerCase().includes(sha);
+  });
+  if (viaComment) return true;
+
+  const reviews = await github.paginate(github.rest.pulls.listReviews, {
+    ...base, pull_number: prNumber, per_page: 100,
+  });
+  return reviews.some((r) => isTrustedAuthor(r) && (r.commit_id || '').toLowerCase() === sha);
+}
+
+/**
+ * #1727: controleert een reviewaanvraag tegen de actuele toestand. Elke afwijking van het
+ * reviewprotocol (AGENTS.md, "Review en turn:" regel 3) stopt zonder comment of labelwijziging en
+ * laat de poortstap zichtbaar falen (`alarm`); alleen de rondelimiet gaat met uitleg naar de eigenaar.
+ */
+async function evaluateReviewRequest({ github, context, core, issueNumber, request, fx = REAL_EFFECTS }) {
+  const stop = (why) => ({ proceed: false, alarm: true, reason: `Geen review gestart: ${why}.` });
+
+  if (!request.implementer || CLAUDE_CODE.test(request.implementer)) {
+    return stop('de implementer ontbreekt of is Claude Code zelf (geen zelfreview)');
+  }
+  if (!request.prNumber || !request.sha) {
+    return stop('de reviewaanvraag noemt geen `PR: #<nr>` of geen volledige `Aangeboden head-SHA`');
+  }
+
+  const linked = await findLinkedOpenPrsByKind({ github, context, issueNumber });
+  const all = [...linked.own, ...linked.codex];
+  if (all.length !== 1) {
+    const lijst = all.length ? all.map((p) => `#${p.number}`).join(', ') : 'geen';
+    return stop(`precies één gekoppelde open PR vereist (gevonden: ${lijst})`);
+  }
+  const pr = linked.codex[0];
+  if (!pr || pr.number !== request.prNumber) {
+    return stop(`PR #${request.prNumber} uit de aanvraag is niet de gekoppelde open Codex-PR van dit issue`);
+  }
+  if ((pr.headSha || '').toLowerCase() !== request.sha) {
+    return stop(`de head van PR #${pr.number} is niet meer de aangeboden SHA (nieuwe aanvraag nodig)`);
+  }
+  if (await isShaAlreadyReviewed({ github, context, prNumber: pr.number, sha: request.sha })) {
+    return stop(`de aangeboden SHA van PR #${pr.number} is al beoordeeld (eenmaal per SHA)`);
+  }
+  if (request.rondes > MAX_REVIEW_ROUNDS) {
+    const reason =
+      `Geen review gestart: dit is reviewronde ${request.rondes} op PR #${pr.number}; ` +
+      `na ${MAX_REVIEW_ROUNDS} rondes zonder schone review beslist de eigenaar (fase \`eigenaarsbesluit\`, AGENTS.md).`;
+    await fx.postComment({ github, context, core, issueNumber, body: reason });
+    await fx.setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
+    return { proceed: false, reason };
+  }
+
+  return {
+    proceed: true,
+    phase: 'review',
+    prNumber: pr.number,
+    prBranch: pr.branch,
+    // De diff gaat tegen de echte basis: een Codex-hotfix (`codex/hotfix-…`) gaat naar main.
+    prBase: pr.baseRef || 'develop',
+    reviewSha: request.sha,
+    reviewImplementer: request.implementer,
+    reviewRequestId: String(request.commentId ?? ''),
+    ronde: request.rondes,
+  };
 }
 
 /** De run-name van claude-issue-turn.yml — beide plekken moeten exact gelijk blijven. */
@@ -371,7 +551,7 @@ async function collectTrustedContext({ github, context, issueNumber, prNumber })
  * @returns {Promise<{proceed: boolean, phase?: 'implementatie'|'verwerking',
  *   prNumber?: number, prBranch?: string, reason?: string}>}
  */
-async function evaluateGate({ github, context, core, issueNumber }) {
+async function evaluateGateInner({ github, context, core, issueNumber, dryRun, fx, holder }) {
   const issue = (
     await github.rest.issues.get({
       owner: context.repo.owner,
@@ -416,14 +596,19 @@ async function evaluateGate({ github, context, core, issueNumber }) {
     };
   }
 
-  const hasRequiredSource = REQUIRED_SOURCE_LABELS.some((l) => labels.includes(l));
+  // #1727: een reviewaanvraag aan Claude Code bepaalt de fase vóór de herkomstcontrole, omdat
+  // `source: codex` alleen voor een review is toegestaan.
+  const reviewRequest = await findReviewRequest({ github, context, issueNumber });
+  const allowedSources = reviewRequest ? [...REQUIRED_SOURCE_LABELS, ...REVIEW_SOURCE_LABELS] : REQUIRED_SOURCE_LABELS;
+  const hasRequiredSource = allowedSources.some((l) => labels.includes(l));
   if (!hasRequiredSource) {
     const reason =
-      `Geen CI-run gestart: dit issue mist een van ${REQUIRED_SOURCE_LABELS.join(' / ')}. ` +
+      `Geen CI-run gestart: dit issue mist een van ${allowedSources.join(' / ')}. ` +
       'Besluit 3 op #1601 beperkt automatische oppak tot issues met een agent- of ' +
-      'eigenaarherkomst (bijv. geen `via: feedback-widget`-issues).';
-    await postComment({ github, context, core, issueNumber, body: reason });
-    await setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
+      'eigenaarherkomst (bijv. geen `via: feedback-widget`-issues); `source: codex` alleen voor een ' +
+      'review door Claude Code met een geldige reviewaanvraag (#1727).';
+    await fx.postComment({ github, context, core, issueNumber, body: reason });
+    await fx.setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
     return { proceed: false, reason };
   }
 
@@ -434,8 +619,8 @@ async function evaluateGate({ github, context, core, issueNumber }) {
     const reason =
       'Geen CI-run gestart: de auteur van dit issue heeft geen schrijfrechten op deze ' +
       'repository (#1615). Een eigenaar kan het werk overnemen in een eigen issue.';
-    await postComment({ github, context, core, issueNumber, body: reason });
-    await setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
+    await fx.postComment({ github, context, core, issueNumber, body: reason });
+    await fx.setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
     return { proceed: false, reason };
   }
 
@@ -444,23 +629,52 @@ async function evaluateGate({ github, context, core, issueNumber }) {
     const reason =
       `Geen CI-run gestart: label \`${blocked}\` vereist een expliciete eigenaarsopdracht ` +
       '(besluit 3 op #1601) — architectuurbeslissingen lopen niet autonoom via deze workflow.';
-    await postComment({ github, context, core, issueNumber, body: reason });
-    await setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
+    await fx.postComment({ github, context, core, issueNumber, body: reason });
+    await fx.setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
     return { proceed: false, reason };
   }
 
-  const priorRuns = await countPriorRuns({ github, context, issueNumber });
-  if (priorRuns >= MAX_RUNS) {
+  if (dryRun) {
+    // Testmodus (#1721 fase 1): de testledger, niet de titelteller; de productieteller blijft onaangeraakt.
+    const evaluated = await ledgerLib.evaluateLedger({
+      github, context, issueNumber, mode: 'test', runId: context.runId, runAttempt: runAttemptOf(context),
+    });
+    if (evaluated.state === 'stop') {
+      return { proceed: false, reason: `Geen CI-run gestart (testmodus): ${evaluated.reason}.` };
+    }
+    holder.evaluated = evaluated;
+  } else {
+    const priorRuns = await countPriorRuns({ github, context, issueNumber });
+    if (priorRuns >= MAX_RUNS) {
+      const reason =
+        `Geen CI-run gestart: al ${priorRuns} eerdere runs van deze workflow op dit issue ` +
+        `(drempel ${MAX_RUNS}, zelfde grens als "> 3 iteraties zonder voortgang" in AGENTS.md). ` +
+        'Vereist een eigenaarsbesluit vóór een volgende poging.';
+      await fx.postComment({ github, context, core, issueNumber, body: reason });
+      await fx.setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
+      return { proceed: false, reason };
+    }
+  }
+
+  if (reviewRequest) {
+    return evaluateReviewRequest({ github, context, core, issueNumber, request: reviewRequest, fx });
+  }
+
+  const linkedByKind = await findLinkedOpenPrsByKind({ github, context, issueNumber });
+  if (linkedByKind.codex.length) {
+    // #1727: Codex is hier implementer. Zonder geldige reviewaanvraag zou de bot anders een
+    // tweede implementatie vanaf develop starten (zijn eigen branchconventie ziet die PR niet).
     const reason =
-      `Geen CI-run gestart: al ${priorRuns} eerdere runs van deze workflow op dit issue ` +
-      `(drempel ${MAX_RUNS}, zelfde grens als "> 3 iteraties zonder voortgang" in AGENTS.md). ` +
-      'Vereist een eigenaarsbesluit vóór een volgende poging.';
-    await postComment({ github, context, core, issueNumber, body: reason });
-    await setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
+      `Geen CI-run gestart: Codex-PR ${linkedByKind.codex.map((p) => `#${p.number}`).join(', ')} hoort bij dit ` +
+      'issue en er staat geen geldige reviewaanvraag aan Claude Code als laatste fasecomment ' +
+      '(`Fase: review`, `Reviewer: Claude Code`, `PR: #<nr>`, `Aangeboden head-SHA`). ' +
+      'Implementatie of verwerking door de bot zou dubbel werk naast de Codex-PR geven.';
+    await fx.postComment({ github, context, core, issueNumber, body: reason });
+    await fx.setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
     return { proceed: false, reason };
   }
 
-  const linkedPrs = await findLinkedOpenPrs({ github, context, issueNumber });
+  const linkedPrs = linkedByKind.own;
   if (linkedPrs.length > 1) {
     // #1665: kiezen op API-volgorde zou de verkeerde branch wijzigen; het reviewprotocol vereist
     // stoppen. Bewust geen agent en geen labelwijziging: de beurt blijft zoals de eigenaar hem zette.
@@ -478,8 +692,8 @@ async function evaluateGate({ github, context, core, issueNumber }) {
         `Geen CI-run gestart: de laatste reviewteruggave op PR #${linkedPr.number} verwijst naar een besloten ` +
         'reviewnotitie die deze run niet kan inzien; een bevinding verwerken zonder die notitie zou gokken zijn. ' +
         'De eigenaar stelt de notitie beschikbaar of besluit.';
-      await postComment({ github, context, core, issueNumber, body: reason });
-      await setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
+      await fx.postComment({ github, context, core, issueNumber, body: reason });
+      await fx.setTurnLabel({ github, context, core, issueNumber, label: 'turn: owner' });
       return { proceed: false, reason };
     }
     return {
@@ -493,10 +707,88 @@ async function evaluateGate({ github, context, core, issueNumber }) {
   return { proceed: true, phase: 'implementatie' };
 }
 
+const REAL_EFFECTS = { postComment, setTurnLabel };
+
+/** Testmodus: de poort evalueert volledig maar schrijft geen comment en geen label. */
+function dryRunEffects(core) {
+  return {
+    postComment: async ({ issueNumber, body }) => core.notice(`#${issueNumber}: [dry-run] comment niet geplaatst: ${body.slice(0, 120)}`),
+    setTurnLabel: async ({ issueNumber, label }) => core.notice(`#${issueNumber}: [dry-run] label '${label}' niet gezet`),
+  };
+}
+
+function runAttemptOf(context) {
+  const n = Number(context.runAttempt ?? process.env.GITHUB_RUN_ATTEMPT ?? 1);
+  return Number.isInteger(n) && n > 0 ? n : 1;
+}
+
+/**
+ * Het issuenummer van deze run (#1721): bij een aanroep (`workflow_call`) komt het uit de input, bij het
+ * `issues`-event uit de payload. Is er allebei, dan moeten ze gelijk zijn. De input is een string
+ * `^[1-9]\d{0,8}$`; alles anders is een stop vóór elke API-aanroep.
+ * @returns {{ok: true, issueNumber: number} | {ok: false, reason: string}}
+ */
+function resolveIssueNumber({ input, payloadIssueNumber }) {
+  const hasInput = input !== undefined && input !== null && String(input) !== '';
+  if (hasInput) {
+    if (!/^[1-9]\d{0,8}$/.test(String(input))) return { ok: false, reason: 'input issue_number is geen positief geheel getal' };
+    const n = Number(input);
+    if (payloadIssueNumber !== undefined && payloadIssueNumber !== null && Number(payloadIssueNumber) !== n) {
+      return { ok: false, reason: 'input issue_number wijkt af van het issue uit het event' };
+    }
+    return { ok: true, issueNumber: n };
+  }
+  if (Number.isInteger(payloadIssueNumber) && payloadIssueNumber > 0) return { ok: true, issueNumber: payloadIssueNumber };
+  return { ok: false, reason: 'geen issuenummer (geen input en geen issue in het event)' };
+}
+
+/**
+ * @param {{github: object, context: object, core: object, issueNumber: number, dryRun?: boolean,
+ *   eventName?: string}} args  `eventName` = het event van de aanroeper (`github.event_name`).
+ * @returns {Promise<{proceed: boolean, phase?: 'implementatie'|'verwerking'|'review',
+ *   prNumber?: number, prBranch?: string, reason?: string, alarm?: boolean}>}
+ */
+async function evaluateGate({ github, context, core, issueNumber, dryRun = false, eventName = context.eventName }) {
+  // Fase 1 (#1721): alleen een `issues`-event start een echte beurt. Een aanroep vanuit de router-dispatch
+  // (workflow_dispatch) is uitsluitend een test en vereist `dry_run`.
+  if (eventName !== 'issues' && !dryRun) {
+    return {
+      proceed: false,
+      alarm: true,
+      reason: `Geen CI-run gestart: een aanroep vanuit '${eventName}' is alleen toegestaan als dry_run (testmodus).`,
+    };
+  }
+  if (dryRun && eventName === 'issues') {
+    return { proceed: false, alarm: true, reason: 'Geen CI-run gestart: dry_run is niet toegestaan op een issues-event.' };
+  }
+  const fx = dryRun ? dryRunEffects(core) : REAL_EFFECTS;
+  const holder = {};
+  const result = await evaluateGateInner({ github, context, core, issueNumber, dryRun, fx, holder });
+  if (!result.proceed || !dryRun) return result;
+
+  // Testmodus: de entry in de testledger schrijven en de annotatie plaatsen waarop het bewijs steunt.
+  const runAttempt = runAttemptOf(context);
+  const written = await ledgerLib.recordEntry({
+    github, context, issueNumber, mode: 'test', evaluated: holder.evaluated, runId: context.runId, runAttempt,
+  });
+  if (written.state === 'stop') return { proceed: false, alarm: true, reason: `Geen CI-run gestart (testmodus): ${written.reason}.` };
+  core.notice(ledgerLib.annotationText({ issueNumber, runId: context.runId, runAttempt }));
+  return result;
+}
+
 module.exports = {
   evaluateGate,
+  resolveIssueNumber,
+  dryRunEffects,
   setTurnLabel,
   findLinkedOpenPrs,
+  findLinkedOpenPrsByKind,
+  findReviewRequest,
+  evaluateReviewRequest,
+  isShaAlreadyReviewed,
+  reviewMarker,
+  parseFaseComment,
+  MAX_REVIEW_ROUNDS,
   findLinkedClosedPrs,
   isTrustedAuthor,
   labelNames,

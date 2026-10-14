@@ -6,7 +6,9 @@
 
 const {
   evaluateGate, setTurnLabel, collectTrustedContext, runTitle, MAX_RUNS, MAX_CONTEXT_BYTES, truncateToBytes,
+  parseFaseComment, MAX_REVIEW_ROUNDS, reviewMarker, resolveIssueNumber,
 } = require('./claude-issue-turn-gate.js');
+const ledgerLib = require('./claude-issue-turn-ledger.js');
 
 let failures = 0;
 function check(name, actual, expected) {
@@ -15,7 +17,7 @@ function check(name, actual, expected) {
   else { console.log(`  FAIL  ${name}\n        verwacht: ${e}\n        kreeg:    ${a}`); failures++; }
 }
 
-const ctx = { repo: { owner: 'o', repo: 'r' }, runId: 999999 };
+const ctx = { repo: { owner: 'o', repo: 'r' }, runId: 999999, eventName: 'issues' };
 const core = { notice: () => {}, warning: () => {} };
 
 function fakeGithub({
@@ -505,6 +507,254 @@ function fakeGithub({
       prComment('Verwerking Codex-review ronde 1: de besloten notitie is verwerkt. Uitkomst: opgelost.', '2026-10-12T11:00:00Z'),
     ]);
     check('verwerkingscomment telt niet als teruggave: nieuwste teruggave blijft blokkeren', result.proceed, false);
+  }
+
+  // ---------- #1727: reviewfase — Claude Code reviewt een Codex-PR ----------
+  console.log('\nevaluateGate (#1727 reviewfase):');
+  const SHA_A = 'a'.repeat(40);
+  const SHA_B = 'b'.repeat(40);
+  const SHA_C = 'c'.repeat(40);
+  const codexPr = (n, extra = {}) => ({
+    number: 700 + n, head: { ref: `codex/${n}-tokenformat`, sha: SHA_A, repo: { full_name: 'o/r' } },
+    title: `security(#${n}): iets`, body: '', author_association: 'OWNER', ...extra,
+  });
+  // Zelfde vorm als de aanvraag op #1723 (regels, gevolgd door lopende tekst).
+  const aanvraag = (pr, sha = SHA_A, { implementer = 'Codex (sessie x)', reviewer = 'Claude Code' } = {}) => [
+    'Fase: review', `PR: #${pr}`, `Implementer: ${implementer}`, `Reviewer: ${reviewer}`,
+    `Aangeboden head-SHA: ${sha}`, 'Ronde: 1', '', 'Vraag om onafhankelijke, read-only review.', '',
+    'Volgende beurt: turn: claude-code',
+  ].join('\n');
+  const issueComment = (body, tijd, extra = {}) => ({
+    user: { login: 'eigenaar' }, author_association: 'OWNER', created_at: tijd, body, ...extra,
+  });
+  const runReview = async (n, {
+    labels = ['source: codex'], openPrs, issueComments = [], prComments = [], closedPrs = [], reviews = [],
+  } = {}) => {
+    const prs = openPrs || [codexPr(n)];
+    const github = fakeGithub({
+      labels, openPrs: prs, closedPrs, reviews,
+      commentsByNumber: { [n]: issueComments, [700 + n]: prComments },
+    });
+    const result = await evaluateGate({ github, context: ctx, core, issueNumber: n });
+    return { github, result };
+  };
+  {
+    // Exact het verloop van #1723: aanvraag plus een tweede "Fase: review — wacht op …"-comment.
+    const { github, result } = await runReview(1, {
+      issueComments: [
+        issueComment('Implementer: Codex\nReviewer: Claude Code\nFase: implementatie\nVolgende beurt: turn: codex', '2026-10-13T16:26:00Z'),
+        issueComment(aanvraag(701), '2026-10-13T16:44:00Z'),
+        issueComment('Geen CI-run gestart: dit issue mist een van source: claude-code / source: owner.', '2026-10-13T16:45:00Z',
+          { user: { login: 'github-actions[bot]', type: 'Bot' }, author_association: 'NONE' }),
+        issueComment(`Fase: review — wacht op onafhankelijke review\nPR: #701\nImplementer: Codex\nReviewer: Claude Code\nAangeboden head-SHA: ${SHA_A}`, '2026-10-13T16:46:00Z'),
+      ],
+    });
+    check('#1723-verloop: review gestart op source: codex', [result.proceed, result.phase], [true, 'review']);
+    check('#1723-verloop: PR, branch, SHA en ronde 1', [result.prNumber, result.prBranch, result.reviewSha, result.ronde],
+      [701, 'codex/1-tokenformat', SHA_A, 1]);
+    check('#1723-verloop: geen comment of labelwijziging door de poort', [github.calls.comments, github.calls.added], [[], []]);
+  }
+  {
+    const { result } = await runReview(2, {
+      labels: ['source: owner'], issueComments: [issueComment(aanvraag(702).replace('Fase: review', '**Fase:** review'), '2026-10-13T10:00:00Z')],
+    });
+    check('source: owner met Codex-implementer en markdown-nadruk: review', [result.proceed, result.phase], [true, 'review']);
+  }
+  {
+    const { github, result } = await runReview(3, { issueComments: [issueComment(aanvraag(703, SHA_B), '2026-10-13T10:00:00Z')] });
+    check('head ≠ aangeboden SHA: geen review, alarm', [result.proceed, result.alarm], [false, true]);
+    check('head ≠ aangeboden SHA: niets gepubliceerd of gelabeld', [github.calls.comments, github.calls.added, github.calls.removed], [[], [], []]);
+  }
+  {
+    const { github, result } = await runReview(4, {
+      issueComments: [issueComment(aanvraag(704), '2026-10-13T10:00:00Z')],
+      prComments: [issueComment(`Reviewteruggave — reviewronde 1\nBeoordeelde SHA: ${SHA_A}\nUitkomst: geen bevindingen`, '2026-10-13T11:00:00Z')],
+    });
+    check('SHA al beoordeeld: geen tweede review, alarm', [result.proceed, result.alarm, /al beoordeeld/.test(result.reason)], [false, true, true]);
+    check('SHA al beoordeeld: niets gepubliceerd', [github.calls.comments, github.calls.added], [[], []]);
+  }
+  {
+    const { result } = await runReview(5, { issueComments: [issueComment(aanvraag(705, SHA_A, { implementer: 'Claude Code (CI-run)' }), '2026-10-13T10:00:00Z')] });
+    check('implementer Claude Code: geen zelfreview', [result.proceed, result.alarm, /zelfreview/.test(result.reason)], [false, true, true]);
+  }
+  {
+    // Aanvraag aan Codex (Claude implementeerde): geen reviewfase; source: codex valt dan buiten de scope.
+    const { github, result } = await runReview(6, { issueComments: [issueComment(aanvraag(706, SHA_A, { reviewer: 'Codex', implementer: 'Claude Code' }), '2026-10-13T10:00:00Z')] });
+    check('aanvraag aan Codex op source: codex: geen run, naar eigenaar', [result.proceed, result.phase, github.calls.added], [false, undefined, ['turn: owner']]);
+  }
+  {
+    const { github, result } = await runReview(7, {
+      issueComments: [
+        issueComment(aanvraag(707), '2026-10-13T10:00:00Z'),
+        issueComment('Fase: verwerking\nPR: #707\nUitkomst: geen bevindingen\nVolgende beurt: turn: codex', '2026-10-13T11:00:00Z'),
+      ],
+    });
+    check('latere fasecomment beëindigt de aanvraag: geen run', [result.proceed, github.calls.added], [false, ['turn: owner']]);
+  }
+  {
+    const { github, result } = await runReview(8, {
+      issueComments: [issueComment(aanvraag(708), '2026-10-13T10:00:00Z', { user: { login: 'vreemde' }, author_association: 'NONE' })],
+    });
+    check('aanvraag van niet-bevoegde auteur telt niet', [result.proceed, result.phase, github.calls.added], [false, undefined, ['turn: owner']]);
+  }
+  {
+    // Root cause 2: source: owner + open Codex-PR zonder aanvraag mag nooit een implementatie starten.
+    const { github, result } = await runReview(9, { labels: ['source: owner'] });
+    check('open Codex-PR zonder aanvraag: géén implementatie', [result.proceed, result.phase], [false, undefined]);
+    check('open Codex-PR zonder aanvraag: uitleg en beurt naar eigenaar', [github.calls.comments.length, github.calls.added], [1, ['turn: owner']]);
+  }
+  {
+    const { result } = await runReview(10, {
+      openPrs: [codexPr(10), codexPr(10, { number: 799, head: { ref: 'codex/10-tweede', sha: SHA_A, repo: { full_name: 'o/r' } } })],
+      issueComments: [issueComment(aanvraag(710), '2026-10-13T10:00:00Z')],
+    });
+    check('twee gekoppelde PR\'s: geen review, alarm', [result.proceed, result.alarm, /precies één/.test(result.reason)], [false, true, true]);
+  }
+  {
+    const fork = codexPr(11, { head: { ref: 'codex/11-x', sha: SHA_A, repo: { full_name: 'aanvaller/r' } }, author_association: 'NONE' });
+    const { result } = await runReview(11, { openPrs: [fork], issueComments: [issueComment(aanvraag(711), '2026-10-13T10:00:00Z')] });
+    check('fork-PR op codex/-branch telt niet: geen review', [result.proceed, result.alarm], [false, true]);
+  }
+  {
+    const { github, result } = await runReview(12, {
+      openPrs: [codexPr(12, { head: { ref: 'codex/12-tokenformat', sha: SHA_C, repo: { full_name: 'o/r' } } })],
+      issueComments: [
+        issueComment(aanvraag(712, SHA_A), '2026-10-13T10:00:00Z'),
+        issueComment(aanvraag(712, SHA_B), '2026-10-13T11:00:00Z'),
+        issueComment(aanvraag(712, SHA_C), '2026-10-13T12:00:00Z'),
+      ],
+    });
+    check(`ronde ${MAX_REVIEW_ROUNDS + 1}: geen review, eigenaarsbesluit`, [result.proceed, github.calls.added, github.calls.comments.length], [false, ['turn: owner'], 1]);
+  }
+  {
+    const { result } = await runReview(13, {
+      openPrs: [codexPr(13, { head: { ref: 'codex/13-tokenformat', sha: SHA_B, repo: { full_name: 'o/r' } } })],
+      issueComments: [issueComment(aanvraag(713, SHA_A), '2026-10-13T10:00:00Z'), issueComment(aanvraag(713, SHA_B), '2026-10-13T12:00:00Z')],
+    });
+    check('tweede ronde op nieuwe SHA: review, ronde 2', [result.proceed, result.phase, result.ronde, result.reviewSha], [true, 'review', 2, SHA_B]);
+  }
+  {
+    const merged = { ...codexPr(14), state: 'closed', merged_at: '2026-10-13T09:00:00Z', closed_at: '2026-10-13T09:00:00Z', updated_at: '2026-10-13T09:00:00Z' };
+    const { result } = await runReview(14, { openPrs: [], closedPrs: [merged], issueComments: [issueComment(aanvraag(714), '2026-10-13T10:00:00Z')] });
+    check('gemergede Codex-PR: geen run', [result.proceed, /al gemerged/.test(result.reason)], [false, true]);
+  }
+  // ---------- #1727 Codex-review ronde 1 (P2): formele reviews en botreviews tellen als beoordeeld ----------
+  for (const state of ['APPROVED', 'CHANGES_REQUESTED', 'COMMENTED', 'PENDING']) {
+    const { github, result } = await runReview(20, {
+      issueComments: [issueComment(aanvraag(720), '2026-10-13T10:00:00Z')],
+      reviews: [{ user: { login: 'eigenaar' }, author_association: 'OWNER', state, commit_id: SHA_A, body: 'review' }],
+    });
+    check(`formele review ${state} op de SHA: geen review, alarm`, [result.proceed, result.alarm, /al beoordeeld/.test(result.reason)], [false, true, true]);
+    check(`formele review ${state}: niets gepubliceerd of gelabeld`, [github.calls.comments, github.calls.added], [[], []]);
+  }
+  {
+    const { result } = await runReview(21, {
+      issueComments: [issueComment(aanvraag(721), '2026-10-13T10:00:00Z')],
+      reviews: [
+        { user: { login: 'vreemde' }, author_association: 'NONE', state: 'APPROVED', commit_id: SHA_A, body: '' },
+        { user: { login: 'eigenaar' }, author_association: 'OWNER', state: 'COMMENTED', commit_id: SHA_B, body: '' },
+      ],
+    });
+    check('formele review van niet-bevoegde of op andere SHA telt niet', [result.proceed, result.phase], [true, 'review']);
+  }
+  {
+    const bot = { login: 'github-actions[bot]', type: 'Bot' };
+    const met = await runReview(22, {
+      issueComments: [issueComment(aanvraag(722), '2026-10-13T10:00:00Z')],
+      prComments: [issueComment(`Reviewteruggave\n${reviewMarker(SHA_A)}`, '2026-10-13T11:00:00Z', { user: bot, author_association: 'NONE' })],
+    });
+    check('eerdere botreview met markering: al beoordeeld', [met.result.proceed, met.result.alarm], [false, true]);
+    const zonder = await runReview(23, {
+      issueComments: [issueComment(aanvraag(723), '2026-10-13T10:00:00Z')],
+      prComments: [issueComment(`Reviewronde 1, Uitkomst: ok, SHA ${SHA_A}`, '2026-10-13T11:00:00Z', { user: bot, author_association: 'NONE' })],
+    });
+    check('github-actions-comment zonder markering telt niet', [zonder.result.proceed, zonder.result.phase], [true, 'review']);
+    const nep = await runReview(24, {
+      issueComments: [issueComment(aanvraag(724), '2026-10-13T10:00:00Z')],
+      prComments: [issueComment(reviewMarker(SHA_A), '2026-10-13T11:00:00Z', { user: { login: 'github-actions[bot]', type: 'User' }, author_association: 'NONE' })],
+    });
+    check('nep-bot (type User) met markering telt niet', [nep.result.proceed, nep.result.phase], [true, 'review']);
+  }
+  {
+    const hotfix = codexPr(25, { head: { ref: 'codex/hotfix-25-x', sha: SHA_A, repo: { full_name: 'o/r' } }, base: { ref: 'main' } });
+    const { result } = await runReview(25, { openPrs: [hotfix], issueComments: [issueComment(aanvraag(725), '2026-10-13T10:00:00Z')] });
+    check('hotfix-PR: basis main wordt doorgegeven', [result.proceed, result.prBase], [true, 'main']);
+    const { result: gewoon } = await runReview(26, { issueComments: [issueComment(aanvraag(726), '2026-10-13T10:00:00Z')] });
+    check('PR zonder basis in de API-respons: develop', gewoon.prBase, 'develop');
+  }
+
+  {
+    const p = parseFaseComment('- **Fase:** review\n- **Reviewer:** Claude Code\n- **PR:** #5\n- **Aangeboden head-SHA:** `' + SHA_A + '`');
+    check('parseFaseComment: opsomming, nadruk en code-opmaak', [p.fase, p.reviewer, p.prNumber, p.sha], ['review', 'Claude Code', 5, SHA_A]);
+    check('parseFaseComment: lopende tekst zonder Fase-regel', parseFaseComment('We zitten in de Fase: review, zei Codex.'), null);
+  }
+
+  // ---------- #1721 fase 1: issuenummer, aanroep buiten een issues-event, testmodus ----------
+  console.log('\n#1721 fase 1:');
+  {
+    check('input zonder payload', resolveIssueNumber({ input: '42', payloadIssueNumber: undefined }), { ok: true, issueNumber: 42 });
+    check('payload zonder input', resolveIssueNumber({ input: '', payloadIssueNumber: 42 }), { ok: true, issueNumber: 42 });
+    check('input en payload gelijk', resolveIssueNumber({ input: '42', payloadIssueNumber: 42 }).ok, true);
+    check('input wijkt af van het event: stop', resolveIssueNumber({ input: '42', payloadIssueNumber: 43 }).ok, false);
+    check('geen van beide: stop', resolveIssueNumber({ input: undefined, payloadIssueNumber: undefined }).ok, false);
+    for (const bad of ['abc', '0', '-1', '4 2', '12x', '1234567890', '42; rm', '$(id)', '4.2']) {
+      check(`ongeldige input ${JSON.stringify(bad)}: stop`, resolveIssueNumber({ input: bad, payloadIssueNumber: undefined }).ok, false);
+    }
+  }
+  {
+    const github = fakeGithub({ labels: ['source: owner'] });
+    const r = await evaluateGate({ github, context: ctx, core, issueNumber: 42, eventName: 'workflow_dispatch' });
+    check('buiten een issues-event zonder dry_run: geen run, alarm', [r.proceed, r.alarm], [false, true]);
+    check('buiten een issues-event: geen label en geen comment', [github.calls.added, github.calls.comments], [[], []]);
+  }
+  {
+    const github = fakeGithub({ labels: ['source: owner'] });
+    const r = await evaluateGate({ github, context: ctx, core, issueNumber: 42, eventName: 'issues', dryRun: true });
+    check('dry_run op een issues-event: geweigerd', [r.proceed, r.alarm], [false, true]);
+  }
+
+  /** Nep-octokit uitgebreid met de ledger-API's (zie claude-issue-turn-ledger.test.js voor de bewijsvarianten). */
+  function dryRunGithub(opts = {}) {
+    const base = fakeGithub(opts);
+    const store = { ledger: opts.ledgerBody ? [{ id: 900, body: opts.ledgerBody, user: { type: 'Bot', login: 'github-actions[bot]' }, created_at: '2026-10-14T10:00:00Z' }] : [] };
+    const own = { id: 999999, run_attempt: 1, workflow_id: 77, path: '.github/workflows/issue-router.yml@refs/heads/x', event: 'workflow_dispatch', created_at: '2026-10-14T12:00:00Z', status: 'in_progress' };
+    const listComments = base.rest.issues.listComments;
+    base.rest.issues.listComments = async (p) => ({ data: [...(await listComments(p)).data, ...store.ledger] });
+    base.rest.issues.createComment = async ({ body }) => { store.ledger.push({ id: 901, body, user: { type: 'Bot', login: 'github-actions[bot]' }, created_at: '2026-10-14T12:00:01Z' }); };
+    base.rest.issues.updateComment = async ({ comment_id, body }) => { store.ledger.find((c) => c.id === comment_id).body = body; };
+    base.rest.actions.getWorkflowRunAttempt = async () => ({ data: own });
+    base.store = store;
+    return base;
+  }
+  const dryCore = (notices) => ({ notice: (m) => notices.push(m), warning: () => {} });
+  const dryArgs = { context: { ...ctx, eventName: 'workflow_dispatch', runAttempt: 1 }, issueNumber: 42, eventName: 'workflow_dispatch', dryRun: true };
+  {
+    const notices = [];
+    const github = dryRunGithub({ labels: ['source: owner'], priorRunTitles: Array.from({ length: MAX_RUNS }, () => 'Claude issue-beurt #42') });
+    const r = await evaluateGate({ github, core: dryCore(notices), ...dryArgs });
+    check('dry_run: poort slaagt (titelteller wordt genegeerd)', [r.proceed, r.phase], [true, 'implementatie']);
+    check('dry_run: entry in de testledger', ledgerLib.parseLedger(github.store.ledger[0].body, ledgerLib.MODES.test.marker).entries.map((e) => [e.run, e.run_attempt]), [[999999, 1]]);
+    check('dry_run: annotatie voor het bewijs geplaatst', notices.includes('beurt:v1 issue=42 run=999999 attempt=1'), true);
+    check('dry_run: geen productieledger geschreven', github.store.ledger.some((c) => c.body.startsWith(ledgerLib.MODES.prod.marker)), false);
+    check('dry_run: geen label en geen comment buiten de ledger', [github.calls.added, github.calls.removed, github.calls.comments], [[], [], []]);
+  }
+  {
+    const notices = [];
+    const github = dryRunGithub({ labels: ['type: bug'] });
+    const r = await evaluateGate({ github, core: dryCore(notices), ...dryArgs });
+    check('dry_run geblokkeerd (geen source-label): geen run', r.proceed, false);
+    check('dry_run geblokkeerd: geen comment en geen turn: owner (effecten onderdrukt)', [github.calls.added, github.calls.comments], [[], []]);
+    check('dry_run geblokkeerd: geen ledgerentry en geen annotatie', [github.store.ledger.length, notices.some((m) => m.startsWith('beurt:v1'))], [0, false]);
+  }
+  {
+    const github = dryRunGithub({ labels: ['source: owner'], ledgerBody: `${ledgerLib.MODES.test.marker}\nkapot` });
+    const r = await evaluateGate({ github, core: dryCore([]), ...dryArgs });
+    check('dry_run met een kapotte testledger: stop, geen entry erbij', [r.proceed, github.store.ledger.length], [false, 1]);
+  }
+  {
+    const github = fakeGithub({ labels: ['source: owner'] });
+    const r = await evaluateGate({ github, context: ctx, core, issueNumber: 42 });
+    check('productiepad (issues-event): ongewijzigd, geen ledgerentry', [r.proceed, r.phase, github.calls.comments], [true, 'implementatie', []]);
   }
 
   // ---------- setTurnLabel: remove+add, oude turn-labels weg ----------

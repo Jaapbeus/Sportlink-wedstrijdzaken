@@ -21,11 +21,11 @@ namespace FunctionApp.Postgres.Monitoring;
 /// </para>
 ///
 /// <para>
-/// <b>Twee verschillen met de SQL Server-tier, allebei bewust.</b>
+/// <b>Eén verschil met de SQL Server-tier, bewust (sinds #1718 is de schedule op beide tiers een vaste cron).</b>
 /// </para>
 /// <list type="number">
 /// <item>
-/// <b>Vaste schedule in code in plaats van <c>%DATABASE_STATUS_MONITOR_SCHEDULE%</c>.</b> De
+/// <b>Vaste schedule in code in plaats van <c>%DATABASE_STATUS_MONITOR_SCHEDULE%</c> (was alleen hier; nu ook op de SQL Server-tier).</b> De
 /// Functions-runtime lost zo'n <c>%…%</c>-verwijzing op bij het <i>indexeren</i> van de functie,
 /// vóór er ook maar iets van de functiebody draait. Ontbreekt de app setting, dan komt de hele
 /// Function App niet omhoog. Op de tier die in productie draait is dat een onaanvaardbaar risico

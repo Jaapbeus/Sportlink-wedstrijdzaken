@@ -118,6 +118,12 @@ jobs:
       - name: Codekwaliteit — regelregister klopt
         run: bash scripts/ci/check-regelregister.sh
 
+      - name: Versies — csproj's synchroon, OpenAPI-versie YAML = JSON
+        run: bash scripts/ci/check-versie-synchroon.sh
+
+      - name: API.md — endpointtabel komt overeen met openapi.json
+        run: python3 scripts/ci/check-api-md-sync.py
+
       # Een groene guard bewijst niets — hij kan ook groen zijn omdat hij niets ziet. Deze tests
       # maken van elke overtreding tijdelijk een echte, en eisen dat de guard rood wordt. Twee van
       # de vijf negatieve tests sloegen bij het schrijven ervan eerst ten onrechte niet aan.
@@ -409,10 +415,24 @@ jobs:
       - name: Claude issue-beurt eindlabel testen
         run: node .github/scripts/claude-issue-turn-eindlabel.test.js
 
+      # #1727: publicatie van een Claude-review op een Codex-PR (hercontrole, SHA-binding, scan).
+      - name: Claude issue-beurt reviewpublicatie testen
+        run: node .github/scripts/claude-issue-turn-review.test.js
+
       # #1686: helper van turn-label-exclusief.yml (hoogstens één turn:-label). Ook die workflow
       # draait alleen op een gelabeld issue; zonder deze test blijkt een fout pas bij een echte beurtwissel.
       - name: Turn-label exclusief testen
         run: node .github/scripts/turn-label-exclusief.test.js
+
+      # #1721 (fase 1): routetabel en workflowstructuur van de issue-router en de aanroepbare beurtworkflow,
+      # plus de guard dat geen enkele workflow `checks: write` krijgt. Beide draaien alleen op een
+      # eigen trigger of handmatig; zonder deze tests blijkt een fout pas bij een proef.
+      - name: Issue-router testen
+        run: node .github/scripts/issue-router.test.js
+
+      # #1721: rondeteller op ID's (fail-closed, bewijs per poging) voor de issue-beurt.
+      - name: Claude issue-beurt ledger testen
+        run: node .github/scripts/claude-issue-turn-ledger.test.js
 
       # ──────────────────────────────────────────────────────────────────────
       # #595: schema-drift guard.
