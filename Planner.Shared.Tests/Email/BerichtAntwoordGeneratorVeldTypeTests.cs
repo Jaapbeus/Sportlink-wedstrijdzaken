@@ -1,16 +1,17 @@
 using Planner.Shared.Email;
 using Planner.Shared;
 using AwesomeAssertions;
-using SportlinkFunction.Email;
-using SportlinkFunction.Planner;
 using Xunit;
 
-namespace FunctionApp.Tests.Email;
+namespace Planner.Shared.Tests.Email;
 
 /// <summary>
 /// Regressietests voor issue #705: het automatische antwoord selecteerde alternatieven op basis van
 /// een gok over het veldnummer (1-4 = kunstgras, 5 = gras) in plaats van op het werkelijke
-/// <c>VeldType</c> uit <c>dbo.Velden</c>.
+/// <c>VeldType</c> uit de veldentabel.
+///
+/// Sinds #1758 op de gedeelde <see cref="BerichtAntwoordGenerator"/> (voorheen alleen op de SQL Server-tier),
+/// dus geldig voor beide tiers.
 ///
 /// Bij een club met natuurgras op de lage nummers en kunstgras op de hoge zag die logica drie
 /// "kunstgras"-slots op de natuurgrasvelden en gooide vervolgens alle échte kunstgrasvelden weg —
@@ -24,28 +25,16 @@ namespace FunctionApp.Tests.Email;
 /// en het veldtype reist mee op élk pad — ook het herplan-pad, dat het eerder niet vulde waardoor het
 /// filter daar stilzwijgend op <c>null</c> werkte.
 /// </summary>
-public class BerichtResponseGeneratorVeldTypeTests
+[Collection(BerichtAntwoordCollectie.Naam)]
+public class BerichtAntwoordGeneratorVeldTypeTests
 {
     private const string Kunstgras = "kunstgras";
     private const string Natuurgras = "natuurgras";
 
     /// <summary>Voetnoot-only snapshot: houdt de handtekening buiten deze tests (zie #677).</summary>
-    private static readonly ClubAppSettingsSnapshot ClubSettings = new(
-        PlannerAfzenderNaam: null,
-        CoordinatorNaam: null,
-        CoordinatorFunctie: null,
-        EmailVoetnoot: "Testomgeving",
-        HerplanDeadlineDagen: null);
+    private static readonly TestInstellingen ClubSettings = TestInstellingen.AlleenVoetnoot();
 
-    private static InkomendBericht MaakEmail() => new()
-    {
-        MessageId = "veldtype-test",
-        Afzender = "trainer@voorbeeld.nl",
-        AfzenderNaam = "Jan de Vries",
-        Onderwerp = "Beschikbaarheid",
-        OntvangstDatum = DateTime.UtcNow,
-        Body = "Is er ruimte?"
-    };
+    private static TestAfzender MaakEmail() => new();
 
     private static BerichtClassificatie MaakClassificatie(string? aanvangsTijd = null) => new()
     {
@@ -84,7 +73,7 @@ public class BerichtResponseGeneratorVeldTypeTests
         return PlannerShared.ToSlotToewijzing(new DateOnly(2026, 9, 12), kandidaat, 105, velden);
     }
 
-    private static BeschikbaarVenster Venster(int veldNummer, string? veldType, string van, string tot) => new()
+    private static TestVenster Venster(int veldNummer, string? veldType, string van, string tot) => new()
     {
         VeldNummer = veldNummer,
         VeldNaam = $"veld {veldNummer}",
@@ -101,7 +90,7 @@ public class BerichtResponseGeneratorVeldTypeTests
     {
         // Accommodatie met natuurgras op 1-3 en kunstgras op 5-7 — precies omgekeerd aan de
         // nummer-aanname die hier eerder stond.
-        var response = new CheckAvailabilityResponse
+        var response = new TestBeschikbaarheid
         {
             Beschikbaar = false,
             Alternatieven =
@@ -115,7 +104,7 @@ public class BerichtResponseGeneratorVeldTypeTests
             ]
         };
 
-        var (_, body) = BerichtResponseGenerator.BouwBeschikbaarheidAntwoord(
+        var (_, body) = BerichtAntwoordGenerator.BouwBeschikbaarheidAntwoord(
             response, MaakClassificatie("09:00"), MaakEmail(), ClubSettings);
 
         body.Should().Contain("veld 5").And.Contain("veld 6").And.Contain("veld 7");
@@ -125,7 +114,7 @@ public class BerichtResponseGeneratorVeldTypeTests
     [Fact]
     public void Alternatieven_MinderDanDrieKunstgrasvelden_HoudtNatuurgrasAlsAanbod()
     {
-        var response = new CheckAvailabilityResponse
+        var response = new TestBeschikbaarheid
         {
             Beschikbaar = false,
             Alternatieven =
@@ -136,7 +125,7 @@ public class BerichtResponseGeneratorVeldTypeTests
             ]
         };
 
-        var (_, body) = BerichtResponseGenerator.BouwBeschikbaarheidAntwoord(
+        var (_, body) = BerichtAntwoordGenerator.BouwBeschikbaarheidAntwoord(
             response, MaakClassificatie("09:00"), MaakEmail(), ClubSettings);
 
         body.Should().Contain("veld 1");
@@ -148,7 +137,7 @@ public class BerichtResponseGeneratorVeldTypeTests
         // Kanalen die het veldtype (nog) niet meegeven, zoals het herplan-pad: zonder bekend type
         // mag er niets verdwijnen. De nummer-aanname zou veld 5 hier hebben weggegooid omdat
         // 1, 2 en 3 als "kunstgras" golden.
-        var response = new CheckAvailabilityResponse
+        var response = new TestBeschikbaarheid
         {
             Beschikbaar = false,
             Alternatieven =
@@ -160,7 +149,7 @@ public class BerichtResponseGeneratorVeldTypeTests
             ]
         };
 
-        var (_, body) = BerichtResponseGenerator.BouwBeschikbaarheidAntwoord(
+        var (_, body) = BerichtAntwoordGenerator.BouwBeschikbaarheidAntwoord(
             response, MaakClassificatie("09:00"), MaakEmail(), ClubSettings);
 
         body.Should().Contain("veld 5");
@@ -169,7 +158,7 @@ public class BerichtResponseGeneratorVeldTypeTests
     [Fact]
     public void Alternatieven_OnbekendVeldTypeNaastDrieKunstgrasvelden_BlijftStaan()
     {
-        var response = new CheckAvailabilityResponse
+        var response = new TestBeschikbaarheid
         {
             Beschikbaar = false,
             Alternatieven =
@@ -181,7 +170,7 @@ public class BerichtResponseGeneratorVeldTypeTests
             ]
         };
 
-        var (_, body) = BerichtResponseGenerator.BouwBeschikbaarheidAntwoord(
+        var (_, body) = BerichtAntwoordGenerator.BouwBeschikbaarheidAntwoord(
             response, MaakClassificatie("09:00"), MaakEmail(), ClubSettings);
 
         body.Should().Contain("veld 9");
@@ -192,7 +181,7 @@ public class BerichtResponseGeneratorVeldTypeTests
     [Fact]
     public void Vensters_NatuurgrasOpLageNummers_HoudtDeEchteKunstgrasvensters()
     {
-        var response = new CheckAvailabilityResponse
+        var response = new TestBeschikbaarheid
         {
             Beschikbaar = false,
             BeschikbareVensters =
@@ -204,7 +193,7 @@ public class BerichtResponseGeneratorVeldTypeTests
             ]
         };
 
-        var (_, body) = BerichtResponseGenerator.BouwBeschikbaarheidAntwoord(
+        var (_, body) = BerichtAntwoordGenerator.BouwBeschikbaarheidAntwoord(
             response, MaakClassificatie("13:00"), MaakEmail(), ClubSettings);
 
         body.Should().Contain("veld 5").And.Contain("veld 6").And.Contain("veld 7");
@@ -215,7 +204,7 @@ public class BerichtResponseGeneratorVeldTypeTests
     public void Vensters_NatuurgrasInEigenTijdsblok_BlijftStaan()
     {
         // Toegevoegde waarde: het natuurgrasveld is in dit tijdsblok het enige aanbod.
-        var response = new CheckAvailabilityResponse
+        var response = new TestBeschikbaarheid
         {
             Beschikbaar = false,
             BeschikbareVensters =
@@ -227,7 +216,7 @@ public class BerichtResponseGeneratorVeldTypeTests
             ]
         };
 
-        var (_, body) = BerichtResponseGenerator.BouwBeschikbaarheidAntwoord(
+        var (_, body) = BerichtAntwoordGenerator.BouwBeschikbaarheidAntwoord(
             response, MaakClassificatie("13:00"), MaakEmail(), ClubSettings);
 
         body.Should().Contain("veld 1");
@@ -236,7 +225,7 @@ public class BerichtResponseGeneratorVeldTypeTests
     [Fact]
     public void Vensters_OnbekendVeldType_BlijftStaanOokBijOverlap()
     {
-        var response = new CheckAvailabilityResponse
+        var response = new TestBeschikbaarheid
         {
             Beschikbaar = false,
             BeschikbareVensters =
@@ -248,7 +237,7 @@ public class BerichtResponseGeneratorVeldTypeTests
             ]
         };
 
-        var (_, body) = BerichtResponseGenerator.BouwBeschikbaarheidAntwoord(
+        var (_, body) = BerichtAntwoordGenerator.BouwBeschikbaarheidAntwoord(
             response, MaakClassificatie("13:00"), MaakEmail(), ClubSettings);
 
         body.Should().Contain("veld 9");
@@ -310,7 +299,7 @@ public class BerichtResponseGeneratorVeldTypeTests
         new VeldInfo { VeldNummer = 5, VeldNaam = "veld 5", VeldType = variant }
             .IsKunstgras.Should().BeTrue("de planner moet dezelfde definitie gebruiken als het e-mailantwoord");
 
-        var response = new CheckAvailabilityResponse
+        var response = new TestBeschikbaarheid
         {
             Beschikbaar = false,
             Alternatieven =
@@ -322,7 +311,7 @@ public class BerichtResponseGeneratorVeldTypeTests
             ]
         };
 
-        var (_, body) = BerichtResponseGenerator.BouwBeschikbaarheidAntwoord(
+        var (_, body) = BerichtAntwoordGenerator.BouwBeschikbaarheidAntwoord(
             response, MaakClassificatie("09:00"), MaakEmail(), ClubSettings);
 
         // Drie kunstgrasvelden gehaald ondanks de afwijkende schrijfwijzen → natuurgras vervalt.
@@ -336,7 +325,7 @@ public class BerichtResponseGeneratorVeldTypeTests
         // "hybride" is noch kunstgras noch natuurgras. Fail-safe: onbekend blijft staan, ook als de
         // drempel van drie kunstgrasvelden gehaald is. Een substring-regel die alles zonder
         // "kunstgras" als zeker natuurgras behandelde, gooide zo'n veld wél weg.
-        var response = new CheckAvailabilityResponse
+        var response = new TestBeschikbaarheid
         {
             Beschikbaar = false,
             Alternatieven =
@@ -349,7 +338,7 @@ public class BerichtResponseGeneratorVeldTypeTests
             ]
         };
 
-        var (_, body) = BerichtResponseGenerator.BouwBeschikbaarheidAntwoord(
+        var (_, body) = BerichtAntwoordGenerator.BouwBeschikbaarheidAntwoord(
             response, MaakClassificatie("09:00"), MaakEmail(), ClubSettings);
 
         body.Should().Contain("veld 9", "een onbekend veldtype mag nooit tot wegfilteren leiden");
@@ -358,7 +347,7 @@ public class BerichtResponseGeneratorVeldTypeTests
     [Fact]
     public void Vensters_AfwijkendVeldType_BlijftStaanOokBijOverlap()
     {
-        var response = new CheckAvailabilityResponse
+        var response = new TestBeschikbaarheid
         {
             Beschikbaar = false,
             BeschikbareVensters =
@@ -370,7 +359,7 @@ public class BerichtResponseGeneratorVeldTypeTests
             ]
         };
 
-        var (_, body) = BerichtResponseGenerator.BouwBeschikbaarheidAntwoord(
+        var (_, body) = BerichtAntwoordGenerator.BouwBeschikbaarheidAntwoord(
             response, MaakClassificatie("13:00"), MaakEmail(), ClubSettings);
 
         body.Should().Contain("veld 9");
@@ -416,7 +405,7 @@ public class BerichtResponseGeneratorVeldTypeTests
             new() { VeldNummer = 7, VeldNaam = "veld 7", VeldType = Kunstgras }
         };
 
-        var wedstrijd = new ZoekWedstrijdResponse
+        var wedstrijd = new TestWedstrijd
         {
             Wedstrijdcode = 123456,
             Wedstrijd = "TEST JO14-1 - Ander JO14-1",
@@ -425,7 +414,7 @@ public class BerichtResponseGeneratorVeldTypeTests
             EindTijd = "15:45",
             VeldNaam = "veld 4"
         };
-        var opties = new HerplanCheckResponse
+        var opties = new TestHerplanOpties
         {
             Beschikbaar = true,
             Alternatieven =
@@ -437,7 +426,7 @@ public class BerichtResponseGeneratorVeldTypeTests
             ]
         };
 
-        var (_, body) = BerichtResponseGenerator.BouwHerplanAntwoord(
+        var (_, body) = BerichtAntwoordGenerator.BouwHerplanAntwoord(
             wedstrijd, opties, MaakClassificatie(), MaakEmail(), ClubSettings);
 
         body.Should().Contain("veld 5 om 10:00").And.Contain("veld 6 om 11:00").And.Contain("veld 7 om 12:00");
@@ -457,7 +446,7 @@ public class BerichtResponseGeneratorVeldTypeTests
             new() { VeldNummer = 6, VeldNaam = "veld 6", VeldType = Kunstgras }
         };
 
-        var wedstrijd = new ZoekWedstrijdResponse
+        var wedstrijd = new TestWedstrijd
         {
             Wedstrijdcode = 123456,
             Wedstrijd = "TEST JO14-1 - Ander JO14-1",
@@ -466,7 +455,7 @@ public class BerichtResponseGeneratorVeldTypeTests
             EindTijd = "15:45",
             VeldNaam = "veld 4"
         };
-        var opties = new HerplanCheckResponse
+        var opties = new TestHerplanOpties
         {
             Beschikbaar = true,
             Alternatieven =
@@ -477,7 +466,7 @@ public class BerichtResponseGeneratorVeldTypeTests
             ]
         };
 
-        var (_, body) = BerichtResponseGenerator.BouwHerplanAntwoord(
+        var (_, body) = BerichtAntwoordGenerator.BouwHerplanAntwoord(
             wedstrijd, opties, MaakClassificatie(), MaakEmail(), ClubSettings);
 
         body.Should().Contain("veld 2 om 09:00");
@@ -487,7 +476,7 @@ public class BerichtResponseGeneratorVeldTypeTests
     public void Herplan_ZonderBekendVeldType_ToontAlleZinvolleAlternatieven()
     {
         // Het herplan-pad vult het veldtype nog niet; dan mag de filtering niets weggooien.
-        var wedstrijd = new ZoekWedstrijdResponse
+        var wedstrijd = new TestWedstrijd
         {
             Wedstrijdcode = 123456,
             Wedstrijd = "TEST JO14-1 - Ander JO14-1",
@@ -496,7 +485,7 @@ public class BerichtResponseGeneratorVeldTypeTests
             EindTijd = "15:45",
             VeldNaam = "veld 1"
         };
-        var opties = new HerplanCheckResponse
+        var opties = new TestHerplanOpties
         {
             Beschikbaar = true,
             Alternatieven =
@@ -508,7 +497,7 @@ public class BerichtResponseGeneratorVeldTypeTests
             ]
         };
 
-        var (_, body) = BerichtResponseGenerator.BouwHerplanAntwoord(
+        var (_, body) = BerichtAntwoordGenerator.BouwHerplanAntwoord(
             wedstrijd, opties, MaakClassificatie(), MaakEmail(), ClubSettings);
 
         body.Should().Contain("veld 5 om 09:00");

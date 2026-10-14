@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Planner.Shared;
 using Planner.Shared.Deel;
+using Planner.Shared.Email;
 
 namespace SportlinkFunction.Planner
 {
@@ -36,7 +37,7 @@ namespace SportlinkFunction.Planner
 
     // ── Antwoord ──
 
-    public class CheckAvailabilityResponse
+    public class CheckAvailabilityResponse : IAntwoordBeschikbaarheid
     {
         public bool Beschikbaar { get; set; }
         public SlotToewijzing? Toewijzing { get; set; }
@@ -51,6 +52,10 @@ namespace SportlinkFunction.Planner
         public List<SlotToewijzing> Alternatieven { get; set; } = new();
         public List<BeschikbaarVenster>? BeschikbareVensters { get; set; }
         public List<string> Waarschuwingen { get; set; } = new();
+
+        // Poort van de gedeelde antwoordgenerator (#1758); expliciet, dus geen extra JSON-veld.
+        bool IAntwoordBeschikbaarheid.HeeftTeamConflict => TeamConflict != null;
+        IReadOnlyList<IAntwoordVenster>? IAntwoordBeschikbaarheid.BeschikbareVensters => BeschikbareVensters;
     }
 
     // SlotToewijzing verhuisd naar Planner.Shared (#888) — de scheduling-engine construeert hem
@@ -64,7 +69,7 @@ namespace SportlinkFunction.Planner
         public string VeldNaam { get; set; } = string.Empty;
     }
 
-    public class BeschikbaarVenster
+    public class BeschikbaarVenster : IAntwoordVenster
     {
         public int VeldNummer { get; set; }
         public string VeldNaam { get; set; } = string.Empty;
@@ -135,7 +140,7 @@ namespace SportlinkFunction.Planner
         public string Datum { get; set; } = string.Empty;
     }
 
-    public class ZoekWedstrijdResponse
+    public class ZoekWedstrijdResponse : IAntwoordWedstrijd
     {
         public long Wedstrijdcode { get; set; }
         public string Wedstrijd { get; set; } = string.Empty;
@@ -157,7 +162,7 @@ namespace SportlinkFunction.Planner
         public string? Richting { get; set; }
     }
 
-    public class HerplanCheckResponse
+    public class HerplanCheckResponse : IAntwoordHerplanOpties
     {
         public ZoekWedstrijdResponse HuidigeWedstrijd { get; set; } = new();
         public bool Beschikbaar { get; set; }
