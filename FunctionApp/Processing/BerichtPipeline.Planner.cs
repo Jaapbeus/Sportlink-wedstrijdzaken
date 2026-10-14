@@ -1,11 +1,11 @@
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Planner.Shared.TeamResolution;
 using Planner.Shared;
 using Planner.Shared.Email;
 using Planner.Shared.Email.Trace;
 using SportlinkFunction.Email;
 using SportlinkFunction.Planner;
-using SportlinkFunction.TeamResolution;
 
 namespace SportlinkFunction.Processing;
 

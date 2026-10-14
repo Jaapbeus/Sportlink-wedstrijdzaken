@@ -1,11 +1,11 @@
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Planner.Shared.TeamResolution;
 using Planner.Shared;
 using Planner.Shared.Email;
 using Planner.Shared.Email.Trace;
 using SportlinkFunction.Email;
 using SportlinkFunction.Processing;
-using SportlinkFunction.TeamResolution;
 using Xunit;
 
 namespace FunctionApp.Tests.Processing;

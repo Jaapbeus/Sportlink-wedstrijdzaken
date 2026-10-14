@@ -5,6 +5,7 @@ using FunctionApp.Postgres.Admin;
 using FunctionApp.Postgres.Monitoring;
 using FunctionApp.Postgres.Planner;
 using FunctionApp.Postgres.TeamResolution;
+using Planner.Shared.TeamResolution;
 using Planner.Shared;
 using Planner.Shared.Email;
 

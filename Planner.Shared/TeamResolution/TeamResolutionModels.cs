@@ -1,4 +1,4 @@
-namespace SportlinkFunction.TeamResolution;
+namespace Planner.Shared.TeamResolution;
 
 /// <summary>
 /// Input voor <see cref="ITeamResolver"/>: de ruwe, door de AI-classificatiestap geëxtraheerde
@@ -16,16 +16,16 @@ public sealed record TeamResolutionRequest(
     bool? IsWaarschijnlijkEigenTeam,
     string ClubCode);
 
-/// <summary>Eén mogelijk team uit <c>dbo.Teams</c>, gebruikt als disambiguatie-kandidaat.</summary>
+/// <summary>Eén mogelijk team uit de teamtabel van de tier, gebruikt als disambiguatie-kandidaat.</summary>
 public sealed record TeamCandidate(int TeamId, string Teamnaam, string? LeeftijdsCategorie);
 
 /// <summary>Waar de resolutie-uitkomst vandaan kwam — bepaalt hoe zeker de uitkomst is.</summary>
 public enum ResolutionBron
 {
-    /// <summary>Exacte hit op een gevalideerde alias in <c>dbo.TeamAliassen</c>.</summary>
+    /// <summary>Exacte hit op een gevalideerde alias in de aliastabel van de tier.</summary>
     ExacteAlias,
 
-    /// <summary>Exacte hit op de canonieke teamnaam in <c>dbo.Teams</c>.</summary>
+    /// <summary>Exacte hit op de canonieke teamnaam in de teamtabel van de tier.</summary>
     ExacteMatch,
 
     /// <summary>Meerdere kandidaten gevonden en géén betrouwbare keuze gemaakt — terugvragen aan de afzender.</summary>

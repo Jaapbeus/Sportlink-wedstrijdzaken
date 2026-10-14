@@ -1,9 +1,9 @@
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Planner.Endpoints.Leren;
+using Planner.Shared.TeamResolution;
 using Planner.Shared;
 using Planner.Shared.Leren;
-using SportlinkFunction.TeamResolution;
 using Xunit;
 
 namespace FunctionApp.Tests.TeamResolution;

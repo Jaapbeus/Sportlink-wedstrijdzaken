@@ -1,26 +1,35 @@
-using Planner.Shared;
-
-namespace FunctionApp.Postgres.TeamResolution;
+namespace Planner.Shared.TeamResolution;
 
 /// <summary>
-/// Postgres-tier-tegenhanger van <c>FunctionApp/TeamResolution/TeamResolver.cs</c> (#889) —
-/// woordelijke kopie. Standaardimplementatie van <see cref="ITeamResolver"/>: het enige pad
-/// waarlangs een teamaanduiding uit vrije tekst aan een team wordt gekoppeld.
+/// Standaardimplementatie van <see cref="ITeamResolver"/> (#692). Sinds #700 is dit het ENIGE pad
+/// waarlangs een teamaanduiding uit vrije tekst aan een team wordt gekoppeld — de oude
+/// regex-normalisatie en stringheuristieken zijn verwijderd.
 ///
 /// <para>
-/// De identiteitsbeslissing is volledig deterministisch: meerdere kandidaten leveren altijd
-/// <c>MeerdereKandidaten</c> op, met de lijst erbij. Geen gok, geen stille aanname. Er wordt vanuit
-/// deze klasse dus ook geen alias geleerd — dat gebeurde alleen ná een AI-keuze.
+/// De identiteitsbeslissing is volledig deterministisch. Meerdere kandidaten leveren altijd
+/// <c>MeerdereKandidaten</c> op — geen gok, geen stille aanname.
+/// </para>
+///
 /// <para>
-/// Dit gedrag is sinds #1268 identiek op beide tiers. De SQL Server-tier had tot dan een
-/// AI-disambiguator (#697) die deze tier nooit heeft gehad; dat verschil is opgeheven door de
-/// deterministische kant als norm te nemen.
+/// <b>Gewijzigd bij #1268.</b> Tot dan kon een optionele <c>ITeamDisambiguator</c> hier een keuze
+/// laten maken door een taalmodel (#697). Die bestond alleen op deze tier; de Postgres-tier — die
+/// in productie draait — gaf al MeerdereKandidaten terug. Beide tiers zijn gelijkwaardig, dus dat
+/// verschil moest weg, en de eigenaar koos voor het deterministische gedrag als norm: een
+/// teamnaam laten raden is een productkeuze, en die is hier bewust niet gemaakt. Gevolg: er wordt
+/// vanuit deze klasse ook geen alias meer geleerd — dat gebeurde alleen ná een AI-keuze.
+/// </para>
+///
+/// <para>
+/// <b>Tier-onafhankelijk sinds #1716 (slice 2).</b> Deze klasse stond tot dan woordelijk in beide
+/// databasetiers. Ze bevat alleen de beslisvolgorde; de databasevraag komt via de poort
+/// <see cref="ITeamCandidateRepository"/>, die per tier is geïmplementeerd. De normalisatie blijft
+/// uitsluitend in <see cref="TeamNaamNormalisatie"/>.
 /// </para>
 ///
 /// Volgorde: (1) gevalideerde alias → (2) exacte canonieke match → (3) kandidaten op
-/// leeftijd+teamnummer → (4) bij >1 kandidaat: onbeslist teruggeven (geen disambiguatie op deze tier).
+/// leeftijd+teamnummer → (4) bij >1 kandidaat: onbeslist teruggeven.
 /// </summary>
-internal sealed class TeamResolver(ITeamCandidateRepository repository) : ITeamResolver
+public sealed class TeamResolver(ITeamCandidateRepository repository) : ITeamResolver
 {
     /// <summary>Confidence bij een unieke kandidaat na prefixloze zoektocht ("13-1" → precies één team).</summary>
     private const double UniekeKandidaatConfidence = 0.9;

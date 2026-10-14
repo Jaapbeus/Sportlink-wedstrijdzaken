@@ -4,10 +4,10 @@ using AwesomeAssertions;
 using FunctionApp.Postgres;
 using FunctionApp.Postgres.Email;
 using FunctionApp.Postgres.Processing;
-using FunctionApp.Postgres.TeamResolution;
 using Microsoft.Extensions.Logging.Abstractions;
 using Newtonsoft.Json.Linq;
 using Npgsql;
+using Planner.Shared.TeamResolution;
 using Planner.Shared;
 using Xunit;
 

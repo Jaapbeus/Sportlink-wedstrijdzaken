@@ -10,6 +10,7 @@ using Npgsql;
 using FunctionApp.Postgres.Email;
 using FunctionApp.Postgres.Processing;
 using FunctionApp.Postgres.TeamResolution;
+using Planner.Shared.TeamResolution;
 
 namespace FunctionApp.Postgres.Admin;
 

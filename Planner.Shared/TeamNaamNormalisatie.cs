@@ -30,7 +30,8 @@ namespace Planner.Shared;
 /// <para>
 /// Bewust NIET verantwoordelijk voor het raden van een ontbrekend geslacht-prefix (bijv. "13-1"
 /// zonder JO/MO) — dat is een ambiguïteit die alleen met kandidaat-context oplosbaar is.
-/// Zie <c>ITeamResolver</c> in de tier-projecten. (Tot #1268 verwees dit ook naar een
+/// Zie <c>Planner.Shared.TeamResolution.ITeamResolver</c> (sinds #1716 slice 2 gedeeld; tot dan in de
+/// tier-projecten). (Tot #1268 verwees dit ook naar een
 /// AI-disambiguator; die is verwijderd — bij meerdere kandidaten wordt er niets gekozen.)
 /// </para>
 /// </summary>

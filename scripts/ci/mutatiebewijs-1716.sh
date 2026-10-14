@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# mutatiebewijs-1716.sh (#1716, slice 1)
+# mutatiebewijs-1716.sh (#1716, slice 1 en volgende)
 #
-# Reproduceerbaar mutatiebewijs voor BerichtDatumHeuristiek en de twee tieromhulsels. Past elke
-# mutant uit mutatiebewijs-1716.tsv afzonderlijk toe op precies één bronbestand, draait alleen de
+# Reproduceerbaar mutatiebewijs per slice van epic #1716. Standaard de mutantenlijst van slice 1
+# (BerichtDatumHeuristiek + tieromhulsels, mutatiebewijs-1716.tsv); een latere slice heeft een eigen
+# lijst ernaast, te kiezen met MUTATIELIJST (slice 2, teamresolver: mutatiebewijs-1716-slice2.tsv).
+# Past elke mutant uit de gekozen lijst afzonderlijk toe op precies één bronbestand, draait alleen de
 # bijbehorende tests (dotnet test --filter) en zet het bestand daarna terug met `git checkout --`.
 # Per mutant: KILLED (tests uitgevoerd, Total > 0 en Failed > 0; gewenst) of SURVIVED (tests groen, tests te zwak). Eindcode 1
 # zodra een mutant overleeft of niet toepasbaar/bouwbaar is; eindcode 0 alleen als alle mutanten
@@ -13,6 +15,7 @@
 # bash 3.2 compatibel, macOS + Linux; geen DB, Docker of runtime nodig. Gebruik:
 #   scripts/ci/mutatiebewijs-1716.sh            # alle mutanten
 #   scripts/ci/mutatiebewijs-1716.sh M3 M6      # alleen deze
+#   MUTATIELIJST=scripts/ci/mutatiebewijs-1716-slice2.tsv scripts/ci/mutatiebewijs-1716.sh  # slice 2
 #   scripts/ci/mutatiebewijs-1716.sh --zelftest # bewijst dat een testhostcrash niet als KILLED telt
 set -u
 # Beoordeling van een testrun met niet-nul exit. KILLED alleen als de samenvatting van dotnet test
@@ -41,7 +44,8 @@ if [ "${1:-}" = "--zelftest" ]; then # bewijst dat een crash niet als KILLED tel
 fi
 root=$(git rev-parse --show-toplevel) || exit 2
 cd "$root" || exit 2
-lijst="scripts/ci/mutatiebewijs-1716.tsv"
+lijst="${MUTATIELIJST:-scripts/ci/mutatiebewijs-1716.tsv}"
+[ -f "$lijst" ] || { echo "STOP: mutantenlijst $lijst ontbreekt." >&2; exit 2; }
 selectie=" $* "
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/mutatie.XXXXXX") || exit 2
 huidig=""
