@@ -31,59 +31,12 @@ namespace FunctionApp.Postgres.Processing;
 internal static partial class BerichtPipeline
 {
     /// <summary>
-    /// Extraheert datums uit onderwerp en body, en corrigeert de AI-classificatie.
-    /// Prioriteit: expliciete datum in onderwerp > expliciete datum in body > AI datum + dag-validatie.
-    /// In een reply-thread wint de AI-datum boven de (oude) datum in het onderwerp.
+    /// Corrigeert de datum van de AI-classificatie op basis van onderwerp en body. De regels
+    /// (expliciete datum in onderwerp &gt; in de eigen tekst &gt; AI-datum met dagnaamcorrectie) staan sinds
+    /// #1716 één keer in <see cref="BerichtDatumHeuristiek.CorrigeerDagDatum"/>.
     /// </summary>
     internal static void ValideerDagDatum(BerichtClassificatie classificatie, string emailBody, string onderwerp)
-    {
-        var eigenTekst = StripCitaatEnOndertekening(emailBody);
-
-        var onderwerpDatum = ExtractExpliciteDatum(onderwerp);
-        var onderwerpMagWinnen = string.IsNullOrEmpty(classificatie.Datum) || !BerichtTekstHeuristiek.HeeftReplyPrefix(onderwerp);
-        if (onderwerpDatum.HasValue && onderwerpMagWinnen)
-        {
-            classificatie.Datum = onderwerpDatum.Value.ToString("yyyy-MM-dd");
-            return;
-        }
-
-        var bodyDatum = ExtractExpliciteDatum(eigenTekst);
-        if (bodyDatum.HasValue && string.IsNullOrEmpty(classificatie.Datum))
-        {
-            classificatie.Datum = bodyDatum.Value.ToString("yyyy-MM-dd");
-            return;
-        }
-
-        if (string.IsNullOrEmpty(classificatie.Datum)) return;
-        if (!ModelDatum.TryParse(classificatie.Datum, out var datum)) return;
-
-        var tekst = (onderwerp + " " + eigenTekst).ToLowerInvariant();
-        var dagNamen = new (string naam, DayOfWeek dag)[]
-        {
-            ("maandag", DayOfWeek.Monday), ("dinsdag", DayOfWeek.Tuesday),
-            ("woensdag", DayOfWeek.Wednesday), ("donderdag", DayOfWeek.Thursday),
-            ("vrijdag", DayOfWeek.Friday), ("zaterdag", DayOfWeek.Saturday),
-            ("zondag", DayOfWeek.Sunday)
-        };
-
-        var gevondenDagen = dagNamen
-            .Where(d => tekst.Contains(d.naam))
-            .Select(d => d.dag)
-            .Distinct()
-            .ToList();
-        if (gevondenDagen.Count != 1) return;
-
-        var doelDag = gevondenDagen[0];
-        if (datum.DayOfWeek == doelDag) return;
-
-        for (int offset = 1; offset <= 7; offset++)
-        {
-            if (datum.AddDays(-offset).DayOfWeek == doelDag)
-                { classificatie.Datum = datum.AddDays(-offset).ToString("yyyy-MM-dd"); return; }
-            if (datum.AddDays(offset).DayOfWeek == doelDag)
-                { classificatie.Datum = datum.AddDays(offset).ToString("yyyy-MM-dd"); return; }
-        }
-    }
+        => classificatie.Datum = BerichtDatumHeuristiek.CorrigeerDagDatum(classificatie.Datum, emailBody, onderwerp);
 
     /// <summary>
     /// Vertaalt de AI-classificatie naar de juiste Availability-/RescheduleService-aanroep.
@@ -242,39 +195,6 @@ internal static partial class BerichtPipeline
 
     // ── Private helpers ──
 
-    internal static List<string> ExpandDoordeweeksDatums(
-        List<string> aiDatums, string onderwerp, string body)
-    {
-        var eigenBody = StripCitaatEnOndertekening(body);
-        var tekst = (onderwerp + " " + eigenBody).ToLowerInvariant();
-        if (!tekst.Contains("doordeweeks"))
-            return aiDatums;
-
-        if (ExtractExpliciteDatum(onderwerp).HasValue || ExtractExpliciteDatum(eigenBody).HasValue)
-            return aiDatums;
-
-        DateOnly weekStart;
-        if (aiDatums.Count > 0 && ModelDatum.TryParse(aiDatums[0], out var firstDate))
-        {
-            int daysFromMonday = ((int)firstDate.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
-            weekStart = firstDate.AddDays(-daysFromMonday);
-        }
-        else
-        {
-            var today = DateOnly.FromDateTime(DateTime.Today);
-            int daysUntilMonday = ((int)DayOfWeek.Monday - (int)today.DayOfWeek + 7) % 7;
-            if (daysUntilMonday == 0) daysUntilMonday = 7;
-            weekStart = today.AddDays(daysUntilMonday);
-        }
-
-        var vandaag = DateOnly.FromDateTime(DateTime.Today);
-        return Enumerable.Range(0, 4)
-            .Select(i => weekStart.AddDays(i))
-            .Where(d => d > vandaag)
-            .Select(d => d.ToString("yyyy-MM-dd"))
-            .ToList();
-    }
-
     /// <summary>
     /// Het plannerverzoek voor één datum van een beschikbaarheidscheck. Geeft het door de afzender genoemde
     /// dagdeel door (#1587), zodat de planner vensters en alternatieven binnen dat dagdeel zoekt in plaats
@@ -291,92 +211,6 @@ internal static partial class BerichtPipeline
             Tegenstander = classificatie.Tegenstander,
             HeelVeld = classificatie.HeelVeld
         };
-
-    internal static string StripCitaatEnOndertekening(string tekst)
-    {
-        if (string.IsNullOrWhiteSpace(tekst)) return tekst ?? "";
-
-        var markers = new[]
-        {
-            @"\bvan\s*:",
-            @"\bverzonden\s*:",
-            @"\bfrom\s*:",
-            @"\bsent\s*:",
-            @"-{2,}\s*original",
-            @"\bop\b[^\n]{0,120}?\bschreef\b"
-        };
-
-        var eerstePositie = -1;
-        foreach (var marker in markers)
-        {
-            var match = System.Text.RegularExpressions.Regex.Match(
-                tekst, marker, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            if (match.Success && (eerstePositie < 0 || match.Index < eerstePositie))
-                eerstePositie = match.Index;
-        }
-
-        if (eerstePositie < 0) return tekst;
-
-        var eigenTekst = tekst[..eerstePositie];
-        return string.IsNullOrWhiteSpace(eigenTekst) ? tekst : eigenTekst;
-    }
-
-    private static DateOnly? ExtractExpliciteDatum(string tekst)
-    {
-        if (string.IsNullOrWhiteSpace(tekst)) return null;
-
-        var numericMatch = System.Text.RegularExpressions.Regex.Match(tekst, @"(\d{1,2})-(\d{1,2})-(\d{4})");
-        if (numericMatch.Success)
-        {
-            if (int.TryParse(numericMatch.Groups[1].Value, out var dag) &&
-                int.TryParse(numericMatch.Groups[2].Value, out var maand) &&
-                int.TryParse(numericMatch.Groups[3].Value, out var jaar))
-            {
-                try { return new DateOnly(jaar, maand, dag); } catch { }
-            }
-        }
-
-        var slashMatchMetJaar = System.Text.RegularExpressions.Regex.Match(tekst, @"(?<![\d/])(\d{1,2})/(\d{1,2})/(\d{4})(?!\d)");
-        if (slashMatchMetJaar.Success)
-        {
-            if (int.TryParse(slashMatchMetJaar.Groups[1].Value, out var dag) &&
-                int.TryParse(slashMatchMetJaar.Groups[2].Value, out var maand) &&
-                int.TryParse(slashMatchMetJaar.Groups[3].Value, out var jaar))
-            {
-                try { return new DateOnly(jaar, maand, dag); } catch { }
-            }
-        }
-
-        var maandNamen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["januari"] = 1, ["februari"] = 2, ["maart"] = 3, ["april"] = 4,
-            ["mei"] = 5, ["juni"] = 6, ["juli"] = 7, ["augustus"] = 8,
-            ["september"] = 9, ["oktober"] = 10, ["november"] = 11, ["december"] = 12,
-            ["jan"] = 1, ["feb"] = 2, ["mrt"] = 3, ["apr"] = 4,
-            ["jun"] = 6, ["jul"] = 7, ["aug"] = 8,
-            ["sep"] = 9, ["sept"] = 9, ["okt"] = 10, ["nov"] = 11, ["dec"] = 12
-        };
-
-        var tekstLower = tekst.ToLowerInvariant();
-        foreach (var (naam, maandNr) in maandNamen)
-        {
-            var maandMatch = System.Text.RegularExpressions.Regex.Match(tekstLower, $@"(\d{{1,2}})\s+{naam}\b\.?(?:\s+(\d{{4}}))?");
-            if (maandMatch.Success && int.TryParse(maandMatch.Groups[1].Value, out var d))
-            {
-                if (maandMatch.Groups[2].Success && int.TryParse(maandMatch.Groups[2].Value, out var expliciteJaar))
-                {
-                    try { return new DateOnly(expliciteJaar, maandNr, d); } catch { }
-                }
-                else
-                {
-                    var kandidaat = BerichtTekstHeuristiek.EerstvolgendVoorkomen(d, maandNr);
-                    if (kandidaat.HasValue) return kandidaat;
-                }
-            }
-        }
-
-        return null;
-    }
 
     /// <summary>
     /// Club-heuristiek-resolver voor niet-SQL "eigen team"-herkenning (#677/#889). Bewust geen
