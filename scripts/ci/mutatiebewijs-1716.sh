@@ -39,7 +39,7 @@ done
 test_run() { # project filter -> logbestand, exitcode
   dotnet test "$1" --filter "$2" --nologo -v q >"$3" 2>&1
 }
-rode_namen() { sed -n -E 's/^\[xUnit\.net [0-9:.]+\][[:space:]]+([A-Za-z0-9_.]+\.[A-Za-z0-9_]+)(\(.*)?$/\1/p' "$1" | sort -u; }
+rode_namen() { sed -n -E 's/^\[xUnit\.net [0-9:.]+\][[:space:]]+([A-Za-z0-9_.]+\.[A-Za-z0-9_]+)(\(.*| \[FAIL\])?$/\1/p' "$1" | sort -u; }
 rood_aantal() { sed -n -E 's/^Failed!.*Failed:[[:space:]]+([0-9]+),.*/\1/p' "$1" | head -1; }
 
 echo "== Nulmeting (zonder mutant, tests moeten groen zijn) =="
