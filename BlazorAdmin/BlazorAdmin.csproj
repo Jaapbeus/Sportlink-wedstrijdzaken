@@ -49,6 +49,9 @@
     <Compile Include="../Planner.Shared/Planning/PlanningConflictRegels.cs" Link="Gedeeld/PlanningConflictRegels.cs" />
     <!-- #1623: één cron-naar-tekstvertaler voor beide tiers en deze pagina; alleen BCL. -->
     <Compile Include="../Planner.Shared/Scheduling/CronLeesbaar.cs" Link="Gedeeld/CronLeesbaar.cs" />
+    <!-- #1715: standaardmaand, geldige reeks en maandnamen van de seizoensstartmaand (keuzelijst in
+         Instellingen); dezelfde bron als de validatie in Planner.Endpoints. Alleen BCL. -->
+    <Compile Include="../Planner.Shared/Sync/SeizoenStartMaand.cs" Link="Gedeeld/SeizoenStartMaand.cs" />
   </ItemGroup>
 
   <!-- #764: redactie van persoonsgegevens in de technische context van een feedbackmelding. Eén bron
