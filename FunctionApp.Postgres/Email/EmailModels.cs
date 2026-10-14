@@ -1,3 +1,5 @@
+using Planner.Shared.Email;
+
 namespace FunctionApp.Postgres.Email;
 
 /// <summary>
@@ -10,7 +12,7 @@ namespace FunctionApp.Postgres.Email;
 /// en <c>Body</c> zijn op deze tier nullable, op de SQL Server-tier niet-nullable met standaard <c>""</c>;
 /// samenvoegen zou een standaardwaarde en daarmee opgeslagen gegevens op één tier veranderen.
 /// </summary>
-public sealed class InkomendBericht
+public sealed class InkomendBericht : IAntwoordAfzender
 {
     public string MessageId { get; set; } = "";
     public string? ConversationId { get; set; }
@@ -25,9 +27,6 @@ public sealed class InkomendBericht
     /// <summary>Internetheaders van het bericht (naam, waarde); alleen gevuld door de Graph-adapter, gebruikt om automatische afzenders te herkennen.</summary>
     public IReadOnlyList<KeyValuePair<string, string>> InternetHeaders { get; set; } = [];
 }
-
-public sealed record ClassificatieCorrectieVoorbeeld(
-    string OrigineelType, string JuistType, string OrigineleSamenvatting, string CorrectieSamenvatting);
 
 public sealed record EmailVerwerkingStand(
     int VerwerkingId, string Status, int Pogingen, bool AntwoordVerstuurd, bool VerzendPogingOnbeslist = false);

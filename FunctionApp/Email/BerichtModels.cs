@@ -1,3 +1,5 @@
+using Planner.Shared.Email;
+
 namespace SportlinkFunction.Email;
 
 // VerzoekType, NamensWie, BerichtClassificatie en EmailStatus staan sinds #1716 slice 5 eenmalig in
@@ -5,7 +7,7 @@ namespace SportlinkFunction.Email;
 // (ConversationId en Body zijn hier niet-nullable met standaard "", op de Postgres-tier nullable).
 
 // Inkomend bericht (kanaal-agnostisch: email, WhatsApp, dry-run, etc.)
-public class InkomendBericht
+public class InkomendBericht : IAntwoordAfzender
 {
     public string MessageId { get; set; } = "";
     public string ConversationId { get; set; } = "";
@@ -17,11 +19,3 @@ public class InkomendBericht
     /// <summary>Internetheaders van het bericht (naam, waarde); alleen gevuld door de Graph-adapter, gebruikt om automatische afzenders te herkennen.</summary>
     public IReadOnlyList<KeyValuePair<string, string>> InternetHeaders { get; set; } = [];
 }
-
-// Few-shot voorbeeld voor classificatie-leren via gevalideerde correcties (#323)
-public record ClassificatieCorrectieVoorbeeld(
-    string OrigineelType,
-    string JuistType,
-    string OrigineleSamenvatting,
-    string CorrectieSamenvatting
-);
