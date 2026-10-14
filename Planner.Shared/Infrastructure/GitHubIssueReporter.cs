@@ -260,6 +260,22 @@ public static class GitHubIssueReporter
         return null;
     }
 
+    /// <summary>
+    /// Vertrouwde auteurs voor de dedup-lookup (#1732): <c>author_association</c> OWNER, MEMBER of
+    /// COLLABORATOR. Ontbrekend of onbekend = niet vertrouwd.
+    /// <para>
+    /// <b>Eigen account van de reporter.</b> Deze klasse authenticeert uitsluitend met de statische
+    /// gebruikers-PAT <c>GitHubPat</c> (<c>SETUP-NIEUWE-CLUB.md</c>); de issues die ze zelf aanmaakt
+    /// hebben dus het PAT-account als auteur (OWNER, of MEMBER/COLLABORATOR met schrijfrechten) en
+    /// vallen altijd onder deze toets. Een aparte app-/bot-uitzondering bestaat bewust niet: er is
+    /// geen GitHub App-pad (JWT/installatietoken; dat verloopt na een uur) en een algemene
+    /// bot-vrijstelling zou Dependabot en co. (CONTRIBUTOR) vertrouwen. Komt zo'n pad ooit, dan
+    /// hoort hier een expliciet geconfigureerde identiteit (login + type) bij.
+    /// </para>
+    /// </summary>
+    internal static bool IsVertrouwdeAuteur(string? authorAssociation)
+        => authorAssociation is "OWNER" or "MEMBER" or "COLLABORATOR";
+
     private static async Task<(bool mislukt, (int number, bool isClosed)? treffer)> ZoekInIssuelijstAsync(
         HttpClient http, string owner, string repo, string fp, string? labelFilter, ILogger log)
     {
@@ -300,6 +316,10 @@ public static class GitHubIssueReporter
                 if (token is not JObject item) continue;
                 // De issues-lijst bevat ook pull requests; die hebben een 'pull_request'-veld.
                 if (item["pull_request"] != null) continue;
+
+                // #1732: onvertrouwde invoer bepaalt waar een melding terechtkomt; alleen issues van
+                // een vertrouwde auteur tellen mee, in elke zoekslag (ook zonder labelfilter).
+                if (!IsVertrouwdeAuteur(item["author_association"]?.Value<string>())) continue;
 
                 var title = item["title"]?.Value<string>();
                 if (title == null || !title.Contains(marker, StringComparison.Ordinal)) continue;
