@@ -1110,10 +1110,9 @@ Substitutie is case-insensitief; een niet-gevulde waarde wordt een lege string. 
 
 ### 3b. Statussen in `planner.EmailVerwerking`
 
-De `Status`-kolom bevat de naam van een `EmailStatus`-waarde. De enum staat per tier op een
-**andere plek**: `FunctionApp.Postgres/Email/EmailModels.cs` (productie) en
-`FunctionApp/Email/BerichtModels.cs` (SQL Server). De Postgres-`BerichtModels.cs` vermeldt dat
-verschil zelf expliciet, dus zoek daar niet. De acht waarden zijn op beide tiers identiek:
+De `Status`-kolom bevat de naam van een `EmailStatus`-waarde. De enum staat sinds #1716 (slice 5)
+één keer in `Planner.Shared/Email/EmailStatus.cs`, voor beide tiers; `BerichtDomeinTypenTests`
+bewaakt namen en volgorde. De acht waarden:
 
 | Status | Betekenis | Definitief? |
 |---|---|---|

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Planner.Shared.Email;
 using SportlinkFunction.Processing;
 
 namespace SportlinkFunction.Email;

@@ -42,7 +42,7 @@ public static class TemplateAntwoordBouwer
             j["wedstrijd"], j["gewensteDatum"]?.ToString(), j["beschikbaarheid"])),
     };
 
-    /// <param name="verzoekType">Naam van de <c>VerzoekType</c>-waarde van de tier (zoals <see cref="SjabloonSleutel.Bepaal"/>).</param>
+    /// <param name="verzoekType">Naam van de <see cref="VerzoekType"/>-waarde (zoals <see cref="SjabloonSleutel.Bepaal"/>).</param>
     public static async Task<(string onderwerp, string body)> BouwAsync(
         string verzoekType, string plannerResponseJson, ITemplateAntwoordBron bron, TraceBuilder? trace)
     {

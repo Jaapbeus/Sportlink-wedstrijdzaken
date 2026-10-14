@@ -1,3 +1,4 @@
+using Planner.Shared.Email;
 using Planner.Shared;
 using AwesomeAssertions;
 using SportlinkFunction.Email;

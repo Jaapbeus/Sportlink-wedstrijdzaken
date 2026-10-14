@@ -772,7 +772,7 @@ emails             |
 | `EmailProcessorFunction.cs` | Timer trigger + orchestratie |
 | `EmailGraphService.cs` | Graph API wrapper (lezen, sturen, markeren) |
 | `BerichtAiService.cs` | OpenAI classificatie (kanaal-agnostisch) |
-| `BerichtModels.cs` | DTO's en enums (InkomendBericht, BerichtClassificatie) |
+| `BerichtModels.cs` | `InkomendBericht` (per tier); `BerichtClassificatie`, `VerzoekType` en `EmailStatus` staan sinds #1716 slice 5 in `Planner.Shared/Email/` |
 | `BerichtResponseGenerator.cs` | Template-gebaseerde antwoord-opbouw (kanaal-agnostisch) |
 
 ### AI classificatie (structured output)

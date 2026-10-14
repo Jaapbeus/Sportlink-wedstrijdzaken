@@ -1,6 +1,7 @@
 using AwesomeAssertions;
 using FunctionApp.Postgres.Email;
 using FunctionApp.Postgres.Planner;
+using Planner.Shared.Email;
 using Planner.Shared;
 using FunctionApp.Postgres.Processing;
 using Newtonsoft.Json;

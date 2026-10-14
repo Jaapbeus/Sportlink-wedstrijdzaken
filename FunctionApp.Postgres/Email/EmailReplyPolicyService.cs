@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using FunctionApp.Postgres.Planner;
 using FunctionApp.Postgres.Sync;
+using Planner.Shared.Email;
 using Planner.Shared;
 using Planner.Shared.Email.Trace;
 

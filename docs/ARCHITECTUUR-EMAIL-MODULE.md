@@ -62,7 +62,7 @@ Graph-verzending kan "inpluggen" zonder ze opnieuw te bouwen.
 > | Verschil | SQL Server | Postgres (productie) |
 > |---|---|---|
 > | `IEmailGraphService` | eigen bestand `Email/IEmailGraphService.cs` | in `Email/EmailGraphService.cs` (regel 23) |
-> | `EmailStatus`, `InkomendBericht`, `ClassificatieCorrectieVoorbeeld` | `Email/BerichtModels.cs` | `Email/EmailModels.cs` |
+> | `InkomendBericht`, `ClassificatieCorrectieVoorbeeld` (`EmailStatus` is sinds #1716 slice 5 gedeeld) | `Email/BerichtModels.cs` | `Email/EmailModels.cs` |
 > | Persistentielaag | `IEmailPersistenceRepository` + `SqlEmailPersistenceRepository` + `EmailPersistenceService` (DI-wrapper) | alleen `SqlEmailPersistenceRepository` — een `internal static class`, geen interface, geen wrapper |
 > | Teamlijst-vangnet / uitvalmonitor | `TeamlijstGereedheid`, `Monitoring/DatabaseUitvalMonitorFunction` | bestaan niet (Postgres-tier roept in plaats daarvan onvoorwaardelijk `TeamCanonicalisatieService.RefreshAsync` aan, zie `docs/ARCHITECTUUR-TEAMRESOLUTIE.md`) |
 
@@ -79,7 +79,8 @@ Graph-verzending kan "inpluggen" zonder ze opnieuw te bouwen.
 | `FunctionApp/Email/EmailReplyPolicyService.cs` | Beslist óf en bouwt het antwoord, markeert verzendintentie vóór het versturen (#716), roept `EmailGraphService.SendReplyAsync` aan. Bij een verzendfout classificeert `Planner.Shared.EmailVerzendFoutClassificatie` (#1133) of dit een bewezen afwijzing is (intentie wissen, opnieuw proberen) of een onbekende uitkomst (intentie laten staan, direct naar `Review`) |
 | `FunctionApp/Email/EmailTemplateService.cs` | DB-templates (`dbo.EmailTemplateInstellingen`) met 5-minuten TTL-cache per `(clubCode, key)`, valt terug op hardcoded defaults, `ApplyPlaceholders` voor `{{key}}`-substitutie |
 | `FunctionApp/Email/BerichtAiService.cs` | AI-classificatie; gebruikt al `IChatClient` (regel 11-14) — goed precedent voor provider-abstractie |
-| `FunctionApp/Email/BerichtModels.cs` | `VerzoekType`, `BerichtClassificatie`, `InkomendBericht` (kanaal-agnostisch bericht-DTO), `EmailStatus` |
+| `FunctionApp/Email/BerichtModels.cs` | `InkomendBericht` (kanaal-agnostisch bericht-DTO) en `ClassificatieCorrectieVoorbeeld`; blijven per tier omdat de vorm van `InkomendBericht` verschilt (`ConversationId`/`Body` nullable op de Postgres-tier, niet-nullable met standaard `""` op SQL Server) |
+| `Planner.Shared/Email/BerichtClassificatie.cs` + `EmailStatus.cs` | #1716 slice 5: `VerzoekType`, `NamensWie`, `BerichtClassificatie` en `EmailStatus` staan één keer hier in plaats van identiek per tier. **Tier-onafhankelijk**, zonder gedragswijziging. Contract: de classificatie gaat via Newtonsoft (enums als getal) naar `planner.EmailVerwerking`, de status als naam; volgorde, getallen, namen, standaardwaarden en JSON-vorm bewaakt `Planner.Shared.Tests/Email/BerichtDomeinTypenTests.cs`. Mutatiebewijs: `MUTATIELIJST=scripts/ci/mutatiebewijs-1716-slice5.tsv scripts/ci/mutatiebewijs-1716.sh` (13 mutanten) |
 | `FunctionApp/Email/BerichtResponseGenerator.cs` | Bouwt onderwerp+body per classificatietype, met/zonder DB-template-override |
 | `FunctionApp/Processing/BerichtPipeline.cs` | Kanaal-agnostische orchestratie tussen classificatie, `PlannerService` en templating |
 | `Planner.Shared/Email/TemplateAntwoordBouwer.cs` + `ITemplateAntwoordBron.cs` | #1627: de takkeuze van `BerichtPipeline.BouwTemplateAntwoord` (welk antwoord bij welke vlag in het plannerresponse, in een geordende lijst per verzoektype; sjabloon-override of standaard) staat één keer hier. **Tier-onafhankelijk**; elke tier levert alleen de adapter `TemplateAntwoordBron` (vertaling naar `BerichtResponseGenerator` en de eigen DTO's) en de sjabloonopslag. Karakterisatietests per tak staan in beide tier-testprojecten (`BouwTemplateAntwoordKarakterisatieTests`) |
@@ -379,7 +380,7 @@ Per tier blijft een dunne adapter in `Email/EmailVerwerkingAdapters.cs`. Die ver
 persistentie (`IEmailPersistenceService` op SQL Server, `SqlEmailPersistenceRepository` met
 verbinding en clubcode op Postgres), naar de eigen statusenum en exceptionklasse
 (`DubbeleMessageIdException`), en naar Graph. `EmailIdempotentie.IsDefinitief` blijft per tier
-omdat het de tier-eigen `EmailStatus` parseert. De interne methodes van `EmailProcessorFunction`
+omdat het de tier-eigen `EmailVerwerkingStand` leest (de `EmailStatus`-enum zelf is sinds #1716 slice 5 gedeeld). De interne methodes van `EmailProcessorFunction`
 behouden hun signatuur, dus de bestaande tests per tier dekken het gedrag ongewijzigd.
 
 **Waarom niet de volledige fase-orkestratie.** `Planner.Shared` heeft geen projectreferenties, en

@@ -15,8 +15,8 @@ public static class LeermomentInvoer
     public const string OnbekendType = "Onbekend";
 
     /// <summary>
-    /// Namen van <c>VerzoekType</c>. De enum staat per tier; een test per tier bewaakt dat deze lijst
-    /// gelijk blijft aan <c>Enum.GetNames&lt;VerzoekType&gt;()</c>.
+    /// Namen van <see cref="VerzoekType"/>. <c>BerichtDomeinTypenTests</c> bewaakt dat deze lijst
+    /// gelijk blijft aan <c>Enum.GetNames&lt;VerzoekType&gt;()</c> (de enum is gedeeld sinds #1716 slice 5).
     /// </summary>
     public static readonly IReadOnlyList<string> GeldigeVerzoekTypes =
         ["BeschikbaarheidCheck", "HerplanVerzoek", "Bevestiging", "TeamContactOpvragen", "BuitenScope"];

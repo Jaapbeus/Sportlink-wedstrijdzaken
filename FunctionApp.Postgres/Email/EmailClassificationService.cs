@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using FunctionApp.Postgres.Processing;
+using Planner.Shared.Email;
 
 namespace FunctionApp.Postgres.Email;
 
