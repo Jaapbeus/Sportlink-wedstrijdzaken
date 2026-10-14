@@ -3453,6 +3453,9 @@ valt buiten de scope van dit issue en loopt vooruit op de al geplande, bredere e
 in `docs/ARCHITECTUUR-EMAIL-MODULE.md` (epic #777, nog niet gestart). `ReplyPolicy.cs` blijft dus
 op beide tiers staan zoals het was, inclusief de eigen tests
 (`FunctionApp.Tests/Email/ReplyPolicyTests.cs` en de Postgres-tegenhanger) — geen gedragswijziging.
+*Latere stand (#1716 slice 5):* `VerzoekType`, `NamensWie`, `BerichtClassificatie` en `EmailStatus`
+staan inmiddels één keer in `Planner.Shared/Email/`; `InkomendBericht` blijft per tier (verschillende
+nullability). Het delen van `ReplyPolicy` zelf hoort bij slice 8 van #1716.
 
 ## 61. Teamcontact opvragen vertaald — tweede van #972's vier resterende deelstukken (#1140)
 

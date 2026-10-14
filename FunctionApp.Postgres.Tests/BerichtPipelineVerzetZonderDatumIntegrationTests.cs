@@ -7,6 +7,7 @@ using FunctionApp.Postgres.Processing;
 using Microsoft.Extensions.Logging.Abstractions;
 using Newtonsoft.Json.Linq;
 using Npgsql;
+using Planner.Shared.Email;
 using Planner.Shared.TeamResolution;
 using Planner.Shared;
 using Xunit;

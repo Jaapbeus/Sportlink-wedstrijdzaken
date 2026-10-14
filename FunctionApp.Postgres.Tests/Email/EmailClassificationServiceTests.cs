@@ -1,3 +1,4 @@
+using Planner.Shared.Email;
 using System.Text.RegularExpressions;
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;

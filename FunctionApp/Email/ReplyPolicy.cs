@@ -1,4 +1,5 @@
 using Newtonsoft.Json.Linq;
+using Planner.Shared.Email;
 
 namespace SportlinkFunction.Email;
 

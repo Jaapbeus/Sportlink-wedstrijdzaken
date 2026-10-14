@@ -1,5 +1,6 @@
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Planner.Shared.Email;
 using Planner.Shared.TeamResolution;
 using SportlinkFunction.Email;
 using SportlinkFunction.Processing;

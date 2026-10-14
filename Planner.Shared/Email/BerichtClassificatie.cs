@@ -1,10 +1,13 @@
-namespace FunctionApp.Postgres.Email;
+namespace Planner.Shared.Email;
 
-// Postgres-tier-tegenhanger van de classificatie-typen uit FunctionApp/Email/BerichtModels.cs
-// (#889). InkomendBericht/EmailStatus/ClassificatieCorrectieVoorbeeld staan NIET hier — die
-// bestonden al in EmailModels.cs (#889, eerdere sessie) vóórdat deze vertaling begon.
+// Gedeelde domeintypen van de e-mailverwerking (#1716 slice 5). Stonden tot en met slice 4
+// identiek per tier (FunctionApp/Email/BerichtModels.cs en FunctionApp.Postgres/Email/BerichtModels.cs).
+// Contract dat niet mag schuiven zonder datamigratie: de classificatie gaat via
+// JsonConvert.SerializeObject (Newtonsoft, enums als getal) naar planner.EmailVerwerking en wordt daar
+// ook weer uitgelezen. Volgorde en getalswaarden van de enums en de propertynamen liggen daarom vast;
+// BerichtDomeinTypenTests in Planner.Shared.Tests bewaakt ze.
 
-// Classificatie door AI
+/// <summary>Soort verzoek, door de AI-classificatie bepaald.</summary>
 public enum VerzoekType
 {
     BeschikbaarheidCheck,
@@ -14,6 +17,7 @@ public enum VerzoekType
     BuitenScope
 }
 
+/// <summary>Namens wie de afzender schrijft.</summary>
 public enum NamensWie
 {
     Afzender,
@@ -21,7 +25,7 @@ public enum NamensWie
     Onbekend
 }
 
-// AI classificatie response
+/// <summary>AI-classificatie van een inkomend bericht, aangevuld door de pipeline.</summary>
 public class BerichtClassificatie
 {
     public VerzoekType Type { get; set; }
@@ -41,12 +45,13 @@ public class BerichtClassificatie
     // Heel veld gevraagd — overschrijft de standaard veldafmeting uit Speeltijden
     public bool? HeelVeld { get; set; }
 
-    // Door de pipeline gezet (niet door AI) wanneer een KNVB-bijlage + BCC van toepassing is
-    // (#561/#1141) — zie BerichtPipeline.BouwVerzetZonderDatumResponseAsync.
     // Door de pipeline gezet (niet door AI) als de teamresolutie TeamNaam niet kon bevestigen: antwoorden
     // gebruiken dan generieke tekst in plaats van de vrije modeltekst.
     public bool TeamNaamOnbevestigd { get; set; }
 
+    // Door de pipeline gezet (niet door AI) wanneer een KNVB-bijlage + BCC van toepassing is (#561/#1141).
+    // Houd dit klein (strings, geen bytes): de classificatie wordt naar planner.EmailVerwerking gelogd —
+    // grote binaire payloads horen daar niet in.
     public bool VoegKnvbPdfBijlageToe { get; set; }
     public string? KnvbBijlageRegio { get; set; }
 

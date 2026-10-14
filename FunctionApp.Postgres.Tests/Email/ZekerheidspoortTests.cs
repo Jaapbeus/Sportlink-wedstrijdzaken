@@ -4,6 +4,7 @@ using FunctionApp.Postgres.Tests.Email.TestDoubles;
 using Microsoft.Extensions.Logging.Abstractions;
 using Newtonsoft.Json;
 using Planner.Shared.Email.Trace;
+using Planner.Shared.Email;
 using Xunit;
 
 namespace FunctionApp.Postgres.Tests.Email;

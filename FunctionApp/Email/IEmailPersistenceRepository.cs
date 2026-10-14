@@ -2,6 +2,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Planner.Shared.Email.Trace;
+using Planner.Shared.Email;
 using SportlinkFunction.Processing;
 
 namespace SportlinkFunction.Email;

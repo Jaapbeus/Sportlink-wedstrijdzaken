@@ -8,7 +8,8 @@ namespace FunctionApp.Tests.Email;
 
 /// <summary>
 /// Bewaakt de afspraken van het leren vanuit de trace (#1568 deel C) die geen database nodig hebben:
-/// de lijst geldige verzoektypen blijft gelijk aan de enum, en de retentie raakt een admin-leermoment nooit.
+/// de Blazor-lijst verzoektypen blijft gelijk aan de serverlijst, en de retentie raakt een admin-leermoment nooit.
+/// De serverlijst tegen de (sinds #1716 slice 5 gedeelde) enum: <c>BerichtDomeinTypenTests</c> in Planner.Shared.Tests.
 /// Bewust tekstueel (zelfde patroon als <c>VeldResolutieDriftTests</c>): draait in de gewone build, dus vóór een merge.
 /// </summary>
 public class LerenDriftTests
@@ -28,10 +29,6 @@ public class LerenDriftTests
         File.Exists(pad).Should().BeTrue($"{relatiefPad} moet bestaan");
         return File.ReadAllText(pad);
     }
-
-    [Fact]
-    public void GeldigeVerzoekTypes_BlijftGelijkAanDeEnum()
-        => LeermomentInvoer.GeldigeVerzoekTypes.Should().BeEquivalentTo(Enum.GetNames<VerzoekType>());
 
     [Fact]
     public void BlazorVerzoekTypeLijst_BlijftGelijkAanDeServerlijst()
