@@ -14,9 +14,9 @@
          Wie dit terugzet naar true moet óók de CSP oplossen — en nonce/SRI kan niet op statische
          hosting. Zie index.html voor de volledige afweging. -->
     <OverrideHtmlAssetPlaceholders>false</OverrideHtmlAssetPlaceholders>
-    <Version>3.14.0.4</Version>
-    <AssemblyVersion>3.14.0.4</AssemblyVersion>
-    <FileVersion>3.14.0.4</FileVersion>
+    <Version>3.14.1.0</Version>
+    <AssemblyVersion>3.14.1.0</AssemblyVersion>
+    <FileVersion>3.14.1.0</FileVersion>
     <!-- Azure Static Web Apps doet content negotiation op .wasm en serveert de pre-compressed
          .wasm.br data ZONDER 'Content-Encoding: br' header te zetten. Chrome (vooral Incognito)
          interpreteert de Brotli-bytes dan als raw wasm → SRI integrity check faalt → app crasht.
@@ -49,6 +49,9 @@
     <Compile Include="../Planner.Shared/Planning/PlanningConflictRegels.cs" Link="Gedeeld/PlanningConflictRegels.cs" />
     <!-- #1623: één cron-naar-tekstvertaler voor beide tiers en deze pagina; alleen BCL. -->
     <Compile Include="../Planner.Shared/Scheduling/CronLeesbaar.cs" Link="Gedeeld/CronLeesbaar.cs" />
+    <!-- #1715: standaardmaand, geldige reeks en maandnamen van de seizoensstartmaand (keuzelijst in
+         Instellingen); dezelfde bron als de validatie in Planner.Endpoints. Alleen BCL. -->
+    <Compile Include="../Planner.Shared/Sync/SeizoenStartMaand.cs" Link="Gedeeld/SeizoenStartMaand.cs" />
   </ItemGroup>
 
   <!-- #764: redactie van persoonsgegevens in de technische context van een feedbackmelding. Eén bron

@@ -154,7 +154,7 @@ public static class AvailabilityService
     {
         var cc = PostgresClubScope.Resolve(clubCode);
         var response = new DoordeweeksBeschikbaarResponse { DagFilter = request.DagFilter };
-        var seizoenEinde = await PlannerSettingsRepository.GetSeasonEndDateAsync(connectionString)
+        var seizoenEinde = await PlannerSettingsRepository.GetSeasonEndDateAsync(connectionString, cc)
             ?? DateOnly.FromDateTime(DateTime.Today.AddMonths(6));
         response.SeizoenEinde = seizoenEinde.ToString("yyyy-MM-dd");
 

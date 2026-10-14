@@ -149,7 +149,7 @@ public class GitHubIssueReporterLabelconventieTests
         // andere labelfilters gebruiken dan herkomstlabel, oud label en geen filter.
         var verzoeken = new List<(HttpMethod Methode, string Pad, string Body)>();
         var vol = "[" + string.Join(",", Enumerable.Range(1, 100)
-            .Select(i => $$"""{"number": {{i}}, "state": "open", "title": "[bug][fp:{{i:x12}}] ruis"}""")) + "]";
+            .Select(i => $$"""{"number": {{i}}, "state": "open", "author_association": "OWNER", "title": "[bug][fp:{{i:x12}}] ruis"}""")) + "]";
         var queries = new List<string>();
         var client = MaakClient(verzoeken, req => { queries.Add(Query(req)); return Json(vol); });
 
@@ -190,7 +190,7 @@ public class GitHubIssueReporterLabelconventieTests
     private static HttpResponseMessage Json(string json) => new(HttpStatusCode.OK) { Content = new StringContent(json) };
 
     private static HttpResponseMessage Treffer(int nummer)
-        => Json($$"""[{"number": {{nummer}}, "state": "open", "title": {{System.Text.Json.JsonSerializer.Serialize(Treffertitel)}}}]""");
+        => Json($$"""[{"number": {{nummer}}, "state": "open", "author_association": "OWNER", "title": {{System.Text.Json.JsonSerializer.Serialize(Treffertitel)}}}]""");
 
     private static HttpClient MaakClient(
         List<(HttpMethod Methode, string Pad, string Body)> verzoeken,
