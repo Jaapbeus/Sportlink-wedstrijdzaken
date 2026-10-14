@@ -744,14 +744,18 @@ jobs:
                     -S localhost -U sa -P "$SA_PW" -C "$@"; }
           git fetch --no-tags --depth=1 origin "$BASIS_SHA"
           git show "$BASIS_SHA:Database/Script.PostDeployment1.sql" > /tmp/postdeployment-basis.sql
-          # #1751: deze overgang (expand-stap van #1715) meet alleen iets zolang de basis het nieuwe schema
-          # nog mist. Staat dbo.ClubSeason al in het PostDeployment van de basis (sinds #1743 op develop),
-          # dan zou de basis zelf het schema aanmaken en meet de stap niets meer: sla over met een logregel.
-          # De contract-stap (#1747) hoort de stap bij verwijdering van dbo.Season te herdefiniëren of
-          # te schrappen; een volgende expand-stap zet hier zijn eigen herkenningsmerk (ander schema-object).
+          # #1751: het generieke deel geldt voor élke PR en blijft altijd rood kunnen worden: het
+          # PostDeployment van de basis (twee keer) en dat van deze PR (twee keer) moeten achter elkaar op
+          # dezelfde bestaande database slagen. Alleen de #1715-specifieke metingen (dbo.Season gevuld en
+          # ongewijzigd, ClubSeason per club) hebben betekenis zolang de basis ClubSeason nog mist; staat
+          # dbo.ClubSeason al in de basis (sinds #1743 op develop), dan maakt de basis het schema zelf aan.
+          # De contract-stap (#1747) herdefinieert die #1715-metingen; een volgende expand-stap voegt zijn
+          # eigen metingen toe, het generieke deel dekt de volgende overgang al.
           if grep -q 'ClubSeason' /tmp/postdeployment-basis.sql; then
-            echo "Overgangsstap #1715 overgeslagen: het PostDeployment van de basis (${BASIS_SHA}) bevat dbo.ClubSeason al; de expand-overgang is al uitgerold en er is niets meer te meten."
-            exit 0
+            SPECIFIEK=0
+            echo "Overgang #1715 al uitgerold in de basis (${BASIS_SHA}): alleen het generieke deel (basis 2x, PR 2x op een bestaande database) draait; de #1715-metingen worden overgeslagen."
+          else
+            SPECIFIEK=1
           fi
           docker cp /tmp/postdeployment-basis.sql sqlfresh:/tmp/postdeployment-basis.sql
           sql -Q "CREATE DATABASE SportlinkTransitie"
@@ -759,11 +763,17 @@ jobs:
             echo "───── Basis, run ${run} ─────"
             sql -d SportlinkTransitie -b -V 11 -i /tmp/postdeployment-basis.sql
           done
-          voor=$(sql -d SportlinkTransitie -b -V 11 -h -1 -W -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM [dbo].[Season];")
+          if [ "$SPECIFIEK" = 1 ]; then
+            voor=$(sql -d SportlinkTransitie -b -V 11 -h -1 -W -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM [dbo].[Season];")
+          fi
           for run in 1 2; do
             echo "───── Deze PR, run ${run} ─────"
             sql -d SportlinkTransitie -b -V 11 -i /tmp/postdeployment.sql
           done
+          if [ "$SPECIFIEK" != 1 ]; then
+            echo "Overgang: basis en PR slaagden elk twee keer op dezelfde bestaande database (generiek deel)."
+            exit 0
+          fi
           na=$(sql -d SportlinkTransitie -b -V 11 -h -1 -W -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM [dbo].[Season];")
           if [ "$voor" != "$na" ]; then
             echo "::error::dbo.Season veranderde bij de overgang (${voor} -> ${na} rijen); de vorige code leest die tabel nog (#1715)."
