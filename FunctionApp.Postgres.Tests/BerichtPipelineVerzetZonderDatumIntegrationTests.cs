@@ -35,7 +35,7 @@ namespace FunctionApp.Postgres.Tests;
 /// <see cref="PostgresSeasonHelperKnvbSeizoenIntegrationTests"/>: een <c>datefrom</c> ver in het
 /// verleden met een <c>dateuntil</c> ver in de toekomst wint altijd van de echte (migratie-008-
 /// geseede) seizoensrijen bij <c>ORDER BY datefrom ASC LIMIT 1</c>, dus deze test hoeft
-/// <c>public.season</c> niet leeg te maken.
+/// <c>public.clubseason</c> niet leeg te maken (de rij hoort bij de testclub: seizoenen zijn per club, #1715).
 /// </para>
 ///
 /// <para>Zie <see cref="PostgresSyncFixtureIntegrationTests"/> voor de lokale containeropzet.</para>
@@ -69,7 +69,7 @@ public class BerichtPipelineVerzetZonderDatumIntegrationTests : IAsyncLifetime
             "DELETE FROM public.appsettings WHERE clubcode = @club",
             "DELETE FROM public.speeltijden WHERE clubcode = @club",
             "DELETE FROM public.knvbkalenderdag WHERE seizoen = @seizoen",
-            "DELETE FROM public.season WHERE name = @seizoennaam",
+            "DELETE FROM public.clubseason WHERE clubcode = @club AND name = @seizoennaam",
         })
             await ExecAsync(conn, sql, ("club", Club), ("seizoen", $"{1901}/{9998}"), ("seizoennaam", SeizoenNaam));
 
@@ -85,8 +85,8 @@ public class BerichtPipelineVerzetZonderDatumIntegrationTests : IAsyncLifetime
             ("club", Club));
 
         await ExecAsync(conn,
-            "INSERT INTO public.season (name, datefrom, dateuntil) VALUES (@naam, @van, @tot)",
-            ("naam", SeizoenNaam), ("van", new DateTime(1901, 1, 1)), ("tot", new DateTime(9998, 1, 1)));
+            "INSERT INTO public.clubseason (clubcode, name, datefrom, dateuntil) VALUES (@club, @naam, @van, @tot)",
+            ("club", Club), ("naam", SeizoenNaam), ("van", new DateTime(1901, 1, 1)), ("tot", new DateTime(9998, 1, 1)));
 
         var genormaliseerd = TeamNaamNormalisatie.NormaliseerVoorVergelijking(Team, Club);
         await ExecAsync(conn,
@@ -108,7 +108,7 @@ public class BerichtPipelineVerzetZonderDatumIntegrationTests : IAsyncLifetime
             "DELETE FROM public.appsettings WHERE clubcode = @club",
             "DELETE FROM public.speeltijden WHERE clubcode = @club",
             "DELETE FROM public.knvbkalenderdag WHERE seizoen = @seizoen",
-            "DELETE FROM public.season WHERE name = @seizoennaam",
+            "DELETE FROM public.clubseason WHERE clubcode = @club AND name = @seizoennaam",
         })
             await ExecAsync(conn, sql, ("club", Club), ("seizoen", $"{1901}/{9998}"), ("seizoennaam", SeizoenNaam));
     }

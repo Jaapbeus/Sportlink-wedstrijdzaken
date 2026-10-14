@@ -1,6 +1,7 @@
 @page "/instellingen"
 @inherits ClubSelectorPageBase
 @using BlazorAdmin.Services
+@using Planner.Shared.Sync
 
 <PageTitle>App instellingen — Beheer</PageTitle>
 
@@ -216,6 +217,30 @@ else
                     Minimale pauze tussen twee wedstrijden op hetzelfde veld bij het zoeken naar
                     een nieuwe speeltijd. Standaard: 15 minuten.
                 </small>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label" for="seizoen-startmaand">Seizoen start in</label>
+                <select id="seizoen-startmaand" class="form-select" @bind="settings.SeasonStartMonth">
+                    @for (var m = 1; m <= SeizoenStartMaand.Maandnamen.Count; m++)
+                    {
+                        <option value="@m">@SeizoenStartMaand.Maandnamen[m - 1]</option>
+                    }
+                </select>
+                <small class="form-text text-muted">
+                    Het seizoenseinde is de dag vóór de start van het volgende seizoen en bepaalt het synchronisatievenster,
+                    de seizoenstabel en wanneer persoonsgegevens in oude wedstrijden worden leeggemaakt. Per club instelbaar.
+                    Standaard: juli.
+                </small>
+                @if (StartMaandGewijzigd)
+                {
+                    <div class="alert alert-warning mt-2 mb-0" id="seizoen-startmaand-waarschuwing" role="alert">
+                        Let op: bij opslaan worden de seizoenen van deze club opnieuw opgebouwd met start in <strong>@SeizoenStartMaand.Naam(settings.SeasonStartMonth ?? SeizoenStartMaand.Standaard)</strong>.
+                        Verschuift het seizoenseinde naar eerder, dan worden persoonsgegevens in oude wedstrijden eerder leeggemaakt (onomkeerbaar).
+                    </div>
+                }
             </div>
         </div>
 

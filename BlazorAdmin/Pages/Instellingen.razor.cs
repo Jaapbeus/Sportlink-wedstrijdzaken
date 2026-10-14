@@ -2,6 +2,7 @@ using BlazorAdmin.Models;
 using BlazorAdmin.Services;
 using Microsoft.AspNetCore.Components;
 using Planner.Shared.Scheduling;
+using Planner.Shared.Sync;
 
 namespace BlazorAdmin.Pages;
 
@@ -12,6 +13,11 @@ public partial class Instellingen : ClubSelectorPageBase
     [Inject] private InstellingenApiClient InstellingenApi { get; set; } = default!;
 
     private AppSettingsDto? settings;
+
+    // #1715: de opgeslagen startmaand. Alleen een gewijzigde waarde gaat mee in de PUT, zodat opslaan zonder
+    // wijziging het seizoen niet opnieuw opbouwt en geen extra auditregel schrijft.
+    private int _opgeslagenStartMaand = SeizoenStartMaand.Standaard;
+    private bool StartMaandGewijzigd => settings != null && SeizoenStartMaand.OfStandaard(settings.SeasonStartMonth) != _opgeslagenStartMaand;
     private bool saving;
     private string? errorMessage;
     private string? successMessage;
@@ -75,7 +81,16 @@ public partial class Instellingen : ClubSelectorPageBase
         _reviewLog = reviewResult.Success ? reviewResult.Data : null;
 
         var r = await settingsTask;
-        if (r.Success) settings = r.Data;
+        if (r.Success)
+        {
+            settings = r.Data;
+            if (settings != null)
+            {
+                // Een ontbrekende of ongeldige waarde toont de standaard (juli), nooit een lege keuzelijst.
+                settings.SeasonStartMonth = SeizoenStartMaand.OfStandaard(settings.SeasonStartMonth);
+                _opgeslagenStartMaand = settings.SeasonStartMonth.Value;
+            }
+        }
         else errorMessage = r.ErrorMessage;
 
         var syncResult = await syncTask;
@@ -225,9 +240,9 @@ public partial class Instellingen : ClubSelectorPageBase
         geocoding = false;
     }
 
-    private static SettingsUpdateDto BouwUpdate(AppSettingsDto s)
+    private SettingsUpdateDto BouwUpdate(AppSettingsDto s)
     {
-        return new SettingsUpdateDto
+        var update = new SettingsUpdateDto
         {
             Velden = new()
             {
@@ -249,6 +264,9 @@ public partial class Instellingen : ClubSelectorPageBase
                 ["ZekerheidspoortActief"] = s.ZekerheidspoortActief ? "1" : "0",
             }
         };
+        if (StartMaandGewijzigd)
+            update.Velden["SeasonStartMonth"] = SeizoenStartMaand.OfStandaard(s.SeasonStartMonth).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return update;
     }
 
     private async Task OpslaanAsync()
@@ -263,6 +281,7 @@ public partial class Instellingen : ClubSelectorPageBase
         if (r.Success)
         {
             successMessage = "Instellingen opgeslagen.";
+            if (settings.SeasonStartMonth is int opgeslagen) _opgeslagenStartMaand = opgeslagen;
             if (r.Data?.HerstartAutomatisch == true)
             {
                 herstartMessage = r.Data.Opmerking ?? "Het ophaalschema is bijgewerkt. De applicatie herstart automatisch en het nieuwe schema is actief na de herstart.";

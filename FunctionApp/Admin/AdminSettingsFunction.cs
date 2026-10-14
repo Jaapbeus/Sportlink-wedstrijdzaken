@@ -48,7 +48,7 @@ public static class AdminSettingsFunction
         "Accommodatie", "FetchSchedule", "EmailVoetnoot",
         "AccommodatiePlaats", "AccommodatieLatitude", "AccommodatieLongitude",
         "UseRealtimeApi", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio",
-        "SportlinkExtensionEnabled", "SportlinkSpelactiviteit", "PdfExportIngeschakeld", "ZekerheidspoortActief"
+        "SportlinkExtensionEnabled", "SportlinkSpelactiviteit", "PdfExportIngeschakeld", "ZekerheidspoortActief", "SeasonStartMonth"
     };
 
     private const string ManagementApiVersion = "2022-03-01";
@@ -166,19 +166,7 @@ public static class AdminSettingsFunction
 
                 using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
                 await connection.OpenAsync();
-                using var transaction = await connection.BeginTransactionAsync();
-
-                try
-                {
-                    await PersisteerWijzigingenAsync(connection, (SqlTransaction)transaction, changes, clubCode, gewijzigdDoor);
-
-                    await transaction.CommitAsync();
-                }
-                catch
-                {
-                    await transaction.RollbackAsync();
-                    throw;
-                }
+                await PasWijzigingenToeAsync(connection, changes, clubCode, gewijzigdDoor, DateOnly.FromDateTime(DateTime.UtcNow));
 
                 await SystemUtilities.AppSettings.LoadSettingsAsync(log);
 
@@ -221,6 +209,34 @@ public static class AdminSettingsFunction
             }
         }
         return changes;
+    }
+
+    /// <summary>
+    /// Legt de wijzigingen en hun auditregels vast in één transactie. Codex-review #1743 ronde 1: de rij van de
+    /// club wordt bij het lezen van de oude waarden vergrendeld (<c>UPDLOCK, HOLDLOCK</c>), zodat een gelijktijdige
+    /// wijziging wacht en de oude waarde in de audit klopt; een gewijzigde <c>SeasonStartMonth</c> herbouwt de
+    /// seizoenen van de club in dezelfde transactie (#1715), zodat configuratie, audit en kalender samen slagen of
+    /// samen terugdraaien.
+    /// </summary>
+    internal static async Task PasWijzigingenToeAsync(
+        SqlConnection connection, Dictionary<string, string?> changes, string clubCode, string gewijzigdDoor, DateOnly vandaag)
+    {
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync();
+        try
+        {
+            await PersisteerWijzigingenAsync(connection, transaction, changes, clubCode, gewijzigdDoor);
+            if (changes.ContainsKey("SeasonStartMonth"))
+                await SqlServerSeizoenHerbouw.HerbouwAsync(connection, transaction, clubCode, vandaag);
+            await transaction.CommitAsync();
+        }
+        catch
+        {
+            // Een fout in een trigger of met hoge severity kan de transactie aan serverzijde al hebben
+            // teruggedraaid; dan is Connection null en zou RollbackAsync de echte fout maskeren.
+            if (transaction.Connection is not null)
+                await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     private static async Task PersisteerWijzigingenAsync(
@@ -445,7 +461,8 @@ public static class AdminSettingsFunction
         var result = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         if (safe.Count == 0) return result;
 
-        var sql = $"SELECT TOP 1 {string.Join(", ", safe)} FROM [dbo].[AppSettings] WHERE [ClubCode] = @ClubCode";
+        // UPDLOCK, HOLDLOCK: de rij van de club blijft tot de commit vergrendeld (Codex-review #1743 ronde 1).
+        var sql = $"SELECT TOP 1 {string.Join(", ", safe)} FROM [dbo].[AppSettings] WITH (UPDLOCK, HOLDLOCK) WHERE [ClubCode] = @ClubCode";
         using var cmd = new SqlCommand(sql, connection, transaction);
         cmd.Parameters.AddWithValue("@ClubCode", clubCode);
         using var reader = await cmd.ExecuteReaderAsync();

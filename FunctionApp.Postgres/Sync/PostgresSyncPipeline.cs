@@ -23,7 +23,7 @@ namespace FunctionApp.Postgres.Sync;
 /// <see cref="Planner.Repositories.PlannerMatchRepository.MarkeerVervallenGeplandeWedstrijdenAsync"/>)
 /// wordt — net als het origineel — <b>ONGEGUARD</b> aangeroepen: een fout daar hoort de hele sync
 /// te laten falen. Dat verschil met de best-effort canonicalisatie hierboven is opzettelijk.</item>
-/// <item><b>Seizoensgrenzen</b> (<c>public.season</c>, #890-vervolg) worden door de buitenste
+/// <item><b>Seizoensgrenzen</b> (<c>public.clubseason</c>, #890-vervolg) worden door de buitenste
 /// triggers opgezocht via <c>PostgresSeasonHelper</c>; <see cref="RunSyncAsync"/> zelf neemt
 /// <c>fromWeekOffset</c>/<c>toWeekOffset</c> als expliciete parameters, exact zoals het origineel.</item>
 /// </list>

@@ -65,13 +65,16 @@ public class HisPersoonsgegevensRetentieTests
         HisPersoonsgegevensRetentie.MatchDetailsKolommen.Should().NotIntersectWith(verboden);
     }
 
+    private static IReadOnlyList<ClubSeizoenEinde> Einden(params (string Club, DateOnly Einde)[] rijen)
+        => rijen.Select(r => new ClubSeizoenEinde(r.Club, r.Einde)).ToList();
+
     [Fact]
     public async Task VoerUitAsync_ZonderAfgerondSeizoen_RoeptDeWisstapNietAan()
     {
         var aangeroepen = false;
         var resultaat = await HisPersoonsgegevensRetentie.VoerUitAsync(
-            () => Task.FromResult<IReadOnlyList<DateOnly>>([new DateOnly(2027, 6, 30)]),
-            _ => { aangeroepen = true; return Task.FromResult((1, 1)); },
+            () => Task.FromResult(Einden(("ALLSTARS", new DateOnly(2027, 6, 30)))),
+            (_, _) => { aangeroepen = true; return Task.FromResult((1, 1)); },
             NullLogger.Instance, Vandaag);
 
         aangeroepen.Should().BeFalse();
@@ -83,8 +86,8 @@ public class HisPersoonsgegevensRetentieTests
     {
         DateOnly? doorgegeven = null;
         var resultaat = await HisPersoonsgegevensRetentie.VoerUitAsync(
-            () => Task.FromResult<IReadOnlyList<DateOnly>>([new DateOnly(2026, 6, 30), new DateOnly(2027, 6, 30)]),
-            grens => { doorgegeven = grens; return Task.FromResult((3, 2)); },
+            () => Task.FromResult(Einden(("ALLSTARS", new DateOnly(2026, 6, 30)), ("ALLSTARS", new DateOnly(2027, 6, 30)))),
+            (_, grens) => { doorgegeven = grens; return Task.FromResult((3, 2)); },
             NullLogger.Instance, Vandaag);
 
         doorgegeven.Should().Be(new DateOnly(2026, 6, 30));
@@ -92,13 +95,47 @@ public class HisPersoonsgegevensRetentieTests
     }
 
     [Fact]
+    public async Task VoerUitAsync_TweeClubsMetVerschillendeStartmaand_KrijgenElkEenEigenGrens()
+    {
+        // #1715: club A start in juli (seizoen 2025-2026 eindigt 30 juni 2026), club B in september
+        // (eindigt 31 augustus 2026). Op 15 juli 2026 is dat van A afgerond en dat van B nog niet: de
+        // retentie mag voor B dus nog niets wissen en niet de grens van A overnemen.
+        var vandaag = new DateOnly(2026, 7, 15);
+        var gewist = new List<(string Club, DateOnly Grens)>();
+
+        var resultaat = await HisPersoonsgegevensRetentie.VoerUitAsync(
+            () => Task.FromResult(Einden(
+                ("CLUBA", new DateOnly(2025, 6, 30)), ("CLUBA", new DateOnly(2026, 6, 30)),
+                ("CLUBB", new DateOnly(2025, 8, 31)), ("CLUBB", new DateOnly(2026, 8, 31)))),
+            (club, grens) => { gewist.Add((club, grens)); return Task.FromResult((1, 1)); },
+            NullLogger.Instance, vandaag);
+
+        gewist.Should().Equal(("CLUBA", new DateOnly(2026, 6, 30)), ("CLUBB", new DateOnly(2025, 8, 31)));
+        resultaat.Should().Be(new HisRetentieResultaat(new DateOnly(2026, 6, 30), 2, 2));
+    }
+
+    [Fact]
+    public async Task VoerUitAsync_ClubZonderAfgerondSeizoen_BlijftBuitenDeWisstap()
+    {
+        var gewist = new List<string>();
+
+        await HisPersoonsgegevensRetentie.VoerUitAsync(
+            () => Task.FromResult(Einden(("CLUBA", new DateOnly(2026, 6, 30)), ("CLUBB", new DateOnly(2027, 6, 30)))),
+            (club, _) => { gewist.Add(club); return Task.FromResult((0, 0)); },
+            NullLogger.Instance, Vandaag);
+
+        gewist.Should().Equal("CLUBA");
+    }
+
+    [Fact]
     public async Task VoerStapUitAsync_GebruiktDeOpslagVanDeTier_EnGeeftHetResultaatTerug()
     {
-        var opslag = new NepOpslag([new DateOnly(2026, 6, 30)], (4, 5));
+        var opslag = new NepOpslag(Einden(("ALLSTARS", new DateOnly(2026, 6, 30))), (4, 5));
 
         var resultaat = await HisPersoonsgegevensRetentie.VoerStapUitAsync(opslag, NullLogger.Instance, Vandaag);
 
         opslag.GewistTotEnMet.Should().Be(new DateOnly(2026, 6, 30));
+        opslag.GewistVoorClub.Should().Be("ALLSTARS");
         resultaat.Should().Be(new HisRetentieResultaat(new DateOnly(2026, 6, 30), 4, 5));
     }
 
@@ -110,7 +147,7 @@ public class HisPersoonsgegevensRetentieTests
         // minimale of maximale datum. Ook rond middernacht UTC blijft de verwachting gelijk.
         var vandaagUtc = DateOnly.FromDateTime(DateTime.UtcNow);
         var gisteren = vandaagUtc.AddDays(-1);
-        var opslag = new NepOpslag([gisteren, vandaagUtc.AddDays(1)], (1, 0));
+        var opslag = new NepOpslag(Einden(("ALLSTARS", gisteren), ("ALLSTARS", vandaagUtc.AddDays(1))), (1, 0));
 
         var resultaat = await HisPersoonsgegevensRetentie.VoerStapUitAsync(opslag, NullLogger.Instance);
 
@@ -128,17 +165,19 @@ public class HisPersoonsgegevensRetentieTests
         log.Fouten.Should().Be(1);
     }
 
-    private sealed class NepOpslag(IReadOnlyList<DateOnly>? seizoenseinden, (int, int) gewist) : IHisRetentieOpslag
+    private sealed class NepOpslag(IReadOnlyList<ClubSeizoenEinde>? seizoenseinden, (int, int) gewist) : IHisRetentieOpslag
     {
         public DateOnly? GewistTotEnMet { get; private set; }
+        public string? GewistVoorClub { get; private set; }
 
-        public Task<IReadOnlyList<DateOnly>> LeesSeizoenseindenAsync()
+        public Task<IReadOnlyList<ClubSeizoenEinde>> LeesSeizoenseindenAsync()
             => seizoenseinden is null
                 ? throw new InvalidOperationException("seizoenstabel onbereikbaar")
                 : Task.FromResult(seizoenseinden);
 
-        public Task<(int Matches, int MatchDetails)> WisTotEnMetAsync(DateOnly grens)
+        public Task<(int Matches, int MatchDetails)> WisTotEnMetAsync(string clubCode, DateOnly grens)
         {
+            GewistVoorClub = clubCode;
             GewistTotEnMet = grens;
             return Task.FromResult(gewist);
         }

@@ -145,11 +145,13 @@ internal static class PlannerSettingsRepository
         }
     }
 
-    internal static async Task<DateOnly?> GetSeasonEndDateAsync()
+    /// <summary>Einddatum van het laatst bekende seizoen van de club (#1715), of <c>null</c>.</summary>
+    internal static async Task<DateOnly?> GetSeasonEndDateAsync(string? clubCode = null)
     {
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
-        using var cmd = new SqlCommand("SELECT MAX(DateUntil) FROM [dbo].[Season]", conn);
+        using var cmd = new SqlCommand("SELECT MAX(DateUntil) FROM [dbo].[ClubSeason] WHERE [ClubCode] = @ClubCode", conn);
+        cmd.Parameters.AddWithValue("@ClubCode", ClubScope.Resolve(clubCode));
         var result = await cmd.ExecuteScalarAsync();
         if (result != null && result != DBNull.Value)
             return DateOnly.FromDateTime(Convert.ToDateTime(result));

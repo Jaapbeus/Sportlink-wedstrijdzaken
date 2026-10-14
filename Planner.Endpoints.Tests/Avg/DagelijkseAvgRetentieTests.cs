@@ -89,14 +89,14 @@ public class DagelijkseAvgRetentieTests
 
     private sealed class HisOpslag(List<string> volgorde, bool faalt) : IHisRetentieOpslag
     {
-        public Task<IReadOnlyList<DateOnly>> LeesSeizoenseindenAsync()
+        public Task<IReadOnlyList<ClubSeizoenEinde>> LeesSeizoenseindenAsync()
         {
             volgorde.Add("his");
             return faalt
                 ? throw new InvalidOperationException("his kapot")
-                : Task.FromResult<IReadOnlyList<DateOnly>>([new DateOnly(2000, 6, 30)]);
+                : Task.FromResult<IReadOnlyList<ClubSeizoenEinde>>([new ClubSeizoenEinde("ALLSTARS", new DateOnly(2000, 6, 30))]);
         }
 
-        public Task<(int Matches, int MatchDetails)> WisTotEnMetAsync(DateOnly grens) => Task.FromResult((0, 0));
+        public Task<(int Matches, int MatchDetails)> WisTotEnMetAsync(string clubCode, DateOnly grens) => Task.FromResult((0, 0));
     }
 }

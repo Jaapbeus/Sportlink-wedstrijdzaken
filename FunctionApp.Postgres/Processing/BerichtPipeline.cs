@@ -142,7 +142,7 @@ internal static partial class BerichtPipeline
     /// (zie <see cref="Email.EmailReplyPolicyService"/>).
     ///
     /// Retourneert <c>null</c> als <c>knvbStandaardRegio</c> ontbreekt, de PDF-bijlage-instelling
-    /// uit staat, of er geen (toekomstig) seizoen in <c>public.season</c> staat — de aanroepende tak
+    /// uit staat, of er geen (toekomstig) seizoen in <c>public.clubseason</c> staat — de aanroepende tak
     /// valt dan terug op het bestaande gedrag (<see cref="RescheduleService.CheckRescheduleAvailabilityAsync"/>).
     /// Nooit een regio gokken of hardcoden: ontbreekt de instelling, dan is er geen bijlage/flow.
     /// </summary>
@@ -177,10 +177,10 @@ internal static partial class BerichtPipeline
             return null;
         }
 
-        var seizoen = await PostgresSeasonHelper.GetCurrentKnvbSeizoenAsync(log);
+        var seizoen = await PostgresSeasonHelper.GetCurrentKnvbSeizoenAsync(log, clubCode);
         if (string.IsNullOrWhiteSpace(seizoen))
         {
-            log.LogInformation("VERZET-ZONDER-DATUM - geen (toekomstig) seizoen gevonden in public.season; val terug op het standaard herplan-pad");
+            log.LogInformation("VERZET-ZONDER-DATUM - geen (toekomstig) seizoen gevonden in public.clubseason; val terug op het standaard herplan-pad");
             return null;
         }
 

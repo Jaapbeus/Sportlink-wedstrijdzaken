@@ -65,6 +65,7 @@ var tables = new List<TableMapping>
     new("dbo", "UitgeslotenEmailAdressen", "public", "uitgeslotenemailadressen", HasClubCode: true),
     new("dbo", "EmailTemplateInstellingen", "public", "emailtemplateinstellingen", HasClubCode: true),
     new("dbo", "Season", "public", "season", HasClubCode: false),
+    new("dbo", "ClubSeason", "public", "clubseason", HasClubCode: true), // #1715: seizoenen per club
     new("dbo", "Teams", "public", "teams", HasClubCode: true, IdentityMapKey: "teams"),
     new("dbo", "TeamAliassen", "public", "teamaliassen", HasClubCode: true,
         ForeignKeyRemaps: new Dictionary<string, string> { ["teamid"] = "teams" }),

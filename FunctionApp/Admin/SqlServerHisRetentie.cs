@@ -34,33 +34,39 @@ internal sealed class SqlServerHisRetentie : IHisRetentieOpslag
     // onder de standaard-collation (CI, breedte-ongevoelig) zijn fullwidth-cijfers gelijk aan ASCII.
     private const string DatumDeel = "LEFT([wedstrijddatum], 10) COLLATE Latin1_General_BIN2";
 
+    // #1715: de retentie geldt per club, met het seizoenseinde van die club. Rijen zonder clubstempel
+    // horen bij de primaire club (de SyncEnabled-club met de laagste ClubCode, zoals de planner-view);
+    // zonder primaire club zijn ze van niemand en blijven ze staan (veilige kant: niets wissen).
+    private const string ClubFilter =
+        "COALESCE([ClubCode], (SELECT TOP 1 [ClubCode] FROM [dbo].[AppSettings] WHERE [SyncEnabled] = 1 ORDER BY [ClubCode])) = @clubcode";
+
     private static readonly string MatchesDatumdelenSql =
         "IF OBJECT_ID(N'[his].[matches]', N'U') IS NOT NULL " +
         $"SELECT DISTINCT {DatumDeel} FROM [his].[matches] " +
-        $"WHERE [wedstrijddatum] IS NOT NULL AND ({NietLeeg(HisPersoonsgegevensRetentie.MatchesKolommen)});";
+        $"WHERE [wedstrijddatum] IS NOT NULL AND {ClubFilter} AND ({NietLeeg(HisPersoonsgegevensRetentie.MatchesKolommen)});";
 
     private static readonly string MatchesSql =
         "IF OBJECT_ID(N'[his].[matches]', N'U') IS NOT NULL " +
         $"UPDATE [his].[matches] SET {SetLijst(HisPersoonsgegevensRetentie.MatchesKolommen)} " +
-        $"WHERE {DatumDeel} IN (SELECT [value] FROM STRING_SPLIT(@datums, N',')) " +
+        $"WHERE {DatumDeel} IN (SELECT [value] FROM STRING_SPLIT(@datums, N',')) AND {ClubFilter} " +
         $"AND ({NietLeeg(HisPersoonsgegevensRetentie.MatchesKolommen)});";
 
     private static readonly string MatchDetailsSql =
         "IF OBJECT_ID(N'[his].[matchdetails]', N'U') IS NOT NULL " +
         $"UPDATE [his].[matchdetails] SET {SetLijst(HisPersoonsgegevensRetentie.MatchDetailsKolommen)} " +
-        "WHERE COALESCE([MatchDate], CAST([MatchDateTime] AS date)) <= @grens " +
+        $"WHERE COALESCE([MatchDate], CAST([MatchDateTime] AS date)) <= @grens AND {ClubFilter} " +
         $"AND ({NietLeeg(HisPersoonsgegevensRetentie.MatchDetailsKolommen)});";
 
-    public async Task<IReadOnlyList<DateOnly>> LeesSeizoenseindenAsync()
+    public async Task<IReadOnlyList<ClubSeizoenEinde>> LeesSeizoenseindenAsync()
     {
         await using var connection = await OpenAsync();
         return await LeesSeizoenseindenAsync(connection);
     }
 
-    public async Task<(int Matches, int MatchDetails)> WisTotEnMetAsync(DateOnly grens)
+    public async Task<(int Matches, int MatchDetails)> WisTotEnMetAsync(string clubCode, DateOnly grens)
     {
         await using var connection = await OpenAsync();
-        return await WisTotEnMetAsync(connection, grens);
+        return await WisTotEnMetAsync(connection, clubCode, grens);
     }
 
     private async Task<SqlConnection> OpenAsync()
@@ -70,45 +76,47 @@ internal sealed class SqlServerHisRetentie : IHisRetentieOpslag
         return connection;
     }
 
-    /// <summary>Alle seizoenseinddatums uit <c>dbo.Season</c>.</summary>
-    internal static async Task<IReadOnlyList<DateOnly>> LeesSeizoenseindenAsync(SqlConnection connection)
+    /// <summary>Alle seizoenseinddatums uit <c>dbo.ClubSeason</c>, per club (#1715).</summary>
+    internal static async Task<IReadOnlyList<ClubSeizoenEinde>> LeesSeizoenseindenAsync(SqlConnection connection)
     {
-        var einden = new List<DateOnly>();
-        await using var command = new SqlCommand("SELECT [DateUntil] FROM [dbo].[Season] WHERE [DateUntil] IS NOT NULL", connection);
+        var einden = new List<ClubSeizoenEinde>();
+        await using var command = new SqlCommand("SELECT [ClubCode], [DateUntil] FROM [dbo].[ClubSeason] WHERE [DateUntil] IS NOT NULL", connection);
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
-            einden.Add(DateOnly.FromDateTime(reader.GetDateTime(0)));
+            einden.Add(new ClubSeizoenEinde(reader.GetString(0), DateOnly.FromDateTime(reader.GetDateTime(1))));
         return einden;
     }
 
-    /// <summary>Maakt de persoonskolommen leeg voor wedstrijden tot en met <paramref name="grens"/>.
-    /// Geeft uitsluitend aantallen terug, nooit inhoud.</summary>
-    internal static async Task<(int Matches, int MatchDetails)> WisTotEnMetAsync(SqlConnection connection, DateOnly grens)
+    /// <summary>Maakt de persoonskolommen van <paramref name="clubCode"/> leeg voor wedstrijden tot en met
+    /// <paramref name="grens"/>. Geeft uitsluitend aantallen terug, nooit inhoud.</summary>
+    internal static async Task<(int Matches, int MatchDetails)> WisTotEnMetAsync(SqlConnection connection, string clubCode, DateOnly grens)
     {
         var matches = await HisPersoonsgegevensRetentie.WisMatchesAsync(
-            () => LeesDatumdelenAsync(connection),
+            () => LeesDatumdelenAsync(connection, clubCode),
             // Een geldig datumdeel bevat geen komma, dus STRING_SPLIT kan het niet opknippen.
-            datums => VoerUitAsync(connection, MatchesSql,
+            datums => VoerUitAsync(connection, MatchesSql, clubCode,
                 new SqlParameter("@datums", System.Data.SqlDbType.NVarChar, -1) { Value = string.Join(',', datums) }),
             grens);
-        var matchDetails = await VoerUitAsync(connection, MatchDetailsSql,
+        var matchDetails = await VoerUitAsync(connection, MatchDetailsSql, clubCode,
             new SqlParameter("@grens", System.Data.SqlDbType.Date) { Value = grens.ToDateTime(TimeOnly.MinValue) });
         return (matches, matchDetails);
     }
 
-    private static async Task<IReadOnlyList<string?>> LeesDatumdelenAsync(SqlConnection connection)
+    private static async Task<IReadOnlyList<string?>> LeesDatumdelenAsync(SqlConnection connection, string clubCode)
     {
         var delen = new List<string?>();
         await using var command = new SqlCommand(MatchesDatumdelenSql, connection) { CommandTimeout = 120 };
+        command.Parameters.AddWithValue("@clubcode", clubCode);
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
             delen.Add(reader.IsDBNull(0) ? null : reader.GetString(0));
         return delen;
     }
 
-    private static async Task<int> VoerUitAsync(SqlConnection connection, string sql, SqlParameter parameter)
+    private static async Task<int> VoerUitAsync(SqlConnection connection, string sql, string clubCode, SqlParameter parameter)
     {
         await using var command = new SqlCommand(sql, connection) { CommandTimeout = 120 };
+        command.Parameters.AddWithValue("@clubcode", clubCode);
         command.Parameters.Add(parameter);
         // Een overgeslagen IF-tak geeft -1; dat is "niets geraakt".
         return Math.Max(0, await command.ExecuteNonQueryAsync());
