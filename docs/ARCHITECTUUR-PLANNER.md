@@ -717,11 +717,11 @@ Automatische verwerking van inkomende emails op de coordinator-mailbox. Leest ve
 |-----------|-------|-------|
 | Email lezen/sturen | **Microsoft Graph API + Application Permissions** | Gratis (onderdeel M365), volledig unattended via client credentials flow |
 | AI/LLM | **OpenAI GPT-4o-mini** (direct, niet Azure OpenAI) | ~EUR 0.03/maand, geen goedkeuringsproces, later migreerbaar naar Azure OpenAI |
-| Trigger | **Timer, interval configureerbaar via `EMAIL_POLL_SCHEDULE`** (sjabloonwaarde `0 0 * * * *` = elk uur) | Zelfde patroon als FetchAndStoreApiData, simpel en betrouwbaar |
+| Trigger | **Timer, interval configureerbaar via `EMAIL_POLL_SCHEDULE`** (sjabloonwaarde `0 */10 * * * *` = elke 10 minuten) | Zelfde patroon als FetchAndStoreApiData, simpel en betrouwbaar |
 | Secrets opslag | **Azure Function Application Settings** | Gratis, encrypted at rest (AES-256), standaard Azure Functions patroon |
 
 **Verworpen alternatieven:**
-- Power Automate: gratis tier te beperkt (600 runs/maand). Bij de sjabloonwaarde van één poll per uur is dat ~720 polls/maand, bij een interval van vijf minuten ~8.640 — in beide gevallen boven de grens zodra het interval strakker wordt gezet
+- Power Automate: gratis tier te beperkt (600 runs/maand). Bij de sjabloonwaarde van één poll per 10 minuten is dat ~4.320 polls/maand, bij een interval van vijf minuten ~8.640 — in beide gevallen ruim boven de grens van 600 runs
 - Graph webhooks: subscription verloopt elke 3 dagen, complexe renewal + cold start problemen
 - Azure OpenAI: langere setup door goedkeuringsproces, zelfde model/prijs
 - Key Vault: niet gratis ($0.03/10K operaties), overkill voor 2 secrets in verenigingsproject
@@ -823,7 +823,7 @@ Audit trail en conversatie-tracking voor alle verwerkte emails.
 | `EmailProcessorEnabled` | Kill-switch (`true`/`false`) |
 | `EmailReviewMode` | `true` = antwoorden naar review-mailbox (Fase 1) |
 | `EmailReviewRecipient` | Review-mailbox adres (Fase 1) |
-| `EMAIL_POLL_SCHEDULE` | CRON-expressie; sjabloonwaarde `0 0 * * * *` (elk uur) |
+| `EMAIL_POLL_SCHEDULE` | CRON-expressie; sjabloonwaarde `0 */10 * * * *` (elke 10 minuten; kostenschatting: `MONITORING.md`, Flex-tegoed) |
 
 ### Kostenanalyse (maandelijks)
 
