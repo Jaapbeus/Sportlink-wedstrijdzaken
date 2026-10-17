@@ -131,7 +131,7 @@ aanroepen:
 
 | Aspect | Automatische AI-reply | Handmatige "doorsturen" (Teambegeleiding) |
 |---|---|---|
-| Trigger | Timer (`EMAIL_POLL_SCHEDULE`), `EmailProcessorFunction.Run` | HTTP POST, `AdminTeambegeleidingFunction.Doorsturen` |
+| Trigger | Timer (`EMAIL_POLL_SCHEDULE`, sjabloonwaarde `0 */10 * * * *` = elke 10 minuten), `EmailProcessorFunction.Run` | HTTP POST, `AdminTeambegeleidingFunction.Doorsturen` |
 | Graph-aanroep | `EmailGraphService.SendReplyAsync` (regel 193-256) of `.StuurTeamContactDoorAsync` (regel 271-311) voor `TeamContactOpvragen` | `EmailGraphService.StuurTeamContactDoorAsync` (regel 271-311) |
 | `EmailGraphService`-constructie | Sinds #827 via DI: `context.InstanceServices.GetService<IEmailGraphService>()` (Program.cs registreert de factory zodra Graph geconfigureerd is) | **Verschilt per tier.** Postgres (productie), sinds #857/#1122: via DI, `context.InstanceServices.GetService<IEmailGraphService>()` in `FunctionApp.Postgres/Admin/AdminTeambegeleidingFunction.cs` (±regel 175), met een 503 als de service niet geregistreerd is — EgressGuard zorgt dat hij buiten productie onvoorwaardelijk ontbreekt, dus geen gefakete "verstuurd"-melding. SQL Server: nog steeds `new EmailGraphService(graphClient, loggerFactory.CreateLogger<...>())` in `FunctionApp/Admin/AdminTeambegeleidingFunction.cs` (±regel 163) |
 | Afzender-mailbox | Vaste `GraphMailbox` (systeem, app-only) | Zelfde vaste `GraphMailbox` |

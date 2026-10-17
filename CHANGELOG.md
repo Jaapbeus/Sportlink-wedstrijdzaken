@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- De sjabloonwaarde van `EMAIL_POLL_SCHEDULE` (e-mailscanner) is in beide `local.settings.template.json`-bestanden en in de documentatie `0 */10 * * * *` (elke 10 minuten, eigenaarsbesluit) in plaats van elk uur; `docs/MONITORING.md` heeft een schatting van het GB-s-verbruik per interval. De productie-instelling staat alleen in Azure en wordt door de eigenaar gezet (zie issue #1768)
+
 ## [3.15.0.0] — 2026-10-14
 
 ### Added

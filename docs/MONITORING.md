@@ -133,6 +133,25 @@ Sinds 2026-10-03 draait de Function App op Flex Consumption. Vier gevolgen voor 
   Controleer daarnaast dat de factuurregel voor Azure Functions € 0,00 is. FLEX-02 (#1065) voorspelde bij
   2048 MB 58–72% van het GB-s-tegoed; een uitkomst boven 50% is een bevinding met voorstel, geen stilzwijgende
   acceptatie. Boven 85%: eigenaar informeren en een planwijziging (kleinere instantie, minder timers) afwegen.
+
+  **Poll-interval van de e-mailscanner (timer `ProcessIncomingEmails`, #1768).** Eigenaarsbesluit: de sjabloonwaarde
+  van `EMAIL_POLL_SCHEDULE` is `0 */10 * * * *` (elke 10 minuten). Onderstaande tabel is een **schatting, geen
+  meting**: 30-daagse maand, circa 2 s per lege poll en 2048 MB (2 GB), dus polls per maand × 2 s × 2 GB. De
+  werkelijke duur per poll (cold start, Graph-aanroep, berichten in de mailbox) kan afwijken; de bandbreedte voor
+  10 minuten is circa 9.000-26.000 GB-s. De bijdrage komt bovenop de gemeten basis van de overige timers.
+
+  | Interval | Polls per maand | Geschat GB-s per maand (bij ~2 s per poll) |
+  |---|---|---|
+  | elk uur | 720 | circa 3.000 |
+  | 15 minuten | 2.880 | circa 12.000 |
+  | **10 minuten (sjabloon)** | 4.320 | **circa 17.000** (9.000-26.000) |
+  | 5 minuten | 8.640 | circa 35.000 |
+  | 1 minuut | 43.200 | circa 173.000 (boven het tegoed van 100.000) |
+
+  De productie-instelling staat alleen in Azure en wordt door de eigenaar gezet; een wijziging herstart de app en
+  verandert geen resource, tier of plan. **Na de wijziging controleert de eigenaar `On Demand Function Execution
+  Units` opnieuw** (zelfde procedure en drempels als hierboven, eerste volle kalendermaand na de wijziging) en
+  vergelijkt de uitkomst met deze schatting.
 - **Timers verifieert u niet alleen via `requests`.** Application Insights is gesampled; een ontbrekende
   request bewijst niet dat een timer niet draaide. Controleer via `traces` of via de regels die de timer in
   de database schrijft (bijvoorbeeld `public.sportlinkcontractcheck`).
