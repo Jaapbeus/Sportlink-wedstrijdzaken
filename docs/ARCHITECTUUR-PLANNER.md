@@ -721,7 +721,7 @@ Automatische verwerking van inkomende emails op de coordinator-mailbox. Leest ve
 | Secrets opslag | **Azure Function Application Settings** | Gratis, encrypted at rest (AES-256), standaard Azure Functions patroon |
 
 **Verworpen alternatieven:**
-- Power Automate: gratis tier te beperkt (600 runs/maand). Bij de sjabloonwaarde van één poll per 10 minuten is dat ~4.320 polls/maand, bij een interval van vijf minuten ~8.640 — in beide gevallen ruim boven de grens van 600 runs
+- Power Automate: gratis tier te beperkt voor deze frequentie. Microsoft Learn noemt voor Free-plannen een frequentiebeperking: een flow die sneller dan elke 15 minuten wordt geactiveerd, kan in de wachtrij terechtkomen ([frequentie en wachtrijgedrag](https://learn.microsoft.com/en-us/power-automate/billing-questions#what-happens-if-i-try-to-run-flows-too-frequently)). Een poll per 10 minuten (~4.320 polls/maand) of per vijf minuten (~8.640) valt daaronder. Het getal 600 uit Microsoft Learn is het maximale aantal flows per gebruiker, geen runlimiet, en wordt hier niet gebruikt
 - Graph webhooks: subscription verloopt elke 3 dagen, complexe renewal + cold start problemen
 - Azure OpenAI: langere setup door goedkeuringsproces, zelfde model/prijs
 - Key Vault: niet gratis ($0.03/10K operaties), overkill voor 2 secrets in verenigingsproject
