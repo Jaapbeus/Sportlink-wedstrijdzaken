@@ -63,7 +63,24 @@
         {
             <div class="alert alert-danger mb-0">@_veldbezettingError</div>
         }
-        else if (!_veldbezettingBezig && _veldbezetting.Count == 0)
+        else
+        {
+            @* #1774: ook bij een lege dag zichtbaar — een kapotte koppeling mag niet als vrije dag lezen *@
+            @if (ToonSportlinkWaarschuwing)
+            {
+                <div class="alert alert-danger py-2 small" role="alert">
+                    <strong>Sportlink niet geraadpleegd.</strong> @_sportlinkStatus!.Toelichting
+                    @if (_sportlinkStatus.KoppelingHerstelNodig && Auth.IsAdmin)
+                    {
+                        <a href="/sportlink-extension-settings" class="alert-link ms-1">Koppeling herstellen</a>
+                    }
+                </div>
+            }
+            else if (SportlinkBronTekst is { } bron)
+            {
+                <div class="text-muted small mb-2">@bron</div>
+            }
+        @if (!_veldbezettingBezig && _veldbezetting.Count == 0)
         {
             <p class="text-muted mb-0">Geen wedstrijden gepland op deze datum.</p>
         }
@@ -171,6 +188,7 @@
                     </tbody>
                 </table>
             </div>
+        }
         }
     </div>
 </div>

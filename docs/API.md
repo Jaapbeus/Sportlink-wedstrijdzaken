@@ -935,8 +935,14 @@ gesynchroniseerde Sportlink-data — **zonder** de scheduling-optimalisatie te d
 
 **Veld, tijd en blokduur uit Sportlink (#1563):** is de Sportlink Web Extension aan en bereikbaar, dan komen `veld`,
 `aanvangsTijd`, `veldafmeting` en `duurMinuten` van een wedstrijd rechtstreeks uit de Sportlink-veldplanner (blokduur =
-speelduur + pauze + in-/uitloop). Wat Sportlink niet kent, of als Sportlink niet bereikbaar is, behoudt de eigen berekening;
-het antwoord kent daardoor nooit een extra foutstatus.
+speelduur + pauze + in-/uitloop). Wat Sportlink niet kent, of als Sportlink niet bereikbaar is, behoudt de eigen berekening.
+
+**Sportlink-status (#1774):** Sportlink is leidend (WZ-ADR-013), dus een terugval is zichtbaar en nooit stil. Het JSON-antwoord is
+een envelope `{ "sportlink": {...}, "wedstrijden": [...] }`. Dit is een breuk met de oude kale array; de Planning-pagina is
+tegelijk aangepast. `sportlink` heeft de velden `geraadpleegd` (bool), `reden` (vaste code), `toelichting` (leesbare tekst),
+`geraadpleegdOpUtc` (UTC-tijdstip of `null` bij terugval) en `koppelingHerstelNodig` (bool: de beheerder moet de koppeling herstellen).
+Bij `geraadpleegd: false` toont de Planning de databasekopie, die kan afwijken van Sportlink; het HTML- en PDF-document zet dan een
+melding onder de titel.
 
 **Sportlink is leidend (#1582):** een Sportlink-blok zonder eigen regel (bijvoorbeeld een wedstrijd van een andere club op
 hetzelfde park) komt als eigen regel in het antwoord (`wedstrijdCode` is dan `null`, `bron` is `Sportlink`). Een eigen regel die
@@ -957,23 +963,36 @@ ingelogde gebruiker zichtbaar zijn.
 ### Antwoord — JSON (200)
 
 ```json
-[
-  {
-    "wedstrijdCode": 20672784,
-    "wedstrijd": "[ClubCode] 6 - Tegenstander 8",
-    "teamNaam": "[ClubCode] 6",
-    "uitteam": "Tegenstander 8",
-    "aanvangsTijd": "13:00",
-    "veld": "veld 3",
-    "competitiesoort": "Oefenwedstrijd",
-    "leeftijdsCategorie": null,
-    "duurMinuten": 90,
-    "veldafmeting": 1.00
-  }
-]
+{
+  "sportlink": {
+    "geraadpleegd": true,
+    "reden": "Ok",
+    "toelichting": "Veld, aanvangstijd en speelduur komen uit de Sportlink-veldplanner.",
+    "geraadpleegdOpUtc": "2026-10-22T08:15:00Z",
+    "koppelingHerstelNodig": false
+  },
+  "wedstrijden": [
+    {
+      "wedstrijdCode": 20672784,
+      "wedstrijd": "[ClubCode] 6 - Tegenstander 8",
+      "teamNaam": "[ClubCode] 6",
+      "uitteam": "Tegenstander 8",
+      "aanvangsTijd": "13:00",
+      "veld": "veld 3",
+      "competitiesoort": "Oefenwedstrijd",
+      "leeftijdsCategorie": null,
+      "duurMinuten": 90,
+      "veldafmeting": 1.00
+    }
+  ]
+}
 ```
 
-Resultaat is gesorteerd op `aanvangsTijd`. Wedstrijden zonder aanvangstijd staan achteraan.
+`wedstrijden` is gesorteerd op `aanvangsTijd`; wedstrijden zonder aanvangstijd staan achteraan.
+
+Reden-codes (`sportlink.reden`): `Ok` (geraadpleegd), en bij terugval `Democlub`, `GeenAccommodatie`, `ExtensieUit`,
+`EgressGeblokkeerd`, `ClientNietGeconfigureerd`, `KoppelingVerlopen`, `RolNietGekoppeld`, `AccommodatieOnbekend`, `NetwerkFout`,
+`SportlinkFout` en `Onverwacht`. `koppelingHerstelNodig` is `true` bij `KoppelingVerlopen` en `RolNietGekoppeld`.
 
 ---
 

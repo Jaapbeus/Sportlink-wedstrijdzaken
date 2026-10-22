@@ -17,8 +17,8 @@ public sealed class PlanningApiClient
     public async Task<ApiResult<AutoPlanToepassenResponseDto>> AutoPlanToepassenAsync(AutoPlanToepassenRequestDto req)
         => await _t.PostAsync<AutoPlanToepassenResponseDto>("api/planner/auto-plan/toepassen", req);
 
-    public async Task<ApiResult<List<VeldbezettingItemDto>>> GetVeldbezettingAsync(string datum)
-        => await _t.GetAsync<List<VeldbezettingItemDto>>($"api/planner/veldbezetting?datum={Uri.EscapeDataString(datum)}");
+    public async Task<ApiResult<VeldbezettingAntwoordDto>> GetVeldbezettingAsync(string datum)
+        => await _t.GetAsync<VeldbezettingAntwoordDto>($"api/planner/veldbezetting?datum={Uri.EscapeDataString(datum)}");
 
     public Task<string> GetVeldbezettingHtmlAsync(string datum)
         => _t.GetTekstAsync($"api/planner/veldbezetting?datum={Uri.EscapeDataString(datum)}&format=html");

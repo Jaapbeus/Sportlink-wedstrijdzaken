@@ -364,12 +364,25 @@ public static class SportlinkEndpointCore
     /// <summary>
     /// Tekst van de contract-check-noodmail. <paramref name="tabelnaam"/> verschilt per tier
     /// (<c>public.sportlinkcontractcheck</c> / <c>dbo.SportlinkContractCheck</c>) — de rest van de
-    /// melding is identiek en hoort dus niet twee keer te bestaan.
+    /// melding is identiek en hoort dus niet twee keer te bestaan. #1774: bij een verlopen koppeling
+    /// (ongeldig refresh-token) zegt de mail dat ook, en wat de gevolgen en het herstel zijn.
     /// </summary>
     public static string BouwContractCheckNoodmailBody(string? foutmelding, string tabelnaam)
-        => "Sportlink contract-check gaf een afwijking — de vorm van de Match-respons is veranderd.\n\n"
-         + $"Foutmelding: {foutmelding}\n\n"
-         + "Dit is een vroege waarschuwing dat Sportlink de Club-website (mogelijk) heeft bijgewerkt.\n"
-         + $"Controleer docs/SPORTLINK-WEB-EXTENSION.md en de laatste rij in {tabelnaam}.\n"
-         + "Deze melding wordt niet binnen 24 uur herhaald.";
+        => IsVerlopenKoppeling(foutmelding)
+            ? "De Sportlink-koppeling is verlopen: het opgeslagen refresh-token is niet meer geldig.\n\n"
+              + $"Foutmelding: {foutmelding}\n\n"
+              + "Zolang de koppeling niet is hersteld toont de Planning de databasekopie; die kan afwijken van Sportlink.\n"
+              + "Herstel: de beheerder slaat de automatische login opnieuw op via Instellingen → Sportlink Web Extension.\n"
+              + $"De laatste rij staat in {tabelnaam}.\n"
+              + "Deze melding wordt niet binnen 24 uur herhaald."
+            : "Sportlink contract-check gaf een afwijking — de vorm van de Match-respons is veranderd.\n\n"
+              + $"Foutmelding: {foutmelding}\n\n"
+              + "Dit is een vroege waarschuwing dat Sportlink de Club-website (mogelijk) heeft bijgewerkt.\n"
+              + $"Controleer docs/SPORTLINK-WEB-EXTENSION.md en de laatste rij in {tabelnaam}.\n"
+              + "Deze melding wordt niet binnen 24 uur herhaald.";
+
+    private static bool IsVerlopenKoppeling(string? foutmelding)
+        => foutmelding is not null
+           && (foutmelding.Contains("Refresh token", StringComparison.OrdinalIgnoreCase)
+               || foutmelding.Contains("HerkoppelingVereist", StringComparison.OrdinalIgnoreCase));
 }

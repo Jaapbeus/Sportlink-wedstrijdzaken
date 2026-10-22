@@ -70,7 +70,7 @@ public static class PlannerFunction
                     async () => await VeldbezettingSportlinkOverlay.PasToeAsync(
                         await AutoPlanService.VeldbezettingAsync(PostgresDatabaseConfig.ConnectionString, datum, clubCode),
                         context, datum, clubCode, log),
-                    (deel, items) => deel.VanVeldbezetting(items, clubCode), items => new OkObjectResult(items));
+                    (deel, antwoord) => deel.VanVeldbezetting(antwoord.Wedstrijden, clubCode, antwoord.Sportlink), antwoord => new OkObjectResult(antwoord));
             });
     }
 

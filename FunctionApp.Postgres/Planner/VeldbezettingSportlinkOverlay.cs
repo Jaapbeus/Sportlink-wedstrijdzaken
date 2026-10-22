@@ -16,9 +16,9 @@ namespace FunctionApp.Postgres.Planner;
 /// </summary>
 internal static class VeldbezettingSportlinkOverlay
 {
-    internal static async Task<List<VeldbezettingItem>> PasToeAsync(
+    internal static Task<VeldbezettingAntwoord<VeldbezettingItem>> PasToeAsync(
         List<VeldbezettingItem> items, FunctionContext context, DateOnly datum, string clubCode, ILogger log)
-        => (await VeldplannerOverlayCore.SamenvoegAsync<VeldbezettingItem>(
+        => VeldplannerOverlayCore.SamenvoegAsync<VeldbezettingItem>(
                 items, clubCode, context, PostgresAppSettings.GetSetting, EgressGuard.ExternalIntegrationsAllowed, datum, log,
                 sleutel: i => (i.Wedstrijd, i.AanvangsTijd),
                 overschrijf: (w, b) => w with
@@ -27,7 +27,7 @@ internal static class VeldbezettingSportlinkOverlay
                 },
                 nieuw: NieuweRegel,
                 nietInSportlink: w => w with { NietInSportlink = true },
-                sorteerTijd: w => w.AanvangsTijd)).ToList();
+                sorteerTijd: w => w.AanvangsTijd);
 
     private static VeldbezettingItem NieuweRegel(SportlinkVeldplannerBlok b)
     {

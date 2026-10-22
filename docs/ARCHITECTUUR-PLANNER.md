@@ -977,7 +977,13 @@ Niet alle verzoeken gaan over veldbeschikbaarheid. De volgende typen verzoeken v
 > een gekoppelde regel neemt veld, tijd, afmeting en duur over (`bron` = `Sportlink`); een Sportlink-blok zonder eigen regel
 > wordt zelf een regel (`wedstrijdCode` leeg, `bron` = `Sportlink`; bijvoorbeeld een wedstrijd van een andere club op hetzelfde
 > park); een eigen regel die Sportlink niet kent blijft staan met `nietInSportlink` = `true`. Sportlink onbereikbaar of
-> democlub: de eigen regels ongewijzigd. Elke dag wordt ook gevraagd als onze database geen enkele wedstrijd heeft. De kolom
+> democlub: de eigen regels ongewijzigd, **maar sinds #1774 nooit stil**: het antwoord is een envelop
+> `{ "sportlink": { "geraadpleegd", "reden", "toelichting", "geraadpleegdOpUtc" }, "wedstrijden": [...] }`
+> (`SportlinkVeldplannerStatus`, `Planner.Shared/Planning/`), de pagina toont bij een terugval een rode waarschuwing met de
+> reden (bij een verlopen koppeling met een verwijzing naar de beheerpagina), de HTML/PDF-deelweergave dezelfde
+> bronmelding, en het log dezelfde redencode. Een mislukte locatielijst (bijvoorbeeld `HerkoppelingVereist`) is daarbij
+> géén "accommodatie onbekend" meer. Per aanroep logt de Planning de aantallen gekoppeld / niet in Sportlink / alleen in
+> Sportlink, zodat koppelingsproblemen op teamlabel meetbaar zijn. Elke dag wordt ook gevraagd als onze database geen enkele wedstrijd heeft. De kolom
 > Tegenstander is de andere kant van het label (`tegenstander`), niet meer de uitploeg. De tekst hieronder beschrijft de koppeling
 > zelf, die ongewijzigd is.
 
@@ -999,9 +1005,9 @@ precies die som is `DuurMinuten`, en de starttijd schuift met het inloopdeel mee
   niet uniek. Ronde 1 vergelijkt het genormaliseerde label "Thuis - Uit" (alleen letters en cijfers); ronde 2 laat een
   ploegnaam de andere bevatten ("v.v. Uit 35+2" tegenover "Uit 35+2"). Bij meerdere blokken met hetzelfde label
   wint de dichtstbijzijnde starttijd, en elk blok koppelt aan hooguit één regel.
-- **Altijd een terugval, nooit een fout.** Extensie uit, EgressGuard dicht, Sportlink onbereikbaar, onbekende accommodatie of
-  onbekende wedstrijd: de regel behoudt `VeldbezettingDuur.Bepaal` (Sportlinks speelduur + 15, dan Speeltijden). De democlub
-  `ALLSTARS` vraagt nooit naar Sportlink.
+- **Altijd een terugval, nooit een fout, nooit stil (#1774).** Extensie uit, EgressGuard dicht, koppeling verlopen, Sportlink
+  onbereikbaar, onbekende accommodatie of onbekende wedstrijd: de regel behoudt `VeldbezettingDuur.Bepaal` (Sportlinks
+  speelduur + 15, dan Speeltijden) en het antwoord draagt de reden. De democlub `ALLSTARS` vraagt nooit naar Sportlink.
 - **Facility-ID** komt uit de Sportlink-locatielijst op naam van de instelling `accommodatie` (6 uur onthouden); de blokken van
   een dag worden 60 seconden onthouden. Het FacilityId staat nergens in code of configuratie.
 - **Bekende grens:** Sportlinks veldplanner toont ook wedstrijden tussen andere clubs op uw accommodatie. Die staan niet in onze
