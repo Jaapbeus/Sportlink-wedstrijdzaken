@@ -19,9 +19,9 @@ namespace SportlinkFunction.Planner
     /// </summary>
     internal static class VeldbezettingSportlinkOverlay
     {
-        internal static async Task<List<VeldbezettingItem>> PasToeAsync(
+        internal static Task<VeldbezettingAntwoord<VeldbezettingItem>> PasToeAsync(
             List<VeldbezettingItem> items, FunctionContext context, DateOnly datum, string clubCode, ILogger log)
-            => (await VeldplannerOverlayCore.SamenvoegAsync<VeldbezettingItem>(
+            => VeldplannerOverlayCore.SamenvoegAsync<VeldbezettingItem>(
                     items, clubCode, context, SystemUtilities.AppSettings.GetSetting, EgressGuard.ExternalIntegrationsAllowed, datum, log,
                     sleutel: i => (i.Wedstrijd, (string?)i.AanvangsTijd),
                     overschrijf: (w, b) =>
@@ -35,9 +35,9 @@ namespace SportlinkFunction.Planner
                     },
                     nieuw: NieuweRegel,
                     nietInSportlink: w => { w.NietInSportlink = true; return w; },
-                    sorteerTijd: w => w.AanvangsTijd)).ToList();
+                    sorteerTijd: w => w.AanvangsTijd);
 
-        private static VeldbezettingItem NieuweRegel(SportlinkVeldplannerBlok b)
+            private static VeldbezettingItem NieuweRegel(SportlinkVeldplannerBlok b)
         {
             var n = SportlinkVeldbezettingSamenvoeging.VanBlok(b);
             return new VeldbezettingItem

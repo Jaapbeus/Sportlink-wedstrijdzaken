@@ -26,6 +26,7 @@ namespace Planner.Shared.Deel
         private const string RasterKleur = "#D0D7DE";
         private const string ZebraKleur = "#F6F8FA";
         private const string GedimdKleur = "#57606A";
+        private const string WaarschuwingKleur = "#9A6700";
 
         // Het lettertype dat QuestPDF zelf meelevert (QuestPDF.Fonts.Lato.br in de publish-output).
         // Als string, niet via de sinds 2026.9 verouderde Fonts-klasse.
@@ -109,6 +110,8 @@ namespace Planner.Shared.Deel
                 kolom.Item().Text(model.Titel).FontSize(16).Bold().FontColor(KopKleur);
                 kolom.Item().Text($"Club: {model.ClubCode} · Speeldag: {PlannerShareModelBuilder.DatumTekst(model.Peildatum)}")
                     .FontSize(9).FontColor(GedimdKleur);
+                if (!string.IsNullOrWhiteSpace(model.Bronmelding))
+                    kolom.Item().PaddingTop(2).Text(model.Bronmelding).FontSize(9).Bold().FontColor(WaarschuwingKleur);
             });
         }
 

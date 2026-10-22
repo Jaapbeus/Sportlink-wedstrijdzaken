@@ -1,3 +1,15 @@
+# HANDOFF — #1774 Planning: stille terugval op de databasekopie (stand 2026-10-22)
+
+Branch `feature/#1774-planning-sportlink-status` (worktree `.claude/worktrees/1774-fable`, versie 3.15.0.1), implementer Claude Code, reviewer Codex.
+
+**Gedaan:** `GET /api/planner/veldbezetting` geeft een envelop met `SportlinkVeldplannerStatus`; Planning-pagina en HTML/PDF tonen de reden van een terugval; log noemt dezelfde reden (een mislukte locatielijst is geen "accommodatie onbekend" meer); een mislukte periodieke herlogin gaat door met het refresh-token; de contract-check-noodmail benoemt een verlopen koppeling; per aanroep worden de aantallen gekoppeld / niet in Sportlink / alleen in Sportlink gelogd. Builds, alle database-onafhankelijke testsuites en de CI-guards groen; CSP-publish-check groen.
+
+**Niet uitgevoerd:** browser-rendercheck en `Test-App.ps1` met live services (gedeelde debugomgeving niet gereserveerd); live aanroep van het nieuwe JSON-contract. Codex-review beoordeelt dit; na de release de Planning naast de Sportlink-veldplanner leggen.
+
+**Open voor de eigenaar (survey buiten de repo):** bewaarde kopie van de Sportlink-veldplanner (nieuwe tabel, migratie) zodat de terugval de laatste veldplanner toont in plaats van de dagelijkse `/programma`-kopie; alarmering bij `HerkoppelingVereist` buiten de dagelijkse noodmail; een 9-uurs herlogin die faalt na drie pogingen blijft stil tot de volgende noodmail.
+
+---
+
 # HANDOFF — Sprint A #1607 en nazorg (stand 2026-10-12 ~15:00)
 
 Geverifieerd met `gh pr list`/`gh pr view`/`gh issue view` en `git log origin/develop`; niets hiervan is gereleased (`develop` op c2d60aba, versie 3.13.4.9).

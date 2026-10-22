@@ -560,7 +560,9 @@ mislukken. Bewust géén nieuw alarmeringsmechanisme: bij een afwijking hergebru
 met een eigen throttle-sleutel **`sportlink-contract-noodmail`** en een interval van 24 uur — dus
 geen betaalde Log Analytics/App Insights-alert-regel en geen nieuw verzendpad. Het resultaat van
 elke run staat ook in `public.sportlinkcontractcheck` en op de statussectie van Instellingen (zie
-[docs/SPORTLINK-WEB-EXTENSION.md](SPORTLINK-WEB-EXTENSION.md) §4.2/§3.1b).
+[docs/SPORTLINK-WEB-EXTENSION.md](SPORTLINK-WEB-EXTENSION.md) §4.2/§3.1b). De mail onderscheidt een
+verlopen Sportlink-koppeling (ongeldig refresh-token: Planning toont de databasekopie, herstel via
+Instellingen) van een contractafwijking (#1774).
 
 ### Activity Log Alert aanmaken (gratis)
 

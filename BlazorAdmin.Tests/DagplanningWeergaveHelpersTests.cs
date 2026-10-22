@@ -138,4 +138,21 @@ public class DagplanningWeergaveHelpersTests
         DagplanningWeergaveHelpers.GanttVoorkeurBalkKleur(afwijking, voorkeurTijd: "10:00", kleineAfwijkingDrempelMinuten: drempel)
             .Should().Be(verwacht);
     }
+
+    // #1774: de rode Sportlink-waarschuwing verschijnt niet bij ontbrekende status, een geslaagde raadpleging of de demo-club.
+    [Theory]
+    [InlineData(false, "KoppelingVerlopen", true)]
+    [InlineData(false, "NetwerkFout", true)]
+    [InlineData(false, "Democlub", false)]
+    [InlineData(true, "Ok", false)]
+    public void ToonSportlinkWaarschuwing_AlleenBijNietGeraadpleegdEnGeenDemoclub(bool geraadpleegd, string reden, bool verwacht)
+    {
+        var status = new BlazorAdmin.Models.SportlinkVeldplannerStatusDto { Geraadpleegd = geraadpleegd, Reden = reden };
+
+        DagplanningWeergaveHelpers.ToonSportlinkWaarschuwing(status).Should().Be(verwacht);
+    }
+
+    [Fact]
+    public void ToonSportlinkWaarschuwing_ZonderStatus_IsVerborgen()
+        => DagplanningWeergaveHelpers.ToonSportlinkWaarschuwing(null).Should().BeFalse();
 }

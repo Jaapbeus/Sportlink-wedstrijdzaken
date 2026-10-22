@@ -1007,6 +1007,10 @@ de Planning toont (**WZ-ADR-013**, #1582):
   Sportlink en onze gegevens is zichtbaar, nooit stil.
 - De synchronisatie overschrijft altijd. Een nieuwe functie die een wedstrijdtijd, een speelduur of een veld toont of
   gebruikt, leest die uit Sportlink en rekent hem alleen zelf uit als terugval wanneer Sportlink niet bereikbaar is.
+- Een terugval is nooit stil (#1774). Kan de veldplanner niet worden geraadpleegd (koppeling verlopen, time-out,
+  extensie uit, accommodatie onbekend), dan zegt het antwoord van `GET /api/planner/veldbezetting` dat met een vaste
+  reden (`SportlinkVeldplannerStatus`), toont de Planning een waarschuwing met die reden en noemt het log dezelfde reden.
+  Een Planning die de databasekopie als Sportlink presenteert is de ergste uitkomst.
 
 De samenvoeglogica staat één keer in `Planner.Shared/Planning/SportlinkVeldbezettingSamenvoeging.cs`; beide
 databasetiers geven alleen het regelmodel mee. Uitwerking: `docs/ARCHITECTUUR-PLANNER.md`, "Planning leest veld, tijd en

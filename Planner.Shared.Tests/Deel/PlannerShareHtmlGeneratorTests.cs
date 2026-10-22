@@ -42,6 +42,19 @@ public class PlannerShareHtmlGeneratorTests
     }
 
     [Fact]
+    public void Genereer_MetBronmelding_ToontDezeGeencodeerdOnderDeTitel()
+    {
+        var html = PlannerShareHtmlGenerator.Genereer(
+            Model(new PlannerShareWedstrijd("09:30", "Thuis 1", "Uit 1", null, null, null)) with { Bronmelding = "Let op: <b>Sportlink</b> niet geraadpleegd." });
+
+        html.Should().Contain("class=\"bronmelding\"").And.Contain("Let op: &lt;b&gt;Sportlink&lt;/b&gt; niet geraadpleegd.").And.NotContain("<b>");
+    }
+
+    [Fact]
+    public void Genereer_ZonderBronmelding_ToontGeenBronmeldingRegel()
+        => PlannerShareHtmlGenerator.Genereer(Model()).Should().NotContain("bronmelding");
+
+    [Fact]
     public void Genereer_ZonderWedstrijden_GeeftMelding()
     {
         var html = PlannerShareHtmlGenerator.Genereer(Model());

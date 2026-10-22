@@ -32,6 +32,15 @@ public class PlannerPdfGeneratorTests
     }
 
     [Fact]
+    public void Genereer_MetBronmelding_ToontDeMeldingInDePdf()
+    {
+        var model = Model(new PlannerShareWedstrijd("09:30", "Thuis 1", "Uit 1", null, null, null))
+            with { Bronmelding = "Let op: Sportlink niet geraadpleegd." };
+
+        Lees(Genereer(model)).Tekst.Should().Contain("Let op: Sportlink niet geraadpleegd.");
+    }
+
+    [Fact]
     public void Genereer_GeeftEenGeldigePdfMetTitelClubEnTabelinhoud()
     {
         var pdf = Genereer(Model(

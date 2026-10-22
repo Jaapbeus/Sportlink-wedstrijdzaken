@@ -453,7 +453,7 @@ namespace SportlinkFunction.Planner
                         () => PdfExportInstelling.IsIngeschakeldAsync(clubCode),
                         async () => await VeldbezettingSportlinkOverlay.PasToeAsync(
                             await PlannerService.VeldbezettingAsync(datum, clubCode), context, datum, clubCode, log),
-                        (deel, items) => deel.VanVeldbezetting(items, clubCode), items => new OkObjectResult(items));
+                        (deel, antwoord) => deel.VanVeldbezetting(antwoord.Wedstrijden, clubCode, antwoord.Sportlink), antwoord => new OkObjectResult(antwoord));
                 });
         }
 
