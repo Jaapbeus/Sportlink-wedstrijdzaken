@@ -938,8 +938,9 @@ gesynchroniseerde Sportlink-data — **zonder** de scheduling-optimalisatie te d
 speelduur + pauze + in-/uitloop). Wat Sportlink niet kent, of als Sportlink niet bereikbaar is, behoudt de eigen berekening.
 
 **Sportlink-status (#1774):** Sportlink is leidend (WZ-ADR-013), dus een terugval is zichtbaar en nooit stil. Het JSON-antwoord is
-een envelope `{ "sportlink": {...}, "wedstrijden": [...] }`. Dit is een breuk met de oude kale array; de Planning-pagina is
-tegelijk aangepast. `sportlink` heeft de velden `geraadpleegd` (bool), `reden` (vaste code), `toelichting` (leesbare tekst),
+een envelope `{ "sportlink": {...}, "wedstrijden": [...] }`, maar **alleen op aanvraag met `?status=true`**. Zonder die parameter blijft
+het antwoord de kale array van wedstrijdregels (ongewijzigd contract, zodat een reeds geopende of oudere client blijft werken); de
+Planning-pagina vraagt de envelope expliciet aan. `sportlink` heeft de velden `geraadpleegd` (bool), `reden` (vaste code), `toelichting` (leesbare tekst),
 `geraadpleegdOpUtc` (UTC-tijdstip of `null` bij terugval) en `koppelingHerstelNodig` (bool: de beheerder moet de koppeling herstellen).
 Bij `geraadpleegd: false` toont de Planning de databasekopie, die kan afwijken van Sportlink; het HTML- en PDF-document zet dan een
 melding onder de titel.
@@ -959,8 +960,11 @@ ingelogde gebruiker zichtbaar zijn.
 |-----------|------|-----------|-------------|
 | `datum` | `string` | **Ja** | Datum in `yyyy-MM-dd` formaat |
 | `format` | `string` | Nee | `json` (standaard), `html` (zelfstandige pagina, `text/html`) of `pdf` (`application/pdf`, bestandsnaam `veldbezetting-<datum>.pdf`). Andere waarde: 400 (#1364) |
+| `status` | `boolean` | Nee | `true` = JSON-antwoord als envelope met de Sportlink-status (#1774); weggelaten of een andere waarde = kale array (oud contract). Geen effect op `html`/`pdf` |
 
 ### Antwoord — JSON (200)
+
+Zonder `status=true` is het antwoord de kale array van wedstrijdregels (de objecten onder `wedstrijden` hieronder). Met `status=true`:
 
 ```json
 {

@@ -65,4 +65,15 @@ public sealed record SportlinkVeldplannerStatus(bool Geraadpleegd, string Reden,
 }
 
 /// <summary>Het antwoord van <c>GET /api/planner/veldbezetting</c> (#1774): de regels én of Sportlink is geraadpleegd.</summary>
-public sealed record VeldbezettingAntwoord<T>(SportlinkVeldplannerStatus Sportlink, IReadOnlyList<T> Wedstrijden);
+public sealed record VeldbezettingAntwoord<T>(SportlinkVeldplannerStatus Sportlink, IReadOnlyList<T> Wedstrijden)
+{
+    /// <summary>
+    /// De JSON-vorm voor <c>GET /api/planner/veldbezetting</c>. Zonder opt-in (<c>?status=true</c>) blijft de bestaande kale array
+    /// bestaan, zodat een reeds geopende of oudere client blijft werken; met opt-in komt de envelope <c>{ sportlink, wedstrijden }</c>.
+    /// </summary>
+    public object JsonVorm(bool metStatus) => metStatus ? this : Wedstrijden;
+
+    /// <summary>Of de query-parameter <c>status</c> de statusenvelope aanvraagt (alleen de waarde <c>true</c>, hoofdletterongevoelig).</summary>
+    public static bool StatusAangevraagd(string? statusParameter)
+        => string.Equals(statusParameter?.Trim(), "true", StringComparison.OrdinalIgnoreCase);
+}

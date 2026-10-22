@@ -977,7 +977,7 @@ Niet alle verzoeken gaan over veldbeschikbaarheid. De volgende typen verzoeken v
 > een gekoppelde regel neemt veld, tijd, afmeting en duur over (`bron` = `Sportlink`); een Sportlink-blok zonder eigen regel
 > wordt zelf een regel (`wedstrijdCode` leeg, `bron` = `Sportlink`; bijvoorbeeld een wedstrijd van een andere club op hetzelfde
 > park); een eigen regel die Sportlink niet kent blijft staan met `nietInSportlink` = `true`. Sportlink onbereikbaar of
-> democlub: de eigen regels ongewijzigd, **maar sinds #1774 nooit stil**: het antwoord is een envelop
+> democlub: de eigen regels ongewijzigd, **maar sinds #1774 nooit stil**: het antwoord is op aanvraag (`?status=true`; zonder die parameter blijft de route de kale array leveren voor oudere clients) een envelop
 > `{ "sportlink": { "geraadpleegd", "reden", "toelichting", "geraadpleegdOpUtc" }, "wedstrijden": [...] }`
 > (`SportlinkVeldplannerStatus`, `Planner.Shared/Planning/`), de pagina toont bij een terugval een rode waarschuwing met de
 > reden (bij een verlopen koppeling met een verwijzing naar de beheerpagina), de HTML/PDF-deelweergave dezelfde
