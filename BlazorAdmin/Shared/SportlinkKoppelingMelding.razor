@@ -1,0 +1,11 @@
+@* #1773: vooraf-melding op werkpagina's als de Sportlink-koppeling van rol Wedstrijdzaken verbroken
+   is (rood) of automatisch inloggen tijdelijk faalt (geel). Niets tonen zolang alles in orde is of de
+   status nog laadt. Logica in SportlinkKoppelingMelding.razor.cs. *@
+
+@if (_status is { Melding.Length: > 0 })
+{
+    <div class="alert @(_status.IsVerbroken ? "alert-danger" : "alert-warning") py-2 @Klasse" role="alert">
+        <strong>@(_status.IsVerbroken ? "Sportlink-koppeling verbroken." : "Let op.")</strong>
+        @_status.Melding
+    </div>
+}

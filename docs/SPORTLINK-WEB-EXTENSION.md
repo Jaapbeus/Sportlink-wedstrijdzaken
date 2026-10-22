@@ -119,6 +119,18 @@ uitkomst van de laatste dagelijkse contract-check (§4.2). Dit komt allemaal uit
 — er gaat geen Sportlink-aanroep uit tenzij je zelf op "Nu live controleren" klikt, wat één echte
 tokenverversing en één leesaanroep doet (nooit automatisch, nooit door een agent — zie §4.4).
 
+**Vooraf-melding op de werkpagina's (#1773).** Het statusscherm is admin-only en niet de plek waar
+het werk gebeurt. Daarom tonen "Wedstrijd aanmaken", "Wijzigingsverzoeken", Planning en Veld
+optimalisatie (de laatste twee alleen met de extensie aan) bij het laden het gedeelde component
+`SportlinkKoppelingMelding`: rood (`Verbroken`) als de rol niet gekoppeld is, automatisch inloggen
+geblokkeerd is (drie mislukkingen of retrydatum jaar 9999, zie `SPORTLINK-AUTOLOGIN.md`) of de
+sessie verlopen is zonder herstelpad; geel (`Waarschuwing`) als automatisch inloggen tijdelijk
+mislukte en een nieuwe poging gepland staat; niets bij `Ok`. De bepaling staat in
+`Planner.Shared/Integrations/SportlinkClub/SportlinkKoppelingStatusCore.cs`, het endpoint
+`GET /api/sportlink/koppeling-status` (beide tiers, Wedstrijdzaken-poort, orkestratie in
+`Planner.Endpoints`) leest alleen de eigen database en geeft nooit een tokenwaarde terug. Een
+mislukte statusaanroep toont bewust niets: de pagina mag niet rood kleuren door een statusfout.
+
 ### 3.2 Waarom een apart account per rol, niet het account van de wedstrijdsecretaris zelf
 Als alle rollen via één, breed Sportlink-account zouden lopen, zou een toekomstige, beperktere
 webapp-rol (bijvoorbeeld een sectiehoofd dat alleen ledengegevens mag zien) via de extension alsnog

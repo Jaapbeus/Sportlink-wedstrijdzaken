@@ -8,6 +8,12 @@
 
 <h1>Planning</h1>
 
+@* #1773: vooraf waarschuwen als de Sportlink-koppeling verbroken is (alleen zinvol met de extensie aan). *@
+@if (_sportlinkExtensionEnabled)
+{
+    <SportlinkKoppelingMelding />
+}
+
 @* ── Invoerbalk ── *@
 <div class="card mb-3">
     <div class="card-body">
@@ -37,7 +43,7 @@
             <button type="button" class="btn-close" aria-label="Sluiten" @onclick="ToggleAanmaken"></button>
         </div>
         <div class="card-body">
-            <WedstrijdAanmakenFormulier BeginDatum="_datumDt" ToonIntro="false"
+            <WedstrijdAanmakenFormulier BeginDatum="_datumDt" ToonIntro="false" ToonKoppelingStatus="false"
                                         OnAangemaakt="LoadVeldbezettingAsync" @key="DatumStr" />
         </div>
     </div>
