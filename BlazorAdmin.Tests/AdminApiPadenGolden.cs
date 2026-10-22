@@ -33,6 +33,7 @@ internal static class AdminApiPadenGolden
         """DeleteOefenwedstrijdAsync | DELETE api/sportlink/club-match/m%201 | """,
         """GetOefenwedstrijdFormulierAsync | GET api/sportlink/club-match/formulier | """,
         """GetSportlinkDryRunStatusAsync | GET api/sportlink/club-match/dryrun-status | """,
+        """GetSportlinkKoppelingStatusAsync | GET api/sportlink/koppeling-status | """,
         """GetSyncStatusAsync | GET api/beheer/sync/status | """,
         """GetSyncStatusAsync(job) | GET api/beheer/sync/status?jobId=11111111-2222-3333-4444-555555555555 | """,
         """TriggerSyncAsync | POST api/beheer/sync/trigger | {}""",

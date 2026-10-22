@@ -1,5 +1,11 @@
 @* Gedeeld formulier "Wedstrijd aanmaken" (#1468): gebruikt door de pagina /wedstrijd-aanmaken en door Planning. Logica staat in de code-behind (#1122). *@
 
+@if (ToonKoppelingStatus)
+{
+    @* #1773: vooraf waarschuwen als de koppeling verbroken is, in plaats van pas na de bevestigstap. *@
+    <SportlinkKoppelingMelding />
+}
+
 @if (_dryRun.HasValue)
 {
     <div class="alert @(_dryRun.Value ? "alert-info" : "alert-warning") py-2">
