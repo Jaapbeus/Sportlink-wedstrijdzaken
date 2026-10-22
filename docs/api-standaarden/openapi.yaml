@@ -3405,7 +3405,7 @@ components:
     VeldbezettingAntwoord:
       type: object
       description: |
-        Antwoord van `GET /planner/veldbezetting` (#1774): de regels én of de Sportlink-veldplanner is geraadpleegd.
+        Antwoord van `GET /planner/veldbezetting?status=true` (#1774, opt-in; zonder `status` is het antwoord de kale array): de regels én of de Sportlink-veldplanner is geraadpleegd.
       required: [sportlink, wedstrijden]
       properties:
         sportlink:
@@ -8601,9 +8601,11 @@ paths:
         Sportlink-veldplanner als de Sportlink Web Extension aan en bereikbaar is; anders (of voor een wedstrijd
         die Sportlink niet kent) blijft de eigen berekening.
 
-        Sinds #1774 is het JSON-antwoord een envelope `{ sportlink, wedstrijden }`: `sportlink` zegt of de
-        veldplanner is geraadpleegd en zo niet waarom (WZ-ADR-013: een afwijking is zichtbaar, nooit stil). De regels
-        staan onder `wedstrijden`; het HTML- en PDF-document toont bij terugval een melding onder de titel.
+        Het JSON-antwoord blijft standaard de kale array van wedstrijdregels (ongewijzigd contract, ook voor een
+        reeds geopende of oudere client). Met `?status=true` (opt-in, #1774) is het antwoord een envelope
+        `{ sportlink, wedstrijden }`: `sportlink` zegt of de veldplanner is geraadpleegd en zo niet waarom
+        (WZ-ADR-013: een afwijking is zichtbaar, nooit stil). Het HTML- en PDF-document toont bij terugval altijd
+        een melding onder de titel; `status` heeft daar geen invloed op.
       security:
         - easyAuth: []
       parameters:
@@ -8623,13 +8625,24 @@ paths:
             type: string
             enum: [json, html, pdf]
             default: json
+        - name: status
+          in: query
+          required: false
+          description: "true = het JSON-antwoord is de envelope `{ sportlink, wedstrijden }` met de Sportlink-status (#1774); weggelaten of een andere waarde = de kale array (oud contract). Geen effect op html/pdf."
+          schema:
+            type: boolean
+            default: false
       responses:
         '200':
-          description: Wedstrijden op deze datum, gesorteerd op aanvangstijd, plus de Sportlink-status (JSON), of bij format=html|pdf het gedeelde document
+          description: Wedstrijden op deze datum, gesorteerd op aanvangstijd (JSON-array; met `status=true` een envelope met ook de Sportlink-status), of bij format=html|pdf het gedeelde document
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/VeldbezettingAntwoord'
+                oneOf:
+                  - type: array
+                    items:
+                      $ref: '#/components/schemas/VeldbezettingItem'
+                  - $ref: '#/components/schemas/VeldbezettingAntwoord'
             text/html:
               schema:
                 type: string
