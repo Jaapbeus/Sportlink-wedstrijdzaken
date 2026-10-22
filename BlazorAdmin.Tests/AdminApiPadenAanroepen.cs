@@ -58,6 +58,7 @@ internal static class AdminApiPadenAanroepen
             ("DeleteOefenwedstrijdAsync", () => c.Sportlink.DeleteOefenwedstrijdAsync("m 1")),
             ("GetOefenwedstrijdFormulierAsync", () => c.Sportlink.GetOefenwedstrijdFormulierAsync()),
             ("GetSportlinkDryRunStatusAsync", () => c.Sportlink.GetSportlinkDryRunStatusAsync()),
+            ("GetSportlinkKoppelingStatusAsync", () => c.Sportlink.GetSportlinkKoppelingStatusAsync()),
             ("GetSyncStatusAsync", () => c.Instellingen.GetSyncStatusAsync()),
             ("GetSyncStatusAsync(job)", () => c.Instellingen.GetSyncStatusAsync(guid)),
             ("TriggerSyncAsync", () => c.Instellingen.TriggerSyncAsync()),

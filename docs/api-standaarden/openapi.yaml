@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.15.0.0
+  version: 3.15.1.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -5054,6 +5054,56 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '500':
           $ref: '#/components/responses/InternalServerError'
+
+  /sportlink/koppeling-status:
+    get:
+      tags: [sportlink]
+      operationId: getSportlinkKoppelingStatus
+      summary: Koppelingsstatus van rol Wedstrijdzaken voor de vooraf-melding op de werkpagina's (#1773)
+      description: |
+        Vertaalt de opgeslagen automatische-loginstatus (credentials aanwezig, refresh-token
+        aanwezig, blokkade, retrydatum, laatste login) naar één niveau: `Ok`, `Waarschuwing`
+        (automatisch inloggen tijdelijk mislukt) of `Verbroken` (niet gekoppeld, geblokkeerd of
+        sessie verlopen zonder herstelpad). Leest alleen de eigen database — geen
+        Sportlink-aanroep — en geeft nooit een tokenwaarde, credential of providerfoutdetail terug.
+        Achter dezelfde Wedstrijdzaken-poort als `POST /sportlink/club-match`; "Wedstrijd aanmaken",
+        "Wijzigingsverzoeken", Planning en Veld optimalisatie tonen de melding bij het laden.
+        Voor een andere club dan de primaire is de status altijd `Verbroken` (geen opslag).
+        503 als de beveiligde opslag niet beschikbaar is. `Cache-Control: no-store`.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Koppelingsstatus
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  RolNaam:
+                    type: string
+                    example: Wedstrijdzaken
+                  Niveau:
+                    type: string
+                    enum: [Ok, Waarschuwing, Verbroken]
+                  IsVerbroken:
+                    type: boolean
+                  Melding:
+                    type: string
+                    nullable: true
+                    description: Tekst voor de gebruiker; `null` bij `Ok`.
+                  LaatsteLoginUtc:
+                    type: string
+                    format: date-time
+                    nullable: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          description: Beveiligde loginopslag niet beschikbaar
 
   /sportlink/club-match/formulier:
     get:

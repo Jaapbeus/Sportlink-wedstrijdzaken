@@ -203,6 +203,18 @@ public class SportlinkDryRunStatusDto
     public bool DryRun { get; set; }
 }
 
+/// <summary>#1773: respons van GET /api/sportlink/koppeling-status — niveau <c>Ok</c>/<c>Waarschuwing</c>/
+/// <c>Verbroken</c> plus de melding voor de gebruiker; nooit een tokenwaarde. Spiegelt
+/// Planner.Shared.Integrations.SportlinkClub.SportlinkKoppelingStatus.</summary>
+public class SportlinkKoppelingStatusDto
+{
+    public string RolNaam { get; set; } = "";
+    public string Niveau { get; set; } = "Ok";
+    public bool IsVerbroken { get; set; }
+    public string? Melding { get; set; }
+    public DateTime? LaatsteLoginUtc { get; set; }
+}
+
 /// <summary>#1116: respons van POST /api/sportlink/club-match — het generieke mutatieresultaat plus
 /// wat de server uit teamnaam en instellingen heeft afgeleid (Sportlink-team-ID, leeftijdscategorie,
 /// locatie-ID, veld), zodat de beheerder ziet wat er (gesimuleerd) naar Sportlink zou gaan. Spiegelt

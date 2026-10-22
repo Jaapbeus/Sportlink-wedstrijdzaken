@@ -16,6 +16,9 @@ public partial class WedstrijdAanmakenFormulier
     /// <summary>Toon de inleidende alinea (Planning verbergt hem).</summary>
     [Parameter] public bool ToonIntro { get; set; } = true;
 
+    /// <summary>#1773: toon de koppelingsstatus-melding bovenaan; Planning toont hem al op paginaniveau.</summary>
+    [Parameter] public bool ToonKoppelingStatus { get; set; } = true;
+
     /// <summary>Banner bij dry-run aan / uit (#1427) — één zin, afhankelijk van de actuele instelling.</summary>
     internal const string DryRunAanTekst = "Dryrun is aan. Geen data wordt naar Sportlink geschreven.";
     internal const string DryRunUitTekst = "Dryrun is uit. Wijzigingen worden direct in Sportlink weggeschreven.";

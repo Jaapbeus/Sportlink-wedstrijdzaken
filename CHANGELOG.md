@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- "Wedstrijd aanmaken", "Wijzigingsverzoeken", Planning en Veld optimalisatie (de laatste twee alleen met de Sportlink Web Extension aan) tonen bij het laden een rode melding als de Sportlink-koppeling van rol Wedstrijdzaken verbroken is (niet gekoppeld, automatisch inloggen geblokkeerd of sessie verlopen zonder herstelpad) en een gele als automatisch inloggen tijdelijk mislukte — in plaats van pas ná de bevestigstap de fout "koppeling is verlopen". Nieuw endpoint `GET /api/sportlink/koppeling-status` (beide tiers, Wedstrijdzaken-poort) leest alleen de opgeslagen automatische-loginstatus, doet geen Sportlink-aanroep en geeft nooit een tokenwaarde terug; de bepaling staat in `Planner.Shared` (`SportlinkKoppelingStatusCore`), het gedeelde Blazor-component is `SportlinkKoppelingMelding` (#1773)
+
 ### Changed
 - De sjabloonwaarde van `EMAIL_POLL_SCHEDULE` (e-mailscanner) is in beide `local.settings.template.json`-bestanden en in de documentatie `0 */10 * * * *` (elke 10 minuten, eigenaarsbesluit) in plaats van elk uur; `docs/MONITORING.md` heeft een schatting van het GB-s-verbruik per interval. De productie-instelling staat alleen in Azure en wordt door de eigenaar gezet (zie issue #1768)
 

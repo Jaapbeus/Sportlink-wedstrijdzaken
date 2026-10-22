@@ -136,4 +136,9 @@ public sealed class SportlinkApiClient
     // geen Sportlink-aanroep).
     public async Task<ApiResult<SportlinkDryRunStatusDto>> GetSportlinkDryRunStatusAsync()
         => await _t.GetAsync<SportlinkDryRunStatusDto>("api/sportlink/club-match/dryrun-status");
+
+    // #1773: koppelingsstatus van rol Wedstrijdzaken voor de vooraf-melding op de werkpagina's —
+    // eigen database, geen Sportlink-aanroep, nooit een tokenwaarde.
+    public async Task<ApiResult<SportlinkKoppelingStatusDto>> GetSportlinkKoppelingStatusAsync()
+        => await _t.GetAsync<SportlinkKoppelingStatusDto>("api/sportlink/koppeling-status");
 }
