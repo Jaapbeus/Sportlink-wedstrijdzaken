@@ -37,6 +37,9 @@ public static class SportlinkVeldbezettingSamenvoeging
         return new NieuweRegel(blok.Label, thuis, uit, blok.StartTijd, blok.Veld, blok.DuurMinuten, blok.Veldafmeting);
     }
 
+    /// <summary>Het resultaat van <see cref="Voeg{T}"/>: de regels plus de aantallen per koppelingsuitkomst (#1774).</summary>
+    public sealed record Samengevoegd<T>(IReadOnlyList<T> Regels, int Gekoppeld, int NietInSportlink, int AlleenInSportlink);
+
     /// <param name="eigen">De wedstrijden uit onze database voor die dag.</param>
     /// <param name="blokken">De Sportlink-veldplanner voor die dag, of <c>null</c> bij een terugval.</param>
     /// <param name="sleutel">Het teamlabel "Thuis - Uit" en de starttijd van een eigen regel.</param>
@@ -44,7 +47,9 @@ public static class SportlinkVeldbezettingSamenvoeging
     /// <param name="nieuw">Maakt een regel van een Sportlink-blok dat geen eigen regel heeft.</param>
     /// <param name="nietInSportlink">Markeert een eigen regel die Sportlink niet kent.</param>
     /// <param name="sorteerTijd">De aanvangstijd van een regel, voor de volgorde van het resultaat.</param>
-    public static IReadOnlyList<T> Voeg<T>(
+    /// <returns>De regels plus de aantallen per uitkomst, zodat een tier de koppelingskwaliteit kan loggen (#1774).
+    /// Zonder blokken (terugval) blijven de regels dezelfde instantie en zijn alle aantallen nul.</returns>
+    public static Samengevoegd<T> Voeg<T>(
         IReadOnlyList<T> eigen, IReadOnlyList<SportlinkVeldplannerBlok>? blokken,
         Func<T, (string Label, string? Starttijd)> sleutel,
         Func<T, SportlinkVeldplannerBlok, T> overschrijf,
@@ -52,7 +57,7 @@ public static class SportlinkVeldbezettingSamenvoeging
         Func<T, T> nietInSportlink,
         Func<T, string?> sorteerTijd)
     {
-        if (blokken == null) return eigen;
+        if (blokken == null) return new Samengevoegd<T>(eigen, 0, 0, 0);
 
         var koppeling = SportlinkVeldplannerKoppeling.Koppel(eigen.Select(sleutel).ToList(), blokken);
         var resultaat = new List<T>(eigen.Count + blokken.Count);
@@ -61,9 +66,11 @@ public static class SportlinkVeldbezettingSamenvoeging
 
         // Referentie-vergelijking: twee blokken met dezelfde velden zijn nog steeds twee wedstrijden.
         var gebruikt = new HashSet<SportlinkVeldplannerBlok>(koppeling.Values, ReferenceEqualityComparer.Instance);
-        resultaat.AddRange(blokken.Where(b => !gebruikt.Contains(b)).Select(nieuw));
+        var alleenSportlink = blokken.Where(b => !gebruikt.Contains(b)).Select(nieuw).ToList();
+        resultaat.AddRange(alleenSportlink);
 
-        return resultaat.OrderBy(r => string.IsNullOrWhiteSpace(sorteerTijd(r)) ? "99:99" : sorteerTijd(r), StringComparer.Ordinal).ToList();
+        var gesorteerd = resultaat.OrderBy(r => string.IsNullOrWhiteSpace(sorteerTijd(r)) ? "99:99" : sorteerTijd(r), StringComparer.Ordinal).ToList();
+        return new Samengevoegd<T>(gesorteerd, koppeling.Count, eigen.Count - koppeling.Count, alleenSportlink.Count);
     }
 
     /// <summary>Splitst "Thuis - Uit"; zonder scheidingsteken is de uitploeg <c>null</c>.</summary>

@@ -15,6 +15,7 @@ public partial class Planning : ClubSelectorPageBase
     [Inject] private ClubInstellingenCache InstellingenCache { get; set; } = default!;
     [Inject] private PlanningApiClient PlanningApi { get; set; } = default!;
     [Inject] private SportlinkApiClient SportlinkApi { get; set; } = default!;
+    [Inject] private IAuthService Auth { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
 
     private DateTime _datumDt;
@@ -25,6 +26,7 @@ public partial class Planning : ClubSelectorPageBase
 
     // Directe veldbezetting (#566)
     private List<VeldbezettingItemDto> _veldbezetting = new();
+    private SportlinkVeldplannerStatusDto? _sportlinkStatus;
     private bool _veldbezettingBezig;
     private string? _veldbezettingError;
 
@@ -70,10 +72,14 @@ public partial class Planning : ClubSelectorPageBase
         {
             var result = await PlanningApi.GetVeldbezettingAsync(DatumStr);
             if (result.Success)
-                _veldbezetting = result.Data ?? new();
+            {
+                _veldbezetting = result.Data?.Wedstrijden ?? new();
+                _sportlinkStatus = result.Data?.Sportlink;
+            }
             else
             {
                 _veldbezetting = new();
+                _sportlinkStatus = null;
                 _veldbezettingError = result.ErrorMessage ?? "Ophalen veldbezetting mislukt.";
             }
         }
@@ -96,6 +102,14 @@ public partial class Planning : ClubSelectorPageBase
     // Gantt-blokken voor de directe veldbezetting-weergave (#566) — geen optimalisatie, alleen wat er
     // al gepland staat. Hergebruikt dezelfde GanttItem/helpers als Veld optimalisatie.
     /// <summary>Eigen regels die Sportlink niet kent (#1582): een zichtbare afwijking tussen onze gegevens en de veldplanner.</summary>
+    /// <summary>#1774: de rode "Sportlink niet geraadpleegd"-melding (nooit voor de demo-club).</summary>
+    private bool ToonSportlinkWaarschuwing => DagplanningWeergaveHelpers.ToonSportlinkWaarschuwing(_sportlinkStatus);
+
+    /// <summary>#1774: tijdstip van de raadpleging in lokale tijd, voor de bronregel.</summary>
+    private string? SportlinkBronTekst => _sportlinkStatus is { Geraadpleegd: true, GeraadpleegdOpUtc: { } utc }
+        ? $"Bron: Sportlink-veldplanner, geraadpleegd om {DateTime.SpecifyKind(utc, DateTimeKind.Utc).ToLocalTime():HH:mm}"
+        : null;
+
     private int AantalNietInSportlink => _veldbezetting.Count(w => w.NietInSportlink);
 
     private List<DagplanningWeergaveHelpers.GanttItem> BouwVeldbezettingGanttItems()

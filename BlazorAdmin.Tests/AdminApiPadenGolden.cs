@@ -62,7 +62,7 @@ internal static class AdminApiPadenGolden
         """TestEmailAsync | POST api/test/email | {"onderwerp":null,"afzender":null,"afzenderNaam":null,"body":null}""",
         """AutoPlanAsync | POST api/planner/auto-plan | {"datum":"2026-03-14","bufferMinuten":null}""",
         """AutoPlanToepassenAsync | POST api/planner/auto-plan/toepassen | {"datum":"2026-03-14","bufferMinuten":null}""",
-        """GetVeldbezettingAsync | GET api/planner/veldbezetting?datum=2026-03-14 | """,
+        """GetVeldbezettingAsync | GET api/planner/veldbezetting?datum=2026-03-14&status=true | """,
         """GetTeambegeleidingTeamsAsync | GET api/beheer/teambegeleiding | """,
         """GetTeambegeleidingAsync | GET api/beheer/teambegeleiding/JO%2011-1 | """,
         """StuurTeambegeleidingBerichtAsync | POST api/beheer/teambegeleiding/doorsturen | {"teamNaam":"","onderwerp":null,"bericht":"","ontvangers":null}""",

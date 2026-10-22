@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.15.1.0
+  version: 3.15.1.1
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -3401,6 +3401,43 @@ components:
           type: integer
           nullable: true
           description: Actieve teamregel BufferNa in minuten (#1430); null = geen regel. Zie teamBufferVoor.
+
+    VeldbezettingAntwoord:
+      type: object
+      description: |
+        Antwoord van `GET /planner/veldbezetting?status=true` (#1774, opt-in; zonder `status` is het antwoord de kale array): de regels én of de Sportlink-veldplanner is geraadpleegd.
+      required: [sportlink, wedstrijden]
+      properties:
+        sportlink:
+          $ref: '#/components/schemas/SportlinkVeldplannerStatus'
+        wedstrijden:
+          type: array
+          items:
+            $ref: '#/components/schemas/VeldbezettingItem'
+
+    SportlinkVeldplannerStatus:
+      type: object
+      description: Of, en zo niet waarom niet, de Sportlink-veldplanner is geraadpleegd (#1774).
+      required: [geraadpleegd, reden, toelichting, koppelingHerstelNodig]
+      properties:
+        geraadpleegd:
+          type: boolean
+          description: true als veld, tijd en duur uit de veldplanner komen; false = de Planning toont de databasekopie
+        reden:
+          type: string
+          description: Vaste code; `Ok` bij succes, anders de reden van de terugval
+          enum: [Ok, Democlub, GeenAccommodatie, ExtensieUit, EgressGeblokkeerd, ClientNietGeconfigureerd, KoppelingVerlopen, RolNietGekoppeld, AccommodatieOnbekend, NetwerkFout, SportlinkFout, Onverwacht]
+        toelichting:
+          type: string
+          description: Korte, leesbare uitleg voor de beheerder
+        geraadpleegdOpUtc:
+          type: string
+          format: date-time
+          nullable: true
+          description: Moment van de (eventueel uit de cache komende) raadpleging; null bij terugval
+        koppelingHerstelNodig:
+          type: boolean
+          description: true bij `KoppelingVerlopen` of `RolNietGekoppeld`; de beheerder moet de koppeling herstellen
 
     VeldbezettingItem:
       type: object
@@ -8562,7 +8599,13 @@ paths:
 
         Sinds #1563 komen `veld`, `aanvangsTijd`, `veldafmeting` en `duurMinuten` van een wedstrijd uit de
         Sportlink-veldplanner als de Sportlink Web Extension aan en bereikbaar is; anders (of voor een wedstrijd
-        die Sportlink niet kent) blijft de eigen berekening. De vorm van het antwoord is ongewijzigd.
+        die Sportlink niet kent) blijft de eigen berekening.
+
+        Het JSON-antwoord blijft standaard de kale array van wedstrijdregels (ongewijzigd contract, ook voor een
+        reeds geopende of oudere client). Met `?status=true` (opt-in, #1774) is het antwoord een envelope
+        `{ sportlink, wedstrijden }`: `sportlink` zegt of de veldplanner is geraadpleegd en zo niet waarom
+        (WZ-ADR-013: een afwijking is zichtbaar, nooit stil). Het HTML- en PDF-document toont bij terugval altijd
+        een melding onder de titel; `status` heeft daar geen invloed op.
       security:
         - easyAuth: []
       parameters:
@@ -8582,15 +8625,24 @@ paths:
             type: string
             enum: [json, html, pdf]
             default: json
+        - name: status
+          in: query
+          required: false
+          description: "true = het JSON-antwoord is de envelope `{ sportlink, wedstrijden }` met de Sportlink-status (#1774); weggelaten of een andere waarde = de kale array (oud contract). Geen effect op html/pdf."
+          schema:
+            type: boolean
+            default: false
       responses:
         '200':
-          description: Wedstrijden op deze datum, gesorteerd op aanvangstijd (JSON), of bij format=html|pdf het gedeelde document
+          description: Wedstrijden op deze datum, gesorteerd op aanvangstijd (JSON-array; met `status=true` een envelope met ook de Sportlink-status), of bij format=html|pdf het gedeelde document
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/VeldbezettingItem'
+                oneOf:
+                  - type: array
+                    items:
+                      $ref: '#/components/schemas/VeldbezettingItem'
+                  - $ref: '#/components/schemas/VeldbezettingAntwoord'
             text/html:
               schema:
                 type: string

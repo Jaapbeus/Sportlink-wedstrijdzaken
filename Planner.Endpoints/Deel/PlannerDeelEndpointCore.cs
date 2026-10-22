@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Planner.Shared.Deel;
+using Planner.Shared.Planning;
 
 namespace Planner.Endpoints.Deel;
 
@@ -162,9 +163,10 @@ public static class PlannerDeelEndpointCore
         }
 
         /// <summary>Het deel-document voor <c>planner/veldbezetting</c>, of <c>null</c> (= JSON).</summary>
-        public IActionResult? VanVeldbezetting<T>(IEnumerable<T> items, string clubCode) where T : IVeldbezettingRegel
+        public IActionResult? VanVeldbezetting<T>(
+            IEnumerable<T> items, string clubCode, SportlinkVeldplannerStatus? sportlink = null) where T : IVeldbezettingRegel
             => Format == null ? null : Maak(
-                PlannerShareModelBuilder.VanVeldbezetting(items.Cast<IVeldbezettingRegel>(), Datum, clubCode),
+                PlannerShareModelBuilder.VanVeldbezetting(items.Cast<IVeldbezettingRegel>(), Datum, clubCode, sportlink),
                 Format, "veldbezetting", PdfToegestaan);
 
         /// <summary>Het deel-document voor <c>planner/auto-plan</c>, of <c>null</c> (= JSON).</summary>

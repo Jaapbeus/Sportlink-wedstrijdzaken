@@ -19,7 +19,7 @@ public class SportlinkVeldbezettingSamenvoegingTests
             (r, b) => r with { Tijd = b.StartTijd, Veld = b.Veld, Duur = b.DuurMinuten, Bron = "Sportlink" },
             b => new Regel(b.Label, b.StartTijd, b.Veld, b.DuurMinuten, "Sportlink"),
             r => r with { NietInSportlink = true },
-            r => r.Tijd);
+            r => r.Tijd).Regels;
 
     [Fact]
     public void ZonderSportlink_BlijftDePlanningOngewijzigd()
@@ -110,4 +110,33 @@ public class SportlinkVeldbezettingSamenvoegingTests
     [Fact]
     public void SplitsWedstrijd_ZonderScheidingsteken_GeeftGeenUitploeg()
         => SportlinkVeldbezettingSamenvoeging.SplitsWedstrijd("Alleen").Should().Be(("Alleen", (string?)null));
+
+    /// <summary>#1774: de aantallen per uitkomst, zodat de koppelingskwaliteit meetbaar wordt in het log.</summary>
+    [Fact]
+    public void Voeg_TeltGekoppeldNietInSportlinkEnAlleenInSportlink()
+    {
+        var eigen = new[] { new Regel("Thuis 35+1 - Uit 35+1", "19:00", "veld 1", 50), new Regel("Thuis JO11-1 - Uit JO11-1", "09:00", "veld 2", 40) };
+        var blokken = new[] { Blok("Thuis 35+1 - Uit 35+1", "19:30"), Blok("Ander 1 - Park 1", "11:00") };
+
+        var resultaat = SportlinkVeldbezettingSamenvoeging.Voeg(eigen, blokken,
+            r => (r.Wedstrijd, r.Tijd),
+            (r, b) => r with { Bron = "Sportlink" },
+            b => new Regel(b.Label, b.StartTijd, b.Veld, b.DuurMinuten, "Sportlink"),
+            r => r with { NietInSportlink = true },
+            r => r.Tijd);
+
+        resultaat.Gekoppeld.Should().Be(1);
+        resultaat.NietInSportlink.Should().Be(1);
+        resultaat.AlleenInSportlink.Should().Be(1);
+        resultaat.Regels.Should().HaveCount(3);
+    }
+
+    [Fact]
+    public void Voeg_ZonderBlokken_AlleAantallenNul_EnDezelfdeRegels()
+    {
+        var eigen = new[] { new Regel("Thuis 1 - Uit 1", "14:30", "veld 1", 105) };
+        var resultaat = SportlinkVeldbezettingSamenvoeging.Voeg<Regel>(eigen, null, r => (r.Wedstrijd, r.Tijd), (r, _) => r, b => new Regel(b.Label, b.StartTijd, b.Veld, b.DuurMinuten), r => r, r => r.Tijd);
+        resultaat.Regels.Should().BeSameAs(eigen);
+        (resultaat.Gekoppeld + resultaat.NietInSportlink + resultaat.AlleenInSportlink).Should().Be(0);
+    }
 }

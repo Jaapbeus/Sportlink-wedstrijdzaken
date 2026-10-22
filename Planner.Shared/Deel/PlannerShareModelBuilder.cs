@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Planner.Shared.Planning;
 
 namespace Planner.Shared.Deel
 {
@@ -25,7 +26,7 @@ namespace Planner.Shared.Deel
         /// <c>BlazorAdmin/Pages/Planning.razor</c> als "Tegenstander" toont.
         /// </summary>
         public static PlannerShareModel VanVeldbezetting(
-            IEnumerable<IVeldbezettingRegel> items, DateOnly datum, string clubCode)
+            IEnumerable<IVeldbezettingRegel> items, DateOnly datum, string clubCode, SportlinkVeldplannerStatus? sportlink = null)
         {
             ArgumentNullException.ThrowIfNull(items);
 
@@ -44,8 +45,15 @@ namespace Planner.Shared.Deel
                 Titel: $"Veldbezetting op {DatumTekst(datum)}",
                 ClubCode: clubCode,
                 Peildatum: datum,
-                Wedstrijden: Sorteer(regels));
+                Wedstrijden: Sorteer(regels),
+                Bronmelding: Bronmelding(sportlink));
         }
+
+        /// <summary>De melding onder de titel als Sportlink niet is geraadpleegd (#1774); anders <c>null</c>.</summary>
+        private static string? Bronmelding(SportlinkVeldplannerStatus? sportlink)
+            => sportlink is { Geraadpleegd: false }
+                ? "Let op: Sportlink niet geraadpleegd. " + sportlink.Toelichting
+                : null;
 
         /// <summary>
         /// Voor de Veld optimalisatie-pagina (<c>POST /api/planner/auto-plan</c>): de tab "Huidig"

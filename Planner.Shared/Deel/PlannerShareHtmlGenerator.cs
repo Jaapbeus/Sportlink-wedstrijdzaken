@@ -39,6 +39,10 @@ namespace Planner.Shared.Deel
               .Append(Enc(model.ClubCode)).Append(" &middot; Speeldag: ")
               .Append(Enc(PlannerShareModelBuilder.DatumTekst(model.Peildatum))).Append("</p>");
 
+            if (!string.IsNullOrWhiteSpace(model.Bronmelding))
+                sb.Append("<p class=\"bronmelding\" style=\"color:#9A6700;font-weight:bold;font-size:12px;margin:0 0 12px 0;\">")
+                  .Append(Enc(model.Bronmelding)).Append("</p>");
+
             if (model.Wedstrijden.Count == 0)
             {
                 sb.Append("<p style=\"font-style:italic;color:").Append(GedimdKleur).Append(";\">Geen wedstrijden gepland op ")
