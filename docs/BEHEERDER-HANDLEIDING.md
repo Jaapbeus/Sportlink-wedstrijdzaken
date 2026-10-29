@@ -1767,15 +1767,43 @@ tekst vastgelegd.
 | **Verwijder aanpassing** | Gooit uw eigen tekst weg en zet de standaardtekst van de applicatie terug. Verschijnt alleen bij een template met status *Aangepast*, en raakt de andere templates niet |
 | **+ Nieuwe template** | Legt een eigen tekst vast voor een template die nu nog op de standaard staat; u kiest eerst uit de lijst om welk type bericht het gaat |
 
+### Welke teksten kunt u aanpassen?
+
+Alle twaalf automatische antwoorden zijn aan te passen. Kies bij **+ Nieuwe template** het antwoord
+waarvan u de tekst wilt vervangen; onder de keuze staat wanneer het systeem dat antwoord stuurt.
+
+| Template | Wanneer het systeem dit antwoord stuurt |
+|---|---|
+| `beschikbaarheid_check` | Een beschikbaarheidsvraag waar we op antwoorden omdat het niet past (en geen van de bijzondere gevallen hieronder geldt) |
+| `wedstrijd_al_ingepland` | De wedstrijd staat al in het programma |
+| `team_onbekend` | We herkennen het team of de wedstrijd niet en vragen om welk team het gaat |
+| `datum_onbekend` | In de mail staat geen bruikbare datum |
+| `multi_datum` | De afzender vroeg om meer dan één datum en minstens één datum past niet |
+| `herplan_verzoek` | Een herplanverzoek dat geen van de bijzondere gevallen hieronder is |
+| `herplan_te_laat` | Het herplanverzoek komt te laat voor automatische verwerking |
+| `verzet_zonder_datum` | De tegenstander wil verzetten zonder nieuwe datum; wij geven vrije zaterdagen als voorzet |
+| `herplan_gewenste_datum` | Het herplanverzoek noemt een gewenste nieuwe datum |
+| `team_contact_opvragen` | Iemand vraagt naar de contactpersoon van een team |
+| `bevestiging` | Iemand bevestigt iets |
+| `buiten_scope` | Vangnet voor een verzoek dat het systeem niet herkent; komt zelden voor |
+
+Goed om te weten:
+- Zolang u geen eigen tekst hebt vastgelegd, of de template op niet-actief staat, gebruikt het systeem de standaardtekst.
+- Bij `beschikbaarheid_check`, `herplan_verzoek` en `multi_datum` bevat de standaardtekst een lijst met beschikbare tijden of alternatieven. In een eigen tekst staat die lijst er alleen als de template er een plaatshouder voor heeft (`{{overzicht}}` bij `multi_datum`); bij de andere twee valt de lijst weg.
+- `wedstrijd_al_ingepland`, `herplan_te_laat`, `verzet_zonder_datum` en `herplan_gewenste_datum` gelden alleen als het systeem de wedstrijd vond. Anders blijft de standaardtekst staan die uitlegt dat er geen wedstrijd is gevonden.
+- `team_onbekend` en `datum_onbekend` gaan standaard eerst ter controle naar een medewerker, ook met uw eigen tekst.
+
 ### Het bewerkformulier
 
 Het formulier heeft de velden **Template key** (bij een bestaande template vast), **Onderwerp**,
 **Body template** en het vinkje **Actief**. Bewaren doet u met **Opslaan**, weggooien met
-**Annuleren**.
+**Annuleren**. Kiest u een nieuwe template, dan vult het formulier de standaardtekst alvast in, zodat u
+die kunt aanpassen in plaats van van nul te beginnen. Laat u het onderwerp leeg, dan wordt het
+*Re:* gevolgd door het onderwerp van de mail waarop u antwoordt.
 
 In de tekst staan **plaatshouders** tussen dubbele accolades. Die vult het systeem bij verzending
-in met de echte waarde. Beschikbaar zijn: `{{voornaam}}`, `{{aanhef}}`, `{{datum}}`, `{{team}}`,
-`{{tegenstander}}`, `{{aanvangstijd}}` en `{{dagdeel}}` (het gecontroleerde dagdeel met tijdvenster, bijvoorbeeld
+in met de echte waarde. Voor elke template staat onder het tekstvak welke plaatshouders er zijn. Altijd beschikbaar zijn: `{{voornaam}}`, `{{aanhef}}`, `{{datum}}`, `{{team}}`,
+`{{tegenstander}}`, `{{aanvangstijd}}`, `{{coordinator}}` (de naam van de coördinator uit de instellingen; leeg als die niet is ingesteld) en `{{dagdeel}}` (het gecontroleerde dagdeel met tijdvenster, bijvoorbeeld
 "de ochtend (08:30 - 12:00)"; leeg als er geen dagdeel is gecontroleerd; staat de plaatshouder er niet in, dan voegt het systeem
 zelf een zin toe die het gecontroleerde dagdeel noemt). Laat de accolades en de naam ertussen precies staan zoals
 ze zijn — typt u er iets anders, dan komt er letterlijk `{{team}}` in de mail te staan. De voetnoot

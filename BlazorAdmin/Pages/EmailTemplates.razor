@@ -89,21 +89,15 @@ else
                 {
                     <select class="form-select" value="@editing.TemplateKey" @onchange="OnTemplateKeyChange">
                         <option value="">— kies een type —</option>
-                        <optgroup label="Beschikbaarheid">
-                            <option value="beschikbaarheid_check">beschikbaarheid_check — antwoord op veld-/tijdvraag</option>
-                        </optgroup>
-                        <optgroup label="Herplanning">
-                            <option value="herplan_verzoek">herplan_verzoek — antwoord op herplanningsverzoek</option>
-                        </optgroup>
-                        <optgroup label="Bevestiging">
-                            <option value="bevestiging">bevestiging — bevestiging van eerder voorstel</option>
-                        </optgroup>
-                        <optgroup label="Teambegeleiding">
-                            <option value="team_contact_opvragen">team_contact_opvragen — auto-reply na doorsturen begeleiding</option>
-                        </optgroup>
-                        <optgroup label="Overig">
-                            <option value="buiten_scope">buiten_scope — antwoord op niet-herkend verzoek</option>
-                        </optgroup>
+                        @foreach (var groep in SleutelGroepen)
+                        {
+                            <optgroup label="@groep.Key">
+                                @foreach (var info in groep)
+                                {
+                                    <option value="@info.Sleutel">@info.Sleutel</option>
+                                }
+                            </optgroup>
+                        }
                     </select>
                     <small class="form-text text-muted">
                         Kies de template die de code zal gebruiken als override. Lege DB-rij = hardcoded default blijft actief.
@@ -112,6 +106,14 @@ else
                 else
                 {
                     <input class="form-control" value="@editing.TemplateKey" disabled />
+                }
+                @if (GekozenSleutel is { } gekozen)
+                {
+                    <div class="form-text mt-2"><strong>Wanneer:</strong> @gekozen.Wanneer</div>
+                    @if (!string.IsNullOrEmpty(gekozen.Opmerking))
+                    {
+                        <div class="alert alert-warning py-2 mt-2 mb-0">@gekozen.Opmerking</div>
+                    }
                 }
             </div>
             <div class="mb-3">
@@ -122,7 +124,8 @@ else
                 <label class="form-label">Body template</label>
                 <textarea class="form-control" rows="10" @bind="editing.BodyTemplate"></textarea>
                 <small class="form-text text-muted">
-                    Beschikbare placeholders: {{voornaam}}, {{aanhef}}, {{datum}}, {{team}}, {{tegenstander}}, {{aanvangstijd}}, {{dagdeel}}<br />
+                    Beschikbare placeholders: @PlaceholderTekst<br />
+                    Laat het onderwerp leeg om <em>Re: &lt;onderwerp van de mail&gt;</em> te gebruiken.<br />
                     De voetnoot uit het bovenstaande vak wordt automatisch toegevoegd na de body.
                 </small>
             </div>
