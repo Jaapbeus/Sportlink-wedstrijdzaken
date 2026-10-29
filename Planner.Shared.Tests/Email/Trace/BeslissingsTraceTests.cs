@@ -153,6 +153,35 @@ public class BeslissingsTraceTests
         trace.Oordeel.IsZeker.Should().BeFalse();
     }
 
+    // #1780: een eigen sjabloon vervangt in de trace het ingebouwde sjabloon (sleutel team_onbekend in plaats van
+    // teamOnbekend). De zekerheidspoort mag daardoor niet losser worden: het antwoord vraagt de afzender nog steeds om informatie.
+    [Theory]
+    [InlineData("{\"teamOnbekend\":true}", "team_onbekend", "Het antwoord vraagt de afzender om het team")]
+    [InlineData("{\"datumOnbekend\":true}", "datum_onbekend", "Het antwoord vraagt de afzender om de datum")]
+    public void EigenSjabloonVoorOnbekendTeamOfDatum_BlijftOnzeker(string plannerJson, string sleutel, string reden)
+    {
+        var builder = MetClassificatie()
+            .TeamHerkenning(TraceCodes.TeamHerkenning, "JO13-2", "ExacteMatch", 1, null, "JO13-2")
+            .Antwoordkeuze("BeschikbaarheidCheck", plannerJson);
+        builder.MeldOverride(sleutel, 0);
+
+        var trace = builder.Bouw();
+
+        trace.Oordeel.IsZeker.Should().BeFalse();
+        trace.Oordeel.Redenen.Should().Contain(reden);
+    }
+
+    [Fact]
+    public void EigenSjabloonVoorEenGewoonAntwoord_BlijftZeker()
+    {
+        var builder = MetClassificatie()
+            .TeamHerkenning(TraceCodes.TeamHerkenning, "JO13-2", "ExacteMatch", 1, null, "JO13-2")
+            .Antwoordkeuze("BeschikbaarheidCheck", "{}");
+        builder.MeldOverride("beschikbaarheid_check", 0);
+
+        builder.Bouw().Oordeel.IsZeker.Should().BeTrue();
+    }
+
     [Fact]
     public void BuitenScope_ZonderTeam_IsZeker()
     {

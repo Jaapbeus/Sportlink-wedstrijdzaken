@@ -1,6 +1,7 @@
 using BlazorAdmin.Models;
 using BlazorAdmin.Services;
 using Microsoft.AspNetCore.Components;
+using Planner.Shared.Email;
 
 namespace BlazorAdmin.Pages;
 
@@ -83,39 +84,25 @@ public partial class EmailTemplates : ClubSelectorPageBase
         PrefillDefaults(key);
     }
 
+    /// <summary>Vult het formulier met de standaardtekst van de gekozen sleutel (#1780: uit de gedeelde catalogus).</summary>
     private void PrefillDefaults(string key)
     {
-        if (editing == null) return;
-        string onderwerp = "";
-        string body = "";
+        var info = AntwoordSjabloonCatalogus.Zoek(key);
+        if (editing == null || info == null) return;
 
-        switch (key)
-        {
-            case "beschikbaarheid_check":
-                onderwerp = "Beschikbaarheid wedstrijd {{datum}} — {{team}} vs {{tegenstander}}";
-                body = "Beste {{aanhef}},\n\nWij willen graag informeren of jullie beschikbaar zijn voor de wedstrijd op {{datum}} om {{aanvangstijd}}.\n\nThuisteam: {{team}}\nTegenstander: {{tegenstander}}\n\nKunt u ons zo spoedig mogelijk laten weten of de locatie en het tijdstip uitkomen?";
-                break;
-            case "herplan_verzoek":
-                onderwerp = "Verzoek herplanning wedstrijd {{datum}} — {{team}} vs {{tegenstander}}";
-                body = "Beste {{aanhef}},\n\nWij verzoeken u vriendelijk de geplande wedstrijd van {{datum}} om {{aanvangstijd}} te herplannen.\n\nThuisteam: {{team}}\nTegenstander: {{tegenstander}}\n\nZou u ons een alternatieve datum en tijd kunnen voorstellen?";
-                break;
-            case "bevestiging":
-                onderwerp = "Bevestiging wedstrijd {{datum}} — {{team}} vs {{tegenstander}}";
-                body = "Beste {{aanhef}},\n\nHierbij bevestigen wij de wedstrijd op {{datum}} om {{aanvangstijd}}.\n\nThuisteam: {{team}}\nTegenstander: {{tegenstander}}\n\nTot dan!";
-                break;
-            case "team_contact_opvragen":
-                onderwerp = "Uw vraag over de begeleiding van {{team}}";
-                body = "Beste {{voornaam}},\n\nUw vraag over de begeleiding van {{team}} is doorgestuurd. De begeleider neemt rechtstreeks contact met u op.";
-                break;
-            case "buiten_scope":
-                onderwerp = "Uw bericht ontvangen";
-                body = "Beste {{voornaam}},\n\nBedankt voor uw bericht. Uw vraag valt buiten het bereik van de automatische verwerking. Neem contact op met de club voor verdere hulp.";
-                break;
-        }
-
-        if (!string.IsNullOrWhiteSpace(onderwerp)) editing.Onderwerp = onderwerp;
-        if (!string.IsNullOrWhiteSpace(body)) editing.BodyTemplate = body;
+        editing.Onderwerp = info.StandaardOnderwerp;
+        editing.BodyTemplate = info.StandaardBody;
     }
+
+    private static IEnumerable<IGrouping<string, AntwoordSjabloonInfo>> SleutelGroepen
+        => AntwoordSjabloonCatalogus.Alle.GroupBy(i => i.Groep);
+
+    /// <summary>Uitleg bij de sleutel die in het formulier staat; <c>null</c> voor een onbekende of nog niet gekozen sleutel.</summary>
+    private AntwoordSjabloonInfo? GekozenSleutel => AntwoordSjabloonCatalogus.Zoek(editing?.TemplateKey);
+
+    /// <summary>De placeholders die bij de gekozen sleutel horen, als <c>{{naam}}</c>-lijst.</summary>
+    private string PlaceholderTekst
+        => string.Join(", ", AntwoordSjabloonCatalogus.PlaceholdersVoor(editing?.TemplateKey).Select(p => "{{" + p + "}}"));
 
     private async Task OpslaanTemplateAsync()
     {
@@ -140,13 +127,16 @@ public partial class EmailTemplates : ClubSelectorPageBase
         await LoadTemplatesAsync();
     }
 
-    private static (string label, string css) GetCategorie(string key) => key switch
+    private static (string label, string css) GetCategorie(string key)
     {
-        var k when k.StartsWith("beschikbaarheid") => ("Beschikbaarheid", "bg-info text-dark"),
-        var k when k.StartsWith("herplan")         => ("Herplanning", "bg-warning text-dark"),
-        var k when k.StartsWith("bevestig")        => ("Bevestiging", "bg-success"),
-        var k when k.StartsWith("team_contact")    => ("Teambegeleiding", "bg-primary"),
-        var k when k.StartsWith("buiten_scope")    => ("Buiten scope", "bg-secondary"),
-        _                                           => ("Overig", "bg-secondary"),
-    };
+        var groep = AntwoordSjabloonCatalogus.Zoek(key)?.Groep ?? "Overig";
+        return groep switch
+        {
+            "Beschikbaarheid" => (groep, "bg-info text-dark"),
+            "Herplanning"     => (groep, "bg-warning text-dark"),
+            "Bevestiging"     => (groep, "bg-success"),
+            "Teambegeleiding" => (groep, "bg-primary"),
+            _                 => (groep, "bg-secondary"),
+        };
+    }
 }

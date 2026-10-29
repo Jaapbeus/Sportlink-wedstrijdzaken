@@ -59,12 +59,19 @@ public static class ZekerheidsBeoordeling
                 ? "Voor het herplanverzoek is geen wedstrijd gevonden"
                 : "Het herplanverzoek mist team of datum");
 
+    /// <summary>
+    /// Een antwoord dat de afzender om het team of de datum vraagt gaat ter review. De trace noemt het ingebouwde
+    /// antwoord bij de naam van de plannervlag (<c>teamOnbekend</c>), een databasesjabloon bij zijn sleutel
+    /// (<c>team_onbekend</c>, #1780); beide tellen, anders ontsnapt het antwoord zodra de club een eigen tekst instelt.
+    /// </summary>
     private static IEnumerable<string> SjabloonRedenen(List<TraceStap> lijst)
     {
         foreach (var s in lijst.Where(s => s.Code == TraceCodes.Sjabloon))
         {
-            if (HeeftDetail(s, "sjabloon", "teamOnbekend")) yield return "Het antwoord vraagt de afzender om het team";
-            else if (HeeftDetail(s, "sjabloon", "datumOnbekend")) yield return "Het antwoord vraagt de afzender om de datum";
+            if (HeeftDetail(s, "sjabloon", "teamOnbekend") || HeeftDetail(s, "sjabloon", AntwoordSjabloonSleutels.TeamOnbekend))
+                yield return "Het antwoord vraagt de afzender om het team";
+            else if (HeeftDetail(s, "sjabloon", "datumOnbekend") || HeeftDetail(s, "sjabloon", AntwoordSjabloonSleutels.DatumOnbekend))
+                yield return "Het antwoord vraagt de afzender om de datum";
         }
     }
 
