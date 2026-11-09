@@ -32,7 +32,9 @@ public class WedstrijdAlIngeplandAntwoordTests
             json,
             new InkomendBericht { MessageId = "m", Afzender = "afzender@voorbeeld.test", AfzenderNaam = "Jan de Vries" },
             clubSettings: new ClubAppSettingsSnapshot("Planner", null, null, "Met vriendelijke groet", null),
-            trace: trace);
+            trace: trace,
+            // Sinds #1780 vraagt ook dit antwoord naar zijn eigen databasesjabloon; geen database nodig in deze test.
+            sjabloonBron: _ => Task.FromResult<EmailTemplate?>(null));
 
         body.Should().Contain("staat al ingepland");
         body.Should().Contain("Voorbeeld JO13-2 - Gast JO13-1");

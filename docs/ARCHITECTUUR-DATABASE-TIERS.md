@@ -1748,7 +1748,7 @@ sjabloon met een **niet-leeg** onderwerp, precies wat het endpoint teruggeeft.
 
 - **Meer dan twee sjablonen.** De vijf bekende sleutels (`beschikbaarheid_check`, `herplan_verzoek`,
   `bevestiging`, `team_contact_opvragen`, `buiten_scope`) staan alle vijf als standaardtekst in de
-  GUI. Twee is genoeg om de assertie betekenis te geven; alle vijf seeden zou de demodata laten
+  GUI (sinds #1780 zijn er twaalf sleutels; de redenering geldt ook voor de zeven nieuwe). Twee is genoeg om de assertie betekenis te geven; alle vijf seeden zou de demodata laten
   suggereren dat een club ze allemaal heeft aangepast, terwijl een leeg veld juist betekent "gebruik
   de standaard".
 - **De primaire club seeden.** Een lege sjablonenlijst is daar het correcte gedrag op een verse

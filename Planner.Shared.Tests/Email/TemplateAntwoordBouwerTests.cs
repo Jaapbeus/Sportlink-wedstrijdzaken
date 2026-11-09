@@ -18,6 +18,28 @@ public class TemplateAntwoordBouwerTests
         public HashSet<string> Sjablonen { get; } = new();
         public int Validaties { get; private set; }
 
+        /// <summary>De placeholders en het dagdeel waarmee per sleutel naar een sjabloon is gevraagd (#1780).</summary>
+        public Dictionary<string, IDictionary<string, string>?> Placeholders { get; } = new();
+        public string? LaatsteDagdeel { get; private set; }
+
+        public BerichtClassificatie Classificatie { get; } = new();
+
+        public IAntwoordWedstrijd? LeesWedstrijd(JToken? wedstrijd) => wedstrijd is JObject o
+            ? new TestWedstrijd
+            {
+                Wedstrijd = o["Wedstrijd"]?.ToString() ?? "",
+                Datum = o["Datum"]?.ToString() ?? "",
+                AanvangsTijd = o["AanvangsTijd"]?.ToString() ?? "",
+                VeldNaam = o["VeldNaam"]?.ToString()
+            }
+            : null;
+
+        public IAntwoordBeschikbaarheid LeesBeschikbaarheid(JToken? beschikbaarheid) => new TestBeschikbaarheid
+        {
+            Beschikbaar = beschikbaarheid?["Beschikbaar"]?.ToObject<bool>() ?? false,
+            GecontroleerdDagdeel = beschikbaarheid?["GecontroleerdDagdeel"]?.ToString()
+        };
+
         private (string onderwerp, string body) Gekozen(string naam)
         {
             Aanroepen.Add(naam);
@@ -52,9 +74,12 @@ public class TemplateAntwoordBouwerTests
 
         public (string onderwerp, string body) HerplanStandaard(JToken? wedstrijd, JToken? herplanOpties) => Gekozen("herplanStandaard");
 
-        public Task<(string onderwerp, string body)?> ProbeerSjabloonAsync(string sleutel)
+        public Task<(string onderwerp, string body)?> ProbeerSjabloonAsync(
+            string sleutel, IDictionary<string, string>? extraPlaceholders = null, string? gecontroleerdDagdeel = null)
         {
             Aanroepen.Add($"sjabloon?{sleutel}");
+            Placeholders[sleutel] = extraPlaceholders;
+            LaatsteDagdeel = gecontroleerdDagdeel;
             return Task.FromResult<(string onderwerp, string body)?>(Sjablonen.Contains(sleutel) ? ($"override:{sleutel}", "") : null);
         }
 
@@ -83,7 +108,8 @@ public class TemplateAntwoordBouwerTests
         var (onderwerp, aanroepen) = await Bouw("BeschikbaarheidCheck", json, "beschikbaarheid_check");
 
         onderwerp.Should().Be(verwacht);
-        aanroepen.Should().Equal(verwacht);
+        // Sinds #1780 vraagt een tak eerst naar zijn eigen sjabloon; daarna volgt de ingebouwde tekst.
+        aanroepen.Last().Should().Be(verwacht);
     }
 
     [Fact]
@@ -167,5 +193,142 @@ public class TemplateAntwoordBouwerTests
         await act.Should().ThrowAsync<Newtonsoft.Json.JsonSerializationException>();
         bron.Validaties.Should().Be(1);
         bron.Aanroepen.Should().BeEmpty();
+    }
+
+    // ── #1780: elk antwoord heeft een eigen sjabloonsleutel ──
+
+    private const string Wedstrijd =
+        "\"wedstrijd\":{\"Wedstrijd\":\"JO13-1 - Gast\",\"Datum\":\"2026-11-14\",\"AanvangsTijd\":\"10:00\",\"VeldNaam\":\"Veld 1\"}";
+
+    [Theory]
+    [InlineData("BeschikbaarheidCheck", "{\"wedstrijdAlIngepland\":true," + Wedstrijd + "}", "wedstrijd_al_ingepland")]
+    [InlineData("BeschikbaarheidCheck", "{\"teamOnbekend\":true,\"tegenstander\":\"Gast\"}", "team_onbekend")]
+    [InlineData("BeschikbaarheidCheck", "{\"datumOnbekend\":true}", "datum_onbekend")]
+    [InlineData("BeschikbaarheidCheck", "{\"multiDatum\":true,\"resultaten\":[{\"datum\":\"2026-11-14\",\"response\":{}}]}", "multi_datum")]
+    [InlineData("HerplanVerzoek", "{\"herplanTeLaat\":true," + Wedstrijd + "}", "herplan_te_laat")]
+    [InlineData("HerplanVerzoek", "{\"verzetZonderDatum\":true," + Wedstrijd + "}", "verzet_zonder_datum")]
+    [InlineData("HerplanVerzoek", "{\"gewensteDatum\":\"2026-11-21\",\"beschikbaarheid\":{}," + Wedstrijd + "}", "herplan_gewenste_datum")]
+    public async Task ElkAntwoord_EigenSjabloonVervangtDeIngebouwdeTekst(string type, string json, string sleutel)
+    {
+        var (onderwerp, aanroepen) = await Bouw(type, json, sleutel);
+
+        onderwerp.Should().Be("override:" + sleutel);
+        aanroepen.Should().Equal("sjabloon?" + sleutel);
+    }
+
+    [Theory]
+    [InlineData("BeschikbaarheidCheck", "{\"wedstrijdAlIngepland\":true}", "wedstrijdAlIngepland")]
+    [InlineData("HerplanVerzoek", "{\"herplanTeLaat\":true}", "herplanTeLaat:8:0")]
+    [InlineData("HerplanVerzoek", "{\"verzetZonderDatum\":true}", "verzetZonderDatum:0")]
+    [InlineData("HerplanVerzoek", "{\"gewensteDatum\":\"2026-11-21\",\"beschikbaarheid\":{}}", "gewensteDatum:2026-11-21")]
+    public async Task AntwoordDatEenWedstrijdNodigHeeft_ZonderWedstrijd_GeeftDeIngebouwdeUitleg(string type, string json, string standaard)
+    {
+        var alleSjablonen = AntwoordSjabloonCatalogus.Alle.Select(i => i.Sleutel).ToArray();
+
+        var (onderwerp, aanroepen) = await Bouw(type, json, alleSjablonen);
+
+        onderwerp.Should().Be(standaard);
+        aanroepen.Should().Equal(standaard);
+    }
+
+    [Fact]
+    public async Task Placeholders_WedstrijdAlIngepland_BevatDeWedstrijdgegevens()
+    {
+        var bron = new OpnemendeBron();
+        bron.Sjablonen.Add("wedstrijd_al_ingepland");
+
+        await TemplateAntwoordBouwer.BouwAsync("BeschikbaarheidCheck", "{\"wedstrijdAlIngepland\":true," + Wedstrijd + "}", bron, null);
+
+        var p = bron.Placeholders["wedstrijd_al_ingepland"]!;
+        p["wedstrijd"].Should().Be("JO13-1 - Gast");
+        p["wedstrijd_datum"].Should().Be("zaterdag 14 november 2026");
+        p["wedstrijd_aanvangstijd"].Should().Be("10:00");
+        p["wedstrijd_veld"].Should().Be("Veld 1");
+    }
+
+    [Fact]
+    public async Task Placeholders_HerplanTeLaat_BevatDeadlineEnDagenTotDeWedstrijd()
+    {
+        var bron = new OpnemendeBron();
+        bron.Sjablonen.Add("herplan_te_laat");
+
+        await TemplateAntwoordBouwer.BouwAsync("HerplanVerzoek",
+            "{\"herplanTeLaat\":true,\"deadlineDagen\":14,\"dagenTotWedstrijd\":5," + Wedstrijd + "}", bron, null);
+
+        var p = bron.Placeholders["herplan_te_laat"]!;
+        p["deadline_dagen"].Should().Be("14");
+        p["dagen_tot_wedstrijd"].Should().Be("5");
+        p["wedstrijd"].Should().Be("JO13-1 - Gast");
+    }
+
+    [Theory]
+    [InlineData(false, "")]
+    [InlineData(true, "De KNVB-speeldagenkalender is als bijlage toegevoegd.")]
+    public async Task Placeholders_VerzetZonderDatum_ToontDeBijlagezinAlleenMetBijlage(bool metBijlage, string verwacht)
+    {
+        var bron = new OpnemendeBron();
+        bron.Classificatie.VoegKnvbPdfBijlageToe = metBijlage;
+        bron.Sjablonen.Add("verzet_zonder_datum");
+
+        await TemplateAntwoordBouwer.BouwAsync("HerplanVerzoek",
+            "{\"verzetZonderDatum\":true,\"vrijeZaterdagen\":[\"2026-11-21\",\"2026-11-28\"]," + Wedstrijd + "}", bron, null);
+
+        var p = bron.Placeholders["verzet_zonder_datum"]!;
+        p["bijlage_zin"].Should().Be(verwacht);
+        p["vrije_zaterdagen"].Should().Contain("- zaterdag 21 november 2026").And.Contain("- zaterdag 28 november 2026");
+    }
+
+    [Fact]
+    public async Task Placeholders_HerplanGewensteDatum_GeeftGewensteDatumMogelijkhedenEnDagdeel()
+    {
+        var bron = new OpnemendeBron();
+        bron.Sjablonen.Add("herplan_gewenste_datum");
+
+        await TemplateAntwoordBouwer.BouwAsync("HerplanVerzoek",
+            "{\"gewensteDatum\":\"2026-11-21\",\"beschikbaarheid\":{\"Beschikbaar\":false,\"GecontroleerdDagdeel\":\"ochtend\"}," + Wedstrijd + "}", bron, null);
+
+        var p = bron.Placeholders["herplan_gewenste_datum"]!;
+        p["gewenste_datum"].Should().Be("zaterdag 21 november 2026");
+        p["mogelijkheden"].Should().Contain("zaterdag 21 november 2026");
+        bron.LaatsteDagdeel.Should().Be("ochtend");
+    }
+
+    [Fact]
+    public async Task Placeholders_MultiDatum_BevatEenOverzichtPerDatum()
+    {
+        var bron = new OpnemendeBron();
+        bron.Sjablonen.Add("multi_datum");
+
+        await TemplateAntwoordBouwer.BouwAsync("BeschikbaarheidCheck",
+            "{\"multiDatum\":true,\"resultaten\":[{\"datum\":\"2026-11-14\",\"response\":{}},{\"datum\":\"2026-11-21\",\"response\":{}}]}", bron, null);
+
+        var overzicht = bron.Placeholders["multi_datum"]!["overzicht"];
+        overzicht.Should().Contain("zaterdag 14 november 2026").And.Contain("zaterdag 21 november 2026");
+    }
+
+    [Theory]
+    [InlineData("{\"teamOnbekend\":true,\"tegenstander\":\"Gast JO13-1\"}", true)]
+    [InlineData("{\"teamOnbekend\":true}", false)]
+    public async Task Placeholders_TeamOnbekend_GebruiktDeTegenstanderUitHetPlannerresponse(string json, bool verwachtOverschrijving)
+    {
+        var bron = new OpnemendeBron();
+        bron.Sjablonen.Add("team_onbekend");
+
+        await TemplateAntwoordBouwer.BouwAsync("BeschikbaarheidCheck", json, bron, null);
+
+        var p = bron.Placeholders["team_onbekend"]!;
+        p.ContainsKey("tegenstander").Should().Be(verwachtOverschrijving);
+        if (verwachtOverschrijving) p["tegenstander"].Should().Be("Gast JO13-1");
+    }
+
+    [Fact]
+    public async Task Placeholders_HerplanStandaard_KrijgtDeWedstrijdgegevens()
+    {
+        var bron = new OpnemendeBron();
+        bron.Sjablonen.Add("herplan_verzoek");
+
+        await TemplateAntwoordBouwer.BouwAsync("HerplanVerzoek", "{" + Wedstrijd + "}", bron, null);
+
+        bron.Placeholders["herplan_verzoek"]!["wedstrijd_veld"].Should().Be("Veld 1");
     }
 }

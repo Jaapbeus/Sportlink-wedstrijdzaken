@@ -211,7 +211,8 @@ public static partial class BerichtAntwoordGenerator
 
     /// <summary>
     /// Past een sjabloon toe op de classificatie. Placeholders: {{voornaam}}, {{aanhef}},
-    /// {{datum}}, {{team}}, {{tegenstander}}, {{aanvangstijd}}, {{dagdeel}}.
+    /// {{datum}}, {{team}}, {{tegenstander}}, {{aanvangstijd}}, {{dagdeel}}, {{coordinator}}; per antwoord
+    /// komen daar de <paramref name="extraPlaceholders"/> bij (<c>BerichtAntwoordGenerator.Sjabloon.cs</c>, #1780).
     /// Valt terug op de standaard handtekening + review-wrapper.
     /// Niet-destructief: bestaande Bouw* methoden blijven beschikbaar als fallback.
     /// </summary>
@@ -234,6 +235,7 @@ public static partial class BerichtAntwoordGenerator
             // #1587: "de ochtend (08:30 - 12:00)" of leeg. Uitsluitend het dagdeel dat de planner werkelijk heeft
             // gecontroleerd, nooit het gevraagde dagdeel uit de classificatie (dat kan vervallen zijn).
             ["dagdeel"] = DagdeelVenster.Omschrijving(gecontroleerdDagdeel) ?? "",
+            ["coordinator"] = instellingen.CoordinatorNaam ?? "",
         };
 
         if (extraPlaceholders != null)
@@ -263,7 +265,9 @@ public static partial class BerichtAntwoordGenerator
                   + $"==================\n\n";
         }
 
-        body += bodyInvulling;
+        // TrimEnd (#1780): een placeholder aan het eind van de tekst die leeg blijft (bijvoorbeeld {{bijlage_zin}})
+        // mag geen rij lege regels voor de handtekening achterlaten; de handtekening voegt zelf een lege regel toe.
+        body += bodyInvulling.TrimEnd();
         body += "\n\n" + GetHandtekening(instellingen);
         return (onderwerp, body);
     }
