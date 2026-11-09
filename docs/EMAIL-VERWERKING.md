@@ -1065,22 +1065,48 @@ en de vereiste (gratis) Reader-roltoewijzing.
 `Actief` zet, vervangt de volledige hardcoded tekst voor die classificatie. Templates zijn
 per club opgeslagen (`ClubCode` in `dbo.EmailTemplateInstellingen`).
 
-| Template-key | Vervangt |
-|---|---|
-| `beschikbaarheid_check` | Template A–F (níet G, H, I of P — die hebben eigen logica die vóór de DB-lookup komt) |
-| `herplan_verzoek` | Template L (níet J of K — die komen vóór de DB-lookup) |
-| `bevestiging` | Template N |
-| `team_contact_opvragen` | Template M |
-| `buiten_scope` | Template O |
+Sinds #1780 heeft **elk** antwoord een eigen template-key (twaalf in totaal). De sleutels, de uitleg,
+de extra placeholders en de standaardtekst die het formulier voorinvult staan op één plek:
+`Planner.Shared/Email/AntwoordSjabloonCatalogus.cs`. Die catalogus wordt ook in de Admin GUI
+gecompileerd (gelinkt bronbestand), dus de keuzelijst en deze verwerker kunnen niet uiteenlopen.
 
-> **Belangrijk:** de DB-lookup gebeurt pas nádat de bijzondere gevallen zijn afgehandeld. Een
-> override op `beschikbaarheid_check` heeft dus geen effect op een multidatum-antwoord, op "staat al
-> ingepland", op "team onbekend" of op "geen datum". Zo ook: `herplan_verzoek` raakt niet aan een
-> te laat verzoek of een verzoek met een gewenste datum.
+| Template-key | Vervangt | Extra placeholders |
+|---|---|---|
+| `beschikbaarheid_check` | Template A–F (het standaardgeval, als geen van de takken hieronder geldt) | — |
+| `wedstrijd_al_ingepland` | Template H | `wedstrijd`, `wedstrijd_datum`, `wedstrijd_aanvangstijd`, `wedstrijd_veld` |
+| `team_onbekend` | Template I | — (`{{tegenstander}}` is de tegenstander uit het plannerresponse) |
+| `datum_onbekend` | Template P | — |
+| `multi_datum` | Template G | `overzicht` |
+| `herplan_verzoek` | Template L (het algemene vangnet) | `wedstrijd`, `wedstrijd_datum`, `wedstrijd_aanvangstijd`, `wedstrijd_veld` |
+| `herplan_te_laat` | Template J | wedstrijdgegevens (zie hierboven), `deadline_dagen`, `dagen_tot_wedstrijd` |
+| `verzet_zonder_datum` | Verzet zonder datum van de tegenstander (voorzet met vrije zaterdagen) | wedstrijdgegevens, `vrije_zaterdagen`, `bijlage_zin` |
+| `herplan_gewenste_datum` | Template K | wedstrijdgegevens, `gewenste_datum`, `mogelijkheden` |
+| `bevestiging` | Template N | — |
+| `team_contact_opvragen` | Template M | — |
+| `buiten_scope` | Template O | — |
+
+> **Volgorde:** de takken blijven in dezelfde volgorde gekozen als het ingebouwde antwoord (de eerste
+> vlag in het plannerresponse die waar is, wint); pas daarna wordt voor de gekozen tak het
+> databasesjabloon opgehaald. Een override op `beschikbaarheid_check` of `herplan_verzoek` raakt dus
+> nog steeds alleen het standaardgeval; voor de bijzondere gevallen heeft elk een eigen sleutel.
+>
+> **Wedstrijd nodig.** Bij `wedstrijd_al_ingepland`, `herplan_te_laat`, `verzet_zonder_datum` en
+> `herplan_gewenste_datum` geldt het sjabloon alleen als de planner de wedstrijd vond. Anders blijft
+> het ingebouwde antwoord staan dat uitlegt dat er geen wedstrijd is gevonden; de wedstrijdplaceholders
+> zouden anders leeg in de mail staan.
+>
+> **Zekerheidspoort.** `team_onbekend` en `datum_onbekend` vragen de afzender om informatie en gaan
+> standaard eerst ter review (§1e), ook met een eigen tekst: de poort beoordeelt de situatie, niet de tekst.
+>
+> **Gevolg van een eigen tekst.** Een sjabloon is vaste tekst met placeholders. `beschikbaarheid_check`
+> en `herplan_verzoek` hebben geen placeholder voor de lijst met tijden of alternatieven; wie ze
+> overschrijft, laat die lijst uit het antwoord weg.
 
 **Ondersteunde placeholders — dit is de volledige lijst.** Alles wat de code invult zit in
-`BerichtResponseGenerator.BouwAangepasteAntwoord`; een placeholder die daar niet in staat blijft
-letterlijk in de mail staan. De Admin GUI toont dezelfde zeven onder het body-veld.
+`BerichtAntwoordGenerator.BouwAangepasteAntwoord` (de basisset hieronder) en in
+`BerichtAntwoordGenerator.Sjabloon.cs` (de extra placeholders per sleutel uit de tabel hierboven); een
+placeholder die daar niet in staat blijft letterlijk in de mail staan. De Admin GUI toont per sleutel
+de basisset plus de eigen placeholders onder het body-veld.
 
 | Placeholder | Inhoud |
 |---|---|
@@ -1091,6 +1117,7 @@ letterlijk in de mail staan. De Admin GUI toont dezelfde zeven onder het body-ve
 | `{{tegenstander}}` | Tegenstander uit de classificatie |
 | `{{aanvangstijd}}` | Gevraagde aanvangstijd uit de classificatie |
 | `{{dagdeel}}` | Het werkelijk gecontroleerde dagdeel met venster, bijvoorbeeld `de ochtend (08:30 - 12:00)`; leeg als er geen dagdeel is gecontroleerd (#1587) |
+| `{{coordinator}}` | Naam van de coördinator uit de clubinstellingen; leeg als die niet is ingesteld (#1780) |
 
 Substitutie is case-insensitief; een niet-gevulde waarde wordt een lege string. Ook het veld
 **Onderwerp** ondersteunt deze placeholders. Blijft het onderwerp leeg, dan wordt het
@@ -1099,9 +1126,12 @@ Substitutie is case-insensitief; een niet-gevulde waarde wordt een lege string. 
 > **Deze lijst is uitputtend.** Een eerdere versie van dit document noemde een template
 > `HerplanInOverleg` met BCC naar begeleiders en de placeholders `{{wedstrijd}}`, `{{tijd}}`,
 > `{{veld}}`, `{{deadlineDagen}}`, `{{dagenTotWedstrijd}}`, `{{alternatieven}}` en
-> `{{bccOpmerking}}`. Geen daarvan bestaat: niet de template-key, niet de BCC-logica en niet één van
-> die zeven placeholders (#708). Er is ook geen pad in de code dat bij een te laat herplanverzoek
-> alsnog alternatieven zoekt — een te laat verzoek levert altijd Template J.
+> `{{bccOpmerking}}`. Op dat moment bestond geen daarvan: niet de template-key, niet de BCC-logica en
+> niet één van die zeven placeholders (#708). Sinds #1780 bestaan `{{wedstrijd}}`, `{{deadline_dagen}}`
+> en `{{dagen_tot_wedstrijd}}` wél, maar alleen bij de sleutels uit de tabel hierboven en met die
+> snake_case-namen; `HerplanInOverleg`, de BCC-logica en de overige namen bestaan nog steeds niet.
+> Er is ook geen pad in de code dat bij een te laat herplanverzoek alsnog alternatieven zoekt — een
+> te laat verzoek levert altijd Template J.
 >
 > Ook `Template L — Leeftijdscategorie of teamnaam onbekend` uit die versie bestaat niet: er is geen
 > tekst die ontbrekende velden opsomt. Ontbreekt alleen de datum, dan volgt Template P; ontbreekt de
