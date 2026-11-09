@@ -877,6 +877,9 @@ de kernfeiten. Bij een discrepantie is de code leidend; werk dan dit overzicht b
   keer geforceerd verversen, één keer opnieuw proberen; blijft het 401 → `HerkoppelingVereist`.
 - `400` met `invalid_grant` op het token-endpoint → `HerkoppelingVereist` (refresh-token zelf dood,
   handmatige herkoppeling nodig via §3.3).
+- #1774: een mislukte periodieke herlogin (`SportlinkLoginException`) slaat het refresh-tokenpad nooit
+  over; het opgeslagen refresh-token wordt alsnog gebruikt, zodat een tijdelijke loginstoring de
+  keep-alive niet stillegt en het token niet door Keycloak wordt gedeactiveerd.
 
 ### 6.2 Endpoints (alle onder `https://club.sportlink.com/navajo/entity/common/clubweb/`)
 
