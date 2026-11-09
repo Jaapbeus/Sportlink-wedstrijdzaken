@@ -205,6 +205,55 @@ public class TeamCanonicalisatieIntegrationTests
         uitkomst.Teams.Should().Be(1, "het team blijft bestaan na een tweede ronde");
     }
 
+    /// <summary>
+    /// #1785: een team dat in Sportlink alleen als lokaal voorkomt (bondsnaam met een achtervoegsel
+    /// dat de lokale naam mist), is standaard inactief, ook als het al actief in public.teams stond.
+    /// Het bondsteam blijft actief, en de lokale schrijfwijze krijgt geen Sync-alias naar het
+    /// inactieve team.
+    /// <para>
+    /// Negatieve controle: met <c>isactief = TRUE</c> in de upsert (het oude gedrag) faalt de
+    /// eerste assertie.
+    /// </para>
+    /// </summary>
+    [PostgresFact]
+    public async Task RefreshAsync_AlleenLokaalTeam_WordtInactief_BondsteamBlijftActief()
+    {
+        await SchoonAsync();
+        await HisTeamAsync("JO14-1", "JO14", "lokaal");
+        await HisTeamAsync("TESTCANON O14-1JM", "JO14", "bond");
+        await ExecAsync(@"
+            INSERT INTO public.teams (clubcode, teamnaam, teamnaamgenormaliseerd, isactief)
+            VALUES (@club, 'JO14-1', 'JO14-1', TRUE)", ("club", ClubCode));
+
+        await TeamCanonicalisatieService.RefreshAsync(ConnectionString, ClubCode, NullLogger.Instance);
+
+        (await ScalarAsync<bool>("SELECT isactief FROM public.teams WHERE clubcode = @club AND teamnaam = 'JO14-1'"))
+            .Should().BeFalse("een alleen-lokaal team is standaard inactief (#1785)");
+        (await ScalarAsync<bool>("SELECT isactief FROM public.teams WHERE clubcode = @club AND teamnaam = 'TESTCANON O14-1JM'"))
+            .Should().BeTrue("een bondsteam blijft actief");
+        (await CountAsync("SELECT count(*) FROM public.teamaliassen WHERE clubcode = @club AND upper(ruwetekst) = 'JO14-1'"))
+            .Should().Be(0, "de sync koppelt geen schrijfwijze aan een inactief team");
+    }
+
+    /// <summary>
+    /// #1785: dezelfde teamnaam kan in Sportlink zowel bond als lokaal zijn (seniorenteams). Vóór
+    /// de fix won <c>MAX(teamsoort)</c> = 'lokaal'; dan zou het team onterecht inactief worden.
+    /// Andere teamsoorten (democlub: 'jeugd') blijven ook actief.
+    /// </summary>
+    [PostgresFact]
+    public async Task RefreshAsync_ZelfdeNaamBondEnLokaal_EnAndereTeamsoort_BlijvenActief()
+    {
+        await SchoonAsync();
+        await HisTeamAsync("TESTCANON 3", "Senioren", "lokaal");
+        await HisTeamAsync("TESTCANON 3", "Senioren", "bond");
+        await HisTeamAsync("TESTCANON JO9-1", "JO9", "jeugd");
+
+        await TeamCanonicalisatieService.RefreshAsync(ConnectionString, ClubCode, NullLogger.Instance);
+
+        (await CountAsync("SELECT count(*) FROM public.teams WHERE clubcode = @club AND isactief"))
+            .Should().Be(2, "een team met een bondsrij en een team met een andere teamsoort blijven actief");
+    }
+
     private static async Task SchoonAsync()
     {
         // Beide tabellen, niet alleen his.teams: RegistreerBronSchrijfwijzenAsync leest de
