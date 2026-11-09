@@ -15,8 +15,8 @@
          hosting. Zie index.html voor de volledige afweging. -->
     <OverrideHtmlAssetPlaceholders>false</OverrideHtmlAssetPlaceholders>
     <Version>3.15.2.1</Version>
-    <AssemblyVersion>3.15.2.0</AssemblyVersion>
-    <FileVersion>3.15.2.0</FileVersion>
+    <AssemblyVersion>3.15.2.1</AssemblyVersion>
+    <FileVersion>3.15.2.1</FileVersion>
     <!-- Azure Static Web Apps doet content negotiation op .wasm en serveert de pre-compressed
          .wasm.br data ZONDER 'Content-Encoding: br' header te zetten. Chrome (vooral Incognito)
          interpreteert de Brotli-bytes dan als raw wasm → SRI integrity check faalt → app crasht.
