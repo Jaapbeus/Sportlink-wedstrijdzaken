@@ -159,7 +159,7 @@ jobs:
         run: bash scripts/ci/resolve-database-tier.sh
 
       - name: .NET SDK installeren
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
@@ -354,7 +354,7 @@ jobs:
       # Database.Postgres.Cli is net10.0 (#1073) — dezelfde SDK-keuze als de CI-job
       # fresh-db-postgres in build.yml.
       - name: .NET SDK installeren
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: 10.0.x
 
@@ -631,7 +631,7 @@ jobs:
 
       - name: .NET SDK installeren
         if: steps.check.outputs.skip == 'false'
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: '10.0.x'
 
