@@ -4946,7 +4946,9 @@ alleen code is.
   `044_teams_categorie.sql`. Geen nieuwe tabel, dus geen RLS-stap.
 - **SQL Server:** `dbo.Teams.Categorie NVARCHAR(1) NULL`, constraint `CK_Teams_Categorie`, in
   `Database/dbo/Tables/Teams.sql` en idempotent (`COL_LENGTH`) in `Script.PostDeployment1.sql`, met
-  `QUOTED_IDENTIFIER ON` vanwege de persisted computed column (#1280).
+  `QUOTED_IDENTIFIER ON` vanwege de persisted computed column (#1280). De CHECK vergelijkt met
+  `COLLATE Latin1_General_100_BIN2`: onder een hoofdletterongevoelige databasecollatie zouden `a`/`b`
+  anders slagen, terwijl Postgres ze afwijst (tierpariteit).
 - **Expand (§57):** uitsluitend additief en nullable. De vorige code noemt in elke `INSERT` op teams een
   kolomlijst en merkt de kolom dus niet. Bestaande rijen blijven NULL (= onbekend).
 - **Sync:** `TeamCanonicalisatieService` raakt de kolom op geen van beide tiers aan, zodat een handmatig

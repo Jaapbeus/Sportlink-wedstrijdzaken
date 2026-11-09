@@ -4208,10 +4208,11 @@ GO
 -- #1787: KNVB-verplaatsingscategorie per team (A of B), alvast voorbereid. NULL = onbekend; nog geen code
 -- leest of schrijft de kolom en de teamcanonicalisatie laat haar ongemoeid. Additief en nullable (expand).
 -- Postgres-tegenhanger: Database.Postgres/migrations/044_teams_categorie.sql. Bron: Database/dbo/Tables/Teams.sql.
+-- De CHECK vergelijkt binair (BIN2): onder een hoofdletterongevoelige collatie zou a/b anders slagen (pariteit met Postgres).
 -- QUOTED_IDENTIFIER moet AAN zijn: dbo.Teams heeft een persisted computed column met index (#1280).
 SET QUOTED_IDENTIFIER ON;
 GO
 IF OBJECT_ID('dbo.Teams', 'U') IS NOT NULL AND COL_LENGTH('dbo.Teams', 'Categorie') IS NULL
     ALTER TABLE [dbo].[Teams] ADD
-        [Categorie] NVARCHAR(1) NULL CONSTRAINT [CK_Teams_Categorie] CHECK ([Categorie] IN (N'A', N'B'));
+        [Categorie] NVARCHAR(1) NULL CONSTRAINT [CK_Teams_Categorie] CHECK ([Categorie] COLLATE Latin1_General_100_BIN2 IN (N'A', N'B'));
 GO

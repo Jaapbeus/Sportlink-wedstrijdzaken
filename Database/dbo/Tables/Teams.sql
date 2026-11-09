@@ -15,7 +15,7 @@ CREATE TABLE [dbo].[Teams] (
     [IsActief]           BIT NOT NULL CONSTRAINT [DF_Teams_IsActief] DEFAULT 1,
     [mta_inserted]       DATETIME NOT NULL CONSTRAINT [DF_Teams_Inserted] DEFAULT GETUTCDATE(),
     [mta_modified]       DATETIME NOT NULL CONSTRAINT [DF_Teams_Modified] DEFAULT GETUTCDATE(),
-    [Categorie]          NVARCHAR(1)   NULL CONSTRAINT [CK_Teams_Categorie] CHECK ([Categorie] IN (N'A', N'B')), -- KNVB-verplaatsingscategorie (#1787); NULL = onbekend
+    [Categorie]          NVARCHAR(1)   NULL CONSTRAINT [CK_Teams_Categorie] CHECK ([Categorie] COLLATE Latin1_General_100_BIN2 IN (N'A', N'B')), -- KNVB-verplaatsingscategorie (#1787); NULL = onbekend; BIN2 = alleen hoofdletters A/B
     CONSTRAINT [PK_Teams] PRIMARY KEY CLUSTERED ([TeamId] ASC),
     CONSTRAINT [UQ_Teams_Club_Teamnaam] UNIQUE ([ClubCode], [Teamnaam]),
     CONSTRAINT [UQ_Teams_Club_Genormaliseerd] UNIQUE ([ClubCode], [TeamnaamGenormaliseerd])
