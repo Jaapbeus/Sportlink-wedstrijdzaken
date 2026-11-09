@@ -1,6 +1,7 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Planner.Shared;
+using Planner.Shared.TeamResolution;
 using SportlinkFunction.Planner;
 
 namespace SportlinkFunction.TeamResolution;
@@ -454,6 +455,7 @@ public static class TeamCanonicalisatieService
 
     private static async Task<List<HisTeamRow>> LoadHisTeamsAsync(string clubCode)
     {
+        // GROUP BY ook op teamsoort: zie TeamSoortBeleid en ARCHITECTUUR-TEAMRESOLUTIE.md (#1785).
         var resultaten = new List<HisTeamRow>();
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
@@ -462,13 +464,13 @@ public static class TeamCanonicalisatieService
                 [teamnaam],
                 MAX([bk_teams])            AS BkTeams,
                 MAX([leeftijdscategorie])  AS LeeftijdsCategorie,
-                MAX([teamsoort])           AS Teamsoort
+                [teamsoort]                AS Teamsoort
             FROM [his].[teams]
             WHERE [ClubCode] = @clubCode
               AND [mta_deleted] IS NULL
               AND [teamnaam] IS NOT NULL
               AND LTRIM(RTRIM([teamnaam])) <> ''
-            GROUP BY [teamnaam]
+            GROUP BY [teamnaam], [teamsoort]
         ", conn);
         cmd.Parameters.AddWithValue("@clubCode", clubCode);
         using var reader = await cmd.ExecuteReaderAsync();
@@ -486,10 +488,8 @@ public static class TeamCanonicalisatieService
     private static async Task UpsertTeamAsync(
         SqlConnection conn, string clubCode, string sleutel, List<HisTeamRow> groep)
     {
-        // Bondsnotatie heeft voorkeur als canonieke weergavenaam: die vorm staat ook in
-        // his.matches.wedstrijd en is wat tegenstanders gebruiken. Anders de lokale naam.
-        var bond = groep.FirstOrDefault(r => string.Equals(r.Teamsoort, "bond", StringComparison.OrdinalIgnoreCase));
-        var gekozen = bond ?? groep[0];
+        // #1785: [IsActief] volgt de teamsoort, ook in de MATCHED-tak (alleen lokaal = 0).
+        var (gekozen, isActief) = TeamSoortBeleid.KiesCanoniek(groep, r => r.Teamsoort);
 
         var componenten = TeamNaamNormalisatie.Parse(gekozen.Teamnaam, clubCode);
         var leeftijdsCategorie = LeeftijdNormalisatie.Normaliseer(
@@ -507,13 +507,13 @@ public static class TeamCanonicalisatieService
                     [LeeftijdNummer]     = @leeftijdNummer,
                     [TeamNummer]         = @teamNummer,
                     [BkTeams]            = @bkTeams,
-                    [IsActief]           = 1,
+                    [IsActief]           = @isActief,
                     [mta_modified]       = GETUTCDATE()
             WHEN NOT MATCHED THEN
                 INSERT ([ClubCode], [Teamnaam], [TeamnaamGenormaliseerd], [LeeftijdsCategorie],
                         [LeeftijdNummer], [TeamNummer], [BkTeams], [IsActief])
                 VALUES (@clubCode, @teamnaam, @sleutel, @leeftijdsCategorie,
-                        @leeftijdNummer, @teamNummer, @bkTeams, 1);
+                        @leeftijdNummer, @teamNummer, @bkTeams, @isActief);
         ", conn);
         cmd.Parameters.AddWithValue("@clubCode", clubCode);
         cmd.Parameters.AddWithValue("@teamnaam", gekozen.Teamnaam);
@@ -523,6 +523,7 @@ public static class TeamCanonicalisatieService
         cmd.Parameters.AddWithValue("@leeftijdNummer", (object?)componenten?.LeeftijdNummer ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@teamNummer", (object?)componenten?.TeamNummer ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@bkTeams", (object?)gekozen.BkTeams ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@isActief", isActief);
 
         await cmd.ExecuteNonQueryAsync();
     }
