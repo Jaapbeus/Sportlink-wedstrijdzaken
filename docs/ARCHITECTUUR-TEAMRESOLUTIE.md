@@ -49,6 +49,28 @@ Verder komen in echte data voor: veteranen (`[club] 35+1`), vrouwen (`[club] VR1
 `[club] VR30+1`), gemengde teams met een `JM`-suffix (`[club] O14-1JM`), G-teams, en teams met een
 eigen naam zonder patroon. Een normalisatie die dat niet aankan, mangelt bestaande teams.
 
+### Alleen-lokale teams zijn standaard inactief (#1785)
+
+Bij een `JM`-suffix (en elke andere toevoeging die alleen de bondsnaam heeft) vallen de twee
+notaties níet samen: lokaal `JO14-1` en bond `[club] O14-1JM` krijgen verschillende sleutels. Er
+bleven dan twee actieve teams over. Het lokale team won bij een exacte naammatch, maar heeft geen
+competitiewedstrijden. Een herplanverzoek vond daardoor "geen wedstrijd", en een coördinatoralias
+naar het bondsteam werd nooit gebruikt, omdat `PlannerMatchRepository.TeamSchrijfwijzenAsync` het
+exacte team vóór de alias zoekt.
+
+Eigenaarsbesluit: een canoniek team waarvan **alle** bronrijen `teamsoort = lokaal` zijn, krijgt bij
+elke canonicalisatie `isactief = false`, ook als het al actief was. Eén bondsrij in de groep houdt
+het team actief. Andere teamsoorten (de democlub levert `jeugd`/`senioren`) blijven ook actief. De
+regel staat eenmalig in `Planner.Shared/TeamResolution/TeamSoortBeleid.cs`. Omdat elke teamlookup
+(resolver, wedstrijdzoeker, aliasregistratie) al op `isactief` filtert, geldt het besluit daarmee
+in de hele applicatie, en registreert de sync geen nieuwe alias naar zo'n team.
+
+Let op: dezelfde teamnaam kan in Sportlink zowel `bond` als `lokaal` zijn (seniorenteams zoals
+`[club] 3`, `[club] 35+1`). De canonicalisatie leest `his.teams` daarom per (teamnaam, teamsoort) en
+niet met `MAX(teamsoort)`, want dan won `lokaal` en werd zo'n bondsteam onterecht uitgezet.
+Geaccepteerd restrisico: een oefenwedstrijd die in Sportlink onder een alleen-lokaal team staat, is
+niet meer via de teamnaam te vinden.
+
 Het scheidingsteken tussen leeftijd en teamnummer varieert óók: streepje (`MO13-1`), schuine streep
 (`jo13/2`), punt of komma, én een **kale spatie** (`MO13 1`). Die laatste vorm ontbrak aanvankelijk in
 de regels, waardoor `MO13 1` de sleutel `MO131` kreeg en `MO13-1` de sleutel `MO13-1` — twee sleutels
