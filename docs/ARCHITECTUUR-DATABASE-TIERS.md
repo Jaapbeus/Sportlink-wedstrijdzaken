@@ -4934,3 +4934,21 @@ nieuwe schema, daarna de nieuwe code en een herhaalde migratie), de verse PostDe
 PostDeployment-basis → deze PR op een bestaande database (job `fresh-db`), en sinds deze PR ook de
 SQL Server-integratietests (`SQLSERVER_TEST_CONNECTION_STRING` in `fresh-db`). Niet in CI: de browser-rendercheck
 van `/instellingen`.
+
+## 85. Teamcategorie (KNVB A/B) voorbereid: één additieve kolom op beide tiers (#1787)
+
+Eigenaarsbesluit 2026-11-09: de KNVB-notitie van het AI-model gaat niet meer naar de afzender
+(`docs/ARCHITECTUUR-AI-SERVICES.md`), en later wordt per team vastgelegd in welke KNVB-categorie het
+speelt. De kolom komt er nu al, zodat de volgende release één schemawijziging bevat en het latere werk
+alleen code is.
+
+- **Postgres:** `public.teams.categorie VARCHAR(1) NULL`, `CHECK (categorie IN ('A','B'))`, migratie
+  `044_teams_categorie.sql`. Geen nieuwe tabel, dus geen RLS-stap.
+- **SQL Server:** `dbo.Teams.Categorie NVARCHAR(1) NULL`, constraint `CK_Teams_Categorie`, in
+  `Database/dbo/Tables/Teams.sql` en idempotent (`COL_LENGTH`) in `Script.PostDeployment1.sql`, met
+  `QUOTED_IDENTIFIER ON` vanwege de persisted computed column (#1280).
+- **Expand (§57):** uitsluitend additief en nullable. De vorige code noemt in elke `INSERT` op teams een
+  kolomlijst en merkt de kolom dus niet. Bestaande rijen blijven NULL (= onbekend).
+- **Sync:** `TeamCanonicalisatieService` raakt de kolom op geen van beide tiers aan, zodat een handmatig
+  gezette waarde blijft staan.
+- **Nog niet in gebruik:** geen endpoint, scherm of query leest of schrijft de kolom.
