@@ -69,8 +69,17 @@ internal sealed class SportlinkClubTokenBeheer
                 await _autoLogin.AcquireLeaseAsync(functioneleRol, cancellationToken);
             if (_autoLogin is not null)
             {
-                var login = await _autoLogin.TryLoginAsync(functioneleRol, false, cancellationToken);
-                if (login is not null) return CacheLogin(functioneleRol, login);
+                // #1774: een mislukte periodieke herlogin mag het refresh-tokenpad nooit voorbijgaan;
+                // anders houdt de keep-alive op te verversen en deactiveert Keycloak het ongebruikte token.
+                try
+                {
+                    var login = await _autoLogin.TryLoginAsync(functioneleRol, false, cancellationToken);
+                    if (login is not null) return CacheLogin(functioneleRol, login);
+                }
+                catch (SportlinkLoginException)
+                {
+                    _logger.LogWarning("Periodieke Sportlink-herlogin niet voltooid; het opgeslagen refresh-token wordt gebruikt.");
+                }
             }
 
             // Lees het laatst duurzaam opgeslagen refresh-token onder de lease.

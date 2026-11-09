@@ -1,5 +1,6 @@
 using AwesomeAssertions;
 using Planner.Shared.Deel;
+using Planner.Shared.Planning;
 using Xunit;
 
 namespace Planner.Shared.Tests.Deel;
@@ -62,6 +63,27 @@ public class PlannerShareModelBuilderTests
         regel.NietInSportlink.Should().BeTrue();
         regel.TeamWeergave.Should().Be("Eigen 35+1 (niet in Sportlink)");
         PlannerShareHtmlGenerator.Genereer(model).Should().Contain("Eigen 35+1 (niet in Sportlink)");
+    }
+
+    [Fact]
+    public void VanVeldbezetting_SportlinkNietGeraadpleegd_ZetBronmeldingMetToelichting()
+    {
+        var status = SportlinkVeldplannerStatus.Terugval(SportlinkVeldplannerStatus.RedenKoppelingVerlopen);
+
+        var model = PlannerShareModelBuilder.VanVeldbezetting(
+            new[] { new Bezetting("10:00", "Thuis 1", "Thuis 1 - Uit 1", "Uit 1", "veld 1", null) }, Zaterdag, "ALLSTARS", status);
+
+        model.Bronmelding.Should().StartWith("Let op: Sportlink niet geraadpleegd. ").And.Contain(status.Toelichting);
+    }
+
+    [Fact]
+    public void VanVeldbezetting_SportlinkGeraadpleegdOfOnbekend_GeeftGeenBronmelding()
+    {
+        var regels = new[] { new Bezetting("10:00", "Thuis 1", "Thuis 1 - Uit 1", "Uit 1", "veld 1", null) };
+
+        PlannerShareModelBuilder.VanVeldbezetting(regels, Zaterdag, "ALLSTARS", SportlinkVeldplannerStatus.Ok(DateTime.UtcNow))
+            .Bronmelding.Should().BeNull();
+        PlannerShareModelBuilder.VanVeldbezetting(regels, Zaterdag, "ALLSTARS").Bronmelding.Should().BeNull();
     }
 
     [Fact]

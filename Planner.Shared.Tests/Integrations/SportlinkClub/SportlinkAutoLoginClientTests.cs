@@ -58,6 +58,43 @@ public sealed class SportlinkAutoLoginClientTests
         Assert.Equal("refresh-1", store.RefreshToken);
     }
 
+    // #1774: een mislukte periodieke herlogin mag het refresh-tokenpad nooit voorbijgaan.
+    [Fact]
+    public async Task Mislukte_periodieke_herlogin_gebruikt_alsnog_het_opgeslagen_refresh_token()
+    {
+        var store = ConfiguredStore(lastLoginUtc: DateTimeOffset.UtcNow.AddHours(-10), refreshToken: "old-refresh");
+        var provider = new FakeProvider { ThrowOnLogin = true };
+        var http = new RecordingHandler((request, _) => Task.FromResult(request.RequestUri!.Host == "idm.sportlink.com"
+            ? Json("{\"access_token\":\"access-fixture\",\"expires_in\":3600,\"refresh_token\":\"rotated-refresh\",\"token_type\":\"Bearer\"}")
+            : Json(ClubMatchBody)));
+        var sut = CreateClient(store, provider, http);
+
+        var result = await sut.VerversTokenAsync(Role);
+
+        Assert.Equal(SportlinkClubCallStatus.Ok, result);
+        Assert.Equal(1, provider.CallCount);
+        Assert.Equal("rotated-refresh", store.RefreshToken);
+    }
+
+    [Fact]
+    public async Task Mislukte_herlogin_en_invalid_grant_geeft_HerkoppelingVereist()
+    {
+        var store = ConfiguredStore(lastLoginUtc: DateTimeOffset.UtcNow.AddHours(-10), refreshToken: "old-refresh");
+        var provider = new FakeProvider { ThrowOnLogin = true };
+        var http = new RecordingHandler((request, _) => Task.FromResult(request.RequestUri!.Host == "idm.sportlink.com"
+            ? new HttpResponseMessage(HttpStatusCode.BadRequest)
+            {
+                Content = new StringContent("{\"error\":\"invalid_grant\"}", Encoding.UTF8, "application/json")
+            }
+            : Json(ClubMatchBody)));
+        var sut = CreateClient(store, provider, http);
+
+        var result = await sut.VerversTokenAsync(Role);
+
+        Assert.Equal(SportlinkClubCallStatus.HerkoppelingVereist, result);
+        Assert.Equal("old-refresh", store.RefreshToken);
+    }
+
     [Fact]
     public async Task Same_client_does_not_reuse_cached_token_after_credentials_change_or_delete()
     {
@@ -181,10 +218,12 @@ public sealed class SportlinkAutoLoginClientTests
         private int _callCount;
         public int CallCount => Volatile.Read(ref _callCount);
         public TimeSpan Delay { get; init; }
+        public bool ThrowOnLogin { get; init; }
 
         public async Task<SportlinkLoginResult> LoginAsync(SportlinkLoginCredentials credentials, CancellationToken cancellationToken = default)
         {
             var number = Interlocked.Increment(ref _callCount);
+            if (ThrowOnLogin) throw new SportlinkLoginException(SportlinkLoginFailure.NetworkFailure);
             if (Delay > TimeSpan.Zero) await Task.Delay(Delay, cancellationToken);
             return new SportlinkLoginResult($"access-{number}", $"refresh-{number}", 3600, 36000);
         }

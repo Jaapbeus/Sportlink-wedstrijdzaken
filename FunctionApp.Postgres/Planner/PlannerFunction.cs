@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Planner.Endpoints.Deel;
 using Planner.Shared;
+using Planner.Shared.Planning;
 
 namespace FunctionApp.Postgres.Planner;
 
@@ -63,14 +64,15 @@ public static class PlannerFunction
                 if (string.IsNullOrWhiteSpace(datumParam) || !DateOnly.TryParse(datumParam, out var datum))
                     return new BadRequestObjectResult(new { error = "Query parameter 'datum' (yyyy-MM-dd) is verplicht." });
 
-                // #1364: ?format=html|pdf voor de deel-knop op de Planning-pagina; zonder format blijft het JSON.
+                // #1364: ?format=html|pdf voor de deel-knop op de Planning-pagina; zonder format blijft het JSON; zonder ?status=true blijft dat de kale array (#1774).
+                var metStatus = VeldbezettingAntwoord<VeldbezettingItem>.StatusAangevraagd(req.Query["status"].ToString());
                 log.LogInformation("Veldbezetting: datum={Datum}, club={Club}", LogWaarde.Schoon(datumParam), clubCode);
                 return await PlannerDeelEndpointCore.VerwerkAsync(req.Query["format"], null, datumParam,
                     () => PdfExportInstelling.IsIngeschakeldAsync(clubCode),
                     async () => await VeldbezettingSportlinkOverlay.PasToeAsync(
                         await AutoPlanService.VeldbezettingAsync(PostgresDatabaseConfig.ConnectionString, datum, clubCode),
                         context, datum, clubCode, log),
-                    (deel, items) => deel.VanVeldbezetting(items, clubCode), items => new OkObjectResult(items));
+                    (deel, antwoord) => deel.VanVeldbezetting(antwoord.Wedstrijden, clubCode, antwoord.Sportlink), antwoord => new OkObjectResult(antwoord.JsonVorm(metStatus)));
             });
     }
 
