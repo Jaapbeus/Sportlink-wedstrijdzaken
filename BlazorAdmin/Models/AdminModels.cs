@@ -758,6 +758,27 @@ public class VeldbezettingItemDto
     public string? Bron { get; set; }
 }
 
+/// <summary>Of de Sportlink-veldplanner voor deze dag echt is geraadpleegd (#1774). Bij <c>Geraadpleegd = false</c>
+/// toont Planning een rode waarschuwing: een lege of onvolledige dag mag niet als "vrij" lezen.</summary>
+public class SportlinkVeldplannerStatusDto
+{
+    public bool Geraadpleegd { get; set; }
+    /// <summary>Reden-code, o.a. Ok, Democlub, KoppelingVerlopen, NetwerkFout (#1774).</summary>
+    public string Reden { get; set; } = "";
+    public string? Toelichting { get; set; }
+    /// <summary>UTC-tijdstip van de raadpleging; alleen gevuld als <see cref="Geraadpleegd"/> waar is.</summary>
+    public DateTime? GeraadpleegdOpUtc { get; set; }
+    /// <summary>De Sportlink-koppeling moet via de beheerpagina worden hersteld.</summary>
+    public bool KoppelingHerstelNodig { get; set; }
+}
+
+/// <summary>Antwoord van <c>GET api/planner/veldbezetting</c> (#1774): de wedstrijdregels plus de Sportlink-status.</summary>
+public class VeldbezettingAntwoordDto
+{
+    public SportlinkVeldplannerStatusDto? Sportlink { get; set; }
+    public List<VeldbezettingItemDto> Wedstrijden { get; set; } = new();
+}
+
 public class AutoPlanToepassenRequestDto
 {
     public string Datum { get; set; } = "";

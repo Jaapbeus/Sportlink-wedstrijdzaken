@@ -11,6 +11,11 @@ namespace BlazorAdmin.Services;
 /// </summary>
 public static class DagplanningWeergaveHelpers
 {
+    /// <summary>#1774: toon de rode waarschuwing alleen als de status er is, Sportlink niet is geraadpleegd
+    /// en het niet de demo-club betreft (die heeft bewust geen Sportlink).</summary>
+    public static bool ToonSportlinkWaarschuwing(SportlinkVeldplannerStatusDto? status)
+        => status is { Geraadpleegd: false } && !string.Equals(status.Reden, "Democlub", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
     /// Eén Gantt-balk. <paramref name="Bron"/> is null op de directe veldbezettingsweergave (Planning) en
     /// op de "Huidig"-tab van Veld optimalisatie — die standen zijn niet sleepbaar. Alleen de "Optimaal"-
