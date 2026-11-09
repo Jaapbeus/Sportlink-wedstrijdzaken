@@ -719,7 +719,7 @@ Volgens onze richtlijn moet een herplanverzoek minimaal {deadlineDagen} dagen vo
 worden ingediend. Omdat de wedstrijd al binnen die termijn valt, kunnen we het verzoek niet meer
 automatisch verwerken.
 
-Neem voor uitzonderingen rechtstreeks contact op met de coördinator.
+De e-mail zal door de coördinator beoordeeld moeten worden.
 ```
 
 Als de wedstrijd niet gevonden kan worden:

@@ -13,7 +13,7 @@
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>.</DockerfileContext>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Version>3.15.2.0</Version>
+    <Version>3.15.2.1</Version>
     <AssemblyVersion>3.15.2.0</AssemblyVersion>
     <FileVersion>3.15.2.0</FileVersion>
   </PropertyGroup>

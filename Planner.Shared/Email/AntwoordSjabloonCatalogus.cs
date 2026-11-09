@@ -103,7 +103,7 @@ public static class AntwoordSjabloonCatalogus
             "Het herplanverzoek komt binnen de termijn waarbinnen verzetten niet meer automatisch kan.",
             [.. WedstrijdPlaceholders, "deadline_dagen", "dagen_tot_wedstrijd"], AlleenMetWedstrijd,
             "",
-            "{{aanhef}} {{voornaam}},\n\nDe wedstrijd {{wedstrijd}} staat gepland op {{wedstrijd_datum}} om {{wedstrijd_aanvangstijd}} op {{wedstrijd_veld}}. Dat is over {{dagen_tot_wedstrijd}} dag(en).\n\nVolgens onze richtlijn moet een herplanverzoek minimaal {{deadline_dagen}} dagen voor de wedstrijd worden ingediend. Omdat de wedstrijd al binnen die termijn valt, kunnen we het verzoek niet meer automatisch verwerken.\n\nNeem voor uitzonderingen rechtstreeks contact op met de coördinator."),
+            "{{aanhef}} {{voornaam}},\n\nDe wedstrijd {{wedstrijd}} staat gepland op {{wedstrijd_datum}} om {{wedstrijd_aanvangstijd}} op {{wedstrijd_veld}}. Dat is over {{dagen_tot_wedstrijd}} dag(en).\n\nVolgens onze richtlijn moet een herplanverzoek minimaal {{deadline_dagen}} dagen voor de wedstrijd worden ingediend. Omdat de wedstrijd al binnen die termijn valt, kunnen we het verzoek niet meer automatisch verwerken.\n\nDe e-mail zal door de coördinator beoordeeld moeten worden."),
 
         new(AntwoordSjabloonSleutels.VerzetZonderDatum, "Herplanning",
             "De tegenstander wil verzetten maar noemt geen nieuwe datum; wij geven vrije zaterdagen als voorzet.",
