@@ -281,6 +281,12 @@ public static class AvailabilityService
         if (string.IsNullOrEmpty(request.TeamNaam)) return null;
 
         var teamWedstrijden = await PlannerMatchRepository.GetTeamMatchesOnDateAsync(connectionString, request.TeamNaam, date, cc);
+        return PasTeamControleToe(teamWedstrijden, request, date, response) ? response : null;
+    }
+
+    internal static bool PasTeamControleToe(TeamWedstrijdenOpDatum teamWedstrijden,
+        CheckAvailabilityRequest request, DateOnly date, CheckAvailabilityResponse response)
+    {
         if (!teamWedstrijden.TeamHerkend)
         {
             // Niet stilzwijgend doorlopen (#945): zonder herkend team is er niets vergeleken, en
@@ -290,7 +296,7 @@ public static class AvailabilityService
             response.Waarschuwingen.Add(
                 $"'{AiVeldSanering.TeamNaamOfGeneriek(request.TeamNaam, false)}' staat niet in de teamlijst. Er is NIET gecontroleerd of dit " +
                 "team die dag al een wedstrijd heeft — controleer dat zelf.");
-            return null;
+            return false;
         }
 
         if (teamWedstrijden.Wedstrijden.Count > 0)
@@ -305,10 +311,10 @@ public static class AvailabilityService
             };
             response.Reden = $"{AiVeldSanering.TeamNaamOfGeneriek(request.TeamNaam, false)} heeft al een wedstrijd op {date.ToString("d MMMM", PlannerShared.NL)}: " +
                              $"{conflict.Wedstrijd} om {conflict.AanvangsTijd:HH:mm} ({response.TeamConflict.VeldNaam}).";
-            return response;
+            return true;
         }
 
-        return null;
+        return false;
     }
 
     /// <summary>

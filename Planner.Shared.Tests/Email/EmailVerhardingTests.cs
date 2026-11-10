@@ -8,6 +8,21 @@ namespace Planner.Shared.Tests.Email;
 /// <summary>#1809: verharding van de e-mailverwerking vóór review mode uit gaat (synthetische invoer).</summary>
 public class EmailVerhardingTests
 {
+    [Fact]
+    public void ProviderSamenvatting_BehoudtPlanningZonderStrikteOpslagOfTraceTeVersoepelen()
+    {
+        var identificatie = new string('0', 9);
+        AiVeldSanering.ProviderSamenvatting(identificatie).Should().Be(identificatie);
+        AiVeldSanering.Samenvatting(identificatie).Should().Be("[nummer]");
+        Planner.Shared.Email.Trace.TraceBuilder.Saneer(identificatie).Should().Be("[nummer]");
+        LeermomentInvoer.Valideer("BeschikbaarheidCheck", "HerplanVerzoek", identificatie)
+            .Waarde!.Samenvatting.Should().Be("[nummer]");
+        AiVeldSanering.ProviderSamenvatting("[nummer]").Should().Be("[nummer]");
+        var schoon = AiVeldSanering.ProviderSamenvatting("\"tekst\"\r\n" + new string('x', 600));
+        schoon.Should().StartWith("'tekst' ").And.NotContain("\n");
+        schoon.Length.Should().Be(AiVeldSanering.MaxSamenvattingLengte);
+    }
+
     [Theory]
     [InlineData("jan@example.com", true)]
     [InlineData("", false)]

@@ -109,19 +109,42 @@ public static partial class AiVeldSanering
     [GeneratedRegex(@"[^\s@]+@[^\s@]+\.[^\s@]+", RegexOptions.CultureInvariant)]
     private static partial Regex EmailPatroon();
 
-    [GeneratedRegex(@"\+?\d(?:[ .\-]?\d){8,}", RegexOptions.CultureInvariant)]
+    // Datums eerst herkennen: een datum met aansluitende tijd is geen contactnummer.
+    [GeneratedRegex(@"(?<datum>\b(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})\b)|(?<![\p{L}\p{N}])(?<nummer>\+?\(?\d(?:[().\p{Zs}\-]*\d){8,14})(?![\p{L}\p{N}])", RegexOptions.CultureInvariant)]
     private static partial Regex NummerPatroon();
 
     /// <summary>Maskeert contactpatronen voordat externe berichttekst naar de AI-provider gaat.</summary>
     public static string MaskeerContactgegevens(string? tekst)
     {
         if (string.IsNullOrEmpty(tekst)) return tekst ?? "";
-        return NummerPatroon().Replace(EmailPatroon().Replace(tekst, "[e-mail]"), "[nummer]");
+        return NummerPatroon().Replace(EmailPatroon().Replace(tekst, "[e-mail]"), match =>
+        {
+            if (match.Groups["datum"].Success) return match.Value;
+            var nummer = match.Value;
+            var cijfers = new string(nummer.Where(char.IsDigit).ToArray());
+            var internationaal = nummer.StartsWith('+');
+            var nationaal = nummer.TrimStart('(').StartsWith('0') && cijfers.Length == 10;
+            return internationaal || nationaal ? "[nummer]" : nummer;
+        });
     }
 
     /// <summary>Korte samenvatting uit het model: één regel, begrensd, zonder aanhalingstekens die een prompt kunnen doorbreken.</summary>
     public static string Samenvatting(string? waarde)
-        => Trace.TraceBuilder.Saneer(waarde, MaxSamenvattingLengte).Replace('"', '\'');
+        => ZonderDubbeleAanhalingstekens(Trace.TraceBuilder.Saneer(waarde, MaxSamenvattingLengte));
+
+    /// <summary>
+    /// Samenvatting uitsluitend voor providerinvoer: behoudt planningsgegevens, maskeert herkenbare
+    /// contactpatronen en hergebruikt de normalisatie en lengtekap. Opslag/trace houden de striktere
+    /// <see cref="Samenvatting"/>; reeds gemaskeerde opgeslagen inhoud wordt niet gereconstrueerd.
+    /// </summary>
+    public static string ProviderSamenvatting(string? waarde)
+    {
+        var schoon = NormaliseerWitruimte(MaskeerContactgegevens(waarde));
+        if (schoon.Length > MaxSamenvattingLengte) schoon = schoon[..MaxSamenvattingLengte];
+        return ZonderDubbeleAanhalingstekens(schoon);
+    }
+
+    private static string ZonderDubbeleAanhalingstekens(string tekst) => tekst.Replace('"', '\'');
 
     /// <summary><see cref="Samenvatting"/>, maar <c>null</c> als er na het saneren niets overblijft.</summary>
     public static string? SamenvattingOfNull(string? waarde)

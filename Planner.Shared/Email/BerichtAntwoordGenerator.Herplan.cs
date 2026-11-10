@@ -14,19 +14,18 @@ public static partial class BerichtAntwoordGenerator
         IAntwoordInstellingen instellingen)
     {
         var aanhef = GetTijdsgebondenAanhef();
-        var voornaam = ExtractVoornaam(email.AfzenderNaam);
         string inhoud;
 
         if (wedstrijd == null)
         {
-            inhoud = $"{aanhef} {voornaam},\n\n"
+            inhoud = $"{AntwoordTekst.AanhefMetNaam(aanhef, email.AfzenderNaam)},\n\n"
                    + $"Er is geen wedstrijd gevonden voor {AiVeldSanering.TeamNaamWeergave(classificatie.TeamNaam, classificatie.TeamNaamOnbevestigd) ?? "het opgegeven team"} "
                    + $"op {FormatDatum(classificatie.Datum)}. "
                    + "Controleer de teamnaam en datum en probeer het opnieuw.";
         }
         else if (herplanOpties == null || herplanOpties.Alternatieven.Count == 0)
         {
-            inhoud = $"{aanhef} {voornaam},\n\n"
+            inhoud = $"{AntwoordTekst.AanhefMetNaam(aanhef, email.AfzenderNaam)},\n\n"
                    + $"De wedstrijd {wedstrijd.Wedstrijd} op {FormatDatum(wedstrijd.Datum)} om {wedstrijd.AanvangsTijd} "
                    + $"op {wedstrijd.VeldNaam} kan helaas niet verplaatst worden. "
                    + "Er zijn geen alternatieven beschikbaar.";
@@ -52,14 +51,14 @@ public static partial class BerichtAntwoordGenerator
 
             if (eerdere.Count == 0 && latere.Count == 0)
             {
-                inhoud = $"{aanhef} {voornaam},\n\n"
+                inhoud = $"{AntwoordTekst.AanhefMetNaam(aanhef, email.AfzenderNaam)},\n\n"
                        + $"De wedstrijd {wedstrijd.Wedstrijd} staat gepland op {FormatDatum(wedstrijd.Datum)} "
                        + $"om {wedstrijd.AanvangsTijd} op {wedstrijd.VeldNaam}. "
                        + "Het is een volle wedstrijddag en er zijn helaas geen zinvolle alternatieven beschikbaar.";
             }
             else
             {
-                inhoud = $"{aanhef} {voornaam},\n\n"
+                inhoud = $"{AntwoordTekst.AanhefMetNaam(aanhef, email.AfzenderNaam)},\n\n"
                        + $"De wedstrijd {wedstrijd.Wedstrijd} staat gepland op {FormatDatum(wedstrijd.Datum)} "
                        + $"om {wedstrijd.AanvangsTijd} op {wedstrijd.VeldNaam}.\n";
 
@@ -94,19 +93,18 @@ public static partial class BerichtAntwoordGenerator
         IAntwoordInstellingen instellingen)
     {
         var aanhef = GetTijdsgebondenAanhef();
-        var voornaam = ExtractVoornaam(email.AfzenderNaam);
         string inhoud;
 
         if (wedstrijd == null)
         {
-            inhoud = $"{aanhef} {voornaam},\n\n"
+            inhoud = $"{AntwoordTekst.AanhefMetNaam(aanhef, email.AfzenderNaam)},\n\n"
                    + $"Je herplanverzoek is helaas te laat ingediend. Volgens onze richtlijn moet een herplanverzoek "
                    + $"minimaal {deadlineDagen} dagen voor de wedstrijd worden ingediend.";
         }
         else
         {
             var datumTekst = FormatDatum(wedstrijd.Datum);
-            inhoud = $"{aanhef} {voornaam},\n\n"
+            inhoud = $"{AntwoordTekst.AanhefMetNaam(aanhef, email.AfzenderNaam)},\n\n"
                    + $"De wedstrijd {wedstrijd.Wedstrijd} staat gepland op {datumTekst} om {wedstrijd.AanvangsTijd} "
                    + $"op {wedstrijd.VeldNaam}. Dat is over {dagenTotWedstrijd} dag(en).\n\n"
                    + $"Volgens onze richtlijn moet een herplanverzoek minimaal {deadlineDagen} dagen voor de wedstrijd "
@@ -134,18 +132,17 @@ public static partial class BerichtAntwoordGenerator
         IAntwoordInstellingen instellingen)
     {
         var aanhef = GetTijdsgebondenAanhef();
-        var voornaam = ExtractVoornaam(email.AfzenderNaam);
         string inhoud;
 
         if (wedstrijd == null)
         {
-            inhoud = $"{aanhef} {voornaam},\n\n"
+            inhoud = $"{AntwoordTekst.AanhefMetNaam(aanhef, email.AfzenderNaam)},\n\n"
                    + $"Er is geen wedstrijd gevonden voor {AiVeldSanering.TeamNaamWeergave(classificatie.TeamNaam, classificatie.TeamNaamOnbevestigd) ?? "het opgegeven team"} "
                    + $"op {FormatDatum(classificatie.Datum)}.";
         }
         else
         {
-            inhoud = $"{aanhef} {voornaam},\n\n"
+            inhoud = $"{AntwoordTekst.AanhefMetNaam(aanhef, email.AfzenderNaam)},\n\n"
                    + $"Bedankt voor je verzoek om de wedstrijd {wedstrijd.Wedstrijd} op {FormatDatum(wedstrijd.Datum)} "
                    + $"om {wedstrijd.AanvangsTijd} te verzetten.\n\n"
                    + "We kunnen op dit moment nog geen nieuwe datum toezeggen: dat stemmen we eerst af met de "
@@ -188,19 +185,18 @@ public static partial class BerichtAntwoordGenerator
         IAntwoordInstellingen instellingen)
     {
         var aanhef = GetTijdsgebondenAanhef();
-        var voornaam = ExtractVoornaam(email.AfzenderNaam);
         var gewenstDatumTekst = FormatDatum(gewensteDatum);
         string inhoud;
 
         if (wedstrijd == null)
         {
-            inhoud = $"{aanhef} {voornaam},\n\n"
+            inhoud = $"{AntwoordTekst.AanhefMetNaam(aanhef, email.AfzenderNaam)},\n\n"
                    + $"Er is geen wedstrijd gevonden voor {AiVeldSanering.TeamNaamWeergave(classificatie.TeamNaam, classificatie.TeamNaamOnbevestigd) ?? "het opgegeven team"} "
                    + $"op {FormatDatum(classificatie.Datum)}.";
         }
         else
         {
-            inhoud = $"{aanhef} {voornaam},\n\n"
+            inhoud = $"{AntwoordTekst.AanhefMetNaam(aanhef, email.AfzenderNaam)},\n\n"
                    + $"De wedstrijd {wedstrijd.Wedstrijd} staat momenteel gepland op {FormatDatum(wedstrijd.Datum)} om {wedstrijd.AanvangsTijd} op {wedstrijd.VeldNaam}.\n\n"
                    + GewensteDatumMogelijkheden(gewenstDatumTekst, beschikbaarheid);
         }

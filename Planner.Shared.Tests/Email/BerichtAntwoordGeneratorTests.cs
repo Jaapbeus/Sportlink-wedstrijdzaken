@@ -56,6 +56,42 @@ public class BerichtAntwoordGeneratorTests
 
     // ── Beschikbaarheid ──
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("Jan\r\nBcc: test")]
+    [InlineData("<b>Jan</b>")]
+    public void OntbrekendeVeiligeNaam_HeeftNatuurlijkeAanhefInAlleAntwoordvormen(string naam)
+    {
+        using var modus = new ReviewInstelling("false");
+        var email = new TestAfzender { AfzenderNaam = naam };
+        var antwoorden = new[]
+        {
+            BerichtAntwoordGenerator.BouwBeschikbaarheidAntwoord(new TestBeschikbaarheid(), Classificatie(), email, Voetnoot).body,
+            BerichtAntwoordGenerator.BouwHerplanAntwoord(null, null, Classificatie(), email, Voetnoot).body,
+            BerichtAntwoordGenerator.BouwAangepasteAntwoord(new TestSjabloon("test", "Antwoord", "{{aanhef}} {{voornaam}},\n\nTekst"), Classificatie(), email, Voetnoot).body
+        };
+        foreach (var body in antwoorden)
+        {
+            body.Split('\n')[0].Should().MatchRegex("^Goede(morgen|middag|navond),$");
+            body.Should().NotContain("Bcc:").And.NotContain("<b>");
+        }
+    }
+
+    [Fact]
+    public void InterneReview_BewaartVeiligHetOorspronkelijkeAdres()
+    {
+        using var modus = new ReviewInstelling("true");
+        var email = new TestAfzender { Afzender = "noreply@allstars-fc.test" };
+        var body = BerichtAntwoordGenerator.BouwHerplanAntwoord(null, null, Classificatie(), email, Voetnoot).body;
+        body.Should().Contain("Originele afzender: Jan de Vries (noreply@allstars-fc.test)");
+        email.Afzender = "<script>\r\nkop";
+        BerichtAntwoordGenerator.BouwHerplanAntwoord(null, null, Classificatie(), email, Voetnoot).body
+            .Should().Contain("adres niet beschikbaar").And.NotContain("<script>");
+        email.Afzender = "<trainer@voorbeeld.nl>";
+        BerichtAntwoordGenerator.BouwHerplanAntwoord(null, null, Classificatie(), email, Voetnoot).body
+            .Should().Contain("&lt;trainer@voorbeeld.nl&gt;");
+    }
+
     [Fact]
     public void Beschikbaar_MetToewijzing_NoemtVeldTijdEnEinde()
     {
@@ -528,9 +564,9 @@ public class BerichtAntwoordGeneratorTests
             var (_, standaard) = BerichtAntwoordGenerator.BouwBuitenScopeAntwoord(Email, Voetnoot);
             var (_, sjabloon) = BerichtAntwoordGenerator.BouwAangepasteAntwoord(new TestSjabloon("sleutel", "", "Tekst."), Classificatie(), Email, Voetnoot);
 
-            standaard.Should().StartWith("=== REVIEW MODE ===\nOriginele afzender: Jan de Vries\nOnderwerp: Beschikbaarheid\nClassificatie: BuitenScope\n==================\n\n");
-            sjabloon.Should().StartWith("=== REVIEW MODE ===\nOriginele afzender: Jan de Vries\nOnderwerp: Beschikbaarheid\nClassificatie: BeschikbaarheidCheck\nTemplate: sleutel\n==================\n\nTekst.");
-            standaard.Should().NotContain("trainer@");
+            standaard.Should().StartWith("=== REVIEW MODE ===\nOriginele afzender: Jan de Vries (trainer@voorbeeld.nl)\nOnderwerp: Beschikbaarheid\nClassificatie: BuitenScope\n==================\n\n");
+            sjabloon.Should().StartWith("=== REVIEW MODE ===\nOriginele afzender: Jan de Vries (trainer@voorbeeld.nl)\nOnderwerp: Beschikbaarheid\nClassificatie: BeschikbaarheidCheck\nTemplate: sleutel\n==================\n\nTekst.");
+            standaard.Should().Contain("trainer@voorbeeld.nl");
 
             Environment.SetEnvironmentVariable(EmailReviewModus.InstellingNaam, "false");
             BerichtAntwoordGenerator.BouwBuitenScopeAntwoord(Email, Voetnoot).body.Should().NotContain("REVIEW MODE");
@@ -540,4 +576,11 @@ public class BerichtAntwoordGeneratorTests
             Environment.SetEnvironmentVariable(EmailReviewModus.InstellingNaam, oud);
         }
     }
+    private sealed class ReviewInstelling : IDisposable
+    {
+        private readonly string? oud = Environment.GetEnvironmentVariable(EmailReviewModus.InstellingNaam);
+        public ReviewInstelling(string waarde) => Environment.SetEnvironmentVariable(EmailReviewModus.InstellingNaam, waarde);
+        public void Dispose() => Environment.SetEnvironmentVariable(EmailReviewModus.InstellingNaam, oud);
+    }
+
 }

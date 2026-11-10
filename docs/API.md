@@ -503,7 +503,7 @@ Als de gevraagde dag geen wedstrijden toelaat (vrijdag/zondag):
 | `beschikbareVensters` | `array\|null` | Beschikbare vensters per veld (alleen Modus 2) |
 | `waarschuwingen` | `array` | Planning warnings as normalized single-line strings; empty results are omitted. See the output rules below (#1809). |
 
-Warning output rules (#1809, both database tiers): before the response is serialized,
+Warning output rules (#1809, both database tiers; API version 3.16.0.2): before the response is serialized,
 control characters and whitespace are normalized to spaces. The delimiters `<`, `>`, backticks,
 `{`, `}`, `[` and `]` are replaced by spaces; words containing `://` or `@`, or starting with
 `www` (case-insensitive), are removed. Each remaining warning is truncated after 300 characters
