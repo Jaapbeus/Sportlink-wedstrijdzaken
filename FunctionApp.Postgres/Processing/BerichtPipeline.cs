@@ -51,16 +51,21 @@ internal static partial class BerichtPipeline
     internal static async Task<string> VerwerkMetPlannerAsync(
         BerichtClassificatie classificatie, InkomendBericht bericht, ILogger log,
         ITeamResolver teamResolver,
-        string? clubCode = null, ClubAppSettingsSnapshot? clubSettings = null, TraceBuilder? trace = null)
+        string? clubCode = null, ClubAppSettingsSnapshot? clubSettings = null, TraceBuilder? trace = null, ITeamFixtureContextRepository? fixtureContext = null)
     {
         ArgumentNullException.ThrowIfNull(teamResolver);
         // #1730: de ene strikte grens voor alle modeldatumvelden, vóór trace, teamherkenning en verwerking.
         (classificatie.Datum, classificatie.GewensteDatum, classificatie.Datums) = ModelDatum.Grens(classificatie.Datum, classificatie.GewensteDatum, classificatie.Datums);
         trace?.Classificatie(classificatie.Type.ToString(), classificatie.TeamNaam, classificatie.Tegenstander, classificatie.GetAlleDatums().Count, classificatie.AanvangsTijd);
 
-        var cs = PostgresDatabaseConfig.ConnectionString;
         var cc = ResolveHeuristicClubCode(clubCode);
-        var eigenTeamHerkend = await BepaalEigenTeamEnTegenstanderAsync(classificatie, teamResolver, cc, log, trace);
+        var eigenTeamHerkend = await BepaalEigenTeamEnTegenstanderAsync(classificatie, teamResolver, cc, log, trace,
+            fixtureContext ?? new FunctionApp.Postgres.TeamResolution.TeamFixtureContextRepository(PostgresDatabaseConfig.ConnectionString));
+        if (classificatie.TeamHandmatigBeoordelen)
+        {
+            return TeamHandmatigeAfhandeling.PlannerResponse(classificatie);
+        }
+        var cs = PostgresDatabaseConfig.ConnectionString;
         classificatie.TeamNaamOnbevestigd = !eigenTeamHerkend; // antwoorden noemen een niet-bevestigd team nooit bij naam
         if (eigenTeamHerkend) classificatie.LeeftijdsCategorie = TeamNaamNormalisatie.VulLeeftijdsCategorieAan(classificatie.LeeftijdsCategorie, classificatie.TeamNaam, cc);
 
@@ -228,13 +233,9 @@ internal static partial class BerichtPipeline
     /// </summary>
     /// <returns>True als het eigen team herkend is; dan staat de canonieke naam in <c>TeamNaam</c>.</returns>
     internal static async Task<bool> BepaalEigenTeamEnTegenstanderAsync(
-        BerichtClassificatie classificatie, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace)
+        BerichtClassificatie classificatie, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace,
+        ITeamFixtureContextRepository? fixtureContext = null)
     {
-        var uitkomst = await EigenTeamBepaling.BepaalEigenTeamEnTegenstanderAsync(
-            classificatie.TeamNaam, classificatie.Tegenstander, resolver, clubCode, log, trace);
-        if (!uitkomst.Herkend) return false;
-        classificatie.TeamNaam = uitkomst.TeamNaam;
-        classificatie.Tegenstander = uitkomst.Tegenstander;
-        return true;
+        return await EigenTeamBepaling.BepaalEnPasToeAsync(classificatie, resolver, clubCode, log, trace, fixtureContext);
     }
 }

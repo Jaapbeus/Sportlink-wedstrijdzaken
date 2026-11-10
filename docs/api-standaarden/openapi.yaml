@@ -7837,10 +7837,10 @@ paths:
       operationId: deleteTeamAlias
       summary: Teamalias verwijderen
       description: |
-        Verwijdert de alias definitief. Uitsluitend binnen de eigen club (`X-Club-Code`). Er staat nergens een
-        identificator van de beheerder in het log; de tabel bewaart geen auditregel van een verwijderde rij.
-        De alias kan opnieuw als `pending` verschijnen wanneer de schrijfwijze weer wordt
-        aangetroffen.
+        Sync-origin aliases retain their row with status rejected, preventing canonicalization from
+        validating the association again. Other origins are physically deleted. Both actions are scoped
+        to the current club (X-Club-Code). Logs contain only the alias identifier, without administrator
+        identity. Rejection blocks the alias association, not an independent canonical-name match.
       security:
         - easyAuth: []
       parameters:

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Planner.Shared.Email;
 using Planner.Shared.Email.Trace;
 
 namespace Planner.Shared.TeamResolution;
@@ -11,8 +12,12 @@ namespace Planner.Shared.TeamResolution;
 /// <param name="Herkend">True als één van beide genoemde teams in de eigen teamlijst staat.</param>
 /// <param name="TeamNaam">De canonieke naam van het eigen team (alleen bij <see cref="Herkend"/>).</param>
 /// <param name="Tegenstander">De tegenstander na een eventuele wissel (alleen bij <see cref="Herkend"/>).</param>
+public enum EigenTeamBesluit { Onbekend, Herkend, Handmatig }
+
 public sealed record EigenTeamUitkomst(bool Herkend, string? TeamNaam, string? Tegenstander)
 {
+    public EigenTeamBesluit Besluit { get; init; } = Herkend ? EigenTeamBesluit.Herkend : EigenTeamBesluit.Onbekend;
+    public static readonly EigenTeamUitkomst Handmatig = new(false, null, null) { Besluit = EigenTeamBesluit.Handmatig };
     public static readonly EigenTeamUitkomst NietHerkend = new(false, null, null);
 }
 
@@ -33,12 +38,13 @@ public sealed record EigenTeamUitkomst(bool Herkend, string? TeamNaam, string? T
 public static class EigenTeamBepaling
 {
     /// <summary>
-    /// Bepaalt welke van de twee genoemde teams het eigen team is. Eerst het genoemde team; lost dat niet
-    /// op, dan het tegenstanderveld (een tegenstander die namens zichzelf schrijft): dan worden team en
-    /// tegenstander verwisseld. Zonder clubcode wordt de herkenning overgeslagen.
+    /// Resolves both fields before choosing an own team. Distinct resolved identities require
+    /// authoritative source ownership from fixture data; inconclusive evidence requires manual review.
+    /// Unresolved multiple candidates are never automatically disambiguated.
     /// </summary>
     public static async Task<EigenTeamUitkomst> BepaalEigenTeamEnTegenstanderAsync(
-        string? teamNaam, string? tegenstander, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace)
+        string? teamNaam, string? tegenstander, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace,
+        ITeamFixtureContextRepository? fixtures = null, string? datum = null, string? tijd = null, IReadOnlyList<string>? datums = null)
     {
         if (string.IsNullOrWhiteSpace(clubCode))
         {
@@ -51,18 +57,25 @@ public static class EigenTeamBepaling
         var tegenstanderTekst = (tegenstander ?? "").Trim();
 
         var teamUitkomst = await ProbeerResolveAsync(resolver, team, clubCode, log, trace, TraceCodes.TeamHerkenning);
-        if (teamUitkomst is not null && teamUitkomst.IsOpgelost)
+        var tegenstanderUitkomst = await ProbeerResolveAsync(resolver, tegenstanderTekst, clubCode, log, trace, TraceCodes.TegenstanderHerkenning);
+        // Null for nonempty input means a repository failure; normal unknown is a non-null Onopgelost.
+        if (ResolverFailed(team, teamUitkomst) || ResolverFailed(tegenstanderTekst, tegenstanderUitkomst))
+            return EigenTeamUitkomst.Handmatig;
+        if (teamUitkomst?.Bron == ResolutionBron.MeerdereKandidaten || tegenstanderUitkomst?.Bron == ResolutionBron.MeerdereKandidaten)
+            return EigenTeamUitkomst.Handmatig;
+
+        if (teamUitkomst?.IsOpgelost == true && tegenstanderUitkomst?.IsOpgelost == true
+            && teamUitkomst.TeamId != tegenstanderUitkomst.TeamId)
+            return await KiesMetWedstrijdAsync(teamUitkomst, tegenstanderUitkomst, team, tegenstander,
+                fixtures, clubCode, datum, tijd, datums, log);
+        if (teamUitkomst?.IsOpgelost == true)
         {
             LogUitkomst(log, teamUitkomst);
             return new EigenTeamUitkomst(true, teamUitkomst.CanoniekeTeamnaam, tegenstander);
         }
-
-        // Het genoemde "team" is niet van ons. Misschien staat ons team in het tegenstanderveld.
-        var tegenstanderUitkomst = await ProbeerResolveAsync(resolver, tegenstanderTekst, clubCode, log, trace, TraceCodes.TegenstanderHerkenning);
-        if (tegenstanderUitkomst is not null && tegenstanderUitkomst.IsOpgelost)
+        if (tegenstanderUitkomst?.IsOpgelost == true)
         {
             trace?.TeamWissel(tegenstanderUitkomst.CanoniekeTeamnaam, team);
-            log.LogInformation("TEAMRESOLUTIE - team en tegenstander verwisseld op basis van de teamlijst");
             LogUitkomst(log, tegenstanderUitkomst);
             return new EigenTeamUitkomst(true, tegenstanderUitkomst.CanoniekeTeamnaam, team);
         }
@@ -74,23 +87,63 @@ public static class EigenTeamBepaling
         return EigenTeamUitkomst.NietHerkend;
     }
 
+    private static bool ResolverFailed(string text, TeamResolutionResult? result) => text.Length > 0 && result is null;
+
+    public static async Task<bool> BepaalEnPasToeAsync(
+        BerichtClassificatie classificatie, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace,
+        ITeamFixtureContextRepository? fixtureContext = null)
+    {
+        var result = await BepaalEigenTeamEnTegenstanderAsync(classificatie.TeamNaam, classificatie.Tegenstander,
+            resolver, clubCode, log, trace, fixtureContext, classificatie.Datum, classificatie.AanvangsTijd, classificatie.Datums);
+        classificatie.TeamHandmatigBeoordelen = result.Besluit == EigenTeamBesluit.Handmatig;
+        if (!result.Herkend) return false;
+        classificatie.TeamNaam = result.TeamNaam;
+        classificatie.Tegenstander = result.Tegenstander;
+        return true;
+    }
+
+    private static async Task<EigenTeamUitkomst> KiesMetWedstrijdAsync(
+        TeamResolutionResult team, TeamResolutionResult opponent, string rawTeam, string? rawOpponent,
+        ITeamFixtureContextRepository? fixtures, string club, string? datum, string? tijd,
+        IReadOnlyList<string>? datums, ILogger log)
+    {
+        if (fixtures is null || !TeamFixtureChoice.TryDate(datum, datums, tijd, out var date))
+            return EigenTeamUitkomst.Handmatig;
+        try
+        {
+            var context = await fixtures.GetAsync(club, date, [team.TeamId!.Value, opponent.TeamId!.Value]);
+            var selected = TeamFixtureChoice.Choose(context, team.TeamId.Value, opponent.TeamId.Value, tijd);
+            if (selected is null) return EigenTeamUitkomst.Handmatig;
+            return selected == opponent.TeamId
+                ? new EigenTeamUitkomst(true, opponent.CanoniekeTeamnaam, rawTeam)
+                : new EigenTeamUitkomst(true, team.CanoniekeTeamnaam, rawOpponent);
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning("TEAMRESOLUTIE - wedstrijdcontext niet beschikbaar ({FoutType}); handmatige beoordeling nodig", ex.GetType().Name);
+            return EigenTeamUitkomst.Handmatig;
+        }
+    }
+
     /// <summary>
     /// Haalt uit een wedstrijdstring ("Thuisteam - Uitteam", uit de opponent-lookup #1139) de kant die ons
-    /// team is, door beide kanten tegen de teamlijst te resolven. De eerste oplosbare kant levert de
-    /// canonieke naam; geen van beide oplosbaar geeft <c>null</c>. Er wordt nooit een naam gegokt.
+    /// team is, door beide kanten tegen de teamlijst te resolven. Alleen één verschillende identiteit
+    /// levert een naam; twee eigen teams of meerdere kandidaten geven <c>null</c>.
     /// </summary>
     public static async Task<string?> BepaalEigenTeamUitWedstrijdAsync(
         string? wedstrijd, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace)
     {
         if (string.IsNullOrWhiteSpace(wedstrijd)) return null;
 
+        var gevonden = new Dictionary<int, string>();
         foreach (var kant in wedstrijd.Split(" - ", 2, StringSplitOptions.TrimEntries))
         {
             var uitkomst = await ProbeerResolveAsync(resolver, kant, clubCode, log, trace, TraceCodes.OpponentTeamHerkenning);
-            if (uitkomst is not null && uitkomst.IsOpgelost)
-                return uitkomst.CanoniekeTeamnaam;
+            if (uitkomst is null || uitkomst.Bron == ResolutionBron.MeerdereKandidaten) return null;
+            if (uitkomst?.IsOpgelost == true)
+                gevonden.TryAdd(uitkomst.TeamId!.Value, uitkomst.CanoniekeTeamnaam!);
         }
-        return null;
+        return gevonden.Count == 1 ? gevonden.Values.Single() : null;
     }
 
     /// <summary>

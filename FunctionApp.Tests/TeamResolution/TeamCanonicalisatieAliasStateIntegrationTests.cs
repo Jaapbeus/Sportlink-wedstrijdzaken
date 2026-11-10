@@ -6,7 +6,7 @@ using Xunit;
 
 namespace FunctionApp.Tests.TeamResolution;
 
-public sealed class TeamCanonicalisatieAliasStateIntegrationTests
+public sealed partial class TeamCanonicalisatieAliasStateIntegrationTests
 {
     [SqlServerFact]
     public async Task RefreshAsync_RejectedSyncAlias_RemainsRejected()

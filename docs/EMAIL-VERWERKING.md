@@ -185,11 +185,13 @@ te zetten — een instelling die de enige teamherkenning kan uitschakelen is gee
 maar een voetangel. (Een eerdere versie van dit document beschreef een app setting
 `TeamResolverMode` met standen `off`/`shadow`/`on`; die bestaat niet meer.)
 
+When both classified fields resolve to different own teams, #1816 requires authoritative source-owned fixture context before selecting one. Missing or conflicting evidence sends the message to manual Review before planning, contact/BCC lookup, template generation, send intent or sending. Source ownership is `his.matches.teamnaam`; participation as the opponent alone is not ownership evidence. Unresolved multiple candidates are never chosen automatically.
+
 Welk van de twee genoemde teams het eigen team is, wordt bepaald door te kijken wélke in de teamlijst
 staat — niet meer door te raden op spaties of clubprefix.
 
 Bij een aanduiding die écht dubbelzinnig is — "13-1" kan JO13-1 of MO13-1 zijn — wordt niet gegokt:
-er volgt óf een keuze uit een korte kandidatenlijst, óf de vraag wordt teruggelegd.
+the system chooses no candidate and requires manual review.
 
 Een teamtekst die niet herkend wordt (`Onopgelost` of `MeerdereKandidaten`) komt sinds #1568 deel C in de
 wachtrij **Onbekende teamteksten** (scherm Teamaliassen) — mits de tekst eruitziet als een teamlabel; een zin
