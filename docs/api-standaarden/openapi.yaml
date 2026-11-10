@@ -1458,6 +1458,10 @@ components:
         mee: de bewaartermijn van persoonskolommen in de historietabellen (#1698) volgt het seizoenseinde
         van de club van de wedstrijd. Het wijzigen wordt vastgelegd in de auditlog zoals andere velden.
 
+        `FetchSchedule`: een niet-lege, uitvoerbare CRON-expressie met zes velden en maximaal
+        50 tekens. Een ontbrekend volgend UTC-uitvoermoment of ongeldige waarde geeft 400;
+        de foutmelding herhaalt de ingevoerde waarde niet. Een weggelaten veld blijft ongewijzigd.
+
         De audit-actor (wie de wijziging doorvoerde) wordt uitsluitend server-side bepaald uit de
         door Easy Auth gevalideerde claims — dit contract kent daarom geen "wie"-veld (#1003).
       properties:
