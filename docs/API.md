@@ -814,6 +814,35 @@ Bij `format=html|pdf` moet `datum` strikt `yyyy-MM-dd` zijn (anders 400). De ber
 leesbewerking; alleen `/planner/auto-plan/toepassen` schrijft, dus een tweede aanroep voor de export heeft
 geen bijwerking.
 
+### POST /api/planner/auto-plan/toepassen — getoond plan toepassen (#1802)
+
+Alleen voor de democlub `ALLSTARS` en een beheerder. De huidige Admin GUI stuurt **alle** rijen
+van de getoonde preview mee, ook niet-ingedeelde rijen. Een handmatig versleept kwart- of halfveld
+wordt met zijn exacte subpositie opgeslagen; de server kiest geen vervangend slot.
+
+```json
+{
+  "datum": "2026-08-22", "bufferMinuten": 15,
+  "toewijzingen": [
+    { "wedstrijdCode": 1, "huidigeVeld": "veld 101 A1", "huidigeTijd": "09:00",
+      "veldNummer": 101, "veldSubpositie": "A2", "tijd": "10:00" },
+    { "wedstrijdCode": 2, "huidigeVeld": null, "huidigeTijd": null,
+      "veldNummer": null, "veldSubpositie": null, "tijd": null }
+  ]
+}
+```
+
+`toewijzingen` is optioneel voor bestaande API-clients. Bij **weglaten** berekent het legacy-pad
+het plan opnieuw; dat pad garandeert niet dat eerdere handmatige wijzigingen worden toegepast.
+Met de lijst controleert de server de volledige wedstrijdcodeset, verwachte huidige velden,
+tijden en subposities, actieve velden, bronduur, veldfracties, openingstijden en buffer-/baanconflicten
+tegen actuele ALLSTARS-data. Een doel vereist zowel `veldNummer` als `tijd` (`HH:mm`); beide `null`
+laat de rij oningedeeld. Een conflict geeft HTTP `409` zonder gedeeltelijke updates en de GUI
+laat de getoonde aanpassingen staan. Voor een andere club geldt `403`.
+
+Een geslaagde toepassing antwoordt met `bijgewerkt`, `mislukt` en `fouten`; het exacte pad meldt
+`mislukt: 0`. De broncontrole en alle updates vinden binnen één serialiseerbare transactie plaats.
+
 ### POST /api/planner/auto-plan/deel — planning delen zoals getoond (#1460)
 
 Stateless: de browser stuurt de lijst zoals die op Veld optimalisatie staat (inclusief handmatig

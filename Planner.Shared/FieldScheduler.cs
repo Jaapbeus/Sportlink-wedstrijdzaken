@@ -586,6 +586,57 @@ public class FieldScheduler
         return FindAndOccupyNextSlot(fractie, duurMinuten, nieuwBufVoor, teamNaam, sportlinkLeidend);
     }
 
+    /// <summary>
+    /// Validates and occupies the exact submitted slot without searching for a replacement. Used when
+    /// applying a user-confirmed plan: a rejected slot must remain a conflict, never become a different
+    /// assignment. Uses the same availability, capacity, team-overlap, and buffer rules as the planner.
+    /// </summary>
+    public bool TryOccupyExactSlot(int veldNummer, TimeOnly start, int duurMinuten, decimal fractie,
+        string? doelSubpositie, string? teamNaam, bool sportlinkLeidend, out IngeplandSlot? slot)
+    {
+        slot = null;
+        if (duurMinuten <= 0 || fractie <= 0 || fractie > 1 || !_occupations.ContainsKey(veldNummer)) return false;
+
+        TimeOnly end;
+        try { end = start.AddMinutes(duurMinuten); }
+        catch (ArgumentOutOfRangeException) { return false; }
+        if (end <= start) return false;
+
+        var availability = _beschikbaarheid.FirstOrDefault(b => b.VeldNummer == veldNummer);
+        if (availability == null || start < availability.BeschikbaarVanaf || end > availability.BeschikbaarTot)
+            return false;
+
+        var bufferVoor = sportlinkLeidend ? 0 : TeamBufferVoor(teamNaam);
+        if (!PastOpVeld(veldNummer, start, end, fractie, bufferVoor, teamNaam, sportlinkLeidend, out _))
+            return false;
+
+        var toegewezenSubpositie = string.IsNullOrWhiteSpace(doelSubpositie) ? null : doelSubpositie.Trim().ToUpperInvariant();
+        var subpositieFractie = VeldResolver.SubpositieFractie(toegewezenSubpositie);
+        if (fractie == 1m ? toegewezenSubpositie != null : subpositieFractie != fractie)
+            return false;
+
+        var gewensteBanen = PlanningBufferRegels.BanenVanSubpositie(toegewezenSubpositie);
+        foreach (var bezet in _occupations[veldNummer].Where(o => Overlapt(o, start, end)))
+        {
+            var bezetteBanen = PlanningBufferRegels.BanenVanSubpositie(bezet.VeldSubpositie);
+            if (gewensteBanen.Where((baan, index) => baan && bezetteBanen[index]).Any())
+                return false;
+        }
+
+        slot = new IngeplandSlot
+        {
+            VeldNummer = veldNummer,
+            AanvangsTijd = start,
+            EindTijd = end,
+            Fractie = fractie,
+            VeldSubpositie = toegewezenSubpositie ?? string.Empty,
+            TeamNaam = teamNaam,
+            SportlinkLeidend = sportlinkLeidend
+        };
+        _occupations[veldNummer].Add(slot);
+        return true;
+    }
+
     private IngeplandSlot? FindEarliestSlot(int veldNummer, decimal fractie, int duurMinuten, TimeOnly van, TimeOnly tot, int nieuwBufVoor = -1, string? teamNaam = null,
         bool sportlinkLeidend = false)
     {

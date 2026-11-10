@@ -353,6 +353,7 @@ namespace SportlinkFunction.Planner
     {
         public string Datum { get; set; } = string.Empty;
         public int? BufferMinuten { get; set; }
+        public List<global::Planner.Shared.AutoPlanToewijzing>? Toewijzingen { get; set; }
     }
 
     public class AutoPlanToepassenResponse

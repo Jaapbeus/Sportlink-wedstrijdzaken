@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nEén beveiligingsschema:\n\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist\n  voor alle endpoints behalve `/health`. De rolcontrole gebeurt server-side, met vier niveaus:\n  `admin` (`EasyAuthHelper.RequireAdmin`, via de wrappers `AdminEndpoint.ExecuteAsync` /\n  `ExecuteZonderDatabaseAsync`) voor de meeste `/beheer/`-, `/planner/`- en\n  `/test/`-endpoints (waaronder het feedbackoverzicht `/beheer/feedback`) — sinds #1350 óók voor `/postgres/sync-matches` en `/sync-matches`;\n  `admin` óf `user` (`AdminEndpoint.ExecuteAuthenticatedAsync`, #1330) voor `/planner/veldbezetting`\n  (#1400), de drie `/feedback/`-endpoints (#764: elke ingelogde gebruiker mag feedback geven), de twee Sportlink-viewing-endpoints (`GET /sportlink/match/{wedstrijdcode}` en\n  `.../public-match-id`, #1400) en de drie Teambegeleiding-lookup/doorstuur-endpoints; op\n  **beide** tiers identiek `Wedstrijdzaken` óf `admin` (`EasyAuthHelper.RequireWedstrijdzaken`,\n  beide poorten sinds #1400) voor de Sportlink-mutatie-endpoints (`PUT`/`POST` onder\n  `/sportlink/`), via `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`. Netto: een gewone\n  `user` (zonder `Wedstrijdzaken`, zonder `admin`) kan Planning en het Sportlink-paneel bekijken\n  maar geen Sportlink-mutatie triggeren; dat laatste vereist `Wedstrijdzaken` óf `admin`. Lokaal\n  alleen omzeild met de expliciete schakelaar `LOCAL_AUTH_BYPASS=true`; in Azure wordt die\n  geweigerd (#1700).\n\nZonder token volgt `401`. Met een geldig token maar zonder de vereiste rol volgt `403` met\n`{ \"error\": \"Forbidden: vereiste rol ontbreekt\" }`.\n\n## Tiers\n\nAlle endpoints bestaan sinds #1266 op beide databasetiers, met één uitzondering: de handmatige\nsynchronisatie heet `/postgres/sync-matches` op de Postgres-tier (productie) en\n`/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "3.16.0.0",
+    "version": "3.16.0.1",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -4499,29 +4499,82 @@
             "format": "date",
             "example": "2026-06-07"
           },
-          "bevestigingsToken": {
+          "bufferMinuten": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Algemene buffer in minuten; standaard 15."
+          },
+          "toewijzingen": {
+            "type": "array",
+            "nullable": true,
+            "description": "Alle zichtbare preview-rijen, inclusief niet-ingedeelde. Weglaten gebruikt het expliciete legacy-pad dat het plan opnieuw berekent.",
+            "items": {
+              "$ref": "#/components/schemas/AutoPlanToewijzing"
+            }
+          }
+        }
+      },
+      "AutoPlanToewijzing": {
+        "type": "object",
+        "required": [
+          "wedstrijdCode",
+          "huidigeVeld",
+          "huidigeTijd",
+          "veldNummer",
+          "tijd"
+        ],
+        "properties": {
+          "wedstrijdCode": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "huidigeVeld": {
             "type": "string",
             "nullable": true,
-            "description": "Token uit AutoPlanResponse ter verificatie"
+            "description": "Verwacht huidig veld inclusief eventuele subpositie."
+          },
+          "huidigeTijd": {
+            "type": "string",
+            "nullable": true,
+            "description": "Verwachte huidige aanvangstijd."
+          },
+          "veldNummer": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Doelveld; null samen met tijd null laat deze rij oningedeeld."
+          },
+          "veldSubpositie": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "A",
+              "B",
+              "A1",
+              "A2",
+              "B1",
+              "B2"
+            ],
+            "description": "Doelbaan; alleen toegestaan als de veldfractie overeenkomt."
+          },
+          "tijd": {
+            "type": "string",
+            "nullable": true,
+            "description": "Doelaanvangstijd in HH:mm; null samen met veldNummer null laat deze rij oningedeeld."
           }
         }
       },
       "AutoPlanToepassenResponse": {
         "type": "object",
         "properties": {
-          "datum": {
-            "type": "string",
-            "format": "date"
-          },
-          "toegepast": {
+          "bijgewerkt": {
             "type": "integer",
-            "description": "Aantal wedstrijden waarvoor een slot is geboekt"
+            "description": "Aantal gewijzigde demowedstrijden"
           },
-          "overgeslagen": {
+          "mislukt": {
             "type": "integer",
-            "description": "Aantal wedstrijden waarvoor geen slot beschikbaar was"
+            "description": "Aantal mislukte demowedstrijden in het legacy-pad"
           },
-          "waarschuwingen": {
+          "fouten": {
             "type": "array",
             "items": {
               "type": "string"
@@ -12007,7 +12060,7 @@
         ],
         "operationId": "autoPlanToepassen",
         "summary": "Automatisch plan toepassen",
-        "description": "Past het gegenereerde auto-plan toe door wedstrijdsloten te boeken in\n`planner.GeplandeWedstrijden`. Schrijft alleen voor wedstrijden die nog\ngeen slot hebben.\n\n**Let op:** alleen beschikbaar als de club-code `ALLSTARS` is (testmodus).\nProductie-clubs ontvangen HTTP 403.\n",
+        "description": "Schrijft uitsluitend ALLSTARS-demowedstrijden in `his.matches` bij. Met\n`toewijzingen` valideert de server alle getoonde rijen, bronposities en\nexacte doelbanen tegen verse clubdata binnen dezelfde transactie als de\nupdates. Conflicten rollen de hele toepassing terug. Zonder deze lijst\nblijft het expliciete legacygedrag van herberekenen beschikbaar.\n\n**Let op:** alleen beschikbaar als de club-code `ALLSTARS` is (testmodus).\nProductie-clubs ontvangen HTTP 403.\n",
         "security": [
           {
             "easyAuth": []
@@ -12047,6 +12100,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "Bron gewijzigd of exact doelplan bevat een conflict; er is niets opgeslagen."
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"

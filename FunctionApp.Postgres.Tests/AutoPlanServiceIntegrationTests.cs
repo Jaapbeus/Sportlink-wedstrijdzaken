@@ -2,6 +2,7 @@ using Database.Postgres;
 using Database.Postgres.Tests;
 using AwesomeAssertions;
 using FunctionApp.Postgres.Planner;
+using Planner.Shared;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 using Xunit;
@@ -170,6 +171,119 @@ public class AutoPlanServiceIntegrationTests : IDisposable
         await using var reader = await cmd.ExecuteReaderAsync();
         (await reader.ReadAsync()).Should().BeTrue();
         reader.GetString(0).Should().NotBe("18:00", "de planner plant de vroegste vrije tijd, niet 18:00");
+    }
+
+    [PostgresFact]
+    public async Task ExactApply_PersistsManualQuarterLaneAndLeavesUnassignedRow()
+    {
+        await using var conn = await OpstellingAsync();
+        await ExecAsync(conn, "UPDATE public.speeltijden SET veldafmeting = 0.25 WHERE clubcode = @club AND leeftijd = 'JO13'", ("club", Club));
+        await ZetWedstrijdAsync(conn, 9500101, "ALLSTARS JO13-1", null, null);
+        await ZetWedstrijdAsync(conn, 9500102, "ALLSTARS JO15-1", null, null);
+
+        var response = await AutoPlanService.AutoPlanToepassenAsync(ConnectionString,
+            ExactRequest(
+                Choice(9500101, targetField: 101, lane: "A2", targetTime: "10:00"),
+                Choice(9500102)), Club, NullLogger.Instance);
+
+        response.Bijgewerkt.Should().Be(1);
+        (await MatchFieldAsync(conn, 9500101)).Should().Be("Kunstgras 1 A2");
+        (await MatchFieldAsync(conn, 9500102)).Should().BeNull();
+    }
+
+    [PostgresFact]
+    public async Task ExactApply_RejectsStaleLaneAndDuplicateOrCrossClubIds()
+    {
+        await using var conn = await OpstellingAsync();
+        await ZetWedstrijdAsync(conn, 9500103, "ALLSTARS JO13-1", "09:00", "Kunstgras 1 A1");
+        var stale = () => AutoPlanService.AutoPlanToepassenAsync(ConnectionString,
+            ExactRequest(Choice(9500103, "Kunstgras 1 A2", "09:00", 101, "A2", "10:00")), Club, NullLogger.Instance);
+        await stale.Should().ThrowAsync<AutoPlanApplyConflictException>();
+
+        var duplicate = () => AutoPlanService.AutoPlanToepassenAsync(ConnectionString,
+            ExactRequest(Choice(9500103, "Kunstgras 1 A1", "09:00", 101, "A2", "10:00"),
+                Choice(9500103, "Kunstgras 1 A1", "09:00", 101, "B1", "10:00")), Club, NullLogger.Instance);
+        await duplicate.Should().ThrowAsync<AutoPlanApplyConflictException>();
+
+        await ExecAsync(conn, "INSERT INTO his.matches (wedstrijdcode,kaledatum,clubcode,teamnaam,mta_inserted,mta_modified) VALUES (9500199,'2026-09-05','DEMO2','demo',NOW(),NOW())");
+        try
+        {
+            var crossClub = () => AutoPlanService.AutoPlanToepassenAsync(ConnectionString,
+                ExactRequest(Choice(9500199)), Club, NullLogger.Instance);
+            await crossClub.Should().ThrowAsync<AutoPlanApplyConflictException>();
+        }
+        finally { await ExecAsync(conn, "DELETE FROM his.matches WHERE wedstrijdcode = 9500199 AND clubcode = 'DEMO2'"); }
+        (await MatchFieldAsync(conn, 9500103)).Should().Be("Kunstgras 1 A1");
+    }
+
+    [PostgresFact]
+    public async Task ExactApply_RejectsInvalidLaneFractionAndHalfQuarterConflict()
+    {
+        await using var conn = await OpstellingAsync();
+        await ExecAsync(conn, "UPDATE public.speeltijden SET veldafmeting = 0.25 WHERE clubcode = @club AND leeftijd = 'JO13'", ("club", Club));
+        await ExecAsync(conn, "UPDATE public.speeltijden SET veldafmeting = 0.5 WHERE clubcode = @club AND leeftijd = 'JO15'", ("club", Club));
+        await ZetWedstrijdAsync(conn, 9500106, "ALLSTARS JO13-1", null, null);
+        await ZetWedstrijdAsync(conn, 9500107, "ALLSTARS JO15-1", null, null);
+
+        var invalid = () => AutoPlanService.AutoPlanToepassenAsync(ConnectionString,
+            ExactRequest(Choice(9500106, targetField: 101, lane: "X", targetTime: "10:00"),
+                Choice(9500107)), Club, NullLogger.Instance);
+        await invalid.Should().ThrowAsync<AutoPlanApplyConflictException>();
+        var mismatch = () => AutoPlanService.AutoPlanToepassenAsync(ConnectionString,
+            ExactRequest(Choice(9500106, targetField: 101, lane: "A", targetTime: "10:00"),
+                Choice(9500107)), Club, NullLogger.Instance);
+        await mismatch.Should().ThrowAsync<AutoPlanApplyConflictException>();
+        var overlap = () => AutoPlanService.AutoPlanToepassenAsync(ConnectionString,
+            ExactRequest(Choice(9500106, targetField: 101, lane: "A1", targetTime: "10:00"),
+                Choice(9500107, targetField: 101, lane: "A", targetTime: "10:00")), Club, NullLogger.Instance);
+        await overlap.Should().ThrowAsync<AutoPlanApplyConflictException>();
+        (await MatchFieldAsync(conn, 9500106)).Should().BeNull();
+    }
+
+    [PostgresFact]
+    public async Task ExactApply_SecondWriteFailureRollsBackFirst()
+    {
+        await using var conn = await OpstellingAsync();
+        await ZetWedstrijdAsync(conn, 9500104, "ALLSTARS JO13-1", null, null);
+        await ZetWedstrijdAsync(conn, 9500105, "ALLSTARS JO15-1", null, null);
+        await ExecAsync(conn, """
+            CREATE FUNCTION his.test_1802_reject_second() RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN IF NEW.wedstrijdcode = 9500105 THEN RAISE EXCEPTION 'synthetic second write failure'; END IF;
+            RETURN NEW; END $$
+            """);
+        await ExecAsync(conn, "CREATE TRIGGER test_1802_second BEFORE UPDATE ON his.matches FOR EACH ROW EXECUTE FUNCTION his.test_1802_reject_second()");
+        try
+        {
+            var apply = () => AutoPlanService.AutoPlanToepassenAsync(ConnectionString,
+                ExactRequest(Choice(9500104, targetField: 101, lane: null, targetTime: "10:00"),
+                    Choice(9500105, targetField: 102, lane: null, targetTime: "12:00")), Club, NullLogger.Instance);
+            await apply.Should().ThrowAsync<PostgresException>();
+            (await MatchFieldAsync(conn, 9500104)).Should().BeNull();
+            (await MatchFieldAsync(conn, 9500105)).Should().BeNull();
+        }
+        finally
+        {
+            await ExecAsync(conn, "DROP TRIGGER test_1802_second ON his.matches");
+            await ExecAsync(conn, "DROP FUNCTION his.test_1802_reject_second()");
+        }
+    }
+
+    private static AutoPlanToepassenRequest ExactRequest(params AutoPlanToewijzing[] choices) =>
+        new() { Datum = Zaterdag.ToString("yyyy-MM-dd"), Toewijzingen = choices.ToList() };
+
+    private static AutoPlanToewijzing Choice(long id, string? oldField = null, string? oldTime = null,
+        int? targetField = null, string? lane = null, string? targetTime = null) => new()
+    {
+        WedstrijdCode = id, HuidigeVeld = oldField, HuidigeTijd = oldTime,
+        VeldNummer = targetField, VeldSubpositie = lane, Tijd = targetTime
+    };
+
+    private static async Task<string?> MatchFieldAsync(NpgsqlConnection conn, long id)
+    {
+        await using var cmd = new NpgsqlCommand("SELECT veld FROM his.matches WHERE wedstrijdcode = @id", conn);
+        cmd.Parameters.AddWithValue("id", id);
+        var value = await cmd.ExecuteScalarAsync();
+        return value is DBNull or null ? null : (string)value;
     }
 
     /// <summary>

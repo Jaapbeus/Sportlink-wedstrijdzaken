@@ -423,8 +423,15 @@ namespace SportlinkFunction.Planner
 
                     log.LogInformation("AutoPlanToepassen: datum={Datum}, club={Club}", LogWaarde.Schoon(request.Datum), clubCode);
 
-                    var response = await PlannerService.AutoPlanToepassenAsync(request, clubCode, log);
-                    return new OkObjectResult(response);
+                    try
+                    {
+                        var response = await PlannerService.AutoPlanToepassenAsync(request, clubCode, log);
+                        return new OkObjectResult(response);
+                    }
+                    catch (AutoPlanApplyConflictException)
+                    {
+                        return new ConflictObjectResult(new { error = AutoPlanApplyConflictException.SafeMessage });
+                    }
                 });
         }
 

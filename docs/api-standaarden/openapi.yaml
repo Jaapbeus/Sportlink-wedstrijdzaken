@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.16.0.0
+  version: 3.16.0.1
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -3514,24 +3514,56 @@ components:
           type: string
           format: date
           example: "2026-06-07"
-        bevestigingsToken:
+        bufferMinuten:
+          type: integer
+          nullable: true
+          description: Algemene buffer in minuten; standaard 15.
+        toewijzingen:
+          type: array
+          nullable: true
+          description: Alle zichtbare preview-rijen, inclusief niet-ingedeelde. Weglaten gebruikt het expliciete legacy-pad dat het plan opnieuw berekent.
+          items:
+            $ref: '#/components/schemas/AutoPlanToewijzing'
+
+    AutoPlanToewijzing:
+      type: object
+      required: [wedstrijdCode, huidigeVeld, huidigeTijd, veldNummer, tijd]
+      properties:
+        wedstrijdCode:
+          type: integer
+          format: int64
+        huidigeVeld:
           type: string
           nullable: true
-          description: Token uit AutoPlanResponse ter verificatie
+          description: Verwacht huidig veld inclusief eventuele subpositie.
+        huidigeTijd:
+          type: string
+          nullable: true
+          description: Verwachte huidige aanvangstijd.
+        veldNummer:
+          type: integer
+          nullable: true
+          description: Doelveld; null samen met tijd null laat deze rij oningedeeld.
+        veldSubpositie:
+          type: string
+          nullable: true
+          enum: [A, B, A1, A2, B1, B2]
+          description: Doelbaan; alleen toegestaan als de veldfractie overeenkomt.
+        tijd:
+          type: string
+          nullable: true
+          description: Doelaanvangstijd in HH:mm; null samen met veldNummer null laat deze rij oningedeeld.
 
     AutoPlanToepassenResponse:
       type: object
       properties:
-        datum:
-          type: string
-          format: date
-        toegepast:
+        bijgewerkt:
           type: integer
-          description: Aantal wedstrijden waarvoor een slot is geboekt
-        overgeslagen:
+          description: Aantal gewijzigde demowedstrijden
+        mislukt:
           type: integer
-          description: Aantal wedstrijden waarvoor geen slot beschikbaar was
-        waarschuwingen:
+          description: Aantal mislukte demowedstrijden in het legacy-pad
+        fouten:
           type: array
           items:
             type: string
@@ -8667,9 +8699,11 @@ paths:
       operationId: autoPlanToepassen
       summary: Automatisch plan toepassen
       description: |
-        Past het gegenereerde auto-plan toe door wedstrijdsloten te boeken in
-        `planner.GeplandeWedstrijden`. Schrijft alleen voor wedstrijden die nog
-        geen slot hebben.
+        Schrijft uitsluitend ALLSTARS-demowedstrijden in `his.matches` bij. Met
+        `toewijzingen` valideert de server alle getoonde rijen, bronposities en
+        exacte doelbanen tegen verse clubdata binnen dezelfde transactie als de
+        updates. Conflicten rollen de hele toepassing terug. Zonder deze lijst
+        blijft het expliciete legacygedrag van herberekenen beschikbaar.
 
         **Let op:** alleen beschikbaar als de club-code `ALLSTARS` is (testmodus).
         Productie-clubs ontvangen HTTP 403.
@@ -8697,5 +8731,7 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Bron gewijzigd of exact doelplan bevat een conflict; er is niets opgeslagen.
         '500':
           $ref: '#/components/responses/InternalServerError'

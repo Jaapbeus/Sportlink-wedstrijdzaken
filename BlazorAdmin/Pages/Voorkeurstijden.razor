@@ -22,6 +22,10 @@
 }
 else
 {
+    @if (teamsLoadError != null)
+    {
+        <div class="alert alert-danger">@teamsLoadError</div>
+    }
     <table class="table table-striped">
         <thead>
             <tr>
@@ -109,7 +113,7 @@ else
                     <input type="checkbox" class="form-check-input mt-2" @bind="editing.Actief" />
                 </div>
             </div>
-            <button type="submit" class="btn btn-primary">Opslaan</button>
+            <button type="submit" class="btn btn-primary" disabled="@(teamsLoadError != null)">Opslaan</button>
             <button type="button" class="btn btn-secondary" @onclick="() => editing = null">Annuleren</button>
         </EditForm>
     }
@@ -237,7 +241,7 @@ else
                 <input class="form-control" @bind="editingRegel.Opmerking" />
             </div>
 
-            <button type="submit" class="btn btn-primary">Opslaan</button>
+            <button type="submit" class="btn btn-primary" disabled="@(teamsLoadError != null)">Opslaan</button>
             <button type="button" class="btn btn-secondary ms-2" @onclick="() => editingRegel = null">Annuleren</button>
         </EditForm>
 

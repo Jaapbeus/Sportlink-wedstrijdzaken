@@ -15,29 +15,34 @@ internal static class AllstarsTestDataRepository
     // ALLSTARS testmodus: velden met VeldNummer >= 100
     internal static async Task<List<VeldInfo>> GetAllstarsVeldenAsync()
     {
-        var results = new List<VeldInfo>();
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
+        return await GetAllstarsVeldenAsync(conn, null);
+    }
+
+    internal static async Task<List<VeldInfo>> GetAllstarsVeldenAsync(SqlConnection conn, SqlTransaction? transaction)
+    {
+        var results = new List<VeldInfo>();
         using var cmd = new SqlCommand(
-            "SELECT [VeldNummer], [VeldNaam], ISNULL([VeldType], 'kunstgras') AS [VeldType], [HeeftKunstlicht] FROM [dbo].[Velden] WHERE [Actief] = 1 AND [VeldNummer] >= 100 ORDER BY [VeldNummer]", conn);
+            "SELECT [VeldNummer], [VeldNaam], ISNULL([VeldType], 'kunstgras') AS [VeldType], [HeeftKunstlicht] FROM [dbo].[Velden] WHERE [Actief] = 1 AND [VeldNummer] >= 100 ORDER BY [VeldNummer]", conn, transaction);
         using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
-            results.Add(new VeldInfo
-            {
-                VeldNummer = reader.GetInt32(0),
-                VeldNaam = reader.GetString(1),
-                VeldType = reader.GetString(2),
-                HeeftKunstlicht = reader.GetBoolean(3)
-            });
+            results.Add(VeldInfo.FromReader(reader));
         return results;
     }
 
     internal static async Task<List<WedstrijdRaw>> GetAllMatchesForDatumAsync(DateOnly datum, string clubCode)
     {
-        bool isAllstars = clubCode.Equals(AllstarsClubCode, StringComparison.OrdinalIgnoreCase);
-        var results = new List<WedstrijdRaw>();
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
+        return await GetAllMatchesForDatumAsync(conn, null, datum, clubCode);
+    }
+
+    internal static async Task<List<WedstrijdRaw>> GetAllMatchesForDatumAsync(
+        SqlConnection conn, SqlTransaction? transaction, DateOnly datum, string clubCode)
+    {
+        bool isAllstars = clubCode.Equals(AllstarsClubCode, StringComparison.OrdinalIgnoreCase);
+        var results = new List<WedstrijdRaw>();
 
         // #1547: de speelduur volgens Sportlink staat in his.matchdetails en koppelt op InternCode —
         // niet op WedstrijdCode, want dat is Sportlinks wedstrijdNUMMER (bij clubwedstrijden vaak 1).
@@ -91,7 +96,7 @@ internal static class AllstarsTestDataRepository
                   AND m.[accommodatie] LIKE '%' + (SELECT TOP 1 [Accommodatie] FROM [dbo].[AppSettings] WHERE [ClubCode] = @clubCode) + '%'
                 ORDER BY m.[teamvolgorde], m.[teamnaam]";
 
-        using var cmd = new SqlCommand(sql, conn);
+        using var cmd = new SqlCommand(sql, conn, transaction);
         cmd.Parameters.AddWithValue("@date", datum.ToDateTime(TimeOnly.MinValue));
         if (!isAllstars) cmd.Parameters.AddWithValue("@clubCode", clubCode);
 
@@ -125,6 +130,25 @@ internal static class AllstarsTestDataRepository
         cmd.Parameters.AddWithValue("@tijd", nieuweTijd);
         cmd.Parameters.AddWithValue("@veld", nieuweVeld);
         cmd.Parameters.AddWithValue("@code", wedstrijdCode);
+        return await cmd.ExecuteNonQueryAsync();
+    }
+
+    internal static async Task<int> UpdateAllstarsMatchAsync(
+        SqlConnection conn, SqlTransaction transaction, long wedstrijdCode,
+        string? verwachtVeld, string? verwachteTijd, string nieuweVeld, string nieuweTijd)
+    {
+        using var cmd = new SqlCommand($@"
+            UPDATE [his].[matches]
+            SET [aanvangstijd] = @tijd, [veld] = @veld, [mta_modified] = GETUTCDATE()
+            WHERE [wedstrijdcode] = @code AND [ClubCode] = '{AllstarsClubCode}'
+              AND (([veld] = @verwachtVeld) OR ([veld] IS NULL AND @verwachtVeld IS NULL))
+              AND (([aanvangstijd] = @verwachteTijd) OR ([aanvangstijd] IS NULL AND @verwachteTijd IS NULL))
+        ", conn, transaction);
+        cmd.Parameters.Add("@tijd", System.Data.SqlDbType.NVarChar, 50).Value = nieuweTijd;
+        cmd.Parameters.Add("@veld", System.Data.SqlDbType.NVarChar, 100).Value = nieuweVeld;
+        cmd.Parameters.Add("@code", System.Data.SqlDbType.BigInt).Value = wedstrijdCode;
+        cmd.Parameters.Add("@verwachtVeld", System.Data.SqlDbType.NVarChar, 100).Value = (object?)verwachtVeld ?? DBNull.Value;
+        cmd.Parameters.Add("@verwachteTijd", System.Data.SqlDbType.NVarChar, 50).Value = (object?)verwachteTijd ?? DBNull.Value;
         return await cmd.ExecuteNonQueryAsync();
     }
 

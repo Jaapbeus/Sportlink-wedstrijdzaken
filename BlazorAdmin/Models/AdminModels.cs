@@ -783,6 +783,9 @@ public class AutoPlanToepassenRequestDto
 {
     public string Datum { get; set; } = "";
     public int? BufferMinuten { get; set; }
+    /// <summary>Alle preview-rijen; null behoudt het expliciete legacygedrag van opnieuw berekenen.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<Planner.Shared.AutoPlanToewijzing>? Toewijzingen { get; set; }
 }
 
 public class AutoPlanToepassenResponseDto

@@ -667,7 +667,13 @@ volledig client-side in de code-behind `VeldOptimalisatie.razor.cs` (#1361; vó�
   effectieve buffer is per kant het maximum met de algemene buffer van dat moment, en tussen voorganger
   en opvolger telt de grootste van `BufferNa(voorganger)` en `BufferVoor(opvolger)`. Een melding die door
   een teamregel komt, noemt "de vereiste teambuffer van N min" in plaats van "de ingestelde buffer".
-- Wegschrijven gaat ongewijzigd via **Toepassen in testmodus** (`/planner/auto-plan/toepassen`).
+- **Toepassen in testmodus** (`/planner/auto-plan/toepassen`) stuurt alle getoonde preview-rijen
+  inclusief hun handmatig gekozen baan mee (#1802). Beide tiers lezen bronwedstrijden, actieve
+  demovelden, speeltijden en teambuffers opnieuw binnen één serialiseerbare transactie. De gedeelde
+  `AutoPlanExactApply` valideert de volledige bronset en exacte slots via `FieldScheduler`; pas daarna
+  worden de gewijzigde ALLSTARS-rijen binnen diezelfde transactie opgeslagen. Bij een conflict
+  volgt `409` zonder gedeeltelijke updates. Een afwezige `toewijzingen`-lijst blijft het expliciete
+  legacy-pad dat opnieuw berekent.
 
 ### Twee losse statussen — bewust gescheiden
 

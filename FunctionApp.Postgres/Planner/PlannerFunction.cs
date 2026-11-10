@@ -490,6 +490,10 @@ public static class PlannerFunction
                     log.LogWarning("AutoPlanToepassen geweigerd: {Reden}", ex.Message);
                     return new BadRequestObjectResult(new { error = ex.Message });
                 }
+                catch (AutoPlanApplyConflictException ex)
+                {
+                    return new ObjectResult(new { error = ex.Message }) { StatusCode = 409 };
+                }
             });
     }
 }

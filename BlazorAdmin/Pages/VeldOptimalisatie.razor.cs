@@ -4,6 +4,7 @@ using BlazorAdmin.Shared;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
+using Planner.Shared;
 
 namespace BlazorAdmin.Pages;
 
@@ -32,6 +33,7 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     // zoals die nu in Sportlink staat zien, en pas daarna desgewenst naar Optimaal wisselen.
     private string _visTab = "huidig";
     private AutoPlanResponseDto? _plan;
+    private int _planLoadVersion;
     // #1364: de PDF wordt server-side opnieuw berekend; met de invoer waarmee het getoonde plan is
     // gemaakt, niet met wat er inmiddels in de invoerbalk staat.
     private string _planDatum = "";
@@ -148,6 +150,8 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
 
     private async Task AutoPlanAsync()
     {
+        var version = ++_planLoadVersion;
+        var clubCode = ClubSelector.SelectedClubCode;
         _errorMessage = null;
         _toepassenMelding = null;
         _bezig = true;
@@ -155,6 +159,7 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
         {
             var req = new AutoPlanRequestDto { Datum = DatumStr, BufferMinuten = _bufferMinuten };
             var result = await PlanningApi.AutoPlanAsync(req);
+            if (version != _planLoadVersion || clubCode != ClubSelector.SelectedClubCode) return;
             if (result.Success)
             {
                 _plan = result.Data;
@@ -167,18 +172,35 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
             else
                 _errorMessage = result.ErrorMessage ?? "Onbekende fout bij auto-planning.";
         }
-        finally { _bezig = false; }
+        finally { if (version == _planLoadVersion) _bezig = false; }
     }
 
     private async Task ToepassenAsync()
     {
+        var plan = _plan;
+        if (!IsAllstars || plan == null) return;
+        var clubCode = ClubSelector.SelectedClubCode;
         _toepassenMelding = null;
         _toepassenFout = false;
         _bezig = true;
         try
         {
-            var req = new AutoPlanToepassenRequestDto { Datum = DatumStr, BufferMinuten = _bufferMinuten };
+            var req = new AutoPlanToepassenRequestDto
+            {
+                Datum = _planDatum,
+                BufferMinuten = _planBuffer,
+                Toewijzingen = plan.Wedstrijden.Select(w => new AutoPlanToewijzing
+                {
+                    WedstrijdCode = w.WedstrijdCode,
+                    HuidigeVeld = w.HuidigeVeld,
+                    HuidigeTijd = w.HuidigeTijd,
+                    VeldNummer = w.OptimaalVeldNummer,
+                    VeldSubpositie = DagplanningWeergaveHelpers.GanttExtractSubPos(w.OptimaalVeld),
+                    Tijd = w.OptimaalTijd
+                }).ToList()
+            };
             var result = await PlanningApi.AutoPlanToepassenAsync(req);
+            if (clubCode != ClubSelector.SelectedClubCode || !ReferenceEquals(plan, _plan)) return;
             if (result.Success && result.Data != null)
             {
                 var d = result.Data;
@@ -193,7 +215,7 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
                 _toepassenFout = true;
             }
         }
-        finally { _bezig = false; }
+        finally { if (ReferenceEquals(plan, _plan)) _bezig = false; }
     }
 
     // Sortering staat sinds #1331 in BlazorAdmin/Services/DagplanningSortering.cs — tijd, dan de

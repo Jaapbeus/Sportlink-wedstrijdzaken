@@ -47,6 +47,7 @@
        die niet in de WASM-bundle horen. Het bestand hangt daarom alleen van de BCL af. -->
   <ItemGroup>
     <Compile Include="../Planner.Shared/Planning/PlanningConflictRegels.cs" Link="Gedeeld/PlanningConflictRegels.cs" />
+    <Compile Include="../Planner.Shared/AutoPlanToewijzing.cs" Link="Gedeeld/AutoPlanToewijzing.cs" />
     <!-- #1623: één cron-naar-tekstvertaler voor beide tiers en deze pagina; alleen BCL. -->
     <Compile Include="../Planner.Shared/Scheduling/CronLeesbaar.cs" Link="Gedeeld/CronLeesbaar.cs" />
     <!-- #1715: standaardmaand, geldige reeks en maandnamen van de seizoensstartmaand (keuzelijst in
