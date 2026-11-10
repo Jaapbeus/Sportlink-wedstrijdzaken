@@ -5,6 +5,16 @@ namespace SportlinkFunction.Admin;
 
 internal static class AdminEmailLogRepository
 {
+    internal static async Task<Dictionary<string, int>> GetStatusCountsAsync(
+        string clubCode, DateTime? vanaf, DateTime? tot, string? statusFilter, string cs)
+    {
+        var sql = "SELECT v.[Status], CAST(COUNT(1) AS INT) AS [Aantal] FROM [planner].[EmailVerwerking] v" +
+                  global::Planner.Endpoints.Admin.EmailLogStatusCountsCore.BuildWhere("v.[ClubCode]", "v.[OntvangstDatum]", vanaf, tot, statusFilter) +
+                  " GROUP BY v.[Status]";
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
+        return await global::Planner.Endpoints.Admin.EmailLogStatusCountsCore.ReadAsync(conn, sql, clubCode, vanaf, tot, statusFilter);
+    }
+
     // AVG: retourneert alleen metadata, NOOIT [EmailBody] of [AntwoordEmail].
     // Afzender wordt gemaskeerd: alleen domein zichtbaar.
     internal static async Task<List<Dictionary<string, object?>>> GetAsync(

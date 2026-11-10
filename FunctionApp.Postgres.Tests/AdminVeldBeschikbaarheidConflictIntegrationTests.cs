@@ -19,27 +19,29 @@ public class AdminVeldBeschikbaarheidConflictIntegrationTests
         var idA = 0;
         var idB = 0;
 
-        await using (var conn = new NpgsqlConnection(cs))
-        {
-            await conn.OpenAsync();
-            await using (var veldCmd = new NpgsqlCommand(@"
-                INSERT INTO public.velden (veldnummer, veldnaam, veldtype, heeftkunstlicht, actief, clubcode)
-                VALUES (@veld, 'Testveld', 'kunstgras', FALSE, TRUE, @club);", conn))
-            {
-                veldCmd.Parameters.AddWithValue("veld", veld);
-                veldCmd.Parameters.AddWithValue("club", club);
-                await veldCmd.ExecuteNonQueryAsync();
-            }
-            periodeA = await VoegPeriodeAAsync(conn, club);
-            periodeB = await VoegPeriodeToeAsync(conn, club, "2026-07-01", "2026-12-31");
-            idA = await VoegBeschikbaarheidToeAsync(conn, veld, periodeA, club);
-            idB = await VoegBeschikbaarheidToeAsync(conn, veld, periodeB, club);
-        }
-
         try
         {
+            await using (var conn = new NpgsqlConnection(cs))
+            {
+                await conn.OpenAsync();
+                await using (var veldCmd = new NpgsqlCommand(@"
+                INSERT INTO public.velden (veldnummer, veldnaam, veldtype, heeftkunstlicht, actief, clubcode)
+                VALUES (@veld, 'Testveld', 'kunstgras', FALSE, TRUE, @club);", conn))
+                {
+                    veldCmd.Parameters.AddWithValue("veld", veld);
+                    veldCmd.Parameters.AddWithValue("club", club);
+                    await veldCmd.ExecuteNonQueryAsync();
+                }
+                periodeA = await VoegPeriodeAAsync(conn, club);
+                periodeB = await VoegPeriodeToeAsync(conn, club, "2026-07-01", "2026-12-31");
+                idA = await VoegBeschikbaarheidToeAsync(conn, veld, periodeA, club);
+                idB = await VoegBeschikbaarheidToeAsync(conn, veld, periodeB, club);
+            }
+
             (await AdminVeldBeschikbaarheidRepository.BestaatAndereVoorUpdateAsync(idB, periodeA, club, cs)).Should().BeTrue();
             (await AdminVeldBeschikbaarheidRepository.BestaatAndereVoorUpdateAsync(idB, periodeB, club, cs)).Should().BeFalse();
+            (await AdminVeldBeschikbaarheidRepository.BestaatAndereVoorUpdateAsync(idA, periodeA, club, cs)).Should().BeFalse();
+            (await AdminVeldBeschikbaarheidRepository.BestaatAndereVoorUpdateAsync(idA, periodeA, club + "X", cs)).Should().BeFalse();
         }
         finally
         {

@@ -41,6 +41,8 @@ public class AdminVeldBeschikbaarheidConflictIntegrationTests
         {
             (await AdminVeldBeschikbaarheidRepository.BestaatAndereVoorUpdateAsync(idB, periodeA, club, cs)).Should().BeTrue();
             (await AdminVeldBeschikbaarheidRepository.BestaatAndereVoorUpdateAsync(idB, periodeB, club, cs)).Should().BeFalse();
+            (await AdminVeldBeschikbaarheidRepository.BestaatAndereVoorUpdateAsync(idA, periodeA, club, cs)).Should().BeFalse();
+            (await AdminVeldBeschikbaarheidRepository.BestaatAndereVoorUpdateAsync(idA, periodeA, club + "X", cs)).Should().BeFalse();
         }
         finally
         {

@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.16.0.0
+  version: 3.16.0.1
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -1745,6 +1745,11 @@ components:
           type: integer
         limit:
           type: integer
+        statusCounts:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Aantal verwerkingen per status binnen de filters; onafhankelijk van de limiet op items.
         items:
           type: array
           items:
@@ -5601,15 +5606,23 @@ paths:
           required: false
           schema:
             type: string
-            format: date
-          description: Begindatum filter (inclusief) in yyyy-MM-dd
+            oneOf:
+              - type: string
+                format: date
+              - type: string
+                format: date-time
+          description: Begingrens inclusief; yyyy-MM-dd voor een UTC-kalenderdag of ISO 8601 timestamp voor een exact UTC-moment.
         - name: tot
           in: query
           required: false
           schema:
             type: string
-            format: date
-          description: Einddatum filter (exclusief) in yyyy-MM-dd
+            oneOf:
+              - type: string
+                format: date
+              - type: string
+                format: date-time
+          description: Eindgrens exclusief; yyyy-MM-dd behoudt bestaande dagsemantiek, ISO 8601 timestamp is een exact UTC-moment.
         - name: status
           in: query
           required: false
