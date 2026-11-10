@@ -27,13 +27,18 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ### Fixed
 - Een teamcontactvraag krijgt pas een automatische bevestiging nadat de eenmalige doorstuuractie door Graph is geaccepteerd en die uitkomst duurzaam is opgeslagen. Onbekende uitkomsten en oude verwerkingsrijen gaan ter beoordeling zonder tweede doorstuurpoging; het reviewvoorstel beschrijft de uitkomst neutraal (#1799, beide databasetiers).
-- De Postgres-instellingenloader laadt nu ook de vijf bestaande e-mailinstellingen voor de mailboxverwerking en wist ze bij herladen na `NULL`, gelijk aan het gedrag van de SQL Server-tier (#1798).
-### Fixed
 - Het API-contract beschrijft de lokale Sportlink-leaseblokkade (409) en de veilige 500-melding bij een al verwerkte live-mutatie met mislukte auditafronding, inclusief het advies om die mutatie niet te herhalen (#1815)
 - Sportlink-wedstrijdkoppelingen accepteren alleen een unieke match op de beschikbare dag- en wedstrijdnummergegevens; oude cachekoppelingen zonder deze controle worden genegeerd. Een wijzigingsverzoek krijgt geen lokale wedstrijddetails uit zo'n onbevestigde cachemapping (#1815)
 - Een lokale automatische-loginlease die bezet is wordt als lokale tijdelijke blokkade teruggegeven, zonder de upstream-foutstatus te gebruiken. Bij een bevestigde mutatie waarvan de auditafronding faalt, meldt de API dat de wijziging al is verwerkt en dat de gebruiker niet opnieuw moet proberen; de veldplannercache wordt na een geslaagde live-mutatie geleegd (#1815)
 - Het oefenwedstrijdformulier serialiseert een datum/tijd als lokale wandklokwaarde zonder machine-offset. De automatische periodieke herlogin start eerder zodat een uur-tickmarge blijft vóór de absolute sessiegrens; de bestaande dagelijkse limiet blijft gelijk (#1815)
 
+- Settings restart decisions now have paired SQL Server and Postgres persistence regression tests for unchanged and changed schedules alongside another saved field (#1819).
+- De Postgres-instellingenloader laadt nu ook de vijf bestaande e-mailinstellingen voor de mailboxverwerking en wist ze bij herladen na `NULL`, gelijk aan het gedrag van de SQL Server-tier (#1798).
+- De instellingenopslag meldt alleen een herstart als de opgeslagen FetchSchedule-waarde echt verandert; SQL Server ondersteunt nu ook het opslaan en teruglezen van SportlinkDryRun (#1819)
+- Een teambegeleiding-CSV met ongeldige UTF-8-bytes wordt vóór de import geweigerd in plaats van stilzwijgend met vervangtekens in de preview te verschijnen (#1819)
+- Veldbeschikbaarheid kan niet meer naar een periodecombinatie worden bijgewerkt die al bestaat (#1819)
+- E-maildashboardtellers gebruiken de echte laatste 24 uur en tellen alle passende berichten, ook als de detailweergave de limiet bereikt. Bij een oudere API zonder volledige tellingen toont het dashboard "Niet beschikbaar" in plaats van onjuiste nullen; werk de API bij vóór de Blazor-app (#1819)
+- De email-log OpenAPI-parameters documenteren nu de drie parser-ondersteunde datumvormen; de SQL Server-beschikbaarheidstest ruimt ook op als het fixture-opzetten faalt (#1819, reviewronde 3)
 
 ## [3.16.0.0] — 2026-11-10
 

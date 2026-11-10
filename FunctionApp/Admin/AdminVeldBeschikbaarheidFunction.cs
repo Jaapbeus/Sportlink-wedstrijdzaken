@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Newtonsoft.Json;
+using Planner.Endpoints.Admin;
 
 namespace SportlinkFunction.Admin;
 
@@ -38,6 +39,10 @@ public static class AdminVeldBeschikbaarheidFunction
                 var cs = SystemUtilities.DatabaseConfig.ConnectionString;
                 var periodeValidatie = await ValideerPeriodeAsync(dto!.PeriodeId, clubCode, cs);
                 if (periodeValidatie != null) return periodeValidatie;
+
+                var conflict = await VeldBeschikbaarheidUpdateCore.ConflicterendeCombinatieAsync(
+                    () => AdminVeldBeschikbaarheidRepository.BestaatAndereVoorUpdateAsync(id, dto.PeriodeId, clubCode, cs));
+                if (conflict != null) return conflict;
 
                 var rows = await AdminVeldBeschikbaarheidRepository.UpdateAsync(
                     id, TimeSpan.Parse(dto.BeschikbaarVanaf!), TimeSpan.Parse(dto.BeschikbaarTot!),
@@ -151,17 +156,7 @@ public static class AdminVeldBeschikbaarheidFunction
 
     // internal (#476-precedent): testbaar zonder de HTTP-triggerwrapper na te bootsen.
     internal static IActionResult? ValideerTijden(string? vanf, string? tot)
-    {
-        if (string.IsNullOrWhiteSpace(vanf) || !TimeSpan.TryParse(vanf, out var vanfTijd))
-            return new BadRequestObjectResult(new { error = "BeschikbaarVanaf vereist HH:mm formaat" });
-        if (string.IsNullOrWhiteSpace(tot) || !TimeSpan.TryParse(tot, out var totTijd))
-            return new BadRequestObjectResult(new { error = "BeschikbaarTot vereist HH:mm formaat" });
-        // #957: zonder deze check accepteerde de API stilzwijgend een venster dat vóór het begin
-        // eindigt (bijv. verwisselde velden), met onvoorspelbaar effect op de planner.
-        if (totTijd <= vanfTijd)
-            return new BadRequestObjectResult(new { error = "BeschikbaarTot moet na BeschikbaarVanaf liggen" });
-        return null;
-    }
+        => VeldBeschikbaarheidUpdateCore.ValideerTijden(vanf, tot);
 
     /// <summary>
     /// NULL is altijd geldig (standaardregime, #581). Een waarde moet een bestaande periode van
