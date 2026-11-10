@@ -2,7 +2,7 @@ namespace BlazorAdmin.Services;
 
 /// <summary>
 /// Calculates the top and height of one Gantt bar in the Planning page as percentages of the fixed
-/// row height (72px; see <c>Planning.razor</c>). Both values use the same Sportlink subposition
+/// row height (72px; see <c>Shared/GanttChart.razor.css</c>). Both values use the same Sportlink subposition
 /// suffix; server-side <c>Veldafmeting</c> is a height fallback when the suffix is absent or
 /// unrecognized.
 /// This keeps partial-field bookings from extending into the next row. A defensive clamp keeps
