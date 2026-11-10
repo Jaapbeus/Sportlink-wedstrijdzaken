@@ -69,9 +69,18 @@ internal static class PlannerAvailabilityRepository
     internal static async Task<List<BestaandeWedstrijd>> GetFieldOccupationsAsync(
         DateOnly date, string? clubCode = null)
     {
-        var results = new List<BestaandeWedstrijd>();
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
+        var results = await ReadMatchOccupationsAsync(conn, date, clubCode);
+        results.AddRange(await GetTrainingOccupationsAsync(date, clubCode));
+        return results;
+    }
+
+    // Dezelfde productiequery kan binnen een rollback-transactie tegen een echte SQL Server draaien.
+    internal static async Task<List<BestaandeWedstrijd>> ReadMatchOccupationsAsync(
+        SqlConnection conn, DateOnly date, string? clubCode, SqlTransaction? transaction = null)
+    {
+        var results = new List<BestaandeWedstrijd>();
         using var cmd = new SqlCommand($@"
             SELECT [Datum], [AanvangsTijd], [EindTijd], [VeldNummer], [VeldDeelGebruik],
                    [LeeftijdsCategorie], [TeamNaam], [Wedstrijd], [VeldSubpositie], [Bron],
@@ -85,7 +94,7 @@ internal static class PlannerAvailabilityRepository
                 WHERE [Datum] = @date
                   AND [ClubCode] = {ClubScope.ClubCodeParam}
             ) sub WHERE rn = 1
-        ", conn);
+        ", conn, transaction);
         cmd.Parameters.AddWithValue("@date", date.ToDateTime(TimeOnly.MinValue));
         ClubScope.AddClubParam(cmd, clubCode);
         using var reader = await cmd.ExecuteReaderAsync();
@@ -110,7 +119,6 @@ internal static class PlannerAvailabilityRepository
                 Wedstrijdcode      = reader.IsDBNull(10) ? null : reader.GetInt64(10)
             });
         }
-        results.AddRange(await GetTrainingOccupationsAsync(date, clubCode));
         return results;
     }
 
