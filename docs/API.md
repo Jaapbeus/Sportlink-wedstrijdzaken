@@ -102,8 +102,8 @@ verwerking plaats.
 | Methode | Endpoint | Niveau | Beschrijving |
 |---------|----------|--------|-------------|
 | `GET` | `/health` | Anoniem | Status, versie, tier-herkomst (#863) — zie hieronder |
-| `GET` | `/postgres/sync-matches` | **Admin** | Handmatige Sportlink-synchronisatie — **Postgres-tier (productie)**. Antwoordt `200`, `207` (deelstappen mislukt, `lastsynctimestamp` niet bijgewerkt) of `500`. Bestaat niet op de SQL Server-tier |
-| `GET` | `/sync-matches` | **Admin** | Handmatige Sportlink-synchronisatie — **SQL Server-tier**, zelfde parameters (`reset`, `season`). Antwoordt `200` of `500`. Bestaat niet op de Postgres-tier |
+| `GET` | `/postgres/sync-matches` | **Admin** | Handmatige Sportlink-synchronisatie — **Postgres-tier (productie)**. Alleen de vastgelegde Sportlink-dataservice mag als bron zijn ingesteld; een andere basis-URL stopt de sync vóór uitgaand verkeer. Antwoordt `200`, `207` (deelstappen mislukt, `lastsynctimestamp` niet bijgewerkt) of `500`. Bestaat niet op de SQL Server-tier |
+| `GET` | `/sync-matches` | **Admin** | Handmatige Sportlink-synchronisatie — **SQL Server-tier**, dezelfde basis-URL-regel en parameters (`reset`, `season`). Antwoordt `200` of `500`. Bestaat niet op de Postgres-tier |
 | `GET/PUT` | `/beheer/settings` | **Admin** | Club-instellingen ophalen/opslaan (incl. Sportlink Web Extension-schakelaar en de seizoensstartmaand `SeasonStartMonth` 1–12 per club; wijzigen bouwt de seizoenen van die club opnieuw op). `FetchSchedule` in een PUT moet een niet-lege, uitvoerbare zesvelden-CRON van maximaal 50 tekens zijn; anders 400 zonder de invoer in de foutmelding. Een weggelaten veld blijft ongewijzigd |
 | `GET` | `/beheer/geocode` | **Admin** | Adres → GPS-coördinaten opzoeken voor de accommodatie-instelling |
 | `GET` | `/beheer/sync/status` | **Admin** | Status van de laatste Sportlink-synchronisatie, plus optioneel `?jobId=` voor een specifieke sync-job (#1138) |

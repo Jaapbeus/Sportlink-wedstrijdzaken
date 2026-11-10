@@ -23,6 +23,10 @@ namespace FunctionApp.Postgres.Tests.Sync;
 /// </summary>
 public class MatchDetailsFetchLoggingTests
 {
+    [Fact]
+    public void ProductionDataServiceClient_DoesNotFollowRedirects()
+        => PostgresSyncPipeline.DataserviceHandler.AllowAutoRedirect.Should().BeFalse();
+
     private const string SynthetischeClientId = "SYNTHETIC-CLIENT-ID-1234";
 
     /// <summary>
@@ -76,6 +80,18 @@ public class MatchDetailsFetchLoggingTests
     [Fact]
     public async Task FetchAndStoreMatchDetails_Http500_LogtClientIdNooit()
         => await BewijsDatClientIdNietGelogdWordtAsync(StatusClient(HttpStatusCode.InternalServerError), 12);
+
+    [Fact]
+    public async Task FetchAndStoreMatchDetails_Redirect_RetourneertFalse()
+    {
+        using var client = StatusClient(HttpStatusCode.Redirect);
+
+        var result = await PostgresSyncPipeline.FetchAndStoreMatchDetailsAsync(
+            NietGebruikteConnectie, "https://data.sportlink.com/wedstrijd-informatie?clientId=fixture",
+            "TEST", new RecordingLogger(), client);
+
+        result.Should().BeFalse("a redirect must not count as a completed data-service read");
+    }
 
     [Fact]
     public async Task FetchAndStoreMatchDetails_OngeldigeJson_LogtClientIdNooit()

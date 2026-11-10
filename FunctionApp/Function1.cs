@@ -1,4 +1,5 @@
 using Planner.Endpoints.Admin;
+using Planner.Shared.Sync;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -35,10 +36,10 @@ namespace SportlinkFunction
                 await WaitForDatabaseAsync(log);
                 await AppSettings.LoadSettingsAsync(log);
 
-                string? sportlinkApiUrl = AppSettings.GetSetting("sportlinkApiUrl");
-                if (string.IsNullOrEmpty(sportlinkApiUrl))
+                if (!SportlinkDataserviceBasisUrl.TryGetCanonical(
+                        AppSettings.GetSetting("sportlinkApiUrl"), out var sportlinkApiUrl))
                 {
-                    log.LogError("sportlinkApiUrl is not configured.");
+                    log.LogError("Sportlink data-service base URL is invalid.");
                     return;
                 }
 
@@ -88,10 +89,10 @@ namespace SportlinkFunction
                     // endpoint en niet bij de generieke 500 van de wrapper.
                     try
                     {
-                        string? sportlinkApiUrl = AppSettings.GetSetting("sportlinkApiUrl");
-                        if (string.IsNullOrEmpty(sportlinkApiUrl))
+                        if (!SportlinkDataserviceBasisUrl.TryGetCanonical(
+                                AppSettings.GetSetting("sportlinkApiUrl"), out var sportlinkApiUrl))
                         {
-                            log.LogError("sportlinkApiUrl is not configured.");
+                            log.LogError("Sportlink data-service base URL is invalid.");
                             return new StatusCodeResult(500);
                         }
                         string sportlinkClientId = $"clientId={AppSettings.GetSetting("sportlinkClientId")}";

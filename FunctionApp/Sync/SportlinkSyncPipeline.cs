@@ -10,7 +10,8 @@ namespace SportlinkFunction;
 /// </summary>
 internal static class SportlinkSyncPipeline
 {
-    private static readonly HttpClient _client = new();
+    internal static readonly HttpClientHandler DataserviceHandler = new() { AllowAutoRedirect = false };
+    private static readonly HttpClient _client = new(DataserviceHandler);
     private const string AllstarsClubCode = "ALLSTARS";
 
     // partialFailure: als één stap faalt, slaan we LastSyncTimestamp NIET op. (#438, #464)

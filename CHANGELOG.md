@@ -30,6 +30,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - E-maildashboardtellers gebruiken de echte laatste 24 uur en tellen alle passende berichten, ook als de detailweergave de limiet bereikt. Bij een oudere API zonder volledige tellingen toont het dashboard "Niet beschikbaar" in plaats van onjuiste nullen; werk de API bij vóór de Blazor-app (#1819)
 - De email-log OpenAPI-parameters documenteren nu de drie parser-ondersteunde datumvormen; de SQL Server-beschikbaarheidstest ruimt ook op als het fixture-opzetten faalt (#1819, reviewronde 3)
 - De instelling `FetchSchedule` accepteert alleen een uitvoerbare zesvelden-CRON van maximaal 50 tekens. Lege waarden en schema's zonder volgend uitvoermoment geven een 400 zonder de ingevoerde waarde in de foutmelding; een weggelaten veld blijft ongewijzigd (zie issue #1811).
+- Normale synchronisatie gebruikt alleen de vaste Sportlink-dataservice als bron; een afwijkende opgeslagen basis-URL stopt vóór uitgaand verkeer. De Sportlink-leesclients volgen geen redirects. Het real-time leespad van de SQL Server-planner volgt dezelfde regel (zie issue #1811).
 
 ## [3.16.0.0] — 2026-11-10
 

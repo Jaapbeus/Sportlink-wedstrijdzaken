@@ -4579,7 +4579,7 @@
         ],
         "operationId": "syncMatchesPostgres",
         "summary": "Handmatige Sportlink synchronisatie starten (Postgres-tier)",
-        "description": "**Tier: Postgres (productie).** Op de SQL Server-tier bestaat deze route niet (404) — daar\nheet hij `/sync-matches`.\n\nStart een Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).\nVereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key\nvia `?code=`, `AuthorizationLevel.Admin`).\n\n- **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)\n- **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar.\n  Een ontbrekende of onparseerbare `season` valt stil terug op de standaardmodus.\n\nMislukt één of meer deelstappen, dan volgt `207` in plaats van `200`: de geslaagde\ndeelstappen blijven staan, maar `lastsynctimestamp` wordt bewust niet bijgewerkt (#1081).\n",
+        "description": "**Tier: Postgres (productie).** Op de SQL Server-tier bestaat deze route niet (404) — daar\nheet hij `/sync-matches`.\n\nStart een Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).\nDe opgeslagen basis-URL moet de vaste Sportlink-dataservice zijn; anders stopt de sync\nvóór uitgaand verkeer. De client volgt geen HTTP-redirects.\nVereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key\nvia `?code=`, `AuthorizationLevel.Admin`).\n\n- **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)\n- **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar.\n  Een ontbrekende of onparseerbare `season` valt stil terug op de standaardmodus.\n\nMislukt één of meer deelstappen, dan volgt `207` in plaats van `200`: de geslaagde\ndeelstappen blijven staan, maar `lastsynctimestamp` wordt bewust niet bijgewerkt (#1081).\n",
         "security": [
           {
             "easyAuth": []
@@ -4668,7 +4668,7 @@
         ],
         "operationId": "syncMatches",
         "summary": "Handmatige Sportlink synchronisatie starten (SQL Server-tier)",
-        "description": "**Tier: SQL Server.** Op de Postgres-tier (productie) bestaat deze route niet (404) — daar\nheet hij `/postgres/sync-matches`.\n\nStart een volledige Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).\nVereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key\nvia `?code=`, `AuthorizationLevel.Admin`).\n\n- **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)\n- **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar\n\nDeze tier kent de `207`-respons van de Postgres-tier niet: alleen `200` of `500`.\n",
+        "description": "**Tier: SQL Server.** Op de Postgres-tier (productie) bestaat deze route niet (404) — daar\nheet hij `/postgres/sync-matches`.\n\nStart een volledige Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).\nDe opgeslagen basis-URL moet de vaste Sportlink-dataservice zijn; anders stopt de sync\nvóór uitgaand verkeer. De client volgt geen HTTP-redirects.\nVereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key\nvia `?code=`, `AuthorizationLevel.Admin`).\n\n- **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)\n- **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar\n\nDeze tier kent de `207`-respons van de Postgres-tier niet: alleen `200` of `500`.\n",
         "security": [
           {
             "easyAuth": []

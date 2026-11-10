@@ -3593,6 +3593,8 @@ paths:
         heet hij `/sync-matches`.
 
         Start een Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).
+        De opgeslagen basis-URL moet de vaste Sportlink-dataservice zijn; anders stopt de sync
+        vóór uitgaand verkeer. De client volgt geen HTTP-redirects.
         Vereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key
         via `?code=`, `AuthorizationLevel.Admin`).
 
@@ -3666,6 +3668,8 @@ paths:
         heet hij `/postgres/sync-matches`.
 
         Start een volledige Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).
+        De opgeslagen basis-URL moet de vaste Sportlink-dataservice zijn; anders stopt de sync
+        vóór uitgaand verkeer. De client volgt geen HTTP-redirects.
         Vereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key
         via `?code=`, `AuthorizationLevel.Admin`).
 
