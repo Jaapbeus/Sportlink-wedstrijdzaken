@@ -114,6 +114,16 @@
           }
         }
       },
+      "PlanningDuurOnbekend": {
+        "description": "Planning geblokkeerd omdat voor een bestaande veldbezetting geen betrouwbare duur bekend is (#1814)",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
       "InternalServerError": {
         "description": "Interne serverfout",
         "content": {
@@ -4340,6 +4350,10 @@
             "type": "integer",
             "nullable": true,
             "description": "Actieve teamregel BufferNa in minuten (#1430); null = geen regel. Zie teamBufferVoor."
+          },
+          "sportlinkLeidend": {
+            "type": "boolean",
+            "description": "True als de planner de bronduur gebruikt en rond dit slot geen appbuffer toepast (#1814)."
           }
         }
       },
@@ -4762,6 +4776,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "409": {
+            "$ref": "#/components/responses/PlanningDuurOnbekend"
+          },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
           }
@@ -4809,11 +4826,18 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "409": {
-            "description": "Bezettingsconflict — het veld is op dit tijdstip al (gedeeltelijk) bezet",
+            "description": "Bezettingsconflict of een onbekende duur van een bestaande veldbezetting (#1814)",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BevestigConflictResponse"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BevestigConflictResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    }
+                  ]
                 }
               }
             }
@@ -4984,6 +5008,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "409": {
+            "$ref": "#/components/responses/PlanningDuurOnbekend"
+          },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
           }
@@ -5072,6 +5099,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/PlanningDuurOnbekend"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"

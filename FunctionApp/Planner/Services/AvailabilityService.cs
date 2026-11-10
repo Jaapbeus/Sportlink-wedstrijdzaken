@@ -1,5 +1,6 @@
 using Planner.Shared;
 using Planner.Shared.Email;
+using Planner.Shared.Planning;
 using Microsoft.Extensions.Logging;
 
 namespace SportlinkFunction.Planner;
@@ -324,26 +325,7 @@ internal static class AvailabilityService
     /// </summary>
     private static List<(TimeOnly Van, TimeOnly Tot, int MaxDuurMinuten)> VindOpenGaten(
         TimeOnly vanaf, TimeOnly tot, List<BestaandeWedstrijd> fieldOccs)
-    {
-        var gaten = new List<(TimeOnly Van, TimeOnly Tot, int MaxDuurMinuten)>();
-        var gapStart = vanaf;
-        foreach (var occ in fieldOccs)
-        {
-            var occStart = occ.AanvangsTijd.AddMinutes(-PlannerShared.StandardBufferMinutes);
-            if (occStart > gapStart)
-            {
-                int gapMin = (int)(occStart.ToTimeSpan() - gapStart.ToTimeSpan()).TotalMinutes;
-                if (gapMin >= 30) gaten.Add((gapStart, occStart, gapMin));
-            }
-            gapStart = occ.EindTijd.AddMinutes(PlannerShared.StandardBufferMinutes);
-        }
-        if (gapStart < tot)
-        {
-            int gapMin = (int)(tot.ToTimeSpan() - gapStart.ToTimeSpan()).TotalMinutes;
-            if (gapMin >= 30) gaten.Add((gapStart, tot, gapMin));
-        }
-        return gaten;
-    }
+        => PlanningOpenGaten.Vind(vanaf, tot, fieldOccs, PlannerShared.StandardBufferMinutes);
 
     /// <summary>
     /// Slot-DTO inclusief het werkelijke veldtype uit <c>dbo.Velden</c> (#705). Het automatische

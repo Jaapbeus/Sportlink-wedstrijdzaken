@@ -626,7 +626,14 @@ geen teamregel (`BufferVoor`/`BufferNa`). De buffer is **per slot**, niet per te
 laat een Sportlink-slot zijn eigen 0-buffer dragen, zodat een app-wedstrijd die naast een Sportlink-wedstrijd
 komt alleen zijn eigen buffer eist. Wedstrijden zonder Sportlink-duur (app-eigen, of Sportlink kent ze niet)
 behouden speeltijdentabel en club-/teambuffer. De rekenregels blijven in `PlanningBufferRegels`; de
-handmatige conflictcontrole in de Admin GUI is niet gewijzigd.
+handmatige conflictcontrole in de Admin GUI gebruikt sinds #1814 hetzelfde per-slot-kenmerk
+`sportlinkLeidend` uit het auto-plancontract: aansluitende bronwedstrijden geven geen valse
+buffermelding, maar echte overlap blijft een conflict.
+
+Ontbreekt in de databasebezetting zowel een positieve Sportlink-duur als een speeltijdenrij,
+dan blijft de bronwedstrijd in de bezettingsview met een onbekende eindtijd. De lezers blokkeren
+planning voor een herkenbaar veld met een getypeerde fout; de adminpoort geeft HTTP 409 met een
+vaste, niet-identificerende melding. Zo wordt een onbekende duur nooit als vrij veld uitgelegd (#1814).
 
 Nog open: of "speelduur + 15" voor korte toernooivormen (bijvoorbeeld 20 minuten) klopt is niet
 bevestigd (#1560, punt 2).

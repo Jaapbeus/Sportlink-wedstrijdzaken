@@ -74,6 +74,8 @@ namespace Database.Postgres;
 /// <see cref="PostgresPlannerSupportSchema"/>.
 /// </para>
 /// <para>
+/// <b>#1814:</b> de eindtijd gebruikt Sportlink Duration + 15 minuten, anders Speeltijden.
+/// Zonder beide bronnen blijft de rij zichtbaar met onbekende eindtijd; lezers blokkeren planning.
 /// <b>#1193:</b> <c>m.mta_deleted IS NULL</c> sluit wedstrijden uit die de sync-reconciliatiestap
 /// heeft gemarkeerd als niet meer bij Sportlink bestaand (zie
 /// <see cref="PostgresMergeOrchestrator.ReconcileWindowedAsync"/>); <c>t.mta_deleted IS NULL</c>
@@ -89,8 +91,11 @@ public static class PostgresPlannerViewGenerator
         SELECT
             (m.kaledatum)::date                                                     AS datum,
             (m.aanvangstijd)::time                                                  AS aanvangstijd,
-            ((m.kaledatum)::date + (m.aanvangstijd)::time
-                + (s.wedstrijdtotaal || ' minutes')::interval)                      AS eindtijd,
+            CASE WHEN COALESCE(md.duration, 0) > 0 OR COALESCE(s.wedstrijdtotaal, 0) > 0
+                THEN (m.kaledatum)::date + (m.aanvangstijd)::time
+                    + ((CASE WHEN md.duration > 0 THEN md.duration + 15 ELSE s.wedstrijdtotaal END) || ' minutes')::interval
+                ELSE NULL::timestamp
+            END                                                                      AS eindtijd,
             m.veld                                                                  AS veld_ruw,
             NULL::integer                                                           AS veldnummer,
             COALESCE(s.veldafmeting, 1.00)                                          AS velddeelgebruik,
@@ -108,6 +113,9 @@ public static class PostgresPlannerViewGenerator
             ORDER BY clubcode
             LIMIT 1
         ) a
+        LEFT JOIN his.matchdetails md
+            ON md.interncode = m.wedstrijdcode AND md.mta_deleted IS NULL
+           AND COALESCE(md.clubcode, a.clubcode) = COALESCE(m.clubcode, a.clubcode)
         LEFT JOIN his.teams t
             ON t.teamnaam = m.teamnaam AND t.leeftijdscategorie IS NOT NULL AND t.leeftijdscategorie <> ''
            AND COALESCE(t.clubcode, a.clubcode) = COALESCE(m.clubcode, a.clubcode)
@@ -121,7 +129,6 @@ public static class PostgresPlannerViewGenerator
         WHERE m.accommodatie LIKE '%' || a.accommodatie || '%'
           AND m.status <> 'Afgelast'
           AND m.aanvangstijd IS NOT NULL
-          AND s.wedstrijdtotaal IS NOT NULL
           AND m.mta_deleted IS NULL
 
         UNION ALL

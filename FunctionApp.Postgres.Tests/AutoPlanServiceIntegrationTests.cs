@@ -65,6 +65,18 @@ public class AutoPlanServiceIntegrationTests : IDisposable
     }
 
     [PostgresFact]
+    public async Task AutoPlanAsync_BestaandeVeldnaam_VerschijntInHuidigeHtml()
+    {
+        await using var conn = await OpstellingAsync();
+        await ZetWedstrijdAsync(conn, 9500010, "ALLSTARS JO13-1", aanvang: "10:00", veld: "Kunstgras 1 A");
+
+        var response = await AutoPlanService.AutoPlanAsync(
+            ConnectionString, new AutoPlanRequest { Datum = Zaterdag.ToString("yyyy-MM-dd") }, Club, NullLogger.Instance);
+
+        response.HuidigeHtml.Should().Contain("ALLSTARS JO13-1");
+    }
+
+    [PostgresFact]
     public async Task AutoPlanAsync_ZonderSpeeltijdVoorDeCategorie_LevertOnbekendTeam()
     {
         await using var conn = await OpstellingAsync();
