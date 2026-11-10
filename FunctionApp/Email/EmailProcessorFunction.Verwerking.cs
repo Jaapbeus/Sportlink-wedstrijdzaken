@@ -242,13 +242,6 @@ public partial class EmailProcessorFunction
                 graphService, classificatie.TeamNaam, classificatie.Datum, log);
         }
 
-        // Stuur vraag door naar coach bij team-contact-opvragen (#168)
-        if (classificatie.Type == VerzoekType.TeamContactOpvragen
-            && !string.IsNullOrWhiteSpace(classificatie.TeamNaam))
-        {
-            await StuurTeamContactBerichtDoorAsync(
-                graphService, classificatie.TeamNaam, email, log);
-        }
     }
 
     /// <summary>

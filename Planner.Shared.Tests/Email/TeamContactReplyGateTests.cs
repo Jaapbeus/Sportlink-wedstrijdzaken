@@ -70,7 +70,7 @@ public class TeamContactReplyGateTests
         persistence.VerzendPogingMarkeringen.Should().BeEmpty();
         persistence.AntwoordUpdates.Should().BeEmpty();
         persistence.VoorgesteldeAntwoorden.Should().ContainSingle().Which.AntwoordEmail
-            .Should().Contain("nog niet doorgestuurd").And.Contain("coördinator beoordeelt");
+            .Should().Contain("doorstuurstatus is niet bevestigd").And.Contain("coördinator beoordeelt");
         graph.SentReplies.Should().BeEmpty();
         graph.CategoryUpdates.Should().ContainSingle().Which.Categories.Should().Contain(EmailCategorieLabels.GeenAiAntwoord);
     }
@@ -100,7 +100,7 @@ public class TeamContactReplyGateTests
         forwardCalled.Should().BeFalse();
         templateCalled.Should().BeFalse();
         persistence.VoorgesteldeAntwoorden.Should().ContainSingle().Which.AntwoordEmail.Should()
-            .Contain("nog niet doorgestuurd");
+            .Contain("doorstuurstatus is niet bevestigd");
         graph.SentReplies.Should().BeEmpty();
     }
 }

@@ -37,7 +37,18 @@ internal sealed class EmailReplyPolicyService
                 var seizoen = await SystemUtilities.SeasonHelper.GetCurrentKnvbSeizoenAsync(log);
                 return string.IsNullOrWhiteSpace(seizoen) ? null : await KnvbPdfService.GetKalenderPdfAsync(regio, seizoen, log);
             },
-            ExtraheerGraphStatusCode);
+            ExtraheerGraphStatusCode,
+            (id, verzoek) => TeamContactDoorstuurAfhandeling.VoerEenmaligUitAsync(
+                id,
+                new SqlTeamContactDoorstuurPersistentie(
+                    SystemUtilities.DatabaseConfig.ConnectionString, persistenceService.ResolveClubCode()),
+                () => TeamContactDoorstuurAfhandeling.VerstuurViaAdapterAsync(
+                    verzoek,
+                    async team => (await PlannerDataAccess.GetTeamleiderContactAsync(team))?.Emailadres,
+                    () => SystemUtilities.AppSettings.GetSetting("plannerEmailAdres"),
+                    (recipient, subject, body, replyTo, audit) => graphService.StuurTeamContactDoorAsync(
+                        [recipient], subject, body, replyTo, audit),
+                    log)));
 
         return EmailReplyAfhandeling.HandelReplyFlowAfAsync(
             verwerkingId, new ReplyBericht(email.MessageId, email.Afzender, email.ConversationId), classificatie,

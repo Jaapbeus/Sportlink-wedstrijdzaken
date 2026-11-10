@@ -1360,6 +1360,15 @@ BEGIN
 END
 GO
 
+-- Only the new unique day+number lookup writes this witness. Existing and legacy-written mappings
+-- remain NULL or become mismatched if a legacy writer changes PublicMatchId.
+IF OBJECT_ID('dbo.SportlinkPublicMatchIdCache', 'U') IS NOT NULL
+   AND COL_LENGTH('dbo.SportlinkPublicMatchIdCache', 'VerifiedPublicMatchId') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[SportlinkPublicMatchIdCache] ADD [VerifiedPublicMatchId] NVARCHAR(50) NULL;
+END
+GO
+
 -- #1266 (Postgres-migratie 016): SportlinkContractCheck.
 -- Resultaat van de dagelijkse contract-check: een read-call die de vorm van de Sportlink
 -- Match-respons controleert, zodat een stille Sportlink-release ons niet pas via een mislukte
@@ -4215,4 +4224,9 @@ GO
 IF OBJECT_ID('dbo.Teams', 'U') IS NOT NULL AND COL_LENGTH('dbo.Teams', 'Categorie') IS NULL
     ALTER TABLE [dbo].[Teams] ADD
         [Categorie] NVARCHAR(1) NULL CONSTRAINT [CK_Teams_Categorie] CHECK ([Categorie] COLLATE Latin1_General_100_BIN2 IN (N'A', N'B'));
+GO
+
+-- #1799: NULL means legacy unknown; new pipeline inserts explicitly NietGestart.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('planner.EmailVerwerking') AND name = 'TeamContactDoorstuurStatus')
+    ALTER TABLE [planner].[EmailVerwerking] ADD [TeamContactDoorstuurStatus] NVARCHAR(20) NULL;
 GO

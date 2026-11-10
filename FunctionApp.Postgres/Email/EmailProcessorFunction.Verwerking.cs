@@ -159,7 +159,8 @@ public partial class EmailProcessorFunction
                 SanitizeFoutMelding,
                 log,
                 trace,
-                await ZekerheidspoortInstelling.IsActiefAsync(cs, clubCode, log));
+                await ZekerheidspoortInstelling.IsActiefAsync(cs, clubCode, log),
+                clubCode);
         }, async t =>
             {
                 // #1568 deel C: onbekende teamteksten naar de wachtrij; een fout hier breekt de trace-opslag niet.
@@ -239,11 +240,6 @@ public partial class EmailProcessorFunction
             await StuurTeamleiderNotificatieAsync(cs, clubCode, graphService, classificatie.TeamNaam!, classificatie.Datum!, log);
         }
 
-        if (classificatie.Type == VerzoekType.TeamContactOpvragen
-            && !string.IsNullOrWhiteSpace(classificatie.TeamNaam))
-        {
-            await StuurTeamContactBerichtDoorAsync(cs, clubCode, graphService, classificatie.TeamNaam!, email, log);
-        }
     }
 
     /// <summary>

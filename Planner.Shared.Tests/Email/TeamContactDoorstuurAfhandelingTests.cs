@@ -1,4 +1,5 @@
 using AwesomeAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 using Planner.Shared.Email;
 using Xunit;
 
@@ -6,6 +7,39 @@ namespace Planner.Shared.Tests.Email;
 
 public class TeamContactDoorstuurAfhandelingTests
 {
+    [Fact]
+    public async Task Adapter_SendsOnceWithCapturedSafeMessageAndReplyTo()
+    {
+        var messages = new List<(string Recipient, string Subject, string Body, string? ReplyTo, string? Audit)>();
+        var request = new TeamContactDoorstuurVerzoek("JO13-1", "trainer@voorbeeld.nl", "Vraagsteller", "Mijn vraag");
+        var outcome = await TeamContactDoorstuurAfhandeling.VerstuurViaAdapterAsync(
+            request, _ => Task.FromResult<string?>("coach@allstars-fc.test"),
+            () => "planner@allstars-fc.test",
+            (recipient, subject, body, replyTo, audit) =>
+            {
+                messages.Add((recipient, subject, body, replyTo, audit));
+                return Task.CompletedTask;
+            }, NullLogger.Instance);
+
+        outcome.Should().Be(TeamContactDoorstuurVerzendresultaat.Geaccepteerd);
+        messages.Should().ContainSingle();
+        messages[0].Body.Should().Contain("Mijn vraag");
+        messages[0].ReplyTo.Should().Be("trainer@voorbeeld.nl");
+    }
+
+    [Fact]
+    public async Task Adapter_NoRecipient_DoesNotCallGraph()
+    {
+        var graphCalls = 0;
+        var outcome = await TeamContactDoorstuurAfhandeling.VerstuurViaAdapterAsync(
+            new TeamContactDoorstuurVerzoek("JO13-1", "trainer@voorbeeld.nl", "Vraagsteller", "Mijn vraag"),
+            _ => Task.FromResult<string?>(null), () => null,
+            (_, _, _, _, _) => { graphCalls++; return Task.CompletedTask; }, NullLogger.Instance);
+
+        outcome.Should().Be(TeamContactDoorstuurVerzendresultaat.GeenOntvanger);
+        graphCalls.Should().Be(0);
+    }
+
     private sealed class FakePersistentie : ITeamContactDoorstuurPersistentie
     {
         public TeamContactDoorstuurStatus? Status { get; private set; }

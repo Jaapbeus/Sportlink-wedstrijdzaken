@@ -197,9 +197,9 @@ internal sealed class SqlEmailPersistenceRepository : IEmailPersistenceRepositor
         // Pogingen start op 1: deze insert hoort bij de eerste verwerkingspoging.
         using var cmd = new SqlCommand(@"
             INSERT INTO [planner].[EmailVerwerking]
-                ([MessageId], [ConversationId], [Afzender], [Onderwerp], [OntvangstDatum], [EmailBody], [VerzoekType], [Status], [ClubCode], [Pogingen])
+                ([MessageId], [ConversationId], [Afzender], [Onderwerp], [OntvangstDatum], [EmailBody], [VerzoekType], [Status], [ClubCode], [Pogingen], [TeamContactDoorstuurStatus])
             VALUES
-                (@MessageId, @ConversationId, @Afzender, @Onderwerp, @OntvangstDatum, @EmailBody, 'Onbekend', 'Ontvangen', @ClubCode, 1);
+                (@MessageId, @ConversationId, @Afzender, @Onderwerp, @OntvangstDatum, @EmailBody, 'Onbekend', 'Ontvangen', @ClubCode, 1, 'NietGestart');
             SELECT CAST(SCOPE_IDENTITY() AS INT);", conn);
         cmd.Parameters.AddWithValue("@MessageId",     email.MessageId);
         cmd.Parameters.AddWithValue("@ConversationId",(object?)email.ConversationId ?? DBNull.Value);

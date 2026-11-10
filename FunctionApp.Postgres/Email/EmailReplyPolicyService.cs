@@ -34,7 +34,8 @@ internal sealed class EmailReplyPolicyService
         Func<string, string> sanitizeFoutMelding,
         ILogger log,
         TraceBuilder? trace = null,
-        bool zekerheidspoortActief = true)
+        bool zekerheidspoortActief = true,
+        string? clubCode = null)
     {
         var haken = new ReplyTierHaken(
             async team => (await AllstarsTestDataRepository.GetTeamleiderContactAsync(connectionString, team))?.Emailadres,
@@ -43,7 +44,18 @@ internal sealed class EmailReplyPolicyService
                 var seizoen = await PostgresSeasonHelper.GetCurrentKnvbSeizoenAsync(log);
                 return string.IsNullOrWhiteSpace(seizoen) ? null : await KnvbPdfService.GetKalenderPdfAsync(regio, seizoen, log);
             },
-            ExtraheerGraphStatusCode);
+            ExtraheerGraphStatusCode,
+            (id, verzoek) => TeamContactDoorstuurAfhandeling.VoerEenmaligUitAsync(
+                id,
+                new PostgresTeamContactDoorstuurPersistentie(connectionString, clubCode ?? VereisClubCode()),
+                () => TeamContactDoorstuurAfhandeling.VerstuurViaAdapterAsync(
+                    verzoek,
+                    async team => (await AllstarsTestDataRepository.GetTeamleiderContactAsync(
+                        connectionString, team, clubCode ?? VereisClubCode()))?.Emailadres,
+                    () => PostgresAppSettings.GetSetting("plannerEmailAdres"),
+                    (recipient, subject, body, replyTo, audit) => graphService.StuurTeamContactDoorAsync(
+                        [recipient], subject, body, replyTo, audit),
+                    log)));
 
         return EmailReplyAfhandeling.HandelReplyFlowAfAsync(
             verwerkingId, new ReplyBericht(email.MessageId, email.Afzender, email.ConversationId), classificatie,
@@ -60,4 +72,12 @@ internal sealed class EmailReplyPolicyService
         => ex is Microsoft.Graph.Models.ODataErrors.ODataError odataError && odataError.ResponseStatusCode > 0
             ? odataError.ResponseStatusCode
             : null;
+
+    private static string VereisClubCode()
+    {
+        var clubCode = PostgresAppSettings.GetSetting("clubCode");
+        return !string.IsNullOrWhiteSpace(clubCode)
+            ? clubCode
+            : throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt");
+    }
 }

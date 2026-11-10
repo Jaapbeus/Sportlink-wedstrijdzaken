@@ -232,6 +232,84 @@ public class SportlinkPublicMatchIdRepositoryIntegrationTests
     }
 
     [PostgresFact]
+    public async Task LegacyInsertEnUpdate_MappingNietLezenOfWarmupUitsluitenTotNieuweUniekeSchrijfactie()
+    {
+        await using var conn = await WarmupOpstellingAsync();
+        await InsertVolledigeMatchAsync(conn, 9600008, 7001);
+
+        // Vorm van de oude writer: hij schrijft PublicMatchId maar kent de witness-kolom niet.
+        await using (var legacyInsert = new NpgsqlCommand(
+            "INSERT INTO public.sportlinkpublicmatchidcache (wedstrijdcode, clubcode, publicmatchid) VALUES (@code, @club, @id)", conn))
+        {
+            legacyInsert.Parameters.AddWithValue("code", 9600008L);
+            legacyInsert.Parameters.AddWithValue("club", Club);
+            legacyInsert.Parameters.AddWithValue("id", "M-legacy-9600008");
+            await legacyInsert.ExecuteNonQueryAsync();
+        }
+        (await SportlinkPublicMatchIdRepository.LeesUitCacheAsync(conn, 9600008, Club)).Should().BeNull();
+        (await SportlinkPublicMatchIdRepository.ZoekWedstrijdenBijPublicMatchIdsAsync(
+            conn, new[] { "M-legacy-9600008" }, Club)).Should().BeEmpty();
+        (await SportlinkPublicMatchIdRepository.ZoekWedstrijdenZonderCacheAsync(
+            conn, new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 30), Club))
+            .Should().Contain(w => w.Wedstrijdcode == 9600008);
+
+        // Nieuwe writer na een unieke lookup zet de witness; een legacy update naar een ander ID
+        // raakt alleen PublicMatchId en maakt het oude bewijs automatisch ongeldig.
+        await SportlinkPublicMatchIdRepository.SchrijfInCacheAsync(conn, 9600008, Club, "M-verified-9600008");
+        (await SportlinkPublicMatchIdRepository.LeesUitCacheAsync(conn, 9600008, Club)).Should().Be("M-verified-9600008");
+        (await SportlinkPublicMatchIdRepository.ZoekWedstrijdenBijPublicMatchIdsAsync(
+            conn, new[] { "M-verified-9600008" }, Club)).Should().ContainKey("M-verified-9600008");
+        await using (var sameIdLegacyUpdate = new NpgsqlCommand(
+            "UPDATE public.sportlinkpublicmatchidcache SET publicmatchid = @id WHERE wedstrijdcode = @code AND clubcode = @club", conn))
+        {
+            sameIdLegacyUpdate.Parameters.AddWithValue("code", 9600008L);
+            sameIdLegacyUpdate.Parameters.AddWithValue("club", Club);
+            sameIdLegacyUpdate.Parameters.AddWithValue("id", "M-verified-9600008");
+            await sameIdLegacyUpdate.ExecuteNonQueryAsync();
+        }
+        (await SportlinkPublicMatchIdRepository.LeesUitCacheAsync(conn, 9600008, Club)).Should().Be("M-verified-9600008");
+        await using (var legacyUpdate = new NpgsqlCommand(
+            "UPDATE public.sportlinkpublicmatchidcache SET publicmatchid = @id WHERE wedstrijdcode = @code AND clubcode = @club", conn))
+        {
+            legacyUpdate.Parameters.AddWithValue("code", 9600008L);
+            legacyUpdate.Parameters.AddWithValue("club", Club);
+            legacyUpdate.Parameters.AddWithValue("id", "M-stale-9600008");
+            await legacyUpdate.ExecuteNonQueryAsync();
+        }
+        (await SportlinkPublicMatchIdRepository.LeesUitCacheAsync(conn, 9600008, Club)).Should().BeNull();
+        (await SportlinkPublicMatchIdRepository.ZoekWedstrijdenBijPublicMatchIdsAsync(
+            conn, new[] { "M-stale-9600008", "M-verified-9600008" }, Club)).Should().BeEmpty();
+        (await SportlinkPublicMatchIdRepository.ZoekWedstrijdenZonderCacheAsync(
+            conn, new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 30), Club))
+            .Should().Contain(w => w.Wedstrijdcode == 9600008);
+    }
+
+    [PostgresFact]
+    public async Task GelijktijdigeSchrijfacties_UpsertenEenEnkeleCacheMapping()
+    {
+        await using var conn = await WarmupOpstellingAsync();
+        var writes = Enumerable.Range(0, 6).Select(async i =>
+        {
+            await using var parallel = new NpgsqlConnection(ConnectionString);
+            await parallel.OpenAsync();
+            await SportlinkPublicMatchIdRepository.SchrijfInCacheAsync(parallel, 9600009, Club, $"M-concurrent-{i}");
+        });
+        await Task.WhenAll(writes);
+
+        var count = await ExecScalarAsync(conn,
+            "SELECT count(*) FROM public.sportlinkpublicmatchidcache WHERE wedstrijdcode = 9600009 AND clubcode = @club", Club);
+        count.Should().Be(1);
+        (await SportlinkPublicMatchIdRepository.LeesUitCacheAsync(conn, 9600009, Club)).Should().StartWith("M-concurrent-");
+    }
+
+    private static async Task<long> ExecScalarAsync(NpgsqlConnection conn, string sql, string club)
+    {
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("club", club);
+        return (long)(await cmd.ExecuteScalarAsync())!;
+    }
+
+    [PostgresFact]
     public async Task ZoekWedstrijdenZonderCacheAsync_SluitWedstrijdenBuitenBereikUit()
     {
         await using var conn = await WarmupOpstellingAsync();

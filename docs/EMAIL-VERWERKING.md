@@ -145,18 +145,21 @@ FASE 2 — database wordt gewekt
 └──────────────────────────────────────────────────────────────────────────────┘
         │
         ▼
+   TeamContactOpvragen: één atomair geclaimde doorstuurpoging vóór de reply;
+   alleen een duurzaam vastgelegde Graph-acceptatie laat de reply doorgaan.
+   Zonder ontvanger of bij onbekende uitkomst: Review, geen automatische reply.
+        │
+        ▼
    Antwoord versturen naar de afzender (reply in dezelfde conversatie)
         │
         ▼  alleen NA een daadwerkelijk verstuurd antwoord:
         ├─ HerplanVerzoek      → interne notificatie naar de teamleider (#66)
-        └─ TeamContactOpvragen → vraag doorsturen naar de coach (#168)
 ```
 
-> **De twee vervolgacties onderaan zijn voorwaardelijk.** Ze draaien uitsluitend als het antwoord
-> aan de afzender echt is verstuurd. In review-mode, bij een onderdrukt antwoord (§1a) of bij een
-> Graph-verzendfout wordt de teamleider dus **niet** genotificeerd en gaat de begeleidingsvraag
-> **niet** naar de coach. Beide acties falen bovendien stil (alleen een logregel): een fout hierin
-> onderbreekt de hoofdverwerking niet.
+> **De teamleider-notificatie onderaan is voorwaardelijk.** Zij draait uitsluitend als het antwoord
+> aan de afzender is verstuurd. Bij `TeamContactOpvragen` gebeurt het doorsturen vóór de reply en
+> alleen na de review-, zekerheids- en afzenderpoorten. Een onbesliste Graph-uitkomst wordt niet
+> opnieuw verstuurd; ook bij een mislukte opslag van een Graph-acceptatie volgt handmatige review.
 
 ### Zelflerend classificatiesysteem (#323)
 
@@ -892,7 +895,7 @@ Iemand vraagt wie de trainer, coach, begeleider of teamleider van een team is.
 
 #### Template M — Auto-reply "doorgestuurd"
 
-**Wanneer:** Altijd bij dit type. Contactgegevens worden nooit gedeeld met de vraagsteller.
+**Wanneer:** Alleen na duurzaam bevestigde doorsturing. Contactgegevens worden nooit gedeeld met de vraagsteller.
 
 > **Afzender van een e-mail versus ingelogde gebruiker.** "Nooit gedeeld" geldt voor wie de club mailt: de
 > auto-reply noemt geen naam, adres of telefoonnummer van een begeleider. Ingelogde gebruikers van de
@@ -911,8 +914,13 @@ Is er geen teamnaam bekend, dan staat er "de begeleiding van het opgegeven team"
 
 #### Doorsturen naar de coach (#168)
 
-**Pas ná** het versturen van de auto-reply hierboven wordt de oorspronkelijke vraag doorgestuurd
-naar de coach. Is er geen coach gevonden in `avg.Teambegeleiding`, dan gebeurt dit niet.
+**Vóór** de auto-reply hierboven wordt de oorspronkelijke vraag maximaal eenmaal doorgestuurd.
+Nieuwe verwerkingsrijen starten met `TeamContactDoorstuurStatus = NietGestart`; de claim wordt
+atomair `Bezig`. Oude rijen met `NULL` hebben een onbekende uitkomst en zijn niet claimbaar.
+Na Graph-acceptatie moet `Geaccepteerd` duurzaam zijn opgeslagen voordat de reply mag volgen.
+Is er geen coach gevonden in `avg.Teambegeleiding`, dan wordt `NietVerstuurd` opgeslagen en gaat
+de vraag ter review. Bij een onbesliste uitkomst of opslagfout blijft de uitkomst onbekend en
+vindt geen automatische herhaling plaats. Het reviewvoorstel bevestigt daarom geen doorsturing.
 
 | Veld | Waarde |
 |---|---|

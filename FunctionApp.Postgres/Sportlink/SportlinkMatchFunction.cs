@@ -292,7 +292,7 @@ public static class SportlinkMatchFunction
     /// een dry-run die uitsluitend door de club-instelling <c>sportlinkDryRun</c> komt — bij beide
     /// is <see cref="SportlinkMutationResult.IsSuccess"/> altijd <c>true</c> (gesimuleerd succes).
     /// </summary>
-    internal static string BepaalAuditResultaat(SportlinkMutationResult r) => SportlinkEndpointSupport.BepaalAuditResultaat(r);
+    internal static string BepaalAuditResultaat(SportlinkMutationResult r) => SportlinkEndpointSupportCore.BepaalAuditResultaat(r);
 
     private sealed class KleedkamersDto
     {
@@ -422,7 +422,8 @@ public static class SportlinkMatchFunction
         return await SportlinkEndpointSupport.RondMutatieAfAsync(
             mutationResult, auditService, auditId, naarMutatieResultaat,
             data => new OkObjectResult(
-                bouwResponse != null ? bouwResponse(data, auditId, mutationResult.HttpStatusCode) : data));
+                bouwResponse != null ? bouwResponse(data, auditId, mutationResult.HttpStatusCode) : data),
+            context.GetLogger("SportlinkMatch"));
     }
 
     /// <summary>Gedeelde stappen van beide endpoints hierboven: toggle-check, EgressGuard,

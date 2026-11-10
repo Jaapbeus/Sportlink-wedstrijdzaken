@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+
 namespace Planner.Shared.Email;
 
 /// <summary>
@@ -64,6 +66,26 @@ public interface ITeamContactDoorstuurPersistentie
 /// </summary>
 public static class TeamContactDoorstuurAfhandeling
 {
+    public static async Task<TeamContactDoorstuurVerzendresultaat> VerstuurViaAdapterAsync(
+        TeamContactDoorstuurVerzoek verzoek,
+        Func<string, Task<string?>> zoekOntvangerAsync,
+        Func<string?> auditKopie,
+        Func<string, string, string, string?, string?, Task> graphVerstuurAsync,
+        ILogger log)
+    {
+        if (string.IsNullOrWhiteSpace(verzoek.TeamNaam))
+            return TeamContactDoorstuurVerzendresultaat.GeenOntvanger;
+        var ontvanger = await zoekOntvangerAsync(verzoek.TeamNaam);
+        if (string.IsNullOrWhiteSpace(ontvanger))
+            return TeamContactDoorstuurVerzendresultaat.GeenOntvanger;
+        var bericht = TeamContactDoorstuurBericht.Bouw(
+            verzoek.TeamNaam, verzoek.AfzenderNaam, verzoek.Afzender, verzoek.Inhoud, log);
+        var audit = auditKopie();
+        await graphVerstuurAsync(ontvanger, bericht.Onderwerp, bericht.Inhoud, bericht.ReplyTo,
+            string.IsNullOrWhiteSpace(audit) ? null : audit);
+        return TeamContactDoorstuurVerzendresultaat.Geaccepteerd;
+    }
+
     public static async Task<TeamContactDoorstuurUitkomst> VoerEenmaligUitAsync(
         int verwerkingId,
         ITeamContactDoorstuurPersistentie persistentie,

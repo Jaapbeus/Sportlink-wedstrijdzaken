@@ -74,6 +74,8 @@ public static class SportlinkContractCheckTimerFunction
         using (var cmd = new SqlCommand(@"
             SELECT TOP 1 [PublicMatchId] FROM [dbo].[SportlinkPublicMatchIdCache]
             WHERE [ClubCode] = @ClubCode
+              AND [PublicMatchId] COLLATE Latin1_General_100_BIN2 = [VerifiedPublicMatchId] COLLATE Latin1_General_100_BIN2
+              AND DATALENGTH([PublicMatchId]) = DATALENGTH([VerifiedPublicMatchId])
             ORDER BY [OpgehaaldOp] DESC", connection))
         {
             cmd.Parameters.AddWithValue("@ClubCode", clubCode);
