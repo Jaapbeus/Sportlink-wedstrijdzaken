@@ -278,6 +278,9 @@ public static partial class BerichtAntwoordGenerator
 
         var opzoek = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (key, value) in values) opzoek.TryAdd(key, value ?? "");
+        var sleutelOpzoek = opzoek.GetAlternateLookup<ReadOnlySpan<char>>();
+        // Zoek het sluitteken alleen binnen de langste sleutel: zo blijft een sjabloon vol losse accolades lineair.
+        var maxSleutel = opzoek.Keys.Max(k => k.Length);
 
         var uitvoer = new System.Text.StringBuilder(body.Length);
         var positie = 0;
@@ -285,10 +288,10 @@ public static partial class BerichtAntwoordGenerator
         {
             var open = body.IndexOf("{{", positie, StringComparison.Ordinal);
             if (open < 0) break;
-            var sluit = body.IndexOf("}}", open + 2, StringComparison.Ordinal);
-            if (sluit < 0) break;
+            var venster = Math.Min(maxSleutel + 2, body.Length - (open + 2));
+            var sluit = body.IndexOf("}}", open + 2, venster, StringComparison.Ordinal);
 
-            if (opzoek.TryGetValue(body.Substring(open + 2, sluit - open - 2), out var waarde))
+            if (sluit >= 0 && sleutelOpzoek.TryGetValue(body.AsSpan(open + 2, sluit - open - 2), out var waarde))
             {
                 uitvoer.Append(body, positie, open - positie).Append(waarde);
                 positie = sluit + 2;

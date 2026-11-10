@@ -459,6 +459,21 @@ public class BerichtAntwoordGeneratorTests
         BerichtAntwoordGenerator.VulPlaceholdersIn(sjabloon, waarden).Should().Be(verwacht);
     }
 
+    [Fact]
+    public void VulPlaceholdersIn_BlijftLineairBijSjabloonVolLosseAccolades()
+    {
+        // #1793: zonder zoekvenster kostte 80.000 keer '{' gevolgd door '}}' ruim een seconde (kwadratisch).
+        var sjabloon = new string('{', 200_000) + "}} {{naam}}";
+        var waarden = new Dictionary<string, string> { ["naam"] = "Jan" };
+
+        var klok = System.Diagnostics.Stopwatch.StartNew();
+        var uitkomst = BerichtAntwoordGenerator.VulPlaceholdersIn(sjabloon, waarden);
+        klok.Stop();
+
+        uitkomst.Should().EndWith("}} Jan");
+        klok.ElapsedMilliseconds.Should().BeLessThan(1000);
+    }
+
     // ── Handtekening ──
 
     [Fact]
