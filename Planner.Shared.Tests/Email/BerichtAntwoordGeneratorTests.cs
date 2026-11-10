@@ -430,6 +430,50 @@ public class BerichtAntwoordGeneratorTests
         BerichtAntwoordGenerator.VulPlaceholdersIn("", waarden).Should().Be("");
     }
 
+    [Fact]
+    public void VulPlaceholdersIn_LeestIngevoegdeWaardeNooitOpnieuwAlsPlaceholder()
+    {
+        // #1793: de afzender bepaalt 'voornaam'; een later verwerkte sleutel mag die waarde niet uitbreiden.
+        var waarden = new Dictionary<string, string>
+        {
+            ["voornaam"] = "{{coordinator}} {{wedstrijd_veld}}",
+            ["coordinator"] = "Jan de Vries",
+            ["wedstrijd_veld"] = "Veld 1",
+        };
+
+        BerichtAntwoordGenerator.VulPlaceholdersIn("Beste {{voornaam}}, groet {{coordinator}}", waarden)
+            .Should().Be("Beste {{coordinator}} {{wedstrijd_veld}}, groet Jan de Vries");
+    }
+
+    [Theory]
+    [InlineData("{{{naam}}}", "{Jan}")]
+    [InlineData("{{naam}}{{naam}}", "JanJan")]
+    [InlineData("{{onbekend}} {{naam}}", "{{onbekend}} Jan")]
+    [InlineData("{{naam", "{{naam")]
+    [InlineData("tekst }} {{", "tekst }} {{")]
+    [InlineData("{{ {{naam}}", "{{ Jan")]
+    public void VulPlaceholdersIn_RandgevallenGelijkAanEerdereVervanging(string sjabloon, string verwacht)
+    {
+        var waarden = new Dictionary<string, string> { ["naam"] = "Jan" };
+
+        BerichtAntwoordGenerator.VulPlaceholdersIn(sjabloon, waarden).Should().Be(verwacht);
+    }
+
+    [Fact]
+    public void VulPlaceholdersIn_BlijftLineairBijSjabloonVolLosseAccolades()
+    {
+        // #1793: zonder zoekvenster kostte 80.000 keer '{' gevolgd door '}}' ruim een seconde (kwadratisch).
+        var sjabloon = new string('{', 200_000) + "}} {{naam}}";
+        var waarden = new Dictionary<string, string> { ["naam"] = "Jan" };
+
+        var klok = System.Diagnostics.Stopwatch.StartNew();
+        var uitkomst = BerichtAntwoordGenerator.VulPlaceholdersIn(sjabloon, waarden);
+        klok.Stop();
+
+        uitkomst.Should().EndWith("}} Jan");
+        klok.ElapsedMilliseconds.Should().BeLessThan(1000);
+    }
+
     // ── Handtekening ──
 
     [Fact]

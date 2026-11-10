@@ -268,15 +268,44 @@ public static partial class BerichtAntwoordGenerator
     /// <summary>
     /// Past een sjabloon toe met simpele placeholder-substitutie (<c>{{key}}</c>, hoofdletterongevoelig); een
     /// onbekende placeholder blijft staan. Ook gebruikt door <c>EmailTemplateService.ApplyPlaceholders</c> per tier.
+    /// <para>Eén ronde over het oorspronkelijke sjabloon (#1793): een ingevoegde waarde wordt nooit opnieuw als
+    /// placeholder gelezen, ook niet als die zelf <c>{{…}}</c> bevat (bijvoorbeeld een weergavenaam van de afzender).
+    /// Bij sleutels die alleen in hoofdletters verschillen wint de eerste.</para>
     /// </summary>
     public static string VulPlaceholdersIn(string body, IDictionary<string, string> values)
     {
         if (string.IsNullOrEmpty(body) || values == null || values.Count == 0) return body;
-        foreach (var (key, value) in values)
+
+        var opzoek = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, value) in values) opzoek.TryAdd(key, value ?? "");
+        var sleutelOpzoek = opzoek.GetAlternateLookup<ReadOnlySpan<char>>();
+        // Zoek het sluitteken alleen binnen de langste sleutel: zo blijft een sjabloon vol losse accolades lineair.
+        var maxSleutel = opzoek.Keys.Max(k => k.Length);
+
+        var uitvoer = new System.Text.StringBuilder(body.Length);
+        var positie = 0;
+        while (positie < body.Length)
         {
-            body = body.Replace("{{" + key + "}}", value ?? "", StringComparison.OrdinalIgnoreCase);
+            var open = body.IndexOf("{{", positie, StringComparison.Ordinal);
+            if (open < 0) break;
+            var venster = Math.Min(maxSleutel + 2, body.Length - (open + 2));
+            var sluit = body.IndexOf("}}", open + 2, venster, StringComparison.Ordinal);
+
+            if (sluit >= 0 && sleutelOpzoek.TryGetValue(body.AsSpan(open + 2, sluit - open - 2), out var waarde))
+            {
+                uitvoer.Append(body, positie, open - positie).Append(waarde);
+                positie = sluit + 2;
+            }
+            else
+            {
+                // Onbekend: neem één teken over en zoek vanaf het volgende teken verder, zodat "{{{naam}}}"
+                // net als vroeger "{Jan}" wordt.
+                uitvoer.Append(body, positie, open + 1 - positie);
+                positie = open + 1;
+            }
         }
-        return body;
+        uitvoer.Append(body, positie, body.Length - positie);
+        return uitvoer.ToString();
     }
 
     // ── Helpers ──
