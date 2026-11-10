@@ -4559,7 +4559,7 @@
           "tijd": {
             "type": "string",
             "nullable": true,
-            "description": "Doelaanvangstijd in HH:mm; null samen met veldNummer null laat deze rij oningedeeld."
+            "description": "Doelaanvangstijd exact in HH:mm; seconden, tijdsaanduidingen en witruimte worden geweigerd. Null samen met veldNummer null laat deze rij oningedeeld."
           }
         }
       },

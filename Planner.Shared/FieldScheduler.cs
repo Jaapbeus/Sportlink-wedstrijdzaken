@@ -597,10 +597,10 @@ public class FieldScheduler
         slot = null;
         if (duurMinuten <= 0 || fractie <= 0 || fractie > 1 || !_occupations.ContainsKey(veldNummer)) return false;
 
-        TimeOnly end;
-        try { end = start.AddMinutes(duurMinuten); }
-        catch (ArgumentOutOfRangeException) { return false; }
-        if (end <= start) return false;
+        // Bound the duration before TimeOnly can wrap; retain source seconds and subsecond ticks.
+        if ((long)duurMinuten * TimeSpan.TicksPerMinute >= TimeSpan.TicksPerDay - start.Ticks)
+            return false;
+        var end = start.AddMinutes(duurMinuten);
 
         var availability = _beschikbaarheid.FirstOrDefault(b => b.VeldNummer == veldNummer);
         if (availability == null || start < availability.BeschikbaarVanaf || end > availability.BeschikbaarTot)

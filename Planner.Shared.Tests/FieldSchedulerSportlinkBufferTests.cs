@@ -22,6 +22,50 @@ public class FieldSchedulerSportlinkBufferTests
         return new FieldScheduler(beschikbaarheid, velden, AlgemeneBuffer, teamBuffers);
     }
 
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    [InlineData(840)]
+    [InlineData(1440)]
+    [InlineData(1450)]
+    [InlineData(int.MaxValue)]
+    public void ExactSlotRejectsNonPositiveAndDayCrossingDuration(int minutes)
+    {
+        var scheduler = MaakScheduler();
+        scheduler.TryOccupyExactSlot(1, new TimeOnly(10, 0, 30), minutes, 1m, null,
+            "JO11-1", false, out var slot).Should().BeFalse();
+        slot.Should().BeNull();
+        scheduler.TryOccupyExactSlot(1, new TimeOnly(10, 0, 30), 60, 1m, null,
+            "JO11-1", false, out _).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(1439, true)]
+    [InlineData(1440, false)]
+    [InlineData(1450, false)]
+    [InlineData(int.MaxValue, false)]
+    public void ExactSlotBoundsWholeDayWithoutLosingSeconds(int minutes, bool expected)
+    {
+        var scheduler = new FieldScheduler(
+            [new() { VeldNummer = 1, BeschikbaarVanaf = TimeOnly.MinValue, BeschikbaarTot = TimeOnly.MaxValue }],
+            [new() { VeldNummer = 1, VeldNaam = "veld 1" }], 0);
+        scheduler.TryOccupyExactSlot(1, new TimeOnly(0, 0, 30), minutes, 1m, null,
+            "JO11-1", false, out var slot).Should().Be(expected);
+        if (expected) slot!.EindTijd.Should().Be(new TimeOnly(23, 59, 30));
+    }
+
+    [Theory]
+    [InlineData(0, 60, true)]
+    [InlineData(30, 60, false)]
+    [InlineData(30, 59, true)]
+    public void ExactSlotHonorsClosingBoundaryAndSourceSeconds(int seconds, int minutes, bool expected)
+    {
+        var scheduler = MaakScheduler();
+        scheduler.TryOccupyExactSlot(1, new TimeOnly(17, 0, seconds), minutes, 1m, null,
+            "JO11-1", false, out var slot).Should().Be(expected);
+        if (expected) slot!.EindTijd.Should().Be(new TimeOnly(17, 0, seconds).AddMinutes(minutes));
+    }
+
     [Fact]
     public void TryOccupyExactSlot_AccepteertExactSlotZonderTijdverschuiving()
     {

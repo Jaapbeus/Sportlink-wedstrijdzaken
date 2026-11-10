@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- Exact plan application rejects day-crossing durations before time arithmetic and requires target times in exact `HH:mm` format; unchanged source times retain seconds. Fresh SQL CI preserves existing sync tables (#1802).
+
 ### Fixed
 - Beheerpagina's onderscheiden een mislukte API-lading van een geslaagde lege lijst; bij wisselen van club worden oude resultaten en nog lopende verzoeken ongeldig. Verwijderen van instellingen en testwedstrijden vraagt eerst inline om bevestiging en toont een fout als opslaan of verwijderen mislukt (#1802)
 - Veld optimalisatie past voor ALLSTARS de volledige getoonde planning toe, inclusief handmatig gekozen deelvelden. De server controleert de bron, bezetting en brongegevens opnieuw binnen één transactie en weigert verouderde of conflicterende plannen zonder gedeeltelijke wijzigingen; oudere clients zonder toewijzingslijst blijven ondersteund (#1802)

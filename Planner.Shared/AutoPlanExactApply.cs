@@ -100,9 +100,11 @@ public static class AutoPlanExactApply
         var targetTime = choice.Tijd ?? source.AanvangsTijd;
         var targetLane = choice.VeldNummer.HasValue ? choice.VeldSubpositie : sourceLane;
         if (MissingSlot(targetField, targetTime, choice.VeldNummer.HasValue)) return null;
-        if (!TimeOnly.TryParseExact(targetTime, "HH:mm", CultureInfo.InvariantCulture,
-                DateTimeStyles.None, out var start) &&
-            !TimeOnly.TryParse(targetTime, CultureInfo.InvariantCulture, out start))
+        var parsed = choice.VeldNummer.HasValue
+            ? TimeOnly.TryParseExact(targetTime, "HH:mm", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var start)
+            : TimeOnly.TryParse(targetTime, CultureInfo.InvariantCulture, out start);
+        if (!parsed)
             throw new AutoPlanApplyConflictException();
 
         var age = !string.IsNullOrWhiteSpace(source.LeeftijdsCategorie)

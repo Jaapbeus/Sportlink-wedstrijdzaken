@@ -34,6 +34,34 @@ public class AutoPlanExactApplyTests
     }
 
     [Theory]
+    [InlineData("10:00:30")]
+    [InlineData("10:00:00")]
+    [InlineData("10:00 AM")]
+    [InlineData(" 10:00")]
+    public void TargetMustHaveExactMinutePrecision(string time) =>
+        ((Action)(() => Apply([Choice(targetTime: time)], [Source()])))
+            .Should().Throw<AutoPlanApplyConflictException>();
+
+    [Fact]
+    public void UnchangedSourceRetainsSecondsAndIsNotWritten()
+    {
+        var source = Source(field: "veld 101 A2", time: "10:00:30");
+        var choice = Choice(oldField: source.Veld, oldTime: source.AanvangsTijd,
+            targetField: null, lane: null, targetTime: null);
+        Apply([choice], [source]).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void UnchangedSourceSecondsStillCountAgainstClosingTime()
+    {
+        var source = Source(field: "veld 101 A2", time: "21:00:30");
+        var choice = Choice(oldField: source.Veld, oldTime: source.AanvangsTijd,
+            targetField: null, lane: null, targetTime: null);
+        ((Action)(() => Apply([choice], [source])))
+            .Should().Throw<AutoPlanApplyConflictException>();
+    }
+
+    [Theory]
     [InlineData("X")]
     [InlineData("A")]
     [InlineData("")]
