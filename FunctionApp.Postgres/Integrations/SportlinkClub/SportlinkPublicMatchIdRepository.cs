@@ -50,6 +50,7 @@ internal static class SportlinkPublicMatchIdRepository
             FROM his.matches m
             LEFT JOIN public.sportlinkpublicmatchidcache c
                 ON c.wedstrijdcode = m.wedstrijdcode AND c.clubcode = m.clubcode
+               AND c.publicmatchid = c.verifiedpublicmatchid
             WHERE m.clubcode = @clubcode
               AND m.kaledatum::date BETWEEN @vanaf AND @totEnMet
               AND m.wedstrijdnummer IS NOT NULL
@@ -92,6 +93,7 @@ internal static class SportlinkPublicMatchIdRepository
             FROM public.sportlinkpublicmatchidcache c
             JOIN his.matches m ON m.wedstrijdcode = c.wedstrijdcode AND m.clubcode = c.clubcode AND m.mta_deleted IS NULL
             WHERE c.clubcode = @clubcode
+              AND c.publicmatchid = c.verifiedpublicmatchid
               AND c.publicmatchid = ANY(@ids)",
             connection);
         cmd.Parameters.AddWithValue("clubcode", clubCode);
@@ -123,7 +125,7 @@ internal static class SportlinkPublicMatchIdRepository
     internal static async Task<string?> LeesUitCacheAsync(NpgsqlConnection connection, long wedstrijdcode, string clubCode)
     {
         await using var cmd = new NpgsqlCommand(
-            "SELECT publicmatchid FROM public.sportlinkpublicmatchidcache WHERE wedstrijdcode = @wedstrijdcode AND clubcode = @clubcode",
+            "SELECT publicmatchid FROM public.sportlinkpublicmatchidcache WHERE wedstrijdcode = @wedstrijdcode AND clubcode = @clubcode AND publicmatchid = verifiedpublicmatchid",
             connection);
         cmd.Parameters.AddWithValue("wedstrijdcode", wedstrijdcode);
         cmd.Parameters.AddWithValue("clubcode", clubCode);
@@ -134,10 +136,10 @@ internal static class SportlinkPublicMatchIdRepository
         NpgsqlConnection connection, long wedstrijdcode, string clubCode, string publicMatchId)
     {
         await using var cmd = new NpgsqlCommand(@"
-            INSERT INTO public.sportlinkpublicmatchidcache (wedstrijdcode, clubcode, publicmatchid, opgehaaldop)
-            VALUES (@wedstrijdcode, @clubcode, @publicmatchid, now())
+            INSERT INTO public.sportlinkpublicmatchidcache (wedstrijdcode, clubcode, publicmatchid, verifiedpublicmatchid, opgehaaldop)
+            VALUES (@wedstrijdcode, @clubcode, @publicmatchid, @publicmatchid, now())
             ON CONFLICT (wedstrijdcode, clubcode) DO UPDATE SET
-                publicmatchid = @publicmatchid, opgehaaldop = now()",
+                publicmatchid = @publicmatchid, verifiedpublicmatchid = @publicmatchid, opgehaaldop = now()",
             connection);
         cmd.Parameters.AddWithValue("wedstrijdcode", wedstrijdcode);
         cmd.Parameters.AddWithValue("clubcode", clubCode);

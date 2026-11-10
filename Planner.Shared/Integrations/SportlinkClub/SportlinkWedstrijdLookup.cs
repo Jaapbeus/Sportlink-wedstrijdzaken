@@ -1,5 +1,8 @@
 namespace Planner.Shared.Integrations.SportlinkClub;
 
+using System.Collections.Generic;
+using System.Linq;
+
 // De leesmodellen van de PublicMatchId-cache en het oefenwedstrijd-formulier (#991, #1017, #1111,
 // #1116). Ze stonden tot #1266 als `internal record` in de Postgres-tier; bij het herstellen van de
 // SQL Server-tier zouden ze anders letterlijk verdubbeld zijn. De vórm van deze gegevens is
@@ -15,6 +18,30 @@ public sealed record WedstrijdVoorLookup(long Wedstrijdnummer, DateOnly Datum);
 /// <c>Wedstrijdcode</c> (de eigen sleutel om straks in de cache te schrijven), in tegenstelling tot
 /// <see cref="WedstrijdVoorLookup"/> dat alleen is wat de Sportlink-aanroep zelf nodig heeft.</summary>
 public sealed record WedstrijdZonderCache(long Wedstrijdcode, long Wedstrijdnummer, DateOnly Datum);
+
+/// <summary>Matcht binnen de al dag-begrensde overview alleen een eenduidig wedstrijdnummer.</summary>
+public static class SportlinkPublicMatchIdKoppeling
+{
+    /// <summary>
+    /// Geeft alleen een PublicMatchId terug wanneer precies één entry in de dagrespons hetzelfde
+    /// wedstrijdnummer heeft. De overview bevat geen geverifieerde club-/teamidentiteit; bij dubbelen
+    /// blijft de koppeling daarom leeg in plaats van de eerste responsrij te kiezen.
+    /// </summary>
+    public static SportlinkMatchProgramEntry? VindEenduidigeMatch(
+        IReadOnlyList<SportlinkMatchProgramEntry>? dagoverzicht, long wedstrijdnummer)
+    {
+        if (dagoverzicht is null) return null;
+        SportlinkMatchProgramEntry? match = null;
+        foreach (var entry in dagoverzicht)
+        {
+            if (entry.ExternalMatchId != wedstrijdnummer) continue;
+            if (match is not null) return null;
+            match = entry;
+        }
+
+        return string.IsNullOrWhiteSpace(match?.PublicMatchId) ? null : match;
+    }
+}
 
 /// <summary>
 /// Eigen wedstrijdcontext bij een wijzigingsverzoek (#1111, epic #986): wat <c>/wijzigingsverzoeken</c>

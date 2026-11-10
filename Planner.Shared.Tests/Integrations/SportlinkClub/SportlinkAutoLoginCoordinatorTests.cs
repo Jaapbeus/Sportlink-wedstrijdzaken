@@ -27,7 +27,7 @@ public sealed class SportlinkAutoLoginCoordinatorTests
     }
 
     [Fact]
-    public async Task Automatic_login_runs_at_nine_hours_since_last_success()
+    public async Task Automatic_login_runs_after_eight_hours_since_last_success()
     {
         var store = ConfiguredStore();
         store.State = Copy(store.State!, lastLogin: Now.AddHours(-9));
@@ -39,6 +39,20 @@ public sealed class SportlinkAutoLoginCoordinatorTests
         Assert.NotNull(result);
         Assert.Equal(1, provider.CallCount);
         Assert.Equal(Now, store.State!.LastLoginUtc);
+    }
+
+    [Fact]
+    public async Task Hourly_keep_alive_tick_refreshes_with_one_hour_margin_before_session_limit()
+    {
+        var store = ConfiguredStore();
+        store.State = Copy(store.State!, lastLogin: Now.AddHours(-8));
+        var provider = new FakeProvider { Store = store };
+        var coordinator = new SportlinkAutoLoginCoordinator(store, provider, new ManualTimeProvider(Now));
+
+        var result = await coordinator.TryLoginAsync("Wedstrijdzaken", force: false, default);
+
+        Assert.NotNull(result);
+        Assert.Equal(1, provider.CallCount);
     }
 
     [Fact]

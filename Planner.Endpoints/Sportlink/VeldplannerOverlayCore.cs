@@ -30,6 +30,9 @@ public static class VeldplannerOverlayCore
     private static readonly ConcurrentDictionary<string, (string FacilityId, DateTime Tot)> FacilityCache = new();
     private static readonly ConcurrentDictionary<string, (IReadOnlyList<SportlinkVeldplannerBlok> Blokken, DateTime OpgehaaldOp, DateTime Tot)> BlokkenCache = new();
 
+    /// <summary>Leegt de 60-secondenblokkencache na een bevestigde live mutatie.</summary>
+    public static void InvalideerBlokkenCache() => BlokkenCache.Clear();
+
     /// <returns>De blokken met status <c>Ok</c>, of geen blokken met de terugvalreden.</returns>
     public static async Task<VeldplannerOphaalResultaat> HaalBlokkenAsync(
         Func<SportlinkTimerStatus> toggleEnEgress,

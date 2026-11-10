@@ -216,6 +216,8 @@ public static class SportlinkEndpointCore
         SportlinkClubCallStatus.Ok => null,
         SportlinkClubCallStatus.RolNietGekoppeld => new SportlinkEndpointFout(409,
             $"Geen Sportlink-koppeling gevonden voor rol '{RolWedstrijdzaken}' — registreer eerst een refresh-token via Instellingen."),
+        SportlinkClubCallStatus.LokaleLeaseBezet => new SportlinkEndpointFout(409,
+            "Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw."),
         SportlinkClubCallStatus.HerkoppelingVereist => new SportlinkEndpointFout(409,
             $"De Sportlink-koppeling voor rol '{RolWedstrijdzaken}' is verlopen — registreer een nieuw refresh-token via Instellingen."),
         SportlinkClubCallStatus.NetwerkFout when isMutatie => new SportlinkEndpointFout(504, MutatieNetwerkFoutMelding),
@@ -375,7 +377,7 @@ public static class SportlinkEndpointCore
               + "Herstel: de beheerder slaat de automatische login opnieuw op via Instellingen → Sportlink Web Extension.\n"
               + $"De laatste rij staat in {tabelnaam}.\n"
               + "Deze melding wordt niet binnen 24 uur herhaald."
-            : "Sportlink contract-check gaf een afwijking — de vorm van de Match-respons is veranderd.\n\n"
+            : "Sportlink contract-check kon de respons niet als geldig beoordelen; de oorzaak is niet automatisch vastgesteld.\n\n"
               + $"Foutmelding: {foutmelding}\n\n"
               + "Dit is een vroege waarschuwing dat Sportlink de Club-website (mogelijk) heeft bijgewerkt.\n"
               + $"Controleer docs/SPORTLINK-WEB-EXTENSION.md en de laatste rij in {tabelnaam}.\n"
