@@ -78,9 +78,8 @@ public static partial class BerichtAntwoordGenerator
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(classificatie.KnvbNotitie))
-            inhoud += $"\n\nLet op: {classificatie.KnvbNotitie} Zie ook: https://www.knvb.nl/assist-wedstrijdsecretarissen/veldvoetbal/regelen-dagelijkse-praktijk/verplaatsen-van-wedstrijden";
-
+        // #1787: de KNVB-notitie is een AI-inschatting zonder bekende teamcategorie (A/B) en komt daarom
+        // niet in het antwoord aan de afzender, alleen in het reviewblok (zie ReviewKop).
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email, instellingen);
     }
 
@@ -113,7 +112,7 @@ public static partial class BerichtAntwoordGenerator
                    + $"Volgens onze richtlijn moet een herplanverzoek minimaal {deadlineDagen} dagen voor de wedstrijd "
                    + $"worden ingediend. Omdat de wedstrijd al binnen die termijn valt, kunnen we het verzoek niet meer "
                    + $"automatisch verwerken.\n\n"
-                   + $"Neem voor uitzonderingen rechtstreeks contact op met de coördinator.";
+                   + $"De e-mail zal door de coördinator beoordeeld moeten worden.";
         }
 
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email, instellingen);
@@ -153,26 +152,29 @@ public static partial class BerichtAntwoordGenerator
                    + "begeleiding van ons eigen team. Zij zijn in de kopie (BCC) van dit bericht meegenomen, zodat "
                    + "jullie dit onderling verder kunnen afstemmen.";
 
-            if (vrijeZaterdagen.Count > 0)
-            {
-                inhoud += "\n\nAls voorzet: volgens ons huidige programma hebben we op de volgende zaterdagen nog "
-                        + "geen wedstrijd:\n";
-                foreach (var datum in vrijeZaterdagen)
-                    inhoud += $"- {FormatDatum(datum)}\n";
-            }
-            else
-            {
-                inhoud += "\n\nOp korte termijn hebben we geen speelvrije zaterdagen kunnen vinden binnen de "
-                        + "gebruikelijke termijn. Bekijk de bijgevoegde speeldagenkalender voor het volledige overzicht.";
-            }
+            inhoud += "\n\n" + VrijeZaterdagenTekst(vrijeZaterdagen);
         }
 
         if (classificatie.VoegKnvbPdfBijlageToe)
-        {
-            inhoud += "\n\nDe KNVB-speeldagenkalender is als bijlage toegevoegd.";
-        }
+            inhoud += "\n\n" + KnvbBijlageZin;
 
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email, instellingen);
+    }
+
+    private const string KnvbBijlageZin = "De KNVB-speeldagenkalender is als bijlage toegevoegd.";
+
+    /// <summary>De voorzet met de vrije zaterdagen, of de zin dat er geen speelvrije zaterdagen zijn (#561). Ook de placeholder <c>vrije_zaterdagen</c> (#1780).</summary>
+    private static string VrijeZaterdagenTekst(IReadOnlyList<string> vrijeZaterdagen)
+    {
+        if (vrijeZaterdagen.Count == 0)
+            return "Op korte termijn hebben we geen speelvrije zaterdagen kunnen vinden binnen de "
+                 + "gebruikelijke termijn. Bekijk de bijgevoegde speeldagenkalender voor het volledige overzicht.";
+
+        var tekst = "Als voorzet: volgens ons huidige programma hebben we op de volgende zaterdagen nog "
+                  + "geen wedstrijd:\n";
+        foreach (var datum in vrijeZaterdagen)
+            tekst += $"- {FormatDatum(datum)}\n";
+        return tekst;
     }
 
     // ── Herplannen naar gewenste datum ──
@@ -196,40 +198,38 @@ public static partial class BerichtAntwoordGenerator
                    + $"Er is geen wedstrijd gevonden voor {AiVeldSanering.TeamNaamWeergave(classificatie.TeamNaam, classificatie.TeamNaamOnbevestigd) ?? "het opgegeven team"} "
                    + $"op {FormatDatum(classificatie.Datum)}.";
         }
-        else if (beschikbaarheid == null || !beschikbaarheid.Beschikbaar)
-        {
-            inhoud = $"{aanhef} {voornaam},\n\n"
-                   + $"De wedstrijd {wedstrijd.Wedstrijd} staat momenteel gepland op {FormatDatum(wedstrijd.Datum)} om {wedstrijd.AanvangsTijd} op {wedstrijd.VeldNaam}.\n\n"
-                   + DagdeelVenster.GeenRuimteOpGewensteDatum(gewenstDatumTekst, beschikbaarheid?.GecontroleerdDagdeel, beschikbaarheid?.Reden);
-        }
-        else if (beschikbaarheid.BeschikbareVensters?.Count > 0)
-        {
-            var vensters = FilterKunstgrasVensters(beschikbaarheid.BeschikbareVensters);
-            inhoud = $"{aanhef} {voornaam},\n\n"
-                   + $"De wedstrijd {wedstrijd.Wedstrijd} staat momenteel gepland op {FormatDatum(wedstrijd.Datum)} om {wedstrijd.AanvangsTijd} op {wedstrijd.VeldNaam}.\n\n"
-                   + $"Op {gewenstDatumTekst} zijn de volgende mogelijkheden:\n";
-            foreach (var v in vensters)
-            {
-                var totTekst = IsEindeDag(v.Tot) ? "einde dag" : v.Tot;
-                inhoud += $"- {v.VeldNaam}: beschikbaar van {v.Van} tot {totTekst}\n";
-            }
-        }
-        else if (beschikbaarheid.Toewijzing != null)
-        {
-            var t = beschikbaarheid.Toewijzing;
-            inhoud = $"{aanhef} {voornaam},\n\n"
-                   + $"De wedstrijd {wedstrijd.Wedstrijd} staat momenteel gepland op {FormatDatum(wedstrijd.Datum)} om {wedstrijd.AanvangsTijd} op {wedstrijd.VeldNaam}.\n\n"
-                   + $"Op {gewenstDatumTekst} is {t.VeldNaam} beschikbaar om {t.AanvangsTijd} (eindigt {t.EindTijd}).";
-        }
         else
         {
             inhoud = $"{aanhef} {voornaam},\n\n"
                    + $"De wedstrijd {wedstrijd.Wedstrijd} staat momenteel gepland op {FormatDatum(wedstrijd.Datum)} om {wedstrijd.AanvangsTijd} op {wedstrijd.VeldNaam}.\n\n"
-                   + $"Op {gewenstDatumTekst} is er ruimte beschikbaar.";
+                   + GewensteDatumMogelijkheden(gewenstDatumTekst, beschikbaarheid);
         }
 
         inhoud = DagdeelVenster.VoegControleZinToe(inhoud, beschikbaarheid?.GecontroleerdDagdeel);
 
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email, instellingen);
+    }
+
+    /// <summary>Wat er op de gewenste datum kan: geen ruimte, de vrije vensters, de toegewezen slot of "ruimte beschikbaar". Ook de placeholder <c>mogelijkheden</c> (#1780).</summary>
+    private static string GewensteDatumMogelijkheden(string gewenstDatumTekst, IAntwoordBeschikbaarheid? beschikbaarheid)
+    {
+        if (beschikbaarheid == null || !beschikbaarheid.Beschikbaar)
+            return DagdeelVenster.GeenRuimteOpGewensteDatum(gewenstDatumTekst, beschikbaarheid?.GecontroleerdDagdeel, beschikbaarheid?.Reden);
+
+        if (beschikbaarheid.BeschikbareVensters?.Count > 0)
+        {
+            var tekst = $"Op {gewenstDatumTekst} zijn de volgende mogelijkheden:\n";
+            foreach (var v in FilterKunstgrasVensters(beschikbaarheid.BeschikbareVensters))
+            {
+                var totTekst = IsEindeDag(v.Tot) ? "einde dag" : v.Tot;
+                tekst += $"- {v.VeldNaam}: beschikbaar van {v.Van} tot {totTekst}\n";
+            }
+            return tekst;
+        }
+
+        if (beschikbaarheid.Toewijzing is { } t)
+            return $"Op {gewenstDatumTekst} is {t.VeldNaam} beschikbaar om {t.AanvangsTijd} (eindigt {t.EindTijd}).";
+
+        return $"Op {gewenstDatumTekst} is er ruimte beschikbaar.";
     }
 }

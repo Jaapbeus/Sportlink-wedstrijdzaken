@@ -8,6 +8,12 @@
 
 <h1>Veld optimalisatie</h1>
 
+@* #1773: vooraf waarschuwen als de Sportlink-koppeling verbroken is (alleen zinvol met de extensie aan). *@
+@if (_sportlinkExtensionEnabled)
+{
+    <SportlinkKoppelingMelding />
+}
+
 @* ── Invoerbalk ── *@
 <div class="card mb-3">
     <div class="card-body">

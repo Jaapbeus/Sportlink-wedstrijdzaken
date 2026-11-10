@@ -65,6 +65,8 @@ van de vorige succesvolle login. Een poging wordt vóór de netwerkcall vastgele
 fouten krijgen minimaal vijftien minuten pauze en maximaal drie pogingen. Onbekende challenges
 of geweigerde credentials blokkeren automatisch herstel totdat de beheerder opnieuw configureert.
 Een pending poging na een crash telt mee, zodat ook crashes geen onbeperkte loginlus veroorzaken.
+Een mislukte periodieke herlogin slaat het refresh-tokenpad nooit over: het opgeslagen refresh-token
+wordt altijd alsnog geprobeerd (#1774).
 
 Rotatie wordt afgewacht vóór access-token caching en succesrapportage. Bij onzekerheid na een
 netwerk- of opslagfout kan een nieuwe sessie nodig zijn; dat is geen reden om een oude

@@ -12,11 +12,13 @@ namespace Planner.Shared.Deel
     /// <param name="ClubCode">Club waarvoor het document gemaakt is (de <c>X-Club-Code</c>-scope).</param>
     /// <param name="Peildatum">De speeldag waar de planning over gaat — een kalenderdatum, geen tijdstip.</param>
     /// <param name="Wedstrijden">De regels van de tabel, al in weergavevolgorde.</param>
+    /// <param name="Bronmelding">Optionele waarschuwing onder de titel, bv. dat Sportlink niet is geraadpleegd (#1774); <c>null</c> = geen.</param>
     public sealed record PlannerShareModel(
         string Titel,
         string ClubCode,
         DateOnly Peildatum,
-        IReadOnlyList<PlannerShareWedstrijd> Wedstrijden);
+        IReadOnlyList<PlannerShareWedstrijd> Wedstrijden,
+        string? Bronmelding = null);
 
     /// <summary>
     /// Eén regel in de gedeelde planning. Dezelfde kolommen als de bestaande export toont

@@ -394,4 +394,28 @@ public class SportlinkEndpointCoreTests
         body.Should().Contain("dbo.SportlinkContractCheck");
         body.Should().Contain("Contractvorm afwijkend: matchField");
     }
+
+    [Theory]
+    [InlineData("Refresh token is ongeldig")]
+    [InlineData("HerkoppelingVereist")]
+    [InlineData("refresh TOKEN ongeldig")]
+    public void BouwContractCheckNoodmailBody_VerlopenKoppeling_LegtHerstelUit(string foutmelding)
+    {
+        var body = SportlinkEndpointCore.BouwContractCheckNoodmailBody(foutmelding, "dbo.SportlinkContractCheck");
+
+        body.Should().Contain("Sportlink-koppeling is verlopen");
+        body.Should().Contain("databasekopie");
+        body.Should().Contain("Instellingen → Sportlink Web Extension");
+        body.Should().Contain(foutmelding);
+        body.Should().NotContain("de vorm van de Match-respons is veranderd");
+    }
+
+    [Fact]
+    public void BouwContractCheckNoodmailBody_OverigeFoutmelding_BlijftGeneriek()
+    {
+        var body = SportlinkEndpointCore.BouwContractCheckNoodmailBody("Contractvorm afwijkend: x", "t");
+
+        body.Should().Contain("de vorm van de Match-respons is veranderd");
+        body.Should().NotContain("verlopen");
+    }
 }

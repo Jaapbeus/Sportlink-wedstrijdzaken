@@ -211,7 +211,8 @@ public static partial class BerichtAntwoordGenerator
 
     /// <summary>
     /// Past een sjabloon toe op de classificatie. Placeholders: {{voornaam}}, {{aanhef}},
-    /// {{datum}}, {{team}}, {{tegenstander}}, {{aanvangstijd}}, {{dagdeel}}.
+    /// {{datum}}, {{team}}, {{tegenstander}}, {{aanvangstijd}}, {{dagdeel}}, {{coordinator}}; per antwoord
+    /// komen daar de <paramref name="extraPlaceholders"/> bij (<c>BerichtAntwoordGenerator.Sjabloon.cs</c>, #1780).
     /// Valt terug op de standaard handtekening + review-wrapper.
     /// Niet-destructief: bestaande Bouw* methoden blijven beschikbaar als fallback.
     /// </summary>
@@ -234,6 +235,7 @@ public static partial class BerichtAntwoordGenerator
             // #1587: "de ochtend (08:30 - 12:00)" of leeg. Uitsluitend het dagdeel dat de planner werkelijk heeft
             // gecontroleerd, nooit het gevraagde dagdeel uit de classificatie (dat kan vervallen zijn).
             ["dagdeel"] = DagdeelVenster.Omschrijving(gecontroleerdDagdeel) ?? "",
+            ["coordinator"] = instellingen.CoordinatorNaam ?? "",
         };
 
         if (extraPlaceholders != null)
@@ -254,16 +256,11 @@ public static partial class BerichtAntwoordGenerator
         // Wrap met review-mode prefix + handtekening, hergebruik de bestaande logica
         var body = "";
         if (EmailReviewModus.IsActief())
-        {
-            body += $"=== REVIEW MODE ===\n"
-                  + $"Originele afzender: {email.Afzender}\n"
-                  + $"Onderwerp: {email.Onderwerp}\n"
-                  + $"Classificatie: {classificatie.Type}\n"
-                  + $"Template: {template.Key}\n"
-                  + $"==================\n\n";
-        }
+            body += ReviewKop(classificatie, email, template.Key);
 
-        body += bodyInvulling;
+        // TrimEnd (#1780): een placeholder aan het eind van de tekst die leeg blijft (bijvoorbeeld {{bijlage_zin}})
+        // mag geen rij lege regels voor de handtekening achterlaten; de handtekening voegt zelf een lege regel toe.
+        body += bodyInvulling.TrimEnd();
         body += "\n\n" + GetHandtekening(instellingen);
         return (onderwerp, body);
     }
@@ -271,15 +268,44 @@ public static partial class BerichtAntwoordGenerator
     /// <summary>
     /// Past een sjabloon toe met simpele placeholder-substitutie (<c>{{key}}</c>, hoofdletterongevoelig); een
     /// onbekende placeholder blijft staan. Ook gebruikt door <c>EmailTemplateService.ApplyPlaceholders</c> per tier.
+    /// <para>Eén ronde over het oorspronkelijke sjabloon (#1793): een ingevoegde waarde wordt nooit opnieuw als
+    /// placeholder gelezen, ook niet als die zelf <c>{{…}}</c> bevat (bijvoorbeeld een weergavenaam van de afzender).
+    /// Bij sleutels die alleen in hoofdletters verschillen wint de eerste.</para>
     /// </summary>
     public static string VulPlaceholdersIn(string body, IDictionary<string, string> values)
     {
         if (string.IsNullOrEmpty(body) || values == null || values.Count == 0) return body;
-        foreach (var (key, value) in values)
+
+        var opzoek = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, value) in values) opzoek.TryAdd(key, value ?? "");
+        var sleutelOpzoek = opzoek.GetAlternateLookup<ReadOnlySpan<char>>();
+        // Zoek het sluitteken alleen binnen de langste sleutel: zo blijft een sjabloon vol losse accolades lineair.
+        var maxSleutel = opzoek.Keys.Max(k => k.Length);
+
+        var uitvoer = new System.Text.StringBuilder(body.Length);
+        var positie = 0;
+        while (positie < body.Length)
         {
-            body = body.Replace("{{" + key + "}}", value ?? "", StringComparison.OrdinalIgnoreCase);
+            var open = body.IndexOf("{{", positie, StringComparison.Ordinal);
+            if (open < 0) break;
+            var venster = Math.Min(maxSleutel + 2, body.Length - (open + 2));
+            var sluit = body.IndexOf("}}", open + 2, venster, StringComparison.Ordinal);
+
+            if (sluit >= 0 && sleutelOpzoek.TryGetValue(body.AsSpan(open + 2, sluit - open - 2), out var waarde))
+            {
+                uitvoer.Append(body, positie, open - positie).Append(waarde);
+                positie = sluit + 2;
+            }
+            else
+            {
+                // Onbekend: neem één teken over en zoek vanaf het volgende teken verder, zodat "{{{naam}}}"
+                // net als vroeger "{Jan}" wordt.
+                uitvoer.Append(body, positie, open + 1 - positie);
+                positie = open + 1;
+            }
         }
-        return body;
+        uitvoer.Append(body, positie, body.Length - positie);
+        return uitvoer.ToString();
     }
 
     // ── Helpers ──
@@ -364,18 +390,30 @@ public static partial class BerichtAntwoordGenerator
         var body = "";
 
         if (EmailReviewModus.IsActief())
-        {
-            body += $"=== REVIEW MODE ===\n"
-                  + $"Originele afzender: {email.Afzender}\n"
-                  + $"Onderwerp: {email.Onderwerp}\n"
-                  + $"Classificatie: {classificatie.Type}\n"
-                  + $"==================\n\n";
-        }
+            body += ReviewKop(classificatie, email, templateKey: null);
 
         body += inhoud;
         body += "\n\n" + GetHandtekening(instellingen);
 
         return (onderwerp, body);
+    }
+
+    /// <summary>
+    /// Het reviewblok boven een antwoord in review mode; alleen de coördinator ziet het. Een ingevulde
+    /// KNVB-notitie staat hier en nooit in de tekst aan de afzender (#1787): het model kent de KNVB-categorie
+    /// (A/B) van het team niet, dus de notitie is een niet-gecontroleerde inschatting.
+    /// </summary>
+    private static string ReviewKop(BerichtClassificatie classificatie, IAntwoordAfzender email, string? templateKey)
+    {
+        var kop = "=== REVIEW MODE ===\n"
+                + $"Originele afzender: {email.Afzender}\n"
+                + $"Onderwerp: {email.Onderwerp}\n"
+                + $"Classificatie: {classificatie.Type}\n";
+        if (templateKey != null)
+            kop += $"Template: {templateKey}\n";
+        if (!string.IsNullOrWhiteSpace(classificatie.KnvbNotitie))
+            kop += $"KNVB-notitie (AI, niet gecontroleerd; niet in het antwoord): {classificatie.KnvbNotitie}\n";
+        return kop + "==================\n\n";
     }
 
     /// <summary>

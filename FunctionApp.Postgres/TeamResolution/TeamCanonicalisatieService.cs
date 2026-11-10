@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using Planner.Shared;
+using Planner.Shared.TeamResolution;
 
 namespace FunctionApp.Postgres.TeamResolution;
 
@@ -459,6 +460,7 @@ internal static class TeamCanonicalisatieService
 
     private static async Task<List<HisTeamRow>> LoadHisTeamsAsync(string connectionString, string clubCode)
     {
+        // Gegroepeerd per (teamnaam, teamsoort) in plaats van MAX(teamsoort) — #1785, zie TeamSoortBeleid.
         var resultaten = new List<HisTeamRow>();
         await using var conn = new NpgsqlConnection(connectionString);
         await conn.OpenAsync();
@@ -467,13 +469,13 @@ internal static class TeamCanonicalisatieService
                 teamnaam,
                 MAX(bk_teams)           AS bkteams,
                 MAX(leeftijdscategorie) AS leeftijdscategorie,
-                MAX(teamsoort)          AS teamsoort
+                teamsoort
             FROM his.teams
             WHERE clubcode = @clubcode
               AND mta_deleted IS NULL
               AND teamnaam IS NOT NULL
               AND TRIM(teamnaam) <> ''
-            GROUP BY teamnaam
+            GROUP BY teamnaam, teamsoort
         ", conn);
         cmd.Parameters.AddWithValue("clubcode", clubCode);
         await using var reader = await cmd.ExecuteReaderAsync();
@@ -491,10 +493,8 @@ internal static class TeamCanonicalisatieService
     private static async Task UpsertTeamAsync(
         NpgsqlConnection conn, string clubCode, string sleutel, List<HisTeamRow> groep)
     {
-        // Bondsnotatie heeft voorkeur als canonieke weergavenaam: die vorm staat ook in
-        // his.matches.wedstrijd en is wat tegenstanders gebruiken. Anders de lokale naam.
-        var bond = groep.FirstOrDefault(r => string.Equals(r.Teamsoort, "bond", StringComparison.OrdinalIgnoreCase));
-        var gekozen = bond ?? groep[0];
+        // Alleen-lokaal ⇒ inactief, ook bij ON CONFLICT DO UPDATE (#1785).
+        var (gekozen, isActief) = TeamSoortBeleid.KiesCanoniek(groep, r => r.Teamsoort);
 
         var componenten = TeamNaamNormalisatie.Parse(gekozen.Teamnaam, clubCode);
         var leeftijdsCategorie = LeeftijdNormalisatie.Normaliseer(
@@ -505,14 +505,14 @@ internal static class TeamCanonicalisatieService
                 (clubcode, teamnaam, teamnaamgenormaliseerd, leeftijdscategorie,
                  leeftijdnummer, teamnummer, bkteams, isactief)
             VALUES (@clubcode, @teamnaam, @sleutel, @leeftijdscategorie,
-                    @leeftijdnummer, @teamnummer, @bkteams, TRUE)
+                    @leeftijdnummer, @teamnummer, @bkteams, @isactief)
             ON CONFLICT (clubcode, upper(teamnaamgenormaliseerd)) DO UPDATE
                 SET teamnaam           = EXCLUDED.teamnaam,
                     leeftijdscategorie = EXCLUDED.leeftijdscategorie,
                     leeftijdnummer     = EXCLUDED.leeftijdnummer,
                     teamnummer         = EXCLUDED.teamnummer,
                     bkteams            = EXCLUDED.bkteams,
-                    isactief           = TRUE,
+                    isactief           = EXCLUDED.isactief,
                     mta_modified       = NOW()
         ", conn);
         cmd.Parameters.AddWithValue("clubcode", clubCode);
@@ -523,6 +523,7 @@ internal static class TeamCanonicalisatieService
         cmd.Parameters.AddWithValue("leeftijdnummer", (object?)componenten?.LeeftijdNummer ?? DBNull.Value);
         cmd.Parameters.AddWithValue("teamnummer", (object?)componenten?.TeamNummer ?? DBNull.Value);
         cmd.Parameters.AddWithValue("bkteams", (object?)gekozen.BkTeams ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("isactief", isActief);
 
         await cmd.ExecuteNonQueryAsync();
     }

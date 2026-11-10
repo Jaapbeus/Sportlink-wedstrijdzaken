@@ -203,6 +203,18 @@ public class SportlinkDryRunStatusDto
     public bool DryRun { get; set; }
 }
 
+/// <summary>#1773: respons van GET /api/sportlink/koppeling-status — niveau <c>Ok</c>/<c>Waarschuwing</c>/
+/// <c>Verbroken</c> plus de melding voor de gebruiker; nooit een tokenwaarde. Spiegelt
+/// Planner.Shared.Integrations.SportlinkClub.SportlinkKoppelingStatus.</summary>
+public class SportlinkKoppelingStatusDto
+{
+    public string RolNaam { get; set; } = "";
+    public string Niveau { get; set; } = "Ok";
+    public bool IsVerbroken { get; set; }
+    public string? Melding { get; set; }
+    public DateTime? LaatsteLoginUtc { get; set; }
+}
+
 /// <summary>#1116: respons van POST /api/sportlink/club-match — het generieke mutatieresultaat plus
 /// wat de server uit teamnaam en instellingen heeft afgeleid (Sportlink-team-ID, leeftijdscategorie,
 /// locatie-ID, veld), zodat de beheerder ziet wat er (gesimuleerd) naar Sportlink zou gaan. Spiegelt
@@ -744,6 +756,27 @@ public class VeldbezettingItemDto
     public bool NietInSportlink { get; set; }
     /// <summary>"Sportlink" als de regel uit de veldplanner komt (#1582).</summary>
     public string? Bron { get; set; }
+}
+
+/// <summary>Of de Sportlink-veldplanner voor deze dag echt is geraadpleegd (#1774). Bij <c>Geraadpleegd = false</c>
+/// toont Planning een rode waarschuwing: een lege of onvolledige dag mag niet als "vrij" lezen.</summary>
+public class SportlinkVeldplannerStatusDto
+{
+    public bool Geraadpleegd { get; set; }
+    /// <summary>Reden-code, o.a. Ok, Democlub, KoppelingVerlopen, NetwerkFout (#1774).</summary>
+    public string Reden { get; set; } = "";
+    public string? Toelichting { get; set; }
+    /// <summary>UTC-tijdstip van de raadpleging; alleen gevuld als <see cref="Geraadpleegd"/> waar is.</summary>
+    public DateTime? GeraadpleegdOpUtc { get; set; }
+    /// <summary>De Sportlink-koppeling moet via de beheerpagina worden hersteld.</summary>
+    public bool KoppelingHerstelNodig { get; set; }
+}
+
+/// <summary>Antwoord van <c>GET api/planner/veldbezetting</c> (#1774): de wedstrijdregels plus de Sportlink-status.</summary>
+public class VeldbezettingAntwoordDto
+{
+    public SportlinkVeldplannerStatusDto? Sportlink { get; set; }
+    public List<VeldbezettingItemDto> Wedstrijden { get; set; } = new();
 }
 
 public class AutoPlanToepassenRequestDto

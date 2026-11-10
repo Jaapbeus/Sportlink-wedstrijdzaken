@@ -33,7 +33,14 @@ internal sealed class TemplateAntwoordBron : ITemplateAntwoordBron
         _haalSjabloonOp = haalSjabloonOp;
     }
 
-    public void ValideerWedstrijd(JToken? wedstrijd) => wedstrijd?.ToObject<ZoekWedstrijdResponse>();
+    public BerichtClassificatie Classificatie => _classificatie;
+
+    public IAntwoordWedstrijd? LeesWedstrijd(JToken? wedstrijd) => wedstrijd?.ToObject<ZoekWedstrijdResponse>();
+
+    public IAntwoordBeschikbaarheid LeesBeschikbaarheid(JToken? beschikbaarheid) => Beschikbaarheid(beschikbaarheid);
+
+    private static CheckAvailabilityResponse Beschikbaarheid(JToken? token)
+        => token?.ToObject<CheckAvailabilityResponse>() ?? new CheckAvailabilityResponse();
 
     public (string onderwerp, string body) WedstrijdAlIngepland(JToken? wedstrijd)
         => BerichtResponseGenerator.BouwWedstrijdAlIngeplandAntwoord(
@@ -43,22 +50,15 @@ internal sealed class TemplateAntwoordBron : ITemplateAntwoordBron
         => BerichtResponseGenerator.BouwTeamOnbekendAntwoord(
             tegenstander ?? _classificatie.Tegenstander ?? "", _classificatie, _bericht, _clubSettings);
 
+    // De ingebouwde tekst staat in de catalogus (#1780): daar is dit ook de standaardtekst in het formulier.
     public (string onderwerp, string body) DatumOnbekend()
-    {
-        var datumOnbekendTemplate = new EmailTemplate(
-            "datum_onbekend", "",
-            "{{aanhef}} {{voornaam}},\n\n"
-            + "Bedankt voor je bericht. We konden er geen concrete datum uit opmaken. "
-            + "Kun je aangeven welke datum of datums je in gedachten hebt? "
-            + "Dan controleren we de beschikbaarheid van onze velden voor je.");
-        return BerichtResponseGenerator.BouwAangepasteAntwoord(
-            datumOnbekendTemplate, _classificatie, _bericht, _clubSettings);
-    }
+        => BerichtResponseGenerator.BouwAangepasteAntwoord(
+            new EmailTemplate(AntwoordSjabloonSleutels.DatumOnbekend, "", AntwoordSjabloonCatalogus.Zoek(AntwoordSjabloonSleutels.DatumOnbekend)!.StandaardBody),
+            _classificatie, _bericht, _clubSettings);
 
     public (string onderwerp, string body) MultiDatum(IReadOnlyList<(string datum, JToken? response)> resultaten)
         => BerichtResponseGenerator.BouwMultiDatumBeschikbaarheidAntwoord(
-            resultaten.Select(r => (r.datum, r.response?.ToObject<CheckAvailabilityResponse>() ?? new CheckAvailabilityResponse())).ToList(),
-            _classificatie, _bericht, _clubSettings);
+            resultaten.Select(r => (r.datum, Beschikbaarheid(r.response))).ToList(), _classificatie, _bericht, _clubSettings);
 
     public async Task<(string onderwerp, string body)> BeschikbaarheidStandaardAsync(string plannerResponseJson)
     {
@@ -90,12 +90,14 @@ internal sealed class TemplateAntwoordBron : ITemplateAntwoordBron
             wedstrijd?.ToObject<ZoekWedstrijdResponse>(), herplanOpties?.ToObject<HerplanCheckResponse>(),
             _classificatie, _bericht, _clubSettings);
 
-    public async Task<(string onderwerp, string body)?> ProbeerSjabloonAsync(string sleutel)
+    public async Task<(string onderwerp, string body)?> ProbeerSjabloonAsync(
+        string sleutel, IDictionary<string, string>? extraPlaceholders = null, string? gecontroleerdDagdeel = null)
     {
         var template = await _haalSjabloonOp(sleutel);
         if (template == null) return null;
         return _trace.MeldOverride(sleutel,
-            BerichtResponseGenerator.BouwAangepasteAntwoord(template, _classificatie, _bericht, _clubSettings));
+            BerichtResponseGenerator.BouwAangepasteAntwoord(
+                template, _classificatie, _bericht, _clubSettings, extraPlaceholders, gecontroleerdDagdeel));
     }
 
     public (string onderwerp, string body) TeamContactStandaard()

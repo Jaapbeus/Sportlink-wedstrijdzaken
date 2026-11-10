@@ -242,7 +242,31 @@ public class BerichtAntwoordGeneratorTests
             + "\nLatere mogelijkheden:\n- veld 4 om 14:30 (eindigt 11:45)\n- veld 5 om 16:00 (eindigt 11:45)\n"
             + "\nLaat weten welke optie de voorkeur heeft.");
         body.Should().NotContain("veld 2").And.NotContain("veld 3");
-        body.Should().Contain("\n\nLet op: Binnen de termijn. Zie ook: https://www.knvb.nl/");
+        // #1787: de KNVB-notitie komt nooit in het antwoord aan de afzender.
+        body.Should().NotContain("Let op:").And.NotContain("knvb.nl").And.NotContain("Binnen de termijn.");
+    }
+
+    [Fact]
+    public void Herplan_KnvbNotitie_StaatAlleenInHetReviewblok()
+    {
+        var oud = Environment.GetEnvironmentVariable(EmailReviewModus.InstellingNaam);
+        try
+        {
+            Environment.SetEnvironmentVariable(EmailReviewModus.InstellingNaam, "true");
+            var classificatie = Classificatie();
+            classificatie.KnvbNotitie = "Jeugd: deadline 13 december.";
+
+            var (_, body) = BerichtAntwoordGenerator.BouwHerplanAntwoord(Wedstrijd(), null, classificatie, Email, Voetnoot);
+
+            var scheiding = "==================\n\n";
+            var kop = body[..(body.IndexOf(scheiding, StringComparison.Ordinal) + scheiding.Length)];
+            kop.Should().Contain("KNVB-notitie (AI, niet gecontroleerd; niet in het antwoord): Jeugd: deadline 13 december.\n");
+            body[kop.Length..].Should().NotContain("deadline 13 december").And.NotContain("Let op:");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(EmailReviewModus.InstellingNaam, oud);
+        }
     }
 
     [Fact]
@@ -404,6 +428,50 @@ public class BerichtAntwoordGeneratorTests
         BerichtAntwoordGenerator.VulPlaceholdersIn("{{NAAM}} {{rest}}", waarden).Should().Be("Jan {{rest}}");
         BerichtAntwoordGenerator.VulPlaceholdersIn("{{naam}}", new Dictionary<string, string>()).Should().Be("{{naam}}");
         BerichtAntwoordGenerator.VulPlaceholdersIn("", waarden).Should().Be("");
+    }
+
+    [Fact]
+    public void VulPlaceholdersIn_LeestIngevoegdeWaardeNooitOpnieuwAlsPlaceholder()
+    {
+        // #1793: de afzender bepaalt 'voornaam'; een later verwerkte sleutel mag die waarde niet uitbreiden.
+        var waarden = new Dictionary<string, string>
+        {
+            ["voornaam"] = "{{coordinator}} {{wedstrijd_veld}}",
+            ["coordinator"] = "Jan de Vries",
+            ["wedstrijd_veld"] = "Veld 1",
+        };
+
+        BerichtAntwoordGenerator.VulPlaceholdersIn("Beste {{voornaam}}, groet {{coordinator}}", waarden)
+            .Should().Be("Beste {{coordinator}} {{wedstrijd_veld}}, groet Jan de Vries");
+    }
+
+    [Theory]
+    [InlineData("{{{naam}}}", "{Jan}")]
+    [InlineData("{{naam}}{{naam}}", "JanJan")]
+    [InlineData("{{onbekend}} {{naam}}", "{{onbekend}} Jan")]
+    [InlineData("{{naam", "{{naam")]
+    [InlineData("tekst }} {{", "tekst }} {{")]
+    [InlineData("{{ {{naam}}", "{{ Jan")]
+    public void VulPlaceholdersIn_RandgevallenGelijkAanEerdereVervanging(string sjabloon, string verwacht)
+    {
+        var waarden = new Dictionary<string, string> { ["naam"] = "Jan" };
+
+        BerichtAntwoordGenerator.VulPlaceholdersIn(sjabloon, waarden).Should().Be(verwacht);
+    }
+
+    [Fact]
+    public void VulPlaceholdersIn_BlijftLineairBijSjabloonVolLosseAccolades()
+    {
+        // #1793: zonder zoekvenster kostte 80.000 keer '{' gevolgd door '}}' ruim een seconde (kwadratisch).
+        var sjabloon = new string('{', 200_000) + "}} {{naam}}";
+        var waarden = new Dictionary<string, string> { ["naam"] = "Jan" };
+
+        var klok = System.Diagnostics.Stopwatch.StartNew();
+        var uitkomst = BerichtAntwoordGenerator.VulPlaceholdersIn(sjabloon, waarden);
+        klok.Stop();
+
+        uitkomst.Should().EndWith("}} Jan");
+        klok.ElapsedMilliseconds.Should().BeLessThan(1000);
     }
 
     // ── Handtekening ──

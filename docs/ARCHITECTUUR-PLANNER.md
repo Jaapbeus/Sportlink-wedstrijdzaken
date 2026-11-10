@@ -717,11 +717,11 @@ Automatische verwerking van inkomende emails op de coordinator-mailbox. Leest ve
 |-----------|-------|-------|
 | Email lezen/sturen | **Microsoft Graph API + Application Permissions** | Gratis (onderdeel M365), volledig unattended via client credentials flow |
 | AI/LLM | **OpenAI GPT-4o-mini** (direct, niet Azure OpenAI) | ~EUR 0.03/maand, geen goedkeuringsproces, later migreerbaar naar Azure OpenAI |
-| Trigger | **Timer, interval configureerbaar via `EMAIL_POLL_SCHEDULE`** (sjabloonwaarde `0 0 * * * *` = elk uur) | Zelfde patroon als FetchAndStoreApiData, simpel en betrouwbaar |
+| Trigger | **Timer, interval configureerbaar via `EMAIL_POLL_SCHEDULE`** (sjabloonwaarde `0 */10 * * * *` = elke 10 minuten) | Zelfde patroon als FetchAndStoreApiData, simpel en betrouwbaar |
 | Secrets opslag | **Azure Function Application Settings** | Gratis, encrypted at rest (AES-256), standaard Azure Functions patroon |
 
 **Verworpen alternatieven:**
-- Power Automate: gratis tier te beperkt (600 runs/maand). Bij de sjabloonwaarde van één poll per uur is dat ~720 polls/maand, bij een interval van vijf minuten ~8.640 — in beide gevallen boven de grens zodra het interval strakker wordt gezet
+- Power Automate: gratis tier te beperkt voor deze frequentie. Microsoft Learn noemt voor Free-plannen een frequentiebeperking: een flow die sneller dan elke 15 minuten wordt geactiveerd, kan in de wachtrij terechtkomen ([frequentie en wachtrijgedrag](https://learn.microsoft.com/en-us/power-automate/billing-questions#what-happens-if-i-try-to-run-flows-too-frequently)). Een poll per 10 minuten (~4.320 polls/maand) of per vijf minuten (~8.640) valt daaronder. Het getal 600 uit Microsoft Learn is het maximale aantal flows per gebruiker, geen runlimiet, en wordt hier niet gebruikt
 - Graph webhooks: subscription verloopt elke 3 dagen, complexe renewal + cold start problemen
 - Azure OpenAI: langere setup door goedkeuringsproces, zelfde model/prijs
 - Key Vault: niet gratis ($0.03/10K operaties), overkill voor 2 secrets in verenigingsproject
@@ -823,7 +823,7 @@ Audit trail en conversatie-tracking voor alle verwerkte emails.
 | `EmailProcessorEnabled` | Kill-switch (`true`/`false`) |
 | `EmailReviewMode` | `true` = antwoorden naar review-mailbox (Fase 1) |
 | `EmailReviewRecipient` | Review-mailbox adres (Fase 1) |
-| `EMAIL_POLL_SCHEDULE` | CRON-expressie; sjabloonwaarde `0 0 * * * *` (elk uur) |
+| `EMAIL_POLL_SCHEDULE` | CRON-expressie; sjabloonwaarde `0 */10 * * * *` (elke 10 minuten; kostenschatting: `MONITORING.md`, Flex-tegoed) |
 
 ### Kostenanalyse (maandelijks)
 
@@ -977,7 +977,13 @@ Niet alle verzoeken gaan over veldbeschikbaarheid. De volgende typen verzoeken v
 > een gekoppelde regel neemt veld, tijd, afmeting en duur over (`bron` = `Sportlink`); een Sportlink-blok zonder eigen regel
 > wordt zelf een regel (`wedstrijdCode` leeg, `bron` = `Sportlink`; bijvoorbeeld een wedstrijd van een andere club op hetzelfde
 > park); een eigen regel die Sportlink niet kent blijft staan met `nietInSportlink` = `true`. Sportlink onbereikbaar of
-> democlub: de eigen regels ongewijzigd. Elke dag wordt ook gevraagd als onze database geen enkele wedstrijd heeft. De kolom
+> democlub: de eigen regels ongewijzigd, **maar sinds #1774 nooit stil**: het antwoord is op aanvraag (`?status=true`; zonder die parameter blijft de route de kale array leveren voor oudere clients) een envelop
+> `{ "sportlink": { "geraadpleegd", "reden", "toelichting", "geraadpleegdOpUtc" }, "wedstrijden": [...] }`
+> (`SportlinkVeldplannerStatus`, `Planner.Shared/Planning/`), de pagina toont bij een terugval een rode waarschuwing met de
+> reden (bij een verlopen koppeling met een verwijzing naar de beheerpagina), de HTML/PDF-deelweergave dezelfde
+> bronmelding, en het log dezelfde redencode. Een mislukte locatielijst (bijvoorbeeld `HerkoppelingVereist`) is daarbij
+> géén "accommodatie onbekend" meer. Per aanroep logt de Planning de aantallen gekoppeld / niet in Sportlink / alleen in
+> Sportlink, zodat koppelingsproblemen op teamlabel meetbaar zijn. Elke dag wordt ook gevraagd als onze database geen enkele wedstrijd heeft. De kolom
 > Tegenstander is de andere kant van het label (`tegenstander`), niet meer de uitploeg. De tekst hieronder beschrijft de koppeling
 > zelf, die ongewijzigd is.
 
@@ -999,9 +1005,9 @@ precies die som is `DuurMinuten`, en de starttijd schuift met het inloopdeel mee
   niet uniek. Ronde 1 vergelijkt het genormaliseerde label "Thuis - Uit" (alleen letters en cijfers); ronde 2 laat een
   ploegnaam de andere bevatten ("v.v. Uit 35+2" tegenover "Uit 35+2"). Bij meerdere blokken met hetzelfde label
   wint de dichtstbijzijnde starttijd, en elk blok koppelt aan hooguit één regel.
-- **Altijd een terugval, nooit een fout.** Extensie uit, EgressGuard dicht, Sportlink onbereikbaar, onbekende accommodatie of
-  onbekende wedstrijd: de regel behoudt `VeldbezettingDuur.Bepaal` (Sportlinks speelduur + 15, dan Speeltijden). De democlub
-  `ALLSTARS` vraagt nooit naar Sportlink.
+- **Altijd een terugval, nooit een fout, nooit stil (#1774).** Extensie uit, EgressGuard dicht, koppeling verlopen, Sportlink
+  onbereikbaar, onbekende accommodatie of onbekende wedstrijd: de regel behoudt `VeldbezettingDuur.Bepaal` (Sportlinks
+  speelduur + 15, dan Speeltijden) en het antwoord draagt de reden. De democlub `ALLSTARS` vraagt nooit naar Sportlink.
 - **Facility-ID** komt uit de Sportlink-locatielijst op naam van de instelling `accommodatie` (6 uur onthouden); de blokken van
   een dag worden 60 seconden onthouden. Het FacilityId staat nergens in code of configuratie.
 - **Bekende grens:** Sportlinks veldplanner toont ook wedstrijden tussen andere clubs op uw accommodatie. Die staan niet in onze

@@ -183,6 +183,7 @@ verwerking plaats.
 | `POST` | `/sportlink/club-match` | **Wedstrijdzaken** | Oefenwedstrijd ("clubwedstrijd") aanmaken — volgt `sportlinkDryRun`; **contract sinds #1427 live bevestigd** (body gelijk aan Sportlinks eigen formulier). Body: `MatchDateTime`, `Duration`, `TeamNaam`, `VrijeTekst` (bij `true` geen 400 voor een onbekend team; Sportlinks standaardteam levert dan het team-ID), `Tegenstander`, `VeldNummer`, `Description`, sinds #1437 `Velddeel` (`1.0`/`0.5`/`0.25`/`0.125`, standaard heel veld; de notatie van half/kwart/achtste is een aanname) en `AgeClassCode` (Sportlink-`Id` uit het formulier-endpoint; wint van de categorie van het team). De server haalt `ClubMatchDefaults`, `PickListsTeams`, `PickListsLocation` en `PickListsMatchInformation` op en leidt daaruit het `T…`-team-ID, leeftijdscategorie, spelactiviteit, `SubFacilityId` af; het wedstrijdnummer komt sinds #1437 uit een eigen teller (`YYMMDD` + volgnummer per speeldag, max. 99 per dag → anders 400); de clubinstelling `SportlinkSpelactiviteit` gaat voor de spelactiviteit van het team; team/veld niet (eenduidig) bij Sportlink → 400, overige terugvallen als `Waarschuwingen`. Geen `SportlinkMutationGuard` (er is vooraf geen wedstrijd). Uitslag bewust niet gebouwd (#997); verwijderen: zie de regel hieronder (#1440) |
 | `DELETE` | `/sportlink/club-match/{publicMatchId}` | **Wedstrijdzaken** | Clubwedstrijd (oefenwedstrijd) verwijderen (#1440) — live sinds #1458 (volgt `sportlinkDryRun`; bij dry-run `IsDryRun: true`). Haalt eerst de wedstrijd op voor `SportlinkMutationGuard` (`Verwijderen`: alleen bij expliciet `IsKernelMatch = false` én `IsHomeMatch`, anders 409); **503 als de mutatie-auditservice ontbreekt (fail-closed, geldt voor alle Sportlink-mutaties)**; elke poging staat in de mutatie-audit met het `PublicMatchId`. Nooit automatisch herhaald. Respons `{ IsSuccess, Violations, IsDryRun, IsForcedDryRun, PublicMatchId }`; 400 bij een ongeldig `PublicMatchId`, 404 als Sportlink de wedstrijd niet kent. De GUI biedt dit alleen aan op het resultaat van "Wedstrijd aanmaken" |
 | `GET` | `/sportlink/club-match/dryrun-status` | **Wedstrijdzaken** | Actuele dry-run-stand (`{ DryRun }`) voor de banner op "Wedstrijd aanmaken" — leest alleen de club-instelling `sportlinkDryRun`, geen Sportlink-aanroep (#1427) |
+| `GET` | `/sportlink/koppeling-status` | **Wedstrijdzaken** | Koppelingsstatus van rol Wedstrijdzaken voor de vooraf-melding op de werkpagina's (#1773): `{ RolNaam, Niveau (Ok/Waarschuwing/Verbroken), IsVerbroken, Melding, LaatsteLoginUtc }`, afgeleid uit de opgeslagen automatische-loginstatus (credentials/refresh-token aanwezig, blokkade, retrydatum, sessieduur). Eigen database, geen Sportlink-aanroep, nooit een tokenwaarde; 503 als de beveiligde opslag ontbreekt |
 | `GET` | `/sportlink/club-match/formulier` | **Wedstrijdzaken** | Voorinvulling voor "Wedstrijd aanmaken" (#1437): per actief team `{ TeamNaam, Leeftijdscategorie, AgeClassCode, Duur, Veldafmeting }` (Sportlink-categorie, wedstrijdduur en velddeel uit de speeltijden van de club) plus `AgeClasses` `[{ Id, Description }]` uit Sportlink en `SportlinkBeschikbaar`. Eigen endpoint omdat de speeltijden-API admin-only is. Is Sportlink onbereikbaar, dan komen de teamgegevens zonder lijst terug (`SportlinkBeschikbaar: false`) |
 | `GET` | `/sportlink/club-match/picklists` | **Wedstrijdzaken** | De twee Sportlink-picklists (Teams + Location) — read-only, persoonsgegevensvrij. Sinds #1427 los van elkaar: een onherkenbare teamlijst blokkeert de locatielijst niet meer. Diagnostisch endpoint (id + naam per item); het aanmaakpad gebruikt sinds #1427 de volledige lijsten via de server (#997) |
 | `GET/POST` | `/beheer/velden` | **Admin** | Velden beheren: naam, type (vrije tekst), kunstlicht, actief — per club vrij instelbaar (#679). Lijst ophalen / toevoegen |
@@ -934,8 +935,15 @@ gesynchroniseerde Sportlink-data — **zonder** de scheduling-optimalisatie te d
 
 **Veld, tijd en blokduur uit Sportlink (#1563):** is de Sportlink Web Extension aan en bereikbaar, dan komen `veld`,
 `aanvangsTijd`, `veldafmeting` en `duurMinuten` van een wedstrijd rechtstreeks uit de Sportlink-veldplanner (blokduur =
-speelduur + pauze + in-/uitloop). Wat Sportlink niet kent, of als Sportlink niet bereikbaar is, behoudt de eigen berekening;
-het antwoord kent daardoor nooit een extra foutstatus.
+speelduur + pauze + in-/uitloop). Wat Sportlink niet kent, of als Sportlink niet bereikbaar is, behoudt de eigen berekening.
+
+**Sportlink-status (#1774):** Sportlink is leidend (WZ-ADR-013), dus een terugval is zichtbaar en nooit stil. Het JSON-antwoord is
+een envelope `{ "sportlink": {...}, "wedstrijden": [...] }`, maar **alleen op aanvraag met `?status=true`**. Zonder die parameter blijft
+het antwoord de kale array van wedstrijdregels (ongewijzigd contract, zodat een reeds geopende of oudere client blijft werken); de
+Planning-pagina vraagt de envelope expliciet aan. `sportlink` heeft de velden `geraadpleegd` (bool), `reden` (vaste code), `toelichting` (leesbare tekst),
+`geraadpleegdOpUtc` (UTC-tijdstip of `null` bij terugval) en `koppelingHerstelNodig` (bool: de beheerder moet de koppeling herstellen).
+Bij `geraadpleegd: false` toont de Planning de databasekopie, die kan afwijken van Sportlink; het HTML- en PDF-document zet dan een
+melding onder de titel.
 
 **Sportlink is leidend (#1582):** een Sportlink-blok zonder eigen regel (bijvoorbeeld een wedstrijd van een andere club op
 hetzelfde park) komt als eigen regel in het antwoord (`wedstrijdCode` is dan `null`, `bron` is `Sportlink`). Een eigen regel die
@@ -952,27 +960,43 @@ ingelogde gebruiker zichtbaar zijn.
 |-----------|------|-----------|-------------|
 | `datum` | `string` | **Ja** | Datum in `yyyy-MM-dd` formaat |
 | `format` | `string` | Nee | `json` (standaard), `html` (zelfstandige pagina, `text/html`) of `pdf` (`application/pdf`, bestandsnaam `veldbezetting-<datum>.pdf`). Andere waarde: 400 (#1364) |
+| `status` | `boolean` | Nee | `true` = JSON-antwoord als envelope met de Sportlink-status (#1774); weggelaten of een andere waarde = kale array (oud contract). Geen effect op `html`/`pdf` |
 
 ### Antwoord — JSON (200)
 
+Zonder `status=true` is het antwoord de kale array van wedstrijdregels (de objecten onder `wedstrijden` hieronder). Met `status=true`:
+
 ```json
-[
-  {
-    "wedstrijdCode": 20672784,
-    "wedstrijd": "[ClubCode] 6 - Tegenstander 8",
-    "teamNaam": "[ClubCode] 6",
-    "uitteam": "Tegenstander 8",
-    "aanvangsTijd": "13:00",
-    "veld": "veld 3",
-    "competitiesoort": "Oefenwedstrijd",
-    "leeftijdsCategorie": null,
-    "duurMinuten": 90,
-    "veldafmeting": 1.00
-  }
-]
+{
+  "sportlink": {
+    "geraadpleegd": true,
+    "reden": "Ok",
+    "toelichting": "Veld, aanvangstijd en speelduur komen uit de Sportlink-veldplanner.",
+    "geraadpleegdOpUtc": "2026-10-22T08:15:00Z",
+    "koppelingHerstelNodig": false
+  },
+  "wedstrijden": [
+    {
+      "wedstrijdCode": 20672784,
+      "wedstrijd": "[ClubCode] 6 - Tegenstander 8",
+      "teamNaam": "[ClubCode] 6",
+      "uitteam": "Tegenstander 8",
+      "aanvangsTijd": "13:00",
+      "veld": "veld 3",
+      "competitiesoort": "Oefenwedstrijd",
+      "leeftijdsCategorie": null,
+      "duurMinuten": 90,
+      "veldafmeting": 1.00
+    }
+  ]
+}
 ```
 
-Resultaat is gesorteerd op `aanvangsTijd`. Wedstrijden zonder aanvangstijd staan achteraan.
+`wedstrijden` is gesorteerd op `aanvangsTijd`; wedstrijden zonder aanvangstijd staan achteraan.
+
+Reden-codes (`sportlink.reden`): `Ok` (geraadpleegd), en bij terugval `Democlub`, `GeenAccommodatie`, `ExtensieUit`,
+`EgressGeblokkeerd`, `ClientNietGeconfigureerd`, `KoppelingVerlopen`, `RolNietGekoppeld`, `AccommodatieOnbekend`, `NetwerkFout`,
+`SportlinkFout` en `Onverwacht`. `koppelingHerstelNodig` is `true` bij `KoppelingVerlopen` en `RolNietGekoppeld`.
 
 ---
 
