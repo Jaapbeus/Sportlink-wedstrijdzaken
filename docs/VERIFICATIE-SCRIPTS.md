@@ -609,6 +609,26 @@ Voor productie-deploys: gebruik de SSDT publish-diff workflow of een migratiescr
 
 ---
 
+## Read-only database-tier pairing inventory (#1813)
+
+The pairing report reads tracked C# paths at a Git ref and emits stable JSON. It pairs identical
+relative paths first, lists a remaining basename match only when it is unique on both sides, and
+reports ambiguous and unmatched files separately. It does not read source contents, compare code,
+or establish that two files have the same behavior. A candidate is a review aid, not a confirmed
+pair and not a duplication measurement.
+
+```bash
+python3 scripts/ci/report-tier-pairs.py --ref HEAD
+python3 scripts/ci/report-tier-pairs.py --ref 1ee175ff7c50f1640060ebaecb2a2441d2090cb2
+python3 scripts/ci/test-report-tier-pairs.py
+```
+
+The explicit ref makes a report reproducible after later commits. The supplied baseline at
+`1ee175ff7c50f1640060ebaecb2a2441d2090cb2` contains 101 exact-path pairs and 5 unique-basename
+candidates, with no ambiguous groups. These counts do not prove semantic coverage. The existing
+`check-tier-duplicatie.sh` pairing logic and ceiling are unchanged; any future guard change requires
+a verified semantic map and a negative test showing that a missed duplicate makes the guard fail.
+
 ## CI-shellscripts lokaal draaien (`scripts/ci/*.sh`, #1155)
 
 De **bestandsguards** die `build.yml` als `bash scripts/ci/<naam>.sh` uitvoert, draaien ook

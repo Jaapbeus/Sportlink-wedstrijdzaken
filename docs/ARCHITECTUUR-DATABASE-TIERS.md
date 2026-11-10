@@ -172,6 +172,41 @@ C#-versie, precies het onderhoudsrisico dat #719 al blootlegde voor die twee. Vu
 volgende tier: bevat de te herbouwen logica geen SQL en geen providerspecifieke aanroep, verhuis
 haar naar een gedeeld project in plaats van haar te dupliceren.
 
+### Owner direction reaffirming WZ-ADR-003 (#1813)
+
+The owner accepted option A: keep SQL Server and Postgres as equal built tiers and continue
+extracting tier-independent endpoint orchestration in small, tested steps. A tier is still selected
+at build/deploy time for each installation. This decision does not introduce a runtime provider
+switch or a generic database-provider abstraction. Database queries, migrations, schemas and
+provider-specific adapters remain tier-specific. SQLite remains `built: false` in
+`scripts/ci/database-tiers.json` as a negative case for guards that reject unbuilt tiers; it is not
+a supported built tier.
+
+The decision is reviewed against these criteria:
+
+| Criterion | Evidence and current limit | Direction under this decision |
+|---|---|---|
+| Support | Both tiers are currently marked `built: true`; the number of users and forks per tier is not measured here. | Preserve both supported paths; do not infer that production use alone determines support. |
+| Defect risk | Recent issue reports include tier-specific differences, but this sample does not establish that tier divergence is the largest source of defects. | Extract meaning-equivalent orchestration where dependencies allow; keep provider-specific behavior covered on each tier. |
+| Maintenance | At `1ee175ff7c50f1640060ebaecb2a2441d2090cb2`, a path inventory found 101 exact relative-path pairs and 5 unique-basename candidates, with no ambiguous basename groups. Candidate names do not prove semantic pairing; content and maintenance effort were not measured. | Use the reproducible inventory as a locator only. Do not change the duplication guard's pairing or ceiling until semantic mapping and a negative test are reviewed separately. |
+| Cost | No current tier-cost comparison was made for this decision, and no paid resource is authorized. | Keep the existing free-tier constraint; treat any paid-tier proposal as a separate owner decision. |
+| Migration | Existing hosts select one tier at build/deploy time; schemas and queries differ by provider. | Move only provider-independent orchestration into `Planner.Endpoints` or pure logic into `Planner.Shared`; retain each tier's data access and migrations. |
+| Return path | Small extractions preserve the existing tier-specific implementations and can be reviewed independently. | Test both tiers for each slice; retain an explicit, reversible boundary at the tier adapters. Reconsider support only through a superseding owner decision with migration and return costs stated. |
+
+The staged work is: (1) classify candidate file counterparts and verify them semantically before
+using them to change a guard; (2) extract one provider-independent behavior at a time, with tests
+that cover both tier hosts; (3) measure support, maintenance effort and tier-specific defects over
+representative work before proposing a different support policy. No stage changes the schema or
+selects a provider at runtime. `#1542` remains a separate owner goal to eliminate its storage
+resource; this ADR does not accept ongoing cost or close that issue.
+
+The report command `python3 scripts/ci/report-tier-pairs.py --ref <commit>` inventories tracked C#
+paths at an explicit Git ref. It lists exact-path matches, unique-basename candidates, ambiguous
+groups and unmatched files. It does not compare contents or establish semantic coverage. The
+baseline counts above are specific to the stated commit; the review's claim about renamed pairs and
+their combined line count remains unverified. See [VERIFICATIE-SCRIPTS.md](VERIFICATIE-SCRIPTS.md)
+for usage and the focused tests.
+
 **Tier-keuze is bewust onveranderlijk na de eerste deploy — afdwinging gebouwd bij #976.** #816
 legt vast dat de repository-variabele `DatabaseTier` de keuze bepaalt (hard-fail bij een
 ontbrekende/onbekende waarde). Met de Postgres-tier inmiddels functioneel gereed werd een switch
