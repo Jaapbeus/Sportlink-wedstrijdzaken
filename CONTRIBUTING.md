@@ -257,11 +257,12 @@ geen eigenaarspunt open. Een eigenaarspunt is een keuze, een acceptatie, een ris
 niet is verwerkt. Een controle die pas na de release kan (bijvoorbeeld een ingelogde browsercheck in
 productie) is nazorg, geen besluit, en houdt de merge dus niet tegen.
 
-**Wat altijd naar de eigenaar gaat:** een merge naar `main` (release en hotfix, uitsluitend via
-`/release`), alles wat Azure-resources of kosten raakt, een wijziging van het databaseschema (migraties)
-en werkinstructies of skills (`AGENTS.md`, `.agents/skills/`; de machtigingslaag van de agent blokkeert
-die merge ook zelf). Auth/Entra, workflows, CI-guards en issues met `source: owner` zijn sinds #1690
-**geen** uitzondering meer: daarvoor gelden dezelfde drie voorwaarden.
+**Always owner-merged:** merges to `main` (release and hotfix only through `/release`), PRs changing
+Azure resources or costs, database schemas or migrations, work instructions or skills
+(`AGENTS.md`, `.agents/skills/`), or automation/security controls (`.github/`, `scripts/ci/`,
+`.githooks/`, and root `.gitleaks.toml`). The end-label step enforces this boundary for its merge-wait
+outcome. Auth/Entra changes and issues with `source: owner` remain eligible for the same three
+self-merge conditions, unless the PR also touches a listed owner-only path.
 
 **Fase `eigenaarsbesluit`** (met `turn: owner`) is alleen voor een echt openstaand besluit of een van de
 uitzonderingen hierboven. Een PR die alleen op de merge wacht, krijgt die fase niet.

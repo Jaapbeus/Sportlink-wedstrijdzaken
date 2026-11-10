@@ -28,7 +28,8 @@
 // zelfmerge-voorwaarden controleert en merget (de bot merget nooit). Dat mag alleen in de
 // verwerkingsfase (er is een start-PR) en alleen als die PR naar `develop` gaat en geen pad raakt
 // dat volgens de zelfmerge-regel altijd naar de eigenaar gaat (werkinstructies/skills,
-// databaseschema/migraties, Azure-infrastructuur); anders wordt het alsnog `turn: owner`.
+// databaseschema/migraties, Azure-infrastructuur of automation/security controls); anders wordt
+// het alsnog `turn: owner`.
 //
 // #1727: in de reviewfase (Claude Code reviewt een Codex-PR) roept de publicatiestap
 // (claude-issue-turn-review.js) deze vergelijk-en-zet aan met een expliciet label (`turn: codex`, of
@@ -57,6 +58,10 @@ const OWNER_ONLY_PATHS = [
   { name: 'CLAUDE.md', reden: 'werkinstructies' },
   { prefix: '.agents/', reden: 'skills' },
   { prefix: '.claude/', reden: 'skills/agentconfiguratie' },
+  { prefix: '.github/', reden: 'automation/security controls' },
+  { prefix: 'scripts/ci/', reden: 'automation/security controls' },
+  { prefix: '.githooks/', reden: 'automation/security controls' },
+  { path: '.gitleaks.toml', reden: 'automation/security controls' },
   { prefix: 'Database/', reden: 'databaseschema' },
   { prefix: 'Database.Postgres/', reden: 'databaseschema/migraties' },
   { prefix: 'scripts/migrations/', reden: 'databaseschema/migraties' },
@@ -143,7 +148,9 @@ async function changedSinceStart({
  */
 function ownerOnlyReason(filename) {
   const base = filename.split('/').pop();
-  const hit = OWNER_ONLY_PATHS.find((p) => (p.name ? base === p.name : filename.startsWith(p.prefix)));
+  const hit = OWNER_ONLY_PATHS.find((p) => (
+    p.name ? base === p.name : p.path ? filename === p.path : filename.startsWith(p.prefix)
+  ));
   return hit ? `${hit.reden} (\`${filename}\`)` : null;
 }
 

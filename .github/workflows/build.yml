@@ -70,6 +70,9 @@ jobs:
       - name: Codekwaliteit — tier-duplicatie stijgt niet
         run: bash scripts/ci/check-tier-duplicatie.sh
 
+      - name: Code quality — tier-duplication regression test
+        run: bash scripts/ci/check-tier-duplicatie.test.sh
+
       - name: Codekwaliteit — geen logica in Blazor-pagina's
         run: bash scripts/ci/check-blazor-codebehind.sh
 

@@ -656,6 +656,7 @@ draaiende database nodig.
 | Script | Bewaakt |
 |---|---|
 | `check-path-casing.sh` | Padverwijzingen in ps1/psm1/md/yml/yaml/csproj matchen exact de casing van het getrackte bestand (#825) |
+| `check-tier-duplicatie.test.sh` | A temporary Git repository proves that new nonignored C# source pairs are measured before and after staging, while ignored output is excluded (#1810) |
 | `check-postgres-identifier-casing.sh` | Identifiers in `Database.Postgres/migrations/*.sql` zijn lowercase snake_case, nooit gequote of PascalCase (#864) |
 | `check-postgres-table-coverage.sh` | Elke SQL Server-tabel heeft een Postgres-tegenhanger of een gemotiveerde uitzondering (#864) |
 | `check-postgres-column-coverage.sh` | Idem op kolomniveau (#864) |
@@ -665,6 +666,7 @@ draaiende database nodig.
 
 ```bash
 # Vanuit de repo-root, met de standaard macOS-bash (bewust niet de Homebrew-bash):
+/bin/bash scripts/ci/check-tier-duplicatie.test.sh
 /bin/bash scripts/ci/check-path-casing.sh
 /bin/bash scripts/ci/check-postgres-identifier-casing.sh
 /bin/bash scripts/ci/check-theme-variables.sh
