@@ -101,16 +101,14 @@ public partial class EmailProcessorFunction
                     teamNaam);
             }
 
-            var subject = $"[{teamNaam}] vraag van {email.AfzenderNaam}";
-            var body = $"Er is een vraag binnengekomen over de begeleiding van {teamNaam}.\n\n"
-                     + $"Vraag van: {email.AfzenderNaam}\n\n"
-                     + $"---\n{email.Body}\n---\n\n"
-                     + "U kunt direct antwoorden op dit bericht — uw antwoord gaat naar de vraagsteller.";
+            // #1809: vrije afzendertekst wordt platgeslagen (geen regeleinden/markup in onderwerp of kop), de body
+            // wordt begrensd en Reply-To krijgt alleen een syntactisch geschikt enkel adres.
+            var bericht = TeamContactDoorstuurBericht.Bouw(teamNaam, email.AfzenderNaam, email.Afzender, email.Body, log);
 
-            // AVG: Reply-To = email.Afzender zodat coach rechtstreeks kan antwoorden
+            // Reply-To wordt alleen gezet als de syntactische controle één geschikt adres herkent.
             // BCC veldplanner voor audit; coach-email nooit in logs
             await graphService.StuurTeamContactDoorAsync(
-                [coach.Emailadres], subject, body, email.Afzender, auditKopieAdres);
+                [coach.Emailadres], bericht.Onderwerp, bericht.Inhoud, bericht.ReplyTo, auditKopieAdres);
 
             log.LogInformation("Teambegeleiding-vraag doorgestuurd voor {Team}", LogWaarde.Schoon(teamNaam));
         }

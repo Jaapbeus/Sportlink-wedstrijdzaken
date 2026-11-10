@@ -80,6 +80,20 @@ public class BerichtAiKernAanroepTests
     }
 
     [Fact]
+    public async Task Classificeer_VolledigeProviderberichtenBevattenGeenAfzenderidentiteitOfContactpatronen()
+    {
+        var client = new VasteClient("{}");
+        var nummer = string.Concat("06 ", "1234", "5678");
+
+        await Maak(client).ClassificeerBerichtAsync(
+            $"Bel {nummer} of mail trainer@voorbeeld.nl", "Mail trainer@voorbeeld.nl", "trainer@voorbeeld.nl");
+
+        var providerInvoer = string.Join("\n", client.Berichten.Select(bericht => bericht.Text));
+        providerInvoer.Should().NotContain("trainer@").And.NotContain("voorbeeld.nl").And.NotContain(string.Concat("1234", "5678"));
+        providerInvoer.Should().Contain("[e-mail]").And.Contain("[nummer]");
+    }
+
+    [Fact]
     public async Task Classificeer_OntbrekendeClubnaam_GooitDeFoutVanDeTier()
     {
         var client = new VasteClient("{}");
@@ -113,6 +127,21 @@ public class BerichtAiKernAanroepTests
         samenvatting.Should().Be("Bedoelde verplaatsen");
         client.Berichten[0].Text.Should().Contain("Databehandeling");
         client.Berichten[1].Text.Should().Contain("[BERICHT-DATA-");
+    }
+
+    [Fact]
+    public async Task DetecteerCorrectie_VolledigeProviderberichtenMaskerenContactpatronenOokInSamenvatting()
+    {
+        var client = new VasteClient("{\"isCorrectie\":false}");
+        var nummer = string.Concat("06 ", "1234", "5678");
+
+        await Maak(client).DetecteerCorrectieAsync(
+            $"Mail trainer@voorbeeld.nl en bel {nummer}", "Re: trainer@voorbeeld.nl", "herplan_verzoek",
+            $"trainer@voorbeeld.nl {nummer}");
+
+        var providerInvoer = string.Join("\n", client.Berichten.Select(bericht => bericht.Text));
+        providerInvoer.Should().NotContain("trainer@").And.NotContain("voorbeeld.nl").And.NotContain(string.Concat("1234", "5678"));
+        providerInvoer.Should().Contain("[e-mail]").And.Contain("[nummer]");
     }
 
     [Theory]

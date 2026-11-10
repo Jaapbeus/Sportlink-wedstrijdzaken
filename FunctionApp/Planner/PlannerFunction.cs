@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging;
 using Planner.Endpoints.Deel;
 using Newtonsoft.Json;
 using Planner.Shared;
+using Planner.Shared.Email;
 using Planner.Shared.Planning;
 using SportlinkFunction.Admin;
 
@@ -41,6 +42,7 @@ namespace SportlinkFunction.Planner
                         LogWaarde.Schoon(request.Datum), LogWaarde.Schoon(request.AanvangsTijd), LogWaarde.Schoon(request.TeamNaam), LogWaarde.Schoon(request.LeeftijdsCategorie), clubCode);
 
                     var response = await PlannerService.CheckAvailabilityAsync(request, log, clubCode);
+                    AiVeldSanering.SaneerWaarschuwingen(response.Waarschuwingen);
 
                     return new OkObjectResult(response);
                 });

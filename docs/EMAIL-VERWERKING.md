@@ -238,8 +238,18 @@ Onderdrukte antwoorden zijn zichtbaar in de Admin GUI onder **Instellingen → E
 Er wordt niets stil weggegooid: het bericht wordt normaal verwerkt en gelogd in
 `planner.EmailVerwerking` met status `GeenAntwoordNodig`.
 
-**Review-mode blijft leidend:** staat `EmailReviewMode=true`, dan gaat er nooit een mail uit —
+**Review-mode blijft leidend:** staat review-mode aan, dan gaat er nooit een mail uit —
 die check komt vóór de reply-policy.
+
+**Fail-safe standaard (#1809):** review-mode staat AAN tenzij `EmailReviewMode` exact `false` is
+(hoofdletterongevoelig; spaties aan begin/einde tellen mee als onbekende waarde). Een ontbrekende,
+lege, `0`-waarde of onbekende waarde betekent dus review-mode aan, zodat een verdwenen app-setting
+nooit onbedoeld tot automatische antwoorden leidt. Daarnaast gaat een automatisch antwoord alleen
+naar één syntactisch geldig afzenderadres dat niet als systeemadres is herkend (`AfzenderControle`);
+dit bewijst geen authenticiteit van de afzender. Afzenderidentiteit wordt niet meegestuurd naar de
+AI-provider. E-mailadressen en telefoonnummers in onderwerp en berichttekst worden gemaskeerd;
+persoonsnamen, clubcontext en andere inhoud kunnen nog aanwezig zijn. Dit vervangt #1736 niet en #43
+blijft geblokkeerd tot eigenaaracceptatie.
 
 In review-mode wordt het voorgestelde antwoord wél opgebouwd en opgeslagen (#712). De rij in
 `planner.EmailVerwerking` krijgt status `Review`, met het voorstel in `AntwoordEmail` en
@@ -907,7 +917,7 @@ naar de coach. Is er geen coach gevonden in `avg.Teambegeleiding`, dan gebeurt d
 | Veld | Waarde |
 |---|---|
 | **Aan** | De coach/teamleider uit `avg.Teambegeleiding` |
-| **Reply-To** | De oorspronkelijke afzender — zodat de coach rechtstreeks kan antwoorden |
+| **Reply-To** | De oorspronkelijke afzender als het één geschikt adres is; anders ontbreekt Reply-To en vraagt de berichttekst om handmatige controle van het contactkanaal |
 | **BCC** | De **veldplanner** (`plannerEmailAdres` in `dbo.AppSettings`) als AVG-audit-kopie |
 | **Onderwerp** | `[{team}] vraag van {afzenderNaam}` |
 
@@ -1376,9 +1386,9 @@ plannergegevens en gesaneerde modelvelden (`AiVeldSanering`).
 
 | Gegeven | Aanroepen | Persoonsgegeven | Bewerking vóór verzending |
 |---|---|---|---|
-| E-mailadres van de afzender (het `From`-adres; niet de weergavenaam) | 1, 2, 4 | Ja | Geen; markernaam geneutraliseerd |
-| Onderwerp | 1, 2, 3, 4 | Kan (vrije tekst) | Geen; markernaam geneutraliseerd |
-| Berichttekst | 1, 2, 3, 4 | Kan (vrije tekst: namen, contactgegevens, toevallig een gezondheidsgegeven, mogelijk over minderjarigen) | Mailboxberichten (1, 2, 3): HTML verwijderd (`EmailSanitizer.StripHtml`, in `EmailGraphService`). Alle aanroepen: begrensd op `BerichtBodyBegrenzing.MaxBodyTekens` tekens en markernaam geneutraliseerd. Tester (4): de ingevoerde tekst gaat zonder HTML-verwijdering naar de classificatie |
+| E-mailadres van de afzender (het `From`-adres; niet de weergavenaam) | — | Ja | Niet opgenomen in de providerprompt |
+| Onderwerp | 1, 2, 3, 4 | Kan (vrije tekst) | E-mailadressen en nummerreeksen gemaskeerd; markernaam geneutraliseerd |
+| Berichttekst | 1, 2, 3, 4 | Kan (vrije tekst: namen, contactgegevens, toevallig een gezondheidsgegeven, mogelijk over minderjarigen) | Mailboxberichten (1, 2, 3): HTML verwijderd (`EmailSanitizer.StripHtml`, in `EmailGraphService`). Alle aanroepen: begrensd op `BerichtBodyBegrenzing.MaxBodyTekens` tekens, e-mailadressen en nummerreeksen gemaskeerd en markernaam geneutraliseerd. Tester (4): de ingevoerde tekst gaat zonder HTML-verwijdering naar de classificatie |
 | Clubnaam (instelling `clubName`) en datum van vandaag, in de system prompt | 1, 2, 4 | Nee | — |
 | Leermomenten: verzoektypes en samenvattingen | 2, 4 | Kan (samenvatting) | Samenvatting door `AiVeldSanering.Samenvatting` (`TraceBuilder.Saneer`: e-mailadressen en nummerreeksen gemaskeerd, begrensd) |
 | Oorspronkelijk verzoektype en samenvatting van het beantwoorde bericht | 3 | Kan (samenvatting) | Samenvatting is bij opslag al door `AiVeldSanering.Samenvatting` gegaan |
@@ -1395,9 +1405,9 @@ Toelichting bij de bewerkingen:
 * **Markers.** Afzender, onderwerp en tekst staan in een datablok met per aanroep willekeurige markers;
   de vaste markernaam wordt uit de tekst gehaald. Dat is een maatregel tegen prompt-injectie, geen
   privacymaatregel.
-* **Persoonsgegevens in de invoer worden niet gemaskeerd.** Onderwerp en berichttekst gaan, op de
-  bewerkingen hierboven na, ongewijzigd mee. De saneringen in deze module werken op wat de provider
-  teruggeeft en wat de applicatie bewaart of toont: `AiVeldSanering` (vrije modelvelden vóór gebruik in
+* **Overige persoonsgegevens kunnen in de invoer blijven.** Na het maskeren van contactpatronen gaan
+  onderwerp en berichttekst, op de bewerkingen hierboven na, ongewijzigd mee. Uitvoer wordt apart
+  gesaneerd voor opslag of weergave: `AiVeldSanering` (vrije modelvelden vóór gebruik in
   een antwoord), `ModelDatum.Grens` (alle datumvelden van de classificatie, strikt `jjjj-MM-dd`, eenmalig
   vóór trace en verwerking, #1730), `TraceBuilder.Saneer` (samenvattingen, leermomenten, trace) en `AvgMaskering`
   (afzender- en ontvangeradres in het e-maillog van de beheerinterface).

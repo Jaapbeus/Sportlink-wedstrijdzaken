@@ -44,7 +44,7 @@ public static partial class BerichtAntwoordGenerator
                 inhoud += " Er zijn op deze dag nog diverse andere mogelijkheden.";
 
             if (response.Waarschuwingen.Count > 0)
-                inhoud += "\n\nLet op: " + string.Join(" ", response.Waarschuwingen);
+                inhoud += "\n\nLet op: " + AiVeldSanering.WaarschuwingenSamen(response.Waarschuwingen);
         }
         else if (!response.Beschikbaar && vensters.Count > 0 && !string.IsNullOrEmpty(classificatie.AanvangsTijd))
         {
@@ -81,7 +81,7 @@ public static partial class BerichtAntwoordGenerator
             }
 
             if (response.Waarschuwingen.Count > 0)
-                inhoud += "\nLet op: " + string.Join(" ", response.Waarschuwingen);
+                inhoud += "\nLet op: " + AiVeldSanering.WaarschuwingenSamen(response.Waarschuwingen);
         }
         else if (response.HeeftTeamConflict)
         {
@@ -168,7 +168,7 @@ public static partial class BerichtAntwoordGenerator
             var t = response.Toewijzing;
             var sectie = $"**{datumTekst}:** {t.VeldNaam} is beschikbaar om {t.AanvangsTijd} (eindigt {t.EindTijd}).";
             if (response.Waarschuwingen.Count > 0)
-                sectie += " Let op: " + string.Join(" ", response.Waarschuwingen);
+                sectie += " Let op: " + AiVeldSanering.WaarschuwingenSamen(response.Waarschuwingen);
             if (isDiverseMogelijkheden)
                 sectie += " Er zijn op deze dag nog diverse andere mogelijkheden.";
             return sectie + "\n";
@@ -249,9 +249,8 @@ public static partial class BerichtAntwoordGenerator
         // Noemt het sjabloon het dagdeel zelf niet, dan komt de standaardzin alsnog onder de sjabloontekst.
         bodyInvulling = DagdeelVenster.VoegControleZinToeTenzijVermeld(bodyInvulling, gecontroleerdDagdeel, template.Body);
 
-        var onderwerp = !string.IsNullOrWhiteSpace(onderwerpInvulling)
-            ? onderwerpInvulling
-            : $"Re: {email.Onderwerp}";
+        var onderwerp = AiVeldSanering.OnderwerpWeergave(onderwerpInvulling)
+            ?? $"Re: {AntwoordTekst.Onderwerp(email.Onderwerp)}";
 
         // Wrap met review-mode prefix + handtekening, hergebruik de bestaande logica
         var body = "";
@@ -386,7 +385,7 @@ public static partial class BerichtAntwoordGenerator
         string inhoud, BerichtClassificatie classificatie, IAntwoordAfzender email,
         IAntwoordInstellingen instellingen)
     {
-        var onderwerp = $"Re: {email.Onderwerp}";
+        var onderwerp = $"Re: {AntwoordTekst.Onderwerp(email.Onderwerp)}";
         var body = "";
 
         if (EmailReviewModus.IsActief())
@@ -406,8 +405,8 @@ public static partial class BerichtAntwoordGenerator
     private static string ReviewKop(BerichtClassificatie classificatie, IAntwoordAfzender email, string? templateKey)
     {
         var kop = "=== REVIEW MODE ===\n"
-                + $"Originele afzender: {email.Afzender}\n"
-                + $"Onderwerp: {email.Onderwerp}\n"
+                + $"Originele afzender: {AiVeldSanering.AfzenderNaamWeergave(email.AfzenderNaam) ?? "afzender"}\n"
+                + $"Onderwerp: {AntwoordTekst.Onderwerp(email.Onderwerp)}\n"
                 + $"Classificatie: {classificatie.Type}\n";
         if (templateKey != null)
             kop += $"Template: {templateKey}\n";
