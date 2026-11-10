@@ -20,6 +20,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ### Changed
 - Het reviewrondelimiet voor Codex en Claude Code (AGENTS.md en de automatische issue-beurt van de bot) is van twee naar drie rondes per PR gegaan; pas daarna beslist de eigenaar, zie issue #1835.
+- Fixture filtering and planner classification preparation now share one implementation across database tiers (#1816).
 
 ### Fixed
 - Team resolution now checks both own-team fields against source-owned fixture context; inconclusive or ambiguous evidence requires terminal manual review without automatic planning or sending (#1816).

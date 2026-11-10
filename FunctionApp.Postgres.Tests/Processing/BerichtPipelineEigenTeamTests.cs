@@ -9,11 +9,8 @@ using Xunit;
 namespace FunctionApp.Postgres.Tests.Processing;
 
 /// <summary>
-/// #1716 slice 4: het tier-omhulsel <see cref="BerichtPipeline.BepaalEigenTeamEnTegenstanderAsync"/> op de
-/// productietier (Postgres). De bepaling zelf staat in <c>Planner.Shared</c> (<c>EigenTeamBepaling</c>) en is daar getest
-/// (<c>Planner.Shared.Tests/TeamResolution/EigenTeamBepalingTests.cs</c>). Hier alleen: het omhulsel zet
-/// de uitkomst terug op de classificatie, en laat die ongewijzigd als er niets herkend is. Geen database
-/// nodig. Tegenhanger: <c>FunctionApp.Tests/Processing/BerichtPipelineEigenTeamTests.cs</c>.
+/// Verifies shared classification preparation and the tier pipeline's terminal manual-review boundary.
+/// These tests use synthetic resolvers and fixture sources without a database.
 /// </summary>
 public class BerichtPipelineEigenTeamTests
 {
@@ -24,7 +21,7 @@ public class BerichtPipelineEigenTeamTests
     {
         var classificatie = new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck, TeamNaam = "Tegenstander JO13-1", Tegenstander = "JO13-2" };
 
-        var herkend = await BerichtPipeline.BepaalEigenTeamEnTegenstanderAsync(
+        var herkend = await EigenTeamBepaling.BereidPlannerVoorAsync(
             classificatie, new VasteResolver("JO13-2"), Club, NullLogger.Instance, null);
 
         herkend.Should().BeTrue();
@@ -37,7 +34,7 @@ public class BerichtPipelineEigenTeamTests
     {
         var classificatie = new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck, TeamNaam = " 13-1 ", Tegenstander = " Onbekend " };
 
-        var herkend = await BerichtPipeline.BepaalEigenTeamEnTegenstanderAsync(
+        var herkend = await EigenTeamBepaling.BereidPlannerVoorAsync(
             classificatie, new VasteResolver("JO13-2"), Club, NullLogger.Instance, null);
 
         herkend.Should().BeFalse();

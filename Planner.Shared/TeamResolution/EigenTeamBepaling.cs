@@ -89,6 +89,21 @@ public static class EigenTeamBepaling
 
     private static bool ResolverFailed(string text, TeamResolutionResult? result) => text.Length > 0 && result is null;
 
+    /// <summary>Prepares the classification once, before either tier can dispatch planning or contact work.</summary>
+    public static async Task<bool> BereidPlannerVoorAsync(
+        BerichtClassificatie classificatie, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace,
+        ITeamFixtureContextRepository? fixtureContext = null)
+    {
+        ArgumentNullException.ThrowIfNull(resolver);
+        (classificatie.Datum, classificatie.GewensteDatum, classificatie.Datums) = ModelDatum.Grens(classificatie.Datum, classificatie.GewensteDatum, classificatie.Datums);
+        trace?.Classificatie(classificatie.Type.ToString(), classificatie.TeamNaam, classificatie.Tegenstander, classificatie.GetAlleDatums().Count, classificatie.AanvangsTijd);
+        var herkend = await BepaalEnPasToeAsync(classificatie, resolver, clubCode, log, trace, fixtureContext);
+        if (classificatie.TeamHandmatigBeoordelen) return false;
+        classificatie.TeamNaamOnbevestigd = !herkend;
+        if (herkend) classificatie.LeeftijdsCategorie = TeamNaamNormalisatie.VulLeeftijdsCategorieAan(classificatie.LeeftijdsCategorie, classificatie.TeamNaam, clubCode);
+        return herkend;
+    }
+
     public static async Task<bool> BepaalEnPasToeAsync(
         BerichtClassificatie classificatie, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace,
         ITeamFixtureContextRepository? fixtureContext = null)

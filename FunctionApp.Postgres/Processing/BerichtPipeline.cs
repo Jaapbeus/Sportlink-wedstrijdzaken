@@ -53,21 +53,14 @@ internal static partial class BerichtPipeline
         ITeamResolver teamResolver,
         string? clubCode = null, ClubAppSettingsSnapshot? clubSettings = null, TraceBuilder? trace = null, ITeamFixtureContextRepository? fixtureContext = null)
     {
-        ArgumentNullException.ThrowIfNull(teamResolver);
-        // #1730: de ene strikte grens voor alle modeldatumvelden, vóór trace, teamherkenning en verwerking.
-        (classificatie.Datum, classificatie.GewensteDatum, classificatie.Datums) = ModelDatum.Grens(classificatie.Datum, classificatie.GewensteDatum, classificatie.Datums);
-        trace?.Classificatie(classificatie.Type.ToString(), classificatie.TeamNaam, classificatie.Tegenstander, classificatie.GetAlleDatums().Count, classificatie.AanvangsTijd);
-
         var cc = ResolveHeuristicClubCode(clubCode);
-        var eigenTeamHerkend = await BepaalEigenTeamEnTegenstanderAsync(classificatie, teamResolver, cc, log, trace,
+        var eigenTeamHerkend = await EigenTeamBepaling.BereidPlannerVoorAsync(classificatie, teamResolver, cc, log, trace,
             fixtureContext ?? new FunctionApp.Postgres.TeamResolution.TeamFixtureContextRepository(PostgresDatabaseConfig.ConnectionString));
         if (classificatie.TeamHandmatigBeoordelen)
         {
             return TeamHandmatigeAfhandeling.PlannerResponse(classificatie);
         }
         var cs = PostgresDatabaseConfig.ConnectionString;
-        classificatie.TeamNaamOnbevestigd = !eigenTeamHerkend; // antwoorden noemen een niet-bevestigd team nooit bij naam
-        if (eigenTeamHerkend) classificatie.LeeftijdsCategorie = TeamNaamNormalisatie.VulLeeftijdsCategorieAan(classificatie.LeeftijdsCategorie, classificatie.TeamNaam, cc);
 
         switch (classificatie.Type)
         {
@@ -225,17 +218,4 @@ internal static partial class BerichtPipeline
     private static string ResolveHeuristicClubCode(string? clubCodeOverride)
         => !string.IsNullOrWhiteSpace(clubCodeOverride) ? clubCodeOverride : (PostgresAppSettings.GetSetting("clubCode") ?? "");
 
-    /// <summary>
-    /// Tier-omhulsel van <see cref="EigenTeamBepaling.BepaalEigenTeamEnTegenstanderAsync"/> (#1716 slice 4): de
-    /// bepaling zelf staat één keer in <c>Planner.Shared</c>; hier alleen het terugzetten van de canonieke
-    /// teamnaam en de (eventueel verwisselde) tegenstander op de classificatie. Niet herkend: classificatie
-    /// ongewijzigd.
-    /// </summary>
-    /// <returns>True als het eigen team herkend is; dan staat de canonieke naam in <c>TeamNaam</c>.</returns>
-    internal static async Task<bool> BepaalEigenTeamEnTegenstanderAsync(
-        BerichtClassificatie classificatie, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace,
-        ITeamFixtureContextRepository? fixtureContext = null)
-    {
-        return await EigenTeamBepaling.BepaalEnPasToeAsync(classificatie, resolver, clubCode, log, trace, fixtureContext);
-    }
 }

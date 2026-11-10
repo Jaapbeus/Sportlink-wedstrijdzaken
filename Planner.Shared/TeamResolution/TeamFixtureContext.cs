@@ -3,7 +3,14 @@ using System.Globalization;
 namespace Planner.Shared.TeamResolution;
 
 /// <summary>Source ownership is teamnaam, not mere participation as home/away team.</summary>
-public sealed record TeamFixture(string SourceKey, string OwnTeam, string Home, string Away, string? Time);
+public sealed record TeamFixture(string SourceKey, string OwnTeam, string Home, string Away, string? Time)
+{
+    /// <summary>Cancelled or incomplete source rows cannot establish fixture ownership.</summary>
+    public static TeamFixture? FromSourceRow(string? key, string? owner, string? home, string? away, string? time, string? status)
+        => key is null || owner is null || home is null || away is null
+            || string.Equals(status?.Trim(), "AFGELAST", StringComparison.OrdinalIgnoreCase)
+            ? null : new(key, owner, home, away, time);
+}
 public sealed record TeamFixtureSpelling(int TeamId, string Text);
 public sealed record TeamFixtureContext(IReadOnlyList<TeamFixture> Fixtures, IReadOnlyList<TeamFixtureSpelling> Spellings);
 
