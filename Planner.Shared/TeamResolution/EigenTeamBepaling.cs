@@ -44,7 +44,7 @@ public static class EigenTeamBepaling
     /// </summary>
     public static async Task<EigenTeamUitkomst> BepaalEigenTeamEnTegenstanderAsync(
         string? teamNaam, string? tegenstander, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace,
-        ITeamFixtureContextRepository? fixtures = null, string? datum = null, string? tijd = null, IReadOnlyList<string>? datums = null)
+        Func<ITeamFixtureContextRepository>? fixtureContextFactory = null, string? datum = null, string? tijd = null, IReadOnlyList<string>? datums = null)
     {
         if (string.IsNullOrWhiteSpace(clubCode))
         {
@@ -67,7 +67,7 @@ public static class EigenTeamBepaling
         if (teamUitkomst?.IsOpgelost == true && tegenstanderUitkomst?.IsOpgelost == true
             && teamUitkomst.TeamId != tegenstanderUitkomst.TeamId)
             return await KiesMetWedstrijdAsync(teamUitkomst, tegenstanderUitkomst, team, tegenstander,
-                fixtures, clubCode, datum, tijd, datums, log);
+                fixtureContextFactory, clubCode, datum, tijd, datums, log);
         if (teamUitkomst?.IsOpgelost == true)
         {
             LogUitkomst(log, teamUitkomst);
@@ -92,12 +92,12 @@ public static class EigenTeamBepaling
     /// <summary>Prepares the classification once, before either tier can dispatch planning or contact work.</summary>
     public static async Task<bool> BereidPlannerVoorAsync(
         BerichtClassificatie classificatie, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace,
-        ITeamFixtureContextRepository? fixtureContext = null)
+        Func<ITeamFixtureContextRepository>? fixtureContextFactory = null)
     {
         ArgumentNullException.ThrowIfNull(resolver);
         (classificatie.Datum, classificatie.GewensteDatum, classificatie.Datums) = ModelDatum.Grens(classificatie.Datum, classificatie.GewensteDatum, classificatie.Datums);
         trace?.Classificatie(classificatie.Type.ToString(), classificatie.TeamNaam, classificatie.Tegenstander, classificatie.GetAlleDatums().Count, classificatie.AanvangsTijd);
-        var herkend = await BepaalEnPasToeAsync(classificatie, resolver, clubCode, log, trace, fixtureContext);
+        var herkend = await BepaalEnPasToeAsync(classificatie, resolver, clubCode, log, trace, fixtureContextFactory);
         if (classificatie.TeamHandmatigBeoordelen) return false;
         classificatie.TeamNaamOnbevestigd = !herkend;
         if (herkend) classificatie.LeeftijdsCategorie = TeamNaamNormalisatie.VulLeeftijdsCategorieAan(classificatie.LeeftijdsCategorie, classificatie.TeamNaam, clubCode);
@@ -106,10 +106,10 @@ public static class EigenTeamBepaling
 
     public static async Task<bool> BepaalEnPasToeAsync(
         BerichtClassificatie classificatie, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace,
-        ITeamFixtureContextRepository? fixtureContext = null)
+        Func<ITeamFixtureContextRepository>? fixtureContextFactory = null)
     {
         var result = await BepaalEigenTeamEnTegenstanderAsync(classificatie.TeamNaam, classificatie.Tegenstander,
-            resolver, clubCode, log, trace, fixtureContext, classificatie.Datum, classificatie.AanvangsTijd, classificatie.Datums);
+            resolver, clubCode, log, trace, fixtureContextFactory, classificatie.Datum, classificatie.AanvangsTijd, classificatie.Datums);
         classificatie.TeamHandmatigBeoordelen = result.Besluit == EigenTeamBesluit.Handmatig;
         if (!result.Herkend) return false;
         classificatie.TeamNaam = result.TeamNaam;
@@ -119,14 +119,15 @@ public static class EigenTeamBepaling
 
     private static async Task<EigenTeamUitkomst> KiesMetWedstrijdAsync(
         TeamResolutionResult team, TeamResolutionResult opponent, string rawTeam, string? rawOpponent,
-        ITeamFixtureContextRepository? fixtures, string club, string? datum, string? tijd,
+        Func<ITeamFixtureContextRepository>? fixtureContextFactory, string club, string? datum, string? tijd,
         IReadOnlyList<string>? datums, ILogger log)
     {
-        if (fixtures is null || !TeamFixtureChoice.TryDate(datum, datums, tijd, out var date))
+        if (fixtureContextFactory is null || !TeamFixtureChoice.TryDate(datum, datums, tijd, out var date))
             return EigenTeamUitkomst.Handmatig;
         try
         {
-            var context = await fixtures.GetAsync(club, date, [team.TeamId!.Value, opponent.TeamId!.Value]);
+            // Configuration and repository creation belong inside the same fail-closed boundary as the query.
+            var context = await fixtureContextFactory().GetAsync(club, date, [team.TeamId!.Value, opponent.TeamId!.Value]);
             var selected = TeamFixtureChoice.Choose(context, team.TeamId.Value, opponent.TeamId.Value, tijd);
             if (selected is null) return EigenTeamUitkomst.Handmatig;
             return selected == opponent.TeamId

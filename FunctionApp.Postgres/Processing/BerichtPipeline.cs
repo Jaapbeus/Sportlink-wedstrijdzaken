@@ -51,35 +51,15 @@ internal static partial class BerichtPipeline
     internal static async Task<string> VerwerkMetPlannerAsync(
         BerichtClassificatie classificatie, InkomendBericht bericht, ILogger log,
         ITeamResolver teamResolver,
-        string? clubCode = null, ClubAppSettingsSnapshot? clubSettings = null, TraceBuilder? trace = null, ITeamFixtureContextRepository? fixtureContext = null)
+        string? clubCode = null, ClubAppSettingsSnapshot? clubSettings = null, TraceBuilder? trace = null, Func<ITeamFixtureContextRepository>? fixtureContextFactory = null)
     {
         var cc = ResolveHeuristicClubCode(clubCode);
         var eigenTeamHerkend = await EigenTeamBepaling.BereidPlannerVoorAsync(classificatie, teamResolver, cc, log, trace,
-            fixtureContext ?? new FunctionApp.Postgres.TeamResolution.TeamFixtureContextRepository(PostgresDatabaseConfig.ConnectionString));
-        if (classificatie.TeamHandmatigBeoordelen)
-        {
-            return TeamHandmatigeAfhandeling.PlannerResponse(classificatie);
-        }
-        var cs = PostgresDatabaseConfig.ConnectionString;
-
-        switch (classificatie.Type)
-        {
-            case VerzoekType.BeschikbaarheidCheck:
-                return await VerwerkBeschikbaarheidAsync(
-                    cs, classificatie, bericht, log, teamResolver, cc, eigenTeamHerkend, clubCode, trace);
-
-            case VerzoekType.HerplanVerzoek:
-                return await VerwerkHerplanAsync(cs, classificatie, bericht, log, cc, clubCode, clubSettings);
-
-            case VerzoekType.TeamContactOpvragen:
-                return await VerwerkTeamContactAsync(cs, classificatie, clubCode);
-
-            case VerzoekType.Bevestiging:
-                return JsonConvert.SerializeObject(new { status = "Bevestiging ontvangen", opmerking = "Bevestigingen vereisen handmatige afhandeling door de coördinator" });
-
-            default:
-                return JsonConvert.SerializeObject(new { status = "Niet verwerkt" });
-        }
+            fixtureContextFactory ?? (() => new FunctionApp.Postgres.TeamResolution.TeamFixtureContextRepository(PostgresDatabaseConfig.ConnectionString)));
+        return await BerichtPlannerAfhandeling.VerwerkAsync(classificatie,
+            () => VerwerkBeschikbaarheidAsync(classificatie, bericht, log, teamResolver, cc, eigenTeamHerkend, clubCode, trace),
+            () => VerwerkHerplanAsync(classificatie, bericht, log, cc, clubCode, clubSettings),
+            () => VerwerkTeamContactAsync(classificatie, clubCode));
     }
 
     /// <summary>

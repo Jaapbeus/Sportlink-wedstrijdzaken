@@ -85,7 +85,7 @@ public sealed class TeamFixtureContextTests
     {
         var repository = new Fixtures { Throw = true };
         var result = await EigenTeamBepaling.BepaalEigenTeamEnTegenstanderAsync("13-1", "MO13-1", new Resolver(),
-            "ALLSTARS", NullLogger.Instance, null, repository, "2026-11-10");
+            "ALLSTARS", NullLogger.Instance, null, () => repository, "2026-11-10");
         Assert.Equal(EigenTeamBesluit.Handmatig, result.Besluit);
         Assert.Equal(0, repository.Calls);
     }
@@ -98,7 +98,7 @@ public sealed class TeamFixtureContextTests
         var fixtures = new Fixtures { Throw = true };
         var classification = new BerichtClassificatie { TeamNaam = "JO13-1", Tegenstander = "MO13-1", Datum = "2026-11-10" };
         Assert.False(await EigenTeamBepaling.BepaalEnPasToeAsync(classification, new Resolver(failingText),
-            "ALLSTARS", NullLogger.Instance, null, fixtures));
+            "ALLSTARS", NullLogger.Instance, null, () => fixtures));
         Assert.True(classification.TeamHandmatigBeoordelen);
         Assert.Equal(0, fixtures.Calls);
         var graph = new FakeReplyGraph { ThrowOnSendReply = true };
@@ -112,7 +112,7 @@ public sealed class TeamFixtureContextTests
 
     private static Task<EigenTeamUitkomst> Determine(Fixtures repository, string? date, string? time)
         => EigenTeamBepaling.BepaalEigenTeamEnTegenstanderAsync("JO13-1", "MO13-1", new Resolver(),
-            "ALLSTARS", NullLogger.Instance, null, repository, date, time);
+            "ALLSTARS", NullLogger.Instance, null, () => repository, date, time);
 
     private sealed class Fixtures : ITeamFixtureContextRepository
     {

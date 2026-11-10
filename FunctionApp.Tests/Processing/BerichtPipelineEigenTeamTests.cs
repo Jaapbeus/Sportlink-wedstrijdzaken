@@ -54,7 +54,7 @@ public class BerichtPipelineEigenTeamTests
         var classification = new BerichtClassificatie { Type = type, TeamNaam = "JO13-1", Tegenstander = "MO13-1", Datum = validDate ? "2026-11-10" : null };
         var fixtures = new NoFixtures();
         var result = await BerichtPipeline.VerwerkMetPlannerAsync(classification, new InkomendBericht(),
-            NullLogger.Instance, new ConflictResolver(), Club, fixtureContext: fixtures);
+            NullLogger.Instance, new ConflictResolver(), Club, fixtureContextFactory: () => fixtures);
         Assert.Equal(validDate ? 1 : 0, fixtures.Calls);
         Assert.True(classification.TeamHandmatigBeoordelen);
         Assert.True(classification.TeamNaamOnbevestigd);
@@ -72,7 +72,7 @@ public class BerichtPipelineEigenTeamTests
     {
         var classification = new BerichtClassificatie { Type = type, TeamNaam = "JO13-1", Tegenstander = "MO13-1" };
         var result = await BerichtPipeline.VerwerkMetPlannerAsync(classification, new InkomendBericht(),
-            NullLogger.Instance, new ConflictResolver(true), Club, fixtureContext: new NoFixtures());
+            NullLogger.Instance, new ConflictResolver(true), Club, fixtureContextFactory: () => new NoFixtures());
         Assert.True(classification.TeamHandmatigBeoordelen);
         Assert.Contains("handmatigeTeamBeoordeling", result);
         Assert.False(classification.VoegKnvbPdfBijlageToe);
@@ -87,7 +87,7 @@ public class BerichtPipelineEigenTeamTests
         var classification = new BerichtClassificatie { Type = type, TeamNaam = "JO13-1", Tegenstander = "MO13-1",
             Datum = "2026-11-10", AanvangsTijd = "10:30" };
         var result = await BerichtPipeline.VerwerkMetPlannerAsync(classification, new InkomendBericht(),
-            NullLogger.Instance, new ConflictResolver(), Club, fixtureContext: new ConflictingFixtures());
+            NullLogger.Instance, new ConflictResolver(), Club, fixtureContextFactory: () => new ConflictingFixtures());
         Assert.True(classification.TeamHandmatigBeoordelen);
         Assert.Contains("handmatigeTeamBeoordeling", result);
         Assert.False(classification.VoegKnvbPdfBijlageToe);

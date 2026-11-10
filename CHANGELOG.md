@@ -25,6 +25,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ### Fixed
 - Team resolution now checks both own-team fields against source-owned fixture context; inconclusive or ambiguous evidence requires terminal manual review without automatic planning or sending (#1816).
 - Deleting a Sync alias persistently rejects the association across canonicalization; other alias origins remain physically deletable (#1816).
+- Query-free planner exits no longer initialize database configuration; fixture-repository creation and query failures both lead to manual review on both tiers (#1816).
 - De Postgres-instellingenloader laadt nu ook de vijf bestaande e-mailinstellingen voor de mailboxverwerking en wist ze bij herladen na `NULL`, gelijk aan het gedrag van de SQL Server-tier (#1798).
 - Teamherkenning respecteert expliciete JO/MO-prefixen, herkent JM-suffixen en samengestelde meisjesaanduidingen, houdt categorie-normalisatie idempotent en bewaart afgewezen Sync-aliassen bij volgende synchronisaties (#1816)
 
