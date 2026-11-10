@@ -3,6 +3,7 @@ using FunctionApp.Postgres.Planner.Repositories;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Npgsql;
+using Planner.Shared.Sync;
 
 namespace FunctionApp.Postgres.Sync;
 
@@ -48,6 +49,9 @@ internal static class PostgresSyncPipeline
         string clubCode, string connectionString,
         ILogger log, DateOnly? reconciliatieOndergrens = null)
     {
+        await using var stagingLease = await PostgresSyncStagingLease.TryAcquireAsync(connectionString)
+            ?? throw new SyncAlreadyRunningException();
+
         var partialFailure = false;
         var orchestrator = new PostgresMergeOrchestrator(connectionString);
 

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Planner.Shared.Sync;
 using static SportlinkFunction.SystemUtilities;
 
 namespace SportlinkFunction;
@@ -25,6 +26,9 @@ internal static class SportlinkSyncPipeline
         var clubCode = AppSettings.GetSetting("clubCode");
         if (string.IsNullOrWhiteSpace(clubCode))
             throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings — sync kan niet doorgaan zonder ClubCode.");
+
+        await using var stagingLease = await SqlServerSyncStagingLease.TryAcquireAsync()
+            ?? throw new SyncAlreadyRunningException();
 
         var teamsFailed = await FetchTeamsPhaseAsync(sportlinkApiUrl, sportlinkClientId, clubCode, log);
         partialFailure |= teamsFailed;

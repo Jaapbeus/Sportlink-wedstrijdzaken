@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.16.0.0
+  version: 3.16.0.1
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -3593,6 +3593,7 @@ paths:
 
         Mislukt één of meer deelstappen, dan volgt `207` in plaats van `200`: de geslaagde
         deelstappen blijven staan, maar `lastsynctimestamp` wordt bewust niet bijgewerkt (#1081).
+        Als een andere sync de gedeelde staging gebruikt, volgt `409` en wordt deze aanvraag niet uitgevoerd.
       security:
         - easyAuth: []
       parameters:
@@ -3642,6 +3643,20 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Een andere synchronisatie is actief; deze aanvraag is niet uitgevoerd
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, message]
+                properties:
+                  status:
+                    type: string
+                    example: already running
+                  message:
+                    type: string
+                    example: A synchronization is already running. Try again later.
         '503':
           $ref: '#/components/responses/ExternalIntegrationsDisabled'
         '500':
@@ -3663,7 +3678,8 @@ paths:
         - **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)
         - **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar
 
-        Deze tier kent de `207`-respons van de Postgres-tier niet: alleen `200` of `500`.
+        Deze tier kent de `207`-respons van de Postgres-tier niet. Als een andere sync de gedeelde
+        staging gebruikt, volgt `409` en wordt deze aanvraag niet uitgevoerd.
       security:
         - easyAuth: []
       parameters:
@@ -3692,6 +3708,20 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Een andere synchronisatie is actief; deze aanvraag is niet uitgevoerd
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, message]
+                properties:
+                  status:
+                    type: string
+                    example: already running
+                  message:
+                    type: string
+                    example: A synchronization is already running. Try again later.
         '503':
           $ref: '#/components/responses/ExternalIntegrationsDisabled'
         '500':

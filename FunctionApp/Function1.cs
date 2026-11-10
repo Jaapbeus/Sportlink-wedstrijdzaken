@@ -5,6 +5,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using SportlinkFunction.Admin;
 using SportlinkFunction.Infrastructure;
+using Planner.Shared.Sync;
 using static SportlinkFunction.SystemUtilities;
 
 namespace SportlinkFunction
@@ -46,6 +47,10 @@ namespace SportlinkFunction
                 int toWeekOffset = await SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
                 log.LogInformation("Sync range: weekOffset -1 to {ToWeekOffset} (end of season)", toWeekOffset);
                 await SportlinkSyncPipeline.RunSyncAsync(-1, toWeekOffset, sportlinkApiUrl, sportlinkClientId, log);
+            }
+            catch (SyncAlreadyRunningException)
+            {
+                log.LogInformation("Synchronization skipped because another run owns the shared staging area.");
             }
             catch (Exception ex)
             {
@@ -115,6 +120,11 @@ namespace SportlinkFunction
 
                         await SportlinkSyncPipeline.RunSyncAsync(fromWeekOffset, toWeekOffset, sportlinkApiUrl, sportlinkClientId, log);
                         return new OkObjectResult($"Sync completed. WeekOffset range: {fromWeekOffset} to {toWeekOffset}.");
+                    }
+                    catch (SyncAlreadyRunningException)
+                    {
+                        return new ObjectResult(new { status = "already running", message = SyncAlreadyRunningException.SafeMessage })
+                        { StatusCode = StatusCodes.Status409Conflict };
                     }
                     catch (Exception ex)
                     {

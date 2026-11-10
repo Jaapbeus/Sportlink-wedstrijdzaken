@@ -23,6 +23,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ### Fixed
 - De Postgres-instellingenloader laadt nu ook de vijf bestaande e-mailinstellingen voor de mailboxverwerking en wist ze bij herladen na `NULL`, gelijk aan het gedrag van de SQL Server-tier (#1798).
+- Synchronization uses a database-wide lease while shared staging is in use. Concurrent manual requests receive `409`, timer runs skip explicitly, and queued jobs fail without a second attempt. A SQL Server merge error now stops reconciliation and leaves the previous successful sync timestamp unchanged; both database tiers are covered (#1818).
 
 ## [3.16.0.0] — 2026-11-10
 
