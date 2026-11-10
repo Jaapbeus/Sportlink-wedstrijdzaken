@@ -41,7 +41,7 @@ public static class SyncJobProcessor
         }
 
         using var traceScope = log.BeginScope(new Dictionary<string, object> { ["SyncJobId"] = job.JobId });
-        if (!await Planner.Shared.Sync.SyncJobClaimCore.ExecuteIfClaimedAsync(
+        if (!await global::Planner.Shared.Sync.SyncJobClaimCore.ExecuteIfClaimedAsync(
                 job.JobId, SyncJobsRepository.TryClaimPendingAsync, () => ProcessClaimedPostgresJobAsync(job, log)))
         {
             log.LogInformation("SyncJobProcessor: Postgres-job {JobId} is not pending and will be skipped", job.JobId);
