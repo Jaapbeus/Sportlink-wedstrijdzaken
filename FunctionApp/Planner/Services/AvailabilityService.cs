@@ -53,7 +53,7 @@ internal static class AvailabilityService
                 // beheerder plant vaker een team in dat de teamlijst nog niet kent — maar het
                 // ontbreken van de controle staat wel in het antwoord.
                 response.Waarschuwingen.Add(
-                    $"'{request.TeamNaam}' staat niet in de teamlijst. Er is NIET gecontroleerd of dit " +
+                    $"'{AiVeldSanering.TeamNaamOfGeneriek(request.TeamNaam, false)}' staat niet in de teamlijst. Er is NIET gecontroleerd of dit " +
                     "team die dag al een wedstrijd heeft — controleer dat zelf.");
             }
             else if (teamWedstrijden.Wedstrijden.Count > 0)
@@ -66,7 +66,7 @@ internal static class AvailabilityService
                     EindTijd = conflict.EindTijd.ToString("HH:mm"),
                     VeldNaam = conflict.VeldNummer > 0 ? $"veld {conflict.VeldNummer}" : "onbekend"
                 };
-                response.Reden = $"{request.TeamNaam} heeft al een wedstrijd op {date.ToString("d MMMM", PlannerShared.NL)}: " +
+                response.Reden = $"{AiVeldSanering.TeamNaamOfGeneriek(request.TeamNaam, false)} heeft al een wedstrijd op {date.ToString("d MMMM", PlannerShared.NL)}: " +
                                  $"{conflict.Wedstrijd} om {conflict.AanvangsTijd:HH:mm} ({response.TeamConflict.VeldNaam}).";
                 return response;
             }

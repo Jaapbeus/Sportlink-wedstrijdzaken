@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Planner.Endpoints.Deel;
 using Planner.Shared;
+using Planner.Shared.Email;
 using Planner.Shared.Planning;
 
 namespace FunctionApp.Postgres.Planner;
@@ -137,6 +138,7 @@ public static class PlannerFunction
 
                 var response = await AvailabilityService.CheckAvailabilityAsync(
                     PostgresDatabaseConfig.ConnectionString, request, log, clubCode);
+                AiVeldSanering.SaneerWaarschuwingen(response.Waarschuwingen);
 
                 return new OkObjectResult(response);
             });

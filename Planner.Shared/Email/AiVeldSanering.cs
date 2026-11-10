@@ -15,6 +15,7 @@ public static partial class AiVeldSanering
     public const int MaxTeamNaamLengte = 40;
     public const int MaxTegenstanderLengte = 60;
     public const int MaxSamenvattingLengte = 500;
+    public const int MaxOnderwerpLengte = 200;
 
     /// <summary>Generieke tekst in een antwoord als de teamnaam niet getoond mag worden.</summary>
     public const string GeneriekTeam = "het opgegeven team";
@@ -94,6 +95,30 @@ public static partial class AiVeldSanering
     public static string TegenstanderOfGeneriek(string? waarde, string generiek = GeneriekeTegenstander)
         => TegenstanderWeergave(waarde) ?? (string.IsNullOrWhiteSpace(waarde) ? waarde ?? "" : generiek);
 
+    /// <summary>Een afzendernaam die veilig als aanhef of koptekst kan worden getoond; ongeldige namen vervallen.</summary>
+    public static string? AfzenderNaamWeergave(string? waarde) => Weergavenaam(waarde, 80);
+
+    /// <summary>Onderwerpregel voor een uitgaand bericht: één veilige, begrensde regel of een generieke fallback.</summary>
+    public static string? OnderwerpWeergave(string? waarde)
+    {
+        if (waarde is null || waarde.Any(char.IsControl)) return null;
+        var tekst = NormaliseerWitruimte(waarde);
+        return tekst.Length is > 0 and <= MaxOnderwerpLengte && !BevatLinkOfMarkup(tekst) ? tekst : null;
+    }
+
+    [GeneratedRegex(@"[^\s@]+@[^\s@]+\.[^\s@]+", RegexOptions.CultureInvariant)]
+    private static partial Regex EmailPatroon();
+
+    [GeneratedRegex(@"\+?\d(?:[ .\-]?\d){8,}", RegexOptions.CultureInvariant)]
+    private static partial Regex NummerPatroon();
+
+    /// <summary>Maskeert contactpatronen voordat externe berichttekst naar de AI-provider gaat.</summary>
+    public static string MaskeerContactgegevens(string? tekst)
+    {
+        if (string.IsNullOrEmpty(tekst)) return tekst ?? "";
+        return NummerPatroon().Replace(EmailPatroon().Replace(tekst, "[e-mail]"), "[nummer]");
+    }
+
     /// <summary>Korte samenvatting uit het model: één regel, begrensd, zonder aanhalingstekens die een prompt kunnen doorbreken.</summary>
     public static string Samenvatting(string? waarde)
         => Trace.TraceBuilder.Saneer(waarde, MaxSamenvattingLengte).Replace('"', '\'');
@@ -103,6 +128,42 @@ public static partial class AiVeldSanering
     {
         var schoon = Samenvatting(waarde);
         return schoon.Length == 0 ? null : schoon;
+    }
+
+    public const int MaxWaarschuwingLengte = 300;
+
+    /// <summary>
+    /// Waarschuwingstekst voor in een antwoord (#1809): één regel, begrensd, zonder markup, en zonder woorden die een
+    /// link of e-mailadres vormen. Bedoeld als laatste vangnet op de uiteindelijke uitvoer, ook als een deel van de
+    /// tekst uit modeluitvoer komt. Anders dan de naamvelden wordt er niet geweigerd maar gezuiverd, zodat een
+    /// legitieme planningswaarschuwing niet verdwijnt.
+    /// </summary>
+    public static string Waarschuwing(string? waarde)
+    {
+        var tekst = NormaliseerWitruimte(waarde);
+        if (tekst.Length == 0) return "";
+
+        var woorden = tekst
+            .Replace('<', ' ').Replace('>', ' ').Replace('`', ' ').Replace('{', ' ').Replace('}', ' ')
+            .Replace('[', ' ').Replace(']', ' ')
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => !(w.Contains("://", StringComparison.Ordinal)
+                          || w.StartsWith("www", StringComparison.OrdinalIgnoreCase)
+                          || w.Contains('@')));
+        var schoon = string.Join(' ', woorden);
+        return schoon.Length > MaxWaarschuwingLengte ? schoon[..MaxWaarschuwingLengte].TrimEnd() + "…" : schoon;
+    }
+
+    /// <summary>De gezuiverde waarschuwingen samengevoegd tot één tekst; lege waarschuwingen vallen weg.</summary>
+    public static string WaarschuwingenSamen(IEnumerable<string>? waarschuwingen)
+        => string.Join(" ", (waarschuwingen ?? []).Select(Waarschuwing).Where(w => w.Length > 0));
+
+    /// <summary>Veiligt waarschuwingen vóór directe API-serialisatie, zodat ook UI/API-uitvoer één regel blijft.</summary>
+    public static void SaneerWaarschuwingen(IList<string> waarschuwingen)
+    {
+        var schoon = waarschuwingen.Select(Waarschuwing).Where(w => w.Length > 0).ToArray();
+        waarschuwingen.Clear();
+        foreach (var waarschuwing in schoon) waarschuwingen.Add(waarschuwing);
     }
 
     private static string? Weergavenaam(string? waarde, int maxLengte)

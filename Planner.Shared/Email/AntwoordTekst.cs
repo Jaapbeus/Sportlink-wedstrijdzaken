@@ -22,9 +22,14 @@ public static class AntwoordTekst
 
     /// <summary>Eerste woord van een volledige naam, of leeg.</summary>
     public static string Voornaam(string? volledigeNaam)
-        => string.IsNullOrWhiteSpace(volledigeNaam)
-            ? ""
-            : volledigeNaam.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
+    {
+        var naam = AiVeldSanering.AfzenderNaamWeergave(volledigeNaam);
+        return naam?.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+    }
+
+    /// <summary>Veilig onderwerp voor uitgaande reply en reviewkop; ongeldige invoer wordt generiek.</summary>
+    public static string Onderwerp(string? onderwerp)
+        => AiVeldSanering.OnderwerpWeergave(onderwerp) ?? "bericht";
 
     /// <summary>Datum als "zaterdag 10 oktober 2026"; een niet-leesbare tekst komt nooit letterlijk terug (#1730).</summary>
     public static string Datum(string? datumString)

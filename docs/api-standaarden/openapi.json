@@ -436,7 +436,8 @@
           },
           "reden": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "description": "Reason when unavailable. A team name that fails the display checks is replaced by\n`het opgegeven team` in the team-conflict explanation (#1809).\n"
           },
           "gecontroleerdDagdeel": {
             "type": "string",
@@ -463,8 +464,10 @@
           },
           "waarschuwingen": {
             "type": "array",
+            "description": "Planning warnings normalized before serialization on both tiers (#1809).\nControl characters and whitespace become spaces. The delimiters <, >, backticks,\n{, }, [ and ] become spaces; words containing :// or @, or starting with www\n(case-insensitive), are removed. Each result is truncated after 300 characters\nwhen necessary and followed by an ellipsis (at most 301 output characters).\nEmpty results are omitted; remaining order is preserved. These rules apply only\nto this warning array. An unrecognized team name that fails the display checks\nis shown as `het opgegeven team` in its warning.\n",
             "items": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 301
             }
           }
         }
@@ -4729,7 +4732,7 @@
         ],
         "operationId": "checkAvailability",
         "summary": "Veldbeschikbaarheid controleren",
-        "description": "Controleer of een veld beschikbaar is voor een (oefen)wedstrijd.\n\nDrie modi:\n1. **Slot toewijzen** — `leeftijdsCategorie` opgegeven: zoekt beste beschikbare slot\n2. **Alternatieven** — gevraagd tijdstip bezet: geeft tot 3 alternatieven terug\n3. **Vrije vensters** — geen `leeftijdsCategorie`: geeft alle open tijdvensters per veld\n\nControleert ook teamconflicten als `teamNaam` opgegeven is.\n",
+        "description": "Controleer of een veld beschikbaar is voor een (oefen)wedstrijd.\n\nDrie modi:\n1. **Slot toewijzen** — `leeftijdsCategorie` opgegeven: zoekt beste beschikbare slot\n2. **Alternatieven** — gevraagd tijdstip bezet: geeft tot 3 alternatieven terug\n3. **Vrije vensters** — geen `leeftijdsCategorie`: geeft alle open tijdvensters per veld\n\nControleert ook teamconflicten als `teamNaam` opgegeven is.\nWarning output is normalized and bounded before serialization on both tiers; see\n`CheckAvailabilityResponse.waarschuwingen` for the exact rules (#1809).\n",
         "security": [
           {
             "easyAuth": []

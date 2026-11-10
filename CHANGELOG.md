@@ -23,6 +23,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Het reviewrondelimiet voor Codex en Claude Code (AGENTS.md en de automatische issue-beurt van de bot) is van twee naar drie rondes per PR gegaan; pas daarna beslist de eigenaar, zie issue #1835.
 - De SQL Server-planner geeft voor de niet-opgeslagen optionele eerste-elftalnaam nu expliciet `null` door, gelijk aan Postgres; de settings-loader guard hoeft deze ontbrekende sleutel niet meer uit te zonderen (#1821).
 
+### Security
+- The availability API contract now documents normalized, bounded warning output and the team-name display fallback on both database tiers (#1809).
+- E-mailverwerking verhard vóór review mode uit gaat (#1809, beide tiers): alleen exact `false` (hoofdletterongevoelig) schakelt review uit; afzendercontrole is syntactisch en blokkeert ongeschikte adressen voor automatisch antwoorden. Onderwerp-, naam- en waarschuwingsuitvoer wordt begrensd en gesaneerd; de provider ontvangt geen afzenderidentiteit en contactpatronen in onderwerp, berichttekst en correctiecontext worden gemaskeerd. Dit beperkt geen andere persoonsgegevens en vervangt de open verwerkingsafspraken (#1736) niet; #43 blijft afhankelijk van eigenaaracceptatie.
+
 ### Fixed
 - Settings restart decisions now have paired SQL Server and Postgres persistence regression tests for unchanged and changed schedules alongside another saved field (#1819).
 - De Postgres-instellingenloader laadt nu ook de vijf bestaande e-mailinstellingen voor de mailboxverwerking en wist ze bij herladen na `NULL`, gelijk aan het gedrag van de SQL Server-tier (#1798).

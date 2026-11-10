@@ -238,8 +238,13 @@ public static class EmailReplyAfhandeling
         var (onderwerp, antwoordBody) = await bouwTemplateAntwoordAsync();
 
         // Zekerheidspoort (#1568 deel D): een onzeker antwoord gaat niet naar de afzender maar ter review.
+        // Afzenderpoort (#1809): een syntactisch ongeschikt of systeemadres krijgt nooit automatisch antwoord.
+        var afzenderGeschikt = AfzenderControle.IsGeschikt(email.Afzender);
+        if (!afzenderGeschikt)
+            log.LogWarning("Email {Id}: afzenderadres niet geschikt voor automatisch antwoord — ter beoordeling", verwerkingId);
+
         var poort = ZekerheidsPoort.Bepaal(zekerheidspoortActief, trace);
-        if (poort.Tegenhouden)
+        if (poort.Tegenhouden || !afzenderGeschikt)
             return await HandelReviewModeAsync(
                 verwerkingId, email, classificatie, plannerResponseJson, reviewRecipient,
                 graphService, persistentie, () => Task.FromResult((onderwerp, antwoordBody)), sanitizeFoutMelding, log, tegengehouden: true);
