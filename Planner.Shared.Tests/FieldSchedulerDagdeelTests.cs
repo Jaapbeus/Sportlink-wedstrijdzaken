@@ -95,6 +95,32 @@ public class FieldSchedulerDagdeelTests
     }
 
     [Fact]
+    public void FindAllSlots_LaatVenster_WikkeltNietOverMiddernacht()
+    {
+        var slots = PlannerShared.FindAllSlots(
+            [new VeldBeschikbaarheidInfo
+            {
+                VeldNummer = 1,
+                BeschikbaarVanaf = new TimeOnly(20, 0),
+                BeschikbaarTot = new TimeOnly(23, 59)
+            }],
+            [],
+            VeldInfos(),
+            GeenTeamRegels,
+            [],
+            1.00m,
+            90,
+            new TimeOnly(20, 0),
+            new TimeOnly(23, 59),
+            sunset: null,
+            eindBinnenDagdeel: true);
+
+        slots.Should().NotBeEmpty();
+        slots.Should().OnlyContain(s => s.AanvangsTijd >= new TimeOnly(20, 0)
+            && s.EindTijd <= new TimeOnly(23, 59));
+    }
+
+    [Fact]
     public void FindAllSlots_OnbeschikbareVoorkeurstijd_GeeftAlternatievenBinnenHetDagdeel()
     {
         // Het veld is van 09:00 tot 10:30 bezet; alternatieven blijven toch volledig binnen de ochtend.
