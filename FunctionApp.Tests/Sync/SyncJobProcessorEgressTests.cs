@@ -7,9 +7,9 @@ namespace FunctionApp.Tests.Sync;
 
 /// <summary>
 /// #1676: de queue-verwerking (SQL Server-tier) voert buiten productie geen sync uit. Getest wordt
-/// de beslissing die <see cref="SyncJobProcessor.Run"/> als eerste neemt na het lezen van het
-/// bericht: bij <c>true</c> keert Run terug vóór MarkRunning en de sync-aanroep. Dat Run de helper
-/// vóór MarkRunningAsync aanroept, bewaakt scripts/ci/check-egressguard-dekking.sh in de brontekst.
+/// de beslissing die <see cref="SyncJobProcessor.Run"/> neemt nadat de job atomair is geclaimd:
+/// bij <c>true</c> keert Run terug vóór de sync-aanroep. De guard bewaakt dat de helper vóór de
+/// sync-fase wordt aangeroepen.
 /// </summary>
 public class SyncJobProcessorEgressTests
 {

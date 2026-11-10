@@ -811,7 +811,7 @@ jobs:
           sql_test_connection_string="Server=localhost,1433;Database=SportlinkFresh;User Id=sa;Password=${SA_PW};TrustServerCertificate=True;Pooling=false"
           SQLSERVER_TEST_CONNECTION_STRING="$sql_test_connection_string" SqlConnectionString="$sql_test_connection_string" \
             dotnet test FunctionApp.Tests/FunctionApp.Tests.csproj --configuration Release --verbosity normal \
-              --filter "FullyQualifiedName~SqlServerSeizoenIntegrationTests|FullyQualifiedName~SqlServerHisRetentieIntegrationTests|FullyQualifiedName~SqlFeedbackStoreIntegrationTests|FullyQualifiedName~SqlTeambegeleidingInzageStoreIntegrationTests|FullyQualifiedName~SqlServerSyncStagingLeaseIntegrationTests"
+              --filter "FullyQualifiedName~SqlServerSeizoenIntegrationTests|FullyQualifiedName~SqlServerHisRetentieIntegrationTests|FullyQualifiedName~SqlFeedbackStoreIntegrationTests|FullyQualifiedName~SqlTeambegeleidingInzageStoreIntegrationTests|FullyQualifiedName~SqlServerSyncStagingLeaseIntegrationTests|FullyQualifiedName~SqlServerSyncJobsRepositoryIntegrationTests"
 
       - name: Container opruimen
         if: always()
