@@ -112,7 +112,7 @@ public static partial class BerichtAntwoordGenerator
                    + $"Volgens onze richtlijn moet een herplanverzoek minimaal {deadlineDagen} dagen voor de wedstrijd "
                    + $"worden ingediend. Omdat de wedstrijd al binnen die termijn valt, kunnen we het verzoek niet meer "
                    + $"automatisch verwerken.\n\n"
-                   + $"Neem voor uitzonderingen rechtstreeks contact op met de coördinator.";
+                   + $"De e-mail zal door de coördinator beoordeeld moeten worden.";
         }
 
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email, instellingen);
