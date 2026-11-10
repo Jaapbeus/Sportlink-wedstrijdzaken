@@ -209,7 +209,7 @@ public class EmailReplyAfhandelingTests
             classificatie: new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek },
             plannerResponseJson: "{}",
             reviewMode: false,
-            reviewRecipient: null,
+            reviewRecipient: "trainer@voorbeeld.nl",
             graphService: graph,
             persistentie: persistence,
             bouwTemplateAntwoordAsync: () => Task.FromResult(("antwoord-subject", "antwoord-body")),
@@ -218,7 +218,9 @@ public class EmailReplyAfhandelingTests
             log: NullLogger.Instance);
 
         result.Should().Be(ReplyVerwerkingUitkomst.AfgerondZonderAntwoord);
-        graph.SentReplies.Should().BeEmpty();
+        var review = graph.SentReplies.Should().ContainSingle().Which;
+        review.To.Should().Be("trainer@voorbeeld.nl");
+        review.Body.Should().Contain(AfzenderControle.Reden).And.NotContain("niet zeker genoeg");
         persistence.VoorgesteldeAntwoorden.Should().ContainSingle(v => v.VerwerkingId == 101);
     }
 

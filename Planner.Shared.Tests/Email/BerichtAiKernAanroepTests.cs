@@ -38,6 +38,55 @@ public class BerichtAiKernAanroepTests
     private static BerichtAiKern Maak(VasteClient client, Func<string>? club = null)
         => new(NullLogger.Instance, client, club ?? (() => "Voorbeeld FC"), () => Nu);
 
+    public static IEnumerable<object[]> Contactnotaties()
+    {
+        var groep = new string('0', 3);
+        var vier = new string('0', 4);
+        var twee = new string('0', 2);
+        yield return ["(" + groep + ") " + groep + " " + vier];
+        yield return [twee + "--" + vier + ".." + vier];
+        yield return [twee + "\u00a0" + vier + "\u00a0" + vier];
+        yield return ["+" + twee + " (" + groep + ") " + groep + " " + vier];
+    }
+
+    [Theory]
+    [MemberData(nameof(Contactnotaties))]
+    public async Task Contactnotaties_InAlleProvidercontexten_Gemaskeerd(string nummer)
+    {
+        var client = new VasteClient("{}");
+        var kern = Maak(client);
+        var voorbeelden = new[] { new ClassificatieCorrectieVoorbeeld("buiten_scope", "herplan_verzoek", nummer, nummer) };
+        await kern.ClassificeerBerichtAsync(nummer, nummer, "trainer@voorbeeld.nl", voorbeelden);
+        await kern.DetecteerCorrectieAsync(nummer, nummer, "herplan_verzoek", nummer);
+        client.Berichten.Should().HaveCount(4);
+        foreach (var bericht in client.Berichten)
+            bericht.Text.Should().NotContain(nummer);
+        client.Berichten[0].Text.Should().Contain("[nummer]"); // few-shot
+        client.Berichten[1].Text.Should().Contain("[nummer]"); // classificatie
+        client.Berichten[3].Text.Should().Contain("[nummer]"); // correctie
+    }
+
+    [Theory]
+    [InlineData("14-11-26 10.30 uur")]
+    [InlineData("10-10-2026 11.30")]
+    [InlineData("2026-11-14 10:30")]
+    [InlineData("01/01/27 09:30")]
+    [InlineData("9.00 10.30 11.00")]
+    [InlineData("09.00 10.30 11.00")]
+    public async Task Planninggegevens_InAlleProvidercontexten_BlijvenBehouden(string planning)
+    {
+        var client = new VasteClient("{}");
+        var kern = Maak(client);
+        var nummer = new string('0', 9); // synthetisch wedstrijdnummer, geen contactnummer
+        var invoer = planning + " wedstrijd " + nummer;
+        await kern.ClassificeerBerichtAsync(invoer, invoer, "trainer@voorbeeld.nl",
+            [new ClassificatieCorrectieVoorbeeld("buiten_scope", "herplan_verzoek", invoer, invoer)]);
+        await kern.DetecteerCorrectieAsync(invoer, invoer, "herplan_verzoek", invoer);
+        client.Berichten[0].Text.Should().Contain(invoer);
+        client.Berichten[1].Text.Should().Contain(invoer);
+        client.Berichten[3].Text.Should().Contain(invoer);
+    }
+
     [Fact]
     public async Task Classificeer_SysteemPromptBegintMetDatumregelEnNoemtClubnaam()
     {

@@ -247,7 +247,7 @@ lege, `0`-waarde of onbekende waarde betekent dus review-mode aan, zodat een ver
 nooit onbedoeld tot automatische antwoorden leidt. Daarnaast gaat een automatisch antwoord alleen
 naar één syntactisch geldig afzenderadres dat niet als systeemadres is herkend (`AfzenderControle`);
 dit bewijst geen authenticiteit van de afzender. Afzenderidentiteit wordt niet meegestuurd naar de
-AI-provider. E-mailadressen en telefoonnummers in onderwerp en berichttekst worden gemaskeerd;
+AI-provider. Herkenbare e-mail- en telefoonpatronen in onderwerp en berichttekst worden gemaskeerd;
 persoonsnamen, clubcontext en andere inhoud kunnen nog aanwezig zijn. Dit vervangt #1736 niet en #43
 blijft geblokkeerd tot eigenaaracceptatie.
 
@@ -1387,10 +1387,10 @@ plannergegevens en gesaneerde modelvelden (`AiVeldSanering`).
 | Gegeven | Aanroepen | Persoonsgegeven | Bewerking vóór verzending |
 |---|---|---|---|
 | E-mailadres van de afzender (het `From`-adres; niet de weergavenaam) | — | Ja | Niet opgenomen in de providerprompt |
-| Onderwerp | 1, 2, 3, 4 | Kan (vrije tekst) | E-mailadressen en nummerreeksen gemaskeerd; markernaam geneutraliseerd |
-| Berichttekst | 1, 2, 3, 4 | Kan (vrije tekst: namen, contactgegevens, toevallig een gezondheidsgegeven, mogelijk over minderjarigen) | Mailboxberichten (1, 2, 3): HTML verwijderd (`EmailSanitizer.StripHtml`, in `EmailGraphService`). Alle aanroepen: begrensd op `BerichtBodyBegrenzing.MaxBodyTekens` tekens, e-mailadressen en nummerreeksen gemaskeerd en markernaam geneutraliseerd. Tester (4): de ingevoerde tekst gaat zonder HTML-verwijdering naar de classificatie |
+| Onderwerp | 1, 2, 3, 4 | Kan (vrije tekst) | Herkenbare e-mail- en telefoonpatronen gemaskeerd; markernaam geneutraliseerd |
+| Berichttekst | 1, 2, 3, 4 | Kan (vrije tekst: namen, contactgegevens, toevallig een gezondheidsgegeven, mogelijk over minderjarigen) | Mailboxberichten (1, 2, 3): HTML verwijderd (`EmailSanitizer.StripHtml`, in `EmailGraphService`). Alle aanroepen: begrensd op `BerichtBodyBegrenzing.MaxBodyTekens` tekens, herkenbare e-mail- en telefoonpatronen gemaskeerd en markernaam geneutraliseerd. Tester (4): de ingevoerde tekst gaat zonder HTML-verwijdering naar de classificatie |
 | Clubnaam (instelling `clubName`) en datum van vandaag, in de system prompt | 1, 2, 4 | Nee | — |
-| Leermomenten: verzoektypes en samenvattingen | 2, 4 | Kan (samenvatting) | Samenvatting door `AiVeldSanering.Samenvatting` (`TraceBuilder.Saneer`: e-mailadressen en nummerreeksen gemaskeerd, begrensd) |
+| Leermomenten: verzoektypes en samenvattingen | 2, 4 | Kan (samenvatting) | Opslag blijft strikt gesaneerd met `AiVeldSanering.Samenvatting`. De twee invoersamenvattingen van `FewShotRegel` gebruiken `ProviderSamenvatting`: herkenbare contactpatronen gemaskeerd, witruimte/aanhalingstekens genormaliseerd en 500 tekens per samenvatting. Numerieke datums, tijden en wedstrijdnummers blijven in deze providerinvoer behouden. Reeds gemaskeerde opgeslagen gegevens kunnen niet worden hersteld |
 | Oorspronkelijk verzoektype en samenvatting van het beantwoorde bericht | 3 | Kan (samenvatting) | Samenvatting is bij opslag al door `AiVeldSanering.Samenvatting` gegaan |
 
 Toelichting bij de bewerkingen:
