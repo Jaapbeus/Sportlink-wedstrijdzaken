@@ -225,41 +225,6 @@ namespace SportlinkFunction.Planner
                 });
         }
 
-        [Function("Health")]
-        public static async Task<IActionResult> Health(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "health")] HttpRequest req,
-            FunctionContext context)
-        {
-            var version = typeof(PlannerFunction).Assembly.GetName().Version?.ToString(4) ?? "?";
-            var (dbStatus, serverVersion) = await GetDatabaseStatusAsync();
-            var settingsLoaded = !SystemUtilities.AppSettings.LastLoadFailed;
-            var status = dbStatus == "online" && settingsLoaded ? "ok" : "degraded";
-            var body = new
-            {
-                status,
-                version,
-                timestamp = DateTime.UtcNow,
-                database = dbStatus,
-                // #859: apart van 'database', want een geslaagde verbinding zegt niets over of de
-                // instellingencache ook echt gevuld is (#767 liet precies dat stilzwijgend misgaan).
-                // Bewust geen foutdetails hier — dit endpoint is anoniem toegankelijk; de volledige
-                // exceptie staat al in het functielog.
-                settingsLoaded,
-                // #863: tier/provider komen uit build-time assembly-metadata (nooit een runtime-gok),
-                // dus altijd gevuld — ook als de database onbereikbaar is. serverVersion komt
-                // aantoonbaar uit de database zelf en is daarom null zolang die niet bereikbaar is.
-                tier = GetAssemblyMetadata("DatabaseTier") ?? "onbekend",
-                provider = GetAssemblyMetadata("DatabaseProvider") ?? "onbekend",
-                serverVersion
-            };
-            // #859: "niet geconfigureerd" (geen bruikbare connectiereeks) is geen 200 OK — een
-            // draaiende maar onbereikbare database (paused/timeout/unavailable) blijft wel 200 met
-            // status "degraded", want dat is een tijdelijke toestand waar Azure zelf uit herstelt.
-            return dbStatus == "unconfigured"
-                ? new ObjectResult(body) { StatusCode = StatusCodes.Status503ServiceUnavailable }
-                : new OkObjectResult(body);
-        }
-
         // internal zodat FunctionApp.Tests dit rechtstreeks kan afdekken (InternalsVisibleTo, #476)
         // zonder Health() zelf te hoeven aanroepen — dat vereist een HttpRequest/FunctionContext die
         // deze codebase bewust niet namaakt (zie Function1.cs-tests: de logica wordt getest, niet de

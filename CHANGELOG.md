@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Breaking
+- `/api/health` exposeert niet langer database-, schema-, migratie-, TLS-, sync- of tierdiagnostiek. Deploy- en readinessvelden zijn geaggregeerd; details zijn beschikbaar via admin-only `GET /api/beheer/health` (#1811). Dit is de API 4.0.0.0-contractgrens.
+
 ### Changed
 - Het reviewrondelimiet voor Codex en Claude Code (AGENTS.md en de automatische issue-beurt van de bot) is van twee naar drie rondes per PR gegaan; pas daarna beslist de eigenaar, zie issue #1835.
 

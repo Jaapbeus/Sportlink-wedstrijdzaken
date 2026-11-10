@@ -9,7 +9,7 @@ info:
     Eén beveiligingsschema:
 
     - **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist
-      voor alle endpoints behalve `/health`. De rolcontrole gebeurt server-side, met vier niveaus:
+      voor alle endpoints behalve `/health`; gedetailleerde healthinformatie is admin-only. De rolcontrole gebeurt server-side, met vier niveaus:
       `admin` (`EasyAuthHelper.RequireAdmin`, via de wrappers `AdminEndpoint.ExecuteAsync` /
       `ExecuteZonderDatabaseAsync`) voor de meeste `/beheer/`-, `/planner/`- en
       `/test/`-endpoints (waaronder het feedbackoverzicht `/beheer/feedback`) — sinds #1350 óók voor `/postgres/sync-matches` en `/sync-matches`;
@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.16.0.4
+  version: 4.0.0.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -173,6 +173,40 @@ components:
 
     HealthStatus:
       type: object
+      required: [status, version, database, settingsReady, schemaWarningPresent, tlsWarningPresent]
+      properties:
+        status:
+          type: string
+          description: Existing health status. A stale Postgres sync can produce degraded without making deployment fail.
+          example: "ok"
+        version:
+          type: string
+          example: "4.0.0.0"
+        database:
+          type: string
+          description: Database connection status. "unconfigured" returns HTTP 503.
+          enum: [online, paused, timeout, unavailable, unconfigured]
+          example: "online"
+        settingsReady:
+          type: boolean
+          description: Whether the settings cache loaded successfully.
+          example: true
+        migrationsCurrent:
+          type: boolean
+          nullable: true
+          description: Postgres migration state, or null when unavailable or not supported by the SQL Server health probe.
+          example: true
+        schemaWarningPresent:
+          type: boolean
+          description: Whether a schema warning exists; details are admin-only.
+          example: false
+        tlsWarningPresent:
+          type: boolean
+          description: Whether a TLS warning exists; details are admin-only.
+          example: false
+
+    AdminHealthStatus:
+      type: object
       properties:
         status:
           type: string
@@ -180,7 +214,7 @@ components:
           example: "ok"
         version:
           type: string
-          example: "2.2.0.0"
+          example: "4.0.0.0"
         timestamp:
           type: string
           format: date-time
@@ -3564,16 +3598,12 @@ paths:
       operationId: getHealth
       summary: Status en versie van de API
       description: |
-        Geeft de actuele status en assemblyversie terug. Geen authenticatie vereist.
+        Geeft alleen de geaggregeerde status en assemblyversie terug; geen authenticatie vereist.
+        Database-, schema-, migratie-, TLS- en sync-details staan op de admin-only
+        `/beheer/health`-route. De per-tier probe is maximaal vijf seconden gecachet.
 
-        `tier` en `provider` komen uit build-time metadata van het artefact (niet uit een
-        runtime-gok) en zijn daarom altijd gevuld, ook als `database` niet "online" is.
-        `serverVersion` komt aantoonbaar uit de database zelf en is alleen gevuld wanneer
-        `database` "online" is (#863).
-
-        `database: "unconfigured"` (geen bruikbare connectiereeks) geeft 503, niet 200 (#859).
-        Elke andere waarde (ook de tijdelijke toestanden paused/timeout/unavailable) blijft 200
-        met `status: "degraded"`.
+        `database: "unconfigured"` geeft 503; elke andere database-status blijft 200.
+        Een stale sync kan `status: "degraded"` geven maar blijft een deploymentwaarschuwing, geen fout.
       security: []
       responses:
         '200':
@@ -3588,6 +3618,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthStatus'
+
+  /beheer/health:
+    get:
+      tags: [core]
+      operationId: getAdminHealth
+      summary: Gedetailleerde healthstatus voor beheerders
+      description: |
+        Admin-only diagnoseweergave via de bestaande server-side admin-rolpoort.
+        Bevat de tier-, server-, synchronisatie-, TLS-, schema- en migratiedetails die
+        bewust niet in de anonieme `/health`-respons staan.
+      responses:
+        '200':
+          description: Healthdiagnose
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminHealthStatus'
+        '503':
+          description: Database niet geconfigureerd
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminHealthStatus'
 
   /postgres/sync-matches:
     get:

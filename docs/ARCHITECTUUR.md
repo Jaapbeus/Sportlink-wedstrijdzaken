@@ -845,8 +845,8 @@ identificeert is een Secret.
 
 **GitHub Secrets:** `AZURE_CREDENTIALS`, `AZURE_FUNCTION_KEY`, `AZURE_STATIC_WEB_APPS_API_TOKEN`
 (beide tiers); `SQL_CONNECTION_STRING` (alleen SqlServer); `POSTGRES_CONNECTION_STRING` (alleen
-Postgres — norm `sslmode=verify-full` mét CA-certificaat; ontbreekt dat, dan meldt `/api/health` een
-`tlsWarning`).
+Postgres — norm `sslmode=verify-full` mét CA-certificaat; ontbreekt dat, dan geeft `/api/health`
+alleen `tlsWarningPresent=true` terug en staat de toelichting achter admin-only `/api/beheer/health`).
 
 De **Sportlink-logincredentials en het afgeleide refresh-token** (epic #986, herzien in #1411) staan
 versleuteld (AES-256-GCM) in `public.sportlinkautologin` / `dbo.SportlinkAutoLogin`. De Base64-hostsleutel van

@@ -132,6 +132,10 @@ jobs:
       # #1455: de what-if-poort van infrastructure.yml, getest met geanonimiseerde fixtures.
       - name: What-if-poort app settings — zelf getest
         run: bash scripts/ci/check-whatif-appsettings.test.sh
+      # Health deployment checks retain the prior fatal/warning split while the anonymous payload
+      # contains only aggregates.
+      - name: Health deploy predicates — self test
+        run: bash scripts/dev/test-health-deploy-predicate.sh
       # #1266: de drie Postgres-coverage-guards hieronder kijken maar EEN kant op — staat elk SQL
       # Server-object ook in Postgres. Ze zijn geschreven toen SQL Server de leidende tier was.
       # Bij de cutover draaiden de rollen om, maar de richting van de guards niet; sindsdien groeide

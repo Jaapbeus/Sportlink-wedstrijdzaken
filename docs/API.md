@@ -58,7 +58,7 @@ Drie beveiligingsniveaus:
 
 | Niveau | Sleutel | Wie | Endpoints |
 |--------|---------|-----|-----------|
-| **Anoniem** | geen | iedereen | `GET /api/health` |
+| **Anoniem** | geen | iedereen | `GET /api/health` — geaggregeerde status zonder diagnostics |
 | **Admin** | Easy Auth Bearer + `admin`-rol (`EasyAuthHelper.RequireAdmin`) | Alleen coördinator | Alle overige `/api/beheer/*`- (inclusief het feedbackoverzicht `/api/beheer/feedback/*`), `/api/planner/*`- (behalve `veldbezetting`), `/api/test/*`-endpoints, én `GET /api/postgres/sync-matches` / `GET /api/sync-matches` (sinds #1350) |
 | **Admin/User** | Easy Auth Bearer + `admin` óf `user` (`AdminEndpoint.ExecuteAuthenticatedAsync`, #1330) | Elke ingelogde gebruiker | `GET /api/planner/veldbezetting` (Planning-pagina, #1400), de drie `/api/feedback/*`-endpoints (#764: iedereen die is ingelogd mag feedback geven), `GET /api/sportlink/match/{wedstrijdcode}` en `.../public-match-id` (Sportlink-paneel viewen, #1400), plus de drie Teambegeleiding-lookup/doorstuur-endpoints (#1330) |
 | **Wedstrijdzaken** | Easy Auth Bearer + `Wedstrijdzaken`-rol **óf** de `admin`-rol (`EasyAuthHelper.RequireWedstrijdzaken`, beide poorten sinds #1400 — vóór #1400 eiste de tweede poort altijd `admin`) | Wedstrijdsecretariaat | De Sportlink-mutatie-endpoints (`PUT`/`POST` onder `/api/sportlink/*`) |
@@ -101,7 +101,8 @@ verwerking plaats.
 
 | Methode | Endpoint | Niveau | Beschrijving |
 |---------|----------|--------|-------------|
-| `GET` | `/health` | Anoniem | Status, versie, tier-herkomst (#863) — zie hieronder |
+| `GET` | `/health` | Anoniem | Geaggregeerde readiness, versie en statusvlaggen — zie hieronder |
+| `GET` | `/beheer/health` | **Admin** | Gedetailleerde healthinformatie voor diagnose; via `AdminEndpoint.ExecuteZonderDatabaseAsync` |
 | `GET` | `/postgres/sync-matches` | **Admin** | Handmatige Sportlink-synchronisatie — **Postgres-tier (productie)**. Alleen de vastgelegde Sportlink-dataservice mag als bron zijn ingesteld; een andere basis-URL stopt de sync vóór uitgaand verkeer. Antwoordt `200`, `207` (deelstappen mislukt, `lastsynctimestamp` niet bijgewerkt) of `500`. Bestaat niet op de SQL Server-tier |
 | `GET` | `/sync-matches` | **Admin** | Handmatige Sportlink-synchronisatie — **SQL Server-tier**, dezelfde basis-URL-regel en parameters (`reset`, `season`). Antwoordt `200` of `500`. Bestaat niet op de Postgres-tier |
 | `GET/PUT` | `/beheer/settings` | **Admin** | Club-instellingen ophalen/opslaan (incl. Sportlink Web Extension-schakelaar en de seizoensstartmaand `SeasonStartMonth` 1–12 per club; wijzigen bouwt de seizoenen van die club opnieuw op). `FetchSchedule` in een PUT moet een niet-lege, uitvoerbare zesvelden-CRON van maximaal 50 tekens zijn; anders 400 zonder de invoer in de foutmelding. Een weggelaten veld blijft ongewijzigd |
@@ -213,63 +214,40 @@ De gedeelde JSON-endpoints voor Sportlink-mutaties, e-mailtest en beheer van lee
 
 ## GET /api/health
 
-Status, versie en databaseherkomst van de API. Geen authenticatie vereist.
+Publieke, geaggregeerde status zonder database-, schema-, migratie-, TLS- of synchronisatiedetails. De probe is per tier maximaal vijf seconden gecachet en gelijktijdige requests delen één refresh. De auth-poort van eventuele gebruikers blijft onafhankelijk van deze process-lokale cache.
 
-`tier` en `provider` komen uit build-time metadata van het gebouwde artefact — nooit een
-runtime-gok — en zijn daarom altijd gevuld, ook als `database` niet `"online"` is. `serverVersion`
-komt aantoonbaar uit de database zelf en is alleen gevuld wanneer `database` `"online"` is (#863).
-
-**HTTP-statuscode (#859):** `database: "unconfigured"` (geen bruikbare connectiereeks — env var
-ontbreekt of is van de verkeerde engine) geeft **503**, niet 200. Elke andere `database`-waarde
-(ook `paused`/`timeout`/`unavailable`, tijdelijke toestanden) blijft 200 met `status: "degraded"`.
-
-### Antwoord
-
-Voorbeeld van de **Postgres-tier** (de tier die in productie draait):
+**HTTP-statuscode (#859):** `database: "unconfigured"` geeft **503**. Andere database-statussen (waaronder `paused`, `timeout` en `unavailable`) blijven **200** met `status: "degraded"`.
 
 ```json
 {
   "status": "ok",
-  "version": "3.11.0.0",
-  "timestamp": "2026-09-19T15:00:00Z",
+  "version": "3.16.0.4",
   "database": "online",
-  "settingsLoaded": true,
-  "lastSync": "2026-09-19T04:00:12Z",
-  "syncStale": false,
-  "tier": "Postgres",
-  "provider": "Npgsql",
-  "serverVersion": "17.4",
-  "tlsMode": "VerifyFull",
-  "tlsWarning": null,
-  "schemaWarning": null,
-  "pendingMigrations": []
+  "settingsReady": true,
+  "migrationsCurrent": true,
+  "schemaWarningPresent": false,
+  "tlsWarningPresent": false
 }
 ```
 
-Op de **SQL Server-tier** ontbreken `lastSync`, `syncStale`, `tlsMode`, `tlsWarning`,
-`schemaWarning` en `pendingMigrations`; `tier` is dan `"SqlServer"` en `provider`
-`"Microsoft.Data.SqlClient"`.
-
 | Veld | Type | Beschrijving |
 |---|---|---|
-| `status` | `string` | `"ok"` als `database` `"online"` is, `settingsLoaded` `true` is en — alleen op de Postgres-tier — `pendingMigrations` leeg is **én** `syncStale` `false` is op een omgeving waar een synchronisatie hoort te draaien (`EgressGuard` laat uitgaand verkeer toe). Anders `"degraded"`. Op de SQL Server-tier tellen alleen `database` en `settingsLoaded` mee |
-| `version` | `string` | Vierdelig assembly-versienummer, bijv. `"3.11.0.0"` |
-| `database` | `string` | `online`, `paused`, `timeout`, `unavailable` of `unconfigured` — `unconfigured` geeft HTTP 503 |
-| `settingsLoaded` | `boolean` | `false` als de laatste poging om de clubinstellingen te laden mislukte (#859) — geen foutdetails hier, die staan in het functielog |
-| `tier` | `string` | De databasetier waarmee dit artefact gebouwd is — zie `scripts/ci/database-tiers.json` |
-| `provider` | `string` | De gebruikte databasedriver |
-| `serverVersion` | `string \| null` | Versienummer van de databaseserver zelf; `null` als niet bereikbaar |
-| `lastSync` | `string \| null` | Postgres-tier (#1081): laatste synchronisatietijd (UTC) van de primaire club; `null` als nooit gesynchroniseerd |
-| `syncStale` | `boolean` | Postgres-tier (#1081): `true` als `lastSync` ouder is dan `SyncMaxAgeHours` (standaard 36) of ontbreekt; telt alleen mee in `status` waar een synchronisatie hoort te draaien |
-| `tlsMode` | `string \| null` | Postgres-tier (#1095): de TLS-modus die daadwerkelijk geldt op de databaseverbinding (bijv. `VerifyFull`, `Require`); `null` bij `unconfigured` |
-| `tlsWarning` | `string \| null` | Postgres-tier (#1095): `null` als het TLS-beleid (`VerifyFull`, #1004) gehaald is; anders een waarschuwing — zonder host of credentials — dat de verbinding wél versleuteld is maar certificaat/hostnaam niet volledig gevalideerd worden |
-| `schemaWarning` | `string \| null` | Postgres-tier (#1098): `null` als `public.appsettings` alle kolommen heeft die deze versie verwacht; anders een waarschuwing dat de code vooruitloopt op het schema en welke migratie ontbreekt. De applicatie draait dan door op de migratie-default |
-| `pendingMigrations` | `string[] \| null` | Postgres-tier (#1098): bestandsnamen uit `Database.Postgres/migrations/` die nog niet in de ledger `schema_migrations` staan. Leeg = code en schema lopen gelijk; `null` als de database niet bereikbaar is. Alleen lezen — toepassen blijft een handeling van de beheerder (`Database.Postgres.Cli`) |
+| `status` | `string` | Bestaande statusregel: database online, instellingen geladen en (Postgres) migraties bekend en actueel, plus de bestaande stale-sync-status. `degraded` door alleen een stale sync blijft een waarschuwing en is geen deploy-fout. |
+| `version` | `string` | Vierdelige assemblyversie. |
+| `database` | `string` | `online`, `paused`, `timeout`, `unavailable` of `unconfigured`; de laatste geeft HTTP 503. |
+| `settingsReady` | `boolean` | `false` als de instellingen niet geladen zijn. |
+| `migrationsCurrent` | `boolean \| null` | Postgres: `true` als er geen migraties openstaan, `false` als dat wel zo is; `null` als dit niet vastgesteld kon worden. SQL Server retourneert `null` omdat deze healthprobe daar geen migratiestatus heeft. |
+| `schemaWarningPresent` | `boolean` | Alleen of de Postgres-schemawaarschuwing aanwezig is. |
+| `tlsWarningPresent` | `boolean` | Alleen of de Postgres-TLS-waarschuwing aanwezig is. |
 
-**Vanaf 3.3.0.2 doet de Postgres-tier bij elke aanroep zelf één poging de clubinstellingen te laden**
-zodra de database bereikbaar is, zodat `settingsLoaded` een feit is en geen aanname over een eerdere
-poging. Direct na een herstart meldde het veld anders `true` terwijl het eerste beheerscherm daarna
-op 500 zou lopen (#1098).
+De publieke respons bevat geen ruwe serverversie, tier/provider, sync-tijd, TLS-modus, waarschuwingsinhoud of migratienamen. De deployment gate blijft bij dezelfde uitkomsten falen en houdt schema/TLS-waarschuwingen niet-fataal.
+
+## GET /api/beheer/health
+
+Admin-only detailrespons voor diagnose. De route gebruikt de bestaande `AdminEndpoint.ExecuteZonderDatabaseAsync`-rolcontrole; de public health authorization blijft anoniem en heeft geen gedeelde identity-cache.
+
+De detailrespons behoudt de bestaande `status`, `version`, `timestamp`, `database`, `settingsLoaded`, `tier`, `provider`, `serverVersion`, `lastSync`, `syncStale`, `tlsMode`, `tlsWarning`, `schemaWarning` en `pendingMigrations`-velden. Postgres-specifieke velden ontbreken of zijn `null` op SQL Server. Waarschuwingen, serverdetails en migratienamen zijn alleen beschikbaar achter de admin-poort.
+
 
 ---
 

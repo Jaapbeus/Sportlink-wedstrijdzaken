@@ -106,21 +106,24 @@ public static class PostgresAppSettings
         "Kolom '" + ExtensionColumn + "' ontbreekt in public.appsettings: migratie " +
         "012_sportlink_extension.sql is niet toegepast op deze database. De Sportlink Web Extension " +
         "geldt als uitgeschakeld tot de openstaande migraties zijn uitgevoerd (Database.Postgres.Cli) — " +
-        "zie 'pendingMigrations' in /api/health en docs/ARCHITECTUUR-DATABASE-TIERS.md §55 (#1098).";
+        "zie de admin-only healthdiagnose op /api/beheer/health en docs/ARCHITECTUUR-DATABASE-TIERS.md §55 (#1098).";
 
     private const string DryRunColumnMissingWarning =
         "Kolom '" + DryRunColumn + "' ontbreekt in public.appsettings: migratie " +
         "016_sportlink_dryrun_en_contractcheck.sql is niet toegepast op deze database. De dry-run-modus " +
         "geldt als AAN (fail-safe, geen live Sportlink-mutaties) tot de openstaande migraties zijn " +
-        "uitgevoerd (Database.Postgres.Cli) — zie 'pendingMigrations' in /api/health en " +
+        "uitgevoerd (Database.Postgres.Cli) — zie de admin-only healthdiagnose op /api/beheer/health en " +
         "docs/ARCHITECTUUR-DATABASE-TIERS.md §55 (#998).";
 
-    public static async Task LoadSettingsAsync(ILogger log)
+    public static async Task LoadSettingsAsync(
+        ILogger log,
+        CancellationToken cancellationToken = default,
+        int commandTimeoutSeconds = 30)
     {
         try
         {
             await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
+            await connection.OpenAsync(cancellationToken);
 
             // #1098/#998: beide optionele kolommen worden onafhankelijk van elkaar geprobeerd —
             // migratie 012 en 016 kunnen elk apart nog niet zijn toegepast. Alleen dít specifieke
@@ -133,7 +136,7 @@ public static class PostgresAppSettings
             {
                 try
                 {
-                    gevonden = await ReadAsync(connection, includeExtensionColumn, includeDryRunColumn);
+                    gevonden = await ReadAsync(connection, includeExtensionColumn, includeDryRunColumn, cancellationToken, commandTimeoutSeconds);
                     break;
                 }
                 catch (PostgresException ex) when (includeExtensionColumn && IsOntbrekendeKolom(ex, ExtensionColumn))
@@ -193,7 +196,12 @@ public static class PostgresAppSettings
     /// <paramref name="includeDryRunColumn"/> = false wordt <c>sportlinkDryRun</c> op "1" gezet —
     /// de default van migratie 016 (fail-safe: dry-run AAN).
     /// </summary>
-    private static async Task<bool> ReadAsync(NpgsqlConnection connection, bool includeExtensionColumn, bool includeDryRunColumn)
+    private static async Task<bool> ReadAsync(
+        NpgsqlConnection connection,
+        bool includeExtensionColumn,
+        bool includeDryRunColumn,
+        CancellationToken cancellationToken,
+        int commandTimeoutSeconds)
     {
         // accommodatielatitude/-longitude erbij (issue 888 vervolg, §41): PostgresSunsetCalculator
         // heeft dezelfde clubinstellingen nodig als SunsetCalculator op de SQL Server-tier.
@@ -211,9 +219,10 @@ public static class PostgresAppSettings
         if (includeExtensionColumn) kolommen += ", " + ExtensionColumn;
         if (includeDryRunColumn) kolommen += ", " + DryRunColumn;
         await using var cmd = new NpgsqlCommand(
-            $"SELECT {kolommen} FROM public.appsettings WHERE syncenabled = true ORDER BY clubcode LIMIT 1", connection);
-        await using var reader = await cmd.ExecuteReaderAsync();
-        if (!await reader.ReadAsync())
+            $"SELECT {kolommen} FROM public.appsettings WHERE syncenabled = true ORDER BY clubcode LIMIT 1", connection)
+        { CommandTimeout = commandTimeoutSeconds };
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
             return false;
 
         var nieuw = BuildSettingsSnapshot(reader, includeExtensionColumn, includeDryRunColumn);

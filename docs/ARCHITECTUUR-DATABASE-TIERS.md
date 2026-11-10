@@ -286,7 +286,7 @@ gesloten zijn.
 | [#856](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/856) — Seed slaat zichzelf over op een verse database ✅ opgelost (Optie B, zie §13) | Zonder dit zijn er op elke nieuwe installatie nul demoteams en -wedstrijden |
 | [#857](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/857) — Synchronisatie-rem is dode code | Een lokale run praat nu met de externe bron en kan issues aanmaken |
 | [#858](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/858) — AVG-maskering hangt aan kolomcasing | Onder lowercase-identifiers lekken volledige e-mailadressen naar de browser |
-| [#859](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/859) — Stille faalpaden rond databaseconfiguratie ✅ opgelost | `/api/health` geeft 503 bij "unconfigured" i.p.v. 200; een mislukte instellingenlaadt is zichtbaar via `settingsLoaded`; de wachtlus is kort buiten productie en overschrijfbaar via `DbWaitMaxRetries`/`DbWaitDelayMs`, op beide tiers |
+| [#859](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/859) — Stille faalpaden rond databaseconfiguratie ✅ opgelost | `/api/health` geeft 503 bij "unconfigured" i.p.v. 200 en toont readinessaggregaten; de detailwaarde `settingsLoaded` staat sinds #1811 achter admin-only `/api/beheer/health`; de wachtlus is kort buiten productie en overschrijfbaar via `DbWaitMaxRetries`/`DbWaitDelayMs`, op beide tiers |
 
 ### 6c. Ontbrekende scope
 
@@ -440,6 +440,12 @@ aan foutnummer 40613 — Azure-SQL-specifiek. Zonder een bevestigd, vergelijkbaa
 voor de gekozen Postgres-hosting zou `"paused"` hier verzonnen zijn; een onbereikbare database is
 hier altijd `"unavailable"` of `"timeout"`. `tier`/`provider`/`serverVersion` volgen verder exact
 het #863-patroon (build-time metadata resp. `SHOW server_version`).
+
+**Huidig publiek contract (#1811 / API 4.0.0.0):** `/api/health` toont alleen status, versie,
+databasebereikbaarheid en readiness-/waarschuwingvlaggen. `tier`, `provider`, `serverVersion`,
+sync-, schema-, migratie- en TLS-details worden uitsluitend teruggegeven door admin-only
+`/api/beheer/health`. De historische voorbeelden hieronder beschrijven het contract ten tijde
+van die wijziging.
 
 **Empirisch bevestigd:** `func start` tegen een wegwerp-Postgres-16-container levert een werkende
 `/api/health` op — `status="ok"`, `tier="Postgres"`, `provider="Npgsql"`,
@@ -989,8 +995,8 @@ vereist een accountsleutel in de aanroep, en die hoort niet in een script in git
 
 | Assertie | Waarom die op zichzelf niet genoeg is |
 |---|---|
-| `health.tier` / `health.provider` | Komt uit build-time assembly-metadata (#863). Bewijst welke bóom draait, niet met welke database die praat. |
-| `health.serverversie` | De applicatie meldt een serverversie; die wordt vergeleken met wat de container zélf op `SHOW server_version` antwoordt. Sluit een andere Postgres uit, maar komt nog steeds uit de applicatie. |
+| `health.tier` / `health.provider` | Komt uit build-time assembly-metadata (#863), nu via admin-only `/api/beheer/health`. Bewijst welke bóom draait, niet met welke database die praat. |
+| `health.serverversie` | Admin-only health meldt een serverversie; die wordt vergeleken met wat de container zélf op `SHOW server_version` antwoordt. Sluit een andere Postgres uit, maar komt nog steeds uit de applicatie. |
 | `engine.onafhankelijk-bevestigd` | Het enige bewijs dat **niet** van de applicatie komt: `pg_stat_activity` in de wegwerpcontainer toont een verbinding met `application_name = 'SportlinkFunctionAppPostgres'`. Samen met G1's negatieve controle (de SQL Server-container is aantoonbaar gestopt) sluit dit een stille terugval uit. |
 
 Daarnaast controleert G5 dat **geen enkele functie in foutstatus staat**. Dat is geen formaliteit:
@@ -2881,7 +2887,7 @@ Twee lessen:
    dus een tweede storing gegeven (certificaatketen-fout). De echte `verify-full`-uitrol — CA-cert
    meeleveren in het deploy-pakket, `sslrootcert` ernaar laten wijzen, en een pre-deploy-check die
    de effectieve TLS-modus toetst vóór de code live gaat — is een apart vervolgissue; tot die tijd
-   is `tlsWarning` in `/api/health` het signaal dat die schuld nog openstaat.
+   is `tlsWarning` in admin-only `/api/beheer/health` het signaal dat die schuld nog openstaat.
 
 **Tests:** `Database.Postgres.Tests/PostgresConnectionStringNormalizerTests.cs` — dekt beide vormen,
 beide omgevingen, de contradictiecheck, en de bestaande parsingtests (percent-encoded loginvelden,
@@ -2901,7 +2907,7 @@ wordt:
    Configuration; subject/issuer "Supabase Root 2021 CA", geldig 2021-04-28 t/m 2031-04-26). Het is
    publiek (Supabase's eigen root-CA, gelijk voor het project van deze deployment) en hoort dus in
    git, niet in `.gitignore` — anders dan `local.settings.json`.
-2. **De smoke test in `deploy.yml`** leest voortaan ook `tlsWarning` uit `/api/health` en meldt die
+2. **De smoke test in `deploy.yml`** leest voortaan ook `tlsWarningPresent` uit `/api/health` en meldt die
    als `::warning::`, exact hetzelfde patroon als `pendingMigrations`/`schemaWarning` (§55): nooit
    een deploy-blokkade, want de verbinding blijft functioneren (fail-open sinds #1095). Dit is de
    "pre-deploy-check op de effectieve TLS-modus" uit het vervolgissue — als CI-zichtbaarheid na de
@@ -2932,7 +2938,7 @@ wordt:
 Wat `verify-ca` wél oplevert: de certificaatketen wordt gevalideerd, dus een aanvaller heeft een
 certificaat nodig dat door de root-CA van de provider is ondertekend — een willekeurig
 zelfondertekend certificaat volstaat niet meer. De hostnaam blijft ongevalideerd; dat is het
-restrisico, en daarom blijft `tlsWarning` in `/api/health` staan. Dat is vanaf nu het juiste,
+restrisico, en daarom blijft `tlsWarning` in admin-only `/api/beheer/health` staan. Dat is vanaf nu het juiste,
 verwachte signaal en geen openstaande actie meer.
 
 **Bewust niet meegewijzigd: het GitHub-secret `POSTGRES_CONNECTION_STRING`.** `db-migrate-postgres`
@@ -2995,7 +3001,7 @@ overheen, omdat het alleen op een HTTP-antwoord controleerde. Dat is dezelfde kl
 van AGENTS.md beschrijft voor de live GUI: een 200 is geen bewijs. Het script leest die twee velden
 nu, en wijst bij `degraded` rechtstreeks naar het seed-script hierboven.
 
-**3. Tier-provenance als startvoorwaarde.** `/api/health` meldt zijn eigen tier uit de
+**3. Tier-provenance als startvoorwaarde.** Admin-only `/api/beheer/health` meldt zijn eigen tier uit de
 assembly-metadata (#863). `Start-Debug.ps1` vergelijkt dat nu met `-Tier`: een achtergebleven
 functiehost van de andere tier op poort 7094 zou anders als een geslaagde start doorgaan.
 

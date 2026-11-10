@@ -1153,7 +1153,7 @@ sportlink-wedstrijdzaken/
 ├── docker-compose.yml                 # Lokale database: Postgres (standaard, zonder profile) + SQL Server achter profile 'sqlserver' (#800, #1060)
 ├── FunctionApp.Postgres/              # .NET 10 Azure Functions — Postgres-tier (standaard, draait in productie)
 │   ├── FunctionApp.Postgres.csproj
-│   ├── HealthFunction.cs              # GET /api/health (versie, status, actieve tier)
+│   ├── HealthFunction.cs              # GET /api/health + admin-only /api/beheer/health
 │   ├── Sync/SyncFunction.cs           # GET /api/postgres/sync-matches
 │   ├── Admin/                         # 25 Admin-endpoint bestanden (beheer/*)
 │   ├── local.settings.json            # NIET in git — bevat POSTGRES_CONNECTION_STRING
