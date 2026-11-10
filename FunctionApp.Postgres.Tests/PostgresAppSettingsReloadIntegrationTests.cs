@@ -58,6 +58,51 @@ public class PostgresAppSettingsReloadIntegrationTests
         PostgresAppSettings.GetSetting("clubCode").Should().Be(TestClub);
     }
 
+    [PostgresFact]
+    public async Task LoadSettingsAsync_LaadtAlleVijfEmailInstellingen_EnWistBijNull()
+    {
+        await using var conn = await OpenAsync();
+        await ZetPrimaireClubAsync(conn, accommodatie: "Testaccommodatie");
+        await ZetEmailInstellingenAsync(
+            conn,
+            emailVoetnoot: "Synthetische voetnoot",
+            coordinatorNaam: "Synthetische coördinator",
+            coordinatorFunctie: "Synthetische functie",
+            plannerEmailAdres: "trainer@voorbeeld.nl",
+            herplanDeadlineDagen: 12);
+
+        PostgresAppSettings.ResetForTests();
+        await PostgresAppSettings.LoadSettingsAsync(NullLogger.Instance);
+
+        PostgresAppSettings.LastLoadFailed.Should().BeFalse();
+        PostgresAppSettings.GetSetting("emailVoetnoot").Should().Be("Synthetische voetnoot");
+        PostgresAppSettings.GetSetting("coordinatorNaam").Should().Be("Synthetische coördinator");
+        PostgresAppSettings.GetSetting("coordinatorFunctie").Should().Be("Synthetische functie");
+        PostgresAppSettings.GetSetting("plannerEmailAdres").Should().Be("trainer@voorbeeld.nl");
+        PostgresAppSettings.GetSetting("herplanDeadlineDagen").Should().Be("12");
+
+        await ZetEmailInstellingenAsync(conn, string.Empty, string.Empty, string.Empty, string.Empty, 9);
+        await PostgresAppSettings.LoadSettingsAsync(NullLogger.Instance);
+
+        PostgresAppSettings.GetSetting("emailVoetnoot").Should().BeEmpty(
+            "an explicitly empty value is present and must not be treated like database NULL");
+        PostgresAppSettings.GetSetting("coordinatorNaam").Should().BeEmpty();
+        PostgresAppSettings.GetSetting("coordinatorFunctie").Should().BeEmpty();
+        PostgresAppSettings.GetSetting("plannerEmailAdres").Should().BeEmpty();
+        PostgresAppSettings.GetSetting("herplanDeadlineDagen").Should().Be("9",
+            "a second non-NULL load must replace the cached integer value");
+
+        await ZetEmailInstellingenAsync(conn, null, null, null, null, null);
+        await PostgresAppSettings.LoadSettingsAsync(NullLogger.Instance);
+
+        PostgresAppSettings.LastLoadFailed.Should().BeFalse("a successful reload that clears nullable settings is not a load failure");
+        PostgresAppSettings.GetSetting("emailVoetnoot").Should().BeNull();
+        PostgresAppSettings.GetSetting("coordinatorNaam").Should().BeNull();
+        PostgresAppSettings.GetSetting("coordinatorFunctie").Should().BeNull();
+        PostgresAppSettings.GetSetting("plannerEmailAdres").Should().BeNull();
+        PostgresAppSettings.GetSetting("herplanDeadlineDagen").Should().BeNull();
+    }
+
     // ── hulpjes ────────────────────────────────────────────────────────────
 
     private static async Task<NpgsqlConnection> OpenAsync()
@@ -92,6 +137,31 @@ public class PostgresAppSettingsReloadIntegrationTests
             "UPDATE public.appsettings SET accommodatie = @accommodatie WHERE clubcode = @club", conn);
         cmd.Parameters.AddWithValue("club", TestClub);
         cmd.Parameters.AddWithValue("accommodatie", (object?)accommodatie ?? DBNull.Value);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    private static async Task ZetEmailInstellingenAsync(
+        NpgsqlConnection conn,
+        string? emailVoetnoot,
+        string? coordinatorNaam,
+        string? coordinatorFunctie,
+        string? plannerEmailAdres,
+        int? herplanDeadlineDagen)
+    {
+        await using var cmd = new NpgsqlCommand(
+            @"UPDATE public.appsettings
+              SET emailvoetnoot = @emailvoetnoot,
+                  coordinatornaam = @coordinatornaam,
+                  coordinatorfunctie = @coordinatorfunctie,
+                  planneremailadres = @planneremailadres,
+                  herplandeadlinedagen = @herplandeadlinedagen
+              WHERE clubcode = @club", conn);
+        cmd.Parameters.AddWithValue("emailvoetnoot", (object?)emailVoetnoot ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("coordinatornaam", (object?)coordinatorNaam ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("coordinatorfunctie", (object?)coordinatorFunctie ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("planneremailadres", (object?)plannerEmailAdres ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("herplandeadlinedagen", (object?)herplanDeadlineDagen ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("club", TestClub);
         await cmd.ExecuteNonQueryAsync();
     }
 }
