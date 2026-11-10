@@ -518,6 +518,7 @@ endpoint laat hem ook falen. Dezelfde knip als de Layer-5-scan in
 | Regel | Afgedwongen door | Draait in |
 |---|---|---|
 | 1, 2 — tier-duplicatie stijgt niet | `scripts/ci/check-tier-duplicatie.sh` | `build.yml` |
+| 1, 2 — negatieve fixturetests voor de tier-duplicatiemeting (#1810) | `scripts/ci/check-tier-duplicatie.test.sh` | `build.yml` |
 | 1, 2 — interne duplicatie stijgt niet (#1263) | `scripts/ci/check-interne-duplicatie.sh` | `build.yml` |
 | 3 — geen logica in Blazor-pagina's | `scripts/ci/check-blazor-codebehind.sh` | `build.yml` |
 | 3b — geen `<style>`-blok of statische inline style in Blazor-pagina's (#1329) | `scripts/ci/check-blazor-inline-styles.sh` | `build.yml` |
