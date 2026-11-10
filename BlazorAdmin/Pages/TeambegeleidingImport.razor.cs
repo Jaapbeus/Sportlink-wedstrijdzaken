@@ -42,8 +42,12 @@ public partial class TeambegeleidingImport
         try
         {
             using var stream = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
-            using var reader = new System.IO.StreamReader(stream, System.Text.Encoding.UTF8);
-            _csvContent = await reader.ReadToEndAsync();
+            _csvContent = await TeambegeleidingCsvDecoder.LeesUtf8Async(stream);
+        }
+        catch (System.Text.DecoderFallbackException)
+        {
+            _importLeesError = "CSV bevat ongeldige UTF-8-tekst. Sla het bestand opnieuw op als UTF-8.";
+            return;
         }
         catch (Exception)
         {

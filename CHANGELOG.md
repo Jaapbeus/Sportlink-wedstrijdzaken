@@ -24,6 +24,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ### Fixed
 - De Postgres-instellingenloader laadt nu ook de vijf bestaande e-mailinstellingen voor de mailboxverwerking en wist ze bij herladen na `NULL`, gelijk aan het gedrag van de SQL Server-tier (#1798).
 - De instellingenopslag meldt alleen een herstart als de opgeslagen FetchSchedule-waarde echt verandert; SQL Server ondersteunt nu ook het opslaan en teruglezen van SportlinkDryRun (#1819)
+- Een teambegeleiding-CSV met ongeldige UTF-8-bytes wordt vóór de import geweigerd in plaats van stilzwijgend met vervangtekens in de preview te verschijnen (#1819)
 
 ## [3.16.0.0] — 2026-11-10
 
