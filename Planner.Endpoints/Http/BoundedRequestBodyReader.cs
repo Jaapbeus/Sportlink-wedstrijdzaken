@@ -88,9 +88,15 @@ public static class BoundedRequestBodyReader
         if (!body.IsSuccess)
             return new(null, body.Error);
 
+        return ParseJson<T>(body.Text);
+    }
+
+    /// <summary>Parses already-bounded UTF-8 JSON without returning parser details to the caller.</summary>
+    public static JsonRequestBodyReadResult<T> ParseJson<T>(string? text) where T : class
+    {
         try
         {
-            return new(JsonConvert.DeserializeObject<T>(body.Text!), RequestBodyReadError.None);
+            return new(JsonConvert.DeserializeObject<T>(text ?? string.Empty), RequestBodyReadError.None);
         }
         catch (JsonException)
         {
@@ -105,6 +111,21 @@ public static class BoundedRequestBodyReader
         ArgumentNullException.ThrowIfNull(action);
         var body = await ReadUtf8Async(request, DefaultJsonMaxBytes);
         return body.IsSuccess ? await action(body.Text) : ToActionResult(body.Error);
+    }
+
+    /// <summary>Runs an endpoint action only after its bounded UTF-8 JSON body has been parsed.</summary>
+    public static Task<IActionResult> ExecuteJsonAsync<T>(
+        HttpRequest request, Func<T?, Task<IActionResult>> action)
+        where T : class
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        return ExecuteUtf8Async(request, body =>
+        {
+            var parsed = ParseJson<T>(body);
+            return parsed.IsSuccess
+                ? action(parsed.Value)
+                : Task.FromResult(ToActionResult(parsed.Error));
+        });
     }
 
     public static IActionResult ToActionResult(

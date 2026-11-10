@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.16.0.1
+  version: 3.16.0.2
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -7278,6 +7278,7 @@ paths:
         - easyAuth: []
       requestBody:
         required: true
+        description: JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400.
         content:
           application/json:
             schema:
@@ -7297,6 +7298,8 @@ paths:
                     type: string
         '400':
           $ref: '#/components/responses/BadRequest'
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -7327,6 +7330,7 @@ paths:
           example: "JO13"
       requestBody:
         required: true
+        description: JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400.
         content:
           application/json:
             schema:
@@ -7346,6 +7350,8 @@ paths:
                     type: string
         '400':
           $ref: '#/components/responses/BadRequest'
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':

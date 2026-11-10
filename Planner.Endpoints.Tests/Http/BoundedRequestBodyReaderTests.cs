@@ -103,6 +103,18 @@ public class BoundedRequestBodyReaderTests
     }
 
     [Fact]
+    public async Task ReadJson_UnknownLengthOverLimit_ReturnsTooLargeBeforeDeserializing()
+    {
+        var stream = new CountingStream(Encoding.UTF8.GetBytes("{\"Value\":\"too long\"}"), maxChunkSize: 2);
+
+        var result = await BoundedRequestBodyReader.ReadJsonAsync<JsonFixture>(Request(stream), 8);
+
+        result.Error.Should().Be(RequestBodyReadError.TooLarge);
+        result.Value.Should().BeNull();
+        stream.BytesRead.Should().Be(9);
+    }
+
+    [Fact]
     public async Task ReadJson_LeadingUtf8Bom_PreservesFormerStreamReaderContract()
     {
         var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes("{\"Value\":\"ok\"}")).ToArray();
@@ -156,6 +168,50 @@ public class BoundedRequestBodyReaderTests
         {
             calls++;
             body.Should().Be("{\"ok\":true}");
+            return Task.FromResult<IActionResult>(new OkResult());
+        });
+
+        result.Should().BeOfType<OkResult>();
+        calls.Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData(0, StatusCodes.Status400BadRequest)]
+    [InlineData(1, StatusCodes.Status413PayloadTooLarge)]
+    [InlineData(2, StatusCodes.Status400BadRequest)]
+    public async Task ExecuteJson_RejectsInvalidBodyBeforeInvokingAction(int bodyKind, int expectedStatus)
+    {
+        var bytes = bodyKind switch
+        {
+            0 => Encoding.UTF8.GetBytes("{\"Value\":\"secret\""),
+            1 => new byte[BoundedRequestBodyReader.DefaultJsonMaxBytes + 1],
+            _ => [0xC3, 0x28]
+        };
+        var invoked = false;
+
+        var result = await BoundedRequestBodyReader.ExecuteJsonAsync<JsonFixture>(
+            Request(new CountingStream(bytes)),
+            _ =>
+            {
+                invoked = true;
+                return Task.FromResult<IActionResult>(new OkResult());
+            });
+
+        invoked.Should().BeFalse();
+        (result as ObjectResult)!.StatusCode.Should().Be(expectedStatus);
+        Newtonsoft.Json.JsonConvert.SerializeObject((result as ObjectResult)!.Value).Should().NotContain("secret");
+    }
+
+    [Fact]
+    public async Task ExecuteJson_PassesParsedValueToActionOnce()
+    {
+        var calls = 0;
+        var request = Request(new CountingStream(Encoding.UTF8.GetBytes("{\"Value\":\"ok\"}")));
+
+        var result = await BoundedRequestBodyReader.ExecuteJsonAsync<JsonFixture>(request, fixture =>
+        {
+            calls++;
+            fixture!.Value.Should().Be("ok");
             return Task.FromResult<IActionResult>(new OkResult());
         });
 
