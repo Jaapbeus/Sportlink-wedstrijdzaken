@@ -53,8 +53,8 @@ public interface ITeamContactDoorstuurPersistentie
 {
     Task<TeamContactDoorstuurClaim> ClaimAsync(int verwerkingId);
 
-    /// <summary>Persists a terminal state from the already claimed state; never resets to NotStarted.</summary>
-    Task MarkeerTerminalAsync(int verwerkingId, TeamContactDoorstuurStatus status);
+    /// <summary>Returns true only when exactly the claimed row was durably moved to the terminal state.</summary>
+    Task<bool> MarkeerTerminalAsync(int verwerkingId, TeamContactDoorstuurStatus status);
 }
 
 /// <summary>
@@ -104,7 +104,8 @@ public static class TeamContactDoorstuurAfhandeling
 
         try
         {
-            await persistentie.MarkeerTerminalAsync(verwerkingId, status);
+            if (!await persistentie.MarkeerTerminalAsync(verwerkingId, status))
+                return TeamContactDoorstuurUitkomst.Onbekend;
         }
         catch
         {
@@ -136,5 +137,5 @@ public static class TeamContactDoorstuurAfhandeling
     public static (string Onderwerp, string Inhoud) BouwReviewVoorstel()
         => ("Uw vraag over teambegeleiding",
             "We hebben uw vraag over teambegeleiding ontvangen. "
-            + "Deze is nog niet doorgestuurd; de coördinator beoordeelt uw verzoek.");
+            + "De doorstuurstatus is niet bevestigd; de coördinator beoordeelt uw verzoek.");
 }

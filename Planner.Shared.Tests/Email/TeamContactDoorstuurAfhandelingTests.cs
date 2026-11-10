@@ -11,6 +11,7 @@ public class TeamContactDoorstuurAfhandelingTests
         public TeamContactDoorstuurStatus? Status { get; private set; }
         public bool FaalClaim { get; init; }
         public bool FaalTerminalWrite { get; init; }
+        public bool NulRijenBijTerminalWrite { get; init; }
 
         public FakePersistentie(TeamContactDoorstuurStatus? status = TeamContactDoorstuurStatus.NietGestart)
             => Status = status;
@@ -27,13 +28,14 @@ public class TeamContactDoorstuurAfhandelingTests
             return Task.FromResult(TeamContactDoorstuurClaim.Geclaimd);
         }
 
-        public Task MarkeerTerminalAsync(int verwerkingId, TeamContactDoorstuurStatus status)
+        public Task<bool> MarkeerTerminalAsync(int verwerkingId, TeamContactDoorstuurStatus status)
         {
             if (FaalTerminalWrite) throw new InvalidOperationException("terminal write unavailable");
+            if (NulRijenBijTerminalWrite) return Task.FromResult(false);
             if (Status != TeamContactDoorstuurStatus.Bezig)
                 throw new InvalidOperationException("row is not claimed");
             Status = status;
-            return Task.CompletedTask;
+            return Task.FromResult(true);
         }
     }
 
@@ -156,6 +158,26 @@ public class TeamContactDoorstuurAfhandelingTests
     }
 
     [Fact]
+    public async Task ZeroRowAcceptanceWrite_RemainsUnknownAndCannotBeRetried()
+    {
+        var db = new FakePersistentie { NulRijenBijTerminalWrite = true };
+        var calls = 0;
+        Task<TeamContactDoorstuurVerzendresultaat> Send()
+        {
+            calls++;
+            return Task.FromResult(TeamContactDoorstuurVerzendresultaat.Geaccepteerd);
+        }
+
+        (await TeamContactDoorstuurAfhandeling.VoerEenmaligUitAsync(13, db, Send))
+            .Should().Be(TeamContactDoorstuurUitkomst.Onbekend);
+        (await TeamContactDoorstuurAfhandeling.VoerEenmaligUitAsync(13, db, Send))
+            .Should().Be(TeamContactDoorstuurUitkomst.Onbekend);
+        calls.Should().Be(1);
+        TeamContactDoorstuurAfhandeling.BouwReviewVoorstel().Inhoud
+            .Should().Contain("niet bevestigd").And.NotContain("nog niet doorgestuurd");
+    }
+
+    [Fact]
     public async Task ClaimFailure_DoesNotCallGraph()
     {
         var db = new FakePersistentie { FaalClaim = true };
@@ -195,7 +217,7 @@ public class TeamContactDoorstuurAfhandelingTests
         var (subject, body) = TeamContactDoorstuurAfhandeling.BouwReviewVoorstel();
 
         subject.Should().Contain("begeleiding");
-        body.Should().Contain("nog niet doorgestuurd");
+        body.Should().Contain("niet bevestigd");
         body.Should().Contain("coördinator beoordeelt");
         body.Should().NotContain("is doorgestuurd");
     }
