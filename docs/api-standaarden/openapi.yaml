@@ -5611,7 +5611,7 @@ paths:
                 format: date
               - type: string
                 format: date-time
-          description: Begingrens inclusief; yyyy-MM-dd voor een UTC-kalenderdag of ISO 8601 timestamp voor een exact UTC-moment.
+          description: Begingrens inclusief; yyyy-MM-dd voor een UTC-kalenderdag of een timestamp voor een exact UTC-moment. Ook yyyy-MM-dd HH:mm wordt als UTC-timestamp gelezen.
         - name: tot
           in: query
           required: false
@@ -5622,7 +5622,7 @@ paths:
                 format: date
               - type: string
                 format: date-time
-          description: Eindgrens exclusief; yyyy-MM-dd behoudt bestaande dagsemantiek, ISO 8601 timestamp is een exact UTC-moment.
+          description: Eindgrens exclusief; yyyy-MM-dd omvat de hele UTC-kalenderdag, ook bij middernacht. Een timestamp (ook yyyy-MM-dd HH:mm) is een exact UTC-moment.
         - name: status
           in: query
           required: false

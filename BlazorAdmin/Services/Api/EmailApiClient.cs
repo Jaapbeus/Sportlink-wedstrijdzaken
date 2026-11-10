@@ -44,7 +44,9 @@ public sealed class EmailApiClient
     }
 
     private static string FormateerDatum(DateTime waarde)
-        => waarde.TimeOfDay == TimeSpan.Zero ? waarde.ToString("yyyy-MM-dd") : waarde.ToUniversalTime().ToString("O");
+        => waarde.Kind == DateTimeKind.Unspecified && waarde.TimeOfDay == TimeSpan.Zero
+            ? waarde.ToString("yyyy-MM-dd")
+            : waarde.ToUniversalTime().ToString("O");
 
     public async Task<ApiResult<EmailTraceDto>> GetEmailTraceAsync(int verwerkingId)
         => await _t.GetAsync<EmailTraceDto>($"api/beheer/email-log/{verwerkingId}/trace");

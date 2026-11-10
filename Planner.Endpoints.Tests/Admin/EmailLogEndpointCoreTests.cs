@@ -29,4 +29,17 @@ public sealed class EmailLogEndpointCoreTests
         var filter = EmailLogEndpointCore.LeesFilter(query);
         Assert.Equal(new DateTime(2026, 11, 9, 14, 4, 5, DateTimeKind.Utc), filter.Vanaf);
     }
+
+    [Theory]
+    [InlineData("2026-11-09T00:00:00Z", 9, 0, 0)]
+    [InlineData("2026-11-09 15:04", 9, 15, 4)]
+    public void LeesFilter_TotMetTijd_IsExacteExclusieveGrens(string waarde, int dag, int uur, int minuut)
+    {
+        var query = new QueryCollection(new Dictionary<string, Microsoft.Extensions.Primitives.StringValues>
+        {
+            ["tot"] = waarde
+        });
+        var filter = EmailLogEndpointCore.LeesFilter(query);
+        Assert.Equal(new DateTime(2026, 11, dag, uur, minuut, 0, DateTimeKind.Utc), filter.Tot);
+    }
 }

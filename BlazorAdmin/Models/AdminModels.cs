@@ -505,7 +505,7 @@ public class EmailLogResponse
 {
     public int Count { get; set; }
     public int Limit { get; set; }
-    public Dictionary<string, int> StatusCounts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, int>? StatusCounts { get; set; }
     public List<EmailLogDto> Items { get; set; } = new();
 }
 

@@ -14,7 +14,7 @@ public static class EmailLogEndpointCore
     public const int MaxLimit = 200;
 
     /// <param name="Vanaf">Begin (UTC, inclusief) of <c>null</c>.</param>
-    /// <param name="Tot">Eind (UTC, exclusief) of <c>null</c>.</param>
+    /// <param name="Tot">Eind (UTC, exclusief) of <c>null</c>; een datum zonder tijd omvat die hele kalenderdag.</param>
     public sealed record Filter(DateTime? Vanaf, DateTime? Tot, string Status, int Limit);
 
     /// <summary>
@@ -30,16 +30,20 @@ public static class EmailLogEndpointCore
         return new Filter(vanaf, tot, query["status"].ToString(), limit);
     }
 
-    private static DateTime? LeesGrens(string waarde, bool estFinDate)
+    private static DateTime? LeesGrens(string waarde, bool isEindgrens)
     {
         if (string.IsNullOrWhiteSpace(waarde)) return null;
-        if (DateTimeOffset.TryParse(waarde, out var moment) && IsTimestamp(waarde))
-            return moment.UtcDateTime;
-        if (!DateTime.TryParse(waarde, out var date)) return null;
-        return DateTime.SpecifyKind(estFinDate ? date.Date.AddDays(1) : date.Date, DateTimeKind.Utc);
-    }
+        if (DateOnly.TryParseExact(waarde, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var dag))
+        {
+            var grens = dag.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            return isEindgrens ? grens.AddDays(1) : grens;
+        }
 
-    private static bool IsTimestamp(string value) => value.Contains('T') || value.Contains('t');
+        if (!DateTimeOffset.TryParse(waarde, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal, out var moment)) return null;
+        return moment.UtcDateTime;
+    }
 
     /// <summary>404 als er geen trace is (nooit gemaakt), anders 200 met de PII-arme trace.</summary>
     public static IActionResult VertaalTrace(EmailTraceAntwoord? trace)

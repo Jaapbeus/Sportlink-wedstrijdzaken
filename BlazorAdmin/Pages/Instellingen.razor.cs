@@ -46,8 +46,8 @@ public partial class Instellingen : ClubSelectorPageBase
     // Een door de zekerheidspoort tegengehouden mail is als gelezen gemarkeerd en komt dus nergens anders meer langs.
     private EmailLogResponse? _reviewLog;
     private bool _toonReview;
-    private int _emailReview => _reviewLog?.StatusCounts.GetValueOrDefault("Review") ?? 0;
-    private string _emailReviewTekst => _reviewLog is { Items.Count: >= EmailReviewMax } ? $"{EmailReviewMax}+" : _emailReview.ToString();
+    private int _emailReview => _reviewLog?.StatusCounts?.GetValueOrDefault("Review") ?? 0;
+    private string _emailReviewTekst => _reviewLog?.StatusCounts is null ? "Niet beschikbaar" : _emailReview.ToString();
     private const int EmailReviewMax = 200;
 
     private bool _isTestmodus => ClubSelector.SelectedClubCode == "ALLSTARS";

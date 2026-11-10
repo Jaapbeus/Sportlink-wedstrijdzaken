@@ -26,7 +26,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - De instellingenopslag meldt alleen een herstart als de opgeslagen FetchSchedule-waarde echt verandert; SQL Server ondersteunt nu ook het opslaan en teruglezen van SportlinkDryRun (#1819)
 - Een teambegeleiding-CSV met ongeldige UTF-8-bytes wordt vóór de import geweigerd in plaats van stilzwijgend met vervangtekens in de preview te verschijnen (#1819)
 - Veldbeschikbaarheid kan niet meer naar een periodecombinatie worden bijgewerkt die al bestaat (#1819)
-- E-maildashboardtellers gebruiken de echte laatste 24 uur en tellen alle passende berichten, ook als de detailweergave de limiet bereikt (#1819)
+- E-maildashboardtellers gebruiken de echte laatste 24 uur en tellen alle passende berichten, ook als de detailweergave de limiet bereikt. Bij een oudere API zonder volledige tellingen toont het dashboard "Niet beschikbaar" in plaats van onjuiste nullen; werk de API bij vóór de Blazor-app (#1819)
 
 ## [3.16.0.0] — 2026-11-10
 
