@@ -49,6 +49,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Een lokale automatische-loginlease die bezet is wordt als lokale tijdelijke blokkade teruggegeven, zonder de upstream-foutstatus te gebruiken. Bij een bevestigde mutatie waarvan de auditafronding faalt, meldt de API dat de wijziging al is verwerkt en dat de gebruiker niet opnieuw moet proberen; de veldplannercache wordt na een geslaagde live-mutatie geleegd (#1815)
 - Het oefenwedstrijdformulier serialiseert een datum/tijd als lokale wandklokwaarde zonder machine-offset. De automatische periodieke herlogin start eerder zodat een uur-tickmarge blijft vóór de absolute sessiegrens; de bestaande dagelijkse limiet blijft gelijk (#1815)
 
+- Het API-contract beschrijft de lokale Sportlink-leaseblokkade (409) en de veilige 500-melding bij een al verwerkte live-mutatie met mislukte auditafronding, inclusief het advies om die mutatie niet te herhalen (#1815)
+
 ## [3.16.0.0] — 2026-11-10
 
 ### Added
