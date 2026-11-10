@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.16.0.2
+  version: 3.16.0.3
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -6160,6 +6160,7 @@ paths:
         - easyAuth: []
       requestBody:
         required: true
+        description: JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400, te groot geeft 413 vóór verwerking.
         content:
           application/json:
             schema:
@@ -6204,6 +6205,7 @@ paths:
             type: integer
       requestBody:
         required: true
+        description: JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400, te groot geeft 413 vóór verwerking.
         content:
           application/json:
             schema:
@@ -6313,6 +6315,7 @@ paths:
         - easyAuth: []
       requestBody:
         required: true
+        description: JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400, te groot geeft 413 vóór verwerking.
         content:
           application/json:
             schema:
@@ -6359,6 +6362,7 @@ paths:
             type: integer
       requestBody:
         required: true
+        description: JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400, te groot geeft 413 vóór verwerking.
         content:
           application/json:
             schema:
@@ -6477,6 +6481,7 @@ paths:
         - easyAuth: []
       requestBody:
         required: true
+        description: JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400, te groot geeft 413 vóór verwerking.
         content:
           application/json:
             schema:
@@ -6521,6 +6526,7 @@ paths:
             type: integer
       requestBody:
         required: true
+        description: JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400, te groot geeft 413 vóór verwerking.
         content:
           application/json:
             schema:
@@ -6631,6 +6637,7 @@ paths:
         - easyAuth: []
       requestBody:
         required: true
+        description: JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400, te groot geeft 413 vóór verwerking.
         content:
           application/json:
             schema:
@@ -6675,6 +6682,7 @@ paths:
             type: integer
       requestBody:
         required: true
+        description: JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400, te groot geeft 413 vóór verwerking.
         content:
           application/json:
             schema:
