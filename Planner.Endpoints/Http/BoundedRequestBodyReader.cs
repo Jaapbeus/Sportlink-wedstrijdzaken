@@ -64,7 +64,10 @@ public static class BoundedRequestBodyReader
 
             try
             {
-                return new(StrictUtf8.GetString(buffer, 0, totalRead), RequestBodyReadError.None);
+                // StreamReader accepted a leading UTF-8 BOM. Its bytes still count toward the limit.
+                var offset = totalRead >= 3 && buffer[0] == 0xEF && buffer[1] == 0xBB && buffer[2] == 0xBF
+                    ? 3 : 0;
+                return new(StrictUtf8.GetString(buffer, offset, totalRead - offset), RequestBodyReadError.None);
             }
             catch (DecoderFallbackException)
             {
@@ -93,6 +96,15 @@ public static class BoundedRequestBodyReader
         {
             return new(null, RequestBodyReadError.InvalidJson);
         }
+    }
+
+    /// <summary>Runs an endpoint action only after a bounded body has been read successfully.</summary>
+    public static async Task<IActionResult> ExecuteUtf8Async(
+        HttpRequest request, Func<string?, Task<IActionResult>> action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        var body = await ReadUtf8Async(request, DefaultJsonMaxBytes);
+        return body.IsSuccess ? await action(body.Text) : ToActionResult(body.Error);
     }
 
     public static IActionResult ToActionResult(

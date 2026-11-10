@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Data.SqlClient;
 using Planner.Endpoints.Leren;
+using Planner.Endpoints.Http;
 
 namespace SportlinkFunction.Admin;
 
@@ -58,14 +59,9 @@ public static class AdminTeamAliassenFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/teamaliassen")] HttpRequest req,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminTeamAliassenPost"), "teamalias aanmaken",
-            async clubCode =>
-            {
-                var (body, afwijzing) = await TeamAliasEndpointCore.LeesBodyAsync(req);
-                if (afwijzing != null) return afwijzing;
-                return await TeamAliasEndpointCore.AanmakenAsync(
+            clubCode => BoundedRequestBodyReader.ExecuteUtf8Async(req, body => TeamAliasEndpointCore.AanmakenAsync(
                     clubCode, body, EasyAuthHelper.GetLerenAanroeper(req),
-                    AliasStore(), Wachtrij(), context.GetLogger("AdminTeamAliassenPost"));
-            });
+                    AliasStore(), Wachtrij(), context.GetLogger("AdminTeamAliassenPost"))));
 
     [Function("AdminTeamAliassenValideer")]
     public static Task<IActionResult> Valideer(
@@ -73,15 +69,10 @@ public static class AdminTeamAliassenFunction
         int id,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminTeamAliassenValideer"), "teamalias valideren",
-            async clubCode =>
-            {
-                var (body, afwijzing) = await TeamAliasEndpointCore.LeesBodyAsync(req);
-                if (afwijzing != null) return afwijzing;
-                return await TeamAliasEndpointCore.ValideerAsync(
+            clubCode => BoundedRequestBodyReader.ExecuteUtf8Async(req, body => TeamAliasEndpointCore.ValideerAsync(
                     id, body, EasyAuthHelper.GetLerenAanroeper(req),
                     (aliasId, status, wie) => AdminTeamAliassenRepository.ZetStatusAsync(
-                        aliasId, status, clubCode, wie, SystemUtilities.DatabaseConfig.ConnectionString));
-            });
+                        aliasId, status, clubCode, wie, SystemUtilities.DatabaseConfig.ConnectionString))));
 
     [Function("AdminTeamAliassenDelete")]
     public static Task<IActionResult> Delete(

@@ -103,6 +103,19 @@ public class BoundedRequestBodyReaderTests
     }
 
     [Fact]
+    public async Task ReadJson_LeadingUtf8Bom_PreservesFormerStreamReaderContract()
+    {
+        var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes("{\"Value\":\"ok\"}")).ToArray();
+        var stream = new CountingStream(bytes, maxChunkSize: 2);
+
+        var result = await BoundedRequestBodyReader.ReadJsonAsync<JsonFixture>(Request(stream), bytes.Length);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Value.Should().Be("ok");
+        stream.BytesRead.Should().Be(bytes.Length);
+    }
+
+    [Fact]
     public void ToActionResult_DoesNotEchoBodyAndUsesFixedStatuses()
     {
         var tooLarge = BoundedRequestBodyReader.ToActionResult(RequestBodyReadError.TooLarge) as ObjectResult;
@@ -113,6 +126,41 @@ public class BoundedRequestBodyReaderTests
         Newtonsoft.Json.JsonConvert.SerializeObject(tooLarge.Value).Should().NotContain("secret");
         invalid.Should().NotBeNull();
         Newtonsoft.Json.JsonConvert.SerializeObject(invalid!.Value).Should().NotContain("secret");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExecuteUtf8_RejectsBeforeInvokingAction(bool invalidUtf8)
+    {
+        var bytes = invalidUtf8 ? new byte[] { 0xC3, 0x28 } : new byte[BoundedRequestBodyReader.DefaultJsonMaxBytes + 1];
+        var invoked = false;
+
+        var result = await BoundedRequestBodyReader.ExecuteUtf8Async(Request(new CountingStream(bytes)), _ =>
+        {
+            invoked = true;
+            return Task.FromResult<IActionResult>(new OkResult());
+        });
+
+        invoked.Should().BeFalse();
+        (result as ObjectResult)!.StatusCode.Should().Be(invalidUtf8 ? 400 : 413);
+    }
+
+    [Fact]
+    public async Task ExecuteUtf8_PassesValidBodyToActionOnce()
+    {
+        var calls = 0;
+        var request = Request(new CountingStream(Encoding.UTF8.GetBytes("{\"ok\":true}")));
+
+        var result = await BoundedRequestBodyReader.ExecuteUtf8Async(request, body =>
+        {
+            calls++;
+            body.Should().Be("{\"ok\":true}");
+            return Task.FromResult<IActionResult>(new OkResult());
+        });
+
+        result.Should().BeOfType<OkResult>();
+        calls.Should().Be(1);
     }
 
     private static HttpRequest Request(CountingStream body, long? contentLength = null)
