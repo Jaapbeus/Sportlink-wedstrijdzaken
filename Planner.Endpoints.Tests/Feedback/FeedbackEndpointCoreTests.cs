@@ -342,6 +342,19 @@ public class FeedbackEndpointCoreTests
     }
 
     [Fact]
+    public async Task LeesRequest_OngeldigeUtf8_GeeftVeilige400()
+    {
+        var context = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+        context.Request.Body = new MemoryStream([0xC3, 0x28]);
+
+        var (dto, afwijzing) = await FeedbackEndpointCore.LeesRequestAsync(context.Request);
+
+        dto.Should().BeNull();
+        afwijzing.Should().BeOfType<BadRequestObjectResult>();
+        Newtonsoft.Json.JsonConvert.SerializeObject(afwijzing).Should().NotContain("C3");
+    }
+
+    [Fact]
     public void ControleerEnSaneer_LegeBeschrijving_Geeft400()
     {
         var dto = MaakRequest(); dto.Beschrijving = " ";

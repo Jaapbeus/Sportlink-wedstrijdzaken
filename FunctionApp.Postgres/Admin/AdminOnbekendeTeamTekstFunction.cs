@@ -28,6 +28,10 @@ public static class AdminOnbekendeTeamTekstFunction
         int id,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminOnbekendeTeamTekstStatus"), "onbekende teamtekst bijwerken",
-            async clubCode => await OnbekendeTeamTekstEndpointCore.ZetStatusAsync(
-                clubCode, id, await TeamAliasEndpointCore.LeesBodyAsync(req), Opslag()));
+            async clubCode =>
+            {
+                var (body, afwijzing) = await TeamAliasEndpointCore.LeesBodyAsync(req);
+                if (afwijzing != null) return afwijzing;
+                return await OnbekendeTeamTekstEndpointCore.ZetStatusAsync(clubCode, id, body, Opslag());
+            });
 }

@@ -104,6 +104,16 @@
           }
         }
       },
+      "RequestBodyTooLarge": {
+        "description": "De UTF-8 request-body overschrijdt de limiet van dit endpoint; het verzoek is niet verwerkt. Body `{ error }`.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
       "NotFound": {
         "description": "Resource niet gevonden",
         "content": {
@@ -5913,6 +5923,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the mutation.",
           "required": true,
           "content": {
             "application/json": {
@@ -5962,6 +5973,9 @@
           "409": {
             "description": "Extension staat uit, koppeling ontbreekt/verlopen, guardrail geblokkeerd, of (#1341)\n\"Kleedkamers toewijzen\" staat uit voor de Wedstrijdzaken-rol bij deze club.\n"
           },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
           },
@@ -6001,6 +6015,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the mutation.",
           "required": true,
           "content": {
             "application/json": {
@@ -6050,6 +6065,9 @@
           "409": {
             "description": "Extension staat uit, koppeling ontbreekt/verlopen, guardrail geblokkeerd, of (#1341)\n\"Veld wijzigen\" staat uit voor de Wedstrijdzaken-rol bij deze club.\n"
           },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
           },
@@ -6089,6 +6107,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the mutation.",
           "required": true,
           "content": {
             "application/json": {
@@ -6142,6 +6161,9 @@
           "409": {
             "description": "Extension staat uit, koppeling ontbreekt/verlopen, guardrail geblokkeerd, of (#1341)\n\"Scheidsrechters toewijzen\" staat uit voor de Wedstrijdzaken-rol bij deze club.\n"
           },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
           },
@@ -6181,6 +6203,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the mutation.",
           "required": true,
           "content": {
             "application/json": {
@@ -6240,6 +6263,9 @@
           "409": {
             "description": "Extension staat uit, koppeling ontbreekt/verlopen, of guardrail geblokkeerd"
           },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
           },
@@ -6280,6 +6306,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the audit update.",
           "required": true,
           "content": {
             "application/json": {
@@ -6314,6 +6341,9 @@
           },
           "404": {
             "description": "Audit-record niet gevonden voor deze club"
+          },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -6393,6 +6423,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the action.",
           "required": true,
           "content": {
             "application/json": {
@@ -6445,6 +6476,9 @@
           "409": {
             "description": "Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen"
           },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
           },
@@ -6474,6 +6508,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the mutation.",
           "required": true,
           "content": {
             "application/json": {
@@ -6564,6 +6599,9 @@
           },
           "409": {
             "description": "Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen"
+          },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -9179,6 +9217,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the dry-run.",
           "required": true,
           "content": {
             "application/json": {
@@ -9223,6 +9262,9 @@
               }
             }
           },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
           }
@@ -9243,6 +9285,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 65,536 UTF-16 characters and 262,144 bytes. Invalid UTF-8 or JSON returns 400; oversized bodies return 413.",
           "required": true,
           "content": {
             "application/json": {
@@ -9272,7 +9315,7 @@
             "$ref": "#/components/responses/BadRequest"
           },
           "413": {
-            "description": "Request-body groter dan 65536 tekens (#1677); er is niets verwerkt. Body `{ error }`",
+            "description": "Request-body groter dan 65.536 UTF-16 tekens of 262.144 bytes (#1677); er is niets verwerkt. Body `{ error }`",
             "content": {
               "application/json": {
                 "schema": {
@@ -9317,6 +9360,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 65,536 UTF-16 characters and 262,144 bytes. Invalid UTF-8 or JSON returns 400; oversized bodies return 413.",
           "required": true,
           "content": {
             "application/json": {
@@ -9346,7 +9390,7 @@
             "$ref": "#/components/responses/BadRequest"
           },
           "413": {
-            "description": "Request-body groter dan 65536 tekens (#1677); er is niets verwerkt. Body `{ error }`",
+            "description": "Request-body groter dan 65.536 UTF-16 tekens of 262.144 bytes (#1677); er is niets verwerkt. Body `{ error }`",
             "content": {
               "application/json": {
                 "schema": {
@@ -9401,6 +9445,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 65,536 UTF-16 characters and 262,144 bytes. Invalid UTF-8 or JSON returns 400; oversized bodies return 413.",
           "required": true,
           "content": {
             "application/json": {
@@ -9430,7 +9475,7 @@
             "$ref": "#/components/responses/BadRequest"
           },
           "413": {
-            "description": "Request-body groter dan 65536 tekens (#1677); er is niets verwerkt. Body `{ error }`",
+            "description": "Request-body groter dan 65.536 UTF-16 tekens of 262.144 bytes (#1677); er is niets verwerkt. Body `{ error }`",
             "content": {
               "application/json": {
                 "schema": {
@@ -10338,6 +10383,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 returns 400; an oversized body returns 413 before the command.",
           "required": true,
           "content": {
             "application/json": {
@@ -10382,6 +10428,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -10523,6 +10572,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 returns 400; an oversized body returns 413 before the command.",
           "required": true,
           "content": {
             "application/json": {
@@ -10567,6 +10617,9 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -10658,6 +10711,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 returns 400; an oversized body returns 413 before the command.",
           "required": true,
           "content": {
             "application/json": {
@@ -10746,6 +10800,9 @@
               }
             }
           },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
           }
@@ -10777,6 +10834,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 returns 400; an oversized body returns 413 before the command.",
           "required": true,
           "content": {
             "application/json": {
@@ -10821,6 +10879,9 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -10980,6 +11041,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 returns 400; an oversized body returns 413 before the command.",
           "required": true,
           "content": {
             "application/json": {
@@ -11019,6 +11081,9 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -11714,6 +11779,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 524,288 UTF-16 characters and 2,097,152 bytes. Invalid UTF-8 returns 400; oversized bodies return 413.",
           "required": true,
           "content": {
             "application/json": {
@@ -11816,7 +11882,7 @@
             "description": "`?format=pdf` terwijl de clubinstelling PdfExportIngeschakeld uit staat (#1459)"
           },
           "413": {
-            "description": "Request body te groot"
+            "description": "Request body groter dan 524.288 UTF-16 tekens of 2.097.152 bytes; er is niets verwerkt. Body `{ error }`."
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"

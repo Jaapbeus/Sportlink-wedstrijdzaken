@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Planner.Endpoints.Http;
 using Planner.Shared;
 using Planner.Shared.Email.Trace;
 using Planner.Shared.Leren;
@@ -152,11 +153,13 @@ public static class TeamAliasEndpointCore
         return new OkObjectResult(new { deleted = true, id });
     }
 
-    /// <summary>Leest de volledige requestbody als tekst (de tier geeft die door aan de kernmethoden).</summary>
-    public static async Task<string> LeesBodyAsync(HttpRequest req)
+    /// <summary>Leest een begrensde UTF-8 JSON-body voor tier-agnostische validatie.</summary>
+    public static async Task<(string? Body, IActionResult? Afwijzing)> LeesBodyAsync(HttpRequest req)
     {
-        using var reader = new StreamReader(req.Body);
-        return await reader.ReadToEndAsync();
+        var result = await BoundedRequestBodyReader.ReadUtf8Async(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+        return result.IsSuccess
+            ? (result.Text, null)
+            : (null, BoundedRequestBodyReader.ToActionResult(result.Error));
     }
 
     internal static T? LeesBody<T>(string? body) where T : class

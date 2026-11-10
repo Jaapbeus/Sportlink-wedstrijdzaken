@@ -126,6 +126,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+    RequestBodyTooLarge:
+      description: De UTF-8 request-body overschrijdt de limiet van dit endpoint; het verzoek is niet verwerkt. Body `{ error }`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
     NotFound:
       description: Resource niet gevonden
       content:
@@ -4525,6 +4531,8 @@ paths:
           schema:
             type: string
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the mutation.
         required: true
         content:
           application/json:
@@ -4553,6 +4561,8 @@ paths:
           description: |
             Extension staat uit, koppeling ontbreekt/verlopen, guardrail geblokkeerd, of (#1341)
             "Kleedkamers toewijzen" staat uit voor de Wedstrijdzaken-rol bij deze club.
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '502':
@@ -4581,6 +4591,8 @@ paths:
           schema:
             type: string
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the mutation.
         required: true
         content:
           application/json:
@@ -4609,6 +4621,8 @@ paths:
           description: |
             Extension staat uit, koppeling ontbreekt/verlopen, guardrail geblokkeerd, of (#1341)
             "Veld wijzigen" staat uit voor de Wedstrijdzaken-rol bij deze club.
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '502':
@@ -4643,6 +4657,8 @@ paths:
           schema:
             type: string
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the mutation.
         required: true
         content:
           application/json:
@@ -4679,6 +4695,8 @@ paths:
           description: |
             Extension staat uit, koppeling ontbreekt/verlopen, guardrail geblokkeerd, of (#1341)
             "Scheidsrechters toewijzen" staat uit voor de Wedstrijdzaken-rol bij deze club.
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '502':
@@ -4716,6 +4734,8 @@ paths:
           schema:
             type: string
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the mutation.
         required: true
         content:
           application/json:
@@ -4757,6 +4777,8 @@ paths:
           description: Wedstrijd of PublicMatchId niet gevonden
         '409':
           description: Extension staat uit, koppeling ontbreekt/verlopen, of guardrail geblokkeerd
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '502':
@@ -4786,6 +4808,8 @@ paths:
             type: integer
             format: int64
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the audit update.
         required: true
         content:
           application/json:
@@ -4808,6 +4832,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           description: Audit-record niet gevonden voor deze club
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '503':
@@ -4867,6 +4893,8 @@ paths:
           schema:
             type: string
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the action.
         required: true
         content:
           application/json:
@@ -4894,6 +4922,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           description: Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '502':
@@ -4926,6 +4956,8 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the mutation.
         required: true
         content:
           application/json:
@@ -5001,6 +5033,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           description: Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '502':
@@ -6730,6 +6764,8 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the dry-run.
         required: true
         content:
           application/json:
@@ -6757,6 +6793,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -6775,6 +6813,8 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 65,536 UTF-16 characters and 262,144 bytes. Invalid UTF-8 or JSON returns 400; oversized bodies return 413.
         required: true
         content:
           application/json:
@@ -6793,7 +6833,7 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
         '413':
-          description: Request-body groter dan 65536 tekens (#1677); er is niets verwerkt. Body `{ error }`
+          description: Request-body groter dan 65.536 UTF-16 tekens of 262.144 bytes (#1677); er is niets verwerkt. Body `{ error }`
           content:
             application/json:
               schema:
@@ -6830,6 +6870,8 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 65,536 UTF-16 characters and 262,144 bytes. Invalid UTF-8 or JSON returns 400; oversized bodies return 413.
         required: true
         content:
           application/json:
@@ -6848,7 +6890,7 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
         '413':
-          description: Request-body groter dan 65536 tekens (#1677); er is niets verwerkt. Body `{ error }`
+          description: Request-body groter dan 65.536 UTF-16 tekens of 262.144 bytes (#1677); er is niets verwerkt. Body `{ error }`
           content:
             application/json:
               schema:
@@ -6897,6 +6939,8 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 65,536 UTF-16 characters and 262,144 bytes. Invalid UTF-8 or JSON returns 400; oversized bodies return 413.
         required: true
         content:
           application/json:
@@ -6915,7 +6959,7 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
         '413':
-          description: Request-body groter dan 65536 tekens (#1677); er is niets verwerkt. Body `{ error }`
+          description: Request-body groter dan 65.536 UTF-16 tekens of 262.144 bytes (#1677); er is niets verwerkt. Body `{ error }`
           content:
             application/json:
               schema:
@@ -7524,6 +7568,8 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 returns 400; an oversized body returns 413 before the command.
         required: true
         content:
           application/json:
@@ -7553,6 +7599,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -7646,6 +7694,8 @@ paths:
             type: integer
           description: Leermoment ID
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 returns 400; an oversized body returns 413 before the command.
         required: true
         content:
           application/json:
@@ -7674,6 +7724,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -7745,6 +7797,8 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 returns 400; an oversized body returns 413 before the command.
         required: true
         content:
           application/json:
@@ -7803,6 +7857,8 @@ paths:
                     type: string
                   bestaandeStatus:
                     type: string
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -7825,6 +7881,8 @@ paths:
             type: integer
           description: Alias-ID
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 returns 400; an oversized body returns 413 before the command.
         required: true
         content:
           application/json:
@@ -7853,6 +7911,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -7959,6 +8019,8 @@ paths:
           schema:
             type: integer
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 returns 400; an oversized body returns 413 before the command.
         required: true
         content:
           application/json:
@@ -7984,6 +8046,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -8479,6 +8543,8 @@ paths:
             type: string
             enum: [html, pdf]
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 524,288 UTF-16 characters and 2,097,152 bytes. Invalid UTF-8 returns 400; oversized bodies return 413.
         required: true
         content:
           application/json:
@@ -8531,7 +8597,7 @@ paths:
         '409':
           description: "`?format=pdf` terwijl de clubinstelling PdfExportIngeschakeld uit staat (#1459)"
         '413':
-          description: Request body te groot
+          description: Request body groter dan 524.288 UTF-16 tekens of 2.097.152 bytes; er is niets verwerkt. Body `{ error }`.
         '500':
           $ref: '#/components/responses/InternalServerError'
 

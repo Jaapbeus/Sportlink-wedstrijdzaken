@@ -29,6 +29,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Veldbeschikbaarheid kan niet meer naar een periodecombinatie worden bijgewerkt die al bestaat (#1819)
 - E-maildashboardtellers gebruiken de echte laatste 24 uur en tellen alle passende berichten, ook als de detailweergave de limiet bereikt. Bij een oudere API zonder volledige tellingen toont het dashboard "Niet beschikbaar" in plaats van onjuiste nullen; werk de API bij vóór de Blazor-app (#1819)
 - De email-log OpenAPI-parameters documenteren nu de drie parser-ondersteunde datumvormen; de SQL Server-beschikbaarheidstest ruimt ook op als het fixture-opzetten faalt (#1819, reviewronde 3)
+- Gedeelde API-endpoints lezen JSON-bodies begrensd op UTF-8-bytes, weigeren ongeldige UTF-8/JSON met een vaste 400 en te grote bodies met een vaste 413 vóór de actie. De bestaande Feedback- en planningsdeel-limieten blijven behouden, met een aanvullend byteplafond (zie issue #1811).
 - De instelling `FetchSchedule` accepteert alleen een uitvoerbare zesvelden-CRON van maximaal 50 tekens. Lege waarden en schema's zonder volgend uitvoermoment geven een 400 zonder de ingevoerde waarde in de foutmelding; een weggelaten veld blijft ongewijzigd (zie issue #1811).
 - Normale synchronisatie gebruikt alleen de vaste Sportlink-dataservice als bron; een afwijkende opgeslagen basis-URL stopt vóór uitgaand verkeer. De Sportlink-leesclients volgen geen redirects. Het real-time leespad van de SQL Server-planner volgt dezelfde regel (zie issue #1811).
 
