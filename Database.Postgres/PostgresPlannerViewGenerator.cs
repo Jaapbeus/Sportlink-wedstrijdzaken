@@ -29,8 +29,8 @@ namespace Database.Postgres;
 /// bracket-patroon → Postgres' regex-operator <c>~*</c>, want Postgres' native <c>LIKE</c> kent geen
 /// bracket-karakterklasses — empirisch bevestigd, zie #819-issueverslag), de datum/tijd-rekenkunde,
 /// en de <c>UNION ALL</c> met <c>planner.geplandewedstrijden</c>. Het filter
-/// <c>s.WedstrijdTotaal IS NOT NULL</c> (Speeltijden-join moet matchen) blijft eveneens in SQL —
-/// dat is een gewone equi-join, niet geraakt door de resolutie-verschuiving. Het filter
+/// op ontbrekende duur is vervallen (#1814): een onbekende eindtijd blijft zichtbaar en
+/// blokkeert planning bij de lezer. Het filter
 /// <c>v.VeldNummer IS NOT NULL</c> (veld moet resolven) verhuist mee naar de C#-laag, want de
 /// SQL-side veldresolutie zelf is verhuisd.
 /// </para>
@@ -69,7 +69,7 @@ namespace Database.Postgres;
 /// gebruikt, is dat niet meer nodig.
 /// </para>
 /// <para>
-/// <b>Schema-scope:</b> steunt op <c>his.matches</c>/<c>his.teams</c> (#818,
+/// <b>Schema-scope:</b> steunt op <c>his.matches</c>/<c>his.teams</c>/<c>his.matchdetails</c> (#818/#1814,
 /// <see cref="KnownEntities"/>) en de vier minimale configuratietabellen uit
 /// <see cref="PostgresPlannerSupportSchema"/>.
 /// </para>
