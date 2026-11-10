@@ -804,13 +804,14 @@ jobs:
       # #1715 (Codex-review #1743 ronde 1): de SQL Server-integratietests sloegen zichzelf in CI over, omdat
       # geen job SQLSERVER_TEST_CONNECTION_STRING zette. Hier draaien ze tegen deze wegwerpdatabase: seizoenen
       # per club (doorrol rond de jaarwisseling, afgebroken en overlappende wijzigingen, overgang), de
-      # seizoensretentie (#1698), de feedbackopslag en het inzagelog. SqlServerReconciliationIntegrationTests
+      # seizoensretentie (#1698), de feedbackopslag, het inzagelog, veldbeschikbaarheidsconflicten (#1819)
+      # en e-maillogaggregaties (#1819). SqlServerReconciliationIntegrationTests
       # blijft buiten deze filter: die leest de connectiestring van de Function App zelf.
       - name: SQL Server-integratietests (FunctionApp.Tests, tegen SportlinkFresh)
         run: |
           SQLSERVER_TEST_CONNECTION_STRING="Server=localhost,1433;Database=SportlinkFresh;User Id=sa;Password=${SA_PW};TrustServerCertificate=True;Pooling=false" \
             dotnet test FunctionApp.Tests/FunctionApp.Tests.csproj --configuration Release --verbosity normal \
-              --filter "FullyQualifiedName~SqlServerSeizoenIntegrationTests|FullyQualifiedName~SqlServerHisRetentieIntegrationTests|FullyQualifiedName~SqlFeedbackStoreIntegrationTests|FullyQualifiedName~SqlTeambegeleidingInzageStoreIntegrationTests"
+              --filter "FullyQualifiedName~SqlServerSeizoenIntegrationTests|FullyQualifiedName~SqlServerHisRetentieIntegrationTests|FullyQualifiedName~SqlFeedbackStoreIntegrationTests|FullyQualifiedName~SqlTeambegeleidingInzageStoreIntegrationTests|FullyQualifiedName~AdminSettingsFieldContractTests|FullyQualifiedName~AdminVeldBeschikbaarheidConflictIntegrationTests|FullyQualifiedName~AdminEmailLogStatusCountsIntegrationTests"
 
       - name: Container opruimen
         if: always()

@@ -49,7 +49,7 @@ namespace FunctionApp.Postgres.Admin;
 /// </summary>
 public static class AdminSettingsFunction
 {
-    private static readonly string[] AllowedFields =
+    internal static readonly string[] AllowedFields =
     {
         "HerplanDeadlineDagen", "BufferMinuten",
         "PlannerAfzenderNaam", "CoordinatorNaam", "CoordinatorFunctie", "PlannerEmailAdres",
@@ -208,11 +208,11 @@ public static class AdminSettingsFunction
                 await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
                 await connection.OpenAsync();
 
-                await ApplyChangesAsync(connection, changes, gewijzigdDoor, clubCode, DateOnly.FromDateTime(DateTime.UtcNow));
+                var fetchScheduleChanged = await ApplyChangesAsync(
+                    connection, changes, gewijzigdDoor, clubCode, DateOnly.FromDateTime(DateTime.UtcNow));
 
                 await PostgresAppSettings.LoadSettingsAsync(log);
 
-                var fetchScheduleChanged = changes.ContainsKey("FetchSchedule");
                 string? herstartOpmerking = null;
                 bool herstartAutomatisch = false;
 
@@ -275,7 +275,7 @@ public static class AdminSettingsFunction
 
     /// <summary>Wijzigingen + audit + (bij <c>SeasonStartMonth</c>) seizoensherbouw in één transactie, met de
     /// clubrij vergrendeld (<c>FOR UPDATE</c>): samen slagen of samen terugdraaien (#1715, Codex-review #1743).</summary>
-    internal static async Task ApplyChangesAsync(
+    internal static async Task<bool> ApplyChangesAsync(
         NpgsqlConnection connection, Dictionary<string, string?> changes, string gewijzigdDoor, string clubCode, DateOnly vandaag)
     {
         await using var transaction = await connection.BeginTransactionAsync();
@@ -283,6 +283,7 @@ public static class AdminSettingsFunction
         try
         {
             var currentValues = await ReadCurrentValuesAsync(connection, transaction, changes.Keys, clubCode);
+            var fetchScheduleChanged = FetchScheduleChangedCore.IsChanged(currentValues, changes);
 
             foreach (var (veld, nieuweWaarde) in changes)
             {
@@ -314,6 +315,7 @@ public static class AdminSettingsFunction
                 await PostgresSeasonProcedures.HerbouwSeizoenenVoorClubAsync(connection, transaction, clubCode, vandaag);
 
             await transaction.CommitAsync();
+            return fetchScheduleChanged;
         }
         catch
         {

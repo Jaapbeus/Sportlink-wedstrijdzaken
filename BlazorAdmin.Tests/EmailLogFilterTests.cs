@@ -11,7 +11,8 @@ public class EmailLogFilterTests
     private static readonly DateTime Vandaag = new(2026, 10, 7, 14, 30, 0);
 
     [Fact]
-    public void Vanaf_24Uur_IsGisteren() => EmailLogFilter.Vanaf("24u", Vandaag).Should().Be(new DateTime(2026, 10, 6));
+    public void Vanaf_24Uur_IsExactRollingWindowStart()
+        => EmailLogFilter.Vanaf("24u", Vandaag).Should().Be(new DateTime(2026, 10, 6, 14, 30, 0));
 
     [Fact]
     public void Vanaf_7Dagen_Is7DagenTerug() => EmailLogFilter.Vanaf("7d", Vandaag).Should().Be(new DateTime(2026, 9, 30));
