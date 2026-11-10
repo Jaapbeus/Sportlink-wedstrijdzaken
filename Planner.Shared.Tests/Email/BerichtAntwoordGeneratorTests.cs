@@ -242,7 +242,31 @@ public class BerichtAntwoordGeneratorTests
             + "\nLatere mogelijkheden:\n- veld 4 om 14:30 (eindigt 11:45)\n- veld 5 om 16:00 (eindigt 11:45)\n"
             + "\nLaat weten welke optie de voorkeur heeft.");
         body.Should().NotContain("veld 2").And.NotContain("veld 3");
-        body.Should().Contain("\n\nLet op: Binnen de termijn. Zie ook: https://www.knvb.nl/");
+        // #1787: de KNVB-notitie komt nooit in het antwoord aan de afzender.
+        body.Should().NotContain("Let op:").And.NotContain("knvb.nl").And.NotContain("Binnen de termijn.");
+    }
+
+    [Fact]
+    public void Herplan_KnvbNotitie_StaatAlleenInHetReviewblok()
+    {
+        var oud = Environment.GetEnvironmentVariable(EmailReviewModus.InstellingNaam);
+        try
+        {
+            Environment.SetEnvironmentVariable(EmailReviewModus.InstellingNaam, "true");
+            var classificatie = Classificatie();
+            classificatie.KnvbNotitie = "Jeugd: deadline 13 december.";
+
+            var (_, body) = BerichtAntwoordGenerator.BouwHerplanAntwoord(Wedstrijd(), null, classificatie, Email, Voetnoot);
+
+            var scheiding = "==================\n\n";
+            var kop = body[..(body.IndexOf(scheiding, StringComparison.Ordinal) + scheiding.Length)];
+            kop.Should().Contain("KNVB-notitie (AI, niet gecontroleerd; niet in het antwoord): Jeugd: deadline 13 december.\n");
+            body[kop.Length..].Should().NotContain("deadline 13 december").And.NotContain("Let op:");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(EmailReviewModus.InstellingNaam, oud);
+        }
     }
 
     [Fact]

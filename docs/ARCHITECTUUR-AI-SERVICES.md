@@ -201,6 +201,14 @@ voor één specifiek seizoen (huidig: 2026/'27 — actueel op 19-09-2026). Deze 
 jaarlijks verouderd. Sinds #1759 staat de constante **eenmalig** in `BerichtAiKern` (gedeeld door beide
 tiers); werk daar ook `KnvbRegelsSeizoen` en `KnvbRegelsGeldigTot` bij.
 
+**De `knvbNotitie` gaat niet naar de afzender (#1787).** Het model weet niet in welke KNVB-categorie (A
+of B) een team speelt en leidt die af uit de teamnaam. Daardoor kreeg bijvoorbeeld een regionaal
+jeugdteam de deadline van de jeugddivisies te zien. De notitie staat daarom alleen in het reviewblok
+(`=== REVIEW MODE ===`, regel "KNVB-notitie (AI, niet gecontroleerd; …)"). Zonder review mode verschijnt
+ze nergens. De kolom `Teams.Categorie` / `public.teams.categorie` (`A`/`B`, NULL = onbekend) is
+voorbereid maar nog niet in gebruik. Een KNVB-zin in het antwoord mag pas terugkomen als hij op de
+vastgelegde categorie van het team steunt, en blijft weg zolang die onbekend is.
+
 **Verplichting:** bij elke nieuwe seizoensstart (augustus/september):
 1. Controleer KNVB-website op gewijzigde verplaatsingsregels
 2. Update `KnvbRegelsContext` met nieuwe deadlines én de seizoensdata uit de speeldagenkalender

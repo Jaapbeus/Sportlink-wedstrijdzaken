@@ -256,14 +256,7 @@ public static partial class BerichtAntwoordGenerator
         // Wrap met review-mode prefix + handtekening, hergebruik de bestaande logica
         var body = "";
         if (EmailReviewModus.IsActief())
-        {
-            body += $"=== REVIEW MODE ===\n"
-                  + $"Originele afzender: {email.Afzender}\n"
-                  + $"Onderwerp: {email.Onderwerp}\n"
-                  + $"Classificatie: {classificatie.Type}\n"
-                  + $"Template: {template.Key}\n"
-                  + $"==================\n\n";
-        }
+            body += ReviewKop(classificatie, email, template.Key);
 
         // TrimEnd (#1780): een placeholder aan het eind van de tekst die leeg blijft (bijvoorbeeld {{bijlage_zin}})
         // mag geen rij lege regels voor de handtekening achterlaten; de handtekening voegt zelf een lege regel toe.
@@ -368,18 +361,30 @@ public static partial class BerichtAntwoordGenerator
         var body = "";
 
         if (EmailReviewModus.IsActief())
-        {
-            body += $"=== REVIEW MODE ===\n"
-                  + $"Originele afzender: {email.Afzender}\n"
-                  + $"Onderwerp: {email.Onderwerp}\n"
-                  + $"Classificatie: {classificatie.Type}\n"
-                  + $"==================\n\n";
-        }
+            body += ReviewKop(classificatie, email, templateKey: null);
 
         body += inhoud;
         body += "\n\n" + GetHandtekening(instellingen);
 
         return (onderwerp, body);
+    }
+
+    /// <summary>
+    /// Het reviewblok boven een antwoord in review mode; alleen de coördinator ziet het. Een ingevulde
+    /// KNVB-notitie staat hier en nooit in de tekst aan de afzender (#1787): het model kent de KNVB-categorie
+    /// (A/B) van het team niet, dus de notitie is een niet-gecontroleerde inschatting.
+    /// </summary>
+    private static string ReviewKop(BerichtClassificatie classificatie, IAntwoordAfzender email, string? templateKey)
+    {
+        var kop = "=== REVIEW MODE ===\n"
+                + $"Originele afzender: {email.Afzender}\n"
+                + $"Onderwerp: {email.Onderwerp}\n"
+                + $"Classificatie: {classificatie.Type}\n";
+        if (templateKey != null)
+            kop += $"Template: {templateKey}\n";
+        if (!string.IsNullOrWhiteSpace(classificatie.KnvbNotitie))
+            kop += $"KNVB-notitie (AI, niet gecontroleerd; niet in het antwoord): {classificatie.KnvbNotitie}\n";
+        return kop + "==================\n\n";
     }
 
     /// <summary>

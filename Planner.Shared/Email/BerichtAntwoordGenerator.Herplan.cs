@@ -78,9 +78,8 @@ public static partial class BerichtAntwoordGenerator
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(classificatie.KnvbNotitie))
-            inhoud += $"\n\nLet op: {classificatie.KnvbNotitie} Zie ook: https://www.knvb.nl/assist-wedstrijdsecretarissen/veldvoetbal/regelen-dagelijkse-praktijk/verplaatsen-van-wedstrijden";
-
+        // #1787: de KNVB-notitie is een AI-inschatting zonder bekende teamcategorie (A/B) en komt daarom
+        // niet in het antwoord aan de afzender, alleen in het reviewblok (zie ReviewKop).
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email, instellingen);
     }
 
