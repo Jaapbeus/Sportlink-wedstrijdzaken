@@ -93,7 +93,7 @@ internal sealed class SportlinkWedstrijdLezer
 
         // Ok + Data=null: de aanroep zelf slaagde, deze wedstrijd stond er alleen niet in — geen
         // fout, zie XML-doc op ISportlinkClubClient.ResolvePublicMatchIdAsync.
-        var gevonden = overview.Data?.FirstOrDefault(e => e.ExternalMatchId == wedstrijdnummer);
+        var gevonden = SportlinkPublicMatchIdKoppeling.VindEenduidigeMatch(overview.Data, wedstrijdnummer);
         return new SportlinkClubResponse<SportlinkMatchProgramEntry>(SportlinkClubCallStatus.Ok, gevonden, null, overview.HttpStatusCode);
     }
 

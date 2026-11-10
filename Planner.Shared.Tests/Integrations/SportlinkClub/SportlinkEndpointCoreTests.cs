@@ -117,6 +117,7 @@ public class SportlinkEndpointCoreTests
     [Theory]
     [InlineData(SportlinkClubCallStatus.RolNietGekoppeld, 409)]
     [InlineData(SportlinkClubCallStatus.HerkoppelingVereist, 409)]
+    [InlineData(SportlinkClubCallStatus.LokaleLeaseBezet, 409)]
     [InlineData(SportlinkClubCallStatus.SportlinkFout, 502)]
     [InlineData(SportlinkClubCallStatus.NetwerkFout, 504)]
     public void VertaalStatusNaarFout_GeeftVerwachteHttpStatus(SportlinkClubCallStatus status, int verwacht)
@@ -415,7 +416,17 @@ public class SportlinkEndpointCoreTests
     {
         var body = SportlinkEndpointCore.BouwContractCheckNoodmailBody("Contractvorm afwijkend: x", "t");
 
-        body.Should().Contain("de vorm van de Match-respons is veranderd");
+        body.Should().Contain("de oorzaak is niet automatisch vastgesteld");
         body.Should().NotContain("verlopen");
+    }
+
+    [Fact]
+    public void BouwContractCheckNoodmailBody_BijMislukteAutomatischeLogin_NoemtGeenVormwijziging()
+    {
+        var body = SportlinkEndpointCore.BouwContractCheckNoodmailBody(
+            "Automatisch aanmelden bij Sportlink is mislukt.", "t");
+
+        body.Should().Contain("oorzaak is niet automatisch vastgesteld")
+            .And.NotContain("vorm van de Match-respons is veranderd");
     }
 }

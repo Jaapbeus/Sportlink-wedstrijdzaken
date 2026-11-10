@@ -154,12 +154,33 @@ public static class SportlinkEndpointSupportCore
         SportlinkClubResponse<T> mutationResult,
         Func<string, string?, Task>? voltooiAuditAsync,
         Func<T, SportlinkMutationResult> naarMutatieResultaat,
-        Func<T, IActionResult> ok)
+        Func<T, IActionResult> ok,
+        ILogger? log = null)
         where T : class
     {
         var afronding = SportlinkEndpointCore.BepaalMutatieAfronding(mutationResult, naarMutatieResultaat);
+        // Alleen de exacte auditstatus "Success" is een live uitgevoerde geslaagde mutatie;
+        // dry-run en code-locked simulaties krijgen afzonderlijke auditstatussen.
+        var liveMutatieSuccesvol = afronding.Fout == null && afronding.AuditResultaat == "Success";
+        if (liveMutatieSuccesvol)
+            VeldplannerOverlayCore.InvalideerBlokkenCache();
+
         if (voltooiAuditAsync != null)
-            await voltooiAuditAsync(afronding.AuditResultaat, afronding.AuditSamenvatting);
+        {
+            try
+            {
+                await voltooiAuditAsync(afronding.AuditResultaat, afronding.AuditSamenvatting);
+            }
+            catch (Exception) when (liveMutatieSuccesvol)
+            {
+                log?.LogError("Sportlink-mutatie is verwerkt, maar de auditafronding is mislukt; auditrecord blijft open.");
+                return new ObjectResult(new
+                {
+                    error = "Sportlink heeft de wijziging verwerkt, maar de audit kon niet worden afgerond. "
+                        + "Probeer de actie niet opnieuw; neem contact op met de beheerder."
+                }) { StatusCode = 500 };
+            }
+        }
         return afronding.Fout != null ? NaarActionResult(afronding.Fout) : ok(afronding.Data!);
     }
 }

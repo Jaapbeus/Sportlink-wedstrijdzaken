@@ -72,13 +72,15 @@ internal static class SportlinkEndpointSupport
         ISportlinkMutationAuditService? auditService,
         long? auditId,
         Func<T, SportlinkMutationResult> naarMutatieResultaat,
-        Func<T, IActionResult> ok)
+        Func<T, IActionResult> ok,
+        ILogger? log = null)
         where T : class
         => SportlinkEndpointSupportCore.RondMutatieAfAsync(
             mutationResult,
             VoltooiAuditDelegate(auditService, auditId),
             naarMutatieResultaat,
-            ok);
+            ok,
+            log);
 
     private static Func<string, string?, Task>? VoltooiAuditDelegate(
         ISportlinkMutationAuditService? auditService, long? auditId)

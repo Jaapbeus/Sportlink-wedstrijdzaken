@@ -422,7 +422,8 @@ public static class SportlinkMatchFunction
         return await SportlinkEndpointSupport.RondMutatieAfAsync(
             mutationResult, auditService, auditId, naarMutatieResultaat,
             data => new OkObjectResult(
-                bouwResponse != null ? bouwResponse(data, auditId, mutationResult.HttpStatusCode) : data));
+                bouwResponse != null ? bouwResponse(data, auditId, mutationResult.HttpStatusCode) : data),
+            context.GetLogger("SportlinkMatch"));
     }
 
     /// <summary>Gedeelde stappen van beide endpoints hierboven: toggle-check, EgressGuard,
