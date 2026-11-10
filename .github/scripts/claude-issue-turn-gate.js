@@ -47,8 +47,8 @@ const REQUIRED_SOURCE_LABELS = ['source: claude-code', 'source: owner'];
 const REVIEW_SOURCE_LABELS = ['source: codex'];
 const BLOCKED_LABELS = ['discipline: architect'];
 
-// AGENTS.md, "Review en turn:" regel 4: hoogstens twee reviewrondes per PR.
-const MAX_REVIEW_ROUNDS = 2;
+// AGENTS.md, "Review en turn:" regel 4: hoogstens drie reviewrondes per PR.
+const MAX_REVIEW_ROUNDS = 3;
 
 // Regels van een fasecomment (AGENTS.md, "Leg de opdracht vast bij het issue"). Regelgebonden, met
 // ruimte voor opsommingstekens en markdown-nadruk; lopende tekst die "Fase: review" noemt telt niet.
