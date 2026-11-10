@@ -51,7 +51,7 @@ public static class SportlinkContractCheckTimerFunction
 
         string? publicMatchId;
         await using (var cmd = new NpgsqlCommand(
-            "SELECT publicmatchid FROM public.sportlinkpublicmatchidcache WHERE clubcode = @clubcode ORDER BY opgehaaldop DESC LIMIT 1",
+            "SELECT publicmatchid FROM public.sportlinkpublicmatchidcache WHERE clubcode = @clubcode AND publicmatchid = verifiedpublicmatchid ORDER BY opgehaaldop DESC LIMIT 1",
             connection))
         {
             cmd.Parameters.AddWithValue("clubcode", clubCode);
