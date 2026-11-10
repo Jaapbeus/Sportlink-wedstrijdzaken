@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.16.0.3
+  version: 3.16.0.4
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -4125,6 +4125,7 @@ paths:
         - easyAuth: []
       requestBody:
         required: true
+        description: JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8/JSON geeft 400, te groot geeft 413 vóór verwerking.
         content:
           application/json:
             schema:
@@ -4172,6 +4173,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '413':
+          description: Request-body groter dan 1 MiB; de mutatie is niet verwerkt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -5779,6 +5786,7 @@ paths:
         - easyAuth: []
       requestBody:
         required: true
+        description: JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8/JSON geeft 400, te groot geeft 413 vóór verwerking.
         content:
           application/json:
             schema:
@@ -5804,6 +5812,12 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           description: E-mailadres staat al in de uitsluitingslijst
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: Request-body groter dan 1 MiB; de mutatie is niet verwerkt.
           content:
             application/json:
               schema:
