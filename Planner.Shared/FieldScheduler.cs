@@ -253,7 +253,7 @@ public static partial class PlannerShared
         TimeOnly? sunset, bool eindBinnenDagdeel = false)
     {
         var candidates = new List<CandidateSlot>();
-        if (duurMinuten <= 0) return candidates;
+        if (duurMinuten <= 0 || duurMinuten > 1440) return candidates;
         foreach (var field in availableFields)
         {
             var fieldOccs = occupations.Where(o => o.VeldNummer == field.VeldNummer).ToList();
@@ -263,9 +263,9 @@ public static partial class PlannerShared
             var uiterlijkEinde = eindBinnenDagdeel ? windowEnd : field.BeschikbaarTot;
             // TimeOnly.AddMinutes wraps modulo 24h. Use monotone minute offsets so a late window
             // cannot create slots before opening or loop back to the start of the day.
-            int startMinute = (int)windowStart.ToTimeSpan().TotalMinutes;
-            int endMinute = (int)windowEnd.ToTimeSpan().TotalMinutes;
-            int latestEndMinute = (int)uiterlijkEinde.ToTimeSpan().TotalMinutes;
+            int startMinute = (int)Math.Ceiling(windowStart.ToTimeSpan().TotalMinutes);
+            int endMinute = (int)Math.Ceiling(windowEnd.ToTimeSpan().TotalMinutes);
+            int latestEndMinute = (int)Math.Floor(uiterlijkEinde.ToTimeSpan().TotalMinutes);
             for (int minute = startMinute; minute < endMinute && minute + duurMinuten <= latestEndMinute; minute += 5)
             {
                 var time = TimeOnly.FromTimeSpan(TimeSpan.FromMinutes(minute));

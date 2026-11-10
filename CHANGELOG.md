@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- Veldplanning vindt bij vervroegen ook open ruimtes na de eerste wedstrijd; beschikbaarheidsvensters blijven binnen het gevraagde dagdeel en lopen niet terug bij overlappende bezettingen. De handmatige conflictcontrole gebruikt dezelfde Sportlink-bufferregel als de planner, de huidige HTML-weergave herkent volledige veldnamen, en vervallen plannerregels negeren afgelaste of verwijderde bronwedstrijden. Ontbreekt een betrouwbare duur voor een bestaande wedstrijd, dan blokkeert de planning expliciet in plaats van de bezetting stilzwijgend weg te laten. Late tijdsloten wikkelen niet over middernacht (#1814).
+
 ## [3.16.0.0] — 2026-11-10
 
 ### Added

@@ -214,6 +214,7 @@ internal static class AutoPlanService
                 OptimaalVeld = optimaalVeld,
                 OptimaalTijd = optimaalTijd,
                 Status = status,
+                SportlinkLeidend = sportlinkLeidend,
                 VoorkeurTijd = voorkeurTijdStr,
                 VoorkeurAfwijkingMinuten = voorkeurAfwijking,
                 VoorkeurBron = doel.Bron,
@@ -396,14 +397,14 @@ internal static class AutoPlanService
             {
                 // Sportlink-veldnamen kunnen een subpositie-suffix bevatten (bv. "veld 3 A"); de eerste
                 // twee spatie-gescheiden tokens geven altijd "veld <nummer>", vandaar Take(2).LastOrDefault().
-                var huidigVeldNr = velden.FirstOrDefault(v =>
-                    NormaliseerVeld(v.VeldNaam) == NormaliseerVeld(i.HuidigeVeld?.Split(' ').Take(2).LastOrDefault() ?? ""))?.VeldNummer ?? 0;
+                var (huidigVeldNr, huidigeSubpositie) = VeldResolver.Resolve(i.HuidigeVeld,
+                    velden.Select(v => ((string?)v.VeldNaam, v.VeldNummer)));
                 if (huidigVeldNr == 0) return null;
                 if (!TimeOnly.TryParse(i.HuidigeTijd, out var aTime)) return null;
                 return new BestaandeWedstrijd
                 {
                     Datum = datum, AanvangsTijd = aTime, EindTijd = aTime.AddMinutes(i.DuurMinuten),
-                    VeldNummer = huidigVeldNr, VeldDeelGebruik = i.Veldafmeting > 0 ? i.Veldafmeting : 1m,
+                    VeldNummer = huidigVeldNr, VeldSubpositie = huidigeSubpositie, VeldDeelGebruik = i.Veldafmeting > 0 ? i.Veldafmeting : 1m,
                     LeeftijdsCategorie = i.LeeftijdsCategorie, TeamNaam = i.TeamNaam, Wedstrijd = i.Wedstrijd, Bron = "Sportlink"
                 };
             }).Where(o => o != null).Cast<BestaandeWedstrijd>().ToList();

@@ -725,6 +725,8 @@ internal static class PlannerMatchRepository
                 mta_modified = NOW()
             FROM his.matches m
             WHERE m.kaledatum::date = gw.datum
+              AND (m.status IS NULL OR m.status <> 'Afgelast')
+              AND m.mta_deleted IS NULL
               AND {PostgresClubScope.HisFilter("m")}
               AND EXISTS (
                   SELECT 1

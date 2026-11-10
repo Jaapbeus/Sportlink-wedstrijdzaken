@@ -91,6 +91,8 @@ internal static class PlannerAvailabilityRepository
         using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
+            if (reader.IsDBNull(2))
+                throw new global::Planner.Shared.Planning.PlanningDuurOnbekendException();
             var aanvangsTijd = reader.GetTimeSpan(1);
             var eindTijdDt   = reader.GetDateTime(2);
             results.Add(new BestaandeWedstrijd

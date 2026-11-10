@@ -721,6 +721,7 @@ public class AutoPlanWedstrijdItemDto
     // bepaalt PlanningBufferRegels (gedeeld met de planner) met de op dat moment ingestelde buffer.
     public int? TeamBufferVoor { get; set; }
     public int? TeamBufferNa { get; set; }
+    public bool SportlinkLeidend { get; set; }
 }
 
 public class AutoPlanResponseDto
