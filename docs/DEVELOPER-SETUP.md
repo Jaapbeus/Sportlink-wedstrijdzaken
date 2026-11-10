@@ -193,7 +193,7 @@ git config core.hooksPath .githooks
 cp .githooks/sensitive-patterns.template.txt .githooks/sensitive-patterns.txt
 ```
 
-Vul `sensitive-patterns.txt` aan met je eigen waarden: servernaam, SQL-login, Sportlink Client ID, Azure resource namen.
+Configureer `sensitive-patterns.txt` volgens je lokale omgeving. Dit bestand is gitignored en blijft lokaal. De hooks weigeren een ontbrekend of leeg patroonbestand; maak geen leeg bestand aan om de controle te omzeilen.
 
 Bij een update van `.githooks/sensitive-patterns.template.txt`: neem gewijzigde generieke
 patronen over in je bestaande lokale bestand, zonder eigen patronen te overschrijven.
@@ -208,8 +208,18 @@ tijdelijke header bij tokenuitgifte beide formaten selecteren; zie
 ### 3.3 Verificatie
 
 ```bash
+bash scripts/ci/test-git-hooks.sh
+```
+
+De regressietest voert de repositoryhooks uit in tijdelijke lokale repositories. Ze controleert de configuratiepoort, de complete geschiedenis van een nieuwe branch-push en de versiecontrole op de gestagede csproj-inhoud. Er worden geen remote pushes uitgevoerd.
+
+Een wijziging aan een applicatie-csproj start vóór de commit ook `scripts/ci/check-versie-synchroon.sh --staged`. Die controle leest de versievelden uit de Git-index, zodat een correctie die alleen in de werkboom staat een onjuiste gedeeltelijke staging niet laat slagen.
+
+Voor een handmatige lege-commitcontrole is een geconfigureerd lokaal patroonbestand vereist:
+
+```bash
 git commit --allow-empty -m "test hooks"
-# Verwacht: "Scanning staged files for sensitive data..." → "No sensitive data detected."
+# Verwacht: "Scanning staged files for secrets and PII..." → "OK: No secrets or personal data detected. Commit allowed."
 ```
 
 ---
