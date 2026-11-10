@@ -109,6 +109,21 @@ public class SportlinkClubClientTests
         """;
 
     [Fact]
+    public void Constructor_NullDryRunDelegate_ThrowsArgumentNullException()
+    {
+        using var httpClient = MakeClient(_ => throw new InvalidOperationException("The fake transport must not be called."));
+
+        var exception = Assert.Throws<ArgumentNullException>(() =>
+            new SportlinkClubClient(
+                httpClient,
+                new FakeSportlinkClubTokenStore(),
+                NullLogger<SportlinkClubClient>.Instance,
+                isDryRun: null!));
+
+        exception.ParamName.Should().Be("isDryRun");
+    }
+
+    [Fact]
     public async Task GetMatchAsync_ExternalMatchIdAlsJsonGetal_WordtCorrectGemaptNaarString()
     {
         // Regressietest voor een live-gevonden bug (2026-09-06): Sportlinks echte Match-endpoint
@@ -142,7 +157,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
 
@@ -188,7 +203,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
 
@@ -213,7 +228,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
 
@@ -243,7 +258,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         // Act
         var result = await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
@@ -265,7 +280,7 @@ public class SportlinkClubClientTests
         var tokenStore = new FakeSportlinkClubTokenStore();
         var client = MakeClient(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         // Act
         var result = await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
@@ -292,7 +307,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         // Act
         var result = await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
@@ -320,7 +335,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         // Act: twee aanroepen met dezelfde rol
         var result1 = await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
@@ -357,7 +372,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         // Act
         var result = await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
@@ -383,7 +398,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         // Act
         var result = await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
@@ -407,7 +422,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         // Act
         var result = await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
@@ -432,7 +447,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         // Act + Assert: geen exception
         var result = await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
@@ -455,7 +470,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         // Act
         var result = await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
@@ -483,7 +498,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         // Act
         await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
@@ -512,7 +527,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, logger);
+        var sut = new SportlinkClubClient(client, tokenStore, logger, isDryRun: () => false);
 
         // Act
         await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
@@ -548,7 +563,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.ResolvePublicMatchIdAsync(TestFunctioneleRol, 3403, new DateOnly(2026, 9, 5));
 
@@ -570,7 +585,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.ResolvePublicMatchIdAsync(TestFunctioneleRol, 3403, new DateOnly(2026, 9, 5));
 
@@ -592,7 +607,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.ResolvePublicMatchIdAsync(TestFunctioneleRol, 3403, new DateOnly(2026, 9, 5));
 
@@ -613,7 +628,7 @@ public class SportlinkClubClientTests
             return JsonResponse("[]");
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         await sut.ResolvePublicMatchIdAsync(TestFunctioneleRol, 3403, new DateOnly(2026, 9, 5));
 
@@ -626,7 +641,7 @@ public class SportlinkClubClientTests
         var tokenStore = new FakeSportlinkClubTokenStore();
         var client = MakeClient(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.ResolvePublicMatchIdAsync(TestFunctioneleRol, 3403, new DateOnly(2026, 9, 5));
 
@@ -649,7 +664,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.GetMatchProgramOverviewAsync(TestFunctioneleRol, new DateOnly(2026, 9, 5));
 
@@ -672,7 +687,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.GetMatchProgramOverviewAsync(TestFunctioneleRol, new DateOnly(2026, 9, 5));
 
@@ -699,7 +714,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         await sut.GetMatchProgramOverviewAsync(TestFunctioneleRol, new DateOnly(2026, 9, 5));
         await sut.GetMatchProgramOverviewAsync(TestFunctioneleRol, new DateOnly(2026, 9, 5));
@@ -720,7 +735,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.GetMatchProgramOverviewAsync(TestFunctioneleRol, new DateOnly(2026, 9, 5));
 
@@ -751,7 +766,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.GetMatchProgramOverviewAsync(TestFunctioneleRol, new DateOnly(2026, 9, 5));
 
@@ -777,7 +792,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
 
@@ -983,7 +998,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
 
@@ -1012,7 +1027,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
 
@@ -1039,7 +1054,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.ResolvePublicMatchIdAsync(TestFunctioneleRol, 3403, new DateOnly(2026, 9, 5));
 
@@ -1076,7 +1091,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.UpdateDressingRoomsAsync(TestFunctioneleRol, TestPublicMatchId, "10", "6", "9");
 
@@ -1098,7 +1113,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.UpdateDressingRoomsAsync(TestFunctioneleRol, TestPublicMatchId, "10", "6", "9");
 
@@ -1139,7 +1154,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.UpdateDressingRoomsAsync(TestFunctioneleRol, TestPublicMatchId, "10", "6", "9");
 
@@ -1235,7 +1250,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         await sut.UpdateDressingRoomsAsync(TestFunctioneleRol, TestPublicMatchId, "10", "6", "9");
 
@@ -1253,7 +1268,7 @@ public class SportlinkClubClientTests
         var httpCallCount = 0;
         var client = MakeClient(_ => { httpCallCount++; return new HttpResponseMessage(HttpStatusCode.NotFound); });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.UpdateDressingRoomsAsync(TestFunctioneleRol, TestPublicMatchId, "10", "6", "9");
 
@@ -1284,7 +1299,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.UpdateDressingRoomsAsync(TestFunctioneleRol, TestPublicMatchId, "10", "6", "9");
 
@@ -1307,7 +1322,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.UpdateDressingRoomsAsync(TestFunctioneleRol, TestPublicMatchId, "10", "6", "9");
 
@@ -1329,7 +1344,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, logger);
+        var sut = new SportlinkClubClient(client, tokenStore, logger, isDryRun: () => false);
 
         await sut.UpdateDressingRoomsAsync(TestFunctioneleRol, TestPublicMatchId, "10", "6", "9");
 
@@ -1396,7 +1411,7 @@ public class SportlinkClubClientTests
         var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
         var client = MakeClient(MakeUpdateFieldClient(DressingRoomsSuccessResponse));
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.UpdateFieldAsync(TestFunctioneleRol, TestPublicMatchId, "BBCF989-OUTDOOR_FIELD-6", "1.0", 0, isForceUpdate: false);
 
@@ -1414,7 +1429,7 @@ public class SportlinkClubClientTests
         var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
         var client = MakeClient(MakeUpdateFieldClient(DressingRoomsSuccessResponse));
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.UpdateFieldAsync(TestFunctioneleRol, TestPublicMatchId, "BBCF989-OUTDOOR_FIELD-6", "1.0", 0, isForceUpdate: false);
 
@@ -1429,7 +1444,7 @@ public class SportlinkClubClientTests
         var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
         var client = MakeClient(MakeUpdateFieldClient(DressingRoomsSuccessResponse, b => capturedBody = b));
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         await sut.UpdateFieldAsync(TestFunctioneleRol, TestPublicMatchId, "BBCF989-OUTDOOR_FIELD-9", "1.0", 0, isForceUpdate: false);
 
@@ -1450,7 +1465,7 @@ public class SportlinkClubClientTests
         var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
         var client = MakeClient(MakeUpdateFieldClient(() => DressingRoomsViolationResponse("INVALID_UPDATE_ACTION")));
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.UpdateFieldAsync(TestFunctioneleRol, TestPublicMatchId, "BBCF989-OUTDOOR_FIELD-6", "1.0", 0, isForceUpdate: false);
 
@@ -1466,7 +1481,7 @@ public class SportlinkClubClientTests
         var httpCallCount = 0;
         var client = MakeClient(_ => { httpCallCount++; return new HttpResponseMessage(HttpStatusCode.NotFound); });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.UpdateFieldAsync(TestFunctioneleRol, TestPublicMatchId, "12345-1", "1.0", 0, isForceUpdate: false);
 
@@ -1499,7 +1514,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.UpdateFieldAsync(TestFunctioneleRol, TestPublicMatchId, "12345-1", "1.0", 0, isForceUpdate: false);
 
@@ -1514,7 +1529,7 @@ public class SportlinkClubClientTests
         var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
         var client = MakeClient(MakeUpdateFieldClient(() => throw new HttpRequestException("Netwerk down")));
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.UpdateFieldAsync(TestFunctioneleRol, TestPublicMatchId, "12345-1", "1.0", 0, isForceUpdate: false);
 
@@ -1541,7 +1556,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.UpdateFieldAsync(TestFunctioneleRol, TestPublicMatchId, "12345-1", "1.0", 0, isForceUpdate: false);
 
@@ -1585,7 +1600,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.GetChangeRequestsAsync(TestFunctioneleRol);
 
@@ -1614,7 +1629,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.GetChangeRequestsAsync(TestFunctioneleRol);
 
@@ -1628,7 +1643,7 @@ public class SportlinkClubClientTests
         var tokenStore = new FakeSportlinkClubTokenStore();
         var client = MakeClient(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.GetChangeRequestsAsync(TestFunctioneleRol);
 
@@ -1654,7 +1669,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.ActOnChangeRequestAsync(TestFunctioneleRol, "APPROVE", TestPublicMatchId, "R1", null);
 
@@ -1679,7 +1694,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.ActOnChangeRequestAsync(TestFunctioneleRol, "APPROVE", TestPublicMatchId, "R1", null);
 
@@ -1693,7 +1708,7 @@ public class SportlinkClubClientTests
         var tokenStore = new FakeSportlinkClubTokenStore();
         var client = MakeClient(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.ActOnChangeRequestAsync(TestFunctioneleRol, "DENY", TestPublicMatchId, "R1", "Geen ruimte");
 
@@ -1717,7 +1732,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var status = await sut.VerversTokenAsync(TestFunctioneleRol);
 
@@ -1745,7 +1760,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         await sut.VerversTokenAsync(TestFunctioneleRol);
 
@@ -1771,7 +1786,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
         await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
         tokenCallCount.Should().Be(1, "voorwaarde: er staat nu een niet-verlopen access-token in de cache");
 
@@ -1790,7 +1805,7 @@ public class SportlinkClubClientTests
         var tokenStore = new FakeSportlinkClubTokenStore();
         var client = MakeClient(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var status = await sut.VerversTokenAsync(TestFunctioneleRol);
 
@@ -1811,7 +1826,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var status = await sut.VerversTokenAsync(TestFunctioneleRol);
 
@@ -1830,7 +1845,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, logger);
+        var sut = new SportlinkClubClient(client, tokenStore, logger, isDryRun: () => false);
 
         await sut.VerversTokenAsync(TestFunctioneleRol);
 
@@ -2233,7 +2248,7 @@ public class SportlinkClubClientTests
                 return JsonResponse(GoldenSnapshotJson);
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         await sut.UpdateFieldAsync(TestFunctioneleRol, "PUBLIC-MATCH",
             overschrijf ? "FIELD-NIEUW" : null, overschrijf ? "3.0" : null, overschrijf ? 9 : null, isForceUpdate: overschrijf);
@@ -2415,7 +2430,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         await sut.UpdateDressingRoomsAsync(TestFunctioneleRol, TestPublicMatchId, "10", "6", "9");
         await sut.UpdateFieldAsync(TestFunctioneleRol, TestPublicMatchId, "F1", "1.0", null, isForceUpdate: false);
@@ -2550,7 +2565,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.GetClubMatchContextAsync(TestFunctioneleRol);
 
@@ -2580,7 +2595,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.UpdateDressingRoomsAsync(TestFunctioneleRol, TestPublicMatchId, "10", "6", "9");
 
@@ -2616,7 +2631,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.GetClubMatchPickListsAsync(TestFunctioneleRol);
 
@@ -2643,7 +2658,7 @@ public class SportlinkClubClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.GetClubMatchPickListsAsync(TestFunctioneleRol);
 
@@ -2666,7 +2681,7 @@ public class SportlinkClubClientTests
             return JsonResponse("[]");
         });
 
-        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
 
         var result = await sut.GetClubMatchPickListsAsync(TestFunctioneleRol);
 
