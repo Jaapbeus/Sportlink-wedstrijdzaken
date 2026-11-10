@@ -99,6 +99,22 @@ if printf '\n' | (cd "$repo" && PATH="$fake_bin:$PATH" ./.githooks/pre-push orig
 if run_precommit "$repo" >"$temp_root/empty-precommit.log" 2>&1; then fail "pre-commit allowed empty local configuration"; fi
 if printf '\n' | (cd "$repo" && PATH="$fake_bin:$PATH" ./.githooks/pre-push origin local-test-remote) >"$temp_root/empty-prepush.log" 2>&1; then fail "pre-push allowed empty local configuration"; fi
 
+# An ordinary staged README must not pass when the only rules are blank, comments, or invalid.
+# Invoke the actual hooks; the local pattern file is never committed or printed.
+for config_case in whitespace comments invalid; do
+  case "$config_case" in
+    whitespace) printf '  \t  \n\t\n' > "$repo/.githooks/sensitive-patterns.txt" ;;
+    comments) printf '  # local comment\n\t# another comment\n' > "$repo/.githooks/sensitive-patterns.txt" ;;
+    invalid) printf '  # local comment\n(\n' > "$repo/.githooks/sensitive-patterns.txt" ;;
+  esac
+  printf '%s\n' "ordinary $config_case content" > "$repo/README.md"
+  git -C "$repo" add README.md
+  if run_precommit "$repo" >"$temp_root/$config_case-precommit.log" 2>&1; then fail "pre-commit allowed $config_case configuration"; fi
+  if printf '\n' | (cd "$repo" && PATH="$fake_bin:$PATH" ./.githooks/pre-push origin local-test-remote) >"$temp_root/$config_case-prepush.log" 2>&1; then fail "pre-push allowed $config_case configuration"; fi
+  assert_no_marker_in_output "$temp_root/$config_case-precommit.log"
+  assert_no_marker_in_output "$temp_root/$config_case-prepush.log"
+done
+
 # Real pre-commit: a configured synthetic match blocks; safe content passes without revealing it.
 repo="$temp_root/precommit"
 create_repo "$repo" "^${forbidden_marker}$"

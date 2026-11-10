@@ -13,7 +13,7 @@ check_pattern_config() {
   fi
   active_patterns=0
   while IFS= read -r configured_pattern || [ -n "$configured_pattern" ]; do
-    [ -z "$configured_pattern" ] && continue
+    [[ "$configured_pattern" =~ ^[[:space:]]*$ ]] && continue
     [[ "$configured_pattern" =~ ^[[:space:]]*# ]] && continue
     active_patterns=$((active_patterns + 1))
     printf '' | grep -E -q -e "$configured_pattern" >/dev/null 2>&1
@@ -131,8 +131,8 @@ done <<< "$STAGED_FILES"
 
 # ── 3. Pattern-based secret/PII scan ─────────────────────────────────────────
 while IFS= read -r pattern || [ -n "$pattern" ]; do
-    [ -z "$pattern" ] && continue
-    [[ "$pattern" =~ ^# ]] && continue
+    [[ "$pattern" =~ ^[[:space:]]*$ ]] && continue
+    [[ "$pattern" =~ ^[[:space:]]*# ]] && continue
     while IFS= read -r file; do
       [ -z "$file" ] && continue
       # Sla configuratie- en template-bestanden over (deze bevatten patronen als voorbeeld)

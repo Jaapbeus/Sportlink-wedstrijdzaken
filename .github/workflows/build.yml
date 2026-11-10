@@ -121,6 +121,9 @@ jobs:
       - name: Versies — csproj's synchroon, OpenAPI-versie YAML = JSON
         run: bash scripts/ci/check-versie-synchroon.sh
 
+      - name: Git hooks — verplichte lokale patronen en pushbereik
+        run: bash scripts/ci/test-git-hooks.sh
+
       - name: API.md — endpointtabel komt overeen met openapi.json
         run: python3 scripts/ci/check-api-md-sync.py
 

@@ -698,6 +698,11 @@ bevat alleen een samenvatting.
   terwijl dezelfde regex op Linux/CI wél blokkeerde (#1090).
 - **Git-hooks moeten de executable-bit hebben** (`git update-index --chmod=+x`); git slaat een
   niet-executable hook op macOS stilzwijgend over, waarna de secrets- en AVG-scan niet draait.
+- **De lokale patroonconfiguratie moet minstens één geldige regel bevatten.** Lege regels, regels
+  met alleen spaties/tabs en commentaarregels (ook ingesprongen) tellen niet mee. Beide hooks
+  blokkeren een ontbrekend, uitsluitend leeg/commentaar of ongeldig patroonbestand. Draai
+  `bash scripts/ci/test-git-hooks.sh` om de echte hooks in tijdelijke repositories te toetsen;
+  dezelfde test draait in de Build-workflow vóór de applicatiebuilds (#1810).
 - **Test lokaal met `/bin/bash scripts/ci/<script>.sh`**; het resultaat moet identiek zijn aan de
   Linux-CI-runner.
 
