@@ -1,21 +1,15 @@
 namespace BlazorAdmin.Services;
 
 /// <summary>
-/// Top/hoogte-berekening voor één Gantt-balk in de Dagplanning-tijdlijn (#1194), als percentage van
-/// de vaste rijhoogte (72px, zie <c>Dagplanning.razor</c>). Losgetrokken uit
-/// <c>Dagplanning.razor.cs</c> zodat de kernlogica van deze fix — top én hoogte uit dezelfde
-/// subpositie-suffix, met een defensieve clamp — unit-testbaar is zonder de rest van de pagina op
-/// te tuigen.
+/// Calculates the top and height of one Gantt bar in the Planning page as percentages of the fixed
+/// row height (72px; see <c>Planning.razor</c>). Both values use the same Sportlink subposition
+/// suffix; server-side <c>Veldafmeting</c> is a height fallback when the suffix is absent or
+/// unrecognized.
+/// This keeps partial-field bookings from extending into the next row. A defensive clamp keeps
+/// every bar within its row.
 /// <para>
-/// <b>Vóór deze fix</b> kwam de verticale positie (<c>Top</c>) uit de subpositie-suffix die
-/// Sportlink zelf in de veld-tekst meegeeft ("veld 3 A" → boven, "veld 3 B" → onder), terwijl de
-/// hoogte uitsluitend uit de server-<c>Veldafmeting</c> kwam — een teaminstelling uit
-/// <c>public.speeltijden</c>, losgekoppeld van wat Sportlink voor déze specifieke wedstrijd
-/// meegeeft. Een team met "heel veld" als standaard dat ad-hoc een halve-veld-boeking kreeg (zoals
-/// "V+1") kreeg zo een balk die half positioneerde maar heel hoog tekende — hij liep door in de rij
-/// van het volgende veld. Zie <c>FunctionApp.Postgres.Planner.AutoPlanService.VeldafmetingVoorWedstrijd</c>
-/// voor de server-kant van dezelfde fix: die berekent <c>Veldafmeting</c> nu ook primair uit de
-/// subpositie, met de teaminstelling alleen nog als terugval.
+/// The server derives <c>Veldafmeting</c> from the same subposition first and uses the team setting
+/// only as a fallback.
 /// </para>
 /// </summary>
 public static class GanttLayout
