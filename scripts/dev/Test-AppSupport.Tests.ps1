@@ -15,8 +15,8 @@ $badUrlRejected = $false
 try { ConvertTo-TestAppBaseUri -BaseUrl 'file:///tmp/not-http' -ParameterName 'FunctionBaseUrl' | Out-Null }
 catch { $badUrlRejected = $true }
 Assert-True $badUrlRejected 'non-HTTP base URLs are rejected'
-foreach ($badBase in @('/tmp/local-path', 'relative/path', 'https://', 'https://user:pass@example.test/',
-    'https://example.test/?q=1', 'https://example.test/#part')) {
+foreach ($badBase in @('/tmp/local-path', 'relative/path', 'https://', 'https://user:pass@allstars-fc.test/',
+    'https://allstars-fc.test/?q=1', 'https://allstars-fc.test/#part')) {
     $rejected = $false
     try { ConvertTo-TestAppBaseUri -BaseUrl $badBase -ParameterName 'FunctionBaseUrl' | Out-Null }
     catch { $rejected = $true }
@@ -41,7 +41,7 @@ $missingDatabase = ConvertFrom-TestAppMigrationLedgerResult -Result ([pscustomob
 Assert-True ($missingDatabase.Status -eq 'Failed') 'a missing database does not masquerade as a fresh database'
 Assert-True (Test-TestAppPasswordlessPostgresHost -HostName 'localhost') 'passwordless auth permits localhost'
 Assert-True (Test-TestAppPasswordlessPostgresHost -HostName '::1') 'passwordless auth permits IPv6 loopback'
-Assert-True (-not (Test-TestAppPasswordlessPostgresHost -HostName 'database.example')) 'passwordless host psql rejects a non-loopback host'
+Assert-True (-not (Test-TestAppPasswordlessPostgresHost -HostName 'remote.allstars-fc.test')) 'passwordless host psql rejects a non-loopback host'
 Assert-True (Test-TestAppPasswordlessPostgresHost -HostName 'database-service' -ViaContainer) 'local container socket auth can omit PGPASSWORD'
 
 $offlineCalls = [System.Collections.Generic.List[object]]::new()
