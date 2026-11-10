@@ -49,7 +49,35 @@ Ook de server/database-parsing accepteert nu zowel `Data Source=`/`Initial Catal
 # Alles tonen, ook successen
 .\scripts\dev\Test-App.ps1 -Verbose
 .\scripts\dev\Test-App.ps1 -Fix -Verbose
+
+# Geïsoleerde runtime/database en exact gebouwde checkout
+.\scripts\dev\Test-App.ps1 -RootPath /pad/naar/checkout -PostgresContainerName mijn-test-db `
+  -FunctionBaseUrl http://127.0.0.1:17094 -BlazorBaseUrl http://127.0.0.1:15242 `
+  -SkipBuild -Offline
 ```
+
+`-RootPath` kiest de checkout waarvan projectbestanden, tierinstellingen en schema worden
+gecontroleerd; het script en de helpers zelf blijven uit de map van `Test-App.ps1` komen.
+`-PostgresContainerName`, `-FunctionBaseUrl` en `-BlazorBaseUrl` overschrijven alleen de
+compatibiliteitsdefaults (`sportlink-postgres`, `http://localhost:7094` en
+`http://localhost:5242`). De API- en Blazor-poortcontrole volgt de opgegeven base-URL.
+
+`-SkipBuild` slaat de twee builds expliciet over en telt die als `SKIPPED`; gebruik dit alleen
+wanneer de exacte `-RootPath`-HEAD al gebouwd is en een actieve Blazor-server geen tweede build
+toelaat. Zonder deze vlag blijft de build verplicht en een ontbrekende `dotnet`-CLI is een fout.
+
+`-Offline` slaat alleen de externe GitHub-feedback-smoke over. De controle gebruikt geen GitHub-
+credentials en maakt geen testissue aan; de samenvatting telt deze controle als `SKIPPED`. Zonder `-Offline` blijft de
+echte GitHub-smoke afhankelijk van de bestaande `GitHubPat`, `GitHubOwner` en `GitHubRepo`-instellingen.
+Unit-tests voor de offline en fake-GitHub-paden:
+
+```powershell
+pwsh -NoProfile -File scripts/dev/Test-AppSupport.Tests.ps1
+```
+
+De fake tests controleren ook ongeldige URL's, mislukte ledgerqueries en dat Postgres-
+wachtwoorden uitsluitend via de omgeving van het kindproces worden doorgegeven. Docker krijgt
+alleen de variabelenaam in zijn argumenten; de test gebruikt uitsluitend een synthetische waarde.
 
 **`-Tier` bepaalt álles wat tier-specifiek is** (#1060): welk functieproject gebouwd wordt, welk
 `local.settings.json` gelezen wordt, en welke schemacontrole draait. De vertaling tier → projectpad
@@ -68,14 +96,16 @@ volgorde waarin ze draaien.
 | 3 | Schema validatie (SqlServer) | Alle 11 tabellen én hun kolommen | ja — ALTER TABLE / CREATE TABLE |
 | 3 | Schema validatie (Postgres) | `Database.Postgres/migrations/*.sql` vs. `schema_migrations` + kerntabellen aanwezig | ja — openstaande migraties toepassen |
 | 4 | Build verificatie | `dotnet build` van het tier-project + BlazorAdmin | nee |
-| 5 | API smoke tests | 13 endpoints op `:7094` | nee (2xx verwacht) |
-| 6 | Feedback widget | GitHub-integratie van de feedbackwidget | nee |
-| 7 | Blazor pagina checks | 8 routes op `:5242` | nee (geen Blazor-foutindicatoren) |
+| 5 | API smoke tests | 13 endpoints op `FunctionBaseUrl` (standaard `:7094`) | nee (2xx verwacht) |
+| 6 | Feedback widget | GitHub-integratie of expliciete `-Offline`-skip | nee |
+| 7 | Blazor pagina checks | 8 routes op `BlazorBaseUrl` (standaard `:5242`) | nee (geen Blazor-foutindicatoren) |
 | 8 | SWA emulator checks | `/.auth/login/aad` op `:4280` | nee |
 
-Secties 5 t/m 8 worden automatisch overgeslagen als de bijbehorende service niet draait. AGENTS.md
-verwijst naar "secties 4+5+6" van dit script; dat zijn hier de secties die een draaiende service
-nodig hebben (5 t/m 8).
+Een niet-draaiende API-, Blazor- of SWA-service wordt zichtbaar als `SKIPPED` geteld, niet als
+geslaagd. Ook `-Offline`, `-SkipBuild` en het overslaan van de Blazor-build wegens een actieve
+dev-server staan in die teller. Als er fouten zijn, is de exitcode 1; zonder fouten maar met
+overgeslagen controles meldt het script een onvolledige run in plaats van "Alles in orde". Een
+volledige run vereist nul skips.
 
 ### Bewake tabellen
 
@@ -107,7 +137,7 @@ dbo.VeldTraining             — Id, VeldNummer, DagVanWeek, VanTijd, TotTijd, O
 
 ### Exit codes
 
-- `0` — alles in orde
+- `0` — geen fouten; controleer de samenvatting op `SKIPPED` voordat je volledigheid claimt
 - `1` — fouten gevonden (of niet automatisch te herstellen)
 
 ### Schema-drift detectie (#684)

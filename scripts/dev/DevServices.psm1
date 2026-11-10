@@ -758,12 +758,47 @@ function Wait-ForPostgres {
     return [pscustomobject]@{ Ready = $false; Attempts = $poging }
 }
 
+function Invoke-DevChildProcess {
+    param(
+        [Parameter(Mandatory)][string]$FileName,
+        [Parameter(Mandatory)][string[]]$Arguments,
+        [AllowEmptyString()][string]$PgPassword = ''
+    )
+
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $FileName
+    $startInfo.UseShellExecute = $false
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    foreach ($argument in $Arguments) { [void]$startInfo.ArgumentList.Add($argument) }
+    if ([string]::IsNullOrEmpty($PgPassword)) {
+        [void]$startInfo.Environment.Remove('PGPASSWORD')
+    } else {
+        $startInfo.Environment['PGPASSWORD'] = $PgPassword
+    }
+
+    $process = [System.Diagnostics.Process]::new()
+    try {
+        $process.StartInfo = $startInfo
+        [void]$process.Start()
+        $stdout = $process.StandardOutput.ReadToEndAsync()
+        $stderr = $process.StandardError.ReadToEndAsync()
+        $process.WaitForExit()
+        $output = @($stdout.GetAwaiter().GetResult(), $stderr.GetAwaiter().GetResult()) |
+            Where-Object { $_ }
+        return [pscustomobject]@{ ExitCode = $process.ExitCode; Output = ($output -join "`n").Trim() }
+    } finally {
+        $process.Dispose()
+    }
+}
+
 function Invoke-Psql {
     <#
         Voert SQL uit in de Postgres-container en geeft de ruwe uitvoer terug.
 
-        Het wachtwoord gaat via de omgevingsvariabele PGPASSWORD van het KINDproces (docker exec
-        -e), nooit als argument: argumenten zijn op beide platforms zichtbaar in de processenlijst.
+        Een eventueel wachtwoord gaat alleen naar de omgeving van het Docker-kindproces.
+        Docker exec krijgt '-e PGPASSWORD' zonder waarde in argv en geeft de variabele aan psql
+        door. Een lege waarde laat PGPASSWORD weg voor passwordless trust-authenticatie.
         Zelfde afweging als SQLCMDPASSWORD in Test-App.ps1 (#800).
 
         -Tuples geeft alleen de waarden terug (psql -t -A), handig voor asserties op één getal.
@@ -776,15 +811,22 @@ function Invoke-Psql {
         [Parameter(Mandatory)][string]$ContainerName,
         [Parameter(ParameterSetName = 'Inline', Mandatory)][string]$Sql,
         [Parameter(ParameterSetName = 'File', Mandatory)][string]$SqlFile,
-        [Parameter(Mandatory)][string]$Password,
+        [AllowEmptyString()][string]$Password = '',
         [string]$User     = 'postgres',
         [string]$Database = 'postgres',
         [switch]$Tuples,
-        [switch]$StopOnError
+        [switch]$StopOnError,
+        [scriptblock]$ProcessRunner = {
+            param($FileName, $Arguments, $PgPassword)
+            Invoke-DevChildProcess -FileName $FileName -Arguments $Arguments -PgPassword $PgPassword
+        }
     )
 
-    $args = @('exec', '-e', "PGPASSWORD=$Password", $ContainerName,
-              'psql', '-U', $User, '-d', $Database)
+    $args = @('exec')
+    if (-not [string]::IsNullOrEmpty($Password)) {
+        $args += @('-e', 'PGPASSWORD')
+    }
+    $args += @($ContainerName, 'psql', '-U', $User, '-d', $Database)
     if ($StopOnError) { $args += @('-v', 'ON_ERROR_STOP=1') }
     if ($Tuples)      { $args += @('-t', '-A') }
 
@@ -796,11 +838,7 @@ function Invoke-Psql {
         $args += @('-c', $Sql)
     }
 
-    $out = & docker @args 2>&1
-    [pscustomobject]@{
-        ExitCode = $LASTEXITCODE
-        Output   = ($out -join "`n").Trim()
-    }
+    & $ProcessRunner 'docker' $args $Password
 }
 
 function New-SelftestPassword {
@@ -1005,7 +1043,7 @@ Export-ModuleMember -Function Get-DebugTempDir, Get-DebugPidFile, Get-DebugPorts
     Get-ChildProcessId, Get-ProcessTree, Stop-ProcessTree, Wait-ForPort, Wait-ForHealth,
     Wait-ForHttp, Stop-DebugServices,
     Get-SelftestPorts, Test-DockerAvailable, Get-ContainerState, Wait-ForPostgres,
-    Invoke-Psql, New-SelftestPassword, Get-SelftestArtifactRoot, Get-DatabaseTierProject,
+    Invoke-DevChildProcess, Invoke-Psql, New-SelftestPassword, Get-SelftestArtifactRoot, Get-DatabaseTierProject,
     Start-SelftestAzurite, Start-FunctionHost, Stop-FunctionHost,
     Set-SportlinkLiveLocalSettings, Test-SportlinkEncryptionKey, Get-SportlinkLiveBlockers,
     Get-DevelopWorktree, Update-DevelopWorktree
