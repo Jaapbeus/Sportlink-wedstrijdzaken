@@ -156,6 +156,11 @@ public class AvailabilityServiceIntegrationTests : IDisposable
             INSERT INTO his.matches (wedstrijdcode, kaledatum, aanvangstijd, veld, teamnaam, wedstrijd, accommodatie, status, clubcode, mta_inserted, mta_modified)
             VALUES (9400009, @datum, '09:00', 'veld 1', @team, @team || ' - Bestaande tegenstander', 'Sportpark Testclub', 'Te spelen', @club, NOW(), NOW())",
             ("team", team), ("club", Club), ("datum", Zaterdag.ToString("yyyy-MM-dd")));
+        // Geen canoniek team blijft het onderwerp van deze test; een bekende bronduur
+        // voorkomt dat de afzonderlijke #1814-veiligheidsblokkade de waarschuwing voorafgaat.
+        await ExecAsync(conn, @"
+            INSERT INTO his.matchdetails (wedstrijdcode, interncode, duration, clubcode, mta_inserted, mta_modified)
+            VALUES (9400009, 9400009, 60, @club, NOW(), NOW())", ("club", Club));
 
         var request = new CheckAvailabilityRequest
         {
@@ -173,6 +178,26 @@ public class AvailabilityServiceIntegrationTests : IDisposable
         response.TeamConflict.Should().BeNull(
             "er is geen conflict vastgesteld — de controle kon juist niet worden uitgevoerd; een verzonnen "
             + "conflict zou net zo misleidend zijn als een verzwegen waarschuwing");
+    }
+
+    [PostgresFact]
+    public async Task CheckAvailabilityAsync_TeamNietInTeamlijstEnDuurOnbekend_BlokkeertPlanning()
+    {
+        await using var conn = await OpstellingAsync();
+        await ExecAsync(conn, @"
+            INSERT INTO his.matches (wedstrijdcode, kaledatum, aanvangstijd, veld, teamnaam, wedstrijd, accommodatie, status, clubcode, mta_inserted, mta_modified)
+            VALUES (9400010, @datum, '09:00', 'veld 1', 'T-availsvc JO99-9',
+                    'T-availsvc JO99-9 - Gastteam', 'Sportpark Testclub', 'Te spelen', @club, NOW(), NOW())",
+            ("club", Club), ("datum", Zaterdag.ToString("yyyy-MM-dd")));
+        var request = new CheckAvailabilityRequest
+        {
+            Datum = Zaterdag.ToString("yyyy-MM-dd"), AanvangsTijd = "14:00",
+            LeeftijdsCategorie = "JO13", TeamNaam = "T-availsvc JO99-9"
+        };
+
+        var check = () => AvailabilityService.CheckAvailabilityAsync(ConnectionString, request, NullLogger.Instance, Club);
+
+        await check.Should().ThrowAsync<global::Planner.Shared.Planning.PlanningDuurOnbekendException>();
     }
 
     [PostgresFact]
@@ -261,7 +286,7 @@ public class AvailabilityServiceIntegrationTests : IDisposable
 
     private static async Task<NpgsqlConnection> OpstellingAsync()
     {
-        await HisTabelVorm.ZorgVoorProductievormAsync(ConnectionString, KnownEntities.Teams, KnownEntities.Matches);
+        await HisTabelVorm.ZorgVoorProductievormAsync(ConnectionString, KnownEntities.Teams, KnownEntities.Matches, KnownEntities.MatchDetails);
         PostgresAppSettings.SetForTests("clubCode", Club);
 
         await using (var setupConn = new NpgsqlConnection(ConnectionString))
@@ -278,6 +303,7 @@ public class AvailabilityServiceIntegrationTests : IDisposable
         {
             "DELETE FROM planner.geplandewedstrijden WHERE clubcode = @club",
             "DELETE FROM his.matches WHERE clubcode = @club",
+            "DELETE FROM his.matchdetails WHERE clubcode = @club",
             "DELETE FROM his.teams WHERE clubcode = @club",
             "DELETE FROM public.teamaliassen WHERE clubcode = @club",
             "DELETE FROM public.teams WHERE clubcode = @club",
