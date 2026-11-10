@@ -216,6 +216,19 @@ public static class PostgresAppSettings
         if (!await reader.ReadAsync())
             return false;
 
+        var nieuw = BuildSettingsSnapshot(reader, includeExtensionColumn, includeDryRunColumn);
+
+        // Atomaire wissel: elke lezer via GetSetting ziet óf de volledig oude, óf de volledig nieuwe
+        // snapshot — nooit een tussentoestand met een deel oude en een deel nieuwe waarden.
+        lock (Lock)
+            Settings = nieuw;
+
+        return true;
+    }
+
+    private static Dictionary<string, string> BuildSettingsSnapshot(
+        NpgsqlDataReader reader, bool includeExtensionColumn, bool includeDryRunColumn)
+    {
         // #1135: een complete, verse snapshot opbouwen in een lokale dictionary — niet het bestaande,
         // gedeelde dictionary in-place muteren. De oude aanpak wees alleen niet-NULL kolommen toe,
         // waardoor een instelling die in de database naar NULL werd gezet (bijv. accommodatie) haar
@@ -281,12 +294,7 @@ public static class PostgresAppSettings
             nieuw["sportlinkDryRun"] = "1";
         }
 
-        // Atomaire wissel: elke lezer via GetSetting ziet óf de volledig oude, óf de volledig nieuwe
-        // snapshot — nooit een tussentoestand met een deel oude en een deel nieuwe waarden.
-        lock (Lock)
-            Settings = nieuw;
-
-        return true;
+        return nieuw;
     }
 
     /// <summary>
