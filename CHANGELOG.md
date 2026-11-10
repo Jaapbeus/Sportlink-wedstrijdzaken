@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- Beheerpagina's onderscheiden een mislukte API-lading van een geslaagde lege lijst; bij wisselen van club worden oude resultaten en nog lopende verzoeken ongeldig. Verwijderen van instellingen en testwedstrijden vraagt eerst inline om bevestiging en toont een fout als opslaan of verwijderen mislukt (#1802)
+
 ## [3.16.0.0] — 2026-11-10
 
 ### Added

@@ -24,6 +24,11 @@ public partial class Velden : ClubSelectorPageBase
     private bool isNewPeriode;
 
     private bool loading = true;
+    private readonly InlineBevestiging<(string Type, int Id)> _deleteConfirmation = new();
+    private string? veldenLoadError;
+    private string? periodesLoadError;
+    private string? beschikbaarheidLoadError;
+    private string? trainingLoadError;
     private string? veldMessage;
     private string? beschikbaarheidMessage;
     private string? trainingMessage;
@@ -41,12 +46,16 @@ public partial class Velden : ClubSelectorPageBase
         loading = true;
         var veldenResult = await Api.GetVeldenAsync();
         velden = veldenResult.Success ? veldenResult.Data ?? new() : new();
+        veldenLoadError = veldenResult.Success ? null : veldenResult.ErrorMessage ?? "Velden ophalen mislukt.";
         var periodesResult = await Api.GetVeldPeriodesAsync();
         periodes = periodesResult.Success ? periodesResult.Data ?? new() : new();
+        periodesLoadError = periodesResult.Success ? null : periodesResult.ErrorMessage ?? "Periodes ophalen mislukt.";
         var beschikbaarheidResult = await Api.GetVeldBeschikbaarheidAsync();
         beschikbaarheid = beschikbaarheidResult.Success ? beschikbaarheidResult.Data ?? new() : new();
+        beschikbaarheidLoadError = beschikbaarheidResult.Success ? null : beschikbaarheidResult.ErrorMessage ?? "Beschikbaarheid ophalen mislukt.";
         var trainingResult = await Api.GetVeldTrainingAsync();
         training = trainingResult.Success ? trainingResult.Data ?? new() : new();
+        trainingLoadError = trainingResult.Success ? null : trainingResult.ErrorMessage ?? "Trainingsblokken ophalen mislukt.";
         loading = false;
     }
 
@@ -120,9 +129,10 @@ public partial class Velden : ClubSelectorPageBase
 
     private async Task DeleteBeschikbaarheidAsync(int id)
     {
+        if (!_deleteConfirmation.Bevestig(("beschikbaarheid", id))) return;
         var r = await Api.DeleteVeldBeschikbaarheidAsync(id);
         beschikbaarheidMessage = r.Success ? "Verwijderd." : "Fout: " + r.ErrorMessage;
-        await LoadAsync();
+        if (r.Success) await LoadAsync();
     }
 
     // ── Periodes ──
@@ -157,9 +167,10 @@ public partial class Velden : ClubSelectorPageBase
 
     private async Task DeletePeriodeAsync(int id)
     {
+        if (!_deleteConfirmation.Bevestig(("periode", id))) return;
         var r = await Api.DeleteVeldPeriodeAsync(id);
         periodeMessage = r.Success ? "Verwijderd." : "Fout: " + r.ErrorMessage;
-        await LoadAsync();
+        if (r.Success) await LoadAsync();
     }
 
     // ── Trainingsschema ──
@@ -194,8 +205,13 @@ public partial class Velden : ClubSelectorPageBase
 
     private async Task DeleteTrainingAsync(int id)
     {
+        if (!_deleteConfirmation.Bevestig(("training", id))) return;
         var r = await Api.DeleteVeldTrainingAsync(id);
         trainingMessage = r.Success ? "Verwijderd." : "Fout: " + r.ErrorMessage;
-        await LoadAsync();
+        if (r.Success) await LoadAsync();
     }
+
+    private void VraagVerwijderen(string type, int id) => _deleteConfirmation.Vraag((type, id));
+
+    private void AnnuleerVerwijderen() => _deleteConfirmation.Annuleer();
 }

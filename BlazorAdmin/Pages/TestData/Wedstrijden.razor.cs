@@ -66,7 +66,10 @@ public partial class Wedstrijden : ClubSelectorPageBase
     private List<SpeeltijdDto>  _speeltijden = new();
     private bool    _loading = true;
     private bool    _bezig;
+    private bool    _bevestigVerwijderGefilterde;
     private string? _error;
+    private readonly InlineBevestiging<string> _verwijderRijBevestiging = new();
+    private readonly LookupGeneratieGuard _clubLoadGuard = new();
 
     private string _globalDatum        = DateTime.Today.ToString("yyyy-MM-dd");
     private string _globalSoort        = "Oefenwedstrijd";
@@ -167,11 +170,28 @@ public partial class Wedstrijden : ClubSelectorPageBase
     protected override async Task OnInitializedAsync()
     {
         await ClubSelector.InitializeAsync();
-        await LaadAsync();
+        if (ClubSelector.SelectedClubCode == "ALLSTARS") await LaadAsync();
+    }
+
+    protected override async Task OnClubChangedAsync()
+    {
+        _rijen.Clear();
+        _teams.Clear();
+        _velden.Clear();
+        _speeltijden.Clear();
+        _error = null;
+        _bevestigVerwijderGefilterde = false;
+        _verwijderRijBevestiging.Annuleer();
+        if (ClubSelector.SelectedClubCode == "ALLSTARS")
+            await LaadAsync();
+        else
+            _loading = false;
     }
 
     private async Task LaadAsync()
     {
+        var clubCode = ClubSelector.SelectedClubCode;
+        var generatie = _clubLoadGuard.Start(clubCode);
         _loading = true;
         _error   = null;
 
@@ -186,12 +206,21 @@ public partial class Wedstrijden : ClubSelectorPageBase
         var velden      = await tVelden;
         var speeltijden = await tSpeeltijden;
 
+        if (!_clubLoadGuard.IsActueel(generatie) || ClubSelector.SelectedClubCode != clubCode) return;
+
         if (wedstrijden.Success) _rijen       = wedstrijden.Data?.Select(WedstrijdRij.VanDto).ToList() ?? new();
         if (teams.Success)       _teams       = teams.Data       ?? new();
         if (velden.Success)      _velden      = velden.Data      ?? new();
         if (speeltijden.Success) _speeltijden = speeltijden.Data ?? new();
 
-        if (!teams.Success) _error = $"Teams ophalen mislukt: {teams.ErrorMessage}";
+        var fouten = new[]
+        {
+            !wedstrijden.Success ? $"Wedstrijden ophalen mislukt: {wedstrijden.ErrorMessage}" : null,
+            !teams.Success ? $"Teams ophalen mislukt: {teams.ErrorMessage}" : null,
+            !velden.Success ? $"Velden ophalen mislukt: {velden.ErrorMessage}" : null,
+            !speeltijden.Success ? $"Speeltijden ophalen mislukt: {speeltijden.ErrorMessage}" : null,
+        }.Where(f => f != null);
+        _error = string.Join(" ", fouten);
 
         _loading = false;
     }
@@ -333,22 +362,49 @@ public partial class Wedstrijden : ClubSelectorPageBase
     private async Task VerwijderRijAsync(WedstrijdRij rij)
     {
         if (rij.IsOpgeslagen)
-            await InstellingenApi.DeleteAllstarsWedstrijdAsync(rij.BkMatches);
+        {
+            if (!_verwijderRijBevestiging.Bevestig(rij.BkMatches)) return;
+            var result = await InstellingenApi.DeleteAllstarsWedstrijdAsync(rij.BkMatches);
+            if (!result.Success)
+            {
+                _error = result.ErrorMessage ?? "Wedstrijd verwijderen mislukt.";
+                return;
+            }
+        }
         _rijen.Remove(rij);
     }
 
     private async Task VerwijderGefilterdeAsync()
     {
-        if (!FilterActief) return;
+        if (!FilterActief || !_bevestigVerwijderGefilterde) return;
         _bezig = true;
+        _bevestigVerwijderGefilterde = false;
         var van = string.IsNullOrEmpty(_filterVan) ? null : _filterVan;
         var tot = string.IsNullOrEmpty(_filterTot) ? null : _filterTot;
-        await InstellingenApi.DeleteAlleAllstarsWedstrijdenAsync(van, tot);
+        var result = await InstellingenApi.DeleteAlleAllstarsWedstrijdenAsync(van, tot);
+        if (!result.Success)
+        {
+            _error = result.ErrorMessage ?? "Gefilterde wedstrijden verwijderen mislukt.";
+            _bezig = false;
+            return;
+        }
         _rijen.RemoveAll(r =>
             (van == null || string.Compare(r.Datum, van, StringComparison.Ordinal) >= 0) &&
             (tot == null || string.Compare(r.Datum, tot, StringComparison.Ordinal) <= 0));
         _bezig = false;
     }
+
+    private void VraagVerwijderGefilterdeAan() => _bevestigVerwijderGefilterde = FilterActief;
+
+    private void AnnuleerVerwijderGefilterde() => _bevestigVerwijderGefilterde = false;
+
+    private void VerwijderOpVerzoek(WedstrijdRij rij)
+    {
+        if (rij.IsOpgeslagen) _verwijderRijBevestiging.Vraag(rij.BkMatches);
+        else _rijen.Remove(rij);
+    }
+
+    private void AnnuleerVerwijderRij() => _verwijderRijBevestiging.Annuleer();
 
     // ── Fill-down per kolom ──
 

@@ -19,6 +19,10 @@ public partial class Voorkeurstijden : ClubSelectorPageBase
     private string filterTeam = "";
     private string? message;
     private string? regelMessage;
+    private string? teamsLoadError;
+    private string? voorkeurenLoadError;
+    private string? regelsLoadError;
+    private readonly InlineBevestiging<(string Type, int Id)> _deleteConfirmation = new();
 
     private List<VoorkeurTijdDto> Gefilterd =>
         string.IsNullOrWhiteSpace(filterTeam)
@@ -37,10 +41,13 @@ public partial class Voorkeurstijden : ClubSelectorPageBase
         loading = true;
         var teamsResult = await Api.GetTeamsAsync();
         teams = teamsResult.Success ? teamsResult.Data ?? new() : new();
+        teamsLoadError = teamsResult.Success ? null : teamsResult.ErrorMessage ?? "Teams ophalen mislukt.";
         var r = await Api.GetVoorkeurTijdenAsync();
         items = r.Success ? r.Data ?? new() : new();
+        voorkeurenLoadError = r.Success ? null : r.ErrorMessage ?? "Voorkeurstijden ophalen mislukt.";
         var regelsResult = await Api.GetTeamRegelsAsync();
         teamRegels = regelsResult.Success ? regelsResult.Data ?? new() : new();
+        regelsLoadError = regelsResult.Success ? null : regelsResult.ErrorMessage ?? "Teamregels ophalen mislukt.";
         loading = false;
     }
 
@@ -77,9 +84,10 @@ public partial class Voorkeurstijden : ClubSelectorPageBase
 
     private async Task DeleteAsync(int id)
     {
+        if (!_deleteConfirmation.Bevestig(("voorkeur", id))) return;
         var r = await Api.DeleteVoorkeurTijdAsync(id);
-        message = r.Success ? "Soft-deleted." : "Fout: " + r.ErrorMessage;
-        await LoadAsync();
+        message = r.Success ? "Verwijderd." : "Fout: " + r.ErrorMessage;
+        if (r.Success) await LoadAsync();
     }
 
     private void EditRegel(TeamRegelDto r)
@@ -114,10 +122,15 @@ public partial class Voorkeurstijden : ClubSelectorPageBase
 
     private async Task DeleteRegelAsync(int id)
     {
+        if (!_deleteConfirmation.Bevestig(("regel", id))) return;
         var r = await Api.DeleteTeamRegelAsync(id);
         regelMessage = r.Success ? "Verwijderd." : "Fout: " + r.ErrorMessage;
-        await LoadAsync();
+        if (r.Success) await LoadAsync();
     }
+
+    private void VraagVerwijderen(string type, int id) => _deleteConfirmation.Vraag((type, id));
+
+    private void AnnuleerVerwijderen() => _deleteConfirmation.Annuleer();
 
     private static string RegelTypeNederlands(string? type) => type switch
     {

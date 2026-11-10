@@ -21,6 +21,7 @@ public partial class Teambegeleiding : ClubSelectorPageBase
     private bool _loadingTeams = true;
     private bool _loadingBegeleiders;
     private string? _teamsError;
+    private string? _begeleidersError;
     private bool _vraagFormulierZichtbaar;
     private DoorsturenRequest _doorsturen = new();
     private bool _doorsturenBezig;
@@ -33,6 +34,7 @@ public partial class Teambegeleiding : ClubSelectorPageBase
     // latere lookup niet meer kan overschrijven — zie LookupGeneratieGuard voor de volledige
     // uitleg van de race die hiermee wordt voorkomen.
     private readonly LookupGeneratieGuard _lookupGuard = new();
+    private readonly LookupGeneratieGuard _teamLoadGuard = new();
     private CancellationTokenSource? _lookupCts;
 
     private string OutlookRegel => string.Join("; ", _begeleiders
@@ -66,11 +68,18 @@ public partial class Teambegeleiding : ClubSelectorPageBase
 
     private async Task LoadAsync()
     {
+        var clubCode = ClubSelector.SelectedClubCode;
+        var generatie = _teamLoadGuard.Start(clubCode);
         _loadingTeams = true;
         _teamsError = null;
         _selectedTeam = null;
         _begeleiders.Clear();
+        _begeleidersError = null;
+        _loadingBegeleiders = false;
+        _lookupGuard.Start(null);
+        _lookupCts?.Cancel();
         var result = await Api.GetTeambegeleidingTeamsAsync();
+        if (!_teamLoadGuard.IsActueel(generatie) || ClubSelector.SelectedClubCode != clubCode) return;
         if (result.Success)
             _teams = result.Data ?? new();
         else
@@ -80,6 +89,7 @@ public partial class Teambegeleiding : ClubSelectorPageBase
 
     private async Task OnTeamGekozen(ChangeEventArgs e)
     {
+        _begeleidersError = null;
         _selectedTeam = e.Value?.ToString();
         _begeleiders.Clear();
         _ontvangers = ""; // reset direct — anders blijven de ontvangers van het vorige team
@@ -117,6 +127,8 @@ public partial class Teambegeleiding : ClubSelectorPageBase
 
         if (result.Success)
             _begeleiders = result.Data ?? new();
+        else
+            _begeleidersError = result.ErrorMessage ?? "Begeleiding ophalen mislukt.";
         _loadingBegeleiders = false;
         HerstelOntvangers();
     }

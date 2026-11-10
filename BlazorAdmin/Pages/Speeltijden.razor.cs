@@ -11,6 +11,7 @@ public partial class Speeltijden : ClubSelectorPageBase
     private readonly SpeeltijdBewerking _bewerking = new();
     private bool _loading = true;
     private string? _error;
+    private readonly InlineBevestiging<string> _deleteConfirmation = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -49,10 +50,15 @@ public partial class Speeltijden : ClubSelectorPageBase
 
     private async Task DeleteAsync(string leeftijd)
     {
+        if (!_deleteConfirmation.Bevestig(leeftijd)) return;
         var result = await Api.DeleteSpeeltijdAsync(leeftijd);
         if (result.Success)
             await LaadAsync();
         else
             _error = result.ErrorMessage ?? "Verwijderen mislukt";
     }
+
+    private void VraagVerwijderen(string leeftijd) => _deleteConfirmation.Vraag(leeftijd);
+
+    private void AnnuleerVerwijderen() => _deleteConfirmation.Annuleer();
 }

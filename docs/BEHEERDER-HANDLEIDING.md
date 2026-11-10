@@ -954,7 +954,8 @@ bepaalt wat de verwijderknop weggooit.
 - **Verwijder gefilterd** — verwijdert de testwedstrijden in het ingestelde datumbereik. Deze knop
   werkt pas nadat u bij **Filter van / tot** een bereik heeft opgegeven; zonder bereik staat er
   *Verwijder (stel filter in)* en is de knop grijs. Wilt u alles weggooien, kies dan een bereik dat
-  alle wedstrijden omvat.
+  alle wedstrijden omvat. Na een bevestigingsvraag kunt u nog annuleren; bij een foutmelding blijven
+  de rijen staan.
 
 **Automatisch opslaan:** elke celwijziging wordt direct opgeslagen. Een ✅ of ⚠️ achter de rij geeft
 de opslagstatus aan.
@@ -1021,6 +1022,8 @@ Fijnere regels per team: buffers vóór/na wedstrijden en een vaste veldvoorkeur
 
 **Tip:** Gebruik hogere prioriteiten voor regels die absoluut gelden (bijv. "eerste elftal altijd op veld 1") en lagere voor richtlijnen.
 
+Als een lijst niet geladen kan worden, toont de pagina een foutmelding in plaats van de melding dat er nog geen regels zijn. Verwijderen vraagt eerst om bevestiging; bij een mislukte verwijdering blijft de bestaande lijst staan.
+
 ### API-endpoints
 
 | Endpoint | Beschrijving |
@@ -1058,6 +1061,8 @@ vaste aanname over aantal velden of kunstgras-versus-gras — elke club richt di
 in (#679).
 
 ### Velden
+
+Kan een lijst met velden, beschikbaarheid of trainingen niet worden geladen, dan ziet u een foutmelding in plaats van een lege-lijstmelding. Verwijderen vraagt eerst om bevestiging.
 
 | Veld | Uitleg |
 |---|---|

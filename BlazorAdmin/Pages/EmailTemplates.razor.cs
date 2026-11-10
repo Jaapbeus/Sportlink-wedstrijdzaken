@@ -14,6 +14,9 @@ public partial class EmailTemplates : ClubSelectorPageBase
     private TemplateDto? editing;
     private bool isNew;
     private bool loading = true;
+    private string? templatesLoadError;
+    private string? voetnootLoadError;
+    private readonly InlineBevestiging<string> _resetConfirmation = new();
     private string? templateMessage;
 
     private string voetnoot = "";
@@ -34,13 +37,19 @@ public partial class EmailTemplates : ClubSelectorPageBase
     {
         var r = await EmailApi.GetTemplatesAsync();
         templates = r.Success ? r.Data ?? new() : new();
+        templatesLoadError = r.Success ? null : r.ErrorMessage ?? "Templates ophalen mislukt.";
     }
 
     private async Task LoadVoetnootAsync()
     {
         var r = await InstellingenCache.GetSettingsAsync();
         if (r.Success && r.Data != null)
+        {
             voetnoot = r.Data.EmailVoetnoot ?? "";
+            voetnootLoadError = null;
+        }
+        else
+            voetnootLoadError = r.ErrorMessage ?? "E-mailvoetnoot ophalen mislukt.";
     }
 
     private async Task OpslaanVoetnootAsync()
@@ -122,10 +131,15 @@ public partial class EmailTemplates : ClubSelectorPageBase
 
     private async Task ResetAsync(string key)
     {
+        if (!_resetConfirmation.Bevestig(key)) return;
         var r = await EmailApi.ResetTemplateAsync(key);
         templateMessage = r.Success ? $"Template '{key}' gereset naar default." : "Fout: " + r.ErrorMessage;
-        await LoadTemplatesAsync();
+        if (r.Success) await LoadTemplatesAsync();
     }
+
+    private void VraagReset(string key) => _resetConfirmation.Vraag(key);
+
+    private void AnnuleerReset() => _resetConfirmation.Annuleer();
 
     private static (string label, string css) GetCategorie(string key)
     {
