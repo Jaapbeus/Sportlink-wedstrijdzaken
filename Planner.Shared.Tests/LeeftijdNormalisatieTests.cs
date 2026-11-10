@@ -29,6 +29,19 @@ public class LeeftijdNormalisatieTests
         LeeftijdNormalisatie.Normaliseer("Onder 13").Should().Be("JO13");
     }
 
+    [Theory]
+    [InlineData("MO13")]
+    [InlineData("1-99")]
+    [InlineData("VR")]
+    [InlineData("JO13")]
+    [InlineData("G")]
+    public void Normaliseer_CanoniekeSleutel_IsIdempotent(string sleutel)
+    {
+        var eenKeer = LeeftijdNormalisatie.Normaliseer(sleutel);
+        LeeftijdNormalisatie.Normaliseer(eenKeer).Should().Be(eenKeer);
+        eenKeer.Should().Be(sleutel);
+    }
+
     /// <summary>
     /// #1332: Sportlink levert voor sommige meisjesteams "Onder {n} Meiden" i.p.v. "{JO|MO}{n} Meiden".
     /// De vorige implementatie nam aan dat het cijfer al direct na "JO"/"MO" stond en leverde voor dit

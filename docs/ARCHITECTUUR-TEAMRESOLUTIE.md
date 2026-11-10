@@ -18,6 +18,8 @@
 
 ## Het probleem
 
+De leeftijdscategorienormalisatie is idempotent: de genormaliseerde categorie is stabiel wanneer dezelfde waarde opnieuw wordt genormaliseerd. Met name `MO13` blijft `MO13` en de seniorencategorie `1-99` blijft `1-99` op beide tiers.
+
 Inkomende e-mail moet aan de juiste wedstrijd worden gekoppeld. Dat vereist dat een teamaanduiding
 uit vrije tekst ("JO13-2", "JO 13-2", "13-1") wordt herleid tot één specifiek team. Vóór deze
 vertaallaag gebeurde dat op vier plekken onafhankelijk van elkaar:
@@ -93,7 +95,7 @@ vrije tekst uit e-mail
         ▼
   TeamResolver ............. 1. gevalideerde alias   → TeamId  (confidence 1.0)
         │                    2. exacte canonieke match → TeamId  (confidence 1.0)
-        │                    3. kandidaten op leeftijd+teamnummer
+        │                    3. alleen zonder JO/MO-prefix: kandidaten op leeftijd+teamnummer
         │                       └─ precies 1 → TeamId (confidence 0.9)
         │                       └─ meerdere → altijd onbeslist (geen disambiguatie, #1268)
         ▼
@@ -124,6 +126,10 @@ met #1268 verwijderd in plaats van naar Postgres vertaald.
 > tegelijk**, niet als functionaliteit van één tier — zie regel 3 en 6 onder "Regels bij
 > wijzigingen" hieronder.
 
+### Volgorde van eigen-teamherkenning
+
+`EigenTeamBepaling` probeert eerst het genoemde team en controleert het tegenstanderveld pas als dat eerste team niet wordt opgelost. Als beide velden oplosbaar zijn, wint dus het genoemde team. De tests borgen deze bestaande precedence. Een wijziging hiervan is een productbesluit en valt buiten #1816.
+
 ## Datamodel
 
 Beide tiers hebben deze tabellen, met een andere naamconventie. Postgres-identifiers zijn lowercase
@@ -133,7 +139,7 @@ schrijft, geldt hetzelfde voor `public.teams`.
 | Tabel (SQL Server / Postgres) | Rol |
 |---|---|
 | `dbo.Teams` / `public.teams` | Eén rij per werkelijk team, gesleuteld op `(ClubCode, TeamnaamGenormaliseerd)` — op Postgres `(clubcode, teamnaamgenormaliseerd)`. Gevuld door de nachtelijke sync. Verdwenen teams worden gedeactiveerd, niet verwijderd. |
-| `dbo.TeamAliassen` / `public.teamaliassen` | Twee soorten rijen. `Bron = 'Sync'`: elke schrijfwijze die in `his.matches`/`his.teams` voorkomt (door `TeamCanonicalisatieService` na de sync, direct `validated`). `Bron = 'CoordinatorCorrectie'` (door een beheerder aangemaakt, sinds #1568 deel C, direct `validated`) of `AiDisambiguatie` (tot #1268, `pending`): schrijfwijzen die niet uit de data volgen. Status `pending`/`validated`/`rejected` — alleen `validated` wordt vertrouwd. Sinds #1568 deel C met auditspoor: wie (`AangemaaktDoor`/`BeoordeeldDoor` = object-ID, `*Naam` = naammomentopname) en wanneer (UTC), plus `HerkomstVerwerkingId` en `Reden`. |
+| `dbo.TeamAliassen` / `public.teamaliassen` | Twee soorten rijen. `Bron = 'Sync'`: elke schrijfwijze die in `his.matches`/`his.teams` voorkomt (door `TeamCanonicalisatieService` na de sync, direct `validated`). Een bestaande afgewezen Sync-alias blijft `rejected` bij volgende syncs; fysiek verwijderen is geen tombstone en een volgende sync kan de bronalias opnieuw registreren. `Bron = 'CoordinatorCorrectie'` (door een beheerder aangemaakt, sinds #1568 deel C, direct `validated`) of `AiDisambiguatie` (tot #1268, `pending`): schrijfwijzen die niet uit de data volgen. Status `pending`/`validated`/`rejected` — alleen `validated` wordt vertrouwd. Sinds #1568 deel C met auditspoor: wie (`AangemaaktDoor`/`BeoordeeldDoor` = object-ID, `*Naam` = naammomentopname) en wanneer (UTC), plus `HerkomstVerwerkingId` en `Reden`. |
 | `planner.OnbekendeTeamTekst` / `planner.onbekendeteamtekst` | Wachtrij (#1568 deel C) met teamteksten die de pipeline niet kon koppelen: gesaneerde voorbeeldtekst, genormaliseerde sleutel (uniek per club), aantal, eerst/laatst gezien, laatste verwerking (geen FK), status `open`/`afgehandeld`/`genegeerd`. Regels die 90 dagen niet zijn gezien worden door de e-mail-cleanup verwijderd. |
 
 Postgres-definities: `Database.Postgres/migrations/003_admin_tables.sql` (tabellen) en
@@ -334,7 +340,7 @@ uit het team dat `TeamResolver` herkende (`TeamNaamNormalisatie.LeidLeeftijdsCat
 `JO14-2` → `JO14`). Zonder categorie kan de check geen wedstrijdduur bepalen.
 
 **Nog niet via deze lookup:** de buffers uit `teamregels` (`FieldScheduler`, `PlanningConflictRegels`)
-vergelijken nog exact. Teams met een JM-suffix (`[club] O14-1JM`) leveren geen afgeleide categorie op.
+vergelijken nog exact. De parser herkent een JM-suffix (`[club] O14-1JM`) voor leeftijd en teamnummer en bewaart de suffix in de genormaliseerde sleutel; `JM` wordt niet als afzonderlijke categorie afgeleid.
 
 ## Bestanden
 

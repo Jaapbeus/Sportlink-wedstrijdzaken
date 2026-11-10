@@ -23,6 +23,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ### Fixed
 - De Postgres-instellingenloader laadt nu ook de vijf bestaande e-mailinstellingen voor de mailboxverwerking en wist ze bij herladen na `NULL`, gelijk aan het gedrag van de SQL Server-tier (#1798).
+- Teamherkenning respecteert expliciete JO/MO-prefixen, herkent JM-suffixen en samengestelde meisjesaanduidingen, houdt categorie-normalisatie idempotent en bewaart afgewezen Sync-aliassen bij volgende synchronisaties (#1816)
 
 ## [3.16.0.0] — 2026-11-10
 

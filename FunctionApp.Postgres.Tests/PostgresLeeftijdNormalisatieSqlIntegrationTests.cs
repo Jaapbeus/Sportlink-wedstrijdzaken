@@ -39,6 +39,11 @@ public class PostgresLeeftijdNormalisatieSqlIntegrationTests
     [InlineData("Onder 11 Meiden")]
     [InlineData("Onder 15 Meiden")]
     [InlineData("Onder 17 Meiden")]
+    [InlineData("MO13")]
+    [InlineData("1-99")]
+    [InlineData("VR")]
+    [InlineData("JO13")]
+    [InlineData("G")]
     public async Task SqlExpr_GeeftZelfdeUitkomstAlsDeCSharpNormalisatie(string invoer)
     {
         var verwacht = LeeftijdNormalisatie.Normaliseer(invoer);

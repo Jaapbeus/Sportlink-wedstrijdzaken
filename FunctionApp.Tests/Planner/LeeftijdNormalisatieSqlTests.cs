@@ -19,6 +19,7 @@ public class LeeftijdNormalisatieSqlTests
         expr.Should().Contain("SENIOREN");
         expr.Should().Contain("'1-99'");
         expr.Should().Contain("'VR'");
+        expr.Should().Contain("LIKE 'MO[0-9]%'");
     }
 
     /// <summary>
