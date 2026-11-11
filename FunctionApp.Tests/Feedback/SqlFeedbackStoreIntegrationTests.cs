@@ -123,6 +123,64 @@ public class SqlFeedbackStoreIntegrationTests
     }
 
     [SqlServerFact]
+    public async Task HerClaimPublicatie_AlleenVoorOudeClaimEnMaarEenKeer()
+    {
+        var club = NieuweClub();
+        try
+        {
+            var s = Store();
+            var rij = Rij(club);
+            await s.BewaarAsync(rij, []);
+
+            (await s.HerClaimPublicatieAsync(club, rij.FeedbackId, DateTime.UtcNow.AddMinutes(1))).Should().BeNull("een wachtende melding is geen vastgelopen claim");
+            await s.ClaimPublicatieAsync(club, rij.FeedbackId);
+
+            (await s.HerClaimPublicatieAsync(club, rij.FeedbackId, DateTime.UtcNow.AddMinutes(-2))).Should().BeNull("een verse claim kan nog lopen");
+            var gestart = await s.HerClaimPublicatieAsync(club, rij.FeedbackId, DateTime.UtcNow.AddMinutes(1));
+            gestart.Should().NotBeNull("een oude claim is herclaimbaar");
+            (await s.HerClaimPublicatieAsync(club, rij.FeedbackId, DateTime.UtcNow.AddMinutes(-2))).Should().BeNull("de herclaim ververst het slot");
+            (await s.HerClaimPublicatieAsync(club, rij.FeedbackId, DateTime.UtcNow.AddMinutes(1))).Should().Be(gestart,
+                "het begin van de publicatiepoging (de zoekgrens van het herstel) schuift bij een herclaim nooit op (#1803)");
+
+            await s.ZetGepubliceerdAsync(club, rij.FeedbackId, 77, "https://github.com/example/repo/issues/77");
+            (await s.HerClaimPublicatieAsync(club, rij.FeedbackId, DateTime.UtcNow.AddMinutes(1))).Should().BeNull("een gepubliceerde melding is niet te herclaimen");
+        }
+        finally { await OpruimenAsync(club); }
+    }
+
+    [SqlServerFact]
+    public async Task ZetIssueBody_AlleenOnderEenClaim()
+    {
+        var club = NieuweClub();
+        try
+        {
+            var s = Store();
+            var rij = Rij(club);
+            await s.BewaarAsync(rij, []);
+            var metReferentie = FeedbackPublicatieReferentie.VoegToe(rij.IssueBody, FeedbackPublicatieReferentie.Nieuw());
+
+            (await s.ZetIssueBodyAsync(club, rij.FeedbackId, metReferentie)).Should().BeFalse("zonder claim wordt de tekst niet gewijzigd");
+            await s.ClaimPublicatieAsync(club, rij.FeedbackId);
+            (await s.ZetIssueBodyAsync("ANDERECLUB", rij.FeedbackId, metReferentie)).Should().BeFalse("nooit over clubgrenzen");
+            (await s.ZetIssueBodyAsync(club, rij.FeedbackId, metReferentie)).Should().BeTrue();
+
+            (await s.GetDetailAsync(club, rij.FeedbackId))!.IssueBody.Should().Be(metReferentie);
+
+            // Een rij die vóór de kolom bleef hangen (begin NULL, oud slot): het stempelen legt het begin vast, zodat
+            // een tweede herclaim niet terugvalt op het slot van de eerste (#1803).
+            await ExecAsync(@"UPDATE [avg].[Feedback] SET [PublicatieGestartOpUtc] = NULL, [mta_modified] = DATEADD(MINUTE, -10, GETUTCDATE()) WHERE [FeedbackId] = @id", ("@id", rij.FeedbackId));
+            (await s.ZetIssueBodyAsync(club, rij.FeedbackId, metReferentie)).Should().BeTrue();
+            await Task.Delay(50);
+            var gestempeld = await s.HerClaimPublicatieAsync(club, rij.FeedbackId, DateTime.UtcNow.AddMinutes(1));
+            gestempeld.Should().NotBeNull().And.BeAfter(DateTime.UtcNow.AddMinutes(-5), "het begin is het stempelmoment, niet het oude slot");
+            await Task.Delay(50);
+            (await s.HerClaimPublicatieAsync(club, rij.FeedbackId, DateTime.UtcNow.AddMinutes(1))).Should().Be(gestempeld,
+                "een latere herclaim zoekt nog steeds vanaf het stempelmoment");
+        }
+        finally { await OpruimenAsync(club); }
+    }
+
+    [SqlServerFact]
     public async Task TelRecenteMeldingen_TeltPerMelderEnVoorDeHeleClub()
     {
         var club = NieuweClub();

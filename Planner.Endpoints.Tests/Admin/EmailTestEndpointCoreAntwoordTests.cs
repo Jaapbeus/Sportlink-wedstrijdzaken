@@ -1,6 +1,8 @@
 using System.Text.Json;
 using AwesomeAssertions;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging.Abstractions;
 using Planner.Endpoints.Admin;
 using Planner.Shared.Email.Trace;
 using Xunit;
@@ -10,6 +12,23 @@ namespace Planner.Endpoints.Tests.Admin;
 /// <summary>#1583: het antwoord van de e-mailtester bevat een definitief eindoordeel met de actuele poort-instelling.</summary>
 public class EmailTestEndpointCoreAntwoordTests
 {
+    [Fact]
+    public void ControleerAiBeschikbaar_ZonderClient_GeeftVeilige503()
+    {
+        var result = EmailTestEndpointCore.ControleerAiBeschikbaar(null, NullLogger.Instance);
+
+        var response = result.Should().BeOfType<ObjectResult>().Subject;
+        response.StatusCode.Should().Be(503);
+        var json = JsonSerializer.SerializeToElement(response.Value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        json.GetProperty("error").GetString().Should().Be(EmailTestEndpointCore.AiNietBeschikbaarMelding);
+        json.GetProperty("aiBeschikbaar").GetBoolean().Should().BeFalse();
+        json.ToString().Should().NotContain("AiModelName").And.NotContain("OpenAiApiKey");
+    }
+
+    [Fact]
+    public void ControleerAiBeschikbaar_MetClient_LaatDoor()
+        => EmailTestEndpointCore.ControleerAiBeschikbaar(Moq.Mock.Of<IChatClient>(), NullLogger.Instance).Should().BeNull();
+
     private static TraceBuilder OnbekendTeam()
         => new TraceBuilder()
             .Classificatie("BeschikbaarheidCheck", true, true, 1, true)

@@ -2,8 +2,8 @@ namespace Planner.Shared;
 
 /// <summary>
 /// Resultaat van <see cref="OntvangerParser.Parse"/>. Bij een ongeldige regel bevat
-/// <see cref="FoutMelding"/> altijd welk exact ontvanger-fragment de fout veroorzaakte — een stille
-/// skip zou de aanvrager laten denken dat een adres wél is meegenomen terwijl dat niet zo is.
+/// <see cref="FoutMelding"/> uitleg over de structuurfout of het ongeldige ontvanger-fragment.
+/// Structuurfouten herhalen geen invoer; de hele regel wordt afgewezen, nooit deels overgeslagen.
 /// </summary>
 public sealed record OntvangerParseResultaat(bool IsValid, IReadOnlyList<string> Emailadressen, string? FoutMelding)
 {
@@ -32,11 +32,11 @@ public static class OntvangerParser
         if (string.IsNullOrWhiteSpace(ruweRegel))
             return OntvangerParseResultaat.Ongeldig("Vul minimaal één ontvanger in.");
 
-        var fragmenten = ruweRegel
-            .Split([';', ','], StringSplitOptions.RemoveEmptyEntries)
-            .Select(f => f.Trim())
-            .Where(f => f.Length > 0)
-            .ToList();
+        var fragmenten = SplitsOntvangers(ruweRegel, out var structuurGeldig);
+
+        if (!structuurGeldig)
+            return OntvangerParseResultaat.Ongeldig(
+                "Ongeldig e-mailadres: controleer de aanhalingstekens en hoekhaken in de ontvangersregel.");
 
         if (fragmenten.Count == 0)
             return OntvangerParseResultaat.Ongeldig("Vul minimaal één ontvanger in.");
@@ -47,9 +47,7 @@ public static class OntvangerParser
         foreach (var fragment in fragmenten)
         {
             if (!TryExtraheerAdres(fragment, out var adres))
-                return OntvangerParseResultaat.Ongeldig(
-                    $"Ongeldig e-mailadres: \"{fragment}\". Controleer of dit adres compleet is en " +
-                    "of de ontvangers gescheiden zijn door een puntkomma (;).");
+                return OngeldigFragment(fragment);
 
             if (gezien.Add(adres))
                 adressen.Add(adres);
@@ -77,4 +75,93 @@ public static class OntvangerParser
             return false;
         }
     }
+
+    private static List<string> SplitsOntvangers(string regel, out bool structuurGeldig)
+    {
+        var fragmenten = new List<string>();
+        var begin = 0;
+        var tussenAanhalingstekens = false;
+        var inHoekhaken = false;
+        var geescapet = false;
+
+        for (var i = 0; i < regel.Length; i++)
+        {
+            var teken = regel[i];
+
+            if (tussenAanhalingstekens)
+            {
+                if (geescapet)
+                {
+                    geescapet = false;
+                    continue;
+                }
+
+                if (teken == '\\')
+                {
+                    geescapet = true;
+                    continue;
+                }
+
+                if (teken == '"')
+                    tussenAanhalingstekens = false;
+
+                continue;
+            }
+
+            if (teken == '"')
+            {
+                tussenAanhalingstekens = true;
+                continue;
+            }
+
+            if (teken == '<')
+            {
+                if (inHoekhaken)
+                    return OngeldigeStructuur(out structuurGeldig);
+
+                inHoekhaken = true;
+                continue;
+            }
+
+            if (teken == '>')
+            {
+                if (!inHoekhaken)
+                    return OngeldigeStructuur(out structuurGeldig);
+
+                inHoekhaken = false;
+                continue;
+            }
+
+            if (!inHoekhaken && teken is ';' or ',')
+            {
+                VoegFragmentToe(fragmenten, regel[begin..i]);
+                begin = i + 1;
+            }
+        }
+
+        if (tussenAanhalingstekens || inHoekhaken)
+            return OngeldigeStructuur(out structuurGeldig);
+
+        VoegFragmentToe(fragmenten, regel[begin..]);
+        structuurGeldig = true;
+        return fragmenten;
+    }
+
+    private static List<string> OngeldigeStructuur(out bool structuurGeldig)
+    {
+        structuurGeldig = false;
+        return [];
+    }
+
+    private static void VoegFragmentToe(List<string> fragmenten, string fragment)
+    {
+        var opgeschoond = fragment.Trim();
+        if (opgeschoond.Length > 0)
+            fragmenten.Add(opgeschoond);
+    }
+
+    private static OntvangerParseResultaat OngeldigFragment(string fragment) =>
+        OntvangerParseResultaat.Ongeldig(
+            $"Ongeldig e-mailadres: \"{fragment}\". Controleer of dit adres compleet is en " +
+            "of de ontvangers gescheiden zijn door een puntkomma (;).");
 }

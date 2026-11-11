@@ -6,19 +6,18 @@ using Npgsql;
 namespace FunctionApp.Postgres.Admin;
 
 /// <summary>
-/// Postgres-tier-tegenhanger van <c>FunctionApp/Admin/CleanupAppSettingsAuditFunction.cs</c>
-/// (#781/#861). Zelfde schema (maandelijks, 1e van de maand 04:30 UTC) als de SQL Server-tier;
-/// bewust een half uur ná <see cref="Email.CleanupTeambegeleidingFunction"/> (04:00), zodat de twee
-/// opschoontaken elkaar niet op dezelfde databaseverbinding overlappen.
+/// Past de bewaartermijn toe op <c>public.appsettingsaudit</c> via een maandelijkse timer op de
+/// eerste dag van de maand om 04:30 UTC. De taak draait bewust een half uur ná
+/// <see cref="Email.CleanupTeambegeleidingFunction"/> (04:00), zodat de twee opschoontaken elkaar
+/// niet op dezelfde databaseverbinding overlappen.
 ///
 /// <para>
 /// <b>Waarom deze taak bestaat.</b> <c>public.appsettingsaudit</c> legt elke instellingswijziging
 /// vast en bevat op meerdere plekken persoonsgegevens: <c>gewijzigddoor</c> is een
 /// Entra-gebruikersnaam/UPN, en <c>oudewaarde</c>/<c>nieuwewaarde</c> kunnen e-mailadressen
 /// bevatten (bijvoorbeeld bij een wijziging van <c>GraphMailbox</c> of
-/// <c>EmailReviewRecipient</c>). Zonder deze taak groeide die tabel op de Postgres-tier
-/// onbeperkt door — de tabel én de bewaartermijn-instelling bestonden al, alleen de opschoning
-/// niet. Dat is precies wat AVG art. 5 lid 1 sub e (opslagbeperking) verbiedt.
+/// <c>EmailReviewRecipient</c>). De taak past daarom de ingestelde bewaartermijn toe op deze
+/// persoonsgegevens, in lijn met AVG art. 5 lid 1 sub e (opslagbeperking).
 /// </para>
 /// <para>
 /// De bewaartermijn is configureerbaar via <c>public.appsettings.appsettingsauditbewaardagen</c>

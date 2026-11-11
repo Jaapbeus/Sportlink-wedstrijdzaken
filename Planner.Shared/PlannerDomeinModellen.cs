@@ -1,4 +1,5 @@
 using System;
+using System.Data.Common;
 
 namespace Planner.Shared;
 
@@ -11,10 +12,9 @@ namespace Planner.Shared;
 // dwingen zich ook te dupliceren.
 //
 // Bewust NIET hierheen verhuisd: de HTTP-wire-contracten (CheckAvailabilityRequest,
-// AutoPlanResponse, HerplanCheckRequest, ...) die in FunctionApp/Planner/PlannerModels.cs
-// achterblijven. Die zijn per tier eigen JSON-vormgeving van hetzelfde endpoint, geen gedeelde
-// rekenlogica — zelfde onderscheid als TeamScheduleModels.cs (#888, gedupliceerd) vs.
-// TeamNaamNormalisatie (#889, verhuisd).
+// AutoPlanResponse, HerplanCheckRequest, ...). Die staan sinds #1856 eenmalig in
+// GedeeldeBron/PlannerDto en worden per tier link-gecompileerd, zodat de publieke naamruimte per
+// tier (SportlinkFunction.Planner / FunctionApp.Postgres.Planner) ongewijzigd blijft.
 
 public class Speeltijd
 {
@@ -28,6 +28,21 @@ public class Speeltijd
     /// null = geen streeftijd; de planner valt dan terug op het eerst beschikbare slot.
     /// </summary>
     public TimeOnly? StandaardVoorkeurTijd { get; set; }
+
+    public static Speeltijd FromReader(DbDataReader reader) => new()
+    {
+        Leeftijd = reader.GetString(0),
+        Veldafmeting = reader.GetDecimal(1),
+        WedstrijdTotaal = reader.GetInt32(2),
+        StandaardVoorkeurTijd = reader.IsDBNull(3) ? null : TimeOnly.FromTimeSpan((TimeSpan)reader.GetValue(3))
+    };
+
+    public static async Task<Dictionary<string, Speeltijd>> ReadLookupAsync(DbDataReader reader)
+    {
+        var result = new Dictionary<string, Speeltijd>(StringComparer.OrdinalIgnoreCase);
+        while (await reader.ReadAsync()) result[reader.GetString(0)] = FromReader(reader);
+        return result;
+    }
 }
 
 public class VeldInfo
@@ -36,6 +51,13 @@ public class VeldInfo
     public string VeldNaam { get; set; } = string.Empty;
     public string VeldType { get; set; } = "kunstgras"; // vrije tekst uit de veldentabel; zie VeldTypeClassificatie
     public bool HeeftKunstlicht { get; set; }
+
+    public static VeldInfo FromReader(DbDataReader reader) => new()
+    {
+        VeldNummer = reader.GetInt32(0), VeldNaam = reader.GetString(1),
+        VeldType = reader.GetString(2), HeeftKunstlicht = reader.GetBoolean(3)
+    };
+
 
     /// <summary>
     /// Kunstgras volgens de enige classificatie in deze codebase — zie

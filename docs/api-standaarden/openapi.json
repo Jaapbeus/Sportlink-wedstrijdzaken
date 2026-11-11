@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nEén beveiligingsschema:\n\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist\n  voor alle endpoints behalve `/health`; gedetailleerde healthinformatie is admin-only. De rolcontrole gebeurt server-side, met vier niveaus:\n  `admin` (`EasyAuthHelper.RequireAdmin`, via de wrappers `AdminEndpoint.ExecuteAsync` /\n  `ExecuteZonderDatabaseAsync`) voor de meeste `/beheer/`-, `/planner/`- en\n  `/test/`-endpoints (waaronder het feedbackoverzicht `/beheer/feedback`) — sinds #1350 óók voor `/postgres/sync-matches` en `/sync-matches`;\n  `admin` óf `user` (`AdminEndpoint.ExecuteAuthenticatedAsync`, #1330) voor `/planner/veldbezetting`\n  (#1400), de drie `/feedback/`-endpoints (#764: elke ingelogde gebruiker mag feedback geven), de twee Sportlink-viewing-endpoints (`GET /sportlink/match/{wedstrijdcode}` en\n  `.../public-match-id`, #1400) en de drie Teambegeleiding-lookup/doorstuur-endpoints; op\n  **beide** tiers identiek `Wedstrijdzaken` óf `admin` (`EasyAuthHelper.RequireWedstrijdzaken`,\n  beide poorten sinds #1400) voor de Sportlink-mutatie-endpoints (`PUT`/`POST` onder\n  `/sportlink/`), via `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`. Netto: een gewone\n  `user` (zonder `Wedstrijdzaken`, zonder `admin`) kan Planning en het Sportlink-paneel bekijken\n  maar geen Sportlink-mutatie triggeren; dat laatste vereist `Wedstrijdzaken` óf `admin`. Lokaal\n  alleen omzeild met de expliciete schakelaar `LOCAL_AUTH_BYPASS=true`; in Azure wordt die\n  geweigerd (#1700).\n\nZonder token volgt `401`. Met een geldig token maar zonder de vereiste rol volgt `403` met\n`{ \"error\": \"Forbidden: vereiste rol ontbreekt\" }`.\n\n## Tiers\n\nAlle endpoints bestaan sinds #1266 op beide databasetiers, met één uitzondering: de handmatige\nsynchronisatie heet `/postgres/sync-matches` op de Postgres-tier (productie) en\n`/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "4.0.0.1",
+    "version": "3.16.0.14",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -124,6 +124,33 @@
           }
         }
       },
+      "SportlinkMutationInternalServerError": {
+        "description": "Interne serverfout. Als een live-mutatie bij Sportlink is geslaagd maar de auditafronding\nfaalt, blijft de vooraf geregistreerde audit open en geeft de API expliciet aan dat de\nwijziging al verwerkt is. Niet opnieuw proberen; neem contact op met de beheerder.\nDe veldplannercache is dan al geleegd. Deze specifieke melding geldt niet voor dry-run\nof een inhoudelijke afwijzing; andere interne fouten gebruiken de algemene foutmelding.\n",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "examples": {
+              "auditafrondingMisluktNaLiveSucces": {
+                "value": {
+                  "error": "Sportlink heeft de wijziging verwerkt, maar de audit kon niet worden afgerond. Probeer de actie niet opnieuw; neem contact op met de beheerder."
+                }
+              }
+            }
+          }
+        }
+      },
+      "PlanningDuurOnbekend": {
+        "description": "Planning geblokkeerd omdat voor een bestaande veldbezetting geen betrouwbare duur bekend is (#1814)",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
       "InternalServerError": {
         "description": "Interne serverfout",
         "content": {
@@ -180,7 +207,7 @@
           },
           "version": {
             "type": "string",
-            "example": "4.0.0.1"
+            "example": "3.16.0.14"
           },
           "database": {
             "type": "string",
@@ -227,7 +254,7 @@
           },
           "version": {
             "type": "string",
-            "example": "4.0.0.1"
+            "example": "3.16.0.14"
           },
           "timestamp": {
             "type": "string",
@@ -458,7 +485,7 @@
           "leeftijdsCategorie": {
             "type": "string",
             "nullable": true,
-            "description": "Leeftijdscategorie (bijv. JO13, MO17, VR, 1-99). Bepaalt duur en veldgrootte.",
+            "description": "Leeftijdscategorie (bijv. JO13, MO17, VR, 1-99). Bepaalt standaardduur en veldgrootte. Zonder categorie is een positieve wedstrijdDuurMinuten vereist.",
             "example": "JO13"
           },
           "teamNaam": {
@@ -476,7 +503,7 @@
           "wedstrijdDuurMinuten": {
             "type": "integer",
             "nullable": true,
-            "description": "Overschrijf wedstrijdduur in minuten (standaard uit Speeltijden)"
+            "description": "Positieve duur in minuten die de standaardduur uit Speeltijden overschrijft. Zonder categorie of positieve duur stopt de controle met een reden en zoekt geen slot of venster."
           },
           "heelVeld": {
             "type": "boolean",
@@ -501,7 +528,8 @@
           },
           "reden": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "description": "Reason when unavailable. A team name that fails the display checks is replaced by\n`het opgegeven team` in the team-conflict explanation (#1809).\n"
           },
           "gecontroleerdDagdeel": {
             "type": "string",
@@ -528,8 +556,10 @@
           },
           "waarschuwingen": {
             "type": "array",
+            "description": "Planning warnings normalized before serialization on both tiers (#1809).\nControl characters and whitespace become spaces. The delimiters <, >, backticks,\n{, }, [ and ] become spaces; words containing :// or @, or starting with www\n(case-insensitive), are removed. Each result is truncated after 300 characters\nwhen necessary and followed by an ellipsis (at most 301 output characters).\nEmpty results are omitted; remaining order is preserved. These rules apply only\nto this warning array. An unrecognized team name that fails the display checks\nis shown as `het opgegeven team` in its warning.\n",
             "items": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 301
             }
           }
         }
@@ -573,7 +603,8 @@
           "aangevraagdDoor": {
             "type": "string",
             "nullable": true,
-            "example": "trainer@voorbeeld.nl"
+            "deprecated": true,
+            "description": "Compatibility-only field. Ignored; the server derives the stored requester from the authenticated principal."
           },
           "wedstrijdDuurMinuten": {
             "type": "integer",
@@ -798,7 +829,8 @@
           "aangevraagdDoor": {
             "type": "string",
             "nullable": true,
-            "example": "tegenstander via email"
+            "deprecated": true,
+            "description": "Compatibility-only field. Ignored; the server derives the stored requester from the authenticated principal."
           },
           "opmerking": {
             "type": "string",
@@ -1372,12 +1404,12 @@
           },
           "IsForcedDryRun": {
             "type": "boolean",
-            "description": "#994: true als de PUT/POST werd overgeslagen door de code-niveau forceDryRun-lock (een\nmutatie waarvan de requestbody nog niet live bevestigd is, bijv. officials toewijzen) —\nONAFHANKELIJK van de club-instelling sportlinkDryRun (audit-resultaat \"DryRunLocked\").\nAls dit true is, is IsDryRun ook altijd true.\n"
+            "description": "#994: true als een expliciete code-niveau forceDryRun-lock de PUT/POST overslaat\n(audit-resultaat \"DryRunLocked\"), onafhankelijk van sportlinkDryRun. De huidige\nLiveBevestigd-flags staan op true: mutaties volgen nu de clubinstelling. IsForcedDryRun\nblijft beschikbaar voor een toekomstige code-lock; dan is IsDryRun ook true.\n"
           },
           "PublicMatchId": {
             "type": "string",
             "nullable": true,
-            "description": "#997: door Sportlink teruggegeven PublicMatchId van een NIEUW aangemaakte oefenwedstrijd\n(POST .../clubmatch/ClubMatch) — null voor elke andere mutatie, en ook null zolang\nIsForcedDryRun/IsDryRun de aanroep simuleerde (in de praktijk dus altijd null zolang de\nClubMatch-code-lock actief is).\n"
+            "description": "#997: door Sportlink teruggegeven PublicMatchId van een NIEUW aangemaakte oefenwedstrijd\n(POST .../clubmatch/ClubMatch) — null voor elke andere mutatie en wanneer\nIsForcedDryRun/IsDryRun de aanroep simuleerde. De huidige code-lock-flag is vrijgegeven;\ndry-run volgt de clubinstelling sportlinkDryRun.\n"
           }
         }
       },
@@ -1391,7 +1423,7 @@
           "Validatie": {
             "type": "object",
             "nullable": true,
-            "description": "ONBEVESTIGD — geparsed uit Sportlinks `ConfirmationNeeded`-veld, nooit met een\nnetwerktrace gezien. `null` zolang de code-lock actief is (in de praktijk altijd,\nzie `SportlinkClubClient.UpdateMatchDetailsChangeRequestLiveBevestigd`).\n",
+            "description": "ONBEVESTIGD — geparsed uit Sportlinks `ConfirmationNeeded`-veld, nooit met een\nnetwerktrace gezien. De validatie is beschikbaar na een echte respons wanneer de\nclubinstelling `sportlinkDryRun` uit staat; de huidige code-lock-flag is vrijgegeven.\n",
             "properties": {
               "ConfirmationNeeded": {
                 "type": "boolean"
@@ -4405,6 +4437,10 @@
             "type": "integer",
             "nullable": true,
             "description": "Actieve teamregel BufferNa in minuten (#1430); null = geen regel. Zie teamBufferVoor."
+          },
+          "sportlinkLeidend": {
+            "type": "boolean",
+            "description": "True als de planner de bronduur gebruikt en rond dit slot geen appbuffer toepast (#1814)."
           }
         }
       },
@@ -4571,29 +4607,82 @@
             "format": "date",
             "example": "2026-06-07"
           },
-          "bevestigingsToken": {
+          "bufferMinuten": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Algemene buffer in minuten; standaard 15."
+          },
+          "toewijzingen": {
+            "type": "array",
+            "nullable": true,
+            "description": "Alle zichtbare preview-rijen, inclusief niet-ingedeelde. Weglaten gebruikt het expliciete legacy-pad dat het plan opnieuw berekent.",
+            "items": {
+              "$ref": "#/components/schemas/AutoPlanToewijzing"
+            }
+          }
+        }
+      },
+      "AutoPlanToewijzing": {
+        "type": "object",
+        "required": [
+          "wedstrijdCode",
+          "huidigeVeld",
+          "huidigeTijd",
+          "veldNummer",
+          "tijd"
+        ],
+        "properties": {
+          "wedstrijdCode": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "huidigeVeld": {
             "type": "string",
             "nullable": true,
-            "description": "Token uit AutoPlanResponse ter verificatie"
+            "description": "Verwacht huidig veld inclusief eventuele subpositie."
+          },
+          "huidigeTijd": {
+            "type": "string",
+            "nullable": true,
+            "description": "Verwachte huidige aanvangstijd."
+          },
+          "veldNummer": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Doelveld; null samen met tijd null laat deze rij oningedeeld."
+          },
+          "veldSubpositie": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "A",
+              "B",
+              "A1",
+              "A2",
+              "B1",
+              "B2"
+            ],
+            "description": "Doelbaan; alleen toegestaan als de veldfractie overeenkomt."
+          },
+          "tijd": {
+            "type": "string",
+            "nullable": true,
+            "description": "Doelaanvangstijd exact in HH:mm; seconden, tijdsaanduidingen en witruimte worden geweigerd. Als de doelminuut gelijk is aan de verwachte brontijdminuut, blijven de bronseconden behouden, ook bij een veld- of subpositiewijziging. Null samen met veldNummer null laat deze rij oningedeeld."
           }
         }
       },
       "AutoPlanToepassenResponse": {
         "type": "object",
         "properties": {
-          "datum": {
-            "type": "string",
-            "format": "date"
-          },
-          "toegepast": {
+          "bijgewerkt": {
             "type": "integer",
-            "description": "Aantal wedstrijden waarvoor een slot is geboekt"
+            "description": "Aantal gewijzigde demowedstrijden"
           },
-          "overgeslagen": {
+          "mislukt": {
             "type": "integer",
-            "description": "Aantal wedstrijden waarvoor geen slot beschikbaar was"
+            "description": "Aantal mislukte demowedstrijden in het legacy-pad"
           },
-          "waarschuwingen": {
+          "fouten": {
             "type": "array",
             "items": {
               "type": "string"
@@ -4874,7 +4963,7 @@
         ],
         "operationId": "checkAvailability",
         "summary": "Veldbeschikbaarheid controleren",
-        "description": "Controleer of een veld beschikbaar is voor een (oefen)wedstrijd.\n\nDrie modi:\n1. **Slot toewijzen** — `leeftijdsCategorie` opgegeven: zoekt beste beschikbare slot\n2. **Alternatieven** — gevraagd tijdstip bezet: geeft tot 3 alternatieven terug\n3. **Vrije vensters** — geen `leeftijdsCategorie`: geeft alle open tijdvensters per veld\n\nControleert ook teamconflicten als `teamNaam` opgegeven is.\n",
+        "description": "Controleer of een veld beschikbaar is voor een (oefen)wedstrijd.\n\nDrie modi:\n1. **Slot toewijzen** — `leeftijdsCategorie` opgegeven: zoekt beste beschikbare slot\n2. **Alternatieven** — gevraagd tijdstip bezet: geeft tot 3 alternatieven terug\n3. **Vrije vensters** — geen `leeftijdsCategorie`: geeft alle open tijdvensters per veld\n\nControleert ook teamconflicten als `teamNaam` opgegeven is.\nWarning output is normalized and bounded before serialization on both tiers; see\n`CheckAvailabilityResponse.waarschuwingen` for the exact rules (#1809).\n",
         "security": [
           {
             "easyAuth": []
@@ -4910,6 +4999,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/PlanningDuurOnbekend"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -4962,11 +5054,18 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "409": {
-            "description": "Bezettingsconflict — het veld is op dit tijdstip al (gedeeltelijk) bezet",
+            "description": "Bezettingsconflict of een onbekende duur van een bestaande veldbezetting (#1814)",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BevestigConflictResponse"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BevestigConflictResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    }
+                  ]
                 }
               }
             }
@@ -5145,6 +5244,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "409": {
+            "$ref": "#/components/responses/PlanningDuurOnbekend"
+          },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
           }
@@ -5241,6 +5343,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/PlanningDuurOnbekend"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -5996,7 +6101,21 @@
             "description": "Wedstrijd, PublicMatchId of Sportlink-match niet gevonden"
           },
           "409": {
-            "description": "Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen"
+            "description": "Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen\nOok bij een bezette lokale autologinlease (LokaleLeaseBezet); de geblokkeerde\nSportlink-aanroep is niet uitgevoerd en kan later opnieuw worden geprobeerd.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "lokaleLeaseBezet": {
+                    "value": {
+                      "error": "Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw."
+                    }
+                  }
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -6066,7 +6185,21 @@
             "description": "Wedstrijd niet gevonden, of nog niet bekend bij Sportlink voor deze datum"
           },
           "409": {
-            "description": "Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen"
+            "description": "Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen\nOok bij een bezette lokale autologinlease (LokaleLeaseBezet); de geblokkeerde\nSportlink-aanroep is niet uitgevoerd en kan later opnieuw worden geprobeerd.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "lokaleLeaseBezet": {
+                    "value": {
+                      "error": "Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw."
+                    }
+                  }
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -6149,13 +6282,27 @@
             "description": "Wedstrijd of PublicMatchId niet gevonden"
           },
           "409": {
-            "description": "Extension staat uit, koppeling ontbreekt/verlopen, guardrail geblokkeerd, of (#1341)\n\"Kleedkamers toewijzen\" staat uit voor de Wedstrijdzaken-rol bij deze club.\n"
+            "description": "Extension staat uit, koppeling ontbreekt/verlopen, guardrail geblokkeerd, of (#1341)\n\"Kleedkamers toewijzen\" staat uit voor de Wedstrijdzaken-rol bij deze club.\nOok bij een bezette lokale autologinlease (LokaleLeaseBezet); de geblokkeerde\nSportlink-aanroep is niet uitgevoerd en kan later opnieuw worden geprobeerd.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "lokaleLeaseBezet": {
+                    "value": {
+                      "error": "Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw."
+                    }
+                  }
+                }
+              }
+            }
           },
           "413": {
             "$ref": "#/components/responses/RequestBodyTooLarge"
           },
           "500": {
-            "$ref": "#/components/responses/InternalServerError"
+            "$ref": "#/components/responses/SportlinkMutationInternalServerError"
           },
           "502": {
             "description": "Sportlink gaf geen bruikbare respons"
@@ -6241,13 +6388,27 @@
             "description": "Wedstrijd of PublicMatchId niet gevonden"
           },
           "409": {
-            "description": "Extension staat uit, koppeling ontbreekt/verlopen, guardrail geblokkeerd, of (#1341)\n\"Veld wijzigen\" staat uit voor de Wedstrijdzaken-rol bij deze club.\n"
+            "description": "Extension staat uit, koppeling ontbreekt/verlopen, guardrail geblokkeerd, of (#1341)\n\"Veld wijzigen\" staat uit voor de Wedstrijdzaken-rol bij deze club.\nOok bij een bezette lokale autologinlease (LokaleLeaseBezet); de geblokkeerde\nSportlink-aanroep is niet uitgevoerd en kan later opnieuw worden geprobeerd.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "lokaleLeaseBezet": {
+                    "value": {
+                      "error": "Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw."
+                    }
+                  }
+                }
+              }
+            }
           },
           "413": {
             "$ref": "#/components/responses/RequestBodyTooLarge"
           },
           "500": {
-            "$ref": "#/components/responses/InternalServerError"
+            "$ref": "#/components/responses/SportlinkMutationInternalServerError"
           },
           "502": {
             "description": "Sportlink gaf geen bruikbare respons"
@@ -6268,7 +6429,7 @@
         ],
         "operationId": "putSportlinkOfficials",
         "summary": "Officials (scheidsrechter/assistenten) toewijzen (#994, epic",
-        "description": "**Sinds #1319 live bevestigd** (was scaffolding, altijd code-gelockt via een aparte\n`forceDryRun`-lock, onafhankelijk van de club-instelling `sportlinkDryRun`): endpoint (`PUT\ncompetition/match/official/MatchOfficialsAction`) en requestbody zijn met een echte\nnetwerktrace bevestigd te werken. De mutatie respecteert nu de gewone `sportlinkDryRun`-\ninstelling, net als `.../dressingrooms` en `.../field`. Zelfde volgorde als `.../dressingrooms`\n(resolve → guard `SportlinkMutationSoort.Officials` → audit → mutatie), met een\ntaakspecifieke responsparser: als één official een `ValidationDescription` heeft, wordt\n`IsSuccess=false` gezet ook al is de HTTP-status 200 (\"opgeslagen met fouten\" in Sportlink\nzelf). AVG: uitsluitend positie + een door de beheerder ingevoerde relatiecode/persoons-ID\nper regel — geen zoekfunctie, geen namen.\n",
+        "description": "De eigenaar heeft het endpoint na #1319 vrijgegeven; de huidige `LiveBevestigd`-flag staat\nop `true`, zodat de mutatie de clubinstelling `sportlinkDryRun` volgt. De precieze\nrequestbody/positiewaarden blijven onbevestigde aannames; alleen de toewijzingsactie is\nvrijgegeven. Er is geen aparte code-lock actief. Zelfde volgorde als `.../dressingrooms`\n(resolve → guard `SportlinkMutationSoort.Officials` → audit → mutatie), met een\ntaakspecifieke responsparser: als één official een `ValidationDescription` heeft, wordt\n`IsSuccess=false` gezet ook al is de HTTP-status 200 (\"opgeslagen met fouten\" in Sportlink\nzelf). AVG: uitsluitend positie + een door de beheerder ingevoerde relatiecode/persoons-ID\nper regel — geen zoekfunctie, geen namen.\n",
         "security": [
           {
             "easyAuth": []
@@ -6337,13 +6498,27 @@
             "description": "Wedstrijd of PublicMatchId niet gevonden"
           },
           "409": {
-            "description": "Extension staat uit, koppeling ontbreekt/verlopen, guardrail geblokkeerd, of (#1341)\n\"Scheidsrechters toewijzen\" staat uit voor de Wedstrijdzaken-rol bij deze club.\n"
+            "description": "Extension staat uit, koppeling ontbreekt/verlopen, guardrail geblokkeerd, of (#1341)\n\"Scheidsrechters toewijzen\" staat uit voor de Wedstrijdzaken-rol bij deze club.\nOok bij een bezette lokale autologinlease (LokaleLeaseBezet); de geblokkeerde\nSportlink-aanroep is niet uitgevoerd en kan later opnieuw worden geprobeerd.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "lokaleLeaseBezet": {
+                    "value": {
+                      "error": "Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw."
+                    }
+                  }
+                }
+              }
+            }
           },
           "413": {
             "$ref": "#/components/responses/RequestBodyTooLarge"
           },
           "500": {
-            "$ref": "#/components/responses/InternalServerError"
+            "$ref": "#/components/responses/SportlinkMutationInternalServerError"
           },
           "502": {
             "description": "Sportlink gaf geen bruikbare respons"
@@ -6364,7 +6539,7 @@
         ],
         "operationId": "putSportlinkMatchChangeRequest",
         "summary": "Wijzigingsverzoek datum/tijd/accommodatie (#995, epic",
-        "description": "**Sinds #1319 live bevestigd, en de enige mutatie die een ECHTE tegenstander raakt:**\nSportlink werkt voor datum/tijd/accommodatie in twee stappen (valideren → bevestigen) — de\nbevestigingsstap stuurt een goedkeuringsverzoek naar de tegenstander. Dit endpoint bouwt\nUITSLUITEND stap 1: er bestaat bewust geen endpoint, client-methode of UI-knop voor stap 2.\nZelfde onderliggende Sportlink-endpoint als `.../field`\n(`PUT competition/match/UpdateMatchDetails`), maar met `MatchDate`/`StartTime`/`FacilityId`/\n`MatchChangeRequestRemarks` overschreven in plaats van het veld. Was tot #1319 altijd\ngesimuleerd via een aparte code-niveau `forceDryRun`-lock, onafhankelijk van de\nclub-instelling `sportlinkDryRun` — de eigenaar heeft die lock na een live netwerktrace\nopgeheven; de mutatie respecteert nu de gewone `sportlinkDryRun`-instelling. Guard:\n`SportlinkMutationSoort.DatumTijdAccommodatie` (uitsluitend\n`IsHomeMatch` + de generieke niet-afgelast/niet-concept-checks — geen specifieke\n`IsXxxAllowed`-vlag bestaat hiervoor bij Sportlink). `Toelichting` is verplicht.\n",
+        "description": "**Sinds #1319 live bevestigd, en de enige mutatie die een ECHTE tegenstander raakt:**\nSportlink werkt voor datum/tijd/accommodatie in twee stappen (valideren → bevestigen) — de\nbevestigingsstap stuurt een goedkeuringsverzoek naar de tegenstander. Dit endpoint bouwt\nUITSLUITEND stap 1: er bestaat bewust geen endpoint, client-methode of UI-knop voor stap 2.\nZelfde onderliggende Sportlink-endpoint als `.../field`\n(`PUT competition/match/UpdateMatchDetails`), maar met `MatchDate`/`StartTime`/`FacilityId`/\n`MatchChangeRequestRemarks` overschreven in plaats van het veld. De huidige\n`LiveBevestigd`-flag staat op `true`, dus de mutatie volgt `sportlinkDryRun`; er is geen\naparte code-lock actief. De payload- en responsdetails blijven onbevestigd. Guard:\n`SportlinkMutationSoort.DatumTijdAccommodatie` (uitsluitend\n`IsHomeMatch` + de generieke niet-afgelast/niet-concept-checks — geen specifieke\n`IsXxxAllowed`-vlag bestaat hiervoor bij Sportlink). `Toelichting` is verplicht.\n",
         "security": [
           {
             "easyAuth": []
@@ -6417,7 +6592,7 @@
         },
         "responses": {
           "200": {
-            "description": "Diagnostiektrace (#1320) — Resultaat.Mutatie.IsSuccess kan alsnog false zijn; in de\npraktijk altijd een gesimuleerd resultaat door de code-lock.\n",
+            "description": "Diagnostiektrace (#1320) — Resultaat.Mutatie.IsSuccess kan alsnog false zijn.\nIsDryRun geeft aan of de club-instelling de validatiestap heeft gesimuleerd.\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -6439,13 +6614,27 @@
             "description": "Wedstrijd of PublicMatchId niet gevonden"
           },
           "409": {
-            "description": "Extension staat uit, koppeling ontbreekt/verlopen, of guardrail geblokkeerd"
+            "description": "Extension staat uit, koppeling ontbreekt/verlopen, of guardrail geblokkeerd\nOok bij een bezette lokale autologinlease (LokaleLeaseBezet); de geblokkeerde\nSportlink-aanroep is niet uitgevoerd en kan later opnieuw worden geprobeerd.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "lokaleLeaseBezet": {
+                    "value": {
+                      "error": "Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw."
+                    }
+                  }
+                }
+              }
+            }
           },
           "413": {
             "$ref": "#/components/responses/RequestBodyTooLarge"
           },
           "500": {
-            "$ref": "#/components/responses/InternalServerError"
+            "$ref": "#/components/responses/SportlinkMutationInternalServerError"
           },
           "502": {
             "description": "Sportlink gaf geen bruikbare respons"
@@ -6566,7 +6755,21 @@
             "$ref": "#/components/responses/Forbidden"
           },
           "409": {
-            "description": "Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen"
+            "description": "Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen\nOok bij een bezette lokale autologinlease (LokaleLeaseBezet); de geblokkeerde\nSportlink-aanroep is niet uitgevoerd en kan later opnieuw worden geprobeerd.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "lokaleLeaseBezet": {
+                    "value": {
+                      "error": "Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw."
+                    }
+                  }
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -6652,13 +6855,27 @@
             "$ref": "#/components/responses/Forbidden"
           },
           "409": {
-            "description": "Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen"
+            "description": "Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen\nOok bij een bezette lokale autologinlease (LokaleLeaseBezet); de geblokkeerde\nSportlink-aanroep is niet uitgevoerd en kan later opnieuw worden geprobeerd.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "lokaleLeaseBezet": {
+                    "value": {
+                      "error": "Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw."
+                    }
+                  }
+                }
+              }
+            }
           },
           "413": {
             "$ref": "#/components/responses/RequestBodyTooLarge"
           },
           "500": {
-            "$ref": "#/components/responses/InternalServerError"
+            "$ref": "#/components/responses/SportlinkMutationInternalServerError"
           },
           "502": {
             "description": "Sportlink gaf geen bruikbare respons"
@@ -6776,13 +6993,27 @@
             "$ref": "#/components/responses/Forbidden"
           },
           "409": {
-            "description": "Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen"
+            "description": "Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen\nOok bij een bezette lokale autologinlease (LokaleLeaseBezet); de geblokkeerde\nSportlink-aanroep is niet uitgevoerd en kan later opnieuw worden geprobeerd.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "lokaleLeaseBezet": {
+                    "value": {
+                      "error": "Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw."
+                    }
+                  }
+                }
+              }
+            }
           },
           "413": {
             "$ref": "#/components/responses/RequestBodyTooLarge"
           },
           "500": {
-            "$ref": "#/components/responses/InternalServerError"
+            "$ref": "#/components/responses/SportlinkMutationInternalServerError"
           },
           "502": {
             "description": "Sportlink gaf geen bruikbare respons"
@@ -6802,8 +7033,8 @@
           "sportlink"
         ],
         "operationId": "deleteSportlinkClubMatch",
-        "summary": "Clubwedstrijd (oefenwedstrijd) verwijderen (#1440) — contract NIET live bevestigd, altijd dry-run",
-        "description": "Verwijdert een clubwedstrijd bij Sportlink via `DELETE competition/match/clubmatch/ClubMatchDelete?PublicMatchId=`.\nMethode, parameter en foutvorm komen uit Sportlinks publieke frontend-bundle en zijn **nooit live gezien**.\nDaarom staat de aanroep hard op dry-run (`ClubMatchDeleteLiveBevestigd = false`), ongeacht de club-instelling\n`sportlinkDryRun`: de respons heeft dan `IsDryRun` en `IsForcedDryRun` op `true` en Sportlink is niet aangeroepen\n(wel de read-only `GET competition/match/Match` voor de guard). Volgorde: toggle + EgressGuard → huidige\nwedstrijd ophalen → `SportlinkMutationGuard` (`Verwijderen`: alleen bij expliciet `IsKernelMatch = false`\nén `IsHomeMatch`, anders 409) → audit \"Pending\" met het `PublicMatchId` → verwijderen (nooit automatisch\nherhaald) → audit voltooien. De Admin GUI biedt dit alleen aan op het resultaat van \"Wedstrijd aanmaken\".\n",
+        "summary": "Clubwedstrijd (oefenwedstrijd) verwijderen (#1440) — live sinds",
+        "description": "Verwijdert een clubwedstrijd bij Sportlink via `DELETE competition/match/clubmatch/ClubMatchDelete?PublicMatchId=`.\nSinds #1458 is het contract door de eigenaar live bevestigd en volgt de aanroep de\nclub-instelling `sportlinkDryRun`; de code-lock is opgeheven. In dry-run is `IsDryRun`\ntrue en wordt geen DELETE verstuurd (wel de read-only GET voor de guard).\nVolgorde: toggle + EgressGuard → huidige\nwedstrijd ophalen → `SportlinkMutationGuard` (`Verwijderen`: alleen bij expliciet `IsKernelMatch = false`\nén `IsHomeMatch`, anders 409) → audit \"Pending\" met het `PublicMatchId` → verwijderen (nooit automatisch\nherhaald) → audit voltooien. De Admin GUI biedt dit alleen aan op het resultaat van \"Wedstrijd aanmaken\".\n",
         "security": [
           {
             "easyAuth": []
@@ -6844,7 +7075,7 @@
                     },
                     "IsForcedDryRun": {
                       "type": "boolean",
-                      "description": "Zolang het contract niet live bevestigd is altijd `true`."
+                      "description": "Code-lockindicator; voor deze bevestigde mutatie `false`."
                     },
                     "PublicMatchId": {
                       "type": "string"
@@ -6867,10 +7098,24 @@
             "description": "Sportlink kent dit `PublicMatchId` niet (meer)"
           },
           "409": {
-            "description": "Extension staat uit, de Sportlink-koppeling ontbreekt/is verlopen, of de guard weigert (geen clubwedstrijd, `IsKernelMatch` ontbreekt, of geen thuiswedstrijd)"
+            "description": "Extension staat uit, de Sportlink-koppeling ontbreekt/is verlopen, of de guard weigert (geen clubwedstrijd, `IsKernelMatch` ontbreekt, of geen thuiswedstrijd)\nOok bij een bezette lokale autologinlease (LokaleLeaseBezet); de geblokkeerde\nSportlink-aanroep is niet uitgevoerd en kan later opnieuw worden geprobeerd.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "lokaleLeaseBezet": {
+                    "value": {
+                      "error": "Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw."
+                    }
+                  }
+                }
+              }
+            }
           },
           "500": {
-            "$ref": "#/components/responses/InternalServerError"
+            "$ref": "#/components/responses/SportlinkMutationInternalServerError"
           },
           "502": {
             "description": "Sportlink gaf geen bruikbare respons"
@@ -7058,7 +7303,21 @@
             "$ref": "#/components/responses/Forbidden"
           },
           "409": {
-            "description": "Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen"
+            "description": "Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen\nOok bij een bezette lokale autologinlease (LokaleLeaseBezet); de geblokkeerde\nSportlink-aanroep is niet uitgevoerd en kan later opnieuw worden geprobeerd.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "lokaleLeaseBezet": {
+                    "value": {
+                      "error": "Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw."
+                    }
+                  }
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -9449,6 +9708,32 @@
           }
         },
         "responses": {
+          "503": {
+            "description": "AI-classificatie is niet geconfigureerd of niet beschikbaar",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "aiBeschikbaar"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "E-mailclassificatie is nu niet beschikbaar. Probeer het later opnieuw."
+                    },
+                    "aiBeschikbaar": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
           "200": {
             "description": "Dry-run resultaat",
             "headers": {
@@ -9659,7 +9944,7 @@
         ],
         "operationId": "feedbackSubmit",
         "summary": "Feedback indienen (bewaren, en direct publiceren als beheerder)",
-        "description": "Open voor elke ingelogde rol (#764). De melder (Entra object-ID, naam-momentopname, rol) komt\nuitsluitend uit het Easy Auth-principal en wordt bewaard in `avg.Feedback` — nooit in het\npublieke issue. Structureert de feedback met GPT-4o-mini en bewaart de te publiceren titel en body.\n\n* Rol **admin**: de melding wordt direct als GitHub-issue gepubliceerd (is GitHub niet\n  geconfigureerd, dan blijft ze bewaard met een `waarschuwing`).\n* Rol **user**: de melding wacht (`status: wacht-op-publicatie`) tot een beheerder haar in het\n  overzicht publiceert (`POST /beheer/feedback/{id}/publiceer`). De response bevat geen\n  issueverwijzing.\n\nIs `bevestiging` meegestuurd — de velden zoals `/feedback/preview` ze teruggaf en de\nbeheerder ze gezien heeft — dan wordt exact díe tekst gepubliceerd en volgt er géén nieuwe\nAI-aanroep. De PII-gate draait onverkort op de uiteindelijke titel en body.\n\nLimieten: max 3 meldingen per 10 minuten per gebruiker (gemeten in de database, dus gedeeld over\ninstances) en een vangnet van 30 per uur voor de hele club.\n",
+        "description": "Open voor elke ingelogde rol (#764). De melder (Entra object-ID, naam-momentopname, rol) komt\nuitsluitend uit het Easy Auth-principal en wordt bewaard in `avg.Feedback` — nooit in het\npublieke issue. Structureert de feedback met GPT-4o-mini en bewaart de te publiceren titel en body.\n\n* Rol **admin**: de melding wordt direct als GitHub-issue gepubliceerd (is GitHub niet\n  geconfigureerd, dan blijft ze bewaard met een `waarschuwing`). Bij een time-out, verbroken verbinding of HTTP 408/5xx\n  tijdens de POST is de uitkomst onbekend; de melding blijft op `publiceren` en is te herstellen via `POST /beheer/feedback/{id}/publiceer`.\n* Rol **user**: de melding wacht (`status: wacht-op-publicatie`) tot een beheerder haar in het\n  overzicht publiceert (`POST /beheer/feedback/{id}/publiceer`). De response bevat geen\n  issueverwijzing.\n\nIs `bevestiging` meegestuurd — de velden zoals `/feedback/preview` ze teruggaf en de\nbeheerder ze gezien heeft — dan wordt exact díe tekst gepubliceerd en volgt er géén nieuwe\nAI-aanroep. De PII-gate draait onverkort op de uiteindelijke titel en body.\n\nLimieten: max 3 meldingen per 10 minuten per gebruiker (gemeten in de database, dus gedeeld over\ninstances) en een vangnet van 30 per uur voor de hele club.\n",
         "security": [
           {
             "easyAuth": []
@@ -9745,7 +10030,7 @@
             "$ref": "#/components/responses/InternalServerError"
           },
           "502": {
-            "description": "Bewaard, maar publiceren op GitHub is mislukt (alleen beheerder); opnieuw te publiceren via het overzicht",
+            "description": "Publicatie mislukt (alleen beheerder). Bij time-out, verbroken verbinding of HTTP 408/5xx is de uitkomst onbekend en blijft de melding op `publiceren`; herstel via het overzicht controleert eerst of het issue al bestaat. Een expliciete afwijzing van de API blijft opnieuw te publiceren.",
             "content": {
               "application/json": {
                 "schema": {
@@ -10000,7 +10285,7 @@
             "$ref": "#/components/responses/InternalServerError"
           },
           "502": {
-            "description": "Publiceren op GitHub mislukt; de melding blijft bewaard en is opnieuw te publiceren",
+            "description": "Publiceren is mislukt of kon niet volledig worden bevestigd. Wijst GitHub de aanmaak expliciet af (een 4xx anders dan 408, ook na de 422-fallback zonder eigen labels), dan gaat de melding naar `github-mislukt` en is ze opnieuw te publiceren. Is de uitkomst onbekend (time-out, annulering, HTTP 408/5xx) of mislukte de receipt-opslag of de controle op een bestaand issue, dan blijft de melding op `publiceren` en is ze na enkele minuten opnieuw te proberen; de server controleert dan eerst via de issuelijst of het issue al bestaat en koppelt dat. Kon een oudere melding vóór de POST geen publicatiereferentie krijgen, dan is er niets verstuurd en is ze opnieuw te publiceren.",
             "content": {
               "application/json": {
                 "schema": {
@@ -11129,7 +11414,7 @@
         ],
         "operationId": "deleteTeamAlias",
         "summary": "Teamalias verwijderen",
-        "description": "Verwijdert de alias definitief. Uitsluitend binnen de eigen club (`X-Club-Code`). Er staat nergens een\nidentificator van de beheerder in het log; de tabel bewaart geen auditregel van een verwijderde rij.\nDe alias kan opnieuw als `pending` verschijnen wanneer de schrijfwijze weer wordt\naangetroffen.\n",
+        "description": "Sync-origin aliases retain their row with status rejected, preventing canonicalization from\nvalidating the association again. Other origins are physically deleted. Both actions are scoped\nto the current club (X-Club-Code). Logs contain only the alias identifier, without administrator\nidentity. Rejection blocks the alias association, not an independent canonical-name match.\n",
         "security": [
           {
             "easyAuth": []
@@ -12353,7 +12638,7 @@
         ],
         "operationId": "autoPlanToepassen",
         "summary": "Automatisch plan toepassen",
-        "description": "Past het gegenereerde auto-plan toe door wedstrijdsloten te boeken in\n`planner.GeplandeWedstrijden`. Schrijft alleen voor wedstrijden die nog\ngeen slot hebben.\n\n**Let op:** alleen beschikbaar als de club-code `ALLSTARS` is (testmodus).\nProductie-clubs ontvangen HTTP 403.\n",
+        "description": "Schrijft uitsluitend ALLSTARS-demowedstrijden in `his.matches` bij. Met\n`toewijzingen` valideert de server alle getoonde rijen, bronposities en\nexacte doelbanen tegen verse clubdata binnen dezelfde transactie als de\nupdates. Conflicten rollen de hele toepassing terug. Zonder deze lijst\nblijft het expliciete legacygedrag van herberekenen beschikbaar.\n\nEen previewrij met een onbekend team en zonder betrouwbare speelduur wordt\nniet meegeschreven en telt niet mee als veldbezetting bij deze controle;\nandere geldige toewijzingen worden wel gecontroleerd.\n\n**Let op:** alleen beschikbaar als de club-code `ALLSTARS` is (testmodus).\nProductie-clubs ontvangen HTTP 403.\n",
         "security": [
           {
             "easyAuth": []
@@ -12397,6 +12682,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "Bron gewijzigd of exact doelplan bevat een conflict; er is niets opgeslagen."
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"

@@ -22,8 +22,8 @@ internal sealed class SportlinkMutatieUitvoerder
     /// Gedeelde verzenduitvoering + responsparsing voor alle mutatie-endpoints — derde bijna-
     /// identieke kopie (na #992/#993) was de trigger om ook dit deel te consolideren, zie de
     /// doc-comment op <see cref="SportlinkClubTransport.ExecuteWithTokenRetryAsync{T}"/>. Sinds #997 ook voor POST (zie
-    /// <paramref name="method"/>) — de drie bestaande PUT-aanroepen (#992/#993/#996) en de PUT van
-    /// #994 geven <paramref name="method"/> niet mee en blijven dus ongewijzigd <c>HttpMethod.Put</c>
+    /// <paramref name="opties"/>) — de drie bestaande PUT-aanroepen (#992/#993/#996) en de PUT van
+    /// #994 geven <paramref name="opties"/> niet mee en blijven dus ongewijzigd <c>HttpMethod.Put</c>
     /// gebruiken (default), alleen #997's <c>CreateClubMatchAsync</c> geeft expliciet
     /// <c>HttpMethod.Post</c> mee. De naam <c>PutMutationAsync</c> is bewust NIET hernoemd — dat zou
     /// alle bestaande call sites moeten aanraken voor een verandering die zuiver optioneel is, meer

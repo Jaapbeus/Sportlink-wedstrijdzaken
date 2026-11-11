@@ -100,18 +100,26 @@ public static class FeedbackEndpointCore
     /// retentietimer. <c>GitHubRepo</c> is net als <c>GitHubOwner</c> verplicht (#607).
     /// </summary>
     public static Func<string, string, string[], Task<(int nummer, string url)>>? MaakGitHubIssueDelegate(
-        bool externeIntegratiesToegestaan, ILogger log)
+        bool externeIntegratiesToegestaan, ILogger log, CancellationToken cancellationToken = default)
     {
         if (!TryLeesGitHubConfig(externeIntegratiesToegestaan, log, out var pat, out var owner, out var repo)) return null;
-        return (titel, body, labels) => FeedbackCore.MaakGitHubIssueAsync(pat, owner, repo, titel, body, labels, log);
+        return (titel, body, labels) => FeedbackCore.MaakGitHubIssueAsync(pat, owner, repo, titel, body, labels, log, cancellationToken);
+    }
+
+    /// <summary>Zoekt via de issuelijst een eerder aangemaakt issue bij een publicatiereferentie (#1803). <c>null</c> als GitHub niet mag/kan.</summary>
+    public static Func<string, DateTime, Task<(bool gelukt, FeedbackGevondenIssue? gevonden)>>? MaakIssueZoekDelegate(
+        bool externeIntegratiesToegestaan, ILogger log, CancellationToken cancellationToken = default)
+    {
+        if (!TryLeesGitHubConfig(externeIntegratiesToegestaan, log, out var pat, out var owner, out var repo)) return null;
+        return (referentie, sindsUtc) => FeedbackCore.ZoekIssueMetReferentieAsync(pat, owner, repo, referentie, sindsUtc, log, cancellationToken);
     }
 
     /// <summary>Tegenhanger voor de retentietimer: leest de sluitstatus van een issue. <c>null</c> als GitHub niet mag/kan.</summary>
     public static Func<int, Task<(bool gelukt, DateTime? geslotenOpUtc)>>? MaakIssueSluitingDelegate(
-        bool externeIntegratiesToegestaan, ILogger log)
+        bool externeIntegratiesToegestaan, ILogger log, CancellationToken cancellationToken = default)
     {
         if (!TryLeesGitHubConfig(externeIntegratiesToegestaan, log, out var pat, out var owner, out var repo)) return null;
-        return nummer => FeedbackCore.HaalIssueSluitingAsync(pat, owner, repo, nummer, log);
+        return nummer => FeedbackCore.HaalIssueSluitingAsync(pat, owner, repo, nummer, log, cancellationToken);
     }
 
     private static bool TryLeesGitHubConfig(bool toegestaan, ILogger log, out string pat, out string owner, out string repo)
@@ -137,13 +145,14 @@ public static class FeedbackEndpointCore
     /// aanleveren.
     /// </summary>
     public static async Task VoerRetentieTimerAsync(
-        Func<Task> wachtOpDatabase, IFeedbackStore store, bool externeIntegratiesToegestaan, ILogger log)
+        Func<Task> wachtOpDatabase, IFeedbackStore store, bool externeIntegratiesToegestaan, ILogger log,
+        CancellationToken cancellationToken = default)
     {
         log.LogInformation("AVG-cleanup gestart: avg.Feedback");
         try
         {
             await wachtOpDatabase();
-            await FeedbackRetentieCore.VoerUitAsync(store, MaakIssueSluitingDelegate(externeIntegratiesToegestaan, log), log);
+            await FeedbackRetentieCore.VoerUitAsync(store, MaakIssueSluitingDelegate(externeIntegratiesToegestaan, log, cancellationToken), log);
         }
         catch (Exception ex)
         {
@@ -259,8 +268,8 @@ public static class FeedbackEndpointCore
 
         var feedbackId = Guid.NewGuid();
         var publiceertDirect = wie.IsAdmin && maakGitHubIssueAsync is not null;
-        var bewaard = await ProbeerBewarenAsync(store, MaakRij(dto, wie, clubCode, feedbackId, voorbereid), dto.Telemetrie, log,
-            moetSlagen: !publiceertDirect);
+        var rij = MaakRij(dto, wie, clubCode, feedbackId, voorbereid);
+        var bewaard = await ProbeerBewarenAsync(store, rij, dto.Telemetrie, log, moetSlagen: !publiceertDirect);
 
         if (!publiceertDirect)
         {
@@ -270,7 +279,7 @@ public static class FeedbackEndpointCore
                 wie.IsAdmin ? "GitHub-integratie niet geconfigureerd: de melding is bewaard en kan later via het overzicht gepubliceerd worden." : null));
         }
 
-        return await PubliceerNaBewarenAsync(store, clubCode, feedbackId, bewaard, dto.Type, voorbereid, maakGitHubIssueAsync!, wie, log);
+        return await PubliceerNaBewarenAsync(store, clubCode, feedbackId, bewaard, dto.Type, voorbereid.Titel!, rij.IssueBody, maakGitHubIssueAsync!, wie, log);
     }
 
     private static async Task<IActionResult?> Limietoverschrijding(IFeedbackStore store, string clubCode, FeedbackAanroeper wie, DateTime nu)
@@ -289,7 +298,9 @@ public static class FeedbackEndpointCore
 
     private static FeedbackNieuw MaakRij(FeedbackRequest dto, FeedbackAanroeper wie, string clubCode, Guid id,
         FeedbackCore.FeedbackVoorbereiding voorbereid) => new(
-            id, clubCode, dto.Type, voorbereid.Titel!, voorbereid.Body!, dto.Beschrijving,
+            id, clubCode, dto.Type, voorbereid.Titel!,
+            // Publicatiereferentie (#1803): vóór de eerste POST in de bewaarde body, zodat herstel een eerder aangemaakt issue herkent.
+            FeedbackPublicatieReferentie.VoegToe(voorbereid.Body!, FeedbackPublicatieReferentie.Nieuw()), dto.Beschrijving,
             dto.VragenAntwoorden is { Count: > 0 } ? JsonConvert.SerializeObject(dto.VragenAntwoorden) : null,
             wie.ObjectId, wie.Naam is { Length: > 200 } n ? n[..200] : wie.Naam, wie.Rol,
             dto.Context?.Pagina is { } p ? (p.Length > 200 ? p[..200] : p) : null,
@@ -320,23 +331,39 @@ public static class FeedbackEndpointCore
 
     private static async Task<IActionResult> PubliceerNaBewarenAsync(
         IFeedbackStore store, string clubCode, Guid id, bool bewaard, string type,
-        FeedbackCore.FeedbackVoorbereiding voorbereid,
+        string titel, string issueBody,
         Func<string, string, string[], Task<(int nummer, string url)>> maakIssue,
         FeedbackAanroeper wie, ILogger log)
     {
+        // Zet een opgeslagen directe publicatie vóór de externe write op dezelfde claim als handmatige
+        // publicatie. Bij een afgebroken POST blijft de claim staan; "opnieuw proberen" in het overzicht
+        // controleert dan eerst via de publicatiereferentie of het issue al bestaat (#1803).
+        if (bewaard && !await store.ClaimPublicatieAsync(clubCode, id))
+            return new ConflictObjectResult(new { error = "Deze melding wordt al gepubliceerd." });
+
         try
         {
-            var (nummer, url) = await maakIssue(voorbereid.Titel!, voorbereid.Body!, FeedbackCore.KiesLabels(type));
+            var (nummer, url) = await maakIssue(titel, issueBody, FeedbackCore.KiesLabels(type));
             if (bewaard)
             {
                 try { await store.ZetGepubliceerdAsync(clubCode, id, nummer, url); }
                 catch (Exception ex)
                 {
-                    // Het issue bestaat; het FeedbackId staat niet in de issue-body, dus alleen loggen.
+                    // Het issue bestaat; de claim blijft staan en "opnieuw proberen" koppelt het via de publicatiereferentie.
                     log.LogError(ex, "Issue #{Nr} aangemaakt maar overzichtsrecord bijwerken mislukt [feedbackId={Id}]", nummer, id);
                 }
             }
             return new OkObjectResult(Antwoord(id, FeedbackStatusWaarden.Gepubliceerd, bewaard, wie, nummer, url, null));
+        }
+        catch (FeedbackPublicatieUitkomstOnbekendException ex)
+        {
+            log.LogError("GitHub-issueaanmaak afgebroken met onbekende uitkomst [feedbackId={Id}], fouttype={ErrorType}; status blijft publiceren", id, ex.InnerException?.GetType().Name);
+            return new ObjectResult(new
+            {
+                error = OnbekendeUitkomstMelding,
+                feedbackId = id,
+                meldingsnummer = Meldingsnummer(id)
+            }) { StatusCode = 502 };
         }
         catch (Exception ex)
         {
@@ -351,6 +378,10 @@ public static class FeedbackEndpointCore
             }) { StatusCode = 502 };
         }
     }
+
+    /// <summary>Tekst bij een afgebroken POST: de melding blijft herstelbaar via "opnieuw proberen" (#1803).</summary>
+    internal const string OnbekendeUitkomstMelding =
+        "De uitkomst van publiceren is onbekend. Probeer het over enkele minuten opnieuw via het feedbackoverzicht: er wordt dan eerst gecontroleerd of het issue al bestaat.";
 
     private static async Task ProbeerStatusMisluktAsync(IFeedbackStore store, string clubCode, Guid id, ILogger log)
     {

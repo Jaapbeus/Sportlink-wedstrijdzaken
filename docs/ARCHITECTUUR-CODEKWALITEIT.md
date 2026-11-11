@@ -169,6 +169,67 @@ met jscpd op productiecode (geen testprojecten, zelfde reden als regel 7/8), met
 volledig uitgesloten zodat cross-tier duplicatie niet dubbel wordt geteld door twee guards
 tegelijk.*
 
+### Regel 2b — Tier-identieke wire-DTO's staan eenmalig in `GedeeldeBron/` (#1856)
+
+**Besluit (eigenaar, 2026-11-11, #1856 optie B).** Een wire-DTO (een klasse met alleen eigenschappen
+voor de JSON van één endpoint) die op beide gebouwde tiers token-identiek is, staat in één bronbestand
+onder `GedeeldeBron/<domein>/`. Beide tier-projecten compileren dat bestand mee via
+`<Compile Include="..\GedeeldeBron\<domein>\*.cs" Link="..." />`: één bron, twee compilaties.
+Eerste toepassing: 21 planner-DTO's (`CheckAvailabilityRequest`, `AutoPlanResponse`,
+`TeamScheduleResponse`, ...) in `GedeeldeBron/PlannerDto/` (vier domeinbestanden: Availability,
+Match, TeamSchedule, AutoPlan). Zij stonden voorheen woordelijk in `FunctionApp/Planner/PlannerModels.cs`
+en in vier Postgres-bestanden.
+
+*Afbakening (21 van 23).* Het eigenaarsbesluit noemt 19 identieke declaraties: de 23 token-identieke
+typen min de vier die bij de scope van #1807 voor open PR's waren vrijgehouden (`BevestigRequest` en
+`HerplanBevestigRequest` voor PR #1848, `AutoPlanWedstrijdItem` voor PR #1823 en #1843,
+`AutoPlanToepassenRequest` voor PR #1828). PR #1848 is gemerged, dus die twee gaan nu mee.
+`AutoPlanWedstrijdItem` en `AutoPlanToepassenRequest` blijven per tier
+(`FunctionApp/Planner/PlannerModels.cs` en `FunctionApp.Postgres/Planner/AutoPlanModels.cs`) zolang
+die PR's open zijn, zodat hun wijzigingen geen verwijder/wijzig-conflict krijgen. Na hun merge volgen
+ze naar `GedeeldeBron/PlannerDto/AutoPlanModels.cs` (vervolgstap, met de characterization-test
+uitgebreid).
+
+**Waarom link-compilatie en niet een verhuizing naar `Planner.Shared`.** De publieke naamruimten
+verschillen per tier (`SportlinkFunction.Planner` tegenover `FunctionApp.Postgres.Planner`) en zijn
+onderdeel van het contract met alle bestaande aanroepers, tests, reflectie en OpenAPI-weergave. Een
+verhuizing naar één naamruimte in `Planner.Shared` zou elke `using`, elke typenaam in de tier-bomen en de
+testbestanden raken (of een alias per type vragen) en maakt van twee tier-eigen typen één type: een
+gedragswijziging in typeidentiteit. Link-compilatie laat de compiler precies dezelfde typen per tier
+produceren als voorheen; alleen de bron is gedeeld. Het past bovendien bij het bestaande precedent
+(regel 3c: BlazorAdmin linkt bestanden uit `Planner.Shared`; `FunctionApp.Postgres.Tests` linkt
+fixtures uit `FunctionApp.Tests`) en is geen gedeelde providerabstractie
+(`ARCHITECTUUR-DATABASE-TIERS.md` §2): er zit geen gedrag of databasetoegang in.
+
+**Mechanisme.** Elk gedeeld bestand kiest zijn naamruimte met `#if PLANNER_DTO_POSTGRES`
+(`namespace FunctionApp.Postgres.Planner;`, anders `namespace SportlinkFunction.Planner;`). De constante
+staat alleen in `FunctionApp.Postgres.csproj` (en voor de test in `FunctionApp.Postgres.Tests.csproj`);
+de SQL Server-tier heeft geen constante nodig. `GedeeldeBron/` bevat geen projectbestand, dus geen
+project compileert het per ongeluk via de standaardglob.
+
+**Grenzen.** Alleen wire-DTO's zonder gedrag en zonder tier-afhankelijkheid (alleen `Planner.Shared`
+en BCL); alleen als de declaratie token-identiek is. Een DTO dat per tier verschilt (bijvoorbeeld
+`VeldbezettingItem`, `WedstrijdRaw`, `TeamleiderContact`) blijft in zijn tierbestand. Een wijziging in
+`GedeeldeBron/` werkt op beide tiers tegelijk: dat is de bedoeling (JSON op beide tiers identiek), dus
+een veldwijziging hoeft maar op één plek, maar geldt ook voor beide tiers tegelijk (tierpariteit,
+regel 1 van AGENTS.md).
+
+**Bewijs dat de vorm niet veranderde.** `FunctionApp.Tests/Planner/PlannerDtoVormTests.cs` wordt in
+beide testprojecten gecompileerd en legt per type vast: naamruimte, publieke eigenschappen met type en
+nullability, publieke setter, geïmplementeerde interfaces en de JSON van een standaardinstantie
+(System.Text.Json met standaard- en web-opties: zo schrijven de endpoints hun antwoord). De golden is
+gemeten vóór de verhuizing, op beide tiers afzonderlijk, en bleek byte-voor-byte gelijk; ná de
+verhuizing slaagt dezelfde test op beide tiers. Het inkomende contract is anders: de endpoints lezen
+elke `*Request`-body met Newtonsoft (`JsonConvert.DeserializeObject`). Daarom leest een tweede test
+per request-type een volledig gevulde camelCase-body met Newtonsoft in en controleert elke eigenschap;
+een setter die niet meer publiek is of een Newtonsoft-attribuut dat een veld hernoemt, valt daar op.
+
+**Meting.** `check-tier-duplicatie.sh` koppelt tierbestanden op gelijke bestandsnaam. De planner-DTO's
+stonden onder verschillende bestandsnamen (`PlannerModels.cs` tegenover `AutoPlanModels.cs` e.a.) en
+telden daarom nooit mee in het plafond: het getal verandert door deze verhuizing niet, de werkelijke
+duplicatie (de Postgres-kopieën van 21 typen) is wel verdwenen. Het plafond is niet verhoogd en niet
+verlaagd.
+
 ### Regel 3 — Geen logica in Blazor-pagina's
 
 Elke `.razor` onder `BlazorAdmin/Pages/` met C#-logica heeft een code-behind: `<Pagina>.razor.cs`,
@@ -569,6 +630,7 @@ uit een workflow kan verdwijnen zonder dat iemand het merkt.
 | Endpoint-wijziging werkt `openapi.yaml`, `openapi.json` (uit de YAML) en `docs/API.md` bij: operatieset van `openapi.json` = endpointtabel van `API.md` (#1717) | `scripts/ci/check-api-md-sync.py` | `build.yml` |
 | Idem: inhoud van de beschrijvingen en parameters in `API.md` en de YAML-JSON-gelijkheid buiten de versie (#1717) | onbewaakt: handgeschreven tekst; alleen de operatieset en de versie zijn machineleesbaar te vergelijken, de rest beoordeelt de reviewer | n.v.t. |
 | Elke feature/fix een entry onder `[Unreleased]` in `CHANGELOG.md` (#1717) | onbewaakt: of een wijziging een entry verdient is een inhoudelijk oordeel; `pre-release-check.yml` bewaakt alleen de versiekopjes | n.v.t. |
+| 2b — tier-identieke wire-DTO's staan eenmalig in `GedeeldeBron/` (#1856) | onbewaakt: een guard (type-niveau-vergelijking van beide tierbomen) valt buiten de scope van #1856; `check-tier-duplicatie.sh` koppelt op bestandsnaam en ziet dit niet; wel gedekt door `PlannerDtoVormTests` voor de verhuisde typen, een nieuw tier-identiek DTO beoordeelt de reviewer (zie 'Eerlijk vermeld') | n.v.t. |
 
 <!-- REGELREGISTER-EINDE -->
 
@@ -605,10 +667,11 @@ Eerlijk vermeld, zodat niemand denkt dat het gedekt is.
 |---|---|---|
 | Testdekking per productiemap | `BlazorAdmin.Tests` heeft weinig tests tegenover bijna 7.000 regels Razor; dat groeit pas als regel 3 (code-behind) verder is doorgevoerd. De drie mappen zonder testproject zijn bij #1302 wél voorzien — zie hieronder. | Regel 3 |
 | Expressie-index bij een `UPPER()`-vergelijking (#1232) — **deels bewaakt sinds #1280** | In het algemeen niet schema-statisch te bepalen zonder de queries te parsen; de splinter-gate sluit `unused_index` bewust uit (§68 van `ARCHITECTUUR-DATABASE-TIERS.md`). De regel staat in `AGENTS.md`, de meting per tier in §69 en §75 daarvan. Voor de drie sleutelkolommen van de teamresolutie is het wél afdwingbaar gebleken, omdat de vergelijkingen op één plek staan. | `FunctionApp.Tests/TeamResolution/TeamCandidateIndexSargabilityTests.cs` voor de teamresolutiekolommen; daarbuiten handmatig: `EXPLAIN (ANALYZE, BUFFERS)` resp. `SHOWPLAN_TEXT` bij zo'n wijziging |
+| Tier-identieke DTO onder een andere bestandsnaam per tier (#1856) | `check-tier-duplicatie.sh` koppelt tierbestanden op gelijke bestandsnaam: dezelfde klasse in `PlannerModels.cs` (SQL Server) en `AutoPlanModels.cs` (Postgres) valt buiten de meting, en een ongelijk gesplitste kopie voegt ongemerkt duplicatie toe of verbergt ze. Regel 2b voorkomt het voor de planner-DTO's; een nieuw tier-identiek DTO volgt dezelfde route, maar geen script dwingt dat af. | Beoordelen bij review van elke nieuwe wire-DTO per tier; eventueel de guard uitbreiden met een type-niveau-vergelijking (los issue) |
 | Services, autorisatieregels (#1272) en achtergrondlogica zonder trigger in de tier-pariteit | `check-tier-pariteit.sh` bewaakt routes en timers in beide richtingen, niet wat geregistreerd wordt of draait zonder trigger. Een ontbrekende service of timer geeft niemand een 404; de database-uitvalmonitor (#831) stond zo jarenlang alleen op de SQL Server-tier. | Bij twijfel is een handmatige vergelijking van beide `Program.cs`-bestanden de snelste toets |
 | Precies één `source:`-label per issue (#1336) | Herkomst is een label en geen auteursveld: Codex en Claude Code werken via `gh issue create`/`gh api` onder credentials die niet per se een uniek account per assistent zijn, dus `issue.user.login` onderscheidt ze niet betrouwbaar. Herkomst wordt handmatig gezet door de opsteller (Codex of Claude Code) — er is geen `setIssueStatus()`-achtige helper die dit afdwingt, en geen periodieke scan die een issue zonder of met dubbel `source:`-label signaleert. | Los issue indien gewenst: een periodieke workflow (zelfde vorm als `supabase-advisors.yml`) die open issues zonder precies één `source:`-label rapporteert |
-| Verweesde `status: waiting-codex` (#1336, gedeprecieerd sinds #1343) | Historische wachtstatus zonder betrouwbare afrondingstrigger; de huidige wederzijdse reviews gebruiken expliciete fase/beurt en PR-bewijs. Een issue dat op `waiting-codex` blijft staan omdat niemand terugkomt, valt niet automatisch op. Sinds #1343 is dit label gedeprecieerd (zie `AGENTS.md`); de rij blijft staan zolang het label en zijn `PROTECTED`-vermelding nog bestaan. | Los issue indien gewenst: dagelijkse/wekelijkse cron die `status: waiting-codex`-issues ouder dan N dagen signaleert, of verwijder het label + de `PROTECTED`-vermelding zodra bevestigd is dat niets er meer naar verwijst |
-| Precies één `turn:`-label per issue (#1343) — **deels bewaakt sinds #1601, dubbel label bewaakt sinds #1686** | Een dubbel `turn:`-label lost `turn-label-exclusief.yml` op bij elk nieuw `turn:`-label (het laatst gezette blijft; actief vanaf de default branch, dus na de release); een issue zónder `turn:`-label signaleert niets, net als bij `source:` (zie rij hierboven). Labels die met de `GITHUB_TOKEN` worden gezet starten die workflow niet. Wanneer de poort van `claude-issue-turn.yml` zelf de beurt naar de eigenaar teruggeeft, gebeurt dat via `setTurnLabel()` in `.github/scripts/claude-issue-turn-gate.js` (eerst toevoegen, dan elk ander `turn:`-label verwijderen). Lokale wissels blijven `gh issue edit`-aanroepen volgens `AGENTS.md`; in die CI-run schrijft de agent zelf geen label meer en vervangt de job `eindlabel` uitsluitend `turn: claude-code` als vergelijk-en-zet, zonder `setTurnLabel()` en met terugdraaien bij een veranderde nacontrole (#1692, `claude-issue-turn-eindlabel.js`). | `turn-label-exclusief.test.js` (dubbel label), `claude-issue-turn-gate.test.js` voor het poortpad en `claude-issue-turn-eindlabel.test.js` voor het eindlabel; een issue zonder `turn:`-label: dezelfde periodieke workflow als voor `source:` uitbreiden |
+| Verweesde `status: waiting-codex` (#1336, gedeprecieerd sinds #1343) — **bewaakt sinds #1858, signalerend** | Het label is uit `.github/labels.json` verwijderd; de `PROTECTED`-vermelding in `issue-status.js` volgt na PR #1825, dat dat bestand ook wijzigt. Staat het label toch (weer) op een issue, dan signaleert `beurt-invariant.yml` dat binnen 15 minuten als `VEROUDERDE_STATUS` (pas actief na de eerstvolgende release naar `main`, want een schedule draait alleen vanaf de default branch). Alleen signaleren: het label wordt niet automatisch verwijderd. | `beurt-invariant.test.js`; het label zelf uit de repository verwijderen is handwerk na merge en controle |
+| Precies één `turn:`-label per issue (#1343) — **bewaakt sinds #1858 (signalerend); dubbel label bewaakt sinds #1686** | Een dubbel `turn:`-label lost `turn-label-exclusief.yml` op bij elk nieuw `turn:`-label (het laatst gezette blijft; actief sinds v3.14.0.0). Sinds #1858 vergelijkt `beurt-invariant.yml` elke 15 minuten het `turn:`-label met de volgende beurt uit de nieuwste vertrouwde overdrachtscomment (issue én gekoppelde PR) en signaleert met één gededupliceerde comment: geen of meerdere `turn:`-labels, een label dat afwijkt na de wachttijd, een label dat nog staat terwijl de nieuwste overdracht geen volgende beurt noemt (merge door de implementer of eindfase), een onjuiste of verouderde head-SHA in een reviewaanvraag en `status: waiting-codex`. Hij wijzigt nooit labels (herstel blijft handwerk, `CONTRIBUTING.md`). Een schedule draait alleen vanaf de default branch: de bewaking is pas actief na de eerstvolgende release naar `main`. Labels die met de `GITHUB_TOKEN` worden gezet starten die workflow niet. Wanneer de poort van `claude-issue-turn.yml` zelf de beurt naar de eigenaar teruggeeft, gebeurt dat via `setTurnLabel()` in `.github/scripts/claude-issue-turn-gate.js` (eerst toevoegen, dan elk ander `turn:`-label verwijderen). Lokale wissels blijven `gh issue edit`-aanroepen volgens `AGENTS.md`; in die CI-run schrijft de agent zelf geen label meer en vervangt de job `eindlabel` uitsluitend `turn: claude-code` als vergelijk-en-zet, zonder `setTurnLabel()` en met terugdraaien bij een veranderde nacontrole (#1692, `claude-issue-turn-eindlabel.js`). | `turn-label-exclusief.test.js` (dubbel label), `claude-issue-turn-gate.test.js` voor het poortpad en `claude-issue-turn-eindlabel.test.js` voor het eindlabel, `beurt-invariant.test.js` voor de signalering; een issue zonder `turn:`-label én zonder overdrachtscomment blijft onzichtbaar, evenals de `source:`-controle (rij hierboven) |
 | `/security-review` vóór elke release (#1470) | Afgedwongen door de skill `/release` (stap R1), niet door CI: een review in GitHub Actions vraagt een Anthropic API-sleutel en dus API-kosten. Een release buiten `/release` om (handmatig mergen van een `develop` → `main`-PR) slaat de review over. De automatische ondergrens is de Security Gate met CodeQL, die wél verplicht is op `main`. | Geen; bewust zo gelaten. Vangrail is de verplichte Security Gate |
 | Afronding aan de eigenaar is een beslissurvey, het eindrapport een comment en de chat één regel (#1728) | `handmatig`: of iets een echt besluit is en of een rapport feiten of een besluit bevat is inhoud, geen structuur; geen script beoordeelt de survey of het uitvoerkanaal (comment versus chat). De regel staat in `AGENTS.md` (afronding en overdracht), uitgewerkt in `CONTRIBUTING.md`, "Afronding aan de eigenaar". | Handmatig bij elke review van een afronding: (1) zonder besluit is de chat één regel met link naar de eindrapport-comment, geen survey; (2) met besluit of blokkade komt het pad naar de lokale survey (3–5 opties met voor en tegen, aanbeveling) erbij; (3) niet-uitgevoerde controles staan in de eindrapport-comment; (4) geen details van een onverholpen securitybevinding in comment of survey |
 | Maximaal drie wederzijdse reviewrondes per PR zonder eigenaarsbesluit — **deels bewaakt sinds #1601** | De rondelimiet uit de wederzijdse reviewworkflow in `AGENTS.md` geldt voor beide agents; CI houdt nog geen teller per PR bij. Voor de automatische issue-beurt (`claude-issue-turn.yml`) is er wél een harde bovengrens: na drie eerdere runs voor hetzelfde issue start de poort geen run meer en gaat de beurt naar de eigenaar (`MAX_RUNS` in `claude-issue-turn-gate.js`). Het tellen van de reviewrondes zelf ("Fase: review"-aanvragen op het issue) staat bij een verwerkingsrun van de bot in de prompt, niet in code. Bij een review door de bot van een Codex-PR telt de poort de rondes wél in code (verschillende aangeboden SHA's, `MAX_REVIEW_ROUNDS`, #1727). | `claude-issue-turn-gate.test.js` voor de runbovengrens en de reviewrondes van de bot; de teller per PR blijft een los issue indien gewenst |

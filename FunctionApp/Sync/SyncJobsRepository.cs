@@ -1,4 +1,5 @@
 using Microsoft.Data.SqlClient;
+using Planner.Shared.Sync;
 
 namespace SportlinkFunction;
 
@@ -39,7 +40,7 @@ internal static class SyncJobsRepository
             "OUTPUT INSERTED.[Id] WHERE [Id] = @Id AND [Status] = 'pending'",
             connection);
         command.Parameters.AddWithValue("@Id", id);
-        return await command.ExecuteScalarAsync() is Guid;
+        return SyncJobTransitions.IsClaimGranted(await command.ExecuteScalarAsync());
     }
 
     internal static async Task MarkCompletedAsync(Guid id, bool succeeded, string? errorMessage)
@@ -56,8 +57,8 @@ internal static class SyncJobsRepository
             "WHERE [Id] = @Id AND [Status] = 'running'",
             connection);
         command.Parameters.AddWithValue("@Id", id);
-        command.Parameters.AddWithValue("@Status", succeeded ? "succeeded" : "failed");
-        command.Parameters.AddWithValue("@ErrorMessage", (object?)Truncate(errorMessage, 1000) ?? DBNull.Value);
+        command.Parameters.AddWithValue("@Status", SyncJobTransitions.CompletionStatus(succeeded));
+        command.Parameters.AddWithValue("@ErrorMessage", (object?)SyncJobTransitions.TruncateError(errorMessage) ?? DBNull.Value);
         await command.ExecuteNonQueryAsync();
     }
 
@@ -91,8 +92,6 @@ internal static class SyncJobsRepository
             ErrorMessage: reader.IsDBNull(7) ? null : reader.GetString(7));
     }
 
-    private static string? Truncate(string? value, int maxLength)
-        => value is null ? null : value.Length <= maxLength ? value : value[..maxLength];
 }
 
 internal sealed record SyncJobStatus(

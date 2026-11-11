@@ -30,11 +30,12 @@ public static class DagelijkseAvgRetentie
         IFeedbackStore feedbackStore,
         bool externeIntegratiesToegestaan,
         IHisRetentieOpslag hisOpslag,
-        ILogger log)
+        ILogger log,
+        CancellationToken cancellationToken = default)
     {
         var fouten = new List<Exception>();
         await VangAsync(
-            () => FeedbackEndpointCore.VoerRetentieTimerAsync(wachtOpDatabase, feedbackStore, externeIntegratiesToegestaan, log),
+            () => FeedbackEndpointCore.VoerRetentieTimerAsync(wachtOpDatabase, feedbackStore, externeIntegratiesToegestaan, log, cancellationToken),
             fouten);
         await VangAsync(() => HisPersoonsgegevensRetentie.VoerStapUitAsync(hisOpslag, log), fouten);
 

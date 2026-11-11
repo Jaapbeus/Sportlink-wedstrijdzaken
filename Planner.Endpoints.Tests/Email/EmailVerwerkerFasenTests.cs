@@ -2,6 +2,7 @@ using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Planner.Endpoints.Email;
 using Planner.Shared.Email;
+using Planner.Shared.Planning;
 using Xunit;
 
 namespace Planner.Endpoints.Tests.Email;
@@ -136,13 +137,26 @@ public class EmailVerwerkerFasenTests
     }
 
     [Fact]
-    public async Task AllesWeggefilterdDoorVoorfilter_GeenAiEnGeenDatabase()
+    public async Task GraphFoutBijOphalen_PropageertEnWordtNietAlsLegeInboxGelogd()
+    {
+        var poort = new FakePoort { HaalOngelezenFout = new InvalidOperationException("synthetic Graph failure") };
+        var logger = new OpnameLogger();
+
+        var act = () => EmailVerwerkerFasen.VoerUitAsync(poort, new UitsluitingslijstCache(), logger);
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+        poort.Stappen.Should().Equal("haal");
+        logger.Berichten.Should().NotContain(message => message.Contains("Geen ongelezen emails", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AllesWeggefilterdDoorVoorfilter_ContextVoorMutatiesGeenAi()
     {
         var poort = new FakePoort { Ongelezen = [new("m1")], PreFilter = _ => [] };
 
         await VoerUitAsync(poort);
 
-        poort.Stappen.Should().Equal("haal", "prefilter");
+        poort.Stappen.Should().Equal("haal", "ai", "fewshots", "prefilter");
     }
 
     [Fact]
@@ -156,7 +170,7 @@ public class EmailVerwerkerFasenTests
 
         await VoerUitAsync(poort);
 
-        poort.Stappen.Should().Equal("haal", "prefilter", "lijst-voor-ai", "filter");
+        poort.Stappen.Should().Equal("haal", "ai", "fewshots", "prefilter", "lijst-voor-ai", "filter");
     }
 
     [Fact]
@@ -166,7 +180,7 @@ public class EmailVerwerkerFasenTests
 
         await VoerUitAsync(poort);
 
-        poort.Stappen.Should().Equal("haal", "prefilter", "lijst-voor-ai");
+        poort.Stappen.Should().Equal("haal", "ai", "fewshots", "prefilter", "lijst-voor-ai");
     }
 
     [Fact]
@@ -176,18 +190,84 @@ public class EmailVerwerkerFasenTests
 
         await VoerUitAsync(poort);
 
-        poort.Stappen.Should().Equal("haal", "prefilter", "lijst-voor-ai", "filter", "ai");
+        poort.Stappen.Should().Equal("haal", "ai");
     }
 
     [Fact]
-    public async Task AllesBuitenScope_AlleenLabelen_DatabaseBlijftSlapen()
+    public async Task AllesBuitenScope_AlleenLabelen_FaseTweeWordtOvergeslagen()
     {
         TestBericht m1 = new("m1");
         var poort = new FakePoort { Ongelezen = [m1], Classificeer = _ => Batch([(m1, VerzoekType.BuitenScope)]) };
 
         await VoerUitAsync(poort);
 
-        poort.Stappen.Should().Equal("haal", "prefilter", "lijst-voor-ai", "filter", "ai", "classificeer", "label");
+        poort.Stappen.Should().Equal("haal", "ai", "fewshots", "prefilter", "lijst-voor-ai", "filter", "classificeer", "label");
+    }
+
+    [Fact]
+    public async Task GoedgekeurdFewShotWordtVoorEersteClassificatieGebruikt_EnVoorkomtBuitenScopeVroegeStop()
+    {
+        TestBericht m1 = new("m1");
+        var voorbeeld = new ClassificatieCorrectieVoorbeeld(
+            "BuitenScope", "HerplanVerzoek", "Vraag over een wedstrijd", "Het verzoek is om te verplaatsen");
+        var poort = new FakePoort
+        {
+            Ongelezen = [m1],
+            FewShotVoorbeelden = [voorbeeld],
+            ClassificeerMetVoorbeelden = (emails, fewShots) =>
+            {
+                fewShots.Should().ContainSingle().Which.Should().Be(voorbeeld);
+                return Batch([(emails[0], VerzoekType.HerplanVerzoek)]);
+            }
+        };
+
+        await VoerUitAsync(poort);
+
+        poort.Stappen.Should().ContainInOrder("fewshots", "classificeer", "wacht", "verwerk:m1");
+        poort.Verwerkt.Should().ContainSingle().Which.MessageId.Should().Be("m1");
+    }
+
+    [Fact]
+    public async Task FewShotBronOnbeschikbaar_StoptVoorAiEnLabels_EnMeldtAlleenDatabaseUitval()
+    {
+        TestBericht bericht = new("m1");
+        var poort = new FakePoort
+        {
+            Ongelezen = [bericht],
+            FewShotFout = new TimeoutException("synthetic database failure"),
+            Classificeer = _ => Batch([(bericht, VerzoekType.BuitenScope)])
+        };
+
+        await VoerUitAsync(poort);
+        await VoerUitAsync(poort);
+
+        poort.Stappen.Should().NotContain(s => s == "prefilter" || s == "classificeer" || s == "label" || s == "wacht"
+            || s.StartsWith("verwerk:") || s.StartsWith("classificatiefout:") || s.StartsWith("fout:"));
+        poort.Verwerkt.Should().BeEmpty();
+        poort.VastgelegdeFouten.Should().BeEmpty();
+        var melding = poort.FakeGraph.Verstuurd.Should().ContainSingle().Which;
+        melding.Subject.Should().StartWith("URGENT: Database niet bereikbaar");
+        (await poort.FakeThrottle.LaatsteKeerVerstuurdAsync(EmailNoodmailMelding.StructureleAiNoodmailSleutel)).Should().BeNull();
+        (await poort.FakeThrottle.LaatsteKeerVerstuurdAsync(EmailNoodmailMelding.OpenAiQuotaNoodmailSleutel)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task FewShotBronHersteldMetLegeSet_ClassificeertEnWistDatabaseUitval()
+    {
+        var poort = new FakePoort { Ongelezen = [new("m1")], FewShotFout = new TimeoutException() };
+        await VoerUitAsync(poort);
+        poort.FewShotFout = null;
+        poort.ClassificeerMetVoorbeelden = (emails, voorbeelden) =>
+        {
+            voorbeelden.Should().BeEmpty();
+            return Batch([(emails[0], VerzoekType.BuitenScope)]);
+        };
+
+        await VoerUitAsync(poort);
+
+        poort.Stappen.Count(s => s == "classificeer").Should().Be(1);
+        poort.Stappen.Count(s => s == "label").Should().Be(1);
+        (await poort.FakeThrottle.LaatsteKeerVerstuurdAsync(EmailNoodmailMelding.DatabaseNoodmailSleutel)).Should().BeNull();
     }
 
     // ── OpenAI-quota ─────────────────────────────────────────────────────────────────────────
@@ -221,6 +301,27 @@ public class EmailVerwerkerFasenTests
         poort.FakeGraph.Verstuurd.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task MeerdereNietQuotaClassificatiefouten_SturenEenGethrottledeStructureleNoodmail()
+    {
+        TestBericht m1 = new("m1"), m2 = new("m2");
+        var poort = new FakePoort
+        {
+            Ongelezen = [m1, m2],
+            Classificeer = _ => new EmailClassificatieBatch<TestBericht>([], false, null, NietQuotaClassificatieFouten: 2)
+        };
+
+        await VoerUitAsync(poort);
+        await VoerUitAsync(poort);
+
+        poort.FakeGraph.Verstuurd.Should().ContainSingle();
+        poort.FakeGraph.Verstuurd[0].Subject.Should().Be("URGENT: AI-classificatie mislukt — e-mail blijft ongelezen");
+        poort.FakeGraph.Verstuurd[0].Body.Should().Contain("structurele fout")
+            .And.NotContain("provider").And.NotContain("m1").And.NotContain("m2");
+        (await poort.FakeThrottle.LaatsteKeerVerstuurdAsync(EmailNoodmailMelding.StructureleAiNoodmailSleutel)).Should().NotBeNull();
+        (await poort.FakeThrottle.LaatsteKeerVerstuurdAsync(EmailNoodmailMelding.OpenAiQuotaNoodmailSleutel)).Should().BeNull();
+    }
+
     // ── Fase 2 ───────────────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -237,7 +338,7 @@ public class EmailVerwerkerFasenTests
         await VoerUitAsync(poort);
 
         poort.Stappen.Should().Equal(
-            "haal", "prefilter", "lijst-voor-ai", "filter", "ai", "classificeer", "label",
+            "haal", "ai", "fewshots", "prefilter", "lijst-voor-ai", "filter", "classificeer", "label",
             "wacht", "instellingen", "lijst", "voorbereiding", "classificatiefout:m2", "verwerk:m1");
         poort.Verwerkt.Select(v => v.MessageId).Should().Equal(["m1"], "buiten scope gaat niet naar de verwerking");
     }
@@ -316,5 +417,23 @@ public class EmailVerwerkerFasenTests
         poort.VastgelegdeFouten.Should().ContainSingle()
             .Which.Should().Be(("m1", "kapot voor [e-mail]"));
         poort.Verwerkt.Select(v => v.MessageId).Should().Equal(["m2"]);
+    }
+
+    [Fact]
+    public async Task PlanningDuurOnbekend_LegtFoutVastEnVerstuurtGeenPlannerantwoord()
+    {
+        TestBericht bericht = new("m1");
+        var poort = new FakePoort
+        {
+            Ongelezen = [bericht],
+            VerwerkFout = _ => new PlanningDuurOnbekendException()
+        };
+
+        await VoerUitAsync(poort);
+
+        poort.VastgelegdeFouten.Should().ContainSingle()
+            .Which.Should().Be(("m1", PlanningDuurOnbekendException.PubliekeMelding));
+        poort.Verwerkt.Should().BeEmpty();
+        poort.FakeGraph.Verstuurd.Should().BeEmpty();
     }
 }

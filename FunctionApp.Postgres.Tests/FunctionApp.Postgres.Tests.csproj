@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <DefineConstants>$(DefineConstants);PLANNER_DTO_POSTGRES</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -60,6 +61,10 @@
          skip-reden als Database.Postgres.Tests, zodat één CI-variabele beide suites aanzet. -->
     <Compile Include="..\Database.Postgres.Tests\PostgresIntegrationTestAttributes.cs"
              Link="Shared\PostgresIntegrationTestAttributes.cs" />
+    <!-- #1856: characterization-test van de gedeelde planner-DTO's; PLANNER_DTO_POSTGRES kiest de
+         Postgres-naamruimte in dit ene bestand (verder wordt de constante nergens gebruikt). -->
+    <Compile Include="..\FunctionApp.Tests\Planner\PlannerDtoVormTests.cs"
+             Link="Shared\PlannerDtoVormTests.cs" />
   </ItemGroup>
 
 </Project>

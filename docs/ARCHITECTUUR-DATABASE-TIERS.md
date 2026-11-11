@@ -1638,10 +1638,11 @@ sloopwerkzaamheden in een eigen schema — is vastgelegd als issue #925 en valt 
 ### Bewust niet in deze ronde
 
 - **De SQL Server-suite omzetten naar hetzelfde env-gestuurde mechanisme.**
-  `SportlinkFixtureSyncIntegrationTests` en `PartialFailureIntegrationTests` staan nog op
-  `[Fact(Skip = "...")]` en draaien dus nergens automatisch. #866 loste dit alleen voor de
-  Postgres-tier op; docs/DEVELOPER-SETUP.md §7.1 benoemt dat al als openstaand. Deze ronde raakt de
-  SQL Server-boom bewust niet.
+  Ten tijde van deze ronde stonden `SportlinkFixtureSyncIntegrationTests` en
+  `PartialFailureIntegrationTests` op `[Fact(Skip = "...")]` en draaiden ze nergens automatisch.
+  #866 loste dit alleen voor de Postgres-tier op; deze ronde raakte de SQL Server-boom bewust niet.
+  Later zijn de lege placeholders in `PartialFailureIntegrationTests` verwijderd (zie issue #1808).
+  De resterende fixturetests staan nog op `Skip`; docs/DEVELOPER-SETUP.md §7.1 beschrijft die beperking.
 - **De overige scenario's uit §28** (sleuteldriftmigratie, samenvoegen van dubbele schrijfwijzen,
   deactivering, clubisolatie, lege bron). Van de negen daar gemeten scenario's zijn de drie
   overgenomen waarvoor §28 ook een negatieve controle heeft vastgelegd; de overige zes blijven
@@ -1961,8 +1962,9 @@ klassen zitten in hetzelfde project en dus achter dezelfde connectiestring.
   binnen-project-geval oplossen dat de seizoenstests raakt, maar vereist dat
   `PostgresMergeOrchestrator` een schemanaam accepteert — een productiecode-wijziging omwille van
   een test, en dus een eigen afweging.
-- **De SQL Server-tier.** Die kent hetzelfde patroon niet: `PartialFailureIntegrationTests` en
-  `SportlinkFixtureSyncIntegrationTests` draaien nergens automatisch (§29's laatste punt).
+- **De SQL Server-tier.** Die kende dit patroon tijdens deze ronde niet: de in §29 genoemde
+  integratietestklassen draaiden nergens automatisch. De lege partial-failure-placeholders zijn
+  later verwijderd (zie issue #1808); de resterende fixturetests staan nog op `Skip` (§29).
 
 ## 34. De laatste opschoonprocedure: `sp_CleanupAppSettingsAudit` (#781/#861)
 
@@ -2156,10 +2158,16 @@ ertussen.
 `VeldBeschikbaarheidInfo`, `BestaandeWedstrijd`, `TeamRegel`, `TeamVoorkeurVeld` en `Speeltijd` —
 die zes modellen plus `VeldSoort`/`VeldTypeClassificatie` (dezelfde "één plek"-regel als de motor
 zelf, #705/#707) staan nu in `Planner.Shared/PlannerDomeinModellen.cs`. De HTTP-wire-contracten
-(`CheckAvailabilityRequest`, `AutoPlanResponse`, `HerplanCheckRequest`, ...) blijven bewust per tier
-eigen bestanden — die zijn JSON-vormgeving van één specifiek endpoint, geen gedeelde rekenlogica.
-Zelfde onderscheid als `TeamScheduleModels.cs` (gedupliceerd, §16) tegenover `TeamNaamNormalisatie`
-(verhuisd, §17).
+(`CheckAvailabilityRequest`, `AutoPlanResponse`, `HerplanCheckRequest`, ...) bleven in deze ronde
+bewust per tier eigen bestanden — die zijn JSON-vormgeving van één specifiek endpoint, geen gedeelde
+rekenlogica.
+
+**Bijgewerkt door #1856 (eigenaarsbesluit optie B, zie het besluit op issue #1856 en
+`ARCHITECTUUR-CODEKWALITEIT.md` regel 2b).** Het "per tier eigen bestanden" hierboven geldt niet meer
+voor tier-identieke wire-DTO's: die staan eenmalig onder `GedeeldeBron/` (planner: `GedeeldeBron/PlannerDto/`)
+en worden door beide tier-projecten link-gecompileerd, met behoud van de naamruimte per tier. Een wire-DTO
+dat per tier verschilt, blijft in zijn tierbestand. Gedeelde rekenlogica blijft in `Planner.Shared`; de
+link-gecompileerde bron is geen gedeelde providerabstractie (§2): er zit geen gedrag of databasetoegang in.
 
 **Waarom de klasse "PlannerShared" heet terwijl ze al in de namespace `Planner.Shared` zit** — een
 bewuste, risicoarme keuze: alle circa zestig bestaande aanroepen in `AvailabilityService`,
@@ -4994,3 +5002,27 @@ alleen code is.
 - **Sync:** `TeamCanonicalisatieService` raakt de kolom op geen van beide tiers aan, zodat een handmatig
   gezette waarde blijft staan.
 - **Nog niet in gebruik:** geen endpoint, scherm of query leest of schrijft de kolom.
+
+## 86. Begin van de feedbackpublicatiepoging: één additieve kolom op beide tiers (#1803)
+
+Eigenaarsbesluit 2C (2026-11-11, #1803): een feedbackmelding die na een dubbelzinnige GitHub-POST op
+`publiceren` blijft staan, herstelt "Publiceer" automatisch door via de GitHub-issuelijst naar haar
+publicatiereferentie te zoeken (`docs/FEEDBACK.md`). Punt 6 van dat besluit staat een migratie op beide
+tiers toe; de merge doet dan de eigenaar.
+
+- **Waarom een kolom:** de ondergrens van het zoekvenster moet vóór de eerste POST liggen en mag niet
+  opschuiven als een herstelpoging mislukt. `mta_modified` kan dat niet: de herclaim gebruikt het als slot
+  tegen twee gelijktijdige klikken en ververst het bij elke poging. Met het slot als grens viel na twee
+  mislukte pogingen het al aangemaakte issue buiten het venster en volgde een dubbel publiek issue.
+- **Postgres:** `avg.feedback.publicatiegestartoputc TIMESTAMPTZ NULL`, migratie
+  `048_avg_feedback_publicatiegestart.sql`. Geen nieuwe tabel, dus geen RLS-stap.
+- **SQL Server:** `avg.Feedback.PublicatieGestartOpUtc DATETIME2 NULL`, in `Database/avg/Tables/Feedback.sql`,
+  in de `CREATE TABLE` van `Script.PostDeployment1.sql` en idempotent (`COL_LENGTH`) aan het einde daarvan,
+  met `QUOTED_IDENTIFIER ON` vanwege de gefilterde index.
+- **Schrijven en lezen:** `ClaimPublicatieAsync` zet de kolom (wacht/mislukt → publiceren, vlak vóór de
+  eerste POST). `ZetIssueBodyAsync` zet haar ook, wanneer een melding van vóór #1803 haar publicatiereferentie
+  krijgt: die referentie gaat pas daarna voor het eerst naar GitHub. `HerClaimPublicatieAsync` laat haar staan
+  en geeft `COALESCE(kolom, oud slot)` terug. Een rij die vóór deze kolom bleef hangen valt dus alleen bij de
+  eerste herclaim terug op haar oude slot; daarna heeft ze een vast begin en schuift de zoekgrens niet meer op.
+- **Expand (§57):** uitsluitend additief en nullable. De vorige code noemt in elke `INSERT` en `UPDATE` op
+  `avg.feedback` haar kolommen en merkt de nieuwe kolom niet. Bestaande rijen blijven NULL.

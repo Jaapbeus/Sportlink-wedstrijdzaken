@@ -14,7 +14,7 @@ namespace FunctionApp.Postgres.Sportlink;
 /// <summary>
 /// Oefenwedstrijd ("clubwedstrijd") aanmaken bij Sportlink (#997, epic #986; formulier #1116,
 /// contract live bevestigd #1427). Uitslag vastleggen is bewust niet gebouwd;
-/// verwijderen (#1440) staat hard op dry-run tot de eigenaar het contract live bevestigt.
+/// verwijderen (#1440) is sinds #1458 live bevestigd en volgt de instelling <c>sportlinkDryRun</c>.
 /// <para>
 /// <b>Sinds #1427 live bevestigd.</b> Het formulier levert datum, tijd, duur, eigen team (naam
 /// uit onze eigen database, of vrije tekst), tegenstander en veld. De server haalt Sportlinks vier
@@ -96,7 +96,8 @@ public static class SportlinkClubMatchFunction
                 var mutationResult = await sportlinkClient!.CreateClubMatchAsync(RolNaam, aanvraag!);
                 return await SportlinkEndpointSupport.RondMutatieAfAsync(
                     mutationResult, auditService, auditId, r => r,
-                    r => new OkObjectResult(Resultaat(r, aanvraag!, gegevens!.VeldNaam, waarschuwingen)));
+                    r => new OkObjectResult(Resultaat(r, aanvraag!, gegevens!.VeldNaam, waarschuwingen)),
+                    context.GetLogger("SportlinkClubMatch"));
             });
 
     /// <summary>
@@ -115,7 +116,8 @@ public static class SportlinkClubMatchFunction
                 publicMatchId, SportlinkEndpointSupport.ControleerToggleEnEgress, () => SportlinkEndpointSupport.ClientOfFout(context), RolNaam,
                 context.InstanceServices.GetService<ISportlinkMutationAuditService>() is { } audit
                     ? new(clubCode, EasyAuthHelper.GetAuditActor(req), e => audit.LogPogingAsync(e), (id, r, s) => audit.VoltooiAsync(id, r, s))
-                    : null));
+                    : null,
+                context.GetLogger("SportlinkClubMatchDelete")));
 
     /// <summary>
     /// <c>GET /api/sportlink/club-match/dryrun-status</c> (#1427) — de actuele dry-run-stand voor de

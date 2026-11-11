@@ -3,17 +3,15 @@ using Planner.Endpoints.Email;
 namespace FunctionApp.Postgres.Monitoring;
 
 /// <summary>
-/// Postgres-tier-tegenhanger van <c>FunctionApp/Monitoring/INoodmailThrottleStore.cs</c> (#972 —
-/// port van EmailProcessorFunction). Persistente opslag voor "wanneer is deze noodmail voor het
-/// laatst verstuurd", zodat het throttle-gedrag niet afhangt van een <c>static</c>/<c>volatile</c>
-/// veld dat bij elke cold start reset. Woordelijke kopie van het contract; alleen de onafhankelijke
-/// database-uitvalmonitor (<c>DatabaseUitvalMonitorFunction</c>/<c>IDatabaseStatusReader</c>, #831)
-/// is hier NIET vertaald — dat is een apart, niet-#972-gerelateerd monitoring-issue.
+/// Persistente opslag van het tijdstip waarop een noodmail voor het laatst is verstuurd.
+/// De registratie staat buiten het geheugen van de Function-worker, zodat het herhaalinterval
+/// behouden blijft wanneer een worker opnieuw start. De tierimplementatie gebruikt de bestaande
+/// Azure Table Storage-verbinding uit <c>AzureWebJobsStorage</c> en staat los van de bewaakte database;
+/// hiervoor wordt geen apart opslagaccount aangemaakt.
 /// </summary>
 /// <remarks>
-/// De leden staan sinds #1716 slice 9 in de gedeelde <see cref="INoodmailThrottlePoort"/>, zodat de
-/// tier-onafhankelijke noodmail-afhandeling (<c>Planner.Endpoints/Email/EmailNoodmailMelding.cs</c>) dezelfde
-/// opslag gebruikt; de DI-registratie van deze tier blijft ongewijzigd.
+/// De noodmail-afhandeling gebruikt de gedeelde <see cref="INoodmailThrottlePoort"/>. Deze interface
+/// verbindt die poort met de tiergebonden opslagimplementatie.
 /// </remarks>
 public interface INoodmailThrottleStore : INoodmailThrottlePoort
 {

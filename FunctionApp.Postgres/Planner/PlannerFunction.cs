@@ -7,8 +7,11 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Planner.Endpoints.Deel;
+using Planner.Endpoints.AutoPlan;
 using Planner.Shared;
+using Planner.Shared.Email;
 using Planner.Shared.Planning;
+using Planner.Endpoints.Autorisatie;
 
 namespace FunctionApp.Postgres.Planner;
 
@@ -40,7 +43,7 @@ namespace FunctionApp.Postgres.Planner;
 /// </para>
 /// <para>Zie docs/ARCHITECTUUR-DATABASE-TIERS.md §16, §25, §35, §40 en §41.</para>
 /// </summary>
-public static class PlannerFunction
+public static partial class PlannerFunction
 {
     // Fallback-duur wanneer geen leeftijdscategorie/speeltijd is opgegeven bij handmatige bevestiging.
     private const int DefaultWedstrijdDuurMinutenZonderCategorie = 105;
@@ -126,19 +129,8 @@ public static class PlannerFunction
     {
         var log = context.GetLogger("CheckAvailability");
         return AdminEndpoint.ExecuteAsync(req, log, "beschikbaarheid controleren",
-            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<CheckAvailabilityRequest>(req, async request =>
-            {
-                if (request == null || string.IsNullOrEmpty(request.Datum))
-                    return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
-
-                log.LogInformation("CheckAvailability: datum={Datum}, tijd={Tijd}, team={Team}, cat={Cat}, club={Club}",
-                    LogWaarde.Schoon(request.Datum), LogWaarde.Schoon(request.AanvangsTijd), LogWaarde.Schoon(request.TeamNaam), LogWaarde.Schoon(request.LeeftijdsCategorie), LogWaarde.Schoon(clubCode));
-
-                var response = await AvailabilityService.CheckAvailabilityAsync(
-                    PostgresDatabaseConfig.ConnectionString, request, log, clubCode);
-
-                return new OkObjectResult(response);
-            }));
+            clubCode => CheckAvailabilityInhoudAsync(req, log, clubCode,
+                request => AvailabilityService.CheckAvailabilityAsync(PostgresDatabaseConfig.ConnectionString, request, log, clubCode)));
     }
 
     /// <summary>
@@ -205,16 +197,16 @@ public static class PlannerFunction
     {
         var log = context.GetLogger("BevestigWedstrijd");
         return AdminEndpoint.ExecuteAsync(req, log, "wedstrijd bevestigen",
-            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<BevestigRequest>(req, async request =>
+            async clubCode =>
             {
-                if (request == null || string.IsNullOrEmpty(request.Datum) || string.IsNullOrEmpty(request.AanvangsTijd))
-                    return new BadRequestObjectResult(new { error = "Request body met 'datum', 'aanvangsTijd' en 'veldNummer' is verplicht." });
+                var parsed = await PlannerAanvragerEndpointCore.ReadBevestigAsync<BevestigRequest>(req, EasyAuthHelper.GetPlannerRequester(req));
+                if (parsed.Error is not null) return parsed.Error;
+                var request = parsed.Value;
 
                 log.LogInformation("BevestigWedstrijd: datum={Datum}, tijd={Tijd}, veld={Veld}",
                     LogWaarde.Schoon(request.Datum), LogWaarde.Schoon(request.AanvangsTijd), request.VeldNummer);
 
-                if (!DateOnly.TryParse(request.Datum, out var date) || !TimeOnly.TryParse(request.AanvangsTijd, out var tijd))
-                    return new BadRequestObjectResult(new { error = "Ongeldige datum of tijd." });
+                var (date, tijd) = (parsed.Date!.Value, parsed.Time!.Value);
 
                 var cc = PostgresClubScope.Resolve(clubCode);
 
@@ -277,7 +269,7 @@ public static class PlannerFunction
                     veldNummer = request.VeldNummer,
                     status = "Te bevestigen"
                 });
-            }));
+            });
     }
 
     /// <summary>
@@ -323,13 +315,13 @@ public static class PlannerFunction
     {
         var log = context.GetLogger("HerplanBevestig");
         return AdminEndpoint.ExecuteAsync(req, log, "herplanverzoek vastleggen",
-            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<HerplanBevestigRequest>(req, async request =>
+            async clubCode =>
             {
-                if (request == null || request.Wedstrijdcode == 0 || string.IsNullOrEmpty(request.GewensteAanvangsTijd))
-                    return new BadRequestObjectResult(new { error = "Request body met 'wedstrijdcode' en 'gewensteAanvangsTijd' is verplicht." });
+                var parsed = await PlannerAanvragerEndpointCore.ReadHerplanAsync<HerplanBevestigRequest>(req, EasyAuthHelper.GetPlannerRequester(req));
+                if (parsed.Error is not null) return parsed.Error;
+                var request = parsed.Value;
 
-                if (!TimeOnly.TryParse(request.GewensteAanvangsTijd, out var gewensteTijd))
-                    return new BadRequestObjectResult(new { error = "Ongeldige tijd." });
+                var gewensteTijd = parsed.Time!.Value;
 
                 var match = await PlannerMatchRepository.FindMatchByCodeAsync(
                     PostgresDatabaseConfig.ConnectionString, request.Wedstrijdcode, clubCode);
@@ -365,7 +357,7 @@ public static class PlannerFunction
                     GewenstVeldNummer = request.GewenstVeldNummer,
                     Status = "Aangevraagd"
                 });
-            }));
+            });
     }
 
     /// <summary>
@@ -461,20 +453,10 @@ public static class PlannerFunction
                 var clubCode = PostgresClubScope.Resolve(rawClubCode);
                 log.LogInformation("AutoPlanToepassen: datum={Datum}, club={Club}", LogWaarde.Schoon(request.Datum), LogWaarde.Schoon(clubCode));
 
-                try
-                {
-                    var response = await AutoPlanService.AutoPlanToepassenAsync(
-                        PostgresDatabaseConfig.ConnectionString, request, clubCode, log);
-
-                    return new OkObjectResult(response);
-                }
-                catch (InvalidOperationException ex)
-                {
-                    // "Toepassen is alleen beschikbaar in testmodus (ALLSTARS)" — een bewuste weigering,
-                    // geen technische storing: 400, niet 500 (de wrapper zou er 500 van maken).
-                    log.LogWarning("AutoPlanToepassen geweigerd: {Reden}", ex.Message);
-                    return new BadRequestObjectResult(new { error = ex.Message });
-                }
+                return await AutoPlanToepassenEndpointCore.VerwerkAsync(
+                    () => AutoPlanService.AutoPlanToepassenAsync(
+                        PostgresDatabaseConfig.ConnectionString, request, clubCode, log),
+                    log, invalidOperationIsBadRequest: true);
             }));
     }
 }

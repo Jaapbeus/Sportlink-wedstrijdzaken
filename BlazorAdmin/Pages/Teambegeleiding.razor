@@ -151,6 +151,10 @@ else if (_selectedTeam != null && _begeleiders.Count > 0)
         </div>
     }
 }
+else if (_selectedTeam != null && !_loadingBegeleiders && _begeleidersError != null)
+{
+    <div class="alert alert-danger" role="alert">@_begeleidersError</div>
+}
 else if (_selectedTeam != null && !_loadingBegeleiders)
 {
     <div class="alert alert-info">Geen begeleiding gevonden voor @_selectedTeam.</div>

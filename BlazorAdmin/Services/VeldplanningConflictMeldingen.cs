@@ -24,7 +24,7 @@ public static class VeldplanningConflictMeldingen
                 continue;
             slots.Add(new PlanningSlot(w.TeamNaam ?? string.Empty, w.OptimaalVeldNaam,
                 DagplanningWeergaveHelpers.GanttExtractSubPos(w.OptimaalVeld), start, w.DuurMinuten,
-                w.TeamBufferVoor, w.TeamBufferNa, w));
+                w.TeamBufferVoor, w.TeamBufferNa, w, w.SportlinkLeidend));
         }
 
         return PlanningConflictDetectie.Detecteer(slots, algemeneBuffer)

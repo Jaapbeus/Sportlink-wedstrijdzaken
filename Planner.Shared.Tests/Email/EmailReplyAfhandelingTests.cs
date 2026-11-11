@@ -198,6 +198,33 @@ public class EmailReplyAfhandelingTests
     }
 
     [Fact]
+    public async Task OngeschikteAfzender_BouwtReviewvoorstelMaarVerstuurtGeenAutomatischAntwoord()
+    {
+        var graph = new FakeReplyGraph();
+        var persistence = new RecordingReplyPersistentie();
+
+        var result = await EmailReplyAfhandeling.HandelReplyFlowAfAsync(
+            verwerkingId: 101,
+            email: new ReplyBericht("m2b", "a@voorbeeld.test,b@voorbeeld.test", null),
+            classificatie: new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek },
+            plannerResponseJson: "{}",
+            reviewMode: false,
+            reviewRecipient: "trainer@voorbeeld.nl",
+            graphService: graph,
+            persistentie: persistence,
+            bouwTemplateAntwoordAsync: () => Task.FromResult(("antwoord-subject", "antwoord-body")),
+            sanitizeFoutMelding: s => s,
+            haken: TestHaken.Standaard,
+            log: NullLogger.Instance);
+
+        result.Should().Be(ReplyVerwerkingUitkomst.AfgerondZonderAntwoord);
+        var review = graph.SentReplies.Should().ContainSingle().Which;
+        review.To.Should().Be("trainer@voorbeeld.nl");
+        review.Body.Should().Contain(AfzenderControle.Reden).And.NotContain("niet zeker genoeg");
+        persistence.VoorgesteldeAntwoorden.Should().ContainSingle(v => v.VerwerkingId == 101);
+    }
+
+    [Fact]
     public async Task ReplyVersturen_SlaatAntwoordOp_EnMarkeertGelezen()
     {
         var graph = new FakeReplyGraph();

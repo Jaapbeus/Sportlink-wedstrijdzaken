@@ -12,14 +12,17 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Planner.Endpoints.Deel;
+using Planner.Endpoints.AutoPlan;
 using Newtonsoft.Json;
 using Planner.Shared;
+using Planner.Shared.Email;
 using Planner.Shared.Planning;
+using Planner.Endpoints.Autorisatie;
 using SportlinkFunction.Admin;
 
 namespace SportlinkFunction.Planner
 {
-    public static class PlannerFunction
+    public static partial class PlannerFunction
     {
         private const int DefaultWedstrijdDuurMinuten = 105;
         private const decimal VolledigVeldFractie = 1.00m;
@@ -31,18 +34,8 @@ namespace SportlinkFunction.Planner
         {
             var log = context.GetLogger("CheckAvailability");
             return AdminEndpoint.ExecuteAsync(req, log, "beschikbaarheid controleren",
-                clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<CheckAvailabilityRequest>(req, async request =>
-                {
-                    if (request == null || string.IsNullOrEmpty(request.Datum))
-                        return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
-
-                    log.LogInformation("CheckAvailability: datum={Datum}, tijd={Tijd}, team={Team}, cat={Cat}, club={Club}",
-                        LogWaarde.Schoon(request.Datum), LogWaarde.Schoon(request.AanvangsTijd), LogWaarde.Schoon(request.TeamNaam), LogWaarde.Schoon(request.LeeftijdsCategorie), LogWaarde.Schoon(clubCode));
-
-                    var response = await PlannerService.CheckAvailabilityAsync(request, log, clubCode);
-
-                    return new OkObjectResult(response);
-                }));
+                clubCode => CheckAvailabilityInhoudAsync(req, log, clubCode,
+                    request => PlannerService.CheckAvailabilityAsync(request, log, clubCode)));
         }
 
         [Function("DoordeweeksBeschikbaar")]
@@ -72,16 +65,16 @@ namespace SportlinkFunction.Planner
         {
             var log = context.GetLogger("BevestigWedstrijd");
             return AdminEndpoint.ExecuteAsync(req, log, "wedstrijd bevestigen",
-                clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<BevestigRequest>(req, async request =>
+                async clubCode =>
                 {
-                    if (request == null || string.IsNullOrEmpty(request.Datum) || string.IsNullOrEmpty(request.AanvangsTijd))
-                        return new BadRequestObjectResult(new { error = "Request body met 'datum', 'aanvangsTijd' en 'veldNummer' is verplicht." });
+                    var parsed = await PlannerAanvragerEndpointCore.ReadBevestigAsync<BevestigRequest>(req, EasyAuthHelper.GetPlannerRequester(req));
+                    if (parsed.Error is not null) return parsed.Error;
+                    var request = parsed.Value;
 
                     log.LogInformation("BevestigWedstrijd: datum={Datum}, tijd={Tijd}, veld={Veld}",
                         LogWaarde.Schoon(request.Datum), LogWaarde.Schoon(request.AanvangsTijd), request.VeldNummer);
 
-                    if (!DateOnly.TryParse(request.Datum, out var date) || !TimeOnly.TryParse(request.AanvangsTijd, out var tijd))
-                        return new BadRequestObjectResult(new { error = "Ongeldige datum of tijd." });
+                    var (date, tijd) = (parsed.Date!.Value, parsed.Time!.Value);
 
                     int duurMinuten = request.WedstrijdDuurMinuten ?? DefaultWedstrijdDuurMinuten;
                     decimal veldFractie = VolledigVeldFractie;
@@ -141,7 +134,7 @@ namespace SportlinkFunction.Planner
                         veldNummer = request.VeldNummer,
                         status = "Te bevestigen"
                     });
-                }));
+                });
         }
 
         [Function("PopulateSunset")]
@@ -272,13 +265,13 @@ namespace SportlinkFunction.Planner
         {
             var log = context.GetLogger("HerplanBevestig");
             return AdminEndpoint.ExecuteAsync(req, log, "herplanverzoek vastleggen",
-                clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<HerplanBevestigRequest>(req, async request =>
+                async clubCode =>
                 {
-                    if (request == null || request.Wedstrijdcode == 0 || string.IsNullOrEmpty(request.GewensteAanvangsTijd))
-                        return new BadRequestObjectResult(new { error = "Request body met 'wedstrijdcode' en 'gewensteAanvangsTijd' is verplicht." });
+                    var parsed = await PlannerAanvragerEndpointCore.ReadHerplanAsync<HerplanBevestigRequest>(req, EasyAuthHelper.GetPlannerRequester(req));
+                    if (parsed.Error is not null) return parsed.Error;
+                    var request = parsed.Value;
 
-                    if (!TimeOnly.TryParse(request.GewensteAanvangsTijd, out var gewensteTijd))
-                        return new BadRequestObjectResult(new { error = "Ongeldige tijd." });
+                    var gewensteTijd = parsed.Time!.Value;
 
                     var match = await PlannerDataAccess.FindMatchByCodeAsync(request.Wedstrijdcode, clubCode);
                     if (match == null)
@@ -312,7 +305,7 @@ namespace SportlinkFunction.Planner
                         GewenstVeldNummer = request.GewenstVeldNummer,
                         Status = "Aangevraagd"
                     });
-                }));
+                });
         }
 
         // ── Auto-plan endpoints (#380) ──
@@ -369,12 +362,12 @@ namespace SportlinkFunction.Planner
                         return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
                     if (!clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase))
-                        return new ObjectResult(new { error = "Toepassen is alleen beschikbaar in testmodus (ALLSTARS)." }) { StatusCode = 403 };
+                        return AutoPlanToepassenEndpointCore.Verboden();
 
                     log.LogInformation("AutoPlanToepassen: datum={Datum}, club={Club}", LogWaarde.Schoon(request.Datum), LogWaarde.Schoon(clubCode));
 
-                    var response = await PlannerService.AutoPlanToepassenAsync(request, clubCode, log);
-                    return new OkObjectResult(response);
+                    return await AutoPlanToepassenEndpointCore.VerwerkAsync(
+                        () => PlannerService.AutoPlanToepassenAsync(request, clubCode, log), log);
                 }));
         }
 

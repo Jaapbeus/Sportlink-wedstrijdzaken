@@ -11,6 +11,7 @@ namespace FunctionApp.Postgres.Planner;
 /// <see cref="MatchModels"/> en <see cref="AvailabilityModels"/>: twee volledig gescheiden
 /// implementatiebomen (ARCHITECTUUR-DATABASE-TIERS.md §2), en pure DTO's zonder gedrag hebben geen
 /// "one location"-eis. Veldnamen letterlijk gelijk zodat de JSON op beide tiers identiek is.
+/// De toewijzingsrij voor exact toepassen staat wel gedeeld in Planner.Shared en de Admin GUI.
 /// </para>
 /// <para>
 /// <c>OptimalisatieSuggestie</c> staat hier bewust NIET bij: dat type is invoer voor de gedeelde
@@ -18,12 +19,10 @@ namespace FunctionApp.Postgres.Planner;
 /// <c>Planner.Shared</c> verhuisd.
 /// </para>
 /// </summary>
-public class AutoPlanRequest
-{
-    public string Datum { get; set; } = string.Empty;
-    public int? BufferMinuten { get; set; }
-}
-
+// #1856: AutoPlanRequest, AutoPlanResponse en AutoPlanToepassenResponse staan in de gedeelde bron
+// GedeeldeBron/PlannerDto/AutoPlanModels.cs. Deze twee typen blijven tijdelijk per tier, omdat open
+// PR's (#1823, #1828, #1843) ze wijzigen; daarna volgen ze naar de gedeelde bron (zie
+// docs/ARCHITECTUUR-CODEKWALITEIT.md, regel 2b).
 // IPlanWedstrijdRegel (#1363): de gedeelde PDF-export leest deze regel zonder eigen mapping per tier.
 public class AutoPlanWedstrijdItem : IPlanWedstrijdRegel
 {
@@ -84,31 +83,12 @@ public class AutoPlanWedstrijdItem : IPlanWedstrijdRegel
 
     /// <summary>Actieve teamregel <c>BufferNa</c> in minuten, of null zonder regel (#1430).</summary>
     public int? TeamBufferNa { get; set; }
-}
-
-public class AutoPlanResponse
-{
-    public string Datum { get; set; } = string.Empty;
-    public int TotaalWedstrijden { get; set; }
-    public int ZonderVeld { get; set; }
-    public int ZonderTijd { get; set; }
-    public int TeWijzigen { get; set; }
-    public int NietInplanbaar { get; set; }
-    public string? GeschatteEindTijd { get; set; }
-    public List<AutoPlanWedstrijdItem> Wedstrijden { get; set; } = new();
-    public string HuidigeHtml { get; set; } = string.Empty;
-    public string OptimaleHtml { get; set; } = string.Empty;
+    public bool SportlinkLeidend { get; set; }
 }
 
 public class AutoPlanToepassenRequest
 {
     public string Datum { get; set; } = string.Empty;
     public int? BufferMinuten { get; set; }
-}
-
-public class AutoPlanToepassenResponse
-{
-    public int Bijgewerkt { get; set; }
-    public int Mislukt { get; set; }
-    public List<string> Fouten { get; set; } = new();
+    public List<global::Planner.Shared.AutoPlanToewijzing>? Toewijzingen { get; set; }
 }

@@ -32,6 +32,14 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
     private bool sportlinkHealthLoading;
     private string? sportlinkHealthError;
 
+    // #1872: elke clubgebonden lookup heeft een eigen guard, zodat een late response van de vorige club
+    // nooit de gegevens (of een latere save/koppeling) van de huidige club overschrijft.
+    private readonly LookupGeneratieGuard _instellingenGuard = new();
+    private readonly LookupGeneratieGuard _rollenGuard = new();
+    private readonly LookupGeneratieGuard _autoLoginGuard = new();
+    private readonly LookupGeneratieGuard _healthGuard = new();
+    private string? _settingsClubCode;
+
     private bool _isTestmodus => ClubSelector.SelectedClubCode == "ALLSTARS";
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
@@ -40,6 +48,10 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
     {
         SluitAutoLoginFormulier();
         autoLoginStatus = null;
+        // #1872: een open koppeling of melding hoort bij de vorige club.
+        registreerRol = null;
+        sportlinkKoppelMessage = null;
+        successMessage = null;
         return LoadAsync();
     }
 
@@ -59,17 +71,25 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
 
     private async Task LaadInstellingenAsync()
     {
-        var r = await InstellingenCache.GetSettingsAsync();
-        if (r.Success) settings = r.Data;
-        else errorMessage = r.ErrorMessage;
+        await LaadClubgebondenAsync(_instellingenGuard, () => InstellingenCache.GetSettingsAsync(), r =>
+        {
+            if (r.Success)
+            {
+                settings = r.Data;
+                _settingsClubCode = ClubSelector.SelectedClubCode;
+            }
+            else errorMessage = r.ErrorMessage;
+        });
     }
 
     private async Task LaadAutoLoginStatusAsync()
     {
         autoLoginError = null;
-        var r = await SportlinkApi.GetSportlinkAutoLoginStatusAsync(AutoLoginRolNaam);
-        autoLoginStatus = r.Success ? r.Data : null;
-        if (!r.Success) autoLoginError = "Status van automatisch inloggen kon niet worden opgehaald.";
+        await LaadClubgebondenAsync(_autoLoginGuard, () => SportlinkApi.GetSportlinkAutoLoginStatusAsync(AutoLoginRolNaam), r =>
+        {
+            autoLoginStatus = r.Success ? r.Data : null;
+            if (!r.Success) autoLoginError = "Status van automatisch inloggen kon niet worden opgehaald.";
+        });
     }
 
     private void StartAutoLoginInstellen()
@@ -111,9 +131,11 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
         autoLoginBusy = true;
         autoLoginError = null;
         autoLoginMessage = null;
+        var clubCode = ClubSelector.SelectedClubCode;
         try
         {
             var r = await SportlinkApi.SetSportlinkAutoLoginAsync(AutoLoginRolNaam, autoLoginForm);
+            if (IsClubGewisseld(clubCode)) return; // #1872: uitkomst hoort bij een andere club
             if (r.Success)
             {
                 autoLoginStatus = r.Data;
@@ -144,7 +166,9 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
         autoLoginMessage = null;
         try
         {
+            var clubCode = ClubSelector.SelectedClubCode;
             var r = await SportlinkApi.DeleteSportlinkAutoLoginAsync(AutoLoginRolNaam);
+            if (IsClubGewisseld(clubCode)) return; // #1872
             if (r.Success)
             {
                 autoLoginStatus = r.Data;
@@ -166,8 +190,8 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
 
     private async Task LaadSportlinkExtensieRollenAsync()
     {
-        var r = await SportlinkApi.GetSportlinkExtensieRollenAsync();
-        sportlinkRollen = r.Success ? r.Data ?? new() : new();
+        await LaadClubgebondenAsync(_rollenGuard, () => SportlinkApi.GetSportlinkExtensieRollenAsync(),
+            r => sportlinkRollen = r.Success ? r.Data ?? new() : new());
     }
 
     private async Task LaadSportlinkHealthAsync(bool live = false)
@@ -175,15 +199,19 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
         sportlinkHealthLoading = true;
         sportlinkHealthError = null;
         StateHasChanged();
+        var toegepast = false;
         try
         {
-            var r = await SportlinkApi.GetSportlinkExtensieHealthAsync(live);
-            if (r.Success) sportlinkHealth = r.Data;
-            else sportlinkHealthError = r.ErrorMessage ?? "Onbekende fout bij ophalen status.";
+            toegepast = await LaadClubgebondenAsync(_healthGuard, () => SportlinkApi.GetSportlinkExtensieHealthAsync(live), r =>
+            {
+                if (r.Success) sportlinkHealth = r.Data;
+                else sportlinkHealthError = r.ErrorMessage ?? "Onbekende fout bij ophalen status.";
+            });
         }
         finally
         {
-            sportlinkHealthLoading = false;
+            // Bij een verouderde load beheert de nieuwere load de laadstatus.
+            if (toegepast) sportlinkHealthLoading = false;
         }
     }
 
@@ -191,7 +219,9 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
     // geen andere instellingen op de hoofd-Instellingen-pagina).
     private async Task OpslaanAsync()
     {
-        if (settings == null) return;
+        // #1872: nooit de instellingen van een andere club naar de huidige club schrijven.
+        if (settings == null || IsClubGewisseld(_settingsClubCode)) return;
+        var clubCode = ClubSelector.SelectedClubCode;
         saving = true;
         successMessage = null;
         errorMessage = null;
@@ -207,6 +237,11 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
         };
 
         var r = await InstellingenCache.UpdateSettingsAsync(update);
+        if (IsClubGewisseld(clubCode))
+        {
+            saving = false;
+            return;
+        }
         if (r.Success)
         {
             successMessage = "Instellingen opgeslagen.";
@@ -227,7 +262,9 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
     private async Task BevestigRegistreerKoppelingAsync()
     {
         if (registreerRol == null) return;
+        var clubCode = ClubSelector.SelectedClubCode;
         var r = await SportlinkApi.RegistreerSportlinkKoppelingAsync(registreerRol.RolNaam, registreerSportlinkAccountNaam);
+        if (IsClubGewisseld(clubCode)) return; // #1872: uitkomst hoort bij een andere club
         if (r.Success)
         {
             registreerRol = null;

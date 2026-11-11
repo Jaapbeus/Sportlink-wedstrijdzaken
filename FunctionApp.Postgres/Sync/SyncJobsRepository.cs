@@ -1,4 +1,5 @@
 using Npgsql;
+using Planner.Shared.Sync;
 
 namespace FunctionApp.Postgres.Sync;
 
@@ -48,7 +49,7 @@ internal static class SyncJobsRepository
             "WHERE id = @id AND status = 'pending' RETURNING id",
             connection);
         command.Parameters.AddWithValue("id", id);
-        return await command.ExecuteScalarAsync() is Guid;
+        return SyncJobTransitions.IsClaimGranted(await command.ExecuteScalarAsync());
     }
 
     internal static async Task MarkCompletedAsync(string connectionString, Guid id, bool succeeded, string? errorMessage)
@@ -60,8 +61,8 @@ internal static class SyncJobsRepository
             "WHERE id = @id AND status = 'running'",
             connection);
         command.Parameters.AddWithValue("id", id);
-        command.Parameters.AddWithValue("status", succeeded ? "succeeded" : "failed");
-        command.Parameters.AddWithValue("errormessage", (object?)Truncate(errorMessage, 1000) ?? DBNull.Value);
+        command.Parameters.AddWithValue("status", SyncJobTransitions.CompletionStatus(succeeded));
+        command.Parameters.AddWithValue("errormessage", (object?)SyncJobTransitions.TruncateError(errorMessage) ?? DBNull.Value);
         await command.ExecuteNonQueryAsync();
     }
 
@@ -95,8 +96,6 @@ internal static class SyncJobsRepository
             ErrorMessage: reader.IsDBNull(7) ? null : reader.GetString(7));
     }
 
-    private static string? Truncate(string? value, int maxLength)
-        => value is null ? null : value.Length <= maxLength ? value : value[..maxLength];
 }
 
 internal sealed record SyncJobStatus(

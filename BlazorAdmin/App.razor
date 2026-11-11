@@ -39,9 +39,9 @@
     }
     else if (_state == AppState.Authenticated)
     {
-        @* DB-overlay: blokkeert de volledige app als de Azure SQL Free-tier database
+        @* Database-overlay: blokkeert de volledige app wanneer de database
            niet online is. Overlay verdwijnt zodra DB hersteld is (polling elke 15s). *@
-        @if (DbStatusService.State == DbState.Starting || DbStatusService.State == DbState.LimietBereikt)
+        @if (DbStatusService.State == DbState.Starting || DbStatusService.State == DbState.NietBeschikbaar)
         {
             <div class="api-startup">
                 <div class="startup-card">
@@ -56,8 +56,7 @@
                         <p class="startup-icon">&#9888;&#65039;</p>
                         <p class="startup-label startup-label-error">Database niet beschikbaar</p>
                         <p class="startup-sub">
-                            De maandlimiet van de gratis database is bereikt.<br />
-                            De database is automatisch hervat aan het begin van de volgende maand.
+                            De database is niet beschikbaar. Controleer de verbinding of neem contact op met de beheerder.
                         </p>
                         <p class="startup-sub startup-sub-muted">
                             Neem contact op met de beheerder als dit onverwacht is.
@@ -69,12 +68,26 @@
         else
         {
             @* Ingelogd MET admin- of user-rol: volledige app met MainLayout. *@
-            <Router AppAssembly="@typeof(App).Assembly" NotFoundPage="typeof(Pages.NotFound)">
-                <Found Context="routeData">
-                    <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
-                    <FocusOnNavigate RouteData="@routeData" Selector="h1" />
-                </Found>
-            </Router>
+            <ErrorBoundary>
+                <ChildContent>
+                    <Router AppAssembly="@typeof(App).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+                        <Found Context="routeData">
+                            <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+                            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+                        </Found>
+                    </Router>
+                </ChildContent>
+                <ErrorContent>
+                    <div class="api-startup" role="alert">
+                        <div class="startup-card">
+                            <p class="startup-icon">&#9888;&#65039;</p>
+                            <p class="startup-label startup-label-error">Er is een onverwachte fout opgetreden.</p>
+                            <p class="startup-sub">Herlaad de pagina om verder te gaan.</p>
+                            <button class="btn btn-outline-primary" @onclick="HerlaadPagina">Pagina herladen</button>
+                        </div>
+                    </div>
+                </ErrorContent>
+            </ErrorBoundary>
         }
     }
     else if (_state == AppState.AccessDenied)
@@ -144,6 +157,8 @@
     }
 
     private void HandleDbStateChanged() => InvokeAsync(StateHasChanged);
+
+    private void HerlaadPagina() => NavManager.NavigateTo(NavManager.Uri, forceLoad: true);
 
     public void Dispose()
     {

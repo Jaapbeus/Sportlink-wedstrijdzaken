@@ -1360,6 +1360,15 @@ BEGIN
 END
 GO
 
+-- Only the new unique day+number lookup writes this witness. Existing and legacy-written mappings
+-- remain NULL or become mismatched if a legacy writer changes PublicMatchId.
+IF OBJECT_ID('dbo.SportlinkPublicMatchIdCache', 'U') IS NOT NULL
+   AND COL_LENGTH('dbo.SportlinkPublicMatchIdCache', 'VerifiedPublicMatchId') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[SportlinkPublicMatchIdCache] ADD [VerifiedPublicMatchId] NVARCHAR(50) NULL;
+END
+GO
+
 -- #1266 (Postgres-migratie 016): SportlinkContractCheck.
 -- Resultaat van de dagelijkse contract-check: een read-call die de vorm van de Sportlink
 -- Match-respons controleert, zodat een stille Sportlink-release ons niet pas via een mislukte
@@ -1925,22 +1934,24 @@ GO
 -- FunctionApp/Planner/VeldResolutie.cs en PlannerShared.ResolveVeld. VeldResolutieDriftTests bewaakt
 -- dat deze kopie en die in het DB-project niet uit elkaar lopen — CI rolt alléén dit script uit.
 -- ============================================================
+-- #1814: ook matchdetails is nu een bron voor de duur; ontbreekt beide duurbronnen, dan is
+-- EindTijd NULL en blokkeren de lezers planning expliciet.
 -- #734: alleen aanmaken als de onderliggende tabellen bestaan. Op een verse clubinstallatie
 -- bestaan de ETL-tabellen (his.*) nog niet — die worden pas bij de eerste Sportlink-sync
 -- aangemaakt — en een CREATE VIEW faalt dan op naam-resolutie. Dynamische SQL stelt die
 -- resolutie uit tot uitvoering, zodat de view eenvoudig wordt overgeslagen tot de sync is
 -- gelopen. De volgende deploy maakt hem dan aan.
-IF OBJECT_ID('his.matches') IS NOT NULL
+IF OBJECT_ID('his.matches') IS NOT NULL AND OBJECT_ID('his.matchdetails') IS NOT NULL
     EXEC(N'
 CREATE OR ALTER VIEW [planner].[AlleWedstrijdenOpVeld]
 AS
 SELECT
     CAST(m.[kaledatum] AS DATE)                                                     AS Datum,
     CAST(m.[aanvangstijd] AS TIME)                                                  AS AanvangsTijd,
-    DATEADD(MINUTE,
-        s.[WedstrijdTotaal],
-        CAST(CAST(m.[kaledatum] AS DATE) AS DATETIME) + CAST(m.[aanvangstijd] AS DATETIME)
-    )                                                                               AS EindTijd,
+    CASE WHEN COALESCE(md.[Duration], 0) > 0 OR COALESCE(s.[WedstrijdTotaal], 0) > 0
+        THEN DATEADD(MINUTE, CASE WHEN md.[Duration] > 0 THEN md.[Duration] + 15 ELSE s.[WedstrijdTotaal] END,
+        CAST(CAST(m.[kaledatum] AS DATE) AS DATETIME) + CAST(m.[aanvangstijd] AS DATETIME))
+        ELSE NULL END                        AS EindTijd,
     v.[VeldNummer],
     COALESCE(s.[Veldafmeting], 1.00)                                                AS VeldDeelGebruik,
     t.[leeftijdscategorie]                                                          AS LeeftijdsCategorie,
@@ -1952,6 +1963,9 @@ SELECT
     CAST(m.[wedstrijdcode] AS BIGINT)                                               AS Wedstrijdcode
 FROM [his].[matches] m
 CROSS APPLY (SELECT TOP 1 [ClubCode], [Accommodatie] FROM [dbo].[AppSettings] WHERE [SyncEnabled] = 1 ORDER BY [ClubCode]) a
+LEFT JOIN [his].[matchdetails] md
+    ON md.[InternCode] = m.[wedstrijdcode] AND md.[mta_deleted] IS NULL
+   AND ISNULL(md.[ClubCode], a.[ClubCode]) = ISNULL(m.[ClubCode], a.[ClubCode])
 LEFT JOIN [his].[teams] t
     ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''''
    AND ISNULL(t.[ClubCode], a.[ClubCode]) = ISNULL(m.[ClubCode], a.[ClubCode])
@@ -1983,7 +1997,6 @@ WHERE m.[accommodatie] LIKE ''%'' + a.[Accommodatie] + ''%''
   AND m.[status] <> ''Afgelast''
   AND m.[aanvangstijd] IS NOT NULL
   AND v.[VeldNummer] IS NOT NULL
-  AND s.[WedstrijdTotaal] IS NOT NULL
 
 UNION ALL
 
@@ -3894,6 +3907,7 @@ BEGIN
         [IssueStatusGecontroleerdOpUtc] DATETIME2        NULL,
         [IsGeanonimiseerd]              BIT              NOT NULL CONSTRAINT [DF_avg_Feedback_IsGeanonimiseerd] DEFAULT (0),
         [GeanonimiseerdOpUtc]           DATETIME2        NULL,
+        [PublicatieGestartOpUtc]        DATETIME2        NULL,
         [mta_inserted]                  DATETIME2        NOT NULL CONSTRAINT [DF_avg_Feedback_mta_inserted] DEFAULT (GETUTCDATE()),
         [mta_modified]                  DATETIME2        NOT NULL CONSTRAINT [DF_avg_Feedback_mta_modified] DEFAULT (GETUTCDATE()),
         CONSTRAINT [PK_avg_Feedback] PRIMARY KEY CLUSTERED ([Id] ASC),
@@ -4215,4 +4229,17 @@ GO
 IF OBJECT_ID('dbo.Teams', 'U') IS NOT NULL AND COL_LENGTH('dbo.Teams', 'Categorie') IS NULL
     ALTER TABLE [dbo].[Teams] ADD
         [Categorie] NVARCHAR(1) NULL CONSTRAINT [CK_Teams_Categorie] CHECK ([Categorie] COLLATE Latin1_General_100_BIN2 IN (N'A', N'B'));
+GO
+
+-- #1803: begin van de lopende publicatiepoging van een feedbackmelding. ClaimPublicatieAsync zet het vóór de eerste
+-- GitHub-POST (ZetIssueBodyAsync ook, als een oudere melding haar referentie krijgt); een herclaim (automatisch
+-- herstel) laat het staan, zodat het zoekvenster naar een al aangemaakt issue niet opschuift door een mislukte
+-- herstelpoging. NULL = nog nooit geclaimd of geclaimd vóór deze kolom (de code valt dan terug op mta_modified).
+-- Additief en nullable (expand). Postgres-tegenhanger:
+-- Database.Postgres/migrations/048_avg_feedback_publicatiegestart.sql. Bron: Database/avg/Tables/Feedback.sql.
+-- QUOTED_IDENTIFIER moet AAN zijn: avg.Feedback heeft een gefilterde index (#1280).
+SET QUOTED_IDENTIFIER ON;
+GO
+IF OBJECT_ID('avg.Feedback', 'U') IS NOT NULL AND COL_LENGTH('avg.Feedback', 'PublicatieGestartOpUtc') IS NULL
+    ALTER TABLE [avg].[Feedback] ADD [PublicatieGestartOpUtc] DATETIME2 NULL;
 GO

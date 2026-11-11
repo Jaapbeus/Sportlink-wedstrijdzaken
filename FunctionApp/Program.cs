@@ -2,15 +2,14 @@ using Planner.Endpoints.Http;
 using Azure.Identity;
 using Microsoft.Azure.Functions.Worker.Builder;
 using Planner.Endpoints.Instellingen;
-using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
-using OpenAI.Chat;
 using Planner.Shared.Integrations.SportlinkClub;
 using Planner.Shared.TeamResolution;
 using SportlinkFunction.Email;
+using SportlinkFunction.AiComposition;
 using SportlinkFunction.Infrastructure;
 using SportlinkFunction.Monitoring;
 using SportlinkFunction.Sportlink;
@@ -56,21 +55,11 @@ if (!string.IsNullOrEmpty(tenantId) && !string.IsNullOrEmpty(clientId) && !strin
 // EgressGuard (#857): buiten productie blijft IChatClient onvoorwaardelijk ongeregistreerd, ook als
 // OpenAiApiKey toevallig wél lokaal geconfigureerd is.
 var openAiApiKey = Environment.GetEnvironmentVariable("OpenAiApiKey");
-if (!string.IsNullOrWhiteSpace(openAiApiKey) && EgressGuard.ExternalIntegrationsAllowed())
-{
-    // Fallback is puur een provider-model-identifier — geen club-specifieke waarde, dus toegestaan.
-    const string defaultAiModelName = "gpt-4o-mini";
-    var aiModelName = Environment.GetEnvironmentVariable("AiModelName");
-    if (string.IsNullOrWhiteSpace(aiModelName)) aiModelName = defaultAiModelName;
+OpenAiChatClientRegistration.Register(builder.Services, openAiApiKey, Environment.GetEnvironmentVariable("AiModelName"), EgressGuard.ExternalIntegrationsAllowed());
 
-    builder.Services.AddSingleton<IChatClient>(
-        new ChatClient(aiModelName, new System.ClientModel.ApiKeyCredential(openAiApiKey))
-            .AsIChatClient());
-
-    // #1268: hier stond de forced-choice teamdisambiguatie (#697). Die bestond alleen op deze
-    // tier; de Postgres-tier gaf bij ambiguïteit altijd de kandidatenlijst terug. Beide tiers zijn
-    // gelijkwaardig, en de eigenaar koos het deterministische gedrag als norm — zie TeamResolver.
-}
+// #1268: hier stond de forced-choice teamdisambiguatie (#697). Die bestond alleen op deze
+// tier; de Postgres-tier gaf bij ambiguïteit altijd de kandidatenlijst terug. Beide tiers zijn
+// gelijkwaardig, en de eigenaar koos het deterministische gedrag als norm — zie TeamResolver.
 
 // Sportlink Club API client (#991, #998): read-only Match API + token-refresh per functionele rol.
 // EgressGuard (#857): eigen if-blok, losgekoppeld van de OpenAiApiKey-check hierboven — dit is een
