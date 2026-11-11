@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using Planner.Shared;
 using Planner.Shared.Email;
 
 namespace SportlinkFunction.Email;
@@ -15,7 +16,7 @@ public class BerichtAiService
     private readonly BerichtAiKern _kern;
 
     public BerichtAiService(ILogger<BerichtAiService> logger, IChatClient chatClient)
-        => _kern = new BerichtAiKern(logger, chatClient, HaalClubNaam, () => DateTime.Now);
+        => _kern = new BerichtAiKern(logger, chatClient, HaalClubNaam, NederlandseBedrijfsKlok.Nu);
 
     private static string HaalClubNaam()
     {
