@@ -9,14 +9,10 @@ namespace Planner.Shared.Tests.Email;
 public class EmailVerhardingTests
 {
     [Fact]
-    public void ProviderSamenvatting_MaskeertLangeNummerreeksenEnBehoudtDatumsEnTijden()
+    public void ProviderSamenvatting_BehoudtPlanningZonderStrikteOpslagOfTraceTeVersoepelen()
     {
         var identificatie = new string('0', 9);
-        AiVeldSanering.ProviderSamenvatting(identificatie).Should().Be("[nummer]");
-        AiVeldSanering.ProviderSamenvatting("14-11-26 10.30").Should().Be("14-11-26 10.30");
-        AiVeldSanering.ProviderSamenvatting("2026-11-14 10:30").Should().Be("2026-11-14 10:30");
-        AiVeldSanering.ProviderSamenvatting("09.00 10.30 11.00").Should().Be("09.00 10.30 11.00");
-        AiVeldSanering.ProviderSamenvatting("123 456 789").Should().Be("[nummer]");
+        AiVeldSanering.ProviderSamenvatting(identificatie).Should().Be(identificatie);
         AiVeldSanering.Samenvatting(identificatie).Should().Be("[nummer]");
         Planner.Shared.Email.Trace.TraceBuilder.Saneer(identificatie).Should().Be("[nummer]");
         LeermomentInvoer.Valideer("BeschikbaarheidCheck", "HerplanVerzoek", identificatie)

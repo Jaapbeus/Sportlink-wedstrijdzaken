@@ -70,7 +70,7 @@ public sealed class BekendeClubs
 
     // Een clubcode is max 20 tekens [A-Za-z0-9_-] (kolomdefinitie): iets anders is nooit bekend.
     private static readonly System.Text.RegularExpressions.Regex GeldigeVorm =
-        new("\\A[A-Za-z0-9_-]{1,20}\\z", System.Text.RegularExpressions.RegexOptions.Compiled);
+        new("^[A-Za-z0-9_-]{1,20}$", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     private readonly Func<IReadOnlyCollection<string>> _laad;
     private readonly TimeSpan _geldigheid;

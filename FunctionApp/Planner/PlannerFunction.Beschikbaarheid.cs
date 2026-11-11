@@ -19,7 +19,7 @@ public static partial class PlannerFunction
             return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
         log.LogInformation("CheckAvailability: datum={Datum}, tijd={Tijd}, team={Team}, cat={Cat}, club={Club}",
-            LogWaarde.Schoon(request.Datum), LogWaarde.Schoon(request.AanvangsTijd), LogWaarde.Schoon(request.TeamNaam), LogWaarde.Schoon(request.LeeftijdsCategorie), LogWaarde.Schoon(clubCode));
+            LogWaarde.Schoon(request.Datum), LogWaarde.Schoon(request.AanvangsTijd), LogWaarde.Schoon(request.TeamNaam), LogWaarde.Schoon(request.LeeftijdsCategorie), clubCode);
 
         var response = await controleer(request);
         AiVeldSanering.SaneerWaarschuwingen(response.Waarschuwingen);

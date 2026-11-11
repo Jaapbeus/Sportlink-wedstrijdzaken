@@ -113,11 +113,6 @@ public static partial class AiVeldSanering
     [GeneratedRegex(@"(?<datum>\b(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})\b(?![-/.]\d))|(?<![\p{L}\p{N}])(?<nummer>\+?\(?\d(?:[().\p{Zs}\-]*\d){8,14})(?![\p{L}\p{N}])", RegexOptions.CultureInvariant)]
     private static partial Regex NummerPatroon();
 
-    // Inspect the complete numeric candidate before allowing planning syntax: a date/time prefix
-    // must not hide a longer number, including when letters surround that number.
-    [GeneratedRegex(@"\+?\(?\d(?:[()./\p{Zs}:\-]*\d)*\)?", RegexOptions.CultureInvariant)]
-    private static partial Regex ProviderNummerPatroon();
-
     /// <summary>Maskeert contactpatronen voordat externe berichttekst naar de AI-provider gaat.</summary>
     public static string MaskeerContactgegevens(string? tekst)
     {
@@ -142,32 +137,15 @@ public static partial class AiVeldSanering
         => ZonderDubbeleAanhalingstekens(Trace.TraceBuilder.Saneer(waarde, MaxSamenvattingLengte));
 
     /// <summary>
-    /// Samenvatting uitsluitend voor providerinvoer: behoudt expliciete datums en tijden, maskeert
-    /// lange nummerreeksen en herkenbare contactpatronen, en hergebruikt de normalisatie en lengtekap.
-    /// Opslag/trace houden de striktere <see cref="Samenvatting"/>; reeds gemaskeerde opgeslagen inhoud
-    /// wordt niet gereconstrueerd.
+    /// Samenvatting uitsluitend voor providerinvoer: behoudt planningsgegevens, maskeert herkenbare
+    /// contactpatronen en hergebruikt de normalisatie en lengtekap. Opslag/trace houden de striktere
+    /// <see cref="Samenvatting"/>; reeds gemaskeerde opgeslagen inhoud wordt niet gereconstrueerd.
     /// </summary>
     public static string ProviderSamenvatting(string? waarde)
     {
-        // Controls and Unicode whitespace must not split a number before it is recognized.
-        var schoon = NormaliseerWitruimte(waarde);
-        schoon = EmailPatroon().Replace(schoon, "[e-mail]");
-        // The bounded contact matcher must not consume a prefix before the whole candidate is checked.
-        schoon = ProviderNummerPatroon().Replace(schoon, match =>
-            match.Value.Count(char.IsDigit) < 9 || IsExplicietePlanning(match.Value) ? match.Value : "[nummer]");
-        schoon = MaskeerContactgegevens(schoon);
+        var schoon = NormaliseerWitruimte(MaskeerContactgegevens(waarde));
         if (schoon.Length > MaxSamenvattingLengte) schoon = schoon[..MaxSamenvattingLengte];
         return ZonderDubbeleAanhalingstekens(schoon);
-    }
-
-    private static bool IsExplicietePlanning(string kandidaat)
-    {
-        string[] datumFormaten = ["yyyy-M-d", "yyyy/M/d", "yyyy.M.d", "d-M-yyyy", "d/M/yyyy",
-            "d.M.yyyy", "d-M-yy", "d/M/yy", "d.M.yy"];
-        string[] tijdFormaten = ["H:mm", "HH:mm", "H.mm", "HH.mm"];
-        return kandidaat.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).All(deel =>
-            DateOnly.TryParseExact(deel, datumFormaten, CultureInfo.InvariantCulture, DateTimeStyles.None, out _)
-            || TimeOnly.TryParseExact(deel, tijdFormaten, CultureInfo.InvariantCulture, DateTimeStyles.None, out _));
     }
 
     private static string ZonderDubbeleAanhalingstekens(string tekst) => tekst.Replace('"', '\'');

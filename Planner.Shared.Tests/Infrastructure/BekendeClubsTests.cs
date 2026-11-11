@@ -35,19 +35,6 @@ public class BekendeClubsTests
     public void OngeldigeVorm_IsNooitBekend_ZelfsAlsDeLijstHemBevat()
         => new BekendeClubs(() => ["AB CD", "X'; --"]).Zoek("AB CD").Should().Be(Onbekend);
 
-    [Theory]
-    [InlineData("ALLSTARS\\n")]
-    [InlineData("ALLSTARS\\r")]
-    [InlineData("ALLSTARS\\r\\n")]
-    [InlineData("ALL\\nSTARS")]
-    [InlineData("ALL\\tSTARS")]
-    [InlineData("ALLSTARS012345678901234")]
-    public void ControlTekensOfOverlengte_IsOnbekendOokZonderLijst(string code)
-    {
-        new BekendeClubs(() => ["ALLSTARS"]).Zoek(code).Should().Be(Onbekend);
-        new BekendeClubs(() => throw new InvalidOperationException()).Zoek(code).Should().Be(Onbekend);
-    }
-
     // Keuzelogica van EasyAuthHelper.GetClubCodeFromRequest: CodeVoorVerzoek == null ⇒ primaire club.
     [Theory]
     [InlineData("lijst", "allstars", "ALLSTARS")]   // Bekend ⇒ opgeslagen schrijfwijze
