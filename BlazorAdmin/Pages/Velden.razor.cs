@@ -24,6 +24,7 @@ public partial class Velden : ClubSelectorPageBase
     private bool isNewPeriode;
 
     private bool loading = true;
+    private readonly LookupGeneratieGuard _clubLoadGuard = new();
     private readonly InlineBevestiging<(string Type, int Id)> _deleteConfirmation = new();
     private string? veldenLoadError;
     private string? periodesLoadError;
@@ -43,21 +44,37 @@ public partial class Velden : ClubSelectorPageBase
 
     private async Task LoadAsync()
     {
+        var clubCode = ClubSelector.SelectedClubCode;
+        var generatie = _clubLoadGuard.Start(clubCode);
         loading = true;
-        var veldenResult = await Api.GetVeldenAsync();
-        velden = veldenResult.Success ? veldenResult.Data ?? new() : new();
-        veldenLoadError = veldenResult.Success ? null : veldenResult.ErrorMessage ?? "Velden ophalen mislukt.";
-        var periodesResult = await Api.GetVeldPeriodesAsync();
-        periodes = periodesResult.Success ? periodesResult.Data ?? new() : new();
-        periodesLoadError = periodesResult.Success ? null : periodesResult.ErrorMessage ?? "Periodes ophalen mislukt.";
-        var beschikbaarheidResult = await Api.GetVeldBeschikbaarheidAsync();
-        beschikbaarheid = beschikbaarheidResult.Success ? beschikbaarheidResult.Data ?? new() : new();
-        beschikbaarheidLoadError = beschikbaarheidResult.Success ? null : beschikbaarheidResult.ErrorMessage ?? "Beschikbaarheid ophalen mislukt.";
-        var trainingResult = await Api.GetVeldTrainingAsync();
-        training = trainingResult.Success ? trainingResult.Data ?? new() : new();
-        trainingLoadError = trainingResult.Success ? null : trainingResult.ErrorMessage ?? "Trainingsblokken ophalen mislukt.";
-        loading = false;
+        try
+        {
+            var veldenResult = await Api.GetVeldenAsync();
+            if (!IsActueleLading(generatie, clubCode)) return;
+            var periodesResult = await Api.GetVeldPeriodesAsync();
+            if (!IsActueleLading(generatie, clubCode)) return;
+            var beschikbaarheidResult = await Api.GetVeldBeschikbaarheidAsync();
+            if (!IsActueleLading(generatie, clubCode)) return;
+            var trainingResult = await Api.GetVeldTrainingAsync();
+            if (!IsActueleLading(generatie, clubCode)) return;
+
+            velden = veldenResult.Success ? veldenResult.Data ?? new() : new();
+            veldenLoadError = veldenResult.Success ? null : veldenResult.ErrorMessage ?? "Velden ophalen mislukt.";
+            periodes = periodesResult.Success ? periodesResult.Data ?? new() : new();
+            periodesLoadError = periodesResult.Success ? null : periodesResult.ErrorMessage ?? "Periodes ophalen mislukt.";
+            beschikbaarheid = beschikbaarheidResult.Success ? beschikbaarheidResult.Data ?? new() : new();
+            beschikbaarheidLoadError = beschikbaarheidResult.Success ? null : beschikbaarheidResult.ErrorMessage ?? "Beschikbaarheid ophalen mislukt.";
+            training = trainingResult.Success ? trainingResult.Data ?? new() : new();
+            trainingLoadError = trainingResult.Success ? null : trainingResult.ErrorMessage ?? "Trainingsblokken ophalen mislukt.";
+        }
+        finally
+        {
+            if (IsActueleLading(generatie, clubCode)) loading = false;
+        }
     }
+
+    private bool IsActueleLading(int generatie, string? clubCode) =>
+        _clubLoadGuard.IsActueel(generatie) && ClubSelector.SelectedClubCode == clubCode;
 
     // ── Velden ──
 

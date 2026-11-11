@@ -42,6 +42,7 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     // Sportlink-kolom (#989/#991/#1361): alleen de vlag blijft hier; uitklap-/deeplinkstate staat in
     // SportlinkActieKolomState, het paneel zelf is SportlinkMatchPanel (#1122).
     private bool _pdfExportIngeschakeld;
+    private readonly LookupGeneratieGuard _pdfExportLoadGuard = new();
     private bool _sportlinkExtensionEnabled;
     private readonly SportlinkActieKolomState _sportlinkKolom = new();
 
@@ -146,7 +147,14 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     /// #1459: de PDF-knop verschijnt alleen als de gekozen club PDF-export heeft ingeschakeld
     /// (standaard uit). Via het voor elke ingelogde rol open endpoint, opnieuw bij een clubwissel.
     /// </summary>
-    private async Task LaadPdfExportStatusAsync() => _pdfExportIngeschakeld = await PlanningApi.IsPdfExportIngeschakeldAsync();
+    private async Task LaadPdfExportStatusAsync()
+    {
+        var clubCode = ClubSelector.SelectedClubCode;
+        var generatie = _pdfExportLoadGuard.Start(clubCode);
+        var ingeschakeld = await PlanningApi.IsPdfExportIngeschakeldAsync();
+        if (_pdfExportLoadGuard.IsActueel(generatie) && ClubSelector.SelectedClubCode == clubCode)
+            _pdfExportIngeschakeld = ingeschakeld;
+    }
 
     private async Task AutoPlanAsync()
     {

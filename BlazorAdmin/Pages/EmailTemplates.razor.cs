@@ -16,6 +16,9 @@ public partial class EmailTemplates : ClubSelectorPageBase
     private bool loading = true;
     private string? templatesLoadError;
     private string? voetnootLoadError;
+    private readonly LookupGeneratieGuard _loadGuard = new();
+    private readonly LookupGeneratieGuard _templatesLoadGuard = new();
+    private readonly LookupGeneratieGuard _voetnootLoadGuard = new();
     private readonly InlineBevestiging<string> _resetConfirmation = new();
     private string? templateMessage;
 
@@ -32,21 +35,29 @@ public partial class EmailTemplates : ClubSelectorPageBase
 
     private async Task LoadAsync()
     {
+        var clubCode = ClubSelector.SelectedClubCode;
+        var generatie = _loadGuard.Start(clubCode);
         loading = true;
         await Task.WhenAll(LoadTemplatesAsync(), LoadVoetnootAsync());
-        loading = false;
+        if (IsActueleLading(generatie, clubCode)) loading = false;
     }
 
     private async Task LoadTemplatesAsync()
     {
+        var clubCode = ClubSelector.SelectedClubCode;
+        var generatie = _templatesLoadGuard.Start(clubCode);
         var r = await EmailApi.GetTemplatesAsync();
+        if (!_templatesLoadGuard.IsActueel(generatie) || ClubSelector.SelectedClubCode != clubCode) return;
         templates = r.Success ? r.Data ?? new() : new();
         templatesLoadError = r.Success ? null : r.ErrorMessage ?? "Templates ophalen mislukt.";
     }
 
     private async Task LoadVoetnootAsync()
     {
+        var clubCode = ClubSelector.SelectedClubCode;
+        var generatie = _voetnootLoadGuard.Start(clubCode);
         var r = await InstellingenCache.GetSettingsAsync();
+        if (!_voetnootLoadGuard.IsActueel(generatie) || ClubSelector.SelectedClubCode != clubCode) return;
         if (r.Success && r.Data != null)
         {
             voetnoot = r.Data.EmailVoetnoot ?? "";
@@ -55,6 +66,9 @@ public partial class EmailTemplates : ClubSelectorPageBase
         else
             voetnootLoadError = r.ErrorMessage ?? "E-mailvoetnoot ophalen mislukt.";
     }
+
+    private bool IsActueleLading(int generatie, string? clubCode) =>
+        _loadGuard.IsActueel(generatie) && ClubSelector.SelectedClubCode == clubCode;
 
     private async Task OpslaanVoetnootAsync()
     {

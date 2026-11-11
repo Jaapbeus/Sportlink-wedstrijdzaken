@@ -35,6 +35,7 @@ public sealed class ClubSwitchConfirmationLifecycleTests
         await selector.SelectClubAsync("ALLSTARS");
         var settings = new ClubInstellingenCache(new InstellingenApiClient(transport), selector);
         var page = new EmailTemplates();
+        Set(page, "ClubSelector", selector);
         Set(page, "EmailApi", new EmailApiClient(transport));
         Set(page, "InstellingenCache", settings);
         var confirmation = Field<InlineBevestiging<string>>(page, "_resetConfirmation");
