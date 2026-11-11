@@ -9,6 +9,10 @@ namespace Planner.Shared.Feedback;
 // SportlinkEndpointSupportCore. Alles wat niet over databasetoegang gaat (rate limiting,
 // publicatiebeleid, redactie, bewaartermijnen) staat eenmalig in Planner.Shared/Planner.Endpoints.
 
+/// <summary>Een GitHub-publicatie is afgebroken nadat de write kon zijn ontvangen; controleer vóór een nieuwe poging.</summary>
+public sealed class FeedbackPublicatieUitkomstOnbekendException(Exception innerException)
+    : Exception("GitHub-issueaanmaak is afgebroken; de uitkomst is onbekend.", innerException);
+
 /// <summary>Statuswaarden van <c>avg.Feedback.Status</c>. Bewust geen "open"/"gesloten": die zouden GitHub spiegelen zonder synchronisatie.</summary>
 public static class FeedbackStatusWaarden
 {

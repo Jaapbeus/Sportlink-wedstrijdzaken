@@ -132,12 +132,16 @@ public static class FeedbackBeheerEndpointCore
 
         await store.LogInzageAsync(new FeedbackInzageNieuw(clubCode, wie.ObjectId, wie.Naam, "publiceer", id, null));
 
+        (int nummer, string url) aangemaakt;
         try
         {
-            var (nummer, url) = await maakGitHubIssueAsync(
+            aangemaakt = await maakGitHubIssueAsync(
                 detail.Samenvatting.Onderwerp, detail.IssueBody, FeedbackCore.KiesLabels(detail.Samenvatting.Type));
-            await store.ZetGepubliceerdAsync(clubCode, id, nummer, url);
-            return new OkObjectResult(new { feedbackId = id, status = FeedbackStatusWaarden.Gepubliceerd, issueNummer = nummer, issueUrl = url });
+        }
+        catch (FeedbackPublicatieUitkomstOnbekendException ex)
+        {
+            log.LogError("GitHub-issueaanmaak afgebroken met onbekende uitkomst [feedbackId={Id}], fouttype={ErrorType}; status blijft publiceren", id, ex.InnerException?.GetType().Name);
+            return new ObjectResult(new { error = "De uitkomst van publiceren is onbekend. Controleer eerst of het issue al bestaat voordat je opnieuw publiceert." }) { StatusCode = 502 };
         }
         catch (Exception ex)
         {
@@ -145,6 +149,20 @@ public static class FeedbackBeheerEndpointCore
             await store.ZetPublicatieMisluktAsync(clubCode, id);
             return new ObjectResult(new { error = "Publiceren op GitHub is mislukt. Probeer het later opnieuw." }) { StatusCode = 502 };
         }
+
+        try
+        {
+            await store.ZetGepubliceerdAsync(clubCode, id, aangemaakt.nummer, aangemaakt.url);
+        }
+        catch (Exception ex)
+        {
+            // GitHub heeft bevestigd dat het issue bestaat. De claim blijft staan zodat een DB-fout
+            // bij het opslaan van de receipt niet tot een tweede issue leidt.
+            log.LogError(ex, "GitHub-issue is aangemaakt maar de feedbackreceipt kon niet worden opgeslagen [feedbackId={Id}]", id);
+            return new ObjectResult(new { error = "Het issue is aangemaakt, maar de lokale status kon niet worden bijgewerkt. Probeer niet opnieuw te publiceren." }) { StatusCode = 502 };
+        }
+
+        return new OkObjectResult(new { feedbackId = id, status = FeedbackStatusWaarden.Gepubliceerd, issueNummer = aangemaakt.nummer, issueUrl = aangemaakt.url });
     }
 
     // ── Inzagelog ──────────────────────────────────────────────────────────────

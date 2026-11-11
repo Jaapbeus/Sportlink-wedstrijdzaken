@@ -161,6 +161,25 @@ public class FeedbackBeheerEndpointCoreTests
     }
 
     [Fact]
+    public async Task Publiceer_GitHubUitkomstOnbekend_Geeft502EnBehoudtClaim()
+    {
+        var store = new FeedbackStoreFake { Detail = MaakDetail() };
+        var githubCalls = 0;
+        Func<string, string, string[], Task<(int, string)>> github = (_, _, _) =>
+        {
+            githubCalls++;
+            throw new FeedbackPublicatieUitkomstOnbekendException(new TaskCanceledException());
+        };
+
+        var result = await FeedbackBeheerEndpointCore.PubliceerAsync(ClubCode, Beheerder, store, Id, github, NullLogger.Instance);
+
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(502);
+        githubCalls.Should().Be(1);
+        store.Statussen[Id].Should().Be(FeedbackStatusWaarden.Publiceren,
+            "an ambiguous POST must stay claimed and must not become retryable");
+    }
+
+    [Fact]
     public async Task Publiceer_ZonderGitHubConfiguratie_Geeft503()
     {
         var store = new FeedbackStoreFake { Detail = MaakDetail() };
