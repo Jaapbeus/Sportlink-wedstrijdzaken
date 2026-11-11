@@ -6,9 +6,9 @@ using Microsoft.Extensions.Logging;
 namespace FunctionApp.Postgres.Admin;
 
 /// <summary>
-/// Postgres-tier-tegenhanger van <c>FunctionApp/Admin/AdminClubsFunction.cs</c> (#887).
-/// GET /api/beheer/clubs → ClubDto[]. Zelfde route, zelfde vorm — de Blazor Admin GUI onderscheidt
-/// geen tier.
+/// Haalt de clubinstellingen op via <c>GET /api/beheer/clubs</c> en retourneert <c>ClubDto[]</c>.
+/// Beide tiers gebruiken dezelfde route en responsvorm, zodat de Blazor Admin GUI geen onderscheid
+/// hoeft te maken.
 /// </summary>
 public static class AdminClubsFunction
 {
