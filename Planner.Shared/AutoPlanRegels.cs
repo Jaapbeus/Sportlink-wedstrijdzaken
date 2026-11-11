@@ -19,12 +19,11 @@ public record PlanDoel(
 /// wedstrijden verwerkt, en hoe wordt de afwijking t.o.v. de voorkeurstijd beoordeeld.
 ///
 /// <para>
-/// <b>Waarom gedeeld en niet per tier gedupliceerd (issue 888 vervolg, §42).</b> Deze methoden raken
+/// <b>Waarom gedeeld en niet per tier gedupliceerd.</b> Deze methoden raken
 /// geen database, geen instellingencache en geen tier-specifiek type — het is rekenlogica over
 /// primitieven en gedeelde domeinmodellen. De architectuurregel in
 /// docs/ARCHITECTUUR-DATABASE-TIERS.md is daar expliciet over: logica zonder tier-afhankelijkheid
-/// hoort op precies één plek. Zelfde precedent als <see cref="FieldScheduler"/> (§38) en
-/// <see cref="TeamNaamNormalisatie"/> (#889).
+/// hoort op precies één plek.
 /// </para>
 ///
 /// <para>
