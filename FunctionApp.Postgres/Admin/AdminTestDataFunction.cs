@@ -1,3 +1,5 @@
+using Planner.Endpoints.Http;
+
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -115,10 +117,8 @@ public static class AdminTestDataFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/testdata/wedstrijden")] HttpRequest req,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("TestDataWedstrijdUpsert"), "ALLSTARS wedstrijd opslaan",
-            async _ =>
+            _ => BoundedRequestBodyReader.ExecuteJsonAsync<AllstarsWedstrijdInput>(req, async dto =>
             {
-                var body = await new StreamReader(req.Body).ReadToEndAsync();
-                var dto = JsonConvert.DeserializeObject<AllstarsWedstrijdInput>(body);
                 if (dto == null || string.IsNullOrWhiteSpace(dto.BkMatches))
                     return new BadRequestObjectResult(new { error = "BkMatches verplicht" });
 
@@ -171,17 +171,15 @@ public static class AdminTestDataFunction
 
                 await command.ExecuteNonQueryAsync();
                 return new OkObjectResult(new { ok = true });
-            });
+            }));
 
     [Function("TestDataVerplaatsDatum")]
     public static Task<IActionResult> VerplaatsDatum(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/testdata/wedstrijden/verplaats-datum")] HttpRequest req,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("TestDataVerplaatsDatum"), "ALLSTARS wedstrijden verplaatsen",
-            async _ =>
+            _ => BoundedRequestBodyReader.ExecuteJsonAsync<VerplaatsDatumInput>(req, async dto =>
             {
-                var body = await new StreamReader(req.Body).ReadToEndAsync();
-                var dto = JsonConvert.DeserializeObject<VerplaatsDatumInput>(body);
                 if (dto == null || string.IsNullOrWhiteSpace(dto.OudeDatum) || string.IsNullOrWhiteSpace(dto.NieuweDatum))
                     return new BadRequestObjectResult(new { error = "OudeDatum en NieuweDatum zijn verplicht" });
 
@@ -210,7 +208,7 @@ public static class AdminTestDataFunction
                 command.Parameters.AddWithValue("clubcode", AllstarsClubCode);
                 var count = await command.ExecuteNonQueryAsync();
                 return new OkObjectResult(new { ok = true, aantalVerplaatst = count });
-            });
+            }));
 
     [Function("TestDataWedstrijdDeleteEen")]
     public static Task<IActionResult> DeleteEen(

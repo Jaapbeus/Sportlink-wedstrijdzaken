@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- API-bodybegrenzing hergebruikt de gedeelde uitvoeringspoort met behoud van bestaande parsers en endpointvalidatie (zie issue #1811).
+
 ### Breaking
 - `/api/health` exposeert niet langer database-, schema-, migratie-, TLS-, sync- of tierdiagnostiek. Deploy- en readinessvelden zijn geaggregeerd; details zijn beschikbaar via admin-only `GET /api/beheer/health` (#1811). Dit is de API 4.0.0.0-contractgrens.
 
@@ -29,11 +31,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - De SQL Server-planner geeft voor de niet-opgeslagen optionele eerste-elftalnaam nu expliciet `null` door, gelijk aan Postgres; de settings-loader guard hoeft deze ontbrekende sleutel niet meer uit te zonderen (#1821).
 
 ### Fixed
+- De resterende beheer- en planner-JSON-bodies zijn op beide databasetiers begrensd op 1 MiB; teambegeleiding behoudt de bestaande CSV-upload tot 5 MiB via een afgeleide JSON-envelope. Ongeldige JSON/UTF-8 geeft 400, overschrijding 413 vóór verwerking. Lokale databasepoorten luisteren alleen op loopback (zie issue #1811).
+- Sync-statusmeldingen bewaren alleen het uitzonderingstype; providerfouttekst en URL blijven uit de beheerstatus (zie issue #1811).
 - De negatieve tier-duplicatietest gebruikt een vaste synthetische grens en blijft daardoor betrouwbaar wanneer productierefactorings duplicatie verminderen (zie issue #1811).
 - Settings restart decisions now have paired SQL Server and Postgres persistence regression tests for unchanged and changed schedules alongside another saved field (#1819).
 - Begrens JSON-requestbody's voor voorkeurstijden, teamregels, veldtrainingen en veldperiodes op maximaal 1 MiB UTF-8-bytes; ongeldige UTF-8/JSON geeft 400 en te grote bodies 413 vóór verwerking (#1811).
 - Begrens JSON-requestbody's voor de rol-featurematrix en uitgesloten e-mailadressen op maximaal 1 MiB UTF-8-bytes; ongeldige UTF-8/JSON geeft 400 en te grote bodies 413 vóór verwerking (#1811).
 - De Postgres-instellingenloader laadt nu ook de vijf bestaande e-mailinstellingen voor de mailboxverwerking en wist ze bij herladen na `NULL`, gelijk aan het gedrag van de SQL Server-tier (#1798).
+- Synchronization uses a database-wide lease while shared staging is in use. Concurrent manual requests receive `409`, timer runs skip explicitly, and queued jobs fail without a second attempt. Queue workers also claim each pending job atomically, so duplicate deliveries do not start duplicate sync work. SQL Server also rolls configured club seasons forward before choosing a timer, manual or queued sync window; existing queued offsets remain intact. A SQL Server merge error now stops reconciliation and leaves the previous successful sync timestamp unchanged; both database tiers are covered (#1818).
+- SQL Server now separates composite team business-key components with the PostgreSQL tier's existing separator, while preserving single-column formatting and already stored keys (#1818).
 - De instellingenopslag meldt alleen een herstart als de opgeslagen FetchSchedule-waarde echt verandert; SQL Server ondersteunt nu ook het opslaan en teruglezen van SportlinkDryRun (#1819)
 - Een teambegeleiding-CSV met ongeldige UTF-8-bytes wordt vóór de import geweigerd in plaats van stilzwijgend met vervangtekens in de preview te verschijnen (#1819)
 - Veldbeschikbaarheid kan niet meer naar een periodecombinatie worden bijgewerkt die al bestaat (#1819)

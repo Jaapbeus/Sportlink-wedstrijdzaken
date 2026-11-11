@@ -1,3 +1,4 @@
+using Planner.Endpoints.Http;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -30,10 +31,8 @@ namespace SportlinkFunction.Planner
         {
             var log = context.GetLogger("CheckAvailability");
             return AdminEndpoint.ExecuteAsync(req, log, "beschikbaarheid controleren",
-                async clubCode =>
+                clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<CheckAvailabilityRequest>(req, async request =>
                 {
-                    string body = await new StreamReader(req.Body).ReadToEndAsync();
-                    var request = JsonConvert.DeserializeObject<CheckAvailabilityRequest>(body);
                     if (request == null || string.IsNullOrEmpty(request.Datum))
                         return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
@@ -43,7 +42,7 @@ namespace SportlinkFunction.Planner
                     var response = await PlannerService.CheckAvailabilityAsync(request, log, clubCode);
 
                     return new OkObjectResult(response);
-                });
+                }));
         }
 
         [Function("DoordeweeksBeschikbaar")]
@@ -53,11 +52,9 @@ namespace SportlinkFunction.Planner
         {
             var log = context.GetLogger("DoordeweeksBeschikbaar");
             return AdminEndpoint.ExecuteAsync(req, log, "doordeweekse beschikbaarheid controleren",
-                async clubCode =>
+                clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<DoordeweeksBeschikbaarRequest>(req, async request =>
                 {
-                    string body = await new StreamReader(req.Body).ReadToEndAsync();
-                    var request = JsonConvert.DeserializeObject<DoordeweeksBeschikbaarRequest>(body)
-                        ?? new DoordeweeksBeschikbaarRequest();
+                    request ??= new DoordeweeksBeschikbaarRequest();
 
                     log.LogInformation("DoordeweeksBeschikbaar: dag={Dag}, duur={Duur}, cat={Cat}, club={Club}",
                         LogWaarde.Schoon(request.DagFilter), request.DuurMinuten, LogWaarde.Schoon(request.LeeftijdsCategorie), clubCode);
@@ -65,7 +62,7 @@ namespace SportlinkFunction.Planner
                     var response = await PlannerService.CheckDoordeweeksBeschikbaarAsync(request, log, clubCode);
 
                     return new OkObjectResult(response);
-                });
+                }));
         }
 
         [Function("BevestigWedstrijd")]
@@ -75,10 +72,8 @@ namespace SportlinkFunction.Planner
         {
             var log = context.GetLogger("BevestigWedstrijd");
             return AdminEndpoint.ExecuteAsync(req, log, "wedstrijd bevestigen",
-                async clubCode =>
+                clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<BevestigRequest>(req, async request =>
                 {
-                    string body = await new StreamReader(req.Body).ReadToEndAsync();
-                    var request = JsonConvert.DeserializeObject<BevestigRequest>(body);
                     if (request == null || string.IsNullOrEmpty(request.Datum) || string.IsNullOrEmpty(request.AanvangsTijd))
                         return new BadRequestObjectResult(new { error = "Request body met 'datum', 'aanvangsTijd' en 'veldNummer' is verplicht." });
 
@@ -146,7 +141,7 @@ namespace SportlinkFunction.Planner
                         veldNummer = request.VeldNummer,
                         status = "Te bevestigen"
                     });
-                });
+                }));
         }
 
         [Function("PopulateSunset")]
@@ -181,10 +176,8 @@ namespace SportlinkFunction.Planner
         {
             var log = context.GetLogger("ZoekWedstrijd");
             return AdminEndpoint.ExecuteAsync(req, log, "wedstrijd zoeken",
-                async clubCode =>
+                clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<ZoekWedstrijdRequest>(req, async request =>
                 {
-                    string body = await new StreamReader(req.Body).ReadToEndAsync();
-                    var request = JsonConvert.DeserializeObject<ZoekWedstrijdRequest>(body);
                     if (request == null || string.IsNullOrEmpty(request.TeamNaam) || string.IsNullOrEmpty(request.Datum))
                         return new BadRequestObjectResult(new { error = "Request body met 'teamNaam' en 'datum' is verplicht." });
 
@@ -199,7 +192,7 @@ namespace SportlinkFunction.Planner
                         return new OkObjectResult(new { gevonden = false, reden = $"Geen wedstrijd gevonden voor {request.TeamNaam} op {request.Datum}." });
 
                     return new OkObjectResult(new { gevonden = true, wedstrijd = match });
-                });
+                }));
         }
 
         [Function("HerplanCheck")]
@@ -209,10 +202,8 @@ namespace SportlinkFunction.Planner
         {
             var log = context.GetLogger("HerplanCheck");
             return AdminEndpoint.ExecuteAsync(req, log, "herplanmogelijkheden controleren",
-                async clubCode =>
+                clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<HerplanCheckRequest>(req, async request =>
                 {
-                    string body = await new StreamReader(req.Body).ReadToEndAsync();
-                    var request = JsonConvert.DeserializeObject<HerplanCheckRequest>(body);
                     if (request == null || request.Wedstrijdcode == 0)
                         return new BadRequestObjectResult(new { error = "Request body met 'wedstrijdcode' is verplicht." });
 
@@ -222,7 +213,7 @@ namespace SportlinkFunction.Planner
                     var response = await PlannerService.CheckRescheduleAvailabilityAsync(request, log, clubCode);
 
                     return new OkObjectResult(response);
-                });
+                }));
         }
 
         // internal zodat FunctionApp.Tests dit rechtstreeks kan afdekken (InternalsVisibleTo, #476)
@@ -281,10 +272,8 @@ namespace SportlinkFunction.Planner
         {
             var log = context.GetLogger("HerplanBevestig");
             return AdminEndpoint.ExecuteAsync(req, log, "herplanverzoek vastleggen",
-                async clubCode =>
+                clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<HerplanBevestigRequest>(req, async request =>
                 {
-                    string body = await new StreamReader(req.Body).ReadToEndAsync();
-                    var request = JsonConvert.DeserializeObject<HerplanBevestigRequest>(body);
                     if (request == null || request.Wedstrijdcode == 0 || string.IsNullOrEmpty(request.GewensteAanvangsTijd))
                         return new BadRequestObjectResult(new { error = "Request body met 'wedstrijdcode' en 'gewensteAanvangsTijd' is verplicht." });
 
@@ -323,7 +312,7 @@ namespace SportlinkFunction.Planner
                         GewenstVeldNummer = request.GewenstVeldNummer,
                         Status = "Aangevraagd"
                     });
-                });
+                }));
         }
 
         // ── Auto-plan endpoints (#380) ──
@@ -335,10 +324,8 @@ namespace SportlinkFunction.Planner
         {
             var log = context.GetLogger("AutoPlan");
             return AdminEndpoint.ExecuteAsync(req, log, "dagplanning berekenen",
-                async clubCode =>
+                clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<AutoPlanRequest>(req, async request =>
                 {
-                    string body = await new StreamReader(req.Body).ReadToEndAsync();
-                    var request = JsonConvert.DeserializeObject<AutoPlanRequest>(body);
                     if (request == null || string.IsNullOrEmpty(request.Datum))
                         return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
@@ -352,7 +339,7 @@ namespace SportlinkFunction.Planner
                             return PlannerService.AutoPlanAsync(request, clubCode, log);
                         },
                         (deel, response) => deel.VanPlan(response.Wedstrijden, clubCode), response => new OkObjectResult(response));
-                });
+                }));
         }
 
         /// <summary>
@@ -376,10 +363,8 @@ namespace SportlinkFunction.Planner
         {
             var log = context.GetLogger("AutoPlanToepassen");
             return AdminEndpoint.ExecuteAsync(req, log, "dagplanning toepassen",
-                async clubCode =>
+                clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<AutoPlanToepassenRequest>(req, async request =>
                 {
-                    string body = await new StreamReader(req.Body).ReadToEndAsync();
-                    var request = JsonConvert.DeserializeObject<AutoPlanToepassenRequest>(body);
                     if (request == null || string.IsNullOrEmpty(request.Datum))
                         return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
@@ -390,7 +375,7 @@ namespace SportlinkFunction.Planner
 
                     var response = await PlannerService.AutoPlanToepassenAsync(request, clubCode, log);
                     return new OkObjectResult(response);
-                });
+                }));
         }
 
         // Lichtgewicht "wat staat er nu gepland"-weergave (#566) — zonder FieldScheduler-berekening.

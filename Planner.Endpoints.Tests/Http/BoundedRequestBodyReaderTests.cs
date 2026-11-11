@@ -2,6 +2,7 @@ using AwesomeAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Planner.Endpoints.Http;
+using System.Text.Json;
 using System.Text;
 using Xunit;
 
@@ -9,6 +10,55 @@ namespace Planner.Endpoints.Tests.Http;
 
 public class BoundedRequestBodyReaderTests
 {
+    [Fact]
+    public void TeambegeleidingCsv_ExistingFiveMiBFileAndWorstCaseEscapingFitEnvelope()
+    {
+        var payload = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            CsvContent = new string('\0', TeambegeleidingImportRequestBodyLimits.CsvFileMaxBytes),
+            Bestandsnaam = new string('\0', TeambegeleidingImportRequestBodyLimits.AuditFilenameMaxCharacters)
+        }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        payload.Length.Should().BeLessThanOrEqualTo(TeambegeleidingImportRequestBodyLimits.MaxJsonBytes);
+    }
+
+    [Fact]
+    public async Task TeambegeleidingCsv_EnvelopeLimitRejectsBeforeEndpointAction()
+    {
+        var invoked = false;
+        var result = await BoundedRequestBodyReader.ExecuteUtf8Async(
+            Request(new CountingStream(new byte[TeambegeleidingImportRequestBodyLimits.MaxJsonBytes + 1])),
+            _ => { invoked = true; return Task.FromResult<IActionResult>(new OkResult()); },
+            TeambegeleidingImportRequestBodyLimits.MaxJsonBytes);
+
+        invoked.Should().BeFalse();
+        (result as ObjectResult)!.StatusCode.Should().Be(StatusCodes.Status413PayloadTooLarge);
+    }
+
+    [Fact]
+    public async Task TeambegeleidingCsv_ExistingFiveMiBUploadAboveDefaultLimit_ReachesAction()
+    {
+        var payload = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            CsvContent = new string('a', TeambegeleidingImportRequestBodyLimits.CsvFileMaxBytes),
+            Bestandsnaam = "import.csv"
+        }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        payload.Length.Should().BeGreaterThan(BoundedRequestBodyReader.DefaultJsonMaxBytes);
+        var calls = 0;
+
+        var result = await BoundedRequestBodyReader.ExecuteJsonAsync<Dictionary<string, string>>(
+            Request(new CountingStream(payload)), value =>
+            {
+                calls++;
+                value!["csvContent"].Length.Should().Be(TeambegeleidingImportRequestBodyLimits.CsvFileMaxBytes);
+                value["bestandsnaam"].Should().Be("import.csv");
+                return Task.FromResult<IActionResult>(new OkResult());
+            }, TeambegeleidingImportRequestBodyLimits.MaxJsonBytes);
+
+        result.Should().BeOfType<OkResult>();
+        calls.Should().Be(1);
+    }
+
     [Fact]
     public async Task ReadUtf8_ExactLimit_AcceptsBodyAcrossShortReads()
     {
@@ -217,6 +267,65 @@ public class BoundedRequestBodyReaderTests
 
         result.Should().BeOfType<OkResult>();
         calls.Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData(3, 413)]
+    [InlineData(4, 200)]
+    [InlineData(5, 200)]
+    public async Task ExecuteJson_CustomLimit_IsMeasuredBeforeParsingAndAction(int maxBytes, int status)
+    {
+        var calls = 0;
+        var result = await BoundedRequestBodyReader.ExecuteJsonAsync<JsonFixture>(
+            Request(new CountingStream(Encoding.UTF8.GetBytes("null"), maxChunkSize: 1)),
+            value =>
+            {
+                calls++;
+                value.Should().BeNull();
+                return Task.FromResult<IActionResult>(new OkResult());
+            }, maxBytes);
+
+        var actualStatus = result is ObjectResult error ? error.StatusCode : ((StatusCodeResult)result).StatusCode;
+        actualStatus.Should().Be(status);
+        calls.Should().Be(status == 200 ? 1 : 0);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("null")]
+    public async Task ExecuteJson_EmptyAndNullBodies_ReachEndpointNullValidation(string body)
+    {
+        var result = await BoundedRequestBodyReader.ExecuteJsonAsync<JsonFixture>(
+            Request(new CountingStream(Encoding.UTF8.GetBytes(body))),
+            value => Task.FromResult<IActionResult>(value is null
+                ? new BadRequestObjectResult(new { error = "required field" })
+                : new OkResult()));
+
+        result.Should().BeOfType<BadRequestObjectResult>().Which.Value.Should()
+            .BeEquivalentTo(new { error = "required field" });
+    }
+
+    [Theory]
+    [InlineData("", "Lege request body", false)]
+    [InlineData(" \t\r\n", "Lege request body", false)]
+    [InlineData("null", "endpoint null", true)]
+    [InlineData("{broken", "Request body is geen geldige UTF-8 JSON.", false)]
+    public async Task ExecuteJson_EmptyBodyPolicy_PreservesValidationBeforeParseAndNullHandling(
+        string body, string expectedError, bool expectedCall)
+    {
+        var called = false;
+        var result = await BoundedRequestBodyReader.ExecuteJsonAsync<JsonFixture>(
+            Request(new CountingStream(Encoding.UTF8.GetBytes(body))),
+            value =>
+            {
+                called = true;
+                value.Should().BeNull();
+                return Task.FromResult<IActionResult>(new BadRequestObjectResult(new { error = "endpoint null" }));
+            }, emptyBodyMessage: "Lege request body");
+
+        called.Should().Be(expectedCall);
+        result.Should().BeOfType<BadRequestObjectResult>().Which.Value.Should()
+            .BeEquivalentTo(new { error = expectedError });
     }
 
     private static HttpRequest Request(CountingStream body, long? contentLength = null)

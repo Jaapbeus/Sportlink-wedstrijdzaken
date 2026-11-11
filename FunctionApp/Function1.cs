@@ -6,6 +6,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using SportlinkFunction.Admin;
 using SportlinkFunction.Infrastructure;
+using Planner.Shared.Sync;
 using static SportlinkFunction.SystemUtilities;
 
 namespace SportlinkFunction
@@ -44,9 +45,16 @@ namespace SportlinkFunction
                 }
 
                 string sportlinkClientId = $"clientId={AppSettings.GetSetting("sportlinkClientId")}";
-                int toWeekOffset = await SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
-                log.LogInformation("Sync range: weekOffset -1 to {ToWeekOffset} (end of season)", toWeekOffset);
-                await SportlinkSyncPipeline.RunSyncAsync(-1, toWeekOffset, sportlinkApiUrl, sportlinkClientId, log);
+                await SportlinkSyncPipeline.RunSyncWithSeasonWindowAsync(async () =>
+                {
+                    int toWeekOffset = await SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
+                    log.LogInformation("Sync range: weekOffset -1 to {ToWeekOffset} (end of season)", toWeekOffset);
+                    return (-1, toWeekOffset);
+                }, sportlinkApiUrl, sportlinkClientId, log);
+            }
+            catch (SyncAlreadyRunningException)
+            {
+                log.LogInformation("Synchronization skipped because another run owns the shared staging area.");
             }
             catch (Exception ex)
             {
@@ -100,22 +108,30 @@ namespace SportlinkFunction
                         bool   isReset    = string.Equals(req.Query["reset"], "true", StringComparison.OrdinalIgnoreCase);
                         string? seasonParam = req.Query["season"];
 
-                        int toWeekOffset   = await SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
-                        int fromWeekOffset = -1;
-
-                        if (isReset && int.TryParse(seasonParam, out int seasonStartYear))
+                        var venster = (From: -1, To: 0);
+                        await SportlinkSyncPipeline.RunSyncWithSeasonWindowAsync(async () =>
                         {
-                            fromWeekOffset = await SeasonHelper.GetSeasonStartWeekOffsetAsync(seasonStartYear, log);
-                            log.LogInformation("Reset mode: season {Year}, weekOffset {From} to {To}",
-                                seasonStartYear, fromWeekOffset, toWeekOffset);
-                        }
-                        else
-                        {
-                            log.LogInformation("Default mode: weekOffset {From} to {To}", fromWeekOffset, toWeekOffset);
-                        }
-
-                        await SportlinkSyncPipeline.RunSyncAsync(fromWeekOffset, toWeekOffset, sportlinkApiUrl, sportlinkClientId, log);
-                        return new OkObjectResult($"Sync completed. WeekOffset range: {fromWeekOffset} to {toWeekOffset}.");
+                            int toWeekOffset = await SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
+                            int fromWeekOffset = -1;
+                            if (isReset && int.TryParse(seasonParam, out int seasonStartYear))
+                            {
+                                fromWeekOffset = await SeasonHelper.GetSeasonStartWeekOffsetAsync(seasonStartYear, log);
+                                log.LogInformation("Reset mode: season {Year}, weekOffset {From} to {To}",
+                                    seasonStartYear, fromWeekOffset, toWeekOffset);
+                            }
+                            else
+                            {
+                                log.LogInformation("Default mode: weekOffset {From} to {To}", fromWeekOffset, toWeekOffset);
+                            }
+                            venster = (fromWeekOffset, toWeekOffset);
+                            return venster;
+                        }, sportlinkApiUrl, sportlinkClientId, log);
+                        return new OkObjectResult($"Sync completed. WeekOffset range: {venster.From} to {venster.To}.");
+                    }
+                    catch (SyncAlreadyRunningException)
+                    {
+                        return new ObjectResult(new { status = "already running", message = SyncAlreadyRunningException.SafeMessage })
+                        { StatusCode = StatusCodes.Status409Conflict };
                     }
                     catch (Exception ex)
                     {

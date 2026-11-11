@@ -6,6 +6,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using FunctionApp.Postgres.Admin;
 using FunctionApp.Postgres.Infrastructure;
+using Planner.Shared.Sync;
 
 namespace FunctionApp.Postgres.Sync;
 
@@ -50,6 +51,10 @@ public static class SyncFunction
                 throw new InvalidOperationException(
                     "Synchronisatie gedeeltelijk mislukt — zie de voorgaande logregels voor de " +
                     "betrokken fase(s). lastsynctimestamp is bewust niet bijgewerkt.");
+        }
+        catch (SyncAlreadyRunningException)
+        {
+            log.LogInformation("Synchronization skipped because another run owns the shared staging area.");
         }
         catch (Exception ex)
         {
@@ -136,6 +141,11 @@ public static class SyncFunction
                         { StatusCode = StatusCodes.Status207MultiStatus };
                     }
                     return new OkObjectResult($"Sync voltooid. WeekOffset-bereik: {fromWeekOffset} tot {toWeekOffset}.");
+                }
+                catch (SyncAlreadyRunningException)
+                {
+                    return new ObjectResult(new { status = "already running", message = SyncAlreadyRunningException.SafeMessage })
+                    { StatusCode = StatusCodes.Status409Conflict };
                 }
                 catch (Exception ex)
                 {
