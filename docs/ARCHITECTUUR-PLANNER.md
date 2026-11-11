@@ -317,10 +317,10 @@ ALLSTARS-rijen zijn altijd expliciet gestempeld en lekken dus nooit mee.
 | datum | Ja | Gewenste datum (ISO format) |
 | aanvangsTijd | Nee | Gewenste aanvangstijd ("HH:mm"), null = zoek beste slot |
 | dagdeel | Nee | "ochtend" (08:30-12:00), "middag" (12:00-17:00) of "avond" (17:00-22:00) — beperkt vensters en alternatieven tot dat dagdeel; de grenzen staan in `Planner.Shared/DagdeelVenster.cs` (#1587). De response meldt het toegepaste dagdeel in `gecontroleerdDagdeel` |
-| leeftijdsCategorie | Nee | Bepaalt duur + veldfractie. Zonder: retourneert beschikbare vensters |
+| leeftijdsCategorie | Nee | Bepaalt de standaardduur en veldfractie. Zonder leeftijdscategorie is een positieve `wedstrijdDuurMinuten` vereist; zonder bekende positieve duur stopt de controle met een reden en zoekt zij geen slot of venster |
 | teamNaam | Nee | Voor team-conflictcheck en team-specifieke regels |
 | tegenstander | Nee | Administratief |
-| wedstrijdDuurMinuten | Nee | Overschrijft standaardduur uit Speeltijden |
+| wedstrijdDuurMinuten | Nee | Positieve duur die de standaardduur uit Speeltijden overschrijft |
 
 #### Response Mode 1 — Met leeftijdsCategorie (specifieke toewijzing)
 

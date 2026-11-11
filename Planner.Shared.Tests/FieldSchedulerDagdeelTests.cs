@@ -194,6 +194,15 @@ public class FieldSchedulerDagdeelTests
         slots.Should().NotContain(s => s.AanvangsTijd < new TimeOnly(10, 30) && s.EindTijd > new TimeOnly(9, 0));
     }
 
+    [Fact]
+    public void FindAllSlots_DuurNul_GeeftGeenKandidaten()
+    {
+        var slots = PlannerShared.FindAllSlots(Velden(), [], VeldInfos(), GeenTeamRegels, new(),
+            1.00m, 0, OchtendVan, OchtendTot, sunset: null, eindBinnenDagdeel: true);
+
+        slots.Should().BeEmpty("een nulminutenwedstrijd mag nooit als concreet slot worden voorgesteld");
+    }
+
     [Theory]
     [InlineData("middag", "12:00", "17:00")]
     [InlineData("avond", "17:00", "22:00")]
