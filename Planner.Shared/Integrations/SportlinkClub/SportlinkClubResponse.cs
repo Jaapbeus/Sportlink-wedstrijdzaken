@@ -21,6 +21,9 @@ public enum SportlinkClubCallStatus
     /// </summary>
     HerkoppelingVereist,
 
+    /// <summary>De lokale gedeelde automatische-loginlease was bezet; er is geen Sportlink-aanroep gedaan.</summary>
+    LokaleLeaseBezet,
+
     /// <summary>
     /// Sportlink-fout (niet-2xx HTTP status, JSON-deserialisatiefout, timeout, etc.).
     /// </summary>

@@ -1,16 +1,19 @@
-namespace FunctionApp.Postgres.Planner;
+using Planner.Shared;
+using Planner.Shared.Deel;
+using Planner.Shared.Email;
 
-/// <summary>
-/// Antwoordmodellen voor <c>GET /api/planner/team-schedule</c> — Postgres-tier-tegenhanger van de
-/// gelijknamige typen in <c>FunctionApp/Planner/PlannerModels.cs</c> (#888).
-/// <para>
-/// Bewuste duplicatie, geen verwijzing naar de andere boom: de twee tiers zijn volledig gescheiden
-/// implementatiebomen (ARCHITECTUUR-DATABASE-TIERS.md §2). Het gaat hier bovendien om pure
-/// DTO's zonder gedrag — er zit geen logica in die uit de pas kan gaan lopen zonder dat een
-/// assertie dat merkt. De veldnamen zijn letterlijk gelijk gehouden zodat de JSON die de Admin GUI
-/// binnenkrijgt op beide tiers identiek is.
-/// </para>
-/// </summary>
+// Gedeelde bron voor de planner-wire-DTO's (#1856): één bestand, door beide databasetiers
+// link-gecompileerd (zie docs/ARCHITECTUUR-CODEKWALITEIT.md, regel 2b). Wijzig je iets hier, dan
+// wijzigt het op SQL Server én Postgres tegelijk; de naamruimte per tier blijft die van de tier.
+// Endpoints: team-schedule.
+#if PLANNER_DTO_POSTGRES
+namespace FunctionApp.Postgres.Planner;
+#else
+namespace SportlinkFunction.Planner;
+#endif
+
+// ── Team schedule modellen (#70) ──
+
 public class TeamScheduleWedstrijd
 {
     public string Datum { get; set; } = string.Empty;
@@ -22,7 +25,6 @@ public class TeamScheduleWedstrijd
     public long? Wedstrijdcode { get; set; }
 }
 
-/// <inheritdoc cref="TeamScheduleWedstrijd"/>
 public class TeamScheduleZaterdag
 {
     public string Datum { get; set; } = string.Empty;
@@ -30,7 +32,6 @@ public class TeamScheduleZaterdag
     public TeamScheduleWedstrijd? BezetDoor { get; set; }
 }
 
-/// <inheritdoc cref="TeamScheduleWedstrijd"/>
 public class TeamScheduleResponse
 {
     public string Team { get; set; } = string.Empty;

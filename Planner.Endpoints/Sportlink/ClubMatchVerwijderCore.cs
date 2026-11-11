@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Planner.Shared.Integrations.SportlinkClub;
 
@@ -51,7 +52,8 @@ public static class ClubMatchVerwijderCore
         Func<IActionResult?> controleerToggleEnEgress,
         Func<(ISportlinkClubClient? Client, IActionResult? Fout)> clientOfFout,
         string rolNaam,
-        VerwijderAudit? audit)
+        VerwijderAudit? audit,
+        ILogger? log = null)
     {
         if (!IsGeldigPublicMatchId(publicMatchId))
             return new BadRequestObjectResult(new { error = "Ongeldig PublicMatchId." });
@@ -82,7 +84,8 @@ public static class ClubMatchVerwijderCore
         var resultaat = await client.DeleteClubMatchAsync(rolNaam, publicMatchId!);
         return await SportlinkEndpointSupportCore.RondMutatieAfAsync(
             resultaat, voltooiAudit, r => r,
-            r => new OkObjectResult(new ClubMatchVerwijderResultaat(r.IsSuccess, r.Violations, r.IsDryRun, r.IsForcedDryRun, publicMatchId!)));
+            r => new OkObjectResult(new ClubMatchVerwijderResultaat(r.IsSuccess, r.Violations, r.IsDryRun, r.IsForcedDryRun, publicMatchId!)),
+            log);
     }
 
     /// <summary>

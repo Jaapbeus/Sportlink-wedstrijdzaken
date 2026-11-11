@@ -100,7 +100,8 @@ public static class SportlinkClubMatchFunction
                 var mutationResult = await sportlinkClient!.CreateClubMatchAsync(RolNaam, aanvraag!);
                 return await SportlinkEndpointSupport.RondMutatieAfAsync(
                     mutationResult, auditService, auditId, r => r,
-                    r => new OkObjectResult(Resultaat(r, aanvraag!, gegevens!.VeldNaam, waarschuwingen)));
+                    r => new OkObjectResult(Resultaat(r, aanvraag!, gegevens!.VeldNaam, waarschuwingen)),
+                    context.GetLogger("SqlSportlinkClubMatch"));
             });
 
     /// <summary>
@@ -119,7 +120,8 @@ public static class SportlinkClubMatchFunction
                 publicMatchId, SportlinkEndpointSupport.ControleerToggleEnEgress, () => SportlinkEndpointSupport.ClientOfFout(context), RolNaam,
                 context.InstanceServices.GetService<ISportlinkMutationAuditService>() is { } audit
                     ? new(clubCode, EasyAuthHelper.GetAuditActor(req), e => audit.LogPogingAsync(e), (id, r, s) => audit.VoltooiAsync(id, r, s))
-                    : null));
+                    : null,
+                context.GetLogger("SqlSportlinkClubMatchDelete")));
 
     /// <summary>
     /// <c>GET /api/sportlink/club-match/dryrun-status</c> (#1427) — de actuele dry-run-stand voor de

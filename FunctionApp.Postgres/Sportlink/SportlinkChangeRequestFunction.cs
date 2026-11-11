@@ -125,7 +125,8 @@ public static class SportlinkChangeRequestFunction
                 var mutationResult = await sportlinkClient!.ActOnChangeRequestAsync(
                     RolNaam, dto.Actie, dto.PublicMatchId, publicRequestId, dto.Remarks);
                 return await SportlinkEndpointSupport.RondMutatieAfAsync(
-                    mutationResult, auditService, auditId, r => r, data => new OkObjectResult(data));
+                    mutationResult, auditService, auditId, r => r, data => new OkObjectResult(data),
+                    context.GetLogger("SportlinkChangeRequest"));
             });
 
     private sealed class ChangeRequestActieDto

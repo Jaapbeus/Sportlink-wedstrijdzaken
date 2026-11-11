@@ -1,18 +1,17 @@
+using Planner.Shared;
+using Planner.Shared.Deel;
 using Planner.Shared.Email;
 
+// Gedeelde bron voor de planner-wire-DTO's (#1856): één bestand, door beide databasetiers
+// link-gecompileerd (zie docs/ARCHITECTUUR-CODEKWALITEIT.md, regel 2b). Wijzig je iets hier, dan
+// wijzigt het op SQL Server én Postgres tegelijk; de naamruimte per tier blijft die van de tier.
+// Endpoints: bevestig, zoek-wedstrijd en herplan-bevestig.
+#if PLANNER_DTO_POSTGRES
 namespace FunctionApp.Postgres.Planner;
+#else
+namespace SportlinkFunction.Planner;
+#endif
 
-/// <summary>
-/// Wire-contract-DTO's voor <c>POST /api/planner/bevestig</c>, <c>/zoek-wedstrijd</c> en
-/// <c>/herplan-bevestig</c> — Postgres-tier-tegenhanger van de gelijknamige typen in
-/// <c>FunctionApp/Planner/PlannerModels.cs</c> (#888).
-/// <para>
-/// Bewuste duplicatie, geen verwijzing naar de andere boom — zelfde motivatie als
-/// <see cref="TeamScheduleWedstrijd"/>: twee volledig gescheiden implementatiebomen
-/// (ARCHITECTUUR-DATABASE-TIERS.md §2), en pure DTO's zonder gedrag hebben geen "one location"-eis.
-/// Veldnamen letterlijk gelijk aan het SQL Server-origineel zodat de JSON op beide tiers identiek is.
-/// </para>
-/// </summary>
 public class BevestigRequest : global::Planner.Shared.Autorisatie.IBevestigAanvragerRequest
 {
     public string Datum { get; set; } = string.Empty;
@@ -23,8 +22,11 @@ public class BevestigRequest : global::Planner.Shared.Autorisatie.IBevestigAanvr
     public string? Tegenstander { get; set; }
     public string? AangevraagdDoor { get; set; }
     public int? WedstrijdDuurMinuten { get; set; }
+    // Heel veld gevraagd — overschrijft de veldafmeting uit Speeltijden
     public bool? HeelVeld { get; set; }
 }
+
+// ── Herplan (herplannen) modellen ──
 
 public class ZoekWedstrijdRequest
 {

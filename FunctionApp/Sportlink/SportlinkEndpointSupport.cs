@@ -66,21 +66,20 @@ internal static class SportlinkEndpointSupport
     internal static Task<T?> LeesBodyAsync<T>(HttpRequest req) where T : class
         => SportlinkEndpointSupportCore.LeesBodyAsync<T>(req);
 
-    internal static string BepaalAuditResultaat(SportlinkMutationResult r)
-        => SportlinkEndpointSupportCore.BepaalAuditResultaat(r);
-
     internal static Task<IActionResult> RondMutatieAfAsync<T>(
         SportlinkClubResponse<T> mutationResult,
         ISportlinkMutationAuditService? auditService,
         long? auditId,
         Func<T, SportlinkMutationResult> naarMutatieResultaat,
-        Func<T, IActionResult> ok)
+        Func<T, IActionResult> ok,
+        ILogger? log = null)
         where T : class
         => SportlinkEndpointSupportCore.RondMutatieAfAsync(
             mutationResult,
             VoltooiAuditDelegate(auditService, auditId),
             naarMutatieResultaat,
-            ok);
+            ok,
+            log);
 
     private static Func<string, string?, Task>? VoltooiAuditDelegate(
         ISportlinkMutationAuditService? auditService, long? auditId)
