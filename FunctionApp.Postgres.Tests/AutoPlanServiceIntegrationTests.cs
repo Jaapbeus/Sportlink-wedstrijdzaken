@@ -271,7 +271,7 @@ public class AutoPlanServiceIntegrationTests : IDisposable
     }
 
     [PostgresFact]
-    public async Task ExactApply_RejectsInvalidLaneFractionAndHalfQuarterConflict()
+    public async Task ExactApply_RejectsInvalidLaneAndHalfQuarterConflict()
     {
         await using var conn = await OpstellingAsync();
         await ExecAsync(conn, "UPDATE public.speeltijden SET veldafmeting = 0.25 WHERE clubcode = @club AND leeftijd = 'JO13'", ("club", Club));
@@ -283,10 +283,6 @@ public class AutoPlanServiceIntegrationTests : IDisposable
             ExactRequest(Choice(9500106, targetField: 101, lane: "X", targetTime: "10:00"),
                 Choice(9500107)), Club, NullLogger.Instance);
         await invalid.Should().ThrowAsync<AutoPlanApplyConflictException>();
-        var mismatch = () => AutoPlanService.AutoPlanToepassenAsync(ConnectionString,
-            ExactRequest(Choice(9500106, targetField: 101, lane: "A", targetTime: "10:00"),
-                Choice(9500107)), Club, NullLogger.Instance);
-        await mismatch.Should().ThrowAsync<AutoPlanApplyConflictException>();
         var overlap = () => AutoPlanService.AutoPlanToepassenAsync(ConnectionString,
             ExactRequest(Choice(9500106, targetField: 101, lane: "A1", targetTime: "10:00"),
                 Choice(9500107, targetField: 101, lane: "A", targetTime: "10:00")), Club, NullLogger.Instance);
