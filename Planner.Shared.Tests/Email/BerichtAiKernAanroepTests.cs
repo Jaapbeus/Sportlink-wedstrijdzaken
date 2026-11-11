@@ -71,6 +71,24 @@ public class BerichtAiKernAanroepTests
         client.Berichten[3].Text.Should().Contain("[nummer]"); // correctie
     }
 
+    [Fact]
+    public async Task FewShotVoorbeeld_LangeNummerreeksenWordenGemarkeerdInProviderprompt()
+    {
+        var origineelNummer = string.Concat("123", "456789");
+        var correctieNummer = string.Concat("987", "654321");
+        var origineel = "voorbeeld " + origineelNummer;
+        var correctie = "correctie " + correctieNummer;
+        var client = new VasteClient("{}");
+        var kern = Maak(client);
+
+        await kern.ClassificeerBerichtAsync("neutrale vraag", "neutraal onderwerp", "trainer@voorbeeld.nl",
+        [new ClassificatieCorrectieVoorbeeld("buiten_scope", "herplan_verzoek", origineel, correctie)]);
+
+        var providerPrompt = client.Berichten[0].Text;
+        providerPrompt.Should().NotContain(origineelNummer).And.NotContain(correctieNummer);
+        providerPrompt.Should().Contain("voorbeeld [nummer]").And.Contain("correctie [nummer]");
+    }
+
     [Theory]
     [InlineData("14-11-26 10.30 uur")]
     [InlineData("10-10-2026 11.30")]
@@ -83,7 +101,7 @@ public class BerichtAiKernAanroepTests
     {
         var client = new VasteClient("{}");
         var kern = Maak(client);
-        var nummer = new string('0', 9); // synthetisch wedstrijdnummer, geen contactnummer
+        var nummer = new string('0', 7); // synthetisch wedstrijdnummer, geen contactnummer
         var invoer = planning + " wedstrijd " + nummer;
         await kern.ClassificeerBerichtAsync(invoer, invoer, "trainer@voorbeeld.nl",
             [new ClassificatieCorrectieVoorbeeld("buiten_scope", "herplan_verzoek", invoer, invoer)]);

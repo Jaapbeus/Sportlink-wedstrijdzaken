@@ -113,6 +113,11 @@ public static partial class AiVeldSanering
     [GeneratedRegex(@"(?<datum>\b(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})\b(?![-/.]\d))|(?<![\p{L}\p{N}])(?<nummer>\+?\(?\d(?:[().\p{Zs}\-]*\d){8,14})(?![\p{L}\p{N}])", RegexOptions.CultureInvariant)]
     private static partial Regex NummerPatroon();
 
+    // Provider summaries keep explicit planning dates and clock times, while masking every other
+    // long digit sequence, including values from persisted examples that predate current validation.
+    [GeneratedRegex(@"(?<datum>\b(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})\b(?![-/.]\d))|(?<tijd>\b(?:[01]?\d|2[0-3])[:.][0-5]\d\b)|(?<nummer>(?<![\p{L}\p{N}])\+?\d(?:[\p{Zs}.\-]?\d){8,}(?![\p{L}\p{N}]))", RegexOptions.CultureInvariant)]
+    private static partial Regex ProviderNummerPatroon();
+
     /// <summary>Maskeert contactpatronen voordat externe berichttekst naar de AI-provider gaat.</summary>
     public static string MaskeerContactgegevens(string? tekst)
     {
@@ -137,13 +142,16 @@ public static partial class AiVeldSanering
         => ZonderDubbeleAanhalingstekens(Trace.TraceBuilder.Saneer(waarde, MaxSamenvattingLengte));
 
     /// <summary>
-    /// Samenvatting uitsluitend voor providerinvoer: behoudt planningsgegevens, maskeert herkenbare
-    /// contactpatronen en hergebruikt de normalisatie en lengtekap. Opslag/trace houden de striktere
-    /// <see cref="Samenvatting"/>; reeds gemaskeerde opgeslagen inhoud wordt niet gereconstrueerd.
+    /// Samenvatting uitsluitend voor providerinvoer: behoudt expliciete datums en tijden, maskeert
+    /// lange nummerreeksen en herkenbare contactpatronen, en hergebruikt de normalisatie en lengtekap.
+    /// Opslag/trace houden de striktere <see cref="Samenvatting"/>; reeds gemaskeerde opgeslagen inhoud
+    /// wordt niet gereconstrueerd.
     /// </summary>
     public static string ProviderSamenvatting(string? waarde)
     {
-        var schoon = NormaliseerWitruimte(MaskeerContactgegevens(waarde));
+        var schoon = ProviderNummerPatroon().Replace(MaskeerContactgegevens(waarde), match =>
+            match.Groups["datum"].Success || match.Groups["tijd"].Success ? match.Value : "[nummer]");
+        schoon = NormaliseerWitruimte(schoon);
         if (schoon.Length > MaxSamenvattingLengte) schoon = schoon[..MaxSamenvattingLengte];
         return ZonderDubbeleAanhalingstekens(schoon);
     }
