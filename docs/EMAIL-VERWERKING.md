@@ -240,8 +240,18 @@ Onderdrukte antwoorden zijn zichtbaar in de Admin GUI onder **Instellingen → E
 Er wordt niets stil weggegooid: het bericht wordt normaal verwerkt en gelogd in
 `planner.EmailVerwerking` met status `GeenAntwoordNodig`.
 
-**Review-mode blijft leidend:** staat `EmailReviewMode=true`, dan gaat er nooit een mail uit —
+**Review-mode blijft leidend:** staat review-mode aan, dan gaat er nooit een mail uit —
 die check komt vóór de reply-policy.
+
+**Fail-safe standaard (#1809):** review-mode staat AAN tenzij `EmailReviewMode` exact `false` is
+(hoofdletterongevoelig; spaties aan begin/einde tellen mee als onbekende waarde). Een ontbrekende,
+lege, `0`-waarde of onbekende waarde betekent dus review-mode aan, zodat een verdwenen app-setting
+nooit onbedoeld tot automatische antwoorden leidt. Daarnaast gaat een automatisch antwoord alleen
+naar één syntactisch geldig afzenderadres dat niet als systeemadres is herkend (`AfzenderControle`);
+dit bewijst geen authenticiteit van de afzender. Afzenderidentiteit wordt niet meegestuurd naar de
+AI-provider. Herkenbare e-mail- en telefoonpatronen in onderwerp en berichttekst worden gemaskeerd;
+persoonsnamen, clubcontext en andere inhoud kunnen nog aanwezig zijn. Dit vervangt #1736 niet en #43
+blijft geblokkeerd tot eigenaaracceptatie.
 
 In review-mode wordt het voorgestelde antwoord wél opgebouwd en opgeslagen (#712). De rij in
 `planner.EmailVerwerking` krijgt status `Review`, met het voorstel in `AntwoordEmail` en
@@ -289,6 +299,25 @@ Voorbeelden die als BuitenScope worden aangemerkt:
 - Emails met discussie over meerdere teams in één bericht
 
 Emails met **meerdere datums voor hetzelfde team** zijn géén BuitenScope — die worden verwerkt als `BeschikbaarheidCheck` met een multi-datum antwoord.
+
+Bij een beschikbaarheidsvraag corrigeert de datumcontrole een modeldatum wanneer één dagnaam
+past bij een ondersteunde directe vraag, zoals “Kunnen we op zaterdag?”, “Kan jullie zaterdag?”
+of “Is zaterdag mogelijk?”, of bij een expliciet speel-/verplaatsverzoek. Alleen beschikbaarheid
+meedelen (“Wij zijn zaterdag beschikbaar”) of een andere afspraak noemen verandert de datum niet.
+Een expliciete datum in de eigen tekst die de modeldatum bevestigt, gaat vóór een losse dagnaam.
+Dit is een beperkte tekstheuristiek, geen volledige taalinterpretatie: andere formuleringen
+kunnen ongecorrigeerd blijven en dubbelzinnige zinnen vragen nog beoordeling. Bij een herplanverzoek blijft de huidige wedstrijddatum uit de
+classificatie staan; een datum in het onderwerp krijgt niet automatisch die rol. Als een enkele
+`datums`-waarde gelijk was aan `datum`, volgt die dezelfde correctie. Een meervoudige lijst blijft
+intact.
+
+De AI-adapters, gedeelde datumheuristiek en e-mailherplandeadline gebruiken de Nederlandse
+bedrijfsdatum. Dit betekent niet dat de volledige plannerketen al dezelfde klok gebruikt:
+`BerichtPipeline.Planner` bereikt op beide tiers de `AvailabilityService`, waar de grens voor
+verstreken datums en de zoekperiode nog hostlokale `DateTime.Today` gebruiken. Die bredere
+plannerklokcorrectie is expliciet uitgesteld onder issue #1803; issue #1817 is hiermee gedeeltelijk
+opgelost. Het bestaande gelezen-markeren van eigen mailboxberichten blijft behouden; duurzame
+voortgang met ongelezen eigen noodmeldingen is apart uitgesteld onder issue #1855.
 
 **Twee wegen naar dit label, met verschillend gevolg voor de database:**
 
@@ -909,7 +938,7 @@ naar de coach. Is er geen coach gevonden in `avg.Teambegeleiding`, dan gebeurt d
 | Veld | Waarde |
 |---|---|
 | **Aan** | De coach/teamleider uit `avg.Teambegeleiding` |
-| **Reply-To** | De oorspronkelijke afzender — zodat de coach rechtstreeks kan antwoorden |
+| **Reply-To** | De oorspronkelijke afzender als het één geschikt adres is; anders ontbreekt Reply-To en vraagt de berichttekst om handmatige controle van het contactkanaal |
 | **BCC** | De **veldplanner** (`plannerEmailAdres` in `dbo.AppSettings`) als AVG-audit-kopie |
 | **Onderwerp** | `[{team}] vraag van {afzenderNaam}` |
 
@@ -1378,11 +1407,11 @@ plannergegevens en gesaneerde modelvelden (`AiVeldSanering`).
 
 | Gegeven | Aanroepen | Persoonsgegeven | Bewerking vóór verzending |
 |---|---|---|---|
-| E-mailadres van de afzender (het `From`-adres; niet de weergavenaam) | 1, 2, 4 | Ja | Geen; markernaam geneutraliseerd |
-| Onderwerp | 1, 2, 3, 4 | Kan (vrije tekst) | Geen; markernaam geneutraliseerd |
-| Berichttekst | 1, 2, 3, 4 | Kan (vrije tekst: namen, contactgegevens, toevallig een gezondheidsgegeven, mogelijk over minderjarigen) | Mailboxberichten (1, 2, 3): HTML verwijderd (`EmailSanitizer.StripHtml`, in `EmailGraphService`). Alle aanroepen: begrensd op `BerichtBodyBegrenzing.MaxBodyTekens` tekens en markernaam geneutraliseerd. Tester (4): de ingevoerde tekst gaat zonder HTML-verwijdering naar de classificatie |
+| E-mailadres van de afzender (het `From`-adres; niet de weergavenaam) | — | Ja | Niet opgenomen in de providerprompt |
+| Onderwerp | 1, 2, 3, 4 | Kan (vrije tekst) | Herkenbare e-mail- en telefoonpatronen gemaskeerd; markernaam geneutraliseerd |
+| Berichttekst | 1, 2, 3, 4 | Kan (vrije tekst: namen, contactgegevens, toevallig een gezondheidsgegeven, mogelijk over minderjarigen) | Mailboxberichten (1, 2, 3): HTML verwijderd (`EmailSanitizer.StripHtml`, in `EmailGraphService`). Alle aanroepen: begrensd op `BerichtBodyBegrenzing.MaxBodyTekens` tekens, herkenbare e-mail- en telefoonpatronen gemaskeerd en markernaam geneutraliseerd. Tester (4): de ingevoerde tekst gaat zonder HTML-verwijdering naar de classificatie |
 | Clubnaam (instelling `clubName`) en datum van vandaag, in de system prompt | 1, 2, 4 | Nee | — |
-| Leermomenten: verzoektypes en samenvattingen | 2, 4 | Kan (samenvatting) | Samenvatting door `AiVeldSanering.Samenvatting` (`TraceBuilder.Saneer`: e-mailadressen en nummerreeksen gemaskeerd, begrensd) |
+| Leermomenten: verzoektypes en samenvattingen | 2, 4 | Kan (samenvatting) | Opslag blijft strikt gesaneerd met `AiVeldSanering.Samenvatting`. De twee invoersamenvattingen van `FewShotRegel` gebruiken `ProviderSamenvatting`: besturingstekens en witruimte worden eerst genormaliseerd; na e-mailmaskering worden volledige lange nummerkandidaten (ook ingebed in tekst) beoordeeld vóór de herkenbare contactpatronen, zodat een eerdere deelmaskering geen restcijfers achterlaat. Alleen volledige, geldige datum-/tijdreeksen blijven behouden. Aanhalingstekens worden genormaliseerd en elke samenvatting is begrensd op 500 tekens. Reeds gemaskeerde opgeslagen gegevens kunnen niet worden hersteld |
 | Oorspronkelijk verzoektype en samenvatting van het beantwoorde bericht | 3 | Kan (samenvatting) | Samenvatting is bij opslag al door `AiVeldSanering.Samenvatting` gegaan |
 
 Toelichting bij de bewerkingen:
@@ -1392,14 +1421,19 @@ Toelichting bij de bewerkingen:
   (`EmailBatchFilterService`; zie het stroomschema hierboven). De weergavenaam van de afzender, de
   internetheaders en bijlagen gaan niet mee.
 * **Berichttekst.** De volledige tekst zoals de mailbox hem levert, dus ook een handtekening of
-  geciteerde eerdere berichten als die in de mail staan, tot de begrenzing. Wordt er ingekort, dan
-  komt er een markering achter en een logregel met alleen lengtes.
+  geciteerde eerdere berichten als die in de mail staan, tot de begrenzing. De contactherkenning
+  verwerkt maximaal de eerste 8.000 tekens. Bij afkappen vervalt een overlappend niet-witruimtetoken
+  of mogelijk telefoonfragment, inclusief voorafgaande cijfergroepen met spaties; dit kan ook gewone
+  tekst aan de grens laten vervallen. Zo hoeft de rest van een onbegrensd lang bericht niet door de
+  contactregexes. Na maskering geldt opnieuw de lengtegrens, zonder halve maskeringen of
+  surrogaatparen. Wordt er ingekort, dan blijft de markering achter de tekst staan, ook als maskering
+  of het weglaten van het grensfragment de tekst verkort. De logregel bevat alleen lengtes.
 * **Markers.** Afzender, onderwerp en tekst staan in een datablok met per aanroep willekeurige markers;
   de vaste markernaam wordt uit de tekst gehaald. Dat is een maatregel tegen prompt-injectie, geen
   privacymaatregel.
-* **Persoonsgegevens in de invoer worden niet gemaskeerd.** Onderwerp en berichttekst gaan, op de
-  bewerkingen hierboven na, ongewijzigd mee. De saneringen in deze module werken op wat de provider
-  teruggeeft en wat de applicatie bewaart of toont: `AiVeldSanering` (vrije modelvelden vóór gebruik in
+* **Overige persoonsgegevens kunnen in de invoer blijven.** Na het maskeren van contactpatronen gaan
+  onderwerp en berichttekst, op de bewerkingen hierboven na, ongewijzigd mee. Uitvoer wordt apart
+  gesaneerd voor opslag of weergave: `AiVeldSanering` (vrije modelvelden vóór gebruik in
   een antwoord), `ModelDatum.Grens` (alle datumvelden van de classificatie, strikt `jjjj-MM-dd`, eenmalig
   vóór trace en verwerking, #1730), `TraceBuilder.Saneer` (samenvattingen, leermomenten, trace) en `AvgMaskering`
   (afzender- en ontvangeradres in het e-maillog van de beheerinterface).
