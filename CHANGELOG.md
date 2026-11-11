@@ -18,6 +18,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- Veld optimalisatie past de getoonde planning exact toe; onbekende teams zonder betrouwbare speelduur blokkeren de overige geldige wijzigingen niet (#1802).
 - De clubkiezer, startpoort en initialisatie van de hoofdindeling staan nu in het aangrenzende partial-bestand; gedrag blijft gelijk (zie issue #1807).
 
 ### Changed

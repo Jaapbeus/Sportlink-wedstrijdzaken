@@ -221,7 +221,7 @@ public partial class Wedstrijden : ClubSelectorPageBase
             !velden.Success ? $"Velden ophalen mislukt: {velden.ErrorMessage}" : null,
             !speeltijden.Success ? $"Speeltijden ophalen mislukt: {speeltijden.ErrorMessage}" : null,
         }.Where(f => f != null);
-        _error = string.Join(" ", fouten);
+        _error = fouten.Any() ? string.Join(" ", fouten) : null;
 
         _loading = false;
     }

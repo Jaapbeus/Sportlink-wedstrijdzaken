@@ -12089,7 +12089,7 @@
         ],
         "operationId": "autoPlanToepassen",
         "summary": "Automatisch plan toepassen",
-        "description": "Schrijft uitsluitend ALLSTARS-demowedstrijden in `his.matches` bij. Met\n`toewijzingen` valideert de server alle getoonde rijen, bronposities en\nexacte doelbanen tegen verse clubdata binnen dezelfde transactie als de\nupdates. Conflicten rollen de hele toepassing terug. Zonder deze lijst\nblijft het expliciete legacygedrag van herberekenen beschikbaar.\n\n**Let op:** alleen beschikbaar als de club-code `ALLSTARS` is (testmodus).\nProductie-clubs ontvangen HTTP 403.\n",
+        "description": "Schrijft uitsluitend ALLSTARS-demowedstrijden in `his.matches` bij. Met\n`toewijzingen` valideert de server alle getoonde rijen, bronposities en\nexacte doelbanen tegen verse clubdata binnen dezelfde transactie als de\nupdates. Conflicten rollen de hele toepassing terug. Zonder deze lijst\nblijft het expliciete legacygedrag van herberekenen beschikbaar.\n\nEen previewrij met een onbekend team en zonder betrouwbare speelduur wordt\nniet meegeschreven en telt niet mee als veldbezetting bij deze controle;\nandere geldige toewijzingen worden wel gecontroleerd.\n\n**Let op:** alleen beschikbaar als de club-code `ALLSTARS` is (testmodus).\nProductie-clubs ontvangen HTTP 403.\n",
         "security": [
           {
             "easyAuth": []

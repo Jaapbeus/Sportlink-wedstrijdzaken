@@ -8724,6 +8724,10 @@ paths:
         updates. Conflicten rollen de hele toepassing terug. Zonder deze lijst
         blijft het expliciete legacygedrag van herberekenen beschikbaar.
 
+        Een previewrij met een onbekend team en zonder betrouwbare speelduur wordt
+        niet meegeschreven en telt niet mee als veldbezetting bij deze controle;
+        andere geldige toewijzingen worden wel gecontroleerd.
+
         **Let op:** alleen beschikbaar als de club-code `ALLSTARS` is (testmodus).
         Productie-clubs ontvangen HTTP 403.
       security:

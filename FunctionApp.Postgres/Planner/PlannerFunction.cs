@@ -6,6 +6,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Planner.Endpoints.Deel;
+using Planner.Endpoints.AutoPlan;
 using Planner.Shared;
 using Planner.Shared.Planning;
 using Planner.Endpoints.Autorisatie;
@@ -473,24 +474,10 @@ public static class PlannerFunction
                 var clubCode = PostgresClubScope.Resolve(rawClubCode);
                 log.LogInformation("AutoPlanToepassen: datum={Datum}, club={Club}", LogWaarde.Schoon(request.Datum), clubCode);
 
-                try
-                {
-                    var response = await AutoPlanService.AutoPlanToepassenAsync(
-                        PostgresDatabaseConfig.ConnectionString, request, clubCode, log);
-
-                    return new OkObjectResult(response);
-                }
-                catch (InvalidOperationException ex)
-                {
-                    // "Toepassen is alleen beschikbaar in testmodus (ALLSTARS)" — een bewuste weigering,
-                    // geen technische storing: 400, niet 500 (de wrapper zou er 500 van maken).
-                    log.LogWarning("AutoPlanToepassen geweigerd: {Reden}", ex.Message);
-                    return new BadRequestObjectResult(new { error = ex.Message });
-                }
-                catch (AutoPlanApplyConflictException ex)
-                {
-                    return new ObjectResult(new { error = ex.Message }) { StatusCode = 409 };
-                }
+                return await AutoPlanToepassenEndpointCore.VerwerkAsync(
+                    () => AutoPlanService.AutoPlanToepassenAsync(
+                        PostgresDatabaseConfig.ConnectionString, request, clubCode, log),
+                    log, invalidOperationIsBadRequest: true);
             });
     }
 }

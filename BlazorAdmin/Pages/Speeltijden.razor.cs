@@ -19,7 +19,11 @@ public partial class Speeltijden : ClubSelectorPageBase
         await LaadAsync();
     }
 
-    protected override Task OnClubChangedAsync() => LaadAsync();
+    protected override Task OnClubChangedAsync()
+    {
+        _deleteConfirmation.Annuleer();
+        return LaadAsync();
+    }
 
     private async Task LaadAsync()
     {

@@ -327,7 +327,7 @@ internal static class AutoPlanService
         string connectionString, AutoPlanToepassenRequest request, string clubCode, ILogger log)
     {
         if (!clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Toepassen is alleen beschikbaar in testmodus (ALLSTARS).");
+            throw new AutoPlanApplyForbiddenException();
 
         if (request.Toewijzingen != null)
             return await ApplyExactAsync(connectionString, request);
@@ -370,31 +370,34 @@ internal static class AutoPlanService
         await using var conn = new NpgsqlConnection(connectionString);
         await conn.OpenAsync();
         await using var transaction = await conn.BeginTransactionAsync(IsolationLevel.Serializable);
-        var sources = await AllstarsTestDataRepository.GetAllMatchesForDatumAsync(conn, transaction, datum, "ALLSTARS");
-        var velden = await AllstarsTestDataRepository.GetAllstarsVeldenAsync(conn, transaction);
-        var speeltijden = await PlannerSettingsRepository.GetSpeeltijdenLookupAsync(conn, transaction, "ALLSTARS");
-        if (speeltijden.Count == 0)
+        try
         {
-            var primary = PostgresAppSettings.GetSetting("clubCode")
-                ?? throw new AutoPlanApplyConflictException();
-            speeltijden = await PlannerSettingsRepository.GetSpeeltijdenLookupAsync(conn, transaction, primary);
+            var sources = await AllstarsTestDataRepository.GetAllMatchesForDatumAsync(conn, transaction, datum, "ALLSTARS");
+            var velden = await AllstarsTestDataRepository.GetAllstarsVeldenAsync(conn, transaction);
+            var speeltijden = await PlannerSettingsRepository.GetSpeeltijdenLookupAsync(conn, transaction, "ALLSTARS");
+            if (speeltijden.Count == 0)
+            {
+                var primary = PostgresAppSettings.GetSetting("clubCode")
+                    ?? throw new AutoPlanApplyConflictException();
+                speeltijden = await PlannerSettingsRepository.GetSpeeltijdenLookupAsync(conn, transaction, primary);
+            }
+            var buffers = await TeamRulesRepository.GetAllTeamBuffersAsync(conn, transaction, "ALLSTARS");
+            var choices = request.Toewijzingen!.Select(c => new AutoPlanApplyChoice(
+                c.WedstrijdCode, c.HuidigeVeld, c.HuidigeTijd, c.VeldNummer, c.VeldSubpositie, c.Tijd)).ToList();
+            var sourceRows = sources.Select(s => new AutoPlanApplySource(s.WedstrijdCode, s.Veld,
+                s.AanvangsTijd, s.TeamNaam, s.LeeftijdsCategorie, s.SportlinkSpeelduur)).ToList();
+            var writes = AutoPlanExactApply.Validate(choices, sourceRows, velden, speeltijden,
+                buffers, request.BufferMinuten ?? PlannerShared.StandardBufferMinutes);
+            var updated = await AutoPlanExactApply.PersistAsync(writes,
+                write => AllstarsTestDataRepository.UpdateAllstarsMatchAsync(conn, transaction,
+                    write.WedstrijdCode, write.VerwachtVeld, write.VerwachteTijd, write.Veld, write.Tijd),
+                () => transaction.CommitAsync());
+            return new AutoPlanToepassenResponse { Bijgewerkt = updated };
         }
-        var buffers = await TeamRulesRepository.GetAllTeamBuffersAsync(conn, transaction, "ALLSTARS");
-        var choices = request.Toewijzingen!.Select(c => new AutoPlanApplyChoice(
-            c.WedstrijdCode, c.HuidigeVeld, c.HuidigeTijd, c.VeldNummer, c.VeldSubpositie, c.Tijd)).ToList();
-        var sourceRows = sources.Select(s => new AutoPlanApplySource(s.WedstrijdCode, s.Veld,
-            s.AanvangsTijd, s.TeamNaam, s.LeeftijdsCategorie, s.SportlinkSpeelduur)).ToList();
-        var writes = AutoPlanExactApply.Validate(choices, sourceRows, velden, speeltijden,
-            buffers, request.BufferMinuten ?? PlannerShared.StandardBufferMinutes);
-
-        foreach (var write in writes)
+        catch (PostgresException ex) when (AutoPlanApplyConflictException.IsTransactionConflict(ex.SqlState, null))
         {
-            var changed = await AllstarsTestDataRepository.UpdateAllstarsMatchAsync(conn, transaction,
-                write.WedstrijdCode, write.VerwachtVeld, write.VerwachteTijd, write.Veld, write.Tijd);
-            if (changed != 1) throw new AutoPlanApplyConflictException();
+            throw new AutoPlanApplyConflictException();
         }
-        await transaction.CommitAsync();
-        return new AutoPlanToepassenResponse { Bijgewerkt = writes.Count };
     }
 
     /// <summary>

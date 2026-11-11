@@ -55,6 +55,41 @@ public class AutoPlanExactApplyIntegrationTests
     }
 
     [SqlServerFact]
+    public async Task ExactApply_UnknownUnassignedRowDoesNotBlockValidAssignment()
+    {
+        await SetupAsync();
+        await AddMatchAsync(9802010, "ALLSTARS JO99-1", "Kunstgras 1 A1", "10:00");
+        await AddMatchAsync(9802011, "ALLSTARS JO13-1");
+        try
+        {
+            var response = await ApplyAsync(
+                Choice(9802010, oldField: "Kunstgras 1 A1", oldTime: "10:00"),
+                Choice(9802011, field: 101, lane: "B1", time: "10:00"));
+
+            response.Bijgewerkt.Should().Be(1);
+            (await FieldAsync(9802010)).Should().Be("Kunstgras 1 A1");
+            (await FieldAsync(9802011)).Should().Be("Kunstgras 1 B1");
+        }
+        finally { await CleanupAsync(); }
+    }
+
+    [SqlServerFact]
+    public async Task ExactApply_TargetLaneFractionOverridesTeamDefault()
+    {
+        await SetupAsync();
+        await AddMatchAsync(9802012, "ALLSTARS JO13-1", "Kunstgras 1 A1", "09:00");
+        try
+        {
+            var response = await ApplyAsync(Choice(9802012, field: 101, lane: "A", time: "10:00",
+                oldField: "Kunstgras 1 A1", oldTime: "09:00"));
+
+            response.Bijgewerkt.Should().Be(1);
+            (await FieldAsync(9802012)).Should().Be("Kunstgras 1 A");
+        }
+        finally { await CleanupAsync(); }
+    }
+
+    [SqlServerFact]
     public async Task StaleLaneDuplicateCrossClubAndInvalidFractionRejectWithoutWrites()
     {
         await SetupAsync();

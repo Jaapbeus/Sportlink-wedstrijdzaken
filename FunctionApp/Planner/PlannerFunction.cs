@@ -11,6 +11,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Planner.Endpoints.Deel;
+using Planner.Endpoints.AutoPlan;
 using Newtonsoft.Json;
 using Planner.Shared;
 using Planner.Shared.Planning;
@@ -420,15 +421,8 @@ namespace SportlinkFunction.Planner
 
                     log.LogInformation("AutoPlanToepassen: datum={Datum}, club={Club}", LogWaarde.Schoon(request.Datum), clubCode);
 
-                    try
-                    {
-                        var response = await PlannerService.AutoPlanToepassenAsync(request, clubCode, log);
-                        return new OkObjectResult(response);
-                    }
-                    catch (AutoPlanApplyConflictException)
-                    {
-                        return new ConflictObjectResult(new { error = AutoPlanApplyConflictException.SafeMessage });
-                    }
+                    return await AutoPlanToepassenEndpointCore.VerwerkAsync(
+                        () => PlannerService.AutoPlanToepassenAsync(request, clubCode, log), log);
                 });
         }
 

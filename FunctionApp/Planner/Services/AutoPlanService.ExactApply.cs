@@ -16,26 +16,29 @@ internal static partial class AutoPlanService
         using var conn = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
         await conn.OpenAsync();
         using var transaction = conn.BeginTransaction(IsolationLevel.Serializable);
-        var sources = await AllstarsTestDataRepository.GetAllMatchesForDatumAsync(conn, transaction, datum, AllstarsClubCode);
-        var velden = await AllstarsTestDataRepository.GetAllstarsVeldenAsync(conn, transaction);
-        var speeltijden = await PlannerSettingsRepository.GetSpeeltijdenLookupAsync(conn, transaction, AllstarsClubCode);
-        if (speeltijden.Count == 0)
-            speeltijden = await PlannerSettingsRepository.GetSpeeltijdenLookupAsync(conn, transaction);
-        var buffers = await TeamRulesRepository.GetAllTeamBuffersAsync(conn, transaction, AllstarsClubCode);
-        var choices = request.Toewijzingen!.Select(c => new AutoPlanApplyChoice(
-            c.WedstrijdCode, c.HuidigeVeld, c.HuidigeTijd, c.VeldNummer, c.VeldSubpositie, c.Tijd)).ToList();
-        var sourceRows = sources.Select(s => new AutoPlanApplySource(s.WedstrijdCode, s.Veld,
-            s.AanvangsTijd, s.TeamNaam, s.LeeftijdsCategorie, s.SportlinkSpeelduur)).ToList();
-        var writes = AutoPlanExactApply.Validate(choices, sourceRows, velden, speeltijden,
-            buffers, request.BufferMinuten ?? PlannerShared.StandardBufferMinutes);
-
-        foreach (var write in writes)
+        try
         {
-            var changed = await AllstarsTestDataRepository.UpdateAllstarsMatchAsync(conn, transaction,
-                write.WedstrijdCode, write.VerwachtVeld, write.VerwachteTijd, write.Veld, write.Tijd);
-            if (changed != 1) throw new AutoPlanApplyConflictException();
+            var sources = await AllstarsTestDataRepository.GetAllMatchesForDatumAsync(conn, transaction, datum, AllstarsClubCode);
+            var velden = await AllstarsTestDataRepository.GetAllstarsVeldenAsync(conn, transaction);
+            var speeltijden = await PlannerSettingsRepository.GetSpeeltijdenLookupAsync(conn, transaction, AllstarsClubCode);
+            if (speeltijden.Count == 0)
+                speeltijden = await PlannerSettingsRepository.GetSpeeltijdenLookupAsync(conn, transaction);
+            var buffers = await TeamRulesRepository.GetAllTeamBuffersAsync(conn, transaction, AllstarsClubCode);
+            var choices = request.Toewijzingen!.Select(c => new AutoPlanApplyChoice(
+                c.WedstrijdCode, c.HuidigeVeld, c.HuidigeTijd, c.VeldNummer, c.VeldSubpositie, c.Tijd)).ToList();
+            var sourceRows = sources.Select(s => new AutoPlanApplySource(s.WedstrijdCode, s.Veld,
+                s.AanvangsTijd, s.TeamNaam, s.LeeftijdsCategorie, s.SportlinkSpeelduur)).ToList();
+            var writes = AutoPlanExactApply.Validate(choices, sourceRows, velden, speeltijden,
+                buffers, request.BufferMinuten ?? PlannerShared.StandardBufferMinutes);
+            var updated = await AutoPlanExactApply.PersistAsync(writes,
+                write => AllstarsTestDataRepository.UpdateAllstarsMatchAsync(conn, transaction,
+                    write.WedstrijdCode, write.VerwachtVeld, write.VerwachteTijd, write.Veld, write.Tijd),
+                () => transaction.CommitAsync());
+            return new AutoPlanToepassenResponse { Bijgewerkt = updated };
         }
-        await transaction.CommitAsync();
-        return new AutoPlanToepassenResponse { Bijgewerkt = writes.Count };
+        catch (SqlException ex) when (AutoPlanApplyConflictException.IsTransactionConflict(null, ex.Number))
+        {
+            throw new AutoPlanApplyConflictException();
+        }
     }
 }

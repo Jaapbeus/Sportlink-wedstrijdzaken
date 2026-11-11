@@ -33,6 +33,112 @@ public class AutoPlanExactApplyTests
         writes[0].Tijd.Should().Be("10:00");
     }
 
+    [Fact]
+    public void SportlinkDurationAndFullFieldTargetWorkWithoutAgeSettings()
+    {
+        var source = new AutoPlanApplySource(1, null, null, "ALLSTARS onbekend", null, 90);
+        var choice = Choice(lane: null);
+
+        var write = AutoPlanExactApply.Validate([choice], [source], Fields,
+            new Dictionary<string, Speeltijd>(StringComparer.OrdinalIgnoreCase),
+            new Dictionary<string, (int, int)>(), 15).Should().ContainSingle().Which;
+
+        write.Veld.Should().Be("veld 101");
+        write.Tijd.Should().Be("10:00");
+    }
+
+    [Fact]
+    public void TargetLaneDeterminesFractionInsteadOfSourceLaneOrTeamSize()
+    {
+        var source = Source(field: "veld 101 A1", time: "09:00", team: "ALLSTARS JO13-1");
+        var choice = Choice(oldField: source.Veld, oldTime: source.AanvangsTijd,
+            lane: "A", targetTime: "10:00");
+
+        var writes = Apply([choice], [source]);
+
+        writes.Should().ContainSingle().Which.Veld.Should().Be("veld 101 A");
+    }
+
+    [Fact]
+    public void UnknownUnassignedRowDoesNotBlockAssignedRows()
+    {
+        var unknown = Source(1, field: "veld 101 A1", time: "10:00", team: "ALLSTARS onbekend");
+        var assigned = Source(2, team: "ALLSTARS JO13-1");
+        var choices = new[]
+        {
+            Choice(1, oldField: unknown.Veld, oldTime: unknown.AanvangsTijd,
+                targetField: null, lane: null, targetTime: null),
+            Choice(2, lane: "B1", targetTime: "10:00")
+        };
+        var sources = new[] { unknown, assigned };
+
+        Apply(choices, sources).Should().ContainSingle()
+            .Which.WedstrijdCode.Should().Be(2);
+    }
+
+    [Theory]
+    [InlineData("40001", null, true)]
+    [InlineData(null, 1205, true)]
+    [InlineData(null, 3960, true)]
+    [InlineData("23505", null, false)]
+    [InlineData(null, 2627, false)]
+    public void OnlySerializationAndDeadlockErrorsAreApplyConflicts(
+        string? postgresSqlState, int? sqlServerNumber, bool expected) =>
+        AutoPlanApplyConflictException.IsTransactionConflict(postgresSqlState, sqlServerNumber)
+            .Should().Be(expected);
+
+    [Fact]
+    public async Task PersistCommitsOnlyAfterEveryWriteMatchesOneSourceRow()
+    {
+        var writes = new[]
+        {
+            new AutoPlanApplyWrite(1, null, null, "veld 101 A1", "10:00"),
+            new AutoPlanApplyWrite(2, null, null, "veld 101 A2", "10:00")
+        };
+        var persisted = new List<long>();
+        var committed = false;
+
+        var count = await AutoPlanExactApply.PersistAsync(writes, write =>
+        {
+            persisted.Add(write.WedstrijdCode);
+            return Task.FromResult(1);
+        }, () =>
+        {
+            committed = true;
+            return Task.CompletedTask;
+        });
+
+        count.Should().Be(2);
+        persisted.Should().Equal(1, 2);
+        committed.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task PersistDoesNotCommitWhenAnyWriteIsStale()
+    {
+        var writes = new[]
+        {
+            new AutoPlanApplyWrite(1, null, null, "veld 101 A1", "10:00"),
+            new AutoPlanApplyWrite(2, null, null, "veld 101 A2", "10:00")
+        };
+        var persisted = new List<long>();
+        var committed = false;
+
+        var act = () => AutoPlanExactApply.PersistAsync(writes, write =>
+        {
+            persisted.Add(write.WedstrijdCode);
+            return Task.FromResult(write.WedstrijdCode == 1 ? 1 : 0);
+        }, () =>
+        {
+            committed = true;
+            return Task.CompletedTask;
+        });
+
+        await act.Should().ThrowAsync<AutoPlanApplyConflictException>();
+        persisted.Should().Equal(1, 2);
+        committed.Should().BeFalse();
+    }
+
     [Theory]
     [InlineData("10:00:30")]
     [InlineData("10:00:00")]
@@ -83,7 +189,6 @@ public class AutoPlanExactApplyTests
 
     [Theory]
     [InlineData("X")]
-    [InlineData("A")]
     [InlineData("")]
     public void InvalidQuarterLaneIsRejected(string lane) =>
         ((Action)(() => Apply([Choice(lane: lane)], [Source()])))

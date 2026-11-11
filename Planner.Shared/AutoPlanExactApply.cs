@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Threading.Tasks;
 
 namespace Planner.Shared;
 
@@ -21,6 +22,16 @@ public sealed class AutoPlanApplyConflictException : Exception
         "De getoonde planning is gewijzigd of bevat een conflict. Controleer de planning en probeer opnieuw.";
 
     public AutoPlanApplyConflictException() : base(SafeMessage) { }
+
+    public static bool IsTransactionConflict(string? postgresSqlState, int? sqlServerNumber) =>
+        string.Equals(postgresSqlState, "40001", StringComparison.Ordinal) ||
+        sqlServerNumber is 1205 or 3960;
+}
+
+public sealed class AutoPlanApplyForbiddenException : Exception
+{
+    public AutoPlanApplyForbiddenException()
+        : base("Toepassen is alleen beschikbaar in testmodus (ALLSTARS).") { }
 }
 
 /// <summary>
@@ -75,6 +86,17 @@ public static class AutoPlanExactApply
         return writes;
     }
 
+    public static async Task<int> PersistAsync(IReadOnlyCollection<AutoPlanApplyWrite> writes,
+        Func<AutoPlanApplyWrite, Task<int>> persist,
+        Func<Task> commit)
+    {
+        foreach (var write in writes)
+            if (await persist(write) != 1) throw new AutoPlanApplyConflictException();
+
+        await commit();
+        return writes.Count;
+    }
+
     private static void ValidateSourceSet(IReadOnlyList<AutoPlanApplyChoice> choices,
         IReadOnlyList<AutoPlanApplySource> sources)
     {
@@ -99,31 +121,51 @@ public static class AutoPlanExactApply
         var targetField = choice.VeldNummer ?? sourceField;
         var targetTime = choice.Tijd ?? source.AanvangsTijd;
         var targetLane = choice.VeldNummer.HasValue ? choice.VeldSubpositie : sourceLane;
+        var age = !string.IsNullOrWhiteSpace(source.LeeftijdsCategorie)
+            ? source.LeeftijdsCategorie : AutoPlanRegels.ExtractLeeftijdFromTeamNaam(source.TeamNaam);
+        speeltijden.TryGetValue(age ?? "", out var speeltijd);
+        bool sportlinkLeading = VeldbezettingDuur.IsSportlinkLeidend(source.SportlinkSpeelduur);
+
+        // Een onbekend team zonder Sportlink-speelduur heeft geen betrouwbare duur of veldfractie.
+        // De preview laat deze rij ongewijzigd; hij telt daarom niet mee als bezetting en kan andere
+        // geldige toewijzingen niet blokkeren.
+        if (IsUnknownUnassigned(choice, speeltijd, sportlinkLeading)) return null;
+
         if (MissingSlot(targetField, targetTime, choice.VeldNummer.HasValue)) return null;
-        var parsed = choice.VeldNummer.HasValue
-            ? TimeOnly.TryParseExact(targetTime, "HH:mm", CultureInfo.InvariantCulture,
-                DateTimeStyles.None, out var start)
-            : TimeOnly.TryParse(targetTime, CultureInfo.InvariantCulture, out start);
-        if (!parsed)
-            throw new AutoPlanApplyConflictException();
+        var start = ParseTargetStart(targetTime, choice.VeldNummer.HasValue);
 
         // The UI sends minute precision, while the source can contain seconds. When the chosen
         // displayed minute is unchanged, retain the source time even if field/lane changed.
         start = RetainSourceSeconds(source.AanvangsTijd, choice, start);
 
-        var age = !string.IsNullOrWhiteSpace(source.LeeftijdsCategorie)
-            ? source.LeeftijdsCategorie : AutoPlanRegels.ExtractLeeftijdFromTeamNaam(source.TeamNaam);
-        speeltijden.TryGetValue(age ?? "", out var speeltijd);
-        var fraction = VeldResolver.SubpositieFractie(sourceLane) ?? speeltijd?.Veldafmeting;
-        if (fraction is null || fraction <= 0 || fraction > 1) throw new AutoPlanApplyConflictException();
+        var fraction = DetermineFraction(targetLane, speeltijd);
         var duration = VeldbezettingDuur.Bepaal(source.SportlinkSpeelduur, speeltijd?.WedstrijdTotaal);
         if (duration <= 0) throw new AutoPlanApplyConflictException();
 
         var write = choice.VeldNummer.HasValue &&
             (targetField != sourceField || !SameMinute(source.AanvangsTijd, choice.Tijd) ||
              !string.Equals(sourceLane, targetLane, StringComparison.OrdinalIgnoreCase));
-        return new ApplyRow(source, targetField, start, targetLane, fraction.Value, duration,
-            VeldbezettingDuur.IsSportlinkLeidend(source.SportlinkSpeelduur), write);
+        return new ApplyRow(source, targetField, start, targetLane, fraction, duration,
+            sportlinkLeading, write);
+    }
+
+    private static bool IsUnknownUnassigned(AutoPlanApplyChoice choice, Speeltijd? speeltijd,
+        bool sportlinkLeading) =>
+        !choice.VeldNummer.HasValue && choice.Tijd == null && speeltijd == null && !sportlinkLeading;
+
+    private static TimeOnly ParseTargetStart(string? targetTime, bool assigned)
+    {
+        var parsed = assigned
+            ? TimeOnly.TryParseExact(targetTime, "HH:mm", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var start)
+            : TimeOnly.TryParse(targetTime, CultureInfo.InvariantCulture, out start);
+        return parsed ? start : throw new AutoPlanApplyConflictException();
+    }
+
+    private static decimal DetermineFraction(string? targetLane, Speeltijd? speeltijd)
+    {
+        var fraction = VeldResolver.SubpositieFractie(targetLane) ?? speeltijd?.Veldafmeting ?? 1.00m;
+        return fraction is > 0 and <= 1 ? fraction : throw new AutoPlanApplyConflictException();
     }
 
     private static bool SameField(string? a, string? b) =>

@@ -189,14 +189,19 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
             {
                 Datum = _planDatum,
                 BufferMinuten = _planBuffer,
-                Toewijzingen = plan.Wedstrijden.Select(w => new AutoPlanToewijzing
+                Toewijzingen = plan.Wedstrijden.Select(w =>
                 {
-                    WedstrijdCode = w.WedstrijdCode,
-                    HuidigeVeld = w.HuidigeVeld,
-                    HuidigeTijd = w.HuidigeTijd,
-                    VeldNummer = w.OptimaalVeldNummer,
-                    VeldSubpositie = DagplanningWeergaveHelpers.GanttExtractSubPos(w.OptimaalVeld),
-                    Tijd = w.OptimaalTijd
+                    bool toegewezen = w.Status != "onbekend-team" && w.OptimaalVeldNummer.HasValue;
+                    return new AutoPlanToewijzing
+                    {
+                        WedstrijdCode = w.WedstrijdCode,
+                        HuidigeVeld = w.HuidigeVeld,
+                        HuidigeTijd = w.HuidigeTijd,
+                        VeldNummer = toegewezen ? w.OptimaalVeldNummer : null,
+                        VeldSubpositie = toegewezen
+                            ? DagplanningWeergaveHelpers.GanttExtractSubPos(w.OptimaalVeld) : null,
+                        Tijd = toegewezen ? w.OptimaalTijd : null
+                    };
                 }).ToList()
             };
             var result = await PlanningApi.AutoPlanToepassenAsync(req);

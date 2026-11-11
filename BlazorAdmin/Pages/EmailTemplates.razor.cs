@@ -24,7 +24,11 @@ public partial class EmailTemplates : ClubSelectorPageBase
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
-    protected override Task OnClubChangedAsync() => LoadAsync();
+    protected override Task OnClubChangedAsync()
+    {
+        _resetConfirmation.Annuleer();
+        return LoadAsync();
+    }
 
     private async Task LoadAsync()
     {

@@ -77,6 +77,7 @@ public partial class WedstrijdAanmakenFormulier : ClubSelectorPageBase
     protected override async Task OnClubChangedAsync()
     {
         _form.Leegmaken(BeginDatum);
+        _poort.Annuleer();
         _resultaat = null;
         _status.Wis();
         WisVerwijderen();

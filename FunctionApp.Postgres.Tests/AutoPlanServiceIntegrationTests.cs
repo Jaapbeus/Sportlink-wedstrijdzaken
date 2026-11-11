@@ -192,6 +192,39 @@ public class AutoPlanServiceIntegrationTests : IDisposable
     }
 
     [PostgresFact]
+    public async Task ExactApply_UnknownUnassignedRowDoesNotBlockValidAssignment()
+    {
+        await using var conn = await OpstellingAsync();
+        await ZetWedstrijdAsync(conn, 9500110, "ALLSTARS JO99-1", "10:00", "Kunstgras 1 A1");
+        await ZetWedstrijdAsync(conn, 9500111, "ALLSTARS JO13-1", null, null);
+
+        var response = await AutoPlanService.AutoPlanToepassenAsync(ConnectionString,
+            ExactRequest(
+                Choice(9500110, "Kunstgras 1 A1", "10:00"),
+                Choice(9500111, targetField: 101, lane: "B1", targetTime: "10:00")),
+            Club, NullLogger.Instance);
+
+        response.Bijgewerkt.Should().Be(1);
+        (await MatchFieldAsync(conn, 9500110)).Should().Be("Kunstgras 1 A1");
+        (await MatchFieldAsync(conn, 9500111)).Should().Be("Kunstgras 1 B1");
+    }
+
+    [PostgresFact]
+    public async Task ExactApply_TargetLaneFractionOverridesTeamDefault()
+    {
+        await using var conn = await OpstellingAsync();
+        await ExecAsync(conn, "UPDATE public.speeltijden SET veldafmeting = 0.25 WHERE clubcode = @club AND leeftijd = 'JO13'", ("club", Club));
+        await ZetWedstrijdAsync(conn, 9500112, "ALLSTARS JO13-1", "09:00", "Kunstgras 1 A1");
+
+        var response = await AutoPlanService.AutoPlanToepassenAsync(ConnectionString,
+            ExactRequest(Choice(9500112, "Kunstgras 1 A1", "09:00", 101, "A", "10:00")),
+            Club, NullLogger.Instance);
+
+        response.Bijgewerkt.Should().Be(1);
+        (await MatchFieldAsync(conn, 9500112)).Should().Be("Kunstgras 1 A");
+    }
+
+    [PostgresFact]
     public async Task ExactApply_RetainsSourceSecondsWhenDisplayedMinuteIsUnchanged()
     {
         await using var conn = await OpstellingAsync();
@@ -269,7 +302,7 @@ public class AutoPlanServiceIntegrationTests : IDisposable
         await ZetWedstrijdAsync(conn, 9500105, "ALLSTARS JO15-1", null, null);
         await ExecAsync(conn, """
             CREATE FUNCTION his.test_1802_reject_second() RETURNS trigger LANGUAGE plpgsql AS $$
-            BEGIN IF NEW.wedstrijdcode = 9500105 THEN RAISE EXCEPTION 'synthetic second write failure'; END IF;
+            BEGIN IF NEW.wedstrijdcode = 9500105 THEN RAISE EXCEPTION 'synthetic serialization failure' USING ERRCODE = '40001'; END IF;
             RETURN NEW; END $$
             """);
         await ExecAsync(conn, "CREATE TRIGGER test_1802_second BEFORE UPDATE ON his.matches FOR EACH ROW EXECUTE FUNCTION his.test_1802_reject_second()");
@@ -278,7 +311,7 @@ public class AutoPlanServiceIntegrationTests : IDisposable
             var apply = () => AutoPlanService.AutoPlanToepassenAsync(ConnectionString,
                 ExactRequest(Choice(9500104, targetField: 101, lane: null, targetTime: "10:00"),
                     Choice(9500105, targetField: 102, lane: null, targetTime: "12:00")), Club, NullLogger.Instance);
-            await apply.Should().ThrowAsync<PostgresException>();
+            await apply.Should().ThrowAsync<AutoPlanApplyConflictException>();
             (await MatchFieldAsync(conn, 9500104)).Should().BeNull();
             (await MatchFieldAsync(conn, 9500105)).Should().BeNull();
         }
@@ -397,7 +430,7 @@ public class AutoPlanServiceIntegrationTests : IDisposable
             ConnectionString, new AutoPlanToepassenRequest { Datum = Zaterdag.ToString("yyyy-MM-dd") },
             "echte-club", NullLogger.Instance);
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<AutoPlanApplyForbiddenException>()
             .WithMessage("*alleen beschikbaar in testmodus*");
     }
 

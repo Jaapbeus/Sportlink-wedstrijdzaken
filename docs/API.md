@@ -835,7 +835,7 @@ het plan opnieuw; dat pad garandeert niet dat eerdere handmatige wijzigingen wor
 Met de lijst controleert de server de volledige wedstrijdcodeset, verwachte huidige velden,
 tijden en subposities, actieve velden, bronduur, veldfracties, openingstijden en buffer-/baanconflicten
 tegen actuele ALLSTARS-data. Een doel vereist zowel `veldNummer` als `tijd` (exact `HH:mm`, zonder seconden, tijdsaanduidingen of witruimte); beide `null`
-laat de rij oningedeeld. Als de doeltijd dezelfde `HH:mm`-minuut heeft als de verwachte brontijd,
+laat de rij oningedeeld. Een previewrij met een onbekend team en zonder betrouwbare speelduur wordt niet meegeschreven en telt niet mee als veldbezetting bij deze controle; andere geldige toewijzingen worden wel gecontroleerd. Als de doeltijd dezelfde `HH:mm`-minuut heeft als de verwachte brontijd,
 blijven de bronseconden behouden, ook als veld of subpositie verandert. Een conflict geeft HTTP `409` zonder gedeeltelijke updates en de GUI
 laat de getoonde aanpassingen staan. Voor een andere club geldt `403`.
 

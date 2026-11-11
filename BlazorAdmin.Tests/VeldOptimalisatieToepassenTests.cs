@@ -48,7 +48,10 @@ public class VeldOptimalisatieToepassenTests
                 new() { WedstrijdCode = 1, HuidigeVeld = "veld 101 A1", HuidigeTijd = "09:00",
                     OptimaalVeldNummer = 101, OptimaalVeld = "veld 101 A2", OptimaalTijd = "10:00" },
                 new() { WedstrijdCode = 2, HuidigeVeld = null, HuidigeTijd = null,
-                    OptimaalVeldNummer = null, OptimaalVeld = null, OptimaalTijd = null }
+                    OptimaalVeldNummer = null, OptimaalVeld = null, OptimaalTijd = null },
+                new() { WedstrijdCode = 3, HuidigeVeld = "veld 102", HuidigeTijd = "11:00",
+                    Status = "onbekend-team", OptimaalVeldNummer = 102, OptimaalVeld = "veld 102",
+                    OptimaalTijd = "12:00" }
             ]
         });
 
@@ -61,11 +64,15 @@ public class VeldOptimalisatieToepassenTests
         root.GetProperty("datum").GetString().Should().Be("2026-09-05");
         root.GetProperty("bufferMinuten").GetInt32().Should().Be(25);
         var rows = root.GetProperty("toewijzingen");
-        rows.GetArrayLength().Should().Be(2);
+        rows.GetArrayLength().Should().Be(3);
         rows[0].GetProperty("veldSubpositie").GetString().Should().Be("A2");
         rows[0].GetProperty("huidigeVeld").GetString().Should().Be("veld 101 A1");
         rows[1].GetProperty("veldNummer").ValueKind.Should().Be(JsonValueKind.Null);
         rows[1].GetProperty("tijd").ValueKind.Should().Be(JsonValueKind.Null);
+        rows[2].GetProperty("huidigeVeld").GetString().Should().Be("veld 102");
+        rows[2].GetProperty("veldNummer").ValueKind.Should().Be(JsonValueKind.Null);
+        rows[2].GetProperty("veldSubpositie").ValueKind.Should().Be(JsonValueKind.Null);
+        rows[2].GetProperty("tijd").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     private static void Set(object instance, string name, object value)

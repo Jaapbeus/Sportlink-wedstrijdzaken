@@ -62,6 +62,23 @@ public sealed class TestDataWedstrijdenLifecycleTests
         handler.Requests.Should().Be(0);
     }
 
+    [Fact]
+    public async Task SuccessfulAllstarsLoadLeavesErrorNull()
+    {
+        var selector = new ClubSelectorService(new PresetJsRuntime("ALLSTARS"));
+        await selector.SelectClubAsync("ALLSTARS");
+        var handler = new FakeHandler();
+        var transport = new AdminApiTransport(new HttpClient(handler)
+            { BaseAddress = new Uri("https://allstars-fc.test/") });
+        using var page = CreatePage(selector, transport);
+
+        await page.InitializePageAsync();
+
+        Get<bool>(page, "_loading").Should().BeFalse();
+        Get<string?>(page, "_error").Should().BeNull();
+        handler.Requests.Should().Be(4);
+    }
+
     private static async Task<(ClubSelectorService, FakeHandler, AdminApiTransport)> CreateContextAsync()
     {
         var selector = new ClubSelectorService(new PresetJsRuntime());
@@ -110,10 +127,10 @@ public sealed class TestDataWedstrijdenLifecycleTests
         }
     }
 
-    private sealed class PresetJsRuntime : IJSRuntime
+    private sealed class PresetJsRuntime(string persistedClub = "EXAMPLE") : IJSRuntime
     {
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args) =>
-            new(identifier == "localStorage.getItem" ? (TValue)(object)"EXAMPLE" : default!);
+            new(identifier == "localStorage.getItem" ? (TValue)(object)persistedClub : default!);
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args) =>
             InvokeAsync<TValue>(identifier, args);
     }
