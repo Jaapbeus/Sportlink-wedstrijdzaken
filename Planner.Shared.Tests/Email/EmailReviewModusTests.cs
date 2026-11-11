@@ -10,13 +10,16 @@ public class EmailReviewModusTests
     [Theory]
     [InlineData("true", true)]
     [InlineData("TRUE", true)]
-    [InlineData("True", true)]
     [InlineData("false", false)]
-    [InlineData("1", false)]
-    [InlineData("", false)]
-    [InlineData(" true", false)]
-    [InlineData(null, false)]
-    public void IsActief_AlleenDeWaardeTrue_ZetDeModusAan(string? waarde, bool verwacht)
+    [InlineData("FALSE", false)]
+    [InlineData(" false ", true)]
+    [InlineData("0", true)]
+    [InlineData("1", true)]
+    [InlineData("", true)]
+    [InlineData("  ", true)]
+    [InlineData("nee", true)]
+    [InlineData(null, true)]
+    public void IsActief_FailSafe_AlleenExplicietFalseZetDeModusUit(string? waarde, bool verwacht)
         => EmailReviewModus.IsActief(waarde).Should().Be(verwacht);
 
     [Fact]

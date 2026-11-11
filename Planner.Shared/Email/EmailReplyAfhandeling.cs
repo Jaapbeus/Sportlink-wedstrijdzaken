@@ -135,7 +135,8 @@ public static class EmailReplyAfhandeling
         Func<Task<(string onderwerp, string body)>> bouwTemplateAntwoordAsync,
         Func<string, string> sanitizeFoutMelding,
         ILogger log,
-        bool tegengehouden = false)
+        bool tegengehouden = false,
+        string? reviewReden = null)
     {
         var reviewBesluit = ReplyPolicy.Bepaal(classificatie, plannerResponseJson);
         if (reviewBesluit.MoetVersturen)
@@ -150,7 +151,8 @@ public static class EmailReplyAfhandeling
                 try
                 {
                     await graphService.SendReplyAsync(reviewRecipient, voorgesteldOnderwerp,
-                        tegengehouden ? ZekerheidsPoort.MetReviewKop(voorgesteldeBody) : voorgesteldeBody, email.ConversationId);
+                        reviewReden != null ? $"=== TER BEOORDELING ===\n{reviewReden}\n\n{voorgesteldeBody}"
+                            : tegengehouden ? ZekerheidsPoort.MetReviewKop(voorgesteldeBody) : voorgesteldeBody, email.ConversationId);
                     log.LogInformation(
                         "Email {Id} review mode — testantwoord verstuurd naar EmailReviewRecipient", verwerkingId);
                 }
@@ -238,11 +240,17 @@ public static class EmailReplyAfhandeling
         var (onderwerp, antwoordBody) = await bouwTemplateAntwoordAsync();
 
         // Zekerheidspoort (#1568 deel D): een onzeker antwoord gaat niet naar de afzender maar ter review.
+        // Afzenderpoort (#1809): een syntactisch ongeschikt of systeemadres krijgt nooit automatisch antwoord.
+        var afzenderGeschikt = AfzenderControle.IsGeschikt(email.Afzender);
+        if (!afzenderGeschikt)
+            log.LogWarning("Email {Id}: afzenderadres niet geschikt voor automatisch antwoord — ter beoordeling", verwerkingId);
+
         var poort = ZekerheidsPoort.Bepaal(zekerheidspoortActief, trace);
-        if (poort.Tegenhouden)
+        if (poort.Tegenhouden || !afzenderGeschikt)
             return await HandelReviewModeAsync(
                 verwerkingId, email, classificatie, plannerResponseJson, reviewRecipient,
-                graphService, persistentie, () => Task.FromResult((onderwerp, antwoordBody)), sanitizeFoutMelding, log, tegengehouden: true);
+                graphService, persistentie, () => Task.FromResult((onderwerp, antwoordBody)), sanitizeFoutMelding, log, tegengehouden: true,
+                reviewReden: afzenderGeschikt ? null : AfzenderControle.Reden);
 
         // Verzendintentie vóór het versturen. Wordt de invocatie hierna hard afgebroken
         // (functie-time-out, host-recycle, scale-in), dan is dit het enige spoor dat er misschien al

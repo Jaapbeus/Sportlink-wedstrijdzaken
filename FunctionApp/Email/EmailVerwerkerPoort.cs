@@ -58,8 +58,8 @@ internal sealed class EmailVerwerkerPoort(
         return await persistence.LaadUitgeslotenAdressenAsync(log);
     }
 
-    // AI-classificatie voor alle resterende emails — database wordt niet nogmaals gewekt. Zonder
-    // client (bijvoorbeeld ontbrekende AiModelName of geblokkeerde egress) stopt alleen deze verwerking.
+    // AI-classificatie voor alle resterende emails met eerder opgehaalde few-shots. Zonder client
+    // (bijvoorbeeld ontbrekende AiModelName of geblokkeerde egress) stopt alleen deze verwerking.
     public bool BereidAiVoor()
     {
         var chatClient = EmailVerwerkerFasen.BeschikbareChatClient(services, log);
@@ -69,14 +69,25 @@ internal sealed class EmailVerwerkerPoort(
         return true;
     }
 
-    public Task<EmailClassificatieBatch<InkomendBericht>> ClassificeerAsync(List<InkomendBericht> teClassificeren)
+    public Task<EmailClassificatieBatch<InkomendBericht>> ClassificeerAsync(
+        List<InkomendBericht> teClassificeren, IReadOnlyList<ClassificatieCorrectieVoorbeeld> voorbeelden)
     {
         var ai = Ai;
         return new EmailClassificationService().ClassificeerBatchAsync(
             teClassificeren,
-            email => ai.ClassificeerBerichtAsync(email.Body, email.Onderwerp, email.Afzender),
+            (email, fewShots) => ai.ClassificeerBerichtAsync(email.Body, email.Onderwerp, email.Afzender, fewShots),
             EmailFoutCategorie.IsOpenAiQuotaFout,
-            log);
+            log,
+            voorbeelden);
+    }
+
+    public async Task<IReadOnlyList<ClassificatieCorrectieVoorbeeld>> HaalFewShotVoorbeeldenOpAsync()
+    {
+        // Fase 1 gebruikt deze al gevalideerde voorbeelden vóór de eerste classificatie. Gebruik
+        // dezelfde DB-wake/settings-route als de bestaande verse uitsluitingslijst; geen nieuwe cache.
+        await SystemUtilities.WaitForDatabaseAsync(log);
+        await SystemUtilities.AppSettings.LoadSettingsAsync(log);
+        return await persistence.HaalLeermomentVoorbeeldenOpAsync(log);
     }
 
     public Task LabelBuitenScopeAsync(List<(InkomendBericht Email, BerichtClassificatie Classificatie)> classificaties)

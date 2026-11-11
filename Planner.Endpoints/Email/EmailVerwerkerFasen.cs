@@ -10,7 +10,8 @@ namespace Planner.Endpoints.Email;
 public sealed record EmailClassificatieBatch<TBericht>(
     List<(TBericht Email, BerichtClassificatie Classificatie)> Classificaties,
     bool AiAborted,
-    Exception? QuotaException);
+    Exception? QuotaException,
+    int NietQuotaClassificatieFouten = 0);
 
 /// <summary>Uitkomst van fase 1: wat fase 2 (database) nog moet verwerken.</summary>
 public sealed record LichteFaseResultaat<TBericht>(
@@ -39,12 +40,12 @@ public interface IEmailVerwerkerPoort<TBericht> where TBericht : IInkomendBerich
     /// <summary>De tier-eigen adviesregels in de noodmails.</summary>
     EmailNoodmailTeksten NoodmailTeksten { get; }
 
-    // ── Fase 1: Graph en AI, geen database ─────────────────────────────────────────────────────
+    // ── Fase 1: Graph en AI; beperkte databaselezingen voor uitsluitingen en few-shots ───────────
 
     /// <summary>Haalt de ongelezen berichten op.</summary>
     Task<List<TBericht>> HaalOngelezenAsync();
 
-    /// <summary>Voorfilter zonder database: eigen mailbox, gecachede uitsluitingslijst, automatische afzenders.</summary>
+    /// <summary>Voorfilter: eigen mailbox, gecachede uitsluitingslijst en automatische afzenders.</summary>
     Task<List<TBericht>> PreFilterAsync(List<TBericht> emails, string eigenMailbox, IReadOnlySet<string> uitgeslotenCache);
 
     /// <summary>Filtert de batch op een (vers geladen) uitsluitingslijst.</summary>
@@ -60,9 +61,13 @@ public interface IEmailVerwerkerPoort<TBericht> where TBericht : IInkomendBerich
     bool BereidAiVoor();
 
     /// <summary>AI-classificatie van de batch met de eigen classificatieservice van de tier.</summary>
-    Task<EmailClassificatieBatch<TBericht>> ClassificeerAsync(List<TBericht> teClassificeren);
+    Task<EmailClassificatieBatch<TBericht>> ClassificeerAsync(
+        List<TBericht> teClassificeren, IReadOnlyList<ClassificatieCorrectieVoorbeeld> voorbeelden);
 
-    /// <summary>Labelt de buiten-scope-berichten in Outlook en markeert ze als gelezen; database slaapt.</summary>
+    /// <summary>Leest goedgekeurde few-shots vóór classificatie. Leeg is geldig; een onbeschikbare bron gooit.</summary>
+    Task<IReadOnlyList<ClassificatieCorrectieVoorbeeld>> HaalFewShotVoorbeeldenOpAsync();
+
+    /// <summary>Labelt buiten-scope-berichten in Outlook en markeert ze als gelezen; fase 2 wordt overgeslagen.</summary>
     Task LabelBuitenScopeAsync(List<(TBericht Email, BerichtClassificatie Classificatie)> classificaties);
 
     // ── Fase 2: database ───────────────────────────────────────────────────────────────────────
@@ -91,8 +96,8 @@ public interface IEmailVerwerkerPoort<TBericht> where TBericht : IInkomendBerich
 
 /// <summary>
 /// Fase-orkestratie van de e-mailverwerker (timer <c>ProcessIncomingEmails</c>), tier-onafhankelijk
-/// sinds #1716 slice 9 (samen met #1271). Fase 1 is licht (Graph en AI, de database slaapt); fase 2
-/// wekt de database alleen als er iets te verwerken is. De tier levert alles wat database, Graph of
+/// sinds #1716 slice 9 (samen met #1271). Fase 1 doet Graph, AI en beperkte reads van uitsluitingen en
+/// goedgekeurde few-shots; fase 2 doet de volledige verwerking alleen als er werk overblijft. De tier levert alles wat database, Graph of
 /// instellingen raakt via <see cref="IEmailVerwerkerPoort{TBericht}"/>; hier staat geen SQL en geen
 /// Graph SDK, en <c>EmailGraphService</c> blijft de enige Graph-adapter per tier.
 /// </summary>
@@ -119,7 +124,7 @@ public static class EmailVerwerkerFasen
     }
 
     /// <summary>
-    /// Fase 1 — licht: Graph API en AI, geen database. Retourneert <c>null</c> als er niets meer te
+    /// Fase 1 — Graph, AI en beperkte reads van classificatiecontext. Retourneert <c>null</c> als er niets meer te
     /// doen valt (fase 2 overslaan).
     /// </summary>
     internal static async Task<LichteFaseResultaat<TBericht>?> VoerFase1LichtAsync<TBericht>(
@@ -133,10 +138,13 @@ public static class EmailVerwerkerFasen
         if (!poort.BereidAiVoor())
             return null;
 
-        var classificationResult = await ClassificeerEnMeldQuotaAsync(poort, teClassificeren, log);
+        var voorbeelden = await LaadClassificatieContextAsync(poort, teClassificeren.Count, log);
+        if (voorbeelden is null)
+            return null;
+        var classificationResult = await ClassificeerEnMeldFoutenAsync(poort, teClassificeren, voorbeelden, log);
         var classificaties = classificationResult.Classificaties;
 
-        // BuitenScope-emails: alleen Outlook-label, database wordt niet gewekt
+        // BuitenScope-emails: alleen Outlook-label; de volledige databasefase wordt overgeslagen
         await poort.LabelBuitenScopeAsync(classificaties);
 
         var teVerwerken = classificaties
@@ -147,6 +155,7 @@ public static class EmailVerwerkerFasen
 
         if (teVerwerken.Count == 0 && mislukteClassificaties.Count == 0)
         {
+            await EmailNoodmailMelding.BehandelDatabaseHerstelAsync(poort.Throttle, log);
             var aantalBuitenScope = classificaties.Count(c => c.Classificatie.Type == VerzoekType.BuitenScope);
             log.LogInformation(
                 "Alle {Aantal} emails buiten scope{Afgebroken} — geen verwerking in de database nodig",
@@ -156,6 +165,24 @@ public static class EmailVerwerkerFasen
         }
 
         return new LichteFaseResultaat<TBericht>(teVerwerken, mislukteClassificaties);
+    }
+
+    // Een lege goedgekeurde set is geldig; een laadfout mag nooit dezelfde betekenis krijgen.
+    // Stop vóór AI en de buiten-scope-label/gelezen-mutaties en gebruik de bestaande DB-uitvalgrens.
+    private static async Task<IReadOnlyList<ClassificatieCorrectieVoorbeeld>?> LaadClassificatieContextAsync<TBericht>(
+        IEmailVerwerkerPoort<TBericht> poort, int aantalOnverwerkt, ILogger log)
+        where TBericht : IInkomendBericht
+    {
+        try
+        {
+            return await poort.HaalFewShotVoorbeeldenOpAsync();
+        }
+        catch (Exception dbEx)
+        {
+            await EmailNoodmailMelding.BehandelDatabaseVerbindingsFoutAsync(
+                dbEx, poort.Graph, aantalOnverwerkt, poort.Throttle, poort.NoodmailTeksten, log);
+            return null;
+        }
     }
 
     /// <summary>
@@ -226,14 +253,15 @@ public static class EmailVerwerkerFasen
     }
 
     /// <summary>
-    /// AI-classificatie van de batch; bij een OpenAI-quotastoring gaat (hoogstens eens per 24 uur)
-    /// een noodmail uit.
+    /// AI-classificatie van de batch; quota- en structurele classificatiefouten gebruiken elk hun
+    /// bestaande persistente noodmail-throttle, met afzonderlijke sleutels.
     /// </summary>
-    private static async Task<EmailClassificatieBatch<TBericht>> ClassificeerEnMeldQuotaAsync<TBericht>(
-        IEmailVerwerkerPoort<TBericht> poort, List<TBericht> teClassificeren, ILogger log)
+    private static async Task<EmailClassificatieBatch<TBericht>> ClassificeerEnMeldFoutenAsync<TBericht>(
+        IEmailVerwerkerPoort<TBericht> poort, List<TBericht> teClassificeren,
+        IReadOnlyList<ClassificatieCorrectieVoorbeeld> voorbeelden, ILogger log)
         where TBericht : IInkomendBericht
     {
-        var classificationResult = await poort.ClassificeerAsync(teClassificeren);
+        var classificationResult = await poort.ClassificeerAsync(teClassificeren, voorbeelden);
 
         if (classificationResult.AiAborted && classificationResult.QuotaException != null)
         {
@@ -246,6 +274,18 @@ public static class EmailVerwerkerFasen
             else
             {
                 log.LogWarning("OpenAI quota-noodmail al verstuurd binnen 24u — geen herhaling");
+            }
+        }
+
+        if (classificationResult.NietQuotaClassificatieFouten > 0)
+        {
+            if (await EmailNoodmailMelding.MoetStructureleAiNoodmailVersturenAsync(poort.Throttle, DateTime.UtcNow))
+            {
+                await EmailNoodmailMelding.StuurStructureleAiNoodmailAsync(poort.Graph, poort.Throttle, log);
+            }
+            else
+            {
+                log.LogWarning("Structurele AI-classificatienoodmail al verstuurd binnen 24u — geen herhaling");
             }
         }
 
@@ -274,8 +314,8 @@ public static class EmailVerwerkerFasen
     }
 
     /// <summary>
-    /// Fase 2 — zwaar: database, teamherkenning en de verwerkingslus. Alleen aangeroepen als er
-    /// non-BuitenScope emails of classificatiefouten zijn.
+    /// Fase 2 — zwaar: teamherkenning en de verwerkingslus. Alleen aangeroepen als er
+    /// non-BuitenScope-emails of classificatiefouten zijn.
     /// </summary>
     internal static async Task VoerFase2ZwaarAsync<TBericht>(
         IEmailVerwerkerPoort<TBericht> poort, UitsluitingslijstCache uitsluitingslijst,
@@ -289,7 +329,7 @@ public static class EmailVerwerkerFasen
         // uit déze invocatie te gebeuren, niet op een kopie die tot de TTL oud kan zijn. (#709)
         await uitsluitingslijst.HerlaadAsync(poort.LaadUitsluitingslijstAsync, DateTime.UtcNow);
 
-        // Teamherkenning voorbereiden hoort hier, niet in fase 1: de database is nu toch wakker (#700).
+        // Teamherkenning voorbereiden hoort hier, niet bij de beperkte fase-1-reads (#700).
         if (!await poort.BereidVerwerkingVoorAsync())
             return;
 

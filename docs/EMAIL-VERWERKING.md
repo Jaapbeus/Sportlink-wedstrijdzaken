@@ -52,13 +52,16 @@ Postgres-definities staan in `Database.Postgres/migrations/`.
 
 ## Verwerkingsstroom (overzicht)
 
-De verwerking heeft twee fasen. Dat is geen implementatiedetail: in fase 1 blijft de database
-slapen, zodat een inbox met alleen niet-planningsmail geen Azure SQL-kosten en geen wektijd kost.
-De keerzijde is dat de idempotentie-check (§1d) pas in **fase 2** kan draaien — een bericht dat al
-definitief is afgehandeld kost dus nog wél een AI-classificatie.
+De verwerking heeft twee fasen. Voor een batch die na de voorfilters geclassificeerd wordt, laadt
+fase 1 eerst de goedgekeurde few-shot-voorbeelden via de bestaande database-/instellingenroute. De
+database kan daardoor al vóór de AI-aanroep wakker worden; de volledige verwerkingslus en
+idempotentie-check (§1d) blijven in fase 2. Een lege of vooraf volledig gefilterde inbox raakt de
+database nog steeds niet. Een succesvol geladen lege voorbeeldset is geldig. Als de bron niet
+beschikbaar is, stopt de poll vóór classificatie en de buiten-scope-mutaties; de bestaande
+database-noodmail met uitval-throttle meldt de storing.
 
 ```
-FASE 1 — Graph API + AI, database blijft slapen
+FASE 1 — Graph API, few-shot-context en AI
 ────────────────────────────────────────────────────────────────────────────────
 De 10 OUDSTE ongelezen berichten uit de inbox (Graph: top=10, orderby receivedDateTime)
         │
@@ -72,7 +75,10 @@ De 10 OUDSTE ongelezen berichten uit de inbox (Graph: top=10, orderby receivedDa
 └──────────────────────────────────────────────────────────────────────────────┘
         │
         ▼
-   AI-classificatie (BerichtAiService)
+   Goedgekeurde few-shots laden (maximaal 20; database wake/settings-route)
+        │  laadfout → stoppen vóór AI/label/gelezen; bestaande database-noodmail
+        ▼
+   AI-classificatie (BerichtAiService, met de geladen few-shots)
         │
         ├─ BuitenScope ──────→ label "Geen AI antwoord" + mark as read → STOP
         │                      (géén rij in planner.EmailVerwerking)
@@ -80,9 +86,9 @@ De 10 OUDSTE ongelezen berichten uit de inbox (Graph: top=10, orderby receivedDa
         └─ Overige types ─────→ door naar fase 2
         │
         ▼
-   Alles buiten scope én geen classificatiefouten? → STOP, database blijft slapen
+   Alles buiten scope én geen classificatiefouten? → STOP, fase 2 overslaan
 
-FASE 2 — database wordt gewekt
+FASE 2 — databaseverwerking
 ────────────────────────────────────────────────────────────────────────────────
    WaitForDatabaseAsync + AppSettings laden
         │  niet bereikbaar → eenmalig noodmail naar de mailbox → STOP
@@ -104,12 +110,6 @@ FASE 2 — database wordt gewekt
 │    → UpdateReplyStatus (IsReplyOpOnsAntwoord=1, ReplyOpVerwerkingId)          │
 │    → DetecteerCorrectieAsync: is dit een correctie op de classificatie?       │
 │       → ja: INSERT ClassificatieCorrectie (status: te beoordelen)             │
-└──────────────────────────────────────────────────────────────────────────────┘
-        │
-        ▼
-┌─ Few-shot herclassificatie (#323) ───────────────────────────────────────────┐
-│  Zijn er gevalideerde leermomenten? → herclassificeer met few-shot voorbeelden │
-│  Levert dat BuitenScope op → status BuitenScope + label, géén antwoord (#712)  │
 └──────────────────────────────────────────────────────────────────────────────┘
         │
         ▼
@@ -238,8 +238,18 @@ Onderdrukte antwoorden zijn zichtbaar in de Admin GUI onder **Instellingen → E
 Er wordt niets stil weggegooid: het bericht wordt normaal verwerkt en gelogd in
 `planner.EmailVerwerking` met status `GeenAntwoordNodig`.
 
-**Review-mode blijft leidend:** staat `EmailReviewMode=true`, dan gaat er nooit een mail uit —
+**Review-mode blijft leidend:** staat review-mode aan, dan gaat er nooit een mail uit —
 die check komt vóór de reply-policy.
+
+**Fail-safe standaard (#1809):** review-mode staat AAN tenzij `EmailReviewMode` exact `false` is
+(hoofdletterongevoelig; spaties aan begin/einde tellen mee als onbekende waarde). Een ontbrekende,
+lege, `0`-waarde of onbekende waarde betekent dus review-mode aan, zodat een verdwenen app-setting
+nooit onbedoeld tot automatische antwoorden leidt. Daarnaast gaat een automatisch antwoord alleen
+naar één syntactisch geldig afzenderadres dat niet als systeemadres is herkend (`AfzenderControle`);
+dit bewijst geen authenticiteit van de afzender. Afzenderidentiteit wordt niet meegestuurd naar de
+AI-provider. Herkenbare e-mail- en telefoonpatronen in onderwerp en berichttekst worden gemaskeerd;
+persoonsnamen, clubcontext en andere inhoud kunnen nog aanwezig zijn. Dit vervangt #1736 niet en #43
+blijft geblokkeerd tot eigenaaracceptatie.
 
 In review-mode wordt het voorgestelde antwoord wél opgebouwd en opgeslagen (#712). De rij in
 `planner.EmailVerwerking` krijgt status `Review`, met het voorstel in `AntwoordEmail` en
@@ -292,12 +302,11 @@ Emails met **meerdere datums voor hetzelfde team** zijn géén BuitenScope — d
 
 | Wanneer | Rij in `planner.EmailVerwerking`? |
 |---|---|
-| BuitenScope bij de eerste classificatie (fase 1) | Nee — de database blijft slapen |
-| BuitenScope pas ná few-shot herclassificatie (fase 2) | Ja — status `BuitenScope` (#712) |
+| BuitenScope bij de eerste classificatie met few-shot-context (fase 1) | Nee — fase 2 wordt overgeslagen |
 
-Het tweede geval bestaat omdat de herclassificatie met leermomenten alsnog "buiten scope" kan
-opleveren. Zonder die afhandeling ging er tóch een automatisch antwoord uit, puur afhankelijk van
-of er gevalideerde leermomenten in de database stonden.
+De few-shot-context wordt vóór de eerste classificatie toegepast. Er volgt geen tweede classificatie
+met dezelfde voorbeelden; reply-correctiedetectie en het opslaan van nieuwe, nog te beoordelen
+leermomenten blijven in fase 2.
 
 ### 1e. Zekerheidspoort — onzeker antwoord gaat ter review (#1568 deel D)
 
@@ -908,7 +917,7 @@ naar de coach. Is er geen coach gevonden in `avg.Teambegeleiding`, dan gebeurt d
 | Veld | Waarde |
 |---|---|
 | **Aan** | De coach/teamleider uit `avg.Teambegeleiding` |
-| **Reply-To** | De oorspronkelijke afzender — zodat de coach rechtstreeks kan antwoorden |
+| **Reply-To** | De oorspronkelijke afzender als het één geschikt adres is; anders ontbreekt Reply-To en vraagt de berichttekst om handmatige controle van het contactkanaal |
 | **BCC** | De **veldplanner** (`plannerEmailAdres` in `dbo.AppSettings`) als AVG-audit-kopie |
 | **Onderwerp** | `[{team}] vraag van {afzenderNaam}` |
 
@@ -1279,7 +1288,7 @@ code of SQL van laten leren. De lus:
 | **Alias aanmaken** (`POST /api/beheer/teamaliassen`) | Bron `CoordinatorCorrectie`, direct `validated`. De sleutel komt uitsluitend uit `TeamNaamNormalisatie`. Bestaat de sleutel al voor een ander team → `409`; herkoppelen gebeurt alleen als de beheerder dat expliciet aangeeft. Audit: `AangemaaktDoor` (object-ID), `AangemaaktDoorNaam` (momentopname), `AangemaaktOp` (UTC), `HerkomstVerwerkingId`, `Reden`; valideren/afwijzen legt `BeoordeeldDoor(Naam)`/`BeoordeeldOp` vast. Alles uit het Easy Auth-principal, nooit uit de body, geen e-mailadres. |
 | **Wachtrij onbekende teamteksten** (`planner.OnbekendeTeamTekst`) | De processor schrijft na elke verwerking elke onbekende teamtekst die de vormguard `ZietEruitAlsTeamlabel` passeert (kort, alleen letters/cijfers/spatie/`-`/`/`/`.`/`+`, hoogstens twee tokens met letters, minstens één cijfer; ook de genormaliseerde sleutel — zinnen en namen vallen af; gesaneerd, afgekapt op 80 tekens, geen mailbody) als upsert op (club, genormaliseerde tekst): aantal, eerst/laatst gezien, laatste verwerking (geen FK). Een retry telt niet dubbel. Een fout bij het schrijven laat de verwerking nooit falen. Een alias met dezelfde sleutel zet de open regel automatisch op `afgehandeld`; een afgehandelde regel die terugkomt gaat weer open, een genegeerde blijft genegeerd. Regels die 90 dagen niet meer zijn gezien worden door de e-mail-cleanup verwijderd. |
 | **Admin-leermoment** (`POST /api/beheer/leermomenten`) | Herkomst `Admin`, direct gevalideerd, zonder reply-paar (`OrigineleVerwerkingId`/`CorrectionVerwerkingId` zijn `NULL`; `HerkomstVerwerkingId` is een los getal zonder FK, zodat de retentie-DELETE van de verwerking (#424) nooit blokkeert of meeneemt). De samenvatting (max 500) gaat door `TraceBuilder.Saneer` — dezelfde PII-arme sanering als de trace, geen tweede sanitizer. **Permanent**: de cleanup (`sp_CleanupClassificatieCorrectie`, `sp_CleanupEmailVerwerking` fase 2a, en `PostgresCleanupProcedures`) raakt alleen herkomst `Reply`. |
-| **Few-shot** | `HaalVoorbeeldenOpAsync` neemt alle gevalideerde, niet-afgewezen leermomenten mee (limiet 20); admin-voorbeelden staan eerst. Een admin-leermoment staat in de prompt als `Samenvatting "…" → is een <type>.` (of "was geclassificeerd als X, maar was eigenlijk Y" als het oorspronkelijke type bekend is). |
+| **Few-shot** | Vóór fase-1-classificatie laadt `HaalVoorbeeldenOpAsync` alle gevalideerde, niet-afgewezen leermomenten (limiet 20); admin-voorbeelden staan eerst. De provider krijgt beide samenvattingen na `ProviderSamenvatting`-maskering. Een admin-leermoment staat in de prompt als `Samenvatting "…" → is een <type>.` (of "was geclassificeerd als X, maar was eigenlijk Y" als het oorspronkelijke type bekend is). |
 | **Tester-pariteit** | De tester classificeert met dezelfde leermomenten als de processor (de trace meldt het aantal in de stap `leermomenten`) en schrijft niets. De enige uitzondering: is de teamlijst van de gekozen club nog helemaal leeg (bijvoorbeeld een democlub die nooit gesynchroniseerd is), dan bouwt de tester hem eenmalig op — anders resolvet niets. Een gevulde lijst blijft onaangeroerd; de nachtelijke sync en de processor houden hem actueel. |
 
 **Beperking:** het verwijderen van een alias laat geen auditregel achter in de tabel (de rij is weg); wie het
@@ -1366,9 +1375,8 @@ gaan via een apart pad naar dezelfde provider; die registerrij staat in [FEEDBAC
 
 | # | Aanroep | Wanneer | Terug van de provider |
 |---|---|---|---|
-| 1 | Classificatie (`ClassificeerBerichtAsync`) | Fase 1, voor elk ongelezen bericht dat de voorfilters passeert | JSON: type, datum(s), aanvangstijd, dagdeel, gewenste datum, teamnaam, leeftijdscategorie, tegenstander, samenvatting, namens wie, KNVB-notitie, heel veld |
-| 2 | Herclassificatie met leermomenten (zelfde methode, met voorbeelden) | Fase 2, alleen als de club gevalideerde leermomenten heeft | Als 1 |
-| 3 | Correctiedetectie (`DetecteerCorrectieAsync`) | Fase 2, alleen bij een reply op een eerder door ons beantwoord bericht (zelfde `ConversationId`) | JSON: is het een correctie, afgeleid type, samenvatting |
+| 1 | Classificatie (`ClassificeerBerichtAsync`) | Fase 1, voor elk ongelezen bericht dat de voorfilters passeert; gevalideerde few-shots worden in dezelfde aanroep gebruikt | JSON: type, datum(s), aanvangstijd, dagdeel, gewenste datum, teamnaam, leeftijdscategorie, tegenstander, samenvatting, namens wie, KNVB-notitie, heel veld |
+| 2 | Correctiedetectie (`DetecteerCorrectieAsync`) | Fase 2, alleen bij een reply op een eerder door ons beantwoord bericht (zelfde `ConversationId`) | JSON: is het een correctie, afgeleid type, samenvatting |
 | 4 | E-mailtester (`EmailTestFunction`, dry-run, rol `admin`) | Op verzoek van een beheerder | Als 1; de tester slaat niets op |
 
 Het antwoord aan de afzender schrijft de AI niet: dat komt uit de sjablonen van §2, gevuld met
@@ -1380,11 +1388,11 @@ plannergegevens en gesaneerde modelvelden (`AiVeldSanering`).
 
 | Gegeven | Aanroepen | Persoonsgegeven | Bewerking vóór verzending |
 |---|---|---|---|
-| E-mailadres van de afzender (het `From`-adres; niet de weergavenaam) | 1, 2, 4 | Ja | Geen; markernaam geneutraliseerd |
-| Onderwerp | 1, 2, 3, 4 | Kan (vrije tekst) | Geen; markernaam geneutraliseerd |
-| Berichttekst | 1, 2, 3, 4 | Kan (vrije tekst: namen, contactgegevens, toevallig een gezondheidsgegeven, mogelijk over minderjarigen) | Mailboxberichten (1, 2, 3): HTML verwijderd (`EmailSanitizer.StripHtml`, in `EmailGraphService`). Alle aanroepen: begrensd op `BerichtBodyBegrenzing.MaxBodyTekens` tekens en markernaam geneutraliseerd. Tester (4): de ingevoerde tekst gaat zonder HTML-verwijdering naar de classificatie |
+| E-mailadres van de afzender (het `From`-adres; niet de weergavenaam) | — | Ja | Niet opgenomen in de providerprompt |
+| Onderwerp | 1, 2, 3, 4 | Kan (vrije tekst) | Herkenbare e-mail- en telefoonpatronen gemaskeerd; markernaam geneutraliseerd |
+| Berichttekst | 1, 2, 3, 4 | Kan (vrije tekst: namen, contactgegevens, toevallig een gezondheidsgegeven, mogelijk over minderjarigen) | Mailboxberichten (1, 2, 3): HTML verwijderd (`EmailSanitizer.StripHtml`, in `EmailGraphService`). Alle aanroepen: begrensd op `BerichtBodyBegrenzing.MaxBodyTekens` tekens, herkenbare e-mail- en telefoonpatronen gemaskeerd en markernaam geneutraliseerd. Tester (4): de ingevoerde tekst gaat zonder HTML-verwijdering naar de classificatie |
 | Clubnaam (instelling `clubName`) en datum van vandaag, in de system prompt | 1, 2, 4 | Nee | — |
-| Leermomenten: verzoektypes en samenvattingen | 2, 4 | Kan (samenvatting) | Samenvatting door `AiVeldSanering.Samenvatting` (`TraceBuilder.Saneer`: e-mailadressen en nummerreeksen gemaskeerd, begrensd) |
+| Leermomenten: verzoektypes en samenvattingen | 2, 4 | Kan (samenvatting) | Opslag blijft strikt gesaneerd met `AiVeldSanering.Samenvatting`. De twee invoersamenvattingen van `FewShotRegel` gebruiken `ProviderSamenvatting`: herkenbare contactpatronen gemaskeerd, witruimte/aanhalingstekens genormaliseerd en 500 tekens per samenvatting. Numerieke datums, tijden en wedstrijdnummers blijven in deze providerinvoer behouden. Reeds gemaskeerde opgeslagen gegevens kunnen niet worden hersteld |
 | Oorspronkelijk verzoektype en samenvatting van het beantwoorde bericht | 3 | Kan (samenvatting) | Samenvatting is bij opslag al door `AiVeldSanering.Samenvatting` gegaan |
 
 Toelichting bij de bewerkingen:
@@ -1394,14 +1402,19 @@ Toelichting bij de bewerkingen:
   (`EmailBatchFilterService`; zie het stroomschema hierboven). De weergavenaam van de afzender, de
   internetheaders en bijlagen gaan niet mee.
 * **Berichttekst.** De volledige tekst zoals de mailbox hem levert, dus ook een handtekening of
-  geciteerde eerdere berichten als die in de mail staan, tot de begrenzing. Wordt er ingekort, dan
-  komt er een markering achter en een logregel met alleen lengtes.
+  geciteerde eerdere berichten als die in de mail staan, tot de begrenzing. De contactherkenning
+  verwerkt maximaal de eerste 8.000 tekens. Bij afkappen vervalt een overlappend niet-witruimtetoken
+  of mogelijk telefoonfragment, inclusief voorafgaande cijfergroepen met spaties; dit kan ook gewone
+  tekst aan de grens laten vervallen. Zo hoeft de rest van een onbegrensd lang bericht niet door de
+  contactregexes. Na maskering geldt opnieuw de lengtegrens, zonder halve maskeringen of
+  surrogaatparen. Wordt er ingekort, dan blijft de markering achter de tekst staan, ook als maskering
+  of het weglaten van het grensfragment de tekst verkort. De logregel bevat alleen lengtes.
 * **Markers.** Afzender, onderwerp en tekst staan in een datablok met per aanroep willekeurige markers;
   de vaste markernaam wordt uit de tekst gehaald. Dat is een maatregel tegen prompt-injectie, geen
   privacymaatregel.
-* **Persoonsgegevens in de invoer worden niet gemaskeerd.** Onderwerp en berichttekst gaan, op de
-  bewerkingen hierboven na, ongewijzigd mee. De saneringen in deze module werken op wat de provider
-  teruggeeft en wat de applicatie bewaart of toont: `AiVeldSanering` (vrije modelvelden vóór gebruik in
+* **Overige persoonsgegevens kunnen in de invoer blijven.** Na het maskeren van contactpatronen gaan
+  onderwerp en berichttekst, op de bewerkingen hierboven na, ongewijzigd mee. Uitvoer wordt apart
+  gesaneerd voor opslag of weergave: `AiVeldSanering` (vrije modelvelden vóór gebruik in
   een antwoord), `ModelDatum.Grens` (alle datumvelden van de classificatie, strikt `jjjj-MM-dd`, eenmalig
   vóór trace en verwerking, #1730), `TraceBuilder.Saneer` (samenvattingen, leermomenten, trace) en `AvgMaskering`
   (afzender- en ontvangeradres in het e-maillog van de beheerinterface).
