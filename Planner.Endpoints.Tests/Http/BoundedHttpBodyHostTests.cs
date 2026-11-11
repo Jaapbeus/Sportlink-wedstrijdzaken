@@ -57,13 +57,13 @@ public class BoundedHttpBodyHostTests
     }
 
     [Fact]
-    public void FunctionsRegistration_UsesTheExistingFiniteEnvelope()
+    public void FunctionsRegistration_UsesFinitePlatformTransportCeiling()
     {
         var builder = FunctionsApplication.CreateBuilder([]);
         builder.ConfigureBoundedFunctionsWebApplication();
         using var services = builder.Services.BuildServiceProvider();
         services.GetRequiredService<IOptions<KestrelServerOptions>>().Value.Limits.MaxRequestBodySize
-            .Should().Be(TeambegeleidingImportRequestBodyLimits.MaxJsonBytes);
+            .Should().Be(220_200_960);
     }
 
     [Fact]
@@ -85,14 +85,14 @@ public class BoundedHttpBodyHostTests
     }
 
     [Fact]
-    public async Task ChunkFramingAboveFiniteWireCeiling_ReturnsControlled413()
+    public async Task ChunkFramingAtApplicationLimit_RemainsWithinTransportCeiling()
     {
         await using var server = await Server.StartAsync(configured: true);
         using var content = Content(Envelope(TeambegeleidingImportRequestBodyLimits.MaxJsonBytes), chunked: true);
         using var response = await server.SendAsync("/import", content);
 
-        response.StatusCode.Should().Be(HttpStatusCode.RequestEntityTooLarge);
-        server.Calls.Should().Be(0);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        server.Calls.Should().Be(1);
         server.ServerReadFailures.Should().Be(0);
     }
 
