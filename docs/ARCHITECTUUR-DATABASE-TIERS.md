@@ -1604,10 +1604,11 @@ sloopwerkzaamheden in een eigen schema — is vastgelegd als issue #925 en valt 
 ### Bewust niet in deze ronde
 
 - **De SQL Server-suite omzetten naar hetzelfde env-gestuurde mechanisme.**
-  `SportlinkFixtureSyncIntegrationTests` en `PartialFailureIntegrationTests` staan nog op
-  `[Fact(Skip = "...")]` en draaien dus nergens automatisch. #866 loste dit alleen voor de
-  Postgres-tier op; docs/DEVELOPER-SETUP.md §7.1 benoemt dat al als openstaand. Deze ronde raakt de
-  SQL Server-boom bewust niet.
+  Ten tijde van deze ronde stonden `SportlinkFixtureSyncIntegrationTests` en
+  `PartialFailureIntegrationTests` op `[Fact(Skip = "...")]` en draaiden ze nergens automatisch.
+  #866 loste dit alleen voor de Postgres-tier op; deze ronde raakte de SQL Server-boom bewust niet.
+  Later zijn de lege placeholders in `PartialFailureIntegrationTests` verwijderd (zie issue #1808).
+  De resterende fixturetests staan nog op `Skip`; docs/DEVELOPER-SETUP.md §7.1 beschrijft die beperking.
 - **De overige scenario's uit §28** (sleuteldriftmigratie, samenvoegen van dubbele schrijfwijzen,
   deactivering, clubisolatie, lege bron). Van de negen daar gemeten scenario's zijn de drie
   overgenomen waarvoor §28 ook een negatieve controle heeft vastgelegd; de overige zes blijven
@@ -1927,8 +1928,9 @@ klassen zitten in hetzelfde project en dus achter dezelfde connectiestring.
   binnen-project-geval oplossen dat de seizoenstests raakt, maar vereist dat
   `PostgresMergeOrchestrator` een schemanaam accepteert — een productiecode-wijziging omwille van
   een test, en dus een eigen afweging.
-- **De SQL Server-tier.** Die kent hetzelfde patroon niet: `PartialFailureIntegrationTests` en
-  `SportlinkFixtureSyncIntegrationTests` draaien nergens automatisch (§29's laatste punt).
+- **De SQL Server-tier.** Die kende dit patroon tijdens deze ronde niet: de in §29 genoemde
+  integratietestklassen draaiden nergens automatisch. De lege partial-failure-placeholders zijn
+  later verwijderd (zie issue #1808); de resterende fixturetests staan nog op `Skip` (§29).
 
 ## 34. De laatste opschoonprocedure: `sp_CleanupAppSettingsAudit` (#781/#861)
 

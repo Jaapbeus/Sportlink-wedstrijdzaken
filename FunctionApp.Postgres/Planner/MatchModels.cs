@@ -13,7 +13,7 @@ namespace FunctionApp.Postgres.Planner;
 /// Veldnamen letterlijk gelijk aan het SQL Server-origineel zodat de JSON op beide tiers identiek is.
 /// </para>
 /// </summary>
-public class BevestigRequest
+public class BevestigRequest : global::Planner.Shared.Autorisatie.IBevestigAanvragerRequest
 {
     public string Datum { get; set; } = string.Empty;
     public string AanvangsTijd { get; set; } = string.Empty;
@@ -45,7 +45,7 @@ public class ZoekWedstrijdResponse : IAntwoordWedstrijd
     public decimal VeldDeelGebruik { get; set; }
 }
 
-public class HerplanBevestigRequest
+public class HerplanBevestigRequest : global::Planner.Shared.Autorisatie.IHerplanAanvragerRequest
 {
     public long Wedstrijdcode { get; set; }
     public string GewensteAanvangsTijd { get; set; } = string.Empty;

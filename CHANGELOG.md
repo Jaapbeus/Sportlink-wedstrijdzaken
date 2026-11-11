@@ -26,11 +26,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - `/api/health` exposeert niet langer database-, schema-, migratie-, TLS-, sync- of tierdiagnostiek. Deploy- en readinessvelden zijn geaggregeerd; details zijn beschikbaar via admin-only `GET /api/beheer/health` (#1811). Dit is de API 4.0.0.0-contractgrens.
 
 ### Changed
+- Unused authentication members were removed from the shared auth interface and implementations; synthetic tests preserve existing role and logout behavior (see issue #1808).
+- Removed an unreferenced email HTML generation method and its dedicated tests; active browser and export renderers are unchanged (see issue #1808).
+- Remove the unused optional time normalizer, five unreferenced SQL planner facade forwards and four no-op test placeholders; keep their active repository implementations and maintained tooling. Update current test documentation and annotate historical references to the removed placeholders. (zie issue #1808)
 - De bestaande veldeditor is naar een gedeelde Razor-component verplaatst; modelbinding, validatie en de bestaande save-/annuleerhandlers blijven gelijk (zie issue #1807).
 - De gedeelde HTML-generator voor de veldplanner is per verantwoordelijkheid in partial-bestanden opgesplitst; de publieke aanroepen en de gegenereerde browser- en e-mail-HTML blijven gelijk (zie issue #1807).
 - De fingerprint-, publieke titel-/diagnostiek- en foutclassificatiehelpers van `GitHubIssueReporter` staan in een eigen partial-bestand; de bestaande methoden en werking blijven gelijk (zie issue #1807).
 - De bestaande beheer-DTO's zijn per domein in modelbestanden gegroepeerd; JSON-contracten en type-inhoud zijn ongewijzigd (zie issue #1807).
 - Removed the unused API status service and placed existing shared-logic tests in `Planner.Shared.Tests` (see issue #1808).
+- Removed unreferenced Bootstrap JavaScript assets and unused starter-menu icon selectors; the linked Bootstrap CSS remains (see issue #1808).
 - Clarified the Postgres error-reporting adapter documentation while retaining its tier-specific egress and fingerprint rationale (see issue #1805).
 - In Planner.Shared, removed planning-comment provenance while retaining the tier-independent logic and planning invariants (see issue #1806).
 - Het reviewrondelimiet voor Codex en Claude Code (AGENTS.md en de automatische issue-beurt van de bot) is van twee naar drie rondes per PR gegaan; pas daarna beslist de eigenaar, zie issue #1835.
@@ -43,6 +47,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - De bestaande CSV-limiet van 5 MiB UTF-8 wordt nu ook op de gedecodeerde inhoud gecontroleerd vóór parsing, op beide databasetiers (zie issue #1811).
 - Sync-statusmeldingen bewaren alleen het uitzonderingstype; providerfouttekst en URL blijven uit de beheerstatus (zie issue #1811).
 - De negatieve tier-duplicatietest gebruikt een vaste synthetische grens en blijft daardoor betrouwbaar wanneer productierefactorings duplicatie verminderen (zie issue #1811).
+- Planneraanvragen op beide databasetiers slaan de aanvrager op uit de ingelogde principal; een clientwaarde wordt genegeerd en e-mailadressen worden niet als aanvrager opgeslagen; zie issue #1812.
 - Settings restart decisions now have paired SQL Server and Postgres persistence regression tests for unchanged and changed schedules alongside another saved field (#1819).
 - Begrens JSON-requestbody's voor voorkeurstijden, teamregels, veldtrainingen en veldperiodes op maximaal 1 MiB UTF-8-bytes; ongeldige UTF-8/JSON geeft 400 en te grote bodies 413 vóór verwerking (#1811).
 - Begrens JSON-requestbody's voor de rol-featurematrix en uitgesloten e-mailadressen op maximaal 1 MiB UTF-8-bytes; ongeldige UTF-8/JSON geeft 400 en te grote bodies 413 vóór verwerking (#1811).
