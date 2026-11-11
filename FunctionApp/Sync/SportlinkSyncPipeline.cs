@@ -33,7 +33,8 @@ internal static class SportlinkSyncPipeline
     internal static async Task<bool> RunSyncWithSeasonWindowAsync(
         Func<Task<(int FromWeekOffset, int ToWeekOffset)>> buildWindow,
         string sportlinkApiUrl, string sportlinkClientId,
-        ILogger log)
+        ILogger log,
+        Func<DateOnly>? bepaalVandaag = null)
     {
         var partialFailure = false;
         var clubCode = AppSettings.GetSetting("clubCode");
@@ -43,7 +44,8 @@ internal static class SportlinkSyncPipeline
         await using var stagingLease = await SqlServerSyncStagingLease.TryAcquireAsync()
             ?? throw new SyncAlreadyRunningException();
 
-        await SqlServerSeasonRollover.EnsureAsync(clubCode, SqlServerSeasonRollover.VandaagInNederland, log);
+        await SqlServerSeasonRollover.EnsureAsync(
+            clubCode, bepaalVandaag?.Invoke() ?? SqlServerSeasonRollover.VandaagInNederland, log);
         var (fromWeekOffset, toWeekOffset) = await buildWindow();
 
         var teamsFailed = await FetchTeamsPhaseAsync(sportlinkApiUrl, sportlinkClientId, clubCode, log);

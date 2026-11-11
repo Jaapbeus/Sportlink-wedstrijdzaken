@@ -168,6 +168,49 @@ public sealed class SqlServerSyncSeasonRolloverIntegrationTests
         }
     }
 
+    [SqlServerFact]
+    public async Task RunSyncWithSeasonWindowAsync_TimeZonesUnavailable_StopsBeforeRolloverWindowProviderAndTimestamp()
+    {
+        var clubCode = TestClubCode();
+        var utc = new DateTimeOffset(2026, 6, 30, 12, 0, 0, TimeSpan.Zero);
+        var previousTimestamp = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        await using var connection = await OpenAsync();
+        await MaakClubAsync(connection, clubCode, startMaand: 9);
+        await VoegSeizoenToeAsync(connection, clubCode, 2024, 9);
+        await VoegSeizoenToeAsync(connection, clubCode, 2025, 9);
+        SystemUtilities.AppSettings.SetForTests("clubCode", clubCode);
+        try
+        {
+            await using (var command = new SqlCommand(
+                "UPDATE [dbo].[AppSettings] SET [LastSyncTimestamp] = @Timestamp WHERE [ClubCode] = @ClubCode", connection))
+            {
+                command.Parameters.AddWithValue("@Timestamp", previousTimestamp);
+                command.Parameters.AddWithValue("@ClubCode", clubCode);
+                await command.ExecuteNonQueryAsync();
+            }
+            using var server = new SportlinkFixtureServer();
+            var windowBuilt = false;
+            var run = () => SportlinkSyncPipeline.RunSyncWithSeasonWindowAsync(
+                () => { windowBuilt = true; throw new VensterGebouwdNaDoorrolException(); },
+                server.BaseUrl, "clientId=fixture-test", NullLogger.Instance,
+                () => SqlServerSeasonRollover.BepaalVandaag(utc, _ => throw new TimeZoneNotFoundException()));
+
+            await run.Should().ThrowAsync<TimeZoneNotFoundException>();
+            windowBuilt.Should().BeFalse();
+            server.Requests.Should().BeEmpty();
+            (await SeizoennamenAsync(connection, clubCode)).Should().Equal("2024-2025", "2025-2026");
+            (await LeesLastSyncTimestampAsync(connection, clubCode)).Should().Be(previousTimestamp);
+            var lease = await SqlServerSyncStagingLease.TryAcquireAsync();
+            lease.Should().NotBeNull("a failed business clock must release the original global lease");
+            await lease!.DisposeAsync();
+        }
+        finally
+        {
+            SystemUtilities.AppSettings.ResetForTests();
+            await VerwijderClubAsync(connection, clubCode);
+        }
+    }
+
     private static string TestClubCode() => "t" + Guid.NewGuid().ToString("N")[..12];
 
     private static async Task EnsureMetDatumAsync(SqlConnection connection, string clubCode, DateOnly vandaag)
