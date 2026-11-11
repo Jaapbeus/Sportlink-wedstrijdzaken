@@ -67,8 +67,8 @@ public class EmailReplyPolicyServiceTests
         var email = new InkomendBericht
         {
             MessageId = "m-team-contact",
-            Afzender = "afzender@voorbeeld.test",
-            AfzenderNaam = "Vraagsteller",
+            Afzender = "trainer@voorbeeld.nl",
+            AfzenderNaam = "Jan de Vries",
             Onderwerp = "Vraag",
             ConversationId = "conv-team-contact",
             Body = "Kunt u mij terugbellen?"
@@ -83,7 +83,7 @@ public class EmailReplyPolicyServiceTests
 
         uitkomst.Should().Be(ReplyVerwerkingUitkomst.AntwoordVerstuurd);
         ontvangenVerzoek.Should().Be(new TeamContactDoorstuurVerzoek(
-            "JO13-2", email.Afzender, "Vraagsteller", "Kunt u mij terugbellen?"));
+            "JO13-2", email.Afzender, "Jan de Vries", "Kunt u mij terugbellen?"));
         graph.SentReplies.Should().ContainSingle();
     }
 
