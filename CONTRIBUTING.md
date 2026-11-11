@@ -305,6 +305,26 @@ verouderd statuslabel. Hij beoordeelt elk open issue met een `turn:`-label, een 
 Een schedule draait alleen vanaf de default branch: deze bewaking is dus pas actief na de eerstvolgende
 release naar `main`; tot die tijd is de overdrachtsvolgorde hierboven niet automatisch gecontroleerd.
 
+### Parallelle agentorkestratie (#1860)
+
+Controleer bij elk orkestratiepunt de live agentbezetting en geef elke vrije runtimeslot een veilige,
+afgebakende taak uit de al toegestane scope. Reken de orkestrator mee in de runtimelimiet. Hergebruik
+voltooide agents meteen en controleer dat zij hun volgende taak hebben aanvaard voordat je een slot als
+actief meldt.
+
+Controleer vóór toewijzing de issue-eigenaar, reviewer, fase, beurt, worktree-eigenaar, afhankelijkheden
+en grenzen tussen bestanden, API-contracten, schema's en gedeelde logica. Laat schrijvers niet overlappen
+en neem geen werk over dat bij de eigenaar ligt of tijdens review bevroren is. Herhaal de scope- en
+eigenaarschapscontrole bij uitbreiding en vóór commit of PR.
+
+Een tekstverschil of aparte bestandslijst bewijst geen functionele isolatie; controleer ook gedeelde
+aanroepers, contracten en gegevensstromen.
+
+Is er geen veilige codetaak, wijs dan onafhankelijke, alleen-lezen status- of CI-controles toe, of een
+exacte-SHA-review als fase en reviewprotocol dat toestaan. Een review blijft alleen-lezen en bevroren op
+de aangeboden SHA. Volg CI en reviewreacties; meld een slot pas bezet nadat de taak aantoonbaar actief is.
+Rapporteer per agent de concrete taak en het bewijs, en vermeld als geen taak veilig beschikbaar is.
+
 ### Security Gate
 
 De Security Gate job in CI is **leidend**. Zolang deze rood is, wordt een PR niet gemerged — ook niet als andere checks groen zijn. De gate controleert:

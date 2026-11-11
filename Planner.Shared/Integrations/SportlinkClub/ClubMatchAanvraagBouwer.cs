@@ -29,7 +29,8 @@ public sealed record ClubMatchBouwResultaat(
 /// <summary>
 /// Vertaalt de formulierinvoer naar de <c>ClubMatch</c>-body met de vier lijsten uit
 /// <see cref="SportlinkClubMatchContext"/> (#1427). Volgt wat Sportlinks eigen formulier doet: het
-/// eigen team levert het <c>T…</c>-ID (thuis én uit), de teamnamen zijn vrije tekst, en wat niet
+/// eigen team levert het <c>T…</c>-ID van het thuisteam, de tegenstander gaat als vrije tekst met de
+/// "geen team"-sentinel (#1871 — vóór die fix ging het eigen ID ook als uit-ID mee), en wat niet
 /// eenduidig af te leiden is valt terug op <c>ClubMatchDefaults</c> — met een waarschuwing.
 /// <para>
 /// <b>Wat bewust een fout is en geen terugval:</b> een gekozen team of veld dat Sportlink niet
@@ -47,16 +48,10 @@ public static class ClubMatchAanvraagBouwer
         var teamNaam = invoer.TeamNaam.Trim();
 
         var team = ZoekTeam(context.Teams, teamNaam);
-        string? teamId = team?.Id;
-        if (team == null)
-        {
-            if (!invoer.VrijeTekst)
-                return Fout($"Team '{teamNaam}' is niet (eenduidig) gevonden in de Sportlink-teamlijst.");
-            teamId = d.PublicHomeTeamId;
-            waarschuwingen.Add($"Vrije teamnaam '{teamNaam}': Sportlinks standaardteam wordt als team gebruikt; '{teamNaam}' staat als naam van het thuisteam.");
-        }
-        if (string.IsNullOrWhiteSpace(teamId))
-            return Fout("Sportlink gaf geen standaardteam terug — kies een team uit de lijst.");
+        if (team == null && !invoer.VrijeTekst)
+            return Fout($"Team '{teamNaam}' is niet (eenduidig) gevonden in de Sportlink-teamlijst.");
+        var (teamId, thuisNaam) = BepaalThuis(team, teamNaam, d.PublicHomeTeamId, waarschuwingen);
+        var uitTeamId = BepaalUitTeamId(d.PublicAwayTeamId, teamId, context.Teams, waarschuwingen);
 
         var facility = ZoekFacility(context.Facilities, invoer.Accommodatie, d.FacilityId);
         if (facility == null)
@@ -83,7 +78,7 @@ public static class ClubMatchAanvraagBouwer
             // de aanroeper (ClubMatchEndpointCore) vult het in vlak vóór de Sportlink-aanroep.
             ExternalMatchId: null,
             Description: invoer.Omschrijving,
-            HomeTeam: teamNaam,
+            HomeTeam: thuisNaam,
             AwayTeam: invoer.Tegenstander.Trim(),
             PublicTeamId: teamId,
             AgeClassCode: BepaalAgeClass(invoer, context.AgeClasses, d.AgeClassCode, waarschuwingen),
@@ -93,7 +88,8 @@ public static class ClubMatchAanvraagBouwer
             SubFacilityId: subFacilityId,
             // AANNAME (#1437): zie ClubMatchVelddeel — alleen "1.0" is live bevestigd; FieldOffset 0 = eerste deel.
             FieldSize: invoer.Velddeel,
-            FieldOffset: "0");
+            FieldOffset: "0",
+            PublicAwayTeamId: uitTeamId);
         return new ClubMatchBouwResultaat(aanvraag, null, waarschuwingen);
 
         ClubMatchBouwResultaat Fout(string fout) => new(null, fout, waarschuwingen);
@@ -241,6 +237,39 @@ public static class ClubMatchAanvraagBouwer
             waarschuwingen.Add($"Spelactiviteit van het team niet in Sportlinks lijst — standaard ({standaard ?? "geen"}) wordt gebruikt.");
         return standaard;
     }
+
+    /// <summary>
+    /// Thuisteam (#1871, zoals Sportlinks eigen formulier): een gevonden clubteam gaat met zijn eigen <c>Id</c> én
+    /// <c>TeamName</c> (Sportlink toont toch de naam bij het ID); een vrije teamnaam met Sportlinks standaard-ID.
+    /// </summary>
+    private static (string Id, string Naam) BepaalThuis(
+        SportlinkClubTeam? team, string teamNaam, string? standaardId, List<string> waarschuwingen)
+    {
+        if (team != null) return (team.Id!, team.TeamName!.Trim());
+        waarschuwingen.Add($"Vrije teamnaam '{teamNaam}': niet gekoppeld aan een Sportlink-team (Sportlinks standaardteam); '{teamNaam}' staat als naam van het thuisteam.");
+        return (GeenTeamOfStandaard(standaardId), teamNaam);
+    }
+
+    /// <summary>
+    /// Uitteam-ID (#1871). De tegenstander is altijd vrije tekst en krijgt dus nooit een clubteam-ID — met het
+    /// eigen ID toont Sportlink het eigen team als uitteam, en die koppeling is in Sportlink Club daarna niet meer
+    /// naar vrije tekst te wijzigen. Sportlinks standaard (live: de sentinel) wint, tenzij dat een clubteam of het
+    /// thuis-ID is.
+    /// </summary>
+    private static string BepaalUitTeamId(
+        string? standaardId, string thuisId, IReadOnlyList<SportlinkClubTeam> clubTeams, List<string> waarschuwingen)
+    {
+        var uitId = GeenTeamOfStandaard(standaardId);
+        if (uitId == SportlinkClubMatchAanvraag.GeenTeamId) return uitId;
+        if (uitId != thuisId && !clubTeams.Any(t => string.Equals(t.Id, uitId, StringComparison.Ordinal))) return uitId;
+        waarschuwingen.Add("Sportlinks standaard-uitteam is een eigen clubteam — de tegenstander gaat zonder teamkoppeling mee.");
+        return SportlinkClubMatchAanvraag.GeenTeamId;
+    }
+
+    /// <summary>Sportlinks standaard-ID uit <c>ClubMatchDefaults</c>, of — leeg — de "geen team"-sentinel; zo doet
+    /// Sportlinks eigen formulier het voor een vrije-tekst-team (#1871, <c>defaults.Public…TeamId || sentinel</c>).</summary>
+    private static string GeenTeamOfStandaard(string? standaard)
+        => string.IsNullOrWhiteSpace(standaard) ? SportlinkClubMatchAanvraag.GeenTeamId : standaard.Trim();
 
     /// <summary>Precies één treffer → die; nul of meerdere → <c>null</c>.</summary>
     private static T? SingleOrDefaultIfMany<T>(this IEnumerable<T> bron, Func<T, bool> predicaat) where T : class
