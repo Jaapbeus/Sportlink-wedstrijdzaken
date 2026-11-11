@@ -143,7 +143,7 @@ public class BerichtAiKern
     public static string BouwClassificatieUserPrompt(string afzender, string subject, string body, string markerId, ILogger? log = null)
         => $"{DataMarkerStart(markerId)}\n"
            + $"Onderwerp: {NeutraliseerDataMarkers(AiVeldSanering.MaskeerContactgegevens(subject))}\n\n"
-           + $"{NeutraliseerDataMarkers(AiVeldSanering.MaskeerContactgegevens(BerichtBodyBegrenzing.Kap(body, log)))}\n"
+           + $"{NeutraliseerDataMarkers(BerichtBodyBegrenzing.VoorProvider(body, log))}\n"
            + DataMarkerEinde(markerId);
 
     /// <summary>
@@ -357,7 +357,7 @@ public class BerichtAiKern
             + "Reply:\n"
             + $"{DataMarkerStart(dataMarkerId)}\n"
             + $"Onderwerp: {NeutraliseerDataMarkers(AiVeldSanering.MaskeerContactgegevens(subject))}\n\n"
-            + $"{NeutraliseerDataMarkers(AiVeldSanering.MaskeerContactgegevens(BerichtBodyBegrenzing.Kap(body, _logger)))}\n"
+            + $"{NeutraliseerDataMarkers(BerichtBodyBegrenzing.VoorProvider(body, _logger))}\n"
             + DataMarkerEinde(dataMarkerId);
 
         var messages = new List<Microsoft.Extensions.AI.ChatMessage>

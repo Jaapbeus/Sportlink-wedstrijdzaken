@@ -1400,8 +1400,13 @@ Toelichting bij de bewerkingen:
   (`EmailBatchFilterService`; zie het stroomschema hierboven). De weergavenaam van de afzender, de
   internetheaders en bijlagen gaan niet mee.
 * **Berichttekst.** De volledige tekst zoals de mailbox hem levert, dus ook een handtekening of
-  geciteerde eerdere berichten als die in de mail staan, tot de begrenzing. Wordt er ingekort, dan
-  komt er een markering achter en een logregel met alleen lengtes.
+  geciteerde eerdere berichten als die in de mail staan, tot de begrenzing. De contactherkenning
+  verwerkt maximaal de eerste 8.000 tekens. Bij afkappen vervalt een overlappend niet-witruimtetoken
+  of mogelijk telefoonfragment, inclusief voorafgaande cijfergroepen met spaties; dit kan ook gewone
+  tekst aan de grens laten vervallen. Zo hoeft de rest van een onbegrensd lang bericht niet door de
+  contactregexes. Na maskering geldt opnieuw de lengtegrens, zonder halve maskeringen of
+  surrogaatparen. Wordt er ingekort, dan blijft de markering achter de tekst staan, ook als maskering
+  of het weglaten van het grensfragment de tekst verkort. De logregel bevat alleen lengtes.
 * **Markers.** Afzender, onderwerp en tekst staan in een datablok met per aanroep willekeurige markers;
   de vaste markernaam wordt uit de tekst gehaald. Dat is een maatregel tegen prompt-injectie, geen
   privacymaatregel.

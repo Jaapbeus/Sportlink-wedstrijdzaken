@@ -93,6 +93,131 @@ public class BerichtAiKernAanroepTests
         client.Berichten[3].Text.Should().Contain(invoer);
     }
 
+    public static IEnumerable<object[]> ContactOpBodyGrens()
+    {
+        foreach (var correctie in new[] { false, true })
+        {
+            yield return [correctie, new string('0', 10), 9, new string('0', 9)];
+            yield return [correctie, "+" + new string('0', 12), 8, "+" + new string('0', 7)];
+            yield return [correctie, "trainer@voorbeeld.nl", 7, "trainer"];
+            // A phone run can cross whitespace, including whitespace exactly at the cut.
+            yield return [correctie, new string('0', 3) + " " + new string('0', 7), 3, new string('0', 3)];
+            yield return [correctie, new string('0', 3) + new string(' ', 100_000) + new string('0', 7), 20, new string('0', 3)];
+            yield return [correctie, "trainer" + new string('x', 100_000) + "@allstars-fc.test", 7, "trainer"];
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(ContactOpBodyGrens))]
+    public async Task ProviderBodyGrens_ContactfragmentVervaltEnMarkeringBlijft(
+        bool correctie, string contact, int zichtbareTekens, string fragment)
+    {
+        var prefix = new string('x', BerichtBodyBegrenzing.MaxBodyTekens - zichtbareTekens - 1) + "\n";
+        var body = prefix + contact + " einde";
+
+        var providerBody = await LegProviderBodyVast(body, correctie);
+
+        providerBody.Should().NotContain(fragment).And.EndWith(BerichtBodyBegrenzing.AfkapMarkering);
+        providerBody.Should().Be(prefix + BerichtBodyBegrenzing.AfkapMarkering);
+        providerBody.Length.Should().BeLessThanOrEqualTo(
+            BerichtBodyBegrenzing.MaxBodyTekens + BerichtBodyBegrenzing.AfkapMarkering.Length);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProviderBodyGrens_EenEnormOnafgebrokenTokenVervalt(bool correctie)
+    {
+        var providerBody = await LegProviderBodyVast(new string('x', 1_000_000), correctie);
+
+        providerBody.Should().Be(BerichtBodyBegrenzing.AfkapMarkering);
+    }
+
+    [Theory]
+    [InlineData(false, "[nummer]")]
+    [InlineData(true, "[nummer]")]
+    [InlineData(false, "[e-mail]")]
+    [InlineData(true, "[e-mail]")]
+    public async Task ProviderBodyGrens_GeenGedeeltelijkeMaskering(bool correctie, string maskering)
+    {
+        var prefix = new string('x', BerichtBodyBegrenzing.MaxBodyTekens - 5) + "\n";
+
+        var providerBody = await LegProviderBodyVast(prefix + maskering + " einde", correctie);
+
+        providerBody.Should().Be(prefix + BerichtBodyBegrenzing.AfkapMarkering);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProviderBodyGrens_VolledigePlanningEnContactenBlijvenVerwerkt(bool correctie)
+    {
+        var planning = "14-11-26 10.30 uur; 2026-11-14; 00.15 00.30 00.45; wedstrijd " + new string('0', 9);
+        var prefix = planning + "\ntrainer@voorbeeld.nl\n" + new string('0', 10) + "\n";
+        var body = prefix + new string(' ', BerichtBodyBegrenzing.MaxBodyTekens - prefix.Length) + "\neinde";
+
+        var providerBody = await LegProviderBodyVast(body, correctie);
+
+        providerBody.Should().Contain(planning).And.Contain("[e-mail]").And.Contain("[nummer]")
+            .And.EndWith(BerichtBodyBegrenzing.AfkapMarkering);
+        providerBody.Should().NotContain("trainer@").And.NotContain(new string('0', 10));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProviderBodyGrens_GeenHalfSurrogaatpaar(bool correctie)
+    {
+        var prefix = new string('x', BerichtBodyBegrenzing.MaxBodyTekens - 2) + "\n";
+
+        var providerBody = await LegProviderBodyVast(prefix + "\U0001F600" + " einde", correctie);
+
+        providerBody.Should().Be(prefix + BerichtBodyBegrenzing.AfkapMarkering);
+        providerBody.Any(char.IsSurrogate).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProviderBodyGrens_GroeiendeMaskeringWordtNietGesplitst(bool correctie)
+    {
+        // Invalid synthetic syntax with a numeric TLD, not a real address/domain. The permissive
+        // contact matcher still masks it; this is shorter than its replacement and exercises cap 2.
+        var nul = new string('0', 1);
+        var ongeldigPatroon = nul + "@" + nul + "." + nul;
+        var prefix = new string('x', BerichtBodyBegrenzing.MaxBodyTekens - ongeldigPatroon.Length - 1) + "\n";
+
+        var providerBody = await LegProviderBodyVast(prefix + ongeldigPatroon, correctie);
+
+        providerBody.Should().Be(prefix + BerichtBodyBegrenzing.AfkapMarkering);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProviderBodyGrens_ExacteLimietZonderContactBlijftOngewijzigd(bool correctie)
+    {
+        var body = new string('x', BerichtBodyBegrenzing.MaxBodyTekens);
+
+        (await LegProviderBodyVast(body, correctie)).Should().Be(body);
+    }
+
+    private static async Task<string> LegProviderBodyVast(string body, bool correctie)
+    {
+        var client = new VasteClient("{}");
+        var kern = Maak(client);
+        if (correctie)
+            await kern.DetecteerCorrectieAsync(body, "Onderwerp", "buiten_scope", null);
+        else
+            await kern.ClassificeerBerichtAsync(body, "Onderwerp", "trainer@voorbeeld.nl");
+        client.Berichten.Should().HaveCount(2);
+        var prompt = client.Berichten.Single(bericht => bericht.Role == ChatRole.User).Text!;
+        const string kop = "Onderwerp: Onderwerp\n\n";
+        var start = prompt.IndexOf(kop, StringComparison.Ordinal) + kop.Length;
+        var eind = prompt.LastIndexOf("\n[/BERICHT-DATA-", StringComparison.Ordinal);
+        return prompt[start..eind];
+    }
+
     [Fact]
     public async Task Classificeer_SysteemPromptBegintMetDatumregelEnNoemtClubnaam()
     {
