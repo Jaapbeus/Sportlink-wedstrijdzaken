@@ -37,9 +37,9 @@ public class TeambegeleidingImportRequestLimitTests
     [SqlServerFact]
     public async Task CsvUtf8BytesOverFiveMiB_ReturnsGenericPayloadTooLarge()
     {
-        var csv = new string('é', TeambegeleidingImportRequestBodyLimits.CsvFileMaxBytes / 2 + 1);
+        var csv = new string('é', TeambegeleidingImportRequestBodyLimits.CsvFileMaxBytes / 2) + "a";
 
-        Encoding.UTF8.GetByteCount(csv).Should().BeGreaterThan(TeambegeleidingImportRequestBodyLimits.CsvFileMaxBytes);
+        Encoding.UTF8.GetByteCount(csv).Should().Be(TeambegeleidingImportRequestBodyLimits.CsvFileMaxBytes + 1);
         var result = await InvokeImportAsync(csv);
 
         AssertGenericPayloadTooLarge(result);
