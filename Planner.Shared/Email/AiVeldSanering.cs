@@ -167,7 +167,29 @@ public static partial class AiVeldSanering
         string[] tijdFormaten = ["H:mm", "HH:mm", "H.mm", "HH.mm"];
         return kandidaat.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).All(deel =>
             DateOnly.TryParseExact(deel, datumFormaten, CultureInfo.InvariantCulture, DateTimeStyles.None, out _)
-            || TimeOnly.TryParseExact(deel, tijdFormaten, CultureInfo.InvariantCulture, DateTimeStyles.None, out _));
+            || IsTijd(deel, tijdFormaten)
+            || IsTijdbereik(deel, tijdFormaten)
+            || IsDagMaand(deel));
+    }
+
+    private static bool IsTijd(string deel, string[] formaten)
+        => TimeOnly.TryParseExact(deel, formaten, CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
+
+    // "10:30-12:00" / "10.30-12.00": precies twee geldige tijden rond één streepje.
+    private static bool IsTijdbereik(string deel, string[] formaten)
+    {
+        var delen = deel.Split('-');
+        return delen.Length == 2 && IsTijd(delen[0], formaten) && IsTijd(delen[1], formaten);
+    }
+
+    // "14-11" / "14/11": dag 1-31 en maand 1-12, elk één of twee cijfers; geen jaar nodig.
+    private static bool IsDagMaand(string deel)
+    {
+        var delen = deel.Split('-', '/');
+        return delen.Length == 2
+            && delen.All(d => d.Length is 1 or 2 && d.All(char.IsAsciiDigit))
+            && int.Parse(delen[0], CultureInfo.InvariantCulture) is >= 1 and <= 31
+            && int.Parse(delen[1], CultureInfo.InvariantCulture) is >= 1 and <= 12;
     }
 
     private static string ZonderDubbeleAanhalingstekens(string tekst) => tekst.Replace('"', '\'');

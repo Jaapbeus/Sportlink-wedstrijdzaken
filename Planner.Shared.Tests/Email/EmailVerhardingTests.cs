@@ -28,6 +28,26 @@ public class EmailVerhardingTests
     }
 
     [Theory]
+    [InlineData("za 14-11 10:30-12:00")]
+    [InlineData("14-11-2026 19:30-21:00")]
+    [InlineData("za 14/11 10.30-12.00")]
+    [InlineData("2026-11-14 10:30")]
+    [InlineData("14-11 10:30")]
+    public void ProviderSamenvatting_BehoudtTijdbereikEnDagMaand(string invoer)
+        => AiVeldSanering.ProviderSamenvatting(invoer).Should().Be(invoer);
+
+    [Theory]
+    [InlineData("71 23456789", "[nummer]")]
+    [InlineData("71-23456789", "[nummer]")]
+    [InlineData("71.23.45.67.89", "[nummer]")]
+    [InlineData("71.23.45.67.89", "[nummer]")]
+    [InlineData("71.23.45.67.89", "[nummer]")]
+    [InlineData("99-99 10:30-12:00", "[nummer]")]
+    [InlineData("14-11 10:30-12:00-13:00", "[nummer]")]
+    public void ProviderSamenvatting_MaskeertTelefoonnummerMetPlanningsachtigeScheiding(string invoer, string verwacht)
+        => AiVeldSanering.ProviderSamenvatting(invoer).Should().Be(verwacht);
+
+    [Theory]
     [InlineData("jan@example.com", true)]
     [InlineData("", false)]
     [InlineData(null, false)]
