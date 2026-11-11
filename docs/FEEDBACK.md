@@ -55,11 +55,15 @@ melding ──► PII-gates ──► AI-structurering ──► opslag in avg.F
 * Na een dubbelzinnige POST (time-out, verbroken verbinding, HTTP 408/5xx, onleesbare 2xx, mislukte
   receipt-opslag) blijft de status `publiceren`. "Publiceer" is dan weer mogelijk: de server herclaimt
   atomair (`HerClaimPublicatieAsync`, alleen als de vorige (her)claim ouder is dan 4 minuten, anders
-  `409`; dat is langer dan één volledige herstelpoging van tien lijstpagina's plus POST en 422-fallback
-  à 15 seconden, zodat een tweede klik nooit naast een nog zoekende eerste poging loopt), zoekt via de
-  issuelijst (`GET /repos/{owner}/{repo}/issues?state=all&sort=created&direction=desc&since=…`,
+  `409`; dat is langer dan één volledige herstelpoging van de uitgeversidentiteit, tien lijstpagina's plus
+  POST en 422-fallback à 15 seconden, zodat een tweede klik nooit naast een nog zoekende eerste poging loopt),
+  zoekt via de issuelijst (`GET /repos/{owner}/{repo}/issues?state=all&creator=…&sort=created&direction=desc&since=…`,
   bewust niet de search-API vanwege indexvertraging) een issue met dezelfde referentie en koppelt dat;
   ontbreekt het, dan wordt het met dezelfde referentie opnieuw geplaatst.
+* **Herkomstcontrole.** Alleen issues die de uitgever zelf heeft aangemaakt tellen: de uitgever is het
+  account achter het feedbacktoken (`GET /user`), en elk gevonden issue wordt op `user.login` gecontroleerd.
+  Kan de uitgever niet worden vastgesteld (het token mag `/user` niet lezen, of GitHub geeft een fout), dan is
+  de uitkomst onbekend: er wordt niet opnieuw gepost en de melding blijft herstelbaar.
 * De zoekgrens is het begin van de publicatiepoging (kolom `PublicatieGestartOpUtc`, gezet door
   `ClaimPublicatieAsync` en door `ZetIssueBodyAsync` wanneer een oudere melding haar referentie krijgt)
   min 5 minuten marge. Een herclaim ververst alleen het slot (`mta_modified`) en

@@ -144,29 +144,38 @@ public sealed class FeedbackGitHubTests
     private static string Body(string referentie, string tekst = "Tekst.") =>
         FeedbackPublicatieReferentie.VoegToe(tekst, referentie).Replace("\n", "\\n").Replace("\"", "\\\"");
 
-    /// <summary>Een issue uit de lijst; standaard aangemaakt ná de zoekgrens.</summary>
-    private static string Item(int nr, string referentie, bool isPr = false, DateTime? aangemaakt = null, string tekst = "Tekst.") =>
-        $"{{\"number\":{nr},\"html_url\":\"https://github.com/example/repo/issues/{nr}\",\"created_at\":\"{aangemaakt ?? Grens.AddMinutes(10):yyyy-MM-ddTHH:mm:ssZ}\",\"body\":\"{Body(referentie, tekst)}\"{(isPr ? ",\"pull_request\":{}" : "")}}}";
+    private const string Uitgever = "feedback-publisher";
+
+    /// <summary>Antwoord op <c>GET /user</c>: het account achter het token is de vertrouwde uitgever.</summary>
+    private static readonly Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> UitgeverOk =
+        (_, _) => Task.FromResult(Json(HttpStatusCode.OK, $"{{\"login\":\"{Uitgever}\"}}"));
+
+    /// <summary>Een issue uit de lijst; standaard aangemaakt ná de zoekgrens, door de uitgever.</summary>
+    private static string Item(int nr, string referentie, bool isPr = false, DateTime? aangemaakt = null, string tekst = "Tekst.", string auteur = Uitgever) =>
+        $"{{\"number\":{nr},\"html_url\":\"https://github.com/example/repo/issues/{nr}\",\"created_at\":\"{aangemaakt ?? Grens.AddMinutes(10):yyyy-MM-ddTHH:mm:ssZ}\",\"user\":{{\"login\":\"{auteur}\"}},\"body\":\"{Body(referentie, tekst)}\"{(isPr ? ",\"pull_request\":{}" : "")}}}";
 
     [Fact]
     public async Task Zoek_vindt_issue_via_issuelijst_en_niet_via_search_api()
     {
-        var handler = new SequenceHandler((_, _) => Task.FromResult(Json(HttpStatusCode.OK, $"[{Item(5, "zzzzzzzzzzzzzzzzzzzzzzzz")},{Item(9, Ref)}]")));
+        var handler = new SequenceHandler(UitgeverOk, (_, _) => Task.FromResult(Json(HttpStatusCode.OK, $"[{Item(5, "zzzzzzzzzzzzzzzzzzzzzzzz")},{Item(9, Ref)}]")));
 
         var result = await FeedbackGitHub.ZoekIssueMetReferentieAsync("synthetic-token", "example", "repo", Ref,
             new DateTime(2026, 11, 11, 8, 0, 0, DateTimeKind.Utc), NullLogger.Instance, handler: handler, timeout: TimeSpan.FromSeconds(1));
 
         result.gelukt.Should().BeTrue();
         result.gevonden.Should().Be(new FeedbackGevondenIssue(9, "https://github.com/example/repo/issues/9"));
-        var url = handler.Requests.Single().RequestUri!.ToString();
-        url.Should().Contain("/repos/example/repo/issues?").And.Contain("state=all").And.Contain("since=2026-11-11T08:00:00Z");
+        handler.Requests.Should().HaveCount(2);
+        handler.Requests[0].RequestUri!.ToString().Should().Be("https://api.github.com/user");
+        var url = handler.Requests[1].RequestUri!.ToString();
+        url.Should().Contain("/repos/example/repo/issues?").And.Contain("state=all").And.Contain("since=2026-11-11T08:00:00Z")
+            .And.Contain($"creator={Uitgever}");
         url.Should().NotContain("/search/");
     }
 
     [Fact]
     public async Task Zoek_negeert_pull_requests_en_meldt_niet_gevonden_bij_korte_lijst()
     {
-        var handler = new SequenceHandler((_, _) => Task.FromResult(Json(HttpStatusCode.OK, $"[{Item(9, Ref, isPr: true)}]")));
+        var handler = new SequenceHandler(UitgeverOk, (_, _) => Task.FromResult(Json(HttpStatusCode.OK, $"[{Item(9, Ref, isPr: true)}]")));
 
         var result = await FeedbackGitHub.ZoekIssueMetReferentieAsync("synthetic-token", "example", "repo", Ref,
             Grens, NullLogger.Instance, handler: handler, timeout: TimeSpan.FromSeconds(1));
@@ -177,7 +186,7 @@ public sealed class FeedbackGitHubTests
     [Fact]
     public async Task Zoek_http_fout_is_onbekend_en_geen_bewijs_van_afwezigheid()
     {
-        var handler = new SequenceHandler((_, _) => Task.FromResult(Json(HttpStatusCode.BadGateway, "{}")));
+        var handler = new SequenceHandler(UitgeverOk, (_, _) => Task.FromResult(Json(HttpStatusCode.BadGateway, "{}")));
 
         var result = await FeedbackGitHub.ZoekIssueMetReferentieAsync("synthetic-token", "example", "repo", Ref,
             Grens, NullLogger.Instance, handler: handler, timeout: TimeSpan.FromSeconds(1));
@@ -204,16 +213,16 @@ public sealed class FeedbackGitHubTests
     public async Task Zoek_volgt_volgende_pagina_en_geeft_op_na_het_maximum_zonder_te_beweren_dat_het_issue_ontbreekt()
     {
         var vol = "[" + string.Join(",", Enumerable.Range(1, 100).Select(n => Item(n, "zzzzzzzzzzzzzzzzzzzzzzzz"))) + "]";
-        var handler = new SequenceHandler(Enumerable.Range(0, 10)
-            .Select(_ => (Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>>)((_, _) => Task.FromResult(Json(HttpStatusCode.OK, vol))))
+        var handler = new SequenceHandler(new[] { UitgeverOk }.Concat(Enumerable.Range(0, 10)
+            .Select(_ => (Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>>)((_, _) => Task.FromResult(Json(HttpStatusCode.OK, vol)))))
             .ToArray());
 
         var result = await FeedbackGitHub.ZoekIssueMetReferentieAsync("synthetic-token", "example", "repo", Ref,
             Grens, NullLogger.Instance, handler: handler, timeout: TimeSpan.FromSeconds(5));
 
         result.gelukt.Should().BeFalse();
-        handler.Requests.Should().HaveCount(10);
-        handler.Requests[1].RequestUri!.Query.Should().Contain("page=2");
+        handler.Requests.Should().HaveCount(11, "de uitgeversidentiteit plus tien lijstpagina's");
+        handler.Requests[2].RequestUri!.Query.Should().Contain("page=2");
     }
 
     [Fact]
@@ -222,14 +231,14 @@ public sealed class FeedbackGitHubTests
         // since filtert op updated_at; oudere maar recent bijgewerkte issues staan (op aanmaakdatum, nieuwste eerst) achteraan.
         var nieuw = Enumerable.Range(1, 99).Select(n => Item(200 - n, "zzzzzzzzzzzzzzzzzzzzzzzz"));
         var oud = Item(3, Ref, aangemaakt: Grens.AddMinutes(-1));
-        var handler = new SequenceHandler((_, _) => Task.FromResult(Json(HttpStatusCode.OK, "[" + string.Join(",", nieuw.Append(oud)) + "]")));
+        var handler = new SequenceHandler(UitgeverOk, (_, _) => Task.FromResult(Json(HttpStatusCode.OK, "[" + string.Join(",", nieuw.Append(oud)) + "]")));
 
         var result = await FeedbackGitHub.ZoekIssueMetReferentieAsync("synthetic-token", "example", "repo", Ref,
             Grens, NullLogger.Instance, handler: handler, timeout: TimeSpan.FromSeconds(1));
 
         result.Should().Be((true, (FeedbackGevondenIssue?)null), "een issue van vóór het begin van de poging is niet van deze melding");
-        handler.Requests.Should().ContainSingle();
-        handler.Requests[0].RequestUri!.Query.Should().Contain("sort=created").And.Contain("direction=desc");
+        handler.Requests.Should().HaveCount(2);
+        handler.Requests[1].RequestUri!.Query.Should().Contain("sort=created").And.Contain("direction=desc");
     }
 
     [Fact]
@@ -238,7 +247,7 @@ public sealed class FeedbackGitHubTests
         // Nieuwste eerst: #12 is een latere kopie door een derde, #10 noemt de referentie alleen in de tekst van de melder
         // (de eigen referentie aan het einde is een andere), #9 is het eigen issue.
         var lijst = $"[{Item(12, Ref)},{Item(10, "yyyyyyyyyyyyyyyyyyyyyyyy", tekst: $"Zie <!-- feedback-ref: {Ref} -->")},{Item(9, Ref)}]";
-        var handler = new SequenceHandler((_, _) => Task.FromResult(Json(HttpStatusCode.OK, lijst)));
+        var handler = new SequenceHandler(UitgeverOk, (_, _) => Task.FromResult(Json(HttpStatusCode.OK, lijst)));
 
         var result = await FeedbackGitHub.ZoekIssueMetReferentieAsync("synthetic-token", "example", "repo", Ref,
             Grens, NullLogger.Instance, handler: handler, timeout: TimeSpan.FromSeconds(1));
@@ -247,12 +256,38 @@ public sealed class FeedbackGitHubTests
     }
 
     [Fact]
+    public async Task Zoek_koppelt_alleen_een_issue_van_de_uitgever_ook_als_een_ander_issue_ouder_is_en_de_referentie_bevat()
+    {
+        // Herkomstcontrole (#1803): een issue van een ander account met dezelfde referentie telt nooit, ook als het eerder
+        // is aangemaakt dan het echte publicatie-issue.
+        var lijst = $"[{Item(102, Ref, aangemaakt: Grens.AddMinutes(10))},{Item(101, Ref, aangemaakt: Grens.AddMinutes(6), auteur: "someone-else")}]";
+        var handler = new SequenceHandler(UitgeverOk, (_, _) => Task.FromResult(Json(HttpStatusCode.OK, lijst)));
+
+        var result = await FeedbackGitHub.ZoekIssueMetReferentieAsync("synthetic-token", "example", "repo", Ref,
+            Grens, NullLogger.Instance, handler: handler, timeout: TimeSpan.FromSeconds(1));
+
+        result.Should().Be((true, (FeedbackGevondenIssue?)new FeedbackGevondenIssue(102, "https://github.com/example/repo/issues/102")));
+    }
+
+    [Fact]
+    public async Task Zoek_zonder_vast_te_stellen_uitgever_is_onbekend_en_vraagt_de_lijst_niet_op()
+    {
+        var handler = new SequenceHandler((_, _) => Task.FromResult(Json(HttpStatusCode.Forbidden, "{}")));
+
+        var result = await FeedbackGitHub.ZoekIssueMetReferentieAsync("synthetic-token", "example", "repo", Ref,
+            Grens, NullLogger.Instance, handler: handler, timeout: TimeSpan.FromSeconds(1));
+
+        result.Should().Be((false, (FeedbackGevondenIssue?)null), "zonder uitgever is de herkomst niet vast te stellen");
+        handler.Requests.Should().ContainSingle();
+    }
+
+    [Fact]
     public void Claim_verloopt_pas_na_de_langste_herstelpoging_plus_databasetijd()
     {
         // Pre-review P3 (#1803): met tien lijstpagina's duurt één herstelpoging tot 180 s GitHub-tijd. Een slot van 2 minuten
         // verliep dan terwijl de eerste poging nog zocht; een tweede klik kon herclaimen en beide konden posten.
-        FeedbackGitHub.LangsteHerstelpoging.Should().Be(FeedbackGitHub.RequestTimeout * (FeedbackGitHub.ZoekMaxPaginas + 2),
-            "alle lijstpagina's plus de POST en de 422-fallback-POST");
+        FeedbackGitHub.LangsteHerstelpoging.Should().Be(FeedbackGitHub.RequestTimeout * (FeedbackGitHub.ZoekMaxPaginas + 3),
+            "de uitgeversidentiteit, alle lijstpagina's plus de POST en de 422-fallback-POST");
         FeedbackPublicatieHerstel.ClaimVerlooptNa.Should().BeGreaterThanOrEqualTo(FeedbackGitHub.LangsteHerstelpoging + TimeSpan.FromSeconds(30),
             "het slot moet één volledige poging plus databasetijd overleven");
         FeedbackPublicatieHerstel.ClaimVerlooptNa.Should().BeLessThan(TimeSpan.FromMinutes(10), "onder de functionTimeout uit host.json");

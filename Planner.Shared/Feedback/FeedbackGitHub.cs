@@ -110,11 +110,11 @@ internal static class FeedbackGitHub
     internal const int ZoekMaxPaginas = 10;
 
     /// <summary>
-    /// Langste GitHub-tijd van één herstelpoging: alle lijstpagina's plus de POST en de 422-fallback-POST, elk begrensd
+    /// Langste GitHub-tijd van één herstelpoging: de uitgeversidentiteit, alle lijstpagina's plus de POST en de 422-fallback-POST, elk begrensd
     /// door <see cref="RequestTimeout"/>. <see cref="FeedbackPublicatieHerstel.ClaimVerlooptNa"/> moet hier ruim boven
     /// liggen, anders kan een tweede klik herclaimen terwijl de eerste poging nog zoekt (#1803; test bewaakt dit).
     /// </summary>
-    internal static TimeSpan LangsteHerstelpoging => RequestTimeout * (ZoekMaxPaginas + 2);
+    internal static TimeSpan LangsteHerstelpoging => RequestTimeout * (ZoekMaxPaginas + 3);
 
     /// <summary>
     /// Zoekt via de issuelijst (niet de search-API: die loopt achter door indexvertraging, #1803) of er al een
@@ -122,9 +122,10 @@ internal static class FeedbackGitHub
     /// aangemaakt. De lijst staat op aanmaakdatum, nieuwste eerst; het zoeken stopt bij het eerste issue dat
     /// vóór <paramref name="sindsUtc"/> is aangemaakt, zodat alleen issues van na het begin van de poging
     /// meetellen (<c>since</c> filtert op <c>updated_at</c> en laat ook oudere, recent bijgewerkte issues door).
-    /// Bij meerdere treffers wint het oudste issue: de referentie was geheim tot de eerste POST, dus een
-    /// latere kopie door een derde kan nooit eerder bestaan. <c>gelukt == false</c> betekent: onbekend
-    /// (fout, afkapping of te veel resultaten); de aanroeper moet dan niet opnieuw posten.
+    /// Alleen issues die de uitgever zelf heeft aangemaakt tellen (herkomstcontrole): de uitgever is het account
+    /// achter het token (<c>GET /user</c>), gefilterd met <c>creator</c> én per issue gecontroleerd op <c>user.login</c>.
+    /// Bij meerdere treffers wint het oudste issue van de uitgever. <c>gelukt == false</c> betekent: onbekend
+    /// (fout, afkapping, te veel resultaten of geen vast te stellen uitgever); de aanroeper moet dan niet opnieuw posten.
     /// </summary>
     internal static async Task<(bool gelukt, FeedbackGevondenIssue? gevonden)> ZoekIssueMetReferentieAsync(
         string pat, string owner, string repo, string referentie, DateTime sindsUtc, ILogger log,
@@ -136,10 +137,13 @@ internal static class FeedbackGitHub
         var since = grens.ToString("yyyy-MM-ddTHH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture);
         try
         {
+            var uitgever = await LeesUitgeverAsync(http, log, cancellationToken);
+            if (uitgever is null) return (false, null);
+            var creator = Uri.EscapeDataString(uitgever);
             FeedbackGevondenIssue? oudste = null;
             for (var pagina = 1; pagina <= ZoekMaxPaginas; pagina++)
             {
-                var url = $"https://api.github.com/repos/{owner}/{repo}/issues?state=all&sort=created&direction=desc&since={since}&per_page={ZoekPaginaGrootte}&page={pagina}";
+                var url = $"https://api.github.com/repos/{owner}/{repo}/issues?state=all&creator={creator}&sort=created&direction=desc&since={since}&per_page={ZoekPaginaGrootte}&page={pagina}";
                 using var resp = await http.GetAsync(url, cancellationToken);
                 if (!resp.IsSuccessStatusCode)
                 {
@@ -152,6 +156,7 @@ internal static class FeedbackGitHub
                     if (item["created_at"]?.Value<DateTime>() is { } aangemaakt && aangemaakt.ToUniversalTime() < grens)
                         return (true, oudste);
                     if (item["pull_request"] is not null) continue;
+                    if (!string.Equals(item["user"]?["login"]?.Value<string>(), uitgever, StringComparison.OrdinalIgnoreCase)) continue;
                     if (FeedbackPublicatieReferentie.Lees(item["body"]?.Value<string>()) != referentie) continue;
                     var nummer = item["number"]?.Value<int>();
                     var issueUrl = item["html_url"]?.Value<string>();
@@ -168,6 +173,22 @@ internal static class FeedbackGitHub
             log.LogWarning("GitHub-issuelijst ophalen afgebroken; status blijft herstelbaar ({ErrorType})", ex.GetType().Name);
             return (false, null);
         }
+    }
+
+    /// <summary>
+    /// Het account achter het token, als vertrouwde uitgever van de feedbackissues. <c>null</c> bij een fout of
+    /// ontbrekende login: dan is de herkomst niet vast te stellen en blijft de uitkomst onbekend (fail-closed).
+    /// </summary>
+    private static async Task<string?> LeesUitgeverAsync(HttpClient http, ILogger log, CancellationToken cancellationToken)
+    {
+        using var resp = await http.GetAsync("https://api.github.com/user", cancellationToken);
+        if (!resp.IsSuccessStatusCode)
+        {
+            log.LogWarning("GitHub-uitgeversidentiteit ophalen mislukt: HTTP {Status}", (int)resp.StatusCode);
+            return null;
+        }
+        var login = JObject.Parse(await resp.Content.ReadAsStringAsync(cancellationToken))["login"]?.Value<string>();
+        return string.IsNullOrWhiteSpace(login) ? null : login;
     }
 
     private static readonly HttpClient StatusHttp = MaakClient();
