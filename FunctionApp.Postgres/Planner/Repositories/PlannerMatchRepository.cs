@@ -5,22 +5,10 @@ using Planner.Shared;
 namespace FunctionApp.Postgres.Planner.Repositories;
 
 /// <summary>
-/// Postgres-tier-tegenhanger van (een deel van) <c>FunctionApp/Planner/Repositories/PlannerMatchRepository.cs</c>
-/// (#888). Vertaald zijn <see cref="MarkeerVervallenGeplandeWedstrijdenAsync"/> (#890), de twee
-/// leesmethoden achter <c>GET /api/planner/team-schedule</c> (<see cref="TeamExistsAsync"/>,
-/// <see cref="GetFutureMatchesForTeamAsync"/>), en — sinds #888 vervolg — de drie kleinste van de
-/// vier resterende gaten die de klasse-doc-comment van <c>PlannerFunction.cs</c> ooit noemde:
-/// <see cref="FindMatchAsync"/>, <see cref="FindMatchByCodeAsync"/>,
-/// <see cref="TryConfirmPlannedMatchAsync"/>, <see cref="SaveHerplanVerzoekAsync"/> — genoeg om
-/// <c>ZoekWedstrijd</c>, <c>BevestigWedstrijd</c> en <c>HerplanBevestig</c> echt te wireren — en,
-/// sinds #888 vervolg/§41, <see cref="GetTeamMatchesOnDateAsync"/> (nodig voor
-/// <c>AvailabilityService</c>'s team-conflictcontrole).
-/// <para>
-/// Sinds #1139 (deelstuk 1 van #972) is ook <see cref="FindMatchByOpponentAsync"/> vertaald —
-/// <c>BerichtPipeline</c>'s opponent-lookup binnen <c>BeschikbaarheidCheck</c>. Nog niet vertaald:
-/// <c>GetGeplandeWedstrijdenOnlyAsync</c> (geen consument op deze tier — hoort bij een los "wat
-/// staat er gepland"-endpoint dat niet bestaat). Zie docs/ARCHITECTUUR-DATABASE-TIERS.md §16/§40/§41.
-/// </para>
+/// Postgres-query's voor teamroosters, wedstrijdzoeken, bevestigen, herplannen en
+/// beschikbaarheidscontrole. De SQL Server-only <c>GetGeplandeWedstrijdenOnlyAsync</c>-query heeft
+/// geen equivalent in deze klasse. De huidige vertalingen en hun grenzen staan in
+/// <c>docs/ARCHITECTUUR-DATABASE-TIERS.md</c> §§16, 40 en 41 (#888, #890, #972, #1139).
 /// </summary>
 internal static class PlannerMatchRepository
 {
@@ -225,7 +213,8 @@ internal static class PlannerMatchRepository
     /// <summary>
     /// Alle wedstrijden van één team op één datum — gesynchroniseerde wedstrijden uit
     /// <c>his.matches</c> plus zelf ingeplande wedstrijden uit <c>planner.geplandewedstrijden</c>.
-    /// Postgres-vertaling van het SQL Server-origineel (issue 888 vervolg, §41) — ontsluit
+    /// Postgres-vertaling van het SQL Server-origineel (issue 888 vervolg; zie
+    /// <c>docs/ARCHITECTUUR-DATABASE-TIERS.md</c> §41) — ontsluit
     /// <c>AvailabilityService.CheckAvailabilityAsync</c>'s team-conflictcontrole (mag een team niet
     /// twee wedstrijden op dezelfde dag krijgen).
     /// <para>
@@ -561,10 +550,9 @@ internal static class PlannerMatchRepository
     /// <summary>
     /// Legt een handmatig ingeplande wedstrijd vast, atomair getoetst tegen de bestaande bezetting
     /// (#1134, Codex-review #1107 bevinding 9). Postgres-vertaling van het SQL Server-origineel
-    /// (#888 vervolg, ontsluit <c>POST /api/planner/bevestig</c>) — vervangt de vroegere
-    /// <c>SavePlannedMatchAsync</c>, die zonder enige bezettingscontrole insertte: twee volledige-
-    /// veldreserveringen die elkaar overlappen (bijv. 10:00–12:00 en 10:30–12:30) kregen allebei
-    /// HTTP 200 en werden allebei opgeslagen.
+    /// (#888 vervolg, ontsluit <c>POST /api/planner/bevestig</c>). De reservering wordt alleen
+    /// opgeslagen wanneer de atomaire bezettingscontrole geen conflict vindt; overlappende
+    /// volledige-veldreserveringen worden dus niet allebei geaccepteerd.
     /// <para>
     /// <b>Atomiciteit via <c>pg_advisory_xact_lock</c>, niet via een exclusion constraint.</b> Een
     /// exclusion constraint (<c>EXCLUDE USING gist</c>) zou de volledig-vs-gedeeld-veld-semantiek
@@ -725,6 +713,8 @@ internal static class PlannerMatchRepository
                 mta_modified = NOW()
             FROM his.matches m
             WHERE m.kaledatum::date = gw.datum
+              AND (m.status IS NULL OR m.status <> 'Afgelast')
+              AND m.mta_deleted IS NULL
               AND {PostgresClubScope.HisFilter("m")}
               AND EXISTS (
                   SELECT 1

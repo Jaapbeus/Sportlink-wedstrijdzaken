@@ -16,6 +16,12 @@ automatische login in [SPORTLINK-AUTOLOGIN.md](SPORTLINK-AUTOLOGIN.md).
 - Basis-URL: `https://data.sportlink.com`. Authenticatie met de queryparameter `clientId=<waarde>`;
   de waarde staat in `dbo.AppSettings.SportlinkClientId` (SQL Server-tier) of
   `public.appsettings` (Postgres-tier), nooit in code of configuratiebestanden.
+- De ingestelde basis-URL voor normale synchronisatie moet naar precies deze HTTPS-host op poort
+  443 verwijzen, zonder gebruikersinformatie, query, fragment of extra pad. De applicatie gebruikt
+  na controle de canonieke basis-URL en volgt geen HTTP-redirects. Een ongeldige instelling stopt
+  de synchronisatie vóór uitgaand verkeer. Dit geldt ook voor het real-time leespad van de SQL
+  Server-planner; de Postgres-planner gebruikt hier alleen de database. Geïsoleerde fixturetests
+  geven hun eigen test-URL rechtstreeks aan de pipeline door.
 - **Log of commit nooit een Sportlink-request-URL.** De `clientId` is geclassificeerd als publieke identifier
   (restrisico, geen secret; besluit eigenaar 2026-10-05, zie `SECURITY.md`, "Classificatie: Sportlink-clientId"),
   maar die classificatie is geen vrijstelling: de waarde komt niet in git, logs of telemetrie. De URL bevat
@@ -59,6 +65,8 @@ seizoen opnieuw op.
 sleutel precies één rij, dus beide tiers voegen die vermeldingen vóór staging samen: de laatste
 vermelding in de respons wint en het aantal samengevoegde vermeldingen staat als waarschuwing in het
 log, zonder sleutels of namen (`Planner.Shared/Sync/StagingOntdubbeling.cs`, #1712).
+
+De SQL Server-seizoensdoorrol gebruikt de strikte Nederlandse bedrijfsklok. Ontbrekende tijdzonegegevens breken de sync af vóór seizoenswijzigingen, vensteropbouw, providerverkeer en timestamp-opslag. De conservatieve datumfallback van `ReconciliatieOndergrens` blijft uitsluitend bedoeld voor de ondergrens van verwijderreconciliatie; die is geen bron voor de huidige seizoensdatum. Opgeslagen offsets van wachtrijtaken blijven ongewijzigd.
 
 ## Programma-endpoint — alle beschikbare velden
 

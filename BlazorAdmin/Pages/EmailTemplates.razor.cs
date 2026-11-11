@@ -14,6 +14,12 @@ public partial class EmailTemplates : ClubSelectorPageBase
     private TemplateDto? editing;
     private bool isNew;
     private bool loading = true;
+    private string? templatesLoadError;
+    private string? voetnootLoadError;
+    private readonly LookupGeneratieGuard _loadGuard = new();
+    private readonly LookupGeneratieGuard _templatesLoadGuard = new();
+    private readonly LookupGeneratieGuard _voetnootLoadGuard = new();
+    private readonly InlineBevestiging<string> _resetConfirmation = new();
     private string? templateMessage;
 
     private string voetnoot = "";
@@ -21,27 +27,48 @@ public partial class EmailTemplates : ClubSelectorPageBase
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
-    protected override Task OnClubChangedAsync() => LoadAsync();
+    protected override Task OnClubChangedAsync()
+    {
+        _resetConfirmation.Annuleer();
+        return LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
+        var clubCode = ClubSelector.SelectedClubCode;
+        var generatie = _loadGuard.Start(clubCode);
         loading = true;
         await Task.WhenAll(LoadTemplatesAsync(), LoadVoetnootAsync());
-        loading = false;
+        if (IsActueleLading(generatie, clubCode)) loading = false;
     }
 
     private async Task LoadTemplatesAsync()
     {
+        var clubCode = ClubSelector.SelectedClubCode;
+        var generatie = _templatesLoadGuard.Start(clubCode);
         var r = await EmailApi.GetTemplatesAsync();
+        if (!_templatesLoadGuard.IsActueel(generatie) || ClubSelector.SelectedClubCode != clubCode) return;
         templates = r.Success ? r.Data ?? new() : new();
+        templatesLoadError = r.Success ? null : r.ErrorMessage ?? "Templates ophalen mislukt.";
     }
 
     private async Task LoadVoetnootAsync()
     {
+        var clubCode = ClubSelector.SelectedClubCode;
+        var generatie = _voetnootLoadGuard.Start(clubCode);
         var r = await InstellingenCache.GetSettingsAsync();
+        if (!_voetnootLoadGuard.IsActueel(generatie) || ClubSelector.SelectedClubCode != clubCode) return;
         if (r.Success && r.Data != null)
+        {
             voetnoot = r.Data.EmailVoetnoot ?? "";
+            voetnootLoadError = null;
+        }
+        else
+            voetnootLoadError = r.ErrorMessage ?? "E-mailvoetnoot ophalen mislukt.";
     }
+
+    private bool IsActueleLading(int generatie, string? clubCode) =>
+        _loadGuard.IsActueel(generatie) && ClubSelector.SelectedClubCode == clubCode;
 
     private async Task OpslaanVoetnootAsync()
     {
@@ -122,10 +149,15 @@ public partial class EmailTemplates : ClubSelectorPageBase
 
     private async Task ResetAsync(string key)
     {
+        if (!_resetConfirmation.Bevestig(key)) return;
         var r = await EmailApi.ResetTemplateAsync(key);
         templateMessage = r.Success ? $"Template '{key}' gereset naar default." : "Fout: " + r.ErrorMessage;
-        await LoadTemplatesAsync();
+        if (r.Success) await LoadTemplatesAsync();
     }
+
+    private void VraagReset(string key) => _resetConfirmation.Vraag(key);
+
+    private void AnnuleerReset() => _resetConfirmation.Annuleer();
 
     private static (string label, string css) GetCategorie(string key)
     {

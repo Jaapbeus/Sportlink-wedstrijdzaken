@@ -1,3 +1,4 @@
+using Planner.Endpoints.Http;
 using FunctionApp.Postgres.Admin;
 using FunctionApp.Postgres.Planner.Repositories;
 using Microsoft.AspNetCore.Http;
@@ -6,9 +7,11 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Planner.Endpoints.Deel;
+using Planner.Endpoints.AutoPlan;
 using Planner.Shared;
 using Planner.Shared.Email;
 using Planner.Shared.Planning;
+using Planner.Endpoints.Autorisatie;
 
 namespace FunctionApp.Postgres.Planner;
 
@@ -67,7 +70,7 @@ public static partial class PlannerFunction
 
                 // #1364: ?format=html|pdf voor de deel-knop op de Planning-pagina; zonder format blijft het JSON; zonder ?status=true blijft dat de kale array (#1774).
                 var metStatus = VeldbezettingAntwoord<VeldbezettingItem>.StatusAangevraagd(req.Query["status"].ToString());
-                log.LogInformation("Veldbezetting: datum={Datum}, club={Club}", LogWaarde.Schoon(datumParam), clubCode);
+                log.LogInformation("Veldbezetting: datum={Datum}, club={Club}", LogWaarde.Schoon(datumParam), LogWaarde.Schoon(clubCode));
                 return await PlannerDeelEndpointCore.VerwerkAsync(req.Query["format"], null, datumParam,
                     () => PdfExportInstelling.IsIngeschakeldAsync(clubCode),
                     async () => await VeldbezettingSportlinkOverlay.PasToeAsync(
@@ -97,7 +100,7 @@ public static partial class PlannerFunction
 
                 var format = req.Query["format"].ToString().ToLowerInvariant();
 
-                log.LogInformation("GetTeamSchedule: team={Team}, format={Format}, club={Club}", LogWaarde.Schoon(team), LogWaarde.Schoon(format), clubCode);
+                log.LogInformation("GetTeamSchedule: team={Team}, format={Format}, club={Club}", LogWaarde.Schoon(team), LogWaarde.Schoon(format), LogWaarde.Schoon(clubCode));
 
                 var schedule = await TeamScheduleService.GetTeamScheduleAsync(
                     PostgresDatabaseConfig.ConnectionString, team, PostgresClubScope.Resolve(clubCode));
@@ -141,20 +144,18 @@ public static partial class PlannerFunction
     {
         var log = context.GetLogger("DoordeweeksBeschikbaar");
         return AdminEndpoint.ExecuteAsync(req, log, "doordeweekse beschikbaarheid controleren",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<DoordeweeksBeschikbaarRequest>(req, async request =>
             {
-                var body = await new StreamReader(req.Body).ReadToEndAsync();
-                var request = JsonConvert.DeserializeObject<DoordeweeksBeschikbaarRequest>(body)
-                    ?? new DoordeweeksBeschikbaarRequest();
+                request ??= new DoordeweeksBeschikbaarRequest();
 
                 log.LogInformation("DoordeweeksBeschikbaar: dag={Dag}, duur={Duur}, cat={Cat}, club={Club}",
-                    LogWaarde.Schoon(request.DagFilter), request.DuurMinuten, LogWaarde.Schoon(request.LeeftijdsCategorie), clubCode);
+                    LogWaarde.Schoon(request.DagFilter), request.DuurMinuten, LogWaarde.Schoon(request.LeeftijdsCategorie), LogWaarde.Schoon(clubCode));
 
                 var response = await AvailabilityService.CheckDoordeweeksBeschikbaarAsync(
                     PostgresDatabaseConfig.ConnectionString, request, log, clubCode);
 
                 return new OkObjectResult(response);
-            });
+            }));
     }
 
     /// <summary>
@@ -168,21 +169,19 @@ public static partial class PlannerFunction
     {
         var log = context.GetLogger("HerplanCheck");
         return AdminEndpoint.ExecuteAsync(req, log, "herplanmogelijkheden controleren",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<HerplanCheckRequest>(req, async request =>
             {
-                var body = await new StreamReader(req.Body).ReadToEndAsync();
-                var request = JsonConvert.DeserializeObject<HerplanCheckRequest>(body);
                 if (request == null || request.Wedstrijdcode == 0)
                     return new BadRequestObjectResult(new { error = "Request body met 'wedstrijdcode' is verplicht." });
 
                 log.LogInformation("HerplanCheck: wedstrijdcode={Code}, voorkeur={Tijd}, club={Club}",
-                    request.Wedstrijdcode, LogWaarde.Schoon(request.VoorkeurTijd), clubCode);
+                    request.Wedstrijdcode, LogWaarde.Schoon(request.VoorkeurTijd), LogWaarde.Schoon(clubCode));
 
                 var response = await RescheduleService.CheckRescheduleAvailabilityAsync(
                     PostgresDatabaseConfig.ConnectionString, request, log, clubCode);
 
                 return new OkObjectResult(response);
-            });
+            }));
     }
 
     /// <summary>
@@ -200,16 +199,14 @@ public static partial class PlannerFunction
         return AdminEndpoint.ExecuteAsync(req, log, "wedstrijd bevestigen",
             async clubCode =>
             {
-                var body = await new StreamReader(req.Body).ReadToEndAsync();
-                var request = JsonConvert.DeserializeObject<BevestigRequest>(body);
-                if (request == null || string.IsNullOrEmpty(request.Datum) || string.IsNullOrEmpty(request.AanvangsTijd))
-                    return new BadRequestObjectResult(new { error = "Request body met 'datum', 'aanvangsTijd' en 'veldNummer' is verplicht." });
+                var parsed = await PlannerAanvragerEndpointCore.ReadBevestigAsync<BevestigRequest>(req, EasyAuthHelper.GetPlannerRequester(req));
+                if (parsed.Error is not null) return parsed.Error;
+                var request = parsed.Value;
 
                 log.LogInformation("BevestigWedstrijd: datum={Datum}, tijd={Tijd}, veld={Veld}",
                     LogWaarde.Schoon(request.Datum), LogWaarde.Schoon(request.AanvangsTijd), request.VeldNummer);
 
-                if (!DateOnly.TryParse(request.Datum, out var date) || !TimeOnly.TryParse(request.AanvangsTijd, out var tijd))
-                    return new BadRequestObjectResult(new { error = "Ongeldige datum of tijd." });
+                var (date, tijd) = (parsed.Date!.Value, parsed.Time!.Value);
 
                 var cc = PostgresClubScope.Resolve(clubCode);
 
@@ -287,10 +284,8 @@ public static partial class PlannerFunction
     {
         var log = context.GetLogger("ZoekWedstrijd");
         return AdminEndpoint.ExecuteAsync(req, log, "wedstrijd zoeken",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<ZoekWedstrijdRequest>(req, async request =>
             {
-                var body = await new StreamReader(req.Body).ReadToEndAsync();
-                var request = JsonConvert.DeserializeObject<ZoekWedstrijdRequest>(body);
                 if (request == null || string.IsNullOrEmpty(request.TeamNaam) || string.IsNullOrEmpty(request.Datum))
                     return new BadRequestObjectResult(new { error = "Request body met 'teamNaam' en 'datum' is verplicht." });
 
@@ -298,7 +293,7 @@ public static partial class PlannerFunction
                     return new BadRequestObjectResult(new { error = $"Ongeldige datum: {request.Datum}" });
 
                 log.LogInformation("ZoekWedstrijd: team={Team}, datum={Datum}, club={Club}",
-                    LogWaarde.Schoon(request.TeamNaam), LogWaarde.Schoon(request.Datum), clubCode);
+                    LogWaarde.Schoon(request.TeamNaam), LogWaarde.Schoon(request.Datum), LogWaarde.Schoon(clubCode));
 
                 var match = await PlannerMatchRepository.FindMatchAsync(
                     PostgresDatabaseConfig.ConnectionString, request.TeamNaam, date, clubCode);
@@ -306,7 +301,7 @@ public static partial class PlannerFunction
                     return new OkObjectResult(new { gevonden = false, reden = $"Geen wedstrijd gevonden voor {request.TeamNaam} op {request.Datum}." });
 
                 return new OkObjectResult(new { gevonden = true, wedstrijd = match });
-            });
+            }));
     }
 
     /// <summary>
@@ -322,13 +317,11 @@ public static partial class PlannerFunction
         return AdminEndpoint.ExecuteAsync(req, log, "herplanverzoek vastleggen",
             async clubCode =>
             {
-                var body = await new StreamReader(req.Body).ReadToEndAsync();
-                var request = JsonConvert.DeserializeObject<HerplanBevestigRequest>(body);
-                if (request == null || request.Wedstrijdcode == 0 || string.IsNullOrEmpty(request.GewensteAanvangsTijd))
-                    return new BadRequestObjectResult(new { error = "Request body met 'wedstrijdcode' en 'gewensteAanvangsTijd' is verplicht." });
+                var parsed = await PlannerAanvragerEndpointCore.ReadHerplanAsync<HerplanBevestigRequest>(req, EasyAuthHelper.GetPlannerRequester(req));
+                if (parsed.Error is not null) return parsed.Error;
+                var request = parsed.Value;
 
-                if (!TimeOnly.TryParse(request.GewensteAanvangsTijd, out var gewensteTijd))
-                    return new BadRequestObjectResult(new { error = "Ongeldige tijd." });
+                var gewensteTijd = parsed.Time!.Value;
 
                 var match = await PlannerMatchRepository.FindMatchByCodeAsync(
                     PostgresDatabaseConfig.ConnectionString, request.Wedstrijdcode, clubCode);
@@ -402,10 +395,8 @@ public static partial class PlannerFunction
     {
         var log = context.GetLogger("AutoPlan");
         return AdminEndpoint.ExecuteAsync(req, log, "dagplanning berekenen",
-            async rawClubCode =>
+            rawClubCode => BoundedRequestBodyReader.ExecuteJsonAsync<AutoPlanRequest>(req, async request =>
             {
-                var body = await new StreamReader(req.Body).ReadToEndAsync();
-                var request = JsonConvert.DeserializeObject<AutoPlanRequest>(body);
                 if (request == null || string.IsNullOrEmpty(request.Datum))
                     return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
@@ -417,11 +408,11 @@ public static partial class PlannerFunction
                     () =>
                     {
                         log.LogInformation("AutoPlan: datum={Datum}, buffer={Buffer}, club={Club}",
-                            LogWaarde.Schoon(request.Datum), request.BufferMinuten, clubCode);
+                            LogWaarde.Schoon(request.Datum), request.BufferMinuten, LogWaarde.Schoon(clubCode));
                         return AutoPlanService.AutoPlanAsync(PostgresDatabaseConfig.ConnectionString, request, clubCode, log);
                     },
                     (deel, response) => deel.VanPlan(response.Wedstrijden, clubCode), response => new OkObjectResult(response));
-            });
+            }));
     }
 
     /// <summary>
@@ -454,30 +445,18 @@ public static partial class PlannerFunction
     {
         var log = context.GetLogger("AutoPlanToepassen");
         return AdminEndpoint.ExecuteAsync(req, log, "dagplanning toepassen",
-            async rawClubCode =>
+            rawClubCode => BoundedRequestBodyReader.ExecuteJsonAsync<AutoPlanToepassenRequest>(req, async request =>
             {
-                var body = await new StreamReader(req.Body).ReadToEndAsync();
-                var request = JsonConvert.DeserializeObject<AutoPlanToepassenRequest>(body);
                 if (request == null || string.IsNullOrEmpty(request.Datum))
                     return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
                 var clubCode = PostgresClubScope.Resolve(rawClubCode);
-                log.LogInformation("AutoPlanToepassen: datum={Datum}, club={Club}", LogWaarde.Schoon(request.Datum), clubCode);
+                log.LogInformation("AutoPlanToepassen: datum={Datum}, club={Club}", LogWaarde.Schoon(request.Datum), LogWaarde.Schoon(clubCode));
 
-                try
-                {
-                    var response = await AutoPlanService.AutoPlanToepassenAsync(
-                        PostgresDatabaseConfig.ConnectionString, request, clubCode, log);
-
-                    return new OkObjectResult(response);
-                }
-                catch (InvalidOperationException ex)
-                {
-                    // "Toepassen is alleen beschikbaar in testmodus (ALLSTARS)" — een bewuste weigering,
-                    // geen technische storing: 400, niet 500 (de wrapper zou er 500 van maken).
-                    log.LogWarning("AutoPlanToepassen geweigerd: {Reden}", ex.Message);
-                    return new BadRequestObjectResult(new { error = ex.Message });
-                }
-            });
+                return await AutoPlanToepassenEndpointCore.VerwerkAsync(
+                    () => AutoPlanService.AutoPlanToepassenAsync(
+                        PostgresDatabaseConfig.ConnectionString, request, clubCode, log),
+                    log, invalidOperationIsBadRequest: true);
+            }));
     }
 }

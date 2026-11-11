@@ -353,10 +353,14 @@ $failures = [System.Collections.Generic.List[string]]::new()
 $health = Wait-ForHealth -Url "http://localhost:$($ports.FunctionApp)/api/health" -TimeoutSeconds 120
 if ($health) {
     $versie = if ($health.version) { $health.version } else { 'onbekend' }
-    # #863 legt de tier in de assembly-metadata vast en /api/health geeft hem terug. Dat is het
-    # enige bewijs dat de host die nu luistert ook echt de gevraagde tier is — een oude functiehost
-    # op dezelfde poort zou anders stilzwijgend als 'gestart' worden gerapporteerd.
-    $gemeten = if ($health.PSObject.Properties.Name -contains 'tier' -and $health.tier) { $health.tier } else { $null }
+    # Tier- en serverdiagnostiek staan achter de bestaande admin-poort; /api/health blijft
+    # anoniem en bevat alleen readinessvlaggen.
+    $healthDetails = try { Invoke-RestMethod "http://localhost:$($ports.FunctionApp)/api/beheer/health" -TimeoutSec 10 -ErrorAction Stop } catch { $null }
+    if (-not $healthDetails) {
+        Write-Host "  FunctionApp health-details zijn niet bereikbaar via de admin-poort." -ForegroundColor Red
+        $failures.Add('FunctionApp health-details niet bereikbaar')
+    }
+    $gemeten = if ($healthDetails -and $healthDetails.tier) { $healthDetails.tier } else { $null }
     if ($gemeten -and $gemeten -ne $Tier) {
         Write-Host "  FunctionApp antwoordt, maar meldt tier '$gemeten' terwijl '$Tier' gevraagd is." -ForegroundColor Red
         Write-Host "    Draait er nog een oude functiehost op poort $($ports.FunctionApp)? Stop-Debug.ps1 en probeer opnieuw." -ForegroundColor Yellow
@@ -371,24 +375,24 @@ if ($health) {
     # script tot #1060 gewoon 'FunctionApp OK' meldde. Een verse database heeft alleen de democlub
     # (syncenabled = FALSE) en loopt daar altijd tegenaan.
     $statusOk = -not ($health.PSObject.Properties.Name -contains 'status') -or $health.status -eq 'ok'
-    $settingsOk = -not ($health.PSObject.Properties.Name -contains 'settingsLoaded') -or $health.settingsLoaded
+    $settingsOk = -not ($health.PSObject.Properties.Name -contains 'settingsReady') -or $health.settingsReady
     # #1098: health meldt ook welke migraties de database nog mist (pendingMigrations) en of de
     # code een kolom verwacht die er niet is (schemaWarning). Dat was het tweede v3.3.0.0-incident:
     # code vooruit op het schema, elk beheerscherm 500. Hier wijzen we dan naar de migratie, niet
     # naar het seed-script — dat is een andere oorzaak.
-    $pending = if (($health.PSObject.Properties.Name -contains 'pendingMigrations') -and $health.pendingMigrations) { @($health.pendingMigrations) } else { @() }
-    $schemaWarning = if ($health.PSObject.Properties.Name -contains 'schemaWarning') { $health.schemaWarning } else { $null }
+    $pending = if ($healthDetails -and $healthDetails.pendingMigrations) { @($healthDetails.pendingMigrations) } else { @() }
+    $schemaWarning = if ($healthDetails) { $healthDetails.schemaWarning } else { $null }
     # #1466: met egress open (-SportlinkLive) verwacht health een recente sync en meldt anders
     # 'degraded' (syncStale). Lokaal betekent dat alleen dat de data oud is, niet dat de host stuk
     # is — dus een waarschuwing, geen startfout. Elke andere oorzaak blijft wél een fout.
     $alleenSyncOud = -not $statusOk -and $settingsOk -and $pending.Count -eq 0 -and -not $schemaWarning `
-        -and ($health.PSObject.Properties.Name -contains 'syncStale') -and $health.syncStale
+        -and ($healthDetails -and $healthDetails.syncStale)
     if ($alleenSyncOud) {
-        Write-Host "  Health 'degraded' alleen door een verouderde sync (laatste: $($health.lastSync))." -ForegroundColor DarkYellow
+        Write-Host "  Health 'degraded' alleen door een verouderde sync (laatste: $($healthDetails.lastSync))." -ForegroundColor DarkYellow
         Write-Host "    Lokale data verversen: GET http://localhost:$($ports.FunctionApp)/api/sync-matches (leest live uit Sportlink)." -ForegroundColor DarkYellow
         Write-Host "    Vereist AllowExternalIntegrations=true (zoals -SportlinkLive zet), anders HTTP 503." -ForegroundColor DarkYellow
     } elseif (-not ($statusOk -and $settingsOk)) {
-        Write-Host "  Health meldt status '$($health.status)' (settingsLoaded=$($health.settingsLoaded))." -ForegroundColor Red
+        Write-Host "  Health meldt status '$($health.status)' (settingsReady=$($health.settingsReady))." -ForegroundColor Red
         if ($pending.Count -gt 0) {
             Write-Host "    Openstaande migraties: $($pending -join ', ')" -ForegroundColor Yellow
             Write-Host "    Pas ze toe met: dotnet run --project Database.Postgres.Cli" -ForegroundColor Yellow

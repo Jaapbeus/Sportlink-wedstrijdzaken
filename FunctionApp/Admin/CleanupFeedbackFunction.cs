@@ -21,10 +21,10 @@ public static class CleanupFeedbackFunction
     [Function("CleanupFeedback")]
     public static Task Run(
         [TimerTrigger("0 15 5 * * *")] TimerInfo myTimer,
-        FunctionContext context)
+        FunctionContext context, CancellationToken cancellationToken)
     {
         var log = context.GetLogger("CleanupFeedback");
         return DagelijkseAvgRetentie.VoerUitAsync(
-            () => SystemUtilities.WaitForDatabaseAsync(log), new SqlFeedbackStore(SystemUtilities.DatabaseConfig.ConnectionString), Infrastructure.EgressGuard.ExternalIntegrationsAllowed(), new SqlServerHisRetentie(SystemUtilities.DatabaseConfig.ConnectionString), log);
+            () => SystemUtilities.WaitForDatabaseAsync(log), new SqlFeedbackStore(SystemUtilities.DatabaseConfig.ConnectionString), Infrastructure.EgressGuard.ExternalIntegrationsAllowed(), new SqlServerHisRetentie(SystemUtilities.DatabaseConfig.ConnectionString), log, cancellationToken);
     }
 }

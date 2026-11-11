@@ -22,7 +22,7 @@ public static partial class BerichtPipeline
     /// #1716 één keer in <see cref="BerichtDatumHeuristiek.CorrigeerDagDatum"/>.
     /// </summary>
     public static void ValideerDagDatum(BerichtClassificatie classificatie, string emailBody, string onderwerp)
-        => classificatie.Datum = BerichtDatumHeuristiek.CorrigeerDagDatum(classificatie.Datum, emailBody, onderwerp);
+        => BerichtDatumHeuristiek.ValideerClassificatieDatum(classificatie, emailBody, onderwerp);
 
     /// <summary>
     /// Vertaalt de AI-classificatie naar de juiste PlannerService-aanroep.
@@ -48,7 +48,7 @@ public static partial class BerichtPipeline
         var eigenTeamHerkend = await EigenTeamBepaling.BereidPlannerVoorAsync(classificatie, teamResolver, cc, log, trace,
             fixtureContextFactory ?? (() => new SportlinkFunction.TeamResolution.TeamFixtureContextRepository(SystemUtilities.DatabaseConfig.ConnectionString)));
         return await BerichtPlannerAfhandeling.VerwerkAsync(classificatie,
-            () => VerwerkBeschikbaarheidAsync(classificatie, bericht, log, teamResolver, cc, eigenTeamHerkend, clubCode, trace),
+            () => VerwerkBeschikbaarheidAsync(classificatie, bericht, log, eigenTeamHerkend, clubCode, trace),
             () => VerwerkHerplanAsync(classificatie, bericht, log, clubCode, clubSettings),
             () => VerwerkTeamContactAsync(classificatie, clubCode));
     }
@@ -140,7 +140,7 @@ public static partial class BerichtPipeline
             return null;
         }
 
-        var vandaag = DateOnly.FromDateTime(DateTime.Today);
+        var vandaag = NederlandseBedrijfsKlok.Vandaag();
         var van = vandaag.AddDays(deadlineDagen);
         // 8 weken venster — een algoritmische constante (geen club-specifieke waarde), geeft
         // voldoende keuze zonder een half seizoen aan zaterdagen op te sommen.

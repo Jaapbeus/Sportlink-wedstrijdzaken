@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Data.SqlClient;
-using Newtonsoft.Json;
+using Planner.Endpoints.Http;
 
 namespace SportlinkFunction.Admin;
 
@@ -36,10 +36,8 @@ public static class AdminUitgeslotenEmailFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/uitgesloten-emails")] HttpRequest req,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminUitgeslotenEmailPost"), "uitsluitingsadres toevoegen",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<UitgeslotenEmailRequest>(req, async dto =>
             {
-                var body = await new System.IO.StreamReader(req.Body).ReadToEndAsync();
-                var dto  = JsonConvert.DeserializeObject<UitgeslotenEmailRequest>(body);
                 if (dto == null || string.IsNullOrWhiteSpace(dto.EmailAdres))
                     return new BadRequestObjectResult(new { error = "EmailAdres verplicht" });
 
@@ -54,7 +52,7 @@ public static class AdminUitgeslotenEmailFunction
                 {
                     return new ConflictObjectResult(new { error = "Dit e-mailadres staat al in de lijst" });
                 }
-            });
+            }));
 
     [Function("AdminUitgeslotenEmailDelete")]
     public static Task<IActionResult> Delete(

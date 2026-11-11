@@ -72,9 +72,9 @@ public sealed record SportlinkWedstrijdContext(
 /// </summary>
 /// <param name="TeamNaam">Canonieke teamnaam zoals in de eigen teamtabel.</param>
 /// <param name="Leeftijdscategorie">
-/// Leeftijdscategorie uit de eigen teamtabel (bijv. <c>JO10</c>; senioren <c>1-99</c>) — dezelfde
-/// vorm die het oude formulier als vrije tekst voor <c>AgeClassCode</c> vroeg. ONBEVESTIGD of
-/// Sportlink Club precies deze code verwacht; zie <see cref="SportlinkClubMatchAanvraag"/>.
+/// Leeftijdscategorie uit de eigen teamtabel (bijv. <c>JO10</c>; senioren <c>1-99</c>). Het huidige
+/// formulier vertaalt deze categorie naar een ID uit de Sportlink age-class picklist;
+/// <see cref="SportlinkClubMatchAanvraag"/> bewaart de aanvraagcode.
 /// </param>
 /// <param name="SportlinkTeamId">
 /// Het team-ID dat de Sportlink-dataservice zelf hanteert: <c>his.teams.teamcode</c> van de
@@ -82,9 +82,9 @@ public sealed record SportlinkWedstrijdContext(
 /// gevuld door de teamcanonicalisatie na elke sync — regel 4 van
 /// docs/ARCHITECTUUR-TEAMRESOLUTIE.md: een alias is pas waarheid na validatie). Alleen gevuld als
 /// álle gekoppelde KNVB-rijen hetzelfde ID dragen; bij 0 of meer dan 1 verschillend ID blijft dit
-/// <c>null</c> en zegt <paramref name="AantalKandidaatIds"/> waarom. Of Sportlink Club voor
-/// <c>PublicHomeTeamId</c> hetzelfde ID gebruikt is ONBEVESTIGD (kan ook een publiek string-ID
-/// zijn) — pas te bewijzen met de netwerktrace uit #997.
+/// <c>null</c> en zegt <paramref name="AantalKandidaatIds"/> waarom. Het huidige formulier haalt de
+/// publieke team-ID voor <c>PublicHomeTeamId</c> uit Sportlinks picklist; deze interne code dient
+/// alleen voor het koppelen van het eigen team aan die picklist.
 /// </param>
 /// <param name="AantalKandidaatIds">Aantal verschillende <c>teamcode</c>s onder de gevalideerde aliassen (0 = geen KNVB-rij bekend, 1 = eenduidig, &gt;1 = dubbelzinnig).</param>
 public sealed record ClubMatchTeamKoppeling(

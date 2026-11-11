@@ -239,7 +239,7 @@ public class BerichtAiKern
 
             KNVB-regelcheck (voor herplan_verzoek):
             Vul "knvbNotitie" in als op basis van datum en teamtype een KNVB-regel waarschijnlijk van toepassing is.
-            Wees kort (1-2 zinnen). Voorbeeld: "Senioren mogen na 1 mei 2027 geen wedstrijden meer verplaatsen (KNVB Cat A)."
+            Wees kort (1-2 zinnen). Voorbeeld: "Voor dit team geldt na de toepasselijke deadline geen verplaatsing (KNVB Cat A)."
             Laat null als datum ruim voor eventuele deadlines valt of het teamtype niet duidelijk is.
 
             {{KnvbRegelsContext}}
@@ -252,7 +252,7 @@ public class BerichtAiKern
 
     /// <param name="clubNaam">Levert de clubnaam uit de instellingen van de tier; gooit zelf een
     /// <see cref="InvalidOperationException"/> met een tier-eigen melding als die ontbreekt.</param>
-    /// <param name="nu">Lokale tijd (NL-context) voor de datumregel; de tier geeft <c>DateTime.Now</c>.</param>
+    /// <param name="nu">Nederlandse bedrijfstijd voor de datumregel; de tier geeft <c>NederlandseBedrijfsKlok.Nu</c>.</param>
     public BerichtAiKern(ILogger logger, IChatClient chatClient, Func<string> clubNaam, Func<DateTime> nu)
     {
         _logger = logger;

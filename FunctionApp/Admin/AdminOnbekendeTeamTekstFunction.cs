@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Planner.Endpoints.Leren;
+using Planner.Endpoints.Http;
 
 namespace SportlinkFunction.Admin;
 
@@ -31,6 +32,5 @@ public static class AdminOnbekendeTeamTekstFunction
         int id,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminOnbekendeTeamTekstStatus"), "onbekende teamtekst bijwerken",
-            async clubCode => await OnbekendeTeamTekstEndpointCore.ZetStatusAsync(
-                clubCode, id, await TeamAliasEndpointCore.LeesBodyAsync(req), Opslag()));
+            clubCode => BoundedRequestBodyReader.ExecuteUtf8Async(req, body => OnbekendeTeamTekstEndpointCore.ZetStatusAsync(clubCode, id, body, Opslag())));
 }

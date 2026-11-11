@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Npgsql;
 using Planner.Endpoints.Leren;
+using Planner.Endpoints.Http;
 
 namespace FunctionApp.Postgres.Admin;
 
@@ -49,9 +50,9 @@ public static class AdminTeamAliassenFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/teamaliassen")] HttpRequest req,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminTeamAliassenPost"), "teamalias aanmaken",
-            async clubCode => await TeamAliasEndpointCore.AanmakenAsync(
-                clubCode, await TeamAliasEndpointCore.LeesBodyAsync(req), EasyAuthHelper.GetLerenAanroeper(req),
-                AliasStore(), Wachtrij(), context.GetLogger("AdminTeamAliassenPost")));
+            clubCode => BoundedRequestBodyReader.ExecuteUtf8Async(req, body => TeamAliasEndpointCore.AanmakenAsync(
+                    clubCode, body, EasyAuthHelper.GetLerenAanroeper(req),
+                    AliasStore(), Wachtrij(), context.GetLogger("AdminTeamAliassenPost"))));
 
     [Function("AdminTeamAliassenValideer")]
     public static Task<IActionResult> Valideer(
@@ -59,10 +60,10 @@ public static class AdminTeamAliassenFunction
         int id,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminTeamAliassenValideer"), "teamalias valideren",
-            async clubCode => await TeamAliasEndpointCore.ValideerAsync(
-                id, await TeamAliasEndpointCore.LeesBodyAsync(req), EasyAuthHelper.GetLerenAanroeper(req),
-                (aliasId, status, wie) => AdminTeamAliassenRepository.ZetStatusAsync(
-                    aliasId, status, clubCode, wie, PostgresDatabaseConfig.ConnectionString)));
+            clubCode => BoundedRequestBodyReader.ExecuteUtf8Async(req, body => TeamAliasEndpointCore.ValideerAsync(
+                    id, body, EasyAuthHelper.GetLerenAanroeper(req),
+                    (aliasId, status, wie) => AdminTeamAliassenRepository.ZetStatusAsync(
+                        aliasId, status, clubCode, wie, PostgresDatabaseConfig.ConnectionString))));
 
     [Function("AdminTeamAliassenDelete")]
     public static Task<IActionResult> Delete(

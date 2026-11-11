@@ -46,11 +46,12 @@ public static class AdminFeedbackFunction
     public static Task<IActionResult> Publiceer(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/feedback/{id:guid}/publiceer")] HttpRequest req,
         Guid id,
-        FunctionContext context)
+        FunctionContext context, CancellationToken cancellationToken)
     {
         var log = context.GetLogger("AdminFeedbackPubliceer");
         return AdminEndpoint.ExecuteAsync(req, log, "feedbackmelding publiceren",
             clubCode => FeedbackBeheerEndpointCore.PubliceerAsync(clubCode, Aanroeper(req), Opslag(), id,
-                FeedbackEndpointCore.MaakGitHubIssueDelegate(Infrastructure.EgressGuard.ExternalIntegrationsAllowed(), log), log));
+                FeedbackEndpointCore.MaakGitHubIssueDelegate(Infrastructure.EgressGuard.ExternalIntegrationsAllowed(), log, cancellationToken), log,
+                FeedbackEndpointCore.MaakIssueZoekDelegate(Infrastructure.EgressGuard.ExternalIntegrationsAllowed(), log, cancellationToken)));
     }
 }

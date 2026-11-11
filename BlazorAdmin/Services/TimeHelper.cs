@@ -52,9 +52,4 @@ public static class TimeHelper
         return $"{hours:D2}:{minutes:D2}";
     }
 
-    /// <summary>
-    /// Normaliseert tijdinvoer. Retourneert lege string bij lege invoer (voor niet-verplichte velden).
-    /// </summary>
-    public static string NormalizeOrEmpty(string? input)
-        => Normalize(input) ?? string.Empty;
 }

@@ -38,6 +38,13 @@ public static class RolFeatureMatrixCore
         string json, Func<string, string, bool, Task> schrijf)
     {
         var dto = Newtonsoft.Json.JsonConvert.DeserializeObject<ZetInstellingDto>(json);
+        return await VerwerkZetAsync(dto, schrijf);
+    }
+
+    /// <summary>Valideert een reeds geparseerde cel en slaat die op zonder de body opnieuw te parseren.</summary>
+    public static async Task<(CelResponse? Cel, string? Fout)> VerwerkZetAsync(
+        ZetInstellingDto? dto, Func<string, string, bool, Task> schrijf)
+    {
         var fout = Valideer(dto?.RolNaam, dto?.FeatureKey);
         if (fout is not null) return (null, fout);
 

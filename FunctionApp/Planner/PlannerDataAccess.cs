@@ -23,14 +23,8 @@ namespace SportlinkFunction.Planner
         public static Task<List<VeldInfo>> GetVeldenAsync(string? clubCode = null)
             => PlannerSettingsRepository.GetVeldenAsync(clubCode);
 
-        public static Task<Dictionary<string, int>> GetVeldenLookupAsync()
-            => PlannerSettingsRepository.GetVeldenLookupAsync();
-
         public static Task<Dictionary<string, Speeltijd>> GetSpeeltijdenLookupAsync(string? clubCode = null)
             => PlannerSettingsRepository.GetSpeeltijdenLookupAsync(clubCode);
-
-        public static Task<Dictionary<string, string>> GetTeamLeeftijdLookupAsync(string clubCode)
-            => PlannerSettingsRepository.GetTeamLeeftijdLookupAsync(clubCode);
 
         public static Task<TimeOnly?> GetSunsetAsync(DateOnly date)
             => PlannerSettingsRepository.GetSunsetAsync(date);
@@ -41,9 +35,6 @@ namespace SportlinkFunction.Planner
         public static Task<DateOnly?> GetSeasonEndDateAsync(string? clubCode = null)
             => PlannerSettingsRepository.GetSeasonEndDateAsync(clubCode);
 
-        public static Task<DateTime?> GetLastSyncTimestampAsync()
-            => PlannerSettingsRepository.GetLastSyncTimestampAsync();
-
         public static Task<Dictionary<string, List<(TimeOnly Tijd, int Prioriteit)>>> GetVoorkeurTijdenLookupAsync(int dagVanWeek, string clubCode)
             => PlannerSettingsRepository.GetVoorkeurTijdenLookupAsync(dagVanWeek, clubCode);
 
@@ -53,12 +44,6 @@ namespace SportlinkFunction.Planner
 
         public static Task<List<BestaandeWedstrijd>> GetFieldOccupationsAsync(DateOnly date, string? clubCode = null)
             => PlannerAvailabilityRepository.GetFieldOccupationsAsync(date, clubCode);
-
-        public static Task<List<BestaandeWedstrijd>> GetFieldOccupationsExcludingAsync(DateOnly date, long excludeWedstrijdcode, string? clubCode = null)
-            => PlannerAvailabilityRepository.GetFieldOccupationsExcludingAsync(date, excludeWedstrijdcode, clubCode);
-
-        public static Task<List<BestaandeWedstrijd>> GetFieldOccupationsExcludingMatchAsync(DateOnly date, string wedstrijdNaam, TimeOnly aanvangsTijd, int veldNummer, string? clubCode = null)
-            => PlannerAvailabilityRepository.GetFieldOccupationsExcludingMatchAsync(date, wedstrijdNaam, aanvangsTijd, veldNummer, clubCode);
 
         // ── Match ──
         public static Task<TeamWedstrijdenOpDatum> GetTeamMatchesOnDateAsync(string teamNaam, DateOnly date, string? clubCode = null)

@@ -170,7 +170,7 @@ public sealed class PostgresSportlinkAutoLoginStoreIntegrationTests
                 using var clientHttp = new HttpClient(http);
                 var coordinator = new SportlinkAutoLoginCoordinator(callerStore, provider);
                 var client = new SportlinkClubClient(clientHttp, callerStore,
-                    NullLogger<SportlinkClubClient>.Instance, autoLogin: coordinator);
+                    NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false, autoLogin: coordinator);
 
                 var response = await client.GetMatchRawJsonAsync(role, "fixture-match");
 

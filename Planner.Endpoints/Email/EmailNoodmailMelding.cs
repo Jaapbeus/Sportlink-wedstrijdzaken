@@ -44,6 +44,9 @@ public static class EmailNoodmailMelding
     /// <summary>Sleutel van de OpenAI-quota-noodmail.</summary>
     public const string OpenAiQuotaNoodmailSleutel = "openai-quota-noodmail";
 
+    /// <summary>Sleutel van de structurele AI-classificatienoodmail.</summary>
+    public const string StructureleAiNoodmailSleutel = "openai-structurele-classificatie-noodmail";
+
     /// <summary>Minimale tijd tussen twee OpenAI-quota-noodmails.</summary>
     public static readonly TimeSpan OpenAiQuotaNoodmailInterval = TimeSpan.FromHours(24);
 
@@ -125,6 +128,16 @@ public static class EmailNoodmailMelding
         return laatsteKeer is null || (nuUtc - laatsteKeer.Value) >= OpenAiQuotaNoodmailInterval;
     }
 
+    /// <summary>
+    /// Bepaalt of de structurele AI-classificatienoodmail verstuurd mag worden. Dezelfde bestaande
+    /// 24-uursperiode als quota, maar een eigen sleutel zodat beide storingstypen elkaar niet verbergen.
+    /// </summary>
+    public static async Task<bool> MoetStructureleAiNoodmailVersturenAsync(INoodmailThrottlePoort throttle, DateTime nuUtc)
+    {
+        var laatsteKeer = await throttle.LaatsteKeerVerstuurdAsync(StructureleAiNoodmailSleutel);
+        return laatsteKeer is null || (nuUtc - laatsteKeer.Value) >= OpenAiQuotaNoodmailInterval;
+    }
+
     /// <summary>Stuurt de OpenAI-quota-noodmail; een mislukte verzending wordt niet geregistreerd.</summary>
     public static async Task StuurOpenAiNoodmailAsync(
         IReplyGraph graph, string foutmelding, INoodmailThrottlePoort throttle, EmailNoodmailTeksten teksten, ILogger log)
@@ -149,6 +162,31 @@ public static class EmailNoodmailMelding
         catch (Exception ex)
         {
             log.LogError(ex, "Kon OpenAI quota-noodmail niet versturen");
+        }
+    }
+
+    /// <summary>
+    /// Stuurt een vaste, privacyveilige melding voor één of meer niet-quota-AI-classificatiefouten.
+    /// Provideruitvoer, foutteksten, berichtinhoud en aantallen verlaten deze methode niet.
+    /// Een mislukte verzending wordt niet geregistreerd.
+    /// </summary>
+    public static async Task StuurStructureleAiNoodmailAsync(
+        IReplyGraph graph, INoodmailThrottlePoort throttle, ILogger log)
+    {
+        const string onderwerp = "URGENT: AI-classificatie mislukt — e-mail blijft ongelezen";
+        const string body = "Een of meer e-mails konden niet door de AI worden geclassificeerd door een structurele fout.\n\n"
+                          + "De berichten blijven ongelezen en worden bij een volgende poll opnieuw geprobeerd.\n"
+                          + "Controleer de AI-configuratie en de verwerking op structurele fouten.";
+
+        try
+        {
+            await graph.SendReplyAsync(Mailbox(), onderwerp, body, null);
+            await throttle.RegistreerVerstuurdAsync(StructureleAiNoodmailSleutel, DateTime.UtcNow);
+            log.LogWarning("Structurele AI-classificatienoodmail verstuurd ({Sleutel})", StructureleAiNoodmailSleutel);
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Kon structurele AI-classificatienoodmail niet versturen");
         }
     }
 

@@ -5,10 +5,9 @@ using Microsoft.JSInterop;
 
 namespace BlazorAdmin.Pages;
 
-/// <summary>Code-behind van <c>Planning.razor</c> (#1361, afgesplitst van het toenmalige
-/// <c>Dagplanning.razor</c>): datum-invoer en de directe veldbezetting — wat er nu al in Sportlink
-/// gepland staat. De Gantt-weergavehelpers staan gedeeld in <see cref="DagplanningWeergaveHelpers"/>
-/// (ook gebruikt door <c>VeldOptimalisatie.razor.cs</c>); de Sportlink-uitklap-/deeplinkstate in
+/// <summary>Code-behind van <c>Planning.razor</c>: beheert de datum-invoer en laadt de directe
+/// veldbezetting die in Sportlink gepland staat. Gantt-weergavehelpers zijn gedeeld met
+/// <c>VeldOptimalisatie.razor.cs</c>; de Sportlink-uitklap- en deeplinkstate staat in
 /// <see cref="SportlinkActieKolomState"/>.</summary>
 public partial class Planning : ClubSelectorPageBase
 {
@@ -38,7 +37,10 @@ public partial class Planning : ClubSelectorPageBase
     // Sportlink-kolom (#989/#991/#1361): alleen de vlag blijft hier; uitklap-/deeplinkstate staat in
     // SportlinkActieKolomState, het paneel zelf is SportlinkMatchPanel (#1122).
     private bool _pdfExportIngeschakeld;
+    private readonly LookupGeneratieGuard _pdfExportLoadGuard = new();
     private bool _sportlinkExtensionEnabled;
+    private readonly LookupGeneratieGuard _sportlinkExtensionLoadGuard = new();
+    private readonly LookupGeneratieGuard _veldbezettingLoadGuard = new();
     private readonly SportlinkActieKolomState _sportlinkKolom = new();
 
     private string ExportBestandsNaam => $"veldbezetting-{DatumStr}";
@@ -56,11 +58,13 @@ public partial class Planning : ClubSelectorPageBase
     {
         await LoadVeldbezettingAsync();
 
-        // #989: geen Sportlink-kolom/-knoppen tonen als de extension uit staat (DoD).
-        var settings = await InstellingenCache.GetSettingsAsync();
-        _sportlinkExtensionEnabled = settings.Success && settings.Data?.SportlinkExtensionEnabled == true;
+        await LaadSportlinkExtensionStatusAsync();
         await LaadPdfExportStatusAsync();
     }
+
+    // Opnieuw bij een clubwissel (#1872).
+    private Task LaadSportlinkExtensionStatusAsync() =>
+        LaadSportlinkExtensionVlagAsync(_sportlinkExtensionLoadGuard, InstellingenCache, aan => _sportlinkExtensionEnabled = aan);
 
     private async Task OnDatumChanged() => await LoadVeldbezettingAsync();
 
@@ -70,25 +74,35 @@ public partial class Planning : ClubSelectorPageBase
         _veldbezettingError = null;
         try
         {
-            var result = await PlanningApi.GetVeldbezettingAsync(DatumStr);
-            if (result.Success)
+            // #1872: een late response van de vorige club (of datum) mag de bezetting van de huidige club niet overschrijven.
+            var datum = DatumStr;
+            var toegepast = await LaadClubgebondenAsync(_veldbezettingLoadGuard, () => PlanningApi.GetVeldbezettingAsync(datum), result =>
             {
-                _veldbezetting = result.Data?.Wedstrijden ?? new();
-                _sportlinkStatus = result.Data?.Sportlink;
-            }
-            else
-            {
-                _veldbezetting = new();
-                _sportlinkStatus = null;
-                _veldbezettingError = result.ErrorMessage ?? "Ophalen veldbezetting mislukt.";
-            }
+                if (result.Success)
+                {
+                    _veldbezetting = result.Data?.Wedstrijden ?? new();
+                    _sportlinkStatus = result.Data?.Sportlink;
+                }
+                else
+                {
+                    _veldbezetting = new();
+                    _sportlinkStatus = null;
+                    _veldbezettingError = result.ErrorMessage ?? "Ophalen veldbezetting mislukt.";
+                }
+            });
+            if (toegepast) _veldbezettingBezig = false;
         }
-        finally { _veldbezettingBezig = false; }
+        catch
+        {
+            _veldbezettingBezig = false;
+            throw;
+        }
     }
 
     protected override async Task OnClubChangedAsync()
     {
         await LoadVeldbezettingAsync();
+        await LaadSportlinkExtensionStatusAsync();
         await LaadPdfExportStatusAsync();
     }
 
@@ -97,7 +111,10 @@ public partial class Planning : ClubSelectorPageBase
     /// (standaard uit). Via het voor elke ingelogde rol open endpoint — niet via de admin-only
     /// instellingen — en opnieuw bij een clubwissel.
     /// </summary>
-    private async Task LaadPdfExportStatusAsync() => _pdfExportIngeschakeld = await PlanningApi.IsPdfExportIngeschakeldAsync();
+    private Task LaadPdfExportStatusAsync() => LaadClubgebondenBooleanAsync(
+        _pdfExportLoadGuard,
+        PlanningApi.IsPdfExportIngeschakeldAsync,
+        ingeschakeld => _pdfExportIngeschakeld = ingeschakeld);
 
     // Gantt-blokken voor de directe veldbezetting-weergave (#566) — geen optimalisatie, alleen wat er
     // al gepland staat. Hergebruikt dezelfde GanttItem/helpers als Veld optimalisatie.

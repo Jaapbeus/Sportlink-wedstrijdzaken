@@ -28,6 +28,41 @@ public class EmailVerhardingTests
     }
 
     [Theory]
+    [InlineData("za 14-11 10:30-12:00")]
+    [InlineData("14-11-2026 19:30-21:00")]
+    [InlineData("za 14/11 10.30-12.00")]
+    [InlineData("2026-11-14 10:30")]
+    [InlineData("14-11 10:30")]
+    [InlineData("14-11 10:30 - 12:00")]
+    [InlineData("za 14-11 10:30 – 12:00")]
+    [InlineData("14-11 10:30–12:00")]
+    [InlineData("14-11-2026 19:30–21:00")]
+    [InlineData("za 14/11 10.30–12.00")]
+    [InlineData("31-11 10:30-12:00")]
+    [InlineData("14-12 10:30-12:00")]
+    public void ProviderSamenvatting_BehoudtTijdbereikEnDagMaand(string invoer)
+        => AiVeldSanering.ProviderSamenvatting(invoer).Should().Be(invoer);
+
+    [Theory]
+    [InlineData("71 23456789", "[nummer]")]
+    [InlineData("71-23456789", "[nummer]")]
+    [InlineData("71.23.45.67.89", "[nummer]")]
+    [InlineData("99-99 10:30-12:00", "[nummer]")]
+    [InlineData("14-11 10:30-12:00-13:00", "[nummer]")]
+    [InlineData("32-11 10:30-12:00", "[nummer]")]
+    [InlineData("14-13 10:30-12:00", "[nummer]")]
+    [InlineData("71 - 23456789", "[nummer]")]
+    [InlineData("71 – 23456789", "[nummer]")]
+    [InlineData("06 - 12 - 34 - 56 - 78", "[nummer]")]
+    [InlineData("14-11 10:30 - 12:00 - 13:00", "[nummer]")]
+    [InlineData("14-11 10:30–12:00–13:00", "[nummer]")]
+    [InlineData("14-11 10:30-12:00–13:00", "[nummer]")]
+    [InlineData("14-11 10:30–12:00 71-23456789", "[nummer]")]
+    [InlineData("10:30–12:00 71–23456789", "[nummer]")]
+    public void ProviderSamenvatting_MaskeertTelefoonnummerMetPlanningsachtigeScheiding(string invoer, string verwacht)
+        => AiVeldSanering.ProviderSamenvatting(invoer).Should().Be(verwacht);
+
+    [Theory]
     [InlineData("jan@example.com", true)]
     [InlineData("", false)]
     [InlineData(null, false)]

@@ -1,0 +1,57 @@
+name: Beurt-invariant bewaken
+
+# #1858: bewaakt de invariant "het enige turn:-label = de volgende beurt uit de nieuwste vertrouwde
+# overdrachtscomment". Aanleiding (oorzaken uit het issue): (1) comment en label zijn losse
+# schrijfacties zonder volgorde; (2) geen enkele workflow leest fasecomments op issue én PR en
+# vergelijkt die met het label; (3) Codex schrijft Engels/inline, terwijl de poort van
+# claude-issue-turn.yml alleen Nederlandse, regelgebonden velden kent; (4) het gedeprecieerde
+# status: waiting-codex bleef na een handmatige zet hangen.
+#
+# Deze workflow SIGNALEERT ALLEEN: hij plaatst hoogstens één gededupliceerde comment per afwijking en
+# wijzigt nooit een label. Herstel blijft handwerk volgens CONTRIBUTING.md ("Overdracht en turn-label").
+# Elke 15 minuten (cron op een gespreide minuut, niet op :00 waar GitHub schedules vertraagt) en
+# handmatig, met een dry-run die alleen logt. Schedules draaien vanaf de default branch.
+
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Alleen loggen, geen signaalcomments plaatsen'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+# Nooit twee runs tegelijk (dan zouden beide dezelfde afwijking kunnen melden); een lopende run
+# wordt niet afgebroken, de volgende wacht.
+concurrency:
+  group: beurt-invariant
+  cancel-in-progress: false
+
+jobs:
+  bewaak:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (voor .github/scripts)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Alleen de scriptbestanden zijn nodig; het token hoeft niet in .git/config te blijven.
+          persist-credentials: false
+
+      - name: Beurt-invariant controleren
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { run } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/beurt-invariant.js`);
+            await run({
+              github,
+              context,
+              core,
+              now: new Date(),
+              dryRun: context.eventName === 'workflow_dispatch' && String(context.payload.inputs && context.payload.inputs.dry_run) === 'true',
+            });
