@@ -1,3 +1,5 @@
+using Planner.Endpoints.Http;
+
 using SportlinkFunction.Infrastructure;
 using Planner.Shared;
 using Azure.Core;
@@ -139,12 +141,16 @@ public static class AdminSettingsFunction
         return AdminEndpoint.ExecuteAsync(req, log, "AppSettings opslaan",
             async clubCode =>
             {
-                using var bodyReader = new StreamReader(req.Body);
-                var bodyText = await bodyReader.ReadToEndAsync();
+                var boundedBody = await BoundedRequestBodyReader.ReadUtf8Async(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+                if (!boundedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(boundedBody.Error);
+                var bodyText = boundedBody.Text ?? string.Empty;
                 if (string.IsNullOrWhiteSpace(bodyText))
                     return new BadRequestObjectResult(new { error = "Lege request body" });
 
-                var updateRequest = JsonConvert.DeserializeObject<UpdateSettingsRequest>(bodyText);
+                var parsedRequest = BoundedRequestBodyReader.ParseJson<UpdateSettingsRequest>(bodyText);
+                if (!parsedRequest.IsSuccess)
+                    return BoundedRequestBodyReader.ToActionResult(parsedRequest.Error);
+                var updateRequest = parsedRequest.Value;
                 if (updateRequest == null)
                     return new BadRequestObjectResult(new { error = "Ongeldige JSON" });
 

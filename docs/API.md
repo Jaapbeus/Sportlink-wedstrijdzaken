@@ -210,7 +210,7 @@ verwerking plaats.
 
 ### Request-bodylimieten
 
-De gedeelde JSON-endpoints voor Sportlink-mutaties, e-mailtest en beheer van leermomenten/teamaliassen/onbekende teamteksten accepteren maximaal 1 MiB UTF-8 per body. Ongeldige UTF-8 of JSON geeft **400**; een body boven de limiet geeft **413** vóór de actie. Feedback behoudt de bestaande limiet van 65536 UTF-16-tekens en krijgt daarnaast een byteplafond van 262144. Planning delen behoudt 524288 UTF-16-tekens en krijgt daarnaast een byteplafond van 2097152. Deze limieten gelden per endpoint.
+De JSON-bodies van instellingen, sync-trigger, teambegeleiding doorsturen, templates, testdata, thema, velden/veldbeschikbaarheid, Sportlink-extensierollen en de planner-endpoints hebben een limiet van 1 MiB UTF-8. Ongeldige UTF-8 of JSON geeft **400**; een body boven de limiet geeft **413** vóór de actie of databasebewerking. De CSV-import van teambegeleiding behoudt de bestaande uploadlimiet van 5 MiB UTF-8; de JSON-envelope is begrensd op basis van zesvoudige worst-case escaping, de bestaande opslagruimte van 500 tekens voor de bestandsnaam en 64 bytes voor de DTO-wrapper. Feedback behoudt de bestaande limiet van 65536 UTF-16-tekens en krijgt daarnaast een byteplafond van 262144. Planning delen behoudt 524288 UTF-16-tekens en krijgt daarnaast een byteplafond van 2097152. Deze limieten gelden per endpoint.
 
 ## GET /api/health
 

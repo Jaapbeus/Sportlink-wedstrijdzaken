@@ -1,3 +1,4 @@
+using Planner.Endpoints.Http;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -74,8 +75,10 @@ public static class SportlinkExtensieRollenFunction
                 if (!FunctioneleRollen.Contains(rolNaam, StringComparer.OrdinalIgnoreCase))
                     return new BadRequestObjectResult(new { error = $"Onbekende rol '{rolNaam}'. Toegestaan: {string.Join(", ", FunctioneleRollen)}." });
 
-                var dto = JsonConvert.DeserializeObject<RegistreerKoppelingDto>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
+                var boundedBody = await BoundedRequestBodyReader.ReadJsonAsync<RegistreerKoppelingDto>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+                if (!boundedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(boundedBody.Error);
+                var dto = boundedBody.Value;
+                if (dto == null) return new BadRequestObjectResult(new { error = "Request body is geen geldige JSON." });
 
                 // Server bepaalt WIE — nooit uit client-input, om spoofing te voorkomen.
                 var door = EasyAuthHelper.GetAuditActor(req);

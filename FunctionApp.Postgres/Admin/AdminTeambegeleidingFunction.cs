@@ -1,3 +1,4 @@
+using Planner.Endpoints.Http;
 using FunctionApp.Postgres.Email;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -101,9 +102,9 @@ public static class AdminTeambegeleidingFunction
         return AdminEndpoint.ExecuteAuthenticatedAsync(req, log, "teambegeleiding-vraag doorsturen (geen PII gelogd — AVG)",
             async clubCode =>
             {
-                using var bodyReader = new StreamReader(req.Body);
-                var body = await bodyReader.ReadToEndAsync();
-                var dto = JsonConvert.DeserializeObject<DoorsturenRequest>(body);
+                var boundedBody = await BoundedRequestBodyReader.ReadJsonAsync<DoorsturenRequest>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+                if (!boundedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(boundedBody.Error);
+                var dto = boundedBody.Value;
                 if (dto == null || string.IsNullOrWhiteSpace(dto.TeamNaam))
                     return new BadRequestObjectResult(new { error = "TeamNaam is vereist" });
                 if (string.IsNullOrWhiteSpace(dto.Bericht))
@@ -217,11 +218,16 @@ public static class AdminTeambegeleidingFunction
         return AdminEndpoint.ExecuteAsync(req, log, "teambegeleiding importeren (geen PII gelogd — AVG)",
             async clubCode =>
             {
-                using var bodyReader = new StreamReader(req.Body);
-                var body = await bodyReader.ReadToEndAsync();
-                var dto = JsonConvert.DeserializeObject<TeambegeleidingImportRequest>(body);
+                var body = await BoundedRequestBodyReader.ReadUtf8Async(
+                    req, TeambegeleidingImportRequestBodyLimits.MaxJsonBytes);
+                if (!body.IsSuccess) return BoundedRequestBodyReader.ToActionResult(body.Error);
+                var parsedBody = BoundedRequestBodyReader.ParseJson<TeambegeleidingImportRequest>(body.Text);
+                if (!parsedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(parsedBody.Error);
+                var dto = parsedBody.Value;
                 if (dto == null || string.IsNullOrWhiteSpace(dto.CsvContent))
                     return new BadRequestObjectResult(new { error = "csvContent is vereist" });
+                if (dto.Bestandsnaam?.Length > TeambegeleidingImportRequestBodyLimits.AuditFilenameMaxCharacters)
+                    return new BadRequestObjectResult(new { error = "bestandsnaam is te lang" });
 
                 var parseResult = TeambegeleidingCsv.ParseEnValideer(dto.CsvContent);
                 if (TeambegeleidingImportEndpointCore.Weiger(parseResult) is { } weiger) return weiger;

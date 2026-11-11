@@ -1,3 +1,5 @@
+using Planner.Endpoints.Http;
+
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -77,8 +79,12 @@ public static class AdminTestDataFunction
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("TestDataWedstrijdUpsert"), "ALLSTARS wedstrijd opslaan",
             async _ =>
             {
-                var body = await new StreamReader(req.Body).ReadToEndAsync();
-                var dto = JsonSerializer.Deserialize<AllstarsWedstrijdInput>(body, _json);
+                var boundedBody = await BoundedRequestBodyReader.ReadUtf8Async(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+                if (!boundedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(boundedBody.Error);
+                var body = boundedBody.Text ?? string.Empty;
+                AllstarsWedstrijdInput? dto;
+                try { dto = JsonSerializer.Deserialize<AllstarsWedstrijdInput>(body, _json); }
+                catch (JsonException) { return new BadRequestObjectResult(new { error = "Request body is geen geldige JSON." }); }
                 if (dto == null || string.IsNullOrWhiteSpace(dto.BkMatches))
                     return new BadRequestObjectResult(new { error = "BkMatches verplicht" });
 
@@ -149,8 +155,12 @@ public static class AdminTestDataFunction
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("TestDataVerplaatsDatum"), "ALLSTARS wedstrijden verplaatsen",
             async _ =>
             {
-                var body = await new StreamReader(req.Body).ReadToEndAsync();
-                var dto = JsonSerializer.Deserialize<VerplaatsDatumInput>(body, _json);
+                var boundedBody = await BoundedRequestBodyReader.ReadUtf8Async(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+                if (!boundedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(boundedBody.Error);
+                var body = boundedBody.Text ?? string.Empty;
+                VerplaatsDatumInput? dto;
+                try { dto = JsonSerializer.Deserialize<VerplaatsDatumInput>(body, _json); }
+                catch (JsonException) { return new BadRequestObjectResult(new { error = "Request body is geen geldige JSON." }); }
                 if (dto == null || string.IsNullOrWhiteSpace(dto.OudeDatum) || string.IsNullOrWhiteSpace(dto.NieuweDatum))
                     return new BadRequestObjectResult(new { error = "OudeDatum en NieuweDatum zijn verplicht" });
 

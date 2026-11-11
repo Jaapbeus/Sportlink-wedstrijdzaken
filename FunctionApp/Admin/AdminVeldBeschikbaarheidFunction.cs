@@ -1,3 +1,4 @@
+using Planner.Endpoints.Http;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -31,8 +32,9 @@ public static class AdminVeldBeschikbaarheidFunction
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminVeldBeschikbaarheidPut"), "veldbeschikbaarheid bijwerken",
             async clubCode =>
             {
-                var dto = JsonConvert.DeserializeObject<VeldBeschikbaarheidRequest>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
+                var boundedBody = await BoundedRequestBodyReader.ReadJsonAsync<VeldBeschikbaarheidRequest>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+                if (!boundedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(boundedBody.Error);
+                var dto = boundedBody.Value;
                 var validatie = Valideer(dto);
                 if (validatie != null) return validatie;
 
@@ -70,8 +72,9 @@ public static class AdminVeldBeschikbaarheidFunction
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminVeldenPost"), "veld aanmaken",
             async clubCode =>
             {
-                var dto = JsonConvert.DeserializeObject<VeldCreateRequest>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
+                var boundedBody = await BoundedRequestBodyReader.ReadJsonAsync<VeldCreateRequest>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+                if (!boundedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(boundedBody.Error);
+                var dto = boundedBody.Value;
                 var validatie = ValideerVeld(dto);
                 if (validatie != null) return validatie;
 
@@ -93,8 +96,9 @@ public static class AdminVeldBeschikbaarheidFunction
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminVeldenPut"), "veld bijwerken",
             async clubCode =>
             {
-                var dto = JsonConvert.DeserializeObject<VeldUpdateRequest>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
+                var boundedBody = await BoundedRequestBodyReader.ReadJsonAsync<VeldUpdateRequest>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+                if (!boundedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(boundedBody.Error);
+                var dto = boundedBody.Value;
                 var validatie = ValideerVeldUpdate(dto);
                 if (validatie != null) return validatie;
 
@@ -112,8 +116,9 @@ public static class AdminVeldBeschikbaarheidFunction
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminVeldBeschikbaarheidPost"), "veldbeschikbaarheid aanmaken",
             async clubCode =>
             {
-                var dto = JsonConvert.DeserializeObject<VeldBeschikbaarheidCreateRequest>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
+                var boundedBody = await BoundedRequestBodyReader.ReadJsonAsync<VeldBeschikbaarheidCreateRequest>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+                if (!boundedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(boundedBody.Error);
+                var dto = boundedBody.Value;
                 if (dto == null) return new BadRequestObjectResult(new { error = "Lege body" });
                 if (dto.VeldNummer <= 0)  return new BadRequestObjectResult(new { error = "VeldNummer vereist" });
                 if (dto.DagVanWeek < 1 || dto.DagVanWeek > 7)

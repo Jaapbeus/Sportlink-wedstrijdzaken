@@ -1,3 +1,5 @@
+using Planner.Endpoints.Http;
+
 using Planner.Endpoints.Admin;
 using FunctionApp.Postgres.Infrastructure;
 using Microsoft.AspNetCore.Http;
@@ -66,8 +68,9 @@ public static class AdminThemeFunction
         return AdminEndpoint.ExecuteAsync(req, log, "thema opslaan",
             async clubCode =>
             {
-                using var sr = new StreamReader(req.Body);
-                var body = await sr.ReadToEndAsync();
+                var boundedBody = await BoundedRequestBodyReader.ReadUtf8Async(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+                if (!boundedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(boundedBody.Error);
+                var body = boundedBody.Text ?? string.Empty;
 
                 ThemeUpdateRequest? dto = null;
                 try

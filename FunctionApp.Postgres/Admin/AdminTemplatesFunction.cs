@@ -1,3 +1,4 @@
+using Planner.Endpoints.Http;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -67,9 +68,9 @@ public static class AdminTemplatesFunction
                 if (string.IsNullOrWhiteSpace(key))
                     return new BadRequestObjectResult(new { error = "Template key ontbreekt" });
 
-                using var bodyReader = new StreamReader(req.Body);
-                var bodyText = await bodyReader.ReadToEndAsync();
-                var dto = JsonConvert.DeserializeObject<TemplateRequest>(bodyText);
+                var boundedBody = await BoundedRequestBodyReader.ReadJsonAsync<TemplateRequest>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+                if (!boundedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(boundedBody.Error);
+                var dto = boundedBody.Value;
                 if (dto == null || dto.Onderwerp == null || dto.BodyTemplate == null)
                     return new BadRequestObjectResult(new { error = "Onderwerp en BodyTemplate verplicht" });
 

@@ -1,3 +1,5 @@
+using Planner.Endpoints.Http;
+
 using SportlinkFunction.Infrastructure;
 using Planner.Endpoints.Admin;
 using System.Text.Json;
@@ -86,8 +88,10 @@ public static class AdminSyncFunction
                 if (UitgaandVerkeerCore.Blokkeer(EgressGuard.ExternalIntegrationsAllowed) is { } geblokkeerd) return geblokkeerd;
 
                 // #1352/#1461/#1492: body + seizoensvenster via de gedeelde orkestratie (400 bij ongeldig).
+                var boundedBody = await BoundedRequestBodyReader.ReadUtf8Async(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+                if (!boundedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(boundedBody.Error);
                 var venster = await SyncTriggerEndpointCore.BepaalVensterAsync(
-                    await new StreamReader(req.Body).ReadToEndAsync(), DateTime.UtcNow.Year,
+                    boundedBody.Text, DateTime.UtcNow.Year,
                     async () =>
                     {
                         // De queue mag tijdens een lopende sync blijven accepteren. De doorrol

@@ -1,3 +1,4 @@
+using Planner.Endpoints.Http;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -32,8 +33,9 @@ namespace SportlinkFunction.Planner
             return AdminEndpoint.ExecuteAsync(req, log, "beschikbaarheid controleren",
                 async clubCode =>
                 {
-                    string body = await new StreamReader(req.Body).ReadToEndAsync();
-                    var request = JsonConvert.DeserializeObject<CheckAvailabilityRequest>(body);
+                    var requestBody = await BoundedRequestBodyReader.ReadJsonAsync<CheckAvailabilityRequest>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+                    if (!requestBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(requestBody.Error);
+                    var request = requestBody.Value;
                     if (request == null || string.IsNullOrEmpty(request.Datum))
                         return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
@@ -55,9 +57,9 @@ namespace SportlinkFunction.Planner
             return AdminEndpoint.ExecuteAsync(req, log, "doordeweekse beschikbaarheid controleren",
                 async clubCode =>
                 {
-                    string body = await new StreamReader(req.Body).ReadToEndAsync();
-                    var request = JsonConvert.DeserializeObject<DoordeweeksBeschikbaarRequest>(body)
-                        ?? new DoordeweeksBeschikbaarRequest();
+                    var requestBody = await BoundedRequestBodyReader.ReadJsonAsync<DoordeweeksBeschikbaarRequest>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+                    if (!requestBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(requestBody.Error);
+                    var request = requestBody.Value ?? new DoordeweeksBeschikbaarRequest();
 
                     log.LogInformation("DoordeweeksBeschikbaar: dag={Dag}, duur={Duur}, cat={Cat}, club={Club}",
                         LogWaarde.Schoon(request.DagFilter), request.DuurMinuten, LogWaarde.Schoon(request.LeeftijdsCategorie), clubCode);
@@ -77,8 +79,9 @@ namespace SportlinkFunction.Planner
             return AdminEndpoint.ExecuteAsync(req, log, "wedstrijd bevestigen",
                 async clubCode =>
                 {
-                    string body = await new StreamReader(req.Body).ReadToEndAsync();
-                    var request = JsonConvert.DeserializeObject<BevestigRequest>(body);
+                    var requestBody = await BoundedRequestBodyReader.ReadJsonAsync<BevestigRequest>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+                    if (!requestBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(requestBody.Error);
+                    var request = requestBody.Value;
                     if (request == null || string.IsNullOrEmpty(request.Datum) || string.IsNullOrEmpty(request.AanvangsTijd))
                         return new BadRequestObjectResult(new { error = "Request body met 'datum', 'aanvangsTijd' en 'veldNummer' is verplicht." });
 
@@ -183,8 +186,9 @@ namespace SportlinkFunction.Planner
             return AdminEndpoint.ExecuteAsync(req, log, "wedstrijd zoeken",
                 async clubCode =>
                 {
-                    string body = await new StreamReader(req.Body).ReadToEndAsync();
-                    var request = JsonConvert.DeserializeObject<ZoekWedstrijdRequest>(body);
+                    var requestBody = await BoundedRequestBodyReader.ReadJsonAsync<ZoekWedstrijdRequest>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+                    if (!requestBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(requestBody.Error);
+                    var request = requestBody.Value;
                     if (request == null || string.IsNullOrEmpty(request.TeamNaam) || string.IsNullOrEmpty(request.Datum))
                         return new BadRequestObjectResult(new { error = "Request body met 'teamNaam' en 'datum' is verplicht." });
 
@@ -211,8 +215,9 @@ namespace SportlinkFunction.Planner
             return AdminEndpoint.ExecuteAsync(req, log, "herplanmogelijkheden controleren",
                 async clubCode =>
                 {
-                    string body = await new StreamReader(req.Body).ReadToEndAsync();
-                    var request = JsonConvert.DeserializeObject<HerplanCheckRequest>(body);
+                    var requestBody = await BoundedRequestBodyReader.ReadJsonAsync<HerplanCheckRequest>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+                    if (!requestBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(requestBody.Error);
+                    var request = requestBody.Value;
                     if (request == null || request.Wedstrijdcode == 0)
                         return new BadRequestObjectResult(new { error = "Request body met 'wedstrijdcode' is verplicht." });
 
@@ -283,8 +288,9 @@ namespace SportlinkFunction.Planner
             return AdminEndpoint.ExecuteAsync(req, log, "herplanverzoek vastleggen",
                 async clubCode =>
                 {
-                    string body = await new StreamReader(req.Body).ReadToEndAsync();
-                    var request = JsonConvert.DeserializeObject<HerplanBevestigRequest>(body);
+                    var requestBody = await BoundedRequestBodyReader.ReadJsonAsync<HerplanBevestigRequest>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+                    if (!requestBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(requestBody.Error);
+                    var request = requestBody.Value;
                     if (request == null || request.Wedstrijdcode == 0 || string.IsNullOrEmpty(request.GewensteAanvangsTijd))
                         return new BadRequestObjectResult(new { error = "Request body met 'wedstrijdcode' en 'gewensteAanvangsTijd' is verplicht." });
 
@@ -337,8 +343,9 @@ namespace SportlinkFunction.Planner
             return AdminEndpoint.ExecuteAsync(req, log, "dagplanning berekenen",
                 async clubCode =>
                 {
-                    string body = await new StreamReader(req.Body).ReadToEndAsync();
-                    var request = JsonConvert.DeserializeObject<AutoPlanRequest>(body);
+                    var requestBody = await BoundedRequestBodyReader.ReadJsonAsync<AutoPlanRequest>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+                    if (!requestBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(requestBody.Error);
+                    var request = requestBody.Value;
                     if (request == null || string.IsNullOrEmpty(request.Datum))
                         return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
@@ -378,8 +385,9 @@ namespace SportlinkFunction.Planner
             return AdminEndpoint.ExecuteAsync(req, log, "dagplanning toepassen",
                 async clubCode =>
                 {
-                    string body = await new StreamReader(req.Body).ReadToEndAsync();
-                    var request = JsonConvert.DeserializeObject<AutoPlanToepassenRequest>(body);
+                    var requestBody = await BoundedRequestBodyReader.ReadJsonAsync<AutoPlanToepassenRequest>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+                    if (!requestBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(requestBody.Error);
+                    var request = requestBody.Value;
                     if (request == null || string.IsNullOrEmpty(request.Datum))
                         return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 

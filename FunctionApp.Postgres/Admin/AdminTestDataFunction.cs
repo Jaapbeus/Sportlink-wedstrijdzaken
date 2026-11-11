@@ -1,3 +1,5 @@
+using Planner.Endpoints.Http;
+
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -117,8 +119,12 @@ public static class AdminTestDataFunction
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("TestDataWedstrijdUpsert"), "ALLSTARS wedstrijd opslaan",
             async _ =>
             {
-                var body = await new StreamReader(req.Body).ReadToEndAsync();
-                var dto = JsonConvert.DeserializeObject<AllstarsWedstrijdInput>(body);
+                var boundedBody = await BoundedRequestBodyReader.ReadUtf8Async(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+                if (!boundedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(boundedBody.Error);
+                var body = boundedBody.Text ?? string.Empty;
+                var parsedBody = BoundedRequestBodyReader.ParseJson<AllstarsWedstrijdInput>(body);
+                if (!parsedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(parsedBody.Error);
+                var dto = parsedBody.Value;
                 if (dto == null || string.IsNullOrWhiteSpace(dto.BkMatches))
                     return new BadRequestObjectResult(new { error = "BkMatches verplicht" });
 
@@ -180,8 +186,12 @@ public static class AdminTestDataFunction
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("TestDataVerplaatsDatum"), "ALLSTARS wedstrijden verplaatsen",
             async _ =>
             {
-                var body = await new StreamReader(req.Body).ReadToEndAsync();
-                var dto = JsonConvert.DeserializeObject<VerplaatsDatumInput>(body);
+                var boundedBody = await BoundedRequestBodyReader.ReadUtf8Async(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+                if (!boundedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(boundedBody.Error);
+                var body = boundedBody.Text ?? string.Empty;
+                var parsedBody = BoundedRequestBodyReader.ParseJson<VerplaatsDatumInput>(body);
+                if (!parsedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(parsedBody.Error);
+                var dto = parsedBody.Value;
                 if (dto == null || string.IsNullOrWhiteSpace(dto.OudeDatum) || string.IsNullOrWhiteSpace(dto.NieuweDatum))
                     return new BadRequestObjectResult(new { error = "OudeDatum en NieuweDatum zijn verplicht" });
 

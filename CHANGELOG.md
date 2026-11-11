@@ -29,6 +29,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - De SQL Server-planner geeft voor de niet-opgeslagen optionele eerste-elftalnaam nu expliciet `null` door, gelijk aan Postgres; de settings-loader guard hoeft deze ontbrekende sleutel niet meer uit te zonderen (#1821).
 
 ### Fixed
+- De resterende beheer- en planner-JSON-bodies zijn op beide databasetiers begrensd op 1 MiB; teambegeleiding behoudt de bestaande CSV-upload tot 5 MiB via een afgeleide JSON-envelope. Ongeldige JSON/UTF-8 geeft 400, overschrijding 413 vóór verwerking. Lokale databasepoorten luisteren alleen op loopback (zie issue #1811).
 - Sync-statusmeldingen bewaren alleen het uitzonderingstype; providerfouttekst en URL blijven uit de beheerstatus (zie issue #1811).
 - De negatieve tier-duplicatietest gebruikt een vaste synthetische grens en blijft daardoor betrouwbaar wanneer productierefactorings duplicatie verminderen (zie issue #1811).
 - Settings restart decisions now have paired SQL Server and Postgres persistence regression tests for unchanged and changed schedules alongside another saved field (#1819).

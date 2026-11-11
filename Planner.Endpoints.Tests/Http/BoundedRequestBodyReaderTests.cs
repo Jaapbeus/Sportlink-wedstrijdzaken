@@ -2,6 +2,7 @@ using AwesomeAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Planner.Endpoints.Http;
+using System.Text.Json;
 using System.Text;
 using Xunit;
 
@@ -9,6 +10,30 @@ namespace Planner.Endpoints.Tests.Http;
 
 public class BoundedRequestBodyReaderTests
 {
+    [Fact]
+    public void TeambegeleidingCsv_ExistingFiveMiBFileAndWorstCaseEscapingFitEnvelope()
+    {
+        var payload = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            CsvContent = new string('\0', TeambegeleidingImportRequestBodyLimits.CsvFileMaxBytes),
+            Bestandsnaam = new string('\0', TeambegeleidingImportRequestBodyLimits.AuditFilenameMaxCharacters)
+        }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        payload.Length.Should().BeLessThanOrEqualTo(TeambegeleidingImportRequestBodyLimits.MaxJsonBytes);
+    }
+
+    [Fact]
+    public async Task TeambegeleidingCsv_EnvelopeLimitRejectsBeforeEndpointAction()
+    {
+        var invoked = false;
+        var result = await BoundedRequestBodyReader.ExecuteUtf8Async(
+            Request(new CountingStream(new byte[TeambegeleidingImportRequestBodyLimits.MaxJsonBytes + 1])),
+            _ => { invoked = true; return Task.FromResult<IActionResult>(new OkResult()); });
+
+        invoked.Should().BeFalse();
+        (result as ObjectResult)!.StatusCode.Should().Be(StatusCodes.Status413PayloadTooLarge);
+    }
+
     [Fact]
     public async Task ReadUtf8_ExactLimit_AcceptsBodyAcrossShortReads()
     {
