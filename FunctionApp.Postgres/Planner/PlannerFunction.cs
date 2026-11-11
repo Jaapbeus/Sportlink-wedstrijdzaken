@@ -67,7 +67,7 @@ public static class PlannerFunction
 
                 // #1364: ?format=html|pdf voor de deel-knop op de Planning-pagina; zonder format blijft het JSON; zonder ?status=true blijft dat de kale array (#1774).
                 var metStatus = VeldbezettingAntwoord<VeldbezettingItem>.StatusAangevraagd(req.Query["status"].ToString());
-                log.LogInformation("Veldbezetting: datum={Datum}, club={Club}", LogWaarde.Schoon(datumParam), clubCode);
+                log.LogInformation("Veldbezetting: datum={Datum}, club={Club}", LogWaarde.Schoon(datumParam), LogWaarde.Schoon(clubCode));
                 return await PlannerDeelEndpointCore.VerwerkAsync(req.Query["format"], null, datumParam,
                     () => PdfExportInstelling.IsIngeschakeldAsync(clubCode),
                     async () => await VeldbezettingSportlinkOverlay.PasToeAsync(
@@ -97,7 +97,7 @@ public static class PlannerFunction
 
                 var format = req.Query["format"].ToString().ToLowerInvariant();
 
-                log.LogInformation("GetTeamSchedule: team={Team}, format={Format}, club={Club}", LogWaarde.Schoon(team), LogWaarde.Schoon(format), clubCode);
+                log.LogInformation("GetTeamSchedule: team={Team}, format={Format}, club={Club}", LogWaarde.Schoon(team), LogWaarde.Schoon(format), LogWaarde.Schoon(clubCode));
 
                 var schedule = await TeamScheduleService.GetTeamScheduleAsync(
                     PostgresDatabaseConfig.ConnectionString, team, PostgresClubScope.Resolve(clubCode));
@@ -132,7 +132,7 @@ public static class PlannerFunction
                     return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
                 log.LogInformation("CheckAvailability: datum={Datum}, tijd={Tijd}, team={Team}, cat={Cat}, club={Club}",
-                    LogWaarde.Schoon(request.Datum), LogWaarde.Schoon(request.AanvangsTijd), LogWaarde.Schoon(request.TeamNaam), LogWaarde.Schoon(request.LeeftijdsCategorie), clubCode);
+                    LogWaarde.Schoon(request.Datum), LogWaarde.Schoon(request.AanvangsTijd), LogWaarde.Schoon(request.TeamNaam), LogWaarde.Schoon(request.LeeftijdsCategorie), LogWaarde.Schoon(clubCode));
 
                 var response = await AvailabilityService.CheckAvailabilityAsync(
                     PostgresDatabaseConfig.ConnectionString, request, log, clubCode);
@@ -157,7 +157,7 @@ public static class PlannerFunction
                 request ??= new DoordeweeksBeschikbaarRequest();
 
                 log.LogInformation("DoordeweeksBeschikbaar: dag={Dag}, duur={Duur}, cat={Cat}, club={Club}",
-                    LogWaarde.Schoon(request.DagFilter), request.DuurMinuten, LogWaarde.Schoon(request.LeeftijdsCategorie), clubCode);
+                    LogWaarde.Schoon(request.DagFilter), request.DuurMinuten, LogWaarde.Schoon(request.LeeftijdsCategorie), LogWaarde.Schoon(clubCode));
 
                 var response = await AvailabilityService.CheckDoordeweeksBeschikbaarAsync(
                     PostgresDatabaseConfig.ConnectionString, request, log, clubCode);
@@ -183,7 +183,7 @@ public static class PlannerFunction
                     return new BadRequestObjectResult(new { error = "Request body met 'wedstrijdcode' is verplicht." });
 
                 log.LogInformation("HerplanCheck: wedstrijdcode={Code}, voorkeur={Tijd}, club={Club}",
-                    request.Wedstrijdcode, LogWaarde.Schoon(request.VoorkeurTijd), clubCode);
+                    request.Wedstrijdcode, LogWaarde.Schoon(request.VoorkeurTijd), LogWaarde.Schoon(clubCode));
 
                 var response = await RescheduleService.CheckRescheduleAvailabilityAsync(
                     PostgresDatabaseConfig.ConnectionString, request, log, clubCode);
@@ -301,7 +301,7 @@ public static class PlannerFunction
                     return new BadRequestObjectResult(new { error = $"Ongeldige datum: {request.Datum}" });
 
                 log.LogInformation("ZoekWedstrijd: team={Team}, datum={Datum}, club={Club}",
-                    LogWaarde.Schoon(request.TeamNaam), LogWaarde.Schoon(request.Datum), clubCode);
+                    LogWaarde.Schoon(request.TeamNaam), LogWaarde.Schoon(request.Datum), LogWaarde.Schoon(clubCode));
 
                 var match = await PlannerMatchRepository.FindMatchAsync(
                     PostgresDatabaseConfig.ConnectionString, request.TeamNaam, date, clubCode);
@@ -416,7 +416,7 @@ public static class PlannerFunction
                     () =>
                     {
                         log.LogInformation("AutoPlan: datum={Datum}, buffer={Buffer}, club={Club}",
-                            LogWaarde.Schoon(request.Datum), request.BufferMinuten, clubCode);
+                            LogWaarde.Schoon(request.Datum), request.BufferMinuten, LogWaarde.Schoon(clubCode));
                         return AutoPlanService.AutoPlanAsync(PostgresDatabaseConfig.ConnectionString, request, clubCode, log);
                     },
                     (deel, response) => deel.VanPlan(response.Wedstrijden, clubCode), response => new OkObjectResult(response));
@@ -459,7 +459,7 @@ public static class PlannerFunction
                     return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
                 var clubCode = PostgresClubScope.Resolve(rawClubCode);
-                log.LogInformation("AutoPlanToepassen: datum={Datum}, club={Club}", LogWaarde.Schoon(request.Datum), clubCode);
+                log.LogInformation("AutoPlanToepassen: datum={Datum}, club={Club}", LogWaarde.Schoon(request.Datum), LogWaarde.Schoon(clubCode));
 
                 try
                 {

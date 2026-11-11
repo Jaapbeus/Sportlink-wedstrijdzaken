@@ -37,7 +37,7 @@ namespace SportlinkFunction.Planner
                         return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
                     log.LogInformation("CheckAvailability: datum={Datum}, tijd={Tijd}, team={Team}, cat={Cat}, club={Club}",
-                        LogWaarde.Schoon(request.Datum), LogWaarde.Schoon(request.AanvangsTijd), LogWaarde.Schoon(request.TeamNaam), LogWaarde.Schoon(request.LeeftijdsCategorie), clubCode);
+                        LogWaarde.Schoon(request.Datum), LogWaarde.Schoon(request.AanvangsTijd), LogWaarde.Schoon(request.TeamNaam), LogWaarde.Schoon(request.LeeftijdsCategorie), LogWaarde.Schoon(clubCode));
 
                     var response = await PlannerService.CheckAvailabilityAsync(request, log, clubCode);
 
@@ -57,7 +57,7 @@ namespace SportlinkFunction.Planner
                     request ??= new DoordeweeksBeschikbaarRequest();
 
                     log.LogInformation("DoordeweeksBeschikbaar: dag={Dag}, duur={Duur}, cat={Cat}, club={Club}",
-                        LogWaarde.Schoon(request.DagFilter), request.DuurMinuten, LogWaarde.Schoon(request.LeeftijdsCategorie), clubCode);
+                        LogWaarde.Schoon(request.DagFilter), request.DuurMinuten, LogWaarde.Schoon(request.LeeftijdsCategorie), LogWaarde.Schoon(clubCode));
 
                     var response = await PlannerService.CheckDoordeweeksBeschikbaarAsync(request, log, clubCode);
 
@@ -185,7 +185,7 @@ namespace SportlinkFunction.Planner
                         return new BadRequestObjectResult(new { error = $"Ongeldige datum: {request.Datum}" });
 
                     log.LogInformation("ZoekWedstrijd: team={Team}, datum={Datum}, club={Club}",
-                        LogWaarde.Schoon(request.TeamNaam), LogWaarde.Schoon(request.Datum), clubCode);
+                        LogWaarde.Schoon(request.TeamNaam), LogWaarde.Schoon(request.Datum), LogWaarde.Schoon(clubCode));
 
                     var match = await PlannerDataAccess.FindMatchAsync(request.TeamNaam, date, clubCode);
                     if (match == null)
@@ -208,7 +208,7 @@ namespace SportlinkFunction.Planner
                         return new BadRequestObjectResult(new { error = "Request body met 'wedstrijdcode' is verplicht." });
 
                     log.LogInformation("HerplanCheck: wedstrijdcode={Code}, voorkeur={Tijd}, club={Club}",
-                        request.Wedstrijdcode, LogWaarde.Schoon(request.VoorkeurTijd), clubCode);
+                        request.Wedstrijdcode, LogWaarde.Schoon(request.VoorkeurTijd), LogWaarde.Schoon(clubCode));
 
                     var response = await PlannerService.CheckRescheduleAvailabilityAsync(request, log, clubCode);
 
@@ -335,7 +335,7 @@ namespace SportlinkFunction.Planner
                         () => PdfExportInstelling.IsIngeschakeldAsync(clubCode),
                         () =>
                         {
-                            log.LogInformation("AutoPlan: datum={Datum}, club={Club}", LogWaarde.Schoon(request.Datum), clubCode);
+                            log.LogInformation("AutoPlan: datum={Datum}, club={Club}", LogWaarde.Schoon(request.Datum), LogWaarde.Schoon(clubCode));
                             return PlannerService.AutoPlanAsync(request, clubCode, log);
                         },
                         (deel, response) => deel.VanPlan(response.Wedstrijden, clubCode), response => new OkObjectResult(response));
@@ -371,7 +371,7 @@ namespace SportlinkFunction.Planner
                     if (!clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase))
                         return new ObjectResult(new { error = "Toepassen is alleen beschikbaar in testmodus (ALLSTARS)." }) { StatusCode = 403 };
 
-                    log.LogInformation("AutoPlanToepassen: datum={Datum}, club={Club}", LogWaarde.Schoon(request.Datum), clubCode);
+                    log.LogInformation("AutoPlanToepassen: datum={Datum}, club={Club}", LogWaarde.Schoon(request.Datum), LogWaarde.Schoon(clubCode));
 
                     var response = await PlannerService.AutoPlanToepassenAsync(request, clubCode, log);
                     return new OkObjectResult(response);
@@ -400,7 +400,7 @@ namespace SportlinkFunction.Planner
 
                     // #1364: ?format=html|pdf voor de deel-knop op de Planning-pagina; zonder format blijft het JSON; zonder ?status=true blijft dat de kale array (#1774).
                     var metStatus = VeldbezettingAntwoord<VeldbezettingItem>.StatusAangevraagd(req.Query["status"].ToString());
-                    log.LogInformation("Veldbezetting: datum={Datum}, club={Club}", LogWaarde.Schoon(datumParam), clubCode);
+                    log.LogInformation("Veldbezetting: datum={Datum}, club={Club}", LogWaarde.Schoon(datumParam), LogWaarde.Schoon(clubCode));
                     return await PlannerDeelEndpointCore.VerwerkAsync(req.Query["format"], null, datumParam,
                         () => PdfExportInstelling.IsIngeschakeldAsync(clubCode),
                         async () => await VeldbezettingSportlinkOverlay.PasToeAsync(
@@ -424,7 +424,7 @@ namespace SportlinkFunction.Planner
 
                     var format = req.Query["format"].ToString().ToLowerInvariant();
 
-                    log.LogInformation("GetTeamSchedule: team={Team}, format={Format}, club={Club}", LogWaarde.Schoon(team), LogWaarde.Schoon(format), clubCode);
+                    log.LogInformation("GetTeamSchedule: team={Team}, format={Format}, club={Club}", LogWaarde.Schoon(team), LogWaarde.Schoon(format), LogWaarde.Schoon(clubCode));
 
                     var schedule = await PlannerService.GetTeamScheduleAsync(team, clubCode);
                     if (schedule == null)
