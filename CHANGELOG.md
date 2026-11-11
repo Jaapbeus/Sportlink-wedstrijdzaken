@@ -19,6 +19,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Changed
+- Remove the unused optional time normalizer, five unreferenced SQL planner facade forwards and four no-op test placeholders; keep their active repository implementations and maintained tooling. (#1808)
 - De gedeelde HTML-generator voor de veldplanner is per verantwoordelijkheid in partial-bestanden opgesplitst; de publieke aanroepen en de gegenereerde browser- en e-mail-HTML blijven gelijk (zie issue #1807).
 - Removed the unused API status service and placed existing shared-logic tests in `Planner.Shared.Tests` (see issue #1808).
 - Removed unreferenced Bootstrap JavaScript assets and unused starter-menu icon selectors; the linked Bootstrap CSS remains (see issue #1808).
