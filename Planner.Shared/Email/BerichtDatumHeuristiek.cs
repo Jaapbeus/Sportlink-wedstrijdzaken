@@ -71,6 +71,8 @@ public static class BerichtDatumHeuristiek
 
         if (string.IsNullOrEmpty(modelDatum)) return modelDatum;
         if (!ModelDatum.TryParse(modelDatum, out var datum)) return modelDatum;
+        // An explicit date supporting the model outweighs a weekday about another matter.
+        if (bodyDatum == datum) return modelDatum;
 
         // Alleen corrigeren bij precies één dagnaam. Bij meerdere ("zaterdag of zondag?", of een
         // ondertekening met "kantine open vrijdag") is niet vast te stellen welke dag bij het
@@ -104,8 +106,11 @@ public static class BerichtDatumHeuristiek
     private static bool HeeftExplicietDagnaamVerzoek(string tekst, string dagNaam)
     {
         var dag = Regex.Escape(dagNaam);
-        return Regex.IsMatch(tekst, $@"\b(?:kunnen\s+(?:we|jullie)|zouden\s+we|kan\s+het|graag|ja)\s+{dag}\b") ||
-               Regex.IsMatch(tekst, $@"\b{dag}\s+(?:spelen|inhalen|verzetten|verplaatsen|beschikbaar)\b");
+        return Regex.IsMatch(tekst, $@"\b(?:(?:kan|kunnen|zou|zouden|willen)\s+(?:we|wij|jullie|je|u|het)|graag|ja)\s+(?:op\s+)?{dag}\b") ||
+               Regex.IsMatch(tekst, $@"\bis\s+(?:het\s+)?(?:op\s+)?{dag}\s+mogelijk\b") ||
+               Regex.IsMatch(tekst, $@"\bzijn\s+(?:we|wij|jullie)\s+(?:op\s+)?{dag}\s+beschikbaar\b") ||
+               Regex.IsMatch(tekst, $@"\b(?:we|wij|jullie)\s+willen\s+(?:graag\s+)?(?:op\s+)?{dag}\s+(?:spelen|inhalen|verzetten|verplaatsen)\b") ||
+               Regex.IsMatch(tekst, $@"\b{dag}\s+(?:spelen|inhalen|verzetten|verplaatsen)\s*\?");
     }
 
     /// <summary>

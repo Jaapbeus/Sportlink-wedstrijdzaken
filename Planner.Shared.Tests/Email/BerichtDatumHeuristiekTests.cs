@@ -32,6 +32,71 @@ public class BerichtDatumHeuristiekTests
     private static string? Corrigeer(string? modelDatum, string body, string onderwerp)
         => BerichtDatumHeuristiek.CorrigeerDagDatum(modelDatum, body, onderwerp);
 
+    [Theory]
+    [InlineData("Kan jullie zaterdag?")]
+    [InlineData("Kan we zaterdag?")]
+    [InlineData("Kunnen we op zaterdag?")]
+    [InlineData("Is zaterdag mogelijk?")]
+    [InlineData("Kunnen jullie op zaterdag?")]
+    [InlineData("Zouden jullie op zaterdag kunnen spelen?")]
+    [InlineData("Zou het op zaterdag kunnen?")]
+    [InlineData("Kan het op zaterdag?")]
+    [InlineData("Zijn jullie zaterdag beschikbaar?")]
+    [InlineData("Zijn jullie op zaterdag beschikbaar?")]
+    [InlineData("Is het op zaterdag mogelijk?")]
+    [InlineData("Kunnen we zaterdag inhalen?")]
+    [InlineData("We willen zaterdag spelen.")]
+    [InlineData("We willen graag zaterdag spelen.")]
+    [InlineData("Willen jullie zaterdag spelen?")]
+    [InlineData("Zaterdag spelen?")]
+    [InlineData("Graag op zaterdag spelen.")]
+    [InlineData("Ja zaterdag kan bij ons!")]
+    public void DirecteDagnaamVraag_CorrigeertBeschikbaarheidEnGelijkeLijst(string body)
+    {
+        var classificatie = new BerichtClassificatie
+        {
+            Type = VerzoekType.BeschikbaarheidCheck, Datum = "2026-04-14",
+            Datums = ["2026-04-14"]
+        };
+        BerichtDatumHeuristiek.ValideerClassificatieDatum(classificatie, body, "Verzoek");
+        classificatie.Datum.Should().Be("2026-04-11");
+        classificatie.GetAlleDatums().Should().Equal("2026-04-11");
+    }
+
+    [Theory]
+    [InlineData("Wij zijn zaterdag beschikbaar.")]
+    [InlineData("Wij kunnen op zaterdag.")]
+    [InlineData("Wij kunnen zaterdag spelen.")]
+    [InlineData("We gaan zaterdag spelen.")]
+    [InlineData("Op zaterdag spelen we thuis.")]
+    [InlineData("Zaterdag is mogelijk.")]
+    [InlineData("De kantine is zaterdag beschikbaar.")]
+    [InlineData("De bespreking is zaterdag; de wedstrijd blijft zoals afgesproken.")]
+    [InlineData("Graag voor zaterdag reageren.")]
+    [InlineData("Kunnen we zaterdag of zondag spelen?")]
+    [InlineData("Dat is akkoord.\nVan: [afzender]\nKunnen we zaterdag?")]
+    public void GeenEenduidigDagnaamVerzoek_BehoudtModeldatum(string body)
+        => Corrigeer("2026-04-14", body, "Verzoek").Should().Be("2026-04-14");
+
+    [Fact]
+    public void ExplicieteModeldatumInBody_LosseReactiedagVerplaatstWedstrijdNiet()
+        => Corrigeer("2026-05-16", "Wedstrijd van 16 mei 2026 blijft staan. Graag woensdag reactie.", "Verzoek")
+            .Should().Be("2026-05-16");
+
+    [Theory]
+    [InlineData("Kunnen we op zaterdag?")]
+    [InlineData("Is zaterdag mogelijk?")]
+    public void HerplanMetDirecteDagnaamVraag_BehoudtBeideDatumrollen(string body)
+    {
+        var classificatie = new BerichtClassificatie
+        {
+            Type = VerzoekType.HerplanVerzoek, Datum = "2026-04-14", GewensteDatum = "2026-04-18"
+        };
+        BerichtDatumHeuristiek.ValideerClassificatieDatum(classificatie, body, "Verzoek");
+        classificatie.Datum.Should().Be("2026-04-14");
+        classificatie.GewensteDatum.Should().Be("2026-04-18");
+    }
+
     // ── Datum in onderwerp ──
 
     [Theory]

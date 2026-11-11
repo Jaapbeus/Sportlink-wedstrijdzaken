@@ -67,6 +67,29 @@ public class OntvangerParserTests
         result.FoutMelding.Should().Contain("Ongeldig e-mailadres");
     }
 
+    [Theory]
+    [InlineData("trainer@voorbeeld.nl; \"Jan de Vries <begeleider@allstars-fc.test>")]
+    [InlineData("trainer@voorbeeld.nl; Jan de Vries <begeleider@allstars-fc.test")]
+    [InlineData("trainer@voorbeeld.nl; begeleider@allstars-fc.test>")]
+    [InlineData("trainer@voorbeeld.nl; Jan de Vries <<begeleider@allstars-fc.test>>")]
+    public void Parse_Structuurfout_BevatGeenOntvangergegevens(string regel)
+    {
+        var result = OntvangerParser.Parse(regel);
+        result.IsValid.Should().BeFalse();
+        result.Emailadressen.Should().BeEmpty();
+        result.FoutMelding.Should().Contain("Ongeldig e-mailadres");
+        result.FoutMelding.Should().NotContain("@").And.NotContain("Jan de Vries");
+    }
+
+    [Fact]
+    public void Parse_GeescapeteQuotesEnGemengdeScheiding_BehoudtAlleOntvangers()
+    {
+        var result = OntvangerParser.Parse(
+            "\"Jan \\\"de Vries\\\", Team; Jeugd\" <trainer@voorbeeld.nl>; begeleider@allstars-fc.test, TRAINER@VOORBEELD.NL");
+        result.IsValid.Should().BeTrue();
+        result.Emailadressen.Should().Equal("trainer@voorbeeld.nl", "begeleider@allstars-fc.test");
+    }
+
     [Fact]
     public void Parse_DubbeleSpaties_WordenGenegeerd()
     {

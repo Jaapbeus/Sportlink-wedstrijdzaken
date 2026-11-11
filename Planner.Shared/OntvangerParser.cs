@@ -2,8 +2,8 @@ namespace Planner.Shared;
 
 /// <summary>
 /// Resultaat van <see cref="OntvangerParser.Parse"/>. Bij een ongeldige regel bevat
-/// <see cref="FoutMelding"/> altijd welk exact ontvanger-fragment de fout veroorzaakte — een stille
-/// skip zou de aanvrager laten denken dat een adres wél is meegenomen terwijl dat niet zo is.
+/// <see cref="FoutMelding"/> uitleg over de structuurfout of het ongeldige ontvanger-fragment.
+/// Structuurfouten herhalen geen invoer; de hele regel wordt afgewezen, nooit deels overgeslagen.
 /// </summary>
 public sealed record OntvangerParseResultaat(bool IsValid, IReadOnlyList<string> Emailadressen, string? FoutMelding)
 {
@@ -35,7 +35,8 @@ public static class OntvangerParser
         var fragmenten = SplitsOntvangers(ruweRegel, out var structuurGeldig);
 
         if (!structuurGeldig)
-            return OngeldigFragment(string.Join("; ", fragmenten));
+            return OntvangerParseResultaat.Ongeldig(
+                "Ongeldig e-mailadres: controleer de aanhalingstekens en hoekhaken in de ontvangersregel.");
 
         if (fragmenten.Count == 0)
             return OntvangerParseResultaat.Ongeldig("Vul minimaal één ontvanger in.");
@@ -116,7 +117,7 @@ public static class OntvangerParser
             if (teken == '<')
             {
                 if (inHoekhaken)
-                    return OngeldigeStructuur(regel, out structuurGeldig);
+                    return OngeldigeStructuur(out structuurGeldig);
 
                 inHoekhaken = true;
                 continue;
@@ -125,7 +126,7 @@ public static class OntvangerParser
             if (teken == '>')
             {
                 if (!inHoekhaken)
-                    return OngeldigeStructuur(regel, out structuurGeldig);
+                    return OngeldigeStructuur(out structuurGeldig);
 
                 inHoekhaken = false;
                 continue;
@@ -139,17 +140,17 @@ public static class OntvangerParser
         }
 
         if (tussenAanhalingstekens || inHoekhaken)
-            return OngeldigeStructuur(regel, out structuurGeldig);
+            return OngeldigeStructuur(out structuurGeldig);
 
         VoegFragmentToe(fragmenten, regel[begin..]);
         structuurGeldig = true;
         return fragmenten;
     }
 
-    private static List<string> OngeldigeStructuur(string regel, out bool structuurGeldig)
+    private static List<string> OngeldigeStructuur(out bool structuurGeldig)
     {
         structuurGeldig = false;
-        return [regel.Trim()];
+        return [];
     }
 
     private static void VoegFragmentToe(List<string> fragmenten, string fragment)

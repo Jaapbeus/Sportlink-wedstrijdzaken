@@ -118,7 +118,10 @@ var systemPrompt = BouwSystemPrompt(NederlandseBedrijfsKlok.Nu());
 **Waarom de Nederlandse klok:** e-mailclassificatie werkt met Nederlandse datums. De
 hosttijdzone kan UTC zijn; `NederlandseBedrijfsKlok` zet een UTC-moment expliciet om naar
 `Europe/Amsterdam` (met de Windows-id als platformalternatief). Ontbreekt tijdzone-informatie,
-dan faalt de omzetting in plaats van ongemerkt een andere kalenderdatum te gebruiken.
+dan faalt de omzetting in plaats van ongemerkt een andere kalenderdatum te gebruiken. Deze garantie
+betreft de klok van de AI-adapters en gedeelde e-maildatumhelpers. De daaropvolgende
+`AvailabilityService` gebruikt op beide tiers nog hostlokale datumgrenzen; die bredere
+plannercorrectie valt onder issue #1803 en is hier niet als voltooid aangemerkt.
 
 ### Datumformaat in system prompts
 
