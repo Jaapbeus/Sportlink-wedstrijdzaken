@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using Planner.Shared;
 using Planner.Shared.Email;
 
 namespace SportlinkFunction.Email;

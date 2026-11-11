@@ -20,8 +20,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ### Changed
 - De vier inhoudelijke SQL Server-fixturetests voor synchronisatie draaien mee tegen de verse CI-database in plaats van permanent overgeslagen te blijven (zie issue #1808).
+- De gedeelde HTML-generator voor de veldplanner is per verantwoordelijkheid in partial-bestanden opgesplitst; de publieke aanroepen en de gegenereerde browser- en e-mail-HTML blijven gelijk (zie issue #1807).
+- De fingerprint-, publieke titel-/diagnostiek- en foutclassificatiehelpers van `GitHubIssueReporter` staan in een eigen partial-bestand; de bestaande methoden en werking blijven gelijk (zie issue #1807).
 - Removed the unused API status service and placed existing shared-logic tests in `Planner.Shared.Tests` (see issue #1808).
 - Clarified the Postgres error-reporting adapter documentation while retaining its tier-specific egress and fingerprint rationale (see issue #1805).
+- In Planner.Shared, removed planning-comment provenance while retaining the tier-independent logic and planning invariants (see issue #1806).
 - Het reviewrondelimiet voor Codex en Claude Code (AGENTS.md en de automatische issue-beurt van de bot) is van twee naar drie rondes per PR gegaan; pas daarna beslist de eigenaar, zie issue #1835.
 - BlazorAdmin: XML-documentatie voor tijdnormalisatie en Gantt-layout bijgewerkt; gedrag ongewijzigd (zie issue #1806).
 - De SQL Server-planner geeft voor de niet-opgeslagen optionele eerste-elftalnaam nu expliciet `null` door, gelijk aan Postgres; de settings-loader guard hoeft deze ontbrekende sleutel niet meer uit te zonderen (#1821).
@@ -29,7 +32,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ### Fixed
 - Settings restart decisions now have paired SQL Server and Postgres persistence regression tests for unchanged and changed schedules alongside another saved field (#1819).
 - De Postgres-instellingenloader laadt nu ook de vijf bestaande e-mailinstellingen voor de mailboxverwerking en wist ze bij herladen na `NULL`, gelijk aan het gedrag van de SQL Server-tier (#1798).
-- Synchronization uses a database-wide lease while shared staging is in use. Concurrent manual requests receive `409`, timer runs skip explicitly, and queued jobs fail without a second attempt. Queue workers also claim each pending job atomically, so duplicate deliveries do not start duplicate sync work. SQL Server rolls configured club seasons forward before choosing a timer, manual or queued sync window; rollover failure aborts before provider calls and leaves the previous successful timestamp unchanged. Existing queued offsets remain intact, and merge errors still stop reconciliation and timestamp advancement (#1818).
+- Synchronization uses a database-wide lease while shared staging is in use. Concurrent manual requests receive `409`, timer runs skip explicitly, and queued jobs fail without a second attempt. Queue workers also claim each pending job atomically, so duplicate deliveries do not start duplicate sync work. SQL Server rolls configured club seasons forward before choosing a timer, manual or queued sync window; rollover failure aborts before provider calls and leaves the previous successful timestamp unchanged. Existing queued offsets remain intact, and merge errors still stop reconciliation and timestamp advancement (#1818). Current-season dates use the strict Dutch business clock; unavailable time-zone data stops the sync instead of reusing the conservative reconciliation date fallback.
 - SQL Server now separates composite team business-key components with the PostgreSQL tier's existing separator, while preserving single-column formatting and already stored keys (#1818).
 - De instellingenopslag meldt alleen een herstart als de opgeslagen FetchSchedule-waarde echt verandert; SQL Server ondersteunt nu ook het opslaan en teruglezen van SportlinkDryRun (#1819)
 - Een teambegeleiding-CSV met ongeldige UTF-8-bytes wordt vóór de import geweigerd in plaats van stilzwijgend met vervangtekens in de preview te verschijnen (#1819)
