@@ -3,9 +3,10 @@ using BlazorAdmin.Models;
 namespace BlazorAdmin.Services;
 
 /// <summary>
-/// Gedeelde Gantt-weergavehelpers voor Planning en Veld-optimalisatie: bouwen labels, tooltips en
-/// items voor de tijdlijnen en berekenen onder meer veldposities en tijdlabels. Statisch en zonder
-/// DI-afhankelijkheden; <see cref="GanttLayout"/> berekent afzonderlijk de positie en hoogte van een balk.
+/// Gedeelde Gantt-weergavehelpers voor Planning en Veld-optimalisatie. De klasse definieert het
+/// Gantt-itemmodel en biedt helpers voor wedstrijdlabels, veldnaam en subpositie, percentages,
+/// tijdaslabels, tooltips en kleuren. <see cref="VolgendeZaterdag"/> geeft de standaarddatum terug;
+/// <see cref="GanttLayout"/> berekent afzonderlijk de positie en hoogte van een balk.
 /// </summary>
 public static class DagplanningWeergaveHelpers
 {
