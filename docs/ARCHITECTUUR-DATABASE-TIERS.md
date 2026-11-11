@@ -176,8 +176,8 @@ haar naar een gedeeld project in plaats van haar te dupliceren.
 
 The repository continues to mark SQL Server and Postgres as `built: true`; this change preserves
 that invariant and does not decide their long-term support policy. The issue's option A is
-“Doorgaan zoals nu”; this PR does not attribute the separate staged-extraction approach below to
-that owner option or present it as an owner decision.
+“Doorgaan zoals nu”. This PR documents a narrow implementation choice and does not present it as
+a broader owner decision.
 
 For this change, Codex chose a narrow implementation: the SQL Server and Postgres KNVB calendar
 repositories remain native and keep their own region, season, date-range, day-type and ordering

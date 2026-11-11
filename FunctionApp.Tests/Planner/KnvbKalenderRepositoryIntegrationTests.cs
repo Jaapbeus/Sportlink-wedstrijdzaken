@@ -18,8 +18,6 @@ public class KnvbKalenderRepositoryIntegrationTests : IAsyncLifetime
     private const string Seizoen = "2099/2100";
     private const string AnderSeizoen = "2098/2099";
     private const string Regio = "West";
-    private const string TestDatabaseCollation = "Latin1_General_100_CI_AS";
-
     private static string ConnectionString => Environment.GetEnvironmentVariable(SqlServerFactAttribute.EnvVar)
         ?? throw new InvalidOperationException($"{SqlServerFactAttribute.EnvVar} niet gezet.");
 
@@ -44,27 +42,34 @@ public class KnvbKalenderRepositoryIntegrationTests : IAsyncLifetime
                 $"{SqlServerFactAttribute.EnvVar} and SqlConnectionString must target the same SQL Server instance and catalog.");
         }
 
-        if (!string.Equals(fixtureDoel.Collation, TestDatabaseCollation, StringComparison.OrdinalIgnoreCase))
+        if (!fixtureDoel.IsCaseInsensitive)
         {
             throw new InvalidOperationException(
-                $"The disposable SQL Server contract-test catalog must use {TestDatabaseCollation}.");
+                "The disposable SQL Server contract-test catalog must use a case-insensitive collation.");
         }
     }
 
-    private static async Task<(string Server, string Database, string Collation)> LeesDatabaseDoelAsync(string connectionString)
+    private static async Task<(
+        string Server, string Database, string Collation, bool IsCaseInsensitive)> LeesDatabaseDoelAsync(
+        string connectionString)
     {
         await using var conn = new SqlConnection(connectionString);
         await conn.OpenAsync();
         await using var cmd = new SqlCommand("""
             SELECT CONVERT(nvarchar(128), SERVERPROPERTY('ServerName')),
                    DB_NAME(),
-                   CONVERT(nvarchar(128), DATABASEPROPERTYEX(DB_NAME(), 'Collation'))
+                   CONVERT(nvarchar(128), DATABASEPROPERTYEX(DB_NAME(), 'Collation')),
+                   CASE WHEN N'a' COLLATE DATABASE_DEFAULT = N'A' COLLATE DATABASE_DEFAULT THEN 1 ELSE 0 END
             """, conn);
         await using var reader = await cmd.ExecuteReaderAsync();
-        if (!await reader.ReadAsync() || reader.IsDBNull(0) || reader.IsDBNull(1) || reader.IsDBNull(2))
+        if (!await reader.ReadAsync()
+            || reader.IsDBNull(0)
+            || reader.IsDBNull(1)
+            || reader.IsDBNull(2)
+            || reader.IsDBNull(3))
             throw new InvalidOperationException("Could not verify the SQL Server test database identity and collation.");
 
-        return (reader.GetString(0), reader.GetString(1), reader.GetString(2));
+        return (reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt32(3) == 1);
     }
 
     private static async Task OpruimenAsync()
