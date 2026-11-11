@@ -284,7 +284,7 @@ public static class SportlinkMatchFunction
 
     /// <summary>Audit-<c>resultaat</c> voor een mutatie-uitkomst (#998, uitgebreid #994) — één
     /// gedeelde regel in <see cref="SportlinkEndpointCore.BepaalAuditResultaat"/>.</summary>
-    internal static string BepaalAuditResultaat(SportlinkMutationResult r) => SportlinkEndpointSupport.BepaalAuditResultaat(r);
+    internal static string BepaalAuditResultaat(SportlinkMutationResult r) => SportlinkEndpointSupportCore.BepaalAuditResultaat(r);
 
     private sealed class KleedkamersDto
     {
@@ -403,7 +403,8 @@ public static class SportlinkMatchFunction
         return await SportlinkEndpointSupport.RondMutatieAfAsync(
             mutationResult, auditService, auditId, naarMutatieResultaat,
             data => new OkObjectResult(
-                bouwResponse != null ? bouwResponse(data, auditId, mutationResult.HttpStatusCode) : data));
+                bouwResponse != null ? bouwResponse(data, auditId, mutationResult.HttpStatusCode) : data),
+            context.GetLogger("SqlSportlinkMatch"));
     }
 
     /// <summary>Gedeelde stappen van alle endpoints hierboven: toggle-check, EgressGuard,

@@ -595,6 +595,32 @@ public class SportlinkClubClientTests
     }
 
     [Fact]
+    public async Task ResolvePublicMatchIdAsync_DubbelWedstrijdnummer_KoppeltGeenIdEnDoetGeenMutatie()
+    {
+        var requests = new List<(HttpMethod Method, string? Host)>();
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var client = MakeClient(req =>
+        {
+            requests.Add((req.Method, req.RequestUri?.Host));
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("MatchProgramOverview") == true)
+                return JsonResponse(MatchProgramOverviewResponse((3403, "M111111111"), (3403, "M222222222")));
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance,
+            isDryRun: () => false);
+
+        var result = await sut.ResolvePublicMatchIdAsync(TestFunctioneleRol, 3403, new DateOnly(2026, 9, 5));
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data.Should().BeNull();
+        requests.Where(r => r.Host == "club.sportlink.com").Should().ContainSingle()
+            .Which.Method.Should().Be(HttpMethod.Get);
+    }
+
+    [Fact]
     public async Task ResolvePublicMatchIdAsync_GenestOnderMatchesProperty_VindtHetJuistePublicMatchId()
     {
         var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);

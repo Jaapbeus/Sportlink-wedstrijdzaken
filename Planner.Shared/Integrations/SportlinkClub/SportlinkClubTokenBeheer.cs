@@ -55,6 +55,7 @@ internal sealed class SportlinkClubTokenBeheer
         // Serialize per-rol vernieuwing
         var semaphore = _rolSemaphores.GetOrAdd(functioneleRol, _ => new SemaphoreSlim(1, 1));
         await semaphore.WaitAsync(cancellationToken);
+        var leaseWordtVerkregen = false;
         try
         {
             // Double-check: mis tussendoor iemand anders al vernieuwd?
@@ -65,8 +66,10 @@ internal sealed class SportlinkClubTokenBeheer
             }
 
             // #1411: dezelfde databaselease voor herlogin, refresh-rotatie en beheerwrites.
+            leaseWordtVerkregen = _autoLogin is not null;
             await using var lease = _autoLogin is null ? null :
                 await _autoLogin.AcquireLeaseAsync(functioneleRol, cancellationToken);
+            leaseWordtVerkregen = false;
             if (_autoLogin is not null)
             {
                 // #1774: een mislukte periodieke herlogin mag het refresh-tokenpad nooit voorbijgaan;
@@ -121,6 +124,11 @@ internal sealed class SportlinkClubTokenBeheer
             return (SportlinkClubCallStatus.Ok, refreshResult.AccessToken, null);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (TimeoutException) when (leaseWordtVerkregen)
+        {
+            _logger.LogInformation("Lokale Sportlink-autologinlease is bezet; geen externe aanroep gedaan.");
+            return (SportlinkClubCallStatus.LokaleLeaseBezet, null, "Lokale Sportlink-lease is tijdelijk bezet");
+        }
         catch (SportlinkLoginException)
         {
             _tokenCache.TryRemove(functioneleRol, out _);

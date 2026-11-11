@@ -36,7 +36,16 @@ public sealed class PostgresSportlinkAutoLoginStore : ISportlinkAutoLoginStore
                 "SELECT pg_advisory_xact_lock(hashtextextended(@key, 0))", connection, transaction))
             {
                 command.Parameters.AddWithValue("key", $"sportlink-auto-login:{ClubCode}:{role}");
-                await command.ExecuteNonQueryAsync(cancellationToken);
+                try
+                {
+                    await command.ExecuteNonQueryAsync(cancellationToken);
+                }
+                catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.LockNotAvailable)
+                {
+                    // PostgreSQL reports lock_timeout as SQLSTATE 55P03, not TimeoutException.
+                    // Match the SQL-tier contract so shared token handling returns local busy (409).
+                    throw new TimeoutException("De PostgreSQL Sportlink-autologinlease is bezet.", ex);
+                }
             }
             return new TransactionLease(connection, transaction);
         }
