@@ -180,11 +180,10 @@ public interface ISportlinkClubClient
     /// <summary>
     /// Wijst officials (scheidsrechter, assistenten) toe aan een wedstrijd (#994, epic #986) —
     /// <c>PUT competition/match/official/MatchOfficialsAction</c>.
-    /// <b>ONBEVESTIGD:</b> dit endpoint en de body-vorm zijn nooit met een netwerktrace gezien
-    /// (gereverse-engineerd uit Sportlinks eigen frontend-code) — deze methode roept daarom altijd
-    /// intern <c>forceDryRun: true</c> aan totdat een mens (nooit een agent, zie
-    /// docs/SPORTLINK-WEB-EXTENSION.md §4.4) een live trace heeft gedaan en de lock-constante in een
-    /// aparte PR omzet. Dit is ONAFHANKELIJK van de club-instelling <c>sportlinkDryRun</c>.
+    /// De eigenaar heeft de code-lock na een live netwerktrace opgeheven in #1319; de mutatie volgt
+    /// nu de club-instelling <c>sportlinkDryRun</c>. De exacte positiecodes blijven onbevestigd
+    /// (zie <see cref="SportlinkOfficialToewijzing"/>); het opheffen van de lock bevestigt niet elk
+    /// mogelijk veld of iedere waarde.
     /// <b>De aanroeper controleert VOORAF</b> <c>SportlinkMutationGuard.MagMuteren(match,
     /// SportlinkMutationSoort.Officials)</c>.
     /// <para>
@@ -197,8 +196,9 @@ public interface ISportlinkClubClient
     /// <param name="publicMatchId">Zie de TODO(#987)-waarschuwing op <see cref="GetMatchAsync"/>.</param>
     /// <param name="officials">Eén regel per te (her)bezetten positie — zie <see cref="SportlinkOfficialToewijzing"/>.</param>
     /// <returns>
-    /// Bij <c>Status=Ok</c>: <c>Data.IsForcedDryRun</c> is in de praktijk altijd <c>true</c> zolang
-    /// de code-lock actief is. <c>Data.IsSuccess=false</c> betekent ofwel een transport-afwijzing
+    /// Bij <c>Status=Ok</c>: <c>Data.IsDryRun</c> geeft aan of de club-instelling de PUT simuleerde;
+    /// <c>Data.IsForcedDryRun</c> geeft aan of een interne code-lock de PUT heeft overgeslagen.
+    /// <c>Data.IsSuccess=false</c> betekent ofwel een transport-afwijzing
     /// (HTTP 420-vorm) ofwel — taakspecifiek voor dit endpoint — dat minstens één official een
     /// <c>ValidationDescription</c> had (Sportlinks "opgeslagen met fouten"); zie
     /// <c>Data.Violations</c> voor de/detail(s).
@@ -209,21 +209,17 @@ public interface ISportlinkClubClient
         IReadOnlyList<SportlinkOfficialToewijzing> officials,
         CancellationToken cancellationToken = default);
 
-    // NIET VERDER BOUWEN ZONDER LIVE BEVESTIGING DOOR DE EIGENAAR (#995, Aanpak-stap 1: body van
-    // beide PUT's en de bevestigingsvlag vastleggen). Dit is uitsluitend stap 1 (valideren) van
-    // Sportlinks tweestaps flow — er bestaat bewust geen stap 2 (bevestigen): geen endpoint, geen
-    // client-methode, geen UI-knop daarvoor.
+    // De eigenaar heeft de body van beide PUT's en de bevestigingsvlag live vastgelegd (#1319).
+    // Dit blijft uitsluitend stap 1 (valideren) van Sportlinks tweestaps flow — er bestaat bewust
+    // geen stap 2 (bevestigen): geen endpoint, geen client-methode, geen UI-knop daarvoor.
     /// <summary>
     /// Vraagt een wijziging van datum/tijd/accommodatie aan (#995, epic #986) — stap 1 (valideren)
     /// van Sportlinks tweestaps flow, via hetzelfde endpoint als #993's veld-wijziging:
-    /// <c>PUT competition/match/UpdateMatchDetails</c>. <b>ONBEVESTIGD, altijd code-gelockt:</b> dit
-    /// is de enige Sportlink-mutatie die een ECHTE tegenstander raakt (Sportlink stuurt bij
-    /// bevestiging een goedkeuringsverzoek naar de tegenstander) — deze methode roept daarom altijd
-    /// intern <c>forceDryRun: true</c> aan totdat een mens (nooit een agent, zie
-    /// docs/SPORTLINK-WEB-EXTENSION.md §4.4) een live trace heeft gedaan, ONAFHANKELIJK van de
-    /// club-instelling <c>sportlinkDryRun</c>. Zelfs stap 1 kan in werkelijkheid al het gevaarlijke
-    /// moment zijn als Sportlinks eerste PUT geen "dry validate" blijkt te zijn — de code-lock vangt
-    /// dat softwarematig af zolang die aanstaat.
+    /// <c>PUT competition/match/UpdateMatchDetails</c>. De eigenaar heeft de code-lock na een live
+    /// netwerktrace opgeheven in #1319; deze PUT volgt nu de club-instelling
+    /// <c>sportlinkDryRun</c>. Dit is alleen stap 1: de aparte bevestigingsstap is niet gebouwd.
+    /// Een echte PUT kan een wijzigingsverzoek raken dat een tegenstander betreft; dry-run moet
+    /// daarom aan blijven totdat een beheerder bewust een live actie wil uitvoeren.
     /// <b>De aanroeper controleert VOORAF</b> <c>SportlinkMutationGuard.MagMuteren(match,
     /// SportlinkMutationSoort.DatumTijdAccommodatie)</c>.
     /// </summary>
@@ -234,8 +230,9 @@ public interface ISportlinkClubClient
     /// <param name="nieuweFacilityId">Nieuwe accommodatie-ID, of <c>null</c> om de accommodatie ongewijzigd te laten.</param>
     /// <param name="toelichting">Verplichte toelichting bij het verzoek — validatie hiervan is aan de aanroeper.</param>
     /// <returns>
-    /// Bij <c>Status=Ok</c>: <c>Data.Mutatie.IsForcedDryRun</c> is in de praktijk altijd <c>true</c>
-    /// zolang de code-lock actief is, en <c>Data.Validatie</c> dus altijd <c>null</c>.
+    /// Bij <c>Status=Ok</c>: <c>Data.Mutatie.IsDryRun</c> geeft aan of de club-instelling de PUT
+    /// simuleerde; <c>Data.Mutatie.IsForcedDryRun</c> geeft aan of een interne code-lock de PUT
+    /// heeft overgeslagen. <c>Data.Validatie</c> is alleen beschikbaar na een echte HTTP-respons.
     /// </returns>
     Task<SportlinkClubResponse<SportlinkMatchChangeRequestResult>> RequestMatchChangeAsync(
         string functioneleRol,
@@ -254,19 +251,16 @@ public interface ISportlinkClubClient
     /// leest vlaggen van een al bestaande <c>SportlinkMatch</c>). De aanroeper controleert in plaats
     /// daarvan alleen onze EIGEN regels (de <c>sportlinkExtensionEnabled</c>-toggle en
     /// <c>EgressGuard.ExternalIntegrationsAllowed()</c>) — zie <c>SportlinkClubMatchFunction</c>.
-    /// <b>ONBEVESTIGD:</b> endpoint en body-vorm zijn nooit met een netwerktrace gezien
-    /// (gereverse-engineerd uit Sportlinks eigen frontend-code) — deze methode roept daarom altijd
-    /// intern <c>forceDryRun: true</c> aan totdat een mens (nooit een agent, zie
-    /// docs/SPORTLINK-WEB-EXTENSION.md §4.4) een live trace heeft gedaan en de lock-constante in een
-    /// aparte PR omzet. Dit is ONAFHANKELIJK van de club-instelling <c>sportlinkDryRun</c>.
+    /// De eigenaar heeft de code-lock na een live netwerktrace opgeheven in #1319; deze POST volgt
+    /// nu de club-instelling <c>sportlinkDryRun</c>. De requestvelden staan beschreven bij
+    /// <see cref="SportlinkClubMatchAanvraag"/>.
     /// </summary>
     /// <param name="functioneleRol">Functionele rol voor token-lookup.</param>
-    /// <param name="aanvraag">Zie <see cref="SportlinkClubMatchAanvraag"/> — elk veld ONBEVESTIGD.</param>
+    /// <param name="aanvraag">Aanvraag volgens <see cref="SportlinkClubMatchAanvraag"/>.</param>
     /// <returns>
-    /// Bij <c>Status=Ok</c>: <c>Data.IsForcedDryRun</c> is in de praktijk altijd <c>true</c> zolang
-    /// de code-lock actief is, en <c>Data.PublicMatchId</c> blijft dan <c>null</c> (Sportlink is
-    /// niet daadwerkelijk aangeroepen). Zodra de lock ooit wordt opgeheven: <c>Data.PublicMatchId</c>
-    /// bevat de nieuw aangemaakte wedstrijd-ID uit Sportlinks respons.
+    /// Bij <c>Status=Ok</c>: als <c>Data.IsDryRun</c> waar is, is er geen POST gedaan en is
+    /// <c>Data.PublicMatchId</c> <c>null</c>. Bij een echte geslaagde POST bevat het resultaat de
+    /// nieuw aangemaakte wedstrijd-ID uit Sportlinks respons.
     /// </returns>
     Task<SportlinkClubResponse<SportlinkMutationResult>> CreateClubMatchAsync(
         string functioneleRol,
@@ -297,8 +291,7 @@ public interface ISportlinkClubClient
     /// Haalt de twee ondersteunende picklists op die een oefenwedstrijd-formulier nodig heeft
     /// (#997, bewust beperkte scope): <c>clubmatch/PickListsTeams</c> en
     /// <c>clubmatch/PickListsLocation</c>. Read-only en persoonsgegevensvrij (teams/locaties, geen
-    /// personen) — anders dan <see cref="CreateClubMatchAsync"/> dus GEEN forceDryRun-lock nodig,
-    /// deze aanroep gaat echt naar Sportlink. Wel ONBEVESTIGD qua exacte respons-veldnamen per item
+    /// personen) — deze read-only aanroep gaat naar Sportlink. Wel ONBEVESTIGD qua exacte respons-veldnamen per item
     /// — zie <see cref="SportlinkPickListItem"/>.
     /// </summary>
     Task<SportlinkClubResponse<SportlinkClubMatchPickLists>> GetClubMatchPickListsAsync(

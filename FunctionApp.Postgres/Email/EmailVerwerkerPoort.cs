@@ -63,25 +63,32 @@ internal sealed class EmailVerwerkerPoort(
     // exact hetzelfde patroon als graphService in Run.
     public bool BereidAiVoor()
     {
-        var chatClient = services.GetService<IChatClient>();
-        if (chatClient is null)
-        {
-            log.LogError("IChatClient niet beschikbaar — controleer OpenAiApiKey/EgressGuard-configuratie; verwerking overgeslagen");
-            return false;
-        }
+        var chatClient = EmailVerwerkerFasen.BeschikbareChatClient(services, log);
+        if (chatClient is null) return false;
 
         _ai = new BerichtAiService(loggerFactory.CreateLogger<BerichtAiService>(), chatClient);
         return true;
     }
 
-    public Task<EmailClassificatieBatch<InkomendBericht>> ClassificeerAsync(List<InkomendBericht> teClassificeren)
+    public Task<EmailClassificatieBatch<InkomendBericht>> ClassificeerAsync(
+        List<InkomendBericht> teClassificeren, IReadOnlyList<ClassificatieCorrectieVoorbeeld> voorbeelden)
     {
         var ai = Ai;
         return new EmailClassificationService().ClassificeerBatchAsync(
             teClassificeren,
-            email => ai.ClassificeerBerichtAsync(email.Body ?? "", email.Onderwerp, email.Afzender),
+            (email, fewShots) => ai.ClassificeerBerichtAsync(email.Body ?? "", email.Onderwerp, email.Afzender, fewShots),
             EmailFoutCategorie.IsOpenAiQuotaFout,
-            log);
+            log,
+            voorbeelden);
+    }
+
+    public async Task<IReadOnlyList<ClassificatieCorrectieVoorbeeld>> HaalFewShotVoorbeeldenOpAsync()
+    {
+        // Fase 1 gebruikt deze al gevalideerde voorbeelden vóór de eerste classificatie. Gebruik
+        // dezelfde DB-wake/settings-route als de bestaande verse uitsluitingslijst; geen nieuwe cache.
+        await PostgresSystemUtilities.WaitForDatabaseAsync(log);
+        await PostgresAppSettings.LoadSettingsAsync(log);
+        return await LearningMomentRepository.HaalVoorbeeldenOpAsync(cs, PostgresClubScope.Primary, log);
     }
 
     public Task LabelBuitenScopeAsync(List<(InkomendBericht Email, BerichtClassificatie Classificatie)> classificaties)

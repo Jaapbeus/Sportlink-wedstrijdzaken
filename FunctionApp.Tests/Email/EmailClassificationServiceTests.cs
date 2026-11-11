@@ -26,7 +26,7 @@ public class EmailClassificationServiceTests
 
         var result = await service.ClassificeerBatchAsync(
             emails,
-            _ => Task.FromResult(new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck, Datum = null }),
+            (_, _) => Task.FromResult(new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck, Datum = null }),
             _ => false,
             NullLogger.Instance);
 
@@ -48,7 +48,7 @@ public class EmailClassificationServiceTests
 
         var result = await service.ClassificeerBatchAsync(
             emails,
-            _ =>
+            (_, _) =>
             {
                 calls++;
                 if (calls == 1) throw new InvalidOperationException("boom");
@@ -59,6 +59,7 @@ public class EmailClassificationServiceTests
 
         result.AiAborted.Should().BeFalse();
         result.QuotaException.Should().BeNull();
+        result.NietQuotaClassificatieFouten.Should().Be(1);
         result.Classificaties.Should().ContainSingle(c => c.Email.MessageId == "m2");
     }
 
@@ -76,7 +77,7 @@ public class EmailClassificationServiceTests
 
         var result = await service.ClassificeerBatchAsync(
             emails,
-            _ =>
+            (_, _) =>
             {
                 calls++;
                 if (calls == 2) throw new InvalidOperationException("HTTP 429 insufficient_quota");
@@ -87,7 +88,29 @@ public class EmailClassificationServiceTests
 
         result.AiAborted.Should().BeTrue();
         result.QuotaException.Should().NotBeNull();
+        result.NietQuotaClassificatieFouten.Should().Be(0);
         result.Classificaties.Should().ContainSingle(c => c.Email.MessageId == "m1");
         calls.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task ClassificeerBatchAsync_GeeftGoedgekeurdeFewShotsDoorAanElkeClassificatie()
+    {
+        var voorbeeld = new ClassificatieCorrectieVoorbeeld(
+            "BuitenScope", "HerplanVerzoek", "Vraag over een wedstrijd", "Het verzoek is om te verplaatsen");
+        IReadOnlyList<ClassificatieCorrectieVoorbeeld>? ontvangen = null;
+
+        await new EmailClassificationService().ClassificeerBatchAsync(
+            [new InkomendBericht { MessageId = "m1", Onderwerp = "Test", Body = "Test", Afzender = "trainer@voorbeeld.nl" }],
+            (_, fewShots) =>
+            {
+                ontvangen = fewShots;
+                return Task.FromResult(new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek });
+            },
+            _ => false,
+            NullLogger.Instance,
+            [voorbeeld]);
+
+        ontvangen.Should().ContainSingle().Which.Should().Be(voorbeeld);
     }
 }

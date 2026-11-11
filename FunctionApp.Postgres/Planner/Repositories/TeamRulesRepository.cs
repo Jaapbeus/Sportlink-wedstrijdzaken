@@ -122,16 +122,22 @@ internal static class TeamRulesRepository
     internal static async Task<Dictionary<string, (int bufferVoor, int bufferNa)>> GetAllTeamBuffersAsync(
         string connectionString, string? clubCode = null)
     {
-        var cc = PostgresClubScope.Resolve(clubCode);
-        var result = new Dictionary<string, (int bufferVoor, int bufferNa)>(StringComparer.OrdinalIgnoreCase);
         await using var conn = new NpgsqlConnection(connectionString);
         await conn.OpenAsync();
+        return await GetAllTeamBuffersAsync(conn, null, clubCode);
+    }
+
+    internal static async Task<Dictionary<string, (int bufferVoor, int bufferNa)>> GetAllTeamBuffersAsync(
+        NpgsqlConnection conn, NpgsqlTransaction? transaction, string? clubCode = null)
+    {
+        var cc = PostgresClubScope.Resolve(clubCode);
+        var result = new Dictionary<string, (int bufferVoor, int bufferNa)>(StringComparer.OrdinalIgnoreCase);
         await using var cmd = new NpgsqlCommand("""
             SELECT teamnaam, regeltype, waardeminuten
             FROM public.teamregels
             WHERE regeltype IN ('BufferVoor', 'BufferNa') AND actief = true AND waardeminuten IS NOT NULL
               AND clubcode = @clubcode
-            """, conn);
+            """, conn, transaction);
         cmd.Parameters.AddWithValue("clubcode", cc);
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())

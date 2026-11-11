@@ -15,7 +15,7 @@ namespace SportlinkFunction
 
             // #859: een mislukte instellingenlaadt liet de cache stil (deels) leeg achter — zichtbaar
             // alleen in het log, niet in de gezondheidscheck. Deze vlag maakt dat zichtbaar voor
-            // PlannerFunction.Health() zonder de foutdetails zelf (die kunnen verbindingsgegevens
+            // HealthFunction.Health() zonder de foutdetails zelf (die kunnen verbindingsgegevens
             // bevatten) op een anonieme endpoint te exposen.
             public static bool LastLoadFailed { get; private set; }
 

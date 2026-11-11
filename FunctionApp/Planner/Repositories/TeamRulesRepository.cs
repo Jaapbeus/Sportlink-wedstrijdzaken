@@ -143,16 +143,22 @@ internal static class TeamRulesRepository
 
     internal static async Task<Dictionary<string, (int bufferVoor, int bufferNa)>> GetAllTeamBuffersAsync(string? clubCode = null)
     {
-        var cc = SystemUtilities.AppSettings.RequireClubCode(clubCode);
-        var result = new Dictionary<string, (int bufferVoor, int bufferNa)>(StringComparer.OrdinalIgnoreCase);
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
+        return await GetAllTeamBuffersAsync(conn, null, clubCode);
+    }
+
+    internal static async Task<Dictionary<string, (int bufferVoor, int bufferNa)>> GetAllTeamBuffersAsync(
+        SqlConnection conn, SqlTransaction? transaction, string? clubCode = null)
+    {
+        var cc = SystemUtilities.AppSettings.RequireClubCode(clubCode);
+        var result = new Dictionary<string, (int bufferVoor, int bufferNa)>(StringComparer.OrdinalIgnoreCase);
         using var cmd = new SqlCommand($@"
             SELECT [TeamNaam], [RegelType], [WaardeMinuten]
             FROM [dbo].[TeamRegels]
             WHERE [RegelType] IN ('{RegelTypeBufferVoor}', '{RegelTypeBufferNa}') AND [Actief] = 1 AND [WaardeMinuten] IS NOT NULL
               AND [ClubCode] = @cc
-        ", conn);
+        ", conn, transaction);
         cmd.Parameters.AddWithValue("@cc", cc);
         using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())

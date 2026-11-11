@@ -136,7 +136,8 @@ public sealed record PlanningSlot(
     int DuurMinuten,
     int? TeamBufferVoor = null,
     int? TeamBufferNa = null,
-    object? Sleutel = null)
+    object? Sleutel = null,
+    bool SportlinkLeidend = false)
 {
     /// <summary>Start in minuten vanaf middernacht.</summary>
     public int StartMinuut => PlanningBufferRegels.Minuut(Start);
@@ -222,8 +223,8 @@ public static class PlanningConflictDetectie
                 : null;
         }
 
-        int bufferNa = PlanningBufferRegels.Effectief(algemeneBuffer, a.TeamBufferNa);
-        int bufferVoor = PlanningBufferRegels.Effectief(algemeneBuffer, b.TeamBufferVoor);
+        int bufferNa = a.SportlinkLeidend ? 0 : PlanningBufferRegels.Effectief(algemeneBuffer, a.TeamBufferNa);
+        int bufferVoor = b.SportlinkLeidend ? 0 : PlanningBufferRegels.Effectief(algemeneBuffer, b.TeamBufferVoor);
         if (!PlanningBufferRegels.BufferTeKort(a.EindMinuut, bufferNa, b.StartMinuut, bufferVoor))
             return null;
 

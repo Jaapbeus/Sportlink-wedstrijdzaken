@@ -33,17 +33,18 @@ public class SportlinkClubClient : ISportlinkClubClient
     /// ontkoppelingspatroon als <see cref="ISportlinkClubTokenStore"/>) die bij elke mutatie-
     /// aanroep opnieuw wordt gelezen — niet één keer bij opstarten. <c>true</c> betekent: token-
     /// refresh, snapshot-GETs en de UserInfo-GET lopen echt, maar de daadwerkelijke PUT/POST naar
-    /// Sportlink wordt overgeslagen (zie <see cref="SportlinkMutatieUitvoerder"/>). Standaard
-    /// <c>() =&gt; false</c> als niet meegegeven — backwards compatible met bestaande tests/callers.
+    /// Sportlink wordt overgeslagen (zie <see cref="SportlinkMutatieUitvoerder"/>). De delegate is
+    /// verplicht; expliciet <c>null</c> geeft <see cref="ArgumentNullException"/>.
     /// </param>
     public SportlinkClubClient(
         HttpClient httpClient,
         ISportlinkClubTokenStore tokenStore,
         ILogger<SportlinkClubClient> logger,
-        Func<bool>? isDryRun = null,
+        Func<bool> isDryRun,
         SportlinkAutoLoginCoordinator? autoLogin = null)
     {
-        _transport = new SportlinkClubTransport(httpClient, tokenStore, logger, isDryRun ?? (() => false), autoLogin);
+        ArgumentNullException.ThrowIfNull(isDryRun);
+        _transport = new SportlinkClubTransport(httpClient, tokenStore, logger, isDryRun, autoLogin);
         var uitvoerder = new SportlinkMutatieUitvoerder(_transport);
         _lezer = new SportlinkWedstrijdLezer(_transport);
         _formulier = new SportlinkClubFormulierLezer(_transport);

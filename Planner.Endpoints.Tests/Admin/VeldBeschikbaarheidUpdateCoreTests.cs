@@ -7,6 +7,19 @@ namespace Planner.Endpoints.Tests.Admin;
 
 public sealed class VeldBeschikbaarheidUpdateCoreTests
 {
+    [Theory]
+    [InlineData(null, null, "VeldNaam verplicht")]
+    [InlineData(" ", "kunstgras", "VeldNaam verplicht")]
+    [InlineData("Veld 1", null, "VeldType verplicht (vrije tekst, bijv. kunstgras of natuurgras)")]
+    [InlineData("Veld 1", "  ", "VeldType verplicht (vrije tekst, bijv. kunstgras of natuurgras)")]
+    [InlineData("Veld 1", "vrije invoer", null)]
+    public void ValideerVeldOmschrijvingen_BehoudtVolgordeEnVrijeTekst(string? naam, string? type, string? fout)
+    {
+        var result = VeldBeschikbaarheidUpdateCore.ValideerVeldOmschrijvingen(naam, type);
+        if (fout is null) Assert.Null(result);
+        else Assert.Equal(fout, JObject.FromObject(Assert.IsType<BadRequestObjectResult>(result).Value!)["error"]?.Value<string>());
+    }
+
     [Fact]
     public async Task ConflicterendeCombinatieAsync_BestaandeAndereRij_Geeft409MetMelding()
     {

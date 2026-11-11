@@ -74,6 +74,7 @@ Test-Diensten -Moment '(direct)'
 # 2 — versie en branchstand
 Write-Host "2. Versie" -ForegroundColor Cyan
 $health = try { Invoke-RestMethod "$api/api/health" -TimeoutSec 10 -ErrorAction Stop } catch { $null }
+$healthDetails = try { Invoke-RestMethod "$api/api/beheer/health" -TimeoutSec 10 -ErrorAction Stop } catch { $null }
 $tierInfo = Get-DatabaseTierProject -Tier $Tier -RepoRoot $Root
 $verwacht = $null
 if ($tierInfo.Found -and $tierInfo.Exists) {
@@ -104,11 +105,12 @@ if (-not $HuidigeWerkmap) {
 # 3 — health-status
 Write-Host "4. Health, sync en Sportlink-extensie" -ForegroundColor Cyan
 if ($health) {
-    $pending = if (($health.PSObject.Properties.Name -contains 'pendingMigrations') -and $health.pendingMigrations) { @($health.pendingMigrations) } else { @() }
+    if (-not $healthDetails) { Write-Host "  FOUT   /api/beheer/health antwoordt niet" -ForegroundColor Red; $fouten.Add('health-details ontbreken') }
+    $pending = if ($healthDetails -and $healthDetails.pendingMigrations) { @($healthDetails.pendingMigrations) } else { @() }
     $statusOk = -not ($health.PSObject.Properties.Name -contains 'status') -or $health.status -eq 'ok'
-    $alleenSyncOud = -not $statusOk -and $pending.Count -eq 0 -and ($health.PSObject.Properties.Name -contains 'syncStale') -and $health.syncStale
+    $alleenSyncOud = -not $statusOk -and $pending.Count -eq 0 -and ($healthDetails -and $healthDetails.syncStale)
     if ($statusOk) { Write-Host "  OK     health-status ok" -ForegroundColor Green }
-    elseif ($alleenSyncOud) { Write-Host "  LET OP health 'degraded' door verouderde sync (laatste: $($health.lastSync))" -ForegroundColor DarkYellow; $waarsch.Add('sync verouderd') }
+    elseif ($alleenSyncOud) { Write-Host "  LET OP health 'degraded' door verouderde sync (laatste: $($healthDetails.lastSync))" -ForegroundColor DarkYellow; $waarsch.Add('sync verouderd') }
     else { Write-Host "  FOUT   health-status '$($health.status)'" -ForegroundColor Red; $fouten.Add("health-status $($health.status)") }
     if ($pending.Count -gt 0) { Write-Host "  FOUT   openstaande migraties: $($pending -join ', ')" -ForegroundColor Red; $fouten.Add('openstaande migraties') }
 }

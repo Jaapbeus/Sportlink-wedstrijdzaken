@@ -301,7 +301,8 @@ De routes die je lokaal het vaakst nodig hebt:
 
 | Endpoint | Bestand | Beschrijving |
 |----------|---------|-------------|
-| `GET /api/health` | `FunctionApp.Postgres/HealthFunction.cs` (Postgres) · `FunctionApp/Planner/PlannerFunction.cs` (SQL Server) | Versie, status en actieve databasetier |
+| `GET /api/health` | `FunctionApp.Postgres/HealthFunction.cs` (Postgres) · `FunctionApp/Planner/PlannerFunction.cs` (SQL Server) | Publieke readiness, versie en statusflags |
+| `GET /api/beheer/health` | dezelfde health handlers | Admin-only tier-, server-, sync-, TLS-, schema- en migratiedetails |
 | `GET /api/postgres/sync-matches` | `FunctionApp.Postgres/Sync/SyncFunction.cs` | Handmatige Sportlink-sync — **Postgres-tier** |
 | `GET /api/sync-matches` | `FunctionApp/Function1.cs` | Handmatige Sportlink-sync — **SQL Server-tier** |
 

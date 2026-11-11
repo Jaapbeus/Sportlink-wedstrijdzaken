@@ -11,6 +11,7 @@ namespace FunctionApp.Postgres.Planner;
 /// <see cref="MatchModels"/> en <see cref="AvailabilityModels"/>: twee volledig gescheiden
 /// implementatiebomen (ARCHITECTUUR-DATABASE-TIERS.md §2), en pure DTO's zonder gedrag hebben geen
 /// "one location"-eis. Veldnamen letterlijk gelijk zodat de JSON op beide tiers identiek is.
+/// De toewijzingsrij voor exact toepassen staat wel gedeeld in Planner.Shared en de Admin GUI.
 /// </para>
 /// <para>
 /// <c>OptimalisatieSuggestie</c> staat hier bewust NIET bij: dat type is invoer voor de gedeelde
@@ -82,10 +83,12 @@ public class AutoPlanWedstrijdItem : IPlanWedstrijdRegel
 
     /// <summary>Actieve teamregel <c>BufferNa</c> in minuten, of null zonder regel (#1430).</summary>
     public int? TeamBufferNa { get; set; }
+    public bool SportlinkLeidend { get; set; }
 }
 
 public class AutoPlanToepassenRequest
 {
     public string Datum { get; set; } = string.Empty;
     public int? BufferMinuten { get; set; }
+    public List<global::Planner.Shared.AutoPlanToewijzing>? Toewijzingen { get; set; }
 }

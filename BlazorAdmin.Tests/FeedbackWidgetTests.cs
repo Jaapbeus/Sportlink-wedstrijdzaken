@@ -41,8 +41,8 @@ public class FeedbackWidgetTests
     [InlineData("wacht-op-publicatie", true)]
     [InlineData("github-mislukt", true)]
     [InlineData("gepubliceerd", false)]
-    [InlineData("publiceren", false)]
-    public void KanPubliceren_AlleenVoorWachtendeOfMislukteMeldingen(string status, bool verwacht) =>
+    [InlineData("publiceren", true)]
+    public void KanPubliceren_VoorWachtendeMislukteOfOnbekendeMeldingen(string status, bool verwacht) =>
         FeedbackWeergave.KanPubliceren(status).Should().Be(verwacht);
 
     [Fact]
