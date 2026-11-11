@@ -1160,6 +1160,10 @@ sportlink-wedstrijdzaken/
 ├── Database.Postgres/                 # migrations/ + MigrationRunner (SHA-256-ledger)
 ├── Database.Postgres.Cli/             # CLI die de migraties toepast (POSTGRES_CONNECTION_STRING)
 ├── Planner.Shared/                    # Tier-onafhankelijke logica (TeamNaamNormalisatie, ThemeCore, VeldResolver)
+├── GedeeldeBron/                      # Geen project: bronbestanden die BEIDE FunctionApps link-compileren (#1856)
+│   └── PlannerDto/                    # Tier-identieke planner-wire-DTO's; elk *.cs hier valt automatisch in beide tiers
+│                                      #   (glob in beide csproj's), naamruimte per tier via PLANNER_DTO_POSTGRES
+│                                      #   — zie ARCHITECTUUR-CODEKWALITEIT.md, regel 2b
 ├── FunctionApp/                       # .NET 10 Azure Functions — SQL Server-tier
 │   ├── fa-dev-sportlink-01.csproj     # .NET 10 Azure Functions isolated worker
 │   ├── Function1.cs                   # Timer + HTTP sync triggers (GET /api/sync-matches)

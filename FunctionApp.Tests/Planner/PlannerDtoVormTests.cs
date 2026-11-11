@@ -6,6 +6,7 @@ using Dto = SportlinkFunction.Planner;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using Newtonsoft.Json.Linq;
 using AwesomeAssertions;
 using Xunit;
 
@@ -18,9 +19,17 @@ namespace FunctionApp.Tests.Planner;
 ///
 /// Wat hier vastligt, en dus niet ongemerkt kan veranderen: de naamruimte per tier (publiek
 /// contract), de lijst publieke eigenschappen met type en nullability, de geïmplementeerde
-/// interfaces, en de geserialiseerde JSON van een standaardinstantie (System.Text.Json, standaard
-/// én web-opties). De golden is gemeten op de situatie vóór de verhuizing (twee losse kopieën) en
-/// bleef daarna byte-voor-byte gelijk.
+/// interfaces, of elke eigenschap een publieke setter heeft, en de geserialiseerde JSON van een
+/// standaardinstantie (System.Text.Json, standaard én web-opties: zo schrijven de endpoints hun
+/// antwoord). De golden is gemeten op de situatie vóór de verhuizing (twee losse kopieën) en bleef
+/// daarna byte-voor-byte gelijk.
+///
+/// De endpoints lezen elke <c>*Request</c>-body met Newtonsoft (<c>JsonConvert.DeserializeObject</c>
+/// in <c>PlannerFunction</c> en <c>PlannerAanvragerEndpointCore</c>); dat inkomende contract legt
+/// <see cref="Requests_WordenDoorNewtonsoftVolledigIngelezen"/> vast.
+///
+/// <c>AutoPlanWedstrijdItem</c> en <c>AutoPlanToepassenRequest</c> staan nog per tier (open PR's
+/// wijzigen ze) en vallen daarom buiten deze set; zie docs/ARCHITECTUUR-CODEKWALITEIT.md, regel 2b.
 /// </summary>
 public class PlannerDtoVormTests
 {
@@ -41,15 +50,14 @@ public class PlannerDtoVormTests
         typeof(Dto.HerplanCheckResponse), typeof(Dto.HerplanBevestigRequest),
         typeof(Dto.HerplanBevestigResponse), typeof(Dto.TeamScheduleWedstrijd),
         typeof(Dto.TeamScheduleZaterdag), typeof(Dto.TeamScheduleResponse),
-        typeof(Dto.AutoPlanRequest), typeof(Dto.AutoPlanWedstrijdItem),
-        typeof(Dto.AutoPlanResponse), typeof(Dto.AutoPlanToepassenRequest),
+        typeof(Dto.AutoPlanRequest), typeof(Dto.AutoPlanResponse),
         typeof(Dto.AutoPlanToepassenResponse),
     ];
 
     [Fact]
     public void GedeeldeTypen_StaanInDeNaamruimteVanDeEigenTier()
     {
-        GedeeldeTypen.Should().HaveCount(23);
+        GedeeldeTypen.Should().HaveCount(21);
         GedeeldeTypen.Select(t => t.Namespace).Distinct().Should().Equal(VerwachteNaamruimte);
     }
 
@@ -67,12 +75,56 @@ public class PlannerDtoVormTests
         gemeten.Should().Be(Golden.Trim());
     }
 
+    [Fact]
+    public void Requests_WordenDoorNewtonsoftVolledigIngelezen()
+    {
+        var requests = GedeeldeTypen.Where(t => t.Name.EndsWith("Request", StringComparison.Ordinal)).ToList();
+        requests.Select(t => t.Name).Should().BeEquivalentTo(
+            "CheckAvailabilityRequest", "BevestigRequest", "DoordeweeksBeschikbaarRequest",
+            "ZoekWedstrijdRequest", "HerplanCheckRequest", "HerplanBevestigRequest", "AutoPlanRequest");
+
+        foreach (var type in requests)
+        {
+            // Elke eigenschap krijgt een eigen, niet-standaardwaarde, in camelCase zoals de clients sturen.
+            var eigenschappen = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+            var body = new JObject();
+            var verwacht = new Dictionary<string, object>();
+            for (var i = 0; i < eigenschappen.Length; i++)
+            {
+                var p = eigenschappen[i];
+                var waarde = VoorbeeldWaarde(p.PropertyType, i);
+                verwacht[p.Name] = waarde;
+                body[char.ToLowerInvariant(p.Name[0]) + p.Name[1..]] = JToken.FromObject(waarde);
+            }
+
+            var gelezen = Newtonsoft.Json.JsonConvert.DeserializeObject(body.ToString(), type);
+
+            gelezen.Should().NotBeNull(type.Name);
+            foreach (var p in eigenschappen)
+            {
+                p.GetValue(gelezen).Should().Be(verwacht[p.Name], $"{type.Name}.{p.Name} moet uit de body komen");
+            }
+        }
+    }
+
+    private static object VoorbeeldWaarde(Type type, int index)
+    {
+        var t = Nullable.GetUnderlyingType(type) ?? type;
+        if (t == typeof(string)) return $"waarde-{index}";
+        if (t == typeof(int)) return 100 + index;
+        if (t == typeof(long)) return 5_000_000_000L + index;
+        if (t == typeof(bool)) return true;
+        if (t == typeof(decimal)) return 1.5m + index;
+        throw new NotSupportedException($"Geen voorbeeldwaarde voor {t.Name}: breid VoorbeeldWaarde uit.");
+    }
+
     private static string Beschrijf(Type type)
     {
         var nullability = new NullabilityInfoContext();
         var eigenschappen = type
             .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-            .Select(p => $"{p.Name}:{TypeNaam(p.PropertyType)}{(nullability.Create(p).ReadState == NullabilityState.Nullable ? "?" : "")}");
+            .Select(p => $"{p.Name}:{TypeNaam(p.PropertyType)}{(nullability.Create(p).ReadState == NullabilityState.Nullable ? "?" : "")}"
+                + (p.SetMethod is { IsPublic: true } ? "" : "(geen publieke setter)"));
         var interfaces = type.GetInterfaces().Select(i => i.FullName).OrderBy(n => n, StringComparer.Ordinal);
         var instantie = Activator.CreateInstance(type);
         var standaard = JsonSerializer.Serialize(instantie, type);
@@ -109,9 +161,7 @@ TeamScheduleWedstrijd | Datum:String,AanvangsTijd:String,ThuisUit:String,Tegenst
 TeamScheduleZaterdag | Datum:String,Status:String,BezetDoor:TeamScheduleWedstrijd? |  | {"Datum":"","Status":"","BezetDoor":null} | {"datum":"","status":"","bezetDoor":null}
 TeamScheduleResponse | Team:String,SeizoenEinde:String,Zaterdagen:List<TeamScheduleZaterdag>,Wedstrijden:List<TeamScheduleWedstrijd> |  | {"Team":"","SeizoenEinde":"","Zaterdagen":[],"Wedstrijden":[]} | {"team":"","seizoenEinde":"","zaterdagen":[],"wedstrijden":[]}
 AutoPlanRequest | Datum:String,BufferMinuten:Nullable<Int32>? |  | {"Datum":"","BufferMinuten":null} | {"datum":"","bufferMinuten":null}
-AutoPlanWedstrijdItem | WedstrijdCode:Nullable<Int64>?,Wedstrijd:String,TeamNaam:String,LeeftijdsCategorie:String?,Competitiesoort:String?,DuurMinuten:Int32,Veldafmeting:Decimal,HuidigeVeld:String?,HuidigeTijd:String?,HeeftVeld:Boolean,HeeftTijd:Boolean,OptimaalVeldNummer:Nullable<Int32>?,OptimaalVeldNaam:String?,OptimaalVeld:String?,OptimaalTijd:String?,Status:String,NietInplanbaaarReden:String?,VoorkeurTijd:String?,VoorkeurAfwijkingMinuten:Nullable<Int32>?,VoorkeurBron:String?,VoorkeurStatus:String,VoorkeurVeldNummer:Nullable<Int32>?,VoorkeurVeldToegepast:Nullable<Boolean>?,TeamBufferVoor:Nullable<Int32>?,TeamBufferNa:Nullable<Int32>? | Planner.Shared.Deel.IPlanWedstrijdRegel | {"WedstrijdCode":null,"Wedstrijd":"","TeamNaam":"","LeeftijdsCategorie":null,"Competitiesoort":null,"DuurMinuten":0,"Veldafmeting":0,"HuidigeVeld":null,"HuidigeTijd":null,"HeeftVeld":false,"HeeftTijd":false,"OptimaalVeldNummer":null,"OptimaalVeldNaam":null,"OptimaalVeld":null,"OptimaalTijd":null,"Status":"ongewijzigd","NietInplanbaaarReden":null,"VoorkeurTijd":null,"VoorkeurAfwijkingMinuten":null,"VoorkeurBron":null,"VoorkeurStatus":"geen-voorkeur","VoorkeurVeldNummer":null,"VoorkeurVeldToegepast":null,"TeamBufferVoor":null,"TeamBufferNa":null} | {"wedstrijdCode":null,"wedstrijd":"","teamNaam":"","leeftijdsCategorie":null,"competitiesoort":null,"duurMinuten":0,"veldafmeting":0,"huidigeVeld":null,"huidigeTijd":null,"heeftVeld":false,"heeftTijd":false,"optimaalVeldNummer":null,"optimaalVeldNaam":null,"optimaalVeld":null,"optimaalTijd":null,"status":"ongewijzigd","nietInplanbaaarReden":null,"voorkeurTijd":null,"voorkeurAfwijkingMinuten":null,"voorkeurBron":null,"voorkeurStatus":"geen-voorkeur","voorkeurVeldNummer":null,"voorkeurVeldToegepast":null,"teamBufferVoor":null,"teamBufferNa":null}
 AutoPlanResponse | Datum:String,TotaalWedstrijden:Int32,ZonderVeld:Int32,ZonderTijd:Int32,TeWijzigen:Int32,NietInplanbaar:Int32,GeschatteEindTijd:String?,Wedstrijden:List<AutoPlanWedstrijdItem>,HuidigeHtml:String,OptimaleHtml:String |  | {"Datum":"","TotaalWedstrijden":0,"ZonderVeld":0,"ZonderTijd":0,"TeWijzigen":0,"NietInplanbaar":0,"GeschatteEindTijd":null,"Wedstrijden":[],"HuidigeHtml":"","OptimaleHtml":""} | {"datum":"","totaalWedstrijden":0,"zonderVeld":0,"zonderTijd":0,"teWijzigen":0,"nietInplanbaar":0,"geschatteEindTijd":null,"wedstrijden":[],"huidigeHtml":"","optimaleHtml":""}
-AutoPlanToepassenRequest | Datum:String,BufferMinuten:Nullable<Int32>? |  | {"Datum":"","BufferMinuten":null} | {"datum":"","bufferMinuten":null}
 AutoPlanToepassenResponse | Bijgewerkt:Int32,Mislukt:Int32,Fouten:List<String> |  | {"Bijgewerkt":0,"Mislukt":0,"Fouten":[]} | {"bijgewerkt":0,"mislukt":0,"fouten":[]}
 """;
 }

@@ -175,10 +175,20 @@ tegelijk.*
 voor de JSON van één endpoint) die op beide gebouwde tiers token-identiek is, staat in één bronbestand
 onder `GedeeldeBron/<domein>/`. Beide tier-projecten compileren dat bestand mee via
 `<Compile Include="..\GedeeldeBron\<domein>\*.cs" Link="..." />`: één bron, twee compilaties.
-Eerste toepassing: de 23 planner-DTO's (`CheckAvailabilityRequest`, `AutoPlanResponse`,
+Eerste toepassing: 21 planner-DTO's (`CheckAvailabilityRequest`, `AutoPlanResponse`,
 `TeamScheduleResponse`, ...) in `GedeeldeBron/PlannerDto/` (vier domeinbestanden: Availability,
 Match, TeamSchedule, AutoPlan). Zij stonden voorheen woordelijk in `FunctionApp/Planner/PlannerModels.cs`
 en in vier Postgres-bestanden.
+
+*Afbakening (21 van 23).* Het eigenaarsbesluit noemt 19 identieke declaraties: de 23 token-identieke
+typen min de vier die bij de scope van #1807 voor open PR's waren vrijgehouden (`BevestigRequest` en
+`HerplanBevestigRequest` voor PR #1848, `AutoPlanWedstrijdItem` voor PR #1823 en #1843,
+`AutoPlanToepassenRequest` voor PR #1828). PR #1848 is gemerged, dus die twee gaan nu mee.
+`AutoPlanWedstrijdItem` en `AutoPlanToepassenRequest` blijven per tier
+(`FunctionApp/Planner/PlannerModels.cs` en `FunctionApp.Postgres/Planner/AutoPlanModels.cs`) zolang
+die PR's open zijn, zodat hun wijzigingen geen verwijder/wijzig-conflict krijgen. Na hun merge volgen
+ze naar `GedeeldeBron/PlannerDto/AutoPlanModels.cs` (vervolgstap, met de characterization-test
+uitgebreid).
 
 **Waarom link-compilatie en niet een verhuizing naar `Planner.Shared`.** De publieke naamruimten
 verschillen per tier (`SportlinkFunction.Planner` tegenover `FunctionApp.Postgres.Planner`) en zijn
@@ -206,15 +216,19 @@ regel 1 van AGENTS.md).
 
 **Bewijs dat de vorm niet veranderde.** `FunctionApp.Tests/Planner/PlannerDtoVormTests.cs` wordt in
 beide testprojecten gecompileerd en legt per type vast: naamruimte, publieke eigenschappen met type en
-nullability, geïmplementeerde interfaces en de JSON van een standaardinstantie (standaard- en
-web-opties). De golden is gemeten vóór de verhuizing, op beide tiers afzonderlijk, en bleek
-byte-voor-byte gelijk; ná de verhuizing slaagt dezelfde test op beide tiers.
+nullability, publieke setter, geïmplementeerde interfaces en de JSON van een standaardinstantie
+(System.Text.Json met standaard- en web-opties: zo schrijven de endpoints hun antwoord). De golden is
+gemeten vóór de verhuizing, op beide tiers afzonderlijk, en bleek byte-voor-byte gelijk; ná de
+verhuizing slaagt dezelfde test op beide tiers. Het inkomende contract is anders: de endpoints lezen
+elke `*Request`-body met Newtonsoft (`JsonConvert.DeserializeObject`). Daarom leest een tweede test
+per request-type een volledig gevulde camelCase-body met Newtonsoft in en controleert elke eigenschap;
+een setter die niet meer publiek is of een Newtonsoft-attribuut dat een veld hernoemt, valt daar op.
 
 **Meting.** `check-tier-duplicatie.sh` koppelt tierbestanden op gelijke bestandsnaam. De planner-DTO's
 stonden onder verschillende bestandsnamen (`PlannerModels.cs` tegenover `AutoPlanModels.cs` e.a.) en
-telden daarom nooit mee in het plafond: het getal verandert door deze verhuizing niet (3945 vóór en
-na), de werkelijke duplicatie (337 regels in de vier Postgres-bestanden) is wel verdwenen. Het
-plafond is niet verhoogd en niet verlaagd.
+telden daarom nooit mee in het plafond: het getal verandert door deze verhuizing niet, de werkelijke
+duplicatie (de Postgres-kopieën van 21 typen) is wel verdwenen. Het plafond is niet verhoogd en niet
+verlaagd.
 
 ### Regel 3 — Geen logica in Blazor-pagina's
 
