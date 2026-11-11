@@ -188,14 +188,14 @@ The decision is reviewed against these criteria:
 |---|---|---|
 | Support | Both tiers are currently marked `built: true`; the number of users and forks per tier is not measured here. | Preserve both supported paths; do not infer that production use alone determines support. |
 | Defect risk | Recent issue reports include tier-specific differences, but this sample does not establish that tier divergence is the largest source of defects. | Extract meaning-equivalent orchestration where dependencies allow; keep provider-specific behavior covered on each tier. |
-| Maintenance | At `1ee175ff7c50f1640060ebaecb2a2441d2090cb2`, a path inventory found 101 exact relative-path pairs and 5 unique-basename candidates, with no ambiguous basename groups. Candidate names do not prove semantic pairing; content and maintenance effort were not measured. | Use the reproducible inventory as a locator only. Do not change the duplication guard's pairing or ceiling until semantic mapping and a negative test are reviewed separately. |
+| Maintenance | At `1ee175ff7c50f1640060ebaecb2a2441d2090cb2`, a path inventory found 101 exact relative-path pairs and 5 unique-basename candidates, with no ambiguous basename groups. The KNVB calendar repositories were verified as semantic counterparts: both query region/season/date range/day type and apply the same free-Saturday selection rules. | The duplication guard keeps exact-path pairing and adds this one reviewed pair in `scripts/ci/tier-duplicatie-mapping.txt`. Its ceiling is unchanged; a negative fixture proves that mapped duplication is counted. Other candidates remain unverified. |
 | Cost | No current tier-cost comparison was made for this decision, and no paid resource is authorized. | Keep the existing free-tier constraint; treat any paid-tier proposal as a separate owner decision. |
 | Migration | Existing hosts select one tier at build/deploy time; schemas and queries differ by provider. | Move only provider-independent orchestration into `Planner.Endpoints` or pure logic into `Planner.Shared`; retain each tier's data access and migrations. |
 | Return path | Small extractions preserve the existing tier-specific implementations and can be reviewed independently. | Test both tiers for each slice; retain an explicit, reversible boundary at the tier adapters. Reconsider support only through a superseding owner decision with migration and return costs stated. |
 
 The staged work is: (1) classify candidate file counterparts and verify them semantically before
 using them to change a guard; (2) extract one provider-independent behavior at a time, with tests
-that cover both tier hosts; (3) measure support, maintenance effort and tier-specific defects over
+that cover both tier hosts; the KNVB free-Saturday selector is the first such extraction; (3) measure support, maintenance effort and tier-specific defects over
 representative work before proposing a different support policy. No stage changes the schema or
 selects a provider at runtime. `#1542` remains a separate owner goal to eliminate its storage
 resource; this ADR does not accept ongoing cost or close that issue.

@@ -1,4 +1,5 @@
 using Microsoft.Data.SqlClient;
+using Planner.Shared.Calendars;
 
 namespace SportlinkFunction.Planner;
 
@@ -27,14 +28,13 @@ public static class KnvbKalenderRepository
         string regio, string seizoen, DateOnly van, DateOnly totEnMet,
         ISet<DateOnly> reedsBezetteData, int maxAantal, string? clubCode = null)
     {
-        var resultaat = new List<DateOnly>();
         if (string.IsNullOrWhiteSpace(regio) || string.IsNullOrWhiteSpace(seizoen) || maxAantal <= 0)
-            return resultaat;
+            return [];
 
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
         using var cmd = new SqlCommand(@"
-            SELECT [Datum]
+            SELECT [Datum], [DagType]
             FROM [dbo].[KnvbKalenderDag]
             WHERE [Seizoen] = @seizoen
               AND [Regio] = @regio
@@ -47,17 +47,15 @@ public static class KnvbKalenderRepository
         cmd.Parameters.AddWithValue("@tot", totEnMet.ToDateTime(TimeOnly.MinValue));
 
         using var reader = await cmd.ExecuteReaderAsync();
-        while (await reader.ReadAsync() && resultaat.Count < maxAantal)
+        var dagen = new List<KnvbKalenderDag>();
+        while (await reader.ReadAsync())
         {
-            var datum = DateOnly.FromDateTime(reader.GetDateTime(0));
-            // Defensief: de kalender behoort alleen zaterdagen (of vrijdag voor Toernooi, dat hier al
-            // uitgesloten is door de DagType-filter) te bevatten, maar een verkeerd geseede rij mag
-            // nooit een niet-zaterdag als "vrije zaterdag" voorstellen.
-            if (datum.DayOfWeek != DayOfWeek.Saturday) continue;
-            if (reedsBezetteData.Contains(datum)) continue;
-            resultaat.Add(datum);
+            dagen.Add(new KnvbKalenderDag(
+                DateOnly.FromDateTime(reader.GetDateTime(0)),
+                reader.GetString(1)));
         }
 
-        return resultaat;
+        return KnvbKalenderSelectie.SelecteerVrijeZaterdagen(
+            dagen, van, totEnMet, reedsBezetteData, maxAantal);
     }
 }

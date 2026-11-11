@@ -1,4 +1,5 @@
 using Npgsql;
+using Planner.Shared.Calendars;
 
 namespace FunctionApp.Postgres.Planner.Repositories;
 
@@ -26,14 +27,13 @@ internal static class KnvbKalenderRepository
         string connectionString, string regio, string seizoen, DateOnly van, DateOnly totEnMet,
         ISet<DateOnly> reedsBezetteData, int maxAantal, string? clubCode = null)
     {
-        var resultaat = new List<DateOnly>();
         if (string.IsNullOrWhiteSpace(regio) || string.IsNullOrWhiteSpace(seizoen) || maxAantal <= 0)
-            return resultaat;
+            return [];
 
         await using var conn = new NpgsqlConnection(connectionString);
         await conn.OpenAsync();
         await using var cmd = new NpgsqlCommand(@"
-            SELECT datum
+            SELECT datum, dagtype
             FROM public.knvbkalenderdag
             WHERE seizoen = @seizoen
               AND regio = @regio
@@ -46,17 +46,15 @@ internal static class KnvbKalenderRepository
         cmd.Parameters.AddWithValue("tot", totEnMet.ToDateTime(TimeOnly.MinValue));
 
         await using var reader = await cmd.ExecuteReaderAsync();
-        while (await reader.ReadAsync() && resultaat.Count < maxAantal)
+        var dagen = new List<KnvbKalenderDag>();
+        while (await reader.ReadAsync())
         {
-            var datum = DateOnly.FromDateTime(reader.GetDateTime(0));
-            // Defensief: de kalender behoort alleen zaterdagen (of vrijdag voor Toernooi, dat hier
-            // al uitgesloten is door de dagtype-filter) te bevatten, maar een verkeerd geseede rij
-            // mag nooit een niet-zaterdag als "vrije zaterdag" voorstellen.
-            if (datum.DayOfWeek != DayOfWeek.Saturday) continue;
-            if (reedsBezetteData.Contains(datum)) continue;
-            resultaat.Add(datum);
+            dagen.Add(new KnvbKalenderDag(
+                DateOnly.FromDateTime(reader.GetDateTime(0)),
+                reader.GetString(1)));
         }
 
-        return resultaat;
+        return KnvbKalenderSelectie.SelecteerVrijeZaterdagen(
+            dagen, van, totEnMet, reedsBezetteData, maxAantal);
     }
 }

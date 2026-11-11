@@ -625,9 +625,12 @@ python3 scripts/ci/test-report-tier-pairs.py
 
 The explicit ref makes a report reproducible after later commits. The supplied baseline at
 `1ee175ff7c50f1640060ebaecb2a2441d2090cb2` contains 101 exact-path pairs and 5 unique-basename
-candidates, with no ambiguous groups. These counts do not prove semantic coverage. The existing
-`check-tier-duplicatie.sh` pairing logic and ceiling are unchanged; any future guard change requires
-a verified semantic map and a negative test showing that a missed duplicate makes the guard fail.
+candidates, with no ambiguous groups. These counts do not prove semantic coverage. The duplication
+guard still pairs exact relative paths and also reads the reviewed explicit mappings in
+`scripts/ci/tier-duplicatie-mapping.txt`. The KNVB repositories are paired there because both query
+the same region, season, date range and match day types, then use the shared pure free-Saturday
+selector. `check-codekwaliteit.test.sh` has a synthetic mapped-pair fixture that must push the guard
+over its test ceiling. The production ceiling is unchanged.
 
 ## CI-shellscripts lokaal draaien (`scripts/ci/*.sh`, #1155)
 
