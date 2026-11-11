@@ -145,6 +145,15 @@ public class TeamNaamNormalisatieTests
         TeamNaamNormalisatie.NormaliseerVoorVergelijking(input, Club).Should().Be(verwacht);
     }
 
+    [Theory]
+    [InlineData("Meisjes Onder 13-1")]
+    [InlineData("Meiden Onder 13-1")]
+    public void MeisjesOnderSamengesteld_WordtEenMoSleutel(string input)
+    {
+        TeamNaamNormalisatie.NormaliseerVoorVergelijking(input, Club).Should().Be("MO13-1");
+        TeamNaamNormalisatie.Parse(input, Club).Should().Be(new TeamNaamComponenten("MO", 13, 1, "MO13-1"));
+    }
+
     [Fact]
     public void KaalNummerZonderPrefix_BlijftZonderPrefix()
     {
@@ -209,6 +218,14 @@ public class TeamNaamNormalisatieTests
         componenten!.Prefix.Should().BeNull();
         componenten.LeeftijdNummer.Should().Be(13);
         componenten.TeamNummer.Should().Be(1);
+    }
+
+    [Fact]
+    public void Parse_JmSuffix_BehoudtSleutelEnExtraheertKandidaatNummers()
+    {
+        var componenten = TeamNaamNormalisatie.Parse("JO14-1JM", Club);
+
+        componenten.Should().Be(new TeamNaamComponenten("JO", 14, 1, "JO14-1JM"));
     }
 
     [Theory]

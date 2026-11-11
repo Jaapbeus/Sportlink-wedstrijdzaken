@@ -47,6 +47,10 @@ public static class LeeftijdNormalisatie
         if (trimmed.Equals("Senioren", StringComparison.OrdinalIgnoreCase))
             return "1-99";
 
+        // Canonieke seniorensleutel is geen leeftijdscijfer ("199") en moet idempotent blijven.
+        if (trimmed.Equals("1-99", StringComparison.OrdinalIgnoreCase))
+            return "1-99";
+
         if (trimmed.Equals("Senioren Vrouwen", StringComparison.OrdinalIgnoreCase)
             || trimmed.Equals("Senioren VR", StringComparison.OrdinalIgnoreCase))
             return "VR";
@@ -56,7 +60,8 @@ public static class LeeftijdNormalisatie
         // en we lezen het leeftijdscijfer direct uit de string i.p.v. aan te nemen dat hij al
         // begint met "JO"/"MO". Een blinde Replace-keten (de vorige aanpak) faalt zodra het cijfer
         // niet direct na "JO"/"MO" staat, zoals bij "Onder 13 Meiden" → "MOOnder 13" (#1332).
-        bool isMeiden = trimmed.Contains("Meiden", StringComparison.OrdinalIgnoreCase)
+        bool isMeiden = trimmed.StartsWith("MO", StringComparison.OrdinalIgnoreCase)
+            || trimmed.Contains("Meiden", StringComparison.OrdinalIgnoreCase)
             || trimmed.Contains("Meisjes", StringComparison.OrdinalIgnoreCase);
         var cijfers = new string(trimmed.Where(char.IsDigit).ToArray());
         if (cijfers.Length > 0)
