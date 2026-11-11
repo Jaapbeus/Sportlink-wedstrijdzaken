@@ -55,6 +55,13 @@ const ev = (o) => codes(evalueerIssue({ now: NU, graceMinuten: 30, prs: [], issu
 const aanvraagNl = `Fase: review\nImplementer: Codex\nReviewer: Claude Code\nPR: #7\nAangeboden head-SHA: ${SHA}\nVolgende beurt: Claude Code`;
 const EIGENAARSBESLUIT = 'Fase: eigenaarsbesluit\nImplementer: Codex\nVolgende beurt: eigenaar';
 const pr7 = (comments = []) => ({ number: 7, headSha: SHA, state: 'open', comments });
+check('nieuwste overdracht met onduidelijke Volgende beurt maskeert oudere overdracht (geen vals alarm)', ev({
+  labels: ['turn: owner'],
+  issueComments: [
+    comment('Fase: verwerking\nImplementer: Codex\nVolgende beurt: Codex', { min: 180 }),
+    comment('Fase: eigenaarsbesluit\nImplementer: Codex\nVolgende beurt: nader te bepalen', { min: 90 }),
+  ],
+}), []);
 
 check('Nederlandse aanvraag, label klopt: geen bevinding', ev({ labels: ['turn: claude-code'], issueComments: [comment(aanvraagNl)], prs: [pr7()] }), []);
 check('Engelse inline aanvraag, label klopt', ev({ labels: ['turn: claude-code'], prs: [pr7()],

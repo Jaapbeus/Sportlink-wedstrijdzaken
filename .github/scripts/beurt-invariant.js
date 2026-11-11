@@ -143,14 +143,16 @@ function verwachteBeurt(parsed) {
 
 /**
  * Is dit een echte overdracht? Een fase alleen is te weinig (proza dat "Fase" noemt): er moet minstens
- * één ander gestructureerd veld bij staan, en de comment moet een beurt opleveren of een eindfase
- * (gemerged) zijn. Anders beslist de eerstvolgende oudere overdracht.
+ * één ander gestructureerd veld bij staan, en de comment moet een beurt opleveren, een eindfase
+ * (gemerged) zijn of een expliciete "Volgende beurt" noemen. Een expliciete maar onduidelijke beurt telt
+ * wél als overdracht (verwachting null, dus geen bevinding): anders zou een oudere, achterhaalde
+ * overdracht ten onrechte beslissen. Zonder dit alles beslist de eerstvolgende oudere overdracht.
  */
 function isOverdracht(parsed) {
   if (!parsed || !parsed.fase) return false;
   const anderVeld = parsed.implementer || parsed.reviewer || parsed.volgendeBeurt || parsed.sha;
   if (!anderVeld) return false;
-  return verwachteBeurt(parsed) !== null || EINDFASE.test(parsed.fase);
+  return Boolean(parsed.volgendeBeurt) || verwachteBeurt(parsed) !== null || EINDFASE.test(parsed.fase);
 }
 
 const isSignaal = (c) => String((c && c.body) || '').includes(SIGNAAL_MARKER);
