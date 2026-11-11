@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Planner.Shared;
+using Planner.Shared.Planning;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 
@@ -126,7 +127,7 @@ namespace SportlinkFunction.Planner
             return resultaat;
         }
 
-        private static BestaandeWedstrijd? TryMapToBezetting(
+        internal static BestaandeWedstrijd? TryMapToBezetting(
             SportlinkProgrammaMatch m, DateOnly date, string? accommodatie, string clubCode,
             List<(string? Naam, int VeldNummer)> veldenPerNaam,
             Dictionary<string, Speeltijd> speeltijdenLookup,
@@ -149,10 +150,11 @@ namespace SportlinkFunction.Planner
             var (veldNummer, subpositie) = PlannerShared.ResolveVeld(m.Veld, veldenPerNaam);
             if (veldNummer == 0) return null;
 
-            // teamnaam → Speeltijden-sleutel
+            // De real-time API levert geen duur. Zonder een geldige speeltijd zou deze
+            // wedstrijd uit de bezetting verdwijnen en het veld ten onrechte vrij lijken.
             var speeltijdKey = MapTeamNaamToSpeeltijdKey(m.Teamnaam, clubCode, teamLeeftijdLookup);
             if (speeltijdKey == null || !speeltijdenLookup.TryGetValue(speeltijdKey, out var speeltijd))
-                return null;
+                throw new PlanningDuurOnbekendException();
 
             if (!TimeOnly.TryParse(m.Aanvangstijd, out var aanvang)) return null;
 
