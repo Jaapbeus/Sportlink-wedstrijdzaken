@@ -67,9 +67,13 @@ public static class SyncJobProcessor
         catch (Exception ex)
         {
             log.LogError(ex, "SyncJobProcessor: job {JobId} mislukt", job.JobId);
-            await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false, errorMessage: ex.Message);
+            await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false,
+                errorMessage: FoutmeldingVoorStatus(ex));
         }
     }
+
+    internal static string FoutmeldingVoorStatus(Exception exception) =>
+        $"Sync mislukt ({exception.GetType().Name}); raadpleeg het functielog voor details.";
 
     /// <summary>
     /// Geeft <c>true</c> als de job buiten productie niet mag draaien; de job staat dan als mislukt

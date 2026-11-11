@@ -14,6 +14,16 @@ namespace FunctionApp.Postgres.Tests.Sync;
 public class SyncJobProcessorUitgaandVerkeerTests
 {
     [Fact]
+    public void FoutmeldingVoorStatus_BewaartGeenExceptionDetails()
+    {
+        var message = SyncJobProcessor.FoutmeldingVoorStatus(
+            new InvalidOperationException("https://provider.invalid/path?token=secret"));
+
+        message.Should().Contain(nameof(InvalidOperationException));
+        message.Should().NotContain("provider.invalid").And.NotContain("secret");
+    }
+
+    [Fact]
     public async Task ZonderToestemming_WordtJobMislukt_EnGeenSync()
     {
         var vastgelegd = new List<(Guid, bool, string?)>();

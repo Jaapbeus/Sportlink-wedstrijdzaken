@@ -13,6 +13,16 @@ namespace FunctionApp.Tests.Sync;
 /// </summary>
 public class SyncJobProcessorEgressTests
 {
+    [Fact]
+    public void FoutmeldingVoorStatus_BewaartGeenExceptionDetails()
+    {
+        var message = SyncJobProcessor.FoutmeldingVoorStatus(
+            new InvalidOperationException("https://provider.invalid/path?token=secret"));
+
+        message.Should().Contain(nameof(InvalidOperationException));
+        message.Should().NotContain("provider.invalid").And.NotContain("secret");
+    }
+
     private readonly List<(Guid Id, bool Gelukt, string? Fout)> _afgerond = [];
 
     private Task Vastleggen(Guid id, bool gelukt, string? fout)
