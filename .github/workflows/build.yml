@@ -809,7 +809,9 @@ jobs:
       # blijft buiten deze filter: die leest de connectiestring van de Function App zelf.
       - name: SQL Server-integratietests (FunctionApp.Tests, tegen SportlinkFresh)
         run: |
-          SQLSERVER_TEST_CONNECTION_STRING="Server=localhost,1433;Database=SportlinkFresh;User Id=sa;Password=${SA_PW};TrustServerCertificate=True;Pooling=false" \
+          # Fixture en concrete planner/e-mailcaller gebruiken dezelfde wegwerpdatabase (#1814).
+          CONN="Server=localhost,1433;Database=SportlinkFresh;User Id=sa;Password=${SA_PW};TrustServerCertificate=True;Pooling=false"
+          SQLSERVER_TEST_CONNECTION_STRING="$CONN" SqlConnectionString="$CONN" \
             dotnet test FunctionApp.Tests/FunctionApp.Tests.csproj --configuration Release --verbosity normal \
               --filter "FullyQualifiedName~SqlServerSeizoenIntegrationTests|FullyQualifiedName~SqlServerHisRetentieIntegrationTests|FullyQualifiedName~SqlFeedbackStoreIntegrationTests|FullyQualifiedName~SqlTeambegeleidingInzageStoreIntegrationTests|FullyQualifiedName~AdminSettingsFieldContractTests|FullyQualifiedName~AdminVeldBeschikbaarheidConflictIntegrationTests|FullyQualifiedName~AdminEmailLogStatusCountsIntegrationTests|FullyQualifiedName~SqlServerPlannerViewIntegrationTests"
 
