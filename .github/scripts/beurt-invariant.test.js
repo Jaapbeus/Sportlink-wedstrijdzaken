@@ -2,7 +2,7 @@
 // Uitvoeren: node .github/scripts/beurt-invariant.test.js   (exit 0 = alles groen)
 // Wordt bij elke PR gedraaid door de job 'Build FunctionApp + BlazorAdmin' in build.yml.
 const {
-  SIGNAAL_MARKER, parseOverdracht, verwachteBeurt, evalueerIssue, signaalBody, run,
+  SIGNAAL_MARKER, parseOverdracht, verwachteBeurt, evalueerIssue, isOverdracht, signaalBody, run,
 } = require('./beurt-invariant.js');
 
 let failures = 0;
@@ -49,6 +49,7 @@ check('twee beurten in één tekst = onduidelijk', verwachteBeurt({ fase: 'x', v
 console.log('evalueerIssue:');
 const ev = (o) => codes(evalueerIssue({ now: NU, graceMinuten: 30, prs: [], issueComments: [], labels: [], ...o }));
 const aanvraagNl = `Fase: review\nImplementer: Codex\nReviewer: Claude Code\nPR: #7\nAangeboden head-SHA: ${SHA}\nVolgende beurt: Claude Code`;
+const EIGENAARSBESLUIT = 'Fase: eigenaarsbesluit\nImplementer: Codex\nVolgende beurt: eigenaar';
 const pr7 = (comments = []) => ({ number: 7, headSha: SHA, state: 'open', comments });
 
 check('Nederlandse aanvraag, label klopt: geen bevinding', ev({ labels: ['turn: claude-code'], issueComments: [comment(aanvraagNl)], prs: [pr7()] }), []);
@@ -74,9 +75,9 @@ check('head verschoven: REVIEW_SHA_ONGELDIG',
   ev({ labels: ['turn: claude-code'], issueComments: [comment(aanvraagNl)], prs: [{ ...pr7(), headSha: SHA2 }] }), ['REVIEW_SHA_ONGELDIG']);
 check('status: waiting-codex: VEROUDERDE_STATUS', ev({ labels: ['status: waiting-codex'] }), ['VEROUDERDE_STATUS']);
 check('twee turn-labels: MEERDERE_TURN', ev({ labels: ['turn: codex', 'turn: owner'], issueComments: [comment(aanvraagNl)], prs: [pr7()] }), ['MEERDERE_TURN']);
-check('verwachte beurt maar geen turn-label: GEEN_TURN', ev({ labels: [], issueComments: [comment('Fase: eigenaarsbesluit')] }), ['GEEN_TURN']);
+check('verwachte beurt maar geen turn-label: GEEN_TURN', ev({ labels: [], issueComments: [comment(EIGENAARSBESLUIT)] }), ['GEEN_TURN']);
 check('awaiting-release zonder turn: geen GEEN_TURN',
-  ev({ labels: ['status: awaiting-release'], issueComments: [comment('Fase: eigenaarsbesluit')] }), []);
+  ev({ labels: ['status: awaiting-release'], issueComments: [comment(EIGENAARSBESLUIT)] }), []);
 check('beurt "geen" (merge door implementer): geen verwachting', ev({ labels: ['turn: codex'], issueComments: [comment('Fase: review\nVolgende beurt: merge door implementer')] }), []);
 check('onvertrouwde auteur genegeerd',
   ev({ labels: ['turn: claude-code'], issueComments: [
@@ -96,6 +97,50 @@ check('eigen signaalcomment genegeerd',
 check('gesloten PR telt niet mee',
   ev({ labels: ['turn: claude-code'], issueComments: [comment('Fase: verwerking\nImplementer: Codex\nVolgende beurt: Codex', { min: 200 })],
     prs: [{ ...pr7([comment(aanvraagNl, { min: 100 })]), state: 'closed' }] }), ['TURN_WIJKT_AF']);
+
+// ── review-verwerking (P1) ──
+console.log('strikte overdracht:');
+const LABELCORRECTIE = 'Labelcorrectie: de turn-labels stonden niet goed. Bied een review aan met eerst een fasecomment (Phase: review, PR, Frozen head) en zet pas daarna turn: claude-code';
+check('proza dat de velden noemt is geen fase', parseOverdracht(LABELCORRECTIE).fase, null);
+check('Labelcorrectie nieuwer dan echte aanvraag: aanvraag blijft beslissend (head verschoven)',
+  ev({ labels: ['turn: claude-code'], prs: [{ ...pr7(), headSha: SHA2 }],
+    issueComments: [comment(aanvraagNl, { min: 200 }), comment(LABELCORRECTIE, { min: 100 })] }), ['REVIEW_SHA_ONGELDIG']);
+check('Labelcorrectie nieuwer: label wijkt af van de echte aanvraag (Codex) blijft zichtbaar',
+  ev({ labels: ['turn: claude-code'],
+    issueComments: [comment('Fase: verwerking\nImplementer: Codex\nVolgende beurt: Codex', { min: 200 }), comment(LABELCORRECTIE, { min: 100 })] }), ['TURN_WIJKT_AF']);
+check('fase zonder ander veld is geen overdracht', isOverdracht(parseOverdracht('Fase: verwerking')), false);
+check('fase met onbekende beurt is geen overdracht', isOverdracht({ fase: 'iets', implementer: 'Codex' }), false);
+check('eindfase gemerged met implementer is wel een overdracht', isOverdracht({ fase: 'gemerged', implementer: 'Codex' }), true);
+check('kale Fase: verwerking maskeert de echte overdracht niet',
+  ev({ labels: ['turn: claude-code'],
+    issueComments: [comment('Fase: verwerking\nImplementer: Codex\nVolgende beurt: Codex', { min: 200 }), comment('Fase: verwerking', { min: 100 })] }), ['TURN_WIJKT_AF']);
+check('fase aan het begin van een zin telt (inline)', parseOverdracht('Klaar. Fase: review. Reviewer: Claude Code').fase, 'review');
+
+// ── GEEN_TURN: wachttijd en uitzonderingen (P2) ──
+console.log('GEEN_TURN:');
+check('fasecomment 30 seconden oud, nog geen label: geen bevinding', ev({ labels: [], issueComments: [{ ...comment(EIGENAARSBESLUIT), created_at: new Date(NU - 30000).toISOString() }] }), []);
+check('GEEN_TURN ouder dan grace: bevinding', ev({ labels: [], issueComments: [comment(EIGENAARSBESLUIT, { min: 45 })] }), ['GEEN_TURN']);
+check('GEEN_TURN: label net gewisseld (binnen grace): geen bevinding', ev({ labels: [], laatsteLabelWijziging: minuten(5), issueComments: [comment(EIGENAARSBESLUIT, { min: 120 })] }), []);
+for (const st of ['blocked', 'wont-fix', 'waiting-owner']) {
+  check(`status: ${st} zonder turn: geen GEEN_TURN`, ev({ labels: [`status: ${st}`], issueComments: [comment(EIGENAARSBESLUIT, { min: 120 })] }), []);
+}
+
+// ── PR-herkenning en verschoven head (P2) ──
+console.log('verschoven head, issue-aanvraag:');
+const proza = `Fase: review\nImplementer: Codex\nReviewer: Claude Code\nPR #7, issue #1\nAangeboden head-SHA: ${SHA}\nVolgende beurt: Claude Code`;
+check('PR zonder dubbele punt wordt herkend', parseOverdracht(proza).pr, 7);
+check('PR via /pull/-URL', parseOverdracht(`Fase: review\nReviewer: Claude Code\nzie https://github.com/o/r/pull/12`).pr, 12);
+check('issue-aanvraag "PR #7" met verschoven head: REVIEW_SHA_ONGELDIG',
+  ev({ labels: ['turn: claude-code'], issueComments: [comment(proza)], prs: [{ ...pr7(), headSha: SHA2 }] }), ['REVIEW_SHA_ONGELDIG']);
+check('issue-aanvraag zonder PR-nummer, één gekoppelde PR met verschoven head',
+  ev({ labels: ['turn: claude-code'], issueComments: [comment(proza.replace('PR #7, issue #1', 'issue #1'))], prs: [{ ...pr7(), headSha: SHA2 }] }), ['REVIEW_SHA_ONGELDIG']);
+check('issue-aanvraag zonder PR-nummer, één PR met gelijke head: geen bevinding',
+  ev({ labels: ['turn: claude-code'], issueComments: [comment(proza.replace('PR #7, issue #1', 'issue #1'))], prs: [pr7()] }), []);
+const zonderPr = proza.replace('PR #7, issue #1', 'issue #1');
+check('meerdere PR\'s, SHA past bij geen enkele head: bevinding',
+  ev({ labels: ['turn: claude-code'], issueComments: [comment(zonderPr)], prs: [{ ...pr7(), headSha: SHA2 }, { number: 8, headSha: 'c'.repeat(40), state: 'open' }] }), ['REVIEW_SHA_ONGELDIG']);
+check('meerdere PR\'s, SHA past bij één head: geen bevinding',
+  ev({ labels: ['turn: claude-code'], issueComments: [comment(zonderPr)], prs: [pr7(), { number: 8, headSha: 'c'.repeat(40), state: 'open' }] }), []);
 
 // ── signaalBody ──
 console.log('signaalBody:');
@@ -153,6 +198,20 @@ const oudeAfwijking = comment('Fase: verwerking\nImplementer: Codex\nVolgende be
     check('run wijzigt nooit labels', [gh.calls, gh2.calls].map((c) => c.addLabels + c.removeLabel + c.setLabels), [0, 0]);
   }
   {
+    // Terugkerende afwijking: signaal (hash H) -> opgelost -> zelfde afwijking opnieuw -> nieuwe comment.
+    const signaal = (min) => ({ id: volgId++, body: signaalBody(1, [{ code: 'TURN_WIJKT_AF', detail: 'label=claude-code;verwacht=codex', tekst: 'x' }]), created_at: minuten(min), author_association: 'NONE', user: { login: 'github-actions[bot]' } });
+    const labelEvent = (min) => ({ event: 'labeled', label: { name: 'turn: claude-code' }, created_at: minuten(min) });
+    const lopend = fakeGithub({ issues: [issue(1, ['turn: claude-code'])], comments: { 1: [oudeAfwijking, signaal(100)] }, events: [labelEvent(150)] });
+    await run({ github: lopend, context: ctx, core: maakCore(), now: new Date(NU) });
+    check('zelfde hash, melding nieuwer dan overdracht en labelwissel: geen nieuwe comment', lopend.calls.createComment.length, 0);
+    const terug = fakeGithub({ issues: [issue(1, ['turn: claude-code'])], comments: { 1: [oudeAfwijking, signaal(100)] }, events: [labelEvent(150), labelEvent(50)] });
+    await run({ github: terug, context: ctx, core: maakCore(), now: new Date(NU) });
+    check('zelfde hash maar label opnieuw gezet na de melding: nieuwe comment', terug.calls.createComment.length, 1);
+    const nieuweOverdracht = fakeGithub({ issues: [issue(1, ['turn: claude-code'])], comments: { 1: [comment('Fase: verwerking\nImplementer: Codex\nVolgende beurt: Codex', { min: 60 }), signaal(100)] } });
+    await run({ github: nieuweOverdracht, context: ctx, core: maakCore(), now: new Date(NU) });
+    check('zelfde hash maar nieuwere overdracht dan de melding: nieuwe comment', nieuweOverdracht.calls.createComment.length, 1);
+  }
+  {
     const gh = fakeGithub({ issues: [issue(1, ['turn: claude-code'])], comments: { 1: [oudeAfwijking] } });
     const core = maakCore();
     await run({ github: gh, context: ctx, core, now: new Date(NU), dryRun: true });
@@ -177,7 +236,7 @@ const oudeAfwijking = comment('Fase: verwerking\nImplementer: Codex\nVolgende be
   }
   {
     // Recente overdracht op een issue zonder turn-label: GEEN_TURN wordt toch gevonden.
-    const c = comment('Fase: eigenaarsbesluit', { min: 60 });
+    const c = comment(EIGENAARSBESLUIT, { min: 60 });
     const gh = fakeGithub({ issues: [issue(3, [])], comments: { 3: [c] }, recent: [{ ...c, issue_url: 'https://api.github.com/repos/o/r/issues/3' }] });
     await run({ github: gh, context: ctx, core: maakCore(), now: new Date(NU) });
     check('recente overdracht zonder label: GEEN_TURN gesignaleerd', gh.calls.createComment.length, 1);

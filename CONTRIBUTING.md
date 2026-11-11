@@ -301,6 +301,8 @@ De workflow `beurt-invariant.yml` vergelijkt elke 15 minuten het label met de ni
 overdracht (issue én gekoppelde PR) en plaatst bij een afwijking één signaalcomment: geen of meerdere
 `turn:`-labels, een label dat afwijkt van de volgende beurt, een onjuiste of verouderde head-SHA of een
 verouderd statuslabel. Hij wijzigt zelf geen labels; herstel doe je volgens de volgorde hierboven.
+Een schedule draait alleen vanaf de default branch: deze bewaking is dus pas actief na de eerstvolgende
+release naar `main`; tot die tijd is de overdrachtsvolgorde hierboven niet automatisch gecontroleerd.
 
 ### Security Gate
 

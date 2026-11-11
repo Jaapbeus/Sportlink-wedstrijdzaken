@@ -39,6 +39,9 @@ jobs:
     steps:
       - name: Checkout (voor .github/scripts)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Alleen de scriptbestanden zijn nodig; het token hoeft niet in .git/config te blijven.
+          persist-credentials: false
 
       - name: Beurt-invariant controleren
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0

@@ -26,7 +26,10 @@ const {
 // uitleg over "Volgende beurt" als overdracht) en herkent de dedup de vorige melding.
 const SIGNAAL_MARKER = '<!-- beurt-invariant';
 const VEROUDERD_STATUS = 'status: waiting-codex';
-const AWAITING_RELEASE = 'status: awaiting-release';
+// Issues zonder turn: waar dat bewust zo is: wachten op release of geparkeerd door de eigenaar.
+// Voor deze statussen is een ontbrekend turn:-label geen afwijking.
+const GEEN_TURN_UITZONDERING = ['status: awaiting-release', 'status: blocked', 'status: wont-fix', 'status: waiting-owner'];
+const EINDFASE = /^(gemerged|merged)\b/i;
 const VERTROUWDE_ASSOCIATIES = ['OWNER', 'MEMBER', 'COLLABORATOR'];
 const BOT_LOGIN = 'github-actions[bot]';
 const STANDAARD_GRACE_MINUTEN = 30;
@@ -37,10 +40,14 @@ const GELDIGE_SHA = /^[0-9a-f]{40}$/i;
 // (versie, bestandsnaam) beëindigt de waarde niet.
 const WAARDE = '((?:[^\\n;.]|\\.(?!\\s|$))*)';
 const VOOR = '(?:^|[\\s.;,(|>*-])';
-const veld = (namen) => new RegExp(`${VOOR}(?:${namen})\\s*:\\s*${WAARDE}`, 'im');
+const veld = (namen, voor = VOOR) => new RegExp(`${voor}(?:${namen})\\s*:\\s*${WAARDE}`, 'im');
+// De fase moet een regel of zin openen. Zonder die eis telt proza dat de velden alleen noemt, zoals
+// "(Phase: review, PR, Frozen head) en zet pas daarna turn: ...", als overdracht (P1 uit de review):
+// de waarde liep dan tot het regeleinde en die nep-overdracht maskeerde de echte, oudere.
+const VOOR_FASE = '(?:^[\\s>*-]*|[.;]\\s+)';
 
 const VELDEN = {
-  fase: veld('Fase|Phase'),
+  fase: veld('Fase|Phase', VOOR_FASE),
   volgendeBeurt: veld('Volgende beurt|Next turn'),
   reviewer: veld('Reviewer'),
   implementer: veld('Implementer'),
@@ -64,7 +71,9 @@ function parseOverdracht(body) {
     const m = re.exec(tekst);
     ruw[naam] = m ? m[1].trim() : null;
   }
-  const prMatch = ruw.pr && (/#(\d+)/.exec(ruw.pr) || /\/pull\/(\d+)/.exec(ruw.pr));
+  // Codex' issue-aanvragen noemen de PR vaak als proza ("PR #1846, issue #1817") zonder "PR:"-veld.
+  const prMatch = (ruw.pr && (/#(\d+)/.exec(ruw.pr) || /\/pull\/(\d+)/.exec(ruw.pr)))
+    || /\bPR\s*#(\d+)/i.exec(tekst) || /\/pull\/(\d+)/.exec(tekst);
   const rondeMatch = ruw.ronde && /\d+/.exec(ruw.ronde);
   const shaToken = ruw.sha ? ruw.sha.split(/\s+/)[0].replace(/^[<\[(]+|[>\])]+$/g, '') : null;
   return {
@@ -107,6 +116,18 @@ function verwachteBeurt(parsed) {
   return null;
 }
 
+/**
+ * Is dit een echte overdracht? Een fase alleen is te weinig (proza dat "Fase" noemt): er moet minstens
+ * één ander gestructureerd veld bij staan, en de comment moet een beurt opleveren of een eindfase
+ * (gemerged) zijn. Anders beslist de eerstvolgende oudere overdracht.
+ */
+function isOverdracht(parsed) {
+  if (!parsed || !parsed.fase) return false;
+  const anderVeld = parsed.implementer || parsed.reviewer || parsed.volgendeBeurt || parsed.sha;
+  if (!anderVeld) return false;
+  return verwachteBeurt(parsed) !== null || EINDFASE.test(parsed.fase);
+}
+
 const isSignaal = (c) => String((c && c.body) || '').includes(SIGNAAL_MARKER);
 
 function isVertrouwd(c) {
@@ -129,7 +150,7 @@ function verzamelOverdrachten(issueComments, prs) {
       volgnr += 1;
       if (!isVertrouwd(c) || isSignaal(c)) continue;
       const parsed = parseOverdracht(c.body);
-      if (parsed.fase) lijst.push({ parsed, tijd: tijd(c), bronPr: bron.pr, volgnr });
+      if (isOverdracht(parsed)) lijst.push({ parsed, tijd: tijd(c), bronPr: bron.pr, volgnr });
     }
   }
   // Nieuwste eerst; bij gelijke tijd wint de later gelezen comment.
@@ -149,12 +170,27 @@ function shaBevinding(overdrachten, verwacht, prs) {
   if (!GELDIGE_SHA.test(sha)) {
     return { code: 'REVIEW_SHA_ONGELDIG', detail: 'reden=lengte', tekst: 'De aangeboden head-SHA in de nieuwste reviewaanvraag is geen volledige SHA van 40 hexadecimale tekens.' };
   }
-  const prNr = aanvraag.parsed.pr || aanvraag.bronPr;
-  const pr = (prs || []).find((p) => p.number === prNr);
-  if (pr && pr.headSha && pr.headSha.toLowerCase() !== sha.toLowerCase()) {
+  if (headVerschoven(aanvraag, sha, prs)) {
     return { code: 'REVIEW_SHA_ONGELDIG', detail: 'reden=verouderd', tekst: 'De aangeboden head-SHA wijkt af van de huidige head van de gekoppelde PR (er is na de aanvraag gepusht).' };
   }
   return null;
+}
+
+/**
+ * Wijkt de aangeboden SHA af van de huidige PR-head? De PR volgt uit het veld/de tekst of de bron van
+ * de comment; ontbreekt die (aanvraag op het issue zonder PR-nummer), dan geldt de enige gekoppelde PR,
+ * en bij meerdere PR's is het een afwijking als de SHA met géén enkele head overeenkomt.
+ */
+function headVerschoven(aanvraag, sha, prs) {
+  const open = (prs || []).filter((p) => p.headSha && (!p.state || p.state === 'open'));
+  const gelijk = (p) => p.headSha.toLowerCase() === sha.toLowerCase();
+  const prNr = aanvraag.parsed.pr || aanvraag.bronPr;
+  if (prNr) {
+    const pr = open.find((p) => p.number === prNr);
+    return Boolean(pr) && !gelijk(pr);
+  }
+  if (open.length === 1) return !gelijk(open[0]);
+  return open.length > 1 && !open.some(gelijk);
 }
 
 /**
@@ -162,7 +198,12 @@ function shaBevinding(overdrachten, verwacht, prs) {
  * wij lezen daarbij óók de comments van gekoppelde open PR's, want Codex zet een aanvraag soms alleen daar.
  * @returns {{code:string, detail:string, tekst:string}[]}
  */
-function evalueerIssue({ labels, issueComments, prs, now, graceMinuten = STANDAARD_GRACE_MINUTEN, laatsteLabelWijziging }) {
+function evalueerIssue(invoer) {
+  return beoordeel(invoer).findings;
+}
+
+/** Als evalueerIssue, plus de tijd (ms) van de nieuwste overdracht: nodig voor de dedup in run(). */
+function beoordeel({ labels, issueComments, prs, now, graceMinuten = STANDAARD_GRACE_MINUTEN, laatsteLabelWijziging }) {
   const namen = labelNames({ labels });
   const turns = namen.filter((n) => n.startsWith(TURN_PREFIX)).map((n) => n.slice(TURN_PREFIX.length));
   const nuMs = now instanceof Date ? now.getTime() : (typeof now === 'number' ? now : Date.parse(now) || Date.now());
@@ -171,16 +212,20 @@ function evalueerIssue({ labels, issueComments, prs, now, graceMinuten = STANDAA
   const nieuwste = overdrachten[0] || null;
   const verwacht = nieuwste ? verwachteBeurt(nieuwste.parsed) : null;
   const findings = [];
+  const labelMs = laatsteLabelWijziging ? Date.parse(laatsteLabelWijziging) || 0 : 0;
+  // Overdracht én labelwissel liggen buiten de wachttijd: de overdrachtsvolgorde (eerst fasecomment, dan
+  // label) mag even "scheef" staan zonder dat een draaiende cron meteen een valse melding plaatst.
+  const buitenGrace = () => nuMs - nieuwste.tijd > graceMs && nuMs - labelMs > graceMs;
 
   if (turns.length > 1) {
     findings.push({ code: 'MEERDERE_TURN', detail: `aantal=${turns.length}`, tekst: 'Het issue heeft meer dan één turn:-label; er mag er hoogstens één staan.' });
   } else if (TURN_BEURTEN.includes(verwacht)) {
-    if (turns.length === 0 && !namen.includes(AWAITING_RELEASE)) {
-      findings.push({ code: 'GEEN_TURN', detail: `verwacht=${verwacht}`, tekst: `De nieuwste overdracht verwacht beurt "${verwacht}", maar het issue heeft geen turn:-label.` });
+    if (turns.length === 0) {
+      if (!GEEN_TURN_UITZONDERING.some((n) => namen.includes(n)) && buitenGrace()) {
+        findings.push({ code: 'GEEN_TURN', detail: `verwacht=${verwacht}`, tekst: `De nieuwste overdracht verwacht beurt "${verwacht}", maar het issue heeft geen turn:-label.` });
+      }
     } else if (turns.length === 1 && turns[0] !== verwacht) {
-      const labelMs = laatsteLabelWijziging ? Date.parse(laatsteLabelWijziging) || 0 : 0;
-      const verouderd = nuMs - nieuwste.tijd > graceMs && nuMs - labelMs > graceMs;
-      if (verouderd) {
+      if (buitenGrace()) {
         findings.push({ code: 'TURN_WIJKT_AF', detail: `label=${turns[0]};verwacht=${verwacht}`, tekst: `Het label zegt "${turns[0]}", maar de nieuwste overdracht noemt "${verwacht}" als volgende beurt.` });
       }
     }
@@ -190,7 +235,7 @@ function evalueerIssue({ labels, issueComments, prs, now, graceMinuten = STANDAA
   if (namen.includes(VEROUDERD_STATUS)) {
     findings.push({ code: 'VEROUDERDE_STATUS', detail: 'label=waiting-codex', tekst: 'Het gedeprecieerde label "status: waiting-codex" staat op het issue; het bestaat niet meer.' });
   }
-  return findings;
+  return { findings, nieuwsteTijd: nieuwste ? nieuwste.tijd : 0 };
 }
 
 const hashVan = (findings) => crypto.createHash('sha256')
@@ -214,23 +259,39 @@ Zie CONTRIBUTING.md, "Overdracht en turn-label (#1858)".`;
 
 const HASH_RE = /<!-- beurt-invariant hash=([0-9a-f]+)/;
 
-/** Hash van de nieuwste eigen signaalcomment (vertrouwde auteur), of null. */
-function laatsteSignaalHash(issueComments) {
+/** Hash en tijd (ms) van de nieuwste eigen signaalcomment (vertrouwde auteur), of null. */
+function laatsteSignaal(issueComments) {
   const eigen = (issueComments || []).filter((c) => isSignaal(c) && isVertrouwd(c));
   if (!eigen.length) return null;
   const nieuwste = eigen.reduce((a, b) => (tijd(b) >= tijd(a) ? b : a));
   const m = HASH_RE.exec(nieuwste.body || '');
-  return m ? m[1] : null;
+  return m ? { hash: m[1], tijd: tijd(nieuwste) } : null;
 }
 
-// Aan het eind van het label-verloop pas events ophalen: alleen nodig om "recent gewisseld" te bepalen.
-async function laatsteTurnLabelTijd(github, owner, repo, issueNumber) {
+/**
+ * Mag de melding achterwege blijven? Alleen als dezelfde bevinding al is gemeld ÉN die melding nieuwer
+ * is dan zowel de nieuwste overdracht als de laatste labelwissel. Een hash alleen volstaat niet: een
+ * opgeloste en later terugkerende afwijking (zelfde label/verwachting) heeft dezelfde hash en zou anders
+ * voorgoed onzichtbaar blijven (P2 uit de review).
+ */
+function alGemeld(signaal, hash, nieuwsteTijd, laatsteLabelEvent) {
+  if (!signaal || signaal.hash !== hash) return false;
+  return signaal.tijd > Math.max(nieuwsteTijd, laatsteLabelEvent);
+}
+
+// Alle turn:/status:-labelwissels uit het issue-verloop; geeft de nieuwste tijd (ISO) voor alleen de
+// turn:-labels (wachttijd) en voor turn:+status: samen (dedup), of null. Pas na een bevinding opgehaald.
+async function labelTijden(github, owner, repo, issueNumber) {
   const events = await github.paginate(github.rest.issues.listEvents, {
     owner, repo, issue_number: issueNumber, per_page: 100, headers: API_VERSION_HEADERS,
   });
-  return events
-    .filter((e) => (e.event === 'labeled' || e.event === 'unlabeled') && e.label && String(e.label.name).startsWith(TURN_PREFIX))
-    .map((e) => e.created_at).sort().pop() || null;
+  const wissels = events.filter((e) => (e.event === 'labeled' || e.event === 'unlabeled') && e.label);
+  const nieuwste = (lijst) => lijst.map((e) => e.created_at).sort().pop() || null;
+  const naam = (e) => String(e.label.name);
+  return {
+    turn: nieuwste(wissels.filter((e) => naam(e).startsWith(TURN_PREFIX))),
+    alle: nieuwste(wissels.filter((e) => naam(e).startsWith(TURN_PREFIX) || naam(e).startsWith('status: '))),
+  };
 }
 
 async function laadContext(github, owner, repo) {
@@ -262,7 +323,7 @@ async function kiesIssues(github, owner, repo, ctx, nu) {
     owner, repo, since, per_page: 100, headers: API_VERSION_HEADERS,
   });
   for (const c of recent) {
-    if (!isVertrouwd(c) || isSignaal(c) || !parseOverdracht(c.body).fase) continue;
+    if (!isVertrouwd(c) || isSignaal(c) || !isOverdracht(parseOverdracht(c.body))) continue;
     const nr = parseInt(String(c.issue_url || '').split('/').pop(), 10);
     if (ctx.issues.has(nr)) kandidaten.add(nr);
     else if (ctx.prNummers.has(nr)) {
@@ -281,12 +342,15 @@ async function beoordeelIssue(github, owner, repo, ctx, nr, nu, graceMinuten) {
     prs.push({ ...pr, comments });
   }
   const invoer = { labels: ctx.issues.get(nr).labels, issueComments, prs, now: nu, graceMinuten };
-  let findings = evalueerIssue(invoer);
-  if (findings.some((f) => f.code === 'TURN_WIJKT_AF')) {
-    const laatste = await laatsteTurnLabelTijd(github, owner, repo, nr);
-    findings = evalueerIssue({ ...invoer, laatsteLabelWijziging: laatste });
+  let uitkomst = beoordeel(invoer);
+  let laatsteLabelEvent = 0;
+  if (uitkomst.findings.length) {
+    // Labelwissels bepalen de wachttijd én of een eerdere melding nog actueel is.
+    const tijden = await labelTijden(github, owner, repo, nr);
+    laatsteLabelEvent = tijden.alle ? Date.parse(tijden.alle) || 0 : 0;
+    uitkomst = beoordeel({ ...invoer, laatsteLabelWijziging: tijden.turn });
   }
-  return { findings, issueComments };
+  return { findings: uitkomst.findings, issueComments, nieuwsteTijd: uitkomst.nieuwsteTijd, laatsteLabelEvent };
 }
 
 /**
@@ -302,10 +366,10 @@ async function run({ github, context, core, now = new Date(), dryRun = false, gr
 
   for (const nr of nummers) {
     try {
-      const { findings, issueComments } = await beoordeelIssue(github, owner, repo, ctx, nr, now, graceMinuten);
+      const { findings, issueComments, nieuwsteTijd, laatsteLabelEvent } = await beoordeelIssue(github, owner, repo, ctx, nr, now, graceMinuten);
       if (!findings.length) continue;
       const body = signaalBody(nr, findings);
-      if (laatsteSignaalHash(issueComments) === hashVan(findings)) continue;
+      if (alGemeld(laatsteSignaal(issueComments), hashVan(findings), nieuwsteTijd, laatsteLabelEvent)) continue;
       uitkomst.gesignaleerd.push({ issue: nr, codes: findings.map((f) => f.code) });
       if (dryRun) core.info(`[dry-run] #${nr}: ${findings.map((f) => f.code).join(', ')}`);
       else await github.rest.issues.createComment({ owner, repo, issue_number: nr, body, headers: API_VERSION_HEADERS });
@@ -328,6 +392,7 @@ module.exports = {
   parseOverdracht,
   verwachteBeurt,
   evalueerIssue,
+  isOverdracht,
   signaalBody,
   run,
 };
