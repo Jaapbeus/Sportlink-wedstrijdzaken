@@ -43,6 +43,7 @@ LEFT JOIN [his].[matchdetails] md
 LEFT JOIN [his].[teams] t
     ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
    AND ISNULL(t.[ClubCode], a.[ClubCode]) = ISNULL(m.[ClubCode], a.[ClubCode])
+   AND t.[mta_deleted] IS NULL
 LEFT JOIN [dbo].[Speeltijden] s
     ON s.[Leeftijd] = CASE
         WHEN m.[teamnaam] LIKE a.[ClubCode] + ' G[0-9]%' THEN 'G'
@@ -70,6 +71,7 @@ OUTER APPLY (
 WHERE m.[accommodatie] LIKE '%' + a.[Accommodatie] + '%'
   AND m.[status] <> 'Afgelast'
   AND m.[aanvangstijd] IS NOT NULL
+  AND m.[mta_deleted] IS NULL
   AND v.[VeldNummer] IS NOT NULL
 
 UNION ALL
