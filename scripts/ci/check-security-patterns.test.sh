@@ -48,6 +48,23 @@ assert_no_match_count() {
   [ ! -s "$TEMP_ROOT/stderr" ] || fail "clean result wrote unexpected diagnostics"
 }
 
+assert_history_match_count() {
+  expected_class="$1"
+  expected_count="$2"
+  [ "$SCAN_STATUS" -eq 1 ] || fail "expected a history finding result"
+  grep -Fq "$expected_class: $expected_count of the last 20 commit messages matched." "$TEMP_ROOT/stdout" \
+    || fail "history class count was not reported"
+  [ ! -s "$TEMP_ROOT/stderr" ] || fail "history finding wrote unexpected diagnostics"
+}
+
+assert_history_no_match_count() {
+  expected_class="$1"
+  [ "$SCAN_STATUS" -eq 0 ] || fail "expected a clean history result"
+  grep -Fq "$expected_class: 0 of the last 20 commit messages matched." "$TEMP_ROOT/stdout" \
+    || fail "clean history count was not reported"
+  [ ! -s "$TEMP_ROOT/stderr" ] || fail "clean history result wrote unexpected diagnostics"
+}
+
 # Synthetic PII-shaped fixtures exercise tracked names containing spaces, newlines and a leading dash.
 new_repo pii-paths
 space_file="$REPO/dir with spaces/input.txt"
@@ -188,5 +205,71 @@ grep -Fq 'required security pattern scanner component is unavailable' "$TEMP_ROO
 if grep -Fq 'Production/Source.cs' "$TEMP_ROOT/stdout" "$TEMP_ROOT/stderr"; then
   fail "missing scanner output exposed a file path"
 fi
+
+# Documentation scanning keeps its exemptions and redacts both addresses and paths.
+new_repo documentation-pii
+mkdir -p "$REPO/docs/nested dir"
+doc_path="$REPO/docs/nested dir/review"$'\n'"notes.md"
+allowed_prefix='noreply'
+allowed_domain='@github.com'
+reserved_prefix='synthetic'
+reserved_domain='@example.invalid'
+second_reserved_prefix='another'
+printf '%s%s %s%s %s%s\n' \
+  "$allowed_prefix" "$allowed_domain" "$reserved_prefix" "$reserved_domain" \
+  "$second_reserved_prefix" "$reserved_domain" > "$doc_path"
+printf '%s\n' 'sample@example.org trainer@allstars-fc.test' > "$REPO/docs/allowed.md"
+printf '%s%s\n' "$reserved_prefix" "$reserved_domain" > "$REPO/docs/ordinary.md"
+track_repo
+
+# Capture the former matching pipeline privately and assert it exposed synthetic data.
+legacy_docs=$(cd "$REPO" && grep -Eio '[[:alnum:]._%+-]+@[[:alnum:].-]+\.[[:alpha:]]{2,}' docs/ordinary.md \
+  | grep -Evi '@(github\.com|anthropic\.com|example\.(com|nl|org)|voorbeeld\.nl|allstars-fc\.test)$' || true)
+printf '%s' "$legacy_docs" | grep -Fq "$reserved_prefix$reserved_domain" \
+  || fail "legacy documentation matcher did not reproduce its synthetic value-leak case"
+run_mode pii-docs
+assert_match_count 'documentation PII' 2
+for marker in "$reserved_prefix$reserved_domain" "$second_reserved_prefix$reserved_domain" 'ordinary.md' 'review'; do
+  if grep -Fq -- "$marker" "$TEMP_ROOT/stdout" "$TEMP_ROOT/stderr"; then
+    fail "documentation PII output exposed synthetic content or a path"
+  fi
+done
+
+# Recent history retains the last-20 window, exclusions, and warning/failure class distinctions.
+new_repo history-pii
+git -C "$REPO" config user.name 'Synthetic Test'
+git -C "$REPO" config user.email 'synthetic@example.invalid'
+email_prefix='synthetic'
+email_domain='@example.invalid'
+coauthor_phone='06-'
+coauthor_phone_suffix='00000000'
+mkdir -p "$REPO/src"
+printf 'synthetic fixture\n' > "$REPO/src/input.txt"
+git -C "$REPO" add --all
+git -C "$REPO" commit --quiet -m "Synthetic note $email_prefix$email_domain" \
+  -m "Co-Authored-By: Synthetic Agent <synthetic@example.invalid> $coauthor_phone$coauthor_phone_suffix"
+legacy_history=$(git -C "$REPO" log -20 --pretty=format:'%s %b' \
+  | grep -Eio '[[:alnum:]._%+-]+@[[:alnum:].-]+\.[[:alpha:]]{2,}' \
+  | grep -Evi '@(github\.com|anthropic\.com|example\.(com|nl|org)|voorbeeld\.nl)$' || true)
+printf '%s' "$legacy_history" | grep -Fq "$email_prefix$email_domain" \
+  || fail "legacy history matcher did not reproduce its synthetic value-leak case"
+run_mode history-email
+assert_history_match_count 'commit-message email' 1
+run_mode history-phone
+assert_history_no_match_count 'commit-message phone'
+
+# A phone in an ordinary commit subject is still a blocking finding; output stays class-only.
+phone_prefix='06-'
+phone_suffix='00000000'
+printf 'another synthetic fixture\n' > "$REPO/src/next.txt"
+git -C "$REPO" add --all
+git -C "$REPO" commit --quiet -m "Synthetic phone $phone_prefix$phone_suffix"
+run_mode history-phone
+assert_history_match_count 'commit-message phone' 1
+for marker in "$email_prefix$email_domain" "$phone_prefix$phone_suffix" 'Synthetic phone'; do
+  if grep -Fq -- "$marker" "$TEMP_ROOT/stdout" "$TEMP_ROOT/stderr"; then
+    fail "commit-history output exposed synthetic content"
+  fi
+done
 
 echo "PASS: security pattern matcher handles unusual tracked paths, preserves pattern classes, and keeps public output value-free."
