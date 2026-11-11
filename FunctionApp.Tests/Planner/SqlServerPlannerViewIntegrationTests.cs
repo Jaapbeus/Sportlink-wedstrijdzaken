@@ -95,6 +95,40 @@ public class SqlServerPlannerViewIntegrationTests
     }
 
     [SqlServerFact]
+    public async Task View_FiltertZachtVerwijderdeMatchEnTeamrijUit()
+    {
+        await using var db = await Fixture.OpenAsync();
+        await db.SpeeltijdAsync();
+        await db.MatchAsync(duration: 60);
+
+        // De actieve en verwijderde teamrij hebben dezelfde naam en categorie. Zonder het
+        // teamfilter verdubbelt de bezetting; de verwijderde match hoort helemaal weg.
+        await db.ExecAsync("""
+            INSERT INTO his.teams
+                (bk_teams, teamnaam, leeftijdscategorie, ClubCode, mta_inserted, mta_modified, mta_deleted)
+            VALUES ('planner1801-deleted-team', 'ALLSTARS JO99-1', 'Onder 99', @club,
+                    SYSUTCDATETIME(), SYSUTCDATETIME(), SYSUTCDATETIME());
+            INSERT INTO his.matches
+                (bk_matches, wedstrijdcode, kaledatum, aanvangstijd, accommodatie, status, teamnaam, wedstrijd, veld, ClubCode)
+            VALUES ('planner1801-deleted-match', 1815, '2026-09-05', '10:00', 'Test accommodatie', 'Vastgesteld',
+                    'ALLSTARS JO99-1', 'ALLSTARS JO99-1 - Gastteam', 'Veld 1 A', @club);
+            INSERT INTO his.matchdetails (bk_InternCode, WedstrijdCode, InternCode, Duration, ClubCode)
+            VALUES (1815, 1815, 1815, 60, @club);
+            UPDATE his.matches SET mta_deleted = SYSUTCDATETIME()
+            WHERE wedstrijdcode = 1815 AND ClubCode = @club;
+            """);
+
+        var rows = await db.ReadViewAsync();
+
+        rows.Should().ContainSingle();
+        rows[0].Wedstrijdcode.Should().Be(1814, "the active control match must remain");
+        rows[0].Leeftijdscategorie.Should().Be("Onder 99", "the active team row must remain");
+        rows[0].Datum.Should().Be(Datum);
+        rows[0].Aanvangstijd.Should().Be(new TimeOnly(10, 0));
+        rows[0].ClubCode.Should().Be(Club);
+    }
+
+    [SqlServerFact]
     public async Task OntbrekendOfOnbekendVeldZonderDuur_BlokkeertAndereVeldenNiet()
     {
         await using var db = await Fixture.OpenAsync();
@@ -182,6 +216,28 @@ public class SqlServerPlannerViewIntegrationTests
             INSERT INTO dbo.Speeltijden (Leeftijd, Veldafmeting, WedstrijdTotaal, WedstrijdHelft, WedstrijdRust, ClubCode)
             VALUES ('JO99', 0.5, 60, 25, 10, @club);
             """);
+
+        public async Task<List<(long Wedstrijdcode, string? Leeftijdscategorie, DateOnly Datum, TimeOnly Aanvangstijd, string ClubCode)>> ReadViewAsync()
+        {
+            await using var cmd = Command("""
+                SELECT Wedstrijdcode, LeeftijdsCategorie, Datum, AanvangsTijd, ClubCode
+                FROM planner.AlleWedstrijdenOpVeld
+                WHERE ClubCode = @club AND Datum = @datum
+                """);
+            cmd.Parameters.AddWithValue("@datum", Datum.ToDateTime(TimeOnly.MinValue));
+            await using var reader = await cmd.ExecuteReaderAsync();
+            var rows = new List<(long, string?, DateOnly, TimeOnly, string)>();
+            while (await reader.ReadAsync())
+            {
+                rows.Add((
+                    reader.GetInt64(0),
+                    reader.IsDBNull(1) ? null : reader.GetString(1),
+                    DateOnly.FromDateTime(reader.GetDateTime(2)),
+                    TimeOnly.FromTimeSpan(reader.GetTimeSpan(3)),
+                    reader.GetString(4)));
+            }
+            return rows;
+        }
 
         public Task<List<BestaandeWedstrijd>> ReadAsync() =>
             PlannerAvailabilityRepository.ReadMatchOccupationsAsync(connection, Datum, Club, transaction);

@@ -57,8 +57,6 @@ in_set() { printf '%s\n' "$2" | grep -qxF -- "$1"; }
 #   (b) dynamisch aangemaakt — gedekt door EtlKolomdekkingTests.cs (zie kop).
 OVERGESLAGEN_TABELLEN=(
   "dbo.DateTable|geen Postgres-tegenhanger (zie EXCEPTIONS in check-postgres-table-coverage.sh)"
-  "dbo.Zonsondergang|geen Postgres-tegenhanger (idem)"
-  "planner.HerplanVerzoeken|geen Postgres-tegenhanger (idem)"
   "mta.source_target_mapping|geen Postgres-tegenhanger (idem)"
   "his.Teams|dynamisch aangemaakt uit KnownEntities.cs — gedekt door Database.Postgres.Tests/EtlKolomdekkingTests.cs"
   "his.Matches|idem"
