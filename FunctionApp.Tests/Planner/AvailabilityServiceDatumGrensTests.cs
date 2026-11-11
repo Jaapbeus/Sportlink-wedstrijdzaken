@@ -36,4 +36,23 @@ public class AvailabilityServiceDatumGrensTests
 
         response.Reden.Should().Contain("2020-01-04").And.Contain("in de toekomst");
     }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(0)]
+    public async Task CheckAvailabilityAsync_ZonderPositieveDuur_BlokkeertVoorSlotZoeken(int? duur)
+    {
+        var request = new CheckAvailabilityRequest
+        {
+            Datum = DateOnly.FromDateTime(DateTime.Today).AddDays(14).ToString("yyyy-MM-dd"),
+            WedstrijdDuurMinuten = duur
+        };
+
+        var response = await AvailabilityService.CheckAvailabilityAsync(request, NullLogger.Instance, "ALLSTARS");
+
+        response.Beschikbaar.Should().BeFalse();
+        response.BeschikbareVensters.Should().BeNull();
+        response.Toewijzing.Should().BeNull();
+        response.Reden.Should().Contain("wedstrijdduur is vereist");
+    }
 }

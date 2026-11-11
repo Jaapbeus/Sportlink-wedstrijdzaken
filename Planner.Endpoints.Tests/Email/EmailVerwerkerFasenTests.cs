@@ -2,6 +2,7 @@ using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Planner.Endpoints.Email;
 using Planner.Shared.Email;
+using Planner.Shared.Planning;
 using Xunit;
 
 namespace Planner.Endpoints.Tests.Email;
@@ -316,5 +317,23 @@ public class EmailVerwerkerFasenTests
         poort.VastgelegdeFouten.Should().ContainSingle()
             .Which.Should().Be(("m1", "kapot voor [e-mail]"));
         poort.Verwerkt.Select(v => v.MessageId).Should().Equal(["m2"]);
+    }
+
+    [Fact]
+    public async Task PlanningDuurOnbekend_LegtFoutVastEnVerstuurtGeenPlannerantwoord()
+    {
+        TestBericht bericht = new("m1");
+        var poort = new FakePoort
+        {
+            Ongelezen = [bericht],
+            VerwerkFout = _ => new PlanningDuurOnbekendException()
+        };
+
+        await VoerUitAsync(poort);
+
+        poort.VastgelegdeFouten.Should().ContainSingle()
+            .Which.Should().Be(("m1", PlanningDuurOnbekendException.PubliekeMelding));
+        poort.Verwerkt.Should().BeEmpty();
+        poort.FakeGraph.Verstuurd.Should().BeEmpty();
     }
 }
