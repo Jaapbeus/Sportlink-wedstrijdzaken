@@ -320,7 +320,7 @@ public static class EmailVerwerkingsAfhandeling
         }
         catch (Exception ex)
         {
-            log.LogWarning(ex, "Outlook-labeling na opgeven mislukt voor verwerking {Id} — status is wel vastgelegd", verwerkingId);
+            log.LogWarning(ex, "Outlook-labeling na opgeven mislukt voor verwerking {Id}", verwerkingId);
         }
 
         await mailbox.MarkeerGelezenAsync(messageId);

@@ -20,6 +20,7 @@ public class EmailVerwerkingsAfhandelingTests
         public EmailVerwerkingStandInfo? Stand { get; set; }
         public bool InsertGooitGelijktijdig { get; set; }
         public bool HaalStandGooit { get; set; }
+        public bool UpdateFoutGooit { get; set; }
         public int NieuwId { get; set; } = 77;
         public List<string> Aanroepen { get; } = new();
 
@@ -36,7 +37,11 @@ public class EmailVerwerkingsAfhandelingTests
 
         public Task VerhoogPogingenAsync(int verwerkingId) { Aanroepen.Add($"verhoog:{verwerkingId}"); return Task.CompletedTask; }
 
-        public Task UpdateFoutAsync(int verwerkingId, string foutMelding) { Aanroepen.Add($"fout:{verwerkingId}:{foutMelding}"); return Task.CompletedTask; }
+        public Task UpdateFoutAsync(int verwerkingId, string foutMelding)
+        {
+            Aanroepen.Add($"fout:{verwerkingId}:{foutMelding}");
+            return UpdateFoutGooit ? throw new InvalidOperationException("db weg") : Task.CompletedTask;
+        }
 
         public Task ZetOpReviewAsync(int verwerkingId) { Aanroepen.Add($"review:{verwerkingId}"); return Task.CompletedTask; }
     }
@@ -131,6 +136,27 @@ public class EmailVerwerkingsAfhandelingTests
         id.Should().BeNull();
         opslag.Aanroepen.Should().ContainSingle().Which.Should().StartWith("fout:42:");
         mailbox.Aanroepen.Should().Equal($"gelezen:{MessageId}");
+    }
+
+    [Fact]
+    public async Task BepaalVerwerkingId_Opgeven_OpslagEnLabelFalen_LogtGeenVastgelegdeStatusEnMarkeertGelezen()
+    {
+        var opslag = new OpnemendeOpslag
+        {
+            Stand = Stand(VerwerkingsBesluit.OpgevenNaMaxPogingen, pogingen: 3),
+            UpdateFoutGooit = true
+        };
+        var mailbox = new OpnemendeMailbox { LabelGooit = true };
+        var log = new OpvangendeLogger();
+
+        var id = await EmailVerwerkingsAfhandeling.BepaalVerwerkingIdAsync(MessageId, opslag, mailbox, log);
+
+        id.Should().BeNull();
+        opslag.Aanroepen.Should().ContainSingle().Which.Should().StartWith("fout:42:Opgegeven na 3 mislukte pogingen");
+        mailbox.Aanroepen.Should().Equal($"gelezen:{MessageId}");
+        log.Regels.Should().Contain(regel => regel.Contains("Kon opgeven-status niet vastleggen"));
+        log.Regels.Should().Contain(regel => regel.Contains("Outlook-labeling na opgeven mislukt"));
+        log.Regels.Should().NotContain(regel => regel.Contains("status is wel vastgelegd"));
     }
 
     [Fact]
