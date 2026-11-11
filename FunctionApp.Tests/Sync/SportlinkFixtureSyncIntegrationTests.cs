@@ -1,4 +1,5 @@
 using AwesomeAssertions;
+using FunctionApp.Tests.Feedback;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging.Abstractions;
 using SportlinkFunction;
@@ -7,21 +8,13 @@ using Xunit;
 namespace FunctionApp.Tests.Sync;
 
 /// <summary>
-/// End-to-end synchronisatietest tegen een lokale fixtureserver in plaats van de echte
-/// Sportlink-API (#867). Vereist een echte, lege SQL Server-database met het volledige schema
-/// (<c>Database/Script.PostDeployment1.sql</c> uitgevoerd) — lokaal uitvoeren tegen een
-/// wegwerpcontainer, exact zoals de CI-job "PostDeployment op verse database"
-/// (<c>.github/workflows/build.yml</c>) dat al doet:
-///
-///   docker run -d --name sqlfixture -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=Devonly123! -e MSSQL_PID=Developer -p 1434:1433 mcr.microsoft.com/mssql/server:2022-latest
-///   # wacht tot de container klaar is (`docker exec sqlfixture /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Devonly123! -C -Q "SELECT 1"`)
-///   docker exec sqlfixture /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Devonly123! -C -Q "CREATE DATABASE SportlinkFixture"
-///   docker cp Database/Script.PostDeployment1.sql sqlfixture:/tmp/postdeployment.sql
-///   docker exec sqlfixture /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Devonly123! -C -d SportlinkFixture -b -V 11 -i /tmp/postdeployment.sql
-///   $env:SqlConnectionString = "Server=localhost,1434;Database=SportlinkFixture;User Id=sa;Password=Devonly123!;TrustServerCertificate=True;"
-///   dotnet test FunctionApp.Tests --filter FullyQualifiedName~SportlinkFixtureSyncIntegrationTests
-///   docker rm -f sqlfixture
-///
+/// End-to-end synchronisatietests tegen een lokale fixtureserver in plaats van de Sportlink-API (#867).
+/// Vereist de verse SQL Server-database uit de bestaande CI-job <c>fresh-db</c>;
+/// <see cref="SqlServerFactAttribute"/> activeert deze tests wanneer
+/// <c>SQLSERVER_TEST_CONNECTION_STRING</c> is gezet. De pipeline leest daarnaast
+/// <c>SqlConnectionString</c>, dus beide variabelen moeten dezelfde geïsoleerde verbinding bevatten.
+/// Deze tests bewaken specifiek de SQL Server-staging- en <c>MergeStgToHis</c>-route; de afzonderlijke
+/// Postgres-fixturetests blijven in <c>FunctionApp.Postgres.Tests</c>.
 /// <para>
 /// <b>"Geen enkele externe dienst geraakt" — bewezen, niet aangenomen (#867):</b>
 /// <see cref="SportlinkSyncPipeline.RunSyncAsync"/> krijgt <c>sportlinkApiUrl</c> uitsluitend mee
@@ -74,7 +67,7 @@ public class SportlinkFixtureSyncIntegrationTests : IAsyncLifetime
         return Task.CompletedTask;
     }
 
-    [Fact(Skip = "Vereist lokale SQL Server met volledig schema (zie klasse-doc-comment) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [SqlServerFact]
     public async Task RunSyncAsync_TegenFixtureserver_IsIdempotentEnRaaktUitsluitendDeFixture()
     {
         using var fixtureServer = SportlinkFixtures.BuildServer(Wedstrijdcode, ClubCode);
@@ -140,7 +133,7 @@ public class SportlinkFixtureSyncIntegrationTests : IAsyncLifetime
     /// zonder kaledatum/veld/team. De sync moet die kolommen uit his.matches aanvullen in plaats van
     /// ze met NULL te overschrijven. Spiegel van de Postgres-tiertest met dezelfde naam.
     /// </summary>
-    [Fact(Skip = "Vereist lokale SQL Server met volledig schema (zie klasse-doc-comment) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [SqlServerFact]
     public async Task RunSyncAsync_GespeeldeWedstrijdAlleenInUitslagen_BehoudtDatumVeldEnTeam()
     {
         using var fixtureServer = SportlinkFixtures.BuildServer(Wedstrijdcode, ClubCode);
@@ -167,7 +160,7 @@ public class SportlinkFixtureSyncIntegrationTests : IAsyncLifetime
     /// Review #1547 R1-F3: een verplaatste gespeelde wedstrijd die alleen nog via /uitslagen
     /// binnenkomt, staat op de nieuwe datum. Spiegel van de Postgres-tiertest met dezelfde naam.
     /// </summary>
-    [Fact(Skip = "Vereist lokale SQL Server met volledig schema (zie klasse-doc-comment) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [SqlServerFact]
     public async Task RunSyncAsync_VerplaatsteGespeeldeWedstrijd_KrijgtDeActueleDatum()
     {
         using var fixtureServer = SportlinkFixtures.BuildServer(Wedstrijdcode, ClubCode);
@@ -193,7 +186,7 @@ public class SportlinkFixtureSyncIntegrationTests : IAsyncLifetime
     /// (unieke-indexfout op <c>bk_teams</c>, of fout 8672 als de rij al bestond).
     /// <c>MergeStgToHis</c> logt die fout alleen, dus zonder ontdubbeling bleef his.teams stil leeg.
     /// </summary>
-    [Fact(Skip = "Vereist lokale SQL Server met volledig schema (zie klasse-doc-comment) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [SqlServerFact]
     public async Task RunSyncAsync_TeamTweeKeerInTeamsRespons_LaatsteWint()
     {
         using var fixtureServer = SportlinkFixtures.BuildServer(Wedstrijdcode, ClubCode);
