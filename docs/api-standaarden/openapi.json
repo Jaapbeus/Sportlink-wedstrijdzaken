@@ -11543,7 +11543,7 @@
           }
         ],
         "requestBody": {
-          "description": "Behoudt de bestaande CSV-upload tot 5 MiB UTF-8. De JSON-envelope laat zesvoudige worst-case escaping en de bestaande auditbestandsnaamruimte van 500 tekens toe. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
+          "description": "Behoudt de bestaande CSV-upload tot 5 MiB UTF-8. Zowel de gedecodeerde csvContent als de JSON-envelope zijn begrensd; de envelope laat zesvoudige worst-case escaping en de bestaande auditbestandsnaamruimte van 500 tekens toe. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór CSV-parsing en verwerking.",
           "required": true,
           "content": {
             "application/json": {

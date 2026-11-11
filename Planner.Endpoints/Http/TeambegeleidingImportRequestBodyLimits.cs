@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace Planner.Endpoints.Http;
 
 /// <summary>
@@ -13,4 +15,8 @@ public static class TeambegeleidingImportRequestBodyLimits
     public const int JsonWrapperOverheadBytes = 64;
     public const int MaxJsonBytes =
         (6 * CsvFileMaxBytes) + (6 * AuditFilenameMaxCharacters) + JsonWrapperOverheadBytes;
+
+    /// <summary>Checks the decoded CSV's UTF-8 size against the existing upload limit.</summary>
+    public static bool CsvFitsByteLimit(string csvContent) =>
+        Encoding.UTF8.GetByteCount(csvContent) <= CsvFileMaxBytes;
 }

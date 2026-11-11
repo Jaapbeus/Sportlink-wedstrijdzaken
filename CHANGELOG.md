@@ -18,6 +18,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- De clubkiezer, startpoort en initialisatie van de hoofdindeling staan nu in het aangrenzende partial-bestand; gedrag blijft gelijk (zie issue #1807).
 - API-bodybegrenzing hergebruikt de gedeelde uitvoeringspoort met behoud van bestaande parsers en endpointvalidatie (zie issue #1811).
 - Clubcodevalidatie vereist nu het volledige invoerformaat en clubcodes worden veilig gemaakt vóór logging op beide databasetiers (zie issue #1811).
 
@@ -25,8 +26,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - `/api/health` exposeert niet langer database-, schema-, migratie-, TLS-, sync- of tierdiagnostiek. Deploy- en readinessvelden zijn geaggregeerd; details zijn beschikbaar via admin-only `GET /api/beheer/health` (#1811). Dit is de API 4.0.0.1-contractgrens.
 
 ### Changed
+- De bestaande veldeditor is naar een gedeelde Razor-component verplaatst; modelbinding, validatie en de bestaande save-/annuleerhandlers blijven gelijk (zie issue #1807).
 - De gedeelde HTML-generator voor de veldplanner is per verantwoordelijkheid in partial-bestanden opgesplitst; de publieke aanroepen en de gegenereerde browser- en e-mail-HTML blijven gelijk (zie issue #1807).
 - De fingerprint-, publieke titel-/diagnostiek- en foutclassificatiehelpers van `GitHubIssueReporter` staan in een eigen partial-bestand; de bestaande methoden en werking blijven gelijk (zie issue #1807).
+- De bestaande beheer-DTO's zijn per domein in modelbestanden gegroepeerd; JSON-contracten en type-inhoud zijn ongewijzigd (zie issue #1807).
 - Removed the unused API status service and placed existing shared-logic tests in `Planner.Shared.Tests` (see issue #1808).
 - Clarified the Postgres error-reporting adapter documentation while retaining its tier-specific egress and fingerprint rationale (see issue #1805).
 - In Planner.Shared, removed planning-comment provenance while retaining the tier-independent logic and planning invariants (see issue #1806).
@@ -39,6 +42,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ### Fixed
 - Beide Functions-workers gebruiken een eindig transportplafond naast de ongewijzigde applicatielimieten, zodat de HTTP-proxy een gecontroleerd 413-antwoord voor te grote uploads kan teruggeven en de bestaande CSV-uploadruimte behouden blijft (zie issue #1811).
 - De resterende beheer- en planner-JSON-bodies zijn op beide databasetiers begrensd op 1 MiB; teambegeleiding behoudt de bestaande CSV-upload tot 5 MiB via een afgeleide JSON-envelope. Ongeldige JSON/UTF-8 geeft 400, overschrijding 413 vóór verwerking. Lokale databasepoorten luisteren alleen op loopback (zie issue #1811).
+- De bestaande CSV-limiet van 5 MiB UTF-8 wordt nu ook op de gedecodeerde inhoud gecontroleerd vóór parsing, op beide databasetiers (zie issue #1811).
 - Sync-statusmeldingen bewaren alleen het uitzonderingstype; providerfouttekst en URL blijven uit de beheerstatus (zie issue #1811).
 - De negatieve tier-duplicatietest gebruikt een vaste synthetische grens en blijft daardoor betrouwbaar wanneer productierefactorings duplicatie verminderen (zie issue #1811).
 - Settings restart decisions now have paired SQL Server and Postgres persistence regression tests for unchanged and changed schedules alongside another saved field (#1819).
