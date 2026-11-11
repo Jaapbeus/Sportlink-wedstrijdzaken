@@ -18,11 +18,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- De clubkiezer, startpoort en initialisatie van de hoofdindeling staan nu in het aangrenzende partial-bestand; gedrag blijft gelijk (zie issue #1807).
+
 ### Changed
 - Removed an unreferenced email HTML generation method and its dedicated tests; active browser and export renderers are unchanged (see issue #1808).
 - Remove the unused optional time normalizer, five unreferenced SQL planner facade forwards and four no-op test placeholders; keep their active repository implementations and maintained tooling. (zie issue #1808)
 - De gedeelde HTML-generator voor de veldplanner is per verantwoordelijkheid in partial-bestanden opgesplitst; de publieke aanroepen en de gegenereerde browser- en e-mail-HTML blijven gelijk (zie issue #1807).
 - De fingerprint-, publieke titel-/diagnostiek- en foutclassificatiehelpers van `GitHubIssueReporter` staan in een eigen partial-bestand; de bestaande methoden en werking blijven gelijk (zie issue #1807).
+- De bestaande beheer-DTO's zijn per domein in modelbestanden gegroepeerd; JSON-contracten en type-inhoud zijn ongewijzigd (zie issue #1807).
 - Removed the unused API status service and placed existing shared-logic tests in `Planner.Shared.Tests` (see issue #1808).
 - Removed unreferenced Bootstrap JavaScript assets and unused starter-menu icon selectors; the linked Bootstrap CSS remains (see issue #1808).
 - Clarified the Postgres error-reporting adapter documentation while retaining its tier-specific egress and fingerprint rationale (see issue #1805).
