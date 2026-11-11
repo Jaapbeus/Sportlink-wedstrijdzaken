@@ -585,6 +585,7 @@ public class EndpointAutorisatieTests
         {
             var t when t == typeof(HttpRequest) => (object)req,
             var t when t == typeof(FunctionContext) => FunctieContext(),
+            var t when t == typeof(CancellationToken) => CancellationToken.None,
             var t when t == typeof(string) => "proef",
             var t when t == typeof(int) => 1,
             var t when t == typeof(long) => 1L,
