@@ -634,6 +634,11 @@ Ontbreekt in de databasebezetting zowel een positieve Sportlink-duur als een spe
 dan blijft de bronwedstrijd in de bezettingsview met een onbekende eindtijd. De lezers blokkeren
 planning voor een herkenbaar veld met een getypeerde fout; de adminpoort geeft HTTP 409 met een
 vaste, niet-identificerende melding. Zo wordt een onbekende duur nooit als vrij veld uitgelegd (#1814).
+De niet-HTTP e-mailcaller laat dezelfde fout door naar de bestaande verwerkingsfoutafhandeling:
+de trace wordt altijd bewaard, de verwerking krijgt status `Fout` en blijft voor de normale
+begrensde retry beschikbaar. Er gaat geen beschikbaarheidsantwoord, generiek foutantwoord of
+vervolgnotificatie uit; een verzendintentie en gelezen-markering worden niet gezet. De regressies
+voor beide concrete tiers gebruiken een echte bronwedstrijd zonder beide duurbronnen.
 
 Nog open: of "speelduur + 15" voor korte toernooivormen (bijvoorbeeld 20 minuten) klopt is niet
 bevestigd (#1560, punt 2).
