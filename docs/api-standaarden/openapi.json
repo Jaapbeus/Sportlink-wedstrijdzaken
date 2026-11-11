@@ -4765,7 +4765,7 @@
         ],
         "operationId": "syncMatchesPostgres",
         "summary": "Handmatige Sportlink synchronisatie starten (Postgres-tier)",
-        "description": "**Tier: Postgres (productie).** Op de SQL Server-tier bestaat deze route niet (404) — daar\nheet hij `/sync-matches`.\n\nStart een Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).\nDe opgeslagen basis-URL moet de vaste Sportlink-dataservice zijn; anders stopt de sync\nvóór uitgaand verkeer. De client volgt geen HTTP-redirects.\nVereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key\nvia `?code=`, `AuthorizationLevel.Admin`).\n\n- **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)\n- **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar.\n  Een ontbrekende of onparseerbare `season` valt stil terug op de standaardmodus.\n\nMislukt één of meer deelstappen, dan volgt `207` in plaats van `200`: de geslaagde\ndeelstappen blijven staan, maar `lastsynctimestamp` wordt bewust niet bijgewerkt (#1081).\nAls een andere sync de gedeelde staging gebruikt, volgt `409` en wordt deze aanvraag niet uitgevoerd.\n",
+        "description": "**Tier: Postgres (productie).** Op de SQL Server-tier bestaat deze route niet (404) — daar\nheet hij `/sync-matches`.\n\nStart een Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).\nDe opgeslagen basis-URL moet de vaste Sportlink-dataservice zijn; anders stopt de sync\nvóór uitgaand verkeer. De client volgt geen HTTP-redirects.\nVereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key\nvia `?code=`, `AuthorizationLevel.Admin`).\n\n- **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)\n- **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar.\n  Een ontbrekende of onparseerbare `season` valt stil terug op de standaardmodus.\n\nMislukt één of meer deelstappen, dan volgt `207` in plaats van `200`: de geslaagde\ndeelstappen blijven staan, maar `lastsynctimestamp` wordt bewust niet bijgewerkt (#1081).\nEen ongeldige basis-URL geeft `207` met fase `configuratie` (#1779).\nAls een andere sync de gedeelde staging gebruikt, volgt `409` en wordt deze aanvraag niet uitgevoerd.\n",
         "security": [
           {
             "easyAuth": []
@@ -4823,6 +4823,22 @@
                       "type": "integer",
                       "example": 42
                     },
+                    "mislukteFases": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "teams",
+                          "programma",
+                          "uitslagen",
+                          "matchdetails",
+                          "configuratie"
+                        ]
+                      },
+                      "example": [
+                        "matchdetails"
+                      ]
+                    },
                     "melding": {
                       "type": "string",
                       "example": "Eén of meer deelstappen zijn mislukt; lastsynctimestamp is niet bijgewerkt. Zie het functielog voor de betrokken fase(s)."
@@ -4878,7 +4894,7 @@
         ],
         "operationId": "syncMatches",
         "summary": "Handmatige Sportlink synchronisatie starten (SQL Server-tier)",
-        "description": "**Tier: SQL Server.** Op de Postgres-tier (productie) bestaat deze route niet (404) — daar\nheet hij `/postgres/sync-matches`.\n\nStart een volledige Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).\nDe opgeslagen basis-URL moet de vaste Sportlink-dataservice zijn; anders stopt de sync\nvóór uitgaand verkeer. De client volgt geen HTTP-redirects.\nVereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key\nvia `?code=`, `AuthorizationLevel.Admin`).\n\n- **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)\n- **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar\n\nDeze tier kent de `207`-respons van de Postgres-tier niet. Als een andere sync de gedeelde\nstaging gebruikt, volgt `409` en wordt deze aanvraag niet uitgevoerd.\n",
+        "description": "**Tier: SQL Server.** Op de Postgres-tier (productie) bestaat deze route niet (404) — daar\nheet hij `/postgres/sync-matches`.\n\nStart een volledige Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).\nDe opgeslagen basis-URL moet de vaste Sportlink-dataservice zijn; anders stopt de sync\nvóór uitgaand verkeer. De client volgt geen HTTP-redirects.\nVereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key\nvia `?code=`, `AuthorizationLevel.Admin`).\n\n- **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)\n- **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar\n\nMislukt één of meer deelstappen, dan volgt `207` in plaats van `200` (pariteit met de\nPostgres-tier, #1779): de geslaagde deelstappen blijven staan, maar `LastSyncTimestamp`\nwordt bewust niet bijgewerkt (#1081). Een ongeldige basis-URL geeft `207` met fase\n`configuratie`. Als een andere sync de gedeelde staging gebruikt, volgt `409` en wordt\ndeze aanvraag niet uitgevoerd.\n",
         "security": [
           {
             "easyAuth": []
@@ -4913,6 +4929,50 @@
                 "schema": {
                   "type": "string",
                   "example": "Sync completed. WeekOffset range: -1 to 42."
+                }
+              }
+            }
+          },
+          "207": {
+            "description": "Gedeeltelijk mislukt — één of meer deelstappen zijn niet geslaagd (ook een\nontbrekende `sportlinkApiUrl`, fase `configuratie`) en `LastSyncTimestamp` is niet\nbijgewerkt (#1081, #1779). Zelfde body als `/postgres/sync-matches`.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "gedeeltelijk mislukt"
+                    },
+                    "weekOffsetFrom": {
+                      "type": "integer",
+                      "example": -1
+                    },
+                    "weekOffsetTo": {
+                      "type": "integer",
+                      "example": 42
+                    },
+                    "mislukteFases": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "teams",
+                          "programma",
+                          "uitslagen",
+                          "matchdetails",
+                          "configuratie"
+                        ]
+                      },
+                      "example": [
+                        "matchdetails"
+                      ]
+                    },
+                    "melding": {
+                      "type": "string",
+                      "example": "Eén of meer deelstappen zijn mislukt; lastsynctimestamp is niet bijgewerkt. Zie het functielog voor de betrokken fase(s)."
+                    }
+                  }
                 }
               }
             }

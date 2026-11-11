@@ -276,7 +276,7 @@ controleer_verwerkingsvolgorde() {  # <bestand> <methode> <egress-helper> <sync-
     fail=1
   fi
 }
-controleer_verwerkingsvolgorde "FunctionApp/Sync/SyncJobProcessor.cs" "ProcessClaimedSqlServerJobAsync" "BlokkeerBuitenProductieAsync" "RunSyncAsync"
+controleer_verwerkingsvolgorde "FunctionApp/Sync/SyncJobProcessor.cs" "ProcessClaimedSqlServerJobAsync" "BlokkeerBuitenProductieAsync" "RunConfiguredSyncAsync"
 controleer_verwerkingsvolgorde "FunctionApp.Postgres/Sync/SyncJobProcessor.cs" "ProcessClaimedPostgresJobAsync" "OverslaanZonderUitgaandVerkeerAsync" "RunConfiguredSyncAsync"
 
 [ "$fail" -eq 0 ] || exit 1

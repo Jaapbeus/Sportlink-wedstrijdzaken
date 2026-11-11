@@ -189,7 +189,7 @@ cp "$TMP_B" "$ALLOWLIST"
 
 # Volgorde in de geclaimde syncjob-worker: zonder poortbeslissing vóór de sync-call rood.
 sed 's/if (await BlokkeerBuitenProductieAsync(/if (await Uitgeschakeld(/' "$TMP_SQL" > "$SJP_SQL"
-verwacht falen "ProcessClaimedSqlServerJobAsync zonder poortbeslissing vóór RunSyncAsync"
+verwacht falen "ProcessClaimedSqlServerJobAsync zonder poortbeslissing vóór RunConfiguredSyncAsync"
 cp "$TMP_SQL" "$SJP_SQL"
 
 sed 's/if (await OverslaanZonderUitgaandVerkeerAsync(/if (await Uitgeschakeld(/' "$TMP_PG" > "$SJP_PG"
@@ -214,7 +214,7 @@ cp "$TMP_SQL" "$SJP_SQL"
 
 sed 's/if (await BlokkeerBuitenProductieAsync(/if (await Uitgeschakeld(/' "$TMP_SQL" \
   | awk '{ print } /if \(await Uitgeschakeld\(/ { print "        static Task<bool> BlokkeerBuitenProductieAsync(int x) => Task.FromResult(false);" }' > "$SJP_SQL"
-verwacht falen "ProcessClaimedSqlServerJobAsync: lokale helperdefinitie vóór RunSyncAsync telt niet"
+verwacht falen "ProcessClaimedSqlServerJobAsync: lokale helperdefinitie vóór RunConfiguredSyncAsync telt niet"
 cp "$TMP_SQL" "$SJP_SQL"
 
 verwacht slagen "hersteld: schone werkboom is weer groen"

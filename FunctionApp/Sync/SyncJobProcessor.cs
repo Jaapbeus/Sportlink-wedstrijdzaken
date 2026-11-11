@@ -3,7 +3,6 @@ using Planner.Shared.Sync;
 using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
-using Planner.Shared.Sync;
 using static SportlinkFunction.SystemUtilities;
 
 namespace SportlinkFunction;
@@ -62,22 +61,14 @@ public static class SyncJobProcessor
             await WaitForDatabaseAsync(log);
             await AppSettings.LoadSettingsAsync(log);
 
-            if (!SportlinkDataserviceBasisUrl.TryGetCanonical(
-                    AppSettings.GetSetting("sportlinkApiUrl"), out var sportlinkApiUrl))
-            {
-                await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false,
-                    errorMessage: "Sportlink data-service base URL is invalid.");
-                return;
-            }
-            var sportlinkClientId = $"clientId={AppSettings.GetSetting("sportlinkClientId")}";
-
-            var gedeeltelijkMislukt = await FetchAndStoreApiData.RunSyncAsync(
-                job.WeekOffsetFrom, job.WeekOffsetTo, sportlinkApiUrl, sportlinkClientId, log);
-            if (gedeeltelijkMislukt)
+            // #1779: een ongeldige of ontbrekende sportlinkApiUrl wordt de mislukte fase "configuratie"
+            // (pariteit met de Postgres-tier); de jobfoutmelding noemt die fase.
+            var uitkomst = await FetchAndStoreApiData.RunConfiguredSyncAsync(job.WeekOffsetFrom, job.WeekOffsetTo, log);
+            if (uitkomst.GedeeltelijkMislukt)
             {
                 log.LogWarning("SyncJobProcessor: job {JobId} gedeeltelijk mislukt", job.JobId);
                 await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false,
-                    errorMessage: "Sync gedeeltelijk mislukt — zie het functielog voor de betrokken fase(s).");
+                    errorMessage: uitkomst.JobFoutmelding());
                 return;
             }
 
