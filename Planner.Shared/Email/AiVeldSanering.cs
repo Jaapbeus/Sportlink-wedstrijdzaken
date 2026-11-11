@@ -115,7 +115,7 @@ public static partial class AiVeldSanering
 
     // Inspect the complete numeric candidate before allowing planning syntax: a date/time prefix
     // must not hide a longer number, including when letters surround that number.
-    [GeneratedRegex(@"\+?\(?\d(?:[()./\p{Zs}:\-]*\d)*\)?", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"\+?\(?\d(?:[()./\p{Zs}:\-–]*\d)*\)?", RegexOptions.CultureInvariant)]
     private static partial Regex ProviderNummerPatroon();
 
     /// <summary>Maskeert contactpatronen voordat externe berichttekst naar de AI-provider gaat.</summary>
@@ -165,12 +165,21 @@ public static partial class AiVeldSanering
         string[] datumFormaten = ["yyyy-M-d", "yyyy/M/d", "yyyy.M.d", "d-M-yyyy", "d/M/yyyy",
             "d.M.yyyy", "d-M-yy", "d/M/yy", "d.M.yy"];
         string[] tijdFormaten = ["H:mm", "HH:mm", "H.mm", "HH.mm"];
-        return kandidaat.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).All(deel =>
+        var delen = kandidaat.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        return delen.Select((deel, i) =>
             DateOnly.TryParseExact(deel, datumFormaten, CultureInfo.InvariantCulture, DateTimeStyles.None, out _)
             || IsTijd(deel, tijdFormaten)
             || IsTijdbereik(deel, tijdFormaten)
-            || IsDagMaand(deel));
+            || IsDagMaand(deel)
+            || IsLosseBereikstreep(delen, i, tijdFormaten)).All(ok => ok);
     }
+
+    // "10:30 - 12:00": een los streepje (of gedachtestreepje) is alleen planning tussen twee losse tijden.
+    private static bool IsLosseBereikstreep(string[] delen, int i, string[] formaten)
+        => delen[i] is "-" or "–" && i > 0 && i < delen.Length - 1
+            && IsTijd(delen[i - 1], formaten) && IsTijd(delen[i + 1], formaten)
+            && (i < 2 || delen[i - 2] is not ("-" or "–"))
+            && (i + 2 >= delen.Length || delen[i + 2] is not ("-" or "–"));
 
     private static bool IsTijd(string deel, string[] formaten)
         => TimeOnly.TryParseExact(deel, formaten, CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
