@@ -1,4 +1,5 @@
 using Npgsql;
+using Planner.Shared.Sync;
 
 namespace FunctionApp.Postgres.Sync;
 
@@ -48,7 +49,7 @@ internal static class SyncJobsRepository
             "WHERE id = @id AND status = 'pending' RETURNING id",
             connection);
         command.Parameters.AddWithValue("id", id);
-        return global::Planner.Shared.Sync.SyncJobTransitions.IsClaimGranted(await command.ExecuteScalarAsync());
+        return SyncJobTransitions.IsClaimGranted(await command.ExecuteScalarAsync());
     }
 
     internal static async Task MarkCompletedAsync(string connectionString, Guid id, bool succeeded, string? errorMessage)
@@ -60,8 +61,8 @@ internal static class SyncJobsRepository
             "WHERE id = @id AND status = 'running'",
             connection);
         command.Parameters.AddWithValue("id", id);
-        command.Parameters.AddWithValue("status", global::Planner.Shared.Sync.SyncJobTransitions.CompletionStatus(succeeded));
-        command.Parameters.AddWithValue("errormessage", (object?)global::Planner.Shared.Sync.SyncJobTransitions.TruncateError(errorMessage) ?? DBNull.Value);
+        command.Parameters.AddWithValue("status", SyncJobTransitions.CompletionStatus(succeeded));
+        command.Parameters.AddWithValue("errormessage", (object?)SyncJobTransitions.TruncateError(errorMessage) ?? DBNull.Value);
         await command.ExecuteNonQueryAsync();
     }
 
