@@ -24,6 +24,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ### Fixed
 - De Postgres-instellingenloader laadt nu ook de vijf bestaande e-mailinstellingen voor de mailboxverwerking en wist ze bij herladen na `NULL`, gelijk aan het gedrag van de SQL Server-tier (#1798).
 - Synchronization uses a database-wide lease while shared staging is in use. Concurrent manual requests receive `409`, timer runs skip explicitly, and queued jobs fail without a second attempt. Queue workers also claim each pending job atomically, so duplicate deliveries do not start duplicate sync work. SQL Server also rolls configured club seasons forward before choosing a timer, manual or queued sync window; existing queued offsets remain intact. A SQL Server merge error now stops reconciliation and leaves the previous successful sync timestamp unchanged; both database tiers are covered (#1818).
+- SQL Server now separates composite team business-key components with the PostgreSQL tier's existing separator, while preserving single-column formatting and already stored keys (#1818).
 
 ## [3.16.0.0] — 2026-11-10
 

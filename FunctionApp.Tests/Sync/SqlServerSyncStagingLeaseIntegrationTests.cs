@@ -92,11 +92,107 @@ public sealed class SqlServerSyncStagingLeaseIntegrationTests
         }
     }
 
+    [SqlServerFact]
+    public async Task RunSyncAsync_ComposieteTeamSleutels_ZijnOndubbelzinnigEnBewarenHistorischeSleutel()
+    {
+        var clubCode = TestClubCode();
+        var priorSettings = await MaakAlleenTestclubSyncbaarAsync(clubCode);
+        SystemUtilities.AppSettings.SetForTests("clubCode", clubCode);
+        using var server = SportlinkFixtures.BuildServer(90000003, clubCode);
+        server.RespondWithJson("/teams", TeamsJsonForCompositeKey(clubCode, includeCollision: false));
+
+        try
+        {
+            await RunAsync(server);
+
+            // Simulate a key persisted by the pre-fix encoding. The component match must still
+            // update this row without rewriting its historical business key.
+            await ExecuteAsync(
+                "UPDATE [his].[teams] SET [bk_teams] = N'1234' " +
+                "WHERE [ClubCode] = @club AND [teamcode] = 1 AND [lokaleteamcode] = 23 AND [poulecode] = 4;",
+                ("@club", clubCode));
+
+            server.RespondWithJson("/teams", TeamsJsonForCompositeKey(clubCode, includeCollision: true));
+            await RunAsync(server);
+
+            await using var connection = new SqlConnection(ConnectionString);
+            await connection.OpenAsync();
+            await using var command = new SqlCommand(
+                "SELECT [teamcode], [lokaleteamcode], [poulecode], [bk_teams] " +
+                "FROM [his].[teams] WHERE [ClubCode] = @club;", connection);
+            command.Parameters.AddWithValue("@club", clubCode);
+            var keys = new Dictionary<(long TeamCode, long LocalCode, long? PouleCode), string>();
+            await using (var reader = await command.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                {
+                    var pouleCode = reader.IsDBNull(2) ? (long?)null : reader.GetInt64(2);
+                    keys.Add((reader.GetInt64(0), reader.GetInt64(1), pouleCode), reader.GetString(3));
+                }
+            }
+
+            keys.Should().HaveCount(4, "distinct tuples, including the historical one, remain separate");
+            keys[(1, 23, 4)].Should().Be("1234", "existing stored business keys are not rewritten");
+            keys[(12, 3, 4)].Should().Be($"12\u00013\u00014");
+            keys[(30, 1, null)].Should().Be($"30\u00011\u0001", "NULL remains the empty component");
+            keys[(30, 1, 0)].Should().Be($"30\u00011\u00010", "zero remains distinct from NULL");
+
+            await using (var matchConnection = new SqlConnection(ConnectionString))
+            {
+                await matchConnection.OpenAsync();
+                await using var matchCommand = new SqlCommand(
+                    "SELECT [bk_matches] FROM [his].[matches] WHERE [ClubCode] = @club AND [wedstrijdcode] = 90000003;",
+                    matchConnection);
+                matchCommand.Parameters.AddWithValue("@club", clubCode);
+                ((string?)await matchCommand.ExecuteScalarAsync()).Should().Be("90000003",
+                    "single-column business keys retain their established format");
+            }
+
+            // A second identical pass proves the generated keys also match and do not duplicate.
+            await RunAsync(server);
+            (await CountTeamsAsync(clubCode)).Should().Be(4);
+        }
+        finally
+        {
+            await CleanupAsync(clubCode, priorSettings);
+            SystemUtilities.AppSettings.ResetForTests();
+        }
+    }
+
     private static string TestClubCode() => "t" + Guid.NewGuid().ToString("N")[..12];
 
     private static string TeamsJson(string clubCode, int teamCode) => $$"""
         [{"teamcode":{{teamCode}},"lokaleteamcode":1,"poulecode":7,"teamnaam":"{{clubCode}} JO13-1"}]
         """;
+
+    private static string TeamsJsonForCompositeKey(string clubCode, bool includeCollision)
+    {
+        if (!includeCollision)
+        {
+            return $$"""
+                [{"teamcode":1,"lokaleteamcode":23,"poulecode":4,"teamnaam":"{{clubCode}} JO13-1"}]
+                """;
+        }
+
+        return $$"""
+                [
+                  {"teamcode":1,"lokaleteamcode":23,"poulecode":4,"teamnaam":"{{clubCode}} JO13-1"},
+                  {"teamcode":12,"lokaleteamcode":3,"poulecode":4,"teamnaam":"{{clubCode}} JO13-2"},
+                  {"teamcode":30,"lokaleteamcode":1,"poulecode":null,"teamnaam":"{{clubCode}} JO13-3"},
+                  {"teamcode":30,"lokaleteamcode":1,"poulecode":0,"teamnaam":"{{clubCode}} JO13-4"}
+                ]
+                """;
+    }
+
+    private static async Task<int> CountTeamsAsync(string clubCode)
+    {
+        await using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand(
+            "SELECT COUNT(*) FROM [his].[teams] WHERE [ClubCode] = @club;", connection);
+        command.Parameters.AddWithValue("@club", clubCode);
+        return (int)(await command.ExecuteScalarAsync())!;
+    }
 
     private static Task RunAsync(SportlinkFixtureServer server) =>
         SportlinkSyncPipeline.RunSyncAsync(0, 0, server.BaseUrl, "clientId=fixture-test", NullLogger.Instance);
