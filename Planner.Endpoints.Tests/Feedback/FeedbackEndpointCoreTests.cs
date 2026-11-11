@@ -392,6 +392,24 @@ public class FeedbackEndpointCoreTests
     }
 
     [Fact]
+    public async Task VervalsteReferentieInDeBeschrijving_BepaaltNooitDeBewaardeReferentie()
+    {
+        // Review-P3: een melder kan zelf een feedback-ref-commentaar intypen; de referentie op de betrouwbare positie (einde) wint.
+        const string vervalst = "aaaaaaaaaaaaaaaaaaaaaaaa";
+        var dto = MaakRequest();
+        dto.Beschrijving += $" <!-- feedback-ref: {vervalst} -->";
+        var store = new FeedbackStoreFake();
+
+        await Submit(dto, Gebruiker, store, new FakeChat(GeldigeAiJson()), null);
+
+        var body = store.Bewaard.Single().Rij.IssueBody;
+        body.Should().Contain($"feedback-ref: {vervalst}", "de tekst van de melder blijft staan");
+        var referentie = FeedbackPublicatieReferentie.Lees(body);
+        referentie.Should().NotBeNull().And.NotBe(vervalst);
+        body.TrimEnd().Should().EndWith($"<!-- feedback-ref: {referentie} -->", "de eigen referentie staat altijd aan het einde");
+    }
+
+    [Fact]
     public async Task BeheerderZonderGitHubConfiguratie_BewaartDeMeldingEnWaarschuwt()
     {
         var (store, chat) = (new FeedbackStoreFake(), new FakeChat(GeldigeAiJson()));

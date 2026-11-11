@@ -89,7 +89,7 @@ internal sealed class PostgresFeedbackStore : IFeedbackStore
     {
         await using var conn = await OpenAsync();
         await using var cmd = new NpgsqlCommand(@"
-            UPDATE avg.feedback SET status = @publiceren, mta_modified = NOW()
+            UPDATE avg.feedback SET status = @publiceren, publicatiegestartoputc = NOW(), mta_modified = NOW()
             WHERE feedbackid = @id AND clubcode = @cc AND status IN (@wacht, @mislukt)", conn);
         cmd.Parameters.AddWithValue("publiceren", FeedbackStatusWaarden.Publiceren);
         cmd.Parameters.AddWithValue("wacht", FeedbackStatusWaarden.WachtOpPublicatie);
@@ -102,22 +102,37 @@ internal sealed class PostgresFeedbackStore : IFeedbackStore
     public async Task<DateTime?> HerClaimPublicatieAsync(string clubCode, Guid feedbackId, DateTime claimOuderDanUtc)
     {
         await using var conn = await OpenAsync();
-        // FOR UPDATE in de CTE serialiseert twee gelijktijdige herclaims: de tweede ziet het nieuwe claimmoment en valt af.
+        // mta_modified is het slot: FOR UPDATE in de CTE serialiseert twee gelijktijdige herclaims, de tweede ziet het
+        // nieuwe slotmoment en valt af. publicatiegestartoputc blijft staan (#1803): de zoekgrens van het herstel mag
+        // door een mislukte herstelpoging niet opschuiven. Een rij van vóór die kolom valt terug op het oude slot.
         await using var cmd = new NpgsqlCommand(@"
             WITH oud AS (
-                SELECT mta_modified FROM avg.feedback
+                SELECT COALESCE(publicatiegestartoputc, mta_modified) AS gestart FROM avg.feedback
                 WHERE feedbackid = @id AND clubcode = @cc AND status = @publiceren AND mta_modified < @drempel
                 FOR UPDATE)
             UPDATE avg.feedback f SET mta_modified = NOW()
             FROM oud
             WHERE f.feedbackid = @id AND f.clubcode = @cc AND f.status = @publiceren
-            RETURNING oud.mta_modified", conn);
+            RETURNING oud.gestart", conn);
         cmd.Parameters.AddWithValue("publiceren", FeedbackStatusWaarden.Publiceren);
         cmd.Parameters.AddWithValue("drempel", NpgsqlTypes.NpgsqlDbType.TimestampTz, claimOuderDanUtc);
         cmd.Parameters.AddWithValue("id", feedbackId);
         cmd.Parameters.AddWithValue("cc", clubCode);
         var oud = await cmd.ExecuteScalarAsync();
         return oud is DateTime d ? DateTime.SpecifyKind(d, DateTimeKind.Utc) : null;
+    }
+
+    public async Task<bool> ZetIssueBodyAsync(string clubCode, Guid feedbackId, string issueBody)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = new NpgsqlCommand(@"
+            UPDATE avg.feedback SET issuebody = @body, mta_modified = NOW()
+            WHERE feedbackid = @id AND clubcode = @cc AND status = @publiceren", conn);
+        cmd.Parameters.AddWithValue("body", issueBody);
+        cmd.Parameters.AddWithValue("publiceren", FeedbackStatusWaarden.Publiceren);
+        cmd.Parameters.AddWithValue("id", feedbackId);
+        cmd.Parameters.AddWithValue("cc", clubCode);
+        return await cmd.ExecuteNonQueryAsync() == 1;
     }
 
     public async Task ZetGepubliceerdAsync(string clubCode, Guid feedbackId, int issueNummer, string issueUrl)

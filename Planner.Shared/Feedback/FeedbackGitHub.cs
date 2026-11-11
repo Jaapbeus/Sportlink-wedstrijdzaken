@@ -107,11 +107,16 @@ internal static class FeedbackGitHub
     }
 
     private const int ZoekPaginaGrootte = 100;
-    private const int ZoekMaxPaginas = 5;
+    private const int ZoekMaxPaginas = 10;
 
     /// <summary>
     /// Zoekt via de issuelijst (niet de search-API: die loopt achter door indexvertraging, #1803) of er al een
-    /// issue met <paramref name="referentie"/> in de body bestaat. <c>gelukt == false</c> betekent: onbekend
+    /// issue met <paramref name="referentie"/> in de body bestaat dat sinds <paramref name="sindsUtc"/> is
+    /// aangemaakt. De lijst staat op aanmaakdatum, nieuwste eerst; het zoeken stopt bij het eerste issue dat
+    /// vóór <paramref name="sindsUtc"/> is aangemaakt, zodat alleen issues van na het begin van de poging
+    /// meetellen (<c>since</c> filtert op <c>updated_at</c> en laat ook oudere, recent bijgewerkte issues door).
+    /// Bij meerdere treffers wint het oudste issue: de referentie was geheim tot de eerste POST, dus een
+    /// latere kopie door een derde kan nooit eerder bestaan. <c>gelukt == false</c> betekent: onbekend
     /// (fout, afkapping of te veel resultaten); de aanroeper moet dan niet opnieuw posten.
     /// </summary>
     internal static async Task<(bool gelukt, FeedbackGevondenIssue? gevonden)> ZoekIssueMetReferentieAsync(
@@ -120,9 +125,11 @@ internal static class FeedbackGitHub
     {
         using var http = MaakClient(handler, timeout);
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", pat);
-        var since = DateTime.SpecifyKind(sindsUtc, DateTimeKind.Utc).ToString("yyyy-MM-ddTHH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture);
+        var grens = DateTime.SpecifyKind(sindsUtc, DateTimeKind.Utc);
+        var since = grens.ToString("yyyy-MM-ddTHH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture);
         try
         {
+            FeedbackGevondenIssue? oudste = null;
             for (var pagina = 1; pagina <= ZoekMaxPaginas; pagina++)
             {
                 var url = $"https://api.github.com/repos/{owner}/{repo}/issues?state=all&sort=created&direction=desc&since={since}&per_page={ZoekPaginaGrootte}&page={pagina}";
@@ -135,19 +142,21 @@ internal static class FeedbackGitHub
                 var lijst = JArray.Parse(await resp.Content.ReadAsStringAsync(cancellationToken));
                 foreach (var item in lijst)
                 {
+                    if (item["created_at"]?.Value<DateTime>() is { } aangemaakt && aangemaakt.ToUniversalTime() < grens)
+                        return (true, oudste);
                     if (item["pull_request"] is not null) continue;
                     if (FeedbackPublicatieReferentie.Lees(item["body"]?.Value<string>()) != referentie) continue;
                     var nummer = item["number"]?.Value<int>();
                     var issueUrl = item["html_url"]?.Value<string>();
                     if (nummer is null || string.IsNullOrEmpty(issueUrl)) return (false, null);
-                    return (true, new FeedbackGevondenIssue(nummer.Value, issueUrl));
+                    oudste = new FeedbackGevondenIssue(nummer.Value, issueUrl);
                 }
-                if (lijst.Count < ZoekPaginaGrootte) return (true, null);
+                if (lijst.Count < ZoekPaginaGrootte) return (true, oudste);
             }
-            log.LogWarning("GitHub-issuelijst te lang om zeker te zijn dat het issue ontbreekt; status blijft herstelbaar");
+            log.LogWarning("GitHub-issuelijst te lang om zeker te zijn welk issue bij de melding hoort; status blijft herstelbaar");
             return (false, null);
         }
-        catch (Exception ex) when (ex is OperationCanceledException or HttpRequestException or JsonException)
+        catch (Exception ex) when (ex is OperationCanceledException or HttpRequestException or JsonException or FormatException or InvalidCastException)
         {
             log.LogWarning("GitHub-issuelijst ophalen afgebroken; status blijft herstelbaar ({ErrorType})", ex.GetType().Name);
             return (false, null);

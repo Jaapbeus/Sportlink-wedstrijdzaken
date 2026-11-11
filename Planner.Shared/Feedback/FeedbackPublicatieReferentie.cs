@@ -10,6 +10,11 @@ namespace Planner.Shared.Feedback;
 /// aangemaakt issue herkennen zonder dat melder-identiteit, e-mailadres of een databasesleutel
 /// in het publieke issue staat. Alleen kleine letters, zodat de PII-gate en de redactie
 /// (cijferreeksen, tokens) er nooit op aanslaan.
+/// <para>
+/// De betrouwbare positie is het einde van de tekst: <see cref="VoegToe"/> plaatst er altijd een
+/// nieuwe referentie en <see cref="Lees"/> neemt de laatste. Een melder die zelf een
+/// <c>feedback-ref</c>-commentaar in de beschrijving zet, bepaalt de referentie dus nooit.
+/// </para>
 /// </summary>
 public static class FeedbackPublicatieReferentie
 {
@@ -27,18 +32,22 @@ public static class FeedbackPublicatieReferentie
             for (var i = 0; i < span.Length; i++) span[i] = (char)('a' + RandomNumberGenerator.GetInt32(26));
         });
 
-    /// <summary>Voegt de referentie als verborgen HTML-commentaar toe; een body die er al een heeft blijft ongewijzigd.</summary>
+    /// <summary>
+    /// Zet de referentie als verborgen HTML-commentaar aan het einde van de tekst. Altijd, ook als de tekst al
+    /// een (mogelijk door de melder ingetypt) commentaar bevat: alleen de laatste telt (<see cref="Lees"/>).
+    /// Roep dit één keer per melding aan, vóór de eerste POST.
+    /// </summary>
     public static string VoegToe(string body, string referentie) =>
-        Lees(body) is not null ? body : body.TrimEnd() + "\n\n" + Voorvoegsel + referentie + Achtervoegsel + "\n";
+        body.TrimEnd() + "\n\n" + Voorvoegsel + referentie + Achtervoegsel + "\n";
 
-    /// <summary>De referentie uit een issuetekst, of <c>null</c> (oudere melding of geen referentie).</summary>
+    /// <summary>De laatste referentie in een issuetekst (de betrouwbare positie), of <c>null</c> (oudere melding of geen referentie).</summary>
     public static string? Lees(string? body)
     {
         if (string.IsNullOrEmpty(body)) return null;
         try
         {
-            var m = Patroon.Match(body);
-            return m.Success ? m.Groups["ref"].Value : null;
+            var treffers = Patroon.Matches(body);
+            return treffers.Count > 0 ? treffers[^1].Groups["ref"].Value : null;
         }
         catch (RegexMatchTimeoutException)
         {
@@ -59,6 +68,6 @@ public static class FeedbackPublicatieHerstel
     /// </summary>
     public static readonly TimeSpan ClaimVerlooptNa = TimeSpan.FromMinutes(2);
 
-    /// <summary>Marge voor klokverschil tussen database en GitHub bij het zoeken vanaf het claimmoment.</summary>
+    /// <summary>Marge voor klokverschil tussen database en GitHub bij het zoeken vanaf het begin van de publicatiepoging.</summary>
     public static readonly TimeSpan ZoekMarge = TimeSpan.FromMinutes(5);
 }

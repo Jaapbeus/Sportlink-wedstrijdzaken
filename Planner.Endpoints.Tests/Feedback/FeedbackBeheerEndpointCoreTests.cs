@@ -277,6 +277,91 @@ public class FeedbackBeheerEndpointCoreTests
     }
 
     [Fact]
+    public async Task Herstel_MisluktePogingen_SchuivenDeZoekgrensNietOp_EnKoppelenZonderTweedeIssue()
+    {
+        // Review-P2: elke herclaim ververste vroeger het claimmoment, waarna de volgende poging vanaf dát moment zocht en
+        // het issue van de eerste POST miste. Nu: eerste POST dubbelzinnig, twee zoekfouten, één gevonden-maar-receipt-faalt,
+        // en pas de vijfde poging koppelt — alle zoekacties starten bij het begin van de eerste poging.
+        var store = new FeedbackStoreFake { Detail = MaakDetail(body: FeedbackPublicatieReferentie.VoegToe("Schone issuetekst.", Referentie)) };
+        var posts = 0;
+        Func<string, string, string[], Task<(int, string)>> github = (_, _, _) =>
+        {
+            posts++;
+            throw new FeedbackPublicatieUitkomstOnbekendException(new TaskCanceledException());
+        };
+        var bestaand = new FeedbackGevondenIssue(41, "https://github.com/example/repo/issues/41");
+        var antwoorden = new Queue<Func<(bool, FeedbackGevondenIssue?)>>(new Func<(bool, FeedbackGevondenIssue?)>[]
+        {
+            () => (false, null), () => throw new HttpRequestException("onbereikbaar"), () => (true, bestaand), () => (true, bestaand),
+        });
+        var zoeken = new List<DateTime>();
+        Func<string, DateTime, Task<(bool, FeedbackGevondenIssue?)>> zoek = (_, sinds) =>
+        {
+            zoeken.Add(sinds);
+            return Task.FromResult(antwoorden.Dequeue()());
+        };
+        var stap = TimeSpan.FromMinutes(6);
+
+        (await FeedbackBeheerEndpointCore.PubliceerAsync(ClubCode, Beheerder, store, Id, github, NullLogger.Instance, zoek))
+            .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(502);
+        var eerstePost = store.PublicatieGestart[Id];
+        store.ReceiptFaaltKeren = 1;
+        var uitkomsten = new List<IActionResult>();
+        for (var poging = 1; poging <= 4; poging++)
+        {
+            store.VerstrijkTijd(stap);
+            uitkomsten.Add(await FeedbackBeheerEndpointCore.PubliceerAsync(ClubCode, Beheerder, store, Id, github, NullLogger.Instance, zoek));
+        }
+
+        uitkomsten.Take(3).Should().AllSatisfy(r => r.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(502));
+        uitkomsten[3].Should().BeOfType<OkObjectResult>();
+        posts.Should().Be(1, "na de eerste dubbelzinnige POST wordt nooit blind opnieuw geplaatst");
+        store.Gepubliceerd[Id].Nummer.Should().Be(41);
+        zoeken.Should().HaveCount(4);
+        for (var i = 0; i < 4; i++)
+            zoeken[i].Should().Be(eerstePost - (stap * (i + 1)) - FeedbackPublicatieHerstel.ZoekMarge,
+                $"poging {i + 1} zoekt vanaf het begin van de eerste POST, ook na mislukte herstelpogingen");
+    }
+
+    [Fact]
+    public async Task Publiceer_OudereMeldingZonderReferentie_KrijgtVoorDeEerstePostEenBewaardeReferentie()
+    {
+        // Review-P3: een melding van vóór #1803 krijgt onder de claim, vóór de eerste POST, alsnog een referentie.
+        var store = new FeedbackStoreFake { Detail = MaakDetail() };
+        var bodies = new List<string>();
+        Func<string, string, string[], Task<(int, string)>> github = (_, body, _) =>
+        {
+            bodies.Add(body);
+            throw new FeedbackPublicatieUitkomstOnbekendException(new TaskCanceledException());
+        };
+
+        await FeedbackBeheerEndpointCore.PubliceerAsync(ClubCode, Beheerder, store, Id, github, NullLogger.Instance, Zoek(out _));
+
+        var bewaard = store.IssueBodyWijzigingen.Should().ContainSingle().Subject.Body;
+        var referentie = FeedbackPublicatieReferentie.Lees(bewaard);
+        referentie.Should().NotBeNull();
+        bodies.Single().Should().Be(bewaard, "precies de bewaarde tekst gaat naar GitHub");
+
+        // Het herstel daarna zoekt op die bewaarde referentie en voegt geen nieuwe toe.
+        store.VerstrijkTijd(TimeSpan.FromMinutes(6));
+        await FeedbackBeheerEndpointCore.PubliceerAsync(ClubCode, Beheerder, store, Id, github, NullLogger.Instance, Zoek(out var zoeken));
+        zoeken.Should().ContainSingle().Which.Referentie.Should().Be(referentie);
+        store.IssueBodyWijzigingen.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Publiceer_ReferentieNietBewaard_PostNietEnGeeftDeClaimVrij()
+    {
+        var store = new FeedbackStoreFake { Detail = MaakDetail(), IssueBodyBewarenFaalt = true };
+
+        var result = await FeedbackBeheerEndpointCore.PubliceerAsync(ClubCode, Beheerder, store, Id, GitHub(out var aanroepen), NullLogger.Instance);
+
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(502);
+        aanroepen.Should().BeEmpty("zonder bewaarde referentie zou een dubbelzinnige POST niet herstelbaar zijn");
+        store.Statussen[Id].Should().Be(FeedbackStatusWaarden.GitHubMislukt, "er is niets verstuurd, dus de melding is gewoon opnieuw te publiceren");
+    }
+
+    [Fact]
     public async Task Herstel_ZonderZoekdelegate_Geeft503ZonderClaimWijziging()
     {
         var store = new FeedbackStoreFake { Detail = MaakVastgelopen() };

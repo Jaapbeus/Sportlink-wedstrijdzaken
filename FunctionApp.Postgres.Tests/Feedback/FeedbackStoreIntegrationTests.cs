@@ -123,11 +123,35 @@ public class FeedbackStoreIntegrationTests
             await s.ClaimPublicatieAsync(club, rij.FeedbackId);
 
             (await s.HerClaimPublicatieAsync(club, rij.FeedbackId, DateTime.UtcNow.AddMinutes(-2))).Should().BeNull("een verse claim kan nog lopen");
-            (await s.HerClaimPublicatieAsync(club, rij.FeedbackId, DateTime.UtcNow.AddMinutes(1))).Should().NotBeNull("een oude claim is herclaimbaar");
-            (await s.HerClaimPublicatieAsync(club, rij.FeedbackId, DateTime.UtcNow.AddMinutes(-2))).Should().BeNull("de herclaim ververst het claimmoment");
+            var gestart = await s.HerClaimPublicatieAsync(club, rij.FeedbackId, DateTime.UtcNow.AddMinutes(1));
+            gestart.Should().NotBeNull("een oude claim is herclaimbaar");
+            (await s.HerClaimPublicatieAsync(club, rij.FeedbackId, DateTime.UtcNow.AddMinutes(-2))).Should().BeNull("de herclaim ververst het slot");
+            (await s.HerClaimPublicatieAsync(club, rij.FeedbackId, DateTime.UtcNow.AddMinutes(1))).Should().Be(gestart,
+                "het begin van de publicatiepoging (de zoekgrens van het herstel) schuift bij een herclaim nooit op (#1803)");
 
             await s.ZetGepubliceerdAsync(club, rij.FeedbackId, 77, "https://github.com/example/repo/issues/77");
             (await s.HerClaimPublicatieAsync(club, rij.FeedbackId, DateTime.UtcNow.AddMinutes(1))).Should().BeNull("een gepubliceerde melding is niet te herclaimen");
+        }
+        finally { await OpruimenAsync(club); }
+    }
+
+    [PostgresFact]
+    public async Task ZetIssueBody_AlleenOnderEenClaim()
+    {
+        var club = NieuweClub();
+        try
+        {
+            var s = Store();
+            var rij = Rij(club);
+            await s.BewaarAsync(rij, []);
+            var metReferentie = FeedbackPublicatieReferentie.VoegToe(rij.IssueBody, FeedbackPublicatieReferentie.Nieuw());
+
+            (await s.ZetIssueBodyAsync(club, rij.FeedbackId, metReferentie)).Should().BeFalse("zonder claim wordt de tekst niet gewijzigd");
+            await s.ClaimPublicatieAsync(club, rij.FeedbackId);
+            (await s.ZetIssueBodyAsync("ANDERECLUB", rij.FeedbackId, metReferentie)).Should().BeFalse("nooit over clubgrenzen");
+            (await s.ZetIssueBodyAsync(club, rij.FeedbackId, metReferentie)).Should().BeTrue();
+
+            (await s.GetDetailAsync(club, rij.FeedbackId))!.IssueBody.Should().Be(metReferentie);
         }
         finally { await OpruimenAsync(club); }
     }

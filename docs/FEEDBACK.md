@@ -47,15 +47,27 @@ melding ──► PII-gates ──► AI-structurering ──► opslag in avg.F
 * **Automatisch herstel (#1803).** Bij indienen krijgt de bewaarde `IssueBody` één keer een unieke,
   niet-herleidbare publicatiereferentie (24 willekeurige letters in een verborgen HTML-commentaar,
   `FeedbackPublicatieReferentie`); ze staat dus vóór de eerste POST in de database en wordt bij elke
-  poging hergebruikt. Na een dubbelzinnige POST (time-out, verbroken verbinding, HTTP 408/5xx,
-  onleesbare 2xx, mislukte receipt-opslag) blijft de status `publiceren`. "Publiceer" is dan weer
-  mogelijk: de server herclaimt atomair (`HerClaimPublicatieAsync`, alleen als de claim ouder is dan
-  2 minuten, anders `409`), zoekt via de issuelijst (`GET /repos/{owner}/{repo}/issues?state=all&since=…`,
+  poging hergebruikt. De referentie staat altijd aan het einde van de tekst en alleen de laatste telt:
+  een `feedback-ref`-commentaar dat een melder zelf intypt, bepaalt de referentie nooit. Een melding van
+  vóór deze wijziging krijgt haar referentie bij de eerste publicatie, onder de claim en vóór de POST
+  (`ZetIssueBodyAsync`); lukt dat bewaren niet, dan wordt niets verstuurd en gaat de claim terug naar
+  `github-mislukt`.
+* Na een dubbelzinnige POST (time-out, verbroken verbinding, HTTP 408/5xx, onleesbare 2xx, mislukte
+  receipt-opslag) blijft de status `publiceren`. "Publiceer" is dan weer mogelijk: de server herclaimt
+  atomair (`HerClaimPublicatieAsync`, alleen als de vorige (her)claim ouder is dan 2 minuten, anders
+  `409`), zoekt via de issuelijst (`GET /repos/{owner}/{repo}/issues?state=all&sort=created&direction=desc&since=…`,
   bewust niet de search-API vanwege indexvertraging) een issue met dezelfde referentie en koppelt dat;
-  ontbreekt het, dan wordt het met dezelfde referentie opnieuw geplaatst. Is GitHub onbereikbaar, of is
-  de lijst te lang om afwezigheid te bewijzen, dan wordt niets geplaatst en blijft de melding herstelbaar.
-  Meldingen van vóór deze wijziging hebben geen referentie en worden zonder controle opnieuw geplaatst.
-  Geen migratie: de referentie en het claimmoment (`mta_modified`) gebruiken bestaande kolommen.
+  ontbreekt het, dan wordt het met dezelfde referentie opnieuw geplaatst.
+* De zoekgrens is het begin van de publicatiepoging (kolom `PublicatieGestartOpUtc`, gezet door
+  `ClaimPublicatieAsync`) min 5 minuten marge. Een herclaim ververst alleen het slot (`mta_modified`) en
+  laat dat begin staan, zodat een herstelpoging die mislukt (GitHub onbereikbaar, receipt niet opgeslagen)
+  het venster van de volgende poging niet verkleint. Omdat `since` op `updated_at` filtert, stopt het
+  zoeken bij het eerste issue dat vóór de grens is aangemaakt. Bij meerdere treffers wint het oudste
+  issue: de referentie was geheim tot de eerste POST, dus een latere kopie kan nooit eerder bestaan.
+* Is GitHub onbereikbaar, of zijn er meer dan 1000 issues sinds de grens (tien pagina's), dan wordt
+  niets geplaatst en blijft de melding herstelbaar. Restgeval: een melding die al vóór deze wijziging op
+  `publiceren` bleef hangen heeft geen referentie; die krijgt er nu een en wordt zonder controle opnieuw
+  geplaatst (gelogd als waarschuwing).
 * Faalt GitHub met een expliciete afwijzing, dan blijft de melding bewaard met status `github-mislukt` en is ze opnieuw te
   publiceren. Faalt de database bij een beheerder, dan loopt de publicatie toch door (zijn melding
   sneuvelt niet op een gepauzeerde gratis database); bij een gewone gebruiker is opslaan verplicht.

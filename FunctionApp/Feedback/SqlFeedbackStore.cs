@@ -90,7 +90,7 @@ internal sealed class SqlFeedbackStore : IFeedbackStore
     {
         using var conn = await OpenAsync();
         using var cmd = new SqlCommand(@"
-            UPDATE [avg].[Feedback] SET [Status] = @Publiceren, [mta_modified] = GETUTCDATE()
+            UPDATE [avg].[Feedback] SET [Status] = @Publiceren, [PublicatieGestartOpUtc] = GETUTCDATE(), [mta_modified] = GETUTCDATE()
             WHERE [FeedbackId] = @Id AND [ClubCode] = @Cc AND [Status] IN (@Wacht, @Mislukt)", conn);
         cmd.Parameters.AddWithValue("@Publiceren", FeedbackStatusWaarden.Publiceren);
         cmd.Parameters.AddWithValue("@Wacht", FeedbackStatusWaarden.WachtOpPublicatie);
@@ -103,10 +103,12 @@ internal sealed class SqlFeedbackStore : IFeedbackStore
     public async Task<DateTime?> HerClaimPublicatieAsync(string clubCode, Guid feedbackId, DateTime claimOuderDanUtc)
     {
         using var conn = await OpenAsync();
-        // Eén atomaire UPDATE: de tweede gelijktijdige herclaim ziet het nieuwe claimmoment en valt af.
+        // mta_modified is het slot: één atomaire UPDATE, de tweede gelijktijdige herclaim ziet het nieuwe slotmoment en
+        // valt af. PublicatieGestartOpUtc blijft staan (#1803): de zoekgrens van het herstel mag door een mislukte
+        // herstelpoging niet opschuiven. Een rij van vóór die kolom valt terug op het oude slot.
         using var cmd = new SqlCommand(@"
             UPDATE [avg].[Feedback] SET [mta_modified] = GETUTCDATE()
-            OUTPUT deleted.[mta_modified]
+            OUTPUT COALESCE(deleted.[PublicatieGestartOpUtc], deleted.[mta_modified])
             WHERE [FeedbackId] = @Id AND [ClubCode] = @Cc AND [Status] = @Publiceren AND [mta_modified] < @Drempel", conn);
         cmd.Parameters.AddWithValue("@Publiceren", FeedbackStatusWaarden.Publiceren);
         cmd.Parameters.Add("@Drempel", System.Data.SqlDbType.DateTime2).Value = claimOuderDanUtc;
@@ -114,6 +116,19 @@ internal sealed class SqlFeedbackStore : IFeedbackStore
         cmd.Parameters.AddWithValue("@Cc", clubCode);
         var oud = await cmd.ExecuteScalarAsync();
         return oud is DateTime d ? DateTime.SpecifyKind(d, DateTimeKind.Utc) : null;
+    }
+
+    public async Task<bool> ZetIssueBodyAsync(string clubCode, Guid feedbackId, string issueBody)
+    {
+        using var conn = await OpenAsync();
+        using var cmd = new SqlCommand(@"
+            UPDATE [avg].[Feedback] SET [IssueBody] = @Body, [mta_modified] = GETUTCDATE()
+            WHERE [FeedbackId] = @Id AND [ClubCode] = @Cc AND [Status] = @Publiceren", conn);
+        cmd.Parameters.Add("@Body", System.Data.SqlDbType.NVarChar, -1).Value = issueBody;
+        cmd.Parameters.AddWithValue("@Publiceren", FeedbackStatusWaarden.Publiceren);
+        cmd.Parameters.AddWithValue("@Id", feedbackId);
+        cmd.Parameters.AddWithValue("@Cc", clubCode);
+        return await cmd.ExecuteNonQueryAsync() == 1;
     }
 
     public async Task ZetGepubliceerdAsync(string clubCode, Guid feedbackId, int issueNummer, string issueUrl)
