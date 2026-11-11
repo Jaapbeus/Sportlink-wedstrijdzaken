@@ -40,11 +40,13 @@ public class FeedbackEndpointCoreTests
         public string? Body { get; private set; }
         public string[]? Labels { get; private set; }
         public bool Faalt { get; set; }
+        public Exception? UnknownOutcome { get; set; }
 
         public Task<(int nummer, string url)> MaakAsync(string titel, string body, string[] labels)
         {
             Aanroepen++;
             Titel = titel; Body = body; Labels = labels;
+            if (UnknownOutcome is not null) throw UnknownOutcome;
             if (Faalt) throw new InvalidOperationException("GitHub API HTTP 500");
             return Task.FromResult((123, "https://github.com/example/repo/issues/123"));
         }
@@ -361,6 +363,19 @@ public class FeedbackEndpointCoreTests
 
         result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(502);
         store.Statussen[store.Bewaard.Single().Rij.FeedbackId].Should().Be(FeedbackStatusWaarden.GitHubMislukt);
+    }
+
+    [Fact]
+    public async Task GitHubPostOnbekend_Geeft502_EnBlokkeertHerhalingTotControle()
+    {
+        var (store, github) = (new FeedbackStoreFake(), new FakeGitHub { UnknownOutcome = new FeedbackPublicatieUitkomstOnbekendException(new TaskCanceledException()) });
+
+        var result = await Submit(MaakRequest(), Beheerder, store, new FakeChat(GeldigeAiJson()), github);
+
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(502);
+        github.Aanroepen.Should().Be(1);
+        store.Statussen[store.Bewaard.Single().Rij.FeedbackId].Should().Be(FeedbackStatusWaarden.Publiceren,
+            "a timed-out GitHub write may already have created the issue and must not become retryable");
     }
 
     [Fact]

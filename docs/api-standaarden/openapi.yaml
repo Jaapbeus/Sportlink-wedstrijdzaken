@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.16.0.1
+  version: 3.16.0.2
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -6875,7 +6875,8 @@ paths:
         publieke issue. Structureert de feedback met GPT-4o-mini en bewaart de te publiceren titel en body.
 
         * Rol **admin**: de melding wordt direct als GitHub-issue gepubliceerd (is GitHub niet
-          geconfigureerd, dan blijft ze bewaard met een `waarschuwing`).
+          geconfigureerd, dan blijft ze bewaard met een `waarschuwing`). Bij een time-out, verbroken verbinding of HTTP 408/5xx
+          tijdens de POST is de uitkomst onbekend; controleer GitHub voordat opnieuw publiceren wordt geprobeerd.
         * Rol **user**: de melding wacht (`status: wacht-op-publicatie`) tot een beheerder haar in het
           overzicht publiceert (`POST /beheer/feedback/{id}/publiceer`). De response bevat geen
           issueverwijzing.
@@ -6937,7 +6938,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
         '502':
-          description: Bewaard, maar publiceren op GitHub is mislukt (alleen beheerder); opnieuw te publiceren via het overzicht
+          description: Publicatie mislukt (alleen beheerder). Bij time-out, verbroken verbinding of HTTP 408/5xx is de uitkomst onbekend en blijft de melding geblokkeerd; controleer GitHub vóór een nieuwe poging. Een expliciete afwijzing van de API blijft opnieuw te publiceren via het overzicht; een fout bij receipt-opslag na bevestigde issue-aanmaak blijft geblokkeerd.
           content:
             application/json:
               schema:
@@ -7100,7 +7101,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
         '502':
-          description: Publiceren op GitHub mislukt; de melding blijft bewaard en is opnieuw te publiceren
+          description: Publiceren kon niet volledig worden bevestigd; bij time-out, annulering, HTTP 408/5xx of een fout bij het opslaan van de issue receipt blijft de melding geblokkeerd. Controleer GitHub vóór een nieuwe poging.
           content:
             application/json:
               schema:

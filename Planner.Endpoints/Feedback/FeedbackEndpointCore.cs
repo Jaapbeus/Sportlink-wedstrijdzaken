@@ -94,18 +94,18 @@ public static class FeedbackEndpointCore
     /// retentietimer. <c>GitHubRepo</c> is net als <c>GitHubOwner</c> verplicht (#607).
     /// </summary>
     public static Func<string, string, string[], Task<(int nummer, string url)>>? MaakGitHubIssueDelegate(
-        bool externeIntegratiesToegestaan, ILogger log)
+        bool externeIntegratiesToegestaan, ILogger log, CancellationToken cancellationToken = default)
     {
         if (!TryLeesGitHubConfig(externeIntegratiesToegestaan, log, out var pat, out var owner, out var repo)) return null;
-        return (titel, body, labels) => FeedbackCore.MaakGitHubIssueAsync(pat, owner, repo, titel, body, labels, log);
+        return (titel, body, labels) => FeedbackCore.MaakGitHubIssueAsync(pat, owner, repo, titel, body, labels, log, cancellationToken);
     }
 
     /// <summary>Tegenhanger voor de retentietimer: leest de sluitstatus van een issue. <c>null</c> als GitHub niet mag/kan.</summary>
     public static Func<int, Task<(bool gelukt, DateTime? geslotenOpUtc)>>? MaakIssueSluitingDelegate(
-        bool externeIntegratiesToegestaan, ILogger log)
+        bool externeIntegratiesToegestaan, ILogger log, CancellationToken cancellationToken = default)
     {
         if (!TryLeesGitHubConfig(externeIntegratiesToegestaan, log, out var pat, out var owner, out var repo)) return null;
-        return nummer => FeedbackCore.HaalIssueSluitingAsync(pat, owner, repo, nummer, log);
+        return nummer => FeedbackCore.HaalIssueSluitingAsync(pat, owner, repo, nummer, log, cancellationToken);
     }
 
     private static bool TryLeesGitHubConfig(bool toegestaan, ILogger log, out string pat, out string owner, out string repo)
@@ -131,13 +131,14 @@ public static class FeedbackEndpointCore
     /// aanleveren.
     /// </summary>
     public static async Task VoerRetentieTimerAsync(
-        Func<Task> wachtOpDatabase, IFeedbackStore store, bool externeIntegratiesToegestaan, ILogger log)
+        Func<Task> wachtOpDatabase, IFeedbackStore store, bool externeIntegratiesToegestaan, ILogger log,
+        CancellationToken cancellationToken = default)
     {
         log.LogInformation("AVG-cleanup gestart: avg.Feedback");
         try
         {
             await wachtOpDatabase();
-            await FeedbackRetentieCore.VoerUitAsync(store, MaakIssueSluitingDelegate(externeIntegratiesToegestaan, log), log);
+            await FeedbackRetentieCore.VoerUitAsync(store, MaakIssueSluitingDelegate(externeIntegratiesToegestaan, log, cancellationToken), log);
         }
         catch (Exception ex)
         {
@@ -318,6 +319,12 @@ public static class FeedbackEndpointCore
         Func<string, string, string[], Task<(int nummer, string url)>> maakIssue,
         FeedbackAanroeper wie, ILogger log)
     {
+        // Zet een opgeslagen directe publicatie vóór de externe write op dezelfde terminale claim
+        // als handmatige publicatie. Bij een afgebroken POST blijft de uitkomst daardoor geblokkeerd
+        // voor automatische herhaling totdat iemand eerst GitHub controleert.
+        if (bewaard && !await store.ClaimPublicatieAsync(clubCode, id))
+            return new ConflictObjectResult(new { error = "Deze melding wordt al gepubliceerd." });
+
         try
         {
             var (nummer, url) = await maakIssue(voorbereid.Titel!, voorbereid.Body!, FeedbackCore.KiesLabels(type));
@@ -331,6 +338,16 @@ public static class FeedbackEndpointCore
                 }
             }
             return new OkObjectResult(Antwoord(id, FeedbackStatusWaarden.Gepubliceerd, bewaard, wie, nummer, url, null));
+        }
+        catch (FeedbackPublicatieUitkomstOnbekendException ex)
+        {
+            log.LogError("GitHub-issueaanmaak afgebroken met onbekende uitkomst [feedbackId={Id}], fouttype={ErrorType}; niet opnieuw proberen", id, ex.InnerException?.GetType().Name);
+            return new ObjectResult(new
+            {
+                error = "De uitkomst van publiceren is onbekend. Controleer eerst of het issue al bestaat voordat je opnieuw publiceert.",
+                feedbackId = id,
+                meldingsnummer = Meldingsnummer(id)
+            }) { StatusCode = 502 };
         }
         catch (Exception ex)
         {
