@@ -283,10 +283,10 @@ public static class SportlinkMatchFunction
     /// <summary>
     /// Bepaalt het audit-<c>resultaat</c> voor een mutatie-uitkomst (#998, uitgebreid #994) — gedeeld
     /// met <see cref="SportlinkChangeRequestFunction"/>. <c>IsForcedDryRun</c> gaat vóór
-    /// <c>IsDryRun</c>, dat op zijn beurt vóór <c>IsSuccess</c> gaat: een code-gelockte, nog niet
-    /// live bevestigde mutatie (#994, bijv. officials) moet in de audit apart herkenbaar zijn van
-    /// een dry-run die uitsluitend door de club-instelling <c>sportlinkDryRun</c> komt — bij beide
-    /// is <see cref="SportlinkMutationResult.IsSuccess"/> altijd <c>true</c> (gesimuleerd succes).
+    /// <c>IsDryRun</c>, dat vóór <c>IsSuccess</c> gaat. De huidige mutaties volgen de
+    /// clubinstelling; de code-lock-uitkomst blijft beschikbaar voor een toekomstige geforceerde
+    /// simulatie. Bij beide simulaties is <see cref="SportlinkMutationResult.IsSuccess"/>
+    /// <c>true</c>.
     /// </summary>
     internal static string BepaalAuditResultaat(SportlinkMutationResult r) => SportlinkEndpointSupport.BepaalAuditResultaat(r);
 

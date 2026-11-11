@@ -2582,9 +2582,8 @@ public class SportlinkClubClientTests
     public async Task PutMutationAsync_ResponseBevatPublicMatchId_WordtGemaptNaarMutationResult()
     {
         // Parserfixture voor de ClubMatch-aanmaak-respons {"PublicMatchId":"M123","IsSuccess":true}
-        // (#997). Getest via een bestaand, NIET-gelockt mutatiepad (UpdateDressingRoomsAsync) omdat
-        // de generieke responsparsing endpoint-onafhankelijk is — CreateClubMatchAsync zelf kan dit
-        // pad niet live oefenen zolang de forceDryRun-code-lock actief is (zie de lock-test hierboven).
+        // (#997). Getest via een bestaand mutatiepad (UpdateDressingRoomsAsync) omdat de generieke
+        // responsparsing endpoint-onafhankelijk is. Dit test geen live Sportlink-aanroep.
         var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
         var client = MakeClient(req =>
         {

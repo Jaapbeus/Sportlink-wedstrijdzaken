@@ -17,9 +17,9 @@ namespace Planner.Shared.Integrations.SportlinkClub;
 /// een van die velden is een NIEUW AVG-besluit, geen uitbreiding van #1340.
 /// </para>
 /// <para>
-/// De eigenaar heeft rechtsgrond, levenscyclus/bewaartermijn en logging voor deze beperkte
-/// relatiecodeverwerking bevestigd; de besluiten staan in <c>docs/SPORTLINK-WEB-EXTENSION.md</c>
-/// §8. De exacte JSON-veldnaam blijft een technische aanname.
+/// De DPO-vragen over rechtsgrond, bewaartermijn en logging zijn nog niet door de eigenaar
+/// bevestigd; zie het voorstel in <c>docs/SPORTLINK-WEB-EXTENSION.md</c> §8. De exacte
+/// JSON-veldnaam blijft bovendien een onbevestigde technische aanname.
 /// </para>
 /// </summary>
 public sealed record SportlinkMatch
@@ -143,15 +143,15 @@ public sealed record SportlinkMatchOfficial
     [JsonConverter(typeof(FlexibleStringJsonConverter))]
     public string? OfficialPosition { get; set; }
 
-    // De JSON-veldnaam RelatieCode is nog niet door de eigenaar live geverifieerd; behoud dit als
-    // expliciete contractwaarschuwing totdat dat bewijs beschikbaar is.
+    // TODO(#1340, eigenaar verifieert vóór merge of gebruik): JSON-veldnaam RelatieCode is nog niet
+    // live geverifieerd. Behoud deze controle totdat de eigenaar het contract heeft bevestigd.
     // #1431: zelfde flexibele converter als OfficialPosition — een relatiecode is cijfermatig en kan
     // dus net zo goed als JSON-getal binnenkomen.
     [JsonPropertyName(RelatieCodeJsonVeldnaam)]
     [JsonConverter(typeof(FlexibleStringJsonConverter))]
     public string? RelatieCode { get; set; }
 
-    /// <summary>ENIGE plek met de aanname voor de relatiecode-veldnaam (#1340) — zie de waarschuwing
+    /// <summary>ENIGE plek met de aanname voor de relatiecode-veldnaam (#1340) — zie de verificatie-TODO
     /// hierboven. Een <c>const</c> i.p.v. een letterlijke string rechtstreeks in het attribuut,
     /// zodat een toekomstige correctie een eenregelige wijziging is.</summary>
     internal const string RelatieCodeJsonVeldnaam = "RelatieCode";
