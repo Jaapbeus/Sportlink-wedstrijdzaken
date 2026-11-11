@@ -1,3 +1,4 @@
+using Planner.Endpoints.Http;
 using Azure.Identity;
 using Microsoft.Azure.Functions.Worker.Builder;
 using Planner.Endpoints.Instellingen;
@@ -16,7 +17,7 @@ using SportlinkFunction.Sportlink;
 using SportlinkFunction.TeamResolution;
 
 var builder = FunctionsApplication.CreateBuilder(args);
-builder.ConfigureFunctionsWebApplication();
+builder.ConfigureBoundedFunctionsWebApplication();
 
 // #1515: instellingen eenmaal per instantie laden (Flex: elke niet-HTTP-trigger = eigen instantie).
 builder.UseInstellingenLader(async log =>

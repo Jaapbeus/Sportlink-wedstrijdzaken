@@ -74,6 +74,12 @@ public static class BoundedRequestBodyReader
                 return new(null, RequestBodyReadError.InvalidUtf8);
             }
         }
+        catch (BadHttpRequestException ex) when (ex.StatusCode == StatusCodes.Status413PayloadTooLarge)
+        {
+            // Chunked requests can reach Kestrel's finite ceiling before our extra-byte probe.
+            // Return the same controlled 413 instead of throwing through the Functions HTTP bridge.
+            return new(null, RequestBodyReadError.TooLarge);
+        }
         finally
         {
             CryptographicOperations.ZeroMemory(buffer);
