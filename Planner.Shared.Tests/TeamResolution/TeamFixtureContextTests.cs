@@ -110,6 +110,33 @@ public sealed class TeamFixtureContextTests
         Assert.Empty(graph.SentReplies);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void IncompleteSourceRow_IsStillOwnedAndBlocksWholeDateUniqueness(bool missingHome)
+    {
+        var incomplete = TeamFixture.FromSourceRow("incomplete", "JO13-1",
+            missingHome ? null : "JO13-1", missingHome ? "MO13-1" : null, "09:00");
+        var fixtures = new List<TeamFixture> { Fixture() };
+        if (incomplete is not null) fixtures.Add(incomplete);
+
+        Assert.Null(TeamFixtureChoice.Choose(new(fixtures, Names), 1, 2, "10:30"));
+    }
+
+    [Fact]
+    public void DuplicateNativeRows_CannotBeDeduplicatedIntoUniqueOwnership()
+        => Assert.Null(TeamFixtureChoice.Choose(new([Fixture(), Fixture()], Names), 1, 2, null));
+
+    [Theory]
+    [InlineData("10:30", 1)]
+    [InlineData("10:30:00", 1)]
+    [InlineData(" 10:30:00 ", 1)]
+    [InlineData("10:30:01", null)]
+    [InlineData("invalid", null)]
+    [InlineData(null, null)]
+    public void RequestedTime_UsesParsedFullPrecisionTime(string? stored, int? expected)
+        => Assert.Equal(expected, TeamFixtureChoice.Choose(new([Fixture() with { Time = stored }], Names), 1, 2, "10:30"));
+
     private static Task<EigenTeamUitkomst> Determine(Fixtures repository, string? date, string? time)
         => EigenTeamBepaling.BepaalEigenTeamEnTegenstanderAsync("JO13-1", "MO13-1", new Resolver(),
             "ALLSTARS", NullLogger.Instance, null, () => repository, date, time);

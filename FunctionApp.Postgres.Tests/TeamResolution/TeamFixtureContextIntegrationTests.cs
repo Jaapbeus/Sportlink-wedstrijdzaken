@@ -6,7 +6,7 @@ using Xunit;
 
 namespace FunctionApp.Postgres.Tests.TeamResolution;
 
-public sealed class TeamFixtureContextIntegrationTests
+public sealed partial class TeamFixtureContextIntegrationTests
 {
     [PostgresFact]
     public async Task FixtureSourceOwnership_UniqueOwnerThenMirroredOwner_DeletedAndCancelledCannotSupport()

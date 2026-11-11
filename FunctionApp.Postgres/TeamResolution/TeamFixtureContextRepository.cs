@@ -12,8 +12,8 @@ internal sealed class TeamFixtureContextRepository(string connectionString) : IT
         if (candidateIds.Count != 2) throw new ArgumentException("Exactly two resolved identities required", nameof(candidateIds));
         await using var conn = new NpgsqlConnection(connectionString);
         await conn.OpenAsync();
-        await using var cmd = new NpgsqlCommand(@"SELECT bk_matches, teamnaam, thuisteam, uitteam, aanvangstijd, status
-                FROM his.matches WHERE clubcode = @club AND mta_deleted IS NULL AND kaledatum::date = @date;
+        await using var cmd = new NpgsqlCommand(@"SELECT bk_matches, teamnaam, thuisteam, uitteam, aanvangstijd
+                FROM his.matches WHERE clubcode = @club AND mta_deleted IS NULL AND kaledatum::date = @date AND UPPER(status) <> 'AFGELAST';
                 SELECT teamid, teamnaam FROM public.teams
                 WHERE clubcode = @club AND isactief = TRUE AND teamid = ANY(@ids)
                 UNION

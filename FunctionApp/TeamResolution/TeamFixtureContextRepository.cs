@@ -12,8 +12,8 @@ internal sealed class TeamFixtureContextRepository(string connectionString) : IT
         if (candidateIds.Count != 2) throw new ArgumentException("Exactly two resolved identities required", nameof(candidateIds));
         await using var conn = new SqlConnection(connectionString);
         await conn.OpenAsync();
-        await using var cmd = new SqlCommand(@"SELECT [bk_matches], [teamnaam], [thuisteam], [uitteam], [aanvangstijd], [status]
-                FROM [his].[matches] WHERE [ClubCode] = @club AND [mta_deleted] IS NULL AND TRY_CONVERT(date, [kaledatum]) = @date;
+        await using var cmd = new SqlCommand(@"SELECT [bk_matches], [teamnaam], [thuisteam], [uitteam], [aanvangstijd]
+                FROM [his].[matches] WHERE [ClubCode] = @club AND [mta_deleted] IS NULL AND TRY_CONVERT(date, [kaledatum]) = @date AND [status] <> 'Afgelast';
                 SELECT [TeamId], [Teamnaam] FROM [dbo].[Teams]
                 WHERE [ClubCode] = @club AND [IsActief] = 1 AND [TeamId] IN (@first, @second)
                 UNION
