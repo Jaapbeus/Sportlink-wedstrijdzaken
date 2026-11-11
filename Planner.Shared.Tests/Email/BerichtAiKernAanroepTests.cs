@@ -104,6 +104,23 @@ public class BerichtAiKernAanroepTests
         yield return ["12-12-12-" + new string('0', 6), "[nummer]"];
         yield return ["10.30" + new string('0', 11), "[nummer]"];
         yield return [new string('x', 490) + new string('0', 24), new string('x', 490) + "[nummer]"];
+
+        // All values are synthetic; normalization must precede numeric candidate recognition.
+        foreach (var separator in new[] { "\0", "\t", "\n", "\r", "\u001f", "\u007f", "\u0085",
+                     "\u00a0", "\u2007", "\u2028", "\u2029", "\u202f", "\u3000", "\r\n \t" })
+        {
+            var nummer = string.Join(separator, Enumerable.Repeat(new string('0', 3), 3));
+            yield return [nummer, "[nummer]"];
+            yield return ["id" + nummer + "suffix", "id[nummer]suffix"];
+            yield return ["12.34" + separator + new string('0', 5), "[nummer]"];
+            yield return ["2026-11-14" + separator + new string('0', 9), "[nummer]"];
+            yield return [new string('x', 490) + nummer, new string('x', 490) + "[nummer]"];
+        }
+        foreach (var prefix in new[] { "+", "" })
+            foreach (var separator in new[] { " ", ".", "-", "\n" })
+                yield return [prefix + new string('0', 15) + separator + new string('0', 3), "[nummer]"];
+        yield return [new string('\u0660', 11), "[nummer]"];
+        yield return ["id" + string.Join('\n', Enumerable.Repeat(new string('\u0660', 3), 3)), "id[nummer]"];
     }
 
     [Theory]
@@ -142,6 +159,20 @@ public class BerichtAiKernAanroepTests
         client.Berichten[0].Text.Should().Contain(invoer);
         client.Berichten[1].Text.Should().Contain(invoer);
         client.Berichten[3].Text.Should().Contain(invoer);
+    }
+
+    [Theory]
+    [InlineData("2026-11-14\n10:30", "2026-11-14 10:30")]
+    [InlineData("14/11/26\t9.00\u202811.30", "14/11/26 9.00 11.30")]
+    [InlineData("00.00\0 10.30\u202f11.00", "00.00 10.30 11.00")]
+    [InlineData("2026.11.14\r\n2026/11/15", "2026.11.14 2026/11/15")]
+    public async Task FewShotVoorbeeld_PlanningBlijftBehoudenNaNormalisatie(string invoer, string verwacht)
+    {
+        var client = new VasteClient("{}");
+        await Maak(client).ClassificeerBerichtAsync("neutrale vraag", "neutraal onderwerp", "trainer@voorbeeld.nl",
+            [new ClassificatieCorrectieVoorbeeld("buiten_scope", "herplan_verzoek", invoer, invoer)]);
+
+        client.Berichten[0].Text.Split("\"" + verwacht + "\"").Should().HaveCount(3);
     }
 
     public static IEnumerable<object[]> ContactOpBodyGrens()

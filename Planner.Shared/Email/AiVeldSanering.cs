@@ -149,9 +149,13 @@ public static partial class AiVeldSanering
     /// </summary>
     public static string ProviderSamenvatting(string? waarde)
     {
-        var schoon = ProviderNummerPatroon().Replace(MaskeerContactgegevens(waarde), match =>
+        // Controls and Unicode whitespace must not split a number before it is recognized.
+        var schoon = NormaliseerWitruimte(waarde);
+        schoon = EmailPatroon().Replace(schoon, "[e-mail]");
+        // The bounded contact matcher must not consume a prefix before the whole candidate is checked.
+        schoon = ProviderNummerPatroon().Replace(schoon, match =>
             match.Value.Count(char.IsDigit) < 9 || IsExplicietePlanning(match.Value) ? match.Value : "[nummer]");
-        schoon = NormaliseerWitruimte(schoon);
+        schoon = MaskeerContactgegevens(schoon);
         if (schoon.Length > MaxSamenvattingLengte) schoon = schoon[..MaxSamenvattingLengte];
         return ZonderDubbeleAanhalingstekens(schoon);
     }
