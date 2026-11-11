@@ -25,7 +25,7 @@ public class EmailProcessorFasenTests
             Mock.Of<ITeamResolver>(), new RecordingEmailPersistenceService(), throttle ?? new FakeNoodmailThrottleStore());
 
     [Fact]
-    public async Task Poll_UitgeslotenAfzender_MarkeertGelezenViaDeTierAdapterEnWektDeDatabaseNiet()
+    public async Task Poll_UitgeslotenAfzenderZonderChatClient_MuteertNietEnWektDeDatabaseNiet()
     {
         var graph = new FakeEmailGraphService();
         graph.UnreadEmails.Add(Bericht("m1", "uitgesloten@voorbeeld.nl"));
@@ -36,17 +36,31 @@ public class EmailProcessorFasenTests
 
         await EmailVerwerkerFasen.VoerUitAsync(Poort(graph), cache, NullLogger.Instance);
 
-        graph.MarkedAsReadIds.Should().Equal(["m1"]);
+        graph.MarkedAsReadIds.Should().BeEmpty();
         graph.SentReplies.Should().BeEmpty();
     }
 
     [Fact]
-    public void BereidAiVoor_ZonderChatClient_GooitZoalsVoorheen()
+    public void BereidAiVoor_ZonderChatClient_StoptZonderTeGooien()
     {
         var poort = Poort(new FakeEmailGraphService());
 
-        poort.Invoking(p => p.BereidAiVoor()).Should().Throw<InvalidOperationException>()
-            .WithMessage("IChatClient niet geconfigureerd*");
+        poort.BereidAiVoor().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Poll_ZonderChatClient_StoptVoorDatabasefase()
+    {
+        var graph = new FakeEmailGraphService();
+        graph.UnreadEmails.Add(Bericht("m1"));
+        var cache = new UitsluitingslijstCache();
+        await cache.HerlaadAsync(
+            () => Task.FromResult(new HashSet<string>(StringComparer.OrdinalIgnoreCase)), DateTime.UtcNow);
+
+        await EmailVerwerkerFasen.VoerUitAsync(Poort(graph), cache, NullLogger.Instance);
+
+        graph.MarkedAsReadIds.Should().BeEmpty();
+        graph.SentReplies.Should().BeEmpty();
     }
 
     [Fact]

@@ -14,6 +14,10 @@
 else
 {
     @* ── Email voetnote ── *@
+    @if (voetnootLoadError != null)
+    {
+        <div class="alert alert-danger" role="alert">@voetnootLoadError</div>
+    }
     <div class="card mb-4">
         <div class="card-header d-flex justify-content-between align-items-center">
             <strong>Gedeelde e-mail voetnoot</strong>
@@ -63,16 +67,22 @@ else
                         <button class="btn btn-sm btn-outline-primary" @onclick="() => Edit(t)">Aanpassen</button>
                         @if (t.Actief)
                         {
-                            <button class="btn btn-sm btn-outline-secondary ms-1" @onclick="() => ResetAsync(t.TemplateKey)">
-                                Verwijder aanpassing
-                            </button>
+                            @if (_resetConfirmation.IsOpenFor(t.TemplateKey))
+                            {
+                                <button class="btn btn-sm btn-danger ms-1" @onclick="() => ResetAsync(t.TemplateKey)">Bevestig reset</button>
+                                <button class="btn btn-sm btn-link" @onclick="AnnuleerReset">Annuleren</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm btn-outline-secondary ms-1" @onclick="() => VraagReset(t.TemplateKey)">Verwijder aanpassing</button>
+                            }
                         }
                     </td>
                 </tr>
             }
             @if (templates.Count == 0)
             {
-                <tr><td colspan="5" class="text-muted">Geen templates in database — defaults zijn actief.</td></tr>
+                <tr><td colspan="5" class="@(templatesLoadError == null ? "text-muted" : "text-danger")">@(templatesLoadError ?? "Geen templates in database — defaults zijn actief.")</td></tr>
             }
         </tbody>
     </table>

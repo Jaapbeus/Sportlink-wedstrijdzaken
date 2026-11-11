@@ -1,3 +1,5 @@
+using Planner.Endpoints.Http;
+
 using SportlinkFunction.Infrastructure;
 using Planner.Shared;
 using Azure.Core;
@@ -137,14 +139,8 @@ public static class AdminSettingsFunction
     {
         var log = context.GetLogger("AdminSettingsPut");
         return AdminEndpoint.ExecuteAsync(req, log, "AppSettings opslaan",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<UpdateSettingsRequest>(req, async updateRequest =>
             {
-                using var bodyReader = new StreamReader(req.Body);
-                var bodyText = await bodyReader.ReadToEndAsync();
-                if (string.IsNullOrWhiteSpace(bodyText))
-                    return new BadRequestObjectResult(new { error = "Lege request body" });
-
-                var updateRequest = JsonConvert.DeserializeObject<UpdateSettingsRequest>(bodyText);
                 if (updateRequest == null)
                     return new BadRequestObjectResult(new { error = "Ongeldige JSON" });
 
@@ -184,7 +180,7 @@ public static class AdminSettingsFunction
                     volgendeMomenten = fetchScheduleChanged && nieuweSchedule != null
                         ? BerekenVolgendeMomenten(nieuweSchedule, 3) : null
                 });
-            });
+            }, emptyBodyMessage: "Lege request body"));
     }
 
     // Pluk alleen de toegestane velden — alles erbuiten wordt genegeerd
@@ -361,6 +357,9 @@ public static class AdminSettingsFunction
         [JsonProperty("display_name")] public string DisplayName { get; set; } = "";
     }
 
+    internal static HttpClient CreateManagementHttpClient(HttpMessageHandler? handler = null) =>
+        new(handler ?? new HttpClientHandler()) { Timeout = TimeSpan.FromSeconds(10) };
+
     /// <summary>
     /// Werkt de FETCH_SCHEDULE Azure App Setting bij via de Azure Management API.
     /// Azure herstart de Function App automatisch bij app setting wijziging.
@@ -394,7 +393,7 @@ public static class AdminSettingsFunction
             var tokenContext = new TokenRequestContext(["https://management.azure.com/.default"]);
             var token = await credential.GetTokenAsync(tokenContext);
 
-            using var http = new HttpClient();
+            using var http = CreateManagementHttpClient();
             http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
 
             var baseUrl = $"https://management.azure.com/subscriptions/{subscriptionId}" +

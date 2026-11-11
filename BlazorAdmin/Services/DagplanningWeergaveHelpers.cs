@@ -3,11 +3,10 @@ using BlazorAdmin.Models;
 namespace BlazorAdmin.Services;
 
 /// <summary>
-/// Gedeelde Gantt-weergavelogica voor de Planning- en Veld-optimalisatie-pagina's (#1361), losgetrokken
-/// uit wat vóór de paginasplitsing één keer in <c>Dagplanning.razor.cs</c> stond en door zowel de
-/// veldbezettingstijdlijn als de optimaal/huidig-vergelijkingstijdlijn werd aangeroepen. Puur statisch,
-/// geen DI-afhankelijkheden — zelfde opzet als <see cref="GanttLayout"/> (die blijft een aparte klasse:
-/// dat is de top/hoogte-berekening van één balk, dit is de item-constructie/labels/tooltip).
+/// Gedeelde Gantt-weergavehelpers voor Planning en Veld-optimalisatie. De klasse definieert het
+/// Gantt-itemmodel en biedt helpers voor wedstrijdlabels, veldnaam en subpositie, percentages,
+/// tijdaslabels, tooltips en kleuren. <see cref="VolgendeZaterdag"/> geeft de standaarddatum terug;
+/// <see cref="GanttLayout"/> berekent afzonderlijk de positie en hoogte van een balk.
 /// </summary>
 public static class DagplanningWeergaveHelpers
 {
@@ -93,10 +92,10 @@ public static class DagplanningWeergaveHelpers
         return sb;
     }
 
-    // Verwijst sinds #1388 naar de instelbare paletsleutels (ThemePresets.Kleuren) in plaats van
-    // vaste hex — de waarde gaat via een inline "--gantt-bg:...;"-style-attribuut naar de DOM
-    // (zie VeldOptimalisatie.razor/Planning.razor), en een CSS var()-verwijzing is daar een geldige
-    // waarde. Standaardwaarden van de paletsleutels zijn gelijk aan de oude hex-literals.
+    // De weergave gebruikt instelbare paletsleutels (ThemePresets.Kleuren) in plaats van vaste
+    // hexwaarden. De waarde gaat via een inline "--gantt-bg:...;"-style-attribuut naar de DOM
+    // (VeldOptimalisatie.razor/Planning.razor), waar een CSS var()-verwijzing geldig is. De
+    // standaardwaarden van de paletsleutels komen overeen met de huidige standaardkleuren.
     public static string GanttKleur(string status) => status switch
     {
         "wijziging"   => "var(--theme-status-wijziging)",
@@ -109,11 +108,8 @@ public static class DagplanningWeergaveHelpers
     /// Kleur van de voorkeurstijd-indicatorbalk bovenaan een Gantt-blok — alleen relevant in de
     /// optimaal/huidig-vergelijking van Veld optimalisatie, niet op de directe veldbezettingsweergave
     /// van Planning. Leeg = geen voorkeur geconfigureerd → geen balk.
-    /// <para>
-    /// Verhuisd uit <c>VeldOptimalisatie.razor.cs</c> (#1388): puur statisch, geen paginaspecifieke
-    /// afhankelijkheid buiten de drempelwaarde, die de aanroeper meegeeft — zelfde opzet als de rest
-    /// van deze klasse.
-    /// </para>
+    /// <para>De helper is stateless; de aanroeper geeft de afwijkingsdrempel mee zodat deze logica
+    /// geen pagina-afhankelijke instelling hoeft op te halen.</para>
     /// </summary>
     public static string GanttVoorkeurBalkKleur(int? afwijking, string? voorkeurTijd, int kleineAfwijkingDrempelMinuten)
     {

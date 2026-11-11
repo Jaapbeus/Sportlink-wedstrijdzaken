@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
+using Planner.Endpoints.Http;
 using Planner.Shared.Autorisatie;
 using Planner.Shared.Integrations.SportlinkClub;
 using SportlinkFunction.Sportlink;
@@ -36,11 +37,11 @@ public static class AdminRolFeatureInstellingenFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "beheer/rolfeatureinstellingen")] HttpRequest req,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("SqlAdminRolFeatureInstellingenPut"), "rol-feature-instelling wijzigen",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<RolFeatureMatrixCore.ZetInstellingDto>(req, async dto =>
             {
                 var (cel, fout) = await RolFeatureMatrixCore.VerwerkZetAsync(
-                    await new StreamReader(req.Body).ReadToEndAsync(),
+                    dto,
                     (rol, sleutel, aan) => RolFeatureInstellingenRepository.SetAsync(clubCode, rol, sleutel, aan, SystemUtilities.DatabaseConfig.ConnectionString));
                 return cel is null ? new BadRequestObjectResult(new { error = fout }) : new OkObjectResult(cel);
-            });
+            }));
 }

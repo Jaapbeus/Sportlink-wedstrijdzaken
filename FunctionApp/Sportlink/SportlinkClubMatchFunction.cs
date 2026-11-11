@@ -17,7 +17,7 @@ namespace SportlinkFunction.Sportlink;
 /// <para>
 /// Oefenwedstrijd ("clubwedstrijd") aanmaken bij Sportlink (#997; formulier #1116, contract live
 /// bevestigd #1427). Uitslag vastleggen is bewust niet gebouwd;
-/// verwijderen (#1440) staat hard op dry-run tot de eigenaar het contract live bevestigt.
+/// verwijderen (#1440) is sinds #1458 live bevestigd en volgt de instelling <c>sportlinkDryRun</c>.
 /// </para>
 /// <para>
 /// <b>Sinds #1427 live bevestigd.</b> Het formulier levert datum, tijd, duur, eigen team (naam

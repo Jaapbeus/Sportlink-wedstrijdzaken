@@ -281,7 +281,9 @@ public class PlannerMatchSearchRepositoryIntegrationTests : IDisposable
 
     private static async Task<NpgsqlConnection> OpstellingAsync()
     {
-        await HisTabelVorm.ZorgVoorProductievormAsync(ConnectionString, KnownEntities.Teams, KnownEntities.Matches);
+        // De view gebruikt ook MatchDetails voor de bronduur (#1814), net als de productiesync.
+        await HisTabelVorm.ZorgVoorProductievormAsync(
+            ConnectionString, KnownEntities.Teams, KnownEntities.Matches, KnownEntities.MatchDetails);
 
         // TryConfirmPlannedMatchAsync (#1134) leest de bestaande bezetting via
         // PlannerAvailabilityRepository.GetFieldOccupationsAsync, die op deze view steunt. Buiten een

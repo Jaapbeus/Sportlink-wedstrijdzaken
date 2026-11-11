@@ -18,6 +18,8 @@
 
 ## Het probleem
 
+De leeftijdscategorienormalisatie is idempotent: de genormaliseerde categorie is stabiel wanneer dezelfde waarde opnieuw wordt genormaliseerd. Met name `MO13` blijft `MO13` en de seniorencategorie `1-99` blijft `1-99` op beide tiers.
+
 Inkomende e-mail moet aan de juiste wedstrijd worden gekoppeld. Dat vereist dat een teamaanduiding
 uit vrije tekst ("JO13-2", "JO 13-2", "13-1") wordt herleid tot één specifiek team. Vóór deze
 vertaallaag gebeurde dat op vier plekken onafhankelijk van elkaar:
@@ -93,7 +95,7 @@ vrije tekst uit e-mail
         ▼
   TeamResolver ............. 1. gevalideerde alias   → TeamId  (confidence 1.0)
         │                    2. exacte canonieke match → TeamId  (confidence 1.0)
-        │                    3. kandidaten op leeftijd+teamnummer
+        │                    3. alleen zonder JO/MO-prefix: kandidaten op leeftijd+teamnummer
         │                       └─ precies 1 → TeamId (confidence 0.9)
         │                       └─ meerdere → altijd onbeslist (geen disambiguatie, #1268)
         ▼
@@ -124,6 +126,24 @@ met #1268 verwijderd in plaats van naar Postgres vertaald.
 > tegelijk**, niet als functionaliteit van één tier — zie regel 3 en 6 onder "Regels bij
 > wijzigingen" hieronder.
 
+### Volgorde van eigen-teamherkenning
+
+Under #1816, `EigenTeamBepaling` resolves both fields before selecting an own team. If both fields resolve to different own-team identities, only authoritative match context may select one. The programme source field `his.matches.teamnaam` means the own team (see `SPORTLINK-DATASERVICE.md`, field reference); appearing as home or away participant alone does not establish ownership. The original primary date and, when supplied, a valid time select non-deleted, non-cancelled, explicitly club-scoped source records. Canonical active team names and validated raw aliases establish exact ownership and opponent associations. All native-visible source ownership rows are counted without deduplication, including rows with missing home, away or source-key fields: mirrored, duplicate or incomplete additional rows cannot establish a unique owner. Exactly one supported owner and fixture/opponent context may be selected. That owner must also have exactly one native-visible source row on the entire date, before opponent/completeness/time filtering, because the existing downstream planner lookup selects by team/date rather than time/opponent. Cancellation filtering stays in the native repository predicates used by the downstream lookup: SQL Server compares the raw status under its collation, while Postgres compares `UPPER(status)` without trimming; NULL statuses are excluded on both. The Postgres expression index `ix_matches_club_status_upper_live` uses `(clubcode, UPPER(status))` with the exact live/non-cancelled predicate; existing tables receive it through migration 047, and `GenerateHisTable` provisions it when history is first created and on repeated ensures. It is additive and non-unique, preserves RLS and data, and requires the normal write-blocking index-creation lock inside the migration transaction. SQL Server keeps its raw status comparison and needs no computed-column change. Requested times are compared as parsed `TimeOnly` values, so `HH:mm` matches `HH:mm:00` but not a source with nonzero seconds. Missing/invalid context, query failure, no matching record or competing evidence requires manual review. Legacy source rows without an explicit club stamp provide no automatic evidence.
+
+Both tiers call shared `EigenTeamBepaling.BereidPlannerVoorAsync` for date normalization, tracing and classification preparation before dispatch. Their fixture repositories retain connections, SQL, parameter binding and reader disposal. `Planner.Endpoints/TeamResolution/TeamFixtureContextReader.cs` maps the common result-set contract at the infrastructure boundary; `TeamFixture.FromSourceRow` retains incomplete rows with an owner, and the pure fixture-choice logic remains in `Planner.Shared`. The reader does not select a provider or own a connection. A fixture-repository factory is invoked only after two distinct resolved identities and valid original-date context require a lookup; construction and query failures both produce manual review. Shared `BerichtPlannerAfhandeling` enforces the terminal outcome before invoking any tier branch. Query-free branch exits do not read database configuration. The terminal manual-review check also stays before reply continuation.
+
+This is the owner's decision for original finding 3, within #1816. Unresolved `MeerdereKandidaten` results are never automatically disambiguated. The typed manual outcome stops before availability, rescheduling, opponent fallback and contact lookup. Both mailbox tiers store Review and label the message for manual planning before template generation, contact/BCC lookup, send intent or sending. The runtime-only flag is ignored by both JSON serializers.
+
+**Geen eigen team uit een wedstrijd op een andere datum (#1861).** Wordt geen van beide genoemde teams herkend, dan
+leidt de beschikbaarheidscheck het eigen team niet meer af uit een wedstrijd tegen dezelfde tegenstander op een andere
+datum (de vroegere tak `opponent-andere-datum` van #1139): die wedstrijd zegt niets over welk eigen team nu vraagt, en
+de zoekopdracht koos bij meerdere eigen teams stil de oudste. Alleen een wedstrijd op precies de gevraagde datum telt
+nog; anders volgt de wedervraag om het team. De bijbehorende `EigenTeamBepaling.BepaalEigenTeamUitWedstrijdAsync` is
+verwijderd. Alleen de eigen clubnaam in het teamveld (`TeamNaamNormalisatie.IsAlleenClubPrefix`) telt niet als
+genoemd team.
+
+Deleting a Sync alias now retains its existing `rejected` state, including after canonicalization. Other origins retain physical deletion. A rejected alias blocks that association; it does not block an independent match against the canonical team name. The UI describes this action as persistent rejection. No schema or retention policy is added.
+
 ## Datamodel
 
 Beide tiers hebben deze tabellen, met een andere naamconventie. Postgres-identifiers zijn lowercase
@@ -133,7 +153,7 @@ schrijft, geldt hetzelfde voor `public.teams`.
 | Tabel (SQL Server / Postgres) | Rol |
 |---|---|
 | `dbo.Teams` / `public.teams` | Eén rij per werkelijk team, gesleuteld op `(ClubCode, TeamnaamGenormaliseerd)` — op Postgres `(clubcode, teamnaamgenormaliseerd)`. Gevuld door de nachtelijke sync. Verdwenen teams worden gedeactiveerd, niet verwijderd. |
-| `dbo.TeamAliassen` / `public.teamaliassen` | Twee soorten rijen. `Bron = 'Sync'`: elke schrijfwijze die in `his.matches`/`his.teams` voorkomt (door `TeamCanonicalisatieService` na de sync, direct `validated`). `Bron = 'CoordinatorCorrectie'` (door een beheerder aangemaakt, sinds #1568 deel C, direct `validated`) of `AiDisambiguatie` (tot #1268, `pending`): schrijfwijzen die niet uit de data volgen. Status `pending`/`validated`/`rejected` — alleen `validated` wordt vertrouwd. Sinds #1568 deel C met auditspoor: wie (`AangemaaktDoor`/`BeoordeeldDoor` = object-ID, `*Naam` = naammomentopname) en wanneer (UTC), plus `HerkomstVerwerkingId` en `Reden`. |
+| `dbo.TeamAliassen` / `public.teamaliassen` | Twee soorten rijen. `Bron = 'Sync'`: elke schrijfwijze die in `his.matches`/`his.teams` voorkomt (door `TeamCanonicalisatieService` na de sync, direct `validated`). Een bestaande afgewezen Sync-alias blijft `rejected` bij volgende syncs; the delete action preserves the existing rejected state for Sync aliases, so a later sync cannot approve that association again. `Bron = 'CoordinatorCorrectie'` (door een beheerder aangemaakt, sinds #1568 deel C, direct `validated`) of `AiDisambiguatie` (tot #1268, `pending`): schrijfwijzen die niet uit de data volgen. Status `pending`/`validated`/`rejected` — alleen `validated` wordt vertrouwd. Sinds #1568 deel C met auditspoor: wie (`AangemaaktDoor`/`BeoordeeldDoor` = object-ID, `*Naam` = naammomentopname) en wanneer (UTC), plus `HerkomstVerwerkingId` en `Reden`. |
 | `planner.OnbekendeTeamTekst` / `planner.onbekendeteamtekst` | Wachtrij (#1568 deel C) met teamteksten die de pipeline niet kon koppelen: gesaneerde voorbeeldtekst, genormaliseerde sleutel (uniek per club), aantal, eerst/laatst gezien, laatste verwerking (geen FK), status `open`/`afgehandeld`/`genegeerd`. Regels die 90 dagen niet zijn gezien worden door de e-mail-cleanup verwijderd. |
 
 Postgres-definities: `Database.Postgres/migrations/003_admin_tables.sql` (tabellen) en
@@ -334,7 +354,7 @@ uit het team dat `TeamResolver` herkende (`TeamNaamNormalisatie.LeidLeeftijdsCat
 `JO14-2` → `JO14`). Zonder categorie kan de check geen wedstrijdduur bepalen.
 
 **Nog niet via deze lookup:** de buffers uit `teamregels` (`FieldScheduler`, `PlanningConflictRegels`)
-vergelijken nog exact. Teams met een JM-suffix (`[club] O14-1JM`) leveren geen afgeleide categorie op.
+vergelijken nog exact. De parser herkent een JM-suffix (`[club] O14-1JM`) voor leeftijd en teamnummer en bewaart de suffix in de genormaliseerde sleutel; `JM` wordt niet als afzonderlijke categorie afgeleid.
 
 ## Bestanden
 
@@ -348,7 +368,7 @@ tegenhanger onder `FunctionApp.Postgres/TeamResolution/` — zie de tiertabel da
 | Bestand | Verantwoordelijkheid |
 |---|---|
 | `Planner.Shared/TeamResolution/TeamResolver.cs` (+ `ITeamResolver.cs`, `ITeamCandidateRepository.cs`, `TeamResolutionModels.cs`) | Resolutievolgorde; kiest nooit zelf bij ambiguïteit. **Tier-onafhankelijk** sinds #1716 (slice 2): stond tot dan woordelijk in beide tiers (sinds #1268 identiek). De databasevraag komt via de poort `ITeamCandidateRepository`; de gevallen staan in `Planner.Shared.Tests/TeamResolution/TeamResolverTests.cs`, per tier is alleen de registratie getest (`FunctionApp.Tests/TeamResolution/TeamResolutionDiRegistratieTests.cs`, `FunctionApp.Postgres.Tests/TeamResolution/TeamResolutionRegistrationTests.cs`). Mutatiebewijs: `MUTATIELIJST=scripts/ci/mutatiebewijs-1716-slice2.tsv scripts/ci/mutatiebewijs-1716.sh` (14 mutanten). |
-| `Planner.Shared/TeamResolution/EigenTeamBepaling.cs` | Welke van de twee genoemde teams het eigen team is (eerst het genoemde team, dan het tegenstanderveld met wissel), en het eigen team uit een via de tegenstander gevonden wedstrijd (#700/#1139). Gaat alleen via `ITeamResolver`; bij `MeerdereKandidaten` of een storing in de resolver wordt niets gekozen. **Tier-onafhankelijk** sinds #1716 (slice 4): stond tot dan als private methoden in beide `BerichtPipeline.cs`-bestanden. Per tier blijft `BerichtPipeline.BepaalEigenTeamEnTegenstanderAsync` als omhulsel dat de uitkomst op de eigen `BerichtClassificatie` zet. De gevallen staan in `Planner.Shared.Tests/TeamResolution/EigenTeamBepalingTests.cs`, het omhulsel is per tier getest (`BerichtPipelineEigenTeamTests` in beide tiertestprojecten). Mutatiebewijs: `MUTATIELIJST=scripts/ci/mutatiebewijs-1716-slice4.tsv scripts/ci/mutatiebewijs-1716.sh` (19 mutanten). |
+| `Planner.Shared/TeamResolution/EigenTeamBepaling.cs` | Resolves both named teams, uses a lazily created fixture source only for two distinct resolved identities with valid context, and prepares the classification before dispatch. Unresolved multiple candidates, failed lookups and inconclusive evidence remain manual. Both tiers call `BereidPlannerVoorAsync`; the shared `BerichtPlannerAfhandeling` keeps manual outcomes terminal before any tier branch. Pure choice/factory tests live in `Planner.Shared.Tests/TeamResolution/`; default pipeline wiring and terminal guards are tested in both tier test projects. |
 | `FunctionApp/TeamResolution/TeamCandidateRepository.cs` | Implementatie van de poort `ITeamCandidateRepository` voor deze tier: lookups tegen `dbo.Teams`/`dbo.TeamAliassen` (Postgres: `public.teams`/`public.teamaliassen`), altijd op ClubCode. |
 | `FunctionApp/TeamResolution/TeamAliasLearningService.cs` | Legt nieuwe schrijfwijzen vast als `pending`. **Sinds #1268 zonder aanroeper op beide tiers** — hij werd uitsluitend ná een AI-disambiguatiekeuze gebruikt (zie hieronder), en die keuze wordt niet meer gemaakt. Ook niet meer in DI geregistreerd op de SQL Server-tier (op Postgres nooit geweest). De klasse blijft in de codebase staan uit tier-gelijkwaardigheid, niet omdat hij nog iets doet. |
 | `Planner.Endpoints/Leren/TeamAliasEndpointCore.cs`, `Planner.Shared/Leren/` | Orkestratie van alias aanmaken/valideren/verwijderen en de wachtrij (tier-onafhankelijk, #1568 deel C); de databasevraag staat per tier in `SqlTeamAliasStore`/`PostgresTeamAliasStore` en `Sql…`/`PostgresOnbekendeTeamTekstStore`. |

@@ -60,6 +60,18 @@ public class ReplyPolicyTests
         besluit.MoetVersturen.Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData("{\"handmatigePlanning\":true,\"status\":\"Handmatige planning nodig: speelduur onbekend\"}")]
+    [InlineData("{\"handmatigeTeamBeoordeling\":true,\"status\":\"Handmatige teambeoordeling nodig\"}")]
+    public void HandmatigePlanning_GeenAutomatischAntwoord(string json)
+    {
+        // #1861: een check die niet uit te voeren was is geen "niet planbaar"; de coördinator koppelt zelf terug.
+        var besluit = ReplyPolicy.Bepaal(Beschikbaarheid(), json);
+
+        besluit.Actie.Should().Be(ReplyActie.Onderdrukken);
+        besluit.Reden.Should().Contain("Handmatige planning");
+    }
+
     [Fact]
     public void EnkeleDatum_PlanningNietMogelijk_WelAntwoord()
     {

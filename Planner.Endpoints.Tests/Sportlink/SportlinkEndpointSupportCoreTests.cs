@@ -1,9 +1,11 @@
 using AwesomeAssertions;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Planner.Endpoints.Http;
 using Planner.Endpoints.Sportlink;
 using Planner.Shared.Integrations.SportlinkClub;
 using Xunit;
@@ -126,6 +128,36 @@ public class SportlinkEndpointSupportCoreTests
             adminExecuteAsync: (_, _, _, _) => Task.FromResult<IActionResult>(adminResultaat));
 
         result.Should().BeSameAs(adminResultaat);
+    }
+
+    [Fact]
+    public async Task ExecuteWedstrijdzakenAsync_TeGroteBody_Geeft413EnVoertMutatieNietUit()
+    {
+        var request = new DefaultHttpContext().Request;
+        request.Body = new MemoryStream(new byte[BoundedRequestBodyReader.DefaultJsonMaxBytes + 1]);
+        var mutatieUitgevoerd = false;
+
+        var result = await SportlinkEndpointSupportCore.ExecuteWedstrijdzakenAsync(
+            request,
+            NullLogger.Instance,
+            "synthetische testmutatie",
+            async clubCode =>
+            {
+                _ = clubCode;
+                await SportlinkEndpointSupportCore.LeesBodyAsync<JsonFixture>(request);
+                mutatieUitgevoerd = true;
+                return new OkResult();
+            },
+            _ => null,
+            (_, _, _, work) => work("TEST"));
+
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(413);
+        mutatieUitgevoerd.Should().BeFalse();
+    }
+
+    private sealed class JsonFixture
+    {
+        public string? Value { get; set; }
     }
 
     // ── ClientOfFout / ClientVoorTimer: DI-lookup via FunctionContext ──────────────────────────

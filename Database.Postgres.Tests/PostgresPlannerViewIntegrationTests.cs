@@ -36,6 +36,8 @@ public class PostgresPlannerViewIntegrationTests : IAsyncLifetime
             DROP TABLE IF EXISTS stg."matches" CASCADE;
             DROP TABLE IF EXISTS his."teams" CASCADE;
             DROP TABLE IF EXISTS stg."teams" CASCADE;
+            DROP TABLE IF EXISTS his."matchdetails" CASCADE;
+            DROP TABLE IF EXISTS stg."matchdetails" CASCADE;
             DROP TABLE IF EXISTS planner.geplandewedstrijden CASCADE;
             DROP TABLE IF EXISTS public.speeltijden CASCADE;
             DROP TABLE IF EXISTS public.velden CASCADE;
@@ -51,6 +53,8 @@ public class PostgresPlannerViewIntegrationTests : IAsyncLifetime
         await Orchestrator.EnsureHisTableAsync(KnownEntities.Matches);
         await Orchestrator.RecreateStgTableAsync(KnownEntities.Teams);
         await Orchestrator.EnsureHisTableAsync(KnownEntities.Teams);
+        await Orchestrator.RecreateStgTableAsync(KnownEntities.MatchDetails);
+        await Orchestrator.EnsureHisTableAsync(KnownEntities.MatchDetails);
 
         await using var createView = new NpgsqlCommand(PostgresPlannerViewGenerator.CreateView, connection);
         await createView.ExecuteNonQueryAsync();
@@ -167,6 +171,66 @@ public class PostgresPlannerViewIntegrationTests : IAsyncLifetime
             connection, new DateOnly(2026, 9, 5), ClubCode);
 
         rijen.Should().BeEmpty();
+    }
+
+    [PostgresFact]
+    public async Task WedstrijdZonderDuur_BlijfZichtbaarMetOnbekendeEindtijd()
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        await SeedAppSettingsAsync(connection);
+        await SeedVeldAsync(connection, 1, "Veld 1");
+        await SeedMatchAsync(connection, 224, "TESTCLUB JO99-1", "Veld 1");
+        await Orchestrator.MergeStgToHisAsync(KnownEntities.Matches);
+
+        await using var cmd = new NpgsqlCommand($"SELECT eindtijd FROM {PostgresPlannerViewGenerator.ViewName} WHERE wedstrijdcode = 224", connection);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        (await reader.ReadAsync()).Should().BeTrue();
+        reader.IsDBNull(0).Should().BeTrue("ontbrekende duur moet planning blokkeren, niet de bezetting verwijderen");
+        await reader.DisposeAsync();
+
+        var load = async () => await PostgresPlannerAvailabilityReader.GetFieldOccupationsAsync(
+            connection, new DateOnly(2026, 9, 5), ClubCode);
+        await load.Should().ThrowAsync<Planner.Shared.Planning.PlanningDuurOnbekendException>()
+            .WithMessage("Planning geblokkeerd: wedstrijdduur onbekend voor bestaande veldbezetting.");
+    }
+
+    [PostgresFact]
+    public async Task WedstrijdZonderSpeeltijd_MetBronduur_GebruiktBronblokduur()
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        await SeedAppSettingsAsync(connection);
+        await SeedVeldAsync(connection, 1, "Veld 1");
+        await SeedMatchAsync(connection, 225, "TESTCLUB JO99-1", "Veld 1");
+        await Orchestrator.MergeStgToHisAsync(KnownEntities.Matches);
+        await ExecAsync(connection, """
+            INSERT INTO stg."matchdetails" ("wedstrijdcode", "interncode", "duration", "clubcode")
+            VALUES (225, 225, 60, @club)
+            """, p => p.AddWithValue("club", ClubCode));
+        await Orchestrator.MergeStgToHisAsync(KnownEntities.MatchDetails);
+
+        var rows = await PostgresPlannerAvailabilityReader.GetFieldOccupationsAsync(
+            connection, new DateOnly(2026, 9, 5), ClubCode);
+
+        rows.Should().ContainSingle();
+        rows[0].EindTijd.Should().Be(rows[0].AanvangsTijd.AddMinutes(75));
+    }
+
+    [PostgresFact]
+    public async Task OnbekendVeldZonderDuur_BlokkeertAndereVeldenNiet()
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        await SeedAppSettingsAsync(connection);
+        await SeedVeldAsync(connection, 1, "Veld 1");
+        await SeedMatchAsync(connection, 226, "TESTCLUB JO99-1", "Onbekend Veld");
+        await Orchestrator.MergeStgToHisAsync(KnownEntities.Matches);
+
+        var rows = await PostgresPlannerAvailabilityReader.GetFieldOccupationsAsync(
+            connection, new DateOnly(2026, 9, 5), ClubCode);
+
+        rows.Should().BeEmpty();
     }
 
     /// <summary>G-team-detectie via de regex-operator ~ (vertaling van SQL Server's LIKE-bracket-patroon).</summary>

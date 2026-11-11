@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Planner.Shared.Sync;
+using SportlinkFunction.Sync;
 using static SportlinkFunction.SystemUtilities;
 
 namespace SportlinkFunction;
@@ -10,7 +12,8 @@ namespace SportlinkFunction;
 /// </summary>
 internal static class SportlinkSyncPipeline
 {
-    private static readonly HttpClient _client = new();
+    internal static readonly HttpClientHandler DataserviceHandler = new() { AllowAutoRedirect = false };
+    private static readonly HttpClient _client = new(DataserviceHandler);
     private const string AllstarsClubCode = "ALLSTARS";
 
     // partialFailure: als één stap faalt, slaan we LastSyncTimestamp NIET op. (#438, #464)
@@ -20,11 +23,30 @@ internal static class SportlinkSyncPipeline
         int fromWeekOffset, int toWeekOffset,
         string sportlinkApiUrl, string sportlinkClientId,
         ILogger log)
+        => await RunSyncWithSeasonWindowAsync(
+            () => Task.FromResult((fromWeekOffset, toWeekOffset)), sportlinkApiUrl, sportlinkClientId, log);
+
+    /// <summary>
+    /// Builds a default or manual window only after the shared-staging lease and per-club season
+    /// rollover are complete. Queued jobs use <see cref="RunSyncAsync"/> with their stored offsets.
+    /// </summary>
+    internal static async Task<bool> RunSyncWithSeasonWindowAsync(
+        Func<Task<(int FromWeekOffset, int ToWeekOffset)>> buildWindow,
+        string sportlinkApiUrl, string sportlinkClientId,
+        ILogger log,
+        Func<DateOnly>? bepaalVandaag = null)
     {
         var partialFailure = false;
         var clubCode = AppSettings.GetSetting("clubCode");
         if (string.IsNullOrWhiteSpace(clubCode))
             throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings — sync kan niet doorgaan zonder ClubCode.");
+
+        await using var stagingLease = await SqlServerSyncStagingLease.TryAcquireAsync()
+            ?? throw new SyncAlreadyRunningException();
+
+        await SqlServerSeasonRollover.EnsureAsync(
+            clubCode, bepaalVandaag?.Invoke() ?? SqlServerSeasonRollover.VandaagInNederland, log);
+        var (fromWeekOffset, toWeekOffset) = await buildWindow();
 
         var teamsFailed = await FetchTeamsPhaseAsync(sportlinkApiUrl, sportlinkClientId, clubCode, log);
         partialFailure |= teamsFailed;

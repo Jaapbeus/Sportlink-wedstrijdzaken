@@ -9,7 +9,7 @@ info:
     Eén beveiligingsschema:
 
     - **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist
-      voor alle endpoints behalve `/health`. De rolcontrole gebeurt server-side, met vier niveaus:
+      voor alle endpoints behalve `/health`; gedetailleerde healthinformatie is admin-only. De rolcontrole gebeurt server-side, met vier niveaus:
       `admin` (`EasyAuthHelper.RequireAdmin`, via de wrappers `AdminEndpoint.ExecuteAsync` /
       `ExecuteZonderDatabaseAsync`) voor de meeste `/beheer/`-, `/planner/`- en
       `/test/`-endpoints (waaronder het feedbackoverzicht `/beheer/feedback`) — sinds #1350 óók voor `/postgres/sync-matches` en `/sync-matches`;
@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.16.0.2
+  version: 3.16.0.11
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -126,6 +126,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+    RequestBodyTooLarge:
+      description: De UTF-8 request-body overschrijdt de limiet van dit endpoint (1 MiB JSON, of de afgeleide envelope voor de bestaande CSV-upload); het verzoek is niet verwerkt. Body `{ error }`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
     NotFound:
       description: Resource niet gevonden
       content:
@@ -147,6 +153,12 @@ components:
             auditafrondingMisluktNaLiveSucces:
               value:
                 error: Sportlink heeft de wijziging verwerkt, maar de audit kon niet worden afgerond. Probeer de actie niet opnieuw; neem contact op met de beheerder.
+    PlanningDuurOnbekend:
+      description: Planning geblokkeerd omdat voor een bestaande veldbezetting geen betrouwbare duur bekend is (#1814)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
     InternalServerError:
       description: Interne serverfout
       content:
@@ -182,6 +194,40 @@ components:
 
     HealthStatus:
       type: object
+      required: [status, version, database, settingsReady, schemaWarningPresent, tlsWarningPresent]
+      properties:
+        status:
+          type: string
+          description: Existing health status. A stale Postgres sync can produce degraded without making deployment fail.
+          example: "ok"
+        version:
+          type: string
+          example: "3.16.0.11"
+        database:
+          type: string
+          description: Database connection status. "unconfigured" returns HTTP 503.
+          enum: [online, paused, timeout, unavailable, unconfigured]
+          example: "online"
+        settingsReady:
+          type: boolean
+          description: Whether the settings cache loaded successfully.
+          example: true
+        migrationsCurrent:
+          type: boolean
+          nullable: true
+          description: Postgres migration state, or null when unavailable or not supported by the SQL Server health probe.
+          example: true
+        schemaWarningPresent:
+          type: boolean
+          description: Whether a schema warning exists; details are admin-only.
+          example: false
+        tlsWarningPresent:
+          type: boolean
+          description: Whether a TLS warning exists; details are admin-only.
+          example: false
+
+    AdminHealthStatus:
+      type: object
       properties:
         status:
           type: string
@@ -189,7 +235,7 @@ components:
           example: "ok"
         version:
           type: string
-          example: "2.2.0.0"
+          example: "3.16.0.11"
         timestamp:
           type: string
           format: date-time
@@ -375,7 +421,7 @@ components:
         leeftijdsCategorie:
           type: string
           nullable: true
-          description: Leeftijdscategorie (bijv. JO13, MO17, VR, 1-99). Bepaalt duur en veldgrootte.
+          description: Leeftijdscategorie (bijv. JO13, MO17, VR, 1-99). Bepaalt standaardduur en veldgrootte. Zonder categorie is een positieve wedstrijdDuurMinuten vereist.
           example: "JO13"
         teamNaam:
           type: string
@@ -390,7 +436,7 @@ components:
         wedstrijdDuurMinuten:
           type: integer
           nullable: true
-          description: Overschrijf wedstrijdduur in minuten (standaard uit Speeltijden)
+          description: Positieve duur in minuten die de standaardduur uit Speeltijden overschrijft. Zonder categorie of positieve duur stopt de controle met een reden en zoekt geen slot of venster.
         heelVeld:
           type: boolean
           nullable: true
@@ -412,6 +458,9 @@ components:
         reden:
           type: string
           nullable: true
+          description: |
+            Reason when unavailable. A team name that fails the display checks is replaced by
+            `het opgegeven team` in the team-conflict explanation (#1809).
         gecontroleerdDagdeel:
           type: string
           nullable: true
@@ -430,8 +479,18 @@ components:
             $ref: '#/components/schemas/BeschikbaarVenster'
         waarschuwingen:
           type: array
+          description: |
+            Planning warnings normalized before serialization on both tiers (#1809).
+            Control characters and whitespace become spaces. The delimiters <, >, backticks,
+            {, }, [ and ] become spaces; words containing :// or @, or starting with www
+            (case-insensitive), are removed. Each result is truncated after 300 characters
+            when necessary and followed by an ellipsis (at most 301 output characters).
+            Empty results are omitted; remaining order is preserved. These rules apply only
+            to this warning array. An unrecognized team name that fails the display checks
+            is shown as `het opgegeven team` in its warning.
           items:
             type: string
+            maxLength: 301
 
     BevestigRequest:
       type: object
@@ -1113,18 +1172,18 @@ components:
         IsForcedDryRun:
           type: boolean
           description: |
-            #994: true als de PUT/POST werd overgeslagen door de code-niveau forceDryRun-lock (een
-            mutatie waarvan de requestbody nog niet live bevestigd is, bijv. officials toewijzen) —
-            ONAFHANKELIJK van de club-instelling sportlinkDryRun (audit-resultaat "DryRunLocked").
-            Als dit true is, is IsDryRun ook altijd true.
+            #994: true als een expliciete code-niveau forceDryRun-lock de PUT/POST overslaat
+            (audit-resultaat "DryRunLocked"), onafhankelijk van sportlinkDryRun. De huidige
+            LiveBevestigd-flags staan op true: mutaties volgen nu de clubinstelling. IsForcedDryRun
+            blijft beschikbaar voor een toekomstige code-lock; dan is IsDryRun ook true.
         PublicMatchId:
           type: string
           nullable: true
           description: |
             #997: door Sportlink teruggegeven PublicMatchId van een NIEUW aangemaakte oefenwedstrijd
-            (POST .../clubmatch/ClubMatch) — null voor elke andere mutatie, en ook null zolang
-            IsForcedDryRun/IsDryRun de aanroep simuleerde (in de praktijk dus altijd null zolang de
-            ClubMatch-code-lock actief is).
+            (POST .../clubmatch/ClubMatch) — null voor elke andere mutatie en wanneer
+            IsForcedDryRun/IsDryRun de aanroep simuleerde. De huidige code-lock-flag is vrijgegeven;
+            dry-run volgt de clubinstelling sportlinkDryRun.
 
     SportlinkMatchChangeRequestResponse:
       type: object
@@ -1141,8 +1200,8 @@ components:
           nullable: true
           description: |
             ONBEVESTIGD — geparsed uit Sportlinks `ConfirmationNeeded`-veld, nooit met een
-            netwerktrace gezien. `null` zolang de code-lock actief is (in de praktijk altijd,
-            zie `SportlinkClubClient.UpdateMatchDetailsChangeRequestLiveBevestigd`).
+            netwerktrace gezien. De validatie is beschikbaar na een echte respons wanneer de
+            clubinstelling `sportlinkDryRun` uit staat; de huidige code-lock-flag is vrijgegeven.
           properties:
             ConfirmationNeeded:
               type: boolean
@@ -1474,6 +1533,10 @@ components:
         seizoensrijen van de club opnieuw opgebouwd met de nieuwe startmaand en schuift het seizoenseinde
         mee: de bewaartermijn van persoonskolommen in de historietabellen (#1698) volgt het seizoenseinde
         van de club van de wedstrijd. Het wijzigen wordt vastgelegd in de auditlog zoals andere velden.
+
+        `FetchSchedule`: een niet-lege, uitvoerbare CRON-expressie met zes velden en maximaal
+        50 tekens. Een ontbrekend volgend UTC-uitvoermoment of ongeldige waarde geeft 400;
+        de foutmelding herhaalt de ingevoerde waarde niet. Een weggelaten veld blijft ongewijzigd.
 
         De audit-actor (wie de wijziging doorvoerde) wordt uitsluitend server-side bepaald uit de
         door Easy Auth gevalideerde claims — dit contract kent daarom geen "wie"-veld (#1003).
@@ -3423,6 +3486,9 @@ components:
           type: integer
           nullable: true
           description: Actieve teamregel BufferNa in minuten (#1430); null = geen regel. Zie teamBufferVoor.
+        sportlinkLeidend:
+          type: boolean
+          description: True als de planner de bronduur gebruikt en rond dit slot geen appbuffer toepast (#1814).
 
     VeldbezettingAntwoord:
       type: object
@@ -3536,24 +3602,56 @@ components:
           type: string
           format: date
           example: "2026-06-07"
-        bevestigingsToken:
+        bufferMinuten:
+          type: integer
+          nullable: true
+          description: Algemene buffer in minuten; standaard 15.
+        toewijzingen:
+          type: array
+          nullable: true
+          description: Alle zichtbare preview-rijen, inclusief niet-ingedeelde. Weglaten gebruikt het expliciete legacy-pad dat het plan opnieuw berekent.
+          items:
+            $ref: '#/components/schemas/AutoPlanToewijzing'
+
+    AutoPlanToewijzing:
+      type: object
+      required: [wedstrijdCode, huidigeVeld, huidigeTijd, veldNummer, tijd]
+      properties:
+        wedstrijdCode:
+          type: integer
+          format: int64
+        huidigeVeld:
           type: string
           nullable: true
-          description: Token uit AutoPlanResponse ter verificatie
+          description: Verwacht huidig veld inclusief eventuele subpositie.
+        huidigeTijd:
+          type: string
+          nullable: true
+          description: Verwachte huidige aanvangstijd.
+        veldNummer:
+          type: integer
+          nullable: true
+          description: Doelveld; null samen met tijd null laat deze rij oningedeeld.
+        veldSubpositie:
+          type: string
+          nullable: true
+          enum: [A, B, A1, A2, B1, B2]
+          description: Doelbaan; alleen toegestaan als de veldfractie overeenkomt.
+        tijd:
+          type: string
+          nullable: true
+          description: Doelaanvangstijd exact in HH:mm; seconden, tijdsaanduidingen en witruimte worden geweigerd. Als de doelminuut gelijk is aan de verwachte brontijdminuut, blijven de bronseconden behouden, ook bij een veld- of subpositiewijziging. Null samen met veldNummer null laat deze rij oningedeeld.
 
     AutoPlanToepassenResponse:
       type: object
       properties:
-        datum:
-          type: string
-          format: date
-        toegepast:
+        bijgewerkt:
           type: integer
-          description: Aantal wedstrijden waarvoor een slot is geboekt
-        overgeslagen:
+          description: Aantal gewijzigde demowedstrijden
+        mislukt:
           type: integer
-          description: Aantal wedstrijden waarvoor geen slot beschikbaar was
-        waarschuwingen:
+          description: Aantal mislukte demowedstrijden in het legacy-pad
+        fouten:
           type: array
           items:
             type: string
@@ -3571,16 +3669,12 @@ paths:
       operationId: getHealth
       summary: Status en versie van de API
       description: |
-        Geeft de actuele status en assemblyversie terug. Geen authenticatie vereist.
+        Geeft alleen de geaggregeerde status en assemblyversie terug; geen authenticatie vereist.
+        Database-, schema-, migratie-, TLS- en sync-details staan op de admin-only
+        `/beheer/health`-route. De per-tier probe is maximaal vijf seconden gecachet.
 
-        `tier` en `provider` komen uit build-time metadata van het artefact (niet uit een
-        runtime-gok) en zijn daarom altijd gevuld, ook als `database` niet "online" is.
-        `serverVersion` komt aantoonbaar uit de database zelf en is alleen gevuld wanneer
-        `database` "online" is (#863).
-
-        `database: "unconfigured"` (geen bruikbare connectiereeks) geeft 503, niet 200 (#859).
-        Elke andere waarde (ook de tijdelijke toestanden paused/timeout/unavailable) blijft 200
-        met `status: "degraded"`.
+        `database: "unconfigured"` geeft 503; elke andere database-status blijft 200.
+        Een stale sync kan `status: "degraded"` geven maar blijft een deploymentwaarschuwing, geen fout.
       security: []
       responses:
         '200':
@@ -3596,6 +3690,29 @@ paths:
               schema:
                 $ref: '#/components/schemas/HealthStatus'
 
+  /beheer/health:
+    get:
+      tags: [core]
+      operationId: getAdminHealth
+      summary: Gedetailleerde healthstatus voor beheerders
+      description: |
+        Admin-only diagnoseweergave via de bestaande server-side admin-rolpoort.
+        Bevat de tier-, server-, synchronisatie-, TLS-, schema- en migratiedetails die
+        bewust niet in de anonieme `/health`-respons staan.
+      responses:
+        '200':
+          description: Healthdiagnose
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminHealthStatus'
+        '503':
+          description: Database niet geconfigureerd
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminHealthStatus'
+
   /postgres/sync-matches:
     get:
       tags: [core]
@@ -3606,6 +3723,8 @@ paths:
         heet hij `/sync-matches`.
 
         Start een Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).
+        De opgeslagen basis-URL moet de vaste Sportlink-dataservice zijn; anders stopt de sync
+        vóór uitgaand verkeer. De client volgt geen HTTP-redirects.
         Vereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key
         via `?code=`, `AuthorizationLevel.Admin`).
 
@@ -3615,6 +3734,7 @@ paths:
 
         Mislukt één of meer deelstappen, dan volgt `207` in plaats van `200`: de geslaagde
         deelstappen blijven staan, maar `lastsynctimestamp` wordt bewust niet bijgewerkt (#1081).
+        Als een andere sync de gedeelde staging gebruikt, volgt `409` en wordt deze aanvraag niet uitgevoerd.
       security:
         - easyAuth: []
       parameters:
@@ -3664,6 +3784,20 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Een andere synchronisatie is actief; deze aanvraag is niet uitgevoerd
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, message]
+                properties:
+                  status:
+                    type: string
+                    example: already running
+                  message:
+                    type: string
+                    example: A synchronization is already running. Try again later.
         '503':
           $ref: '#/components/responses/ExternalIntegrationsDisabled'
         '500':
@@ -3679,13 +3813,16 @@ paths:
         heet hij `/postgres/sync-matches`.
 
         Start een volledige Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).
+        De opgeslagen basis-URL moet de vaste Sportlink-dataservice zijn; anders stopt de sync
+        vóór uitgaand verkeer. De client volgt geen HTTP-redirects.
         Vereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key
         via `?code=`, `AuthorizationLevel.Admin`).
 
         - **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)
         - **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar
 
-        Deze tier kent de `207`-respons van de Postgres-tier niet: alleen `200` of `500`.
+        Deze tier kent de `207`-respons van de Postgres-tier niet. Als een andere sync de gedeelde
+        staging gebruikt, volgt `409` en wordt deze aanvraag niet uitgevoerd.
       security:
         - easyAuth: []
       parameters:
@@ -3714,6 +3851,20 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Een andere synchronisatie is actief; deze aanvraag is niet uitgevoerd
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, message]
+                properties:
+                  status:
+                    type: string
+                    example: already running
+                  message:
+                    type: string
+                    example: A synchronization is already running. Try again later.
         '503':
           $ref: '#/components/responses/ExternalIntegrationsDisabled'
         '500':
@@ -3735,15 +3886,20 @@ paths:
         3. **Vrije vensters** — geen `leeftijdsCategorie`: geeft alle open tijdvensters per veld
 
         Controleert ook teamconflicten als `teamNaam` opgegeven is.
+        Warning output is normalized and bounded before serialization on both tiers; see
+        `CheckAvailabilityResponse.waarschuwingen` for the exact rules (#1809).
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/CheckAvailabilityRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Beschikbaarheidsresultaat
           content:
@@ -3754,6 +3910,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/PlanningDuurOnbekend'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -3774,12 +3932,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/BevestigRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Wedstrijd geboekt
           content:
@@ -3791,11 +3952,13 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '409':
-          description: Bezettingsconflict — het veld is op dit tijdstip al (gedeeltelijk) bezet
+          description: Bezettingsconflict of een onbekende duur van een bestaande veldbezetting (#1814)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BevestigConflictResponse'
+                oneOf:
+                  - $ref: '#/components/schemas/BevestigConflictResponse'
+                  - $ref: '#/components/schemas/ErrorResponse'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -3843,12 +4006,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/ZoekWedstrijdRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Zoekresultaat (gevonden of niet gevonden)
           content:
@@ -3887,12 +4053,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/HerplanCheckRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Herplan-alternatieven
           content:
@@ -3903,6 +4072,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/PlanningDuurOnbekend'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -3917,12 +4088,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/HerplanBevestigRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Herplanverzoek geregistreerd
           content:
@@ -3947,12 +4121,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: false
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/DoordeweeksBeschikbaarRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Beschikbare doordeweekse datums
           content:
@@ -3961,6 +4138,8 @@ paths:
                 $ref: '#/components/schemas/DoordeweeksBeschikbaarResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/PlanningDuurOnbekend'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -4056,12 +4235,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/UpdateSettingsRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Instellingen opgeslagen
           headers:
@@ -4128,6 +4310,7 @@ paths:
         - easyAuth: []
       requestBody:
         required: true
+        description: JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8/JSON geeft 400, te groot geeft 413 vóór verwerking.
         content:
           application/json:
             schema:
@@ -4175,6 +4358,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '413':
+          description: Request-body groter dan 1 MiB; de mutatie is niet verwerkt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -4227,6 +4416,7 @@ paths:
             type: string
             enum: [Wedstrijdzaken]
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
@@ -4238,6 +4428,8 @@ paths:
                   nullable: true
                   description: Handmatige, niet-geverifieerde vrije tekst ter herkenning.
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Koppeling geregistreerd
           content:
@@ -4556,6 +4748,8 @@ paths:
           schema:
             type: string
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the mutation.
         required: true
         content:
           application/json:
@@ -4594,6 +4788,8 @@ paths:
                 lokaleLeaseBezet:
                   value:
                     error: Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw.
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/SportlinkMutationInternalServerError'
         '502':
@@ -4622,6 +4818,8 @@ paths:
           schema:
             type: string
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the mutation.
         required: true
         content:
           application/json:
@@ -4660,6 +4858,8 @@ paths:
                 lokaleLeaseBezet:
                   value:
                     error: Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw.
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/SportlinkMutationInternalServerError'
         '502':
@@ -4675,11 +4875,10 @@ paths:
       operationId: putSportlinkOfficials
       summary: Officials (scheidsrechter/assistenten) toewijzen (#994, epic #986) — sinds #1319 live bevestigd
       description: |
-        **Sinds #1319 live bevestigd** (was scaffolding, altijd code-gelockt via een aparte
-        `forceDryRun`-lock, onafhankelijk van de club-instelling `sportlinkDryRun`): endpoint (`PUT
-        competition/match/official/MatchOfficialsAction`) en requestbody zijn met een echte
-        netwerktrace bevestigd te werken. De mutatie respecteert nu de gewone `sportlinkDryRun`-
-        instelling, net als `.../dressingrooms` en `.../field`. Zelfde volgorde als `.../dressingrooms`
+        De eigenaar heeft het endpoint na #1319 vrijgegeven; de huidige `LiveBevestigd`-flag staat
+        op `true`, zodat de mutatie de clubinstelling `sportlinkDryRun` volgt. De precieze
+        requestbody/positiewaarden blijven onbevestigde aannames; alleen de toewijzingsactie is
+        vrijgegeven. Er is geen aparte code-lock actief. Zelfde volgorde als `.../dressingrooms`
         (resolve → guard `SportlinkMutationSoort.Officials` → audit → mutatie), met een
         taakspecifieke responsparser: als één official een `ValidationDescription` heeft, wordt
         `IsSuccess=false` gezet ook al is de HTTP-status 200 ("opgeslagen met fouten" in Sportlink
@@ -4694,6 +4893,8 @@ paths:
           schema:
             type: string
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the mutation.
         required: true
         content:
           application/json:
@@ -4740,6 +4941,8 @@ paths:
                 lokaleLeaseBezet:
                   value:
                     error: Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw.
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/SportlinkMutationInternalServerError'
         '502':
@@ -4761,10 +4964,9 @@ paths:
         UITSLUITEND stap 1: er bestaat bewust geen endpoint, client-methode of UI-knop voor stap 2.
         Zelfde onderliggende Sportlink-endpoint als `.../field`
         (`PUT competition/match/UpdateMatchDetails`), maar met `MatchDate`/`StartTime`/`FacilityId`/
-        `MatchChangeRequestRemarks` overschreven in plaats van het veld. Was tot #1319 altijd
-        gesimuleerd via een aparte code-niveau `forceDryRun`-lock, onafhankelijk van de
-        club-instelling `sportlinkDryRun` — de eigenaar heeft die lock na een live netwerktrace
-        opgeheven; de mutatie respecteert nu de gewone `sportlinkDryRun`-instelling. Guard:
+        `MatchChangeRequestRemarks` overschreven in plaats van het veld. De huidige
+        `LiveBevestigd`-flag staat op `true`, dus de mutatie volgt `sportlinkDryRun`; er is geen
+        aparte code-lock actief. De payload- en responsdetails blijven onbevestigd. Guard:
         `SportlinkMutationSoort.DatumTijdAccommodatie` (uitsluitend
         `IsHomeMatch` + de generieke niet-afgelast/niet-concept-checks — geen specifieke
         `IsXxxAllowed`-vlag bestaat hiervoor bij Sportlink). `Toelichting` is verplicht.
@@ -4777,6 +4979,8 @@ paths:
           schema:
             type: string
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the mutation.
         required: true
         content:
           application/json:
@@ -4829,6 +5033,8 @@ paths:
                 lokaleLeaseBezet:
                   value:
                     error: Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw.
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/SportlinkMutationInternalServerError'
         '502':
@@ -4858,6 +5064,8 @@ paths:
             type: integer
             format: int64
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the audit update.
         required: true
         content:
           application/json:
@@ -4880,6 +5088,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           description: Audit-record niet gevonden voor deze club
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '503':
@@ -4950,6 +5160,8 @@ paths:
           schema:
             type: string
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the action.
         required: true
         content:
           application/json:
@@ -4988,6 +5200,8 @@ paths:
                 lokaleLeaseBezet:
                   value:
                     error: Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw.
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/SportlinkMutationInternalServerError'
         '502':
@@ -5020,6 +5234,8 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the mutation.
         required: true
         content:
           application/json:
@@ -5106,6 +5322,8 @@ paths:
                 lokaleLeaseBezet:
                   value:
                     error: Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw.
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/SportlinkMutationInternalServerError'
         '502':
@@ -5441,6 +5659,7 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: false
         content:
           application/json:
@@ -5456,6 +5675,8 @@ paths:
                   minimum: 2000
                   description: Startjaar van het seizoen (bijv. 2025 voor 2025/2026); verplicht bij reset, maximaal huidig jaar + 1.
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '400':
           description: Ongeldig seizoen, seizoen zonder seizoensrij (bestaat niet) of ongeldige body (NL-foutmelding in `error`)
         '202':
@@ -5651,12 +5872,15 @@ paths:
           description: Template-sleutel (bijv. check-availability, herplan-bevestig)
           example: "check-availability"
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/TemplatePutRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Template opgeslagen
           headers:
@@ -5872,6 +6096,7 @@ paths:
         - easyAuth: []
       requestBody:
         required: true
+        description: JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8/JSON geeft 400, te groot geeft 413 vóór verwerking.
         content:
           application/json:
             schema:
@@ -5897,6 +6122,12 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           description: E-mailadres staat al in de uitsluitingslijst
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: Request-body groter dan 1 MiB; de mutatie is niet verwerkt.
           content:
             application/json:
               schema:
@@ -5977,12 +6208,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/VeldBeschikbaarheidCreateRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Regel aangemaakt
           headers:
@@ -6027,12 +6261,15 @@ paths:
           schema:
             type: integer
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/VeldBeschikbaarheidUpdateRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Regel bijgewerkt
           headers:
@@ -6133,12 +6370,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/VeldCreateRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Veld aangemaakt
           headers:
@@ -6184,12 +6424,15 @@ paths:
           schema:
             type: integer
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/VeldUpdateRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Veld bijgewerkt
           headers:
@@ -6253,6 +6496,7 @@ paths:
         - easyAuth: []
       requestBody:
         required: true
+        description: JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400, te groot geeft 413 vóór verwerking.
         content:
           application/json:
             schema:
@@ -6297,6 +6541,7 @@ paths:
             type: integer
       requestBody:
         required: true
+        description: JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400, te groot geeft 413 vóór verwerking.
         content:
           application/json:
             schema:
@@ -6406,6 +6651,7 @@ paths:
         - easyAuth: []
       requestBody:
         required: true
+        description: JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400, te groot geeft 413 vóór verwerking.
         content:
           application/json:
             schema:
@@ -6452,6 +6698,7 @@ paths:
             type: integer
       requestBody:
         required: true
+        description: JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400, te groot geeft 413 vóór verwerking.
         content:
           application/json:
             schema:
@@ -6570,6 +6817,7 @@ paths:
         - easyAuth: []
       requestBody:
         required: true
+        description: JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400, te groot geeft 413 vóór verwerking.
         content:
           application/json:
             schema:
@@ -6614,6 +6862,7 @@ paths:
             type: integer
       requestBody:
         required: true
+        description: JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400, te groot geeft 413 vóór verwerking.
         content:
           application/json:
             schema:
@@ -6724,6 +6973,7 @@ paths:
         - easyAuth: []
       requestBody:
         required: true
+        description: JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400, te groot geeft 413 vóór verwerking.
         content:
           application/json:
             schema:
@@ -6768,6 +7018,7 @@ paths:
             type: integer
       requestBody:
         required: true
+        description: JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400, te groot geeft 413 vóór verwerking.
         content:
           application/json:
             schema:
@@ -6857,12 +7108,28 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the dry-run.
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/TestEmailRequest'
       responses:
+        '503':
+          description: AI-classificatie is niet geconfigureerd of niet beschikbaar
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error, aiBeschikbaar]
+                properties:
+                  error:
+                    type: string
+                    example: E-mailclassificatie is nu niet beschikbaar. Probeer het later opnieuw.
+                  aiBeschikbaar:
+                    type: boolean
+                    enum: [false]
         '200':
           description: Dry-run resultaat
           headers:
@@ -6884,6 +7151,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -6902,6 +7171,8 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 65,536 UTF-16 characters and 262,144 bytes. Invalid UTF-8 or JSON returns 400; oversized bodies return 413.
         required: true
         content:
           application/json:
@@ -6920,7 +7191,7 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
         '413':
-          description: Request-body groter dan 65536 tekens (#1677); er is niets verwerkt. Body `{ error }`
+          description: Request-body groter dan 65.536 UTF-16 tekens of 262.144 bytes (#1677); er is niets verwerkt. Body `{ error }`
           content:
             application/json:
               schema:
@@ -6957,6 +7228,8 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 65,536 UTF-16 characters and 262,144 bytes. Invalid UTF-8 or JSON returns 400; oversized bodies return 413.
         required: true
         content:
           application/json:
@@ -6975,7 +7248,7 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
         '413':
-          description: Request-body groter dan 65536 tekens (#1677); er is niets verwerkt. Body `{ error }`
+          description: Request-body groter dan 65.536 UTF-16 tekens of 262.144 bytes (#1677); er is niets verwerkt. Body `{ error }`
           content:
             application/json:
               schema:
@@ -7010,7 +7283,8 @@ paths:
         publieke issue. Structureert de feedback met GPT-4o-mini en bewaart de te publiceren titel en body.
 
         * Rol **admin**: de melding wordt direct als GitHub-issue gepubliceerd (is GitHub niet
-          geconfigureerd, dan blijft ze bewaard met een `waarschuwing`).
+          geconfigureerd, dan blijft ze bewaard met een `waarschuwing`). Bij een time-out, verbroken verbinding of HTTP 408/5xx
+          tijdens de POST is de uitkomst onbekend; de melding blijft op `publiceren` en is te herstellen via `POST /beheer/feedback/{id}/publiceer`.
         * Rol **user**: de melding wacht (`status: wacht-op-publicatie`) tot een beheerder haar in het
           overzicht publiceert (`POST /beheer/feedback/{id}/publiceer`). De response bevat geen
           issueverwijzing.
@@ -7024,6 +7298,8 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 65,536 UTF-16 characters and 262,144 bytes. Invalid UTF-8 or JSON returns 400; oversized bodies return 413.
         required: true
         content:
           application/json:
@@ -7042,7 +7318,7 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
         '413':
-          description: Request-body groter dan 65536 tekens (#1677); er is niets verwerkt. Body `{ error }`
+          description: Request-body groter dan 65.536 UTF-16 tekens of 262.144 bytes (#1677); er is niets verwerkt. Body `{ error }`
           content:
             application/json:
               schema:
@@ -7072,7 +7348,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
         '502':
-          description: Bewaard, maar publiceren op GitHub is mislukt (alleen beheerder); opnieuw te publiceren via het overzicht
+          description: Publicatie mislukt (alleen beheerder). Bij time-out, verbroken verbinding of HTTP 408/5xx is de uitkomst onbekend en blijft de melding op `publiceren`; herstel via het overzicht controleert eerst of het issue al bestaat. Een expliciete afwijzing van de API blijft opnieuw te publiceren.
           content:
             application/json:
               schema:
@@ -7235,7 +7511,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
         '502':
-          description: Publiceren op GitHub mislukt; de melding blijft bewaard en is opnieuw te publiceren
+          description: Publiceren is mislukt of kon niet volledig worden bevestigd. Wijst GitHub de aanmaak expliciet af (een 4xx anders dan 408, ook na de 422-fallback zonder eigen labels), dan gaat de melding naar `github-mislukt` en is ze opnieuw te publiceren. Is de uitkomst onbekend (time-out, annulering, HTTP 408/5xx) of mislukte de receipt-opslag of de controle op een bestaand issue, dan blijft de melding op `publiceren` en is ze na enkele minuten opnieuw te proberen; de server controleert dan eerst via de issuelijst of het issue al bestaat en koppelt dat. Kon een oudere melding vóór de POST geen publicatiereferentie krijgen, dan is er niets verstuurd en is ze opnieuw te publiceren.
           content:
             application/json:
               schema:
@@ -7361,6 +7637,7 @@ paths:
         - easyAuth: []
       requestBody:
         required: true
+        description: JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400.
         content:
           application/json:
             schema:
@@ -7380,6 +7657,8 @@ paths:
                     type: string
         '400':
           $ref: '#/components/responses/BadRequest'
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -7410,6 +7689,7 @@ paths:
           example: "JO13"
       requestBody:
         required: true
+        description: JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400.
         content:
           application/json:
             schema:
@@ -7429,6 +7709,8 @@ paths:
                     type: string
         '400':
           $ref: '#/components/responses/BadRequest'
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -7518,12 +7800,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/ThemeSaveRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Thema opgeslagen
           content:
@@ -7651,6 +7936,8 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 returns 400; an oversized body returns 413 before the command.
         required: true
         content:
           application/json:
@@ -7680,6 +7967,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -7773,6 +8062,8 @@ paths:
             type: integer
           description: Leermoment ID
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 returns 400; an oversized body returns 413 before the command.
         required: true
         content:
           application/json:
@@ -7801,6 +8092,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -7872,6 +8165,8 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 returns 400; an oversized body returns 413 before the command.
         required: true
         content:
           application/json:
@@ -7930,6 +8225,8 @@ paths:
                     type: string
                   bestaandeStatus:
                     type: string
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -7952,6 +8249,8 @@ paths:
             type: integer
           description: Alias-ID
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 returns 400; an oversized body returns 413 before the command.
         required: true
         content:
           application/json:
@@ -7980,6 +8279,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -7989,10 +8290,10 @@ paths:
       operationId: deleteTeamAlias
       summary: Teamalias verwijderen
       description: |
-        Verwijdert de alias definitief. Uitsluitend binnen de eigen club (`X-Club-Code`). Er staat nergens een
-        identificator van de beheerder in het log; de tabel bewaart geen auditregel van een verwijderde rij.
-        De alias kan opnieuw als `pending` verschijnen wanneer de schrijfwijze weer wordt
-        aangetroffen.
+        Sync-origin aliases retain their row with status rejected, preventing canonicalization from
+        validating the association again. Other origins are physically deleted. Both actions are scoped
+        to the current club (X-Club-Code). Logs contain only the alias identifier, without administrator
+        identity. Rejection blocks the alias association, not an independent canonical-name match.
       security:
         - easyAuth: []
       parameters:
@@ -8086,6 +8387,8 @@ paths:
           schema:
             type: integer
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 returns 400; an oversized body returns 413 before the command.
         required: true
         content:
           application/json:
@@ -8111,6 +8414,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -8207,12 +8512,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/TeambegeleidingDoorsturenRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Bericht verstuurd
           headers:
@@ -8290,12 +8598,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "Behoudt de bestaande CSV-upload tot 5 MiB UTF-8. Zowel de gedecodeerde csvContent als de JSON-envelope zijn begrensd; de envelope laat zesvoudige worst-case escaping en de bestaande auditbestandsnaamruimte van 500 tekens toe. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór CSV-parsing en verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/TeambegeleidingImportRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Import geslaagd
           headers:
@@ -8349,12 +8660,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/VerplaatsDatumRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Wedstrijden verplaatst
           content:
@@ -8409,12 +8723,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/TestDataWedstrijdCreateRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Test-wedstrijd aangemaakt
           content:
@@ -8550,12 +8867,15 @@ paths:
             enum: [huidig, optimaal]
             default: huidig
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/AutoPlanRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Gegenereerd auto-plan (JSON), of bij format=html|pdf het gedeelde document
           headers:
@@ -8606,6 +8926,8 @@ paths:
             type: string
             enum: [html, pdf]
       requestBody:
+        description: >-
+          UTF-8 JSON request body; maximum 524,288 UTF-16 characters and 2,097,152 bytes. Invalid UTF-8 returns 400; oversized bodies return 413.
         required: true
         content:
           application/json:
@@ -8658,7 +8980,7 @@ paths:
         '409':
           description: "`?format=pdf` terwijl de clubinstelling PdfExportIngeschakeld uit staat (#1459)"
         '413':
-          description: Request body te groot
+          description: Request body groter dan 524.288 UTF-16 tekens of 2.097.152 bytes; er is niets verwerkt. Body `{ error }`.
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -8819,21 +9141,30 @@ paths:
       operationId: autoPlanToepassen
       summary: Automatisch plan toepassen
       description: |
-        Past het gegenereerde auto-plan toe door wedstrijdsloten te boeken in
-        `planner.GeplandeWedstrijden`. Schrijft alleen voor wedstrijden die nog
-        geen slot hebben.
+        Schrijft uitsluitend ALLSTARS-demowedstrijden in `his.matches` bij. Met
+        `toewijzingen` valideert de server alle getoonde rijen, bronposities en
+        exacte doelbanen tegen verse clubdata binnen dezelfde transactie als de
+        updates. Conflicten rollen de hele toepassing terug. Zonder deze lijst
+        blijft het expliciete legacygedrag van herberekenen beschikbaar.
+
+        Een previewrij met een onbekend team en zonder betrouwbare speelduur wordt
+        niet meegeschreven en telt niet mee als veldbezetting bij deze controle;
+        andere geldige toewijzingen worden wel gecontroleerd.
 
         **Let op:** alleen beschikbaar als de club-code `ALLSTARS` is (testmodus).
         Productie-clubs ontvangen HTTP 403.
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/AutoPlanToepassenRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Plan toegepast
           headers:
@@ -8849,5 +9180,7 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Bron gewijzigd of exact doelplan bevat een conflict; er is niets opgeslagen.
         '500':
           $ref: '#/components/responses/InternalServerError'

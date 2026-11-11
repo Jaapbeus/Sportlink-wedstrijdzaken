@@ -127,7 +127,7 @@ public class PlannerDeelPlanEndpointCoreTests
 
     [Fact]
     public void TeGroteBody_413() =>
-        PlannerDeelPlanEndpointCore.Verwerk(new string(' ', PlannerDeelPlanEndpointCore.MaxBodyBytes + 1), "html", Club, pdfToegestaan: false)
+        PlannerDeelPlanEndpointCore.Verwerk(new string(' ', PlannerDeelPlanEndpointCore.MaxBodyTekens + 1), "html", Club, pdfToegestaan: false)
             .Should().BeOfType<ObjectResult>().Subject.StatusCode.Should().Be(413);
 
     [Fact]

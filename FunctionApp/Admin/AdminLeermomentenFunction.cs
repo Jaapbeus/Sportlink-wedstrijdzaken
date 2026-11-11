@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Planner.Endpoints.Leren;
+using Planner.Endpoints.Http;
 
 namespace SportlinkFunction.Admin;
 
@@ -46,9 +47,9 @@ public static class AdminLeermomentenFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/leermomenten")] HttpRequest req,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminLeermomentenPost"), "leermoment toevoegen",
-            async clubCode => await LeermomentEndpointCore.AanmakenAsync(
-                clubCode, await TeamAliasEndpointCore.LeesBodyAsync(req), EasyAuthHelper.GetLerenAanroeper(req),
-                o => AdminLeermomentenRepository.MaakAdminLeermomentAsync(o, SystemUtilities.DatabaseConfig.ConnectionString)));
+            clubCode => BoundedRequestBodyReader.ExecuteUtf8Async(req, body => LeermomentEndpointCore.AanmakenAsync(
+                    clubCode, body, EasyAuthHelper.GetLerenAanroeper(req),
+                    o => AdminLeermomentenRepository.MaakAdminLeermomentAsync(o, SystemUtilities.DatabaseConfig.ConnectionString))));
 
     [Function("AdminLeermomentenValideer")]
     public static Task<IActionResult> Valideer(
@@ -56,10 +57,10 @@ public static class AdminLeermomentenFunction
         int id,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminLeermomentenValideer"), "leermoment valideren",
-            async clubCode => await LeermomentEndpointCore.ValideerAsync(
-                id, await TeamAliasEndpointCore.LeesBodyAsync(req),
-                (leermomentId, isGevalideerd, isAfgewezen) => AdminLeermomentenRepository.ValideerAsync(
-                    leermomentId, isGevalideerd, isAfgewezen, clubCode, SystemUtilities.DatabaseConfig.ConnectionString)));
+            clubCode => BoundedRequestBodyReader.ExecuteUtf8Async(req, body => LeermomentEndpointCore.ValideerAsync(
+                    id, body,
+                    (leermomentId, isGevalideerd, isAfgewezen) => AdminLeermomentenRepository.ValideerAsync(
+                        leermomentId, isGevalideerd, isAfgewezen, clubCode, SystemUtilities.DatabaseConfig.ConnectionString))));
 
     /// <summary>Verwijdert een door een beheerder toegevoegd leermoment (AVG); een leermoment uit een beantwoorde mail geeft 409.</summary>
     [Function("AdminLeermomentenDelete")]

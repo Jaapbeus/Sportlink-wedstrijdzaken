@@ -57,6 +57,12 @@ public static class ReplyPolicy
             return new ReplyBesluit(ReplyActie.Versturen, "Plannerrespons niet leesbaar");
         }
 
+        // #1861: een check die niet uit te voeren was (speelduur onbekend) of een handmatige teambeoordeling
+        // (#1816) is geen "niet planbaar": de coördinator plant handmatig en koppelt zelf terug.
+        if (IsTrue(planner, BeschikbaarheidVoorwaarden.HandmatigePlanningVlag)
+            || IsTrue(planner, TemplateAntwoordBouwer.HandmatigeTeamBeoordelingVlag))
+            return new ReplyBesluit(ReplyActie.Onderdrukken, "Handmatige planning nodig — geen automatisch antwoord");
+
         // Wedstrijd staat al in Sportlink: informatief antwoord, geen planbaarheidsuitkomst.
         if (IsTrue(planner, "wedstrijdAlIngepland"))
             return new ReplyBesluit(ReplyActie.Versturen, "Wedstrijd is al ingepland — informatief antwoord");

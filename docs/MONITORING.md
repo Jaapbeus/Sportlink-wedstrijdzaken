@@ -53,7 +53,7 @@ Dit document beschrijft bewaking voor **beide** databasetiers. Niet elk vangnet 
 |---|---|---|
 | Application Insights (traces, exceptions, KQL) | ✅ | ✅ |
 | GitHub-issue bij een onafgevangen exception (`via: auto-exception`, alleen in productie, #1268/#1711) | ✅ | ✅ |
-| `GET /api/health` (`database`, `pendingMigrations`, `lastSync`) | ✅ | ✅ |
+| `GET /api/health` (geaggregeerde database/readinessstatus); admin-details op `/api/beheer/health` | ✅ | ✅ |
 | `db-check` in `deploy.yml` (ARM-status vóór migratie/deploy) | ✅ | ❌ — job is tier-gegate op `SqlServer` |
 | `DatabaseUitvalMonitorFunction` (dagelijkse uitvalmail) | ✅ | ✅ sinds #1268 — eigen statusbron, zie hieronder |
 | `Setup-SqlAlerts.ps1` (Resource Health Alert + e-mail) | ✅ | ❌ — Azure-SQL-specifiek |
@@ -157,7 +157,7 @@ Sinds 2026-10-03 draait de Function App op Flex Consumption. Vier gevolgen voor 
   de database schrijft (bijvoorbeeld `public.sportlinkcontractcheck`).
 - **Elke niet-HTTP-trigger draait op een eigen instantie.** Instellingen worden daarom per instantie voor de
   eerste functie geladen (middleware, #1515). Zie je een timer die "overgeslagen" lijkt, kijk dan eerst
-  of de instellingen geladen waren (`settingsLoaded` in `/api/health`).
+  of de instellingen geladen waren (`settingsReady` in `/api/health`); details achter de admin-poort staan op `/api/beheer/health`.
 - **Host-opslag zonder connection string.** `AzureWebJobsStorage__accountName` met managed identity; ontbreken
   de rollen Blob Data Owner, Queue Data Contributor en Table Data Contributor, dan faalt de host of de
   noodmail-throttle en de sync-wachtrij (#1512).
@@ -675,7 +675,7 @@ verschillende momenten; alleen samen dekken ze de keten.
 | Workflow | Trigger | Wat het bewaakt |
 |---|---|---|
 | `build.yml` — *Build (PR)* | PR naar `main`/`develop`, push naar `develop` | Build van alle projecten, unit tests, de codekwaliteits- en tier-pariteitsguards, en op een **verse** Postgres-container de databaseguards uit #1220: `scripts/ci/check-rls-enabled.sh` (RLS aan op elke tabel) en `scripts/ci/check-splinter-lints.sh` (Supabase' eigen linter) |
-| `deploy.yml` — *Deploy naar Azure* | Push naar `main` | `db-check`, de migratiejobs, de deploy zelf en de smoke tests (401 op admin-endpoints, `settingsLoaded`, `pendingMigrations`) |
+| `deploy.yml` — *Deploy naar Azure* | Push naar `main` | `db-check`, de migratiejobs, de deploy zelf en de smoke tests (401 op admin-endpoints, `settingsReady`, `migrationsCurrent`, waarschuwingvlaggen) |
 | `pre-release-check.yml` — *Pre-release check (develop → main)* | PR naar `main` | Build moet slagen vóór een release-PR gemerged kan worden; bij een release-PR (`head = develop`) ook een informatieve CHANGELOG-versiekopjescontrole (main vs. develop, #1370) en een categorisch release-diffoverzicht (workflow-/Azure-IaC-/migratie-/configuratiewijzigingen, #1371) — beide waarschuwen, blokkeren niet |
 | `pre-release-db-check.yml` — *Pre-release database check* | `workflow_run` na de vorige | Wekt/controleert de database met credentials, bewust via `workflow_run` + `ref: main` zodat PR-inhoud geen productiecredentials kan misbruiken (#1009) |
 | `supabase-advisors.yml` — *Supabase-advisors* | Dagelijks 05:00 UTC | Security- en Performance Advisor van de productiedatabase — zie [de sectie hierboven](#dagelijkse-supabase-advisorcontrole-1221-epic-1219) |
@@ -723,35 +723,26 @@ gh pr checks <pr-nr>
 Sinds #1093 past de deploy-pipeline de Postgres-migraties zelf toe, vóór de code live gaat
 (`db-migrate-postgres`, zie `ARCHITECTUUR-DATABASE-TIERS.md` §57). Een handmatige ronde met
 `Database.Postgres.Cli` blijft mogelijk voor herstel, maar is geen release-stap meer. Loopt de code
-toch vooruit op het schema, dan is dat sinds 3.3.0.2 van buiten zichtbaar:
+toch vooruit op het schema, dan wordt dat publiek alleen als readinessflag getoond; diagnosewaarden zijn admin-only:
 
-| Veld in `GET /api/health` | Betekenis |
-|---|---|
-| `pendingMigrations` | Bestandsnamen uit `Database.Postgres/migrations/` die nog niet in de ledger `schema_migrations` staan. Leeg is de gezonde toestand; niet-leeg zet `status` op `degraded` |
-| `schemaWarning` | Niet `null` zodra `public.appsettings` een kolom mist die deze versie verwacht; de applicatie draait dan door op de standaardwaarde uit de migratie |
-| `settingsLoaded` | Sinds 3.3.0.2 het resultaat van een laadpoging die health zélf doet, niet meer een aanname over een eerdere poging |
+| Veld | Endpoint | Betekenis |
+|---|---|---|
+| `migrationsCurrent` | `GET /api/health` | `false` als Postgres-migraties openstaan; `null` als de status onbekend is; `true` als actueel |
+| `schemaWarningPresent` | `GET /api/health` | Boolean vlag; inhoud staat op `/api/beheer/health` |
+| `pendingMigrations`, `schemaWarning`, `settingsLoaded` | `GET /api/beheer/health` | Migratienamen, schemadiagnose en resultaat van de health-laadpoging, uitsluitend voor beheerders |
 
-**Wat de smoke test in `deploy.yml` hiermee doet.** `settingsLoaded=false` laat de `test`-job
-falen: zonder instellingencache antwoordt elk `/api/beheer/*`-endpoint 500, dus dat is een mislukte
-deploy. Niet-lege `pendingMigrations` is sinds #1093 óók een fout (was een `::warning::` toen de
-pipeline ze nog niet kon toepassen): `db-migrate-postgres` was groen en toch mist de database iets
-dat deze versie meelevert. Dat wijst op een secret `POSTGRES_CONNECTION_STRING` dat naar een andere
-database wijst dan de gelijknamige Function App-instelling.
+**Wat de smoke test in `deploy.yml` hiermee doet.** `settingsReady=false` en `migrationsCurrent=false` laten de deploy falen. Een onbekende migratiestatus (`null`) behoudt het bestaande gedrag en slaat de optionele controle over. Schema- en TLS-vlaggen blijven waarschuwingen; `status=degraded` door alleen een oude sync is geen deploy-fout.
 
-**Handeling bij een niet-lege lijst:** controleer eerst of secret en Function App-instelling
-dezelfde database benoemen. Daarna eventueel een handmatige ronde met `Database.Postgres.Cli`
-(`POSTGRES_CONNECTION_STRING` als omgevingsvariabele, nooit als argument) en controleren dat
-`/api/health` `"pendingMigrations": []` toont. Een "ledger-checksum genormaliseerd"-waarschuwing in
-het log van de migratiejob is geen fout: dat is de eenmalige CRLF→LF-reparatie uit #1112.
+Voor detailcontrole gebruikt een beheerder `GET /api/beheer/health`. De deploymentstap zelf gebruikt geen beheeridentiteit of ruwe diagnostiek. Een "ledger-checksum genormaliseerd"-waarschuwing in het migratielog is geen fout: dat is de eenmalige CRLF→LF-reparatie uit #1112.
 
 ## Verouderde synchronisatie (#1081)
 
-`GET /api/health` bevat twee velden die hierop zien:
+`GET /api/beheer/health` bevat de exacte syncdiagnostiek; de publieke `status` kan degraded worden door een stale sync:
 
 | Veld | Betekenis |
 |---|---|
-| `lastSync` | `MAX(lastsynctimestamp)` over de clubs met `syncenabled = true` — de waarheid uit de database |
-| `syncStale` | `true` zodra die waarde ouder is dan `SyncMaxAgeHours` (standaard 36 uur), of ontbreekt |
+| `lastSync` | `MAX(lastsynctimestamp)` over de clubs met `syncenabled = true` — de waarheid uit de database (admin-only detail) |
+| `syncStale` | `true` zodra die waarde ouder is dan `SyncMaxAgeHours` (standaard 36 uur), of ontbreekt (admin-only detail) |
 
 **Waarom 36 uur.** De timer draait dagelijks. Eén gemiste run valt daarmee op, terwijl een run die
 een paar uur later begint of langer duurt geen vals alarm geeft. Installaties met een ander schema
