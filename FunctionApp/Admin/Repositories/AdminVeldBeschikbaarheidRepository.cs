@@ -133,6 +133,25 @@ internal static class AdminVeldBeschikbaarheidRepository
         return (int)(await cmd.ExecuteScalarAsync())! > 0;
     }
 
+    internal static async Task<bool> BestaatAndereVoorUpdateAsync(int id, int? periodeId, string clubCode, string cs)
+    {
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
+        using var cmd = new SqlCommand(@"
+            SELECT COUNT(1)
+            FROM [dbo].[VeldBeschikbaarheid] huidig
+            JOIN [dbo].[VeldBeschikbaarheid] ander
+              ON ander.[VeldNummer] = huidig.[VeldNummer]
+             AND ander.[DagVanWeek] = huidig.[DagVanWeek]
+             AND ander.[ClubCode] = huidig.[ClubCode]
+             AND ander.[Id] <> huidig.[Id]
+             AND ((ander.[PeriodeId] IS NULL AND @PeriodeId IS NULL) OR ander.[PeriodeId] = @PeriodeId)
+            WHERE huidig.[Id] = @Id AND huidig.[ClubCode] = @Cc", conn);
+        cmd.Parameters.AddWithValue("@Id", id);
+        cmd.Parameters.AddWithValue("@Cc", clubCode);
+        cmd.Parameters.AddWithValue("@PeriodeId", (object?)periodeId ?? DBNull.Value);
+        return (int)(await cmd.ExecuteScalarAsync())! > 0;
+    }
+
     internal static async Task<int> InsertAsync(
         int veldNummer, int dagVanWeek, TimeSpan vanf, TimeSpan tot, bool zon, int? periodeId, string clubCode, string cs)
     {

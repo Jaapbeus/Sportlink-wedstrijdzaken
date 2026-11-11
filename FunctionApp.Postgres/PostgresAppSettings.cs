@@ -13,11 +13,12 @@ namespace FunctionApp.Postgres;
 /// <c>accommodatielatitude</c>/<c>accommodatielongitude</c>, nodig voor
 /// <c>PostgresSunsetCalculator</c>, uit <c>003_admin_tables.sql</c>; sinds #1141 ook
 /// <c>knvbpdfbijlageingeschakeld</c>/<c>knvbstandaardregio</c>, nodig voor het "verzet zonder
-/// datum"-pad, eveneens uit <c>003_admin_tables.sql</c>). De SQL Server-tier se
-/// <c>dbo.AppSettings</c> heeft ~18 kolommen (sportlinkApiUrl, e-mailvoetnoot, ...) — die horen bij
-/// functionaliteit die nog niet is vertaald (#889/#890 e.a.). Een fantoom-fallback voor kolommen
-/// die niet bestaan zou misconfiguratie maskeren; nieuwe sub-issues breiden dit uit zodra de
-/// bijbehorende Postgres-migratie de kolom toevoegt.
+/// datum"-pad, en sinds #1798 ook de e-mailinstellingen <c>emailvoetnoot</c>,
+/// <c>coordinatornaam</c>, <c>coordinatorfunctie</c>, <c>planneremailadres</c> en
+/// <c>herplandeadlinedagen</c>, eveneens uit <c>003_admin_tables.sql</c>. De SQL Server-tier se
+/// <c>dbo.AppSettings</c> heeft daarnaast nog kolommen die niet in deze cache worden gelezen — een
+/// fantoom-fallback voor kolommen die niet bestaan zou misconfiguratie maskeren; nieuwe sub-issues
+/// breiden dit uit zodra de bijbehorende Postgres-migratie de kolom toevoegt.
 /// </para>
 /// <para>
 /// <b>Twee bewuste uitzonderingen op die regel — telkens een optionele, losstaande kolom
@@ -98,7 +99,8 @@ public static class PostgresAppSettings
 
     private const string BaseColumns =
         "clubcode, accommodatie, syncenabled, accommodatielatitude, accommodatielongitude, plannerafzendernaam, clubname, " +
-        "knvbpdfbijlageingeschakeld, knvbstandaardregio";
+        "knvbpdfbijlageingeschakeld, knvbstandaardregio, emailvoetnoot, coordinatornaam, coordinatorfunctie, " +
+        "planneremailadres, herplandeadlinedagen";
 
     private const string ExtensionColumnMissingWarning =
         "Kolom '" + ExtensionColumn + "' ontbreekt in public.appsettings: migratie " +
@@ -214,6 +216,19 @@ public static class PostgresAppSettings
         if (!await reader.ReadAsync())
             return false;
 
+        var nieuw = BuildSettingsSnapshot(reader, includeExtensionColumn, includeDryRunColumn);
+
+        // Atomaire wissel: elke lezer via GetSetting ziet óf de volledig oude, óf de volledig nieuwe
+        // snapshot — nooit een tussentoestand met een deel oude en een deel nieuwe waarden.
+        lock (Lock)
+            Settings = nieuw;
+
+        return true;
+    }
+
+    private static Dictionary<string, string> BuildSettingsSnapshot(
+        NpgsqlDataReader reader, bool includeExtensionColumn, bool includeDryRunColumn)
+    {
         // #1135: een complete, verse snapshot opbouwen in een lokale dictionary — niet het bestaande,
         // gedeelde dictionary in-place muteren. De oude aanpak wees alleen niet-NULL kolommen toe,
         // waardoor een instelling die in de database naar NULL werd gezet (bijv. accommodatie) haar
@@ -244,6 +259,20 @@ public static class PostgresAppSettings
         nieuw["knvbPdfBijlageIngeschakeld"] = !reader.IsDBNull(7) && reader.GetBoolean(7) ? "1" : "0";
         if (!reader.IsDBNull(8))
             nieuw["knvbStandaardRegio"] = reader.GetString(8);
+        // E-mailinstellingen (#1798): deze kolommen bestaan sinds migratie 003 en worden door de
+        // mailboxverwerking uit deze cache gelezen (de e-mailtester laadt een eigen snapshot).
+        // NULL blijft afwezig uit de verse snapshot, zodat ook een gewiste instelling na reload
+        // niet als oude cachewaarde blijft hangen.
+        if (!reader.IsDBNull(9))
+            nieuw["emailVoetnoot"] = reader.GetString(9);
+        if (!reader.IsDBNull(10))
+            nieuw["coordinatorNaam"] = reader.GetString(10);
+        if (!reader.IsDBNull(11))
+            nieuw["coordinatorFunctie"] = reader.GetString(11);
+        if (!reader.IsDBNull(12))
+            nieuw["plannerEmailAdres"] = reader.GetString(12);
+        if (!reader.IsDBNull(13))
+            nieuw["herplanDeadlineDagen"] = reader.GetInt32(13).ToString(System.Globalization.CultureInfo.InvariantCulture);
 
         if (includeExtensionColumn)
         {
@@ -265,12 +294,7 @@ public static class PostgresAppSettings
             nieuw["sportlinkDryRun"] = "1";
         }
 
-        // Atomaire wissel: elke lezer via GetSetting ziet óf de volledig oude, óf de volledig nieuwe
-        // snapshot — nooit een tussentoestand met een deel oude en een deel nieuwe waarden.
-        lock (Lock)
-            Settings = nieuw;
-
-        return true;
+        return nieuw;
     }
 
     /// <summary>

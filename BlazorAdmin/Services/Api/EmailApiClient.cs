@@ -37,11 +37,16 @@ public sealed class EmailApiClient
         DateTime? vanaf = null, DateTime? tot = null, string? status = null, int limit = 50)
     {
         var qp = new List<string> { $"limit={limit}" };
-        if (vanaf.HasValue) qp.Add($"vanaf={vanaf:yyyy-MM-dd}");
-        if (tot.HasValue) qp.Add($"tot={tot:yyyy-MM-dd}");
+        if (vanaf.HasValue) qp.Add($"vanaf={Uri.EscapeDataString(FormateerDatum(vanaf.Value))}");
+        if (tot.HasValue) qp.Add($"tot={Uri.EscapeDataString(FormateerDatum(tot.Value))}");
         if (!string.IsNullOrWhiteSpace(status)) qp.Add($"status={Uri.EscapeDataString(status)}");
         return await _t.GetAsync<EmailLogResponse>("api/beheer/email-log?" + string.Join("&", qp));
     }
+
+    private static string FormateerDatum(DateTime waarde)
+        => waarde.Kind == DateTimeKind.Unspecified && waarde.TimeOfDay == TimeSpan.Zero
+            ? waarde.ToString("yyyy-MM-dd")
+            : waarde.ToUniversalTime().ToString("O");
 
     public async Task<ApiResult<EmailTraceDto>> GetEmailTraceAsync(int verwerkingId)
         => await _t.GetAsync<EmailTraceDto>($"api/beheer/email-log/{verwerkingId}/trace");

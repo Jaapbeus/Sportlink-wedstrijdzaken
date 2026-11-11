@@ -25,7 +25,9 @@ public static class AdminEmailLogFunction
                 var filter = EmailLogEndpointCore.LeesFilter(req.Query);
                 var items = await AdminEmailLogRepository.GetAsync(
                     clubCode, filter.Vanaf, filter.Tot, filter.Status, filter.Limit, SystemUtilities.DatabaseConfig.ConnectionString);
-                return new OkObjectResult(new { count = items.Count, limit = filter.Limit, items });
+                var statusCounts = await AdminEmailLogRepository.GetStatusCountsAsync(
+                    clubCode, filter.Vanaf, filter.Tot, filter.Status, SystemUtilities.DatabaseConfig.ConnectionString);
+                return new OkObjectResult(new { count = items.Count, limit = filter.Limit, statusCounts, items });
             });
 
     /// <summary>

@@ -18,8 +18,21 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- Removed the unused API status service and placed existing shared-logic tests in `Planner.Shared.Tests` (see issue #1808).
+- Clarified the Postgres error-reporting adapter documentation while retaining its tier-specific egress and fingerprint rationale (see issue #1805).
+- Het reviewrondelimiet voor Codex en Claude Code (AGENTS.md en de automatische issue-beurt van de bot) is van twee naar drie rondes per PR gegaan; pas daarna beslist de eigenaar, zie issue #1835.
+- De SQL Server-planner geeft voor de niet-opgeslagen optionele eerste-elftalnaam nu expliciet `null` door, gelijk aan Postgres; de settings-loader guard hoeft deze ontbrekende sleutel niet meer uit te zonderen (#1821).
+
 ### Fixed
 - Veldplanning vindt bij vervroegen ook open ruimtes na de eerste wedstrijd; beschikbaarheidsvensters blijven binnen het gevraagde dagdeel en lopen niet terug bij overlappende bezettingen. De handmatige conflictcontrole gebruikt dezelfde Sportlink-bufferregel als de planner, de huidige HTML-weergave herkent volledige veldnamen, en vervallen plannerregels negeren afgelaste of verwijderde bronwedstrijden. Ontbreekt een betrouwbare duur voor een bestaande wedstrijd, dan blokkeert de planning expliciet in plaats van de bezetting stilzwijgend weg te laten. Late tijdsloten wikkelen niet over middernacht. SQL Server-runtime-regressietests bewaken de bronduur, terugvalduur, ontbrekende duur en veldkoppeling naast de Postgres-tests. De Postgres-plannerfixtures maken zelf alle drie de benodigde historietabellen aan, onafhankelijk van de testvolgorde (#1814).
+- Settings restart decisions now have paired SQL Server and Postgres persistence regression tests for unchanged and changed schedules alongside another saved field (#1819).
+- De Postgres-instellingenloader laadt nu ook de vijf bestaande e-mailinstellingen voor de mailboxverwerking en wist ze bij herladen na `NULL`, gelijk aan het gedrag van de SQL Server-tier (#1798).
+- De instellingenopslag meldt alleen een herstart als de opgeslagen FetchSchedule-waarde echt verandert; SQL Server ondersteunt nu ook het opslaan en teruglezen van SportlinkDryRun (#1819)
+- Een teambegeleiding-CSV met ongeldige UTF-8-bytes wordt vóór de import geweigerd in plaats van stilzwijgend met vervangtekens in de preview te verschijnen (#1819)
+- Veldbeschikbaarheid kan niet meer naar een periodecombinatie worden bijgewerkt die al bestaat (#1819)
+- E-maildashboardtellers gebruiken de echte laatste 24 uur en tellen alle passende berichten, ook als de detailweergave de limiet bereikt. Bij een oudere API zonder volledige tellingen toont het dashboard "Niet beschikbaar" in plaats van onjuiste nullen; werk de API bij vóór de Blazor-app (#1819)
+- De email-log OpenAPI-parameters documenteren nu de drie parser-ondersteunde datumvormen; de SQL Server-beschikbaarheidstest ruimt ook op als het fixture-opzetten faalt (#1819, reviewronde 3)
 
 ## [3.16.0.0] — 2026-11-10
 
