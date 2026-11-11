@@ -47,6 +47,11 @@ public class BerichtAiKernAanroepTests
         yield return [twee + "--" + vier + ".." + vier];
         yield return [twee + "\u00a0" + vier + "\u00a0" + vier];
         yield return ["+" + twee + " (" + groep + ") " + groep + " " + vier];
+        yield return [twee + new string('0', 11)];
+        yield return [twee + " " + twee + " " + groep + " " + vier];
+        yield return [twee + twee + " " + groep + " " + vier];
+        yield return [string.Join('.', Enumerable.Repeat(twee, 5))];
+        yield return [string.Join('-', Enumerable.Repeat(twee, 5))];
     }
 
     [Theory]
@@ -73,6 +78,7 @@ public class BerichtAiKernAanroepTests
     [InlineData("01/01/27 09:30")]
     [InlineData("9.00 10.30 11.00")]
     [InlineData("09.00 10.30 11.00")]
+    [InlineData("00.00 10.30 11.00")]
     public async Task Planninggegevens_InAlleProvidercontexten_BlijvenBehouden(string planning)
     {
         var client = new VasteClient("{}");
