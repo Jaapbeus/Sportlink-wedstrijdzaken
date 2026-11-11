@@ -165,6 +165,17 @@ public class SqlFeedbackStoreIntegrationTests
             (await s.ZetIssueBodyAsync(club, rij.FeedbackId, metReferentie)).Should().BeTrue();
 
             (await s.GetDetailAsync(club, rij.FeedbackId))!.IssueBody.Should().Be(metReferentie);
+
+            // Een rij die vóór de kolom bleef hangen (begin NULL, oud slot): het stempelen legt het begin vast, zodat
+            // een tweede herclaim niet terugvalt op het slot van de eerste (#1803).
+            await ExecAsync(@"UPDATE [avg].[Feedback] SET [PublicatieGestartOpUtc] = NULL, [mta_modified] = DATEADD(MINUTE, -10, GETUTCDATE()) WHERE [FeedbackId] = @id", ("@id", rij.FeedbackId));
+            (await s.ZetIssueBodyAsync(club, rij.FeedbackId, metReferentie)).Should().BeTrue();
+            await Task.Delay(50);
+            var gestempeld = await s.HerClaimPublicatieAsync(club, rij.FeedbackId, DateTime.UtcNow.AddMinutes(1));
+            gestempeld.Should().NotBeNull().And.BeAfter(DateTime.UtcNow.AddMinutes(-5), "het begin is het stempelmoment, niet het oude slot");
+            await Task.Delay(50);
+            (await s.HerClaimPublicatieAsync(club, rij.FeedbackId, DateTime.UtcNow.AddMinutes(1))).Should().Be(gestempeld,
+                "een latere herclaim zoekt nog steeds vanaf het stempelmoment");
         }
         finally { await OpruimenAsync(club); }
     }

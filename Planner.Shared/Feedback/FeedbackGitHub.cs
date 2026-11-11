@@ -107,7 +107,14 @@ internal static class FeedbackGitHub
     }
 
     private const int ZoekPaginaGrootte = 100;
-    private const int ZoekMaxPaginas = 10;
+    internal const int ZoekMaxPaginas = 10;
+
+    /// <summary>
+    /// Langste GitHub-tijd van één herstelpoging: alle lijstpagina's plus de POST en de 422-fallback-POST, elk begrensd
+    /// door <see cref="RequestTimeout"/>. <see cref="FeedbackPublicatieHerstel.ClaimVerlooptNa"/> moet hier ruim boven
+    /// liggen, anders kan een tweede klik herclaimen terwijl de eerste poging nog zoekt (#1803; test bewaakt dit).
+    /// </summary>
+    internal static TimeSpan LangsteHerstelpoging => RequestTimeout * (ZoekMaxPaginas + 2);
 
     /// <summary>
     /// Zoekt via de issuelijst (niet de search-API: die loopt achter door indexvertraging, #1803) of er al een

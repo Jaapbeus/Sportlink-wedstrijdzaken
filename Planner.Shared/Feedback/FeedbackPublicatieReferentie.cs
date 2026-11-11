@@ -64,9 +64,10 @@ public static class FeedbackPublicatieHerstel
 {
     /// <summary>
     /// Zolang een claim jonger is, loopt mogelijk nog een eerste poging; een tweede klik krijgt dan 409.
-    /// Ruim boven de HTTP-timeout (15 s per aanroep) en onder de functiemaximumduur.
+    /// Ruim boven de langste herstelpoging (tien lijstpagina's plus POST en 422-fallback, elk maximaal 15 s: 180 s,
+    /// plus databasetijd) en onder de functiemaximumduur (10 minuten, <c>host.json</c>). Een test bewaakt die marge.
     /// </summary>
-    public static readonly TimeSpan ClaimVerlooptNa = TimeSpan.FromMinutes(2);
+    public static readonly TimeSpan ClaimVerlooptNa = TimeSpan.FromMinutes(4);
 
     /// <summary>Marge voor klokverschil tussen database en GitHub bij het zoeken vanaf het begin van de publicatiepoging.</summary>
     public static readonly TimeSpan ZoekMarge = TimeSpan.FromMinutes(5);

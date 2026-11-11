@@ -37,21 +37,25 @@ internal sealed class FeedbackStoreFake : IFeedbackStore
         return Task.FromResult(ClaimSlaagt);
     }
 
-    /// <summary>Begin van de publicatiepoging (kolom <c>PublicatieGestartOpUtc</c>): alleen <see cref="ClaimPublicatieAsync"/> zet het.</summary>
+    /// <summary>Begin van de publicatiepoging (kolom <c>PublicatieGestartOpUtc</c>): <see cref="ClaimPublicatieAsync"/> en <see cref="ZetIssueBodyAsync"/> zetten het, de herclaim niet.</summary>
     public Dictionary<Guid, DateTime> PublicatieGestart { get; } = [];
 
     /// <summary>Het slot (kolom <c>mta_modified</c>): claim én herclaim verversen het.</summary>
     public Dictionary<Guid, DateTime> ClaimSlot { get; } = [];
 
-    /// <summary>Begin van de poging voor een rij zonder vastgelegd begin (geclaimd vóór de kolom); <c>null</c> = herclaim weigert.</summary>
+    /// <summary>
+    /// Het slot van een rij die vóór de test al op <c>publiceren</c> stond (geclaimd vóór de kolom, dus zonder vastgelegd
+    /// begin); <c>null</c> = dat slot is nog vers en de herclaim weigert.
+    /// </summary>
     public DateTime? HerClaimVorigMoment { get; set; } = DateTime.UtcNow.AddMinutes(-10);
 
+    /// <summary>Spiegelt de SQL: slot ouder dan de drempel, dan het slot verversen en <c>COALESCE(PublicatieGestartOpUtc, oud slot)</c> teruggeven.</summary>
     public Task<DateTime?> HerClaimPublicatieAsync(string clubCode, Guid feedbackId, DateTime claimOuderDanUtc)
     {
         if (Statussen.GetValueOrDefault(feedbackId) != FeedbackStatusWaarden.Publiceren) return Task.FromResult<DateTime?>(null);
-        if (ClaimSlot.TryGetValue(feedbackId, out var slot) && slot >= claimOuderDanUtc) return Task.FromResult<DateTime?>(null);
-        var gestart = PublicatieGestart.TryGetValue(feedbackId, out var g) ? g : HerClaimVorigMoment;
-        if (gestart is null) return Task.FromResult<DateTime?>(null);
+        DateTime? slot = ClaimSlot.TryGetValue(feedbackId, out var s) ? s : HerClaimVorigMoment;
+        if (slot is null || slot >= claimOuderDanUtc) return Task.FromResult<DateTime?>(null);
+        DateTime? gestart = PublicatieGestart.TryGetValue(feedbackId, out var g) ? g : slot;
         ClaimSlot[feedbackId] = DateTime.UtcNow;
         return Task.FromResult(gestart);
     }
@@ -71,6 +75,7 @@ internal sealed class FeedbackStoreFake : IFeedbackStore
         if (IssueBodyBewarenFaalt) throw new InvalidOperationException("database onbereikbaar");
         if (Statussen.GetValueOrDefault(feedbackId) != FeedbackStatusWaarden.Publiceren) return Task.FromResult(false);
         IssueBodyWijzigingen.Add((feedbackId, issueBody));
+        PublicatieGestart[feedbackId] = ClaimSlot[feedbackId] = DateTime.UtcNow;
         return Task.FromResult(true);
     }
 

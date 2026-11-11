@@ -324,6 +324,56 @@ public class FeedbackBeheerEndpointCoreTests
     }
 
     [Fact]
+    public async Task Herstel_VastgelopenZonderReferentie_ZoektNaHetStempelenAltijdVanafDatMoment()
+    {
+        // Review-P3 (pre-review 2): een rij die vóór de kolom PublicatieGestartOpUtc op publiceren bleef hangen, viel bij
+        // elke herclaim terug op het vorige slot, zodat de zoekgrens na een mislukte poging toch opschoof. Het bewaren van
+        // de referentie legt nu het begin vast: ook een poging die later komt dan de zoekmarge vindt het issue nog.
+        var store = new FeedbackStoreFake { Detail = MaakDetail(FeedbackStatusWaarden.Publiceren) };
+        store.Statussen[Id] = FeedbackStatusWaarden.Publiceren;
+        var posts = 0;
+        Func<string, string, string[], Task<(int, string)>> github = (_, _, _) =>
+        {
+            posts++;
+            throw new FeedbackPublicatieUitkomstOnbekendException(new TaskCanceledException());
+        };
+        var bestaand = new FeedbackGevondenIssue(41, "https://github.com/example/repo/issues/41");
+        DateTime? issueAangemaakt = null;
+        var zoeken = new List<DateTime>();
+        Func<string, DateTime, Task<(bool, FeedbackGevondenIssue?)>> zoek = (_, sinds) =>
+        {
+            zoeken.Add(sinds);
+            if (zoeken.Count == 1) throw new HttpRequestException("onbereikbaar");
+            // Zoals de issuelijst: alleen een issue dat ná de zoekgrens is aangemaakt, telt mee.
+            return Task.FromResult<(bool, FeedbackGevondenIssue?)>((true, issueAangemaakt >= sinds ? bestaand : null));
+        };
+        var stap = TimeSpan.FromMinutes(6);
+
+        // Poging 1: referentie gestempeld, daarna een dubbelzinnige POST die GitHub wél verwerkte.
+        (await FeedbackBeheerEndpointCore.PubliceerAsync(ClubCode, Beheerder, store, Id, github, NullLogger.Instance, zoek))
+            .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(502);
+        var stempel = store.PublicatieGestart[Id];
+        issueAangemaakt = stempel.AddSeconds(1);
+
+        // Poging 2: het zoeken faalt. Poging 3 komt meer dan de zoekmarge later.
+        var uitkomsten = new List<IActionResult>();
+        for (var poging = 2; poging <= 3; poging++)
+        {
+            store.VerstrijkTijd(stap);
+            issueAangemaakt -= stap;
+            uitkomsten.Add(await FeedbackBeheerEndpointCore.PubliceerAsync(ClubCode, Beheerder, store, Id, github, NullLogger.Instance, zoek));
+        }
+
+        uitkomsten[0].Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(502);
+        uitkomsten[1].Should().BeOfType<OkObjectResult>();
+        posts.Should().Be(1, "het issue van de eerste POST met referentie wordt gekoppeld, er komt geen tweede");
+        store.Gepubliceerd[Id].Nummer.Should().Be(41);
+        zoeken.Should().Equal(
+            stempel - stap - FeedbackPublicatieHerstel.ZoekMarge,
+            stempel - (stap * 2) - FeedbackPublicatieHerstel.ZoekMarge);
+    }
+
+    [Fact]
     public async Task Publiceer_OudereMeldingZonderReferentie_KrijgtVoorDeEerstePostEenBewaardeReferentie()
     {
         // Review-P3: een melding van vóór #1803 krijgt onder de claim, vóór de eerste POST, alsnog een referentie.

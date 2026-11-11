@@ -4974,7 +4974,9 @@ tiers toe; de merge doet dan de eigenaar.
   in de `CREATE TABLE` van `Script.PostDeployment1.sql` en idempotent (`COL_LENGTH`) aan het einde daarvan,
   met `QUOTED_IDENTIFIER ON` vanwege de gefilterde index.
 - **Schrijven en lezen:** `ClaimPublicatieAsync` zet de kolom (wacht/mislukt → publiceren, vlak vóór de
-  eerste POST). `HerClaimPublicatieAsync` laat haar staan en geeft `COALESCE(kolom, oud slot)` terug, zodat
-  een rij die vóór deze kolom is geclaimd terugvalt op haar oude claimmoment.
+  eerste POST). `ZetIssueBodyAsync` zet haar ook, wanneer een melding van vóór #1803 haar publicatiereferentie
+  krijgt: die referentie gaat pas daarna voor het eerst naar GitHub. `HerClaimPublicatieAsync` laat haar staan
+  en geeft `COALESCE(kolom, oud slot)` terug. Een rij die vóór deze kolom bleef hangen valt dus alleen bij de
+  eerste herclaim terug op haar oude slot; daarna heeft ze een vast begin en schuift de zoekgrens niet meer op.
 - **Expand (§57):** uitsluitend additief en nullable. De vorige code noemt in elke `INSERT` en `UPDATE` op
   `avg.feedback` haar kolommen en merkt de nieuwe kolom niet. Bestaande rijen blijven NULL.

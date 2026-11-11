@@ -7103,7 +7103,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
         '502':
-          description: Publiceren kon niet volledig worden bevestigd (time-out, annulering, HTTP 408/5xx, receipt-opslag, of de controle op een bestaand issue mislukte); de melding blijft op `publiceren` en is na enkele minuten opnieuw te proberen. De server controleert dan eerst via de issuelijst of het issue al bestaat en koppelt dat. Kon een oudere melding vóór de POST geen publicatiereferentie krijgen, dan is er niets verstuurd en is ze opnieuw te publiceren.
+          description: Publiceren is mislukt of kon niet volledig worden bevestigd. Wijst GitHub de aanmaak expliciet af (een 4xx anders dan 408, ook na de 422-fallback zonder eigen labels), dan gaat de melding naar `github-mislukt` en is ze opnieuw te publiceren. Is de uitkomst onbekend (time-out, annulering, HTTP 408/5xx) of mislukte de receipt-opslag of de controle op een bestaand issue, dan blijft de melding op `publiceren` en is ze na enkele minuten opnieuw te proberen; de server controleert dan eerst via de issuelijst of het issue al bestaat en koppelt dat. Kon een oudere melding vóór de POST geen publicatiereferentie krijgen, dan is er niets verstuurd en is ze opnieuw te publiceren.
           content:
             application/json:
               schema:

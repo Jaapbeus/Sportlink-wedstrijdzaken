@@ -105,7 +105,8 @@ internal sealed class SqlFeedbackStore : IFeedbackStore
         using var conn = await OpenAsync();
         // mta_modified is het slot: één atomaire UPDATE, de tweede gelijktijdige herclaim ziet het nieuwe slotmoment en
         // valt af. PublicatieGestartOpUtc blijft staan (#1803): de zoekgrens van het herstel mag door een mislukte
-        // herstelpoging niet opschuiven. Een rij van vóór die kolom valt terug op het oude slot.
+        // herstelpoging niet opschuiven. Een rij van vóór die kolom valt terug op het oude slot, tot ZetIssueBodyAsync
+        // haar vóór de eerste POST met referentie een vast begin geeft.
         using var cmd = new SqlCommand(@"
             UPDATE [avg].[Feedback] SET [mta_modified] = GETUTCDATE()
             OUTPUT COALESCE(deleted.[PublicatieGestartOpUtc], deleted.[mta_modified])
@@ -121,8 +122,10 @@ internal sealed class SqlFeedbackStore : IFeedbackStore
     public async Task<bool> ZetIssueBodyAsync(string clubCode, Guid feedbackId, string issueBody)
     {
         using var conn = await OpenAsync();
+        // De nieuwe referentie gaat pas ná deze update voor het eerst naar GitHub: dit moment is dus een veilige,
+        // vaste zoekgrens, ook voor een rij die vóór de kolom PublicatieGestartOpUtc bleef hangen (#1803).
         using var cmd = new SqlCommand(@"
-            UPDATE [avg].[Feedback] SET [IssueBody] = @Body, [mta_modified] = GETUTCDATE()
+            UPDATE [avg].[Feedback] SET [IssueBody] = @Body, [PublicatieGestartOpUtc] = GETUTCDATE(), [mta_modified] = GETUTCDATE()
             WHERE [FeedbackId] = @Id AND [ClubCode] = @Cc AND [Status] = @Publiceren", conn);
         cmd.Parameters.Add("@Body", System.Data.SqlDbType.NVarChar, -1).Value = issueBody;
         cmd.Parameters.AddWithValue("@Publiceren", FeedbackStatusWaarden.Publiceren);

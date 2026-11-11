@@ -54,14 +54,19 @@ melding ──► PII-gates ──► AI-structurering ──► opslag in avg.F
   `github-mislukt`.
 * Na een dubbelzinnige POST (time-out, verbroken verbinding, HTTP 408/5xx, onleesbare 2xx, mislukte
   receipt-opslag) blijft de status `publiceren`. "Publiceer" is dan weer mogelijk: de server herclaimt
-  atomair (`HerClaimPublicatieAsync`, alleen als de vorige (her)claim ouder is dan 2 minuten, anders
-  `409`), zoekt via de issuelijst (`GET /repos/{owner}/{repo}/issues?state=all&sort=created&direction=desc&since=…`,
+  atomair (`HerClaimPublicatieAsync`, alleen als de vorige (her)claim ouder is dan 4 minuten, anders
+  `409`; dat is langer dan één volledige herstelpoging van tien lijstpagina's plus POST en 422-fallback
+  à 15 seconden, zodat een tweede klik nooit naast een nog zoekende eerste poging loopt), zoekt via de
+  issuelijst (`GET /repos/{owner}/{repo}/issues?state=all&sort=created&direction=desc&since=…`,
   bewust niet de search-API vanwege indexvertraging) een issue met dezelfde referentie en koppelt dat;
   ontbreekt het, dan wordt het met dezelfde referentie opnieuw geplaatst.
 * De zoekgrens is het begin van de publicatiepoging (kolom `PublicatieGestartOpUtc`, gezet door
-  `ClaimPublicatieAsync`) min 5 minuten marge. Een herclaim ververst alleen het slot (`mta_modified`) en
+  `ClaimPublicatieAsync` en door `ZetIssueBodyAsync` wanneer een oudere melding haar referentie krijgt)
+  min 5 minuten marge. Een herclaim ververst alleen het slot (`mta_modified`) en
   laat dat begin staan, zodat een herstelpoging die mislukt (GitHub onbereikbaar, receipt niet opgeslagen)
-  het venster van de volgende poging niet verkleint. Omdat `since` op `updated_at` filtert, stopt het
+  het venster van de volgende poging niet verkleint. Een rij die al vóór de kolom op `publiceren` stond,
+  valt bij de eerste herclaim terug op haar oude slot; het bewaren van de referentie legt daarna het begin
+  vast, vóór de eerste POST met die referentie. Omdat `since` op `updated_at` filtert, stopt het
   zoeken bij het eerste issue dat vóór de grens is aangemaakt. Bij meerdere treffers wint het oudste
   issue: de referentie was geheim tot de eerste POST, dus een latere kopie kan nooit eerder bestaan.
 * Is GitHub onbereikbaar, of zijn er meer dan 1000 issues sinds de grens (tien pagina's), dan wordt

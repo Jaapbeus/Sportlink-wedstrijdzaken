@@ -247,6 +247,18 @@ public sealed class FeedbackGitHubTests
     }
 
     [Fact]
+    public void Claim_verloopt_pas_na_de_langste_herstelpoging_plus_databasetijd()
+    {
+        // Pre-review P3 (#1803): met tien lijstpagina's duurt één herstelpoging tot 180 s GitHub-tijd. Een slot van 2 minuten
+        // verliep dan terwijl de eerste poging nog zocht; een tweede klik kon herclaimen en beide konden posten.
+        FeedbackGitHub.LangsteHerstelpoging.Should().Be(FeedbackGitHub.RequestTimeout * (FeedbackGitHub.ZoekMaxPaginas + 2),
+            "alle lijstpagina's plus de POST en de 422-fallback-POST");
+        FeedbackPublicatieHerstel.ClaimVerlooptNa.Should().BeGreaterThanOrEqualTo(FeedbackGitHub.LangsteHerstelpoging + TimeSpan.FromSeconds(30),
+            "het slot moet één volledige poging plus databasetijd overleven");
+        FeedbackPublicatieHerstel.ClaimVerlooptNa.Should().BeLessThan(TimeSpan.FromMinutes(10), "onder de functionTimeout uit host.json");
+    }
+
+    [Fact]
     public void Referentie_is_stabiel_leesbaar_niet_te_vervalsen_en_bevat_geen_pii_of_redactietrigger()
     {
         var r = FeedbackPublicatieReferentie.Nieuw();

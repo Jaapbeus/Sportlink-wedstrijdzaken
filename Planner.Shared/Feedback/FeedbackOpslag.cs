@@ -123,8 +123,10 @@ public interface IFeedbackStore
 
     /// <summary>
     /// Vervangt de bewaarde issuetekst van een geclaimde melding (status <c>publiceren</c>). Alleen gebruikt om een
-    /// melding van vóór #1803 vóór haar eerste POST alsnog een publicatiereferentie te geven. Geeft <c>false</c>
-    /// als de melding niet (meer) geclaimd is.
+    /// melding van vóór #1803 vóór haar eerste POST alsnog een publicatiereferentie te geven. Zet daarbij ook het begin
+    /// van de publicatiepoging (<c>PublicatieGestartOpUtc</c>) op nu: de nieuwe referentie bestaat vóór dit moment
+    /// nergens op GitHub, dus elke latere herclaim zoekt vanaf hier, ook voor een rij die vóór die kolom bleef hangen.
+    /// Geeft <c>false</c> als de melding niet (meer) geclaimd is.
     /// </summary>
     Task<bool> ZetIssueBodyAsync(string clubCode, Guid feedbackId, string issueBody);
 

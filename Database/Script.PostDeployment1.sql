@@ -4219,9 +4219,10 @@ IF OBJECT_ID('dbo.Teams', 'U') IS NOT NULL AND COL_LENGTH('dbo.Teams', 'Categori
 GO
 
 -- #1803: begin van de lopende publicatiepoging van een feedbackmelding. ClaimPublicatieAsync zet het vóór de eerste
--- GitHub-POST; een herclaim (automatisch herstel) laat het staan, zodat het zoekvenster naar een al aangemaakt issue
--- niet opschuift door een mislukte herstelpoging. NULL = nog nooit geclaimd of geclaimd vóór deze kolom (de code valt
--- dan terug op mta_modified). Additief en nullable (expand). Postgres-tegenhanger:
+-- GitHub-POST (ZetIssueBodyAsync ook, als een oudere melding haar referentie krijgt); een herclaim (automatisch
+-- herstel) laat het staan, zodat het zoekvenster naar een al aangemaakt issue niet opschuift door een mislukte
+-- herstelpoging. NULL = nog nooit geclaimd of geclaimd vóór deze kolom (de code valt dan terug op mta_modified).
+-- Additief en nullable (expand). Postgres-tegenhanger:
 -- Database.Postgres/migrations/048_avg_feedback_publicatiegestart.sql. Bron: Database/avg/Tables/Feedback.sql.
 -- QUOTED_IDENTIFIER moet AAN zijn: avg.Feedback heeft een gefilterde index (#1280).
 SET QUOTED_IDENTIFIER ON;

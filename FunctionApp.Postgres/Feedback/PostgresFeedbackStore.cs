@@ -104,7 +104,8 @@ internal sealed class PostgresFeedbackStore : IFeedbackStore
         await using var conn = await OpenAsync();
         // mta_modified is het slot: FOR UPDATE in de CTE serialiseert twee gelijktijdige herclaims, de tweede ziet het
         // nieuwe slotmoment en valt af. publicatiegestartoputc blijft staan (#1803): de zoekgrens van het herstel mag
-        // door een mislukte herstelpoging niet opschuiven. Een rij van vóór die kolom valt terug op het oude slot.
+        // door een mislukte herstelpoging niet opschuiven. Een rij van vóór die kolom valt terug op het oude slot,
+        // tot ZetIssueBodyAsync haar vóór de eerste POST met referentie een vast begin geeft.
         await using var cmd = new NpgsqlCommand(@"
             WITH oud AS (
                 SELECT COALESCE(publicatiegestartoputc, mta_modified) AS gestart FROM avg.feedback
@@ -125,8 +126,10 @@ internal sealed class PostgresFeedbackStore : IFeedbackStore
     public async Task<bool> ZetIssueBodyAsync(string clubCode, Guid feedbackId, string issueBody)
     {
         await using var conn = await OpenAsync();
+        // De nieuwe referentie gaat pas ná deze update voor het eerst naar GitHub: dit moment is dus een veilige,
+        // vaste zoekgrens, ook voor een rij die vóór de kolom publicatiegestartoputc bleef hangen (#1803).
         await using var cmd = new NpgsqlCommand(@"
-            UPDATE avg.feedback SET issuebody = @body, mta_modified = NOW()
+            UPDATE avg.feedback SET issuebody = @body, publicatiegestartoputc = NOW(), mta_modified = NOW()
             WHERE feedbackid = @id AND clubcode = @cc AND status = @publiceren", conn);
         cmd.Parameters.AddWithValue("body", issueBody);
         cmd.Parameters.AddWithValue("publiceren", FeedbackStatusWaarden.Publiceren);
