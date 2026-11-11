@@ -19,6 +19,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Fixed
+- De negatieve tier-duplicatietest gebruikt een geïsoleerde minimale fixture en controleert de exacte foutcode en groeimelding, zodat minder productieduplicatie de test niet laat slagen (#1800).
 - Ontbreekt `AiModelName`, dan wordt geen AI-client met een hardcoded terugval geregistreerd; e-mailverwerking stopt veilig vóór de databasefase en de handmatige e-mailtester geeft een gecontroleerde 503. Niet-AI-functies blijven beschikbaar (#1800).
 
 ### Changed
