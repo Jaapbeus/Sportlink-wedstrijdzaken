@@ -27,8 +27,6 @@ namespace SportlinkFunction.Admin;
 /// </summary>
 internal static class AdminEndpoint
 {
-    internal const int OutboundHttpTimeoutSeconds = 10;
-
     /// <summary>
     /// Testhaak (#1350) — uitsluitend bereikbaar via <c>InternalsVisibleTo</c>. Staat hij, dan keert
     /// elke aanroep die de autorisatiepoort passeert meteen terug met het resultaat van de haak: vóór

@@ -84,12 +84,9 @@ public static class AdminSettingsFunction
 
     private const string ManagementApiVersion = "2022-03-01";
 
-    private static readonly HttpClient _geocodeClient;
-    static AdminSettingsFunction()
-    {
-        _geocodeClient = new HttpClient { Timeout = TimeSpan.FromSeconds(AdminEndpoint.OutboundHttpTimeoutSeconds) };
+    private static readonly HttpClient _geocodeClient = new() { Timeout = TimeSpan.FromSeconds(AdminEndpoint.OutboundHttpTimeoutSeconds) };
+    static AdminSettingsFunction() =>
         _geocodeClient.DefaultRequestHeaders.Add("User-Agent", AdminEndpoint.OutboundUserAgent);
-    }
 
     [Function("AdminSettingsGet")]
     public static Task<IActionResult> Get(
@@ -385,6 +382,9 @@ public static class AdminSettingsFunction
         [JsonProperty("display_name")] public string DisplayName { get; set; } = "";
     }
 
+    internal static HttpClient CreateManagementHttpClient(HttpMessageHandler? handler = null) =>
+        new(handler ?? new HttpClientHandler()) { Timeout = TimeSpan.FromSeconds(AdminEndpoint.OutboundHttpTimeoutSeconds) };
+
     private static async Task<string?> TriggerFunctionAppRestartAsync(string nieuweSchedule, ILogger log)
     {
         if (UitgaandVerkeerCore.Blokkeer(EgressGuard.ExternalIntegrationsAllowed) is not null)
@@ -411,7 +411,7 @@ public static class AdminSettingsFunction
             var tokenContext = new TokenRequestContext(["https://management.azure.com/.default"]);
             var token = await credential.GetTokenAsync(tokenContext);
 
-            using var http = global::Planner.Shared.Infrastructure.AzureManagementHttpClientFactory.Create(AdminEndpoint.OutboundHttpTimeoutSeconds);
+            using var http = CreateManagementHttpClient();
             http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
 
             var baseUrl = $"https://management.azure.com/subscriptions/{subscriptionId}" +
