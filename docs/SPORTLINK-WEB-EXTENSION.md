@@ -545,7 +545,7 @@ Vier dingen om te onthouden:
   vereist een uitbreiding van `ISportlinkMutationAuditService.VoltooiAsync` (een extra optionele
   parameter, raakt beide tiers) en is niet gebouwd. Omdat aanmaken sinds #1319 de instelling
   `sportlinkDryRun` volgt (en sinds #1427 live slaagt), is dit een open functioneel gat op beide
-  tiers (vervolgissue volgt): bij een echte aanmaak legt de audit alleen de placeholder `"NIEUW"`
+  tiers (zie issue #1879): bij een echte aanmaak legt de audit alleen de placeholder `"NIEUW"`
   vast, niet het echte `PublicMatchId`.
   **Bewust NIET gebouwd (toekomstig
   werk):** uitslag vastleggen (`ClubMatchScore`), de drie overige
