@@ -315,6 +315,25 @@ Voorbeelden die als BuitenScope worden aangemerkt:
 
 Emails met **meerdere datums voor hetzelfde team** zijn géén BuitenScope — die worden verwerkt als `BeschikbaarheidCheck` met een multi-datum antwoord.
 
+Bij een beschikbaarheidsvraag corrigeert de datumcontrole een modeldatum wanneer één dagnaam
+past bij een ondersteunde directe vraag, zoals “Kunnen we op zaterdag?”, “Kan jullie zaterdag?”
+of “Is zaterdag mogelijk?”, of bij een expliciet speel-/verplaatsverzoek. Alleen beschikbaarheid
+meedelen (“Wij zijn zaterdag beschikbaar”) of een andere afspraak noemen verandert de datum niet.
+Een expliciete datum in de eigen tekst die de modeldatum bevestigt, gaat vóór een losse dagnaam.
+Dit is een beperkte tekstheuristiek, geen volledige taalinterpretatie: andere formuleringen
+kunnen ongecorrigeerd blijven en dubbelzinnige zinnen vragen nog beoordeling. Bij een herplanverzoek blijft de huidige wedstrijddatum uit de
+classificatie staan; een datum in het onderwerp krijgt niet automatisch die rol. Als een enkele
+`datums`-waarde gelijk was aan `datum`, volgt die dezelfde correctie. Een meervoudige lijst blijft
+intact.
+
+De AI-adapters, gedeelde datumheuristiek en e-mailherplandeadline gebruiken de Nederlandse
+bedrijfsdatum. Dit betekent niet dat de volledige plannerketen al dezelfde klok gebruikt:
+`BerichtPipeline.Planner` bereikt op beide tiers de `AvailabilityService`, waar de grens voor
+verstreken datums en de zoekperiode nog hostlokale `DateTime.Today` gebruiken. Die bredere
+plannerklokcorrectie is expliciet uitgesteld onder issue #1803; issue #1817 is hiermee gedeeltelijk
+opgelost. Het bestaande gelezen-markeren van eigen mailboxberichten blijft behouden; duurzame
+voortgang met ongelezen eigen noodmeldingen is apart uitgesteld onder issue #1855.
+
 **Twee wegen naar dit label, met verschillend gevolg voor de database:**
 
 | Wanneer | Rij in `planner.EmailVerwerking`? |

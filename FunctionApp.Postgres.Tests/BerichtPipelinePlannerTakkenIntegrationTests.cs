@@ -495,7 +495,7 @@ public class BerichtPipelinePlannerTakkenIntegrationTests : IAsyncLifetime
 
     // ── helpers ──
 
-    private static DateOnly Over(int dagen) => DateOnly.FromDateTime(DateTime.Today).AddDays(dagen);
+    private static DateOnly Over(int dagen) => NederlandseBedrijfsKlok.Vandaag().AddDays(dagen);
 
     private static BerichtClassificatie Beschikbaarheid(string team, string tegenstander, DateOnly datum) => new()
     {
