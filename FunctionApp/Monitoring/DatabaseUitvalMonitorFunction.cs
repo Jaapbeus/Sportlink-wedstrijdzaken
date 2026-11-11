@@ -8,38 +8,27 @@ namespace SportlinkFunction.Monitoring;
 
 /// <summary>
 /// Onafhankelijke, dagelijkse controle van de management-plane status van de Azure SQL Database
-/// (#831).
+/// via <see cref="IDatabaseStatusReader"/>.
 ///
 /// <para>
-/// De bestaande noodmail in <c>EmailProcessorFunction</c> wordt alleen verstuurd als de
-/// databaseverbinding wordt geopend vanuit fase 2 van de e-mailverwerking — en die fase wordt
-/// overgeslagen zodra er geen (of alleen buiten-scope) e-mail binnenkomt. Tijdens de 5+ dagen durende
-/// uitval van 25-30 augustus 2026 (#799/#808) bleek dát de eigenlijke oorzaak van "geen enkele
-/// melding": zonder relevante inkomende e-mail werd de databaseverbinding nooit geprobeerd, dus werd de
-/// uitval ook nooit gedetecteerd — los van de cold-start-gevoeligheid van de throttle zelf (ook
-/// gefixt, zie <see cref="INoodmailThrottleStore"/>).
+/// De noodmail tijdens e-mailverwerking hangt af van een databaseverbinding die in die verwerking
+/// wordt geopend. Deze timer controleert de status onafhankelijk van inkomende e-mail en gebruikt
+/// voor de herhaalbeperking dezelfde <see cref="INoodmailThrottleStore"/>.
 /// </para>
 ///
 /// <para>
-/// Deze functie maakt zich daarom bewust los van de e-mailpoller: hij leest de status rechtstreeks via
-/// een ARM-leesoperatie (<see cref="IDatabaseStatusReader"/>), wat geen databaseverbinding vereist en
-/// dus niet zelf slachtoffer kan worden van dezelfde storing. Dit kost niets extra: Function-executies
-/// vallen ruim binnen de Consumption-plan-limiet (1x per dag) en ARM-managementaanroepen worden niet
-/// gefactureerd als database-compute.
+/// De status komt uit een ARM-leesoperatie, die geen verbinding met de bewaakte database vereist.
 /// </para>
 ///
 /// <para>
-/// Optioneel: zonder <c>AzureSubscriptionId</c>/<c>AzureResourceGroupName</c>/<c>AzureSqlServerName</c>/
-/// <c>AzureSqlDatabaseName</c> slaat deze functie zichzelf over — hetzelfde graceful-fallbackpatroon als
-/// <c>AdminSettingsFunction.TriggerFunctionAppRestartAsync</c>. Een club kan dus zonder extra
-/// Azure-configuratie blijven draaien op alleen de bestaande, e-mail-pipeline-afhankelijke noodmail.
+/// De monitor slaat zichzelf over wanneer een van de vereiste Azure Management-instellingen ontbreekt;
+/// de e-mail-pipeline-noodmail blijft dan beschikbaar.
 /// </para>
 ///
 /// <para>
-/// <b>#1268:</b> de beslisregels — wanneer telt iets als uitval, hoe lang moet die duren, hoe vaak mag
-/// dezelfde uitval gemeld worden, hoe luidt de melding — staan in <see cref="DatabaseUitvalCore"/> en
-/// zijn daar getest. De Postgres-tier gebruikt exact dezelfde regels; hier blijft alleen het
-/// ARM-specifieke deel over.
+/// De gedeelde <see cref="DatabaseUitvalCore"/> bepaalt wanneer een status als uitval telt, wanneer
+/// er wordt gemeld en wanneer een eerdere melding opnieuw mag worden verstuurd. Deze functie vertaalt
+/// de SQL Server-status naar die gedeelde beslissing.
 /// </para>
 /// </summary>
 public class DatabaseUitvalMonitorFunction
@@ -56,7 +45,7 @@ public class DatabaseUitvalMonitorFunction
     /// <summary>Zie <see cref="DatabaseUitvalCore.MinimaleHerhalingsinterval"/>.</summary>
     internal static readonly TimeSpan MinimaleHerhalingsinterval = DatabaseUitvalCore.MinimaleHerhalingsinterval;
 
-    // #1718: letterlijke cron; reden en uitzetten: zie docs/MONITORING.md.
+    // De vaste schedule kan per Function App worden uitgezet met de app setting die in docs/MONITORING.md staat.
     internal const string Schedule = "0 0 8 * * *";
 
     [Function("DatabaseUitvalMonitor")]
