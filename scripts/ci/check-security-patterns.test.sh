@@ -207,6 +207,33 @@ if grep -Fq 'Production/Source.cs' "$TEMP_ROOT/stdout" "$TEMP_ROOT/stderr"; then
 fi
 
 # Documentation scanning keeps its exemptions and redacts both addresses and paths.
+new_repo data-file-names
+data_file="$REPO/synthetic personal data.csv"
+data_file_newline="$REPO/line"$'\n'"break.xlsx"
+mkdir -p "$REPO/subfolder.xls"
+printf 'synthetic fixture\n' > "$data_file"
+printf 'synthetic fixture\n' > "$data_file_newline"
+legacy_data_files=$(cd "$REPO" && find . -not -path "./.git/*" \
+  \( -name "*.csv" -o -name "*.xlsx" -o -name "*.xls" -o -name "*.xlsm" \) | sort)
+printf '%s' "$legacy_data_files" | grep -Fq 'synthetic personal data.csv' \
+  || fail "legacy file detector did not reproduce its synthetic path-leak case"
+run_mode data-files
+[ "$SCAN_STATUS" -eq 1 ] || fail "expected data file detection to remain blocking"
+grep -Fq 'PII data-file: 3 matching path(s).' "$TEMP_ROOT/stdout" \
+  || fail "PII data-file count was not reported"
+for marker in 'synthetic personal data.csv' 'break.xlsx' 'subfolder.xls'; do
+  if grep -Fq -- "$marker" "$TEMP_ROOT/stdout" "$TEMP_ROOT/stderr"; then
+    fail "PII data-file output exposed a synthetic path"
+  fi
+done
+new_repo no-data-files
+track_repo
+run_mode data-files
+[ "$SCAN_STATUS" -eq 0 ] || fail "expected no data files to pass"
+grep -Fq 'PII data-file: 0 matching path(s).' "$TEMP_ROOT/stdout" \
+  || fail "clean PII data-file count was not reported"
+
+# Documentation scanning keeps its exemptions and redacts both addresses and paths.
 new_repo documentation-pii
 mkdir -p "$REPO/docs/nested dir"
 doc_path="$REPO/docs/nested dir/review"$'\n'"notes.md"

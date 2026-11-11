@@ -90,19 +90,21 @@ jobs:
 
       - name: Controleer op databestanden met persoonsgegevens
         run: |
-          echo "Zoeken naar CSV/Excel bestanden in repository..."
-          DATA_FILES=$(find . -not -path "./.git/*" \
-            \( -name "*.csv" -o -name "*.xlsx" -o -name "*.xls" -o -name "*.xlsm" \) \
-            | sort)
-          if [ -n "$DATA_FILES" ]; then
-            echo "::error::🚨 PERSOONSGEGEVENS: DATABESTAND(EN) GEVONDEN IN REPOSITORY"
-            echo "$DATA_FILES"
-            echo "::error::CSV/Excel bestanden mogen NOOIT in git staan (AVG/GDPR)."
-            echo "::error::Verwijder ze direct en voeg toe aan .gitignore."
-            echo "::error::Zie SECURITY.md § 'Wat te doen bij een gefaalde check'."
+          set -euo pipefail
+          if /bin/bash scripts/ci/check-security-patterns.sh data-files; then
+            :
+          else
+            status=$?
+            if [ "$status" -eq 1 ]; then
+              echo "::error::PII data-file scan detected findings; public output intentionally omits matching paths."
+              echo "::error::CSV/Excel files must not be committed."
+              echo "::error::Zie SECURITY.md § 'Wat te doen bij een gefaalde check'."
+            else
+              echo "::error::Security pattern scan could not complete."
+            fi
             exit 1
           fi
-          echo "✅ Geen databestanden met persoonsgegevens gevonden."
+          echo "✅ PII data-file scan completed."
 
   # ── 3. Nederlandse telefoonnummers en e-mails in code ──────────────────────
   pii-patterns:

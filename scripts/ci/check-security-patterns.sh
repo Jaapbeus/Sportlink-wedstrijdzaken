@@ -26,6 +26,10 @@ BCZ[A-Z][A-Z0-9]{5}
     PATTERN_LIST='[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}'
     PLACEHOLDER_PATTERN='@(github\.com|anthropic\.com|example\.(com|nl|org)|voorbeeld\.nl|allstars-fc\.test)$'
     ;;
+  data-files)
+    CLASS="PII data-file"
+    FILE_SCOPE="data-files"
+    ;;
   history-email)
     CLASS="commit-message email"
     FILE_SCOPE="history"
@@ -81,6 +85,22 @@ done
 
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "::error::Security pattern scanner could not inspect tracked files." >&2
+  exit 2
+fi
+
+if [ "$MODE" = "data-files" ]; then
+  if ! command -v find >/dev/null 2>&1; then
+    echo "::error::A required security pattern scanner component is unavailable." >&2
+    exit 2
+  fi
+  if count=$(find . -not -path "./.git/*" \
+    \( -name "*.csv" -o -name "*.xlsx" -o -name "*.xls" -o -name "*.xlsm" \) \
+    -print0 2>/dev/null | perl -0ne '$count++; END { print 0 + ($count || 0), "\n" }'); then
+    echo "$CLASS: $count matching path(s)."
+    [ "$count" -eq 0 ] && exit 0
+    exit 1
+  fi
+  echo "::error::Security pattern scanner could not complete." >&2
   exit 2
 fi
 
