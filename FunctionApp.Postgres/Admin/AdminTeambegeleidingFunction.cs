@@ -219,6 +219,8 @@ public static class AdminTeambegeleidingFunction
                     return new BadRequestObjectResult(new { error = "csvContent is vereist" });
                 if (dto.Bestandsnaam?.Length > TeambegeleidingImportRequestBodyLimits.AuditFilenameMaxCharacters)
                     return new BadRequestObjectResult(new { error = "bestandsnaam is te lang" });
+                if (!TeambegeleidingImportRequestBodyLimits.CsvFitsByteLimit(dto.CsvContent))
+                    return BoundedRequestBodyReader.ToActionResult(RequestBodyReadError.TooLarge);
 
                 var parseResult = TeambegeleidingCsv.ParseEnValideer(dto.CsvContent);
                 if (TeambegeleidingImportEndpointCore.Weiger(parseResult) is { } weiger) return weiger;
