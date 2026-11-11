@@ -1,52 +1,130 @@
 #!/usr/bin/env bash
 # check-postgres-identifier-casing.sh (#864)
 #
-# Bewaakt de identifier-casing-conventie uit docs/ARCHITECTUUR-DATABASE-TIERS.md sectie 3: de
-# Postgres-boom gebruikt consequent lowercase snake_case voor eigen identifiers, nooit
-# PascalCase/camelCase, en nooit een gequote naam — Postgres vouwt een ongequote identifier
-# automatisch naar lowercase, dus een gequote naam bevriest een casing die bij de eerstvolgende
-# ongequote referentie alweer niet meer matcht (empirisch bevestigd, zie dat document).
-#
-# scripts/ci/check-path-casing.sh (#825) bewaakt bestandsnaam-casing; dit script gaat over de
-# identifiers BINNEN de migratiebestanden zelf (#864) — een ander risico.
-#
-# Scant Database.Postgres/migrations/*.sql op CREATE TABLE- en kolomdefinities. Geen database,
-# geen secrets — draait ook op een fork.
+# Bewaakt lowercase snake_case en ongequote identifiers in Postgres-migraties. Dit script gebruikt
+# alleen POSIX-awk/shellfuncties zodat het ook op Bash 3.2 en BSD grep werkt.
 set -euo pipefail
 
+MIGRATION_DIR="Database.Postgres/migrations"
 FOUT=0
-TYPE_RE='(INTEGER|BIGINT|SMALLINT|VARCHAR|CHARACTER VARYING|TEXT|BOOLEAN|TIMESTAMPTZ|TIMESTAMP|DATE|TIME|DOUBLE PRECISION|NUMERIC|SERIAL|BIGSERIAL)'
+
+fail_closed() {
+  echo "::error::$1" >&2
+  exit 1
+}
+
+for tool in awk find sort; do
+  command -v "$tool" >/dev/null 2>&1 || fail_closed "Scannervereiste ontbreekt: $tool."
+done
+
+[ -d "$MIGRATION_DIR" ] || fail_closed "Migratiemap ontbreekt: Database.Postgres/migrations/."
+if ! MIGRATION_FILES=$(find "$MIGRATION_DIR" -type f -name '*.sql' -print 2>/dev/null | sort); then
+  fail_closed "SQL-migratiebestanden konden niet worden geïnventariseerd."
+fi
+[ -n "$MIGRATION_FILES" ] || fail_closed "Geen SQL-migratiebestand gevonden in Database.Postgres/migrations/."
 
 meld_indien_ongeldig() {
-  local f="$1" soort="$2" naam="$3"
-  if [[ "$naam" == \"*\" ]]; then
-    echo "::error file=$f::Gequote ${soort}naam '${naam}' — de Postgres-boom quote't nooit eigen identifiers (docs/ARCHITECTUUR-DATABASE-TIERS.md sectie 3, #864)."
+  local f="$1" soort="$2" naam="$3" soortnaam soortnaam_lower
+  case "$soort" in
+    tabel) soortnaam="Tabel"; soortnaam_lower="tabel" ;;
+    kolom) soortnaam="Kolom"; soortnaam_lower="kolom" ;;
+    *) fail_closed "Interne scannerfout: onbekend identifier-type." ;;
+  esac
+
+  if [[ "$naam" == \"* ]]; then
+    echo "::error file=$f::Gequote ${soortnaam_lower}naam '${naam}' — eigen Postgres-identifiers blijven ongequote." >&2
     FOUT=1
   elif [[ "$naam" =~ [A-Z] ]]; then
-    echo "::error file=$f::${soort^}naam '${naam}' bevat een hoofdletter — de Postgres-boom gebruikt consequent lowercase snake_case (docs/ARCHITECTUUR-DATABASE-TIERS.md sectie 3, #864)."
+    echo "::error file=$f::${soortnaam}naam '${naam}' bevat een hoofdletter — gebruik lowercase snake_case." >&2
     FOUT=1
   fi
 }
 
-while IFS= read -r f; do
-  # Tabelnamen uit CREATE TABLE [IF NOT EXISTS] <schema>.<naam>
-  while IFS= read -r regel; do
-    schema_naam=$(echo "$regel" | grep -ioP 'CREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?\K\S+')
-    naam="${schema_naam##*.}"
-    meld_indien_ongeldig "$f" "tabel" "$naam"
-  done < <(grep -inP 'CREATE\s+TABLE' "$f" || true)
+# Extract the table token after CREATE TABLE [IF NOT EXISTS], preserving identifier spelling.
+lees_tabelidentifiers() {
+  awk '
+    {
+      regel = $0
+      sub(/--.*/, "", regel)
+      sub(/^[[:space:]]+/, "", regel)
+      aantal = split(regel, deel, /[[:space:]]+/)
+      for (i = 1; i < aantal; i++) {
+        if (tolower(deel[i]) != "create" || tolower(deel[i + 1]) != "table") continue
+        naam_index = i + 2
+        if (tolower(deel[naam_index]) == "if" && tolower(deel[naam_index + 1]) == "not" && tolower(deel[naam_index + 2]) == "exists") naam_index += 3
+        if (naam_index > aantal || deel[naam_index] == "") {
+          exit 2
+        }
+        naam = deel[naam_index]
+        sub(/[(),;]+$/, "", naam)
+        sub(/^.*\./, "", naam)
+        print naam
+      }
+    }
+  ' "$1"
+}
 
-  # Kolomnamen: regel begint (evt. na 'ADD COLUMN [IF NOT EXISTS]') met een identifier, gevolgd
-  # door een bekend Postgres-kolomtype. Dekt zowel inline CREATE TABLE-kolomdefinities als
-  # losse ALTER TABLE ... ADD COLUMN-statements (allebei één kolom per regel in dit repo).
-  while IFS= read -r kolom; do
-    [ -z "$kolom" ] && continue
-    meld_indien_ongeldig "$f" "kolom" "$kolom"
-  done < <(grep -ioP "^\s*(ADD COLUMN(\s+IF NOT EXISTS)?\s+)?\K[\w\"]+(?=\s+${TYPE_RE}\b)" "$f" | sort -u)
-done < <(find Database.Postgres/migrations -name '*.sql' -type f | sort)
+# Extract only column definitions whose following type belongs to the guard's existing type set.
+lees_kolomidentifiers() {
+  awk '
+    function kolomtype(i, type) {
+      type = toupper($i)
+      sub(/\(.*/, "", type)
+      sub(/[(),;]+$/, "", type)
+      if (type == "INTEGER" || type == "BIGINT" || type == "SMALLINT" ||
+          type == "VARCHAR" || type == "TEXT" || type == "BOOLEAN" ||
+          type == "TIMESTAMPTZ" || type == "TIMESTAMP" || type == "DATE" ||
+          type == "TIME" || type == "NUMERIC" || type == "SERIAL" ||
+          type == "BIGSERIAL") return 1
+      if ((type == "CHARACTER" && toupper($(i + 1)) == "VARYING") ||
+          (type == "DOUBLE" && toupper($(i + 1)) == "PRECISION")) return 1
+      return 0
+    }
+    {
+      regel = $0
+      sub(/--.*/, "", regel)
+      sub(/^[[:space:]]+/, "", regel)
+      if (regel == "" || regel ~ /^\/\*/) next
+      aantal = split(regel, deel, /[[:space:]]+/)
+      naam_index = 1
+      for (i = 1; i < aantal; i++) {
+        if (tolower(deel[i]) == "add" && tolower(deel[i + 1]) == "column") {
+          naam_index = i + 2
+          if (tolower(deel[naam_index]) == "if" && tolower(deel[naam_index + 1]) == "not" && tolower(deel[naam_index + 2]) == "exists") naam_index += 3
+          break
+        }
+      }
+      if (naam_index < aantal && kolomtype(naam_index + 1)) {
+        naam = deel[naam_index]
+        sub(/[(),;]+$/, "", naam)
+        print naam
+      }
+    }
+  ' "$1"
+}
+
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+
+  if ! tabelnamen=$(lees_tabelidentifiers "$f"); then
+    fail_closed "Tabelidentifiers konden niet worden gecontroleerd."
+  fi
+  while IFS= read -r naam; do
+    [ -z "$naam" ] && continue
+    meld_indien_ongeldig "$f" "tabel" "$naam"
+  done <<< "$tabelnamen"
+
+  if ! kolomnamen=$(lees_kolomidentifiers "$f"); then
+    fail_closed "Kolomidentifiers konden niet worden gecontroleerd."
+  fi
+  while IFS= read -r naam; do
+    [ -z "$naam" ] && continue
+    meld_indien_ongeldig "$f" "kolom" "$naam"
+  done <<< "$(printf '%s\n' "$kolomnamen" | sort -u)"
+done <<< "$MIGRATION_FILES"
 
 if [ "$FOUT" -eq 1 ]; then
-  echo "::error::Identifier-casing-schending gevonden in Database.Postgres/migrations/ (#864)."
+  echo "::error::Identifier-casing-schending gevonden in Database.Postgres/migrations/ (#864)." >&2
   exit 1
 fi
 
