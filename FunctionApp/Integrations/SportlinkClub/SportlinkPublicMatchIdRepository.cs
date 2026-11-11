@@ -71,6 +71,8 @@ internal static class SportlinkPublicMatchIdRepository
             LEFT JOIN [dbo].[SportlinkPublicMatchIdCache] c
                 ON c.[Wedstrijdcode] = m.[wedstrijdcode]
                AND c.[ClubCode] = {ClubScope.ClubCodeParam}
+               AND c.[PublicMatchId] COLLATE Latin1_General_100_BIN2 = c.[VerifiedPublicMatchId] COLLATE Latin1_General_100_BIN2
+               AND DATALENGTH(c.[PublicMatchId]) = DATALENGTH(c.[VerifiedPublicMatchId])
             WHERE {ClubScope.HisFilter("m")}
               AND CAST(m.[kaledatum] AS DATE) BETWEEN @Vanaf AND @TotEnMet
               AND m.[wedstrijdnummer] IS NOT NULL
@@ -127,6 +129,8 @@ internal static class SportlinkPublicMatchIdRepository
                AND {ClubScope.HisFilter("m")}
                AND m.[mta_deleted] IS NULL
             WHERE c.[ClubCode] = {ClubScope.ClubCodeParam}
+              AND c.[PublicMatchId] COLLATE Latin1_General_100_BIN2 = c.[VerifiedPublicMatchId] COLLATE Latin1_General_100_BIN2
+              AND DATALENGTH(c.[PublicMatchId]) = DATALENGTH(c.[VerifiedPublicMatchId])
               AND c.[PublicMatchId] IN ({string.Join(", ", idParams)})";
         ClubScope.AddHisParams(cmd, clubCode);
 
@@ -157,7 +161,9 @@ internal static class SportlinkPublicMatchIdRepository
     {
         using var cmd = new SqlCommand(@"
             SELECT [PublicMatchId] FROM [dbo].[SportlinkPublicMatchIdCache]
-            WHERE [Wedstrijdcode] = @Wedstrijdcode AND [ClubCode] = @ClubCode", connection);
+            WHERE [Wedstrijdcode] = @Wedstrijdcode AND [ClubCode] = @ClubCode
+              AND [PublicMatchId] COLLATE Latin1_General_100_BIN2 = [VerifiedPublicMatchId] COLLATE Latin1_General_100_BIN2
+              AND DATALENGTH([PublicMatchId]) = DATALENGTH([VerifiedPublicMatchId])", connection);
         cmd.Parameters.AddWithValue("@Wedstrijdcode", wedstrijdcode);
         cmd.Parameters.AddWithValue("@ClubCode", clubCode);
         return (await cmd.ExecuteScalarAsync()) as string;
@@ -176,10 +182,10 @@ internal static class SportlinkPublicMatchIdRepository
                 AS bron ([Wedstrijdcode], [ClubCode], [PublicMatchId])
               ON doel.[Wedstrijdcode] = bron.[Wedstrijdcode] AND doel.[ClubCode] = bron.[ClubCode]
             WHEN MATCHED THEN
-                UPDATE SET [PublicMatchId] = bron.[PublicMatchId], [OpgehaaldOp] = GETUTCDATE()
+                UPDATE SET [PublicMatchId] = bron.[PublicMatchId], [VerifiedPublicMatchId] = bron.[PublicMatchId], [OpgehaaldOp] = GETUTCDATE()
             WHEN NOT MATCHED THEN
-                INSERT ([Wedstrijdcode], [ClubCode], [PublicMatchId], [OpgehaaldOp])
-                VALUES (bron.[Wedstrijdcode], bron.[ClubCode], bron.[PublicMatchId], GETUTCDATE());", connection);
+                INSERT ([Wedstrijdcode], [ClubCode], [PublicMatchId], [VerifiedPublicMatchId], [OpgehaaldOp])
+                VALUES (bron.[Wedstrijdcode], bron.[ClubCode], bron.[PublicMatchId], bron.[PublicMatchId], GETUTCDATE());", connection);
         cmd.Parameters.AddWithValue("@Wedstrijdcode", wedstrijdcode);
         cmd.Parameters.AddWithValue("@ClubCode", clubCode);
         cmd.Parameters.AddWithValue("@PublicMatchId", publicMatchId);

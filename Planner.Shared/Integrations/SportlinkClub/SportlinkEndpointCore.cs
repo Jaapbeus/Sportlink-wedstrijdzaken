@@ -216,6 +216,8 @@ public static class SportlinkEndpointCore
         SportlinkClubCallStatus.Ok => null,
         SportlinkClubCallStatus.RolNietGekoppeld => new SportlinkEndpointFout(409,
             $"Geen Sportlink-koppeling gevonden voor rol '{RolWedstrijdzaken}' — registreer eerst een refresh-token via Instellingen."),
+        SportlinkClubCallStatus.LokaleLeaseBezet => new SportlinkEndpointFout(409,
+            "Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw."),
         SportlinkClubCallStatus.HerkoppelingVereist => new SportlinkEndpointFout(409,
             $"De Sportlink-koppeling voor rol '{RolWedstrijdzaken}' is verlopen — registreer een nieuw refresh-token via Instellingen."),
         SportlinkClubCallStatus.NetwerkFout when isMutatie => new SportlinkEndpointFout(504, MutatieNetwerkFoutMelding),
@@ -321,8 +323,12 @@ public static class SportlinkEndpointCore
     /// <summary>Onderwerp van de contract-check-noodmail.</summary>
     public const string ContractCheckNoodmailOnderwerp = "Sportlink contract-check: afwijking gedetecteerd";
 
-    /// <summary>Hoe lang dezelfde contract-check-afwijking onderdrukt blijft na een verzonden mail.</summary>
-    public static readonly TimeSpan ContractCheckNoodmailInterval = TimeSpan.FromHours(24);
+    /// <summary>Kalenderdag-zone van de contract-check-noodmail-throttle (Nederlandse kalenderdag).</summary>
+    private static readonly Lazy<TimeZoneInfo> NoodmailDagZone = new(() =>
+    {
+        try { return TimeZoneInfo.FindSystemTimeZoneById("Europe/Amsterdam"); }
+        catch (TimeZoneNotFoundException) { return TimeZoneInfo.FindSystemTimeZoneById("W. Europe Standard Time"); }
+    });
 
     /// <summary>
     /// Beoordeelt het rauwe antwoord van de contract-check-GET. Een transportfout telt als
@@ -357,9 +363,26 @@ public static class SportlinkEndpointCore
         }
     }
 
-    /// <summary>Throttle-beslissing: mag er nú een contract-check-noodmail uit?</summary>
+    /// <summary>
+    /// Throttle-beslissing (eigenaarsbesluit #1815): hoogstens één contract-check-noodmail per
+    /// Nederlandse kalenderdag (Europe/Amsterdam), ongeacht het tijdstip van de check. De opslag
+    /// bewaart ongewijzigd het UTC-verzendmoment; beide tiers vergelijken hier de lokale datum.
+    /// Alleen een gelijke lokale datum blokkeert, ook bij een verzendmoment dat (door klokafwijking) na <c>nu</c> ligt.
+    /// </summary>
     public static bool MagContractCheckNoodmailVersturen(DateTime? laatsteKeerUtc, DateTime nuUtc)
-        => laatsteKeerUtc is not { } laatste || (nuUtc - laatste) >= ContractCheckNoodmailInterval;
+    {
+        if (laatsteKeerUtc is not { } laatste) return true;
+        var zone = NoodmailDagZone.Value;
+        return LokaleDatum(laatste, zone) != LokaleDatum(nuUtc, zone);
+    }
+
+    private static DateOnly LokaleDatum(DateTime utc, TimeZoneInfo zone)
+    {
+        var instant = utc.Kind == DateTimeKind.Unspecified
+            ? DateTime.SpecifyKind(utc, DateTimeKind.Utc)
+            : utc.ToUniversalTime();
+        return DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(instant, zone));
+    }
 
     /// <summary>
     /// Tekst van de contract-check-noodmail. <paramref name="tabelnaam"/> verschilt per tier
@@ -374,12 +397,12 @@ public static class SportlinkEndpointCore
               + "Zolang de koppeling niet is hersteld toont de Planning de databasekopie; die kan afwijken van Sportlink.\n"
               + "Herstel: de beheerder slaat de automatische login opnieuw op via Instellingen → Sportlink Web Extension.\n"
               + $"De laatste rij staat in {tabelnaam}.\n"
-              + "Deze melding wordt niet binnen 24 uur herhaald."
-            : "Sportlink contract-check gaf een afwijking — de vorm van de Match-respons is veranderd.\n\n"
+              + "Deze melding wordt hoogstens één keer per kalenderdag verstuurd."
+            : "Sportlink contract-check kon de respons niet als geldig beoordelen; de oorzaak is niet automatisch vastgesteld.\n\n"
               + $"Foutmelding: {foutmelding}\n\n"
               + "Dit is een vroege waarschuwing dat Sportlink de Club-website (mogelijk) heeft bijgewerkt.\n"
               + $"Controleer docs/SPORTLINK-WEB-EXTENSION.md en de laatste rij in {tabelnaam}.\n"
-              + "Deze melding wordt niet binnen 24 uur herhaald.";
+              + "Deze melding wordt hoogstens één keer per kalenderdag verstuurd.";
 
     private static bool IsVerlopenKoppeling(string? foutmelding)
         => foutmelding is not null

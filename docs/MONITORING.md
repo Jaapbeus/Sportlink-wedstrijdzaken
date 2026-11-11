@@ -557,7 +557,7 @@ controleert of de vorm van Sportlinks `Match`-respons nog klopt met wat deze app
 vroege waarschuwing voor een stille Sportlink-release, ruim vóórdat dit een mutatie zou laten
 mislukken. Bewust géén nieuw alarmeringsmechanisme: bij een afwijking hergebruikt de timer hetzelfde
 `INoodmailThrottleStore`/`IEmailGraphService`-patroon als de e-mail- en database-noodmail hierboven,
-met een eigen throttle-sleutel **`sportlink-contract-noodmail`** en een interval van 24 uur — dus
+met een eigen throttle-sleutel **`sportlink-contract-noodmail`** en een throttle van hoogstens één mail per Nederlandse kalenderdag (Europe/Amsterdam, eigenaarsbesluit #1815; geen vast 24-uursinterval; een geslaagde check wist de registratie niet, de kalenderdag alleen beslist) — dus
 geen betaalde Log Analytics/App Insights-alert-regel en geen nieuw verzendpad. Het resultaat van
 elke run staat ook in `public.sportlinkcontractcheck` en op de statussectie van Instellingen (zie
 [docs/SPORTLINK-WEB-EXTENSION.md](SPORTLINK-WEB-EXTENSION.md) §4.2/§3.1b). De mail onderscheidt een

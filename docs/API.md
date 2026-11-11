@@ -218,6 +218,35 @@ Het transportplafond is bewust ruimer dan de applicatielimiet. [Kestrel ruimt na
 
 De GUI gebruikt `TeamsApiClient` → `AdminApiTransport.PostAsJsonAsync` zonder request-streamingoptie. De [.NET 10 BrowserHttpHandler](https://github.com/dotnet/runtime/blob/release/10.0/src/libraries/System.Net.Http/src/System/Net/Http/BrowserHttpHandler/BrowserHttpHandler.cs) buffert dan de body en geeft bytes door aan Fetch; de browser kent de inhoudslengte. Dezelfde applicatiegrens geldt voor chunked requests zonder Content-Length. Lokale synthetische HTTP-tests via de echte Functions-host controleren de volledige escaped GUI-envelope, exact de applicatiegrens en overschrijdingen met en zonder Content-Length; dit is geen productie- of browser-uploadtest.
 
+---
+
+## Sportlink-foutantwoorden (#1815)
+
+De bestaande Sportlink-routes geven bij een bezette lokale autologinlease (`LokaleLeaseBezet`)
+**409** met `{ "error": "Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw." }`.
+Dit geldt voor de twee `GET /sportlink/match/{wedstrijdcode}`-varianten, `GET /sportlink/change-requests`,
+`GET /sportlink/club-match/picklists` en de zeven mutatieroutes hieronder. De geblokkeerde
+Sportlink-aanroep is niet uitgevoerd; een latere poging is toegestaan. Dit is een lokale blokkade,
+geen upstream-fout (502). De formulier-, health- en veldbezettingroutes behouden hun bestaande
+status-/terugvalantwoord en vertalen deze status niet naar HTTP 409.
+
+Als Sportlink een **live-mutatie heeft verwerkt** maar het afronden van de vooraf geregistreerde
+audit mislukt, volgt **500** met `{ "error": "Sportlink heeft de wijziging verwerkt, maar de audit kon niet worden afgerond. Probeer de actie niet opnieuw; neem contact op met de beheerder." }`.
+De audit blijft open en de veldplannercache is al geleegd. De aanroeper mag deze mutatie niet
+opnieuw versturen. Deze specifieke 500 geldt niet voor dry-run of een inhoudelijke afwijzing;
+andere interne fouten kunnen nog steeds een algemene 500 geven.
+
+Deze auditafronding geldt voor precies deze bestaande mutatieroutes (alle paden onder `/api`):
+
+- `PUT /sportlink/match/{wedstrijdcode}/dressingrooms`
+- `PUT /sportlink/match/{wedstrijdcode}/field`
+- `PUT /sportlink/match/{wedstrijdcode}/officials`
+- `PUT /sportlink/match/{wedstrijdcode}/change-request` (alleen de bestaande validatiestap)
+- `PUT /sportlink/change-requests/{publicRequestId}/action`
+- `POST /sportlink/club-match`
+- `DELETE /sportlink/club-match/{publicMatchId}`
+
+---
 
 ## GET /api/health
 

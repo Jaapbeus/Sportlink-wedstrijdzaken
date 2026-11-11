@@ -149,6 +149,22 @@ public sealed class SportlinkAutoLoginClientTests
     }
 
     [Fact]
+    public async Task Lease_timeout_returns_local_busy_without_any_upstream_request()
+    {
+        var store = ConfiguredStore();
+        store.TimeoutOnLease = true;
+        var provider = new FakeProvider();
+        var http = new RecordingHandler((_, _) => Task.FromResult(Json(ClubMatchBody)));
+        var sut = CreateClient(store, provider, http);
+
+        var result = await sut.GetMatchRawJsonAsync(Role, "fixture-match");
+
+        Assert.Equal(SportlinkClubCallStatus.LokaleLeaseBezet, result.Status);
+        Assert.Empty(http.Requests);
+        Assert.Equal(0, provider.CallCount);
+    }
+
+    [Fact]
     public async Task Independent_clients_share_lease_and_only_one_bootstraps_login()
     {
         var store = ConfiguredStore();
@@ -236,11 +252,13 @@ public sealed class SportlinkAutoLoginClientTests
         public SportlinkAutoLoginState? State { get; set; }
         public string? RefreshToken { get; set; }
         public bool ThrowOnRefreshWrite { get; set; }
+        public bool TimeoutOnLease { get; set; }
         public int RefreshWriteAttempts { get; private set; }
         public int SuccessCount { get; private set; }
 
         public async Task<IAsyncDisposable> AcquireLeaseAsync(string role, CancellationToken cancellationToken)
         {
+            if (TimeoutOnLease) throw new TimeoutException("fixture lease timeout");
             await _lease.WaitAsync(cancellationToken);
             return new Lease(_lease);
         }

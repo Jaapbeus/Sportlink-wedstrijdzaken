@@ -138,6 +138,21 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+    SportlinkMutationInternalServerError:
+      description: |
+        Interne serverfout. Als een live-mutatie bij Sportlink is geslaagd maar de auditafronding
+        faalt, blijft de vooraf geregistreerde audit open en geeft de API expliciet aan dat de
+        wijziging al verwerkt is. Niet opnieuw proberen; neem contact op met de beheerder.
+        De veldplannercache is dan al geleegd. Deze specifieke melding geldt niet voor dry-run
+        of een inhoudelijke afwijzing; andere interne fouten gebruiken de algemene foutmelding.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            auditafrondingMisluktNaLiveSucces:
+              value:
+                error: Sportlink heeft de wijziging verwerkt, maar de audit kon niet worden afgerond. Probeer de actie niet opnieuw; neem contact op met de beheerder.
     PlanningDuurOnbekend:
       description: Planning geblokkeerd omdat voor een bestaande veldbezetting geen betrouwbare duur bekend is (#1814)
       content:
@@ -4635,7 +4650,18 @@ paths:
         '404':
           description: Wedstrijd, PublicMatchId of Sportlink-match niet gevonden
         '409':
-          description: Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen
+          description: |
+            Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen
+            Ook bij een bezette lokale autologinlease (LokaleLeaseBezet); de geblokkeerde
+            Sportlink-aanroep is niet uitgevoerd en kan later opnieuw worden geprobeerd.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                lokaleLeaseBezet:
+                  value:
+                    error: Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw.
         '500':
           $ref: '#/components/responses/InternalServerError'
         '503':
@@ -4685,7 +4711,18 @@ paths:
         '404':
           description: Wedstrijd niet gevonden, of nog niet bekend bij Sportlink voor deze datum
         '409':
-          description: Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen
+          description: |
+            Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen
+            Ook bij een bezette lokale autologinlease (LokaleLeaseBezet); de geblokkeerde
+            Sportlink-aanroep is niet uitgevoerd en kan later opnieuw worden geprobeerd.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                lokaleLeaseBezet:
+                  value:
+                    error: Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw.
         '500':
           $ref: '#/components/responses/InternalServerError'
         '503':
@@ -4741,10 +4778,20 @@ paths:
           description: |
             Extension staat uit, koppeling ontbreekt/verlopen, guardrail geblokkeerd, of (#1341)
             "Kleedkamers toewijzen" staat uit voor de Wedstrijdzaken-rol bij deze club.
+            Ook bij een bezette lokale autologinlease (LokaleLeaseBezet); de geblokkeerde
+            Sportlink-aanroep is niet uitgevoerd en kan later opnieuw worden geprobeerd.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                lokaleLeaseBezet:
+                  value:
+                    error: Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw.
         '413':
           $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
-          $ref: '#/components/responses/InternalServerError'
+          $ref: '#/components/responses/SportlinkMutationInternalServerError'
         '502':
           description: Sportlink gaf geen bruikbare respons
         '504':
@@ -4801,10 +4848,20 @@ paths:
           description: |
             Extension staat uit, koppeling ontbreekt/verlopen, guardrail geblokkeerd, of (#1341)
             "Veld wijzigen" staat uit voor de Wedstrijdzaken-rol bij deze club.
+            Ook bij een bezette lokale autologinlease (LokaleLeaseBezet); de geblokkeerde
+            Sportlink-aanroep is niet uitgevoerd en kan later opnieuw worden geprobeerd.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                lokaleLeaseBezet:
+                  value:
+                    error: Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw.
         '413':
           $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
-          $ref: '#/components/responses/InternalServerError'
+          $ref: '#/components/responses/SportlinkMutationInternalServerError'
         '502':
           description: Sportlink gaf geen bruikbare respons
         '504':
@@ -4874,10 +4931,20 @@ paths:
           description: |
             Extension staat uit, koppeling ontbreekt/verlopen, guardrail geblokkeerd, of (#1341)
             "Scheidsrechters toewijzen" staat uit voor de Wedstrijdzaken-rol bij deze club.
+            Ook bij een bezette lokale autologinlease (LokaleLeaseBezet); de geblokkeerde
+            Sportlink-aanroep is niet uitgevoerd en kan later opnieuw worden geprobeerd.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                lokaleLeaseBezet:
+                  value:
+                    error: Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw.
         '413':
           $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
-          $ref: '#/components/responses/InternalServerError'
+          $ref: '#/components/responses/SportlinkMutationInternalServerError'
         '502':
           description: Sportlink gaf geen bruikbare respons
         '504':
@@ -4939,9 +5006,8 @@ paths:
       responses:
         '200':
           description: |
-            Diagnostiektrace (#1320) — Resultaat.Mutatie.IsSuccess kan alsnog false zijn. De route
-            volgt sportlinkDryRun: staat dry-run aan, dan is het resultaat gesimuleerd
-            (Resultaat.Mutatie.IsDryRun true); anders gaat stap 1 live naar Sportlink.
+            Diagnostiektrace (#1320) — Resultaat.Mutatie.IsSuccess kan alsnog false zijn.
+            IsDryRun geeft aan of de club-instelling de validatiestap heeft gesimuleerd.
           content:
             application/json:
               schema:
@@ -4955,11 +5021,22 @@ paths:
         '404':
           description: Wedstrijd of PublicMatchId niet gevonden
         '409':
-          description: Extension staat uit, koppeling ontbreekt/verlopen, of guardrail geblokkeerd
+          description: |
+            Extension staat uit, koppeling ontbreekt/verlopen, of guardrail geblokkeerd
+            Ook bij een bezette lokale autologinlease (LokaleLeaseBezet); de geblokkeerde
+            Sportlink-aanroep is niet uitgevoerd en kan later opnieuw worden geprobeerd.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                lokaleLeaseBezet:
+                  value:
+                    error: Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw.
         '413':
           $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
-          $ref: '#/components/responses/InternalServerError'
+          $ref: '#/components/responses/SportlinkMutationInternalServerError'
         '502':
           description: Sportlink gaf geen bruikbare respons
         '504':
@@ -5047,7 +5124,18 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '409':
-          description: Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen
+          description: |
+            Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen
+            Ook bij een bezette lokale autologinlease (LokaleLeaseBezet); de geblokkeerde
+            Sportlink-aanroep is niet uitgevoerd en kan later opnieuw worden geprobeerd.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                lokaleLeaseBezet:
+                  value:
+                    error: Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw.
         '500':
           $ref: '#/components/responses/InternalServerError'
         '503':
@@ -5100,11 +5188,22 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '409':
-          description: Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen
+          description: |
+            Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen
+            Ook bij een bezette lokale autologinlease (LokaleLeaseBezet); de geblokkeerde
+            Sportlink-aanroep is niet uitgevoerd en kan later opnieuw worden geprobeerd.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                lokaleLeaseBezet:
+                  value:
+                    error: Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw.
         '413':
           $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
-          $ref: '#/components/responses/InternalServerError'
+          $ref: '#/components/responses/SportlinkMutationInternalServerError'
         '502':
           description: Sportlink gaf geen bruikbare respons
         '504':
@@ -5211,11 +5310,22 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '409':
-          description: Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen
+          description: |
+            Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen
+            Ook bij een bezette lokale autologinlease (LokaleLeaseBezet); de geblokkeerde
+            Sportlink-aanroep is niet uitgevoerd en kan later opnieuw worden geprobeerd.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                lokaleLeaseBezet:
+                  value:
+                    error: Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw.
         '413':
           $ref: '#/components/responses/RequestBodyTooLarge'
         '500':
-          $ref: '#/components/responses/InternalServerError'
+          $ref: '#/components/responses/SportlinkMutationInternalServerError'
         '502':
           description: Sportlink gaf geen bruikbare respons
         '504':
@@ -5227,14 +5337,13 @@ paths:
     delete:
       tags: [sportlink]
       operationId: deleteSportlinkClubMatch
-      summary: Clubwedstrijd (oefenwedstrijd) verwijderen (#1440) — contract niet live bevestigd
+      summary: Clubwedstrijd (oefenwedstrijd) verwijderen (#1440) — live sinds #1458, volgt sportlinkDryRun
       description: |
         Verwijdert een clubwedstrijd bij Sportlink via `DELETE competition/match/clubmatch/ClubMatchDelete?PublicMatchId=`.
-        Methode, parameter en foutvorm komen uit Sportlinks publieke frontend-bundle en zijn **nooit live gezien**.
-        De huidige `ClubMatchDeleteLiveBevestigd`-flag staat op `true`, zodat de mutatie de club-instelling
-        `sportlinkDryRun` volgt; er is geen aparte code-lock actief. Een dry-run zet `IsDryRun` aan; een
-        toekomstige expliciete code-lock kan `IsForcedDryRun` aanzetten (wel de read-only
-        `GET competition/match/Match` voor de guard). Volgorde: toggle + EgressGuard → huidige
+        Sinds #1458 is het contract door de eigenaar live bevestigd en volgt de aanroep de
+        club-instelling `sportlinkDryRun`; de code-lock is opgeheven. In dry-run is `IsDryRun`
+        true en wordt geen DELETE verstuurd (wel de read-only GET voor de guard).
+        Volgorde: toggle + EgressGuard → huidige
         wedstrijd ophalen → `SportlinkMutationGuard` (`Verwijderen`: alleen bij expliciet `IsKernelMatch = false`
         én `IsHomeMatch`, anders 409) → audit "Pending" met het `PublicMatchId` → verwijderen (nooit automatisch
         herhaald) → audit voltooien. De Admin GUI biedt dit alleen aan op het resultaat van "Wedstrijd aanmaken".
@@ -5267,7 +5376,7 @@ paths:
                     type: boolean
                   IsForcedDryRun:
                     type: boolean
-                    description: Zolang het contract niet live bevestigd is altijd `true`.
+                    description: Code-lockindicator; voor deze bevestigde mutatie `false`.
                   PublicMatchId:
                     type: string
         '400':
@@ -5279,9 +5388,20 @@ paths:
         '404':
           description: Sportlink kent dit `PublicMatchId` niet (meer)
         '409':
-          description: Extension staat uit, de Sportlink-koppeling ontbreekt/is verlopen, of de guard weigert (geen clubwedstrijd, `IsKernelMatch` ontbreekt, of geen thuiswedstrijd)
+          description: |
+            Extension staat uit, de Sportlink-koppeling ontbreekt/is verlopen, of de guard weigert (geen clubwedstrijd, `IsKernelMatch` ontbreekt, of geen thuiswedstrijd)
+            Ook bij een bezette lokale autologinlease (LokaleLeaseBezet); de geblokkeerde
+            Sportlink-aanroep is niet uitgevoerd en kan later opnieuw worden geprobeerd.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                lokaleLeaseBezet:
+                  value:
+                    error: Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw.
         '500':
-          $ref: '#/components/responses/InternalServerError'
+          $ref: '#/components/responses/SportlinkMutationInternalServerError'
         '502':
           description: Sportlink gaf geen bruikbare respons
         '503':
@@ -5425,7 +5545,18 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '409':
-          description: Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen
+          description: |
+            Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen
+            Ook bij een bezette lokale autologinlease (LokaleLeaseBezet); de geblokkeerde
+            Sportlink-aanroep is niet uitgevoerd en kan later opnieuw worden geprobeerd.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                lokaleLeaseBezet:
+                  value:
+                    error: Een andere lokale Sportlink-verversing is bezig; er is geen Sportlink-aanroep gedaan. Probeer het opnieuw.
         '500':
           $ref: '#/components/responses/InternalServerError'
         '503':

@@ -25,6 +25,7 @@ public class OefenwedstrijdFormulierStateTests
         var state = new OefenwedstrijdFormulierState();
 
         state.Datum.Should().Be(DateTime.Today);
+        state.Datum.Kind.Should().Be(DateTimeKind.Unspecified);
         state.Tijd.Should().Be("19:00");
         state.Duur.Should().Be(90);
         state.Velddeel.Should().Be("1.0");
@@ -34,6 +35,21 @@ public class OefenwedstrijdFormulierStateTests
         state.VeldNummer.Should().BeNull();
         state.Omschrijving.Should().BeNull();
     }
+
+    [Fact]
+    public void DatumEnTijd_WireRoundtrip_BehoudtDeLokaleWandklokTijd()
+    {
+        var state = new OefenwedstrijdFormulierState();
+        state.Datum = DateTime.SpecifyKind(state.Datum.Date.AddHours(19), state.Datum.Kind);
+        var json = System.Text.Json.JsonSerializer.Serialize(new { MatchDateTime = state.Datum });
+        var gelezen = Newtonsoft.Json.JsonConvert.DeserializeObject<WireDto>(json);
+
+        gelezen!.MatchDateTime.Should().Be(state.Datum);
+        gelezen.MatchDateTime!.Value.Kind.Should().Be(DateTimeKind.Unspecified);
+        gelezen.MatchDateTime.Value.TimeOfDay.Should().Be(new TimeSpan(19, 0, 0));
+    }
+
+    private sealed record WireDto(DateTime? MatchDateTime);
 
     [Fact]
     public void KiesTeam_VultDuurLeeftijdscategorieEnVelddeelVoor()

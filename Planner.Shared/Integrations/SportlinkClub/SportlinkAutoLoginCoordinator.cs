@@ -19,8 +19,10 @@ public sealed class SportlinkAutoLoginCoordinator(
         // Schrijf vóór de netwerkcall: ook een crash na een mislukte poging mag geen storm geven.
         if (state.RetryAfterUtc > now) return null;
         if (state.FailureCount >= 3) return null;
+        // Keep-alive runs hourly. Qualifying at eight hours guarantees a tick by nine hours,
+        // preserving one hour of the ten-hour Sportlink session even after an unlucky tick phase.
         if (state.LastLoginUtc is { } last &&
-            now - last < (force ? TimeSpan.FromMinutes(15) : TimeSpan.FromHours(9)))
+            now - last < (force ? TimeSpan.FromMinutes(15) : TimeSpan.FromHours(8)))
             return null;
 
         await store.MarkAttemptAsync(role, now.AddMinutes(15), ct);

@@ -65,7 +65,7 @@ public sealed class OefenwedstrijdFormulierState
     /// <summary>Alles terug naar de beginstand: vandaag (of <paramref name="beginDatum"/>, #1468), 19:00, 90 minuten, heel veld en de rest leeg. De geladen teamgegevens blijven.</summary>
     public void Leegmaken(DateTime? beginDatum = null)
     {
-        Datum = beginDatum?.Date ?? DateTime.Today;
+        Datum = DateTime.SpecifyKind(beginDatum?.Date ?? DateTime.Today, DateTimeKind.Unspecified);
         Tijd = StandaardTijd;
         Duur = StandaardDuur;
         _teamSelectie = null;
