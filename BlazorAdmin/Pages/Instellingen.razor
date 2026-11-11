@@ -440,45 +440,10 @@ else
         </div>
     </div>
 
-    <table class="table table-striped">
-        <thead>
-            <tr>
-                <th>E-mailadres</th>
-                <th>Omschrijving</th>
-                <th>Actief</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var adres in uitgeslotenEmails)
-            {
-                <tr class="@(!adres.Actief ? "text-muted" : "")">
-                    <td>@adres.EmailAdres</td>
-                    <td>@adres.Omschrijving</td>
-                    <td>@(adres.Actief ? "ja" : "nee")</td>
-                    <td>
-                        @if (_verwijderAdresBevestiging.IsOpenFor((ClubSelector.SelectedClubCode, adres.Id)))
-                        {
-                            <button class="btn btn-sm btn-danger" @onclick="() => VerwijderAdresAsync(adres.Id)">
-                                Bevestig verwijderen
-                            </button>
-                            <button class="btn btn-sm btn-link" @onclick="AnnuleerVerwijderenAdres">Annuleren</button>
-                        }
-                        else
-                        {
-                            <button class="btn btn-sm btn-outline-danger" @onclick="() => VraagVerwijderAdres(adres.Id)">
-                                Verwijderen
-                            </button>
-                        }
-                    </td>
-                </tr>
-            }
-            @if (uitgeslotenEmails.Count == 0)
-            {
-                <tr><td colspan="4" class="text-muted">Geen uitgesloten adressen.</td></tr>
-            }
-        </tbody>
-    </table>
+    <UitgeslotenEmailTabel Adressen="uitgeslotenEmails"
+                          BevestigingOpen="@(id => _verwijderAdresBevestiging.IsOpenFor((ClubSelector.SelectedClubCode, id)))"
+                          OnVraag="VraagVerwijderAdres" OnBevestig="VerwijderAdresAsync"
+                          OnAnnuleer="AnnuleerVerwijderenAdres" />
 
     @if (nieuwAdres != null)
     {

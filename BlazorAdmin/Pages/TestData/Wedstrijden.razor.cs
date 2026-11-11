@@ -170,7 +170,8 @@ public partial class Wedstrijden : ClubSelectorPageBase
     protected override async Task OnInitializedAsync()
     {
         await ClubSelector.InitializeAsync();
-        if (ClubSelector.SelectedClubCode == "ALLSTARS") await LaadAsync();
+        // Een al geselecteerde club geeft geen OnChange; initialisatie heeft dezelfde reset nodig.
+        await OnClubChangedAsync();
     }
 
     protected override async Task OnClubChangedAsync()
