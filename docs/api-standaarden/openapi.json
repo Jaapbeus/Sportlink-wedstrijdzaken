@@ -511,7 +511,8 @@
           "aangevraagdDoor": {
             "type": "string",
             "nullable": true,
-            "example": "trainer@voorbeeld.nl"
+            "deprecated": true,
+            "description": "Compatibility-only field. Ignored; the server derives the stored requester from the authenticated principal."
           },
           "wedstrijdDuurMinuten": {
             "type": "integer",
@@ -736,7 +737,8 @@
           "aangevraagdDoor": {
             "type": "string",
             "nullable": true,
-            "example": "tegenstander via email"
+            "deprecated": true,
+            "description": "Compatibility-only field. Ignored; the server derives the stored requester from the authenticated principal."
           },
           "opmerking": {
             "type": "string",

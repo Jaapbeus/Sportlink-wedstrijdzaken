@@ -12,8 +12,10 @@ public static class TimeHelper
     private static readonly Regex NoColonFormat = new(@"^(\d{1,4})$");
 
     /// <summary>
-    /// Normaliseert tijdinvoer naar "HH:mm". Retourneert null bij lege/ongeldige invoer.
-    /// Voorbeelden: "830"→"08:30", "0830"→"08:30", "8:30"→"08:30", "1430"→"14:30"
+    /// Normalizes time input to "HH:mm". Returns null only for null, empty, or whitespace input.
+    /// Valid input returns the normalized time; malformed or out-of-range input is returned unchanged
+    /// so callers can display the validation error. Examples: "830"→"08:30", "0830"→"08:30",
+    /// "8:30"→"08:30", "1430"→"14:30".
     /// </summary>
     public static string? Normalize(string? input)
     {
@@ -50,9 +52,4 @@ public static class TimeHelper
         return $"{hours:D2}:{minutes:D2}";
     }
 
-    /// <summary>
-    /// Normaliseert tijdinvoer. Retourneert lege string bij lege invoer (voor niet-verplichte velden).
-    /// </summary>
-    public static string NormalizeOrEmpty(string? input)
-        => Normalize(input) ?? string.Empty;
 }
