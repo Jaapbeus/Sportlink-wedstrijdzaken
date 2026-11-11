@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.16.0.3
+  version: 3.16.0.4
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -397,6 +397,9 @@ components:
         reden:
           type: string
           nullable: true
+          description: |
+            Reason when unavailable. A team name that fails the display checks is replaced by
+            `het opgegeven team` in the team-conflict explanation (#1809).
         gecontroleerdDagdeel:
           type: string
           nullable: true
@@ -415,8 +418,18 @@ components:
             $ref: '#/components/schemas/BeschikbaarVenster'
         waarschuwingen:
           type: array
+          description: |
+            Planning warnings normalized before serialization on both tiers (#1809).
+            Control characters and whitespace become spaces. The delimiters <, >, backticks,
+            {, }, [ and ] become spaces; words containing :// or @, or starting with www
+            (case-insensitive), are removed. Each result is truncated after 300 characters
+            when necessary and followed by an ellipsis (at most 301 output characters).
+            Empty results are omitted; remaining order is preserved. These rules apply only
+            to this warning array. An unrecognized team name that fails the display checks
+            is shown as `het opgegeven team` in its warning.
           items:
             type: string
+            maxLength: 301
 
     BevestigRequest:
       type: object
@@ -3720,6 +3733,8 @@ paths:
         3. **Vrije vensters** — geen `leeftijdsCategorie`: geeft alle open tijdvensters per veld
 
         Controleert ook teamconflicten als `teamNaam` opgegeven is.
+        Warning output is normalized and bounded before serialization on both tiers; see
+        `CheckAvailabilityResponse.waarschuwingen` for the exact rules (#1809).
       security:
         - easyAuth: []
       requestBody:

@@ -3,11 +3,10 @@ using Npgsql;
 namespace FunctionApp.Postgres.Admin;
 
 /// <summary>
-/// Postgres-tier-tegenhanger van <c>FunctionApp/Admin/Repositories/AdminVeldPeriodeRepository.cs</c>
-/// (#887). Vertaling: <c>[dbo].[VeldPeriode]</c> → <c>public.veldperiode</c>,
-/// <c>[dbo].[VeldBeschikbaarheid]</c> → <c>public.veldbeschikbaarheid</c>,
-/// <c>CONVERT(VARCHAR(10), …, 23)</c> → <c>to_char(…, 'YYYY-MM-DD')</c>,
-/// <c>OUTPUT INSERTED.[Id]</c> → <c>RETURNING id</c>.
+/// Leest en onderhoudt veldperiodes per club in <c>public.veldperiode</c>, controleert
+/// overlappende actieve periodes en controleert verwijzingen vanuit
+/// <c>public.veldbeschikbaarheid</c>. Leesresultaten bevatten datums als <c>YYYY-MM-DD</c>;
+/// bij het toevoegen van een periode wordt het gegenereerde id teruggegeven.
 /// <para>
 /// <b>#855-casing:</b> Postgres vouwt ongequote kolomnamen naar lowercase, dus elke kolom die via
 /// <c>r.GetName(i)</c> in de responsdictionary terechtkomt wordt hier expliciet met een gequote

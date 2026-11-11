@@ -6,15 +6,9 @@ using Microsoft.JSInterop;
 namespace BlazorAdmin.Pages;
 
 /// <summary>
-/// Code-behind van <c>Thema.razor</c> (#1270): de twee kleurpaletten (licht en donker), de
-/// basisthema's en het uitlezen van kleuren uit de clubwebsite.
+/// Beheert de thema-instellingen in <c>Thema.razor</c>: laden, bewerken, previewen en opslaan van
+/// de lichte en donkere paletten, plus het ophalen van kleuren en assets van de clubwebsite.
 /// </summary>
-/// <remarks>
-/// Verhuisd uit het <c>@code</c>-blok van de pagina conform regel 3 van
-/// <c>docs/ARCHITECTUUR-CODEKWALITEIT.md</c>: een <c>@code</c>-blok is niet los te testen, een
-/// partial class wel. De logica zelf is ongewijzigd overgenomen — dit is een verplaatsing, geen
-/// herontwerp.
-/// </remarks>
 public partial class Thema : ClubSelectorPageBase
 {
     [Inject] private InstellingenApiClient Api { get; set; } = default!;
