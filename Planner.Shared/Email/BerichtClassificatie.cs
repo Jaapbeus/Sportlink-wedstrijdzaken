@@ -28,6 +28,9 @@ public enum NamensWie
 /// <summary>AI-classificatie van een inkomend bericht, aangevuld door de pipeline.</summary>
 public class BerichtClassificatie
 {
+    [Newtonsoft.Json.JsonIgnore, System.Text.Json.Serialization.JsonIgnore]
+    public bool TeamHandmatigBeoordelen { get; set; }
+
     public VerzoekType Type { get; set; }
     public string? Datum { get; set; }           // yyyy-MM-dd — eerste/primaire datum
     public string? AanvangsTijd { get; set; }    // HH:mm

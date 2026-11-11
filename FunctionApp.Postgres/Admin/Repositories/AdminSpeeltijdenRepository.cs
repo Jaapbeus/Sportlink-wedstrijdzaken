@@ -8,10 +8,10 @@ internal record SpeeltijdInput(
     TimeOnly? StandaardVoorkeurTijd);
 
 /// <summary>
-/// Postgres-tier-tegenhanger van <c>FunctionApp/Admin/Repositories/AdminSpeeltijdenRepository.cs</c>
-/// (#887). Vertaling: <c>[dbo].[Speeltijden]</c> → <c>public.speeltijden</c>, <c>TRY_CAST</c> (geen
-/// Postgres-equivalent) → een regex-guard (<c>~ '^[0-9]+$'</c>) vóór de <c>::int</c>-cast, en
-/// <c>CONVERT(VARCHAR(5), …)</c> → <c>to_char(…, 'HH24:MI')</c>.
+/// Leest en beheert de per-club speeltijdinstellingen in <c>public.speeltijden</c>. De SQL
+/// Server-tabel <c>[dbo].[Speeltijden]</c> gebruikt hier dezelfde velden; numerieke tekst wordt
+/// vóór <c>::int</c> gecontroleerd met <c>~ '^[0-9]+$'</c>, en tijden worden met
+/// <c>to_char(…, 'HH24:MI')</c> geformatteerd.
 /// </summary>
 internal static class AdminSpeeltijdenRepository
 {
