@@ -235,8 +235,10 @@ const isEinde = (verwacht, nieuwste) => verwacht === 'geen' || (verwacht === nul
  * Vergelijkt het label met de verwachte beurt. Overdracht én labelwissel moeten buiten de wachttijd
  * liggen: de volgorde (eerst fasecomment, dan label) mag even "scheef" staan zonder dat een draaiende
  * cron meteen een valse melding plaatst. MEERDERE_TURN let alleen op het tijdstip van de labelwissel.
+ * GEEN_TURN vervalt als de nieuwste overdracht een PR noemt die niet meer open is (`afgerondePrs`):
+ * dat werk is gemerged of gesloten, dus een achtergebleven overdracht vraagt geen label meer.
  */
-function turnBevindingen({ turns, namen, verwacht, nieuwste, nuMs, graceMs, labelMs }) {
+function turnBevindingen({ turns, namen, verwacht, nieuwste, nuMs, graceMs, labelMs, afgerondePrs = [] }) {
   const labelRustig = nuMs - labelMs > graceMs;
   if (turns.length > 1) {
     return labelRustig ? [{ code: 'MEERDERE_TURN', detail: `aantal=${turns.length}`, tekst: 'Het issue heeft meer dan één turn:-label; er mag er hoogstens één staan.' }] : [];
@@ -245,6 +247,7 @@ function turnBevindingen({ turns, namen, verwacht, nieuwste, nuMs, graceMs, labe
   if (TURN_BEURTEN.includes(verwacht)) {
     if (turns.length === 0) {
       if (GEEN_TURN_UITZONDERING.some((n) => namen.includes(n))) return [];
+      if (nieuwste.parsed.pr && afgerondePrs.includes(nieuwste.parsed.pr)) return [];
       return [{ code: 'GEEN_TURN', detail: `verwacht=${verwacht}`, tekst: `De nieuwste overdracht verwacht beurt "${verwacht}", maar het issue heeft geen turn:-label.` }];
     }
     if (turns[0] === verwacht) return [];
@@ -256,8 +259,11 @@ function turnBevindingen({ turns, namen, verwacht, nieuwste, nuMs, graceMs, labe
   return [];
 }
 
-/** Als evalueerIssue, plus de tijd (ms) van de nieuwste overdracht: nodig voor de dedup in run(). */
-function beoordeel({ labels, issueComments, prs, now, graceMinuten = STANDAARD_GRACE_MINUTEN, laatsteLabelWijziging }) {
+/**
+ * Als evalueerIssue, plus de tijd (ms) van de nieuwste overdracht (dedup in run()) en de PR die zij noemt.
+ * `afgerondePrs`: PR-nummers waarvan vaststaat dat ze niet meer open zijn (gemerged of gesloten).
+ */
+function beoordeel({ labels, issueComments, prs, now, graceMinuten = STANDAARD_GRACE_MINUTEN, laatsteLabelWijziging, afgerondePrs = [] }) {
   const namen = labelNames({ labels });
   const turns = namen.filter((n) => n.startsWith(TURN_PREFIX)).map((n) => n.slice(TURN_PREFIX.length));
   const nuMs = now instanceof Date ? now.getTime() : (typeof now === 'number' ? now : Date.parse(now) || Date.now());
@@ -265,13 +271,13 @@ function beoordeel({ labels, issueComments, prs, now, graceMinuten = STANDAARD_G
   const nieuwste = overdrachten[0] || null;
   const verwacht = nieuwste ? verwachteBeurt(nieuwste.parsed) : null;
   const labelMs = laatsteLabelWijziging ? Date.parse(laatsteLabelWijziging) || 0 : 0;
-  const findings = turnBevindingen({ turns, namen, verwacht, nieuwste, nuMs, graceMs: graceMinuten * 60 * 1000, labelMs });
+  const findings = turnBevindingen({ turns, namen, verwacht, nieuwste, nuMs, graceMs: graceMinuten * 60 * 1000, labelMs, afgerondePrs });
   const sha = shaBevinding(overdrachten, verwacht, prs);
   if (sha) findings.push(sha);
   if (namen.includes(VEROUDERD_STATUS)) {
     findings.push({ code: 'VEROUDERDE_STATUS', detail: 'label=waiting-codex', tekst: 'Het gedeprecieerde label "status: waiting-codex" staat op het issue; het bestaat niet meer.' });
   }
-  return { findings, nieuwsteTijd: nieuwste ? nieuwste.tijd : 0 };
+  return { findings, nieuwsteTijd: nieuwste ? nieuwste.tijd : 0, nieuwstePr: nieuwste ? nieuwste.parsed.pr : null };
 }
 
 const hashVan = (findings) => crypto.createHash('sha256')
@@ -349,6 +355,7 @@ async function laadContext(github, owner, repo) {
  * Issues om te beoordelen: elk open issue met een turn:/waiting-codex-label, met een open gekoppelde PR
  * (de overdracht kan alleen daar staan) of met ten minste één comment. Een overdracht van lang geleden
  * zonder turn:-label blijft zo vindbaar (GEEN_TURN); een tijdvenster op de comments zou dat verbergen.
+ * Noemt die overdracht een PR die niet meer open is, dan vervalt GEEN_TURN (zie afgerondePrs).
  * Een issue zonder enige comment kan geen overdracht hebben en wordt overgeslagen.
  */
 function kiesIssues(ctx) {
@@ -360,6 +367,24 @@ function kiesIssues(ctx) {
     if (gelabeld || heeftPr || issue.comments !== 0) kandidaten.push(nr);
   }
   return kandidaten.sort((a, b) => a - b);
+}
+
+/**
+ * Is de PR uit de nieuwste overdracht niet meer open? Alleen opgevraagd bij GEEN_TURN met een PR-nummer
+ * buiten de open gekoppelde PR's: hoogstens één extra aanroep per issue. Een open maar niet sterk
+ * gekoppelde PR houdt het signaal, net als een nummer dat geen PR is (404, bijv. een typfout).
+ */
+async function afgerondePrs(github, owner, repo, ctx, nr, uitkomst) {
+  const pr = uitkomst.nieuwstePr;
+  if (!pr || !uitkomst.findings.some((f) => f.code === 'GEEN_TURN')) return [];
+  if ((ctx.prsPerIssue.get(nr) || []).some((p) => p.number === pr)) return [];
+  try {
+    const { data } = await github.rest.pulls.get({ owner, repo, pull_number: pr, headers: API_VERSION_HEADERS });
+    return data && data.state !== 'open' ? [pr] : [];
+  } catch (e) {
+    if (e && e.status === 404) return [];
+    throw e;
+  }
 }
 
 async function beoordeelIssue(github, owner, repo, ctx, nr, nu, graceMinuten) {
@@ -377,7 +402,8 @@ async function beoordeelIssue(github, owner, repo, ctx, nr, nu, graceMinuten) {
     // Labelwissels bepalen de wachttijd én of een eerdere melding nog actueel is.
     const tijden = await labelTijden(github, owner, repo, nr);
     laatsteLabelEvent = tijden.alle ? Date.parse(tijden.alle) || 0 : 0;
-    uitkomst = beoordeel({ ...invoer, laatsteLabelWijziging: tijden.turn });
+    const afgerond = await afgerondePrs(github, owner, repo, ctx, nr, uitkomst);
+    uitkomst = beoordeel({ ...invoer, laatsteLabelWijziging: tijden.turn, afgerondePrs: afgerond });
   }
   return { findings: uitkomst.findings, issueComments, nieuwsteTijd: uitkomst.nieuwsteTijd, laatsteLabelEvent };
 }

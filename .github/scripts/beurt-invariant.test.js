@@ -193,6 +193,11 @@ check('GEEN_TURN: label net gewisseld (binnen grace): geen bevinding', ev({ labe
 for (const st of ['blocked', 'wont-fix', 'waiting-owner']) {
   check(`status: ${st} zonder turn: geen GEEN_TURN`, ev({ labels: [`status: ${st}`], issueComments: [comment(EIGENAARSBESLUIT, { min: 120 })] }), []);
 }
+// Overdracht die een niet meer open PR noemt (pre-review #1858): afgerond werk, dus geen GEEN_TURN.
+const OVERDRACHT_PR9 = 'Fase: verwerking\nImplementer: Claude Code\nPR: #9\nVolgende beurt: Claude Code';
+check('GEEN_TURN vervalt als de genoemde PR afgerond is', ev({ labels: [], afgerondePrs: [9], issueComments: [comment(OVERDRACHT_PR9, { min: 60 * 24 * 30 })] }), []);
+check('GEEN_TURN blijft als een andere PR afgerond is', ev({ labels: [], afgerondePrs: [8], issueComments: [comment(OVERDRACHT_PR9, { min: 60 * 24 * 30 })] }), ['GEEN_TURN']);
+check('afgeronde PR verbergt TURN_WIJKT_AF niet', ev({ labels: ['turn: codex'], afgerondePrs: [9], issueComments: [comment(OVERDRACHT_PR9)] }), ['TURN_WIJKT_AF']);
 
 // ── PR-herkenning en verschoven head (P2) ──
 console.log('verschoven head, issue-aanvraag:');
@@ -223,15 +228,24 @@ check('tekst meldt dat labels niet zijn gewijzigd', signaalBody(5, f1).includes(
 
 // ── run ──
 console.log('run:');
-function fakeGithub({ issues, prs = [], comments = {}, faalOp = null, events = [] }) {
-  const calls = { createComment: [], addLabels: 0, removeLabel: 0, setLabels: 0 };
+function fakeGithub({ issues, prs = [], comments = {}, faalOp = null, events = [], prStatus = {} }) {
+  const calls = { createComment: [], addLabels: 0, removeLabel: 0, setLabels: 0, pullsGet: [] };
   const rest = {
     issues: {
-      listForRepo: 'listForRepo', listComments: 'listComments', listCommentsForRepo: 'listCommentsForRepo', listEvents: 'listEvents',
+      listForRepo: 'listForRepo', listComments: 'listComments', listEvents: 'listEvents',
       createComment: async (a) => { calls.createComment.push(a); comments[a.issue_number] = (comments[a.issue_number] || []).concat([{ id: volgId++, body: a.body, created_at: new Date(NU).toISOString(), author_association: 'NONE', user: { login: 'github-actions[bot]', type: 'Bot' } }]); return {}; },
       addLabels: async () => { calls.addLabels++; }, removeLabel: async () => { calls.removeLabel++; }, setLabels: async () => { calls.setLabels++; },
     },
-    pulls: { list: 'pullsList' },
+    pulls: {
+      list: 'pullsList',
+      // prStatus[nr]: 'open' | 'closed', of een HTTP-status (getal) die als fout wordt gegooid; ontbreekt = 404.
+      get: async (a) => {
+        calls.pullsGet.push(a.pull_number);
+        const st = prStatus[a.pull_number];
+        if (typeof st !== 'string') throw Object.assign(new Error('HTTP-fout'), { status: st || 404 });
+        return { data: { number: a.pull_number, state: st } };
+      },
+    },
   };
   return {
     calls, rest,
@@ -328,6 +342,27 @@ const oudeAfwijking = comment('Fase: verwerking\nImplementer: Codex\nVolgende be
     const gh = fakeGithub({ issues: [{ ...issue(3, []), comments: 1 }], comments: { 3: [c] } });
     await run({ github: gh, context: ctx, core: maakCore(), now: new Date(NU) });
     check('oude overdracht zonder label: GEEN_TURN gesignaleerd', gh.calls.createComment.length, 1);
+  }
+  {
+    // Oude overdracht noemt PR #9 zonder open gekoppelde PR en zonder turn-label (pre-review #1858).
+    const oud = () => comment(OVERDRACHT_PR9, { min: 60 * 24 * 30 });
+    const draai = async (prStatus) => {
+      const gh = fakeGithub({ issues: [{ ...issue(4, []), comments: 1 }], comments: { 4: [oud()] }, prStatus });
+      const core = maakCore();
+      await run({ github: gh, context: ctx, core, now: new Date(NU) });
+      return [gh.calls.createComment.length, gh.calls.pullsGet, core.failed !== null];
+    };
+    check('genoemde PR gesloten of gemerged: geen GEEN_TURN', await draai({ 9: 'closed' }), [0, [9], false]);
+    check('genoemde PR open maar niet sterk gekoppeld: GEEN_TURN', await draai({ 9: 'open' }), [1, [9], false]);
+    check('genoemd nummer is geen PR (404): GEEN_TURN', await draai({}), [1, [9], false]);
+    check('andere API-fout bij de PR-opvraging: issue mislukt, run faalt', await draai({ 9: 500 }), [0, [9], true]);
+    const gekoppeld = fakeGithub({
+      issues: [{ ...issue(5, []), comments: 1 }],
+      prs: [{ number: 9, title: 'fix(#5): iets', body: '', head: { sha: SHA } }],
+      comments: { 5: [oud()], 9: [] },
+    });
+    await run({ github: gekoppeld, context: ctx, core: maakCore(), now: new Date(NU) });
+    check('genoemde PR is open en gekoppeld: geen extra opvraging, GEEN_TURN', [gekoppeld.calls.createComment.length, gekoppeld.calls.pullsGet], [1, []]);
   }
 
   console.log(failures === 0 ? '\nAlle checks geslaagd.' : `\n${failures} check(s) gefaald.`);
