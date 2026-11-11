@@ -54,7 +54,8 @@ public class AfzenderTeamBepalingTests
         c.LeeftijdsCategorie.Should().Be("JO23", "de categorie volgt uit het afgeleide team");
         var stap = trace.Stappen.Should().ContainSingle(s => s.Code == TraceCodes.BegeleidingAfzender).Subject;
         stap.Details[AfzenderTeamBepaling.AantalSleutel].Should().Be("1");
-        stap.Details["canoniekeNaam"].Should().Be(Canoniek);
+        stap.Details.Should().NotContainKey("canoniekeNaam", "de trace bewaart alleen het aantal teams (besluit 4A)");
+        JsonConvert.SerializeObject(trace.Stappen).Should().NotContain(Canoniek);
         ZekerheidsBeoordeling.Beoordeel(trace.Stappen).IsZeker.Should().BeTrue("een afgeleid team telt als opgelost");
     }
 

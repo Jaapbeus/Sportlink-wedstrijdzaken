@@ -116,16 +116,16 @@ public sealed class TraceBuilder
 
     /// <summary>
     /// De opzoeking van het eigen team via de afzender (#1862). Bewust alleen het aantal gevonden teams
-    /// (<c>0</c>, <c>1</c> of <c>meer</c>) en de canonieke teamnaam: nooit het e-mailadres, ook niet gehasht, en geen
-    /// namen, rollen of de teams van de afzender bij meerdere treffers.
+    /// (<c>0</c>, <c>1</c> of <c>meer</c>; eigenaarsbesluit 4A, #1862): nooit het e-mailadres, ook niet gehasht, en geen
+    /// teamnaam, namen, rollen of de teams van de afzender.
     /// </summary>
-    public TraceBuilder BegeleidingAfzender(string aantalTeams, string? canoniekeNaam, ZekerheidsNiveau zekerheid, bool afwijktVanGenoemdTeam)
+    public TraceBuilder BegeleidingAfzender(string aantalTeams, bool teamAfgeleid, ZekerheidsNiveau zekerheid, bool afwijktVanGenoemdTeam)
     {
-        var uitkomst = canoniekeNaam is not null ? $"Eigen team afgeleid: {Saneer(canoniekeNaam)}"
+        var uitkomst = teamAfgeleid ? "Eigen team afgeleid"
             : aantalTeams == "meer" ? "Afzender begeleidt meerdere teams, niets gekozen"
             : aantalTeams == "0" ? "Afzender niet gevonden in de begeleiding"
             : "Eén team, maar niet herkend";
-        var details = new List<KeyValuePair<string, string?>> { D(AfzenderTeamBepaling.AantalSleutel, aantalTeams), D("canoniekeNaam", canoniekeNaam) };
+        var details = new List<KeyValuePair<string, string?>> { D(AfzenderTeamBepaling.AantalSleutel, aantalTeams) };
         if (aantalTeams == "meer") details.Add(D("bron", "MeerdereKandidaten"));
         if (afwijktVanGenoemdTeam) details.Add(D(AfzenderTeamBepaling.AfwijkendTeamSleutel, Ja));
         return Voeg(TraceCodes.BegeleidingAfzender, "Eigen team via de afzender", uitkomst, zekerheid, details);

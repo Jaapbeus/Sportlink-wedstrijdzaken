@@ -58,13 +58,13 @@ public static class AfzenderTeamBepaling
         {
             // Geen foutdetails: die kunnen het adres bevatten. Een storing is "niet gevonden", nooit een gok.
             log.LogWarning("TEAMRESOLUTIE - opzoeking in de begeleiding mislukt ({FoutType})", ex.GetType().Name);
-            trace?.BegeleidingAfzender(AantalOmschrijving(0), null, ZekerheidsNiveau.Onzeker, false);
+            trace?.BegeleidingAfzender(AantalOmschrijving(0), false, ZekerheidsNiveau.Onzeker, false);
             return herkend;
         }
 
         if (teams.Count != 1)
         {
-            trace?.BegeleidingAfzender(AantalOmschrijving(teams.Count), null,
+            trace?.BegeleidingAfzender(AantalOmschrijving(teams.Count), false,
                 teams.Count > 1 ? ZekerheidsNiveau.Onzeker : ZekerheidsNiveau.Mislukt, false);
             return herkend;
         }
@@ -74,19 +74,19 @@ public static class AfzenderTeamBepaling
         if (herkend)
         {
             var wijktAf = canoniek is not null && !string.Equals(canoniek, classificatie.TeamNaam, StringComparison.OrdinalIgnoreCase);
-            trace?.BegeleidingAfzender(AantalOmschrijving(1), null, ZekerheidsNiveau.Zeker, wijktAf);
+            trace?.BegeleidingAfzender(AantalOmschrijving(1), false, ZekerheidsNiveau.Zeker, wijktAf);
             return true;
         }
 
         if (canoniek is null)
         {
-            trace?.BegeleidingAfzender(AantalOmschrijving(1), null, ZekerheidsNiveau.Onzeker, false);
+            trace?.BegeleidingAfzender(AantalOmschrijving(1), false, ZekerheidsNiveau.Onzeker, false);
             return false;
         }
 
         classificatie.TeamNaam = canoniek;
         classificatie.TeamAfgeleidUitAfzender = true;
-        trace?.BegeleidingAfzender(AantalOmschrijving(1), canoniek, ZekerheidsNiveau.Zeker, false);
+        trace?.BegeleidingAfzender(AantalOmschrijving(1), true, ZekerheidsNiveau.Zeker, false);
         log.LogInformation("TEAMRESOLUTIE - eigen team afgeleid uit de teambegeleiding van de afzender");
         return true;
     }

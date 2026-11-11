@@ -154,7 +154,7 @@ antwoord noemt het met een controleregel (`AfgeleidTeamControle`: "We gaan uit v
 Wijkt een genoemd team af van het begeleidingsteam, dan komt er alleen een tracenotitie (`afzenderBegeleidtAnderTeam: ja`,
 zonder namen, zonder review-markering). Wijkt Reply-To af van From, dan vindt er geen opzoeking plaats; de beheerderstester
 (`test/email`) doet de opzoeking nooit (`OvergeslagenAfzenderTeamBron.Proefverwerking`, zie `EMAIL-VERWERKING.md` §5e). De trace
-(`begeleiding-afzender`) bevat alleen het aantal gevonden teams (0, 1 of meer) en de canonieke naam; het e-mailadres staat
+(`begeleiding-afzender`) bevat alleen het aantal gevonden teams (0, 1 of meer), geen teamnaam (eigenaarsbesluit 4A); het e-mailadres staat
 nooit in trace, log of telemetrie. De index staat in `ARCHITECTUUR-DATABASE-TIERS.md` §87; de AVG-onderbouwing in
 `EMAIL-VERWERKING.md` §5e.
 
