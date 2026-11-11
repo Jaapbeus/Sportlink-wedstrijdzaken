@@ -38,6 +38,9 @@ namespace FunctionApp.Postgres.Admin;
 /// </summary>
 public static class EmailTestFunction
 {
+    internal static IActionResult? ControleerAiBeschikbaar(FunctionContext context, ILogger log)
+        => EmailTestEndpointCore.ControleerAiRegistratie(context.InstanceServices, log);
+
     [Function("EmailTestDryRun")]
     public static Task<IActionResult> DryRun(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "test/email")] HttpRequest req,
@@ -51,6 +54,8 @@ public static class EmailTestFunction
             async clubCode =>
             {
                 if (EmailTestEndpointCore.ControleerLimiet() is { } begrensd) return begrensd;
+                if (ControleerAiBeschikbaar(context, log) is { } zonderAi)
+                    return zonderAi;
 
                 // Eigen catch naast de wrapper (#1350), zie EmailTestEndpointCore.Fout.
                 try

@@ -402,8 +402,9 @@ bestaande rij hergebruikt en de verwerking opnieuw uitgevoerd.
 > terugvalpad meedoen voor rijen van vóór de migratie.
 
 `planner.EmailVerwerking.Pogingen` houdt bij hoe vaak dat is gebeurd. Na drie pogingen geeft de
-verwerking op: status `Fout` met de melding dat er is opgegeven, bericht als gelezen gemarkeerd, en
-een foutregel in de log. Dat is nodig omdat de poll de tien **oudste** ongelezen berichten pakt —
+verwerking op: status `Fout` met de melding dat er is opgegeven, best-effort het Outlook-label
+*Geen AI antwoord*, bericht als gelezen gemarkeerd, en een foutregel in de log. De coördinator
+pakt het bericht daarna handmatig op via het e-maillog. Dat is nodig omdat de poll de tien **oudste** ongelezen berichten pakt —
 zonder die grens zouden tien blijvend falende berichten alle nieuwe post tegenhouden en bij elke
 poll opnieuw AI-kosten maken.
 
@@ -987,7 +988,10 @@ afzender **geen** bericht. De verwerking legt vast:
 - status `Fout` in `planner.EmailVerwerking`, met een gesaniteerde foutmelding (e-mailadressen
   verwijderd, afgekapt op 1000 tekens)
 - een foutregel in de log met alleen het `MessageId` — nooit onderwerp, adres of body (AVG #210)
-- het bericht blijft **ongelezen** en komt de volgende poll terug (zie §1d, max 3 pogingen)
+- het bericht blijft **ongelezen** en komt de volgende poll terug (zie §1d, max 3 pogingen). Na
+  de derde mislukte poging krijgt het de status `Fout`, wordt *Geen AI antwoord* best-effort als
+  Outlook-label gezet en wordt het bericht als gelezen gemarkeerd; de coördinator volgt het op via
+  het e-maillog.
 
 > `BerichtResponseGenerator.BouwFoutAntwoord` bestaat wel, maar wordt door geen enkele
 > productiecode aangeroepen. Een eerdere versie van dit document beschreef die tekst als
@@ -1357,8 +1361,8 @@ gaan via een apart pad naar dezelfde provider; die registerrij staat in [FEEDBAC
 * **Provider: OpenAI, rechtstreeks via de OpenAI-API** (geen Azure OpenAI). Vastgelegd in `Program.cs`
   van beide tiers: een `OpenAI.Chat.ChatClient`, aangeboden als `IChatClient`. De code stelt geen eigen
   endpoint of regio in; het standaardendpoint van de SDK geldt.
-* **Model: configuratie.** App setting `AiModelName`; is die leeg, dan geldt de terugvalwaarde in
-  `Program.cs`. Welk model een installatie gebruikt, staat dus in haar configuratie, niet in dit document.
+* **Model: configuratie.** App setting `AiModelName`; zonder een ingevulde model-ID wordt `IChatClient`
+  niet geregistreerd. De e-mailpoll stopt dan vóór de databasefase en logt een begrensde melding.
 * **Sleutel:** app setting `OpenAiApiKey`.
 * **Alleen waar uitgaande integraties zijn toegestaan.** `IChatClient` wordt alleen geregistreerd als
   `OpenAiApiKey` gevuld is én `EgressGuard.ExternalIntegrationsAllowed()` dat toestaat (#857). Die

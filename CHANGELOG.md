@@ -18,7 +18,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- Ontbreekt `AiModelName`, dan wordt geen AI-client met een hardcoded terugval geregistreerd; e-mailverwerking stopt veilig vóór de databasefase en de handmatige e-mailtester geeft een gecontroleerde 503. Niet-AI-functies blijven beschikbaar (#1800).
+
 ### Changed
+- Removed the unused API status service and placed existing shared-logic tests in `Planner.Shared.Tests` (see issue #1808).
 - Clarified the Postgres error-reporting adapter documentation while retaining its tier-specific egress and fingerprint rationale (see issue #1805).
 - Het reviewrondelimiet voor Codex en Claude Code (AGENTS.md en de automatische issue-beurt van de bot) is van twee naar drie rondes per PR gegaan; pas daarna beslist de eigenaar, zie issue #1835.
 - De SQL Server-planner geeft voor de niet-opgeslagen optionele eerste-elftalnaam nu expliciet `null` door, gelijk aan Postgres; de settings-loader guard hoeft deze ontbrekende sleutel niet meer uit te zonderen (#1821).
@@ -29,6 +33,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - E-mailverwerking verhard vóór review mode uit gaat (#1809, beide tiers): alleen exact `false` (hoofdletterongevoelig) schakelt review uit; afzendercontrole is syntactisch en blokkeert ongeschikte adressen voor automatisch antwoorden. Onderwerp-, naam- en waarschuwingsuitvoer wordt begrensd en gesaneerd; de provider ontvangt geen afzenderidentiteit en herkenbare contactpatronen in onderwerp, berichttekst en correctiecontext worden gemaskeerd. Dit beperkt geen andere persoonsgegevens en vervangt de open verwerkingsafspraken (#1736) niet; #43 blijft afhankelijk van eigenaaracceptatie.
 
 ### Fixed
+- Graph-fouten bij het ophalen, labelen en als gelezen markeren van e-mail worden niet meer als lege inbox of succes afgehandeld; de bestaande aanroeper bepaalt de foutafhandeling (#1800).
+- Berichten die na drie mislukte verwerkingspogingen worden opgegeven, krijgen nu best-effort het Outlook-label "Geen AI antwoord" voordat ze als gelezen worden gemarkeerd; een mislukte labelpoging verhindert het markeren als gelezen niet (#1800).
 - Settings restart decisions now have paired SQL Server and Postgres persistence regression tests for unchanged and changed schedules alongside another saved field (#1819).
 - De Postgres-instellingenloader laadt nu ook de vijf bestaande e-mailinstellingen voor de mailboxverwerking en wist ze bij herladen na `NULL`, gelijk aan het gedrag van de SQL Server-tier (#1798).
 - De instellingenopslag meldt alleen een herstart als de opgeslagen FetchSchedule-waarde echt verandert; SQL Server ondersteunt nu ook het opslaan en teruglezen van SportlinkDryRun (#1819)

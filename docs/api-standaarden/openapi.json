@@ -9192,6 +9192,32 @@
           }
         },
         "responses": {
+          "503": {
+            "description": "AI-classificatie is niet geconfigureerd of niet beschikbaar",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "aiBeschikbaar"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "E-mailclassificatie is nu niet beschikbaar. Probeer het later opnieuw."
+                    },
+                    "aiBeschikbaar": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
           "200": {
             "description": "Dry-run resultaat",
             "headers": {

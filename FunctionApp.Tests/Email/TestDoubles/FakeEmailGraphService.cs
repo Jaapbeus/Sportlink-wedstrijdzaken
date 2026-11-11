@@ -13,6 +13,7 @@ internal sealed class FakeEmailGraphService : IEmailGraphService
     public List<(IReadOnlyList<string> Ontvangers, string Subject, string Body, string? AanvragerEmail, string? CoordinatorEmail)> TeamForwardings { get; } = new();
 
     public bool ThrowOnSendReply { get; set; }
+    public Exception? ExceptionToThrowOnSetCategories { get; set; }
 
     /// <summary>
     /// Optionele specifieke exception voor <c>SendReplyAsync</c> (#1133). Als gezet, wordt het
@@ -28,6 +29,9 @@ internal sealed class FakeEmailGraphService : IEmailGraphService
 
     public Task SetCategoriesAsync(string messageId, params string[] categories)
     {
+        if (ExceptionToThrowOnSetCategories is not null)
+            return Task.FromException(ExceptionToThrowOnSetCategories);
+
         CategoryUpdates.Add((messageId, categories));
         return Task.CompletedTask;
     }
