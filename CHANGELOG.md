@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- API-bodybegrenzing hergebruikt de gedeelde uitvoeringspoort met behoud van bestaande parsers en endpointvalidatie (zie issue #1811).
+
 ### Breaking
 - `/api/health` exposeert niet langer database-, schema-, migratie-, TLS-, sync- of tierdiagnostiek. Deploy- en readinessvelden zijn geaggregeerd; details zijn beschikbaar via admin-only `GET /api/beheer/health` (#1811). Dit is de API 4.0.0.0-contractgrens.
 

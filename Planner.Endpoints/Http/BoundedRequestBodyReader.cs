@@ -106,26 +106,30 @@ public static class BoundedRequestBodyReader
 
     /// <summary>Runs an endpoint action only after a bounded body has been read successfully.</summary>
     public static async Task<IActionResult> ExecuteUtf8Async(
-        HttpRequest request, Func<string?, Task<IActionResult>> action)
+        HttpRequest request, Func<string, Task<IActionResult>> action, int maxBytes = DefaultJsonMaxBytes)
     {
         ArgumentNullException.ThrowIfNull(action);
-        var body = await ReadUtf8Async(request, DefaultJsonMaxBytes);
-        return body.IsSuccess ? await action(body.Text) : ToActionResult(body.Error);
+        var body = await ReadUtf8Async(request, maxBytes);
+        return body.IsSuccess ? await action(body.Text!) : ToActionResult(body.Error);
     }
 
     /// <summary>Runs an endpoint action only after its bounded UTF-8 JSON body has been parsed.</summary>
     public static Task<IActionResult> ExecuteJsonAsync<T>(
-        HttpRequest request, Func<T?, Task<IActionResult>> action)
+        HttpRequest request, Func<T?, Task<IActionResult>> action, int maxBytes = DefaultJsonMaxBytes,
+        string? emptyBodyMessage = null)
         where T : class
     {
         ArgumentNullException.ThrowIfNull(action);
         return ExecuteUtf8Async(request, body =>
         {
+            if (emptyBodyMessage is not null && string.IsNullOrWhiteSpace(body))
+                return Task.FromResult<IActionResult>(new BadRequestObjectResult(new { error = emptyBodyMessage }));
+
             var parsed = ParseJson<T>(body);
             return parsed.IsSuccess
                 ? action(parsed.Value)
                 : Task.FromResult(ToActionResult(parsed.Error));
-        });
+        }, maxBytes);
     }
 
     public static IActionResult ToActionResult(

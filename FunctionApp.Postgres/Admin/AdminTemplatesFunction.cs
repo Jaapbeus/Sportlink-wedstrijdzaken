@@ -68,61 +68,61 @@ public static class AdminTemplatesFunction
                 if (string.IsNullOrWhiteSpace(key))
                     return new BadRequestObjectResult(new { error = "Template key ontbreekt" });
 
-                var boundedBody = await BoundedRequestBodyReader.ReadJsonAsync<TemplateRequest>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
-                if (!boundedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(boundedBody.Error);
-                var dto = boundedBody.Value;
-                if (dto == null || dto.Onderwerp == null || dto.BodyTemplate == null)
-                    return new BadRequestObjectResult(new { error = "Onderwerp en BodyTemplate verplicht" });
-
-                await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
-                await connection.OpenAsync();
-                // Issue 913/916-precedent: upsert + auditlog-insert in één transactie, zelfde patroon
-                // als AdminSettingsFunction.Put — anders kan een fout tussen de twee statements een
-                // wél-doorgevoerde templatewijziging zonder auditrij achterlaten.
-                await using var transaction = await connection.BeginTransactionAsync();
-                try
+                return await BoundedRequestBodyReader.ExecuteJsonAsync<TemplateRequest>(req, async dto =>
                 {
-                    await using var command = new NpgsqlCommand(@"
-                        INSERT INTO public.emailtemplateinstellingen
-                            (templatekey, onderwerp, bodytemplate, actief, clubcode)
-                        VALUES (@key, @onderwerp, @bodytemplate, @actief, @clubcode)
-                        ON CONFLICT (templatekey, clubcode) DO UPDATE SET
-                            onderwerp = @onderwerp,
-                            bodytemplate = @bodytemplate,
-                            actief = @actief,
-                            mta_modified = NOW()", connection, transaction);
-                    command.Parameters.AddWithValue("key", key);
-                    command.Parameters.AddWithValue("onderwerp", dto.Onderwerp);
-                    command.Parameters.AddWithValue("bodytemplate", dto.BodyTemplate);
-                    command.Parameters.AddWithValue("actief", dto.Actief ?? true);
-                    command.Parameters.AddWithValue("clubcode", clubCode);
-                    await command.ExecuteNonQueryAsync();
+                    if (dto == null || dto.Onderwerp == null || dto.BodyTemplate == null)
+                        return new BadRequestObjectResult(new { error = "Onderwerp en BodyTemplate verplicht" });
 
-                    // #1003: audit-actor komt uitsluitend uit gevalideerde Easy Auth-claims, nooit uit
-                    // de request-body — zelfde fix als AdminSettingsFunction.Put.
-                    var gewijzigdDoor = EasyAuthHelper.GetAuditActor(req);
-                    await using var auditCmd = new NpgsqlCommand(@"
-                        INSERT INTO public.appsettingsaudit
-                            (gewijzigddoor, veld, oudewaarde, nieuwewaarde, clubcode)
-                        VALUES (@gewijzigddoor, @veld, NULL, @nieuwewaarde, @clubcode)", connection, transaction);
-                    auditCmd.Parameters.AddWithValue("gewijzigddoor", gewijzigdDoor);
-                    auditCmd.Parameters.AddWithValue("veld", $"template:{key}");
-                    auditCmd.Parameters.AddWithValue("nieuwewaarde", dto.Onderwerp);
-                    auditCmd.Parameters.AddWithValue("clubcode", clubCode);
-                    await auditCmd.ExecuteNonQueryAsync();
+                    await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+                    await connection.OpenAsync();
+                    // Issue 913/916-precedent: upsert + auditlog-insert in één transactie, zelfde patroon
+                    // als AdminSettingsFunction.Put — anders kan een fout tussen de twee statements een
+                    // wél-doorgevoerde templatewijziging zonder auditrij achterlaten.
+                    await using var transaction = await connection.BeginTransactionAsync();
+                    try
+                    {
+                        await using var command = new NpgsqlCommand(@"
+                            INSERT INTO public.emailtemplateinstellingen
+                                (templatekey, onderwerp, bodytemplate, actief, clubcode)
+                            VALUES (@key, @onderwerp, @bodytemplate, @actief, @clubcode)
+                            ON CONFLICT (templatekey, clubcode) DO UPDATE SET
+                                onderwerp = @onderwerp,
+                                bodytemplate = @bodytemplate,
+                                actief = @actief,
+                                mta_modified = NOW()", connection, transaction);
+                        command.Parameters.AddWithValue("key", key);
+                        command.Parameters.AddWithValue("onderwerp", dto.Onderwerp);
+                        command.Parameters.AddWithValue("bodytemplate", dto.BodyTemplate);
+                        command.Parameters.AddWithValue("actief", dto.Actief ?? true);
+                        command.Parameters.AddWithValue("clubcode", clubCode);
+                        await command.ExecuteNonQueryAsync();
 
-                    await transaction.CommitAsync();
-                }
-                catch
-                {
-                    await transaction.RollbackAsync();
-                    throw;
-                }
+                        // #1003: audit-actor komt uitsluitend uit gevalideerde Easy Auth-claims, nooit uit
+                        // de request-body — zelfde fix als AdminSettingsFunction.Put.
+                        var gewijzigdDoor = EasyAuthHelper.GetAuditActor(req);
+                        await using var auditCmd = new NpgsqlCommand(@"
+                            INSERT INTO public.appsettingsaudit
+                                (gewijzigddoor, veld, oudewaarde, nieuwewaarde, clubcode)
+                            VALUES (@gewijzigddoor, @veld, NULL, @nieuwewaarde, @clubcode)", connection, transaction);
+                        auditCmd.Parameters.AddWithValue("gewijzigddoor", gewijzigdDoor);
+                        auditCmd.Parameters.AddWithValue("veld", $"template:{key}");
+                        auditCmd.Parameters.AddWithValue("nieuwewaarde", dto.Onderwerp);
+                        auditCmd.Parameters.AddWithValue("clubcode", clubCode);
+                        await auditCmd.ExecuteNonQueryAsync();
 
-                // Cache invalideren zodat het nieuwe sjabloon direct gebruikt wordt (#889).
-                EmailTemplateService.InvalidateCache();
+                        await transaction.CommitAsync();
+                    }
+                    catch
+                    {
+                        await transaction.RollbackAsync();
+                        throw;
+                    }
 
-                return new OkObjectResult(new { templateKey = key, status = "opgeslagen" });
+                    // Cache invalideren zodat het nieuwe sjabloon direct gebruikt wordt (#889).
+                    EmailTemplateService.InvalidateCache();
+
+                    return new OkObjectResult(new { templateKey = key, status = "opgeslagen" });
+                });
             });
 
     [Function("AdminTemplatesReset")]

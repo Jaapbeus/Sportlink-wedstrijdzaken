@@ -126,11 +126,8 @@ public static class PlannerFunction
     {
         var log = context.GetLogger("CheckAvailability");
         return AdminEndpoint.ExecuteAsync(req, log, "beschikbaarheid controleren",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<CheckAvailabilityRequest>(req, async request =>
             {
-                var requestBody = await BoundedRequestBodyReader.ReadJsonAsync<CheckAvailabilityRequest>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
-                if (!requestBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(requestBody.Error);
-                var request = requestBody.Value;
                 if (request == null || string.IsNullOrEmpty(request.Datum))
                     return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
@@ -141,7 +138,7 @@ public static class PlannerFunction
                     PostgresDatabaseConfig.ConnectionString, request, log, clubCode);
 
                 return new OkObjectResult(response);
-            });
+            }));
     }
 
     /// <summary>
@@ -155,11 +152,9 @@ public static class PlannerFunction
     {
         var log = context.GetLogger("DoordeweeksBeschikbaar");
         return AdminEndpoint.ExecuteAsync(req, log, "doordeweekse beschikbaarheid controleren",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<DoordeweeksBeschikbaarRequest>(req, async request =>
             {
-                var requestBody = await BoundedRequestBodyReader.ReadJsonAsync<DoordeweeksBeschikbaarRequest>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
-                if (!requestBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(requestBody.Error);
-                var request = requestBody.Value ?? new DoordeweeksBeschikbaarRequest();
+                request ??= new DoordeweeksBeschikbaarRequest();
 
                 log.LogInformation("DoordeweeksBeschikbaar: dag={Dag}, duur={Duur}, cat={Cat}, club={Club}",
                     LogWaarde.Schoon(request.DagFilter), request.DuurMinuten, LogWaarde.Schoon(request.LeeftijdsCategorie), clubCode);
@@ -168,7 +163,7 @@ public static class PlannerFunction
                     PostgresDatabaseConfig.ConnectionString, request, log, clubCode);
 
                 return new OkObjectResult(response);
-            });
+            }));
     }
 
     /// <summary>
@@ -182,11 +177,8 @@ public static class PlannerFunction
     {
         var log = context.GetLogger("HerplanCheck");
         return AdminEndpoint.ExecuteAsync(req, log, "herplanmogelijkheden controleren",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<HerplanCheckRequest>(req, async request =>
             {
-                var requestBody = await BoundedRequestBodyReader.ReadJsonAsync<HerplanCheckRequest>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
-                if (!requestBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(requestBody.Error);
-                var request = requestBody.Value;
                 if (request == null || request.Wedstrijdcode == 0)
                     return new BadRequestObjectResult(new { error = "Request body met 'wedstrijdcode' is verplicht." });
 
@@ -197,7 +189,7 @@ public static class PlannerFunction
                     PostgresDatabaseConfig.ConnectionString, request, log, clubCode);
 
                 return new OkObjectResult(response);
-            });
+            }));
     }
 
     /// <summary>
@@ -213,11 +205,8 @@ public static class PlannerFunction
     {
         var log = context.GetLogger("BevestigWedstrijd");
         return AdminEndpoint.ExecuteAsync(req, log, "wedstrijd bevestigen",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<BevestigRequest>(req, async request =>
             {
-                var requestBody = await BoundedRequestBodyReader.ReadJsonAsync<BevestigRequest>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
-                if (!requestBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(requestBody.Error);
-                var request = requestBody.Value;
                 if (request == null || string.IsNullOrEmpty(request.Datum) || string.IsNullOrEmpty(request.AanvangsTijd))
                     return new BadRequestObjectResult(new { error = "Request body met 'datum', 'aanvangsTijd' en 'veldNummer' is verplicht." });
 
@@ -288,7 +277,7 @@ public static class PlannerFunction
                     veldNummer = request.VeldNummer,
                     status = "Te bevestigen"
                 });
-            });
+            }));
     }
 
     /// <summary>
@@ -303,11 +292,8 @@ public static class PlannerFunction
     {
         var log = context.GetLogger("ZoekWedstrijd");
         return AdminEndpoint.ExecuteAsync(req, log, "wedstrijd zoeken",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<ZoekWedstrijdRequest>(req, async request =>
             {
-                var requestBody = await BoundedRequestBodyReader.ReadJsonAsync<ZoekWedstrijdRequest>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
-                if (!requestBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(requestBody.Error);
-                var request = requestBody.Value;
                 if (request == null || string.IsNullOrEmpty(request.TeamNaam) || string.IsNullOrEmpty(request.Datum))
                     return new BadRequestObjectResult(new { error = "Request body met 'teamNaam' en 'datum' is verplicht." });
 
@@ -323,7 +309,7 @@ public static class PlannerFunction
                     return new OkObjectResult(new { gevonden = false, reden = $"Geen wedstrijd gevonden voor {request.TeamNaam} op {request.Datum}." });
 
                 return new OkObjectResult(new { gevonden = true, wedstrijd = match });
-            });
+            }));
     }
 
     /// <summary>
@@ -337,11 +323,8 @@ public static class PlannerFunction
     {
         var log = context.GetLogger("HerplanBevestig");
         return AdminEndpoint.ExecuteAsync(req, log, "herplanverzoek vastleggen",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<HerplanBevestigRequest>(req, async request =>
             {
-                var requestBody = await BoundedRequestBodyReader.ReadJsonAsync<HerplanBevestigRequest>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
-                if (!requestBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(requestBody.Error);
-                var request = requestBody.Value;
                 if (request == null || request.Wedstrijdcode == 0 || string.IsNullOrEmpty(request.GewensteAanvangsTijd))
                     return new BadRequestObjectResult(new { error = "Request body met 'wedstrijdcode' en 'gewensteAanvangsTijd' is verplicht." });
 
@@ -382,7 +365,7 @@ public static class PlannerFunction
                     GewenstVeldNummer = request.GewenstVeldNummer,
                     Status = "Aangevraagd"
                 });
-            });
+            }));
     }
 
     /// <summary>
@@ -420,11 +403,8 @@ public static class PlannerFunction
     {
         var log = context.GetLogger("AutoPlan");
         return AdminEndpoint.ExecuteAsync(req, log, "dagplanning berekenen",
-            async rawClubCode =>
+            rawClubCode => BoundedRequestBodyReader.ExecuteJsonAsync<AutoPlanRequest>(req, async request =>
             {
-                var requestBody = await BoundedRequestBodyReader.ReadJsonAsync<AutoPlanRequest>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
-                if (!requestBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(requestBody.Error);
-                var request = requestBody.Value;
                 if (request == null || string.IsNullOrEmpty(request.Datum))
                     return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
@@ -440,7 +420,7 @@ public static class PlannerFunction
                         return AutoPlanService.AutoPlanAsync(PostgresDatabaseConfig.ConnectionString, request, clubCode, log);
                     },
                     (deel, response) => deel.VanPlan(response.Wedstrijden, clubCode), response => new OkObjectResult(response));
-            });
+            }));
     }
 
     /// <summary>
@@ -473,11 +453,8 @@ public static class PlannerFunction
     {
         var log = context.GetLogger("AutoPlanToepassen");
         return AdminEndpoint.ExecuteAsync(req, log, "dagplanning toepassen",
-            async rawClubCode =>
+            rawClubCode => BoundedRequestBodyReader.ExecuteJsonAsync<AutoPlanToepassenRequest>(req, async request =>
             {
-                var requestBody = await BoundedRequestBodyReader.ReadJsonAsync<AutoPlanToepassenRequest>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
-                if (!requestBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(requestBody.Error);
-                var request = requestBody.Value;
                 if (request == null || string.IsNullOrEmpty(request.Datum))
                     return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
@@ -498,6 +475,6 @@ public static class PlannerFunction
                     log.LogWarning("AutoPlanToepassen geweigerd: {Reden}", ex.Message);
                     return new BadRequestObjectResult(new { error = ex.Message });
                 }
-            });
+            }));
     }
 }

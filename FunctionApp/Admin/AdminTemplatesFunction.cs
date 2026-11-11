@@ -62,66 +62,66 @@ public static class AdminTemplatesFunction
                 if (string.IsNullOrWhiteSpace(key))
                     return new BadRequestObjectResult(new { error = "Template key ontbreekt" });
 
-                var boundedBody = await BoundedRequestBodyReader.ReadJsonAsync<TemplateRequest>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
-                if (!boundedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(boundedBody.Error);
-                var dto = boundedBody.Value;
-                if (dto == null || dto.Onderwerp == null || dto.BodyTemplate == null)
-                    return new BadRequestObjectResult(new { error = "Onderwerp en BodyTemplate verplicht" });
-
-                using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-                await connection.OpenAsync();
-                // Issue 916: upsert + auditlog-insert in één transactie, zelfde patroon als
-                // AdminSettingsFunction.Put — anders kan een fout tussen de twee statements een
-                // wél-doorgevoerde templatewijziging zonder auditrij achterlaten.
-                using var transaction = await connection.BeginTransactionAsync();
-                try
+                return await BoundedRequestBodyReader.ExecuteJsonAsync<TemplateRequest>(req, async dto =>
                 {
-                    using var command = new SqlCommand(@"
-                        MERGE [dbo].[EmailTemplateInstellingen] AS T
-                        USING (SELECT @Key AS [TemplateKey], @ClubCode AS [ClubCode]) AS S
-                          ON  T.[TemplateKey] = S.[TemplateKey] AND T.[ClubCode] = S.[ClubCode]
-                        WHEN MATCHED THEN UPDATE SET
-                            [Onderwerp] = @Onderwerp,
-                            [BodyTemplate] = @BodyTemplate,
-                            [Actief] = @Actief,
-                            [mta_modified] = GETUTCDATE()
-                        WHEN NOT MATCHED THEN INSERT
-                            ([TemplateKey], [Onderwerp], [BodyTemplate], [Actief], [ClubCode])
-                            VALUES (@Key, @Onderwerp, @BodyTemplate, @Actief, @ClubCode);",
-                        connection, (SqlTransaction)transaction);
-                    command.Parameters.AddWithValue("@Key", key);
-                    command.Parameters.AddWithValue("@Onderwerp", dto.Onderwerp);
-                    command.Parameters.AddWithValue("@BodyTemplate", dto.BodyTemplate);
-                    command.Parameters.AddWithValue("@Actief", dto.Actief ?? true);
-                    command.Parameters.AddWithValue("@ClubCode", clubCode);
-                    await command.ExecuteNonQueryAsync();
+                    if (dto == null || dto.Onderwerp == null || dto.BodyTemplate == null)
+                        return new BadRequestObjectResult(new { error = "Onderwerp en BodyTemplate verplicht" });
 
-                    // #1003: audit-actor komt uitsluitend uit gevalideerde Easy Auth-claims, nooit uit
-                    // de request-body — zelfde fix als AdminSettingsFunction.Put.
-                    var gewijzigdDoor = EasyAuthHelper.GetAuditActor(req);
-                    using var auditCmd = new SqlCommand(@"
-                        INSERT INTO [dbo].[AppSettingsAudit]
-                            ([GewijzigdDoor], [Veld], [OudeWaarde], [NieuweWaarde], [ClubCode])
-                        VALUES (@GewijzigdDoor, @Veld, NULL, @NieuweWaarde, @ClubCode)",
-                        connection, (SqlTransaction)transaction);
-                    auditCmd.Parameters.AddWithValue("@GewijzigdDoor", gewijzigdDoor);
-                    auditCmd.Parameters.AddWithValue("@Veld", $"template:{key}");
-                    auditCmd.Parameters.AddWithValue("@NieuweWaarde", dto.Onderwerp);
-                    auditCmd.Parameters.AddWithValue("@ClubCode", clubCode);
-                    await auditCmd.ExecuteNonQueryAsync();
+                    using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+                    await connection.OpenAsync();
+                    // Issue 916: upsert + auditlog-insert in één transactie, zelfde patroon als
+                    // AdminSettingsFunction.Put — anders kan een fout tussen de twee statements een
+                    // wél-doorgevoerde templatewijziging zonder auditrij achterlaten.
+                    using var transaction = await connection.BeginTransactionAsync();
+                    try
+                    {
+                        using var command = new SqlCommand(@"
+                            MERGE [dbo].[EmailTemplateInstellingen] AS T
+                            USING (SELECT @Key AS [TemplateKey], @ClubCode AS [ClubCode]) AS S
+                              ON  T.[TemplateKey] = S.[TemplateKey] AND T.[ClubCode] = S.[ClubCode]
+                            WHEN MATCHED THEN UPDATE SET
+                                [Onderwerp] = @Onderwerp,
+                                [BodyTemplate] = @BodyTemplate,
+                                [Actief] = @Actief,
+                                [mta_modified] = GETUTCDATE()
+                            WHEN NOT MATCHED THEN INSERT
+                                ([TemplateKey], [Onderwerp], [BodyTemplate], [Actief], [ClubCode])
+                                VALUES (@Key, @Onderwerp, @BodyTemplate, @Actief, @ClubCode);",
+                            connection, (SqlTransaction)transaction);
+                        command.Parameters.AddWithValue("@Key", key);
+                        command.Parameters.AddWithValue("@Onderwerp", dto.Onderwerp);
+                        command.Parameters.AddWithValue("@BodyTemplate", dto.BodyTemplate);
+                        command.Parameters.AddWithValue("@Actief", dto.Actief ?? true);
+                        command.Parameters.AddWithValue("@ClubCode", clubCode);
+                        await command.ExecuteNonQueryAsync();
 
-                    await transaction.CommitAsync();
-                }
-                catch
-                {
-                    await transaction.RollbackAsync();
-                    throw;
-                }
+                        // #1003: audit-actor komt uitsluitend uit gevalideerde Easy Auth-claims, nooit uit
+                        // de request-body — zelfde fix als AdminSettingsFunction.Put.
+                        var gewijzigdDoor = EasyAuthHelper.GetAuditActor(req);
+                        using var auditCmd = new SqlCommand(@"
+                            INSERT INTO [dbo].[AppSettingsAudit]
+                                ([GewijzigdDoor], [Veld], [OudeWaarde], [NieuweWaarde], [ClubCode])
+                            VALUES (@GewijzigdDoor, @Veld, NULL, @NieuweWaarde, @ClubCode)",
+                            connection, (SqlTransaction)transaction);
+                        auditCmd.Parameters.AddWithValue("@GewijzigdDoor", gewijzigdDoor);
+                        auditCmd.Parameters.AddWithValue("@Veld", $"template:{key}");
+                        auditCmd.Parameters.AddWithValue("@NieuweWaarde", dto.Onderwerp);
+                        auditCmd.Parameters.AddWithValue("@ClubCode", clubCode);
+                        await auditCmd.ExecuteNonQueryAsync();
 
-                // Cache invalideren zodat de nieuwe template direct gebruikt wordt
-                EmailTemplateService.InvalidateCache();
+                        await transaction.CommitAsync();
+                    }
+                    catch
+                    {
+                        await transaction.RollbackAsync();
+                        throw;
+                    }
 
-                return new OkObjectResult(new { templateKey = key, status = "opgeslagen" });
+                    // Cache invalideren zodat de nieuwe template direct gebruikt wordt
+                    EmailTemplateService.InvalidateCache();
+
+                    return new OkObjectResult(new { templateKey = key, status = "opgeslagen" });
+                });
             });
 
     [Function("AdminTemplatesReset")]

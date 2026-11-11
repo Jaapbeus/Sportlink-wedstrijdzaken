@@ -169,18 +169,8 @@ public static class AdminSettingsFunction
     {
         var log = context.GetLogger("AdminSettingsPut");
         return AdminEndpoint.ExecuteAsync(req, log, "AppSettings opslaan",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<UpdateSettingsRequest>(req, async updateRequest =>
             {
-                var boundedBody = await BoundedRequestBodyReader.ReadUtf8Async(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
-                if (!boundedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(boundedBody.Error);
-                var bodyText = boundedBody.Text ?? string.Empty;
-                if (string.IsNullOrWhiteSpace(bodyText))
-                    return new BadRequestObjectResult(new { error = "Lege request body" });
-
-                var parsedRequest = BoundedRequestBodyReader.ParseJson<UpdateSettingsRequest>(bodyText);
-                if (!parsedRequest.IsSuccess)
-                    return BoundedRequestBodyReader.ToActionResult(parsedRequest.Error);
-                var updateRequest = parsedRequest.Value;
                 if (updateRequest == null)
                     return new BadRequestObjectResult(new { error = "Ongeldige JSON" });
 
@@ -248,7 +238,7 @@ public static class AdminSettingsFunction
                     volgendeMomenten = fetchScheduleChanged && nieuweSchedule != null
                         ? BerekenVolgendeMomenten(nieuweSchedule, 3) : null
                 });
-            });
+            }, emptyBodyMessage: "Lege request body"));
     }
 
     private static IActionResult? ValidateAndFilterChanges(

@@ -75,33 +75,33 @@ public static class SportlinkExtensieRollenFunction
                 if (!FunctioneleRollen.Contains(rolNaam, StringComparer.OrdinalIgnoreCase))
                     return new BadRequestObjectResult(new { error = $"Onbekende rol '{rolNaam}'. Toegestaan: {string.Join(", ", FunctioneleRollen)}." });
 
-                var boundedBody = await BoundedRequestBodyReader.ReadJsonAsync<RegistreerKoppelingDto>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
-                if (!boundedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(boundedBody.Error);
-                var dto = boundedBody.Value;
-                if (dto == null) return new BadRequestObjectResult(new { error = "Request body is geen geldige JSON." });
+                return await BoundedRequestBodyReader.ExecuteJsonAsync<RegistreerKoppelingDto>(req, async dto =>
+                {
+                    if (dto == null) return new BadRequestObjectResult(new { error = "Request body is geen geldige JSON." });
 
-                // Server bepaalt WIE — nooit uit client-input, om spoofing te voorkomen.
-                var door = EasyAuthHelper.GetAuditActor(req);
+                    // Server bepaalt WIE — nooit uit client-input, om spoofing te voorkomen.
+                    var door = EasyAuthHelper.GetAuditActor(req);
 
-                using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-                await connection.OpenAsync();
+                    using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+                    await connection.OpenAsync();
 
-                using var cmd = new SqlCommand(@"
-                    MERGE [dbo].[SportlinkExtensieRollen] AS target
-                    USING (SELECT @RolNaam AS RolNaam, @ClubCode AS ClubCode) AS src
-                        ON target.[RolNaam] = src.RolNaam AND target.[ClubCode] = src.ClubCode
-                    WHEN MATCHED THEN UPDATE SET
-                        [LaatstGekoppeldDoor] = @Door, [LaatstGekoppeldOp] = SYSUTCDATETIME(), [SportlinkAccountNaam] = @Account
-                    WHEN NOT MATCHED THEN INSERT
-                        ([RolNaam], [LaatstGekoppeldDoor], [LaatstGekoppeldOp], [SportlinkAccountNaam], [ClubCode])
-                        VALUES (@RolNaam, @Door, SYSUTCDATETIME(), @Account, @ClubCode);", connection);
-                cmd.Parameters.AddWithValue("@RolNaam", rolNaam);
-                cmd.Parameters.AddWithValue("@ClubCode", clubCode);
-                cmd.Parameters.AddWithValue("@Door", door);
-                cmd.Parameters.AddWithValue("@Account", (object?)dto?.SportlinkAccountNaam ?? DBNull.Value);
-                await cmd.ExecuteNonQueryAsync();
+                    using var cmd = new SqlCommand(@"
+                        MERGE [dbo].[SportlinkExtensieRollen] AS target
+                        USING (SELECT @RolNaam AS RolNaam, @ClubCode AS ClubCode) AS src
+                            ON target.[RolNaam] = src.RolNaam AND target.[ClubCode] = src.ClubCode
+                        WHEN MATCHED THEN UPDATE SET
+                            [LaatstGekoppeldDoor] = @Door, [LaatstGekoppeldOp] = SYSUTCDATETIME(), [SportlinkAccountNaam] = @Account
+                        WHEN NOT MATCHED THEN INSERT
+                            ([RolNaam], [LaatstGekoppeldDoor], [LaatstGekoppeldOp], [SportlinkAccountNaam], [ClubCode])
+                            VALUES (@RolNaam, @Door, SYSUTCDATETIME(), @Account, @ClubCode);", connection);
+                    cmd.Parameters.AddWithValue("@RolNaam", rolNaam);
+                    cmd.Parameters.AddWithValue("@ClubCode", clubCode);
+                    cmd.Parameters.AddWithValue("@Door", door);
+                    cmd.Parameters.AddWithValue("@Account", (object?)dto?.SportlinkAccountNaam ?? DBNull.Value);
+                    await cmd.ExecuteNonQueryAsync();
 
-                return new OkObjectResult(new { RolNaam = rolNaam, LaatstGekoppeldDoor = door });
+                    return new OkObjectResult(new { RolNaam = rolNaam, LaatstGekoppeldDoor = door });
+                });
             });
 
     private class RegistreerKoppelingDto

@@ -117,14 +117,8 @@ public static class AdminTestDataFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/testdata/wedstrijden")] HttpRequest req,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("TestDataWedstrijdUpsert"), "ALLSTARS wedstrijd opslaan",
-            async _ =>
+            _ => BoundedRequestBodyReader.ExecuteJsonAsync<AllstarsWedstrijdInput>(req, async dto =>
             {
-                var boundedBody = await BoundedRequestBodyReader.ReadUtf8Async(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
-                if (!boundedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(boundedBody.Error);
-                var body = boundedBody.Text ?? string.Empty;
-                var parsedBody = BoundedRequestBodyReader.ParseJson<AllstarsWedstrijdInput>(body);
-                if (!parsedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(parsedBody.Error);
-                var dto = parsedBody.Value;
                 if (dto == null || string.IsNullOrWhiteSpace(dto.BkMatches))
                     return new BadRequestObjectResult(new { error = "BkMatches verplicht" });
 
@@ -177,21 +171,15 @@ public static class AdminTestDataFunction
 
                 await command.ExecuteNonQueryAsync();
                 return new OkObjectResult(new { ok = true });
-            });
+            }));
 
     [Function("TestDataVerplaatsDatum")]
     public static Task<IActionResult> VerplaatsDatum(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/testdata/wedstrijden/verplaats-datum")] HttpRequest req,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("TestDataVerplaatsDatum"), "ALLSTARS wedstrijden verplaatsen",
-            async _ =>
+            _ => BoundedRequestBodyReader.ExecuteJsonAsync<VerplaatsDatumInput>(req, async dto =>
             {
-                var boundedBody = await BoundedRequestBodyReader.ReadUtf8Async(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
-                if (!boundedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(boundedBody.Error);
-                var body = boundedBody.Text ?? string.Empty;
-                var parsedBody = BoundedRequestBodyReader.ParseJson<VerplaatsDatumInput>(body);
-                if (!parsedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(parsedBody.Error);
-                var dto = parsedBody.Value;
                 if (dto == null || string.IsNullOrWhiteSpace(dto.OudeDatum) || string.IsNullOrWhiteSpace(dto.NieuweDatum))
                     return new BadRequestObjectResult(new { error = "OudeDatum en NieuweDatum zijn verplicht" });
 
@@ -220,7 +208,7 @@ public static class AdminTestDataFunction
                 command.Parameters.AddWithValue("clubcode", AllstarsClubCode);
                 var count = await command.ExecuteNonQueryAsync();
                 return new OkObjectResult(new { ok = true, aantalVerplaatst = count });
-            });
+            }));
 
     [Function("TestDataWedstrijdDeleteEen")]
     public static Task<IActionResult> DeleteEen(

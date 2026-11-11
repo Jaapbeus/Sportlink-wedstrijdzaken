@@ -4,6 +4,15 @@ namespace Planner.Endpoints.Admin;
 
 public static class VeldBeschikbaarheidUpdateCore
 {
+    public static IActionResult? ValideerVeldOmschrijvingen(string? naam, string? type)
+    {
+        if (string.IsNullOrWhiteSpace(naam))
+            return new BadRequestObjectResult(new { error = "VeldNaam verplicht" });
+        if (string.IsNullOrWhiteSpace(type))
+            return new BadRequestObjectResult(new { error = "VeldType verplicht (vrije tekst, bijv. kunstgras of natuurgras)" });
+        return null;
+    }
+
     public static IActionResult? ValideerTijden(string? vanaf, string? tot)
     {
         if (string.IsNullOrWhiteSpace(vanaf) || !TimeSpan.TryParse(vanaf, out var vanafTijd))

@@ -91,41 +91,42 @@ public static class AdminSyncFunction
                 if (UitgaandVerkeerCore.Blokkeer(EgressGuard.ExternalIntegrationsAllowed) is { } egressAntwoord) return egressAntwoord;
 
                 // #1352/#1461/#1492: body + seizoensvenster via de gedeelde orkestratie (400 bij ongeldig).
-                var boundedBody = await BoundedRequestBodyReader.ReadUtf8Async(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
-                if (!boundedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(boundedBody.Error);
-                var venster = await SyncTriggerEndpointCore.BepaalVensterAsync(
-                    boundedBody.Text, DateTime.UtcNow.Year,
-                    async () => { await PostgresSeasonHelper.EnsureSeasonsAsync(log); return await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log, clubCode); },
-                    jaar => PostgresSeasonHelper.GetSeasonStartWeekOffsetOrNullAsync(jaar, clubCode));
-                if (venster.Fout is not null) return venster.Fout;
-                int fromWeekOffset = venster.Van, toWeekOffset = venster.Tot;
-                var jobId = Guid.NewGuid();
-
-                await SyncJobsRepository.CreateAsync(jobId, clubCode, weekOffsetFrom: fromWeekOffset, weekOffsetTo: toWeekOffset);
-
-                var queueClient = SyncJobsQueue.CreateClient();
-                await queueClient.CreateIfNotExistsAsync();
-                var message = new SyncJobMessage
+                return await BoundedRequestBodyReader.ExecuteUtf8Async(req, async bodyText =>
                 {
-                    JobId = jobId,
-                    ClubCode = clubCode,
-                    WeekOffsetFrom = fromWeekOffset,
-                    WeekOffsetTo = toWeekOffset
-                };
-                await queueClient.SendMessageAsync(JsonSerializer.Serialize(message));
+                    var venster = await SyncTriggerEndpointCore.BepaalVensterAsync(
+                        bodyText, DateTime.UtcNow.Year,
+                        async () => { await PostgresSeasonHelper.EnsureSeasonsAsync(log); return await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log, clubCode); },
+                        jaar => PostgresSeasonHelper.GetSeasonStartWeekOffsetOrNullAsync(jaar, clubCode));
+                    if (venster.Fout is not null) return venster.Fout;
+                    int fromWeekOffset = venster.Van, toWeekOffset = venster.Tot;
+                    var jobId = Guid.NewGuid();
 
-                log.LogInformation("AdminSyncTrigger: job {JobId}, range {From} .. {To} (reset: {Reset}) — op de queue gezet", jobId, fromWeekOffset, toWeekOffset, venster.IsReset);
+                    await SyncJobsRepository.CreateAsync(jobId, clubCode, weekOffsetFrom: fromWeekOffset, weekOffsetTo: toWeekOffset);
 
-                return new ObjectResult(new
-                {
-                    status = "gestart",
-                    jobId,
-                    weekOffsetFrom = fromWeekOffset,
-                    weekOffsetTo = toWeekOffset,
-                    tijdstip = DateTime.UtcNow,
-                    melding = "Sync gestart op achtergrond. Controleer de voortgang via /beheer/sync/status?jobId=" + jobId + "."
-                })
-                { StatusCode = 202 };
+                    var queueClient = SyncJobsQueue.CreateClient();
+                    await queueClient.CreateIfNotExistsAsync();
+                    var message = new SyncJobMessage
+                    {
+                        JobId = jobId,
+                        ClubCode = clubCode,
+                        WeekOffsetFrom = fromWeekOffset,
+                        WeekOffsetTo = toWeekOffset
+                    };
+                    await queueClient.SendMessageAsync(JsonSerializer.Serialize(message));
+
+                    log.LogInformation("AdminSyncTrigger: job {JobId}, range {From} .. {To} (reset: {Reset}) — op de queue gezet", jobId, fromWeekOffset, toWeekOffset, venster.IsReset);
+
+                    return new ObjectResult(new
+                    {
+                        status = "gestart",
+                        jobId,
+                        weekOffsetFrom = fromWeekOffset,
+                        weekOffsetTo = toWeekOffset,
+                        tijdstip = DateTime.UtcNow,
+                        melding = "Sync gestart op achtergrond. Controleer de voortgang via /beheer/sync/status?jobId=" + jobId + "."
+                    })
+                    { StatusCode = 202 };
+                });
             });
     }
 }

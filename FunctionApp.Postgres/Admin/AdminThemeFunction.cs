@@ -66,12 +66,8 @@ public static class AdminThemeFunction
     {
         var log = context.GetLogger("AdminThemePut");
         return AdminEndpoint.ExecuteAsync(req, log, "thema opslaan",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteUtf8Async(req, async body =>
             {
-                var boundedBody = await BoundedRequestBodyReader.ReadUtf8Async(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
-                if (!boundedBody.IsSuccess) return BoundedRequestBodyReader.ToActionResult(boundedBody.Error);
-                var body = boundedBody.Text ?? string.Empty;
-
                 ThemeUpdateRequest? dto = null;
                 try
                 {
@@ -115,7 +111,7 @@ public static class AdminThemeFunction
 
                 log.LogInformation("Club-thema bijgewerkt");
                 return new OkObjectResult(new { success = true });
-            });
+            }));
     }
 
     // #1350: bewust NIET via AdminEndpoint.ExecuteAsync — dat zou de databasewacht vóór de

@@ -13,7 +13,7 @@ public class BoundedRequestBodyEndpointTests
     [InlineData(0, StatusCodes.Status400BadRequest)]
     [InlineData(1, StatusCodes.Status400BadRequest)]
     [InlineData(2, StatusCodes.Status413PayloadTooLarge)]
-    public async Task OngeldigeBody_BereiktGeenDatabaseActie(int soort, int verwachteStatus)
+    public async Task OngeldigeBody_BereiktGeenEndpointCallback(int soort, int verwachteStatus)
     {
         var bytes = soort switch
         {
@@ -23,16 +23,16 @@ public class BoundedRequestBodyEndpointTests
         };
         var context = new DefaultHttpContext();
         context.Request.Body = new MemoryStream(bytes);
-        var databaseActies = 0;
+        var endpointCallbacks = 0;
 
         var result = await BoundedRequestBodyReader.ExecuteJsonAsync<Dictionary<string, string>>(
             context.Request, _ =>
             {
-                databaseActies++;
+                endpointCallbacks++;
                 return Task.FromResult<IActionResult>(new OkResult());
             });
 
         (result as ObjectResult)!.StatusCode.Should().Be(verwachteStatus);
-        databaseActies.Should().Be(0);
+        endpointCallbacks.Should().Be(0);
     }
 }
