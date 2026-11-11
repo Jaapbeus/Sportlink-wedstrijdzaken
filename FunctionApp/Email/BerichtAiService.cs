@@ -15,7 +15,7 @@ public class BerichtAiService
     private readonly BerichtAiKern _kern;
 
     public BerichtAiService(ILogger<BerichtAiService> logger, IChatClient chatClient)
-        => _kern = new BerichtAiKern(logger, chatClient, HaalClubNaam, () => DateTime.Now);
+        => _kern = new BerichtAiKern(logger, chatClient, HaalClubNaam, NederlandseBedrijfsKlok.Nu);
 
     private static string HaalClubNaam()
     {

@@ -41,6 +41,60 @@ public class BerichtPipelineTests
         classificatie.Datum.Should().Be("geen-datum");
     }
 
+    [Fact]
+    public void ValideerDagDatum_Herplan_OnderwerpdatumVervangtHuidigeDatumNiet()
+    {
+        var classificatie = new BerichtClassificatie
+        {
+            Type = VerzoekType.HerplanVerzoek,
+            Datum = "2026-04-18",
+            GewensteDatum = "2026-04-25"
+        };
+        BerichtPipeline.ValideerDagDatum(classificatie, "Wij willen verzetten naar 25-4-2026.", "Administratie 12-5-2026");
+        classificatie.Datum.Should().Be("2026-04-18");
+        classificatie.GewensteDatum.Should().Be("2026-04-25");
+    }
+
+    [Fact]
+    public void ValideerDagDatum_EnkeleGelijkeLijstdatumVolgtCorrectie()
+    {
+        var classificatie = new BerichtClassificatie
+        {
+            Type = VerzoekType.BeschikbaarheidCheck,
+            Datum = "2026-04-18",
+            Datums = new List<string> { "2026-04-18" }
+        };
+        BerichtPipeline.ValideerDagDatum(classificatie, "Kunnen we dinsdag spelen?", "Verzoek");
+        classificatie.Datum.Should().Be("2026-04-21");
+        classificatie.GetAlleDatums().Should().Equal("2026-04-21");
+    }
+
+    [Fact]
+    public void ValideerDagDatum_AndereLijstdatumBlijftStaan()
+    {
+        var classificatie = new BerichtClassificatie
+        {
+            Type = VerzoekType.BeschikbaarheidCheck,
+            Datum = "2026-04-18",
+            Datums = new List<string> { "2026-04-25" }
+        };
+        BerichtPipeline.ValideerDagDatum(classificatie, "Kunnen we dinsdag spelen?", "Verzoek");
+        classificatie.GetAlleDatums().Should().Equal("2026-04-25");
+    }
+
+    [Fact]
+    public void ValideerDagDatum_MeerdereDatumsBlijvenStaan()
+    {
+        var classificatie = new BerichtClassificatie
+        {
+            Type = VerzoekType.BeschikbaarheidCheck,
+            Datum = "2026-04-18",
+            Datums = new List<string> { "2026-04-18", "2026-04-25" }
+        };
+        BerichtPipeline.ValideerDagDatum(classificatie, "Kunnen we dinsdag spelen?", "Verzoek");
+        classificatie.GetAlleDatums().Should().Equal("2026-04-18", "2026-04-25");
+    }
+
     // ── Eén verzoek, één datum (M3) ──
 
     [Fact]

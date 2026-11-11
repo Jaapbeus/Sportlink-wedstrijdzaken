@@ -47,7 +47,7 @@ public class BerichtDatumHeuristiekTests
     {
         // Een maandnaam zonder jaartal betekent "het eerstvolgende voorkomen". De testdatum is
         // relatief aan vandaag, zodat de test niet afhangt van de dag waarop hij draait.
-        var doel = DateOnly.FromDateTime(DateTime.Today).AddDays(30);
+        var doel = NederlandseBedrijfsKlok.Vandaag().AddDays(30);
 
         Corrigeer(null, "tekst", $"{doel.Day} {MaandNaam(doel)} beschikbaarheid")
             .Should().Be(doel.ToString("yyyy-MM-dd"));
@@ -81,6 +81,11 @@ public class BerichtDatumHeuristiekTests
     [Fact]
     public void DagNaamMatchtModelDatum_GeenWijziging()
         => Corrigeer("2026-04-18", "Kunnen we zaterdag spelen?", "Verzoek").Should().Be("2026-04-18");
+
+    [Fact]
+    public void LosseDagnaamVoorAndereAfspraak_BehoudtModeldatum()
+        => Corrigeer("2026-04-18", "De bespreking is dinsdag; de wedstrijd blijft zoals afgesproken.", "Verzoek")
+            .Should().Be("2026-04-18");
 
     [Fact]
     public void GeenDatumEnGeenDagNaam_DatumBlijftLeeg()
@@ -192,7 +197,7 @@ public class BerichtDatumHeuristiekTests
     {
         // Winterstop-scenario: een mail in december over "10 januari" leverde eerder een datum van
         // elf maanden terug op, waarop de afzender "datum moet in de toekomst zijn" terugkreeg.
-        var vandaag = DateOnly.FromDateTime(DateTime.Today);
+        var vandaag = NederlandseBedrijfsKlok.Vandaag();
         var ruimVerleden = new DateOnly(vandaag.Year, vandaag.Month, 1).AddMonths(-4);
 
         var resultaat = DateOnly.Parse(Corrigeer(
@@ -217,7 +222,7 @@ public class BerichtDatumHeuristiekTests
     /// </summary>
     private static DateOnly EerstvolgendeDatumMetAfwijkendeAfkorting(int dagenVooruit)
     {
-        var doel = DateOnly.FromDateTime(DateTime.Today).AddDays(dagenVooruit);
+        var doel = NederlandseBedrijfsKlok.Vandaag().AddDays(dagenVooruit);
         while (AfgekorteMaandNaam(doel) == MaandNaam(doel)) doel = doel.AddDays(30);
         return doel;
     }
@@ -281,7 +286,7 @@ public class BerichtDatumHeuristiekTests
     [Fact]
     public void ExpandDoordeweeksDatums_ZonderConcreteDatum_GeeftVierToekomstigeDatums()
     {
-        var vandaag = DateOnly.FromDateTime(DateTime.Today);
+        var vandaag = NederlandseBedrijfsKlok.Vandaag();
 
         var resultaat = BerichtDatumHeuristiek.ExpandDoordeweeksDatums(
             new List<string>(), "Oefenwedstrijd", "We kunnen alleen doordeweeks");
@@ -294,7 +299,7 @@ public class BerichtDatumHeuristiekTests
     public void ExpandDoordeweeksDatums_ModelWeekMetVerstrekenDagen_LaatVerledenWeg()
     {
         // "deze week doordeweeks": op donderdag liggen maandag t/m woensdag al achter ons.
-        var vandaag = DateOnly.FromDateTime(DateTime.Today);
+        var vandaag = NederlandseBedrijfsKlok.Vandaag();
 
         var resultaat = BerichtDatumHeuristiek.ExpandDoordeweeksDatums(
             new List<string> { vandaag.ToString("yyyy-MM-dd") }, "Oefenwedstrijd", "Kan het doordeweeks?");

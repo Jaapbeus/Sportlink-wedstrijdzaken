@@ -58,7 +58,7 @@ public static class PlannerAntwoordJson
     {
         if (!DateOnly.TryParse(wedstrijdDatum, out var datum)) return null;
 
-        var dagenTotWedstrijd = (datum.ToDateTime(TimeOnly.MinValue) - DateTime.Today).TotalDays;
+        var dagenTotWedstrijd = datum.DayNumber - NederlandseBedrijfsKlok.Vandaag().DayNumber;
         if (dagenTotWedstrijd >= deadlineDagen) return null;
 
         return JsonConvert.SerializeObject(new

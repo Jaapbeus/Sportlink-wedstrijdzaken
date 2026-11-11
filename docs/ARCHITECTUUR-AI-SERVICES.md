@@ -62,7 +62,7 @@ builder.Services.AddSingleton<IChatClient>(
 | Component | Tier | Status |
 |-----------|------|--------|
 | `Planner.Shared/Email/BerichtAiKern` | gedeeld (#1759): prompt, datablok-markers, parsing, correctie-detectie | `IChatClient` via constructor; clubnaam en klok via delegates |
-| `BerichtAiService` | beide (`FunctionApp.Postgres/Email/`, `FunctionApp/Email/`) | omhulsel om `BerichtAiKern`: levert clubnaam en `DateTime.Now` |
+| `BerichtAiService` | beide (`FunctionApp.Postgres/Email/`, `FunctionApp/Email/`) | omhulsel om `BerichtAiKern`: levert clubnaam en Nederlandse tijd via `NederlandseBedrijfsKlok.Nu()` |
 | `Planner.Shared/Feedback/FeedbackCore` | gedeeld | `IChatClient` als methodeparameter |
 | Provider-registratie | per tier één regel in `Program.cs` | `new ChatClient(aiModelName, …).AsIChatClient()` |
 | Toekomstige AI-services | — | Altijd `IChatClient` vanaf aanmaak |
@@ -112,11 +112,13 @@ private static string BouwSystemPrompt(DateTime today)
 }
 
 // Aanroep: geef DateTime door, genereer nooit intern
-var systemPrompt = BouwSystemPrompt(DateTime.Now);
+var systemPrompt = BouwSystemPrompt(NederlandseBedrijfsKlok.Nu());
 ```
 
-**Waarom `DateTime.Now` en niet `UtcNow`:** e-mailclassificatie werkt met Nederlandse
-datums in lokale context (NL-timezone). Gebruik UTC alleen als de context dat vereist.
+**Waarom de Nederlandse klok:** e-mailclassificatie werkt met Nederlandse datums. De
+hosttijdzone kan UTC zijn; `NederlandseBedrijfsKlok` zet een UTC-moment expliciet om naar
+`Europe/Amsterdam` (met de Windows-id als platformalternatief). Ontbreekt tijdzone-informatie,
+dan faalt de omzetting in plaats van ongemerkt een andere kalenderdatum te gebruiken.
 
 ### Datumformaat in system prompts
 

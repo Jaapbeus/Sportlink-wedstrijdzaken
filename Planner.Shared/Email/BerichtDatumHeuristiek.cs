@@ -7,10 +7,25 @@ namespace Planner.Shared.Email;
 /// tekst, de dagnaamcorrectie van de modeldatum, de "doordeweeks"-uitbreiding en het afknippen van
 /// de citaat-/ondertekeningsstaart. Pure tekstlogica zonder database, Graph of AI; verhuisd uit
 /// beide <c>BerichtPipeline.cs</c>-bestanden, waar ze woordelijk twee keer stonden (#1716, eerste
-/// slice van de e-mailkern naar <c>Planner.Shared</c>). Gedrag ongewijzigd.
+/// slice van de e-mailkern naar <c>Planner.Shared</c>).
 /// </summary>
 public static class BerichtDatumHeuristiek
 {
+    /// <summary>Apply a date correction only to the date role used by this request type.</summary>
+    public static void ValideerClassificatieDatum(BerichtClassificatie classificatie, string emailBody, string onderwerp)
+    {
+        // A reschedule has two date roles. A subject date can be administrative or desired;
+        // neither is evidence that the model's current match date is wrong.
+        if (classificatie.Type == VerzoekType.HerplanVerzoek)
+            return;
+
+        var vorigeDatum = classificatie.Datum;
+        var nieuweDatum = CorrigeerDagDatum(vorigeDatum, emailBody, onderwerp);
+        if (classificatie.Datums is { Count: 1 } datums && datums[0] == vorigeDatum && nieuweDatum is not null)
+            datums[0] = nieuweDatum;
+        classificatie.Datum = nieuweDatum;
+    }
+
     private static readonly (string Naam, DayOfWeek Dag)[] DagNamen =
     {
         ("maandag", DayOfWeek.Monday), ("dinsdag", DayOfWeek.Tuesday),
@@ -70,6 +85,11 @@ public static class BerichtDatumHeuristiek
         var doelDag = gevondenDagen[0];
         if (datum.DayOfWeek == doelDag) return modelDatum;
 
+        // A lone weekday elsewhere in the mail can describe a meeting, not this match.
+        // Correct only when the weekday participates in a direct scheduling request.
+        var dagNaam = DagNamen.Single(d => d.Dag == doelDag).Naam;
+        if (!HeeftExplicietDagnaamVerzoek(tekst, dagNaam)) return modelDatum;
+
         for (int offset = 1; offset <= 7; offset++)
         {
             if (datum.AddDays(-offset).DayOfWeek == doelDag)
@@ -78,6 +98,13 @@ public static class BerichtDatumHeuristiek
                 return datum.AddDays(offset).ToString("yyyy-MM-dd");
         }
         return modelDatum;
+    }
+
+    private static bool HeeftExplicietDagnaamVerzoek(string tekst, string dagNaam)
+    {
+        var dag = Regex.Escape(dagNaam);
+        return Regex.IsMatch(tekst, $@"\b(?:kunnen\s+we|kan\s+het|graag|ja)\s+{dag}\b") ||
+               Regex.IsMatch(tekst, $@"\b{dag}\s+(?:spelen|inhalen|verzetten|verplaatsen|beschikbaar)\b");
     }
 
     /// <summary>
@@ -106,7 +133,7 @@ public static class BerichtDatumHeuristiek
         }
         else
         {
-            var today = DateOnly.FromDateTime(DateTime.Today);
+            var today = NederlandseBedrijfsKlok.Vandaag();
             int daysUntilMonday = ((int)DayOfWeek.Monday - (int)today.DayOfWeek + 7) % 7;
             if (daysUntilMonday == 0) daysUntilMonday = 7;
             weekStart = today.AddDays(daysUntilMonday);
@@ -114,7 +141,7 @@ public static class BerichtDatumHeuristiek
 
         // Maandag t/m donderdag (4 dagen), zonder de dagen die al voorbij zijn — anders krijgt de
         // afzender voor elke verstreken dag een "datum moet in de toekomst zijn"-antwoord.
-        var vandaag = DateOnly.FromDateTime(DateTime.Today);
+        var vandaag = NederlandseBedrijfsKlok.Vandaag();
         return Enumerable.Range(0, 4)
             .Select(i => weekStart.AddDays(i))
             .Where(d => d > vandaag)

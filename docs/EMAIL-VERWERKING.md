@@ -288,6 +288,13 @@ Voorbeelden die als BuitenScope worden aangemerkt:
 
 Emails met **meerdere datums voor hetzelfde team** zijn géén BuitenScope — die worden verwerkt als `BeschikbaarheidCheck` met een multi-datum antwoord.
 
+Bij een beschikbaarheidsvraag corrigeert de datumcontrole een modeldatum alleen wanneer een
+dagnaam deel uitmaakt van een direct planningsverzoek. Een losse dagnaam over een andere afspraak
+verandert de wedstrijddatum niet. Bij een herplanverzoek blijft de huidige wedstrijddatum uit de
+classificatie staan; een datum in het onderwerp krijgt niet automatisch die rol. Als een enkele
+`datums`-waarde gelijk was aan `datum`, volgt die dezelfde correctie. Een meervoudige lijst blijft
+intact.
+
 **Twee wegen naar dit label, met verschillend gevolg voor de database:**
 
 | Wanneer | Rij in `planner.EmailVerwerking`? |
