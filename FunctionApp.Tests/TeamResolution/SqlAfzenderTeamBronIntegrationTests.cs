@@ -101,16 +101,20 @@ public sealed class SqlAfzenderTeamBronIntegrationTests : IDisposable
     }
 
     /// <summary>
-    /// Het geschatte plan (<c>SHOWPLAN_TEXT</c>) van de productieopdracht zelf, met clubfilter en parameters, zodat een
-    /// wijziging aan het predicaat hier zichtbaar wordt.
+    /// Het geschatte plan (<c>SHOWPLAN_TEXT</c>) van de productiequerytekst zelf, met clubfilter, zodat een wijziging aan
+    /// het predicaat hier zichtbaar wordt. Een geparametriseerde opdracht gaat als RPC (<c>sp_executesql</c>) en levert
+    /// onder SHOWPLAN geen plan op (gemeten in CI); daarom staan de parameters hier als gedeclareerde variabelen in één batch.
     /// </summary>
     private async Task<string> ShowplanAsync(SqlConnection conn, string adres)
     {
+        using var productie = SqlAfzenderTeamBron.BouwOpdracht(conn, adres, _club);
+        var declaraties = string.Concat(productie.Parameters.Cast<SqlParameter>()
+            .Select(p => $"DECLARE {p.ParameterName} NVARCHAR(4000);\n"));
         using (var aan = new SqlCommand("SET SHOWPLAN_TEXT ON", conn)) await aan.ExecuteNonQueryAsync();
         var regels = new List<string>();
         try
         {
-            using var cmd = SqlAfzenderTeamBron.BouwOpdracht(conn, adres, _club);
+            using var cmd = new SqlCommand(declaraties + productie.CommandText, conn);
             using var reader = await cmd.ExecuteReaderAsync();
             do
             {
