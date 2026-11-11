@@ -1,4 +1,6 @@
 using AwesomeAssertions;
+using System.Data;
+using System.Diagnostics;
 using FunctionApp.Tests.Feedback;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -188,38 +190,91 @@ public class AutoPlanExactApplyIntegrationTests
     [SqlServerFact]
     public async Task ExactApply_MapsSqlServerDeadlockErrorToSafeConflict()
     {
-        await VerifyProviderConflictAsync(1205, 9802020, 9802021);
-    }
-
-    // Exact apply uses Serializable isolation; a SQL Server snapshot update-conflict (3960) is not
-    // reachable on this path. The shared classifier still covers 3960; this test exercises 1205.
-    private static async Task VerifyProviderConflictAsync(int sqlError, long firstId, long secondId)
-    {
+        const long firstId = 9802020;
+        const long secondId = 9802021;
+        const string signalTable = "[dbo].[test_1802_deadlock_signal]";
+        const string trigger = "[his].[test_1802_deadlock]";
         await SetupAsync();
         await AddMatchAsync(firstId, "ALLSTARS JO13-1");
         await AddMatchAsync(secondId, "ALLSTARS JO15-1");
-        var trigger = $"test_1802_conflict_{sqlError}";
+        await ExecAsync($"IF OBJECT_ID('{trigger}', 'TR') IS NOT NULL DROP TRIGGER {trigger}");
+        await ExecAsync($"IF OBJECT_ID('{signalTable}', 'U') IS NOT NULL DROP TABLE {signalTable}");
+        await ExecAsync($"CREATE TABLE {signalTable} ([Id] int IDENTITY(1,1) NOT NULL PRIMARY KEY)");
+        Task<AutoPlanToepassenResponse>? apply = null;
         try
         {
             await ExecAsync($"""
-                EXEC('CREATE TRIGGER [{trigger}] ON [his].[matches] AFTER UPDATE AS
-                BEGIN IF EXISTS (SELECT 1 FROM inserted WHERE [wedstrijdcode] = {secondId})
-                RAISERROR({sqlError}, 13, 1); END')
+                EXEC('CREATE TRIGGER {trigger} ON [his].[matches] AFTER UPDATE AS
+                BEGIN
+                    IF EXISTS (SELECT 1 FROM inserted WHERE [wedstrijdcode] = {firstId})
+                    BEGIN
+                        INSERT INTO {signalTable} DEFAULT VALUES;
+                        DECLARE @lockResult int;
+                        EXEC @lockResult = sys.sp_getapplock
+                            @Resource = N'test_1802_deadlock', @LockMode = 'Shared',
+                            @LockOwner = 'Transaction', @LockTimeout = -1;
+                    END
+                END')
                 """);
 
-            await ((Func<Task>)(() => ApplyAsync(
-                Choice(firstId, 101, "A1", "10:00"),
-                Choice(secondId, 102, "A1", "12:00"))))
-                .Should().ThrowAsync<AutoPlanApplyConflictException>();
+            using var blocker = new SqlConnection(ConnectionString);
+            await blocker.OpenAsync();
+            using var blockerTransaction = blocker.BeginTransaction(IsolationLevel.ReadCommitted);
+            using (var reserveLock = new SqlCommand("""
+                SET DEADLOCK_PRIORITY HIGH;
+                DECLARE @lockResult int;
+                EXEC @lockResult = sys.sp_getapplock
+                    @Resource = N'test_1802_deadlock', @LockMode = 'Exclusive',
+                    @LockOwner = 'Transaction', @LockTimeout = 0;
+                IF @lockResult < 0 THROW 51000, 'Could not reserve deadlock test lock', 1;
+                """, blocker, blockerTransaction))
+                await reserveLock.ExecuteNonQueryAsync();
 
-            (await FieldAsync(firstId)).Should().BeNull("the safe conflict rolls back the whole plan");
+            apply = ApplyAsync(Choice(firstId, 101, "A1", "10:00"),
+                Choice(secondId, 102, "A1", "12:00"));
+            await WaitForSignalAsync(signalTable);
+
+            using (var createCycle = new SqlCommand(
+                "UPDATE [his].[matches] SET [veld] = [veld] WHERE [wedstrijdcode] = @id",
+                blocker, blockerTransaction))
+            {
+                createCycle.Parameters.AddWithValue("@id", firstId);
+                var blockerUpdate = createCycle.ExecuteNonQueryAsync();
+                var completed = await Task.WhenAny(apply, blockerUpdate, Task.Delay(TimeSpan.FromSeconds(20)));
+                completed.Should().BeSameAs(apply,
+                    "the exact-apply transaction should be selected as the lower-priority deadlock victim");
+                await ((Func<Task>)(async () => await apply)).Should()
+                    .ThrowAsync<AutoPlanApplyConflictException>();
+                await blockerUpdate;
+            }
+
+            await blockerTransaction.CommitAsync();
+            (await FieldAsync(firstId)).Should().BeNull("the chosen victim's plan must roll back");
             (await FieldAsync(secondId)).Should().BeNull();
         }
         finally
         {
-            await ExecAsync($"IF OBJECT_ID('[his].[{trigger}]', 'TR') IS NOT NULL DROP TRIGGER [his].[{trigger}]");
+            if (apply != null)
+            {
+                try { await apply.WaitAsync(TimeSpan.FromSeconds(30)); }
+                catch { /* Preserve the original assertion/timeout; cleanup still follows. */ }
+            }
+            await ExecAsync($"IF OBJECT_ID('{trigger}', 'TR') IS NOT NULL DROP TRIGGER {trigger}");
+            await ExecAsync($"IF OBJECT_ID('{signalTable}', 'U') IS NOT NULL DROP TABLE {signalTable}");
             await CleanupAsync();
         }
+    }
+
+    private static async Task WaitForSignalAsync(string signalTable)
+    {
+        var timer = Stopwatch.StartNew();
+        while (timer.Elapsed < TimeSpan.FromSeconds(15))
+        {
+            var count = await ScalarAsync($"SELECT COUNT_BIG(*) FROM {signalTable} WITH (READUNCOMMITTED)");
+            if (Convert.ToInt64(count) > 0) return;
+            await Task.Delay(50);
+        }
+        throw new TimeoutException("The exact-apply trigger did not signal before the deadlock test timeout.");
     }
 
     private static async Task SetupAsync()
