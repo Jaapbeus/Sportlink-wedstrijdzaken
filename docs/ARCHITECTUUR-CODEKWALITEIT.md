@@ -542,6 +542,8 @@ uit een workflow kan verdwijnen zonder dat iemand het merkt.
 |---|---|---|
 | Padverwijzingen exact in casing (#825) | `scripts/ci/check-path-casing.sh` | `build.yml` |
 | Postgres-identifiers lowercase snake_case | `scripts/ci/check-postgres-identifier-casing.sh` | `build.yml` |
+| Identifier-casing guard: portable positive/negative fixtures (#1810) | `scripts/ci/check-postgres-identifier-casing.test.sh` | `build.yml` |
+| Advisor reports publish severity-class counts only (#1810) | `scripts/ci/supabase-advisors-report.test.sh` | `build.yml` |
 | Migratievolgnummers uniek in Database.Postgres/migrations (#1485) | `scripts/ci/check-migratie-volgnummers.sh` | `build.yml` |
 | Migratievolgnummers zelf getest (#1485) | `scripts/ci/check-migratie-volgnummers.test.sh` | `build.yml` |
 | Tabellen gedekt in beide tierbomen | `scripts/ci/check-postgres-table-coverage.sh` | `build.yml` |

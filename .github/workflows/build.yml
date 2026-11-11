@@ -171,7 +171,12 @@ jobs:
       # 3) binnen de Postgres-migratiebestanden zelf — een ander risico dan de bestandsnaam-
       # casing hierboven (#825). Geen database, geen secrets.
       - name: Postgres identifier-casing-guard
-        run: bash scripts/ci/check-postgres-identifier-casing.sh
+        run: |
+          bash scripts/ci/check-postgres-identifier-casing.sh
+          bash scripts/ci/check-postgres-identifier-casing.test.sh
+
+      - name: Advisor publication boundary — synthetic regression tests
+        run: bash scripts/ci/supabase-advisors-report.test.sh
 
       # #1485: twee parallel gebouwde PR's kunnen elk hetzelfde volgnummer toevoegen
       # (bijv. 034_pdf_switch.sql en 034_feedback_storage.sql). Technisch werkt het omdat
