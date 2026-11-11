@@ -109,8 +109,8 @@ public static partial class AiVeldSanering
     [GeneratedRegex(@"[^\s@]+@[^\s@]+\.[^\s@]+", RegexOptions.CultureInvariant)]
     private static partial Regex EmailPatroon();
 
-    // Datums eerst herkennen: een datum met aansluitende tijd is geen contactnummer.
-    [GeneratedRegex(@"(?<datum>\b(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})\b)|(?<![\p{L}\p{N}])(?<nummer>\+?\(?\d(?:[().\p{Zs}\-]*\d){8,14})(?![\p{L}\p{N}])", RegexOptions.CultureInvariant)]
+    // Preserve whole dates, but do not consume the first groups of a longer dotted/dashed number.
+    [GeneratedRegex(@"(?<datum>\b(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})\b(?![-/.]\d))|(?<![\p{L}\p{N}])(?<nummer>\+?\(?\d(?:[().\p{Zs}\-]*\d){8,14})(?![\p{L}\p{N}])", RegexOptions.CultureInvariant)]
     private static partial Regex NummerPatroon();
 
     /// <summary>Maskeert contactpatronen voordat externe berichttekst naar de AI-provider gaat.</summary>
@@ -122,7 +122,11 @@ public static partial class AiVeldSanering
             if (match.Groups["datum"].Success) return match.Value;
             var nummer = match.Value;
             var cijfers = new string(nummer.Where(char.IsDigit).ToArray());
-            var internationaal = nummer.StartsWith('+');
+            // The 00 dialing prefix is followed by country-code digits, optionally after spaces.
+            // A dot immediately after 00 instead belongs to a clock time, such as a midnight time list.
+            var internationaal = nummer.StartsWith('+')
+                || (cijfers.Length >= 11 && nummer.StartsWith("00", StringComparison.Ordinal)
+                    && char.IsDigit(nummer[2..].TrimStart()[0]));
             var nationaal = nummer.TrimStart('(').StartsWith('0') && cijfers.Length == 10;
             return internationaal || nationaal ? "[nummer]" : nummer;
         });
