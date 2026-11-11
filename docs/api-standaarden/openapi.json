@@ -4639,6 +4639,22 @@
                       "type": "integer",
                       "example": 42
                     },
+                    "mislukteFases": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "teams",
+                          "programma",
+                          "uitslagen",
+                          "matchdetails",
+                          "configuratie"
+                        ]
+                      },
+                      "example": [
+                        "matchdetails"
+                      ]
+                    },
                     "melding": {
                       "type": "string",
                       "example": "Eén of meer deelstappen zijn mislukt; lastsynctimestamp is niet bijgewerkt. Zie het functielog voor de betrokken fase(s)."
@@ -4670,7 +4686,7 @@
         ],
         "operationId": "syncMatches",
         "summary": "Handmatige Sportlink synchronisatie starten (SQL Server-tier)",
-        "description": "**Tier: SQL Server.** Op de Postgres-tier (productie) bestaat deze route niet (404) — daar\nheet hij `/postgres/sync-matches`.\n\nStart een volledige Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).\nVereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key\nvia `?code=`, `AuthorizationLevel.Admin`).\n\n- **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)\n- **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar\n\nDeze tier kent de `207`-respons van de Postgres-tier niet: alleen `200` of `500`.\n",
+        "description": "**Tier: SQL Server.** Op de Postgres-tier (productie) bestaat deze route niet (404) — daar\nheet hij `/postgres/sync-matches`.\n\nStart een volledige Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).\nVereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key\nvia `?code=`, `AuthorizationLevel.Admin`).\n\n- **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)\n- **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar\n\nMislukt één of meer deelstappen, dan volgt `207` in plaats van `200` (pariteit met de\nPostgres-tier, #1779): de geslaagde deelstappen blijven staan, maar `LastSyncTimestamp`\nwordt bewust niet bijgewerkt (#1081).\n",
         "security": [
           {
             "easyAuth": []
@@ -4705,6 +4721,49 @@
                 "schema": {
                   "type": "string",
                   "example": "Sync completed. WeekOffset range: -1 to 42."
+                }
+              }
+            }
+          },
+          "207": {
+            "description": "Gedeeltelijk mislukt — één of meer deelstappen zijn niet geslaagd en\n`LastSyncTimestamp` is niet bijgewerkt (#1081, #1779).\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "gedeeltelijk mislukt"
+                    },
+                    "weekOffsetFrom": {
+                      "type": "integer",
+                      "example": -1
+                    },
+                    "weekOffsetTo": {
+                      "type": "integer",
+                      "example": 42
+                    },
+                    "mislukteFases": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "teams",
+                          "programma",
+                          "uitslagen",
+                          "matchdetails",
+                          "configuratie"
+                        ]
+                      },
+                      "example": [
+                        "matchdetails"
+                      ]
+                    },
+                    "melding": {
+                      "type": "string"
+                    }
+                  }
                 }
               }
             }

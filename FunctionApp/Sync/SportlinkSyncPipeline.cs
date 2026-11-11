@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Planner.Shared.Sync;
 using static SportlinkFunction.SystemUtilities;
 
 namespace SportlinkFunction;
@@ -16,25 +17,27 @@ internal static class SportlinkSyncPipeline
     // partialFailure: als één stap faalt, slaan we LastSyncTimestamp NIET op. (#438, #464)
     // Retourneert partialFailure (#1138) zodat SyncJobProcessor de job-status correct kan zetten
     // — voorheen kreeg de aanroeper (AdminSyncFunction's fire-and-forget Task.Run) dit nooit te zien.
-    internal static async Task<bool> RunSyncAsync(
+    internal static async Task<SyncUitkomst> RunSyncAsync(
         int fromWeekOffset, int toWeekOffset,
         string sportlinkApiUrl, string sportlinkClientId,
         ILogger log)
     {
-        var partialFailure = false;
+        var uitkomst = new SyncUitkomst();
         var clubCode = AppSettings.GetSetting("clubCode");
         if (string.IsNullOrWhiteSpace(clubCode))
             throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings — sync kan niet doorgaan zonder ClubCode.");
 
-        var teamsFailed = await FetchTeamsPhaseAsync(sportlinkApiUrl, sportlinkClientId, clubCode, log);
-        partialFailure |= teamsFailed;
-        var programmaFailed = await FetchProgrammaPhaseAsync(fromWeekOffset, toWeekOffset, sportlinkApiUrl, sportlinkClientId, clubCode, log);
-        var uitslagenFailed = await FetchUitslagenPhaseAsync(fromWeekOffset, sportlinkApiUrl, sportlinkClientId, clubCode, log);
+        var teamsFailed = uitkomst.Registreer(SyncUitkomst.FaseTeams,
+            await FetchTeamsPhaseAsync(sportlinkApiUrl, sportlinkClientId, clubCode, log));
+        var programmaFailed = uitkomst.Registreer(SyncUitkomst.FaseProgramma,
+            await FetchProgrammaPhaseAsync(fromWeekOffset, toWeekOffset, sportlinkApiUrl, sportlinkClientId, clubCode, log));
+        var uitslagenFailed = uitkomst.Registreer(SyncUitkomst.FaseUitslagen,
+            await FetchUitslagenPhaseAsync(fromWeekOffset, sportlinkApiUrl, sportlinkClientId, clubCode, log));
         var matchesFailed = programmaFailed || uitslagenFailed;
-        partialFailure |= matchesFailed;
         // #1547: een gespeelde wedstrijd komt alleen nog via /uitslagen binnen, zonder veld/datum/team.
         await SportlinkStagingRepository.VulUitslagRijenAanUitHisAsync(clubCode, log);
-        partialFailure |= await FetchMatchDetailsPhaseAsync(sportlinkApiUrl, sportlinkClientId, clubCode, log);
+        uitkomst.Registreer(SyncUitkomst.FaseMatchdetails,
+            await FetchMatchDetailsPhaseAsync(sportlinkApiUrl, sportlinkClientId, clubCode, log));
 
         await MergeAllToHisAsync(log);
 
@@ -47,12 +50,12 @@ internal static class SportlinkSyncPipeline
 
         await Planner.PlannerDataAccess.MarkeerVervallenGeplandeWedstrijdenAsync(log);
 
-        if (!partialFailure)
+        if (!uitkomst.GedeeltelijkMislukt)
             await AppSettings.SaveLastSyncTimestampAsync(log);
         else
             log.LogWarning("Sync gedeeltelijk mislukt — LastSyncTimestamp NIET bijgewerkt");
 
-        return partialFailure;
+        return uitkomst;
     }
 
     private static async Task<bool> FetchTeamsPhaseAsync(string sportlinkApiUrl, string sportlinkClientId, string clubCode, ILogger log)
@@ -229,12 +232,16 @@ internal static class SportlinkSyncPipeline
 
     // Retourneert true bij succes, false bij elke fout — zodat de caller partialFailure kan bijhouden. (#464)
     // httpClient is optioneel; standaard wordt de static _client gebruikt. (#476 — testbaar via inject)
-    internal static async Task<bool> FetchAndStoreMatchDetailsAsync(string apiUrl, string clubCode, ILogger log, HttpClient? httpClient = null)
+    internal static async Task<bool> FetchAndStoreMatchDetailsAsync(string apiUrl, string clubCode, ILogger log, HttpClient? httpClient = null, TimeSpan? herhaalWachttijd = null)
     {
         var client = httpClient ?? _client;
         try
         {
-            var response = await client.GetAsync(apiUrl);
+            // #1779: begrensde herhaling op 5xx/429/time-out (idempotente GET); logt nooit de URL.
+            using var response = await SportlinkDataserviceHttp.GetMetHerhalingAsync(
+                client, apiUrl,
+                reden => log.LogWarning("MATCHDETAILS - tijdelijke fout ({Reden}); opnieuw proberen", reden),
+                herhaalWachttijd);
             response.EnsureSuccessStatusCode();
             var json = await response.Content.ReadAsStringAsync();
             try

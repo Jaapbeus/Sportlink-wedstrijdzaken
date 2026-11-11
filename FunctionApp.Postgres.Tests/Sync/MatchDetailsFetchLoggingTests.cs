@@ -58,7 +58,7 @@ public class MatchDetailsFetchLoggingTests
         var logger = new RecordingLogger();
 
         var result = await PostgresSyncPipeline.FetchAndStoreMatchDetailsAsync(
-            NietGebruikteConnectie, UrlMetClientId(wedstrijdcode), "TEST", logger, client);
+            NietGebruikteConnectie, UrlMetClientId(wedstrijdcode), "TEST", logger, client, herhaalWachttijd: TimeSpan.Zero);
 
         result.Should().BeFalse("dit is een foutpad — anders bewijst de logassertie niets");
         logger.Levels.Should().Contain(LogLevel.Error,
@@ -80,4 +80,32 @@ public class MatchDetailsFetchLoggingTests
     [Fact]
     public async Task FetchAndStoreMatchDetails_OngeldigeJson_LogtClientIdNooit()
         => await BewijsDatClientIdNietGelogdWordtAsync(OngeldigeJsonClient(), 13);
+
+    // ── #1779 — begrensde herhaling op tijdelijke fouten ────────────────────────────────────────
+    private sealed class TellendeHandler(HttpStatusCode status) : HttpMessageHandler
+    {
+        public int Aanroepen { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Aanroepen++;
+            return Task.FromResult(new HttpResponseMessage(status));
+        }
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.ServiceUnavailable, 3)]
+    [InlineData(HttpStatusCode.TooManyRequests, 3)]
+    [InlineData(HttpStatusCode.NotFound, 1)]
+    public async Task FetchAndStoreMatchDetails_Herhaalt_AlleenBijTijdelijkeFout(HttpStatusCode status, int verwachteAanroepen)
+    {
+        var handler = new TellendeHandler(status);
+
+        var result = await PostgresSyncPipeline.FetchAndStoreMatchDetailsAsync(
+            NietGebruikteConnectie, UrlMetClientId(21), "TEST", new RecordingLogger(),
+            new HttpClient(handler), TimeSpan.Zero);
+
+        result.Should().BeFalse();
+        handler.Aanroepen.Should().Be(verwachteAanroepen);
+    }
 }

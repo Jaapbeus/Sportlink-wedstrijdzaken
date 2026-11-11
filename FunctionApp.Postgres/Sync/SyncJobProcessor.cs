@@ -52,12 +52,12 @@ public static class SyncJobProcessor
 
         try
         {
-            var gedeeltelijkMislukt = await SyncFunction.RunConfiguredSyncAsync(job.WeekOffsetFrom, job.WeekOffsetTo, log);
-            if (gedeeltelijkMislukt)
+            var uitkomst = await SyncFunction.RunConfiguredSyncAsync(job.WeekOffsetFrom, job.WeekOffsetTo, log);
+            if (uitkomst.GedeeltelijkMislukt)
             {
                 log.LogWarning("SyncJobProcessor: job {JobId} gedeeltelijk mislukt", job.JobId);
                 await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false,
-                    errorMessage: "Sync gedeeltelijk mislukt — zie het functielog voor de betrokken fase(s).");
+                    errorMessage: uitkomst.JobFoutmelding());
                 return;
             }
 

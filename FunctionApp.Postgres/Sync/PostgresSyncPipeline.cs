@@ -3,6 +3,7 @@ using FunctionApp.Postgres.Planner.Repositories;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Npgsql;
+using Planner.Shared.Sync;
 
 namespace FunctionApp.Postgres.Sync;
 
@@ -42,29 +43,31 @@ internal static class PostgresSyncPipeline
     /// bijgewerkt (#1077).
     /// </para>
     /// </summary>
-    internal static async Task<bool> RunSyncAsync(
+    internal static async Task<SyncUitkomst> RunSyncAsync(
         int fromWeekOffset, int toWeekOffset,
         string sportlinkApiUrl, string sportlinkClientId,
         string clubCode, string connectionString,
         ILogger log, DateOnly? reconciliatieOndergrens = null)
     {
-        var partialFailure = false;
+        var uitkomst = new SyncUitkomst();
         var orchestrator = new PostgresMergeOrchestrator(connectionString);
 
         await orchestrator.RecreateStgTableAsync(KnownEntities.Teams);
-        var teamsFailed = await FetchTeamsPhaseAsync(orchestrator, connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, log);
-        partialFailure |= teamsFailed;
+        var teamsFailed = uitkomst.Registreer(SyncUitkomst.FaseTeams,
+            await FetchTeamsPhaseAsync(orchestrator, connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, log));
 
         await orchestrator.RecreateStgTableAsync(KnownEntities.Matches);
-        var programmaFailed = await FetchProgrammaPhaseAsync(connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, fromWeekOffset, toWeekOffset, log);
-        var uitslagenFailed = await FetchUitslagenPhaseAsync(connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, fromWeekOffset, log);
+        var programmaFailed = uitkomst.Registreer(SyncUitkomst.FaseProgramma,
+            await FetchProgrammaPhaseAsync(connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, fromWeekOffset, toWeekOffset, log));
+        var uitslagenFailed = uitkomst.Registreer(SyncUitkomst.FaseUitslagen,
+            await FetchUitslagenPhaseAsync(connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, fromWeekOffset, log));
         // #1547: een gespeelde wedstrijd komt alleen nog via /uitslagen binnen, zonder veld/datum/team.
         await PostgresStagingRepository.VulUitslagRijenAanUitHisAsync(connectionString, clubCode);
         var matchesFailed = programmaFailed || uitslagenFailed;
-        partialFailure |= matchesFailed;
 
         await orchestrator.RecreateStgTableAsync(KnownEntities.MatchDetails);
-        partialFailure |= await FetchMatchDetailsPhaseAsync(connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, log);
+        uitkomst.Registreer(SyncUitkomst.FaseMatchdetails,
+            await FetchMatchDetailsPhaseAsync(connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, log));
 
         await MergeAllEntitiesAsync(orchestrator);
 
@@ -116,12 +119,12 @@ internal static class PostgresSyncPipeline
         // Ongeguard, met opzet — zie klasse-doc-comment hierboven.
         await PlannerMatchRepository.MarkeerVervallenGeplandeWedstrijdenAsync(connectionString, clubCode, log);
 
-        if (!partialFailure)
+        if (!uitkomst.GedeeltelijkMislukt)
             await SaveLastSyncTimestampAsync(connectionString, clubCode, log);
         else
             log.LogWarning("Sync gedeeltelijk mislukt — lastsynctimestamp NIET bijgewerkt");
 
-        return partialFailure;
+        return uitkomst;
     }
 
     private static async Task<bool> FetchTeamsPhaseAsync(
@@ -407,12 +410,16 @@ internal static class PostgresSyncPipeline
     // internal + optionele httpClient: zelfde testbaarheid als de SQL Server-tegenhanger (#476),
     // nodig voor de logregressietests van #1200. Standaard blijft de static HttpClient in gebruik.
     internal static async Task<bool> FetchAndStoreMatchDetailsAsync(
-        string connectionString, string apiUrl, string clubCode, ILogger log, HttpClient? httpClient = null)
+        string connectionString, string apiUrl, string clubCode, ILogger log, HttpClient? httpClient = null, TimeSpan? herhaalWachttijd = null)
     {
         var client = httpClient ?? HttpClient;
         try
         {
-            var response = await client.GetAsync(apiUrl);
+            // #1779: begrensde herhaling op 5xx/429/time-out (idempotente GET); logt nooit de URL.
+            using var response = await SportlinkDataserviceHttp.GetMetHerhalingAsync(
+                client, apiUrl,
+                reden => log.LogWarning("MATCHDETAILS - tijdelijke fout ({Reden}); opnieuw proberen", reden),
+                herhaalWachttijd);
             response.EnsureSuccessStatusCode();
             var json = await response.Content.ReadAsStringAsync();
             try

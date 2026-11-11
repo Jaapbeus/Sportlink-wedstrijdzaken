@@ -20,6 +20,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 - De clubkiezer, startpoort en initialisatie van de hoofdindeling staan nu in het aangrenzende partial-bestand; gedrag blijft gelijk (zie issue #1807).
 
+### Fixed
+- Een tijdelijke fout (HTTP 5xx, 429 of time-out) van de Sportlink-dataservice bij het ophalen van wedstrijddetails laat de dagelijkse sync niet meer meteen mislukken: beide databasetiers proberen die aanroep maximaal driemaal. Een melding "sync gedeeltelijk mislukt" heeft nu een eigen categorie met overzicht van de mislukte fases (in plaats van "Configuratie/status"), en de SQL Server-timer en `/sync-matches` gedragen zich gelijk aan de Postgres-tier (fout bij gedeeltelijk mislukt, `207`). De bewuste stop van #1081 blijft (zie issue #1779).
+
 ### Changed
 - Unused authentication members were removed from the shared auth interface and implementations; synthetic tests preserve existing role and logout behavior (see issue #1808).
 - Removed an unreferenced email HTML generation method and its dedicated tests; active browser and export renderers are unchanged (see issue #1808).

@@ -103,7 +103,7 @@ verwerking plaats.
 |---------|----------|--------|-------------|
 | `GET` | `/health` | Anoniem | Status, versie, tier-herkomst (#863) — zie hieronder |
 | `GET` | `/postgres/sync-matches` | **Admin** | Handmatige Sportlink-synchronisatie — **Postgres-tier (productie)**. Antwoordt `200`, `207` (deelstappen mislukt, `lastsynctimestamp` niet bijgewerkt) of `500`. Bestaat niet op de SQL Server-tier |
-| `GET` | `/sync-matches` | **Admin** | Handmatige Sportlink-synchronisatie — **SQL Server-tier**, zelfde parameters (`reset`, `season`). Antwoordt `200` of `500`. Bestaat niet op de Postgres-tier |
+| `GET` | `/sync-matches` | **Admin** | Handmatige Sportlink-synchronisatie — **SQL Server-tier**, zelfde parameters (`reset`, `season`). Antwoordt `200`, `207` (deelstappen mislukt, `LastSyncTimestamp` niet bijgewerkt, #1779) of `500`. Bestaat niet op de Postgres-tier |
 | `GET/PUT` | `/beheer/settings` | **Admin** | Club-instellingen ophalen/opslaan (incl. Sportlink Web Extension-schakelaar en, sinds #1715, de seizoensstartmaand `SeasonStartMonth` 1–12 per club; wijzigen bouwt de seizoenen van die club opnieuw op) |
 | `GET` | `/beheer/geocode` | **Admin** | Adres → GPS-coördinaten opzoeken voor de accommodatie-instelling |
 | `GET` | `/beheer/sync/status` | **Admin** | Status van de laatste Sportlink-synchronisatie, plus optioneel `?jobId=` voor een specifieke sync-job (#1138) |
@@ -306,12 +306,12 @@ Authorization: Bearer <entra-token>
 | Status | Tier | Body |
 |---|---|---|
 | `200 OK` | beide | `"Sync voltooid. WeekOffset-bereik: {from} tot {to}."` |
-| `207 Multi-Status` | **alleen Postgres** | `{ "status": "gedeeltelijk mislukt", "weekOffsetFrom": -1, "weekOffsetTo": 12, "melding": "..." }` — één of meer deelstappen zijn mislukt en `lastsynctimestamp` is bewust **niet** bijgewerkt (#1081). De geslaagde deelstappen blijven staan; het functielog noemt de betrokken fase(s) |
+| `207 Multi-Status` | beide (SQL Server sinds #1779) | `{ "status": "gedeeltelijk mislukt", "weekOffsetFrom": -1, "weekOffsetTo": 12, "mislukteFases": ["matchdetails"], "melding": "..." }` — één of meer deelstappen zijn mislukt en `lastsynctimestamp` is bewust **niet** bijgewerkt (#1081). De geslaagde deelstappen blijven staan; het functielog noemt de betrokken fase(s) |
 | `401 Unauthorized` | beide | Geen (geldig) Bearer-token — ook een `?code=`-master key geeft dit resultaat sinds #1350 |
 | `403 Forbidden` | beide | Geldig token, maar zonder de `admin`-rol |
 | `500` | beide | Onverwachte fout; zie het functielog |
 
-De SQL Server-tier kent de `207` niet en antwoordt alleen `200`, `401`, `403` of `500`.
+Beide tiers antwoorden `200`, `207`, `401`, `403` of `500`. `mislukteFases` bevat vaste labels (`teams`, `programma`, `uitslagen`, `matchdetails`, `configuratie`). Tijdelijke fouten (HTTP 5xx, 429, time-out) op de Sportlink-dataservice worden per aanroep maximaal driemaal geprobeerd voordat een fase als mislukt telt (#1779).
 
 ---
 

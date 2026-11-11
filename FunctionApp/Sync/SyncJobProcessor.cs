@@ -60,13 +60,13 @@ public static class SyncJobProcessor
             }
             var sportlinkClientId = $"clientId={AppSettings.GetSetting("sportlinkClientId")}";
 
-            var gedeeltelijkMislukt = await FetchAndStoreApiData.RunSyncAsync(
+            var uitkomst = await FetchAndStoreApiData.RunSyncAsync(
                 job.WeekOffsetFrom, job.WeekOffsetTo, sportlinkApiUrl, sportlinkClientId, log);
-            if (gedeeltelijkMislukt)
+            if (uitkomst.GedeeltelijkMislukt)
             {
                 log.LogWarning("SyncJobProcessor: job {JobId} gedeeltelijk mislukt", job.JobId);
                 await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false,
-                    errorMessage: "Sync gedeeltelijk mislukt — zie het functielog voor de betrokken fase(s).");
+                    errorMessage: uitkomst.JobFoutmelding());
                 return;
             }
 

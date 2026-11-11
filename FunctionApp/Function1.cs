@@ -1,4 +1,5 @@
 using Planner.Endpoints.Admin;
+using Planner.Shared.Sync;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -45,12 +46,18 @@ namespace SportlinkFunction
                 string sportlinkClientId = $"clientId={AppSettings.GetSetting("sportlinkClientId")}";
                 int toWeekOffset = await SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
                 log.LogInformation("Sync range: weekOffset -1 to {ToWeekOffset} (end of season)", toWeekOffset);
-                await SportlinkSyncPipeline.RunSyncAsync(-1, toWeekOffset, sportlinkApiUrl, sportlinkClientId, log);
+                var uitkomst = await SportlinkSyncPipeline.RunSyncAsync(-1, toWeekOffset, sportlinkApiUrl, sportlinkClientId, log);
+                // #1779 (pariteit met de Postgres-tier, #1081): een run met mislukte fases mag niet
+                // als Success eindigen en meldt zich als getypeerde fout met faseoverzicht.
+                if (uitkomst.GedeeltelijkMislukt)
+                    throw uitkomst.NaarUitzondering();
             }
             catch (Exception ex)
             {
                 log.LogError(ex, "FetchAndStoreApiData fout");
                 await FoutRapportage.RapporteerAsync(ex, "FetchAndStoreApiData", log);
+                // #1779: opnieuw gooien, zoals de Postgres-timer (#1081); er staat geen retry-policy op.
+                throw;
             }
         }
 
@@ -113,7 +120,21 @@ namespace SportlinkFunction
                             log.LogInformation("Default mode: weekOffset {From} to {To}", fromWeekOffset, toWeekOffset);
                         }
 
-                        await SportlinkSyncPipeline.RunSyncAsync(fromWeekOffset, toWeekOffset, sportlinkApiUrl, sportlinkClientId, log);
+                        var uitkomst = await SportlinkSyncPipeline.RunSyncAsync(fromWeekOffset, toWeekOffset, sportlinkApiUrl, sportlinkClientId, log);
+                        if (uitkomst.GedeeltelijkMislukt)
+                        {
+                            // #1779: pariteit met PostgresSyncMatchesHttp (#1081): 207 i.p.v. 200.
+                            return new ObjectResult(new
+                            {
+                                status = "gedeeltelijk mislukt",
+                                weekOffsetFrom = fromWeekOffset,
+                                weekOffsetTo = toWeekOffset,
+                                mislukteFases = uitkomst.MislukteFases,
+                                melding = "Eén of meer deelstappen zijn mislukt; LastSyncTimestamp is niet bijgewerkt. "
+                                          + "Zie het functielog voor de betrokken fase(s)."
+                            })
+                            { StatusCode = StatusCodes.Status207MultiStatus };
+                        }
                         return new OkObjectResult($"Sync completed. WeekOffset range: {fromWeekOffset} to {toWeekOffset}.");
                     }
                     catch (Exception ex)
@@ -128,7 +149,7 @@ namespace SportlinkFunction
         // Entry-point voor SyncJobProcessor (#1138, voorheen AdminSyncFunction's fire-and-forget
         // Task.Run). Retourneert partialFailure zodat de aanroeper de job-status correct kan zetten.
         // Internal (#1676): de enige aanroeper, SyncJobProcessor, controleert EgressGuard vooraf.
-        internal static async Task<bool> RunSyncAsync(
+        internal static async Task<SyncUitkomst> RunSyncAsync(
             int fromWeekOffset, int toWeekOffset,
             string sportlinkApiUrl, string sportlinkClientId,
             ILogger log)
