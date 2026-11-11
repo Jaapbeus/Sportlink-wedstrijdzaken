@@ -3,15 +3,12 @@ using System.Text;
 namespace FunctionApp.Postgres.Planner;
 
 /// <summary>
-/// Postgres-tier-tegenhanger van <c>FunctionApp/Planner/TeamScheduleHtmlRenderer.cs</c> (#888) —
-/// woordelijke kopie, alleen de namespace verschilt.
+/// Bouwt de HTML-weergave van een teamrooster (#888).
 /// <para>
-/// <b>Bewust gedupliceerd en niet verhuisd naar <c>Planner.Shared/</c>.</b> Deze klasse is pure
-/// presentatie zonder databaseafhankelijkheid en zou daar op zichzelf prima passen, maar een
-/// verhuizing sleept ook <c>TeamScheduleResponse</c> en zijn twee onderliggende typen mee en raakt
-/// dus de SQL Server-boom. Dat is dezelfde afweging — en hetzelfde antwoord — als bij
-/// <c>LeeftijdNormalisatie.Normaliseer</c> in de eerste #888-ronde: een aparte refactor-beslissing,
-/// vastgelegd als bekende schuld in docs/ARCHITECTUUR-DATABASE-TIERS.md §16.
+/// De renderer gebruikt de tier-eigen <c>TeamScheduleResponse</c> en blijft daarom naast die DTO's
+/// staan. Verhuizen naar <c>Planner.Shared/</c> vereist ook het delen van dat response-type en zijn
+/// onderliggende typen; die aparte refactor-afweging staat in
+/// <c>docs/ARCHITECTUUR-DATABASE-TIERS.md</c> §25.
 /// </para>
 /// </summary>
 public static class TeamScheduleHtmlRenderer
