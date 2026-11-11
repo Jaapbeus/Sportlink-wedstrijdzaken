@@ -83,6 +83,8 @@ internal sealed class FakePoort : IEmailVerwerkerPoort<TestBericht>
     public bool AiBeschikbaar { get; set; } = true;
     public Func<List<TestBericht>, EmailClassificatieBatch<TestBericht>> Classificeer { get; set; }
         = l => new(l.Select(b => (b, new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek })).ToList(), false, null);
+    public Func<List<TestBericht>, IReadOnlyList<ClassificatieCorrectieVoorbeeld>, EmailClassificatieBatch<TestBericht>>? ClassificeerMetVoorbeelden { get; set; }
+    public IReadOnlyList<ClassificatieCorrectieVoorbeeld> FewShotVoorbeelden { get; set; } = [];
     public Exception? DatabaseFout { get; set; }
     public HashSet<string> UitsluitingslijstUitDatabase { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public bool VerwerkingGereed { get; set; } = true;
@@ -126,10 +128,18 @@ internal sealed class FakePoort : IEmailVerwerkerPoort<TestBericht>
         return AiBeschikbaar;
     }
 
-    public Task<EmailClassificatieBatch<TestBericht>> ClassificeerAsync(List<TestBericht> teClassificeren)
+    public Task<IReadOnlyList<ClassificatieCorrectieVoorbeeld>> HaalFewShotVoorbeeldenOpAsync()
+    {
+        Stappen.Add("fewshots");
+        return Task.FromResult(FewShotVoorbeelden);
+    }
+
+    public Task<EmailClassificatieBatch<TestBericht>> ClassificeerAsync(
+        List<TestBericht> teClassificeren, IReadOnlyList<ClassificatieCorrectieVoorbeeld> voorbeelden)
     {
         Stappen.Add("classificeer");
-        return Task.FromResult(Classificeer(teClassificeren));
+        return Task.FromResult(ClassificeerMetVoorbeelden?.Invoke(teClassificeren, voorbeelden)
+            ?? Classificeer(teClassificeren));
     }
 
     public Task LabelBuitenScopeAsync(List<(TestBericht Email, BerichtClassificatie Classificatie)> classificaties)

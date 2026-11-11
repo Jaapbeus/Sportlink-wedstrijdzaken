@@ -239,7 +239,7 @@ public class BerichtAiKern
 
             KNVB-regelcheck (voor herplan_verzoek):
             Vul "knvbNotitie" in als op basis van datum en teamtype een KNVB-regel waarschijnlijk van toepassing is.
-            Wees kort (1-2 zinnen). Voorbeeld: "Senioren mogen na 1 mei 2027 geen wedstrijden meer verplaatsen (KNVB Cat A)."
+            Wees kort (1-2 zinnen). Voorbeeld: "Voor dit team geldt na de toepasselijke deadline geen verplaatsing (KNVB Cat A)."
             Laat null als datum ruim voor eventuele deadlines valt of het teamtype niet duidelijk is.
 
             {{KnvbRegelsContext}}

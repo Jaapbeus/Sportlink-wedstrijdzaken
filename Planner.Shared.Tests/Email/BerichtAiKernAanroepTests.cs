@@ -245,6 +245,8 @@ public class BerichtAiKernAanroepTests
         var systeem = client.Berichten[0].Text!;
         systeem.Should().Contain("[\"2031-03-10\",\"2031-03-11\",\"2031-03-12\",\"2031-03-13\"]"); // volgende week ma t/m do
         systeem.Should().Contain("Gecorrigeerde classificaties");
+        systeem.Should().Contain("Voor dit team geldt na de toepasselijke deadline geen verplaatsing")
+            .And.NotContain("Senioren mogen na 1 mei 2027");
         systeem.Should().NotContain("2025").And.NotContain("2024");
     }
 

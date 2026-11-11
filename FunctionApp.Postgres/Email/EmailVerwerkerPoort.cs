@@ -70,14 +70,33 @@ internal sealed class EmailVerwerkerPoort(
         return true;
     }
 
-    public Task<EmailClassificatieBatch<InkomendBericht>> ClassificeerAsync(List<InkomendBericht> teClassificeren)
+    public Task<EmailClassificatieBatch<InkomendBericht>> ClassificeerAsync(
+        List<InkomendBericht> teClassificeren, IReadOnlyList<ClassificatieCorrectieVoorbeeld> voorbeelden)
     {
         var ai = Ai;
         return new EmailClassificationService().ClassificeerBatchAsync(
             teClassificeren,
-            email => ai.ClassificeerBerichtAsync(email.Body ?? "", email.Onderwerp, email.Afzender),
+            (email, fewShots) => ai.ClassificeerBerichtAsync(email.Body ?? "", email.Onderwerp, email.Afzender, fewShots),
             EmailFoutCategorie.IsOpenAiQuotaFout,
-            log);
+            log,
+            voorbeelden);
+    }
+
+    public async Task<IReadOnlyList<ClassificatieCorrectieVoorbeeld>> HaalFewShotVoorbeeldenOpAsync()
+    {
+        // Fase 1 gebruikt deze al gevalideerde voorbeelden vóór de eerste classificatie. Gebruik
+        // dezelfde DB-wake/settings-route als de bestaande verse uitsluitingslijst; geen nieuwe cache.
+        try
+        {
+            await PostgresSystemUtilities.WaitForDatabaseAsync(log);
+            await PostgresAppSettings.LoadSettingsAsync(log);
+            return await LearningMomentRepository.HaalVoorbeeldenOpAsync(cs, PostgresClubScope.Primary, log);
+        }
+        catch (Exception)
+        {
+            log.LogWarning("Leermomenten niet beschikbaar; classificatie gaat door zonder few-shots");
+            return [];
+        }
     }
 
     public Task LabelBuitenScopeAsync(List<(InkomendBericht Email, BerichtClassificatie Classificatie)> classificaties)

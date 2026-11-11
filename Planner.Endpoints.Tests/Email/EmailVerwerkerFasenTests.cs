@@ -193,14 +193,37 @@ public class EmailVerwerkerFasenTests
     }
 
     [Fact]
-    public async Task AllesBuitenScope_AlleenLabelen_DatabaseBlijftSlapen()
+    public async Task AllesBuitenScope_AlleenLabelen_FaseTweeWordtOvergeslagen()
     {
         TestBericht m1 = new("m1");
         var poort = new FakePoort { Ongelezen = [m1], Classificeer = _ => Batch([(m1, VerzoekType.BuitenScope)]) };
 
         await VoerUitAsync(poort);
 
-        poort.Stappen.Should().Equal("haal", "prefilter", "lijst-voor-ai", "filter", "ai", "classificeer", "label");
+        poort.Stappen.Should().Equal("haal", "prefilter", "lijst-voor-ai", "filter", "ai", "fewshots", "classificeer", "label");
+    }
+
+    [Fact]
+    public async Task GoedgekeurdFewShotWordtVoorEersteClassificatieGebruikt_EnVoorkomtBuitenScopeVroegeStop()
+    {
+        TestBericht m1 = new("m1");
+        var voorbeeld = new ClassificatieCorrectieVoorbeeld(
+            "BuitenScope", "HerplanVerzoek", "Vraag over een wedstrijd", "Het verzoek is om te verplaatsen");
+        var poort = new FakePoort
+        {
+            Ongelezen = [m1],
+            FewShotVoorbeelden = [voorbeeld],
+            ClassificeerMetVoorbeelden = (emails, fewShots) =>
+            {
+                fewShots.Should().ContainSingle().Which.Should().Be(voorbeeld);
+                return Batch([(emails[0], VerzoekType.HerplanVerzoek)]);
+            }
+        };
+
+        await VoerUitAsync(poort);
+
+        poort.Stappen.Should().ContainInOrder("fewshots", "classificeer", "wacht", "verwerk:m1");
+        poort.Verwerkt.Should().ContainSingle().Which.MessageId.Should().Be("m1");
     }
 
     // ── OpenAI-quota ─────────────────────────────────────────────────────────────────────────
@@ -234,6 +257,27 @@ public class EmailVerwerkerFasenTests
         poort.FakeGraph.Verstuurd.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task MeerdereNietQuotaClassificatiefouten_SturenEenGethrottledeStructureleNoodmail()
+    {
+        TestBericht m1 = new("m1"), m2 = new("m2");
+        var poort = new FakePoort
+        {
+            Ongelezen = [m1, m2],
+            Classificeer = _ => new EmailClassificatieBatch<TestBericht>([], false, null, NietQuotaClassificatieFouten: 2)
+        };
+
+        await VoerUitAsync(poort);
+        await VoerUitAsync(poort);
+
+        poort.FakeGraph.Verstuurd.Should().ContainSingle();
+        poort.FakeGraph.Verstuurd[0].Subject.Should().Be("URGENT: AI-classificatie mislukt — e-mail blijft ongelezen");
+        poort.FakeGraph.Verstuurd[0].Body.Should().Contain("structurele fout")
+            .And.NotContain("provider").And.NotContain("m1").And.NotContain("m2");
+        (await poort.FakeThrottle.LaatsteKeerVerstuurdAsync(EmailNoodmailMelding.StructureleAiNoodmailSleutel)).Should().NotBeNull();
+        (await poort.FakeThrottle.LaatsteKeerVerstuurdAsync(EmailNoodmailMelding.OpenAiQuotaNoodmailSleutel)).Should().BeNull();
+    }
+
     // ── Fase 2 ───────────────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -250,7 +294,7 @@ public class EmailVerwerkerFasenTests
         await VoerUitAsync(poort);
 
         poort.Stappen.Should().Equal(
-            "haal", "prefilter", "lijst-voor-ai", "filter", "ai", "classificeer", "label",
+            "haal", "prefilter", "lijst-voor-ai", "filter", "ai", "fewshots", "classificeer", "label",
             "wacht", "instellingen", "lijst", "voorbereiding", "classificatiefout:m2", "verwerk:m1");
         poort.Verwerkt.Select(v => v.MessageId).Should().Equal(["m1"], "buiten scope gaat niet naar de verwerking");
     }
