@@ -15,6 +15,21 @@ namespace FunctionApp.Postgres.Tests.Processing;
 /// </summary>
 public class BerichtPipelineDatumTests
 {
+    [Theory]
+    [InlineData(null, "We willen de wedstrijd van 25-4-2026 verzetten.", "Verzoek")]
+    [InlineData("", "We willen verzetten.", "Wedstrijd 25-4-2026")]
+    public void ValideerDagDatum_Herplan_OntbrekendeDatumUitExplicieteTekst(
+        string? modelDatum, string body, string onderwerp)
+    {
+        var classificatie = new BerichtClassificatie
+        {
+            Type = VerzoekType.HerplanVerzoek, Datum = modelDatum, GewensteDatum = "2026-05-02"
+        };
+        BerichtPipeline.ValideerDagDatum(classificatie, body, onderwerp);
+        classificatie.Datum.Should().Be("2026-04-25");
+        classificatie.GewensteDatum.Should().Be("2026-05-02");
+    }
+
     [Fact]
     public void ValideerDagDatum_OnderwerpDatum_WordtOpClassificatieGezet()
     {

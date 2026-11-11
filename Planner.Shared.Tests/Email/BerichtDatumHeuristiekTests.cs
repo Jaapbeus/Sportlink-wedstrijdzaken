@@ -34,6 +34,12 @@ public class BerichtDatumHeuristiekTests
 
     // ── Datum in onderwerp ──
 
+    [Theory]
+    [InlineData("Kunnen jullie dinsdag?")]
+    [InlineData("Zouden we dinsdag kunnen spelen?")]
+    public void DirectVerzoek_Dinsdag_CorrigeertModeldatum(string body)
+        => Corrigeer("2026-04-18", body, "Verzoek").Should().Be("2026-04-21");
+
     [Fact]
     public void OnderwerpBevat_ddmmyyyy_GebruiktOnderwerpDatum()
         => Corrigeer(null, "Kan jullie op die datum?", "Beschikbaarheid 18-4-2026").Should().Be("2026-04-18");

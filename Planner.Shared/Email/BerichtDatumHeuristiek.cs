@@ -15,8 +15,9 @@ public static class BerichtDatumHeuristiek
     public static void ValideerClassificatieDatum(BerichtClassificatie classificatie, string emailBody, string onderwerp)
     {
         // A reschedule has two date roles. A subject date can be administrative or desired;
-        // neither is evidence that the model's current match date is wrong.
-        if (classificatie.Type == VerzoekType.HerplanVerzoek)
+        // neither is evidence that the model's current match date is wrong. Missing dates
+        // still use the existing explicit-text fallback without changing GewensteDatum.
+        if (classificatie.Type == VerzoekType.HerplanVerzoek && !string.IsNullOrEmpty(classificatie.Datum))
             return;
 
         var vorigeDatum = classificatie.Datum;
@@ -103,7 +104,7 @@ public static class BerichtDatumHeuristiek
     private static bool HeeftExplicietDagnaamVerzoek(string tekst, string dagNaam)
     {
         var dag = Regex.Escape(dagNaam);
-        return Regex.IsMatch(tekst, $@"\b(?:kunnen\s+we|kan\s+het|graag|ja)\s+{dag}\b") ||
+        return Regex.IsMatch(tekst, $@"\b(?:kunnen\s+(?:we|jullie)|zouden\s+we|kan\s+het|graag|ja)\s+{dag}\b") ||
                Regex.IsMatch(tekst, $@"\b{dag}\s+(?:spelen|inhalen|verzetten|verplaatsen|beschikbaar)\b");
     }
 

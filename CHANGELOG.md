@@ -29,6 +29,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - De SQL Server-planner geeft voor de niet-opgeslagen optionele eerste-elftalnaam nu expliciet `null` door, gelijk aan Postgres; de settings-loader guard hoeft deze ontbrekende sleutel niet meer uit te zonderen (#1821).
 
 ### Fixed
+- Ontbrekende herplandatums worden weer uit expliciete tekst aangevuld en directe dagnaamverzoeken met "jullie" of "zouden we" worden herkend; de Postgres-plannertest gebruikt dezelfde Nederlandse kalenderdatum als de productiecode (zie issue #1817).
 - De e-mailclassificatie, datumherkenning en herplandeadline gebruiken nu de Nederlandse kalenderdatum, ook als de host UTC gebruikt (zie issue #1817).
 - Datumcorrectie in inkomende planningsmail gebruikt een losse dagnaam alleen bij een direct planningsverzoek, behoudt bij herplannen de huidige wedstrijddatum en houdt een overeenkomende enkelvoudige `datums`-lijst gelijk aan `datum` (zie issue #1817).
 - Eigen noodmails met het vaste onderwerpvoorvoegsel `URGENT:` blijven ongelezen in de eigen mailbox en worden vóór de AI overgeslagen; gewone eigen-mailboxberichten blijven gelezen gemarkeerd (zie issue #1817).
