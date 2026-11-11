@@ -1268,7 +1268,7 @@ components:
             SportlinkTeamId:
               type: string
               nullable: true
-              description: Het `T…`-team-ID uit Sportlinks teamlijst (PublicHomeTeamId én PublicAwayTeamId).
+              description: Het `T…`-team-ID uit Sportlinks teamlijst; gaat als PublicHomeTeamId (de tegenstander krijgt een eigen uit-ID).
             AgeClassCode:
               type: string
               nullable: true
