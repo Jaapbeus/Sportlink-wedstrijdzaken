@@ -32,7 +32,12 @@ public partial class Leermomenten : ClubSelectorPageBase
         await LaadAsync("pending");
     }
 
-    protected override Task OnClubChangedAsync() => LaadAsync(_filterStatus ?? "pending");
+    protected override Task OnClubChangedAsync()
+    {
+        // #1872: een open verwijderbevestiging hoort bij de vorige club.
+        _verwijderBevestigId = null;
+        return LaadAsync(_filterStatus ?? "pending");
+    }
 
     private async Task LaadAsync(string status)
     {
@@ -81,8 +86,9 @@ public partial class Leermomenten : ClubSelectorPageBase
         try
         {
             var result = await Api.VerwijderLeermomentAsync(id);
-            _verwijderBevestigId = null;
+            // #1872: ook de bevestiging niet sluiten; die kan inmiddels bij een item van de nieuwe club horen.
             if (IsClubGewisseld(clubCode)) return; // #1872: uitkomst hoort bij een andere club
+            _verwijderBevestigId = null;
             if (!result.Success)
                 _fout = result.ErrorMessage ?? "Verwijderen mislukt";
             else

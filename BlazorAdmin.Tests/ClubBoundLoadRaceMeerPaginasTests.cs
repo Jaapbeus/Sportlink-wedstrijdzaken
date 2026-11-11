@@ -367,6 +367,106 @@ public sealed class ClubBoundLoadRaceMeerPaginasTests
         Assert.Equal(2, Get<List<TeamAliasDto>>(page, "_items").Single().Id);
     }
 
+    [Fact]
+    public async Task TeamAliassen_ClubSwitchDuringValidateDoesNotApplyClubAOutcome()
+    {
+        var (club, handler, transport) = await CreateContextAsync();
+        handler.HoldPuts = true;
+        var page = new TeamAliassen();
+        Set(page, "ClubSelector", club);
+        Set(page, "LerenApi", new LerenApiClient(transport));
+
+        var valideerA = CallAsync(page, "ValideerAsync", 1, "validated");
+        Assert.Equal(1, handler.PendingCount);
+        await club.SelectClubAsync("B", "Club B");
+        await CallAsync(page, "OnClubChangedAsync");
+        var requestsVoorRelease = handler.Requests.Count;
+        handler.ReleaseClubA();
+        await valideerA;
+
+        Assert.Null(Get<string?>(page, "_melding"));
+        Assert.Null(Get<string?>(page, "_fout"));
+        Assert.Equal(2, Get<List<TeamAliasDto>>(page, "_items").Single().Id);
+        Assert.Empty(Get<HashSet<int>>(page, "_actieBezigId"));
+        Assert.Equal(requestsVoorRelease, handler.Requests.Count); // geen vervolg-load na de uitkomst van club A
+    }
+
+    [Fact]
+    public async Task TeamAliassen_ClubSwitchDuringDeleteKeepsClubBConfirmationAndShowsNoClubAOutcome()
+    {
+        var (club, handler, transport) = await CreateContextAsync();
+        var page = new TeamAliassen();
+        Set(page, "ClubSelector", club);
+        Set(page, "LerenApi", new LerenApiClient(transport));
+        SetField(page, "_verwijderConfirmId", 1);
+
+        var verwijderA = CallAsync(page, "VerwijderAsync", 1);
+        Assert.Equal(1, handler.PendingCount);
+        await club.SelectClubAsync("B", "Club B");
+        await CallAsync(page, "OnClubChangedAsync");
+        Assert.Null(Get<int?>(page, "_verwijderConfirmId"));
+        SetField(page, "_verwijderConfirmId", 2); // beheerder opent de bevestiging voor een alias van club B
+        var requestsVoorRelease = handler.Requests.Count;
+        handler.ReleaseClubA();
+        await verwijderA;
+
+        Assert.Equal(2, Get<int?>(page, "_verwijderConfirmId"));
+        Assert.Null(Get<string?>(page, "_melding"));
+        Assert.Null(Get<string?>(page, "_fout"));
+        Assert.Equal(2, Get<List<TeamAliasDto>>(page, "_items").Single().Id);
+        Assert.Empty(Get<HashSet<int>>(page, "_actieBezigId"));
+        Assert.Equal(requestsVoorRelease, handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task Leermomenten_ClubSwitchDuringDeleteKeepsClubBConfirmationAndStartsNoClubAReload()
+    {
+        var (club, handler, transport) = await CreateContextAsync();
+        var page = new Leermomenten();
+        Set(page, "ClubSelector", club);
+        Set(page, "Api", new LerenApiClient(transport));
+        SetField(page, "_verwijderBevestigId", 1);
+
+        var verwijderA = CallAsync(page, "VerwijderAsync", 1);
+        Assert.Equal(1, handler.PendingCount);
+        await club.SelectClubAsync("B", "Club B");
+        await CallAsync(page, "OnClubChangedAsync");
+        Assert.Null(Get<int?>(page, "_verwijderBevestigId"));
+        SetField(page, "_verwijderBevestigId", 2); // beheerder opent de bevestiging voor een leermoment van club B
+        var requestsVoorRelease = handler.Requests.Count;
+        handler.ReleaseClubA();
+        await verwijderA;
+
+        Assert.Equal(2, Get<int?>(page, "_verwijderBevestigId"));
+        Assert.Null(Get<string?>(page, "_fout"));
+        Assert.Equal(2, Get<List<LeermomentDto>>(page, "_items").Single().Id);
+        Assert.Empty(Get<HashSet<int>>(page, "_actieBezigId"));
+        Assert.Equal(requestsVoorRelease, handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task Leermomenten_ClubSwitchDuringValidateStartsNoClubAReload()
+    {
+        var (club, handler, transport) = await CreateContextAsync();
+        handler.HoldPuts = true;
+        var page = new Leermomenten();
+        Set(page, "ClubSelector", club);
+        Set(page, "Api", new LerenApiClient(transport));
+
+        var valideerA = CallAsync(page, "ValideerAsync", 1, "validated");
+        Assert.Equal(1, handler.PendingCount);
+        await club.SelectClubAsync("B", "Club B");
+        await CallAsync(page, "OnClubChangedAsync");
+        var requestsVoorRelease = handler.Requests.Count;
+        handler.ReleaseClubA();
+        await valideerA;
+
+        Assert.Null(Get<string?>(page, "_fout"));
+        Assert.Equal(2, Get<List<LeermomentDto>>(page, "_items").Single().Id);
+        Assert.Empty(Get<HashSet<int>>(page, "_actieBezigId"));
+        Assert.Equal(requestsVoorRelease, handler.Requests.Count);
+    }
+
     private static async Task<Thema> LoadThemaForClubAAsync(ClubSelectorService club, Handler handler, AdminApiTransport transport)
     {
         var page = new Thema();
@@ -419,6 +519,9 @@ public sealed class ClubBoundLoadRaceMeerPaginasTests
         }
         SetProperty(instance, property, value);
     }
+
+    private static void SetField(object instance, string field, object? value) =>
+        instance.GetType().GetField(field, BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(instance, value);
 
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, SwallowingRenderer> Renderers = new();
 

@@ -189,7 +189,8 @@ public partial class TeamAliassen : ClubSelectorPageBase
         finally
         {
             _actieBezigId.Remove(id);
-            _verwijderConfirmId = null;
+            // #1872: na een clubwissel kan de open bevestiging bij een item van de nieuwe club horen.
+            if (!IsClubGewisseld(clubCode)) _verwijderConfirmId = null;
         }
     }
 
