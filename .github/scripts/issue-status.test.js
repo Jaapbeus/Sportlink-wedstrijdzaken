@@ -1,7 +1,7 @@
 // Unit-tests voor issue-status.js — draaien zonder GitHub, zonder token, zonder netwerk.
 // Uitvoeren: node .github/scripts/issue-status.test.js   (exit 0 = alles groen)
 // Wordt bij elke PR gedraaid door de job 'Build FunctionApp + BlazorAdmin' in build.yml.
-const { extractIssueRefs, setIssueStatus, clearIssueStatus, clearTurnLabels, isEpic } = require('./issue-status.js');
+const { extractIssueRefs, setIssueStatus, clearIssueStatus, clearTurnLabels, isEpic, updatePullRequestIssueStatuses } = require('./issue-status.js');
 
 let failures = 0;
 function check(name, actual, expected) {
@@ -103,6 +103,11 @@ async function run() {
   check('waiting-codex niet overschreven door automatisering (#1336)', { res, added: gh.calls.added },
         { res: 'protected', added: [] });
 
+  gh = fakeGithub(['status: awaiting-release']);
+  res = await setIssueStatus({ github: gh, context: ctx, core, issueNumber: 1, status: 'status: review-needed' });
+  check('awaiting-release blijft staan bij PR-status', { res, added: gh.calls.added, removed: gh.calls.removed },
+        { res: 'protected', added: [], removed: [] });
+
   gh = fakeGithub(['status: waiting-owner']);
   res = await setIssueStatus({ github: gh, context: ctx, core, issueNumber: 1, status: 'status: awaiting-release', respectProtected: false });
   check('merge overschrijft waiting-owner', { res, added: gh.calls.added, removed: gh.calls.removed },
@@ -123,6 +128,79 @@ async function run() {
   gh = fakeGithub([], { throws: true });
   res = await setIssueStatus({ github: gh, context: ctx, core, issueNumber: 1, status: 'status: triage' });
   check('ophaalfout is niet fataal', res, 'skipped');
+
+  // The workflow calls this function directly. A forged strong reference must never reach
+  // issues.addLabels unless both PR origin and the author's current write access are proven.
+  console.log('\nPR status provenance:');
+  function prEvent(overrides = {}) {
+    const pr = {
+      title: 'fix(#42): synthetic change', body: 'Related to #43', draft: true, merged: false,
+      user: { login: 'writer' },
+      head: { repo: { id: 7 } }, base: { repo: { id: 7 } },
+      ...overrides,
+    };
+    return { repo: ctx.repo, payload: { repository: { id: 7 }, action: 'opened', pull_request: pr } };
+  }
+  function prGithub(labels, permission = 'write') {
+    const client = fakeGithub(labels);
+    client.calls.permissionChecks = 0;
+    client.request = async () => {
+      client.calls.permissionChecks++;
+      if (permission === 'error') throw new Error('private API detail');
+      return { data: { permission } };
+    };
+    return client;
+  }
+  async function runPrCase(name, context, permission, expected) {
+    const client = prGithub(['source: codex', 'status: triage'], permission);
+    const outcome = await updatePullRequestIssueStatuses({ github: client, context, core });
+    check(name, { outcome, added: client.calls.added, removed: client.calls.removed,
+      permissionChecks: client.calls.permissionChecks }, expected);
+  }
+
+  await runPrCase('trusted branch and writer follows strong reference', prEvent(), 'write',
+    { outcome: 'updated', added: ['status: in-progress'], removed: ['status: triage'], permissionChecks: 1 });
+  const readyContext = prEvent({ draft: false });
+  readyContext.payload.action = 'ready_for_review';
+  await runPrCase('trusted ready PR enters review', readyContext, 'admin',
+    { outcome: 'updated', added: ['status: review-needed'], removed: ['status: triage'], permissionChecks: 1 });
+  const draftContext = prEvent({ draft: true });
+  draftContext.payload.action = 'converted_to_draft';
+  await runPrCase('trusted draft conversion resumes work', draftContext, 'write',
+    { outcome: 'updated', added: ['status: in-progress'], removed: ['status: triage'], permissionChecks: 1 });
+  const closedContext = prEvent();
+  closedContext.payload.action = 'closed';
+  await runPrCase('trusted unmerged closure returns to triage', closedContext, 'write',
+    { outcome: 'updated', added: [], removed: [], permissionChecks: 1 });
+  await runPrCase('fork cannot relabel despite strong reference', prEvent({ head: { repo: { id: 8 } } }), 'write',
+    { outcome: 'untrusted', added: [], removed: [], permissionChecks: 0 });
+  await runPrCase('read-only author cannot relabel own-repo PR', prEvent(), 'read',
+    { outcome: 'untrusted', added: [], removed: [], permissionChecks: 1 });
+  await runPrCase('unknown permission cannot relabel', prEvent(), null,
+    { outcome: 'untrusted', added: [], removed: [], permissionChecks: 1 });
+  await runPrCase('permission API error cannot relabel', prEvent(), 'error',
+    { outcome: 'untrusted', added: [], removed: [], permissionChecks: 1 });
+  const warnings = [];
+  gh = prGithub(['status: triage'], 'error');
+  await updatePullRequestIssueStatuses({ github: gh, context: prEvent(),
+    core: { notice: () => {}, warning: message => warnings.push(message) } });
+  check('permission error does not disclose API detail', warnings.some(message => message.includes('private API detail')), false);
+  await runPrCase('missing origin cannot relabel', prEvent({ head: {} }), 'write',
+    { outcome: 'untrusted', added: [], removed: [], permissionChecks: 0 });
+
+  gh = prGithub(['source: owner', 'status: awaiting-release']);
+  res = await updatePullRequestIssueStatuses({ github: gh, context: prEvent({ draft: false }), core });
+  check('trusted PR cannot move awaiting-release or source',
+    { res, added: gh.calls.added, removed: gh.calls.removed },
+    { res: 'updated', added: [], removed: [] });
+
+  gh = prGithub(['source: owner', 'status: review-needed']);
+  const mergedContext = prEvent({ merged: true });
+  mergedContext.payload.action = 'closed';
+  res = await updatePullRequestIssueStatuses({ github: gh, context: mergedContext, core });
+  check('develop merge leaves status to release workflow',
+    { res, added: gh.calls.added, removed: gh.calls.removed, permissionChecks: gh.calls.permissionChecks },
+    { res: 'merged', added: [], removed: [], permissionChecks: 0 });
 
   gh = fakeGithub(['status: awaiting-release', 'status: in-progress', 'type: bug']);
   res = await clearIssueStatus({ github: gh, context: ctx, core, issueNumber: 1 });
