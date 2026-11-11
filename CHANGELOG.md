@@ -18,6 +18,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- De clubkiezer, startpoort en initialisatie van de hoofdindeling staan nu in het aangrenzende partial-bestand; gedrag blijft gelijk (zie issue #1807).
 - API-bodybegrenzing hergebruikt de gedeelde uitvoeringspoort met behoud van bestaande parsers en endpointvalidatie (zie issue #1811).
 - Clubcodevalidatie vereist nu het volledige invoerformaat en clubcodes worden veilig gemaakt vóór logging op beide databasetiers (zie issue #1811).
 
@@ -25,8 +26,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - `/api/health` exposeert niet langer database-, schema-, migratie-, TLS-, sync- of tierdiagnostiek. Deploy- en readinessvelden zijn geaggregeerd; details zijn beschikbaar via admin-only `GET /api/beheer/health` (#1811). Dit is de API 4.0.0.0-contractgrens.
 
 ### Changed
+- De bestaande veldeditor is naar een gedeelde Razor-component verplaatst; modelbinding, validatie en de bestaande save-/annuleerhandlers blijven gelijk (zie issue #1807).
 - De gedeelde HTML-generator voor de veldplanner is per verantwoordelijkheid in partial-bestanden opgesplitst; de publieke aanroepen en de gegenereerde browser- en e-mail-HTML blijven gelijk (zie issue #1807).
 - De fingerprint-, publieke titel-/diagnostiek- en foutclassificatiehelpers van `GitHubIssueReporter` staan in een eigen partial-bestand; de bestaande methoden en werking blijven gelijk (zie issue #1807).
+- De bestaande beheer-DTO's zijn per domein in modelbestanden gegroepeerd; JSON-contracten en type-inhoud zijn ongewijzigd (zie issue #1807).
 - Removed the unused API status service and placed existing shared-logic tests in `Planner.Shared.Tests` (see issue #1808).
 - Clarified the Postgres error-reporting adapter documentation while retaining its tier-specific egress and fingerprint rationale (see issue #1805).
 - In Planner.Shared, removed planning-comment provenance while retaining the tier-independent logic and planning invariants (see issue #1806).
