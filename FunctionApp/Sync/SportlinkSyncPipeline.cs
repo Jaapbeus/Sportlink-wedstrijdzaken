@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Planner.Shared.Sync;
+using SportlinkFunction.Sync;
 using static SportlinkFunction.SystemUtilities;
 
 namespace SportlinkFunction;
@@ -21,6 +22,17 @@ internal static class SportlinkSyncPipeline
         int fromWeekOffset, int toWeekOffset,
         string sportlinkApiUrl, string sportlinkClientId,
         ILogger log)
+        => await RunSyncWithSeasonWindowAsync(
+            () => Task.FromResult((fromWeekOffset, toWeekOffset)), sportlinkApiUrl, sportlinkClientId, log);
+
+    /// <summary>
+    /// Builds a default or manual window only after the shared-staging lease and per-club season
+    /// rollover are complete. Queued jobs use <see cref="RunSyncAsync"/> with their stored offsets.
+    /// </summary>
+    internal static async Task<bool> RunSyncWithSeasonWindowAsync(
+        Func<Task<(int FromWeekOffset, int ToWeekOffset)>> buildWindow,
+        string sportlinkApiUrl, string sportlinkClientId,
+        ILogger log)
     {
         var partialFailure = false;
         var clubCode = AppSettings.GetSetting("clubCode");
@@ -29,6 +41,9 @@ internal static class SportlinkSyncPipeline
 
         await using var stagingLease = await SqlServerSyncStagingLease.TryAcquireAsync()
             ?? throw new SyncAlreadyRunningException();
+
+        await SqlServerSeasonRollover.EnsureAsync(clubCode, SqlServerSeasonRollover.VandaagInNederland, log);
+        var (fromWeekOffset, toWeekOffset) = await buildWindow();
 
         var teamsFailed = await FetchTeamsPhaseAsync(sportlinkApiUrl, sportlinkClientId, clubCode, log);
         partialFailure |= teamsFailed;
