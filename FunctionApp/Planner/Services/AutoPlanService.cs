@@ -426,7 +426,7 @@ internal static class AutoPlanService
             Accommodatie: SystemUtilities.AppSettings.GetSetting("accommodatie") ?? "",
             PlannerAfzenderNaam: SystemUtilities.AppSettings.GetSetting("plannerAfzenderNaam")
                 ?? throw new InvalidOperationException("Vereiste instelling 'plannerAfzenderNaam' ontbreekt in dbo.AppSettings"),
-            EersteElftalNaam: SystemUtilities.AppSettings.GetSetting("eersteElftalNaam"),
+            EersteElftalNaam: null,
             ClubCode: SystemUtilities.AppSettings.GetOptionalClubCode());
 
         string huidigeHtml  = PlannerHtmlGenerator.GenereerHtml(datum, huidigeOccupations, new List<OptimalisatieSuggestie>(), velden, "huidig", htmlInstellingen);
