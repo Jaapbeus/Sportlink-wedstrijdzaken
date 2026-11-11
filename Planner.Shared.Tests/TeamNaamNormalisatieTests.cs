@@ -241,4 +241,28 @@ public class TeamNaamNormalisatieTests
         // zoeken op nummer zou verkeerde treffers geven.
         TeamNaamNormalisatie.Parse(input, Club).Should().BeNull();
     }
+
+    [Theory]
+    [InlineData("TESTCLUB O15-1JM", "JO15")] // #1861: zonder categorie kon de speelduur niet worden bepaald
+    [InlineData("TESTCLUB O23-1", "JO23")]   // bondsnotatie O23 = JO23
+    [InlineData("O23-1", "JO23")]            // zoals in de teambegeleiding
+    [InlineData("TESTCLUB MO15-1", "MO15")]
+    public void LeidLeeftijdsCategorieAf_BondsnotatieEnJmSuffix_GeeftSpeeltijdsleutel(string teamnaam, string categorie)
+        => TeamNaamNormalisatie.LeidLeeftijdsCategorieAf(teamnaam, Club).Should().Be(categorie);
+
+    [Theory]
+    [InlineData("TESTCLUB", true)]
+    [InlineData(" testclub ", true)]
+    [InlineData("TESTCLUB -", true)]
+    [InlineData("TESTCLUB 1", false)]
+    [InlineData("TESTCLUB JO13-2", false)]
+    [InlineData("Ander FC", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void IsAlleenClubPrefix_HerkentAlleenDeKaleClubnaam(string? tekst, bool verwacht)
+        => TeamNaamNormalisatie.IsAlleenClubPrefix(tekst, Club).Should().Be(verwacht);
+
+    [Fact]
+    public void IsAlleenClubPrefix_ZonderClubPrefix_IsNooitWaar()
+        => TeamNaamNormalisatie.IsAlleenClubPrefix("TESTCLUB", null).Should().BeFalse();
 }

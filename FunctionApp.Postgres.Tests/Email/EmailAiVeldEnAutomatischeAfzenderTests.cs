@@ -174,7 +174,8 @@ public class EmailAiVeldEnAutomatischeAfzenderTests
         var (_, body) = BerichtResponseGenerator.BouwTeamOnbekendAntwoord(
             "Ajax https://voorbeeld.test", new BerichtClassificatie(), MaakEmail(), ClubSettings);
 
-        body.Should().Contain("de opgegeven tegenstander").And.NotContain("voorbeeld.test");
+        // #1861: de ingebouwde wedervraag noemt de tegenstander niet meer; een link komt er dus nooit in.
+        body.Should().Contain("om welk team van ons het gaat").And.NotContain("voorbeeld.test").And.NotContain("Ajax");
     }
 
     // ── Automatische afzenders ──

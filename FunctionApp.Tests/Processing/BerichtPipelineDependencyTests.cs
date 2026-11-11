@@ -13,6 +13,9 @@ public sealed class BerichtPipelineDependencyTests
     [Theory]
     [InlineData(VerzoekType.BeschikbaarheidCheck, "JO13-1", null, "datumOnbekend")]
     [InlineData(VerzoekType.BeschikbaarheidCheck, "JO13-1", "invalid", "datumOnbekend")]
+    // #1861: zonder herkend eigen team (ook alleen de clubnaam) en zonder tegenstander: de wedervraag, zonder query.
+    [InlineData(VerzoekType.BeschikbaarheidCheck, null, "2027-02-13", "teamOnbekend")]
+    [InlineData(VerzoekType.BeschikbaarheidCheck, "ALLSTARS", "2027-02-13", "teamOnbekend")]
     [InlineData(VerzoekType.HerplanVerzoek, null, "2026-11-10", "Onvoldoende gegevens")]
     [InlineData(VerzoekType.HerplanVerzoek, "JO13-1", null, "Onvoldoende gegevens")]
     [InlineData(VerzoekType.HerplanVerzoek, "JO13-1", "2026-11-31", "Onvoldoende gegevens")]

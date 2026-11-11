@@ -134,6 +134,14 @@ Both tiers call shared `EigenTeamBepaling.BereidPlannerVoorAsync` for date norma
 
 This is the owner's decision for original finding 3, within #1816. Unresolved `MeerdereKandidaten` results are never automatically disambiguated. The typed manual outcome stops before availability, rescheduling, opponent fallback and contact lookup. Both mailbox tiers store Review and label the message for manual planning before template generation, contact/BCC lookup, send intent or sending. The runtime-only flag is ignored by both JSON serializers.
 
+**Geen eigen team uit een wedstrijd op een andere datum (#1861).** Wordt geen van beide genoemde teams herkend, dan
+leidt de beschikbaarheidscheck het eigen team niet meer af uit een wedstrijd tegen dezelfde tegenstander op een andere
+datum (de vroegere tak `opponent-andere-datum` van #1139): die wedstrijd zegt niets over welk eigen team nu vraagt, en
+de zoekopdracht koos bij meerdere eigen teams stil de oudste. Alleen een wedstrijd op precies de gevraagde datum telt
+nog; anders volgt de wedervraag om het team. De bijbehorende `EigenTeamBepaling.BepaalEigenTeamUitWedstrijdAsync` is
+verwijderd. Alleen de eigen clubnaam in het teamveld (`TeamNaamNormalisatie.IsAlleenClubPrefix`) telt niet als
+genoemd team.
+
 Deleting a Sync alias now retains its existing `rejected` state, including after canonicalization. Other origins retain physical deletion. A rejected alias blocks that association; it does not block an independent match against the canonical team name. The UI describes this action as persistent rejection. No schema or retention policy is added.
 
 ## Datamodel

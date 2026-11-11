@@ -96,6 +96,8 @@ public static class EigenTeamBepaling
     {
         ArgumentNullException.ThrowIfNull(resolver);
         (classificatie.Datum, classificatie.GewensteDatum, classificatie.Datums) = ModelDatum.Grens(classificatie.Datum, classificatie.GewensteDatum, classificatie.Datums);
+        // #1861: alleen de eigen clubnaam is geen genoemd team; anders telt de trace hem als "team genoemd".
+        if (TeamNaamNormalisatie.IsAlleenClubPrefix(classificatie.TeamNaam, clubCode)) classificatie.TeamNaam = null;
         trace?.Classificatie(classificatie.Type.ToString(), classificatie.TeamNaam, classificatie.Tegenstander, classificatie.GetAlleDatums().Count, classificatie.AanvangsTijd);
         var herkend = await BepaalEnPasToeAsync(classificatie, resolver, clubCode, log, trace, fixtureContextFactory);
         if (classificatie.TeamHandmatigBeoordelen) return false;
@@ -139,27 +141,6 @@ public static class EigenTeamBepaling
             log.LogWarning("TEAMRESOLUTIE - wedstrijdcontext niet beschikbaar ({FoutType}); handmatige beoordeling nodig", ex.GetType().Name);
             return EigenTeamUitkomst.Handmatig;
         }
-    }
-
-    /// <summary>
-    /// Haalt uit een wedstrijdstring ("Thuisteam - Uitteam", uit de opponent-lookup #1139) de kant die ons
-    /// team is, door beide kanten tegen de teamlijst te resolven. Alleen één verschillende identiteit
-    /// levert een naam; twee eigen teams of meerdere kandidaten geven <c>null</c>.
-    /// </summary>
-    public static async Task<string?> BepaalEigenTeamUitWedstrijdAsync(
-        string? wedstrijd, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace)
-    {
-        if (string.IsNullOrWhiteSpace(wedstrijd)) return null;
-
-        var gevonden = new Dictionary<int, string>();
-        foreach (var kant in wedstrijd.Split(" - ", 2, StringSplitOptions.TrimEntries))
-        {
-            var uitkomst = await ProbeerResolveAsync(resolver, kant, clubCode, log, trace, TraceCodes.OpponentTeamHerkenning);
-            if (uitkomst is null || uitkomst.Bron == ResolutionBron.MeerdereKandidaten) return null;
-            if (uitkomst?.IsOpgelost == true)
-                gevonden.TryAdd(uitkomst.TeamId!.Value, uitkomst.CanoniekeTeamnaam!);
-        }
-        return gevonden.Count == 1 ? gevonden.Values.Single() : null;
     }
 
     /// <summary>

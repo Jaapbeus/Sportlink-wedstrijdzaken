@@ -422,10 +422,13 @@ public class BerichtAntwoordGeneratorTests
             .Should().Contain("Dit verzoek vereist handmatige afhandeling en is ter beoordeling bij de coördinator neergelegd.");
         BerichtAntwoordGenerator.BouwFoutAntwoord(Email, Classificatie(), Voetnoot).body
             .Should().Contain("Er is een fout opgetreden bij het verwerken van je verzoek.");
+        // #1861: één wedervraag om het eigen team, met en zonder tegenstander.
+        const string wedervraag = "Uit je bericht kunnen we niet opmaken om welk team van ons het gaat. "
+            + "Laat je ons weten om welk team het gaat? Dan controleren we de beschikbaarheid voor je.";
         BerichtAntwoordGenerator.BouwTeamOnbekendAntwoord("Ander FC", Classificatie(), Email, Voetnoot).body
-            .Should().Contain("We kunnen de wedstrijd van Ander FC niet vinden in ons programma. Tegen welk van onze teams zou deze wedstrijd zijn?");
+            .Should().Contain(wedervraag).And.NotContain("niet vinden in ons programma");
         BerichtAntwoordGenerator.BouwTeamOnbekendAntwoord("", Classificatie(), Email, Voetnoot).body
-            .Should().Contain("We kunnen de wedstrijd van  niet vinden");
+            .Should().Contain(wedervraag);
     }
 
     [Fact]

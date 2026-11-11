@@ -107,6 +107,16 @@ public static class TeamNaamNormalisatie
         return t.ToUpperInvariant();
     }
 
+    /// <summary>
+    /// True als de tekst alleen het eigen clubprefix is, zonder teamaanduiding ("[club]", "[club] -"). Dat is
+    /// geen genoemd team (#1861): het model vulde het teamveld met de clubnaam uit een zin over een ander team.
+    /// </summary>
+    public static bool IsAlleenClubPrefix(string? ruweTekst, string? clubPrefix)
+    {
+        if (string.IsNullOrWhiteSpace(ruweTekst) || string.IsNullOrWhiteSpace(clubPrefix)) return false;
+        return ruweTekst.Trim().TrimEnd(' ', '-', '_', '.').Equals(clubPrefix.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string StripClubPrefix(string tekst, string? clubPrefix)
     {
         if (string.IsNullOrWhiteSpace(clubPrefix)) return tekst;

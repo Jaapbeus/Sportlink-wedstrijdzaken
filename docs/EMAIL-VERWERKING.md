@@ -190,6 +190,21 @@ When both classified fields resolve to different own teams, #1816 requires autho
 Welk van de twee genoemde teams het eigen team is, wordt bepaald door te kijken wélke in de teamlijst
 staat — niet meer door te raden op spaties of clubprefix.
 
+**Teampoort en speelduur vóór de beschikbaarheidscheck (#1861).** Een beschikbaarheidsvraag gaat alleen naar de
+planner met een herkend eigen team (`Planner.Shared/Email/BeschikbaarheidVoorwaarden.cs`, beide tiers):
+
+1. Geen herkend eigen team: geen plannercheck. Staat er op de gevraagde datum al een wedstrijd tegen de genoemde
+   tegenstander, dan volgt sjabloon H; anders de wedervraag om het team (sjabloon I). Een wedstrijd tegen dezelfde
+   tegenstander op een **andere** datum wordt niet meer gebruikt om het eigen team af te leiden (eigenaarsbesluit:
+   bij meerdere eigen teams tegen die club werd stil de oudste gekozen). Alleen de eigen clubnaam in het teamveld
+   telt niet als genoemd team.
+2. Herkend team zonder bruikbare datum: sjabloon P.
+3. Herkend team zonder speelduur in `speeltijden`: de check is niet uit te voeren. Het bericht gaat naar de
+   afsluitende handmatige afhandeling van #1816 (Review, mailboxlabel voor handmatige planning, geen antwoord),
+   met trace-stap `speelduur`. Zo komt de beheerinstructie van de planner nooit bij de afzender. Een losse
+   categorie uit het model wordt eerst exact gezocht en daarna via `LeeftijdNormalisatie` (`O23` → `JO23`,
+   `Senioren` → `1-99`).
+
 Bij een aanduiding die écht dubbelzinnig is — "13-1" kan JO13-1 of MO13-1 zijn — wordt niet gegokt:
 the system chooses no candidate and requires manual review.
 
@@ -687,16 +702,19 @@ De coördinator neemt zo snel mogelijk contact op.
 
 #### Template I — Team onbekend
 
-**Wanneer:** De afzender noemt een tegenstander maar er is helemaal geen wedstrijd tegen die
-tegenstander te vinden, ook niet op een andere datum.
+**Wanneer:** Een beschikbaarheidsvraag zonder herkend eigen team, en er staat op de gevraagde datum geen
+wedstrijd tegen een genoemde tegenstander (#1861). Een wedstrijd op een andere datum telt niet.
 
 ```
 {aanhef} {voornaam},
 
-We kunnen de wedstrijd van {tegenstander} niet vinden in ons programma.
-Tegen welk van onze teams zou deze wedstrijd zijn?
-Dan kunnen we de beschikbaarheid voor je controleren.
+Uit je bericht kunnen we niet opmaken om welk team van ons het gaat.
+Laat je ons weten om welk team het gaat?
+Dan controleren we de beschikbaarheid voor je.
 ```
+
+Een clubsjabloon (`team_onbekend`) kan `{{tegenstander}}` nog gebruiken; de ingebouwde tekst noemt de
+tegenstander niet, zodat hij ook klopt zonder tegenstander en voor een eigen begeleider.
 
 #### Template P — Geen bruikbare datum
 
@@ -1211,7 +1229,9 @@ weergave per e-maillog-regel (zie "Opslag" hieronder).**
 
 **Stappen** (stabiele codes, in volgorde): `classificatie` (type, welke velden aanwezig ja/nee),
 `team-herkenning`, `tegenstander-herkenning`, `team-wissel`, `opponent-pad` (#1139: tak en of een
-wedstrijd is gevonden), `opponent-team-herkenning`, `datum`, `tak` (plannerresponse-vlag),
+wedstrijd is gevonden; sinds #1861 alleen `opponent-op-datum` of `niet-gevonden`), `opponent-team-herkenning`
+(alleen nog in oudere traces), `datum`, `speelduur` (#1861: alleen als de speelduur onbekend is), `tak`
+(plannerresponse-vlag),
 `sjabloon` (database-override of ingebouwd, met sleutel) en `eindoordeel`. Elke stap heeft een
 zekerheid (`Zeker`, `Onzeker`, `Mislukt`).
 
@@ -1231,6 +1251,7 @@ Toegestane detailsleutels per stapcode in de bewaarde trace:
 | `team-herkenning`, `tegenstander-herkenning`, `opponent-team-herkenning` | `bron`, `confidence`, `aantalKandidaten`, `kandidaten` (clubteams), `canoniekeNaam`, `vorm`, `reden` (alleen `geen clubcode`) |
 | `team-wissel` | `team` (canoniek), `tegenstanderVorm` |
 | `opponent-pad` | `tak`, `wedstrijdGevonden` |
+| `speelduur` | `categorieGenoemd` (ja/nee; nooit de categorietekst zelf) |
 | `datum` | `aantalDatums`, `datums` (alleen `yyyy-MM-dd`) |
 | `tak` | `plannerResponseVlag`, `reden` (alleen de vaste buiten-scope-reden) |
 | `herplan-uitkomst` | `uitkomst`, `wedstrijdGevonden`, `datumAanwezig`, `sjabloon` |
@@ -1244,7 +1265,7 @@ niet-herkende teamtekst zelf staat alleen in de wachtrij met begrensde retentie 
 **Zekerheidsoordeel.** `ZekerheidsBeoordeling` markeert een resultaat als onzeker bij: een verzoektype
 dat een team nodig heeft (beschikbaarheid, herplannen) zonder herkend team (ook bij
 `MeerdereKandidaten`) en zonder wedstrijd via de tegenstander op de gevraagde datum; een opponent-pad
-zonder wedstrijd; een herplanverzoek zonder gevonden wedstrijd voor team en datum of zonder team/datum (stap
+zonder wedstrijd; een herkend team zonder bekende speelduur (stap `speelduur`, #1861); een herplanverzoek zonder gevonden wedstrijd voor team en datum of zonder team/datum (stap
 `herplan-uitkomst`, uitkomst `geen-wedstrijd` of `onvoldoende-gegevens`; een geslaagde herplan blijft zeker);
 sjabloon `teamOnbekend` of `datumOnbekend`; of een andere mislukte stap. Bij twijfel onzeker. Deel D gebruikt dit als zekerheidspoort (§1e); in de tester is het uitsluitend informatief (de tester verstuurt nooit).
 
