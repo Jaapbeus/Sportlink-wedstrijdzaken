@@ -59,6 +59,14 @@ public class LeeftijdNormalisatieTests
         LeeftijdNormalisatie.Normaliseer(invoer).Should().Be(verwacht);
     }
 
+    [Theory]
+    [InlineData("MO 13", "MO13")]
+    [InlineData("MOJO13", "MO13")]
+    public void Normaliseer_ExplicietMoPrefix_BehoudtBestaandeUitkomst(string invoer, string verwacht)
+    {
+        LeeftijdNormalisatie.Normaliseer(invoer).Should().Be(verwacht);
+    }
+
     [Fact]
     public void Normaliseer_MeisjesOnderN_MaptNaarMoN()
     {

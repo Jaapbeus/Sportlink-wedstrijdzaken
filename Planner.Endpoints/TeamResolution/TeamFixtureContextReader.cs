@@ -12,7 +12,7 @@ public static class TeamFixtureContextReader
         var spellings = new List<TeamFixtureSpelling>();
         while (await reader.ReadAsync())
         {
-            var fixture = TeamFixture.FromSourceRow(Value(0), Value(1), Value(2), Value(3), Value(4), Value(5));
+            var fixture = TeamFixture.FromSourceRow(Value(0), Value(1), Value(2), Value(3), Value(4));
             if (fixture is not null) fixtures.Add(fixture);
         }
         await reader.NextResultAsync();

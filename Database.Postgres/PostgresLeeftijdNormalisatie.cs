@@ -36,7 +36,7 @@ public static class PostgresLeeftijdNormalisatie
                 THEN 'VR'
             WHEN regexp_replace({kolom}, '\D', '', 'g') <> ''
                 THEN (CASE WHEN {kolom} ILIKE '%Meiden%' OR {kolom} ILIKE '%Meisjes%'
-                                OR UPPER(TRIM({kolom})) ~ '^MO[0-9]'
+                                OR UPPER(TRIM({kolom})) LIKE 'MO%'
                            THEN 'MO' ELSE 'JO' END) || regexp_replace({kolom}, '\D', '', 'g')
             ELSE
                 REPLACE(REPLACE(REPLACE({kolom}, 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')

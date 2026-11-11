@@ -53,7 +53,7 @@ internal static class LeeftijdNormalisatieSql
                 THEN 'VR'
             WHEN {alleenCijfers} <> ''
                 THEN (CASE WHEN {kolom} LIKE '%Meiden%' OR {kolom} LIKE '%Meisjes%'
-                                OR UPPER(LTRIM(RTRIM({kolom}))) LIKE 'MO[0-9]%'
+                                OR UPPER(LTRIM(RTRIM({kolom}))) LIKE 'MO%'
                            THEN 'MO' ELSE 'JO' END) + {alleenCijfers}
             ELSE
                 REPLACE(REPLACE(REPLACE({kolom}, 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')

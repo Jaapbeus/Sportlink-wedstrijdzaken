@@ -97,8 +97,6 @@ public sealed record ReplyTierHaken(
 /// </summary>
 public static class EmailReplyAfhandeling
 {
-    private const string HandmatigePlanningLabel = "Handmatige planning";
-
     public static async Task<ReplyVerwerkingUitkomst> HandelReplyFlowAfAsync(
         int verwerkingId,
         ReplyBericht email,
@@ -191,7 +189,7 @@ public static class EmailReplyAfhandeling
             // door de zekerheidspoort tegengehouden voorstel (#1568); een onderdrukt antwoord krijgt
             // "Handmatige planning", net als buiten review mode (#1608).
             var (label, kleur) = tegengehouden ? (EmailCategorieLabels.GeenAiAntwoord, EmailCategorieLabels.GeenAiAntwoordKleur)
-                : reviewBesluit.MoetVersturen ? (null, null) : (HandmatigePlanningLabel, "preset5");
+                : reviewBesluit.MoetVersturen ? (null, null) : (EmailCategorieLabels.HandmatigePlanning, EmailCategorieLabels.HandmatigePlanningKleur);
             if (label != null)
             {
                 await graphService.EnsureMasterCategoryAsync(label, kleur!);
@@ -231,8 +229,8 @@ public static class EmailReplyAfhandeling
             await persistentie.UpdateStatusAsync(verwerkingId, EmailStatus.GeenAntwoordNodig, null);
             try
             {
-                await graphService.EnsureMasterCategoryAsync(HandmatigePlanningLabel, "preset5");
-                await graphService.SetCategoriesAsync(email.MessageId, HandmatigePlanningLabel);
+                await graphService.EnsureMasterCategoryAsync(EmailCategorieLabels.HandmatigePlanning, EmailCategorieLabels.HandmatigePlanningKleur);
+                await graphService.SetCategoriesAsync(email.MessageId, EmailCategorieLabels.HandmatigePlanning);
                 await graphService.MarkAsReadAsync(email.MessageId);
             }
             catch (Exception ex)
