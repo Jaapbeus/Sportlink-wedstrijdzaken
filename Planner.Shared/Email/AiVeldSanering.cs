@@ -184,10 +184,10 @@ public static partial class AiVeldSanering
     private static bool IsTijd(string deel, string[] formaten)
         => TimeOnly.TryParseExact(deel, formaten, CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
 
-    // "10:30-12:00" / "10.30-12.00": precies twee geldige tijden rond één streepje.
+    // "10:30-12:00" / "10.30–12.00": precies twee geldige tijden rond één streepje of gedachtestreepje.
     private static bool IsTijdbereik(string deel, string[] formaten)
     {
-        var delen = deel.Split('-');
+        var delen = deel.Split('-', '–');
         return delen.Length == 2 && IsTijd(delen[0], formaten) && IsTijd(delen[1], formaten);
     }
 
