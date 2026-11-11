@@ -17,8 +17,8 @@ const SHA2 = 'b'.repeat(40);
 const NU = Date.parse('2026-11-11T12:00:00Z');
 const minuten = (m) => new Date(NU - m * 60000).toISOString();
 let volgId = 1;
-const comment = (body, { min = 120, assoc = 'OWNER', login = 'jaap' } = {}) =>
-  ({ id: volgId++, body, created_at: minuten(min), author_association: assoc, user: { login } });
+const comment = (body, { min = 120, assoc = 'OWNER', login = 'jaap', type = 'User' } = {}) =>
+  ({ id: volgId++, body, created_at: minuten(min), author_association: assoc, user: { login, type } });
 const codes = (f) => f.map((x) => x.code);
 
 // ── parseOverdracht ──
@@ -44,6 +44,10 @@ check('fase processing = implementer', verwachteBeurt({ fase: 'processing', impl
 check('fase eigenaarsbesluit = owner', verwachteBeurt({ fase: 'eigenaarsbesluit' }), 'owner');
 check('onbekende fase = null', verwachteBeurt({ fase: 'gemerged' }), null);
 check('twee beurten in één tekst = onduidelijk', verwachteBeurt({ fase: 'x', volgendeBeurt: 'Codex of Claude Code' }), null);
+check('leidende beurt wint van namen in de toelichting', verwachteBeurt({ fase: 'review', reviewer: 'Claude Code', volgendeBeurt: 'turn: owner (reviewroute beschikbaar stellen aan Claude Code)' }), 'owner');
+check('turn:-voorvoegsel Codex', verwachteBeurt({ fase: 'x', volgendeBeurt: 'turn: codex' }), 'codex');
+check('expliciete maar onduidelijke Volgende beurt valt niet terug op de reviewer', verwachteBeurt({ fase: 'review', reviewer: 'Claude Code', volgendeBeurt: 'nader te bepalen' }), null);
+check('eindfase met reviewer in de fasetekst geeft geen beurt', verwachteBeurt({ fase: 'gemerged na review', reviewer: 'Claude Code' }), null);
 
 // ── evalueerIssue ──
 console.log('evalueerIssue:');
@@ -78,7 +82,7 @@ check('twee turn-labels: MEERDERE_TURN', ev({ labels: ['turn: codex', 'turn: own
 check('verwachte beurt maar geen turn-label: GEEN_TURN', ev({ labels: [], issueComments: [comment(EIGENAARSBESLUIT)] }), ['GEEN_TURN']);
 check('awaiting-release zonder turn: geen GEEN_TURN',
   ev({ labels: ['status: awaiting-release'], issueComments: [comment(EIGENAARSBESLUIT)] }), []);
-check('beurt "geen" (merge door implementer): geen verwachting', ev({ labels: ['turn: codex'], issueComments: [comment('Fase: review\nVolgende beurt: merge door implementer')] }), []);
+check('beurt "geen" (merge door implementer), geen label: geen bevinding', ev({ labels: [], issueComments: [comment('Fase: review\nVolgende beurt: merge door implementer')] }), []);
 check('onvertrouwde auteur genegeerd',
   ev({ labels: ['turn: claude-code'], issueComments: [
     comment('Fase: verwerking\nImplementer: Codex\nVolgende beurt: Codex', { min: 200 }),
@@ -87,16 +91,74 @@ check('onvertrouwde auteur genegeerd',
   ], prs: [pr7()] }), []);
 check('onvertrouwde auteur alleen: geen overdracht, dus geen bevinding',
   ev({ labels: ['turn: claude-code'], issueComments: [comment('Fase: verwerking\nImplementer: Codex\nVolgende beurt: Codex', { assoc: 'NONE', login: 'vreemde' })] }), []);
-check('github-actions[bot] telt als vertrouwd',
-  ev({ labels: ['turn: claude-code'], issueComments: [comment('Fase: verwerking\nImplementer: Codex\nVolgende beurt: Codex', { assoc: 'NONE', login: 'github-actions[bot]' })] }), ['TURN_WIJKT_AF']);
+check('github-actions[bot] (type Bot) telt als vertrouwd',
+  ev({ labels: ['turn: claude-code'], issueComments: [comment('Fase: verwerking\nImplementer: Codex\nVolgende beurt: Codex', { assoc: 'NONE', login: 'github-actions[bot]', type: 'Bot' })] }), ['TURN_WIJKT_AF']);
 check('eigen signaalcomment genegeerd',
   ev({ labels: ['turn: claude-code'], issueComments: [
     comment(aanvraagNl, { min: 200 }),
-    comment(`${SIGNAAL_MARKER} hash=abc -->\nFase: verwerking\nVolgende beurt: Codex`, { min: 100, assoc: 'NONE', login: 'github-actions[bot]' }),
+    comment(`${SIGNAAL_MARKER} hash=abc -->\nFase: verwerking\nVolgende beurt: Codex`, { min: 100, assoc: 'NONE', login: 'github-actions[bot]', type: 'Bot' }),
   ], prs: [pr7()] }), []);
 check('gesloten PR telt niet mee',
   ev({ labels: ['turn: claude-code'], issueComments: [comment('Fase: verwerking\nImplementer: Codex\nVolgende beurt: Codex', { min: 200 })],
     prs: [{ ...pr7([comment(aanvraagNl, { min: 100 })]), state: 'closed' }] }), ['TURN_WIJKT_AF']);
+
+// ── vertrouwde bots (tweede review, bevinding 1) ──
+console.log('vertrouwde bots:');
+const BOT = { assoc: 'NONE', login: 'claude[bot]', type: 'Bot' };
+const REVIEW_CODEX = `Fase: review\nImplementer: Claude Code\nReviewer: Codex\nPR: #7\nAangeboden head-SHA: ${SHA}\nVolgende beurt: turn: codex`;
+check('claude[bot] (type Bot): overdracht telt, label wijkt af', ev({ labels: ['turn: claude-code'], prs: [pr7()], issueComments: [comment(REVIEW_CODEX, { ...BOT })] }), ['TURN_WIJKT_AF']);
+check('claude[bot] (type Bot): label klopt', ev({ labels: ['turn: codex'], prs: [pr7()], issueComments: [comment(REVIEW_CODEX, { ...BOT })] }), []);
+check('claude[bot] eigenaarsbesluit, label wijkt af', ev({ labels: ['turn: codex'], issueComments: [comment('Fase: eigenaarsbesluit\nImplementer: Claude Code\nVolgende beurt: turn: owner', { ...BOT })] }), ['TURN_WIJKT_AF']);
+check('gebruiker "claude[bot]" met type User is niet vertrouwd', ev({ labels: ['turn: claude-code'], prs: [pr7()], issueComments: [comment(REVIEW_CODEX, { ...BOT, type: 'User' })] }), []);
+check('gebruiker "github-actions[bot]" met type User is niet vertrouwd', ev({ labels: ['turn: claude-code'], issueComments: [comment('Fase: verwerking\nImplementer: Codex\nVolgende beurt: Codex', { assoc: 'NONE', login: 'github-actions[bot]', type: 'User' })] }), []);
+
+// ── leidende beurt en onduidelijke Volgende beurt (bevinding 2) ──
+console.log('beurt uit Volgende beurt:');
+const REVIEWROUTE = 'Fase: review\nReviewer: Claude Code\nImplementer: Codex\nVolgende beurt: turn: owner (reviewroute beschikbaar stellen aan Claude Code)';
+check('leidende owner, label owner: geen bevinding', ev({ labels: ['turn: owner'], issueComments: [comment(REVIEWROUTE)] }), []);
+check('leidende owner, label claude-code: TURN_WIJKT_AF', ev({ labels: ['turn: claude-code'], issueComments: [comment(REVIEWROUTE)] }), ['TURN_WIJKT_AF']);
+check('onduidelijke Volgende beurt: geen verwachting, dus geen TURN_WIJKT_AF', ev({ labels: ['turn: codex'], issueComments: [comment('Fase: review\nReviewer: Claude Code\nVolgende beurt: nader te bepalen')] }), []);
+
+// ── SHA-controle voor beide reviewers (bevinding 3) ──
+console.log('SHA-controle:');
+const REVIEW_CODEX_SHA = (sha) => REVIEW_CODEX.replace(SHA, sha);
+const shaDetail = (o) => evalueerIssue({ now: NU, graceMinuten: 30, prs: [], issueComments: [], labels: [], ...o }).filter((f) => f.code === 'REVIEW_SHA_ONGELDIG').map((f) => f.detail);
+check('Reviewer Codex, 38-hex SHA: REVIEW_SHA_ONGELDIG', ev({ labels: ['turn: codex'], prs: [pr7()], issueComments: [comment(REVIEW_CODEX_SHA('a'.repeat(38)))] }), ['REVIEW_SHA_ONGELDIG']);
+check('Reviewer Codex, volledige SHA: geen bevinding', ev({ labels: ['turn: codex'], prs: [pr7()], issueComments: [comment(REVIEW_CODEX)] }), []);
+check('Reviewer Codex, head verschoven: REVIEW_SHA_ONGELDIG', ev({ labels: ['turn: codex'], prs: [{ ...pr7(), headSha: SHA2 }], issueComments: [comment(REVIEW_CODEX)] }), ['REVIEW_SHA_ONGELDIG']);
+check('38-hex zonder gekoppelde PR: reden=lengte', shaDetail({ labels: ['turn: claude-code'], issueComments: [comment(aanvraagNl.replace(SHA, 'a'.repeat(38)))] }), ['reden=lengte']);
+check('ontbrekende SHA: reden=ontbreekt', shaDetail({ labels: ['turn: claude-code'], issueComments: [comment('Fase: review\nReviewer: Claude Code\nPR: #7')] }), ['reden=ontbreekt']);
+check('head verschoven: reden=verouderd', shaDetail({ labels: ['turn: claude-code'], issueComments: [comment(aanvraagNl)], prs: [{ ...pr7(), headSha: SHA2 }] }), ['reden=verouderd']);
+
+// ── TURN_BIJ_EINDE en MEERDERE_TURN met wachttijd (bevinding 4) ──
+console.log('einde en wachttijd:');
+const MERGE_DOOR_IMPLEMENTER = 'Fase: review\nVolgende beurt: merge door implementer';
+check('merge door implementer, label blijft staan: TURN_BIJ_EINDE', ev({ labels: ['turn: codex'], issueComments: [comment(MERGE_DOOR_IMPLEMENTER)] }), ['TURN_BIJ_EINDE']);
+check('merge door implementer binnen grace: geen bevinding', ev({ labels: ['turn: codex'], issueComments: [comment(MERGE_DOOR_IMPLEMENTER, { min: 5 })] }), []);
+check('merge door implementer, label net gewisseld: geen bevinding', ev({ labels: ['turn: codex'], laatsteLabelWijziging: minuten(3), issueComments: [comment(MERGE_DOOR_IMPLEMENTER)] }), []);
+check('eindfase gemerged, label blijft staan: TURN_BIJ_EINDE', ev({ labels: ['turn: claude-code'], issueComments: [comment('Fase: gemerged\nImplementer: Codex')] }), ['TURN_BIJ_EINDE']);
+check('eindfase gemerged zonder label: geen bevinding', ev({ labels: ['status: awaiting-release'], issueComments: [comment('Fase: gemerged\nImplementer: Codex')] }), []);
+check('twee turn-labels, label net gewisseld: geen MEERDERE_TURN', ev({ labels: ['turn: codex', 'turn: owner'], laatsteLabelWijziging: minuten(3), issueComments: [comment(aanvraagNl)], prs: [pr7()] }), []);
+check('twee turn-labels, label oud: MEERDERE_TURN', ev({ labels: ['turn: codex', 'turn: owner'], laatsteLabelWijziging: minuten(60), issueComments: [comment(aanvraagNl)], prs: [pr7()] }), ['MEERDERE_TURN']);
+
+// ── geciteerde regels (bevinding 5) ──
+console.log('citaten:');
+const OUD_GECITEERD = '> Fase: verwerking\n> Implementer: Codex\n> Volgende beurt: Codex\n\nDank, ik pak het op.';
+check('geciteerde fase telt niet als fase', parseOverdracht(OUD_GECITEERD).fase, null);
+check('nieuwer antwoord dat een oudere overdracht citeert maskeert de echte nieuwste niet',
+  ev({ labels: ['turn: claude-code'], prs: [pr7()], issueComments: [
+    comment('Fase: verwerking\nImplementer: Codex\nVolgende beurt: Codex', { min: 300 }),
+    comment(aanvraagNl, { min: 200 }),
+    comment(OUD_GECITEERD, { min: 100 }),
+  ] }), []);
+
+// ── gelijke tijdstippen ──
+console.log('gelijke tijdstippen:');
+const NAAR_CODEX = 'Fase: verwerking\nImplementer: Codex\nVolgende beurt: Codex';
+const NAAR_CLAUDE = 'Fase: verwerking\nImplementer: Claude Code\nVolgende beurt: Claude Code';
+check('gelijke tijd: later gelezen comment wint (klopt met label)', ev({ labels: ['turn: claude-code'], issueComments: [comment(NAAR_CODEX, { min: 100 }), comment(NAAR_CLAUDE, { min: 100 })] }), []);
+check('gelijke tijd: omgekeerde volgorde geeft andere uitkomst', ev({ labels: ['turn: claude-code'], issueComments: [comment(NAAR_CLAUDE, { min: 100 }), comment(NAAR_CODEX, { min: 100 })] }), ['TURN_WIJKT_AF']);
+check('gelijke tijd: PR-comment wint van issuecomment', ev({ labels: ['turn: claude-code'], issueComments: [comment(NAAR_CODEX, { min: 100 })], prs: [pr7([comment(NAAR_CLAUDE, { min: 100 })])] }), []);
 
 // ── review-verwerking (P1) ──
 console.log('strikte overdracht:');
@@ -159,7 +221,7 @@ function fakeGithub({ issues, prs = [], comments = {}, recent = [], faalOp = nul
   const rest = {
     issues: {
       listForRepo: 'listForRepo', listComments: 'listComments', listCommentsForRepo: 'listCommentsForRepo', listEvents: 'listEvents',
-      createComment: async (a) => { calls.createComment.push(a); comments[a.issue_number] = (comments[a.issue_number] || []).concat([{ id: volgId++, body: a.body, created_at: new Date(NU).toISOString(), author_association: 'NONE', user: { login: 'github-actions[bot]' } }]); return {}; },
+      createComment: async (a) => { calls.createComment.push(a); comments[a.issue_number] = (comments[a.issue_number] || []).concat([{ id: volgId++, body: a.body, created_at: new Date(NU).toISOString(), author_association: 'NONE', user: { login: 'github-actions[bot]', type: 'Bot' } }]); return {}; },
       addLabels: async () => { calls.addLabels++; }, removeLabel: async () => { calls.removeLabel++; }, setLabels: async () => { calls.setLabels++; },
     },
     pulls: { list: 'pullsList' },
@@ -192,14 +254,14 @@ const oudeAfwijking = comment('Fase: verwerking\nImplementer: Codex\nVolgende be
     check('dedup: zelfde hash, geen nieuwe comment', gh.calls.createComment.length, 1);
     // Andere afwijking op hetzelfde issue ⇒ andere hash ⇒ nieuwe comment.
     gh.rest.issues.listForRepo = 'listForRepo';
-    const gh2 = fakeGithub({ issues: [issue(1, ['turn: claude-code', 'status: waiting-codex'])], comments: { 1: gh.calls.createComment.length ? [oudeAfwijking].concat([{ id: 99, body: gh.calls.createComment[0].body, created_at: minuten(1), author_association: 'NONE', user: { login: 'github-actions[bot]' } }]) : [] } });
+    const gh2 = fakeGithub({ issues: [issue(1, ['turn: claude-code', 'status: waiting-codex'])], comments: { 1: gh.calls.createComment.length ? [oudeAfwijking].concat([{ id: 99, body: gh.calls.createComment[0].body, created_at: minuten(1), author_association: 'NONE', user: { login: 'github-actions[bot]', type: 'Bot' } }]) : [] } });
     await run({ github: gh2, context: ctx, core, now: new Date(NU) });
     check('gewijzigde bevinding: nieuwe comment', gh2.calls.createComment.length, 1);
     check('run wijzigt nooit labels', [gh.calls, gh2.calls].map((c) => c.addLabels + c.removeLabel + c.setLabels), [0, 0]);
   }
   {
     // Terugkerende afwijking: signaal (hash H) -> opgelost -> zelfde afwijking opnieuw -> nieuwe comment.
-    const signaal = (min) => ({ id: volgId++, body: signaalBody(1, [{ code: 'TURN_WIJKT_AF', detail: 'label=claude-code;verwacht=codex', tekst: 'x' }]), created_at: minuten(min), author_association: 'NONE', user: { login: 'github-actions[bot]' } });
+    const signaal = (min) => ({ id: volgId++, body: signaalBody(1, [{ code: 'TURN_WIJKT_AF', detail: 'label=claude-code;verwacht=codex', tekst: 'x' }]), created_at: minuten(min), author_association: 'NONE', user: { login: 'github-actions[bot]', type: 'Bot' } });
     const labelEvent = (min) => ({ event: 'labeled', label: { name: 'turn: claude-code' }, created_at: minuten(min) });
     const lopend = fakeGithub({ issues: [issue(1, ['turn: claude-code'])], comments: { 1: [oudeAfwijking, signaal(100)] }, events: [labelEvent(150)] });
     await run({ github: lopend, context: ctx, core: maakCore(), now: new Date(NU) });
@@ -226,6 +288,27 @@ const oudeAfwijking = comment('Fase: verwerking\nImplementer: Codex\nVolgende be
     });
     await run({ github: gh, context: ctx, core: maakCore(), now: new Date(NU) });
     check('aanvraag op gekoppelde PR gelezen: geen signaal', gh.calls.createComment.length, 0);
+  }
+  {
+    // Een reactie op de PR (alleen daar gezien in de recente comments) wijst terug naar het issue via de sterke PR-verwijzing.
+    const prComment = comment(EIGENAARSBESLUIT, { min: 60 });
+    const gh = fakeGithub({
+      issues: [issue(1, [])],
+      prs: [{ number: 7, title: 'fix(#1): iets', body: '', head: { sha: SHA } }],
+      comments: { 1: [], 7: [prComment] },
+      recent: [{ ...prComment, issue_url: 'https://api.github.com/repos/o/r/issues/7' }],
+    });
+    const uitkomst = await run({ github: gh, context: ctx, core: maakCore(), now: new Date(NU) });
+    check('PR-comment wijst terug naar zijn issue: GEEN_TURN gesignaleerd', [uitkomst.beoordeeld, gh.calls.createComment.map((c) => c.issue_number)], [1, [1]]);
+    const zonderRecent = fakeGithub({ issues: [issue(1, [])], prs: [{ number: 7, title: 'fix(#1): iets', body: '', head: { sha: SHA } }], comments: { 1: [], 7: [prComment] } });
+    const leeg = await run({ github: zonderRecent, context: ctx, core: maakCore(), now: new Date(NU) });
+    check('zonder recente PR-comment wordt het issue niet beoordeeld', leeg.beoordeeld, 0);
+  }
+  {
+    // Alleen een claude[bot]-overdracht (type Bot) op het issue: label wijkt af, dus één signaal.
+    const gh = fakeGithub({ issues: [issue(1, ['turn: claude-code'])], comments: { 1: [comment(NAAR_CODEX, { min: 120, ...BOT })] } });
+    await run({ github: gh, context: ctx, core: maakCore(), now: new Date(NU) });
+    check('run: claude[bot]-overdracht wordt gelezen', gh.calls.createComment.length, 1);
   }
   {
     const gh = fakeGithub({ issues: [issue(1, ['turn: codex']), issue(2, ['turn: claude-code'])], comments: { 1: [], 2: [oudeAfwijking] }, faalOp: 1 });

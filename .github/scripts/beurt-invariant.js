@@ -30,8 +30,13 @@ const VEROUDERD_STATUS = 'status: waiting-codex';
 // Voor deze statussen is een ontbrekend turn:-label geen afwijking.
 const GEEN_TURN_UITZONDERING = ['status: awaiting-release', 'status: blocked', 'status: wont-fix', 'status: waiting-owner'];
 const EINDFASE = /^(gemerged|merged)\b/i;
+// Spiegel van de vertrouwensregel in claude-issue-turn-gate.js (isTrustedAuthor, regels ~79-84 en
+// ~165-172: associatie OWNER/MEMBER/COLLABORATOR, of user.type === 'Bot' met een login uit TRUSTED_BOTS).
+// Dat bestand exporteert alleen isTrustedAuthor, met uitsluitend claude[bot]; hier komt de
+// Actions-bot erbij omdat deze controle zijn eigen signaalcomments daarmee plaatst. Een login alleen is
+// niet genoeg: een gewone gebruiker kan 'claude[bot]' heten, een GitHub App heeft type 'Bot'.
 const VERTROUWDE_ASSOCIATIES = ['OWNER', 'MEMBER', 'COLLABORATOR'];
-const BOT_LOGIN = 'github-actions[bot]';
+const VERTROUWDE_BOTS = ['claude[bot]', 'github-actions[bot]'];
 const STANDAARD_GRACE_MINUTEN = 30;
 const RECENT_DAGEN = 7;
 const GELDIGE_SHA = /^[0-9a-f]{40}$/i;
@@ -56,8 +61,10 @@ const VELDEN = {
   ronde: veld('Ronde|Round'),
 };
 
+// Geciteerde regels ("> ...") zijn een kopie van een oudere comment en tellen nooit als overdracht.
 function schoon(body) {
-  return String(body || '').replace(/\*\*|__|`/g, '').replace(/\r/g, '');
+  return String(body || '').replace(/\*\*|__|`/g, '').replace(/\r/g, '')
+    .split('\n').filter((regel) => !/^\s*>/.test(regel)).join('\n');
 }
 
 /**
@@ -87,11 +94,27 @@ function parseOverdracht(body) {
   };
 }
 
-/** Vertaalt vrije tekst naar één beurt; meerdere verschillende treffers = onduidelijk (null). */
+const BEURT_NAAM = '(codex|claude[- ]?code|claude|owner|eigenaar)';
+const LEIDENDE_BEURT = new RegExp(`^\\s*(?:turn:\\s*)?${BEURT_NAAM}\\b`, 'i');
+const ALTERNATIEVE_BEURT = new RegExp(`^\\s*(?:of|or|en|and|/|,|\\|)\\s*(?:turn:\\s*)?${BEURT_NAAM}\\b`, 'i');
+
+function beurtVanNaam(naam) {
+  const n = naam.toLowerCase();
+  if (n.startsWith('claude')) return 'claude-code';
+  return n === 'codex' ? 'codex' : 'owner';
+}
+
+/**
+ * Vertaalt vrije tekst naar één beurt. Een leidende naam ("turn: owner (reviewroute voor Claude Code)")
+ * wint van namen in de toelichting erachter; staat er direct een alternatief achter ("Codex of Claude
+ * Code") dan is het onduidelijk (null). Zonder leidende naam: meerdere verschillende treffers = null.
+ */
 function naarBeurt(tekst) {
   const t = String(tekst || '').toLowerCase();
   if (!t) return null;
   if (t.includes('merge door implementer')) return 'geen';
+  const leidend = LEIDENDE_BEURT.exec(t);
+  if (leidend) return ALTERNATIEVE_BEURT.test(t.slice(leidend[0].length)) ? null : beurtVanNaam(leidend[1]);
   const gevonden = new Set();
   if (t.includes('claude')) gevonden.add('claude-code');
   if (t.includes('codex')) gevonden.add('codex');
@@ -107,9 +130,11 @@ function naarBeurt(tekst) {
  */
 function verwachteBeurt(parsed) {
   if (!parsed) return null;
-  const expliciet = naarBeurt(parsed.volgendeBeurt);
-  if (expliciet) return expliciet;
+  // Een expliciete "Volgende beurt" die niet te duiden is, valt nooit terug op fase/reviewer/implementer:
+  // dan ontbreekt de verwachting (null) in plaats van een gegokte beurt.
+  if (parsed.volgendeBeurt) return naarBeurt(parsed.volgendeBeurt);
   const fase = String(parsed.fase || '').toLowerCase();
+  if (EINDFASE.test(fase)) return null;
   if (/eigenaarsbesluit|owner decision/.test(fase)) return 'owner';
   if (/review/.test(fase)) return naarBeurt(parsed.reviewer);
   if (/verwerking|processing|implementatie|implementation/.test(fase)) return naarBeurt(parsed.implementer);
@@ -132,8 +157,8 @@ const isSignaal = (c) => String((c && c.body) || '').includes(SIGNAAL_MARKER);
 
 function isVertrouwd(c) {
   if (!c) return false;
-  const login = c.user && c.user.login;
-  return VERTROUWDE_ASSOCIATIES.includes(c.author_association) || login === BOT_LOGIN;
+  if (VERTROUWDE_ASSOCIATIES.includes(c.author_association)) return true;
+  return Boolean(c.user) && c.user.type === 'Bot' && VERTROUWDE_BOTS.includes(c.user.login);
 }
 
 const tijd = (c) => Date.parse((c && (c.created_at || c.createdAt)) || '') || 0;
@@ -160,9 +185,10 @@ function verzamelOverdrachten(issueComments, prs) {
 const TURN_BEURTEN = ['codex', 'claude-code', 'owner'];
 
 function shaBevinding(overdrachten, verwacht, prs) {
-  if (verwacht !== 'claude-code') return null;
+  // Geldt voor beide reviewers: alleen als de verwachte beurt de reviewer van de nieuwste reviewaanvraag is.
+  if (verwacht !== 'claude-code' && verwacht !== 'codex') return null;
   const aanvraag = overdrachten.find((o) => /review/i.test(o.parsed.fase));
-  if (!aanvraag || naarBeurt(aanvraag.parsed.reviewer) !== 'claude-code') return null;
+  if (!aanvraag || naarBeurt(aanvraag.parsed.reviewer) !== verwacht) return null;
   const sha = aanvraag.parsed.sha;
   if (!sha) {
     return { code: 'REVIEW_SHA_ONGELDIG', detail: 'reden=ontbreekt', tekst: 'De nieuwste reviewaanvraag bevat geen aangeboden head-SHA.' };
@@ -202,34 +228,43 @@ function evalueerIssue(invoer) {
   return beoordeel(invoer).findings;
 }
 
+const isEinde = (verwacht, nieuwste) => verwacht === 'geen' || (verwacht === null && EINDFASE.test(nieuwste.parsed.fase));
+
+/**
+ * Vergelijkt het label met de verwachte beurt. Overdracht én labelwissel moeten buiten de wachttijd
+ * liggen: de volgorde (eerst fasecomment, dan label) mag even "scheef" staan zonder dat een draaiende
+ * cron meteen een valse melding plaatst. MEERDERE_TURN let alleen op het tijdstip van de labelwissel.
+ */
+function turnBevindingen({ turns, namen, verwacht, nieuwste, nuMs, graceMs, labelMs }) {
+  const labelRustig = nuMs - labelMs > graceMs;
+  if (turns.length > 1) {
+    return labelRustig ? [{ code: 'MEERDERE_TURN', detail: `aantal=${turns.length}`, tekst: 'Het issue heeft meer dan één turn:-label; er mag er hoogstens één staan.' }] : [];
+  }
+  if (!nieuwste || !labelRustig || nuMs - nieuwste.tijd <= graceMs) return [];
+  if (TURN_BEURTEN.includes(verwacht)) {
+    if (turns.length === 0) {
+      if (GEEN_TURN_UITZONDERING.some((n) => namen.includes(n))) return [];
+      return [{ code: 'GEEN_TURN', detail: `verwacht=${verwacht}`, tekst: `De nieuwste overdracht verwacht beurt "${verwacht}", maar het issue heeft geen turn:-label.` }];
+    }
+    if (turns[0] === verwacht) return [];
+    return [{ code: 'TURN_WIJKT_AF', detail: `label=${turns[0]};verwacht=${verwacht}`, tekst: `Het label zegt "${turns[0]}", maar de nieuwste overdracht noemt "${verwacht}" als volgende beurt.` }];
+  }
+  if (turns.length === 1 && isEinde(verwacht, nieuwste)) {
+    return [{ code: 'TURN_BIJ_EINDE', detail: `label=${turns[0]}`, tekst: `De nieuwste overdracht noemt geen volgende beurt (merge door de implementer of een eindfase), maar het label "${turns[0]}" staat er nog.` }];
+  }
+  return [];
+}
+
 /** Als evalueerIssue, plus de tijd (ms) van de nieuwste overdracht: nodig voor de dedup in run(). */
 function beoordeel({ labels, issueComments, prs, now, graceMinuten = STANDAARD_GRACE_MINUTEN, laatsteLabelWijziging }) {
   const namen = labelNames({ labels });
   const turns = namen.filter((n) => n.startsWith(TURN_PREFIX)).map((n) => n.slice(TURN_PREFIX.length));
   const nuMs = now instanceof Date ? now.getTime() : (typeof now === 'number' ? now : Date.parse(now) || Date.now());
-  const graceMs = graceMinuten * 60 * 1000;
   const overdrachten = verzamelOverdrachten(issueComments, prs);
   const nieuwste = overdrachten[0] || null;
   const verwacht = nieuwste ? verwachteBeurt(nieuwste.parsed) : null;
-  const findings = [];
   const labelMs = laatsteLabelWijziging ? Date.parse(laatsteLabelWijziging) || 0 : 0;
-  // Overdracht én labelwissel liggen buiten de wachttijd: de overdrachtsvolgorde (eerst fasecomment, dan
-  // label) mag even "scheef" staan zonder dat een draaiende cron meteen een valse melding plaatst.
-  const buitenGrace = () => nuMs - nieuwste.tijd > graceMs && nuMs - labelMs > graceMs;
-
-  if (turns.length > 1) {
-    findings.push({ code: 'MEERDERE_TURN', detail: `aantal=${turns.length}`, tekst: 'Het issue heeft meer dan één turn:-label; er mag er hoogstens één staan.' });
-  } else if (TURN_BEURTEN.includes(verwacht)) {
-    if (turns.length === 0) {
-      if (!GEEN_TURN_UITZONDERING.some((n) => namen.includes(n)) && buitenGrace()) {
-        findings.push({ code: 'GEEN_TURN', detail: `verwacht=${verwacht}`, tekst: `De nieuwste overdracht verwacht beurt "${verwacht}", maar het issue heeft geen turn:-label.` });
-      }
-    } else if (turns.length === 1 && turns[0] !== verwacht) {
-      if (buitenGrace()) {
-        findings.push({ code: 'TURN_WIJKT_AF', detail: `label=${turns[0]};verwacht=${verwacht}`, tekst: `Het label zegt "${turns[0]}", maar de nieuwste overdracht noemt "${verwacht}" als volgende beurt.` });
-      }
-    }
-  }
+  const findings = turnBevindingen({ turns, namen, verwacht, nieuwste, nuMs, graceMs: graceMinuten * 60 * 1000, labelMs });
   const sha = shaBevinding(overdrachten, verwacht, prs);
   if (sha) findings.push(sha);
   if (namen.includes(VEROUDERD_STATUS)) {

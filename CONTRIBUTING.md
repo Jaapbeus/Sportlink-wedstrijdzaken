@@ -299,7 +299,8 @@ het `turn:`-label (verwijderen en toevoegen in één aanroep). Een `status:`-lab
 hand, behalve de gedocumenteerde Stap 5 uit `AGENTS.md`; `status: waiting-codex` bestaat niet meer.
 De workflow `beurt-invariant.yml` vergelijkt elke 15 minuten het label met de nieuwste vertrouwde
 overdracht (issue én gekoppelde PR) en plaatst bij een afwijking één signaalcomment: geen of meerdere
-`turn:`-labels, een label dat afwijkt van de volgende beurt, een onjuiste of verouderde head-SHA of een
+`turn:`-labels, een label dat afwijkt van de volgende beurt, een label dat nog staat terwijl de overdracht
+geen volgende beurt noemt (merge door de implementer of eindfase), een onjuiste of verouderde head-SHA of een
 verouderd statuslabel. Hij wijzigt zelf geen labels; herstel doe je volgens de volgorde hierboven.
 Een schedule draait alleen vanaf de default branch: deze bewaking is dus pas actief na de eerstvolgende
 release naar `main`; tot die tijd is de overdrachtsvolgorde hierboven niet automatisch gecontroleerd.
