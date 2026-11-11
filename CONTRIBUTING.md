@@ -46,16 +46,6 @@ screenshot of foutmelding kan die bevatten. Meld kwetsbaarheden via de private r
 5. De eigenaar beoordeelt de PR, eventueel samen met Claude Code
 6. Na goedkeuring wordt de PR gemerged
 
-### Parallel agent orchestration (#1860)
-
-At every orchestration checkpoint, inspect the live roster and assign each free runtime slot a safe, distinct task from the already authorized scope. Count the orchestrator in the session's concurrency limit. Reuse completed agents immediately, then verify they have accepted their next task before reporting the slot as active.
-
-Before assigning work, verify the issue's implementer, reviewer, phase, turn, worktree owner, dependencies, and file/API/schema/shared-logic boundaries. Do not overlap writers or take over owner-held or review-frozen work. Repeat the scope and ownership check whenever a task expands and before committing or opening a PR.
-
-A clean textual diff or a disjoint file list does not prove functional isolation; check shared callers, contracts, and data interactions as well.
-
-When no safe implementation task is available, assign independent read-only status or CI checks, or an exact-SHA review only when the issue turn and review protocol authorize it. A review stays read-only and frozen at its offered SHA. Keep monitoring assigned CI and review returns; do not describe a slot as occupied until its active task is verified. Report each active agent with its concrete task and evidence, and state when a slot has no eligible task.
-
 ### Wat zijn welkome bijdragen?
 
 - Bugfixes (met reproductiestappen in de issue)
@@ -301,6 +291,26 @@ bestaand `--remove-label` plus het nieuwe `--add-label`) en controleert daarna d
 Verwijst een reviewteruggave naar een besloten notitie, dan start de poort van `claude-issue-turn.yml` geen
 agent en gaat de beurt naar de eigenaar tot die notitie beschikbaar is. Beide workflows draaien op een
 `issues`-event vanaf de default branch en zijn dus pas actief na de eerstvolgende release naar `main`.
+
+### Parallelle agentorkestratie (#1860)
+
+Controleer bij elk orkestratiepunt de live agentbezetting en geef elke vrije runtimeslot een veilige,
+afgebakende taak uit de al toegestane scope. Reken de orkestrator mee in de runtimelimiet. Hergebruik
+voltooide agents meteen en controleer dat zij hun volgende taak hebben aanvaard voordat je een slot als
+actief meldt.
+
+Controleer vóór toewijzing de issue-eigenaar, reviewer, fase, beurt, worktree-eigenaar, afhankelijkheden
+en grenzen tussen bestanden, API-contracten, schema's en gedeelde logica. Laat schrijvers niet overlappen
+en neem geen werk over dat bij de eigenaar ligt of tijdens review bevroren is. Herhaal de scope- en
+eigenaarschapscontrole bij uitbreiding en vóór commit of PR.
+
+Een tekstverschil of aparte bestandslijst bewijst geen functionele isolatie; controleer ook gedeelde
+aanroepers, contracten en gegevensstromen.
+
+Is er geen veilige codetaak, wijs dan onafhankelijke, alleen-lezen status- of CI-controles toe, of een
+exacte-SHA-review als fase en reviewprotocol dat toestaan. Een review blijft alleen-lezen en bevroren op
+de aangeboden SHA. Volg CI en reviewreacties; meld een slot pas bezet nadat de taak aantoonbaar actief is.
+Rapporteer per agent de concrete taak en het bewijs, en vermeld als geen taak veilig beschikbaar is.
 
 ### Security Gate
 
