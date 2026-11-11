@@ -6,6 +6,7 @@
     <AzureFunctionsVersion>v4</AzureFunctionsVersion>
     <OutputType>Exe</OutputType>
     <ImplicitUsings>enable</ImplicitUsings>
+    <DefineConstants>$(DefineConstants);PLANNER_DTO_POSTGRES</DefineConstants>
     <Nullable>enable</Nullable>
     <RootNamespace>FunctionApp.Postgres</RootNamespace>
     <Platforms>AnyCPU;x86</Platforms>
@@ -105,5 +106,10 @@
          de bedoelde gelaagdheid om zodra er planner-logica in Planner.Shared bijkomt. -->
     <ProjectReference Include="..\Planner.Shared\Planner.Shared.csproj" />
     <ProjectReference Include="..\Planner.Endpoints\Planner.Endpoints.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- #1856: de planner-wire-DTO's staan eenmalig in GedeeldeBron/PlannerDto en worden hier
+         link-gecompileerd; PLANNER_DTO_POSTGRES kiest de naamruimte FunctionApp.Postgres.Planner in die bestanden. Zie docs/ARCHITECTUUR-CODEKWALITEIT.md, regel 2b. -->
+    <Compile Include="..\GedeeldeBron\PlannerDto\*.cs" Link="Planner\Gedeeld\%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

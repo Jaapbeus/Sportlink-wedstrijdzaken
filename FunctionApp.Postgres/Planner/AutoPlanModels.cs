@@ -19,12 +19,10 @@ namespace FunctionApp.Postgres.Planner;
 /// <c>Planner.Shared</c> verhuisd.
 /// </para>
 /// </summary>
-public class AutoPlanRequest
-{
-    public string Datum { get; set; } = string.Empty;
-    public int? BufferMinuten { get; set; }
-}
-
+// #1856: AutoPlanRequest, AutoPlanResponse en AutoPlanToepassenResponse staan in de gedeelde bron
+// GedeeldeBron/PlannerDto/AutoPlanModels.cs. Deze twee typen blijven tijdelijk per tier, omdat open
+// PR's (#1823, #1828, #1843) ze wijzigen; daarna volgen ze naar de gedeelde bron (zie
+// docs/ARCHITECTUUR-CODEKWALITEIT.md, regel 2b).
 // IPlanWedstrijdRegel (#1363): de gedeelde PDF-export leest deze regel zonder eigen mapping per tier.
 public class AutoPlanWedstrijdItem : IPlanWedstrijdRegel
 {
@@ -88,30 +86,9 @@ public class AutoPlanWedstrijdItem : IPlanWedstrijdRegel
     public bool SportlinkLeidend { get; set; }
 }
 
-public class AutoPlanResponse
-{
-    public string Datum { get; set; } = string.Empty;
-    public int TotaalWedstrijden { get; set; }
-    public int ZonderVeld { get; set; }
-    public int ZonderTijd { get; set; }
-    public int TeWijzigen { get; set; }
-    public int NietInplanbaar { get; set; }
-    public string? GeschatteEindTijd { get; set; }
-    public List<AutoPlanWedstrijdItem> Wedstrijden { get; set; } = new();
-    public string HuidigeHtml { get; set; } = string.Empty;
-    public string OptimaleHtml { get; set; } = string.Empty;
-}
-
 public class AutoPlanToepassenRequest
 {
     public string Datum { get; set; } = string.Empty;
     public int? BufferMinuten { get; set; }
     public List<global::Planner.Shared.AutoPlanToewijzing>? Toewijzingen { get; set; }
-}
-
-public class AutoPlanToepassenResponse
-{
-    public int Bijgewerkt { get; set; }
-    public int Mislukt { get; set; }
-    public List<string> Fouten { get; set; } = new();
 }
