@@ -4,9 +4,8 @@ namespace Planner.Shared;
 /// Splitst een Sportlink-veldstring in het veldnummer uit <c>dbo.Velden</c>/<c>public.velden</c>
 /// en de subpositie die Sportlink erachter zet — tier-agnostisch (#819).
 /// <para>
-/// Geëxtraheerd uit <c>FunctionApp/Planner/Services/PlannerShared.ResolveVeld</c> (#707/#719),
-/// woordelijk gelijk gedrag. Zie <see cref="VeldNormalisatie"/> voor de motivatie waarom deze
-/// pure matching-logica gedeeld wordt tussen tiers in plaats van per tier herbouwd: het
+/// Zie <see cref="VeldNormalisatie"/> voor de motivatie waarom deze pure matching-logica gedeeld
+/// wordt tussen tiers in plaats van per tier herbouwd: het
 /// alternatief (een eigen Postgres-side SQL-vertaling van deze matching in de nieuwe view) zou
 /// een derde, onafhankelijke kopie zijn naast de bestaande twee (C# hier, en de SQL Server-view
 /// <c>planner.AlleWedstrijdenOpVeld</c>) — precies het onderhoudsrisico dat #719 al blootlegde.
