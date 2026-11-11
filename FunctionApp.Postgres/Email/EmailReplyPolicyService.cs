@@ -17,9 +17,15 @@ internal sealed class EmailReplyPolicyService
 {
     /// <summary>De opslag van de reply-afhandeling; standaard de Postgres-repository, een test geeft een fake mee (geen database nodig).</summary>
     private readonly Func<string, IReplyPersistentie> _persistentie;
+    private readonly Func<int, TeamContactDoorstuurVerzoek, Task<TeamContactDoorstuurUitkomst>>? _teamContactDoorstuur;
 
-    internal EmailReplyPolicyService(Func<string, IReplyPersistentie>? persistentie = null)
-        => _persistentie = persistentie ?? (cs => new SqlReplyPersistentie(cs));
+    internal EmailReplyPolicyService(
+        Func<string, IReplyPersistentie>? persistentie = null,
+        Func<int, TeamContactDoorstuurVerzoek, Task<TeamContactDoorstuurUitkomst>>? teamContactDoorstuur = null)
+    {
+        _persistentie = persistentie ?? (cs => new SqlReplyPersistentie(cs));
+        _teamContactDoorstuur = teamContactDoorstuur;
+    }
 
     internal Task<ReplyVerwerkingUitkomst> HandelReplyFlowAfAsync(
         string connectionString,
@@ -45,7 +51,7 @@ internal sealed class EmailReplyPolicyService
                 return string.IsNullOrWhiteSpace(seizoen) ? null : await KnvbPdfService.GetKalenderPdfAsync(regio, seizoen, log);
             },
             ExtraheerGraphStatusCode,
-            (id, verzoek) => TeamContactDoorstuurAfhandeling.VoerEenmaligUitAsync(
+            _teamContactDoorstuur ?? ((id, verzoek) => TeamContactDoorstuurAfhandeling.VoerEenmaligUitAsync(
                 id,
                 new PostgresTeamContactDoorstuurPersistentie(connectionString, clubCode ?? VereisClubCode()),
                 () => TeamContactDoorstuurAfhandeling.VerstuurViaAdapterAsync(
@@ -55,10 +61,10 @@ internal sealed class EmailReplyPolicyService
                     () => PostgresAppSettings.GetSetting("plannerEmailAdres"),
                     (recipient, subject, body, replyTo, audit) => graphService.StuurTeamContactDoorAsync(
                         [recipient], subject, body, replyTo, audit),
-                    log)));
+                    log))));
 
         return EmailReplyAfhandeling.HandelReplyFlowAfAsync(
-            verwerkingId, new ReplyBericht(email.MessageId, email.Afzender, email.ConversationId), classificatie,
+            verwerkingId, new ReplyBericht(email.MessageId, email.Afzender, email.ConversationId, email.AfzenderNaam, email.Body ?? ""), classificatie,
             plannerResponseJson, reviewMode, reviewRecipient, graphService, _persistentie(connectionString),
             bouwTemplateAntwoordAsync, sanitizeFoutMelding, haken, log, trace, zekerheidspoortActief);
     }

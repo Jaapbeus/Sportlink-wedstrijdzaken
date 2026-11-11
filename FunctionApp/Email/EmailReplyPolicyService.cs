@@ -15,6 +15,12 @@ namespace SportlinkFunction.Email;
 /// </summary>
 internal sealed class EmailReplyPolicyService
 {
+    private readonly Func<int, TeamContactDoorstuurVerzoek, Task<TeamContactDoorstuurUitkomst>>? _teamContactDoorstuur;
+
+    internal EmailReplyPolicyService(
+        Func<int, TeamContactDoorstuurVerzoek, Task<TeamContactDoorstuurUitkomst>>? teamContactDoorstuur = null)
+        => _teamContactDoorstuur = teamContactDoorstuur;
+
     internal Task<ReplyVerwerkingUitkomst> HandelReplyFlowAfAsync(
         int verwerkingId,
         InkomendBericht email,
@@ -38,7 +44,7 @@ internal sealed class EmailReplyPolicyService
                 return string.IsNullOrWhiteSpace(seizoen) ? null : await KnvbPdfService.GetKalenderPdfAsync(regio, seizoen, log);
             },
             ExtraheerGraphStatusCode,
-            (id, verzoek) => TeamContactDoorstuurAfhandeling.VoerEenmaligUitAsync(
+            _teamContactDoorstuur ?? ((id, verzoek) => TeamContactDoorstuurAfhandeling.VoerEenmaligUitAsync(
                 id,
                 new SqlTeamContactDoorstuurPersistentie(
                     SystemUtilities.DatabaseConfig.ConnectionString, persistenceService.ResolveClubCode()),
@@ -48,10 +54,10 @@ internal sealed class EmailReplyPolicyService
                     () => SystemUtilities.AppSettings.GetSetting("plannerEmailAdres"),
                     (recipient, subject, body, replyTo, audit) => graphService.StuurTeamContactDoorAsync(
                         [recipient], subject, body, replyTo, audit),
-                    log)));
+                    log))));
 
         return EmailReplyAfhandeling.HandelReplyFlowAfAsync(
-            verwerkingId, new ReplyBericht(email.MessageId, email.Afzender, email.ConversationId), classificatie,
+            verwerkingId, new ReplyBericht(email.MessageId, email.Afzender, email.ConversationId, email.AfzenderNaam, email.Body), classificatie,
             plannerResponseJson, reviewMode, reviewRecipient, graphService, persistenceService,
             bouwTemplateAntwoordAsync, sanitizeFoutMelding, haken, log, trace, zekerheidspoortActief);
     }
