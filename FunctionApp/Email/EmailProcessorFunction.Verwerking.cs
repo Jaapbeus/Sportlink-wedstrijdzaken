@@ -135,24 +135,28 @@ public partial class EmailProcessorFunction
             var plannerResponseJson = await BerichtPipeline.VerwerkMetPlannerAsync(
                 classificatie, email, log, teamResolver, trace: trace);
             await persistenceService.UpdatePlannerResponseAsync(verwerkingId, plannerResponseJson);
-            await persistenceService.UpdateStatusAsync(verwerkingId, EmailStatus.Verwerkt, null);
+            return await TeamHandmatigeAfhandeling.HandelOfVervolgAsync(classificatie, verwerkingId, email.MessageId,
+                persistenceService, graphService, async () =>
+            {
+                await persistenceService.UpdateStatusAsync(verwerkingId, EmailStatus.Verwerkt, null);
 
-            var reviewMode = EmailReviewModus.IsActief();
-            var reviewRecipient = Environment.GetEnvironmentVariable("EmailReviewRecipient");
-            return await replyPolicyService.HandelReplyFlowAfAsync(
-                verwerkingId,
-                email,
-                classificatie,
-                plannerResponseJson,
-                reviewMode,
-                reviewRecipient,
-                graphService,
-                persistenceService,
-                () => BerichtPipeline.BouwTemplateAntwoord(classificatie, plannerResponseJson, email, log, trace: trace),
-                SanitizeFoutMelding,
-                log,
-                trace,
-                await ZekerheidspoortInstelling.IsActiefAsync(persistenceService.ResolveClubCode(), log));
+                var reviewMode = EmailReviewModus.IsActief();
+                var reviewRecipient = Environment.GetEnvironmentVariable("EmailReviewRecipient");
+                return await replyPolicyService.HandelReplyFlowAfAsync(
+                    verwerkingId,
+                    email,
+                    classificatie,
+                    plannerResponseJson,
+                    reviewMode,
+                    reviewRecipient,
+                    graphService,
+                    persistenceService,
+                    () => BerichtPipeline.BouwTemplateAntwoord(classificatie, plannerResponseJson, email, log, trace: trace),
+                    SanitizeFoutMelding,
+                    log,
+                    trace,
+                    await ZekerheidspoortInstelling.IsActiefAsync(persistenceService.ResolveClubCode(), log));
+            }, log);
         }, async t =>
             {
                 // #1568 deel C: onbekende teamteksten naar de wachtrij; een fout hier breekt de trace-opslag niet.

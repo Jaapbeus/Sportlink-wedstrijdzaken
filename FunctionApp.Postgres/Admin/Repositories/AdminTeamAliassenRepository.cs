@@ -90,7 +90,9 @@ internal static class AdminTeamAliassenRepository
         await using var conn = new NpgsqlConnection(cs);
         await conn.OpenAsync();
         await using var cmd = new NpgsqlCommand(
-            "DELETE FROM public.teamaliassen WHERE id = @id AND clubcode = @cc", conn);
+            @"UPDATE public.teamaliassen SET status = 'rejected', mta_modified = NOW()
+              WHERE id = @id AND clubcode = @cc AND bron = 'Sync';
+              DELETE FROM public.teamaliassen WHERE id = @id AND clubcode = @cc AND bron <> 'Sync';", conn);
         cmd.Parameters.AddWithValue("id", id);
         cmd.Parameters.AddWithValue("cc", clubCode);
         return await cmd.ExecuteNonQueryAsync();

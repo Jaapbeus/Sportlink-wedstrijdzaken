@@ -440,6 +440,7 @@ internal static class TeamCanonicalisatieService
                         status                  = '{TeamAliasConstanten.StatusValidated}',
                         mta_modified            = NOW()
                     WHERE teamaliassen.bron = '{TeamAliasConstanten.BronSync}'
+                      AND teamaliassen.status <> 'rejected'
                 RETURNING 1
             ),
             bestaand AS (

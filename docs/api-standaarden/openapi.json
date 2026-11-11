@@ -11009,7 +11009,7 @@
         ],
         "operationId": "deleteTeamAlias",
         "summary": "Teamalias verwijderen",
-        "description": "Verwijdert de alias definitief. Uitsluitend binnen de eigen club (`X-Club-Code`). Er staat nergens een\nidentificator van de beheerder in het log; de tabel bewaart geen auditregel van een verwijderde rij.\nDe alias kan opnieuw als `pending` verschijnen wanneer de schrijfwijze weer wordt\naangetroffen.\n",
+        "description": "Sync-origin aliases retain their row with status rejected, preventing canonicalization from\nvalidating the association again. Other origins are physically deleted. Both actions are scoped\nto the current club (X-Club-Code). Logs contain only the alias identifier, without administrator\nidentity. Rejection blocks the alias association, not an independent canonical-name match.\n",
         "security": [
           {
             "easyAuth": []

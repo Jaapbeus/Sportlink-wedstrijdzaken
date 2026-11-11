@@ -160,7 +160,7 @@ verwerking plaats.
 | `GET` | `/beheer/onbekende-teamteksten` | **Admin** | Wachtrij met teamteksten die de pipeline niet kon koppelen (`?status=open\|afgehandeld\|genegeerd&limit=100`) (#1568) |
 | `PUT` | `/beheer/onbekende-teamteksten/{id}/status` | **Admin** | Wachtrijregel op `open`, `afgehandeld` of `genegeerd` zetten (`{ "status": ... }`) |
 | `PUT` | `/beheer/teamaliassen/{id}/valideer` | **Admin** | Alias goedkeuren of afwijzen (`{ "status": "validated"\|"rejected" }`); legt wie en wanneer vast |
-| `DELETE` | `/beheer/teamaliassen/{id}` | **Admin** | Alias definitief verwijderen |
+| `DELETE` | `/beheer/teamaliassen/{id}` | **Admin** | Persistently reject Sync aliases; physically delete other origins |
 | `GET` | `/beheer/theme` | **Admin** | Club-thema ophalen (kleuren + website-URL + `lightColors`/`darkColors`) — gefilterd op `X-Club-Code` header. De paletten zijn `null` zolang er geen licht/donker-set is ingesteld; de client valt dan terug op de vier platte kleuren |
 | `PUT` | `/beheer/theme` | **Admin** | Club-thema opslaan (`{ primary, secondary, accent, textOnPrimary, clubWebsiteUrl, faviconUrl, logoUrl, lightColors, darkColors }`) — gefilterd op `X-Club-Code` header. `lightColors`/`darkColors` zijn sleutel→hex-objecten voor het volledige palet per modus (#1254); elke sleutel moet `^[a-z][a-zA-Z0-9-]{0,39}$` zijn en elke waarde `#rrggbb` of `#rrggbbaa`, maximaal 40 per palet. `faviconUrl`/`logoUrl` zijn optioneel; een ingevulde waarde wordt getrimd, `http://` wordt als `https://` opgeslagen, en daarna moet het een absolute `https://`-URL van maximaal 300 tekens zijn (anders HTTP 400) |
 | `POST` | `/beheer/theme/extract?url=` | **Admin** | Kleuren extraheren uit club-website (SSRF-beschermd) |
@@ -1178,8 +1178,7 @@ curl -X DELETE http://localhost:7094/api/beheer/teamaliassen/12
 { "deleted": true, "id": 12 }
 ```
 
-Een verwijderde rij laat geen auditregel achter in de tabel, en het applicatielog bevat alleen het alias-id: geen
-object-ID of naam van de beheerder (AVG).
+Sync-origin aliases retain their existing row with status `rejected`, so canonicalization cannot validate the association again. Other origins are physically deleted. The response shape remains unchanged. Rejection blocks the alias association, not an independent canonical-name match. Both actions are strictly scoped to the current club; logs contain only the alias identifier, without the administrator identity.
 
 ### DELETE /api/beheer/leermomenten/{id}
 

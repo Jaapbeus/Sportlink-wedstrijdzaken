@@ -30,10 +30,13 @@ public static class PostgresLeeftijdNormalisatie
         CASE
             WHEN UPPER(TRIM({kolom})) = 'SENIOREN'
                 THEN '1-99'
+            WHEN UPPER(TRIM({kolom})) = '1-99'
+                THEN '1-99'
             WHEN UPPER(TRIM({kolom})) IN ('SENIOREN VROUWEN', 'SENIOREN VR')
                 THEN 'VR'
             WHEN regexp_replace({kolom}, '\D', '', 'g') <> ''
                 THEN (CASE WHEN {kolom} ILIKE '%Meiden%' OR {kolom} ILIKE '%Meisjes%'
+                                OR UPPER(TRIM({kolom})) ~ '^MO[0-9]'
                            THEN 'MO' ELSE 'JO' END) || regexp_replace({kolom}, '\D', '', 'g')
             ELSE
                 REPLACE(REPLACE(REPLACE({kolom}, 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
