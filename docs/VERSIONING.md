@@ -117,7 +117,7 @@ na een release.
   ✅ onder `Changed`, met een expliciete waarschuwing. En: die mag **niet in dezelfde release** als
   de code die hem nodig heeft — de migratie draait immers vóór de nieuwe code live is. Zie
   `docs/ARCHITECTUUR-DATABASE-TIERS.md` §57.
-- De smoke test in `deploy.yml` faalt op een niet-lege `pendingMigrations` in `GET /api/health`.
+- De smoke test in `deploy.yml` faalt bij `database != online` wanneer aanwezig, `settingsReady=false` of `migrationsCurrent=false`; schema- en TLS-vlaggen zijn alleen waarschuwingen. Detailwaarden staan achter admin-only `GET /api/beheer/health`.
 
 ---
 
@@ -320,8 +320,8 @@ Zet alle drie de velden synchroon op het volledige 4-cijferige nummer in **alle 
 
 > **De Postgres-csproj wordt structureel vergeten.** Een wijziging die alleen die tier raakt, raakt
 > geen van de andere twee bestanden — en niets waarschuwt ervoor. Dat ging mis bij #859, #952 en
-> #939 (alle drie gecorrigeerd). Controleer bij twijfel het veld `version` in de respons van
-> `GET /api/health`: dat komt van de tier die daadwerkelijk draait.
+> #939 (alle drie gecorrigeerd). Controleer bij twijfel het veld `version` van `GET /api/health`; tierherkomst staat achter
+> de admin-poort op `GET /api/beheer/health`.
 
 Verifieer in één regel dat alle drie gelijk staan:
 

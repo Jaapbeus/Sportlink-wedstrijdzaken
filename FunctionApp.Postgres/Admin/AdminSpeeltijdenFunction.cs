@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
-using Newtonsoft.Json;
 using Npgsql;
+using Planner.Endpoints.Http;
 
 namespace FunctionApp.Postgres.Admin;
 
@@ -30,10 +30,8 @@ public static class AdminSpeeltijdenFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/speeltijden")] HttpRequest req,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminSpeeltijdenPost"), "speeltijd toevoegen",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<SpeeltijdDto>(req, async dto =>
             {
-                var dto = JsonConvert.DeserializeObject<SpeeltijdDto>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
                 if (dto == null || string.IsNullOrWhiteSpace(dto.Leeftijd))
                     return new BadRequestObjectResult(new { error = "Leeftijd is vereist" });
                 if (dto.WedstrijdTotaal <= 0)
@@ -51,7 +49,7 @@ public static class AdminSpeeltijdenFunction
                 {
                     return new ConflictObjectResult(new { error = "Leeftijdscategorie bestaat al" });
                 }
-            });
+            }));
 
     [Function("AdminSpeeltijdenPut")]
     public static Task<IActionResult> Put(
@@ -59,10 +57,8 @@ public static class AdminSpeeltijdenFunction
         string leeftijd,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminSpeeltijdenPut"), "speeltijd bijwerken",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<SpeeltijdDto>(req, async dto =>
             {
-                var dto = JsonConvert.DeserializeObject<SpeeltijdDto>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
                 if (dto == null)
                     return new BadRequestObjectResult(new { error = "Ongeldige request body" });
                 if (dto.WedstrijdTotaal <= 0)
@@ -75,7 +71,7 @@ public static class AdminSpeeltijdenFunction
                     clubCode, PostgresDatabaseConfig.ConnectionString);
                 if (rows == 0) return new NotFoundObjectResult(new { error = "Leeftijdscategorie niet gevonden" });
                 return new OkObjectResult(new { updated = leeftijd });
-            });
+            }));
 
     [Function("AdminSpeeltijdenDelete")]
     public static Task<IActionResult> Delete(

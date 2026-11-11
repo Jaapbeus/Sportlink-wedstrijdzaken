@@ -56,6 +56,42 @@ public class BerichtAntwoordGeneratorTests
 
     // ── Beschikbaarheid ──
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("Jan\r\nBcc: test")]
+    [InlineData("<b>Jan</b>")]
+    public void OntbrekendeVeiligeNaam_HeeftNatuurlijkeAanhefInAlleAntwoordvormen(string naam)
+    {
+        using var modus = new ReviewInstelling("false");
+        var email = new TestAfzender { AfzenderNaam = naam };
+        var antwoorden = new[]
+        {
+            BerichtAntwoordGenerator.BouwBeschikbaarheidAntwoord(new TestBeschikbaarheid(), Classificatie(), email, Voetnoot).body,
+            BerichtAntwoordGenerator.BouwHerplanAntwoord(null, null, Classificatie(), email, Voetnoot).body,
+            BerichtAntwoordGenerator.BouwAangepasteAntwoord(new TestSjabloon("test", "Antwoord", "{{aanhef}} {{voornaam}},\n\nTekst"), Classificatie(), email, Voetnoot).body
+        };
+        foreach (var body in antwoorden)
+        {
+            body.Split('\n')[0].Should().MatchRegex("^Goede(morgen|middag|navond),$");
+            body.Should().NotContain("Bcc:").And.NotContain("<b>");
+        }
+    }
+
+    [Fact]
+    public void InterneReview_BewaartVeiligHetOorspronkelijkeAdres()
+    {
+        using var modus = new ReviewInstelling("true");
+        var email = new TestAfzender { Afzender = "noreply@allstars-fc.test" };
+        var body = BerichtAntwoordGenerator.BouwHerplanAntwoord(null, null, Classificatie(), email, Voetnoot).body;
+        body.Should().Contain("Originele afzender: Jan de Vries (noreply@allstars-fc.test)");
+        email.Afzender = "<script>\r\nkop";
+        BerichtAntwoordGenerator.BouwHerplanAntwoord(null, null, Classificatie(), email, Voetnoot).body
+            .Should().Contain("adres niet beschikbaar").And.NotContain("<script>");
+        email.Afzender = "<trainer@voorbeeld.nl>";
+        BerichtAntwoordGenerator.BouwHerplanAntwoord(null, null, Classificatie(), email, Voetnoot).body
+            .Should().Contain("&lt;trainer@voorbeeld.nl&gt;");
+    }
+
     [Fact]
     public void Beschikbaar_MetToewijzing_NoemtVeldTijdEnEinde()
     {
@@ -78,13 +114,14 @@ public class BerichtAntwoordGeneratorTests
             Beschikbaar = true,
             Toewijzing = Slot(5, "10:00"),
             BeschikbareVensters = [Venster(1, "09:00", "12:00"), Venster(2, "09:00", "12:00"), Venster(3, "09:00", "12:00"), Venster(4, "09:00", "12:00")],
-            Waarschuwingen = ["Eerste.", "Tweede."]
+            Waarschuwingen = ["Eerste.", "Tweede. Controleer https://example.com", "Mail trainer@voorbeeld.nl"]
         };
 
         var (_, body) = BerichtAntwoordGenerator.BouwBeschikbaarheidAntwoord(response, Classificatie("10:00"), Email, Voetnoot);
 
         body.Should().Contain("De wedstrijd eindigt om 11:45. Er zijn op deze dag nog diverse andere mogelijkheden.");
-        body.Should().Contain("\n\nLet op: Eerste. Tweede.");
+        body.Should().Contain("\n\nLet op: Eerste. Tweede. Controleer");
+        body.Should().NotContain("https://").And.NotContain("trainer@").And.NotContain("voorbeeld.nl");
     }
 
     [Fact]
@@ -153,6 +190,18 @@ public class BerichtAntwoordGeneratorTests
         var (_, body) = BerichtAntwoordGenerator.BouwBeschikbaarheidAntwoord(response, Classificatie(), Email, Voetnoot);
 
         body.Should().Contain($"Het team speelt al om 10:00.\n\nHierdoor kan op {DatumTekst} geen oefenwedstrijd worden ingepland.");
+    }
+
+    [Fact]
+    public void BouwAangepasteAntwoord_OnveiligModelOnderwerpValtTerugOpVeiligeReplyOnderwerp()
+    {
+        var email = new TestAfzender { Onderwerp = "Vraag\r\nBcc: test", AfzenderNaam = "Jan de Vries" };
+        var template = new TestSjabloon("test", "https://example.com", "Antwoord");
+
+        var (onderwerp, _) = BerichtAntwoordGenerator.BouwAangepasteAntwoord(
+            template, Classificatie(), email, Voetnoot);
+
+        onderwerp.Should().Be("Re: bericht");
     }
 
     [Fact]
@@ -373,10 +422,13 @@ public class BerichtAntwoordGeneratorTests
             .Should().Contain("Dit verzoek vereist handmatige afhandeling en is ter beoordeling bij de coördinator neergelegd.");
         BerichtAntwoordGenerator.BouwFoutAntwoord(Email, Classificatie(), Voetnoot).body
             .Should().Contain("Er is een fout opgetreden bij het verwerken van je verzoek.");
+        // #1861: één wedervraag om het eigen team, met en zonder tegenstander.
+        const string wedervraag = "Uit je bericht kunnen we niet opmaken om welk team van ons het gaat. "
+            + "Laat je ons weten om welk team het gaat? Dan controleren we de beschikbaarheid voor je.";
         BerichtAntwoordGenerator.BouwTeamOnbekendAntwoord("Ander FC", Classificatie(), Email, Voetnoot).body
-            .Should().Contain("We kunnen de wedstrijd van Ander FC niet vinden in ons programma. Tegen welk van onze teams zou deze wedstrijd zijn?");
+            .Should().Contain(wedervraag).And.NotContain("niet vinden in ons programma");
         BerichtAntwoordGenerator.BouwTeamOnbekendAntwoord("", Classificatie(), Email, Voetnoot).body
-            .Should().Contain("We kunnen de wedstrijd van  niet vinden");
+            .Should().Contain(wedervraag);
     }
 
     [Fact]
@@ -515,10 +567,11 @@ public class BerichtAntwoordGeneratorTests
             var (_, standaard) = BerichtAntwoordGenerator.BouwBuitenScopeAntwoord(Email, Voetnoot);
             var (_, sjabloon) = BerichtAntwoordGenerator.BouwAangepasteAntwoord(new TestSjabloon("sleutel", "", "Tekst."), Classificatie(), Email, Voetnoot);
 
-            standaard.Should().StartWith("=== REVIEW MODE ===\nOriginele afzender: trainer@voorbeeld.nl\nOnderwerp: Beschikbaarheid\nClassificatie: BuitenScope\n==================\n\n");
-            sjabloon.Should().StartWith("=== REVIEW MODE ===\nOriginele afzender: trainer@voorbeeld.nl\nOnderwerp: Beschikbaarheid\nClassificatie: BeschikbaarheidCheck\nTemplate: sleutel\n==================\n\nTekst.");
+            standaard.Should().StartWith("=== REVIEW MODE ===\nOriginele afzender: Jan de Vries (trainer@voorbeeld.nl)\nOnderwerp: Beschikbaarheid\nClassificatie: BuitenScope\n==================\n\n");
+            sjabloon.Should().StartWith("=== REVIEW MODE ===\nOriginele afzender: Jan de Vries (trainer@voorbeeld.nl)\nOnderwerp: Beschikbaarheid\nClassificatie: BeschikbaarheidCheck\nTemplate: sleutel\n==================\n\nTekst.");
+            standaard.Should().Contain("trainer@voorbeeld.nl");
 
-            Environment.SetEnvironmentVariable(EmailReviewModus.InstellingNaam, "nee");
+            Environment.SetEnvironmentVariable(EmailReviewModus.InstellingNaam, "false");
             BerichtAntwoordGenerator.BouwBuitenScopeAntwoord(Email, Voetnoot).body.Should().NotContain("REVIEW MODE");
         }
         finally
@@ -526,4 +579,11 @@ public class BerichtAntwoordGeneratorTests
             Environment.SetEnvironmentVariable(EmailReviewModus.InstellingNaam, oud);
         }
     }
+    private sealed class ReviewInstelling : IDisposable
+    {
+        private readonly string? oud = Environment.GetEnvironmentVariable(EmailReviewModus.InstellingNaam);
+        public ReviewInstelling(string waarde) => Environment.SetEnvironmentVariable(EmailReviewModus.InstellingNaam, waarde);
+        public void Dispose() => Environment.SetEnvironmentVariable(EmailReviewModus.InstellingNaam, oud);
+    }
+
 }

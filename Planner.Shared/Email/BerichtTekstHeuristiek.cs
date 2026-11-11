@@ -23,12 +23,13 @@ public static class BerichtTekstHeuristiek
     public static DateOnly? EerstvolgendVoorkomen(int dag, int maand)
     {
         const int verledenTolerantieDagen = 30;
-        var ondergrens = DateOnly.FromDateTime(DateTime.Today).AddDays(-verledenTolerantieDagen);
+        var vandaag = NederlandseBedrijfsKlok.Vandaag();
+        var ondergrens = vandaag.AddDays(-verledenTolerantieDagen);
 
         for (int jaarOffset = 0; jaarOffset <= 1; jaarOffset++)
         {
             DateOnly kandidaat;
-            try { kandidaat = new DateOnly(DateTime.Today.Year + jaarOffset, maand, dag); }
+            try { kandidaat = new DateOnly(vandaag.Year + jaarOffset, maand, dag); }
             catch { continue; }
             if (kandidaat >= ondergrens) return kandidaat;
         }

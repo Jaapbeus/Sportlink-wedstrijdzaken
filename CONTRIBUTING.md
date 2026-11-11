@@ -292,6 +292,19 @@ Verwijst een reviewteruggave naar een besloten notitie, dan start de poort van `
 agent en gaat de beurt naar de eigenaar tot die notitie beschikbaar is. Beide workflows draaien op een
 `issues`-event vanaf de default branch en zijn dus pas actief na de eerstvolgende release naar `main`.
 
+**Overdracht en turn-label (#1858).** Een overdracht begint altijd met de fasecomment **op het issue**,
+ook als de reviewaanvraag zelf op de PR staat. Die comment bevat `Fase`/`Phase`, `Implementer`,
+`Reviewer`, `PR`, de volledige head-SHA van 40 tekens en `Volgende beurt`/`Next turn`. Pas daarna zet je
+het `turn:`-label (verwijderen en toevoegen in één aanroep). Een `status:`-label zet je nooit met de
+hand, behalve de gedocumenteerde Stap 5 uit `AGENTS.md`; `status: waiting-codex` bestaat niet meer.
+De workflow `beurt-invariant.yml` vergelijkt elke 15 minuten het label met de nieuwste vertrouwde
+overdracht (issue én gekoppelde PR) en plaatst bij een afwijking één signaalcomment: geen of meerdere
+`turn:`-labels, een label dat afwijkt van de volgende beurt, een label dat nog staat terwijl de overdracht
+geen volgende beurt noemt (merge door de implementer of eindfase), een onjuiste of verouderde head-SHA of een
+verouderd statuslabel. Hij beoordeelt elk open issue met een `turn:`-label, een open gekoppelde PR of ten minste één comment, ook als de overdracht lang geleden is. Noemt de nieuwste overdracht een PR die niet meer open is (gemerged of gesloten), dan is een ontbrekend `turn:`-label geen afwijking: dat werk is afgerond; vervolgwerk begint met een nieuwe overdracht. Hij wijzigt zelf geen labels; herstel doe je volgens de volgorde hierboven.
+Een schedule draait alleen vanaf de default branch: deze bewaking is dus pas actief na de eerstvolgende
+release naar `main`; tot die tijd is de overdrachtsvolgorde hierboven niet automatisch gecontroleerd.
+
 ### Security Gate
 
 De Security Gate job in CI is **leidend**. Zolang deze rood is, wordt een PR niet gemerged — ook niet als andere checks groen zijn. De gate controleert:

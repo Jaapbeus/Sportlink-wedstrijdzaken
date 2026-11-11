@@ -5,10 +5,10 @@ using Microsoft.Extensions.Logging;
 namespace FunctionApp.Postgres.Monitoring;
 
 /// <summary>
-/// Postgres-tier-tegenhanger van <c>FunctionApp/Monitoring/TableStorageNoodmailThrottleStore.cs</c>
-/// (#972 — port van EmailProcessorFunction). Woordelijke kopie: Azure Table Storage is
-/// DB-tier-onafhankelijk — gebruikt de bestaande <c>AzureWebJobsStorage</c>-opslagaccount (Azurite
-/// lokaal, de reguliere Functions-opslagaccount in productie), géén nieuwe Azure-resource.
+/// Implementeert de noodmail-throttle met Azure Table Storage, onafhankelijk van de databaseprovider.
+/// Gebruikt de bestaande <c>AzureWebJobsStorage</c>-verbinding (Azurite lokaal; de geconfigureerde
+/// Functions-opslag in de gedeployde app), zodat throttle-registratie ook bij een database-uitval
+/// beschikbaar blijft. Er wordt geen apart opslagaccount aangemaakt.
 /// </summary>
 public sealed class TableStorageNoodmailThrottleStore : INoodmailThrottleStore
 {

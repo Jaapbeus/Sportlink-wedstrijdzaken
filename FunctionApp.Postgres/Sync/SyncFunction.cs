@@ -50,6 +50,10 @@ public static class SyncFunction
             // categorie toont in plaats van "Configuratie/status".
             uitkomst.GooiAlsMislukt();
         }
+        catch (SyncAlreadyRunningException)
+        {
+            log.LogInformation("Synchronization skipped because another run owns the shared staging area.");
+        }
         catch (Exception ex)
         {
             // Loggen én opnieuw gooien: zonder de rethrow slikt deze catch de uitzondering op en
@@ -124,6 +128,11 @@ public static class SyncFunction
                     return SyncMatchesAntwoordCore.Bepaal(uitkomst, fromWeekOffset, toWeekOffset,
                         $"Sync voltooid. WeekOffset-bereik: {fromWeekOffset} tot {toWeekOffset}.");
                 }
+                catch (SyncAlreadyRunningException)
+                {
+                    return new ObjectResult(new { status = "already running", message = SyncAlreadyRunningException.SafeMessage })
+                    { StatusCode = StatusCodes.Status409Conflict };
+                }
                 catch (Exception ex)
                 {
                     log.LogError(ex, "PostgresSyncMatchesHttp fout");
@@ -143,15 +152,15 @@ public static class SyncFunction
 
         var connectionString = PostgresDatabaseConfig.ConnectionString;
         var (sportlinkApiUrl, sportlinkClientId) = await GetSportlinkConfigAsync(connectionString, clubCode);
-        if (string.IsNullOrEmpty(sportlinkApiUrl))
+        if (!SportlinkDataserviceBasisUrl.TryGetCanonical(sportlinkApiUrl, out var canonicalSportlinkApiUrl))
         {
-            log.LogError("sportlinkapiurl is niet geconfigureerd.");
+            log.LogError("Sportlink data-service base URL is invalid.");
             return SyncUitkomst.Configuratie();
         }
 
         return await PostgresSyncPipeline.RunSyncAsync(
             fromWeekOffset, toWeekOffset,
-            sportlinkApiUrl, $"clientId={sportlinkClientId}",
+            canonicalSportlinkApiUrl, $"clientId={sportlinkClientId}",
             clubCode, connectionString, log);
     }
 

@@ -40,18 +40,25 @@ public static class SyncJobProcessor
             return;
         }
 
-        // #1676: een bericht dat buiten productie binnenkomt wordt niet uitgevoerd en niet opnieuw
-        // aangeboden; de job wordt als mislukt vastgelegd zodat de beheerder de reden ziet.
-        if (await OverslaanZonderUitgaandVerkeerAsync(job.JobId, log,
-                EgressGuard.ExternalIntegrationsAllowed, SyncJobsRepository.MarkCompletedAsync))
-            return;
-
         using var traceScope = log.BeginScope(new Dictionary<string, object> { ["SyncJobId"] = job.JobId });
-        await SyncJobsRepository.MarkRunningAsync(job.JobId);
-        log.LogInformation("SyncJobProcessor: job {JobId} gestart, range {From} .. {To}", job.JobId, job.WeekOffsetFrom, job.WeekOffsetTo);
+        if (!await global::Planner.Shared.Sync.SyncJobClaimCore.ExecuteIfClaimedAsync(
+                job.JobId, SyncJobsRepository.TryClaimPendingAsync, () => ProcessClaimedPostgresJobAsync(job, log)))
+        {
+            log.LogInformation("SyncJobProcessor: Postgres-job {JobId} is not pending and will be skipped", job.JobId);
+        }
+    }
 
+    private static async Task ProcessClaimedPostgresJobAsync(SyncJobMessage job, ILogger log)
+    {
+        log.LogInformation("SyncJobProcessor: Postgres job {JobId} claimed, range {From} .. {To}", job.JobId, job.WeekOffsetFrom, job.WeekOffsetTo);
         try
         {
+            // #1676: na het claimen wordt een bericht buiten productie niet uitgevoerd en
+            // als mislukt vastgelegd; een duplicaat kan die status niet overschrijven.
+            if (await OverslaanZonderUitgaandVerkeerAsync(job.JobId, log,
+                    EgressGuard.ExternalIntegrationsAllowed, SyncJobsRepository.MarkCompletedAsync))
+                return;
+
             var uitkomst = await SyncFunction.RunConfiguredSyncAsync(job.WeekOffsetFrom, job.WeekOffsetTo, log);
             if (uitkomst.GedeeltelijkMislukt)
             {
@@ -67,14 +74,19 @@ public static class SyncJobProcessor
         catch (Exception ex)
         {
             log.LogError(ex, "SyncJobProcessor: job {JobId} mislukt", job.JobId);
-            await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false, errorMessage: ex.Message);
+            await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false,
+                errorMessage: FoutmeldingVoorStatus(ex));
         }
     }
 
+    internal static string FoutmeldingVoorStatus(Exception exception) =>
+        $"Sync mislukt ({exception.GetType().Name}); raadpleeg het functielog voor details.";
+
     /// <summary>
     /// Geeft <c>true</c> als de job buiten productie niet mag draaien; de job staat dan als mislukt
-    /// in syncjobs en <see cref="Run"/> keert terug vóór MarkRunning en RunConfiguredSyncAsync.
-    /// Poort en opslag als parameters, zodat een unit-test dit zonder database bewijst (#1676).
+    /// in syncjobs en <see cref="Run"/> keert terug vóór RunConfiguredSyncAsync. De job is dan al
+    /// door de pending-to-running-overgang geclaimd. Poort en opslag als parameters, zodat een
+    /// unit-test dit zonder database bewijst (#1676).
     /// </summary>
     internal static async Task<bool> OverslaanZonderUitgaandVerkeerAsync(
         Guid jobId, ILogger log, Func<bool> uitgaandVerkeerToegestaan,

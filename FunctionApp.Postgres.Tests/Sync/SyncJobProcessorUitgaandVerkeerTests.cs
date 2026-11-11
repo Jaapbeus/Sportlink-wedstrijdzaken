@@ -9,10 +9,20 @@ namespace FunctionApp.Postgres.Tests.Sync;
 /// #1676, Postgres-tier: zonder toestemming voor uitgaand verkeer zet de queue-verwerking de job
 /// op mislukt en keert <see cref="SyncJobProcessor.Run"/> terug vóór RunConfiguredSyncAsync.
 /// Geen database nodig: de opslag is een lijst. De aanroepvolgorde in Run (helper vóór
-/// MarkRunningAsync) bewaakt scripts/ci/check-egressguard-dekking.sh in de brontekst.
+/// sync-aanroep) bewaakt scripts/ci/check-egressguard-dekking.sh in de brontekst.
 /// </summary>
 public class SyncJobProcessorUitgaandVerkeerTests
 {
+    [Fact]
+    public void FoutmeldingVoorStatus_BewaartGeenExceptionDetails()
+    {
+        var message = SyncJobProcessor.FoutmeldingVoorStatus(
+            new InvalidOperationException("https://provider.invalid/path?token=secret"));
+
+        message.Should().Contain(nameof(InvalidOperationException));
+        message.Should().NotContain("provider.invalid").And.NotContain("secret");
+    }
+
     [Fact]
     public async Task ZonderToestemming_WordtJobMislukt_EnGeenSync()
     {

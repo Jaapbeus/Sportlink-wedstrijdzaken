@@ -14,7 +14,7 @@
 
 # --- Anoniem -------------------------------------------------------------------------------------
 anoniem  Health  FunctionApp.Postgres/HealthFunction.cs          Publieke health-check zonder foutdetails (#859/#863); de deploy-smoketest leunt erop.
-anoniem  Health  FunctionApp/Planner/PlannerFunction.cs          Idem, SQL Server-tier.
+anoniem  Health  FunctionApp/Planner/HealthFunction.cs            Idem, SQL Server-tier.
 
 # --- Directe poort: bewust buiten de wrapper (#1350) --------------------------------------------
 # Beide raken de database niet (geocode) of pas ná een goedkope vormcontrole (theme/extract); de

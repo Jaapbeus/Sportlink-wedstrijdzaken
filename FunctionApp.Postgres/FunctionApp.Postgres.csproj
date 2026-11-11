@@ -13,9 +13,9 @@
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>.</DockerfileContext>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Version>3.16.0.2</Version>
-    <AssemblyVersion>3.16.0.2</AssemblyVersion>
-    <FileVersion>3.16.0.2</FileVersion>
+    <Version>3.16.0.11</Version>
+    <AssemblyVersion>3.16.0.11</AssemblyVersion>
+    <FileVersion>3.16.0.11</FileVersion>
   </PropertyGroup>
   <ItemGroup>
     <!-- Test-project heeft toegang tot internal members — zelfde patroon als de SQL Server-tier
@@ -61,6 +61,12 @@
          AGENTS.md-architectuurregel). Zelfde versies als de SQL Server-tier (centraal beheerd). -->
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
     <PackageReference Include="OpenAI" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Graph-mailboxmutaties gebruiken dezelfde SDK en foutgrens in beide hosts. -->
+    <Compile Include="../FunctionApp/Email/GraphMailboxMutations.cs" Link="Email/GraphMailboxMutations.cs" />
+    <!-- Eén providercompositie voor beide hosts; de providerpakketten zijn al in beide tiers aanwezig. -->
+    <Compile Include="../FunctionApp/Infrastructure/OpenAiChatClientRegistration.cs" Link="Infrastructure/OpenAiChatClientRegistration.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Update="host.json">

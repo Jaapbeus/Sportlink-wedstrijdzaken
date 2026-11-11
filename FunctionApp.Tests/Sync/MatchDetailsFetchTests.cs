@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Moq.Protected;
 using SportlinkFunction;
+using SportlinkFunction.Planner;
 using System.Net;
 using Xunit;
 
@@ -17,6 +18,13 @@ namespace FunctionApp.Tests.Sync;
 /// </summary>
 public class MatchDetailsFetchTests
 {
+    [Fact]
+    public void ProductionDataServiceClients_DoNotFollowRedirects()
+    {
+        SportlinkSyncPipeline.DataserviceHandler.AllowAutoRedirect.Should().BeFalse();
+        SportlinkApiClient.DataserviceHandler.AllowAutoRedirect.Should().BeFalse();
+    }
+
     private static HttpClient MakeClient(HttpStatusCode statusCode)
     {
         var handler = new Mock<HttpMessageHandler>();
@@ -78,6 +86,17 @@ public class MatchDetailsFetchTests
             "http://test/wedstrijd-informatie?wedstrijdcode=2", "TEST", log, client, TimeSpan.Zero);
 
         result.Should().BeFalse("HTTP 500 moet false teruggeven (#464)");
+    }
+
+    [Fact]
+    public async Task FetchAndStoreMatchDetails_Redirect_RetourneertFalse()
+    {
+        using var client = MakeClient(HttpStatusCode.Redirect);
+
+        var result = await SportlinkSyncPipeline.FetchAndStoreMatchDetailsAsync(
+            "https://data.sportlink.com/wedstrijd-informatie?clientId=fixture", "TEST", NullLogger.Instance, client);
+
+        result.Should().BeFalse("a redirect must not count as a completed data-service read");
     }
 
     [Fact]

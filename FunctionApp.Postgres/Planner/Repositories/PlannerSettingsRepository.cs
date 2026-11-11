@@ -52,26 +52,20 @@ internal static class PlannerSettingsRepository
     internal static async Task<Dictionary<string, Speeltijd>> GetSpeeltijdenLookupAsync(
         string connectionString, string clubCode)
     {
-        var result = new Dictionary<string, Speeltijd>(StringComparer.OrdinalIgnoreCase);
         await using var conn = new NpgsqlConnection(connectionString);
         await conn.OpenAsync();
+        return await GetSpeeltijdenLookupAsync(conn, null, clubCode);
+    }
+
+    internal static async Task<Dictionary<string, Speeltijd>> GetSpeeltijdenLookupAsync(
+        NpgsqlConnection conn, NpgsqlTransaction? transaction, string clubCode)
+    {
         await using var cmd = new NpgsqlCommand(
             "SELECT leeftijd, veldafmeting, wedstrijdtotaal, standaardvoorkeurtijd FROM public.speeltijden WHERE clubcode = @cc",
-            conn);
+            conn, transaction);
         cmd.Parameters.AddWithValue("cc", clubCode);
         await using var reader = await cmd.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
-        {
-            var leeftijd = reader.GetString(0);
-            result[leeftijd] = new Speeltijd
-            {
-                Leeftijd = leeftijd,
-                Veldafmeting = reader.GetDecimal(1),
-                WedstrijdTotaal = reader.GetInt32(2),
-                StandaardVoorkeurTijd = reader.IsDBNull(3) ? null : TimeOnly.FromTimeSpan(reader.GetTimeSpan(3))
-            };
-        }
-        return result;
+        return await Speeltijd.ReadLookupAsync(reader);
     }
 
     /// <summary>

@@ -1067,31 +1067,33 @@ CREATE INDEX IF NOT EXISTS "IX_matches_clubcode" ON his."matches" ("clubcode");
             }
 
             $health = $funcHost.Health
+            try { $healthDetails = Invoke-RestMethod "$hostBasis/api/beheer/health" -TimeoutSec 15 -ErrorAction Stop } catch { $healthDetails = $null }
             Save-Artifact -Naam 'g5-health.json' -Inhoud $health | Out-Null
+            Save-Artifact -Naam 'g5-health-details.json' -Inhoud $healthDetails | Out-Null
 
             # Herkomst komt uit build-time assembly-metadata (#863) en is dus geen runtime-gok.
-            if ("$($health.tier)" -eq $Tier) {
-                Add-Check -Gate 'G5' -Id 'G5.health.tier' -Status 'pass' -Actual "$($health.tier)"
+            if ($healthDetails -and "$($healthDetails.tier)" -eq $Tier) {
+                Add-Check -Gate 'G5' -Id 'G5.health.tier' -Status 'pass' -Actual "$($healthDetails.tier)"
             } else {
-                Add-Check -Gate 'G5' -Id 'G5.health.tier' -Status 'fail' -Expected $Tier -Actual "$($health.tier)"
+                Add-Check -Gate 'G5' -Id 'G5.health.tier' -Status 'fail' -Expected $Tier -Actual "$($healthDetails.tier)"
             }
 
-            if ("$($health.provider)" -eq 'Npgsql') {
-                Add-Check -Gate 'G5' -Id 'G5.health.provider' -Status 'pass' -Actual "$($health.provider)"
+            if ($healthDetails -and "$($healthDetails.provider)" -eq 'Npgsql') {
+                Add-Check -Gate 'G5' -Id 'G5.health.provider' -Status 'pass' -Actual "$($healthDetails.provider)"
             } else {
-                Add-Check -Gate 'G5' -Id 'G5.health.provider' -Status 'fail' -Expected 'Npgsql' -Actual "$($health.provider)"
+                Add-Check -Gate 'G5' -Id 'G5.health.provider' -Status 'fail' -Expected 'Npgsql' -Actual "$($healthDetails.provider)"
             }
 
             # De applicatie zegt welke serverversie ze ziet; de container weet welke versie hij
             # draait. Alleen als die twee gelijk zijn praat de applicatie met DEZE database.
             $echteVersie = (Invoke-Psql -ContainerName $PgContainer -Password $pgPassword `
                             -Database 'sportlink_selftest' -Tuples -Sql 'SHOW server_version;').Output
-            if ("$($health.database)" -eq 'online' -and "$($health.serverVersion)" -eq "$echteVersie") {
-                Add-Check -Gate 'G5' -Id 'G5.health.serverversie' -Status 'pass' -Actual "$($health.serverVersion)" `
+            if ("$($health.database)" -eq 'online' -and "$($healthDetails.serverVersion)" -eq "$echteVersie") {
+                Add-Check -Gate 'G5' -Id 'G5.health.serverversie' -Status 'pass' -Actual "$($healthDetails.serverVersion)" `
                     -Message 'Serverversie uit de applicatie komt overeen met wat de container zelf meldt.'
             } else {
                 Add-Check -Gate 'G5' -Id 'G5.health.serverversie' -Status 'fail' `
-                    -Expected "online / $echteVersie" -Actual "$($health.database) / $($health.serverVersion)"
+                    -Expected "online / $echteVersie" -Actual "$($health.database) / $($healthDetails.serverVersion)"
             }
 
             # Het sterkste bewijs, en het enige dat NIET van de applicatie zelf komt: de database
@@ -1324,6 +1326,13 @@ CREATE INDEX IF NOT EXISTS "IX_matches_clubcode" ON his."matches" ("clubcode");
                 $j = $r.Json
                 switch ($ep.Path) {
                     'api/health' {
+                        if ($j.PSObject.Properties.Name -contains 'settingsReady' -and $j.PSObject.Properties.Name -contains 'migrationsCurrent' -and -not ($j.PSObject.Properties.Name -contains 'serverVersion')) {
+                            Add-Check -Gate 'G6' -Id $id -Status 'pass' -Actual 'publieke readinessvelden; geen diagnostische details'
+                        } else {
+                            Add-Check -Gate 'G6' -Id $id -Status 'fail' -Expected 'readinessvlaggen zonder serverdetails' -Actual ($j | ConvertTo-Json -Compress)
+                        }
+                    }
+                    'api/beheer/health' {
                         if ("$($j.tier)" -eq $Tier) {
                             Add-Check -Gate 'G6' -Id $id -Status 'pass' -Actual "tier=$($j.tier)"
                         } else {

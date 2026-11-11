@@ -31,7 +31,8 @@ namespace FunctionApp.Postgres.Sync;
 /// </summary>
 internal static class PostgresSyncPipeline
 {
-    private static readonly HttpClient HttpClient = new();
+    internal static readonly HttpClientHandler DataserviceHandler = new() { AllowAutoRedirect = false };
+    private static readonly HttpClient HttpClient = new(DataserviceHandler);
 
     /// <summary>
     /// Draait de volledige synchronisatie en geeft terug of er deelstappen zijn mislukt.
@@ -49,6 +50,9 @@ internal static class PostgresSyncPipeline
         string clubCode, string connectionString,
         ILogger log, DateOnly? reconciliatieOndergrens = null)
     {
+        await using var stagingLease = await PostgresSyncStagingLease.TryAcquireAsync(connectionString)
+            ?? throw new SyncAlreadyRunningException();
+
         var uitkomst = new SyncUitkomst();
         // #1779: één herhaalbudget voor alle dataservice-GET's van deze run (begrenst een brede storing).
         var budget = new HerhaalBudget();
@@ -82,6 +86,22 @@ internal static class PostgresSyncPipeline
         await ReconcileVerdwenenAsync(orchestrator, clubCode, teamsFailed, matchesFailed,
             reconciliatieOndergrens ?? EersteTeReconcilierenDatum(VandaagInNederland()), log);
 
+        await RondAfNaMergeAsync(connectionString, clubCode, log);
+
+        if (!uitkomst.GedeeltelijkMislukt)
+            await SaveLastSyncTimestampAsync(connectionString, clubCode, log);
+        else
+            log.LogWarning("Sync gedeeltelijk mislukt — lastsynctimestamp NIET bijgewerkt");
+
+        return uitkomst;
+    }
+
+    /// <summary>
+    /// Stappen ná merge en reconciliatie, in vaste volgorde: plannerview, best-effort
+    /// teamcanonicalisatie en de ongeguarde markering van vervallen geplande wedstrijden.
+    /// </summary>
+    private static async Task RondAfNaMergeAsync(string connectionString, string clubCode, ILogger log)
+    {
         // Plannerview (#861/#819): CREATE OR REPLACE VIEW planner.alle_wedstrijden_op_veld_ruw.
         //
         // WAAROM HIER EN NIET IN EEN MIGRATIE. De view selecteert uit his.matches/his.teams, en die
@@ -120,13 +140,6 @@ internal static class PostgresSyncPipeline
 
         // Ongeguard, met opzet — zie klasse-doc-comment hierboven.
         await PlannerMatchRepository.MarkeerVervallenGeplandeWedstrijdenAsync(connectionString, clubCode, log);
-
-        if (!uitkomst.GedeeltelijkMislukt)
-            await SaveLastSyncTimestampAsync(connectionString, clubCode, log);
-        else
-            log.LogWarning("Sync gedeeltelijk mislukt — lastsynctimestamp NIET bijgewerkt");
-
-        return uitkomst;
     }
 
     private static async Task<bool> FetchTeamsPhaseAsync(

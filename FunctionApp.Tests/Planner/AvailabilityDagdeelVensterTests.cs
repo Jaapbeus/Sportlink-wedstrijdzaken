@@ -80,4 +80,19 @@ public class AvailabilityDagdeelVensterTests
     [Fact]
     public void OnbekendDagdeel_WordtGenegeerd()
         => Bouw("nacht").GecontroleerdDagdeel.Should().BeNull();
+
+    [Fact]
+    public void Ochtend_BezettingBuitenDagdeel_BlijftBinnenDagdeel()
+    {
+        var windows = Bouw("ochtend", ("18:00", "19:00")).BeschikbareVensters!;
+        windows.Should().ContainSingle();
+        windows[0].Tot.Should().Be("12:00");
+    }
+
+    [Fact]
+    public void OverlappendeBezettingen_LatenGatNietTeruglopen()
+    {
+        var windows = Bouw("ochtend", ("09:00", "11:30"), ("09:30", "10:00")).BeschikbareVensters!;
+        windows.Should().OnlyContain(w => w.Van == "08:30" || string.CompareOrdinal(w.Van, "11:40") >= 0);
+    }
 }

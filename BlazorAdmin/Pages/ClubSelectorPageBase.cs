@@ -4,12 +4,11 @@ using Microsoft.AspNetCore.Components;
 namespace BlazorAdmin.Pages;
 
 /// <summary>
-/// Gedeelde clubwissel-lifecycle voor admin-pagina's (#1328): abonneren op
-/// <see cref="ClubSelectorService.OnChange"/> in <see cref="OnInitialized"/>, de callback op de
-/// UI-thread laten lopen via <c>InvokeAsync</c>, afronden met <c>StateHasChanged</c>, en het
-/// abonnement weer opzeggen bij <see cref="Dispose"/>. Twaalf pagina's implementeerden dit
-/// woordelijk identiek; alleen wát er bij een clubwissel herladen moet worden verschilt per
-/// pagina — dat hoort in <see cref="OnClubChangedAsync"/>.
+/// Centraliseert de clubwissel-lifecycle voor admin-pagina's: abonneert op
+/// <see cref="ClubSelectorService.OnChange"/> bij initialisatie, voert de callback op de UI-thread
+/// uit via <c>InvokeAsync</c>, ververst de pagina met <c>StateHasChanged</c> en zegt het abonnement
+/// op bij <see cref="Dispose"/>. Pagina-specifieke herlaadactie staat in
+/// <see cref="OnClubChangedAsync"/>.
 /// </summary>
 /// <remarks>
 /// Een pagina die overerft van deze basis voegt <c>@inherits ClubSelectorPageBase</c> toe aan de
@@ -45,6 +44,18 @@ public abstract class ClubSelectorPageBase : ComponentBase, IDisposable
     /// bij een clubwissel alleen hoeven te hertekenen, zoals <c>TestData/Wedstrijden</c>).
     /// </summary>
     protected virtual Task OnClubChangedAsync() => Task.CompletedTask;
+
+    protected async Task LaadClubgebondenBooleanAsync(
+        LookupGeneratieGuard guard,
+        Func<Task<bool>> ophalenAsync,
+        Action<bool> toepassen)
+    {
+        var clubCode = ClubSelector.SelectedClubCode;
+        var generatie = guard.Start(clubCode);
+        var waarde = await ophalenAsync();
+        if (guard.IsActueel(generatie) && ClubSelector.SelectedClubCode == clubCode)
+            toepassen(waarde);
+    }
 
     public void Dispose()
     {

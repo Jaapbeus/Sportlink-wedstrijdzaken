@@ -92,7 +92,15 @@ else
                                 <span class="text-muted small me-1" role="status">Opslaan…</span>
                             }
                             <button class="btn btn-sm btn-primary me-1" disabled="@opslagBezig" @onclick="() => Edit(s)">Bewerken</button>
-                            <button class="btn btn-sm btn-outline-danger" disabled="@opslagBezig" @onclick="() => DeleteAsync(s.Leeftijd)">Verwijderen</button>
+                            @if (_deleteConfirmation.IsOpenFor(s.Leeftijd))
+                            {
+                                <button class="btn btn-sm btn-danger" disabled="@opslagBezig" @onclick="() => DeleteAsync(s.Leeftijd)">Bevestig verwijderen</button>
+                                <button class="btn btn-sm btn-link" @onclick="AnnuleerVerwijderen">Annuleren</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm btn-outline-danger" disabled="@opslagBezig" @onclick="() => VraagVerwijderen(s.Leeftijd)">Verwijderen</button>
+                            }
                         </td>
                     </tr>
                     @if (inBewerking)

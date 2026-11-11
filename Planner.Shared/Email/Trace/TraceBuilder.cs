@@ -113,12 +113,21 @@ public sealed class TraceBuilder
         => Voeg(TraceCodes.TeamWissel, "Team en tegenstander verwisseld", "Genoemd team was de tegenstander",
             ZekerheidsNiveau.Zeker, new[] { D("team", nieuwTeam), D("tegenstander", nieuweTegenstander) });
 
-    /// <param name="tak"><c>opponent-op-datum</c>, <c>opponent-andere-datum</c> of <c>niet-gevonden</c>.</param>
+    /// <param name="tak"><c>opponent-op-datum</c> of <c>niet-gevonden</c>. Oudere traces kunnen nog
+    /// <c>opponent-andere-datum</c> bevatten; die tak bestaat sinds #1861 niet meer.</param>
     public TraceBuilder OpponentPad(string tak, bool wedstrijdGevonden)
         => Voeg(TraceCodes.OpponentPad, "Wedstrijd zoeken via tegenstander (#1139)",
             wedstrijdGevonden ? "Wedstrijd gevonden" : "Geen wedstrijd gevonden",
             wedstrijdGevonden ? ZekerheidsNiveau.Zeker : ZekerheidsNiveau.Onzeker,
             new[] { D("tak", tak), D("wedstrijdGevonden", JaNee(wedstrijdGevonden)) });
+
+    /// <summary>
+    /// De speelduur van het herkende team staat niet in <c>speeltijden</c> (#1861): de plannercheck is niet uit te
+    /// voeren en het bericht gaat naar handmatige planning. Bewust zonder de categorietekst zelf (modeluitvoer).
+    /// </summary>
+    public TraceBuilder SpeelduurOnbekend(bool categorieGenoemd)
+        => Voeg(TraceCodes.Speelduur, "Speelduur bepalen", "Niet bekend, handmatige planning", ZekerheidsNiveau.Mislukt,
+            new[] { D("categorieGenoemd", JaNee(categorieGenoemd)) });
 
     public TraceBuilder Datum(IReadOnlyCollection<string> datums)
         => Voeg(TraceCodes.Datum, "Datumverwerking", datums.Count switch
