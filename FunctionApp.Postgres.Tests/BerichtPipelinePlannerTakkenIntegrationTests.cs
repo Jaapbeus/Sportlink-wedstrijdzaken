@@ -138,7 +138,10 @@ public class BerichtPipelinePlannerTakkenIntegrationTests : IAsyncLifetime
         var resultaat = trace.Bouw();
         resultaat.Stappen.Select(x => x.Code).Should().Equal(
             "classificatie", "team-herkenning", "tegenstander-herkenning", "datum", "opponent-pad",
-            "opponent-team-herkenning", "eindoordeel");
+            "opponent-team-herkenning", "opponent-team-herkenning", "eindoordeel");
+        // Both participants must be checked before selecting one own team.
+        resultaat.Stappen.Where(x => x.Code == "opponent-team-herkenning").Select(x => x.Uitkomst)
+            .Should().Equal($"Herkend als {Team}", "Niet herkend");
         var pad = resultaat.Stappen.Single(x => x.Code == "opponent-pad");
         pad.Uitkomst.Should().Be("Wedstrijd gevonden");
         pad.Details["tak"].Should().Be("opponent-andere-datum");
@@ -439,7 +442,7 @@ public class BerichtPipelinePlannerTakkenIntegrationTests : IAsyncLifetime
 
     // ── helpers ──
 
-    private static DateOnly Over(int dagen) => DateOnly.FromDateTime(DateTime.Today).AddDays(dagen);
+    private static DateOnly Over(int dagen) => NederlandseBedrijfsKlok.Vandaag().AddDays(dagen);
 
     private static BerichtClassificatie Beschikbaarheid(string team, string tegenstander, DateOnly datum) => new()
     {

@@ -117,7 +117,7 @@ public class BerichtPipelineVerzetZonderDatumIntegrationTests : IAsyncLifetime
     [PostgresFact]
     public async Task TegenstanderZonderGewensteDatum_GeeftVrijeZaterdagenEnMarkeertBijlage()
     {
-        var vandaag = DateOnly.FromDateTime(DateTime.Today);
+        var vandaag = NederlandseBedrijfsKlok.Vandaag();
         var wedstrijdDatum = vandaag.AddDays(60);
         await ZetMatchAsync(wedstrijdDatum, "10:00");
 
@@ -171,7 +171,7 @@ public class BerichtPipelineVerzetZonderDatumIntegrationTests : IAsyncLifetime
     [PostgresFact]
     public async Task GeenKnvbStandaardRegio_ValtTerugOpStandaardHerplanpad()
     {
-        var vandaag = DateOnly.FromDateTime(DateTime.Today);
+        var vandaag = NederlandseBedrijfsKlok.Vandaag();
         var wedstrijdDatum = vandaag.AddDays(60);
         await ZetMatchAsync(wedstrijdDatum, "10:00");
 
