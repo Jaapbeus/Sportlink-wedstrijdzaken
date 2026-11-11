@@ -12,7 +12,7 @@ Beide mogen implementeren en reviewen; per taak precies één implementer, de an
 
 1. **Inventariseer vóór iedere wijziging**: branch, HEAD, werkboomstatus, `git worktree list --porcelain`, issues, open PR's; zoek open én gesloten issues vóór een nieuw issue. Bestaande wijzigingen zijn van hun eigenaar: nooit resetten of opruimen.
 2. **Leg de opdracht vast bij het issue**: implementer, unieke sessie, reviewer, fase (`implementatie`/`review`/`verwerking`/`eigenaarsbesluit`), scope, verwachte bestanden, branch, absoluut worktreepad, afhankelijkheden. De eigenaar wijst de implementer aan; neem geen toegewezen taak over (een directe opdracht aan een agent telt als toewijzing zolang geen claim botst). Elke implementatie, ook instructie-/docs-/CI-werk, heeft vooraf een issue met precies één `type:`-, `priority:`- en aantoonbaar `source:`-label (+ `discipline: architect` bij een architectuurbesluit); de PR verwijst sterk (`#nr`) ernaar.
-3. **Parallel werk** alleen met vooraf gescheiden scopes (bestanden, API-contracten, databaseschema's, gedeelde logica); herhaal de controle bij scope-uitbreiding en vóór commit/PR (geen tekstconflict ≠ functionele isolatie).
+3. Parallel: separate scopes; recheck scope growth/commit/PR. Fill free slots per check with safe assigned work within runtime cap (orchestrator included); reuse completed agents. No safe coding task: authorized status/CI/review. CONTRIBUTING.md.
 4. **Een issuecomment is geen lock**: wijs jezelf nooit aan op een leeg issue. Onduidelijk eigenaarschap: geen overlappende wijzigingen, eerst de eigenaar.
 5. **Wijzig alleen eigen werk**: geen commits, pushes, rebases, cherry-picks of cleanup op andermans branch/worktree; overdracht alleen met vastgelegde nieuwe implementer, sessie en status.
 

@@ -18,6 +18,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- The orchestration workflow now fills each available agent slot with safe assigned work, reuses completed agents, and reports verified capacity without bypassing ownership or review holds (#1860).
 - De clubkiezer, startpoort en initialisatie van de hoofdindeling staan nu in het aangrenzende partial-bestand; gedrag blijft gelijk (zie issue #1807).
 
 ### Changed

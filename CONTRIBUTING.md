@@ -46,6 +46,16 @@ screenshot of foutmelding kan die bevatten. Meld kwetsbaarheden via de private r
 5. De eigenaar beoordeelt de PR, eventueel samen met Claude Code
 6. Na goedkeuring wordt de PR gemerged
 
+### Parallel agent orchestration (#1860)
+
+At every orchestration checkpoint, inspect the live roster and assign each free runtime slot a safe, distinct task from the already authorized scope. Count the orchestrator in the session's concurrency limit. Reuse completed agents immediately, then verify they have accepted their next task before reporting the slot as active.
+
+Before assigning work, verify the issue's implementer, reviewer, phase, turn, worktree owner, dependencies, and file/API/schema/shared-logic boundaries. Do not overlap writers or take over owner-held or review-frozen work. Repeat the scope and ownership check whenever a task expands and before committing or opening a PR.
+
+A clean textual diff or a disjoint file list does not prove functional isolation; check shared callers, contracts, and data interactions as well.
+
+When no safe implementation task is available, assign independent read-only status or CI checks, or an exact-SHA review only when the issue turn and review protocol authorize it. A review stays read-only and frozen at its offered SHA. Keep monitoring assigned CI and review returns; do not describe a slot as occupied until its active task is verified. Report each active agent with its concrete task and evidence, and state when a slot has no eligible task.
+
 ### Wat zijn welkome bijdragen?
 
 - Bugfixes (met reproductiestappen in de issue)
