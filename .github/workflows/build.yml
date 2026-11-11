@@ -818,10 +818,22 @@ jobs:
       # blijft buiten deze filter: die leest de connectiestring van de Function App zelf.
       - name: SQL Server-integratietests (FunctionApp.Tests, tegen SportlinkFresh)
         run: |
-          sql_test_connection_string="Server=localhost,1433;Database=SportlinkFresh;User Id=sa;Password=${SA_PW};TrustServerCertificate=True;Pooling=false"
-          SQLSERVER_TEST_CONNECTION_STRING="$sql_test_connection_string" SqlConnectionString="$sql_test_connection_string" \
+          # Earlier fresh-database steps already create his.matches. Preserve those rows;
+          # create only missing sync tables from their owning project definitions.
+          for table in Matches MatchDetails; do
+            exists=$(SQLCMDPASSWORD="$SA_PW" docker exec -e SQLCMDPASSWORD sqlfresh /opt/mssql-tools18/bin/sqlcmd \
+              -S localhost -U sa -C -d SportlinkFresh -b -V 11 -h -1 -W \
+              -Q "SET NOCOUNT ON; SELECT IIF(OBJECT_ID('his.${table}', 'U') IS NULL, 0, 1)")
+            if [ "$exists" = "0" ]; then
+              docker cp "Database/his/Tables/${table}.sql" "sqlfresh:/tmp/${table}.sql"
+              SQLCMDPASSWORD="$SA_PW" docker exec -e SQLCMDPASSWORD sqlfresh /opt/mssql-tools18/bin/sqlcmd \
+                -S localhost -U sa -C -d SportlinkFresh -b -V 11 -i "/tmp/${table}.sql"
+            fi
+          done
+          CONN="Server=localhost,1433;Database=SportlinkFresh;User Id=sa;Password=${SA_PW};TrustServerCertificate=True;Pooling=false"
+          SQLSERVER_TEST_CONNECTION_STRING="$CONN" SqlConnectionString="$CONN" \
             dotnet test FunctionApp.Tests/FunctionApp.Tests.csproj --configuration Release --verbosity normal \
-              --filter "FullyQualifiedName~SqlServerSeizoenIntegrationTests|FullyQualifiedName~SqlServerHisRetentieIntegrationTests|FullyQualifiedName~SqlFeedbackStoreIntegrationTests|FullyQualifiedName~SqlTeambegeleidingInzageStoreIntegrationTests|FullyQualifiedName~AdminSettingsFieldContractTests|FullyQualifiedName~AdminVeldBeschikbaarheidConflictIntegrationTests|FullyQualifiedName~AdminEmailLogStatusCountsIntegrationTests|FullyQualifiedName~TeamCanonicalisatieAliasStateIntegrationTests|FullyQualifiedName~SqlServerLeeftijdNormalisatieSqlIntegrationTests|FullyQualifiedName~SqlServerSyncStagingLeaseIntegrationTests|FullyQualifiedName~SqlServerSyncJobsRepositoryIntegrationTests|FullyQualifiedName~SqlServerSyncSeasonRolloverIntegrationTests|FullyQualifiedName~SqlServerPlannerViewIntegrationTests"
+              --filter "FullyQualifiedName~SqlServerSeizoenIntegrationTests|FullyQualifiedName~SqlServerHisRetentieIntegrationTests|FullyQualifiedName~SqlFeedbackStoreIntegrationTests|FullyQualifiedName~SqlTeambegeleidingInzageStoreIntegrationTests|FullyQualifiedName~AdminSettingsFieldContractTests|FullyQualifiedName~AdminVeldBeschikbaarheidConflictIntegrationTests|FullyQualifiedName~AdminEmailLogStatusCountsIntegrationTests|FullyQualifiedName~AutoPlanExactApplyIntegrationTests|FullyQualifiedName~TeamCanonicalisatieAliasStateIntegrationTests|FullyQualifiedName~SqlServerLeeftijdNormalisatieSqlIntegrationTests|FullyQualifiedName~SqlServerSyncStagingLeaseIntegrationTests|FullyQualifiedName~SqlServerSyncJobsRepositoryIntegrationTests|FullyQualifiedName~SqlServerSyncSeasonRolloverIntegrationTests|FullyQualifiedName~SqlServerPlannerViewIntegrationTests"
 
       - name: Container opruimen
         if: always()

@@ -4590,29 +4590,82 @@
             "format": "date",
             "example": "2026-06-07"
           },
-          "bevestigingsToken": {
+          "bufferMinuten": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Algemene buffer in minuten; standaard 15."
+          },
+          "toewijzingen": {
+            "type": "array",
+            "nullable": true,
+            "description": "Alle zichtbare preview-rijen, inclusief niet-ingedeelde. Weglaten gebruikt het expliciete legacy-pad dat het plan opnieuw berekent.",
+            "items": {
+              "$ref": "#/components/schemas/AutoPlanToewijzing"
+            }
+          }
+        }
+      },
+      "AutoPlanToewijzing": {
+        "type": "object",
+        "required": [
+          "wedstrijdCode",
+          "huidigeVeld",
+          "huidigeTijd",
+          "veldNummer",
+          "tijd"
+        ],
+        "properties": {
+          "wedstrijdCode": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "huidigeVeld": {
             "type": "string",
             "nullable": true,
-            "description": "Token uit AutoPlanResponse ter verificatie"
+            "description": "Verwacht huidig veld inclusief eventuele subpositie."
+          },
+          "huidigeTijd": {
+            "type": "string",
+            "nullable": true,
+            "description": "Verwachte huidige aanvangstijd."
+          },
+          "veldNummer": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Doelveld; null samen met tijd null laat deze rij oningedeeld."
+          },
+          "veldSubpositie": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "A",
+              "B",
+              "A1",
+              "A2",
+              "B1",
+              "B2"
+            ],
+            "description": "Doelbaan; alleen toegestaan als de veldfractie overeenkomt."
+          },
+          "tijd": {
+            "type": "string",
+            "nullable": true,
+            "description": "Doelaanvangstijd exact in HH:mm; seconden, tijdsaanduidingen en witruimte worden geweigerd. Als de doelminuut gelijk is aan de verwachte brontijdminuut, blijven de bronseconden behouden, ook bij een veld- of subpositiewijziging. Null samen met veldNummer null laat deze rij oningedeeld."
           }
         }
       },
       "AutoPlanToepassenResponse": {
         "type": "object",
         "properties": {
-          "datum": {
-            "type": "string",
-            "format": "date"
-          },
-          "toegepast": {
+          "bijgewerkt": {
             "type": "integer",
-            "description": "Aantal wedstrijden waarvoor een slot is geboekt"
+            "description": "Aantal gewijzigde demowedstrijden"
           },
-          "overgeslagen": {
+          "mislukt": {
             "type": "integer",
-            "description": "Aantal wedstrijden waarvoor geen slot beschikbaar was"
+            "description": "Aantal mislukte demowedstrijden in het legacy-pad"
           },
-          "waarschuwingen": {
+          "fouten": {
             "type": "array",
             "items": {
               "type": "string"
@@ -12414,7 +12467,7 @@
         ],
         "operationId": "autoPlanToepassen",
         "summary": "Automatisch plan toepassen",
-        "description": "Past het gegenereerde auto-plan toe door wedstrijdsloten te boeken in\n`planner.GeplandeWedstrijden`. Schrijft alleen voor wedstrijden die nog\ngeen slot hebben.\n\n**Let op:** alleen beschikbaar als de club-code `ALLSTARS` is (testmodus).\nProductie-clubs ontvangen HTTP 403.\n",
+        "description": "Schrijft uitsluitend ALLSTARS-demowedstrijden in `his.matches` bij. Met\n`toewijzingen` valideert de server alle getoonde rijen, bronposities en\nexacte doelbanen tegen verse clubdata binnen dezelfde transactie als de\nupdates. Conflicten rollen de hele toepassing terug. Zonder deze lijst\nblijft het expliciete legacygedrag van herberekenen beschikbaar.\n\nEen previewrij met een onbekend team en zonder betrouwbare speelduur wordt\nniet meegeschreven en telt niet mee als veldbezetting bij deze controle;\nandere geldige toewijzingen worden wel gecontroleerd.\n\n**Let op:** alleen beschikbaar als de club-code `ALLSTARS` is (testmodus).\nProductie-clubs ontvangen HTTP 403.\n",
         "security": [
           {
             "easyAuth": []
@@ -12458,6 +12511,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "Bron gewijzigd of exact doelplan bevat een conflict; er is niets opgeslagen."
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"

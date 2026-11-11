@@ -1,6 +1,9 @@
 using FunctionApp.Postgres.Planner.Repositories;
 using Microsoft.Extensions.Logging;
 using Planner.Shared;
+using System.Data;
+using System.Globalization;
+using Npgsql;
 using Planner.Shared.Deel;
 using Planner.Shared.Planning;
 
@@ -324,7 +327,10 @@ internal static class AutoPlanService
         string connectionString, AutoPlanToepassenRequest request, string clubCode, ILogger log)
     {
         if (!clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Toepassen is alleen beschikbaar in testmodus (ALLSTARS).");
+            throw new AutoPlanApplyForbiddenException();
+
+        if (request.Toewijzingen != null)
+            return await ApplyExactAsync(connectionString, request);
 
         var planResponse = await AutoPlanAsync(
             connectionString, new AutoPlanRequest { Datum = request.Datum, BufferMinuten = request.BufferMinuten }, clubCode, log);
@@ -352,6 +358,46 @@ internal static class AutoPlanService
         log.LogInformation("AutoPlan toepassen {Datum}: {Bijgewerkt} bijgewerkt, {Mislukt} mislukt",
             LogWaarde.Schoon(request.Datum), response.Bijgewerkt, response.Mislukt);
         return response;
+    }
+
+    private static async Task<AutoPlanToepassenResponse> ApplyExactAsync(
+        string connectionString, AutoPlanToepassenRequest request)
+    {
+        if (!DateOnly.TryParseExact(request.Datum, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var datum) || request.BufferMinuten is < 0 or > 480)
+            throw new AutoPlanApplyConflictException();
+
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync();
+        await using var transaction = await conn.BeginTransactionAsync(IsolationLevel.Serializable);
+        try
+        {
+            var sources = await AllstarsTestDataRepository.GetAllMatchesForDatumAsync(conn, transaction, datum, "ALLSTARS");
+            var velden = await AllstarsTestDataRepository.GetAllstarsVeldenAsync(conn, transaction);
+            var speeltijden = await PlannerSettingsRepository.GetSpeeltijdenLookupAsync(conn, transaction, "ALLSTARS");
+            if (speeltijden.Count == 0)
+            {
+                var primary = PostgresAppSettings.GetSetting("clubCode")
+                    ?? throw new AutoPlanApplyConflictException();
+                speeltijden = await PlannerSettingsRepository.GetSpeeltijdenLookupAsync(conn, transaction, primary);
+            }
+            var buffers = await TeamRulesRepository.GetAllTeamBuffersAsync(conn, transaction, "ALLSTARS");
+            var choices = request.Toewijzingen!.Select(c => new AutoPlanApplyChoice(
+                c.WedstrijdCode, c.HuidigeVeld, c.HuidigeTijd, c.VeldNummer, c.VeldSubpositie, c.Tijd)).ToList();
+            var sourceRows = sources.Select(s => new AutoPlanApplySource(s.WedstrijdCode, s.Veld,
+                s.AanvangsTijd, s.TeamNaam, s.LeeftijdsCategorie, s.SportlinkSpeelduur)).ToList();
+            var writes = AutoPlanExactApply.Validate(choices, sourceRows, velden, speeltijden,
+                buffers, request.BufferMinuten ?? PlannerShared.StandardBufferMinutes);
+            var updated = await AutoPlanExactApply.PersistAsync(writes,
+                write => AllstarsTestDataRepository.UpdateAllstarsMatchAsync(conn, transaction,
+                    write.WedstrijdCode, write.VerwachtVeld, write.VerwachteTijd, write.Veld, write.Tijd),
+                () => transaction.CommitAsync());
+            return new AutoPlanToepassenResponse { Bijgewerkt = updated };
+        }
+        catch (PostgresException ex) when (AutoPlanApplyConflictException.IsTransactionConflict(ex.SqlState, null))
+        {
+            throw new AutoPlanApplyConflictException();
+        }
     }
 
     /// <summary>
@@ -387,7 +433,7 @@ internal static class AutoPlanService
             {
                 var leeftijd = !string.IsNullOrWhiteSpace(w.LeeftijdsCategorie)
                     ? w.LeeftijdsCategorie
-                    : (isAllstars ? ExtractLeeftijdFromTeamNaam(w.TeamNaam) ?? "" : "");
+                    : (isAllstars ? AutoPlanRegels.ExtractLeeftijdFromTeamNaam(w.TeamNaam) ?? "" : "");
                 speeltijden.TryGetValue(leeftijd, out var speeltijdInfo);
 
                 return new VeldbezettingItem(
@@ -443,18 +489,4 @@ internal static class AutoPlanService
     /// <summary>ISO-weekdag (1=maandag..7=zondag) — <see cref="DayOfWeek"/> telt zondag als 0.</summary>
     private static int IsoDagVanWeek(DateOnly datum) => (int)datum.DayOfWeek == 0 ? 7 : (int)datum.DayOfWeek;
 
-    private static string? ExtractLeeftijdFromTeamNaam(string? teamNaam)
-    {
-        if (string.IsNullOrWhiteSpace(teamNaam)) return null;
-        var parts = teamNaam.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length < 2) return null;
-        var second = parts[1];
-        var hyphenIdx = second.IndexOf('-');
-        if (hyphenIdx > 0) second = second[..hyphenIdx];
-        return second.ToUpperInvariant() switch
-        {
-            "HEREN" => "1-99", "DAMES" => "VR", "VROUWEN" => "VR",
-            _ => string.IsNullOrWhiteSpace(second) ? null : second
-        };
-    }
 }

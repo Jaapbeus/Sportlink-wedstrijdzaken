@@ -28,8 +28,11 @@ public partial class Instellingen : ClubSelectorPageBase
     private bool geocodeError;
 
     private List<UitgeslotenEmailAdresDto> uitgeslotenEmails = new();
+    private readonly LookupGeneratieGuard _loadGuard = new();
+    private readonly LookupGeneratieGuard _uitgeslotenEmailsLoadGuard = new();
     private UitgeslotenEmailAdresDto? nieuwAdres;
     private string? uitgeslotenMessage;
+    private readonly InlineBevestiging<(string? ClubCode, int Id)> _verwijderAdresBevestiging = new();
 
     // Sync + email log (verplaatst van Dashboard #344)
     private SyncStatusDto? _status;
@@ -54,10 +57,16 @@ public partial class Instellingen : ClubSelectorPageBase
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
-    protected override Task OnClubChangedAsync() => LoadAsync();
+    protected override async Task OnClubChangedAsync()
+    {
+        _verwijderAdresBevestiging.Annuleer();
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
+        var clubCode = ClubSelector.SelectedClubCode;
+        var generatie = _loadGuard.Start(clubCode);
         errorMessage = null;
         settings = null;
         _syncLoading = true;
@@ -66,6 +75,9 @@ public partial class Instellingen : ClubSelectorPageBase
         {
             _status = null;
             _emailLog = null;
+            _reviewLog = null;
+            _emailVerwerkt = _emailFouten = _emailBuitenScope = _emailGeenAntwoord = 0;
+            uitgeslotenEmails = new();
             _syncLoading = false;
             return;
         }
@@ -76,6 +88,7 @@ public partial class Instellingen : ClubSelectorPageBase
         var reviewTask  = EmailApi.GetEmailLogAsync(status: "Review", limit: EmailReviewMax);
 
         await Task.WhenAll(settingsTask, syncTask, emailTask, reviewTask);
+        if (!IsActueleLading(generatie, clubCode)) return;
 
         var reviewResult = await reviewTask;
         _reviewLog = reviewResult.Success ? reviewResult.Data : null;
@@ -113,6 +126,9 @@ public partial class Instellingen : ClubSelectorPageBase
         _syncLoading = false;
         await LaadUitgeslotenEmailsAsync();
     }
+
+    private bool IsActueleLading(int generatie, string? clubCode) =>
+        _loadGuard.IsActueel(generatie) && ClubSelector.SelectedClubCode == clubCode;
 
     private static int HuidigSeizoenStartjaar() => SeizoenKeuze.HuidigStartjaar(DateTime.Today);
 
@@ -182,7 +198,10 @@ public partial class Instellingen : ClubSelectorPageBase
 
     private async Task LaadUitgeslotenEmailsAsync()
     {
+        var clubCode = ClubSelector.SelectedClubCode;
+        var generatie = _uitgeslotenEmailsLoadGuard.Start(clubCode);
         var r = await EmailApi.GetUitgeslotenEmailsAsync();
+        if (!_uitgeslotenEmailsLoadGuard.IsActueel(generatie) || ClubSelector.SelectedClubCode != clubCode) return;
         uitgeslotenEmails = r.Success ? r.Data ?? new() : new();
     }
 
@@ -214,10 +233,17 @@ public partial class Instellingen : ClubSelectorPageBase
 
     private async Task VerwijderAdresAsync(int id)
     {
+        if (!_verwijderAdresBevestiging.Bevestig((ClubSelector.SelectedClubCode, id))) return;
+
         var r = await EmailApi.DeleteUitgeslotenEmailAsync(id);
         uitgeslotenMessage = r.Success ? null : "Fout: " + r.ErrorMessage;
-        await LaadUitgeslotenEmailsAsync();
+        if (r.Success) await LaadUitgeslotenEmailsAsync();
     }
+
+    private void VraagVerwijderAdres(int id) =>
+        _verwijderAdresBevestiging.Vraag((ClubSelector.SelectedClubCode, id));
+
+    private void AnnuleerVerwijderenAdres() => _verwijderAdresBevestiging.Annuleer();
 
     private async Task ZoekCoordinaten()
     {

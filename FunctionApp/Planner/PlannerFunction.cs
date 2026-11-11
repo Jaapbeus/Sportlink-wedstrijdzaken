@@ -12,6 +12,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Planner.Endpoints.Deel;
+using Planner.Endpoints.AutoPlan;
 using Newtonsoft.Json;
 using Planner.Shared;
 using Planner.Shared.Email;
@@ -361,12 +362,12 @@ namespace SportlinkFunction.Planner
                         return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
                     if (!clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase))
-                        return new ObjectResult(new { error = "Toepassen is alleen beschikbaar in testmodus (ALLSTARS)." }) { StatusCode = 403 };
+                        return AutoPlanToepassenEndpointCore.Verboden();
 
                     log.LogInformation("AutoPlanToepassen: datum={Datum}, club={Club}", LogWaarde.Schoon(request.Datum), LogWaarde.Schoon(clubCode));
 
-                    var response = await PlannerService.AutoPlanToepassenAsync(request, clubCode, log);
-                    return new OkObjectResult(response);
+                    return await AutoPlanToepassenEndpointCore.VerwerkAsync(
+                        () => PlannerService.AutoPlanToepassenAsync(request, clubCode, log), log);
                 }));
         }
 

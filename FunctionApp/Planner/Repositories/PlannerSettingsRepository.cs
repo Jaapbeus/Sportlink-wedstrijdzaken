@@ -77,23 +77,20 @@ internal static class PlannerSettingsRepository
 
     internal static async Task<Dictionary<string, Speeltijd>> GetSpeeltijdenLookupAsync(string? clubCode = null)
     {
-        var cc = SystemUtilities.AppSettings.RequireClubCode(clubCode);
-        var result = new Dictionary<string, Speeltijd>(StringComparer.OrdinalIgnoreCase);
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
+        return await GetSpeeltijdenLookupAsync(conn, null, clubCode);
+    }
+
+    internal static async Task<Dictionary<string, Speeltijd>> GetSpeeltijdenLookupAsync(
+        SqlConnection conn, SqlTransaction? transaction, string? clubCode = null)
+    {
+        var cc = SystemUtilities.AppSettings.RequireClubCode(clubCode);
         using var cmd = new SqlCommand(
-            "SELECT [Leeftijd], [Veldafmeting], [WedstrijdTotaal], [StandaardVoorkeurTijd] FROM [dbo].[Speeltijden] WHERE [ClubCode] = @cc", conn);
+            "SELECT [Leeftijd], [Veldafmeting], [WedstrijdTotaal], [StandaardVoorkeurTijd] FROM [dbo].[Speeltijden] WHERE [ClubCode] = @cc", conn, transaction);
         cmd.Parameters.AddWithValue("@cc", cc);
         using var reader = await cmd.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
-            result[reader.GetString(0)] = new Speeltijd
-            {
-                Leeftijd = reader.GetString(0),
-                Veldafmeting = reader.GetDecimal(1),
-                WedstrijdTotaal = reader.GetInt32(2),
-                StandaardVoorkeurTijd = reader.IsDBNull(3) ? null : TimeOnly.FromTimeSpan(reader.GetTimeSpan(3))
-            };
-        return result;
+        return await Speeltijd.ReadLookupAsync(reader);
     }
 
     internal static async Task<Dictionary<string, string>> GetTeamLeeftijdLookupAsync(string clubCode)
