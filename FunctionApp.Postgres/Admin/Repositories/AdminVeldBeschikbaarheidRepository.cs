@@ -140,6 +140,27 @@ internal static class AdminVeldBeschikbaarheidRepository
         return (long)(await cmd.ExecuteScalarAsync())! > 0;
     }
 
+    internal static async Task<bool> BestaatAndereVoorUpdateAsync(int id, int? periodeId, string clubCode, string cs)
+    {
+        await using var conn = new NpgsqlConnection(cs);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(@"
+            SELECT EXISTS (
+                SELECT 1
+                FROM public.veldbeschikbaarheid huidig
+                JOIN public.veldbeschikbaarheid ander
+                  ON ander.veldnummer = huidig.veldnummer
+                 AND ander.dagvanweek = huidig.dagvanweek
+                 AND ander.clubcode = huidig.clubcode
+                 AND ander.id <> huidig.id
+                 AND ander.periodeid IS NOT DISTINCT FROM @periodeid::int
+                WHERE huidig.id = @id AND huidig.clubcode = @clubcode)", conn);
+        cmd.Parameters.AddWithValue("id", id);
+        cmd.Parameters.AddWithValue("clubcode", clubCode);
+        cmd.Parameters.AddWithValue("periodeid", (object?)periodeId ?? DBNull.Value);
+        return (bool)(await cmd.ExecuteScalarAsync())!;
+    }
+
     internal static async Task<int> InsertAsync(
         int veldNummer, int dagVanWeek, TimeSpan vanf, TimeSpan tot, bool zon, int? periodeId, string clubCode, string cs)
     {

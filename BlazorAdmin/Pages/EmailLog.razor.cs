@@ -40,7 +40,7 @@ public partial class EmailLog : ClubSelectorPageBase
 
     private async Task LaadAsync(bool wisHuidige)
     {
-        var laden = _lader.LaadAsync(_status, _periode, DateTime.Today, wisHuidige);
+        var laden = _lader.LaadAsync(_status, _periode, DateTime.UtcNow, wisHuidige);
         StateHasChanged();
         await laden;
     }

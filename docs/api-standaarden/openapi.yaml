@@ -1745,6 +1745,11 @@ components:
           type: integer
         limit:
           type: integer
+        statusCounts:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Aantal verwerkingen per status binnen de filters; onafhankelijk van de limiet op items.
         items:
           type: array
           items:
@@ -5631,15 +5636,27 @@ paths:
           required: false
           schema:
             type: string
-            format: date
-          description: Begindatum filter (inclusief) in yyyy-MM-dd
+          description: Begingrens inclusief; yyyy-MM-dd voor een UTC-kalenderdag of een timestamp voor een exact UTC-moment. Ook yyyy-MM-dd HH:mm wordt als UTC-timestamp gelezen.
+          examples:
+            kalenderdag:
+              value: '2026-11-09'
+            isoTimestamp:
+              value: '2026-11-09T15:04:05Z'
+            tijdstempelZonderT:
+              value: '2026-11-09 15:04'
         - name: tot
           in: query
           required: false
           schema:
             type: string
-            format: date
-          description: Einddatum filter (exclusief) in yyyy-MM-dd
+          description: Eindgrens exclusief; yyyy-MM-dd omvat de hele UTC-kalenderdag, ook bij middernacht. Een timestamp (ook yyyy-MM-dd HH:mm) is een exact UTC-moment.
+          examples:
+            kalenderdag:
+              value: '2026-11-09'
+            isoTimestamp:
+              value: '2026-11-09T15:04:05Z'
+            tijdstempelZonderT:
+              value: '2026-11-09 15:04'
         - name: status
           in: query
           required: false
