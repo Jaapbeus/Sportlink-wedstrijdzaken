@@ -28,6 +28,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - De SQL Server-planner geeft voor de niet-opgeslagen optionele eerste-elftalnaam nu expliciet `null` door, gelijk aan Postgres; de settings-loader guard hoeft deze ontbrekende sleutel niet meer uit te zonderen (#1821).
 
 ### Fixed
+- Graph-fouten bij het ophalen, labelen en als gelezen markeren van e-mail worden niet meer als lege inbox of succes afgehandeld; de bestaande aanroeper bepaalt de foutafhandeling (#1800).
 - Berichten die na drie mislukte verwerkingspogingen worden opgegeven, krijgen nu best-effort het Outlook-label "Geen AI antwoord" voordat ze als gelezen worden gemarkeerd; een mislukte labelpoging verhindert het markeren als gelezen niet (#1800).
 - Settings restart decisions now have paired SQL Server and Postgres persistence regression tests for unchanged and changed schedules alongside another saved field (#1819).
 - De Postgres-instellingenloader laadt nu ook de vijf bestaande e-mailinstellingen voor de mailboxverwerking en wist ze bij herladen na `NULL`, gelijk aan het gedrag van de SQL Server-tier (#1798).

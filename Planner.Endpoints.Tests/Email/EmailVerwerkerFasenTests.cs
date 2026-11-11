@@ -136,6 +136,19 @@ public class EmailVerwerkerFasenTests
     }
 
     [Fact]
+    public async Task GraphFoutBijOphalen_PropageertEnWordtNietAlsLegeInboxGelogd()
+    {
+        var poort = new FakePoort { HaalOngelezenFout = new InvalidOperationException("synthetic Graph failure") };
+        var logger = new OpnameLogger();
+
+        var act = () => EmailVerwerkerFasen.VoerUitAsync(poort, new UitsluitingslijstCache(), logger);
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+        poort.Stappen.Should().Equal("haal");
+        logger.Berichten.Should().NotContain(message => message.Contains("Geen ongelezen emails", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task AllesWeggefilterdDoorVoorfilter_GeenAiEnGeenDatabase()
     {
         var poort = new FakePoort { Ongelezen = [new("m1")], PreFilter = _ => [] };

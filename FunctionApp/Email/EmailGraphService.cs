@@ -85,6 +85,7 @@ public partial class EmailGraphService : IEmailGraphService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Fout bij ophalen van ongelezen emails uit coordinator-mailbox");
+            throw;
         }
 
         return resultaat;
@@ -107,6 +108,7 @@ public partial class EmailGraphService : IEmailGraphService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Fout bij zetten van categorie op email {MessageId}", messageId);
+            throw;
         }
     }
 
@@ -179,6 +181,7 @@ public partial class EmailGraphService : IEmailGraphService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Fout bij markeren van email {MessageId} als gelezen", messageId);
+            throw;
         }
     }
 

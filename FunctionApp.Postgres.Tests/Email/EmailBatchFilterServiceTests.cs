@@ -72,4 +72,26 @@ public class EmailBatchFilterServiceTests
         graph.MarkedAsReadIds.Should().ContainSingle(id => id == "m1");
         graph.EnsuredCategories.Should().ContainSingle(c => c.Name == "Geen AI antwoord");
     }
+
+    [Fact]
+    public async Task LabelBuitenScopeAsync_BijCategorieFout_LogtGeenSuccesEnMarkeertNietAlsGelezen()
+    {
+        var service = new EmailBatchFilterService();
+        var graph = new FakeEmailGraphService
+        {
+            ExceptionToThrowOnSetCategories = new InvalidOperationException("synthetic Graph failure")
+        };
+        var logger = new RecordingLogger();
+        var items = new[]
+        {
+            (new InkomendBericht { MessageId = "synthetic-message-id" },
+                new BerichtClassificatie { Type = VerzoekType.BuitenScope })
+        };
+
+        await service.LabelBuitenScopeAsync(items, graph, logger);
+
+        graph.MarkedAsReadIds.Should().BeEmpty();
+        logger.Messages.Should().Contain(message => message.Contains("Fout bij Outlook-labeling BuitenScope", StringComparison.Ordinal));
+        logger.Messages.Should().NotContain(message => message.Contains("gelabeld in Outlook", StringComparison.Ordinal));
+    }
 }

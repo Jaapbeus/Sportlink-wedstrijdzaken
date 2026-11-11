@@ -76,6 +76,7 @@ internal sealed class FakePoort : IEmailVerwerkerPoort<TestBericht>
     public List<string> Stappen { get; } = new();
 
     public List<TestBericht> Ongelezen { get; set; } = new();
+    public Exception? HaalOngelezenFout { get; set; }
     public Func<List<TestBericht>, List<TestBericht>> PreFilter { get; set; } = e => e;
     public HashSet<string> UitsluitingslijstVoorAi { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public Exception? LijstVoorAiFout { get; set; }
@@ -96,6 +97,8 @@ internal sealed class FakePoort : IEmailVerwerkerPoort<TestBericht>
     public Task<List<TestBericht>> HaalOngelezenAsync()
     {
         Stappen.Add("haal");
+        if (HaalOngelezenFout is not null)
+            return Task.FromException<List<TestBericht>>(HaalOngelezenFout);
         return Task.FromResult(Ongelezen);
     }
 
