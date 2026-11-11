@@ -22,7 +22,6 @@ public class EntraAuthService : IAuthService
     private bool _isAuthenticated;
     private string _userName = "";
     private bool _isAdmin;
-    private bool _isUser;
 
     public EntraAuthService(
         AuthenticationStateProvider authStateProvider,
@@ -36,15 +35,6 @@ public class EntraAuthService : IAuthService
     public bool IsAuthenticated => _isAuthenticated;
     public string UserName => _userName;
     public bool IsAdmin => _isAdmin;
-    public bool IsUser => _isUser;
-    public bool HasAccess => _isAdmin || _isUser;
-
-    public Task LoginAsync()
-    {
-        _navManager.NavigateToLogin("authentication/login");
-        return Task.CompletedTask;
-    }
-
     public Task LogoutAsync()
     {
         // .NET 10: SignOutSessionStateManager is deprecated; gebruik NavigateToLogout
@@ -59,8 +49,7 @@ public class EntraAuthService : IAuthService
         _userName = state.User.Identity?.Name ?? "";
         // Rollen komen uit de "roles" claim in het ID-token. App Registration moet App Roles
         // 'admin' en 'user' definiëren; Enterprise Application moet users expliciet toewijzen
-        // (Assignment required = Yes). Zonder rol → HasAccess = false → App.razor toont NoAccess.
+        // (Assignment required = Yes). De app-gate controleert beide toegestane rollen rechtstreeks.
         _isAdmin = state.User.IsInRole("admin");
-        _isUser = state.User.IsInRole("user");
     }
 }

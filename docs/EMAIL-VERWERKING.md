@@ -185,11 +185,13 @@ te zetten — een instelling die de enige teamherkenning kan uitschakelen is gee
 maar een voetangel. (Een eerdere versie van dit document beschreef een app setting
 `TeamResolverMode` met standen `off`/`shadow`/`on`; die bestaat niet meer.)
 
+When both classified fields resolve to different own teams, #1816 requires authoritative source-owned fixture context before selecting one. Missing or conflicting evidence sends the message to manual Review before planning, contact/BCC lookup, template generation, send intent or sending. Source ownership is `his.matches.teamnaam`; participation as the opponent alone is not ownership evidence. Unresolved multiple candidates are never chosen automatically.
+
 Welk van de twee genoemde teams het eigen team is, wordt bepaald door te kijken wélke in de teamlijst
 staat — niet meer door te raden op spaties of clubprefix.
 
 Bij een aanduiding die écht dubbelzinnig is — "13-1" kan JO13-1 of MO13-1 zijn — wordt niet gegokt:
-er volgt óf een keuze uit een korte kandidatenlijst, óf de vraag wordt teruggelegd.
+the system chooses no candidate and requires manual review.
 
 Een teamtekst die niet herkend wordt (`Onopgelost` of `MeerdereKandidaten`) komt sinds #1568 deel C in de
 wachtrij **Onbekende teamteksten** (scherm Teamaliassen) — mits de tekst eruitziet als een teamlabel; een zin
@@ -1392,7 +1394,7 @@ plannergegevens en gesaneerde modelvelden (`AiVeldSanering`).
 | Onderwerp | 1, 2, 3, 4 | Kan (vrije tekst) | Herkenbare e-mail- en telefoonpatronen gemaskeerd; markernaam geneutraliseerd |
 | Berichttekst | 1, 2, 3, 4 | Kan (vrije tekst: namen, contactgegevens, toevallig een gezondheidsgegeven, mogelijk over minderjarigen) | Mailboxberichten (1, 2, 3): HTML verwijderd (`EmailSanitizer.StripHtml`, in `EmailGraphService`). Alle aanroepen: begrensd op `BerichtBodyBegrenzing.MaxBodyTekens` tekens, herkenbare e-mail- en telefoonpatronen gemaskeerd en markernaam geneutraliseerd. Tester (4): de ingevoerde tekst gaat zonder HTML-verwijdering naar de classificatie |
 | Clubnaam (instelling `clubName`) en datum van vandaag, in de system prompt | 1, 2, 4 | Nee | — |
-| Leermomenten: verzoektypes en samenvattingen | 2, 4 | Kan (samenvatting) | Opslag blijft strikt gesaneerd met `AiVeldSanering.Samenvatting`. De twee invoersamenvattingen van `FewShotRegel` gebruiken `ProviderSamenvatting`: herkenbare contactpatronen gemaskeerd, witruimte/aanhalingstekens genormaliseerd en 500 tekens per samenvatting. Numerieke datums, tijden en wedstrijdnummers blijven in deze providerinvoer behouden. Reeds gemaskeerde opgeslagen gegevens kunnen niet worden hersteld |
+| Leermomenten: verzoektypes en samenvattingen | 2, 4 | Kan (samenvatting) | Opslag blijft strikt gesaneerd met `AiVeldSanering.Samenvatting`. De twee invoersamenvattingen van `FewShotRegel` gebruiken `ProviderSamenvatting`: besturingstekens en witruimte worden eerst genormaliseerd; na e-mailmaskering worden volledige lange nummerkandidaten (ook ingebed in tekst) beoordeeld vóór de herkenbare contactpatronen, zodat een eerdere deelmaskering geen restcijfers achterlaat. Alleen volledige, geldige datum-/tijdreeksen blijven behouden. Aanhalingstekens worden genormaliseerd en elke samenvatting is begrensd op 500 tekens. Reeds gemaskeerde opgeslagen gegevens kunnen niet worden hersteld |
 | Oorspronkelijk verzoektype en samenvatting van het beantwoorde bericht | 3 | Kan (samenvatting) | Samenvatting is bij opslag al door `AiVeldSanering.Samenvatting` gegaan |
 
 Toelichting bij de bewerkingen:

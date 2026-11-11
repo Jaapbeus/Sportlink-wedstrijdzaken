@@ -18,22 +18,31 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
-### Fixed
-- Een mislukte gelezen-markering van eigen of uitgesloten mail blijft per bericht begrensd; overige berichten blijven beschikbaar voor classificatie zonder het gefilterde bericht alsnog naar AI te sturen (#1800).
-- De negatieve tier-duplicatietest gebruikt een geïsoleerde minimale fixture en controleert de exacte foutcode en groeimelding, zodat minder productieduplicatie de test niet laat slagen (#1800).
-- Een onbeschikbare leermomentbron pauzeert e-mailverwerking vóór het voorfilter, classificatie en alle label-/gelezen-mutaties via de bestaande database-uitvalmelding; alleen een succesvol geladen lege set mag zonder voorbeelden classificeren (#1800).
-- Ontbreekt `AiModelName`, dan wordt geen AI-client met een hardcoded terugval geregistreerd; e-mailverwerking stopt veilig vóór de databasefase en de handmatige e-mailtester geeft een gecontroleerde 503. Niet-AI-functies blijven beschikbaar (#1800).
-- Goedgekeurde leermomenten worden al vóór de eerste e-mailclassificatie toegepast, zodat een correctie naar een herplanverzoek niet als buiten scope wordt afgesloten. Herhaalde niet-quota-classificatiefouten geven één privacyveilige, afzonderlijk gethrottlede melding; mislukte berichten blijven ongelezen en worden opnieuw geprobeerd (#1800).
+- De clubkiezer, startpoort en initialisatie van de hoofdindeling staan nu in het aangrenzende partial-bestand; gedrag blijft gelijk (zie issue #1807).
 
 ### Changed
+- Unused authentication members were removed from the shared auth interface and implementations; synthetic tests preserve existing role and logout behavior (see issue #1808).
+- Removed an unreferenced email HTML generation method and its dedicated tests; active browser and export renderers are unchanged (see issue #1808).
+- Remove the unused optional time normalizer, five unreferenced SQL planner facade forwards and four no-op test placeholders; keep their active repository implementations and maintained tooling. Update current test documentation and annotate historical references to the removed placeholders. (zie issue #1808)
+- De bestaande veldeditor is naar een gedeelde Razor-component verplaatst; modelbinding, validatie en de bestaande save-/annuleerhandlers blijven gelijk (zie issue #1807).
+- In deze deelscope documenteren Blazor- en themahelpers hun huidige rol; verouderde Dagplanning- en verplaatsingsverwijzingen zijn gecorrigeerd in de bijgewerkte bestanden, zonder gedrag te wijzigen (zie issue #1806).
+- Verouderde port- en incidentgeschiedenis en plan-/kostenverwijzingen in de monitoring-noodmailcommentaren vervangen door actuele uitleg van throttle-opslag en de provider-eigen uitvalmonitor; de reden voor een letterlijke timer-cron blijft bij beide tiers behouden; codegedrag ongewijzigd (zie issue #1805).
+- Postgres-beheerfuncties en repositories beschrijven hun huidige verantwoordelijkheden; de toelichting op datumformattering, gegenereerde ids, response-casing en auditretentie blijft behouden (zie issue #1805).
 - De gedeelde HTML-generator voor de veldplanner is per verantwoordelijkheid in partial-bestanden opgesplitst; de publieke aanroepen en de gegenereerde browser- en e-mail-HTML blijven gelijk (zie issue #1807).
+- De fingerprint-, publieke titel-/diagnostiek- en foutclassificatiehelpers van `GitHubIssueReporter` staan in een eigen partial-bestand; de bestaande methoden en werking blijven gelijk (zie issue #1807).
+- De bestaande beheer-DTO's zijn per domein in modelbestanden gegroepeerd; JSON-contracten en type-inhoud zijn ongewijzigd (zie issue #1807).
 - Removed the unused API status service and placed existing shared-logic tests in `Planner.Shared.Tests` (see issue #1808).
+- Removed unreferenced Bootstrap JavaScript assets and unused starter-menu icon selectors; the linked Bootstrap CSS remains (see issue #1808).
 - Clarified the Postgres error-reporting adapter documentation while retaining its tier-specific egress and fingerprint rationale (see issue #1805).
+- In Planner.Shared, removed planning-comment provenance while retaining the tier-independent logic and planning invariants (see issue #1806).
+- Clarified planner comments to match current implementations and documented decisions while retaining their scheduling and tier-parity rationale (see issue #1805).
 - Het reviewrondelimiet voor Codex en Claude Code (AGENTS.md en de automatische issue-beurt van de bot) is van twee naar drie rondes per PR gegaan; pas daarna beslist de eigenaar, zie issue #1835.
 - BlazorAdmin: XML-documentatie voor tijdnormalisatie en Gantt-layout bijgewerkt; gedrag ongewijzigd (zie issue #1806).
 - De SQL Server-planner geeft voor de niet-opgeslagen optionele eerste-elftalnaam nu expliciet `null` door, gelijk aan Postgres; de settings-loader guard hoeft deze ontbrekende sleutel niet meer uit te zonderen (#1821).
+- Fixture filtering and planner classification preparation now share one implementation across database tiers (#1816).
 
 ### Security
+- Providerinvoer maskeert lange nummerreeksen in leermomenten en behoudt geldige datum- en tijdnotatie (zie issue #1809).
 - Email answers use a neutral greeting when no safe display name is available; authorized internal review retains a bounded, escaped original sender address. Contact-pattern masking and both-tier output coverage are strengthened, with captured-provider regressions preserving numeric planning data. Provider body processing stays bounded and omits unfinished boundary fragments while preserving the truncation marker and whole masking tokens (#1809).
 - The availability API contract now documents normalized, bounded warning output and the team-name display fallback on both database tiers (#1809).
 - E-mailverwerking verhard vóór review mode uit gaat (#1809, beide tiers): alleen exact `false` (hoofdletterongevoelig) schakelt review uit; afzendercontrole is syntactisch en blokkeert ongeschikte adressen voor automatisch antwoorden. Onderwerp-, naam- en waarschuwingsuitvoer wordt begrensd en gesaneerd; de provider ontvangt geen afzenderidentiteit en herkenbare contactpatronen in onderwerp, berichttekst en correctiecontext worden gemaskeerd. Dit beperkt geen andere persoonsgegevens en vervangt de open verwerkingsafspraken (#1736) niet; #43 blijft afhankelijk van eigenaaracceptatie.
@@ -41,6 +50,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ### Fixed
 - Graph-fouten bij het ophalen, labelen en als gelezen markeren van e-mail worden niet meer als lege inbox of succes afgehandeld; de bestaande aanroeper bepaalt de foutafhandeling (#1800).
 - Berichten die na drie mislukte verwerkingspogingen worden opgegeven, krijgen nu best-effort het Outlook-label "Geen AI antwoord" voordat ze als gelezen worden gemarkeerd; een mislukte labelpoging verhindert het markeren als gelezen niet (#1800).
+- Planneraanvragen op beide databasetiers slaan de aanvrager op uit de ingelogde principal; een clientwaarde wordt genegeerd en e-mailadressen worden niet als aanvrager opgeslagen; zie issue #1812.
+- Een mislukte gelezen-markering van eigen of uitgesloten mail blijft per bericht begrensd; overige berichten blijven beschikbaar voor classificatie zonder het gefilterde bericht alsnog naar AI te sturen (#1800).
+- De negatieve tier-duplicatietest gebruikt een geïsoleerde minimale fixture en controleert de exacte foutcode en groeimelding, zodat minder productieduplicatie de test niet laat slagen (#1800).
+- Een onbeschikbare leermomentbron pauzeert e-mailverwerking vóór het voorfilter, classificatie en alle label-/gelezen-mutaties via de bestaande database-uitvalmelding; alleen een succesvol geladen lege set mag zonder voorbeelden classificeren (#1800).
+- Ontbreekt `AiModelName`, dan wordt geen AI-client met een hardcoded terugval geregistreerd; e-mailverwerking stopt veilig vóór de databasefase en de handmatige e-mailtester geeft een gecontroleerde 503. Niet-AI-functies blijven beschikbaar (#1800).
+- Goedgekeurde leermomenten worden al vóór de eerste e-mailclassificatie toegepast, zodat een correctie naar een herplanverzoek niet als buiten scope wordt afgesloten. Herhaalde niet-quota-classificatiefouten geven één privacyveilige, afzonderlijk gethrottlede melding; mislukte berichten blijven ongelezen en worden opnieuw geprobeerd (#1800).
 - Settings restart decisions now have paired SQL Server and Postgres persistence regression tests for unchanged and changed schedules alongside another saved field (#1819).
 - De Postgres-instellingenloader laadt nu ook de vijf bestaande e-mailinstellingen voor de mailboxverwerking en wist ze bij herladen na `NULL`, gelijk aan het gedrag van de SQL Server-tier (#1798).
 - De instellingenopslag meldt alleen een herstart als de opgeslagen FetchSchedule-waarde echt verandert; SQL Server ondersteunt nu ook het opslaan en teruglezen van SportlinkDryRun (#1819)
@@ -48,6 +63,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Veldbeschikbaarheid kan niet meer naar een periodecombinatie worden bijgewerkt die al bestaat (#1819)
 - E-maildashboardtellers gebruiken de echte laatste 24 uur en tellen alle passende berichten, ook als de detailweergave de limiet bereikt. Bij een oudere API zonder volledige tellingen toont het dashboard "Niet beschikbaar" in plaats van onjuiste nullen; werk de API bij vóór de Blazor-app (#1819)
 - De email-log OpenAPI-parameters documenteren nu de drie parser-ondersteunde datumvormen; de SQL Server-beschikbaarheidstest ruimt ook op als het fixture-opzetten faalt (#1819, reviewronde 3)
+- Team resolution now checks both own-team fields against source-owned fixture context; inconclusive or ambiguous evidence requires terminal manual review without automatic planning or sending (#1816). Whole-date uniqueness includes incomplete and duplicate native-visible source rows; cancellation follows each database's planner predicate, and equivalent time formats compare without losing seconds. API metadata matches application version 3.16.0.3. An additive Postgres expression index supports the native fixture/planner status predicate on both installed and newly created history tables.
+- Deleting a Sync alias persistently rejects the association across canonicalization; other alias origins remain physically deletable (#1816).
+- Query-free planner exits no longer initialize database configuration; fixture-repository creation and query failures both lead to manual review on both tiers (#1816).
+- Teamherkenning respecteert expliciete JO/MO-prefixen in C# en beide SQL-tiers, herkent JM-suffixen en samengestelde meisjesaanduidingen, houdt categorie-normalisatie idempotent, bewaart afgewezen Sync-aliassen bij volgende synchronisaties en gebruikt één categorie-instelling voor beide handmatige planningspaden (#1816)
 
 ## [3.16.0.0] — 2026-11-10
 

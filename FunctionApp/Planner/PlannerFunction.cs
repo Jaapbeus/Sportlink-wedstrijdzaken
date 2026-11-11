@@ -15,6 +15,7 @@ using Newtonsoft.Json;
 using Planner.Shared;
 using Planner.Shared.Email;
 using Planner.Shared.Planning;
+using Planner.Endpoints.Autorisatie;
 using SportlinkFunction.Admin;
 
 namespace SportlinkFunction.Planner
@@ -66,16 +67,14 @@ namespace SportlinkFunction.Planner
             return AdminEndpoint.ExecuteAsync(req, log, "wedstrijd bevestigen",
                 async clubCode =>
                 {
-                    string body = await new StreamReader(req.Body).ReadToEndAsync();
-                    var request = JsonConvert.DeserializeObject<BevestigRequest>(body);
-                    if (request == null || string.IsNullOrEmpty(request.Datum) || string.IsNullOrEmpty(request.AanvangsTijd))
-                        return new BadRequestObjectResult(new { error = "Request body met 'datum', 'aanvangsTijd' en 'veldNummer' is verplicht." });
+                    var parsed = await PlannerAanvragerEndpointCore.ReadBevestigAsync<BevestigRequest>(req, EasyAuthHelper.GetPlannerRequester(req));
+                    if (parsed.Error is not null) return parsed.Error;
+                    var request = parsed.Value;
 
                     log.LogInformation("BevestigWedstrijd: datum={Datum}, tijd={Tijd}, veld={Veld}",
                         LogWaarde.Schoon(request.Datum), LogWaarde.Schoon(request.AanvangsTijd), request.VeldNummer);
 
-                    if (!DateOnly.TryParse(request.Datum, out var date) || !TimeOnly.TryParse(request.AanvangsTijd, out var tijd))
-                        return new BadRequestObjectResult(new { error = "Ongeldige datum of tijd." });
+                    var (date, tijd) = (parsed.Date!.Value, parsed.Time!.Value);
 
                     int duurMinuten = request.WedstrijdDuurMinuten ?? DefaultWedstrijdDuurMinuten;
                     decimal veldFractie = VolledigVeldFractie;
@@ -307,13 +306,11 @@ namespace SportlinkFunction.Planner
             return AdminEndpoint.ExecuteAsync(req, log, "herplanverzoek vastleggen",
                 async clubCode =>
                 {
-                    string body = await new StreamReader(req.Body).ReadToEndAsync();
-                    var request = JsonConvert.DeserializeObject<HerplanBevestigRequest>(body);
-                    if (request == null || request.Wedstrijdcode == 0 || string.IsNullOrEmpty(request.GewensteAanvangsTijd))
-                        return new BadRequestObjectResult(new { error = "Request body met 'wedstrijdcode' en 'gewensteAanvangsTijd' is verplicht." });
+                    var parsed = await PlannerAanvragerEndpointCore.ReadHerplanAsync<HerplanBevestigRequest>(req, EasyAuthHelper.GetPlannerRequester(req));
+                    if (parsed.Error is not null) return parsed.Error;
+                    var request = parsed.Value;
 
-                    if (!TimeOnly.TryParse(request.GewensteAanvangsTijd, out var gewensteTijd))
-                        return new BadRequestObjectResult(new { error = "Ongeldige tijd." });
+                    var gewensteTijd = parsed.Time!.Value;
 
                     var match = await PlannerDataAccess.FindMatchByCodeAsync(request.Wedstrijdcode, clubCode);
                     if (match == null)

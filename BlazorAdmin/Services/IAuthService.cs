@@ -10,6 +10,5 @@ public interface IAuthService
     string UserName { get; }
     bool IsAdmin { get; }
 
-    Task LoginAsync();
     Task LogoutAsync();
 }

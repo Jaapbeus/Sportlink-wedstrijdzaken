@@ -47,10 +47,13 @@ internal static class LeeftijdNormalisatieSql
         CASE
             WHEN UPPER(LTRIM(RTRIM({kolom}))) = 'SENIOREN'
                 THEN '1-99'
+            WHEN UPPER(LTRIM(RTRIM({kolom}))) = '1-99'
+                THEN '1-99'
             WHEN UPPER(LTRIM(RTRIM({kolom}))) IN ('SENIOREN VROUWEN', 'SENIOREN VR')
                 THEN 'VR'
             WHEN {alleenCijfers} <> ''
                 THEN (CASE WHEN {kolom} LIKE '%Meiden%' OR {kolom} LIKE '%Meisjes%'
+                                OR UPPER(LTRIM(RTRIM({kolom}))) LIKE 'MO%'
                            THEN 'MO' ELSE 'JO' END) + {alleenCijfers}
             ELSE
                 REPLACE(REPLACE(REPLACE({kolom}, 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')

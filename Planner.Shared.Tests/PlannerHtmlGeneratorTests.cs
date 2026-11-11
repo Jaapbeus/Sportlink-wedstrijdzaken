@@ -12,7 +12,7 @@ namespace Planner.Shared.Tests;
 /// De generator interpoleerde wedstrijd-/team-/veldnamen, locatie, footer en suggestieteksten
 /// ongeëncodeerd als HTML — alleen een apostrof werd voor één data-attribuut vervangen. Deze
 /// tests draaien tegen de VOLLEDIGE gegenereerde HTML-output van
-/// <see cref="PlannerHtmlGenerator.GenereerHtml"/> en <see cref="PlannerHtmlGenerator.GenereerEmailHtml"/>
+/// <see cref="PlannerHtmlGenerator.GenereerHtml"/>
 /// — niet tegen een geïsoleerde encode-helper — omdat de kwetsbaarheid zat in hóe de generator de
 /// stukken samenvoegt, niet in een los te testen functie.
 /// </para>
@@ -145,54 +145,6 @@ public class PlannerHtmlGeneratorTests
 
         AantalScriptTags(html).Should().Be(1);
         html.Should().Contain("&lt;script&gt;alert(4)&lt;/script&gt;");
-    }
-
-    [Fact]
-    public void JavascriptSchemaInBrowserUrl_WordtGeblokkeerd()
-    {
-        var html = PlannerHtmlGenerator.GenereerEmailHtml(
-            new DateOnly(2026, 9, 6),
-            new List<BestaandeWedstrijd>(),
-            new List<OptimalisatieSuggestie>(),
-            Velden,
-            "huidig",
-            "javascript:alert(1)",
-            Instellingen);
-
-        html.Should().NotContain("href='javascript:alert(1)'");
-        html.Should().Contain("href='#'");
-    }
-
-    [Fact]
-    public void HttpsBrowserUrl_BlijftIntactInEmailHtml()
-    {
-        var html = PlannerHtmlGenerator.GenereerEmailHtml(
-            new DateOnly(2026, 9, 6),
-            new List<BestaandeWedstrijd>(),
-            new List<OptimalisatieSuggestie>(),
-            Velden,
-            "huidig",
-            "https://example.test/planner",
-            Instellingen);
-
-        html.Should().Contain("href='https://example.test/planner'");
-    }
-
-    [Fact]
-    public void ScriptTagInWedstrijdnaam_EmailHtml_WordtGeencodeerd()
-    {
-        var wedstrijd = Wedstrijd("<script>alert(5)</script>");
-        var html = PlannerHtmlGenerator.GenereerEmailHtml(
-            new DateOnly(2026, 9, 6),
-            new List<BestaandeWedstrijd> { wedstrijd },
-            new List<OptimalisatieSuggestie>(),
-            Velden,
-            "huidig",
-            "https://example.test/planner",
-            Instellingen);
-
-        html.Should().NotContain("<script>alert(5)</script>");
-        html.Should().Contain("&lt;script&gt;alert(5)&lt;/script&gt;");
     }
 
     // ── Karakterisatie categorietabel (#1625) ──

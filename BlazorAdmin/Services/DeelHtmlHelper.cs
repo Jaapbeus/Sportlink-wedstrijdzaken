@@ -2,8 +2,9 @@ using System.Text.RegularExpressions;
 
 namespace BlazorAdmin.Services;
 
-/// <summary>Pure helper voor <c>DeelPaneel</c> (#1362): de enige plek met de script-strip-logica
-/// (voorheen <c>ExportHtmlZonderScript</c> in Dagplanning/VeldOptimalisatie, XSS-verdediging #603/#1010).</summary>
+/// <summary>Bereidt de gedeelde paneelpreview en de te kopiëren HTML voor door script-elementen te
+/// verwijderen. De gedownloade HTML blijft ongewijzigd; de beveiligingsgrens staat bij het iframe,
+/// zoals hieronder beschreven.</summary>
 /// <remarks>
 /// <b>Dit is geen sanitizer en geen beveiligingsgrens.</b> De echte grens is de
 /// <c>sandbox</c>-attribuut van de iframe in <c>DeelPaneel.razor</c> (#603). Daarbij mag
