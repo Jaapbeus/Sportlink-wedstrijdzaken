@@ -16,6 +16,9 @@ public partial class Thema : ClubSelectorPageBase
     [Inject] private IJSRuntime JS { get; set; } = default!;
 
     private ThemeDto _theme = new();
+    private readonly LookupGeneratieGuard _themeLoadGuard = new();
+    // De club waarvoor _theme is geladen (#1872): een thema van een andere club wordt nooit opgeslagen.
+    private string? _themeClubCode;
     private bool _loading = true;
     private bool _saving = false;
     private bool _extracting = false;
@@ -62,7 +65,16 @@ public partial class Thema : ClubSelectorPageBase
         await LoadAsync();
     }
 
-    protected override Task OnClubChangedAsync() => LoadAsync();
+    protected override Task OnClubChangedAsync()
+    {
+        // #1872: meldingen en uit de website gehaalde kleuren horen bij de vorige club.
+        _saveMessage = null;
+        _extractError = null;
+        _extractedColors = new();
+        _extractedFaviconUrl = null;
+        _extractedLogoUrl = null;
+        return LoadAsync();
+    }
 
     private void OpGlobaleModusGewijzigd(string modus)
     {
@@ -80,18 +92,26 @@ public partial class Thema : ClubSelectorPageBase
     {
         _loading = true;
         _error = null;
-        var result = await Api.GetThemeAsync();
-        if (result.Success && result.Data != null)
+        // #1872: een late response van de vorige club mag het thema (en dus een latere save) niet overschrijven.
+        var toegepast = await LaadClubgebondenAsync(_themeLoadGuard, async () =>
         {
-            _theme = result.Data;
-            VulPalettenUitThema();
-        }
-        else
+            var result = await Api.GetThemeAsync();
+            return (Result: result, Modus: await ThemeService.GetModeAsync());
+        }, r =>
         {
-            _error = result.ErrorMessage ?? "Thema kon niet worden geladen.";
-        }
-        _modus = await ThemeService.GetModeAsync();
-        _loading = false;
+            if (r.Result.Success && r.Result.Data != null)
+            {
+                _theme = r.Result.Data;
+                _themeClubCode = ClubSelector.SelectedClubCode;
+                VulPalettenUitThema();
+            }
+            else
+            {
+                _error = r.Result.ErrorMessage ?? "Thema kon niet worden geladen.";
+            }
+            _modus = r.Modus;
+        });
+        if (toegepast) _loading = false;
     }
 
     /// <summary>
@@ -178,15 +198,26 @@ public partial class Thema : ClubSelectorPageBase
 
     private async Task SaveAsync()
     {
-        _saving = true;
         _saveMessage = null;
+        // #1872: een uitkomst van een eerdere save telt nooit als succes van deze save (ExtractFromWebsiteAsync leest dit).
+        _saveSuccess = false;
+        // #1872: nooit het thema van een andere club (of een half geladen thema) naar de huidige club schrijven.
+        if (_loading || IsClubGewisseld(_themeClubCode))
+        {
+            _saveMessage = "Thema van deze club is nog niet geladen; opslaan is overgeslagen.";
+            return;
+        }
+
+        var clubCode = ClubSelector.SelectedClubCode;
+        _saving = true;
         StateHasChanged();
 
         SynchroniseerNaarThema();
         var result = await Api.UpdateThemeAsync(_theme);
+        _saving = false;
+        if (IsClubGewisseld(clubCode)) return;
         _saveSuccess = result.Success;
         _saveMessage = result.Success ? "Thema opgeslagen." : (result.ErrorMessage ?? "Opslaan mislukt.");
-        _saving = false;
     }
 
     private async Task ResetToDefaultAsync()
@@ -214,26 +245,35 @@ public partial class Thema : ClubSelectorPageBase
         _extractedLogoUrl = null;
         StateHasChanged();
 
-        await SaveAsync();
-        if (!_saveSuccess)
+        // #1872: club vastleggen vóór de save; na een clubwissel niets meer ophalen of tonen. De laadknop
+        // komt via finally altijd vrij, ook als de uitkomst bij een andere club hoort.
+        var clubCode = ClubSelector.SelectedClubCode;
+        try
         {
-            _extractError = _saveMessage ?? "Club-website kon niet worden opgeslagen vóór het ophalen.";
+            await SaveAsync();
+            if (IsClubGewisseld(clubCode)) return;
+            if (!_saveSuccess)
+            {
+                _extractError = _saveMessage ?? "Club-website kon niet worden opgeslagen vóór het ophalen.";
+                return;
+            }
+
+            var result = await Api.ExtractThemeColorsAsync(_theme.ClubWebsiteUrl ?? "");
+            if (IsClubGewisseld(clubCode)) return;
+            if (result.Success && result.Data != null)
+            {
+                _extractedColors = result.Data.Colors;
+                _extractedFaviconUrl = result.Data.FaviconUrl;
+                _extractedLogoUrl = result.Data.LogoUrl;
+            }
+            else
+            {
+                _extractError = result.ErrorMessage ?? "Ophalen mislukt.";
+            }
+        }
+        finally
+        {
             _extracting = false;
-            return;
         }
-
-        var result = await Api.ExtractThemeColorsAsync(_theme.ClubWebsiteUrl ?? "");
-        if (result.Success && result.Data != null)
-        {
-            _extractedColors = result.Data.Colors;
-            _extractedFaviconUrl = result.Data.FaviconUrl;
-            _extractedLogoUrl = result.Data.LogoUrl;
-        }
-        else
-        {
-            _extractError = result.ErrorMessage ?? "Ophalen mislukt.";
-        }
-
-        _extracting = false;
     }
 }

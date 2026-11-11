@@ -18,6 +18,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- Clubgebonden beheerpagina's (Planning, Veld optimalisatie, Leermomenten, Teamaliassen, Rolrechten, Thema, Sportlink Web Extension, Feedback) passen een te late response van de vorige club niet meer toe na een clubwissel, en slaan nooit een thema of instellingen van een andere club op. Ook de uitkomst van een actie die nog voor de vorige club liep (opslaan, kleuren ophalen van de website, publiceren, teamlijst opnieuw opbouwen, alias- of leermomentactie, koppeling) verschijnt niet meer onder de nieuwe club; een late verwijderactie van de vorige club sluit geen verwijderbevestiging meer die intussen voor de nieuwe club is geopend, en de knop 'Ophalen van website' blijft na een clubwissel niet hangen. Planning en Veld optimalisatie laden de Sportlink-extensievlag opnieuw bij een clubwissel (#1872).
 - Veldoptimalisatie past de getoonde planning exact toe, inclusief handmatig gekozen deelvelden. Onbekende teams zonder betrouwbare speelduur blokkeren andere geldige wijzigingen niet.
 - De clubkiezer, startpoort en initialisatie van de hoofdindeling staan nu in het aangrenzende partial-bestand; gedrag blijft gelijk (zie issue #1807).
 - API-bodybegrenzing hergebruikt de gedeelde uitvoeringspoort met behoud van bestaande parsers en endpointvalidatie (zie issue #1811).
@@ -49,6 +50,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Fixture filtering and planner classification preparation now share one implementation across database tiers (#1816).
 
 ### Security
+- Providerinvoer in leermomenten behoudt nu ook een tijdbereik (`10:30-12:00`, ook met gedachtestreepje, compact of met spaties: `10:30–12:00`, `10:30 - 12:00`) en dag-maand (`14-11`) als planningsnotatie; telefoonnummers met dezelfde scheidingstekens blijven `[nummer]`, opslag-/tracesanering ongewijzigd (#1870).
 - Providerinvoer maskeert lange nummerreeksen in leermomenten en behoudt geldige datum- en tijdnotatie (zie issue #1809).
 - Email answers use a neutral greeting when no safe display name is available; authorized internal review retains a bounded, escaped original sender address. Contact-pattern masking and both-tier output coverage are strengthened, with captured-provider regressions preserving numeric planning data. Provider body processing stays bounded and omits unfinished boundary fragments while preserving the truncation marker and whole masking tokens (#1809).
 - The availability API contract now documents normalized, bounded warning output and the team-name display fallback on both database tiers (#1809).

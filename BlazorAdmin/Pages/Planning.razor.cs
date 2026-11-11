@@ -39,6 +39,8 @@ public partial class Planning : ClubSelectorPageBase
     private bool _pdfExportIngeschakeld;
     private readonly LookupGeneratieGuard _pdfExportLoadGuard = new();
     private bool _sportlinkExtensionEnabled;
+    private readonly LookupGeneratieGuard _sportlinkExtensionLoadGuard = new();
+    private readonly LookupGeneratieGuard _veldbezettingLoadGuard = new();
     private readonly SportlinkActieKolomState _sportlinkKolom = new();
 
     private string ExportBestandsNaam => $"veldbezetting-{DatumStr}";
@@ -56,11 +58,13 @@ public partial class Planning : ClubSelectorPageBase
     {
         await LoadVeldbezettingAsync();
 
-        // #989: geen Sportlink-kolom/-knoppen tonen als de extension uit staat (DoD).
-        var settings = await InstellingenCache.GetSettingsAsync();
-        _sportlinkExtensionEnabled = settings.Success && settings.Data?.SportlinkExtensionEnabled == true;
+        await LaadSportlinkExtensionStatusAsync();
         await LaadPdfExportStatusAsync();
     }
+
+    // Opnieuw bij een clubwissel (#1872).
+    private Task LaadSportlinkExtensionStatusAsync() =>
+        LaadSportlinkExtensionVlagAsync(_sportlinkExtensionLoadGuard, InstellingenCache, aan => _sportlinkExtensionEnabled = aan);
 
     private async Task OnDatumChanged() => await LoadVeldbezettingAsync();
 
@@ -70,25 +74,35 @@ public partial class Planning : ClubSelectorPageBase
         _veldbezettingError = null;
         try
         {
-            var result = await PlanningApi.GetVeldbezettingAsync(DatumStr);
-            if (result.Success)
+            // #1872: een late response van de vorige club (of datum) mag de bezetting van de huidige club niet overschrijven.
+            var datum = DatumStr;
+            var toegepast = await LaadClubgebondenAsync(_veldbezettingLoadGuard, () => PlanningApi.GetVeldbezettingAsync(datum), result =>
             {
-                _veldbezetting = result.Data?.Wedstrijden ?? new();
-                _sportlinkStatus = result.Data?.Sportlink;
-            }
-            else
-            {
-                _veldbezetting = new();
-                _sportlinkStatus = null;
-                _veldbezettingError = result.ErrorMessage ?? "Ophalen veldbezetting mislukt.";
-            }
+                if (result.Success)
+                {
+                    _veldbezetting = result.Data?.Wedstrijden ?? new();
+                    _sportlinkStatus = result.Data?.Sportlink;
+                }
+                else
+                {
+                    _veldbezetting = new();
+                    _sportlinkStatus = null;
+                    _veldbezettingError = result.ErrorMessage ?? "Ophalen veldbezetting mislukt.";
+                }
+            });
+            if (toegepast) _veldbezettingBezig = false;
         }
-        finally { _veldbezettingBezig = false; }
+        catch
+        {
+            _veldbezettingBezig = false;
+            throw;
+        }
     }
 
     protected override async Task OnClubChangedAsync()
     {
         await LoadVeldbezettingAsync();
+        await LaadSportlinkExtensionStatusAsync();
         await LaadPdfExportStatusAsync();
     }
 
