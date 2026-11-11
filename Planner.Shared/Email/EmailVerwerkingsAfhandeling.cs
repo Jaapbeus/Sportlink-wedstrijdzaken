@@ -226,6 +226,20 @@ public static class EmailVerwerkingsAfhandeling
         return true;
     }
 
+    /// <summary>Een leesfout bij een uitgesloten bericht blokkeert de overige batch niet.</summary>
+    public static async Task MarkeerGefilterdBerichtGelezenAsync(string messageId, IReplyGraph graph, ILogger log)
+    {
+        try
+        {
+            await graph.MarkAsReadAsync(messageId);
+        }
+        catch (Exception)
+        {
+            // Geen providerexception, berichtinhoud of afzendergegevens in deze waarschuwing.
+            log.LogWarning("Gefilterd bericht kon niet als gelezen worden gemarkeerd; overige berichten worden verwerkt.");
+        }
+    }
+
     /// <summary>
     /// Handelt een bericht van een automatische afzender af (<see cref="AutomatischeAfzenderHerkenning"/>):
     /// géén AI-aanroep en géén antwoord, maar wel een spoor voor de coördinator: het label

@@ -43,4 +43,16 @@ public class EasyAuthHelperClubCodeTests
         EasyAuthHelper.GetClubCodeFromRequest(Verzoek("ALLSTARS"), clubs, () => throw new InvalidOperationException("primair"))
             .Should().Be("ALLSTARS");
     }
+
+    [Theory]
+    [InlineData("ALLSTARS\n")]
+    [InlineData("ALLSTARS\r")]
+    [InlineData("ALLSTARS\r\n")]
+    [InlineData("ALL\nSTARS")]
+    public void OngeldigeHttpHeaderwaarde_ValtTerugOpPrimaireOokAlsLijstNietBeschikbaar(string header)
+    {
+        var clubs = new BekendeClubs(() => throw new InvalidOperationException());
+
+        EasyAuthHelper.GetClubCodeFromRequest(Verzoek(header), clubs, () => Primair).Should().Be(Primair);
+    }
 }

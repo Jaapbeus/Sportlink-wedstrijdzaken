@@ -19,8 +19,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Fixed
+- Een mislukte gelezen-markering van eigen of uitgesloten mail blijft per bericht begrensd; overige berichten blijven beschikbaar voor classificatie zonder het gefilterde bericht alsnog naar AI te sturen (#1800).
 - De negatieve tier-duplicatietest gebruikt een geïsoleerde minimale fixture en controleert de exacte foutcode en groeimelding, zodat minder productieduplicatie de test niet laat slagen (#1800).
-- Een onbeschikbare leermomentbron pauzeert e-mailverwerking vóór classificatie en buiten-scope-mutaties via de bestaande database-uitvalmelding; alleen een succesvol geladen lege set mag zonder voorbeelden classificeren (#1800).
+- Een onbeschikbare leermomentbron pauzeert e-mailverwerking vóór het voorfilter, classificatie en alle label-/gelezen-mutaties via de bestaande database-uitvalmelding; alleen een succesvol geladen lege set mag zonder voorbeelden classificeren (#1800).
 - Ontbreekt `AiModelName`, dan wordt geen AI-client met een hardcoded terugval geregistreerd; e-mailverwerking stopt veilig vóór de databasefase en de handmatige e-mailtester geeft een gecontroleerde 503. Niet-AI-functies blijven beschikbaar (#1800).
 - Goedgekeurde leermomenten worden al vóór de eerste e-mailclassificatie toegepast, zodat een correctie naar een herplanverzoek niet als buiten scope wordt afgesloten. Herhaalde niet-quota-classificatiefouten geven één privacyveilige, afzonderlijk gethrottlede melding; mislukte berichten blijven ongelezen en worden opnieuw geprobeerd (#1800).
 
@@ -33,6 +34,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - De SQL Server-planner geeft voor de niet-opgeslagen optionele eerste-elftalnaam nu expliciet `null` door, gelijk aan Postgres; de settings-loader guard hoeft deze ontbrekende sleutel niet meer uit te zonderen (#1821).
 
 ### Security
+- Clubcodevalidatie begrenst de volledige invoer en plannerlogs schonen clubcodes op (zie issue #1811).
 - Email answers use a neutral greeting when no safe display name is available; authorized internal review retains a bounded, escaped original sender address. Contact-pattern masking and both-tier output coverage are strengthened, with captured-provider regressions preserving numeric planning data. Provider body processing stays bounded and omits unfinished boundary fragments while preserving the truncation marker and whole masking tokens (#1809).
 - The availability API contract now documents normalized, bounded warning output and the team-name display fallback on both database tiers (#1809).
 - E-mailverwerking verhard vóór review mode uit gaat (#1809, beide tiers): alleen exact `false` (hoofdletterongevoelig) schakelt review uit; afzendercontrole is syntactisch en blokkeert ongeschikte adressen voor automatisch antwoorden. Onderwerp-, naam- en waarschuwingsuitvoer wordt begrensd en gesaneerd; de provider ontvangt geen afzenderidentiteit en herkenbare contactpatronen in onderwerp, berichttekst en correctiecontext worden gemaskeerd. Dit beperkt geen andere persoonsgegevens en vervangt de open verwerkingsafspraken (#1736) niet; #43 blijft afhankelijk van eigenaaracceptatie.

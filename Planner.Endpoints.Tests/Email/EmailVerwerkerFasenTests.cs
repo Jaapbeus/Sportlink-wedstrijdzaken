@@ -149,13 +149,13 @@ public class EmailVerwerkerFasenTests
     }
 
     [Fact]
-    public async Task AllesWeggefilterdDoorVoorfilter_GeenAiEnGeenDatabase()
+    public async Task AllesWeggefilterdDoorVoorfilter_ContextVoorMutatiesGeenAi()
     {
         var poort = new FakePoort { Ongelezen = [new("m1")], PreFilter = _ => [] };
 
         await VoerUitAsync(poort);
 
-        poort.Stappen.Should().Equal("haal", "prefilter");
+        poort.Stappen.Should().Equal("haal", "ai", "fewshots", "prefilter");
     }
 
     [Fact]
@@ -169,7 +169,7 @@ public class EmailVerwerkerFasenTests
 
         await VoerUitAsync(poort);
 
-        poort.Stappen.Should().Equal("haal", "prefilter", "lijst-voor-ai", "filter");
+        poort.Stappen.Should().Equal("haal", "ai", "fewshots", "prefilter", "lijst-voor-ai", "filter");
     }
 
     [Fact]
@@ -179,7 +179,7 @@ public class EmailVerwerkerFasenTests
 
         await VoerUitAsync(poort);
 
-        poort.Stappen.Should().Equal("haal", "prefilter", "lijst-voor-ai");
+        poort.Stappen.Should().Equal("haal", "ai", "fewshots", "prefilter", "lijst-voor-ai");
     }
 
     [Fact]
@@ -189,7 +189,7 @@ public class EmailVerwerkerFasenTests
 
         await VoerUitAsync(poort);
 
-        poort.Stappen.Should().Equal("haal", "prefilter", "lijst-voor-ai", "filter", "ai");
+        poort.Stappen.Should().Equal("haal", "ai");
     }
 
     [Fact]
@@ -200,7 +200,7 @@ public class EmailVerwerkerFasenTests
 
         await VoerUitAsync(poort);
 
-        poort.Stappen.Should().Equal("haal", "prefilter", "lijst-voor-ai", "filter", "ai", "fewshots", "classificeer", "label");
+        poort.Stappen.Should().Equal("haal", "ai", "fewshots", "prefilter", "lijst-voor-ai", "filter", "classificeer", "label");
     }
 
     [Fact]
@@ -240,7 +240,7 @@ public class EmailVerwerkerFasenTests
         await VoerUitAsync(poort);
         await VoerUitAsync(poort);
 
-        poort.Stappen.Should().NotContain(s => s == "classificeer" || s == "label" || s == "wacht"
+        poort.Stappen.Should().NotContain(s => s == "prefilter" || s == "classificeer" || s == "label" || s == "wacht"
             || s.StartsWith("verwerk:") || s.StartsWith("classificatiefout:") || s.StartsWith("fout:"));
         poort.Verwerkt.Should().BeEmpty();
         poort.VastgelegdeFouten.Should().BeEmpty();
@@ -337,7 +337,7 @@ public class EmailVerwerkerFasenTests
         await VoerUitAsync(poort);
 
         poort.Stappen.Should().Equal(
-            "haal", "prefilter", "lijst-voor-ai", "filter", "ai", "fewshots", "classificeer", "label",
+            "haal", "ai", "fewshots", "prefilter", "lijst-voor-ai", "filter", "classificeer", "label",
             "wacht", "instellingen", "lijst", "voorbereiding", "classificatiefout:m2", "verwerk:m1");
         poort.Verwerkt.Select(v => v.MessageId).Should().Equal(["m1"], "buiten scope gaat niet naar de verwerking");
     }

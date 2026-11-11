@@ -131,15 +131,24 @@ public static class EmailVerwerkerFasen
         IEmailVerwerkerPoort<TBericht> poort, UitsluitingslijstCache uitsluitingslijst, ILogger log)
         where TBericht : IInkomendBericht
     {
-        var teClassificeren = await HaalEnFilterBerichtenAsync(poort, uitsluitingslijst, log);
-        if (teClassificeren is null)
+        var emails = await poort.HaalOngelezenAsync();
+        if (emails.Count == 0)
+        {
+            log.LogInformation("Geen ongelezen emails");
             return null;
+        }
 
+        // Alleen clientbeschikbaarheid controleren; dit doet geen AI-aanroep of mailboxmutatie.
         if (!poort.BereidAiVoor())
             return null;
 
-        var voorbeelden = await LaadClassificatieContextAsync(poort, teClassificeren.Count, log);
+        // Ook het voorfilter muteert de mailbox: verplichte context moet daarvoor beschikbaar zijn.
+        var voorbeelden = await LaadClassificatieContextAsync(poort, emails.Count, log);
         if (voorbeelden is null)
+            return null;
+
+        var teClassificeren = await FilterBerichtenAsync(poort, emails, uitsluitingslijst, log);
+        if (teClassificeren is null)
             return null;
         var classificationResult = await ClassificeerEnMeldFoutenAsync(poort, teClassificeren, voorbeelden, log);
         var classificaties = classificationResult.Classificaties;
@@ -168,7 +177,7 @@ public static class EmailVerwerkerFasen
     }
 
     // Een lege goedgekeurde set is geldig; een laadfout mag nooit dezelfde betekenis krijgen.
-    // Stop vóór AI en de buiten-scope-label/gelezen-mutaties en gebruik de bestaande DB-uitvalgrens.
+    // Stop vóór AI en alle voorfilter-/buiten-scope-label/gelezen-mutaties en gebruik de bestaande DB-uitvalgrens.
     private static async Task<IReadOnlyList<ClassificatieCorrectieVoorbeeld>?> LaadClassificatieContextAsync<TBericht>(
         IEmailVerwerkerPoort<TBericht> poort, int aantalOnverwerkt, ILogger log)
         where TBericht : IInkomendBericht
@@ -186,20 +195,13 @@ public static class EmailVerwerkerFasen
     }
 
     /// <summary>
-    /// Haalt de ongelezen berichten op en filtert ze (eigen mailbox, uitsluitingslijst) vóór er één
+    /// Filtert de opgehaalde berichten (eigen mailbox, uitsluitingslijst) vóór er één
     /// naar de AI-provider gaat. <c>null</c> = niets te classificeren (reden is gelogd).
     /// </summary>
-    private static async Task<List<TBericht>?> HaalEnFilterBerichtenAsync<TBericht>(
-        IEmailVerwerkerPoort<TBericht> poort, UitsluitingslijstCache uitsluitingslijst, ILogger log)
+    private static async Task<List<TBericht>?> FilterBerichtenAsync<TBericht>(
+        IEmailVerwerkerPoort<TBericht> poort, List<TBericht> emails, UitsluitingslijstCache uitsluitingslijst, ILogger log)
         where TBericht : IInkomendBericht
     {
-        var emails = await poort.HaalOngelezenAsync();
-        if (emails.Count == 0)
-        {
-            log.LogInformation("Geen ongelezen emails");
-            return null;
-        }
-
         var eigenMailbox = Environment.GetEnvironmentVariable("GraphMailbox") ?? "";
 
         // Pre-filter: eigen mailbox en gecachede uitsluitingslijst (geen DB nodig)

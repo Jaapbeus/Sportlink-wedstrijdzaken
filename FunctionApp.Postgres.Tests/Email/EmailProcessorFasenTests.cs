@@ -24,7 +24,7 @@ public class EmailProcessorFasenTests
             throttle ?? new FakeNoodmailThrottleStore(), "Host=niet-gebruikt");
 
     [Fact]
-    public async Task Poll_UitgeslotenAfzender_MarkeertGelezenViaDeTierAdapterEnWektDeDatabaseNiet()
+    public async Task Poll_UitgeslotenAfzenderZonderChatClient_MuteertNietEnWektDeDatabaseNiet()
     {
         var graph = new FakeEmailGraphService();
         graph.UnreadEmails.Add(Bericht("m1", "uitgesloten@voorbeeld.nl"));
@@ -35,7 +35,7 @@ public class EmailProcessorFasenTests
 
         await EmailVerwerkerFasen.VoerUitAsync(Poort(graph), cache, NullLogger.Instance);
 
-        graph.MarkedAsReadIds.Should().Equal(["m1"]);
+        graph.MarkedAsReadIds.Should().BeEmpty();
         graph.SentReplies.Should().BeEmpty();
     }
 
