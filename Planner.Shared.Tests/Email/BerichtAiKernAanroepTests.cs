@@ -89,6 +89,39 @@ public class BerichtAiKernAanroepTests
         providerPrompt.Should().Contain("voorbeeld [nummer]").And.Contain("correctie [nummer]");
     }
 
+    public static IEnumerable<object[]> StrikteVoorbeeldNummers()
+    {
+        foreach (var lengte in new[] { 9, 11, 24 })
+        {
+            var cijfers = new string('0', lengte);
+            yield return [cijfers, "[nummer]"];
+            yield return ["id" + cijfers, "id[nummer]"];
+            yield return [cijfers + "suffix", "[nummer]suffix"];
+            yield return ["id" + cijfers + "suffix", "id[nummer]suffix"];
+        }
+        yield return [string.Join('.', Enumerable.Repeat(new string('0', 3), 3)), "[nummer]"];
+        yield return ["12.34 " + new string('0', 5), "[nummer]"];
+        yield return ["12-12-12-" + new string('0', 6), "[nummer]"];
+        yield return ["10.30" + new string('0', 11), "[nummer]"];
+        yield return [new string('x', 490) + new string('0', 24), new string('x', 490) + "[nummer]"];
+    }
+
+    [Theory]
+    [MemberData(nameof(StrikteVoorbeeldNummers))]
+    public async Task FewShotVoorbeeld_StrikteMaskeringVanBeideSamenvattingenInDefinitievePrompt(
+        string invoer, string verwacht)
+    {
+        var client = new VasteClient("{}");
+        await Maak(client).ClassificeerBerichtAsync("neutrale vraag", "neutraal onderwerp", "trainer@voorbeeld.nl",
+            [new ClassificatieCorrectieVoorbeeld("buiten_scope", "herplan_verzoek", invoer, invoer)]);
+
+        var prompt = client.Berichten[0].Text;
+        var samenvatting = verwacht.Replace('"', '\'');
+        prompt.Should().Contain("\"" + samenvatting + "\"");
+        prompt.Split(samenvatting).Should().HaveCount(3); // origineel én correctie
+        prompt.Should().NotContain(new string('0', 9));
+    }
+
     [Theory]
     [InlineData("14-11-26 10.30 uur")]
     [InlineData("10-10-2026 11.30")]

@@ -30,7 +30,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Fixture filtering and planner classification preparation now share one implementation across database tiers (#1816).
 
 ### Security
-- Learned examples sent in provider prompts mask long number sequences while preserving explicit dates and times (#1799).
+- Learned examples sent in provider prompts mask complete long numeric candidates, including embedded values, while preserving complete valid date/time sequences (#1799).
 - Email answers use a neutral greeting when no safe display name is available; authorized internal review retains a bounded, escaped original sender address. Contact-pattern masking and both-tier output coverage are strengthened, with captured-provider regressions preserving numeric planning data. Provider body processing stays bounded and omits unfinished boundary fragments while preserving the truncation marker and whole masking tokens (#1809).
 - The availability API contract now documents normalized, bounded warning output and the team-name display fallback on both database tiers (#1809).
 - E-mailverwerking verhard vóór review mode uit gaat (#1809, beide tiers): alleen exact `false` (hoofdletterongevoelig) schakelt review uit; afzendercontrole is syntactisch en blokkeert ongeschikte adressen voor automatisch antwoorden. Onderwerp-, naam- en waarschuwingsuitvoer wordt begrensd en gesaneerd; de provider ontvangt geen afzenderidentiteit en herkenbare contactpatronen in onderwerp, berichttekst en correctiecontext worden gemaskeerd. Dit beperkt geen andere persoonsgegevens en vervangt de open verwerkingsafspraken (#1736) niet; #43 blijft afhankelijk van eigenaaracceptatie.

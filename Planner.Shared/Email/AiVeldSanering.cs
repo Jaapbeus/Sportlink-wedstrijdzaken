@@ -113,9 +113,9 @@ public static partial class AiVeldSanering
     [GeneratedRegex(@"(?<datum>\b(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})\b(?![-/.]\d))|(?<![\p{L}\p{N}])(?<nummer>\+?\(?\d(?:[().\p{Zs}\-]*\d){8,14})(?![\p{L}\p{N}])", RegexOptions.CultureInvariant)]
     private static partial Regex NummerPatroon();
 
-    // Provider summaries keep explicit planning dates and clock times, while masking every other
-    // long digit sequence, including values from persisted examples that predate current validation.
-    [GeneratedRegex(@"(?<datum>\b(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})\b(?![-/.]\d))|(?<tijd>\b(?:[01]?\d|2[0-3])[:.][0-5]\d\b)|(?<nummer>(?<![\p{L}\p{N}])\+?\d(?:[\p{Zs}.\-]?\d){8,}(?![\p{L}\p{N}]))", RegexOptions.CultureInvariant)]
+    // Inspect the complete numeric candidate before allowing planning syntax: a date/time prefix
+    // must not hide a longer number, including when letters surround that number.
+    [GeneratedRegex(@"\+?\(?\d(?:[()./\p{Zs}:\-]*\d)*\)?", RegexOptions.CultureInvariant)]
     private static partial Regex ProviderNummerPatroon();
 
     /// <summary>Maskeert contactpatronen voordat externe berichttekst naar de AI-provider gaat.</summary>
@@ -150,10 +150,20 @@ public static partial class AiVeldSanering
     public static string ProviderSamenvatting(string? waarde)
     {
         var schoon = ProviderNummerPatroon().Replace(MaskeerContactgegevens(waarde), match =>
-            match.Groups["datum"].Success || match.Groups["tijd"].Success ? match.Value : "[nummer]");
+            match.Value.Count(char.IsDigit) < 9 || IsExplicietePlanning(match.Value) ? match.Value : "[nummer]");
         schoon = NormaliseerWitruimte(schoon);
         if (schoon.Length > MaxSamenvattingLengte) schoon = schoon[..MaxSamenvattingLengte];
         return ZonderDubbeleAanhalingstekens(schoon);
+    }
+
+    private static bool IsExplicietePlanning(string kandidaat)
+    {
+        string[] datumFormaten = ["yyyy-M-d", "yyyy/M/d", "yyyy.M.d", "d-M-yyyy", "d/M/yyyy",
+            "d.M.yyyy", "d-M-yy", "d/M/yy", "d.M.yy"];
+        string[] tijdFormaten = ["H:mm", "HH:mm", "H.mm", "HH.mm"];
+        return kandidaat.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).All(deel =>
+            DateOnly.TryParseExact(deel, datumFormaten, CultureInfo.InvariantCulture, DateTimeStyles.None, out _)
+            || TimeOnly.TryParseExact(deel, tijdFormaten, CultureInfo.InvariantCulture, DateTimeStyles.None, out _));
     }
 
     private static string ZonderDubbeleAanhalingstekens(string tekst) => tekst.Replace('"', '\'');
