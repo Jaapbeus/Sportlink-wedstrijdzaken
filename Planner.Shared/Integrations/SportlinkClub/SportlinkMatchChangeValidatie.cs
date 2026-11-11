@@ -26,7 +26,8 @@ namespace Planner.Shared.Integrations.SportlinkClub;
 /// maar ook niet transformeren zodat de oorspronkelijke Sportlink-tekst herleidbaar blijft).</param>
 /// <param name="HasBlockingMessages">
 /// <c>true</c> als minstens één melding blokkerend is — de aanroeper mag dan geen vervolgstap tonen
-/// (toch al niet gebouwd in deze app, zie de "NIET VERDER BOUWEN"-marker hierboven).
+/// (toch al niet gebouwd in deze app; zie de marker boven
+/// <see cref="SportlinkWedstrijdDetails.RequestMatchChangeAsync"/>).
 /// </param>
 /// <param name="IsSuccess">
 /// Toplevel <c>IsSuccess</c> uit de respons (#1320) — <c>null</c> als het veld ontbrak of geen

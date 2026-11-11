@@ -416,8 +416,9 @@ Vier dingen om te onthouden:
 - **Sinds #995 ook `PUT .../change-request` — wijzigingsverzoek datum/tijd/accommodatie, ALLEEN
   stap 1 (valideren), sinds #1319 live bevestigd (was code-gelockt):** dit is de enige mutatiesoort die een ECHTE tegenstander
   raakt (Sportlink stuurt bij bevestiging een goedkeuringsverzoek naar de tegenstander) — zie het
-  `NIET VERDER BOUWEN`-markeringscomment op `SportlinkClubClient.RequestMatchChangeAsync` en
-  `ISportlinkClubClient`. Zelfde onderliggende endpoint als `.../field`
+  `NIET VERDER BOUWEN`-markeringscomment boven `SportlinkWedstrijdDetails.RequestMatchChangeAsync`;
+  de interface beschrijft ook dat alleen stap 1 is gebouwd. Stap 2 (bevestigen) ontbreekt. Zelfde
+  onderliggende endpoint als `.../field`
   (`competition/match/UpdateMatchDetails`), maar bewust GEEN parametrisering van
   `PutMatchDetailsAsync` — een eigen `PutMatchDetailsChangeRequestAsync`/
   `BuildMatchChangeRequestBody` kopieert de structuur (verse snapshot ophalen → envelope met
