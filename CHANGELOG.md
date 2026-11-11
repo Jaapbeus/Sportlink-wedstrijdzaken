@@ -39,6 +39,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - The public advisor report exposes severity-class counts only; synthetic tests guard the issue body and workflow summary against publishing advisor details (#1810).
 - The Postgres identifier-casing guard now runs on Bash 3.2/BSD tools and fails closed when its migration inputs or scanner tools are unavailable (#1810).
 - Security pattern scans now handle unusual tracked paths, fail on scanner errors, and publish class counts only; unavailable private patterns are explicitly skipped (#1810).
+- Production deployment now requires the main ref and successful active-tier checks before publishing; deployments are serialized and Blazor waits for the Function App deploy (#1810).
 
 ## [3.16.0.0] — 2026-11-10
 
