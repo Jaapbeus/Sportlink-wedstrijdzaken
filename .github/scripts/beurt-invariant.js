@@ -38,7 +38,6 @@ const EINDFASE = /^(gemerged|merged)\b/i;
 const VERTROUWDE_ASSOCIATIES = ['OWNER', 'MEMBER', 'COLLABORATOR'];
 const VERTROUWDE_BOTS = ['claude[bot]', 'github-actions[bot]'];
 const STANDAARD_GRACE_MINUTEN = 30;
-const RECENT_DAGEN = 7;
 const GELDIGE_SHA = /^[0-9a-f]{40}$/i;
 
 // Veldwaarde: tot einde regel, of tot ". " / ";" (inline-vorm). Een punt midden in een token
@@ -337,37 +336,30 @@ async function laadContext(github, owner, repo) {
   const issues = new Map(alles.filter((i) => !i.pull_request).map((i) => [i.number, i]));
   const openPrs = await github.paginate(github.rest.pulls.list, { ...opts, state: 'open' });
   const prsPerIssue = new Map();
-  const prNummers = new Map();
   for (const pr of openPrs) {
-    prNummers.set(pr.number, pr);
     for (const nr of extractIssueRefs(pr.title, pr.body).strong) {
       if (!prsPerIssue.has(nr)) prsPerIssue.set(nr, []);
       prsPerIssue.get(nr).push({ number: pr.number, headSha: pr.head && pr.head.sha, state: 'open' });
     }
   }
-  return { issues, prsPerIssue, prNummers };
+  return { issues, prsPerIssue };
 }
 
-/** Issues om te beoordelen: met turn:/waiting-codex-label, of met een recente vertrouwde overdracht. */
-async function kiesIssues(github, owner, repo, ctx, nu) {
-  const kandidaten = new Set();
+/**
+ * Issues om te beoordelen: elk open issue met een turn:/waiting-codex-label, met een open gekoppelde PR
+ * (de overdracht kan alleen daar staan) of met ten minste één comment. Een overdracht van lang geleden
+ * zonder turn:-label blijft zo vindbaar (GEEN_TURN); een tijdvenster op de comments zou dat verbergen.
+ * Een issue zonder enige comment kan geen overdracht hebben en wordt overgeslagen.
+ */
+function kiesIssues(ctx) {
+  const kandidaten = [];
   for (const [nr, issue] of ctx.issues) {
     const namen = labelNames(issue);
-    if (namen.includes(VEROUDERD_STATUS) || namen.some((n) => n.startsWith(TURN_PREFIX))) kandidaten.add(nr);
+    const gelabeld = namen.includes(VEROUDERD_STATUS) || namen.some((n) => n.startsWith(TURN_PREFIX));
+    const heeftPr = ctx.prsPerIssue.has(nr);
+    if (gelabeld || heeftPr || issue.comments !== 0) kandidaten.push(nr);
   }
-  const since = new Date(nu.getTime() - RECENT_DAGEN * 24 * 3600 * 1000).toISOString();
-  const recent = await github.paginate(github.rest.issues.listCommentsForRepo, {
-    owner, repo, since, per_page: 100, headers: API_VERSION_HEADERS,
-  });
-  for (const c of recent) {
-    if (!isVertrouwd(c) || isSignaal(c) || !isOverdracht(parseOverdracht(c.body))) continue;
-    const nr = parseInt(String(c.issue_url || '').split('/').pop(), 10);
-    if (ctx.issues.has(nr)) kandidaten.add(nr);
-    else if (ctx.prNummers.has(nr)) {
-      for (const [issueNr, prs] of ctx.prsPerIssue) if (prs.some((p) => p.number === nr)) kandidaten.add(issueNr);
-    }
-  }
-  return [...kandidaten].filter((nr) => ctx.issues.has(nr)).sort((a, b) => a - b);
+  return kandidaten.sort((a, b) => a - b);
 }
 
 async function beoordeelIssue(github, owner, repo, ctx, nr, nu, graceMinuten) {
@@ -398,7 +390,7 @@ async function beoordeelIssue(github, owner, repo, ctx, nr, nu, graceMinuten) {
 async function run({ github, context, core, now = new Date(), dryRun = false, graceMinuten = STANDAARD_GRACE_MINUTEN }) {
   const { owner, repo } = context.repo;
   const ctx = await laadContext(github, owner, repo);
-  const nummers = await kiesIssues(github, owner, repo, ctx, now);
+  const nummers = kiesIssues(ctx);
   const uitkomst = { beoordeeld: nummers.length, gesignaleerd: [], mislukt: [] };
 
   for (const nr of nummers) {

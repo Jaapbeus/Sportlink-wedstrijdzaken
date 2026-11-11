@@ -223,7 +223,7 @@ check('tekst meldt dat labels niet zijn gewijzigd', signaalBody(5, f1).includes(
 
 // ── run ──
 console.log('run:');
-function fakeGithub({ issues, prs = [], comments = {}, recent = [], faalOp = null, events = [] }) {
+function fakeGithub({ issues, prs = [], comments = {}, faalOp = null, events = [] }) {
   const calls = { createComment: [], addLabels: 0, removeLabel: 0, setLabels: 0 };
   const rest = {
     issues: {
@@ -238,7 +238,6 @@ function fakeGithub({ issues, prs = [], comments = {}, recent = [], faalOp = nul
     paginate: async (fn, a) => {
       if (fn === 'listForRepo') return issues;
       if (fn === 'pullsList') return prs;
-      if (fn === 'listCommentsForRepo') return recent;
       if (fn === 'listEvents') return events;
       if (faalOp === a.issue_number) throw new Error('API-fout');
       return comments[a.issue_number] || [];
@@ -297,19 +296,18 @@ const oudeAfwijking = comment('Fase: verwerking\nImplementer: Codex\nVolgende be
     check('aanvraag op gekoppelde PR gelezen: geen signaal', gh.calls.createComment.length, 0);
   }
   {
-    // Een reactie op de PR (alleen daar gezien in de recente comments) wijst terug naar het issue via de sterke PR-verwijzing.
-    const prComment = comment(EIGENAARSBESLUIT, { min: 60 });
+    // Overdracht alleen op de gekoppelde PR (oud, issue zelf zonder comments en zonder label): het issue wordt toch beoordeeld.
+    const prComment = comment(EIGENAARSBESLUIT, { min: 60 * 24 * 30 });
     const gh = fakeGithub({
-      issues: [issue(1, [])],
+      issues: [{ ...issue(1, []), comments: 0 }],
       prs: [{ number: 7, title: 'fix(#1): iets', body: '', head: { sha: SHA } }],
       comments: { 1: [], 7: [prComment] },
-      recent: [{ ...prComment, issue_url: 'https://api.github.com/repos/o/r/issues/7' }],
     });
     const uitkomst = await run({ github: gh, context: ctx, core: maakCore(), now: new Date(NU) });
-    check('PR-comment wijst terug naar zijn issue: GEEN_TURN gesignaleerd', [uitkomst.beoordeeld, gh.calls.createComment.map((c) => c.issue_number)], [1, [1]]);
-    const zonderRecent = fakeGithub({ issues: [issue(1, [])], prs: [{ number: 7, title: 'fix(#1): iets', body: '', head: { sha: SHA } }], comments: { 1: [], 7: [prComment] } });
-    const leeg = await run({ github: zonderRecent, context: ctx, core: maakCore(), now: new Date(NU) });
-    check('zonder recente PR-comment wordt het issue niet beoordeeld', leeg.beoordeeld, 0);
+    check('PR-comment (30 dagen oud) zonder label: GEEN_TURN gesignaleerd', [uitkomst.beoordeeld, gh.calls.createComment.map((c) => c.issue_number)], [1, [1]]);
+    const zonderPr = fakeGithub({ issues: [{ ...issue(2, []), comments: 0 }], comments: { 2: [] } });
+    const leeg = await run({ github: zonderPr, context: ctx, core: maakCore(), now: new Date(NU) });
+    check('open issue zonder label, PR of comments wordt niet opgehaald', leeg.beoordeeld, 0);
   }
   {
     // Alleen een claude[bot]-overdracht (type Bot) op het issue: label wijkt af, dus één signaal.
@@ -325,11 +323,11 @@ const oudeAfwijking = comment('Fase: verwerking\nImplementer: Codex\nVolgende be
     check('API-fout geeft waarschuwing en een falende run', [core.warnings.length, core.failed !== null], [1, true]);
   }
   {
-    // Recente overdracht op een issue zonder turn-label: GEEN_TURN wordt toch gevonden.
-    const c = comment(EIGENAARSBESLUIT, { min: 60 });
-    const gh = fakeGithub({ issues: [issue(3, [])], comments: { 3: [c] }, recent: [{ ...c, issue_url: 'https://api.github.com/repos/o/r/issues/3' }] });
+    // Oude overdracht (60 dagen) op een issue zonder turn-label: GEEN_TURN wordt toch gevonden (P2 review ronde 1).
+    const c = comment(EIGENAARSBESLUIT, { min: 60 * 24 * 60 });
+    const gh = fakeGithub({ issues: [{ ...issue(3, []), comments: 1 }], comments: { 3: [c] } });
     await run({ github: gh, context: ctx, core: maakCore(), now: new Date(NU) });
-    check('recente overdracht zonder label: GEEN_TURN gesignaleerd', gh.calls.createComment.length, 1);
+    check('oude overdracht zonder label: GEEN_TURN gesignaleerd', gh.calls.createComment.length, 1);
   }
 
   console.log(failures === 0 ? '\nAlle checks geslaagd.' : `\n${failures} check(s) gefaald.`);
