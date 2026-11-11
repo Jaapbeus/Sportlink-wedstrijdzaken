@@ -73,7 +73,7 @@ public class EasyAuthHelperAuditActorTests
             var request = new BevestigRequest { AangevraagdDoor = "client-identity" };
             var principal = EncodePrincipal(
                 ("roles", "admin"),
-                ("oid", "8e4234ee-4b03-4c01-9726-e02f41a0be62"),
+                ("oid", "11111111-1111-1111-1111-111111111111"),
                 ("name", "Jan de Vries"));
 
             var result = PlannerAanvragerEndpointCore.Apply(EasyAuthHelper.GetPlannerRequester(
@@ -92,7 +92,7 @@ public class EasyAuthHelperAuditActorTests
             var request = new HerplanBevestigRequest { AangevraagdDoor = "client-identity" };
             var principal = EncodePrincipal(
                 ("roles", "admin"),
-                ("oid", "8e4234ee-4b03-4c01-9726-e02f41a0be62"),
+                ("oid", "11111111-1111-1111-1111-111111111111"),
                 ("name", "Jan de Vries"));
 
             var result = PlannerAanvragerEndpointCore.Apply(EasyAuthHelper.GetPlannerRequester(
@@ -129,7 +129,7 @@ public class EasyAuthHelperAuditActorTests
     {
         WithEnv(azureHosting: "func-test-1812", assert: () =>
         {
-            const string objectId = "8e4234ee-4b03-4c01-9726-e02f41a0be62";
+            const string objectId = "11111111-1111-1111-1111-111111111111";
             foreach (var name in new[] { "trainer@voorbeeld.nl", "Jan de Vries\n", new string('x', 201) })
             {
                 var principal = EncodePrincipal(("oid", objectId), ("name", name));

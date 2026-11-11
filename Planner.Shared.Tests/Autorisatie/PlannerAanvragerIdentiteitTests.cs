@@ -6,7 +6,7 @@ namespace Planner.Shared.Tests.Autorisatie;
 
 public class PlannerAanvragerIdentiteitTests
 {
-    private const string ObjectId = "8e4234ee-4b03-4c01-9726-e02f41a0be62";
+    private const string ObjectId = "11111111-1111-1111-1111-111111111111";
 
     [Fact]
     public void BepaalOpgeslagenLabel_GeldigeNaam_BewaartAlleenWeergavenaam()
