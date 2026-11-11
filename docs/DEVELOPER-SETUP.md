@@ -1036,28 +1036,39 @@ tegelijk: (1) het volledige pad van binnenkomende gegevens tot de historische ta
 (2) een tweede run met identieke brondata levert geen duplicaten op en verandert `mta_modified`
 niet voor ongewijzigde rijen.
 
-Vereist een lege SQL Server-database met het volledige schema (zelfde bron als de CI-job
-"PostDeployment op verse database"):
+De vier inhoudelijke tests gebruiken `SqlServerFact`. Ze draaien alleen als
+`SQLSERVER_TEST_CONNECTION_STRING` is ingesteld; de synchronisatiepipeline leest daarnaast
+`SqlConnectionString`. Stel beide variabelen in op dezelfde lege, geïsoleerde SQL Server-database
+met het volledige schema. CI voert `Database/Script.PostDeployment1.sql` twee keer uit op de
+wegwerpdatabase voordat het selectie-filter deze tests selecteert.
+
+Voor een lokale run: gebruik een eigen wegwerpcontainer en een lokaal ingestelde tijdelijke
+`MSSQL_SA_PASSWORD`-waarde; gebruik geen gedeelde database of echte credentials. In PowerShell:
 
 ```powershell
-docker run -d --name sqlfixture -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=Wegwerpwachtwoord-niet-geheim1! -e MSSQL_PID=Developer -p 1434:1433 mcr.microsoft.com/mssql/server:2022-latest
-# wacht tot de container klaar is, dan:
-docker exec sqlfixture /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Wegwerpwachtwoord-niet-geheim1! -C -Q "CREATE DATABASE SportlinkFixture"
+docker run -d --name sqlfixture -e ACCEPT_EULA=Y --env MSSQL_SA_PASSWORD -e MSSQL_PID=Developer -p 1434:1433 mcr.microsoft.com/mssql/server:2022-latest
+# Wacht tot de container klaar is. SQLCMDPASSWORD blijft een procesomgevingsvariabele;
+# geef het wachtwoord niet met -P door.
+$env:SQLCMDPASSWORD = $env:MSSQL_SA_PASSWORD
+docker exec -e SQLCMDPASSWORD sqlfixture /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -C -Q "CREATE DATABASE SportlinkFixture"
 docker cp Database/Script.PostDeployment1.sql sqlfixture:/tmp/postdeployment.sql
-docker exec sqlfixture /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Wegwerpwachtwoord-niet-geheim1! -C -d SportlinkFixture -b -V 11 -i /tmp/postdeployment.sql
+docker exec -e SQLCMDPASSWORD sqlfixture /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -C -d SportlinkFixture -b -V 11 -i /tmp/postdeployment.sql
+docker exec -e SQLCMDPASSWORD sqlfixture /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -C -d SportlinkFixture -b -V 11 -i /tmp/postdeployment.sql
 
-$env:SqlConnectionString = "Server=localhost,1434;Database=SportlinkFixture;User Id=sa;Password=Wegwerpwachtwoord-niet-geheim1!;TrustServerCertificate=True;"
+$connectionString = "Server=localhost,1434;Database=SportlinkFixture;User Id=sa;Password=$env:MSSQL_SA_PASSWORD;TrustServerCertificate=True;Pooling=false;"
+$env:SQLSERVER_TEST_CONNECTION_STRING = $connectionString
+$env:SqlConnectionString = $connectionString
 dotnet test FunctionApp.Tests --filter FullyQualifiedName~SportlinkFixtureSyncIntegrationTests
 
+$env:SQLSERVER_TEST_CONNECTION_STRING = $null
+$env:SqlConnectionString = $null
+$env:SQLCMDPASSWORD = $null
 docker rm -f sqlfixture
 ```
 
-Deze test staat net als de andere lokale-database-integratietests (`PartialFailureIntegrationTests`)
-op `[Fact(Skip=...)]` — hij draait dus niet automatisch mee in `dotnet test FunctionApp.Tests` en
-ook niet in CI. Dat is bewust: het env-gestuurde "draai automatisch zodra de verbindingsvariabele
-gezet is"-mechanisme dat dit zou vervangen, is de scope van een apart issue (#866, tot nu toe alleen
-uitgewerkt voor de Postgres-tier). Zolang dat niet is toegepast op deze test, is de enige manier om
-hem te draaien de bovenstaande handmatige stappen.
+Zonder `SQLSERVER_TEST_CONNECTION_STRING` rapporteert xUnit de vier inhoudelijke tests als
+overgeslagen. Met de variabele gezet gebruiken ze de bestaande fixture-, idempotentie- en
+staging-assertions; het selectie-filter staat in `build.yml` bij de verse SQL Server-database-job.
 
 ### 7.2 Postgres-tier — `FunctionApp.Postgres.Tests` (issue 890)
 
@@ -1071,8 +1082,8 @@ Drie verschillen met de SQL Server-suite hierboven, alle drie in het voordeel va
 
 | | SQL Server (§7.1) | Postgres (§7.2) |
 |---|---|---|
-| Aanzetten | `[Fact(Skip = "...")]` — alleen na het handmatig weghalen van de Skip | `[PostgresFact]` (#866) — slaat zichzelf **zichtbaar** over zonder `POSTGRES_TEST_CONNECTION_STRING`, en draait onveranderd zodra die gezet is |
-| In CI | draait niet mee | draait mee in de job `fresh-db-postgres`, tegen de instantie die die job zelf al opzet |
+| Aanzetten | `[SqlServerFact]` — slaat zichtbaar over zonder `SQLSERVER_TEST_CONNECTION_STRING` | `[PostgresFact]` (#866) — slaat zichzelf **zichtbaar** over zonder `POSTGRES_TEST_CONNECTION_STRING`, en draait onveranderd zodra die gezet is |
+| In CI | draait mee in de SQL Server-job tegen de verse database na PostDeployment | draait mee in de job `fresh-db-postgres`, tegen de instantie die die job zelf al opzet |
 | Fixtures | `SportlinkFixtureServer`/`SportlinkFixtures` | **exact dezelfde bestanden**, via `<Compile Link>` — niet gekopieerd, dus geen drift |
 
 > **Waarom `<Compile Link>` en geen `ProjectReference` naar `FunctionApp.Tests`:** dat zou
