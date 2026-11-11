@@ -3,13 +3,12 @@ using Npgsql;
 namespace FunctionApp.Postgres.Admin;
 
 /// <summary>
-/// Postgres-tier-tegenhanger van
-/// <c>FunctionApp/Admin/Repositories/AdminVoorkeurTijdenRepository.cs</c> (#887). Vertaling:
-/// <c>[dbo].[TeamVoorkeurTijden]</c>/<c>[dbo].[TeamRegels]</c> →
-/// <c>public.teamvoorkeurtijden</c>/<c>public.teamregels</c>, <c>SCOPE_IDENTITY()</c> →
-/// <c>RETURNING id</c>, gequote PascalCase-aliassen voor #855. <c>mta_inserted</c>/<c>mta_modified</c>
-/// zijn in beide tiers al lowercase (bestaande uitzondering op de PascalCase-conventie) — geen
-/// alias nodig; <c>mta_modified</c> gebruikt <c>NOW()</c> in een <c>TIMESTAMPTZ</c>-kolom (#851's B2).
+/// Leest en beheert teamvoorkeurstijden en teamregels per club in
+/// <c>public.teamvoorkeurtijden</c> en <c>public.teamregels</c>. Nieuwe ids komen uit
+/// <c>RETURNING id</c>; gequote PascalCase-aliassen behouden de #855-casing-regel.
+/// <c>mta_inserted</c>/<c>mta_modified</c> zijn in beide tiers al lowercase (bestaande uitzondering
+/// op de PascalCase-conventie) — geen alias nodig; <c>mta_modified</c> gebruikt <c>NOW()</c> in een
+/// <c>TIMESTAMPTZ</c>-kolom (#851's B2).
 /// </summary>
 internal static class AdminVoorkeurTijdenRepository
 {
