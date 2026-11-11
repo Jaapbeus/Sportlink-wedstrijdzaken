@@ -31,7 +31,7 @@ public class SyncUitkomstTests
     }
 
     [Fact]
-    public void NaarUitzondering_DraagtFasesInHetBerichtEnIsInvalidOperation()
+    public void NaarUitzondering_HeeftVastBerichtEnFasesInEigenschap()
     {
         var u = new SyncUitkomst();
         u.Registreer(SyncUitkomst.FaseMatchdetails, true);
