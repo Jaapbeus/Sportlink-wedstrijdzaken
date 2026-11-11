@@ -2124,10 +2124,16 @@ ertussen.
 `VeldBeschikbaarheidInfo`, `BestaandeWedstrijd`, `TeamRegel`, `TeamVoorkeurVeld` en `Speeltijd` —
 die zes modellen plus `VeldSoort`/`VeldTypeClassificatie` (dezelfde "één plek"-regel als de motor
 zelf, #705/#707) staan nu in `Planner.Shared/PlannerDomeinModellen.cs`. De HTTP-wire-contracten
-(`CheckAvailabilityRequest`, `AutoPlanResponse`, `HerplanCheckRequest`, ...) blijven bewust per tier
-eigen bestanden — die zijn JSON-vormgeving van één specifiek endpoint, geen gedeelde rekenlogica.
-Zelfde onderscheid als `TeamScheduleModels.cs` (gedupliceerd, §16) tegenover `TeamNaamNormalisatie`
-(verhuisd, §17).
+(`CheckAvailabilityRequest`, `AutoPlanResponse`, `HerplanCheckRequest`, ...) bleven in deze ronde
+bewust per tier eigen bestanden — die zijn JSON-vormgeving van één specifiek endpoint, geen gedeelde
+rekenlogica.
+
+**Bijgewerkt door #1856 (eigenaarsbesluit optie B, zie het besluit op issue #1856 en
+`ARCHITECTUUR-CODEKWALITEIT.md` regel 2b).** Het "per tier eigen bestanden" hierboven geldt niet meer
+voor tier-identieke wire-DTO's: die staan eenmalig onder `GedeeldeBron/` (planner: `GedeeldeBron/PlannerDto/`)
+en worden door beide tier-projecten link-gecompileerd, met behoud van de naamruimte per tier. Een wire-DTO
+dat per tier verschilt, blijft in zijn tierbestand. Gedeelde rekenlogica blijft in `Planner.Shared`; de
+link-gecompileerde bron is geen gedeelde providerabstractie (§2): er zit geen gedrag of databasetoegang in.
 
 **Waarom de klasse "PlannerShared" heet terwijl ze al in de namespace `Planner.Shared` zit** — een
 bewuste, risicoarme keuze: alle circa zestig bestaande aanroepen in `AvailabilityService`,

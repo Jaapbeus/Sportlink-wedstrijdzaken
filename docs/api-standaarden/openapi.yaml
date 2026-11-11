@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.16.0.13
+  version: 3.16.0.14
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -202,7 +202,7 @@ components:
           example: "ok"
         version:
           type: string
-          example: "3.16.0.13"
+          example: "3.16.0.14"
         database:
           type: string
           description: Database connection status. "unconfigured" returns HTTP 503.
@@ -235,7 +235,7 @@ components:
           example: "ok"
         version:
           type: string
-          example: "3.16.0.13"
+          example: "3.16.0.14"
         timestamp:
           type: string
           format: date-time
@@ -5006,9 +5006,8 @@ paths:
       responses:
         '200':
           description: |
-            Diagnostiektrace (#1320) — Resultaat.Mutatie.IsSuccess kan alsnog false zijn. De route
-            volgt sportlinkDryRun: staat dry-run aan, dan is het resultaat gesimuleerd
-            (Resultaat.Mutatie.IsDryRun true); anders gaat stap 1 live naar Sportlink.
+            Diagnostiektrace (#1320) — Resultaat.Mutatie.IsSuccess kan alsnog false zijn.
+            IsDryRun geeft aan of de club-instelling de validatiestap heeft gesimuleerd.
           content:
             application/json:
               schema:
@@ -5338,14 +5337,13 @@ paths:
     delete:
       tags: [sportlink]
       operationId: deleteSportlinkClubMatch
-      summary: Clubwedstrijd (oefenwedstrijd) verwijderen (#1440) — contract niet live bevestigd
+      summary: Clubwedstrijd (oefenwedstrijd) verwijderen (#1440) — live sinds #1458, volgt sportlinkDryRun
       description: |
         Verwijdert een clubwedstrijd bij Sportlink via `DELETE competition/match/clubmatch/ClubMatchDelete?PublicMatchId=`.
-        Methode, parameter en foutvorm komen uit Sportlinks publieke frontend-bundle en zijn **nooit live gezien**.
-        De huidige `ClubMatchDeleteLiveBevestigd`-flag staat op `true`, zodat de mutatie de club-instelling
-        `sportlinkDryRun` volgt; er is geen aparte code-lock actief. Een dry-run zet `IsDryRun` aan; een
-        toekomstige expliciete code-lock kan `IsForcedDryRun` aanzetten (wel de read-only
-        `GET competition/match/Match` voor de guard). Volgorde: toggle + EgressGuard → huidige
+        Sinds #1458 is het contract door de eigenaar live bevestigd en volgt de aanroep de
+        club-instelling `sportlinkDryRun`; de code-lock is opgeheven. In dry-run is `IsDryRun`
+        true en wordt geen DELETE verstuurd (wel de read-only GET voor de guard).
+        Volgorde: toggle + EgressGuard → huidige
         wedstrijd ophalen → `SportlinkMutationGuard` (`Verwijderen`: alleen bij expliciet `IsKernelMatch = false`
         én `IsHomeMatch`, anders 409) → audit "Pending" met het `PublicMatchId` → verwijderen (nooit automatisch
         herhaald) → audit voltooien. De Admin GUI biedt dit alleen aan op het resultaat van "Wedstrijd aanmaken".

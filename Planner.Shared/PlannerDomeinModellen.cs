@@ -12,10 +12,9 @@ namespace Planner.Shared;
 // dwingen zich ook te dupliceren.
 //
 // Bewust NIET hierheen verhuisd: de HTTP-wire-contracten (CheckAvailabilityRequest,
-// AutoPlanResponse, HerplanCheckRequest, ...) die in FunctionApp/Planner/PlannerModels.cs
-// achterblijven. Die zijn per tier eigen JSON-vormgeving van hetzelfde endpoint, geen gedeelde
-// rekenlogica — zelfde onderscheid als TeamScheduleModels.cs (#888, gedupliceerd) vs.
-// TeamNaamNormalisatie (#889, verhuisd).
+// AutoPlanResponse, HerplanCheckRequest, ...). Die staan sinds #1856 eenmalig in
+// GedeeldeBron/PlannerDto en worden per tier link-gecompileerd, zodat de publieke naamruimte per
+// tier (SportlinkFunction.Planner / FunctionApp.Postgres.Planner) ongewijzigd blijft.
 
 public class Speeltijd
 {
