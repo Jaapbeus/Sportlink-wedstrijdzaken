@@ -63,6 +63,10 @@
     <PackageReference Include="OpenAI" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Eén providercompositie voor beide hosts; de providerpakketten zijn al in beide tiers aanwezig. -->
+    <Compile Include="../FunctionApp/Infrastructure/OpenAiChatClientRegistration.cs" Link="Infrastructure/OpenAiChatClientRegistration.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <None Update="host.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

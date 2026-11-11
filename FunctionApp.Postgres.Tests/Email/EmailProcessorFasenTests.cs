@@ -45,6 +45,21 @@ public class EmailProcessorFasenTests
             "buiten productie is IChatClient onvoorwaardelijk null (#857); de poll stopt zonder fout");
 
     [Fact]
+    public async Task Poll_ZonderChatClient_StoptVoorDatabasefase()
+    {
+        var graph = new FakeEmailGraphService();
+        graph.UnreadEmails.Add(Bericht("m1"));
+        var cache = new UitsluitingslijstCache();
+        await cache.HerlaadAsync(
+            () => Task.FromResult(new HashSet<string>(StringComparer.OrdinalIgnoreCase)), DateTime.UtcNow);
+
+        await EmailVerwerkerFasen.VoerUitAsync(Poort(graph), cache, NullLogger.Instance);
+
+        graph.MarkedAsReadIds.Should().BeEmpty();
+        graph.SentReplies.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Noodmails_BevattenDeAdviesregelsVanDezeTier()
     {
         var graph = new FakeEmailGraphService();

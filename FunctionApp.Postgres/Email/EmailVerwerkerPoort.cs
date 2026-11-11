@@ -63,12 +63,8 @@ internal sealed class EmailVerwerkerPoort(
     // exact hetzelfde patroon als graphService in Run.
     public bool BereidAiVoor()
     {
-        var chatClient = services.GetService<IChatClient>();
-        if (chatClient is null)
-        {
-            log.LogError("IChatClient niet beschikbaar — controleer OpenAiApiKey/EgressGuard-configuratie; verwerking overgeslagen");
-            return false;
-        }
+        var chatClient = EmailVerwerkerFasen.BeschikbareChatClient(services, log);
+        if (chatClient is null) return false;
 
         _ai = new BerichtAiService(loggerFactory.CreateLogger<BerichtAiService>(), chatClient);
         return true;

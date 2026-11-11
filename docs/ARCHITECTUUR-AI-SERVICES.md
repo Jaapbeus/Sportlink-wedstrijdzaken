@@ -35,11 +35,9 @@ public class BerichtAiService(IChatClient chatClient, ILogger<BerichtAiService> 
 ### Provider-registratie via DI (één plek, één wissel)
 
 ```csharp
-// OpenAI (huidig) — zoals werkelijk geregistreerd in FunctionApp.Postgres/Program.cs
-// en FunctionApp/Program.cs
-builder.Services.AddSingleton<IChatClient>(
-    new ChatClient(aiModelName, new System.ClientModel.ApiKeyCredential(openAiApiKey))
-        .AsIChatClient());
+// OpenAI (huidig): beide hosts compileren dezelfde providercompositie.
+OpenAiChatClientRegistration.Register(
+    builder.Services, openAiApiKey, aiModelName, EgressGuard.ExternalIntegrationsAllowed());
 
 // Azure OpenAI (druppel-in vervanging)
 builder.Services.AddSingleton<IChatClient>(
@@ -64,7 +62,7 @@ builder.Services.AddSingleton<IChatClient>(
 | `Planner.Shared/Email/BerichtAiKern` | gedeeld (#1759): prompt, datablok-markers, parsing, correctie-detectie | `IChatClient` via constructor; clubnaam en klok via delegates |
 | `BerichtAiService` | beide (`FunctionApp.Postgres/Email/`, `FunctionApp/Email/`) | omhulsel om `BerichtAiKern`: levert clubnaam en `DateTime.Now` |
 | `Planner.Shared/Feedback/FeedbackCore` | gedeeld | `IChatClient` als methodeparameter |
-| Provider-registratie | per tier één regel in `Program.cs` | `new ChatClient(aiModelName, …).AsIChatClient()` |
+| Provider-registratie | beide hosts, één bronbestand | `FunctionApp/Infrastructure/OpenAiChatClientRegistration.cs` bouwt de providerclient pas na de gedeelde configuratiepoort |
 | Toekomstige AI-services | — | Altijd `IChatClient` vanaf aanmaak |
 
 *(Tot #1268 stond hier ook `TeamDisambiguationAiService` — forced-choice teamdisambiguatie op de
@@ -72,7 +70,12 @@ SQL Server-tier. Die functionaliteit bestond alleen op die ene tier; de eigenaar
 deterministische gedrag van de Postgres-tier als norm voor beide, en de klasse is verwijderd. Zie
 `docs/ARCHITECTUUR-TEAMRESOLUTIE.md` voor het volledige verhaal.)*
 
-Een provider-wissel is daarmee inderdaad wat de grondregel belooft: **één regel per tier.**
+Een provider-wissel raakt daarmee één providercompositie. `FunctionApp.Postgres.csproj` compileert
+hetzelfde bronbestand via een `Compile`-link; beide hosts hebben al dezelfde providerpakketten.
+Dit is hostcode en hangt van de provider-SDK af. De BCL-beperking voor naar BlazorAdmin gelinkte
+bronbestanden geldt hier niet: die bestanden draaien in de browser. De configuratiepoort staat
+in `Planner.Shared/Infrastructure/AiClientRegistration.cs` en bevat geen providerafhankelijkheid;
+elke host levert zijn eigen `EgressGuard`-beslissing aan de gedeelde compositie.
 
 **OpenAI SDK mag niet worden uitgebreid.** Nieuwe AI-aanroepen gaan via `IChatClient`.
 Deze regel blijft normatief, ook nu de migratie klaar is: hij bewaakt dat er geen nieuwe
@@ -170,21 +173,22 @@ var voorbeeld = $"als vandaag {today:dddd d MMMM} is → 'volgende week doordewe
 
 ```csharp
 // FOUT: hardcoded model en provider
-_chatClient = new ChatClient("gpt-4o-mini", apiKey);
+_chatClient = new ChatClient("<model-id-from-configuration>", apiKey);
 
-// GOED: model komt uit configuratie
-var modelName = Environment.GetEnvironmentVariable("AiModelName") ?? "gpt-4o-mini";
-// provider-registratie via DI (zie boven)
+// GOED: registratie vereist een model-ID uit configuratie; ontbreekt die, dan blijft AI uitgeschakeld.
+var modelName = Environment.GetEnvironmentVariable("AiModelName");
+// provider-registratie via DI (zie boven); er is geen ingebouwde modelterugval.
 ```
 
-Configureer via GitHub Variable `AI_MODEL_NAME` en Azure Function Application Settings.
-Dit maakt model-upgrades (gpt-4o-mini → gpt-4.1-mini, etc.) zonder deployment mogelijk.
+Configureer de gekozen model-ID via GitHub Variable `AI_MODEL_NAME` en Azure Function Application
+Settings. Gebruik geen terugvalwaarde in code.
 
 > **Status: geïmplementeerd (#604), op beide tiers.** `FunctionApp.Postgres/Program.cs` (de tier die
-> in productie draait, #1060) **en** `FunctionApp/Program.cs` lezen de modelnaam uit de app setting
-> `AiModelName` bij de `IChatClient`-registratie; ontbreekt die, dan valt hij terug op `gpt-4o-mini`.
-> De fallback is toegestaan omdat het puur een provider-model-identifier is — geen club-specifieke
-> waarde. De naam komt bewust **niet** uit de instellingentabel (`public.appsettings` op Postgres,
+> in productie draait, #1060) **en** `FunctionApp/Program.cs` lezen `AiModelName` uit de app setting.
+> Als die leeg is terwijl een sleutel en uitgaande integraties zijn toegestaan, wordt `IChatClient`
+> niet geregistreerd en verschijnt één begrensde host-startwaarschuwing. E-mailclassificatie stopt
+> zonder de databasefase te starten; de handmatige tester geeft een veilige `503`. Niet-AI-functies
+> blijven beschikbaar. De modelnaam komt bewust **niet** uit de instellingentabel (`public.appsettings` op Postgres,
 > `dbo.AppSettings` op SQL Server): de DI-registratie loopt bij host-start, vóór de eerste
 > databaseverbinding.
 >

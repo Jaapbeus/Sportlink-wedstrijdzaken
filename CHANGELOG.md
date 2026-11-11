@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- Ontbreekt `AiModelName`, dan wordt geen AI-client met een hardcoded terugval geregistreerd; e-mailverwerking stopt veilig vóór de databasefase en de handmatige e-mailtester geeft een gecontroleerde 503. Niet-AI-functies blijven beschikbaar (#1800).
+
 ### Changed
 - Removed the unused API status service and placed existing shared-logic tests in `Planner.Shared.Tests` (see issue #1808).
 - Clarified the Postgres error-reporting adapter documentation while retaining its tier-specific egress and fingerprint rationale (see issue #1805).

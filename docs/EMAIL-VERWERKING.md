@@ -1351,8 +1351,8 @@ gaan via een apart pad naar dezelfde provider; die registerrij staat in [FEEDBAC
 * **Provider: OpenAI, rechtstreeks via de OpenAI-API** (geen Azure OpenAI). Vastgelegd in `Program.cs`
   van beide tiers: een `OpenAI.Chat.ChatClient`, aangeboden als `IChatClient`. De code stelt geen eigen
   endpoint of regio in; het standaardendpoint van de SDK geldt.
-* **Model: configuratie.** App setting `AiModelName`; is die leeg, dan geldt de terugvalwaarde in
-  `Program.cs`. Welk model een installatie gebruikt, staat dus in haar configuratie, niet in dit document.
+* **Model: configuratie.** App setting `AiModelName`; zonder een ingevulde model-ID wordt `IChatClient`
+  niet geregistreerd. De e-mailpoll stopt dan vóór de databasefase en logt een begrensde melding.
 * **Sleutel:** app setting `OpenAiApiKey`.
 * **Alleen waar uitgaande integraties zijn toegestaan.** `IChatClient` wordt alleen geregistreerd als
   `OpenAiApiKey` gevuld is én `EgressGuard.ExternalIntegrationsAllowed()` dat toestaat (#857). Die

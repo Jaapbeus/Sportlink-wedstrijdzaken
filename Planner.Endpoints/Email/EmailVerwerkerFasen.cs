@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using Planner.Shared;
 using Planner.Shared.Email;
 
@@ -53,7 +55,7 @@ public interface IEmailVerwerkerPoort<TBericht> where TBericht : IInkomendBerich
 
     /// <summary>
     /// Zet de AI-classificatie klaar. <c>false</c> = niet beschikbaar en de poll stopt; de tier logt de
-    /// reden zelf (of gooit, zoals de SQL Server-tier).
+    /// reden zelf; de poll stopt zonder de databasefase te starten.
     /// </summary>
     bool BereidAiVoor();
 
@@ -96,6 +98,14 @@ public interface IEmailVerwerkerPoort<TBericht> where TBericht : IInkomendBerich
 /// </summary>
 public static class EmailVerwerkerFasen
 {
+    /// <summary>Stops a poll cleanly when the optional AI registration is unavailable.</summary>
+    public static IChatClient? BeschikbareChatClient(IServiceProvider services, ILogger log)
+    {
+        var client = services.GetService<IChatClient>();
+        if (client is null)
+            log.LogWarning("E-mail-AI niet beschikbaar; classificatie overgeslagen.");
+        return client;
+    }
     /// <summary>Eén poll: fase 1, en alleen als die iets oplevert fase 2.</summary>
     public static async Task VoerUitAsync<TBericht>(
         IEmailVerwerkerPoort<TBericht> poort, UitsluitingslijstCache uitsluitingslijst, ILogger log)

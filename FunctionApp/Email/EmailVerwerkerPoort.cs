@@ -58,12 +58,13 @@ internal sealed class EmailVerwerkerPoort(
         return await persistence.LaadUitgeslotenAdressenAsync(log);
     }
 
-    // AI-classificatie voor alle resterende emails — database wordt niet nogmaals gewekt. Op deze tier
-    // is een ontbrekende IChatClient een configuratiefout: gooien, zoals vóór #1716 slice 9.
+    // AI-classificatie voor alle resterende emails — database wordt niet nogmaals gewekt. Zonder
+    // client (bijvoorbeeld ontbrekende AiModelName of geblokkeerde egress) stopt alleen deze verwerking.
     public bool BereidAiVoor()
     {
-        var chatClient = services.GetService<IChatClient>()
-            ?? throw new InvalidOperationException("IChatClient niet geconfigureerd — controleer OpenAiApiKey env var");
+        var chatClient = EmailVerwerkerFasen.BeschikbareChatClient(services, log);
+        if (chatClient is null) return false;
+
         _ai = new BerichtAiService(loggerFactory.CreateLogger<BerichtAiService>(), chatClient);
         return true;
     }
