@@ -3,12 +3,13 @@ using Npgsql;
 namespace FunctionApp.Postgres.Admin;
 
 /// <summary>
-/// Leest en beheert per-club veldbeschikbaarheid, velden en periodes in Postgres. De tabellen
-/// <c>[dbo].[VeldBeschikbaarheid]</c>/<c>[dbo].[Velden]</c>/<c>[dbo].[VeldPeriode]</c> corresponderen met
-/// <c>public.veldbeschikbaarheid</c>/<c>public.velden</c>/<c>public.veldperiode</c>,
-/// <c>CONVERT(VARCHAR(5), …)</c> → <c>to_char(…, 'HH24:MI')</c>, <c>OUTPUT INSERTED.[Id]</c> →
-/// <c>RETURNING id</c>. Zie #855-toelichting in <c>AdminVeldPeriodeRepository</c> voor de
-/// gequote-alias-regel bij elke reader-gevoede responsdictionary.
+/// Leest en beheert per-club veldbeschikbaarheid en velden; leest de periodenaam via een
+/// <c>LEFT JOIN</c> op <c>public.veldperiode</c> en bewaart alleen de periodekoppeling.
+/// De SQL Server-tabellen <c>[dbo].[VeldBeschikbaarheid]</c>/<c>[dbo].[Velden]</c> corresponderen met
+/// <c>public.veldbeschikbaarheid</c>/<c>public.velden</c>. Tijden worden met
+/// <c>to_char(…, 'HH24:MI')</c> geformatteerd; nieuwe id's komen uit <c>RETURNING id</c>.
+/// Zie #855-toelichting in <c>AdminVeldPeriodeRepository</c> voor de gequote-alias-regel bij
+/// elke reader-gevoede responsdictionary.
 /// </summary>
 internal static class AdminVeldBeschikbaarheidRepository
 {
