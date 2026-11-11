@@ -631,6 +631,7 @@ uit een workflow kan verdwijnen zonder dat iemand het merkt.
 | Idem: inhoud van de beschrijvingen en parameters in `API.md` en de YAML-JSON-gelijkheid buiten de versie (#1717) | onbewaakt: handgeschreven tekst; alleen de operatieset en de versie zijn machineleesbaar te vergelijken, de rest beoordeelt de reviewer | n.v.t. |
 | Elke feature/fix een entry onder `[Unreleased]` in `CHANGELOG.md` (#1717) | onbewaakt: of een wijziging een entry verdient is een inhoudelijk oordeel; `pre-release-check.yml` bewaakt alleen de versiekopjes | n.v.t. |
 | 2b — tier-identieke wire-DTO's staan eenmalig in `GedeeldeBron/` (#1856) | onbewaakt: een guard (type-niveau-vergelijking van beide tierbomen) valt buiten de scope van #1856; `check-tier-duplicatie.sh` koppelt op bestandsnaam en ziet dit niet; wel gedekt door `PlannerDtoVormTests` voor de verhuisde typen, een nieuw tier-identiek DTO beoordeelt de reviewer (zie 'Eerlijk vermeld') | n.v.t. |
+| Vrije agentslots vullen en voltooide agents hergebruiken (#1860) | onbewaakt: alleen de actieve sessie kent de runtime-roster, taakautorisatie en acceptatie; geen guard of scheduler beheert dit | Handmatig per orkestratiecheckpoint: controleer de live roster, vul veilige vrije slots en verifieer dat de agent de taak heeft aangenomen |
 
 <!-- REGELREGISTER-EINDE -->
 
