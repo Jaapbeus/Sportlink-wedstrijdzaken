@@ -31,8 +31,8 @@
 # 2. Geen allowlistregel zonder reden, dubbel, voor een bestand dat niet (meer) bestaat, geen
 #    HTTP-token meer heeft, de poort zelf bevat of buiten de scan valt.
 # 3. In SyncJobProcessor.cs (beide tiers) staat ná de signatuur "Task Run(" een "await <helper>("
-#    vóór de eerste MarkRunningAsync (volgorde in de brontekst; of het resultaat tot een return
-#    leidt, controleert de guard niet — dat bewijzen de unit-tests van de helper samen met review).
+#    vóór de sync-aanroep (volgorde in de brontekst; of het resultaat tot een return leidt,
+#    controleert de guard niet — dat bewijzen de unit-tests van de helper samen met review).
 #
 # WAT DE GUARD NIET BEWIJST
 # -------------------------
@@ -260,25 +260,24 @@ while IFS= read -r pad; do
   fi
 done < <(awk '/^[[:space:]]*#/ || NF == 0 { next } { print $1 }' "$ALLOWLIST")
 
-# Volgorde in SyncJobProcessor.Run: ná de signatuur "Task Run(" moet "await <helper>(" (als heel
-# woord, dus geen definitie, overload-definitie of naam met voorvoegsel) vóór de eerste
-# MarkRunningAsync staan; een definitie of vermelding boven Run telt niet.
-controleer_volgorde() {  # <bestand> <helpernaam>
+# Volgorde in de geclaimde worker: na de helpermethode-signatuur moet de egress-helper als een
+# aanroep vóór de sync-aanroep staan; een definitie of vermelding boven de methode telt niet.
+controleer_verwerkingsvolgorde() {  # <bestand> <methode> <egress-helper> <sync-methode>
   if [ ! -f "$1" ]; then
-    echo "::error file=$1::Bestand ontbreekt; de volgordecontrole van SyncJobProcessor.Run bewijst dan niets."
+    echo "::error file=$1::Bestand ontbreekt; de volgordecontrole van de geclaimde worker bewijst dan niets."
     fail=1; return
   fi
-  if ! alleen_aanroepen "$1" | awk -v h="$2" '
-      !rs && /Task[[:space:]]+Run[[:space:]]*\(/ { rs = NR; next }
-      rs && !hr && $0 ~ ("(^|[^A-Za-z0-9_])await[[:space:]]+" h "[[:space:]]*\\(") { hr = NR }
-      rs && !mr && /(^|[^A-Za-z0-9_])MarkRunningAsync[[:space:]]*\(/ { mr = NR }
-      END { exit (rs && hr && mr && hr < mr) ? 0 : 1 }'; then
-    echo "::error file=$1::SyncJobProcessor.Run roept $2 niet aan vóór MarkRunningAsync (#1676)."
+  if ! alleen_aanroepen "$1" | awk -v m="$2" -v h="$3" -v s="$4" '
+      !ms && $0 ~ ("Task[[:space:]]+" m "[[:space:]]*\\(") { ms = NR; next }
+      ms && !hr && $0 ~ ("(^|[^A-Za-z0-9_])await[[:space:]]+" h "[[:space:]]*\\(") { hr = NR }
+      ms && !sr && $0 ~ ("(^|[^A-Za-z0-9_])" s "[[:space:]]*\\(") { sr = NR }
+      END { exit (ms && hr && sr && hr < sr) ? 0 : 1 }'; then
+    echo "::error file=$1::De geclaimde worker $2 roept $3 niet aan vóór $4 (#1676)."
     fail=1
   fi
 }
-controleer_volgorde "FunctionApp/Sync/SyncJobProcessor.cs" "BlokkeerBuitenProductieAsync"
-controleer_volgorde "FunctionApp.Postgres/Sync/SyncJobProcessor.cs" "OverslaanZonderUitgaandVerkeerAsync"
+controleer_verwerkingsvolgorde "FunctionApp/Sync/SyncJobProcessor.cs" "ProcessClaimedSqlServerJobAsync" "BlokkeerBuitenProductieAsync" "RunSyncAsync"
+controleer_verwerkingsvolgorde "FunctionApp.Postgres/Sync/SyncJobProcessor.cs" "ProcessClaimedPostgresJobAsync" "OverslaanZonderUitgaandVerkeerAsync" "RunConfiguredSyncAsync"
 
 [ "$fail" -eq 0 ] || exit 1
-echo "OK — $gecontroleerd bestanden met uitgaand HTTP-verkeer: $met_poort met EgressGuard-aanroep, $((gecontroleerd - met_poort)) met een gemotiveerde uitzondering; SyncJobProcessor-volgorde klopt op beide tiers."
+echo "OK — $gecontroleerd bestanden met uitgaand HTTP-verkeer: $met_poort met EgressGuard-aanroep, $((gecontroleerd - met_poort)) met een gemotiveerde uitzondering; claimed SyncJobProcessor egress-volgorde klopt op beide tiers."

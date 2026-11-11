@@ -148,7 +148,8 @@ NOOIT `dotnet build BlazorAdmin` aanroepen terwijl de dev server draait. Na een 
 
 | Methode | URL | Beschrijving |
 |---------|-----|-------------|
-| GET | `http://localhost:7094/api/health` | Status, versie en actieve databasetier |
+| GET | `http://localhost:7094/api/health` | Publieke readiness en versie |
+| GET | `http://localhost:7094/api/beheer/health` | Admin-only healthdiagnostiek (lokaal met auth-bypass) |
 | GET | `http://localhost:7094/api/sync-matches` | Handmatige sync (SQL Server-tier) |
 | GET | `http://localhost:7094/api/postgres/sync-matches` | Handmatige sync (Postgres-tier) |
 | GET | `http://localhost:7094/api/beheer/settings` | Club-instellingen |

@@ -1,3 +1,5 @@
+using Planner.Endpoints.Http;
+
 using Database.Postgres;
 using FunctionApp.Postgres.Infrastructure;
 using Planner.Shared;
@@ -167,14 +169,8 @@ public static class AdminSettingsFunction
     {
         var log = context.GetLogger("AdminSettingsPut");
         return AdminEndpoint.ExecuteAsync(req, log, "AppSettings opslaan",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<UpdateSettingsRequest>(req, async updateRequest =>
             {
-                using var bodyReader = new StreamReader(req.Body);
-                var bodyText = await bodyReader.ReadToEndAsync();
-                if (string.IsNullOrWhiteSpace(bodyText))
-                    return new BadRequestObjectResult(new { error = "Lege request body" });
-
-                var updateRequest = JsonConvert.DeserializeObject<UpdateSettingsRequest>(bodyText);
                 if (updateRequest == null)
                     return new BadRequestObjectResult(new { error = "Ongeldige JSON" });
 
@@ -242,7 +238,7 @@ public static class AdminSettingsFunction
                     volgendeMomenten = fetchScheduleChanged && nieuweSchedule != null
                         ? BerekenVolgendeMomenten(nieuweSchedule, 3) : null
                 });
-            });
+            }, emptyBodyMessage: "Lege request body"));
     }
 
     private static IActionResult? ValidateAndFilterChanges(

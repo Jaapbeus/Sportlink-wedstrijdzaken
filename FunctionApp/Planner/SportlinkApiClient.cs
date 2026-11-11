@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Planner.Shared;
+using Planner.Shared.Sync;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 
@@ -15,7 +16,11 @@ namespace SportlinkFunction.Planner
     public static class SportlinkApiClient
     {
         private const string ApiBron = "API";
-        private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(8) };
+        internal static readonly HttpClientHandler DataserviceHandler = new() { AllowAutoRedirect = false };
+        private static readonly HttpClient _http = new(DataserviceHandler)
+        {
+            Timeout = TimeSpan.FromSeconds(8)
+        };
 
         public static async Task<List<BestaandeWedstrijd>> GetFieldOccupationsWithApiAsync(
             DateOnly date, ILogger log, string? clubCodeScope = null)
@@ -30,8 +35,9 @@ namespace SportlinkFunction.Planner
 
             try
             {
-                var apiUrl    = SystemUtilities.AppSettings.GetSetting("sportlinkApiUrl")
-                                ?? throw new InvalidOperationException("sportlinkApiUrl niet ingesteld");
+                if (!SportlinkDataserviceBasisUrl.TryGetCanonical(
+                        SystemUtilities.AppSettings.GetSetting("sportlinkApiUrl"), out var apiUrl))
+                    throw new InvalidOperationException("Sportlink data-service base URL is invalid.");
                 var clientId  = SystemUtilities.AppSettings.GetSetting("sportlinkClientId")
                                 ?? throw new InvalidOperationException("sportlinkClientId niet ingesteld");
                 var accommodatie = SystemUtilities.AppSettings.GetSetting("accommodatie");
@@ -92,7 +98,7 @@ namespace SportlinkFunction.Planner
             }
             catch (Exception ex)
             {
-                log.LogWarning("SportlinkApiClient: API-fout, fallback naar DB. {Message}", ex.Message);
+                log.LogWarning("SportlinkApiClient: API-fout, fallback naar DB. {ErrorType}", ex.GetType().Name);
                 return await PlannerDataAccess.GetFieldOccupationsAsync(date, clubCodeScope);
             }
         }

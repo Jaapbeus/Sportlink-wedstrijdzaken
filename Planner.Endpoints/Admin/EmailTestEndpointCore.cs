@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Planner.Endpoints.Http;
 using Planner.Shared.Email;
 using Planner.Shared.Email.Trace;
 
@@ -56,11 +57,15 @@ public static class EmailTestEndpointCore
         }
     }
 
-    /// <summary>Leest de request; een lege body geeft een 400 in <c>Fout</c>.</summary>
+    /// <summary>Leest een begrensde UTF-8 JSON-request; lege of ongeldige invoer geeft een veilige 400.</summary>
     public static async Task<(TestEmailRequest? Dto, IActionResult? Fout)> LeesRequestAsync(HttpRequest req)
     {
-        using var reader = new StreamReader(req.Body);
-        var dto = JsonConvert.DeserializeObject<TestEmailRequest>(await reader.ReadToEndAsync());
+        var result = await BoundedRequestBodyReader.ReadJsonAsync<TestEmailRequest>(
+            req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+        if (!result.IsSuccess)
+            return (null, BoundedRequestBodyReader.ToActionResult(result.Error));
+
+        var dto = result.Value;
         return dto == null || string.IsNullOrWhiteSpace(dto.Body)
             ? (null, new BadRequestObjectResult(new { error = "Onderwerp/afzender/body verplicht" }))
             : (dto, null);

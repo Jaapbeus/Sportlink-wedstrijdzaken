@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Http;
-using Newtonsoft.Json;
+using Planner.Endpoints.Http;
 using Planner.Shared.Autorisatie;
 
 namespace Planner.Endpoints.Autorisatie;
@@ -37,8 +37,13 @@ internal static class PlannerAanvragerEndpointCore
         HttpRequest req, string? requester, Func<T, bool> valid, string requiredMessage)
         where T : class, IPlannerAanvragerRequest
     {
-        var body = await new StreamReader(req.Body).ReadToEndAsync();
-        var value = JsonConvert.DeserializeObject<T>(body);
+        // #1811: dezelfde begrensde UTF-8/JSON-lezing als de andere planner-endpoints (413 bij te groot,
+        // 400 bij ongeldige JSON), zodat dit #1848-pad de body-limiet niet omzeilt.
+        var read = await BoundedRequestBodyReader.ReadJsonAsync<T>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+        if (!read.IsSuccess)
+            return new ReadResult<T>(null!, BoundedRequestBodyReader.ToActionResult(read.Error));
+
+        var value = read.Value;
         if (value is null || !valid(value))
             return new ReadResult<T>(null!, new BadRequestObjectResult(new { error = requiredMessage }));
 

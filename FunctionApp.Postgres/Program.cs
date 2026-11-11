@@ -1,3 +1,4 @@
+using Planner.Endpoints.Http;
 using Azure.Identity;
 using FunctionApp.Postgres;
 using FunctionApp.Postgres.Email;
@@ -21,7 +22,7 @@ using Planner.Shared.Integrations.SportlinkClub;
 // (AdminTeambegeleidingDoorsturen), en sinds #972 ook INoodmailThrottleStore
 // (EmailProcessorFunction — de mailbox-getriggerde inkomende e-mailverwerking).
 var builder = FunctionsApplication.CreateBuilder(args);
-builder.ConfigureFunctionsWebApplication();
+builder.ConfigureBoundedFunctionsWebApplication();
 
 // #1515: instellingen eenmaal per instantie laden (Flex: elke niet-HTTP-trigger = eigen instantie).
 builder.UseInstellingenLader(async log =>

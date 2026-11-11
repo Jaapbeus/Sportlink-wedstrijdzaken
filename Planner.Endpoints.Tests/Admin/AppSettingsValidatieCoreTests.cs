@@ -32,15 +32,34 @@ public class AppSettingsValidatieCoreTests
 
     [Theory]
     [InlineData("0 0 4 * * *", true)]
+    [InlineData("* * * * * *", true)]
     [InlineData("0 4 * * *", false)]
-    [InlineData(null, true)]
-    public void FetchSchedule_VerwachtZesVeldenCron(string? cron, bool geldig)
+    [InlineData("0 0 0 31 2 *", false)]
+    [InlineData("", false)]
+    [InlineData("   ", false)]
+    [InlineData(null, false)]
+    public void FetchSchedule_VerwachtUitvoerbareZesVeldenCron(string? cron, bool geldig)
     {
         var uitkomst = Valideer("FetchSchedule", cron);
 
         if (geldig) uitkomst.Should().BeNull();
-        else IsFout(uitkomst, "CRON");
+        else IsFout(uitkomst, "FetchSchedule");
     }
+
+    [Fact]
+    public void FetchSchedule_WeigertWaardeBovenKolombreedteZonderInvoerTeTonen()
+    {
+        var teLang = "0 0 4 * * *".PadRight(AppSettingsValidatieCore.MaxFetchScheduleLengte + 1);
+        var fout = Valideer("FetchSchedule", teLang);
+
+        IsFout(fout, "maximaal 50 tekens");
+        fout.Should().BeOfType<BadRequestObjectResult>()
+            .Subject.Value!.ToString()!.Should().NotContain(teLang);
+    }
+
+    [Fact]
+    public void FetchSchedule_OntbrekendVeldBlijftOngewijzigd()
+        => AppSettingsValidatieCore.Valideer(new Dictionary<string, string?>()).Should().BeNull();
 
     [Theory]
     [InlineData("West", true)]

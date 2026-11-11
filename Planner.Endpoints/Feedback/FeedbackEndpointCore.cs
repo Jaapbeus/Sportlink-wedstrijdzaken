@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Planner.Endpoints.Http;
 using Planner.Shared.Feedback;
 
 namespace Planner.Endpoints.Feedback;
@@ -54,11 +55,21 @@ public static class FeedbackEndpointCore
     public const string BodyTeGrootMelding = "De melding is te groot.";
     public const string TeveelVragenMelding = "Er zijn te veel vragen en antwoorden meegestuurd.";
 
-    /// <summary>Leest en deserialiseert de body (begrensd, zie <see cref="LeesBodyAsync"/>); <c>(null, 413)</c> bij een te grote body.</summary>
+    /// <summary>Leest en deserialiseert een UTF-8 JSON-body binnen de byte- en tekengrenzen.</summary>
     public static async Task<(FeedbackRequest? Dto, IActionResult? Afwijzing)> LeesRequestAsync(Microsoft.AspNetCore.Http.HttpRequest req)
     {
         var (body, afwijzing) = await LeesBodyAsync(req);
-        return afwijzing is not null ? (null, afwijzing) : (JsonConvert.DeserializeObject<FeedbackRequest>(body!), null);
+        if (afwijzing is not null) return (null, afwijzing);
+
+        try
+        {
+            return (JsonConvert.DeserializeObject<FeedbackRequest>(body!), null);
+        }
+        catch (JsonException)
+        {
+            return (null, BoundedRequestBodyReader.ToActionResult(
+                RequestBodyReadError.InvalidJson, BodyTeGrootMelding, "De melding bevat geen geldige UTF-8 JSON."));
+        }
     }
 
     /// <summary>
@@ -67,18 +78,13 @@ public static class FeedbackEndpointCore
     /// </summary>
     public static async Task<(string? Body, IActionResult? Afwijzing)> LeesBodyAsync(Microsoft.AspNetCore.Http.HttpRequest req)
     {
-        using var reader = new StreamReader(req.Body);
-        var buffer = new char[MaxBodyTekens + 1];
-        var gelezen = 0;
-        while (gelezen < buffer.Length)
-        {
-            var aantal = await reader.ReadAsync(buffer.AsMemory(gelezen));
-            if (aantal == 0) break;
-            gelezen += aantal;
-        }
-        if (gelezen > MaxBodyTekens)
+        var result = await BoundedRequestBodyReader.ReadUtf8Async(req, checked(MaxBodyTekens * 4));
+        if (!result.IsSuccess)
+            return (null, BoundedRequestBodyReader.ToActionResult(
+                result.Error, BodyTeGrootMelding, "De melding bevat geen geldige UTF-8 JSON."));
+        if (result.Text!.Length > MaxBodyTekens)
             return (null, new ObjectResult(new { error = BodyTeGrootMelding }) { StatusCode = 413 });
-        return (new string(buffer, 0, gelezen), null);
+        return (result.Text, null);
     }
 
     public const string LimietGebruikerMelding =

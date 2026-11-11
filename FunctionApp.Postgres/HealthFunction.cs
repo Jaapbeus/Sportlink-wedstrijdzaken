@@ -3,16 +3,17 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using FunctionApp.Postgres.Infrastructure;
+using FunctionApp.Postgres.Admin;
+using Planner.Endpoints.Health;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 
 namespace FunctionApp.Postgres;
 
 /// <summary>
-/// /api/health voor de Postgres-tier (#891) — zelfde vorm en velden als de SQL Server-tier
-/// (<c>FunctionApp/Planner/PlannerFunction.cs</c>, #863): <c>tier</c>/<c>provider</c> komen uit
-/// build-time assembly-metadata (nooit een runtime-gok, dus ook gevuld als de database
-/// onbereikbaar is), <c>serverVersion</c> komt aantoonbaar uit de database zelf.
+/// Publieke aggregate health en admin-only diagnose voor de Postgres-tier (#891, #1811).
+/// Detailvelden <c>tier</c>/<c>provider</c> komen uit build-time assembly-metadata; <c>serverVersion</c>
+/// komt aantoonbaar uit de database zelf. De publieke respons bevat alleen statusflags.
 /// <para>
 /// <b>Geen "paused"-status:</b> de SQL Server-tier herkent Azure SQL's serverless auto-pause aan
 /// foutnummer 40613 — een Azure-SQL-specifiek concept. Zonder bevestigde, vergelijkbare
@@ -27,62 +28,61 @@ public static class HealthFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "health")] HttpRequest req,
         FunctionContext context)
     {
-        var log = context.GetLogger("Health");
+        var snapshot = await GetCachedHealthSnapshotAsync(context.GetLogger("Health"), req.HttpContext.RequestAborted);
+        var response = snapshot.ToPublicResponse();
+        return snapshot.Database == "unconfigured"
+            ? new ObjectResult(response) { StatusCode = StatusCodes.Status503ServiceUnavailable }
+            : new OkObjectResult(response);
+    }
+
+    [Function("AdminHealth")]
+    public static Task<IActionResult> AdminHealth(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/health")] HttpRequest req,
+        FunctionContext context)
+    {
+        var log = context.GetLogger("AdminHealth");
+        return AdminEndpoint.ExecuteZonderDatabaseAsync(req, log, "gezondheidsdetails ophalen", async () =>
+        {
+            var snapshot = await GetCachedHealthSnapshotAsync(log, req.HttpContext.RequestAborted);
+            var response = snapshot.ToAdminResponse();
+            return snapshot.Database == "unconfigured"
+                ? new ObjectResult(response) { StatusCode = StatusCodes.Status503ServiceUnavailable }
+                : new OkObjectResult(response);
+        });
+    }
+
+    private static Task<HealthStatusSnapshot> GetCachedHealthSnapshotAsync(ILogger log, CancellationToken callerCancellation) =>
+        HealthStatusCacheAccessor.Instance.GetAsync("Postgres", () => CreateHealthSnapshotAsync(log), callerCancellation);
+
+    private static async Task<HealthStatusSnapshot> CreateHealthSnapshotAsync(ILogger log)
+    {
         var version = typeof(HealthFunction).Assembly.GetName().Version?.ToString(4) ?? "?";
         var (dbStatus, serverVersion) = await GetDatabaseStatusAsync();
         var settingsLoaded = await ProbeSettingsAsync(dbStatus, log);
         var (lastSync, syncStale) = await GetSyncStatusAsync(dbStatus);
         var (tlsMode, tlsWarning) = GetTlsStatus();
         var pendingMigrations = await GetPendingMigrationsAsync(dbStatus);
-        var body = new
-        {
-            // #1081: een verouderde synchronisatie telt mee in de status, maar alleen waar een
-            // synchronisatie ook hoort te draaien. Lokaal en in CI blokkeert EgressGuard (#857)
-            // uitgaand verkeer, dus is een lege of oude lastsynctimestamp daar het verwachte
-            // gedrag en geen storing — die twee zouden anders permanent 'degraded' melden en het
-            // signaal waardeloos maken.
-            // #1098: openstaande migraties tellen ook mee — code die vooruitloopt op het schema is
-            // geen gezonde toestand, ook als de applicatie er (dankzij de fallback) op doordraait.
-            status = dbStatus == "online" && settingsLoaded && !(syncStale && SyncWordtVerwacht)
-                     && pendingMigrations is { Count: 0 }
-                ? "ok" : "degraded",
+        var schemaWarning = PostgresAppSettings.SchemaWarning;
+        var status = dbStatus == "online" && settingsLoaded && !(syncStale && SyncWordtVerwacht)
+                     && pendingMigrations is { Count: 0 } ? "ok" : "degraded";
+        return new HealthStatusSnapshot(
+            status,
             version,
-            timestamp = DateTime.UtcNow,
-            database = dbStatus,
-            // #859: apart van 'database' — een geslaagde verbinding zegt niets over of de
-            // instellingencache ook echt gevuld is. Bewust geen foutdetails hier: dit endpoint is
-            // anoniem toegankelijk, de volledige exceptie staat al in het functielog.
+            dbStatus,
             settingsLoaded,
-            // #1081: de synchronisatie draaide acht dagen elke nacht en werkte niets bij, zonder
-            // dat iets dat meldde. Deze twee velden maken dat zichtbaar zonder een betaalde
-            // metric-alert: lastSync is de waarheid uit de database, syncStale het oordeel.
+            pendingMigrations is null ? null : pendingMigrations.Count == 0,
+            !string.IsNullOrEmpty(schemaWarning),
+            !string.IsNullOrEmpty(tlsWarning),
+            DateTime.UtcNow,
+            GetAssemblyMetadata("DatabaseTier") ?? "onbekend",
+            GetAssemblyMetadata("DatabaseProvider") ?? "onbekend",
+            serverVersion,
             lastSync,
             syncStale,
-            tier = GetAssemblyMetadata("DatabaseTier") ?? "onbekend",
-            provider = GetAssemblyMetadata("DatabaseProvider") ?? "onbekend",
-            serverVersion,
-            // #1095: de TLS-modus die daadwerkelijk geldt, plus een waarschuwing als het beleid
-            // van #1004 (VerifyFull) niet gehaald wordt. Bewust geen hostnaam of credentials —
-            // dit endpoint is anoniem. Zo is een onvolledige TLS-configuratie zichtbaar zonder
-            // dat de applicatie er eerst op uitvalt (dat was het v3.3.0.0-incident).
             tlsMode,
             tlsWarning,
-            // #1098: de code verwacht een kolom die de database (nog) niet heeft. De applicatie
-            // draait door op de migratie-default, maar dit hoort zichtbaar te zijn — dat was het
-            // tweede v3.3.0.0-incident: 500 op elk beheerscherm terwijl health 200 gaf.
-            schemaWarning = PostgresAppSettings.SchemaWarning,
-            // #1098: migraties uit Database.Postgres/migrations/ die niet in de ledger
-            // schema_migrations staan. null als de database niet bereikbaar is. Leeg = code en
-            // schema lopen gelijk. Alleen bestandsnamen — geen schema-details, dit endpoint is
-            // anoniem.
-            pendingMigrations
-        };
-        // #859: "niet geconfigureerd" (geen bruikbare connectiereeks) is geen 200 OK — een
-        // draaiende maar onbereikbare database (timeout/unavailable) blijft wel 200 met status
-        // "degraded", dat is een tijdelijke toestand.
-        return dbStatus == "unconfigured"
-            ? new ObjectResult(body) { StatusCode = StatusCodes.Status503ServiceUnavailable }
-            : new OkObjectResult(body);
+            schemaWarning,
+            pendingMigrations);
     }
 
     /// <summary>
@@ -120,13 +120,15 @@ public static class HealthFunction
     {
         if (dbStatus != "online") return (null, false);
 
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         try
         {
             await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
+            await connection.OpenAsync(cts.Token);
             await using var cmd = new NpgsqlCommand(
-                "SELECT MAX(lastsynctimestamp) FROM public.appsettings WHERE syncenabled = true", connection);
-            var waarde = await cmd.ExecuteScalarAsync();
+                "SELECT MAX(lastsynctimestamp) FROM public.appsettings WHERE syncenabled = true", connection)
+            { CommandTimeout = 5 };
+            var waarde = await cmd.ExecuteScalarAsync(cts.Token);
 
             if (waarde is null || waarde == DBNull.Value)
                 return (null, IsSyncVerouderd(null, DateTime.UtcNow, MaxSyncLeeftijdUren));
@@ -149,13 +151,14 @@ public static class HealthFunction
     /// waardoor de smoke test in <c>deploy.yml</c> het v3.3.0.0-incident niet zag. Health doet nu
     /// zelf één laadpoging zodra de database bereikbaar is: één kleine query, en het antwoord is
     /// daarna een feit in plaats van een aanname. Een mislukking wordt hier gevangen — de reden
-    /// staat in het functielog, dit endpoint is anoniem.
+    /// staat in het functielog; de publieke respons bevat geen foutdetails.
     /// </summary>
     private static async Task<bool> ProbeSettingsAsync(string dbStatus, ILogger log)
     {
         if (dbStatus == "online")
         {
-            try { await PostgresAppSettings.LoadSettingsAsync(log); }
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            try { await PostgresAppSettings.LoadSettingsAsync(log, cts.Token, commandTimeoutSeconds: 5); }
             catch (Exception ex) { log.LogWarning(ex, "Health: instellingen laden mislukt."); }
         }
         return !PostgresAppSettings.LastLoadFailed;
@@ -170,11 +173,12 @@ public static class HealthFunction
     {
         if (dbStatus != "online") return null;
 
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         try
         {
             await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-            return await Database.Postgres.MigrationRunner.GetPendingMigrationsAsync(connection);
+            await connection.OpenAsync(cts.Token);
+            return await Database.Postgres.MigrationRunner.GetPendingMigrationsAsync(connection, cts.Token);
         }
         catch
         {
