@@ -3,8 +3,9 @@ using Npgsql;
 namespace FunctionApp.Postgres.Admin;
 
 /// <summary>
-/// Postgres-tier-tegenhanger van <c>FunctionApp/Admin/Repositories/AdminVeldPeriodeRepository.cs</c>
-/// (#887). Vertaling: <c>[dbo].[VeldPeriode]</c> → <c>public.veldperiode</c>,
+/// Leest en onderhoudt per-club veldperiodes in <c>public.veldperiode</c>, met de gekoppelde
+/// beschikbaarheid uit <c>public.veldbeschikbaarheid</c>. De SQL Server-tabellen
+/// <c>[dbo].[VeldPeriode]</c> en <c>[dbo].[VeldBeschikbaarheid]</c> corresponderen daarmee; de
 /// <c>[dbo].[VeldBeschikbaarheid]</c> → <c>public.veldbeschikbaarheid</c>,
 /// <c>CONVERT(VARCHAR(10), …, 23)</c> → <c>to_char(…, 'YYYY-MM-DD')</c>,
 /// <c>OUTPUT INSERTED.[Id]</c> → <c>RETURNING id</c>.
