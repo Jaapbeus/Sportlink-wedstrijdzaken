@@ -244,12 +244,17 @@ public static class FeedbackCore
 
     public static Task<(int nummer, string url)> MaakGitHubIssueAsync(
         string pat, string owner, string repo, string title, string body,
-        string[] labels, ILogger log) =>
-        FeedbackGitHub.MaakGitHubIssueAsync(pat, owner, repo, title, body, labels, log);
+        string[] labels, ILogger log, CancellationToken cancellationToken = default) =>
+        FeedbackGitHub.MaakGitHubIssueAsync(pat, owner, repo, title, body, labels, log, cancellationToken);
+
+    public static Task<(bool gelukt, FeedbackGevondenIssue? gevonden)> ZoekIssueMetReferentieAsync(
+        string pat, string owner, string repo, string referentie, DateTime sindsUtc, ILogger log,
+        CancellationToken cancellationToken = default) =>
+        FeedbackGitHub.ZoekIssueMetReferentieAsync(pat, owner, repo, referentie, sindsUtc, log, cancellationToken);
 
     public static Task<(bool gelukt, DateTime? geslotenOpUtc)> HaalIssueSluitingAsync(
-        string pat, string owner, string repo, int nummer, ILogger log) =>
-        FeedbackGitHub.HaalIssueSluitingAsync(pat, owner, repo, nummer, log);
+        string pat, string owner, string repo, int nummer, ILogger log, CancellationToken cancellationToken = default) =>
+        FeedbackGitHub.HaalIssueSluitingAsync(pat, owner, repo, nummer, log, cancellationToken);
 
     public static string[] KiesLabels(string type) => type switch
     {

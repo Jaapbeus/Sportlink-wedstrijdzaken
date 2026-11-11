@@ -17,7 +17,11 @@ internal sealed class FakeEmailGraphService : IEmailGraphService
     public List<(string To, string Subject, string Body, string? ConversationId, IReadOnlyList<string>? Bcc, EmailBijlage? Bijlage)> SentReplies { get; } = new();
     public List<(IReadOnlyList<string> Ontvangers, string Subject, string Body, string? AanvragerEmail, string? CoordinatorEmail)> TeamForwardings { get; } = new();
 
+    public HashSet<string> FailingReadIds { get; } = new();
+    public List<string> ReadAttempts { get; } = new();
+
     public bool ThrowOnSendReply { get; set; }
+    public Exception? ExceptionToThrowOnSetCategories { get; set; }
 
     /// <summary>
     /// Optionele specifieke exception voor <c>SendReplyAsync</c> (#1133). Als gezet, wordt het
@@ -33,6 +37,9 @@ internal sealed class FakeEmailGraphService : IEmailGraphService
 
     public Task SetCategoriesAsync(string messageId, params string[] categories)
     {
+        if (ExceptionToThrowOnSetCategories is not null)
+            return Task.FromException(ExceptionToThrowOnSetCategories);
+
         CategoryUpdates.Add((messageId, categories));
         return Task.CompletedTask;
     }
@@ -46,6 +53,9 @@ internal sealed class FakeEmailGraphService : IEmailGraphService
     public Task MarkAsReadAsync(string messageId)
     {
         MarkAsReadCalls.Add(messageId);
+        ReadAttempts.Add(messageId);
+        if (FailingReadIds.Contains(messageId))
+            throw new InvalidOperationException("synthetic Graph failure");
         MarkedAsReadIds.Add(messageId);
         return Task.CompletedTask;
     }

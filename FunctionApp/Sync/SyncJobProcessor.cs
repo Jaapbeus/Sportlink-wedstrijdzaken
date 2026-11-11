@@ -1,4 +1,5 @@
 using SportlinkFunction.Infrastructure;
+using Planner.Shared.Sync;
 using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
@@ -61,11 +62,11 @@ public static class SyncJobProcessor
             await WaitForDatabaseAsync(log);
             await AppSettings.LoadSettingsAsync(log);
 
-            var sportlinkApiUrl = AppSettings.GetSetting("sportlinkApiUrl");
-            if (string.IsNullOrEmpty(sportlinkApiUrl))
+            if (!SportlinkDataserviceBasisUrl.TryGetCanonical(
+                    AppSettings.GetSetting("sportlinkApiUrl"), out var sportlinkApiUrl))
             {
                 await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false,
-                    errorMessage: "sportlinkApiUrl niet geconfigureerd");
+                    errorMessage: "Sportlink data-service base URL is invalid.");
                 return;
             }
             var sportlinkClientId = $"clientId={AppSettings.GetSetting("sportlinkClientId")}";
@@ -86,9 +87,13 @@ public static class SyncJobProcessor
         catch (Exception ex)
         {
             log.LogError(ex, "SyncJobProcessor: job {JobId} mislukt", job.JobId);
-            await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false, errorMessage: ex.Message);
+            await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false,
+                errorMessage: FoutmeldingVoorStatus(ex));
         }
     }
+
+    internal static string FoutmeldingVoorStatus(Exception exception) =>
+        $"Sync mislukt ({exception.GetType().Name}); raadpleeg het functielog voor details.";
 
     /// <summary>
     /// #1676: een bericht dat buiten productie binnenkomt wordt niet uitgevoerd en niet opnieuw

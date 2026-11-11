@@ -29,6 +29,11 @@ public static class TemplateAntwoordBouwer
     // zonder deze tak viel het antwoord door naar het standaard-beschikbaarheidsantwoord ("niet planbaar").
     private static readonly Tak[] BeschikbaarheidTakken =
     {
+        // #1861: een handmatig af te handelen bericht krijgt geen antwoord (ReplyPolicy onderdrukt; de
+        // mailboxverwerking stopt al vóór de sjablonen). Alleen de tester komt hier: die toont dit in plaats van
+        // een misleidend "geen veld beschikbaar".
+        new(j => Vlag(BeschikbaarheidVoorwaarden.HandmatigePlanningVlag)(j) || Vlag(HandmatigeTeamBeoordelingVlag)(j),
+            (_, _) => Task.FromResult(HandmatigVoorbeeld)),
         new(Vlag("wedstrijdAlIngepland"), (j, bron) => MetWedstrijdAsync(
             bron, j["wedstrijd"], AntwoordSjabloonSleutels.WedstrijdAlIngepland,
             BerichtAntwoordGenerator.WedstrijdPlaceholders, () => bron.WedstrijdAlIngepland(j["wedstrijd"]))),
@@ -141,6 +146,12 @@ public static class TemplateAntwoordBouwer
     }
 
     private static Func<JObject, bool> Vlag(string naam) => json => json[naam]?.ToObject<bool>() == true;
+
+    /// <summary>Plannerresponse-vlag van de handmatige teambeoordeling (#1816, <see cref="TeamHandmatigeAfhandeling"/>).</summary>
+    internal const string HandmatigeTeamBeoordelingVlag = "handmatigeTeamBeoordeling";
+
+    private static readonly (string onderwerp, string body) HandmatigVoorbeeld =
+        ("Geen antwoord", "Geen automatisch antwoord: de coördinator plant dit bericht handmatig en koppelt zelf terug.");
 
     private static List<(string datum, JToken? response)> LeesMultiDatumResultaten(JObject json)
     {

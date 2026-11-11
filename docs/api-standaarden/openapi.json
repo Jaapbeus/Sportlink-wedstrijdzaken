@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
-    "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nEén beveiligingsschema:\n\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist\n  voor alle endpoints behalve `/health`. De rolcontrole gebeurt server-side, met vier niveaus:\n  `admin` (`EasyAuthHelper.RequireAdmin`, via de wrappers `AdminEndpoint.ExecuteAsync` /\n  `ExecuteZonderDatabaseAsync`) voor de meeste `/beheer/`-, `/planner/`- en\n  `/test/`-endpoints (waaronder het feedbackoverzicht `/beheer/feedback`) — sinds #1350 óók voor `/postgres/sync-matches` en `/sync-matches`;\n  `admin` óf `user` (`AdminEndpoint.ExecuteAuthenticatedAsync`, #1330) voor `/planner/veldbezetting`\n  (#1400), de drie `/feedback/`-endpoints (#764: elke ingelogde gebruiker mag feedback geven), de twee Sportlink-viewing-endpoints (`GET /sportlink/match/{wedstrijdcode}` en\n  `.../public-match-id`, #1400) en de drie Teambegeleiding-lookup/doorstuur-endpoints; op\n  **beide** tiers identiek `Wedstrijdzaken` óf `admin` (`EasyAuthHelper.RequireWedstrijdzaken`,\n  beide poorten sinds #1400) voor de Sportlink-mutatie-endpoints (`PUT`/`POST` onder\n  `/sportlink/`), via `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`. Netto: een gewone\n  `user` (zonder `Wedstrijdzaken`, zonder `admin`) kan Planning en het Sportlink-paneel bekijken\n  maar geen Sportlink-mutatie triggeren; dat laatste vereist `Wedstrijdzaken` óf `admin`. Lokaal\n  alleen omzeild met de expliciete schakelaar `LOCAL_AUTH_BYPASS=true`; in Azure wordt die\n  geweigerd (#1700).\n\nZonder token volgt `401`. Met een geldig token maar zonder de vereiste rol volgt `403` met\n`{ \"error\": \"Forbidden: vereiste rol ontbreekt\" }`.\n\n## Tiers\n\nAlle endpoints bestaan sinds #1266 op beide databasetiers, met één uitzondering: de handmatige\nsynchronisatie heet `/postgres/sync-matches` op de Postgres-tier (productie) en\n`/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "3.16.0.5",
+    "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nEén beveiligingsschema:\n\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist\n  voor alle endpoints behalve `/health`; gedetailleerde healthinformatie is admin-only. De rolcontrole gebeurt server-side, met vier niveaus:\n  `admin` (`EasyAuthHelper.RequireAdmin`, via de wrappers `AdminEndpoint.ExecuteAsync` /\n  `ExecuteZonderDatabaseAsync`) voor de meeste `/beheer/`-, `/planner/`- en\n  `/test/`-endpoints (waaronder het feedbackoverzicht `/beheer/feedback`) — sinds #1350 óók voor `/postgres/sync-matches` en `/sync-matches`;\n  `admin` óf `user` (`AdminEndpoint.ExecuteAuthenticatedAsync`, #1330) voor `/planner/veldbezetting`\n  (#1400), de drie `/feedback/`-endpoints (#764: elke ingelogde gebruiker mag feedback geven), de twee Sportlink-viewing-endpoints (`GET /sportlink/match/{wedstrijdcode}` en\n  `.../public-match-id`, #1400) en de drie Teambegeleiding-lookup/doorstuur-endpoints; op\n  **beide** tiers identiek `Wedstrijdzaken` óf `admin` (`EasyAuthHelper.RequireWedstrijdzaken`,\n  beide poorten sinds #1400) voor de Sportlink-mutatie-endpoints (`PUT`/`POST` onder\n  `/sportlink/`), via `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`. Netto: een gewone\n  `user` (zonder `Wedstrijdzaken`, zonder `admin`) kan Planning en het Sportlink-paneel bekijken\n  maar geen Sportlink-mutatie triggeren; dat laatste vereist `Wedstrijdzaken` óf `admin`. Lokaal\n  alleen omzeild met de expliciete schakelaar `LOCAL_AUTH_BYPASS=true`; in Azure wordt die\n  geweigerd (#1700).\n\nZonder token volgt `401`. Met een geldig token maar zonder de vereiste rol volgt `403` met\n`{ \"error\": \"Forbidden: vereiste rol ontbreekt\" }`.\n\n## Tiers\n\nAlle endpoints bestaan sinds #1266 op beide databasetiers, met één uitzondering: de handmatige\nsynchronisatie heet `/postgres/sync-matches` op de Postgres-tier (productie) en\n`/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
+    "version": "3.16.0.11",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -104,8 +104,28 @@
           }
         }
       },
+      "RequestBodyTooLarge": {
+        "description": "De UTF-8 request-body overschrijdt de limiet van dit endpoint (1 MiB JSON, of de afgeleide envelope voor de bestaande CSV-upload); het verzoek is niet verwerkt. Body `{ error }`.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
       "NotFound": {
         "description": "Resource niet gevonden",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "PlanningDuurOnbekend": {
+        "description": "Planning geblokkeerd omdat voor een bestaande veldbezetting geen betrouwbare duur bekend is (#1814)",
         "content": {
           "application/json": {
             "schema": {
@@ -154,6 +174,61 @@
       },
       "HealthStatus": {
         "type": "object",
+        "required": [
+          "status",
+          "version",
+          "database",
+          "settingsReady",
+          "schemaWarningPresent",
+          "tlsWarningPresent"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "Existing health status. A stale Postgres sync can produce degraded without making deployment fail.",
+            "example": "ok"
+          },
+          "version": {
+            "type": "string",
+            "example": "3.16.0.11"
+          },
+          "database": {
+            "type": "string",
+            "description": "Database connection status. \"unconfigured\" returns HTTP 503.",
+            "enum": [
+              "online",
+              "paused",
+              "timeout",
+              "unavailable",
+              "unconfigured"
+            ],
+            "example": "online"
+          },
+          "settingsReady": {
+            "type": "boolean",
+            "description": "Whether the settings cache loaded successfully.",
+            "example": true
+          },
+          "migrationsCurrent": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "Postgres migration state, or null when unavailable or not supported by the SQL Server health probe.",
+            "example": true
+          },
+          "schemaWarningPresent": {
+            "type": "boolean",
+            "description": "Whether a schema warning exists; details are admin-only.",
+            "example": false
+          },
+          "tlsWarningPresent": {
+            "type": "boolean",
+            "description": "Whether a TLS warning exists; details are admin-only.",
+            "example": false
+          }
+        }
+      },
+      "AdminHealthStatus": {
+        "type": "object",
         "properties": {
           "status": {
             "type": "string",
@@ -162,7 +237,7 @@
           },
           "version": {
             "type": "string",
-            "example": "2.2.0.0"
+            "example": "3.16.0.11"
           },
           "timestamp": {
             "type": "string",
@@ -393,7 +468,7 @@
           "leeftijdsCategorie": {
             "type": "string",
             "nullable": true,
-            "description": "Leeftijdscategorie (bijv. JO13, MO17, VR, 1-99). Bepaalt duur en veldgrootte.",
+            "description": "Leeftijdscategorie (bijv. JO13, MO17, VR, 1-99). Bepaalt standaardduur en veldgrootte. Zonder categorie is een positieve wedstrijdDuurMinuten vereist.",
             "example": "JO13"
           },
           "teamNaam": {
@@ -411,7 +486,7 @@
           "wedstrijdDuurMinuten": {
             "type": "integer",
             "nullable": true,
-            "description": "Overschrijf wedstrijdduur in minuten (standaard uit Speeltijden)"
+            "description": "Positieve duur in minuten die de standaardduur uit Speeltijden overschrijft. Zonder categorie of positieve duur stopt de controle met een reden en zoekt geen slot of venster."
           },
           "heelVeld": {
             "type": "boolean",
@@ -1312,12 +1387,12 @@
           },
           "IsForcedDryRun": {
             "type": "boolean",
-            "description": "#994: true als de PUT/POST werd overgeslagen door de code-niveau forceDryRun-lock (een\nmutatie waarvan de requestbody nog niet live bevestigd is, bijv. officials toewijzen) —\nONAFHANKELIJK van de club-instelling sportlinkDryRun (audit-resultaat \"DryRunLocked\").\nAls dit true is, is IsDryRun ook altijd true.\n"
+            "description": "#994: true als een expliciete code-niveau forceDryRun-lock de PUT/POST overslaat\n(audit-resultaat \"DryRunLocked\"), onafhankelijk van sportlinkDryRun. De huidige\nLiveBevestigd-flags staan op true: mutaties volgen nu de clubinstelling. IsForcedDryRun\nblijft beschikbaar voor een toekomstige code-lock; dan is IsDryRun ook true.\n"
           },
           "PublicMatchId": {
             "type": "string",
             "nullable": true,
-            "description": "#997: door Sportlink teruggegeven PublicMatchId van een NIEUW aangemaakte oefenwedstrijd\n(POST .../clubmatch/ClubMatch) — null voor elke andere mutatie, en ook null zolang\nIsForcedDryRun/IsDryRun de aanroep simuleerde (in de praktijk dus altijd null zolang de\nClubMatch-code-lock actief is).\n"
+            "description": "#997: door Sportlink teruggegeven PublicMatchId van een NIEUW aangemaakte oefenwedstrijd\n(POST .../clubmatch/ClubMatch) — null voor elke andere mutatie en wanneer\nIsForcedDryRun/IsDryRun de aanroep simuleerde. De huidige code-lock-flag is vrijgegeven;\ndry-run volgt de clubinstelling sportlinkDryRun.\n"
           }
         }
       },
@@ -1331,7 +1406,7 @@
           "Validatie": {
             "type": "object",
             "nullable": true,
-            "description": "ONBEVESTIGD — geparsed uit Sportlinks `ConfirmationNeeded`-veld, nooit met een\nnetwerktrace gezien. `null` zolang de code-lock actief is (in de praktijk altijd,\nzie `SportlinkClubClient.UpdateMatchDetailsChangeRequestLiveBevestigd`).\n",
+            "description": "ONBEVESTIGD — geparsed uit Sportlinks `ConfirmationNeeded`-veld, nooit met een\nnetwerktrace gezien. De validatie is beschikbaar na een echte respons wanneer de\nclubinstelling `sportlinkDryRun` uit staat; de huidige code-lock-flag is vrijgegeven.\n",
             "properties": {
               "ConfirmationNeeded": {
                 "type": "boolean"
@@ -1793,7 +1868,7 @@
       },
       "UpdateSettingsRequest": {
         "type": "object",
-        "description": "Wijzig toegestane AppSettings-velden. Velden buiten de witte lijst worden genegeerd.\nWitte lijst: HerplanDeadlineDagen, BufferMinuten, PlannerAfzenderNaam, CoordinatorNaam,\nCoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,\nAccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi,\nKnvbPdfBijlageIngeschakeld, KnvbStandaardRegio, SportlinkExtensionEnabled, PdfExportIngeschakeld,\nZekerheidspoortActief, SeasonStartMonth\n(waarde `0`/`1`/`true`/`false`, anders 400).\n\n`SeasonStartMonth` (#1715): een geheel getal 1 t/m 12, anders 400. Bij een wijziging worden de\nseizoensrijen van de club opnieuw opgebouwd met de nieuwe startmaand en schuift het seizoenseinde\nmee: de bewaartermijn van persoonskolommen in de historietabellen (#1698) volgt het seizoenseinde\nvan de club van de wedstrijd. Het wijzigen wordt vastgelegd in de auditlog zoals andere velden.\n\nDe audit-actor (wie de wijziging doorvoerde) wordt uitsluitend server-side bepaald uit de\ndoor Easy Auth gevalideerde claims — dit contract kent daarom geen \"wie\"-veld (#1003).\n",
+        "description": "Wijzig toegestane AppSettings-velden. Velden buiten de witte lijst worden genegeerd.\nWitte lijst: HerplanDeadlineDagen, BufferMinuten, PlannerAfzenderNaam, CoordinatorNaam,\nCoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,\nAccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi,\nKnvbPdfBijlageIngeschakeld, KnvbStandaardRegio, SportlinkExtensionEnabled, PdfExportIngeschakeld,\nZekerheidspoortActief, SeasonStartMonth\n(waarde `0`/`1`/`true`/`false`, anders 400).\n\n`SeasonStartMonth` (#1715): een geheel getal 1 t/m 12, anders 400. Bij een wijziging worden de\nseizoensrijen van de club opnieuw opgebouwd met de nieuwe startmaand en schuift het seizoenseinde\nmee: de bewaartermijn van persoonskolommen in de historietabellen (#1698) volgt het seizoenseinde\nvan de club van de wedstrijd. Het wijzigen wordt vastgelegd in de auditlog zoals andere velden.\n\n`FetchSchedule`: een niet-lege, uitvoerbare CRON-expressie met zes velden en maximaal\n50 tekens. Een ontbrekend volgend UTC-uitvoermoment of ongeldige waarde geeft 400;\nde foutmelding herhaalt de ingevoerde waarde niet. Een weggelaten veld blijft ongewijzigd.\n\nDe audit-actor (wie de wijziging doorvoerde) wordt uitsluitend server-side bepaald uit de\ndoor Easy Auth gevalideerde claims — dit contract kent daarom geen \"wie\"-veld (#1003).\n",
         "properties": {
           "velden": {
             "type": "object",
@@ -4345,6 +4420,10 @@
             "type": "integer",
             "nullable": true,
             "description": "Actieve teamregel BufferNa in minuten (#1430); null = geen regel. Zie teamBufferVoor."
+          },
+          "sportlinkLeidend": {
+            "type": "boolean",
+            "description": "True als de planner de bronduur gebruikt en rond dit slot geen appbuffer toepast (#1814)."
           }
         }
       },
@@ -4511,29 +4590,82 @@
             "format": "date",
             "example": "2026-06-07"
           },
-          "bevestigingsToken": {
+          "bufferMinuten": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Algemene buffer in minuten; standaard 15."
+          },
+          "toewijzingen": {
+            "type": "array",
+            "nullable": true,
+            "description": "Alle zichtbare preview-rijen, inclusief niet-ingedeelde. Weglaten gebruikt het expliciete legacy-pad dat het plan opnieuw berekent.",
+            "items": {
+              "$ref": "#/components/schemas/AutoPlanToewijzing"
+            }
+          }
+        }
+      },
+      "AutoPlanToewijzing": {
+        "type": "object",
+        "required": [
+          "wedstrijdCode",
+          "huidigeVeld",
+          "huidigeTijd",
+          "veldNummer",
+          "tijd"
+        ],
+        "properties": {
+          "wedstrijdCode": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "huidigeVeld": {
             "type": "string",
             "nullable": true,
-            "description": "Token uit AutoPlanResponse ter verificatie"
+            "description": "Verwacht huidig veld inclusief eventuele subpositie."
+          },
+          "huidigeTijd": {
+            "type": "string",
+            "nullable": true,
+            "description": "Verwachte huidige aanvangstijd."
+          },
+          "veldNummer": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Doelveld; null samen met tijd null laat deze rij oningedeeld."
+          },
+          "veldSubpositie": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "A",
+              "B",
+              "A1",
+              "A2",
+              "B1",
+              "B2"
+            ],
+            "description": "Doelbaan; alleen toegestaan als de veldfractie overeenkomt."
+          },
+          "tijd": {
+            "type": "string",
+            "nullable": true,
+            "description": "Doelaanvangstijd exact in HH:mm; seconden, tijdsaanduidingen en witruimte worden geweigerd. Als de doelminuut gelijk is aan de verwachte brontijdminuut, blijven de bronseconden behouden, ook bij een veld- of subpositiewijziging. Null samen met veldNummer null laat deze rij oningedeeld."
           }
         }
       },
       "AutoPlanToepassenResponse": {
         "type": "object",
         "properties": {
-          "datum": {
-            "type": "string",
-            "format": "date"
-          },
-          "toegepast": {
+          "bijgewerkt": {
             "type": "integer",
-            "description": "Aantal wedstrijden waarvoor een slot is geboekt"
+            "description": "Aantal gewijzigde demowedstrijden"
           },
-          "overgeslagen": {
+          "mislukt": {
             "type": "integer",
-            "description": "Aantal wedstrijden waarvoor geen slot beschikbaar was"
+            "description": "Aantal mislukte demowedstrijden in het legacy-pad"
           },
-          "waarschuwingen": {
+          "fouten": {
             "type": "array",
             "items": {
               "type": "string"
@@ -4551,7 +4683,7 @@
         ],
         "operationId": "getHealth",
         "summary": "Status en versie van de API",
-        "description": "Geeft de actuele status en assemblyversie terug. Geen authenticatie vereist.\n\n`tier` en `provider` komen uit build-time metadata van het artefact (niet uit een\nruntime-gok) en zijn daarom altijd gevuld, ook als `database` niet \"online\" is.\n`serverVersion` komt aantoonbaar uit de database zelf en is alleen gevuld wanneer\n`database` \"online\" is (#863).\n\n`database: \"unconfigured\"` (geen bruikbare connectiereeks) geeft 503, niet 200 (#859).\nElke andere waarde (ook de tijdelijke toestanden paused/timeout/unavailable) blijft 200\nmet `status: \"degraded\"`.\n",
+        "description": "Geeft alleen de geaggregeerde status en assemblyversie terug; geen authenticatie vereist.\nDatabase-, schema-, migratie-, TLS- en sync-details staan op de admin-only\n`/beheer/health`-route. De per-tier probe is maximaal vijf seconden gecachet.\n\n`database: \"unconfigured\"` geeft 503; elke andere database-status blijft 200.\nEen stale sync kan `status: \"degraded\"` geven maar blijft een deploymentwaarschuwing, geen fout.\n",
         "security": [],
         "responses": {
           "200": {
@@ -4577,6 +4709,38 @@
         }
       }
     },
+    "/beheer/health": {
+      "get": {
+        "tags": [
+          "core"
+        ],
+        "operationId": "getAdminHealth",
+        "summary": "Gedetailleerde healthstatus voor beheerders",
+        "description": "Admin-only diagnoseweergave via de bestaande server-side admin-rolpoort.\nBevat de tier-, server-, synchronisatie-, TLS-, schema- en migratiedetails die\nbewust niet in de anonieme `/health`-respons staan.\n",
+        "responses": {
+          "200": {
+            "description": "Healthdiagnose",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminHealthStatus"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Database niet geconfigureerd",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminHealthStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/postgres/sync-matches": {
       "get": {
         "tags": [
@@ -4584,7 +4748,7 @@
         ],
         "operationId": "syncMatchesPostgres",
         "summary": "Handmatige Sportlink synchronisatie starten (Postgres-tier)",
-        "description": "**Tier: Postgres (productie).** Op de SQL Server-tier bestaat deze route niet (404) — daar\nheet hij `/sync-matches`.\n\nStart een Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).\nVereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key\nvia `?code=`, `AuthorizationLevel.Admin`).\n\n- **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)\n- **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar.\n  Een ontbrekende of onparseerbare `season` valt stil terug op de standaardmodus.\n\nMislukt één of meer deelstappen, dan volgt `207` in plaats van `200`: de geslaagde\ndeelstappen blijven staan, maar `lastsynctimestamp` wordt bewust niet bijgewerkt (#1081).\nAls een andere sync de gedeelde staging gebruikt, volgt `409` en wordt deze aanvraag niet uitgevoerd.\n",
+        "description": "**Tier: Postgres (productie).** Op de SQL Server-tier bestaat deze route niet (404) — daar\nheet hij `/sync-matches`.\n\nStart een Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).\nDe opgeslagen basis-URL moet de vaste Sportlink-dataservice zijn; anders stopt de sync\nvóór uitgaand verkeer. De client volgt geen HTTP-redirects.\nVereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key\nvia `?code=`, `AuthorizationLevel.Admin`).\n\n- **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)\n- **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar.\n  Een ontbrekende of onparseerbare `season` valt stil terug op de standaardmodus.\n\nMislukt één of meer deelstappen, dan volgt `207` in plaats van `200`: de geslaagde\ndeelstappen blijven staan, maar `lastsynctimestamp` wordt bewust niet bijgewerkt (#1081).\nAls een andere sync de gedeelde staging gebruikt, volgt `409` en wordt deze aanvraag niet uitgevoerd.\n",
         "security": [
           {
             "easyAuth": []
@@ -4697,7 +4861,7 @@
         ],
         "operationId": "syncMatches",
         "summary": "Handmatige Sportlink synchronisatie starten (SQL Server-tier)",
-        "description": "**Tier: SQL Server.** Op de Postgres-tier (productie) bestaat deze route niet (404) — daar\nheet hij `/postgres/sync-matches`.\n\nStart een volledige Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).\nVereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key\nvia `?code=`, `AuthorizationLevel.Admin`).\n\n- **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)\n- **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar\n\nDeze tier kent de `207`-respons van de Postgres-tier niet. Als een andere sync de gedeelde\nstaging gebruikt, volgt `409` en wordt deze aanvraag niet uitgevoerd.\n",
+        "description": "**Tier: SQL Server.** Op de Postgres-tier (productie) bestaat deze route niet (404) — daar\nheet hij `/postgres/sync-matches`.\n\nStart een volledige Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).\nDe opgeslagen basis-URL moet de vaste Sportlink-dataservice zijn; anders stopt de sync\nvóór uitgaand verkeer. De client volgt geen HTTP-redirects.\nVereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key\nvia `?code=`, `AuthorizationLevel.Admin`).\n\n- **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)\n- **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar\n\nDeze tier kent de `207`-respons van de Postgres-tier niet. Als een andere sync de gedeelde\nstaging gebruikt, volgt `409` en wordt deze aanvraag niet uitgevoerd.\n",
         "security": [
           {
             "easyAuth": []
@@ -4789,6 +4953,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -4799,6 +4964,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Beschikbaarheidsresultaat",
             "content": {
@@ -4814,6 +4982,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/PlanningDuurOnbekend"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -4835,6 +5006,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -4845,6 +5017,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Wedstrijd geboekt",
             "content": {
@@ -4862,11 +5037,18 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "409": {
-            "description": "Bezettingsconflict — het veld is op dit tijdstip al (gedeeltelijk) bezet",
+            "description": "Bezettingsconflict of een onbekende duur van een bestaande veldbezetting (#1814)",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BevestigConflictResponse"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BevestigConflictResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    }
+                  ]
                 }
               }
             }
@@ -4940,6 +5122,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -4950,6 +5133,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Zoekresultaat (gevonden of niet gevonden)",
             "content": {
@@ -5011,6 +5197,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -5021,6 +5208,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Herplan-alternatieven",
             "content": {
@@ -5036,6 +5226,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/PlanningDuurOnbekend"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -5057,6 +5250,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -5067,6 +5261,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Herplanverzoek geregistreerd",
             "content": {
@@ -5103,6 +5300,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": false,
           "content": {
             "application/json": {
@@ -5113,6 +5311,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Beschikbare doordeweekse datums",
             "content": {
@@ -5125,6 +5326,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/PlanningDuurOnbekend"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -5263,6 +5467,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -5273,6 +5478,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Instellingen opgeslagen",
             "headers": {
@@ -5360,6 +5568,7 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8/JSON geeft 400, te groot geeft 413 vóór verwerking.",
           "content": {
             "application/json": {
               "schema": {
@@ -5431,6 +5640,16 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "413": {
+            "description": "Request-body groter dan 1 MiB; de mutatie is niet verwerkt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -5509,6 +5728,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -5526,6 +5746,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Koppeling geregistreerd",
             "content": {
@@ -5966,6 +6189,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the mutation.",
           "required": true,
           "content": {
             "application/json": {
@@ -6015,6 +6239,9 @@
           "409": {
             "description": "Extension staat uit, koppeling ontbreekt/verlopen, guardrail geblokkeerd, of (#1341)\n\"Kleedkamers toewijzen\" staat uit voor de Wedstrijdzaken-rol bij deze club.\n"
           },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
           },
@@ -6054,6 +6281,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the mutation.",
           "required": true,
           "content": {
             "application/json": {
@@ -6103,6 +6331,9 @@
           "409": {
             "description": "Extension staat uit, koppeling ontbreekt/verlopen, guardrail geblokkeerd, of (#1341)\n\"Veld wijzigen\" staat uit voor de Wedstrijdzaken-rol bij deze club.\n"
           },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
           },
@@ -6125,7 +6356,7 @@
         ],
         "operationId": "putSportlinkOfficials",
         "summary": "Officials (scheidsrechter/assistenten) toewijzen (#994, epic",
-        "description": "**Sinds #1319 live bevestigd** (was scaffolding, altijd code-gelockt via een aparte\n`forceDryRun`-lock, onafhankelijk van de club-instelling `sportlinkDryRun`): endpoint (`PUT\ncompetition/match/official/MatchOfficialsAction`) en requestbody zijn met een echte\nnetwerktrace bevestigd te werken. De mutatie respecteert nu de gewone `sportlinkDryRun`-\ninstelling, net als `.../dressingrooms` en `.../field`. Zelfde volgorde als `.../dressingrooms`\n(resolve → guard `SportlinkMutationSoort.Officials` → audit → mutatie), met een\ntaakspecifieke responsparser: als één official een `ValidationDescription` heeft, wordt\n`IsSuccess=false` gezet ook al is de HTTP-status 200 (\"opgeslagen met fouten\" in Sportlink\nzelf). AVG: uitsluitend positie + een door de beheerder ingevoerde relatiecode/persoons-ID\nper regel — geen zoekfunctie, geen namen.\n",
+        "description": "De eigenaar heeft het endpoint na #1319 vrijgegeven; de huidige `LiveBevestigd`-flag staat\nop `true`, zodat de mutatie de clubinstelling `sportlinkDryRun` volgt. De precieze\nrequestbody/positiewaarden blijven onbevestigde aannames; alleen de toewijzingsactie is\nvrijgegeven. Er is geen aparte code-lock actief. Zelfde volgorde als `.../dressingrooms`\n(resolve → guard `SportlinkMutationSoort.Officials` → audit → mutatie), met een\ntaakspecifieke responsparser: als één official een `ValidationDescription` heeft, wordt\n`IsSuccess=false` gezet ook al is de HTTP-status 200 (\"opgeslagen met fouten\" in Sportlink\nzelf). AVG: uitsluitend positie + een door de beheerder ingevoerde relatiecode/persoons-ID\nper regel — geen zoekfunctie, geen namen.\n",
         "security": [
           {
             "easyAuth": []
@@ -6142,6 +6373,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the mutation.",
           "required": true,
           "content": {
             "application/json": {
@@ -6195,6 +6427,9 @@
           "409": {
             "description": "Extension staat uit, koppeling ontbreekt/verlopen, guardrail geblokkeerd, of (#1341)\n\"Scheidsrechters toewijzen\" staat uit voor de Wedstrijdzaken-rol bij deze club.\n"
           },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
           },
@@ -6217,7 +6452,7 @@
         ],
         "operationId": "putSportlinkMatchChangeRequest",
         "summary": "Wijzigingsverzoek datum/tijd/accommodatie (#995, epic",
-        "description": "**Sinds #1319 live bevestigd, en de enige mutatie die een ECHTE tegenstander raakt:**\nSportlink werkt voor datum/tijd/accommodatie in twee stappen (valideren → bevestigen) — de\nbevestigingsstap stuurt een goedkeuringsverzoek naar de tegenstander. Dit endpoint bouwt\nUITSLUITEND stap 1: er bestaat bewust geen endpoint, client-methode of UI-knop voor stap 2.\nZelfde onderliggende Sportlink-endpoint als `.../field`\n(`PUT competition/match/UpdateMatchDetails`), maar met `MatchDate`/`StartTime`/`FacilityId`/\n`MatchChangeRequestRemarks` overschreven in plaats van het veld. Was tot #1319 altijd\ngesimuleerd via een aparte code-niveau `forceDryRun`-lock, onafhankelijk van de\nclub-instelling `sportlinkDryRun` — de eigenaar heeft die lock na een live netwerktrace\nopgeheven; de mutatie respecteert nu de gewone `sportlinkDryRun`-instelling. Guard:\n`SportlinkMutationSoort.DatumTijdAccommodatie` (uitsluitend\n`IsHomeMatch` + de generieke niet-afgelast/niet-concept-checks — geen specifieke\n`IsXxxAllowed`-vlag bestaat hiervoor bij Sportlink). `Toelichting` is verplicht.\n",
+        "description": "**Sinds #1319 live bevestigd, en de enige mutatie die een ECHTE tegenstander raakt:**\nSportlink werkt voor datum/tijd/accommodatie in twee stappen (valideren → bevestigen) — de\nbevestigingsstap stuurt een goedkeuringsverzoek naar de tegenstander. Dit endpoint bouwt\nUITSLUITEND stap 1: er bestaat bewust geen endpoint, client-methode of UI-knop voor stap 2.\nZelfde onderliggende Sportlink-endpoint als `.../field`\n(`PUT competition/match/UpdateMatchDetails`), maar met `MatchDate`/`StartTime`/`FacilityId`/\n`MatchChangeRequestRemarks` overschreven in plaats van het veld. De huidige\n`LiveBevestigd`-flag staat op `true`, dus de mutatie volgt `sportlinkDryRun`; er is geen\naparte code-lock actief. De payload- en responsdetails blijven onbevestigd. Guard:\n`SportlinkMutationSoort.DatumTijdAccommodatie` (uitsluitend\n`IsHomeMatch` + de generieke niet-afgelast/niet-concept-checks — geen specifieke\n`IsXxxAllowed`-vlag bestaat hiervoor bij Sportlink). `Toelichting` is verplicht.\n",
         "security": [
           {
             "easyAuth": []
@@ -6234,6 +6469,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the mutation.",
           "required": true,
           "content": {
             "application/json": {
@@ -6269,7 +6505,7 @@
         },
         "responses": {
           "200": {
-            "description": "Diagnostiektrace (#1320) — Resultaat.Mutatie.IsSuccess kan alsnog false zijn; in de\npraktijk altijd een gesimuleerd resultaat door de code-lock.\n",
+            "description": "Diagnostiektrace (#1320) — Resultaat.Mutatie.IsSuccess kan alsnog false zijn. De route\nvolgt sportlinkDryRun: staat dry-run aan, dan is het resultaat gesimuleerd\n(Resultaat.Mutatie.IsDryRun true); anders gaat stap 1 live naar Sportlink.\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -6292,6 +6528,9 @@
           },
           "409": {
             "description": "Extension staat uit, koppeling ontbreekt/verlopen, of guardrail geblokkeerd"
+          },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -6333,6 +6572,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the audit update.",
           "required": true,
           "content": {
             "application/json": {
@@ -6367,6 +6607,9 @@
           },
           "404": {
             "description": "Audit-record niet gevonden voor deze club"
+          },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -6446,6 +6689,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the action.",
           "required": true,
           "content": {
             "application/json": {
@@ -6498,6 +6742,9 @@
           "409": {
             "description": "Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen"
           },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
           },
@@ -6527,6 +6774,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the mutation.",
           "required": true,
           "content": {
             "application/json": {
@@ -6618,6 +6866,9 @@
           "409": {
             "description": "Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen"
           },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
           },
@@ -6639,8 +6890,8 @@
           "sportlink"
         ],
         "operationId": "deleteSportlinkClubMatch",
-        "summary": "Clubwedstrijd (oefenwedstrijd) verwijderen (#1440) — contract NIET live bevestigd, altijd dry-run",
-        "description": "Verwijdert een clubwedstrijd bij Sportlink via `DELETE competition/match/clubmatch/ClubMatchDelete?PublicMatchId=`.\nMethode, parameter en foutvorm komen uit Sportlinks publieke frontend-bundle en zijn **nooit live gezien**.\nDaarom staat de aanroep hard op dry-run (`ClubMatchDeleteLiveBevestigd = false`), ongeacht de club-instelling\n`sportlinkDryRun`: de respons heeft dan `IsDryRun` en `IsForcedDryRun` op `true` en Sportlink is niet aangeroepen\n(wel de read-only `GET competition/match/Match` voor de guard). Volgorde: toggle + EgressGuard → huidige\nwedstrijd ophalen → `SportlinkMutationGuard` (`Verwijderen`: alleen bij expliciet `IsKernelMatch = false`\nén `IsHomeMatch`, anders 409) → audit \"Pending\" met het `PublicMatchId` → verwijderen (nooit automatisch\nherhaald) → audit voltooien. De Admin GUI biedt dit alleen aan op het resultaat van \"Wedstrijd aanmaken\".\n",
+        "summary": "Clubwedstrijd (oefenwedstrijd) verwijderen (#1440) — contract niet live bevestigd",
+        "description": "Verwijdert een clubwedstrijd bij Sportlink via `DELETE competition/match/clubmatch/ClubMatchDelete?PublicMatchId=`.\nMethode, parameter en foutvorm komen uit Sportlinks publieke frontend-bundle en zijn **nooit live gezien**.\nDe huidige `ClubMatchDeleteLiveBevestigd`-flag staat op `true`, zodat de mutatie de club-instelling\n`sportlinkDryRun` volgt; er is geen aparte code-lock actief. Een dry-run zet `IsDryRun` aan; een\ntoekomstige expliciete code-lock kan `IsForcedDryRun` aanzetten (wel de read-only\n`GET competition/match/Match` voor de guard). Volgorde: toggle + EgressGuard → huidige\nwedstrijd ophalen → `SportlinkMutationGuard` (`Verwijderen`: alleen bij expliciet `IsKernelMatch = false`\nén `IsHomeMatch`, anders 409) → audit \"Pending\" met het `PublicMatchId` → verwijderen (nooit automatisch\nherhaald) → audit voltooien. De Admin GUI biedt dit alleen aan op het resultaat van \"Wedstrijd aanmaken\".\n",
         "security": [
           {
             "easyAuth": []
@@ -7051,6 +7302,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": false,
           "content": {
             "application/json": {
@@ -7073,6 +7325,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "400": {
             "description": "Ongeldig seizoen, seizoen zonder seizoensrij (bestaat niet) of ongeldige body (NL-foutmelding in `error`)"
           },
@@ -7353,6 +7608,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -7363,6 +7619,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Template opgeslagen",
             "headers": {
@@ -7683,6 +7942,7 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8/JSON geeft 400, te groot geeft 413 vóór verwerking.",
           "content": {
             "application/json": {
               "schema": {
@@ -7723,6 +7983,16 @@
           },
           "409": {
             "description": "E-mailadres staat al in de uitsluitingslijst",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request-body groter dan 1 MiB; de mutatie is niet verwerkt.",
             "content": {
               "application/json": {
                 "schema": {
@@ -7852,6 +8122,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -7862,6 +8133,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Regel aangemaakt",
             "headers": {
@@ -7934,6 +8208,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -7944,6 +8219,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Regel bijgewerkt",
             "headers": {
@@ -8102,6 +8380,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -8112,6 +8391,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Veld aangemaakt",
             "headers": {
@@ -8185,6 +8467,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -8195,6 +8478,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Veld bijgewerkt",
             "headers": {
@@ -8293,6 +8579,7 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400, te groot geeft 413 vóór verwerking.",
           "content": {
             "application/json": {
               "schema": {
@@ -8365,6 +8652,7 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400, te groot geeft 413 vóór verwerking.",
           "content": {
             "application/json": {
               "schema": {
@@ -8533,6 +8821,7 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400, te groot geeft 413 vóór verwerking.",
           "content": {
             "application/json": {
               "schema": {
@@ -8608,6 +8897,7 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400, te groot geeft 413 vóór verwerking.",
           "content": {
             "application/json": {
               "schema": {
@@ -8793,6 +9083,7 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400, te groot geeft 413 vóór verwerking.",
           "content": {
             "application/json": {
               "schema": {
@@ -8865,6 +9156,7 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400, te groot geeft 413 vóór verwerking.",
           "content": {
             "application/json": {
               "schema": {
@@ -9034,6 +9326,7 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400, te groot geeft 413 vóór verwerking.",
           "content": {
             "application/json": {
               "schema": {
@@ -9106,6 +9399,7 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400, te groot geeft 413 vóór verwerking.",
           "content": {
             "application/json": {
               "schema": {
@@ -9232,6 +9526,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 or JSON returns 400; an oversized body returns 413 before the dry-run.",
           "required": true,
           "content": {
             "application/json": {
@@ -9242,6 +9537,32 @@
           }
         },
         "responses": {
+          "503": {
+            "description": "AI-classificatie is niet geconfigureerd of niet beschikbaar",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "aiBeschikbaar"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "E-mailclassificatie is nu niet beschikbaar. Probeer het later opnieuw."
+                    },
+                    "aiBeschikbaar": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
           "200": {
             "description": "Dry-run resultaat",
             "headers": {
@@ -9276,6 +9597,9 @@
               }
             }
           },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
           }
@@ -9296,6 +9620,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 65,536 UTF-16 characters and 262,144 bytes. Invalid UTF-8 or JSON returns 400; oversized bodies return 413.",
           "required": true,
           "content": {
             "application/json": {
@@ -9325,7 +9650,7 @@
             "$ref": "#/components/responses/BadRequest"
           },
           "413": {
-            "description": "Request-body groter dan 65536 tekens (#1677); er is niets verwerkt. Body `{ error }`",
+            "description": "Request-body groter dan 65.536 UTF-16 tekens of 262.144 bytes (#1677); er is niets verwerkt. Body `{ error }`",
             "content": {
               "application/json": {
                 "schema": {
@@ -9370,6 +9695,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 65,536 UTF-16 characters and 262,144 bytes. Invalid UTF-8 or JSON returns 400; oversized bodies return 413.",
           "required": true,
           "content": {
             "application/json": {
@@ -9399,7 +9725,7 @@
             "$ref": "#/components/responses/BadRequest"
           },
           "413": {
-            "description": "Request-body groter dan 65536 tekens (#1677); er is niets verwerkt. Body `{ error }`",
+            "description": "Request-body groter dan 65.536 UTF-16 tekens of 262.144 bytes (#1677); er is niets verwerkt. Body `{ error }`",
             "content": {
               "application/json": {
                 "schema": {
@@ -9447,13 +9773,14 @@
         ],
         "operationId": "feedbackSubmit",
         "summary": "Feedback indienen (bewaren, en direct publiceren als beheerder)",
-        "description": "Open voor elke ingelogde rol (#764). De melder (Entra object-ID, naam-momentopname, rol) komt\nuitsluitend uit het Easy Auth-principal en wordt bewaard in `avg.Feedback` — nooit in het\npublieke issue. Structureert de feedback met GPT-4o-mini en bewaart de te publiceren titel en body.\n\n* Rol **admin**: de melding wordt direct als GitHub-issue gepubliceerd (is GitHub niet\n  geconfigureerd, dan blijft ze bewaard met een `waarschuwing`).\n* Rol **user**: de melding wacht (`status: wacht-op-publicatie`) tot een beheerder haar in het\n  overzicht publiceert (`POST /beheer/feedback/{id}/publiceer`). De response bevat geen\n  issueverwijzing.\n\nIs `bevestiging` meegestuurd — de velden zoals `/feedback/preview` ze teruggaf en de\nbeheerder ze gezien heeft — dan wordt exact díe tekst gepubliceerd en volgt er géén nieuwe\nAI-aanroep. De PII-gate draait onverkort op de uiteindelijke titel en body.\n\nLimieten: max 3 meldingen per 10 minuten per gebruiker (gemeten in de database, dus gedeeld over\ninstances) en een vangnet van 30 per uur voor de hele club.\n",
+        "description": "Open voor elke ingelogde rol (#764). De melder (Entra object-ID, naam-momentopname, rol) komt\nuitsluitend uit het Easy Auth-principal en wordt bewaard in `avg.Feedback` — nooit in het\npublieke issue. Structureert de feedback met GPT-4o-mini en bewaart de te publiceren titel en body.\n\n* Rol **admin**: de melding wordt direct als GitHub-issue gepubliceerd (is GitHub niet\n  geconfigureerd, dan blijft ze bewaard met een `waarschuwing`). Bij een time-out, verbroken verbinding of HTTP 408/5xx\n  tijdens de POST is de uitkomst onbekend; de melding blijft op `publiceren` en is te herstellen via `POST /beheer/feedback/{id}/publiceer`.\n* Rol **user**: de melding wacht (`status: wacht-op-publicatie`) tot een beheerder haar in het\n  overzicht publiceert (`POST /beheer/feedback/{id}/publiceer`). De response bevat geen\n  issueverwijzing.\n\nIs `bevestiging` meegestuurd — de velden zoals `/feedback/preview` ze teruggaf en de\nbeheerder ze gezien heeft — dan wordt exact díe tekst gepubliceerd en volgt er géén nieuwe\nAI-aanroep. De PII-gate draait onverkort op de uiteindelijke titel en body.\n\nLimieten: max 3 meldingen per 10 minuten per gebruiker (gemeten in de database, dus gedeeld over\ninstances) en een vangnet van 30 per uur voor de hele club.\n",
         "security": [
           {
             "easyAuth": []
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 65,536 UTF-16 characters and 262,144 bytes. Invalid UTF-8 or JSON returns 400; oversized bodies return 413.",
           "required": true,
           "content": {
             "application/json": {
@@ -9483,7 +9810,7 @@
             "$ref": "#/components/responses/BadRequest"
           },
           "413": {
-            "description": "Request-body groter dan 65536 tekens (#1677); er is niets verwerkt. Body `{ error }`",
+            "description": "Request-body groter dan 65.536 UTF-16 tekens of 262.144 bytes (#1677); er is niets verwerkt. Body `{ error }`",
             "content": {
               "application/json": {
                 "schema": {
@@ -9532,7 +9859,7 @@
             "$ref": "#/components/responses/InternalServerError"
           },
           "502": {
-            "description": "Bewaard, maar publiceren op GitHub is mislukt (alleen beheerder); opnieuw te publiceren via het overzicht",
+            "description": "Publicatie mislukt (alleen beheerder). Bij time-out, verbroken verbinding of HTTP 408/5xx is de uitkomst onbekend en blijft de melding op `publiceren`; herstel via het overzicht controleert eerst of het issue al bestaat. Een expliciete afwijzing van de API blijft opnieuw te publiceren.",
             "content": {
               "application/json": {
                 "schema": {
@@ -9787,7 +10114,7 @@
             "$ref": "#/components/responses/InternalServerError"
           },
           "502": {
-            "description": "Publiceren op GitHub mislukt; de melding blijft bewaard en is opnieuw te publiceren",
+            "description": "Publiceren is mislukt of kon niet volledig worden bevestigd. Wijst GitHub de aanmaak expliciet af (een 4xx anders dan 408, ook na de 422-fallback zonder eigen labels), dan gaat de melding naar `github-mislukt` en is ze opnieuw te publiceren. Is de uitkomst onbekend (time-out, annulering, HTTP 408/5xx) of mislukte de receipt-opslag of de controle op een bestaand issue, dan blijft de melding op `publiceren` en is ze na enkele minuten opnieuw te proberen; de server controleert dan eerst via de issuelijst of het issue al bestaat en koppelt dat. Kon een oudere melding vóór de POST geen publicatiereferentie krijgen, dan is er niets verstuurd en is ze opnieuw te publiceren.",
             "content": {
               "application/json": {
                 "schema": {
@@ -9972,6 +10299,7 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400.",
           "content": {
             "application/json": {
               "schema": {
@@ -10003,6 +10331,9 @@
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
+          },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -10052,6 +10383,7 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "JSON-body maximaal 1 MiB (1.048.576 UTF-8-bytes); ongeldige UTF-8 of JSON geeft 400.",
           "content": {
             "application/json": {
               "schema": {
@@ -10083,6 +10415,9 @@
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
+          },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -10204,6 +10539,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -10214,6 +10550,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Thema opgeslagen",
             "content": {
@@ -10391,6 +10730,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 returns 400; an oversized body returns 413 before the command.",
           "required": true,
           "content": {
             "application/json": {
@@ -10435,6 +10775,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -10576,6 +10919,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 returns 400; an oversized body returns 413 before the command.",
           "required": true,
           "content": {
             "application/json": {
@@ -10620,6 +10964,9 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -10711,6 +11058,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 returns 400; an oversized body returns 413 before the command.",
           "required": true,
           "content": {
             "application/json": {
@@ -10799,6 +11147,9 @@
               }
             }
           },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
           }
@@ -10830,6 +11181,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 returns 400; an oversized body returns 413 before the command.",
           "required": true,
           "content": {
             "application/json": {
@@ -10874,6 +11226,9 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -11033,6 +11388,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 1 MiB. Invalid UTF-8 returns 400; an oversized body returns 413 before the command.",
           "required": true,
           "content": {
             "application/json": {
@@ -11072,6 +11428,9 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -11200,6 +11559,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -11210,6 +11570,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Bericht verstuurd",
             "headers": {
@@ -11294,6 +11657,7 @@
           }
         ],
         "requestBody": {
+          "description": "Behoudt de bestaande CSV-upload tot 5 MiB UTF-8. Zowel de gedecodeerde csvContent als de JSON-envelope zijn begrensd; de envelope laat zesvoudige worst-case escaping en de bestaande auditbestandsnaamruimte van 500 tekens toe. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór CSV-parsing en verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -11304,6 +11668,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Import geslaagd",
             "headers": {
@@ -11374,6 +11741,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -11384,6 +11752,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Wedstrijden verplaatst",
             "content": {
@@ -11468,6 +11839,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -11478,6 +11850,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Test-wedstrijd aangemaakt",
             "content": {
@@ -11685,6 +12060,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -11695,6 +12071,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Gegenereerd auto-plan (JSON), of bij format=html|pdf het gedeelde document",
             "headers": {
@@ -11767,6 +12146,7 @@
           }
         ],
         "requestBody": {
+          "description": "UTF-8 JSON request body; maximum 524,288 UTF-16 characters and 2,097,152 bytes. Invalid UTF-8 returns 400; oversized bodies return 413.",
           "required": true,
           "content": {
             "application/json": {
@@ -11869,7 +12249,7 @@
             "description": "`?format=pdf` terwijl de clubinstelling PdfExportIngeschakeld uit staat (#1459)"
           },
           "413": {
-            "description": "Request body te groot"
+            "description": "Request body groter dan 524.288 UTF-16 tekens of 2.097.152 bytes; er is niets verwerkt. Body `{ error }`."
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -12087,13 +12467,14 @@
         ],
         "operationId": "autoPlanToepassen",
         "summary": "Automatisch plan toepassen",
-        "description": "Past het gegenereerde auto-plan toe door wedstrijdsloten te boeken in\n`planner.GeplandeWedstrijden`. Schrijft alleen voor wedstrijden die nog\ngeen slot hebben.\n\n**Let op:** alleen beschikbaar als de club-code `ALLSTARS` is (testmodus).\nProductie-clubs ontvangen HTTP 403.\n",
+        "description": "Schrijft uitsluitend ALLSTARS-demowedstrijden in `his.matches` bij. Met\n`toewijzingen` valideert de server alle getoonde rijen, bronposities en\nexacte doelbanen tegen verse clubdata binnen dezelfde transactie als de\nupdates. Conflicten rollen de hele toepassing terug. Zonder deze lijst\nblijft het expliciete legacygedrag van herberekenen beschikbaar.\n\nEen previewrij met een onbekend team en zonder betrouwbare speelduur wordt\nniet meegeschreven en telt niet mee als veldbezetting bij deze controle;\nandere geldige toewijzingen worden wel gecontroleerd.\n\n**Let op:** alleen beschikbaar als de club-code `ALLSTARS` is (testmodus).\nProductie-clubs ontvangen HTTP 403.\n",
         "security": [
           {
             "easyAuth": []
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -12104,6 +12485,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Plan toegepast",
             "headers": {
@@ -12127,6 +12511,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "Bron gewijzigd of exact doelplan bevat een conflict; er is niets opgeslagen."
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"

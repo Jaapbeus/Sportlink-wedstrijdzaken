@@ -63,6 +63,25 @@ public class RolFeatureMatrixCoreTests
         geschreven.Should().Equal(("user", "menu.planning", true));
     }
 
+    [Fact]
+    public async Task VerwerkZet_GeparseerdeDto_GebruiktDezelfdeValidatieEnSchrijftEenmaal()
+    {
+        var geschreven = new List<(string, string, bool)>();
+
+        var (cel, fout) = await RolFeatureMatrixCore.VerwerkZetAsync(
+            new RolFeatureMatrixCore.ZetInstellingDto
+            {
+                RolNaam = "user",
+                FeatureKey = "menu.planning",
+                Enabled = true
+            },
+            (r, k, a) => { geschreven.Add((r, k, a)); return Task.CompletedTask; });
+
+        fout.Should().BeNull();
+        cel.Should().Be(new RolFeatureMatrixCore.CelResponse("user", "menu.planning", true));
+        geschreven.Should().Equal(("user", "menu.planning", true));
+    }
+
     [Theory]
     [InlineData("""{"RolNaam":"admin","FeatureKey":"menu.planning","Enabled":true}""")]
     [InlineData("""{"RolNaam":"user","FeatureKey":"menu.onbestaand","Enabled":true}""")]

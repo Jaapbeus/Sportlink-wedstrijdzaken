@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
-using Newtonsoft.Json;
+using Planner.Endpoints.Http;
 
 namespace SportlinkFunction.Admin;
 
@@ -28,10 +28,8 @@ public static class AdminVeldPeriodeFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/veldperiodes")] HttpRequest req,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminVeldPeriodePost"), "veldperiode aanmaken",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<VeldPeriodeRequest>(req, async dto =>
             {
-                var dto = JsonConvert.DeserializeObject<VeldPeriodeRequest>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
                 var validatie = Valideer(dto, out var datumVan, out var datumTot);
                 if (validatie != null) return validatie;
 
@@ -46,7 +44,7 @@ public static class AdminVeldPeriodeFunction
                 var newId = await AdminVeldPeriodeRepository.InsertAsync(
                     dto.Naam!, datumVan, datumTot, actief, clubCode, cs);
                 return new OkObjectResult(new { id = newId, status = "aangemaakt" });
-            });
+            }));
 
     [Function("AdminVeldPeriodePut")]
     public static Task<IActionResult> Put(
@@ -54,10 +52,8 @@ public static class AdminVeldPeriodeFunction
         int id,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminVeldPeriodePut"), "veldperiode bijwerken",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<VeldPeriodeRequest>(req, async dto =>
             {
-                var dto = JsonConvert.DeserializeObject<VeldPeriodeRequest>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
                 var validatie = Valideer(dto, out var datumVan, out var datumTot);
                 if (validatie != null) return validatie;
 
@@ -74,7 +70,7 @@ public static class AdminVeldPeriodeFunction
                     id, dto.Naam!, datumVan, datumTot, actief, clubCode, cs);
                 if (rows == 0) return new NotFoundObjectResult(new { error = $"Periode {id} bestaat niet" });
                 return new OkObjectResult(new { id, status = "bijgewerkt" });
-            });
+            }));
 
     [Function("AdminVeldPeriodeDelete")]
     public static Task<IActionResult> Delete(

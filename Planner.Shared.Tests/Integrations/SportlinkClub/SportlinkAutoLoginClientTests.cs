@@ -194,7 +194,7 @@ public sealed class SportlinkAutoLoginClientTests
     {
         var coordinator = new SportlinkAutoLoginCoordinator(store, provider);
         return new SportlinkClubClient(new HttpClient(handler), store, NullLogger<SportlinkClubClient>.Instance,
-            autoLogin: coordinator);
+            isDryRun: () => false, autoLogin: coordinator);
     }
 
     private static HttpResponseMessage Json(string body) => new(HttpStatusCode.OK)

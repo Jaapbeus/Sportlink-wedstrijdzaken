@@ -33,10 +33,8 @@ internal sealed class SportlinkWedstrijdDetails
     // verzoek naar de tegenstander). Deze app bouwt uitsluitend stap 1 (valideren, zie
     // RequestMatchChangeAsync) — géén stap 2 (bevestigen). Zelfs stap 1 kan in werkelijkheid al het
     // gevaarlijke moment zijn als Sportlinks eerste PUT geen "dry validate" blijkt te zijn maar
-    // direct het verzoek verstuurt — deze code-lock is daarom hier extra belangrijk, niet optioneel.
-    // NIET VERDER BOUWEN ZONDER LIVE BEVESTIGING DOOR DE EIGENAAR (#995, Aanpak-stap 1: body van
-    // beide PUT's en de bevestigingsvlag vastleggen).
-    // Eigenaar: op true gezet op 27-09-2026 na live-bevestiging buiten agent-sessie om (#1319).
+    // direct het verzoek verstuurt. De eigenaar heeft stap 1 na live trace (#1319) vrijgegeven;
+    // deze aanroep volgt de instelling sportlinkDryRun. Stap 2 blijft buiten scope.
     private const bool UpdateMatchDetailsChangeRequestLiveBevestigd = true;
 
     public Task<SportlinkClubResponse<SportlinkMutationResult>> UpdateDressingRoomsAsync(

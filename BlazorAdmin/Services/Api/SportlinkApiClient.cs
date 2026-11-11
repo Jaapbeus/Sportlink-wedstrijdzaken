@@ -55,8 +55,9 @@ public sealed class SportlinkApiClient
             $"api/sportlink/match/{Uri.EscapeDataString(wedstrijdcode)}/field",
             new { FieldId = fieldId, FieldSize = fieldSize, FieldOffset = fieldOffset });
 
-    // #994: officials (scheidsrechter/assistenten) toewijzen. ONBEVESTIGD/altijd code-gelockt
-    // (forceDryRun) — zie SportlinkClubClient.AssignOfficialsAsync. positie+persoonId per regel,
+    // #994: officials (scheidsrechter/assistenten) toewijzen. De Sportlink-payload/responsecontracten
+    // zijn onbevestigd; de route volgt sportlinkDryRun en is niet onafhankelijk daarvan code-gelockt.
+    // Positie+persoonId per regel,
     // nooit een naam of zoekfunctie (AVG).
     public async Task<ApiResult<SportlinkMutatieResultaatDto>> PutSportlinkOfficialsAsync(
         string wedstrijdcode, IReadOnlyList<(string OfficialPosition, string PersoonId)> officials)
@@ -69,9 +70,9 @@ public sealed class SportlinkApiClient
                     .ToList()
             });
 
-    // #995: wijzigingsverzoek datum/tijd/accommodatie — ALLEEN stap 1 (valideren). ONBEVESTIGD en
-    // altijd code-gelockt (forceDryRun) — zie SportlinkClubClient.RequestMatchChangeAsync. Bewust
-    // GEEN methode voor een bevestigstap: die bestaat hier niet.
+    // #995: wijzigingsverzoek datum/tijd/accommodatie — ALLEEN stap 1 (valideren). Het payload/
+    // responsecontract blijft onbevestigd; de route volgt sportlinkDryRun en is niet onafhankelijk
+    // daarvan code-gelockt. Er bestaat bewust geen methode voor een bevestigstap.
     // NIET VERDER BOUWEN ZONDER LIVE BEVESTIGING DOOR DE EIGENAAR (#995).
     // #1320: retourneert sinds de productieproef-trace een SportlinkMatchWijzigingsverzoekTraceDto
     // (Mutatie+Validatie plus HTTP-status/endpoint/AuditId) in plaats van kaal het resultaat.

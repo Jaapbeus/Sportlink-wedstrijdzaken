@@ -39,6 +39,19 @@ public class VeldplanningConflictMeldingenTests
     }
 
     [Fact]
+    public void SportlinkLeidendeAansluitendeWedstrijden_GevenGeenValseBufferMelding()
+    {
+        var eerste = Item("A", "Veld 1", "Veld 1", "10:00");
+        var tweede = Item("B", "Veld 1", "Veld 1", "11:00");
+        eerste.SportlinkLeidend = tweede.SportlinkLeidend = true;
+
+        VeldplanningConflictMeldingen.Bepaal([eerste, tweede], algemeneBuffer: 10).Should().BeEmpty();
+        tweede.OptimaalTijd = "10:59";
+        VeldplanningConflictMeldingen.Bepaal([eerste, tweede], algemeneBuffer: 10)
+            .Should().ContainSingle(m => m.Contains("dezelfde tijd"));
+    }
+
+    [Fact]
     public void Scenario1430_ZelfdeTeamOpAnderVeld_GeeftTeambufferMelding()
     {
         var meldingen = VeldplanningConflictMeldingen.Bepaal(

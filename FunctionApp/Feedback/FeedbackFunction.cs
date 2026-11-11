@@ -139,7 +139,7 @@ public static class FeedbackFunction
     [Function("FeedbackSubmit")]
     public static Task<IActionResult> Submit(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "feedback/submit")] HttpRequest req,
-        FunctionContext context)
+        FunctionContext context, CancellationToken cancellationToken)
     {
         var log = context.GetLogger("FeedbackSubmit");
         return SportlinkFunction.Admin.AdminEndpoint.ExecuteAuthenticatedAsync(req, log, "feedback indienen",
@@ -156,7 +156,7 @@ public static class FeedbackFunction
 
                 return await FeedbackEndpointCore.SubmitAsync(
                     dto!, wie, clubCode, chatClient!, new SqlFeedbackStore(SystemUtilities.DatabaseConfig.ConnectionString),
-                    FeedbackEndpointCore.MaakGitHubIssueDelegate(Infrastructure.EgressGuard.ExternalIntegrationsAllowed(), log), log);
+                    FeedbackEndpointCore.MaakGitHubIssueDelegate(Infrastructure.EgressGuard.ExternalIntegrationsAllowed(), log, cancellationToken), log);
             });
     }
 }

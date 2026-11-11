@@ -74,6 +74,7 @@ public static class TraceCodes
     public const string Datum = "datum";
     public const string Tak = "tak";
     public const string HerplanUitkomst = "herplan-uitkomst";
+    public const string Speelduur = "speelduur";
     public const string Sjabloon = "sjabloon";
     public const string Eindoordeel = "eindoordeel";
     public const string Zekerheidspoort = "zekerheidspoort";

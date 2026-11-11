@@ -79,7 +79,7 @@ internal static class PlannerAvailabilityRepository
         var cc = PostgresClubScope.Resolve(clubCode);
         var velden = await PlannerSettingsRepository.GetVeldenAsync(connectionString, cc);
 
-        var ruw = new List<(DateOnly Datum, TimeOnly Aanvang, DateTime Eind, string? VeldRuw, int? VeldNummer,
+        var ruw = new List<(DateOnly Datum, TimeOnly Aanvang, DateTime? Eind, string? VeldRuw, int? VeldNummer,
             decimal VeldDeelGebruik, string? LeeftijdsCategorie, string? TeamNaam, string? Wedstrijd,
             string Bron, long? Wedstrijdcode)>();
 
@@ -96,10 +96,11 @@ internal static class PlannerAvailabilityRepository
             cmd.Parameters.AddWithValue("clubcode", cc);
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
+            {
                 ruw.Add((
                     Datum: DateOnly.FromDateTime(reader.GetDateTime(0)),
                     Aanvang: TimeOnly.FromTimeSpan(reader.GetTimeSpan(1)),
-                    Eind: reader.GetDateTime(2),
+                    Eind: reader.IsDBNull(2) ? null : reader.GetDateTime(2),
                     VeldRuw: reader.IsDBNull(3) ? null : reader.GetString(3),
                     VeldNummer: reader.IsDBNull(4) ? null : reader.GetInt32(4),
                     VeldDeelGebruik: reader.GetDecimal(5),
@@ -108,6 +109,7 @@ internal static class PlannerAvailabilityRepository
                     Wedstrijd: reader.IsDBNull(8) ? null : reader.GetString(8),
                     Bron: reader.GetString(9),
                     Wedstrijdcode: reader.IsDBNull(10) ? null : reader.GetInt64(10)));
+            }
         }
 
         // Resolutie in C# (zie klasse-doc-comment): "Planner"-rijen hebben al een veldnummer,
@@ -115,20 +117,21 @@ internal static class PlannerAvailabilityRepository
         // origineel (per veldnummer+aanvangstijd+wedstrijd de eerste, op Bron gesorteerd) gebeurt
         // hier ná resolutie, want vóór resolutie is veldnummer voor Competitie-rijen nog leeg.
         var resolved = ruw
+            .Select(r => (Rij: r, Nummer: r.VeldNummer ?? PlannerShared.VindVeldNummer(r.VeldRuw, velden)))
+            .Where(r => r.Nummer != 0)
             .Select(r => new BestaandeWedstrijd
             {
-                Datum = r.Datum,
-                AanvangsTijd = r.Aanvang,
-                EindTijd = TimeOnly.FromDateTime(r.Eind),
-                VeldNummer = r.VeldNummer ?? PlannerShared.VindVeldNummer(r.VeldRuw, velden),
-                VeldDeelGebruik = r.VeldDeelGebruik,
-                LeeftijdsCategorie = r.LeeftijdsCategorie,
-                TeamNaam = r.TeamNaam,
-                Wedstrijd = r.Wedstrijd,
-                Wedstrijdcode = r.Wedstrijdcode,
-                Bron = r.Bron
+                Datum = r.Rij.Datum,
+                AanvangsTijd = r.Rij.Aanvang,
+                EindTijd = TimeOnly.FromDateTime(r.Rij.Eind ?? throw new global::Planner.Shared.Planning.PlanningDuurOnbekendException()),
+                VeldNummer = r.Nummer,
+                VeldDeelGebruik = r.Rij.VeldDeelGebruik,
+                LeeftijdsCategorie = r.Rij.LeeftijdsCategorie,
+                TeamNaam = r.Rij.TeamNaam,
+                Wedstrijd = r.Rij.Wedstrijd,
+                Wedstrijdcode = r.Rij.Wedstrijdcode,
+                Bron = r.Rij.Bron
             })
-            .Where(w => w.VeldNummer != 0)
             .GroupBy(w => (w.VeldNummer, w.AanvangsTijd, w.Wedstrijd))
             .Select(g => g.OrderBy(w => w.Bron, StringComparer.Ordinal).First())
             .ToList();

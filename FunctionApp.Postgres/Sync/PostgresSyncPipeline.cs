@@ -31,7 +31,8 @@ namespace FunctionApp.Postgres.Sync;
 /// </summary>
 internal static class PostgresSyncPipeline
 {
-    private static readonly HttpClient HttpClient = new();
+    internal static readonly HttpClientHandler DataserviceHandler = new() { AllowAutoRedirect = false };
+    private static readonly HttpClient HttpClient = new(DataserviceHandler);
 
     /// <summary>
     /// Draait de volledige synchronisatie en geeft terug of er deelstappen zijn mislukt.

@@ -5,13 +5,9 @@ namespace Planner.Shared.Integrations.SportlinkClub;
 /// een naam (AVG: deze app toont/verstuurt uitsluitend wat de beheerder zelf intikt, roept nooit
 /// een Sportlink-zoek-/personendetail-endpoint aan).
 /// <para>
-/// <b>ONBEVESTIGD (#994):</b> de exacte elementstructuur van Sportlinks
-/// <c>OfficialsToBeAssigned</c> is nooit live gezien (geen netwerktrace) — afgeleid uit
-/// <c>OfficialPosition</c> zoals dat terugkomt in <c>GET .../MatchOfficials</c>. Zowel de veldnamen
-/// als de exacte persoonsidentifier-naam (hier aangenomen: <c>PersoonId</c>) kunnen afwijken van
-/// wat Sportlink werkelijk verwacht. Deze aanname blijft in gebruik totdat een mens (nooit een
-/// agent, zie docs/SPORTLINK-WEB-EXTENSION.md §4.4) een live trace heeft gedaan — zie
-/// <c>SportlinkMutaties.MatchOfficialsActionLiveBevestigd</c>.
+/// De eigenaar heeft het endpoint na een live trace van #1319 vrijgegeven; deze aanroep volgt de
+/// instelling <c>sportlinkDryRun</c>. De contractnamen <c>OfficialsToBeAssigned</c> en
+/// <c>PersoonId</c> blijven modelaannames. De exacte positiewaarden blijven onbevestigd.
 /// </para>
 /// </summary>
 /// <param name="OfficialPosition">Positiecode zoals Sportlink die hanteert (bijv. scheidsrechter/AR1/AR2 — exacte waarden ONBEVESTIGD).</param>
