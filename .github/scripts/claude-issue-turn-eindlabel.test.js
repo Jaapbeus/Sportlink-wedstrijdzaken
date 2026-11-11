@@ -369,7 +369,7 @@ const run = (github, extra = {}) => applyEndLabel({
     check('prompt geeft geen-codewijziging niet meer blind aan de eigenaar', /Geen codewijziging nodig \(geen bevindingen, of alle "niet overgenomen"\)/.test(yml), false);
 
     // #1702 ronde 1 (Codex P2): de beurtkeuze in de verwerkingsfase moet eenduidig zijn. Een schone
-    // tweede ronde (geen bevindingen, geen wijziging, geen eigenaarspunt) mag niet óók aan "tweede
+    // derde ronde (geen bevindingen, geen wijziging, geen eigenaarspunt) mag niet óók aan "derde
     // ronde → turn: owner" voldoen. Model van de prompt: de takken van stap 5 in volgorde, met per tak
     // de uitkomst (laatste `Volgende beurt:` in de tak).
     const start = yml.indexOf('Bepaal daarna de volgende beurt');
@@ -382,14 +382,14 @@ const run = (github, extra = {}) => applyEndLabel({
     check('verwerkingsblok gevonden met takken', branches.length >= 4, true);
     check('prompt legt een voorrangsvolgorde vast (eerste tak die geldt)', /eerste tak die geldt/i.test(block.replace(/\s+/g, ' ')), true);
     const mergeIdx = branches.findIndex((b) => b.outcome === 'merge door implementer');
-    const rondeOwner = branches.map((b, i) => ({ ...b, i })).filter((b) => b.outcome === 'turn: owner' && /tweede (review)?ronde/i.test(b.text));
-    check('er is een tak voor tweede ronde → turn: owner', rondeOwner.length, 1);
-    check('tak tweede ronde → owner vereist het ontbreken van een schone review',
+    const rondeOwner = branches.map((b, i) => ({ ...b, i })).filter((b) => b.outcome === 'turn: owner' && /derde (review)?ronde/i.test(b.text));
+    check('er is een tak voor derde ronde → turn: owner', rondeOwner.length, 1);
+    check('tak derde ronde → owner vereist het ontbreken van een schone review',
       rondeOwner.every((b) => /(geen|zonder) schone review/i.test(b.text)), true);
-    check('merge door implementer gaat in de volgorde vóór tweede ronde → owner',
+    check('merge door implementer gaat in de volgorde vóór derde ronde → owner',
       mergeIdx >= 0 && rondeOwner.every((b) => b.i > mergeIdx), true);
     check('rondenummer staat niet als losse óf-voorwaarde naast het eigenaarspunt',
-      branches.some((b) => /eigenaarspunt/.test(b.text) && /óf dit was al de tweede reviewronde/.test(b.text)), false);
+      branches.some((b) => /eigenaarspunt/.test(b.text) && /óf dit was al de derde reviewronde/.test(b.text)), false);
     check('schone-reviewtak noemt dat het rondenummer niet meetelt',
       mergeIdx >= 0 && /ongeacht het rondenummer/i.test(branches[mergeIdx].text), true);
   }

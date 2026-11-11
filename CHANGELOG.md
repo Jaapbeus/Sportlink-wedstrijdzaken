@@ -18,9 +18,21 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
-- Exact plan application rejects day-crossing durations before time arithmetic and requires target times in exact `HH:mm` format; unchanged source times retain seconds. Fresh SQL CI preserves existing sync tables (#1802).
+### Changed
+- Removed the unused API status service and placed existing shared-logic tests in `Planner.Shared.Tests` (see issue #1808).
+- Clarified the Postgres error-reporting adapter documentation while retaining its tier-specific egress and fingerprint rationale (see issue #1805).
+- Het reviewrondelimiet voor Codex en Claude Code (AGENTS.md en de automatische issue-beurt van de bot) is van twee naar drie rondes per PR gegaan; pas daarna beslist de eigenaar, zie issue #1835.
+- De SQL Server-planner geeft voor de niet-opgeslagen optionele eerste-elftalnaam nu expliciet `null` door, gelijk aan Postgres; de settings-loader guard hoeft deze ontbrekende sleutel niet meer uit te zonderen (#1821).
 
 ### Fixed
+- Settings restart decisions now have paired SQL Server and Postgres persistence regression tests for unchanged and changed schedules alongside another saved field (#1819).
+- De Postgres-instellingenloader laadt nu ook de vijf bestaande e-mailinstellingen voor de mailboxverwerking en wist ze bij herladen na `NULL`, gelijk aan het gedrag van de SQL Server-tier (#1798).
+- De instellingenopslag meldt alleen een herstart als de opgeslagen FetchSchedule-waarde echt verandert; SQL Server ondersteunt nu ook het opslaan en teruglezen van SportlinkDryRun (#1819)
+- Een teambegeleiding-CSV met ongeldige UTF-8-bytes wordt vóór de import geweigerd in plaats van stilzwijgend met vervangtekens in de preview te verschijnen (#1819)
+- Veldbeschikbaarheid kan niet meer naar een periodecombinatie worden bijgewerkt die al bestaat (#1819)
+- E-maildashboardtellers gebruiken de echte laatste 24 uur en tellen alle passende berichten, ook als de detailweergave de limiet bereikt. Bij een oudere API zonder volledige tellingen toont het dashboard "Niet beschikbaar" in plaats van onjuiste nullen; werk de API bij vóór de Blazor-app (#1819)
+- De email-log OpenAPI-parameters documenteren nu de drie parser-ondersteunde datumvormen; de SQL Server-beschikbaarheidstest ruimt ook op als het fixture-opzetten faalt (#1819, reviewronde 3)
+- Exact plan application rejects day-crossing durations before time arithmetic and requires target times in exact `HH:mm` format; unchanged source times retain seconds. Fresh SQL CI preserves existing sync tables (#1802).
 - Beheerpagina's onderscheiden een mislukte API-lading van een geslaagde lege lijst; bij wisselen van club worden oude resultaten en nog lopende verzoeken ongeldig. Verwijderen van instellingen en testwedstrijden vraagt eerst inline om bevestiging en toont een fout als opslaan of verwijderen mislukt (#1802)
 - Veld optimalisatie past voor ALLSTARS de volledige getoonde planning toe, inclusief handmatig gekozen deelvelden. De server controleert de bron, bezetting en brongegevens opnieuw binnen één transactie en weigert verouderde of conflicterende plannen zonder gedeeltelijke wijzigingen; oudere clients zonder toewijzingslijst blijven ondersteund (#1802)
 

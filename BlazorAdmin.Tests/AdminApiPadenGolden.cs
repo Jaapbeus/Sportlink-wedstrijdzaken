@@ -56,7 +56,7 @@ internal static class AdminApiPadenGolden
         """CreateUitgeslotenEmailAsync | POST api/beheer/uitgesloten-emails | {"id":0,"emailAdres":"","omschrijving":null,"actief":true,"clubCode":""}""",
         """DeleteUitgeslotenEmailAsync | DELETE api/beheer/uitgesloten-emails/6 | """,
         """GetEmailLogAsync | GET api/beheer/email-log?limit=50 | """,
-        """GetEmailLogAsync(filter) | GET api/beheer/email-log?limit=10&vanaf=2026-03-14&tot=2026-03-14&status=Fout%20m | """,
+        """GetEmailLogAsync(filter) | GET api/beheer/email-log?limit=10&vanaf=2026-03-14T10%3A30%3A00.0000000Z&tot=2026-03-14T10%3A30%3A00.0000000Z&status=Fout%20m | """,
         """GetEmailTraceAsync | GET api/beheer/email-log/9/trace | """,
         """GeocodeAsync | GET api/beheer/geocode?plaatsnaam=Den%20Haag | """,
         """TestEmailAsync | POST api/test/email | {"onderwerp":null,"afzender":null,"afzenderNaam":null,"body":null}""",

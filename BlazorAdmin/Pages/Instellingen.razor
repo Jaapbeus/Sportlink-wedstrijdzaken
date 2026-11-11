@@ -90,6 +90,10 @@
                     {
                         <p class="text-muted">Niet beschikbaar.</p>
                     }
+                    else if (_emailLog is { StatusCounts: null })
+                    {
+                        <p class="text-muted">Niet beschikbaar: de API levert nog geen volledige tellingen. Werk eerst de API bij.</p>
+                    }
                     else if (_emailLog != null)
                     {
                         <p><strong>Antwoord verstuurd:</strong> @_emailVerwerkt</p>

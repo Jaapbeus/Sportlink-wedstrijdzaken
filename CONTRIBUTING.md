@@ -280,7 +280,7 @@ niet `develop`; `AGENTS.md`/`CLAUDE.md`, `.agents/`, `.claude/`, `Database/`, `D
 `scripts/migrations/`, `infrastructure/`, `scripts/azure/`) en maakt er dan `turn: owner` van; kosten of
 een schemawijziging buiten die paden beoordeelt de bot in de prompt en de mergende sessie opnieuw. Fase
 `eigenaarsbesluit` + `turn: owner` blijft voor een echt openstaand punt, voor alle bevindingen "niet
-overgenomen" zonder codewijziging, voor een tweede ronde zonder schone review en voor "CI niet bewezen".
+overgenomen" zonder codewijziging, voor een derde ronde zonder schone review en voor "CI niet bewezen".
 
 **Parallelle schrijvers en de turn-labels (#1686).** `turn-label-exclusief.yml` houdt het laatst gezette
 `turn:`-label en verwijdert de andere (laatste schrijver wint). Spreken de labels en de issue-events elkaar
