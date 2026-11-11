@@ -14,7 +14,7 @@ namespace Planner.Shared;
 /// </summary>
 public static class VeldNormalisatie
 {
-    /// <summary>Getrimd, lowercase, dubbele spaties samengevouwen.</summary>
+    /// <summary>Getrimd, lowercase, dubbele spaties eenmalig vervangen door één spatie.</summary>
     public static string Normaliseer(string? veld)
     {
         if (string.IsNullOrWhiteSpace(veld)) return string.Empty;
