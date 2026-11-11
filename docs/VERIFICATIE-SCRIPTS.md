@@ -630,7 +630,8 @@ guard still pairs exact relative paths and also reads the reviewed explicit mapp
 `scripts/ci/tier-duplicatie-mapping.txt`. The KNVB repositories are paired there because both query
 the same region, season, date range and match day types, then use the shared pure free-Saturday
 selector. `check-codekwaliteit.test.sh` has a synthetic mapped-pair fixture that must push the guard
-over its test ceiling. The production ceiling is unchanged.
+over its test ceiling. The production ceiling is not raised: the mapped pair (+9) is offset by
+moving the tier-identical KNVB calendar PDF reader to `Planner.Shared` (-32).
 
 The KNVB contract filter is `FullyQualifiedName~KnvbKalenderRepositoryIntegrationTests` in
 `FunctionApp.Tests` and `FunctionApp.Postgres.Tests`. The SQL Server KNVB filter is not included in

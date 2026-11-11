@@ -1,12 +1,14 @@
-using Planner.Shared.Email;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 
-namespace SportlinkFunction.Email;
+namespace Planner.Shared.Email;
 
 /// <summary>
 /// Leest de KNVB-speeldagenkalender-PDF's die als Content-bestanden meereizen in het Function
-/// App-deploymentpakket (#561) — geen nieuwe Azure-resource, dus kosten blijven €0.
+/// App-deploymentpakket (#561/#1141) — geen nieuwe Azure-resource, dus kosten blijven €0. Beide
+/// databasetiers gebruiken deze ene implementatie (#1813): de leeslogica raakt geen database.
+/// <c>FunctionApp.Postgres.csproj</c> linkt met <c>Content Include</c> naar dezelfde bronbestanden
+/// als de SQL Server-tier, zodat elke tier de PDF's in zijn eigen output-directory vindt.
 ///
 /// <para>
 /// Fail-safe: een ontbrekend bestand, een onbekende regio, of een leesfout levert altijd
@@ -24,7 +26,8 @@ public static class KnvbPdfService
 
     /// <summary>
     /// Regio → bestandsnaam-slug. Uitputtende lijst — een regio die hier niet in staat, staat ook
-    /// niet in <c>dbo.KnvbKalenderDag</c>/AppSettings-check-constraint en levert bewust <c>null</c> op.
+    /// niet in de KNVB-kalendertabel van een tier of in Planner.Endpoints
+    /// <c>AppSettingsValidatieCore.GeldigeKnvbRegios</c> en levert bewust <c>null</c> op.
     /// </summary>
     private static readonly IReadOnlyDictionary<string, string> RegioSlug = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
@@ -41,7 +44,15 @@ public static class KnvbPdfService
     /// (bijv. seizoen "2026/2027"). Retourneert <c>null</c> als het bestand niet gevonden of niet
     /// leesbaar is, of als de regio onbekend is — nooit een exception.
     /// </summary>
-    public static async Task<EmailBijlage?> GetKalenderPdfAsync(string regio, string seizoen, ILogger log)
+    public static Task<EmailBijlage?> GetKalenderPdfAsync(string regio, string seizoen, ILogger log)
+        => GetKalenderPdfAsync(regio, seizoen, log, AppContext.BaseDirectory);
+
+    /// <summary>
+    /// Testbare variant met expliciete basismap (InternalsVisibleTo Planner.Shared.Tests); productie
+    /// gebruikt altijd <see cref="AppContext.BaseDirectory"/>.
+    /// </summary>
+    internal static async Task<EmailBijlage?> GetKalenderPdfAsync(
+        string regio, string seizoen, ILogger log, string basisMap)
     {
         if (string.IsNullOrWhiteSpace(regio) || string.IsNullOrWhiteSpace(seizoen))
         {
@@ -65,7 +76,7 @@ public static class KnvbPdfService
 
         try
         {
-            var pad = Path.Combine(AppContext.BaseDirectory, "Content", "KnvbKalenders", seizoenSlug, bestandsnaam);
+            var pad = Path.Combine(basisMap, "Content", "KnvbKalenders", seizoenSlug, bestandsnaam);
             if (!File.Exists(pad))
             {
                 log.LogWarning("KNVB-PDF - bestand niet gevonden voor het opgegeven seizoen/regio, geen bijlage toegevoegd");

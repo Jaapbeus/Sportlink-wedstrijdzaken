@@ -192,8 +192,11 @@ At `1ee175ff7c50f1640060ebaecb2a2441d2090cb2`, a path inventory found 101 exact 
 pairs and 5 unique-basename candidates, with no ambiguous basename groups. These are path
 inventory counts, not semantic-coverage or maintenance-cost evidence. The KNVB calendar
 repositories were separately verified as semantic counterparts for this selector; that one pair
-is recorded in `scripts/ci/tier-duplicatie-mapping.txt`. The duplication ceiling is unchanged and a
-negative fixture proves that mapped duplication is counted. Other candidates remain unverified.
+is recorded in `scripts/ci/tier-duplicatie-mapping.txt`. Counting that pair adds 9 identical lines;
+the same change moves the KNVB calendar PDF reader (`KnvbPdfService`, 32 identical lines in two
+tier copies, no database access) to `Planner.Shared/Email/KnvbPdfService.cs`, so the duplication
+ceiling goes down instead of up. A negative fixture proves that mapped duplication is counted.
+Other candidates remain unverified.
 
 Broader support, extraction and migration policy remains outside this scoped implementation and
 requires a separately evidenced owner decision. `#1542` remains a separate owner goal to eliminate
@@ -475,7 +478,7 @@ voor de gekozen Postgres-hosting zou `"paused"` hier verzonnen zijn; een onberei
 hier altijd `"unavailable"` of `"timeout"`. `tier`/`provider`/`serverVersion` volgen verder exact
 het #863-patroon (build-time metadata resp. `SHOW server_version`).
 
-**Huidig publiek contract (#1811 / API 4.0.0.1):** `/api/health` toont alleen status, versie,
+**Huidig publiek contract (#1811 / API 4.0.0.0):** `/api/health` toont alleen status, versie,
 databasebereikbaarheid en readiness-/waarschuwingvlaggen. `tier`, `provider`, `serverVersion`,
 sync-, schema-, migratie- en TLS-details worden uitsluitend teruggegeven door admin-only
 `/api/beheer/health`. De historische voorbeelden hieronder beschrijven het contract ten tijde
@@ -3582,6 +3585,8 @@ bestaan onvoorwaardelijk sinds migratie 003 — geen optionele-kolom-dans zoals 
   een eigen namespace (`SportlinkFunction.Email`/`FunctionApp.Postgres.Email`) — een gedeelde
   `KnvbPdfService` zou een gedeeld `EmailBijlage`-type vereisen, en dat is een grotere refactor dan
   dit issue rechtvaardigt. Een twin, net als `EmailBijlage` zelf, is hier het consistente patroon.
+  *Bijgewerkt bij #1813:* `EmailBijlage` is inmiddels gedeeld (`Planner.Shared/Email/`); de twin
+  is vervallen en `KnvbPdfService` staat nu eenmalig in `Planner.Shared/Email/KnvbPdfService.cs`.
 
 **PDF-bestanden: één bron, twee build-outputs.** `FunctionApp.Postgres.csproj` verwijst met een
 MSBuild `Content Include`+`Link` naar dezelfde bronbestanden als
