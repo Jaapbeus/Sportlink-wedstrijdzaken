@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
+using SportlinkFunction.Sync;
 
 namespace SportlinkFunction.Admin;
 
@@ -87,7 +88,14 @@ public static class AdminSyncFunction
                 // #1352/#1461/#1492: body + seizoensvenster via de gedeelde orkestratie (400 bij ongeldig).
                 var venster = await SyncTriggerEndpointCore.BepaalVensterAsync(
                     await new StreamReader(req.Body).ReadToEndAsync(), DateTime.UtcNow.Year,
-                    () => SystemUtilities.SeasonHelper.GetSeasonEndWeekOffsetAsync(log, clubCode),
+                    async () =>
+                    {
+                        // De queue mag tijdens een lopende sync blijven accepteren. De doorrol
+                        // gebruikt alleen de bestaande AppSettings-rijlock, geen staginglease.
+                        await SqlServerSeasonRollover.EnsureAsync(
+                            clubCode, SqlServerSeasonRollover.VandaagInNederland, log);
+                        return await SystemUtilities.SeasonHelper.GetSeasonEndWeekOffsetAsync(log, clubCode);
+                    },
                     jaar => SystemUtilities.SeasonHelper.GetSeasonStartWeekOffsetOrNullAsync(jaar, clubCode));
                 if (venster.Fout is not null) return venster.Fout;
                 int fromWeekOffset = venster.Van, toWeekOffset = venster.Tot;

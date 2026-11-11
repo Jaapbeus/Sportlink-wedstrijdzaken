@@ -2726,7 +2726,7 @@ USING [' + @SourceSchema + '].[' + @SourceName + '] AS source
         BEGIN
             SET @SqlString +=
 'AND ISNULL(CAST(target.' + @ColName + ' AS NVARCHAR(MAX)), '''') = ISNULL(CAST(source.' + @ColName + ' AS NVARCHAR(MAX)), '''') ';
-            SET @SourcePkColumns += ', source.' + @ColName + ' ';
+            SET @SourcePkColumns += ', NCHAR(1), source.' + @ColName + ' ';
         END
         DELETE FROM @ColNames WHERE ColName = @ColName;
         SET @Index += 1;
@@ -2808,7 +2808,7 @@ WHEN NOT MATCHED BY TARGET THEN ';
         DELETE FROM @SourceTableColumns WHERE TableColumn = @ColName;
     END
 
-    -- CONCAT supports both single and multi-column source keys
+    -- Preserve single-column keys; separate composite components like the PostgreSQL tier.
     SET @SqlString += '
 INSERT (' + @TargetPk + @SqlStringTargets + ', mta_inserted, mta_modified)
 VALUES (CONCAT('''', ' + @SourcePkColumns + ')' + @SqlStringValues + ', GETUTCDATE(), GETUTCDATE());';

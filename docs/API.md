@@ -103,8 +103,8 @@ verwerking plaats.
 |---------|----------|--------|-------------|
 | `GET` | `/health` | Anoniem | Geaggregeerde readiness, versie en statusvlaggen — zie hieronder |
 | `GET` | `/beheer/health` | **Admin** | Gedetailleerde healthinformatie voor diagnose; via `AdminEndpoint.ExecuteZonderDatabaseAsync` |
-| `GET` | `/postgres/sync-matches` | **Admin** | Handmatige Sportlink-synchronisatie — **Postgres-tier (productie)**. Alleen de vastgelegde Sportlink-dataservice mag als bron zijn ingesteld; een andere basis-URL stopt de sync vóór uitgaand verkeer. Antwoordt `200`, `207` (deelstappen mislukt, `lastsynctimestamp` niet bijgewerkt) of `500`. Bestaat niet op de SQL Server-tier |
-| `GET` | `/sync-matches` | **Admin** | Handmatige Sportlink-synchronisatie — **SQL Server-tier**, dezelfde basis-URL-regel en parameters (`reset`, `season`). Antwoordt `200` of `500`. Bestaat niet op de Postgres-tier |
+| `GET` | `/postgres/sync-matches` | **Admin** | Handmatige Sportlink-synchronisatie — **Postgres-tier (productie)**. Alleen de vastgelegde Sportlink-dataservice mag als bron zijn ingesteld; een andere basis-URL stopt de sync vóór uitgaand verkeer. Antwoordt `200`, `207` (deelstappen mislukt, `lastsynctimestamp` niet bijgewerkt), `409` (andere sync actief) of `500`. Bestaat niet op de SQL Server-tier |
+| `GET` | `/sync-matches` | **Admin** | Handmatige Sportlink-synchronisatie — **SQL Server-tier**, dezelfde basis-URL-regel en parameters (`reset`, `season`). Antwoordt `200`, `409` (andere sync actief) of `500`. Bestaat niet op de Postgres-tier |
 | `GET/PUT` | `/beheer/settings` | **Admin** | Club-instellingen ophalen/opslaan (incl. Sportlink Web Extension-schakelaar en de seizoensstartmaand `SeasonStartMonth` 1–12 per club; wijzigen bouwt de seizoenen van die club opnieuw op). `FetchSchedule` in een PUT moet een niet-lege, uitvoerbare zesvelden-CRON van maximaal 50 tekens zijn; anders 400 zonder de invoer in de foutmelding. Een weggelaten veld blijft ongewijzigd |
 | `GET` | `/beheer/geocode` | **Admin** | Adres → GPS-coördinaten opzoeken voor de accommodatie-instelling |
 | `GET` | `/beheer/sync/status` | **Admin** | Status van de laatste Sportlink-synchronisatie, plus optioneel `?jobId=` voor een specifieke sync-job (#1138) |
@@ -292,12 +292,13 @@ Authorization: Bearer <entra-token>
 | Status | Tier | Body |
 |---|---|---|
 | `200 OK` | beide | `"Sync voltooid. WeekOffset-bereik: {from} tot {to}."` |
+| `409 Conflict` | beide | `{ "status": "already running", "message": "A synchronization is already running. Try again later." }` — another run currently owns the shared staging area; this request did no sync work |
 | `207 Multi-Status` | **alleen Postgres** | `{ "status": "gedeeltelijk mislukt", "weekOffsetFrom": -1, "weekOffsetTo": 12, "melding": "..." }` — één of meer deelstappen zijn mislukt en `lastsynctimestamp` is bewust **niet** bijgewerkt (#1081). De geslaagde deelstappen blijven staan; het functielog noemt de betrokken fase(s) |
 | `401 Unauthorized` | beide | Geen (geldig) Bearer-token — ook een `?code=`-master key geeft dit resultaat sinds #1350 |
 | `403 Forbidden` | beide | Geldig token, maar zonder de `admin`-rol |
 | `500` | beide | Onverwachte fout; zie het functielog |
 
-De SQL Server-tier kent de `207` niet en antwoordt alleen `200`, `401`, `403` of `500`.
+De SQL Server-tier kent de `207` niet en antwoordt alleen `200`, `401`, `403`, `409` of `500`.
 
 ---
 

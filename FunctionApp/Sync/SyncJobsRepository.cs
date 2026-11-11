@@ -25,23 +25,35 @@ internal static class SyncJobsRepository
         await command.ExecuteNonQueryAsync();
     }
 
-    internal static async Task MarkRunningAsync(Guid id)
+    internal static Task<bool> TryClaimPendingAsync(Guid id)
     {
-        using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+        return TryClaimPendingAsync(SystemUtilities.DatabaseConfig.ConnectionString, id);
+    }
+
+    internal static async Task<bool> TryClaimPendingAsync(string connectionString, Guid id)
+    {
+        await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
-        using var command = new SqlCommand(
-            "UPDATE [dbo].[SyncJobs] SET [Status] = 'running', [StartedAt] = GETUTCDATE() WHERE [Id] = @Id",
+        await using var command = new SqlCommand(
+            "UPDATE [dbo].[SyncJobs] SET [Status] = 'running', [StartedAt] = GETUTCDATE() " +
+            "OUTPUT INSERTED.[Id] WHERE [Id] = @Id AND [Status] = 'pending'",
             connection);
         command.Parameters.AddWithValue("@Id", id);
-        await command.ExecuteNonQueryAsync();
+        return await command.ExecuteScalarAsync() is Guid;
     }
 
     internal static async Task MarkCompletedAsync(Guid id, bool succeeded, string? errorMessage)
     {
-        using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+        await MarkCompletedAsync(SystemUtilities.DatabaseConfig.ConnectionString, id, succeeded, errorMessage);
+    }
+
+    internal static async Task MarkCompletedAsync(string connectionString, Guid id, bool succeeded, string? errorMessage)
+    {
+        await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
-        using var command = new SqlCommand(
-            "UPDATE [dbo].[SyncJobs] SET [Status] = @Status, [CompletedAt] = GETUTCDATE(), [ErrorMessage] = @ErrorMessage WHERE [Id] = @Id",
+        await using var command = new SqlCommand(
+            "UPDATE [dbo].[SyncJobs] SET [Status] = @Status, [CompletedAt] = GETUTCDATE(), [ErrorMessage] = @ErrorMessage " +
+            "WHERE [Id] = @Id AND [Status] = 'running'",
             connection);
         command.Parameters.AddWithValue("@Id", id);
         command.Parameters.AddWithValue("@Status", succeeded ? "succeeded" : "failed");
