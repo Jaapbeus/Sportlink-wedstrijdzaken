@@ -476,7 +476,7 @@ voor de gekozen Postgres-hosting zou `"paused"` hier verzonnen zijn; een onberei
 hier altijd `"unavailable"` of `"timeout"`. `tier`/`provider`/`serverVersion` volgen verder exact
 het #863-patroon (build-time metadata resp. `SHOW server_version`).
 
-**Huidig publiek contract (#1811 / API 4.0.0.0):** `/api/health` toont alleen status, versie,
+**Huidig publiek contract (#1811 / API 4.0.0.1):** `/api/health` toont alleen status, versie,
 databasebereikbaarheid en readiness-/waarschuwingvlaggen. `tier`, `provider`, `serverVersion`,
 sync-, schema-, migratie- en TLS-details worden uitsluitend teruggegeven door admin-only
 `/api/beheer/health`. De historische voorbeelden hieronder beschrijven het contract ten tijde

@@ -1,3 +1,4 @@
+using Planner.Endpoints.Http;
 using FunctionApp.Postgres.Email;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -99,11 +100,8 @@ public static class AdminTeambegeleidingFunction
     {
         var log = context.GetLogger("AdminTeambegeleidingDoorsturen");
         return AdminEndpoint.ExecuteAuthenticatedAsync(req, log, "teambegeleiding-vraag doorsturen (geen PII gelogd — AVG)",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<DoorsturenRequest>(req, async dto =>
             {
-                using var bodyReader = new StreamReader(req.Body);
-                var body = await bodyReader.ReadToEndAsync();
-                var dto = JsonConvert.DeserializeObject<DoorsturenRequest>(body);
                 if (dto == null || string.IsNullOrWhiteSpace(dto.TeamNaam))
                     return new BadRequestObjectResult(new { error = "TeamNaam is vereist" });
                 if (string.IsNullOrWhiteSpace(dto.Bericht))
@@ -139,7 +137,7 @@ public static class AdminTeambegeleidingFunction
                         await SchrijfAuditAsync(cs, dto.TeamNaam, aanvragerEmail, ontvangers, clubCode, log);
                     },
                     dto.TeamNaam, log);
-            });
+            }));
     }
 
     // Audit-trail (#765): vrij ingetypte ontvangers zijn nieuwe persoonsgegevens. De mail is al
@@ -215,13 +213,12 @@ public static class AdminTeambegeleidingFunction
     {
         var log = context.GetLogger("AdminTeambegeleidingImport");
         return AdminEndpoint.ExecuteAsync(req, log, "teambegeleiding importeren (geen PII gelogd — AVG)",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<TeambegeleidingImportRequest>(req, async dto =>
             {
-                using var bodyReader = new StreamReader(req.Body);
-                var body = await bodyReader.ReadToEndAsync();
-                var dto = JsonConvert.DeserializeObject<TeambegeleidingImportRequest>(body);
                 if (dto == null || string.IsNullOrWhiteSpace(dto.CsvContent))
                     return new BadRequestObjectResult(new { error = "csvContent is vereist" });
+                if (dto.Bestandsnaam?.Length > TeambegeleidingImportRequestBodyLimits.AuditFilenameMaxCharacters)
+                    return new BadRequestObjectResult(new { error = "bestandsnaam is te lang" });
 
                 var parseResult = TeambegeleidingCsv.ParseEnValideer(dto.CsvContent);
                 if (TeambegeleidingImportEndpointCore.Weiger(parseResult) is { } weiger) return weiger;
@@ -254,7 +251,7 @@ public static class AdminTeambegeleidingFunction
                     ontbreekt     = new List<string>(),
                     waarschuwingen = parseResult.Waarschuwingen
                 });
-            });
+            }, TeambegeleidingImportRequestBodyLimits.MaxJsonBytes));
     }
 
     private record TeambegeleidingImportRequest(string CsvContent, string? Bestandsnaam);

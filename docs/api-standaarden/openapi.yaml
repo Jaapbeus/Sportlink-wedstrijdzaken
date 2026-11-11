@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 4.0.0.0
+  version: 4.0.0.1
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -127,7 +127,7 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     RequestBodyTooLarge:
-      description: De UTF-8 request-body overschrijdt de limiet van dit endpoint; het verzoek is niet verwerkt. Body `{ error }`.
+      description: De UTF-8 request-body overschrijdt de limiet van dit endpoint (1 MiB JSON, of de afgeleide envelope voor de bestaande CSV-upload); het verzoek is niet verwerkt. Body `{ error }`.
       content:
         application/json:
           schema:
@@ -181,7 +181,7 @@ components:
           example: "ok"
         version:
           type: string
-          example: "4.0.0.0"
+          example: "4.0.0.1"
         database:
           type: string
           description: Database connection status. "unconfigured" returns HTTP 503.
@@ -214,7 +214,7 @@ components:
           example: "ok"
         version:
           type: string
-          example: "4.0.0.0"
+          example: "4.0.0.1"
         timestamp:
           type: string
           format: date-time
@@ -3663,6 +3663,7 @@ paths:
 
         Mislukt één of meer deelstappen, dan volgt `207` in plaats van `200`: de geslaagde
         deelstappen blijven staan, maar `lastsynctimestamp` wordt bewust niet bijgewerkt (#1081).
+        Als een andere sync de gedeelde staging gebruikt, volgt `409` en wordt deze aanvraag niet uitgevoerd.
       security:
         - easyAuth: []
       parameters:
@@ -3712,6 +3713,20 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Een andere synchronisatie is actief; deze aanvraag is niet uitgevoerd
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, message]
+                properties:
+                  status:
+                    type: string
+                    example: already running
+                  message:
+                    type: string
+                    example: A synchronization is already running. Try again later.
         '503':
           $ref: '#/components/responses/ExternalIntegrationsDisabled'
         '500':
@@ -3735,7 +3750,8 @@ paths:
         - **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)
         - **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar
 
-        Deze tier kent de `207`-respons van de Postgres-tier niet: alleen `200` of `500`.
+        Deze tier kent de `207`-respons van de Postgres-tier niet. Als een andere sync de gedeelde
+        staging gebruikt, volgt `409` en wordt deze aanvraag niet uitgevoerd.
       security:
         - easyAuth: []
       parameters:
@@ -3764,6 +3780,20 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Een andere synchronisatie is actief; deze aanvraag is niet uitgevoerd
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, message]
+                properties:
+                  status:
+                    type: string
+                    example: already running
+                  message:
+                    type: string
+                    example: A synchronization is already running. Try again later.
         '503':
           $ref: '#/components/responses/ExternalIntegrationsDisabled'
         '500':
@@ -3788,12 +3818,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/CheckAvailabilityRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Beschikbaarheidsresultaat
           content:
@@ -3824,12 +3857,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/BevestigRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Wedstrijd geboekt
           content:
@@ -3893,12 +3929,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/ZoekWedstrijdRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Zoekresultaat (gevonden of niet gevonden)
           content:
@@ -3937,12 +3976,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/HerplanCheckRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Herplan-alternatieven
           content:
@@ -3967,12 +4009,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/HerplanBevestigRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Herplanverzoek geregistreerd
           content:
@@ -3997,12 +4042,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: false
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/DoordeweeksBeschikbaarRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Beschikbare doordeweekse datums
           content:
@@ -4106,12 +4154,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/UpdateSettingsRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Instellingen opgeslagen
           headers:
@@ -4284,6 +4335,7 @@ paths:
             type: string
             enum: [Wedstrijdzaken]
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
@@ -4295,6 +4347,8 @@ paths:
                   nullable: true
                   description: Handmatige, niet-geverifieerde vrije tekst ter herkenning.
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Koppeling geregistreerd
           content:
@@ -5408,6 +5462,7 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: false
         content:
           application/json:
@@ -5423,6 +5478,8 @@ paths:
                   minimum: 2000
                   description: Startjaar van het seizoen (bijv. 2025 voor 2025/2026); verplicht bij reset, maximaal huidig jaar + 1.
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '400':
           description: Ongeldig seizoen, seizoen zonder seizoensrij (bestaat niet) of ongeldige body (NL-foutmelding in `error`)
         '202':
@@ -5618,12 +5675,15 @@ paths:
           description: Template-sleutel (bijv. check-availability, herplan-bevestig)
           example: "check-availability"
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/TemplatePutRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Template opgeslagen
           headers:
@@ -5951,12 +6011,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/VeldBeschikbaarheidCreateRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Regel aangemaakt
           headers:
@@ -6001,12 +6064,15 @@ paths:
           schema:
             type: integer
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/VeldBeschikbaarheidUpdateRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Regel bijgewerkt
           headers:
@@ -6107,12 +6173,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/VeldCreateRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Veld aangemaakt
           headers:
@@ -6158,12 +6227,15 @@ paths:
           schema:
             type: integer
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/VeldUpdateRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Veld bijgewerkt
           headers:
@@ -7516,12 +7588,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/ThemeSaveRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Thema opgeslagen
           content:
@@ -8225,12 +8300,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/TeambegeleidingDoorsturenRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Bericht verstuurd
           headers:
@@ -8308,12 +8386,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "Behoudt de bestaande CSV-upload tot 5 MiB UTF-8. De JSON-envelope laat zesvoudige worst-case escaping en de bestaande auditbestandsnaamruimte van 500 tekens toe. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/TeambegeleidingImportRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Import geslaagd
           headers:
@@ -8367,12 +8448,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/VerplaatsDatumRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Wedstrijden verplaatst
           content:
@@ -8427,12 +8511,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/TestDataWedstrijdCreateRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Test-wedstrijd aangemaakt
           content:
@@ -8568,12 +8655,15 @@ paths:
             enum: [huidig, optimaal]
             default: huidig
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/AutoPlanRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Gegenereerd auto-plan (JSON), of bij format=html|pdf het gedeelde document
           headers:
@@ -8848,12 +8938,15 @@ paths:
       security:
         - easyAuth: []
       requestBody:
+        description: "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking."
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/AutoPlanToepassenRequest'
       responses:
+        '413':
+          $ref: '#/components/responses/RequestBodyTooLarge'
         '200':
           description: Plan toegepast
           headers:

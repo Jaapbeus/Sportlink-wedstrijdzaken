@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nEén beveiligingsschema:\n\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist\n  voor alle endpoints behalve `/health`; gedetailleerde healthinformatie is admin-only. De rolcontrole gebeurt server-side, met vier niveaus:\n  `admin` (`EasyAuthHelper.RequireAdmin`, via de wrappers `AdminEndpoint.ExecuteAsync` /\n  `ExecuteZonderDatabaseAsync`) voor de meeste `/beheer/`-, `/planner/`- en\n  `/test/`-endpoints (waaronder het feedbackoverzicht `/beheer/feedback`) — sinds #1350 óók voor `/postgres/sync-matches` en `/sync-matches`;\n  `admin` óf `user` (`AdminEndpoint.ExecuteAuthenticatedAsync`, #1330) voor `/planner/veldbezetting`\n  (#1400), de drie `/feedback/`-endpoints (#764: elke ingelogde gebruiker mag feedback geven), de twee Sportlink-viewing-endpoints (`GET /sportlink/match/{wedstrijdcode}` en\n  `.../public-match-id`, #1400) en de drie Teambegeleiding-lookup/doorstuur-endpoints; op\n  **beide** tiers identiek `Wedstrijdzaken` óf `admin` (`EasyAuthHelper.RequireWedstrijdzaken`,\n  beide poorten sinds #1400) voor de Sportlink-mutatie-endpoints (`PUT`/`POST` onder\n  `/sportlink/`), via `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`. Netto: een gewone\n  `user` (zonder `Wedstrijdzaken`, zonder `admin`) kan Planning en het Sportlink-paneel bekijken\n  maar geen Sportlink-mutatie triggeren; dat laatste vereist `Wedstrijdzaken` óf `admin`. Lokaal\n  alleen omzeild met de expliciete schakelaar `LOCAL_AUTH_BYPASS=true`; in Azure wordt die\n  geweigerd (#1700).\n\nZonder token volgt `401`. Met een geldig token maar zonder de vereiste rol volgt `403` met\n`{ \"error\": \"Forbidden: vereiste rol ontbreekt\" }`.\n\n## Tiers\n\nAlle endpoints bestaan sinds #1266 op beide databasetiers, met één uitzondering: de handmatige\nsynchronisatie heet `/postgres/sync-matches` op de Postgres-tier (productie) en\n`/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "4.0.0.0",
+    "version": "4.0.0.1",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -105,7 +105,7 @@
         }
       },
       "RequestBodyTooLarge": {
-        "description": "De UTF-8 request-body overschrijdt de limiet van dit endpoint; het verzoek is niet verwerkt. Body `{ error }`.",
+        "description": "De UTF-8 request-body overschrijdt de limiet van dit endpoint (1 MiB JSON, of de afgeleide envelope voor de bestaande CSV-upload); het verzoek is niet verwerkt. Body `{ error }`.",
         "content": {
           "application/json": {
             "schema": {
@@ -180,7 +180,7 @@
           },
           "version": {
             "type": "string",
-            "example": "4.0.0.0"
+            "example": "4.0.0.1"
           },
           "database": {
             "type": "string",
@@ -227,7 +227,7 @@
           },
           "version": {
             "type": "string",
-            "example": "4.0.0.0"
+            "example": "4.0.0.1"
           },
           "timestamp": {
             "type": "string",
@@ -4676,7 +4676,7 @@
         ],
         "operationId": "syncMatchesPostgres",
         "summary": "Handmatige Sportlink synchronisatie starten (Postgres-tier)",
-        "description": "**Tier: Postgres (productie).** Op de SQL Server-tier bestaat deze route niet (404) — daar\nheet hij `/sync-matches`.\n\nStart een Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).\nDe opgeslagen basis-URL moet de vaste Sportlink-dataservice zijn; anders stopt de sync\nvóór uitgaand verkeer. De client volgt geen HTTP-redirects.\nVereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key\nvia `?code=`, `AuthorizationLevel.Admin`).\n\n- **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)\n- **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar.\n  Een ontbrekende of onparseerbare `season` valt stil terug op de standaardmodus.\n\nMislukt één of meer deelstappen, dan volgt `207` in plaats van `200`: de geslaagde\ndeelstappen blijven staan, maar `lastsynctimestamp` wordt bewust niet bijgewerkt (#1081).\n",
+        "description": "**Tier: Postgres (productie).** Op de SQL Server-tier bestaat deze route niet (404) — daar\nheet hij `/sync-matches`.\n\nStart een Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).\nDe opgeslagen basis-URL moet de vaste Sportlink-dataservice zijn; anders stopt de sync\nvóór uitgaand verkeer. De client volgt geen HTTP-redirects.\nVereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key\nvia `?code=`, `AuthorizationLevel.Admin`).\n\n- **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)\n- **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar.\n  Een ontbrekende of onparseerbare `season` valt stil terug op de standaardmodus.\n\nMislukt één of meer deelstappen, dan volgt `207` in plaats van `200`: de geslaagde\ndeelstappen blijven staan, maar `lastsynctimestamp` wordt bewust niet bijgewerkt (#1081).\nAls een andere sync de gedeelde staging gebruikt, volgt `409` en wordt deze aanvraag niet uitgevoerd.\n",
         "security": [
           {
             "easyAuth": []
@@ -4749,6 +4749,30 @@
           "403": {
             "$ref": "#/components/responses/Forbidden"
           },
+          "409": {
+            "description": "Een andere synchronisatie is actief; deze aanvraag is niet uitgevoerd",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "message"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "already running"
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "A synchronization is already running. Try again later."
+                    }
+                  }
+                }
+              }
+            }
+          },
           "503": {
             "$ref": "#/components/responses/ExternalIntegrationsDisabled"
           },
@@ -4765,7 +4789,7 @@
         ],
         "operationId": "syncMatches",
         "summary": "Handmatige Sportlink synchronisatie starten (SQL Server-tier)",
-        "description": "**Tier: SQL Server.** Op de Postgres-tier (productie) bestaat deze route niet (404) — daar\nheet hij `/postgres/sync-matches`.\n\nStart een volledige Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).\nDe opgeslagen basis-URL moet de vaste Sportlink-dataservice zijn; anders stopt de sync\nvóór uitgaand verkeer. De client volgt geen HTTP-redirects.\nVereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key\nvia `?code=`, `AuthorizationLevel.Admin`).\n\n- **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)\n- **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar\n\nDeze tier kent de `207`-respons van de Postgres-tier niet: alleen `200` of `500`.\n",
+        "description": "**Tier: SQL Server.** Op de Postgres-tier (productie) bestaat deze route niet (404) — daar\nheet hij `/postgres/sync-matches`.\n\nStart een volledige Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).\nDe opgeslagen basis-URL moet de vaste Sportlink-dataservice zijn; anders stopt de sync\nvóór uitgaand verkeer. De client volgt geen HTTP-redirects.\nVereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key\nvia `?code=`, `AuthorizationLevel.Admin`).\n\n- **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)\n- **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar\n\nDeze tier kent de `207`-respons van de Postgres-tier niet. Als een andere sync de gedeelde\nstaging gebruikt, volgt `409` en wordt deze aanvraag niet uitgevoerd.\n",
         "security": [
           {
             "easyAuth": []
@@ -4810,6 +4834,30 @@
           "403": {
             "$ref": "#/components/responses/Forbidden"
           },
+          "409": {
+            "description": "Een andere synchronisatie is actief; deze aanvraag is niet uitgevoerd",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "message"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "already running"
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "A synchronization is already running. Try again later."
+                    }
+                  }
+                }
+              }
+            }
+          },
           "503": {
             "$ref": "#/components/responses/ExternalIntegrationsDisabled"
           },
@@ -4833,6 +4881,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -4843,6 +4892,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Beschikbaarheidsresultaat",
             "content": {
@@ -4879,6 +4931,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -4889,6 +4942,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Wedstrijd geboekt",
             "content": {
@@ -4984,6 +5040,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -4994,6 +5051,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Zoekresultaat (gevonden of niet gevonden)",
             "content": {
@@ -5055,6 +5115,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -5065,6 +5126,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Herplan-alternatieven",
             "content": {
@@ -5101,6 +5165,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -5111,6 +5176,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Herplanverzoek geregistreerd",
             "content": {
@@ -5147,6 +5215,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": false,
           "content": {
             "application/json": {
@@ -5157,6 +5226,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Beschikbare doordeweekse datums",
             "content": {
@@ -5307,6 +5379,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -5317,6 +5390,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Instellingen opgeslagen",
             "headers": {
@@ -5564,6 +5640,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -5581,6 +5658,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Koppeling geregistreerd",
             "content": {
@@ -7134,6 +7214,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": false,
           "content": {
             "application/json": {
@@ -7156,6 +7237,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "400": {
             "description": "Ongeldig seizoen, seizoen zonder seizoensrij (bestaat niet) of ongeldige body (NL-foutmelding in `error`)"
           },
@@ -7436,6 +7520,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -7446,6 +7531,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Template opgeslagen",
             "headers": {
@@ -7946,6 +8034,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -7956,6 +8045,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Regel aangemaakt",
             "headers": {
@@ -8028,6 +8120,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -8038,6 +8131,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Regel bijgewerkt",
             "headers": {
@@ -8196,6 +8292,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -8206,6 +8303,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Veld aangemaakt",
             "headers": {
@@ -8279,6 +8379,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -8289,6 +8390,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Veld bijgewerkt",
             "headers": {
@@ -10321,6 +10425,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -10331,6 +10436,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Thema opgeslagen",
             "content": {
@@ -11337,6 +11445,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -11347,6 +11456,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Bericht verstuurd",
             "headers": {
@@ -11431,6 +11543,7 @@
           }
         ],
         "requestBody": {
+          "description": "Behoudt de bestaande CSV-upload tot 5 MiB UTF-8. De JSON-envelope laat zesvoudige worst-case escaping en de bestaande auditbestandsnaamruimte van 500 tekens toe. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -11441,6 +11554,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Import geslaagd",
             "headers": {
@@ -11511,6 +11627,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -11521,6 +11638,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Wedstrijden verplaatst",
             "content": {
@@ -11605,6 +11725,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -11615,6 +11736,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Test-wedstrijd aangemaakt",
             "content": {
@@ -11822,6 +11946,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -11832,6 +11957,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Gegenereerd auto-plan (JSON), of bij format=html|pdf het gedeelde document",
             "headers": {
@@ -12232,6 +12360,7 @@
           }
         ],
         "requestBody": {
+          "description": "JSON UTF-8 request body maximaal 1 MiB. Ongeldige JSON of UTF-8 geeft 400; overschrijding geeft 413 vóór verwerking.",
           "required": true,
           "content": {
             "application/json": {
@@ -12242,6 +12371,9 @@
           }
         },
         "responses": {
+          "413": {
+            "$ref": "#/components/responses/RequestBodyTooLarge"
+          },
           "200": {
             "description": "Plan toegepast",
             "headers": {
