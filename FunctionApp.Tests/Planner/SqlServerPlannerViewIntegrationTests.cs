@@ -191,7 +191,7 @@ public class SqlServerPlannerViewIntegrationTests
                 VALUES (-1814, @dag, '08:00', '20:00', 0, @club);
                 """);
             cmd.Parameters.AddWithValue("@datum", date.ToString("yyyy-MM-dd"));
-            cmd.Parameters.AddWithValue("@dag", (int)date.DayOfWeek);
+            cmd.Parameters.AddWithValue("@dag", date.DayOfWeek == DayOfWeek.Sunday ? 7 : (int)date.DayOfWeek);
             await cmd.ExecuteNonQueryAsync();
             await transaction.CommitAsync();
         }
