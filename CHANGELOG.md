@@ -28,6 +28,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - De SQL Server-planner geeft voor de niet-opgeslagen optionele eerste-elftalnaam nu expliciet `null` door, gelijk aan Postgres; de settings-loader guard hoeft deze ontbrekende sleutel niet meer uit te zonderen (#1821).
 
 ### Fixed
+- De negatieve tier-duplicatietest gebruikt een vaste synthetische grens en blijft daardoor betrouwbaar wanneer productierefactorings duplicatie verminderen (zie issue #1811).
 - Settings restart decisions now have paired SQL Server and Postgres persistence regression tests for unchanged and changed schedules alongside another saved field (#1819).
 - Begrens JSON-requestbody's voor voorkeurstijden, teamregels, veldtrainingen en veldperiodes op maximaal 1 MiB UTF-8-bytes; ongeldige UTF-8/JSON geeft 400 en te grote bodies 413 vóór verwerking (#1811).
 - Begrens JSON-requestbody's voor de rol-featurematrix en uitgesloten e-mailadressen op maximaal 1 MiB UTF-8-bytes; ongeldige UTF-8/JSON geeft 400 en te grote bodies 413 vóór verwerking (#1811).
