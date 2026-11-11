@@ -191,12 +191,8 @@ public class AutoPlanExactApplyIntegrationTests
         await VerifyProviderConflictAsync(1205, 9802020, 9802021);
     }
 
-    [SqlServerFact]
-    public async Task ExactApply_MapsSqlServerSnapshotConflictToSafeConflict()
-    {
-        await VerifyProviderConflictAsync(3960, 9802022, 9802023);
-    }
-
+    // Exact apply uses Serializable isolation; a SQL Server snapshot update-conflict (3960) is not
+    // reachable on this path. The shared classifier still covers 3960; this test exercises 1205.
     private static async Task VerifyProviderConflictAsync(int sqlError, long firstId, long secondId)
     {
         await SetupAsync();
@@ -229,6 +225,7 @@ public class AutoPlanExactApplyIntegrationTests
     private static async Task SetupAsync()
     {
         SystemUtilities.AppSettings.SetForTests("clubCode", Club);
+        SystemUtilities.AppSettings.SetForTests("plannerAfzenderNaam", "testplanner");
         await CleanupAsync();
         await ExecAsync("""
             UPDATE [dbo].[Velden] SET [VeldNaam] = 'Kunstgras 1', [Actief] = 1 WHERE [VeldNummer] = 101;
