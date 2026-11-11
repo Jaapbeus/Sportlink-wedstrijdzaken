@@ -37,7 +37,8 @@ public static class BeschikbaarheidVoorwaarden
         ArgumentNullException.ThrowIfNull(zoekWedstrijdOpDatum);
 
         var tegenstander = classificatie.Tegenstander;
-        if (!string.IsNullOrWhiteSpace(tegenstander) && alleDatums.Count == 1
+        // #1862 (5A): meerdere teams van de afzender = geen eigen team; de opponentroute zou er stil één kiezen.
+        if (!classificatie.MeerdereAfzenderTeams && !string.IsNullOrWhiteSpace(tegenstander) && alleDatums.Count == 1
             && ModelDatum.TryParse(alleDatums[0], out var datum))
         {
             var wedstrijd = await zoekWedstrijdOpDatum(tegenstander, datum);

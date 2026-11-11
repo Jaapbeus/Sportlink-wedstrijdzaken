@@ -100,6 +100,7 @@ public static class EigenTeamBepaling
         if (TeamNaamNormalisatie.IsAlleenClubPrefix(classificatie.TeamNaam, clubCode)) classificatie.TeamNaam = null;
         trace?.Classificatie(classificatie.Type.ToString(), classificatie.TeamNaam, classificatie.Tegenstander, classificatie.GetAlleDatums().Count, classificatie.AanvangsTijd);
         classificatie.TeamAfgeleidUitAfzender = false;
+        classificatie.MeerdereAfzenderTeams = false;
         var herkend = await BepaalEnPasToeAsync(classificatie, resolver, clubCode, log, trace, fixtureContextFactory);
         if (classificatie.TeamHandmatigBeoordelen) return false;
         // #1862: stap 2 van de volgorde: geen herkenbaar team in de mail, dan het team van de afzender.

@@ -64,6 +64,8 @@ public static class AfzenderTeamBepaling
 
         if (teams.Count != 1)
         {
+            // Meerdere teams: expliciet vastleggen (5A), zodat de vervolgroute nooit uit de opponent een team afleidt.
+            classificatie.MeerdereAfzenderTeams = teams.Count > 1 && !herkend;
             trace?.BegeleidingAfzender(AantalOmschrijving(teams.Count), false,
                 teams.Count > 1 ? ZekerheidsNiveau.Onzeker : ZekerheidsNiveau.Mislukt, false);
             return herkend;

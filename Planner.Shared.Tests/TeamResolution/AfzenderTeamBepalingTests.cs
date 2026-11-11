@@ -69,6 +69,49 @@ public class AfzenderTeamBepalingTests
     }
 
     [Fact]
+    public async Task AfzenderBijMeerdereTeams_MetVindbareTegenstanderOpDatum_BehoudtDeWedervraagEnBlijftOnzeker()
+    {
+        // Review P2 (#1862, besluit 5A): de opponentroute mag bij meerdere afzenderteams geen wedstrijdantwoord geven.
+        var c = Zonder();
+        c.Tegenstander = "Tegenstander";
+        var (herkend, _, trace, _) = await Voer(c, new FakeBron(Begeleidingswaarde, "JO13-2"), Resolver());
+        var opzoekingen = 0;
+
+        var json = await BeschikbaarheidVoorwaarden.ZonderEigenTeamAsync(c, ["2026-11-14"],
+            (_, _) => { opzoekingen++; return Task.FromResult<object?>(new object()); }, trace);
+
+        herkend.Should().BeFalse();
+        c.MeerdereAfzenderTeams.Should().BeTrue();
+        opzoekingen.Should().Be(0, "bij meerdere teams wordt niets uit de tegenstander afgeleid");
+        json.Should().Contain("teamOnbekend").And.NotContain("wedstrijdAlIngepland");
+        trace.Stappen.Should().NotContain(s => s.Code == TraceCodes.OpponentPad);
+        ZekerheidsBeoordeling.Beoordeel(trace.Stappen).IsZeker.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ZekerheidsBeoordeling_MeerdereAfzenderTeams_MaaktEenWedstrijdViaDeTegenstanderNooitZeker()
+    {
+        var trace = new TraceBuilder();
+        trace.Classificatie(VerzoekType.BeschikbaarheidCheck.ToString(), null, "Tegenstander", 1, null);
+        trace.BegeleidingAfzender("meer", false, ZekerheidsNiveau.Onzeker, false);
+        trace.OpponentPad("opponent-op-datum", true);
+
+        var oordeel = ZekerheidsBeoordeling.Beoordeel(trace.Stappen);
+
+        oordeel.IsZeker.Should().BeFalse();
+        oordeel.Redenen.Should().Contain("Meerdere teams komen in aanmerking; er is niets gekozen");
+    }
+
+    [Fact]
+    public async Task EenGenoemdTeamWintBijMeerdereAfzenderTeams_ZetDeMeervoudsvlagNiet()
+    {
+        var (herkend, c, _, _) = await Voer(Zonder(team: "JO13-2"), new FakeBron(Begeleidingswaarde, "JO13-3"), Resolver());
+
+        herkend.Should().BeTrue();
+        c.MeerdereAfzenderTeams.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task AfzenderBijMeerdereTeams_KiestNietsEnNoemtDeTeamsNiet()
     {
         var (herkend, c, trace, _) = await Voer(Zonder(), new FakeBron(Begeleidingswaarde, "JO13-2"), Resolver());

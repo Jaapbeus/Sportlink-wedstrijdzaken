@@ -58,6 +58,12 @@ public class BerichtClassificatie
     [Newtonsoft.Json.JsonIgnore, System.Text.Json.Serialization.JsonIgnore]
     public bool TeamAfgeleidUitAfzender { get; set; }
 
+    // Door de pipeline gezet (niet door AI) als het team niet in de mail stond en de afzender meerdere teams begeleidt
+    // (#1862, besluit 5A): er wordt niets gekozen, de wedervraag om het team blijft en de opponent-op-datumroute
+    // geeft geen wedstrijdantwoord. Niet bewaard.
+    [Newtonsoft.Json.JsonIgnore, System.Text.Json.Serialization.JsonIgnore]
+    public bool MeerdereAfzenderTeams { get; set; }
+
     // Door de pipeline gezet (niet door AI) wanneer een KNVB-bijlage + BCC van toepassing is (#561/#1141).
     // Houd dit klein (strings, geen bytes): de classificatie wordt naar planner.EmailVerwerking gelogd —
     // grote binaire payloads horen daar niet in.
