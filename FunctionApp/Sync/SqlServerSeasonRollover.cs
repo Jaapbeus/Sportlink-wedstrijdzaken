@@ -1,17 +1,22 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Planner.Shared.Sync;
+using Planner.Shared;
 
 namespace SportlinkFunction.Sync;
 
 /// <summary>
 /// Additieve tegenhanger van de Postgres seizoensdoorrol voor de SQL Server-tier. De deployprocedure
 /// wordt hier bewust niet aangeroepen, omdat die ook dbo.DateTable laat herbouwen.
+/// De huidige datum komt uit de strikte bedrijfsklok; reconciliatie heeft een eigen conservatieve fallback.
 /// </summary>
 internal static class SqlServerSeasonRollover
 {
     internal static DateOnly VandaagInNederland =>
-        ReconciliatieOndergrens.VandaagInNederland(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById);
+        BepaalVandaag(DateTimeOffset.UtcNow, TimeZoneInfo.FindSystemTimeZoneById);
+
+    internal static DateOnly BepaalVandaag(DateTimeOffset utcNu, Func<string, TimeZoneInfo> zoekTijdzone) =>
+        NederlandseBedrijfsKlok.Vandaag(utcNu, zoekTijdzone);
 
     internal static async Task<int> EnsureAsync(string clubCode, DateOnly vandaag, ILogger log)
     {

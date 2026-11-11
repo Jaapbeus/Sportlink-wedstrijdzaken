@@ -60,6 +60,8 @@ sleutel precies één rij, dus beide tiers voegen die vermeldingen vóór stagin
 vermelding in de respons wint en het aantal samengevoegde vermeldingen staat als waarschuwing in het
 log, zonder sleutels of namen (`Planner.Shared/Sync/StagingOntdubbeling.cs`, #1712).
 
+De SQL Server-seizoensdoorrol gebruikt de strikte Nederlandse bedrijfsklok. Ontbrekende tijdzonegegevens breken de sync af vóór seizoenswijzigingen, vensteropbouw, providerverkeer en timestamp-opslag. De conservatieve datumfallback van `ReconciliatieOndergrens` blijft uitsluitend bedoeld voor de ondergrens van verwijderreconciliatie; die is geen bron voor de huidige seizoensdatum. Opgeslagen offsets van wachtrijtaken blijven ongewijzigd.
+
 ## Programma-endpoint — alle beschikbare velden
 
 Live opgehaald uit `/programma`. De voorbeeldwaarden zijn placeholders.
