@@ -47,8 +47,28 @@ public class AutoPlanExactApplyTests
     {
         var source = Source(field: "veld 101 A2", time: "10:00:30");
         var choice = Choice(oldField: source.Veld, oldTime: source.AanvangsTijd,
+            targetField: 101, lane: "A2", targetTime: "10:00");
+        Apply([choice], [source]).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void UnassignedSourceRetainsSecondsAndIsNotWritten()
+    {
+        var source = Source(field: "veld 101 A2", time: "10:00:30");
+        var choice = Choice(oldField: source.Veld, oldTime: source.AanvangsTijd,
             targetField: null, lane: null, targetTime: null);
         Apply([choice], [source]).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void FieldOrLaneChangeAtSameDisplayedMinuteRetainsSourceSeconds()
+    {
+        var source = Source(field: "veld 101 A2", time: "10:00:30");
+        var choice = Choice(oldField: source.Veld, oldTime: source.AanvangsTijd,
+            targetField: 101, lane: "A1", targetTime: "10:00");
+
+        var write = Apply([choice], [source]).Should().ContainSingle().Which;
+        write.Tijd.Should().Be("10:00:30");
     }
 
     [Fact]

@@ -70,7 +70,7 @@ public static class AutoPlanExactApply
             writes.Add(new AutoPlanApplyWrite(row.Source.WedstrijdCode!.Value,
                 row.Source.Veld, row.Source.AanvangsTijd,
                 AutoPlanRegels.BuildSportlinkVeldString(veld.VeldNaam, row.Lane ?? ""),
-                row.Start.ToString("HH:mm", CultureInfo.InvariantCulture)));
+                FormatTime(row.Start)));
         }
         return writes;
     }
@@ -107,6 +107,10 @@ public static class AutoPlanExactApply
         if (!parsed)
             throw new AutoPlanApplyConflictException();
 
+        // The UI sends minute precision, while the source can contain seconds. When the chosen
+        // displayed minute is unchanged, retain the source time even if field/lane changed.
+        start = RetainSourceSeconds(source.AanvangsTijd, choice, start);
+
         var age = !string.IsNullOrWhiteSpace(source.LeeftijdsCategorie)
             ? source.LeeftijdsCategorie : AutoPlanRegels.ExtractLeeftijdFromTeamNaam(source.TeamNaam);
         speeltijden.TryGetValue(age ?? "", out var speeltijd);
@@ -116,7 +120,7 @@ public static class AutoPlanExactApply
         if (duration <= 0) throw new AutoPlanApplyConflictException();
 
         var write = choice.VeldNummer.HasValue &&
-            (targetField != sourceField || !SameTime(source.AanvangsTijd, choice.Tijd) ||
+            (targetField != sourceField || !SameMinute(source.AanvangsTijd, choice.Tijd) ||
              !string.Equals(sourceLane, targetLane, StringComparison.OrdinalIgnoreCase));
         return new ApplyRow(source, targetField, start, targetLane, fraction.Value, duration,
             VeldbezettingDuur.IsSportlinkLeidend(source.SportlinkSpeelduur), write);
@@ -138,5 +142,28 @@ public static class AutoPlanExactApply
             return string.IsNullOrWhiteSpace(a) && string.IsNullOrWhiteSpace(b);
         return TimeOnly.TryParse(a, CultureInfo.InvariantCulture, out var first) &&
                TimeOnly.TryParse(b, CultureInfo.InvariantCulture, out var second) && first == second;
+    }
+
+    private static bool SameMinute(string? a, string? b)
+    {
+        if (string.IsNullOrWhiteSpace(a) || string.IsNullOrWhiteSpace(b)) return false;
+        return TimeOnly.TryParse(a, CultureInfo.InvariantCulture, out var first) &&
+               TimeOnly.TryParse(b, CultureInfo.InvariantCulture, out var second) &&
+               first.Hour == second.Hour && first.Minute == second.Minute;
+    }
+
+    private static TimeOnly RetainSourceSeconds(string? sourceTime, AutoPlanApplyChoice choice, TimeOnly target)
+    {
+        if (choice.VeldNummer.HasValue && SameMinute(sourceTime, choice.Tijd) &&
+            TimeOnly.TryParse(sourceTime, CultureInfo.InvariantCulture, out var source))
+            return source;
+        return target;
+    }
+
+    private static string FormatTime(TimeOnly time)
+    {
+        if (time.Ticks % TimeSpan.TicksPerMinute == 0)
+            return time.ToString("HH:mm", CultureInfo.InvariantCulture);
+        return time.ToString("HH:mm:ss.fffffff", CultureInfo.InvariantCulture).TrimEnd('0').TrimEnd('.');
     }
 }

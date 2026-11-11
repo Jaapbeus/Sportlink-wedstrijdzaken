@@ -457,9 +457,19 @@ else
                     <td>@adres.Omschrijving</td>
                     <td>@(adres.Actief ? "ja" : "nee")</td>
                     <td>
-                        <button class="btn btn-sm btn-outline-danger" @onclick="() => VerwijderAdresAsync(adres.Id)">
-                            Verwijderen
-                        </button>
+                        @if (_verwijderAdresBevestiging.IsOpenFor((ClubSelector.SelectedClubCode, adres.Id)))
+                        {
+                            <button class="btn btn-sm btn-danger" @onclick="() => VerwijderAdresAsync(adres.Id)">
+                                Bevestig verwijderen
+                            </button>
+                            <button class="btn btn-sm btn-link" @onclick="AnnuleerVerwijderenAdres">Annuleren</button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => VraagVerwijderAdres(adres.Id)">
+                                Verwijderen
+                            </button>
+                        }
                     </td>
                 </tr>
             }

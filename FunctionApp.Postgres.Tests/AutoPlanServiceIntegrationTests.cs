@@ -192,6 +192,27 @@ public class AutoPlanServiceIntegrationTests : IDisposable
     }
 
     [PostgresFact]
+    public async Task ExactApply_RetainsSourceSecondsWhenDisplayedMinuteIsUnchanged()
+    {
+        await using var conn = await OpstellingAsync();
+        await ExecAsync(conn, "UPDATE public.speeltijden SET veldafmeting = 0.25 WHERE clubcode = @club AND leeftijd = 'JO13'", ("club", Club));
+        await ZetWedstrijdAsync(conn, 9500108, "ALLSTARS JO13-1", "10:00:30", "Kunstgras 1 A2");
+
+        var unchanged = await AutoPlanService.AutoPlanToepassenAsync(ConnectionString,
+            ExactRequest(Choice(9500108, "Kunstgras 1 A2", "10:00:30", 101, "A2", "10:00")),
+            Club, NullLogger.Instance);
+        unchanged.Bijgewerkt.Should().Be(0);
+        (await MatchTimeAsync(conn, 9500108)).Should().Be("10:00:30");
+
+        var laneChange = await AutoPlanService.AutoPlanToepassenAsync(ConnectionString,
+            ExactRequest(Choice(9500108, "Kunstgras 1 A2", "10:00:30", 101, "A1", "10:00")),
+            Club, NullLogger.Instance);
+        laneChange.Bijgewerkt.Should().Be(1);
+        (await MatchFieldAsync(conn, 9500108)).Should().Be("Kunstgras 1 A1");
+        (await MatchTimeAsync(conn, 9500108)).Should().Be("10:00:30");
+    }
+
+    [PostgresFact]
     public async Task ExactApply_RejectsStaleLaneAndDuplicateOrCrossClubIds()
     {
         await using var conn = await OpstellingAsync();
@@ -281,6 +302,14 @@ public class AutoPlanServiceIntegrationTests : IDisposable
     private static async Task<string?> MatchFieldAsync(NpgsqlConnection conn, long id)
     {
         await using var cmd = new NpgsqlCommand("SELECT veld FROM his.matches WHERE wedstrijdcode = @id", conn);
+        cmd.Parameters.AddWithValue("id", id);
+        var value = await cmd.ExecuteScalarAsync();
+        return value is DBNull or null ? null : (string)value;
+    }
+
+    private static async Task<string?> MatchTimeAsync(NpgsqlConnection conn, long id)
+    {
+        await using var cmd = new NpgsqlCommand("SELECT aanvangstijd FROM his.matches WHERE wedstrijdcode = @id", conn);
         cmd.Parameters.AddWithValue("id", id);
         var value = await cmd.ExecuteScalarAsync();
         return value is DBNull or null ? null : (string)value;

@@ -30,6 +30,7 @@ public partial class Instellingen : ClubSelectorPageBase
     private List<UitgeslotenEmailAdresDto> uitgeslotenEmails = new();
     private UitgeslotenEmailAdresDto? nieuwAdres;
     private string? uitgeslotenMessage;
+    private readonly InlineBevestiging<(string? ClubCode, int Id)> _verwijderAdresBevestiging = new();
 
     // Sync + email log (verplaatst van Dashboard #344)
     private SyncStatusDto? _status;
@@ -54,7 +55,11 @@ public partial class Instellingen : ClubSelectorPageBase
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
-    protected override Task OnClubChangedAsync() => LoadAsync();
+    protected override async Task OnClubChangedAsync()
+    {
+        _verwijderAdresBevestiging.Annuleer();
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
@@ -214,10 +219,17 @@ public partial class Instellingen : ClubSelectorPageBase
 
     private async Task VerwijderAdresAsync(int id)
     {
+        if (!_verwijderAdresBevestiging.Bevestig((ClubSelector.SelectedClubCode, id))) return;
+
         var r = await EmailApi.DeleteUitgeslotenEmailAsync(id);
         uitgeslotenMessage = r.Success ? null : "Fout: " + r.ErrorMessage;
-        await LaadUitgeslotenEmailsAsync();
+        if (r.Success) await LaadUitgeslotenEmailsAsync();
     }
+
+    private void VraagVerwijderAdres(int id) =>
+        _verwijderAdresBevestiging.Vraag((ClubSelector.SelectedClubCode, id));
+
+    private void AnnuleerVerwijderenAdres() => _verwijderAdresBevestiging.Annuleer();
 
     private async Task ZoekCoordinaten()
     {

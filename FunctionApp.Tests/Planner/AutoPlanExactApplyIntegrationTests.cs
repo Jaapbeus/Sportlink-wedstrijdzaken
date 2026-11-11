@@ -34,6 +34,27 @@ public class AutoPlanExactApplyIntegrationTests
     }
 
     [SqlServerFact]
+    public async Task ExactApplyRetainsSourceSecondsWhenDisplayedMinuteIsUnchanged()
+    {
+        await SetupAsync();
+        await AddMatchAsync(9802006, "ALLSTARS JO13-1", "Kunstgras 1 A2", "10:00:30");
+        try
+        {
+            var unchanged = await ApplyAsync(Choice(9802006, 101, "A2", "10:00",
+                "Kunstgras 1 A2", "10:00:30"));
+            unchanged.Bijgewerkt.Should().Be(0);
+            (await TimeAsync(9802006)).Should().Be("10:00:30");
+
+            var laneChange = await ApplyAsync(Choice(9802006, 101, "A1", "10:00",
+                "Kunstgras 1 A2", "10:00:30"));
+            laneChange.Bijgewerkt.Should().Be(1);
+            (await FieldAsync(9802006)).Should().Be("Kunstgras 1 A1");
+            (await TimeAsync(9802006)).Should().Be("10:00:30");
+        }
+        finally { await CleanupAsync(); }
+    }
+
+    [SqlServerFact]
     public async Task StaleLaneDuplicateCrossClubAndInvalidFractionRejectWithoutWrites()
     {
         await SetupAsync();
@@ -124,6 +145,12 @@ public class AutoPlanExactApplyIntegrationTests
     private static async Task<string?> FieldAsync(long id)
     {
         var value = await ScalarAsync("SELECT [veld] FROM [his].[matches] WHERE [wedstrijdcode] = @id", ("@id", id));
+        return value is null or DBNull ? null : (string)value;
+    }
+
+    private static async Task<string?> TimeAsync(long id)
+    {
+        var value = await ScalarAsync("SELECT [aanvangstijd] FROM [his].[matches] WHERE [wedstrijdcode] = @id", ("@id", id));
         return value is null or DBNull ? null : (string)value;
     }
 
