@@ -6,13 +6,12 @@ namespace Planner.Shared;
 /// De ene plek voor de vertaling van een dagdeel ("ochtend", "middag", "avond") naar een tijdvenster, en
 /// voor de zinnen waarmee een antwoord aangeeft welk dagdeel is gecontroleerd (#1587).
 /// <para>
-/// Tier-onafhankelijk: de venstergrenzen stonden woordelijk in beide <c>AvailabilityService</c>-kopieën
-/// (SQL Server- én Postgres-tier); beide delegeren nu hierheen. Een afwijkende grens op één tier zou een
-/// antwoord opleveren dat een ander tijdvenster noemt dan het venster dat is gecontroleerd.
+/// Tier-onafhankelijk. Een afwijkende grens op één tier zou een antwoord opleveren dat een ander
+/// tijdvenster noemt dan het venster dat is gecontroleerd.
 /// </para>
 /// <para>
-/// Eigenaarsbesluit bij #1587: een antwoord op een verzoek met een dagdeel vermeldt welk dagdeel en welk
-/// tijdvenster is gecontroleerd, en noemt géén alternatieven uit andere dagdelen — zodat duidelijk is dat de
+/// Een antwoord op een verzoek met een dagdeel vermeldt welk dagdeel en welk tijdvenster is gecontroleerd,
+/// en noemt géén alternatieven uit andere dagdelen — zodat duidelijk is dat de
 /// andere dagdelen niet zijn beoordeeld.
 /// </para>
 /// </summary>

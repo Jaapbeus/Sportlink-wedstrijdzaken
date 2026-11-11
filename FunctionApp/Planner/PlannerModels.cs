@@ -21,7 +21,7 @@ namespace SportlinkFunction.Planner
         public bool? HeelVeld { get; set; }
     }
 
-    public class BevestigRequest
+    public class BevestigRequest : global::Planner.Shared.Autorisatie.IBevestigAanvragerRequest
     {
         public string Datum { get; set; } = string.Empty;
         public string AanvangsTijd { get; set; } = string.Empty;
@@ -171,7 +171,7 @@ namespace SportlinkFunction.Planner
         public List<string> Waarschuwingen { get; set; } = new();
     }
 
-    public class HerplanBevestigRequest
+    public class HerplanBevestigRequest : global::Planner.Shared.Autorisatie.IHerplanAanvragerRequest
     {
         public long Wedstrijdcode { get; set; }
         public string GewensteAanvangsTijd { get; set; } = string.Empty;

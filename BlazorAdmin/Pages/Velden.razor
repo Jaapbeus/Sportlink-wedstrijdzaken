@@ -62,38 +62,7 @@ else
     @if (editingVeld != null)
     {
         <hr />
-        <h3>@(isNewVeld ? "Nieuw veld" : $"Bewerken: {editingVeld.VeldNaam}")</h3>
-        <EditForm Model="editingVeld" OnValidSubmit="OpslaanVeldAsync">
-            <div class="row">
-                <div class="col-md-2 mb-3">
-                    <label class="form-label">Veldnummer</label>
-                    <input class="form-control" type="number" min="1" @bind="editingVeld.VeldNummer" disabled="@(!isNewVeld)" />
-                </div>
-                <div class="col-md-3 mb-3">
-                    <label class="form-label">Naam</label>
-                    <input class="form-control" @bind="editingVeld.VeldNaam" placeholder="bijv. veld 1" />
-                </div>
-                <div class="col-md-3 mb-3">
-                    <label class="form-label">Type</label>
-                    <input class="form-control" list="veldtype-suggesties" @bind="editingVeld.VeldType" placeholder="kunstgras" />
-                    <datalist id="veldtype-suggesties">
-                        <option value="kunstgras" />
-                        <option value="natuurgras" />
-                    </datalist>
-                    <small class="form-text text-muted">Vrije tekst — geen vaste lijst, elke club kiest zelf.</small>
-                </div>
-                <div class="col-md-2 mb-3">
-                    <label class="form-label d-block">Kunstlicht</label>
-                    <input type="checkbox" class="form-check-input mt-2" @bind="editingVeld.HeeftKunstlicht" />
-                </div>
-                <div class="col-md-2 mb-3">
-                    <label class="form-label d-block">Actief</label>
-                    <input type="checkbox" class="form-check-input mt-2" @bind="editingVeld.Actief" />
-                </div>
-            </div>
-            <button type="submit" class="btn btn-primary">Opslaan</button>
-            <button type="button" class="btn btn-secondary ms-2" @onclick="() => editingVeld = null">Annuleren</button>
-        </EditForm>
+        <VeldEditor Model="editingVeld" IsNew="isNewVeld" OnSave="OpslaanVeldAsync" OnCancel="() => editingVeld = null" />
 
         @if (!string.IsNullOrEmpty(veldMessage))
         {
