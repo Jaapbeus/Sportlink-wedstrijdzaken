@@ -187,34 +187,34 @@ cp "$TMP_B" "$ALLOWLIST"
 verwacht falen "dubbele allowlistregel"
 cp "$TMP_B" "$ALLOWLIST"
 
-# Volgorde in SyncJobProcessor.Run: zonder aanroep van de poortbeslissing vóór MarkRunningAsync rood.
+# Volgorde in de geclaimde syncjob-worker: zonder poortbeslissing vóór de sync-call rood.
 sed 's/if (await BlokkeerBuitenProductieAsync(/if (await Uitgeschakeld(/' "$TMP_SQL" > "$SJP_SQL"
-verwacht falen "SyncJobProcessor.Run (SQL Server) zonder poortbeslissing vóór MarkRunningAsync"
+verwacht falen "ProcessClaimedSqlServerJobAsync zonder poortbeslissing vóór RunSyncAsync"
 cp "$TMP_SQL" "$SJP_SQL"
 
 sed 's/if (await OverslaanZonderUitgaandVerkeerAsync(/if (await Uitgeschakeld(/' "$TMP_PG" > "$SJP_PG"
-verwacht falen "SyncJobProcessor.Run (Postgres) zonder poortbeslissing vóór MarkRunningAsync"
+verwacht falen "ProcessClaimedPostgresJobAsync zonder poortbeslissing vóór RunConfiguredSyncAsync"
 cp "$TMP_PG" "$SJP_PG"
 
-# Alleen een echte aanroep ná de signatuur van Run telt: geen naam met voorvoegsel, geen
-# definitie en geen aanroep in een methode boven Run.
+# Alleen de echte helperaanroep in de geclaimde worker telt: geen naam met voorvoegsel, geen
+# lokale definitie en geen aanroep in een andere methode.
 sed 's/if (await OverslaanZonderUitgaandVerkeerAsync(/if (await NietOverslaanZonderUitgaandVerkeerAsync(/' "$TMP_PG" > "$SJP_PG"
-verwacht falen "SyncJobProcessor.Run (Postgres) roept alleen een naam met hetzelfde achtervoegsel aan"
+verwacht falen "ProcessClaimedPostgresJobAsync: helpernaam met voorvoegsel vóór RunConfiguredSyncAsync"
 cp "$TMP_PG" "$SJP_PG"
 
 sed 's/if (await BlokkeerBuitenProductieAsync(/if (await Uitgeschakeld(/' "$TMP_SQL" \
   | awk '/\[Function\("SyncJobProcessor"\)\]/ { print "    internal static Task<bool> BlokkeerBuitenProductieAsync(int x) => Task.FromResult(false);" } { print }' > "$SJP_SQL"
-verwacht falen "SyncJobProcessor (SQL Server): alleen een definitie van de helper boven Run"
+verwacht falen "ProcessClaimedSqlServerJobAsync (SQL Server): helperdefinitie buiten de geclaimde worker telt niet"
 cp "$TMP_SQL" "$SJP_SQL"
 
 sed 's/if (await BlokkeerBuitenProductieAsync(/if (await Uitgeschakeld(/' "$TMP_SQL" \
   | awk '/\[Function\("SyncJobProcessor"\)\]/ { print "    static async Task Elders() { if (await BlokkeerBuitenProductieAsync(null!, null!, null!, null!)) return; }" } { print }' > "$SJP_SQL"
-verwacht falen "SyncJobProcessor (SQL Server): helperaanroep alleen in een methode boven Run"
+verwacht falen "ProcessClaimedSqlServerJobAsync (SQL Server): helperaanroep in een andere methode telt niet"
 cp "$TMP_SQL" "$SJP_SQL"
 
 sed 's/if (await BlokkeerBuitenProductieAsync(/if (await Uitgeschakeld(/' "$TMP_SQL" \
   | awk '{ print } /if \(await Uitgeschakeld\(/ { print "        static Task<bool> BlokkeerBuitenProductieAsync(int x) => Task.FromResult(false);" }' > "$SJP_SQL"
-verwacht falen "SyncJobProcessor.Run (SQL Server): alleen een lokale definitie van de helper vóór MarkRunningAsync"
+verwacht falen "ProcessClaimedSqlServerJobAsync: lokale helperdefinitie vóór RunSyncAsync telt niet"
 cp "$TMP_SQL" "$SJP_SQL"
 
 verwacht slagen "hersteld: schone werkboom is weer groen"

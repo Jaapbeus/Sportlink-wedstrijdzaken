@@ -10,24 +10,8 @@ namespace SportlinkFunction.Sync;
 /// </summary>
 internal static class SqlServerSeasonRollover
 {
-    internal static DateOnly VandaagInNederland
-    {
-        get
-        {
-            var nuUtc = DateTime.UtcNow;
-            foreach (var tijdzoneId in new[] { "W. Europe Standard Time", "Europe/Amsterdam" })
-            {
-                try
-                {
-                    return DateOnly.FromDateTime(
-                        TimeZoneInfo.ConvertTimeFromUtc(nuUtc, TimeZoneInfo.FindSystemTimeZoneById(tijdzoneId)));
-                }
-                catch (TimeZoneNotFoundException) { }
-                catch (InvalidTimeZoneException) { }
-            }
-            return DateOnly.FromDateTime(nuUtc);
-        }
-    }
+    internal static DateOnly VandaagInNederland =>
+        ReconciliatieOndergrens.VandaagInNederland(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById);
 
     internal static async Task<int> EnsureAsync(string clubCode, DateOnly vandaag, ILogger log)
     {
@@ -44,8 +28,8 @@ internal static class SqlServerSeasonRollover
         }
         catch (Exception ex)
         {
-            log.LogError(ex, "Fout bij het doorrollen van dbo.ClubSeason — sync gaat door met bestaande seizoenen");
-            return 0;
+            log.LogError(ex, "Fout bij het doorrollen van dbo.ClubSeason — sync afgebroken");
+            throw;
         }
     }
 

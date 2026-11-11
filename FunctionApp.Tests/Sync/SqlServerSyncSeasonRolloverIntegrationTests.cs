@@ -106,6 +106,68 @@ public sealed class SqlServerSyncSeasonRolloverIntegrationTests
         }
     }
 
+    [SqlServerFact]
+    public async Task RunSyncWithSeasonWindowAsync_DoorrolfoutBreektAfVoorVensterProviderEnTimestamp()
+    {
+        var clubCode = TestClubCode();
+        var constraintName = $"CK_1818_rollover_failure_{Guid.NewGuid():N}";
+        var constraintAdded = false;
+        var previousTimestamp = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        await using var connection = await OpenAsync();
+        await MaakClubAsync(connection, clubCode, startMaand: 1);
+        SystemUtilities.AppSettings.SetForTests("clubCode", clubCode);
+
+        try
+        {
+            await using (var timestampCommand = new SqlCommand(
+                "UPDATE [dbo].[AppSettings] SET [LastSyncTimestamp] = @Timestamp WHERE [ClubCode] = @ClubCode",
+                connection))
+            {
+                timestampCommand.Parameters.AddWithValue("@Timestamp", previousTimestamp);
+                timestampCommand.Parameters.AddWithValue("@ClubCode", clubCode);
+                await timestampCommand.ExecuteNonQueryAsync();
+            }
+
+            await using (var constraintCommand = new SqlCommand(
+                $"ALTER TABLE [dbo].[ClubSeason] ADD CONSTRAINT [{constraintName}] CHECK ([ClubCode] <> N'{clubCode}');",
+                connection))
+            {
+                await constraintCommand.ExecuteNonQueryAsync();
+                constraintAdded = true;
+            }
+
+            using var server = new SportlinkFixtureServer();
+            var windowBuilt = false;
+            var run = () => SportlinkSyncPipeline.RunSyncWithSeasonWindowAsync(
+                () =>
+                {
+                    windowBuilt = true;
+                    return Task.FromResult((0, 0));
+                },
+                server.BaseUrl, "clientId=fixture-test", NullLogger.Instance);
+
+            await run.Should().ThrowAsync<SqlException>();
+            windowBuilt.Should().BeFalse("the sync must stop before building a window");
+            server.Requests.Should().BeEmpty("the provider must not be called after rollover fails");
+            (await LeesLastSyncTimestampAsync(connection, clubCode)).Should().Be(previousTimestamp);
+
+            var lease = await SqlServerSyncStagingLease.TryAcquireAsync();
+            lease.Should().NotBeNull("the failed rollover must release the staging lease");
+            await lease!.DisposeAsync();
+        }
+        finally
+        {
+            if (constraintAdded)
+            {
+                await using var dropConstraint = new SqlCommand(
+                    $"ALTER TABLE [dbo].[ClubSeason] DROP CONSTRAINT [{constraintName}];", connection);
+                await dropConstraint.ExecuteNonQueryAsync();
+            }
+            SystemUtilities.AppSettings.ResetForTests();
+            await VerwijderClubAsync(connection, clubCode);
+        }
+    }
+
     private static string TestClubCode() => "t" + Guid.NewGuid().ToString("N")[..12];
 
     private static async Task EnsureMetDatumAsync(SqlConnection connection, string clubCode, DateOnly vandaag)
@@ -166,6 +228,15 @@ public sealed class SqlServerSyncSeasonRolloverIntegrationTests
         await using var reader = await command.ExecuteReaderAsync();
         if (!await reader.ReadAsync()) throw new InvalidOperationException("Season row not found.");
         return (DateOnly.FromDateTime(reader.GetDateTime(0)), DateOnly.FromDateTime(reader.GetDateTime(1)));
+    }
+
+    private static async Task<DateTime?> LeesLastSyncTimestampAsync(SqlConnection connection, string clubCode)
+    {
+        await using var command = new SqlCommand(
+            "SELECT [LastSyncTimestamp] FROM [dbo].[AppSettings] WHERE [ClubCode] = @ClubCode", connection);
+        command.Parameters.AddWithValue("@ClubCode", clubCode);
+        var value = await command.ExecuteScalarAsync();
+        return value is null or DBNull ? null : (DateTime)value;
     }
 
     private static async Task VerwijderClubAsync(SqlConnection connection, string clubCode)
