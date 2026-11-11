@@ -375,17 +375,45 @@ public class SportlinkEndpointCoreTests
             .Should().BeTrue();
     }
 
+    // Eigenaarsbesluit #1815: hoogstens één mail per Nederlandse kalenderdag (Europe/Amsterdam).
     [Theory]
-    [InlineData(23, false)]
-    [InlineData(24, true)]
-    [InlineData(25, true)]
-    public void MagContractCheckNoodmailVersturen_PasNaVierentwintigUur(int urenGeleden, bool verwacht)
+    // zelfde lokale dag, uren later: geblokkeerd (oude 24-uurs-regel liet dit ook toe na 24u, hier niet eerder)
+    [InlineData("2026-09-19T05:00:00Z", "2026-09-19T20:00:00Z", false)]
+    // dag erna, minder dan 24 uur later: toegestaan (kern van het besluit)
+    [InlineData("2026-09-19T06:30:00Z", "2026-09-20T06:00:00Z", true)]
+    // zomertijd (UTC+2): 21:59Z = 23:59 lokaal, 22:00Z = 00:00 de volgende lokale dag
+    [InlineData("2026-09-19T21:30:00Z", "2026-09-19T21:59:59Z", false)]
+    [InlineData("2026-09-19T21:59:59Z", "2026-09-19T22:00:00Z", true)]
+    // wintertijd (UTC+1): 22:59Z = 23:59 lokaal, 23:00Z = middernacht lokaal
+    [InlineData("2026-12-10T22:00:00Z", "2026-12-10T22:59:59Z", false)]
+    [InlineData("2026-12-10T22:59:59Z", "2026-12-10T23:00:00Z", true)]
+    // overgang naar wintertijd (25 uur lange dag 2026-10-25): 00:30Z en 23:30Z zijn dezelfde lokale dag
+    [InlineData("2026-10-24T22:30:00Z", "2026-10-25T22:30:00Z", false)]
+    [InlineData("2026-10-24T22:30:00Z", "2026-10-25T23:00:00Z", true)]
+    // overgang naar zomertijd (23 uur lange dag 2027-03-28)
+    [InlineData("2027-03-27T23:30:00Z", "2027-03-28T21:59:00Z", false)]
+    [InlineData("2027-03-27T23:30:00Z", "2027-03-28T22:00:00Z", true)]
+    // jaarwissel
+    [InlineData("2026-12-31T22:30:00Z", "2026-12-31T23:30:00Z", true)]
+    // verzendmoment in de toekomst, andere lokale dag: toegestaan; zelfde dag: geblokkeerd
+    [InlineData("2026-09-19T12:00:00Z", "2026-09-19T08:00:00Z", false)]
+    public void MagContractCheckNoodmailVersturen_EenKeerPerNederlandseKalenderdag(string laatste, string nu, bool verwacht)
     {
-        var nu = new DateTime(2026, 9, 19, 12, 0, 0, DateTimeKind.Utc);
-
-        SportlinkEndpointCore.MagContractCheckNoodmailVersturen(nu.AddHours(-urenGeleden), nu)
-            .Should().Be(verwacht);
+        SportlinkEndpointCore.MagContractCheckNoodmailVersturen(Utc(laatste), Utc(nu)).Should().Be(verwacht);
     }
+
+    [Fact]
+    public void MagContractCheckNoodmailVersturen_OnbepaaldeKind_WordtAlsUtcBehandeld()
+    {
+        var laatste = new DateTime(2026, 9, 19, 21, 59, 0, DateTimeKind.Unspecified);
+        var nu = new DateTime(2026, 9, 19, 22, 0, 0, DateTimeKind.Unspecified);
+
+        SportlinkEndpointCore.MagContractCheckNoodmailVersturen(laatste, nu).Should().BeTrue();
+    }
+
+    private static DateTime Utc(string iso)
+        => DateTime.Parse(iso, System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal);
 
     [Fact]
     public void BouwContractCheckNoodmailBody_NoemtDeTabelVanDeTier()
