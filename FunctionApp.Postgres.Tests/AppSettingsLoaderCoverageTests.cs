@@ -29,16 +29,6 @@ public class AppSettingsLoaderCoverageTests
         var loaded = Keys(Assignment, loader).Concat(Keys(Initializer, loader)).Concat(Keys(SqlSet, loader))
             .ToHashSet(StringComparer.Ordinal);
 
-        // #1821: this nullable first-team name has no column in either built tier. The SQL
-        // planner's legacy read always returns null; the Postgres planner passes null directly.
-        // Keep this exception narrow until the SQL caller is removed.
-        if (tier == "FunctionApp")
-        {
-            Assert.Contains("eersteElftalNaam", requested);
-            Assert.DoesNotContain("eersteElftalNaam", loaded);
-            requested.Remove("eersteElftalNaam");
-        }
-
         Assert.Empty(Missing(requested, loaded));
     }
 
