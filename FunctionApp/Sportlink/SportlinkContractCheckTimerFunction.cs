@@ -121,7 +121,7 @@ public static class SportlinkContractCheckTimerFunction
         var laatsteKeer = await throttleStore.LaatsteKeerVerstuurdAsync(NoodmailSleutel);
         if (!SportlinkEndpointCore.MagContractCheckNoodmailVersturen(laatsteKeer, DateTime.UtcNow))
         {
-            log.LogInformation("Contract-check-noodmail binnen throttle-interval — overgeslagen.");
+            log.LogInformation("Contract-check-noodmail al verzonden vandaag — overgeslagen.");
             return;
         }
 

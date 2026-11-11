@@ -682,7 +682,7 @@ Vier dingen om te onthouden:
   `sportlinkmutationaudit` (dat is "één rij per mutatiepoging", dit is geen mutatie). Bij een
   afwijking hergebruikt de timer het BESTAANDE noodmail-pad
   (`EmailProcessorFunction`'s `INoodmailThrottleStore`/`IEmailGraphService`-patroon, eigen
-  throttle-sleutel `sportlink-contract-noodmail`, 24-uurs-interval) — bewust geen nieuw
+  throttle-sleutel `sportlink-contract-noodmail`, hoogstens één keer per Nederlandse kalenderdag, Europe/Amsterdam) — bewust geen nieuw
   alarmeringsmechanisme (kostenbeleid: geen betaalde Log Analytics/App Insights-alert-regel, geen
   GitHub-issue-reporter).
 

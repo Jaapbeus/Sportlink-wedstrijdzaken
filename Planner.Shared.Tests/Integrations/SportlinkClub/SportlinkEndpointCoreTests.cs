@@ -397,6 +397,7 @@ public class SportlinkEndpointCoreTests
     [InlineData("2026-12-31T22:30:00Z", "2026-12-31T23:30:00Z", true)]
     // verzendmoment in de toekomst, andere lokale dag: toegestaan; zelfde dag: geblokkeerd
     [InlineData("2026-09-19T12:00:00Z", "2026-09-19T08:00:00Z", false)]
+    [InlineData("2026-09-19T12:00:00Z", "2026-09-18T12:00:00Z", true)]
     public void MagContractCheckNoodmailVersturen_EenKeerPerNederlandseKalenderdag(string laatste, string nu, bool verwacht)
     {
         SportlinkEndpointCore.MagContractCheckNoodmailVersturen(Utc(laatste), Utc(nu)).Should().Be(verwacht);

@@ -30,7 +30,7 @@ public static class SportlinkContractCheckTimerFunction
 {
     private const string RolNaam = SportlinkEndpointSupport.RolWedstrijdzaken;
 
-    /// <summary>#1266: sleutel, throttle-interval, beoordeling en mailtekst staan in
+    /// <summary>#1266: sleutel, kalenderdag-throttle, beoordeling en mailtekst staan in
     /// <see cref="SportlinkEndpointCore"/> — de SQL Server-timer gebruikt exact dezelfde.</summary>
     internal const string NoodmailSleutel = SportlinkEndpointCore.ContractCheckNoodmailSleutel;
 
@@ -100,7 +100,7 @@ public static class SportlinkContractCheckTimerFunction
         var laatsteKeer = await throttleStore.LaatsteKeerVerstuurdAsync(NoodmailSleutel);
         if (!SportlinkEndpointCore.MagContractCheckNoodmailVersturen(laatsteKeer, DateTime.UtcNow))
         {
-            log.LogInformation("Contract-check-noodmail binnen throttle-interval — overgeslagen.");
+            log.LogInformation("Contract-check-noodmail al verzonden vandaag — overgeslagen.");
             return;
         }
 
