@@ -92,15 +92,18 @@ public static class EigenTeamBepaling
     /// <summary>Prepares the classification once, before either tier can dispatch planning or contact work.</summary>
     public static async Task<bool> BereidPlannerVoorAsync(
         BerichtClassificatie classificatie, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace,
-        Func<ITeamFixtureContextRepository>? fixtureContextFactory = null)
+        Func<ITeamFixtureContextRepository>? fixtureContextFactory = null, AfzenderOpzoeking? afzender = null)
     {
         ArgumentNullException.ThrowIfNull(resolver);
         (classificatie.Datum, classificatie.GewensteDatum, classificatie.Datums) = ModelDatum.Grens(classificatie.Datum, classificatie.GewensteDatum, classificatie.Datums);
         // #1861: alleen de eigen clubnaam is geen genoemd team; anders telt de trace hem als "team genoemd".
         if (TeamNaamNormalisatie.IsAlleenClubPrefix(classificatie.TeamNaam, clubCode)) classificatie.TeamNaam = null;
         trace?.Classificatie(classificatie.Type.ToString(), classificatie.TeamNaam, classificatie.Tegenstander, classificatie.GetAlleDatums().Count, classificatie.AanvangsTijd);
+        classificatie.TeamAfgeleidUitAfzender = false;
         var herkend = await BepaalEnPasToeAsync(classificatie, resolver, clubCode, log, trace, fixtureContextFactory);
         if (classificatie.TeamHandmatigBeoordelen) return false;
+        // #1862: stap 2 van de volgorde: geen herkenbaar team in de mail, dan het team van de afzender.
+        herkend = await AfzenderTeamBepaling.VerwerkAsync(classificatie, herkend, afzender, resolver, clubCode, log, trace);
         classificatie.TeamNaamOnbevestigd = !herkend;
         if (herkend) classificatie.LeeftijdsCategorie = TeamNaamNormalisatie.VulLeeftijdsCategorieAan(classificatie.LeeftijdsCategorie, classificatie.TeamNaam, clubCode);
         return herkend;

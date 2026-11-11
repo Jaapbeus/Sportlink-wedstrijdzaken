@@ -12,7 +12,9 @@ public static class ZekerheidsBeoordeling
 {
     private static readonly string[] TeamStappen =
     {
-        TraceCodes.TeamHerkenning, TraceCodes.TegenstanderHerkenning, TraceCodes.OpponentTeamHerkenning
+        TraceCodes.TeamHerkenning, TraceCodes.TegenstanderHerkenning, TraceCodes.OpponentTeamHerkenning,
+        // #1862: een team uit de teambegeleiding van de afzender; alleen "zeker" bij precies één oplosbaar team.
+        TraceCodes.BegeleidingAfzender
     };
 
     public static ZekerheidsOordeel Beoordeel(IEnumerable<TraceStap> stappen)

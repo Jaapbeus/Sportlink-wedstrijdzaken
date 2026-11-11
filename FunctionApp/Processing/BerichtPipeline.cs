@@ -42,11 +42,12 @@ public static partial class BerichtPipeline
     public static async Task<string> VerwerkMetPlannerAsync(
         BerichtClassificatie classificatie, InkomendBericht bericht, ILogger log,
         ITeamResolver teamResolver,
-        string? clubCode = null, ClubAppSettingsSnapshot? clubSettings = null, TraceBuilder? trace = null, Func<ITeamFixtureContextRepository>? fixtureContextFactory = null)
+        string? clubCode = null, ClubAppSettingsSnapshot? clubSettings = null, TraceBuilder? trace = null, Func<ITeamFixtureContextRepository>? fixtureContextFactory = null, IAfzenderTeamBron? afzenderTeamBron = null)
     {
         var cc = ResolveHeuristicClubCode(clubCode);
         var eigenTeamHerkend = await EigenTeamBepaling.BereidPlannerVoorAsync(classificatie, teamResolver, cc, log, trace,
-            fixtureContextFactory ?? (() => new SportlinkFunction.TeamResolution.TeamFixtureContextRepository(SystemUtilities.DatabaseConfig.ConnectionString)));
+            fixtureContextFactory ?? (() => new SportlinkFunction.TeamResolution.TeamFixtureContextRepository(SystemUtilities.DatabaseConfig.ConnectionString)),
+            new AfzenderOpzoeking(afzenderTeamBron ?? new SportlinkFunction.TeamResolution.SqlAfzenderTeamBron(), bericht.Afzender, AfzenderTeamBepaling.ReplyToUitHeaders(bericht.InternetHeaders)));
         return await BerichtPlannerAfhandeling.VerwerkAsync(classificatie,
             () => VerwerkBeschikbaarheidAsync(classificatie, bericht, log, eigenTeamHerkend, clubCode, trace),
             () => VerwerkHerplanAsync(classificatie, bericht, log, clubCode, clubSettings),

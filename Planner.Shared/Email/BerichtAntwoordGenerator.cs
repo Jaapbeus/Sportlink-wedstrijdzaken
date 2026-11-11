@@ -260,7 +260,7 @@ public static partial class BerichtAntwoordGenerator
 
         // TrimEnd (#1780): een placeholder aan het eind van de tekst die leeg blijft (bijvoorbeeld {{bijlage_zin}})
         // mag geen rij lege regels voor de handtekening achterlaten; de handtekening voegt zelf een lege regel toe.
-        body += bodyInvulling.TrimEnd();
+        body += bodyInvulling.TrimEnd() + AfgeleidTeamControle.Regel(classificatie);
         body += "\n\n" + GetHandtekening(instellingen);
         return (onderwerp, body);
     }
@@ -392,7 +392,7 @@ public static partial class BerichtAntwoordGenerator
         if (EmailReviewModus.IsActief())
             body += ReviewKop(classificatie, email, templateKey: null);
 
-        body += inhoud;
+        body += inhoud + AfgeleidTeamControle.Regel(classificatie);
         body += "\n\n" + GetHandtekening(instellingen);
 
         return (onderwerp, body);

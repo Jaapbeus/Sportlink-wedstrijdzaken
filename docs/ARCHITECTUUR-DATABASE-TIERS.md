@@ -4956,3 +4956,21 @@ alleen code is.
 - **Sync:** `TeamCanonicalisatieService` raakt de kolom op geen van beide tiers aan, zodat een handmatig
   gezette waarde blijft staan.
 - **Nog niet in gebruik:** geen endpoint, scherm of query leest of schrijft de kolom.
+
+## 86. Index op het e-mailadres van de teambegeleiding voor de afzender-opzoeking (#1862)
+
+`AfzenderTeamBron` zoekt de teams van een afzender met `LOWER(TRIM(emailadres)) = @adres` (hoofdletters en spaties maken niet
+uit) en geeft alleen de teamkolom terug. Een `LOWER()`-vergelijking vraagt een index op dezelfde uitdrukking; zonder index is het
+een scan over de hele begeleidingslijst.
+
+- **Postgres:** expressie-index `ix_teambegeleiding_email_lower` op `avg.teambegeleiding (LOWER(TRIM(emailadres)))`, migratie
+  `048_teambegeleiding_email_index.sql`. Geen nieuwe tabel, dus geen nieuwe RLS-stap (RLS staat al aan sinds migratie 021).
+- **SQL Server:** persisted computed column `EmailadresGenormaliseerd AS LOWER(LTRIM(RTRIM([Emailadres]))) PERSISTED` met
+  `IX_avg_Teambegeleiding_EmailadresGenormaliseerd` (`INCLUDE ([Team], [ClubCode])`), in `Database/avg/Tables/Teambegeleiding.sql` en
+  idempotent in `Script.PostDeployment1.sql` (met `SET QUOTED_IDENTIFIER ON`, net als §75). SQL Server matcht de expressie uit de query
+  automatisch, dus de querytekst is op beide tiers gelijk in vorm.
+- **Expand (§57):** uitsluitend additief en niet uniek; de vorige code merkt de kolom en index niet.
+- **Bewijs:** de Postgres-integratietest `AfzenderTeamBronIntegrationTests.Opzoeking_GebruiktDeExpressieIndex` controleert het
+  `EXPLAIN`-plan; voor SQL Server geldt `SHOWPLAN_TEXT` op een gemigreerde database (zie de PR voor de uitgevoerde controle).
+- **Bewaartermijn:** ongewijzigd. De bestaande opruiming (`CleanupTeambegeleiding`) verwijdert de rijen en daarmee de indexregels.
+

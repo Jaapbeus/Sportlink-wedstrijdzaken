@@ -1,4 +1,5 @@
 using System.Text;
+using Planner.Shared.TeamResolution;
 using System.Text.RegularExpressions;
 
 namespace Planner.Shared.Email.Trace;
@@ -112,6 +113,27 @@ public sealed class TraceBuilder
     public TraceBuilder TeamWissel(string? nieuwTeam, string? nieuweTegenstander)
         => Voeg(TraceCodes.TeamWissel, "Team en tegenstander verwisseld", "Genoemd team was de tegenstander",
             ZekerheidsNiveau.Zeker, new[] { D("team", nieuwTeam), D("tegenstander", nieuweTegenstander) });
+
+    /// <summary>
+    /// De opzoeking van het eigen team via de afzender (#1862). Bewust alleen het aantal gevonden teams
+    /// (<c>0</c>, <c>1</c> of <c>meer</c>) en de canonieke teamnaam: nooit het e-mailadres, ook niet gehasht, en geen
+    /// namen, rollen of de teams van de afzender bij meerdere treffers.
+    /// </summary>
+    public TraceBuilder BegeleidingAfzender(string aantalTeams, string? canoniekeNaam, ZekerheidsNiveau zekerheid, bool afwijktVanGenoemdTeam)
+    {
+        var uitkomst = canoniekeNaam is not null ? $"Eigen team afgeleid: {Saneer(canoniekeNaam)}"
+            : aantalTeams == "meer" ? "Afzender begeleidt meerdere teams, niets gekozen"
+            : aantalTeams == "0" ? "Afzender niet gevonden in de begeleiding"
+            : "Eén team, maar niet herkend";
+        var details = new List<KeyValuePair<string, string?>> { D(AfzenderTeamBepaling.AantalSleutel, aantalTeams), D("canoniekeNaam", canoniekeNaam) };
+        if (aantalTeams == "meer") details.Add(D("bron", "MeerdereKandidaten"));
+        if (afwijktVanGenoemdTeam) details.Add(D(AfzenderTeamBepaling.AfwijkendTeamSleutel, Ja));
+        return Voeg(TraceCodes.BegeleidingAfzender, "Eigen team via de afzender", uitkomst, zekerheid, details);
+    }
+
+    /// <summary>De afzender-opzoeking is bewust niet uitgevoerd (bijvoorbeeld een afwijkend antwoordadres).</summary>
+    public TraceBuilder BegeleidingAfzenderOvergeslagen(string reden)
+        => Voeg(TraceCodes.BegeleidingAfzender, "Eigen team via de afzender", "Overgeslagen", ZekerheidsNiveau.Onzeker, new[] { D("reden", reden) });
 
     /// <param name="tak"><c>opponent-op-datum</c> of <c>niet-gevonden</c>. Oudere traces kunnen nog
     /// <c>opponent-andere-datum</c> bevatten; die tak bestaat sinds #1861 niet meer.</param>

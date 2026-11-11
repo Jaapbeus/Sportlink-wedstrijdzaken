@@ -142,6 +142,21 @@ nog; anders volgt de wedervraag om het team. De bijbehorende `EigenTeamBepaling.
 verwijderd. Alleen de eigen clubnaam in het teamveld (`TeamNaamNormalisatie.IsAlleenClubPrefix`) telt niet als
 genoemd team.
 
+**Eigen team uit de afzender (#1862).** Noemt een bericht van een type dat een team vereist (`BeschikbaarheidCheck`,
+`HerplanVerzoek`) geen herkenbaar eigen team, dan is de volgorde: (1) een genoemd team in onderwerp of tekst wint altijd;
+(2) staat de afzender in de teambegeleiding bij precies één team, dan is dat het team, via dezelfde `ITeamResolver`
+(geen nieuwe teamnaamlogica); (3) staat de afzender bij meerdere teams, dan wordt niets gekozen en volgt de wedervraag
+`team_onbekend`, zonder de teams op te sommen; (4) daarna het opponent-pad op dezelfde datum en `team_onbekend`.
+`AfzenderTeamBepaling` (in `Planner.Shared/TeamResolution/`) wordt aangeroepen vanuit `EigenTeamBepaling.BereidPlannerVoorAsync`;
+de tier levert alleen `IAfzenderTeamBron` (`PostgresAfzenderTeamBron` en `SqlAfzenderTeamBron` in de `TeamResolution`-mappen), een query op de teamkolom van
+de begeleiding, gefilterd op club en `LOWER(TRIM(emailadres))`. Een team uit de afzender krijgt `TeamAfgeleidUitAfzender` en het
+antwoord noemt het met een controleregel (`AfgeleidTeamControle`: "We gaan uit van …; klopt dat niet, laat het ons weten.").
+Wijkt een genoemd team af van het begeleidingsteam, dan komt er alleen een tracenotitie (`afzenderBegeleidtAnderTeam: ja`,
+zonder namen, zonder review-markering). Wijkt Reply-To af van From, dan vindt er geen opzoeking plaats. De trace
+(`begeleiding-afzender`) bevat alleen het aantal gevonden teams (0, 1 of meer) en de canonieke naam; het e-mailadres staat
+nooit in trace, log of telemetrie. De index staat in `ARCHITECTUUR-DATABASE-TIERS.md` §86; de AVG-onderbouwing in
+`EMAIL-VERWERKING.md` §5e.
+
 Deleting a Sync alias now retains its existing `rejected` state, including after canonicalization. Other origins retain physical deletion. A rejected alias blocks that association; it does not block an independent match against the canonical team name. The UI describes this action as persistent rejection. No schema or retention policy is added.
 
 ## Datamodel

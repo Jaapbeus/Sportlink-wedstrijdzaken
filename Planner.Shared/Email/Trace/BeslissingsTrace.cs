@@ -69,6 +69,7 @@ public static class TraceCodes
     public const string TeamHerkenning = "team-herkenning";
     public const string TegenstanderHerkenning = "tegenstander-herkenning";
     public const string TeamWissel = "team-wissel";
+    public const string BegeleidingAfzender = "begeleiding-afzender";
     public const string OpponentPad = "opponent-pad";
     public const string OpponentTeamHerkenning = "opponent-team-herkenning";
     public const string Datum = "datum";
