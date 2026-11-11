@@ -17,6 +17,16 @@ namespace FunctionApp.Postgres.Admin;
 /// </summary>
 internal static class AdminEmailLogRepository
 {
+    internal static async Task<Dictionary<string, int>> GetStatusCountsAsync(
+        string clubCode, DateTime? vanaf, DateTime? tot, string? statusFilter, string cs)
+    {
+        var sql = "SELECT status, COUNT(*)::int FROM planner.emailverwerking" +
+                  global::Planner.Endpoints.Admin.EmailLogStatusCountsCore.BuildWhere("clubcode", "ontvangstdatum", vanaf, tot, statusFilter) +
+                  " GROUP BY status";
+        await using var conn = new NpgsqlConnection(cs);
+        return await global::Planner.Endpoints.Admin.EmailLogStatusCountsCore.ReadAsync(conn, sql, clubCode, vanaf, tot, statusFilter);
+    }
+
     internal static async Task<List<Dictionary<string, object?>>> GetAsync(
         string clubCode, DateTime? vanaf, DateTime? tot, string? statusFilter, int limit, string cs)
     {

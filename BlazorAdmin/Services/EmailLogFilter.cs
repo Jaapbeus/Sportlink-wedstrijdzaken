@@ -30,12 +30,11 @@ public static class EmailLogFilter
     };
 
     /// <summary>
-    /// Begindatum (lokale dag) voor een periodesleutel; <c>null</c> = geen ondergrens. De server rekent per dag, dus
-    /// "laatste 24 uur" is gisteren t/m vandaag — dezelfde keuze als de teller op Instellingen.
+    /// UTC-begingrens voor een periodesleutel; <c>null</c> = geen ondergrens.
     /// </summary>
     public static DateTime? Vanaf(string? periode, DateTime vandaag) => periode switch
     {
-        "24u" => vandaag.Date.AddDays(-1),
+        "24u" => vandaag.AddHours(-24),
         "7d" => vandaag.Date.AddDays(-7),
         "30d" => vandaag.Date.AddDays(-30),
         _ => null
