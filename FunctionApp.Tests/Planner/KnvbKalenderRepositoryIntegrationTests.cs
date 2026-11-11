@@ -50,7 +50,7 @@ public class KnvbKalenderRepositoryIntegrationTests : IAsyncLifetime
     }
 
     private static async Task<(
-        string Server, string Database, string Collation, bool IsCaseInsensitive)> LeesDatabaseDoelAsync(
+        string Server, string Database, bool IsCaseInsensitive)> LeesDatabaseDoelAsync(
         string connectionString)
     {
         await using var conn = new SqlConnection(connectionString);
@@ -58,18 +58,17 @@ public class KnvbKalenderRepositoryIntegrationTests : IAsyncLifetime
         await using var cmd = new SqlCommand("""
             SELECT CONVERT(nvarchar(128), SERVERPROPERTY('ServerName')),
                    DB_NAME(),
-                   CONVERT(nvarchar(128), DATABASEPROPERTYEX(DB_NAME(), 'Collation')),
                    CASE WHEN N'a' COLLATE DATABASE_DEFAULT = N'A' COLLATE DATABASE_DEFAULT THEN 1 ELSE 0 END
             """, conn);
         await using var reader = await cmd.ExecuteReaderAsync();
         if (!await reader.ReadAsync()
             || reader.IsDBNull(0)
             || reader.IsDBNull(1)
-            || reader.IsDBNull(2)
-            || reader.IsDBNull(3))
+            || reader.IsDBNull(2))
             throw new InvalidOperationException("Could not verify the SQL Server test database identity and collation.");
 
-        return (reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt32(3) == 1);
+        // Verify the catalog's actual comparison behavior instead of pinning a collation name.
+        return (reader.GetString(0), reader.GetString(1), reader.GetInt32(2) == 1);
     }
 
     private static async Task OpruimenAsync()

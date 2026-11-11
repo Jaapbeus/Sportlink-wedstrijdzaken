@@ -633,18 +633,20 @@ selector. `check-codekwaliteit.test.sh` has a synthetic mapped-pair fixture that
 over its test ceiling. The production ceiling is unchanged.
 
 The KNVB contract filter is `FullyQualifiedName~KnvbKalenderRepositoryIntegrationTests` in
-`FunctionApp.Tests` and `FunctionApp.Postgres.Tests`. Run against owned disposable containers with
-`SQLSERVER_TEST_CONNECTION_STRING` plus `SqlConnectionString` for SQL Server; both must resolve to
-the same SQL Server instance and catalog. The SQL Server test catalog must use a case-insensitive
-default collation; the fixture verifies this with a database-default equality probe because the
-day-type comparison test exercises case-insensitive SQL Server behavior. No specific collation
-name is required. This is a disposable-test requirement only; the production schema does not pin a
-collation. Prepare SQL Server using the canonical postdeploy
-script twice; prepare Postgres using `Database.Postgres.Cli` and
-`POSTGRES_TEST_CONNECTION_STRING`. Both suites contain six baseline cases and one native-comparison
-regression. Postgres rejects lowercase and trailing-space day types through its existing CHECK.
-Do not normalize those values or repeat the native query's day-type/range/order rules in shared
-code. No database environment means skipped tests, not successful integration verification.
+`FunctionApp.Tests` and `FunctionApp.Postgres.Tests`. The SQL Server KNVB filter is not included in
+the current SQL Server integration-test filter in `.github/workflows/build.yml`; a green CI run
+therefore does not verify this suite. Run it against an owned disposable container with
+`SQLSERVER_TEST_CONNECTION_STRING` plus `SqlConnectionString`; both must resolve to the same SQL
+Server instance and catalog. The SQL Server test catalog must use case-insensitive default
+comparison behavior; the fixture checks this with a database-default equality probe instead of
+requiring a particular collation name. The native day-type comparison regression exercises that
+behavior. This is a disposable-test requirement only; the production schema does not pin a
+collation. Prepare SQL Server using the canonical postdeploy script twice; prepare Postgres using
+`Database.Postgres.Cli` and `POSTGRES_TEST_CONNECTION_STRING`. Both suites contain six baseline
+cases and one native-comparison regression. Postgres rejects lowercase and trailing-space day types
+through its existing CHECK. Do not normalize those values or repeat the native query's
+day-type/range/order rules in shared code. No database environment means skipped tests, not
+successful integration verification.
 
 The mapping guard currently inventories tracked paths with newline separation. The independent
 #1810 source-inventory work must retain this reviewed mapping and its negative fixtures when

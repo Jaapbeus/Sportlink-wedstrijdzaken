@@ -201,10 +201,10 @@ its storage resource; this ADR does not accept ongoing cost or close that issue.
 
 The report command `python3 scripts/ci/report-tier-pairs.py --ref <commit>` inventories tracked C#
 paths at an explicit Git ref. It lists exact-path matches, unique-basename candidates, ambiguous
-groups and unmatched files. It does not compare contents or establish semantic coverage. The
-baseline counts above are specific to the stated commit; the review's claim about renamed pairs and
-their combined line count remains unverified. See [VERIFICATIE-SCRIPTS.md](VERIFICATIE-SCRIPTS.md)
-for usage and the focused tests.
+groups and unmatched files. It does not compare contents or establish semantic coverage; a
+basename match alone does not establish that files were renamed counterparts or quantify their
+combined line count. See [VERIFICATIE-SCRIPTS.md](VERIFICATIE-SCRIPTS.md) for usage and focused
+tests.
 
 **Tier-keuze is bewust onveranderlijk na de eerste deploy — afdwinging gebouwd bij #976.** #816
 legt vast dat de repository-variabele `DatabaseTier` de keuze bepaalt (hard-fail bij een
