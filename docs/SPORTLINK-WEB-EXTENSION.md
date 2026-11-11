@@ -543,9 +543,10 @@ Vier dingen om te onthouden:
   Pending-rij gebruikt daarom de placeholder `"NIEUW"`, met een gegenereerde GUID in `CorrelationId`
   om Pending- en Voltooid-rij te koppelen. Het écht opslaan van het teruggekregen `PublicMatchId`
   vereist een uitbreiding van `ISportlinkMutationAuditService.VoltooiAsync` (een extra optionele
-  parameter, raakt beide tiers) en is niet gebouwd. Omdat aanmaken sinds #1427 live gaat (de
-  aanroep volgt `sportlinkDryRun`), is dit een open functioneel gat op beide tiers: bij een echte
-  aanmaak legt de audit alleen de placeholder `"NIEUW"` vast, niet het echte `PublicMatchId`.
+  parameter, raakt beide tiers) en is niet gebouwd. Omdat aanmaken sinds #1319 de instelling
+  `sportlinkDryRun` volgt (en sinds #1427 live slaagt), is dit een open functioneel gat op beide
+  tiers (vervolgissue volgt): bij een echte aanmaak legt de audit alleen de placeholder `"NIEUW"`
+  vast, niet het echte `PublicMatchId`.
   **Bewust NIET gebouwd (toekomstig
   werk):** uitslag vastleggen (`ClubMatchScore`), de drie overige
   ondersteunende endpoints (`ClubMatchDefaults`, `PickListsMatchInformation`,
@@ -566,8 +567,8 @@ Vier dingen om te onthouden:
   als `AgeClassCode`. `FacilityId` komt uit de club-instelling `accommodatie`,
   op naam opgezocht in `PickListsLocation` (read-only GET, per club één uur in-memory gecachet;
   eerst exact, anders één unieke gedeeltelijke match — meerdere treffers → leeg). Elke mislukte
-  vertaling wordt een `Waarschuwing` in de respons, geen fout: de aanroep volgt `sportlinkDryRun` (aanmaken
-  is sinds #1427 live bevestigd) en de beheerder moet zien wat er mee gaat of, bij dry-run, mee zou gaan. **Open vraag, pas te beantwoorden met de
+  vertaling wordt een `Waarschuwing` in de respons, geen fout: de aanroep volgt sinds #1319 `sportlinkDryRun`
+  (het aanmaakcontract is sinds #1427 live bevestigd) en de beheerder moet zien wat er mee gaat of, bij dry-run, mee zou gaan. **Open vraag, pas te beantwoorden met de
   netwerktrace:** hanteert Sportlink Club voor `PublicHomeTeamId` hetzelfde numerieke team-ID als
   de dataservice, of een publiek string-ID zoals `PublicMatchId` (`M...`)? Het diagnostische
   `GET .../club-match/picklists` blijft daarvoor bestaan. Blijkt het een ander ID, dan is het
