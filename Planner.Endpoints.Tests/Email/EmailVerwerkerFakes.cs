@@ -84,6 +84,7 @@ internal sealed class FakePoort : IEmailVerwerkerPoort<TestBericht>
     public Func<List<TestBericht>, EmailClassificatieBatch<TestBericht>> Classificeer { get; set; }
         = l => new(l.Select(b => (b, new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek })).ToList(), false, null);
     public Func<List<TestBericht>, IReadOnlyList<ClassificatieCorrectieVoorbeeld>, EmailClassificatieBatch<TestBericht>>? ClassificeerMetVoorbeelden { get; set; }
+    public Exception? FewShotFout { get; set; }
     public IReadOnlyList<ClassificatieCorrectieVoorbeeld> FewShotVoorbeelden { get; set; } = [];
     public Exception? DatabaseFout { get; set; }
     public HashSet<string> UitsluitingslijstUitDatabase { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -131,7 +132,8 @@ internal sealed class FakePoort : IEmailVerwerkerPoort<TestBericht>
     public Task<IReadOnlyList<ClassificatieCorrectieVoorbeeld>> HaalFewShotVoorbeeldenOpAsync()
     {
         Stappen.Add("fewshots");
-        return Task.FromResult(FewShotVoorbeelden);
+        return FewShotFout is null ? Task.FromResult(FewShotVoorbeelden)
+            : Task.FromException<IReadOnlyList<ClassificatieCorrectieVoorbeeld>>(FewShotFout);
     }
 
     public Task<EmailClassificatieBatch<TestBericht>> ClassificeerAsync(

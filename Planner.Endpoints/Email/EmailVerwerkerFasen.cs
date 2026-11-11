@@ -64,7 +64,7 @@ public interface IEmailVerwerkerPoort<TBericht> where TBericht : IInkomendBerich
     Task<EmailClassificatieBatch<TBericht>> ClassificeerAsync(
         List<TBericht> teClassificeren, IReadOnlyList<ClassificatieCorrectieVoorbeeld> voorbeelden);
 
-    /// <summary>Leest goedgekeurde few-shot-voorbeelden vóór classificatie, zodat fase 1 ze ook toepast.</summary>
+    /// <summary>Leest goedgekeurde few-shots vóór classificatie. Leeg is geldig; een onbeschikbare bron gooit.</summary>
     Task<IReadOnlyList<ClassificatieCorrectieVoorbeeld>> HaalFewShotVoorbeeldenOpAsync();
 
     /// <summary>Labelt buiten-scope-berichten in Outlook en markeert ze als gelezen; fase 2 wordt overgeslagen.</summary>
@@ -138,7 +138,9 @@ public static class EmailVerwerkerFasen
         if (!poort.BereidAiVoor())
             return null;
 
-        var voorbeelden = await poort.HaalFewShotVoorbeeldenOpAsync();
+        var voorbeelden = await LaadClassificatieContextAsync(poort, teClassificeren.Count, log);
+        if (voorbeelden is null)
+            return null;
         var classificationResult = await ClassificeerEnMeldFoutenAsync(poort, teClassificeren, voorbeelden, log);
         var classificaties = classificationResult.Classificaties;
 
@@ -153,6 +155,7 @@ public static class EmailVerwerkerFasen
 
         if (teVerwerken.Count == 0 && mislukteClassificaties.Count == 0)
         {
+            await EmailNoodmailMelding.BehandelDatabaseHerstelAsync(poort.Throttle, log);
             var aantalBuitenScope = classificaties.Count(c => c.Classificatie.Type == VerzoekType.BuitenScope);
             log.LogInformation(
                 "Alle {Aantal} emails buiten scope{Afgebroken} — geen verwerking in de database nodig",
@@ -162,6 +165,24 @@ public static class EmailVerwerkerFasen
         }
 
         return new LichteFaseResultaat<TBericht>(teVerwerken, mislukteClassificaties);
+    }
+
+    // Een lege goedgekeurde set is geldig; een laadfout mag nooit dezelfde betekenis krijgen.
+    // Stop vóór AI en de buiten-scope-label/gelezen-mutaties en gebruik de bestaande DB-uitvalgrens.
+    private static async Task<IReadOnlyList<ClassificatieCorrectieVoorbeeld>?> LaadClassificatieContextAsync<TBericht>(
+        IEmailVerwerkerPoort<TBericht> poort, int aantalOnverwerkt, ILogger log)
+        where TBericht : IInkomendBericht
+    {
+        try
+        {
+            return await poort.HaalFewShotVoorbeeldenOpAsync();
+        }
+        catch (Exception dbEx)
+        {
+            await EmailNoodmailMelding.BehandelDatabaseVerbindingsFoutAsync(
+                dbEx, poort.Graph, aantalOnverwerkt, poort.Throttle, poort.NoodmailTeksten, log);
+            return null;
+        }
     }
 
     /// <summary>

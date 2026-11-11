@@ -85,17 +85,9 @@ internal sealed class EmailVerwerkerPoort(
     {
         // Fase 1 gebruikt deze al gevalideerde voorbeelden vóór de eerste classificatie. Gebruik
         // dezelfde DB-wake/settings-route als de bestaande verse uitsluitingslijst; geen nieuwe cache.
-        try
-        {
-            await SystemUtilities.WaitForDatabaseAsync(log);
-            await SystemUtilities.AppSettings.LoadSettingsAsync(log);
-            return await persistence.HaalLeermomentVoorbeeldenOpAsync(log);
-        }
-        catch (Exception)
-        {
-            log.LogWarning("Leermomenten niet beschikbaar; classificatie gaat door zonder few-shots");
-            return [];
-        }
+        await SystemUtilities.WaitForDatabaseAsync(log);
+        await SystemUtilities.AppSettings.LoadSettingsAsync(log);
+        return await persistence.HaalLeermomentVoorbeeldenOpAsync(log);
     }
 
     public Task LabelBuitenScopeAsync(List<(InkomendBericht Email, BerichtClassificatie Classificatie)> classificaties)

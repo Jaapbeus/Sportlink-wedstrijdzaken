@@ -86,17 +86,9 @@ internal sealed class EmailVerwerkerPoort(
     {
         // Fase 1 gebruikt deze al gevalideerde voorbeelden vóór de eerste classificatie. Gebruik
         // dezelfde DB-wake/settings-route als de bestaande verse uitsluitingslijst; geen nieuwe cache.
-        try
-        {
-            await PostgresSystemUtilities.WaitForDatabaseAsync(log);
-            await PostgresAppSettings.LoadSettingsAsync(log);
-            return await LearningMomentRepository.HaalVoorbeeldenOpAsync(cs, PostgresClubScope.Primary, log);
-        }
-        catch (Exception)
-        {
-            log.LogWarning("Leermomenten niet beschikbaar; classificatie gaat door zonder few-shots");
-            return [];
-        }
+        await PostgresSystemUtilities.WaitForDatabaseAsync(log);
+        await PostgresAppSettings.LoadSettingsAsync(log);
+        return await LearningMomentRepository.HaalVoorbeeldenOpAsync(cs, PostgresClubScope.Primary, log);
     }
 
     public Task LabelBuitenScopeAsync(List<(InkomendBericht Email, BerichtClassificatie Classificatie)> classificaties)

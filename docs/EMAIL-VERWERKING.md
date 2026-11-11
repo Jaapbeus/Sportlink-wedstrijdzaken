@@ -56,7 +56,9 @@ De verwerking heeft twee fasen. Voor een batch die na de voorfilters geclassific
 fase 1 eerst de goedgekeurde few-shot-voorbeelden via de bestaande database-/instellingenroute. De
 database kan daardoor al vóór de AI-aanroep wakker worden; de volledige verwerkingslus en
 idempotentie-check (§1d) blijven in fase 2. Een lege of vooraf volledig gefilterde inbox raakt de
-database nog steeds niet.
+database nog steeds niet. Een succesvol geladen lege voorbeeldset is geldig. Als de bron niet
+beschikbaar is, stopt de poll vóór classificatie en de buiten-scope-mutaties; de bestaande
+database-noodmail met uitval-throttle meldt de storing.
 
 ```
 FASE 1 — Graph API, few-shot-context en AI
@@ -74,7 +76,7 @@ De 10 OUDSTE ongelezen berichten uit de inbox (Graph: top=10, orderby receivedDa
         │
         ▼
    Goedgekeurde few-shots laden (maximaal 20; database wake/settings-route)
-        │  laadfout → doorgaan zonder few-shots
+        │  laadfout → stoppen vóór AI/label/gelezen; bestaande database-noodmail
         ▼
    AI-classificatie (BerichtAiService, met de geladen few-shots)
         │

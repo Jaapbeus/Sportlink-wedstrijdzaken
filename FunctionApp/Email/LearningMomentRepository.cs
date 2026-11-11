@@ -50,38 +50,30 @@ internal static class LearningMomentRepository
         await cmd.ExecuteNonQueryAsync();
     }
 
-    internal static async Task<List<ClassificatieCorrectieVoorbeeld>> HaalVoorbeeldenOpAsync(string clubCode, ILogger log)
+    internal static async Task<List<ClassificatieCorrectieVoorbeeld>> HaalVoorbeeldenOpAsync(string clubCode, ILogger log, string? connectionString = null)
     {
-        try
-        {
-            using var conn = new SqlConnection(Cs);
-            await conn.OpenAsync();
-            using var cmd = new SqlCommand(@"
-                SELECT TOP 20 [OrigineelVerzoekType], [AfgeleidJuistType],
-                              [OrigineleSamenvatting], [CorrectieSamenvatting]
-                FROM [planner].[ClassificatieCorrectie]
-                WHERE [IsGevalideerd] = 1 AND [IsAfgewezen] = 0 AND [ClubCode] = @ClubCode
-                ORDER BY CASE WHEN [Herkomst] = N'Admin' THEN 0 ELSE 1 END, [mta_modified] DESC", conn);
-            cmd.Parameters.AddWithValue("@ClubCode", clubCode);
+        using var conn = new SqlConnection(connectionString ?? Cs);
+        await conn.OpenAsync();
+        using var cmd = new SqlCommand(@"
+            SELECT TOP 20 [OrigineelVerzoekType], [AfgeleidJuistType],
+                          [OrigineleSamenvatting], [CorrectieSamenvatting]
+            FROM [planner].[ClassificatieCorrectie]
+            WHERE [IsGevalideerd] = 1 AND [IsAfgewezen] = 0 AND [ClubCode] = @ClubCode
+            ORDER BY CASE WHEN [Herkomst] = N'Admin' THEN 0 ELSE 1 END, [mta_modified] DESC", conn);
+        cmd.Parameters.AddWithValue("@ClubCode", clubCode);
 
-            var list = new List<ClassificatieCorrectieVoorbeeld>();
-            using var r = await cmd.ExecuteReaderAsync();
-            while (await r.ReadAsync())
-            {
-                if (r.IsDBNull(1)) continue;
-                list.Add(new ClassificatieCorrectieVoorbeeld(
-                    OrigineelType:       r.GetString(0),
-                    JuistType:           r.GetString(1),
-                    OrigineleSamenvatting:  r.IsDBNull(2) ? "" : r.GetString(2),
-                    CorrectieSamenvatting:  r.IsDBNull(3) ? "" : r.GetString(3)));
-            }
-            return list;
-        }
-        catch (Exception ex)
+        var list = new List<ClassificatieCorrectieVoorbeeld>();
+        using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
         {
-            log.LogWarning(ex, "Leermomenten konden niet worden geladen — classificatie zonder few-shots");
-            return new List<ClassificatieCorrectieVoorbeeld>();
+            if (r.IsDBNull(1)) continue;
+            list.Add(new ClassificatieCorrectieVoorbeeld(
+                OrigineelType:       r.GetString(0),
+                JuistType:           r.GetString(1),
+                OrigineleSamenvatting:  r.IsDBNull(2) ? "" : r.GetString(2),
+                CorrectieSamenvatting:  r.IsDBNull(3) ? "" : r.GetString(3)));
         }
+        return list;
     }
 
     private static string? Truncate(string? value, int max) =>

@@ -19,6 +19,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Fixed
+- Een onbeschikbare leermomentbron pauzeert e-mailverwerking vóór classificatie en buiten-scope-mutaties via de bestaande database-uitvalmelding; alleen een succesvol geladen lege set mag zonder voorbeelden classificeren (#1800).
 - Ontbreekt `AiModelName`, dan wordt geen AI-client met een hardcoded terugval geregistreerd; e-mailverwerking stopt veilig vóór de databasefase en de handmatige e-mailtester geeft een gecontroleerde 503. Niet-AI-functies blijven beschikbaar (#1800).
 - Goedgekeurde leermomenten worden al vóór de eerste e-mailclassificatie toegepast, zodat een correctie naar een herplanverzoek niet als buiten scope wordt afgesloten. Herhaalde niet-quota-classificatiefouten geven één privacyveilige, afzonderlijk gethrottlede melding; mislukte berichten blijven ongelezen en worden opnieuw geprobeerd (#1800).
 

@@ -226,6 +226,49 @@ public class EmailVerwerkerFasenTests
         poort.Verwerkt.Should().ContainSingle().Which.MessageId.Should().Be("m1");
     }
 
+    [Fact]
+    public async Task FewShotBronOnbeschikbaar_StoptVoorAiEnLabels_EnMeldtAlleenDatabaseUitval()
+    {
+        TestBericht bericht = new("m1");
+        var poort = new FakePoort
+        {
+            Ongelezen = [bericht],
+            FewShotFout = new TimeoutException("synthetic database failure"),
+            Classificeer = _ => Batch([(bericht, VerzoekType.BuitenScope)])
+        };
+
+        await VoerUitAsync(poort);
+        await VoerUitAsync(poort);
+
+        poort.Stappen.Should().NotContain(s => s == "classificeer" || s == "label" || s == "wacht"
+            || s.StartsWith("verwerk:") || s.StartsWith("classificatiefout:") || s.StartsWith("fout:"));
+        poort.Verwerkt.Should().BeEmpty();
+        poort.VastgelegdeFouten.Should().BeEmpty();
+        var melding = poort.FakeGraph.Verstuurd.Should().ContainSingle().Which;
+        melding.Subject.Should().StartWith("URGENT: Database niet bereikbaar");
+        (await poort.FakeThrottle.LaatsteKeerVerstuurdAsync(EmailNoodmailMelding.StructureleAiNoodmailSleutel)).Should().BeNull();
+        (await poort.FakeThrottle.LaatsteKeerVerstuurdAsync(EmailNoodmailMelding.OpenAiQuotaNoodmailSleutel)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task FewShotBronHersteldMetLegeSet_ClassificeertEnWistDatabaseUitval()
+    {
+        var poort = new FakePoort { Ongelezen = [new("m1")], FewShotFout = new TimeoutException() };
+        await VoerUitAsync(poort);
+        poort.FewShotFout = null;
+        poort.ClassificeerMetVoorbeelden = (emails, voorbeelden) =>
+        {
+            voorbeelden.Should().BeEmpty();
+            return Batch([(emails[0], VerzoekType.BuitenScope)]);
+        };
+
+        await VoerUitAsync(poort);
+
+        poort.Stappen.Count(s => s == "classificeer").Should().Be(1);
+        poort.Stappen.Count(s => s == "label").Should().Be(1);
+        (await poort.FakeThrottle.LaatsteKeerVerstuurdAsync(EmailNoodmailMelding.DatabaseNoodmailSleutel)).Should().BeNull();
+    }
+
     // ── OpenAI-quota ─────────────────────────────────────────────────────────────────────────
 
     [Fact]
