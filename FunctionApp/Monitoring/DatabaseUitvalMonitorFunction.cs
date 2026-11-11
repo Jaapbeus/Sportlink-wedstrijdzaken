@@ -45,7 +45,7 @@ public class DatabaseUitvalMonitorFunction
     /// <summary>Zie <see cref="DatabaseUitvalCore.MinimaleHerhalingsinterval"/>.</summary>
     internal static readonly TimeSpan MinimaleHerhalingsinterval = DatabaseUitvalCore.MinimaleHerhalingsinterval;
 
-    // De vaste schedule kan per Function App worden uitgezet met de app setting die in docs/MONITORING.md staat.
+    // Letterlijke cron: %…% wordt bij indexeren opgelost; een ontbrekende setting faalt vóór de functiebody. Uitzetten: zie docs/MONITORING.md.
     internal const string Schedule = "0 0 8 * * *";
 
     [Function("DatabaseUitvalMonitor")]

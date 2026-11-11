@@ -39,6 +39,7 @@ public static class DatabaseUitvalMonitorFunction
     internal static readonly TimeSpan MinimaleUitval =
         DatabaseUitvalCore.MinimaleUitvalVoorMeldingBeheerdePostgres;
 
+    // Letterlijke cron: %…% wordt bij indexeren opgelost; een ontbrekende setting faalt vóór de functiebody. Uitzetten: zie docs/MONITORING.md.
     [Function("DatabaseUitvalMonitor")]
     public static async Task Run(
         [TimerTrigger("0 0 8 * * *")] TimerInfo timer,
