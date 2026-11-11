@@ -5,6 +5,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Npgsql;
+using Planner.Endpoints.Sportlink;
 using Planner.Shared.Integrations.SportlinkClub;
 
 namespace FunctionApp.Postgres.Sportlink;
@@ -88,19 +89,15 @@ public static class SportlinkContractCheckTimerFunction
 
         var throttleStore = context.InstanceServices.GetService<INoodmailThrottleStore>();
         if (isOk)
-        {
             log.LogInformation("Sportlink contract-check geslaagd voor rol '{Rol}'.", RolNaam);
-            if (throttleStore != null) await throttleStore.WisAsync(NoodmailSleutel);
-            return;
-        }
-
-        log.LogWarning("Sportlink contract-check gaf een afwijking: {Fout}", foutmeldingSamenvatting);
+        else
+            log.LogWarning("Sportlink contract-check gaf een afwijking: {Fout}", foutmeldingSamenvatting);
         if (throttleStore == null) return;
 
-        var laatsteKeer = await throttleStore.LaatsteKeerVerstuurdAsync(NoodmailSleutel);
-        if (!SportlinkEndpointCore.MagContractCheckNoodmailVersturen(laatsteKeer, DateTime.UtcNow))
+        // Een geslaagde check wist de verzenddag niet (#1815): de kalenderdag alleen beslist.
+        if (!await ContractCheckNoodmailCore.MagNoodmailVersturenAsync(isOk, throttleStore, NoodmailSleutel, DateTime.UtcNow))
         {
-            log.LogInformation("Contract-check-noodmail al verzonden vandaag — overgeslagen.");
+            if (!isOk) log.LogInformation("Contract-check-noodmail al verzonden vandaag — overgeslagen.");
             return;
         }
 
