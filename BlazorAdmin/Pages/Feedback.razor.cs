@@ -48,6 +48,12 @@ public partial class Feedback : ClubSelectorPageBase
         _filter.Offset = 0;
         _inzageOffset = 0;
         _melding = null; // #1872: melding hoort bij de vorige club
+        // #1872: lijst, inzagelog en detail delen _fout/_bezig. Ook een laadronde van een inactieve tab die vóór
+        // een heen-en-terug-clubwissel begon, mag daarna geen resultaat, fout of laadstatus meer toepassen.
+        var clubCode = ClubSelector.SelectedClubCode;
+        _lijstGuard.Start(clubCode);
+        _inzageGuard.Start(clubCode);
+        _detailGuard.Start(clubCode);
         return LaadAsync();
     }
 

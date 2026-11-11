@@ -176,6 +176,37 @@ public sealed class ClubBoundLoadRaceMeerPaginasTests
         Assert.Null(Get<string?>(page, "_fout"));
     }
 
+    [Fact]
+    public async Task Feedback_InactiveTabListLoadFromBeforeClubRoundTripCannotApplyErrorOrClearCurrentLoading()
+    {
+        var (club, handler, transport) = await CreateContextAsync();
+        var page = new Feedback();
+        Set(page, "ClubSelector", club);
+        Set(page, "Api", new FeedbackApiClient(transport));
+
+        var lijstA = CallAsync(page, "LaadLijstAsync");
+        Assert.Equal(1, handler.PendingCount);
+        var inzageA = CallAsync(page, "KiesTabAsync", Enum.ToObject(typeof(Feedback).GetNestedType("Tab", BindingFlags.NonPublic)!, 1));
+        Assert.Equal(2, handler.PendingCount);
+        await club.SelectClubAsync("B", "Club B");
+        await CallAsync(page, "OnClubChangedAsync");
+        await club.SelectClubAsync("A", "Club A");
+        var inzageA2 = CallAsync(page, "OnClubChangedAsync");
+        Assert.Equal(3, handler.PendingCount);
+        Assert.True(Get<bool>(page, "_bezig"));
+
+        handler.Release("/api/beheer/feedback", HttpStatusCode.InternalServerError);
+        await lijstA;
+
+        Assert.Null(Get<string?>(page, "_fout"));
+        Assert.True(Get<bool>(page, "_bezig"));
+
+        handler.ReleaseClubA();
+        await inzageA;
+        await inzageA2;
+        Assert.False(Get<bool>(page, "_bezig"));
+    }
+
     [Theory]
     [InlineData(typeof(Planning))]
     [InlineData(typeof(VeldOptimalisatie))]
@@ -584,6 +615,20 @@ public sealed class ClubBoundLoadRaceMeerPaginasTests
             (string Path, TaskCompletionSource<HttpResponseMessage> Completion)[] pending;
             lock (_sync) { pending = [.. _pending]; _pending.Clear(); }
             foreach (var (path, completion) in pending) completion.TrySetResult(Json(Payload("A", path)));
+        }
+
+        /// <summary>Rondt alleen de hangende club-A-request met exact dit pad af, met de opgegeven status.</summary>
+        public void Release(string exactPath, HttpStatusCode status)
+        {
+            TaskCompletionSource<HttpResponseMessage>? gekozen = null;
+            lock (_sync)
+            {
+                var index = _pending.FindIndex(p => p.Path == exactPath);
+                if (index < 0) return;
+                gekozen = _pending[index].Completion;
+                _pending.RemoveAt(index);
+            }
+            gekozen.TrySetResult(new HttpResponseMessage(status) { Content = new StringContent("{}") });
         }
 
         private static HttpResponseMessage Json(object payload) =>
