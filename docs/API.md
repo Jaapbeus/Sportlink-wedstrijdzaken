@@ -309,6 +309,15 @@ De SQL Server-tier kent de `207` niet en antwoordt alleen `200`, `401`, `403`, `
 
 ---
 
+## Planning geblokkeerd bij onbekende bronduur (#1814)
+
+`POST /api/planner/check-availability`, `/planner/doordeweeks-beschikbaar`,
+`/planner/herplan-check` en `/planner/bevestig` geven HTTP 409 met
+`{"error":"Planning geblokkeerd: wedstrijdduur onbekend voor bestaande veldbezetting."}`
+als een bestaande wedstrijd wel een veld en tijd maar geen betrouwbare Sportlink- of
+speeltijdenduur heeft. De aanvraag wordt dan niet als vrij behandeld en een boeking wordt
+niet opgeslagen. Bij `/planner/bevestig` kan 409 ook een gewoon bezettingsconflict betekenen.
+
 ## POST /api/planner/check-availability
 
 Controleer of een veld beschikbaar is voor een oefenwedstrijd. Geeft een specifieke slottoewijzing, beschikbare tijdvensters, of een teamconflict terug.
@@ -351,10 +360,10 @@ Controleer of een veld beschikbaar is voor een oefenwedstrijd. Geeft een specifi
 | `datum` | `string` | **Ja** | Datum in `yyyy-MM-dd` formaat |
 | `aanvangsTijd` | `string` | Nee | Gewenste aftrapttijd `HH:mm`. Weglaten om beste slot te vinden |
 | `dagdeel` | `string` | Nee | Dagdeelfilter: `"ochtend"` (08:30 - 12:00), `"middag"` (12:00 - 17:00) of `"avond"` (17:00 - 22:00). Vensters en alternatieven blijven binnen dat dagdeel; een onbekende waarde wordt genegeerd |
-| `leeftijdsCategorie` | `string` | Nee | Leeftijdscategorie (bijv. `JO11`, `MO17`, `VR`, `1-99`). Bepaalt wedstrijdduur en veldgrootte. Weglaten voor beschikbare vensters |
+| `leeftijdsCategorie` | `string` | Nee | Leeftijdscategorie (bijv. `JO11`, `MO17`, `VR`, `1-99`). Bepaalt standaardwedstrijdduur en veldgrootte. Zonder categorie is een positieve `wedstrijdDuurMinuten` vereist |
 | `teamNaam` | `string` | Nee | Teamnaam voor conflictcontrole en teamspecifieke regels |
 | `tegenstander` | `string` | Nee | Tegenstander (alleen voor administratie) |
-| `wedstrijdDuurMinuten` | `integer` | Nee | Overschrijf wedstrijdduur in minuten (standaard uit Speeltijden) |
+| `wedstrijdDuurMinuten` | `integer` | Nee | Positieve duur in minuten; overschrijft de standaard uit Speeltijden. Zonder categorie of positieve duur stopt de controle met een reden en zoekt geen slot of venster |
 | `heelVeld` | `boolean` | Nee | Dwing een heel veld af, ook als de leeftijdscategorie normaal op een deelveld speelt. Levert een waarschuwing op, geen fout |
 
 ### Antwoord — Slot toegewezen (200)
@@ -882,7 +891,8 @@ eerste claimt. `BufferVoor`/`BufferNa` zijn geen laag maar gelden altijd.
       "voorkeurVeldNummer": null,
       "voorkeurVeldToegepast": null,
       "teamBufferVoor": null,
-      "teamBufferNa": 60
+      "teamBufferNa": 60,
+      "sportlinkLeidend": true
     }
   ],
   "huidigeHtml": "<html>...</html>",
@@ -909,6 +919,10 @@ in minuten, of `null` zonder regel. Het zijn de ruwe waarden: de effectieve buff
 algemene buffer, en tussen twee opeenvolgende wedstrijden telt de grootste van de `BufferNa` van de
 voorganger en de `BufferVoor` van de opvolger. De Admin GUI gebruikt ze om na handmatig verslepen exact
 dezelfde regel toe te passen als de planner.
+
+`sportlinkLeidend` (#1814) is `true` wanneer de planner de Sportlink-speelduur gebruikt. Rond dat
+slot geldt geen appbuffer; overlap blijft altijd een conflict. De handmatige conflictcontrole
+gebruikt deze waarde ook na het verslepen.
 
 > **`nietInplanbaaarReden` — let op de dubbele `a`.** De veldnaam bevat een typefout die in het
 > wire-contract zit (`AutoPlanWedstrijdItem` op beide tiers). Hij is gevuld bij

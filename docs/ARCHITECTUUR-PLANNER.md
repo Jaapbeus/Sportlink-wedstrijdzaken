@@ -317,10 +317,10 @@ ALLSTARS-rijen zijn altijd expliciet gestempeld en lekken dus nooit mee.
 | datum | Ja | Gewenste datum (ISO format) |
 | aanvangsTijd | Nee | Gewenste aanvangstijd ("HH:mm"), null = zoek beste slot |
 | dagdeel | Nee | "ochtend" (08:30-12:00), "middag" (12:00-17:00) of "avond" (17:00-22:00) — beperkt vensters en alternatieven tot dat dagdeel; de grenzen staan in `Planner.Shared/DagdeelVenster.cs` (#1587). De response meldt het toegepaste dagdeel in `gecontroleerdDagdeel` |
-| leeftijdsCategorie | Nee | Bepaalt duur + veldfractie. Zonder: retourneert beschikbare vensters |
+| leeftijdsCategorie | Nee | Bepaalt de standaardduur en veldfractie. Zonder leeftijdscategorie is een positieve `wedstrijdDuurMinuten` vereist; zonder bekende positieve duur stopt de controle met een reden en zoekt zij geen slot of venster |
 | teamNaam | Nee | Voor team-conflictcheck en team-specifieke regels |
 | tegenstander | Nee | Administratief |
-| wedstrijdDuurMinuten | Nee | Overschrijft standaardduur uit Speeltijden |
+| wedstrijdDuurMinuten | Nee | Positieve duur die de standaardduur uit Speeltijden overschrijft |
 
 #### Response Mode 1 — Met leeftijdsCategorie (specifieke toewijzing)
 
@@ -626,7 +626,19 @@ geen teamregel (`BufferVoor`/`BufferNa`). De buffer is **per slot**, niet per te
 laat een Sportlink-slot zijn eigen 0-buffer dragen, zodat een app-wedstrijd die naast een Sportlink-wedstrijd
 komt alleen zijn eigen buffer eist. Wedstrijden zonder Sportlink-duur (app-eigen, of Sportlink kent ze niet)
 behouden speeltijdentabel en club-/teambuffer. De rekenregels blijven in `PlanningBufferRegels`; de
-handmatige conflictcontrole in de Admin GUI is niet gewijzigd.
+handmatige conflictcontrole in de Admin GUI gebruikt sinds #1814 hetzelfde per-slot-kenmerk
+`sportlinkLeidend` uit het auto-plancontract: aansluitende bronwedstrijden geven geen valse
+buffermelding, maar echte overlap blijft een conflict.
+
+Ontbreekt in de databasebezetting zowel een positieve Sportlink-duur als een speeltijdenrij,
+dan blijft de bronwedstrijd in de bezettingsview met een onbekende eindtijd. De lezers blokkeren
+planning voor een herkenbaar veld met een getypeerde fout; de adminpoort geeft HTTP 409 met een
+vaste, niet-identificerende melding. Zo wordt een onbekende duur nooit als vrij veld uitgelegd (#1814).
+De niet-HTTP e-mailcaller laat dezelfde fout door naar de bestaande verwerkingsfoutafhandeling:
+de trace wordt altijd bewaard, de verwerking krijgt status `Fout` en blijft voor de normale
+begrensde retry beschikbaar. Er gaat geen beschikbaarheidsantwoord, generiek foutantwoord of
+vervolgnotificatie uit; een verzendintentie en gelezen-markering worden niet gezet. De regressies
+voor beide concrete tiers gebruiken een echte bronwedstrijd zonder beide duurbronnen.
 
 Nog open: of "speelduur + 15" voor korte toernooivormen (bijvoorbeeld 20 minuten) klopt is niet
 bevestigd (#1560, punt 2).

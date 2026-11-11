@@ -1925,22 +1925,24 @@ GO
 -- FunctionApp/Planner/VeldResolutie.cs en PlannerShared.ResolveVeld. VeldResolutieDriftTests bewaakt
 -- dat deze kopie en die in het DB-project niet uit elkaar lopen — CI rolt alléén dit script uit.
 -- ============================================================
+-- #1814: ook matchdetails is nu een bron voor de duur; ontbreekt beide duurbronnen, dan is
+-- EindTijd NULL en blokkeren de lezers planning expliciet.
 -- #734: alleen aanmaken als de onderliggende tabellen bestaan. Op een verse clubinstallatie
 -- bestaan de ETL-tabellen (his.*) nog niet — die worden pas bij de eerste Sportlink-sync
 -- aangemaakt — en een CREATE VIEW faalt dan op naam-resolutie. Dynamische SQL stelt die
 -- resolutie uit tot uitvoering, zodat de view eenvoudig wordt overgeslagen tot de sync is
 -- gelopen. De volgende deploy maakt hem dan aan.
-IF OBJECT_ID('his.matches') IS NOT NULL
+IF OBJECT_ID('his.matches') IS NOT NULL AND OBJECT_ID('his.matchdetails') IS NOT NULL
     EXEC(N'
 CREATE OR ALTER VIEW [planner].[AlleWedstrijdenOpVeld]
 AS
 SELECT
     CAST(m.[kaledatum] AS DATE)                                                     AS Datum,
     CAST(m.[aanvangstijd] AS TIME)                                                  AS AanvangsTijd,
-    DATEADD(MINUTE,
-        s.[WedstrijdTotaal],
-        CAST(CAST(m.[kaledatum] AS DATE) AS DATETIME) + CAST(m.[aanvangstijd] AS DATETIME)
-    )                                                                               AS EindTijd,
+    CASE WHEN COALESCE(md.[Duration], 0) > 0 OR COALESCE(s.[WedstrijdTotaal], 0) > 0
+        THEN DATEADD(MINUTE, CASE WHEN md.[Duration] > 0 THEN md.[Duration] + 15 ELSE s.[WedstrijdTotaal] END,
+        CAST(CAST(m.[kaledatum] AS DATE) AS DATETIME) + CAST(m.[aanvangstijd] AS DATETIME))
+        ELSE NULL END                        AS EindTijd,
     v.[VeldNummer],
     COALESCE(s.[Veldafmeting], 1.00)                                                AS VeldDeelGebruik,
     t.[leeftijdscategorie]                                                          AS LeeftijdsCategorie,
@@ -1952,6 +1954,9 @@ SELECT
     CAST(m.[wedstrijdcode] AS BIGINT)                                               AS Wedstrijdcode
 FROM [his].[matches] m
 CROSS APPLY (SELECT TOP 1 [ClubCode], [Accommodatie] FROM [dbo].[AppSettings] WHERE [SyncEnabled] = 1 ORDER BY [ClubCode]) a
+LEFT JOIN [his].[matchdetails] md
+    ON md.[InternCode] = m.[wedstrijdcode] AND md.[mta_deleted] IS NULL
+   AND ISNULL(md.[ClubCode], a.[ClubCode]) = ISNULL(m.[ClubCode], a.[ClubCode])
 LEFT JOIN [his].[teams] t
     ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''''
    AND ISNULL(t.[ClubCode], a.[ClubCode]) = ISNULL(m.[ClubCode], a.[ClubCode])
@@ -1983,7 +1988,6 @@ WHERE m.[accommodatie] LIKE ''%'' + a.[Accommodatie] + ''%''
   AND m.[status] <> ''Afgelast''
   AND m.[aanvangstijd] IS NOT NULL
   AND v.[VeldNummer] IS NOT NULL
-  AND s.[WedstrijdTotaal] IS NOT NULL
 
 UNION ALL
 

@@ -253,6 +253,7 @@ public static partial class PlannerShared
         TimeOnly? sunset, bool eindBinnenDagdeel = false)
     {
         var candidates = new List<CandidateSlot>();
+        if (duurMinuten <= 0 || duurMinuten > 1440) return candidates;
         foreach (var field in availableFields)
         {
             var fieldOccs = occupations.Where(o => o.VeldNummer == field.VeldNummer).ToList();
@@ -260,14 +261,20 @@ public static partial class PlannerShared
             var windowEnd   = dagdeelTot > field.BeschikbaarTot   ? field.BeschikbaarTot   : dagdeelTot;
             // Binnen een dagdeel (#1587) moet ook het einde binnen het dagdeel vallen, niet alleen de start.
             var uiterlijkEinde = eindBinnenDagdeel ? windowEnd : field.BeschikbaarTot;
-            for (var time = windowStart; time < windowEnd && time.AddMinutes(duurMinuten) <= uiterlijkEinde; time = time.AddMinutes(5))
+            // TimeOnly.AddMinutes wraps modulo 24h. Use monotone minute offsets so a late window
+            // cannot create slots before opening or loop back to the start of the day.
+            int startMinute = (int)Math.Ceiling(windowStart.ToTimeSpan().TotalMinutes);
+            int endMinute = (int)Math.Ceiling(windowEnd.ToTimeSpan().TotalMinutes);
+            int latestEndMinute = (int)Math.Floor(uiterlijkEinde.ToTimeSpan().TotalMinutes);
+            for (int minute = startMinute; minute < endMinute && minute + duurMinuten <= latestEndMinute; minute += 5)
             {
-                var endTime = time.AddMinutes(duurMinuten);
+                var time = TimeOnly.FromTimeSpan(TimeSpan.FromMinutes(minute));
+                var endTime = TimeOnly.FromTimeSpan(TimeSpan.FromMinutes(minute + duurMinuten));
                 if (CanFitMatch(time, endTime, veldFractie, field.VeldNummer,
                                 fieldOccs, allTeamRules, requestingTeamRules))
                 {
                     candidates.Add(new CandidateSlot { VeldNummer = field.VeldNummer, AanvangsTijd = time, EindTijd = endTime });
-                    time = time.AddMinutes(duurMinuten + StandardBufferMinutes - 5);
+                    minute += duurMinuten + StandardBufferMinutes - 5;
                 }
             }
         }

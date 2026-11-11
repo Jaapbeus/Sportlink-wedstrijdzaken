@@ -95,6 +95,90 @@ public class FieldSchedulerDagdeelTests
     }
 
     [Fact]
+    public void FindAllSlots_LaatVenster_WikkeltNietOverMiddernacht()
+    {
+        var slots = PlannerShared.FindAllSlots(
+            [new VeldBeschikbaarheidInfo
+            {
+                VeldNummer = 1,
+                BeschikbaarVanaf = new TimeOnly(20, 0),
+                BeschikbaarTot = new TimeOnly(23, 59)
+            }],
+            [],
+            VeldInfos(),
+            GeenTeamRegels,
+            [],
+            1.00m,
+            90,
+            new TimeOnly(20, 0),
+            new TimeOnly(23, 59),
+            sunset: null,
+            eindBinnenDagdeel: true);
+
+        slots.Should().NotBeEmpty();
+        slots.Should().OnlyContain(s => s.AanvangsTijd >= new TimeOnly(20, 0)
+            && s.EindTijd <= new TimeOnly(23, 59));
+    }
+
+    [Fact]
+    public void FindAllSlots_OpeningMetSeconden_LevertGeenSlotVoorOpening()
+    {
+        var opening = new TimeOnly(20, 0, 30);
+        var sluiting = new TimeOnly(22, 0);
+        var slots = PlannerShared.FindAllSlots(
+            [new VeldBeschikbaarheidInfo { VeldNummer = 1, BeschikbaarVanaf = opening, BeschikbaarTot = sluiting }],
+            [], VeldInfos(), GeenTeamRegels, [], 1.00m, 60,
+            opening, sluiting, sunset: null, eindBinnenDagdeel: true);
+
+        slots.Should().NotBeEmpty();
+        slots.Should().OnlyContain(s => s.AanvangsTijd >= opening && s.EindTijd <= sluiting);
+    }
+
+    [Fact]
+    public void FindAllSlots_ExtremeDuur_LevertDirectGeenSlot()
+    {
+        var slots = PlannerShared.FindAllSlots(Velden(), [], VeldInfos(), GeenTeamRegels, [],
+            1.00m, int.MaxValue, OchtendVan, OchtendTot, sunset: null);
+
+        slots.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void FindLatestFitPerField_VindtVrijGatNaVroegeBezetting()
+    {
+        var fields = new List<VeldBeschikbaarheidInfo>
+        {
+            new() { VeldNummer = 1, BeschikbaarVanaf = new TimeOnly(8, 30), BeschikbaarTot = new TimeOnly(18, 0) }
+        };
+        var occupied = new List<BestaandeWedstrijd>
+        {
+            new() { VeldNummer = 1, AanvangsTijd = new TimeOnly(8, 30), EindTijd = new TimeOnly(9, 30) }
+        };
+
+        var slots = PlannerShared.FindLatestFitPerField(fields, occupied, GeenTeamRegels, [],
+            1.00m, 60, new TimeOnly(15, 0), new TimeOnly(8, 30));
+
+        slots.Should().ContainSingle();
+        slots[0].AanvangsTijd.Should().Be(new TimeOnly(14, 0));
+    }
+
+    [Fact]
+    public void FindLatestFitPerField_OpeningMetSecondenEnExtremeDuur_ZijnVeilig()
+    {
+        var fields = new List<VeldBeschikbaarheidInfo>
+        {
+            new() { VeldNummer = 1, BeschikbaarVanaf = new TimeOnly(20, 0, 30), BeschikbaarTot = new TimeOnly(22, 0) }
+        };
+
+        var slots = PlannerShared.FindLatestFitPerField(fields, [], GeenTeamRegels, [], 1.00m, 60,
+            new TimeOnly(22, 0), new TimeOnly(20, 0, 30));
+        slots.Should().NotBeEmpty();
+        slots.Should().OnlyContain(s => s.AanvangsTijd >= new TimeOnly(20, 0, 30));
+        PlannerShared.FindLatestFitPerField(fields, [], GeenTeamRegels, [], 1.00m, int.MaxValue,
+            new TimeOnly(22, 0), new TimeOnly(20, 0, 30)).Should().BeEmpty();
+    }
+
+    [Fact]
     public void FindAllSlots_OnbeschikbareVoorkeurstijd_GeeftAlternatievenBinnenHetDagdeel()
     {
         // Het veld is van 09:00 tot 10:30 bezet; alternatieven blijven toch volledig binnen de ochtend.
@@ -108,6 +192,15 @@ public class FieldSchedulerDagdeelTests
 
         slots.Should().OnlyContain(s => s.AanvangsTijd >= OchtendVan && s.EindTijd <= OchtendTot);
         slots.Should().NotContain(s => s.AanvangsTijd < new TimeOnly(10, 30) && s.EindTijd > new TimeOnly(9, 0));
+    }
+
+    [Fact]
+    public void FindAllSlots_DuurNul_GeeftGeenKandidaten()
+    {
+        var slots = PlannerShared.FindAllSlots(Velden(), [], VeldInfos(), GeenTeamRegels, new(),
+            1.00m, 0, OchtendVan, OchtendTot, sunset: null, eindBinnenDagdeel: true);
+
+        slots.Should().BeEmpty("een nulminutenwedstrijd mag nooit als concreet slot worden voorgesteld");
     }
 
     [Theory]

@@ -134,7 +134,9 @@ tijd en blokduur worden sinds #1563 bij elk openen van de dag rechtstreeks bij S
 uitloopdeel van Sportlink erbij. De pauze is dus niet altijd vijftien minuten — bij 35+ is hij tien.
 Is Sportlink niet bereikbaar, staat de Sportlink Web Extension uit, of kent Sportlink een wedstrijd
 niet, dan rekent de Planning zoals voorheen: Sportlinks speelduur plus vijftien minuten, en bij
-ontbreken daarvan **Speeltijden**. **Veld optimalisatie** blijft op **Speeltijden** rekenen. Wedstrijden
+ontbreken daarvan **Speeltijden**. **Veld optimalisatie** gebruikt dezelfde duurvolgorde. Ontbreken
+beide bronnen voor een wedstrijd op een herkenbaar veld, dan blokkeert de planning met de melding
+"Planning geblokkeerd: wedstrijdduur onbekend voor bestaande veldbezetting." Wedstrijden
 tussen andere clubs op uw accommodatie staan wel in Sportlinks veldplanner maar niet in onze database
 en verschijnen hier dus nog niet. Een lange wedstrijdnaam loopt over twee regels door, met de
 aanvangstijd vóór de naam op dezelfde regel; de volledige naam staat ook in de tooltip. Ziet u toch een
@@ -197,6 +199,8 @@ nog klopt, met dezelfde regels als de planner: twee wedstrijden op hetzelfde vel
 weinig tijd tussen twee wedstrijden op één veld, en een team dat tegelijk (of te kort na elkaar) op
 twee velden staat. Daarbij tellen ook de **Buffer vóór**/**Buffer na** uit de teamregels mee: is die
 groter dan de algemene buffer, dan noemt de waarschuwing "de vereiste teambuffer van N min" (#1430).
+Rond een wedstrijd waarvan de Sportlink-speelduur leidend is geldt geen appbuffer; twee zulke
+wedstrijden mogen direct op elkaar aansluiten. Een echte overlap blijft verboden (#1814).
 
 Elke tab heeft dezelfde opbouw: eerst de **tijdlijn per veld**, daaronder de **wedstrijdenlijst** van
 diezelfde stand. Omdat beide tabs op exact dezelfde hoogte beginnen, werkt wisselen als het

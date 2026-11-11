@@ -122,14 +122,14 @@ internal static class AutoPlanService
             .Where(i => i.HeeftVeld && i.HeeftTijd && i.OptimaalVeldNummer.HasValue)
             .Select(i =>
             {
-                var huidigVeldNr = velden.FirstOrDefault(v =>
-                    VeldNormalisatie.Normaliseer(v.VeldNaam) == VeldNormalisatie.Normaliseer(i.HuidigeVeld?.Split(' ').Take(2).LastOrDefault() ?? ""))?.VeldNummer ?? 0;
+                var (huidigVeldNr, huidigeSubpositie) = VeldResolver.Resolve(i.HuidigeVeld,
+                    velden.Select(v => ((string?)v.VeldNaam, v.VeldNummer)));
                 if (huidigVeldNr == 0) return null;
                 if (!TimeOnly.TryParse(i.HuidigeTijd, out var aTime)) return null;
                 return new BestaandeWedstrijd
                 {
                     Datum = datum, AanvangsTijd = aTime, EindTijd = aTime.AddMinutes(i.DuurMinuten),
-                    VeldNummer = huidigVeldNr, VeldDeelGebruik = i.Veldafmeting > 0 ? i.Veldafmeting : 1m,
+                    VeldNummer = huidigVeldNr, VeldSubpositie = huidigeSubpositie, VeldDeelGebruik = i.Veldafmeting > 0 ? i.Veldafmeting : 1m,
                     LeeftijdsCategorie = i.LeeftijdsCategorie, TeamNaam = i.TeamNaam, Wedstrijd = i.Wedstrijd, Bron = "Sportlink"
                 };
             }).Where(o => o != null).Cast<BestaandeWedstrijd>().ToList();
@@ -300,6 +300,7 @@ internal static class AutoPlanService
                 OptimaalVeld = optimaalVeld,
                 OptimaalTijd = optimaalTijd,
                 Status = status,
+                SportlinkLeidend = sportlinkLeidend,
                 VoorkeurTijd = voorkeurTijdStr,
                 VoorkeurAfwijkingMinuten = voorkeurAfwijking,
                 VoorkeurBron = doel.Bron,

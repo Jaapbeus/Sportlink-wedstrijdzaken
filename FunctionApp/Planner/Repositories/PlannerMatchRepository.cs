@@ -523,6 +523,8 @@ internal static class PlannerMatchRepository
             FROM [planner].[GeplandeWedstrijden] gw
             INNER JOIN [his].[matches] m
                 ON CAST(m.[kaledatum] AS DATE) = gw.[Datum]
+                AND (m.[status] IS NULL OR m.[status] <> 'Afgelast')
+                AND m.[mta_deleted] IS NULL
                 AND {ClubScope.HisFilter("m")}
                 AND EXISTS (
                     SELECT 1
