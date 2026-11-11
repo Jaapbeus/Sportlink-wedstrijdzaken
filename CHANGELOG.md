@@ -28,6 +28,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - De SQL Server-planner geeft voor de niet-opgeslagen optionele eerste-elftalnaam nu expliciet `null` door, gelijk aan Postgres; de settings-loader guard hoeft deze ontbrekende sleutel niet meer uit te zonderen (#1821).
 
 ### Fixed
+- GitHubIssueReporter begrenst elke GitHub HTTP-operatie op vijftien seconden en geeft functieannulering door; een afgebroken issue-aanmaak wordt niet automatisch opnieuw verzonden (zie issue #1803).
 - De Azure Management-aanroep die het FetchSchedule-schema toepast heeft nu dezelfde expliciete time-out van tien seconden als de andere uitgaande beheerrequests (#1803).
 - Feedback publicatie en GitHub statuscontrole stoppen na 15 seconden en nemen functieannulering over; een afgebroken of HTTP 408/5xx issue-POST blijft geblokkeerd met onbekende uitkomst zodat hij niet automatisch dubbel wordt aangemaakt (#1803).
 - De reflectieve autorisatietests ondersteunen functieannulering met een neutrale token en blijven alle rollen op beide databasetiers controleren (zie issue #1803).
