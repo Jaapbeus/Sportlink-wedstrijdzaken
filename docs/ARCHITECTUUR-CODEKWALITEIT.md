@@ -543,6 +543,8 @@ uit een workflow kan verdwijnen zonder dat iemand het merkt.
 | Padverwijzingen exact in casing (#825) | `scripts/ci/check-path-casing.sh` | `build.yml` |
 | Postgres-identifiers lowercase snake_case | `scripts/ci/check-postgres-identifier-casing.sh` | `build.yml` |
 | Identifier-casing guard: portable positive/negative fixtures (#1810) | `scripts/ci/check-postgres-identifier-casing.test.sh` | `build.yml` |
+| Production ref and active database jobs gate publication (#1810) | `scripts/ci/check-deploy-readiness.sh` | `deploy.yml` |
+| Production preflight rejects missing, failed and inactive-tier results (#1810) | `scripts/ci/check-deploy-readiness.test.sh` | `build.yml` |
 | Security scanners fail closed and publish class counts only (#1810) | `scripts/ci/check-security-patterns.sh` | `security-scan.yml` |
 | Security scanner negative and positive fixtures (#1810) | `scripts/ci/check-security-patterns.test.sh` | `build.yml` |
 | Advisor reports publish severity-class counts only (#1810) | `scripts/ci/supabase-advisors-report.test.sh` | `build.yml` |

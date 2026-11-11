@@ -175,6 +175,9 @@ jobs:
           bash scripts/ci/check-postgres-identifier-casing.sh
           bash scripts/ci/check-postgres-identifier-casing.test.sh
 
+      - name: Production deployment preflight — synthetic regression tests
+        run: bash scripts/ci/check-deploy-readiness.test.sh
+
       - name: Security pattern scanner — synthetic regression tests
         run: bash scripts/ci/check-security-patterns.test.sh
 
