@@ -1,0 +1,32 @@
+<h3>@(IsNew ? "Nieuw veld" : $"Bewerken: {Model.VeldNaam}")</h3>
+<EditForm Model="Model" OnValidSubmit="SaveAsync">
+    <div class="row">
+        <div class="col-md-2 mb-3">
+            <label class="form-label">Veldnummer</label>
+            <input class="form-control" type="number" min="1" @bind="Model.VeldNummer" disabled="@(!IsNew)" />
+        </div>
+        <div class="col-md-3 mb-3">
+            <label class="form-label">Naam</label>
+            <input class="form-control" @bind="Model.VeldNaam" placeholder="bijv. veld 1" />
+        </div>
+        <div class="col-md-3 mb-3">
+            <label class="form-label">Type</label>
+            <input class="form-control" list="veldtype-suggesties" @bind="Model.VeldType" placeholder="kunstgras" />
+            <datalist id="veldtype-suggesties">
+                <option value="kunstgras" />
+                <option value="natuurgras" />
+            </datalist>
+            <small class="form-text text-muted">Vrije tekst — geen vaste lijst, elke club kiest zelf.</small>
+        </div>
+        <div class="col-md-2 mb-3">
+            <label class="form-label d-block">Kunstlicht</label>
+            <input type="checkbox" class="form-check-input mt-2" @bind="Model.HeeftKunstlicht" />
+        </div>
+        <div class="col-md-2 mb-3">
+            <label class="form-label d-block">Actief</label>
+            <input type="checkbox" class="form-check-input mt-2" @bind="Model.Actief" />
+        </div>
+    </div>
+    <button type="submit" class="btn btn-primary">Opslaan</button>
+    <button type="button" class="btn btn-secondary ms-2" @onclick="OnCancel">Annuleren</button>
+</EditForm>

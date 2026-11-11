@@ -21,10 +21,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - De clubkiezer, startpoort en initialisatie van de hoofdindeling staan nu in het aangrenzende partial-bestand; gedrag blijft gelijk (zie issue #1807).
 
 ### Changed
+- Removed an unreferenced email HTML generation method and its dedicated tests; active browser and export renderers are unchanged (see issue #1808).
+- Remove the unused optional time normalizer, five unreferenced SQL planner facade forwards and four no-op test placeholders; keep their active repository implementations and maintained tooling. Update current test documentation and annotate historical references to the removed placeholders. (zie issue #1808)
+- De bestaande veldeditor is naar een gedeelde Razor-component verplaatst; modelbinding, validatie en de bestaande save-/annuleerhandlers blijven gelijk (zie issue #1807).
 - De gedeelde HTML-generator voor de veldplanner is per verantwoordelijkheid in partial-bestanden opgesplitst; de publieke aanroepen en de gegenereerde browser- en e-mail-HTML blijven gelijk (zie issue #1807).
 - De fingerprint-, publieke titel-/diagnostiek- en foutclassificatiehelpers van `GitHubIssueReporter` staan in een eigen partial-bestand; de bestaande methoden en werking blijven gelijk (zie issue #1807).
 - De bestaande beheer-DTO's zijn per domein in modelbestanden gegroepeerd; JSON-contracten en type-inhoud zijn ongewijzigd (zie issue #1807).
 - Removed the unused API status service and placed existing shared-logic tests in `Planner.Shared.Tests` (see issue #1808).
+- Removed unreferenced Bootstrap JavaScript assets and unused starter-menu icon selectors; the linked Bootstrap CSS remains (see issue #1808).
 - Clarified the Postgres error-reporting adapter documentation while retaining its tier-specific egress and fingerprint rationale (see issue #1805).
 - In Planner.Shared, removed planning-comment provenance while retaining the tier-independent logic and planning invariants (see issue #1806).
 - Het reviewrondelimiet voor Codex en Claude Code (AGENTS.md en de automatische issue-beurt van de bot) is van twee naar drie rondes per PR gegaan; pas daarna beslist de eigenaar, zie issue #1835.
@@ -36,6 +40,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - De AI-adapters, gedeelde e-maildatumherkenning en e-mailherplandeadline gebruiken de Nederlandse kalenderdatum; bredere hostlokale datumgrenzen in de beschikbaarheidsplanner blijven uitgesteld onder issue #1803 (zie issue #1817).
 - Datumcorrectie in inkomende planningsmail gebruikt een losse dagnaam alleen bij een direct planningsverzoek, behoudt bij herplannen de huidige wedstrijddatum en houdt een overeenkomende enkelvoudige `datums`-lijst gelijk aan `datum` (zie issue #1817).
 - Ontvangers met een komma of puntkomma in een gequote weergavenaam worden niet onbedoeld gesplitst; structuurfouten wijzen de volledige regel af met een algemene melding zonder invoergegevens (zie issue #1817).
+- Planneraanvragen op beide databasetiers slaan de aanvrager op uit de ingelogde principal; een clientwaarde wordt genegeerd en e-mailadressen worden niet als aanvrager opgeslagen; zie issue #1812.
 - Settings restart decisions now have paired SQL Server and Postgres persistence regression tests for unchanged and changed schedules alongside another saved field (#1819).
 - De Postgres-instellingenloader laadt nu ook de vijf bestaande e-mailinstellingen voor de mailboxverwerking en wist ze bij herladen na `NULL`, gelijk aan het gedrag van de SQL Server-tier (#1798).
 - De instellingenopslag meldt alleen een herstart als de opgeslagen FetchSchedule-waarde echt verandert; SQL Server ondersteunt nu ook het opslaan en teruglezen van SportlinkDryRun (#1819)
