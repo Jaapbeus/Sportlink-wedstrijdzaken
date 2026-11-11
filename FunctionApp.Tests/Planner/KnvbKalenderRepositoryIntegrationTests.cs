@@ -71,6 +71,19 @@ public class KnvbKalenderRepositoryIntegrationTests : IAsyncLifetime
     }
 
     [SqlServerFact]
+    public async Task BehoudtSqlServerDagtypeVergelijking()
+    {
+        // The canonical SQL Server CHECK and IN query accept case and trailing spaces.
+        await ZetDagAsync(Regio, Zaterdag1, "competitie");
+        await ZetDagAsync(Regio, Zaterdag2, "Beker ");
+
+        var resultaat = await KnvbKalenderRepository.GetVrijeZaterdagenAsync(
+            Regio, Seizoen, Zaterdag1, Zaterdag2, new HashSet<DateOnly>(), maxAantal: 5);
+
+        resultaat.Should().Equal(Zaterdag1, Zaterdag2);
+    }
+
+    [SqlServerFact]
     public async Task SluitReedsBezetteDatumUit()
     {
         await ZetDagAsync(Regio, Zaterdag1, "Competitie");

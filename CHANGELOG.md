@@ -26,7 +26,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Clarified the Postgres error-reporting adapter documentation while retaining its tier-specific egress and fingerprint rationale (see issue #1805).
 - Het reviewrondelimiet voor Codex en Claude Code (AGENTS.md en de automatische issue-beurt van de bot) is van twee naar drie rondes per PR gegaan; pas daarna beslist de eigenaar, zie issue #1835.
 - De SQL Server-planner geeft voor de niet-opgeslagen optionele eerste-elftalnaam nu expliciet `null` door, gelijk aan Postgres; de settings-loader guard hoeft deze ontbrekende sleutel niet meer uit te zonderen (#1821).
-- Reaffirmed WZ-ADR-003: SQL Server and Postgres remain equal built tiers; the KNVB free-Saturday selection is shared pure logic, its semantic repository pair is explicit in the duplication guard, and a synthetic negative fixture proves the mapped pair is counted. Both tiers have matching six-case SQL contract suites; live database execution remains environment-dependent (#1813).
+- Reaffirmed WZ-ADR-003: SQL Server and Postgres remain equal built tiers; the KNVB free-Saturday selection is shared pure logic, its semantic repository pair is explicit in the duplication guard, and a synthetic negative fixture proves the mapped pair is counted. Both tiers have six baseline database contract cases plus a native-comparison regression: SQL Server keeps its case/trailing-space behavior and Postgres keeps its strict CHECK. The selector only filters Saturdays, occupied dates and the maximum; native queries still own eligibility and order (#1813).
 
 ### Fixed
 - Een teambegeleiding-CSV met ongeldige UTF-8-bytes wordt vóór de import geweigerd in plaats van stilzwijgend met vervangtekens in de preview te verschijnen (#1819)

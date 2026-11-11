@@ -34,7 +34,7 @@ public static class KnvbKalenderRepository
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
         using var cmd = new SqlCommand(@"
-            SELECT [Datum], [DagType]
+            SELECT [Datum]
             FROM [dbo].[KnvbKalenderDag]
             WHERE [Seizoen] = @seizoen
               AND [Regio] = @regio
@@ -47,15 +47,13 @@ public static class KnvbKalenderRepository
         cmd.Parameters.AddWithValue("@tot", totEnMet.ToDateTime(TimeOnly.MinValue));
 
         using var reader = await cmd.ExecuteReaderAsync();
-        var dagen = new List<KnvbKalenderDag>();
+        var dagen = new List<DateOnly>();
         while (await reader.ReadAsync())
         {
-            dagen.Add(new KnvbKalenderDag(
-                DateOnly.FromDateTime(reader.GetDateTime(0)),
-                reader.GetString(1)));
+            dagen.Add(DateOnly.FromDateTime(reader.GetDateTime(0)));
         }
 
         return KnvbKalenderSelectie.SelecteerVrijeZaterdagen(
-            dagen, van, totEnMet, reedsBezetteData, maxAantal);
+            dagen, reedsBezetteData, maxAantal);
     }
 }

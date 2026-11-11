@@ -87,6 +87,22 @@ public class KnvbKalenderRepositoryIntegrationTests : IAsyncLifetime
     }
 
     [PostgresFact]
+    public async Task BehoudtPostgresHoofdletterEnSpatiegevoeligeDagtypes()
+    {
+        foreach (var dagtype in new[] { "competitie", "Beker " })
+        {
+            var fout = await Assert.ThrowsAsync<PostgresException>(
+                () => ZetDagAsync(Regio, Zaterdag1, dagtype));
+            fout.SqlState.Should().Be(PostgresErrorCodes.CheckViolation);
+        }
+
+        await ZetDagAsync(Regio, Zaterdag1, "Competitie");
+        var resultaat = await KnvbKalenderRepository.GetVrijeZaterdagenAsync(
+            ConnectionString, Regio, Seizoen, Zaterdag1, Zaterdag1, new HashSet<DateOnly>(), maxAantal: 5);
+        resultaat.Should().Equal(Zaterdag1);
+    }
+
+    [PostgresFact]
     public async Task SluitReedsBezetteDatumUit()
     {
         await ZetDagAsync(Regio, Zaterdag1, "Competitie");
