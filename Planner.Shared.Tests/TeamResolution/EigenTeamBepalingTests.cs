@@ -51,8 +51,7 @@ public class EigenTeamBepalingTests
         uitkomst.Herkend.Should().BeTrue();
         uitkomst.TeamNaam.Should().Be(EigenTeam);
         uitkomst.Tegenstander.Should().Be(" Tegenstander JO13-1 ", "de tegenstander blijft letterlijk staan als het genoemde team herkend is");
-        resolver.Verzoeken.Should().ContainSingle()
-            .Which.Should().Be(new TeamResolutionRequest("JO13-2", null, null, Club));
+        resolver.Verzoeken.Select(v => v.RuweTeamTekst).Should().Equal("JO13-2", "Tegenstander JO13-1");
     }
 
     [Fact]
@@ -81,7 +80,7 @@ public class EigenTeamBepalingTests
         var uitkomst = await EigenTeamBepaling.BepaalEigenTeamEnTegenstanderAsync(
             "13-1", "Tegenstander JO13-1", resolver, Club, NullLogger.Instance, trace);
 
-        uitkomst.Should().Be(EigenTeamUitkomst.NietHerkend);
+        uitkomst.Should().Be(EigenTeamUitkomst.Handmatig);
         trace.Stappen[0].Uitkomst.Should().Be("Meerdere kandidaten, niets gekozen");
         trace.Stappen[0].Details["aantalKandidaten"].Should().Be("2");
     }
@@ -111,7 +110,7 @@ public class EigenTeamBepalingTests
     }
 
     [Fact]
-    public async Task EigenTeam_StoringInResolver_TeltAlsNietHerkendEnGaatDoorNaarTegenstander()
+    public async Task EigenTeam_StoringInResolver_VereistHandmatigeAfhandeling()
     {
         var resolver = new FakeResolver { ["JO13-2"] = Opgelost(EigenTeam), Gooit = "Kapot" };
         var trace = new TraceBuilder();
@@ -119,7 +118,7 @@ public class EigenTeamBepalingTests
         var uitkomst = await EigenTeamBepaling.BepaalEigenTeamEnTegenstanderAsync(
             "Kapot", "JO13-2", resolver, Club, NullLogger.Instance, trace);
 
-        uitkomst.Should().Be(new EigenTeamUitkomst(true, EigenTeam, "Kapot"));
+        uitkomst.Should().Be(EigenTeamUitkomst.Handmatig);
         trace.Stappen[0].Uitkomst.Should().Be("Resolutie mislukt");
         trace.Stappen[0].Details["bron"].Should().BeEmpty();
     }
@@ -166,7 +165,7 @@ public class EigenTeamBepalingTests
     }
 
     [Fact]
-    public async Task UitWedstrijd_EersteKantHerkend_StoptDaar()
+    public async Task UitWedstrijd_ZelfdeTeamAanBeideKanten_ControleertBeide()
     {
         var resolver = new FakeResolver { ["JO13-2"] = Opgelost(EigenTeam), ["Tegenstander JO13-1"] = Opgelost("NIET GEBRUIKEN") };
 
@@ -174,7 +173,7 @@ public class EigenTeamBepalingTests
             "JO13-2 - Tegenstander JO13-1", resolver, Club, NullLogger.Instance, null);
 
         naam.Should().Be(EigenTeam);
-        resolver.Verzoeken.Should().ContainSingle();
+        resolver.Verzoeken.Should().HaveCount(2);
     }
 
     [Fact]
@@ -197,7 +196,7 @@ public class EigenTeamBepalingTests
             "13-1 - Tegenstander JO13-1", resolver, Club, NullLogger.Instance, null);
 
         naam.Should().BeNull();
-        resolver.Verzoeken.Should().HaveCount(2);
+        resolver.Verzoeken.Should().ContainSingle();
     }
 
     /// <summary>Resolver met vaste antwoorden per (getrimde) ruwe tekst; onbekend = Onopgelost.</summary>

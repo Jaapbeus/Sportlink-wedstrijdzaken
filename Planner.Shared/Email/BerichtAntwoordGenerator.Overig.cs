@@ -10,13 +10,12 @@ public static partial class BerichtAntwoordGenerator
         BerichtClassificatie classificatie, IAntwoordAfzender email, IAntwoordInstellingen instellingen)
     {
         var aanhef = GetTijdsgebondenAanhef();
-        var voornaam = ExtractVoornaam(email.AfzenderNaam);
         var teamWeergave = AiVeldSanering.TeamNaamWeergave(classificatie.TeamNaam, classificatie.TeamNaamOnbevestigd);
         var teamTekst = teamWeergave != null
             ? $"de begeleiding van {teamWeergave}"
             : "de begeleiding van het opgegeven team";
 
-        var inhoud = $"{aanhef} {voornaam},\n\n"
+        var inhoud = $"{AntwoordTekst.AanhefMetNaam(aanhef, email.AfzenderNaam)},\n\n"
                    + $"Uw vraag over {teamTekst} is doorgestuurd. "
                    + "De begeleider neemt rechtstreeks contact met u op. "
                    + "Contactgegevens worden niet gedeeld conform AVG.";
@@ -30,9 +29,8 @@ public static partial class BerichtAntwoordGenerator
         IAntwoordAfzender email, BerichtClassificatie classificatie, IAntwoordInstellingen instellingen)
     {
         var aanhef = GetTijdsgebondenAanhef();
-        var voornaam = ExtractVoornaam(email.AfzenderNaam);
 
-        var inhoud = $"{aanhef} {voornaam},\n\n"
+        var inhoud = $"{AntwoordTekst.AanhefMetNaam(aanhef, email.AfzenderNaam)},\n\n"
                    + "Bedankt voor je bevestiging. Het verzoek is geregistreerd "
                    + "en wordt door de coördinator verwerkt.";
 
@@ -44,10 +42,9 @@ public static partial class BerichtAntwoordGenerator
     public static (string onderwerp, string body) BouwBuitenScopeAntwoord(IAntwoordAfzender email, IAntwoordInstellingen instellingen)
     {
         var aanhef = GetTijdsgebondenAanhef();
-        var voornaam = ExtractVoornaam(email.AfzenderNaam);
 
         var classificatie = new BerichtClassificatie { Type = VerzoekType.BuitenScope };
-        var inhoud = $"{aanhef} {voornaam},\n\n"
+        var inhoud = $"{AntwoordTekst.AanhefMetNaam(aanhef, email.AfzenderNaam)},\n\n"
                    + "Bedankt voor je bericht. Dit verzoek vereist handmatige afhandeling "
                    + "en is ter beoordeling bij de coördinator neergelegd.";
 
@@ -63,12 +60,11 @@ public static partial class BerichtAntwoordGenerator
         IAntwoordInstellingen instellingen)
     {
         var aanhef = GetTijdsgebondenAanhef();
-        var voornaam = ExtractVoornaam(email.AfzenderNaam);
         string inhoud;
 
         if (wedstrijd == null)
         {
-            inhoud = $"{aanhef} {voornaam},\n\n"
+            inhoud = $"{AntwoordTekst.AanhefMetNaam(aanhef, email.AfzenderNaam)},\n\n"
                    + "Er is een fout opgetreden bij het ophalen van de wedstrijdgegevens. "
                    + "De coördinator neemt zo snel mogelijk contact op.";
         }
@@ -78,7 +74,7 @@ public static partial class BerichtAntwoordGenerator
             var veldTekst = !string.IsNullOrWhiteSpace(wedstrijd.VeldNaam)
                 ? $" op {wedstrijd.VeldNaam}"
                 : "";
-            inhoud = $"{aanhef} {voornaam},\n\n"
+            inhoud = $"{AntwoordTekst.AanhefMetNaam(aanhef, email.AfzenderNaam)},\n\n"
                    + $"De wedstrijd {wedstrijd.Wedstrijd} staat al ingepland op {datumTekst} "
                    + $"om {wedstrijd.AanvangsTijd}{veldTekst}.";
         }
@@ -95,9 +91,8 @@ public static partial class BerichtAntwoordGenerator
         IAntwoordInstellingen instellingen)
     {
         var aanhef = GetTijdsgebondenAanhef();
-        var voornaam = ExtractVoornaam(email.AfzenderNaam);
 
-        var inhoud = $"{aanhef} {voornaam},\n\n"
+        var inhoud = $"{AntwoordTekst.AanhefMetNaam(aanhef, email.AfzenderNaam)},\n\n"
                    + $"We kunnen de wedstrijd van {AiVeldSanering.TegenstanderOfGeneriek(tegenstander, "de opgegeven tegenstander")} niet vinden in ons programma. "
                    + "Tegen welk van onze teams zou deze wedstrijd zijn? "
                    + "Dan kunnen we de beschikbaarheid voor je controleren.";
@@ -111,9 +106,8 @@ public static partial class BerichtAntwoordGenerator
         IAntwoordAfzender email, BerichtClassificatie classificatie, IAntwoordInstellingen instellingen)
     {
         var aanhef = GetTijdsgebondenAanhef();
-        var voornaam = ExtractVoornaam(email.AfzenderNaam);
 
-        var inhoud = $"{aanhef} {voornaam},\n\n"
+        var inhoud = $"{AntwoordTekst.AanhefMetNaam(aanhef, email.AfzenderNaam)},\n\n"
                    + "Er is een fout opgetreden bij het verwerken van je verzoek. "
                    + "De coördinator is op de hoogte gesteld en neemt zo snel mogelijk contact op.";
 

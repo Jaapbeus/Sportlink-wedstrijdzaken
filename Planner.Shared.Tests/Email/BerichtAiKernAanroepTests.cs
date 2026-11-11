@@ -38,6 +38,268 @@ public class BerichtAiKernAanroepTests
     private static BerichtAiKern Maak(VasteClient client, Func<string>? club = null)
         => new(NullLogger.Instance, client, club ?? (() => "Voorbeeld FC"), () => Nu);
 
+    public static IEnumerable<object[]> Contactnotaties()
+    {
+        var groep = new string('0', 3);
+        var vier = new string('0', 4);
+        var twee = new string('0', 2);
+        yield return ["(" + groep + ") " + groep + " " + vier];
+        yield return [twee + "--" + vier + ".." + vier];
+        yield return [twee + "\u00a0" + vier + "\u00a0" + vier];
+        yield return ["+" + twee + " (" + groep + ") " + groep + " " + vier];
+        yield return [twee + new string('0', 11)];
+        yield return [twee + " " + twee + " " + groep + " " + vier];
+        yield return [twee + twee + " " + groep + " " + vier];
+        yield return [string.Join('.', Enumerable.Repeat(twee, 5))];
+        yield return [string.Join('-', Enumerable.Repeat(twee, 5))];
+    }
+
+    [Theory]
+    [MemberData(nameof(Contactnotaties))]
+    public async Task Contactnotaties_InAlleProvidercontexten_Gemaskeerd(string nummer)
+    {
+        var client = new VasteClient("{}");
+        var kern = Maak(client);
+        var voorbeelden = new[] { new ClassificatieCorrectieVoorbeeld("buiten_scope", "herplan_verzoek", nummer, nummer) };
+        await kern.ClassificeerBerichtAsync(nummer, nummer, "trainer@voorbeeld.nl", voorbeelden);
+        await kern.DetecteerCorrectieAsync(nummer, nummer, "herplan_verzoek", nummer);
+        client.Berichten.Should().HaveCount(4);
+        foreach (var bericht in client.Berichten)
+            bericht.Text.Should().NotContain(nummer);
+        client.Berichten[0].Text.Should().Contain("[nummer]"); // few-shot
+        client.Berichten[1].Text.Should().Contain("[nummer]"); // classificatie
+        client.Berichten[3].Text.Should().Contain("[nummer]"); // correctie
+    }
+
+    [Fact]
+    public async Task FewShotVoorbeeld_LangeNummerreeksenWordenGemarkeerdInProviderprompt()
+    {
+        var origineelNummer = string.Concat("123", "456789");
+        var correctieNummer = string.Concat("987", "654321");
+        var origineel = "voorbeeld " + origineelNummer;
+        var correctie = "correctie " + correctieNummer;
+        var client = new VasteClient("{}");
+        var kern = Maak(client);
+
+        await kern.ClassificeerBerichtAsync("neutrale vraag", "neutraal onderwerp", "trainer@voorbeeld.nl",
+        [new ClassificatieCorrectieVoorbeeld("buiten_scope", "herplan_verzoek", origineel, correctie)]);
+
+        var providerPrompt = client.Berichten[0].Text;
+        providerPrompt.Should().NotContain(origineelNummer).And.NotContain(correctieNummer);
+        providerPrompt.Should().Contain("voorbeeld [nummer]").And.Contain("correctie [nummer]");
+    }
+
+    public static IEnumerable<object[]> StrikteVoorbeeldNummers()
+    {
+        foreach (var lengte in new[] { 9, 11, 24 })
+        {
+            var cijfers = new string('0', lengte);
+            yield return [cijfers, "[nummer]"];
+            yield return ["id" + cijfers, "id[nummer]"];
+            yield return [cijfers + "suffix", "[nummer]suffix"];
+            yield return ["id" + cijfers + "suffix", "id[nummer]suffix"];
+        }
+        yield return [string.Join('.', Enumerable.Repeat(new string('0', 3), 3)), "[nummer]"];
+        yield return ["12.34 " + new string('0', 5), "[nummer]"];
+        yield return ["12-12-12-" + new string('0', 6), "[nummer]"];
+        yield return ["10.30" + new string('0', 11), "[nummer]"];
+        yield return [new string('x', 490) + new string('0', 24), new string('x', 490) + "[nummer]"];
+
+        // All values are synthetic; normalization must precede numeric candidate recognition.
+        foreach (var separator in new[] { "\0", "\t", "\n", "\r", "\u001f", "\u007f", "\u0085",
+                     "\u00a0", "\u2007", "\u2028", "\u2029", "\u202f", "\u3000", "\r\n \t" })
+        {
+            var nummer = string.Join(separator, Enumerable.Repeat(new string('0', 3), 3));
+            yield return [nummer, "[nummer]"];
+            yield return ["id" + nummer + "suffix", "id[nummer]suffix"];
+            yield return ["12.34" + separator + new string('0', 5), "[nummer]"];
+            yield return ["2026-11-14" + separator + new string('0', 9), "[nummer]"];
+            yield return [new string('x', 490) + nummer, new string('x', 490) + "[nummer]"];
+        }
+        foreach (var prefix in new[] { "+", "" })
+            foreach (var separator in new[] { " ", ".", "-", "\n" })
+                yield return [prefix + new string('0', 15) + separator + new string('0', 3), "[nummer]"];
+        yield return [new string('\u0660', 11), "[nummer]"];
+        yield return ["id" + string.Join('\n', Enumerable.Repeat(new string('\u0660', 3), 3)), "id[nummer]"];
+    }
+
+    [Theory]
+    [MemberData(nameof(StrikteVoorbeeldNummers))]
+    public async Task FewShotVoorbeeld_StrikteMaskeringVanBeideSamenvattingenInDefinitievePrompt(
+        string invoer, string verwacht)
+    {
+        var client = new VasteClient("{}");
+        await Maak(client).ClassificeerBerichtAsync("neutrale vraag", "neutraal onderwerp", "trainer@voorbeeld.nl",
+            [new ClassificatieCorrectieVoorbeeld("buiten_scope", "herplan_verzoek", invoer, invoer)]);
+
+        var prompt = client.Berichten[0].Text;
+        var samenvatting = verwacht.Replace('"', '\'');
+        prompt.Should().Contain("\"" + samenvatting + "\"");
+        prompt.Split(samenvatting).Should().HaveCount(3); // origineel én correctie
+        prompt.Should().NotContain(new string('0', 9));
+    }
+
+    [Theory]
+    [InlineData("14-11-26 10.30 uur")]
+    [InlineData("10-10-2026 11.30")]
+    [InlineData("2026-11-14 10:30")]
+    [InlineData("01/01/27 09:30")]
+    [InlineData("9.00 10.30 11.00")]
+    [InlineData("09.00 10.30 11.00")]
+    [InlineData("00.00 10.30 11.00")]
+    public async Task Planninggegevens_InAlleProvidercontexten_BlijvenBehouden(string planning)
+    {
+        var client = new VasteClient("{}");
+        var kern = Maak(client);
+        var nummer = new string('0', 7); // synthetisch wedstrijdnummer, geen contactnummer
+        var invoer = planning + " wedstrijd " + nummer;
+        await kern.ClassificeerBerichtAsync(invoer, invoer, "trainer@voorbeeld.nl",
+            [new ClassificatieCorrectieVoorbeeld("buiten_scope", "herplan_verzoek", invoer, invoer)]);
+        await kern.DetecteerCorrectieAsync(invoer, invoer, "herplan_verzoek", invoer);
+        client.Berichten[0].Text.Should().Contain(invoer);
+        client.Berichten[1].Text.Should().Contain(invoer);
+        client.Berichten[3].Text.Should().Contain(invoer);
+    }
+
+    [Theory]
+    [InlineData("2026-11-14\n10:30", "2026-11-14 10:30")]
+    [InlineData("14/11/26\t9.00\u202811.30", "14/11/26 9.00 11.30")]
+    [InlineData("00.00\0 10.30\u202f11.00", "00.00 10.30 11.00")]
+    [InlineData("2026.11.14\r\n2026/11/15", "2026.11.14 2026/11/15")]
+    public async Task FewShotVoorbeeld_PlanningBlijftBehoudenNaNormalisatie(string invoer, string verwacht)
+    {
+        var client = new VasteClient("{}");
+        await Maak(client).ClassificeerBerichtAsync("neutrale vraag", "neutraal onderwerp", "trainer@voorbeeld.nl",
+            [new ClassificatieCorrectieVoorbeeld("buiten_scope", "herplan_verzoek", invoer, invoer)]);
+
+        client.Berichten[0].Text.Split("\"" + verwacht + "\"").Should().HaveCount(3);
+    }
+
+    public static IEnumerable<object[]> ContactOpBodyGrens()
+    {
+        foreach (var correctie in new[] { false, true })
+        {
+            yield return [correctie, new string('0', 10), 9, new string('0', 9)];
+            yield return [correctie, "+" + new string('0', 12), 8, "+" + new string('0', 7)];
+            yield return [correctie, "trainer@voorbeeld.nl", 7, "trainer"];
+            // A phone run can cross whitespace, including whitespace exactly at the cut.
+            yield return [correctie, new string('0', 3) + " " + new string('0', 7), 3, new string('0', 3)];
+            yield return [correctie, new string('0', 3) + new string(' ', 100_000) + new string('0', 7), 20, new string('0', 3)];
+            yield return [correctie, "trainer" + new string('x', 100_000) + "@allstars-fc.test", 7, "trainer"];
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(ContactOpBodyGrens))]
+    public async Task ProviderBodyGrens_ContactfragmentVervaltEnMarkeringBlijft(
+        bool correctie, string contact, int zichtbareTekens, string fragment)
+    {
+        var prefix = new string('x', BerichtBodyBegrenzing.MaxBodyTekens - zichtbareTekens - 1) + "\n";
+        var body = prefix + contact + " einde";
+
+        var providerBody = await LegProviderBodyVast(body, correctie);
+
+        providerBody.Should().NotContain(fragment).And.EndWith(BerichtBodyBegrenzing.AfkapMarkering);
+        providerBody.Should().Be(prefix + BerichtBodyBegrenzing.AfkapMarkering);
+        providerBody.Length.Should().BeLessThanOrEqualTo(
+            BerichtBodyBegrenzing.MaxBodyTekens + BerichtBodyBegrenzing.AfkapMarkering.Length);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProviderBodyGrens_EenEnormOnafgebrokenTokenVervalt(bool correctie)
+    {
+        var providerBody = await LegProviderBodyVast(new string('x', 1_000_000), correctie);
+
+        providerBody.Should().Be(BerichtBodyBegrenzing.AfkapMarkering);
+    }
+
+    [Theory]
+    [InlineData(false, "[nummer]")]
+    [InlineData(true, "[nummer]")]
+    [InlineData(false, "[e-mail]")]
+    [InlineData(true, "[e-mail]")]
+    public async Task ProviderBodyGrens_GeenGedeeltelijkeMaskering(bool correctie, string maskering)
+    {
+        var prefix = new string('x', BerichtBodyBegrenzing.MaxBodyTekens - 5) + "\n";
+
+        var providerBody = await LegProviderBodyVast(prefix + maskering + " einde", correctie);
+
+        providerBody.Should().Be(prefix + BerichtBodyBegrenzing.AfkapMarkering);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProviderBodyGrens_VolledigePlanningEnContactenBlijvenVerwerkt(bool correctie)
+    {
+        var planning = "14-11-26 10.30 uur; 2026-11-14; 00.15 00.30 00.45; wedstrijd " + new string('0', 9);
+        var prefix = planning + "\ntrainer@voorbeeld.nl\n" + new string('0', 10) + "\n";
+        var body = prefix + new string(' ', BerichtBodyBegrenzing.MaxBodyTekens - prefix.Length) + "\neinde";
+
+        var providerBody = await LegProviderBodyVast(body, correctie);
+
+        providerBody.Should().Contain(planning).And.Contain("[e-mail]").And.Contain("[nummer]")
+            .And.EndWith(BerichtBodyBegrenzing.AfkapMarkering);
+        providerBody.Should().NotContain("trainer@").And.NotContain(new string('0', 10));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProviderBodyGrens_GeenHalfSurrogaatpaar(bool correctie)
+    {
+        var prefix = new string('x', BerichtBodyBegrenzing.MaxBodyTekens - 2) + "\n";
+
+        var providerBody = await LegProviderBodyVast(prefix + "\U0001F600" + " einde", correctie);
+
+        providerBody.Should().Be(prefix + BerichtBodyBegrenzing.AfkapMarkering);
+        providerBody.Any(char.IsSurrogate).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProviderBodyGrens_GroeiendeMaskeringWordtNietGesplitst(bool correctie)
+    {
+        // Invalid synthetic syntax with a numeric TLD, not a real address/domain. The permissive
+        // contact matcher still masks it; this is shorter than its replacement and exercises cap 2.
+        var nul = new string('0', 1);
+        var ongeldigPatroon = nul + "@" + nul + "." + nul;
+        var prefix = new string('x', BerichtBodyBegrenzing.MaxBodyTekens - ongeldigPatroon.Length - 1) + "\n";
+
+        var providerBody = await LegProviderBodyVast(prefix + ongeldigPatroon, correctie);
+
+        providerBody.Should().Be(prefix + BerichtBodyBegrenzing.AfkapMarkering);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProviderBodyGrens_ExacteLimietZonderContactBlijftOngewijzigd(bool correctie)
+    {
+        var body = new string('x', BerichtBodyBegrenzing.MaxBodyTekens);
+
+        (await LegProviderBodyVast(body, correctie)).Should().Be(body);
+    }
+
+    private static async Task<string> LegProviderBodyVast(string body, bool correctie)
+    {
+        var client = new VasteClient("{}");
+        var kern = Maak(client);
+        if (correctie)
+            await kern.DetecteerCorrectieAsync(body, "Onderwerp", "buiten_scope", null);
+        else
+            await kern.ClassificeerBerichtAsync(body, "Onderwerp", "trainer@voorbeeld.nl");
+        client.Berichten.Should().HaveCount(2);
+        var prompt = client.Berichten.Single(bericht => bericht.Role == ChatRole.User).Text!;
+        const string kop = "Onderwerp: Onderwerp\n\n";
+        var start = prompt.IndexOf(kop, StringComparison.Ordinal) + kop.Length;
+        var eind = prompt.LastIndexOf("\n[/BERICHT-DATA-", StringComparison.Ordinal);
+        return prompt[start..eind];
+    }
+
     [Fact]
     public async Task Classificeer_SysteemPromptBegintMetDatumregelEnNoemtClubnaam()
     {
@@ -80,6 +342,20 @@ public class BerichtAiKernAanroepTests
     }
 
     [Fact]
+    public async Task Classificeer_VolledigeProviderberichtenBevattenGeenAfzenderidentiteitOfContactpatronen()
+    {
+        var client = new VasteClient("{}");
+        var nummer = string.Concat("06 ", "1234", "5678");
+
+        await Maak(client).ClassificeerBerichtAsync(
+            $"Bel {nummer} of mail trainer@voorbeeld.nl", "Mail trainer@voorbeeld.nl", "trainer@voorbeeld.nl");
+
+        var providerInvoer = string.Join("\n", client.Berichten.Select(bericht => bericht.Text));
+        providerInvoer.Should().NotContain("trainer@").And.NotContain("voorbeeld.nl").And.NotContain(string.Concat("1234", "5678"));
+        providerInvoer.Should().Contain("[e-mail]").And.Contain("[nummer]");
+    }
+
+    [Fact]
     public async Task Classificeer_OntbrekendeClubnaam_GooitDeFoutVanDeTier()
     {
         var client = new VasteClient("{}");
@@ -113,6 +389,21 @@ public class BerichtAiKernAanroepTests
         samenvatting.Should().Be("Bedoelde verplaatsen");
         client.Berichten[0].Text.Should().Contain("Databehandeling");
         client.Berichten[1].Text.Should().Contain("[BERICHT-DATA-");
+    }
+
+    [Fact]
+    public async Task DetecteerCorrectie_VolledigeProviderberichtenMaskerenContactpatronenOokInSamenvatting()
+    {
+        var client = new VasteClient("{\"isCorrectie\":false}");
+        var nummer = string.Concat("06 ", "1234", "5678");
+
+        await Maak(client).DetecteerCorrectieAsync(
+            $"Mail trainer@voorbeeld.nl en bel {nummer}", "Re: trainer@voorbeeld.nl", "herplan_verzoek",
+            $"trainer@voorbeeld.nl {nummer}");
+
+        var providerInvoer = string.Join("\n", client.Berichten.Select(bericht => bericht.Text));
+        providerInvoer.Should().NotContain("trainer@").And.NotContain("voorbeeld.nl").And.NotContain(string.Concat("1234", "5678"));
+        providerInvoer.Should().Contain("[e-mail]").And.Contain("[nummer]");
     }
 
     [Theory]
