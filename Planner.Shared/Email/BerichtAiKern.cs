@@ -135,16 +135,15 @@ public class BerichtAiKern
         """;
 
     /// <summary>
-    /// Bouwt de user-message voor classificatie: afzender, onderwerp en body staan samen in één
+    /// Bouwt de user-message voor classificatie: onderwerp en body staan samen in één
     /// gedelimiteerd datablok. Zonder die scheiding kon de body de systeeminstructies overrulen
     /// (prompt-injectie) en bijvoorbeeld een classificatie op een door de afzender gekozen team
-    /// forceren.
+    /// forceren. De afzenderidentiteit wordt weggelaten; contactpatronen in onderwerp en body worden gemaskeerd (#1809).
     /// </summary>
     public static string BouwClassificatieUserPrompt(string afzender, string subject, string body, string markerId, ILogger? log = null)
         => $"{DataMarkerStart(markerId)}\n"
-           + $"Van: {NeutraliseerDataMarkers(afzender)}\n"
-           + $"Onderwerp: {NeutraliseerDataMarkers(subject)}\n\n"
-           + $"{NeutraliseerDataMarkers(BerichtBodyBegrenzing.Kap(body, log))}\n"
+           + $"Onderwerp: {NeutraliseerDataMarkers(AiVeldSanering.MaskeerContactgegevens(subject))}\n\n"
+           + $"{NeutraliseerDataMarkers(BerichtBodyBegrenzing.VoorProvider(body, log))}\n"
            + DataMarkerEinde(markerId);
 
     /// <summary>
@@ -174,7 +173,8 @@ public class BerichtAiKern
         sb.AppendLine("Let extra op deze patronen — eerder is de classificatie hier fout gegaan:");
         foreach (var v in voorbeelden)
         {
-            sb.AppendLine(LeermomentInvoer.FewShotRegel(v.OrigineelType, v.JuistType, v.OrigineleSamenvatting, v.CorrectieSamenvatting));
+            sb.AppendLine(AiVeldSanering.MaskeerContactgegevens(LeermomentInvoer.FewShotRegel(
+                v.OrigineelType, v.JuistType, v.OrigineleSamenvatting, v.CorrectieSamenvatting)));
         }
         return sb.ToString();
     }
@@ -353,11 +353,11 @@ public class BerichtAiKern
 
         var userPrompt =
             $"Originele classificatie: {NeutraliseerDataMarkers(origineelType)}.\n"
-            + $"Originele samenvatting: {NeutraliseerDataMarkers(originaleSamenvatting ?? "(geen)")}.\n\n"
+            + $"Originele samenvatting: {NeutraliseerDataMarkers(AiVeldSanering.MaskeerContactgegevens(originaleSamenvatting ?? "(geen)"))}.\n\n"
             + "Reply:\n"
             + $"{DataMarkerStart(dataMarkerId)}\n"
-            + $"Onderwerp: {NeutraliseerDataMarkers(subject)}\n\n"
-            + $"{NeutraliseerDataMarkers(BerichtBodyBegrenzing.Kap(body, _logger))}\n"
+            + $"Onderwerp: {NeutraliseerDataMarkers(AiVeldSanering.MaskeerContactgegevens(subject))}\n\n"
+            + $"{NeutraliseerDataMarkers(BerichtBodyBegrenzing.VoorProvider(body, _logger))}\n"
             + DataMarkerEinde(dataMarkerId);
 
         var messages = new List<Microsoft.Extensions.AI.ChatMessage>

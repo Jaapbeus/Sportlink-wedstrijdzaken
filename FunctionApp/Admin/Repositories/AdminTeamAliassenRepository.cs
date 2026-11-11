@@ -107,7 +107,9 @@ internal static class AdminTeamAliassenRepository
     {
         using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(
-            "DELETE FROM [dbo].[TeamAliassen] WHERE [Id] = @Id AND [ClubCode] = @Cc", conn);
+            @"UPDATE [dbo].[TeamAliassen] SET [Status] = 'rejected', [mta_modified] = GETUTCDATE()
+              WHERE [Id] = @Id AND [ClubCode] = @Cc AND [Bron] = 'Sync';
+              DELETE FROM [dbo].[TeamAliassen] WHERE [Id] = @Id AND [ClubCode] = @Cc AND [Bron] <> 'Sync';", conn);
         cmd.Parameters.AddWithValue("@Id", id);
         cmd.Parameters.AddWithValue("@Cc", clubCode);
         return await cmd.ExecuteNonQueryAsync();

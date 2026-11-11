@@ -15,6 +15,7 @@ public static partial class AiVeldSanering
     public const int MaxTeamNaamLengte = 40;
     public const int MaxTegenstanderLengte = 60;
     public const int MaxSamenvattingLengte = 500;
+    public const int MaxOnderwerpLengte = 200;
 
     /// <summary>Generieke tekst in een antwoord als de teamnaam niet getoond mag worden.</summary>
     public const string GeneriekTeam = "het opgegeven team";
@@ -94,15 +95,124 @@ public static partial class AiVeldSanering
     public static string TegenstanderOfGeneriek(string? waarde, string generiek = GeneriekeTegenstander)
         => TegenstanderWeergave(waarde) ?? (string.IsNullOrWhiteSpace(waarde) ? waarde ?? "" : generiek);
 
+    /// <summary>Een afzendernaam die veilig als aanhef of koptekst kan worden getoond; ongeldige namen vervallen.</summary>
+    public static string? AfzenderNaamWeergave(string? waarde) => Weergavenaam(waarde, 80);
+
+    /// <summary>Onderwerpregel voor een uitgaand bericht: één veilige, begrensde regel of een generieke fallback.</summary>
+    public static string? OnderwerpWeergave(string? waarde)
+    {
+        if (waarde is null || waarde.Any(char.IsControl)) return null;
+        var tekst = NormaliseerWitruimte(waarde);
+        return tekst.Length is > 0 and <= MaxOnderwerpLengte && !BevatLinkOfMarkup(tekst) ? tekst : null;
+    }
+
+    [GeneratedRegex(@"[^\s@]+@[^\s@]+\.[^\s@]+", RegexOptions.CultureInvariant)]
+    private static partial Regex EmailPatroon();
+
+    // Preserve whole dates, but do not consume the first groups of a longer dotted/dashed number.
+    [GeneratedRegex(@"(?<datum>\b(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})\b(?![-/.]\d))|(?<![\p{L}\p{N}])(?<nummer>\+?\(?\d(?:[().\p{Zs}\-]*\d){8,14})(?![\p{L}\p{N}])", RegexOptions.CultureInvariant)]
+    private static partial Regex NummerPatroon();
+
+    // Inspect the complete numeric candidate before allowing planning syntax: a date/time prefix
+    // must not hide a longer number, including when letters surround that number.
+    [GeneratedRegex(@"\+?\(?\d(?:[()./\p{Zs}:\-]*\d)*\)?", RegexOptions.CultureInvariant)]
+    private static partial Regex ProviderNummerPatroon();
+
+    /// <summary>Maskeert contactpatronen voordat externe berichttekst naar de AI-provider gaat.</summary>
+    public static string MaskeerContactgegevens(string? tekst)
+    {
+        if (string.IsNullOrEmpty(tekst)) return tekst ?? "";
+        return NummerPatroon().Replace(EmailPatroon().Replace(tekst, "[e-mail]"), match =>
+        {
+            if (match.Groups["datum"].Success) return match.Value;
+            var nummer = match.Value;
+            var cijfers = new string(nummer.Where(char.IsDigit).ToArray());
+            // The 00 dialing prefix is followed by country-code digits, optionally after spaces.
+            // A dot immediately after 00 instead belongs to a clock time, such as a midnight time list.
+            var internationaal = nummer.StartsWith('+')
+                || (cijfers.Length >= 11 && nummer.StartsWith("00", StringComparison.Ordinal)
+                    && char.IsDigit(nummer[2..].TrimStart()[0]));
+            var nationaal = nummer.TrimStart('(').StartsWith('0') && cijfers.Length == 10;
+            return internationaal || nationaal ? "[nummer]" : nummer;
+        });
+    }
+
     /// <summary>Korte samenvatting uit het model: één regel, begrensd, zonder aanhalingstekens die een prompt kunnen doorbreken.</summary>
     public static string Samenvatting(string? waarde)
-        => Trace.TraceBuilder.Saneer(waarde, MaxSamenvattingLengte).Replace('"', '\'');
+        => ZonderDubbeleAanhalingstekens(Trace.TraceBuilder.Saneer(waarde, MaxSamenvattingLengte));
+
+    /// <summary>
+    /// Samenvatting uitsluitend voor providerinvoer: behoudt expliciete datums en tijden, maskeert
+    /// lange nummerreeksen en herkenbare contactpatronen, en hergebruikt de normalisatie en lengtekap.
+    /// Opslag/trace houden de striktere <see cref="Samenvatting"/>; reeds gemaskeerde opgeslagen inhoud
+    /// wordt niet gereconstrueerd.
+    /// </summary>
+    public static string ProviderSamenvatting(string? waarde)
+    {
+        // Controls and Unicode whitespace must not split a number before it is recognized.
+        var schoon = NormaliseerWitruimte(waarde);
+        schoon = EmailPatroon().Replace(schoon, "[e-mail]");
+        // The bounded contact matcher must not consume a prefix before the whole candidate is checked.
+        schoon = ProviderNummerPatroon().Replace(schoon, match =>
+            match.Value.Count(char.IsDigit) < 9 || IsExplicietePlanning(match.Value) ? match.Value : "[nummer]");
+        schoon = MaskeerContactgegevens(schoon);
+        if (schoon.Length > MaxSamenvattingLengte) schoon = schoon[..MaxSamenvattingLengte];
+        return ZonderDubbeleAanhalingstekens(schoon);
+    }
+
+    private static bool IsExplicietePlanning(string kandidaat)
+    {
+        string[] datumFormaten = ["yyyy-M-d", "yyyy/M/d", "yyyy.M.d", "d-M-yyyy", "d/M/yyyy",
+            "d.M.yyyy", "d-M-yy", "d/M/yy", "d.M.yy"];
+        string[] tijdFormaten = ["H:mm", "HH:mm", "H.mm", "HH.mm"];
+        return kandidaat.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).All(deel =>
+            DateOnly.TryParseExact(deel, datumFormaten, CultureInfo.InvariantCulture, DateTimeStyles.None, out _)
+            || TimeOnly.TryParseExact(deel, tijdFormaten, CultureInfo.InvariantCulture, DateTimeStyles.None, out _));
+    }
+
+    private static string ZonderDubbeleAanhalingstekens(string tekst) => tekst.Replace('"', '\'');
 
     /// <summary><see cref="Samenvatting"/>, maar <c>null</c> als er na het saneren niets overblijft.</summary>
     public static string? SamenvattingOfNull(string? waarde)
     {
         var schoon = Samenvatting(waarde);
         return schoon.Length == 0 ? null : schoon;
+    }
+
+    public const int MaxWaarschuwingLengte = 300;
+
+    /// <summary>
+    /// Waarschuwingstekst voor in een antwoord (#1809): één regel, begrensd, zonder markup, en zonder woorden die een
+    /// link of e-mailadres vormen. Bedoeld als laatste vangnet op de uiteindelijke uitvoer, ook als een deel van de
+    /// tekst uit modeluitvoer komt. Anders dan de naamvelden wordt er niet geweigerd maar gezuiverd, zodat een
+    /// legitieme planningswaarschuwing niet verdwijnt.
+    /// </summary>
+    public static string Waarschuwing(string? waarde)
+    {
+        var tekst = NormaliseerWitruimte(waarde);
+        if (tekst.Length == 0) return "";
+
+        var woorden = tekst
+            .Replace('<', ' ').Replace('>', ' ').Replace('`', ' ').Replace('{', ' ').Replace('}', ' ')
+            .Replace('[', ' ').Replace(']', ' ')
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => !(w.Contains("://", StringComparison.Ordinal)
+                          || w.StartsWith("www", StringComparison.OrdinalIgnoreCase)
+                          || w.Contains('@')));
+        var schoon = string.Join(' ', woorden);
+        return schoon.Length > MaxWaarschuwingLengte ? schoon[..MaxWaarschuwingLengte].TrimEnd() + "…" : schoon;
+    }
+
+    /// <summary>De gezuiverde waarschuwingen samengevoegd tot één tekst; lege waarschuwingen vallen weg.</summary>
+    public static string WaarschuwingenSamen(IEnumerable<string>? waarschuwingen)
+        => string.Join(" ", (waarschuwingen ?? []).Select(Waarschuwing).Where(w => w.Length > 0));
+
+    /// <summary>Veiligt waarschuwingen vóór directe API-serialisatie, zodat ook UI/API-uitvoer één regel blijft.</summary>
+    public static void SaneerWaarschuwingen(IList<string> waarschuwingen)
+    {
+        var schoon = waarschuwingen.Select(Waarschuwing).Where(w => w.Length > 0).ToArray();
+        waarschuwingen.Clear();
+        foreach (var waarschuwing in schoon) waarschuwingen.Add(waarschuwing);
     }
 
     private static string? Weergavenaam(string? waarde, int maxLengte)

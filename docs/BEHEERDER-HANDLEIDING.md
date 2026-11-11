@@ -1165,6 +1165,8 @@ Een alias wordt **nooit automatisch vertrouwd**. Pas nadat u hem op deze pagina 
 de schrijfwijze bij teamherkenning als volwaardige match. Zo kan een verkeerde gok van de AI zich
 niet vastzetten en steeds opnieuw naar hetzelfde verkeerde team wijzen.
 
+For a Sportlink-sync alias, **Blijvend afwijzen** preserves rejection after future synchronizations. Other alias origins use **Verwijderen** and are physically removed. Rejection disables that alias association; the canonical team name can still identify the team independently.
+
 ### Wat u op de pagina ziet
 
 | Kolom | Uitleg |
@@ -1274,7 +1276,7 @@ worden bijgewerkt.
 | `GET /api/beheer/teamaliassen?status=pending` | Aliassen ophalen, optioneel gefilterd op status |
 | `POST /api/beheer/teamaliassen` | Alias toevoegen (de knop *Alias toevoegen* en *Koppel aan team*) |
 | `PUT /api/beheer/teamaliassen/{id}/valideer` | Alias goedkeuren (`validated`) of afwijzen (`rejected`) |
-| `DELETE /api/beheer/teamaliassen/{id}` | Alias definitief verwijderen |
+| `DELETE /api/beheer/teamaliassen/{id}` | Persistently reject Sync aliases; physically delete other origins |
 | `GET /api/beheer/onbekende-teamteksten` | De wachtrij met onbekende teamteksten |
 | `PUT /api/beheer/onbekende-teamteksten/{id}/status` | Een wachtrijregel afhandelen, negeren of heropenen |
 | `GET /api/beheer/teams/keuzelijst` | De teams voor de keuzelijst bij het koppelen |
