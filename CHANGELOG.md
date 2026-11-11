@@ -21,6 +21,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ### Changed
 - De gedeelde HTML-generator voor de veldplanner is per verantwoordelijkheid in partial-bestanden opgesplitst; de publieke aanroepen en de gegenereerde browser- en e-mail-HTML blijven gelijk (zie issue #1807).
 - De fingerprint-, publieke titel-/diagnostiek- en foutclassificatiehelpers van `GitHubIssueReporter` staan in een eigen partial-bestand; de bestaande methoden en werking blijven gelijk (zie issue #1807).
+- De bestaande beheer-DTO's zijn per domein in modelbestanden gegroepeerd; JSON-contracten en type-inhoud zijn ongewijzigd (zie issue #1807).
 - Removed the unused API status service and placed existing shared-logic tests in `Planner.Shared.Tests` (see issue #1808).
 - Clarified the Postgres error-reporting adapter documentation while retaining its tier-specific egress and fingerprint rationale (see issue #1805).
 - Het reviewrondelimiet voor Codex en Claude Code (AGENTS.md en de automatische issue-beurt van de bot) is van twee naar drie rondes per PR gegaan; pas daarna beslist de eigenaar, zie issue #1835.
