@@ -1151,18 +1151,18 @@ components:
         IsForcedDryRun:
           type: boolean
           description: |
-            #994: true als de PUT/POST werd overgeslagen door de code-niveau forceDryRun-lock (een
-            mutatie waarvan de requestbody nog niet live bevestigd is, bijv. officials toewijzen) —
-            ONAFHANKELIJK van de club-instelling sportlinkDryRun (audit-resultaat "DryRunLocked").
-            Als dit true is, is IsDryRun ook altijd true.
+            #994: true als een expliciete code-niveau forceDryRun-lock de PUT/POST overslaat
+            (audit-resultaat "DryRunLocked"), onafhankelijk van sportlinkDryRun. De huidige
+            LiveBevestigd-flags staan op true: mutaties volgen nu de clubinstelling. IsForcedDryRun
+            blijft beschikbaar voor een toekomstige code-lock; dan is IsDryRun ook true.
         PublicMatchId:
           type: string
           nullable: true
           description: |
             #997: door Sportlink teruggegeven PublicMatchId van een NIEUW aangemaakte oefenwedstrijd
-            (POST .../clubmatch/ClubMatch) — null voor elke andere mutatie, en ook null zolang
-            IsForcedDryRun/IsDryRun de aanroep simuleerde (in de praktijk dus altijd null zolang de
-            ClubMatch-code-lock actief is).
+            (POST .../clubmatch/ClubMatch) — null voor elke andere mutatie en wanneer
+            IsForcedDryRun/IsDryRun de aanroep simuleerde. De huidige code-lock-flag is vrijgegeven;
+            dry-run volgt de clubinstelling sportlinkDryRun.
 
     SportlinkMatchChangeRequestResponse:
       type: object
@@ -1179,8 +1179,8 @@ components:
           nullable: true
           description: |
             ONBEVESTIGD — geparsed uit Sportlinks `ConfirmationNeeded`-veld, nooit met een
-            netwerktrace gezien. `null` zolang de code-lock actief is (in de praktijk altijd,
-            zie `SportlinkClubClient.UpdateMatchDetailsChangeRequestLiveBevestigd`).
+            netwerktrace gezien. De validatie is beschikbaar na een echte respons wanneer de
+            clubinstelling `sportlinkDryRun` uit staat; de huidige code-lock-flag is vrijgegeven.
           properties:
             ConfirmationNeeded:
               type: boolean
@@ -4769,11 +4769,10 @@ paths:
       operationId: putSportlinkOfficials
       summary: Officials (scheidsrechter/assistenten) toewijzen (#994, epic #986) — sinds #1319 live bevestigd
       description: |
-        **Sinds #1319 live bevestigd** (was scaffolding, altijd code-gelockt via een aparte
-        `forceDryRun`-lock, onafhankelijk van de club-instelling `sportlinkDryRun`): endpoint (`PUT
-        competition/match/official/MatchOfficialsAction`) en requestbody zijn met een echte
-        netwerktrace bevestigd te werken. De mutatie respecteert nu de gewone `sportlinkDryRun`-
-        instelling, net als `.../dressingrooms` en `.../field`. Zelfde volgorde als `.../dressingrooms`
+        De eigenaar heeft het endpoint na #1319 vrijgegeven; de huidige `LiveBevestigd`-flag staat
+        op `true`, zodat de mutatie de clubinstelling `sportlinkDryRun` volgt. De precieze
+        requestbody/positiewaarden blijven onbevestigde aannames; alleen de toewijzingsactie is
+        vrijgegeven. Er is geen aparte code-lock actief. Zelfde volgorde als `.../dressingrooms`
         (resolve → guard `SportlinkMutationSoort.Officials` → audit → mutatie), met een
         taakspecifieke responsparser: als één official een `ValidationDescription` heeft, wordt
         `IsSuccess=false` gezet ook al is de HTTP-status 200 ("opgeslagen met fouten" in Sportlink
@@ -4849,10 +4848,9 @@ paths:
         UITSLUITEND stap 1: er bestaat bewust geen endpoint, client-methode of UI-knop voor stap 2.
         Zelfde onderliggende Sportlink-endpoint als `.../field`
         (`PUT competition/match/UpdateMatchDetails`), maar met `MatchDate`/`StartTime`/`FacilityId`/
-        `MatchChangeRequestRemarks` overschreven in plaats van het veld. Was tot #1319 altijd
-        gesimuleerd via een aparte code-niveau `forceDryRun`-lock, onafhankelijk van de
-        club-instelling `sportlinkDryRun` — de eigenaar heeft die lock na een live netwerktrace
-        opgeheven; de mutatie respecteert nu de gewone `sportlinkDryRun`-instelling. Guard:
+        `MatchChangeRequestRemarks` overschreven in plaats van het veld. De huidige
+        `LiveBevestigd`-flag staat op `true`, dus de mutatie volgt `sportlinkDryRun`; er is geen
+        aparte code-lock actief. De payload- en responsdetails blijven onbevestigd. Guard:
         `SportlinkMutationSoort.DatumTijdAccommodatie` (uitsluitend
         `IsHomeMatch` + de generieke niet-afgelast/niet-concept-checks — geen specifieke
         `IsXxxAllowed`-vlag bestaat hiervoor bij Sportlink). `Toelichting` is verplicht.
@@ -4892,8 +4890,9 @@ paths:
       responses:
         '200':
           description: |
-            Diagnostiektrace (#1320) — Resultaat.Mutatie.IsSuccess kan alsnog false zijn; in de
-            praktijk altijd een gesimuleerd resultaat door de code-lock.
+            Diagnostiektrace (#1320) — Resultaat.Mutatie.IsSuccess kan alsnog false zijn. De route
+            volgt sportlinkDryRun: staat dry-run aan, dan is het resultaat gesimuleerd
+            (Resultaat.Mutatie.IsDryRun true); anders gaat stap 1 live naar Sportlink.
           content:
             application/json:
               schema:
@@ -5179,13 +5178,14 @@ paths:
     delete:
       tags: [sportlink]
       operationId: deleteSportlinkClubMatch
-      summary: Clubwedstrijd (oefenwedstrijd) verwijderen (#1440) — contract NIET live bevestigd, altijd dry-run
+      summary: Clubwedstrijd (oefenwedstrijd) verwijderen (#1440) — contract niet live bevestigd
       description: |
         Verwijdert een clubwedstrijd bij Sportlink via `DELETE competition/match/clubmatch/ClubMatchDelete?PublicMatchId=`.
         Methode, parameter en foutvorm komen uit Sportlinks publieke frontend-bundle en zijn **nooit live gezien**.
-        Daarom staat de aanroep hard op dry-run (`ClubMatchDeleteLiveBevestigd = false`), ongeacht de club-instelling
-        `sportlinkDryRun`: de respons heeft dan `IsDryRun` en `IsForcedDryRun` op `true` en Sportlink is niet aangeroepen
-        (wel de read-only `GET competition/match/Match` voor de guard). Volgorde: toggle + EgressGuard → huidige
+        De huidige `ClubMatchDeleteLiveBevestigd`-flag staat op `true`, zodat de mutatie de club-instelling
+        `sportlinkDryRun` volgt; er is geen aparte code-lock actief. Een dry-run zet `IsDryRun` aan; een
+        toekomstige expliciete code-lock kan `IsForcedDryRun` aanzetten (wel de read-only
+        `GET competition/match/Match` voor de guard). Volgorde: toggle + EgressGuard → huidige
         wedstrijd ophalen → `SportlinkMutationGuard` (`Verwijderen`: alleen bij expliciet `IsKernelMatch = false`
         én `IsHomeMatch`, anders 409) → audit "Pending" met het `PublicMatchId` → verwijderen (nooit automatisch
         herhaald) → audit voltooien. De Admin GUI biedt dit alleen aan op het resultaat van "Wedstrijd aanmaken".

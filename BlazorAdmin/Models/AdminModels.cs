@@ -14,15 +14,16 @@ public class SportlinkMutatieResultaatDto
     /// de aanroep is alleen gesimuleerd en gelogd.</summary>
     public bool IsDryRun { get; set; }
 
-    /// <summary>#994: true als de PUT/POST werd overgeslagen door de code-niveau forceDryRun-lock
-    /// (mutatie waarvan de requestbody nog niet live bevestigd is) — ONAFHANKELIJK van de
-    /// club-instelling sportlinkDryRun. Als dit true is, is IsDryRun ook altijd true.</summary>
+    /// <summary>#994: true als een expliciete code-niveau forceDryRun-lock de PUT/POST oversloeg
+    /// (audit-resultaat DryRunLocked), onafhankelijk van sportlinkDryRun. De huidige flags zijn
+    /// vrijgegeven; dit veld blijft beschikbaar voor een toekomstige code-lock. Als dit true is,
+    /// is IsDryRun ook true.</summary>
     public bool IsForcedDryRun { get; set; }
 
     /// <summary>#997: door Sportlink teruggegeven PublicMatchId van een NIEUW aangemaakte
-    /// oefenwedstrijd — null voor elke andere mutatie en ook null zolang IsForcedDryRun/IsDryRun
-    /// de aanroep simuleerde (in de praktijk dus altijd null zolang de ClubMatch-code-lock actief
-    /// is).</summary>
+    /// oefenwedstrijd — null voor elke andere mutatie en wanneer IsForcedDryRun/IsDryRun de
+    /// aanroep simuleerde. De huidige code-lock-flag is vrijgegeven; dry-run volgt de
+    /// clubinstelling sportlinkDryRun. IsForcedDryRun blijft beschikbaar voor een toekomstige lock.</summary>
     public string? PublicMatchId { get; set; }
 }
 

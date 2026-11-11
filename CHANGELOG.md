@@ -83,6 +83,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - De POST- en PUT-endpoints voor speeltijden verwerken alleen begrensde UTF-8-JSON-bodies (maximaal 1 MiB); ongeldige UTF-8/JSON geeft een vaste 400 en een te grote body een vaste 413, op beide databasetiers (zie issue #1811).
 - De instelling `FetchSchedule` accepteert alleen een uitvoerbare zesvelden-CRON van maximaal 50 tekens. Lege waarden en schema's zonder volgend uitvoermoment geven een 400 zonder de ingevoerde waarde in de foutmelding; een weggelaten veld blijft ongewijzigd (zie issue #1811).
 - Normale synchronisatie gebruikt alleen de vaste Sportlink-dataservice als bron; een afwijkende opgeslagen basis-URL stopt vóór uitgaand verkeer. De Sportlink-leesclients volgen geen redirects. Het real-time leespad van de SQL Server-planner volgt dezelfde regel (zie issue #1811).
+- Sportlink Club-clientconstructie vereist nu expliciet een `isDryRun`-delegate en weigert `null`, zodat ontbrekende configuratie niet stilzwijgend live-mutaties activeert (#1804).
+- Verouderde Sportlink-opmerkingen, documentatie (ook over het verwijder- en aanmaakpad) en OpenAPI-beschrijvingen over een actieve code-lock zijn bijgewerkt, ook de 200-respons van het wijzigingsverzoek; de documentatie noemt nu dat de audit bij een live aanmaak alleen de placeholder `NIEUW` vastlegt en niet het echte `PublicMatchId`. De DPO-vragen en veldcontracten blijven onbevestigd (#1804).
 
 ## [3.16.0.0] — 2026-11-10
 
