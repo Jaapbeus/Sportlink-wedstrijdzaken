@@ -23,7 +23,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Clubcodevalidatie vereist nu het volledige invoerformaat en clubcodes worden veilig gemaakt vóór logging op beide databasetiers (zie issue #1811).
 
 ### Breaking
-- `/api/health` exposeert niet langer database-, schema-, migratie-, TLS-, sync- of tierdiagnostiek. Deploy- en readinessvelden zijn geaggregeerd; details zijn beschikbaar via admin-only `GET /api/beheer/health` (#1811). Dit is de API 4.0.0.0-contractgrens.
+- `/api/health` exposeert niet langer database-, schema-, migratie-, TLS-, sync- of tierdiagnostiek. Deploy- en readinessvelden zijn geaggregeerd; details zijn beschikbaar via admin-only `GET /api/beheer/health` (#1811). Dit is een contractwijziging; op eigenaarsbesluit (#1811) zonder MAJOR-versiesprong.
 
 ### Changed
 - Nieuwe workflow `beurt-invariant.yml` bewaakt elke 15 minuten dat het `turn:`-label overeenkomt met de volgende beurt uit de nieuwste overdrachtscomment (issue én gekoppelde PR, Nederlands en Engels) en signaleert afwijkingen met één comment, zonder labels te wijzigen; het gedeprecieerde label `status: waiting-codex` is uit `labels.json` verwijderd en `CONTRIBUTING.md` legt de overdrachtsvolgorde vast; de bewaking beoordeelt elk open issue met een `turn:`-label, een open gekoppelde PR of ten minste één comment, ongeacht de leeftijd van de overdracht, en meldt geen ontbrekend `turn:`-label als de nieuwste overdracht een PR noemt die niet meer open is (#1858).
