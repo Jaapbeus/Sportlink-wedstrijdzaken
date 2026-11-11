@@ -33,7 +33,10 @@ public sealed record SportlinkClubMatchDefaults(
     string? SubFacilityId,
     [property: JsonConverter(typeof(FlexibleStringJsonConverter))] string? FieldSize,
     [property: JsonConverter(typeof(FlexibleStringJsonConverter))] string? FieldOffset,
-    string? AgeClassCode);
+    string? AgeClassCode,
+    // #1871: live (2026-11-11) is dit de "geen team"-sentinel; Sportlinks eigen formulier gebruikt hem voor
+    // een vrije-tekst-tegenstander. Achteraan en optioneel, zodat bestaande aanroepen blijven werken.
+    string? PublicAwayTeamId = null);
 
 /// <summary>Eén team uit <c>PickListsTeams.ClubTeams</c>. <c>Id</c> is het <c>T…</c>-ID dat
 /// <c>ClubMatch</c> als <c>PublicHomeTeamId</c> verwacht — niet de numerieke dataservice-teamcode.</summary>
