@@ -4726,7 +4726,7 @@
             }
           },
           "207": {
-            "description": "Gedeeltelijk mislukt — één of meer deelstappen zijn niet geslaagd en\n`LastSyncTimestamp` is niet bijgewerkt (#1081, #1779).\n",
+            "description": "Gedeeltelijk mislukt — één of meer deelstappen zijn niet geslaagd (ook een\nontbrekende `sportlinkApiUrl`, fase `configuratie`) en `LastSyncTimestamp` is niet\nbijgewerkt (#1081, #1779). Zelfde body als `/postgres/sync-matches`.\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -4761,7 +4761,8 @@
                       ]
                     },
                     "melding": {
-                      "type": "string"
+                      "type": "string",
+                      "example": "Eén of meer deelstappen zijn mislukt; lastsynctimestamp is niet bijgewerkt. Zie het functielog voor de betrokken fase(s)."
                     }
                   }
                 }

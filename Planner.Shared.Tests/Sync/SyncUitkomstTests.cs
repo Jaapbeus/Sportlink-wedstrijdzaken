@@ -39,8 +39,65 @@ public class SyncUitkomstTests
         var ex = u.NaarUitzondering();
 
         ex.Fases.Should().Equal("matchdetails");
-        ex.Message.Should().Contain("matchdetails");
+        ex.Message.Should().Be(SyncGedeeltelijkMisluktException.Bericht);
         ex.Should().BeAssignableTo<InvalidOperationException>();
+    }
+
+    // ── Review P3: één fingerprint per foutsoort, niet per faseset ─────────────────────────────
+    private static Exception GooiVanuitDezelfdePlek(params string[] fases)
+    {
+        var u = new SyncUitkomst();
+        foreach (var fase in fases)
+            u.Registreer(fase, true);
+        try
+        {
+            u.GooiAlsMislukt();
+            throw new InvalidOperationException("niet verwacht: GooiAlsMislukt gooide niet");
+        }
+        catch (SyncGedeeltelijkMisluktException ex)
+        {
+            return ex;
+        }
+    }
+
+    [Fact]
+    public void Fingerprint_IsGelijkVoorVerschillendeFasesets()
+    {
+        // ComputeFingerprint hasht type + bericht + aanroepplek. Stond de faselijst in het bericht,
+        // dan opende elke combinatie (tot 31) een eigen publiek issue.
+        const string prefix = "Planner.Shared.Tests.";
+        var alleenMatchdetails = GooiVanuitDezelfdePlek(SyncUitkomst.FaseMatchdetails);
+        var teamsEnMatchdetails = GooiVanuitDezelfdePlek(SyncUitkomst.FaseTeams, SyncUitkomst.FaseMatchdetails);
+
+        GitHubIssueReporter.ComputeFingerprint(alleenMatchdetails, prefix)
+            .Should().Be(GitHubIssueReporter.ComputeFingerprint(teamsEnMatchdetails, prefix));
+        ((SyncGedeeltelijkMisluktException)teamsEnMatchdetails).Fases.Should().Equal("teams", "matchdetails");
+    }
+
+    [Fact]
+    public void GooiAlsMislukt_ZonderMislukteFase_GooitNiet()
+    {
+        var act = () => new SyncUitkomst().GooiAlsMislukt();
+        act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void GooiAlsMislukt_MetMislukteFase_GooitGetypeerdeFout()
+    {
+        var act = () => SyncUitkomst.Configuratie().GooiAlsMislukt();
+        act.Should().Throw<SyncGedeeltelijkMisluktException>()
+            .Which.Fases.Should().Equal("configuratie");
+    }
+
+    [Fact]
+    public void Uitzondering_KopieertFases_LatereRegistratieWijzigtHemNiet()
+    {
+        var u = new SyncUitkomst();
+        u.Registreer(SyncUitkomst.FaseTeams, true);
+        var ex = u.NaarUitzondering();
+        u.Registreer(SyncUitkomst.FaseUitslagen, true);
+
+        ex.Fases.Should().Equal("teams");
     }
 
     [Fact]

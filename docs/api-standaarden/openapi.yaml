@@ -3705,8 +3705,9 @@ paths:
                 example: "Sync completed. WeekOffset range: -1 to 42."
         '207':
           description: |
-            Gedeeltelijk mislukt — één of meer deelstappen zijn niet geslaagd en
-            `LastSyncTimestamp` is niet bijgewerkt (#1081, #1779).
+            Gedeeltelijk mislukt — één of meer deelstappen zijn niet geslaagd (ook een
+            ontbrekende `sportlinkApiUrl`, fase `configuratie`) en `LastSyncTimestamp` is niet
+            bijgewerkt (#1081, #1779). Zelfde body als `/postgres/sync-matches`.
           content:
             application/json:
               schema:
@@ -3729,6 +3730,7 @@ paths:
                     example: ["matchdetails"]
                   melding:
                     type: string
+                    example: "Eén of meer deelstappen zijn mislukt; lastsynctimestamp is niet bijgewerkt. Zie het functielog voor de betrokken fase(s)."
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':

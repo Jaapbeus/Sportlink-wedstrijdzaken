@@ -311,7 +311,7 @@ Authorization: Bearer <entra-token>
 | `403 Forbidden` | beide | Geldig token, maar zonder de `admin`-rol |
 | `500` | beide | Onverwachte fout; zie het functielog |
 
-Beide tiers antwoorden `200`, `207`, `401`, `403` of `500`. `mislukteFases` bevat vaste labels (`teams`, `programma`, `uitslagen`, `matchdetails`, `configuratie`). Tijdelijke fouten (HTTP 5xx, 429, time-out) op de Sportlink-dataservice worden per aanroep maximaal driemaal geprobeerd voordat een fase als mislukt telt (#1779).
+Beide tiers antwoorden `200`, `207`, `401`, `403` of `500`, met dezelfde `207`-body (gedeeld via `SyncMatchesAntwoordCore`). `mislukteFases` bevat vaste labels (`teams`, `programma`, `uitslagen`, `matchdetails`, `configuratie`); een ontbrekende `sportlinkApiUrl` geeft op beide tiers `207` met fase `configuratie`. Tijdelijke fouten (HTTP 5xx, 429, time-out) op alle dataservice-aanroepen van de sync worden per aanroep maximaal driemaal geprobeerd, binnen een gedeeld budget van zes extra pogingen per run, voordat een fase als mislukt telt (#1779).
 
 ---
 

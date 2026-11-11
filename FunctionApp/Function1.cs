@@ -36,21 +36,13 @@ namespace SportlinkFunction
                 await WaitForDatabaseAsync(log);
                 await AppSettings.LoadSettingsAsync(log);
 
-                string? sportlinkApiUrl = AppSettings.GetSetting("sportlinkApiUrl");
-                if (string.IsNullOrEmpty(sportlinkApiUrl))
-                {
-                    log.LogError("sportlinkApiUrl is not configured.");
-                    return;
-                }
-
-                string sportlinkClientId = $"clientId={AppSettings.GetSetting("sportlinkClientId")}";
                 int toWeekOffset = await SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
                 log.LogInformation("Sync range: weekOffset -1 to {ToWeekOffset} (end of season)", toWeekOffset);
-                var uitkomst = await SportlinkSyncPipeline.RunSyncAsync(-1, toWeekOffset, sportlinkApiUrl, sportlinkClientId, log);
-                // #1779 (pariteit met de Postgres-tier, #1081): een run met mislukte fases mag niet
-                // als Success eindigen en meldt zich als getypeerde fout met faseoverzicht.
-                if (uitkomst.GedeeltelijkMislukt)
-                    throw uitkomst.NaarUitzondering();
+                var uitkomst = await RunConfiguredSyncAsync(-1, toWeekOffset, log);
+                // #1779 (pariteit met de Postgres-tier, #1081): een run met mislukte fases (ook een
+                // ontbrekende sportlinkApiUrl) mag niet als Success eindigen en meldt zich als
+                // getypeerde fout met faseoverzicht.
+                uitkomst.GooiAlsMislukt();
             }
             catch (Exception ex)
             {
@@ -95,14 +87,6 @@ namespace SportlinkFunction
                     // endpoint en niet bij de generieke 500 van de wrapper.
                     try
                     {
-                        string? sportlinkApiUrl = AppSettings.GetSetting("sportlinkApiUrl");
-                        if (string.IsNullOrEmpty(sportlinkApiUrl))
-                        {
-                            log.LogError("sportlinkApiUrl is not configured.");
-                            return new StatusCodeResult(500);
-                        }
-                        string sportlinkClientId = $"clientId={AppSettings.GetSetting("sportlinkClientId")}";
-
                         bool   isReset    = string.Equals(req.Query["reset"], "true", StringComparison.OrdinalIgnoreCase);
                         string? seasonParam = req.Query["season"];
 
@@ -120,22 +104,11 @@ namespace SportlinkFunction
                             log.LogInformation("Default mode: weekOffset {From} to {To}", fromWeekOffset, toWeekOffset);
                         }
 
-                        var uitkomst = await SportlinkSyncPipeline.RunSyncAsync(fromWeekOffset, toWeekOffset, sportlinkApiUrl, sportlinkClientId, log);
-                        if (uitkomst.GedeeltelijkMislukt)
-                        {
-                            // #1779: pariteit met PostgresSyncMatchesHttp (#1081): 207 i.p.v. 200.
-                            return new ObjectResult(new
-                            {
-                                status = "gedeeltelijk mislukt",
-                                weekOffsetFrom = fromWeekOffset,
-                                weekOffsetTo = toWeekOffset,
-                                mislukteFases = uitkomst.MislukteFases,
-                                melding = "Eén of meer deelstappen zijn mislukt; LastSyncTimestamp is niet bijgewerkt. "
-                                          + "Zie het functielog voor de betrokken fase(s)."
-                            })
-                            { StatusCode = StatusCodes.Status207MultiStatus };
-                        }
-                        return new OkObjectResult($"Sync completed. WeekOffset range: {fromWeekOffset} to {toWeekOffset}.");
+                        // #1779: pariteit met PostgresSyncMatchesHttp (#1081): 207 i.p.v. 200 bij mislukte
+                        // fases, ook bij een ontbrekende sportlinkApiUrl (fase "configuratie").
+                        var uitkomst = await RunConfiguredSyncAsync(fromWeekOffset, toWeekOffset, log);
+                        return SyncMatchesAntwoordCore.Bepaal(uitkomst, fromWeekOffset, toWeekOffset,
+                            $"Sync completed. WeekOffset range: {fromWeekOffset} to {toWeekOffset}.");
                     }
                     catch (Exception ex)
                     {
@@ -146,13 +119,23 @@ namespace SportlinkFunction
                 });
         }
 
-        // Entry-point voor SyncJobProcessor (#1138, voorheen AdminSyncFunction's fire-and-forget
-        // Task.Run). Retourneert partialFailure zodat de aanroeper de job-status correct kan zetten.
-        // Internal (#1676): de enige aanroeper, SyncJobProcessor, controleert EgressGuard vooraf.
-        internal static async Task<SyncUitkomst> RunSyncAsync(
-            int fromWeekOffset, int toWeekOffset,
-            string sportlinkApiUrl, string sportlinkClientId,
-            ILogger log)
-            => await SportlinkSyncPipeline.RunSyncAsync(fromWeekOffset, toWeekOffset, sportlinkApiUrl, sportlinkClientId, log);
+        /// <summary>
+        /// Gemeenschappelijk startpunt van timer, <c>SyncMatchesHttp</c> en <c>SyncJobProcessor</c>
+        /// (#1138), pariteit met <c>SyncFunction.RunConfiguredSyncAsync</c> op de Postgres-tier (#1779):
+        /// een ontbrekende <c>sportlinkApiUrl</c> is de mislukte fase "configuratie", geen stille return.
+        /// Internal (#1676): elke aanroeper controleert EgressGuard vooraf. Verwacht geladen AppSettings.
+        /// </summary>
+        internal static async Task<SyncUitkomst> RunConfiguredSyncAsync(int fromWeekOffset, int toWeekOffset, ILogger log)
+        {
+            string? sportlinkApiUrl = AppSettings.GetSetting("sportlinkApiUrl");
+            if (string.IsNullOrEmpty(sportlinkApiUrl))
+            {
+                log.LogError("sportlinkApiUrl is not configured.");
+                return SyncUitkomst.Configuratie();
+            }
+
+            string sportlinkClientId = $"clientId={AppSettings.GetSetting("sportlinkClientId")}";
+            return await SportlinkSyncPipeline.RunSyncAsync(fromWeekOffset, toWeekOffset, sportlinkApiUrl, sportlinkClientId, log);
+        }
     }
 }

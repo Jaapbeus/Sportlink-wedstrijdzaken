@@ -23,21 +23,23 @@ internal static class SportlinkSyncPipeline
         ILogger log)
     {
         var uitkomst = new SyncUitkomst();
+        // #1779: één herhaalbudget voor alle dataservice-GET's van deze run (begrenst een brede storing).
+        var budget = new HerhaalBudget();
         var clubCode = AppSettings.GetSetting("clubCode");
         if (string.IsNullOrWhiteSpace(clubCode))
             throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings — sync kan niet doorgaan zonder ClubCode.");
 
         var teamsFailed = uitkomst.Registreer(SyncUitkomst.FaseTeams,
-            await FetchTeamsPhaseAsync(sportlinkApiUrl, sportlinkClientId, clubCode, log));
+            await FetchTeamsPhaseAsync(sportlinkApiUrl, sportlinkClientId, clubCode, budget, log));
         var programmaFailed = uitkomst.Registreer(SyncUitkomst.FaseProgramma,
-            await FetchProgrammaPhaseAsync(fromWeekOffset, toWeekOffset, sportlinkApiUrl, sportlinkClientId, clubCode, log));
+            await FetchProgrammaPhaseAsync(fromWeekOffset, toWeekOffset, sportlinkApiUrl, sportlinkClientId, clubCode, budget, log));
         var uitslagenFailed = uitkomst.Registreer(SyncUitkomst.FaseUitslagen,
-            await FetchUitslagenPhaseAsync(fromWeekOffset, sportlinkApiUrl, sportlinkClientId, clubCode, log));
+            await FetchUitslagenPhaseAsync(fromWeekOffset, sportlinkApiUrl, sportlinkClientId, clubCode, budget, log));
         var matchesFailed = programmaFailed || uitslagenFailed;
         // #1547: een gespeelde wedstrijd komt alleen nog via /uitslagen binnen, zonder veld/datum/team.
         await SportlinkStagingRepository.VulUitslagRijenAanUitHisAsync(clubCode, log);
         uitkomst.Registreer(SyncUitkomst.FaseMatchdetails,
-            await FetchMatchDetailsPhaseAsync(sportlinkApiUrl, sportlinkClientId, clubCode, log));
+            await FetchMatchDetailsPhaseAsync(sportlinkApiUrl, sportlinkClientId, clubCode, budget, log));
 
         await MergeAllToHisAsync(log);
 
@@ -58,12 +60,12 @@ internal static class SportlinkSyncPipeline
         return uitkomst;
     }
 
-    private static async Task<bool> FetchTeamsPhaseAsync(string sportlinkApiUrl, string sportlinkClientId, string clubCode, ILogger log)
+    private static async Task<bool> FetchTeamsPhaseAsync(string sportlinkApiUrl, string sportlinkClientId, string clubCode, HerhaalBudget budget, ILogger log)
     {
         await CreateStagingTable.ExecuteAsync("teams");
         try
         {
-            var volledig = await FetchAndStoreTeamsAsync($"{sportlinkApiUrl}/teams?{sportlinkClientId}", clubCode, log);
+            var volledig = await FetchAndStoreTeamsAsync($"{sportlinkApiUrl}/teams?{sportlinkClientId}", clubCode, log, budget: budget);
             log.LogInformation("TEAMS - GET endpoint=/teams");
             // #1558 R1-F1: een lege of ontbrekende respons is geen geldige snapshot; dat telt als
             // mislukte fetch, zodat reconciliatie niet alle teams als verdwenen markeert.
@@ -76,7 +78,7 @@ internal static class SportlinkSyncPipeline
         }
     }
 
-    private static async Task<bool> FetchProgrammaPhaseAsync(int fromWeekOffset, int toWeekOffset, string sportlinkApiUrl, string sportlinkClientId, string clubCode, ILogger log)
+    private static async Task<bool> FetchProgrammaPhaseAsync(int fromWeekOffset, int toWeekOffset, string sportlinkApiUrl, string sportlinkClientId, string clubCode, HerhaalBudget budget, ILogger log)
     {
         await CreateStagingTable.ExecuteAsync("matches");
 
@@ -87,7 +89,7 @@ internal static class SportlinkSyncPipeline
             try
             {
                 await FetchAndStoreProgrammaAsync(
-                    $"{sportlinkApiUrl}/programma?{sportlinkClientId}&weekoffset={weekOffset}", clubCode, log);
+                    $"{sportlinkApiUrl}/programma?{sportlinkClientId}&weekoffset={weekOffset}", clubCode, log, budget: budget);
                 log.LogInformation("MATCHES/PROGRAMMA - GET weekOffset={WeekOffset}", weekOffset);
             }
             catch (Exception ex)
@@ -99,7 +101,7 @@ internal static class SportlinkSyncPipeline
         return partialFailure;
     }
 
-    private static async Task<bool> FetchUitslagenPhaseAsync(int fromWeekOffset, string sportlinkApiUrl, string sportlinkClientId, string clubCode, ILogger log)
+    private static async Task<bool> FetchUitslagenPhaseAsync(int fromWeekOffset, string sportlinkApiUrl, string sportlinkClientId, string clubCode, HerhaalBudget budget, ILogger log)
     {
         int scoreFrom = Math.Min(fromWeekOffset, -2);
         log.LogInformation("MATCHES/UITSLAGEN - Fetching weekOffset {From} to 0", scoreFrom);
@@ -109,7 +111,7 @@ internal static class SportlinkSyncPipeline
             try
             {
                 await FetchAndStoreUitslagenAsync(
-                    $"{sportlinkApiUrl}/uitslagen?{sportlinkClientId}&weekoffset={weekOffset}", clubCode, log);
+                    $"{sportlinkApiUrl}/uitslagen?{sportlinkClientId}&weekoffset={weekOffset}", clubCode, log, budget: budget);
                 log.LogInformation("MATCHES/UITSLAGEN - GET weekOffset={WeekOffset}", weekOffset);
             }
             catch (Exception ex)
@@ -121,7 +123,7 @@ internal static class SportlinkSyncPipeline
         return partialFailure;
     }
 
-    private static async Task<bool> FetchMatchDetailsPhaseAsync(string sportlinkApiUrl, string sportlinkClientId, string clubCode, ILogger log)
+    private static async Task<bool> FetchMatchDetailsPhaseAsync(string sportlinkApiUrl, string sportlinkClientId, string clubCode, HerhaalBudget budget, ILogger log)
     {
         await CreateStagingTable.ExecuteAsync("matchdetails");
         var wedstrijdcodes = await SportlinkStagingRepository.GetWedstrijdcodesAsync();
@@ -130,7 +132,7 @@ internal static class SportlinkSyncPipeline
         {
             if (await FetchAndStoreMatchDetailsAsync(
                     $"{sportlinkApiUrl}/wedstrijd-informatie?{sportlinkClientId}&wedstrijdcode={wedstrijdcode}",
-                    clubCode, log))
+                    clubCode, log, budget: budget))
             {
                 mdOk++;
                 log.LogInformation("MATCHDETAILS - GET wedstrijdcode={Code}", wedstrijdcode);
@@ -186,11 +188,13 @@ internal static class SportlinkSyncPipeline
         }
     }
 
-    internal static async Task<bool> FetchAndStoreTeamsAsync(string apiUrl, string clubCode, ILogger log, HttpClient? httpClient = null)
+    // #1779: alle dataservice-GET's lopen via SportlinkDataserviceHttp (begrensde herhaling op
+    // 5xx/429/time-out, runbreed budget); zonder budget (tests) geldt alleen de grens per aanroep.
+    internal static async Task<bool> FetchAndStoreTeamsAsync(string apiUrl, string clubCode, ILogger log,
+        HttpClient? httpClient = null, TimeSpan? herhaalWachttijd = null, HerhaalBudget? budget = null)
     {
-        var response = await (httpClient ?? _client).GetAsync(apiUrl);
-        response.EnsureSuccessStatusCode();
-        var json  = await response.Content.ReadAsStringAsync();
+        var json  = await SportlinkDataserviceHttp.HaalTekstAsync(
+            httpClient ?? _client, apiUrl, budget ?? new HerhaalBudget(), "TEAMS", log, herhaalWachttijd);
         var teams = JsonConvert.DeserializeObject<List<Team>>(json, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
         if (teams is { Count: > 0 })
         {
@@ -204,11 +208,11 @@ internal static class SportlinkSyncPipeline
         return global::Planner.Shared.Sync.ReconciliatieOndergrens.IsVolledigeTeamsSnapshot(teams?.Count);
     }
 
-    private static async Task FetchAndStoreProgrammaAsync(string apiUrl, string clubCode, ILogger log)
+    internal static async Task FetchAndStoreProgrammaAsync(string apiUrl, string clubCode, ILogger log,
+        HttpClient? httpClient = null, TimeSpan? herhaalWachttijd = null, HerhaalBudget? budget = null)
     {
-        var response = await _client.GetAsync(apiUrl);
-        response.EnsureSuccessStatusCode();
-        var json    = await response.Content.ReadAsStringAsync();
+        var json    = await SportlinkDataserviceHttp.HaalTekstAsync(
+            httpClient ?? _client, apiUrl, budget ?? new HerhaalBudget(), "MATCHES/PROGRAMMA", log, herhaalWachttijd);
         var matches = JsonConvert.DeserializeObject<List<Match>>(json, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
         if (matches is { Count: > 0 })
         {
@@ -217,11 +221,11 @@ internal static class SportlinkSyncPipeline
         }
     }
 
-    private static async Task FetchAndStoreUitslagenAsync(string apiUrl, string clubCode, ILogger log)
+    internal static async Task FetchAndStoreUitslagenAsync(string apiUrl, string clubCode, ILogger log,
+        HttpClient? httpClient = null, TimeSpan? herhaalWachttijd = null, HerhaalBudget? budget = null)
     {
-        var response = await _client.GetAsync(apiUrl);
-        response.EnsureSuccessStatusCode();
-        var json    = await response.Content.ReadAsStringAsync();
+        var json    = await SportlinkDataserviceHttp.HaalTekstAsync(
+            httpClient ?? _client, apiUrl, budget ?? new HerhaalBudget(), "MATCHES/UITSLAGEN", log, herhaalWachttijd);
         var matches = JsonConvert.DeserializeObject<List<Match>>(json, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
         if (matches is { Count: > 0 })
         {
@@ -232,18 +236,14 @@ internal static class SportlinkSyncPipeline
 
     // Retourneert true bij succes, false bij elke fout — zodat de caller partialFailure kan bijhouden. (#464)
     // httpClient is optioneel; standaard wordt de static _client gebruikt. (#476 — testbaar via inject)
-    internal static async Task<bool> FetchAndStoreMatchDetailsAsync(string apiUrl, string clubCode, ILogger log, HttpClient? httpClient = null, TimeSpan? herhaalWachttijd = null)
+    internal static async Task<bool> FetchAndStoreMatchDetailsAsync(string apiUrl, string clubCode, ILogger log,
+        HttpClient? httpClient = null, TimeSpan? herhaalWachttijd = null, HerhaalBudget? budget = null)
     {
-        var client = httpClient ?? _client;
         try
         {
             // #1779: begrensde herhaling op 5xx/429/time-out (idempotente GET); logt nooit de URL.
-            using var response = await SportlinkDataserviceHttp.GetMetHerhalingAsync(
-                client, apiUrl,
-                reden => log.LogWarning("MATCHDETAILS - tijdelijke fout ({Reden}); opnieuw proberen", reden),
-                herhaalWachttijd);
-            response.EnsureSuccessStatusCode();
-            var json = await response.Content.ReadAsStringAsync();
+            var json = await SportlinkDataserviceHttp.HaalTekstAsync(
+                httpClient ?? _client, apiUrl, budget ?? new HerhaalBudget(), "MATCHDETAILS", log, herhaalWachttijd);
             try
             {
                 var details = JsonConvert.DeserializeObject<MatchDetails>(json, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });

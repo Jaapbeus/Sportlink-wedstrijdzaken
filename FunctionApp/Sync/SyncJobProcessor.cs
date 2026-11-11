@@ -51,17 +51,9 @@ public static class SyncJobProcessor
             await WaitForDatabaseAsync(log);
             await AppSettings.LoadSettingsAsync(log);
 
-            var sportlinkApiUrl = AppSettings.GetSetting("sportlinkApiUrl");
-            if (string.IsNullOrEmpty(sportlinkApiUrl))
-            {
-                await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false,
-                    errorMessage: "sportlinkApiUrl niet geconfigureerd");
-                return;
-            }
-            var sportlinkClientId = $"clientId={AppSettings.GetSetting("sportlinkClientId")}";
-
-            var uitkomst = await FetchAndStoreApiData.RunSyncAsync(
-                job.WeekOffsetFrom, job.WeekOffsetTo, sportlinkApiUrl, sportlinkClientId, log);
+            // #1779: een ontbrekende sportlinkApiUrl wordt de mislukte fase "configuratie" (pariteit
+            // met de Postgres-tier); de jobfoutmelding noemt die fase.
+            var uitkomst = await FetchAndStoreApiData.RunConfiguredSyncAsync(job.WeekOffsetFrom, job.WeekOffsetTo, log);
             if (uitkomst.GedeeltelijkMislukt)
             {
                 log.LogWarning("SyncJobProcessor: job {JobId} gedeeltelijk mislukt", job.JobId);

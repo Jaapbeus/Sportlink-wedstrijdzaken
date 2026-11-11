@@ -43,6 +43,16 @@ public sealed class SyncUitkomst
 
     /// <summary>Getypeerde uitzondering voor de timer-/HTTP-paden (#1081, #1779).</summary>
     public SyncGedeeltelijkMisluktException NaarUitzondering() => new(_mislukteFases);
+
+    /// <summary>
+    /// Timerpad van beide tiers (#1081, #1779): een run met mislukte fases mag niet als Success
+    /// eindigen. Alle werk is dan al gedaan; de uitzondering markeert alleen de invocatie.
+    /// </summary>
+    public void GooiAlsMislukt()
+    {
+        if (GedeeltelijkMislukt)
+            throw NaarUitzondering();
+    }
 }
 
 /// <summary>
@@ -54,10 +64,18 @@ public sealed class SyncGedeeltelijkMisluktException : InvalidOperationException
 {
     public IReadOnlyList<string> Fases { get; }
 
+    /// <summary>
+    /// Bewust een vast bericht zonder faselijst: de fingerprint van de foutrapportage hasht type +
+    /// bericht, en één fingerprint per faseset zou per combinatie een eigen publiek issue openen
+    /// (#1779). De fases staan in <see cref="Fases"/> en in het diagnostiekblok.
+    /// </summary>
+    public const string Bericht =
+        "Synchronisatie gedeeltelijk mislukt — zie het faseoverzicht en de voorgaande logregels. "
+        + "De laatste-sync-tijd is bewust niet bijgewerkt.";
+
     public SyncGedeeltelijkMisluktException(IReadOnlyList<string> fases)
-        : base("Synchronisatie gedeeltelijk mislukt (fases: " + string.Join(", ", fases)
-               + ") — zie de voorgaande logregels voor details. De laatste-sync-tijd is bewust niet bijgewerkt.")
+        : base(Bericht)
     {
-        Fases = fases;
+        Fases = fases.ToArray();
     }
 }

@@ -48,8 +48,7 @@ public static class SyncFunction
             // leidt niet tot een herhaalde run van vijf minuten.
             // #1779: getypeerde uitzondering met faseoverzicht, zodat de foutrapportage een eigen
             // categorie toont in plaats van "Configuratie/status".
-            if (uitkomst.GedeeltelijkMislukt)
-                throw uitkomst.NaarUitzondering();
+            uitkomst.GooiAlsMislukt();
         }
         catch (Exception ex)
         {
@@ -119,24 +118,11 @@ public static class SyncFunction
                         log.LogInformation("Default mode: weekOffset {From} to {To}", fromWeekOffset, toWeekOffset);
                     }
 
+                    // #1081: 200 OK zou hier "klaar" betekenen terwijl lastsynctimestamp bewust niet is
+                    // bijgewerkt; 207 maakt het verschil zichtbaar. Gedeeld met de SQL Server-tier (#1779).
                     var uitkomst = await RunConfiguredSyncAsync(fromWeekOffset, toWeekOffset, log);
-                    if (uitkomst.GedeeltelijkMislukt)
-                    {
-                        // #1081: 200 OK zou hier "klaar" betekenen terwijl lastsynctimestamp bewust niet is
-                        // bijgewerkt. 207 maakt het verschil zichtbaar zonder de geslaagde deelstappen weg
-                        // te gooien.
-                        return new ObjectResult(new
-                        {
-                            status = "gedeeltelijk mislukt",
-                            weekOffsetFrom = fromWeekOffset,
-                            weekOffsetTo = toWeekOffset,
-                            mislukteFases = uitkomst.MislukteFases,
-                            melding = "Eén of meer deelstappen zijn mislukt; lastsynctimestamp is niet bijgewerkt. "
-                                      + "Zie het functielog voor de betrokken fase(s)."
-                        })
-                        { StatusCode = StatusCodes.Status207MultiStatus };
-                    }
-                    return new OkObjectResult($"Sync voltooid. WeekOffset-bereik: {fromWeekOffset} tot {toWeekOffset}.");
+                    return SyncMatchesAntwoordCore.Bepaal(uitkomst, fromWeekOffset, toWeekOffset,
+                        $"Sync voltooid. WeekOffset-bereik: {fromWeekOffset} tot {toWeekOffset}.");
                 }
                 catch (Exception ex)
                 {
