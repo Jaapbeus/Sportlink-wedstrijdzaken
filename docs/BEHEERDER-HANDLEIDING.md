@@ -1701,6 +1701,11 @@ app en welk sjabloon is gekozen. Voor berichten die buiten scope vielen is de tr
 reden). De trace blijft permanent bewaard, ook nadat het bericht zelf na 90 dagen uit het log is
 verdwenen; een regel zonder de knop heeft geen trace (berichten van vóór deze functie).
 
+Na drie mislukte verwerkingspogingen krijgt een bericht de status **Fout** en het Outlook-label
+*Geen AI antwoord* (labelen wordt geprobeerd, maar een tijdelijke Graph-fout kan dat verhinderen).
+Er is geen antwoord naar de afzender gestuurd. Zoek de foutmelding op in het e-maillog en handel het
+bericht handmatig af.
+
 ### Onzekere antwoorden en de zekerheidspoort (#1568)
 
 Is het systeem niet zeker van een antwoord — het eigen team is niet herkend, meerdere teams komen in aanmerking,

@@ -6,14 +6,13 @@ using FunctionApp.Postgres.Infrastructure;
 using FunctionApp.Postgres.Monitoring;
 using FunctionApp.Postgres.Sportlink;
 using FunctionApp.Postgres.TeamResolution;
+using SportlinkFunction.AiComposition;
 using Microsoft.Azure.Functions.Worker.Builder;
 using Planner.Endpoints.Instellingen;
-using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
-using OpenAI.Chat;
 using Planner.Shared.Integrations.SportlinkClub;
 
 // #891: minimale host-bootstrap voor de Postgres-tier — bewust géén 1-op-1-kopie van
@@ -61,17 +60,7 @@ if (!string.IsNullOrWhiteSpace(tenantId)
 // vertaald (#889). Zelfde patroon als FunctionApp/Program.cs: EgressGuard (#857) houdt dit
 // onvoorwaardelijk ongeregistreerd buiten productie, ook als OpenAiApiKey lokaal geconfigureerd is.
 var openAiApiKey = Environment.GetEnvironmentVariable("OpenAiApiKey");
-if (!string.IsNullOrWhiteSpace(openAiApiKey) && EgressGuard.ExternalIntegrationsAllowed())
-{
-    // Fallback is puur een provider-model-identifier — geen club-specifieke waarde, dus toegestaan.
-    const string defaultAiModelName = "gpt-4o-mini";
-    var aiModelName = Environment.GetEnvironmentVariable("AiModelName");
-    if (string.IsNullOrWhiteSpace(aiModelName)) aiModelName = defaultAiModelName;
-
-    builder.Services.AddSingleton<IChatClient>(
-        new ChatClient(aiModelName, new System.ClientModel.ApiKeyCredential(openAiApiKey))
-            .AsIChatClient());
-}
+OpenAiChatClientRegistration.Register(builder.Services, openAiApiKey, Environment.GetEnvironmentVariable("AiModelName"), EgressGuard.ExternalIntegrationsAllowed());
 
 // Sportlink Club API client (#991, #998): read-only Match API + token-refresh per functionele rol.
 // EgressGuard (#857): eigen if-blok, losgekoppeld van de OpenAiApiKey-check hierboven — dit is een

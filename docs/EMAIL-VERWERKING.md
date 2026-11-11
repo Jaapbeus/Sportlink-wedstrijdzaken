@@ -52,13 +52,16 @@ Postgres-definities staan in `Database.Postgres/migrations/`.
 
 ## Verwerkingsstroom (overzicht)
 
-De verwerking heeft twee fasen. Dat is geen implementatiedetail: in fase 1 blijft de database
-slapen, zodat een inbox met alleen niet-planningsmail geen Azure SQL-kosten en geen wektijd kost.
-De keerzijde is dat de idempotentie-check (§1d) pas in **fase 2** kan draaien — een bericht dat al
-definitief is afgehandeld kost dus nog wél een AI-classificatie.
+De verwerking heeft twee fasen. Voor een batch die na de voorfilters geclassificeerd wordt, laadt
+fase 1 eerst de goedgekeurde few-shot-voorbeelden via de bestaande database-/instellingenroute. De
+database kan daardoor al vóór de AI-aanroep wakker worden; de volledige verwerkingslus en
+idempotentie-check (§1d) blijven in fase 2. Een lege of vooraf volledig gefilterde inbox raakt de
+database nog steeds niet. Een succesvol geladen lege voorbeeldset is geldig. Als de bron niet
+beschikbaar is, stopt de poll vóór classificatie en de buiten-scope-mutaties; de bestaande
+database-noodmail met uitval-throttle meldt de storing.
 
 ```
-FASE 1 — Graph API + AI, database blijft slapen
+FASE 1 — Graph API, few-shot-context en AI
 ────────────────────────────────────────────────────────────────────────────────
 De 10 OUDSTE ongelezen berichten uit de inbox (Graph: top=10, orderby receivedDateTime)
         │
@@ -72,7 +75,10 @@ De 10 OUDSTE ongelezen berichten uit de inbox (Graph: top=10, orderby receivedDa
 └──────────────────────────────────────────────────────────────────────────────┘
         │
         ▼
-   AI-classificatie (BerichtAiService)
+   Goedgekeurde few-shots laden (maximaal 20; database wake/settings-route)
+        │  laadfout → stoppen vóór AI/label/gelezen; bestaande database-noodmail
+        ▼
+   AI-classificatie (BerichtAiService, met de geladen few-shots)
         │
         ├─ BuitenScope ──────→ label "Geen AI antwoord" + mark as read → STOP
         │                      (géén rij in planner.EmailVerwerking)
@@ -80,9 +86,9 @@ De 10 OUDSTE ongelezen berichten uit de inbox (Graph: top=10, orderby receivedDa
         └─ Overige types ─────→ door naar fase 2
         │
         ▼
-   Alles buiten scope én geen classificatiefouten? → STOP, database blijft slapen
+   Alles buiten scope én geen classificatiefouten? → STOP, fase 2 overslaan
 
-FASE 2 — database wordt gewekt
+FASE 2 — databaseverwerking
 ────────────────────────────────────────────────────────────────────────────────
    WaitForDatabaseAsync + AppSettings laden
         │  niet bereikbaar → eenmalig noodmail naar de mailbox → STOP
@@ -104,12 +110,6 @@ FASE 2 — database wordt gewekt
 │    → UpdateReplyStatus (IsReplyOpOnsAntwoord=1, ReplyOpVerwerkingId)          │
 │    → DetecteerCorrectieAsync: is dit een correctie op de classificatie?       │
 │       → ja: INSERT ClassificatieCorrectie (status: te beoordelen)             │
-└──────────────────────────────────────────────────────────────────────────────┘
-        │
-        ▼
-┌─ Few-shot herclassificatie (#323) ───────────────────────────────────────────┐
-│  Zijn er gevalideerde leermomenten? → herclassificeer met few-shot voorbeelden │
-│  Levert dat BuitenScope op → status BuitenScope + label, géén antwoord (#712)  │
 └──────────────────────────────────────────────────────────────────────────────┘
         │
         ▼
@@ -338,12 +338,11 @@ voortgang met ongelezen eigen noodmeldingen is apart uitgesteld onder issue #185
 
 | Wanneer | Rij in `planner.EmailVerwerking`? |
 |---|---|
-| BuitenScope bij de eerste classificatie (fase 1) | Nee — de database blijft slapen |
-| BuitenScope pas ná few-shot herclassificatie (fase 2) | Ja — status `BuitenScope` (#712) |
+| BuitenScope bij de eerste classificatie met few-shot-context (fase 1) | Nee — fase 2 wordt overgeslagen |
 
-Het tweede geval bestaat omdat de herclassificatie met leermomenten alsnog "buiten scope" kan
-opleveren. Zonder die afhandeling ging er tóch een automatisch antwoord uit, puur afhankelijk van
-of er gevalideerde leermomenten in de database stonden.
+De few-shot-context wordt vóór de eerste classificatie toegepast. Er volgt geen tweede classificatie
+met dezelfde voorbeelden; reply-correctiedetectie en het opslaan van nieuwe, nog te beoordelen
+leermomenten blijven in fase 2.
 
 ### 1e. Zekerheidspoort — onzeker antwoord gaat ter review (#1568 deel D)
 
@@ -438,8 +437,9 @@ bestaande rij hergebruikt en de verwerking opnieuw uitgevoerd.
 > terugvalpad meedoen voor rijen van vóór de migratie.
 
 `planner.EmailVerwerking.Pogingen` houdt bij hoe vaak dat is gebeurd. Na drie pogingen geeft de
-verwerking op: status `Fout` met de melding dat er is opgegeven, bericht als gelezen gemarkeerd, en
-een foutregel in de log. Dat is nodig omdat de poll de tien **oudste** ongelezen berichten pakt —
+verwerking op: status `Fout` met de melding dat er is opgegeven, best-effort het Outlook-label
+*Geen AI antwoord*, bericht als gelezen gemarkeerd, en een foutregel in de log. De coördinator
+pakt het bericht daarna handmatig op via het e-maillog. Dat is nodig omdat de poll de tien **oudste** ongelezen berichten pakt —
 zonder die grens zouden tien blijvend falende berichten alle nieuwe post tegenhouden en bij elke
 poll opnieuw AI-kosten maken.
 
@@ -1026,7 +1026,10 @@ afzender **geen** bericht. De verwerking legt vast:
 - status `Fout` in `planner.EmailVerwerking`, met een gesaniteerde foutmelding (e-mailadressen
   verwijderd, afgekapt op 1000 tekens)
 - een foutregel in de log met alleen het `MessageId` — nooit onderwerp, adres of body (AVG #210)
-- het bericht blijft **ongelezen** en komt de volgende poll terug (zie §1d, max 3 pogingen)
+- het bericht blijft **ongelezen** en komt de volgende poll terug (zie §1d, max 3 pogingen). Na
+  de derde mislukte poging krijgt het de status `Fout`, wordt *Geen AI antwoord* best-effort als
+  Outlook-label gezet en wordt het bericht als gelezen gemarkeerd; de coördinator volgt het op via
+  het e-maillog.
 
 > `BerichtResponseGenerator.BouwFoutAntwoord` bestaat wel, maar wordt door geen enkele
 > productiecode aangeroepen. Een eerdere versie van dit document beschreef die tekst als
@@ -1327,7 +1330,7 @@ code of SQL van laten leren. De lus:
 | **Alias aanmaken** (`POST /api/beheer/teamaliassen`) | Bron `CoordinatorCorrectie`, direct `validated`. De sleutel komt uitsluitend uit `TeamNaamNormalisatie`. Bestaat de sleutel al voor een ander team → `409`; herkoppelen gebeurt alleen als de beheerder dat expliciet aangeeft. Audit: `AangemaaktDoor` (object-ID), `AangemaaktDoorNaam` (momentopname), `AangemaaktOp` (UTC), `HerkomstVerwerkingId`, `Reden`; valideren/afwijzen legt `BeoordeeldDoor(Naam)`/`BeoordeeldOp` vast. Alles uit het Easy Auth-principal, nooit uit de body, geen e-mailadres. |
 | **Wachtrij onbekende teamteksten** (`planner.OnbekendeTeamTekst`) | De processor schrijft na elke verwerking elke onbekende teamtekst die de vormguard `ZietEruitAlsTeamlabel` passeert (kort, alleen letters/cijfers/spatie/`-`/`/`/`.`/`+`, hoogstens twee tokens met letters, minstens één cijfer; ook de genormaliseerde sleutel — zinnen en namen vallen af; gesaneerd, afgekapt op 80 tekens, geen mailbody) als upsert op (club, genormaliseerde tekst): aantal, eerst/laatst gezien, laatste verwerking (geen FK). Een retry telt niet dubbel. Een fout bij het schrijven laat de verwerking nooit falen. Een alias met dezelfde sleutel zet de open regel automatisch op `afgehandeld`; een afgehandelde regel die terugkomt gaat weer open, een genegeerde blijft genegeerd. Regels die 90 dagen niet meer zijn gezien worden door de e-mail-cleanup verwijderd. |
 | **Admin-leermoment** (`POST /api/beheer/leermomenten`) | Herkomst `Admin`, direct gevalideerd, zonder reply-paar (`OrigineleVerwerkingId`/`CorrectionVerwerkingId` zijn `NULL`; `HerkomstVerwerkingId` is een los getal zonder FK, zodat de retentie-DELETE van de verwerking (#424) nooit blokkeert of meeneemt). De samenvatting (max 500) gaat door `TraceBuilder.Saneer` — dezelfde PII-arme sanering als de trace, geen tweede sanitizer. **Permanent**: de cleanup (`sp_CleanupClassificatieCorrectie`, `sp_CleanupEmailVerwerking` fase 2a, en `PostgresCleanupProcedures`) raakt alleen herkomst `Reply`. |
-| **Few-shot** | `HaalVoorbeeldenOpAsync` neemt alle gevalideerde, niet-afgewezen leermomenten mee (limiet 20); admin-voorbeelden staan eerst. Een admin-leermoment staat in de prompt als `Samenvatting "…" → is een <type>.` (of "was geclassificeerd als X, maar was eigenlijk Y" als het oorspronkelijke type bekend is). |
+| **Few-shot** | Vóór fase-1-classificatie laadt `HaalVoorbeeldenOpAsync` alle gevalideerde, niet-afgewezen leermomenten (limiet 20); admin-voorbeelden staan eerst. De provider krijgt beide samenvattingen na `ProviderSamenvatting`-maskering. Een admin-leermoment staat in de prompt als `Samenvatting "…" → is een <type>.` (of "was geclassificeerd als X, maar was eigenlijk Y" als het oorspronkelijke type bekend is). |
 | **Tester-pariteit** | De tester classificeert met dezelfde leermomenten als de processor (de trace meldt het aantal in de stap `leermomenten`) en schrijft niets. De enige uitzondering: is de teamlijst van de gekozen club nog helemaal leeg (bijvoorbeeld een democlub die nooit gesynchroniseerd is), dan bouwt de tester hem eenmalig op — anders resolvet niets. Een gevulde lijst blijft onaangeroerd; de nachtelijke sync en de processor houden hem actueel. |
 
 **Beperking:** het verwijderen van een alias laat geen auditregel achter in de tabel (de rij is weg); wie het
@@ -1399,8 +1402,8 @@ gaan via een apart pad naar dezelfde provider; die registerrij staat in [FEEDBAC
 * **Provider: OpenAI, rechtstreeks via de OpenAI-API** (geen Azure OpenAI). Vastgelegd in `Program.cs`
   van beide tiers: een `OpenAI.Chat.ChatClient`, aangeboden als `IChatClient`. De code stelt geen eigen
   endpoint of regio in; het standaardendpoint van de SDK geldt.
-* **Model: configuratie.** App setting `AiModelName`; is die leeg, dan geldt de terugvalwaarde in
-  `Program.cs`. Welk model een installatie gebruikt, staat dus in haar configuratie, niet in dit document.
+* **Model: configuratie.** App setting `AiModelName`; zonder een ingevulde model-ID wordt `IChatClient`
+  niet geregistreerd. De e-mailpoll stopt dan vóór de databasefase en logt een begrensde melding.
 * **Sleutel:** app setting `OpenAiApiKey`.
 * **Alleen waar uitgaande integraties zijn toegestaan.** `IChatClient` wordt alleen geregistreerd als
   `OpenAiApiKey` gevuld is én `EgressGuard.ExternalIntegrationsAllowed()` dat toestaat (#857). Die
@@ -1414,9 +1417,8 @@ gaan via een apart pad naar dezelfde provider; die registerrij staat in [FEEDBAC
 
 | # | Aanroep | Wanneer | Terug van de provider |
 |---|---|---|---|
-| 1 | Classificatie (`ClassificeerBerichtAsync`) | Fase 1, voor elk ongelezen bericht dat de voorfilters passeert | JSON: type, datum(s), aanvangstijd, dagdeel, gewenste datum, teamnaam, leeftijdscategorie, tegenstander, samenvatting, namens wie, KNVB-notitie, heel veld |
-| 2 | Herclassificatie met leermomenten (zelfde methode, met voorbeelden) | Fase 2, alleen als de club gevalideerde leermomenten heeft | Als 1 |
-| 3 | Correctiedetectie (`DetecteerCorrectieAsync`) | Fase 2, alleen bij een reply op een eerder door ons beantwoord bericht (zelfde `ConversationId`) | JSON: is het een correctie, afgeleid type, samenvatting |
+| 1 | Classificatie (`ClassificeerBerichtAsync`) | Fase 1, voor elk ongelezen bericht dat de voorfilters passeert; gevalideerde few-shots worden in dezelfde aanroep gebruikt | JSON: type, datum(s), aanvangstijd, dagdeel, gewenste datum, teamnaam, leeftijdscategorie, tegenstander, samenvatting, namens wie, KNVB-notitie, heel veld |
+| 2 | Correctiedetectie (`DetecteerCorrectieAsync`) | Fase 2, alleen bij een reply op een eerder door ons beantwoord bericht (zelfde `ConversationId`) | JSON: is het een correctie, afgeleid type, samenvatting |
 | 4 | E-mailtester (`EmailTestFunction`, dry-run, rol `admin`) | Op verzoek van een beheerder | Als 1; de tester slaat niets op |
 
 Het antwoord aan de afzender schrijft de AI niet: dat komt uit de sjablonen van §2, gevuld met

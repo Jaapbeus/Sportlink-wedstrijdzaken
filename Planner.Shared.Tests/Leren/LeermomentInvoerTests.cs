@@ -60,6 +60,18 @@ public class LeermomentInvoerTests
     public void FewShotRegel_GeanonimiseerdeReplyRij_BlijftInDeBestaandeVorm()
         => LeermomentInvoer.FewShotRegel("BeschikbaarheidCheck", "HerplanVerzoek", null, null)
             .Should().Contain("Correctie:");
+
+    [Fact]
+    public void FewShotRegel_MaskeertBeideSamenvattingenMetDeProviderSanitizer()
+    {
+        var regel = LeermomentInvoer.FewShotRegel(
+            "BuitenScope", "HerplanVerzoek",
+            "Vraag van trainer@voorbeeld.nl over een wedstrijd",
+            "Correctie via trainer@voorbeeld.nl: verzoek is verplaatsen");
+
+        regel.Should().NotContain("trainer@voorbeeld.nl").And.Contain("[e-mail]");
+        regel.Split("[e-mail]").Length.Should().Be(3, "beide summaryvelden worden afzonderlijk gemaskeerd");
+    }
 }
 
 public class LerenAanroeperTests

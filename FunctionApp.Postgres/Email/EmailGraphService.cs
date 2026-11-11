@@ -119,27 +119,15 @@ public sealed class EmailGraphService : IEmailGraphService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Fout bij ophalen van ongelezen emails uit coordinator-mailbox");
+            throw;
         }
 
         return resultaat;
     }
 
-    public async Task SetCategoriesAsync(string messageId, params string[] categories)
-    {
-        try
-        {
-            await _graphClient.Users[_mailbox]
-                .Messages[messageId]
-                .PatchAsync(new Message { Categories = categories.ToList() });
-
-            _logger.LogInformation("Email {MessageId} gemarkeerd met categorie(en) {Categorieen}",
-                messageId, string.Join(", ", categories));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Fout bij zetten van categorie op email {MessageId}", messageId);
-        }
-    }
+    public Task SetCategoriesAsync(string messageId, params string[] categories)
+        => SportlinkFunction.Email.GraphMailboxMutations.SetCategoriesAsync(
+            _graphClient, _logger, _mailbox, messageId, categories);
 
     // Per categorienaam onthouden — met één gedeelde vlag zou de tweede categorie
     // (bijv. 'Handmatige planning') nooit worden aangemaakt.
@@ -190,21 +178,9 @@ public sealed class EmailGraphService : IEmailGraphService
             : CategoryColor.Preset0;
     }
 
-    public async Task MarkAsReadAsync(string messageId)
-    {
-        try
-        {
-            await _graphClient.Users[_mailbox]
-                .Messages[messageId]
-                .PatchAsync(new Message { IsRead = true });
-
-            _logger.LogInformation("Email {MessageId} gemarkeerd als gelezen", messageId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Fout bij markeren van email {MessageId} als gelezen", messageId);
-        }
-    }
+    public Task MarkAsReadAsync(string messageId)
+        => SportlinkFunction.Email.GraphMailboxMutations.MarkAsReadAsync(
+            _graphClient, _logger, _mailbox, messageId);
 
     /// <param name="bcc">Optionele BCC-adressen. Op deze tier altijd null in de praktijk — zie
     /// <see cref="EmailBijlage"/>'s klassekop.</param>
