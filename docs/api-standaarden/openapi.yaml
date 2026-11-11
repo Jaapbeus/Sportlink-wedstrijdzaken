@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.16.0.15
+  version: 3.16.0.17
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -202,7 +202,7 @@ components:
           example: "ok"
         version:
           type: string
-          example: "3.16.0.15"
+          example: "3.16.0.17"
         database:
           type: string
           description: Database connection status. "unconfigured" returns HTTP 503.
@@ -235,7 +235,7 @@ components:
           example: "ok"
         version:
           type: string
-          example: "3.16.0.15"
+          example: "3.16.0.17"
         timestamp:
           type: string
           format: date-time
