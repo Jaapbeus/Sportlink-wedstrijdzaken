@@ -225,6 +225,62 @@ public class AutoPlanServiceIntegrationTests : IDisposable
     }
 
     [PostgresFact]
+    public async Task PlannerPreview_QuarterTeamCanApplyASelectedHalfLane()
+    {
+        await using var conn = await OpstellingAsync();
+        await ExecAsync(conn, "UPDATE public.speeltijden SET veldafmeting = 0.25 WHERE clubcode = @club AND leeftijd = 'JO13'", ("club", Club));
+        await ZetWedstrijdAsync(conn, 9500113, "ALLSTARS JO13-1", null, null);
+        var preview = await AutoPlanService.AutoPlanAsync(ConnectionString,
+            new AutoPlanRequest { Datum = Zaterdag.ToString("yyyy-MM-dd") }, Club, NullLogger.Instance);
+        var planned = preview.Wedstrijden.Single(w => w.WedstrijdCode == 9500113);
+        planned.OptimaalVeldNummer.Should().NotBeNull();
+        planned.OptimaalTijd.Should().NotBeNullOrWhiteSpace();
+
+        var applied = await AutoPlanService.AutoPlanToepassenAsync(ConnectionString,
+            new AutoPlanToepassenRequest
+            {
+                Datum = Zaterdag.ToString("yyyy-MM-dd"),
+                Toewijzingen = [new AutoPlanToewijzing
+                {
+                    WedstrijdCode = planned.WedstrijdCode, HuidigeVeld = planned.HuidigeVeld,
+                    HuidigeTijd = planned.HuidigeTijd, VeldNummer = planned.OptimaalVeldNummer,
+                    VeldSubpositie = "A", Tijd = planned.OptimaalTijd
+                }]
+            }, Club, NullLogger.Instance);
+
+        applied.Bijgewerkt.Should().Be(1);
+        (await MatchFieldAsync(conn, 9500113)).Should().EndWith(" A");
+    }
+
+    [PostgresFact]
+    public async Task PlannerPreview_HalfTeamCanApplyASelectedQuarterLane()
+    {
+        await using var conn = await OpstellingAsync();
+        await ExecAsync(conn, "UPDATE public.speeltijden SET veldafmeting = 0.5 WHERE clubcode = @club AND leeftijd = 'JO15'", ("club", Club));
+        await ZetWedstrijdAsync(conn, 9500114, "ALLSTARS JO15-1", null, null);
+        var preview = await AutoPlanService.AutoPlanAsync(ConnectionString,
+            new AutoPlanRequest { Datum = Zaterdag.ToString("yyyy-MM-dd") }, Club, NullLogger.Instance);
+        var planned = preview.Wedstrijden.Single(w => w.WedstrijdCode == 9500114);
+        planned.OptimaalVeldNummer.Should().NotBeNull();
+        planned.OptimaalTijd.Should().NotBeNullOrWhiteSpace();
+
+        var applied = await AutoPlanService.AutoPlanToepassenAsync(ConnectionString,
+            new AutoPlanToepassenRequest
+            {
+                Datum = Zaterdag.ToString("yyyy-MM-dd"),
+                Toewijzingen = [new AutoPlanToewijzing
+                {
+                    WedstrijdCode = planned.WedstrijdCode, HuidigeVeld = planned.HuidigeVeld,
+                    HuidigeTijd = planned.HuidigeTijd, VeldNummer = planned.OptimaalVeldNummer,
+                    VeldSubpositie = "A1", Tijd = planned.OptimaalTijd
+                }]
+            }, Club, NullLogger.Instance);
+
+        applied.Bijgewerkt.Should().Be(1);
+        (await MatchFieldAsync(conn, 9500114)).Should().EndWith(" A1");
+    }
+
+    [PostgresFact]
     public async Task ExactApply_RetainsSourceSecondsWhenDisplayedMinuteIsUnchanged()
     {
         await using var conn = await OpstellingAsync();

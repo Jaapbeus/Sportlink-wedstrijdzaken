@@ -22,7 +22,7 @@ public static class AutoPlanToepassenEndpointCore
         }
         catch (AutoPlanApplyForbiddenException ex)
         {
-            return new ObjectResult(new { error = ex.Message }) { StatusCode = 403 };
+            return Verboden(ex.Message);
         }
         catch (InvalidOperationException ex) when (invalidOperationIsBadRequest)
         {
@@ -30,4 +30,7 @@ public static class AutoPlanToepassenEndpointCore
             return new BadRequestObjectResult(new { error = ex.Message });
         }
     }
+
+    public static ObjectResult Verboden(string? reden = null) =>
+        new(new { error = reden ?? new AutoPlanApplyForbiddenException().Message }) { StatusCode = 403 };
 }

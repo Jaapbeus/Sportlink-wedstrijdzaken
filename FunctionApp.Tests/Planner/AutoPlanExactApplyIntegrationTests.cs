@@ -90,6 +90,50 @@ public class AutoPlanExactApplyIntegrationTests
     }
 
     [SqlServerFact]
+    public async Task PlannerPreview_QuarterTeamCanApplyASelectedHalfLane()
+    {
+        await SetupAsync();
+        await AddMatchAsync(9802013, "ALLSTARS JO13-1");
+        try
+        {
+            var preview = await AutoPlanService.AutoPlanAsync(
+                new AutoPlanRequest { Datum = Date }, Club, NullLogger.Instance);
+            var planned = preview.Wedstrijden.Single(w => w.WedstrijdCode == 9802013);
+            planned.OptimaalVeldNummer.Should().NotBeNull();
+            planned.OptimaalTijd.Should().NotBeNullOrWhiteSpace();
+
+            var apply = await ApplyAsync(Choice(9802013, planned.OptimaalVeldNummer, "A",
+                planned.OptimaalTijd, planned.HuidigeVeld, planned.HuidigeTijd));
+
+            apply.Bijgewerkt.Should().Be(1);
+            (await FieldAsync(9802013)).Should().EndWith(" A");
+        }
+        finally { await CleanupAsync(); }
+    }
+
+    [SqlServerFact]
+    public async Task PlannerPreview_HalfTeamCanApplyASelectedQuarterLane()
+    {
+        await SetupAsync();
+        await AddMatchAsync(9802014, "ALLSTARS JO15-1");
+        try
+        {
+            var preview = await AutoPlanService.AutoPlanAsync(
+                new AutoPlanRequest { Datum = Date }, Club, NullLogger.Instance);
+            var planned = preview.Wedstrijden.Single(w => w.WedstrijdCode == 9802014);
+            planned.OptimaalVeldNummer.Should().NotBeNull();
+            planned.OptimaalTijd.Should().NotBeNullOrWhiteSpace();
+
+            var apply = await ApplyAsync(Choice(9802014, planned.OptimaalVeldNummer, "A1",
+                planned.OptimaalTijd, planned.HuidigeVeld, planned.HuidigeTijd));
+
+            apply.Bijgewerkt.Should().Be(1);
+            (await FieldAsync(9802014)).Should().EndWith(" A1");
+        }
+        finally { await CleanupAsync(); }
+    }
+
+    [SqlServerFact]
     public async Task StaleLaneDuplicateCrossClubAndInvalidFractionRejectWithoutWrites()
     {
         await SetupAsync();
@@ -137,6 +181,47 @@ public class AutoPlanExactApplyIntegrationTests
         finally
         {
             await ExecAsync("IF OBJECT_ID('[his].[test_1802_second]', 'TR') IS NOT NULL DROP TRIGGER [his].[test_1802_second]");
+            await CleanupAsync();
+        }
+    }
+
+    [SqlServerFact]
+    public async Task ExactApply_MapsSqlServerDeadlockErrorToSafeConflict()
+    {
+        await VerifyProviderConflictAsync(1205, 9802020, 9802021);
+    }
+
+    [SqlServerFact]
+    public async Task ExactApply_MapsSqlServerSnapshotConflictToSafeConflict()
+    {
+        await VerifyProviderConflictAsync(3960, 9802022, 9802023);
+    }
+
+    private static async Task VerifyProviderConflictAsync(int sqlError, long firstId, long secondId)
+    {
+        await SetupAsync();
+        await AddMatchAsync(firstId, "ALLSTARS JO13-1");
+        await AddMatchAsync(secondId, "ALLSTARS JO15-1");
+        var trigger = $"test_1802_conflict_{sqlError}";
+        try
+        {
+            await ExecAsync($"""
+                EXEC('CREATE TRIGGER [{trigger}] ON [his].[matches] AFTER UPDATE AS
+                BEGIN IF EXISTS (SELECT 1 FROM inserted WHERE [wedstrijdcode] = {secondId})
+                RAISERROR({sqlError}, 13, 1); END')
+                """);
+
+            await ((Func<Task>)(() => ApplyAsync(
+                Choice(firstId, 101, "A1", "10:00"),
+                Choice(secondId, 102, "A1", "12:00"))))
+                .Should().ThrowAsync<AutoPlanApplyConflictException>();
+
+            (await FieldAsync(firstId)).Should().BeNull("the safe conflict rolls back the whole plan");
+            (await FieldAsync(secondId)).Should().BeNull();
+        }
+        finally
+        {
+            await ExecAsync($"IF OBJECT_ID('[his].[{trigger}]', 'TR') IS NOT NULL DROP TRIGGER [his].[{trigger}]");
             await CleanupAsync();
         }
     }

@@ -31,6 +31,24 @@ public sealed class AutoPlanToepassenEndpointCoreTests
     }
 
     [Fact]
+    public async Task TierForbiddenPathsReturnTheSame403Contract()
+    {
+        var postgresPath = await AutoPlanToepassenEndpointCore.VerwerkAsync<object>(
+            () => throw new AutoPlanApplyForbiddenException(), NullLogger.Instance);
+        var sqlServerPath = AutoPlanToepassenEndpointCore.Verboden();
+
+        var postgresResult = postgresPath.Should().BeOfType<ObjectResult>().Subject;
+        postgresResult.StatusCode.Should().Be(403);
+        sqlServerPath.StatusCode.Should().Be(403);
+        var contract = new
+        {
+            error = new AutoPlanApplyForbiddenException().Message
+        };
+        postgresResult.Value.Should().BeEquivalentTo(contract);
+        sqlServerPath.Value.Should().BeEquivalentTo(contract);
+    }
+
+    [Fact]
     public async Task InvalidOperationIsBadRequestOnlyWhenRequestedByTheTier()
     {
         var postgres = await AutoPlanToepassenEndpointCore.VerwerkAsync<object>(

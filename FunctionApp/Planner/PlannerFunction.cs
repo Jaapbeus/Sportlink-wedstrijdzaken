@@ -417,7 +417,7 @@ namespace SportlinkFunction.Planner
                         return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
                     if (!clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase))
-                        return new ObjectResult(new { error = "Toepassen is alleen beschikbaar in testmodus (ALLSTARS)." }) { StatusCode = 403 };
+                        return AutoPlanToepassenEndpointCore.Verboden();
 
                     log.LogInformation("AutoPlanToepassen: datum={Datum}, club={Club}", LogWaarde.Schoon(request.Datum), clubCode);
 
