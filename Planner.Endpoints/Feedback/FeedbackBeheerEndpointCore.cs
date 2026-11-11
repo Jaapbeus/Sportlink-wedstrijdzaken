@@ -110,9 +110,15 @@ public static class FeedbackBeheerEndpointCore
 
     // ── Publiceren ─────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Publiceert een melding. Staat de melding nog op <c>publiceren</c> (een eerdere POST had een
+    /// onbekende uitkomst), dan controleert deze aanroep eerst via de issuelijst of het issue al
+    /// bestaat en koppelt het zo nodig, in plaats van een dubbel issue te maken (#1803, besluit 2C).
+    /// </summary>
     public static async Task<IActionResult> PubliceerAsync(
         string clubCode, FeedbackAanroeper wie, IFeedbackStore store, Guid id,
-        Func<string, string, string[], Task<(int nummer, string url)>>? maakGitHubIssueAsync, ILogger log)
+        Func<string, string, string[], Task<(int nummer, string url)>>? maakGitHubIssueAsync, ILogger log,
+        Func<string, DateTime, Task<(bool gelukt, FeedbackGevondenIssue? gevonden)>>? zoekIssueAsync = null)
     {
         if (maakGitHubIssueAsync is null)
             return new ObjectResult(new { error = "GitHub-integratie niet geconfigureerd. Neem contact op met de beheerder." }) { StatusCode = 503 };
@@ -127,17 +133,43 @@ public static class FeedbackBeheerEndpointCore
         if (FeedbackCore.BevatPii(detail.Samenvatting.Onderwerp) || FeedbackCore.BevatPii(detail.IssueBody))
             return new ObjectResult(new { error = "De tekst bevat mogelijk persoonsgegevens en is niet gepubliceerd." }) { StatusCode = 422 };
 
-        if (!await store.ClaimPublicatieAsync(clubCode, id))
-            return new ConflictObjectResult(new { error = "Deze melding wordt al gepubliceerd." });
+        var herstel = detail.Samenvatting.Status == FeedbackStatusWaarden.Publiceren;
+        if (herstel && zoekIssueAsync is null)
+            return new ObjectResult(new { error = "GitHub-integratie niet geconfigureerd. Neem contact op met de beheerder." }) { StatusCode = 503 };
+        var (claimFout, pogingGestartUtc) = await ClaimAsync(store, clubCode, id, herstel);
+        if (claimFout is not null) return claimFout;
 
         await store.LogInzageAsync(new FeedbackInzageNieuw(clubCode, wie.ObjectId, wie.Naam, "publiceer", id, null));
 
+        var issueBody = detail.IssueBody;
+        var referentie = FeedbackPublicatieReferentie.Lees(issueBody);
+        if (referentie is null)
+        {
+            // Melding van vóór #1803: krijgt onder deze claim, vóór haar eerste POST, alsnog een bewaarde referentie.
+            issueBody = FeedbackPublicatieReferentie.VoegToe(issueBody, FeedbackPublicatieReferentie.Nieuw());
+            if (await BewaarReferentieAsync(store, clubCode, id, issueBody, herstel, log) is { } fout) return fout;
+            if (herstel)
+                log.LogWarning("Vastgelopen melding zonder publicatiereferentie (claim van vóór #1803) [feedbackId={Id}]; herstel zonder controle op een bestaand issue", id);
+        }
+        else if (herstel)
+        {
+            var bestaand = await ZoekBestaandIssueAsync(referentie, pogingGestartUtc!.Value, zoekIssueAsync!, id, log);
+            if (!bestaand.gelukt)
+                return new ObjectResult(new { error = "Controleren of het issue al bestaat is mislukt. De melding blijft herstelbaar: probeer het over enkele minuten opnieuw." }) { StatusCode = 502 };
+            if (bestaand.gevonden is { } gevonden)
+                return await KoppelAsync(store, clubCode, id, gevonden.Nummer, gevonden.Url, log);
+        }
+
+        (int nummer, string url) aangemaakt;
         try
         {
-            var (nummer, url) = await maakGitHubIssueAsync(
-                detail.Samenvatting.Onderwerp, detail.IssueBody, FeedbackCore.KiesLabels(detail.Samenvatting.Type));
-            await store.ZetGepubliceerdAsync(clubCode, id, nummer, url);
-            return new OkObjectResult(new { feedbackId = id, status = FeedbackStatusWaarden.Gepubliceerd, issueNummer = nummer, issueUrl = url });
+            aangemaakt = await maakGitHubIssueAsync(
+                detail.Samenvatting.Onderwerp, issueBody, FeedbackCore.KiesLabels(detail.Samenvatting.Type));
+        }
+        catch (FeedbackPublicatieUitkomstOnbekendException ex)
+        {
+            log.LogError("GitHub-issueaanmaak afgebroken met onbekende uitkomst [feedbackId={Id}], fouttype={ErrorType}; status blijft publiceren", id, ex.InnerException?.GetType().Name);
+            return new ObjectResult(new { error = FeedbackEndpointCore.OnbekendeUitkomstMelding }) { StatusCode = 502 };
         }
         catch (Exception ex)
         {
@@ -145,6 +177,84 @@ public static class FeedbackBeheerEndpointCore
             await store.ZetPublicatieMisluktAsync(clubCode, id);
             return new ObjectResult(new { error = "Publiceren op GitHub is mislukt. Probeer het later opnieuw." }) { StatusCode = 502 };
         }
+
+        return await KoppelAsync(store, clubCode, id, aangemaakt.nummer, aangemaakt.url, log);
+    }
+
+    /// <summary>
+    /// Claimt (wacht/mislukt) of herclaimt (vastgelopen <c>publiceren</c>) de melding. Bij een herclaim komt het begin
+    /// van de publicatiepoging terug: de zoekgrens die door mislukte herstelpogingen niet opschuift (#1803).
+    /// </summary>
+    private static async Task<(IActionResult? fout, DateTime? pogingGestartUtc)> ClaimAsync(
+        IFeedbackStore store, string clubCode, Guid id, bool herstel)
+    {
+        if (!herstel)
+            return await store.ClaimPublicatieAsync(clubCode, id)
+                ? (null, null)
+                : (new ConflictObjectResult(new { error = "Deze melding wordt al gepubliceerd." }), null);
+
+        var gestart = await store.HerClaimPublicatieAsync(clubCode, id, DateTime.UtcNow - FeedbackPublicatieHerstel.ClaimVerlooptNa);
+        return gestart is null
+            ? (new ConflictObjectResult(new { error = "Deze melding wordt al gepubliceerd. Probeer het over enkele minuten opnieuw." }), null)
+            : (null, gestart);
+    }
+
+    /// <summary>
+    /// Bewaart de zojuist toegevoegde referentie vóór de POST. Lukt dat niet, dan is er nog niets naar GitHub
+    /// gestuurd: een gewone claim wordt vrijgegeven (<c>github-mislukt</c>), een herclaim blijft herstelbaar staan.
+    /// </summary>
+    private static async Task<IActionResult?> BewaarReferentieAsync(
+        IFeedbackStore store, string clubCode, Guid id, string issueBody, bool herstel, ILogger log)
+    {
+        try
+        {
+            if (await store.ZetIssueBodyAsync(clubCode, id, issueBody)) return null;
+            log.LogWarning("Publicatiereferentie niet bewaard: melding niet meer geclaimd [feedbackId={Id}]", id);
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Publicatiereferentie bewaren mislukt [feedbackId={Id}]", id);
+        }
+
+        if (!herstel)
+        {
+            try { await store.ZetPublicatieMisluktAsync(clubCode, id); }
+            catch (Exception ex) { log.LogError(ex, "Claim vrijgeven na mislukte voorbereiding mislukt [feedbackId={Id}]", id); }
+        }
+        return new ObjectResult(new { error = "Publiceren is niet gestart: de melding kon niet worden voorbereid. Probeer het later opnieuw." }) { StatusCode = 502 };
+    }
+
+    /// <summary>Zoekt het issue van een eerdere poging, vanaf het begin van de publicatiepoging (minus marge voor klokverschil).</summary>
+    private static async Task<(bool gelukt, FeedbackGevondenIssue? gevonden)> ZoekBestaandIssueAsync(
+        string referentie, DateTime pogingGestartUtc,
+        Func<string, DateTime, Task<(bool gelukt, FeedbackGevondenIssue? gevonden)>> zoekIssueAsync, Guid id, ILogger log)
+    {
+        try
+        {
+            return await zoekIssueAsync(referentie, pogingGestartUtc - FeedbackPublicatieHerstel.ZoekMarge);
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Zoeken naar een bestaand GitHub-issue mislukt [feedbackId={Id}]", id);
+            return (false, null);
+        }
+    }
+
+    private static async Task<IActionResult> KoppelAsync(IFeedbackStore store, string clubCode, Guid id, int nummer, string url, ILogger log)
+    {
+        try
+        {
+            await store.ZetGepubliceerdAsync(clubCode, id, nummer, url);
+        }
+        catch (Exception ex)
+        {
+            // GitHub heeft bevestigd dat het issue bestaat. De claim blijft staan; "opnieuw proberen"
+            // vindt het issue via de publicatiereferentie en koppelt het alsnog.
+            log.LogError(ex, "GitHub-issue bestaat maar de feedbackreceipt kon niet worden opgeslagen [feedbackId={Id}]", id);
+            return new ObjectResult(new { error = "Het issue bestaat, maar de lokale status kon niet worden bijgewerkt. Probeer het over enkele minuten opnieuw: het bestaande issue wordt dan alsnog gekoppeld." }) { StatusCode = 502 };
+        }
+
+        return new OkObjectResult(new { feedbackId = id, status = FeedbackStatusWaarden.Gepubliceerd, issueNummer = nummer, issueUrl = url });
     }
 
     // ── Inzagelog ──────────────────────────────────────────────────────────────

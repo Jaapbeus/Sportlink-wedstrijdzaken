@@ -333,6 +333,7 @@ namespace SportlinkFunction.Planner
 
         /// <summary>Actieve teamregel <c>BufferNa</c> in minuten, of null zonder regel (#1430).</summary>
         public int? TeamBufferNa { get; set; }
+        public bool SportlinkLeidend { get; set; }
     }
 
     public class AutoPlanResponse
@@ -353,6 +354,7 @@ namespace SportlinkFunction.Planner
     {
         public string Datum { get; set; } = string.Empty;
         public int? BufferMinuten { get; set; }
+        public List<global::Planner.Shared.AutoPlanToewijzing>? Toewijzingen { get; set; }
     }
 
     public class AutoPlanToepassenResponse

@@ -17,6 +17,21 @@ public class BerichtPipelineTests
     // getest (Planner.Shared.Tests/Email/BerichtDatumHeuristiekTests.cs). Hier alleen: het omhulsel
     // schrijft de uitkomst terug op de classificatie, en laat een niet te corrigeren datum staan.
 
+    [Theory]
+    [InlineData(null, "We willen de wedstrijd van 25-4-2026 verzetten.", "Verzoek")]
+    [InlineData("", "We willen verzetten.", "Wedstrijd 25-4-2026")]
+    public void ValideerDagDatum_Herplan_OntbrekendeDatumUitExplicieteTekst(
+        string? modelDatum, string body, string onderwerp)
+    {
+        var classificatie = new BerichtClassificatie
+        {
+            Type = VerzoekType.HerplanVerzoek, Datum = modelDatum, GewensteDatum = "2026-05-02"
+        };
+        BerichtPipeline.ValideerDagDatum(classificatie, body, onderwerp);
+        classificatie.Datum.Should().Be("2026-04-25");
+        classificatie.GewensteDatum.Should().Be("2026-05-02");
+    }
+
     [Fact]
     public void ValideerDagDatum_OnderwerpDatum_WordtOpClassificatieGezet()
     {
@@ -39,6 +54,60 @@ public class BerichtPipelineTests
         var classificatie = new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck, Datum = "geen-datum" };
         BerichtPipeline.ValideerDagDatum(classificatie, "tekst", "onderwerp");
         classificatie.Datum.Should().Be("geen-datum");
+    }
+
+    [Fact]
+    public void ValideerDagDatum_Herplan_OnderwerpdatumVervangtHuidigeDatumNiet()
+    {
+        var classificatie = new BerichtClassificatie
+        {
+            Type = VerzoekType.HerplanVerzoek,
+            Datum = "2026-04-18",
+            GewensteDatum = "2026-04-25"
+        };
+        BerichtPipeline.ValideerDagDatum(classificatie, "Wij willen verzetten naar 25-4-2026.", "Administratie 12-5-2026");
+        classificatie.Datum.Should().Be("2026-04-18");
+        classificatie.GewensteDatum.Should().Be("2026-04-25");
+    }
+
+    [Fact]
+    public void ValideerDagDatum_EnkeleGelijkeLijstdatumVolgtCorrectie()
+    {
+        var classificatie = new BerichtClassificatie
+        {
+            Type = VerzoekType.BeschikbaarheidCheck,
+            Datum = "2026-04-18",
+            Datums = new List<string> { "2026-04-18" }
+        };
+        BerichtPipeline.ValideerDagDatum(classificatie, "Kunnen we dinsdag spelen?", "Verzoek");
+        classificatie.Datum.Should().Be("2026-04-21");
+        classificatie.GetAlleDatums().Should().Equal("2026-04-21");
+    }
+
+    [Fact]
+    public void ValideerDagDatum_AndereLijstdatumBlijftStaan()
+    {
+        var classificatie = new BerichtClassificatie
+        {
+            Type = VerzoekType.BeschikbaarheidCheck,
+            Datum = "2026-04-18",
+            Datums = new List<string> { "2026-04-25" }
+        };
+        BerichtPipeline.ValideerDagDatum(classificatie, "Kunnen we dinsdag spelen?", "Verzoek");
+        classificatie.GetAlleDatums().Should().Equal("2026-04-25");
+    }
+
+    [Fact]
+    public void ValideerDagDatum_MeerdereDatumsBlijvenStaan()
+    {
+        var classificatie = new BerichtClassificatie
+        {
+            Type = VerzoekType.BeschikbaarheidCheck,
+            Datum = "2026-04-18",
+            Datums = new List<string> { "2026-04-18", "2026-04-25" }
+        };
+        BerichtPipeline.ValideerDagDatum(classificatie, "Kunnen we dinsdag spelen?", "Verzoek");
+        classificatie.GetAlleDatums().Should().Equal("2026-04-18", "2026-04-25");
     }
 
     // ── Eén verzoek, één datum (M3) ──

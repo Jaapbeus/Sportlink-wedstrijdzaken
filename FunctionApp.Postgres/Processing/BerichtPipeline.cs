@@ -36,7 +36,7 @@ internal static partial class BerichtPipeline
     /// #1716 één keer in <see cref="BerichtDatumHeuristiek.CorrigeerDagDatum"/>.
     /// </summary>
     internal static void ValideerDagDatum(BerichtClassificatie classificatie, string emailBody, string onderwerp)
-        => classificatie.Datum = BerichtDatumHeuristiek.CorrigeerDagDatum(classificatie.Datum, emailBody, onderwerp);
+        => BerichtDatumHeuristiek.ValideerClassificatieDatum(classificatie, emailBody, onderwerp);
 
     /// <summary>
     /// Vertaalt de AI-classificatie naar de juiste Availability-/RescheduleService-aanroep.
@@ -116,7 +116,7 @@ internal static partial class BerichtPipeline
             return null;
         }
 
-        var vandaag = DateOnly.FromDateTime(DateTime.Today);
+        var vandaag = NederlandseBedrijfsKlok.Vandaag();
         var van = vandaag.AddDays(deadlineDagen);
         // 8 weken venster — een algoritmische constante (geen club-specifieke waarde), geeft
         // voldoende keuze zonder een half seizoen aan zaterdagen op te sommen.

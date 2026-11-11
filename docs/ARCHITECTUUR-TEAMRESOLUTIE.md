@@ -155,7 +155,7 @@ Wijkt een genoemd team af van het begeleidingsteam, dan komt er alleen een trace
 zonder namen, zonder review-markering). Wijkt Reply-To af van From, dan vindt er geen opzoeking plaats; de beheerderstester
 (`test/email`) doet de opzoeking nooit (`OvergeslagenAfzenderTeamBron.Proefverwerking`, zie `EMAIL-VERWERKING.md` §5e). De trace
 (`begeleiding-afzender`) bevat alleen het aantal gevonden teams (0, 1 of meer) en de canonieke naam; het e-mailadres staat
-nooit in trace, log of telemetrie. De index staat in `ARCHITECTUUR-DATABASE-TIERS.md` §86; de AVG-onderbouwing in
+nooit in trace, log of telemetrie. De index staat in `ARCHITECTUUR-DATABASE-TIERS.md` §87; de AVG-onderbouwing in
 `EMAIL-VERWERKING.md` §5e.
 
 Deleting a Sync alias now retains its existing `rejected` state, including after canonicalization. Other origins retain physical deletion. A rejected alias blocks that association; it does not block an independent match against the canonical team name. The UI describes this action as persistent rejection. No schema or retention policy is added.

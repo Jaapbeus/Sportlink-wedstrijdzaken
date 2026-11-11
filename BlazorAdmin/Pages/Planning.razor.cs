@@ -37,6 +37,7 @@ public partial class Planning : ClubSelectorPageBase
     // Sportlink-kolom (#989/#991/#1361): alleen de vlag blijft hier; uitklap-/deeplinkstate staat in
     // SportlinkActieKolomState, het paneel zelf is SportlinkMatchPanel (#1122).
     private bool _pdfExportIngeschakeld;
+    private readonly LookupGeneratieGuard _pdfExportLoadGuard = new();
     private bool _sportlinkExtensionEnabled;
     private readonly SportlinkActieKolomState _sportlinkKolom = new();
 
@@ -96,7 +97,10 @@ public partial class Planning : ClubSelectorPageBase
     /// (standaard uit). Via het voor elke ingelogde rol open endpoint — niet via de admin-only
     /// instellingen — en opnieuw bij een clubwissel.
     /// </summary>
-    private async Task LaadPdfExportStatusAsync() => _pdfExportIngeschakeld = await PlanningApi.IsPdfExportIngeschakeldAsync();
+    private Task LaadPdfExportStatusAsync() => LaadClubgebondenBooleanAsync(
+        _pdfExportLoadGuard,
+        PlanningApi.IsPdfExportIngeschakeldAsync,
+        ingeschakeld => _pdfExportIngeschakeld = ingeschakeld);
 
     // Gantt-blokken voor de directe veldbezetting-weergave (#566) — geen optimalisatie, alleen wat er
     // al gepland staat. Hergebruikt dezelfde GanttItem/helpers als Veld optimalisatie.

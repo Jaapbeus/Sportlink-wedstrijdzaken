@@ -54,6 +54,8 @@ public static class PostgresPlannerAvailabilityReader
                 (veldNummer, subpositie) = VeldResolver.Resolve(veldRuw, velden);
                 if (veldNummer == 0) continue; // spiegelt SQL Server-view's WHERE v.VeldNummer IS NOT NULL
             }
+            if (reader.IsDBNull(2))
+                throw new global::Planner.Shared.Planning.PlanningDuurOnbekendException();
 
             results.Add(new VeldBezettingRij(
                 Datum: DateOnly.FromDateTime(reader.GetDateTime(0)),

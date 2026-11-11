@@ -280,18 +280,18 @@ club live-klaar is. Uitzondering: zonder deze schakelaar blijft extern verkeer l
 
 Twee controles die verder gaan dan "de poort antwoordt" (#1060):
 
-- **Tier-provenance.** `/api/health` meldt zijn eigen tier uit de assembly-metadata (#863).
+- **Tier-provenance.** `/api/beheer/health` meldt de tier achter de admin-poort uit assembly-metadata (#863).
   Wijkt die af van `-Tier`, dan is de melding rood — anders zou een oude functiehost op dezelfde
   poort stilzwijgend als "gestart" worden gerapporteerd.
-- **`status` / `settingsLoaded`.** Een functiehost zonder bruikbare instellingencache geeft HTTP 200
+- **`status` / `settingsReady`.** Een functiehost zonder bruikbare instellingencache geeft HTTP 200
   met status `degraded`, terwijl élk `/api/beheer/*`-endpoint 500 antwoordt. Op een verse database
   is dat de normale toestand tot er een primaire club is geseed (DEVELOPER-SETUP.md §4.2).
-- **`pendingMigrations` / `schemaWarning` (#1098).** Meldt health migraties die de database nog
+- **`pendingMigrations` / `schemaWarning` (#1098) via `/api/beheer/health`.** Meldt health migraties die de database nog
   mist, dan wijst het script naar `Database.Postgres.Cli` in plaats van naar het seed-script — een
   lege instellingencache door een ontbrekende kolom is een andere oorzaak dan een ontbrekende
   primaire club. Dezelfde velden gaat de smoke test in `deploy.yml` na een productie-deploy bewaken
-  (vervolg op #1098: `settingsLoaded=false` laat die job falen, openstaande migraties geven een
-  waarschuwing) — zie MONITORING.md voor de stand daarvan.
+  (vervolg op #1098: `settingsReady=false` of `migrationsCurrent=false` laat die job falen;
+  schema-/TLS-vlaggen blijven waarschuwingen) — zie MONITORING.md voor de stand daarvan.
 
 Readiness-detectie:
 
@@ -397,7 +397,7 @@ diensten blijven uit" in de skill).
 Vanaf de Postgres-tier start de zelftest `FunctionApp.Postgres` zelf op en meet daar tegenaan:
 
 - **G5** — bewijst dat die host met de bedóelde databaseserver praat. Drie onafhankelijke
-  bewijzen: de tier-herkomst uit `/api/health` (build-time metadata, #863), de serverversie die de
+  bewijzen: de tier-herkomst uit `/api/beheer/health` (build-time metadata, #863), de serverversie die de
   applicatie meldt tegenover wat de container zelf op `SHOW server_version` antwoordt, en — het
   enige bewijs dat niet uit de applicatie komt — een verbinding met
   `application_name = 'SportlinkFunctionAppPostgres'` in `pg_stat_activity`. G5 controleert

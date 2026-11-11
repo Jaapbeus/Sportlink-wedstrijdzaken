@@ -15,8 +15,8 @@ internal static class SyncJobsRepository
     internal static Task CreateAsync(Guid id, string clubCode, int weekOffsetFrom, int weekOffsetTo)
         => CreateAsync(PostgresDatabaseConfig.ConnectionString, id, clubCode, weekOffsetFrom, weekOffsetTo);
 
-    internal static Task MarkRunningAsync(Guid id)
-        => MarkRunningAsync(PostgresDatabaseConfig.ConnectionString, id);
+    internal static Task<bool> TryClaimPendingAsync(Guid id)
+        => TryClaimPendingAsync(PostgresDatabaseConfig.ConnectionString, id);
 
     internal static Task MarkCompletedAsync(Guid id, bool succeeded, string? errorMessage)
         => MarkCompletedAsync(PostgresDatabaseConfig.ConnectionString, id, succeeded, errorMessage);
@@ -39,15 +39,16 @@ internal static class SyncJobsRepository
         await command.ExecuteNonQueryAsync();
     }
 
-    internal static async Task MarkRunningAsync(string connectionString, Guid id)
+    internal static async Task<bool> TryClaimPendingAsync(string connectionString, Guid id)
     {
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand(
-            "UPDATE public.syncjobs SET status = 'running', startedat = now() WHERE id = @id",
+            "UPDATE public.syncjobs SET status = 'running', startedat = now() " +
+            "WHERE id = @id AND status = 'pending' RETURNING id",
             connection);
         command.Parameters.AddWithValue("id", id);
-        await command.ExecuteNonQueryAsync();
+        return await command.ExecuteScalarAsync() is Guid;
     }
 
     internal static async Task MarkCompletedAsync(string connectionString, Guid id, bool succeeded, string? errorMessage)
@@ -55,7 +56,8 @@ internal static class SyncJobsRepository
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand(
-            "UPDATE public.syncjobs SET status = @status, completedat = now(), errormessage = @errormessage WHERE id = @id",
+            "UPDATE public.syncjobs SET status = @status, completedat = now(), errormessage = @errormessage " +
+            "WHERE id = @id AND status = 'running'",
             connection);
         command.Parameters.AddWithValue("id", id);
         command.Parameters.AddWithValue("status", succeeded ? "succeeded" : "failed");

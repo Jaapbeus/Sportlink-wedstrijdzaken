@@ -1,0 +1,39 @@
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>E-mailadres</th>
+            <th>Omschrijving</th>
+            <th>Actief</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var adres in Adressen)
+        {
+            <tr class="@(!adres.Actief ? "text-muted" : "")">
+                <td>@adres.EmailAdres</td>
+                <td>@adres.Omschrijving</td>
+                <td>@(adres.Actief ? "ja" : "nee")</td>
+                <td>
+                    @if (BevestigingOpen(adres.Id))
+                    {
+                        <button class="btn btn-sm btn-danger" @onclick="() => OnBevestig.InvokeAsync(adres.Id)">
+                            Bevestig verwijderen
+                        </button>
+                        <button class="btn btn-sm btn-link" @onclick="() => OnAnnuleer.InvokeAsync()">Annuleren</button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => OnVraag.InvokeAsync(adres.Id)">
+                            Verwijderen
+                        </button>
+                    }
+                </td>
+            </tr>
+        }
+        @if (Adressen.Count == 0)
+        {
+            <tr><td colspan="4" class="text-muted">Geen uitgesloten adressen.</td></tr>
+        }
+    </tbody>
+</table>

@@ -3,6 +3,7 @@ using AwesomeAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Planner.Endpoints.Autorisatie;
+using Planner.Endpoints.Http;
 using Planner.Shared.Autorisatie;
 using Xunit;
 
@@ -53,5 +54,28 @@ public class PlannerAanvragerEndpointCoreTests
 
         parsed.Error.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(403);
         parsed.Value.AangevraagdDoor.Should().Be("client");
+    }
+
+    // #1811 + #1848: het aanvragerpad leest de body begrensd, net als de andere planner-endpoints.
+    [Fact]
+    public async Task Bevestig_TeGroteBody_Geeft413ZonderWaarde()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Body = new MemoryStream(new byte[BoundedRequestBodyReader.DefaultJsonMaxBytes + 1]);
+
+        var parsed = await PlannerAanvragerEndpointCore.ReadBevestigAsync<BevestigDto>(context.Request, "server actor");
+
+        parsed.Error.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(413);
+        parsed.Value.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Herplan_OngeldigeJson_Geeft400ZonderWaarde()
+    {
+        var parsed = await PlannerAanvragerEndpointCore.ReadHerplanAsync<HerplanDto>(
+            Request("""{"wedstrijdcode":123,"""), "server actor");
+
+        parsed.Error.Should().BeOfType<BadRequestObjectResult>();
+        parsed.Value.Should().BeNull();
     }
 }

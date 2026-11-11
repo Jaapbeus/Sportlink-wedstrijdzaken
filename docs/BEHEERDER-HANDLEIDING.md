@@ -134,7 +134,9 @@ tijd en blokduur worden sinds #1563 bij elk openen van de dag rechtstreeks bij S
 uitloopdeel van Sportlink erbij. De pauze is dus niet altijd vijftien minuten — bij 35+ is hij tien.
 Is Sportlink niet bereikbaar, staat de Sportlink Web Extension uit, of kent Sportlink een wedstrijd
 niet, dan rekent de Planning zoals voorheen: Sportlinks speelduur plus vijftien minuten, en bij
-ontbreken daarvan **Speeltijden**. **Veld optimalisatie** blijft op **Speeltijden** rekenen. Wedstrijden
+ontbreken daarvan **Speeltijden**. **Veld optimalisatie** gebruikt dezelfde duurvolgorde. Ontbreken
+beide bronnen voor een wedstrijd op een herkenbaar veld, dan blokkeert de planning met de melding
+"Planning geblokkeerd: wedstrijdduur onbekend voor bestaande veldbezetting." Wedstrijden
 tussen andere clubs op uw accommodatie staan wel in Sportlinks veldplanner maar niet in onze database
 en verschijnen hier dus nog niet. Een lange wedstrijdnaam loopt over twee regels door, met de
 aanvangstijd vóór de naam op dezelfde regel; de volledige naam staat ook in de tooltip. Ziet u toch een
@@ -197,6 +199,8 @@ nog klopt, met dezelfde regels als de planner: twee wedstrijden op hetzelfde vel
 weinig tijd tussen twee wedstrijden op één veld, en een team dat tegelijk (of te kort na elkaar) op
 twee velden staat. Daarbij tellen ook de **Buffer vóór**/**Buffer na** uit de teamregels mee: is die
 groter dan de algemene buffer, dan noemt de waarschuwing "de vereiste teambuffer van N min" (#1430).
+Rond een wedstrijd waarvan de Sportlink-speelduur leidend is geldt geen appbuffer; twee zulke
+wedstrijden mogen direct op elkaar aansluiten. Een echte overlap blijft verboden (#1814).
 
 Elke tab heeft dezelfde opbouw: eerst de **tijdlijn per veld**, daaronder de **wedstrijdenlijst** van
 diezelfde stand. Omdat beide tabs op exact dezelfde hoogte beginnen, werkt wisselen als het
@@ -954,7 +958,8 @@ bepaalt wat de verwijderknop weggooit.
 - **Verwijder gefilterd** — verwijdert de testwedstrijden in het ingestelde datumbereik. Deze knop
   werkt pas nadat u bij **Filter van / tot** een bereik heeft opgegeven; zonder bereik staat er
   *Verwijder (stel filter in)* en is de knop grijs. Wilt u alles weggooien, kies dan een bereik dat
-  alle wedstrijden omvat.
+  alle wedstrijden omvat. Na een bevestigingsvraag kunt u nog annuleren; bij een foutmelding blijven
+  de rijen staan.
 
 **Automatisch opslaan:** elke celwijziging wordt direct opgeslagen. Een ✅ of ⚠️ achter de rij geeft
 de opslagstatus aan.
@@ -1021,6 +1026,8 @@ Fijnere regels per team: buffers vóór/na wedstrijden en een vaste veldvoorkeur
 
 **Tip:** Gebruik hogere prioriteiten voor regels die absoluut gelden (bijv. "eerste elftal altijd op veld 1") en lagere voor richtlijnen.
 
+Als een lijst niet geladen kan worden, toont de pagina een foutmelding in plaats van de melding dat er nog geen regels zijn. Verwijderen vraagt eerst om bevestiging; bij een mislukte verwijdering blijft de bestaande lijst staan.
+
 ### API-endpoints
 
 | Endpoint | Beschrijving |
@@ -1058,6 +1065,8 @@ vaste aanname over aantal velden of kunstgras-versus-gras — elke club richt di
 in (#679).
 
 ### Velden
+
+Kan een lijst met velden, beschikbaarheid of trainingen niet worden geladen, dan ziet u een foutmelding in plaats van een lege-lijstmelding. Verwijderen vraagt eerst om bevestiging.
 
 | Veld | Uitleg |
 |---|---|
@@ -1697,6 +1706,11 @@ app en welk sjabloon is gekozen. Voor berichten die buiten scope vielen is de tr
 reden). De trace blijft permanent bewaard, ook nadat het bericht zelf na 90 dagen uit het log is
 verdwenen; een regel zonder de knop heeft geen trace (berichten van vóór deze functie).
 
+Na drie mislukte verwerkingspogingen krijgt een bericht de status **Fout** en het Outlook-label
+*Geen AI antwoord* (labelen wordt geprobeerd, maar een tijdelijke Graph-fout kan dat verhinderen).
+Er is geen antwoord naar de afzender gestuurd. Zoek de foutmelding op in het e-maillog en handel het
+bericht handmatig af.
+
 ### Onzekere antwoorden en de zekerheidspoort (#1568)
 
 Is het systeem niet zeker van een antwoord — het eigen team is niet herkend, meerdere teams komen in aanmerking,
@@ -2018,15 +2032,18 @@ u mee, publiceert u de meldingen van gewone gebruikers en ziet u wie wat heeft i
   beschrijving). **Wissen** zet alle filters terug.
 - Elke regel toont datum, soort, onderwerp (met meldingsnummer), **melder**, rol, scherm, het
   GitHub-issue en de status: *Wacht op publicatie*, *Gepubliceerd*, *Publiceren mislukt* of
-  *Wordt gepubliceerd*. Bij een melding waarvan de bewaartermijn verlopen is staat
+  *Uitkomst onbekend*. Bij een melding waarvan de bewaartermijn verlopen is staat
   *— (geanonimiseerd)* in plaats van de naam.
 - **▸** klapt de melding open: de beschrijving in eigen woorden, aanvullende antwoorden en — voor een
   melding die nog niet gepubliceerd is — **de exacte tekst die openbaar gaat worden**. Onder
   *Technische gegevens* staan de meegestuurde foutmeldingen, mislukte aanroepen en schermen.
-- **Publiceer** (alleen bij *Wacht op publicatie* of *Publiceren mislukt*) maakt het GitHub-issue aan
+- **Publiceer** (bij *Wacht op publicatie*, *Publiceren mislukt* of *Uitkomst onbekend*) maakt het GitHub-issue aan
   met precies de getoonde tekst. Lees die eerst: dit is de enige keer dat een gewone gebruiker iets
   openbaar maakt, en de beheerder is daar de poortwachter. Een tweede klik maakt geen tweede issue.
-  Mislukt publiceren, dan blijft de melding staan en kunt u het later opnieuw proberen.
+  Mislukt publiceren, dan blijft de melding staan en kunt u het later opnieuw proberen. Bij *Uitkomst
+  onbekend* (GitHub antwoordde niet) hoeft u niets in GitHub na te zoeken: wacht enkele minuten en klik
+  op **Publiceer**. De app controleert dan eerst of het issue al bestaat en koppelt dat, of plaatst het
+  alsnog. Krijgt u *wordt al gepubliceerd*, dan loopt de eerste poging mogelijk nog: probeer het later.
 
 ### Tabblad Inzagelog
 
