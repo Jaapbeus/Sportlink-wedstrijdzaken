@@ -1,11 +1,12 @@
 using BlazorAdmin.Models;
+using BlazorAdmin.Pages;
 using BlazorAdmin.Services;
 using Microsoft.AspNetCore.Components;
 
 namespace BlazorAdmin.Shared;
 
 /// <summary>Code-behind van <c>WedstrijdAanmakenFormulier.razor</c> (#997/#1116, code-behind sinds #1122; gedeeld component sinds #1468).</summary>
-public partial class WedstrijdAanmakenFormulier
+public partial class WedstrijdAanmakenFormulier : ClubSelectorPageBase
 {
     /// <summary>Begindatum van het formulier (bijv. de gekozen datum op Planning); zonder waarde: vandaag.</summary>
     [Parameter] public DateTime? BeginDatum { get; set; }
@@ -35,6 +36,8 @@ public partial class WedstrijdAanmakenFormulier
     private List<string> _teams = new();
     private List<VeldDto> _velden = new();
     private List<OefenwedstrijdAgeClassDto> _ageClasses = new();
+    private readonly LookupGeneratieGuard _clubLoadGuard = new();
+    private string? _loadedClubCode;
 
     /// <summary>#1437: alle invoer, met de voorinvulling bij een teamkeuze en "Leegmaken" (testbaar, los van deze pagina).</summary>
     private readonly OefenwedstrijdFormulierState _form = new();
@@ -68,11 +71,37 @@ public partial class WedstrijdAanmakenFormulier
     protected override async Task OnInitializedAsync()
     {
         _form.Leegmaken(BeginDatum);
+        await LaadClubContextAsync();
+    }
+
+    protected override async Task OnClubChangedAsync()
+    {
+        _form.Leegmaken(BeginDatum);
+        _poort.Annuleer();
+        _resultaat = null;
+        _status.Wis();
+        WisVerwijderen();
+        _validatieFouten = Array.Empty<string>();
+        await LaadClubContextAsync();
+    }
+
+    private async Task LaadClubContextAsync()
+    {
+        var clubCode = ClubSelector.SelectedClubCode;
+        var generatie = _clubLoadGuard.Start(clubCode);
+        _laden = true;
+        _laadFout = null;
+        _loadedClubCode = null;
+        _teams = new();
+        _velden = new();
+        _ageClasses = new();
         var teamsTaak = TeamsApi.GetTeamsAsync();
         var veldenTaak = VeldenApi.GetVeldenAsync();
         var dryRunTaak = SportlinkApi.GetSportlinkDryRunStatusAsync();
         var formulierTaak = SportlinkApi.GetOefenwedstrijdFormulierAsync();
         await Task.WhenAll(teamsTaak, veldenTaak, dryRunTaak, formulierTaak);
+
+        if (!_clubLoadGuard.IsActueel(generatie) || ClubSelector.SelectedClubCode != clubCode) return;
 
         var dryRun = dryRunTaak.Result;
         _dryRun = dryRun.Success ? dryRun.Data?.DryRun : null;
@@ -98,11 +127,13 @@ public partial class WedstrijdAanmakenFormulier
             _laadFout = "Er zijn geen actieve teams bekend — voer eerst een synchronisatie uit.";
 
         _laden = false;
+        _loadedClubCode = clubCode;
     }
 
     /// <summary>Klik op "Wedstrijd aanmaken": valideren, en bij dry-run uit eerst de bevestigstap tonen (#1436).</summary>
     private async Task VraagAanAsync()
     {
+        if (!ClubContextLoaded) return;
         _status.Wis();
         _resultaat = null;
         WisVerwijderen();
@@ -114,6 +145,7 @@ public partial class WedstrijdAanmakenFormulier
     /// <summary>Klik op "Bevestigen en aanmaken" in de bevestigstap.</summary>
     private async Task BevestigAsync()
     {
+        if (!ClubContextLoaded) return;
         if (_poort.Bevestig())
             await VerstuurAsync();
     }
@@ -149,6 +181,7 @@ public partial class WedstrijdAanmakenFormulier
     /// <summary>Klik op "Ja, verwijderen" in de bevestigstap.</summary>
     private async Task BevestigVerwijderenAsync()
     {
+        if (!ClubContextLoaded) return;
         var publicMatchId = _resultaat?.PublicMatchId;
         if (string.IsNullOrEmpty(publicMatchId) || !_verwijderPoort.Bevestig()) return;
 
@@ -193,4 +226,7 @@ public partial class WedstrijdAanmakenFormulier
             _poort.Klaar();
         }
     }
+
+    private bool ClubContextLoaded => !_laden && _laadFout == null
+        && string.Equals(_loadedClubCode, ClubSelector.SelectedClubCode, StringComparison.Ordinal);
 }

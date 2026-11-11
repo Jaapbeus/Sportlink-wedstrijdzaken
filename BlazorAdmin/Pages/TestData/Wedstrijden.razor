@@ -145,12 +145,18 @@
                 </button>
             </div>
             <div class="col-auto mt-auto ms-auto">
-                <button class="btn btn-sm btn-outline-danger" @onclick="VerwijderGefilterdeAsync"
-                        disabled="@(!FilterActief || _bezig)"
+                <button class="btn btn-sm btn-outline-danger" @onclick="VraagVerwijderGefilterdeAan"
+                        disabled="@(!FilterActief || _bezig || _bevestigVerwijderGefilterde)"
                         title="@(FilterActief ? "Verwijder wedstrijden in het geselecteerde datumbereik" : "Stel een datumbereik in om te verwijderen")">
                     <i class="bi bi-trash me-1"></i>
                     Verwijder @(FilterActief ? "gefilterd" : "(stel filter in)")
                 </button>
+                @if (_bevestigVerwijderGefilterde)
+                {
+                    <span role="alert" class="text-danger small">Wedstrijden in het gekozen datumbereik definitief verwijderen?</span>
+                    <button class="btn btn-sm btn-danger" @onclick="VerwijderGefilterdeAsync" disabled="@_bezig">Bevestig verwijderen</button>
+                    <button class="btn btn-sm btn-link" @onclick="AnnuleerVerwijderGefilterde" disabled="@_bezig">Annuleren</button>
+                }
             </div>
         </div>
     </div>
@@ -298,10 +304,18 @@ else
                         </td>
 
                         <td class="text-center">
-                            <button class="btn btn-link btn-sm p-0 text-danger"
-                                    title="Verwijder rij" @onclick="() => VerwijderRijAsync(rij)">
-                                <i class="bi bi-x-lg"></i>
-                            </button>
+                            @if (rij.IsOpgeslagen && _verwijderRijBevestiging.IsOpenFor(rij.BkMatches))
+                            {
+                                <button class="btn btn-sm btn-danger" @onclick="() => VerwijderRijAsync(rij)">Bevestig</button>
+                                <button class="btn btn-sm btn-link" @onclick="AnnuleerVerwijderRij">Annuleren</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-link btn-sm p-0 text-danger"
+                                        title="Verwijder rij" @onclick="() => VerwijderOpVerzoek(rij)">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            }
                         </td>
                     </tr>
                 }

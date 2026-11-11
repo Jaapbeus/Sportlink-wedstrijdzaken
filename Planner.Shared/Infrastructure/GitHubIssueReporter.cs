@@ -61,6 +61,7 @@ public static partial class GitHubIssueReporter
     private static readonly object _lock = new();
 
     private const int RateLimitHours = 24;
+    private static readonly TimeSpan HttpOperationTimeout = TimeSpan.FromSeconds(15);
 
     /// <summary>Herkomstlabel van een automatisch gemelde exception (#1711), naar het voorbeeld
     /// van <c>via: feedback-widget</c>: herkomst is geen persoon, dus geen <c>source:</c>.</summary>
@@ -97,13 +98,17 @@ public static partial class GitHubIssueReporter
         string functionName,
         ILogger log,
         Func<bool> egressToegestaan,
-        string eigenNamespacePrefix)
+        string eigenNamespacePrefix,
+        CancellationToken cancellationToken = default)
     {
         if (!egressToegestaan())
         {
             log.LogInformation("EgressGuard: uitgaande integraties geblokkeerd buiten productie — issue-rapportage overgeslagen (#857).");
             return;
         }
+
+        if (cancellationToken.IsCancellationRequested)
+            return;
 
         var pat = Environment.GetEnvironmentVariable("GitHubPat");
         if (string.IsNullOrWhiteSpace(pat))
@@ -127,6 +132,9 @@ public static partial class GitHubIssueReporter
 
         var fp = ComputeFingerprint(ex, eigenNamespacePrefix);
 
+        if (cancellationToken.IsCancellationRequested)
+            return;
+
         if (!ProbeerRegistreren(fp, DateTime.UtcNow))
         {
             log.LogInformation("Exception fp:{Fp} al gerapporteerd binnen {H}u — overgeslagen", fp, RateLimitHours);
@@ -136,16 +144,16 @@ public static partial class GitHubIssueReporter
         try
         {
             using var http = BuildHttpClient(pat);
-            var existing = await SearchIssueAsync(http, owner, repo, fp, log);
+            var existing = await SearchIssueAsync(http, owner, repo, fp, log, cancellationToken);
 
             if (existing.HasValue)
             {
                 if (existing.Value.isClosed)
-                    await ReopenIssueAsync(http, owner, repo, existing.Value.number, log);
-                await AddCommentAsync(http, owner, repo, existing.Value.number, ex, functionName, fp, log);
+                    await ReopenIssueAsync(http, owner, repo, existing.Value.number, log, cancellationToken);
+                await AddCommentAsync(http, owner, repo, existing.Value.number, ex, functionName, fp, log, cancellationToken);
             }
             else
-                await CreateIssueAsync(http, owner, repo, fp, ex, functionName, log);
+                await CreateIssueAsync(http, owner, repo, fp, ex, functionName, log, cancellationToken);
         }
         catch (Exception reportEx)
         {
@@ -174,9 +182,10 @@ public static partial class GitHubIssueReporter
         }
     }
 
-    private static HttpClient BuildHttpClient(string pat)
+    internal static HttpClient BuildHttpClient(string pat, HttpMessageHandler? handler = null)
     {
-        var http = new HttpClient();
+        var http = handler is null ? new HttpClient() : new HttpClient(handler);
+        http.Timeout = HttpOperationTimeout;
         http.DefaultRequestHeaders.UserAgent.ParseAdd("SportlinkFunction/2.0");
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", pat);
         http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
@@ -208,11 +217,12 @@ public static partial class GitHubIssueReporter
     /// verbouwen.
     /// </summary>
     internal static async Task<(int number, bool isClosed)?> SearchIssueAsync(
-        HttpClient http, string owner, string repo, string fp, ILogger log)
+        HttpClient http, string owner, string repo, string fp, ILogger log,
+        CancellationToken cancellationToken = default)
     {
         foreach (var labelFilter in ZoekLabelFilters)
         {
-            var (mislukt, treffer) = await ZoekInIssuelijstAsync(http, owner, repo, fp, labelFilter, log);
+            var (mislukt, treffer) = await ZoekInIssuelijstAsync(http, owner, repo, fp, labelFilter, log, cancellationToken);
             if (mislukt) return null;
             if (treffer.HasValue) return treffer;
         }
@@ -236,7 +246,8 @@ public static partial class GitHubIssueReporter
         => authorAssociation is "OWNER" or "MEMBER" or "COLLABORATOR";
 
     private static async Task<(bool mislukt, (int number, bool isClosed)? treffer)> ZoekInIssuelijstAsync(
-        HttpClient http, string owner, string repo, string fp, string? labelFilter, ILogger log)
+        HttpClient http, string owner, string repo, string fp, string? labelFilter, ILogger log,
+        CancellationToken cancellationToken)
     {
         var marker = $"[fp:{fp}]";
         var filter = labelFilter is null ? "" : "&labels=" + Uri.EscapeDataString(labelFilter);
@@ -252,7 +263,12 @@ public static partial class GitHubIssueReporter
             HttpResponseMessage resp;
             try
             {
-                resp = await http.GetAsync(url);
+                cancellationToken.ThrowIfCancellationRequested();
+                resp = await http.GetAsync(url, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -266,7 +282,7 @@ public static partial class GitHubIssueReporter
                 return (true, null);
             }
 
-            var json = await resp.Content.ReadAsStringAsync();
+            var json = await resp.Content.ReadAsStringAsync(cancellationToken);
             var items = JArray.Parse(json);
             if (items.Count == 0) break; // geen resultaten meer
 
@@ -297,11 +313,13 @@ public static partial class GitHubIssueReporter
     }
 
     private static async Task ReopenIssueAsync(
-        HttpClient http, string owner, string repo, int issueNumber, ILogger log)
+        HttpClient http, string owner, string repo, int issueNumber, ILogger log,
+        CancellationToken cancellationToken)
     {
         var payload = JsonConvert.SerializeObject(new { state = "open" });
         var url = $"https://api.github.com/repos/{owner}/{repo}/issues/{issueNumber}";
-        var resp = await http.PatchAsync(url, new StringContent(payload, Encoding.UTF8, "application/json"));
+        cancellationToken.ThrowIfCancellationRequested();
+        var resp = await http.PatchAsync(url, new StringContent(payload, Encoding.UTF8, "application/json"), cancellationToken);
         if (resp.IsSuccessStatusCode)
             log.LogInformation("GitHub issue #{Nr} heropend (opnieuw opgetreden)", issueNumber);
         else
@@ -316,13 +334,15 @@ public static partial class GitHubIssueReporter
     /// </summary>
     internal static async Task AddCommentAsync(
         HttpClient http, string owner, string repo, int issueNumber,
-        Exception ex, string functionName, string fp, ILogger log)
+        Exception ex, string functionName, string fp, ILogger log,
+        CancellationToken cancellationToken = default)
     {
         var body = "🔁 Opnieuw opgetreden\n\n" + BuildPublicDiagnostics(ex, functionName, fp, NederlandseTijdNu());
 
         var payload = JsonConvert.SerializeObject(new { body });
         var url = $"https://api.github.com/repos/{owner}/{repo}/issues/{issueNumber}/comments";
-        var resp = await http.PostAsync(url, new StringContent(payload, Encoding.UTF8, "application/json"));
+        cancellationToken.ThrowIfCancellationRequested();
+        var resp = await http.PostAsync(url, new StringContent(payload, Encoding.UTF8, "application/json"), cancellationToken);
 
         if (resp.IsSuccessStatusCode)
             log.LogInformation("Comment toegevoegd aan GitHub issue #{Nr}", issueNumber);
@@ -338,7 +358,8 @@ public static partial class GitHubIssueReporter
     /// </summary>
     internal static async Task CreateIssueAsync(
         HttpClient http, string owner, string repo, string fp,
-        Exception ex, string functionName, ILogger log)
+        Exception ex, string functionName, ILogger log,
+        CancellationToken cancellationToken = default)
     {
         var title = BuildPublicTitle(ex, fp);
         var body = "## Automatisch gerapporteerde exception\n\n"
@@ -353,7 +374,8 @@ public static partial class GitHubIssueReporter
         });
 
         var url = $"https://api.github.com/repos/{owner}/{repo}/issues";
-        var resp = await http.PostAsync(url, new StringContent(payload, Encoding.UTF8, "application/json"));
+        cancellationToken.ThrowIfCancellationRequested();
+        var resp = await http.PostAsync(url, new StringContent(payload, Encoding.UTF8, "application/json"), cancellationToken);
 
         if (!resp.IsSuccessStatusCode)
         {
@@ -361,7 +383,7 @@ public static partial class GitHubIssueReporter
             return;
         }
 
-        var json = await resp.Content.ReadAsStringAsync();
+        var json = await resp.Content.ReadAsStringAsync(cancellationToken);
         var nummer = JObject.Parse(json)["number"]?.Value<int>();
         if (nummer is not int issueNummer)
         {
@@ -369,15 +391,17 @@ public static partial class GitHubIssueReporter
             return;
         }
         log.LogInformation("GitHub issue #{Nr} aangemaakt voor fp:{Fp}", issueNummer, fp);
-        await PlaatsOpdrachtRegelAsync(http, owner, repo, issueNummer, log);
+        await PlaatsOpdrachtRegelAsync(http, owner, repo, issueNummer, log, cancellationToken);
     }
 
     private static async Task PlaatsOpdrachtRegelAsync(
-        HttpClient http, string owner, string repo, int issueNumber, ILogger log)
+        HttpClient http, string owner, string repo, int issueNumber, ILogger log,
+        CancellationToken cancellationToken)
     {
         var payload = JsonConvert.SerializeObject(new { body = OpdrachtRegel });
         var url = $"https://api.github.com/repos/{owner}/{repo}/issues/{issueNumber}/comments";
-        var resp = await http.PostAsync(url, new StringContent(payload, Encoding.UTF8, "application/json"));
+        cancellationToken.ThrowIfCancellationRequested();
+        var resp = await http.PostAsync(url, new StringContent(payload, Encoding.UTF8, "application/json"), cancellationToken);
         if (!resp.IsSuccessStatusCode)
             log.LogWarning("Opdrachtregel op GitHub issue #{Nr} plaatsen mislukt: HTTP {Status}", issueNumber, (int)resp.StatusCode);
     }

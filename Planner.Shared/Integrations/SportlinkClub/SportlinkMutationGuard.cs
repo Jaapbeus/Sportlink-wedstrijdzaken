@@ -15,7 +15,7 @@ public enum SportlinkMutationSoort
     /// Wijzigingsverzoek datum/tijd/accommodatie (#995, epic #986) — de enige mutatiesoort die een
     /// ECHTE tegenstander raakt (Sportlink stuurt bij bevestiging een goedkeuringsverzoek naar de
     /// tegenstander). Deze app bouwt uitsluitend stap 1 (valideren), nooit stap 2 (bevestigen) — zie
-    /// <see cref="SportlinkMatchChangeValidatie"/> en de forceDryRun-lock op
+    /// <see cref="SportlinkMatchChangeValidatie"/> en het dry-run-beleid van
     /// <c>SportlinkClubClient.RequestMatchChangeAsync</c>.
     /// </summary>
     DatumTijdAccommodatie,

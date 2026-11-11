@@ -14,76 +14,43 @@ namespace SportlinkFunction.Processing;
 public static partial class BerichtPipeline
 {
     /// <summary>
-    /// Beschikbaarheidscheck: eerst (indien nodig) het opponent-pad, dan multi-datum of de
-    /// enkelvoudige check. Een via de tegenstander herkend eigen team wordt hier op de classificatie
-    /// gezet; daarna wordt <c>eigenTeamHerkend</c> nergens meer gelezen.
+    /// Beschikbaarheidscheck (#1861): eerst een herkend eigen team (anders de wedervraag om het team, of het
+    /// antwoord dat de wedstrijd tegen de genoemde tegenstander op die datum al staat), dan een bruikbare datum,
+    /// dan een bekende speelduur (anders handmatige planning), en pas dan multi-datum of de enkelvoudige check.
+    /// De keuzes staan in <see cref="BeschikbaarheidVoorwaarden"/>; hier alleen de opzoekingen.
     /// </summary>
     private static async Task<string> VerwerkBeschikbaarheidAsync(
-        BerichtClassificatie classificatie, InkomendBericht bericht, ILogger log, ITeamResolver teamResolver,
-        string cc, bool eigenTeamHerkend, string? clubCode, TraceBuilder? trace)
+        BerichtClassificatie classificatie, InkomendBericht bericht, ILogger log,
+        bool eigenTeamHerkend, string? clubCode, TraceBuilder? trace)
     {
         var alleDatums = BerichtDatumHeuristiek.ExpandDoordeweeksDatums(
             classificatie.GetAlleDatums(), bericht.Onderwerp, bericht.Body);
         trace?.Datum(alleDatums);
 
-        var zoek = await ZoekViaTegenstanderAsync(
-            classificatie, alleDatums, teamResolver, cc, eigenTeamHerkend, clubCode, log, trace);
-        if (zoek.Antwoord != null) return zoek.Antwoord;
-        if (zoek.EigenTeam != null)
-        {
-            classificatie.TeamNaam = zoek.EigenTeam;
-            classificatie.LeeftijdsCategorie = TeamNaamNormalisatie.VulLeeftijdsCategorieAan(classificatie.LeeftijdsCategorie, classificatie.TeamNaam, cc);
-        }
+        if (!eigenTeamHerkend)
+            return await BeschikbaarheidVoorwaarden.ZonderEigenTeamAsync(classificatie, alleDatums,
+                (tegenstander, datum) => PlannerDataAccess.FindMatchByOpponentAsync(tegenstander, datum, clubCode), trace);
 
         // #1730: elke modeldatum wordt strikt gevalideerd vóór plannercheck en antwoord; de keuze
         // (lijst vóór losse datum, zonder bruikbare datum "datumOnbekend") staat in Planner.Shared.
         var datums = ModelDatum.VoorBeschikbaarheid(alleDatums, classificatie.Datum);
         if (datums.Count == 0) return PlannerAntwoordJson.DatumOnbekend();
 
+        var handmatig = await BeschikbaarheidVoorwaarden.ControleerSpeelduurAsync(classificatie,
+            categorie => PlannerDataAccess.GetSpeeltijdAsync(categorie, ClubScope.Resolve(clubCode)), trace);
+        if (handmatig != null) return handmatig;
+
         if (datums.Count > 1)
             return await PlannerAntwoordJson.MultiDatumAsync(datums, async datum =>
                 await PlannerService.CheckAvailabilityAsync(BouwBeschikbaarheidRequest(classificatie, datum), log, clubCode));
 
-        // Dezelfde datum als de tegenstander-lookup hierboven gebruikt: anders loopt de
-        // plannercheck over een andere datum dan de rest van de verwerking.
+        // Dezelfde datum als de datumcontrole hierboven: anders loopt de plannercheck over een andere
+        // datum dan de rest van de verwerking.
         classificatie.Datum = datums[0];
 
         var checkResponse = await PlannerService.CheckAvailabilityAsync(
             BouwBeschikbaarheidRequest(classificatie, datums[0]), log, clubCode);
         return JsonConvert.SerializeObject(checkResponse);
-    }
-
-    /// <summary>
-    /// #1139: "opponent kan ons team alsnog vinden"-pad. Is ons eigen team niet herkend maar wel een
-    /// tegenstander genoemd (en is er precies één datum), dan kan de wedstrijd nog via die
-    /// tegenstander gevonden worden — daar staat ons team in.
-    /// Geeft een lege uitkomst als het pad niet van toepassing is; <c>Antwoord</c> gevuld betekent
-    /// dat de pipeline daarmee direct antwoordt; <c>EigenTeam</c> gevuld is het uit de wedstrijd
-    /// afgeleide team (de aanroeper zet dat op de classificatie).
-    /// </summary>
-    private static async Task<TegenstanderZoekUitkomst> ZoekViaTegenstanderAsync(
-        BerichtClassificatie classificatie, List<string> alleDatums, ITeamResolver teamResolver,
-        string cc, bool eigenTeamHerkend, string? clubCode, ILogger log, TraceBuilder? trace)
-    {
-        if (string.IsNullOrWhiteSpace(classificatie.Tegenstander) || eigenTeamHerkend || alleDatums.Count != 1
-            || !ModelDatum.TryParse(alleDatums[0], out var opponentCheckDatum))
-            return default;
-
-        var wedstrijdOpDatum = await PlannerDataAccess.FindMatchByOpponentAsync(
-            classificatie.Tegenstander!, opponentCheckDatum, clubCode);
-        if (wedstrijdOpDatum != null) trace?.OpponentPad("opponent-op-datum", true);
-        if (wedstrijdOpDatum != null)
-            return new(PlannerAntwoordJson.WedstrijdAlIngepland(wedstrijdOpDatum), null);
-
-        var wedstrijdAndereDatum = await PlannerDataAccess.FindMatchByOpponentAsync(
-            classificatie.Tegenstander!, null, clubCode);
-        trace?.OpponentPad(wedstrijdAndereDatum == null ? "niet-gevonden" : "opponent-andere-datum", wedstrijdAndereDatum != null);
-        if (wedstrijdAndereDatum == null)
-            return new(PlannerAntwoordJson.TeamOnbekend(classificatie.Tegenstander), null);
-
-        var eigenTeam = await EigenTeamBepaling.BepaalEigenTeamUitWedstrijdAsync(
-            wedstrijdAndereDatum.Wedstrijd, teamResolver, cc, log, trace);
-        return new(null, eigenTeam);
     }
 
     /// <summary>

@@ -23,6 +23,82 @@ public class GitHubIssueReporterTests
     private const string Repo = "test-repo";
     private const string Fingerprint = "8e64c2440409";
 
+    [Fact]
+    public void BuildHttpClient_HanteertVijftienSecondenPerHttpOperatie()
+    {
+        using var client = GitHubIssueReporter.BuildHttpClient("synthetic-test-token");
+
+        client.Timeout.Should().Be(TimeSpan.FromSeconds(15));
+    }
+
+    [Fact]
+    public async Task CreateIssueAsync_AlGeannuleerd_DoetGeenHttpRequest()
+    {
+        var requestCount = 0;
+        using var client = MakeClient(_ =>
+        {
+            requestCount++;
+            return JsonResponse("{}");
+        });
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => GitHubIssueReporter.CreateIssueAsync(
+            client, Owner, Repo, Fingerprint, new InvalidOperationException(),
+            "SyntheticFunction", NullLogger.Instance, cancellation.Token));
+
+        requestCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task SearchIssueAsync_AlGeannuleerd_WordtGeenMislukteZoekslag()
+    {
+        var requestCount = 0;
+        using var client = MakeClient(_ =>
+        {
+            requestCount++;
+            return JsonResponse("[]");
+        });
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => GitHubIssueReporter.SearchIssueAsync(
+            client, Owner, Repo, Fingerprint, NullLogger.Instance, cancellation.Token));
+
+        requestCount.Should().Be(0, "a canceled lookup must stop instead of becoming a no-match that can create a duplicate");
+    }
+
+    [Fact]
+    public async Task CreateIssueAsync_AmbiguePostWordtGeannuleerdEnNietOpnieuwVerzonden()
+    {
+        var requestCount = 0;
+        var requestStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var handler = new Mock<HttpMessageHandler>();
+        handler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .Returns(async (HttpRequestMessage _, CancellationToken cancellationToken) =>
+            {
+                Interlocked.Increment(ref requestCount);
+                requestStarted.TrySetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                return JsonResponse("{}");
+            });
+        using var client = GitHubIssueReporter.BuildHttpClient("synthetic-test-token", handler.Object);
+        using var cancellation = new CancellationTokenSource();
+
+        var operation = GitHubIssueReporter.CreateIssueAsync(
+            client, Owner, Repo, Fingerprint, new InvalidOperationException(),
+            "SyntheticFunction", NullLogger.Instance, cancellation.Token);
+        await requestStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => operation);
+        requestCount.Should().Be(1, "an ambiguous issue POST must not be replayed automatically");
+    }
+
     private static HttpClient MakeClient(Func<HttpRequestMessage, HttpResponseMessage> respond)
     {
         var handler = new Mock<HttpMessageHandler>();

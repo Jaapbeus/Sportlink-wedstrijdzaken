@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
-using Newtonsoft.Json;
+using Planner.Endpoints.Http;
 
 namespace FunctionApp.Postgres.Admin;
 
@@ -28,10 +28,8 @@ public static class AdminVeldTrainingFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/veldtraining")] HttpRequest req,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminVeldTrainingPost"), "veldtraining aanmaken",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<VeldTrainingRequest>(req, async dto =>
             {
-                var dto = JsonConvert.DeserializeObject<VeldTrainingRequest>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
                 var validatie = Valideer(dto);
                 if (validatie != null) return validatie;
 
@@ -39,7 +37,7 @@ public static class AdminVeldTrainingFunction
                     dto!.VeldNummer, dto.DagVanWeek, TimeSpan.Parse(dto.VanTijd!), TimeSpan.Parse(dto.TotTijd!),
                     dto.Omschrijving, dto.Actief ?? true, clubCode, PostgresDatabaseConfig.ConnectionString);
                 return new OkObjectResult(new { id = newId, status = "aangemaakt" });
-            });
+            }));
 
     [Function("AdminVeldTrainingPut")]
     public static Task<IActionResult> Put(
@@ -47,10 +45,8 @@ public static class AdminVeldTrainingFunction
         int id,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminVeldTrainingPut"), "veldtraining bijwerken",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<VeldTrainingRequest>(req, async dto =>
             {
-                var dto = JsonConvert.DeserializeObject<VeldTrainingRequest>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
                 var validatie = Valideer(dto);
                 if (validatie != null) return validatie;
 
@@ -59,7 +55,7 @@ public static class AdminVeldTrainingFunction
                     dto.Omschrijving, dto.Actief ?? true, clubCode, PostgresDatabaseConfig.ConnectionString);
                 if (rows == 0) return new NotFoundObjectResult(new { error = $"Rij {id} bestaat niet" });
                 return new OkObjectResult(new { id, status = "bijgewerkt" });
-            });
+            }));
 
     [Function("AdminVeldTrainingDelete")]
     public static Task<IActionResult> Delete(

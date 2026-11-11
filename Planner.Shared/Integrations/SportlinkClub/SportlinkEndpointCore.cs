@@ -226,9 +226,9 @@ public static class SportlinkEndpointCore
 
     /// <summary>
     /// Audit-<c>resultaat</c> voor een mutatie-uitkomst (#998, uitgebreid #994).
-    /// <c>IsForcedDryRun</c> gaat vóór <c>IsDryRun</c>, dat vóór <c>IsSuccess</c>: een code-gelockte,
-    /// nog niet live bevestigde mutatie moet in de audit herkenbaar blijven naast een dry-run door
-    /// de club-instelling — bij beide is <c>IsSuccess</c> altijd <c>true</c> (gesimuleerd succes).
+    /// <c>IsForcedDryRun</c> gaat vóór <c>IsDryRun</c>, dat vóór <c>IsSuccess</c>. De huidige
+    /// mutaties volgen de clubinstelling; de code-lock-uitkomst blijft beschikbaar voor een
+    /// toekomstige geforceerde simulatie. Bij beide simulaties is <c>IsSuccess</c> <c>true</c>.
     /// </summary>
     public static string BepaalAuditResultaat(SportlinkMutationResult r) =>
         r.IsForcedDryRun ? "DryRunLocked" : r.IsDryRun ? "DryRun" : r.IsSuccess ? "Success" : "Failure";

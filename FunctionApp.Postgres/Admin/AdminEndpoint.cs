@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Planner.Endpoints.Planning;
 
 namespace FunctionApp.Postgres.Admin;
 
@@ -56,8 +57,7 @@ internal static class AdminEndpoint
         }
         catch (Exception ex)
         {
-            log.LogError(ex, "{Context} mislukt [correlationId={CorrelationId}]", errorContext, correlationId);
-            return new ObjectResult(new { error = "Interne fout" }) { StatusCode = 500 };
+            return PlanningEndpointError.Bepaal(ex, log, errorContext, correlationId);
         }
     }
 

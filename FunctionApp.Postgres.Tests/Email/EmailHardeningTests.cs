@@ -66,7 +66,7 @@ public class EmailHardeningTests
         var aangebodenAanAi = new List<string>();
         await new EmailClassificationService().ClassificeerBatchAsync(
             resultaat!,
-            email =>
+            (email, _) =>
             {
                 aangebodenAanAi.Add(email.Afzender);
                 return Task.FromResult(new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek });

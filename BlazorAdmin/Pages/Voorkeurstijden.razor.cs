@@ -16,9 +16,14 @@ public partial class Voorkeurstijden : ClubSelectorPageBase
     private bool isNew;
     private bool isNewRegel;
     private bool loading = true;
+    private readonly LookupGeneratieGuard _clubLoadGuard = new();
     private string filterTeam = "";
     private string? message;
     private string? regelMessage;
+    private string? teamsLoadError;
+    private string? voorkeurenLoadError;
+    private string? regelsLoadError;
+    private readonly InlineBevestiging<(string Type, int Id)> _deleteConfirmation = new();
 
     private List<VoorkeurTijdDto> Gefilterd =>
         string.IsNullOrWhiteSpace(filterTeam)
@@ -34,15 +39,33 @@ public partial class Voorkeurstijden : ClubSelectorPageBase
 
     private async Task LoadAsync()
     {
+        var clubCode = ClubSelector.SelectedClubCode;
+        var generatie = _clubLoadGuard.Start(clubCode);
         loading = true;
-        var teamsResult = await Api.GetTeamsAsync();
-        teams = teamsResult.Success ? teamsResult.Data ?? new() : new();
-        var r = await Api.GetVoorkeurTijdenAsync();
-        items = r.Success ? r.Data ?? new() : new();
-        var regelsResult = await Api.GetTeamRegelsAsync();
-        teamRegels = regelsResult.Success ? regelsResult.Data ?? new() : new();
-        loading = false;
+        try
+        {
+            var teamsResult = await Api.GetTeamsAsync();
+            if (!IsActueleLading(generatie, clubCode)) return;
+            var voorkeurenResult = await Api.GetVoorkeurTijdenAsync();
+            if (!IsActueleLading(generatie, clubCode)) return;
+            var regelsResult = await Api.GetTeamRegelsAsync();
+            if (!IsActueleLading(generatie, clubCode)) return;
+
+            teams = teamsResult.Success ? teamsResult.Data ?? new() : new();
+            teamsLoadError = teamsResult.Success ? null : teamsResult.ErrorMessage ?? "Teams ophalen mislukt.";
+            items = voorkeurenResult.Success ? voorkeurenResult.Data ?? new() : new();
+            voorkeurenLoadError = voorkeurenResult.Success ? null : voorkeurenResult.ErrorMessage ?? "Voorkeurstijden ophalen mislukt.";
+            teamRegels = regelsResult.Success ? regelsResult.Data ?? new() : new();
+            regelsLoadError = regelsResult.Success ? null : regelsResult.ErrorMessage ?? "Teamregels ophalen mislukt.";
+        }
+        finally
+        {
+            if (IsActueleLading(generatie, clubCode)) loading = false;
+        }
     }
+
+    private bool IsActueleLading(int generatie, string? clubCode) =>
+        _clubLoadGuard.IsActueel(generatie) && ClubSelector.SelectedClubCode == clubCode;
 
     private void Edit(VoorkeurTijdDto v)
     {
@@ -77,9 +100,10 @@ public partial class Voorkeurstijden : ClubSelectorPageBase
 
     private async Task DeleteAsync(int id)
     {
+        if (!_deleteConfirmation.Bevestig(("voorkeur", id))) return;
         var r = await Api.DeleteVoorkeurTijdAsync(id);
-        message = r.Success ? "Soft-deleted." : "Fout: " + r.ErrorMessage;
-        await LoadAsync();
+        message = r.Success ? "Verwijderd." : "Fout: " + r.ErrorMessage;
+        if (r.Success) await LoadAsync();
     }
 
     private void EditRegel(TeamRegelDto r)
@@ -114,10 +138,15 @@ public partial class Voorkeurstijden : ClubSelectorPageBase
 
     private async Task DeleteRegelAsync(int id)
     {
+        if (!_deleteConfirmation.Bevestig(("regel", id))) return;
         var r = await Api.DeleteTeamRegelAsync(id);
         regelMessage = r.Success ? "Verwijderd." : "Fout: " + r.ErrorMessage;
-        await LoadAsync();
+        if (r.Success) await LoadAsync();
     }
+
+    private void VraagVerwijderen(string type, int id) => _deleteConfirmation.Vraag((type, id));
+
+    private void AnnuleerVerwijderen() => _deleteConfirmation.Annuleer();
 
     private static string RegelTypeNederlands(string? type) => type switch
     {

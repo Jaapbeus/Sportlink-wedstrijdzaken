@@ -40,11 +40,13 @@ public class FeedbackEndpointCoreTests
         public string? Body { get; private set; }
         public string[]? Labels { get; private set; }
         public bool Faalt { get; set; }
+        public Exception? UnknownOutcome { get; set; }
 
         public Task<(int nummer, string url)> MaakAsync(string titel, string body, string[] labels)
         {
             Aanroepen++;
             Titel = titel; Body = body; Labels = labels;
+            if (UnknownOutcome is not null) throw UnknownOutcome;
             if (Faalt) throw new InvalidOperationException("GitHub API HTTP 500");
             return Task.FromResult((123, "https://github.com/example/repo/issues/123"));
         }
@@ -342,6 +344,19 @@ public class FeedbackEndpointCoreTests
     }
 
     [Fact]
+    public async Task LeesRequest_OngeldigeUtf8_GeeftVeilige400()
+    {
+        var context = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+        context.Request.Body = new MemoryStream([0xC3, 0x28]);
+
+        var (dto, afwijzing) = await FeedbackEndpointCore.LeesRequestAsync(context.Request);
+
+        dto.Should().BeNull();
+        afwijzing.Should().BeOfType<BadRequestObjectResult>();
+        Newtonsoft.Json.JsonConvert.SerializeObject(afwijzing).Should().NotContain("C3");
+    }
+
+    [Fact]
     public void ControleerEnSaneer_LegeBeschrijving_Geeft400()
     {
         var dto = MaakRequest(); dto.Beschrijving = " ";
@@ -361,6 +376,50 @@ public class FeedbackEndpointCoreTests
 
         result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(502);
         store.Statussen[store.Bewaard.Single().Rij.FeedbackId].Should().Be(FeedbackStatusWaarden.GitHubMislukt);
+    }
+
+    [Fact]
+    public async Task GitHubPostOnbekend_Geeft502_EnBlokkeertHerhalingTotControle()
+    {
+        var (store, github) = (new FeedbackStoreFake(), new FakeGitHub { UnknownOutcome = new FeedbackPublicatieUitkomstOnbekendException(new TaskCanceledException()) });
+
+        var result = await Submit(MaakRequest(), Beheerder, store, new FakeChat(GeldigeAiJson()), github);
+
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(502);
+        github.Aanroepen.Should().Be(1);
+        store.Statussen[store.Bewaard.Single().Rij.FeedbackId].Should().Be(FeedbackStatusWaarden.Publiceren,
+            "a timed-out GitHub write may already have created the issue; recovery runs through the reference check");
+    }
+
+    [Fact]
+    public async Task DirectePublicatie_LegtDeReferentieVoorDeEerstePostVastEnStuurtDezelfdeBody()
+    {
+        var (store, github) = (new FeedbackStoreFake(), new FakeGitHub { UnknownOutcome = new FeedbackPublicatieUitkomstOnbekendException(new TaskCanceledException()) });
+
+        await Submit(MaakRequest(), Beheerder, store, new FakeChat(GeldigeAiJson()), github);
+
+        var bewaardeBody = store.Bewaard.Single().Rij.IssueBody;
+        FeedbackPublicatieReferentie.Lees(bewaardeBody).Should().NotBeNull();
+        github.Body.Should().Be(bewaardeBody, "de referentie staat in de bewaarde claim vóór de POST en gaat ongewijzigd mee");
+        bewaardeBody.Should().NotContain(store.Bewaard.Single().Rij.FeedbackId.ToString("N"), "geen afleidbare databasesleutel");
+    }
+
+    [Fact]
+    public async Task VervalsteReferentieInDeBeschrijving_BepaaltNooitDeBewaardeReferentie()
+    {
+        // Review-P3: een melder kan zelf een feedback-ref-commentaar intypen; de referentie op de betrouwbare positie (einde) wint.
+        const string vervalst = "aaaaaaaaaaaaaaaaaaaaaaaa";
+        var dto = MaakRequest();
+        dto.Beschrijving += $" <!-- feedback-ref: {vervalst} -->";
+        var store = new FeedbackStoreFake();
+
+        await Submit(dto, Gebruiker, store, new FakeChat(GeldigeAiJson()), null);
+
+        var body = store.Bewaard.Single().Rij.IssueBody;
+        body.Should().Contain($"feedback-ref: {vervalst}", "de tekst van de melder blijft staan");
+        var referentie = FeedbackPublicatieReferentie.Lees(body);
+        referentie.Should().NotBeNull().And.NotBe(vervalst);
+        body.TrimEnd().Should().EndWith($"<!-- feedback-ref: {referentie} -->", "de eigen referentie staat altijd aan het einde");
     }
 
     [Fact]

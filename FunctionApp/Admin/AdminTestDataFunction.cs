@@ -1,3 +1,5 @@
+using Planner.Endpoints.Http;
+
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -75,10 +77,11 @@ public static class AdminTestDataFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/testdata/wedstrijden")] HttpRequest req,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("TestDataWedstrijdUpsert"), "ALLSTARS wedstrijd opslaan",
-            async _ =>
+            _ => BoundedRequestBodyReader.ExecuteUtf8Async(req, async body =>
             {
-                var body = await new StreamReader(req.Body).ReadToEndAsync();
-                var dto = JsonSerializer.Deserialize<AllstarsWedstrijdInput>(body, _json);
+                AllstarsWedstrijdInput? dto;
+                try { dto = JsonSerializer.Deserialize<AllstarsWedstrijdInput>(body, _json); }
+                catch (JsonException) { return new BadRequestObjectResult(new { error = "Request body is geen geldige JSON." }); }
                 if (dto == null || string.IsNullOrWhiteSpace(dto.BkMatches))
                     return new BadRequestObjectResult(new { error = "BkMatches verplicht" });
 
@@ -137,7 +140,7 @@ public static class AdminTestDataFunction
 
                 await command.ExecuteNonQueryAsync();
                 return new OkObjectResult(new { ok = true });
-            });
+            }));
 
     // POST /api/beheer/testdata/wedstrijden/verplaats-datum
     // Body: { "oudeDatum": "2026-05-30", "nieuweDatum": "2026-06-06" }
@@ -147,10 +150,11 @@ public static class AdminTestDataFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/testdata/wedstrijden/verplaats-datum")] HttpRequest req,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("TestDataVerplaatsDatum"), "ALLSTARS wedstrijden verplaatsen",
-            async _ =>
+            _ => BoundedRequestBodyReader.ExecuteUtf8Async(req, async body =>
             {
-                var body = await new StreamReader(req.Body).ReadToEndAsync();
-                var dto = JsonSerializer.Deserialize<VerplaatsDatumInput>(body, _json);
+                VerplaatsDatumInput? dto;
+                try { dto = JsonSerializer.Deserialize<VerplaatsDatumInput>(body, _json); }
+                catch (JsonException) { return new BadRequestObjectResult(new { error = "Request body is geen geldige JSON." }); }
                 if (dto == null || string.IsNullOrWhiteSpace(dto.OudeDatum) || string.IsNullOrWhiteSpace(dto.NieuweDatum))
                     return new BadRequestObjectResult(new { error = "OudeDatum en NieuweDatum zijn verplicht" });
 
@@ -177,7 +181,7 @@ public static class AdminTestDataFunction
                 command.Parameters.AddWithValue("@NieuweKaledatum", nieuweKaledatum);
                 var count = await command.ExecuteNonQueryAsync();
                 return new OkObjectResult(new { ok = true, aantalVerplaatst = count });
-            });
+            }));
 
     // DELETE /api/beheer/testdata/wedstrijden/{bk} — verwijder één wedstrijd
     [Function("TestDataWedstrijdDeleteEen")]
