@@ -9,7 +9,7 @@ namespace FunctionApp.Postgres.Tests;
 /// #1116: het oefenwedstrijd-formulier stuurt alleen teamnaam/tegenstander/veld; de server leidt de
 /// Sportlink-velden af. Deze tests dekken de pure vertaalstappen — de databasekoppeling
 /// (<c>SportlinkClubMatchRepository</c>) en de Sportlink-aanroep zelf blijven buiten beeld (die
-/// laatste is bovendien code-gelockt, zie <c>SportlinkClubClientTests</c>).
+/// laatste volgt <c>sportlinkDryRun</c>, zie <c>SportlinkClubClientTests</c>).
 /// </summary>
 public class SportlinkClubMatchFunctionTests
 {

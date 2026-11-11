@@ -487,7 +487,7 @@ Vier dingen om te onthouden:
   voor élke aanroep, dus ook voor PUT/POST. Dat is onveilig: een timeout of gateway-5xx *nádat*
   Sportlink de aanvraag al verwerkt heeft, is voor de client niet te onderscheiden van "nooit
   aangekomen". Herhalen zou dan een tweede oefenwedstrijd aanmaken (`CreateClubMatchAsync`, POST;
-  het verwijderpad van #1440 staat nog hard op dry-run) of een wijzigingsverzoek tweemaal bij een echte tegenstander
+  het verwijderpad van #1440 is sinds #1458 live bevestigd en volgt `sportlinkDryRun`) of een wijzigingsverzoek tweemaal bij een echte tegenstander
   afleveren (`RequestMatchChangeAsync`). Sinds de fix voor #1417 kiest elke call site van
   `ExecuteWithTokenRetryAsync` expliciet een `RetryBeleid` — bewust zonder default:
 
@@ -564,8 +564,8 @@ Vier dingen om te onthouden:
   als `AgeClassCode`. `FacilityId` komt uit de club-instelling `accommodatie`,
   op naam opgezocht in `PickListsLocation` (read-only GET, per club één uur in-memory gecachet;
   eerst exact, anders één unieke gedeeltelijke match — meerdere treffers → leeg). Elke mislukte
-  vertaling wordt een `Waarschuwing` in de respons, geen fout: het pad is toch code-gelockt en de
-  beheerder moet zien wat er (gesimuleerd) mee zou gaan. **Open vraag, pas te beantwoorden met de
+  vertaling wordt een `Waarschuwing` in de respons, geen fout: de aanroep volgt `sportlinkDryRun` (aanmaken
+  is sinds #1427 live bevestigd) en de beheerder moet zien wat er mee gaat of, bij dry-run, mee zou gaan. **Open vraag, pas te beantwoorden met de
   netwerktrace:** hanteert Sportlink Club voor `PublicHomeTeamId` hetzelfde numerieke team-ID als
   de dataservice, of een publiek string-ID zoals `PublicMatchId` (`M...`)? Het diagnostische
   `GET .../club-match/picklists` blijft daarvoor bestaan. Blijkt het een ander ID, dan is het

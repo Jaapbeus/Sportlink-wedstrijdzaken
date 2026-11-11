@@ -45,7 +45,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - E-maildashboardtellers gebruiken de echte laatste 24 uur en tellen alle passende berichten, ook als de detailweergave de limiet bereikt. Bij een oudere API zonder volledige tellingen toont het dashboard "Niet beschikbaar" in plaats van onjuiste nullen; werk de API bij vóór de Blazor-app (#1819)
 - De email-log OpenAPI-parameters documenteren nu de drie parser-ondersteunde datumvormen; de SQL Server-beschikbaarheidstest ruimt ook op als het fixture-opzetten faalt (#1819, reviewronde 3)
 - Sportlink Club-clientconstructie vereist nu expliciet een `isDryRun`-delegate en weigert `null`, zodat ontbrekende configuratie niet stilzwijgend live-mutaties activeert (#1804).
-- Verouderde Sportlink-opmerkingen en OpenAPI-beschrijvingen over een actieve code-lock zijn bijgewerkt; de DPO-vragen en veldcontracten blijven onbevestigd (#1804).
+- Verouderde Sportlink-opmerkingen, documentatie (ook over het verwijder- en aanmaakpad) en OpenAPI-beschrijvingen over een actieve code-lock zijn bijgewerkt; de DPO-vragen en veldcontracten blijven onbevestigd (#1804).
 
 ## [3.16.0.0] — 2026-11-10
 
