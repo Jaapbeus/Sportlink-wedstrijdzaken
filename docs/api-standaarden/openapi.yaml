@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.16.0.2
+  version: 3.16.0.4
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -450,7 +450,8 @@ components:
         aangevraagdDoor:
           type: string
           nullable: true
-          example: "trainer@voorbeeld.nl"
+          deprecated: true
+          description: Compatibility-only field. Ignored; the server derives the stored requester from the authenticated principal.
         wedstrijdDuurMinuten:
           type: integer
           nullable: true
@@ -620,7 +621,8 @@ components:
         aangevraagdDoor:
           type: string
           nullable: true
-          example: "tegenstander via email"
+          deprecated: true
+          description: Compatibility-only field. Ignored; the server derives the stored requester from the authenticated principal.
         opmerking:
           type: string
           nullable: true
@@ -7884,10 +7886,10 @@ paths:
       operationId: deleteTeamAlias
       summary: Teamalias verwijderen
       description: |
-        Verwijdert de alias definitief. Uitsluitend binnen de eigen club (`X-Club-Code`). Er staat nergens een
-        identificator van de beheerder in het log; de tabel bewaart geen auditregel van een verwijderde rij.
-        De alias kan opnieuw als `pending` verschijnen wanneer de schrijfwijze weer wordt
-        aangetroffen.
+        Sync-origin aliases retain their row with status rejected, preventing canonicalization from
+        validating the association again. Other origins are physically deleted. Both actions are scoped
+        to the current club (X-Club-Code). Logs contain only the alias identifier, without administrator
+        identity. Rejection blocks the alias association, not an independent canonical-name match.
       security:
         - easyAuth: []
       parameters:

@@ -100,6 +100,22 @@ public class TeamCanonicalisatieIntegrationTests
             .Should().Be("Leren");
     }
 
+    [PostgresFact]
+    public async Task RefreshAsync_AfgewezenSyncAlias_BlijftAfgewezen()
+    {
+        await SchoonAsync();
+        await HisTeamAsync("TESTCANON JO12-1", "Onder 12", "bond");
+        await TeamCanonicalisatieService.RefreshAsync(ConnectionString, ClubCode, NullLogger.Instance);
+        await ExecAsync(
+            "UPDATE public.teamaliassen SET status = 'rejected' WHERE clubcode = @club AND bron = 'Sync'",
+            ("club", ClubCode));
+
+        await TeamCanonicalisatieService.RefreshAsync(ConnectionString, ClubCode, NullLogger.Instance);
+
+        (await ScalarAsync<string?>("SELECT status FROM public.teamaliassen WHERE clubcode = @club"))
+            .Should().Be("rejected", "de volgende canonicalisatie mag een expliciete afwijzing niet ongedaan maken");
+    }
+
     /// <summary>
     /// #820: Postgres' default-collatie is hoofdlettergevoelig. Een opgeslagen sleutel met
     /// afwijkende kast moet nog steeds als dezelfde rij herkend worden, anders valt de upsert in de

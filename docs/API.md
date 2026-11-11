@@ -160,7 +160,7 @@ verwerking plaats.
 | `GET` | `/beheer/onbekende-teamteksten` | **Admin** | Wachtrij met teamteksten die de pipeline niet kon koppelen (`?status=open\|afgehandeld\|genegeerd&limit=100`) (#1568) |
 | `PUT` | `/beheer/onbekende-teamteksten/{id}/status` | **Admin** | Wachtrijregel op `open`, `afgehandeld` of `genegeerd` zetten (`{ "status": ... }`) |
 | `PUT` | `/beheer/teamaliassen/{id}/valideer` | **Admin** | Alias goedkeuren of afwijzen (`{ "status": "validated"\|"rejected" }`); legt wie en wanneer vast |
-| `DELETE` | `/beheer/teamaliassen/{id}` | **Admin** | Alias definitief verwijderen |
+| `DELETE` | `/beheer/teamaliassen/{id}` | **Admin** | `Sync`-aliassen blijvend afwijzen (`rejected`); andere herkomsten fysiek verwijderen, steeds binnen de geselecteerde club |
 | `GET` | `/beheer/theme` | **Admin** | Club-thema ophalen (kleuren + website-URL + `lightColors`/`darkColors`) — gefilterd op `X-Club-Code` header. De paletten zijn `null` zolang er geen licht/donker-set is ingesteld; de client valt dan terug op de vier platte kleuren |
 | `PUT` | `/beheer/theme` | **Admin** | Club-thema opslaan (`{ primary, secondary, accent, textOnPrimary, clubWebsiteUrl, faviconUrl, logoUrl, lightColors, darkColors }`) — gefilterd op `X-Club-Code` header. `lightColors`/`darkColors` zijn sleutel→hex-objecten voor het volledige palet per modus (#1254); elke sleutel moet `^[a-z][a-zA-Z0-9-]{0,39}$` zijn en elke waarde `#rrggbb` of `#rrggbbaa`, maximaal 40 per palet. `faviconUrl`/`logoUrl` zijn optioneel; een ingevulde waarde wordt getrimd, `http://` wordt als `https://` opgeslagen, en daarna moet het een absolute `https://`-URL van maximaal 300 tekens zijn (anders HTTP 400) |
 | `POST` | `/beheer/theme/extract?url=` | **Admin** | Kleuren extraheren uit club-website (SSRF-beschermd) |
@@ -516,7 +516,7 @@ Als de gevraagde dag geen wedstrijden toelaat (vrijdag/zondag):
 
 ## POST /api/planner/bevestig
 
-Bevestig en boek een wedstrijdslot. Schrijft naar `planner.geplandewedstrijden` (Postgres-tier; `planner.GeplandeWedstrijden` op de SQL Server-tier).
+Bevestig en boek een wedstrijdslot. Schrijft naar `planner.geplandewedstrijden` (Postgres-tier; `planner.GeplandeWedstrijden` op de SQL Server-tier). De aanvrager wordt server-side afgeleid uit de ingelogde principal; een eventueel meegestuurd `aangevraagdDoor`-veld wordt genegeerd.
 
 ### Aanvraag
 
@@ -528,7 +528,6 @@ Bevestig en boek een wedstrijdslot. Schrijft naar `planner.geplandewedstrijden` 
   "leeftijdsCategorie": "JO13",
   "teamNaam": "[ClubCode] JO13-1",
   "tegenstander": "[Tegenstander] JO13-2",
-  "aangevraagdDoor": "trainer@voorbeeld.nl",
   "wedstrijdDuurMinuten": null
 }
 ```
@@ -543,7 +542,7 @@ Bevestig en boek een wedstrijdslot. Schrijft naar `planner.geplandewedstrijden` 
 | `leeftijdsCategorie` | `string` | Nee | Leeftijdscategorie voor automatische duur/veldgrootte |
 | `teamNaam` | `string` | Nee | Teamnaam |
 | `tegenstander` | `string` | Nee | Tegenstander |
-| `aangevraagdDoor` | `string` | Nee | Wie het verzoek heeft gedaan |
+| `aangevraagdDoor` | `string` | Nee | Verouderd compatibiliteitsveld; genegeerd. De server bepaalt de aanvrager uit de ingelogde principal. |
 | `wedstrijdDuurMinuten` | `integer` | Nee | Overschrijf wedstrijdduur (standaard uit Speeltijden of 105) |
 | `heelVeld` | `boolean` | Nee | Dwing een heel veld af, ook als de leeftijdscategorie normaal op een deelveld speelt |
 
@@ -745,7 +744,7 @@ Simulate rescheduling: calculate alternative time slots for an existing match. *
 
 ## POST /api/planner/herplan-bevestig
 
-Register a reschedule request. **Does NOT modify the match** — only records the request with status "Aangevraagd". The actual change in Sportlink is a manual process.
+Register a reschedule request. **Does NOT modify the match** — only records the request with status "Aangevraagd". The actual change in Sportlink is a manual process. The server derives the requester from the authenticated principal; any supplied `aangevraagdDoor` value is ignored.
 
 ### Request Body
 
@@ -754,7 +753,6 @@ Register a reschedule request. **Does NOT modify the match** — only records th
   "wedstrijdcode": 12345678,
   "gewensteAanvangsTijd": "10:00",
   "gewenstVeldNummer": 2,
-  "aangevraagdDoor": "tegenstander via email",
   "opmerking": "08:30 is niet haalbaar"
 }
 ```
@@ -766,7 +764,7 @@ Register a reschedule request. **Does NOT modify the match** — only records th
 | `wedstrijdcode` | `integer` | **Yes** | Match code |
 | `gewensteAanvangsTijd` | `string` | **Yes** | Desired new time `HH:mm` |
 | `gewenstVeldNummer` | `integer` | No | Desired field number |
-| `aangevraagdDoor` | `string` | No | Who requested |
+| `aangevraagdDoor` | `string` | No | Deprecated compatibility field; ignored. The server derives the requester from the authenticated principal. |
 | `opmerking` | `string` | No | Reason / notes |
 
 ### Response (200)
@@ -1142,8 +1140,7 @@ curl -X DELETE http://localhost:7094/api/beheer/teamaliassen/12
 { "deleted": true, "id": 12 }
 ```
 
-Een verwijderde rij laat geen auditregel achter in de tabel, en het applicatielog bevat alleen het alias-id: geen
-object-ID of naam van de beheerder (AVG).
+Sync-origin aliases retain their existing row with status `rejected`, so canonicalization cannot validate the association again. Other origins are physically deleted. The response shape remains unchanged. Rejection blocks the alias association, not an independent canonical-name match. Both actions are strictly scoped to the current club; logs contain only the alias identifier, without the administrator identity.
 
 ### DELETE /api/beheer/leermomenten/{id}
 
@@ -1221,7 +1218,7 @@ curl -X POST http://localhost:7094/api/planner/check-availability -H "Content-Ty
 ### Wedstrijd boeken
 
 ```bash
-curl -X POST http://localhost:7094/api/planner/bevestig -H "Content-Type: application/json" -d '{"datum":"2026-04-25","aanvangsTijd":"12:00","veldNummer":3,"leeftijdsCategorie":"JO13","teamNaam":"[ClubCode] JO13-1","tegenstander":"[Tegenstander] JO13-2","aangevraagdDoor":"trainer@voorbeeld.nl"}'
+curl -X POST http://localhost:7094/api/planner/bevestig -H "Content-Type: application/json" -d '{"datum":"2026-04-25","aanvangsTijd":"12:00","veldNummer":3,"leeftijdsCategorie":"JO13","teamNaam":"[ClubCode] JO13-1","tegenstander":"[Tegenstander] JO13-2"}'
 ```
 
 ### Zonsondergangtabel vullen
@@ -1245,7 +1242,7 @@ curl -X POST http://localhost:7094/api/planner/herplan-check -H "Content-Type: a
 ### Herplanverzoek registreren
 
 ```bash
-curl -X POST http://localhost:7094/api/planner/herplan-bevestig -H "Content-Type: application/json" -d '{"wedstrijdcode":12345678,"gewensteAanvangsTijd":"10:00","gewenstVeldNummer":2,"aangevraagdDoor":"tegenstander via email","opmerking":"Tijdstip is niet haalbaar"}'
+curl -X POST http://localhost:7094/api/planner/herplan-bevestig -H "Content-Type: application/json" -d '{"wedstrijdcode":12345678,"gewensteAanvangsTijd":"10:00","gewenstVeldNummer":2,"opmerking":"Tijdstip is niet haalbaar"}'
 ```
 
 ### Dagplanning optimaliseren

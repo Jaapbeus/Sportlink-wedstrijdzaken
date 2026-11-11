@@ -76,6 +76,24 @@ public class TeamResolverTests
         resultaat.Confidence.Should().BeLessThan(1.0);
     }
 
+    [Theory]
+    [InlineData("MO13-2", "JO13-2", "JO13")]
+    [InlineData("JO13-2", "MO13-2", "MO13")]
+    public async Task ResolveAsync_ExplicietGeslachtPrefix_GeenKandidaatVanAnderGeslacht(
+        string invoer, string kandidaatNaam, string categorie)
+    {
+        var fake = new FakeTeamCandidateRepository
+        {
+            Kandidaten = [new TeamCandidate(12, kandidaatNaam, categorie)],
+        };
+        var resolver = new TeamResolver(fake);
+
+        var resultaat = await resolver.ResolveAsync(Request(invoer));
+
+        resultaat.Should().Be(TeamResolutionResult.Onopgelost);
+        fake.KandidatenOpgevraagd.Should().BeFalse();
+    }
+
     // #1268: dit is sinds de verwijdering van de AI-disambiguator het ENIGE gedrag bij meerdere
     // kandidaten, op beide tiers. Drie tests die een keuze door een taalmodel afdekten zijn
     // vervallen; "13-1" kan JO13-1 of MO13-1 zijn en dat raadt de applicatie niet meer.
