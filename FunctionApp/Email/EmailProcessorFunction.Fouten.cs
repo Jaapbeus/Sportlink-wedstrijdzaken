@@ -59,49 +59,4 @@ public partial class EmailProcessorFunction
             log.LogWarning(ex, "Fout bij versturen teamleider-notificatie voor {Team} — hoofdverwerking niet onderbroken", LogWaarde.Schoon(teamNaam));
         }
     }
-
-    internal static async Task StuurTeamContactBerichtDoorAsync(
-        IEmailGraphService graphService, string teamNaam, InkomendBericht email, ILogger log,
-        Func<string, Task<TeamleiderContact?>>? zoekContact = null, Func<string, string?>? instelling = null)
-    {
-        try
-        {
-            var coach = await (zoekContact?.Invoke(teamNaam) ?? SportlinkFunction.Planner.PlannerDataAccess.GetTeamleiderContactAsync(teamNaam));
-            if (coach == null)
-            {
-                log.LogInformation("Geen coach gevonden voor {Team} — doorsturen overgeslagen", LogWaarde.Schoon(teamNaam));
-                return;
-            }
-
-            // AVG-maatregel: BCC-audit-kopie naar de veldplanner bij het doorsturen van
-            // persoonsgegevens. Stond eerder op de sleutel 'coordinatorEmail' — die bestaat niet in
-            // dbo.AppSettings, dus de kopie ging nóóit uit terwijl code en documentatie dat wel
-            // beloofden. De juiste sleutel is 'plannerEmailAdres' (kolom PlannerEmailAdres). (#712)
-            var auditKopieAdres = (instelling ?? SystemUtilities.AppSettings.GetSetting)("plannerEmailAdres");
-            if (string.IsNullOrWhiteSpace(auditKopieAdres))
-            {
-                // Stil overslaan mag niet: de audit-kopie is een AVG-maatregel, geen nice-to-have.
-                auditKopieAdres = null;
-                log.LogWarning(
-                    "Instelling 'plannerEmailAdres' ontbreekt of is leeg — teambegeleidingsvraag voor {Team} wordt "
-                    + "doorgestuurd ZONDER BCC-audit-kopie. Vul het e-mailadres van de veldplanner in bij Instellingen.",
-                    teamNaam);
-            }
-
-            // #1809: vrije afzendertekst wordt platgeslagen (geen regeleinden/markup in onderwerp of kop), de body
-            // wordt begrensd en Reply-To krijgt alleen een syntactisch geschikt enkel adres.
-            var bericht = TeamContactDoorstuurBericht.Bouw(teamNaam, email.AfzenderNaam, email.Afzender, email.Body, log);
-
-            // Reply-To wordt alleen gezet als de syntactische controle één geschikt adres herkent.
-            // BCC veldplanner voor audit; coach-email nooit in logs
-            await graphService.StuurTeamContactDoorAsync(
-                [coach.Emailadres], bericht.Onderwerp, bericht.Inhoud, bericht.ReplyTo, auditKopieAdres);
-
-            log.LogInformation("Teambegeleiding-vraag doorgestuurd voor {Team}", LogWaarde.Schoon(teamNaam));
-        }
-        catch (Exception ex)
-        {
-            log.LogWarning(ex, "Fout bij doorsturen teambegeleiding-vraag voor {Team} — hoofdverwerking niet onderbroken", LogWaarde.Schoon(teamNaam));
-        }
-    }
 }

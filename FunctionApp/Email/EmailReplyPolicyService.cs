@@ -44,17 +44,13 @@ internal sealed class EmailReplyPolicyService
                 return string.IsNullOrWhiteSpace(seizoen) ? null : await KnvbPdfService.GetKalenderPdfAsync(regio, seizoen, log);
             },
             ExtraheerGraphStatusCode,
-            _teamContactDoorstuur ?? ((id, verzoek) => TeamContactDoorstuurAfhandeling.VoerEenmaligUitAsync(
-                id,
-                new SqlTeamContactDoorstuurPersistentie(
+            _teamContactDoorstuur ?? TeamContactDoorstuurAfhandeling.MaakStandaardDoorstuur(
+                () => new SqlTeamContactDoorstuurPersistentie(
                     SystemUtilities.DatabaseConfig.ConnectionString, persistenceService.ResolveClubCode()),
-                () => TeamContactDoorstuurAfhandeling.VerstuurViaAdapterAsync(
-                    verzoek,
-                    async team => (await PlannerDataAccess.GetTeamleiderContactAsync(team))?.Emailadres,
-                    () => SystemUtilities.AppSettings.GetSetting("plannerEmailAdres"),
-                    (recipient, subject, body, replyTo, audit) => graphService.StuurTeamContactDoorAsync(
-                        [recipient], subject, body, replyTo, audit),
-                    log))));
+                async team => (await PlannerDataAccess.GetTeamleiderContactAsync(team))?.Emailadres,
+                () => SystemUtilities.AppSettings.GetSetting("plannerEmailAdres"),
+                graphService.StuurTeamContactDoorAsync,
+                log));
 
         return EmailReplyAfhandeling.HandelReplyFlowAfAsync(
             verwerkingId, new ReplyBericht(email.MessageId, email.Afzender, email.ConversationId, email.AfzenderNaam, email.Body), classificatie,

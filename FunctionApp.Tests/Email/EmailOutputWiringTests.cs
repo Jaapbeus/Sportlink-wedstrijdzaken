@@ -50,11 +50,14 @@ public class EmailOutputWiringTests
     public async Task Forwarding_ActualGraphOutputGebruiktVeiligeBuilder()
     {
         var graph = new FakeEmailGraphService();
-        var email = new InkomendBericht { AfzenderNaam = "Jan\r\nBcc: test", Afzender = "ongeldig", Body = new string('x', 9000) };
-        await EmailProcessorFunction.StuurTeamContactBerichtDoorAsync(
-            graph, "<b>JO13-2</b>", email, NullLogger.Instance,
-            _ => Task.FromResult<TeamleiderContact?>(new() { Naam = "Jan de Vries", Emailadres = "trainer@voorbeeld.nl" }),
-            _ => "trainer@voorbeeld.nl");
+        var verzoek = new TeamContactDoorstuurVerzoek("<b>JO13-2</b>", "ongeldig", "Jan\r\nBcc: test", new string('x', 9000));
+        var doorstuur = TeamContactDoorstuurAfhandeling.MaakStandaardDoorstuur(
+            () => new ClaimbarePersistentie(),
+            _ => Task.FromResult<string?>("trainer@voorbeeld.nl"),
+            () => "trainer@voorbeeld.nl",
+            graph.StuurTeamContactDoorAsync,
+            NullLogger.Instance);
+        (await doorstuur(1, verzoek)).Should().Be(TeamContactDoorstuurUitkomst.Doorgestuurd);
         var mail = graph.TeamForwardings.Should().ContainSingle().Which;
         mail.Subject.Should().Contain(AiVeldSanering.GeneriekTeam).And.NotContain("<").And.NotContain("Bcc:");
         mail.Body.Should().NotContain("Bcc:").And.Contain("kies handmatig het juiste contactkanaal");
@@ -74,5 +77,21 @@ public class EmailOutputWiringTests
         var mail = graph.SentReplies.Should().ContainSingle().Which;
         mail.Subject.Should().Contain(AiVeldSanering.GeneriekTeam).And.Contain("de opgegeven datum").And.NotContain("<");
         mail.Body.Should().Contain(AiVeldSanering.GeneriekTeam).And.NotContain("<");
+    }
+
+    /// <summary>One explicit NietGestart row that the forwarding attempt may claim exactly once.</summary>
+    private sealed class ClaimbarePersistentie : ITeamContactDoorstuurPersistentie
+    {
+        private bool _geclaimd;
+
+        public Task<TeamContactDoorstuurClaim> ClaimAsync(int verwerkingId)
+        {
+            var claim = _geclaimd ? TeamContactDoorstuurClaim.NietBeschikbaar : TeamContactDoorstuurClaim.Geclaimd;
+            _geclaimd = true;
+            return Task.FromResult(claim);
+        }
+
+        public Task<bool> MarkeerTerminalAsync(int verwerkingId, TeamContactDoorstuurStatus status)
+            => Task.FromResult(true);
     }
 }

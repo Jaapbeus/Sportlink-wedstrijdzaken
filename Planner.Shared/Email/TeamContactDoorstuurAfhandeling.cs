@@ -66,6 +66,29 @@ public interface ITeamContactDoorstuurPersistentie
 /// </summary>
 public static class TeamContactDoorstuurAfhandeling
 {
+    /// <summary>
+    /// The default forwarding action of both database tiers: one durable attempt
+    /// (<see cref="VoerEenmaligUitAsync"/>) around the adapter send (<see cref="VerstuurViaAdapterAsync"/>).
+    /// A tier supplies only its persistence, contact lookup, planner audit address and Graph send call.
+    /// The persistence factory runs per forwarding call, so tier settings are still resolved lazily.
+    /// </summary>
+    public static Func<int, TeamContactDoorstuurVerzoek, Task<TeamContactDoorstuurUitkomst>> MaakStandaardDoorstuur(
+        Func<ITeamContactDoorstuurPersistentie> maakPersistentie,
+        Func<string, Task<string?>> zoekOntvangerAsync,
+        Func<string?> auditKopie,
+        Func<IReadOnlyList<string>, string, string, string?, string?, Task> stuurTeamContactDoorAsync,
+        ILogger log)
+        => (verwerkingId, verzoek) => VoerEenmaligUitAsync(
+            verwerkingId,
+            maakPersistentie(),
+            () => VerstuurViaAdapterAsync(
+                verzoek,
+                zoekOntvangerAsync,
+                auditKopie,
+                (ontvanger, onderwerp, inhoud, replyTo, audit) => stuurTeamContactDoorAsync(
+                    [ontvanger], onderwerp, inhoud, replyTo, audit),
+                log));
+
     public static async Task<TeamContactDoorstuurVerzendresultaat> VerstuurViaAdapterAsync(
         TeamContactDoorstuurVerzoek verzoek,
         Func<string, Task<string?>> zoekOntvangerAsync,

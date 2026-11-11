@@ -51,17 +51,13 @@ internal sealed class EmailReplyPolicyService
                 return string.IsNullOrWhiteSpace(seizoen) ? null : await KnvbPdfService.GetKalenderPdfAsync(regio, seizoen, log);
             },
             ExtraheerGraphStatusCode,
-            _teamContactDoorstuur ?? ((id, verzoek) => TeamContactDoorstuurAfhandeling.VoerEenmaligUitAsync(
-                id,
-                new PostgresTeamContactDoorstuurPersistentie(connectionString, clubCode ?? VereisClubCode()),
-                () => TeamContactDoorstuurAfhandeling.VerstuurViaAdapterAsync(
-                    verzoek,
-                    async team => (await AllstarsTestDataRepository.GetTeamleiderContactAsync(
-                        connectionString, team, clubCode ?? VereisClubCode()))?.Emailadres,
-                    () => PostgresAppSettings.GetSetting("plannerEmailAdres"),
-                    (recipient, subject, body, replyTo, audit) => graphService.StuurTeamContactDoorAsync(
-                        [recipient], subject, body, replyTo, audit),
-                    log))));
+            _teamContactDoorstuur ?? TeamContactDoorstuurAfhandeling.MaakStandaardDoorstuur(
+                () => new PostgresTeamContactDoorstuurPersistentie(connectionString, clubCode ?? VereisClubCode()),
+                async team => (await AllstarsTestDataRepository.GetTeamleiderContactAsync(
+                    connectionString, team, clubCode ?? VereisClubCode()))?.Emailadres,
+                () => PostgresAppSettings.GetSetting("plannerEmailAdres"),
+                graphService.StuurTeamContactDoorAsync,
+                log));
 
         return EmailReplyAfhandeling.HandelReplyFlowAfAsync(
             verwerkingId, new ReplyBericht(email.MessageId, email.Afzender, email.ConversationId, email.AfzenderNaam, email.Body ?? ""), classificatie,

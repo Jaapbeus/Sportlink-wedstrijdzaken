@@ -246,6 +246,61 @@ public class TeamContactDoorstuurAfhandelingTests
     }
 
     [Fact]
+    public async Task StandardForwarding_ClaimsLazilySendsOnceToSingleRecipientAndStoresAcceptance()
+    {
+        var db = new FakePersistentie();
+        var persistenceCreated = 0;
+        var lookups = new List<string>();
+        var sends = new List<(IReadOnlyList<string> Recipients, string Subject, string Body, string? ReplyTo, string? Audit)>();
+        var forward = TeamContactDoorstuurAfhandeling.MaakStandaardDoorstuur(
+            () => { persistenceCreated++; return db; },
+            team => { lookups.Add(team); return Task.FromResult<string?>("coach@allstars-fc.test"); },
+            () => "planner@allstars-fc.test",
+            (recipients, subject, body, replyTo, audit) =>
+            {
+                sends.Add((recipients, subject, body, replyTo, audit));
+                return Task.CompletedTask;
+            },
+            NullLogger.Instance);
+
+        persistenceCreated.Should().Be(0, "tier settings for the persistence must be resolved per forwarding call");
+
+        var request = new TeamContactDoorstuurVerzoek("JO13-1", "trainer@voorbeeld.nl", "Vraagsteller", "Mijn vraag");
+        var first = await forward(7, request);
+        var resumed = await forward(7, request);
+
+        first.Should().Be(TeamContactDoorstuurUitkomst.Doorgestuurd);
+        resumed.Should().Be(TeamContactDoorstuurUitkomst.Doorgestuurd);
+        persistenceCreated.Should().Be(2);
+        db.Status.Should().Be(TeamContactDoorstuurStatus.Geaccepteerd);
+        lookups.Should().Equal("JO13-1");
+        sends.Should().ContainSingle();
+        sends[0].Recipients.Should().Equal("coach@allstars-fc.test");
+        sends[0].Body.Should().Contain("Mijn vraag");
+        sends[0].ReplyTo.Should().Be("trainer@voorbeeld.nl");
+        sends[0].Audit.Should().Be("planner@allstars-fc.test");
+    }
+
+    [Fact]
+    public async Task StandardForwarding_NoRecipientIsTerminalWithoutGraphCall()
+    {
+        var db = new FakePersistentie();
+        var graphCalls = 0;
+        var forward = TeamContactDoorstuurAfhandeling.MaakStandaardDoorstuur(
+            () => db,
+            _ => Task.FromResult<string?>(null),
+            () => "planner@allstars-fc.test",
+            (_, _, _, _, _) => { graphCalls++; return Task.CompletedTask; },
+            NullLogger.Instance);
+
+        var outcome = await forward(8, new TeamContactDoorstuurVerzoek("JO13-1", "trainer@voorbeeld.nl", "Vraagsteller", "Mijn vraag"));
+
+        outcome.Should().Be(TeamContactDoorstuurUitkomst.NietDoorgestuurd);
+        db.Status.Should().Be(TeamContactDoorstuurStatus.NietVerstuurd);
+        graphCalls.Should().Be(0);
+    }
+
+    [Fact]
     public void ReviewProposal_DoesNotClaimForwardingHappened()
     {
         var (subject, body) = TeamContactDoorstuurAfhandeling.BouwReviewVoorstel();
