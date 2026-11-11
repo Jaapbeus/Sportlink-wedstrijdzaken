@@ -47,6 +47,7 @@ public partial class Feedback : ClubSelectorPageBase
         _detailBezig = false;
         _filter.Offset = 0;
         _inzageOffset = 0;
+        _melding = null; // #1872: melding hoort bij de vorige club
         return LaadAsync();
     }
 
@@ -161,7 +162,7 @@ public partial class Feedback : ClubSelectorPageBase
         var clubCode = ClubSelector.SelectedClubCode;
         var result = await Api.PubliceerFeedbackAsync(id);
         _publicerenBezig.Remove(id);
-        if (ClubSelector.SelectedClubCode != clubCode) return; // #1872: uitkomst hoort bij een andere club
+        if (IsClubGewisseld(clubCode)) return; // #1872: uitkomst hoort bij een andere club
 
         if (result.Success)
         {

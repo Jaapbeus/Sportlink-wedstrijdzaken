@@ -77,10 +77,12 @@ public partial class Leermomenten : ClubSelectorPageBase
     {
         _actieBezigId.Add(id);
         StateHasChanged();
+        var clubCode = ClubSelector.SelectedClubCode;
         try
         {
             var result = await Api.VerwijderLeermomentAsync(id);
             _verwijderBevestigId = null;
+            if (IsClubGewisseld(clubCode)) return; // #1872: uitkomst hoort bij een andere club
             if (!result.Success)
                 _fout = result.ErrorMessage ?? "Verwijderen mislukt";
             else
@@ -88,7 +90,7 @@ public partial class Leermomenten : ClubSelectorPageBase
         }
         catch (Exception ex)
         {
-            _fout = ex.Message;
+            if (!IsClubGewisseld(clubCode)) _fout = ex.Message;
         }
         finally
         {
@@ -101,9 +103,11 @@ public partial class Leermomenten : ClubSelectorPageBase
         _actieBezigId.Add(id);
         StateHasChanged();
 
+        var clubCode = ClubSelector.SelectedClubCode;
         try
         {
             var result = await Api.ValideerLeermomentAsync(id, actie);
+            if (IsClubGewisseld(clubCode)) return; // #1872
             if (!result.Success)
                 _fout = result.ErrorMessage ?? "Actie mislukt";
             else
@@ -111,7 +115,7 @@ public partial class Leermomenten : ClubSelectorPageBase
         }
         catch (Exception ex)
         {
-            _fout = ex.Message;
+            if (!IsClubGewisseld(clubCode)) _fout = ex.Message;
         }
         finally
         {

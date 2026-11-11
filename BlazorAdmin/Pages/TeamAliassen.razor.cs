@@ -52,7 +52,14 @@ public partial class TeamAliassen : ClubSelectorPageBase
         await LaadAsync("pending");
     }
 
-    protected override Task OnClubChangedAsync() => LaadAsync(_filterStatus);
+    protected override Task OnClubChangedAsync()
+    {
+        // #1872: meldingen en het herstelresultaat horen bij de vorige club.
+        _melding = null;
+        _herstelResultaat = null;
+        _herstelFout = null;
+        return LaadAsync(_filterStatus);
+    }
 
     /// <summary>
     /// Bouwt de canonieke teamlijst opnieuw op (#946) en herlaadt daarna de aliaslijst, omdat de
@@ -65,9 +72,11 @@ public partial class TeamAliassen : ClubSelectorPageBase
         _herstelFout = null;
         StateHasChanged();
 
+        var clubCode = ClubSelector.SelectedClubCode;
         try
         {
             var result = await TeamsApi.HerstelTeamlijstAsync();
+            if (IsClubGewisseld(clubCode)) return; // #1872: uitkomst hoort bij een andere club
             if (result.Success && result.Data != null)
             {
                 _herstelResultaat = result.Data;
@@ -82,7 +91,7 @@ public partial class TeamAliassen : ClubSelectorPageBase
         }
         catch (Exception ex)
         {
-            _herstelFout = ex.Message;
+            if (!IsClubGewisseld(clubCode)) _herstelFout = ex.Message;
         }
         finally
         {
@@ -131,9 +140,11 @@ public partial class TeamAliassen : ClubSelectorPageBase
         _melding = null;
         StateHasChanged();
 
+        var clubCode = ClubSelector.SelectedClubCode;
         try
         {
             var result = await LerenApi.ValideerTeamAliasAsync(id, status);
+            if (IsClubGewisseld(clubCode)) return; // #1872
             if (!result.Success)
                 _fout = result.ErrorMessage ?? "Actie mislukt";
             else
@@ -144,7 +155,7 @@ public partial class TeamAliassen : ClubSelectorPageBase
         }
         catch (Exception ex)
         {
-            _fout = ex.Message;
+            if (!IsClubGewisseld(clubCode)) _fout = ex.Message;
         }
         finally
         {
@@ -158,9 +169,11 @@ public partial class TeamAliassen : ClubSelectorPageBase
         _melding = null;
         StateHasChanged();
 
+        var clubCode = ClubSelector.SelectedClubCode;
         try
         {
             var result = await LerenApi.DeleteTeamAliasAsync(id);
+            if (IsClubGewisseld(clubCode)) return; // #1872
             if (!result.Success)
                 _fout = result.ErrorMessage ?? "Verwijderen mislukt";
             else
@@ -171,7 +184,7 @@ public partial class TeamAliassen : ClubSelectorPageBase
         }
         catch (Exception ex)
         {
-            _fout = ex.Message;
+            if (!IsClubGewisseld(clubCode)) _fout = ex.Message;
         }
         finally
         {

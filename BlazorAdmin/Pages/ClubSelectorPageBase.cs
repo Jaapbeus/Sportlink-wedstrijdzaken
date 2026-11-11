@@ -90,9 +90,16 @@ public abstract class ClubSelectorPageBase : ComponentBase, IDisposable
         LaadClubgebondenAsync(guard, () => cache.GetSettingsAsync(),
             settings => toepassen(settings.Success && settings.Data?.SportlinkExtensionEnabled == true));
 
+    /// <summary>
+    /// #1872: true als de gekozen club niet meer <paramref name="clubCode"/> is (vastgelegd vóór een await in een
+    /// actie). De uitkomst van zo'n actie (resultaat, melding, fout, vervolgactie) hoort dan bij een andere club en
+    /// wordt niet toegepast; de clubwissel-reload laadt de stand van de nieuwe club zelf.
+    /// </summary>
+    protected bool IsClubGewisseld(string? clubCode) => ClubSelector.SelectedClubCode != clubCode;
+
     /// <summary>True zolang <paramref name="generatie"/> de nieuwste load is en de gekozen club nog <paramref name="clubCode"/> is.</summary>
     protected bool IsActueleClubLoad(LookupGeneratieGuard guard, int generatie, string? clubCode) =>
-        guard.IsActueel(generatie) && ClubSelector.SelectedClubCode == clubCode;
+        guard.IsActueel(generatie) && !IsClubGewisseld(clubCode);
 
     public void Dispose()
     {

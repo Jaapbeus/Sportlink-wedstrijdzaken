@@ -115,7 +115,7 @@ public partial class RolFeatureInstellingen : ClubSelectorPageBase
         var clubCode = ClubSelector.SelectedClubCode;
         var r = await Api.ZetRolFeatureInstellingAsync(rolNaam, featureKey, enabled);
         // #1872: de club is tijdens het opslaan gewisseld; de lokale matrix hoort dan bij een andere club.
-        if (ClubSelector.SelectedClubCode != clubCode) return;
+        if (IsClubGewisseld(clubCode)) return;
         if (r.Success)
         {
             _instellingen[(rolNaam, featureKey)] = enabled;

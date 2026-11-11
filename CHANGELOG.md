@@ -18,7 +18,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
-- Clubgebonden beheerpagina's (Planning, Veld optimalisatie, Leermomenten, Teamaliassen, Rolrechten, Thema, Sportlink Web Extension, Feedback) passen een te late response van de vorige club niet meer toe na een clubwissel, en slaan nooit een thema of instellingen van een andere club op. Planning en Veld optimalisatie laden de Sportlink-extensievlag opnieuw bij een clubwissel (#1872).
+- Clubgebonden beheerpagina's (Planning, Veld optimalisatie, Leermomenten, Teamaliassen, Rolrechten, Thema, Sportlink Web Extension, Feedback) passen een te late response van de vorige club niet meer toe na een clubwissel, en slaan nooit een thema of instellingen van een andere club op. Ook de uitkomst van een actie die nog voor de vorige club liep (opslaan, kleuren ophalen van de website, publiceren, teamlijst opnieuw opbouwen, alias- of leermomentactie, koppeling) verschijnt niet meer onder de nieuwe club, en de knop 'Ophalen van website' blijft na een clubwissel niet hangen. Planning en Veld optimalisatie laden de Sportlink-extensievlag opnieuw bij een clubwissel (#1872).
 - Veldoptimalisatie past de getoonde planning exact toe, inclusief handmatig gekozen deelvelden. Onbekende teams zonder betrouwbare speelduur blokkeren andere geldige wijzigingen niet.
 - De clubkiezer, startpoort en initialisatie van de hoofdindeling staan nu in het aangrenzende partial-bestand; gedrag blijft gelijk (zie issue #1807).
 

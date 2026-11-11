@@ -186,12 +186,14 @@ public sealed class ClubBoundLoadRaceMeerPaginasTests
         var page = Activator.CreateInstance(pageType)!;
         Set(page, "ClubSelector", club);
         Set(page, "InstellingenCache", settingsCache);
+        Set(page, "PlanningApi", new PlanningApiClient(transport));
 
         var loadA = CallAsync(page, "LaadSportlinkExtensionStatusAsync");
         Assert.Equal(1, handler.PendingCount);
         Assert.False(Get<bool>(page, "_sportlinkExtensionEnabled"));
         await club.SelectClubAsync("B", "Club B");
-        await CallAsync(page, "LaadSportlinkExtensionStatusAsync");
+        // Via de echte clubwissel-reload: zonder herladen van de vlag blijft de (nog hangende) stand van A staan.
+        await CallAsync(page, "OnClubChangedAsync");
         Assert.True(Get<bool>(page, "_sportlinkExtensionEnabled"));
 
         handler.ReleaseClubA();
@@ -219,6 +221,163 @@ public sealed class ClubBoundLoadRaceMeerPaginasTests
         Assert.Equal("Team B", Get<List<VeldbezettingItemDto>>(page, "_veldbezetting").Single().TeamNaam);
         Assert.False(Get<bool>(page, "_veldbezettingBezig"));
         Assert.Null(Get<string?>(page, "_veldbezettingError"));
+    }
+
+    [Fact]
+    public async Task Thema_ClubSwitchDuringWebsiteExtract_ReleasesButtonAndShowsNoClubAResult()
+    {
+        var (club, handler, transport) = await CreateContextAsync();
+        var page = await LoadThemaForClubAAsync(club, handler, transport);
+
+        var extractA = CallAsync(page, "ExtractFromWebsiteAsync");
+        Assert.Equal(1, handler.PendingCount); // save is klaar, het ophalen van club A hangt
+        await club.SelectClubAsync("B", "Club B");
+        await CallAsync(page, "OnClubChangedAsync");
+
+        handler.ReleaseClubA();
+        await extractA;
+        Assert.False(Get<bool>(page, "_extracting"));
+        Assert.Empty(Get<List<string>>(page, "_extractedColors"));
+        Assert.Null(Get<string?>(page, "_extractError"));
+    }
+
+    [Fact]
+    public async Task Thema_ClubSwitchDuringSaveBeforeExtract_SendsNoExtractRequestEvenAfterEarlierSuccessfulSave()
+    {
+        var (club, handler, transport) = await CreateContextAsync();
+        var page = await LoadThemaForClubAAsync(club, handler, transport);
+        await CallAsync(page, "SaveAsync");
+        Assert.True(Get<bool>(page, "_saveSuccess"));
+
+        handler.HoldPuts = true;
+        var extractA = CallAsync(page, "ExtractFromWebsiteAsync");
+        Assert.Equal(1, handler.PendingCount); // de save van club A hangt
+        await club.SelectClubAsync("B", "Club B");
+        await CallAsync(page, "OnClubChangedAsync");
+
+        handler.ReleaseClubA();
+        await extractA;
+        Assert.DoesNotContain(handler.Requests, r => r.Path.EndsWith("/theme/extract", StringComparison.Ordinal));
+        Assert.False(Get<bool>(page, "_extracting"));
+        Assert.Null(Get<string?>(page, "_extractError"));
+    }
+
+    [Fact]
+    public async Task SportlinkExtensieInstellingen_SaveAfterClubSwitchWithoutReloadWritesNothing()
+    {
+        var (club, handler, transport) = await CreateContextAsync();
+        var settingsCache = new ClubInstellingenCache(new InstellingenApiClient(transport), club);
+        var page = new SportlinkExtensieInstellingen();
+        Set(page, "ClubSelector", club);
+        Set(page, "InstellingenCache", settingsCache);
+        Set(page, "SportlinkApi", new SportlinkApiClient(transport));
+
+        await club.SelectClubAsync("B", "Club B");
+        await CallAsync(page, "LoadAsync");
+        await club.SelectClubAsync("A", "Club A"); // instellingen in het geheugen horen nog bij B
+        await CallAsync(page, "OpslaanAsync");
+
+        Assert.Empty(handler.Puts);
+        Assert.False(Get<bool>(page, "saving"));
+        settingsCache.Dispose();
+    }
+
+    [Fact]
+    public async Task SportlinkExtensieInstellingen_ClubSwitchDuringSaveDoesNotApplyClubAOutcome()
+    {
+        var (club, handler, transport) = await CreateContextAsync();
+        var settingsCache = new ClubInstellingenCache(new InstellingenApiClient(transport), club);
+        var page = new SportlinkExtensieInstellingen();
+        Set(page, "ClubSelector", club);
+        Set(page, "InstellingenCache", settingsCache);
+        Set(page, "SportlinkApi", new SportlinkApiClient(transport));
+        var loadA = CallAsync(page, "LoadAsync");
+        handler.ReleaseClubA();
+        await loadA;
+
+        handler.HoldPuts = true;
+        var saveA = CallAsync(page, "OpslaanAsync");
+        Assert.Equal(1, handler.PendingCount);
+        await club.SelectClubAsync("B", "Club B");
+        handler.ReleaseClubA();
+        await saveA;
+
+        Assert.Null(Get<string?>(page, "successMessage"));
+        Assert.False(Get<bool>(page, "saving"));
+        settingsCache.Dispose();
+    }
+
+    [Fact]
+    public async Task RolFeatureInstellingen_ClubSwitchDuringToggleDoesNotWriteClubAValueIntoClubBMatrix()
+    {
+        var (club, handler, transport) = await CreateContextAsync();
+        var page = new RolFeatureInstellingen();
+        Set(page, "ClubSelector", club);
+        Set(page, "Api", new InstellingenApiClient(transport));
+
+        handler.HoldPuts = true;
+        var zetA = CallAsync(page, "ZetAsync", "user", "alleen-a", true);
+        await club.SelectClubAsync("B", "Club B");
+        await CallAsync(page, "OnClubChangedAsync");
+        handler.ReleaseClubA();
+        await zetA;
+
+        AssertMatrixIsClubB(page);
+        Assert.DoesNotContain(("user", "alleen-a"), Get<Dictionary<(string RolNaam, string FeatureKey), bool>>(page, "_instellingen").Keys);
+        Assert.Null(Get<string?>(page, "_successMessage"));
+    }
+
+    [Fact]
+    public async Task Feedback_ClubSwitchDuringPublishDoesNotShowClubAOutcome()
+    {
+        var (club, handler, transport) = await CreateContextAsync();
+        var page = new Feedback();
+        Set(page, "ClubSelector", club);
+        Set(page, "Api", new FeedbackApiClient(transport));
+
+        var publishA = CallAsync(page, "PubliceerAsync", Guid.NewGuid());
+        Assert.Equal(1, handler.PendingCount);
+        await club.SelectClubAsync("B", "Club B");
+        await CallAsync(page, "OnClubChangedAsync");
+        handler.ReleaseClubA();
+        await publishA;
+
+        Assert.Null(Get<string?>(page, "_melding"));
+        Assert.Equal("Onderwerp B", Get<FeedbackLijstDto>(page, "_lijst").Items.Single().Onderwerp);
+    }
+
+    [Fact]
+    public async Task TeamAliassen_ClubSwitchDuringTeamListRebuildDoesNotShowClubAResult()
+    {
+        var (club, handler, transport) = await CreateContextAsync();
+        var page = new TeamAliassen();
+        Set(page, "ClubSelector", club);
+        Set(page, "LerenApi", new LerenApiClient(transport));
+        Set(page, "TeamsApi", new TeamsApiClient(transport));
+
+        var herstelA = CallAsync(page, "HerstelTeamlijstAsync");
+        Assert.Equal(1, handler.PendingCount);
+        await club.SelectClubAsync("B", "Club B");
+        await CallAsync(page, "OnClubChangedAsync");
+        handler.ReleaseClubA();
+        await herstelA;
+
+        Assert.Null(Get<TeamHerstelDto?>(page, "_herstelResultaat"));
+        Assert.False(Get<bool>(page, "_herstelBezig"));
+        Assert.Equal(2, Get<List<TeamAliasDto>>(page, "_items").Single().Id);
+    }
+
+    private static async Task<Thema> LoadThemaForClubAAsync(ClubSelectorService club, Handler handler, AdminApiTransport transport)
+    {
+        var page = new Thema();
+        Set(page, "ClubSelector", club);
+        Set(page, "Api", new InstellingenApiClient(transport));
+        Set(page, "ThemeService", new ThemeService(new InstellingenApiClient(transport), new FakeJsRuntime()));
+        var loadA = CallAsync(page, "LoadAsync");
+        handler.ReleaseClubA();
+        await loadA;
+        Assert.Equal("#aaaaaa", Get<ThemeDto>(page, "_theme").Primary);
+        return page;
     }
 
     private static void AssertMatrixIsClubB(RolFeatureInstellingen page)
@@ -293,17 +452,22 @@ public sealed class ClubBoundLoadRaceMeerPaginasTests
         private readonly List<(string Path, TaskCompletionSource<HttpResponseMessage> Completion)> _pending = [];
 
         public List<(string ClubCode, string Body)> Puts { get; } = [];
+        public List<(HttpMethod Method, string ClubCode, string Path)> Requests { get; } = [];
         public int PendingCount { get { lock (_sync) return _pending.Count; } }
+
+        /// <summary>Laat ook een PUT van club A hangen tot <see cref="ReleaseClubA"/> (clubwissel tijdens opslaan).</summary>
+        public bool HoldPuts { get; set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var clubCode = request.Headers.GetValues("X-Club-Code").Single();
             var path = request.RequestUri!.AbsolutePath;
+            lock (_sync) Requests.Add((request.Method, clubCode, path));
             if (request.Method == HttpMethod.Put)
             {
                 var body = request.Content is null ? "" : await request.Content.ReadAsStringAsync(cancellationToken);
                 lock (_sync) Puts.Add((clubCode, body));
-                return Json(new { });
+                if (!HoldPuts || clubCode != "A") return Json(new { });
             }
 
             if (clubCode != "A") return Json(Payload(clubCode, path));
@@ -334,6 +498,12 @@ public sealed class ClubBoundLoadRaceMeerPaginasTests
                     => new TeamAliassenResponse { Pending = id, Items = [new TeamAliasDto { Id = id }] },
                 var p when p.EndsWith("/rolfeatureinstellingen", StringComparison.Ordinal)
                     => new[] { new RolFeatureInstellingDto { RolNaam = "user", FeatureKey = $"club-{club.ToLowerInvariant()}", Enabled = true } },
+                var p when p.EndsWith("/theme/extract", StringComparison.Ordinal)
+                    => new ThemeExtractResultDto { Colors = [$"#{club}{club}{club}"] },
+                var p when p.EndsWith("/teams/herstel", StringComparison.Ordinal)
+                    => new TeamHerstelDto { ClubCode = club },
+                var p when p.EndsWith("/publiceer", StringComparison.Ordinal)
+                    => new FeedbackPubliceerResponse { IssueNummer = id },
                 var p when p.EndsWith("/theme", StringComparison.Ordinal)
                     => new ThemeDto { Primary = club == "A" ? "#aaaaaa" : "#bbbbbb" },
                 var p when p.EndsWith("/settings", StringComparison.Ordinal)

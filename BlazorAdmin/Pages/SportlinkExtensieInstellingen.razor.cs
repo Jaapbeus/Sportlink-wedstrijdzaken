@@ -48,6 +48,10 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
     {
         SluitAutoLoginFormulier();
         autoLoginStatus = null;
+        // #1872: een open koppeling of melding hoort bij de vorige club.
+        registreerRol = null;
+        sportlinkKoppelMessage = null;
+        successMessage = null;
         return LoadAsync();
     }
 
@@ -131,7 +135,7 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
         try
         {
             var r = await SportlinkApi.SetSportlinkAutoLoginAsync(AutoLoginRolNaam, autoLoginForm);
-            if (ClubSelector.SelectedClubCode != clubCode) return; // #1872: uitkomst hoort bij een andere club
+            if (IsClubGewisseld(clubCode)) return; // #1872: uitkomst hoort bij een andere club
             if (r.Success)
             {
                 autoLoginStatus = r.Data;
@@ -164,7 +168,7 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
         {
             var clubCode = ClubSelector.SelectedClubCode;
             var r = await SportlinkApi.DeleteSportlinkAutoLoginAsync(AutoLoginRolNaam);
-            if (ClubSelector.SelectedClubCode != clubCode) return; // #1872
+            if (IsClubGewisseld(clubCode)) return; // #1872
             if (r.Success)
             {
                 autoLoginStatus = r.Data;
@@ -216,7 +220,7 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
     private async Task OpslaanAsync()
     {
         // #1872: nooit de instellingen van een andere club naar de huidige club schrijven.
-        if (settings == null || _settingsClubCode != ClubSelector.SelectedClubCode) return;
+        if (settings == null || IsClubGewisseld(_settingsClubCode)) return;
         var clubCode = ClubSelector.SelectedClubCode;
         saving = true;
         successMessage = null;
@@ -233,7 +237,7 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
         };
 
         var r = await InstellingenCache.UpdateSettingsAsync(update);
-        if (ClubSelector.SelectedClubCode != clubCode)
+        if (IsClubGewisseld(clubCode))
         {
             saving = false;
             return;
@@ -258,7 +262,9 @@ public partial class SportlinkExtensieInstellingen : ClubSelectorPageBase
     private async Task BevestigRegistreerKoppelingAsync()
     {
         if (registreerRol == null) return;
+        var clubCode = ClubSelector.SelectedClubCode;
         var r = await SportlinkApi.RegistreerSportlinkKoppelingAsync(registreerRol.RolNaam, registreerSportlinkAccountNaam);
+        if (IsClubGewisseld(clubCode)) return; // #1872: uitkomst hoort bij een andere club
         if (r.Success)
         {
             registreerRol = null;
