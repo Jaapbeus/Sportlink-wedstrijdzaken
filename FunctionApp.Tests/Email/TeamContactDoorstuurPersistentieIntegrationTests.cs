@@ -15,7 +15,7 @@ public class TeamContactDoorstuurPersistentieIntegrationTests
         var cs = Environment.GetEnvironmentVariable(SqlServerFactAttribute.EnvVar)!;
         var club = "ztest" + Guid.NewGuid().ToString("N")[..8];
         SportlinkFunction.SystemUtilities.AppSettings.SetForTests("clubCode", club);
-        var id = await new SqlEmailPersistenceRepository().InsertEmailVerwerkingAsync(
+        var id = await new SqlEmailPersistenceRepository(cs).InsertEmailVerwerkingAsync(
             new InkomendBericht
             {
                 MessageId = "forward-test-" + Guid.NewGuid().ToString("N"),

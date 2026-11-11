@@ -75,7 +75,16 @@ internal interface IEmailPersistenceRepository
 /// </summary>
 internal sealed class SqlEmailPersistenceRepository : IEmailPersistenceRepository
 {
-    private static string Cs => SystemUtilities.DatabaseConfig.ConnectionString;
+    private readonly string? _connectionString;
+    private string Cs => _connectionString ?? SystemUtilities.DatabaseConfig.ConnectionString;
+
+    public SqlEmailPersistenceRepository() { }
+
+    internal SqlEmailPersistenceRepository(string connectionString)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
+        _connectionString = connectionString;
+    }
 
     /// <summary>
     /// Herkent een schending van een unique constraint (2627) of unique index (2601). Beide betekenen
