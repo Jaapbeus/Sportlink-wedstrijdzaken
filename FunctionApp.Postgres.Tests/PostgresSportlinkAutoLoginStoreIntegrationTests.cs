@@ -3,6 +3,7 @@ using System.Text.Json;
 using AwesomeAssertions;
 using Database.Postgres.Tests;
 using FunctionApp.Postgres.Sportlink;
+using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 using Planner.Shared.Integrations.SportlinkClub;
 using Xunit;
@@ -146,6 +147,71 @@ public sealed class PostgresSportlinkAutoLoginStoreIntegrationTests
         await lease.DisposeAsync(); // transaction rollback releases pg_advisory_xact_lock
         using var retryCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(2));
         await using var acquiredAfterRollback = await second.Store.AcquireLeaseAsync(second.Role, retryCancellation.Token);
+    }
+
+    [PostgresFact]
+    public async Task Lease_lock_timeout_wordt_lokale_busy_zonder_http_aanroep_en_blijft_409()
+    {
+        var key = RandomNumberGenerator.GetBytes(32);
+        var club = "al" + Guid.NewGuid().ToString("N")[..16];
+        var role = "r" + Guid.NewGuid().ToString("N")[..20];
+        PostgresSportlinkAutoLoginStore MaakStore() => new(
+            ConnectionString, () => club, new SportlinkCredentialProtector(key));
+        var holderStore = MaakStore();
+        var callerStore = MaakStore();
+
+        try
+        {
+            var lease = await holderStore.AcquireLeaseAsync(role, CancellationToken.None);
+            try
+            {
+                var http = new CountingHttpMessageHandler();
+                var provider = new CountingLoginProvider();
+                using var clientHttp = new HttpClient(http);
+                var coordinator = new SportlinkAutoLoginCoordinator(callerStore, provider);
+                var client = new SportlinkClubClient(clientHttp, callerStore,
+                    NullLogger<SportlinkClubClient>.Instance, autoLogin: coordinator);
+
+                var response = await client.GetMatchRawJsonAsync(role, "fixture-match");
+
+                response.Status.Should().Be(SportlinkClubCallStatus.LokaleLeaseBezet);
+                SportlinkEndpointCore.VertaalStatusNaarFout(response.Status)!.HttpStatus.Should().Be(409);
+                http.RequestCount.Should().Be(0);
+                provider.CallCount.Should().Be(0);
+            }
+            finally
+            {
+                await lease.DisposeAsync();
+            }
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(key);
+        }
+    }
+
+    private sealed class CountingHttpMessageHandler : HttpMessageHandler
+    {
+        public int RequestCount { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            RequestCount++;
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError));
+        }
+    }
+
+    private sealed class CountingLoginProvider : ISportlinkAutoLoginProvider
+    {
+        public int CallCount { get; private set; }
+
+        public Task<SportlinkLoginResult> LoginAsync(
+            SportlinkLoginCredentials credentials, CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            throw new InvalidOperationException("Login provider should not be reached while the lease is held.");
+        }
     }
 
     private static SportlinkLoginCredentials NieuweCredentials()
