@@ -48,6 +48,26 @@ public class OntvangerParserTests
     }
 
     [Fact]
+    public void Parse_KommaEnPuntkommaInGequoteWeergavenaam_SplitsAlleenBuitenNaam()
+    {
+        var result = OntvangerParser.Parse(
+            "\"Jan de Vries, Wedstrijdzaken; Team\" <trainer@voorbeeld.nl>, trainer@voorbeeld.nl");
+
+        result.IsValid.Should().BeTrue();
+        result.Emailadressen.Should().Equal("trainer@voorbeeld.nl");
+    }
+
+    [Fact]
+    public void Parse_OpenAanhalingstekenGeeftOngeldigInPlaatsVanGedeeltelijkeOntvangers()
+    {
+        var result = OntvangerParser.Parse("\"Jan de Vries, <trainer@voorbeeld.nl>, trainer@voorbeeld.nl");
+
+        result.IsValid.Should().BeFalse();
+        result.Emailadressen.Should().BeEmpty();
+        result.FoutMelding.Should().Contain("Ongeldig e-mailadres");
+    }
+
+    [Fact]
     public void Parse_DubbeleSpaties_WordenGenegeerd()
     {
         var result = OntvangerParser.Parse("  a@voorbeeld.nl  ;   b@voorbeeld.nl  ");
