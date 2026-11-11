@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.16.0.1
+  version: 3.16.0.2
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -450,7 +450,8 @@ components:
         aangevraagdDoor:
           type: string
           nullable: true
-          example: "trainer@voorbeeld.nl"
+          deprecated: true
+          description: Compatibility-only field. Ignored; the server derives the stored requester from the authenticated principal.
         wedstrijdDuurMinuten:
           type: integer
           nullable: true
@@ -620,7 +621,8 @@ components:
         aangevraagdDoor:
           type: string
           nullable: true
-          example: "tegenstander via email"
+          deprecated: true
+          description: Compatibility-only field. Ignored; the server derives the stored requester from the authenticated principal.
         opmerking:
           type: string
           nullable: true
