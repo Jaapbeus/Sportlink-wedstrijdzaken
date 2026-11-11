@@ -10,6 +10,7 @@ namespace FunctionApp.Postgres.Tests.Email.TestDoubles;
 internal sealed class FakeEmailGraphService : IEmailGraphService
 {
     public List<InkomendBericht> UnreadEmails { get; } = new();
+    public List<string> MarkAsReadCalls { get; } = new();
     public List<string> MarkedAsReadIds { get; } = new();
     public List<(string MessageId, string[] Categories)> CategoryUpdates { get; } = new();
     public List<(string Name, string ColorPreset)> EnsuredCategories { get; } = new();
@@ -44,6 +45,7 @@ internal sealed class FakeEmailGraphService : IEmailGraphService
 
     public Task MarkAsReadAsync(string messageId)
     {
+        MarkAsReadCalls.Add(messageId);
         MarkedAsReadIds.Add(messageId);
         return Task.CompletedTask;
     }

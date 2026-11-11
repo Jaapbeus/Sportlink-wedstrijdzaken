@@ -64,7 +64,7 @@ De 10 OUDSTE ongelezen berichten uit de inbox (Graph: top=10, orderby receivedDa
         │
         ▼
 ┌─ Voorfilters (EmailBatchFilterService) ───────────────────────────────────────┐
-│  1. Van eigen mailbox (GraphMailbox)?  → overslaan (mark as read)             │
+│  1. Van eigen mailbox? → overslaan; eigen `URGENT:`-noodmail ongelezen laten │
 │  2. Afzender uitgesloten (cache)?      → overslaan (mark as read)             │
 │  3. Automatische afzender (headers)?   → label "Geen AI antwoord" + gelezen   │
 │     (Auto-Submitted ≠ no; Precedence bulk/junk/auto_reply; niet: list)        │
@@ -345,11 +345,13 @@ trace alsnog vermeld dat het antwoord onzeker was (`poortActief = nee`).
 
 ### 1c. Stille skip — geen antwoord, geen verdere verwerking
 
-Deze emails worden overgeslagen zonder antwoord (mark as read; een automatische afzender krijgt daarnaast een label):
+Deze emails worden overgeslagen zonder antwoord. Berichten van de eigen mailbox worden gelezen gemarkeerd,
+behalve een eigen noodmail met een onderwerp dat met `URGENT:` begint; die blijft ongelezen. Een automatische
+afzender krijgt daarnaast een label.
 
 | Reden | Conditie | Rij in de DB? |
 |---|---|---|
-| Eigen mailbox | Afzender = de mailbox zelf (`GraphMailbox`) — voorkomt loops | Nee |
+| Eigen mailbox | Afzender = de mailbox zelf (`GraphMailbox`) — voorkomt loops; een eigen noodmail met onderwerpvoorvoegsel `URGENT:` blijft ongelezen | Nee |
 | Uitgesloten adres | Afzender staat in `dbo.UitgeslotenEmailAdressen` (`Actief = 1`) | Nee |
 | Automatische afzender (#1674) | Header `Auto-Submitted` met een andere waarde dan `no`, of `Precedence` = `bulk`/`junk`/`auto_reply` (`AutomatischeAfzenderHerkenning`). Het bericht krijgt het label "Geen AI antwoord" en een logregel met de headernaam, zodat de coördinator het terugvindt; mislukt het labelen, dan blijft het ongelezen voor de volgende poll. `Precedence: list` en een inkomende `X-Auto-Response-Suppress` tellen bewust niet: een lijstalias of ticketsysteem kan een gewoon verzoek doorsturen | Nee |
 | Al afgerond | Het MessageId staat in `planner.EmailVerwerking` **met een definitieve eindstatus** (idempotent) | Ja — die bestond al |
