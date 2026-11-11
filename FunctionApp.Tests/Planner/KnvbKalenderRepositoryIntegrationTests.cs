@@ -1,26 +1,71 @@
 using AwesomeAssertions;
 using Microsoft.Data.SqlClient;
 using FunctionApp.Tests.Feedback;
+using SportlinkFunction;
 using SportlinkFunction.Planner;
 using Xunit;
 
 namespace FunctionApp.Tests.Planner;
 
 /// <summary>
-/// SQL Server counterparts to the six Postgres KNVB repository contract tests.
+/// SQL Server counterparts to the Postgres KNVB repository contract tests.
 /// Requires a disposable database prepared from Database/Script.PostDeployment1.sql.
 /// </summary>
 public class KnvbKalenderRepositoryIntegrationTests : IAsyncLifetime
 {
+    private bool _testDatabaseVerified;
+
     private const string Seizoen = "2099/2100";
     private const string AnderSeizoen = "2098/2099";
     private const string Regio = "West";
+    private const string TestDatabaseCollation = "Latin1_General_100_CI_AS";
 
     private static string ConnectionString => Environment.GetEnvironmentVariable(SqlServerFactAttribute.EnvVar)
         ?? throw new InvalidOperationException($"{SqlServerFactAttribute.EnvVar} niet gezet.");
 
-    public Task InitializeAsync() => OpruimenAsync();
-    public Task DisposeAsync() => OpruimenAsync();
+    public async Task InitializeAsync()
+    {
+        await ValideerTestDatabaseAsync();
+        _testDatabaseVerified = true;
+        await OpruimenAsync();
+    }
+
+    public Task DisposeAsync() => _testDatabaseVerified ? OpruimenAsync() : Task.CompletedTask;
+
+    private static async Task ValideerTestDatabaseAsync()
+    {
+        var fixtureDoel = await LeesDatabaseDoelAsync(ConnectionString);
+        var repositoryDoel = await LeesDatabaseDoelAsync(SystemUtilities.DatabaseConfig.ConnectionString);
+
+        if (!string.Equals(fixtureDoel.Server, repositoryDoel.Server, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(fixtureDoel.Database, repositoryDoel.Database, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"{SqlServerFactAttribute.EnvVar} and SqlConnectionString must target the same SQL Server instance and catalog.");
+        }
+
+        if (!string.Equals(fixtureDoel.Collation, TestDatabaseCollation, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"The disposable SQL Server contract-test catalog must use {TestDatabaseCollation}.");
+        }
+    }
+
+    private static async Task<(string Server, string Database, string Collation)> LeesDatabaseDoelAsync(string connectionString)
+    {
+        await using var conn = new SqlConnection(connectionString);
+        await conn.OpenAsync();
+        await using var cmd = new SqlCommand("""
+            SELECT CONVERT(nvarchar(128), SERVERPROPERTY('ServerName')),
+                   DB_NAME(),
+                   CONVERT(nvarchar(128), DATABASEPROPERTYEX(DB_NAME(), 'Collation'))
+            """, conn);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        if (!await reader.ReadAsync() || reader.IsDBNull(0) || reader.IsDBNull(1) || reader.IsDBNull(2))
+            throw new InvalidOperationException("Could not verify the SQL Server test database identity and collation.");
+
+        return (reader.GetString(0), reader.GetString(1), reader.GetString(2));
+    }
 
     private static async Task OpruimenAsync()
     {

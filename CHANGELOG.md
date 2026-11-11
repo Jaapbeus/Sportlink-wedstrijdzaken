@@ -34,6 +34,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - BlazorAdmin: XML-documentatie voor tijdnormalisatie en Gantt-layout bijgewerkt; gedrag ongewijzigd (zie issue #1806).
 - De SQL Server-planner geeft voor de niet-opgeslagen optionele eerste-elftalnaam nu expliciet `null` door, gelijk aan Postgres; de settings-loader guard hoeft deze ontbrekende sleutel niet meer uit te zonderen (#1821).
 - Clarified the scoped WZ-ADR-003 implementation without attributing a broader staged-extraction strategy to an owner option (#1813).
+- The SQL Server KNVB contract test now verifies its disposable collation and that both connection settings resolve to the same database target; Postgres retains its strict CHECK (#1813).
 
 ### Fixed
 - Beide Functions-workers gebruiken een eindig transportplafond naast de ongewijzigde applicatielimieten, zodat de HTTP-proxy een gecontroleerd 413-antwoord voor te grote uploads kan teruggeven en de bestaande CSV-uploadruimte behouden blijft (zie issue #1811).
