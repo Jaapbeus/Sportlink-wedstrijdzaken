@@ -50,6 +50,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Fixture filtering and planner classification preparation now share one implementation across database tiers (#1816).
 
 ### Security
+- Providerinvoer in leermomenten behoudt nu ook een tijdbereik (`10:30-12:00`, ook met gedachtestreepje, compact of met spaties: `10:30–12:00`, `10:30 - 12:00`) en dag-maand (`14-11`) als planningsnotatie; telefoonnummers met dezelfde scheidingstekens blijven `[nummer]`, opslag-/tracesanering ongewijzigd (#1870).
 - Providerinvoer maskeert lange nummerreeksen in leermomenten en behoudt geldige datum- en tijdnotatie (zie issue #1809).
 - Email answers use a neutral greeting when no safe display name is available; authorized internal review retains a bounded, escaped original sender address. Contact-pattern masking and both-tier output coverage are strengthened, with captured-provider regressions preserving numeric planning data. Provider body processing stays bounded and omits unfinished boundary fragments while preserving the truncation marker and whole masking tokens (#1809).
 - The availability API contract now documents normalized, bounded warning output and the team-name display fallback on both database tiers (#1809).
