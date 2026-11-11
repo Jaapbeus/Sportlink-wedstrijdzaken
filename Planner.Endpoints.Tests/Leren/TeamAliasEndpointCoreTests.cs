@@ -1,7 +1,9 @@
 using AwesomeAssertions;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using Planner.Endpoints.Leren;
+using Planner.Endpoints.Http;
 using Planner.Shared;
 using Planner.Shared.Leren;
 using Xunit;
@@ -19,6 +21,18 @@ public class TeamAliasEndpointCoreTests
 
     private static Task<IActionResult> Aanmaken(string? body, FakeAliasStore alias, FakeWachtrij wachtrij)
         => TeamAliasEndpointCore.AanmakenAsync(Club, body, Wie, alias, wachtrij, NullLogger.Instance);
+
+    [Fact]
+    public async Task LeesBody_BovenBytegrens_Geeft413ZonderBodytekst()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Body = new MemoryStream(new byte[BoundedRequestBodyReader.DefaultJsonMaxBytes + 1]);
+
+        var (body, afwijzing) = await TeamAliasEndpointCore.LeesBodyAsync(context.Request);
+
+        body.Should().BeNull();
+        afwijzing.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(413);
+    }
 
     [Fact]
     public async Task Aanmaken_GeeftEen201_ZetGenormaliseerdeSleutelEnAanroeperDoorEnHandeltDeWachtrijAf()

@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
+using Planner.Endpoints.Http;
 using Planner.Shared.Deel;
 
 namespace Planner.Endpoints.Deel;
@@ -23,7 +24,9 @@ public static class PlannerDeelPlanEndpointCore
 {
     public const int MaxRegels = 500;
     public const int MaxTekstLengte = 200;
-    public const int MaxBodyBytes = 512 * 1024;
+    public const int MaxBodyTekens = 512 * 1024;
+    /// <summary>Compatibility alias; the existing post-decode limit is measured in UTF-16 characters.</summary>
+    public const int MaxBodyBytes = MaxBodyTekens;
     public static readonly DateOnly MinDatum = new(2020, 1, 1);
     public static readonly DateOnly MaxDatum = new(2100, 12, 31);
 
@@ -59,7 +62,10 @@ public static class PlannerDeelPlanEndpointCore
         var (weigering, pdfToegestaan) = await PlannerDeelEndpointCore.BeslisPdfAsync(
             (format ?? "").Trim().ToLowerInvariant(), pdfIngeschakeld);
         if (weigering != null) return weigering;
-        return Verwerk(await new StreamReader(req.Body).ReadToEndAsync(), format, clubCode, pdfToegestaan);
+        var body = await BoundedRequestBodyReader.ReadUtf8Async(req, checked(MaxBodyTekens * 4));
+        if (!body.IsSuccess)
+            return BoundedRequestBodyReader.ToActionResult(body.Error);
+        return Verwerk(body.Text, format, clubCode, pdfToegestaan);
     }
 
     /// <summary>
@@ -74,7 +80,7 @@ public static class PlannerDeelPlanEndpointCore
         if (f != PlannerDeelEndpointCore.FormatHtml && f != PlannerDeelEndpointCore.FormatPdf)
             return Fout("Query parameter 'format' moet 'html' of 'pdf' zijn.");
 
-        if (body != null && body.Length > MaxBodyBytes)
+        if (body != null && body.Length > MaxBodyTekens)
             return new ObjectResult(new { error = "Request body is te groot." }) { StatusCode = 413 };
         if (string.IsNullOrWhiteSpace(body))
             return Fout("Request body is verplicht.");

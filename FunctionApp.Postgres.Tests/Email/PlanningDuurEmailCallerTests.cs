@@ -46,7 +46,12 @@ public class PlanningDuurEmailCallerTests
         var cs = PostgresTestEnvironment.ConnectionStringOrNull!;
         var graph = new FakeEmailGraphService();
         var ai = new Mock<IChatClient>(MockBehavior.Strict);
+        // #1861: alleen een herkend eigen team bereikt de planner; zonder team volgt de wedervraag om het team.
+        // Het team uit de opstelling heeft die dag zelf geen wedstrijd: de fout komt uit de bezetting zonder duur.
+        const string team = "T-availsvc JO13-1";
         var resolver = new Mock<ITeamResolver>(MockBehavior.Strict);
+        resolver.Setup(r => r.ResolveAsync(It.Is<TeamResolutionRequest>(q => q.RuweTeamTekst == team)))
+            .ReturnsAsync(new TeamResolutionResult(1, team, 1.0, [], ResolutionBron.ExacteMatch));
         var berichtAi = new BerichtAiService(NullLogger<BerichtAiService>.Instance, ai.Object);
         var replyOpslag = new RecordingReplyPersistentie();
         var reply = new EmailReplyPolicyService(_ => replyOpslag);
@@ -56,7 +61,7 @@ public class PlanningDuurEmailCallerTests
             var classificatie = new BerichtClassificatie
             {
                 Type = VerzoekType.BeschikbaarheidCheck, Datum = datum.ToString("yyyy-MM-dd"),
-                LeeftijdsCategorie = "JO13", AanvangsTijd = "12:00"
+                TeamNaam = team, LeeftijdsCategorie = "JO13", AanvangsTijd = "12:00"
             };
             var werk = () => EmailProcessorFunction.VerwerkEmailAsync(cs, club, email, classificatie,
                 graph, new HashSet<string>(), berichtAi, reply, NullLogger.Instance, resolver.Object);
@@ -87,6 +92,7 @@ public class PlanningDuurEmailCallerTests
         graph.TeamForwardings.Should().BeEmpty();
         graph.MarkedAsReadIds.Should().BeEmpty();
         ai.VerifyNoOtherCalls();
+        resolver.Verify(r => r.ResolveAsync(It.IsAny<TeamResolutionRequest>()), Times.Exactly(2));
         resolver.VerifyNoOtherCalls();
     }
 }

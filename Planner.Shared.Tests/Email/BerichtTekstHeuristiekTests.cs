@@ -33,7 +33,7 @@ public class BerichtTekstHeuristiekTests
     [Fact]
     public void EerstvolgendVoorkomen_GeldigeDatum_LigtNietMeerDan30DagenInHetVerleden()
     {
-        var vandaag = DateOnly.FromDateTime(DateTime.Today);
+        var vandaag = NederlandseBedrijfsKlok.Vandaag();
         var uitkomst = BerichtTekstHeuristiek.EerstvolgendVoorkomen(vandaag.Day > 28 ? 28 : vandaag.Day, vandaag.Month);
         uitkomst.Should().NotBeNull();
         uitkomst!.Value.Should().BeOnOrAfter(vandaag.AddDays(-30));

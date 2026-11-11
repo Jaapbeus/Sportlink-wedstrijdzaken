@@ -74,6 +74,10 @@ public static class TeamNaamNormalisatie
         // Regionale volgorde-variant, direct tegen het nummer geplakt: "MJ13-1" → "JM13-1".
         t = Regex.Replace(t, @"\bMJ(?=\d)", "JM", RegexOptions.IgnoreCase);
 
+        // De samengestelde volwoordvorm moet vóór de losse aliassen; anders wordt
+        // "Meisjes Onder 13-1" eerst "Meisjes JO13-1" en daarna foutief "MOJO13-1".
+        t = Regex.Replace(t, @"\b(?:MEISJES|MEIDEN)\s+ONDER\b\.?\s*", "MO", RegexOptions.IgnoreCase);
+
         foreach (var (woord, vervanging) in PrefixAliassen)
             t = Regex.Replace(t, $@"\b{woord}\b\.?\s*", vervanging, RegexOptions.IgnoreCase);
 
@@ -101,6 +105,16 @@ public static class TeamNaamNormalisatie
         t = Regex.Replace(t, @"\s+", "");
 
         return t.ToUpperInvariant();
+    }
+
+    /// <summary>
+    /// True als de tekst alleen het eigen clubprefix is, zonder teamaanduiding ("[club]", "[club] -"). Dat is
+    /// geen genoemd team (#1861): het model vulde het teamveld met de clubnaam uit een zin over een ander team.
+    /// </summary>
+    public static bool IsAlleenClubPrefix(string? ruweTekst, string? clubPrefix)
+    {
+        if (string.IsNullOrWhiteSpace(ruweTekst) || string.IsNullOrWhiteSpace(clubPrefix)) return false;
+        return ruweTekst.Trim().TrimEnd(' ', '-', '_', '.').Equals(clubPrefix.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
     private static string StripClubPrefix(string tekst, string? clubPrefix)
@@ -145,7 +159,7 @@ public static class TeamNaamNormalisatie
         var key = NormaliseerVoorVergelijking(ruweTekst, clubPrefix);
         if (key.Length == 0) return null;
 
-        var match = Regex.Match(key, @"^(?<prefix>JO|MO)?(?<leeftijd>\d{1,2})-(?<team>\d{1,2})$", RegexOptions.IgnoreCase);
+        var match = Regex.Match(key, @"^(?<prefix>JO|MO)?(?<leeftijd>\d{1,2})-(?<team>\d{1,2})(?:JM)?$", RegexOptions.IgnoreCase);
         if (!match.Success) return null;
 
         string? prefix = match.Groups["prefix"].Success ? match.Groups["prefix"].Value.ToUpperInvariant() : null;

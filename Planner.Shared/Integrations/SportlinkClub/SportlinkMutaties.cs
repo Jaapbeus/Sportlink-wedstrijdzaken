@@ -31,17 +31,13 @@ internal sealed class SportlinkMutaties
     // #997: aanmaken van een nieuwe oefenwedstrijd ("clubwedstrijd") — zie CreateClubMatchAsync.
     private const string ClubMatchEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/clubmatch/ClubMatch";
 
-    // #994: dit endpoint/deze body-vorm is NOOIT live bevestigd (reverse-engineered, geen
-    // netwerktrace) — daarom staat de mutatie hard op forceDryRun totdat een mens (nooit een
-    // agent, zie docs/SPORTLINK-WEB-EXTENSION.md §4.4) een live trace heeft gedaan en deze
-    // constante in een aparte, reviewbare PR op true zet. Grep-baar bij naam.
-    // Eigenaar: op true gezet op 27-09-2026 na live-bevestiging buiten agent-sessie om (#1319).
+    // De eigenaar heeft deze vlag na de live trace van #1319 op true gezet. De aanroep volgt
+    // daardoor de instelling sportlinkDryRun. De exacte position codes blijven onbevestigd.
     private const bool MatchOfficialsActionLiveBevestigd = true;
 
-    // #997: idem voor het aanmaken van een oefenwedstrijd — dit issue heeft van alle #986-sub-
-    // issues de MEESTE onbekenden (volledige body onbevestigd, meerdere picklist-vormen onbekend,
-    // delete-methode onbekend). Grep-baar bij naam, zelfde patroon als MatchOfficialsActionLiveBevestigd.
-    // Eigenaar: op true gezet op 27-09-2026 na live-bevestiging buiten agent-sessie om (#1319).
+    // De eigenaar heeft deze vlag na de live trace van #1319 op true gezet. De aanroep volgt
+    // daardoor de instelling sportlinkDryRun; onbekende payloadvelden blijven expliciet beschreven
+    // bij de requesttypen en in docs/SPORTLINK-WEB-EXTENSION.md.
     private const bool ClubMatchLiveBevestigd = true;
 
     // #1440/#1458: verwijderen van een clubwedstrijd. Methode (DELETE), parameter (PublicMatchId als

@@ -2,8 +2,11 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Planner.Endpoints.Http;
 using Planner.Shared.Email;
 using Planner.Shared.Email.Trace;
 
@@ -34,6 +37,8 @@ public sealed record TesterBeleid(bool PoortActief, bool ReplyMoetVersturen, str
 public static class EmailTestEndpointCore
 {
     public const int MaxCallsPerMinute = 10;
+    public const string AiNietBeschikbaarMelding =
+        "E-mailclassificatie is nu niet beschikbaar. Probeer het later opnieuw.";
     private static readonly ConcurrentQueue<DateTime> Calls = new();
     private static readonly object Lock = new();
 
@@ -42,6 +47,18 @@ public static class EmailTestEndpointCore
         => TryAcquireSlot()
             ? null
             : new ObjectResult(new { error = $"Rate limit overschreden: max {MaxCallsPerMinute}/min" }) { StatusCode = 429 };
+
+    /// <summary>Returns a safe 503 when classification is not configured or allowed.</summary>
+    public static IActionResult? ControleerAiBeschikbaar(IChatClient? chatClient, ILogger log)
+    {
+        if (chatClient is not null) return null;
+        log.LogWarning("E-mailtester-AI niet beschikbaar; classificatie overgeslagen.");
+        return new ObjectResult(new { error = AiNietBeschikbaarMelding, aiBeschikbaar = false }) { StatusCode = 503 };
+    }
+
+    /// <summary>Checks the host's optional AI registration before entering the dry-run pipeline.</summary>
+    public static IActionResult? ControleerAiRegistratie(IServiceProvider services, ILogger log)
+        => ControleerAiBeschikbaar(services.GetService<IChatClient>(), log);
 
     private static bool TryAcquireSlot()
     {
@@ -56,11 +73,15 @@ public static class EmailTestEndpointCore
         }
     }
 
-    /// <summary>Leest de request; een lege body geeft een 400 in <c>Fout</c>.</summary>
+    /// <summary>Leest een begrensde UTF-8 JSON-request; lege of ongeldige invoer geeft een veilige 400.</summary>
     public static async Task<(TestEmailRequest? Dto, IActionResult? Fout)> LeesRequestAsync(HttpRequest req)
     {
-        using var reader = new StreamReader(req.Body);
-        var dto = JsonConvert.DeserializeObject<TestEmailRequest>(await reader.ReadToEndAsync());
+        var result = await BoundedRequestBodyReader.ReadJsonAsync<TestEmailRequest>(
+            req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+        if (!result.IsSuccess)
+            return (null, BoundedRequestBodyReader.ToActionResult(result.Error));
+
+        var dto = result.Value;
         return dto == null || string.IsNullOrWhiteSpace(dto.Body)
             ? (null, new BadRequestObjectResult(new { error = "Onderwerp/afzender/body verplicht" }))
             : (dto, null);

@@ -8,7 +8,7 @@ public static class FeedbackWeergave
         ("wacht-op-publicatie", "Wacht op publicatie"),
         ("gepubliceerd", "Gepubliceerd"),
         ("github-mislukt", "Publiceren mislukt"),
-        ("publiceren", "Wordt gepubliceerd"),
+        ("publiceren", "Uitkomst onbekend"),
     ];
 
     public static string StatusLabel(string status) =>
@@ -22,8 +22,12 @@ public static class FeedbackWeergave
         _ => "bg-secondary",
     };
 
-    /// <summary>Alleen een melding die nog niet (of niet gelukt) is gepubliceerd kan met de knop gepubliceerd worden.</summary>
-    public static bool KanPubliceren(string status) => status is "wacht-op-publicatie" or "github-mislukt";
+    /// <summary>
+    /// Een melding die nog niet (of niet gelukt) is gepubliceerd kan met de knop gepubliceerd worden; ook een melding
+    /// met onbekende uitkomst (#1803): de server controleert dan eerst of het issue al bestaat en weigert met 409
+    /// zolang een eerdere poging nog kan lopen.
+    /// </summary>
+    public static bool KanPubliceren(string status) => status is "wacht-op-publicatie" or "github-mislukt" or "publiceren";
 
     public static string MelderTekst(string? naam, bool isGeanonimiseerd) =>
         isGeanonimiseerd ? "— (geanonimiseerd)" : string.IsNullOrWhiteSpace(naam) ? "—" : naam;

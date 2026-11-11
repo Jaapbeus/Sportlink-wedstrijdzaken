@@ -26,7 +26,7 @@ namespace FunctionApp.Tests.Sync;
 public sealed class SportlinkFixtureServer : IDisposable
 {
     private readonly HttpListener _listener;
-    private readonly Dictionary<string, Func<HttpListenerRequest, string>> _routes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Func<HttpListenerRequest, Task<string>>> _routes = new(StringComparer.OrdinalIgnoreCase);
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _acceptLoop;
 
@@ -47,6 +47,10 @@ public sealed class SportlinkFixtureServer : IDisposable
 
     /// <summary>Registreert een JSON-antwoord voor een pad (bijv. "/teams") — genegeerd wordt de querystring.</summary>
     public void RespondWithJson(string path, Func<HttpListenerRequest, string> jsonFactory)
+        => _routes[path] = request => Task.FromResult(jsonFactory(request));
+
+    /// <summary>Registers an asynchronous route, for example one that holds a sync at a barrier.</summary>
+    public void RespondWithJsonAsync(string path, Func<HttpListenerRequest, Task<string>> jsonFactory)
         => _routes[path] = jsonFactory;
 
     public void RespondWithJson(string path, string json) => RespondWithJson(path, _ => json);
@@ -80,7 +84,7 @@ public sealed class SportlinkFixtureServer : IDisposable
 
             if (_routes.TryGetValue(path, out var factory))
             {
-                var json = factory(ctx.Request);
+                var json = await factory(ctx.Request);
                 var bytes = System.Text.Encoding.UTF8.GetBytes(json);
                 ctx.Response.ContentType = "application/json";
                 ctx.Response.StatusCode = 200;

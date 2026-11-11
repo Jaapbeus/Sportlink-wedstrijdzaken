@@ -386,8 +386,8 @@ internal static class PlannerMatchRepository
     /// Legt een handmatig ingeplande wedstrijd vast, atomair getoetst tegen de bestaande bezetting
     /// (#1134, Codex-review #1107 bevinding 9) — SQL Server-tegenhanger van
     /// <c>FunctionApp.Postgres/Planner/Repositories/PlannerMatchRepository.TryConfirmPlannedMatchAsync</c>.
-    /// Vervangt de vroegere <c>SavePlannedMatchAsync</c>, die zonder enige bezettingscontrole
-    /// insertte: twee volledige-veldreserveringen die elkaar overlappen kregen allebei HTTP 200.
+    /// De reservering wordt alleen opgeslagen wanneer de atomaire bezettingscontrole geen conflict
+    /// vindt; overlappende volledige-veldreserveringen worden dus niet allebei geaccepteerd.
     /// <para>
     /// <b>Atomiciteit via <c>sp_getapplock</c>, dezelfde reden als de Postgres-tegenhanger's
     /// <c>pg_advisory_xact_lock</c>.</b> Een transactiegebonden applicatielock op

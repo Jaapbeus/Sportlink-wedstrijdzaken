@@ -2,8 +2,10 @@ using System.Text;
 using System.Text.Json;
 using AwesomeAssertions;
 using FunctionApp.Postgres.Admin;
+using FunctionApp.Postgres.Planner;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Planner.Endpoints.Autorisatie;
 using Xunit;
 
 namespace FunctionApp.Postgres.Tests;
@@ -61,6 +63,96 @@ public class EasyAuthHelperAuditActorTests
         if (queryString != null)
             context.Request.QueryString = new QueryString(queryString);
         return context.Request;
+    }
+
+    [Fact]
+    public void ApplyPlannerRequester_BevestigWedstrijd_OverschrijftBodyMetPrincipalNaam()
+    {
+        WithEnv(azureHosting: "func-test-1812", assert: () =>
+        {
+            var request = new BevestigRequest { AangevraagdDoor = "client-identity" };
+            var principal = EncodePrincipal(
+                ("roles", "admin"),
+                ("oid", "11111111-1111-1111-1111-111111111111"),
+                ("name", "Jan de Vries"));
+
+            var result = PlannerAanvragerEndpointCore.Apply(EasyAuthHelper.GetPlannerRequester(
+                BuildRequest(principal)), actor => request.AangevraagdDoor = actor);
+
+            result.Should().BeNull();
+            request.AangevraagdDoor.Should().Be("Jan de Vries");
+        });
+    }
+
+    [Fact]
+    public void ApplyPlannerRequester_HerplanBevestig_OverschrijftBodyMetPrincipalNaam()
+    {
+        WithEnv(azureHosting: "func-test-1812", assert: () =>
+        {
+            var request = new HerplanBevestigRequest { AangevraagdDoor = "client-identity" };
+            var principal = EncodePrincipal(
+                ("roles", "admin"),
+                ("oid", "11111111-1111-1111-1111-111111111111"),
+                ("name", "Jan de Vries"));
+
+            var result = PlannerAanvragerEndpointCore.Apply(EasyAuthHelper.GetPlannerRequester(
+                BuildRequest(principal)), actor => request.AangevraagdDoor = actor);
+
+            result.Should().BeNull();
+            request.AangevraagdDoor.Should().Be("Jan de Vries");
+        });
+    }
+
+    [Fact]
+    public void ApplyPlannerRequester_OntbrekendeIdentiteit_WeigertZonderCallback()
+    {
+        WithEnv(azureHosting: "func-test-1812", assert: () =>
+        {
+            var request = new BevestigRequest { AangevraagdDoor = "client-identity" };
+            var callbackCalled = false;
+            var principal = EncodePrincipal(("roles", "admin"), ("name", "Jan de Vries"));
+
+            var result = PlannerAanvragerEndpointCore.Apply(EasyAuthHelper.GetPlannerRequester(BuildRequest(principal)), actor =>
+            {
+                callbackCalled = true;
+                request.AangevraagdDoor = actor;
+            });
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(403);
+            request.AangevraagdDoor.Should().Be("client-identity");
+            callbackCalled.Should().BeFalse("the endpoint must return before reaching persistence");
+        });
+    }
+
+    [Fact]
+    public void GetPlannerRequester_EmailNameControlAndLongName_FallsBackToCanonicalObjectId()
+    {
+        WithEnv(azureHosting: "func-test-1812", assert: () =>
+        {
+            const string objectId = "11111111-1111-1111-1111-111111111111";
+            foreach (var name in new[] { "trainer@voorbeeld.nl", "Jan de Vries\n", new string('x', 201) })
+            {
+                var principal = EncodePrincipal(("oid", objectId), ("name", name));
+                string? storedRequester = null;
+                PlannerAanvragerEndpointCore.Apply(EasyAuthHelper.GetPlannerRequester(BuildRequest(principal)), actor => storedRequester = actor)
+                    .Should().BeNull();
+                storedRequester.Should().Be(objectId);
+            }
+        });
+    }
+
+    [Fact]
+    public void GetPlannerRequester_LokaleBypass_GebruiktAlleenSynthetischeActor()
+    {
+        WithEnv(azureHosting: null, schakelaar: "true", assert: () =>
+        {
+            var request = new BevestigRequest { AangevraagdDoor = "client-identity" };
+            var result = PlannerAanvragerEndpointCore.Apply(EasyAuthHelper.GetPlannerRequester(
+                BuildRequest()), actor => request.AangevraagdDoor = actor);
+
+            result.Should().BeNull();
+            request.AangevraagdDoor.Should().Be("lokale-ontwikkelaar");
+        });
     }
 
     [Fact]

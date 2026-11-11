@@ -1,5 +1,6 @@
 using AwesomeAssertions;
 using Database.Postgres.Tests;
+using Planner.Shared.Sync;
 using FunctionApp.Postgres.Sync;
 using Npgsql;
 using Xunit;
@@ -41,18 +42,73 @@ public class SyncJobsRepositoryIntegrationTests
     }
 
     [PostgresFact]
-    public async Task MarkRunning_ZetStatusRunning_EnStartTijd()
+    public async Task TryClaimPending_ConcurrenteWorkers_AlleenEenStartSync_EnDuplicaatWijzigtGeenVelden()
     {
         await SchoonAsync();
         var id = Guid.NewGuid();
         await SyncJobsRepository.CreateAsync(ConnectionString, id, Club, 0, 1);
 
-        await SyncJobsRepository.MarkRunningAsync(ConnectionString, id);
+        var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var processCount = 0;
 
+        async Task<bool> WorkerAsync()
+        {
+            await start.Task;
+            return await SyncJobClaimCore.ExecuteIfClaimedAsync(
+                id,
+                claimId => SyncJobsRepository.TryClaimPendingAsync(ConnectionString, claimId),
+                () =>
+                {
+                    Interlocked.Increment(ref processCount);
+                    return Task.CompletedTask;
+                });
+        }
+
+        var first = WorkerAsync();
+        var second = WorkerAsync();
+        start.SetResult();
+        var results = await Task.WhenAll(first, second);
+
+        results.Count(claimed => claimed).Should().Be(1);
+        processCount.Should().Be(1);
         var job = await SyncJobsRepository.GetLatestOrByIdAsync(ConnectionString, Club, id);
         job!.Status.Should().Be("running");
         job.StartedAt.Should().NotBeNull();
         job.CompletedAt.Should().BeNull();
+
+        var startedAt = job.StartedAt;
+        var claimedAgain = await SyncJobClaimCore.ExecuteIfClaimedAsync(
+            id,
+            claimId => SyncJobsRepository.TryClaimPendingAsync(ConnectionString, claimId),
+            () => { Interlocked.Increment(ref processCount); return Task.CompletedTask; });
+        claimedAgain.Should().BeFalse();
+        processCount.Should().Be(1);
+        var duplicate = await SyncJobsRepository.GetLatestOrByIdAsync(ConnectionString, Club, id);
+        duplicate!.Status.Should().Be("running");
+        duplicate.StartedAt.Should().Be(startedAt);
+        duplicate.CompletedAt.Should().BeNull();
+        duplicate.ErrorMessage.Should().BeNull();
+    }
+
+    [PostgresFact]
+    public async Task TryClaimPending_AfgebrokenRunBlijftRunningEnWordtBijRedeliveryNietDubbelUitgevoerd()
+    {
+        await SchoonAsync();
+        var id = Guid.NewGuid();
+        await SyncJobsRepository.CreateAsync(ConnectionString, id, Club, 0, 1);
+
+        (await SyncJobsRepository.TryClaimPendingAsync(ConnectionString, id)).Should().BeTrue();
+
+        var processCount = 0;
+        var redeliveryClaimed = await SyncJobClaimCore.ExecuteIfClaimedAsync(
+            id,
+            claimId => SyncJobsRepository.TryClaimPendingAsync(ConnectionString, claimId),
+            () => { processCount++; return Task.CompletedTask; });
+
+        redeliveryClaimed.Should().BeFalse();
+        processCount.Should().Be(0);
+        (await SyncJobsRepository.GetLatestOrByIdAsync(ConnectionString, Club, id))!.Status.Should().Be("running",
+            "the existing schema cannot tell whether the original worker crashed or is still running; recovery policy remains unresolved");
     }
 
     [PostgresFact]
@@ -61,9 +117,10 @@ public class SyncJobsRepositoryIntegrationTests
         await SchoonAsync();
         var id = Guid.NewGuid();
         await SyncJobsRepository.CreateAsync(ConnectionString, id, Club, 0, 1);
-        await SyncJobsRepository.MarkRunningAsync(ConnectionString, id);
+        await SyncJobsRepository.TryClaimPendingAsync(ConnectionString, id);
 
         await SyncJobsRepository.MarkCompletedAsync(ConnectionString, id, succeeded: true, errorMessage: null);
+        await SyncJobsRepository.MarkCompletedAsync(ConnectionString, id, succeeded: false, errorMessage: "late duplicate");
 
         var job = await SyncJobsRepository.GetLatestOrByIdAsync(ConnectionString, Club, id);
         job!.Status.Should().Be("succeeded");
@@ -77,6 +134,7 @@ public class SyncJobsRepositoryIntegrationTests
         await SchoonAsync();
         var id = Guid.NewGuid();
         await SyncJobsRepository.CreateAsync(ConnectionString, id, Club, 0, 1);
+        await SyncJobsRepository.TryClaimPendingAsync(ConnectionString, id);
 
         await SyncJobsRepository.MarkCompletedAsync(ConnectionString, id, succeeded: false, errorMessage: "testfout");
 
@@ -87,11 +145,33 @@ public class SyncJobsRepositoryIntegrationTests
     }
 
     [PostgresFact]
+    public async Task TryClaimPending_OntbrekendeOfTerminaleJob_WordtNietAangepast()
+    {
+        await SchoonAsync();
+        var id = Guid.NewGuid();
+        await SyncJobsRepository.CreateAsync(ConnectionString, id, Club, 0, 1);
+        await SyncJobsRepository.TryClaimPendingAsync(ConnectionString, id);
+        await SyncJobsRepository.MarkCompletedAsync(ConnectionString, id, succeeded: true, errorMessage: null);
+
+        var terminalBefore = await SyncJobsRepository.GetLatestOrByIdAsync(ConnectionString, Club, id);
+        (await SyncJobsRepository.TryClaimPendingAsync(ConnectionString, Guid.NewGuid())).Should().BeFalse();
+        (await SyncJobsRepository.TryClaimPendingAsync(ConnectionString, id)).Should().BeFalse();
+        await SyncJobsRepository.MarkCompletedAsync(ConnectionString, id, succeeded: false, errorMessage: "late duplicate");
+        var terminalAfter = await SyncJobsRepository.GetLatestOrByIdAsync(ConnectionString, Club, id);
+
+        terminalAfter!.Status.Should().Be("succeeded");
+        terminalAfter.StartedAt.Should().Be(terminalBefore!.StartedAt);
+        terminalAfter.CompletedAt.Should().Be(terminalBefore.CompletedAt);
+        terminalAfter.ErrorMessage.Should().BeNull();
+    }
+
+    [PostgresFact]
     public async Task MarkCompleted_LangeFoutmelding_WordtOpDuizendTekensAfgekapt()
     {
         await SchoonAsync();
         var id = Guid.NewGuid();
         await SyncJobsRepository.CreateAsync(ConnectionString, id, Club, 0, 1);
+        await SyncJobsRepository.TryClaimPendingAsync(ConnectionString, id);
 
         await SyncJobsRepository.MarkCompletedAsync(ConnectionString, id, succeeded: false, errorMessage: new string('x', 1500));
 

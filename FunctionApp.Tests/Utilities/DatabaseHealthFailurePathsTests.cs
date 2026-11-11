@@ -51,7 +51,7 @@ public class DatabaseHealthFailurePathsTests
 
         dbStatus.Should().Be("unconfigured");
 
-        // Zelfde beslisregel als PlannerFunction.Health(): "unconfigured" hoort geen 200 OK te zijn.
+        // Zelfde beslisregel als HealthFunction.Health(): "unconfigured" hoort geen 200 OK te zijn.
         IActionResult result = dbStatus == "unconfigured"
             ? new ObjectResult(new { status = "degraded", database = dbStatus }) { StatusCode = StatusCodes.Status503ServiceUnavailable }
             : new OkObjectResult(new { status = "ok", database = dbStatus });

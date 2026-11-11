@@ -46,37 +46,29 @@ internal static class LearningMomentRepository
     internal static async Task<List<ClassificatieCorrectieVoorbeeld>> HaalVoorbeeldenOpAsync(
         string connectionString, string clubCode, ILogger log)
     {
-        try
-        {
-            await using var conn = new NpgsqlConnection(connectionString);
-            await conn.OpenAsync();
-            await using var cmd = new NpgsqlCommand($@"
-                SELECT origineelverzoektype, afgeleidjuisttype,
-                       originelesamenvatting, correctiesamenvatting
-                FROM planner.classificatiecorrectie
-                WHERE isgevalideerd = TRUE AND isafgewezen = FALSE AND clubcode = @clubcode
-                ORDER BY CASE WHEN herkomst = 'Admin' THEN 0 ELSE 1 END, mta_modified DESC
-                LIMIT {MaxLeermomentVoorbeelden}", conn);
-            cmd.Parameters.AddWithValue("clubcode", clubCode);
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand($@"
+            SELECT origineelverzoektype, afgeleidjuisttype,
+                   originelesamenvatting, correctiesamenvatting
+            FROM planner.classificatiecorrectie
+            WHERE isgevalideerd = TRUE AND isafgewezen = FALSE AND clubcode = @clubcode
+            ORDER BY CASE WHEN herkomst = 'Admin' THEN 0 ELSE 1 END, mta_modified DESC
+            LIMIT {MaxLeermomentVoorbeelden}", conn);
+        cmd.Parameters.AddWithValue("clubcode", clubCode);
 
-            var list = new List<ClassificatieCorrectieVoorbeeld>();
-            await using var r = await cmd.ExecuteReaderAsync();
-            while (await r.ReadAsync())
-            {
-                if (r.IsDBNull(1)) continue;
-                list.Add(new ClassificatieCorrectieVoorbeeld(
-                    OrigineelType: r.GetString(0),
-                    JuistType: r.GetString(1),
-                    OrigineleSamenvatting: r.IsDBNull(2) ? "" : r.GetString(2),
-                    CorrectieSamenvatting: r.IsDBNull(3) ? "" : r.GetString(3)));
-            }
-            return list;
-        }
-        catch (Exception ex)
+        var list = new List<ClassificatieCorrectieVoorbeeld>();
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
         {
-            log.LogWarning(ex, "Leermomenten konden niet worden geladen — classificatie zonder few-shots");
-            return new List<ClassificatieCorrectieVoorbeeld>();
+            if (r.IsDBNull(1)) continue;
+            list.Add(new ClassificatieCorrectieVoorbeeld(
+                OrigineelType: r.GetString(0),
+                JuistType: r.GetString(1),
+                OrigineleSamenvatting: r.IsDBNull(2) ? "" : r.GetString(2),
+                CorrectieSamenvatting: r.IsDBNull(3) ? "" : r.GetString(3)));
         }
+        return list;
     }
 
     private static string? Truncate(string? value, int max) =>

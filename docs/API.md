@@ -58,7 +58,7 @@ Drie beveiligingsniveaus:
 
 | Niveau | Sleutel | Wie | Endpoints |
 |--------|---------|-----|-----------|
-| **Anoniem** | geen | iedereen | `GET /api/health` |
+| **Anoniem** | geen | iedereen | `GET /api/health` — geaggregeerde status zonder diagnostics |
 | **Admin** | Easy Auth Bearer + `admin`-rol (`EasyAuthHelper.RequireAdmin`) | Alleen coördinator | Alle overige `/api/beheer/*`- (inclusief het feedbackoverzicht `/api/beheer/feedback/*`), `/api/planner/*`- (behalve `veldbezetting`), `/api/test/*`-endpoints, én `GET /api/postgres/sync-matches` / `GET /api/sync-matches` (sinds #1350) |
 | **Admin/User** | Easy Auth Bearer + `admin` óf `user` (`AdminEndpoint.ExecuteAuthenticatedAsync`, #1330) | Elke ingelogde gebruiker | `GET /api/planner/veldbezetting` (Planning-pagina, #1400), de drie `/api/feedback/*`-endpoints (#764: iedereen die is ingelogd mag feedback geven), `GET /api/sportlink/match/{wedstrijdcode}` en `.../public-match-id` (Sportlink-paneel viewen, #1400), plus de drie Teambegeleiding-lookup/doorstuur-endpoints (#1330) |
 | **Wedstrijdzaken** | Easy Auth Bearer + `Wedstrijdzaken`-rol **óf** de `admin`-rol (`EasyAuthHelper.RequireWedstrijdzaken`, beide poorten sinds #1400 — vóór #1400 eiste de tweede poort altijd `admin`) | Wedstrijdsecretariaat | De Sportlink-mutatie-endpoints (`PUT`/`POST` onder `/api/sportlink/*`) |
@@ -101,10 +101,11 @@ verwerking plaats.
 
 | Methode | Endpoint | Niveau | Beschrijving |
 |---------|----------|--------|-------------|
-| `GET` | `/health` | Anoniem | Status, versie, tier-herkomst (#863) — zie hieronder |
-| `GET` | `/postgres/sync-matches` | **Admin** | Handmatige Sportlink-synchronisatie — **Postgres-tier (productie)**. Antwoordt `200`, `207` (deelstappen mislukt, `lastsynctimestamp` niet bijgewerkt) of `500`. Bestaat niet op de SQL Server-tier |
-| `GET` | `/sync-matches` | **Admin** | Handmatige Sportlink-synchronisatie — **SQL Server-tier**, zelfde parameters (`reset`, `season`). Antwoordt `200` of `500`. Bestaat niet op de Postgres-tier |
-| `GET/PUT` | `/beheer/settings` | **Admin** | Club-instellingen ophalen/opslaan (incl. Sportlink Web Extension-schakelaar en, sinds #1715, de seizoensstartmaand `SeasonStartMonth` 1–12 per club; wijzigen bouwt de seizoenen van die club opnieuw op) |
+| `GET` | `/health` | Anoniem | Geaggregeerde readiness, versie en statusvlaggen — zie hieronder |
+| `GET` | `/beheer/health` | **Admin** | Gedetailleerde healthinformatie voor diagnose; via `AdminEndpoint.ExecuteZonderDatabaseAsync` |
+| `GET` | `/postgres/sync-matches` | **Admin** | Handmatige Sportlink-synchronisatie — **Postgres-tier (productie)**. Alleen de vastgelegde Sportlink-dataservice mag als bron zijn ingesteld; een andere basis-URL stopt de sync vóór uitgaand verkeer. Antwoordt `200`, `207` (deelstappen mislukt, `lastsynctimestamp` niet bijgewerkt), `409` (andere sync actief) of `500`. Bestaat niet op de SQL Server-tier |
+| `GET` | `/sync-matches` | **Admin** | Handmatige Sportlink-synchronisatie — **SQL Server-tier**, dezelfde basis-URL-regel en parameters (`reset`, `season`). Antwoordt `200`, `409` (andere sync actief) of `500`. Bestaat niet op de Postgres-tier |
+| `GET/PUT` | `/beheer/settings` | **Admin** | Club-instellingen ophalen/opslaan (incl. Sportlink Web Extension-schakelaar en de seizoensstartmaand `SeasonStartMonth` 1–12 per club; wijzigen bouwt de seizoenen van die club opnieuw op). `FetchSchedule` in een PUT moet een niet-lege, uitvoerbare zesvelden-CRON van maximaal 50 tekens zijn; anders 400 zonder de invoer in de foutmelding. Een weggelaten veld blijft ongewijzigd |
 | `GET` | `/beheer/geocode` | **Admin** | Adres → GPS-coördinaten opzoeken voor de accommodatie-instelling |
 | `GET` | `/beheer/sync/status` | **Admin** | Status van de laatste Sportlink-synchronisatie, plus optioneel `?jobId=` voor een specifieke sync-job (#1138) |
 | `POST` | `/beheer/sync/trigger` | **Admin** | Synchronisatie starten via een Storage Queue-job (#1138) — geeft direct een `jobId` terug, geen fire-and-forget meer. Optionele body `{"reset":true,"season":2025}` haalt het hele seizoen opnieuw op vanaf de seizoensstart (#1352); ongeldig seizoen of een seizoen zonder seizoensrij → 400 (#1461) |
@@ -113,21 +114,25 @@ verwerking plaats.
 | `GET` | `/beheer/templates` | **Admin** | Alle e-mailtemplates per berichttype ophalen |
 | `PUT` | `/beheer/templates/{key}` | **Admin** | Eén e-mailtemplate opslaan |
 | `POST` | `/beheer/templates/{key}/reset` | **Admin** | Eén e-mailtemplate terugzetten naar standaard |
-| `GET/POST` | `/beheer/uitgesloten-emails` | **Admin** | E-mailadressen uitsluiten van automatische antwoorden: lijst ophalen / toevoegen |
+| `GET/POST` | `/beheer/uitgesloten-emails` | **Admin** | E-mailadressen uitsluiten van automatische antwoorden: lijst ophalen / toevoegen. POST JSON-body maximaal 1 MiB UTF-8-bytes; ongeldige UTF-8/JSON geeft 400, te groot geeft 413 vóór verwerking |
 | `DELETE` | `/beheer/uitgesloten-emails/{id}` | **Admin** | Uitsluiting verwijderen |
-| `GET/POST` | `/beheer/voorkeurstijden` | **Admin** | Gewenste speeltijden per team: lijst ophalen / toevoegen |
-| `PUT/DELETE` | `/beheer/voorkeurstijden/{id}` | **Admin** | Gewenste speeltijd wijzigen / verwijderen |
-| `GET/POST` | `/beheer/teamregels` | **Admin** | Planningsregels per team (bijv. buffertijd): lijst ophalen / toevoegen |
-| `PUT/DELETE` | `/beheer/teamregels/{id}` | **Admin** | Planningsregel wijzigen / verwijderen |
+| `GET/POST` | `/beheer/voorkeurstijden` | **Admin** | Gewenste speeltijden per team: lijst ophalen / toevoegen. POST JSON-body maximaal 1 MiB UTF-8-bytes; ongeldige UTF-8/JSON geeft 400, te groot geeft 413 vóór verwerking |
+| `PUT/DELETE` | `/beheer/voorkeurstijden/{id}` | **Admin** | Gewenste speeltijd wijzigen / verwijderen. PUT JSON-body maximaal 1 MiB UTF-8-bytes; ongeldige UTF-8/JSON geeft 400, te groot geeft 413 vóór verwerking |
+| `GET/POST` | `/beheer/teamregels` | **Admin** | Planningsregels per team (bijv. buffertijd): lijst ophalen / toevoegen. POST JSON-body maximaal 1 MiB UTF-8-bytes; ongeldige UTF-8/JSON geeft 400, te groot geeft 413 vóór verwerking |
+| `PUT/DELETE` | `/beheer/teamregels/{id}` | **Admin** | Planningsregel wijzigen / verwijderen. PUT JSON-body maximaal 1 MiB UTF-8-bytes; ongeldige UTF-8/JSON geeft 400, te groot geeft 413 vóór verwerking |
+| `GET/POST` | `/beheer/veldtraining` | **Admin** | Terugkerende trainingsblokken per veld ophalen / toevoegen. POST JSON-body maximaal 1 MiB UTF-8-bytes; ongeldige UTF-8/JSON geeft 400, te groot geeft 413 vóór verwerking |
+| `PUT/DELETE` | `/beheer/veldtraining/{id}` | **Admin** | Trainingsblok wijzigen / verwijderen. PUT JSON-body maximaal 1 MiB UTF-8-bytes; ongeldige UTF-8/JSON geeft 400, te groot geeft 413 vóór verwerking |
+| `GET/POST` | `/beheer/veldperiodes` | **Admin** | Veldperiodes ophalen / toevoegen. POST JSON-body maximaal 1 MiB UTF-8-bytes; ongeldige UTF-8/JSON geeft 400, te groot geeft 413 vóór verwerking |
+| `PUT/DELETE` | `/beheer/veldperiodes/{id}` | **Admin** | Veldperiode wijzigen / verwijderen. PUT JSON-body maximaal 1 MiB UTF-8-bytes; ongeldige UTF-8/JSON geeft 400, te groot geeft 413 vóór verwerking |
 | `GET` | `/beheer/email-log` | **Admin** | Verwerkte e-mails inzien (AVG-conform: geen berichtteksten of onderwerp; `Afzender` en `VerstuurdNaar` gemaskeerd tot het domein); per regel `HeeftTrace` (#1568), plus `statusCounts` voor alle overeenkomende regels buiten de begrenzing van `items`; date-only filters behouden UTC-kalenderdagsemantiek (ook `tot` op middernacht), timestamps zijn exacte UTC-grenzen; de variant `yyyy-MM-dd HH:mm` wordt als UTC gelezen (#1819) |
 | `GET` | `/beheer/email-log/{id}/trace` | **Admin** | Permanente, PII-arme beslissingstrace van één verwerking (`id` = `Id` uit het e-maillog): `verwerkingId`, `verzoekType`, `status` (`null` als de verwerking is opgeruimd), `ontvangstDatum`, `aangemaakt`, `zekerheid`, `sjabloonSleutel`, `appVersie`, `trace` (`stappen`, `oordeel`). Geen body, afzender, onderwerp of ruwe teamtekst uit de mail (alleen allowlist-velden, `BeslissingsTrace.VoorOpslag()`). **404** als er geen trace is (#1568) |
-| `POST` | `/test/email` | **Admin** | AI-classificatie dry-run zonder e-mail te versturen (Email-tester-pagina); de respons bevat sinds #1568 ook `trace` (beslissingstrace) en `leersuggestie`, en sinds #1583 een definitief `eindoordeel` (automatisch verstuurd / review / geen antwoord, met de actuele zekerheidspoort-instelling meegewogen); de tester geeft de gevalideerde leermomenten mee aan de classificatie (zoals productie) en schrijft niets |
-| `POST` | `/feedback/validate` | **Admin/User** | Feedback-widget: voorvalidatie op volledigheid. Per gebruiker begrensd (30 AI-aanroepen per 10 min, samen met `preview`). **503** `{ error, aiBeschikbaar: false }` als de AI-dienst niet geregistreerd is (lokaal door de EgressGuard); geldt ook voor `preview` en `submit`, beide tiers gelijk (#1487). Invoerlimieten voor `validate`, `preview` en `submit` (#1677): body ≤ 65536 tekens (anders **413** `{ error }`), max 5 `vragenAntwoorden` (anders **400**), vraag ≤ 500 en antwoord ≤ 2000 tekens (afgekapt) |
+| `POST` | `/test/email` | **Admin** | AI-classificatie dry-run zonder e-mail te versturen (Email-tester-pagina); de respons bevat sinds #1568 ook `trace` (beslissingstrace) en `leersuggestie`, en sinds #1583 een definitief `eindoordeel` (automatisch verstuurd / review / geen antwoord, met de actuele zekerheidspoort-instelling meegewogen); de tester geeft de gevalideerde leermomenten mee aan de classificatie (zoals productie) en schrijft niets; JSON-body maximaal 1 MiB UTF-8 (**413**), ongeldige UTF-8/JSON **400**; **503** `{ error, aiBeschikbaar: false }` als AI-classificatie niet is geconfigureerd of toegestaan |
+| `POST` | `/feedback/validate` | **Admin/User** | Feedback-widget: voorvalidatie op volledigheid. Per gebruiker begrensd (30 AI-aanroepen per 10 min, samen met `preview`). **503** `{ error, aiBeschikbaar: false }` als de AI-dienst niet geregistreerd is (lokaal door de EgressGuard); geldt ook voor `preview` en `submit`, beide tiers gelijk (#1487). Invoerlimieten voor `validate`, `preview` en `submit` (#1677): body ≤ 65536 UTF-16-tekens en 262144 UTF-8-bytes (anders **413** `{ error }`); ongeldige UTF-8/JSON **400**, max 5 `vragenAntwoorden` (anders **400**), vraag ≤ 500 en antwoord ≤ 2000 tekens (afgekapt) |
 | `POST` | `/feedback/preview` | **Admin/User** | Feedback-widget: exacte titel + body van het te publiceren issue opvragen, zónder iets aan te maken (#1205) |
-| `POST` | `/feedback/submit` | **Admin/User** | Feedback-widget: melding bewaren in `avg.Feedback` (melder = Entra object-ID + naam-momentopname, nooit in het publieke issue). **Admin**: direct als openbaar GitHub-issue; met `bevestiging` wordt exact de in het voorbeeld getoonde tekst gepubliceerd. **User**: wacht op publicatie door een beheerder, de response bevat geen issueverwijzing. Optioneel `telemetrie` (technische context, geredigeerd, na 90 dagen gewist). Limiet: 3 per 10 min per gebruiker, 30 per uur per club → `429` |
+| `POST` | `/feedback/submit` | **Admin/User** | Feedback-widget: melding bewaren in `avg.Feedback` (melder = Entra object-ID + naam-momentopname, nooit in het publieke issue). **Admin**: direct als openbaar GitHub-issue; met `bevestiging` wordt exact de in het voorbeeld getoonde tekst gepubliceerd. Bij een time-out, verbroken verbinding of HTTP 408/5xx tijdens publiceren is de uitkomst onbekend (`502`); de melding blijft op `publiceren` staan en is te herstellen met `POST /beheer/feedback/{id}/publiceer` (automatisch herstel, #1803). **User**: wacht op publicatie door een beheerder, de response bevat geen issueverwijzing. Optioneel `telemetrie` (technische context, geredigeerd, na 90 dagen gewist). Limiet: 3 per 10 min per gebruiker, 30 per uur per club → `429` |
 | `GET` | `/beheer/feedback` | **Admin** | Feedbackoverzicht (filters `type`, `status`, `vanaf`, `tot`, `q`, `limit`, `offset`); elke aanroep komt in het inzagelog (#764) |
 | `GET` | `/beheer/feedback/{id}` | **Admin** | Eén melding met technische context; komt in het inzagelog |
-| `POST` | `/beheer/feedback/{id}/publiceer` | **Admin** | Een wachtende melding publiceren als GitHub-issue (exact de bewaarde tekst, PII-gate opnieuw); `409` bij een tweede klik |
+| `POST` | `/beheer/feedback/{id}/publiceer` | **Admin** | Een wachtende melding publiceren als GitHub-issue (exact de bewaarde tekst, PII-gate opnieuw); `409` bij een tweede klik of zolang een eerdere poging nog kan lopen (claim jonger dan 4 minuten, langer dan één volledige herstelpoging). Staat de melding op `publiceren` (onbekende uitkomst of mislukte receipt-opslag), dan zoekt de server eerst via de GitHub-issuelijst (niet de search-API) naar een issue met de publicatiereferentie van de melding en koppelt dat; alleen als het ontbreekt wordt opnieuw geplaatst. Is GitHub dan onbereikbaar: `502` en de melding blijft herstelbaar. Wijst GitHub de aanmaak expliciet af (4xx behalve 408): `502` en status `github-mislukt`, opnieuw te publiceren. Een oudere melding zonder referentie krijgt er vóór de POST een; lukt dat bewaren niet, dan `502` zonder POST en is ze opnieuw te publiceren (#1803) |
 | `GET` | `/beheer/feedback/inzagelog` | **Admin** | Wie bekeek welke melding (nooit de inhoud; 24 maanden bewaard) |
 | `POST` | `/planner/check-availability` | **Admin** | Veldbeschikbaarheid controleren — gescoped op `X-Club-Code` header |
 | `POST` | `/planner/doordeweeks-beschikbaar` | **Admin** | Doordeweekse beschikbaarheid door het seizoen heen — gescoped op `X-Club-Code` header |
@@ -137,7 +142,7 @@ verwerking plaats.
 | `POST` | `/planner/herplan-check` | **Admin** | Herplan-alternatieven simuleren — gescoped op `X-Club-Code` header |
 | `POST` | `/planner/herplan-bevestig` | **Admin** | Herplanverzoek registreren |
 | `POST` | `/planner/auto-plan` | **Admin** | **Dagplanning optimaliseren** — regels → voorkeurstijden → leeftijdsdefaults |
-| `POST` | `/planner/auto-plan/deel` | **Admin** | Planning delen zoals getoond op het scherm (HTML/PDF, stateless, #1460) |
+| `POST` | `/planner/auto-plan/deel` | **Admin** | Planning delen zoals getoond op het scherm (HTML/PDF, stateless, #1460); body maximaal 524288 UTF-16-tekens en 2097152 UTF-8-bytes (**413**), ongeldige UTF-8 **400** |
 | `POST` | `/planner/auto-plan/toepassen` | **Admin** | Berekende planning wegschrijven (alleen testmodus ALLSTARS) |
 | `GET` | `/planner/pdf-export` | **Admin/User** | Of PDF-export voor de gekozen club aan staat: `{ "pdfExportIngeschakeld": bool }` — Planning toont de PDF-knop alleen dan, ook voor de rol `user` (#1459) |
 | `GET` | `/planner/menu-toegang` | **Admin/User** | Menu-sleutels die de ingelogde gebruiker mag zien: `{ "featureKeys": ["menu.planning", …], "sportlinkExtensieActief": bool }` — `admin` krijgt alle, andere rollen de sleutels die hun rol in "Rechten per rol" aan heeft staan (zonder DEBUG); `sportlinkExtensieActief` is de niet-gevoelige menuvlag voor de Sportlink Web Extension (zodat niet-admins hem krijgen zonder `/beheer/settings`). Alleen UI-gemak voor het hoofdmenu; elk endpoint autoriseert zelf (#1647) |
@@ -147,8 +152,8 @@ verwerking plaats.
 | `GET` | `/beheer/teambegeleiding/{team}` | **Admin + user** | Begeleiders van team: naam, rol, functie, e-mailadres en telefoonnummer (#1330: elke ingelogde rol). Elke opvraging komt in het inzagelog `avg.TeambegeleidingInzageLog` (wie, wanneer, welk team, aantal rijen; geen gegevens van de begeleiders); lukt het vastleggen niet, dan `500` zonder gegevens (#1701) |
 | `POST` | `/beheer/teambegeleiding/doorsturen` | **Admin + user** | Vraag doorsturen (BCC coördinator). `ontvangers` bepaalt de ontvangers (max 15, gevalideerd, uitsluitingslijst gecontroleerd); voor een andere rol dan `admin` moet elk adres bij het team horen (begeleiders, coördinator of de aanvrager zelf), anders 403; leeg → server-side coach-lookup (#765) (#1330: elke ingelogde rol). Max 3 verzendingen per gebruiker per 10 minuten, anders 429; alleen een daadwerkelijke verzending telt (een mislukte verzending geeft haar eigen slot terug), `admin` valt erbuiten; de teller is in-memory en geldt per instantie (bij uitschalen of na een herstart kan het totaal hoger uitvallen; geen globale kwotering) (#1671) |
 | `POST` | `/beheer/teambegeleiding/import` | **Admin** | CSV-import van begeleiders — vervangt de rijen van de club atomisch (DELETE + inserts + audit-rij in één transactie, rollback bij elke fout; #1131/#1132). Kolomlengtes worden vóór elke destructieve stap gevalideerd; een te lange waarde geeft `400` met `{ error, fouten: [...] }` (rij/kolom-omschrijving per overtreding) en laat de vorige import ongemoeid. Postgres-tier serialiseert vervangingen per club (`pg_advisory_xact_lock`) zodat twee gelijktijdige imports elkaar nooit tot een vereniging van beide batches kunnen combineren. CSV wordt in-memory verwerkt en nooit opgeslagen; `avg.ImportLog` bevat alleen metadata — geen PII |
-| `GET/POST` | `/beheer/speeltijden` | **Admin** | Speeltijden per leeftijdscategorie: lijst ophalen / toevoegen |
-| `PUT/DELETE` | `/beheer/speeltijden/{leeftijd}` | **Admin** | Speeltijd van één leeftijdscategorie wijzigen / verwijderen |
+| `GET/POST` | `/beheer/speeltijden` | **Admin** | Speeltijden per leeftijdscategorie: lijst ophalen / toevoegen. POST JSON-body maximaal 1 MiB UTF-8-bytes; ongeldige UTF-8/JSON geeft `400`, te groot geeft `413` vóór verwerking |
+| `PUT/DELETE` | `/beheer/speeltijden/{leeftijd}` | **Admin** | Speeltijd van één leeftijdscategorie wijzigen / verwijderen. PUT JSON-body maximaal 1 MiB UTF-8-bytes; ongeldige UTF-8/JSON geeft `400`, te groot geeft `413` vóór verwerking |
 | `GET` | `/beheer/leermomenten` | **Admin** | Classificatie-leermomenten ophalen (`?status=pending\|validated\|rejected`) |
 | `GET` | `/beheer/leermomenten/stats` | **Admin** | Aantallen leermomenten per status |
 | `POST` | `/beheer/leermomenten` | **Admin** | Leermoment toevoegen als beheerder (#1568): `{ "origineelVerzoekType"?, "juistVerzoekType", "samenvatting", "herkomstVerwerkingId"? }`. Direct gevalideerd, herkomst `Admin`, permanent. Samenvatting (max 500) wordt gesaneerd; de aanmaker komt uit het principal |
@@ -160,7 +165,7 @@ verwerking plaats.
 | `GET` | `/beheer/onbekende-teamteksten` | **Admin** | Wachtrij met teamteksten die de pipeline niet kon koppelen (`?status=open\|afgehandeld\|genegeerd&limit=100`) (#1568) |
 | `PUT` | `/beheer/onbekende-teamteksten/{id}/status` | **Admin** | Wachtrijregel op `open`, `afgehandeld` of `genegeerd` zetten (`{ "status": ... }`) |
 | `PUT` | `/beheer/teamaliassen/{id}/valideer` | **Admin** | Alias goedkeuren of afwijzen (`{ "status": "validated"\|"rejected" }`); legt wie en wanneer vast |
-| `DELETE` | `/beheer/teamaliassen/{id}` | **Admin** | Alias definitief verwijderen |
+| `DELETE` | `/beheer/teamaliassen/{id}` | **Admin** | `Sync`-aliassen blijvend afwijzen (`rejected`); andere herkomsten fysiek verwijderen, steeds binnen de geselecteerde club |
 | `GET` | `/beheer/theme` | **Admin** | Club-thema ophalen (kleuren + website-URL + `lightColors`/`darkColors`) — gefilterd op `X-Club-Code` header. De paletten zijn `null` zolang er geen licht/donker-set is ingesteld; de client valt dan terug op de vier platte kleuren |
 | `PUT` | `/beheer/theme` | **Admin** | Club-thema opslaan (`{ primary, secondary, accent, textOnPrimary, clubWebsiteUrl, faviconUrl, logoUrl, lightColors, darkColors }`) — gefilterd op `X-Club-Code` header. `lightColors`/`darkColors` zijn sleutel→hex-objecten voor het volledige palet per modus (#1254); elke sleutel moet `^[a-z][a-zA-Z0-9-]{0,39}$` zijn en elke waarde `#rrggbb` of `#rrggbbaa`, maximaal 40 per palet. `faviconUrl`/`logoUrl` zijn optioneel; een ingevulde waarde wordt getrimd, `http://` wordt als `https://` opgeslagen, en daarna moet het een absolute `https://`-URL van maximaal 300 tekens zijn (anders HTTP 400) |
 | `POST` | `/beheer/theme/extract?url=` | **Admin** | Kleuren extraheren uit club-website (SSRF-beschermd) |
@@ -170,12 +175,12 @@ verwerking plaats.
 | `GET/PUT/DELETE` | `/beheer/sportlink-extensie/rollen/{rolNaam}/autologin` | **Admin**, primaire club | Status zonder secrets; credentials versleuteld instellen/verwijderen. PUT doet geen login. Maximaal 8192 bytes JSON. Zie [automatische login](SPORTLINK-AUTOLOGIN.md). |
 | `GET` | `/beheer/sportlink-extensie/health?live=false` | **Admin** | Statussectie: extension/dry-run-instelling, koppeling + laatste tokenverversing per rol, laatste mutatiefout, laatste contract-check. Zonder `live=true` geen Sportlink-aanroep; `live=true` doet één tokenverversing + één leesaanroep (#998) |
 | `GET` | `/beheer/rolfeatureinstellingen` | **Admin** | Volledige toegangsmatrix ophalen: elke combinatie van rol × functie als `{ RolNaam, FeatureKey, Enabled }` — fail-closed (#1390, opvolger van #1341/epic #1338) |
-| `PUT` | `/beheer/rolfeatureinstellingen` | **Admin** | Eén cel aan/uit zetten (`{ RolNaam, FeatureKey, Enabled }`) — `admin` is hier nooit instelbaar, die rol heeft altijd alles aan; toegestane rollen zijn `user`/`Wedstrijdzaken`/`Sectiehoofd`/`Ledenadministratie` (#1390) |
+| `PUT` | `/beheer/rolfeatureinstellingen` | **Admin** | Eén cel aan/uit zetten (`{ RolNaam, FeatureKey, Enabled }`) — `admin` is hier nooit instelbaar, die rol heeft altijd alles aan; toegestane rollen zijn `user`/`Wedstrijdzaken`/`Sectiehoofd`/`Ledenadministratie` (#1390). JSON-body maximaal 1 MiB UTF-8-bytes; ongeldige UTF-8/JSON geeft 400, te groot geeft 413 vóór verwerking |
 | `GET` | `/sportlink/match/{wedstrijdcode}` | **Admin/User** (sinds #1400 — voorheen Wedstrijdzaken) | Read-only wedstrijdgegevens uit Sportlink Club: PublicMatchId-cache/reverse-lookup + permissievlaggen (#987/#991); sinds #1339 ook het huidige veld (`fieldId`/`fieldSize`, prefill) en server-berekende `veldOpties`/`subpositieOpties` (voorstellen op onze eigen veldnaam, géén Sportlink-gegeven); sinds #1341 ook de per-rol feature-toestemmingen (`KleedkamersFeatureToegestaan`/`ScheidsrechterFeatureToegestaan`/`VeldFeatureToegestaan`), sinds #1400 ook `MagWijzigen`; sinds #1340 (VOORSTEL, DPO-vraag nog niet bevestigd — zie `docs/SPORTLINK-WEB-EXTENSION.md` §8) ook de relatiecode van de huidige scheidsrechter/AR1/AR2 (`ScheidsrechterRelatieCode`/`Ar1RelatieCode`/`Ar2RelatieCode`, uitsluitend het relatiecode-veld, nooit een naam) — genuld als `ScheidsrechterFeatureToegestaan` false is; het exacte Sportlink-JSON-veldnaam voor de relatiecode is NOOIT live geverifieerd. **#1400:** viewing is generiek (admin+user); wélke permissievlaggen/relatiecodes terugkomen hangt af van de éigen rol van de aanroeper (`admin`/`Wedstrijdzaken` → echte waarden, gewone `user` → alles `false`/`null`) |
 | `GET` | `/sportlink/match/{wedstrijdcode}/public-match-id` | **Admin/User** (sinds #1400 — voorheen Wedstrijdzaken) | Lichtgewicht variant — alleen `PublicMatchId` (cache/reverse-lookup, geen volledige Match-aanroep), voor de deep-link-knop op Planning en Veld optimalisatie (#989, sinds #1361 op beide pagina's) |
 | `PUT` | `/sportlink/match/{wedstrijdcode}/dressingrooms` | **Wedstrijdzaken** | Kleedkamers toewijzen — eerste echte Sportlink-mutatie, guardrail + audit-log (#992); sinds #1341 ook geweigerd (409) als de per-rol feature-instelling uitstaat |
 | `PUT` | `/sportlink/match/{wedstrijdcode}/field` | **Wedstrijdzaken** | Veld(deel) wijzigen — `IsForceUpdate` server-side altijd `false` (semantiek onbevestigd, #993); sinds #1341 ook geweigerd (409) als de per-rol feature-instelling uitstaat |
-| `PUT` | `/sportlink/match/{wedstrijdcode}/officials` | **Wedstrijdzaken** | Officials (scheidsrechter/AR1/AR2) toewijzen — sinds #1319 live bevestigd (was scaffolding/code-gelockt via `forceDryRun`, onafhankelijk van `sportlinkDryRun`); alleen relatiecode/persoons-ID, geen namen (AVG, #994); sinds #1341 ook geweigerd (409) als de per-rol feature-instelling uitstaat |
+| `PUT` | `/sportlink/match/{wedstrijdcode}/officials` | **Wedstrijdzaken** | Toewijzingsactie sinds #1319 door eigenaar vrijgegeven; huidige route volgt `sportlinkDryRun`. Payloadvelden/positiewaarden blijven onbevestigde aannames; alleen relatiecode/persoons-ID, geen namen (AVG, #994); sinds #1341 ook geweigerd (409) als de per-rol feature-instelling uitstaat |
 | `PUT` | `/sportlink/match/{wedstrijdcode}/change-request` | **Wedstrijdzaken** | Wijzigingsverzoek datum/tijd/accommodatie — **ALLEEN stap 1 (valideren)** van Sportlinks tweestaps flow, `Toelichting` verplicht; sinds #1319 live bevestigd (was code-gelockt); enige mutatie die een echte tegenstander raakt — stap 2 (bevestigen) is bewust niet gebouwd (#995). Sinds #1320 retourneert de respons ook een diagnostiektrace (HTTP-status, endpoint, audit-ID, de vier toplevel-booleans) i.p.v. kaal Mutatie+Validatie — zie `docs/SPORTLINK-WEB-EXTENSION.md` §6.4 |
 | `PUT` | `/sportlink/audit/{id}/notitie` | **Wedstrijdzaken** | Testnotitie koppelen aan een bestaande Sportlink-mutatieauditpoging (#1320) — voor de eigenaar-gestuurde productieproef; scoped op `ClubCode`, 404 bij verkeerde club of onbekend ID; lege string toegestaan om te wissen (max. 1000 tekens) |
 | `GET` | `/sportlink/change-requests` | **Wedstrijdzaken** | Inkomende en uitgaande wijzigingsverzoeken ophalen (#996; `RequestStatus` = Sportlinks `ChangeRequestStatus`, plus `IsIncomingRequest` en `StatusGroep` OPEN/ACCEPTED/DENIED/REVOKED/UNKNOWN, #1439), sinds #1111 verrijkt met eigen wedstrijdcontext (`Wedstrijd`: nummer, teams, datum, tijd, accommodatie uit `his.matches` via de PublicMatchId-cache; `null` als niet gecachet), sinds #1464 met Sportlinks eigen `ExternalMatchId`/`Thuisteam`/`Uitteam` als terugval, en met openstaande (`StatusGroep` OPEN, inkomend eerst) verzoeken vooraan |
@@ -203,65 +208,53 @@ verwerking plaats.
 
 ---
 
+### Request-bodylimieten
+
+De JSON-bodies van instellingen, sync-trigger, teambegeleiding doorsturen, templates, testdata, thema, velden/veldbeschikbaarheid, Sportlink-extensierollen en de planner-endpoints hebben een limiet van 1 MiB UTF-8. Ongeldige UTF-8 of JSON geeft **400**; een body boven de limiet geeft **413** vóór de actie of databasebewerking. De CSV-import van teambegeleiding behoudt de bestaande uploadlimiet van 5 MiB UTF-8: zowel de gedecodeerde `csvContent` als de JSON-envelope worden begrensd, en overschrijding geeft **413** vóór CSV-parsing. De envelope laat zesvoudige worst-case escaping, de bestaande opslagruimte van 500 tekens voor de bestandsnaam en 64 bytes voor de DTO-wrapper toe. Feedback behoudt de bestaande limiet van 65536 UTF-16-tekens en krijgt daarnaast een byteplafond van 262144. Planning delen behoudt 524288 UTF-16-tekens en krijgt daarnaast een byteplafond van 2097152. Deze limieten gelden per endpoint.
+
+Beide Functions-workers registreren vóór de hoststart een eindig Kestrel-**transportplafond van 220.200.960 bytes**, gelijk aan het [gedocumenteerde maximum van Azure Functions](https://learn.microsoft.com/en-us/azure/azure-functions/functions-app-settings#functions_request_body_size_limit). Dit verandert geen Azure-instelling. De afzonderlijke applicatielimiet voor de CSV-JSON-envelope blijft **31.460.344 bytes** (`6 × 5 MiB + 6 × 500 + 64`); alle kleinere routelimieten, serializers en autorisatievolgorde blijven gelijk. De reader leest voor parsing maximaal de routelimiet plus één detectiebyte; een te hoge opgegeven Content-Length wordt zonder parsing geweigerd.
+
+Het transportplafond is bewust ruimer dan de applicatielimiet. [Kestrel ruimt na een vroeg antwoord de resterende HTTP/1-body op](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/servers/kestrel/request-draining), met een vaste timeout van vijf seconden en behoud van de eindige serverlimiet. Daarbij wordt niets naar een tijdelijk bestand geschreven of door de applicatie verwerkt. Een serverplafond exact op de routegrens kan deze opruiming afbreken terwijl de Functions-proxy nog schrijft; de proxy kan dan het gecontroleerde 413-antwoord vervangen door een transportfout. HTTP/1-chunkframing telt bovendien mee bij het Kestrel-plafond. De grotere transportmarge laat normale te grote verzoeken gecontroleerd met 413 eindigen; ze vergroot de toegestane DTO of CSV niet. Verzoeken die het transportplafond of de drain-timeout overschrijden kunnen op transportniveau worden afgebroken; een JSON-antwoord is bij zulke afgebroken verbindingen niet gegarandeerd.
+
+De GUI gebruikt `TeamsApiClient` → `AdminApiTransport.PostAsJsonAsync` zonder request-streamingoptie. De [.NET 10 BrowserHttpHandler](https://github.com/dotnet/runtime/blob/release/10.0/src/libraries/System.Net.Http/src/System/Net/Http/BrowserHttpHandler/BrowserHttpHandler.cs) buffert dan de body en geeft bytes door aan Fetch; de browser kent de inhoudslengte. Dezelfde applicatiegrens geldt voor chunked requests zonder Content-Length. Lokale synthetische HTTP-tests via de echte Functions-host controleren de volledige escaped GUI-envelope, exact de applicatiegrens en overschrijdingen met en zonder Content-Length; dit is geen productie- of browser-uploadtest.
+
+
 ## GET /api/health
 
-Status, versie en databaseherkomst van de API. Geen authenticatie vereist.
+Publieke, geaggregeerde status zonder database-, schema-, migratie-, TLS- of synchronisatiedetails. De probe is per tier maximaal vijf seconden gecachet en gelijktijdige requests delen één refresh. De auth-poort van eventuele gebruikers blijft onafhankelijk van deze process-lokale cache.
 
-`tier` en `provider` komen uit build-time metadata van het gebouwde artefact — nooit een
-runtime-gok — en zijn daarom altijd gevuld, ook als `database` niet `"online"` is. `serverVersion`
-komt aantoonbaar uit de database zelf en is alleen gevuld wanneer `database` `"online"` is (#863).
-
-**HTTP-statuscode (#859):** `database: "unconfigured"` (geen bruikbare connectiereeks — env var
-ontbreekt of is van de verkeerde engine) geeft **503**, niet 200. Elke andere `database`-waarde
-(ook `paused`/`timeout`/`unavailable`, tijdelijke toestanden) blijft 200 met `status: "degraded"`.
-
-### Antwoord
-
-Voorbeeld van de **Postgres-tier** (de tier die in productie draait):
+**HTTP-statuscode (#859):** `database: "unconfigured"` geeft **503**. Andere database-statussen (waaronder `paused`, `timeout` en `unavailable`) blijven **200** met `status: "degraded"`.
 
 ```json
 {
   "status": "ok",
-  "version": "3.11.0.0",
-  "timestamp": "2026-09-19T15:00:00Z",
+  "version": "3.16.0.4",
   "database": "online",
-  "settingsLoaded": true,
-  "lastSync": "2026-09-19T04:00:12Z",
-  "syncStale": false,
-  "tier": "Postgres",
-  "provider": "Npgsql",
-  "serverVersion": "17.4",
-  "tlsMode": "VerifyFull",
-  "tlsWarning": null,
-  "schemaWarning": null,
-  "pendingMigrations": []
+  "settingsReady": true,
+  "migrationsCurrent": true,
+  "schemaWarningPresent": false,
+  "tlsWarningPresent": false
 }
 ```
 
-Op de **SQL Server-tier** ontbreken `lastSync`, `syncStale`, `tlsMode`, `tlsWarning`,
-`schemaWarning` en `pendingMigrations`; `tier` is dan `"SqlServer"` en `provider`
-`"Microsoft.Data.SqlClient"`.
-
 | Veld | Type | Beschrijving |
 |---|---|---|
-| `status` | `string` | `"ok"` als `database` `"online"` is, `settingsLoaded` `true` is en — alleen op de Postgres-tier — `pendingMigrations` leeg is **én** `syncStale` `false` is op een omgeving waar een synchronisatie hoort te draaien (`EgressGuard` laat uitgaand verkeer toe). Anders `"degraded"`. Op de SQL Server-tier tellen alleen `database` en `settingsLoaded` mee |
-| `version` | `string` | Vierdelig assembly-versienummer, bijv. `"3.11.0.0"` |
-| `database` | `string` | `online`, `paused`, `timeout`, `unavailable` of `unconfigured` — `unconfigured` geeft HTTP 503 |
-| `settingsLoaded` | `boolean` | `false` als de laatste poging om de clubinstellingen te laden mislukte (#859) — geen foutdetails hier, die staan in het functielog |
-| `tier` | `string` | De databasetier waarmee dit artefact gebouwd is — zie `scripts/ci/database-tiers.json` |
-| `provider` | `string` | De gebruikte databasedriver |
-| `serverVersion` | `string \| null` | Versienummer van de databaseserver zelf; `null` als niet bereikbaar |
-| `lastSync` | `string \| null` | Postgres-tier (#1081): laatste synchronisatietijd (UTC) van de primaire club; `null` als nooit gesynchroniseerd |
-| `syncStale` | `boolean` | Postgres-tier (#1081): `true` als `lastSync` ouder is dan `SyncMaxAgeHours` (standaard 36) of ontbreekt; telt alleen mee in `status` waar een synchronisatie hoort te draaien |
-| `tlsMode` | `string \| null` | Postgres-tier (#1095): de TLS-modus die daadwerkelijk geldt op de databaseverbinding (bijv. `VerifyFull`, `Require`); `null` bij `unconfigured` |
-| `tlsWarning` | `string \| null` | Postgres-tier (#1095): `null` als het TLS-beleid (`VerifyFull`, #1004) gehaald is; anders een waarschuwing — zonder host of credentials — dat de verbinding wél versleuteld is maar certificaat/hostnaam niet volledig gevalideerd worden |
-| `schemaWarning` | `string \| null` | Postgres-tier (#1098): `null` als `public.appsettings` alle kolommen heeft die deze versie verwacht; anders een waarschuwing dat de code vooruitloopt op het schema en welke migratie ontbreekt. De applicatie draait dan door op de migratie-default |
-| `pendingMigrations` | `string[] \| null` | Postgres-tier (#1098): bestandsnamen uit `Database.Postgres/migrations/` die nog niet in de ledger `schema_migrations` staan. Leeg = code en schema lopen gelijk; `null` als de database niet bereikbaar is. Alleen lezen — toepassen blijft een handeling van de beheerder (`Database.Postgres.Cli`) |
+| `status` | `string` | Bestaande statusregel: database online, instellingen geladen en (Postgres) migraties bekend en actueel, plus de bestaande stale-sync-status. `degraded` door alleen een stale sync blijft een waarschuwing en is geen deploy-fout. |
+| `version` | `string` | Vierdelige assemblyversie. |
+| `database` | `string` | `online`, `paused`, `timeout`, `unavailable` of `unconfigured`; de laatste geeft HTTP 503. |
+| `settingsReady` | `boolean` | `false` als de instellingen niet geladen zijn. |
+| `migrationsCurrent` | `boolean \| null` | Postgres: `true` als er geen migraties openstaan, `false` als dat wel zo is; `null` als dit niet vastgesteld kon worden. SQL Server retourneert `null` omdat deze healthprobe daar geen migratiestatus heeft. |
+| `schemaWarningPresent` | `boolean` | Alleen of de Postgres-schemawaarschuwing aanwezig is. |
+| `tlsWarningPresent` | `boolean` | Alleen of de Postgres-TLS-waarschuwing aanwezig is. |
 
-**Vanaf 3.3.0.2 doet de Postgres-tier bij elke aanroep zelf één poging de clubinstellingen te laden**
-zodra de database bereikbaar is, zodat `settingsLoaded` een feit is en geen aanname over een eerdere
-poging. Direct na een herstart meldde het veld anders `true` terwijl het eerste beheerscherm daarna
-op 500 zou lopen (#1098).
+De publieke respons bevat geen ruwe serverversie, tier/provider, sync-tijd, TLS-modus, waarschuwingsinhoud of migratienamen. De deployment gate blijft bij dezelfde uitkomsten falen en houdt schema/TLS-waarschuwingen niet-fataal.
+
+## GET /api/beheer/health
+
+Admin-only detailrespons voor diagnose. De route gebruikt de bestaande `AdminEndpoint.ExecuteZonderDatabaseAsync`-rolcontrole; de public health authorization blijft anoniem en heeft geen gedeelde identity-cache.
+
+De detailrespons behoudt de bestaande `status`, `version`, `timestamp`, `database`, `settingsLoaded`, `tier`, `provider`, `serverVersion`, `lastSync`, `syncStale`, `tlsMode`, `tlsWarning`, `schemaWarning` en `pendingMigrations`-velden. Postgres-specifieke velden ontbreken of zijn `null` op SQL Server. Waarschuwingen, serverdetails en migratienamen zijn alleen beschikbaar achter de admin-poort.
+
 
 ---
 
@@ -306,12 +299,13 @@ Authorization: Bearer <entra-token>
 | Status | Tier | Body |
 |---|---|---|
 | `200 OK` | beide | `"Sync voltooid. WeekOffset-bereik: {from} tot {to}."` |
+| `409 Conflict` | beide | `{ "status": "already running", "message": "A synchronization is already running. Try again later." }` — another run currently owns the shared staging area; this request did no sync work |
 | `207 Multi-Status` | **alleen Postgres** | `{ "status": "gedeeltelijk mislukt", "weekOffsetFrom": -1, "weekOffsetTo": 12, "melding": "..." }` — één of meer deelstappen zijn mislukt en `lastsynctimestamp` is bewust **niet** bijgewerkt (#1081). De geslaagde deelstappen blijven staan; het functielog noemt de betrokken fase(s) |
 | `401 Unauthorized` | beide | Geen (geldig) Bearer-token — ook een `?code=`-master key geeft dit resultaat sinds #1350 |
 | `403 Forbidden` | beide | Geldig token, maar zonder de `admin`-rol |
 | `500` | beide | Onverwachte fout; zie het functielog |
 
-De SQL Server-tier kent de `207` niet en antwoordt alleen `200`, `401`, `403` of `500`.
+De SQL Server-tier kent de `207` niet en antwoordt alleen `200`, `401`, `403`, `409` of `500`.
 
 ---
 
@@ -506,11 +500,20 @@ Als de gevraagde dag geen wedstrijden toelaat (vrijdag/zondag):
 | `beschikbaar` | `boolean` | Of een slot beschikbaar is |
 | `toewijzing` | `object\|null` | Toegewezen slot (alleen Modus 1) |
 | `teamConflict` | `object\|null` | Bestaande wedstrijd voor het team op deze datum |
-| `reden` | `string\|null` | Reden als niet beschikbaar |
+| `reden` | `string\|null` | Reason when unavailable. A team name that does not meet the display checks is replaced by `het opgegeven team` in the team-conflict explanation (#1809). |
 | `gecontroleerdDagdeel` | `string\|null` | Het dagdeel (`ochtend`, `middag`, `avond`) waarbinnen de vensters en alternatieven zijn berekend; `null` als er geen dagdeel is toegepast of de controle niet is uitgevoerd (#1587). Het e-mailantwoord vermeldt dit dagdeel |
 | `alternatieven` | `array` | Tot 3 alternatieve tijdsloten |
 | `beschikbareVensters` | `array\|null` | Beschikbare vensters per veld (alleen Modus 2) |
-| `waarschuwingen` | `array` | Waarschuwingen (zonsondergangmarge, doordeweekse beperkingen) |
+| `waarschuwingen` | `array` | Planning warnings as normalized single-line strings; empty results are omitted. See the output rules below (#1809). |
+
+Warning output rules (#1809, both database tiers; API version 3.16.0.2): before the response is serialized,
+control characters and whitespace are normalized to spaces. The delimiters `<`, `>`, backticks,
+`{`, `}`, `[` and `]` are replaced by spaces; words containing `://` or `@`, or starting with
+`www` (case-insensitive), are removed. Each remaining warning is truncated after 300 characters
+when necessary and followed by `…` (at most 301 characters in the output). Warnings that become
+empty are omitted; their remaining order is preserved. These rules apply to `waarschuwingen`,
+not to every free-text response field. In warnings about an unrecognized team, a team name that
+fails the display checks is shown as `het opgegeven team`.
 
 ### Foutantwoord (400)
 
@@ -524,7 +527,7 @@ Als de gevraagde dag geen wedstrijden toelaat (vrijdag/zondag):
 
 ## POST /api/planner/bevestig
 
-Bevestig en boek een wedstrijdslot. Schrijft naar `planner.geplandewedstrijden` (Postgres-tier; `planner.GeplandeWedstrijden` op de SQL Server-tier).
+Bevestig en boek een wedstrijdslot. Schrijft naar `planner.geplandewedstrijden` (Postgres-tier; `planner.GeplandeWedstrijden` op de SQL Server-tier). De aanvrager wordt server-side afgeleid uit de ingelogde principal; een eventueel meegestuurd `aangevraagdDoor`-veld wordt genegeerd.
 
 ### Aanvraag
 
@@ -536,7 +539,6 @@ Bevestig en boek een wedstrijdslot. Schrijft naar `planner.geplandewedstrijden` 
   "leeftijdsCategorie": "JO13",
   "teamNaam": "[ClubCode] JO13-1",
   "tegenstander": "[Tegenstander] JO13-2",
-  "aangevraagdDoor": "trainer@voorbeeld.nl",
   "wedstrijdDuurMinuten": null
 }
 ```
@@ -551,7 +553,7 @@ Bevestig en boek een wedstrijdslot. Schrijft naar `planner.geplandewedstrijden` 
 | `leeftijdsCategorie` | `string` | Nee | Leeftijdscategorie voor automatische duur/veldgrootte |
 | `teamNaam` | `string` | Nee | Teamnaam |
 | `tegenstander` | `string` | Nee | Tegenstander |
-| `aangevraagdDoor` | `string` | Nee | Wie het verzoek heeft gedaan |
+| `aangevraagdDoor` | `string` | Nee | Verouderd compatibiliteitsveld; genegeerd. De server bepaalt de aanvrager uit de ingelogde principal. |
 | `wedstrijdDuurMinuten` | `integer` | Nee | Overschrijf wedstrijdduur (standaard uit Speeltijden of 105) |
 | `heelVeld` | `boolean` | Nee | Dwing een heel veld af, ook als de leeftijdscategorie normaal op een deelveld speelt |
 
@@ -753,7 +755,7 @@ Simulate rescheduling: calculate alternative time slots for an existing match. *
 
 ## POST /api/planner/herplan-bevestig
 
-Register a reschedule request. **Does NOT modify the match** — only records the request with status "Aangevraagd". The actual change in Sportlink is a manual process.
+Register a reschedule request. **Does NOT modify the match** — only records the request with status "Aangevraagd". The actual change in Sportlink is a manual process. The server derives the requester from the authenticated principal; any supplied `aangevraagdDoor` value is ignored.
 
 ### Request Body
 
@@ -762,7 +764,6 @@ Register a reschedule request. **Does NOT modify the match** — only records th
   "wedstrijdcode": 12345678,
   "gewensteAanvangsTijd": "10:00",
   "gewenstVeldNummer": 2,
-  "aangevraagdDoor": "tegenstander via email",
   "opmerking": "08:30 is niet haalbaar"
 }
 ```
@@ -774,7 +775,7 @@ Register a reschedule request. **Does NOT modify the match** — only records th
 | `wedstrijdcode` | `integer` | **Yes** | Match code |
 | `gewensteAanvangsTijd` | `string` | **Yes** | Desired new time `HH:mm` |
 | `gewenstVeldNummer` | `integer` | No | Desired field number |
-| `aangevraagdDoor` | `string` | No | Who requested |
+| `aangevraagdDoor` | `string` | No | Deprecated compatibility field; ignored. The server derives the requester from the authenticated principal. |
 | `opmerking` | `string` | No | Reason / notes |
 
 ### Response (200)
@@ -822,6 +823,36 @@ Sinds #666 is dit de enige dagplanning-optimalisatie.
 Bij `format=html|pdf` moet `datum` strikt `yyyy-MM-dd` zijn (anders 400). De berekening is een pure
 leesbewerking; alleen `/planner/auto-plan/toepassen` schrijft, dus een tweede aanroep voor de export heeft
 geen bijwerking.
+
+### POST /api/planner/auto-plan/toepassen — getoond plan toepassen (#1802)
+
+Alleen voor de democlub `ALLSTARS` en een beheerder. De huidige Admin GUI stuurt **alle** rijen
+van de getoonde preview mee, ook niet-ingedeelde rijen. Een handmatig versleept kwart- of halfveld
+wordt met zijn exacte subpositie opgeslagen; de server kiest geen vervangend slot.
+
+```json
+{
+  "datum": "2026-08-22", "bufferMinuten": 15,
+  "toewijzingen": [
+    { "wedstrijdCode": 1, "huidigeVeld": "veld 101 A1", "huidigeTijd": "09:00",
+      "veldNummer": 101, "veldSubpositie": "A2", "tijd": "10:00" },
+    { "wedstrijdCode": 2, "huidigeVeld": null, "huidigeTijd": null,
+      "veldNummer": null, "veldSubpositie": null, "tijd": null }
+  ]
+}
+```
+
+`toewijzingen` is optioneel voor bestaande API-clients. Bij **weglaten** berekent het legacy-pad
+het plan opnieuw; dat pad garandeert niet dat eerdere handmatige wijzigingen worden toegepast.
+Met de lijst controleert de server de volledige wedstrijdcodeset, verwachte huidige velden,
+tijden en subposities, actieve velden, bronduur, veldfracties, openingstijden en buffer-/baanconflicten
+tegen actuele ALLSTARS-data. Een doel vereist zowel `veldNummer` als `tijd` (exact `HH:mm`, zonder seconden, tijdsaanduidingen of witruimte); beide `null`
+laat de rij oningedeeld. Een previewrij met een onbekend team en zonder betrouwbare speelduur wordt niet meegeschreven en telt niet mee als veldbezetting bij deze controle; andere geldige toewijzingen worden wel gecontroleerd. Als de doeltijd dezelfde `HH:mm`-minuut heeft als de verwachte brontijd,
+blijven de bronseconden behouden, ook als veld of subpositie verandert. Een conflict geeft HTTP `409` zonder gedeeltelijke updates en de GUI
+laat de getoonde aanpassingen staan. Voor een andere club geldt `403`.
+
+Een geslaagde toepassing antwoordt met `bijgewerkt`, `mislukt` en `fouten`; het exacte pad meldt
+`mislukt: 0`. De broncontrole en alle updates vinden binnen één serialiseerbare transactie plaats.
 
 ### POST /api/planner/auto-plan/deel — planning delen zoals getoond (#1460)
 
@@ -1155,8 +1186,7 @@ curl -X DELETE http://localhost:7094/api/beheer/teamaliassen/12
 { "deleted": true, "id": 12 }
 ```
 
-Een verwijderde rij laat geen auditregel achter in de tabel, en het applicatielog bevat alleen het alias-id: geen
-object-ID of naam van de beheerder (AVG).
+Sync-origin aliases retain their existing row with status `rejected`, so canonicalization cannot validate the association again. Other origins are physically deleted. The response shape remains unchanged. Rejection blocks the alias association, not an independent canonical-name match. Both actions are strictly scoped to the current club; logs contain only the alias identifier, without the administrator identity.
 
 ### DELETE /api/beheer/leermomenten/{id}
 
@@ -1234,7 +1264,7 @@ curl -X POST http://localhost:7094/api/planner/check-availability -H "Content-Ty
 ### Wedstrijd boeken
 
 ```bash
-curl -X POST http://localhost:7094/api/planner/bevestig -H "Content-Type: application/json" -d '{"datum":"2026-04-25","aanvangsTijd":"12:00","veldNummer":3,"leeftijdsCategorie":"JO13","teamNaam":"[ClubCode] JO13-1","tegenstander":"[Tegenstander] JO13-2","aangevraagdDoor":"trainer@voorbeeld.nl"}'
+curl -X POST http://localhost:7094/api/planner/bevestig -H "Content-Type: application/json" -d '{"datum":"2026-04-25","aanvangsTijd":"12:00","veldNummer":3,"leeftijdsCategorie":"JO13","teamNaam":"[ClubCode] JO13-1","tegenstander":"[Tegenstander] JO13-2"}'
 ```
 
 ### Zonsondergangtabel vullen
@@ -1258,7 +1288,7 @@ curl -X POST http://localhost:7094/api/planner/herplan-check -H "Content-Type: a
 ### Herplanverzoek registreren
 
 ```bash
-curl -X POST http://localhost:7094/api/planner/herplan-bevestig -H "Content-Type: application/json" -d '{"wedstrijdcode":12345678,"gewensteAanvangsTijd":"10:00","gewenstVeldNummer":2,"aangevraagdDoor":"tegenstander via email","opmerking":"Tijdstip is niet haalbaar"}'
+curl -X POST http://localhost:7094/api/planner/herplan-bevestig -H "Content-Type: application/json" -d '{"wedstrijdcode":12345678,"gewensteAanvangsTijd":"10:00","gewenstVeldNummer":2,"opmerking":"Tijdstip is niet haalbaar"}'
 ```
 
 ### Dagplanning optimaliseren

@@ -1,6 +1,9 @@
 using FunctionApp.Postgres.Planner.Repositories;
 using Microsoft.Extensions.Logging;
 using Planner.Shared;
+using System.Data;
+using System.Globalization;
+using Npgsql;
 using Planner.Shared.Deel;
 using Planner.Shared.Planning;
 
@@ -14,11 +17,9 @@ internal sealed record VeldbezettingItem(
     string? Tegenstander = null, bool NietInSportlink = false, string? Bron = null) : IVeldbezettingRegel;
 
 /// <summary>
-/// Postgres-tier-tegenhanger van <c>FunctionApp/Planner/Services/AutoPlanService.cs</c> (#888).
-/// Sinds issue 888 vervolg (§42) volledig: naast <see cref="VeldbezettingAsync"/> (de
-/// "lichtgewicht weergave zonder FieldScheduler-berekening", #566) nu ook
-/// <see cref="AutoPlanAsync"/> en <see cref="AutoPlanToepassenAsync"/> — de laatste twee
-/// 501-stubs van deze tier.
+/// Coördineert de Postgres-dataopslag en de gedeelde planningslogica voor AutoPlan en het toepassen
+/// van een planning (#888). De endpoint- en tiergrenzen staan in
+/// <c>docs/ARCHITECTUUR-DATABASE-TIERS.md</c> §42.
 ///
 /// <para>
 /// <b>De planningsregels zelf staan niet hier maar in <see cref="AutoPlanRegels"/></b>
@@ -48,7 +49,8 @@ internal static class AutoPlanService
     /// <summary>
     /// De dagplanning-optimalisatie (#666): bepaalt per wedstrijd een planningsdoel, verwerkt ze in
     /// de vastgelegde rangorde, en laat de gedeelde <see cref="FieldScheduler"/> er slots bij
-    /// zoeken. Postgres-vertaling van het SQL Server-origineel (§42).
+    /// zoeken. Postgres-vertaling van het SQL Server-origineel; zie
+    /// <c>docs/ARCHITECTUUR-DATABASE-TIERS.md</c> §42.
     /// </summary>
     internal static async Task<AutoPlanResponse> AutoPlanAsync(
         string connectionString, AutoPlanRequest request, string clubCode, ILogger log)
@@ -325,7 +327,10 @@ internal static class AutoPlanService
         string connectionString, AutoPlanToepassenRequest request, string clubCode, ILogger log)
     {
         if (!clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Toepassen is alleen beschikbaar in testmodus (ALLSTARS).");
+            throw new AutoPlanApplyForbiddenException();
+
+        if (request.Toewijzingen != null)
+            return await ApplyExactAsync(connectionString, request);
 
         var planResponse = await AutoPlanAsync(
             connectionString, new AutoPlanRequest { Datum = request.Datum, BufferMinuten = request.BufferMinuten }, clubCode, log);
@@ -355,8 +360,49 @@ internal static class AutoPlanService
         return response;
     }
 
+    private static async Task<AutoPlanToepassenResponse> ApplyExactAsync(
+        string connectionString, AutoPlanToepassenRequest request)
+    {
+        if (!DateOnly.TryParseExact(request.Datum, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var datum) || request.BufferMinuten is < 0 or > 480)
+            throw new AutoPlanApplyConflictException();
+
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync();
+        await using var transaction = await conn.BeginTransactionAsync(IsolationLevel.Serializable);
+        try
+        {
+            var sources = await AllstarsTestDataRepository.GetAllMatchesForDatumAsync(conn, transaction, datum, "ALLSTARS");
+            var velden = await AllstarsTestDataRepository.GetAllstarsVeldenAsync(conn, transaction);
+            var speeltijden = await PlannerSettingsRepository.GetSpeeltijdenLookupAsync(conn, transaction, "ALLSTARS");
+            if (speeltijden.Count == 0)
+            {
+                var primary = PostgresAppSettings.GetSetting("clubCode")
+                    ?? throw new AutoPlanApplyConflictException();
+                speeltijden = await PlannerSettingsRepository.GetSpeeltijdenLookupAsync(conn, transaction, primary);
+            }
+            var buffers = await TeamRulesRepository.GetAllTeamBuffersAsync(conn, transaction, "ALLSTARS");
+            var choices = request.Toewijzingen!.Select(c => new AutoPlanApplyChoice(
+                c.WedstrijdCode, c.HuidigeVeld, c.HuidigeTijd, c.VeldNummer, c.VeldSubpositie, c.Tijd)).ToList();
+            var sourceRows = sources.Select(s => new AutoPlanApplySource(s.WedstrijdCode, s.Veld,
+                s.AanvangsTijd, s.TeamNaam, s.LeeftijdsCategorie, s.SportlinkSpeelduur)).ToList();
+            var writes = AutoPlanExactApply.Validate(choices, sourceRows, velden, speeltijden,
+                buffers, request.BufferMinuten ?? PlannerShared.StandardBufferMinutes);
+            var updated = await AutoPlanExactApply.PersistAsync(writes,
+                write => AllstarsTestDataRepository.UpdateAllstarsMatchAsync(conn, transaction,
+                    write.WedstrijdCode, write.VerwachtVeld, write.VerwachteTijd, write.Veld, write.Tijd),
+                () => transaction.CommitAsync());
+            return new AutoPlanToepassenResponse { Bijgewerkt = updated };
+        }
+        catch (PostgresException ex) when (AutoPlanApplyConflictException.IsTransactionConflict(ex.SqlState, null))
+        {
+            throw new AutoPlanApplyConflictException();
+        }
+    }
+
     /// <summary>
-    /// De vier clubinstellingen voor de gedeelde HTML-generator (§42), uit de Postgres-cache.
+    /// De vier clubinstellingen voor de gedeelde HTML-generator (zie
+    /// <c>docs/ARCHITECTUUR-DATABASE-TIERS.md</c> §42), uit de Postgres-cache.
     /// <para>
     /// <c>eersteElftalNaam</c> bestaat op geen van beide tiers als opgeslagen instelling — de
     /// generator valt daar zelf terug op <c>clubCode + " 1"</c>, precies zoals op de SQL
@@ -387,7 +433,7 @@ internal static class AutoPlanService
             {
                 var leeftijd = !string.IsNullOrWhiteSpace(w.LeeftijdsCategorie)
                     ? w.LeeftijdsCategorie
-                    : (isAllstars ? ExtractLeeftijdFromTeamNaam(w.TeamNaam) ?? "" : "");
+                    : (isAllstars ? AutoPlanRegels.ExtractLeeftijdFromTeamNaam(w.TeamNaam) ?? "" : "");
                 speeltijden.TryGetValue(leeftijd, out var speeltijdInfo);
 
                 return new VeldbezettingItem(
@@ -443,18 +489,4 @@ internal static class AutoPlanService
     /// <summary>ISO-weekdag (1=maandag..7=zondag) — <see cref="DayOfWeek"/> telt zondag als 0.</summary>
     private static int IsoDagVanWeek(DateOnly datum) => (int)datum.DayOfWeek == 0 ? 7 : (int)datum.DayOfWeek;
 
-    private static string? ExtractLeeftijdFromTeamNaam(string? teamNaam)
-    {
-        if (string.IsNullOrWhiteSpace(teamNaam)) return null;
-        var parts = teamNaam.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length < 2) return null;
-        var second = parts[1];
-        var hyphenIdx = second.IndexOf('-');
-        if (hyphenIdx > 0) second = second[..hyphenIdx];
-        return second.ToUpperInvariant() switch
-        {
-            "HEREN" => "1-99", "DAMES" => "VR", "VROUWEN" => "VR",
-            _ => string.IsNullOrWhiteSpace(second) ? null : second
-        };
-    }
 }

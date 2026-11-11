@@ -1,5 +1,6 @@
 ﻿using System;
 using Microsoft.Data.SqlClient;
+using Planner.Shared.Sync;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using static SportlinkFunction.SystemUtilities;
@@ -46,7 +47,9 @@ namespace SportlinkFunction
             }
             catch (Exception ex)
             {
-                log.LogError(ex, "Merge {SourceTable} into {TargetTable} failed", _sourceTable, _targetTable);
+                log.LogError("Merge {SourceTable} into {TargetTable} failed ({ErrorType})",
+                    _sourceTable, _targetTable, ex.GetType().Name);
+                throw new SyncMergeFailedException();
             }
         }
     }

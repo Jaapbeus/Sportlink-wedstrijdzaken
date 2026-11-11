@@ -8,7 +8,7 @@ namespace SportlinkFunction.Planner;
 /// Use-case service voor automatisch inplannen.
 /// Extracted uit PlannerService (#475).
 /// </summary>
-internal static class AutoPlanService
+internal static partial class AutoPlanService
 {
     private const string AllstarsClubCode = "ALLSTARS";
 
@@ -274,6 +274,9 @@ internal static class AutoPlanService
     {
         if (!clubCode.Equals(AllstarsClubCode, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Toepassen is alleen beschikbaar in testmodus (ALLSTARS).");
+
+        if (request.Toewijzingen != null)
+            return await ApplyExactAsync(request);
 
         var planResponse = await AutoPlanAsync(new AutoPlanRequest { Datum = request.Datum, BufferMinuten = request.BufferMinuten }, clubCode, log);
         var response = new AutoPlanToepassenResponse();

@@ -1052,9 +1052,8 @@ dotnet test FunctionApp.Tests --filter FullyQualifiedName~SportlinkFixtureSyncIn
 docker rm -f sqlfixture
 ```
 
-Deze test staat net als de andere lokale-database-integratietests (`PartialFailureIntegrationTests`)
-op `[Fact(Skip=...)]` — hij draait dus niet automatisch mee in `dotnet test FunctionApp.Tests` en
-ook niet in CI. Dat is bewust: het env-gestuurde "draai automatisch zodra de verbindingsvariabele
+De tests in `SportlinkFixtureSyncIntegrationTests` staan op `[Fact(Skip=...)]` — ze draaien dus
+niet automatisch mee in `dotnet test FunctionApp.Tests` en ook niet in CI. Dat is bewust: het env-gestuurde "draai automatisch zodra de verbindingsvariabele
 gezet is"-mechanisme dat dit zou vervangen, is de scope van een apart issue (#866, tot nu toe alleen
 uitgewerkt voor de Postgres-tier). Zolang dat niet is toegepast op deze test, is de enige manier om
 hem te draaien de bovenstaande handmatige stappen.
@@ -1153,7 +1152,7 @@ sportlink-wedstrijdzaken/
 ├── docker-compose.yml                 # Lokale database: Postgres (standaard, zonder profile) + SQL Server achter profile 'sqlserver' (#800, #1060)
 ├── FunctionApp.Postgres/              # .NET 10 Azure Functions — Postgres-tier (standaard, draait in productie)
 │   ├── FunctionApp.Postgres.csproj
-│   ├── HealthFunction.cs              # GET /api/health (versie, status, actieve tier)
+│   ├── HealthFunction.cs              # GET /api/health + admin-only /api/beheer/health
 │   ├── Sync/SyncFunction.cs           # GET /api/postgres/sync-matches
 │   ├── Admin/                         # 25 Admin-endpoint bestanden (beheer/*)
 │   ├── local.settings.json            # NIET in git — bevat POSTGRES_CONNECTION_STRING

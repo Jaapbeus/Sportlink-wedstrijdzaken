@@ -57,15 +57,6 @@ public class PlannerScopingTests
         parameters.Should().ContainSingle().Which.Name.Should().Be("clubCode");
     }
 
-    [Fact(Skip = "Vereist integratietestomgeving met SQL Server (lokaal uitvoeren)")]
-    public Task GetVeldenLookupAsync_TweeClubsMetZelfdeVeldnaam_GeeftAlleenEigenVeldnummers()
-    {
-        // Arrange: dbo.Velden met dezelfde VeldNaam voor de primaire club en voor ALLSTARS
-        // Act: GetVeldenLookupAsync(clubCode: "ALLSTARS")
-        // Assert: alleen de ALLSTARS-veldnummers staan in het resultaat
-        return Task.CompletedTask;
-    }
-
     // ── Veldnaam-matching: exacte naam of naam plus subpositie, nooit een langer veldnummer ──
 
     [Fact]

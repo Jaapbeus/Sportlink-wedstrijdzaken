@@ -149,6 +149,38 @@ public class EmailNoodmailMeldingTests
         (await store.LaatsteKeerVerstuurdAsync(EmailNoodmailMelding.OpenAiQuotaNoodmailSleutel)).Should().BeNull();
     }
 
+    [Fact]
+    public async Task StructureleAiNoodmail_GebruiktEigenSleutelEnBestaand24UursVenster()
+    {
+        var store = new FakeThrottle();
+        var nu = DateTime.UtcNow;
+        await store.RegistreerVerstuurdAsync(EmailNoodmailMelding.OpenAiQuotaNoodmailSleutel, nu);
+
+        (await EmailNoodmailMelding.MoetStructureleAiNoodmailVersturenAsync(store, nu)).Should().BeTrue();
+        await store.RegistreerVerstuurdAsync(EmailNoodmailMelding.StructureleAiNoodmailSleutel, nu.AddHours(-1));
+        (await EmailNoodmailMelding.MoetStructureleAiNoodmailVersturenAsync(store, nu)).Should().BeFalse();
+        (await EmailNoodmailMelding.MoetOpenAiQuotaNoodmailVersturenAsync(store, nu)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task StuurStructureleAiNoodmail_VasteCategorieZonderFoutdetails_EnAlleenNaSuccesRegistreren()
+    {
+        var graph = new FakeGraph();
+        var store = new FakeThrottle();
+
+        await EmailNoodmailMelding.StuurStructureleAiNoodmailAsync(graph, store, NullLogger.Instance);
+
+        graph.Verstuurd.Should().ContainSingle();
+        graph.Verstuurd[0].Subject.Should().Be("URGENT: AI-classificatie mislukt — e-mail blijft ongelezen");
+        graph.Verstuurd[0].Body.Should().Contain("structurele fout").And.NotContain("exception");
+        (await store.LaatsteKeerVerstuurdAsync(EmailNoodmailMelding.StructureleAiNoodmailSleutel)).Should().NotBeNull();
+
+        var falendeGraph = new FakeGraph { GooiBijVersturen = true };
+        var falendeStore = new FakeThrottle();
+        await EmailNoodmailMelding.StuurStructureleAiNoodmailAsync(falendeGraph, falendeStore, NullLogger.Instance);
+        (await falendeStore.LaatsteKeerVerstuurdAsync(EmailNoodmailMelding.StructureleAiNoodmailSleutel)).Should().BeNull();
+    }
+
     // ── #1143: mailboxadres nooit in logs ───────────────────────────────────────────────────
 
     [Fact]
@@ -163,8 +195,9 @@ public class EmailNoodmailMeldingTests
 
             await EmailNoodmailMelding.StuurDatabaseNoodmailAsync(graph, 1, "test", new FakeThrottle(), Teksten, logger);
             await EmailNoodmailMelding.StuurOpenAiNoodmailAsync(graph, "quota", new FakeThrottle(), Teksten, logger);
+            await EmailNoodmailMelding.StuurStructureleAiNoodmailAsync(graph, new FakeThrottle(), logger);
 
-            graph.Verstuurd.Should().HaveCount(2).And.OnlyContain(r => r.To == mailboxAdres,
+            graph.Verstuurd.Should().HaveCount(3).And.OnlyContain(r => r.To == mailboxAdres,
                 "de test bewijst pas iets als het adres daadwerkelijk gebruikt is om te versturen");
             logger.Berichten.Should().NotBeEmpty().And.NotContain(m => m.Contains(mailboxAdres),
                 "SECURITY.md sluit afzender-/ontvangeradressen expliciet uit van logs (#1143)");

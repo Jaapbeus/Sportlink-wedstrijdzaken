@@ -54,7 +54,7 @@ else
             }
             @if (velden.Count == 0)
             {
-                <tr><td colspan="6" class="text-muted">Geen velden gevonden.</td></tr>
+                <tr><td colspan="6" class="@(veldenLoadError == null ? "text-muted" : "text-danger")">@(veldenLoadError ?? "Geen velden gevonden.")</td></tr>
             }
         </tbody>
     </table>
@@ -62,38 +62,7 @@ else
     @if (editingVeld != null)
     {
         <hr />
-        <h3>@(isNewVeld ? "Nieuw veld" : $"Bewerken: {editingVeld.VeldNaam}")</h3>
-        <EditForm Model="editingVeld" OnValidSubmit="OpslaanVeldAsync">
-            <div class="row">
-                <div class="col-md-2 mb-3">
-                    <label class="form-label">Veldnummer</label>
-                    <input class="form-control" type="number" min="1" @bind="editingVeld.VeldNummer" disabled="@(!isNewVeld)" />
-                </div>
-                <div class="col-md-3 mb-3">
-                    <label class="form-label">Naam</label>
-                    <input class="form-control" @bind="editingVeld.VeldNaam" placeholder="bijv. veld 1" />
-                </div>
-                <div class="col-md-3 mb-3">
-                    <label class="form-label">Type</label>
-                    <input class="form-control" list="veldtype-suggesties" @bind="editingVeld.VeldType" placeholder="kunstgras" />
-                    <datalist id="veldtype-suggesties">
-                        <option value="kunstgras" />
-                        <option value="natuurgras" />
-                    </datalist>
-                    <small class="form-text text-muted">Vrije tekst — geen vaste lijst, elke club kiest zelf.</small>
-                </div>
-                <div class="col-md-2 mb-3">
-                    <label class="form-label d-block">Kunstlicht</label>
-                    <input type="checkbox" class="form-check-input mt-2" @bind="editingVeld.HeeftKunstlicht" />
-                </div>
-                <div class="col-md-2 mb-3">
-                    <label class="form-label d-block">Actief</label>
-                    <input type="checkbox" class="form-check-input mt-2" @bind="editingVeld.Actief" />
-                </div>
-            </div>
-            <button type="submit" class="btn btn-primary">Opslaan</button>
-            <button type="button" class="btn btn-secondary ms-2" @onclick="() => editingVeld = null">Annuleren</button>
-        </EditForm>
+        <VeldEditor Model="editingVeld" IsNew="isNewVeld" OnSave="OpslaanVeldAsync" OnCancel="() => editingVeld = null" />
 
         @if (!string.IsNullOrEmpty(veldMessage))
         {
@@ -138,15 +107,18 @@ else
                     <td>@(p.Actief ? "ja" : "nee")</td>
                     <td>
                         <button class="btn btn-sm btn-primary" @onclick="() => EditPeriode(p)">Bewerken</button>
-                        <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => DeletePeriodeAsync(p.Id)">
-                            Verwijderen
-                        </button>
+                        @if (_deleteConfirmation.IsOpenFor(("periode", p.Id)))
+                        {
+                            <button class="btn btn-sm btn-danger ms-1" @onclick="() => DeletePeriodeAsync(p.Id)">Bevestig verwijderen</button>
+                            <button class="btn btn-sm btn-link" @onclick="AnnuleerVerwijderen">Annuleren</button>
+                        }
+                        else { <button class="btn btn-sm btn-outline-danger ms-1" @onclick='() => VraagVerwijderen("periode", p.Id)'>Verwijderen</button> }
                     </td>
                 </tr>
             }
             @if (periodes.Count == 0)
             {
-                <tr><td colspan="5" class="text-muted">Geen periodes gedefinieerd — alle vensters gelden het hele jaar (standaardregime).</td></tr>
+                <tr><td colspan="5" class="@(periodesLoadError == null ? "text-muted" : "text-danger")">@(periodesLoadError ?? "Geen periodes gedefinieerd — alle vensters gelden het hele jaar (standaardregime).")</td></tr>
             }
         </tbody>
     </table>
@@ -221,15 +193,18 @@ else
                     <td>@(b.PeriodeNaam ?? "Standaard")</td>
                     <td>
                         <button class="btn btn-sm btn-primary" @onclick="() => EditBeschikbaarheid(b)">Bewerken</button>
-                        <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => DeleteBeschikbaarheidAsync(b.Id)">
-                            Verwijderen
-                        </button>
+                        @if (_deleteConfirmation.IsOpenFor(("beschikbaarheid", b.Id)))
+                        {
+                            <button class="btn btn-sm btn-danger ms-1" @onclick="() => DeleteBeschikbaarheidAsync(b.Id)">Bevestig verwijderen</button>
+                            <button class="btn btn-sm btn-link" @onclick="AnnuleerVerwijderen">Annuleren</button>
+                        }
+                        else { <button class="btn btn-sm btn-outline-danger ms-1" @onclick='() => VraagVerwijderen("beschikbaarheid", b.Id)'>Verwijderen</button> }
                     </td>
                 </tr>
             }
             @if (beschikbaarheid.Count == 0)
             {
-                <tr><td colspan="7" class="text-muted">Geen beschikbaarheidsvensters gevonden.</td></tr>
+                <tr><td colspan="7" class="@(beschikbaarheidLoadError == null ? "text-muted" : "text-danger")">@(beschikbaarheidLoadError ?? "Geen beschikbaarheidsvensters gevonden.")</td></tr>
             }
         </tbody>
     </table>
@@ -334,15 +309,18 @@ else
                     <td>@(t.Actief ? "ja" : "nee")</td>
                     <td>
                         <button class="btn btn-sm btn-primary" @onclick="() => EditTraining(t)">Bewerken</button>
-                        <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => DeleteTrainingAsync(t.Id)">
-                            Verwijderen
-                        </button>
+                        @if (_deleteConfirmation.IsOpenFor(("training", t.Id)))
+                        {
+                            <button class="btn btn-sm btn-danger ms-1" @onclick="() => DeleteTrainingAsync(t.Id)">Bevestig verwijderen</button>
+                            <button class="btn btn-sm btn-link" @onclick="AnnuleerVerwijderen">Annuleren</button>
+                        }
+                        else { <button class="btn btn-sm btn-outline-danger ms-1" @onclick='() => VraagVerwijderen("training", t.Id)'>Verwijderen</button> }
                     </td>
                 </tr>
             }
             @if (training.Count == 0)
             {
-                <tr><td colspan="7" class="text-muted">Geen trainingsblokken gevonden.</td></tr>
+                <tr><td colspan="7" class="@(trainingLoadError == null ? "text-muted" : "text-danger")">@(trainingLoadError ?? "Geen trainingsblokken gevonden.")</td></tr>
             }
         </tbody>
     </table>

@@ -2732,7 +2732,7 @@ USING [' + @SourceSchema + '].[' + @SourceName + '] AS source
         BEGIN
             SET @SqlString +=
 'AND ISNULL(CAST(target.' + @ColName + ' AS NVARCHAR(MAX)), '''') = ISNULL(CAST(source.' + @ColName + ' AS NVARCHAR(MAX)), '''') ';
-            SET @SourcePkColumns += ', source.' + @ColName + ' ';
+            SET @SourcePkColumns += ', NCHAR(1), source.' + @ColName + ' ';
         END
         DELETE FROM @ColNames WHERE ColName = @ColName;
         SET @Index += 1;
@@ -2814,7 +2814,7 @@ WHEN NOT MATCHED BY TARGET THEN ';
         DELETE FROM @SourceTableColumns WHERE TableColumn = @ColName;
     END
 
-    -- CONCAT supports both single and multi-column source keys
+    -- Preserve single-column keys; separate composite components like the PostgreSQL tier.
     SET @SqlString += '
 INSERT (' + @TargetPk + @SqlStringTargets + ', mta_inserted, mta_modified)
 VALUES (CONCAT('''', ' + @SourcePkColumns + ')' + @SqlStringValues + ', GETUTCDATE(), GETUTCDATE());';
@@ -3900,6 +3900,7 @@ BEGIN
         [IssueStatusGecontroleerdOpUtc] DATETIME2        NULL,
         [IsGeanonimiseerd]              BIT              NOT NULL CONSTRAINT [DF_avg_Feedback_IsGeanonimiseerd] DEFAULT (0),
         [GeanonimiseerdOpUtc]           DATETIME2        NULL,
+        [PublicatieGestartOpUtc]        DATETIME2        NULL,
         [mta_inserted]                  DATETIME2        NOT NULL CONSTRAINT [DF_avg_Feedback_mta_inserted] DEFAULT (GETUTCDATE()),
         [mta_modified]                  DATETIME2        NOT NULL CONSTRAINT [DF_avg_Feedback_mta_modified] DEFAULT (GETUTCDATE()),
         CONSTRAINT [PK_avg_Feedback] PRIMARY KEY CLUSTERED ([Id] ASC),
@@ -4221,4 +4222,17 @@ GO
 IF OBJECT_ID('dbo.Teams', 'U') IS NOT NULL AND COL_LENGTH('dbo.Teams', 'Categorie') IS NULL
     ALTER TABLE [dbo].[Teams] ADD
         [Categorie] NVARCHAR(1) NULL CONSTRAINT [CK_Teams_Categorie] CHECK ([Categorie] COLLATE Latin1_General_100_BIN2 IN (N'A', N'B'));
+GO
+
+-- #1803: begin van de lopende publicatiepoging van een feedbackmelding. ClaimPublicatieAsync zet het vóór de eerste
+-- GitHub-POST (ZetIssueBodyAsync ook, als een oudere melding haar referentie krijgt); een herclaim (automatisch
+-- herstel) laat het staan, zodat het zoekvenster naar een al aangemaakt issue niet opschuift door een mislukte
+-- herstelpoging. NULL = nog nooit geclaimd of geclaimd vóór deze kolom (de code valt dan terug op mta_modified).
+-- Additief en nullable (expand). Postgres-tegenhanger:
+-- Database.Postgres/migrations/048_avg_feedback_publicatiegestart.sql. Bron: Database/avg/Tables/Feedback.sql.
+-- QUOTED_IDENTIFIER moet AAN zijn: avg.Feedback heeft een gefilterde index (#1280).
+SET QUOTED_IDENTIFIER ON;
+GO
+IF OBJECT_ID('avg.Feedback', 'U') IS NOT NULL AND COL_LENGTH('avg.Feedback', 'PublicatieGestartOpUtc') IS NULL
+    ALTER TABLE [avg].[Feedback] ADD [PublicatieGestartOpUtc] DATETIME2 NULL;
 GO

@@ -15,6 +15,8 @@ public partial class Leermomenten : ClubSelectorPageBase
     private string? _fout;
     private readonly HashSet<int> _actieBezigId = new();
 
+    private readonly LookupGeneratieGuard _laadGuard = new();
+
     private bool _toevoegenOpen;
 
     private void WisselToevoegen() => _toevoegenOpen = !_toevoegenOpen;
@@ -30,7 +32,12 @@ public partial class Leermomenten : ClubSelectorPageBase
         await LaadAsync("pending");
     }
 
-    protected override Task OnClubChangedAsync() => LaadAsync(_filterStatus ?? "pending");
+    protected override Task OnClubChangedAsync()
+    {
+        // #1872: een open verwijderbevestiging hoort bij de vorige club.
+        _verwijderBevestigId = null;
+        return LaadAsync(_filterStatus ?? "pending");
+    }
 
     private async Task LaadAsync(string status)
     {
@@ -41,25 +48,26 @@ public partial class Leermomenten : ClubSelectorPageBase
 
         try
         {
-            var statsTask = Api.GetLeermomentenStatsAsync();
-            var itemsTask = Api.GetLeermomentenAsync(string.IsNullOrEmpty(status) ? null : status);
-            await Task.WhenAll(statsTask, itemsTask);
-
-            var statsResult = await statsTask;
-            var itemsResult = await itemsTask;
-
-            if (statsResult.Success) _stats = statsResult.Data;
-            if (itemsResult.Success)
-                _items = itemsResult.Data?.Items ?? new();
-            else
-                _fout = itemsResult.ErrorMessage ?? "Ophalen mislukt";
+            // #1872: een late response van de vorige club mag de lijst/stats van de huidige club niet overschrijven.
+            var toegepast = await LaadClubgebondenAsync(_laadGuard, async () =>
+            {
+                var statsTask = Api.GetLeermomentenStatsAsync();
+                var itemsTask = Api.GetLeermomentenAsync(string.IsNullOrEmpty(status) ? null : status);
+                await Task.WhenAll(statsTask, itemsTask);
+                return (Stats: await statsTask, Items: await itemsTask);
+            }, r =>
+            {
+                if (r.Stats.Success) _stats = r.Stats.Data;
+                if (r.Items.Success)
+                    _items = r.Items.Data?.Items ?? new();
+                else
+                    _fout = r.Items.ErrorMessage ?? "Ophalen mislukt";
+            });
+            if (toegepast) _bezig = false;
         }
         catch (Exception ex)
         {
             _fout = ex.Message;
-        }
-        finally
-        {
             _bezig = false;
         }
     }
@@ -74,9 +82,12 @@ public partial class Leermomenten : ClubSelectorPageBase
     {
         _actieBezigId.Add(id);
         StateHasChanged();
+        var clubCode = ClubSelector.SelectedClubCode;
         try
         {
             var result = await Api.VerwijderLeermomentAsync(id);
+            // #1872: ook de bevestiging niet sluiten; die kan inmiddels bij een item van de nieuwe club horen.
+            if (IsClubGewisseld(clubCode)) return; // #1872: uitkomst hoort bij een andere club
             _verwijderBevestigId = null;
             if (!result.Success)
                 _fout = result.ErrorMessage ?? "Verwijderen mislukt";
@@ -85,7 +96,7 @@ public partial class Leermomenten : ClubSelectorPageBase
         }
         catch (Exception ex)
         {
-            _fout = ex.Message;
+            if (!IsClubGewisseld(clubCode)) _fout = ex.Message;
         }
         finally
         {
@@ -98,9 +109,11 @@ public partial class Leermomenten : ClubSelectorPageBase
         _actieBezigId.Add(id);
         StateHasChanged();
 
+        var clubCode = ClubSelector.SelectedClubCode;
         try
         {
             var result = await Api.ValideerLeermomentAsync(id, actie);
+            if (IsClubGewisseld(clubCode)) return; // #1872
             if (!result.Success)
                 _fout = result.ErrorMessage ?? "Actie mislukt";
             else
@@ -108,7 +121,7 @@ public partial class Leermomenten : ClubSelectorPageBase
         }
         catch (Exception ex)
         {
-            _fout = ex.Message;
+            if (!IsClubGewisseld(clubCode)) _fout = ex.Message;
         }
         finally
         {

@@ -8,7 +8,7 @@ internal static class SportlinkMatchChangeValidatieLezer
     /// <summary>
     /// Parseert Sportlinks <c>ConfirmationNeeded</c>-veld uit een <c>UpdateMatchDetails</c>-respons
     /// (#995) naar <see cref="SportlinkMatchChangeValidatie"/>. <b>ONBEVESTIGD:</b> de exacte vorm is
-    /// nooit met een netwerktrace gezien — <c>ValidationResultMessages</c>-elementen kunnen kale
+    /// niet in de beschikbare bewijsvoering vastgesteld — <c>ValidationResultMessages</c>-elementen kunnen kale
     /// strings zijn óf objecten met een <c>Message</c>- of <c>Description</c>-veld (issue #995:
     /// "elementvorm onbekend"), en <c>HasBlockingMessages</c> kan zowel genest onder
     /// <c>ConfirmationNeeded</c> als op het toplevel staan — deze parser probeert beide, zelfde

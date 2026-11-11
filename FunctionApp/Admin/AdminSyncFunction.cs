@@ -1,3 +1,5 @@
+using Planner.Endpoints.Http;
+
 using SportlinkFunction.Infrastructure;
 using Planner.Endpoints.Admin;
 using System.Text.Json;
@@ -7,6 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
+using SportlinkFunction.Sync;
 
 namespace SportlinkFunction.Admin;
 
@@ -85,38 +88,48 @@ public static class AdminSyncFunction
                 if (UitgaandVerkeerCore.Blokkeer(EgressGuard.ExternalIntegrationsAllowed) is { } geblokkeerd) return geblokkeerd;
 
                 // #1352/#1461/#1492: body + seizoensvenster via de gedeelde orkestratie (400 bij ongeldig).
-                var venster = await SyncTriggerEndpointCore.BepaalVensterAsync(
-                    await new StreamReader(req.Body).ReadToEndAsync(), DateTime.UtcNow.Year,
-                    () => SystemUtilities.SeasonHelper.GetSeasonEndWeekOffsetAsync(log, clubCode),
-                    jaar => SystemUtilities.SeasonHelper.GetSeasonStartWeekOffsetOrNullAsync(jaar, clubCode));
-                if (venster.Fout is not null) return venster.Fout;
-                int fromWeekOffset = venster.Van, toWeekOffset = venster.Tot;
-                var jobId = Guid.NewGuid();
-
-                await SyncJobsRepository.CreateAsync(jobId, clubCode, weekOffsetFrom: fromWeekOffset, weekOffsetTo: toWeekOffset);
-
-                var queueClient = SyncJobsQueue.CreateClient();
-                await queueClient.CreateIfNotExistsAsync();
-                var message = new SyncJobMessage
+                return await BoundedRequestBodyReader.ExecuteUtf8Async(req, async bodyText =>
                 {
-                    JobId = jobId,
-                    ClubCode = clubCode,
-                    WeekOffsetFrom = fromWeekOffset,
-                    WeekOffsetTo = toWeekOffset
-                };
-                await queueClient.SendMessageAsync(JsonSerializer.Serialize(message));
+                    var venster = await SyncTriggerEndpointCore.BepaalVensterAsync(
+                        bodyText, DateTime.UtcNow.Year,
+                        async () =>
+                        {
+                            // De queue mag tijdens een lopende sync blijven accepteren. De doorrol
+                            // gebruikt alleen de bestaande AppSettings-rijlock, geen staginglease.
+                            await SqlServerSeasonRollover.EnsureAsync(
+                                clubCode, SqlServerSeasonRollover.VandaagInNederland, log);
+                            return await SystemUtilities.SeasonHelper.GetSeasonEndWeekOffsetAsync(log, clubCode);
+                        },
+                        jaar => SystemUtilities.SeasonHelper.GetSeasonStartWeekOffsetOrNullAsync(jaar, clubCode));
+                    if (venster.Fout is not null) return venster.Fout;
+                    int fromWeekOffset = venster.Van, toWeekOffset = venster.Tot;
+                    var jobId = Guid.NewGuid();
 
-                log.LogInformation("AdminSyncTrigger: job {JobId}, range {From} .. {To} (reset: {Reset}) — op de queue gezet", jobId, fromWeekOffset, toWeekOffset, venster.IsReset);
+                    await SyncJobsRepository.CreateAsync(jobId, clubCode, weekOffsetFrom: fromWeekOffset, weekOffsetTo: toWeekOffset);
 
-                return new ObjectResult(new
-                {
-                    status = "gestart",
-                    jobId,
-                    weekOffsetFrom = fromWeekOffset,
-                    weekOffsetTo = toWeekOffset,
-                    tijdstip = DateTime.UtcNow,
-                    melding = "Sync gestart op achtergrond. Controleer de voortgang via /beheer/sync/status?jobId=" + jobId + "."
-                }) { StatusCode = 202 };
+                    var queueClient = SyncJobsQueue.CreateClient();
+                    await queueClient.CreateIfNotExistsAsync();
+                    var message = new SyncJobMessage
+                    {
+                        JobId = jobId,
+                        ClubCode = clubCode,
+                        WeekOffsetFrom = fromWeekOffset,
+                        WeekOffsetTo = toWeekOffset
+                    };
+                    await queueClient.SendMessageAsync(JsonSerializer.Serialize(message));
+
+                    log.LogInformation("AdminSyncTrigger: job {JobId}, range {From} .. {To} (reset: {Reset}) — op de queue gezet", jobId, fromWeekOffset, toWeekOffset, venster.IsReset);
+
+                    return new ObjectResult(new
+                    {
+                        status = "gestart",
+                        jobId,
+                        weekOffsetFrom = fromWeekOffset,
+                        weekOffsetTo = toWeekOffset,
+                        tijdstip = DateTime.UtcNow,
+                        melding = "Sync gestart op achtergrond. Controleer de voortgang via /beheer/sync/status?jobId=" + jobId + "."
+                    }) { StatusCode = 202 };
+                });
             });
     }
 }
