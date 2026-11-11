@@ -3,10 +3,10 @@ using Npgsql;
 namespace FunctionApp.Postgres.Admin;
 
 /// <summary>
-/// Postgres-tier-tegenhanger van <c>FunctionApp/Admin/Repositories/AdminVeldTrainingRepository.cs</c>
-/// (#887). Vertaling: <c>[dbo].[VeldTraining]</c> → <c>public.veldtraining</c>,
-/// <c>CONVERT(VARCHAR(5), …)</c> → <c>to_char(…, 'HH24:MI')</c>, <c>OUTPUT INSERTED.[Id]</c> →
-/// <c>RETURNING id</c>, gequote PascalCase-aliassen voor de #855-casing-regel.
+/// Leest en beheert per-club trainingsblokken in <c>public.veldtraining</c>. De SQL Server-tabel
+/// <c>[dbo].[VeldTraining]</c> correspondeert daarmee; tijden worden met
+/// <c>to_char(…, 'HH24:MI')</c> geformatteerd, nieuwe ids komen uit <c>RETURNING id</c>, en gequote
+/// PascalCase-aliassen behouden de #855-casing-regel.
 /// </summary>
 internal static class AdminVeldTrainingRepository
 {
