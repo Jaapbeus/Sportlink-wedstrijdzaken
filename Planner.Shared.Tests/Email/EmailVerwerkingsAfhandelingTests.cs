@@ -121,6 +121,19 @@ public class EmailVerwerkingsAfhandelingTests
     }
 
     [Fact]
+    public async Task BepaalVerwerkingId_Opgeven_LabelFaalt_MarkeertTochGelezen()
+    {
+        var opslag = new OpnemendeOpslag { Stand = Stand(VerwerkingsBesluit.OpgevenNaMaxPogingen, pogingen: 3) };
+        var mailbox = new OpnemendeMailbox { LabelGooit = true };
+
+        var id = await EmailVerwerkingsAfhandeling.BepaalVerwerkingIdAsync(MessageId, opslag, mailbox, NullLogger.Instance);
+
+        id.Should().BeNull();
+        opslag.Aanroepen.Should().ContainSingle().Which.Should().StartWith("fout:42:");
+        mailbox.Aanroepen.Should().Equal($"gelezen:{MessageId}");
+    }
+
+    [Fact]
     public async Task BepaalVerwerkingId_Herhaal_VerhoogtPogingenEnHergebruiktRij()
     {
         var opslag = new OpnemendeOpslag { Stand = Stand(VerwerkingsBesluit.HerhaalVerwerking) };
@@ -142,7 +155,7 @@ public class EmailVerwerkingsAfhandelingTests
 
         id.Should().BeNull();
         opslag.Aanroepen.Should().Equal("fout:42:Opgegeven na 3 mislukte pogingen (verwerking) — handmatige opvolging nodig");
-        mailbox.Aanroepen.Should().Equal($"gelezen:{MessageId}");
+        mailbox.Aanroepen.Should().Equal($"label:{MessageId}", $"gelezen:{MessageId}");
     }
 
     [Fact]
@@ -201,7 +214,7 @@ public class EmailVerwerkingsAfhandelingTests
         await EmailVerwerkingsAfhandeling.RegistreerClassificatieFoutAsync(MessageId, opslag, mailbox, NullLogger.Instance);
 
         opslag.Aanroepen.Should().Equal("fout:42:Opgegeven na 3 mislukte pogingen (AI-classificatie) — handmatige opvolging nodig");
-        mailbox.Aanroepen.Should().Equal($"gelezen:{MessageId}");
+        mailbox.Aanroepen.Should().Equal($"label:{MessageId}", $"gelezen:{MessageId}");
     }
 
     [Fact]

@@ -392,8 +392,9 @@ bestaande rij hergebruikt en de verwerking opnieuw uitgevoerd.
 > terugvalpad meedoen voor rijen van vóór de migratie.
 
 `planner.EmailVerwerking.Pogingen` houdt bij hoe vaak dat is gebeurd. Na drie pogingen geeft de
-verwerking op: status `Fout` met de melding dat er is opgegeven, bericht als gelezen gemarkeerd, en
-een foutregel in de log. Dat is nodig omdat de poll de tien **oudste** ongelezen berichten pakt —
+verwerking op: status `Fout` met de melding dat er is opgegeven, best-effort het Outlook-label
+*Geen AI antwoord*, bericht als gelezen gemarkeerd, en een foutregel in de log. De coördinator
+pakt het bericht daarna handmatig op via het e-maillog. Dat is nodig omdat de poll de tien **oudste** ongelezen berichten pakt —
 zonder die grens zouden tien blijvend falende berichten alle nieuwe post tegenhouden en bij elke
 poll opnieuw AI-kosten maken.
 
@@ -977,7 +978,10 @@ afzender **geen** bericht. De verwerking legt vast:
 - status `Fout` in `planner.EmailVerwerking`, met een gesaniteerde foutmelding (e-mailadressen
   verwijderd, afgekapt op 1000 tekens)
 - een foutregel in de log met alleen het `MessageId` — nooit onderwerp, adres of body (AVG #210)
-- het bericht blijft **ongelezen** en komt de volgende poll terug (zie §1d, max 3 pogingen)
+- het bericht blijft **ongelezen** en komt de volgende poll terug (zie §1d, max 3 pogingen). Na
+  de derde mislukte poging krijgt het de status `Fout`, wordt *Geen AI antwoord* best-effort als
+  Outlook-label gezet en wordt het bericht als gelezen gemarkeerd; de coördinator volgt het op via
+  het e-maillog.
 
 > `BerichtResponseGenerator.BouwFoutAntwoord` bestaat wel, maar wordt door geen enkele
 > productiecode aangeroepen. Een eerdere versie van dit document beschreef die tekst als
