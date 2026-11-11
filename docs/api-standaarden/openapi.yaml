@@ -4733,8 +4733,9 @@ paths:
       responses:
         '200':
           description: |
-            Diagnostiektrace (#1320) — Resultaat.Mutatie.IsSuccess kan alsnog false zijn; in de
-            praktijk altijd een gesimuleerd resultaat door de code-lock.
+            Diagnostiektrace (#1320) — Resultaat.Mutatie.IsSuccess kan alsnog false zijn. De route
+            volgt sportlinkDryRun: staat dry-run aan, dan is het resultaat gesimuleerd
+            (Resultaat.Mutatie.IsDryRun true); anders gaat stap 1 live naar Sportlink.
           content:
             application/json:
               schema:

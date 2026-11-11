@@ -543,8 +543,10 @@ Vier dingen om te onthouden:
   Pending-rij gebruikt daarom de placeholder `"NIEUW"`, met een gegenereerde GUID in `CorrelationId`
   om Pending- en Voltooid-rij te koppelen. Het écht opslaan van het teruggekregen `PublicMatchId`
   vereist een uitbreiding van `ISportlinkMutationAuditService.VoltooiAsync` (een extra optionele
-  parameter, raakt beide tiers) — bewust NIET gebouwd in deze ronde (`// TODO` in de broncode),
-  niet nodig zolang dit pad toch altijd `"DryRunLocked"` teruggeeft. **Bewust NIET gebouwd (toekomstig
+  parameter, raakt beide tiers) en is niet gebouwd. Omdat aanmaken sinds #1427 live gaat (de
+  aanroep volgt `sportlinkDryRun`), is dit een open functioneel gat op beide tiers: bij een echte
+  aanmaak legt de audit alleen de placeholder `"NIEUW"` vast, niet het echte `PublicMatchId`.
+  **Bewust NIET gebouwd (toekomstig
   werk):** uitslag vastleggen (`ClubMatchScore`), de drie overige
   ondersteunende endpoints (`ClubMatchDefaults`, `PickListsMatchInformation`,
   `codetable/AgeClassList`), en een "vrij tijdslot"-concept in de Dagplanning-Gantt — het formulier
