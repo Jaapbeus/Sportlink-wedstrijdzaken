@@ -94,23 +94,9 @@ public partial class EmailGraphService : IEmailGraphService
     /// <summary>
     /// Zet een Outlook-categorie op een bericht. Bestaande categorieën worden vervangen.
     /// </summary>
-    public async Task SetCategoriesAsync(string messageId, params string[] categories)
-    {
-        try
-        {
-            await _graphClient.Users[_mailbox]
-                .Messages[messageId]
-                .PatchAsync(new Message { Categories = categories.ToList() });
-
-            _logger.LogInformation("Email {MessageId} gemarkeerd met categorie(en) {Categorieen}",
-                messageId, string.Join(", ", categories));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Fout bij zetten van categorie op email {MessageId}", messageId);
-            throw;
-        }
-    }
+    public Task SetCategoriesAsync(string messageId, params string[] categories)
+        => SportlinkFunction.Email.GraphMailboxMutations.SetCategoriesAsync(
+            _graphClient, _logger, _mailbox, messageId, categories);
 
     // Per categorienaam onthouden — met één gedeelde vlag zou de tweede categorie
     // (bijv. 'Handmatige planning', #572) nooit worden aangemaakt.
@@ -168,22 +154,9 @@ public partial class EmailGraphService : IEmailGraphService
     /// <summary>
     /// Markeert een email als gelezen in de coordinator-mailbox.
     /// </summary>
-    public async Task MarkAsReadAsync(string messageId)
-    {
-        try
-        {
-            await _graphClient.Users[_mailbox]
-                .Messages[messageId]
-                .PatchAsync(new Message { IsRead = true });
-
-            _logger.LogInformation("Email {MessageId} gemarkeerd als gelezen", messageId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Fout bij markeren van email {MessageId} als gelezen", messageId);
-            throw;
-        }
-    }
+    public Task MarkAsReadAsync(string messageId)
+        => SportlinkFunction.Email.GraphMailboxMutations.MarkAsReadAsync(
+            _graphClient, _logger, _mailbox, messageId);
 
     /// <summary>
     /// Verstuurt een antwoord-email via de coordinator-mailbox.

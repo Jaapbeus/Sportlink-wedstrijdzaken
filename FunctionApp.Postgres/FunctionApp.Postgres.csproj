@@ -63,6 +63,8 @@
     <PackageReference Include="OpenAI" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Graph-mailboxmutaties gebruiken dezelfde SDK en foutgrens in beide hosts. -->
+    <Compile Include="../FunctionApp/Email/GraphMailboxMutations.cs" Link="Email/GraphMailboxMutations.cs" />
     <!-- Eén providercompositie voor beide hosts; de providerpakketten zijn al in beide tiers aanwezig. -->
     <Compile Include="../FunctionApp/Infrastructure/OpenAiChatClientRegistration.cs" Link="Infrastructure/OpenAiChatClientRegistration.cs" />
   </ItemGroup>
