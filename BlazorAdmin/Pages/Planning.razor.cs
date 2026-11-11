@@ -5,10 +5,9 @@ using Microsoft.JSInterop;
 
 namespace BlazorAdmin.Pages;
 
-/// <summary>Code-behind van <c>Planning.razor</c> (#1361, afgesplitst van het toenmalige
-/// <c>Dagplanning.razor</c>): datum-invoer en de directe veldbezetting — wat er nu al in Sportlink
-/// gepland staat. De Gantt-weergavehelpers staan gedeeld in <see cref="DagplanningWeergaveHelpers"/>
-/// (ook gebruikt door <c>VeldOptimalisatie.razor.cs</c>); de Sportlink-uitklap-/deeplinkstate in
+/// <summary>Code-behind van <c>Planning.razor</c>: beheert de datum-invoer en laadt de directe
+/// veldbezetting die in Sportlink gepland staat. Gantt-weergavehelpers zijn gedeeld met
+/// <c>VeldOptimalisatie.razor.cs</c>; de Sportlink-uitklap- en deeplinkstate staat in
 /// <see cref="SportlinkActieKolomState"/>.</summary>
 public partial class Planning : ClubSelectorPageBase
 {
