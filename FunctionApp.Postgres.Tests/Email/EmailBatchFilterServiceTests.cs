@@ -39,47 +39,6 @@ public class EmailBatchFilterServiceTests
     }
 
     [Fact]
-    public async Task PreFilterVoorClassificatie_EigenNoodmailMetUrgentPrefixBlijftOngelezen()
-    {
-        var service = new EmailBatchFilterService();
-        var graph = new FakeEmailGraphService();
-        var emails = new List<InkomendBericht>
-        {
-            new() { MessageId = "own-alert", Afzender = "trainer@voorbeeld.nl", Onderwerp = "URGENT: Database niet bereikbaar" },
-            new() { MessageId = "own-alert-lowercase", Afzender = "trainer@voorbeeld.nl", Onderwerp = "urgent: OpenAI quota overschreden" },
-            new() { MessageId = "external-alert", Afzender = "trainer@allstars-fc.test", Onderwerp = "URGENT: not an internal alert" }
-        };
-
-        var result = await service.PreFilterVoorClassificatieAsync(
-            emails,
-            "trainer@voorbeeld.nl",
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-            graph,
-            NullLogger.Instance);
-
-        result.Should().ContainSingle().Which.MessageId.Should().Be("external-alert");
-        graph.MarkAsReadCalls.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task PreFilterVoorClassificatie_EigenMailboxMetBijnaUrgentOnderwerp_MarkAsRead()
-    {
-        var service = new EmailBatchFilterService();
-        var graph = new FakeEmailGraphService();
-
-        var result = await service.PreFilterVoorClassificatieAsync(
-            [new InkomendBericht { MessageId = "own-mail", Afzender = "trainer@voorbeeld.nl", Onderwerp = " URGENT: not an exact prefix" }],
-            "trainer@voorbeeld.nl",
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-            graph,
-            NullLogger.Instance);
-
-        result.Should().BeEmpty();
-        graph.MarkAsReadCalls.Should().ContainSingle().Which.Should().Be("own-mail");
-        graph.MarkedAsReadIds.Should().ContainSingle().Which.Should().Be("own-mail");
-    }
-
-    [Fact]
     public void FilterUitgeslotenAdressen_VerwijdertAlleGeblokkeerdeAfzenders()
     {
         var service = new EmailBatchFilterService();

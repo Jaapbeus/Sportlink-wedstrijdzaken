@@ -31,7 +31,6 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ### Fixed
 - De e-mailclassificatie, datumherkenning en herplandeadline gebruiken nu de Nederlandse kalenderdatum, ook als de host UTC gebruikt (zie issue #1817).
 - Datumcorrectie in inkomende planningsmail gebruikt een losse dagnaam alleen bij een direct planningsverzoek, behoudt bij herplannen de huidige wedstrijddatum en houdt een overeenkomende enkelvoudige `datums`-lijst gelijk aan `datum` (zie issue #1817).
-- Eigen noodmails met het vaste onderwerpvoorvoegsel `URGENT:` blijven ongelezen in de eigen mailbox en worden vóór de AI overgeslagen; gewone eigen-mailboxberichten blijven gelezen gemarkeerd (zie issue #1817).
 - Ontvangers met een komma of puntkomma in een gequote weergavenaam worden niet meer onbedoeld gesplitst (zie issue #1817).
 - Settings restart decisions now have paired SQL Server and Postgres persistence regression tests for unchanged and changed schedules alongside another saved field (#1819).
 - De Postgres-instellingenloader laadt nu ook de vijf bestaande e-mailinstellingen voor de mailboxverwerking en wist ze bij herladen na `NULL`, gelijk aan het gedrag van de SQL Server-tier (#1798).
