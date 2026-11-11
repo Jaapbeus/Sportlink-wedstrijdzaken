@@ -5,11 +5,23 @@ using Planner.Endpoints.Http;
 using System.Text.Json;
 using System.Text;
 using Xunit;
+using Moq;
 
 namespace Planner.Endpoints.Tests.Http;
 
 public class BoundedRequestBodyReaderTests
 {
+    [Fact]
+    public async Task ReadUtf8_NonSizeServerErrorStillPropagates()
+    {
+        var stream = new Mock<Stream>();
+        stream.Setup(s => s.ReadAsync(It.IsAny<Memory<byte>>(), It.IsAny<CancellationToken>()))
+            .Returns(() => ValueTask.FromException<int>(new BadHttpRequestException("synthetic", 400)));
+
+        var read = () => BoundedRequestBodyReader.ReadUtf8Async(Request(stream.Object), 64);
+        await read.Should().ThrowAsync<BadHttpRequestException>();
+    }
+
     [Fact]
     public void TeambegeleidingCsv_ExistingFiveMiBFileAndWorstCaseEscapingFitEnvelope()
     {
@@ -328,7 +340,7 @@ public class BoundedRequestBodyReaderTests
             .BeEquivalentTo(new { error = expectedError });
     }
 
-    private static HttpRequest Request(CountingStream body, long? contentLength = null)
+    private static HttpRequest Request(Stream body, long? contentLength = null)
     {
         var context = new DefaultHttpContext();
         context.Request.Body = body;
