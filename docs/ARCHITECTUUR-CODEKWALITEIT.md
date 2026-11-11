@@ -569,6 +569,7 @@ uit een workflow kan verdwijnen zonder dat iemand het merkt.
 | Endpoint-wijziging werkt `openapi.yaml`, `openapi.json` (uit de YAML) en `docs/API.md` bij: operatieset van `openapi.json` = endpointtabel van `API.md` (#1717) | `scripts/ci/check-api-md-sync.py` | `build.yml` |
 | Idem: inhoud van de beschrijvingen en parameters in `API.md` en de YAML-JSON-gelijkheid buiten de versie (#1717) | onbewaakt: handgeschreven tekst; alleen de operatieset en de versie zijn machineleesbaar te vergelijken, de rest beoordeelt de reviewer | n.v.t. |
 | Elke feature/fix een entry onder `[Unreleased]` in `CHANGELOG.md` (#1717) | onbewaakt: of een wijziging een entry verdient is een inhoudelijk oordeel; `pre-release-check.yml` bewaakt alleen de versiekopjes | n.v.t. |
+| Vrije agentslots vullen en voltooide agents hergebruiken (#1860) | onbewaakt: alleen de actieve sessie kent de runtime-roster, taakautorisatie en acceptatie; geen guard of scheduler beheert dit | Handmatig per orkestratiecheckpoint: controleer de live roster, vul veilige vrije slots en verifieer dat de agent de taak heeft aangenomen |
 
 <!-- REGELREGISTER-EINDE -->
 

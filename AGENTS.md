@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Gedeelde instructies voor Codex en Claude Code. Ze passen in het leesbudget van Codex (root ≤ 27 KiB, `FunctionApp/AGENTS.md` ≤ 4 KiB, keten ≤ 30 KiB; CI bewaakt): harde regels compact, uitleg in `docs/` (`ARCHITECTUUR.md` §13.1). Een link importeert niets: lees het document uit **Leesmomenten** vóór de taak. Verwijzing zonder pad: `docs/`, behalve de rootbestanden `AGENTS.md`, `CLAUDE.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`.
+Gedeelde instructies voor Codex en Claude Code. Leesbudget (CI): `AGENTS.md` ≤27 KiB, `FunctionApp/AGENTS.md` ≤4 KiB, keten ≤30 KiB. Harde regels hier, uitleg in `docs/` (`ARCHITECTUUR.md` §13.1). Links importeren niet: lees **Leesmomenten**. Zonder pad: `docs/`, behalve root `AGENTS.md`, `CLAUDE.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`.
 
 ## Rollen
 
@@ -12,7 +12,7 @@ Beide mogen implementeren en reviewen; per taak precies één implementer, de an
 
 1. **Inventariseer vóór iedere wijziging**: branch, HEAD, werkboomstatus, `git worktree list --porcelain`, issues, open PR's; zoek open én gesloten issues vóór een nieuw issue. Bestaande wijzigingen zijn van hun eigenaar: nooit resetten of opruimen.
 2. **Leg de opdracht vast bij het issue**: implementer, unieke sessie, reviewer, fase (`implementatie`/`review`/`verwerking`/`eigenaarsbesluit`), scope, verwachte bestanden, branch, absoluut worktreepad, afhankelijkheden. De eigenaar wijst de implementer aan; neem geen toegewezen taak over (een directe opdracht aan een agent telt als toewijzing zolang geen claim botst). Elke implementatie, ook instructie-/docs-/CI-werk, heeft vooraf een issue met precies één `type:`-, `priority:`- en aantoonbaar `source:`-label (+ `discipline: architect` bij een architectuurbesluit); de PR verwijst sterk (`#nr`) ernaar.
-3. Parallel: separate scopes; recheck scope growth/commit/PR. Fill free slots per check with safe assigned work within runtime cap (orchestrator included); reuse completed agents. No safe coding task: authorized status/CI/review. CONTRIBUTING.md.
+3. **Parallel:** alleen vooraf gescheiden scopes; hercheck groei/vóór commit/PR (tekstconflict ≠ functionele isolatie). Vul vrije slots/check veilig binnen runtimecap incl. orchestrator; hergebruik voltooide agents. Geen veilige code: geautoriseerde status/CI/review.
 4. **Een issuecomment is geen lock**: wijs jezelf nooit aan op een leeg issue. Onduidelijk eigenaarschap: geen overlappende wijzigingen, eerst de eigenaar.
 5. **Wijzig alleen eigen werk**: geen commits, pushes, rebases, cherry-picks of cleanup op andermans branch/worktree; overdracht alleen met vastgelegde nieuwe implementer, sessie en status.
 
@@ -121,3 +121,4 @@ Uitwerking: `ARCHITECTUUR.md` en de documenten uit **Leesmomenten**.
 | een release/hotfix voorbereidt | `VERSIONING.md`, skill `/release` |
 | alerting of feedback raakt | `MONITORING.md`, `FEEDBACK.md` |
 | in `FunctionApp/` werkt | `FunctionApp/AGENTS.md` |
+| parallel werk orkestreert | `CONTRIBUTING.md` |
