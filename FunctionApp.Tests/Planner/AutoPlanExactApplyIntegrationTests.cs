@@ -201,10 +201,14 @@ public class AutoPlanExactApplyIntegrationTests
         await ExecAsync($"IF OBJECT_ID('{signalTable}', 'U') IS NOT NULL DROP TABLE {signalTable}");
         await ExecAsync($"CREATE TABLE {signalTable} ([Id] int IDENTITY(1,1) NOT NULL PRIMARY KEY)");
         Task<AutoPlanToepassenResponse>? apply = null;
+        SqlConnection? blocker = null;
+        SqlTransaction? blockerTransaction = null;
+        SqlCommand? blockerCommand = null;
+        Task<int>? blockerUpdate = null;
         try
         {
             await ExecAsync($"""
-                EXEC('CREATE TRIGGER {trigger} ON [his].[matches] AFTER UPDATE AS
+                CREATE TRIGGER {trigger} ON [his].[matches] AFTER UPDATE AS
                 BEGIN
                     IF EXISTS (SELECT 1 FROM inserted WHERE [wedstrijdcode] = {firstId})
                     BEGIN
@@ -214,12 +218,12 @@ public class AutoPlanExactApplyIntegrationTests
                             @Resource = N'test_1802_deadlock', @LockMode = 'Shared',
                             @LockOwner = 'Transaction', @LockTimeout = -1;
                     END
-                END')
+                END
                 """);
 
-            using var blocker = new SqlConnection(ConnectionString);
+            blocker = new SqlConnection(ConnectionString);
             await blocker.OpenAsync();
-            using var blockerTransaction = blocker.BeginTransaction(IsolationLevel.ReadCommitted);
+            blockerTransaction = blocker.BeginTransaction(IsolationLevel.ReadCommitted);
             using (var reserveLock = new SqlCommand("""
                 SET DEADLOCK_PRIORITY HIGH;
                 DECLARE @lockResult int;
@@ -234,19 +238,17 @@ public class AutoPlanExactApplyIntegrationTests
                 Choice(secondId, 102, "A1", "12:00"));
             await WaitForSignalAsync(signalTable);
 
-            using (var createCycle = new SqlCommand(
+            blockerCommand = new SqlCommand(
                 "UPDATE [his].[matches] SET [veld] = [veld] WHERE [wedstrijdcode] = @id",
-                blocker, blockerTransaction))
-            {
-                createCycle.Parameters.AddWithValue("@id", firstId);
-                var blockerUpdate = createCycle.ExecuteNonQueryAsync();
-                var completed = await Task.WhenAny(apply, blockerUpdate, Task.Delay(TimeSpan.FromSeconds(20)));
-                completed.Should().BeSameAs(apply,
-                    "the exact-apply transaction should be selected as the lower-priority deadlock victim");
-                await ((Func<Task>)(async () => await apply)).Should()
-                    .ThrowAsync<AutoPlanApplyConflictException>();
-                await blockerUpdate;
-            }
+                blocker, blockerTransaction);
+            blockerCommand.Parameters.AddWithValue("@id", firstId);
+            blockerUpdate = blockerCommand.ExecuteNonQueryAsync();
+            var completed = await Task.WhenAny(apply, blockerUpdate, Task.Delay(TimeSpan.FromSeconds(20)));
+            completed.Should().BeSameAs(apply,
+                "the exact-apply transaction should be selected as the lower-priority deadlock victim");
+            await ((Func<Task>)(async () => await apply)).Should()
+                .ThrowAsync<AutoPlanApplyConflictException>();
+            await blockerUpdate;
 
             await blockerTransaction.CommitAsync();
             (await FieldAsync(firstId)).Should().BeNull("the chosen victim's plan must roll back");
@@ -254,14 +256,37 @@ public class AutoPlanExactApplyIntegrationTests
         }
         finally
         {
+            if (blockerUpdate is { IsCompleted: false })
+            {
+                try { blockerCommand?.Cancel(); }
+                catch { /* The rollback below still releases the lock. */ }
+            }
+            if (blockerTransaction != null)
+            {
+                try { await blockerTransaction.RollbackAsync(); }
+                catch { /* The transaction may already have committed or been selected as victim. */ }
+            }
+            if (blockerUpdate != null)
+            {
+                try { await blockerUpdate.WaitAsync(TimeSpan.FromSeconds(10)); }
+                catch { /* Observe completion after releasing the transaction. */ }
+            }
+            blockerCommand?.Dispose();
+            if (blockerTransaction != null) await blockerTransaction.DisposeAsync();
+            if (blocker != null) await blocker.DisposeAsync();
+
+            bool applySettled = true;
             if (apply != null)
             {
                 try { await apply.WaitAsync(TimeSpan.FromSeconds(30)); }
-                catch { /* Preserve the original assertion/timeout; cleanup still follows. */ }
+                catch { applySettled = apply.IsCompleted; }
             }
-            await ExecAsync($"IF OBJECT_ID('{trigger}', 'TR') IS NOT NULL DROP TRIGGER {trigger}");
-            await ExecAsync($"IF OBJECT_ID('{signalTable}', 'U') IS NOT NULL DROP TABLE {signalTable}");
-            await CleanupAsync();
+            if (applySettled)
+            {
+                await ExecAsync($"IF OBJECT_ID('{trigger}', 'TR') IS NOT NULL DROP TRIGGER {trigger}");
+                await ExecAsync($"IF OBJECT_ID('{signalTable}', 'U') IS NOT NULL DROP TABLE {signalTable}");
+                await CleanupAsync();
+            }
         }
     }
 
