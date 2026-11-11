@@ -55,4 +55,12 @@ public class SportlinkApiClientTests
         result.AanvangsTijd.Should().Be(new TimeOnly(10, 0));
         result.EindTijd.Should().Be(new TimeOnly(11, 0));
     }
+
+    // #1814: de DB-terugval mag de planningsblokkade niet opslokken; een echte API-storing wel terugvallen.
+    [Fact]
+    public void UnknownDuration_IsNotSwallowedByDatabaseFallback()
+    {
+        SportlinkApiClient.MagTerugvallenOpDatabase(new PlanningDuurOnbekendException()).Should().BeFalse();
+        SportlinkApiClient.MagTerugvallenOpDatabase(new HttpRequestException("api down")).Should().BeTrue();
+    }
 }

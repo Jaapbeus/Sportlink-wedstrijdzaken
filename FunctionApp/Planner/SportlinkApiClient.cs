@@ -91,12 +91,18 @@ namespace SportlinkFunction.Planner
 
                 return combined;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (MagTerugvallenOpDatabase(ex))
             {
                 log.LogWarning("SportlinkApiClient: API-fout, fallback naar DB. {Message}", ex.Message);
                 return await PlannerDataAccess.GetFieldOccupationsAsync(date, clubCodeScope);
             }
         }
+
+        /// <summary>
+        /// Een onbekende speelduur is een planningsblokkade, geen API-storing (#1814): de DB-terugval
+        /// mist live wedstrijden die nog niet gesynchroniseerd zijn, waardoor het veld vrij zou lijken.
+        /// </summary>
+        internal static bool MagTerugvallenOpDatabase(Exception ex) => ex is not PlanningDuurOnbekendException;
 
         /// <summary>
         /// Identiek aan <see cref="GetFieldOccupationsWithApiAsync"/>, maar zonder de wedstrijd die
