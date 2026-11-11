@@ -411,7 +411,7 @@ public static class AdminSettingsFunction
             var tokenContext = new TokenRequestContext(["https://management.azure.com/.default"]);
             var token = await credential.GetTokenAsync(tokenContext);
 
-            using var http = new HttpClient();
+            using var http = global::Planner.Shared.Infrastructure.AzureManagementHttpClientFactory.Create(AdminEndpoint.OutboundHttpTimeoutSeconds);
             http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
 
             var baseUrl = $"https://management.azure.com/subscriptions/{subscriptionId}" +
