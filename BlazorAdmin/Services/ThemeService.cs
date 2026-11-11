@@ -4,8 +4,8 @@ using Microsoft.JSInterop;
 namespace BlazorAdmin.Services;
 
 /// <summary>
-/// Laadt het club-thema vanuit de API en past CSS-variabelen + favicon toe via JSInterop.
-/// v2 — #325/#339, licht/donker toegevoegd in #1256 (epic #1249).
+/// Laadt het clubthema via de API en past kleuren en favicon toe via JSInterop. Leest en wijzigt
+/// ook de actieve licht/donker-modus en meldt themaveranderingen aan ingeschreven onderdelen.
 /// </summary>
 public class ThemeService
 {

@@ -42,38 +42,24 @@ public partial class EmailProcessorFunction
     /// <c>AdminTeambegeleidingFunction.ZoekBegeleiderEmailAsync</c>, dat alleen een e-mailadres
     /// levert en geen naam, dus een generieke aanhef gaf.
     /// </summary>
-    private static async Task StuurTeamleiderNotificatieAsync(
-        string cs, string clubCode, IEmailGraphService graphService, string teamNaam, string datum, ILogger log)
+    internal static async Task StuurTeamleiderNotificatieAsync(
+        string cs, string clubCode, IEmailGraphService graphService, string teamNaam, string datum, ILogger log,
+        Func<string, Task<TeamleiderContact?>>? zoekContact = null, Func<string, string?>? instelling = null)
     {
         try
         {
-            var teamleider = await AllstarsTestDataRepository.GetTeamleiderContactAsync(cs, teamNaam, clubCode);
+            var teamleider = await (zoekContact?.Invoke(teamNaam) ?? AllstarsTestDataRepository.GetTeamleiderContactAsync(cs, teamNaam, clubCode));
             if (teamleider == null)
             {
                 log.LogInformation("Geen teamleider gevonden voor {Team} in avg.teambegeleiding — notificatie overgeslagen", LogWaarde.Schoon(teamNaam));
                 return;
             }
 
-            var plannerNaam = PostgresAppSettings.GetSetting("plannerAfzenderNaam")
+            var plannerNaam = (instelling ?? PostgresAppSettings.GetSetting)("plannerAfzenderNaam")
                 ?? throw new InvalidOperationException("Vereiste instelling 'plannerAfzenderNaam' ontbreekt in public.appsettings");
 
-            DateOnly.TryParse(datum, out var datumDate);
-            var datumDisplay = datumDate != default
-                ? datumDate.ToString("dddd d MMMM yyyy", new System.Globalization.CultureInfo("nl-NL"))
-                : datum;
-
-            var notificatieBody = $"Hoi {teamleider.Naam},\n\n"
-                + $"Er is een herplanverzoek ontvangen voor {teamNaam} op {datumDisplay}.\n\n"
-                + "De coördinator heeft automatisch gereageerd op dit verzoek. "
-                + "Je hoeft zelf geen actie te ondernemen, maar we willen je op de hoogte houden.\n\n"
-                + "Als je vragen hebt over dit herplanverzoek, neem dan contact op met de veldplanner.\n\n"
-                + $"Met vriendelijke groet,\n{plannerNaam}";
-
-            await graphService.SendReplyAsync(
-                teamleider.Emailadres,
-                $"Herplanverzoek ontvangen voor {teamNaam} op {datumDisplay}",
-                notificatieBody,
-                null);
+            var bericht = AntwoordTekst.TeamleiderNotificatie(teamNaam, datum, teamleider.Naam, plannerNaam);
+            await graphService.SendReplyAsync(teamleider.Emailadres, bericht.Onderwerp, bericht.Inhoud, null);
 
             log.LogInformation("Teamleider-notificatie verstuurd voor team {Team}", LogWaarde.Schoon(teamNaam));
         }
@@ -87,12 +73,13 @@ public partial class EmailProcessorFunction
     /// Stuurt een teambegeleiding-vraag door naar de begeleider (#168). Zie
     /// <see cref="StuurTeamleiderNotificatieAsync"/> voor dezelfde #1140-lookup.
     /// </summary>
-    private static async Task StuurTeamContactBerichtDoorAsync(
-        string cs, string clubCode, IEmailGraphService graphService, string teamNaam, InkomendBericht email, ILogger log)
+    internal static async Task StuurTeamContactBerichtDoorAsync(
+        string cs, string clubCode, IEmailGraphService graphService, string teamNaam, InkomendBericht email, ILogger log,
+        Func<string, Task<TeamleiderContact?>>? zoekContact = null, Func<string, string?>? instelling = null)
     {
         try
         {
-            var coach = await AllstarsTestDataRepository.GetTeamleiderContactAsync(cs, teamNaam, clubCode);
+            var coach = await (zoekContact?.Invoke(teamNaam) ?? AllstarsTestDataRepository.GetTeamleiderContactAsync(cs, teamNaam, clubCode));
             if (coach == null)
             {
                 log.LogInformation("Geen begeleider gevonden voor {Team} — doorsturen overgeslagen", LogWaarde.Schoon(teamNaam));
@@ -104,7 +91,7 @@ public partial class EmailProcessorFunction
             // PostgresAppSettings.LoadSettingsAsync geladen (zelfde gat als in
             // AdminTeambegeleidingFunction.Doorsturen) — vandaar de expliciete null-guard i.p.v.
             // een stille lege waarde.
-            var auditKopieAdres = PostgresAppSettings.GetSetting("plannerEmailAdres");
+            var auditKopieAdres = (instelling ?? PostgresAppSettings.GetSetting)("plannerEmailAdres");
             if (string.IsNullOrWhiteSpace(auditKopieAdres))
             {
                 auditKopieAdres = null;
@@ -114,16 +101,14 @@ public partial class EmailProcessorFunction
                     teamNaam);
             }
 
-            var subject = $"[{teamNaam}] vraag van {email.AfzenderNaam}";
-            var body = $"Er is een vraag binnengekomen over de begeleiding van {teamNaam}.\n\n"
-                     + $"Vraag van: {email.AfzenderNaam}\n\n"
-                     + $"---\n{email.Body}\n---\n\n"
-                     + "U kunt direct antwoorden op dit bericht — uw antwoord gaat naar de vraagsteller.";
+            // #1809: vrije afzendertekst wordt platgeslagen (geen regeleinden/markup in onderwerp of kop), de body
+            // wordt begrensd en Reply-To krijgt alleen een syntactisch geschikt enkel adres.
+            var bericht = TeamContactDoorstuurBericht.Bouw(teamNaam, email.AfzenderNaam, email.Afzender, email.Body, log);
 
-            // AVG: Reply-To = email.Afzender zodat begeleider rechtstreeks kan antwoorden;
+            // Reply-To wordt alleen gezet als de syntactische controle één geschikt adres herkent;
             // BCC veldplanner voor audit; begeleider-email nooit in logs.
             await graphService.StuurTeamContactDoorAsync(
-                [coach.Emailadres], subject, body, email.Afzender, auditKopieAdres);
+                [coach.Emailadres], bericht.Onderwerp, bericht.Inhoud, bericht.ReplyTo, auditKopieAdres);
 
             log.LogInformation("Teambegeleiding-vraag doorgestuurd voor {Team}", LogWaarde.Schoon(teamNaam));
         }

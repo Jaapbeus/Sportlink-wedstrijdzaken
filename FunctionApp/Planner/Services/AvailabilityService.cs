@@ -46,30 +46,7 @@ internal static class AvailabilityService
         if (!string.IsNullOrEmpty(request.TeamNaam))
         {
             var teamWedstrijden = await PlannerDataAccess.GetTeamMatchesOnDateAsync(request.TeamNaam, date, clubCode);
-            if (!teamWedstrijden.TeamHerkend)
-            {
-                // Niet stilzwijgend doorlopen (#945): zonder herkend team is er niets vergeleken, en
-                // dat mag nooit als "geen conflict" lezen. De aanvraag wordt niet geweigerd — de
-                // beheerder plant vaker een team in dat de teamlijst nog niet kent — maar het
-                // ontbreken van de controle staat wel in het antwoord.
-                response.Waarschuwingen.Add(
-                    $"'{request.TeamNaam}' staat niet in de teamlijst. Er is NIET gecontroleerd of dit " +
-                    "team die dag al een wedstrijd heeft — controleer dat zelf.");
-            }
-            else if (teamWedstrijden.Wedstrijden.Count > 0)
-            {
-                var conflict = teamWedstrijden.Wedstrijden[0];
-                response.TeamConflict = new TeamConflictInfo
-                {
-                    Wedstrijd = conflict.Wedstrijd ?? "",
-                    AanvangsTijd = conflict.AanvangsTijd.ToString("HH:mm"),
-                    EindTijd = conflict.EindTijd.ToString("HH:mm"),
-                    VeldNaam = conflict.VeldNummer > 0 ? $"veld {conflict.VeldNummer}" : "onbekend"
-                };
-                response.Reden = $"{request.TeamNaam} heeft al een wedstrijd op {date.ToString("d MMMM", PlannerShared.NL)}: " +
-                                 $"{conflict.Wedstrijd} om {conflict.AanvangsTijd:HH:mm} ({response.TeamConflict.VeldNaam}).";
-                return response;
-            }
+            if (PasTeamControleToe(teamWedstrijden, request, date, response)) return response;
         }
 
         var availableFields = await PlannerDataAccess.GetAvailableFieldsAsync(date, clubCode);
@@ -239,6 +216,36 @@ internal static class AvailabilityService
     }
 
     // ── Privé helpers ──
+
+    internal static bool PasTeamControleToe(TeamWedstrijdenOpDatum teamWedstrijden,
+        CheckAvailabilityRequest request, DateOnly date, CheckAvailabilityResponse response)
+    {
+        if (!teamWedstrijden.TeamHerkend)
+        {
+            // Niet stilzwijgend doorlopen (#945): zonder herkend team is er niets vergeleken, en
+            // dat mag nooit als "geen conflict" lezen. De aanvraag wordt niet geweigerd — de
+            // beheerder plant vaker een team in dat de teamlijst nog niet kent — maar het
+            // ontbreken van de controle staat wel in het antwoord.
+            response.Waarschuwingen.Add(
+                $"'{AiVeldSanering.TeamNaamOfGeneriek(request.TeamNaam, false)}' staat niet in de teamlijst. Er is NIET gecontroleerd of dit " +
+                "team die dag al een wedstrijd heeft — controleer dat zelf.");
+        }
+        else if (teamWedstrijden.Wedstrijden.Count > 0)
+        {
+            var conflict = teamWedstrijden.Wedstrijden[0];
+            response.TeamConflict = new TeamConflictInfo
+            {
+                Wedstrijd = conflict.Wedstrijd ?? "",
+                AanvangsTijd = conflict.AanvangsTijd.ToString("HH:mm"),
+                EindTijd = conflict.EindTijd.ToString("HH:mm"),
+                VeldNaam = conflict.VeldNummer > 0 ? $"veld {conflict.VeldNummer}" : "onbekend"
+            };
+            response.Reden = $"{AiVeldSanering.TeamNaamOfGeneriek(request.TeamNaam, false)} heeft al een wedstrijd op {date.ToString("d MMMM", PlannerShared.NL)}: " +
+                             $"{conflict.Wedstrijd} om {conflict.AanvangsTijd:HH:mm} ({response.TeamConflict.VeldNaam}).";
+            return true;
+        }
+        return false;
+    }
 
     private readonly record struct DuurBepaling(int Duur, decimal VeldFractie, string? Reden, string? Waarschuwing);
 

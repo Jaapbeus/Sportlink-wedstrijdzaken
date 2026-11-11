@@ -28,6 +28,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Removed an unreferenced email HTML generation method and its dedicated tests; active browser and export renderers are unchanged (see issue #1808).
 - Remove the unused optional time normalizer, five unreferenced SQL planner facade forwards and four no-op test placeholders; keep their active repository implementations and maintained tooling. Update current test documentation and annotate historical references to the removed placeholders. (zie issue #1808)
 - De bestaande veldeditor is naar een gedeelde Razor-component verplaatst; modelbinding, validatie en de bestaande save-/annuleerhandlers blijven gelijk (zie issue #1807).
+- In deze deelscope documenteren Blazor- en themahelpers hun huidige rol; verouderde Dagplanning- en verplaatsingsverwijzingen zijn gecorrigeerd in de bijgewerkte bestanden, zonder gedrag te wijzigen (zie issue #1806).
+- Verouderde port- en incidentgeschiedenis en plan-/kostenverwijzingen in de monitoring-noodmailcommentaren vervangen door actuele uitleg van throttle-opslag en de provider-eigen uitvalmonitor; de reden voor een letterlijke timer-cron blijft bij beide tiers behouden; codegedrag ongewijzigd (zie issue #1805).
+- Postgres-beheerfuncties en repositories beschrijven hun huidige verantwoordelijkheden; de toelichting op datumformattering, gegenereerde ids, response-casing en auditretentie blijft behouden (zie issue #1805).
 - De gedeelde HTML-generator voor de veldplanner is per verantwoordelijkheid in partial-bestanden opgesplitst; de publieke aanroepen en de gegenereerde browser- en e-mail-HTML blijven gelijk (zie issue #1807).
 - De fingerprint-, publieke titel-/diagnostiek- en foutclassificatiehelpers van `GitHubIssueReporter` staan in een eigen partial-bestand; de bestaande methoden en werking blijven gelijk (zie issue #1807).
 - De bestaande beheer-DTO's zijn per domein in modelbestanden gegroepeerd; JSON-contracten en type-inhoud zijn ongewijzigd (zie issue #1807).
@@ -35,10 +38,17 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Removed unreferenced Bootstrap JavaScript assets and unused starter-menu icon selectors; the linked Bootstrap CSS remains (see issue #1808).
 - Clarified the Postgres error-reporting adapter documentation while retaining its tier-specific egress and fingerprint rationale (see issue #1805).
 - In Planner.Shared, removed planning-comment provenance while retaining the tier-independent logic and planning invariants (see issue #1806).
+- Clarified planner comments to match current implementations and documented decisions while retaining their scheduling and tier-parity rationale (see issue #1805).
 - Het reviewrondelimiet voor Codex en Claude Code (AGENTS.md en de automatische issue-beurt van de bot) is van twee naar drie rondes per PR gegaan; pas daarna beslist de eigenaar, zie issue #1835.
 - BlazorAdmin: XML-documentatie voor tijdnormalisatie en Gantt-layout bijgewerkt; gedrag ongewijzigd (zie issue #1806).
 - De SQL Server-planner geeft voor de niet-opgeslagen optionele eerste-elftalnaam nu expliciet `null` door, gelijk aan Postgres; de settings-loader guard hoeft deze ontbrekende sleutel niet meer uit te zonderen (#1821).
 - Fixture filtering and planner classification preparation now share one implementation across database tiers (#1816).
+
+### Security
+- Providerinvoer maskeert lange nummerreeksen in leermomenten en behoudt geldige datum- en tijdnotatie (zie issue #1809).
+- Email answers use a neutral greeting when no safe display name is available; authorized internal review retains a bounded, escaped original sender address. Contact-pattern masking and both-tier output coverage are strengthened, with captured-provider regressions preserving numeric planning data. Provider body processing stays bounded and omits unfinished boundary fragments while preserving the truncation marker and whole masking tokens (#1809).
+- The availability API contract now documents normalized, bounded warning output and the team-name display fallback on both database tiers (#1809).
+- E-mailverwerking verhard vóór review mode uit gaat (#1809, beide tiers): alleen exact `false` (hoofdletterongevoelig) schakelt review uit; afzendercontrole is syntactisch en blokkeert ongeschikte adressen voor automatisch antwoorden. Onderwerp-, naam- en waarschuwingsuitvoer wordt begrensd en gesaneerd; de provider ontvangt geen afzenderidentiteit en herkenbare contactpatronen in onderwerp, berichttekst en correctiecontext worden gemaskeerd. Dit beperkt geen andere persoonsgegevens en vervangt de open verwerkingsafspraken (#1736) niet; #43 blijft afhankelijk van eigenaaracceptatie.
 
 ### Fixed
 - E-mail: een beschikbaarheidsvraag zonder herkend eigen team gaat niet meer naar de planner, maar krijgt de wedervraag om welk team het gaat. Het team wordt niet meer afgeleid uit een wedstrijd tegen dezelfde tegenstander op een andere datum (daar werd stil de oudste van meerdere eigen teams gekozen), en alleen de eigen clubnaam telt niet als genoemd team. Een herkend team zonder bekende speelduur gaat naar handmatige planning in plaats van "geen veld beschikbaar" met een interne beheerinstructie; zo'n niet-uitgevoerde check maakt de zekerheidspoort onzeker. Een losse categorie als "O23" vindt de speeltijd van JO23 (beide tiers) (#1861).
