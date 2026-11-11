@@ -17,14 +17,15 @@ internal sealed class EmailBatchFilterService
         ILogger log)
     {
         var teClassificeren = new List<InkomendBericht>();
-        var mailbox = new EmailMailboxAdapter(graphService);
 
         foreach (var email in emails)
         {
-            if (await EmailBatchFilterPolicy.HandelEigenMailboxBerichtAsync(email, eigenMailbox, mailbox, log))
-                continue;
-
-            if (uitgeslotenCache.Contains(email.Afzender))
+            if (email.Afzender.Equals(eigenMailbox, StringComparison.OrdinalIgnoreCase))
+            {
+                log.LogInformation("Email {MessageId} is van eigen mailbox, overslaan", email.MessageId);
+                await graphService.MarkAsReadAsync(email.MessageId);
+            }
+            else if (uitgeslotenCache.Contains(email.Afzender))
             {
                 log.LogInformation("Email {MessageId} van uitgesloten adres (cache), overslaan (afzender niet gelogd — AVG #210)", email.MessageId);
                 await graphService.MarkAsReadAsync(email.MessageId);
