@@ -22,6 +22,9 @@ public partial class Thema : ClubSelectorPageBase
     [Inject] private IJSRuntime JS { get; set; } = default!;
 
     private ThemeDto _theme = new();
+    private readonly LookupGeneratieGuard _themeLoadGuard = new();
+    // De club waarvoor _theme is geladen (#1872): een thema van een andere club wordt nooit opgeslagen.
+    private string? _themeClubCode;
     private bool _loading = true;
     private bool _saving = false;
     private bool _extracting = false;
@@ -86,18 +89,26 @@ public partial class Thema : ClubSelectorPageBase
     {
         _loading = true;
         _error = null;
-        var result = await Api.GetThemeAsync();
-        if (result.Success && result.Data != null)
+        // #1872: een late response van de vorige club mag het thema (en dus een latere save) niet overschrijven.
+        var toegepast = await LaadClubgebondenAsync(_themeLoadGuard, async () =>
         {
-            _theme = result.Data;
-            VulPalettenUitThema();
-        }
-        else
+            var result = await Api.GetThemeAsync();
+            return (Result: result, Modus: await ThemeService.GetModeAsync());
+        }, r =>
         {
-            _error = result.ErrorMessage ?? "Thema kon niet worden geladen.";
-        }
-        _modus = await ThemeService.GetModeAsync();
-        _loading = false;
+            if (r.Result.Success && r.Result.Data != null)
+            {
+                _theme = r.Result.Data;
+                _themeClubCode = ClubSelector.SelectedClubCode;
+                VulPalettenUitThema();
+            }
+            else
+            {
+                _error = r.Result.ErrorMessage ?? "Thema kon niet worden geladen.";
+            }
+            _modus = r.Modus;
+        });
+        if (toegepast) _loading = false;
     }
 
     /// <summary>
@@ -184,15 +195,25 @@ public partial class Thema : ClubSelectorPageBase
 
     private async Task SaveAsync()
     {
-        _saving = true;
         _saveMessage = null;
+        // #1872: nooit het thema van een andere club (of een half geladen thema) naar de huidige club schrijven.
+        if (_loading || _themeClubCode != ClubSelector.SelectedClubCode)
+        {
+            _saveSuccess = false;
+            _saveMessage = "Thema van deze club is nog niet geladen; opslaan is overgeslagen.";
+            return;
+        }
+
+        var clubCode = ClubSelector.SelectedClubCode;
+        _saving = true;
         StateHasChanged();
 
         SynchroniseerNaarThema();
         var result = await Api.UpdateThemeAsync(_theme);
+        _saving = false;
+        if (ClubSelector.SelectedClubCode != clubCode) return;
         _saveSuccess = result.Success;
         _saveMessage = result.Success ? "Thema opgeslagen." : (result.ErrorMessage ?? "Opslaan mislukt.");
-        _saving = false;
     }
 
     private async Task ResetToDefaultAsync()
@@ -228,7 +249,9 @@ public partial class Thema : ClubSelectorPageBase
             return;
         }
 
+        var clubCode = ClubSelector.SelectedClubCode;
         var result = await Api.ExtractThemeColorsAsync(_theme.ClubWebsiteUrl ?? "");
+        if (ClubSelector.SelectedClubCode != clubCode) return;
         if (result.Success && result.Data != null)
         {
             _extractedColors = result.Data.Colors;

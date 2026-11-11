@@ -15,6 +15,8 @@ public partial class Leermomenten : ClubSelectorPageBase
     private string? _fout;
     private readonly HashSet<int> _actieBezigId = new();
 
+    private readonly LookupGeneratieGuard _laadGuard = new();
+
     private bool _toevoegenOpen;
 
     private void WisselToevoegen() => _toevoegenOpen = !_toevoegenOpen;
@@ -41,25 +43,26 @@ public partial class Leermomenten : ClubSelectorPageBase
 
         try
         {
-            var statsTask = Api.GetLeermomentenStatsAsync();
-            var itemsTask = Api.GetLeermomentenAsync(string.IsNullOrEmpty(status) ? null : status);
-            await Task.WhenAll(statsTask, itemsTask);
-
-            var statsResult = await statsTask;
-            var itemsResult = await itemsTask;
-
-            if (statsResult.Success) _stats = statsResult.Data;
-            if (itemsResult.Success)
-                _items = itemsResult.Data?.Items ?? new();
-            else
-                _fout = itemsResult.ErrorMessage ?? "Ophalen mislukt";
+            // #1872: een late response van de vorige club mag de lijst/stats van de huidige club niet overschrijven.
+            var toegepast = await LaadClubgebondenAsync(_laadGuard, async () =>
+            {
+                var statsTask = Api.GetLeermomentenStatsAsync();
+                var itemsTask = Api.GetLeermomentenAsync(string.IsNullOrEmpty(status) ? null : status);
+                await Task.WhenAll(statsTask, itemsTask);
+                return (Stats: await statsTask, Items: await itemsTask);
+            }, r =>
+            {
+                if (r.Stats.Success) _stats = r.Stats.Data;
+                if (r.Items.Success)
+                    _items = r.Items.Data?.Items ?? new();
+                else
+                    _fout = r.Items.ErrorMessage ?? "Ophalen mislukt";
+            });
+            if (toegepast) _bezig = false;
         }
         catch (Exception ex)
         {
             _fout = ex.Message;
-        }
-        finally
-        {
             _bezig = false;
         }
     }

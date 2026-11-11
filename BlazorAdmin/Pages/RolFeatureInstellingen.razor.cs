@@ -80,6 +80,7 @@ public partial class RolFeatureInstellingen : ClubSelectorPageBase
     private string? _errorMessage;
     private string? _successMessage;
     private bool _laden = true;
+    private readonly LookupGeneratieGuard _laadGuard = new();
 
     protected override async Task OnInitializedAsync() => await LaadAsync();
 
@@ -92,12 +93,15 @@ public partial class RolFeatureInstellingen : ClubSelectorPageBase
         _successMessage = null;
         StateHasChanged();
 
-        var r = await Api.GetRolFeatureInstellingenAsync();
-        _instellingen = r.Success
-            ? (r.Data ?? new()).ToDictionary(i => (i.RolNaam, i.FeatureKey), i => i.Enabled)
-            : new();
-        if (!r.Success) _errorMessage = r.ErrorMessage;
-        _laden = false;
+        // #1872: late response van de vorige club negeren; de nieuwere load beheert de laadstatus.
+        var toegepast = await LaadClubgebondenAsync(_laadGuard, () => Api.GetRolFeatureInstellingenAsync(), r =>
+        {
+            _instellingen = r.Success
+                ? (r.Data ?? new()).ToDictionary(i => (i.RolNaam, i.FeatureKey), i => i.Enabled)
+                : new();
+            if (!r.Success) _errorMessage = r.ErrorMessage;
+        });
+        if (toegepast) _laden = false;
     }
 
     private bool IsAan(string rolNaam, string featureKey) =>
@@ -108,7 +112,10 @@ public partial class RolFeatureInstellingen : ClubSelectorPageBase
         _successMessage = null;
         _errorMessage = null;
 
+        var clubCode = ClubSelector.SelectedClubCode;
         var r = await Api.ZetRolFeatureInstellingAsync(rolNaam, featureKey, enabled);
+        // #1872: de club is tijdens het opslaan gewisseld; de lokale matrix hoort dan bij een andere club.
+        if (ClubSelector.SelectedClubCode != clubCode) return;
         if (r.Success)
         {
             _instellingen[(rolNaam, featureKey)] = enabled;

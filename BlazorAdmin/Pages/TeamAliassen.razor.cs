@@ -21,6 +21,8 @@ public partial class TeamAliassen : ClubSelectorPageBase
     private TeamHerstelDto? _herstelResultaat;
     private string? _herstelFout;
 
+    private readonly LookupGeneratieGuard _laadGuard = new();
+
     private bool _toevoegenOpen;
 
     // #1549: client-side sortering op 'keer gebruikt' en 'aangemaakt' — geen nieuwe API-aanroep.
@@ -99,23 +101,26 @@ public partial class TeamAliassen : ClubSelectorPageBase
 
         try
         {
-            var result = await LerenApi.GetTeamAliassenAsync(string.IsNullOrEmpty(status) ? null : status);
-            if (result.Success && result.Data != null)
-            {
-                _stats = result.Data;
-                _items = result.Data.Items;
-            }
-            else
-            {
-                _fout = result.ErrorMessage ?? "Ophalen mislukt";
-            }
+            // #1872: late response van de vorige club negeren.
+            var toegepast = await LaadClubgebondenAsync(_laadGuard,
+                () => LerenApi.GetTeamAliassenAsync(string.IsNullOrEmpty(status) ? null : status),
+                result =>
+                {
+                    if (result.Success && result.Data != null)
+                    {
+                        _stats = result.Data;
+                        _items = result.Data.Items;
+                    }
+                    else
+                    {
+                        _fout = result.ErrorMessage ?? "Ophalen mislukt";
+                    }
+                });
+            if (toegepast) _bezig = false;
         }
         catch (Exception ex)
         {
             _fout = ex.Message;
-        }
-        finally
-        {
             _bezig = false;
         }
     }
