@@ -583,7 +583,8 @@ Vier dingen om te onthouden:
      en `PickListsMatchInformation` (`{ Activities: [{ IdTag, Description }], AgeClasses: [{ Id,
      Description }] }`);
   2. de POST met `HomeTeam`/`AwayTeam` als tekst, het eigen `T…`-team-ID als `PublicHomeTeamId` én
-     `PublicAwayTeamId`, `MatchDate` + `StartTime` apart, `SportIdTag`, `IsHomeMatch`,
+     `PublicAwayTeamId` (in die trace stond aan beide kanten een clubteam — voor een externe
+     tegenstander onjuist, zie de correctie #1871 hieronder), `MatchDate` + `StartTime` apart, `SportIdTag`, `IsHomeMatch`,
      `SubFacilityId`, `FieldSize` "1.0" en `FieldOffset` "0" — respons HTTP 200 met `PublicMatchId`.
 
   De vertaling staat in `Planner.Shared/Integrations/SportlinkClub/ClubMatchAanvraagBouwer.cs`
@@ -592,6 +593,18 @@ Vier dingen om te onthouden:
   `ExternalSportId/SportTag` van het team). Wat niet af te leiden is valt terug op
   `ClubMatchDefaults` met een waarschuwing; een onbekend team of veld is een 400. Vrije tekst gebruikt
   het standaardteam — exact wat Sportlinks eigen formulier doet.
+- **ClubMatch: thuis- en uit-ID apart (#1871, 2026-11-11).** Tot deze fix ging het eigen `T…`-ID ook als
+  `PublicAwayTeamId` mee. Sportlink toont de teamnaam bij het ID en negeert dan de tekst `AwayTeam`: het
+  eigen team stond als uitteam, de tegenstander verdween, en die koppeling was in Sportlink Club daarna niet
+  meer naar vrije tekst te wijzigen (alleen verwijderen en opnieuw aanmaken). Het contract komt uit
+  Sportlinks publieke frontend-bundle en is live bevestigd met Sportlinks eigen formulier (alleen de vorm
+  gelogd, geen headers of tokens): `ClubMatchDefaults` geeft voor thuis én uit de "geen team"-sentinel
+  (`SportlinkClubMatchAanvraag.GeenTeamId`, Sportlink-breed, geen clubwaarde); aanmaken stuurt het eigen
+  clubteam als `PublicHomeTeamId` + `HomeTeam` = Sportlinks `TeamName`, en de tegenstander als `AwayTeam`
+  (tekst) + `PublicAwayTeamId` = de sentinel; een wijziging van het uitteam naar vrije tekst
+  (`UpdateMatchDetails`, sentinel) wordt dan wél opgeslagen. `ClubMatchAanvraagBouwer` volgt Sportlinks
+  formulier (`defaults.Public…TeamId`, anders de sentinel) en stuurt nooit een clubteam-ID of het thuis-ID
+  als uit-ID. Een vrije thuisteamnaam gaat zonder standaardteam niet meer als fout terug maar met de sentinel.
 - **Wedstrijd aanmaken — verbeteringen (#1437).** Gebouwd op beide gebouwde tiers:
   1. **Velddeel.** `FieldSize` komt uit de keuze Heel/Half/Kwart/Achtste veld (`1.0`/`0.5`/`0.25`/`0.125`,
      `FieldOffset` blijft `0`); `ClubMatchVelddeel` (Planner.Shared) is de enige plek met die waarden.

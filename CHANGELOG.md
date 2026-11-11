@@ -41,6 +41,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Fixture filtering and planner classification preparation now share one implementation across database tiers (#1816).
 
 ### Fixed
+- **Wedstrijd aanmaken:** de tegenstander komt nu als uitteam in Sportlink Club. Voorheen ging het eigen team-ID ook als uitteam mee, waardoor Sportlink het eigen team als thuis- én uitteam toonde, de tegenstander verdween en het uitteam in Sportlink Club niet meer te wijzigen was. Het thuisteam gaat nu met Sportlinks eigen teamnaam mee, en een vrije thuisteamnaam werkt ook als Sportlink geen standaardteam teruggeeft. Bestaande, via de app aangemaakte oefenwedstrijden blijven fout: verwijderen en opnieuw aanmaken (#1871).
 - Planneraanvragen op beide databasetiers slaan de aanvrager op uit de ingelogde principal; een clientwaarde wordt genegeerd en e-mailadressen worden niet als aanvrager opgeslagen; zie issue #1812.
 - Settings restart decisions now have paired SQL Server and Postgres persistence regression tests for unchanged and changed schedules alongside another saved field (#1819).
 - De Postgres-instellingenloader laadt nu ook de vijf bestaande e-mailinstellingen voor de mailboxverwerking en wist ze bij herladen na `NULL`, gelijk aan het gedrag van de SQL Server-tier (#1798).
