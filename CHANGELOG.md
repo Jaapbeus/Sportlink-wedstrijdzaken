@@ -41,6 +41,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - De SQL Server-planner geeft voor de niet-opgeslagen optionele eerste-elftalnaam nu expliciet `null` door, gelijk aan Postgres; de settings-loader guard hoeft deze ontbrekende sleutel niet meer uit te zonderen (#1821).
 - Fixture filtering and planner classification preparation now share one implementation across database tiers (#1816).
 
+### Security
+- Providerinvoer maskeert lange nummerreeksen in leermomenten en behoudt geldige datum- en tijdnotatie (zie issue #1809).
+- Email answers use a neutral greeting when no safe display name is available; authorized internal review retains a bounded, escaped original sender address. Contact-pattern masking and both-tier output coverage are strengthened, with captured-provider regressions preserving numeric planning data. Provider body processing stays bounded and omits unfinished boundary fragments while preserving the truncation marker and whole masking tokens (#1809).
+- The availability API contract now documents normalized, bounded warning output and the team-name display fallback on both database tiers (#1809).
+- E-mailverwerking verhard vóór review mode uit gaat (#1809, beide tiers): alleen exact `false` (hoofdletterongevoelig) schakelt review uit; afzendercontrole is syntactisch en blokkeert ongeschikte adressen voor automatisch antwoorden. Onderwerp-, naam- en waarschuwingsuitvoer wordt begrensd en gesaneerd; de provider ontvangt geen afzenderidentiteit en herkenbare contactpatronen in onderwerp, berichttekst en correctiecontext worden gemaskeerd. Dit beperkt geen andere persoonsgegevens en vervangt de open verwerkingsafspraken (#1736) niet; #43 blijft afhankelijk van eigenaaracceptatie.
+
 ### Fixed
 - Planneraanvragen op beide databasetiers slaan de aanvrager op uit de ingelogde principal; een clientwaarde wordt genegeerd en e-mailadressen worden niet als aanvrager opgeslagen; zie issue #1812.
 - Settings restart decisions now have paired SQL Server and Postgres persistence regression tests for unchanged and changed schedules alongside another saved field (#1819).
