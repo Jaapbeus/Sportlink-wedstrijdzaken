@@ -27,6 +27,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Fixture filtering and planner classification preparation now share one implementation across database tiers (#1816).
 
 ### Fixed
+- E-mail: een beschikbaarheidsvraag zonder herkend eigen team gaat niet meer naar de planner, maar krijgt de wedervraag om welk team het gaat. Het team wordt niet meer afgeleid uit een wedstrijd tegen dezelfde tegenstander op een andere datum (daar werd stil de oudste van meerdere eigen teams gekozen), en alleen de eigen clubnaam telt niet als genoemd team. Een herkend team zonder bekende speelduur gaat naar handmatige planning in plaats van "geen veld beschikbaar" met een interne beheerinstructie; zo'n niet-uitgevoerde check maakt de zekerheidspoort onzeker. Een losse categorie als "O23" vindt de speeltijd van JO23 (beide tiers) (#1861).
 - Settings restart decisions now have paired SQL Server and Postgres persistence regression tests for unchanged and changed schedules alongside another saved field (#1819).
 - De Postgres-instellingenloader laadt nu ook de vijf bestaande e-mailinstellingen voor de mailboxverwerking en wist ze bij herladen na `NULL`, gelijk aan het gedrag van de SQL Server-tier (#1798).
 - De instellingenopslag meldt alleen een herstart als de opgeslagen FetchSchedule-waarde echt verandert; SQL Server ondersteunt nu ook het opslaan en teruglezen van SportlinkDryRun (#1819)

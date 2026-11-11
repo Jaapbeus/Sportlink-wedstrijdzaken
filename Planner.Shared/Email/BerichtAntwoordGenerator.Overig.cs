@@ -97,10 +97,15 @@ public static partial class BerichtAntwoordGenerator
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
 
+        // #1861: één neutrale wedervraag voor elk bericht zonder herkend eigen team: met of zonder tegenstander, en
+        // ongeacht of een eigen begeleider of de tegenstander schrijft. De tegenstander staat bewust niet in de
+        // ingebouwde tekst (die moet gelijk blijven aan de standaardtekst in de catalogus); een clubsjabloon kan
+        // {{tegenstander}} nog gebruiken.
+        _ = tegenstander;
         var inhoud = $"{aanhef} {voornaam},\n\n"
-                   + $"We kunnen de wedstrijd van {AiVeldSanering.TegenstanderOfGeneriek(tegenstander, "de opgegeven tegenstander")} niet vinden in ons programma. "
-                   + "Tegen welk van onze teams zou deze wedstrijd zijn? "
-                   + "Dan kunnen we de beschikbaarheid voor je controleren.";
+                   + "Uit je bericht kunnen we niet opmaken om welk team van ons het gaat. "
+                   + "Laat je ons weten om welk team het gaat? "
+                   + "Dan controleren we de beschikbaarheid voor je.";
 
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email, instellingen);
     }

@@ -8,7 +8,7 @@ namespace Planner.Shared.Tests.TeamResolution;
 
 /// <summary>
 /// Gevallen van de gedeelde <see cref="EigenTeamBepaling"/> (#1716 slice 4): welke van de twee genoemde
-/// teams het eigen team is, en het eigen team uit een gevonden wedstrijd. Stond tot dan per tier als
+/// teams het eigen team is. (Het eigen team uit een wedstrijd op een andere datum bestaat sinds #1861 niet meer.) Stond tot dan per tier als
 /// private methoden in <c>BerichtPipeline</c>; omdat beide databasetiers nu deze ene klasse gebruiken,
 /// gelden deze gevallen ook voor de productietier. Per tier blijft alleen een test van het omhulsel
 /// (<c>BerichtPipelineEigenTeamTests</c> in beide tiertestprojecten).
@@ -138,65 +138,40 @@ public class EigenTeamBepalingTests
     }
 
     [Theory]
-    [InlineData(null)]
-    [InlineData("   ")]
-    public async Task UitWedstrijd_LegeWedstrijd_GeeftNullZonderResolver(string? wedstrijd)
+    [InlineData("TESTCLUB")]
+    [InlineData(" testclub - ")]
+    public async Task BereidPlannerVoor_AlleenDeClubnaam_TeltNietAlsGenoemdTeam(string teamveld)
     {
-        var resolver = new FakeResolver { [""] = Opgelost(EigenTeam) };
-
-        var naam = await EigenTeamBepaling.BepaalEigenTeamUitWedstrijdAsync(wedstrijd, resolver, Club, NullLogger.Instance, null);
-
-        naam.Should().BeNull();
-        resolver.Verzoeken.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task UitWedstrijd_EigenTeamAanUitkant_GeeftCanoniekeNaamVanGetrimdeKant()
-    {
-        var resolver = new FakeResolver { ["JO13-2"] = Opgelost(EigenTeam) };
+        // #1861: het model vulde het teamveld met de eigen clubnaam uit een zin over een ander team.
+        var classificatie = new Planner.Shared.Email.BerichtClassificatie
+        {
+            Type = Planner.Shared.Email.VerzoekType.BeschikbaarheidCheck, TeamNaam = teamveld,
+        };
+        var resolver = new FakeResolver();
         var trace = new TraceBuilder();
 
-        var naam = await EigenTeamBepaling.BepaalEigenTeamUitWedstrijdAsync(
-            "Tegenstander JO13-1 -  JO13-2 ", resolver, Club, NullLogger.Instance, trace);
+        var herkend = await EigenTeamBepaling.BereidPlannerVoorAsync(classificatie, resolver, Club, NullLogger.Instance, trace);
 
-        naam.Should().Be(EigenTeam);
-        resolver.Verzoeken.Select(v => v.RuweTeamTekst).Should().Equal("Tegenstander JO13-1", "JO13-2");
-        trace.Stappen.Should().OnlyContain(s => s.Code == TraceCodes.OpponentTeamHerkenning);
+        herkend.Should().BeFalse();
+        classificatie.TeamNaam.Should().BeNull();
+        resolver.Verzoeken.Should().BeEmpty("een lege teamtekst wordt niet geresolved");
+        trace.Stappen.Single(s => s.Code == TraceCodes.Classificatie).Details["teamGenoemd"].Should().Be("nee");
     }
 
     [Fact]
-    public async Task UitWedstrijd_ZelfdeTeamAanBeideKanten_ControleertBeide()
+    public async Task BereidPlannerVoor_ClubnaamMetTeamaanduiding_BlijftStaan()
     {
-        var resolver = new FakeResolver { ["JO13-2"] = Opgelost(EigenTeam), ["Tegenstander JO13-1"] = Opgelost("NIET GEBRUIKEN") };
+        var classificatie = new Planner.Shared.Email.BerichtClassificatie
+        {
+            Type = Planner.Shared.Email.VerzoekType.BeschikbaarheidCheck, TeamNaam = "TESTCLUB JO13-2",
+        };
+        var resolver = new FakeResolver { ["TESTCLUB JO13-2"] = Opgelost(EigenTeam) };
 
-        var naam = await EigenTeamBepaling.BepaalEigenTeamUitWedstrijdAsync(
-            "JO13-2 - Tegenstander JO13-1", resolver, Club, NullLogger.Instance, null);
+        var herkend = await EigenTeamBepaling.BereidPlannerVoorAsync(classificatie, resolver, Club, NullLogger.Instance, null);
 
-        naam.Should().Be(EigenTeam);
-        resolver.Verzoeken.Should().HaveCount(2);
-    }
-
-    [Fact]
-    public async Task UitWedstrijd_SplitstAlleenOpHetEersteStreepje()
-    {
-        var resolver = new FakeResolver { ["JO13-2 - Reserve"] = Opgelost(EigenTeam) };
-
-        var naam = await EigenTeamBepaling.BepaalEigenTeamUitWedstrijdAsync(
-            "Tegenstander JO13-1 - JO13-2 - Reserve", resolver, Club, NullLogger.Instance, null);
-
-        naam.Should().Be(EigenTeam);
-    }
-
-    [Fact]
-    public async Task UitWedstrijd_GeenKantHerkendOfMeerdereKandidaten_GeeftNull()
-    {
-        var resolver = new FakeResolver { ["13-1"] = Meerdere() };
-
-        var naam = await EigenTeamBepaling.BepaalEigenTeamUitWedstrijdAsync(
-            "13-1 - Tegenstander JO13-1", resolver, Club, NullLogger.Instance, null);
-
-        naam.Should().BeNull();
-        resolver.Verzoeken.Should().ContainSingle();
+        herkend.Should().BeTrue();
+        classificatie.TeamNaam.Should().Be(EigenTeam);
+        classificatie.LeeftijdsCategorie.Should().Be("JO13");
     }
 
     /// <summary>Resolver met vaste antwoorden per (getrimde) ruwe tekst; onbekend = Onopgelost.</summary>

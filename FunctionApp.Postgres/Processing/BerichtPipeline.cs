@@ -57,7 +57,7 @@ internal static partial class BerichtPipeline
         var eigenTeamHerkend = await EigenTeamBepaling.BereidPlannerVoorAsync(classificatie, teamResolver, cc, log, trace,
             fixtureContextFactory ?? (() => new FunctionApp.Postgres.TeamResolution.TeamFixtureContextRepository(PostgresDatabaseConfig.ConnectionString)));
         return await BerichtPlannerAfhandeling.VerwerkAsync(classificatie,
-            () => VerwerkBeschikbaarheidAsync(classificatie, bericht, log, teamResolver, cc, eigenTeamHerkend, clubCode, trace),
+            () => VerwerkBeschikbaarheidAsync(classificatie, bericht, log, eigenTeamHerkend, clubCode, trace),
             () => VerwerkHerplanAsync(classificatie, bericht, log, cc, clubCode, clubSettings),
             () => VerwerkTeamContactAsync(classificatie, clubCode));
     }
