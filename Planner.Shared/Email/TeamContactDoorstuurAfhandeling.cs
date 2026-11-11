@@ -104,8 +104,13 @@ public static class TeamContactDoorstuurAfhandeling
         var bericht = TeamContactDoorstuurBericht.Bouw(
             verzoek.TeamNaam, verzoek.AfzenderNaam, verzoek.Afzender, verzoek.Inhoud, log);
         var audit = auditKopie();
-        await graphVerstuurAsync(ontvanger, bericht.Onderwerp, bericht.Inhoud, bericht.ReplyTo,
-            string.IsNullOrWhiteSpace(audit) ? null : audit);
+        if (string.IsNullOrWhiteSpace(audit))
+        {
+            audit = null;
+            // Fixed text only: no address and no message content in the log.
+            log.LogWarning("Team-contact forwarding continues without audit copy: planner address is not configured.");
+        }
+        await graphVerstuurAsync(ontvanger, bericht.Onderwerp, bericht.Inhoud, bericht.ReplyTo, audit);
         return TeamContactDoorstuurVerzendresultaat.Geaccepteerd;
     }
 

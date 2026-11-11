@@ -40,6 +40,53 @@ public class TeamContactDoorstuurAfhandelingTests
         graphCalls.Should().Be(0);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Adapter_MissingAuditAddress_WarnsOnceWithoutAddressOrContentAndStillForwards(string? configured)
+    {
+        var logger = new ListLogger();
+        var messages = new List<string?>();
+        var outcome = await TeamContactDoorstuurAfhandeling.VerstuurViaAdapterAsync(
+            new TeamContactDoorstuurVerzoek("JO13-1", "trainer@voorbeeld.nl", "Vraagsteller", "Geheime vraag"),
+            _ => Task.FromResult<string?>("coach@allstars-fc.test"), () => configured,
+            (_, _, _, _, audit) => { messages.Add(audit); return Task.CompletedTask; }, logger);
+
+        outcome.Should().Be(TeamContactDoorstuurVerzendresultaat.Geaccepteerd);
+        messages.Should().ContainSingle().Which.Should().BeNull();
+        logger.Warnings.Should().ContainSingle();
+        logger.Warnings[0].Should().NotContain("@").And.NotContain("Geheime vraag")
+            .And.NotContain("Vraagsteller").And.NotContain("JO13-1");
+    }
+
+    [Fact]
+    public async Task Adapter_ConfiguredAuditAddress_PassesBccWithoutWarning()
+    {
+        var logger = new ListLogger();
+        var messages = new List<string?>();
+        await TeamContactDoorstuurAfhandeling.VerstuurViaAdapterAsync(
+            new TeamContactDoorstuurVerzoek("JO13-1", "trainer@voorbeeld.nl", "Vraagsteller", "Mijn vraag"),
+            _ => Task.FromResult<string?>("coach@allstars-fc.test"), () => "planner@allstars-fc.test",
+            (_, _, _, _, audit) => { messages.Add(audit); return Task.CompletedTask; }, logger);
+
+        messages.Should().ContainSingle().Which.Should().Be("planner@allstars-fc.test");
+        logger.Warnings.Should().BeEmpty();
+    }
+
+    private sealed class ListLogger : Microsoft.Extensions.Logging.ILogger
+    {
+        public List<string> Warnings { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId,
+            TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel == Microsoft.Extensions.Logging.LogLevel.Warning)
+                Warnings.Add(formatter(state, exception));
+        }
+    }
+
     private sealed class FakePersistentie : ITeamContactDoorstuurPersistentie
     {
         public TeamContactDoorstuurStatus? Status { get; private set; }
