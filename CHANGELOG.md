@@ -35,6 +35,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - The code-quality register now tracks the tier-duplication regression test, so Build checks that it stays wired into CI (#1810).
 - Git hooks fail closed when their required local pattern configuration is missing, empty, whitespace-only, comment-only or invalid; the Build workflow tests both actual hooks. They scan every unpublished commit on a new branch push and check staged application project versions from the Git index before commit (#1810)
 - `Test-App.ps1` ondersteunt expliciete projectroot-, Postgres-container- en runtime-URL-overrides; offline feedback en bewust overgeslagen builds worden apart als `SKIPPED` geteld. Een databasequeryfout wordt niet meer als lege migratieledger of ontbrekende migraties gepresenteerd (#1810).
+- The public advisor report exposes severity-class counts only; synthetic tests guard the issue body and workflow summary against publishing advisor details (#1810).
 
 ## [3.16.0.0] — 2026-11-10
 

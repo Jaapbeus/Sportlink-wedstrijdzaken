@@ -31,8 +31,13 @@ if [ -z "$ADVISORS" ] || [ -z "$BASELINE" ] || [ -z "$BODY" ]; then
   exit 2
 fi
 
-if ! jq -e 'has("geaccepteerd") and (.geaccepteerd | type == "array")' "$BASELINE" >/dev/null 2>&1; then
-  echo "::error::$BASELINE heeft geen geldige .geaccepteerd-array."
+if ! jq -e 'type == "object" and (.geaccepteerd | type == "array") and all(.geaccepteerd[]; type == "object" and (.cache_key | type == "string"))' "$BASELINE" >/dev/null 2>&1; then
+  echo "::error::Baseline heeft geen geldige geaccepteerde lijst."
+  exit 1
+fi
+
+if ! jq -e 'type == "array" and all(.[]; type == "object" and (.cache_key | type == "string") and (.cache_key != ""))' "$ADVISORS" >/dev/null 2>&1; then
+  echo "::error::Advisorresultaat heeft geen geldige bevindingenlijst."
   exit 1
 fi
 
@@ -47,23 +52,22 @@ fi
 TOTAAL=$(jq 'length' "$ADVISORS")
 GEACCEPTEERD=$(jq '.geaccepteerd | length' "$BASELINE")
 
-# Sorteren op ECHTE ernst, niet alfabetisch: alfabetisch levert ERROR, INFO, WARN op, waardoor de
-# minst ernstige bevindingen boven de ernstigere komen te staan. De lezer moet bovenaan beginnen.
+# Vergelijk privé-baselinesleutels intern, maar schrijf uitsluitend ernstklassen en aantallen weg.
+# Advisorvelden met namen, locaties, details, hersteladvies of cache-sleutels worden niet
+# opgenomen in het bestand dat de workflow in een issue of runsamenvatting publiceert.
 jq -s '
   .[0] as $bevindingen | .[1].geaccepteerd as $ok
   | ($ok | map(.cache_key)) as $keys
   | $bevindingen
   | map(select(.cache_key as $k | ($keys | index($k)) | not))
-  | sort_by(
-      (if   .level == "ERROR" then 0
-       elif .level == "WARN"  then 1
-       elif .level == "INFO"  then 2
-       else 3 end),
-      .name, .cache_key
-    )
+  | map({level: ((.level // "") | if type == "string" then ascii_upcase else "OTHER" end)})
+  | map(if .level == "ERROR" or .level == "WARN" or .level == "INFO" then . else {level: "OTHER"} end)
+  | group_by(.level)
+  | map({level: .[0].level, count: length})
+  | sort_by(.level)
 ' "$ADVISORS" "$BASELINE" > "${BODY}.nieuw.json"
 
-NIEUW=$(jq 'length' "${BODY}.nieuw.json")
+NIEUW=$(jq '[.[].count] | add // 0' "${BODY}.nieuw.json")
 
 echo "Advisor-bevindingen: $TOTAAL na filter, $GEACCEPTEERD geaccepteerd in de baseline, $NIEUW nieuw."
 printf '%s' "$NIEUW" > "${BODY}.count"
@@ -75,29 +79,9 @@ if [ "$NIEUW" = "0" ]; then
 fi
 
 {
-  echo "De dagelijkse controle van Supabase's Security- en Performance Advisor vond **$NIEUW bevinding(en)** die niet in \`.github/supabase-advisors-baseline.json\` staan."
-  echo ""
-  echo "| Niveau | Aantal |"
-  echo "|---|---|"
-  # Alleen niveaus die daadwerkelijk voorkomen. Een vaste ERROR/WARN-tabel toont "0 | 0" zodra er
-  # via ADVISOR_TESTLINT op een INFO-lint wordt geverifieerd, en dat leest als "niets gevonden"
-  # terwijl er acht bevindingen onder staan.
-  jq -r 'group_by(.level) | map("| \(.[0].level) | \(length) |") | .[]' "${BODY}.nieuw.json"
-  echo ""
-  echo "## Bevindingen"
-  echo ""
-  # Supabase levert `detail` met ontsnapte backticks (\`public.foo\`). In GitHub-markdown rendert
-  # dat als een zichtbaar backtick-teken in plaats van als code, wat de tekst rommelig maakt.
-  # Terugzetten naar een gewone backtick zodat objectnamen als code worden getoond.
-  jq -r '.[] | "### \(.level) — \(.title)\n\n- **Lint:** `\(.name)` (\(.categorie))\n- **Detail:** \(.detail | gsub("\\\\`"; "`"))\n- **Uitleg:** \(.remediation)\n- **Baseline-sleutel:** `\(.cache_key)`\n"' "${BODY}.nieuw.json"
-  echo "## Wat nu"
-  echo ""
-  echo "Per bevinding één van twee dingen, allebei een PR-diff:"
-  echo ""
-  echo "1. **Oplossen** — meestal een nieuwe migratie in \`Database.Postgres/migrations/\`. Nooit rechtstreeks in het Supabase-dashboard of via MCP \`apply_migration\`: dat omzeilt \`MigrationRunner\` (geen \`schema_migrations\`-rij, geen checksum) en laat \`/api/health\`'s \`pendingMigrations\` uit de pas lopen met de werkelijkheid."
-  echo "2. **Accepteren** — voeg de baseline-sleutel toe aan \`.github/supabase-advisors-baseline.json\` mét \`reden\` en \`issue\`. Daarna meldt deze controle hem niet opnieuw."
-  echo ""
-  echo "> Automatisch aangemaakt door \`.github/workflows/supabase-advisors.yml\` (#1221). Bevindingen zijn geaggregeerd; er staan bewust geen e-mailadressen, IP's of gebruikers-id's in — zie AGENTS.md regel 4a."
+  echo "| Ernstklasse | Aantal |"
+  echo "|---|---:|"
+  jq -r '.[] | "| \(.level) | \(.count) |"' "${BODY}.nieuw.json"
 } > "$BODY"
 
 # ── Redactie-gate, tweede keer ──────────────────────────────────────────────────────────────────
@@ -106,11 +90,11 @@ fi
 # een fout zijn onomkeerbaar: een issue op een publieke repo is permanent en binnen minuten
 # geïndexeerd.
 if [ -n "${SUPABASE_PROJECT_REF:-}" ] && grep -qiF "$SUPABASE_PROJECT_REF" "$BODY"; then
-  echo "::error::Redactie-gate: project-ref in de issue-tekst. Niets gepubliceerd."
+  echo "::error::Publicatieredactie mislukt. Niets gepubliceerd."
   exit 1
 fi
 if grep -qiE "pooler\.supabase\.com|sbp_[A-Za-z0-9_]+" "$BODY"; then
-  echo "::error::Redactie-gate: hostname of tokenpatroon in de issue-tekst. Niets gepubliceerd."
+  echo "::error::Publicatieredactie mislukt. Niets gepubliceerd."
   exit 1
 fi
 
