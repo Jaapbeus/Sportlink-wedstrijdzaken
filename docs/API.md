@@ -498,11 +498,20 @@ Als de gevraagde dag geen wedstrijden toelaat (vrijdag/zondag):
 | `beschikbaar` | `boolean` | Of een slot beschikbaar is |
 | `toewijzing` | `object\|null` | Toegewezen slot (alleen Modus 1) |
 | `teamConflict` | `object\|null` | Bestaande wedstrijd voor het team op deze datum |
-| `reden` | `string\|null` | Reden als niet beschikbaar |
+| `reden` | `string\|null` | Reason when unavailable. A team name that does not meet the display checks is replaced by `het opgegeven team` in the team-conflict explanation (#1809). |
 | `gecontroleerdDagdeel` | `string\|null` | Het dagdeel (`ochtend`, `middag`, `avond`) waarbinnen de vensters en alternatieven zijn berekend; `null` als er geen dagdeel is toegepast of de controle niet is uitgevoerd (#1587). Het e-mailantwoord vermeldt dit dagdeel |
 | `alternatieven` | `array` | Tot 3 alternatieve tijdsloten |
 | `beschikbareVensters` | `array\|null` | Beschikbare vensters per veld (alleen Modus 2) |
-| `waarschuwingen` | `array` | Waarschuwingen (zonsondergangmarge, doordeweekse beperkingen) |
+| `waarschuwingen` | `array` | Planning warnings as normalized single-line strings; empty results are omitted. See the output rules below (#1809). |
+
+Warning output rules (#1809, both database tiers; API version 3.16.0.2): before the response is serialized,
+control characters and whitespace are normalized to spaces. The delimiters `<`, `>`, backticks,
+`{`, `}`, `[` and `]` are replaced by spaces; words containing `://` or `@`, or starting with
+`www` (case-insensitive), are removed. Each remaining warning is truncated after 300 characters
+when necessary and followed by `…` (at most 301 characters in the output). Warnings that become
+empty are omitted; their remaining order is preserved. These rules apply to `waarschuwingen`,
+not to every free-text response field. In warnings about an unrecognized team, a team name that
+fails the display checks is shown as `het opgegeven team`.
 
 ### Foutantwoord (400)
 

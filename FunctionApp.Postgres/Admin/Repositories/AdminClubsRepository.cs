@@ -3,11 +3,10 @@ using Npgsql;
 namespace FunctionApp.Postgres.Admin;
 
 /// <summary>
-/// Postgres-tier-tegenhanger van <c>FunctionApp/Admin/Repositories/AdminClubsRepository.cs</c>
-/// (#887). Vertaling: <c>[dbo].[AppSettings]</c> → <c>public.appsettings</c> (lowercase, ongequote
-/// — §3), <c>ClubCode</c>/<c>ClubName</c>/<c>SyncEnabled</c> → <c>clubcode</c>/<c>clubname</c>/
-/// <c>syncenabled</c>. <c>clubname</c> bestaat sinds <c>003_admin_tables.sql</c> — de eerdere,
-/// tijdelijke terugval op <c>clubcode</c> als weergavenaam is daarmee vervallen.
+/// Leest de clubcode, weergavenaam en synchronisatiestatus voor de beheer-clublijst uit
+/// <c>public.appsettings</c>. De SQL Server-kolommen <c>ClubCode</c>/<c>ClubName</c>/<c>SyncEnabled</c>
+/// corresponderen met <c>clubcode</c>/<c>clubname</c>/<c>syncenabled</c>; Postgres gebruikt hiervoor
+/// lowercase, ongequote identifiers (zie <c>docs/ARCHITECTUUR-DATABASE-TIERS.md</c> §3).
 /// </summary>
 internal static class AdminClubsRepository
 {
