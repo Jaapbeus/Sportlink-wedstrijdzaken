@@ -5,20 +5,9 @@ using System.Text.RegularExpressions;
 
 namespace Planner.Shared.Theming;
 
-// Provider-onafhankelijke kern van de club-thema-API (#325, #422, #887, #1007), gedeeld tussen
-// beide database-tiers (#1248). FunctionApp/Admin/AdminThemeFunction.cs en
-// FunctionApp.Postgres/Admin/AdminThemeFunction.cs bevatten dezelfde regex-set, dezelfde
-// _skipColors-lijst, dezelfde hexvalidatie, dezelfde SSRF-allowlist-flow en dezelfde
-// default-kleuren als magic strings; het enige echte verschil was de databaseclient
-// (SqlConnection vs. NpgsqlConnection) en de kolomnaam-casing. Die duplicatie is geen bewuste
-// keuze voor thema-logica — de Postgres-tier is een generieke 1-op-1 poort (#887) — maar ze
-// betekende wél dat elke wijziging aan het kleurmodel tweemaal met de hand moest, in twee
-// bestanden die niets van elkaar weten en niet gedeeld getest worden.
-//
-// Zelfde precedent en zelfde vorm als FeedbackCore (#1130): een pure klasse zonder ASP.NET
-// Core-afhankelijkheid, die statussen en resultaatrecords teruggeeft. De vertaling naar
-// IActionResult en álle databasetoegang blijven bij de tier-specifieke entrypoint — precies de
-// scheiding die docs/ARCHITECTUUR-DATABASE-TIERS.md §2 voorschrijft.
+// Provider-onafhankelijke validatie, paletverwerking en websitekleur-extractie voor het clubthema.
+// De tier-specifieke entrypoints verzorgen databaseopslag en vertaling naar HTTP-responsen,
+// conform docs/ARCHITECTUUR-DATABASE-TIERS.md §2.
 
 /// <summary>De kleuren en assets van een club-thema, los van hoe ze zijn opgeslagen.</summary>
 public sealed record ThemeWaarden(
@@ -84,11 +73,7 @@ public sealed record ThemeExtractieResultaat(
     string? FaviconUrl = null,
     string? LogoUrl = null);
 
-/// <summary>
-/// Requestbody van <c>PUT /api/beheer/theme</c>. Stond tot #1248 als <c>internal sealed class</c>
-/// in beide <c>AdminThemeFunction.cs</c>-bestanden — twee losse klassen die hetzelfde
-/// JSON-contract moesten blijven beschrijven zonder dat iets dat afdwong.
-/// </summary>
+/// <summary>Requestbody voor <c>PUT /api/beheer/theme</c>.</summary>
 public sealed class ThemeUpdateRequest
 {
     public string? Primary        { get; set; }

@@ -25,6 +25,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Removed an unreferenced email HTML generation method and its dedicated tests; active browser and export renderers are unchanged (see issue #1808).
 - Remove the unused optional time normalizer, five unreferenced SQL planner facade forwards and four no-op test placeholders; keep their active repository implementations and maintained tooling. Update current test documentation and annotate historical references to the removed placeholders. (zie issue #1808)
 - De bestaande veldeditor is naar een gedeelde Razor-component verplaatst; modelbinding, validatie en de bestaande save-/annuleerhandlers blijven gelijk (zie issue #1807).
+- In deze deelscope documenteren Blazor- en themahelpers hun huidige rol; verouderde Dagplanning- en verplaatsingsverwijzingen zijn gecorrigeerd in de bijgewerkte bestanden, zonder gedrag te wijzigen (zie issue #1806).
 - Verouderde port- en incidentgeschiedenis en plan-/kostenverwijzingen in de monitoring-noodmailcommentaren vervangen door actuele uitleg van throttle-opslag en de provider-eigen uitvalmonitor; de reden voor een letterlijke timer-cron blijft bij beide tiers behouden; codegedrag ongewijzigd (zie issue #1805).
 - Postgres-beheerfuncties en repositories beschrijven hun huidige verantwoordelijkheden; de toelichting op datumformattering, gegenereerde ids, response-casing en auditretentie blijft behouden (zie issue #1805).
 - De gedeelde HTML-generator voor de veldplanner is per verantwoordelijkheid in partial-bestanden opgesplitst; de publieke aanroepen en de gegenereerde browser- en e-mail-HTML blijven gelijk (zie issue #1807).
@@ -39,6 +40,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - BlazorAdmin: XML-documentatie voor tijdnormalisatie en Gantt-layout bijgewerkt; gedrag ongewijzigd (zie issue #1806).
 - De SQL Server-planner geeft voor de niet-opgeslagen optionele eerste-elftalnaam nu expliciet `null` door, gelijk aan Postgres; de settings-loader guard hoeft deze ontbrekende sleutel niet meer uit te zonderen (#1821).
 - Fixture filtering and planner classification preparation now share one implementation across database tiers (#1816).
+
+### Security
+- Providerinvoer maskeert lange nummerreeksen in leermomenten en behoudt geldige datum- en tijdnotatie (zie issue #1809).
+- Email answers use a neutral greeting when no safe display name is available; authorized internal review retains a bounded, escaped original sender address. Contact-pattern masking and both-tier output coverage are strengthened, with captured-provider regressions preserving numeric planning data. Provider body processing stays bounded and omits unfinished boundary fragments while preserving the truncation marker and whole masking tokens (#1809).
+- The availability API contract now documents normalized, bounded warning output and the team-name display fallback on both database tiers (#1809).
+- E-mailverwerking verhard vóór review mode uit gaat (#1809, beide tiers): alleen exact `false` (hoofdletterongevoelig) schakelt review uit; afzendercontrole is syntactisch en blokkeert ongeschikte adressen voor automatisch antwoorden. Onderwerp-, naam- en waarschuwingsuitvoer wordt begrensd en gesaneerd; de provider ontvangt geen afzenderidentiteit en herkenbare contactpatronen in onderwerp, berichttekst en correctiecontext worden gemaskeerd. Dit beperkt geen andere persoonsgegevens en vervangt de open verwerkingsafspraken (#1736) niet; #43 blijft afhankelijk van eigenaaracceptatie.
 
 ### Fixed
 - Ontbrekende herplandatums worden uit expliciete tekst aangevuld; directe dagnaamvragen met onder meer "op zaterdag" en "Is zaterdag mogelijk?" corrigeren de modeldatum zonder losse beschikbaarheidsmededelingen of expliciet bevestigde datums te verschuiven (zie issue #1817).
