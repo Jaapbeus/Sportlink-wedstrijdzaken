@@ -20,7 +20,7 @@ internal static partial class BerichtPipeline
     /// gezet; daarna wordt <c>eigenTeamHerkend</c> nergens meer gelezen.
     /// </summary>
     private static async Task<string> VerwerkBeschikbaarheidAsync(
-        string cs, BerichtClassificatie classificatie, InkomendBericht bericht, ILogger log, ITeamResolver teamResolver,
+        BerichtClassificatie classificatie, InkomendBericht bericht, ILogger log, ITeamResolver teamResolver,
         string cc, bool eigenTeamHerkend, string? clubCode, TraceBuilder? trace)
     {
         var alleDatums = BerichtDatumHeuristiek.ExpandDoordeweeksDatums(
@@ -28,7 +28,7 @@ internal static partial class BerichtPipeline
         trace?.Datum(alleDatums);
 
         var zoek = await ZoekViaTegenstanderAsync(
-            cs, classificatie, alleDatums, teamResolver, cc, eigenTeamHerkend, clubCode, log, trace);
+            classificatie, alleDatums, teamResolver, cc, eigenTeamHerkend, clubCode, log, trace);
         if (zoek.Antwoord != null) return zoek.Antwoord;
         if (zoek.EigenTeam != null)
         {
@@ -41,6 +41,7 @@ internal static partial class BerichtPipeline
         var datums = ModelDatum.VoorBeschikbaarheid(alleDatums, classificatie.Datum);
         if (datums.Count == 0) return PlannerAntwoordJson.DatumOnbekend();
 
+        var cs = PostgresDatabaseConfig.ConnectionString;
         if (datums.Count > 1)
             return await PlannerAntwoordJson.MultiDatumAsync(datums, async datum =>
                 await AvailabilityService.CheckAvailabilityAsync(cs, BouwBeschikbaarheidRequest(classificatie, datum), log, clubCode));
@@ -64,13 +65,14 @@ internal static partial class BerichtPipeline
     /// afgeleide team (de aanroeper zet dat op de classificatie).
     /// </summary>
     private static async Task<TegenstanderZoekUitkomst> ZoekViaTegenstanderAsync(
-        string cs, BerichtClassificatie classificatie, List<string> alleDatums, ITeamResolver teamResolver,
+        BerichtClassificatie classificatie, List<string> alleDatums, ITeamResolver teamResolver,
         string cc, bool eigenTeamHerkend, string? clubCode, ILogger log, TraceBuilder? trace)
     {
         if (string.IsNullOrWhiteSpace(classificatie.Tegenstander) || eigenTeamHerkend || alleDatums.Count != 1
             || !ModelDatum.TryParse(alleDatums[0], out var opponentCheckDatum))
             return default;
 
+        var cs = PostgresDatabaseConfig.ConnectionString;
         var wedstrijdOpDatum = await PlannerMatchRepository.FindMatchByOpponentAsync(
             cs, classificatie.Tegenstander!, opponentCheckDatum, clubCode);
         if (wedstrijdOpDatum != null) trace?.OpponentPad("opponent-op-datum", true);
@@ -93,13 +95,14 @@ internal static partial class BerichtPipeline
     /// "verzet zonder datum"-tak (#561/#1141), dan het antwoord met gewenste datum of herplanopties.
     /// </summary>
     private static async Task<string> VerwerkHerplanAsync(
-        string cs, BerichtClassificatie classificatie, InkomendBericht bericht, ILogger log, string cc, string? clubCode,
+        BerichtClassificatie classificatie, InkomendBericht bericht, ILogger log, string cc, string? clubCode,
         ClubAppSettingsSnapshot? clubSettings)
     {
         if (string.IsNullOrEmpty(classificatie.TeamNaam) || string.IsNullOrEmpty(classificatie.Datum)
             || !ModelDatum.TryParse(classificatie.Datum, out var datum))
             return PlannerAntwoordJson.OnvoldoendeHerplanGegevens();
 
+        var cs = PostgresDatabaseConfig.ConnectionString;
         var wedstrijd = await PlannerMatchRepository.FindMatchAsync(cs, classificatie.TeamNaam, datum, clubCode);
         if (wedstrijd == null)
             return PlannerAntwoordJson.HerplanWedstrijdNietGevonden(classificatie.TeamNaam, classificatie.Datum);
@@ -147,7 +150,7 @@ internal static partial class BerichtPipeline
     }
 
     private static async Task<string> VerwerkTeamContactAsync(
-        string cs, BerichtClassificatie classificatie, string? clubCode)
+        BerichtClassificatie classificatie, string? clubCode)
     {
         if (string.IsNullOrWhiteSpace(classificatie.TeamNaam))
             return PlannerAntwoordJson.TeamContact(null, false);
@@ -156,7 +159,7 @@ internal static partial class BerichtPipeline
         // begeleidingscontacten van de productieclub raadpleegt (#677/#706), zelfde
         // reden als het SQL Server-origineel.
         var contact = await AllstarsTestDataRepository.GetTeamleiderContactAsync(
-            cs, classificatie.TeamNaam, clubCode);
+            PostgresDatabaseConfig.ConnectionString, classificatie.TeamNaam, clubCode);
         return PlannerAntwoordJson.TeamContact(classificatie.TeamNaam, contact != null);
     }
 }

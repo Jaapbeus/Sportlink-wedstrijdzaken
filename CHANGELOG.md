@@ -21,6 +21,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - De clubkiezer, startpoort en initialisatie van de hoofdindeling staan nu in het aangrenzende partial-bestand; gedrag blijft gelijk (zie issue #1807).
 
 ### Changed
+- Unused authentication members were removed from the shared auth interface and implementations; synthetic tests preserve existing role and logout behavior (see issue #1808).
 - Removed an unreferenced email HTML generation method and its dedicated tests; active browser and export renderers are unchanged (see issue #1808).
 - Remove the unused optional time normalizer, five unreferenced SQL planner facade forwards and four no-op test placeholders; keep their active repository implementations and maintained tooling. Update current test documentation and annotate historical references to the removed placeholders. (zie issue #1808)
 - De bestaande veldeditor is naar een gedeelde Razor-component verplaatst; modelbinding, validatie en de bestaande save-/annuleerhandlers blijven gelijk (zie issue #1807).
@@ -37,8 +38,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Het reviewrondelimiet voor Codex en Claude Code (AGENTS.md en de automatische issue-beurt van de bot) is van twee naar drie rondes per PR gegaan; pas daarna beslist de eigenaar, zie issue #1835.
 - BlazorAdmin: XML-documentatie voor tijdnormalisatie en Gantt-layout bijgewerkt; gedrag ongewijzigd (zie issue #1806).
 - De SQL Server-planner geeft voor de niet-opgeslagen optionele eerste-elftalnaam nu expliciet `null` door, gelijk aan Postgres; de settings-loader guard hoeft deze ontbrekende sleutel niet meer uit te zonderen (#1821).
+- Fixture filtering and planner classification preparation now share one implementation across database tiers (#1816).
 
 ### Fixed
+- Planneraanvragen op beide databasetiers slaan de aanvrager op uit de ingelogde principal; een clientwaarde wordt genegeerd en e-mailadressen worden niet als aanvrager opgeslagen; zie issue #1812.
 - Settings restart decisions now have paired SQL Server and Postgres persistence regression tests for unchanged and changed schedules alongside another saved field (#1819).
 - De Postgres-instellingenloader laadt nu ook de vijf bestaande e-mailinstellingen voor de mailboxverwerking en wist ze bij herladen na `NULL`, gelijk aan het gedrag van de SQL Server-tier (#1798).
 - De instellingenopslag meldt alleen een herstart als de opgeslagen FetchSchedule-waarde echt verandert; SQL Server ondersteunt nu ook het opslaan en teruglezen van SportlinkDryRun (#1819)
@@ -46,6 +49,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Veldbeschikbaarheid kan niet meer naar een periodecombinatie worden bijgewerkt die al bestaat (#1819)
 - E-maildashboardtellers gebruiken de echte laatste 24 uur en tellen alle passende berichten, ook als de detailweergave de limiet bereikt. Bij een oudere API zonder volledige tellingen toont het dashboard "Niet beschikbaar" in plaats van onjuiste nullen; werk de API bij vóór de Blazor-app (#1819)
 - De email-log OpenAPI-parameters documenteren nu de drie parser-ondersteunde datumvormen; de SQL Server-beschikbaarheidstest ruimt ook op als het fixture-opzetten faalt (#1819, reviewronde 3)
+- Team resolution now checks both own-team fields against source-owned fixture context; inconclusive or ambiguous evidence requires terminal manual review without automatic planning or sending (#1816). Whole-date uniqueness includes incomplete and duplicate native-visible source rows; cancellation follows each database's planner predicate, and equivalent time formats compare without losing seconds. API metadata matches application version 3.16.0.3. An additive Postgres expression index supports the native fixture/planner status predicate on both installed and newly created history tables.
+- Deleting a Sync alias persistently rejects the association across canonicalization; other alias origins remain physically deletable (#1816).
+- Query-free planner exits no longer initialize database configuration; fixture-repository creation and query failures both lead to manual review on both tiers (#1816).
+- Teamherkenning respecteert expliciete JO/MO-prefixen in C# en beide SQL-tiers, herkent JM-suffixen en samengestelde meisjesaanduidingen, houdt categorie-normalisatie idempotent, bewaart afgewezen Sync-aliassen bij volgende synchronisaties en gebruikt één categorie-instelling voor beide handmatige planningspaden (#1816)
 
 ## [3.16.0.0] — 2026-11-10
 

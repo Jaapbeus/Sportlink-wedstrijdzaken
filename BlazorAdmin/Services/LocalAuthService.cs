@@ -11,6 +11,5 @@ public class LocalAuthService : IAuthService
     public string UserName => "LocalDev";
     public bool IsAdmin => true;
 
-    public Task LoginAsync() => Task.CompletedTask;
     public Task LogoutAsync() => Task.CompletedTask;
 }
