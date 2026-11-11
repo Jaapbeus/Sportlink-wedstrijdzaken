@@ -62,7 +62,12 @@ public class SqlServerPlannerViewIntegrationTests_PlanningDuurEmailCallerTests
             var graph = new FakeEmailGraphService();
             var persistence = new RecordingEmailPersistenceService();
             var ai = new Mock<IChatClient>(MockBehavior.Strict);
+            // #1861: alleen een herkend eigen team bereikt de planner; zonder team volgt de wedervraag om het team.
+            // Dit team heeft die dag zelf geen wedstrijd: de fout komt uit de bezetting zonder duur.
+            const string team = "ALLSTARS JO13-1";
             var resolver = new Mock<ITeamResolver>(MockBehavior.Strict);
+            resolver.Setup(r => r.ResolveAsync(It.Is<TeamResolutionRequest>(q => q.RuweTeamTekst == team)))
+                .ReturnsAsync(new TeamResolutionResult(1, team, 1.0, [], ResolutionBron.ExacteMatch));
             using var services = new ServiceCollection().AddSingleton(ai.Object).BuildServiceProvider();
             var poort = new EmailVerwerkerPoort(NullLogger.Instance, services, NullLoggerFactory.Instance,
                 graph, resolver.Object, persistence, new FakeNoodmailThrottleStore());
@@ -75,7 +80,7 @@ public class SqlServerPlannerViewIntegrationTests_PlanningDuurEmailCallerTests
                 var classificatie = new BerichtClassificatie
                 {
                     Type = VerzoekType.BeschikbaarheidCheck, Datum = datum.ToString("yyyy-MM-dd"),
-                    LeeftijdsCategorie = "JO13", AanvangsTijd = "12:00"
+                    TeamNaam = team, LeeftijdsCategorie = "JO13", AanvangsTijd = "12:00"
                 };
                 var werk = () => poort.VerwerkEmailAsync(email, classificatie, new HashSet<string>());
                 var fout = await werk.Should().ThrowAsync<PlanningDuurOnbekendException>();
@@ -97,6 +102,7 @@ public class SqlServerPlannerViewIntegrationTests_PlanningDuurEmailCallerTests
             graph.TeamForwardings.Should().BeEmpty();
             graph.MarkedAsReadIds.Should().BeEmpty();
             ai.VerifyNoOtherCalls();
+            resolver.Verify(r => r.ResolveAsync(It.IsAny<TeamResolutionRequest>()), Times.Exactly(2));
             resolver.VerifyNoOtherCalls();
         }
         finally { SystemUtilities.AppSettings.ResetForTests(); }
