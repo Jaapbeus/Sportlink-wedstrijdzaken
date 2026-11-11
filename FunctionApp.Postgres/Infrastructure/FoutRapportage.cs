@@ -6,14 +6,11 @@ using GedeeldeIssueReporter = Planner.Shared.Infrastructure.GitHubIssueReporter;
 namespace FunctionApp.Postgres.Infrastructure;
 
 /// <summary>
-/// Postgres-tier-aansluiting op de gedeelde <see cref="GedeeldeIssueReporter"/>
-/// (#1268). Tot dit bestand bestond had alleen de SQL Server-tier automatische foutrapportage,
-/// terwijl de Postgres-tier degene is die in productie draait: runtimefouten bleven daar een
-/// logregel die niemand las. Beide tiers zijn gelijkwaardig (AGENTS.md, "Architectuurinvarianten",
-/// Databasetiers), dus de rapportage hoort op beide.
+/// Reports errors from this Function App through the shared <see cref="GedeeldeIssueReporter"/>.
 /// <para>
-/// Hier staat alleen wat per tier verschilt: de <see cref="EgressGuard"/> van déze Function App
-/// (#857) en het namespace-voorvoegsel waarmee de fingerprint de eerste eigen stackframe herkent.
+/// This adapter supplies this app's <see cref="EgressGuard"/> and namespace prefix for recognizing
+/// the first application stack frame. Keep the prefix tier-specific: changing it shifts fingerprints
+/// and can break deduplication of existing issues.
 /// </para>
 /// </summary>
 internal static class FoutRapportage
