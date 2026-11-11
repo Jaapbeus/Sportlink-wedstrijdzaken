@@ -428,6 +428,11 @@ jobs:
       - name: Turn-label exclusief testen
         run: node .github/scripts/turn-label-exclusief.test.js
 
+      # #1858: beurt-invariant (turn-label = volgende beurt uit de nieuwste overdracht). De workflow draait alleen
+      # per cron/handmatig; zonder deze test blijkt een parser- of evaluatiefout pas bij een vals of gemist signaal.
+      - name: Beurt-invariant testen
+        run: node .github/scripts/beurt-invariant.test.js
+
       # #1721 (fase 1): routetabel en workflowstructuur van de issue-router en de aanroepbare beurtworkflow,
       # plus de guard dat geen enkele workflow `checks: write` krijgt. Beide draaien alleen op een
       # eigen trigger of handmatig; zonder deze tests blijkt een fout pas bij een proef.
