@@ -1,6 +1,6 @@
-namespace Planner.Shared.Email;
+namespace Planner.Shared;
 
-/// <summary>Calendar time for Dutch email requests, independent of the host time zone.</summary>
+/// <summary>Calendar time for Dutch business rules, independent of the host time zone.</summary>
 public static class NederlandseBedrijfsKlok
 {
     private static readonly TimeZoneInfo Tijdzone = VindTijdzone();
