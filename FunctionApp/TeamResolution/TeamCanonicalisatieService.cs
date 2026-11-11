@@ -38,12 +38,16 @@ public static class TeamCanonicalisatieService
     public readonly record struct CanonicalisatieResultaat(
         int Teams, int SleutelsBijgewerkt, int DubbelenOpgeruimd);
 
-    public static async Task<CanonicalisatieResultaat> RefreshAsync(string clubCode, ILogger log)
+    public static Task<CanonicalisatieResultaat> RefreshAsync(string clubCode, ILogger log)
+        => RefreshAsync(Cs, clubCode, log);
+
+    internal static async Task<CanonicalisatieResultaat> RefreshAsync(
+        string sqlServerConnectionString, string clubCode, ILogger log)
     {
         if (string.IsNullOrWhiteSpace(clubCode))
             throw new ArgumentException("ClubCode is verplicht voor teamcanonicalisatie.", nameof(clubCode));
 
-        var rijen = await LoadHisTeamsAsync(clubCode);
+        var rijen = await LoadHisTeamsAsync(sqlServerConnectionString, clubCode);
         if (rijen.Count == 0)
         {
             log.LogWarning("TEAMS CANONICALISATIE - geen rijen in his.teams voor club {ClubCode} — overgeslagen", clubCode);
@@ -53,7 +57,7 @@ public static class TeamCanonicalisatieService
         // Groepeer op genormaliseerde sleutel: dit is de ontdubbelingsstap.
         var groepen = GroepeerOpSleutel(rijen, clubCode);
 
-        using var conn = new SqlConnection(Cs);
+        using var conn = new SqlConnection(sqlServerConnectionString);
         await conn.OpenAsync();
 
         // Eerst de opgeslagen sleutels in lijn brengen met de huidige normalisatieregels — zie
@@ -434,7 +438,7 @@ public static class TeamCanonicalisatieService
             MERGE [dbo].[TeamAliassen] AS target
             USING (SELECT @clubCode AS ClubCode, @ruweTekst AS RuweTekst) AS src
                 ON target.[ClubCode] = src.[ClubCode] AND target.[RuweTekst] = src.[RuweTekst]
-            WHEN MATCHED AND target.[Bron] = '{BronSync}' THEN
+            WHEN MATCHED AND target.[Bron] = '{BronSync}' AND target.[Status] <> 'rejected' THEN
                 UPDATE SET [TeamId] = @teamId,
                            [RuweTekstGenormaliseerd] = @sleutel,
                            [Status] = '{StatusValidated}',
@@ -453,11 +457,11 @@ public static class TeamCanonicalisatieService
         return resultaat is bool ok && ok;
     }
 
-    private static async Task<List<HisTeamRow>> LoadHisTeamsAsync(string clubCode)
+    private static async Task<List<HisTeamRow>> LoadHisTeamsAsync(string sqlServerConnectionString, string clubCode)
     {
         // GROUP BY ook op teamsoort: zie TeamSoortBeleid en ARCHITECTUUR-TEAMRESOLUTIE.md (#1785).
         var resultaten = new List<HisTeamRow>();
-        using var conn = new SqlConnection(Cs);
+        using var conn = new SqlConnection(sqlServerConnectionString);
         await conn.OpenAsync();
         using var cmd = new SqlCommand(@"
             SELECT

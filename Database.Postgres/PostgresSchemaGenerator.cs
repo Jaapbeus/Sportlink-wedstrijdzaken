@@ -91,6 +91,9 @@ public static class PostgresSchemaGenerator
                 $"ON his.{table} ({PostgresIdentifier.Quote("clubcode")});");
         }
 
+        if (entity.EntityName == "matches" && entity.HasClubCode && entity.Columns.Any(column => column.Name == "status"))
+            sb.AppendLine("CREATE INDEX IF NOT EXISTS ix_matches_club_status_upper_live ON his.\"matches\" (\"clubcode\", UPPER(\"status\")) WHERE \"mta_deleted\" IS NULL AND UPPER(\"status\") <> 'AFGELAST';");
+
         sb.AppendLine(EnableRowLevelSecurityAlsUit("his", entity.EntityName));
         return sb.ToString();
     }

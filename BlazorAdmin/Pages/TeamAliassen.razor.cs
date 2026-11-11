@@ -149,6 +149,7 @@ public partial class TeamAliassen : ClubSelectorPageBase
 
     private async Task VerwijderAsync(int id)
     {
+        var isSync = _items.Any(item => item.Id == id && item.Bron == "Sync");
         _actieBezigId.Add(id);
         _melding = null;
         StateHasChanged();
@@ -160,7 +161,7 @@ public partial class TeamAliassen : ClubSelectorPageBase
                 _fout = result.ErrorMessage ?? "Verwijderen mislukt";
             else
             {
-                _melding = "Alias verwijderd.";
+                _melding = isSync ? "Sync-alias blijvend afgewezen, ook na synchronisatie." : "Alias verwijderd.";
                 await LaadAsync(_filterStatus);
             }
         }

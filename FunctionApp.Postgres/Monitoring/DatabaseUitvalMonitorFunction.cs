@@ -8,55 +8,38 @@ using Planner.Shared.Monitoring;
 namespace FunctionApp.Postgres.Monitoring;
 
 /// <summary>
-/// Onafhankelijke, dagelijkse uitvalbewaking van de database op de Postgres-tier (#1268 — port van
-/// #831, dat alleen op de SQL Server-tier bestond).
+/// Onafhankelijke, dagelijkse controle van de status en bereikbaarheid van de beheerde Postgres-database.
 ///
 /// <para>
-/// <b>Waarom dit nodig was.</b> De noodmail in <c>EmailProcessorFunction</c> gaat alleen uit als de
-/// databaseverbinding wordt geopend vanuit fase 2 van de e-mailverwerking, en die fase wordt
-/// overgeslagen zodra er geen relevante e-mail binnenkomt. Tijdens de 5+ dagen durende uitval van
-/// 25-30 augustus 2026 (#799/#808) bleek dát de reden dat er geen enkele melding aankwam. De
-/// Postgres-tier is de tier die in productie draait en had deze bewaking niet — een club had dus
-/// geen e-mail-onafhankelijke uitvalmelding.
+/// De timer gebruikt <see cref="IDatabaseStatusReader"/> om onafhankelijk van inkomende e-mail te
+/// controleren. <see cref="PostgresDatabaseStatusReader"/> gebruikt de management-API als de
+/// instellingen beschikbaar zijn en <c>EgressGuard.ExternalIntegrationsAllowed()</c> dit toestaat;
+/// anders voert hij een bereikbaarheidsprobe uit. De gedeelde <see cref="DatabaseUitvalCore"/>
+/// bepaalt de meldingsbeslissing en het herhaalinterval.
 /// </para>
 ///
 /// <para>
-/// <b>Eén verschil met de SQL Server-tier, bewust (sinds #1718 is de schedule op beide tiers een vaste cron).</b>
+/// Deze monitor gebruikt een vaste dagelijkse schedule en kan per Function App worden uitgezet met
+/// de standaard-app-setting <c>AzureWebJobs.DatabaseUitvalMonitor.Disabled</c>.
 /// </para>
-/// <list type="number">
-/// <item>
-/// <b>Vaste schedule in code in plaats van <c>%DATABASE_STATUS_MONITOR_SCHEDULE%</c> (was alleen hier; nu ook op de SQL Server-tier).</b> De
-/// Functions-runtime lost zo'n <c>%…%</c>-verwijzing op bij het <i>indexeren</i> van de functie,
-/// vóór er ook maar iets van de functiebody draait. Ontbreekt de app setting, dan komt de hele
-/// Function App niet omhoog. Op de tier die in productie draait is dat een onaanvaardbaar risico
-/// voor een monitoringfunctie, dus hier een letterlijke cron — zelfde keuze als
-/// <c>SportlinkContractCheckTimerFunction</c>. Uitzetten kan met de standaard-app-setting
-/// <c>AzureWebJobs.DatabaseUitvalMonitor.Disabled</c>.
-/// </item>
-/// <item>
-/// <b>De uitvalduur komt van de monitor zelf.</b> Azure SQL levert <c>properties.pausedDate</c>;
-/// een beheerde Postgres-omgeving levert alleen een status, geen tijdstempel (geverifieerd tegen de
-/// OpenAPI-specificatie van die Management API). De eerste waarneming wordt daarom zelf vastgelegd,
-/// onder <see cref="DatabaseUitvalCore.EersteWaarnemingSleutel"/> in dezelfde opslag als de throttle
-/// — buiten de database die hier juist onbereikbaar kan zijn. Gevolg, en dat staat ook in de mail:
-/// de gemelde duur is een <i>ondergrens</i>, niet het werkelijke moment van uitvallen.
-/// </item>
-/// </list>
 ///
 /// <para>
-/// Alle beslisregels staan in <see cref="DatabaseUitvalCore"/> en zijn daar getest; de SQL
-/// Server-tier gebruikt exact dezelfde. Hier blijft alleen het Postgres-specifieke deel over.
+/// De statusbron levert geen begintijd voor een storing. Daarom slaat de monitor de eerste waarneming
+/// op onder <see cref="DatabaseUitvalCore.EersteWaarnemingSleutel"/> en rapporteert de duur vanaf dat
+/// moment als ondergrens. De registratie staat in dezelfde externe throttle-opslag, niet in de
+/// bewaakte database.
 /// </para>
 /// </summary>
 public static class DatabaseUitvalMonitorFunction
 {
     /// <summary>
-    /// Een beheerde Postgres-omgeving kent geen routinematige auto-pause die vanzelf herstelt; zie
-    /// <see cref="DatabaseUitvalCore.MinimaleUitvalVoorMeldingBeheerdePostgres"/>.
+    /// Drempel voor een beheerde Postgres-omgeving; anders dan Azure SQL serverless is hier geen
+    /// routinematige auto-pause die vanzelf herstelt om uit te filteren.
     /// </summary>
     internal static readonly TimeSpan MinimaleUitval =
         DatabaseUitvalCore.MinimaleUitvalVoorMeldingBeheerdePostgres;
 
+    // Letterlijke cron: %…% wordt bij indexeren opgelost; een ontbrekende setting faalt vóór de functiebody. Uitzetten: zie docs/MONITORING.md.
     [Function("DatabaseUitvalMonitor")]
     public static async Task Run(
         [TimerTrigger("0 0 8 * * *")] TimerInfo timer,

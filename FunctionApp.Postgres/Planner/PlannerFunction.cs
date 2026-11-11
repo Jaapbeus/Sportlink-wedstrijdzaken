@@ -8,6 +8,7 @@ using Newtonsoft.Json;
 using Planner.Endpoints.Deel;
 using Planner.Endpoints.AutoPlan;
 using Planner.Shared;
+using Planner.Shared.Email;
 using Planner.Shared.Planning;
 using Planner.Endpoints.Autorisatie;
 
@@ -41,7 +42,7 @@ namespace FunctionApp.Postgres.Planner;
 /// </para>
 /// <para>Zie docs/ARCHITECTUUR-DATABASE-TIERS.md §16, §25, §35, §40 en §41.</para>
 /// </summary>
-public static class PlannerFunction
+public static partial class PlannerFunction
 {
     // Fallback-duur wanneer geen leeftijdscategorie/speeltijd is opgegeven bij handmatige bevestiging.
     private const int DefaultWedstrijdDuurMinutenZonderCategorie = 105;
@@ -127,21 +128,8 @@ public static class PlannerFunction
     {
         var log = context.GetLogger("CheckAvailability");
         return AdminEndpoint.ExecuteAsync(req, log, "beschikbaarheid controleren",
-            async clubCode =>
-            {
-                var body = await new StreamReader(req.Body).ReadToEndAsync();
-                var request = JsonConvert.DeserializeObject<CheckAvailabilityRequest>(body);
-                if (request == null || string.IsNullOrEmpty(request.Datum))
-                    return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
-
-                log.LogInformation("CheckAvailability: datum={Datum}, tijd={Tijd}, team={Team}, cat={Cat}, club={Club}",
-                    LogWaarde.Schoon(request.Datum), LogWaarde.Schoon(request.AanvangsTijd), LogWaarde.Schoon(request.TeamNaam), LogWaarde.Schoon(request.LeeftijdsCategorie), clubCode);
-
-                var response = await AvailabilityService.CheckAvailabilityAsync(
-                    PostgresDatabaseConfig.ConnectionString, request, log, clubCode);
-
-                return new OkObjectResult(response);
-            });
+            clubCode => CheckAvailabilityInhoudAsync(req, log, clubCode,
+                request => AvailabilityService.CheckAvailabilityAsync(PostgresDatabaseConfig.ConnectionString, request, log, clubCode)));
     }
 
     /// <summary>

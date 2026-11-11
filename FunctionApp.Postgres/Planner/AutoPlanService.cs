@@ -17,11 +17,9 @@ internal sealed record VeldbezettingItem(
     string? Tegenstander = null, bool NietInSportlink = false, string? Bron = null) : IVeldbezettingRegel;
 
 /// <summary>
-/// Postgres-tier-tegenhanger van <c>FunctionApp/Planner/Services/AutoPlanService.cs</c> (#888).
-/// Sinds issue 888 vervolg (§42) volledig: naast <see cref="VeldbezettingAsync"/> (de
-/// "lichtgewicht weergave zonder FieldScheduler-berekening", #566) nu ook
-/// <see cref="AutoPlanAsync"/> en <see cref="AutoPlanToepassenAsync"/> — de laatste twee
-/// 501-stubs van deze tier.
+/// Coördineert de Postgres-dataopslag en de gedeelde planningslogica voor AutoPlan en het toepassen
+/// van een planning (#888). De endpoint- en tiergrenzen staan in
+/// <c>docs/ARCHITECTUUR-DATABASE-TIERS.md</c> §42.
 ///
 /// <para>
 /// <b>De planningsregels zelf staan niet hier maar in <see cref="AutoPlanRegels"/></b>
@@ -51,7 +49,8 @@ internal static class AutoPlanService
     /// <summary>
     /// De dagplanning-optimalisatie (#666): bepaalt per wedstrijd een planningsdoel, verwerkt ze in
     /// de vastgelegde rangorde, en laat de gedeelde <see cref="FieldScheduler"/> er slots bij
-    /// zoeken. Postgres-vertaling van het SQL Server-origineel (§42).
+    /// zoeken. Postgres-vertaling van het SQL Server-origineel; zie
+    /// <c>docs/ARCHITECTUUR-DATABASE-TIERS.md</c> §42.
     /// </summary>
     internal static async Task<AutoPlanResponse> AutoPlanAsync(
         string connectionString, AutoPlanRequest request, string clubCode, ILogger log)
@@ -401,7 +400,8 @@ internal static class AutoPlanService
     }
 
     /// <summary>
-    /// De vier clubinstellingen voor de gedeelde HTML-generator (§42), uit de Postgres-cache.
+    /// De vier clubinstellingen voor de gedeelde HTML-generator (zie
+    /// <c>docs/ARCHITECTUUR-DATABASE-TIERS.md</c> §42), uit de Postgres-cache.
     /// <para>
     /// <c>eersteElftalNaam</c> bestaat op geen van beide tiers als opgeslagen instelling — de
     /// generator valt daar zelf terug op <c>clubCode + " 1"</c>, precies zoals op de SQL

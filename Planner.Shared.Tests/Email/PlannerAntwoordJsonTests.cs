@@ -54,7 +54,7 @@ public class PlannerAntwoordJsonTests
     [Fact]
     public void HerplanTeLaat_BinnenDeadline_GeeftAntwoordMetDagen()
     {
-        var datum = DateOnly.FromDateTime(DateTime.Today).AddDays(2).ToString("yyyy-MM-dd");
+        var datum = NederlandseBedrijfsKlok.Vandaag().AddDays(2).ToString("yyyy-MM-dd");
 
         var json = PlannerAntwoordJson.HerplanTeLaat(new Wedstrijd(datum, 7), datum, 8);
 
@@ -64,7 +64,7 @@ public class PlannerAntwoordJsonTests
     [Fact]
     public void HerplanTeLaat_BuitenDeadlineOfOnparseerbaar_GeeftNull()
     {
-        var ver = DateOnly.FromDateTime(DateTime.Today).AddDays(30).ToString("yyyy-MM-dd");
+        var ver = NederlandseBedrijfsKlok.Vandaag().AddDays(30).ToString("yyyy-MM-dd");
 
         PlannerAntwoordJson.HerplanTeLaat(new Wedstrijd(ver, 1), ver, 8).Should().BeNull();
         PlannerAntwoordJson.HerplanTeLaat(new Wedstrijd("x", 1), "x", 8).Should().BeNull();
