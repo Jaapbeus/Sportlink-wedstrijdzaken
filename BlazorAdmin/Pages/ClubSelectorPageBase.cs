@@ -46,6 +46,18 @@ public abstract class ClubSelectorPageBase : ComponentBase, IDisposable
     /// </summary>
     protected virtual Task OnClubChangedAsync() => Task.CompletedTask;
 
+    protected async Task LaadClubgebondenBooleanAsync(
+        LookupGeneratieGuard guard,
+        Func<Task<bool>> ophalenAsync,
+        Action<bool> toepassen)
+    {
+        var clubCode = ClubSelector.SelectedClubCode;
+        var generatie = guard.Start(clubCode);
+        var waarde = await ophalenAsync();
+        if (guard.IsActueel(generatie) && ClubSelector.SelectedClubCode == clubCode)
+            toepassen(waarde);
+    }
+
     public void Dispose()
     {
         Dispose(true);

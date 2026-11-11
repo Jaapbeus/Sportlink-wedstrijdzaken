@@ -147,14 +147,10 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     /// #1459: de PDF-knop verschijnt alleen als de gekozen club PDF-export heeft ingeschakeld
     /// (standaard uit). Via het voor elke ingelogde rol open endpoint, opnieuw bij een clubwissel.
     /// </summary>
-    private async Task LaadPdfExportStatusAsync()
-    {
-        var clubCode = ClubSelector.SelectedClubCode;
-        var generatie = _pdfExportLoadGuard.Start(clubCode);
-        var ingeschakeld = await PlanningApi.IsPdfExportIngeschakeldAsync();
-        if (_pdfExportLoadGuard.IsActueel(generatie) && ClubSelector.SelectedClubCode == clubCode)
-            _pdfExportIngeschakeld = ingeschakeld;
-    }
+    private Task LaadPdfExportStatusAsync() => LaadClubgebondenBooleanAsync(
+        _pdfExportLoadGuard,
+        PlanningApi.IsPdfExportIngeschakeldAsync,
+        ingeschakeld => _pdfExportIngeschakeld = ingeschakeld);
 
     private async Task AutoPlanAsync()
     {

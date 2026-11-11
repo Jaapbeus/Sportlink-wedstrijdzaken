@@ -98,14 +98,10 @@ public partial class Planning : ClubSelectorPageBase
     /// (standaard uit). Via het voor elke ingelogde rol open endpoint — niet via de admin-only
     /// instellingen — en opnieuw bij een clubwissel.
     /// </summary>
-    private async Task LaadPdfExportStatusAsync()
-    {
-        var clubCode = ClubSelector.SelectedClubCode;
-        var generatie = _pdfExportLoadGuard.Start(clubCode);
-        var ingeschakeld = await PlanningApi.IsPdfExportIngeschakeldAsync();
-        if (_pdfExportLoadGuard.IsActueel(generatie) && ClubSelector.SelectedClubCode == clubCode)
-            _pdfExportIngeschakeld = ingeschakeld;
-    }
+    private Task LaadPdfExportStatusAsync() => LaadClubgebondenBooleanAsync(
+        _pdfExportLoadGuard,
+        PlanningApi.IsPdfExportIngeschakeldAsync,
+        ingeschakeld => _pdfExportIngeschakeld = ingeschakeld);
 
     // Gantt-blokken voor de directe veldbezetting-weergave (#566) — geen optimalisatie, alleen wat er
     // al gepland staat. Hergebruikt dezelfde GanttItem/helpers als Veld optimalisatie.
