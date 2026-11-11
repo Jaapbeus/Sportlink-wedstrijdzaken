@@ -303,7 +303,7 @@ public class AvailabilityServiceIntegrationTests : IDisposable
 
     // ── opstelling ─────────────────────────────────────────────────────────
 
-    private static async Task<NpgsqlConnection> OpstellingAsync()
+    internal static async Task<NpgsqlConnection> OpstellingAsync()
     {
         await HisTabelVorm.ZorgVoorProductievormAsync(ConnectionString, KnownEntities.Teams, KnownEntities.Matches, KnownEntities.MatchDetails);
         PostgresAppSettings.SetForTests("clubCode", Club);
