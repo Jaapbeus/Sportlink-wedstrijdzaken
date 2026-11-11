@@ -33,7 +33,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Het reviewrondelimiet voor Codex en Claude Code (AGENTS.md en de automatische issue-beurt van de bot) is van twee naar drie rondes per PR gegaan; pas daarna beslist de eigenaar, zie issue #1835.
 - BlazorAdmin: XML-documentatie voor tijdnormalisatie en Gantt-layout bijgewerkt; gedrag ongewijzigd (zie issue #1806).
 - De SQL Server-planner geeft voor de niet-opgeslagen optionele eerste-elftalnaam nu expliciet `null` door, gelijk aan Postgres; de settings-loader guard hoeft deze ontbrekende sleutel niet meer uit te zonderen (#1821).
-- Reaffirmed WZ-ADR-003: SQL Server and Postgres remain equal built tiers; the KNVB free-Saturday selection is shared pure logic, its semantic repository pair is explicit in the duplication guard, and a synthetic negative fixture proves the mapped pair is counted. Both tiers have six baseline database contract cases plus a native-comparison regression: SQL Server keeps its case/trailing-space behavior and Postgres keeps its strict CHECK. The selector only filters Saturdays, occupied dates and the maximum; native queries still own eligibility and order (#1813).
+- Clarified the scoped WZ-ADR-003 implementation without attributing a broader staged-extraction strategy to an owner option (#1813).
 
 ### Fixed
 - Beide Functions-workers gebruiken een eindig transportplafond naast de ongewijzigde applicatielimieten, zodat de HTTP-proxy een gecontroleerd 413-antwoord voor te grote uploads kan teruggeven en de bestaande CSV-uploadruimte behouden blijft (zie issue #1811).
