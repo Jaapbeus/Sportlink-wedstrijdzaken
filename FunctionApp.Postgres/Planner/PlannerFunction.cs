@@ -8,6 +8,7 @@ using Newtonsoft.Json;
 using Planner.Endpoints.Deel;
 using Planner.Shared;
 using Planner.Shared.Planning;
+using Planner.Endpoints.Autorisatie;
 
 namespace FunctionApp.Postgres.Planner;
 
@@ -217,6 +218,8 @@ public static class PlannerFunction
                 if (request == null || string.IsNullOrEmpty(request.Datum) || string.IsNullOrEmpty(request.AanvangsTijd))
                     return new BadRequestObjectResult(new { error = "Request body met 'datum', 'aanvangsTijd' en 'veldNummer' is verplicht." });
 
+                if (PlannerAanvragerEndpointCore.Apply(EasyAuthHelper.GetPlannerRequester(req), actor => request.AangevraagdDoor = actor) is { } failure) return failure;
+
                 log.LogInformation("BevestigWedstrijd: datum={Datum}, tijd={Tijd}, veld={Veld}",
                     LogWaarde.Schoon(request.Datum), LogWaarde.Schoon(request.AanvangsTijd), request.VeldNummer);
 
@@ -341,6 +344,8 @@ public static class PlannerFunction
 
                 if (!TimeOnly.TryParse(request.GewensteAanvangsTijd, out var gewensteTijd))
                     return new BadRequestObjectResult(new { error = "Ongeldige tijd." });
+
+                if (PlannerAanvragerEndpointCore.Apply(EasyAuthHelper.GetPlannerRequester(req), actor => request.AangevraagdDoor = actor) is { } failure) return failure;
 
                 var match = await PlannerMatchRepository.FindMatchByCodeAsync(
                     PostgresDatabaseConfig.ConnectionString, request.Wedstrijdcode, clubCode);
