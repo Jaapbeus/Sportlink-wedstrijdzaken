@@ -44,6 +44,7 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
     private bool _pdfExportIngeschakeld;
     private readonly LookupGeneratieGuard _pdfExportLoadGuard = new();
     private bool _sportlinkExtensionEnabled;
+    private readonly LookupGeneratieGuard _sportlinkExtensionLoadGuard = new();
     private readonly SportlinkActieKolomState _sportlinkKolom = new();
 
     // Hover-correlatie tussen tijdlijnblok en tabelregel (#1398, zelfde gedeelde implementatie als
@@ -111,9 +112,7 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
 
     protected override async Task OnInitializedAsync()
     {
-        // #989: geen Sportlink-kolom/-knoppen tonen als de extension uit staat (DoD).
-        var settings = await InstellingenCache.GetSettingsAsync();
-        _sportlinkExtensionEnabled = settings.Success && settings.Data?.SportlinkExtensionEnabled == true;
+        await LaadSportlinkExtensionStatusAsync();
         await LaadPdfExportStatusAsync();
 
         // #1334: automatisch een plan laden, zodat de wedstrijdenlijst (incl. de Sportlink-kolom
@@ -123,6 +122,10 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
         // wijzigen van de buffer-instelling, waar geen andere trigger voor is).
         await AutoPlanAsync();
     }
+
+    // #1872: ook de extensievlag volgt de gekozen club.
+    private Task LaadSportlinkExtensionStatusAsync() =>
+        LaadSportlinkExtensionVlagAsync(_sportlinkExtensionLoadGuard, InstellingenCache, aan => _sportlinkExtensionEnabled = aan);
 
     private async Task OnDatumChanged()
     {
@@ -139,6 +142,7 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
         _handmatigAangepast.Clear();
         _errorMessage = null;
         _toepassenMelding = null;
+        await LaadSportlinkExtensionStatusAsync();
         await LaadPdfExportStatusAsync();
         await AutoPlanAsync();
     }

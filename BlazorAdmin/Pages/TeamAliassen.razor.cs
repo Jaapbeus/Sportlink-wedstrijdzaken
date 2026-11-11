@@ -21,6 +21,8 @@ public partial class TeamAliassen : ClubSelectorPageBase
     private TeamHerstelDto? _herstelResultaat;
     private string? _herstelFout;
 
+    private readonly LookupGeneratieGuard _laadGuard = new();
+
     private bool _toevoegenOpen;
 
     // #1549: client-side sortering op 'keer gebruikt' en 'aangemaakt' — geen nieuwe API-aanroep.
@@ -50,7 +52,14 @@ public partial class TeamAliassen : ClubSelectorPageBase
         await LaadAsync("pending");
     }
 
-    protected override Task OnClubChangedAsync() => LaadAsync(_filterStatus);
+    protected override Task OnClubChangedAsync()
+    {
+        // #1872: meldingen en het herstelresultaat horen bij de vorige club.
+        _melding = null;
+        _herstelResultaat = null;
+        _herstelFout = null;
+        return LaadAsync(_filterStatus);
+    }
 
     /// <summary>
     /// Bouwt de canonieke teamlijst opnieuw op (#946) en herlaadt daarna de aliaslijst, omdat de
@@ -63,9 +72,11 @@ public partial class TeamAliassen : ClubSelectorPageBase
         _herstelFout = null;
         StateHasChanged();
 
+        var clubCode = ClubSelector.SelectedClubCode;
         try
         {
             var result = await TeamsApi.HerstelTeamlijstAsync();
+            if (IsClubGewisseld(clubCode)) return; // #1872: uitkomst hoort bij een andere club
             if (result.Success && result.Data != null)
             {
                 _herstelResultaat = result.Data;
@@ -80,7 +91,7 @@ public partial class TeamAliassen : ClubSelectorPageBase
         }
         catch (Exception ex)
         {
-            _herstelFout = ex.Message;
+            if (!IsClubGewisseld(clubCode)) _herstelFout = ex.Message;
         }
         finally
         {
@@ -99,23 +110,26 @@ public partial class TeamAliassen : ClubSelectorPageBase
 
         try
         {
-            var result = await LerenApi.GetTeamAliassenAsync(string.IsNullOrEmpty(status) ? null : status);
-            if (result.Success && result.Data != null)
-            {
-                _stats = result.Data;
-                _items = result.Data.Items;
-            }
-            else
-            {
-                _fout = result.ErrorMessage ?? "Ophalen mislukt";
-            }
+            // #1872: late response van de vorige club negeren.
+            var toegepast = await LaadClubgebondenAsync(_laadGuard,
+                () => LerenApi.GetTeamAliassenAsync(string.IsNullOrEmpty(status) ? null : status),
+                result =>
+                {
+                    if (result.Success && result.Data != null)
+                    {
+                        _stats = result.Data;
+                        _items = result.Data.Items;
+                    }
+                    else
+                    {
+                        _fout = result.ErrorMessage ?? "Ophalen mislukt";
+                    }
+                });
+            if (toegepast) _bezig = false;
         }
         catch (Exception ex)
         {
             _fout = ex.Message;
-        }
-        finally
-        {
             _bezig = false;
         }
     }
@@ -126,9 +140,11 @@ public partial class TeamAliassen : ClubSelectorPageBase
         _melding = null;
         StateHasChanged();
 
+        var clubCode = ClubSelector.SelectedClubCode;
         try
         {
             var result = await LerenApi.ValideerTeamAliasAsync(id, status);
+            if (IsClubGewisseld(clubCode)) return; // #1872
             if (!result.Success)
                 _fout = result.ErrorMessage ?? "Actie mislukt";
             else
@@ -139,7 +155,7 @@ public partial class TeamAliassen : ClubSelectorPageBase
         }
         catch (Exception ex)
         {
-            _fout = ex.Message;
+            if (!IsClubGewisseld(clubCode)) _fout = ex.Message;
         }
         finally
         {
@@ -154,9 +170,11 @@ public partial class TeamAliassen : ClubSelectorPageBase
         _melding = null;
         StateHasChanged();
 
+        var clubCode = ClubSelector.SelectedClubCode;
         try
         {
             var result = await LerenApi.DeleteTeamAliasAsync(id);
+            if (IsClubGewisseld(clubCode)) return; // #1872
             if (!result.Success)
                 _fout = result.ErrorMessage ?? "Verwijderen mislukt";
             else
@@ -167,12 +185,13 @@ public partial class TeamAliassen : ClubSelectorPageBase
         }
         catch (Exception ex)
         {
-            _fout = ex.Message;
+            if (!IsClubGewisseld(clubCode)) _fout = ex.Message;
         }
         finally
         {
             _actieBezigId.Remove(id);
-            _verwijderConfirmId = null;
+            // #1872: na een clubwissel kan de open bevestiging bij een item van de nieuwe club horen.
+            if (!IsClubGewisseld(clubCode)) _verwijderConfirmId = null;
         }
     }
 
