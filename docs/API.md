@@ -366,10 +366,10 @@ Controleer of een veld beschikbaar is voor een oefenwedstrijd. Geeft een specifi
 | `datum` | `string` | **Ja** | Datum in `yyyy-MM-dd` formaat |
 | `aanvangsTijd` | `string` | Nee | Gewenste aftrapttijd `HH:mm`. Weglaten om beste slot te vinden |
 | `dagdeel` | `string` | Nee | Dagdeelfilter: `"ochtend"` (08:30 - 12:00), `"middag"` (12:00 - 17:00) of `"avond"` (17:00 - 22:00). Vensters en alternatieven blijven binnen dat dagdeel; een onbekende waarde wordt genegeerd |
-| `leeftijdsCategorie` | `string` | Nee | Leeftijdscategorie (bijv. `JO11`, `MO17`, `VR`, `1-99`). Bepaalt wedstrijdduur en veldgrootte. Weglaten voor beschikbare vensters |
+| `leeftijdsCategorie` | `string` | Nee | Leeftijdscategorie (bijv. `JO11`, `MO17`, `VR`, `1-99`). Bepaalt standaardwedstrijdduur en veldgrootte. Zonder categorie is een positieve `wedstrijdDuurMinuten` vereist |
 | `teamNaam` | `string` | Nee | Teamnaam voor conflictcontrole en teamspecifieke regels |
 | `tegenstander` | `string` | Nee | Tegenstander (alleen voor administratie) |
-| `wedstrijdDuurMinuten` | `integer` | Nee | Overschrijf wedstrijdduur in minuten (standaard uit Speeltijden) |
+| `wedstrijdDuurMinuten` | `integer` | Nee | Positieve duur in minuten; overschrijft de standaard uit Speeltijden. Zonder categorie of positieve duur stopt de controle met een reden en zoekt geen slot of venster |
 | `heelVeld` | `boolean` | Nee | Dwing een heel veld af, ook als de leeftijdscategorie normaal op een deelveld speelt. Levert een waarschuwing op, geen fout |
 
 ### Antwoord — Slot toegewezen (200)

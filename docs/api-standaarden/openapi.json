@@ -403,7 +403,7 @@
           "leeftijdsCategorie": {
             "type": "string",
             "nullable": true,
-            "description": "Leeftijdscategorie (bijv. JO13, MO17, VR, 1-99). Bepaalt duur en veldgrootte.",
+            "description": "Leeftijdscategorie (bijv. JO13, MO17, VR, 1-99). Bepaalt standaardduur en veldgrootte. Zonder categorie is een positieve wedstrijdDuurMinuten vereist.",
             "example": "JO13"
           },
           "teamNaam": {
@@ -421,7 +421,7 @@
           "wedstrijdDuurMinuten": {
             "type": "integer",
             "nullable": true,
-            "description": "Overschrijf wedstrijdduur in minuten (standaard uit Speeltijden)"
+            "description": "Positieve duur in minuten die de standaardduur uit Speeltijden overschrijft. Zonder categorie of positieve duur stopt de controle met een reden en zoekt geen slot of venster."
           },
           "heelVeld": {
             "type": "boolean",

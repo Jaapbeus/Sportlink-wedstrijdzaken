@@ -15,7 +15,7 @@ namespace FunctionApp.Tests.Planner;
 /// </summary>
 public class SqlServerPlannerViewIntegrationTests
 {
-    private const string Club = "ZPLANNER1814";
+    internal const string Club = "ZPLANNER1814";
     private static readonly DateOnly Datum = new(2026, 9, 5);
 
     [SqlServerFact]
@@ -139,8 +139,10 @@ public class SqlServerPlannerViewIntegrationTests
         }
     }
 
-    private sealed class Fixture(SqlConnection connection, SqlTransaction transaction) : IAsyncDisposable
+    internal sealed class Fixture(SqlConnection connection, SqlTransaction transaction) : IAsyncDisposable
     {
+        private readonly List<string> _syncEnabledClubs = [];
+
         public static async Task<Fixture> OpenAsync()
         {
             var conn = new SqlConnection(Environment.GetEnvironmentVariable(SqlServerFactAttribute.EnvVar));
@@ -149,6 +151,9 @@ public class SqlServerPlannerViewIntegrationTests
             var db = new Fixture(conn, tx);
             try
             {
+                await using (var enabled = db.Command("SELECT ClubCode FROM dbo.AppSettings WHERE SyncEnabled = 1"))
+                await using (var reader = await enabled.ExecuteReaderAsync())
+                    while (await reader.ReadAsync()) db._syncEnabledClubs.Add(reader.GetString(0));
                 // CI heeft teams/matches na de gesimuleerde sync, maar nog geen matchdetails/view.
                 // Gebruik de echte bronschema's, geen versimpelde testtabellen of schemaversoepeling.
                 foreach (var table in new[] { "Teams", "Matches", "MatchDetails" })
@@ -210,6 +215,21 @@ public class SqlServerPlannerViewIntegrationTests
             await cmd.ExecuteNonQueryAsync();
         }
 
+        internal async Task CommitEmailFixtureAsync(DateOnly date)
+        {
+            await using var cmd = Command("""
+                UPDATE his.matches SET kaledatum = @datum WHERE ClubCode = @club;
+                INSERT INTO dbo.Speeltijden (Leeftijd, Veldafmeting, WedstrijdTotaal, WedstrijdHelft, WedstrijdRust, ClubCode)
+                VALUES ('JO13', 1, 60, 25, 10, @club);
+                INSERT INTO dbo.VeldBeschikbaarheid (VeldNummer, DagVanWeek, BeschikbaarVanaf, BeschikbaarTot, GebruikZonsondergang, ClubCode)
+                VALUES (-1814, @dag, '08:00', '20:00', 0, @club);
+                """);
+            cmd.Parameters.AddWithValue("@datum", date.ToString("yyyy-MM-dd"));
+            cmd.Parameters.AddWithValue("@dag", date.DayOfWeek == DayOfWeek.Sunday ? 7 : (int)date.DayOfWeek);
+            await cmd.ExecuteNonQueryAsync();
+            await transaction.CommitAsync();
+        }
+
         public Task SpeeltijdAsync() => ExecAsync("""
             INSERT INTO his.teams (bk_teams, teamnaam, leeftijdscategorie, ClubCode)
             VALUES ('planner1814', 'ALLSTARS JO99-1', 'Onder 99', @club);
@@ -244,7 +264,27 @@ public class SqlServerPlannerViewIntegrationTests
 
         public async ValueTask DisposeAsync()
         {
-            await transaction.RollbackAsync();
+            if (transaction.Connection is not null)
+                await transaction.RollbackAsync();
+            else
+            {
+                await using var clean = new SqlCommand("""
+                    DELETE FROM his.matchdetails WHERE ClubCode = @club;
+                    DELETE FROM his.matches WHERE ClubCode = @club;
+                    DELETE FROM dbo.VeldBeschikbaarheid WHERE ClubCode = @club;
+                    DELETE FROM dbo.Speeltijden WHERE ClubCode = @club;
+                    DELETE FROM dbo.Velden WHERE ClubCode = @club;
+                    DELETE FROM dbo.AppSettings WHERE ClubCode = @club;
+                    """, connection);
+                clean.Parameters.AddWithValue("@club", Club);
+                await clean.ExecuteNonQueryAsync();
+                foreach (var club in _syncEnabledClubs)
+                {
+                    await using var restore = new SqlCommand("UPDATE dbo.AppSettings SET SyncEnabled = 1 WHERE ClubCode = @club", connection);
+                    restore.Parameters.AddWithValue("@club", club);
+                    await restore.ExecuteNonQueryAsync();
+                }
+            }
             await transaction.DisposeAsync();
             await connection.DisposeAsync();
         }

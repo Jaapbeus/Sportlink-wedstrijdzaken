@@ -77,6 +77,25 @@ public class AvailabilityServiceIntegrationTests : IDisposable
         response.Reden.Should().Contain("2020-01-04").And.Contain("in de toekomst");
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData(0)]
+    public async Task CheckAvailabilityAsync_ZonderPositieveDuur_BlokkeertVoorSlotZoekenZonderDatabase(int? duur)
+    {
+        var request = new CheckAvailabilityRequest
+        {
+            Datum = DateOnly.FromDateTime(DateTime.Today).AddDays(14).ToString("yyyy-MM-dd"),
+            WedstrijdDuurMinuten = duur
+        };
+
+        var response = await AvailabilityService.CheckAvailabilityAsync("Host=geen;Database=geen", request, NullLogger.Instance, Club);
+
+        response.Beschikbaar.Should().BeFalse();
+        response.BeschikbareVensters.Should().BeNull();
+        response.Toewijzing.Should().BeNull();
+        response.Reden.Should().Contain("wedstrijdduur is vereist");
+    }
+
     [PostgresFact]
     public async Task CheckAvailabilityAsync_VindtSlotOpVoorkeurstijd()
     {
@@ -284,7 +303,7 @@ public class AvailabilityServiceIntegrationTests : IDisposable
 
     // ── opstelling ─────────────────────────────────────────────────────────
 
-    private static async Task<NpgsqlConnection> OpstellingAsync()
+    internal static async Task<NpgsqlConnection> OpstellingAsync()
     {
         await HisTabelVorm.ZorgVoorProductievormAsync(ConnectionString, KnownEntities.Teams, KnownEntities.Matches, KnownEntities.MatchDetails);
         PostgresAppSettings.SetForTests("clubCode", Club);

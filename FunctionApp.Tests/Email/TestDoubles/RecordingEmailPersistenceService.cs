@@ -73,8 +73,13 @@ internal sealed class RecordingEmailPersistenceService : IEmailPersistenceServic
         return Task.CompletedTask;
     }
 
+    public List<(int VerwerkingId, string Response)> PlannerResponses { get; } = new();
+
     public Task UpdatePlannerResponseAsync(int verwerkingId, string plannerResponseJson)
-        => Task.CompletedTask;
+    {
+        PlannerResponses.Add((verwerkingId, plannerResponseJson));
+        return Task.CompletedTask;
+    }
 
     public Task UpdateAntwoordVerstuurdAsync(int verwerkingId, string verstuurdNaar, string antwoordEmail)
     {
