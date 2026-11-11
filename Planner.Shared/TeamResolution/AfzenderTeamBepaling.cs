@@ -38,6 +38,11 @@ public static class AfzenderTeamBepaling
         if (opzoeking is null || adres.Length == 0 || string.IsNullOrWhiteSpace(clubCode))
             return herkend;
         if (!TraceBuilder.IsTeamVereist(classificatie.Type.ToString())) return herkend;
+        if (opzoeking.Bron is OvergeslagenAfzenderTeamBron overgeslagen)
+        {
+            trace?.BegeleidingAfzenderOvergeslagen(overgeslagen.Reden);
+            return herkend;
+        }
         if (AntwoordadresWijktAf(opzoeking))
         {
             trace?.BegeleidingAfzenderOvergeslagen("antwoordadres wijkt af van afzender");

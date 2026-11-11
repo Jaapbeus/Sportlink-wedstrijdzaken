@@ -10,7 +10,7 @@ namespace FunctionApp.Postgres.Tests;
 /// <summary>
 /// Gedrag van <see cref="PostgresAfzenderTeamBron"/> (#1862) tegen een echte Postgres: hoofdletter- en spatieonafhankelijke
 /// adresvergelijking, alleen teamwaarden terug, hard gescoped op club, en gebruik van de expressie-index uit
-/// migratie 048. Vereist een gemigreerde database (zie <see cref="PostgresSyncFixtureIntegrationTests"/>); zonder de
+/// migratie 049. Vereist een gemigreerde database (zie <see cref="PostgresSyncFixtureIntegrationTests"/>); zonder de
 /// omgevingsvariabele worden de tests overgeslagen. Uitsluitend fictieve gegevens (<c>@allstars-fc.test</c>).
 /// </summary>
 public class AfzenderTeamBronIntegrationTests : IDisposable
@@ -71,9 +71,9 @@ public class AfzenderTeamBronIntegrationTests : IDisposable
         await ZetAsync(conn, Club, "O23-1", Adres);
         await using (var uit = new NpgsqlCommand("SET enable_seqscan = off", conn)) await uit.ExecuteNonQueryAsync();
 
-        await using var cmd = new NpgsqlCommand(
-            "EXPLAIN SELECT DISTINCT tb.team FROM avg.teambegeleiding tb WHERE LOWER(TRIM(tb.emailadres)) = @adres", conn);
-        cmd.Parameters.AddWithValue("adres", Adres);
+        // De productieopdracht zelf (met clubfilter en parameters), zodat een wijziging aan het predicaat hier zichtbaar wordt.
+        await using var cmd = PostgresAfzenderTeamBron.BouwOpdracht(conn, AfzenderTeamBronHulp.NormaliseerAdres(Adres), Club);
+        cmd.CommandText = "EXPLAIN " + cmd.CommandText.TrimStart();
         var plan = new List<string>();
         await using (var reader = await cmd.ExecuteReaderAsync())
             while (await reader.ReadAsync()) plan.Add(reader.GetString(0));

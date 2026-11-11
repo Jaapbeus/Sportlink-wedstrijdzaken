@@ -21,7 +21,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - De clubkiezer, startpoort en initialisatie van de hoofdindeling staan nu in het aangrenzende partial-bestand; gedrag blijft gelijk (zie issue #1807).
 
 ### Added
-- Een bericht zonder herkenbaar eigen team gebruikt nu het team van de afzender als die in de teambegeleiding bij precies één team staat; het antwoord noemt dat team met een controleregel. Bij meerdere teams, een onbekende afzender of een afwijkend Reply-To blijft de wedervraag om het team. Een genoemd team wint altijd. Beide databasetiers, met een index op het genormaliseerde e-mailadres (Postgres-migratie 048, SQL Server persisted computed column); het adres komt nooit in trace of log en de opzoeking schrijft geen inzageregel (#1862).
+- Een bericht zonder herkenbaar eigen team gebruikt nu het team van de afzender als die in de teambegeleiding bij precies één team staat; het antwoord noemt dat team met een controleregel. Bij meerdere teams, een onbekende afzender of een afwijkend Reply-To blijft de wedervraag om het team. Een genoemd team wint altijd. Beide databasetiers, met een index op het genormaliseerde e-mailadres (Postgres-migratie 049, SQL Server persisted computed column); het adres komt nooit in trace of log en de opzoeking schrijft geen inzageregel. De beheerderstester doet de opzoeking niet, en de SQL Server-demoseed zet `QUOTED_IDENTIFIER` aan voor de nieuwe kolom (#1862).
 
 ### Changed
 - Unused authentication members were removed from the shared auth interface and implementations; synthetic tests preserve existing role and logout behavior (see issue #1808).

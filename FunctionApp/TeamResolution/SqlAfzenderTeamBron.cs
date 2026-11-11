@@ -18,7 +18,15 @@ internal sealed class SqlAfzenderTeamBron(Func<string>? connectionString = null)
     {
         using var conn = new SqlConnection((connectionString ?? (() => SystemUtilities.DatabaseConfig.ConnectionString))());
         await conn.OpenAsync();
-        using var cmd = new SqlCommand($@"
+        using var cmd = BouwOpdracht(conn, afzender, clubCode);
+        using var reader = await cmd.ExecuteReaderAsync();
+        return await AfzenderTeamBronHulp.LeesTeamsAsync(reader);
+    }
+
+    /// <summary>De productiequery met parameters; de integratietest legt hiermee ook het SHOWPLAN-plan vast.</summary>
+    internal static SqlCommand BouwOpdracht(SqlConnection conn, string afzender, string clubCode)
+    {
+        var cmd = new SqlCommand($@"
             SELECT DISTINCT tb.[Team]
             FROM [avg].[Teambegeleiding] tb
             WHERE LOWER(LTRIM(RTRIM(tb.[Emailadres]))) = @adres
@@ -27,8 +35,6 @@ internal sealed class SqlAfzenderTeamBron(Func<string>? connectionString = null)
         ", conn);
         cmd.Parameters.AddWithValue("@adres", afzender);
         ClubScope.AddHisParams(cmd, clubCode);
-
-        using var reader = await cmd.ExecuteReaderAsync();
-        return await AfzenderTeamBronHulp.LeesTeamsAsync(reader);
+        return cmd;
     }
 }

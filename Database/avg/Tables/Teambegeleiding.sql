@@ -19,7 +19,7 @@ GO
 
 -- #1862: de opzoeking "bij welke teams staat dit e-mailadres?" (AfzenderTeamBron) vergelijkt
 -- LOWER(LTRIM(RTRIM(Emailadres))) = @adres. Een persisted computed column met index is de SQL Server-tegenhanger van
--- Postgres' expressie-index (Database.Postgres/migrations/048_teambegeleiding_email_index.sql): SQL Server matcht de
+-- Postgres' expressie-index (Database.Postgres/migrations/049_teambegeleiding_email_index.sql): SQL Server matcht de
 -- expressie uit de query automatisch, dus de querytekst blijft gelijk. Zuiver additief en niet uniek. Idempotent in
 -- Database/Script.PostDeployment1.sql. Vereist SET QUOTED_IDENTIFIER ON.
 ALTER TABLE [avg].[Teambegeleiding]

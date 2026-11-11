@@ -4221,7 +4221,7 @@ GO
 -- LOWER(LTRIM(RTRIM([Emailadres]))) = @adres; een persisted computed column met index maakt dat een seek in plaats van een
 -- scan (architectuurinvariant: LOWER()-vergelijking vraagt een persisted computed column + index). SQL Server matcht
 -- de expressie uit de query automatisch, dus de querytekst wijzigt niet. Zuiver additief en niet uniek: de vorige
--- codeversie blijft werken. Postgres-tegenhanger: Database.Postgres/migrations/048_teambegeleiding_email_index.sql.
+-- codeversie blijft werken. Postgres-tegenhanger: Database.Postgres/migrations/049_teambegeleiding_email_index.sql.
 -- Bron: Database/avg/Tables/Teambegeleiding.sql. QUOTED_IDENTIFIER moet AAN zijn (Msg 1934 bij sqlcmd-standaard OFF).
 SET QUOTED_IDENTIFIER ON;
 GO

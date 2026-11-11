@@ -24,8 +24,9 @@ public class AfzenderTeamBepalingTests
     private static BerichtClassificatie Zonder(VerzoekType type = VerzoekType.BeschikbaarheidCheck, string? team = null)
         => new() { Type = type, TeamNaam = team, Datum = "2026-11-14" };
 
-    private static async Task<(bool Herkend, BerichtClassificatie C, TraceBuilder T, FakeBron B)> Voer(
-        BerichtClassificatie c, FakeBron bron, FakeResolver resolver, string? afzender = Adres, params string[] replyTo)
+    private static async Task<(bool Herkend, BerichtClassificatie C, TraceBuilder T, TBron B)> Voer<TBron>(
+        BerichtClassificatie c, TBron bron, FakeResolver resolver, string? afzender = Adres, params string[] replyTo)
+        where TBron : IAfzenderTeamBron
     {
         var trace = new TraceBuilder();
         var herkend = await EigenTeamBepaling.BereidPlannerVoorAsync(c, resolver, Club, NullLogger.Instance, trace,
@@ -138,6 +139,20 @@ public class AfzenderTeamBepalingTests
         bron.Aanroepen.Should().Be(0, "een afwijkend antwoordadres mag nooit een opzoeking opleveren");
         c.TeamAfgeleidUitAfzender.Should().BeFalse();
         trace.Stappen.Single(s => s.Code == TraceCodes.BegeleidingAfzender).Uitkomst.Should().Be("Overgeslagen");
+    }
+
+    [Fact]
+    public async Task Proefverwerking_SlaatDeOpzoekingOverEnNoemtDeReden()
+    {
+        // De beheerderstester: een vrij ingetypt adres mag niet tonen welk team iemand begeleidt (buiten #1701 om).
+        var (herkend, c, trace, _) = await Voer(Zonder(), OvergeslagenAfzenderTeamBron.Proefverwerking, Resolver());
+
+        herkend.Should().BeFalse();
+        c.TeamNaam.Should().BeNull();
+        c.TeamAfgeleidUitAfzender.Should().BeFalse();
+        var stap = trace.Stappen.Single(s => s.Code == TraceCodes.BegeleidingAfzender);
+        stap.Uitkomst.Should().Be("Overgeslagen");
+        stap.Details["reden"].Should().Be(OvergeslagenAfzenderTeamBron.Proefverwerking.Reden);
     }
 
     [Fact]

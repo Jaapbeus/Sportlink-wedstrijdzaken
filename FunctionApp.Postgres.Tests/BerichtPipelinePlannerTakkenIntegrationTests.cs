@@ -95,7 +95,9 @@ public class BerichtPipelinePlannerTakkenIntegrationTests : IAsyncLifetime
         Veld(r["wedstrijd"]!, "wedstrijd").ToString().Should().Be($"{Team} - {Tegenstander}");
         var resultaat = trace.Bouw();
         resultaat.Stappen.Select(x => x.Code).Should().Equal(
-            "classificatie", "team-herkenning", "tegenstander-herkenning", "datum", "opponent-pad", "eindoordeel");
+            "classificatie", "team-herkenning", "tegenstander-herkenning", "begeleiding-afzender", "datum", "opponent-pad", "eindoordeel");
+        // #1862: de echte tier-opzoeking draait mee; de afzender staat voor deze club niet in de begeleiding.
+        resultaat.Stappen.Single(x => x.Code == "begeleiding-afzender").Details[AfzenderTeamBepaling.AantalSleutel].Should().Be("0");
         var pad = resultaat.Stappen.Single(x => x.Code == "opponent-pad");
         pad.Uitkomst.Should().Be("Wedstrijd gevonden");
         pad.Details["tak"].Should().Be("opponent-op-datum");
@@ -137,7 +139,9 @@ public class BerichtPipelinePlannerTakkenIntegrationTests : IAsyncLifetime
         classificatie.LeeftijdsCategorie.Should().BeNull();
         var resultaat = trace.Bouw();
         resultaat.Stappen.Select(x => x.Code).Should().Equal(
-            "classificatie", "team-herkenning", "tegenstander-herkenning", "datum", "opponent-pad", "eindoordeel");
+            "classificatie", "team-herkenning", "tegenstander-herkenning", "begeleiding-afzender", "datum", "opponent-pad", "eindoordeel");
+        // #1862: de echte tier-opzoeking draait mee; de afzender staat voor deze club niet in de begeleiding.
+        resultaat.Stappen.Single(x => x.Code == "begeleiding-afzender").Details[AfzenderTeamBepaling.AantalSleutel].Should().Be("0");
         resultaat.Stappen.Single(x => x.Code == "opponent-pad").Details["tak"].Should().Be("niet-gevonden");
         resultaat.Oordeel.IsZeker.Should().BeFalse();
     }

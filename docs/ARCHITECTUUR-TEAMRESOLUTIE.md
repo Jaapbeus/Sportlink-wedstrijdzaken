@@ -152,7 +152,8 @@ de tier levert alleen `IAfzenderTeamBron` (`PostgresAfzenderTeamBron` en `SqlAfz
 de begeleiding, gefilterd op club en `LOWER(TRIM(emailadres))`. Een team uit de afzender krijgt `TeamAfgeleidUitAfzender` en het
 antwoord noemt het met een controleregel (`AfgeleidTeamControle`: "We gaan uit van …; klopt dat niet, laat het ons weten.").
 Wijkt een genoemd team af van het begeleidingsteam, dan komt er alleen een tracenotitie (`afzenderBegeleidtAnderTeam: ja`,
-zonder namen, zonder review-markering). Wijkt Reply-To af van From, dan vindt er geen opzoeking plaats. De trace
+zonder namen, zonder review-markering). Wijkt Reply-To af van From, dan vindt er geen opzoeking plaats; de beheerderstester
+(`test/email`) doet de opzoeking nooit (`OvergeslagenAfzenderTeamBron.Proefverwerking`, zie `EMAIL-VERWERKING.md` §5e). De trace
 (`begeleiding-afzender`) bevat alleen het aantal gevonden teams (0, 1 of meer) en de canonieke naam; het e-mailadres staat
 nooit in trace, log of telemetrie. De index staat in `ARCHITECTUUR-DATABASE-TIERS.md` §86; de AVG-onderbouwing in
 `EMAIL-VERWERKING.md` §5e.

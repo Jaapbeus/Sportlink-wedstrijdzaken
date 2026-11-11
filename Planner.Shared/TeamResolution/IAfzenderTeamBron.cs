@@ -20,6 +20,27 @@ public interface IAfzenderTeamBron
 }
 
 /// <summary>
+/// Een bron die bewust niet zoekt (#1862): de pipeline slaat de afzender-opzoeking dan over en de trace noemt de reden.
+/// De beheerderstester (proefverwerking) gebruikt hem, omdat daar een mens een vrij ingetypt adres invoert en het
+/// antwoord ziet: zo'n opzoeking zou tonen welk team iemand begeleidt, buiten het inzagelog (#1701) om. De automatische
+/// verwerking van echte mail gebruikt de tier-bron.
+/// </summary>
+public sealed class OvergeslagenAfzenderTeamBron : IAfzenderTeamBron
+{
+    /// <summary>Voor de proefverwerking in de beheerderstester (<c>test/email</c>).</summary>
+    public static readonly OvergeslagenAfzenderTeamBron Proefverwerking = new("proefverwerking door een beheerder");
+
+    private OvergeslagenAfzenderTeamBron(string reden) => Reden = reden;
+
+    /// <summary>De reden in de trace; nooit een adres of naam.</summary>
+    public string Reden { get; }
+
+    /// <summary>Wordt nooit aangeroepen: <see cref="AfzenderTeamBepaling"/> herkent deze bron vooraf.</summary>
+    public Task<IReadOnlyList<string>> ZoekTeamsVanAfzenderAsync(string afzender, string clubCode)
+        => throw new InvalidOperationException("De afzender-opzoeking is voor deze verwerking uitgeschakeld.");
+}
+
+/// <summary>
 /// De gegevens waarmee <see cref="AfzenderTeamBepaling"/> het eigen team uit de afzender kan afleiden. Het
 /// e-mailadres blijft hierin en gaat nooit naar trace, log of telemetrie.
 /// </summary>

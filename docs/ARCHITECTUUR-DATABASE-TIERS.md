@@ -4964,13 +4964,18 @@ uit) en geeft alleen de teamkolom terug. Een `LOWER()`-vergelijking vraagt een i
 een scan over de hele begeleidingslijst.
 
 - **Postgres:** expressie-index `ix_teambegeleiding_email_lower` op `avg.teambegeleiding (LOWER(TRIM(emailadres)))`, migratie
-  `048_teambegeleiding_email_index.sql`. Geen nieuwe tabel, dus geen nieuwe RLS-stap (RLS staat al aan sinds migratie 021).
+  `049_teambegeleiding_email_index.sql`. Geen nieuwe tabel, dus geen nieuwe RLS-stap (RLS staat al aan sinds migratie 021).
 - **SQL Server:** persisted computed column `EmailadresGenormaliseerd AS LOWER(LTRIM(RTRIM([Emailadres]))) PERSISTED` met
   `IX_avg_Teambegeleiding_EmailadresGenormaliseerd` (`INCLUDE ([Team], [ClubCode])`), in `Database/avg/Tables/Teambegeleiding.sql` en
   idempotent in `Script.PostDeployment1.sql` (met `SET QUOTED_IDENTIFIER ON`, net als §75). SQL Server matcht de expressie uit de query
   automatisch, dus de querytekst is op beide tiers gelijk in vorm.
 - **Expand (§57):** uitsluitend additief en niet uniek; de vorige code merkt de kolom en index niet.
-- **Bewijs:** de Postgres-integratietest `AfzenderTeamBronIntegrationTests.Opzoeking_GebruiktDeExpressieIndex` controleert het
-  `EXPLAIN`-plan; voor SQL Server geldt `SHOWPLAN_TEXT` op een gemigreerde database (zie de PR voor de uitgevoerde controle).
+- **Bewijs:** beide integratietests leggen het plan van de productieopdracht zelf vast (`BouwOpdracht`, met clubfilter en
+  parameters): Postgres `AfzenderTeamBronIntegrationTests.Opzoeking_GebruiktDeExpressieIndex` (`EXPLAIN`) en SQL Server
+  `SqlAfzenderTeamBronIntegrationTests.Opzoeking_GebruiktDeIndexOpDeComputedColumn` (`SHOWPLAN_TEXT`, Index Seek). Beide draaien
+  in CI tegen een verse, gemigreerde database.
+- **Seedscripts:** een sqlcmd-script dat in `avg.Teambegeleiding` schrijft, zet eerst `SET QUOTED_IDENTIFIER ON` (Msg 1934 bij de
+  sqlcmd-standaard); `SeedScriptsQuotedIdentifierTests` bewaakt dat voor `scripts/migrations/`.
+- **Volgnummer:** 049, omdat 048 al in een openstaande PR voor een andere migratie gebruikt wordt.
 - **Bewaartermijn:** ongewijzigd. De bestaande opruiming (`CleanupTeambegeleiding`) verwijdert de rijen en daarmee de indexregels.
 
