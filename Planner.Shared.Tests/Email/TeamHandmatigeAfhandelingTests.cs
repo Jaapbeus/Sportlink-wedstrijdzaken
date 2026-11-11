@@ -26,6 +26,35 @@ public sealed class TeamHandmatigeAfhandelingTests
     }
 
     [Fact]
+    public async Task TeamReviewAndSuppressedReply_EnsureSameManualPlanningCategory()
+    {
+        var teamReviewGraph = new FakeReplyGraph();
+        await TeamHandmatigeAfhandeling.HandelAsync(
+            1, "team-review", new RecordingReplyPersistentie(), teamReviewGraph);
+
+        var suppressedReplyGraph = new FakeReplyGraph();
+        await EmailReplyAfhandeling.HandelReplyFlowAfAsync(
+            verwerkingId: 2,
+            email: new ReplyBericht("suppressed-reply", "afzender@voorbeeld.test", null),
+            classificatie: new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck },
+            plannerResponseJson: JsonConvert.SerializeObject(new { Beschikbaar = true }),
+            reviewMode: false,
+            reviewRecipient: null,
+            graphService: suppressedReplyGraph,
+            persistentie: new RecordingReplyPersistentie(),
+            bouwTemplateAntwoordAsync: () => Task.FromResult(("subj", "body")),
+            sanitizeFoutMelding: s => s,
+            haken: TestHaken.Standaard,
+            log: NullLogger.Instance);
+
+        var teamReviewCategory = Assert.Single(teamReviewGraph.EnsuredCategories);
+        var suppressedReplyCategory = Assert.Single(suppressedReplyGraph.EnsuredCategories);
+        Assert.Equal(teamReviewCategory, suppressedReplyCategory);
+        Assert.Equal("Handmatige planning", teamReviewCategory.Name);
+        Assert.Equal("preset5", teamReviewCategory.ColorPreset);
+    }
+
+    [Fact]
     public void RuntimeOnlyFlag_DoesNotAlterEitherSerializedContract()
     {
         var classification = new BerichtClassificatie { TeamHandmatigBeoordelen = true };

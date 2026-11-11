@@ -24,8 +24,8 @@ public static class TeamHandmatigeAfhandeling
         await opslag.UpdateStatusAsync(verwerkingId, EmailStatus.Review, null);
         try
         {
-            await graph.EnsureMasterCategoryAsync("Handmatige planning", "preset8");
-            await graph.SetCategoriesAsync(messageId, "Handmatige planning");
+            await graph.EnsureMasterCategoryAsync(EmailCategorieLabels.HandmatigePlanning, EmailCategorieLabels.HandmatigePlanningKleur);
+            await graph.SetCategoriesAsync(messageId, EmailCategorieLabels.HandmatigePlanning);
             await graph.MarkAsReadAsync(messageId);
         }
         catch (Exception ex)

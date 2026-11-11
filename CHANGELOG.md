@@ -37,7 +37,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Team resolution now checks both own-team fields against source-owned fixture context; inconclusive or ambiguous evidence requires terminal manual review without automatic planning or sending (#1816).
 - Deleting a Sync alias persistently rejects the association across canonicalization; other alias origins remain physically deletable (#1816).
 - Query-free planner exits no longer initialize database configuration; fixture-repository creation and query failures both lead to manual review on both tiers (#1816).
-- Teamherkenning respecteert expliciete JO/MO-prefixen, herkent JM-suffixen en samengestelde meisjesaanduidingen, houdt categorie-normalisatie idempotent en bewaart afgewezen Sync-aliassen bij volgende synchronisaties (#1816)
+- Teamherkenning respecteert expliciete JO/MO-prefixen in C# en beide SQL-tiers, herkent JM-suffixen en samengestelde meisjesaanduidingen, houdt categorie-normalisatie idempotent, bewaart afgewezen Sync-aliassen bij volgende synchronisaties en gebruikt één categorie-instelling voor beide handmatige planningspaden (#1816)
 
 ## [3.16.0.0] — 2026-11-10
 
