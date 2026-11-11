@@ -9773,7 +9773,7 @@
         ],
         "operationId": "feedbackSubmit",
         "summary": "Feedback indienen (bewaren, en direct publiceren als beheerder)",
-        "description": "Open voor elke ingelogde rol (#764). De melder (Entra object-ID, naam-momentopname, rol) komt\nuitsluitend uit het Easy Auth-principal en wordt bewaard in `avg.Feedback` — nooit in het\npublieke issue. Structureert de feedback met GPT-4o-mini en bewaart de te publiceren titel en body.\n\n* Rol **admin**: de melding wordt direct als GitHub-issue gepubliceerd (is GitHub niet\n  geconfigureerd, dan blijft ze bewaard met een `waarschuwing`).\n* Rol **user**: de melding wacht (`status: wacht-op-publicatie`) tot een beheerder haar in het\n  overzicht publiceert (`POST /beheer/feedback/{id}/publiceer`). De response bevat geen\n  issueverwijzing.\n\nIs `bevestiging` meegestuurd — de velden zoals `/feedback/preview` ze teruggaf en de\nbeheerder ze gezien heeft — dan wordt exact díe tekst gepubliceerd en volgt er géén nieuwe\nAI-aanroep. De PII-gate draait onverkort op de uiteindelijke titel en body.\n\nLimieten: max 3 meldingen per 10 minuten per gebruiker (gemeten in de database, dus gedeeld over\ninstances) en een vangnet van 30 per uur voor de hele club.\n",
+        "description": "Open voor elke ingelogde rol (#764). De melder (Entra object-ID, naam-momentopname, rol) komt\nuitsluitend uit het Easy Auth-principal en wordt bewaard in `avg.Feedback` — nooit in het\npublieke issue. Structureert de feedback met GPT-4o-mini en bewaart de te publiceren titel en body.\n\n* Rol **admin**: de melding wordt direct als GitHub-issue gepubliceerd (is GitHub niet\n  geconfigureerd, dan blijft ze bewaard met een `waarschuwing`). Bij een time-out, verbroken verbinding of HTTP 408/5xx\n  tijdens de POST is de uitkomst onbekend; de melding blijft op `publiceren` en is te herstellen via `POST /beheer/feedback/{id}/publiceer`.\n* Rol **user**: de melding wacht (`status: wacht-op-publicatie`) tot een beheerder haar in het\n  overzicht publiceert (`POST /beheer/feedback/{id}/publiceer`). De response bevat geen\n  issueverwijzing.\n\nIs `bevestiging` meegestuurd — de velden zoals `/feedback/preview` ze teruggaf en de\nbeheerder ze gezien heeft — dan wordt exact díe tekst gepubliceerd en volgt er géén nieuwe\nAI-aanroep. De PII-gate draait onverkort op de uiteindelijke titel en body.\n\nLimieten: max 3 meldingen per 10 minuten per gebruiker (gemeten in de database, dus gedeeld over\ninstances) en een vangnet van 30 per uur voor de hele club.\n",
         "security": [
           {
             "easyAuth": []
@@ -9859,7 +9859,7 @@
             "$ref": "#/components/responses/InternalServerError"
           },
           "502": {
-            "description": "Bewaard, maar publiceren op GitHub is mislukt (alleen beheerder); opnieuw te publiceren via het overzicht",
+            "description": "Publicatie mislukt (alleen beheerder). Bij time-out, verbroken verbinding of HTTP 408/5xx is de uitkomst onbekend en blijft de melding op `publiceren`; herstel via het overzicht controleert eerst of het issue al bestaat. Een expliciete afwijzing van de API blijft opnieuw te publiceren.",
             "content": {
               "application/json": {
                 "schema": {
@@ -10114,7 +10114,7 @@
             "$ref": "#/components/responses/InternalServerError"
           },
           "502": {
-            "description": "Publiceren op GitHub mislukt; de melding blijft bewaard en is opnieuw te publiceren",
+            "description": "Publiceren is mislukt of kon niet volledig worden bevestigd. Wijst GitHub de aanmaak expliciet af (een 4xx anders dan 408, ook na de 422-fallback zonder eigen labels), dan gaat de melding naar `github-mislukt` en is ze opnieuw te publiceren. Is de uitkomst onbekend (time-out, annulering, HTTP 408/5xx) of mislukte de receipt-opslag of de controle op een bestaand issue, dan blijft de melding op `publiceren` en is ze na enkele minuten opnieuw te proberen; de server controleert dan eerst via de issuelijst of het issue al bestaat en koppelt dat. Kon een oudere melding vóór de POST geen publicatiereferentie krijgen, dan is er niets verstuurd en is ze opnieuw te publiceren.",
             "content": {
               "application/json": {
                 "schema": {

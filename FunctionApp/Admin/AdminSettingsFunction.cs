@@ -357,6 +357,9 @@ public static class AdminSettingsFunction
         [JsonProperty("display_name")] public string DisplayName { get; set; } = "";
     }
 
+    internal static HttpClient CreateManagementHttpClient(HttpMessageHandler? handler = null) =>
+        new(handler ?? new HttpClientHandler()) { Timeout = TimeSpan.FromSeconds(10) };
+
     /// <summary>
     /// Werkt de FETCH_SCHEDULE Azure App Setting bij via de Azure Management API.
     /// Azure herstart de Function App automatisch bij app setting wijziging.
@@ -390,7 +393,7 @@ public static class AdminSettingsFunction
             var tokenContext = new TokenRequestContext(["https://management.azure.com/.default"]);
             var token = await credential.GetTokenAsync(tokenContext);
 
-            using var http = new HttpClient();
+            using var http = CreateManagementHttpClient();
             http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
 
             var baseUrl = $"https://management.azure.com/subscriptions/{subscriptionId}" +

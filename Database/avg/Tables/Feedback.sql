@@ -23,6 +23,7 @@ CREATE TABLE [avg].[Feedback] (
     [IssueStatusGecontroleerdOpUtc] DATETIME2        NULL,
     [IsGeanonimiseerd]              BIT              NOT NULL CONSTRAINT [DF_avg_Feedback_IsGeanonimiseerd] DEFAULT (0),
     [GeanonimiseerdOpUtc]           DATETIME2        NULL,
+    [PublicatieGestartOpUtc]        DATETIME2        NULL, -- begin van de lopende publicatiepoging; zoekgrens van het herstel (#1803)
     [mta_inserted]                  DATETIME2        NOT NULL CONSTRAINT [DF_avg_Feedback_mta_inserted] DEFAULT (GETUTCDATE()),
     [mta_modified]                  DATETIME2        NOT NULL CONSTRAINT [DF_avg_Feedback_mta_modified] DEFAULT (GETUTCDATE()),
     CONSTRAINT [PK_avg_Feedback] PRIMARY KEY CLUSTERED ([Id] ASC),
