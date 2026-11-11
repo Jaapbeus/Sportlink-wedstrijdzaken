@@ -252,7 +252,7 @@ public class BerichtAiKern
 
     /// <param name="clubNaam">Levert de clubnaam uit de instellingen van de tier; gooit zelf een
     /// <see cref="InvalidOperationException"/> met een tier-eigen melding als die ontbreekt.</param>
-    /// <param name="nu">Lokale tijd (NL-context) voor de datumregel; de tier geeft <c>DateTime.Now</c>.</param>
+    /// <param name="nu">Nederlandse bedrijfstijd voor de datumregel; de tier geeft <c>NederlandseBedrijfsKlok.Nu</c>.</param>
     public BerichtAiKern(ILogger logger, IChatClient chatClient, Func<string> clubNaam, Func<DateTime> nu)
     {
         _logger = logger;
