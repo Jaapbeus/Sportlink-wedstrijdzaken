@@ -33,6 +33,14 @@ internal sealed class FeedbackStoreFake : IFeedbackStore
         return Task.FromResult(ClaimSlaagt);
     }
 
+    public DateTime? HerClaimVorigMoment { get; set; } = DateTime.UtcNow.AddMinutes(-10);
+
+    public Task<DateTime?> HerClaimPublicatieAsync(string clubCode, Guid feedbackId, DateTime claimOuderDanUtc)
+    {
+        if (Statussen.GetValueOrDefault(feedbackId) != FeedbackStatusWaarden.Publiceren) return Task.FromResult<DateTime?>(null);
+        return Task.FromResult(HerClaimVorigMoment);
+    }
+
     public Task ZetGepubliceerdAsync(string clubCode, Guid feedbackId, int issueNummer, string issueUrl)
     {
         Statussen[feedbackId] = FeedbackStatusWaarden.Gepubliceerd;

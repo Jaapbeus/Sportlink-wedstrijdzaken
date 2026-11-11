@@ -247,6 +247,11 @@ public static class FeedbackCore
         string[] labels, ILogger log, CancellationToken cancellationToken = default) =>
         FeedbackGitHub.MaakGitHubIssueAsync(pat, owner, repo, title, body, labels, log, cancellationToken);
 
+    public static Task<(bool gelukt, FeedbackGevondenIssue? gevonden)> ZoekIssueMetReferentieAsync(
+        string pat, string owner, string repo, string referentie, DateTime sindsUtc, ILogger log,
+        CancellationToken cancellationToken = default) =>
+        FeedbackGitHub.ZoekIssueMetReferentieAsync(pat, owner, repo, referentie, sindsUtc, log, cancellationToken);
+
     public static Task<(bool gelukt, DateTime? geslotenOpUtc)> HaalIssueSluitingAsync(
         string pat, string owner, string repo, int nummer, ILogger log, CancellationToken cancellationToken = default) =>
         FeedbackGitHub.HaalIssueSluitingAsync(pat, owner, repo, nummer, log, cancellationToken);

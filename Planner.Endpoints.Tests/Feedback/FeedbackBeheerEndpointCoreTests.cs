@@ -176,7 +176,116 @@ public class FeedbackBeheerEndpointCoreTests
         result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(502);
         githubCalls.Should().Be(1);
         store.Statussen[Id].Should().Be(FeedbackStatusWaarden.Publiceren,
-            "an ambiguous POST must stay claimed and must not become retryable");
+            "an ambiguous POST stays claimed; recovery goes through the reference check, not a blind retry");
+    }
+
+    // ── Automatisch herstel van een vastgelopen publicatie (#1803, besluit 2C) ─────────────────
+
+    private const string Referentie = "abcdefghijklmnopqrstuvwx";
+    private static FeedbackDetail MaakVastgelopen() =>
+        MaakDetail(FeedbackStatusWaarden.Publiceren, FeedbackPublicatieReferentie.VoegToe("Schone issuetekst.", Referentie));
+
+    private static Func<string, DateTime, Task<(bool, FeedbackGevondenIssue?)>> Zoek(
+        out List<(string Referentie, DateTime Sinds)> aanroepen, FeedbackGevondenIssue? gevonden = null, bool gelukt = true, bool gooit = false)
+    {
+        var lijst = new List<(string, DateTime)>();
+        aanroepen = lijst;
+        return (r, sinds) =>
+        {
+            lijst.Add((r, sinds));
+            if (gooit) throw new HttpRequestException("onbereikbaar");
+            return Task.FromResult((gelukt, gevonden));
+        };
+    }
+
+    [Fact]
+    public async Task Herstel_IssueBestaatAl_KoptHetZonderNieuwIssue()
+    {
+        var store = new FeedbackStoreFake { Detail = MaakVastgelopen() };
+        store.Statussen[Id] = FeedbackStatusWaarden.Publiceren;
+        var zoek = Zoek(out var zoeken, new FeedbackGevondenIssue(41, "https://github.com/example/repo/issues/41"));
+
+        var result = await FeedbackBeheerEndpointCore.PubliceerAsync(ClubCode, Beheerder, store, Id, GitHub(out var aanroepen), NullLogger.Instance, zoek);
+
+        result.Should().BeOfType<OkObjectResult>();
+        aanroepen.Should().BeEmpty("het bestaande issue wordt gekoppeld, er komt geen tweede");
+        store.Gepubliceerd[Id].Nummer.Should().Be(41);
+        zoeken.Should().ContainSingle().Which.Referentie.Should().Be(Referentie);
+        zoeken[0].Sinds.Should().Be(store.HerClaimVorigMoment!.Value - FeedbackPublicatieHerstel.ZoekMarge);
+    }
+
+    [Fact]
+    public async Task Herstel_IssueBestaatNiet_PlaatstOpnieuwMetDezelfdeReferentie()
+    {
+        var store = new FeedbackStoreFake { Detail = MaakVastgelopen() };
+        store.Statussen[Id] = FeedbackStatusWaarden.Publiceren;
+        var bodies = new List<string>();
+        Func<string, string, string[], Task<(int, string)>> github = (_, body, _) =>
+        {
+            bodies.Add(body);
+            return Task.FromResult((77, "https://github.com/example/repo/issues/77"));
+        };
+
+        var result = await FeedbackBeheerEndpointCore.PubliceerAsync(ClubCode, Beheerder, store, Id, github, NullLogger.Instance, Zoek(out _));
+
+        result.Should().BeOfType<OkObjectResult>();
+        store.Gepubliceerd[Id].Nummer.Should().Be(77);
+        FeedbackPublicatieReferentie.Lees(bodies.Single()).Should().Be(Referentie, "de referentie wordt bij elke poging hergebruikt");
+    }
+
+    [Fact]
+    public async Task Herstel_GitHubOnbereikbaar_BlijftHerstelbaarZonderNieuwIssue()
+    {
+        foreach (var variant in new[] { Zoek(out _, gelukt: false), Zoek(out _, gooit: true) })
+        {
+            var store = new FeedbackStoreFake { Detail = MaakVastgelopen() };
+            store.Statussen[Id] = FeedbackStatusWaarden.Publiceren;
+
+            var result = await FeedbackBeheerEndpointCore.PubliceerAsync(ClubCode, Beheerder, store, Id, GitHub(out var aanroepen), NullLogger.Instance, variant);
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(502);
+            aanroepen.Should().BeEmpty("zonder zekerheid over een bestaand issue wordt niet geplaatst");
+            store.Statussen[Id].Should().Be(FeedbackStatusWaarden.Publiceren, "de claim blijft herstelbaar");
+        }
+    }
+
+    [Fact]
+    public async Task Herstel_ClaimNogVers_Geeft409ZonderZoekenOfPlaatsen()
+    {
+        var store = new FeedbackStoreFake { Detail = MaakVastgelopen(), HerClaimVorigMoment = null };
+        store.Statussen[Id] = FeedbackStatusWaarden.Publiceren;
+
+        var result = await FeedbackBeheerEndpointCore.PubliceerAsync(ClubCode, Beheerder, store, Id, GitHub(out var aanroepen), NullLogger.Instance, Zoek(out var zoeken));
+
+        result.Should().BeOfType<ConflictObjectResult>();
+        aanroepen.Should().BeEmpty();
+        zoeken.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Herstel_NieuwePlaatsingOnbekendeUitkomst_BlijftOpnieuwHerstelbaar()
+    {
+        var store = new FeedbackStoreFake { Detail = MaakVastgelopen() };
+        store.Statussen[Id] = FeedbackStatusWaarden.Publiceren;
+        Func<string, string, string[], Task<(int, string)>> github = (_, _, _) =>
+            throw new FeedbackPublicatieUitkomstOnbekendException(new TaskCanceledException());
+
+        var result = await FeedbackBeheerEndpointCore.PubliceerAsync(ClubCode, Beheerder, store, Id, github, NullLogger.Instance, Zoek(out _));
+
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(502);
+        store.Statussen[Id].Should().Be(FeedbackStatusWaarden.Publiceren);
+    }
+
+    [Fact]
+    public async Task Herstel_ZonderZoekdelegate_Geeft503ZonderClaimWijziging()
+    {
+        var store = new FeedbackStoreFake { Detail = MaakVastgelopen() };
+        store.Statussen[Id] = FeedbackStatusWaarden.Publiceren;
+
+        var result = await FeedbackBeheerEndpointCore.PubliceerAsync(ClubCode, Beheerder, store, Id, GitHub(out var aanroepen), NullLogger.Instance);
+
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(503);
+        aanroepen.Should().BeEmpty();
     }
 
     [Fact]

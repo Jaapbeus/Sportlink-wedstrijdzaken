@@ -100,6 +100,22 @@ internal sealed class SqlFeedbackStore : IFeedbackStore
         return await cmd.ExecuteNonQueryAsync() == 1;
     }
 
+    public async Task<DateTime?> HerClaimPublicatieAsync(string clubCode, Guid feedbackId, DateTime claimOuderDanUtc)
+    {
+        using var conn = await OpenAsync();
+        // Eén atomaire UPDATE: de tweede gelijktijdige herclaim ziet het nieuwe claimmoment en valt af.
+        using var cmd = new SqlCommand(@"
+            UPDATE [avg].[Feedback] SET [mta_modified] = GETUTCDATE()
+            OUTPUT deleted.[mta_modified]
+            WHERE [FeedbackId] = @Id AND [ClubCode] = @Cc AND [Status] = @Publiceren AND [mta_modified] < @Drempel", conn);
+        cmd.Parameters.AddWithValue("@Publiceren", FeedbackStatusWaarden.Publiceren);
+        cmd.Parameters.Add("@Drempel", System.Data.SqlDbType.DateTime2).Value = claimOuderDanUtc;
+        cmd.Parameters.AddWithValue("@Id", feedbackId);
+        cmd.Parameters.AddWithValue("@Cc", clubCode);
+        var oud = await cmd.ExecuteScalarAsync();
+        return oud is DateTime d ? DateTime.SpecifyKind(d, DateTimeKind.Utc) : null;
+    }
+
     public async Task ZetGepubliceerdAsync(string clubCode, Guid feedbackId, int issueNummer, string issueUrl)
     {
         using var conn = await OpenAsync();

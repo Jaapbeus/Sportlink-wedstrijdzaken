@@ -375,7 +375,20 @@ public class FeedbackEndpointCoreTests
         result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(502);
         github.Aanroepen.Should().Be(1);
         store.Statussen[store.Bewaard.Single().Rij.FeedbackId].Should().Be(FeedbackStatusWaarden.Publiceren,
-            "a timed-out GitHub write may already have created the issue and must not become retryable");
+            "a timed-out GitHub write may already have created the issue; recovery runs through the reference check");
+    }
+
+    [Fact]
+    public async Task DirectePublicatie_LegtDeReferentieVoorDeEerstePostVastEnStuurtDezelfdeBody()
+    {
+        var (store, github) = (new FeedbackStoreFake(), new FakeGitHub { UnknownOutcome = new FeedbackPublicatieUitkomstOnbekendException(new TaskCanceledException()) });
+
+        await Submit(MaakRequest(), Beheerder, store, new FakeChat(GeldigeAiJson()), github);
+
+        var bewaardeBody = store.Bewaard.Single().Rij.IssueBody;
+        FeedbackPublicatieReferentie.Lees(bewaardeBody).Should().NotBeNull();
+        github.Body.Should().Be(bewaardeBody, "de referentie staat in de bewaarde claim vóór de POST en gaat ongewijzigd mee");
+        bewaardeBody.Should().NotContain(store.Bewaard.Single().Rij.FeedbackId.ToString("N"), "geen afleidbare databasesleutel");
     }
 
     [Fact]

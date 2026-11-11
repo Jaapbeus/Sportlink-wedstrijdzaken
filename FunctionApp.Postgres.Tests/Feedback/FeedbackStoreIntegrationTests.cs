@@ -110,6 +110,29 @@ public class FeedbackStoreIntegrationTests
     }
 
     [PostgresFact]
+    public async Task HerClaimPublicatie_AlleenVoorOudeClaimEnMaarEenKeer()
+    {
+        var club = NieuweClub();
+        try
+        {
+            var s = Store();
+            var rij = Rij(club);
+            await s.BewaarAsync(rij, []);
+
+            (await s.HerClaimPublicatieAsync(club, rij.FeedbackId, DateTime.UtcNow.AddMinutes(1))).Should().BeNull("een wachtende melding is geen vastgelopen claim");
+            await s.ClaimPublicatieAsync(club, rij.FeedbackId);
+
+            (await s.HerClaimPublicatieAsync(club, rij.FeedbackId, DateTime.UtcNow.AddMinutes(-2))).Should().BeNull("een verse claim kan nog lopen");
+            (await s.HerClaimPublicatieAsync(club, rij.FeedbackId, DateTime.UtcNow.AddMinutes(1))).Should().NotBeNull("een oude claim is herclaimbaar");
+            (await s.HerClaimPublicatieAsync(club, rij.FeedbackId, DateTime.UtcNow.AddMinutes(-2))).Should().BeNull("de herclaim ververst het claimmoment");
+
+            await s.ZetGepubliceerdAsync(club, rij.FeedbackId, 77, "https://github.com/example/repo/issues/77");
+            (await s.HerClaimPublicatieAsync(club, rij.FeedbackId, DateTime.UtcNow.AddMinutes(1))).Should().BeNull("een gepubliceerde melding is niet te herclaimen");
+        }
+        finally { await OpruimenAsync(club); }
+    }
+
+    [PostgresFact]
     public async Task PublicatieMislukt_IsOpnieuwTeClaimen()
     {
         var club = NieuweClub();

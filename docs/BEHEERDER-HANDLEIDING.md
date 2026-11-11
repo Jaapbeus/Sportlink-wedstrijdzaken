@@ -2016,15 +2016,18 @@ u mee, publiceert u de meldingen van gewone gebruikers en ziet u wie wat heeft i
   beschrijving). **Wissen** zet alle filters terug.
 - Elke regel toont datum, soort, onderwerp (met meldingsnummer), **melder**, rol, scherm, het
   GitHub-issue en de status: *Wacht op publicatie*, *Gepubliceerd*, *Publiceren mislukt* of
-  *Wordt gepubliceerd*. Bij een melding waarvan de bewaartermijn verlopen is staat
+  *Uitkomst onbekend*. Bij een melding waarvan de bewaartermijn verlopen is staat
   *— (geanonimiseerd)* in plaats van de naam.
 - **▸** klapt de melding open: de beschrijving in eigen woorden, aanvullende antwoorden en — voor een
   melding die nog niet gepubliceerd is — **de exacte tekst die openbaar gaat worden**. Onder
   *Technische gegevens* staan de meegestuurde foutmeldingen, mislukte aanroepen en schermen.
-- **Publiceer** (alleen bij *Wacht op publicatie* of *Publiceren mislukt*) maakt het GitHub-issue aan
+- **Publiceer** (bij *Wacht op publicatie*, *Publiceren mislukt* of *Uitkomst onbekend*) maakt het GitHub-issue aan
   met precies de getoonde tekst. Lees die eerst: dit is de enige keer dat een gewone gebruiker iets
   openbaar maakt, en de beheerder is daar de poortwachter. Een tweede klik maakt geen tweede issue.
-  Mislukt publiceren, dan blijft de melding staan en kunt u het later opnieuw proberen.
+  Mislukt publiceren, dan blijft de melding staan en kunt u het later opnieuw proberen. Bij *Uitkomst
+  onbekend* (GitHub antwoordde niet) hoeft u niets in GitHub na te zoeken: wacht enkele minuten en klik
+  op **Publiceer**. De app controleert dan eerst of het issue al bestaat en koppelt dat, of plaatst het
+  alsnog. Krijgt u *wordt al gepubliceerd*, dan loopt de eerste poging mogelijk nog: probeer het later.
 
 ### Tabblad Inzagelog
 

@@ -109,6 +109,13 @@ public interface IFeedbackStore
     /// <summary>Claimt een melding voor publicatie (wacht/mislukt → publiceren). Geeft <c>false</c> als hij al gepubliceerd wordt of is — voorkomt een dubbel issue bij twee klikken.</summary>
     Task<bool> ClaimPublicatieAsync(string clubCode, Guid feedbackId);
 
+    /// <summary>
+    /// Herclaimt een melding die op <c>publiceren</c> is blijven staan na een dubbelzinnige GitHub-POST (#1803):
+    /// alleen als die claim ouder is dan <paramref name="claimOuderDanUtc"/>, en atomair, zodat twee klikken niet
+    /// allebei doorgaan. Geeft het vorige claimmoment (UTC) terug, of <c>null</c> als er niet geclaimd is.
+    /// </summary>
+    Task<DateTime?> HerClaimPublicatieAsync(string clubCode, Guid feedbackId, DateTime claimOuderDanUtc);
+
     Task ZetGepubliceerdAsync(string clubCode, Guid feedbackId, int issueNummer, string issueUrl);
 
     Task ZetPublicatieMisluktAsync(string clubCode, Guid feedbackId);

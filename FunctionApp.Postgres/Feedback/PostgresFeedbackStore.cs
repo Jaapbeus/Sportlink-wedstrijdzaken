@@ -99,6 +99,27 @@ internal sealed class PostgresFeedbackStore : IFeedbackStore
         return await cmd.ExecuteNonQueryAsync() == 1;
     }
 
+    public async Task<DateTime?> HerClaimPublicatieAsync(string clubCode, Guid feedbackId, DateTime claimOuderDanUtc)
+    {
+        await using var conn = await OpenAsync();
+        // FOR UPDATE in de CTE serialiseert twee gelijktijdige herclaims: de tweede ziet het nieuwe claimmoment en valt af.
+        await using var cmd = new NpgsqlCommand(@"
+            WITH oud AS (
+                SELECT mta_modified FROM avg.feedback
+                WHERE feedbackid = @id AND clubcode = @cc AND status = @publiceren AND mta_modified < @drempel
+                FOR UPDATE)
+            UPDATE avg.feedback f SET mta_modified = NOW()
+            FROM oud
+            WHERE f.feedbackid = @id AND f.clubcode = @cc AND f.status = @publiceren
+            RETURNING oud.mta_modified", conn);
+        cmd.Parameters.AddWithValue("publiceren", FeedbackStatusWaarden.Publiceren);
+        cmd.Parameters.AddWithValue("drempel", NpgsqlTypes.NpgsqlDbType.TimestampTz, claimOuderDanUtc);
+        cmd.Parameters.AddWithValue("id", feedbackId);
+        cmd.Parameters.AddWithValue("cc", clubCode);
+        var oud = await cmd.ExecuteScalarAsync();
+        return oud is DateTime d ? DateTime.SpecifyKind(d, DateTimeKind.Utc) : null;
+    }
+
     public async Task ZetGepubliceerdAsync(string clubCode, Guid feedbackId, int issueNummer, string issueUrl)
     {
         await using var conn = await OpenAsync();

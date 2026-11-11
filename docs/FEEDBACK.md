@@ -44,7 +44,19 @@ melding ──► PII-gates ──► AI-structurering ──► opslag in avg.F
   opgeslagen"* met een meldingsnummer — **geen** link naar GitHub.
 * Publiceren is idempotent bewaakt: `ClaimPublicatieAsync` zet de status atomair van
   `wacht-op-publicatie`/`github-mislukt` naar `publiceren`; een tweede klik maakt geen tweede issue.
-* Faalt GitHub, dan blijft de melding bewaard met status `github-mislukt` en is ze opnieuw te
+* **Automatisch herstel (#1803).** Bij indienen krijgt de bewaarde `IssueBody` één keer een unieke,
+  niet-herleidbare publicatiereferentie (24 willekeurige letters in een verborgen HTML-commentaar,
+  `FeedbackPublicatieReferentie`); ze staat dus vóór de eerste POST in de database en wordt bij elke
+  poging hergebruikt. Na een dubbelzinnige POST (time-out, verbroken verbinding, HTTP 408/5xx,
+  onleesbare 2xx, mislukte receipt-opslag) blijft de status `publiceren`. "Publiceer" is dan weer
+  mogelijk: de server herclaimt atomair (`HerClaimPublicatieAsync`, alleen als de claim ouder is dan
+  2 minuten, anders `409`), zoekt via de issuelijst (`GET /repos/{owner}/{repo}/issues?state=all&since=…`,
+  bewust niet de search-API vanwege indexvertraging) een issue met dezelfde referentie en koppelt dat;
+  ontbreekt het, dan wordt het met dezelfde referentie opnieuw geplaatst. Is GitHub onbereikbaar, of is
+  de lijst te lang om afwezigheid te bewijzen, dan wordt niets geplaatst en blijft de melding herstelbaar.
+  Meldingen van vóór deze wijziging hebben geen referentie en worden zonder controle opnieuw geplaatst.
+  Geen migratie: de referentie en het claimmoment (`mta_modified`) gebruiken bestaande kolommen.
+* Faalt GitHub met een expliciete afwijzing, dan blijft de melding bewaard met status `github-mislukt` en is ze opnieuw te
   publiceren. Faalt de database bij een beheerder, dan loopt de publicatie toch door (zijn melding
   sneuvelt niet op een gepauzeerde gratis database); bij een gewone gebruiker is opslaan verplicht.
 * Alle uitgaande GitHub-aanroepen (publiceren, statuscontrole door de retentietimer) lopen via de

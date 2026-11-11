@@ -36,6 +36,7 @@ public class FeedbackRetentieCoreTests
         public Task<int> TelRecenteMeldingenAsync(string c, string? m, DateTime s) => throw new NotSupportedException();
         public Task BewaarAsync(FeedbackNieuw n, IReadOnlyList<FeedbackTelemetrieRegel> t) => throw new NotSupportedException();
         public Task<bool> ClaimPublicatieAsync(string c, Guid f) => throw new NotSupportedException();
+        public Task<DateTime?> HerClaimPublicatieAsync(string c, Guid f, DateTime d) => throw new NotSupportedException();
         public Task ZetGepubliceerdAsync(string c, Guid f, int n, string u) => throw new NotSupportedException();
         public Task ZetPublicatieMisluktAsync(string c, Guid f) => throw new NotSupportedException();
         public Task<FeedbackLijstResultaat> LijstAsync(string c, FeedbackFilter f) => throw new NotSupportedException();

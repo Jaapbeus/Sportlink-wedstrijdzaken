@@ -51,6 +51,7 @@ public static class AdminFeedbackFunction
         var log = context.GetLogger("AdminFeedbackPubliceer");
         return AdminEndpoint.ExecuteAsync(req, log, "feedbackmelding publiceren",
             clubCode => FeedbackBeheerEndpointCore.PubliceerAsync(clubCode, Aanroeper(req), Opslag(), id,
-                FeedbackEndpointCore.MaakGitHubIssueDelegate(Infrastructure.EgressGuard.ExternalIntegrationsAllowed(), log, cancellationToken), log));
+                FeedbackEndpointCore.MaakGitHubIssueDelegate(Infrastructure.EgressGuard.ExternalIntegrationsAllowed(), log, cancellationToken), log,
+                FeedbackEndpointCore.MaakIssueZoekDelegate(Infrastructure.EgressGuard.ExternalIntegrationsAllowed(), log, cancellationToken)));
     }
 }

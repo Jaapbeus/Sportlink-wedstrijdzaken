@@ -137,6 +137,98 @@ public sealed class FeedbackGitHubTests
         handler.Requests.Should().ContainSingle();
     }
 
+    // ── Zoeken naar een eerder aangemaakt issue (#1803) ────────────────────────────────────────
+
+    private const string Ref = "abcdefghijklmnopqrstuvwx";
+    private static string Body(string referentie) => FeedbackPublicatieReferentie.VoegToe("Tekst.", referentie).Replace("\n", "\\n").Replace("\"", "\\\"");
+
+    private static string Item(int nr, string referentie, bool isPr = false) =>
+        $"{{\"number\":{nr},\"html_url\":\"https://github.com/example/repo/issues/{nr}\",\"body\":\"{Body(referentie)}\"{(isPr ? ",\"pull_request\":{}" : "")}}}";
+
+    [Fact]
+    public async Task Zoek_vindt_issue_via_issuelijst_en_niet_via_search_api()
+    {
+        var handler = new SequenceHandler((_, _) => Task.FromResult(Json(HttpStatusCode.OK, $"[{Item(5, "zzzzzzzzzzzzzzzzzzzzzzzz")},{Item(9, Ref)}]")));
+
+        var result = await FeedbackGitHub.ZoekIssueMetReferentieAsync("synthetic-token", "example", "repo", Ref,
+            new DateTime(2026, 11, 11, 8, 0, 0, DateTimeKind.Utc), NullLogger.Instance, handler: handler, timeout: TimeSpan.FromSeconds(1));
+
+        result.gelukt.Should().BeTrue();
+        result.gevonden.Should().Be(new FeedbackGevondenIssue(9, "https://github.com/example/repo/issues/9"));
+        var url = handler.Requests.Single().RequestUri!.ToString();
+        url.Should().Contain("/repos/example/repo/issues?").And.Contain("state=all").And.Contain("since=2026-11-11T08:00:00Z");
+        url.Should().NotContain("/search/");
+    }
+
+    [Fact]
+    public async Task Zoek_negeert_pull_requests_en_meldt_niet_gevonden_bij_korte_lijst()
+    {
+        var handler = new SequenceHandler((_, _) => Task.FromResult(Json(HttpStatusCode.OK, $"[{Item(9, Ref, isPr: true)}]")));
+
+        var result = await FeedbackGitHub.ZoekIssueMetReferentieAsync("synthetic-token", "example", "repo", Ref,
+            DateTime.UtcNow, NullLogger.Instance, handler: handler, timeout: TimeSpan.FromSeconds(1));
+
+        result.Should().Be((true, (FeedbackGevondenIssue?)null));
+    }
+
+    [Fact]
+    public async Task Zoek_http_fout_is_onbekend_en_geen_bewijs_van_afwezigheid()
+    {
+        var handler = new SequenceHandler((_, _) => Task.FromResult(Json(HttpStatusCode.BadGateway, "{}")));
+
+        var result = await FeedbackGitHub.ZoekIssueMetReferentieAsync("synthetic-token", "example", "repo", Ref,
+            DateTime.UtcNow, NullLogger.Instance, handler: handler, timeout: TimeSpan.FromSeconds(1));
+
+        result.Should().Be((false, (FeedbackGevondenIssue?)null));
+    }
+
+    [Fact]
+    public async Task Zoek_timeout_is_onbekend()
+    {
+        var handler = new SequenceHandler(async (_, token) =>
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            return Json(HttpStatusCode.OK, "[]");
+        });
+
+        var result = await FeedbackGitHub.ZoekIssueMetReferentieAsync("synthetic-token", "example", "repo", Ref,
+            DateTime.UtcNow, NullLogger.Instance, handler: handler, timeout: TimeSpan.FromMilliseconds(50));
+
+        result.gelukt.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Zoek_volgt_volgende_pagina_en_geeft_op_na_het_maximum_zonder_te_beweren_dat_het_issue_ontbreekt()
+    {
+        var vol = "[" + string.Join(",", Enumerable.Range(1, 100).Select(n => Item(n, "zzzzzzzzzzzzzzzzzzzzzzzz"))) + "]";
+        var handler = new SequenceHandler(
+            (_, _) => Task.FromResult(Json(HttpStatusCode.OK, vol)), (_, _) => Task.FromResult(Json(HttpStatusCode.OK, vol)),
+            (_, _) => Task.FromResult(Json(HttpStatusCode.OK, vol)), (_, _) => Task.FromResult(Json(HttpStatusCode.OK, vol)),
+            (_, _) => Task.FromResult(Json(HttpStatusCode.OK, vol)));
+
+        var result = await FeedbackGitHub.ZoekIssueMetReferentieAsync("synthetic-token", "example", "repo", Ref,
+            DateTime.UtcNow, NullLogger.Instance, handler: handler, timeout: TimeSpan.FromSeconds(5));
+
+        result.gelukt.Should().BeFalse();
+        handler.Requests.Should().HaveCount(5);
+        handler.Requests[1].RequestUri!.Query.Should().Contain("page=2");
+    }
+
+    [Fact]
+    public void Referentie_is_stabiel_leesbaar_idempotent_en_bevat_geen_pii_of_redactietrigger()
+    {
+        var r = FeedbackPublicatieReferentie.Nieuw();
+        r.Should().MatchRegex("^[a-z]{24}$");
+        FeedbackPublicatieReferentie.Nieuw().Should().NotBe(r);
+
+        var body = FeedbackPublicatieReferentie.VoegToe("Tekst.", r);
+        FeedbackPublicatieReferentie.Lees(body).Should().Be(r);
+        FeedbackPublicatieReferentie.VoegToe(body, FeedbackPublicatieReferentie.Nieuw()).Should().Be(body, "een bestaande referentie wordt nooit vervangen");
+        FeedbackCore.BevatPii(body).Should().BeFalse();
+        FeedbackRedactie.Redigeer(body, 1000).Should().Contain(r);
+        FeedbackPublicatieReferentie.Lees("geen referentie").Should().BeNull();
+    }
+
     private static HttpResponseMessage Json(HttpStatusCode code, string body) => new(code)
     {
         Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json")

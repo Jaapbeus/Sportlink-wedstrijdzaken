@@ -106,6 +106,54 @@ internal static class FeedbackGitHub
         }
     }
 
+    private const int ZoekPaginaGrootte = 100;
+    private const int ZoekMaxPaginas = 5;
+
+    /// <summary>
+    /// Zoekt via de issuelijst (niet de search-API: die loopt achter door indexvertraging, #1803) of er al een
+    /// issue met <paramref name="referentie"/> in de body bestaat. <c>gelukt == false</c> betekent: onbekend
+    /// (fout, afkapping of te veel resultaten); de aanroeper moet dan niet opnieuw posten.
+    /// </summary>
+    internal static async Task<(bool gelukt, FeedbackGevondenIssue? gevonden)> ZoekIssueMetReferentieAsync(
+        string pat, string owner, string repo, string referentie, DateTime sindsUtc, ILogger log,
+        CancellationToken cancellationToken = default, HttpMessageHandler? handler = null, TimeSpan? timeout = null)
+    {
+        using var http = MaakClient(handler, timeout);
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", pat);
+        var since = DateTime.SpecifyKind(sindsUtc, DateTimeKind.Utc).ToString("yyyy-MM-ddTHH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture);
+        try
+        {
+            for (var pagina = 1; pagina <= ZoekMaxPaginas; pagina++)
+            {
+                var url = $"https://api.github.com/repos/{owner}/{repo}/issues?state=all&sort=created&direction=desc&since={since}&per_page={ZoekPaginaGrootte}&page={pagina}";
+                using var resp = await http.GetAsync(url, cancellationToken);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    log.LogWarning("GitHub-issuelijst ophalen mislukt: HTTP {Status}", (int)resp.StatusCode);
+                    return (false, null);
+                }
+                var lijst = JArray.Parse(await resp.Content.ReadAsStringAsync(cancellationToken));
+                foreach (var item in lijst)
+                {
+                    if (item["pull_request"] is not null) continue;
+                    if (FeedbackPublicatieReferentie.Lees(item["body"]?.Value<string>()) != referentie) continue;
+                    var nummer = item["number"]?.Value<int>();
+                    var issueUrl = item["html_url"]?.Value<string>();
+                    if (nummer is null || string.IsNullOrEmpty(issueUrl)) return (false, null);
+                    return (true, new FeedbackGevondenIssue(nummer.Value, issueUrl));
+                }
+                if (lijst.Count < ZoekPaginaGrootte) return (true, null);
+            }
+            log.LogWarning("GitHub-issuelijst te lang om zeker te zijn dat het issue ontbreekt; status blijft herstelbaar");
+            return (false, null);
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or HttpRequestException or JsonException)
+        {
+            log.LogWarning("GitHub-issuelijst ophalen afgebroken; status blijft herstelbaar ({ErrorType})", ex.GetType().Name);
+            return (false, null);
+        }
+    }
+
     private static readonly HttpClient StatusHttp = MaakClient();
 
     /// <summary>
