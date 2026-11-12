@@ -75,6 +75,7 @@ document van het onderdeel waaraan je werkt.
 | [Versioning & CHANGELOG](VERSIONING.md) | Semver-regels, conventional commits, release-workflow |
 | [Verificatie-scripts](VERIFICATIE-SCRIPTS.md) | Test-App.ps1 + Start-Debug.ps1: schema-controle, endpoints, Blazor-pagina's |
 | [Lokaal debuggen](LOKAAL-DEBUGGEN.md) | Services starten, poorten, hot-reload, func start |
+| [Agentinstructies volledig laden](AGENT-INSTRUCTIES-LADEN.md) | Wat Claude Code, Codex en Copilot van `AGENTS.md` laden, bekende limieten, globale bestanden en de canary-laadtest (#1898) |
 | [Dossier agentinstructies binnen het budget](DOSSIER-AGENTINSTRUCTIES-BUDGET.md) | Gedateerd werkdossier van #1580: meting van het Codex-budget, beslisregels, regel→bestemming-matrix per sectie van `AGENTS.md`, verificatie |
 | [Dossier Speeltijden inline formulier](DOSSIER-SPEELTIJDEN-INLINE-FORMULIER.md) | Gedateerd werkjournaal van #1552/#1553/#1554: besluiten (opslag per bewerksessie, kaartweergave, labelkoppeling), verificatiebewijs, reviewafhandeling, restbeperkingen |
 

@@ -109,6 +109,14 @@ MUTATIES: List[Mutatie] = [
     Mutatie("keten-maximum gelijk aan het Codex-budget", "KETEN_MAX_BYTES = 30 * 1024 ", "KETEN_MAX_BYTES = 32 * 1024 "),
     Mutatie("submap telt als root", '    return ROOT_MAX_BYTES if pad == "AGENTS.md" else SUBMAP_MAX_BYTES', "    return ROOT_MAX_BYTES"),
     Mutatie("keten telt als bestand", '    if soort == "keten":\n        return KETEN_MAX_BYTES', "    if soort == \"keten\":\n        return ROOT_MAX_BYTES"),
+    # ── leesbaarheid (#1898) ────────────────────────────────────────────────────────────────────
+    Mutatie("leesbaarheid niet aangeroepen", "        + controleer_leesbaarheid(inv)\n", "        + []\n"),
+    Mutatie("regelmaximum genegeerd", "            if len(regel) > REGEL_MAX_CHARS:", "            if False:"),
+    Mutatie("regelmaximum een teken te ruim", "REGEL_MAX_CHARS = 600", "REGEL_MAX_CHARS = 601"),
+    Mutatie("regellengte in bytes i.p.v. tekens", "            if len(regel) > REGEL_MAX_CHARS:", "            if len(regel.encode(\"utf-8\")) > REGEL_MAX_CHARS:"),
+    Mutatie("canary niet vereist", "        if not inhoud or not inhoud[-1].startswith(CANARY_PREFIX):", "        if False:"),
+    Mutatie("canary op eerste i.p.v. laatste regel", "inhoud[-1].startswith(CANARY_PREFIX)", "inhoud[0].startswith(CANARY_PREFIX)"),
+    Mutatie("canary ergens in het bestand volstaat", "        if not inhoud or not inhoud[-1].startswith(CANARY_PREFIX):", "        if not any(r.startswith(CANARY_PREFIX) for r in inhoud):"),
     # ── bestaande regels uit #1579 ──────────────────────────────────────────────────────────────
     Mutatie("stub zonder AGENTS.md toegestaan", '    if not agents.is_file():\n        return [f"{rel}: geen AGENTS.md ernaast', '    if False:\n        return [f"{rel}: geen AGENTS.md ernaast'),
     Mutatie("stublengte onbegrensd", "    if len(tekst.encode(\"utf-8\")) > STUB_MAX_BYTES:", "    if False:"),
