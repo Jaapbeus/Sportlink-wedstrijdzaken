@@ -188,4 +188,43 @@ public class BeschikbaarheidVoorwaardenTests
         var stap = geprojecteerd.Stappen.Single(s => s.Code == TraceCodes.Speelduur);
         stap.Details.Should().ContainKey("categorieGenoemd").WhoseValue.Should().Be("ja");
     }
+
+    [Theory]
+    [InlineData("Senioren")]
+    [InlineData("1-99")]
+    [InlineData(null)]
+    public async Task Speelduur_O23Team_GebruiktJo23OokBijSeniorencategorie(string? categorie)
+    {
+        // #1863: het bericht of Sportlink noemt "Senioren", maar de duur is die van JO23.
+        var classificatie = new BerichtClassificatie { LeeftijdsCategorie = categorie, TeamNaam = "ALLSTARS O23-1" };
+
+        var uitkomst = await BeschikbaarheidVoorwaarden.ControleerSpeelduurAsync(classificatie,
+            Speeltijden(("JO23", 105), ("1-99", 115)), null);
+
+        uitkomst.Should().BeNull();
+        classificatie.LeeftijdsCategorie.Should().Be("JO23");
+    }
+
+    [Fact]
+    public async Task Speelduur_O23TeamZonderJo23Rij_ValtTerugOpCategorie()
+    {
+        var classificatie = new BerichtClassificatie { LeeftijdsCategorie = "Senioren", TeamNaam = "ALLSTARS O23-1" };
+
+        var uitkomst = await BeschikbaarheidVoorwaarden.ControleerSpeelduurAsync(classificatie, Speeltijden(("1-99", 115)), null);
+
+        uitkomst.Should().BeNull();
+        classificatie.LeeftijdsCategorie.Should().Be("1-99");
+    }
+
+    [Fact]
+    public async Task Speelduur_Seniorenteam_BlijftSeniorenduur()
+    {
+        var classificatie = new BerichtClassificatie { LeeftijdsCategorie = "Senioren", TeamNaam = "ALLSTARS 1" };
+
+        var uitkomst = await BeschikbaarheidVoorwaarden.ControleerSpeelduurAsync(classificatie,
+            Speeltijden(("JO23", 105), ("1-99", 115)), null);
+
+        uitkomst.Should().BeNull();
+        classificatie.LeeftijdsCategorie.Should().Be("1-99");
+    }
 }

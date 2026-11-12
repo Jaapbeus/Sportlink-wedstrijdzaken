@@ -54,9 +54,11 @@ public static class AutoPlanRegels
         Dictionary<string, Speeltijd> speeltijden,
         string? clubPrefix = null)
     {
-        var leeftijd = (!string.IsNullOrWhiteSpace(leeftijdsCategorie))
-            ? leeftijdsCategorie
-            : (isAllstars ? ExtractLeeftijdFromTeamNaam(teamNaam) ?? "" : "");
+        var leeftijd = LeeftijdNormalisatie.SpeeltijdSleutel(
+            !string.IsNullOrWhiteSpace(leeftijdsCategorie)
+                ? leeftijdsCategorie
+                : (isAllstars ? ExtractLeeftijdFromTeamNaam(teamNaam) ?? "" : ""),
+            teamNaam, speeltijden); // #1863: O23 → JO23-speeltijd
 
         // Laag 2 — default per leeftijdscategorie (mag null zijn: dan géén streeftijd)
         TimeOnly? defaultTijd = null;

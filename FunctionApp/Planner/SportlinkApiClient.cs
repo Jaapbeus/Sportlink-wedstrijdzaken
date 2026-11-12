@@ -165,6 +165,9 @@ namespace SportlinkFunction.Planner
             // De real-time API levert geen duur. Zonder een geldige speeltijd zou deze
             // wedstrijd uit de bezetting verdwijnen en het veld ten onrechte vrij lijken.
             var speeltijdKey = MapTeamNaamToSpeeltijdKey(m.Teamnaam, clubCode, teamLeeftijdLookup);
+            // #1863: een O23-team gebruikt de JO23-speeltijd (ook als Sportlink het als "Senioren" levert).
+            if (speeltijdKey != null)
+                speeltijdKey = LeeftijdNormalisatie.SpeeltijdSleutel(speeltijdKey, m.Teamnaam, speeltijdenLookup);
             if (speeltijdKey == null || !speeltijdenLookup.TryGetValue(speeltijdKey, out var speeltijd))
                 throw new PlanningDuurOnbekendException();
 

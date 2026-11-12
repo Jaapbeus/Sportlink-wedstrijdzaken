@@ -431,9 +431,11 @@ internal static class AutoPlanService
         return wedstrijden
             .Select(w =>
             {
-                var leeftijd = !string.IsNullOrWhiteSpace(w.LeeftijdsCategorie)
-                    ? w.LeeftijdsCategorie
-                    : (isAllstars ? AutoPlanRegels.ExtractLeeftijdFromTeamNaam(w.TeamNaam) ?? "" : "");
+                var leeftijd = LeeftijdNormalisatie.SpeeltijdSleutel(
+                    !string.IsNullOrWhiteSpace(w.LeeftijdsCategorie)
+                        ? w.LeeftijdsCategorie
+                        : (isAllstars ? AutoPlanRegels.ExtractLeeftijdFromTeamNaam(w.TeamNaam) ?? "" : ""),
+                    w.TeamNaam, speeltijden); // #1863: O23 → JO23-speeltijd
                 speeltijden.TryGetValue(leeftijd, out var speeltijdInfo);
 
                 return new VeldbezettingItem(

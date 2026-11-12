@@ -59,4 +59,20 @@ internal static class LeeftijdNormalisatieSql
                 REPLACE(REPLACE(REPLACE({kolom}, 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
         END";
     }
+
+    /// <summary>
+    /// Speeltijdsleutel uit categorie <i>én</i> teamnaam (#1863): een O23-team ("[club] O23-1", "JO23-2") krijgt
+    /// <c>JO23</c> als die rij voor de club bestaat met een duur &gt; 0, ook als Sportlink het team als "Senioren"
+    /// (<c>1-99</c>) aanlevert. Anders de gewone <see cref="SqlExpr"/>: nooit duur 0 door deze regel. De grens van
+    /// "O23" is dezelfde als <see cref="Planner.Shared.TeamNaamNormalisatie.IsO23Team"/> (geen "MO23", geen "O230").
+    /// </summary>
+    internal static string SpeeltijdSleutelSqlExpr(string categorieKolom, string teamNaamKolom, string clubCodeExpr) => $@"
+        CASE
+            WHEN (' ' + UPPER({teamNaamKolom}) + ' ' LIKE '%[^A-Z0-9]O23[^0-9]%'
+                  OR ' ' + UPPER({teamNaamKolom}) + ' ' LIKE '%[^A-Z0-9]JO23[^0-9]%')
+                 AND EXISTS (SELECT 1 FROM [dbo].[Speeltijden] jo23
+                             WHERE jo23.[Leeftijd] = 'JO23' AND jo23.[WedstrijdTotaal] > 0 AND jo23.[ClubCode] = {clubCodeExpr})
+                THEN 'JO23'
+            ELSE {SqlExpr(categorieKolom)}
+        END";
 }

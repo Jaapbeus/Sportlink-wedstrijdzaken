@@ -84,4 +84,32 @@ public class LeeftijdNormalisatieTests
     {
         LeeftijdNormalisatie.Normaliseer(invoer).Should().Be(verwacht);
     }
+
+    private static Dictionary<string, Speeltijd> Rijen(int jo23, int senioren = 115) => new()
+    {
+        ["JO23"] = new Speeltijd { Leeftijd = "JO23", WedstrijdTotaal = jo23, Veldafmeting = 1.00m },
+        ["1-99"] = new Speeltijd { Leeftijd = "1-99", WedstrijdTotaal = senioren, Veldafmeting = 1.00m },
+        ["VR"] = new Speeltijd { Leeftijd = "VR", WedstrijdTotaal = senioren, Veldafmeting = 1.00m },
+    };
+
+    [Theory]
+    [InlineData("1-99", "TESTCLUB O23-1", "JO23")]   // #1863: Sportlink levert "Senioren", de speeltijd is die van JO23
+    [InlineData("1-99", "TESTCLUB JO23-2", "JO23")]
+    [InlineData("1-99", "TESTCLUB 1", "1-99")]       // eerste elftal houdt seniorenduur
+    [InlineData("VR", "TESTCLUB VR1", "VR")]         // vrouwen houden hun sleutel
+    [InlineData("1-99", "TESTCLUB 35+1", "1-99")]    // veteranen
+    [InlineData("MO15", "TESTCLUB MO23-1", "MO15")]  // MO23 is geen O23
+    [InlineData("1-99", null, "1-99")]
+    [InlineData(null, "TESTCLUB 1", "")]
+    public void SpeeltijdSleutel_O23WintVanSeniorencategorie(string? categorie, string? team, string verwacht)
+        => LeeftijdNormalisatie.SpeeltijdSleutel(categorie, team, Rijen(105)).Should().Be(verwacht);
+
+    [Fact]
+    public void SpeeltijdSleutel_O23ZonderBruikbareJo23Rij_ValtTerugOpBronCategorie()
+    {
+        // Rij zonder duur (0) of ontbrekende rij: nooit duur 0 door deze regel.
+        LeeftijdNormalisatie.SpeeltijdSleutel("1-99", "TESTCLUB O23-1", Rijen(0)).Should().Be("1-99");
+        var zonderRij = Rijen(105); zonderRij.Remove("JO23");
+        LeeftijdNormalisatie.SpeeltijdSleutel("1-99", "TESTCLUB O23-1", zonderRij).Should().Be("1-99");
+    }
 }
