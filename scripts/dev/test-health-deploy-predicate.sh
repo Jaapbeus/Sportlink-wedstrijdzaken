@@ -21,6 +21,9 @@ expect_fail() {
 expect_fail 'database offline' '{"database":"unavailable","settingsReady":true,"migrationsCurrent":true}'
 expect_fail 'settings not ready' '{"database":"online","settingsReady":false,"migrationsCurrent":true}'
 expect_fail 'migrations pending' '{"database":"online","settingsReady":true,"migrationsCurrent":false}'
+expect_fail 'planner read path failing (#1911)' '{"database":"online","settingsReady":true,"migrationsCurrent":true,"readPathsOk":false}'
+expect_pass 'planner read path ok' '{"database":"online","settingsReady":true,"migrationsCurrent":true,"readPathsOk":true}'
+expect_pass 'planner read path not measured' '{"database":"online","settingsReady":true,"migrationsCurrent":true,"readPathsOk":null}'
 expect_pass 'stale sync remains non-fatal' '{"status":"degraded","database":"online","settingsReady":true,"migrationsCurrent":true,"syncStale":true}'
 expect_pass 'warning flags remain warnings' '{"database":"online","settingsReady":true,"migrationsCurrent":true,"schemaWarningPresent":true,"tlsWarningPresent":true}'
 warning_output="$(printf '%s' '{"database":"online","settingsReady":true,"migrationsCurrent":true,"schemaWarningPresent":true,"tlsWarningPresent":true}' | bash "$predicate")"

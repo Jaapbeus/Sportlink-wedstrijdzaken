@@ -62,9 +62,11 @@ public static class HealthFunction
         var (lastSync, syncStale) = await GetSyncStatusAsync(dbStatus);
         var (tlsMode, tlsWarning) = GetTlsStatus();
         var pendingMigrations = await GetPendingMigrationsAsync(dbStatus);
+        var leesPadenOk = await HealthLeesproef.UitvoerenAsync(dbStatus,
+            ct => Planner.PlannerSettingsRepository.ProbeSpeeltijdenLeesPadAsync(PostgresDatabaseConfig.ConnectionString, ct), log);
         var schemaWarning = PostgresAppSettings.SchemaWarning;
         var status = dbStatus == "online" && settingsLoaded && !(syncStale && SyncWordtVerwacht)
-                     && pendingMigrations is { Count: 0 } ? "ok" : "degraded";
+                     && pendingMigrations is { Count: 0 } && leesPadenOk != false ? "ok" : "degraded";
         return new HealthStatusSnapshot(
             status,
             version,
@@ -82,7 +84,8 @@ public static class HealthFunction
             tlsMode,
             tlsWarning,
             schemaWarning,
-            pendingMigrations);
+            pendingMigrations,
+            leesPadenOk);
     }
 
     /// <summary>

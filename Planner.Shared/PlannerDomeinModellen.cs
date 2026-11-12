@@ -34,7 +34,20 @@ public class Speeltijd
         Leeftijd = reader.GetString(0),
         Veldafmeting = reader.GetDecimal(1),
         WedstrijdTotaal = reader.GetInt32(2),
-        StandaardVoorkeurTijd = reader.IsDBNull(3) ? null : TimeOnly.FromTimeSpan((TimeSpan)reader.GetValue(3))
+        StandaardVoorkeurTijd = reader.IsDBNull(3) ? null : TijdVanKolom(reader.GetValue(3))
+    };
+
+    /// <summary>
+    /// #1911: een <c>time</c>-kolom komt per driver als ander CLR-type binnen — Npgsql 10 geeft
+    /// <see cref="TimeOnly"/>, SqlClient <see cref="TimeSpan"/>. Een harde cast naar één van beide
+    /// brak de Planning op Postgres; beide vormen worden hier dus expliciet ondersteund.
+    /// </summary>
+    internal static TimeOnly TijdVanKolom(object waarde) => waarde switch
+    {
+        TimeOnly t => t,
+        TimeSpan s => TimeOnly.FromTimeSpan(s),
+        DateTime d => TimeOnly.FromDateTime(d),
+        _ => throw new InvalidCastException($"Kolomtype {waarde.GetType().Name} is geen tijd (TimeOnly/TimeSpan/DateTime).")
     };
 
     public static async Task<Dictionary<string, Speeltijd>> ReadLookupAsync(DbDataReader reader)
