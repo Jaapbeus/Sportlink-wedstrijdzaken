@@ -12,11 +12,13 @@ namespace Planner.Shared.TeamResolution;
 /// <param name="Herkend">True als één van beide genoemde teams in de eigen teamlijst staat.</param>
 /// <param name="TeamNaam">De canonieke naam van het eigen team (alleen bij <see cref="Herkend"/>).</param>
 /// <param name="Tegenstander">De tegenstander na een eventuele wissel (alleen bij <see cref="Herkend"/>).</param>
+/// <remarks><see cref="EigenTeamUitkomst.LeeftijdsCategorie"/>: de Sportlink-categorie van het herkende eigen team (#1863).</remarks>
 public enum EigenTeamBesluit { Onbekend, Herkend, Handmatig }
 
 public sealed record EigenTeamUitkomst(bool Herkend, string? TeamNaam, string? Tegenstander)
 {
     public EigenTeamBesluit Besluit { get; init; } = Herkend ? EigenTeamBesluit.Herkend : EigenTeamBesluit.Onbekend;
+    public string? LeeftijdsCategorie { get; init; }
     public static readonly EigenTeamUitkomst Handmatig = new(false, null, null) { Besluit = EigenTeamBesluit.Handmatig };
     public static readonly EigenTeamUitkomst NietHerkend = new(false, null, null);
 }
@@ -71,13 +73,13 @@ public static class EigenTeamBepaling
         if (teamUitkomst?.IsOpgelost == true)
         {
             LogUitkomst(log, teamUitkomst);
-            return new EigenTeamUitkomst(true, teamUitkomst.CanoniekeTeamnaam, tegenstander);
+            return new EigenTeamUitkomst(true, teamUitkomst.CanoniekeTeamnaam, tegenstander) { LeeftijdsCategorie = teamUitkomst.LeeftijdsCategorie };
         }
         if (tegenstanderUitkomst?.IsOpgelost == true)
         {
             trace?.TeamWissel(tegenstanderUitkomst.CanoniekeTeamnaam, team);
             LogUitkomst(log, tegenstanderUitkomst);
-            return new EigenTeamUitkomst(true, tegenstanderUitkomst.CanoniekeTeamnaam, team);
+            return new EigenTeamUitkomst(true, tegenstanderUitkomst.CanoniekeTeamnaam, team) { LeeftijdsCategorie = tegenstanderUitkomst.LeeftijdsCategorie };
         }
 
         var kandidaten = teamUitkomst?.Kandidaten.Count ?? 0;
@@ -101,12 +103,15 @@ public static class EigenTeamBepaling
         trace?.Classificatie(classificatie.Type.ToString(), classificatie.TeamNaam, classificatie.Tegenstander, classificatie.GetAlleDatums().Count, classificatie.AanvangsTijd);
         classificatie.TeamAfgeleidUitAfzender = false;
         classificatie.MeerdereAfzenderTeams = false;
+        classificatie.TeamSportlinkCategorie = null;
         var herkend = await BepaalEnPasToeAsync(classificatie, resolver, clubCode, log, trace, fixtureContextFactory);
         if (classificatie.TeamHandmatigBeoordelen) return false;
         // #1862: stap 2 van de volgorde: geen herkenbaar team in de mail, dan het team van de afzender.
         herkend = await AfzenderTeamBepaling.VerwerkAsync(classificatie, herkend, afzender, resolver, clubCode, log, trace);
         classificatie.TeamNaamOnbevestigd = !herkend;
-        if (herkend) classificatie.LeeftijdsCategorie = TeamNaamNormalisatie.VulLeeftijdsCategorieAan(classificatie.LeeftijdsCategorie, classificatie.TeamNaam, clubCode);
+        // #1863: een herkend seniorenteam zonder leeftijd in de naam krijgt de seniorensleutel uit zijn Sportlink-categorie.
+        if (herkend) classificatie.LeeftijdsCategorie = TeamNaamNormalisatie.VulLeeftijdsCategorieAan(
+            classificatie.LeeftijdsCategorie, classificatie.TeamNaam, clubCode, classificatie.TeamSportlinkCategorie);
         return herkend;
     }
 
@@ -120,6 +125,7 @@ public static class EigenTeamBepaling
         if (!result.Herkend) return false;
         classificatie.TeamNaam = result.TeamNaam;
         classificatie.Tegenstander = result.Tegenstander;
+        classificatie.TeamSportlinkCategorie = result.LeeftijdsCategorie;
         return true;
     }
 
@@ -137,8 +143,8 @@ public static class EigenTeamBepaling
             var selected = TeamFixtureChoice.Choose(context, team.TeamId.Value, opponent.TeamId.Value, tijd);
             if (selected is null) return EigenTeamUitkomst.Handmatig;
             return selected == opponent.TeamId
-                ? new EigenTeamUitkomst(true, opponent.CanoniekeTeamnaam, rawTeam)
-                : new EigenTeamUitkomst(true, team.CanoniekeTeamnaam, rawOpponent);
+                ? new EigenTeamUitkomst(true, opponent.CanoniekeTeamnaam, rawTeam) { LeeftijdsCategorie = opponent.LeeftijdsCategorie }
+                : new EigenTeamUitkomst(true, team.CanoniekeTeamnaam, rawOpponent) { LeeftijdsCategorie = team.LeeftijdsCategorie };
         }
         catch (Exception ex)
         {

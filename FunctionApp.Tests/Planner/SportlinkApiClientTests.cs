@@ -56,6 +56,68 @@ public class SportlinkApiClientTests
         result.EindTijd.Should().Be(new TimeOnly(11, 0));
     }
 
+    // #1863: een O23-team dat Sportlink als "Senioren" (1-99) levert, bezet het veld met de JO23-duur;
+    // zonder bruikbare JO23-rij (duur 0) blijft de seniorenduur gelden, en "MO23" is geen O23-team.
+    [Theory]
+    [InlineData("ALLSTARS O23-1", 105, "JO23", 11, 45)]
+    [InlineData("ALLSTARS O23-1", 0, "1-99", 11, 30)]
+    [InlineData("ALLSTARS MO23-1", 105, "1-99", 11, 30)]
+    public void O23Team_GebruiktJo23SpeeltijdInDeBezetting(string team, int jo23, string sleutel, int eindUur, int eindMinuut)
+    {
+        var match = new SportlinkProgrammaMatch
+        {
+            Teamnaam = team,
+            Accommodatie = "Test accommodatie",
+            Status = "Vastgesteld",
+            Aanvangstijd = "10:00",
+            Veld = "Veld 1 A"
+        };
+        var result = SportlinkApiClient.TryMapToBezetting(
+            match, new DateOnly(2026, 9, 5), "Test accommodatie", "ALLSTARS",
+            [("Veld 1", 1)],
+            new Dictionary<string, Speeltijd>
+            {
+                ["JO23"] = new() { Leeftijd = "JO23", WedstrijdTotaal = jo23, Veldafmeting = 1m },
+                ["1-99"] = new() { Leeftijd = "1-99", WedstrijdTotaal = 90, Veldafmeting = 1m },
+            },
+            new Dictionary<string, string> { [team] = "1-99" });
+
+        result.Should().NotBeNull();
+        result!.LeeftijdsCategorie.Should().Be(sleutel);
+        result.EindTijd.Should().Be(new TimeOnly(eindUur, eindMinuut));
+    }
+
+    // #1863: zonder his.teams-rij volgt het API-pad dezelfde O23-regel als het databasepad (teamnaam → JO23);
+    // zonder bruikbare JO23-rij blijft het een onbekende duur, nooit duur 0.
+    [Theory]
+    [InlineData(105, true)]
+    [InlineData(0, false)]
+    public void O23TeamZonderTeamrij_GebruiktJo23OfBlokkeert(int jo23, bool verwachtBezetting)
+    {
+        var match = new SportlinkProgrammaMatch
+        {
+            Teamnaam = "ALLSTARS O23-1",
+            Accommodatie = "Test accommodatie",
+            Status = "Vastgesteld",
+            Aanvangstijd = "10:00",
+            Veld = "Veld 1 A"
+        };
+        var map = () => SportlinkApiClient.TryMapToBezetting(
+            match, new DateOnly(2026, 9, 5), "Test accommodatie", "ALLSTARS",
+            [("Veld 1", 1)],
+            new Dictionary<string, Speeltijd> { ["JO23"] = new() { Leeftijd = "JO23", WedstrijdTotaal = jo23, Veldafmeting = 1m } },
+            new Dictionary<string, string>());
+
+        if (!verwachtBezetting)
+        {
+            map.Should().Throw<PlanningDuurOnbekendException>();
+            return;
+        }
+        var result = map();
+        result!.LeeftijdsCategorie.Should().Be("JO23");
+        result.EindTijd.Should().Be(new TimeOnly(11, 45));
+    }
+
     // #1814: de DB-terugval mag de planningsblokkade niet opslokken; een echte API-storing wel terugvallen.
     [Fact]
     public void UnknownDuration_IsNotSwallowedByDatabaseFallback()

@@ -185,15 +185,45 @@ public static class TeamNaamNormalisatie
         return componenten?.Prefix is null ? null : $"{componenten.Prefix}{componenten.LeeftijdNummer}";
     }
 
+    private static readonly Regex O23Team = new(@"(?<![A-Za-z0-9])J?O23(?!\d)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// Is dit een O23-team ("[club] O23-1", "JO23-2")? Sportlink levert voor zo'n team de categorie
+    /// "Senioren", maar de speeltijd is die van <c>JO23</c> (#1863). Geen "MO23" en geen "O230".
+    /// </summary>
+    /// <remarks>
+    /// De SQL-tegenhangers (<c>PostgresLeeftijdNormalisatie.SpeeltijdSleutelSqlExpr</c> en
+    /// <c>LeeftijdNormalisatieSql.SpeeltijdSleutelSqlExpr</c>) leggen dezelfde grens: een niet-alfanumeriek
+    /// teken (of het begin) vóór "O23"/"JO23" en geen cijfer erna. Wijzig ze samen.
+    /// </remarks>
+    public static bool IsO23Team(string? teamNaam)
+        => !string.IsNullOrWhiteSpace(teamNaam) && O23Team.IsMatch(teamNaam);
+
     /// <summary>
     /// Vult een ontbrekende leeftijdscategorie aan uit het herkende eigen team (#1545). De AI laat de
     /// categorie terecht leeg bij "14-2" (geen J/M-prefix raden), maar zodra <c>TeamResolver</c> dat
     /// naar het enige passende team herleidt, staat de categorie vast. Zonder categorie kan de
     /// beschikbaarheidscheck geen wedstrijdduur bepalen en meldt hij ten onrechte "geen veld".
     /// Een al ingevulde categorie blijft ongemoeid.
+    /// <para>
+    /// Een seniorenteam (eerste elftal "1", vrouwen "VR1", veteranen "35+1") heeft geen leeftijd in de naam. Dan
+    /// geldt de Sportlink-categorie van het herkende team (<paramref name="sportlinkCategorie"/>), maar alleen als
+    /// die een seniorensleutel is (<see cref="LeeftijdNormalisatie.SeniorenSpeeltijdSleutel"/>, #1863). Een
+    /// jeugdteam blijft aangewezen op zijn naam: een ontbrekend geslacht-prefix wordt nooit ingevuld.
+    /// </para>
     /// </summary>
-    public static string? VulLeeftijdsCategorieAan(string? huidige, string? teamNaam, string? clubPrefix)
-        => string.IsNullOrWhiteSpace(huidige) ? LeidLeeftijdsCategorieAf(teamNaam, clubPrefix) : huidige;
+    public static string? VulLeeftijdsCategorieAan(string? huidige, string? teamNaam, string? clubPrefix,
+        string? sportlinkCategorie = null)
+        => string.IsNullOrWhiteSpace(huidige)
+            ? LeidLeeftijdsCategorieAf(teamNaam, clubPrefix)
+                ?? (IsGTeamNaam(teamNaam) ? null : LeeftijdNormalisatie.SeniorenSpeeltijdSleutel(sportlinkCategorie))
+            : huidige;
+
+    // G-teams ("[club] G1") hebben geen leeftijd in de naam en krijgen in de planner de sleutel "G" op naam (vóór de
+    // categorie). Zij mogen dus nooit een seniorensleutel uit hun Sportlink-categorie krijgen (#1863).
+    private static bool IsGTeamNaam(string? teamNaam)
+        => !string.IsNullOrWhiteSpace(teamNaam)
+           && System.Text.RegularExpressions.Regex.IsMatch(teamNaam.Trim(), @"(^|\s)G\d", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 }
 
 /// <summary>Ontlede onderdelen van een genormaliseerde teamnaam. Zie <see cref="TeamNaamNormalisatie.Parse"/>.</summary>

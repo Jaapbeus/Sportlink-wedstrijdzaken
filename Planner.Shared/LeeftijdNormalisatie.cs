@@ -36,6 +36,34 @@ namespace Planner.Shared;
 /// </summary>
 public static class LeeftijdNormalisatie
 {
+    /// <summary>Speeltijdsleutel van O23-teams (#1863).</summary>
+    public const string O23Sleutel = "JO23";
+
+    /// <summary>
+    /// Kiest de sleutel waarmee een team in <paramref name="speeltijden"/> wordt opgezocht (#1863). Een O23-team
+    /// (<see cref="TeamNaamNormalisatie.IsO23Team"/>) krijgt de <c>JO23</c>-speeltijd, ook als Sportlink het team als
+    /// "Senioren" (<c>1-99</c>) aanlevert. Bestaat <c>JO23</c> niet of is de duur 0, dan blijft de bronwaarde gelden:
+    /// nooit duur 0 door deze regel. Overige teams houden <paramref name="categorie"/> ongewijzigd.
+    /// </summary>
+    public static string SpeeltijdSleutel(string? categorie, string? teamNaam, IReadOnlyDictionary<string, Speeltijd> speeltijden)
+    {
+        ArgumentNullException.ThrowIfNull(speeltijden);
+        if (TeamNaamNormalisatie.IsO23Team(teamNaam)
+            && speeltijden.TryGetValue(O23Sleutel, out var jo23) && jo23.WedstrijdTotaal > 0)
+            return O23Sleutel;
+        return categorie ?? "";
+    }
+
+    /// <summary>
+    /// De seniorensleutel van een Sportlink-categorie (#1863): "Senioren"/"1-99" → <c>1-99</c>,
+    /// "Senioren Vrouwen"/"Vrouwen"/"VR" → <c>VR</c>; elke andere (jeugd- of onbekende) categorie → <c>null</c>.
+    /// </summary>
+    public static string? SeniorenSpeeltijdSleutel(string? categorie)
+    {
+        var sleutel = Normaliseer(categorie);
+        return sleutel is "1-99" or "VR" ? sleutel : null;
+    }
+
     /// <summary>Normaliseert een leeftijdscategorie-string naar de Speeltijden-sleutel.</summary>
     public static string Normaliseer(string? cat)
     {

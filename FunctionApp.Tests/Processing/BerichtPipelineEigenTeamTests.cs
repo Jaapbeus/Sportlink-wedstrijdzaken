@@ -137,6 +137,28 @@ public class BerichtPipelineEigenTeamTests
         classificatie.TeamAfgeleidUitAfzender.Should().BeTrue();
     }
 
+    [Fact]
+    public async Task Omhulsel_Seniorenteam_KrijgtCategorieUitDeTeamtabel()
+    {
+        // #1863: het seniorenteam heeft geen leeftijd in de naam; de categorie komt van de resolver (teamtabel van de tier).
+        var classificatie = new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck, TeamNaam = "1" };
+        var resolver = new SeniorenResolver();
+
+        var herkend = await EigenTeamBepaling.BereidPlannerVoorAsync(classificatie, resolver, Club, NullLogger.Instance, null);
+
+        herkend.Should().BeTrue();
+        classificatie.TeamNaam.Should().Be("TESTCLUB 1");
+        classificatie.LeeftijdsCategorie.Should().Be("1-99");
+    }
+
+    private sealed class SeniorenResolver : ITeamResolver
+    {
+        public Task<TeamResolutionResult> ResolveAsync(TeamResolutionRequest request)
+            => Task.FromResult(request.RuweTeamTekst == "1"
+                ? new TeamResolutionResult(3, "TESTCLUB 1", 1.0, [], ResolutionBron.ExacteMatch, "1-99")
+                : TeamResolutionResult.Onopgelost);
+    }
+
     private sealed class VasteAfzenderBron(params string[] teams) : IAfzenderTeamBron
     {
         public int Aanroepen { get; private set; }

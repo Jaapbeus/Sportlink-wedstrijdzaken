@@ -123,7 +123,7 @@ internal static class PlannerMatchRepository
             FROM [his].[matches] m
             LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam]
                  AND {ClubScope.HisFilter("t")}
-            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatieSql.SqlExpr("t.[leeftijdscategorie]")}
+            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatieSql.SpeeltijdSleutelSqlExpr("t.[leeftijdscategorie]", "m.[teamnaam]", ClubScope.ClubCodeParam)}
                  AND s.[ClubCode] = {ClubScope.ClubCodeParam}
             {VeldResolutie.SqlOuterApply("m.[veld]", ClubScope.ClubCodeParam)}
             WHERE CAST(m.[kaledatum] AS DATE) = @date
@@ -224,7 +224,7 @@ internal static class PlannerMatchRepository
             FROM [his].[matches] m
             LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
                  AND {ClubScope.HisFilter("t")}
-            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatieSql.SqlExpr("t.[leeftijdscategorie]")}
+            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatieSql.SpeeltijdSleutelSqlExpr("t.[leeftijdscategorie]", "m.[teamnaam]", ClubScope.ClubCodeParam)}
                  AND s.[ClubCode] = {ClubScope.ClubCodeParam}
         ";
 

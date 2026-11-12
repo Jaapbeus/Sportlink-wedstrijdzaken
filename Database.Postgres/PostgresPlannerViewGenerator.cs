@@ -123,6 +123,8 @@ public static class PostgresPlannerViewGenerator
         LEFT JOIN public.speeltijden s
             ON s.leeftijd = CASE
                 WHEN m.teamnaam ~* ('^' || a.clubcode || ' G[0-9]') THEN 'G'
+                WHEN {{PostgresLeeftijdNormalisatie.O23Jo23Voorwaarde("m.teamnaam", "a.clubcode")}}
+                    THEN 'JO23' -- #1863: O23-team = JO23-speeltijd, ook als Sportlink 'Senioren' levert
                 ELSE REPLACE(REPLACE(REPLACE(t.leeftijdscategorie, 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
             END
            AND s.clubcode = a.clubcode

@@ -64,7 +64,13 @@ public static class BeschikbaarheidVoorwaarden
         ArgumentNullException.ThrowIfNull(classificatie);
         ArgumentNullException.ThrowIfNull(zoekSpeeltijd);
 
-        var speeltijd = await ZoekSpeeltijdAsync(classificatie.LeeftijdsCategorie, zoekSpeeltijd);
+        // #1863: een O23-team gebruikt de JO23-speeltijd, ook als de categorie (uit het bericht of uit Sportlink)
+        // "Senioren" is. Ontbreekt JO23 of is de duur 0, dan geldt de bestaande opzoeking op de categorie.
+        var o23 = TeamNaamNormalisatie.IsO23Team(classificatie.TeamNaam)
+            ? await zoekSpeeltijd(LeeftijdNormalisatie.O23Sleutel) : null;
+        var speeltijd = o23 is { WedstrijdTotaal: > 0 }
+            ? o23
+            : await ZoekSpeeltijdAsync(classificatie.LeeftijdsCategorie, zoekSpeeltijd);
         if (speeltijd is { WedstrijdTotaal: > 0 })
         {
             classificatie.LeeftijdsCategorie = speeltijd.Leeftijd;
