@@ -17,9 +17,9 @@ namespace Planner.Shared.Integrations.SportlinkClub;
 /// een van die velden is een NIEUW AVG-besluit, geen uitbreiding van #1340.
 /// </para>
 /// <para>
-/// De DPO-vragen over rechtsgrond, bewaartermijn en logging zijn nog niet door de eigenaar
-/// bevestigd; zie het voorstel in <c>docs/SPORTLINK-WEB-EXTENSION.md</c> §8. De exacte
-/// JSON-veldnaam blijft bovendien een onbevestigde technische aanname.
+/// De DPO-vragen over rechtsgrond, bewaartermijn en logging zijn op 2026-11-12 door de eigenaar
+/// beantwoord (besluit eigenaar, #1869); zie <c>docs/SPORTLINK-WEB-EXTENSION.md</c> §8. De exacte
+/// JSON-veldnaam blijft een onbevestigde technische aanname.
 /// </para>
 /// </summary>
 public sealed record SportlinkMatch

@@ -412,7 +412,7 @@ Vier dingen om te onthouden:
   §5). Genuld door de server als de rol geen `ScheidsrechterFeatureToegestaan` heeft (dezelfde
   #1341-gate als de toewijs-actie zelf, `SportlinkRolFeature.VoegToestemmingenToe`). **De exacte
   JSON-veldnaam voor de relatiecode in `matchOfficials` blijft een onbevestigde aanname** — zie de
-  waarschuwing bij `SportlinkMatchOfficial.RelatieCode`. De openstaande DPO-vraag staat in §8.
+  waarschuwing bij `SportlinkMatchOfficial.RelatieCode`. Het DPO-besluit staat in §8.
 - **Sinds #995 ook `PUT .../change-request` — wijzigingsverzoek datum/tijd/accommodatie, ALLEEN
   stap 1 (valideren), sinds #1319 live bevestigd (was code-gelockt):** dit is de enige mutatiesoort die een ECHTE tegenstander
   raakt (Sportlink stuurt bij bevestiging een goedkeuringsverzoek naar de tegenstander) — zie het
@@ -1027,13 +1027,10 @@ ongewijzigde scope-beslissing, los van deze lock.
 - [`docs/ENTRA-AUTH-BEHEER.md`](ENTRA-AUTH-BEHEER.md) — rolbeheer en N-user-test
 - [`docs/ARCHITECTUUR-DATABASE-TIERS.md`](ARCHITECTUUR-DATABASE-TIERS.md) — tier-bouwvolgorde; §4.2 hierboven legt uit waarom `SportlinkClubClient` wél in `Planner.Shared` zit maar de tokenopslag per tier verschilt
 
-## 8. Openstaande DPO-vraag — relatiecode-prefill (#1340), VOORSTEL niet bevestigd
+## 8. DPO-besluit — relatiecode-prefill (#1340, #1869)
 
-> **Dit is een VOORSTEL, GEEN besluit.** De eigenaar gaf toestemming om de technische implementatie
-> te starten, maar daarmee zijn de vragen over rechtsgrond, bewaartermijn en audit-logging niet
-> beantwoord. De eigenaar heeft concrete bewaartermijnen expliciet apart gehouden. Behandel de
-> relatiecode als indirect persoonsgegeven totdat de eigenaar deze drie keuzes rechtstreeks
-> bevestigt; vul ze niet op basis van algemene aanbevelingen in.
+> **Besluit van de eigenaar op 2026-11-12** (triage-survey, vraag 2, optie A; vastgelegd bij #1869).
+> Dit vervangt het eerdere voorstel. De antwoorden van 2026-09-26 in #1340 golden niet als besluit.
 
 **Context.** #1340 herziet de AVG-grens uit §5/§6 hierboven (`matchOfficials` bevat naam,
 geboortedatum en foto-URL, live bevestigd tijdens het incident van 2026-09-06) door PRECIES ÉÉN
@@ -1043,35 +1040,42 @@ tekstinvoervelden (die al vóór #1340 relatiecodes accepteerden als INVOER voor
 zie hierboven). Er verandert niets aan wat de app OPSLAAT: de relatiecode wordt bij elke paneel-
 weergave live bij Sportlink opgehaald (`GET .../Match`) en nergens in onze eigen database
 bewaard — precies zoals de rest van dit paneel werkt (§5: "nooit opslaan buiten wat al in onze
-eigen DB staat").
+eigen DB staat"). De relatiecode blijft een indirect persoonsgegeven.
 
 ### Vraag 1 — rechtsgrond
 
-**VOORSTEL:** gerechtvaardigd belang van de club bij correcte wedstrijdorganisatie (AVG art. 6 lid
-1 sub f). Dit is geen bevestigde grondslag of vastgelegde belangenafweging.
+**BESLUIT:** gerechtvaardigd belang van de club bij correcte wedstrijdorganisatie (AVG art. 6 lid
+1 sub f). Belangenafweging in het kort: het belang van de club is dat de juiste official aan de juiste
+wedstrijd gekoppeld wordt; de verwerking is beperkt tot één intern nummer zonder naam, het nummer wordt
+alleen getoond en niet bewaard, en alleen rollen met de scheidsrechterfunctie (#1341-gate) zien het.
 
 ### Vraag 2 — bewaartermijn
 
-**VOORSTEL:** geen aparte bewaartermijn, als de relatiecode niet wordt bewaard. Controleer dit
-voorstel met de eigenaar; concrete bewaartermijnen vereisen een afzonderlijk besluit.
+**BESLUIT:** de prefill krijgt geen aparte bewaartermijn, omdat de relatiecode niet wordt bewaard.
 
 ### Vraag 3 — audit-logging (`RondMutatieAfAsync`)
 
-**Gecontroleerd, geen aanname:** het NIEUWE leespad van #1340 (`GET
-/api/sportlink/match/{wedstrijdcode}`, `SportlinkMatchFunction.Get`) roept
-`ISportlinkMutationAuditService`/`RondMutatieAfAsync` helemaal niet aan — dat gebeurt uitsluitend
-in `ExecuteMutationAsync`, de gedeelde stap onder de vier PUT-mutatie-endpoints (kleedkamers, veld,
-officials, wijzigingsverzoek). De relatiecode-prefill wordt dus **niet** gelogd door dit issue.
+**Feitelijk vastgesteld:** het leespad van #1340 (`GET /api/sportlink/match/{wedstrijdcode}`,
+`SportlinkMatchFunction.Get`) roept `ISportlinkMutationAuditService`/`RondMutatieAfAsync` helemaal
+niet aan — dat gebeurt uitsluitend in `ExecuteMutationAsync`, de gedeelde stap onder de vier
+PUT-mutatie-endpoints (kleedkamers, veld, officials, wijzigingsverzoek). De relatiecode-prefill
+wordt dus niet gelogd.
 
-**Openstaande vraag:** het bestaande auditlog legt de door de beheerder ingevoerde relatiecode
-van de officials-mutatie vast. De eigenaar moet bevestigen of deze verwerking is toegestaan en
-welke bewaartermijn daarvoor geldt. Het leespad zelf introduceert geen extra auditregel.
+**BESLUIT:** het bestaande mutatie-auditlog mag de door de beheerder ingevoerde relatiecode van de
+officials-mutatie (#994) blijven vastleggen. De bewaartermijn volgt de levenscyclus van de
+wedstrijddata.
 
-### Samenvatting voor de eigenaar
+**Werking vandaag, nog af te stemmen met de eigenaar:** het mutatie-auditlog wordt op beide tiers
+standaard na 365 dagen opgeruimd (instelbaar per club via `sportlinkmutationauditbewaardagen`, zie
+hierboven). Dat is een vaste termijn en geen koppeling aan de wedstrijddata. Of 365 dagen volstaat of
+dat de werking moet worden aangepast, is een open vervolgbesluit; wijkt de gewenste termijn af, dan
+volgt een apart implementatie-issue op beide tiers.
 
-| Vraag | Voorstel / bevinding | Status |
+### Samenvatting
+
+| Vraag | Uitkomst | Status |
 |---|---|---|
-| Rechtsgrond | Gerechtvaardigd belang (art. 6 lid 1 sub f) | VOORSTEL, niet bevestigd |
-| Bewaartermijn | Geen apart regime, mits niet bewaard | VOORSTEL, niet bevestigd; concrete termijn vereist eigenaarbesluit |
-| Audit-logging (nieuw leespad #1340) | Gecontroleerd: gebeurt niet | Feitelijk vastgesteld, geen aanname |
-| Audit-logging (bestaand schrijfpad #994) | Bestaand auditlog bevat relatiecode | Bevestiging en bewaartermijn open |
+| Rechtsgrond | Gerechtvaardigd belang (art. 6 lid 1 sub f) | Besluit eigenaar, 2026-11-12 (#1869) |
+| Bewaartermijn prefill | Geen aparte termijn, want niet bewaard | Besluit eigenaar, 2026-11-12 (#1869) |
+| Audit-logging (leespad #1340) | Gebeurt niet | Feitelijk vastgesteld |
+| Audit-logging (schrijfpad #994) | Auditlog mag de relatiecode bevatten; termijn volgt de wedstrijddata | Besluit eigenaar, 2026-11-12 (#1869); werking is 365 dagen standaard, afstemming open |
