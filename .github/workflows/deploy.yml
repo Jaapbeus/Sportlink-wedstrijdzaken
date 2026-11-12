@@ -576,6 +576,10 @@ jobs:
   blazor-deploy:
     runs-on: ubuntu-latest
     needs: [build, deploy]
+    # #1908: zonder expliciete voorwaarde geldt de standaard success(): die slaat een job over zodra een
+    # voorouder in de keten is overgeslagen. db-check en db-migrate zijn altijd overgeslagen (één databasetier
+    # is inactief), waardoor de Blazor-uitrol nooit meer draaide. Zelfde patroon als de test-job.
+    if: always() && needs.build.result == 'success' && needs.deploy.result == 'success'
     # Vereist het secret AZURE_STATIC_WEB_APPS_API_TOKEN (zie docs/BEHEERDER-HANDLEIDING.md voor de
     # SWA-resource). Job wordt overgeslagen als het secret leeg is — guard via env op step-niveau (secrets context
     # mag niet in job-level if direct staan).
@@ -759,6 +763,12 @@ jobs:
           fi
           if [ "$R_DEPLOY" != "success" ]; then
             echo "::error::De 'deploy'-job (Function App) eindigde als '${R_DEPLOY}' — geen succesvolle productiedeploy in deze run."
+            FOUT=1
+          fi
+          # #1908: een overgeslagen blazor-deploy liet de Admin GUI ongemerkt op de oude versie staan terwijl
+          # de API wél was bijgewerkt. Na een geslaagde deploy hoort de front-end ook te zijn uitgerold.
+          if [ "$R_DEPLOY" = "success" ] && [ "$R_BLAZOR_DEPLOY" != "success" ]; then
+            echo "::error::De 'blazor-deploy'-job (Blazor Admin GUI) eindigde als '${R_BLAZOR_DEPLOY}' terwijl de Function App wel is bijgewerkt — de front-end is niet vernieuwd."
             FOUT=1
           fi
 
