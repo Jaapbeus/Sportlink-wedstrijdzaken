@@ -188,6 +188,17 @@ var modelName = Environment.GetEnvironmentVariable("AiModelName");
 Configureer de gekozen model-ID via GitHub Variable `AI_MODEL_NAME` en Azure Function Application
 Settings. Gebruik geen terugvalwaarde in code.
 
+**Reasoning-modellen (#1756).** Een model met reasoning, zoals `gpt-6-luna`, weigert sampling-parameters
+(`Temperature`) zodra de reasoning-inspanning niet `none` is, en de aanroepers (classificatie, correctiedetectie,
+feedback) sturen altijd een temperatuur mee. De optionele app setting `AiReasoningEffort`
+(`none`, `low`, `medium`, `high`, `extra-high`) schakelt daarom in `AiClientRegistration` een
+`ReasoningChatClient` in (`Planner.Shared/Infrastructure`): die laat de temperatuur van elke aanroep weg en zet de
+reasoning-inspanning via `ChatOptions.Reasoning`. De aanroepers blijven ongewijzigd en praten alleen met
+`IChatClient`. Leeg of onbekend laat de client ongemoeid, voor modellen zonder reasoning zoals `gpt-4o-mini`
+(met een meegestuurde reasoning-inspanning niet getest, de provider-documentatie zegt er niets over). Het filter laat de temperatuur
+ook bij `none` weg: dat is voorzichtiger dan de checklist van de provider eist. Zet bij `gpt-6-luna` dus
+`AiReasoningEffort=none`. De waarde wordt nooit gelogd.
+
 > **Status: geïmplementeerd (#604), op beide tiers.** `FunctionApp.Postgres/Program.cs` (de tier die
 > in productie draait, #1060) **en** `FunctionApp/Program.cs` lezen `AiModelName` uit de app setting.
 > Als die leeg is terwijl een sleutel en uitgaande integraties zijn toegestaan, wordt `IChatClient`

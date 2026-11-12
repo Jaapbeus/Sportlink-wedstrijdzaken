@@ -734,7 +734,7 @@ Automatische verwerking van inkomende emails op de coordinator-mailbox. Leest ve
 | Component | Keuze | Reden |
 |-----------|-------|-------|
 | Email lezen/sturen | **Microsoft Graph API + Application Permissions** | Gratis (onderdeel M365), volledig unattended via client credentials flow |
-| AI/LLM | **OpenAI GPT-4o-mini** (direct, niet Azure OpenAI) | ~EUR 0.03/maand, geen goedkeuringsproces, later migreerbaar naar Azure OpenAI |
+| AI/LLM | **OpenAI gpt-6-luna** (direct, niet Azure OpenAI) | ~EUR 0.03/maand, geen goedkeuringsproces, later migreerbaar naar Azure OpenAI |
 | Trigger | **Timer, interval configureerbaar via `EMAIL_POLL_SCHEDULE`** (sjabloonwaarde `0 */10 * * * *` = elke 10 minuten) | Zelfde patroon als FetchAndStoreApiData, simpel en betrouwbaar |
 | Secrets opslag | **Azure Function Application Settings** | Gratis, encrypted at rest (AES-256), standaard Azure Functions patroon |
 
@@ -755,7 +755,7 @@ EmailProcessorFunction
   +----+----+
   |         |
   v         v
-Graph API   OpenAI GPT-4o-mini
+Graph API   OpenAI gpt-6-luna
 (inbox)     (classificeer email)
   |                |
   v                v
@@ -777,9 +777,9 @@ emails             |
 
 1. **Poll inbox** — `GET /users/{mailbox}/mailFolders/inbox/messages?$filter=isRead eq false`
 2. **Deduplicatie** — check MessageId tegen `planner.EmailVerwerking` tabel
-3. **Classificeer** — GPT-4o-mini structured output → type verzoek + parameters
+3. **Classificeer** — gpt-6-luna structured output → type verzoek + parameters
 4. **PlannerService aanroepen** — directe C# method call (geen HTTP roundtrip)
-5. **Antwoord genereren** — GPT-4o-mini met communicatierichtlijnen als systeemprompt
+5. **Antwoord genereren** — gpt-6-luna met communicatierichtlijnen als systeemprompt
 6. **Verstuur** — Graph API sendMail (Fase 1: review-mailbox, Fase 2: afzender)
 7. **Markeer als gelezen** — Graph API PATCH isRead=true
 
@@ -849,7 +849,7 @@ Audit trail en conversatie-tracking voor alle verwerkte emails.
 |-----------|--------|
 | Microsoft Graph API | EUR 0 (onderdeel M365) |
 | Azure Functions | EUR 0 (binnen free tier) |
-| OpenAI GPT-4o-mini | EUR ~0.03 (100 emails/maand) |
+| OpenAI gpt-6-luna | EUR ~0.03 (100 emails/maand) |
 | **Totaal** | **EUR ~0.03/maand** |
 
 ### Azure AD / Entra ID vereisten (eenmalige configuratie)

@@ -8,7 +8,8 @@ namespace SportlinkFunction.AiComposition;
 /// <summary>Shared host composition for the provider-backed chat client.</summary>
 public static class OpenAiChatClientRegistration
 {
-    public static void Register(IServiceCollection services, string? apiKey, string? modelName, bool externalAllowed)
+    public static void Register(
+        IServiceCollection services, string? apiKey, string? modelName, bool externalAllowed, string? reasoningEffort = null)
     {
         AiClientRegistration.TryRegister(
             services,
@@ -16,6 +17,7 @@ public static class OpenAiChatClientRegistration
             modelName,
             externalAllowed,
             static (configuredModel, configuredKey) =>
-                new ChatClient(configuredModel, new System.ClientModel.ApiKeyCredential(configuredKey)).AsIChatClient());
+                new ChatClient(configuredModel, new System.ClientModel.ApiKeyCredential(configuredKey)).AsIChatClient(),
+            reasoningEffort);
     }
 }
