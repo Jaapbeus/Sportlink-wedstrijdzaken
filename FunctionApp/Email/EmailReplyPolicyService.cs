@@ -15,6 +15,12 @@ namespace SportlinkFunction.Email;
 /// </summary>
 internal sealed class EmailReplyPolicyService
 {
+    private readonly Func<int, TeamContactDoorstuurVerzoek, Task<TeamContactDoorstuurUitkomst>>? _teamContactDoorstuur;
+
+    internal EmailReplyPolicyService(
+        Func<int, TeamContactDoorstuurVerzoek, Task<TeamContactDoorstuurUitkomst>>? teamContactDoorstuur = null)
+        => _teamContactDoorstuur = teamContactDoorstuur;
+
     internal Task<ReplyVerwerkingUitkomst> HandelReplyFlowAfAsync(
         int verwerkingId,
         InkomendBericht email,
@@ -37,10 +43,17 @@ internal sealed class EmailReplyPolicyService
                 var seizoen = await SystemUtilities.SeasonHelper.GetCurrentKnvbSeizoenAsync(log);
                 return string.IsNullOrWhiteSpace(seizoen) ? null : await KnvbPdfService.GetKalenderPdfAsync(regio, seizoen, log);
             },
-            ExtraheerGraphStatusCode);
+            ExtraheerGraphStatusCode,
+            _teamContactDoorstuur ?? TeamContactDoorstuurAfhandeling.MaakStandaardDoorstuur(
+                () => new SqlTeamContactDoorstuurPersistentie(
+                    SystemUtilities.DatabaseConfig.ConnectionString, persistenceService.ResolveClubCode()),
+                async team => (await PlannerDataAccess.GetTeamleiderContactAsync(team))?.Emailadres,
+                () => SystemUtilities.AppSettings.GetSetting("plannerEmailAdres"),
+                graphService.StuurTeamContactDoorAsync,
+                log));
 
         return EmailReplyAfhandeling.HandelReplyFlowAfAsync(
-            verwerkingId, new ReplyBericht(email.MessageId, email.Afzender, email.ConversationId), classificatie,
+            verwerkingId, new ReplyBericht(email.MessageId, email.Afzender, email.ConversationId, email.AfzenderNaam, email.Body), classificatie,
             plannerResponseJson, reviewMode, reviewRecipient, graphService, persistenceService,
             bouwTemplateAntwoordAsync, sanitizeFoutMelding, haken, log, trace, zekerheidspoortActief);
     }

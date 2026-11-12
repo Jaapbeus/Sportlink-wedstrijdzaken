@@ -51,11 +51,12 @@ internal static partial class BerichtPipeline
     internal static async Task<string> VerwerkMetPlannerAsync(
         BerichtClassificatie classificatie, InkomendBericht bericht, ILogger log,
         ITeamResolver teamResolver,
-        string? clubCode = null, ClubAppSettingsSnapshot? clubSettings = null, TraceBuilder? trace = null, Func<ITeamFixtureContextRepository>? fixtureContextFactory = null)
+        string? clubCode = null, ClubAppSettingsSnapshot? clubSettings = null, TraceBuilder? trace = null, Func<ITeamFixtureContextRepository>? fixtureContextFactory = null, IAfzenderTeamBron? afzenderTeamBron = null)
     {
         var cc = ResolveHeuristicClubCode(clubCode);
         var eigenTeamHerkend = await EigenTeamBepaling.BereidPlannerVoorAsync(classificatie, teamResolver, cc, log, trace,
-            fixtureContextFactory ?? (() => new FunctionApp.Postgres.TeamResolution.TeamFixtureContextRepository(PostgresDatabaseConfig.ConnectionString)));
+            fixtureContextFactory ?? (() => new FunctionApp.Postgres.TeamResolution.TeamFixtureContextRepository(PostgresDatabaseConfig.ConnectionString)),
+            new AfzenderOpzoeking(afzenderTeamBron ?? new FunctionApp.Postgres.TeamResolution.PostgresAfzenderTeamBron(), bericht.Afzender, AfzenderTeamBepaling.ReplyToUitHeaders(bericht.InternetHeaders)));
         return await BerichtPlannerAfhandeling.VerwerkAsync(classificatie,
             () => VerwerkBeschikbaarheidAsync(classificatie, bericht, log, eigenTeamHerkend, clubCode, trace),
             () => VerwerkHerplanAsync(classificatie, bericht, log, cc, clubCode, clubSettings),

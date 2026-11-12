@@ -243,12 +243,13 @@ public class AutoPlanExactApplyIntegrationTests
                 blocker, blockerTransaction);
             blockerCommand.Parameters.AddWithValue("@id", firstId);
             blockerUpdate = blockerCommand.ExecuteNonQueryAsync();
-            var completed = await Task.WhenAny(apply, blockerUpdate, Task.Delay(TimeSpan.FromSeconds(20)));
-            completed.Should().BeSameAs(apply,
-                "the exact-apply transaction should be selected as the lower-priority deadlock victim");
-            await ((Func<Task>)(async () => await apply)).Should()
-                .ThrowAsync<AutoPlanApplyConflictException>();
-            await blockerUpdate;
+            // #1888: the victim is fixed by DEADLOCK_PRIORITY (HIGH blocker vs NORMAL apply), but which
+            // client task completes first after the victim's rollback is scheduler timing. Never race
+            // the two tasks: await each one with a bound and assert its own outcome.
+            await ((Func<Task>)(() => apply.WaitAsync(TimeSpan.FromSeconds(30)))).Should()
+                .ThrowAsync<AutoPlanApplyConflictException>(
+                    "the exact-apply transaction is the lower-priority deadlock victim");
+            await blockerUpdate.WaitAsync(TimeSpan.FromSeconds(30));
 
             await blockerTransaction.CommitAsync();
             (await FieldAsync(firstId)).Should().BeNull("the chosen victim's plan must roll back");

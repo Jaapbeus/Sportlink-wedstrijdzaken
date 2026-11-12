@@ -107,6 +107,21 @@ public class BerichtAntwoordGeneratorTests
     }
 
     [Fact]
+    public void AfgeleidTeam_VoegtDeControleregelToeVoorDeHandtekening_Anders_Niet()
+    {
+        var response = new TestBeschikbaarheid { Beschikbaar = true, Toewijzing = Slot(5, "10:00") };
+        var afgeleid = Classificatie("10:00");
+        afgeleid.TeamNaam = "ALLSTARS JO23-1";
+        afgeleid.TeamAfgeleidUitAfzender = true;
+
+        var (_, body) = BerichtAntwoordGenerator.BouwBeschikbaarheidAntwoord(response, afgeleid, Email, Voetnoot);
+        var (_, zonder) = BerichtAntwoordGenerator.BouwBeschikbaarheidAntwoord(response, Classificatie("10:00"), Email, Voetnoot);
+
+        body.Should().Contain("De wedstrijd eindigt om 11:45.\n\nWe gaan uit van ALLSTARS JO23-1; klopt dat niet, laat het ons weten.\n\nTestomgeving");
+        zonder.Should().NotContain("We gaan uit van");
+    }
+
+    [Fact]
     public void Beschikbaar_MetVierVensters_MeldtDiverseMogelijkhedenEnWaarschuwingen()
     {
         var response = new TestBeschikbaarheid

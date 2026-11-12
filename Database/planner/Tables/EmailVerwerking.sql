@@ -23,6 +23,7 @@ CREATE TABLE [planner].[EmailVerwerking] (
     -- Een gevulde waarde bij IsBeantwoord = 0 betekent dus: er is verstuurd of misschien verstuurd,
     -- en we weten de uitkomst niet — dan mag er nooit blind opnieuw verstuurd worden.
     [VerzendPogingOpUtc]    DATETIME2       NULL,
+    [TeamContactDoorstuurStatus] NVARCHAR(20) NULL,
     [Status]                NVARCHAR(30)    NOT NULL CONSTRAINT [DF_EmailVerwerking_Status] DEFAULT 'Ontvangen',
     [FoutMelding]           NVARCHAR(1000)  NULL,
     [IsReplyOpOnsAntwoord]  BIT             NULL,

@@ -127,7 +127,8 @@ public partial class EmailProcessorFunction
                     SanitizeFoutMelding,
                     log,
                     trace,
-                    await ZekerheidspoortInstelling.IsActiefAsync(cs, clubCode, log));
+                    await ZekerheidspoortInstelling.IsActiefAsync(cs, clubCode, log),
+                    clubCode);
             }, log);
         }, async t =>
             {
@@ -208,11 +209,6 @@ public partial class EmailProcessorFunction
             await StuurTeamleiderNotificatieAsync(cs, clubCode, graphService, classificatie.TeamNaam!, classificatie.Datum!, log);
         }
 
-        if (classificatie.Type == VerzoekType.TeamContactOpvragen
-            && !string.IsNullOrWhiteSpace(classificatie.TeamNaam))
-        {
-            await StuurTeamContactBerichtDoorAsync(cs, clubCode, graphService, classificatie.TeamNaam!, email, log);
-        }
     }
 
     /// <summary>

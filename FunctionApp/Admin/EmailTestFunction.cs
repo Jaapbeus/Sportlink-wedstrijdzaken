@@ -108,8 +108,9 @@ public static class EmailTestFunction
         if (gereedheid != null && teamRepository != null && !await teamRepository.HeeftActieveTeamsAsync(clubCode))
             await gereedheid.ZorgVoorTeamlijstAsync(clubCode);
 
+        // #1862: geen afzender-opzoeking in de proefverwerking; een vrij ingetypt adres mag niet tonen welk team iemand begeleidt.
         var plannerResponseJson = await BerichtPipeline.VerwerkMetPlannerAsync(
-            classificatie, fakeEmail, log, teamResolver, clubCode, clubSettings, trace);
+            classificatie, fakeEmail, log, teamResolver, clubCode, clubSettings, trace, afzenderTeamBron: OvergeslagenAfzenderTeamBron.Proefverwerking);
         // clubCode expliciet meegeven: zonder dat leest EmailTemplateService de templates van de
         // primaire club, terwijl de tester de club uit de GUI-clubswitcher toont (#677/#706).
         var (voorbeeldOnderwerp, voorbeeldBody) = await BerichtPipeline.BouwTemplateAntwoord(

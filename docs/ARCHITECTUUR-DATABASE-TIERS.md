@@ -4992,3 +4992,26 @@ tiers toe; de merge doet dan de eigenaar.
   eerste herclaim terug op haar oude slot; daarna heeft ze een vast begin en schuift de zoekgrens niet meer op.
 - **Expand (§57):** uitsluitend additief en nullable. De vorige code noemt in elke `INSERT` en `UPDATE` op
   `avg.feedback` haar kolommen en merkt de nieuwe kolom niet. Bestaande rijen blijven NULL.
+
+## 87. Index op het e-mailadres van de teambegeleiding voor de afzender-opzoeking (#1862)
+
+`AfzenderTeamBron` zoekt de teams van een afzender met `LOWER(TRIM(emailadres)) = @adres` (hoofdletters en spaties maken niet
+uit) en geeft alleen de teamkolom terug. Een `LOWER()`-vergelijking vraagt een index op dezelfde uitdrukking; zonder index is het
+een scan over de hele begeleidingslijst.
+
+- **Postgres:** expressie-index `ix_teambegeleiding_email_lower` op `avg.teambegeleiding (LOWER(TRIM(emailadres)))`, migratie
+  `049_teambegeleiding_email_index.sql`. Geen nieuwe tabel, dus geen nieuwe RLS-stap (RLS staat al aan sinds migratie 021).
+- **SQL Server:** persisted computed column `EmailadresGenormaliseerd AS LOWER(LTRIM(RTRIM([Emailadres]))) PERSISTED` met
+  `IX_avg_Teambegeleiding_EmailadresGenormaliseerd` (`INCLUDE ([Team], [ClubCode])`), in `Database/avg/Tables/Teambegeleiding.sql` en
+  idempotent in `Script.PostDeployment1.sql` (met `SET QUOTED_IDENTIFIER ON`, net als §75). SQL Server matcht de expressie uit de query
+  automatisch, dus de querytekst is op beide tiers gelijk in vorm.
+- **Expand (§57):** uitsluitend additief en niet uniek; de vorige code merkt de kolom en index niet.
+- **Bewijs:** beide integratietests leggen het plan van de productieopdracht zelf vast (`BouwOpdracht`, met clubfilter en
+  parameters): Postgres `AfzenderTeamBronIntegrationTests.Opzoeking_GebruiktDeExpressieIndex` (`EXPLAIN`) en SQL Server
+  `SqlAfzenderTeamBronIntegrationTests.Opzoeking_GebruiktDeIndexOpDeComputedColumn` (`SHOWPLAN_TEXT`, Index Seek). Beide draaien
+  in CI tegen een verse, gemigreerde database.
+- **Seedscripts:** een sqlcmd-script dat in `avg.Teambegeleiding` schrijft, zet eerst `SET QUOTED_IDENTIFIER ON` (Msg 1934 bij de
+  sqlcmd-standaard); `SeedScriptsQuotedIdentifierTests` bewaakt dat voor `scripts/migrations/`.
+- **Volgnummer:** 049, omdat 048 al in een openstaande PR voor een andere migratie gebruikt wordt.
+- **Bewaartermijn:** ongewijzigd. De bestaande opruiming (`CleanupTeambegeleiding`) verwijdert de rijen en daarmee de indexregels.
+

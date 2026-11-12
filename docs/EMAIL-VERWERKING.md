@@ -145,18 +145,21 @@ FASE 2 — databaseverwerking
 └──────────────────────────────────────────────────────────────────────────────┘
         │
         ▼
+   TeamContactOpvragen: één atomair geclaimde doorstuurpoging vóór de reply;
+   alleen een duurzaam vastgelegde Graph-acceptatie laat de reply doorgaan.
+   Zonder ontvanger of bij onbekende uitkomst: Review, geen automatische reply.
+        │
+        ▼
    Antwoord versturen naar de afzender (reply in dezelfde conversatie)
         │
         ▼  alleen NA een daadwerkelijk verstuurd antwoord:
         ├─ HerplanVerzoek      → interne notificatie naar de teamleider (#66)
-        └─ TeamContactOpvragen → vraag doorsturen naar de coach (#168)
 ```
 
-> **De twee vervolgacties onderaan zijn voorwaardelijk.** Ze draaien uitsluitend als het antwoord
-> aan de afzender echt is verstuurd. In review-mode, bij een onderdrukt antwoord (§1a) of bij een
-> Graph-verzendfout wordt de teamleider dus **niet** genotificeerd en gaat de begeleidingsvraag
-> **niet** naar de coach. Beide acties falen bovendien stil (alleen een logregel): een fout hierin
-> onderbreekt de hoofdverwerking niet.
+> **De teamleider-notificatie onderaan is voorwaardelijk.** Zij draait uitsluitend als het antwoord
+> aan de afzender is verstuurd. Bij `TeamContactOpvragen` gebeurt het doorsturen vóór de reply en
+> alleen na de review-, zekerheids- en afzenderpoorten. Een onbesliste Graph-uitkomst wordt niet
+> opnieuw verstuurd; ook bij een mislukte opslag van een Graph-acceptatie volgt handmatige review.
 
 ### Zelflerend classificatiesysteem (#323)
 
@@ -931,7 +934,7 @@ Iemand vraagt wie de trainer, coach, begeleider of teamleider van een team is.
 
 #### Template M — Auto-reply "doorgestuurd"
 
-**Wanneer:** Altijd bij dit type. Contactgegevens worden nooit gedeeld met de vraagsteller.
+**Wanneer:** Alleen na duurzaam bevestigde doorsturing. Contactgegevens worden nooit gedeeld met de vraagsteller.
 
 > **Afzender van een e-mail versus ingelogde gebruiker.** "Nooit gedeeld" geldt voor wie de club mailt: de
 > auto-reply noemt geen naam, adres of telefoonnummer van een begeleider. Ingelogde gebruikers van de
@@ -950,8 +953,13 @@ Is er geen teamnaam bekend, dan staat er "de begeleiding van het opgegeven team"
 
 #### Doorsturen naar de coach (#168)
 
-**Pas ná** het versturen van de auto-reply hierboven wordt de oorspronkelijke vraag doorgestuurd
-naar de coach. Is er geen coach gevonden in `avg.Teambegeleiding`, dan gebeurt dit niet.
+**Vóór** de auto-reply hierboven wordt de oorspronkelijke vraag maximaal eenmaal doorgestuurd.
+Nieuwe verwerkingsrijen starten met `TeamContactDoorstuurStatus = NietGestart`; de claim wordt
+atomair `Bezig`. Oude rijen met `NULL` hebben een onbekende uitkomst en zijn niet claimbaar.
+Na Graph-acceptatie moet `Geaccepteerd` duurzaam zijn opgeslagen voordat de reply mag volgen.
+Is er geen coach gevonden in `avg.Teambegeleiding`, dan wordt `NietVerstuurd` opgeslagen en gaat
+de vraag ter review. Bij een onbesliste uitkomst of opslagfout blijft de uitkomst onbekend en
+vindt geen automatische herhaling plaats. Het reviewvoorstel bevestigt daarom geen doorsturing.
 
 | Veld | Waarde |
 |---|---|
@@ -1491,6 +1499,22 @@ Toelichting bij de bewerkingen:
 
 Bij een nieuwe club-installatie: neem deze rij en de voorwaarden uit §5c over in het eigen register en
 vul de eigenaarsvelden (grondslag, overeenkomst, bewaartermijn, locatie, instrument) voor die club in.
+
+### 5e. Eigen team afleiden uit de teambegeleiding van de afzender (#1862, AVG)
+
+Noemt een bericht geen herkenbaar eigen team, dan zoekt de verwerker het e-mailadres van de afzender op in de teambegeleiding
+(`AfzenderTeamBron`). Staat het adres bij precies één team, dan is dat het team van het antwoord.
+
+| Onderdeel | Vastlegging |
+|---|---|
+| Doelverenigbaarheid (art. 6 lid 4 AVG) | De begeleiding is vastgelegd voor contact en organisatie rond teams (gerechtvaardigd belang, #168). Een begeleider herkennen die zelf over zijn eigen team mailt valt binnen dezelfde context en verwachting van de betrokkene. Er wordt niets aan derden getoond: het antwoord noemt alleen de teamnaam. |
+| Minimalisatie | De query geeft alleen teamwaarden terug, nooit naam, telefoonnummer of rol. Het e-mailadres staat alleen als parameter in de query en nooit in trace, log, telemetrie of GitHub, ook niet gehasht. |
+| Inzagelog (#1701) | Eigenaarsbesluit 2026-11-11 (4A): geen inzageregel in `avg.teambegeleidinginzagelog`; de automatische verwerking van echte mail toont geen persoonsgegevens aan een mens. De trace legt alleen het aantal gevonden teams vast (0, 1 of meer). |
+| Beheerderstester (`test/email`) | Geen opzoeking (`OvergeslagenAfzenderTeamBron.Proefverwerking`, beide tiers): daar typt een mens een vrij adres in en ziet het antwoord, dus een opzoeking zou tonen welk team iemand begeleidt, buiten het inzagelog om. De trace toont de stap als overgeslagen, met de reden. |
+| Meerdere teams | Eigenaarsbesluit (5A): niets kiezen; de wedervraag `team_onbekend` noemt de teams van de afzender niet. |
+| Afwijkend genoemd team | Eigenaarsbesluit (6A): het genoemde team wint; een afwijking van het begeleidingsteam is alleen een tracenotitie zonder namen en zonder review-markering. |
+| Vervalste afzender | De opzoeking gebeurt alleen als Reply-To ontbreekt of gelijk is aan From, zodat een vervalste afzender via een eigen antwoordadres nooit te weten komt bij welk team een adres hoort. |
+| Opslag en bewaartermijn | Geen nieuwe opslag of bewaartermijn. De bestaande opruiming (`CleanupTeambegeleiding`) blijft leidend; is de lijst opgeschoond, dan valt de verwerking terug op de wedervraag om het team. |
 
 ---
 
