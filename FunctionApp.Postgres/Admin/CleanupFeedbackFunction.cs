@@ -22,10 +22,10 @@ public static class CleanupFeedbackFunction
     [Function("CleanupFeedback")]
     public static Task Run(
         [TimerTrigger("0 15 5 * * *")] TimerInfo myTimer,
-        FunctionContext context)
+        FunctionContext context, CancellationToken cancellationToken)
     {
         var log = context.GetLogger("CleanupFeedback");
         return DagelijkseAvgRetentie.VoerUitAsync(
-            () => PostgresSystemUtilities.WaitForDatabaseAsync(log), new PostgresFeedbackStore(PostgresDatabaseConfig.ConnectionString), Infrastructure.EgressGuard.ExternalIntegrationsAllowed(), new PostgresHisRetentie(PostgresDatabaseConfig.ConnectionString), log);
+            () => PostgresSystemUtilities.WaitForDatabaseAsync(log), new PostgresFeedbackStore(PostgresDatabaseConfig.ConnectionString), Infrastructure.EgressGuard.ExternalIntegrationsAllowed(), new PostgresHisRetentie(PostgresDatabaseConfig.ConnectionString), log, cancellationToken);
     }
 }

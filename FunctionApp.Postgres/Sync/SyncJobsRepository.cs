@@ -1,4 +1,5 @@
 using Npgsql;
+using Planner.Shared.Sync;
 
 namespace FunctionApp.Postgres.Sync;
 
@@ -15,8 +16,8 @@ internal static class SyncJobsRepository
     internal static Task CreateAsync(Guid id, string clubCode, int weekOffsetFrom, int weekOffsetTo)
         => CreateAsync(PostgresDatabaseConfig.ConnectionString, id, clubCode, weekOffsetFrom, weekOffsetTo);
 
-    internal static Task MarkRunningAsync(Guid id)
-        => MarkRunningAsync(PostgresDatabaseConfig.ConnectionString, id);
+    internal static Task<bool> TryClaimPendingAsync(Guid id)
+        => TryClaimPendingAsync(PostgresDatabaseConfig.ConnectionString, id);
 
     internal static Task MarkCompletedAsync(Guid id, bool succeeded, string? errorMessage)
         => MarkCompletedAsync(PostgresDatabaseConfig.ConnectionString, id, succeeded, errorMessage);
@@ -39,15 +40,16 @@ internal static class SyncJobsRepository
         await command.ExecuteNonQueryAsync();
     }
 
-    internal static async Task MarkRunningAsync(string connectionString, Guid id)
+    internal static async Task<bool> TryClaimPendingAsync(string connectionString, Guid id)
     {
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand(
-            "UPDATE public.syncjobs SET status = 'running', startedat = now() WHERE id = @id",
+            "UPDATE public.syncjobs SET status = 'running', startedat = now() " +
+            "WHERE id = @id AND status = 'pending' RETURNING id",
             connection);
         command.Parameters.AddWithValue("id", id);
-        await command.ExecuteNonQueryAsync();
+        return SyncJobTransitions.IsClaimGranted(await command.ExecuteScalarAsync());
     }
 
     internal static async Task MarkCompletedAsync(string connectionString, Guid id, bool succeeded, string? errorMessage)
@@ -55,11 +57,12 @@ internal static class SyncJobsRepository
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand(
-            "UPDATE public.syncjobs SET status = @status, completedat = now(), errormessage = @errormessage WHERE id = @id",
+            "UPDATE public.syncjobs SET status = @status, completedat = now(), errormessage = @errormessage " +
+            "WHERE id = @id AND status = 'running'",
             connection);
         command.Parameters.AddWithValue("id", id);
-        command.Parameters.AddWithValue("status", succeeded ? "succeeded" : "failed");
-        command.Parameters.AddWithValue("errormessage", (object?)Truncate(errorMessage, 1000) ?? DBNull.Value);
+        command.Parameters.AddWithValue("status", SyncJobTransitions.CompletionStatus(succeeded));
+        command.Parameters.AddWithValue("errormessage", (object?)SyncJobTransitions.TruncateError(errorMessage) ?? DBNull.Value);
         await command.ExecuteNonQueryAsync();
     }
 
@@ -93,8 +96,6 @@ internal static class SyncJobsRepository
             ErrorMessage: reader.IsDBNull(7) ? null : reader.GetString(7));
     }
 
-    private static string? Truncate(string? value, int maxLength)
-        => value is null ? null : value.Length <= maxLength ? value : value[..maxLength];
 }
 
 internal sealed record SyncJobStatus(

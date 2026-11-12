@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Planner.Shared.Email;
 using Planner.Shared.Email.Trace;
 
 namespace Planner.Shared.TeamResolution;
@@ -11,8 +12,14 @@ namespace Planner.Shared.TeamResolution;
 /// <param name="Herkend">True als één van beide genoemde teams in de eigen teamlijst staat.</param>
 /// <param name="TeamNaam">De canonieke naam van het eigen team (alleen bij <see cref="Herkend"/>).</param>
 /// <param name="Tegenstander">De tegenstander na een eventuele wissel (alleen bij <see cref="Herkend"/>).</param>
+/// <remarks><see cref="EigenTeamUitkomst.LeeftijdsCategorie"/>: de Sportlink-categorie van het herkende eigen team (#1863).</remarks>
+public enum EigenTeamBesluit { Onbekend, Herkend, Handmatig }
+
 public sealed record EigenTeamUitkomst(bool Herkend, string? TeamNaam, string? Tegenstander)
 {
+    public EigenTeamBesluit Besluit { get; init; } = Herkend ? EigenTeamBesluit.Herkend : EigenTeamBesluit.Onbekend;
+    public string? LeeftijdsCategorie { get; init; }
+    public static readonly EigenTeamUitkomst Handmatig = new(false, null, null) { Besluit = EigenTeamBesluit.Handmatig };
     public static readonly EigenTeamUitkomst NietHerkend = new(false, null, null);
 }
 
@@ -33,12 +40,13 @@ public sealed record EigenTeamUitkomst(bool Herkend, string? TeamNaam, string? T
 public static class EigenTeamBepaling
 {
     /// <summary>
-    /// Bepaalt welke van de twee genoemde teams het eigen team is. Eerst het genoemde team; lost dat niet
-    /// op, dan het tegenstanderveld (een tegenstander die namens zichzelf schrijft): dan worden team en
-    /// tegenstander verwisseld. Zonder clubcode wordt de herkenning overgeslagen.
+    /// Resolves both fields before choosing an own team. Distinct resolved identities require
+    /// authoritative source ownership from fixture data; inconclusive evidence requires manual review.
+    /// Unresolved multiple candidates are never automatically disambiguated.
     /// </summary>
     public static async Task<EigenTeamUitkomst> BepaalEigenTeamEnTegenstanderAsync(
-        string? teamNaam, string? tegenstander, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace)
+        string? teamNaam, string? tegenstander, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace,
+        Func<ITeamFixtureContextRepository>? fixtureContextFactory = null, string? datum = null, string? tijd = null, IReadOnlyList<string>? datums = null)
     {
         if (string.IsNullOrWhiteSpace(clubCode))
         {
@@ -51,20 +59,27 @@ public static class EigenTeamBepaling
         var tegenstanderTekst = (tegenstander ?? "").Trim();
 
         var teamUitkomst = await ProbeerResolveAsync(resolver, team, clubCode, log, trace, TraceCodes.TeamHerkenning);
-        if (teamUitkomst is not null && teamUitkomst.IsOpgelost)
+        var tegenstanderUitkomst = await ProbeerResolveAsync(resolver, tegenstanderTekst, clubCode, log, trace, TraceCodes.TegenstanderHerkenning);
+        // Null for nonempty input means a repository failure; normal unknown is a non-null Onopgelost.
+        if (ResolverFailed(team, teamUitkomst) || ResolverFailed(tegenstanderTekst, tegenstanderUitkomst))
+            return EigenTeamUitkomst.Handmatig;
+        if (teamUitkomst?.Bron == ResolutionBron.MeerdereKandidaten || tegenstanderUitkomst?.Bron == ResolutionBron.MeerdereKandidaten)
+            return EigenTeamUitkomst.Handmatig;
+
+        if (teamUitkomst?.IsOpgelost == true && tegenstanderUitkomst?.IsOpgelost == true
+            && teamUitkomst.TeamId != tegenstanderUitkomst.TeamId)
+            return await KiesMetWedstrijdAsync(teamUitkomst, tegenstanderUitkomst, team, tegenstander,
+                fixtureContextFactory, clubCode, datum, tijd, datums, log);
+        if (teamUitkomst?.IsOpgelost == true)
         {
             LogUitkomst(log, teamUitkomst);
-            return new EigenTeamUitkomst(true, teamUitkomst.CanoniekeTeamnaam, tegenstander);
+            return new EigenTeamUitkomst(true, teamUitkomst.CanoniekeTeamnaam, tegenstander) { LeeftijdsCategorie = teamUitkomst.LeeftijdsCategorie };
         }
-
-        // Het genoemde "team" is niet van ons. Misschien staat ons team in het tegenstanderveld.
-        var tegenstanderUitkomst = await ProbeerResolveAsync(resolver, tegenstanderTekst, clubCode, log, trace, TraceCodes.TegenstanderHerkenning);
-        if (tegenstanderUitkomst is not null && tegenstanderUitkomst.IsOpgelost)
+        if (tegenstanderUitkomst?.IsOpgelost == true)
         {
             trace?.TeamWissel(tegenstanderUitkomst.CanoniekeTeamnaam, team);
-            log.LogInformation("TEAMRESOLUTIE - team en tegenstander verwisseld op basis van de teamlijst");
             LogUitkomst(log, tegenstanderUitkomst);
-            return new EigenTeamUitkomst(true, tegenstanderUitkomst.CanoniekeTeamnaam, team);
+            return new EigenTeamUitkomst(true, tegenstanderUitkomst.CanoniekeTeamnaam, team) { LeeftijdsCategorie = tegenstanderUitkomst.LeeftijdsCategorie };
         }
 
         var kandidaten = teamUitkomst?.Kandidaten.Count ?? 0;
@@ -74,23 +89,68 @@ public static class EigenTeamBepaling
         return EigenTeamUitkomst.NietHerkend;
     }
 
-    /// <summary>
-    /// Haalt uit een wedstrijdstring ("Thuisteam - Uitteam", uit de opponent-lookup #1139) de kant die ons
-    /// team is, door beide kanten tegen de teamlijst te resolven. De eerste oplosbare kant levert de
-    /// canonieke naam; geen van beide oplosbaar geeft <c>null</c>. Er wordt nooit een naam gegokt.
-    /// </summary>
-    public static async Task<string?> BepaalEigenTeamUitWedstrijdAsync(
-        string? wedstrijd, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace)
-    {
-        if (string.IsNullOrWhiteSpace(wedstrijd)) return null;
+    private static bool ResolverFailed(string text, TeamResolutionResult? result) => text.Length > 0 && result is null;
 
-        foreach (var kant in wedstrijd.Split(" - ", 2, StringSplitOptions.TrimEntries))
+    /// <summary>Prepares the classification once, before either tier can dispatch planning or contact work.</summary>
+    public static async Task<bool> BereidPlannerVoorAsync(
+        BerichtClassificatie classificatie, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace,
+        Func<ITeamFixtureContextRepository>? fixtureContextFactory = null, AfzenderOpzoeking? afzender = null)
+    {
+        ArgumentNullException.ThrowIfNull(resolver);
+        (classificatie.Datum, classificatie.GewensteDatum, classificatie.Datums) = ModelDatum.Grens(classificatie.Datum, classificatie.GewensteDatum, classificatie.Datums);
+        // #1861: alleen de eigen clubnaam is geen genoemd team; anders telt de trace hem als "team genoemd".
+        if (TeamNaamNormalisatie.IsAlleenClubPrefix(classificatie.TeamNaam, clubCode)) classificatie.TeamNaam = null;
+        trace?.Classificatie(classificatie.Type.ToString(), classificatie.TeamNaam, classificatie.Tegenstander, classificatie.GetAlleDatums().Count, classificatie.AanvangsTijd);
+        classificatie.TeamAfgeleidUitAfzender = false;
+        classificatie.MeerdereAfzenderTeams = false;
+        classificatie.TeamSportlinkCategorie = null;
+        var herkend = await BepaalEnPasToeAsync(classificatie, resolver, clubCode, log, trace, fixtureContextFactory);
+        if (classificatie.TeamHandmatigBeoordelen) return false;
+        // #1862: stap 2 van de volgorde: geen herkenbaar team in de mail, dan het team van de afzender.
+        herkend = await AfzenderTeamBepaling.VerwerkAsync(classificatie, herkend, afzender, resolver, clubCode, log, trace);
+        classificatie.TeamNaamOnbevestigd = !herkend;
+        // #1863: een herkend seniorenteam zonder leeftijd in de naam krijgt de seniorensleutel uit zijn Sportlink-categorie.
+        if (herkend) classificatie.LeeftijdsCategorie = TeamNaamNormalisatie.VulLeeftijdsCategorieAan(
+            classificatie.LeeftijdsCategorie, classificatie.TeamNaam, clubCode, classificatie.TeamSportlinkCategorie);
+        return herkend;
+    }
+
+    public static async Task<bool> BepaalEnPasToeAsync(
+        BerichtClassificatie classificatie, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace,
+        Func<ITeamFixtureContextRepository>? fixtureContextFactory = null)
+    {
+        var result = await BepaalEigenTeamEnTegenstanderAsync(classificatie.TeamNaam, classificatie.Tegenstander,
+            resolver, clubCode, log, trace, fixtureContextFactory, classificatie.Datum, classificatie.AanvangsTijd, classificatie.Datums);
+        classificatie.TeamHandmatigBeoordelen = result.Besluit == EigenTeamBesluit.Handmatig;
+        if (!result.Herkend) return false;
+        classificatie.TeamNaam = result.TeamNaam;
+        classificatie.Tegenstander = result.Tegenstander;
+        classificatie.TeamSportlinkCategorie = result.LeeftijdsCategorie;
+        return true;
+    }
+
+    private static async Task<EigenTeamUitkomst> KiesMetWedstrijdAsync(
+        TeamResolutionResult team, TeamResolutionResult opponent, string rawTeam, string? rawOpponent,
+        Func<ITeamFixtureContextRepository>? fixtureContextFactory, string club, string? datum, string? tijd,
+        IReadOnlyList<string>? datums, ILogger log)
+    {
+        if (fixtureContextFactory is null || !TeamFixtureChoice.TryDate(datum, datums, tijd, out var date))
+            return EigenTeamUitkomst.Handmatig;
+        try
         {
-            var uitkomst = await ProbeerResolveAsync(resolver, kant, clubCode, log, trace, TraceCodes.OpponentTeamHerkenning);
-            if (uitkomst is not null && uitkomst.IsOpgelost)
-                return uitkomst.CanoniekeTeamnaam;
+            // Configuration and repository creation belong inside the same fail-closed boundary as the query.
+            var context = await fixtureContextFactory().GetAsync(club, date, [team.TeamId!.Value, opponent.TeamId!.Value]);
+            var selected = TeamFixtureChoice.Choose(context, team.TeamId.Value, opponent.TeamId.Value, tijd);
+            if (selected is null) return EigenTeamUitkomst.Handmatig;
+            return selected == opponent.TeamId
+                ? new EigenTeamUitkomst(true, opponent.CanoniekeTeamnaam, rawTeam) { LeeftijdsCategorie = opponent.LeeftijdsCategorie }
+                : new EigenTeamUitkomst(true, team.CanoniekeTeamnaam, rawOpponent) { LeeftijdsCategorie = team.LeeftijdsCategorie };
         }
-        return null;
+        catch (Exception ex)
+        {
+            log.LogWarning("TEAMRESOLUTIE - wedstrijdcontext niet beschikbaar ({FoutType}); handmatige beoordeling nodig", ex.GetType().Name);
+            return EigenTeamUitkomst.Handmatig;
+        }
     }
 
     /// <summary>

@@ -1,3 +1,4 @@
+using Planner.Endpoints.Http;
 using FunctionApp.Postgres.Infrastructure;
 using FunctionApp.Postgres.Sportlink;
 using Microsoft.AspNetCore.Http;
@@ -70,29 +71,31 @@ public static class SportlinkExtensieRollenFunction
                 if (!FunctioneleRollen.Contains(rolNaam, StringComparer.OrdinalIgnoreCase))
                     return new BadRequestObjectResult(new { error = $"Onbekende rol '{rolNaam}'. Toegestaan: {string.Join(", ", FunctioneleRollen)}." });
 
-                var dto = JsonConvert.DeserializeObject<RegistreerKoppelingDto>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
+                return await BoundedRequestBodyReader.ExecuteJsonAsync<RegistreerKoppelingDto>(req, async dto =>
+                {
+                    if (dto == null) return new BadRequestObjectResult(new { error = "Request body is geen geldige JSON." });
 
-                // Server bepaalt WIE — nooit uit client-input, om spoofing te voorkomen.
-                var door = EasyAuthHelper.GetAuditActor(req);
+                    // Server bepaalt WIE — nooit uit client-input, om spoofing te voorkomen.
+                    var door = EasyAuthHelper.GetAuditActor(req);
 
-                await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
-                await connection.OpenAsync();
+                    await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+                    await connection.OpenAsync();
 
-                await using var cmd = new NpgsqlCommand(@"
-                    INSERT INTO public.sportlinkextensierollen
-                        (rolnaam, laatstgekoppelddoor, laatstgekoppeldop, sportlinkaccountnaam, clubcode)
-                    VALUES (@rolnaam, @door, now(), @account, @clubcode)
-                    ON CONFLICT (rolnaam, clubcode) DO UPDATE SET
-                        laatstgekoppelddoor = @door, laatstgekoppeldop = now(), sportlinkaccountnaam = @account",
-                    connection);
-                cmd.Parameters.AddWithValue("rolnaam", rolNaam);
-                cmd.Parameters.AddWithValue("clubcode", clubCode);
-                cmd.Parameters.AddWithValue("door", door);
-                cmd.Parameters.AddWithValue("account", (object?)dto?.SportlinkAccountNaam ?? DBNull.Value);
-                await cmd.ExecuteNonQueryAsync();
+                    await using var cmd = new NpgsqlCommand(@"
+                        INSERT INTO public.sportlinkextensierollen
+                            (rolnaam, laatstgekoppelddoor, laatstgekoppeldop, sportlinkaccountnaam, clubcode)
+                        VALUES (@rolnaam, @door, now(), @account, @clubcode)
+                        ON CONFLICT (rolnaam, clubcode) DO UPDATE SET
+                            laatstgekoppelddoor = @door, laatstgekoppeldop = now(), sportlinkaccountnaam = @account",
+                        connection);
+                    cmd.Parameters.AddWithValue("rolnaam", rolNaam);
+                    cmd.Parameters.AddWithValue("clubcode", clubCode);
+                    cmd.Parameters.AddWithValue("door", door);
+                    cmd.Parameters.AddWithValue("account", (object?)dto?.SportlinkAccountNaam ?? DBNull.Value);
+                    await cmd.ExecuteNonQueryAsync();
 
-                return new OkObjectResult(new { RolNaam = rolNaam, LaatstGekoppeldDoor = door });
+                    return new OkObjectResult(new { RolNaam = rolNaam, LaatstGekoppeldDoor = door });
+                });
             });
 
     private class RegistreerKoppelingDto

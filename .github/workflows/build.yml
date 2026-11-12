@@ -70,6 +70,9 @@ jobs:
       - name: Codekwaliteit — tier-duplicatie stijgt niet
         run: bash scripts/ci/check-tier-duplicatie.sh
 
+      - name: Code quality — tier-duplication regression test
+        run: bash scripts/ci/check-tier-duplicatie.test.sh
+
       - name: Codekwaliteit — geen logica in Blazor-pagina's
         run: bash scripts/ci/check-blazor-codebehind.sh
 
@@ -121,6 +124,9 @@ jobs:
       - name: Versies — csproj's synchroon, OpenAPI-versie YAML = JSON
         run: bash scripts/ci/check-versie-synchroon.sh
 
+      - name: Git hooks — verplichte lokale patronen en pushbereik
+        run: bash scripts/ci/test-git-hooks.sh
+
       - name: API.md — endpointtabel komt overeen met openapi.json
         run: python3 scripts/ci/check-api-md-sync.py
 
@@ -132,6 +138,10 @@ jobs:
       # #1455: de what-if-poort van infrastructure.yml, getest met geanonimiseerde fixtures.
       - name: What-if-poort app settings — zelf getest
         run: bash scripts/ci/check-whatif-appsettings.test.sh
+      # Health deployment checks retain the prior fatal/warning split while the anonymous payload
+      # contains only aggregates.
+      - name: Health deploy predicates — self test
+        run: bash scripts/dev/test-health-deploy-predicate.sh
       # #1266: de drie Postgres-coverage-guards hieronder kijken maar EEN kant op — staat elk SQL
       # Server-object ook in Postgres. Ze zijn geschreven toen SQL Server de leidende tier was.
       # Bij de cutover draaiden de rollen om, maar de richting van de guards niet; sindsdien groeide
@@ -165,7 +175,18 @@ jobs:
       # 3) binnen de Postgres-migratiebestanden zelf — een ander risico dan de bestandsnaam-
       # casing hierboven (#825). Geen database, geen secrets.
       - name: Postgres identifier-casing-guard
-        run: bash scripts/ci/check-postgres-identifier-casing.sh
+        run: |
+          bash scripts/ci/check-postgres-identifier-casing.sh
+          bash scripts/ci/check-postgres-identifier-casing.test.sh
+
+      - name: Production deployment preflight — synthetic regression tests
+        run: bash scripts/ci/check-deploy-readiness.test.sh
+
+      - name: Security pattern scanner — synthetic regression tests
+        run: bash scripts/ci/check-security-patterns.test.sh
+
+      - name: Advisor publication boundary — synthetic regression tests
+        run: bash scripts/ci/supabase-advisors-report.test.sh
 
       # #1485: twee parallel gebouwde PR's kunnen elk hetzelfde volgnummer toevoegen
       # (bijv. 034_pdf_switch.sql en 034_feedback_storage.sql). Technisch werkt het omdat
@@ -222,6 +243,9 @@ jobs:
       # docs/ARCHITECTUUR-DATABASE-TIERS.md sectie 36.
       - name: Postgres procedures/views-dekking-guard (cross-tree)
         run: bash scripts/ci/check-postgres-procedure-view-coverage.sh
+
+      - name: Lokale verificatiehelpers — geïsoleerde tests
+        run: pwsh -NoProfile -File scripts/dev/Test-AppSupport.Tests.ps1
 
       # #865: bewijst dat resolve-database-tier.sh (bash) en Get-DatabaseTierProject
       # (scripts/dev/DevServices.psm1, PowerShell) voor elke tier exact dezelfde uitkomst geven.
@@ -423,6 +447,11 @@ jobs:
       # draait alleen op een gelabeld issue; zonder deze test blijkt een fout pas bij een echte beurtwissel.
       - name: Turn-label exclusief testen
         run: node .github/scripts/turn-label-exclusief.test.js
+
+      # #1858: beurt-invariant (turn-label = volgende beurt uit de nieuwste overdracht). De workflow draait alleen
+      # per cron/handmatig; zonder deze test blijkt een parser- of evaluatiefout pas bij een vals of gemist signaal.
+      - name: Beurt-invariant testen
+        run: node .github/scripts/beurt-invariant.test.js
 
       # #1721 (fase 1): routetabel en workflowstructuur van de issue-router en de aanroepbare beurtworkflow,
       # plus de guard dat geen enkele workflow `checks: write` krijgt. Beide draaien alleen op een
@@ -804,13 +833,27 @@ jobs:
       # #1715 (Codex-review #1743 ronde 1): de SQL Server-integratietests sloegen zichzelf in CI over, omdat
       # geen job SQLSERVER_TEST_CONNECTION_STRING zette. Hier draaien ze tegen deze wegwerpdatabase: seizoenen
       # per club (doorrol rond de jaarwisseling, afgebroken en overlappende wijzigingen, overgang), de
-      # seizoensretentie (#1698), de feedbackopslag en het inzagelog. SqlServerReconciliationIntegrationTests
+      # seizoensretentie (#1698), de feedbackopslag, het inzagelog, veldbeschikbaarheidsconflicten (#1819)
+      # en e-maillogaggregaties (#1819), en de afzender-opzoeking met haar SHOWPLAN-indexbewijs (#1862). SqlServerReconciliationIntegrationTests
       # blijft buiten deze filter: die leest de connectiestring van de Function App zelf.
       - name: SQL Server-integratietests (FunctionApp.Tests, tegen SportlinkFresh)
         run: |
-          SQLSERVER_TEST_CONNECTION_STRING="Server=localhost,1433;Database=SportlinkFresh;User Id=sa;Password=${SA_PW};TrustServerCertificate=True;Pooling=false" \
+          # Earlier fresh-database steps already create his.matches. Preserve those rows;
+          # create only missing sync tables from their owning project definitions.
+          for table in Matches MatchDetails; do
+            exists=$(SQLCMDPASSWORD="$SA_PW" docker exec -e SQLCMDPASSWORD sqlfresh /opt/mssql-tools18/bin/sqlcmd \
+              -S localhost -U sa -C -d SportlinkFresh -b -V 11 -h -1 -W \
+              -Q "SET NOCOUNT ON; SELECT IIF(OBJECT_ID('his.${table}', 'U') IS NULL, 0, 1)")
+            if [ "$exists" = "0" ]; then
+              docker cp "Database/his/Tables/${table}.sql" "sqlfresh:/tmp/${table}.sql"
+              SQLCMDPASSWORD="$SA_PW" docker exec -e SQLCMDPASSWORD sqlfresh /opt/mssql-tools18/bin/sqlcmd \
+                -S localhost -U sa -C -d SportlinkFresh -b -V 11 -i "/tmp/${table}.sql"
+            fi
+          done
+          CONN="Server=localhost,1433;Database=SportlinkFresh;User Id=sa;Password=${SA_PW};TrustServerCertificate=True;Pooling=false"
+          SQLSERVER_TEST_CONNECTION_STRING="$CONN" SqlConnectionString="$CONN" \
             dotnet test FunctionApp.Tests/FunctionApp.Tests.csproj --configuration Release --verbosity normal \
-              --filter "FullyQualifiedName~SqlServerSeizoenIntegrationTests|FullyQualifiedName~SqlServerHisRetentieIntegrationTests|FullyQualifiedName~SqlFeedbackStoreIntegrationTests|FullyQualifiedName~SqlTeambegeleidingInzageStoreIntegrationTests"
+              --filter "FullyQualifiedName~SqlServerSeizoenIntegrationTests|FullyQualifiedName~SqlServerHisRetentieIntegrationTests|FullyQualifiedName~SqlFeedbackStoreIntegrationTests|FullyQualifiedName~SqlTeambegeleidingInzageStoreIntegrationTests|FullyQualifiedName~AdminSettingsFieldContractTests|FullyQualifiedName~AdminVeldBeschikbaarheidConflictIntegrationTests|FullyQualifiedName~AdminEmailLogStatusCountsIntegrationTests|FullyQualifiedName~AutoPlanExactApplyIntegrationTests|FullyQualifiedName~TeamCanonicalisatieAliasStateIntegrationTests|FullyQualifiedName~SqlServerLeeftijdNormalisatieSqlIntegrationTests|FullyQualifiedName~SqlServerSyncStagingLeaseIntegrationTests|FullyQualifiedName~SqlServerSyncJobsRepositoryIntegrationTests|FullyQualifiedName~SqlServerSyncSeasonRolloverIntegrationTests|FullyQualifiedName~SqlServerPlannerViewIntegrationTests|FullyQualifiedName~SqlSportlinkPublicMatchIdRepositoryIntegrationTests|FullyQualifiedName~TeamContactDoorstuurPersistentieIntegrationTests|FullyQualifiedName~SqlAfzenderTeamBronIntegrationTests"
 
       - name: Container opruimen
         if: always()

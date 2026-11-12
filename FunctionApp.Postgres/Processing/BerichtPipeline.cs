@@ -36,7 +36,7 @@ internal static partial class BerichtPipeline
     /// #1716 één keer in <see cref="BerichtDatumHeuristiek.CorrigeerDagDatum"/>.
     /// </summary>
     internal static void ValideerDagDatum(BerichtClassificatie classificatie, string emailBody, string onderwerp)
-        => classificatie.Datum = BerichtDatumHeuristiek.CorrigeerDagDatum(classificatie.Datum, emailBody, onderwerp);
+        => BerichtDatumHeuristiek.ValideerClassificatieDatum(classificatie, emailBody, onderwerp);
 
     /// <summary>
     /// Vertaalt de AI-classificatie naar de juiste Availability-/RescheduleService-aanroep.
@@ -51,37 +51,16 @@ internal static partial class BerichtPipeline
     internal static async Task<string> VerwerkMetPlannerAsync(
         BerichtClassificatie classificatie, InkomendBericht bericht, ILogger log,
         ITeamResolver teamResolver,
-        string? clubCode = null, ClubAppSettingsSnapshot? clubSettings = null, TraceBuilder? trace = null)
+        string? clubCode = null, ClubAppSettingsSnapshot? clubSettings = null, TraceBuilder? trace = null, Func<ITeamFixtureContextRepository>? fixtureContextFactory = null, IAfzenderTeamBron? afzenderTeamBron = null)
     {
-        ArgumentNullException.ThrowIfNull(teamResolver);
-        // #1730: de ene strikte grens voor alle modeldatumvelden, vóór trace, teamherkenning en verwerking.
-        (classificatie.Datum, classificatie.GewensteDatum, classificatie.Datums) = ModelDatum.Grens(classificatie.Datum, classificatie.GewensteDatum, classificatie.Datums);
-        trace?.Classificatie(classificatie.Type.ToString(), classificatie.TeamNaam, classificatie.Tegenstander, classificatie.GetAlleDatums().Count, classificatie.AanvangsTijd);
-
-        var cs = PostgresDatabaseConfig.ConnectionString;
         var cc = ResolveHeuristicClubCode(clubCode);
-        var eigenTeamHerkend = await BepaalEigenTeamEnTegenstanderAsync(classificatie, teamResolver, cc, log, trace);
-        classificatie.TeamNaamOnbevestigd = !eigenTeamHerkend; // antwoorden noemen een niet-bevestigd team nooit bij naam
-        if (eigenTeamHerkend) classificatie.LeeftijdsCategorie = TeamNaamNormalisatie.VulLeeftijdsCategorieAan(classificatie.LeeftijdsCategorie, classificatie.TeamNaam, cc);
-
-        switch (classificatie.Type)
-        {
-            case VerzoekType.BeschikbaarheidCheck:
-                return await VerwerkBeschikbaarheidAsync(
-                    cs, classificatie, bericht, log, teamResolver, cc, eigenTeamHerkend, clubCode, trace);
-
-            case VerzoekType.HerplanVerzoek:
-                return await VerwerkHerplanAsync(cs, classificatie, bericht, log, cc, clubCode, clubSettings);
-
-            case VerzoekType.TeamContactOpvragen:
-                return await VerwerkTeamContactAsync(cs, classificatie, clubCode);
-
-            case VerzoekType.Bevestiging:
-                return JsonConvert.SerializeObject(new { status = "Bevestiging ontvangen", opmerking = "Bevestigingen vereisen handmatige afhandeling door de coördinator" });
-
-            default:
-                return JsonConvert.SerializeObject(new { status = "Niet verwerkt" });
-        }
+        var eigenTeamHerkend = await EigenTeamBepaling.BereidPlannerVoorAsync(classificatie, teamResolver, cc, log, trace,
+            fixtureContextFactory ?? (() => new FunctionApp.Postgres.TeamResolution.TeamFixtureContextRepository(PostgresDatabaseConfig.ConnectionString)),
+            new AfzenderOpzoeking(afzenderTeamBron ?? new FunctionApp.Postgres.TeamResolution.PostgresAfzenderTeamBron(), bericht.Afzender, AfzenderTeamBepaling.ReplyToUitHeaders(bericht.InternetHeaders)));
+        return await BerichtPlannerAfhandeling.VerwerkAsync(classificatie,
+            () => VerwerkBeschikbaarheidAsync(classificatie, bericht, log, eigenTeamHerkend, clubCode, trace),
+            () => VerwerkHerplanAsync(classificatie, bericht, log, cc, clubCode, clubSettings),
+            () => VerwerkTeamContactAsync(classificatie, clubCode));
     }
 
     /// <summary>
@@ -137,7 +116,7 @@ internal static partial class BerichtPipeline
             return null;
         }
 
-        var vandaag = DateOnly.FromDateTime(DateTime.Today);
+        var vandaag = NederlandseBedrijfsKlok.Vandaag();
         var van = vandaag.AddDays(deadlineDagen);
         // 8 weken venster — een algoritmische constante (geen club-specifieke waarde), geeft
         // voldoende keuze zonder een half seizoen aan zaterdagen op te sommen.
@@ -220,21 +199,4 @@ internal static partial class BerichtPipeline
     private static string ResolveHeuristicClubCode(string? clubCodeOverride)
         => !string.IsNullOrWhiteSpace(clubCodeOverride) ? clubCodeOverride : (PostgresAppSettings.GetSetting("clubCode") ?? "");
 
-    /// <summary>
-    /// Tier-omhulsel van <see cref="EigenTeamBepaling.BepaalEigenTeamEnTegenstanderAsync"/> (#1716 slice 4): de
-    /// bepaling zelf staat één keer in <c>Planner.Shared</c>; hier alleen het terugzetten van de canonieke
-    /// teamnaam en de (eventueel verwisselde) tegenstander op de classificatie. Niet herkend: classificatie
-    /// ongewijzigd.
-    /// </summary>
-    /// <returns>True als het eigen team herkend is; dan staat de canonieke naam in <c>TeamNaam</c>.</returns>
-    internal static async Task<bool> BepaalEigenTeamEnTegenstanderAsync(
-        BerichtClassificatie classificatie, ITeamResolver resolver, string clubCode, ILogger log, TraceBuilder? trace)
-    {
-        var uitkomst = await EigenTeamBepaling.BepaalEigenTeamEnTegenstanderAsync(
-            classificatie.TeamNaam, classificatie.Tegenstander, resolver, clubCode, log, trace);
-        if (!uitkomst.Herkend) return false;
-        classificatie.TeamNaam = uitkomst.TeamNaam;
-        classificatie.Tegenstander = uitkomst.Tegenstander;
-        return true;
-    }
 }

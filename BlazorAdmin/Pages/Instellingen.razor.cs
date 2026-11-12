@@ -28,8 +28,11 @@ public partial class Instellingen : ClubSelectorPageBase
     private bool geocodeError;
 
     private List<UitgeslotenEmailAdresDto> uitgeslotenEmails = new();
+    private readonly LookupGeneratieGuard _loadGuard = new();
+    private readonly LookupGeneratieGuard _uitgeslotenEmailsLoadGuard = new();
     private UitgeslotenEmailAdresDto? nieuwAdres;
     private string? uitgeslotenMessage;
+    private readonly InlineBevestiging<(string? ClubCode, int Id)> _verwijderAdresBevestiging = new();
 
     // Sync + email log (verplaatst van Dashboard #344)
     private SyncStatusDto? _status;
@@ -46,18 +49,24 @@ public partial class Instellingen : ClubSelectorPageBase
     // Een door de zekerheidspoort tegengehouden mail is als gelezen gemarkeerd en komt dus nergens anders meer langs.
     private EmailLogResponse? _reviewLog;
     private bool _toonReview;
-    private int _emailReview => _reviewLog?.Items.Count ?? 0;
-    private string _emailReviewTekst => _reviewLog is { Items.Count: >= EmailReviewMax } ? $"{EmailReviewMax}+" : _emailReview.ToString();
+    private int _emailReview => _reviewLog?.StatusCounts?.GetValueOrDefault("Review") ?? 0;
+    private string _emailReviewTekst => _reviewLog?.StatusCounts is null ? "Niet beschikbaar" : _emailReview.ToString();
     private const int EmailReviewMax = 200;
 
     private bool _isTestmodus => ClubSelector.SelectedClubCode == "ALLSTARS";
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
-    protected override Task OnClubChangedAsync() => LoadAsync();
+    protected override async Task OnClubChangedAsync()
+    {
+        _verwijderAdresBevestiging.Annuleer();
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
+        var clubCode = ClubSelector.SelectedClubCode;
+        var generatie = _loadGuard.Start(clubCode);
         errorMessage = null;
         settings = null;
         _syncLoading = true;
@@ -66,16 +75,20 @@ public partial class Instellingen : ClubSelectorPageBase
         {
             _status = null;
             _emailLog = null;
+            _reviewLog = null;
+            _emailVerwerkt = _emailFouten = _emailBuitenScope = _emailGeenAntwoord = 0;
+            uitgeslotenEmails = new();
             _syncLoading = false;
             return;
         }
 
         var settingsTask = InstellingenCache.GetSettingsAsync(true);
         var syncTask    = InstellingenApi.GetSyncStatusAsync();
-        var emailTask   = EmailApi.GetEmailLogAsync(vanaf: DateTime.Today.AddDays(-1), limit: 200);
+        var emailTask   = EmailApi.GetEmailLogAsync(vanaf: DateTime.UtcNow.AddHours(-24), limit: 200);
         var reviewTask  = EmailApi.GetEmailLogAsync(status: "Review", limit: EmailReviewMax);
 
         await Task.WhenAll(settingsTask, syncTask, emailTask, reviewTask);
+        if (!IsActueleLading(generatie, clubCode)) return;
 
         var reviewResult = await reviewTask;
         _reviewLog = reviewResult.Success ? reviewResult.Data : null;
@@ -100,19 +113,22 @@ public partial class Instellingen : ClubSelectorPageBase
         if (emailResult.Success)
         {
             _emailLog = emailResult.Data;
-            if (_emailLog?.Items != null)
+            if (_emailLog?.StatusCounts != null)
             {
-                _emailVerwerkt    = _emailLog.Items.Count(i => i.Status == "AntwoordVerstuurd");
+                _emailVerwerkt    = _emailLog.StatusCounts.GetValueOrDefault("AntwoordVerstuurd");
                 // #572: verwerkt zonder automatisch antwoord — planning was mogelijk
-                _emailGeenAntwoord = _emailLog.Items.Count(i => i.Status == "GeenAntwoordNodig");
-                _emailFouten      = _emailLog.Items.Count(i => i.Status == "Fout");
-                _emailBuitenScope = _emailLog.Items.Count(i => i.Status == "BuitenScope");
+                _emailGeenAntwoord = _emailLog.StatusCounts.GetValueOrDefault("GeenAntwoordNodig");
+                _emailFouten      = _emailLog.StatusCounts.GetValueOrDefault("Fout");
+                _emailBuitenScope = _emailLog.StatusCounts.GetValueOrDefault("BuitenScope");
             }
         }
 
         _syncLoading = false;
         await LaadUitgeslotenEmailsAsync();
     }
+
+    private bool IsActueleLading(int generatie, string? clubCode) =>
+        _loadGuard.IsActueel(generatie) && ClubSelector.SelectedClubCode == clubCode;
 
     private static int HuidigSeizoenStartjaar() => SeizoenKeuze.HuidigStartjaar(DateTime.Today);
 
@@ -182,7 +198,10 @@ public partial class Instellingen : ClubSelectorPageBase
 
     private async Task LaadUitgeslotenEmailsAsync()
     {
+        var clubCode = ClubSelector.SelectedClubCode;
+        var generatie = _uitgeslotenEmailsLoadGuard.Start(clubCode);
         var r = await EmailApi.GetUitgeslotenEmailsAsync();
+        if (!_uitgeslotenEmailsLoadGuard.IsActueel(generatie) || ClubSelector.SelectedClubCode != clubCode) return;
         uitgeslotenEmails = r.Success ? r.Data ?? new() : new();
     }
 
@@ -214,10 +233,17 @@ public partial class Instellingen : ClubSelectorPageBase
 
     private async Task VerwijderAdresAsync(int id)
     {
+        if (!_verwijderAdresBevestiging.Bevestig((ClubSelector.SelectedClubCode, id))) return;
+
         var r = await EmailApi.DeleteUitgeslotenEmailAsync(id);
         uitgeslotenMessage = r.Success ? null : "Fout: " + r.ErrorMessage;
-        await LaadUitgeslotenEmailsAsync();
+        if (r.Success) await LaadUitgeslotenEmailsAsync();
     }
+
+    private void VraagVerwijderAdres(int id) =>
+        _verwijderAdresBevestiging.Vraag((ClubSelector.SelectedClubCode, id));
+
+    private void AnnuleerVerwijderenAdres() => _verwijderAdresBevestiging.Annuleer();
 
     private async Task ZoekCoordinaten()
     {

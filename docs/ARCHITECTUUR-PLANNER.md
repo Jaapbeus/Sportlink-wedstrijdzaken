@@ -317,10 +317,10 @@ ALLSTARS-rijen zijn altijd expliciet gestempeld en lekken dus nooit mee.
 | datum | Ja | Gewenste datum (ISO format) |
 | aanvangsTijd | Nee | Gewenste aanvangstijd ("HH:mm"), null = zoek beste slot |
 | dagdeel | Nee | "ochtend" (08:30-12:00), "middag" (12:00-17:00) of "avond" (17:00-22:00) — beperkt vensters en alternatieven tot dat dagdeel; de grenzen staan in `Planner.Shared/DagdeelVenster.cs` (#1587). De response meldt het toegepaste dagdeel in `gecontroleerdDagdeel` |
-| leeftijdsCategorie | Nee | Bepaalt duur + veldfractie. Zonder: retourneert beschikbare vensters |
+| leeftijdsCategorie | Nee | Bepaalt de standaardduur en veldfractie. Zonder leeftijdscategorie is een positieve `wedstrijdDuurMinuten` vereist; zonder bekende positieve duur stopt de controle met een reden en zoekt zij geen slot of venster |
 | teamNaam | Nee | Voor team-conflictcheck en team-specifieke regels |
 | tegenstander | Nee | Administratief |
-| wedstrijdDuurMinuten | Nee | Overschrijft standaardduur uit Speeltijden |
+| wedstrijdDuurMinuten | Nee | Positieve duur die de standaardduur uit Speeltijden overschrijft |
 
 #### Response Mode 1 — Met leeftijdsCategorie (specifieke toewijzing)
 
@@ -626,7 +626,19 @@ geen teamregel (`BufferVoor`/`BufferNa`). De buffer is **per slot**, niet per te
 laat een Sportlink-slot zijn eigen 0-buffer dragen, zodat een app-wedstrijd die naast een Sportlink-wedstrijd
 komt alleen zijn eigen buffer eist. Wedstrijden zonder Sportlink-duur (app-eigen, of Sportlink kent ze niet)
 behouden speeltijdentabel en club-/teambuffer. De rekenregels blijven in `PlanningBufferRegels`; de
-handmatige conflictcontrole in de Admin GUI is niet gewijzigd.
+handmatige conflictcontrole in de Admin GUI gebruikt sinds #1814 hetzelfde per-slot-kenmerk
+`sportlinkLeidend` uit het auto-plancontract: aansluitende bronwedstrijden geven geen valse
+buffermelding, maar echte overlap blijft een conflict.
+
+Ontbreekt in de databasebezetting zowel een positieve Sportlink-duur als een speeltijdenrij,
+dan blijft de bronwedstrijd in de bezettingsview met een onbekende eindtijd. De lezers blokkeren
+planning voor een herkenbaar veld met een getypeerde fout; de adminpoort geeft HTTP 409 met een
+vaste, niet-identificerende melding. Zo wordt een onbekende duur nooit als vrij veld uitgelegd (#1814).
+De niet-HTTP e-mailcaller laat dezelfde fout door naar de bestaande verwerkingsfoutafhandeling:
+de trace wordt altijd bewaard, de verwerking krijgt status `Fout` en blijft voor de normale
+begrensde retry beschikbaar. Er gaat geen beschikbaarheidsantwoord, generiek foutantwoord of
+vervolgnotificatie uit; een verzendintentie en gelezen-markering worden niet gezet. De regressies
+voor beide concrete tiers gebruiken een echte bronwedstrijd zonder beide duurbronnen.
 
 Nog open: of "speelduur + 15" voor korte toernooivormen (bijvoorbeeld 20 minuten) klopt is niet
 bevestigd (#1560, punt 2).
@@ -667,7 +679,13 @@ volledig client-side in de code-behind `VeldOptimalisatie.razor.cs` (#1361; vó�
   effectieve buffer is per kant het maximum met de algemene buffer van dat moment, en tussen voorganger
   en opvolger telt de grootste van `BufferNa(voorganger)` en `BufferVoor(opvolger)`. Een melding die door
   een teamregel komt, noemt "de vereiste teambuffer van N min" in plaats van "de ingestelde buffer".
-- Wegschrijven gaat ongewijzigd via **Toepassen in testmodus** (`/planner/auto-plan/toepassen`).
+- **Toepassen in testmodus** (`/planner/auto-plan/toepassen`) stuurt alle getoonde preview-rijen
+  inclusief hun handmatig gekozen baan mee (#1802). Beide tiers lezen bronwedstrijden, actieve
+  demovelden, speeltijden en teambuffers opnieuw binnen één serialiseerbare transactie. De gedeelde
+  `AutoPlanExactApply` valideert de volledige bronset en exacte slots via `FieldScheduler`; pas daarna
+  worden de gewijzigde ALLSTARS-rijen binnen diezelfde transactie opgeslagen. Bij een conflict
+  volgt `409` zonder gedeeltelijke updates. Een afwezige `toewijzingen`-lijst blijft het expliciete
+  legacy-pad dat opnieuw berekent.
 
 ### Twee losse statussen — bewust gescheiden
 
@@ -716,7 +734,7 @@ Automatische verwerking van inkomende emails op de coordinator-mailbox. Leest ve
 | Component | Keuze | Reden |
 |-----------|-------|-------|
 | Email lezen/sturen | **Microsoft Graph API + Application Permissions** | Gratis (onderdeel M365), volledig unattended via client credentials flow |
-| AI/LLM | **OpenAI GPT-4o-mini** (direct, niet Azure OpenAI) | ~EUR 0.03/maand, geen goedkeuringsproces, later migreerbaar naar Azure OpenAI |
+| AI/LLM | **OpenAI gpt-6-luna** (direct, niet Azure OpenAI) | ~EUR 0.03/maand, geen goedkeuringsproces, later migreerbaar naar Azure OpenAI |
 | Trigger | **Timer, interval configureerbaar via `EMAIL_POLL_SCHEDULE`** (sjabloonwaarde `0 */10 * * * *` = elke 10 minuten) | Zelfde patroon als FetchAndStoreApiData, simpel en betrouwbaar |
 | Secrets opslag | **Azure Function Application Settings** | Gratis, encrypted at rest (AES-256), standaard Azure Functions patroon |
 
@@ -737,7 +755,7 @@ EmailProcessorFunction
   +----+----+
   |         |
   v         v
-Graph API   OpenAI GPT-4o-mini
+Graph API   OpenAI gpt-6-luna
 (inbox)     (classificeer email)
   |                |
   v                v
@@ -759,9 +777,9 @@ emails             |
 
 1. **Poll inbox** — `GET /users/{mailbox}/mailFolders/inbox/messages?$filter=isRead eq false`
 2. **Deduplicatie** — check MessageId tegen `planner.EmailVerwerking` tabel
-3. **Classificeer** — GPT-4o-mini structured output → type verzoek + parameters
+3. **Classificeer** — gpt-6-luna structured output → type verzoek + parameters
 4. **PlannerService aanroepen** — directe C# method call (geen HTTP roundtrip)
-5. **Antwoord genereren** — GPT-4o-mini met communicatierichtlijnen als systeemprompt
+5. **Antwoord genereren** — gpt-6-luna met communicatierichtlijnen als systeemprompt
 6. **Verstuur** — Graph API sendMail (Fase 1: review-mailbox, Fase 2: afzender)
 7. **Markeer als gelezen** — Graph API PATCH isRead=true
 
@@ -831,7 +849,7 @@ Audit trail en conversatie-tracking voor alle verwerkte emails.
 |-----------|--------|
 | Microsoft Graph API | EUR 0 (onderdeel M365) |
 | Azure Functions | EUR 0 (binnen free tier) |
-| OpenAI GPT-4o-mini | EUR ~0.03 (100 emails/maand) |
+| OpenAI gpt-6-luna | EUR ~0.03 (100 emails/maand) |
 | **Totaal** | **EUR ~0.03/maand** |
 
 ### Azure AD / Entra ID vereisten (eenmalige configuratie)

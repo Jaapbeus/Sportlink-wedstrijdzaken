@@ -23,12 +23,12 @@ internal sealed class EmailBatchFilterService
             if (email.Afzender.Equals(eigenMailbox, StringComparison.OrdinalIgnoreCase))
             {
                 log.LogInformation("Email {MessageId} is van eigen mailbox, overslaan", email.MessageId);
-                await graphService.MarkAsReadAsync(email.MessageId);
+                await EmailVerwerkingsAfhandeling.MarkeerGefilterdBerichtGelezenAsync(email.MessageId, graphService, log);
             }
             else if (uitgeslotenCache.Contains(email.Afzender))
             {
                 log.LogInformation("Email {MessageId} van uitgesloten adres (cache), overslaan (afzender niet gelogd — AVG #210)", email.MessageId);
-                await graphService.MarkAsReadAsync(email.MessageId);
+                await EmailVerwerkingsAfhandeling.MarkeerGefilterdBerichtGelezenAsync(email.MessageId, graphService, log);
             }
             else if (AutomatischeAfzenderHerkenning.IsAutomatisch(email.InternetHeaders))
             {

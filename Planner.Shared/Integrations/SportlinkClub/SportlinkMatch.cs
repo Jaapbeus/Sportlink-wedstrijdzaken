@@ -17,10 +17,9 @@ namespace Planner.Shared.Integrations.SportlinkClub;
 /// een van die velden is een NIEUW AVG-besluit, geen uitbreiding van #1340.
 /// </para>
 /// <para>
-/// <b>Openstaande DPO-vraag, nog NIET beantwoord door de eigenaar</b> (rechtsgrond, bewaartermijn,
-/// of dit gelogd wordt): zie het VOORSTEL in <c>docs/SPORTLINK-WEB-EXTENSION.md</c>, sectie
-/// "Openstaande DPO-vraag — relatiecode-prefill (#1340)". Behandel de relatiecode tot die
-/// bevestiging als een indirect persoonsgegeven.
+/// De DPO-vragen over rechtsgrond, bewaartermijn en logging zijn op 2026-11-12 door de eigenaar
+/// beantwoord (besluit eigenaar, #1869); zie <c>docs/SPORTLINK-WEB-EXTENSION.md</c> §8. De exacte
+/// JSON-veldnaam blijft een onbevestigde technische aanname.
 /// </para>
 /// </summary>
 public sealed record SportlinkMatch
@@ -144,15 +143,15 @@ public sealed record SportlinkMatchOfficial
     [JsonConverter(typeof(FlexibleStringJsonConverter))]
     public string? OfficialPosition { get; set; }
 
-    // TODO(#1340, owner-verificatie vóór merge): dit veldnaam is NOOIT live geverifieerd tegen de
-    // Sportlink-API — controleer via de acceptatie-worktree vóór deze PR gemerged wordt.
+    // TODO(#1340, eigenaar verifieert vóór merge of gebruik): JSON-veldnaam RelatieCode is nog niet
+    // live geverifieerd. Behoud deze controle totdat de eigenaar het contract heeft bevestigd.
     // #1431: zelfde flexibele converter als OfficialPosition — een relatiecode is cijfermatig en kan
     // dus net zo goed als JSON-getal binnenkomen.
     [JsonPropertyName(RelatieCodeJsonVeldnaam)]
     [JsonConverter(typeof(FlexibleStringJsonConverter))]
     public string? RelatieCode { get; set; }
 
-    /// <summary>ENIGE plek met de aanname voor het relatiecode-veldnaam (#1340) — zie de TODO
+    /// <summary>ENIGE plek met de aanname voor de relatiecode-veldnaam (#1340) — zie de verificatie-TODO
     /// hierboven. Een <c>const</c> i.p.v. een letterlijke string rechtstreeks in het attribuut,
     /// zodat een toekomstige correctie een eenregelige wijziging is.</summary>
     internal const string RelatieCodeJsonVeldnaam = "RelatieCode";

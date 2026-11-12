@@ -89,20 +89,38 @@ internal sealed class PostgresSportlinkMutationAuditService : ISportlinkMutation
         }
     }
 
-    public async Task<bool> ZetNotitieAsync(long auditId, string clubCode, string notitie, CancellationToken cancellationToken = default)
+    public Task<bool> ZetNotitieAsync(long auditId, string clubCode, string notitie, CancellationToken cancellationToken = default)
+        => UpdateRijAsync(@"
+            UPDATE public.sportlinkmutationaudit
+            SET notitie = @notitie
+            WHERE id = @id AND clubcode = @clubcode",
+            auditId, clubCode, p => p.AddWithValue("@notitie", notitie ?? ""), cancellationToken);
+
+    public Task<bool> ZetPublicMatchIdAsync(long auditId, string clubCode, string publicMatchId, CancellationToken cancellationToken = default)
+        => UpdateRijAsync(@"
+            UPDATE public.sportlinkmutationaudit
+            SET publicmatchid = @publicmatchid
+            WHERE id = @id AND clubcode = @clubcode AND publicmatchid = @placeholder",
+            auditId, clubCode,
+            p =>
+            {
+                p.AddWithValue("@publicmatchid", publicMatchId ?? "");
+                p.AddWithValue("@placeholder", global::Planner.Endpoints.Sportlink.ClubMatchEndpointCore.AuditPublicMatchIdPlaceholder);
+            },
+            cancellationToken);
+
+    /// <summary>Eén UPDATE op een audit-rij, altijd gescoped op id én clubcode; <c>false</c> als er geen rij is bijgewerkt.</summary>
+    private static async Task<bool> UpdateRijAsync(
+        string sql, long auditId, string clubCode, Action<NpgsqlParameterCollection> bindExtra, CancellationToken cancellationToken)
     {
         await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
         await connection.OpenAsync(cancellationToken);
 
         await using var command = connection.CreateCommand();
-        command.CommandText = @"
-            UPDATE public.sportlinkmutationaudit
-            SET notitie = @notitie
-            WHERE id = @id AND clubcode = @clubcode";
-
+        command.CommandText = sql;
         command.Parameters.AddWithValue("@id", auditId);
         command.Parameters.AddWithValue("@clubcode", clubCode ?? "");
-        command.Parameters.AddWithValue("@notitie", notitie ?? "");
+        bindExtra(command.Parameters);
 
         var affected = await command.ExecuteNonQueryAsync(cancellationToken);
         return affected > 0;

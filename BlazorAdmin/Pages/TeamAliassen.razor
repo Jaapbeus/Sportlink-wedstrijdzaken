@@ -218,10 +218,10 @@ else
                         <td>
                             @if (_verwijderConfirmId == id)
                             {
-                                <span class="me-2">Definitief verwijderen?</span>
+                                <span class="me-2">@(item.Bron == "Sync" ? "Blijvend afwijzen, ook na synchronisatie?" : "Definitief verwijderen?")</span>
                                 <button class="btn btn-sm btn-danger me-1"
                                         disabled="@_actieBezigId.Contains(id)"
-                                        @onclick="() => VerwijderAsync(id)">Ja, verwijder</button>
+                                        @onclick="() => VerwijderAsync(id)">@(item.Bron == "Sync" ? "Ja, wijs blijvend af" : "Ja, verwijder")</button>
                                 <button class="btn btn-sm btn-outline-secondary"
                                         @onclick="() => _verwijderConfirmId = null">Annuleren</button>
                             }
@@ -241,7 +241,7 @@ else
                                 }
                                 <button class="btn btn-sm btn-outline-danger"
                                         disabled="@_actieBezigId.Contains(id)"
-                                        @onclick="() => _verwijderConfirmId = id">Verwijderen</button>
+                                        @onclick="() => _verwijderConfirmId = id">@(item.Bron == "Sync" ? "Blijvend afwijzen" : "Verwijderen")</button>
                             }
                         </td>
                     </tr>

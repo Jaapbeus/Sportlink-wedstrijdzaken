@@ -105,9 +105,9 @@ internal static class SqlEmailPersistenceRepository
         await conn.OpenAsync();
         await using var cmd = new NpgsqlCommand(@"
             INSERT INTO planner.emailverwerking
-                (messageid, conversationid, afzender, onderwerp, ontvangstdatum, emailbody, verzoektype, status, clubcode, pogingen)
+                (messageid, conversationid, afzender, onderwerp, ontvangstdatum, emailbody, verzoektype, status, clubcode, pogingen, teamcontactdoorstuurstatus)
             VALUES
-                (@messageid, @conversationid, @afzender, @onderwerp, @ontvangstdatum, @emailbody, 'Onbekend', 'Ontvangen', @clubcode, 1)
+                (@messageid, @conversationid, @afzender, @onderwerp, @ontvangstdatum, @emailbody, 'Onbekend', 'Ontvangen', @clubcode, 1, 'NietGestart')
             RETURNING id", conn);
         cmd.Parameters.AddWithValue("messageid", email.MessageId);
         cmd.Parameters.AddWithValue("conversationid", (object?)email.ConversationId ?? DBNull.Value);

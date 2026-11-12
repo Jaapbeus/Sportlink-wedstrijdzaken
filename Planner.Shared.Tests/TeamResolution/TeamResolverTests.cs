@@ -47,6 +47,17 @@ public class TeamResolverTests
     }
 
     [Fact]
+    public async Task ResolveAsync_OpgelostTeam_DraagtSportlinkCategorieMee()
+    {
+        // #1863: de teamtabel kent de categorie; het e-mailpad gebruikt die voor een seniorenteam.
+        var fake = new FakeTeamCandidateRepository { ExactTeam = new TeamCandidate(3, "TESTCLUB 1", "1-99") };
+
+        var resultaat = await new TeamResolver(fake).ResolveAsync(Request("TESTCLUB 1"));
+
+        resultaat.LeeftijdsCategorie.Should().Be("1-99");
+    }
+
+    [Fact]
     public async Task ResolveAsync_ZoektMetGestripteClubPrefix()
     {
         // Een tegenstander schrijft de KNVB-vorm mét clubprefix; de canonieke sleutel is
@@ -74,6 +85,24 @@ public class TeamResolverTests
         resultaat.TeamId.Should().Be(9);
         resultaat.Bron.Should().Be(ResolutionBron.ExacteMatch);
         resultaat.Confidence.Should().BeLessThan(1.0);
+    }
+
+    [Theory]
+    [InlineData("MO13-2", "JO13-2", "JO13")]
+    [InlineData("JO13-2", "MO13-2", "MO13")]
+    public async Task ResolveAsync_ExplicietGeslachtPrefix_GeenKandidaatVanAnderGeslacht(
+        string invoer, string kandidaatNaam, string categorie)
+    {
+        var fake = new FakeTeamCandidateRepository
+        {
+            Kandidaten = [new TeamCandidate(12, kandidaatNaam, categorie)],
+        };
+        var resolver = new TeamResolver(fake);
+
+        var resultaat = await resolver.ResolveAsync(Request(invoer));
+
+        resultaat.Should().Be(TeamResolutionResult.Onopgelost);
+        fake.KandidatenOpgevraagd.Should().BeFalse();
     }
 
     // #1268: dit is sinds de verwijdering van de AI-disambiguator het ENIGE gedrag bij meerdere

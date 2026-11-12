@@ -178,11 +178,10 @@ public static class SportlinkMatchFunction
 
     /// <summary>
     /// <c>PUT /api/sportlink/match/{wedstrijdcode}/officials</c> (#994, epic #986) — officials
-    /// (scheidsrechter/assistenten) toewijzen. <b>ONBEVESTIGD, altijd code-gelockt:</b> deze
-    /// mutatie loopt via <see cref="ISportlinkClubClient.AssignOfficialsAsync"/>, dat intern
-    /// <c>forceDryRun: true</c> gebruikt totdat een mens een live trace heeft gedaan (zie
-    /// <c>docs/SPORTLINK-WEB-EXTENSION.md</c> §4.2/§4.4) — ONAFHANKELIJK van de club-instelling
-    /// <c>sportlinkDryRun</c>. AVG: de DTO bevat uitsluitend positie + een door de beheerder
+    /// (scheidsrechter/assistenten) toewijzen. De Sportlink-payload/responsecontracten zijn
+    /// onbevestigd; deze route volgt de club-instelling <c>sportlinkDryRun</c> en is niet
+    /// onafhankelijk daarvan code-gelockt. Zie <c>docs/SPORTLINK-WEB-EXTENSION.md</c> §4.2.
+    /// AVG: de DTO bevat uitsluitend positie + een door de beheerder
     /// ingevoerde relatiecode/persoons-ID, nooit een naam — er wordt geen enkel Sportlink-zoek-
     /// /personendetail-endpoint aangeroepen (zie issue #994).
     /// </summary>
@@ -218,14 +217,11 @@ public static class SportlinkMatchFunction
     // endpoint, geen client-methode, geen UI-knop daarvoor.
     /// <summary>
     /// <c>PUT /api/sportlink/match/{wedstrijdcode}/change-request</c> (#995, epic #986) —
-    /// wijzigingsverzoek datum/tijd/accommodatie. <b>ONBEVESTIGD, altijd code-gelockt:</b> deze
-    /// mutatie loopt via <see cref="ISportlinkClubClient.RequestMatchChangeAsync"/>, dat intern
-    /// <c>forceDryRun: true</c> gebruikt totdat een mens een live trace heeft gedaan (zie
-    /// <c>docs/SPORTLINK-WEB-EXTENSION.md</c> §4.4) — ONAFHANKELIJK van de club-instelling
-    /// <c>sportlinkDryRun</c>. Dit is de enige mutatiesoort die een ECHTE tegenstander raakt
-    /// (Sportlink stuurt bij bevestiging een goedkeuringsverzoek naar de tegenstander) — zelfs stap
-    /// 1 (deze) kan in werkelijkheid al het gevaarlijke moment zijn, vandaar dat de code-lock hier
-    /// extra belangrijk is.
+    /// wijzigingsverzoek datum/tijd/accommodatie. Het payload/responsecontract blijft onbevestigd.
+    /// Deze route volgt de club-instelling <c>sportlinkDryRun</c>; ze is niet onafhankelijk daarvan
+    /// code-gelockt. Alleen stap 1 (valideren) is gebouwd; er is geen stap 2 (bevestigen). Dit is de
+    /// enige mutatiesoort die een echte tegenstander kan raken: Sportlink kan bij bevestiging een
+    /// goedkeuringsverzoek sturen. Zie <c>docs/SPORTLINK-WEB-EXTENSION.md</c> §4.4.
     /// </summary>
     [Function("SqlSportlinkMatchChangeRequestPut")]
     public static Task<IActionResult> PutChangeRequest(
@@ -288,7 +284,7 @@ public static class SportlinkMatchFunction
 
     /// <summary>Audit-<c>resultaat</c> voor een mutatie-uitkomst (#998, uitgebreid #994) — één
     /// gedeelde regel in <see cref="SportlinkEndpointCore.BepaalAuditResultaat"/>.</summary>
-    internal static string BepaalAuditResultaat(SportlinkMutationResult r) => SportlinkEndpointSupport.BepaalAuditResultaat(r);
+    internal static string BepaalAuditResultaat(SportlinkMutationResult r) => SportlinkEndpointSupportCore.BepaalAuditResultaat(r);
 
     private sealed class KleedkamersDto
     {
@@ -407,7 +403,8 @@ public static class SportlinkMatchFunction
         return await SportlinkEndpointSupport.RondMutatieAfAsync(
             mutationResult, auditService, auditId, naarMutatieResultaat,
             data => new OkObjectResult(
-                bouwResponse != null ? bouwResponse(data, auditId, mutationResult.HttpStatusCode) : data));
+                bouwResponse != null ? bouwResponse(data, auditId, mutationResult.HttpStatusCode) : data),
+            context.GetLogger("SqlSportlinkMatch"));
     }
 
     /// <summary>Gedeelde stappen van alle endpoints hierboven: toggle-check, EgressGuard,

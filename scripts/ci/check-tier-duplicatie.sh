@@ -51,7 +51,7 @@ cd "$repo_root"
 
 plafond="$(lees_plafond tier-duplicatie-regels)"
 
-meting="$(git ls-files -- 'FunctionApp.Postgres/*.cs' | python3 -c '
+meting="$(git ls-files --cached --others --exclude-standard -z -- 'FunctionApp.Postgres/*.cs' | python3 -c '
 import difflib, os, re, sys
 
 NEGEER = re.compile(r"^(using [A-Za-z]|//|///|/\*|\*|\*/)")
@@ -70,11 +70,15 @@ def betekenisvol(pad):
 TIER_A, TIER_B = "FunctionApp", "FunctionApp.Postgres"
 totaal = paren = 0
 per_paar = []
+gebruikte_bestanden = set()
 
-for pad_b in (r.strip() for r in sys.stdin if r.strip()):
-    pad_a = os.path.join(TIER_A, os.path.relpath(pad_b, TIER_B))
-    if not os.path.isfile(pad_a):
-        continue
+def meet_paar(pad_a, pad_b, label):
+    global totaal, paren
+    if not os.path.isfile(pad_a) or not os.path.isfile(pad_b):
+        raise SystemExit("tier-duplicatie mapping verwijst naar een ontbrekend bestand: %s | %s" % (pad_a, pad_b))
+    if pad_a in gebruikte_bestanden or pad_b in gebruikte_bestanden:
+        raise SystemExit("tier-duplicatie mapping koppelt een bestand meer dan één keer: %s | %s" % (pad_a, pad_b))
+    gebruikte_bestanden.update((pad_a, pad_b))
     a, b = betekenisvol(pad_a), betekenisvol(pad_b)
     gelijk = sum(
         blok.size
@@ -82,7 +86,32 @@ for pad_b in (r.strip() for r in sys.stdin if r.strip()):
     )
     paren += 1
     totaal += gelijk
-    per_paar.append((gelijk, os.path.relpath(pad_b, TIER_B)))
+    per_paar.append((gelijk, label))
+
+bestanden = {
+    os.fsdecode(pad)
+    for pad in sys.stdin.buffer.read().split(b"\0")
+    if pad
+}
+
+for pad_b in sorted(bestanden):
+    pad_a = os.path.join(TIER_A, os.path.relpath(pad_b, TIER_B))
+    if not os.path.isfile(pad_a):
+        continue
+    meet_paar(pad_a, pad_b, os.path.relpath(pad_b, TIER_B))
+
+with open("scripts/ci/tier-duplicatie-mapping.txt", encoding="utf-8") as manifest:
+    for regelnummer, regel in enumerate(manifest, start=1):
+        regel = regel.strip()
+        if not regel or regel.startswith("#"):
+            continue
+        onderdelen = [deel.strip() for deel in regel.split("|")]
+        if len(onderdelen) != 2:
+            raise SystemExit("ongeldige tier-duplicatie mapping op regel %d" % regelnummer)
+        pad_a, pad_b = onderdelen
+        if not pad_a.startswith(TIER_A + "/") or not pad_b.startswith(TIER_B + "/"):
+            raise SystemExit("tier-duplicatie mapping moet FunctionApp/ naar FunctionApp.Postgres/ koppelen (regel %d)" % regelnummer)
+        meet_paar(pad_a, pad_b, "%s <-> %s" % (pad_a, pad_b))
 
 per_paar.sort(reverse=True)
 print(totaal)

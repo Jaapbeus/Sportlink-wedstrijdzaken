@@ -13,11 +13,12 @@ namespace FunctionApp.Postgres;
 /// <c>accommodatielatitude</c>/<c>accommodatielongitude</c>, nodig voor
 /// <c>PostgresSunsetCalculator</c>, uit <c>003_admin_tables.sql</c>; sinds #1141 ook
 /// <c>knvbpdfbijlageingeschakeld</c>/<c>knvbstandaardregio</c>, nodig voor het "verzet zonder
-/// datum"-pad, eveneens uit <c>003_admin_tables.sql</c>). De SQL Server-tier se
-/// <c>dbo.AppSettings</c> heeft ~18 kolommen (sportlinkApiUrl, e-mailvoetnoot, ...) — die horen bij
-/// functionaliteit die nog niet is vertaald (#889/#890 e.a.). Een fantoom-fallback voor kolommen
-/// die niet bestaan zou misconfiguratie maskeren; nieuwe sub-issues breiden dit uit zodra de
-/// bijbehorende Postgres-migratie de kolom toevoegt.
+/// datum"-pad, en sinds #1798 ook de e-mailinstellingen <c>emailvoetnoot</c>,
+/// <c>coordinatornaam</c>, <c>coordinatorfunctie</c>, <c>planneremailadres</c> en
+/// <c>herplandeadlinedagen</c>, eveneens uit <c>003_admin_tables.sql</c>. De SQL Server-tier se
+/// <c>dbo.AppSettings</c> heeft daarnaast nog kolommen die niet in deze cache worden gelezen — een
+/// fantoom-fallback voor kolommen die niet bestaan zou misconfiguratie maskeren; nieuwe sub-issues
+/// breiden dit uit zodra de bijbehorende Postgres-migratie de kolom toevoegt.
 /// </para>
 /// <para>
 /// <b>Twee bewuste uitzonderingen op die regel — telkens een optionele, losstaande kolom
@@ -98,27 +99,31 @@ public static class PostgresAppSettings
 
     private const string BaseColumns =
         "clubcode, accommodatie, syncenabled, accommodatielatitude, accommodatielongitude, plannerafzendernaam, clubname, " +
-        "knvbpdfbijlageingeschakeld, knvbstandaardregio";
+        "knvbpdfbijlageingeschakeld, knvbstandaardregio, emailvoetnoot, coordinatornaam, coordinatorfunctie, " +
+        "planneremailadres, herplandeadlinedagen";
 
     private const string ExtensionColumnMissingWarning =
         "Kolom '" + ExtensionColumn + "' ontbreekt in public.appsettings: migratie " +
         "012_sportlink_extension.sql is niet toegepast op deze database. De Sportlink Web Extension " +
         "geldt als uitgeschakeld tot de openstaande migraties zijn uitgevoerd (Database.Postgres.Cli) — " +
-        "zie 'pendingMigrations' in /api/health en docs/ARCHITECTUUR-DATABASE-TIERS.md §55 (#1098).";
+        "zie de admin-only healthdiagnose op /api/beheer/health en docs/ARCHITECTUUR-DATABASE-TIERS.md §55 (#1098).";
 
     private const string DryRunColumnMissingWarning =
         "Kolom '" + DryRunColumn + "' ontbreekt in public.appsettings: migratie " +
         "016_sportlink_dryrun_en_contractcheck.sql is niet toegepast op deze database. De dry-run-modus " +
         "geldt als AAN (fail-safe, geen live Sportlink-mutaties) tot de openstaande migraties zijn " +
-        "uitgevoerd (Database.Postgres.Cli) — zie 'pendingMigrations' in /api/health en " +
+        "uitgevoerd (Database.Postgres.Cli) — zie de admin-only healthdiagnose op /api/beheer/health en " +
         "docs/ARCHITECTUUR-DATABASE-TIERS.md §55 (#998).";
 
-    public static async Task LoadSettingsAsync(ILogger log)
+    public static async Task LoadSettingsAsync(
+        ILogger log,
+        CancellationToken cancellationToken = default,
+        int commandTimeoutSeconds = 30)
     {
         try
         {
             await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
+            await connection.OpenAsync(cancellationToken);
 
             // #1098/#998: beide optionele kolommen worden onafhankelijk van elkaar geprobeerd —
             // migratie 012 en 016 kunnen elk apart nog niet zijn toegepast. Alleen dít specifieke
@@ -131,7 +136,7 @@ public static class PostgresAppSettings
             {
                 try
                 {
-                    gevonden = await ReadAsync(connection, includeExtensionColumn, includeDryRunColumn);
+                    gevonden = await ReadAsync(connection, includeExtensionColumn, includeDryRunColumn, cancellationToken, commandTimeoutSeconds);
                     break;
                 }
                 catch (PostgresException ex) when (includeExtensionColumn && IsOntbrekendeKolom(ex, ExtensionColumn))
@@ -191,7 +196,12 @@ public static class PostgresAppSettings
     /// <paramref name="includeDryRunColumn"/> = false wordt <c>sportlinkDryRun</c> op "1" gezet —
     /// de default van migratie 016 (fail-safe: dry-run AAN).
     /// </summary>
-    private static async Task<bool> ReadAsync(NpgsqlConnection connection, bool includeExtensionColumn, bool includeDryRunColumn)
+    private static async Task<bool> ReadAsync(
+        NpgsqlConnection connection,
+        bool includeExtensionColumn,
+        bool includeDryRunColumn,
+        CancellationToken cancellationToken,
+        int commandTimeoutSeconds)
     {
         // accommodatielatitude/-longitude erbij (issue 888 vervolg, §41): PostgresSunsetCalculator
         // heeft dezelfde clubinstellingen nodig als SunsetCalculator op de SQL Server-tier.
@@ -209,11 +219,25 @@ public static class PostgresAppSettings
         if (includeExtensionColumn) kolommen += ", " + ExtensionColumn;
         if (includeDryRunColumn) kolommen += ", " + DryRunColumn;
         await using var cmd = new NpgsqlCommand(
-            $"SELECT {kolommen} FROM public.appsettings WHERE syncenabled = true ORDER BY clubcode LIMIT 1", connection);
-        await using var reader = await cmd.ExecuteReaderAsync();
-        if (!await reader.ReadAsync())
+            $"SELECT {kolommen} FROM public.appsettings WHERE syncenabled = true ORDER BY clubcode LIMIT 1", connection)
+        { CommandTimeout = commandTimeoutSeconds };
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
             return false;
 
+        var nieuw = BuildSettingsSnapshot(reader, includeExtensionColumn, includeDryRunColumn);
+
+        // Atomaire wissel: elke lezer via GetSetting ziet óf de volledig oude, óf de volledig nieuwe
+        // snapshot — nooit een tussentoestand met een deel oude en een deel nieuwe waarden.
+        lock (Lock)
+            Settings = nieuw;
+
+        return true;
+    }
+
+    private static Dictionary<string, string> BuildSettingsSnapshot(
+        NpgsqlDataReader reader, bool includeExtensionColumn, bool includeDryRunColumn)
+    {
         // #1135: een complete, verse snapshot opbouwen in een lokale dictionary — niet het bestaande,
         // gedeelde dictionary in-place muteren. De oude aanpak wees alleen niet-NULL kolommen toe,
         // waardoor een instelling die in de database naar NULL werd gezet (bijv. accommodatie) haar
@@ -244,6 +268,20 @@ public static class PostgresAppSettings
         nieuw["knvbPdfBijlageIngeschakeld"] = !reader.IsDBNull(7) && reader.GetBoolean(7) ? "1" : "0";
         if (!reader.IsDBNull(8))
             nieuw["knvbStandaardRegio"] = reader.GetString(8);
+        // E-mailinstellingen (#1798): deze kolommen bestaan sinds migratie 003 en worden door de
+        // mailboxverwerking uit deze cache gelezen (de e-mailtester laadt een eigen snapshot).
+        // NULL blijft afwezig uit de verse snapshot, zodat ook een gewiste instelling na reload
+        // niet als oude cachewaarde blijft hangen.
+        if (!reader.IsDBNull(9))
+            nieuw["emailVoetnoot"] = reader.GetString(9);
+        if (!reader.IsDBNull(10))
+            nieuw["coordinatorNaam"] = reader.GetString(10);
+        if (!reader.IsDBNull(11))
+            nieuw["coordinatorFunctie"] = reader.GetString(11);
+        if (!reader.IsDBNull(12))
+            nieuw["plannerEmailAdres"] = reader.GetString(12);
+        if (!reader.IsDBNull(13))
+            nieuw["herplanDeadlineDagen"] = reader.GetInt32(13).ToString(System.Globalization.CultureInfo.InvariantCulture);
 
         if (includeExtensionColumn)
         {
@@ -265,12 +303,7 @@ public static class PostgresAppSettings
             nieuw["sportlinkDryRun"] = "1";
         }
 
-        // Atomaire wissel: elke lezer via GetSetting ziet óf de volledig oude, óf de volledig nieuwe
-        // snapshot — nooit een tussentoestand met een deel oude en een deel nieuwe waarden.
-        lock (Lock)
-            Settings = nieuw;
-
-        return true;
+        return nieuw;
     }
 
     /// <summary>

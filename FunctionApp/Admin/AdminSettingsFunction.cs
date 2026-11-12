@@ -1,3 +1,5 @@
+using Planner.Endpoints.Http;
+
 using SportlinkFunction.Infrastructure;
 using Planner.Shared;
 using Azure.Core;
@@ -41,14 +43,14 @@ public static class AdminSettingsFunction
 {
     // Witte lijst: alleen deze velden mogen via PUT gewijzigd worden.
     // SportlinkClientId, Graph-secrets en OpenAI key komen hier NOOIT in.
-    private static readonly string[] AllowedFields =
+    internal static readonly string[] AllowedFields =
     {
         "HerplanDeadlineDagen", "BufferMinuten",
         "PlannerAfzenderNaam", "CoordinatorNaam", "CoordinatorFunctie", "PlannerEmailAdres",
         "Accommodatie", "FetchSchedule", "EmailVoetnoot",
         "AccommodatiePlaats", "AccommodatieLatitude", "AccommodatieLongitude",
         "UseRealtimeApi", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio",
-        "SportlinkExtensionEnabled", "SportlinkSpelactiviteit", "PdfExportIngeschakeld", "ZekerheidspoortActief", "SeasonStartMonth"
+        "SportlinkExtensionEnabled", "SportlinkDryRun", "SportlinkSpelactiviteit", "PdfExportIngeschakeld", "ZekerheidspoortActief", "SeasonStartMonth"
     };
 
     private const string ManagementApiVersion = "2022-03-01";
@@ -78,7 +80,7 @@ public static class AdminSettingsFunction
                         [CoordinatorFunctie], [PlannerEmailAdres], [HerplanDeadlineDagen],
                         [BufferMinuten], [EmailVoetnoot], [AccommodatiePlaats],
                         [AccommodatieLatitude], [AccommodatieLongitude],
-                        [KnvbPdfBijlageIngeschakeld], [KnvbStandaardRegio], [SportlinkExtensionEnabled],
+                        [KnvbPdfBijlageIngeschakeld], [KnvbStandaardRegio], [SportlinkExtensionEnabled], [SportlinkDryRun],
                         [SportlinkSpelactiviteit], [PdfExportIngeschakeld], [ZekerheidspoortActief]
                     FROM [dbo].[AppSettings]
                     WHERE [ClubCode] = @ClubCode", connection);
@@ -137,14 +139,8 @@ public static class AdminSettingsFunction
     {
         var log = context.GetLogger("AdminSettingsPut");
         return AdminEndpoint.ExecuteAsync(req, log, "AppSettings opslaan",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<UpdateSettingsRequest>(req, async updateRequest =>
             {
-                using var bodyReader = new StreamReader(req.Body);
-                var bodyText = await bodyReader.ReadToEndAsync();
-                if (string.IsNullOrWhiteSpace(bodyText))
-                    return new BadRequestObjectResult(new { error = "Lege request body" });
-
-                var updateRequest = JsonConvert.DeserializeObject<UpdateSettingsRequest>(bodyText);
                 if (updateRequest == null)
                     return new BadRequestObjectResult(new { error = "Ongeldige JSON" });
 
@@ -166,12 +162,12 @@ public static class AdminSettingsFunction
 
                 using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
                 await connection.OpenAsync();
-                await PasWijzigingenToeAsync(connection, changes, clubCode, gewijzigdDoor, DateOnly.FromDateTime(DateTime.UtcNow));
+                var fetchScheduleChanged = await PasWijzigingenToeAsync(
+                    connection, changes, clubCode, gewijzigdDoor, DateOnly.FromDateTime(DateTime.UtcNow));
 
                 await SystemUtilities.AppSettings.LoadSettingsAsync(log);
 
-                var fetchScheduleChanged = changes.ContainsKey("FetchSchedule");
-                var (herstartOpmerking, herstartAutomatisch) = await BouwHerstartInfoAsync(changes, nieuweSchedule, log);
+                var (herstartOpmerking, herstartAutomatisch) = await BouwHerstartInfoAsync(fetchScheduleChanged, nieuweSchedule, log);
 
                 return new OkObjectResult(new
                 {
@@ -184,7 +180,7 @@ public static class AdminSettingsFunction
                     volgendeMomenten = fetchScheduleChanged && nieuweSchedule != null
                         ? BerekenVolgendeMomenten(nieuweSchedule, 3) : null
                 });
-            });
+            }, emptyBodyMessage: "Lege request body"));
     }
 
     // Pluk alleen de toegestane velden — alles erbuiten wordt genegeerd
@@ -218,16 +214,17 @@ public static class AdminSettingsFunction
     /// seizoenen van de club in dezelfde transactie (#1715), zodat configuratie, audit en kalender samen slagen of
     /// samen terugdraaien.
     /// </summary>
-    internal static async Task PasWijzigingenToeAsync(
+    internal static async Task<bool> PasWijzigingenToeAsync(
         SqlConnection connection, Dictionary<string, string?> changes, string clubCode, string gewijzigdDoor, DateOnly vandaag)
     {
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync();
         try
         {
-            await PersisteerWijzigingenAsync(connection, transaction, changes, clubCode, gewijzigdDoor);
+            var fetchScheduleChanged = await PersisteerWijzigingenAsync(connection, transaction, changes, clubCode, gewijzigdDoor);
             if (changes.ContainsKey("SeasonStartMonth"))
                 await SqlServerSeizoenHerbouw.HerbouwAsync(connection, transaction, clubCode, vandaag);
             await transaction.CommitAsync();
+            return fetchScheduleChanged;
         }
         catch
         {
@@ -239,10 +236,11 @@ public static class AdminSettingsFunction
         }
     }
 
-    private static async Task PersisteerWijzigingenAsync(
+    private static async Task<bool> PersisteerWijzigingenAsync(
         SqlConnection connection, SqlTransaction transaction, Dictionary<string, string?> changes, string clubCode, string gewijzigdDoor)
     {
         var currentValues = await ReadCurrentValuesAsync(connection, transaction, changes.Keys, clubCode);
+        var fetchScheduleChanged = FetchScheduleChangedCore.IsChanged(currentValues, changes);
 
         foreach (var (veld, nieuweWaarde) in changes)
         {
@@ -266,12 +264,13 @@ public static class AdminSettingsFunction
             auditCmd.Parameters.AddWithValue("@ClubCode", clubCode);
             await auditCmd.ExecuteNonQueryAsync();
         }
+
+        return fetchScheduleChanged;
     }
 
     private static async Task<(string? herstartOpmerking, bool herstartAutomatisch)> BouwHerstartInfoAsync(
-        Dictionary<string, string?> changes, string? nieuweSchedule, ILogger log)
+        bool fetchScheduleChanged, string? nieuweSchedule, ILogger log)
     {
-        var fetchScheduleChanged = changes.ContainsKey("FetchSchedule");
         string? herstartOpmerking = null;
         bool herstartAutomatisch = false;
 
@@ -358,6 +357,9 @@ public static class AdminSettingsFunction
         [JsonProperty("display_name")] public string DisplayName { get; set; } = "";
     }
 
+    internal static HttpClient CreateManagementHttpClient(HttpMessageHandler? handler = null) =>
+        new(handler ?? new HttpClientHandler()) { Timeout = TimeSpan.FromSeconds(10) };
+
     /// <summary>
     /// Werkt de FETCH_SCHEDULE Azure App Setting bij via de Azure Management API.
     /// Azure herstart de Function App automatisch bij app setting wijziging.
@@ -391,7 +393,7 @@ public static class AdminSettingsFunction
             var tokenContext = new TokenRequestContext(["https://management.azure.com/.default"]);
             var token = await credential.GetTokenAsync(tokenContext);
 
-            using var http = new HttpClient();
+            using var http = CreateManagementHttpClient();
             http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
 
             var baseUrl = $"https://management.azure.com/subscriptions/{subscriptionId}" +

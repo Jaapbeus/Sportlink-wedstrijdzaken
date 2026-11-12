@@ -1,17 +1,17 @@
 namespace Planner.Shared.Integrations.SportlinkClub;
 
-// NIET VERDER BOUWEN ZONDER LIVE BEVESTIGING DOOR DE EIGENAAR (#995, Aanpak-stap 1: body van
-// beide PUT's en de bevestigingsvlag vastleggen). Dit bestand hoort uitsluitend bij stap 1
-// (valideren) van #995 — er bestaat bewust geen stap 2 (bevestigen): geen endpoint, geen
-// client-methode, geen UI-knop daarvoor.
+// De eigenaar heeft stap 1 na een live trace vrijgegeven (#1319). Dit bestand hoort uitsluitend
+// bij stap 1 (valideren) van #995 — er bestaat bewust geen stap 2 (bevestigen): geen endpoint,
+// geen client-methode, geen UI-knop daarvoor. Responsdetails die niet door die trace zijn bewezen
+// blijven als onzekerheid hieronder beschreven.
 
 /// <summary>
 /// Resultaat van Sportlinks validatiestap voor een datum/tijd/accommodatie-wijzigingsverzoek
 /// (#995, epic #986) — geparsed uit het <c>ConfirmationNeeded</c>-veld in de respons van
 /// <c>PUT competition/match/UpdateMatchDetails</c>.
 /// <para>
-/// <b>ONBEVESTIGD:</b> de exacte JSON-vorm is nooit met een netwerktrace gezien (zie issue #995 —
-/// de handmatige proef met netwerk-meekijken moest nog gebeuren). <see cref="ValidationResultMessages"/>
+/// <b>ONBEVESTIGD:</b> de exacte JSON-vorm van de validatie-elementen is niet in de beschikbare
+/// bewijsvoering vastgesteld (zie issue #995). <see cref="ValidationResultMessages"/>
 /// wordt daarom defensief geparsed: elementen kunnen kale strings zijn óf objecten met een
 /// <c>Message</c>- of <c>Description</c>-veld — zie <c>SportlinkMatchChangeValidatieLezer.ParseMatchChangeValidatie</c>.
 /// </para>
@@ -26,7 +26,8 @@ namespace Planner.Shared.Integrations.SportlinkClub;
 /// maar ook niet transformeren zodat de oorspronkelijke Sportlink-tekst herleidbaar blijft).</param>
 /// <param name="HasBlockingMessages">
 /// <c>true</c> als minstens één melding blokkerend is — de aanroeper mag dan geen vervolgstap tonen
-/// (toch al niet gebouwd in deze app, zie de "NIET VERDER BOUWEN"-marker hierboven).
+/// (toch al niet gebouwd in deze app; zie de marker boven
+/// <see cref="SportlinkWedstrijdDetails.RequestMatchChangeAsync"/>).
 /// </param>
 /// <param name="IsSuccess">
 /// Toplevel <c>IsSuccess</c> uit de respons (#1320) — <c>null</c> als het veld ontbrak of geen
@@ -82,9 +83,8 @@ public sealed record SportlinkMatchWijzigingsverzoekTrace(
 /// </summary>
 /// <param name="Mutatie">Transport-/dry-run-uitkomst — zelfde semantiek als bij elke andere Sportlink-mutatie.</param>
 /// <param name="Validatie">
-/// <c>null</c> zolang deze mutatie forceDryRun-gelockt is (geen echte respons om te parsen) — zie
-/// <c>SportlinkWedstrijdDetails.UpdateMatchDetailsChangeRequestLiveBevestigd</c>. Bij een toekomstige,
-/// live bevestigde aanroep: het geparste <c>ConfirmationNeeded</c>-resultaat.
+/// <c>null</c> wanneer de aanroep dry-run was of Sportlink geen parseerbare validatierespons gaf;
+/// anders bevat dit de geparste stap-1-validatie. Dit verzoek voert geen tweede stap uit.
 /// </param>
 public sealed record SportlinkMatchChangeRequestResult(
     SportlinkMutationResult Mutatie,

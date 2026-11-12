@@ -83,6 +83,21 @@ public class PostgresSchemaGeneratorTests
         sql.Should().Contain("\"teamcode\" VARCHAR(50),");
         sql.Should().NotContain("\"teamcode\" VARCHAR(50) NOT NULL");
     }
+    [Fact]
+    public void GenerateHisTable_Matches_IndexesExactNativeLiveStatusPredicate()
+    {
+        var sql = PostgresSchemaGenerator.GenerateHisTable(KnownEntities.Matches);
+        sql.Should().Contain("CREATE INDEX IF NOT EXISTS ix_matches_club_status_upper_live ON his.\"matches\" (\"clubcode\", UPPER(\"status\")) WHERE \"mta_deleted\" IS NULL AND UPPER(\"status\") <> 'AFGELAST';");
+        sql.Should().NotContain("CREATE UNIQUE INDEX IF NOT EXISTS ix_matches_club_status_upper_live");
+    }
+
+    [Fact]
+    public void GenerateHisTable_StatusIndex_DoesNotApplyToOtherOrIncompleteEntityContracts()
+    {
+        PostgresSchemaGenerator.GenerateHisTable(KnownEntities.Teams).Should().NotContain("ix_matches_club_status_upper_live");
+        PostgresSchemaGenerator.GenerateHisTable(TestEntities.SingleKeyWithClub).Should().NotContain("ix_matches_club_status_upper_live");
+    }
+
     // #1698: his en stg worden niet door een migratie aangemaakt maar door deze generator, dus RLS
     // hoort hier. Zonder dit zijn de tabellen alleen beschermd zolang een platformtrigger dat doet.
     [Fact]

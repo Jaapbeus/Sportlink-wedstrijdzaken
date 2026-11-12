@@ -1,4 +1,5 @@
 using Planner.Endpoints.Admin;
+using Planner.Shared.Sync;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -37,7 +38,7 @@ public static class SyncFunction
             // #861: rol public.clubseason zo nodig door vóór het venster gelezen wordt.
             await PostgresSeasonHelper.EnsureSeasonsAsync(log);
             var toWeekOffset = await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log);
-            var gedeeltelijkMislukt = await RunConfiguredSyncAsync(fromWeekOffset: -1, toWeekOffset, log);
+            var uitkomst = await RunConfiguredSyncAsync(fromWeekOffset: -1, toWeekOffset, log);
 
             // #1081: een run met mislukte deelstappen mag niet als Success eindigen. Het
             // invocatie-overzicht in de portal toonde acht dagen 'Success 8 · Error 0' terwijl er
@@ -45,10 +46,13 @@ public static class SyncFunction
             // erger dan geen meetinstrument. Alle werk is op dit punt al gedaan; de uitzondering
             // markeert alleen de invocatie. Er staat geen retry-policy op deze functie, dus dit
             // leidt niet tot een herhaalde run van vijf minuten.
-            if (gedeeltelijkMislukt)
-                throw new InvalidOperationException(
-                    "Synchronisatie gedeeltelijk mislukt — zie de voorgaande logregels voor de " +
-                    "betrokken fase(s). lastsynctimestamp is bewust niet bijgewerkt.");
+            // #1779: getypeerde uitzondering met faseoverzicht, zodat de foutrapportage een eigen
+            // categorie toont in plaats van "Configuratie/status".
+            uitkomst.GooiAlsMislukt();
+        }
+        catch (SyncAlreadyRunningException)
+        {
+            log.LogInformation("Synchronization skipped because another run owns the shared staging area.");
         }
         catch (Exception ex)
         {
@@ -118,23 +122,16 @@ public static class SyncFunction
                         log.LogInformation("Default mode: weekOffset {From} to {To}", fromWeekOffset, toWeekOffset);
                     }
 
-                    var gedeeltelijkMislukt = await RunConfiguredSyncAsync(fromWeekOffset, toWeekOffset, log);
-                    if (gedeeltelijkMislukt)
-                    {
-                        // #1081: 200 OK zou hier "klaar" betekenen terwijl lastsynctimestamp bewust niet is
-                        // bijgewerkt. 207 maakt het verschil zichtbaar zonder de geslaagde deelstappen weg
-                        // te gooien.
-                        return new ObjectResult(new
-                        {
-                            status = "gedeeltelijk mislukt",
-                            weekOffsetFrom = fromWeekOffset,
-                            weekOffsetTo = toWeekOffset,
-                            melding = "Eén of meer deelstappen zijn mislukt; lastsynctimestamp is niet bijgewerkt. "
-                                      + "Zie het functielog voor de betrokken fase(s)."
-                        })
-                        { StatusCode = StatusCodes.Status207MultiStatus };
-                    }
-                    return new OkObjectResult($"Sync voltooid. WeekOffset-bereik: {fromWeekOffset} tot {toWeekOffset}.");
+                    // #1081: 200 OK zou hier "klaar" betekenen terwijl lastsynctimestamp bewust niet is
+                    // bijgewerkt; 207 maakt het verschil zichtbaar. Gedeeld met de SQL Server-tier (#1779).
+                    var uitkomst = await RunConfiguredSyncAsync(fromWeekOffset, toWeekOffset, log);
+                    return SyncMatchesAntwoordCore.Bepaal(uitkomst, fromWeekOffset, toWeekOffset,
+                        $"Sync voltooid. WeekOffset-bereik: {fromWeekOffset} tot {toWeekOffset}.");
+                }
+                catch (SyncAlreadyRunningException)
+                {
+                    return new ObjectResult(new { status = "already running", message = SyncAlreadyRunningException.SafeMessage })
+                    { StatusCode = StatusCodes.Status409Conflict };
                 }
                 catch (Exception ex)
                 {
@@ -146,8 +143,8 @@ public static class SyncFunction
             });
     }
 
-    /// <summary>Geeft terug of er deelstappen zijn mislukt (#1081).</summary>
-    internal static async Task<bool> RunConfiguredSyncAsync(int fromWeekOffset, int toWeekOffset, ILogger log)
+    /// <summary>Geeft de uitkomst met de mislukte fases terug (#1081, #1779).</summary>
+    internal static async Task<SyncUitkomst> RunConfiguredSyncAsync(int fromWeekOffset, int toWeekOffset, ILogger log)
     {
         await PostgresAppSettings.LoadSettingsAsync(log);
         var clubCode = PostgresAppSettings.GetSetting("clubCode")
@@ -155,15 +152,15 @@ public static class SyncFunction
 
         var connectionString = PostgresDatabaseConfig.ConnectionString;
         var (sportlinkApiUrl, sportlinkClientId) = await GetSportlinkConfigAsync(connectionString, clubCode);
-        if (string.IsNullOrEmpty(sportlinkApiUrl))
+        if (!SportlinkDataserviceBasisUrl.TryGetCanonical(sportlinkApiUrl, out var canonicalSportlinkApiUrl))
         {
-            log.LogError("sportlinkapiurl is niet geconfigureerd.");
-            return true;
+            log.LogError("Sportlink data-service base URL is invalid.");
+            return SyncUitkomst.Configuratie();
         }
 
         return await PostgresSyncPipeline.RunSyncAsync(
             fromWeekOffset, toWeekOffset,
-            sportlinkApiUrl, $"clientId={sportlinkClientId}",
+            canonicalSportlinkApiUrl, $"clientId={sportlinkClientId}",
             clubCode, connectionString, log);
     }
 

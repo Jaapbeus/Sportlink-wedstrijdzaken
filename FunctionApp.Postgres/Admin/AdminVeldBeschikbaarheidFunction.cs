@@ -1,7 +1,9 @@
+using Planner.Endpoints.Http;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Newtonsoft.Json;
+using Planner.Endpoints.Admin;
 
 namespace FunctionApp.Postgres.Admin;
 
@@ -29,10 +31,8 @@ public static class AdminVeldBeschikbaarheidFunction
         int id,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminVeldBeschikbaarheidPut"), "veldbeschikbaarheid bijwerken",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<VeldBeschikbaarheidRequest>(req, async dto =>
             {
-                var dto = JsonConvert.DeserializeObject<VeldBeschikbaarheidRequest>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
                 var validatie = Valideer(dto);
                 if (validatie != null) return validatie;
 
@@ -40,12 +40,16 @@ public static class AdminVeldBeschikbaarheidFunction
                 var periodeValidatie = await ValideerPeriodeAsync(dto!.PeriodeId, clubCode, cs);
                 if (periodeValidatie != null) return periodeValidatie;
 
+                var duplicate = await VeldBeschikbaarheidUpdateCore.ConflicterendeCombinatieAsync(
+                    () => AdminVeldBeschikbaarheidRepository.BestaatAndereVoorUpdateAsync(id, dto.PeriodeId, clubCode, cs));
+                if (duplicate != null) return duplicate;
+
                 var rows = await AdminVeldBeschikbaarheidRepository.UpdateAsync(
                     id, TimeSpan.Parse(dto.BeschikbaarVanaf!), TimeSpan.Parse(dto.BeschikbaarTot!),
                     dto.GebruikZonsondergang, dto.PeriodeId, clubCode, cs);
                 if (rows == 0) return new NotFoundObjectResult(new { error = $"Rij {id} bestaat niet" });
                 return new OkObjectResult(new { id, status = "bijgewerkt" });
-            });
+            }));
 
     [Function("AdminVeldenGet")]
     public static Task<IActionResult> GetVelden(
@@ -64,10 +68,8 @@ public static class AdminVeldBeschikbaarheidFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/velden")] HttpRequest req,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminVeldenPost"), "veld aanmaken",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<VeldCreateRequest>(req, async dto =>
             {
-                var dto = JsonConvert.DeserializeObject<VeldCreateRequest>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
                 var validatie = ValideerVeld(dto);
                 if (validatie != null) return validatie;
 
@@ -79,7 +81,7 @@ public static class AdminVeldBeschikbaarheidFunction
                     dto.VeldNummer, dto.VeldNaam!, dto.VeldType!, dto.HeeftKunstlicht, dto.Actief ?? true,
                     clubCode, cs);
                 return new OkObjectResult(new { veldNummer = dto.VeldNummer, status = "aangemaakt" });
-            });
+            }));
 
     [Function("AdminVeldenPut")]
     public static Task<IActionResult> PutVeld(
@@ -87,10 +89,8 @@ public static class AdminVeldBeschikbaarheidFunction
         int veldNummer,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminVeldenPut"), "veld bijwerken",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<VeldUpdateRequest>(req, async dto =>
             {
-                var dto = JsonConvert.DeserializeObject<VeldUpdateRequest>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
                 var validatie = ValideerVeldUpdate(dto);
                 if (validatie != null) return validatie;
 
@@ -99,17 +99,15 @@ public static class AdminVeldBeschikbaarheidFunction
                     clubCode, PostgresDatabaseConfig.ConnectionString);
                 if (rows == 0) return new NotFoundObjectResult(new { error = $"Veld {veldNummer} bestaat niet" });
                 return new OkObjectResult(new { veldNummer, status = "bijgewerkt" });
-            });
+            }));
 
     [Function("AdminVeldBeschikbaarheidPost")]
     public static Task<IActionResult> Post(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/veldbeschikbaarheid")] HttpRequest req,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminVeldBeschikbaarheidPost"), "veldbeschikbaarheid aanmaken",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<VeldBeschikbaarheidCreateRequest>(req, async dto =>
             {
-                var dto = JsonConvert.DeserializeObject<VeldBeschikbaarheidCreateRequest>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
                 if (dto == null) return new BadRequestObjectResult(new { error = "Lege body" });
                 if (dto.VeldNummer <= 0)  return new BadRequestObjectResult(new { error = "VeldNummer vereist" });
                 if (dto.DagVanWeek < 1 || dto.DagVanWeek > 7)
@@ -128,7 +126,7 @@ public static class AdminVeldBeschikbaarheidFunction
                     TimeSpan.Parse(dto.BeschikbaarVanaf!), TimeSpan.Parse(dto.BeschikbaarTot!),
                     dto.GebruikZonsondergang, dto.PeriodeId, clubCode, cs);
                 return new OkObjectResult(new { id = newId, status = "aangemaakt" });
-            });
+            }));
 
     [Function("AdminVeldBeschikbaarheidDelete")]
     public static Task<IActionResult> Delete(
@@ -152,17 +150,7 @@ public static class AdminVeldBeschikbaarheidFunction
 
     // internal (#476-precedent): testbaar zonder de HTTP-triggerwrapper na te bootsen.
     internal static IActionResult? ValideerTijden(string? vanf, string? tot)
-    {
-        if (string.IsNullOrWhiteSpace(vanf) || !TimeSpan.TryParse(vanf, out var vanfTijd))
-            return new BadRequestObjectResult(new { error = "BeschikbaarVanaf vereist HH:mm formaat" });
-        if (string.IsNullOrWhiteSpace(tot) || !TimeSpan.TryParse(tot, out var totTijd))
-            return new BadRequestObjectResult(new { error = "BeschikbaarTot vereist HH:mm formaat" });
-        // #957: zonder deze check accepteerde de API stilzwijgend een venster dat vóór het begin
-        // eindigt (bijv. verwisselde velden), met onvoorspelbaar effect op de planner.
-        if (totTijd <= vanfTijd)
-            return new BadRequestObjectResult(new { error = "BeschikbaarTot moet na BeschikbaarVanaf liggen" });
-        return null;
-    }
+        => VeldBeschikbaarheidUpdateCore.ValideerTijden(vanf, tot);
 
     private static async Task<IActionResult?> ValideerPeriodeAsync(int? periodeId, string clubCode, string cs)
     {
@@ -176,21 +164,13 @@ public static class AdminVeldBeschikbaarheidFunction
     {
         if (dto == null) return new BadRequestObjectResult(new { error = "Lege body" });
         if (dto.VeldNummer <= 0) return new BadRequestObjectResult(new { error = "VeldNummer vereist" });
-        if (string.IsNullOrWhiteSpace(dto.VeldNaam))
-            return new BadRequestObjectResult(new { error = "VeldNaam verplicht" });
-        if (string.IsNullOrWhiteSpace(dto.VeldType))
-            return new BadRequestObjectResult(new { error = "VeldType verplicht (vrije tekst, bijv. kunstgras of natuurgras)" });
-        return null;
+        return VeldBeschikbaarheidUpdateCore.ValideerVeldOmschrijvingen(dto.VeldNaam, dto.VeldType);
     }
 
     private static IActionResult? ValideerVeldUpdate(VeldUpdateRequest? dto)
     {
         if (dto == null) return new BadRequestObjectResult(new { error = "Lege body" });
-        if (string.IsNullOrWhiteSpace(dto.VeldNaam))
-            return new BadRequestObjectResult(new { error = "VeldNaam verplicht" });
-        if (string.IsNullOrWhiteSpace(dto.VeldType))
-            return new BadRequestObjectResult(new { error = "VeldType verplicht (vrije tekst, bijv. kunstgras of natuurgras)" });
-        return null;
+        return VeldBeschikbaarheidUpdateCore.ValideerVeldOmschrijvingen(dto.VeldNaam, dto.VeldType);
     }
 
     public class VeldCreateRequest

@@ -23,7 +23,9 @@ De guard dwingt af:
      in `scripts/ci/skills-alleen-claude.txt` (zie `scripts/ci/sync-skills.py`);
   5. Markdown-codeblokken in skills en `AGENTS.md` zijn afgesloten;
   6. er bestaat geen BEKEND tweede laadpad voor instructies (de toelatingsmatrix hieronder);
-  7. de omvang past binnen het plafond per bestand en per keten (`agent-instructies-plafonds.txt`).
+  7. de omvang past binnen het plafond per bestand en per keten (`agent-instructies-plafonds.txt`);
+  8. leesbaarheid (#1898): geen regel boven REGEL_MAX_CHARS tekens en de laatste regel van elke `AGENTS.md`
+     begint met CANARY_PREFIX (de laadcontrole, zie docs/AGENT-INSTRUCTIES-LADEN.md).
 
 TOELATINGSMATRIX (de ene lijst; docs/ARCHITECTUUR-CODEKWALITEIT.md verwijst hierheen)
 ----------------------------------------------------------------------------------
@@ -93,6 +95,12 @@ KETEN_SCHEIDING_BYTES = 2    # Codex voegt "\n\n" tussen twee bestanden; ruim me
 ROOT_MAX_BYTES = 27 * 1024    # root-AGENTS.md (doel ≈ 24 KiB; elke harde regel staat er nog inline)
 SUBMAP_MAX_BYTES = 4 * 1024   # AGENTS.md in een submap
 KETEN_MAX_BYTES = 30 * 1024   # root + submappen op één pad, inclusief scheidingstekens
+# Leesbaarheid (#1898): een instructie die technisch binnen het budget past, wordt toch slecht nageleefd als ze uit
+# alinea's van meer dan 1000 tekens bestaat (Claude Code: "target under 200 lines", kortere regels volgen beter).
+# Structureel maximum aan tekens per regel (niet te verhogen via een plafondbestand) en een canary als laatste regel:
+# een agent die de laatste regel kan citeren, heeft het bestand tot het einde geladen (docs/AGENT-INSTRUCTIES-LADEN.md).
+REGEL_MAX_CHARS = 600
+CANARY_PREFIX = "Laadcontrole:"
 PLAFONDS = "scripts/ci/agent-instructies-plafonds.txt"
 PLAFOND_RUIMTE = 1024        # winst groter dan dit moet in hetzelfde PR in het plafond worden vastgezet
 NEGEER_MAPPEN = {".git", "node_modules", "bin", "obj", "packages", ".venv", "artifacts"}
@@ -697,6 +705,23 @@ def controleer_omvang(inv: Inventaris) -> List[str]:
     return fouten
 
 
+def controleer_leesbaarheid(inv: Inventaris) -> List[str]:
+    """Elke AGENTS.md: geen regel boven REGEL_MAX_CHARS tekens en een laatste regel die met CANARY_PREFIX begint (#1898)."""
+    fouten: List[str] = []
+    for pad in inv.vind("AGENTS.md"):
+        rel = pad.relative_to(inv.root).as_posix()
+        regels = lees_tekst(pad).splitlines()
+        for nummer, regel in enumerate(regels, 1):
+            if len(regel) > REGEL_MAX_CHARS:
+                fouten.append(f"{rel}:{nummer}: regel van {len(regel)} tekens is langer dan het maximum {REGEL_MAX_CHARS} — "
+                              "splits de alinea op zinsgrenzen of in een lijst (leesbaarheid, #1898)")
+        inhoud = [regel for regel in regels if regel.strip()]
+        if not inhoud or not inhoud[-1].startswith(CANARY_PREFIX):
+            fouten.append(f"{rel}: de laatste regel moet met '{CANARY_PREFIX}' beginnen — de canary bewijst dat een agent het bestand "
+                          "tot het einde heeft geladen (docs/AGENT-INSTRUCTIES-LADEN.md, #1898)")
+    return fouten
+
+
 def controleer(root: Path) -> List[str]:
     inv = Inventaris(root)
     git_fouten = [f"git ls-files faalt ({inv.git_fout}) — getrackte instructiebestanden kunnen niet worden gecontroleerd"] if inv.git_fout else []
@@ -708,6 +733,7 @@ def controleer(root: Path) -> List[str]:
         + controleer_configuratie(inv)
         + controleer_skills(root)
         + controleer_omvang(inv)
+        + controleer_leesbaarheid(inv)
     )
 
 

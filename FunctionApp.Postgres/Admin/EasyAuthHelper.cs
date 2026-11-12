@@ -113,6 +113,10 @@ internal static class EasyAuthHelper
             ?.Val;
     }
 
+    public static string? GetPlannerRequester(HttpRequest req)
+        => global::Planner.Shared.Autorisatie.PlannerAanvragerIdentiteit.BepaalOpgeslagenLabel(
+            GetCallerObjectId(req), GetCallerName(req), LokaleBypass);
+
     /// <summary>De aanroeper voor leeracties en hun auditspoor (#1568 deel C): object-ID + naammomentopname, geen e-mailadres.</summary>
     public static global::Planner.Shared.Leren.LerenAanroeper GetLerenAanroeper(HttpRequest req)
         => new(GetCallerObjectId(req), GetCallerName(req)) { HeeftPrincipal = !LokaleBypass };

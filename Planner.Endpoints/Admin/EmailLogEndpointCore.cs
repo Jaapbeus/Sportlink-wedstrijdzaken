@@ -14,7 +14,7 @@ public static class EmailLogEndpointCore
     public const int MaxLimit = 200;
 
     /// <param name="Vanaf">Begin (UTC, inclusief) of <c>null</c>.</param>
-    /// <param name="Tot">Eind (UTC, exclusief; de opgegeven dag + 1) of <c>null</c>.</param>
+    /// <param name="Tot">Eind (UTC, exclusief) of <c>null</c>; een datum zonder tijd omvat die hele kalenderdag.</param>
     public sealed record Filter(DateTime? Vanaf, DateTime? Tot, string Status, int Limit);
 
     /// <summary>
@@ -24,10 +24,25 @@ public static class EmailLogEndpointCore
     public static Filter LeesFilter(IQueryCollection query)
     {
         DateTime? vanaf = null, tot = null;
-        if (DateTime.TryParse(query["vanaf"].ToString(), out var vd)) vanaf = DateTime.SpecifyKind(vd.Date, DateTimeKind.Utc);
-        if (DateTime.TryParse(query["tot"].ToString(), out var td)) tot = DateTime.SpecifyKind(td.Date.AddDays(1), DateTimeKind.Utc);
+        vanaf = LeesGrens(query["vanaf"].ToString(), false);
+        tot = LeesGrens(query["tot"].ToString(), true);
         var limit = int.TryParse(query["limit"].ToString(), out var l) ? Math.Min(MaxLimit, Math.Max(1, l)) : DefaultLimit;
         return new Filter(vanaf, tot, query["status"].ToString(), limit);
+    }
+
+    private static DateTime? LeesGrens(string waarde, bool isEindgrens)
+    {
+        if (string.IsNullOrWhiteSpace(waarde)) return null;
+        if (DateOnly.TryParseExact(waarde, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var dag))
+        {
+            var grens = dag.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            return isEindgrens ? grens.AddDays(1) : grens;
+        }
+
+        if (!DateTimeOffset.TryParse(waarde, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal, out var moment)) return null;
+        return moment.UtcDateTime;
     }
 
     /// <summary>404 als er geen trace is (nooit gemaakt), anders 200 met de PII-arme trace.</summary>

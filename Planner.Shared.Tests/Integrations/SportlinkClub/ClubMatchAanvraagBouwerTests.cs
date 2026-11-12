@@ -56,7 +56,7 @@ public class ClubMatchAanvraagBouwerTests
         r.Fout.Should().BeNull();
         var a = r.Aanvraag!;
         a.PublicTeamId.Should().Be("T354", "'AllStars 35+4' eindigt op Sportlinks TeamName '35+4'");
-        a.HomeTeam.Should().Be("AllStars 35+4");
+        a.HomeTeam.Should().Be("35+4", "#1871: een clubteam gaat met Sportlinks eigen TeamName, zoals Sportlinks formulier");
         a.AwayTeam.Should().Be("TEST");
         a.MatchDate.Should().Be(new DateOnly(2026, 10, 4));
         a.StartTime.Should().Be(new TimeOnly(12, 0));
@@ -87,8 +87,8 @@ public class ClubMatchAanvraagBouwerTests
         // #1737: formulier levert "[club] O14-2" (bond), Sportlink kent "JO14-2" (lokaal).
         var teams = new[] { new SportlinkClubTeam("TJO14", "JO14-2", "JO14-2 - Jongens", "SOCCER-VE-AL", "SATURDAY") };
 
-        ClubMatchAanvraagBouwer.ZoekTeam(teams, "VRC O14-2")!.Id.Should().Be("TJO14");
-        ClubMatchAanvraagBouwer.ZoekTeam(teams, "VRC O14-3").Should().BeNull();
+        ClubMatchAanvraagBouwer.ZoekTeam(teams, "TESTCLUB O14-2")!.Id.Should().Be("TJO14");
+        ClubMatchAanvraagBouwer.ZoekTeam(teams, "TESTCLUB O14-3").Should().BeNull();
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public class ClubMatchAanvraagBouwerTests
             new SportlinkClubTeam("B", "JO14-2", null, "SOCCER-VE-AL", "SATURDAY"),
         };
 
-        ClubMatchAanvraagBouwer.ZoekTeam(teams, "VRC O14-2").Should().BeNull();
+        ClubMatchAanvraagBouwer.ZoekTeam(teams, "TESTCLUB O14-2").Should().BeNull();
     }
 
     [Fact]
@@ -122,6 +122,8 @@ public class ClubMatchAanvraagBouwerTests
 
         r.Fout.Should().BeNull();
         r.Aanvraag!.PublicTeamId.Should().Be("T-STANDAARD");
+        r.Aanvraag.PublicAwayTeamId.Should().Be(SportlinkClubMatchAanvraag.GeenTeamId,
+            "#1871: ook bij een vrije thuisteamnaam krijgt de tegenstander een eigen (sentinel-)ID");
         r.Aanvraag.HomeTeam.Should().Be("TEST");
         r.Aanvraag.AgeClassCode.Should().Be("001", "Sportlinks standaard");
         r.Aanvraag.SportIdTag.Should().Be("SOCCER-VE-AL/FRIDAY", "Sportlinks standaard");
@@ -264,5 +266,81 @@ public class ClubMatchAanvraagBouwerTests
     public void AgeClassOmschrijving_VertaaltOnzeCategorieNaarSportlinksOmschrijving(string? onze, string? verwacht)
     {
         ClubMatchAanvraagBouwer.AgeClassOmschrijving(onze).Should().Be(verwacht);
+    }
+
+    // ── #1871: de tegenstander mag nooit het eigen team-ID krijgen ─────────────────────────────
+
+    private static SportlinkClubMatchContext ContextMetStandaardIds(string? thuisId, string? uitId)
+    {
+        var c = Context();
+        return c with { Defaults = c.Defaults with { PublicHomeTeamId = thuisId, PublicAwayTeamId = uitId } };
+    }
+
+    [Fact]
+    public void Bouw_ClubteamTegenExterneTegenstander_UitIdIsSentinelEnNooitHetEigenTeam()
+    {
+        // #1871: vóór de fix ging het eigen T…-ID ook als PublicAwayTeamId mee; Sportlink toonde dan het
+        // eigen team als uitteam en negeerde de tegenstandertekst.
+        var r = ClubMatchAanvraagBouwer.Bouw(Invoer(), Context());
+
+        r.Fout.Should().BeNull();
+        r.Aanvraag!.PublicTeamId.Should().Be("T354");
+        r.Aanvraag.PublicAwayTeamId.Should().Be(SportlinkClubMatchAanvraag.GeenTeamId);
+        r.Aanvraag.PublicAwayTeamId.Should().NotBe(r.Aanvraag.PublicTeamId);
+        r.Aanvraag.AwayTeam.Should().Be("TEST");
+        r.Waarschuwingen.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Bouw_LiveStandaardwaarden_ThuisClubteamUitSentinel()
+    {
+        // Live vorm (2026-11-11): ClubMatchDefaults geeft voor thuis én uit de sentinel.
+        var context = ContextMetStandaardIds(SportlinkClubMatchAanvraag.GeenTeamId, SportlinkClubMatchAanvraag.GeenTeamId);
+
+        var r = ClubMatchAanvraagBouwer.Bouw(Invoer(), context);
+
+        r.Aanvraag!.PublicTeamId.Should().Be("T354");
+        r.Aanvraag.PublicAwayTeamId.Should().Be(SportlinkClubMatchAanvraag.GeenTeamId);
+        r.Waarschuwingen.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Bouw_StandaardUitteamIsEenClubteam_ValtTerugOpSentinelMetWaarschuwing()
+    {
+        var r = ClubMatchAanvraagBouwer.Bouw(Invoer(team: "JO10-1", leeftijd: "JO10"), ContextMetStandaardIds(null, "T354"));
+
+        r.Aanvraag!.PublicAwayTeamId.Should().Be(SportlinkClubMatchAanvraag.GeenTeamId,
+            "een clubteam-ID als uitteam zou Sportlink dat team laten tonen in plaats van de tegenstander");
+        r.Waarschuwingen.Should().Contain(w => w.Contains("standaard-uitteam"));
+    }
+
+    [Fact]
+    public void Bouw_StandaardUitteamGelijkAanThuisId_ValtTerugOpSentinel()
+    {
+        var r = ClubMatchAanvraagBouwer.Bouw(Invoer(), ContextMetStandaardIds(null, "T354"));
+
+        r.Aanvraag!.PublicAwayTeamId.Should().Be(SportlinkClubMatchAanvraag.GeenTeamId);
+    }
+
+    [Fact]
+    public void Bouw_StandaardUitteamGeenClubteam_VolgtSportlinksStandaard()
+    {
+        // Zoals Sportlinks eigen formulier: defaults.PublicAwayTeamId || sentinel.
+        var r = ClubMatchAanvraagBouwer.Bouw(Invoer(), ContextMetStandaardIds(null, "T-EXTERN"));
+
+        r.Aanvraag!.PublicAwayTeamId.Should().Be("T-EXTERN");
+        r.Waarschuwingen.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Bouw_VrijeTekstZonderStandaardteam_ThuisEnUitSentinelGeenFout()
+    {
+        // Vóór #1871 was een lege standaard een fout; Sportlinks formulier valt dan terug op de sentinel.
+        var r = ClubMatchAanvraagBouwer.Bouw(Invoer(team: "TEST", vrijeTekst: true, leeftijd: null), ContextMetStandaardIds(null, null));
+
+        r.Fout.Should().BeNull();
+        r.Aanvraag!.PublicTeamId.Should().Be(SportlinkClubMatchAanvraag.GeenTeamId);
+        r.Aanvraag.PublicAwayTeamId.Should().Be(SportlinkClubMatchAanvraag.GeenTeamId);
+        r.Aanvraag.HomeTeam.Should().Be("TEST");
     }
 }

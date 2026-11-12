@@ -253,6 +253,7 @@ public static partial class PlannerShared
         TimeOnly? sunset, bool eindBinnenDagdeel = false)
     {
         var candidates = new List<CandidateSlot>();
+        if (duurMinuten <= 0 || duurMinuten > 1440) return candidates;
         foreach (var field in availableFields)
         {
             var fieldOccs = occupations.Where(o => o.VeldNummer == field.VeldNummer).ToList();
@@ -260,14 +261,20 @@ public static partial class PlannerShared
             var windowEnd   = dagdeelTot > field.BeschikbaarTot   ? field.BeschikbaarTot   : dagdeelTot;
             // Binnen een dagdeel (#1587) moet ook het einde binnen het dagdeel vallen, niet alleen de start.
             var uiterlijkEinde = eindBinnenDagdeel ? windowEnd : field.BeschikbaarTot;
-            for (var time = windowStart; time < windowEnd && time.AddMinutes(duurMinuten) <= uiterlijkEinde; time = time.AddMinutes(5))
+            // TimeOnly.AddMinutes wraps modulo 24h. Use monotone minute offsets so a late window
+            // cannot create slots before opening or loop back to the start of the day.
+            int startMinute = (int)Math.Ceiling(windowStart.ToTimeSpan().TotalMinutes);
+            int endMinute = (int)Math.Ceiling(windowEnd.ToTimeSpan().TotalMinutes);
+            int latestEndMinute = (int)Math.Floor(uiterlijkEinde.ToTimeSpan().TotalMinutes);
+            for (int minute = startMinute; minute < endMinute && minute + duurMinuten <= latestEndMinute; minute += 5)
             {
-                var endTime = time.AddMinutes(duurMinuten);
+                var time = TimeOnly.FromTimeSpan(TimeSpan.FromMinutes(minute));
+                var endTime = TimeOnly.FromTimeSpan(TimeSpan.FromMinutes(minute + duurMinuten));
                 if (CanFitMatch(time, endTime, veldFractie, field.VeldNummer,
                                 fieldOccs, allTeamRules, requestingTeamRules))
                 {
                     candidates.Add(new CandidateSlot { VeldNummer = field.VeldNummer, AanvangsTijd = time, EindTijd = endTime });
-                    time = time.AddMinutes(duurMinuten + StandardBufferMinutes - 5);
+                    minute += duurMinuten + StandardBufferMinutes - 5;
                 }
             }
         }
@@ -584,6 +591,57 @@ public class FieldScheduler
             }
         }
         return FindAndOccupyNextSlot(fractie, duurMinuten, nieuwBufVoor, teamNaam, sportlinkLeidend);
+    }
+
+    /// <summary>
+    /// Validates and occupies the exact submitted slot without searching for a replacement. Used when
+    /// applying a user-confirmed plan: a rejected slot must remain a conflict, never become a different
+    /// assignment. Uses the same availability, capacity, team-overlap, and buffer rules as the planner.
+    /// </summary>
+    public bool TryOccupyExactSlot(int veldNummer, TimeOnly start, int duurMinuten, decimal fractie,
+        string? doelSubpositie, string? teamNaam, bool sportlinkLeidend, out IngeplandSlot? slot)
+    {
+        slot = null;
+        if (duurMinuten <= 0 || fractie <= 0 || fractie > 1 || !_occupations.ContainsKey(veldNummer)) return false;
+
+        // Bound the duration before TimeOnly can wrap; retain source seconds and subsecond ticks.
+        if ((long)duurMinuten * TimeSpan.TicksPerMinute >= TimeSpan.TicksPerDay - start.Ticks)
+            return false;
+        var end = start.AddMinutes(duurMinuten);
+
+        var availability = _beschikbaarheid.FirstOrDefault(b => b.VeldNummer == veldNummer);
+        if (availability == null || start < availability.BeschikbaarVanaf || end > availability.BeschikbaarTot)
+            return false;
+
+        var bufferVoor = sportlinkLeidend ? 0 : TeamBufferVoor(teamNaam);
+        if (!PastOpVeld(veldNummer, start, end, fractie, bufferVoor, teamNaam, sportlinkLeidend, out _))
+            return false;
+
+        var toegewezenSubpositie = string.IsNullOrWhiteSpace(doelSubpositie) ? null : doelSubpositie.Trim().ToUpperInvariant();
+        var subpositieFractie = VeldResolver.SubpositieFractie(toegewezenSubpositie);
+        if (fractie == 1m ? toegewezenSubpositie != null : subpositieFractie != fractie)
+            return false;
+
+        var gewensteBanen = PlanningBufferRegels.BanenVanSubpositie(toegewezenSubpositie);
+        foreach (var bezet in _occupations[veldNummer].Where(o => Overlapt(o, start, end)))
+        {
+            var bezetteBanen = PlanningBufferRegels.BanenVanSubpositie(bezet.VeldSubpositie);
+            if (gewensteBanen.Where((baan, index) => baan && bezetteBanen[index]).Any())
+                return false;
+        }
+
+        slot = new IngeplandSlot
+        {
+            VeldNummer = veldNummer,
+            AanvangsTijd = start,
+            EindTijd = end,
+            Fractie = fractie,
+            VeldSubpositie = toegewezenSubpositie ?? string.Empty,
+            TeamNaam = teamNaam,
+            SportlinkLeidend = sportlinkLeidend
+        };
+        _occupations[veldNummer].Add(slot);
+        return true;
     }
 
     private IngeplandSlot? FindEarliestSlot(int veldNummer, decimal fractie, int duurMinuten, TimeOnly van, TimeOnly tot, int nieuwBufVoor = -1, string? teamNaam = null,

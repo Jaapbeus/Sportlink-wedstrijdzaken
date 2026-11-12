@@ -104,7 +104,8 @@
     # tegen de primaire club van de deployment.
     # ──────────────────────────────────────────────────────────────────────────
     apiEndpoints = @(
-        @{ Path = 'api/health';                      Assert = 'Bevat een tier-veld dat de verwachte tier noemt.' }
+        @{ Path = 'api/health';                      Assert = 'Bevat publieke status- en readinessvlaggen zonder diagnostische details.' }
+        @{ Path = 'api/beheer/health';              Assert = 'Bevat de verwachte databasetier achter de admin-poort.' }
         @{ Path = 'api/beheer/settings';             Assert = 'Bevat de leesbare planning en de volgende momenten — die verdwijnen stil bij afwijkende kolomcasing.' }
         @{ Path = 'api/beheer/velden';               Assert = 'Drie velden in demomodus.'; Context = 'demo' }
         @{ Path = 'api/beheer/veldbeschikbaarheid';  Assert = '21 rijen in demomodus.'; Context = 'demo' }

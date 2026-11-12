@@ -135,16 +135,15 @@ public class BerichtAiKern
         """;
 
     /// <summary>
-    /// Bouwt de user-message voor classificatie: afzender, onderwerp en body staan samen in één
+    /// Bouwt de user-message voor classificatie: onderwerp en body staan samen in één
     /// gedelimiteerd datablok. Zonder die scheiding kon de body de systeeminstructies overrulen
     /// (prompt-injectie) en bijvoorbeeld een classificatie op een door de afzender gekozen team
-    /// forceren.
+    /// forceren. De afzenderidentiteit wordt weggelaten; contactpatronen in onderwerp en body worden gemaskeerd (#1809).
     /// </summary>
     public static string BouwClassificatieUserPrompt(string afzender, string subject, string body, string markerId, ILogger? log = null)
         => $"{DataMarkerStart(markerId)}\n"
-           + $"Van: {NeutraliseerDataMarkers(afzender)}\n"
-           + $"Onderwerp: {NeutraliseerDataMarkers(subject)}\n\n"
-           + $"{NeutraliseerDataMarkers(BerichtBodyBegrenzing.Kap(body, log))}\n"
+           + $"Onderwerp: {NeutraliseerDataMarkers(AiVeldSanering.MaskeerContactgegevens(subject))}\n\n"
+           + $"{NeutraliseerDataMarkers(BerichtBodyBegrenzing.VoorProvider(body, log))}\n"
            + DataMarkerEinde(markerId);
 
     /// <summary>
@@ -174,7 +173,8 @@ public class BerichtAiKern
         sb.AppendLine("Let extra op deze patronen — eerder is de classificatie hier fout gegaan:");
         foreach (var v in voorbeelden)
         {
-            sb.AppendLine(LeermomentInvoer.FewShotRegel(v.OrigineelType, v.JuistType, v.OrigineleSamenvatting, v.CorrectieSamenvatting));
+            sb.AppendLine(AiVeldSanering.MaskeerContactgegevens(LeermomentInvoer.FewShotRegel(
+                v.OrigineelType, v.JuistType, v.OrigineleSamenvatting, v.CorrectieSamenvatting)));
         }
         return sb.ToString();
     }
@@ -239,7 +239,7 @@ public class BerichtAiKern
 
             KNVB-regelcheck (voor herplan_verzoek):
             Vul "knvbNotitie" in als op basis van datum en teamtype een KNVB-regel waarschijnlijk van toepassing is.
-            Wees kort (1-2 zinnen). Voorbeeld: "Senioren mogen na 1 mei 2027 geen wedstrijden meer verplaatsen (KNVB Cat A)."
+            Wees kort (1-2 zinnen). Voorbeeld: "Voor dit team geldt na de toepasselijke deadline geen verplaatsing (KNVB Cat A)."
             Laat null als datum ruim voor eventuele deadlines valt of het teamtype niet duidelijk is.
 
             {{KnvbRegelsContext}}
@@ -252,7 +252,7 @@ public class BerichtAiKern
 
     /// <param name="clubNaam">Levert de clubnaam uit de instellingen van de tier; gooit zelf een
     /// <see cref="InvalidOperationException"/> met een tier-eigen melding als die ontbreekt.</param>
-    /// <param name="nu">Lokale tijd (NL-context) voor de datumregel; de tier geeft <c>DateTime.Now</c>.</param>
+    /// <param name="nu">Nederlandse bedrijfstijd voor de datumregel; de tier geeft <c>NederlandseBedrijfsKlok.Nu</c>.</param>
     public BerichtAiKern(ILogger logger, IChatClient chatClient, Func<string> clubNaam, Func<DateTime> nu)
     {
         _logger = logger;
@@ -262,7 +262,7 @@ public class BerichtAiKern
     }
 
     /// <summary>
-    /// Classificeert een inkomend bericht met behulp van GPT-4o-mini.
+    /// Classificeert een inkomend bericht met behulp van gpt-6-luna.
     /// Retourneert een BerichtClassificatie met het type verzoek en geëxtraheerde gegevens.
     /// Optionele voorbeelden worden als few-shot context in de system prompt geïnjecteerd (#323) —
     /// gevuld door de tier zodra er gevalideerde leermomenten zijn (#972).
@@ -353,11 +353,11 @@ public class BerichtAiKern
 
         var userPrompt =
             $"Originele classificatie: {NeutraliseerDataMarkers(origineelType)}.\n"
-            + $"Originele samenvatting: {NeutraliseerDataMarkers(originaleSamenvatting ?? "(geen)")}.\n\n"
+            + $"Originele samenvatting: {NeutraliseerDataMarkers(AiVeldSanering.MaskeerContactgegevens(originaleSamenvatting ?? "(geen)"))}.\n\n"
             + "Reply:\n"
             + $"{DataMarkerStart(dataMarkerId)}\n"
-            + $"Onderwerp: {NeutraliseerDataMarkers(subject)}\n\n"
-            + $"{NeutraliseerDataMarkers(BerichtBodyBegrenzing.Kap(body, _logger))}\n"
+            + $"Onderwerp: {NeutraliseerDataMarkers(AiVeldSanering.MaskeerContactgegevens(subject))}\n\n"
+            + $"{NeutraliseerDataMarkers(BerichtBodyBegrenzing.VoorProvider(body, _logger))}\n"
             + DataMarkerEinde(dataMarkerId);
 
         var messages = new List<Microsoft.Extensions.AI.ChatMessage>

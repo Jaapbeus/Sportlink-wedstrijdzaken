@@ -74,10 +74,10 @@ public static class AntwoordSjabloonCatalogus
             "{{aanhef}} {{voornaam}},\n\nDe wedstrijd {{wedstrijd}} staat al ingepland op {{wedstrijd_datum}} om {{wedstrijd_aanvangstijd}} op {{wedstrijd_veld}}."),
 
         new(AntwoordSjabloonSleutels.TeamOnbekend, "Beschikbaarheid",
-            "We herkennen het team of de wedstrijd niet en vragen de afzender om welk team het gaat.",
+            "We herkennen het eigen team niet en vragen de afzender om welk team het gaat.",
             [], GaatTerReview,
             "",
-            "{{aanhef}} {{voornaam}},\n\nWe kunnen de wedstrijd van {{tegenstander}} niet vinden in ons programma. Tegen welk van onze teams zou deze wedstrijd zijn? Dan kunnen we de beschikbaarheid voor je controleren."),
+            "{{aanhef}} {{voornaam}},\n\nUit je bericht kunnen we niet opmaken om welk team van ons het gaat. Laat je ons weten om welk team het gaat? Dan controleren we de beschikbaarheid voor je."),
 
         new(AntwoordSjabloonSleutels.DatumOnbekend, "Beschikbaarheid",
             "In de mail staat geen bruikbare datum; de afzender wordt om een datum gevraagd.",

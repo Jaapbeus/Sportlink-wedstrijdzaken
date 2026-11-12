@@ -5,6 +5,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 # Minimale tokenrechten (CodeQL actions/missing-workflow-permissions, #1472): geen job schrijft naar
 # GitHub; azure/login gebruikt AZURE_CREDENTIALS (geen OIDC) en de SWA-deploy reageert alleen op PR's.
 permissions:
@@ -13,14 +17,23 @@ permissions:
 env:
   DOTNET_VERSION: '10.0.x'
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  # SQL-configuratie staat als repository-SECRETS (#1237/#1204: identificeert de club, Actions-logs
-  # zijn publiek). `secrets` mag niet in een `if:`; de tier-gating loopt daarom via de
-  # niet-gevoelige variabele DatabaseTier, en een stap controleert of de secrets gevuld zijn.
-  SQL_SERVER: ${{ secrets.AZURE_SQL_SERVER_NAME }}
-  SQL_DATABASE: ${{ secrets.AZURE_SQL_DATABASE_NAME }}
-  SQL_RESOURCE_GROUP: ${{ secrets.AZURE_SQL_RESOURCE_GROUP }}
 
 jobs:
+  # This source guard blocks accidental manual dispatches against another ref. It is not an
+  # authorization boundary for a write actor who changes this workflow; effective repository and
+  # environment controls still require owner verification.
+  deploy-ref-guard:
+    name: Production ref guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Require the production branch
+        env:
+          DEPLOY_REF: ${{ github.ref }}
+        run: /bin/bash scripts/ci/check-deploy-readiness.sh ref
+
   # ──────────────────────────────────────────────────────────────────────────
   # db-check: controleert de Azure SQL Free-tier database-status VÓÓR alles.
   # Als de DB niet Online is wordt de volledige pipeline geblokkeerd:
@@ -30,6 +43,11 @@ jobs:
   # ──────────────────────────────────────────────────────────────────────────
   db-check:
     runs-on: ubuntu-latest
+    needs: [deploy-ref-guard]
+    env:
+      SQL_SERVER: ${{ secrets.AZURE_SQL_SERVER_NAME }}
+      SQL_DATABASE: ${{ secrets.AZURE_SQL_DATABASE_NAME }}
+      SQL_RESOURCE_GROUP: ${{ secrets.AZURE_SQL_RESOURCE_GROUP }}
     # #1093: alleen op de SQL Server-tier. Sinds de cutover (ARCHITECTUUR-DATABASE-TIERS.md §49)
     # deployt deze installatie de Postgres-tier, maar de SQL-vars stonden er nog — waardoor deze
     # job én db-migrate bij elke release nog tegen de oude Azure SQL-database draaiden, terwijl
@@ -142,6 +160,7 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    needs: [deploy-ref-guard]
     # #599: GEEN db-check-afhankelijkheid. Voorheen blokkeerde een gepauzeerde Free-tier database
     # de build, waardoor build/blazor-deploy/test allemaal 'skipped' werden en compileerfouten
     # wekenlang onopgemerkt konden blijven. Bouwen heeft geen database nodig; alleen deployen wel.
@@ -186,19 +205,25 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
-    needs: [build, db-check, db-migrate, db-migrate-postgres]
-    # Deploy pas na succesvolle migratie — als db-migrate overgeslagen is (geen SQL-vars) mag deploy
-    # doorgaan (#430). db-check staat hier expliciet bij sinds #599: build is er niet meer van
-    # afhankelijk, dus de database-gate moet hier alsnog gelden — nooit code deployen naar een
-    # database die niet Online is.
-    # #1093: op de Postgres-tier geldt hetzelfde voor db-migrate-postgres — de migraties gaan
-    # vóór de code live (besluit eigenaar, issue #1093): de nieuwe code vindt het schema dan al.
-    # Precies één van de twee migratiejobs draait (tier-gating); de andere is 'skipped'.
+    needs: [build, db-check, db-migrate, db-migrate-postgres, deploy-ref-guard]
+    # Run the readiness guard even when a database job failed, was cancelled, or was skipped.
+    # It runs before artifact download, Azure login or publication.
     if: always() && needs.build.result == 'success'
-        && (needs.db-check.result == 'success' || needs.db-check.result == 'skipped')
-        && (needs.db-migrate.result == 'success' || needs.db-migrate.result == 'skipped')
-        && (needs.db-migrate-postgres.result == 'success' || needs.db-migrate-postgres.result == 'skipped')
+        && needs.deploy-ref-guard.result == 'success'
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Validate production deployment readiness
+        env:
+          DEPLOY_REF: ${{ github.ref }}
+          DATABASE_TIER: ${{ vars.DatabaseTier }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          DB_CHECK_RESULT: ${{ needs.db-check.result }}
+          DB_MIGRATE_RESULT: ${{ needs.db-migrate.result }}
+          DB_MIGRATE_POSTGRES_RESULT: ${{ needs.db-migrate-postgres.result }}
+        run: /bin/bash scripts/ci/check-deploy-readiness.sh ready
+
       - name: Artefact downloaden
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -231,14 +256,19 @@ jobs:
 
   db-migrate:
     runs-on: ubuntu-latest
+    env:
+      SQL_SERVER: ${{ secrets.AZURE_SQL_SERVER_NAME }}
+      SQL_DATABASE: ${{ secrets.AZURE_SQL_DATABASE_NAME }}
+      SQL_RESOURCE_GROUP: ${{ secrets.AZURE_SQL_RESOURCE_GROUP }}
     # #599: hangt nu aan db-check i.p.v. build — de database-gate hoort bij de migratie, niet bij
     # het compileren. Wordt overgeslagen als AZURE_SQL_SERVER_NAME niet geconfigureerd is
     # (fork / nieuw project). Vereist: secrets SQL_CONNECTION_STRING, AZURE_SQL_RESOURCE_GROUP
     # + AZURE_SQL_SERVER_NAME.
     # #1093: tier-gating, zie db-check.
-    needs: [build, db-check]
+    needs: [build, db-check, deploy-ref-guard]
     if: always() && vars.DatabaseTier == 'SqlServer'
         && needs.build.result == 'success'
+        && needs.deploy-ref-guard.result == 'success'
         && (needs.db-check.result == 'success' || needs.db-check.result == 'skipped')
     steps:
       - name: SQL-configuratie aanwezig? (secrets)
@@ -333,8 +363,9 @@ jobs:
   # ──────────────────────────────────────────────────────────────────────────
   db-migrate-postgres:
     runs-on: ubuntu-latest
-    needs: [build]
+    needs: [build, deploy-ref-guard]
     if: always() && vars.DatabaseTier == 'Postgres' && needs.build.result == 'success'
+        && needs.deploy-ref-guard.result == 'success'
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -406,17 +437,14 @@ jobs:
     # Deploy wordt overgeslagen als server niet geconfigureerd — test mag altijd doorgaan als deploy slaagt
     if: always() && needs.deploy.result == 'success'
     steps:
-      # #1098: een 200 op /api/health is geen bewijs dat de applicatie werkt. Bij het tweede
-      # v3.3.0.0-incident gaf health 200 met settingsLoaded=false (migratie 012 niet toegepast op
-      # productie), terwijl élk beheerscherm 500 "Ophalen mislukt" gaf — en deze stap was groen.
-      # Zonder instellingencache is de applicatie onbruikbaar: dat is een mislukte deploy, geen
-      # 'degraded'. Openstaande migraties (pendingMigrations) waren tot #1093 een waarschuwing
-      # omdat de pipeline ze niet kón toepassen; sinds db-migrate-postgres ze vóór de deploy
-      # toepast zijn ze een fout — zie de toelichting bij de check zelf.
-      # #1096: tlsWarning (het #1004/#1095-beleid nog niet op VerifyFull-met-CA-cert) is
-      # dezelfde categorie — de applicatie draait door (fail-open sinds #1095), dus ook hier een
-      # waarschuwing, geen deploy-blokkade (ARCHITECTUUR-DATABASE-TIERS.md §50).
-      - name: "Smoke test: function app bereikbaar (health → 200 én instellingen geladen)"
+      - name: Checkout deploybron voor contractcontrole
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+      # Health keeps the existing fatal checks (database, settings, pending migrations) while the
+      # anonymous endpoint exposes aggregate flags only. Schema/TLS warnings remain non-fatal;
+      # degraded status caused only by stale synchronization remains non-fatal too.
+      - name: "Smoke test: function app bereikbaar (health readiness contract)"
         # #1204: de naam van de Function App staat in een step-env i.p.v. inline in het script.
         # Een ${{ }}-expressie wordt vóór uitvoering ingevuld en het ingevulde script belandt
         # in de publiek leesbare Actions-log; een env-waarde die uit een secret komt wordt
@@ -435,48 +463,12 @@ jobs:
             BODY=$(printf '%s' "$RESPONSE" | sed '$d')
             echo "Poging $i/$MAX — health: $STATUS"
             if [ "$STATUS" = "200" ]; then
-              DB=$(printf '%s' "$BODY" | jq -r '.database // empty' 2>/dev/null || true)
-              SETTINGS=$(printf '%s' "$BODY" | jq -r '.settingsLoaded // empty' 2>/dev/null || true)
-              PENDING=$(printf '%s' "$BODY" | jq -r '(.pendingMigrations // []) | join(", ")' 2>/dev/null || true)
-              SCHEMA=$(printf '%s' "$BODY" | jq -r '.schemaWarning // empty' 2>/dev/null || true)
-              TLS=$(printf '%s' "$BODY" | jq -r '.tlsWarning // empty' 2>/dev/null || true)
-              # #1184: expliciet asserteren dat de database bereikbaar is. settingsLoaded=true
-              # bewijst dit indirect al (die cache komt uit dbo.AppSettings), maar impliciet
-              # bewijs is geen bewijs zodra iemand die tak wijzigt. Dit is bovendien de controle
-              # die de oude stap "Info: planner endpoint database-check" bedoelde te doen maar
-              # nooit kón doen: die liep op de admin-gate stuk vóór de database in beeld kwam.
-              # De -n-guard is bewust: ontbreekt het veld (oudere Function App-versie die nog
-              # draait tijdens een deploy), dan slaat de assertie over in plaats van de deploy
-              # te laten struikelen over een veld dat die versie niet kent.
-              if [ -n "$DB" ] && [ "$DB" != "online" ]; then
-                echo "FOUT: health geeft 200 maar database='$DB' (verwacht 'online')."
+              # The public projection keeps the existing database/settings/migration deploy gates
+              # as aggregate predicates. Schema/TLS flags remain warning-only; stale sync is not gated.
+              if ! printf '%s' "$BODY" | bash scripts/dev/health-deploy-predicate.sh; then
                 printf '%s\n' "$BODY" | jq . || printf '%s\n' "$BODY"
                 exit 1
               fi
-              if [ "$SETTINGS" = "false" ]; then
-                echo "FOUT: health geeft 200 maar settingsLoaded=false — de instellingencache is leeg, elk /api/beheer/*-endpoint antwoordt 500."
-                echo "Oorzaken: geen club met syncenabled=true, of de code verwacht een kolom die de database mist (zie schemaWarning/pendingMigrations hieronder)."
-                printf '%s\n' "$BODY" | jq . || printf '%s\n' "$BODY"
-                exit 1
-              fi
-              # #1093: sinds db-migrate-postgres de migraties vóór de deploy toepast, is een
-              # niet-lege lijst hier geen "beheerder moet nog iets doen" meer maar een mislukte
-              # deploy: de migratiejob was groen, en toch mist de database iets dat deze versie
-              # meelevert. Oorzaken: een andere database achter het secret dan achter de Function
-              # App-instelling, of een migratiebestand dat wél is ingesloten maar niet toegepast.
-              if [ -n "$PENDING" ]; then
-                echo "FOUT: health meldt openstaande migraties na een groene db-migrate-postgres: $PENDING"
-                echo "Controleer of secret POSTGRES_CONNECTION_STRING en de Function App-instelling POSTGRES_CONNECTION_STRING naar dezelfde database wijzen (docs/ARCHITECTUUR-DATABASE-TIERS.md §57)."
-                printf '%s\n' "$BODY" | jq . || printf '%s\n' "$BODY"
-                exit 1
-              fi
-              if [ -n "$SCHEMA" ]; then
-                echo "::warning title=Schemawaarschuwing uit /api/health::$SCHEMA"
-              fi
-              if [ -n "$TLS" ]; then
-                echo "::warning title=TLS-beleid nog niet volledig (#1096)::$TLS"
-              fi
-              echo "health OK: settingsLoaded=${SETTINGS:-onbekend}, pendingMigrations=[${PENDING}], tlsWarning=${TLS:-geen}"
               exit 0
             fi
             if [ "$i" -lt "$MAX" ]; then echo "Wacht ${WAIT}s (cold start)..."; sleep $WAIT; fi
@@ -583,7 +575,7 @@ jobs:
 
   blazor-deploy:
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, deploy]
     # Vereist het secret AZURE_STATIC_WEB_APPS_API_TOKEN (zie docs/BEHEERDER-HANDLEIDING.md voor de
     # SWA-resource). Job wordt overgeslagen als het secret leeg is — guard via env op step-niveau (secrets context
     # mag niet in job-level if direct staan).
@@ -689,25 +681,18 @@ jobs:
           if [ "$STATUS" -ge 500 ]; then echo "FOUT: SWA gaf $STATUS"; exit 1; fi
 
   # ── Deploymentrapportage (#1370, retro v3.6.0.0, bevinding 6) ───────────────
-  # Vóór deze job moest 'success'/'skipped' handmatig per job worden opgezocht (AGENTS.md,
-  # "Stap C is verplicht" bij elke release). Deze job zet dat in het job summary, MET reden
-  # per skip gekoppeld aan de actieve tier — en faalt zelf hard (niet de 'deploy'-job, die al
-  # gedraaid heeft tegen de tijd dat dit hier loopt) als de actieve tier zijn eigen
-  # migratiejob niet succesvol heeft afgerond. Puur additief: raakt geen bestaande `if:`-
-  # conditie of gating van de jobs hierboven — alleen een nieuwe, losstaande observatie
-  # ACHTERAF in dezelfde run. Wil de eigenaar dit ook PREVENTIEF (vóór de deploy zelf), dan is
-  # de vervolgstap deze job als required check op main te zetten of de gating-conditie van
-  # 'deploy' zelf aan te scherpen — een aparte, aan de eigenaar voorgelegde beslissing (zie
-  # issue #1370), niet iets wat deze job zelf doet.
+  # The report records each job result, while the first-step readiness guard prevents
+  # publication unless the active tier's checks succeeded.
   deployment-summary:
     name: "Deploymentrapportage — status per job"
     runs-on: ubuntu-latest
     if: always()
-    needs: [db-check, build, deploy, db-migrate, db-migrate-postgres, test, blazor-deploy]
+    needs: [deploy-ref-guard, db-check, build, deploy, db-migrate, db-migrate-postgres, test, blazor-deploy]
     steps:
       - name: "▶ Rapport samenstellen"
         env:
           TIER: ${{ vars.DatabaseTier }}
+          R_REF_GUARD: ${{ needs.deploy-ref-guard.result }}
           R_DB_CHECK: ${{ needs.db-check.result }}
           R_BUILD: ${{ needs.build.result }}
           R_DEPLOY: ${{ needs.deploy.result }}
@@ -718,23 +703,28 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Reden-teksten: alleen de reden, GEEN oordeel — 'success'/'failure'/'skipped' zelf
-          # bepaalt het oordeel. Zo blijft dit een feitelijk rapport, geen tweede gate.
+          case "$TIER" in
+            SqlServer|Postgres) ACTIVE_TIER_LABEL="$TIER" ;;
+            *) ACTIVE_TIER_LABEL="unknown" ;;
+          esac
+
+          # Job results remain visible in the report; required-result checks below also fail the run.
           reden_db_check() {
-            [ "$TIER" = "SqlServer" ] && echo "SQL Server-tier actief" || echo "niet van toepassing — actieve tier is '$TIER', db-check is uitsluitend voor SqlServer"
+            [ "$TIER" = "SqlServer" ] && echo "SQL Server-tier actief" || echo "niet van toepassing — uitsluitend voor de SQL Server-tier"
           }
           reden_db_migrate() {
-            [ "$TIER" = "SqlServer" ] && echo "SQL Server-tier actief" || echo "niet van toepassing — actieve tier is '$TIER'"
+            [ "$TIER" = "SqlServer" ] && echo "SQL Server-tier actief" || echo "niet van toepassing — andere tier"
           }
           reden_db_migrate_postgres() {
-            [ "$TIER" = "Postgres" ] && echo "Postgres-tier actief (#1093: migraties vóór de code live)" || echo "niet van toepassing — actieve tier is '$TIER'"
+            [ "$TIER" = "Postgres" ] && echo "Postgres-tier actief (#1093: migraties vóór de code live)" || echo "niet van toepassing — andere tier"
           }
 
           {
-            echo "### Deploymentrapportage — actieve tier: \`${TIER:-onbekend}\`"
+            echo "### Deploymentrapportage — actieve tier: \`${ACTIVE_TIER_LABEL}\`"
             echo ""
             echo "| Job | Resultaat | Reden bij skip |"
             echo "|---|---|---|"
+            echo "| production-ref-guard | ${R_REF_GUARD} | — |"
             echo "| db-check | ${R_DB_CHECK} | $([ "$R_DB_CHECK" = "skipped" ] && reden_db_check || echo "—") |"
             echo "| build | ${R_BUILD} | — |"
             echo "| db-migrate (SQL Server) | ${R_DB_MIGRATE} | $([ "$R_DB_MIGRATE" = "skipped" ] && reden_db_migrate || echo "—") |"
@@ -744,14 +734,21 @@ jobs:
             echo "| blazor-deploy | ${R_BLAZOR_DEPLOY} | — |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          # Escalatie: de actieve tier moet zijn EIGEN migratiejob succesvol hebben afgerond.
-          # 'skipped' is voor de ANDERE tier normaal (zie reden-kolom); voor de actieve tier
-          # betekent 'skipped' hier ofwel een verkeerd geconfigureerde variabele, ofwel dat
-          # 'build' faalde — in beide gevallen ging 'deploy' hierboven al door zolang zijn
-          # eigen (skipped-of-success) voorwaarde daarmee ook voldaan was. Dat is precies het
-          # stille gat dat bevinding 6 aankaart: dit maakt het hard zichtbaar, ook al kan deze
-          # job de deploy die al gebeurd is niet meer tegenhouden.
+          # The first-step readiness check is the preventive gate. This always-run summary also
+          # keeps failures visible when upstream errors cause production jobs to be skipped.
           FOUT=0
+          if [ "$ACTIVE_TIER_LABEL" = "unknown" ]; then
+            echo "::error::Database tier configuration is missing or unsupported."
+            FOUT=1
+          fi
+          if [ "$R_REF_GUARD" != "success" ]; then
+            echo "::error::Production ref guard did not succeed; no authorized deployment ref was established."
+            FOUT=1
+          fi
+          if [ "$R_BUILD" != "success" ]; then
+            echo "::error::Production build did not succeed."
+            FOUT=1
+          fi
           if [ "$TIER" = "Postgres" ] && [ "$R_DB_MIGRATE_POSTGRES" != "success" ]; then
             echo "::error::Actieve tier is Postgres, maar db-migrate-postgres eindigde als '${R_DB_MIGRATE_POSTGRES}' i.p.v. 'success'. Controleer of de Postgres-migraties daadwerkelijk zijn toegepast vóór je erop vertrouwt dat de deploy compleet is."
             FOUT=1

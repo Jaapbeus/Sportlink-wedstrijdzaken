@@ -28,7 +28,7 @@ namespace SportlinkFunction.Feedback;
 ///   iets aan te maken (#1205). Per gebruiker begrensd (AI-aanroepen); er wordt niets gepubliceerd.
 ///
 /// POST /api/feedback/submit
-///   Structureert de feedback met GPT-4o-mini en maakt een GitHub Issue aan. Stuurt de client de
+///   Structureert de feedback met gpt-6-luna en maakt een GitHub Issue aan. Stuurt de client de
 ///   in het voorbeeld getoonde velden mee (<c>bevestiging</c>), dan wordt exact díe tekst
 ///   gepubliceerd zonder nieuwe AI-aanroep.
 ///   Open voor elke ingelogde rol (#764). Bewaart de melding in <c>avg.Feedback</c> (melder = Entra
@@ -139,7 +139,7 @@ public static class FeedbackFunction
     [Function("FeedbackSubmit")]
     public static Task<IActionResult> Submit(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "feedback/submit")] HttpRequest req,
-        FunctionContext context)
+        FunctionContext context, CancellationToken cancellationToken)
     {
         var log = context.GetLogger("FeedbackSubmit");
         return SportlinkFunction.Admin.AdminEndpoint.ExecuteAuthenticatedAsync(req, log, "feedback indienen",
@@ -156,7 +156,7 @@ public static class FeedbackFunction
 
                 return await FeedbackEndpointCore.SubmitAsync(
                     dto!, wie, clubCode, chatClient!, new SqlFeedbackStore(SystemUtilities.DatabaseConfig.ConnectionString),
-                    FeedbackEndpointCore.MaakGitHubIssueDelegate(Infrastructure.EgressGuard.ExternalIntegrationsAllowed(), log), log);
+                    FeedbackEndpointCore.MaakGitHubIssueDelegate(Infrastructure.EgressGuard.ExternalIntegrationsAllowed(), log, cancellationToken), log);
             });
     }
 }

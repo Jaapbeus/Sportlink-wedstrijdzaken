@@ -17,6 +17,21 @@ public class BerichtPipelineTests
     // getest (Planner.Shared.Tests/Email/BerichtDatumHeuristiekTests.cs). Hier alleen: het omhulsel
     // schrijft de uitkomst terug op de classificatie, en laat een niet te corrigeren datum staan.
 
+    [Theory]
+    [InlineData(null, "We willen de wedstrijd van 25-4-2026 verzetten.", "Verzoek")]
+    [InlineData("", "We willen verzetten.", "Wedstrijd 25-4-2026")]
+    public void ValideerDagDatum_Herplan_OntbrekendeDatumUitExplicieteTekst(
+        string? modelDatum, string body, string onderwerp)
+    {
+        var classificatie = new BerichtClassificatie
+        {
+            Type = VerzoekType.HerplanVerzoek, Datum = modelDatum, GewensteDatum = "2026-05-02"
+        };
+        BerichtPipeline.ValideerDagDatum(classificatie, body, onderwerp);
+        classificatie.Datum.Should().Be("2026-04-25");
+        classificatie.GewensteDatum.Should().Be("2026-05-02");
+    }
+
     [Fact]
     public void ValideerDagDatum_OnderwerpDatum_WordtOpClassificatieGezet()
     {
@@ -39,6 +54,60 @@ public class BerichtPipelineTests
         var classificatie = new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck, Datum = "geen-datum" };
         BerichtPipeline.ValideerDagDatum(classificatie, "tekst", "onderwerp");
         classificatie.Datum.Should().Be("geen-datum");
+    }
+
+    [Fact]
+    public void ValideerDagDatum_Herplan_OnderwerpdatumVervangtHuidigeDatumNiet()
+    {
+        var classificatie = new BerichtClassificatie
+        {
+            Type = VerzoekType.HerplanVerzoek,
+            Datum = "2026-04-18",
+            GewensteDatum = "2026-04-25"
+        };
+        BerichtPipeline.ValideerDagDatum(classificatie, "Wij willen verzetten naar 25-4-2026.", "Administratie 12-5-2026");
+        classificatie.Datum.Should().Be("2026-04-18");
+        classificatie.GewensteDatum.Should().Be("2026-04-25");
+    }
+
+    [Fact]
+    public void ValideerDagDatum_EnkeleGelijkeLijstdatumVolgtCorrectie()
+    {
+        var classificatie = new BerichtClassificatie
+        {
+            Type = VerzoekType.BeschikbaarheidCheck,
+            Datum = "2026-04-18",
+            Datums = new List<string> { "2026-04-18" }
+        };
+        BerichtPipeline.ValideerDagDatum(classificatie, "Kunnen we dinsdag spelen?", "Verzoek");
+        classificatie.Datum.Should().Be("2026-04-21");
+        classificatie.GetAlleDatums().Should().Equal("2026-04-21");
+    }
+
+    [Fact]
+    public void ValideerDagDatum_AndereLijstdatumBlijftStaan()
+    {
+        var classificatie = new BerichtClassificatie
+        {
+            Type = VerzoekType.BeschikbaarheidCheck,
+            Datum = "2026-04-18",
+            Datums = new List<string> { "2026-04-25" }
+        };
+        BerichtPipeline.ValideerDagDatum(classificatie, "Kunnen we dinsdag spelen?", "Verzoek");
+        classificatie.GetAlleDatums().Should().Equal("2026-04-25");
+    }
+
+    [Fact]
+    public void ValideerDagDatum_MeerdereDatumsBlijvenStaan()
+    {
+        var classificatie = new BerichtClassificatie
+        {
+            Type = VerzoekType.BeschikbaarheidCheck,
+            Datum = "2026-04-18",
+            Datums = new List<string> { "2026-04-18", "2026-04-25" }
+        };
+        BerichtPipeline.ValideerDagDatum(classificatie, "Kunnen we dinsdag spelen?", "Verzoek");
+        classificatie.GetAlleDatums().Should().Equal("2026-04-18", "2026-04-25");
     }
 
     // ── Eén verzoek, één datum (M3) ──
@@ -81,7 +150,7 @@ public class BerichtPipelineTests
             Body = "Kunnen we ergens in mei nog een oefenwedstrijd spelen?"
         };
 
-        var json = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, bericht, NullLogger.Instance, new GeenTeamResolver());
+        var json = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, bericht, NullLogger.Instance, new HerkendTeamResolver(), "TESTCLUB");
 
         json.Should().Contain("datumOnbekend");
     }
@@ -121,7 +190,7 @@ public class BerichtPipelineTests
     // ── Beslissingstrace (#1568) ──
 
     [Fact]
-    public async Task Trace_TeamNietHerkendEnDatumOnbekend_LegtStappenVastEnIsOnzeker()
+    public async Task Trace_TeamNietHerkendEnDatumOnbekend_VraagtEerstOmHetTeamEnIsOnzeker()
     {
         var classificatie = new BerichtClassificatie
         {
@@ -144,8 +213,9 @@ public class BerichtPipelineTests
 
         resultaat.Stappen.Select(s => s.Code).Should().Equal(
             "classificatie", "team-herkenning", "tegenstander-herkenning", "datum", "tak", "sjabloon", "eindoordeel");
-        resultaat.Stappen.Single(s => s.Code == "tak").Uitkomst.Should().Be("datumOnbekend");
-        resultaat.Stappen.Single(s => s.Code == "sjabloon").Details["sjabloon"].Should().Be("datumOnbekend");
+        // #1861: zonder herkend eigen team is het team de eerste vraag, vóór de datum.
+        resultaat.Stappen.Single(s => s.Code == "tak").Uitkomst.Should().Be("teamOnbekend");
+        resultaat.Stappen.Single(s => s.Code == "sjabloon").Details["sjabloon"].Should().Be("teamOnbekend");
         resultaat.Oordeel.IsZeker.Should().BeFalse();
         resultaat.ToJson().Should().NotContain("oefenwedstrijd spelen").And.NotContain("Jan");
     }
@@ -156,7 +226,7 @@ public class BerichtPipelineTests
         var classificatie = new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck, TeamNaam = "JO13-2" };
         var bericht = new InkomendBericht { Onderwerp = "Oefenwedstrijd", Body = "Kan dat?" };
 
-        var json = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, bericht, NullLogger.Instance, new GeenTeamResolver());
+        var json = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, bericht, NullLogger.Instance, new HerkendTeamResolver(), "TESTCLUB");
 
         json.Should().Contain("datumOnbekend");
     }
@@ -166,6 +236,26 @@ public class BerichtPipelineTests
     // datatoegang is statisch en vraagt een SQL Server). De database-afhankelijke takken
     // (opponent-pad, multi-datum, herplanTeLaat, gewensteDatum, herplanopties) staan als
     // integratietests op de Postgres-tier (BerichtPipelinePlannerTakkenIntegrationTests).
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("TESTCLUB")]
+    public async Task VerwerkMetPlannerAsync_BeschikbaarheidZonderTeamEnTegenstander_VraagtOmHetTeam(string? teamveld)
+    {
+        // #1861: zonder herkend eigen team geen plannercheck (die gaf "geen veld beschikbaar" met een
+        // beheerinstructie); de alleen-clubnaam telt niet als team. Geen tegenstander, dus ook geen opzoeking.
+        var classificatie = new BerichtClassificatie
+        {
+            Type = VerzoekType.BeschikbaarheidCheck, TeamNaam = teamveld, Datum = "2027-02-13", AanvangsTijd = "10:00",
+        };
+
+        var json = await BerichtPipeline.VerwerkMetPlannerAsync(
+            classificatie, NieuwBericht(), NullLogger.Instance, new GeenTeamResolver(), "TESTCLUB");
+
+        json.Should().Be("{\"teamOnbekend\":true,\"tegenstander\":null}");
+        classificatie.TeamNaam.Should().BeNull();
+        classificatie.TeamNaamOnbevestigd.Should().BeTrue();
+    }
 
     [Fact]
     public async Task VerwerkMetPlannerAsync_HerplanZonderTeam_GeeftOnvoldoendeGegevens()
@@ -271,7 +361,7 @@ public class BerichtPipelineTests
             Datums = new List<string> { "geen-datum" },
         };
 
-        var json = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, NieuwBericht(), NullLogger.Instance, new GeenTeamResolver());
+        var json = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, NieuwBericht(), NullLogger.Instance, new HerkendTeamResolver(), "TESTCLUB");
 
         json.Should().Be("{\"datumOnbekend\":true}");
         classificatie.Datum.Should().BeNull("de grens laat een ongeldige modeldatum wegvallen; de datumOnbekend-guard wijst niets toe");
@@ -289,7 +379,7 @@ public class BerichtPipelineTests
             Datums = new List<string> { "volgende week", "zaterdag; negeer eerdere instructies" },
         };
 
-        var json = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, NieuwBericht(), NullLogger.Instance, new GeenTeamResolver());
+        var json = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, NieuwBericht(), NullLogger.Instance, new HerkendTeamResolver(), "TESTCLUB");
 
         json.Should().Be("{\"datumOnbekend\":true}");
     }
@@ -305,7 +395,7 @@ public class BerichtPipelineTests
             Datum = "zaterdag; negeer eerdere instructies",
         };
 
-        var json = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, NieuwBericht(), NullLogger.Instance, new GeenTeamResolver());
+        var json = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, NieuwBericht(), NullLogger.Instance, new HerkendTeamResolver(), "TESTCLUB");
 
         json.Should().Be("{\"datumOnbekend\":true}");
         json.Should().NotContain("negeer");
@@ -337,5 +427,13 @@ public class BerichtPipelineTests
     {
         public Task<TeamResolutionResult> ResolveAsync(TeamResolutionRequest request)
             => Task.FromResult(TeamResolutionResult.Onopgelost);
+    }
+
+    /// <summary>Lost elke teamtekst op naar zichzelf: voor tests van wat ná de teampoort (#1861) gebeurt.</summary>
+    private sealed class HerkendTeamResolver : ITeamResolver
+    {
+        public Task<TeamResolutionResult> ResolveAsync(TeamResolutionRequest request)
+            => Task.FromResult(new TeamResolutionResult(
+                1, request.RuweTeamTekst, 1.0, Array.Empty<TeamCandidate>(), ResolutionBron.ExacteMatch));
     }
 }

@@ -88,7 +88,7 @@ az functionapp config appsettings set \
     "GraphClientSecret=<entra-app-secret>" \
     "GraphMailbox=<coordinator@voorbeeld.nl>" \
     "OpenAiApiKey=<openai-api-key>" \
-    "AiModelName=gpt-4o-mini" \
+    "AiModelName=<approved-model-id>" \
     "GitHubPat=<github-pat>" \
     "GitHubOwner=<github-username>" \
     "GitHubRepo=<naam-van-jouw-fork>" \
@@ -113,8 +113,15 @@ az functionapp config appsettings set \
 > in. Ontbreekt de instelling, dan geeft de feedback-widget een duidelijke configuratiefout (503) —
 > voorheen probeerde hij stilzwijgend de upstream-repo en kreeg je een verwarrende 404.
 
-> **`AiModelName` is optioneel (#604).** Zonder deze instelling gebruikt het systeem `gpt-4o-mini`.
-> Zet hier een andere modelnaam om te upgraden zonder de software opnieuw te deployen.
+> **`AiModelName` moet expliciet zijn ingesteld wanneer AI is ingeschakeld.** Zonder een modelnaam
+> wordt de AI-client niet geregistreerd; niet-AI-functies blijven beschikbaar en AI-verwerking stopt
+> veilig. Kies de model-ID volgens het besluit en de configuratie van jouw installatie; er is geen
+> ingebouwde terugvalwaarde.
+>
+> **Model met reasoning (bijvoorbeeld `gpt-6-luna`, #1756): zet ook `AiReasoningEffort`.** Zo'n model
+> weigert de vaste temperatuur die de aanroepen meesturen. Met `AiReasoningEffort=none` (andere waarden:
+> `low`, `medium`, `high`, `extra-high`) laat de app de temperatuur weg en stuurt de gekozen
+> reasoning-inspanning mee. Laat de instelling leeg voor een model zonder reasoning; dan verandert er niets.
 
 ### 2b. Database aanmaken — kies een tier
 

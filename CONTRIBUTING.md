@@ -257,11 +257,10 @@ geen eigenaarspunt open. Een eigenaarspunt is een keuze, een acceptatie, een ris
 niet is verwerkt. Een controle die pas na de release kan (bijvoorbeeld een ingelogde browsercheck in
 productie) is nazorg, geen besluit, en houdt de merge dus niet tegen.
 
-**Wat altijd naar de eigenaar gaat:** een merge naar `main` (release en hotfix, uitsluitend via
-`/release`), alles wat Azure-resources of kosten raakt, een wijziging van het databaseschema (migraties)
-en werkinstructies of skills (`AGENTS.md`, `.agents/skills/`; de machtigingslaag van de agent blokkeert
-die merge ook zelf). Auth/Entra, workflows, CI-guards en issues met `source: owner` zijn sinds #1690
-**geen** uitzondering meer: daarvoor gelden dezelfde drie voorwaarden.
+**Altijd door de eigenaar gemerged:** merges naar `main` (release en hotfix alleen via `/release`), PR’s met wijzigingen aan Azure-resources of kosten, databaseschema’s of migraties, werkinstructies of skills (`AGENTS.md`, `.agents/skills/`), of automatiserings-/beveiligingscontroles (`.github/workflows/`, `.githooks/` en root `.gitleaks.toml`).
+De eindlabelstap handhaaft deze grens bij wachten op een merge.
+`scripts/ci/` en overige `.github/`-bestanden zijn op zichzelf niet eigenaar-only.
+Auth-/Entra-wijzigingen en issues met `source: owner` volgen dezelfde drie zelfmergevoorwaarden, tenzij de PR ook een genoemd eigenaarspad raakt.
 
 **Fase `eigenaarsbesluit`** (met `turn: owner`) is alleen voor een echt openstaand besluit of een van de
 uitzonderingen hierboven. Een PR die alleen op de merge wacht, krijgt die fase niet.
@@ -276,11 +275,11 @@ merge als besluit tonen. De job `eindlabel` haalt `turn: claude-code` weg en pla
 op merge door de implementer". Zo'n issue heeft dus geen `turn:`-label, een open draft-PR en dat comment
 als laatste workflowbericht; zoek het met
 `gh issue list --state open --search '"Wacht op merge door de implementer" in:comments'`. De job controleert zelf de uitzonderingen die aan paden te zien zijn (base
-niet `develop`; `AGENTS.md`/`CLAUDE.md`, `.agents/`, `.claude/`, `Database/`, `Database.Postgres/`,
-`scripts/migrations/`, `infrastructure/`, `scripts/azure/`) en maakt er dan `turn: owner` van; kosten of
+niet `develop`; `AGENTS.md`/`CLAUDE.md`, `.agents/skills/`, `.claude/skills/`, `Database/`, `Database.Postgres/`,
+`scripts/migrations/`, `infrastructure/`, `scripts/azure/`, `.github/workflows/`, `.githooks/`, root `.gitleaks.toml`) en maakt er dan `turn: owner` van; kosten of
 een schemawijziging buiten die paden beoordeelt de bot in de prompt en de mergende sessie opnieuw. Fase
 `eigenaarsbesluit` + `turn: owner` blijft voor een echt openstaand punt, voor alle bevindingen "niet
-overgenomen" zonder codewijziging, voor een tweede ronde zonder schone review en voor "CI niet bewezen".
+overgenomen" zonder codewijziging, voor een derde ronde zonder schone review en voor "CI niet bewezen".
 
 **Parallelle schrijvers en de turn-labels (#1686).** `turn-label-exclusief.yml` houdt het laatst gezette
 `turn:`-label en verwijdert de andere (laatste schrijver wint). Spreken de labels en de issue-events elkaar
@@ -291,6 +290,39 @@ bestaand `--remove-label` plus het nieuwe `--add-label`) en controleert daarna d
 Verwijst een reviewteruggave naar een besloten notitie, dan start de poort van `claude-issue-turn.yml` geen
 agent en gaat de beurt naar de eigenaar tot die notitie beschikbaar is. Beide workflows draaien op een
 `issues`-event vanaf de default branch en zijn dus pas actief na de eerstvolgende release naar `main`.
+
+**Overdracht en turn-label (#1858).** Een overdracht begint altijd met de fasecomment **op het issue**,
+ook als de reviewaanvraag zelf op de PR staat. Die comment bevat `Fase`/`Phase`, `Implementer`,
+`Reviewer`, `PR`, de volledige head-SHA van 40 tekens en `Volgende beurt`/`Next turn`. Pas daarna zet je
+het `turn:`-label (verwijderen en toevoegen in één aanroep). Een `status:`-label zet je nooit met de
+hand, behalve de gedocumenteerde Stap 5 uit `AGENTS.md`; `status: waiting-codex` bestaat niet meer.
+De workflow `beurt-invariant.yml` vergelijkt elke 15 minuten het label met de nieuwste vertrouwde
+overdracht (issue én gekoppelde PR) en plaatst bij een afwijking één signaalcomment: geen of meerdere
+`turn:`-labels, een label dat afwijkt van de volgende beurt, een label dat nog staat terwijl de overdracht
+geen volgende beurt noemt (merge door de implementer of eindfase), een onjuiste of verouderde head-SHA of een
+verouderd statuslabel. Hij beoordeelt elk open issue met een `turn:`-label, een open gekoppelde PR of ten minste één comment, ook als de overdracht lang geleden is. Noemt de nieuwste overdracht een PR die niet meer open is (gemerged of gesloten), dan is een ontbrekend `turn:`-label geen afwijking: dat werk is afgerond; vervolgwerk begint met een nieuwe overdracht. Hij wijzigt zelf geen labels; herstel doe je volgens de volgorde hierboven.
+Een schedule draait alleen vanaf de default branch: deze bewaking is dus pas actief na de eerstvolgende
+release naar `main`; tot die tijd is de overdrachtsvolgorde hierboven niet automatisch gecontroleerd.
+
+### Parallelle agentorkestratie (#1860)
+
+Controleer bij elk orkestratiepunt de live agentbezetting en geef elke vrije runtimeslot een veilige,
+afgebakende taak uit de al toegestane scope. Reken de orkestrator mee in de runtimelimiet. Hergebruik
+voltooide agents meteen en controleer dat zij hun volgende taak hebben aanvaard voordat je een slot als
+actief meldt.
+
+Controleer vóór toewijzing de issue-eigenaar, reviewer, fase, beurt, worktree-eigenaar, afhankelijkheden
+en grenzen tussen bestanden, API-contracten, schema's en gedeelde logica. Laat schrijvers niet overlappen
+en neem geen werk over dat bij de eigenaar ligt of tijdens review bevroren is. Herhaal de scope- en
+eigenaarschapscontrole bij uitbreiding en vóór commit of PR.
+
+Een tekstverschil of aparte bestandslijst bewijst geen functionele isolatie; controleer ook gedeelde
+aanroepers, contracten en gegevensstromen.
+
+Is er geen veilige codetaak, wijs dan onafhankelijke, alleen-lezen status- of CI-controles toe, of een
+exacte-SHA-review als fase en reviewprotocol dat toestaan. Een review blijft alleen-lezen en bevroren op
+de aangeboden SHA. Volg CI en reviewreacties; meld een slot pas bezet nadat de taak aantoonbaar actief is.
+Rapporteer per agent de concrete taak en het bewijs, en vermeld als geen taak veilig beschikbaar is.
 
 ### Security Gate
 

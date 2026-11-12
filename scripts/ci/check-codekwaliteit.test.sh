@@ -24,7 +24,8 @@ geslaagd=0
 mislukt=0
 TMP_B="$(mktemp)"
 TMP_C="$(mktemp)"
-trap 'rm -f "$TMP_B" "$TMP_C"' EXIT
+proef_tier=""
+trap 'rm -f "$TMP_B" "$TMP_C"; [ -z "$proef_tier" ] || rm -rf "$proef_tier"' EXIT
 
 # verwacht_falen <omschrijving> <commando...>
 verwacht_falen() {
@@ -69,21 +70,63 @@ verwacht_slagen "endpoint-autorisatie" bash scripts/ci/check-endpoint-autorisati
 echo
 echo "Negatieve tests (een overtreding moet rood zijn):"
 
-# 1. Tier-duplicatie: maak het ene tierbestand een woordelijke kopie van het andere — precies
-#    wat er bij een 1-op-1-poort gebeurt. Een paar losse regels erbij plakken is géén geldige test:
-#    de meting telt de langste gemeenschappelijke deelrijen, en losse regels vallen daar vaak al
-#    binnen. Dat heeft deze test bij het schrijven ervan ook eerst ten onrechte laten slagen.
-proef_a="FunctionApp/Admin/AdminVoorkeurTijdenFunction.cs"
-proef_b="FunctionApp.Postgres/Admin/AdminVoorkeurTijdenFunction.cs"
-if [ -f "$proef_a" ] && [ -f "$proef_b" ]; then
-  cp "$proef_b" "$TMP_B"
-  cp "$proef_a" "$proef_b"
-  verwacht_falen "tier-duplicatie stijgt" bash scripts/ci/check-tier-duplicatie.sh
-  cp "$TMP_B" "$proef_b"
+# 1. Tier-duplicatie: een minimale git-repository maakt de grens onafhankelijk van
+#    productierefactorings en de resterende speling onder het productieplafond.
+#    De echte guard en plafondlezer meten eerst één gedeelde regel bij plafond 1.
+#    Daarna veroorzaakt precies één extra gedeelde regel exit 1 met de groeimelding.
+proef_tier="$(mktemp -d)"
+mkdir -p "$proef_tier/scripts/ci/lib" "$proef_tier/FunctionApp" "$proef_tier/FunctionApp.Postgres"
+cp scripts/ci/check-tier-duplicatie.sh "$proef_tier/scripts/ci/"
+cp scripts/ci/lib/plafond.sh "$proef_tier/scripts/ci/lib/"
+printf '# explicit tier pairs\n' > "$proef_tier/scripts/ci/tier-duplicatie-mapping.txt"
+printf 'tier-duplicatie-regels 1\n' > "$proef_tier/scripts/ci/codekwaliteit-plafonds.txt"
+printf 'internal const int Basis = 1;\n' > "$proef_tier/FunctionApp/Proef.cs"
+cp "$proef_tier/FunctionApp/Proef.cs" "$proef_tier/FunctionApp.Postgres/Proef.cs"
+(
+  cd "$proef_tier" || exit 1
+  git init -q && git add FunctionApp FunctionApp.Postgres
+)
+verwacht_slagen "tier-duplicatie op synthetisch plafond" bash -c \
+  'cd "$1" && bash scripts/ci/check-tier-duplicatie.sh' _ "$proef_tier"
+
+# Een reviewed path mapping moet exact als een extra paar in de guardtelling vallen.
+mkdir -p "$proef_tier/FunctionApp/Planner" "$proef_tier/FunctionApp.Postgres/Planner/Repositories"
+printf 'internal const int Mapped = 1;\n' > "$proef_tier/FunctionApp/Planner/Service.cs"
+cp "$proef_tier/FunctionApp/Planner/Service.cs" \
+  "$proef_tier/FunctionApp.Postgres/Planner/Repositories/Service.cs"
+printf 'FunctionApp/Planner/Service.cs | FunctionApp.Postgres/Planner/Repositories/Service.cs\n' \
+  >> "$proef_tier/scripts/ci/tier-duplicatie-mapping.txt"
+(
+  cd "$proef_tier" || exit 2
+  bash scripts/ci/check-tier-duplicatie.sh
+) > "$TMP_C" 2>&1
+proef_status=$?
+if [ "$proef_status" -eq 1 ] && grep -Fq 'Tier-duplicatie gestegen naar 2 regels (plafond 1, dus +1)' "$TMP_C"; then
+  echo "  ok — expliciet gemapt tierpaar telt mee"
+  geslaagd=$((geslaagd + 1))
 else
-  echo "::error::Proefbestanden voor de tier-test ontbreken — de negatieve test is overgeslagen."
+  echo "::error::NEGATIEVE TEST MISLUKT — expliciet gemapt tierpaar is niet meegeteld."
+  cat "$TMP_C"
   mislukt=$((mislukt + 1))
 fi
+
+printf '# explicit tier pairs\n' > "$proef_tier/scripts/ci/tier-duplicatie-mapping.txt"
+printf 'internal const int Extra = 2;\n' >> "$proef_tier/FunctionApp/Proef.cs"
+printf 'internal const int Extra = 2;\n' >> "$proef_tier/FunctionApp.Postgres/Proef.cs"
+(
+  cd "$proef_tier" || exit 2
+  bash scripts/ci/check-tier-duplicatie.sh
+) > "$TMP_B" 2>&1
+proef_status=$?
+if [ "$proef_status" -eq 1 ] && grep -Fq 'Tier-duplicatie gestegen naar 2 regels (plafond 1, dus +1)' "$TMP_B"; then
+  echo "  ok — tier-duplicatie stijgt"
+  geslaagd=$((geslaagd + 1))
+else
+  echo "::error::NEGATIEVE TEST MISLUKT — tier-duplicatie: verwacht exit 1 en de groeimelding voor 2 regels bij plafond 1."
+  cat "$TMP_B"
+  mislukt=$((mislukt + 1))
+fi
+rm -rf "$proef_tier"
 
 # 2. Blazor: een pagina mét code-behind krijgt er een @code-blok bij.
 proef_razor="BlazorAdmin/Pages/Planning.razor"

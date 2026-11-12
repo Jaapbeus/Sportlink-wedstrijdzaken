@@ -1,3 +1,5 @@
+using Planner.Endpoints.Http;
+
 using Database.Postgres;
 using FunctionApp.Postgres.Infrastructure;
 using Planner.Shared;
@@ -49,7 +51,7 @@ namespace FunctionApp.Postgres.Admin;
 /// </summary>
 public static class AdminSettingsFunction
 {
-    private static readonly string[] AllowedFields =
+    internal static readonly string[] AllowedFields =
     {
         "HerplanDeadlineDagen", "BufferMinuten",
         "PlannerAfzenderNaam", "CoordinatorNaam", "CoordinatorFunctie", "PlannerEmailAdres",
@@ -84,12 +86,9 @@ public static class AdminSettingsFunction
 
     private const string ManagementApiVersion = "2022-03-01";
 
-    private static readonly HttpClient _geocodeClient;
-    static AdminSettingsFunction()
-    {
-        _geocodeClient = new HttpClient { Timeout = TimeSpan.FromSeconds(AdminEndpoint.OutboundHttpTimeoutSeconds) };
+    private static readonly HttpClient _geocodeClient = new() { Timeout = TimeSpan.FromSeconds(AdminEndpoint.OutboundHttpTimeoutSeconds) };
+    static AdminSettingsFunction() =>
         _geocodeClient.DefaultRequestHeaders.Add("User-Agent", AdminEndpoint.OutboundUserAgent);
-    }
 
     [Function("AdminSettingsGet")]
     public static Task<IActionResult> Get(
@@ -167,14 +166,8 @@ public static class AdminSettingsFunction
     {
         var log = context.GetLogger("AdminSettingsPut");
         return AdminEndpoint.ExecuteAsync(req, log, "AppSettings opslaan",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<UpdateSettingsRequest>(req, async updateRequest =>
             {
-                using var bodyReader = new StreamReader(req.Body);
-                var bodyText = await bodyReader.ReadToEndAsync();
-                if (string.IsNullOrWhiteSpace(bodyText))
-                    return new BadRequestObjectResult(new { error = "Lege request body" });
-
-                var updateRequest = JsonConvert.DeserializeObject<UpdateSettingsRequest>(bodyText);
                 if (updateRequest == null)
                     return new BadRequestObjectResult(new { error = "Ongeldige JSON" });
 
@@ -208,11 +201,11 @@ public static class AdminSettingsFunction
                 await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
                 await connection.OpenAsync();
 
-                await ApplyChangesAsync(connection, changes, gewijzigdDoor, clubCode, DateOnly.FromDateTime(DateTime.UtcNow));
+                var fetchScheduleChanged = await ApplyChangesAsync(
+                    connection, changes, gewijzigdDoor, clubCode, DateOnly.FromDateTime(DateTime.UtcNow));
 
                 await PostgresAppSettings.LoadSettingsAsync(log);
 
-                var fetchScheduleChanged = changes.ContainsKey("FetchSchedule");
                 string? herstartOpmerking = null;
                 bool herstartAutomatisch = false;
 
@@ -242,7 +235,7 @@ public static class AdminSettingsFunction
                     volgendeMomenten = fetchScheduleChanged && nieuweSchedule != null
                         ? BerekenVolgendeMomenten(nieuweSchedule, 3) : null
                 });
-            });
+            }, emptyBodyMessage: "Lege request body"));
     }
 
     private static IActionResult? ValidateAndFilterChanges(
@@ -275,7 +268,7 @@ public static class AdminSettingsFunction
 
     /// <summary>Wijzigingen + audit + (bij <c>SeasonStartMonth</c>) seizoensherbouw in één transactie, met de
     /// clubrij vergrendeld (<c>FOR UPDATE</c>): samen slagen of samen terugdraaien (#1715, Codex-review #1743).</summary>
-    internal static async Task ApplyChangesAsync(
+    internal static async Task<bool> ApplyChangesAsync(
         NpgsqlConnection connection, Dictionary<string, string?> changes, string gewijzigdDoor, string clubCode, DateOnly vandaag)
     {
         await using var transaction = await connection.BeginTransactionAsync();
@@ -283,6 +276,7 @@ public static class AdminSettingsFunction
         try
         {
             var currentValues = await ReadCurrentValuesAsync(connection, transaction, changes.Keys, clubCode);
+            var fetchScheduleChanged = FetchScheduleChangedCore.IsChanged(currentValues, changes);
 
             foreach (var (veld, nieuweWaarde) in changes)
             {
@@ -314,6 +308,7 @@ public static class AdminSettingsFunction
                 await PostgresSeasonProcedures.HerbouwSeizoenenVoorClubAsync(connection, transaction, clubCode, vandaag);
 
             await transaction.CommitAsync();
+            return fetchScheduleChanged;
         }
         catch
         {
@@ -383,6 +378,9 @@ public static class AdminSettingsFunction
         [JsonProperty("display_name")] public string DisplayName { get; set; } = "";
     }
 
+    internal static HttpClient CreateManagementHttpClient(HttpMessageHandler? handler = null) =>
+        new(handler ?? new HttpClientHandler()) { Timeout = TimeSpan.FromSeconds(AdminEndpoint.OutboundHttpTimeoutSeconds) };
+
     private static async Task<string?> TriggerFunctionAppRestartAsync(string nieuweSchedule, ILogger log)
     {
         if (UitgaandVerkeerCore.Blokkeer(EgressGuard.ExternalIntegrationsAllowed) is not null)
@@ -409,7 +407,7 @@ public static class AdminSettingsFunction
             var tokenContext = new TokenRequestContext(["https://management.azure.com/.default"]);
             var token = await credential.GetTokenAsync(tokenContext);
 
-            using var http = new HttpClient();
+            using var http = CreateManagementHttpClient();
             http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
 
             var baseUrl = $"https://management.azure.com/subscriptions/{subscriptionId}" +

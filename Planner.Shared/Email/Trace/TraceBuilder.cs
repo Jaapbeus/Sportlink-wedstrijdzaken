@@ -1,4 +1,5 @@
 using System.Text;
+using Planner.Shared.TeamResolution;
 using System.Text.RegularExpressions;
 
 namespace Planner.Shared.Email.Trace;
@@ -113,12 +114,42 @@ public sealed class TraceBuilder
         => Voeg(TraceCodes.TeamWissel, "Team en tegenstander verwisseld", "Genoemd team was de tegenstander",
             ZekerheidsNiveau.Zeker, new[] { D("team", nieuwTeam), D("tegenstander", nieuweTegenstander) });
 
-    /// <param name="tak"><c>opponent-op-datum</c>, <c>opponent-andere-datum</c> of <c>niet-gevonden</c>.</param>
+    /// <summary>
+    /// De opzoeking van het eigen team via de afzender (#1862). Bewust alleen het aantal gevonden teams
+    /// (<c>0</c>, <c>1</c> of <c>meer</c>; eigenaarsbesluit 4A, #1862): nooit het e-mailadres, ook niet gehasht, en geen
+    /// teamnaam, namen, rollen of de teams van de afzender.
+    /// </summary>
+    public TraceBuilder BegeleidingAfzender(string aantalTeams, bool teamAfgeleid, ZekerheidsNiveau zekerheid, bool afwijktVanGenoemdTeam)
+    {
+        var uitkomst = teamAfgeleid ? "Eigen team afgeleid"
+            : aantalTeams == "meer" ? "Afzender begeleidt meerdere teams, niets gekozen"
+            : aantalTeams == "0" ? "Afzender niet gevonden in de begeleiding"
+            : "Eén team, maar niet herkend";
+        var details = new List<KeyValuePair<string, string?>> { D(AfzenderTeamBepaling.AantalSleutel, aantalTeams) };
+        if (aantalTeams == "meer") details.Add(D("bron", "MeerdereKandidaten"));
+        if (afwijktVanGenoemdTeam) details.Add(D(AfzenderTeamBepaling.AfwijkendTeamSleutel, Ja));
+        return Voeg(TraceCodes.BegeleidingAfzender, "Eigen team via de afzender", uitkomst, zekerheid, details);
+    }
+
+    /// <summary>De afzender-opzoeking is bewust niet uitgevoerd (bijvoorbeeld een afwijkend antwoordadres).</summary>
+    public TraceBuilder BegeleidingAfzenderOvergeslagen(string reden)
+        => Voeg(TraceCodes.BegeleidingAfzender, "Eigen team via de afzender", "Overgeslagen", ZekerheidsNiveau.Onzeker, new[] { D("reden", reden) });
+
+    /// <param name="tak"><c>opponent-op-datum</c> of <c>niet-gevonden</c>. Oudere traces kunnen nog
+    /// <c>opponent-andere-datum</c> bevatten; die tak bestaat sinds #1861 niet meer.</param>
     public TraceBuilder OpponentPad(string tak, bool wedstrijdGevonden)
         => Voeg(TraceCodes.OpponentPad, "Wedstrijd zoeken via tegenstander (#1139)",
             wedstrijdGevonden ? "Wedstrijd gevonden" : "Geen wedstrijd gevonden",
             wedstrijdGevonden ? ZekerheidsNiveau.Zeker : ZekerheidsNiveau.Onzeker,
             new[] { D("tak", tak), D("wedstrijdGevonden", JaNee(wedstrijdGevonden)) });
+
+    /// <summary>
+    /// De speelduur van het herkende team staat niet in <c>speeltijden</c> (#1861): de plannercheck is niet uit te
+    /// voeren en het bericht gaat naar handmatige planning. Bewust zonder de categorietekst zelf (modeluitvoer).
+    /// </summary>
+    public TraceBuilder SpeelduurOnbekend(bool categorieGenoemd)
+        => Voeg(TraceCodes.Speelduur, "Speelduur bepalen", "Niet bekend, handmatige planning", ZekerheidsNiveau.Mislukt,
+            new[] { D("categorieGenoemd", JaNee(categorieGenoemd)) });
 
     public TraceBuilder Datum(IReadOnlyCollection<string> datums)
         => Voeg(TraceCodes.Datum, "Datumverwerking", datums.Count switch

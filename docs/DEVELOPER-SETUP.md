@@ -193,7 +193,7 @@ git config core.hooksPath .githooks
 cp .githooks/sensitive-patterns.template.txt .githooks/sensitive-patterns.txt
 ```
 
-Vul `sensitive-patterns.txt` aan met je eigen waarden: servernaam, SQL-login, Sportlink Client ID, Azure resource namen.
+Configureer `sensitive-patterns.txt` volgens je lokale omgeving. Dit bestand is gitignored en blijft lokaal. Beide hooks vereisen minstens één geldige, niet-lege patroonregel; een ontbrekend, leeg, alleen uit witruimte/commentaar bestaand of ongeldig patroonbestand blokkeert commit en push.
 
 Bij een update van `.githooks/sensitive-patterns.template.txt`: neem gewijzigde generieke
 patronen over in je bestaande lokale bestand, zonder eigen patronen te overschrijven.
@@ -208,8 +208,18 @@ tijdelijke header bij tokenuitgifte beide formaten selecteren; zie
 ### 3.3 Verificatie
 
 ```bash
+bash scripts/ci/test-git-hooks.sh
+```
+
+De regressietest voert de repositoryhooks uit in tijdelijke lokale repositories. Ze controleert ook witruimte-, commentaar- en ongeldige configuraties, de complete geschiedenis van een nieuwe branch-push en de versiecontrole op de gestagede csproj-inhoud. De Build-workflow draait dezelfde test vóór de applicatiebuilds. Er worden geen remote pushes uitgevoerd.
+
+Een wijziging aan een applicatie-csproj start vóór de commit ook `scripts/ci/check-versie-synchroon.sh --staged`. Die controle leest de versievelden uit de Git-index, zodat een correctie die alleen in de werkboom staat een onjuiste gedeeltelijke staging niet laat slagen.
+
+Voor een handmatige lege-commitcontrole is een geconfigureerd lokaal patroonbestand vereist:
+
+```bash
 git commit --allow-empty -m "test hooks"
-# Verwacht: "Scanning staged files for sensitive data..." → "No sensitive data detected."
+# Verwacht: "Scanning staged files for secrets and PII..." → "OK: No secrets or personal data detected. Commit allowed."
 ```
 
 ---
@@ -1052,9 +1062,8 @@ dotnet test FunctionApp.Tests --filter FullyQualifiedName~SportlinkFixtureSyncIn
 docker rm -f sqlfixture
 ```
 
-Deze test staat net als de andere lokale-database-integratietests (`PartialFailureIntegrationTests`)
-op `[Fact(Skip=...)]` — hij draait dus niet automatisch mee in `dotnet test FunctionApp.Tests` en
-ook niet in CI. Dat is bewust: het env-gestuurde "draai automatisch zodra de verbindingsvariabele
+De tests in `SportlinkFixtureSyncIntegrationTests` staan op `[Fact(Skip=...)]` — ze draaien dus
+niet automatisch mee in `dotnet test FunctionApp.Tests` en ook niet in CI. Dat is bewust: het env-gestuurde "draai automatisch zodra de verbindingsvariabele
 gezet is"-mechanisme dat dit zou vervangen, is de scope van een apart issue (#866, tot nu toe alleen
 uitgewerkt voor de Postgres-tier). Zolang dat niet is toegepast op deze test, is de enige manier om
 hem te draaien de bovenstaande handmatige stappen.
@@ -1153,7 +1162,7 @@ sportlink-wedstrijdzaken/
 ├── docker-compose.yml                 # Lokale database: Postgres (standaard, zonder profile) + SQL Server achter profile 'sqlserver' (#800, #1060)
 ├── FunctionApp.Postgres/              # .NET 10 Azure Functions — Postgres-tier (standaard, draait in productie)
 │   ├── FunctionApp.Postgres.csproj
-│   ├── HealthFunction.cs              # GET /api/health (versie, status, actieve tier)
+│   ├── HealthFunction.cs              # GET /api/health + admin-only /api/beheer/health
 │   ├── Sync/SyncFunction.cs           # GET /api/postgres/sync-matches
 │   ├── Admin/                         # 25 Admin-endpoint bestanden (beheer/*)
 │   ├── local.settings.json            # NIET in git — bevat POSTGRES_CONNECTION_STRING
@@ -1161,6 +1170,10 @@ sportlink-wedstrijdzaken/
 ├── Database.Postgres/                 # migrations/ + MigrationRunner (SHA-256-ledger)
 ├── Database.Postgres.Cli/             # CLI die de migraties toepast (POSTGRES_CONNECTION_STRING)
 ├── Planner.Shared/                    # Tier-onafhankelijke logica (TeamNaamNormalisatie, ThemeCore, VeldResolver)
+├── GedeeldeBron/                      # Geen project: bronbestanden die BEIDE FunctionApps link-compileren (#1856)
+│   └── PlannerDto/                    # Tier-identieke planner-wire-DTO's; elk *.cs hier valt automatisch in beide tiers
+│                                      #   (glob in beide csproj's), naamruimte per tier via PLANNER_DTO_POSTGRES
+│                                      #   — zie ARCHITECTUUR-CODEKWALITEIT.md, regel 2b
 ├── FunctionApp/                       # .NET 10 Azure Functions — SQL Server-tier
 │   ├── fa-dev-sportlink-01.csproj     # .NET 10 Azure Functions isolated worker
 │   ├── Function1.cs                   # Timer + HTTP sync triggers (GET /api/sync-matches)
@@ -1356,7 +1369,7 @@ gh run view <run-id> --json jobs --jq '.jobs[] | {name: .name, conclusion: .conc
 Het label `turn: claude-code` op een issue start de workflow `.github/workflows/claude-issue-turn.yml`. Die implementeert het issue op `feature/#<nr>-<slug>` vanaf `develop` en opent een **draft**-PR (#1601). Vraagt Codex om een review, dan beoordeelt de workflow de Codex-PR read-only (#1727).
 
 - **Poort:** het issue heeft `source: claude-code` of `source: owner` (bij een review ook `source: codex`), géén `discipline: architect`, en er zijn hoogstens drie runs per issue; daarna gaat de beurt naar de eigenaar.
-- **Reviewfase (#1727):** is de nieuwste fasecomment van een bevoegde schrijver op het issue een reviewaanvraag met `Fase: review`, `Reviewer: Claude Code`, een andere `Implementer:`, `PR: #<nr>` en `Aangeboden head-SHA: <40 tekens>`, dan start de job `review` in plaats van `claude`. Een latere fasecomment, zoals `Fase: verwerking` na de teruggave, beëindigt de aanvraag. De poort eist precies één gekoppelde open PR. Die PR is een Codex-PR (`codex/<nr>-…` of `codex/hotfix-<nr>-…`, zelfde repository, bevoegde auteur, sterke referentie) en heeft als head precies de aangeboden SHA. De SHA mag nog niet beoordeeld zijn. Dat is het geval bij een reviewteruggave van een bevoegde schrijver die de SHA noemt, bij een formele review van een bevoegde schrijver op die commit (in elke toestand, ook PENDING) en bij een eerdere botreview met de markering voor die SHA. Er zijn hoogstens twee rondes (verschillende aangeboden SHA's). Klopt iets niet, dan start er geen agent, wordt er niets gepubliceerd of gerelabeld en faalt de poortstap zichtbaar (reviewprotocol, regel 3). Alleen een derde ronde gaat met een comment naar `turn: owner`.
+- **Reviewfase (#1727):** is de nieuwste fasecomment van een bevoegde schrijver op het issue een reviewaanvraag met `Fase: review`, `Reviewer: Claude Code`, een andere `Implementer:`, `PR: #<nr>` en `Aangeboden head-SHA: <40 tekens>`, dan start de job `review` in plaats van `claude`. Een latere fasecomment, zoals `Fase: verwerking` na de teruggave, beëindigt de aanvraag. De poort eist precies één gekoppelde open PR. Die PR is een Codex-PR (`codex/<nr>-…` of `codex/hotfix-<nr>-…`, zelfde repository, bevoegde auteur, sterke referentie) en heeft als head precies de aangeboden SHA. De SHA mag nog niet beoordeeld zijn. Dat is het geval bij een reviewteruggave van een bevoegde schrijver die de SHA noemt, bij een formele review van een bevoegde schrijver op die commit (in elke toestand, ook PENDING) en bij een eerdere botreview met de markering voor die SHA. Er zijn hoogstens drie rondes (verschillende aangeboden SHA's). Klopt iets niet, dan start er geen agent, wordt er niets gepubliceerd of gerelabeld en faalt de poortstap zichtbaar (reviewprotocol, regel 3). Alleen een vierde ronde gaat met een comment naar `turn: owner`.
   - **Job `review`:** checkt de SHA uit en vergelijkt met de basisbranch van de PR (`develop`, of `main` bij een Codex-hotfix). De agent kan niets wijzigen of publiceren: hij krijgt de GITHUB_TOKEN van de job met alleen leesrechten (`github_token`, geen App-token), laadt geen instellingen uit de checkout (`--setting-sources user`), heeft geen schrijvende tool, build of script, en levert alleen gestructureerde uitvoer (`--json-schema`, `REVIEW_SCHEMA`).
   - **Job `review-publiceren`:** draait op code van de default branch. Hij valideert die uitvoer en scant de tekst op waarden die niet publiek mogen. Vlak vóór de eerste comment controleert hij opnieuw de beurt, de aanvraag (nog de nieuwste fasecomment), de PR-koppeling, de head-SHA en "nog niet beoordeeld". Daarna plaatst hij als `github-actions[bot]` een PR-comment "Reviewteruggave — reviewronde N" met markering en een issuecomment `Fase: verwerking`. Na nog een controle van de aanvraag zet hij het label via de vergelijk-en-zet van het eindlabel, gebonden aan dezelfde SHA: `turn: codex`, of `turn: owner` bij een besloten beveiligingsbevinding of een niet-uitvoerbare review. Faalt een controle vóór publicatie, dan publiceert hij niets, wijzigt hij geen label en faalt de job. Faalt de controle daarna, dan staan de comments er (die gelden voor de genoemde SHA) maar wordt er geen label gezet. De job `eindlabel` draait in deze fase niet.
   - Zonder geldige aanvraag start een issue met een open Codex-PR nooit een implementatie of verwerking. De poort plaatst dan een comment en zet `turn: owner`, want anders zou de bot een tweede implementatie naast Codex starten. Ook de implementatiejob laadt sinds #1727 geen instellingen uit de checkout. Tests: `claude-issue-turn-gate.test.js`, `claude-issue-turn-eindlabel.test.js`, `claude-issue-turn-review.test.js`.

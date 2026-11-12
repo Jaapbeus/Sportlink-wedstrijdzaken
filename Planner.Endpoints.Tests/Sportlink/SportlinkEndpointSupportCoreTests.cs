@@ -1,9 +1,11 @@
 using AwesomeAssertions;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Planner.Endpoints.Http;
 using Planner.Endpoints.Sportlink;
 using Planner.Shared.Integrations.SportlinkClub;
 using Xunit;
@@ -19,6 +21,20 @@ namespace Planner.Endpoints.Tests.Sportlink;
 /// </summary>
 public class SportlinkEndpointSupportCoreTests
 {
+    private sealed record Payload(string Value);
+    private static Mock<ISportlinkClubClient> VeldplannerClient(string id)
+    {
+        var client = new Mock<ISportlinkClubClient>();
+        client.Setup(c => c.GetClubMatchPickListsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SportlinkClubResponse<SportlinkClubMatchPickLists>(SportlinkClubCallStatus.Ok,
+                new SportlinkClubMatchPickLists(Array.Empty<SportlinkPickListItem>(),
+                    new[] { new SportlinkPickListItem(id, "Facility " + id) }), null, 200));
+        client.Setup(c => c.GetVeldplannerAsync(It.IsAny<string>(), id, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SportlinkClubResponse<IReadOnlyList<SportlinkVeldplannerBlok>>(
+                SportlinkClubCallStatus.Ok, new[] { new SportlinkVeldplannerBlok("A - B", "veld 1", "09:00", 1m, 75, null) }, null, 200));
+        return client;
+    }
+
     private static FunctionContext MetClient(ISportlinkClubClient? client)
     {
         var services = new ServiceCollection();
@@ -114,6 +130,36 @@ public class SportlinkEndpointSupportCoreTests
         result.Should().BeSameAs(adminResultaat);
     }
 
+    [Fact]
+    public async Task ExecuteWedstrijdzakenAsync_TeGroteBody_Geeft413EnVoertMutatieNietUit()
+    {
+        var request = new DefaultHttpContext().Request;
+        request.Body = new MemoryStream(new byte[BoundedRequestBodyReader.DefaultJsonMaxBytes + 1]);
+        var mutatieUitgevoerd = false;
+
+        var result = await SportlinkEndpointSupportCore.ExecuteWedstrijdzakenAsync(
+            request,
+            NullLogger.Instance,
+            "synthetische testmutatie",
+            async clubCode =>
+            {
+                _ = clubCode;
+                await SportlinkEndpointSupportCore.LeesBodyAsync<JsonFixture>(request);
+                mutatieUitgevoerd = true;
+                return new OkResult();
+            },
+            _ => null,
+            (_, _, _, work) => work("TEST"));
+
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(413);
+        mutatieUitgevoerd.Should().BeFalse();
+    }
+
+    private sealed class JsonFixture
+    {
+        public string? Value { get; set; }
+    }
+
     // ── ClientOfFout / ClientVoorTimer: DI-lookup via FunctionContext ──────────────────────────
 
     [Fact]
@@ -186,6 +232,48 @@ public class SportlinkEndpointSupportCoreTests
         ontvangenResultaat.Should().Be("Success");
         ontvangenSamenvatting.Should().BeNull();
         result.Should().BeOfType<OkObjectResult>();
+    }
+
+    [Fact]
+    public async Task RondMutatieAfAsync_LiveSuccess_InvalidatesVeldplannerCache()
+    {
+        var client = VeldplannerClient("F-audit-invalidate");
+        await VeldplannerOverlayCore.HaalBlokkenAsync(() => SportlinkTimerStatus.MagDraaien,
+            () => (client.Object, null), "role", "Facility F-audit-invalidate", new DateOnly(2030, 5, 4),
+            NullLogger.Instance);
+
+        var result = await SportlinkEndpointSupportCore.RondMutatieAfAsync(
+            new SportlinkClubResponse<Payload>(SportlinkClubCallStatus.Ok, new Payload("x"), null, 200),
+            voltooiAuditAsync: (_, _) => Task.CompletedTask,
+            naarMutatieResultaat: _ => new SportlinkMutationResult(true, null, IsDryRun: false),
+            ok: _ => new OkObjectResult("ok"));
+
+        result.Should().BeOfType<OkObjectResult>();
+        await VeldplannerOverlayCore.HaalBlokkenAsync(() => SportlinkTimerStatus.MagDraaien,
+            () => (client.Object, null), "role", "Facility F-audit-invalidate", new DateOnly(2030, 5, 4),
+            NullLogger.Instance);
+        client.Verify(c => c.GetVeldplannerAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    [Fact]
+    public async Task RondMutatieAfAsync_AuditAfrondingFaaltNaLiveSucces_GeeftDoNotRetryEn500()
+    {
+        var result = await SportlinkEndpointSupportCore.RondMutatieAfAsync(
+            new SportlinkClubResponse<Payload>(SportlinkClubCallStatus.Ok, new Payload("x"), null, 200),
+            voltooiAuditAsync: (_, _) => throw new InvalidOperationException("private audit failure detail"),
+            naarMutatieResultaat: _ => new SportlinkMutationResult(true, null, IsDryRun: false),
+            ok: _ => new OkObjectResult("ok"),
+            log: NullLogger.Instance);
+
+        var response = result.Should().BeOfType<ObjectResult>().Subject;
+        response.StatusCode.Should().Be(500);
+        response.Value.Should().NotBeNull();
+        response.Value!.ToString().Should().NotContain("private audit failure detail");
+        response.Value.Should().BeEquivalentTo(new
+        {
+            error = "Sportlink heeft de wijziging verwerkt, maar de audit kon niet worden afgerond. "
+                + "Probeer de actie niet opnieuw; neem contact op met de beheerder."
+        });
     }
 
     [Fact]

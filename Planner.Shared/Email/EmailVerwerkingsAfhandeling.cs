@@ -226,6 +226,20 @@ public static class EmailVerwerkingsAfhandeling
         return true;
     }
 
+    /// <summary>Een leesfout bij een uitgesloten bericht blokkeert de overige batch niet.</summary>
+    public static async Task MarkeerGefilterdBerichtGelezenAsync(string messageId, IReplyGraph graph, ILogger log)
+    {
+        try
+        {
+            await graph.MarkAsReadAsync(messageId);
+        }
+        catch (Exception)
+        {
+            // Geen providerexception, berichtinhoud of afzendergegevens in deze waarschuwing.
+            log.LogWarning("Gefilterd bericht kon niet als gelezen worden gemarkeerd; overige berichten worden verwerkt.");
+        }
+    }
+
     /// <summary>
     /// Handelt een bericht van een automatische afzender af (<see cref="AutomatischeAfzenderHerkenning"/>):
     /// géén AI-aanroep en géén antwoord, maar wel een spoor voor de coördinator: het label
@@ -290,9 +304,10 @@ public static class EmailVerwerkingsAfhandeling
 
     /// <summary>
     /// Geeft een bericht definitief op na <see cref="VerwerkingsBesluitRegels.MaxPogingen"/> mislukte
-    /// pogingen: status Fout met een verklarende melding, en als gelezen markeren zodat het de
-    /// wachtrij niet blijft bezetten. Er is nooit een antwoord verstuurd op dit pad, dus de
-    /// coördinator moet het bericht handmatig oppakken — het email-log is daarvoor het spoor.
+    /// pogingen: status Fout met een verklarende melding, het Outlook-label "Geen AI antwoord"
+    /// best-effort zetten en als gelezen markeren zodat de wachtrij niet blijft bezetten. Er is
+    /// nooit een antwoord verstuurd op dit pad, dus de coördinator moet het bericht handmatig
+    /// oppakken — het email-log is daarvoor het spoor.
     /// </summary>
     private static async Task GeefVerwerkingOpAsync(
         string messageId, int verwerkingId, int pogingen, string fase,
@@ -311,6 +326,15 @@ public static class EmailVerwerkingsAfhandeling
         catch (Exception ex)
         {
             log.LogWarning(ex, "Kon opgeven-status niet vastleggen voor verwerking {Id}", verwerkingId);
+        }
+
+        try
+        {
+            await mailbox.LabelGeenAiAntwoordAsync(messageId);
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Outlook-labeling na opgeven mislukt voor verwerking {Id}", verwerkingId);
         }
 
         await mailbox.MarkeerGelezenAsync(messageId);

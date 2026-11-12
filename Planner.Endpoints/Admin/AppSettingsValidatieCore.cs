@@ -20,15 +20,24 @@ public static class AppSettingsValidatieCore
     /// <summary>Breedte van de kolom <c>SportlinkSpelactiviteit</c> (#1437).</summary>
     public const int MaxSpelactiviteitLengte = 100;
 
+    /// <summary>Breedte van de kolom <c>FetchSchedule</c> in beide databasetiers.</summary>
+    public const int MaxFetchScheduleLengte = 50;
+
     /// <summary>
     /// Geeft de 400-respons voor de eerste ongeldige wijziging, of <c>null</c> als alles klopt.
     /// <paramref name="changes"/> bevat alleen velden die de tier al door zijn witte lijst heeft gelaten.
     /// </summary>
     public static IActionResult? Valideer(IReadOnlyDictionary<string, string?> changes)
     {
-        if (changes.TryGetValue("FetchSchedule", out var nieuweSchedule) && nieuweSchedule != null
-            && !CronExpression.TryParse(nieuweSchedule, CronFormat.IncludeSeconds, out _))
-            return Fout($"Ongeldige CRON-expressie: '{nieuweSchedule}'. Verwacht 6 velden (seconden minuten uren dag maand weekdag).");
+        if (changes.TryGetValue("FetchSchedule", out var nieuweSchedule))
+        {
+            // Beide kolommen zijn NOT NULL en maximaal 50 tekens breed. Cronos accepteert ook
+            // syntactisch geldige combinaties zonder enig volgend uitvoermoment.
+            if (string.IsNullOrWhiteSpace(nieuweSchedule) || nieuweSchedule.Length > MaxFetchScheduleLengte
+                || !CronExpression.TryParse(nieuweSchedule, CronFormat.IncludeSeconds, out var cron)
+                || cron.GetNextOccurrence(DateTime.UtcNow) is null)
+                return Fout($"FetchSchedule moet een uitvoerbare CRON-expressie van maximaal {MaxFetchScheduleLengte} tekens met 6 velden zijn.");
+        }
 
         if (changes.TryGetValue("KnvbStandaardRegio", out var nieuweRegio)
             && !string.IsNullOrWhiteSpace(nieuweRegio)

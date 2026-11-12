@@ -1,4 +1,5 @@
 using Microsoft.Data.SqlClient;
+using Planner.Shared.Sync;
 
 namespace SportlinkFunction;
 
@@ -25,27 +26,39 @@ internal static class SyncJobsRepository
         await command.ExecuteNonQueryAsync();
     }
 
-    internal static async Task MarkRunningAsync(Guid id)
+    internal static Task<bool> TryClaimPendingAsync(Guid id)
     {
-        using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+        return TryClaimPendingAsync(SystemUtilities.DatabaseConfig.ConnectionString, id);
+    }
+
+    internal static async Task<bool> TryClaimPendingAsync(string connectionString, Guid id)
+    {
+        await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
-        using var command = new SqlCommand(
-            "UPDATE [dbo].[SyncJobs] SET [Status] = 'running', [StartedAt] = GETUTCDATE() WHERE [Id] = @Id",
+        await using var command = new SqlCommand(
+            "UPDATE [dbo].[SyncJobs] SET [Status] = 'running', [StartedAt] = GETUTCDATE() " +
+            "OUTPUT INSERTED.[Id] WHERE [Id] = @Id AND [Status] = 'pending'",
             connection);
         command.Parameters.AddWithValue("@Id", id);
-        await command.ExecuteNonQueryAsync();
+        return SyncJobTransitions.IsClaimGranted(await command.ExecuteScalarAsync());
     }
 
     internal static async Task MarkCompletedAsync(Guid id, bool succeeded, string? errorMessage)
     {
-        using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+        await MarkCompletedAsync(SystemUtilities.DatabaseConfig.ConnectionString, id, succeeded, errorMessage);
+    }
+
+    internal static async Task MarkCompletedAsync(string connectionString, Guid id, bool succeeded, string? errorMessage)
+    {
+        await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
-        using var command = new SqlCommand(
-            "UPDATE [dbo].[SyncJobs] SET [Status] = @Status, [CompletedAt] = GETUTCDATE(), [ErrorMessage] = @ErrorMessage WHERE [Id] = @Id",
+        await using var command = new SqlCommand(
+            "UPDATE [dbo].[SyncJobs] SET [Status] = @Status, [CompletedAt] = GETUTCDATE(), [ErrorMessage] = @ErrorMessage " +
+            "WHERE [Id] = @Id AND [Status] = 'running'",
             connection);
         command.Parameters.AddWithValue("@Id", id);
-        command.Parameters.AddWithValue("@Status", succeeded ? "succeeded" : "failed");
-        command.Parameters.AddWithValue("@ErrorMessage", (object?)Truncate(errorMessage, 1000) ?? DBNull.Value);
+        command.Parameters.AddWithValue("@Status", SyncJobTransitions.CompletionStatus(succeeded));
+        command.Parameters.AddWithValue("@ErrorMessage", (object?)SyncJobTransitions.TruncateError(errorMessage) ?? DBNull.Value);
         await command.ExecuteNonQueryAsync();
     }
 
@@ -79,8 +92,6 @@ internal static class SyncJobsRepository
             ErrorMessage: reader.IsDBNull(7) ? null : reader.GetString(7));
     }
 
-    private static string? Truncate(string? value, int maxLength)
-        => value is null ? null : value.Length <= maxLength ? value : value[..maxLength];
 }
 
 internal sealed record SyncJobStatus(

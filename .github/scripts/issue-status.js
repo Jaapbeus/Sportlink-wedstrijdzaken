@@ -20,12 +20,13 @@ const TURN_PREFIX = 'turn: ';
 // volgende endpoint-toevoeging weer uiteen kunnen lopen.
 const API_VERSION_HEADERS = { 'x-github-api-version': '2022-11-28' };
 
-// Statussen die een mens bewust zet. Automatisering overschrijft die niet: een issue dat
-// op 'blocked' of 'waiting-owner' staat, is dat niet minder zodra er een PR opengaat.
+// Statussen die een PR-event niet mag overschrijven. Handmatige blokkades blijven staan;
+// awaiting-release is eigendom van de develop-merge/release-workflows.
 const PROTECTED = [
   'status: blocked',
   'status: wont-fix',
   'status: waiting-owner',
+  'status: awaiting-release',
   // Codex draait als handmatig aangeroepen, read-only reviewsweep zonder webhook — dit label
   // wordt dus altijd door Claude Code (of de eigenaar) gezet/verwijderd, nooit automatisering.
   // Zie AGENTS.md, "Ontwikkelcyclus" (alinea "Labels") (#1336).
@@ -114,6 +115,66 @@ function extractIssueRefs(title, body) {
 }
 
 /**
+ * PR-tekst mag alleen issues selecteren vanuit deze repository, met bewezen schrijfrechten
+ * of de expliciet toegestane ingebouwde Dependabot-identiteit. Bij twijfel geen wijziging.
+ */
+async function trustedPullRequestOrigin({ github, context, core, pr }) {
+  const repositoryId = context.payload.repository?.id;
+  const baseId = pr?.base?.repo?.id;
+  const headId = pr?.head?.repo?.id;
+  const author = pr?.user?.login;
+  if (!Number.isInteger(repositoryId) || baseId !== repositoryId || headId !== repositoryId || !author) {
+    core.notice('PR-herkomst is niet als repositorybranch bewezen; issuestatus ongewijzigd.');
+    return false;
+  }
+
+  // GitHub levert de auteuridentiteit; geen algemene vrijstelling voor andere bots of forks.
+  if (pr.user.type === 'Bot' && author === 'dependabot[bot]') return true;
+
+  try {
+    const response = await github.request('GET /repos/{owner}/{repo}/collaborators/{username}/permission', {
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      username: author,
+      headers: API_VERSION_HEADERS,
+    });
+    if (['write', 'admin'].includes(response.data?.permission)) return true;
+  } catch {
+    core.warning('PR-auteursrechten konden niet worden gecontroleerd; issuestatus niet bijgewerkt. Controleer of het workflowtoken de repositorypermissies mag lezen en voer de workflow daarna opnieuw uit.');
+    return false;
+  }
+
+  core.notice('PR-auteur heeft geen bewezen schrijfrechten; issuestatus ongewijzigd.');
+  return false;
+}
+
+/** Past de PR-statusovergang pas toe na de vertrouwenspoort voor PR-tekst. */
+async function updatePullRequestIssueStatuses({ github, context, core }) {
+  const pr = context.payload.pull_request;
+  const action = context.payload.action;
+  if (!pr || !['opened', 'reopened', 'ready_for_review', 'converted_to_draft', 'closed'].includes(action)) {
+    return 'skipped';
+  }
+  // De develop-mergeworkflow beheert awaiting-release en verwijdert ook beurtlabels.
+  if (action === 'closed' && pr.merged) return 'merged';
+  if (!await trustedPullRequestOrigin({ github, context, core, pr })) return 'untrusted';
+
+  const status = action === 'closed' ? 'status: triage'
+    : action === 'converted_to_draft' ? 'status: in-progress'
+    : action === 'ready_for_review' ? 'status: review-needed'
+    : pr.draft ? 'status: in-progress' : 'status: review-needed';
+  const { strong } = extractIssueRefs(pr.title, pr.body);
+  if (strong.size === 0) {
+    core.notice('Geen sterke issueverwijzing in PR-tekst; issuestatus ongewijzigd.');
+    return 'unlinked';
+  }
+  for (const issueNumber of strong) {
+    await setIssueStatus({ github, context, core, issueNumber, status });
+  }
+  return 'updated';
+}
+
+/**
  * Zet precies één status-label op een issue en verwijdert de andere.
  *
  * @param {object}  opts.github        octokit-client van actions/github-script
@@ -142,8 +203,8 @@ async function setIssueStatus({
       issue_number: issueNumber,
       headers: API_VERSION_HEADERS,
     })).data;
-  } catch (e) {
-    core.warning(`#${issueNumber}: kon issue niet ophalen (${e.message}) — overgeslagen`);
+  } catch {
+    core.warning(`#${issueNumber}: kon issue niet ophalen — overgeslagen`);
     return 'skipped';
   }
 
@@ -276,6 +337,8 @@ module.exports = {
   currentStatuses,
   isEpic,
   extractIssueRefs,
+  trustedPullRequestOrigin,
+  updatePullRequestIssueStatuses,
   setIssueStatus,
   clearIssueStatus,
   clearTurnLabels,

@@ -19,12 +19,11 @@ public record PlanDoel(
 /// wedstrijden verwerkt, en hoe wordt de afwijking t.o.v. de voorkeurstijd beoordeeld.
 ///
 /// <para>
-/// <b>Waarom gedeeld en niet per tier gedupliceerd (issue 888 vervolg, §42).</b> Deze methoden raken
+/// <b>Waarom gedeeld en niet per tier gedupliceerd.</b> Deze methoden raken
 /// geen database, geen instellingencache en geen tier-specifiek type — het is rekenlogica over
 /// primitieven en gedeelde domeinmodellen. De architectuurregel in
 /// docs/ARCHITECTUUR-DATABASE-TIERS.md is daar expliciet over: logica zonder tier-afhankelijkheid
-/// hoort op precies één plek. Zelfde precedent als <see cref="FieldScheduler"/> (§38) en
-/// <see cref="TeamNaamNormalisatie"/> (#889).
+/// hoort op precies één plek.
 /// </para>
 ///
 /// <para>
@@ -36,6 +35,19 @@ public record PlanDoel(
 /// </summary>
 public static class AutoPlanRegels
 {
+    /// <summary>
+    /// Speeltijdsleutel van één wedstrijd, gedeeld door de automatische planning en de veldbezetting van
+    /// beide tiers: de bron-categorie (of in demomodus de leeftijd uit de teamnaam), waarbij een O23-team de
+    /// <c>JO23</c>-speeltijd krijgt zolang die met duur &gt; 0 bestaat (#1863, <see cref="LeeftijdNormalisatie.SpeeltijdSleutel"/>).
+    /// </summary>
+    public static string SpeeltijdSleutelVoorWedstrijd(
+        string? teamNaam, string? leeftijdsCategorie, bool isAllstars, IReadOnlyDictionary<string, Speeltijd> speeltijden)
+        => LeeftijdNormalisatie.SpeeltijdSleutel(
+            !string.IsNullOrWhiteSpace(leeftijdsCategorie)
+                ? leeftijdsCategorie
+                : (isAllstars ? ExtractLeeftijdFromTeamNaam(teamNaam) ?? "" : ""),
+            teamNaam, speeltijden);
+
     /// <summary>
     /// Stelt het planningsdoel voor één wedstrijd samen uit de drie lagen (#666).
     /// </summary>
@@ -55,9 +67,7 @@ public static class AutoPlanRegels
         Dictionary<string, Speeltijd> speeltijden,
         string? clubPrefix = null)
     {
-        var leeftijd = (!string.IsNullOrWhiteSpace(leeftijdsCategorie))
-            ? leeftijdsCategorie
-            : (isAllstars ? ExtractLeeftijdFromTeamNaam(teamNaam) ?? "" : "");
+        var leeftijd = SpeeltijdSleutelVoorWedstrijd(teamNaam, leeftijdsCategorie, isAllstars, speeltijden);
 
         // Laag 2 — default per leeftijdscategorie (mag null zijn: dan géén streeftijd)
         TimeOnly? defaultTijd = null;

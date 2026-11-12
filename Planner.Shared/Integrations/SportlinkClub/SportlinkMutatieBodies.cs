@@ -81,7 +81,8 @@ internal static class SportlinkMutatieBodies
         {
             AwayTeam = aanvraag.AwayTeam,
             HomeTeam = aanvraag.HomeTeam,
-            PublicAwayTeamId = aanvraag.PublicTeamId,
+            // #1871: thuis en uit apart — één ID op beide plekken zette het eigen team als tegenstander.
+            PublicAwayTeamId = aanvraag.PublicAwayTeamId,
             PublicHomeTeamId = aanvraag.PublicTeamId,
             AgeClassCode = aanvraag.AgeClassCode,
             AwayResult = -1,

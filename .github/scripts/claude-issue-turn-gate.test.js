@@ -514,6 +514,7 @@ function fakeGithub({
   const SHA_A = 'a'.repeat(40);
   const SHA_B = 'b'.repeat(40);
   const SHA_C = 'c'.repeat(40);
+  const SHA_D = 'd'.repeat(40);
   const codexPr = (n, extra = {}) => ({
     number: 700 + n, head: { ref: `codex/${n}-tokenformat`, sha: SHA_A, repo: { full_name: 'o/r' } },
     title: `security(#${n}): iets`, body: '', author_association: 'OWNER', ...extra,
@@ -617,11 +618,12 @@ function fakeGithub({
   }
   {
     const { github, result } = await runReview(12, {
-      openPrs: [codexPr(12, { head: { ref: 'codex/12-tokenformat', sha: SHA_C, repo: { full_name: 'o/r' } } })],
+      openPrs: [codexPr(12, { head: { ref: 'codex/12-tokenformat', sha: SHA_D, repo: { full_name: 'o/r' } } })],
       issueComments: [
         issueComment(aanvraag(712, SHA_A), '2026-10-13T10:00:00Z'),
         issueComment(aanvraag(712, SHA_B), '2026-10-13T11:00:00Z'),
         issueComment(aanvraag(712, SHA_C), '2026-10-13T12:00:00Z'),
+        issueComment(aanvraag(712, SHA_D), '2026-10-13T13:00:00Z'),
       ],
     });
     check(`ronde ${MAX_REVIEW_ROUNDS + 1}: geen review, eigenaarsbesluit`, [result.proceed, github.calls.added, github.calls.comments.length], [false, ['turn: owner'], 1]);

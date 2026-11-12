@@ -215,6 +215,10 @@ const run = (github, extra = {}) => applyEndLabel({
   };
   await waitToOwner('zonder start-PR (implementatiefase)', {}, {}, 'geen gekoppelde PR');
   await waitToOwner('PR naar main', { startPr: pr(501, { base: { ref: 'main' } }) }, { startPrNumber: 501 }, 'niet naar `develop`');
+  await waitToOwner('raakt een GitHub-workflow', { startPr: pr(501), files: [{ filename: '.github/workflows/label-issue-status.yml' }] }, { startPrNumber: 501 }, 'automatiserings-/beveiligingscontroles');
+  await waitToOwner('raakt een Git-hook', { startPr: pr(501), files: [{ filename: '.githooks/pre-push' }] }, { startPrNumber: 501 }, 'automatiserings-/beveiligingscontroles');
+  await waitToOwner('raakt de rootconfiguratie voor de secretscan', { startPr: pr(501), files: [{ filename: '.gitleaks.toml' }] }, { startPrNumber: 501 }, 'automatiserings-/beveiligingscontroles');
+  await waitToOwner('hernoemd vanuit een workflowpad', { startPr: pr(501), files: [{ filename: 'scripts/new-check.sh', previous_filename: '.github/workflows/check.yml' }] }, { startPrNumber: 501 }, 'automatiserings-/beveiligingscontroles');
   await waitToOwner('raakt AGENTS.md', { startPr: pr(501), files: [{ filename: 'FunctionApp/AGENTS.md' }] }, { startPrNumber: 501 }, 'werkinstructies');
   await waitToOwner('raakt een skill', { startPr: pr(501), files: [{ filename: '.agents/skills/autonoom/SKILL.md' }] }, { startPrNumber: 501 }, 'skills');
   await waitToOwner('raakt een migratie', { startPr: pr(501), files: [{ filename: 'Database.Postgres/migrations/V99__x.sql' }] }, { startPrNumber: 501 }, 'databaseschema');
@@ -287,9 +291,33 @@ const run = (github, extra = {}) => applyEndLabel({
 
   console.log('\nownerOnlyReason:');
   check('gewone code: geen uitzondering', ownerOnlyReason('Planner.Shared/X.cs'), null);
-  check('workflow is geen uitzondering meer (#1690)', ownerOnlyReason('.github/workflows/build.yml'), null);
+  for (const path of [
+    '.github/workflows/build.yml',
+    '.githooks/pre-push',
+    '.gitleaks.toml',
+  ]) {
+    check(`eigenaargrens voor automatisering/beveiliging: ${path}`,
+      (ownerOnlyReason(path) || '').startsWith('automatiserings-/beveiligingscontroles'), true);
+  }
+  for (const path of ['scripts/ci/check-secret-guard.sh', '.github/scripts/issue-status.js', '.github/CODEOWNERS']) {
+    check(`gewone zelfmergevoorwaarden voor ${path}`, ownerOnlyReason(path), null);
+    const github = fakeGithub({
+      comments: waitBot, startPr: pr(501), files: [{ filename: path }],
+      states: [{ labels: ['turn: claude-code', 'status: in-progress'] }, { labels: ['status: in-progress'] }],
+    });
+    const r = await run(github, { startPrNumber: 501 });
+    check(`wachtbeurt toegestaan voor ${path}`, [r.label, github.calls.added], ['merge door implementer', []]);
+  }
+  for (const file of [
+    { filename: '.github/scripts/nieuw.js', previous_filename: '.github/workflows/oud.yml' },
+    { filename: '.github/workflows/nieuw.yml', previous_filename: '.github/scripts/oud.js' },
+  ]) {
+    await waitToOwner('hernoemen over workflowgrens', { startPr: pr(501), files: [file] },
+      { startPrNumber: 501 }, 'automatiserings-/beveiligingscontroles');
+  }
   check('docs met AGENTS in de naam: geen uitzondering', ownerOnlyReason('docs/AGENTS-UITLEG.md'), null);
   check('geneste CLAUDE.md: werkinstructies', (ownerOnlyReason('FunctionApp/CLAUDE.md') || '').startsWith('werkinstructies'), true);
+  check('nested secret-scan filename is not treated as the root config', ownerOnlyReason('config/.gitleaks.toml'), null);
 
   // ---------- #1721 fase 1: testmodus schrijft niets ----------
   console.log('\ndryRun (#1721):');
@@ -369,7 +397,7 @@ const run = (github, extra = {}) => applyEndLabel({
     check('prompt geeft geen-codewijziging niet meer blind aan de eigenaar', /Geen codewijziging nodig \(geen bevindingen, of alle "niet overgenomen"\)/.test(yml), false);
 
     // #1702 ronde 1 (Codex P2): de beurtkeuze in de verwerkingsfase moet eenduidig zijn. Een schone
-    // tweede ronde (geen bevindingen, geen wijziging, geen eigenaarspunt) mag niet óók aan "tweede
+    // derde ronde (geen bevindingen, geen wijziging, geen eigenaarspunt) mag niet óók aan "derde
     // ronde → turn: owner" voldoen. Model van de prompt: de takken van stap 5 in volgorde, met per tak
     // de uitkomst (laatste `Volgende beurt:` in de tak).
     const start = yml.indexOf('Bepaal daarna de volgende beurt');
@@ -382,14 +410,14 @@ const run = (github, extra = {}) => applyEndLabel({
     check('verwerkingsblok gevonden met takken', branches.length >= 4, true);
     check('prompt legt een voorrangsvolgorde vast (eerste tak die geldt)', /eerste tak die geldt/i.test(block.replace(/\s+/g, ' ')), true);
     const mergeIdx = branches.findIndex((b) => b.outcome === 'merge door implementer');
-    const rondeOwner = branches.map((b, i) => ({ ...b, i })).filter((b) => b.outcome === 'turn: owner' && /tweede (review)?ronde/i.test(b.text));
-    check('er is een tak voor tweede ronde → turn: owner', rondeOwner.length, 1);
-    check('tak tweede ronde → owner vereist het ontbreken van een schone review',
+    const rondeOwner = branches.map((b, i) => ({ ...b, i })).filter((b) => b.outcome === 'turn: owner' && /derde (review)?ronde/i.test(b.text));
+    check('er is een tak voor derde ronde → turn: owner', rondeOwner.length, 1);
+    check('tak derde ronde → owner vereist het ontbreken van een schone review',
       rondeOwner.every((b) => /(geen|zonder) schone review/i.test(b.text)), true);
-    check('merge door implementer gaat in de volgorde vóór tweede ronde → owner',
+    check('merge door implementer gaat in de volgorde vóór derde ronde → owner',
       mergeIdx >= 0 && rondeOwner.every((b) => b.i > mergeIdx), true);
     check('rondenummer staat niet als losse óf-voorwaarde naast het eigenaarspunt',
-      branches.some((b) => /eigenaarspunt/.test(b.text) && /óf dit was al de tweede reviewronde/.test(b.text)), false);
+      branches.some((b) => /eigenaarspunt/.test(b.text) && /óf dit was al de derde reviewronde/.test(b.text)), false);
     check('schone-reviewtak noemt dat het rondenummer niet meetelt',
       mergeIdx >= 0 && /ongeacht het rondenummer/i.test(branches[mergeIdx].text), true);
   }

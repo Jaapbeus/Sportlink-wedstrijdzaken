@@ -845,8 +845,8 @@ identificeert is een Secret.
 
 **GitHub Secrets:** `AZURE_CREDENTIALS`, `AZURE_FUNCTION_KEY`, `AZURE_STATIC_WEB_APPS_API_TOKEN`
 (beide tiers); `SQL_CONNECTION_STRING` (alleen SqlServer); `POSTGRES_CONNECTION_STRING` (alleen
-Postgres — norm `sslmode=verify-full` mét CA-certificaat; ontbreekt dat, dan meldt `/api/health` een
-`tlsWarning`).
+Postgres — norm `sslmode=verify-full` mét CA-certificaat; ontbreekt dat, dan geeft `/api/health`
+alleen `tlsWarningPresent=true` terug en staat de toelichting achter admin-only `/api/beheer/health`).
 
 De **Sportlink-logincredentials en het afgeleide refresh-token** (epic #986, herzien in #1411) staan
 versleuteld (AES-256-GCM) in `public.sportlinkautologin` / `dbo.SportlinkAutoLogin`. De Base64-hostsleutel van
@@ -1025,7 +1025,7 @@ nieuw besluit dat het oude vervangt.
 |---|---|---|
 | **WZ-ADR-001** | Serverloze hosting, geen containers | Containerhosting past niet binnen het gratis plafond. Gevolg: uitrol als pakket, en geen containerregister om te beheren. |
 | **WZ-ADR-002** | Gedeelde kern zonder in- of uitvoerafhankelijkheden | Houdt domeinlogica testbaar zonder database. Gevolg: de grens "puur versus providergebonden" moet bij elke tierovergang expliciet worden getrokken. |
-| **WZ-ADR-003** | Gebouwde tiers zijn gelijkwaardig | Vastgesteld 19-09-2026. De eerdere aanname dat één tier "alleen voor terugval" was, is ingetrokken: die is nooit als besluit voorgelegd. Gevolg: elke functie op alle gebouwde tiers, en pariteitsbewaking in beide richtingen. |
+| **WZ-ADR-003** | Gebouwde tiers zijn gelijkwaardig | Vastgesteld 19-09-2026. De eerdere aanname dat één tier "alleen voor terugval" was, is ingetrokken: die is nooit als besluit voorgelegd. Gevolg: elke functie op alle gebouwde tiers, en pariteitsbewaking in beide richtingen. Issue #1813 documenteert een beperkte KNVB-selectie en een inventarisatie van mogelijke tier-paren; het bevestigt of wijzigt dit besluit niet. Zie [ARCHITECTUUR-DATABASE-TIERS.md](ARCHITECTUUR-DATABASE-TIERS.md). |
 | **WZ-ADR-004** | Externe identiteit, lokale autorisatie | Geen eigen accountopslag. Gevolg: de applicatie blijft de autorisatiegrens, ook als het platform al valideert. |
 | **WZ-ADR-005** | Prestaties zijn geen optimalisatiedoel | Enkele gebruikers, dagelijkse batch. Gevolg: geen belastingtests, geen prestatiedrempels; wél een grens op de duur van een synchronisatie. |
 | **WZ-ADR-006** | Provideronafhankelijke AI-abstractie | Een wissel van AI-dienst is één registratie. Gevolg: geen providerklassen in domeincode. |

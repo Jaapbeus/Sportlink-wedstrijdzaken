@@ -34,7 +34,9 @@ public partial class EmailProcessorFunction
         if (await BepaalVerwerkingIdAsync(cs, clubCode, email, graphService, log) is not int verwerkingId)
             return;
 
-        classificatie = await DetecteerLeermomentAsync(cs, clubCode, verwerkingId, email, classificatie, aiService, log);
+        // De goedgekeurde few-shots zijn al toegepast in fase 1 vóór de BuitenScope-afhandeling.
+        // Fase 2 detecteert alleen een nieuwe reply-correctie; dezelfde classificatie niet herhalen.
+        await DetecteerEnRegistreerCorrectieAsync(cs, clubCode, verwerkingId, email, aiService, log);
         var classificatieJson = JsonConvert.SerializeObject(classificatie);
 
         if (await VerwerkBuitenScopeAsync(
@@ -56,43 +58,6 @@ public partial class EmailProcessorFunction
             return;
 
         await StuurVervolgNotificatiesAsync(cs, clubCode, classificatie, email, graphService, log);
-    }
-
-    /// <summary>
-    /// Leermomenten rond één bericht: reply-/correctiedetectie en few-shot herclassificatie als er
-    /// gevalideerde leermomenten zijn. Retourneert de (eventueel herziene) classificatie.
-    /// </summary>
-    private static async Task<BerichtClassificatie> DetecteerLeermomentAsync(
-        string cs,
-        string clubCode,
-        int verwerkingId,
-        InkomendBericht email,
-        BerichtClassificatie classificatie,
-        BerichtAiService aiService,
-        ILogger log)
-    {
-        // Reply-detectie — is dit een reply op een eerder door ons beantwoord bericht?
-        await DetecteerEnRegistreerCorrectieAsync(cs, clubCode, verwerkingId, email, aiService, log);
-
-        // Few-shot herclassificatie als er gevalideerde leermomenten zijn
-        var voorbeelden = await LearningMomentRepository.HaalVoorbeeldenOpAsync(cs, clubCode, log);
-        if (voorbeelden.Count == 0)
-            return classificatie;
-
-        try
-        {
-            classificatie = await aiService.ClassificeerBerichtAsync(
-                email.Body ?? "", email.Onderwerp, email.Afzender, voorbeelden);
-            BerichtPipeline.ValideerDagDatum(classificatie, email.Body ?? "", email.Onderwerp);
-            log.LogInformation("Email {Id} herclassificatie met {Aantal} leermomenten: {Type}",
-                verwerkingId, voorbeelden.Count, classificatie.Type);
-        }
-        catch (Exception ex)
-        {
-            log.LogWarning(ex, "Herclassificatie met leermomenten mislukt voor {Id} — originele classificatie behouden", verwerkingId);
-        }
-
-        return classificatie;
     }
 
     /// <summary>
@@ -142,24 +107,29 @@ public partial class EmailProcessorFunction
             var plannerResponseJson = await BerichtPipeline.VerwerkMetPlannerAsync(
                 classificatie, email, log, teamResolver, clubCode, trace: trace);
             await SqlEmailPersistenceRepository.UpdatePlannerResponseAsync(cs, verwerkingId, plannerResponseJson);
-            await SqlEmailPersistenceRepository.UpdateStatusAsync(cs, verwerkingId, EmailStatus.Verwerkt, null);
+            return await TeamHandmatigeAfhandeling.HandelOfVervolgAsync(classificatie, verwerkingId, email.MessageId,
+                new SqlReplyPersistentie(cs), graphService, async () =>
+            {
+                await SqlEmailPersistenceRepository.UpdateStatusAsync(cs, verwerkingId, EmailStatus.Verwerkt, null);
 
-            var reviewMode = EmailReviewModus.IsActief();
-            var reviewRecipient = Environment.GetEnvironmentVariable("EmailReviewRecipient");
-            return await replyPolicyService.HandelReplyFlowAfAsync(
-                cs,
-                verwerkingId,
-                email,
-                classificatie,
-                plannerResponseJson,
-                reviewMode,
-                reviewRecipient,
-                graphService,
-                () => BerichtPipeline.BouwTemplateAntwoord(classificatie, plannerResponseJson, email, log, null, clubCode, trace),
-                SanitizeFoutMelding,
-                log,
-                trace,
-                await ZekerheidspoortInstelling.IsActiefAsync(cs, clubCode, log));
+                var reviewMode = EmailReviewModus.IsActief();
+                var reviewRecipient = Environment.GetEnvironmentVariable("EmailReviewRecipient");
+                return await replyPolicyService.HandelReplyFlowAfAsync(
+                    cs,
+                    verwerkingId,
+                    email,
+                    classificatie,
+                    plannerResponseJson,
+                    reviewMode,
+                    reviewRecipient,
+                    graphService,
+                    () => BerichtPipeline.BouwTemplateAntwoord(classificatie, plannerResponseJson, email, log, null, clubCode, trace),
+                    SanitizeFoutMelding,
+                    log,
+                    trace,
+                    await ZekerheidspoortInstelling.IsActiefAsync(cs, clubCode, log),
+                    clubCode);
+            }, log);
         }, async t =>
             {
                 // #1568 deel C: onbekende teamteksten naar de wachtrij; een fout hier breekt de trace-opslag niet.
@@ -239,11 +209,6 @@ public partial class EmailProcessorFunction
             await StuurTeamleiderNotificatieAsync(cs, clubCode, graphService, classificatie.TeamNaam!, classificatie.Datum!, log);
         }
 
-        if (classificatie.Type == VerzoekType.TeamContactOpvragen
-            && !string.IsNullOrWhiteSpace(classificatie.TeamNaam))
-        {
-            await StuurTeamContactBerichtDoorAsync(cs, clubCode, graphService, classificatie.TeamNaam!, email, log);
-        }
     }
 
     /// <summary>

@@ -4,6 +4,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Planner.Endpoints.Http;
 using Planner.Shared.Integrations.SportlinkClub;
 
 namespace Planner.Endpoints.Sportlink;
@@ -78,9 +79,19 @@ public static class SportlinkEndpointSupportCore
         Func<HttpRequest, ILogger, string, Func<string, Task<IActionResult>>, Task<IActionResult>> adminExecuteAsync)
     {
         var rolFout = requireWedstrijdzaken(req);
-        return rolFout != null
-            ? Task.FromResult(rolFout)
-            : adminExecuteAsync(req, log, errorContext, work);
+        if (rolFout != null) return Task.FromResult(rolFout);
+
+        return adminExecuteAsync(req, log, errorContext, async clubCode =>
+        {
+            try
+            {
+                return await work(clubCode);
+            }
+            catch (RequestBodyReadException ex)
+            {
+                return BoundedRequestBodyReader.ToActionResult(ex.Error);
+            }
+        });
     }
 
     /// <summary>De 503 voor "client niet in DI geregistreerd", als losse respons — voor de paden die
@@ -134,9 +145,13 @@ public static class SportlinkEndpointSupportCore
         return fout == null ? null : NaarActionResult(fout);
     }
 
-    /// <summary>Request-body als DTO; <c>null</c> bij een lege body.</summary>
+    /// <summary>Leest een request-body als UTF-8 JSON DTO, met een bytegrens ook bij ontbrekende Content-Length.</summary>
     public static async Task<T?> LeesBodyAsync<T>(HttpRequest req) where T : class
-        => JsonConvert.DeserializeObject<T>(await new StreamReader(req.Body).ReadToEndAsync());
+    {
+        var result = await BoundedRequestBodyReader.ReadJsonAsync<T>(req, BoundedRequestBodyReader.DefaultJsonMaxBytes);
+        if (!result.IsSuccess) throw new RequestBodyReadException(result.Error);
+        return result.Value;
+    }
 
     /// <summary>Audit-<c>resultaat</c> voor een mutatie-uitkomst (#998, uitgebreid #994).</summary>
     public static string BepaalAuditResultaat(SportlinkMutationResult r)
@@ -154,12 +169,33 @@ public static class SportlinkEndpointSupportCore
         SportlinkClubResponse<T> mutationResult,
         Func<string, string?, Task>? voltooiAuditAsync,
         Func<T, SportlinkMutationResult> naarMutatieResultaat,
-        Func<T, IActionResult> ok)
+        Func<T, IActionResult> ok,
+        ILogger? log = null)
         where T : class
     {
         var afronding = SportlinkEndpointCore.BepaalMutatieAfronding(mutationResult, naarMutatieResultaat);
+        // Alleen de exacte auditstatus "Success" is een live uitgevoerde geslaagde mutatie;
+        // dry-run en code-locked simulaties krijgen afzonderlijke auditstatussen.
+        var liveMutatieSuccesvol = afronding.Fout == null && afronding.AuditResultaat == "Success";
+        if (liveMutatieSuccesvol)
+            VeldplannerOverlayCore.InvalideerBlokkenCache();
+
         if (voltooiAuditAsync != null)
-            await voltooiAuditAsync(afronding.AuditResultaat, afronding.AuditSamenvatting);
+        {
+            try
+            {
+                await voltooiAuditAsync(afronding.AuditResultaat, afronding.AuditSamenvatting);
+            }
+            catch (Exception) when (liveMutatieSuccesvol)
+            {
+                log?.LogError("Sportlink-mutatie is verwerkt, maar de auditafronding is mislukt; auditrecord blijft open.");
+                return new ObjectResult(new
+                {
+                    error = "Sportlink heeft de wijziging verwerkt, maar de audit kon niet worden afgerond. "
+                        + "Probeer de actie niet opnieuw; neem contact op met de beheerder."
+                }) { StatusCode = 500 };
+            }
+        }
         return afronding.Fout != null ? NaarActionResult(afronding.Fout) : ok(afronding.Data!);
     }
 }

@@ -63,6 +63,8 @@ public static class TraceOpslagProjectie
             {
                 ["tak"] = Vast("opponent-op-datum", "opponent-andere-datum", "niet-gevonden"), ["wedstrijdGevonden"] = JaNee
             }),
+        [TraceCodes.Speelduur] = new(["Speelduur bepalen"], Vast("Niet bekend, handmatige planning"),
+            new Dictionary<string, Regex> { ["categorieGenoemd"] = JaNee }),
         [TraceCodes.Datum] = new(["Datumverwerking"], new(@"^(Geen datum|Eén datum|\d{1,3} datums)$", RegexOptions.Compiled),
             new Dictionary<string, Regex> { ["aantalDatums"] = Getal, ["datums"] = Datums }),
         [TraceCodes.Tak] = new(["Gekozen verwerkingstak"], new("^([A-Za-z_]{1,40}|Niet verwerkt door de planner)$", RegexOptions.Compiled),

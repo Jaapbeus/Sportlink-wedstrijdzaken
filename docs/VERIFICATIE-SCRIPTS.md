@@ -49,7 +49,35 @@ Ook de server/database-parsing accepteert nu zowel `Data Source=`/`Initial Catal
 # Alles tonen, ook successen
 .\scripts\dev\Test-App.ps1 -Verbose
 .\scripts\dev\Test-App.ps1 -Fix -Verbose
+
+# Geïsoleerde runtime/database en exact gebouwde checkout
+.\scripts\dev\Test-App.ps1 -RootPath /pad/naar/checkout -PostgresContainerName mijn-test-db `
+  -FunctionBaseUrl http://127.0.0.1:17094 -BlazorBaseUrl http://127.0.0.1:15242 `
+  -SkipBuild -Offline
 ```
+
+`-RootPath` kiest de checkout waarvan projectbestanden, tierinstellingen en schema worden
+gecontroleerd; het script en de helpers zelf blijven uit de map van `Test-App.ps1` komen.
+`-PostgresContainerName`, `-FunctionBaseUrl` en `-BlazorBaseUrl` overschrijven alleen de
+compatibiliteitsdefaults (`sportlink-postgres`, `http://localhost:7094` en
+`http://localhost:5242`). De API- en Blazor-poortcontrole volgt de opgegeven base-URL.
+
+`-SkipBuild` slaat de twee builds expliciet over en telt die als `SKIPPED`; gebruik dit alleen
+wanneer de exacte `-RootPath`-HEAD al gebouwd is en een actieve Blazor-server geen tweede build
+toelaat. Zonder deze vlag blijft de build verplicht en een ontbrekende `dotnet`-CLI is een fout.
+
+`-Offline` slaat alleen de externe GitHub-feedback-smoke over. De controle gebruikt geen GitHub-
+credentials en maakt geen testissue aan; de samenvatting telt deze controle als `SKIPPED`. Zonder `-Offline` blijft de
+echte GitHub-smoke afhankelijk van de bestaande `GitHubPat`, `GitHubOwner` en `GitHubRepo`-instellingen.
+Unit-tests voor de offline en fake-GitHub-paden (ook aangesloten op de bestaande Build-job):
+
+```powershell
+pwsh -NoProfile -File scripts/dev/Test-AppSupport.Tests.ps1
+```
+
+De fake tests controleren ook ongeldige URL's, mislukte ledgerqueries en dat Postgres-
+wachtwoorden uitsluitend via de omgeving van het kindproces worden doorgegeven. Docker krijgt
+alleen de variabelenaam in zijn argumenten; de test gebruikt uitsluitend een synthetische waarde.
 
 **`-Tier` bepaalt álles wat tier-specifiek is** (#1060): welk functieproject gebouwd wordt, welk
 `local.settings.json` gelezen wordt, en welke schemacontrole draait. De vertaling tier → projectpad
@@ -68,14 +96,16 @@ volgorde waarin ze draaien.
 | 3 | Schema validatie (SqlServer) | Alle 11 tabellen én hun kolommen | ja — ALTER TABLE / CREATE TABLE |
 | 3 | Schema validatie (Postgres) | `Database.Postgres/migrations/*.sql` vs. `schema_migrations` + kerntabellen aanwezig | ja — openstaande migraties toepassen |
 | 4 | Build verificatie | `dotnet build` van het tier-project + BlazorAdmin | nee |
-| 5 | API smoke tests | 13 endpoints op `:7094` | nee (2xx verwacht) |
-| 6 | Feedback widget | GitHub-integratie van de feedbackwidget | nee |
-| 7 | Blazor pagina checks | 8 routes op `:5242` | nee (geen Blazor-foutindicatoren) |
+| 5 | API smoke tests | 13 endpoints op `FunctionBaseUrl` (standaard `:7094`) | nee (2xx verwacht) |
+| 6 | Feedback widget | GitHub-integratie of expliciete `-Offline`-skip | nee |
+| 7 | Blazor pagina checks | 8 routes op `BlazorBaseUrl` (standaard `:5242`) | nee (geen Blazor-foutindicatoren) |
 | 8 | SWA emulator checks | `/.auth/login/aad` op `:4280` | nee |
 
-Secties 5 t/m 8 worden automatisch overgeslagen als de bijbehorende service niet draait. AGENTS.md
-verwijst naar "secties 4+5+6" van dit script; dat zijn hier de secties die een draaiende service
-nodig hebben (5 t/m 8).
+Een niet-draaiende API-, Blazor- of SWA-service wordt zichtbaar als `SKIPPED` geteld, niet als
+geslaagd. Ook `-Offline`, `-SkipBuild` en het overslaan van de Blazor-build wegens een actieve
+dev-server staan in die teller. Als er fouten zijn, is de exitcode 1; zonder fouten maar met
+overgeslagen controles meldt het script een onvolledige run in plaats van "Alles in orde". Een
+volledige run vereist nul skips.
 
 ### Bewake tabellen
 
@@ -107,7 +137,7 @@ dbo.VeldTraining             — Id, VeldNummer, DagVanWeek, VanTijd, TotTijd, O
 
 ### Exit codes
 
-- `0` — alles in orde
+- `0` — geen fouten; controleer de samenvatting op `SKIPPED` voordat je volledigheid claimt
 - `1` — fouten gevonden (of niet automatisch te herstellen)
 
 ### Schema-drift detectie (#684)
@@ -280,18 +310,18 @@ club live-klaar is. Uitzondering: zonder deze schakelaar blijft extern verkeer l
 
 Twee controles die verder gaan dan "de poort antwoordt" (#1060):
 
-- **Tier-provenance.** `/api/health` meldt zijn eigen tier uit de assembly-metadata (#863).
+- **Tier-provenance.** `/api/beheer/health` meldt de tier achter de admin-poort uit assembly-metadata (#863).
   Wijkt die af van `-Tier`, dan is de melding rood — anders zou een oude functiehost op dezelfde
   poort stilzwijgend als "gestart" worden gerapporteerd.
-- **`status` / `settingsLoaded`.** Een functiehost zonder bruikbare instellingencache geeft HTTP 200
+- **`status` / `settingsReady`.** Een functiehost zonder bruikbare instellingencache geeft HTTP 200
   met status `degraded`, terwijl élk `/api/beheer/*`-endpoint 500 antwoordt. Op een verse database
   is dat de normale toestand tot er een primaire club is geseed (DEVELOPER-SETUP.md §4.2).
-- **`pendingMigrations` / `schemaWarning` (#1098).** Meldt health migraties die de database nog
+- **`pendingMigrations` / `schemaWarning` (#1098) via `/api/beheer/health`.** Meldt health migraties die de database nog
   mist, dan wijst het script naar `Database.Postgres.Cli` in plaats van naar het seed-script — een
   lege instellingencache door een ontbrekende kolom is een andere oorzaak dan een ontbrekende
   primaire club. Dezelfde velden gaat de smoke test in `deploy.yml` na een productie-deploy bewaken
-  (vervolg op #1098: `settingsLoaded=false` laat die job falen, openstaande migraties geven een
-  waarschuwing) — zie MONITORING.md voor de stand daarvan.
+  (vervolg op #1098: `settingsReady=false` of `migrationsCurrent=false` laat die job falen;
+  schema-/TLS-vlaggen blijven waarschuwingen) — zie MONITORING.md voor de stand daarvan.
 
 Readiness-detectie:
 
@@ -397,7 +427,7 @@ diensten blijven uit" in de skill).
 Vanaf de Postgres-tier start de zelftest `FunctionApp.Postgres` zelf op en meet daar tegenaan:
 
 - **G5** — bewijst dat die host met de bedóelde databaseserver praat. Drie onafhankelijke
-  bewijzen: de tier-herkomst uit `/api/health` (build-time metadata, #863), de serverversie die de
+  bewijzen: de tier-herkomst uit `/api/beheer/health` (build-time metadata, #863), de serverversie die de
   applicatie meldt tegenover wat de container zelf op `SHOW server_version` antwoordt, en — het
   enige bewijs dat niet uit de applicatie komt — een verbinding met
   `application_name = 'SportlinkFunctionAppPostgres'` in `pg_stat_activity`. G5 controleert
@@ -609,6 +639,51 @@ Voor productie-deploys: gebruik de SSDT publish-diff workflow of een migratiescr
 
 ---
 
+## Read-only database-tier pairing inventory (#1813)
+
+The pairing report reads tracked C# paths at a Git ref and emits stable JSON. It pairs identical
+relative paths first, lists a remaining basename match only when it is unique on both sides, and
+reports ambiguous and unmatched files separately. It does not read source contents, compare code,
+or establish that two files have the same behavior. A candidate is a review aid, not a confirmed
+pair and not a duplication measurement.
+
+```bash
+python3 scripts/ci/report-tier-pairs.py --ref HEAD
+python3 scripts/ci/report-tier-pairs.py --ref 1ee175ff7c50f1640060ebaecb2a2441d2090cb2
+python3 scripts/ci/test-report-tier-pairs.py
+```
+
+The explicit ref makes a report reproducible after later commits. The supplied baseline at
+`1ee175ff7c50f1640060ebaecb2a2441d2090cb2` contains 101 exact-path pairs and 5 unique-basename
+candidates, with no ambiguous groups. These counts do not prove semantic coverage. The duplication
+guard still pairs exact relative paths and also reads the reviewed explicit mappings in
+`scripts/ci/tier-duplicatie-mapping.txt`. The KNVB repositories are paired there because both query
+the same region, season, date range and match day types, then use the shared pure free-Saturday
+selector. `check-codekwaliteit.test.sh` has a synthetic mapped-pair fixture that must push the guard
+over its test ceiling. The production ceiling is not raised: the mapped pair (+9) is offset by
+moving the tier-identical KNVB calendar PDF reader to `Planner.Shared` (-32).
+
+The KNVB contract filter is `FullyQualifiedName~KnvbKalenderRepositoryIntegrationTests` in
+`FunctionApp.Tests` and `FunctionApp.Postgres.Tests`. The SQL Server KNVB filter is not included in
+the current SQL Server integration-test filter in `.github/workflows/build.yml`; a green CI run
+therefore does not verify this suite. Run it against an owned disposable container with
+`SQLSERVER_TEST_CONNECTION_STRING` plus `SqlConnectionString`; both must resolve to the same SQL
+Server instance and catalog. The SQL Server test catalog must use case-insensitive default
+comparison behavior; the fixture checks this with a database-default equality probe instead of
+requiring a particular collation name. The native day-type comparison regression exercises that
+behavior. This is a disposable-test requirement only; the production schema does not pin a
+collation. Prepare SQL Server using the canonical postdeploy script twice; prepare Postgres using
+`Database.Postgres.Cli` and `POSTGRES_TEST_CONNECTION_STRING`. Both suites contain six baseline
+cases and one native-comparison regression. Postgres rejects lowercase and trailing-space day types
+through its existing CHECK. Do not normalize those values or repeat the native query's
+day-type/range/order rules in shared code. No database environment means skipped tests, not
+successful integration verification.
+
+The mapping guard currently inventories tracked paths with newline separation. The independent
+#1810 source-inventory work must retain this reviewed mapping and its negative fixtures when
+integrated; this slice does not claim untracked-path or NUL-safe source coverage.
+
+
 ## CI-shellscripts lokaal draaien (`scripts/ci/*.sh`, #1155)
 
 De **bestandsguards** die `build.yml` als `bash scripts/ci/<naam>.sh` uitvoert, draaien ook
@@ -626,6 +701,7 @@ draaiende database nodig.
 | Script | Bewaakt |
 |---|---|
 | `check-path-casing.sh` | Padverwijzingen in ps1/psm1/md/yml/yaml/csproj matchen exact de casing van het getrackte bestand (#825) |
+| `check-tier-duplicatie.test.sh` | A temporary Git repository proves that new nonignored C# source pairs are measured before and after staging, while ignored output is excluded (#1810) |
 | `check-postgres-identifier-casing.sh` | Identifiers in `Database.Postgres/migrations/*.sql` zijn lowercase snake_case, nooit gequote of PascalCase (#864) |
 | `check-postgres-table-coverage.sh` | Elke SQL Server-tabel heeft een Postgres-tegenhanger of een gemotiveerde uitzondering (#864) |
 | `check-postgres-column-coverage.sh` | Idem op kolomniveau (#864) |
@@ -635,6 +711,7 @@ draaiende database nodig.
 
 ```bash
 # Vanuit de repo-root, met de standaard macOS-bash (bewust niet de Homebrew-bash):
+/bin/bash scripts/ci/check-tier-duplicatie.test.sh
 /bin/bash scripts/ci/check-path-casing.sh
 /bin/bash scripts/ci/check-postgres-identifier-casing.sh
 /bin/bash scripts/ci/check-theme-variables.sh
@@ -668,6 +745,11 @@ bevat alleen een samenvatting.
   terwijl dezelfde regex op Linux/CI wél blokkeerde (#1090).
 - **Git-hooks moeten de executable-bit hebben** (`git update-index --chmod=+x`); git slaat een
   niet-executable hook op macOS stilzwijgend over, waarna de secrets- en AVG-scan niet draait.
+- **De lokale patroonconfiguratie moet minstens één geldige regel bevatten.** Lege regels, regels
+  met alleen spaties/tabs en commentaarregels (ook ingesprongen) tellen niet mee. Beide hooks
+  blokkeren een ontbrekend, uitsluitend leeg/commentaar of ongeldig patroonbestand. Draai
+  `bash scripts/ci/test-git-hooks.sh` om de echte hooks in tijdelijke repositories te toetsen;
+  dezelfde test draait in de Build-workflow vóór de applicatiebuilds (#1810).
 - **Test lokaal met `/bin/bash scripts/ci/<script>.sh`**; het resultaat moet identiek zijn aan de
   Linux-CI-runner.
 
@@ -856,3 +938,32 @@ workflow-token via alleen `GET /rate_limit`; behandelt het token als opaque en m
 of de responsebody. Dit forceert geen formaat en vervangt de enabled/disabled-test met eigen
 App-authenticatie niet. Lokale eigen hookpatronen blijven behouden bij een template-update
 ([DEVELOPER-SETUP.md](DEVELOPER-SETUP.md#32-gevoelige-patronen-configureren)).
+
+
+### Beveiligings- en automatiseringsregressies (zie issue #1810)
+
+`bash scripts/ci/check-security-patterns.test.sh` gebruikt uitsluitend synthetische patronen.
+De placeholdertest bewijst eerst een treffer in een getrackt bestand en daarna de uitsluiting.
+`REQUIRE_CLUB_EXTRA_PATTERNS=true` maakt actieve privéconfiguratie verplicht; de workflow zet
+dit voor pushes in een basisrepository. Ontbrekende configuratie blokkeert dan met exit 2.
+Lokaal en bij forks blijft een ontbrekende optionele configuratie een expliciete overslag.
+Een ontbrekend secret bij een botrun is geen automatische vrijstelling: de eigenaar moet de
+beschikbaarheid veilig regelen. CRLF-regels worden vóór patroonverwerking genormaliseerd.
+Scanneruitvoer bevat uitsluitend klasse/aantal of een vaste foutmelding, nooit vindplaatsen.
+
+`node .github/scripts/issue-status.test.js` controleert ook dat een mislukte permissie-aanroep
+waarschuwt zonder API-details te publiceren. Alleen de door GitHub aangeleverde combinatie
+`dependabot[bot]` met type `Bot` krijgt op een branch van dezelfde repository een vrijstelling;
+forks, andere bots en ontbrekende identiteit vallen onder de gewone vertrouwenscontrole.
+Na merge blijft verificatie van een echte PR-statusrun met het workflowtoken nodig.
+
+`bash scripts/ci/test-git-hooks.sh` test echte hooks met een vervangende Gitleaks-CLI en bewijst
+zo het aanroepcontract en het commitbereik; dit is geen integratietest van Gitleaks zelf.
+Push bij voorkeur via een benoemde remote. Bij een URL kan de veilige terugval een ruimere
+historiescan opleveren. De scan per commit blijft behouden om tussentijds verwijderde waarden
+te detecteren; Windows-doorlooptijd is niet gemeten.
+
+De tierduplicatieguard telt bewust ook niet-genegeerde, ongetrackte bronbestanden mee.
+Daardoor verandert staging de meting niet. Een schone CI-checkout heeft zulke lokale extra
+bestanden niet; een lokaal verschil vraagt controle van de lokale broninventaris, geen ruimer plafond.
+Het advisorrapport sorteert ERROR, WARN, INFO, OTHER en geeft alleen vaste veilige vervolginstructies.
