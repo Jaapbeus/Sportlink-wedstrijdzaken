@@ -18,6 +18,54 @@ public static class ClubMatchEndpointCore
 {
     internal const int MaxDuurMinuten = 240;
 
+    /// <summary>
+    /// Tijdelijke <c>PublicMatchId</c> in de mutatie-audit van een aanmaak: de wedstrijd bestaat dan nog niet
+    /// in Sportlink (de audit-rij is verplicht niet-leeg). <see cref="KoppelPublicMatchIdAsync"/> vervangt hem na
+    /// een geslaagde aanmaak door het echte ID (#1879).
+    /// </summary>
+    public const string AuditPublicMatchIdPlaceholder = "NIEUW";
+
+    /// <summary>Lengte van de kolom <c>PublicMatchId</c> in de mutatie-audit (beide tiers).</summary>
+    private const int AuditPublicMatchIdMaxLengte = 50;
+
+    /// <summary>
+    /// <c>true</c> als <paramref name="id"/> geheel uit letters, cijfers, '-' en '_' bestaat en in de auditkolom past.
+    /// Bewust tekengericht en niet via een regex met <c>$</c>: dat anker laat een afsluitende regeleinde door, en
+    /// zo'n waarde mag nooit in de audit komen.
+    /// </summary>
+    private static bool IsBruikbaarAuditPublicMatchId(string? id)
+        => !string.IsNullOrEmpty(id)
+           && id.Length <= AuditPublicMatchIdMaxLengte
+           && id.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
+
+    /// <summary>
+    /// Legt na een geslaagde, echte aanmaak het door Sportlink teruggegeven <c>PublicMatchId</c> vast op de
+    /// audit-rij (#1879), zodat een latere wijziging of verwijdering aan de aanmaak te koppelen is. Doet niets bij
+    /// een mislukking, dry-run, gesimuleerde aanroep of een ID met een onverwachte vorm of lengte. Een fout hierbij
+    /// breekt de respons nooit af: de wedstrijd is dan al aangemaakt.
+    /// </summary>
+    /// <param name="zetPublicMatchId">Tier-eigen update van de audit-rij; geeft <c>false</c> als er niets is bijgewerkt.</param>
+    public static async Task KoppelPublicMatchIdAsync(
+        SportlinkMutationResult? resultaat, Func<string, Task<bool>> zetPublicMatchId, ILogger? log = null)
+    {
+        if (resultaat is not { IsSuccess: true, IsDryRun: false, IsForcedDryRun: false })
+            return;
+
+        var id = resultaat.PublicMatchId;
+        if (!IsBruikbaarAuditPublicMatchId(id))
+            return;
+
+        try
+        {
+            if (!await zetPublicMatchId(id))
+                log?.LogWarning("Mutatie-audit van een aangemaakte wedstrijd kon niet aan het PublicMatchId worden gekoppeld: geen rij bijgewerkt.");
+        }
+        catch (Exception ex)
+        {
+            log?.LogWarning(ex, "Mutatie-audit van een aangemaakte wedstrijd kon niet aan het PublicMatchId worden gekoppeld.");
+        }
+    }
+
     /// <summary>Invoer van het formulier (#1116) — alleen wat een mens snel kan intikken; de Sportlink-ID's leidt de server af.</summary>
     public sealed class OefenwedstrijdAanmakenDto
     {

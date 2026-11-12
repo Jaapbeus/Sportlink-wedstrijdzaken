@@ -541,12 +541,15 @@ Vier dingen om te onthouden:
   mutatie op onze eigen wedstrijdgegevens). Audit-model past niet 1-op-1: `SportlinkMutationAuditEntry`
   vereist een verplicht, niet-leeg `PublicMatchId`-veld dat bij het aanmaken nog niet bestaat — de
   Pending-rij gebruikt daarom de placeholder `"NIEUW"`, met een gegenereerde GUID in `CorrelationId`
-  om Pending- en Voltooid-rij te koppelen. Het écht opslaan van het teruggekregen `PublicMatchId`
-  vereist een uitbreiding van `ISportlinkMutationAuditService.VoltooiAsync` (een extra optionele
-  parameter, raakt beide tiers) en is niet gebouwd. Omdat aanmaken sinds #1319 de instelling
-  `sportlinkDryRun` volgt (en sinds #1427 live slaagt), is dit een open functioneel gat op beide
-  tiers (zie issue #1879): bij een echte aanmaak legt de audit alleen de placeholder `"NIEUW"`
-  vast, niet het echte `PublicMatchId`.
+  om Pending- en Voltooid-rij te koppelen. Sinds #1879 vervangt de nieuwe methode
+  `ISportlinkMutationAuditService.ZetPublicMatchIdAsync` (beide tiers) de placeholder na een
+  geslaagde, echte aanmaak door het teruggekregen `PublicMatchId`, vóór de audit-afronding
+  (`ClubMatchEndpointCore.KoppelPublicMatchIdAsync`). De update is gescoped op de clubcode en
+  werkt alleen een rij bij die nog de placeholder heeft, dus een bestaand ID wordt nooit
+  overschreven. Bij een mislukking, dry-run of gesimuleerde aanroep, een ID met een onverwachte vorm
+  of een ID langer dan de kolom (50 tekens) blijft de placeholder staan. Een fout bij het bijwerken
+  breekt de respons niet af: de wedstrijd is dan al aangemaakt; er volgt alleen een waarschuwing in het log.
+  Daardoor is een latere wijziging of verwijdering (die op `PublicMatchId` loggen) aan de aanmaak te koppelen.
   **Bewust NIET gebouwd (toekomstig
   werk):** uitslag vastleggen (`ClubMatchScore`), de drie overige
   ondersteunende endpoints (`ClubMatchDefaults`, `PickListsMatchInformation`,

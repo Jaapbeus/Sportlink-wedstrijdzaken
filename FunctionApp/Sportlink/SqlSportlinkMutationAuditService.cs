@@ -104,4 +104,23 @@ internal sealed class SqlSportlinkMutationAuditService : ISportlinkMutationAudit
         var affected = await command.ExecuteNonQueryAsync(cancellationToken);
         return affected > 0;
     }
+
+    public async Task<bool> ZetPublicMatchIdAsync(long auditId, string clubCode, string publicMatchId, CancellationToken cancellationToken = default)
+    {
+        using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        using var command = new SqlCommand(@"
+            UPDATE [dbo].[SportlinkMutationAudit]
+            SET [PublicMatchId] = @PublicMatchId
+            WHERE [Id] = @Id AND [ClubCode] = @ClubCode AND [PublicMatchId] = @Placeholder", connection);
+
+        command.Parameters.AddWithValue("@Id", auditId);
+        command.Parameters.AddWithValue("@ClubCode", clubCode ?? "");
+        command.Parameters.AddWithValue("@PublicMatchId", publicMatchId ?? "");
+        command.Parameters.AddWithValue("@Placeholder", global::Planner.Endpoints.Sportlink.ClubMatchEndpointCore.AuditPublicMatchIdPlaceholder);
+
+        var affected = await command.ExecuteNonQueryAsync(cancellationToken);
+        return affected > 0;
+    }
 }
