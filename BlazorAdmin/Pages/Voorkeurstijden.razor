@@ -22,6 +22,10 @@
 }
 else
 {
+    @if (teamsLoadError != null)
+    {
+        <div class="alert alert-danger">@teamsLoadError</div>
+    }
     <table class="table table-striped">
         <thead>
             <tr>
@@ -46,16 +50,22 @@ else
                         <button class="btn btn-sm btn-primary" @onclick="() => Edit(v)">Bewerken</button>
                         @if (v.Actief)
                         {
-                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(v.Id)">
-                                Verwijderen
-                            </button>
+                            @if (_deleteConfirmation.IsOpenFor(("voorkeur", v.Id)))
+                            {
+                                <button class="btn btn-sm btn-danger" @onclick="() => DeleteAsync(v.Id)">Bevestig verwijderen</button>
+                                <button class="btn btn-sm btn-link" @onclick="AnnuleerVerwijderen">Annuleren</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm btn-outline-danger" @onclick='() => VraagVerwijderen("voorkeur", v.Id)'>Verwijderen</button>
+                            }
                         }
                     </td>
                 </tr>
             }
             @if (Gefilterd.Count == 0)
             {
-                <tr><td colspan="6" class="text-muted">Geen voorkeurstijden gevonden.</td></tr>
+                <tr><td colspan="6" class="@(voorkeurenLoadError == null ? "text-muted" : "text-danger")">@(voorkeurenLoadError ?? "Geen voorkeurstijden gevonden.")</td></tr>
             }
         </tbody>
     </table>
@@ -103,7 +113,7 @@ else
                     <input type="checkbox" class="form-check-input mt-2" @bind="editing.Actief" />
                 </div>
             </div>
-            <button type="submit" class="btn btn-primary">Opslaan</button>
+            <button type="submit" class="btn btn-primary" disabled="@(teamsLoadError != null)">Opslaan</button>
             <button type="button" class="btn btn-secondary" @onclick="() => editing = null">Annuleren</button>
         </EditForm>
     }
@@ -144,15 +154,21 @@ else
                     <td>@r.Opmerking</td>
                     <td>
                         <button class="btn btn-sm btn-primary" @onclick="() => EditRegel(r)">Bewerken</button>
-                        <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => DeleteRegelAsync(r.Id)">
-                            Verwijderen
-                        </button>
+                        @if (_deleteConfirmation.IsOpenFor(("regel", r.Id)))
+                        {
+                            <button class="btn btn-sm btn-danger ms-1" @onclick="() => DeleteRegelAsync(r.Id)">Bevestig verwijderen</button>
+                            <button class="btn btn-sm btn-link" @onclick="AnnuleerVerwijderen">Annuleren</button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-sm btn-outline-danger ms-1" @onclick='() => VraagVerwijderen("regel", r.Id)'>Verwijderen</button>
+                        }
                     </td>
                 </tr>
             }
             @if (ActieveTeamRegels.Count == 0)
             {
-                <tr><td colspan="5" class="text-muted">Geen teamregels gevonden.</td></tr>
+                <tr><td colspan="5" class="@(regelsLoadError == null ? "text-muted" : "text-danger")">@(regelsLoadError ?? "Geen teamregels gevonden.")</td></tr>
             }
         </tbody>
     </table>
@@ -225,7 +241,7 @@ else
                 <input class="form-control" @bind="editingRegel.Opmerking" />
             </div>
 
-            <button type="submit" class="btn btn-primary">Opslaan</button>
+            <button type="submit" class="btn btn-primary" disabled="@(teamsLoadError != null)">Opslaan</button>
             <button type="button" class="btn btn-secondary ms-2" @onclick="() => editingRegel = null">Annuleren</button>
         </EditForm>
 

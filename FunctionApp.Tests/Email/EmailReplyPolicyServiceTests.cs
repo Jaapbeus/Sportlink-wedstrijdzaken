@@ -45,6 +45,40 @@ public class EmailReplyPolicyServiceTests
     }
 
     [Fact]
+    public async Task TeamContactForwarding_GeeftNaamEnVraagDoorVanHetInkomendeBericht()
+    {
+        TeamContactDoorstuurVerzoek? ontvangenVerzoek = null;
+        var graph = new FakeEmailGraphService();
+        var persistence = new RecordingEmailPersistenceService();
+        var service = new EmailReplyPolicyService((_, verzoek) =>
+        {
+            ontvangenVerzoek = verzoek;
+            return Task.FromResult(TeamContactDoorstuurUitkomst.Doorgestuurd);
+        });
+        var email = new InkomendBericht
+        {
+            MessageId = "m-team-contact",
+            Afzender = "trainer@voorbeeld.nl",
+            AfzenderNaam = "Jan de Vries",
+            Onderwerp = "Vraag",
+            ConversationId = "conv-team-contact",
+            Body = "Kunt u mij terugbellen?"
+        };
+
+        var uitkomst = await service.HandelReplyFlowAfAsync(
+            20, email,
+            new BerichtClassificatie { Type = VerzoekType.TeamContactOpvragen, TeamNaam = "JO13-2" },
+            "{}", false, null, graph, persistence,
+            () => Task.FromResult(("Bevestiging", "Uw vraag is doorgestuurd.")),
+            _ => "sanitized", NullLogger.Instance);
+
+        uitkomst.Should().Be(ReplyVerwerkingUitkomst.AntwoordVerstuurd);
+        ontvangenVerzoek.Should().Be(new TeamContactDoorstuurVerzoek(
+            "JO13-2", email.Afzender, "Jan de Vries", "Kunt u mij terugbellen?"));
+        graph.SentReplies.Should().ContainSingle();
+    }
+
+    [Fact]
     public async Task ReviewMode_SlaatVoorstelOp_ViaDeSqlServerOpslag()
     {
         var graph = new FakeEmailGraphService();

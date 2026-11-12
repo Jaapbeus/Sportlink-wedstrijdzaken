@@ -116,6 +116,51 @@ public class PlannerMatchRepositoryIntegrationTests : IDisposable
     }
 
     [PostgresFact]
+    public async Task AfgelasteBronwedstrijd_MarkeertPlannerregelNietAlsVervallen()
+    {
+        await using var conn = await OpstellingAsync();
+        await AliasAsync(conn, TeamInMatches, "validated");
+        await AliasAsync(conn, TeamInPlanner, "validated");
+        await using (var cmd = new NpgsqlCommand("UPDATE his.matches SET status = 'Afgelast' WHERE wedstrijdcode = 9100001", conn))
+            await cmd.ExecuteNonQueryAsync();
+
+        await PlannerMatchRepository.MarkeerVervallenGeplandeWedstrijdenAsync(
+            ConnectionString, Club, NullLogger.Instance);
+
+        (await StandAsync(conn)).Vervallen.Should().BeFalse();
+    }
+
+    [PostgresFact]
+    public async Task BronwedstrijdZonderStatus_BehoudtBestaandeKoppeling()
+    {
+        await using var conn = await OpstellingAsync();
+        await AliasAsync(conn, TeamInMatches, "validated");
+        await AliasAsync(conn, TeamInPlanner, "validated");
+        await using (var cmd = new NpgsqlCommand("UPDATE his.matches SET status = NULL WHERE wedstrijdcode = 9100001", conn))
+            await cmd.ExecuteNonQueryAsync();
+
+        await PlannerMatchRepository.MarkeerVervallenGeplandeWedstrijdenAsync(
+            ConnectionString, Club, NullLogger.Instance);
+
+        (await StandAsync(conn)).Vervallen.Should().BeTrue();
+    }
+
+    [PostgresFact]
+    public async Task VerwijderdeBronwedstrijd_MarkeertPlannerregelNietAlsVervallen()
+    {
+        await using var conn = await OpstellingAsync();
+        await AliasAsync(conn, TeamInMatches, "validated");
+        await AliasAsync(conn, TeamInPlanner, "validated");
+        await using (var cmd = new NpgsqlCommand("UPDATE his.matches SET mta_deleted = NOW() WHERE wedstrijdcode = 9100001", conn))
+            await cmd.ExecuteNonQueryAsync();
+
+        await PlannerMatchRepository.MarkeerVervallenGeplandeWedstrijdenAsync(
+            ConnectionString, Club, NullLogger.Instance);
+
+        (await StandAsync(conn)).Vervallen.Should().BeFalse();
+    }
+
+    [PostgresFact]
     public async Task AndereAccommodatie_MarkeertNiets()
     {
         await using var conn = await OpstellingAsync(accommodatieInMatch: "Sportpark Tegenstander");
@@ -207,8 +252,8 @@ public class PlannerMatchRepositoryIntegrationTests : IDisposable
         // De gesynchroniseerde wedstrijd van vandaag, op de eigen accommodatie.
         await using (var match = new NpgsqlCommand(
             @"INSERT INTO his.matches
-                  (wedstrijdcode, kaledatum, teamnaam, accommodatie, clubcode, mta_inserted, mta_modified)
-              VALUES (9100001, to_char(CURRENT_DATE, 'YYYY-MM-DD'), @teamnaam, @acc, @club, NOW(), NOW())", conn))
+                  (wedstrijdcode, kaledatum, teamnaam, accommodatie, clubcode, status, mta_inserted, mta_modified)
+              VALUES (9100001, to_char(CURRENT_DATE, 'YYYY-MM-DD'), @teamnaam, @acc, @club, 'Gepland', NOW(), NOW())", conn))
         {
             match.Parameters.AddWithValue("teamnaam", TeamInMatches);
             match.Parameters.AddWithValue("acc", accommodatieInMatch);

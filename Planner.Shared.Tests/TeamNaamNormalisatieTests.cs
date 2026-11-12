@@ -145,6 +145,15 @@ public class TeamNaamNormalisatieTests
         TeamNaamNormalisatie.NormaliseerVoorVergelijking(input, Club).Should().Be(verwacht);
     }
 
+    [Theory]
+    [InlineData("Meisjes Onder 13-1")]
+    [InlineData("Meiden Onder 13-1")]
+    public void MeisjesOnderSamengesteld_WordtEenMoSleutel(string input)
+    {
+        TeamNaamNormalisatie.NormaliseerVoorVergelijking(input, Club).Should().Be("MO13-1");
+        TeamNaamNormalisatie.Parse(input, Club).Should().Be(new TeamNaamComponenten("MO", 13, 1, "MO13-1"));
+    }
+
     [Fact]
     public void KaalNummerZonderPrefix_BlijftZonderPrefix()
     {
@@ -211,6 +220,14 @@ public class TeamNaamNormalisatieTests
         componenten.TeamNummer.Should().Be(1);
     }
 
+    [Fact]
+    public void Parse_JmSuffix_BehoudtSleutelEnExtraheertKandidaatNummers()
+    {
+        var componenten = TeamNaamNormalisatie.Parse("JO14-1JM", Club);
+
+        componenten.Should().Be(new TeamNaamComponenten("JO", 14, 1, "JO14-1JM"));
+    }
+
     [Theory]
     [InlineData("TESTCLUB 1")]        // senioren: geen leeftijd+teamnummer
     [InlineData("TESTCLUB 35+1")]     // veteranen
@@ -224,4 +241,43 @@ public class TeamNaamNormalisatieTests
         // zoeken op nummer zou verkeerde treffers geven.
         TeamNaamNormalisatie.Parse(input, Club).Should().BeNull();
     }
+
+    [Theory]
+    [InlineData("TESTCLUB O15-1JM", "JO15")] // #1861: zonder categorie kon de speelduur niet worden bepaald
+    [InlineData("TESTCLUB O23-1", "JO23")]   // bondsnotatie O23 = JO23
+    [InlineData("O23-1", "JO23")]            // zoals in de teambegeleiding
+    [InlineData("TESTCLUB MO15-1", "MO15")]
+    public void LeidLeeftijdsCategorieAf_BondsnotatieEnJmSuffix_GeeftSpeeltijdsleutel(string teamnaam, string categorie)
+        => TeamNaamNormalisatie.LeidLeeftijdsCategorieAf(teamnaam, Club).Should().Be(categorie);
+
+    [Theory]
+    [InlineData("TESTCLUB", true)]
+    [InlineData(" testclub ", true)]
+    [InlineData("TESTCLUB -", true)]
+    [InlineData("TESTCLUB 1", false)]
+    [InlineData("TESTCLUB JO13-2", false)]
+    [InlineData("Ander FC", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void IsAlleenClubPrefix_HerkentAlleenDeKaleClubnaam(string? tekst, bool verwacht)
+        => TeamNaamNormalisatie.IsAlleenClubPrefix(tekst, Club).Should().Be(verwacht);
+
+    [Fact]
+    public void IsAlleenClubPrefix_ZonderClubPrefix_IsNooitWaar()
+        => TeamNaamNormalisatie.IsAlleenClubPrefix("TESTCLUB", null).Should().BeFalse();
+
+    [Theory]
+    [InlineData("TESTCLUB O23-1", true)]
+    [InlineData("O23-1", true)]
+    [InlineData("testclub jo23-2", true)]
+    [InlineData("TESTCLUB O23 1", true)]
+    [InlineData("TESTCLUB MO23-1", false)]   // meiden-O23 heeft een eigen sleutel
+    [InlineData("TESTCLUB O230-1", false)]
+    [InlineData("TESTCLUB O21-1", false)]
+    [InlineData("TESTCLUB 1", false)]        // eerste elftal blijft senioren
+    [InlineData("TESTCLUB VR1", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void IsO23Team_HerkentAlleenO23(string? teamnaam, bool verwacht)
+        => TeamNaamNormalisatie.IsO23Team(teamnaam).Should().Be(verwacht);
 }

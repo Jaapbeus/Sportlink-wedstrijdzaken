@@ -47,13 +47,40 @@ internal static class LeeftijdNormalisatieSql
         CASE
             WHEN UPPER(LTRIM(RTRIM({kolom}))) = 'SENIOREN'
                 THEN '1-99'
+            WHEN UPPER(LTRIM(RTRIM({kolom}))) = '1-99'
+                THEN '1-99'
             WHEN UPPER(LTRIM(RTRIM({kolom}))) IN ('SENIOREN VROUWEN', 'SENIOREN VR')
                 THEN 'VR'
             WHEN {alleenCijfers} <> ''
                 THEN (CASE WHEN {kolom} LIKE '%Meiden%' OR {kolom} LIKE '%Meisjes%'
+                                OR UPPER(LTRIM(RTRIM({kolom}))) LIKE 'MO%'
                            THEN 'MO' ELSE 'JO' END) + {alleenCijfers}
             ELSE
                 REPLACE(REPLACE(REPLACE({kolom}, 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
         END";
     }
+
+    /// <summary>
+    /// Speeltijdsleutel uit categorie <i>én</i> teamnaam (#1863): een O23-team ("[club] O23-1", "JO23-2") krijgt
+    /// <c>JO23</c> als die rij voor de club bestaat met een duur &gt; 0, ook als Sportlink het team als "Senioren"
+    /// (<c>1-99</c>) aanlevert. Anders de gewone <see cref="SqlExpr"/>: nooit duur 0 door deze regel. De grens van
+    /// "O23" is dezelfde als <see cref="Planner.Shared.TeamNaamNormalisatie.IsO23Team"/> (geen "MO23", geen "O230").
+    /// </summary>
+    internal static string SpeeltijdSleutelSqlExpr(string categorieKolom, string teamNaamKolom, string clubCodeExpr) => $@"
+        CASE
+            WHEN {O23Jo23Voorwaarde(teamNaamKolom, clubCodeExpr)}
+                THEN 'JO23'
+            ELSE {SqlExpr(categorieKolom)}
+        END";
+
+    /// <summary>
+    /// De SQL Server-formulering van de O23-regel (#1863): het team is een O23-team én de club heeft een
+    /// <c>JO23</c>-speeltijd met duur &gt; 0. De statische view (<c>Database/planner/Views/AlleWedstrijdenOpVeld.sql</c>)
+    /// en het PostDeployment-script kunnen deze methode niet aanroepen; <c>LeeftijdNormalisatieSqlTests</c> eist dat
+    /// beide letterlijk deze voorwaarde bevatten (uitzondering op "geen teamnaam-regex elders": SQL kan
+    /// <see cref="Planner.Shared.TeamNaamNormalisatie.IsO23Team"/> niet aanroepen).
+    /// </summary>
+    internal static string O23Jo23Voorwaarde(string teamNaamKolom, string clubCodeExpr) =>
+        $"(' ' + UPPER({teamNaamKolom}) + ' ' LIKE '%[^A-Z0-9]O23[^0-9]%' OR ' ' + UPPER({teamNaamKolom}) + ' ' LIKE '%[^A-Z0-9]JO23[^0-9]%') "
+        + $"AND EXISTS (SELECT 1 FROM [dbo].[Speeltijden] jo23 WHERE jo23.[Leeftijd] = 'JO23' AND jo23.[WedstrijdTotaal] > 0 AND jo23.[ClubCode] = {clubCodeExpr})";
 }

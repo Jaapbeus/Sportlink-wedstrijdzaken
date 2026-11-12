@@ -89,7 +89,7 @@ public static class RescheduleService
 
         if (vervroegen)
         {
-            candidates = FindLatestFitPerField(availableFields, occupations, allTeamRules, teamRules,
+            candidates = PlannerShared.FindLatestFitPerField(availableFields, occupations, allTeamRules, teamRules,
                 veldFractie, duurMinuten, upperBound: matchStart, windowStart: dagdeelVan);
             candidates = candidates
                 .Where(c => !(c.VeldNummer == matchVeldNr && c.AanvangsTijd == matchStart))
@@ -127,40 +127,4 @@ public static class RescheduleService
         return response;
     }
 
-    // ── Privé helper (alleen voor herplan) — duplicaat van het SQL Server-origineel, geen
-    // gedeelde-locatie-eis: puur een lokaal detail van deze ene use-case (§16). ──
-
-    private static List<CandidateSlot> FindLatestFitPerField(
-        List<VeldBeschikbaarheidInfo> availableFields,
-        List<BestaandeWedstrijd> occupations,
-        Dictionary<string, List<TeamRegel>> allTeamRules,
-        List<TeamRegel> requestingTeamRules,
-        decimal veldFractie, int duurMinuten,
-        TimeOnly upperBound, TimeOnly windowStart)
-    {
-        var result = new List<CandidateSlot>();
-        foreach (var field in availableFields)
-        {
-            var fieldOccs = occupations.Where(o => o.VeldNummer == field.VeldNummer).ToList();
-            var effStart = windowStart < field.BeschikbaarVanaf ? field.BeschikbaarVanaf : windowStart;
-            var effUpper = upperBound > field.BeschikbaarTot ? field.BeschikbaarTot : upperBound;
-            var nextOcc = fieldOccs
-                .Where(o => o.AanvangsTijd >= effStart && o.AanvangsTijd < effUpper)
-                .OrderBy(o => o.AanvangsTijd).FirstOrDefault();
-            var hardEnd = nextOcc != null && nextOcc.AanvangsTijd < effUpper ? nextOcc.AanvangsTijd : effUpper;
-            var latestStart = hardEnd.AddMinutes(-duurMinuten);
-            if (latestStart < effStart) continue;
-            for (var time = latestStart; time >= effStart; time = time.AddMinutes(-5))
-            {
-                var endTime = time.AddMinutes(duurMinuten);
-                if (PlannerShared.CanFitMatch(time, endTime, veldFractie, field.VeldNummer,
-                                fieldOccs, allTeamRules, requestingTeamRules))
-                {
-                    result.Add(new CandidateSlot { VeldNummer = field.VeldNummer, AanvangsTijd = time, EindTijd = endTime });
-                    break;
-                }
-            }
-        }
-        return result;
-    }
 }

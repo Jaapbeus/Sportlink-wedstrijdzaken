@@ -10,8 +10,13 @@ public static class EmailReviewModus
 {
     public const string InstellingNaam = "EmailReviewMode";
 
-    /// <summary>Alleen de waarde <c>true</c> (hoofdletterongevoelig) zet de modus aan; leeg of onbekend = uit.</summary>
-    public static bool IsActief(string? waarde) => string.Equals(waarde, "true", StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// Fail-safe (#1809): alleen een expliciet <c>false</c> (hoofdletterongevoelig) zet de modus uit.
+    /// Leeg, ontbrekend of onbekend betekent: reviewmodus AAN, zodat een verdwenen app-setting nooit
+    /// onbedoeld tot automatische antwoorden leidt (analoog aan <c>sportlinkDryRun</c>).
+    /// </summary>
+    public static bool IsActief(string? waarde)
+        => !string.Equals(waarde, "false", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Leest de actuele instelling uit de omgeving.</summary>
     public static bool IsActief() => IsActief(Environment.GetEnvironmentVariable(InstellingNaam));

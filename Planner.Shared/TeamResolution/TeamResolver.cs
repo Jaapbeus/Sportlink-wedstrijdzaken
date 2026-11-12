@@ -26,8 +26,8 @@ namespace Planner.Shared.TeamResolution;
 /// uitsluitend in <see cref="TeamNaamNormalisatie"/>.
 /// </para>
 ///
-/// Volgorde: (1) gevalideerde alias → (2) exacte canonieke match → (3) kandidaten op
-/// leeftijd+teamnummer → (4) bij >1 kandidaat: onbeslist teruggeven.
+/// Volgorde: (1) gevalideerde alias → (2) exacte canonieke match → (3) alleen voor prefixloze tekst
+/// kandidaten op leeftijd+teamnummer → (4) bij >1 kandidaat: onbeslist teruggeven.
 /// </summary>
 public sealed class TeamResolver(ITeamCandidateRepository repository) : ITeamResolver
 {
@@ -56,7 +56,9 @@ public sealed class TeamResolver(ITeamCandidateRepository repository) : ITeamRes
             return Opgelost(exact, 1.0, [], ResolutionBron.ExacteMatch);
 
         var componenten = TeamNaamNormalisatie.Parse(ruweTekst, request.ClubCode);
-        if (componenten is null)
+        // De kandidatenfallback mag alleen een ontbrekend geslacht-prefix invullen. Een expliciet
+        // JO/MO-prefix is al exact geprobeerd; nooit een kandidaat van het andere geslacht kiezen.
+        if (componenten is null || componenten.Prefix is not null)
             return TeamResolutionResult.Onopgelost;
 
         var kandidaten = await repository.FindKandidatenAsync(request.ClubCode, componenten);
@@ -78,5 +80,5 @@ public sealed class TeamResolver(ITeamCandidateRepository repository) : ITeamRes
 
     private static TeamResolutionResult Opgelost(
         TeamCandidate team, double confidence, IReadOnlyList<TeamCandidate> kandidaten, ResolutionBron bron)
-        => new(team.TeamId, team.Teamnaam, confidence, kandidaten, bron);
+        => new(team.TeamId, team.Teamnaam, confidence, kandidaten, bron, team.LeeftijdsCategorie);
 }

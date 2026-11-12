@@ -1,8 +1,8 @@
 CREATE VIEW [planner].[AlleWedstrijdenOpVeld]
 AS
 -- Thuiswedstrijden op eigen accommodatie (gefilterd op Accommodatie uit dbo.AppSettings)
--- Speelduur exclusief via dbo.Speeltijden (WedstrijdTotaal = speeltijd + rust).
--- Sportlink [Duration] uit matchdetails wordt niet meer gebruikt — DB is leidend (#291).
+-- Sportlink Duration + 15 minuten is leidend; Speeltijden is terugval (#1547).
+-- Zonder beide bronnen blijft EindTijd NULL zodat de lezers de planning blokkeren (#1814).
 -- ClubCode uit CROSS APPLY ipv SELECT TOP 1 — voorkomt scalar subquery fout bij >1 rij (#428).
 -- ClubCode en Wedstrijdcode als kolom (#580, #574): consumers filteren expliciet op club en
 -- kunnen één wedstrijd op exacte code uitsluiten in plaats van op tekst-contains.
@@ -22,10 +22,10 @@ AS
 SELECT
     CAST(m.[kaledatum] AS DATE)                                                     AS Datum,
     CAST(m.[aanvangstijd] AS TIME)                                                  AS AanvangsTijd,
-    DATEADD(MINUTE,
-        s.[WedstrijdTotaal],
-        CAST(CAST(m.[kaledatum] AS DATE) AS DATETIME) + CAST(m.[aanvangstijd] AS DATETIME)
-    )                                                                               AS EindTijd,
+    CASE WHEN COALESCE(md.[Duration], 0) > 0 OR COALESCE(s.[WedstrijdTotaal], 0) > 0
+        THEN DATEADD(MINUTE, CASE WHEN md.[Duration] > 0 THEN md.[Duration] + 15 ELSE s.[WedstrijdTotaal] END,
+        CAST(CAST(m.[kaledatum] AS DATE) AS DATETIME) + CAST(m.[aanvangstijd] AS DATETIME))
+        ELSE NULL END                        AS EindTijd,
     v.[VeldNummer],
     COALESCE(s.[Veldafmeting], 1.00)                                                AS VeldDeelGebruik,
     t.[leeftijdscategorie]                                                          AS LeeftijdsCategorie,
@@ -37,12 +37,19 @@ SELECT
     CAST(m.[wedstrijdcode] AS BIGINT)                                               AS Wedstrijdcode
 FROM [his].[matches] m
 CROSS APPLY (SELECT TOP 1 [ClubCode], [Accommodatie] FROM [dbo].[AppSettings] WHERE [SyncEnabled] = 1 ORDER BY [ClubCode]) a
+LEFT JOIN [his].[matchdetails] md
+    ON md.[InternCode] = m.[wedstrijdcode] AND md.[mta_deleted] IS NULL
+   AND ISNULL(md.[ClubCode], a.[ClubCode]) = ISNULL(m.[ClubCode], a.[ClubCode])
 LEFT JOIN [his].[teams] t
     ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
    AND ISNULL(t.[ClubCode], a.[ClubCode]) = ISNULL(m.[ClubCode], a.[ClubCode])
+   AND t.[mta_deleted] IS NULL
 LEFT JOIN [dbo].[Speeltijden] s
     ON s.[Leeftijd] = CASE
         WHEN m.[teamnaam] LIKE a.[ClubCode] + ' G[0-9]%' THEN 'G'
+        WHEN (' ' + UPPER(m.[teamnaam]) + ' ' LIKE '%[^A-Z0-9]O23[^0-9]%' OR ' ' + UPPER(m.[teamnaam]) + ' ' LIKE '%[^A-Z0-9]JO23[^0-9]%')
+             AND EXISTS (SELECT 1 FROM [dbo].[Speeltijden] jo23 WHERE jo23.[Leeftijd] = 'JO23' AND jo23.[WedstrijdTotaal] > 0 AND jo23.[ClubCode] = a.[ClubCode])
+            THEN 'JO23' -- #1863: O23-team = JO23-speeltijd, ook als Sportlink 'Senioren' levert
         ELSE REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
     END
    AND s.[ClubCode] = a.[ClubCode]
@@ -67,8 +74,8 @@ OUTER APPLY (
 WHERE m.[accommodatie] LIKE '%' + a.[Accommodatie] + '%'
   AND m.[status] <> 'Afgelast'
   AND m.[aanvangstijd] IS NOT NULL
+  AND m.[mta_deleted] IS NULL
   AND v.[VeldNummer] IS NOT NULL
-  AND s.[WedstrijdTotaal] IS NOT NULL
 
 UNION ALL
 

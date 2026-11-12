@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Moq.Protected;
 using SportlinkFunction;
+using SportlinkFunction.Planner;
 using System.Net;
 using Xunit;
 
@@ -17,6 +18,13 @@ namespace FunctionApp.Tests.Sync;
 /// </summary>
 public class MatchDetailsFetchTests
 {
+    [Fact]
+    public void ProductionDataServiceClients_DoNotFollowRedirects()
+    {
+        SportlinkSyncPipeline.DataserviceHandler.AllowAutoRedirect.Should().BeFalse();
+        SportlinkApiClient.DataserviceHandler.AllowAutoRedirect.Should().BeFalse();
+    }
+
     private static HttpClient MakeClient(HttpStatusCode statusCode)
     {
         var handler = new Mock<HttpMessageHandler>();
@@ -63,7 +71,7 @@ public class MatchDetailsFetchTests
         var log    = NullLogger.Instance;
 
         var result = await SportlinkSyncPipeline.FetchAndStoreMatchDetailsAsync(
-            "http://test/wedstrijd-informatie?wedstrijdcode=1", "TEST", log, client);
+            "http://test/wedstrijd-informatie?wedstrijdcode=1", "TEST", log, client, TimeSpan.Zero);
 
         result.Should().BeFalse("een HTTP-fout moet false teruggeven zodat de caller partialFailure zet (#464)");
     }
@@ -75,9 +83,20 @@ public class MatchDetailsFetchTests
         var log    = NullLogger.Instance;
 
         var result = await SportlinkSyncPipeline.FetchAndStoreMatchDetailsAsync(
-            "http://test/wedstrijd-informatie?wedstrijdcode=2", "TEST", log, client);
+            "http://test/wedstrijd-informatie?wedstrijdcode=2", "TEST", log, client, TimeSpan.Zero);
 
         result.Should().BeFalse("HTTP 500 moet false teruggeven (#464)");
+    }
+
+    [Fact]
+    public async Task FetchAndStoreMatchDetails_Redirect_RetourneertFalse()
+    {
+        using var client = MakeClient(HttpStatusCode.Redirect);
+
+        var result = await SportlinkSyncPipeline.FetchAndStoreMatchDetailsAsync(
+            "https://data.sportlink.com/wedstrijd-informatie?clientId=fixture", "TEST", NullLogger.Instance, client);
+
+        result.Should().BeFalse("a redirect must not count as a completed data-service read");
     }
 
     [Fact]
@@ -87,7 +106,7 @@ public class MatchDetailsFetchTests
         var log    = NullLogger.Instance;
 
         var result = await SportlinkSyncPipeline.FetchAndStoreMatchDetailsAsync(
-            "http://test/wedstrijd-informatie?wedstrijdcode=3", "TEST", log, client);
+            "http://test/wedstrijd-informatie?wedstrijdcode=3", "TEST", log, client, TimeSpan.Zero);
 
         // JSON-deserialisatiefout geeft false (#464 — JSON-fouten tellen als failure)
         result.Should().BeFalse("een JSON-deserialisatiefout moet false teruggeven (#464)");
@@ -110,7 +129,7 @@ public class MatchDetailsFetchTests
         var logger = new RecordingLogger();
 
         var result = await SportlinkSyncPipeline.FetchAndStoreMatchDetailsAsync(
-            UrlMetClientId(wedstrijdcode), "TEST", logger, client);
+            UrlMetClientId(wedstrijdcode), "TEST", logger, client, herhaalWachttijd: TimeSpan.Zero);
 
         result.Should().BeFalse("dit is een foutpad — anders bewijst de logassertie niets");
         logger.Levels.Should().Contain(LogLevel.Error,
@@ -132,4 +151,39 @@ public class MatchDetailsFetchTests
     [Fact]
     public async Task FetchAndStoreMatchDetails_OngeldigeJson_LogtClientIdNooit()
         => await BewijsDatClientIdNietGelogdWordtAsync(MakeJsonErrorClient(), 13);
+
+    // ── #1779 — begrensde herhaling op tijdelijke fouten ────────────────────────────────────────
+    [Fact]
+    public async Task FetchAndStoreMatchDetails_Http503_WordtMaxPogingenGeprobeerdDaarnaFalse()
+    {
+        var aanroepen = 0;
+        var handler = new Mock<HttpMessageHandler>();
+        handler.Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(() => { aanroepen++; return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable); });
+
+        var result = await SportlinkSyncPipeline.FetchAndStoreMatchDetailsAsync(
+            "http://test/wedstrijd-informatie?wedstrijdcode=4", "TEST", NullLogger.Instance,
+            new HttpClient(handler.Object), TimeSpan.Zero);
+
+        result.Should().BeFalse();
+        aanroepen.Should().Be(global::Planner.Shared.Sync.SportlinkDataserviceHttp.MaxPogingen);
+    }
+
+    [Fact]
+    public async Task FetchAndStoreMatchDetails_Http404_WordtNietHerhaald()
+    {
+        var aanroepen = 0;
+        var handler = new Mock<HttpMessageHandler>();
+        handler.Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(() => { aanroepen++; return new HttpResponseMessage(HttpStatusCode.NotFound); });
+
+        var result = await SportlinkSyncPipeline.FetchAndStoreMatchDetailsAsync(
+            "http://test/wedstrijd-informatie?wedstrijdcode=5", "TEST", NullLogger.Instance,
+            new HttpClient(handler.Object), TimeSpan.Zero);
+
+        result.Should().BeFalse();
+        aanroepen.Should().Be(1);
+    }
 }

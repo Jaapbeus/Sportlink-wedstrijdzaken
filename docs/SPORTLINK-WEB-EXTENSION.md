@@ -397,8 +397,9 @@ Vier dingen om te onthouden:
   **Sinds #994 ook `PUT .../officials` (sinds #1319 live bevestigd, was scaffolding/code-gelockt):** officials
   (scheidsrechter/AR1/AR2) toewijzen via `AssignOfficialsAsync`/`PutMatchOfficialsAsync`
   (`competition/match/official/MatchOfficialsAction`). Endpoint én requestbody
-  (`OfficialsToBeAssigned: [{OfficialPosition, PersoonId}]`) zijn NOOIT live gezien — zie
-  `SportlinkOfficialToewijzing.cs`. `VerrijkOfficialsResultaat` is de taakspecifieke uitbreiding op
+  (`OfficialsToBeAssigned: [{OfficialPosition, PersoonId}]`) blijven modelaannames — zie
+  `SportlinkOfficialToewijzing.cs`; de eigenaar heeft het endpoint na #1319 live vrijgegeven.
+  `VerrijkOfficialsResultaat` is de taakspecifieke uitbreiding op
   de generieke responsparser: als één official in de respons een `ValidationDescription` heeft,
   wordt `IsSuccess=false` gezet (Sportlinks "opgeslagen met fouten"), ook al is de HTTP-status 200.
   De Blazor-UI biedt bewust alleen een losse tekstinvoer per positie (relatiecode/persoons-ID) —
@@ -409,15 +410,15 @@ Vier dingen om te onthouden:
   `ar2RelatieCode` terug (`SportlinkMatch.MatchOfficials`, Planner.Shared) — uitsluitend die twee
   velden uit `matchOfficials`, nooit naam/geboortedatum/foto-URL (zie het incident hieronder in
   §5). Genuld door de server als de rol geen `ScheidsrechterFeatureToegestaan` heeft (dezelfde
-  #1341-gate als de toewijs-actie zelf, `SportlinkRolFeature.VoegToestemmingenToe`). **Het exacte
-  JSON-veldnaam voor de relatiecode in `matchOfficials` is, net als `OfficialsToBeAssigned`
-  hierboven, NOOIT live geverifieerd** — zie de TODO bij `SportlinkMatchOfficial.RelatieCode` en
-  §8 hieronder voor de nog niet bevestigde AVG-vraag die bij deze prefill hoort.
+  #1341-gate als de toewijs-actie zelf, `SportlinkRolFeature.VoegToestemmingenToe`). **De exacte
+  JSON-veldnaam voor de relatiecode in `matchOfficials` blijft een onbevestigde aanname** — zie de
+  waarschuwing bij `SportlinkMatchOfficial.RelatieCode`. De openstaande DPO-vraag staat in §8.
 - **Sinds #995 ook `PUT .../change-request` — wijzigingsverzoek datum/tijd/accommodatie, ALLEEN
   stap 1 (valideren), sinds #1319 live bevestigd (was code-gelockt):** dit is de enige mutatiesoort die een ECHTE tegenstander
   raakt (Sportlink stuurt bij bevestiging een goedkeuringsverzoek naar de tegenstander) — zie het
-  `NIET VERDER BOUWEN`-markeringscomment op `SportlinkClubClient.RequestMatchChangeAsync` en
-  `ISportlinkClubClient`. Zelfde onderliggende endpoint als `.../field`
+  `NIET VERDER BOUWEN`-markeringscomment boven `SportlinkWedstrijdDetails.RequestMatchChangeAsync`;
+  de interface beschrijft ook dat alleen stap 1 is gebouwd. Stap 2 (bevestigen) ontbreekt. Zelfde
+  onderliggende endpoint als `.../field`
   (`competition/match/UpdateMatchDetails`), maar bewust GEEN parametrisering van
   `PutMatchDetailsAsync` — een eigen `PutMatchDetailsChangeRequestAsync`/
   `BuildMatchChangeRequestBody` kopieert de structuur (verse snapshot ophalen → envelope met
@@ -425,8 +426,8 @@ Vier dingen om te onthouden:
   wijziging aan dit nog-onbevestigde pad #993's live-bevestigde veld-wijziging nooit kan raken.
   `ParseMatchChangeValidatie` leest Sportlinks (ONBEVESTIGDE) `ConfirmationNeeded`-veld defensief
   uit (`ValidationResultMessages` kan kale strings of objecten met `Message`/`Description`
-  bevatten) — maar wordt in de praktijk nooit aangeroepen zolang de lock actief is: een dry-run
-  slaat de echte HTTP-aanroep over, dus is er nooit een respons om te parsen. `SportlinkMatchChangeValidatie`/
+  bevatten). Een echte respons wordt geparseerd wanneer `sportlinkDryRun` uit staat.
+  `SportlinkMatchChangeValidatie`/
   `SportlinkMatchChangeRequestResult` staan bewust LOS van het gedeelde `SportlinkMutationResult` —
   dat generieke type blijft ongewijzigd voor alle andere mutaties. `SportlinkMutationGuard` kreeg
   een nieuwe soort `DatumTijdAccommodatie` die uitsluitend op `IsHomeMatch` + de generieke niet-
@@ -486,7 +487,7 @@ Vier dingen om te onthouden:
   voor élke aanroep, dus ook voor PUT/POST. Dat is onveilig: een timeout of gateway-5xx *nádat*
   Sportlink de aanvraag al verwerkt heeft, is voor de client niet te onderscheiden van "nooit
   aangekomen". Herhalen zou dan een tweede oefenwedstrijd aanmaken (`CreateClubMatchAsync`, POST;
-  het verwijderpad van #1440 staat nog hard op dry-run) of een wijzigingsverzoek tweemaal bij een echte tegenstander
+  het verwijderpad van #1440 is sinds #1458 live bevestigd en volgt `sportlinkDryRun`) of een wijzigingsverzoek tweemaal bij een echte tegenstander
   afleveren (`RequestMatchChangeAsync`). Sinds de fix voor #1417 kiest elke call site van
   `ExecuteWithTokenRetryAsync` expliciet een `RetryBeleid` — bewust zonder default:
 
@@ -542,8 +543,11 @@ Vier dingen om te onthouden:
   Pending-rij gebruikt daarom de placeholder `"NIEUW"`, met een gegenereerde GUID in `CorrelationId`
   om Pending- en Voltooid-rij te koppelen. Het écht opslaan van het teruggekregen `PublicMatchId`
   vereist een uitbreiding van `ISportlinkMutationAuditService.VoltooiAsync` (een extra optionele
-  parameter, raakt beide tiers) — bewust NIET gebouwd in deze ronde (`// TODO` in de broncode),
-  niet nodig zolang dit pad toch altijd `"DryRunLocked"` teruggeeft. **Bewust NIET gebouwd (toekomstig
+  parameter, raakt beide tiers) en is niet gebouwd. Omdat aanmaken sinds #1319 de instelling
+  `sportlinkDryRun` volgt (en sinds #1427 live slaagt), is dit een open functioneel gat op beide
+  tiers (zie issue #1879): bij een echte aanmaak legt de audit alleen de placeholder `"NIEUW"`
+  vast, niet het echte `PublicMatchId`.
+  **Bewust NIET gebouwd (toekomstig
   werk):** uitslag vastleggen (`ClubMatchScore`), de drie overige
   ondersteunende endpoints (`ClubMatchDefaults`, `PickListsMatchInformation`,
   `codetable/AgeClassList`), en een "vrij tijdslot"-concept in de Dagplanning-Gantt — het formulier
@@ -563,8 +567,8 @@ Vier dingen om te onthouden:
   als `AgeClassCode`. `FacilityId` komt uit de club-instelling `accommodatie`,
   op naam opgezocht in `PickListsLocation` (read-only GET, per club één uur in-memory gecachet;
   eerst exact, anders één unieke gedeeltelijke match — meerdere treffers → leeg). Elke mislukte
-  vertaling wordt een `Waarschuwing` in de respons, geen fout: het pad is toch code-gelockt en de
-  beheerder moet zien wat er (gesimuleerd) mee zou gaan. **Open vraag, pas te beantwoorden met de
+  vertaling wordt een `Waarschuwing` in de respons, geen fout: de aanroep volgt sinds #1319 `sportlinkDryRun`
+  (het aanmaakcontract is sinds #1427 live bevestigd) en de beheerder moet zien wat er mee gaat of, bij dry-run, mee zou gaan. **Open vraag, pas te beantwoorden met de
   netwerktrace:** hanteert Sportlink Club voor `PublicHomeTeamId` hetzelfde numerieke team-ID als
   de dataservice, of een publiek string-ID zoals `PublicMatchId` (`M...`)? Het diagnostische
   `GET .../club-match/picklists` blijft daarvoor bestaan. Blijkt het een ander ID, dan is het
@@ -583,7 +587,8 @@ Vier dingen om te onthouden:
      en `PickListsMatchInformation` (`{ Activities: [{ IdTag, Description }], AgeClasses: [{ Id,
      Description }] }`);
   2. de POST met `HomeTeam`/`AwayTeam` als tekst, het eigen `T…`-team-ID als `PublicHomeTeamId` én
-     `PublicAwayTeamId`, `MatchDate` + `StartTime` apart, `SportIdTag`, `IsHomeMatch`,
+     `PublicAwayTeamId` (in die trace stond aan beide kanten een clubteam — voor een externe
+     tegenstander onjuist, zie de correctie #1871 hieronder), `MatchDate` + `StartTime` apart, `SportIdTag`, `IsHomeMatch`,
      `SubFacilityId`, `FieldSize` "1.0" en `FieldOffset` "0" — respons HTTP 200 met `PublicMatchId`.
 
   De vertaling staat in `Planner.Shared/Integrations/SportlinkClub/ClubMatchAanvraagBouwer.cs`
@@ -592,6 +597,18 @@ Vier dingen om te onthouden:
   `ExternalSportId/SportTag` van het team). Wat niet af te leiden is valt terug op
   `ClubMatchDefaults` met een waarschuwing; een onbekend team of veld is een 400. Vrije tekst gebruikt
   het standaardteam — exact wat Sportlinks eigen formulier doet.
+- **ClubMatch: thuis- en uit-ID apart (#1871, 2026-11-11).** Tot deze fix ging het eigen `T…`-ID ook als
+  `PublicAwayTeamId` mee. Sportlink toont de teamnaam bij het ID en negeert dan de tekst `AwayTeam`: het
+  eigen team stond als uitteam, de tegenstander verdween, en die koppeling was in Sportlink Club daarna niet
+  meer naar vrije tekst te wijzigen (alleen verwijderen en opnieuw aanmaken). Het contract komt uit
+  Sportlinks publieke frontend-bundle en is live bevestigd met Sportlinks eigen formulier (alleen de vorm
+  gelogd, geen headers of tokens): `ClubMatchDefaults` geeft voor thuis én uit de "geen team"-sentinel
+  (`SportlinkClubMatchAanvraag.GeenTeamId`, Sportlink-breed, geen clubwaarde); aanmaken stuurt het eigen
+  clubteam als `PublicHomeTeamId` + `HomeTeam` = Sportlinks `TeamName`, en de tegenstander als `AwayTeam`
+  (tekst) + `PublicAwayTeamId` = de sentinel; een wijziging van het uitteam naar vrije tekst
+  (`UpdateMatchDetails`, sentinel) wordt dan wél opgeslagen. `ClubMatchAanvraagBouwer` volgt Sportlinks
+  formulier (`defaults.Public…TeamId`, anders de sentinel) en stuurt nooit een clubteam-ID of het thuis-ID
+  als uit-ID. Een vrije thuisteamnaam gaat zonder standaardteam niet meer als fout terug maar met de sentinel.
 - **Wedstrijd aanmaken — verbeteringen (#1437).** Gebouwd op beide gebouwde tiers:
   1. **Velddeel.** `FieldSize` komt uit de keuze Heel/Half/Kwart/Achtste veld (`1.0`/`0.5`/`0.25`/`0.125`,
      `FieldOffset` blijft `0`); `ClubMatchVelddeel` (Planner.Shared) is de enige plek met die waarden.
@@ -642,20 +659,12 @@ Vier dingen om te onthouden:
   (`DryRun` gaat vóór `IsSuccess`, want die is bij dry-run altijd `true`).
   `SportlinkEndpointSupport.BepaalAuditResultaat` en `SportlinkMatchFunction.BepaalAuditResultaat`
   zijn op beide tiers nog slechts doorgeefluiken naar die ene regel.
-- **Code-niveau `forceDryRun`-lock (#994), onafhankelijk van de instelling hierboven.** Naast
-  `sportlinkDryRun` (een bewuste, per-club instelling voor BEVESTIGDE mutaties) bestaat sinds #994
-  een tweede, harde vergrendeling voor een mutatie waarvan de requestbody nooit met een
-  netwerktrace bevestigd is (de eerste: officials toewijzen, #994; ook gebruikt door #995's
-  wijzigingsverzoek — `UpdateMatchDetailsChangeRequestLiveBevestigd` — en #997's
-  oefenwedstrijd-aanmaak — `ClubMatchLiveBevestigd`).
-  `PutMutationAsync` kreeg een `forceDryRun`-parameter (`if (forceDryRun || _isDryRun())`) — de club
-  kan dit NIET uitzetten via Instellingen, ongeacht de stand van `sportlinkDryRun`. Elke
-  mutatiemethode voor zo'n onbevestigd endpoint geeft `forceDryRun: !XyzLiveBevestigd` mee, met een
-  bijbehorende constante die bij een onbevestigd endpoint op `false` staat. De vier huidige
-  `LiveBevestigd`-constanten staan inmiddels op `true`; onderstaande uitleg beschrijft het mechanisme —
-  grep-baar en pas door een mens (nooit een agent, §4.4) op `true` te zetten in een aparte,
-  reviewbare PR ná een live trace. De log-regel bij deze tak vermeldt expliciet
-  "code-lock, body niet live bevestigd" (anders dan de generieke dry-run-logregel), en
+- **Interne `forceDryRun`-lock.** Historisch was er naast `sportlinkDryRun` ook een harde lock voor
+  onbevestigde mutaties. De huidige flags voor officials, wijzigingsverzoek, oefenwedstrijd en
+  verwijderen staan op `true`; deze endpoints volgen nu de clubinstelling. Onbevestigde payload-
+  details blijven afzonderlijk gedocumenteerd en zijn geen reden om hun status als simulatie te
+  beschrijven. De uitvoerder houdt het mechanisme beschikbaar voor een toekomstige aparte lock.
+  Als zo'n lock actief is, vermeldt de logregel expliciet "code-lock, body niet live bevestigd", en
   `SportlinkMutationResult`/`SportlinkMutatieResultaatDto` kregen er een vierde veld
   `IsForcedDryRun` bij — het audit-resultaat wordt dan `"DryRunLocked"` (gaat vóór `"DryRun"` in
   `BepaalAuditResultaat`). `PutMutationAsync` kreeg ook een optionele `verrijkResultaat`-delegate
@@ -682,7 +691,7 @@ Vier dingen om te onthouden:
   `sportlinkmutationaudit` (dat is "één rij per mutatiepoging", dit is geen mutatie). Bij een
   afwijking hergebruikt de timer het BESTAANDE noodmail-pad
   (`EmailProcessorFunction`'s `INoodmailThrottleStore`/`IEmailGraphService`-patroon, eigen
-  throttle-sleutel `sportlink-contract-noodmail`, 24-uurs-interval) — bewust geen nieuw
+  throttle-sleutel `sportlink-contract-noodmail`, hoogstens één keer per Nederlandse kalenderdag, Europe/Amsterdam) — bewust geen nieuw
   alarmeringsmechanisme (kostenbeleid: geen betaalde Log Analytics/App Insights-alert-regel, geen
   GitHub-issue-reporter).
 
@@ -821,20 +830,14 @@ test getriggerd wordt:
   ook niet tijdelijk — gebruik `JsonDocument` om gericht alleen de raw text van het specifieke
   veld te loggen dat de fout veroorzaakt (zie het patroon in git-historie van #1038 voor een
   voorbeeldimplementatie die nooit in `MatchOfficials` afdaalt zonder dat expliciet te bedoelen).
-- **#994's officials-toewijzing was scaffolding, geen live-getest pad — sinds #1319 wél.** Endpoint
-  en requestbody waren gereverse-engineerd, nooit met een netwerktrace gezien — vandaar de
-  code-niveau `forceDryRun`-lock (§4.2/§6.4) die ongeacht `sportlinkDryRun` altijd simuleerde. De
-  eigenaar heeft `MatchOfficialsActionLiveBevestigd` op 27-09-2026 na een live netwerktrace op
-  `true` gezet (#1319): deze mutatie volgt vanaf nu gewoon de club-instelling `sportlinkDryRun`,
-  net als elke andere bevestigde mutatie.
-- **#995's wijzigingsverzoek is de enige mutatie die een ECHTE tegenstander raakt — en zelfs stap 1
+- **#994 officials-toewijzing** volgt sinds de eigenaars-live-trace van #1319 de instelling
+  `sportlinkDryRun`. De exacte positiewaarden blijven onbevestigd; zie
+  `SportlinkOfficialToewijzing.cs`.
+- **#995's wijzigingsverzoek kan een ECHTE tegenstander raken — en zelfs stap 1
   (valideren) kan al het gevaarlijke moment zijn.** Sportlink werkt naar verluidt in twee stappen
-  (valideren → bevestigen), maar dat is niet met een netwerktrace geverifieerd. Als Sportlinks
-  eerste PUT in werkelijkheid geen "dry validate" blijkt te zijn maar al het verzoek verstuurt, is
-  deze scaffolding-stap zelf al de gevaarlijke actie. **De eigenaar heeft
-  `UpdateMatchDetailsChangeRequestLiveBevestigd` op 27-09-2026 na een live netwerktrace op `true`
-  gezet (#1319)** — de code-niveau `forceDryRun`-lock die dit softwarematig afving, is dus
-  ingetrokken; deze mutatie volgt nu de gewone club-instelling `sportlinkDryRun`. Stap 2
+  (valideren → bevestigen); de bevestigingsvorm is niet geverifieerd. De eigenaar heeft stap 1
+  na een live trace vrijgegeven (#1319), waarna deze mutatie de gewone club-instelling
+  `sportlinkDryRun` volgt. Een echte PUT kan mogelijk al een tegenstander raken. Stap 2
   (bevestigen) blijft bewust NIET gebouwd: geen endpoint, geen client-methode, geen UI-knop — dat is
   een aparte, ongewijzigde scope-beslissing, los van deze lock.
 - **#996's actie-pad (goedkeuren/afwijzen) kan niet veilig getest worden met de vaste testwedstrijd
@@ -844,13 +847,10 @@ test getriggerd wordt:
   binnen Sportlink zelf. Een test van de actie zou dus een echte beslissing forceren op een echt
   verzoek van een echte tegenstander — alleen te doen met expliciete instemming van de eigenaar
   over een specifiek, door hem aangewezen verzoek.
-- **#997's oefenwedstrijd-aanmaak had de meeste onbekenden van alle #986-sub-issues — de
-  code-niveau `forceDryRun`-lock is sinds #1319 opgeheven (`ClubMatchLiveBevestigd = true`),
-  de onderliggende onzekerheid over endpoint/requestbody niet.** Deze mutatie respecteert nu de
-  gewone club-instelling `sportlinkDryRun` in plaats van altijd te simuleren, maar endpoint,
-  volledige requestbody, en de exacte respons-veldnamen van de twee aangesloten picklists blijven
-  grotendeels gereverse-engineerd en zijn niet apart met een eigen netwerktrace bevestigd — anders
-  dan bij #994/#995 hierboven is bij #997 geen losse trace gedocumenteerd. Uitslag vastleggen
+- **#997 oefenwedstrijd-aanmaak** volgt sinds de eigenaars-live-trace van #1319 de instelling
+  `sportlinkDryRun`; onzekerheden over afzonderlijke payloadvelden blijven. Deze mutatie respecteert nu de
+  gewone club-instelling `sportlinkDryRun` in plaats van altijd te simuleren. De exacte respons-
+  veldnamen van de twee aangesloten picklists blijven onzeker. Uitslag vastleggen
   (`ClubMatchScore`) is bewust niet aangesloten. **Verwijderen (`ClubMatchDelete`, #1440) is gebouwd en sinds #1458 live**
   (`ClubMatchDeleteLiveBevestigd = true`) — zie de alinea "#1440" in §6.4.
   Een toekomstige koppeling tussen een zelf-geplande oefenwedstrijd in
@@ -917,9 +917,9 @@ Elke aanroep zet drie headers: `X-Navajo-Entity` (het aangeroepen pad, geen vast
   overschreven (zie §4.2 voor waarom).
 - **`MatchChangeRequestAction`**: `{ Action ("APPROVE"|"DENY"), PublicMatchId, PublicPersonId,
   PublicRequestId, Remarks }`.
-- **`MatchOfficialsAction` (#994, ONBEVESTIGD)**: `{ PublicMatchId, OfficialsToBeAssigned: [
-  { OfficialPosition, PersoonId } ] }` — de elementstructuur is nooit met een netwerktrace gezien,
-  afgeleid uit `OfficialPosition` zoals dat terugkomt in `GET .../MatchOfficials`. Respons:
+- **`MatchOfficialsAction` (#994, eigenaar vrijgegeven na live trace #1319)**:
+  `{ PublicMatchId, OfficialsToBeAssigned: [ { OfficialPosition, PersoonId } ] }`.
+  De exacte positiewaarden en elementvelden blijven aannames. Respons:
   `{ Officials: [ { ..., ValidationDescription } ] }` — één niet-lege `ValidationDescription` zet
   `IsSuccess=false`, ook bij HTTP 200 (zie `VerrijkOfficialsResultaat`).
 - **`UpdateMatchDetails` voor het wijzigingsverzoek (#995, ONBEVESTIGD, ALLEEN stap 1)**: zelfde
@@ -929,11 +929,11 @@ Elke aanroep zet drie headers: `X-Navajo-Entity` (het aangeroepen pad, geen vast
   `PublicApplicantId` zijn hier eigen, ONBEVESTIGDE aannames (#993's veld-wijziging gebruikt
   `false` resp. een live-bevestigde lege string, maar voor een EIGEN-veld-wijziging, geen verzoek
   aan een tegenstander). Respons: `{ ConfirmationNeeded: null | { ValidationResultMessages: [...],
-  HasBlockingMessages } }` — nooit met een netwerktrace gezien; elementen van
+  HasBlockingMessages } }` — de exacte responsvorm blijft onbevestigd; elementen van
   `ValidationResultMessages` kunnen kale strings of objecten met een `Message`-/`Description`-veld
   zijn, en de positie van `HasBlockingMessages` (genest of toplevel) is evenmin bevestigd — zie
   `SportlinkMatchChangeValidatieLezer.ParseMatchChangeValidatie` voor de defensieve aanpak. Deze parser wordt in de
-  praktijk nooit aangeroepen zolang de code-lock actief is.
+  praktijk aangeroepen na een echte respons wanneer `sportlinkDryRun` uit staat.
 - **Afwijzingsvorm (HTTP 420, live bevestigd #1040)**: `{"Error":true,"Status":"420",
   "Message":"Validation exception : <code>","ViolationCodes":["<code>", ...],
   "Violations":{"<code>":"Nederlandse omschrijving"}}`. Succes wordt bepaald door `Error != true &&
@@ -944,15 +944,16 @@ Elke aanroep zet drie headers: `X-Navajo-Entity` (het aangeroepen pad, geen vast
   (optionele `HttpMethod`-parameter, default `Put`). Een afwijzing zonder `Violations` (zoals de
   602 van vóór #1427) krijgt Sportlinks `Message` als violation.
 
-### 6.4 Dry-run (#998) en de code-niveau forceDryRun-lock (#994)
+### 6.4 Dry-run (#998) en interne code-locks
 In dry-run wordt de body nog wél geserialiseerd (zodat een serialisatiefout alsnog opduikt) maar
 niet verstuurd — `PutMutationAsync` retourneert direct `{IsSuccess: true, Violations: null,
 IsDryRun: true}` zonder een HTTP-aanroep te doen. De body zelf wordt nooit gelogd (kan
 teamnamen/persoonsgegevens bevatten); alleen `{EntityName}`/`{Endpoint}` verschijnen in de log.
 
-Sinds #994 kan dezelfde tak ook bereikt worden door een `forceDryRun: true`-parameter, ONAFHANKELIJK
-van de club-instelling `sportlinkDryRun` — voor een mutatie waarvan de requestbody nog niet live
-bevestigd is (het eerste voorbeeld: `AssignOfficialsAsync`). In dat geval krijgt het resultaat ook
+Historisch kon dezelfde tak ook bereikt worden door `forceDryRun: true`, onafhankelijk van de
+club-instelling. De momenteel vrijgegeven mutaties (#994/#995/#997/#1440) hebben hun code-lock
+opgeheven en volgen `sportlinkDryRun`. Het resultaat kan `IsForcedDryRun` nog onderscheiden als
+een toekomstige code-lock wordt toegevoegd. In dat geval krijgt het resultaat ook
 `IsForcedDryRun: true` mee (audit-resultaat `"DryRunLocked"`) en gebruikt de logregel expliciet de
 tekst "code-lock, body niet live bevestigd" — zo is in de Function-log meteen te zien of een
 gesimuleerde mutatie kwam door de club-instelling of door deze harde, niet-instelbare lock.
@@ -1026,15 +1027,13 @@ ongewijzigde scope-beslissing, los van deze lock.
 - [`docs/ENTRA-AUTH-BEHEER.md`](ENTRA-AUTH-BEHEER.md) — rolbeheer en N-user-test
 - [`docs/ARCHITECTUUR-DATABASE-TIERS.md`](ARCHITECTUUR-DATABASE-TIERS.md) — tier-bouwvolgorde; §4.2 hierboven legt uit waarom `SportlinkClubClient` wél in `Planner.Shared` zit maar de tokenopslag per tier verschilt
 
-## 8. Openstaande DPO-vraag — relatiecode-prefill (#1340), VOORSTEL nog niet bevestigd door eigenaar
+## 8. Openstaande DPO-vraag — relatiecode-prefill (#1340), VOORSTEL niet bevestigd
 
-> **Dit is een VOORSTEL, GEEN besluit.** De eigenaar heeft op 2026-09-26 expliciet gevraagd om de
-> implementatie van #1340 te starten zonder op formele bevestiging van deze drie vragen te
-> wachten ("ik test dit zelf op mijn acceptatieomgeving — laat een duidelijke TODO staan, maar je
-> mag beginnen met coderen"). Dat is toestemming om de smalle technische scope te bouwen, GEEN
-> toestemming om deze paragraaf als beantwoord te behandelen. Behandel de relatiecode tot een
-> expliciete owner-bevestiging als een indirect persoonsgegeven (AVG) en werk deze sectie pas bij
-> nadat de eigenaar zelf reageert — nooit door een aanname van een agent.
+> **Dit is een VOORSTEL, GEEN besluit.** De eigenaar gaf toestemming om de technische implementatie
+> te starten, maar daarmee zijn de vragen over rechtsgrond, bewaartermijn en audit-logging niet
+> beantwoord. De eigenaar heeft concrete bewaartermijnen expliciet apart gehouden. Behandel de
+> relatiecode als indirect persoonsgegeven totdat de eigenaar deze drie keuzes rechtstreeks
+> bevestigt; vul ze niet op basis van algemene aanbevelingen in.
 
 **Context.** #1340 herziet de AVG-grens uit §5/§6 hierboven (`matchOfficials` bevat naam,
 geboortedatum en foto-URL, live bevestigd tijdens het incident van 2026-09-06) door PRECIES ÉÉN
@@ -1049,21 +1048,12 @@ eigen DB staat").
 ### Vraag 1 — rechtsgrond
 
 **VOORSTEL:** gerechtvaardigd belang van de club bij correcte wedstrijdorganisatie (AVG art. 6 lid
-1 sub f) — dezelfde grondslag die al impliciet gold voor de relatiecode als INVOERVELD bij de
-#994-toewijzing (die bestond al vóór #1340; #1340 voegt alleen prefill toe, geen nieuwe
-verwerkingsdoel). Dit is een aanname, geen onderbouwde toets: een volledige
-gerechtvaardigd-belang-afweging (doel, noodzakelijkheid, belangenafweging tegen de official) is
-niet gemaakt en hoort bij de owner-bevestiging.
+1 sub f). Dit is geen bevestigde grondslag of vastgelegde belangenafweging.
 
 ### Vraag 2 — bewaartermijn
 
-**VOORSTEL:** geen aparte bewaartermijn nodig, want de relatiecode wordt niet bewaard — zie
-"Context" hierboven. Bij elke weergave van het paneel haalt de server een verse `GET .../Match`-
-respons op; er is geen cache, geen kolom, geen tabel die de relatiecode vasthoudt. Zodra Sportlink
-zelf de toewijzing wijzigt of verwijdert, verandert de eerstvolgende prefill mee. Als dit voorstel
-klopt, is er geen "bewaartermijn" in de AVG-zin — wel blijft gelden dat de relatiecode nooit
-alsnog in een cache, log-tabel of exportbestand terecht mag komen zonder dat deze vraag opnieuw
-gesteld wordt.
+**VOORSTEL:** geen aparte bewaartermijn, als de relatiecode niet wordt bewaard. Controleer dit
+voorstel met de eigenaar; concrete bewaartermijnen vereisen een afzonderlijk besluit.
 
 ### Vraag 3 — audit-logging (`RondMutatieAfAsync`)
 
@@ -1073,22 +1063,15 @@ gesteld wordt.
 in `ExecuteMutationAsync`, de gedeelde stap onder de vier PUT-mutatie-endpoints (kleedkamers, veld,
 officials, wijzigingsverzoek). De relatiecode-prefill wordt dus **niet** gelogd door dit issue.
 
-**Wat al vóór #1340 bestond en ongewijzigd blijft:** de bestaande `PUT .../officials`-mutatie
-(#994) logt via `ExecuteMutationAsync` wél een `WaardeNa` met de door de beheerder ingevoerde
-relatiecode (`OfficialToewijzingDto.PersoonId`, geserialiseerd met `JsonConvert.SerializeObject`)
-in de audit-tabel. Dat is geen nieuw gedrag van #1340 — het bestond al sinds #994 — maar volgt uit
-dezelfde constatering die de openstaande DPO-vraag stelt: als een relatiecode een indirect
-persoonsgegeven is, valt die bestaande `WaardeNa`-kolom onder dezelfde AVG-regels als de rest van
-de audit-tabel (bewaartermijn, toegangscontrole, eventueel een verwijderverzoek). **Dit is een
-bestaande situatie die #1340 blootlegt, geen regressie die #1340 veroorzaakt** — maar de
-eigenaar-bevestiging op vraag 1/2 hierboven zou logisch ook voor deze bestaande kolom moeten
-gelden, niet alleen voor de nieuwe prefill.
+**Openstaande vraag:** het bestaande auditlog legt de door de beheerder ingevoerde relatiecode
+van de officials-mutatie vast. De eigenaar moet bevestigen of deze verwerking is toegestaan en
+welke bewaartermijn daarvoor geldt. Het leespad zelf introduceert geen extra auditregel.
 
 ### Samenvatting voor de eigenaar
 
-| Vraag | Voorstel | Status |
+| Vraag | Voorstel / bevinding | Status |
 |---|---|---|
 | Rechtsgrond | Gerechtvaardigd belang (art. 6 lid 1 sub f) | VOORSTEL, niet bevestigd |
-| Bewaartermijn | Geen — relatiecode wordt nooit opgeslagen, alleen live doorgegeven | VOORSTEL, niet bevestigd |
+| Bewaartermijn | Geen apart regime, mits niet bewaard | VOORSTEL, niet bevestigd; concrete termijn vereist eigenaarbesluit |
 | Audit-logging (nieuw leespad #1340) | Gecontroleerd: gebeurt niet | Feitelijk vastgesteld, geen aanname |
-| Audit-logging (bestaand schrijfpad #994) | Bestond al, valt onder dezelfde AVG-vraag | Feitelijk vastgesteld — vraagt alsnog om dezelfde bevestiging |
+| Audit-logging (bestaand schrijfpad #994) | Bestaand auditlog bevat relatiecode | Bevestiging en bewaartermijn open |

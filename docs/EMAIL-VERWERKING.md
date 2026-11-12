@@ -52,13 +52,16 @@ Postgres-definities staan in `Database.Postgres/migrations/`.
 
 ## Verwerkingsstroom (overzicht)
 
-De verwerking heeft twee fasen. Dat is geen implementatiedetail: in fase 1 blijft de database
-slapen, zodat een inbox met alleen niet-planningsmail geen Azure SQL-kosten en geen wektijd kost.
-De keerzijde is dat de idempotentie-check (§1d) pas in **fase 2** kan draaien — een bericht dat al
-definitief is afgehandeld kost dus nog wél een AI-classificatie.
+De verwerking heeft twee fasen. Voor een batch die na de voorfilters geclassificeerd wordt, laadt
+fase 1 eerst de goedgekeurde few-shot-voorbeelden via de bestaande database-/instellingenroute. De
+database kan daardoor al vóór de AI-aanroep wakker worden; de volledige verwerkingslus en
+idempotentie-check (§1d) blijven in fase 2. Een lege of vooraf volledig gefilterde inbox raakt de
+database nog steeds niet. Een succesvol geladen lege voorbeeldset is geldig. Als de bron niet
+beschikbaar is, stopt de poll vóór classificatie en de buiten-scope-mutaties; de bestaande
+database-noodmail met uitval-throttle meldt de storing.
 
 ```
-FASE 1 — Graph API + AI, database blijft slapen
+FASE 1 — Graph API, few-shot-context en AI
 ────────────────────────────────────────────────────────────────────────────────
 De 10 OUDSTE ongelezen berichten uit de inbox (Graph: top=10, orderby receivedDateTime)
         │
@@ -72,7 +75,10 @@ De 10 OUDSTE ongelezen berichten uit de inbox (Graph: top=10, orderby receivedDa
 └──────────────────────────────────────────────────────────────────────────────┘
         │
         ▼
-   AI-classificatie (BerichtAiService)
+   Goedgekeurde few-shots laden (maximaal 20; database wake/settings-route)
+        │  laadfout → stoppen vóór AI/label/gelezen; bestaande database-noodmail
+        ▼
+   AI-classificatie (BerichtAiService, met de geladen few-shots)
         │
         ├─ BuitenScope ──────→ label "Geen AI antwoord" + mark as read → STOP
         │                      (géén rij in planner.EmailVerwerking)
@@ -80,9 +86,9 @@ De 10 OUDSTE ongelezen berichten uit de inbox (Graph: top=10, orderby receivedDa
         └─ Overige types ─────→ door naar fase 2
         │
         ▼
-   Alles buiten scope én geen classificatiefouten? → STOP, database blijft slapen
+   Alles buiten scope én geen classificatiefouten? → STOP, fase 2 overslaan
 
-FASE 2 — database wordt gewekt
+FASE 2 — databaseverwerking
 ────────────────────────────────────────────────────────────────────────────────
    WaitForDatabaseAsync + AppSettings laden
         │  niet bereikbaar → eenmalig noodmail naar de mailbox → STOP
@@ -104,12 +110,6 @@ FASE 2 — database wordt gewekt
 │    → UpdateReplyStatus (IsReplyOpOnsAntwoord=1, ReplyOpVerwerkingId)          │
 │    → DetecteerCorrectieAsync: is dit een correctie op de classificatie?       │
 │       → ja: INSERT ClassificatieCorrectie (status: te beoordelen)             │
-└──────────────────────────────────────────────────────────────────────────────┘
-        │
-        ▼
-┌─ Few-shot herclassificatie (#323) ───────────────────────────────────────────┐
-│  Zijn er gevalideerde leermomenten? → herclassificeer met few-shot voorbeelden │
-│  Levert dat BuitenScope op → status BuitenScope + label, géén antwoord (#712)  │
 └──────────────────────────────────────────────────────────────────────────────┘
         │
         ▼
@@ -145,18 +145,21 @@ FASE 2 — database wordt gewekt
 └──────────────────────────────────────────────────────────────────────────────┘
         │
         ▼
+   TeamContactOpvragen: één atomair geclaimde doorstuurpoging vóór de reply;
+   alleen een duurzaam vastgelegde Graph-acceptatie laat de reply doorgaan.
+   Zonder ontvanger of bij onbekende uitkomst: Review, geen automatische reply.
+        │
+        ▼
    Antwoord versturen naar de afzender (reply in dezelfde conversatie)
         │
         ▼  alleen NA een daadwerkelijk verstuurd antwoord:
         ├─ HerplanVerzoek      → interne notificatie naar de teamleider (#66)
-        └─ TeamContactOpvragen → vraag doorsturen naar de coach (#168)
 ```
 
-> **De twee vervolgacties onderaan zijn voorwaardelijk.** Ze draaien uitsluitend als het antwoord
-> aan de afzender echt is verstuurd. In review-mode, bij een onderdrukt antwoord (§1a) of bij een
-> Graph-verzendfout wordt de teamleider dus **niet** genotificeerd en gaat de begeleidingsvraag
-> **niet** naar de coach. Beide acties falen bovendien stil (alleen een logregel): een fout hierin
-> onderbreekt de hoofdverwerking niet.
+> **De teamleider-notificatie onderaan is voorwaardelijk.** Zij draait uitsluitend als het antwoord
+> aan de afzender is verstuurd. Bij `TeamContactOpvragen` gebeurt het doorsturen vóór de reply en
+> alleen na de review-, zekerheids- en afzenderpoorten. Een onbesliste Graph-uitkomst wordt niet
+> opnieuw verstuurd; ook bij een mislukte opslag van een Graph-acceptatie volgt handmatige review.
 
 ### Zelflerend classificatiesysteem (#323)
 
@@ -185,11 +188,35 @@ te zetten — een instelling die de enige teamherkenning kan uitschakelen is gee
 maar een voetangel. (Een eerdere versie van dit document beschreef een app setting
 `TeamResolverMode` met standen `off`/`shadow`/`on`; die bestaat niet meer.)
 
+When both classified fields resolve to different own teams, #1816 requires authoritative source-owned fixture context before selecting one. Missing or conflicting evidence sends the message to manual Review before planning, contact/BCC lookup, template generation, send intent or sending. Source ownership is `his.matches.teamnaam`; participation as the opponent alone is not ownership evidence. Unresolved multiple candidates are never chosen automatically.
+
 Welk van de twee genoemde teams het eigen team is, wordt bepaald door te kijken wélke in de teamlijst
 staat — niet meer door te raden op spaties of clubprefix.
 
+**Teampoort en speelduur vóór de beschikbaarheidscheck (#1861).** Een beschikbaarheidsvraag gaat alleen naar de
+planner met een herkend eigen team (`Planner.Shared/Email/BeschikbaarheidVoorwaarden.cs`, beide tiers):
+
+1. Geen herkend eigen team: geen plannercheck. Staat er op de gevraagde datum al een wedstrijd tegen de genoemde
+   tegenstander, dan volgt sjabloon H; anders de wedervraag om het team (sjabloon I). Een wedstrijd tegen dezelfde
+   tegenstander op een **andere** datum wordt niet meer gebruikt om het eigen team af te leiden (eigenaarsbesluit:
+   bij meerdere eigen teams tegen die club werd stil de oudste gekozen). Alleen de eigen clubnaam in het teamveld
+   telt niet als genoemd team.
+2. Herkend team zonder bruikbare datum: sjabloon P.
+3. Herkend team zonder speelduur in `speeltijden`: de check is niet uit te voeren. Het bericht gaat naar de
+   afsluitende handmatige afhandeling van #1816 (Review, mailboxlabel voor handmatige planning, geen antwoord),
+   met trace-stap `speelduur`. Zo komt de beheerinstructie van de planner nooit bij de afzender. Een losse
+   categorie uit het model wordt eerst exact gezocht en daarna via `LeeftijdNormalisatie` (`O23` → `JO23`,
+   `Senioren` → `1-99`). De speelduur volgt twee teamregels (#1863):
+   - **O23**: een team met `O23`/`JO23` in de naam krijgt de `JO23`-speeltijd, ook als het model of Sportlink
+     `Senioren` noemt. Ontbreekt `JO23` of is de duur 0, dan geldt de gewone opzoeking op de categorie. Dezelfde
+     regel geldt in de automatische planning (duur, standaard voorkeurstijd, volgorde) en de veldbezetting.
+   - **Seniorenteam**: een herkend team zonder leeftijd in de naam (eerste elftal `1`, vrouwen `VR1`, veteranen
+     `35+1`) krijgt, als het model geen categorie noemde, de sleutel uit zijn Sportlink-categorie in de teamtabel:
+     `Senioren` → `1-99`, `Senioren Vrouwen` → `VR`. Een andere of ontbrekende categorie blijft handmatige
+     planning. Een jeugdteam blijft aangewezen op zijn naam; een ontbrekend geslacht-prefix wordt niet ingevuld.
+
 Bij een aanduiding die écht dubbelzinnig is — "13-1" kan JO13-1 of MO13-1 zijn — wordt niet gegokt:
-er volgt óf een keuze uit een korte kandidatenlijst, óf de vraag wordt teruggelegd.
+the system chooses no candidate and requires manual review.
 
 Een teamtekst die niet herkend wordt (`Onopgelost` of `MeerdereKandidaten`) komt sinds #1568 deel C in de
 wachtrij **Onbekende teamteksten** (scherm Teamaliassen) — mits de tekst eruitziet als een teamlabel; een zin
@@ -238,8 +265,18 @@ Onderdrukte antwoorden zijn zichtbaar in de Admin GUI onder **Instellingen → E
 Er wordt niets stil weggegooid: het bericht wordt normaal verwerkt en gelogd in
 `planner.EmailVerwerking` met status `GeenAntwoordNodig`.
 
-**Review-mode blijft leidend:** staat `EmailReviewMode=true`, dan gaat er nooit een mail uit —
+**Review-mode blijft leidend:** staat review-mode aan, dan gaat er nooit een mail uit —
 die check komt vóór de reply-policy.
+
+**Fail-safe standaard (#1809):** review-mode staat AAN tenzij `EmailReviewMode` exact `false` is
+(hoofdletterongevoelig; spaties aan begin/einde tellen mee als onbekende waarde). Een ontbrekende,
+lege, `0`-waarde of onbekende waarde betekent dus review-mode aan, zodat een verdwenen app-setting
+nooit onbedoeld tot automatische antwoorden leidt. Daarnaast gaat een automatisch antwoord alleen
+naar één syntactisch geldig afzenderadres dat niet als systeemadres is herkend (`AfzenderControle`);
+dit bewijst geen authenticiteit van de afzender. Afzenderidentiteit wordt niet meegestuurd naar de
+AI-provider. Herkenbare e-mail- en telefoonpatronen in onderwerp en berichttekst worden gemaskeerd;
+persoonsnamen, clubcontext en andere inhoud kunnen nog aanwezig zijn. Dit vervangt #1736 niet en #43
+blijft geblokkeerd tot eigenaaracceptatie.
 
 In review-mode wordt het voorgestelde antwoord wél opgebouwd en opgeslagen (#712). De rij in
 `planner.EmailVerwerking` krijgt status `Review`, met het voorstel in `AntwoordEmail` en
@@ -288,16 +325,34 @@ Voorbeelden die als BuitenScope worden aangemerkt:
 
 Emails met **meerdere datums voor hetzelfde team** zijn géén BuitenScope — die worden verwerkt als `BeschikbaarheidCheck` met een multi-datum antwoord.
 
+Bij een beschikbaarheidsvraag corrigeert de datumcontrole een modeldatum wanneer één dagnaam
+past bij een ondersteunde directe vraag, zoals “Kunnen we op zaterdag?”, “Kan jullie zaterdag?”
+of “Is zaterdag mogelijk?”, of bij een expliciet speel-/verplaatsverzoek. Alleen beschikbaarheid
+meedelen (“Wij zijn zaterdag beschikbaar”) of een andere afspraak noemen verandert de datum niet.
+Een expliciete datum in de eigen tekst die de modeldatum bevestigt, gaat vóór een losse dagnaam.
+Dit is een beperkte tekstheuristiek, geen volledige taalinterpretatie: andere formuleringen
+kunnen ongecorrigeerd blijven en dubbelzinnige zinnen vragen nog beoordeling. Bij een herplanverzoek blijft de huidige wedstrijddatum uit de
+classificatie staan; een datum in het onderwerp krijgt niet automatisch die rol. Als een enkele
+`datums`-waarde gelijk was aan `datum`, volgt die dezelfde correctie. Een meervoudige lijst blijft
+intact.
+
+De AI-adapters, gedeelde datumheuristiek en e-mailherplandeadline gebruiken de Nederlandse
+bedrijfsdatum. Dit betekent niet dat de volledige plannerketen al dezelfde klok gebruikt:
+`BerichtPipeline.Planner` bereikt op beide tiers de `AvailabilityService`, waar de grens voor
+verstreken datums en de zoekperiode nog hostlokale `DateTime.Today` gebruiken. Die bredere
+plannerklokcorrectie is expliciet uitgesteld onder issue #1803; issue #1817 is hiermee gedeeltelijk
+opgelost. Het bestaande gelezen-markeren van eigen mailboxberichten blijft behouden; duurzame
+voortgang met ongelezen eigen noodmeldingen is apart uitgesteld onder issue #1855.
+
 **Twee wegen naar dit label, met verschillend gevolg voor de database:**
 
 | Wanneer | Rij in `planner.EmailVerwerking`? |
 |---|---|
-| BuitenScope bij de eerste classificatie (fase 1) | Nee — de database blijft slapen |
-| BuitenScope pas ná few-shot herclassificatie (fase 2) | Ja — status `BuitenScope` (#712) |
+| BuitenScope bij de eerste classificatie met few-shot-context (fase 1) | Nee — fase 2 wordt overgeslagen |
 
-Het tweede geval bestaat omdat de herclassificatie met leermomenten alsnog "buiten scope" kan
-opleveren. Zonder die afhandeling ging er tóch een automatisch antwoord uit, puur afhankelijk van
-of er gevalideerde leermomenten in de database stonden.
+De few-shot-context wordt vóór de eerste classificatie toegepast. Er volgt geen tweede classificatie
+met dezelfde voorbeelden; reply-correctiedetectie en het opslaan van nieuwe, nog te beoordelen
+leermomenten blijven in fase 2.
 
 ### 1e. Zekerheidspoort — onzeker antwoord gaat ter review (#1568 deel D)
 
@@ -392,8 +447,9 @@ bestaande rij hergebruikt en de verwerking opnieuw uitgevoerd.
 > terugvalpad meedoen voor rijen van vóór de migratie.
 
 `planner.EmailVerwerking.Pogingen` houdt bij hoe vaak dat is gebeurd. Na drie pogingen geeft de
-verwerking op: status `Fout` met de melding dat er is opgegeven, bericht als gelezen gemarkeerd, en
-een foutregel in de log. Dat is nodig omdat de poll de tien **oudste** ongelezen berichten pakt —
+verwerking op: status `Fout` met de melding dat er is opgegeven, best-effort het Outlook-label
+*Geen AI antwoord*, bericht als gelezen gemarkeerd, en een foutregel in de log. De coördinator
+pakt het bericht daarna handmatig op via het e-maillog. Dat is nodig omdat de poll de tien **oudste** ongelezen berichten pakt —
 zonder die grens zouden tien blijvend falende berichten alle nieuwe post tegenhouden en bij elke
 poll opnieuw AI-kosten maken.
 
@@ -656,16 +712,19 @@ De coördinator neemt zo snel mogelijk contact op.
 
 #### Template I — Team onbekend
 
-**Wanneer:** De afzender noemt een tegenstander maar er is helemaal geen wedstrijd tegen die
-tegenstander te vinden, ook niet op een andere datum.
+**Wanneer:** Een beschikbaarheidsvraag zonder herkend eigen team, en er staat op de gevraagde datum geen
+wedstrijd tegen een genoemde tegenstander (#1861). Een wedstrijd op een andere datum telt niet.
 
 ```
 {aanhef} {voornaam},
 
-We kunnen de wedstrijd van {tegenstander} niet vinden in ons programma.
-Tegen welk van onze teams zou deze wedstrijd zijn?
-Dan kunnen we de beschikbaarheid voor je controleren.
+Uit je bericht kunnen we niet opmaken om welk team van ons het gaat.
+Laat je ons weten om welk team het gaat?
+Dan controleren we de beschikbaarheid voor je.
 ```
+
+Een clubsjabloon (`team_onbekend`) kan `{{tegenstander}}` nog gebruiken; de ingebouwde tekst noemt de
+tegenstander niet, zodat hij ook klopt zonder tegenstander en voor een eigen begeleider.
 
 #### Template P — Geen bruikbare datum
 
@@ -882,7 +941,7 @@ Iemand vraagt wie de trainer, coach, begeleider of teamleider van een team is.
 
 #### Template M — Auto-reply "doorgestuurd"
 
-**Wanneer:** Altijd bij dit type. Contactgegevens worden nooit gedeeld met de vraagsteller.
+**Wanneer:** Alleen na duurzaam bevestigde doorsturing. Contactgegevens worden nooit gedeeld met de vraagsteller.
 
 > **Afzender van een e-mail versus ingelogde gebruiker.** "Nooit gedeeld" geldt voor wie de club mailt: de
 > auto-reply noemt geen naam, adres of telefoonnummer van een begeleider. Ingelogde gebruikers van de
@@ -901,13 +960,18 @@ Is er geen teamnaam bekend, dan staat er "de begeleiding van het opgegeven team"
 
 #### Doorsturen naar de coach (#168)
 
-**Pas ná** het versturen van de auto-reply hierboven wordt de oorspronkelijke vraag doorgestuurd
-naar de coach. Is er geen coach gevonden in `avg.Teambegeleiding`, dan gebeurt dit niet.
+**Vóór** de auto-reply hierboven wordt de oorspronkelijke vraag maximaal eenmaal doorgestuurd.
+Nieuwe verwerkingsrijen starten met `TeamContactDoorstuurStatus = NietGestart`; de claim wordt
+atomair `Bezig`. Oude rijen met `NULL` hebben een onbekende uitkomst en zijn niet claimbaar.
+Na Graph-acceptatie moet `Geaccepteerd` duurzaam zijn opgeslagen voordat de reply mag volgen.
+Is er geen coach gevonden in `avg.Teambegeleiding`, dan wordt `NietVerstuurd` opgeslagen en gaat
+de vraag ter review. Bij een onbesliste uitkomst of opslagfout blijft de uitkomst onbekend en
+vindt geen automatische herhaling plaats. Het reviewvoorstel bevestigt daarom geen doorsturing.
 
 | Veld | Waarde |
 |---|---|
 | **Aan** | De coach/teamleider uit `avg.Teambegeleiding` |
-| **Reply-To** | De oorspronkelijke afzender — zodat de coach rechtstreeks kan antwoorden |
+| **Reply-To** | De oorspronkelijke afzender als het één geschikt adres is; anders ontbreekt Reply-To en vraagt de berichttekst om handmatige controle van het contactkanaal |
 | **BCC** | De **veldplanner** (`plannerEmailAdres` in `dbo.AppSettings`) als AVG-audit-kopie |
 | **Onderwerp** | `[{team}] vraag van {afzenderNaam}` |
 
@@ -977,7 +1041,10 @@ afzender **geen** bericht. De verwerking legt vast:
 - status `Fout` in `planner.EmailVerwerking`, met een gesaniteerde foutmelding (e-mailadressen
   verwijderd, afgekapt op 1000 tekens)
 - een foutregel in de log met alleen het `MessageId` — nooit onderwerp, adres of body (AVG #210)
-- het bericht blijft **ongelezen** en komt de volgende poll terug (zie §1d, max 3 pogingen)
+- het bericht blijft **ongelezen** en komt de volgende poll terug (zie §1d, max 3 pogingen). Na
+  de derde mislukte poging krijgt het de status `Fout`, wordt *Geen AI antwoord* best-effort als
+  Outlook-label gezet en wordt het bericht als gelezen gemarkeerd; de coördinator volgt het op via
+  het e-maillog.
 
 > `BerichtResponseGenerator.BouwFoutAntwoord` bestaat wel, maar wordt door geen enkele
 > productiecode aangeroepen. Een eerdere versie van dit document beschreef die tekst als
@@ -1180,7 +1247,9 @@ weergave per e-maillog-regel (zie "Opslag" hieronder).**
 
 **Stappen** (stabiele codes, in volgorde): `classificatie` (type, welke velden aanwezig ja/nee),
 `team-herkenning`, `tegenstander-herkenning`, `team-wissel`, `opponent-pad` (#1139: tak en of een
-wedstrijd is gevonden), `opponent-team-herkenning`, `datum`, `tak` (plannerresponse-vlag),
+wedstrijd is gevonden; sinds #1861 alleen `opponent-op-datum` of `niet-gevonden`), `opponent-team-herkenning`
+(alleen nog in oudere traces), `datum`, `speelduur` (#1861: alleen als de speelduur onbekend is), `tak`
+(plannerresponse-vlag),
 `sjabloon` (database-override of ingebouwd, met sleutel) en `eindoordeel`. Elke stap heeft een
 zekerheid (`Zeker`, `Onzeker`, `Mislukt`).
 
@@ -1200,6 +1269,7 @@ Toegestane detailsleutels per stapcode in de bewaarde trace:
 | `team-herkenning`, `tegenstander-herkenning`, `opponent-team-herkenning` | `bron`, `confidence`, `aantalKandidaten`, `kandidaten` (clubteams), `canoniekeNaam`, `vorm`, `reden` (alleen `geen clubcode`) |
 | `team-wissel` | `team` (canoniek), `tegenstanderVorm` |
 | `opponent-pad` | `tak`, `wedstrijdGevonden` |
+| `speelduur` | `categorieGenoemd` (ja/nee; nooit de categorietekst zelf) |
 | `datum` | `aantalDatums`, `datums` (alleen `yyyy-MM-dd`) |
 | `tak` | `plannerResponseVlag`, `reden` (alleen de vaste buiten-scope-reden) |
 | `herplan-uitkomst` | `uitkomst`, `wedstrijdGevonden`, `datumAanwezig`, `sjabloon` |
@@ -1213,7 +1283,7 @@ niet-herkende teamtekst zelf staat alleen in de wachtrij met begrensde retentie 
 **Zekerheidsoordeel.** `ZekerheidsBeoordeling` markeert een resultaat als onzeker bij: een verzoektype
 dat een team nodig heeft (beschikbaarheid, herplannen) zonder herkend team (ook bij
 `MeerdereKandidaten`) en zonder wedstrijd via de tegenstander op de gevraagde datum; een opponent-pad
-zonder wedstrijd; een herplanverzoek zonder gevonden wedstrijd voor team en datum of zonder team/datum (stap
+zonder wedstrijd; een herkend team zonder bekende speelduur (stap `speelduur`, #1861); een herplanverzoek zonder gevonden wedstrijd voor team en datum of zonder team/datum (stap
 `herplan-uitkomst`, uitkomst `geen-wedstrijd` of `onvoldoende-gegevens`; een geslaagde herplan blijft zeker);
 sjabloon `teamOnbekend` of `datumOnbekend`; of een andere mislukte stap. Bij twijfel onzeker. Deel D gebruikt dit als zekerheidspoort (§1e); in de tester is het uitsluitend informatief (de tester verstuurt nooit).
 
@@ -1275,7 +1345,7 @@ code of SQL van laten leren. De lus:
 | **Alias aanmaken** (`POST /api/beheer/teamaliassen`) | Bron `CoordinatorCorrectie`, direct `validated`. De sleutel komt uitsluitend uit `TeamNaamNormalisatie`. Bestaat de sleutel al voor een ander team → `409`; herkoppelen gebeurt alleen als de beheerder dat expliciet aangeeft. Audit: `AangemaaktDoor` (object-ID), `AangemaaktDoorNaam` (momentopname), `AangemaaktOp` (UTC), `HerkomstVerwerkingId`, `Reden`; valideren/afwijzen legt `BeoordeeldDoor(Naam)`/`BeoordeeldOp` vast. Alles uit het Easy Auth-principal, nooit uit de body, geen e-mailadres. |
 | **Wachtrij onbekende teamteksten** (`planner.OnbekendeTeamTekst`) | De processor schrijft na elke verwerking elke onbekende teamtekst die de vormguard `ZietEruitAlsTeamlabel` passeert (kort, alleen letters/cijfers/spatie/`-`/`/`/`.`/`+`, hoogstens twee tokens met letters, minstens één cijfer; ook de genormaliseerde sleutel — zinnen en namen vallen af; gesaneerd, afgekapt op 80 tekens, geen mailbody) als upsert op (club, genormaliseerde tekst): aantal, eerst/laatst gezien, laatste verwerking (geen FK). Een retry telt niet dubbel. Een fout bij het schrijven laat de verwerking nooit falen. Een alias met dezelfde sleutel zet de open regel automatisch op `afgehandeld`; een afgehandelde regel die terugkomt gaat weer open, een genegeerde blijft genegeerd. Regels die 90 dagen niet meer zijn gezien worden door de e-mail-cleanup verwijderd. |
 | **Admin-leermoment** (`POST /api/beheer/leermomenten`) | Herkomst `Admin`, direct gevalideerd, zonder reply-paar (`OrigineleVerwerkingId`/`CorrectionVerwerkingId` zijn `NULL`; `HerkomstVerwerkingId` is een los getal zonder FK, zodat de retentie-DELETE van de verwerking (#424) nooit blokkeert of meeneemt). De samenvatting (max 500) gaat door `TraceBuilder.Saneer` — dezelfde PII-arme sanering als de trace, geen tweede sanitizer. **Permanent**: de cleanup (`sp_CleanupClassificatieCorrectie`, `sp_CleanupEmailVerwerking` fase 2a, en `PostgresCleanupProcedures`) raakt alleen herkomst `Reply`. |
-| **Few-shot** | `HaalVoorbeeldenOpAsync` neemt alle gevalideerde, niet-afgewezen leermomenten mee (limiet 20); admin-voorbeelden staan eerst. Een admin-leermoment staat in de prompt als `Samenvatting "…" → is een <type>.` (of "was geclassificeerd als X, maar was eigenlijk Y" als het oorspronkelijke type bekend is). |
+| **Few-shot** | Vóór fase-1-classificatie laadt `HaalVoorbeeldenOpAsync` alle gevalideerde, niet-afgewezen leermomenten (limiet 20); admin-voorbeelden staan eerst. De provider krijgt beide samenvattingen na `ProviderSamenvatting`-maskering. Een admin-leermoment staat in de prompt als `Samenvatting "…" → is een <type>.` (of "was geclassificeerd als X, maar was eigenlijk Y" als het oorspronkelijke type bekend is). |
 | **Tester-pariteit** | De tester classificeert met dezelfde leermomenten als de processor (de trace meldt het aantal in de stap `leermomenten`) en schrijft niets. De enige uitzondering: is de teamlijst van de gekozen club nog helemaal leeg (bijvoorbeeld een democlub die nooit gesynchroniseerd is), dan bouwt de tester hem eenmalig op — anders resolvet niets. Een gevulde lijst blijft onaangeroerd; de nachtelijke sync en de processor houden hem actueel. |
 
 **Beperking:** het verwijderen van een alias laat geen auditregel achter in de tabel (de rij is weg); wie het
@@ -1347,8 +1417,8 @@ gaan via een apart pad naar dezelfde provider; die registerrij staat in [FEEDBAC
 * **Provider: OpenAI, rechtstreeks via de OpenAI-API** (geen Azure OpenAI). Vastgelegd in `Program.cs`
   van beide tiers: een `OpenAI.Chat.ChatClient`, aangeboden als `IChatClient`. De code stelt geen eigen
   endpoint of regio in; het standaardendpoint van de SDK geldt.
-* **Model: configuratie.** App setting `AiModelName`; is die leeg, dan geldt de terugvalwaarde in
-  `Program.cs`. Welk model een installatie gebruikt, staat dus in haar configuratie, niet in dit document.
+* **Model: configuratie.** App setting `AiModelName`; zonder een ingevulde model-ID wordt `IChatClient`
+  niet geregistreerd. De e-mailpoll stopt dan vóór de databasefase en logt een begrensde melding.
 * **Sleutel:** app setting `OpenAiApiKey`.
 * **Alleen waar uitgaande integraties zijn toegestaan.** `IChatClient` wordt alleen geregistreerd als
   `OpenAiApiKey` gevuld is én `EgressGuard.ExternalIntegrationsAllowed()` dat toestaat (#857). Die
@@ -1362,9 +1432,8 @@ gaan via een apart pad naar dezelfde provider; die registerrij staat in [FEEDBAC
 
 | # | Aanroep | Wanneer | Terug van de provider |
 |---|---|---|---|
-| 1 | Classificatie (`ClassificeerBerichtAsync`) | Fase 1, voor elk ongelezen bericht dat de voorfilters passeert | JSON: type, datum(s), aanvangstijd, dagdeel, gewenste datum, teamnaam, leeftijdscategorie, tegenstander, samenvatting, namens wie, KNVB-notitie, heel veld |
-| 2 | Herclassificatie met leermomenten (zelfde methode, met voorbeelden) | Fase 2, alleen als de club gevalideerde leermomenten heeft | Als 1 |
-| 3 | Correctiedetectie (`DetecteerCorrectieAsync`) | Fase 2, alleen bij een reply op een eerder door ons beantwoord bericht (zelfde `ConversationId`) | JSON: is het een correctie, afgeleid type, samenvatting |
+| 1 | Classificatie (`ClassificeerBerichtAsync`) | Fase 1, voor elk ongelezen bericht dat de voorfilters passeert; gevalideerde few-shots worden in dezelfde aanroep gebruikt | JSON: type, datum(s), aanvangstijd, dagdeel, gewenste datum, teamnaam, leeftijdscategorie, tegenstander, samenvatting, namens wie, KNVB-notitie, heel veld |
+| 2 | Correctiedetectie (`DetecteerCorrectieAsync`) | Fase 2, alleen bij een reply op een eerder door ons beantwoord bericht (zelfde `ConversationId`) | JSON: is het een correctie, afgeleid type, samenvatting |
 | 4 | E-mailtester (`EmailTestFunction`, dry-run, rol `admin`) | Op verzoek van een beheerder | Als 1; de tester slaat niets op |
 
 Het antwoord aan de afzender schrijft de AI niet: dat komt uit de sjablonen van §2, gevuld met
@@ -1376,11 +1445,11 @@ plannergegevens en gesaneerde modelvelden (`AiVeldSanering`).
 
 | Gegeven | Aanroepen | Persoonsgegeven | Bewerking vóór verzending |
 |---|---|---|---|
-| E-mailadres van de afzender (het `From`-adres; niet de weergavenaam) | 1, 2, 4 | Ja | Geen; markernaam geneutraliseerd |
-| Onderwerp | 1, 2, 3, 4 | Kan (vrije tekst) | Geen; markernaam geneutraliseerd |
-| Berichttekst | 1, 2, 3, 4 | Kan (vrije tekst: namen, contactgegevens, toevallig een gezondheidsgegeven, mogelijk over minderjarigen) | Mailboxberichten (1, 2, 3): HTML verwijderd (`EmailSanitizer.StripHtml`, in `EmailGraphService`). Alle aanroepen: begrensd op `BerichtBodyBegrenzing.MaxBodyTekens` tekens en markernaam geneutraliseerd. Tester (4): de ingevoerde tekst gaat zonder HTML-verwijdering naar de classificatie |
+| E-mailadres van de afzender (het `From`-adres; niet de weergavenaam) | — | Ja | Niet opgenomen in de providerprompt |
+| Onderwerp | 1, 2, 3, 4 | Kan (vrije tekst) | Herkenbare e-mail- en telefoonpatronen gemaskeerd; markernaam geneutraliseerd |
+| Berichttekst | 1, 2, 3, 4 | Kan (vrije tekst: namen, contactgegevens, toevallig een gezondheidsgegeven, mogelijk over minderjarigen) | Mailboxberichten (1, 2, 3): HTML verwijderd (`EmailSanitizer.StripHtml`, in `EmailGraphService`). Alle aanroepen: begrensd op `BerichtBodyBegrenzing.MaxBodyTekens` tekens, herkenbare e-mail- en telefoonpatronen gemaskeerd en markernaam geneutraliseerd. Tester (4): de ingevoerde tekst gaat zonder HTML-verwijdering naar de classificatie |
 | Clubnaam (instelling `clubName`) en datum van vandaag, in de system prompt | 1, 2, 4 | Nee | — |
-| Leermomenten: verzoektypes en samenvattingen | 2, 4 | Kan (samenvatting) | Samenvatting door `AiVeldSanering.Samenvatting` (`TraceBuilder.Saneer`: e-mailadressen en nummerreeksen gemaskeerd, begrensd) |
+| Leermomenten: verzoektypes en samenvattingen | 2, 4 | Kan (samenvatting) | Opslag blijft strikt gesaneerd met `AiVeldSanering.Samenvatting`. De twee invoersamenvattingen van `FewShotRegel` gebruiken `ProviderSamenvatting`: besturingstekens en witruimte worden eerst genormaliseerd; na e-mailmaskering worden volledige lange nummerkandidaten (ook ingebed in tekst) beoordeeld vóór de herkenbare contactpatronen, zodat een eerdere deelmaskering geen restcijfers achterlaat. Alleen volledige, geldige datum-/tijdreeksen blijven behouden: datum, losse tijd, tijdbereik (`H:mm-H:mm`, `H.mm-H.mm`, ook met een gedachtestreepje `–`, compact of met spaties rond het streepje) en dag-maand (`d-M`, `d/M`); elk ander deel maakt de hele kandidaat `[nummer]` (#1870). Aanhalingstekens worden genormaliseerd en elke samenvatting is begrensd op 500 tekens. Reeds gemaskeerde opgeslagen gegevens kunnen niet worden hersteld |
 | Oorspronkelijk verzoektype en samenvatting van het beantwoorde bericht | 3 | Kan (samenvatting) | Samenvatting is bij opslag al door `AiVeldSanering.Samenvatting` gegaan |
 
 Toelichting bij de bewerkingen:
@@ -1390,14 +1459,19 @@ Toelichting bij de bewerkingen:
   (`EmailBatchFilterService`; zie het stroomschema hierboven). De weergavenaam van de afzender, de
   internetheaders en bijlagen gaan niet mee.
 * **Berichttekst.** De volledige tekst zoals de mailbox hem levert, dus ook een handtekening of
-  geciteerde eerdere berichten als die in de mail staan, tot de begrenzing. Wordt er ingekort, dan
-  komt er een markering achter en een logregel met alleen lengtes.
+  geciteerde eerdere berichten als die in de mail staan, tot de begrenzing. De contactherkenning
+  verwerkt maximaal de eerste 8.000 tekens. Bij afkappen vervalt een overlappend niet-witruimtetoken
+  of mogelijk telefoonfragment, inclusief voorafgaande cijfergroepen met spaties; dit kan ook gewone
+  tekst aan de grens laten vervallen. Zo hoeft de rest van een onbegrensd lang bericht niet door de
+  contactregexes. Na maskering geldt opnieuw de lengtegrens, zonder halve maskeringen of
+  surrogaatparen. Wordt er ingekort, dan blijft de markering achter de tekst staan, ook als maskering
+  of het weglaten van het grensfragment de tekst verkort. De logregel bevat alleen lengtes.
 * **Markers.** Afzender, onderwerp en tekst staan in een datablok met per aanroep willekeurige markers;
   de vaste markernaam wordt uit de tekst gehaald. Dat is een maatregel tegen prompt-injectie, geen
   privacymaatregel.
-* **Persoonsgegevens in de invoer worden niet gemaskeerd.** Onderwerp en berichttekst gaan, op de
-  bewerkingen hierboven na, ongewijzigd mee. De saneringen in deze module werken op wat de provider
-  teruggeeft en wat de applicatie bewaart of toont: `AiVeldSanering` (vrije modelvelden vóór gebruik in
+* **Overige persoonsgegevens kunnen in de invoer blijven.** Na het maskeren van contactpatronen gaan
+  onderwerp en berichttekst, op de bewerkingen hierboven na, ongewijzigd mee. Uitvoer wordt apart
+  gesaneerd voor opslag of weergave: `AiVeldSanering` (vrije modelvelden vóór gebruik in
   een antwoord), `ModelDatum.Grens` (alle datumvelden van de classificatie, strikt `jjjj-MM-dd`, eenmalig
   vóór trace en verwerking, #1730), `TraceBuilder.Saneer` (samenvattingen, leermomenten, trace) en `AvgMaskering`
   (afzender- en ontvangeradres in het e-maillog van de beheerinterface).
@@ -1432,6 +1506,22 @@ Toelichting bij de bewerkingen:
 
 Bij een nieuwe club-installatie: neem deze rij en de voorwaarden uit §5c over in het eigen register en
 vul de eigenaarsvelden (grondslag, overeenkomst, bewaartermijn, locatie, instrument) voor die club in.
+
+### 5e. Eigen team afleiden uit de teambegeleiding van de afzender (#1862, AVG)
+
+Noemt een bericht geen herkenbaar eigen team, dan zoekt de verwerker het e-mailadres van de afzender op in de teambegeleiding
+(`AfzenderTeamBron`). Staat het adres bij precies één team, dan is dat het team van het antwoord.
+
+| Onderdeel | Vastlegging |
+|---|---|
+| Doelverenigbaarheid (art. 6 lid 4 AVG) | De begeleiding is vastgelegd voor contact en organisatie rond teams (gerechtvaardigd belang, #168). Een begeleider herkennen die zelf over zijn eigen team mailt valt binnen dezelfde context en verwachting van de betrokkene. Er wordt niets aan derden getoond: het antwoord noemt alleen de teamnaam. |
+| Minimalisatie | De query geeft alleen teamwaarden terug, nooit naam, telefoonnummer of rol. Het e-mailadres staat alleen als parameter in de query en nooit in trace, log, telemetrie of GitHub, ook niet gehasht. |
+| Inzagelog (#1701) | Eigenaarsbesluit 2026-11-11 (4A): geen inzageregel in `avg.teambegeleidinginzagelog`; de automatische verwerking van echte mail toont geen persoonsgegevens aan een mens. De trace legt alleen het aantal gevonden teams vast (0, 1 of meer). |
+| Beheerderstester (`test/email`) | Geen opzoeking (`OvergeslagenAfzenderTeamBron.Proefverwerking`, beide tiers): daar typt een mens een vrij adres in en ziet het antwoord, dus een opzoeking zou tonen welk team iemand begeleidt, buiten het inzagelog om. De trace toont de stap als overgeslagen, met de reden. |
+| Meerdere teams | Eigenaarsbesluit (5A): niets kiezen; de wedervraag `team_onbekend` noemt de teams van de afzender niet. |
+| Afwijkend genoemd team | Eigenaarsbesluit (6A): het genoemde team wint; een afwijking van het begeleidingsteam is alleen een tracenotitie zonder namen en zonder review-markering. |
+| Vervalste afzender | De opzoeking gebeurt alleen als Reply-To ontbreekt of gelijk is aan From, zodat een vervalste afzender via een eigen antwoordadres nooit te weten komt bij welk team een adres hoort. |
+| Opslag en bewaartermijn | Geen nieuwe opslag of bewaartermijn. De bestaande opruiming (`CleanupTeambegeleiding`) blijft leidend; is de lijst opgeschoond, dan valt de verwerking terug op de wedervraag om het team. |
 
 ---
 

@@ -9,7 +9,10 @@ namespace Planner.Shared.Email.Trace;
 public static class SjabloonSleutel
 {
     private static readonly string[] BeschikbaarheidVlaggen =
-        { "wedstrijdAlIngepland", "teamOnbekend", "datumOnbekend", "multiDatum" };
+    {
+        BeschikbaarheidVoorwaarden.HandmatigePlanningVlag, TemplateAntwoordBouwer.HandmatigeTeamBeoordelingVlag,
+        "wedstrijdAlIngepland", "teamOnbekend", "datumOnbekend", "multiDatum"
+    };
     private static readonly string[] HerplanVlaggen = { "herplanTeLaat", "verzetZonderDatum" };
 
     /// <summary>Naam van de eerste "true"-vlag in het plannerresponse, of de standaardtak.</summary>

@@ -123,7 +123,7 @@ internal static class PlannerMatchRepository
             FROM [his].[matches] m
             LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam]
                  AND {ClubScope.HisFilter("t")}
-            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatieSql.SqlExpr("t.[leeftijdscategorie]")}
+            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatieSql.SpeeltijdSleutelSqlExpr("t.[leeftijdscategorie]", "m.[teamnaam]", ClubScope.ClubCodeParam)}
                  AND s.[ClubCode] = {ClubScope.ClubCodeParam}
             {VeldResolutie.SqlOuterApply("m.[veld]", ClubScope.ClubCodeParam)}
             WHERE CAST(m.[kaledatum] AS DATE) = @date
@@ -224,7 +224,7 @@ internal static class PlannerMatchRepository
             FROM [his].[matches] m
             LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
                  AND {ClubScope.HisFilter("t")}
-            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatieSql.SqlExpr("t.[leeftijdscategorie]")}
+            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatieSql.SpeeltijdSleutelSqlExpr("t.[leeftijdscategorie]", "m.[teamnaam]", ClubScope.ClubCodeParam)}
                  AND s.[ClubCode] = {ClubScope.ClubCodeParam}
         ";
 
@@ -386,8 +386,8 @@ internal static class PlannerMatchRepository
     /// Legt een handmatig ingeplande wedstrijd vast, atomair getoetst tegen de bestaande bezetting
     /// (#1134, Codex-review #1107 bevinding 9) — SQL Server-tegenhanger van
     /// <c>FunctionApp.Postgres/Planner/Repositories/PlannerMatchRepository.TryConfirmPlannedMatchAsync</c>.
-    /// Vervangt de vroegere <c>SavePlannedMatchAsync</c>, die zonder enige bezettingscontrole
-    /// insertte: twee volledige-veldreserveringen die elkaar overlappen kregen allebei HTTP 200.
+    /// De reservering wordt alleen opgeslagen wanneer de atomaire bezettingscontrole geen conflict
+    /// vindt; overlappende volledige-veldreserveringen worden dus niet allebei geaccepteerd.
     /// <para>
     /// <b>Atomiciteit via <c>sp_getapplock</c>, dezelfde reden als de Postgres-tegenhanger's
     /// <c>pg_advisory_xact_lock</c>.</b> Een transactiegebonden applicatielock op
@@ -523,6 +523,8 @@ internal static class PlannerMatchRepository
             FROM [planner].[GeplandeWedstrijden] gw
             INNER JOIN [his].[matches] m
                 ON CAST(m.[kaledatum] AS DATE) = gw.[Datum]
+                AND (m.[status] IS NULL OR m.[status] <> 'Afgelast')
+                AND m.[mta_deleted] IS NULL
                 AND {ClubScope.HisFilter("m")}
                 AND EXISTS (
                     SELECT 1

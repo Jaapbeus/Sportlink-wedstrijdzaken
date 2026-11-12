@@ -55,12 +55,13 @@ namespace Planner.Shared.Infrastructure;
 /// Wanneer GitHubPat niet geconfigureerd is, wordt alles stil overgeslagen. De PAT wordt nooit
 /// gelogd en komt uitsluitend in de Authorization-header terecht.
 /// </summary>
-public static class GitHubIssueReporter
+public static partial class GitHubIssueReporter
 {
     private static readonly Dictionary<string, DateTime> _recentlyReported = new();
     private static readonly object _lock = new();
 
     private const int RateLimitHours = 24;
+    private static readonly TimeSpan HttpOperationTimeout = TimeSpan.FromSeconds(15);
 
     /// <summary>Herkomstlabel van een automatisch gemelde exception (#1711), naar het voorbeeld
     /// van <c>via: feedback-widget</c>: herkomst is geen persoon, dus geen <c>source:</c>.</summary>
@@ -97,13 +98,17 @@ public static class GitHubIssueReporter
         string functionName,
         ILogger log,
         Func<bool> egressToegestaan,
-        string eigenNamespacePrefix)
+        string eigenNamespacePrefix,
+        CancellationToken cancellationToken = default)
     {
         if (!egressToegestaan())
         {
             log.LogInformation("EgressGuard: uitgaande integraties geblokkeerd buiten productie — issue-rapportage overgeslagen (#857).");
             return;
         }
+
+        if (cancellationToken.IsCancellationRequested)
+            return;
 
         var pat = Environment.GetEnvironmentVariable("GitHubPat");
         if (string.IsNullOrWhiteSpace(pat))
@@ -127,6 +132,9 @@ public static class GitHubIssueReporter
 
         var fp = ComputeFingerprint(ex, eigenNamespacePrefix);
 
+        if (cancellationToken.IsCancellationRequested)
+            return;
+
         if (!ProbeerRegistreren(fp, DateTime.UtcNow))
         {
             log.LogInformation("Exception fp:{Fp} al gerapporteerd binnen {H}u — overgeslagen", fp, RateLimitHours);
@@ -136,16 +144,16 @@ public static class GitHubIssueReporter
         try
         {
             using var http = BuildHttpClient(pat);
-            var existing = await SearchIssueAsync(http, owner, repo, fp, log);
+            var existing = await SearchIssueAsync(http, owner, repo, fp, log, cancellationToken);
 
             if (existing.HasValue)
             {
                 if (existing.Value.isClosed)
-                    await ReopenIssueAsync(http, owner, repo, existing.Value.number, log);
-                await AddCommentAsync(http, owner, repo, existing.Value.number, ex, functionName, fp, log);
+                    await ReopenIssueAsync(http, owner, repo, existing.Value.number, log, cancellationToken);
+                await AddCommentAsync(http, owner, repo, existing.Value.number, ex, functionName, fp, log, cancellationToken);
             }
             else
-                await CreateIssueAsync(http, owner, repo, fp, ex, functionName, log);
+                await CreateIssueAsync(http, owner, repo, fp, ex, functionName, log, cancellationToken);
         }
         catch (Exception reportEx)
         {
@@ -174,50 +182,10 @@ public static class GitHubIssueReporter
         }
     }
 
-    /// <summary>
-    /// Berekent een deterministische 12-karakter hex fingerprint voor een exception.
-    /// Identieke fouten (zelfde type, genormaliseerd bericht, zelfde callsite) geven altijd
-    /// dezelfde fingerprint — essentieel voor deduplicatie van GitHub Issues.
-    /// <para>
-    /// De fingerprint is een SHA-256-hash en wordt afgekapt op 12 hex-tekens; het onderliggende
-    /// foutbericht is er niet uit terug te halen en komt nergens in het publieke issue terecht
-    /// (#1008).
-    /// </para>
-    /// </summary>
-    internal static string ComputeFingerprint(Exception ex, string eigenNamespacePrefix)
+    internal static HttpClient BuildHttpClient(string pat, HttpMessageHandler? handler = null)
     {
-        var raw = $"{ex.GetType().FullName}|{NormalizeMessage(ex.Message)}|{GetCallerFrame(ex, eigenNamespacePrefix)}";
-        using var sha = System.Security.Cryptography.SHA256.Create();
-        var bytes = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(raw));
-        return Convert.ToHexString(bytes)[..12].ToLower();
-    }
-
-    private static string NormalizeMessage(string message)
-    {
-        if (string.IsNullOrEmpty(message)) return "";
-        // Verwijder variabele delen zodat dezelfde fout altijd dezelfde fingerprint geeft
-        var s = message;
-        s = System.Text.RegularExpressions.Regex.Replace(s, @"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b", "<guid>");
-        s = System.Text.RegularExpressions.Regex.Replace(s, @"\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?", "<date>");
-        s = System.Text.RegularExpressions.Regex.Replace(s, @"\b\d+\b", "<n>");
-        return s.Trim();
-    }
-
-    private static string GetCallerFrame(Exception ex, string eigenNamespacePrefix)
-    {
-        if (ex.StackTrace == null) return "unknown";
-        foreach (var line in ex.StackTrace.Split('\n'))
-        {
-            var trimmed = line.Trim();
-            if (trimmed.StartsWith("at " + eigenNamespacePrefix, StringComparison.Ordinal))
-                return trimmed.Split('(')[0].Replace("at ", "").Trim();
-        }
-        return "external";
-    }
-
-    private static HttpClient BuildHttpClient(string pat)
-    {
-        var http = new HttpClient();
+        var http = handler is null ? new HttpClient() : new HttpClient(handler);
+        http.Timeout = HttpOperationTimeout;
         http.DefaultRequestHeaders.UserAgent.ParseAdd("SportlinkFunction/2.0");
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", pat);
         http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
@@ -249,11 +217,12 @@ public static class GitHubIssueReporter
     /// verbouwen.
     /// </summary>
     internal static async Task<(int number, bool isClosed)?> SearchIssueAsync(
-        HttpClient http, string owner, string repo, string fp, ILogger log)
+        HttpClient http, string owner, string repo, string fp, ILogger log,
+        CancellationToken cancellationToken = default)
     {
         foreach (var labelFilter in ZoekLabelFilters)
         {
-            var (mislukt, treffer) = await ZoekInIssuelijstAsync(http, owner, repo, fp, labelFilter, log);
+            var (mislukt, treffer) = await ZoekInIssuelijstAsync(http, owner, repo, fp, labelFilter, log, cancellationToken);
             if (mislukt) return null;
             if (treffer.HasValue) return treffer;
         }
@@ -277,7 +246,8 @@ public static class GitHubIssueReporter
         => authorAssociation is "OWNER" or "MEMBER" or "COLLABORATOR";
 
     private static async Task<(bool mislukt, (int number, bool isClosed)? treffer)> ZoekInIssuelijstAsync(
-        HttpClient http, string owner, string repo, string fp, string? labelFilter, ILogger log)
+        HttpClient http, string owner, string repo, string fp, string? labelFilter, ILogger log,
+        CancellationToken cancellationToken)
     {
         var marker = $"[fp:{fp}]";
         var filter = labelFilter is null ? "" : "&labels=" + Uri.EscapeDataString(labelFilter);
@@ -293,7 +263,12 @@ public static class GitHubIssueReporter
             HttpResponseMessage resp;
             try
             {
-                resp = await http.GetAsync(url);
+                cancellationToken.ThrowIfCancellationRequested();
+                resp = await http.GetAsync(url, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -307,7 +282,7 @@ public static class GitHubIssueReporter
                 return (true, null);
             }
 
-            var json = await resp.Content.ReadAsStringAsync();
+            var json = await resp.Content.ReadAsStringAsync(cancellationToken);
             var items = JArray.Parse(json);
             if (items.Count == 0) break; // geen resultaten meer
 
@@ -338,11 +313,13 @@ public static class GitHubIssueReporter
     }
 
     private static async Task ReopenIssueAsync(
-        HttpClient http, string owner, string repo, int issueNumber, ILogger log)
+        HttpClient http, string owner, string repo, int issueNumber, ILogger log,
+        CancellationToken cancellationToken)
     {
         var payload = JsonConvert.SerializeObject(new { state = "open" });
         var url = $"https://api.github.com/repos/{owner}/{repo}/issues/{issueNumber}";
-        var resp = await http.PatchAsync(url, new StringContent(payload, Encoding.UTF8, "application/json"));
+        cancellationToken.ThrowIfCancellationRequested();
+        var resp = await http.PatchAsync(url, new StringContent(payload, Encoding.UTF8, "application/json"), cancellationToken);
         if (resp.IsSuccessStatusCode)
             log.LogInformation("GitHub issue #{Nr} heropend (opnieuw opgetreden)", issueNumber);
         else
@@ -357,13 +334,15 @@ public static class GitHubIssueReporter
     /// </summary>
     internal static async Task AddCommentAsync(
         HttpClient http, string owner, string repo, int issueNumber,
-        Exception ex, string functionName, string fp, ILogger log)
+        Exception ex, string functionName, string fp, ILogger log,
+        CancellationToken cancellationToken = default)
     {
         var body = "🔁 Opnieuw opgetreden\n\n" + BuildPublicDiagnostics(ex, functionName, fp, NederlandseTijdNu());
 
         var payload = JsonConvert.SerializeObject(new { body });
         var url = $"https://api.github.com/repos/{owner}/{repo}/issues/{issueNumber}/comments";
-        var resp = await http.PostAsync(url, new StringContent(payload, Encoding.UTF8, "application/json"));
+        cancellationToken.ThrowIfCancellationRequested();
+        var resp = await http.PostAsync(url, new StringContent(payload, Encoding.UTF8, "application/json"), cancellationToken);
 
         if (resp.IsSuccessStatusCode)
             log.LogInformation("Comment toegevoegd aan GitHub issue #{Nr}", issueNumber);
@@ -379,7 +358,8 @@ public static class GitHubIssueReporter
     /// </summary>
     internal static async Task CreateIssueAsync(
         HttpClient http, string owner, string repo, string fp,
-        Exception ex, string functionName, ILogger log)
+        Exception ex, string functionName, ILogger log,
+        CancellationToken cancellationToken = default)
     {
         var title = BuildPublicTitle(ex, fp);
         var body = "## Automatisch gerapporteerde exception\n\n"
@@ -394,7 +374,8 @@ public static class GitHubIssueReporter
         });
 
         var url = $"https://api.github.com/repos/{owner}/{repo}/issues";
-        var resp = await http.PostAsync(url, new StringContent(payload, Encoding.UTF8, "application/json"));
+        cancellationToken.ThrowIfCancellationRequested();
+        var resp = await http.PostAsync(url, new StringContent(payload, Encoding.UTF8, "application/json"), cancellationToken);
 
         if (!resp.IsSuccessStatusCode)
         {
@@ -402,7 +383,7 @@ public static class GitHubIssueReporter
             return;
         }
 
-        var json = await resp.Content.ReadAsStringAsync();
+        var json = await resp.Content.ReadAsStringAsync(cancellationToken);
         var nummer = JObject.Parse(json)["number"]?.Value<int>();
         if (nummer is not int issueNummer)
         {
@@ -410,15 +391,17 @@ public static class GitHubIssueReporter
             return;
         }
         log.LogInformation("GitHub issue #{Nr} aangemaakt voor fp:{Fp}", issueNummer, fp);
-        await PlaatsOpdrachtRegelAsync(http, owner, repo, issueNummer, log);
+        await PlaatsOpdrachtRegelAsync(http, owner, repo, issueNummer, log, cancellationToken);
     }
 
     private static async Task PlaatsOpdrachtRegelAsync(
-        HttpClient http, string owner, string repo, int issueNumber, ILogger log)
+        HttpClient http, string owner, string repo, int issueNumber, ILogger log,
+        CancellationToken cancellationToken)
     {
         var payload = JsonConvert.SerializeObject(new { body = OpdrachtRegel });
         var url = $"https://api.github.com/repos/{owner}/{repo}/issues/{issueNumber}/comments";
-        var resp = await http.PostAsync(url, new StringContent(payload, Encoding.UTF8, "application/json"));
+        cancellationToken.ThrowIfCancellationRequested();
+        var resp = await http.PostAsync(url, new StringContent(payload, Encoding.UTF8, "application/json"), cancellationToken);
         if (!resp.IsSuccessStatusCode)
             log.LogWarning("Opdrachtregel op GitHub issue #{Nr} plaatsen mislukt: HTTP {Status}", issueNumber, (int)resp.StatusCode);
     }
@@ -429,70 +412,4 @@ public static class GitHubIssueReporter
         return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, nlZone);
     }
 
-    /// <summary>
-    /// Bouwt de publieke issue-titel. Bevat uitsluitend het exceptietype en de fingerprint-tag —
-    /// nooit <c>ex.Message</c> (#1008: vrije foutteksten kunnen databasenamen, servernamen of
-    /// andere identificerende inhoud bevatten die geen enkel bestaand denylist-patroon dekt).
-    /// <c>internal</c> zodat Planner.Shared.Tests dit rechtstreeks kan afdekken (InternalsVisibleTo).
-    /// </summary>
-    internal static string BuildPublicTitle(Exception ex, string fp)
-        => $"[bug][fp:{fp}] {ClassifyErrorCategory(ex)}: {ex.GetType().Name}";
-
-    /// <summary>
-    /// Bouwt het publieke diagnostiek-blok volgens het allowlist-model uit #1008: uitsluitend
-    /// vaste technische velden (foutcategorie, exceptietype, interne operationele naam — de
-    /// Azure Function-naam — veilige fingerprint/hash, tijdstip). Vrije <c>ex.Message</c>,
-    /// inner-exceptietekst en bronpaden/stacktrace worden NOOIT overgenomen — die blijven
-    /// uitsluitend in de structured logging/Application Insights van de betreffende Function App
-    /// (zie de <c>log.LogError(ex, ...)</c>-aanroep vóór <see cref="ReportAsync"/> in de
-    /// tier-specifieke catch-blokken), nooit in dit publieke GitHub-issue.
-    /// <para>
-    /// <b>Let op voor toekomstige aanroepers:</b> <paramref name="functionName"/> is de enige
-    /// door de aanroeper aangeleverde vrije tekst in dit blok. Geef daar uitsluitend een vaste
-    /// literal mee (de Azure Function-naam) — nooit een clubcode, e-mailadres, teamnaam of andere
-    /// runtimewaarde; deze repository is publiek en de aangemaakte issues dus ook.
-    /// </para>
-    /// <c>internal</c> zodat Planner.Shared.Tests dit rechtstreeks kan afdekken (InternalsVisibleTo).
-    /// </summary>
-    internal static string BuildPublicDiagnostics(Exception ex, string functionName, string fp, DateTime nlTijd)
-    {
-        var innerType = ex.InnerException?.GetType().FullName ?? "(geen)";
-        return $"**Foutcategorie:** {ClassifyErrorCategory(ex)}\n"
-             + $"**Exceptietype:** `{ex.GetType().FullName}`\n"
-             + $"**Inner exceptietype:** `{innerType}`\n"
-             + $"**Interne operationele naam:** `{functionName}`\n"
-             + $"**Fingerprint:** `{fp}`\n"
-             + $"**Tijdstip:** {nlTijd:dd-MM-yyyy HH:mm} (Europe/Amsterdam)\n\n"
-             + "*Volledige diagnostiek (foutbericht, stacktrace, bronpaden) staat uitsluitend in de "
-             + "structured logging/Application Insights van deze Function App — nooit in dit publieke issue.*";
-    }
-
-    /// <summary>
-    /// Classificeert een exception (incl. inner exceptions) naar een vaste, veilige categorie —
-    /// onderdeel van het allowlist-model van #1008. Doorloopt de inner-exceptionketen zodat een
-    /// gewrapte SQL-fout (bv. via een repository-laag) ook als "Database" herkend wordt.
-    /// <para>
-    /// De <c>"Sql"</c>-toets dekt beide tiers: <c>Microsoft.Data.SqlClient.SqlException</c> zowel
-    /// als <c>Npgsql.PostgresException</c>/<c>Npgsql.NpgsqlException</c> — "Npgsql" bevat
-    /// hoofdletterongevoelig "sql". Dat is geen toeval waar we op leunen zonder het te bewijzen:
-    /// <c>GitHubIssueReporterTests.ClassifyErrorCategory_NpgsqlAchtigeException_...</c> legt het
-    /// vast.
-    /// </para>
-    /// </summary>
-    private static string ClassifyErrorCategory(Exception ex)
-    {
-        for (var current = ex; current != null; current = current.InnerException)
-        {
-            var typeName = current.GetType().FullName ?? "";
-            if (typeName.Contains("Sql", StringComparison.OrdinalIgnoreCase))
-                return "Database";
-            if (current is TimeoutException or TaskCanceledException or OperationCanceledException)
-                return "Timeout";
-            if (current is HttpRequestException or System.Net.WebException or System.Net.Sockets.SocketException)
-                return "Netwerk";
-            if (current is InvalidOperationException or ArgumentException or FormatException)
-                return "Configuratie/status";
-        }
-        return "Onbekend";
-    }
 }

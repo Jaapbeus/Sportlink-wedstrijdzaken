@@ -4,7 +4,12 @@ using Planner.Shared.Email.Trace;
 namespace Planner.Shared.Email;
 
 /// <summary>Wat er van het inkomende bericht nodig is voor de reply-afhandeling (de tier zet zijn eigen <c>InkomendBericht</c> hierop om).</summary>
-public sealed record ReplyBericht(string MessageId, string Afzender, string? ConversationId);
+public sealed record ReplyBericht(
+    string MessageId,
+    string Afzender,
+    string? ConversationId,
+    string AfzenderNaam = "",
+    string Inhoud = "");
 
 public enum ReplyVerwerkingUitkomst
 {
@@ -80,7 +85,8 @@ public interface IReplyPersistentie
 public sealed record ReplyTierHaken(
     Func<string, Task<string?>> ZoekBegeleidingEmailAsync,
     Func<string, Task<EmailBijlage?>> HaalKnvbBijlageAsync,
-    Func<Exception, int?> GraphStatusCode);
+    Func<Exception, int?> GraphStatusCode,
+    Func<int, TeamContactDoorstuurVerzoek, Task<TeamContactDoorstuurUitkomst>>? VerwerkTeamContactDoorstuurAsync = null);
 
 /// <summary>
 /// Tier-onafhankelijke beslislogica van de reply-flow (#1760, #1716 slice 8; voorheen
@@ -91,8 +97,6 @@ public sealed record ReplyTierHaken(
 /// </summary>
 public static class EmailReplyAfhandeling
 {
-    private const string HandmatigePlanningLabel = "Handmatige planning";
-
     public static async Task<ReplyVerwerkingUitkomst> HandelReplyFlowAfAsync(
         int verwerkingId,
         ReplyBericht email,
@@ -135,12 +139,15 @@ public static class EmailReplyAfhandeling
         Func<Task<(string onderwerp, string body)>> bouwTemplateAntwoordAsync,
         Func<string, string> sanitizeFoutMelding,
         ILogger log,
-        bool tegengehouden = false)
+        bool tegengehouden = false,
+        string? reviewReden = null)
     {
         var reviewBesluit = ReplyPolicy.Bepaal(classificatie, plannerResponseJson);
         if (reviewBesluit.MoetVersturen)
         {
-            var (voorgesteldOnderwerp, voorgesteldeBody) = await bouwTemplateAntwoordAsync();
+            var (voorgesteldOnderwerp, voorgesteldeBody) = classificatie.Type == VerzoekType.TeamContactOpvragen
+                ? TeamContactDoorstuurAfhandeling.BouwReviewVoorstel()
+                : await bouwTemplateAntwoordAsync();
             await persistentie.UpdateVoorgesteldAntwoordAsync(verwerkingId, voorgesteldeBody);
             log.LogInformation(
                 "Email {Id} review mode — voorgesteld antwoord opgeslagen ter beoordeling", verwerkingId);
@@ -150,7 +157,8 @@ public static class EmailReplyAfhandeling
                 try
                 {
                     await graphService.SendReplyAsync(reviewRecipient, voorgesteldOnderwerp,
-                        tegengehouden ? ZekerheidsPoort.MetReviewKop(voorgesteldeBody) : voorgesteldeBody, email.ConversationId);
+                        reviewReden != null ? $"=== TER BEOORDELING ===\n{reviewReden}\n\n{voorgesteldeBody}"
+                            : tegengehouden ? ZekerheidsPoort.MetReviewKop(voorgesteldeBody) : voorgesteldeBody, email.ConversationId);
                     log.LogInformation(
                         "Email {Id} review mode — testantwoord verstuurd naar EmailReviewRecipient", verwerkingId);
                 }
@@ -181,7 +189,7 @@ public static class EmailReplyAfhandeling
             // door de zekerheidspoort tegengehouden voorstel (#1568); een onderdrukt antwoord krijgt
             // "Handmatige planning", net als buiten review mode (#1608).
             var (label, kleur) = tegengehouden ? (EmailCategorieLabels.GeenAiAntwoord, EmailCategorieLabels.GeenAiAntwoordKleur)
-                : reviewBesluit.MoetVersturen ? (null, null) : (HandmatigePlanningLabel, "preset5");
+                : reviewBesluit.MoetVersturen ? (null, null) : (EmailCategorieLabels.HandmatigePlanning, EmailCategorieLabels.HandmatigePlanningKleur);
             if (label != null)
             {
                 await graphService.EnsureMasterCategoryAsync(label, kleur!);
@@ -221,8 +229,8 @@ public static class EmailReplyAfhandeling
             await persistentie.UpdateStatusAsync(verwerkingId, EmailStatus.GeenAntwoordNodig, null);
             try
             {
-                await graphService.EnsureMasterCategoryAsync(HandmatigePlanningLabel, "preset5");
-                await graphService.SetCategoriesAsync(email.MessageId, HandmatigePlanningLabel);
+                await graphService.EnsureMasterCategoryAsync(EmailCategorieLabels.HandmatigePlanning, EmailCategorieLabels.HandmatigePlanningKleur);
+                await graphService.SetCategoriesAsync(email.MessageId, EmailCategorieLabels.HandmatigePlanning);
                 await graphService.MarkAsReadAsync(email.MessageId);
             }
             catch (Exception ex)
@@ -235,14 +243,50 @@ public static class EmailReplyAfhandeling
             return ReplyVerwerkingUitkomst.AfgerondZonderAntwoord;
         }
 
-        var (onderwerp, antwoordBody) = await bouwTemplateAntwoordAsync();
-
         // Zekerheidspoort (#1568 deel D): een onzeker antwoord gaat niet naar de afzender maar ter review.
+        // Afzenderpoort (#1809): een syntactisch ongeschikt of systeemadres krijgt nooit automatisch antwoord.
+        var afzenderGeschikt = AfzenderControle.IsGeschikt(email.Afzender);
+        if (!afzenderGeschikt)
+            log.LogWarning("Email {Id}: afzenderadres niet geschikt voor automatisch antwoord — ter beoordeling", verwerkingId);
+
         var poort = ZekerheidsPoort.Bepaal(zekerheidspoortActief, trace);
-        if (poort.Tegenhouden)
+        if (poort.Tegenhouden || !afzenderGeschikt)
             return await HandelReviewModeAsync(
                 verwerkingId, email, classificatie, plannerResponseJson, reviewRecipient,
-                graphService, persistentie, () => Task.FromResult((onderwerp, antwoordBody)), sanitizeFoutMelding, log, tegengehouden: true);
+                graphService, persistentie, bouwTemplateAntwoordAsync, sanitizeFoutMelding, log, tegengehouden: true,
+                reviewReden: afzenderGeschikt ? null : AfzenderControle.Reden);
+
+        if (classificatie.Type == VerzoekType.TeamContactOpvragen
+            && haken.VerwerkTeamContactDoorstuurAsync is { } verwerkDoorstuurAsync)
+        {
+            TeamContactDoorstuurUitkomst doorstuurUitkomst;
+            try
+            {
+                doorstuurUitkomst = await verwerkDoorstuurAsync(verwerkingId,
+                    new TeamContactDoorstuurVerzoek(classificatie.TeamNaam, email.Afzender, email.AfzenderNaam, email.Inhoud));
+            }
+            catch
+            {
+                log.LogError("Doorstuuruitkomst onbekend voor verwerking {Id} — antwoord gaat ter beoordeling", verwerkingId);
+                doorstuurUitkomst = TeamContactDoorstuurUitkomst.Onbekend;
+            }
+            if (doorstuurUitkomst != TeamContactDoorstuurUitkomst.Doorgestuurd)
+            {
+                var reden = doorstuurUitkomst == TeamContactDoorstuurUitkomst.NietDoorgestuurd
+                    ? "Er is geen begeleider beschikbaar om uw vraag door te sturen."
+                    : "De doorstuuractie kon niet veilig worden bevestigd.";
+                var reviewVoorstel = TeamContactDoorstuurAfhandeling.BouwReviewVoorstel();
+                return await HandelReviewModeAsync(
+                    verwerkingId, email, classificatie, plannerResponseJson, reviewRecipient,
+                    graphService, persistentie, () => Task.FromResult(reviewVoorstel), sanitizeFoutMelding, log,
+                    tegengehouden: true, reviewReden: reden);
+            }
+        }
+
+        // Delay template evaluation until the pre-send hook has durably confirmed forwarding. This
+        // lets the accepted path use the configured TeamContact template while review paths above
+        // always use truthful wording that does not claim the request was forwarded.
+        var (onderwerp, antwoordBody) = await bouwTemplateAntwoordAsync();
 
         // Verzendintentie vóór het versturen. Wordt de invocatie hierna hard afgebroken
         // (functie-time-out, host-recycle, scale-in), dan is dit het enige spoor dat er misschien al

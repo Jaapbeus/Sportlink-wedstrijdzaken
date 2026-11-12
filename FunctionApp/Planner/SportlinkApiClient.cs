@@ -5,6 +5,8 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Planner.Shared;
+using Planner.Shared.Sync;
+using Planner.Shared.Planning;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 
@@ -15,7 +17,11 @@ namespace SportlinkFunction.Planner
     public static class SportlinkApiClient
     {
         private const string ApiBron = "API";
-        private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(8) };
+        internal static readonly HttpClientHandler DataserviceHandler = new() { AllowAutoRedirect = false };
+        private static readonly HttpClient _http = new(DataserviceHandler)
+        {
+            Timeout = TimeSpan.FromSeconds(8)
+        };
 
         public static async Task<List<BestaandeWedstrijd>> GetFieldOccupationsWithApiAsync(
             DateOnly date, ILogger log, string? clubCodeScope = null)
@@ -30,8 +36,9 @@ namespace SportlinkFunction.Planner
 
             try
             {
-                var apiUrl    = SystemUtilities.AppSettings.GetSetting("sportlinkApiUrl")
-                                ?? throw new InvalidOperationException("sportlinkApiUrl niet ingesteld");
+                if (!SportlinkDataserviceBasisUrl.TryGetCanonical(
+                        SystemUtilities.AppSettings.GetSetting("sportlinkApiUrl"), out var apiUrl))
+                    throw new InvalidOperationException("Sportlink data-service base URL is invalid.");
                 var clientId  = SystemUtilities.AppSettings.GetSetting("sportlinkClientId")
                                 ?? throw new InvalidOperationException("sportlinkClientId niet ingesteld");
                 var accommodatie = SystemUtilities.AppSettings.GetSetting("accommodatie");
@@ -90,12 +97,18 @@ namespace SportlinkFunction.Planner
 
                 return combined;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (MagTerugvallenOpDatabase(ex))
             {
-                log.LogWarning("SportlinkApiClient: API-fout, fallback naar DB. {Message}", ex.Message);
+                log.LogWarning("SportlinkApiClient: API-fout, fallback naar DB. {ErrorType}", ex.GetType().Name);
                 return await PlannerDataAccess.GetFieldOccupationsAsync(date, clubCodeScope);
             }
         }
+
+        /// <summary>
+        /// Een onbekende speelduur is een planningsblokkade, geen API-storing (#1814): de DB-terugval
+        /// mist live wedstrijden die nog niet gesynchroniseerd zijn, waardoor het veld vrij zou lijken.
+        /// </summary>
+        internal static bool MagTerugvallenOpDatabase(Exception ex) => ex is not PlanningDuurOnbekendException;
 
         /// <summary>
         /// Identiek aan <see cref="GetFieldOccupationsWithApiAsync"/>, maar zonder de wedstrijd die
@@ -126,7 +139,7 @@ namespace SportlinkFunction.Planner
             return resultaat;
         }
 
-        private static BestaandeWedstrijd? TryMapToBezetting(
+        internal static BestaandeWedstrijd? TryMapToBezetting(
             SportlinkProgrammaMatch m, DateOnly date, string? accommodatie, string clubCode,
             List<(string? Naam, int VeldNummer)> veldenPerNaam,
             Dictionary<string, Speeltijd> speeltijdenLookup,
@@ -149,10 +162,14 @@ namespace SportlinkFunction.Planner
             var (veldNummer, subpositie) = PlannerShared.ResolveVeld(m.Veld, veldenPerNaam);
             if (veldNummer == 0) return null;
 
-            // teamnaam → Speeltijden-sleutel
-            var speeltijdKey = MapTeamNaamToSpeeltijdKey(m.Teamnaam, clubCode, teamLeeftijdLookup);
-            if (speeltijdKey == null || !speeltijdenLookup.TryGetValue(speeltijdKey, out var speeltijd))
-                return null;
+            // De real-time API levert geen duur. Zonder een geldige speeltijd zou deze
+            // wedstrijd uit de bezetting verdwijnen en het veld ten onrechte vrij lijken.
+            // #1863: een O23-team gebruikt de JO23-speeltijd (ook als Sportlink het als "Senioren" levert), en
+            // net als het databasepad ook zonder his.teams-rij: de teamnaamregel gaat vóór de teamopzoeking.
+            var speeltijdKey = LeeftijdNormalisatie.SpeeltijdSleutel(
+                MapTeamNaamToSpeeltijdKey(m.Teamnaam, clubCode, teamLeeftijdLookup), m.Teamnaam, speeltijdenLookup);
+            if (speeltijdKey.Length == 0 || !speeltijdenLookup.TryGetValue(speeltijdKey, out var speeltijd))
+                throw new PlanningDuurOnbekendException();
 
             if (!TimeOnly.TryParse(m.Aanvangstijd, out var aanvang)) return null;
 

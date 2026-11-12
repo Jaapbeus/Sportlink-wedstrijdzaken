@@ -1,4 +1,5 @@
 using Planner.Endpoints.Admin;
+using Planner.Shared.Sync;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -35,22 +36,27 @@ namespace SportlinkFunction
                 await WaitForDatabaseAsync(log);
                 await AppSettings.LoadSettingsAsync(log);
 
-                string? sportlinkApiUrl = AppSettings.GetSetting("sportlinkApiUrl");
-                if (string.IsNullOrEmpty(sportlinkApiUrl))
+                var uitkomst = await RunConfiguredSyncAsync(async () =>
                 {
-                    log.LogError("sportlinkApiUrl is not configured.");
-                    return;
-                }
-
-                string sportlinkClientId = $"clientId={AppSettings.GetSetting("sportlinkClientId")}";
-                int toWeekOffset = await SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
-                log.LogInformation("Sync range: weekOffset -1 to {ToWeekOffset} (end of season)", toWeekOffset);
-                await SportlinkSyncPipeline.RunSyncAsync(-1, toWeekOffset, sportlinkApiUrl, sportlinkClientId, log);
+                    int toWeekOffset = await SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
+                    log.LogInformation("Sync range: weekOffset -1 to {ToWeekOffset} (end of season)", toWeekOffset);
+                    return (-1, toWeekOffset);
+                }, log);
+                // #1779 (pariteit met de Postgres-tier, #1081): een run met mislukte fases (ook een
+                // ongeldige sportlinkApiUrl) mag niet als Success eindigen en meldt zich als
+                // getypeerde fout met faseoverzicht.
+                uitkomst.GooiAlsMislukt();
+            }
+            catch (SyncAlreadyRunningException)
+            {
+                log.LogInformation("Synchronization skipped because another run owns the shared staging area.");
             }
             catch (Exception ex)
             {
                 log.LogError(ex, "FetchAndStoreApiData fout");
                 await FoutRapportage.RapporteerAsync(ex, "FetchAndStoreApiData", log);
+                // #1779: opnieuw gooien, zoals de Postgres-timer (#1081); er staat geen retry-policy op.
+                throw;
             }
         }
 
@@ -88,33 +94,36 @@ namespace SportlinkFunction
                     // endpoint en niet bij de generieke 500 van de wrapper.
                     try
                     {
-                        string? sportlinkApiUrl = AppSettings.GetSetting("sportlinkApiUrl");
-                        if (string.IsNullOrEmpty(sportlinkApiUrl))
-                        {
-                            log.LogError("sportlinkApiUrl is not configured.");
-                            return new StatusCodeResult(500);
-                        }
-                        string sportlinkClientId = $"clientId={AppSettings.GetSetting("sportlinkClientId")}";
-
                         bool   isReset    = string.Equals(req.Query["reset"], "true", StringComparison.OrdinalIgnoreCase);
                         string? seasonParam = req.Query["season"];
 
-                        int toWeekOffset   = await SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
-                        int fromWeekOffset = -1;
-
-                        if (isReset && int.TryParse(seasonParam, out int seasonStartYear))
+                        var venster = (From: -1, To: 0);
+                        var uitkomst = await RunConfiguredSyncAsync(async () =>
                         {
-                            fromWeekOffset = await SeasonHelper.GetSeasonStartWeekOffsetAsync(seasonStartYear, log);
-                            log.LogInformation("Reset mode: season {Year}, weekOffset {From} to {To}",
-                                seasonStartYear, fromWeekOffset, toWeekOffset);
-                        }
-                        else
-                        {
-                            log.LogInformation("Default mode: weekOffset {From} to {To}", fromWeekOffset, toWeekOffset);
-                        }
-
-                        await SportlinkSyncPipeline.RunSyncAsync(fromWeekOffset, toWeekOffset, sportlinkApiUrl, sportlinkClientId, log);
-                        return new OkObjectResult($"Sync completed. WeekOffset range: {fromWeekOffset} to {toWeekOffset}.");
+                            int toWeekOffset = await SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
+                            int fromWeekOffset = -1;
+                            if (isReset && int.TryParse(seasonParam, out int seasonStartYear))
+                            {
+                                fromWeekOffset = await SeasonHelper.GetSeasonStartWeekOffsetAsync(seasonStartYear, log);
+                                log.LogInformation("Reset mode: season {Year}, weekOffset {From} to {To}",
+                                    seasonStartYear, fromWeekOffset, toWeekOffset);
+                            }
+                            else
+                            {
+                                log.LogInformation("Default mode: weekOffset {From} to {To}", fromWeekOffset, toWeekOffset);
+                            }
+                            venster = (fromWeekOffset, toWeekOffset);
+                            return venster;
+                        }, log);
+                        // #1779: pariteit met PostgresSyncMatchesHttp (#1081): 207 i.p.v. 200 bij mislukte
+                        // fases, ook bij een ongeldige sportlinkApiUrl (fase "configuratie").
+                        return SyncMatchesAntwoordCore.Bepaal(uitkomst, venster.From, venster.To,
+                            $"Sync completed. WeekOffset range: {venster.From} to {venster.To}.");
+                    }
+                    catch (SyncAlreadyRunningException)
+                    {
+                        return new ObjectResult(new { status = "already running", message = SyncAlreadyRunningException.SafeMessage })
+                        { StatusCode = StatusCodes.Status409Conflict };
                     }
                     catch (Exception ex)
                     {
@@ -125,13 +134,30 @@ namespace SportlinkFunction
                 });
         }
 
-        // Entry-point voor SyncJobProcessor (#1138, voorheen AdminSyncFunction's fire-and-forget
-        // Task.Run). Retourneert partialFailure zodat de aanroeper de job-status correct kan zetten.
-        // Internal (#1676): de enige aanroeper, SyncJobProcessor, controleert EgressGuard vooraf.
-        internal static async Task<bool> RunSyncAsync(
-            int fromWeekOffset, int toWeekOffset,
-            string sportlinkApiUrl, string sportlinkClientId,
-            ILogger log)
-            => await SportlinkSyncPipeline.RunSyncAsync(fromWeekOffset, toWeekOffset, sportlinkApiUrl, sportlinkClientId, log);
+        /// <summary>
+        /// Gemeenschappelijk startpunt van timer, <c>SyncMatchesHttp</c> en <c>SyncJobProcessor</c>
+        /// (#1138), pariteit met <c>SyncFunction.RunConfiguredSyncAsync</c> op de Postgres-tier (#1779):
+        /// een ongeldige of ontbrekende <c>sportlinkApiUrl</c> (#1811: canonieke validatie) is de
+        /// mislukte fase "configuratie", geen stille return; de logregel noemt de URL nooit.
+        /// Het venster wordt pas ná de staging-lease en de seizoensdoorrol gebouwd (#1818).
+        /// Internal (#1676): elke aanroeper controleert EgressGuard vooraf. Verwacht geladen AppSettings.
+        /// </summary>
+        internal static async Task<SyncUitkomst> RunConfiguredSyncAsync(
+            Func<Task<(int FromWeekOffset, int ToWeekOffset)>> buildWindow, ILogger log)
+        {
+            if (!SportlinkDataserviceBasisUrl.TryGetCanonical(
+                    AppSettings.GetSetting("sportlinkApiUrl"), out var sportlinkApiUrl))
+            {
+                log.LogError("Sportlink data-service base URL is invalid.");
+                return SyncUitkomst.Configuratie();
+            }
+
+            string sportlinkClientId = $"clientId={AppSettings.GetSetting("sportlinkClientId")}";
+            return await SportlinkSyncPipeline.RunSyncWithSeasonWindowAsync(buildWindow, sportlinkApiUrl, sportlinkClientId, log);
+        }
+
+        /// <summary>Opgeslagen venster van een job (#1138): zelfde pad, vaste offsets.</summary>
+        internal static Task<SyncUitkomst> RunConfiguredSyncAsync(int fromWeekOffset, int toWeekOffset, ILogger log)
+            => RunConfiguredSyncAsync(() => Task.FromResult((fromWeekOffset, toWeekOffset)), log);
     }
 }

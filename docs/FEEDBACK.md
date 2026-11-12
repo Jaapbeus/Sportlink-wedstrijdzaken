@@ -44,7 +44,40 @@ melding ──► PII-gates ──► AI-structurering ──► opslag in avg.F
   opgeslagen"* met een meldingsnummer — **geen** link naar GitHub.
 * Publiceren is idempotent bewaakt: `ClaimPublicatieAsync` zet de status atomair van
   `wacht-op-publicatie`/`github-mislukt` naar `publiceren`; een tweede klik maakt geen tweede issue.
-* Faalt GitHub, dan blijft de melding bewaard met status `github-mislukt` en is ze opnieuw te
+* **Automatisch herstel (#1803).** Bij indienen krijgt de bewaarde `IssueBody` één keer een unieke,
+  niet-herleidbare publicatiereferentie (24 willekeurige letters in een verborgen HTML-commentaar,
+  `FeedbackPublicatieReferentie`); ze staat dus vóór de eerste POST in de database en wordt bij elke
+  poging hergebruikt. De referentie staat altijd aan het einde van de tekst en alleen de laatste telt:
+  een `feedback-ref`-commentaar dat een melder zelf intypt, bepaalt de referentie nooit. Een melding van
+  vóór deze wijziging krijgt haar referentie bij de eerste publicatie, onder de claim en vóór de POST
+  (`ZetIssueBodyAsync`); lukt dat bewaren niet, dan wordt niets verstuurd en gaat de claim terug naar
+  `github-mislukt`.
+* Na een dubbelzinnige POST (time-out, verbroken verbinding, HTTP 408/5xx, onleesbare 2xx, mislukte
+  receipt-opslag) blijft de status `publiceren`. "Publiceer" is dan weer mogelijk: de server herclaimt
+  atomair (`HerClaimPublicatieAsync`, alleen als de vorige (her)claim ouder is dan 4 minuten, anders
+  `409`; dat is langer dan één volledige herstelpoging van de uitgeversidentiteit, tien lijstpagina's plus
+  POST en 422-fallback à 15 seconden, zodat een tweede klik nooit naast een nog zoekende eerste poging loopt),
+  zoekt via de issuelijst (`GET /repos/{owner}/{repo}/issues?state=all&creator=…&sort=created&direction=desc&since=…`,
+  bewust niet de search-API vanwege indexvertraging) een issue met dezelfde referentie en koppelt dat;
+  ontbreekt het, dan wordt het met dezelfde referentie opnieuw geplaatst.
+* **Herkomstcontrole.** Alleen issues die de uitgever zelf heeft aangemaakt tellen: de uitgever is het
+  account achter het feedbacktoken (`GET /user`), en elk gevonden issue wordt op `user.login` gecontroleerd.
+  Kan de uitgever niet worden vastgesteld (het token mag `/user` niet lezen, of GitHub geeft een fout), dan is
+  de uitkomst onbekend: er wordt niet opnieuw gepost en de melding blijft herstelbaar.
+* De zoekgrens is het begin van de publicatiepoging (kolom `PublicatieGestartOpUtc`, gezet door
+  `ClaimPublicatieAsync` en door `ZetIssueBodyAsync` wanneer een oudere melding haar referentie krijgt)
+  min 5 minuten marge. Een herclaim ververst alleen het slot (`mta_modified`) en
+  laat dat begin staan, zodat een herstelpoging die mislukt (GitHub onbereikbaar, receipt niet opgeslagen)
+  het venster van de volgende poging niet verkleint. Een rij die al vóór de kolom op `publiceren` stond,
+  valt bij de eerste herclaim terug op haar oude slot; het bewaren van de referentie legt daarna het begin
+  vast, vóór de eerste POST met die referentie. Omdat `since` op `updated_at` filtert, stopt het
+  zoeken bij het eerste issue dat vóór de grens is aangemaakt. Bij meerdere treffers wint het oudste
+  issue: de referentie was geheim tot de eerste POST, dus een latere kopie kan nooit eerder bestaan.
+* Is GitHub onbereikbaar, of zijn er meer dan 1000 issues sinds de grens (tien pagina's), dan wordt
+  niets geplaatst en blijft de melding herstelbaar. Restgeval: een melding die al vóór deze wijziging op
+  `publiceren` bleef hangen heeft geen referentie; die krijgt er nu een en wordt zonder controle opnieuw
+  geplaatst (gelogd als waarschuwing).
+* Faalt GitHub met een expliciete afwijzing, dan blijft de melding bewaard met status `github-mislukt` en is ze opnieuw te
   publiceren. Faalt de database bij een beheerder, dan loopt de publicatie toch door (zijn melding
   sneuvelt niet op een gepauzeerde gratis database); bij een gewone gebruiker is opslaan verplicht.
 * Alle uitgaande GitHub-aanroepen (publiceren, statuscontrole door de retentietimer) lopen via de

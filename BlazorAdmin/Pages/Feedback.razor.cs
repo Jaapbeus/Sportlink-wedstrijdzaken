@@ -17,6 +17,11 @@ public partial class Feedback : ClubSelectorPageBase
 
     private enum Tab { Meldingen, Inzagelog }
 
+    // #1872: aparte guards per clubgebonden lookup; een late response van de vorige club wordt genegeerd.
+    private readonly LookupGeneratieGuard _lijstGuard = new();
+    private readonly LookupGeneratieGuard _inzageGuard = new();
+    private readonly LookupGeneratieGuard _detailGuard = new();
+
     private Tab _tab = Tab.Meldingen;
     private readonly FeedbackFilterDto _filter = new();
     private DateOnly? _vanaf;
@@ -39,8 +44,16 @@ public partial class Feedback : ClubSelectorPageBase
     {
         _open = null;
         _detail = null;
+        _detailBezig = false;
         _filter.Offset = 0;
         _inzageOffset = 0;
+        _melding = null; // #1872: melding hoort bij de vorige club
+        // #1872: lijst, inzagelog en detail delen _fout/_bezig. Ook een laadronde van een inactieve tab die vóór
+        // een heen-en-terug-clubwissel begon, mag daarna geen resultaat, fout of laadstatus meer toepassen.
+        var clubCode = ClubSelector.SelectedClubCode;
+        _lijstGuard.Start(clubCode);
+        _inzageGuard.Start(clubCode);
+        _detailGuard.Start(clubCode);
         return LaadAsync();
     }
 
@@ -59,22 +72,25 @@ public partial class Feedback : ClubSelectorPageBase
         _fout = null;
         _filter.Vanaf = _vanaf?.ToString("yyyy-MM-dd");
         _filter.Tot = _tot?.ToString("yyyy-MM-dd");
-        var result = await Api.GetFeedbackLijstAsync(_filter);
-        _bezig = false;
-
-        if (result.Success) _lijst = result.Data;
-        else _fout = result.ErrorMessage ?? "Ophalen mislukt";
+        var toegepast = await LaadClubgebondenAsync(_lijstGuard, () => Api.GetFeedbackLijstAsync(_filter), result =>
+        {
+            if (result.Success) _lijst = result.Data;
+            else _fout = result.ErrorMessage ?? "Ophalen mislukt";
+        });
+        if (toegepast) _bezig = false;
     }
 
     private async Task LaadInzageAsync()
     {
         _bezig = true;
         _fout = null;
-        var result = await Api.GetFeedbackInzagelogAsync(50, _inzageOffset);
-        _bezig = false;
-
-        if (result.Success) _inzage = result.Data;
-        else _fout = result.ErrorMessage ?? "Ophalen mislukt";
+        var offset = _inzageOffset;
+        var toegepast = await LaadClubgebondenAsync(_inzageGuard, () => Api.GetFeedbackInzagelogAsync(50, offset), result =>
+        {
+            if (result.Success) _inzage = result.Data;
+            else _fout = result.ErrorMessage ?? "Ophalen mislukt";
+        });
+        if (toegepast) _bezig = false;
     }
 
     private Task ZoekAsync()
@@ -133,23 +149,26 @@ public partial class Feedback : ClubSelectorPageBase
         _open = id;
         _detail = null;
         _detailBezig = true;
-        var result = await Api.GetFeedbackDetailAsync(id);
-        _detailBezig = false;
-
-        if (result.Success) _detail = result.Data;
-        else
+        var toegepast = await LaadClubgebondenAsync(_detailGuard, () => Api.GetFeedbackDetailAsync(id), result =>
         {
-            _open = null;
-            _fout = result.ErrorMessage ?? "Melding ophalen mislukt";
-        }
+            if (result.Success) _detail = result.Data;
+            else
+            {
+                _open = null;
+                _fout = result.ErrorMessage ?? "Melding ophalen mislukt";
+            }
+        });
+        if (toegepast) _detailBezig = false;
     }
 
     private async Task PubliceerAsync(Guid id)
     {
         _publicerenBezig.Add(id);
         _fout = _melding = null;
+        var clubCode = ClubSelector.SelectedClubCode;
         var result = await Api.PubliceerFeedbackAsync(id);
         _publicerenBezig.Remove(id);
+        if (IsClubGewisseld(clubCode)) return; // #1872: uitkomst hoort bij een andere club
 
         if (result.Success)
         {

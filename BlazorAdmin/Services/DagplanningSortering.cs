@@ -3,13 +3,12 @@ using BlazorAdmin.Models;
 namespace BlazorAdmin.Services;
 
 /// <summary>
-/// Sorteervolgorde voor de wedstrijdenlijst onder de Dagplanning-Gantt (#1331). Losgetrokken uit
-/// <c>Dagplanning.razor.cs</c> zodat de sorteerregel — net als <see cref="GanttLayout"/> voor de
-/// Gantt-balken — unit-testbaar is zonder de code-behind/pagina op te tuigen.
+/// Sorteert de gefilterde wedstrijdlijst van Veld-optimalisatie op aanvangstijd en de geconfigureerde
+/// veldvolgorde.
 /// <para>
-/// <b>Vóór deze fix</b> had <c>GefilterdeLijst()</c> geen eigen sortering: de zichtbare volgorde
-/// hing af van de volgorde in de AutoPlan-API-respons. Primaire sleutel is de optimale
-/// aanvangstijd, oplopend; secundaire sleutel is <see cref="AutoPlanWedstrijdItemDto.OptimaalVeldNummer"/>
+/// De lijst krijgt een vaste volgorde, onafhankelijk van de volgorde in de AutoPlan-API-respons.
+/// De primaire sleutel is de optimale aanvangstijd, oplopend; de secundaire sleutel is
+/// <see cref="AutoPlanWedstrijdItemDto.OptimaalVeldNummer"/>
 /// — de interne, clubgebonden veldvolgorde uit <c>public.velden.veldnummer</c>
 /// (<c>PlannerSettingsRepository.GetVeldenAsync</c>, per club gesorteerd op dat veldnummer).
 /// </para>

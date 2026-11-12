@@ -44,14 +44,16 @@ public enum ResolutionBron
 /// Uitkomst van <see cref="ITeamResolver.ResolveAsync"/>. <see cref="TeamId"/> is alleen gezet bij een
 /// eenduidige uitkomst. Bij <see cref="ResolutionBron.MeerdereKandidaten"/> bevat
 /// <see cref="Kandidaten"/> de mogelijke teams, zodat de aanroeper de vraag kan terugleggen bij de
-/// afzender in plaats van te gokken.
+/// afzender in plaats van te gokken. <see cref="LeeftijdsCategorie"/> is de (genormaliseerde) Sportlink-categorie
+/// van het vastgestelde team uit de teamtabel van de tier (#1863), of <c>null</c>.
 /// </summary>
 public sealed record TeamResolutionResult(
     int? TeamId,
     string? CanoniekeTeamnaam,
     double Confidence,
     IReadOnlyList<TeamCandidate> Kandidaten,
-    ResolutionBron Bron)
+    ResolutionBron Bron,
+    string? LeeftijdsCategorie = null)
 {
     public static readonly TeamResolutionResult Onopgelost =
         new(null, null, 0.0, [], ResolutionBron.Onopgelost);

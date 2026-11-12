@@ -23,6 +23,10 @@ namespace FunctionApp.Postgres.Tests.Sync;
 /// </summary>
 public class MatchDetailsFetchLoggingTests
 {
+    [Fact]
+    public void ProductionDataServiceClient_DoesNotFollowRedirects()
+        => PostgresSyncPipeline.DataserviceHandler.AllowAutoRedirect.Should().BeFalse();
+
     private const string SynthetischeClientId = "SYNTHETIC-CLIENT-ID-1234";
 
     /// <summary>
@@ -58,7 +62,7 @@ public class MatchDetailsFetchLoggingTests
         var logger = new RecordingLogger();
 
         var result = await PostgresSyncPipeline.FetchAndStoreMatchDetailsAsync(
-            NietGebruikteConnectie, UrlMetClientId(wedstrijdcode), "TEST", logger, client);
+            NietGebruikteConnectie, UrlMetClientId(wedstrijdcode), "TEST", logger, client, herhaalWachttijd: TimeSpan.Zero);
 
         result.Should().BeFalse("dit is een foutpad — anders bewijst de logassertie niets");
         logger.Levels.Should().Contain(LogLevel.Error,
@@ -78,6 +82,46 @@ public class MatchDetailsFetchLoggingTests
         => await BewijsDatClientIdNietGelogdWordtAsync(StatusClient(HttpStatusCode.InternalServerError), 12);
 
     [Fact]
+    public async Task FetchAndStoreMatchDetails_Redirect_RetourneertFalse()
+    {
+        using var client = StatusClient(HttpStatusCode.Redirect);
+
+        var result = await PostgresSyncPipeline.FetchAndStoreMatchDetailsAsync(
+            NietGebruikteConnectie, "https://data.sportlink.com/wedstrijd-informatie?clientId=fixture",
+            "TEST", new RecordingLogger(), client);
+
+        result.Should().BeFalse("a redirect must not count as a completed data-service read");
+    }
+
+    [Fact]
     public async Task FetchAndStoreMatchDetails_OngeldigeJson_LogtClientIdNooit()
         => await BewijsDatClientIdNietGelogdWordtAsync(OngeldigeJsonClient(), 13);
+
+    // ── #1779 — begrensde herhaling op tijdelijke fouten ────────────────────────────────────────
+    private sealed class TellendeHandler(HttpStatusCode status) : HttpMessageHandler
+    {
+        public int Aanroepen { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Aanroepen++;
+            return Task.FromResult(new HttpResponseMessage(status));
+        }
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.ServiceUnavailable, 3)]
+    [InlineData(HttpStatusCode.TooManyRequests, 3)]
+    [InlineData(HttpStatusCode.NotFound, 1)]
+    public async Task FetchAndStoreMatchDetails_Herhaalt_AlleenBijTijdelijkeFout(HttpStatusCode status, int verwachteAanroepen)
+    {
+        var handler = new TellendeHandler(status);
+
+        var result = await PostgresSyncPipeline.FetchAndStoreMatchDetailsAsync(
+            NietGebruikteConnectie, UrlMetClientId(21), "TEST", new RecordingLogger(),
+            new HttpClient(handler), TimeSpan.Zero);
+
+        result.Should().BeFalse();
+        handler.Aanroepen.Should().Be(verwachteAanroepen);
+    }
 }

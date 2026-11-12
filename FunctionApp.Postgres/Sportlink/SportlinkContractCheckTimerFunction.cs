@@ -5,6 +5,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Npgsql;
+using Planner.Endpoints.Sportlink;
 using Planner.Shared.Integrations.SportlinkClub;
 
 namespace FunctionApp.Postgres.Sportlink;
@@ -30,7 +31,7 @@ public static class SportlinkContractCheckTimerFunction
 {
     private const string RolNaam = SportlinkEndpointSupport.RolWedstrijdzaken;
 
-    /// <summary>#1266: sleutel, throttle-interval, beoordeling en mailtekst staan in
+    /// <summary>#1266: sleutel, kalenderdag-throttle, beoordeling en mailtekst staan in
     /// <see cref="SportlinkEndpointCore"/> — de SQL Server-timer gebruikt exact dezelfde.</summary>
     internal const string NoodmailSleutel = SportlinkEndpointCore.ContractCheckNoodmailSleutel;
 
@@ -51,7 +52,7 @@ public static class SportlinkContractCheckTimerFunction
 
         string? publicMatchId;
         await using (var cmd = new NpgsqlCommand(
-            "SELECT publicmatchid FROM public.sportlinkpublicmatchidcache WHERE clubcode = @clubcode ORDER BY opgehaaldop DESC LIMIT 1",
+            "SELECT publicmatchid FROM public.sportlinkpublicmatchidcache WHERE clubcode = @clubcode AND publicmatchid = verifiedpublicmatchid ORDER BY opgehaaldop DESC LIMIT 1",
             connection))
         {
             cmd.Parameters.AddWithValue("clubcode", clubCode);
@@ -88,19 +89,15 @@ public static class SportlinkContractCheckTimerFunction
 
         var throttleStore = context.InstanceServices.GetService<INoodmailThrottleStore>();
         if (isOk)
-        {
             log.LogInformation("Sportlink contract-check geslaagd voor rol '{Rol}'.", RolNaam);
-            if (throttleStore != null) await throttleStore.WisAsync(NoodmailSleutel);
-            return;
-        }
-
-        log.LogWarning("Sportlink contract-check gaf een afwijking: {Fout}", foutmeldingSamenvatting);
+        else
+            log.LogWarning("Sportlink contract-check gaf een afwijking: {Fout}", foutmeldingSamenvatting);
         if (throttleStore == null) return;
 
-        var laatsteKeer = await throttleStore.LaatsteKeerVerstuurdAsync(NoodmailSleutel);
-        if (!SportlinkEndpointCore.MagContractCheckNoodmailVersturen(laatsteKeer, DateTime.UtcNow))
+        // Een geslaagde check wist de verzenddag niet (#1815): de kalenderdag alleen beslist.
+        if (!await ContractCheckNoodmailCore.MagNoodmailVersturenAsync(isOk, throttleStore, NoodmailSleutel, DateTime.UtcNow))
         {
-            log.LogInformation("Contract-check-noodmail binnen throttle-interval — overgeslagen.");
+            if (!isOk) log.LogInformation("Contract-check-noodmail al verzonden vandaag — overgeslagen.");
             return;
         }
 

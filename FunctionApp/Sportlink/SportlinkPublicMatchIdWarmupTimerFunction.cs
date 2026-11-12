@@ -102,7 +102,7 @@ public static class SportlinkPublicMatchIdWarmupTimerFunction
             var gevondenAantal = 0;
             foreach (var wedstrijd in groep)
             {
-                var match = overview.Data.FirstOrDefault(e => e.ExternalMatchId == wedstrijd.Wedstrijdnummer);
+                var match = SportlinkPublicMatchIdKoppeling.VindEenduidigeMatch(overview.Data, wedstrijd.Wedstrijdnummer);
                 if (match == null)
                     continue; // Nog niet bekend bij Sportlink voor deze datum — geen fout, volgende run opnieuw proberen.
 

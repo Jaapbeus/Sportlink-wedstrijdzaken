@@ -4,9 +4,9 @@ namespace Planner.Shared.Email;
 public sealed record LeermomentGeldig(string OrigineelType, string JuistType, string Samenvatting);
 
 /// <summary>
-/// De ene plek die bepaalt wat een admin als leermoment mag aanleveren: een bekend verzoektype en een
-/// korte samenvatting die door <see cref="TraceBuilder.Saneer"/> is gehaald — dezelfde PII-arme
-/// functie als de trace, geen tweede sanitizer. De samenvatting belandt in de few-shot-prompt van de
+/// De ene plek die bepaalt wat een admin als leermoment mag aanleveren: een bekend verzoektype en
+/// bij opslag een korte samenvatting die door <see cref="TraceBuilder.Saneer"/> is gehaald — dezelfde PII-arme
+/// functie als de trace. De samenvatting belandt in de few-shot-prompt van de
 /// classificatie en wordt voor admin-leermomenten permanent bewaard.
 /// </summary>
 public static class LeermomentInvoer
@@ -61,11 +61,12 @@ public static class LeermomentInvoer
     /// </summary>
     public static string FewShotRegel(string origineelType, string juistType, string? origineleSamenvatting, string? correctieSamenvatting)
     {
-        // Alle tekst in de prompt gaat door dezelfde sanering, ook oudere opgeslagen leermomenten.
+        // Providerinvoer behoudt planningsgegevens; opslag/trace houden hun striktere sanering.
+        // Eerder opgeslagen maskeringen zijn onomkeerbaar en worden niet gereconstrueerd.
         origineelType = MapAfgeleidType(origineelType) ?? OnbekendType;
         juistType = MapAfgeleidType(juistType) ?? OnbekendType;
-        var o = AiVeldSanering.Samenvatting(origineleSamenvatting);
-        correctieSamenvatting = AiVeldSanering.Samenvatting(correctieSamenvatting);
+        var o = AiVeldSanering.ProviderSamenvatting(origineleSamenvatting);
+        correctieSamenvatting = AiVeldSanering.ProviderSamenvatting(correctieSamenvatting);
         if (!string.IsNullOrWhiteSpace(o) && string.IsNullOrWhiteSpace(correctieSamenvatting))
             return origineelType == OnbekendType || origineelType == juistType
                 ? $"- Samenvatting: \"{o}\" → is een {juistType}."

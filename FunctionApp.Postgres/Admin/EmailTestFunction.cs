@@ -38,6 +38,9 @@ namespace FunctionApp.Postgres.Admin;
 /// </summary>
 public static class EmailTestFunction
 {
+    internal static IActionResult? ControleerAiBeschikbaar(FunctionContext context, ILogger log)
+        => EmailTestEndpointCore.ControleerAiRegistratie(context.InstanceServices, log);
+
     [Function("EmailTestDryRun")]
     public static Task<IActionResult> DryRun(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "test/email")] HttpRequest req,
@@ -51,6 +54,8 @@ public static class EmailTestFunction
             async clubCode =>
             {
                 if (EmailTestEndpointCore.ControleerLimiet() is { } begrensd) return begrensd;
+                if (ControleerAiBeschikbaar(context, log) is { } zonderAi)
+                    return zonderAi;
 
                 // Eigen catch naast de wrapper (#1350), zie EmailTestEndpointCore.Fout.
                 try
@@ -101,8 +106,9 @@ public static class EmailTestFunction
         if (!await teamRepository.HeeftActieveTeamsAsync(clubCode))
             await TeamCanonicalisatieService.RefreshAsync(PostgresDatabaseConfig.ConnectionString, clubCode, log);
 
+        // #1862: geen afzender-opzoeking in de proefverwerking; een vrij ingetypt adres mag niet tonen welk team iemand begeleidt.
         var plannerResponseJson = await BerichtPipeline.VerwerkMetPlannerAsync(
-            classificatie, fakeEmail, log, context.InstanceServices.GetRequiredService<ITeamResolver>(), clubCode, clubSettings, trace);
+            classificatie, fakeEmail, log, context.InstanceServices.GetRequiredService<ITeamResolver>(), clubCode, clubSettings, trace, afzenderTeamBron: OvergeslagenAfzenderTeamBron.Proefverwerking);
         var (voorbeeldOnderwerp, voorbeeldBody) = await BerichtPipeline.BouwTemplateAntwoord(
             classificatie, plannerResponseJson, fakeEmail, log, clubSettings, clubCode, trace);
 

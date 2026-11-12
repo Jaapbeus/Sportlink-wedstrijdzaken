@@ -106,6 +106,8 @@ Wat er daarna staat, en wat niet:
 | **Wordt níet bewaard** | Het CSV-bestand zelf — dat wordt nergens op de server opgeslagen |
 | **Wordt níet bewaard** | De inhoud van de CSV in logbestanden; de applicatie logt bewust alleen het aantal rijen en de duur |
 
+**Verder gebruik van de begeleidingslijst (art. 6 lid 4 AVG, #1862).** Naast de teamoverzichten gebruikt de e-mailverwerking de lijst om het eigen team af te leiden als een bericht geen herkenbaar team noemt: het e-mailadres van de afzender wordt opgezocht en bij precies één team is dat het team van het antwoord. Dat is verenigbaar met het doel van de lijst (contact en organisatie rond teams): een begeleider die over zijn eigen team mailt, wordt herkend binnen dezelfde context en verwachting. De opzoeking geeft alleen een teamwaarde terug, het antwoord noemt alleen die teamnaam, en het adres komt nooit in een trace, log of telemetrie; de trace bewaart alleen het aantal gevonden teams. De bewaartermijn van de lijst is ongewijzigd. Zie `EMAIL-VERWERKING.md` §5e.
+
 ### Optie B — via het PowerShell-script (alleen bij een SQL Server-database)
 
 > **Let op:** dit script werkt uitsluitend als jouw installatie op SQL Server draait. Draait je

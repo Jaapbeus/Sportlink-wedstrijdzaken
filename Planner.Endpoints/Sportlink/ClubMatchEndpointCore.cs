@@ -268,7 +268,7 @@ public static class ClubMatchEndpointCore
 
         var rijen = teams.Select(t =>
         {
-            var speeltijd = ZoekSpeeltijd(speeltijden, t.Leeftijdscategorie);
+            var speeltijd = ZoekSpeeltijd(speeltijden, t.Leeftijdscategorie, t.TeamNaam);
             return new ClubMatchFormulierTeam(
                 t.TeamNaam, t.Leeftijdscategorie,
                 ClubMatchAanvraagBouwer.ZoekAgeClassId(t.Leeftijdscategorie, ageClasses),
@@ -283,8 +283,14 @@ public static class ClubMatchEndpointCore
     }
 
     /// <summary>De speeltijdenrij van een leeftijdscategorie: de speeltijden-sleutel is de genormaliseerde vorm ("JO10", "MO15", "1-99", "VR").</summary>
-    private static ClubMatchSpeeltijdInvoer? ZoekSpeeltijd(IReadOnlyList<ClubMatchSpeeltijdInvoer> speeltijden, string? leeftijdscategorie)
+    /// <remarks>#1863: een O23-team krijgt de JO23-rij, ook als Sportlink het als "Senioren" levert; ontbreekt die (of is de duur 0), dan geldt de categorie.</remarks>
+    private static ClubMatchSpeeltijdInvoer? ZoekSpeeltijd(IReadOnlyList<ClubMatchSpeeltijdInvoer> speeltijden, string? leeftijdscategorie, string? teamNaam)
     {
+        if (TeamNaamNormalisatie.IsO23Team(teamNaam))
+        {
+            var jo23 = speeltijden.FirstOrDefault(s => string.Equals(s.Leeftijd.Trim(), LeeftijdNormalisatie.O23Sleutel, StringComparison.OrdinalIgnoreCase));
+            if (jo23 is { WedstrijdTotaal: > 0 }) return jo23;
+        }
         if (string.IsNullOrWhiteSpace(leeftijdscategorie)) return null;
         var sleutel = LeeftijdNormalisatie.Normaliseer(leeftijdscategorie);
         return speeltijden.FirstOrDefault(s => string.Equals(s.Leeftijd.Trim(), sleutel, StringComparison.OrdinalIgnoreCase))

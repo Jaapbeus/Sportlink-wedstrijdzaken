@@ -310,18 +310,18 @@ club live-klaar is. Uitzondering: zonder deze schakelaar blijft extern verkeer l
 
 Twee controles die verder gaan dan "de poort antwoordt" (#1060):
 
-- **Tier-provenance.** `/api/health` meldt zijn eigen tier uit de assembly-metadata (#863).
+- **Tier-provenance.** `/api/beheer/health` meldt de tier achter de admin-poort uit assembly-metadata (#863).
   Wijkt die af van `-Tier`, dan is de melding rood — anders zou een oude functiehost op dezelfde
   poort stilzwijgend als "gestart" worden gerapporteerd.
-- **`status` / `settingsLoaded`.** Een functiehost zonder bruikbare instellingencache geeft HTTP 200
+- **`status` / `settingsReady`.** Een functiehost zonder bruikbare instellingencache geeft HTTP 200
   met status `degraded`, terwijl élk `/api/beheer/*`-endpoint 500 antwoordt. Op een verse database
   is dat de normale toestand tot er een primaire club is geseed (DEVELOPER-SETUP.md §4.2).
-- **`pendingMigrations` / `schemaWarning` (#1098).** Meldt health migraties die de database nog
+- **`pendingMigrations` / `schemaWarning` (#1098) via `/api/beheer/health`.** Meldt health migraties die de database nog
   mist, dan wijst het script naar `Database.Postgres.Cli` in plaats van naar het seed-script — een
   lege instellingencache door een ontbrekende kolom is een andere oorzaak dan een ontbrekende
   primaire club. Dezelfde velden gaat de smoke test in `deploy.yml` na een productie-deploy bewaken
-  (vervolg op #1098: `settingsLoaded=false` laat die job falen, openstaande migraties geven een
-  waarschuwing) — zie MONITORING.md voor de stand daarvan.
+  (vervolg op #1098: `settingsReady=false` of `migrationsCurrent=false` laat die job falen;
+  schema-/TLS-vlaggen blijven waarschuwingen) — zie MONITORING.md voor de stand daarvan.
 
 Readiness-detectie:
 
@@ -427,7 +427,7 @@ diensten blijven uit" in de skill).
 Vanaf de Postgres-tier start de zelftest `FunctionApp.Postgres` zelf op en meet daar tegenaan:
 
 - **G5** — bewijst dat die host met de bedóelde databaseserver praat. Drie onafhankelijke
-  bewijzen: de tier-herkomst uit `/api/health` (build-time metadata, #863), de serverversie die de
+  bewijzen: de tier-herkomst uit `/api/beheer/health` (build-time metadata, #863), de serverversie die de
   applicatie meldt tegenover wat de container zelf op `SHOW server_version` antwoordt, en — het
   enige bewijs dat niet uit de applicatie komt — een verbinding met
   `application_name = 'SportlinkFunctionAppPostgres'` in `pg_stat_activity`. G5 controleert
@@ -638,6 +638,51 @@ Lokaal wordt de live database **niet automatisch geüpdatet** bij een git pull.
 Voor productie-deploys: gebruik de SSDT publish-diff workflow of een migratiescript.
 
 ---
+
+## Read-only database-tier pairing inventory (#1813)
+
+The pairing report reads tracked C# paths at a Git ref and emits stable JSON. It pairs identical
+relative paths first, lists a remaining basename match only when it is unique on both sides, and
+reports ambiguous and unmatched files separately. It does not read source contents, compare code,
+or establish that two files have the same behavior. A candidate is a review aid, not a confirmed
+pair and not a duplication measurement.
+
+```bash
+python3 scripts/ci/report-tier-pairs.py --ref HEAD
+python3 scripts/ci/report-tier-pairs.py --ref 1ee175ff7c50f1640060ebaecb2a2441d2090cb2
+python3 scripts/ci/test-report-tier-pairs.py
+```
+
+The explicit ref makes a report reproducible after later commits. The supplied baseline at
+`1ee175ff7c50f1640060ebaecb2a2441d2090cb2` contains 101 exact-path pairs and 5 unique-basename
+candidates, with no ambiguous groups. These counts do not prove semantic coverage. The duplication
+guard still pairs exact relative paths and also reads the reviewed explicit mappings in
+`scripts/ci/tier-duplicatie-mapping.txt`. The KNVB repositories are paired there because both query
+the same region, season, date range and match day types, then use the shared pure free-Saturday
+selector. `check-codekwaliteit.test.sh` has a synthetic mapped-pair fixture that must push the guard
+over its test ceiling. The production ceiling is not raised: the mapped pair (+9) is offset by
+moving the tier-identical KNVB calendar PDF reader to `Planner.Shared` (-32).
+
+The KNVB contract filter is `FullyQualifiedName~KnvbKalenderRepositoryIntegrationTests` in
+`FunctionApp.Tests` and `FunctionApp.Postgres.Tests`. The SQL Server KNVB filter is not included in
+the current SQL Server integration-test filter in `.github/workflows/build.yml`; a green CI run
+therefore does not verify this suite. Run it against an owned disposable container with
+`SQLSERVER_TEST_CONNECTION_STRING` plus `SqlConnectionString`; both must resolve to the same SQL
+Server instance and catalog. The SQL Server test catalog must use case-insensitive default
+comparison behavior; the fixture checks this with a database-default equality probe instead of
+requiring a particular collation name. The native day-type comparison regression exercises that
+behavior. This is a disposable-test requirement only; the production schema does not pin a
+collation. Prepare SQL Server using the canonical postdeploy script twice; prepare Postgres using
+`Database.Postgres.Cli` and `POSTGRES_TEST_CONNECTION_STRING`. Both suites contain six baseline
+cases and one native-comparison regression. Postgres rejects lowercase and trailing-space day types
+through its existing CHECK. Do not normalize those values or repeat the native query's
+day-type/range/order rules in shared code. No database environment means skipped tests, not
+successful integration verification.
+
+The mapping guard currently inventories tracked paths with newline separation. The independent
+#1810 source-inventory work must retain this reviewed mapping and its negative fixtures when
+integrated; this slice does not claim untracked-path or NUL-safe source coverage.
+
 
 ## CI-shellscripts lokaal draaien (`scripts/ci/*.sh`, #1155)
 

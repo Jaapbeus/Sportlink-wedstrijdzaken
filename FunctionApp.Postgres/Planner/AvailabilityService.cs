@@ -2,6 +2,7 @@ using FunctionApp.Postgres.Planner.Repositories;
 using Microsoft.Extensions.Logging;
 using Planner.Shared;
 using Planner.Shared.Email;
+using Planner.Shared.Planning;
 
 namespace FunctionApp.Postgres.Planner;
 
@@ -191,11 +192,9 @@ public static class AvailabilityService
             foreach (var field in availableFields)
             {
                 var fieldOccs = occupations.Where(o => o.VeldNummer == field.VeldNummer).OrderBy(o => o.AanvangsTijd).ToList();
-                var gapStart = field.BeschikbaarVanaf;
-                void AddVenster(TimeOnly van, TimeOnly tot)
+                foreach (var (van, tot, maxDuur) in PlanningOpenGaten.Vind(
+                    field.BeschikbaarVanaf, field.BeschikbaarTot, fieldOccs, PlannerShared.StandardBufferMinutes))
                 {
-                    int maxDuur = (int)(tot.ToTimeSpan() - van.ToTimeSpan()).TotalMinutes;
-                    if (maxDuur < 30) return;
                     response.BeschikbareDatums.Add(new DoordeweekseDatum
                     {
                         Datum = date.ToString("yyyy-MM-dd"),
@@ -213,13 +212,6 @@ public static class AvailabilityService
                         }).ToList()
                     });
                 }
-                foreach (var occ in fieldOccs)
-                {
-                    var occStart = occ.AanvangsTijd.AddMinutes(-PlannerShared.StandardBufferMinutes);
-                    if (occStart > gapStart) AddVenster(gapStart, occStart);
-                    gapStart = occ.EindTijd.AddMinutes(PlannerShared.StandardBufferMinutes);
-                }
-                if (gapStart < field.BeschikbaarTot) AddVenster(gapStart, field.BeschikbaarTot);
             }
         }
         response.AantalBeschikbaar = response.BeschikbareDatums.Count;
@@ -281,6 +273,12 @@ public static class AvailabilityService
         if (string.IsNullOrEmpty(request.TeamNaam)) return null;
 
         var teamWedstrijden = await PlannerMatchRepository.GetTeamMatchesOnDateAsync(connectionString, request.TeamNaam, date, cc);
+        return PasTeamControleToe(teamWedstrijden, request, date, response) ? response : null;
+    }
+
+    internal static bool PasTeamControleToe(TeamWedstrijdenOpDatum teamWedstrijden,
+        CheckAvailabilityRequest request, DateOnly date, CheckAvailabilityResponse response)
+    {
         if (!teamWedstrijden.TeamHerkend)
         {
             // Niet stilzwijgend doorlopen (#945): zonder herkend team is er niets vergeleken, en
@@ -288,9 +286,9 @@ public static class AvailabilityService
             // beheerder plant vaker een team in dat de teamlijst nog niet kent — maar het
             // ontbreken van de controle staat wel in het antwoord.
             response.Waarschuwingen.Add(
-                $"'{request.TeamNaam}' staat niet in de teamlijst. Er is NIET gecontroleerd of dit " +
+                $"'{AiVeldSanering.TeamNaamOfGeneriek(request.TeamNaam, false)}' staat niet in de teamlijst. Er is NIET gecontroleerd of dit " +
                 "team die dag al een wedstrijd heeft — controleer dat zelf.");
-            return null;
+            return false;
         }
 
         if (teamWedstrijden.Wedstrijden.Count > 0)
@@ -303,12 +301,12 @@ public static class AvailabilityService
                 EindTijd = conflict.EindTijd.ToString("HH:mm"),
                 VeldNaam = conflict.VeldNummer > 0 ? $"veld {conflict.VeldNummer}" : "onbekend"
             };
-            response.Reden = $"{request.TeamNaam} heeft al een wedstrijd op {date.ToString("d MMMM", PlannerShared.NL)}: " +
+            response.Reden = $"{AiVeldSanering.TeamNaamOfGeneriek(request.TeamNaam, false)} heeft al een wedstrijd op {date.ToString("d MMMM", PlannerShared.NL)}: " +
                              $"{conflict.Wedstrijd} om {conflict.AanvangsTijd:HH:mm} ({response.TeamConflict.VeldNaam}).";
-            return response;
+            return true;
         }
 
-        return null;
+        return false;
     }
 
     /// <summary>
@@ -341,41 +339,19 @@ public static class AvailabilityService
             var fieldOccs = occupations.Where(o => o.VeldNummer == field.VeldNummer).OrderBy(o => o.AanvangsTijd).ToList();
             var effectiveStart = field.BeschikbaarVanaf < filterVan ? filterVan : field.BeschikbaarVanaf;
             var effectiveEnd = field.BeschikbaarTot > filterTot ? filterTot : field.BeschikbaarTot;
-            var gapStart = effectiveStart;
-            foreach (var occ in fieldOccs)
+            foreach (var (van, tot, maxDuur) in PlanningOpenGaten.Vind(
+                effectiveStart, effectiveEnd, fieldOccs, PlannerShared.StandardBufferMinutes))
             {
-                var occStart = occ.AanvangsTijd.AddMinutes(-PlannerShared.StandardBufferMinutes);
-                if (occStart > gapStart)
+                windows.Add(new BeschikbaarVenster
                 {
-                    int gapMin = (int)(occStart.ToTimeSpan() - gapStart.ToTimeSpan()).TotalMinutes;
-                    if (gapMin >= 30)
-                        windows.Add(new BeschikbaarVenster
-                        {
-                            VeldNummer = field.VeldNummer,
-                            VeldNaam = veldInfo?.VeldNaam ?? $"veld {field.VeldNummer}",
-                            VeldType = veldInfo?.VeldType,
-                            Van = gapStart.ToString("HH:mm"),
-                            Tot = occStart.ToString("HH:mm"),
-                            MaxDuurMinuten = gapMin,
-                            Opmerking = !field.GebruikZonsondergang ? null : $"Zonsondergang {sunset:HH:mm}, geen kunstlicht"
-                        });
-                }
-                gapStart = occ.EindTijd.AddMinutes(PlannerShared.StandardBufferMinutes);
-            }
-            if (gapStart < effectiveEnd)
-            {
-                int gapMin = (int)(effectiveEnd.ToTimeSpan() - gapStart.ToTimeSpan()).TotalMinutes;
-                if (gapMin >= 30)
-                    windows.Add(new BeschikbaarVenster
-                    {
-                        VeldNummer = field.VeldNummer,
-                        VeldNaam = veldInfo?.VeldNaam ?? $"veld {field.VeldNummer}",
-                        VeldType = veldInfo?.VeldType,
-                        Van = gapStart.ToString("HH:mm"),
-                        Tot = effectiveEnd.ToString("HH:mm"),
-                        MaxDuurMinuten = gapMin,
-                        Opmerking = !field.GebruikZonsondergang ? null : $"Zonsondergang {sunset:HH:mm}, geen kunstlicht"
-                    });
+                    VeldNummer = field.VeldNummer,
+                    VeldNaam = veldInfo?.VeldNaam ?? $"veld {field.VeldNummer}",
+                    VeldType = veldInfo?.VeldType,
+                    Van = van.ToString("HH:mm"),
+                    Tot = tot.ToString("HH:mm"),
+                    MaxDuurMinuten = maxDuur,
+                    Opmerking = !field.GebruikZonsondergang ? null : $"Zonsondergang {sunset:HH:mm}, geen kunstlicht"
+                });
             }
         }
         response.Beschikbaar = windows.Count > 0;

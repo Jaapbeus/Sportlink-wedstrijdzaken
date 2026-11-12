@@ -24,7 +24,6 @@ public static partial class BerichtAntwoordGenerator
         IAntwoordInstellingen instellingen)
     {
         var aanhef = GetTijdsgebondenAanhef();
-        var voornaam = ExtractVoornaam(email.AfzenderNaam);
         var vensters = response.BeschikbareVensters != null
             ? FilterKunstgrasVensters(response.BeschikbareVensters)
             : new List<IAntwoordVenster>();
@@ -36,7 +35,7 @@ public static partial class BerichtAntwoordGenerator
         if (response.Beschikbaar && response.Toewijzing != null)
         {
             var t = response.Toewijzing;
-            inhoud = $"{aanhef} {voornaam},\n\n"
+            inhoud = $"{AntwoordTekst.AanhefMetNaam(aanhef, email.AfzenderNaam)},\n\n"
                    + $"Op {datumTekst} is {t.VeldNaam} beschikbaar om {t.AanvangsTijd}. "
                    + $"De wedstrijd eindigt om {t.EindTijd}.";
 
@@ -44,12 +43,12 @@ public static partial class BerichtAntwoordGenerator
                 inhoud += " Er zijn op deze dag nog diverse andere mogelijkheden.";
 
             if (response.Waarschuwingen.Count > 0)
-                inhoud += "\n\nLet op: " + string.Join(" ", response.Waarschuwingen);
+                inhoud += "\n\nLet op: " + AiVeldSanering.WaarschuwingenSamen(response.Waarschuwingen);
         }
         else if (!response.Beschikbaar && vensters.Count > 0 && !string.IsNullOrEmpty(classificatie.AanvangsTijd))
         {
             // Voorkeurstijd niet beschikbaar — toon vensters als alternatieven
-            inhoud = $"{aanhef} {voornaam},\n\n"
+            inhoud = $"{AntwoordTekst.AanhefMetNaam(aanhef, email.AfzenderNaam)},\n\n"
                    + $"Op {datumTekst} om {classificatie.AanvangsTijd} is helaas geen ruimte. Beschikbare mogelijkheden:\n";
             foreach (var v in vensters)
                 inhoud += FormatVensterRegel(v);
@@ -59,7 +58,7 @@ public static partial class BerichtAntwoordGenerator
         {
             // Open vraag zonder voorkeurstijd — toon beschikbare vensters
             vensters = FilterKunstgrasVensters(response.BeschikbareVensters);
-            inhoud = $"{aanhef} {voornaam},\n\n"
+            inhoud = $"{AntwoordTekst.AanhefMetNaam(aanhef, email.AfzenderNaam)},\n\n"
                    + $"Op {datumTekst} zijn de volgende mogelijkheden:\n";
             foreach (var v in vensters)
                 inhoud += FormatVensterRegel(v);
@@ -68,7 +67,7 @@ public static partial class BerichtAntwoordGenerator
         else if (!response.Beschikbaar && response.Alternatieven.Count > 0)
         {
             var alternatieven = FilterAlternatieven(response.Alternatieven);
-            inhoud = $"{aanhef} {voornaam},\n\n"
+            inhoud = $"{AntwoordTekst.AanhefMetNaam(aanhef, email.AfzenderNaam)},\n\n"
                    + $"Op {datumTekst}";
             if (!string.IsNullOrEmpty(classificatie.AanvangsTijd))
                 inhoud += $" om {classificatie.AanvangsTijd}";
@@ -81,20 +80,20 @@ public static partial class BerichtAntwoordGenerator
             }
 
             if (response.Waarschuwingen.Count > 0)
-                inhoud += "\nLet op: " + string.Join(" ", response.Waarschuwingen);
+                inhoud += "\nLet op: " + AiVeldSanering.WaarschuwingenSamen(response.Waarschuwingen);
         }
         else if (response.HeeftTeamConflict)
         {
             // Team heeft al een wedstrijd op deze datum — dit is de primaire reden.
             // Veld-beschikbaarheid is niet gecheckt (early return in de planner),
             // dus "geen veld beschikbaar" is hier feitelijk onjuist en misleidend.
-            inhoud = $"{aanhef} {voornaam},\n\n"
+            inhoud = $"{AntwoordTekst.AanhefMetNaam(aanhef, email.AfzenderNaam)},\n\n"
                    + $"{response.Reden}\n\n"
                    + $"Hierdoor kan op {datumTekst} geen oefenwedstrijd worden ingepland.";
         }
         else
         {
-            inhoud = $"{aanhef} {voornaam},\n\n" + DagdeelVenster.GeenVeldZin(datumTekst, response.GecontroleerdDagdeel, response.Reden);
+            inhoud = $"{AntwoordTekst.AanhefMetNaam(aanhef, email.AfzenderNaam)},\n\n" + DagdeelVenster.GeenVeldZin(datumTekst, response.GecontroleerdDagdeel, response.Reden);
         }
 
         inhoud = DagdeelVenster.VoegControleZinToe(inhoud, response.GecontroleerdDagdeel);
@@ -111,9 +110,8 @@ public static partial class BerichtAntwoordGenerator
         IAntwoordInstellingen instellingen)
     {
         var aanhef = GetTijdsgebondenAanhef();
-        var voornaam = ExtractVoornaam(email.AfzenderNaam);
 
-        var inhoud = $"{aanhef} {voornaam},\n\n";
+        var inhoud = $"{AntwoordTekst.AanhefMetNaam(aanhef, email.AfzenderNaam)},\n\n";
 
         foreach (var (datum, response) in resultaten)
         {
@@ -168,7 +166,7 @@ public static partial class BerichtAntwoordGenerator
             var t = response.Toewijzing;
             var sectie = $"**{datumTekst}:** {t.VeldNaam} is beschikbaar om {t.AanvangsTijd} (eindigt {t.EindTijd}).";
             if (response.Waarschuwingen.Count > 0)
-                sectie += " Let op: " + string.Join(" ", response.Waarschuwingen);
+                sectie += " Let op: " + AiVeldSanering.WaarschuwingenSamen(response.Waarschuwingen);
             if (isDiverseMogelijkheden)
                 sectie += " Er zijn op deze dag nog diverse andere mogelijkheden.";
             return sectie + "\n";
@@ -245,13 +243,17 @@ public static partial class BerichtAntwoordGenerator
         }
 
         var onderwerpInvulling = VulPlaceholdersIn(template.Onderwerp, placeholders);
-        var bodyInvulling = VulPlaceholdersIn(template.Body, placeholders);
+        // De standaard aanhef houdt ook zonder veilige naam een natuurlijke vorm.
+        var bodySjabloon = placeholders["voornaam"].Length == 0
+            ? System.Text.RegularExpressions.Regex.Replace(template.Body, @"[ \t]*\{\{voornaam\}\}", "",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant)
+            : template.Body;
+        var bodyInvulling = VulPlaceholdersIn(bodySjabloon, placeholders);
         // Noemt het sjabloon het dagdeel zelf niet, dan komt de standaardzin alsnog onder de sjabloontekst.
         bodyInvulling = DagdeelVenster.VoegControleZinToeTenzijVermeld(bodyInvulling, gecontroleerdDagdeel, template.Body);
 
-        var onderwerp = !string.IsNullOrWhiteSpace(onderwerpInvulling)
-            ? onderwerpInvulling
-            : $"Re: {email.Onderwerp}";
+        var onderwerp = AiVeldSanering.OnderwerpWeergave(onderwerpInvulling)
+            ?? $"Re: {AntwoordTekst.Onderwerp(email.Onderwerp)}";
 
         // Wrap met review-mode prefix + handtekening, hergebruik de bestaande logica
         var body = "";
@@ -260,7 +262,7 @@ public static partial class BerichtAntwoordGenerator
 
         // TrimEnd (#1780): een placeholder aan het eind van de tekst die leeg blijft (bijvoorbeeld {{bijlage_zin}})
         // mag geen rij lege regels voor de handtekening achterlaten; de handtekening voegt zelf een lege regel toe.
-        body += bodyInvulling.TrimEnd();
+        body += bodyInvulling.TrimEnd() + AfgeleidTeamControle.Regel(classificatie);
         body += "\n\n" + GetHandtekening(instellingen);
         return (onderwerp, body);
     }
@@ -386,13 +388,13 @@ public static partial class BerichtAntwoordGenerator
         string inhoud, BerichtClassificatie classificatie, IAntwoordAfzender email,
         IAntwoordInstellingen instellingen)
     {
-        var onderwerp = $"Re: {email.Onderwerp}";
+        var onderwerp = $"Re: {AntwoordTekst.Onderwerp(email.Onderwerp)}";
         var body = "";
 
         if (EmailReviewModus.IsActief())
             body += ReviewKop(classificatie, email, templateKey: null);
 
-        body += inhoud;
+        body += inhoud + AfgeleidTeamControle.Regel(classificatie);
         body += "\n\n" + GetHandtekening(instellingen);
 
         return (onderwerp, body);
@@ -406,8 +408,8 @@ public static partial class BerichtAntwoordGenerator
     private static string ReviewKop(BerichtClassificatie classificatie, IAntwoordAfzender email, string? templateKey)
     {
         var kop = "=== REVIEW MODE ===\n"
-                + $"Originele afzender: {email.Afzender}\n"
-                + $"Onderwerp: {email.Onderwerp}\n"
+                + $"Originele afzender: {AiVeldSanering.AfzenderNaamWeergave(email.AfzenderNaam) ?? "afzender"} ({AntwoordTekst.ReviewAfzenderAdres(email.Afzender)})\n"
+                + $"Onderwerp: {AntwoordTekst.Onderwerp(email.Onderwerp)}\n"
                 + $"Classificatie: {classificatie.Type}\n";
         if (templateKey != null)
             kop += $"Template: {templateKey}\n";

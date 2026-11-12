@@ -69,11 +69,13 @@ public static class TraceCodes
     public const string TeamHerkenning = "team-herkenning";
     public const string TegenstanderHerkenning = "tegenstander-herkenning";
     public const string TeamWissel = "team-wissel";
+    public const string BegeleidingAfzender = "begeleiding-afzender";
     public const string OpponentPad = "opponent-pad";
     public const string OpponentTeamHerkenning = "opponent-team-herkenning";
     public const string Datum = "datum";
     public const string Tak = "tak";
     public const string HerplanUitkomst = "herplan-uitkomst";
+    public const string Speelduur = "speelduur";
     public const string Sjabloon = "sjabloon";
     public const string Eindoordeel = "eindoordeel";
     public const string Zekerheidspoort = "zekerheidspoort";

@@ -1,6 +1,7 @@
 using AwesomeAssertions;
 using FunctionApp.Postgres.Sportlink;
 using Microsoft.AspNetCore.Mvc;
+using Planner.Endpoints.Sportlink;
 using Planner.Shared.Integrations.SportlinkClub;
 using Xunit;
 
@@ -34,5 +35,5 @@ public class SportlinkEndpointSupportTests
     [InlineData(true, true, false, "DryRun")]
     [InlineData(true, true, true, "DryRunLocked")]
     public void BepaalAuditResultaat_CodeLockGaatVoorDryRunVoorSucces(bool dryRun, bool success, bool forced, string verwacht)
-        => SportlinkEndpointSupport.BepaalAuditResultaat(new SportlinkMutationResult(success, null, dryRun, forced)).Should().Be(verwacht);
+        => SportlinkEndpointSupportCore.BepaalAuditResultaat(new SportlinkMutationResult(success, null, dryRun, forced)).Should().Be(verwacht);
 }

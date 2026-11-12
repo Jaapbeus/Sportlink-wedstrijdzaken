@@ -9,6 +9,10 @@ namespace Planner.Shared.Feedback;
 // SportlinkEndpointSupportCore. Alles wat niet over databasetoegang gaat (rate limiting,
 // publicatiebeleid, redactie, bewaartermijnen) staat eenmalig in Planner.Shared/Planner.Endpoints.
 
+/// <summary>Een GitHub-publicatie is afgebroken nadat de write kon zijn ontvangen; controleer vóór een nieuwe poging.</summary>
+public sealed class FeedbackPublicatieUitkomstOnbekendException(Exception innerException)
+    : Exception("GitHub-issueaanmaak is afgebroken; de uitkomst is onbekend.", innerException);
+
 /// <summary>Statuswaarden van <c>avg.Feedback.Status</c>. Bewust geen "open"/"gesloten": die zouden GitHub spiegelen zonder synchronisatie.</summary>
 public static class FeedbackStatusWaarden
 {
@@ -102,8 +106,29 @@ public interface IFeedbackStore
     /// <summary>Bewaart de melding en haar telemetrie in één transactie.</summary>
     Task BewaarAsync(FeedbackNieuw nieuw, IReadOnlyList<FeedbackTelemetrieRegel> telemetrie);
 
-    /// <summary>Claimt een melding voor publicatie (wacht/mislukt → publiceren). Geeft <c>false</c> als hij al gepubliceerd wordt of is — voorkomt een dubbel issue bij twee klikken.</summary>
+    /// <summary>
+    /// Claimt een melding voor publicatie (wacht/mislukt → publiceren). Geeft <c>false</c> als hij al gepubliceerd wordt of is — voorkomt een dubbel issue bij twee klikken.
+    /// Legt ook het begin van de publicatiepoging vast (<c>PublicatieGestartOpUtc</c>, #1803): de ondergrens waarmee herstel later naar een al aangemaakt issue zoekt.
+    /// </summary>
     Task<bool> ClaimPublicatieAsync(string clubCode, Guid feedbackId);
+
+    /// <summary>
+    /// Herclaimt een melding die op <c>publiceren</c> is blijven staan na een dubbelzinnige GitHub-POST (#1803):
+    /// alleen als de vorige (her)claim ouder is dan <paramref name="claimOuderDanUtc"/>, en atomair, zodat twee
+    /// klikken niet allebei doorgaan. Geeft het begin van de publicatiepoging (UTC) terug, of <c>null</c> als er
+    /// niet geclaimd is. Dat begin schuift bij een herclaim nooit op: een herstelpoging die mislukt (GitHub
+    /// onbereikbaar, receipt niet opgeslagen) verkleint het zoekvenster van de volgende poging dus niet.
+    /// </summary>
+    Task<DateTime?> HerClaimPublicatieAsync(string clubCode, Guid feedbackId, DateTime claimOuderDanUtc);
+
+    /// <summary>
+    /// Vervangt de bewaarde issuetekst van een geclaimde melding (status <c>publiceren</c>). Alleen gebruikt om een
+    /// melding van vóór #1803 vóór haar eerste POST alsnog een publicatiereferentie te geven. Zet daarbij ook het begin
+    /// van de publicatiepoging (<c>PublicatieGestartOpUtc</c>) op nu: de nieuwe referentie bestaat vóór dit moment
+    /// nergens op GitHub, dus elke latere herclaim zoekt vanaf hier, ook voor een rij die vóór die kolom bleef hangen.
+    /// Geeft <c>false</c> als de melding niet (meer) geclaimd is.
+    /// </summary>
+    Task<bool> ZetIssueBodyAsync(string clubCode, Guid feedbackId, string issueBody);
 
     Task ZetGepubliceerdAsync(string clubCode, Guid feedbackId, int issueNummer, string issueUrl);
 

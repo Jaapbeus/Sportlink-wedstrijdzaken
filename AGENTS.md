@@ -1,10 +1,10 @@
 # AGENTS.md
 
-Gedeelde instructies voor Codex en Claude Code. Ze passen in het leesbudget van Codex (root ≤ 27 KiB, `FunctionApp/AGENTS.md` ≤ 4 KiB, keten ≤ 30 KiB; CI bewaakt): harde regels compact, uitleg in `docs/` (`ARCHITECTUUR.md` §13.1). Een link importeert niets: lees het document uit **Leesmomenten** vóór de taak. Verwijzing zonder pad: `docs/`, behalve de rootbestanden `AGENTS.md`, `CLAUDE.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`.
+Gedeeld: Codex/Claude Code. CI: AGENTS.md ≤27 KiB, FunctionApp/AGENTS.md ≤4 KiB, keten ≤30 KiB. Regels hier; uitleg docs/ (§13.1). Volg Leesmomenten; links importeren niet. Padloos: docs/; root: AGENTS.md, CLAUDE.md, CHANGELOG.md, CONTRIBUTING.md, SECURITY.md.
 
 ## Rollen
 
-Benader elke taak als **Software Architect** (structuur, geen onnodige complexiteit), **Solution Architect** (Functions + Blazor + SWA + database + Entra; kosten), **CISO** (Security Gate leidend; secrets nooit in code/logs/responses; AVG), **Application Tester** (`dotnet build` ≠ werkt: smoke test vóór oplevering) en **DPO** (persoonsgegevens rechtmatig, veilig, transparant). Spanning tussen rollen: altijd melden.
+Benader elke taak als Software Architect (structuur, eenvoud), Solution Architect (Functions/Blazor/SWA/DB/Entra; kosten), CISO (Security Gate leidend; geheimen nooit in code/logs/responses; AVG), Application Tester (`dotnet build` ≠ werking; smoke test vóór oplevering), DPO (persoonsgegevens rechtmatig/veilig/transparant). Meld rolspanning.
 
 ## Codex ↔ Claude Code — gescheiden eigenaarschap
 
@@ -12,7 +12,7 @@ Beide mogen implementeren en reviewen; per taak precies één implementer, de an
 
 1. **Inventariseer vóór iedere wijziging**: branch, HEAD, werkboomstatus, `git worktree list --porcelain`, issues, open PR's; zoek open én gesloten issues vóór een nieuw issue. Bestaande wijzigingen zijn van hun eigenaar: nooit resetten of opruimen.
 2. **Leg de opdracht vast bij het issue**: implementer, unieke sessie, reviewer, fase (`implementatie`/`review`/`verwerking`/`eigenaarsbesluit`), scope, verwachte bestanden, branch, absoluut worktreepad, afhankelijkheden. De eigenaar wijst de implementer aan; neem geen toegewezen taak over (een directe opdracht aan een agent telt als toewijzing zolang geen claim botst). Elke implementatie, ook instructie-/docs-/CI-werk, heeft vooraf een issue met precies één `type:`-, `priority:`- en aantoonbaar `source:`-label (+ `discipline: architect` bij een architectuurbesluit); de PR verwijst sterk (`#nr`) ernaar.
-3. **Parallel werk** alleen met vooraf gescheiden scopes (bestanden, API-contracten, databaseschema's, gedeelde logica); herhaal de controle bij scope-uitbreiding en vóór commit/PR (geen tekstconflict ≠ functionele isolatie).
+3. **Parallel:** alleen vooraf gescheiden scopes; hercheck groei/vóór commit/PR (tekstconflict ≠ functionele isolatie). Vul vrije slots met veilige, toegewezen taken (limiet incl. orchestrator); hergebruik voltooide agents. Geen veilige taak? Alleen geautoriseerd status/CI/review.
 4. **Een issuecomment is geen lock**: wijs jezelf nooit aan op een leeg issue. Onduidelijk eigenaarschap: geen overlappende wijzigingen, eerst de eigenaar.
 5. **Wijzig alleen eigen werk**: geen commits, pushes, rebases, cherry-picks of cleanup op andermans branch/worktree; overdracht alleen met vastgelegde nieuwe implementer, sessie en status.
 
@@ -68,6 +68,8 @@ Namen (Codex | Claude Code), worktrees `.codex/worktrees/<nr>-<sessie>` | `.clau
 
 **Labels.** Precies één herkomst: `source: codex|claude-code|owner` door de opsteller, óf `via: feedback-widget` bij een widgetmelding (dan géén extra `source:`); bestaande herkomst blijft, ontbrekende alleen op bewijs aanvullen; geef bij aanmaken zelf geen `status:` mee. De automatiek zet één `status:` (nooit `--add-label` zonder het oude te verwijderen; `blocked`/`wont-fix`/`waiting-owner` blijven staan; keten: `CONTRIBUTING.md`). Alleen strong refs (`#NNN` in PR-titel of achter `Closes #N`) wijzigen een issue. **Een merge naar `develop` sluit het issue nooit** en de agent roept daarna nooit `gh issue close` aan (uitzondering: hotfix-PR naar `main` na merge en groene `close-released-issues.yml`).
 
+**GitHub-taal.** Schrijf nieuwe issue-/PR-titels, bodies, comments/reviewcomments en workflow-uitvoer in het Nederlands; behoud code, vaktermen en letterlijke citaten.
+
 ## Absolute veiligheidsregels — nooit omzeilen
 
 1. **Na elke push of commit CI controleren** (`gh pr checks <nr>`/`gh run list`); meld niets als klaar of geslaagd zonder dat alle Actions-checks groen zijn.
@@ -121,3 +123,4 @@ Uitwerking: `ARCHITECTUUR.md` en de documenten uit **Leesmomenten**.
 | een release/hotfix voorbereidt | `VERSIONING.md`, skill `/release` |
 | alerting of feedback raakt | `MONITORING.md`, `FEEDBACK.md` |
 | in `FunctionApp/` werkt | `FunctionApp/AGENTS.md` |
+| parallel werk orkestreert | `CONTRIBUTING.md` |

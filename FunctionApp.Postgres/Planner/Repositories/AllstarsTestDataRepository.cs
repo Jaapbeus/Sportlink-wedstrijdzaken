@@ -48,10 +48,16 @@ internal static class AllstarsTestDataRepository
     internal static async Task<List<WedstrijdRaw>> GetAllMatchesForDatumAsync(
         string connectionString, DateOnly datum, string clubCode)
     {
-        bool isAllstars = clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase);
-        var results = new List<WedstrijdRaw>();
         await using var conn = new NpgsqlConnection(connectionString);
         await conn.OpenAsync();
+        return await GetAllMatchesForDatumAsync(conn, null, datum, clubCode);
+    }
+
+    internal static async Task<List<WedstrijdRaw>> GetAllMatchesForDatumAsync(
+        NpgsqlConnection conn, NpgsqlTransaction? transaction, DateOnly datum, string clubCode)
+    {
+        bool isAllstars = clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase);
+        var results = new List<WedstrijdRaw>();
 
         // #1547: de speelduur volgens Sportlink staat in his.matchdetails, en die koppelt op
         // interncode — niet op matchdetails.wedstrijdcode, want dat is Sportlinks wedstrijdNUMMER
@@ -107,7 +113,7 @@ internal static class AllstarsTestDataRepository
                   AND m.accommodatie LIKE '%' || (SELECT accommodatie FROM public.appsettings WHERE clubcode = @clubCode LIMIT 1) || '%'
                 ORDER BY m.teamvolgorde, m.teamnaam";
 
-        await using var cmd = new NpgsqlCommand(sql, conn);
+        await using var cmd = new NpgsqlCommand(sql, conn, transaction);
         cmd.Parameters.AddWithValue("date", datum.ToDateTime(TimeOnly.MinValue));
         if (!isAllstars) cmd.Parameters.AddWithValue("clubCode", clubCode);
 
@@ -139,24 +145,24 @@ internal static class AllstarsTestDataRepository
     /// </summary>
     internal static async Task<List<VeldInfo>> GetAllstarsVeldenAsync(string connectionString)
     {
-        var results = new List<VeldInfo>();
         await using var conn = new NpgsqlConnection(connectionString);
         await conn.OpenAsync();
+        return await GetAllstarsVeldenAsync(conn, null);
+    }
+
+    internal static async Task<List<VeldInfo>> GetAllstarsVeldenAsync(
+        NpgsqlConnection conn, NpgsqlTransaction? transaction)
+    {
+        var results = new List<VeldInfo>();
         await using var cmd = new NpgsqlCommand("""
             SELECT veldnummer, veldnaam, COALESCE(veldtype, 'kunstgras'), heeftkunstlicht
             FROM public.velden
             WHERE actief = true AND veldnummer >= 100
             ORDER BY veldnummer
-            """, conn);
+            """, conn, transaction);
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
-            results.Add(new VeldInfo
-            {
-                VeldNummer = reader.GetInt32(0),
-                VeldNaam = reader.GetString(1),
-                VeldType = reader.GetString(2),
-                HeeftKunstlicht = reader.GetBoolean(3)
-            });
+            results.Add(VeldInfo.FromReader(reader));
         return results;
     }
 
@@ -179,6 +185,25 @@ internal static class AllstarsTestDataRepository
         cmd.Parameters.AddWithValue("tijd", nieuweTijd);
         cmd.Parameters.AddWithValue("veld", nieuweVeld);
         cmd.Parameters.AddWithValue("code", wedstrijdCode);
+        return await cmd.ExecuteNonQueryAsync();
+    }
+
+    internal static async Task<int> UpdateAllstarsMatchAsync(
+        NpgsqlConnection conn, NpgsqlTransaction transaction, long wedstrijdCode,
+        string? verwachtVeld, string? verwachteTijd, string nieuweVeld, string nieuweTijd)
+    {
+        await using var cmd = new NpgsqlCommand("""
+            UPDATE his.matches
+            SET aanvangstijd = @tijd, veld = @veld, mta_modified = NOW()
+            WHERE wedstrijdcode = @code AND clubcode = 'ALLSTARS' AND mta_deleted IS NULL
+              AND veld IS NOT DISTINCT FROM @verwachtVeld
+              AND aanvangstijd IS NOT DISTINCT FROM @verwachteTijd
+            """, conn, transaction);
+        cmd.Parameters.AddWithValue("tijd", nieuweTijd);
+        cmd.Parameters.AddWithValue("veld", nieuweVeld);
+        cmd.Parameters.AddWithValue("code", wedstrijdCode);
+        cmd.Parameters.AddWithValue("verwachtVeld", (object?)verwachtVeld ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("verwachteTijd", (object?)verwachteTijd ?? DBNull.Value);
         return await cmd.ExecuteNonQueryAsync();
     }
 

@@ -172,6 +172,43 @@ C#-versie, precies het onderhoudsrisico dat #719 al blootlegde voor die twee. Vu
 volgende tier: bevat de te herbouwen logica geen SQL en geen providerspecifieke aanroep, verhuis
 haar naar een gedeeld project in plaats van haar te dupliceren.
 
+### Scoped implementation for #1813
+
+The repository continues to mark SQL Server and Postgres as `built: true`; this change preserves
+that invariant and does not decide their long-term support policy. The issue's option A is
+“Doorgaan zoals nu”. This PR documents a narrow implementation choice and does not present it as
+a broader owner decision.
+
+For this change, Codex chose a narrow implementation: the SQL Server and Postgres KNVB calendar
+repositories remain native and keep their own region, season, date-range, day-type and ordering
+rules. They pass their results to one pure `Planner.Shared` selector that filters Saturdays,
+excludes occupied dates and applies the requested maximum. Both native repository suites and the
+shared selector tests cover that boundary. This choice follows the existing exception for pure,
+provider-agnostic business logic; it adds no generic provider abstraction, runtime tier switch,
+schema change or broad endpoint-orchestration roadmap. SQLite remains `built: false` in
+`scripts/ci/database-tiers.json`.
+
+At `1ee175ff7c50f1640060ebaecb2a2441d2090cb2`, a path inventory found 101 exact relative-path
+pairs and 5 unique-basename candidates, with no ambiguous basename groups. These are path
+inventory counts, not semantic-coverage or maintenance-cost evidence. The KNVB calendar
+repositories were separately verified as semantic counterparts for this selector; that one pair
+is recorded in `scripts/ci/tier-duplicatie-mapping.txt`. Counting that pair adds 9 identical lines;
+the same change moves the KNVB calendar PDF reader (`KnvbPdfService`, 32 identical lines in two
+tier copies, no database access) to `Planner.Shared/Email/KnvbPdfService.cs`, so the duplication
+ceiling goes down instead of up. A negative fixture proves that mapped duplication is counted.
+Other candidates remain unverified.
+
+Broader support, extraction and migration policy remains outside this scoped implementation and
+requires a separately evidenced owner decision. `#1542` remains a separate owner goal to eliminate
+its storage resource; this ADR does not accept ongoing cost or close that issue.
+
+The report command `python3 scripts/ci/report-tier-pairs.py --ref <commit>` inventories tracked C#
+paths at an explicit Git ref. It lists exact-path matches, unique-basename candidates, ambiguous
+groups and unmatched files. It does not compare contents or establish semantic coverage; a
+basename match alone does not establish that files were renamed counterparts or quantify their
+combined line count. See [VERIFICATIE-SCRIPTS.md](VERIFICATIE-SCRIPTS.md) for usage and focused
+tests.
+
 **Tier-keuze is bewust onveranderlijk na de eerste deploy — afdwinging gebouwd bij #976.** #816
 legt vast dat de repository-variabele `DatabaseTier` de keuze bepaalt (hard-fail bij een
 ontbrekende/onbekende waarde). Met de Postgres-tier inmiddels functioneel gereed werd een switch
@@ -286,7 +323,7 @@ gesloten zijn.
 | [#856](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/856) — Seed slaat zichzelf over op een verse database ✅ opgelost (Optie B, zie §13) | Zonder dit zijn er op elke nieuwe installatie nul demoteams en -wedstrijden |
 | [#857](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/857) — Synchronisatie-rem is dode code | Een lokale run praat nu met de externe bron en kan issues aanmaken |
 | [#858](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/858) — AVG-maskering hangt aan kolomcasing | Onder lowercase-identifiers lekken volledige e-mailadressen naar de browser |
-| [#859](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/859) — Stille faalpaden rond databaseconfiguratie ✅ opgelost | `/api/health` geeft 503 bij "unconfigured" i.p.v. 200; een mislukte instellingenlaadt is zichtbaar via `settingsLoaded`; de wachtlus is kort buiten productie en overschrijfbaar via `DbWaitMaxRetries`/`DbWaitDelayMs`, op beide tiers |
+| [#859](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/859) — Stille faalpaden rond databaseconfiguratie ✅ opgelost | `/api/health` geeft 503 bij "unconfigured" i.p.v. 200 en toont readinessaggregaten; de detailwaarde `settingsLoaded` staat sinds #1811 achter admin-only `/api/beheer/health`; de wachtlus is kort buiten productie en overschrijfbaar via `DbWaitMaxRetries`/`DbWaitDelayMs`, op beide tiers |
 
 ### 6c. Ontbrekende scope
 
@@ -440,6 +477,12 @@ aan foutnummer 40613 — Azure-SQL-specifiek. Zonder een bevestigd, vergelijkbaa
 voor de gekozen Postgres-hosting zou `"paused"` hier verzonnen zijn; een onbereikbare database is
 hier altijd `"unavailable"` of `"timeout"`. `tier`/`provider`/`serverVersion` volgen verder exact
 het #863-patroon (build-time metadata resp. `SHOW server_version`).
+
+**Huidig publiek contract (#1811 / API 4.0.0.0):** `/api/health` toont alleen status, versie,
+databasebereikbaarheid en readiness-/waarschuwingvlaggen. `tier`, `provider`, `serverVersion`,
+sync-, schema-, migratie- en TLS-details worden uitsluitend teruggegeven door admin-only
+`/api/beheer/health`. De historische voorbeelden hieronder beschrijven het contract ten tijde
+van die wijziging.
 
 **Empirisch bevestigd:** `func start` tegen een wegwerp-Postgres-16-container levert een werkende
 `/api/health` op — `status="ok"`, `tier="Postgres"`, `provider="Npgsql"`,
@@ -989,8 +1032,8 @@ vereist een accountsleutel in de aanroep, en die hoort niet in een script in git
 
 | Assertie | Waarom die op zichzelf niet genoeg is |
 |---|---|
-| `health.tier` / `health.provider` | Komt uit build-time assembly-metadata (#863). Bewijst welke bóom draait, niet met welke database die praat. |
-| `health.serverversie` | De applicatie meldt een serverversie; die wordt vergeleken met wat de container zélf op `SHOW server_version` antwoordt. Sluit een andere Postgres uit, maar komt nog steeds uit de applicatie. |
+| `health.tier` / `health.provider` | Komt uit build-time assembly-metadata (#863), nu via admin-only `/api/beheer/health`. Bewijst welke bóom draait, niet met welke database die praat. |
+| `health.serverversie` | Admin-only health meldt een serverversie; die wordt vergeleken met wat de container zélf op `SHOW server_version` antwoordt. Sluit een andere Postgres uit, maar komt nog steeds uit de applicatie. |
 | `engine.onafhankelijk-bevestigd` | Het enige bewijs dat **niet** van de applicatie komt: `pg_stat_activity` in de wegwerpcontainer toont een verbinding met `application_name = 'SportlinkFunctionAppPostgres'`. Samen met G1's negatieve controle (de SQL Server-container is aantoonbaar gestopt) sluit dit een stille terugval uit. |
 
 Daarnaast controleert G5 dat **geen enkele functie in foutstatus staat**. Dat is geen formaliteit:
@@ -1598,10 +1641,11 @@ sloopwerkzaamheden in een eigen schema — is vastgelegd als issue #925 en valt 
 ### Bewust niet in deze ronde
 
 - **De SQL Server-suite omzetten naar hetzelfde env-gestuurde mechanisme.**
-  `SportlinkFixtureSyncIntegrationTests` en `PartialFailureIntegrationTests` staan nog op
-  `[Fact(Skip = "...")]` en draaien dus nergens automatisch. #866 loste dit alleen voor de
-  Postgres-tier op; docs/DEVELOPER-SETUP.md §7.1 benoemt dat al als openstaand. Deze ronde raakt de
-  SQL Server-boom bewust niet.
+  Ten tijde van deze ronde stonden `SportlinkFixtureSyncIntegrationTests` en
+  `PartialFailureIntegrationTests` op `[Fact(Skip = "...")]` en draaiden ze nergens automatisch.
+  #866 loste dit alleen voor de Postgres-tier op; deze ronde raakte de SQL Server-boom bewust niet.
+  Later zijn de lege placeholders in `PartialFailureIntegrationTests` verwijderd (zie issue #1808).
+  De resterende fixturetests staan nog op `Skip`; docs/DEVELOPER-SETUP.md §7.1 beschrijft die beperking.
 - **De overige scenario's uit §28** (sleuteldriftmigratie, samenvoegen van dubbele schrijfwijzen,
   deactivering, clubisolatie, lege bron). Van de negen daar gemeten scenario's zijn de drie
   overgenomen waarvoor §28 ook een negatieve controle heeft vastgelegd; de overige zes blijven
@@ -1921,8 +1965,9 @@ klassen zitten in hetzelfde project en dus achter dezelfde connectiestring.
   binnen-project-geval oplossen dat de seizoenstests raakt, maar vereist dat
   `PostgresMergeOrchestrator` een schemanaam accepteert — een productiecode-wijziging omwille van
   een test, en dus een eigen afweging.
-- **De SQL Server-tier.** Die kent hetzelfde patroon niet: `PartialFailureIntegrationTests` en
-  `SportlinkFixtureSyncIntegrationTests` draaien nergens automatisch (§29's laatste punt).
+- **De SQL Server-tier.** Die kende dit patroon tijdens deze ronde niet: de in §29 genoemde
+  integratietestklassen draaiden nergens automatisch. De lege partial-failure-placeholders zijn
+  later verwijderd (zie issue #1808); de resterende fixturetests staan nog op `Skip` (§29).
 
 ## 34. De laatste opschoonprocedure: `sp_CleanupAppSettingsAudit` (#781/#861)
 
@@ -2116,10 +2161,16 @@ ertussen.
 `VeldBeschikbaarheidInfo`, `BestaandeWedstrijd`, `TeamRegel`, `TeamVoorkeurVeld` en `Speeltijd` —
 die zes modellen plus `VeldSoort`/`VeldTypeClassificatie` (dezelfde "één plek"-regel als de motor
 zelf, #705/#707) staan nu in `Planner.Shared/PlannerDomeinModellen.cs`. De HTTP-wire-contracten
-(`CheckAvailabilityRequest`, `AutoPlanResponse`, `HerplanCheckRequest`, ...) blijven bewust per tier
-eigen bestanden — die zijn JSON-vormgeving van één specifiek endpoint, geen gedeelde rekenlogica.
-Zelfde onderscheid als `TeamScheduleModels.cs` (gedupliceerd, §16) tegenover `TeamNaamNormalisatie`
-(verhuisd, §17).
+(`CheckAvailabilityRequest`, `AutoPlanResponse`, `HerplanCheckRequest`, ...) bleven in deze ronde
+bewust per tier eigen bestanden — die zijn JSON-vormgeving van één specifiek endpoint, geen gedeelde
+rekenlogica.
+
+**Bijgewerkt door #1856 (eigenaarsbesluit optie B, zie het besluit op issue #1856 en
+`ARCHITECTUUR-CODEKWALITEIT.md` regel 2b).** Het "per tier eigen bestanden" hierboven geldt niet meer
+voor tier-identieke wire-DTO's: die staan eenmalig onder `GedeeldeBron/` (planner: `GedeeldeBron/PlannerDto/`)
+en worden door beide tier-projecten link-gecompileerd, met behoud van de naamruimte per tier. Een wire-DTO
+dat per tier verschilt, blijft in zijn tierbestand. Gedeelde rekenlogica blijft in `Planner.Shared`; de
+link-gecompileerde bron is geen gedeelde providerabstractie (§2): er zit geen gedrag of databasetoegang in.
 
 **Waarom de klasse "PlannerShared" heet terwijl ze al in de namespace `Planner.Shared` zit** — een
 bewuste, risicoarme keuze: alle circa zestig bestaande aanroepen in `AvailabilityService`,
@@ -2881,7 +2932,7 @@ Twee lessen:
    dus een tweede storing gegeven (certificaatketen-fout). De echte `verify-full`-uitrol — CA-cert
    meeleveren in het deploy-pakket, `sslrootcert` ernaar laten wijzen, en een pre-deploy-check die
    de effectieve TLS-modus toetst vóór de code live gaat — is een apart vervolgissue; tot die tijd
-   is `tlsWarning` in `/api/health` het signaal dat die schuld nog openstaat.
+   is `tlsWarning` in admin-only `/api/beheer/health` het signaal dat die schuld nog openstaat.
 
 **Tests:** `Database.Postgres.Tests/PostgresConnectionStringNormalizerTests.cs` — dekt beide vormen,
 beide omgevingen, de contradictiecheck, en de bestaande parsingtests (percent-encoded loginvelden,
@@ -2901,7 +2952,7 @@ wordt:
    Configuration; subject/issuer "Supabase Root 2021 CA", geldig 2021-04-28 t/m 2031-04-26). Het is
    publiek (Supabase's eigen root-CA, gelijk voor het project van deze deployment) en hoort dus in
    git, niet in `.gitignore` — anders dan `local.settings.json`.
-2. **De smoke test in `deploy.yml`** leest voortaan ook `tlsWarning` uit `/api/health` en meldt die
+2. **De smoke test in `deploy.yml`** leest voortaan ook `tlsWarningPresent` uit `/api/health` en meldt die
    als `::warning::`, exact hetzelfde patroon als `pendingMigrations`/`schemaWarning` (§55): nooit
    een deploy-blokkade, want de verbinding blijft functioneren (fail-open sinds #1095). Dit is de
    "pre-deploy-check op de effectieve TLS-modus" uit het vervolgissue — als CI-zichtbaarheid na de
@@ -2932,7 +2983,7 @@ wordt:
 Wat `verify-ca` wél oplevert: de certificaatketen wordt gevalideerd, dus een aanvaller heeft een
 certificaat nodig dat door de root-CA van de provider is ondertekend — een willekeurig
 zelfondertekend certificaat volstaat niet meer. De hostnaam blijft ongevalideerd; dat is het
-restrisico, en daarom blijft `tlsWarning` in `/api/health` staan. Dat is vanaf nu het juiste,
+restrisico, en daarom blijft `tlsWarning` in admin-only `/api/beheer/health` staan. Dat is vanaf nu het juiste,
 verwachte signaal en geen openstaande actie meer.
 
 **Bewust niet meegewijzigd: het GitHub-secret `POSTGRES_CONNECTION_STRING`.** `db-migrate-postgres`
@@ -2995,7 +3046,7 @@ overheen, omdat het alleen op een HTTP-antwoord controleerde. Dat is dezelfde kl
 van AGENTS.md beschrijft voor de live GUI: een 200 is geen bewijs. Het script leest die twee velden
 nu, en wijst bij `degraded` rechtstreeks naar het seed-script hierboven.
 
-**3. Tier-provenance als startvoorwaarde.** `/api/health` meldt zijn eigen tier uit de
+**3. Tier-provenance als startvoorwaarde.** Admin-only `/api/beheer/health` meldt zijn eigen tier uit de
 assembly-metadata (#863). `Start-Debug.ps1` vergelijkt dat nu met `-Tier`: een achtergebleven
 functiehost van de andere tier op poort 7094 zou anders als een geslaagde start doorgaan.
 
@@ -3534,6 +3585,8 @@ bestaan onvoorwaardelijk sinds migratie 003 — geen optionele-kolom-dans zoals 
   een eigen namespace (`SportlinkFunction.Email`/`FunctionApp.Postgres.Email`) — een gedeelde
   `KnvbPdfService` zou een gedeeld `EmailBijlage`-type vereisen, en dat is een grotere refactor dan
   dit issue rechtvaardigt. Een twin, net als `EmailBijlage` zelf, is hier het consistente patroon.
+  *Bijgewerkt bij #1813:* `EmailBijlage` is inmiddels gedeeld (`Planner.Shared/Email/`); de twin
+  is vervallen en `KnvbPdfService` staat nu eenmalig in `Planner.Shared/Email/KnvbPdfService.cs`.
 
 **PDF-bestanden: één bron, twee build-outputs.** `FunctionApp.Postgres.csproj` verwijst met een
 MSBuild `Content Include`+`Link` naar dezelfde bronbestanden als
@@ -4954,3 +5007,50 @@ alleen code is.
 - **Sync:** `TeamCanonicalisatieService` raakt de kolom op geen van beide tiers aan, zodat een handmatig
   gezette waarde blijft staan.
 - **Nog niet in gebruik:** geen endpoint, scherm of query leest of schrijft de kolom.
+
+## 86. Begin van de feedbackpublicatiepoging: één additieve kolom op beide tiers (#1803)
+
+Eigenaarsbesluit 2C (2026-11-11, #1803): een feedbackmelding die na een dubbelzinnige GitHub-POST op
+`publiceren` blijft staan, herstelt "Publiceer" automatisch door via de GitHub-issuelijst naar haar
+publicatiereferentie te zoeken (`docs/FEEDBACK.md`). Punt 6 van dat besluit staat een migratie op beide
+tiers toe; de merge doet dan de eigenaar.
+
+- **Waarom een kolom:** de ondergrens van het zoekvenster moet vóór de eerste POST liggen en mag niet
+  opschuiven als een herstelpoging mislukt. `mta_modified` kan dat niet: de herclaim gebruikt het als slot
+  tegen twee gelijktijdige klikken en ververst het bij elke poging. Met het slot als grens viel na twee
+  mislukte pogingen het al aangemaakte issue buiten het venster en volgde een dubbel publiek issue.
+- **Postgres:** `avg.feedback.publicatiegestartoputc TIMESTAMPTZ NULL`, migratie
+  `048_avg_feedback_publicatiegestart.sql`. Geen nieuwe tabel, dus geen RLS-stap.
+- **SQL Server:** `avg.Feedback.PublicatieGestartOpUtc DATETIME2 NULL`, in `Database/avg/Tables/Feedback.sql`,
+  in de `CREATE TABLE` van `Script.PostDeployment1.sql` en idempotent (`COL_LENGTH`) aan het einde daarvan,
+  met `QUOTED_IDENTIFIER ON` vanwege de gefilterde index.
+- **Schrijven en lezen:** `ClaimPublicatieAsync` zet de kolom (wacht/mislukt → publiceren, vlak vóór de
+  eerste POST). `ZetIssueBodyAsync` zet haar ook, wanneer een melding van vóór #1803 haar publicatiereferentie
+  krijgt: die referentie gaat pas daarna voor het eerst naar GitHub. `HerClaimPublicatieAsync` laat haar staan
+  en geeft `COALESCE(kolom, oud slot)` terug. Een rij die vóór deze kolom bleef hangen valt dus alleen bij de
+  eerste herclaim terug op haar oude slot; daarna heeft ze een vast begin en schuift de zoekgrens niet meer op.
+- **Expand (§57):** uitsluitend additief en nullable. De vorige code noemt in elke `INSERT` en `UPDATE` op
+  `avg.feedback` haar kolommen en merkt de nieuwe kolom niet. Bestaande rijen blijven NULL.
+
+## 87. Index op het e-mailadres van de teambegeleiding voor de afzender-opzoeking (#1862)
+
+`AfzenderTeamBron` zoekt de teams van een afzender met `LOWER(TRIM(emailadres)) = @adres` (hoofdletters en spaties maken niet
+uit) en geeft alleen de teamkolom terug. Een `LOWER()`-vergelijking vraagt een index op dezelfde uitdrukking; zonder index is het
+een scan over de hele begeleidingslijst.
+
+- **Postgres:** expressie-index `ix_teambegeleiding_email_lower` op `avg.teambegeleiding (LOWER(TRIM(emailadres)))`, migratie
+  `049_teambegeleiding_email_index.sql`. Geen nieuwe tabel, dus geen nieuwe RLS-stap (RLS staat al aan sinds migratie 021).
+- **SQL Server:** persisted computed column `EmailadresGenormaliseerd AS LOWER(LTRIM(RTRIM([Emailadres]))) PERSISTED` met
+  `IX_avg_Teambegeleiding_EmailadresGenormaliseerd` (`INCLUDE ([Team], [ClubCode])`), in `Database/avg/Tables/Teambegeleiding.sql` en
+  idempotent in `Script.PostDeployment1.sql` (met `SET QUOTED_IDENTIFIER ON`, net als §75). SQL Server matcht de expressie uit de query
+  automatisch, dus de querytekst is op beide tiers gelijk in vorm.
+- **Expand (§57):** uitsluitend additief en niet uniek; de vorige code merkt de kolom en index niet.
+- **Bewijs:** beide integratietests leggen het plan van de productieopdracht zelf vast (`BouwOpdracht`, met clubfilter en
+  parameters): Postgres `AfzenderTeamBronIntegrationTests.Opzoeking_GebruiktDeExpressieIndex` (`EXPLAIN`) en SQL Server
+  `SqlAfzenderTeamBronIntegrationTests.Opzoeking_GebruiktDeIndexOpDeComputedColumn` (`SHOWPLAN_TEXT`, Index Seek). Beide draaien
+  in CI tegen een verse, gemigreerde database.
+- **Seedscripts:** een sqlcmd-script dat in `avg.Teambegeleiding` schrijft, zet eerst `SET QUOTED_IDENTIFIER ON` (Msg 1934 bij de
+  sqlcmd-standaard); `SeedScriptsQuotedIdentifierTests` bewaakt dat voor `scripts/migrations/`.
+- **Volgnummer:** 049, omdat 048 al in een openstaande PR voor een andere migratie gebruikt wordt.
+- **Bewaartermijn:** ongewijzigd. De bestaande opruiming (`CleanupTeambegeleiding`) verwijdert de rijen en daarmee de indexregels.
+

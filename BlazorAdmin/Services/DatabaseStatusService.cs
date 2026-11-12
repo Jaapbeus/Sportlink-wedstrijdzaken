@@ -2,18 +2,18 @@ using System.Net.Http.Json;
 
 namespace BlazorAdmin.Services;
 
-public enum DbState { Unknown, Starting, Online, LimietBereikt }
+public enum DbState { Unknown, Starting, Online, NietBeschikbaar }
 
 /// <summary>
-/// Pollt /api/health en bewaakt de Azure SQL Free-tier database-status.
+/// Pollt /api/health en bewaakt of de database beschikbaar is.
 /// Start bij authenticatie; blokkeert de app-UI als de DB niet online komt.
 ///
 /// State machine:
 ///   Unknown    → (eerste poll) → Online  (succes binnen 2 min)
 ///                              → Starting (mislukking, bezig met resumeren)
 ///                                → ... → Online  (hersteld)
-///                                      → LimietBereikt (na 2 min geen succes)
-///   LimietBereikt → elke 5 min opnieuw checken (volgende maand of handmatig herstart)
+///                                      → NietBeschikbaar (na 2 min geen online-respons)
+///   NietBeschikbaar → elke 5 min opnieuw checken
 ///   Online        → elke 5 min alive-check; bij mislukking terug naar Starting
 /// </summary>
 public sealed class DatabaseStatusService : IDisposable
@@ -26,8 +26,8 @@ public sealed class DatabaseStatusService : IDisposable
     private bool _polling;
 
     private static readonly TimeSpan OnlineHerCheckInterval = TimeSpan.FromMinutes(5); // volgende alive-check na een geslaagde poll
-    private static readonly TimeSpan LimietBereiktHerCheckInterval = TimeSpan.FromMinutes(5); // volgende poging na LimietBereikt
-    private static readonly TimeSpan LimietWindow = TimeSpan.FromMinutes(2); // hoe lang falen getolereerd wordt vóór LimietBereikt
+    private static readonly TimeSpan NietBeschikbaarHerCheckInterval = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan NietBeschikbaarWindow = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(15); // interval tussen faalpogingen (Starting-state)
 
     public DatabaseStatusService(HttpClient http) => _http = http;
@@ -63,11 +63,11 @@ public sealed class DatabaseStatusService : IDisposable
 
                 // DB niet online — bepaal hoe lang we al wachten
                 var elapsed = DateTime.UtcNow - startedAt;
-                if (elapsed > LimietWindow)
+                if (elapsed > NietBeschikbaarWindow)
                 {
-                    SetState(DbState.LimietBereikt);
-                    // Blijf elke 5 min checken: bij maandwisseling of handmatige herstart
-                    await Task.Delay(LimietBereiktHerCheckInterval, token);
+                    SetState(DbState.NietBeschikbaar);
+                    // Blijf periodiek checken; de verbinding kan hersteld worden.
+                    await Task.Delay(NietBeschikbaarHerCheckInterval, token);
                     startedAt = DateTime.UtcNow; // reset window voor volgende cyclus
                     continue;
                 }

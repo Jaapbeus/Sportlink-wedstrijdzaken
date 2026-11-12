@@ -112,6 +112,23 @@ public class TemplateAntwoordBouwerTests
         aanroepen.Last().Should().Be(verwacht);
     }
 
+    [Theory]
+    [InlineData("{\"handmatigePlanning\":true,\"teamOnbekend\":true}")]
+    [InlineData("{\"handmatigeTeamBeoordeling\":true}")]
+    public async Task Beschikbaarheid_HandmatigePlanning_GeenSjabloonEnGeenGeenVeldTekst(string json)
+    {
+        // #1861: alleen de tester komt hier; die mag geen "geen veld beschikbaar" tonen.
+        var bron = new OpnemendeBron();
+        bron.Sjablonen.Add("beschikbaarheid_check");
+        bron.Sjablonen.Add("team_onbekend");
+
+        var (onderwerp, body) = await TemplateAntwoordBouwer.BouwAsync("BeschikbaarheidCheck", json, bron, null);
+
+        onderwerp.Should().Be("Geen antwoord");
+        body.Should().Contain("handmatig").And.NotContain("geen veld");
+        bron.Aanroepen.Should().BeEmpty("er wordt geen sjabloon en geen ingebouwd antwoord gevraagd");
+    }
+
     [Fact]
     public async Task Beschikbaarheid_TeamOnbekend_GeeftTegenstanderUitResponseDoor()
     {

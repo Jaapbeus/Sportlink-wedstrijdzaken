@@ -1,3 +1,5 @@
+using Planner.Endpoints.Http;
+
 using Planner.Endpoints.Admin;
 using FunctionApp.Postgres.Infrastructure;
 using Microsoft.AspNetCore.Http;
@@ -64,11 +66,8 @@ public static class AdminThemeFunction
     {
         var log = context.GetLogger("AdminThemePut");
         return AdminEndpoint.ExecuteAsync(req, log, "thema opslaan",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteUtf8Async(req, async body =>
             {
-                using var sr = new StreamReader(req.Body);
-                var body = await sr.ReadToEndAsync();
-
                 ThemeUpdateRequest? dto = null;
                 try
                 {
@@ -112,7 +111,7 @@ public static class AdminThemeFunction
 
                 log.LogInformation("Club-thema bijgewerkt");
                 return new OkObjectResult(new { success = true });
-            });
+            }));
     }
 
     // #1350: bewust NIET via AdminEndpoint.ExecuteAsync — dat zou de databasewacht vóór de

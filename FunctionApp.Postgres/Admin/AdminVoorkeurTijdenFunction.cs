@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
-using Newtonsoft.Json;
+using Planner.Endpoints.Http;
 
 namespace FunctionApp.Postgres.Admin;
 
@@ -32,10 +32,8 @@ public static class AdminVoorkeurTijdenFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/voorkeurstijden")] HttpRequest req,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminVoorkeurTijdenPost"), "voorkeurstijd toevoegen",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<VoorkeurTijdRequest>(req, async dto =>
             {
-                var dto = JsonConvert.DeserializeObject<VoorkeurTijdRequest>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
                 var validatie = Valideer(dto);
                 if (validatie != null) return validatie;
                 var newId = await AdminVoorkeurTijdenRepository.InsertVoorkeurTijdAsync(
@@ -43,7 +41,7 @@ public static class AdminVoorkeurTijdenFunction
                     dto.Prioriteit ?? 5, dto.Actief ?? true,
                     clubCode, PostgresDatabaseConfig.ConnectionString);
                 return new OkObjectResult(new { id = newId, status = "aangemaakt" });
-            });
+            }));
 
     [Function("AdminVoorkeurTijdenPut")]
     public static Task<IActionResult> Put(
@@ -51,10 +49,8 @@ public static class AdminVoorkeurTijdenFunction
         int id,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminVoorkeurTijdenPut"), "voorkeurstijd bijwerken",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<VoorkeurTijdRequest>(req, async dto =>
             {
-                var dto = JsonConvert.DeserializeObject<VoorkeurTijdRequest>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
                 var validatie = Valideer(dto);
                 if (validatie != null) return validatie;
                 var rows = await AdminVoorkeurTijdenRepository.UpdateVoorkeurTijdAsync(
@@ -63,7 +59,7 @@ public static class AdminVoorkeurTijdenFunction
                     clubCode, PostgresDatabaseConfig.ConnectionString);
                 if (rows == 0) return new NotFoundObjectResult(new { error = $"Rij {id} bestaat niet" });
                 return new OkObjectResult(new { id, status = "bijgewerkt" });
-            });
+            }));
 
     [Function("AdminVoorkeurTijdenDelete")]
     public static Task<IActionResult> Delete(
@@ -98,10 +94,8 @@ public static class AdminVoorkeurTijdenFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/teamregels")] HttpRequest req,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminTeamRegelsPost"), "teamregel toevoegen",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<TeamRegelRequest>(req, async dto =>
             {
-                var dto = JsonConvert.DeserializeObject<TeamRegelRequest>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
                 var validatie = ValideerRegel(dto);
                 if (validatie != null) return validatie;
                 TimeSpan? waardeTijd = string.IsNullOrWhiteSpace(dto!.WaardeTijd) ? null : TimeSpan.Parse(dto.WaardeTijd);
@@ -110,7 +104,7 @@ public static class AdminVoorkeurTijdenFunction
                     dto.Prioriteit ?? 0, dto.Actief ?? true, dto.Opmerking,
                     clubCode, PostgresDatabaseConfig.ConnectionString);
                 return new OkObjectResult(new { id = newId, status = "aangemaakt" });
-            });
+            }));
 
     [Function("AdminTeamRegelsPut")]
     public static Task<IActionResult> PutTeamRegel(
@@ -118,10 +112,8 @@ public static class AdminVoorkeurTijdenFunction
         int id,
         FunctionContext context) =>
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminTeamRegelsPut"), "teamregel bijwerken",
-            async clubCode =>
+            clubCode => BoundedRequestBodyReader.ExecuteJsonAsync<TeamRegelRequest>(req, async dto =>
             {
-                var dto = JsonConvert.DeserializeObject<TeamRegelRequest>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
                 var validatie = ValideerRegel(dto);
                 if (validatie != null) return validatie;
                 TimeSpan? waardeTijd = string.IsNullOrWhiteSpace(dto!.WaardeTijd) ? null : TimeSpan.Parse(dto.WaardeTijd);
@@ -131,7 +123,7 @@ public static class AdminVoorkeurTijdenFunction
                     clubCode, PostgresDatabaseConfig.ConnectionString);
                 if (rows == 0) return new NotFoundObjectResult(new { error = $"Rij {id} bestaat niet" });
                 return new OkObjectResult(new { id, status = "bijgewerkt" });
-            });
+            }));
 
     [Function("AdminTeamRegelsDelete")]
     public static Task<IActionResult> DeleteTeamRegel(

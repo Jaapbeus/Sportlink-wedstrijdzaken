@@ -11,6 +11,7 @@ CREATE TABLE [dbo].[SportlinkPublicMatchIdCache] (
 	[Wedstrijdcode]	BIGINT			NOT NULL,
 	[ClubCode]		NVARCHAR(20)	NOT NULL,
 	[PublicMatchId]	NVARCHAR(50)	NOT NULL,
+	[VerifiedPublicMatchId] NVARCHAR(50) NULL,
 	[OpgehaaldOp]	DATETIME2		NOT NULL DEFAULT GETUTCDATE(),
 	CONSTRAINT [PK_SportlinkPublicMatchIdCache] PRIMARY KEY CLUSTERED ([Wedstrijdcode] ASC, [ClubCode] ASC)
 	)

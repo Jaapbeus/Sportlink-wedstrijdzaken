@@ -1062,9 +1062,8 @@ dotnet test FunctionApp.Tests --filter FullyQualifiedName~SportlinkFixtureSyncIn
 docker rm -f sqlfixture
 ```
 
-Deze test staat net als de andere lokale-database-integratietests (`PartialFailureIntegrationTests`)
-op `[Fact(Skip=...)]` — hij draait dus niet automatisch mee in `dotnet test FunctionApp.Tests` en
-ook niet in CI. Dat is bewust: het env-gestuurde "draai automatisch zodra de verbindingsvariabele
+De tests in `SportlinkFixtureSyncIntegrationTests` staan op `[Fact(Skip=...)]` — ze draaien dus
+niet automatisch mee in `dotnet test FunctionApp.Tests` en ook niet in CI. Dat is bewust: het env-gestuurde "draai automatisch zodra de verbindingsvariabele
 gezet is"-mechanisme dat dit zou vervangen, is de scope van een apart issue (#866, tot nu toe alleen
 uitgewerkt voor de Postgres-tier). Zolang dat niet is toegepast op deze test, is de enige manier om
 hem te draaien de bovenstaande handmatige stappen.
@@ -1163,7 +1162,7 @@ sportlink-wedstrijdzaken/
 ├── docker-compose.yml                 # Lokale database: Postgres (standaard, zonder profile) + SQL Server achter profile 'sqlserver' (#800, #1060)
 ├── FunctionApp.Postgres/              # .NET 10 Azure Functions — Postgres-tier (standaard, draait in productie)
 │   ├── FunctionApp.Postgres.csproj
-│   ├── HealthFunction.cs              # GET /api/health (versie, status, actieve tier)
+│   ├── HealthFunction.cs              # GET /api/health + admin-only /api/beheer/health
 │   ├── Sync/SyncFunction.cs           # GET /api/postgres/sync-matches
 │   ├── Admin/                         # 25 Admin-endpoint bestanden (beheer/*)
 │   ├── local.settings.json            # NIET in git — bevat POSTGRES_CONNECTION_STRING
@@ -1171,6 +1170,10 @@ sportlink-wedstrijdzaken/
 ├── Database.Postgres/                 # migrations/ + MigrationRunner (SHA-256-ledger)
 ├── Database.Postgres.Cli/             # CLI die de migraties toepast (POSTGRES_CONNECTION_STRING)
 ├── Planner.Shared/                    # Tier-onafhankelijke logica (TeamNaamNormalisatie, ThemeCore, VeldResolver)
+├── GedeeldeBron/                      # Geen project: bronbestanden die BEIDE FunctionApps link-compileren (#1856)
+│   └── PlannerDto/                    # Tier-identieke planner-wire-DTO's; elk *.cs hier valt automatisch in beide tiers
+│                                      #   (glob in beide csproj's), naamruimte per tier via PLANNER_DTO_POSTGRES
+│                                      #   — zie ARCHITECTUUR-CODEKWALITEIT.md, regel 2b
 ├── FunctionApp/                       # .NET 10 Azure Functions — SQL Server-tier
 │   ├── fa-dev-sportlink-01.csproj     # .NET 10 Azure Functions isolated worker
 │   ├── Function1.cs                   # Timer + HTTP sync triggers (GET /api/sync-matches)

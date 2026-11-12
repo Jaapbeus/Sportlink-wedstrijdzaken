@@ -1,3 +1,5 @@
+using Planner.Shared.TeamResolution;
+
 namespace Planner.Shared.Email.Trace;
 
 /// <summary>Eindoordeel over een trace: kan dit antwoord zonder menselijke review de deur uit?</summary>
@@ -12,7 +14,9 @@ public static class ZekerheidsBeoordeling
 {
     private static readonly string[] TeamStappen =
     {
-        TraceCodes.TeamHerkenning, TraceCodes.TegenstanderHerkenning, TraceCodes.OpponentTeamHerkenning
+        TraceCodes.TeamHerkenning, TraceCodes.TegenstanderHerkenning, TraceCodes.OpponentTeamHerkenning,
+        // #1862: een team uit de teambegeleiding van de afzender; alleen "zeker" bij precies één oplosbaar team.
+        TraceCodes.BegeleidingAfzender
     };
 
     public static ZekerheidsOordeel Beoordeel(IEnumerable<TraceStap> stappen)
@@ -36,12 +40,16 @@ public static class ZekerheidsBeoordeling
     {
         var teamVereist = lijst.Any(s => s.Code == TraceCodes.Classificatie && HeeftDetail(s, TraceBuilder.TeamVereistSleutel, TraceBuilder.Ja));
         var teamOpgelost = lijst.Any(s => TeamStappen.Contains(s.Code) && s.Zekerheid == ZekerheidsNiveau.Zeker);
-        var wedstrijdViaTegenstander = lijst.Any(s => s.Code == TraceCodes.OpponentPad
+        // #1862 (5A): meerdere teams bij de afzender: een wedstrijd via de tegenstander maakt het oordeel nooit zeker.
+        var meerdereAfzenderTeams = lijst.Any(s => s.Code == TraceCodes.BegeleidingAfzender
+            && HeeftDetail(s, AfzenderTeamBepaling.AantalSleutel, "meer"));
+        var wedstrijdViaTegenstander = !meerdereAfzenderTeams && lijst.Any(s => s.Code == TraceCodes.OpponentPad
             && HeeftDetail(s, "wedstrijdGevonden", TraceBuilder.Ja) && HeeftDetail(s, "tak", "opponent-op-datum"));
 
         if (!teamVereist || teamOpgelost || wedstrijdViaTegenstander) yield break;
 
-        var meerdere = lijst.Any(s => TeamStappen.Contains(s.Code) && HeeftDetail(s, "bron", "MeerdereKandidaten"));
+        var meerdere = meerdereAfzenderTeams
+            || lijst.Any(s => TeamStappen.Contains(s.Code) && HeeftDetail(s, "bron", "MeerdereKandidaten"));
         yield return meerdere
             ? "Meerdere teams komen in aanmerking; er is niets gekozen"
             : "Het eigen team is niet herkend";

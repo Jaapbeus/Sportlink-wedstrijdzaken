@@ -437,17 +437,14 @@ jobs:
     # Deploy wordt overgeslagen als server niet geconfigureerd — test mag altijd doorgaan als deploy slaagt
     if: always() && needs.deploy.result == 'success'
     steps:
-      # #1098: een 200 op /api/health is geen bewijs dat de applicatie werkt. Bij het tweede
-      # v3.3.0.0-incident gaf health 200 met settingsLoaded=false (migratie 012 niet toegepast op
-      # productie), terwijl élk beheerscherm 500 "Ophalen mislukt" gaf — en deze stap was groen.
-      # Zonder instellingencache is de applicatie onbruikbaar: dat is een mislukte deploy, geen
-      # 'degraded'. Openstaande migraties (pendingMigrations) waren tot #1093 een waarschuwing
-      # omdat de pipeline ze niet kón toepassen; sinds db-migrate-postgres ze vóór de deploy
-      # toepast zijn ze een fout — zie de toelichting bij de check zelf.
-      # #1096: tlsWarning (het #1004/#1095-beleid nog niet op VerifyFull-met-CA-cert) is
-      # dezelfde categorie — de applicatie draait door (fail-open sinds #1095), dus ook hier een
-      # waarschuwing, geen deploy-blokkade (ARCHITECTUUR-DATABASE-TIERS.md §50).
-      - name: "Smoke test: function app bereikbaar (health → 200 én instellingen geladen)"
+      - name: Checkout deploybron voor contractcontrole
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+      # Health keeps the existing fatal checks (database, settings, pending migrations) while the
+      # anonymous endpoint exposes aggregate flags only. Schema/TLS warnings remain non-fatal;
+      # degraded status caused only by stale synchronization remains non-fatal too.
+      - name: "Smoke test: function app bereikbaar (health readiness contract)"
         # #1204: de naam van de Function App staat in een step-env i.p.v. inline in het script.
         # Een ${{ }}-expressie wordt vóór uitvoering ingevuld en het ingevulde script belandt
         # in de publiek leesbare Actions-log; een env-waarde die uit een secret komt wordt
@@ -466,48 +463,12 @@ jobs:
             BODY=$(printf '%s' "$RESPONSE" | sed '$d')
             echo "Poging $i/$MAX — health: $STATUS"
             if [ "$STATUS" = "200" ]; then
-              DB=$(printf '%s' "$BODY" | jq -r '.database // empty' 2>/dev/null || true)
-              SETTINGS=$(printf '%s' "$BODY" | jq -r '.settingsLoaded // empty' 2>/dev/null || true)
-              PENDING=$(printf '%s' "$BODY" | jq -r '(.pendingMigrations // []) | join(", ")' 2>/dev/null || true)
-              SCHEMA=$(printf '%s' "$BODY" | jq -r '.schemaWarning // empty' 2>/dev/null || true)
-              TLS=$(printf '%s' "$BODY" | jq -r '.tlsWarning // empty' 2>/dev/null || true)
-              # #1184: expliciet asserteren dat de database bereikbaar is. settingsLoaded=true
-              # bewijst dit indirect al (die cache komt uit dbo.AppSettings), maar impliciet
-              # bewijs is geen bewijs zodra iemand die tak wijzigt. Dit is bovendien de controle
-              # die de oude stap "Info: planner endpoint database-check" bedoelde te doen maar
-              # nooit kón doen: die liep op de admin-gate stuk vóór de database in beeld kwam.
-              # De -n-guard is bewust: ontbreekt het veld (oudere Function App-versie die nog
-              # draait tijdens een deploy), dan slaat de assertie over in plaats van de deploy
-              # te laten struikelen over een veld dat die versie niet kent.
-              if [ -n "$DB" ] && [ "$DB" != "online" ]; then
-                echo "FOUT: health geeft 200 maar database='$DB' (verwacht 'online')."
+              # The public projection keeps the existing database/settings/migration deploy gates
+              # as aggregate predicates. Schema/TLS flags remain warning-only; stale sync is not gated.
+              if ! printf '%s' "$BODY" | bash scripts/dev/health-deploy-predicate.sh; then
                 printf '%s\n' "$BODY" | jq . || printf '%s\n' "$BODY"
                 exit 1
               fi
-              if [ "$SETTINGS" = "false" ]; then
-                echo "FOUT: health geeft 200 maar settingsLoaded=false — de instellingencache is leeg, elk /api/beheer/*-endpoint antwoordt 500."
-                echo "Oorzaken: geen club met syncenabled=true, of de code verwacht een kolom die de database mist (zie schemaWarning/pendingMigrations hieronder)."
-                printf '%s\n' "$BODY" | jq . || printf '%s\n' "$BODY"
-                exit 1
-              fi
-              # #1093: sinds db-migrate-postgres de migraties vóór de deploy toepast, is een
-              # niet-lege lijst hier geen "beheerder moet nog iets doen" meer maar een mislukte
-              # deploy: de migratiejob was groen, en toch mist de database iets dat deze versie
-              # meelevert. Oorzaken: een andere database achter het secret dan achter de Function
-              # App-instelling, of een migratiebestand dat wél is ingesloten maar niet toegepast.
-              if [ -n "$PENDING" ]; then
-                echo "FOUT: health meldt openstaande migraties na een groene db-migrate-postgres: $PENDING"
-                echo "Controleer of secret POSTGRES_CONNECTION_STRING en de Function App-instelling POSTGRES_CONNECTION_STRING naar dezelfde database wijzen (docs/ARCHITECTUUR-DATABASE-TIERS.md §57)."
-                printf '%s\n' "$BODY" | jq . || printf '%s\n' "$BODY"
-                exit 1
-              fi
-              if [ -n "$SCHEMA" ]; then
-                echo "::warning title=Schemawaarschuwing uit /api/health::$SCHEMA"
-              fi
-              if [ -n "$TLS" ]; then
-                echo "::warning title=TLS-beleid nog niet volledig (#1096)::$TLS"
-              fi
-              echo "health OK: settingsLoaded=${SETTINGS:-onbekend}, pendingMigrations=[${PENDING}], tlsWarning=${TLS:-geen}"
               exit 0
             fi
             if [ "$i" -lt "$MAX" ]; then echo "Wacht ${WAIT}s (cold start)..."; sleep $WAIT; fi

@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Components;
 namespace BlazorAdmin.Pages;
 
 /// <summary>Code-behind van <c>Wijzigingsverzoeken.razor</c> (#996/#1111, code-behind sinds #1122).</summary>
-public partial class Wijzigingsverzoeken
+public partial class Wijzigingsverzoeken : ClubSelectorPageBase
 {
     [Inject] private SportlinkApiClient Api { get; set; } = default!;
 
@@ -16,6 +16,8 @@ public partial class Wijzigingsverzoeken
     private readonly Dictionary<string, SportlinkActieStatus> _status = new();
     private readonly Dictionary<string, bool> _afwijzenOpen = new();
     private readonly Dictionary<string, string?> _toelichting = new();
+    private readonly LookupGeneratieGuard _clubLoadGuard = new();
+    private string? _loadedClubCode;
 
     private SportlinkActieStatus Status(string id)
         => _status.TryGetValue(id, out var s) ? s : _status[id] = new SportlinkActieStatus();
@@ -105,22 +107,45 @@ public partial class Wijzigingsverzoeken
 
     protected override Task OnInitializedAsync() => LaadVerzoekenAsync();
 
+    protected override async Task OnClubChangedAsync()
+    {
+        _verzoeken = null;
+        _fout = null;
+        _loadedClubCode = null;
+        _status.Clear();
+        _afwijzenOpen.Clear();
+        _toelichting.Clear();
+        await LaadVerzoekenAsync();
+    }
+
     private async Task LaadVerzoekenAsync()
     {
+        var clubCode = ClubSelector.SelectedClubCode;
+        var generatie = _clubLoadGuard.Start(clubCode);
         _laden = true;
         _fout = null;
+        _verzoeken = null;
+        _loadedClubCode = null;
         StateHasChanged();
         try
         {
             var result = await Api.GetSportlinkChangeRequestsAsync();
+            if (!_clubLoadGuard.IsActueel(generatie) || ClubSelector.SelectedClubCode != clubCode) return;
             if (result.Success) _verzoeken = result.Data;
             else _fout = result.ErrorMessage ?? "Onbekende fout bij ophalen wijzigingsverzoeken.";
+            _loadedClubCode = clubCode;
         }
-        finally { _laden = false; }
+        finally
+        {
+            if (_clubLoadGuard.IsActueel(generatie) && ClubSelector.SelectedClubCode == clubCode)
+                _laden = false;
+        }
     }
 
     private async Task HandelAfAsync(SportlinkChangeRequestDto verzoek, bool isApprove)
     {
+        var clubCode = ClubSelector.SelectedClubCode;
+        if (_laden || _loadedClubCode != clubCode) return;
         if (verzoek.PublicRequestId == null || verzoek.PublicMatchId == null) return;
         var id = verzoek.PublicRequestId;
         var status = Status(id);
@@ -137,6 +162,7 @@ public partial class Wijzigingsverzoeken
         {
             var actie = isApprove ? "APPROVE" : "DENY";
             var r = await Api.PutSportlinkChangeRequestActionAsync(id, verzoek.PublicMatchId, actie, toelichting);
+            if (ClubSelector.SelectedClubCode != clubCode) return;
             var geslaagd = status.Verwerk(r.Success, r.ErrorMessage, r.Data,
                 isApprove ? "Goedgekeurd in Sportlink Club." : "Afgewezen in Sportlink Club.",
                 "Sportlink heeft de actie afgewezen");

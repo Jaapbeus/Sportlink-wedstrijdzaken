@@ -18,6 +18,7 @@ cp "$source_root/scripts/ci/lib/plafond.sh" "$fixture/scripts/ci/lib/"
 cat > "$fixture/scripts/ci/codekwaliteit-plafonds.txt" <<'EOF'
 tier-duplicatie-regels 1 synthetic-fixture
 EOF
+: > "$fixture/scripts/ci/tier-duplicatie-mapping.txt"
 cat > "$fixture/.gitignore" <<'EOF'
 FunctionApp.Postgres/obj/
 EOF
@@ -92,4 +93,31 @@ git -C "$fixture" reset --quiet -- FunctionApp/Planner/NewShared.cs FunctionApp.
 rm "$fixture/FunctionApp/Planner/NewShared.cs" "$fixture/FunctionApp.Postgres/Planner/NewShared.cs"
 expect_green
 
-echo "OK — paired nonignored C# files are counted before and after staging; ignored output is excluded."
+# Differently named counterparts from develop remain covered by the explicit mapping.
+printf 'namespace Mapped;\n' > "$fixture/FunctionApp/MappedA.cs"
+printf 'namespace Mapped;\n' > "$fixture/FunctionApp.Postgres/MappedB.cs"
+printf '%s\n' 'FunctionApp/MappedA.cs | FunctionApp.Postgres/MappedB.cs' > "$fixture/scripts/ci/tier-duplicatie-mapping.txt"
+expect_over_limit
+git -C "$fixture" add FunctionApp/MappedA.cs FunctionApp.Postgres/MappedB.cs
+expect_over_limit
+
+# Mapping errors must fail closed, rather than silently omitting or double-counting a pair.
+expect_mapping_error() {
+  if run_guard; then
+    echo "FAIL: invalid mapping unexpectedly passed."
+    exit 1
+  fi
+  if ! grep -Fq "$1" "$log_file"; then
+    cat "$log_file"
+    echo "FAIL: expected the specific mapping validation error."
+    exit 1
+  fi
+}
+printf '%s\n' 'FunctionApp/Missing.cs | FunctionApp.Postgres/MappedB.cs' > "$fixture/scripts/ci/tier-duplicatie-mapping.txt"
+expect_mapping_error 'mapping verwijst naar een ontbrekend bestand'
+printf '%s\n' 'FunctionApp/Baseline.cs | FunctionApp.Postgres/Baseline.cs' > "$fixture/scripts/ci/tier-duplicatie-mapping.txt"
+expect_mapping_error 'mapping koppelt een bestand meer dan één keer'
+printf '%s\n' 'invalid mapping' > "$fixture/scripts/ci/tier-duplicatie-mapping.txt"
+expect_mapping_error 'ongeldige tier-duplicatie mapping'
+
+echo "OK — broninventaris vóór/na staging en expliciete tiermapping getest; ongeldige mappings worden geweigerd."

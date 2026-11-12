@@ -16,7 +16,7 @@ namespace FunctionApp.Postgres.Tests;
 
 /// <summary>
 /// Karakterisatietests (#1628) voor de takken van <see cref="BerichtPipeline.VerwerkMetPlannerAsync"/>:
-/// beschikbaarheid (opponent-pad #1139, multi-datum, datumOnbekend), herplan (guards, herplanTeLaat,
+/// beschikbaarheid (teampoort en opponent-pad op de gevraagde datum #1861, speelduur, multi-datum, datumOnbekend), herplan (guards, herplanTeLaat,
 /// gewenste datum, herplanopties) en teamcontact. Ze leggen JSON-antwoord, trace en de mutaties op
 /// de classificatie vast vóór de opsplitsing per verzoektype, zodat die refactor aantoonbaar geen
 /// gedrag wijzigt. Het pad "verzet zonder datum" staat in
@@ -95,7 +95,9 @@ public class BerichtPipelinePlannerTakkenIntegrationTests : IAsyncLifetime
         Veld(r["wedstrijd"]!, "wedstrijd").ToString().Should().Be($"{Team} - {Tegenstander}");
         var resultaat = trace.Bouw();
         resultaat.Stappen.Select(x => x.Code).Should().Equal(
-            "classificatie", "team-herkenning", "tegenstander-herkenning", "datum", "opponent-pad", "eindoordeel");
+            "classificatie", "team-herkenning", "tegenstander-herkenning", "begeleiding-afzender", "datum", "opponent-pad", "eindoordeel");
+        // #1862: de echte tier-opzoeking draait mee; de afzender staat voor deze club niet in de begeleiding.
+        resultaat.Stappen.Single(x => x.Code == "begeleiding-afzender").Details[AfzenderTeamBepaling.AantalSleutel].Should().Be("0");
         var pad = resultaat.Stappen.Single(x => x.Code == "opponent-pad");
         pad.Uitkomst.Should().Be("Wedstrijd gevonden");
         pad.Details["tak"].Should().Be("opponent-op-datum");
@@ -119,8 +121,10 @@ public class BerichtPipelinePlannerTakkenIntegrationTests : IAsyncLifetime
     }
 
     [PostgresFact]
-    public async Task Opponent_AndereDatumMetHerkendTeam_VultTeamEnLeeftijdsCategorieEnVoertCheckUit()
+    public async Task Opponent_AlleenWedstrijdOpAndereDatum_NeemtGeenTeamOverEnVraagtOmHetTeam()
     {
+        // #1861 (besluit 2A): een wedstrijd tegen dezelfde tegenstander op een andere datum zegt niets over
+        // welk eigen team nu vraagt. Vroeger werd dat team overgenomen ("opponent-andere-datum").
         var gevraagd = Over(60);
         await ZetMatchAsync(9700002, $"{Team} - {AndereDatumTegenstander}", Over(67));
         var classificatie = Beschikbaarheid("Onbekend 13-2", AndereDatumTegenstander, gevraagd);
@@ -128,37 +132,52 @@ public class BerichtPipelinePlannerTakkenIntegrationTests : IAsyncLifetime
 
         var json = await Verwerk(classificatie, new KantResolver(Team), trace: trace);
 
-        classificatie.TeamNaam.Should().Be(Team, "het eigen team komt uit de gevonden wedstrijd");
-        classificatie.LeeftijdsCategorie.Should().Be("JO13");
-        classificatie.Datum.Should().Be(gevraagd.ToString("yyyy-MM-dd"));
         var r = JObject.Parse(json);
-        r["wedstrijdAlIngepland"].Should().BeNull();
-        r["teamOnbekend"].Should().BeNull();
-        r["datumOnbekend"].Should().BeNull();
+        r["teamOnbekend"]!.Value<bool>().Should().BeTrue();
+        r["tegenstander"]!.ToString().Should().Be(AndereDatumTegenstander);
+        classificatie.TeamNaam.Should().Be("Onbekend 13-2");
+        classificatie.LeeftijdsCategorie.Should().BeNull();
         var resultaat = trace.Bouw();
         resultaat.Stappen.Select(x => x.Code).Should().Equal(
-            "classificatie", "team-herkenning", "tegenstander-herkenning", "datum", "opponent-pad",
-            "opponent-team-herkenning", "eindoordeel");
-        var pad = resultaat.Stappen.Single(x => x.Code == "opponent-pad");
-        pad.Uitkomst.Should().Be("Wedstrijd gevonden");
-        pad.Details["tak"].Should().Be("opponent-andere-datum");
+            "classificatie", "team-herkenning", "tegenstander-herkenning", "begeleiding-afzender", "datum", "opponent-pad", "eindoordeel");
+        // #1862: de echte tier-opzoeking draait mee; de afzender staat voor deze club niet in de begeleiding.
+        resultaat.Stappen.Single(x => x.Code == "begeleiding-afzender").Details[AfzenderTeamBepaling.AantalSleutel].Should().Be("0");
+        resultaat.Stappen.Single(x => x.Code == "opponent-pad").Details["tak"].Should().Be("niet-gevonden");
+        resultaat.Oordeel.IsZeker.Should().BeFalse();
     }
 
     [PostgresFact]
-    public async Task Opponent_AndereDatumZonderHerkendTeam_LaatClassificatieOngemoeidEnVoertCheckUit()
+    public async Task Opponent_TweeEigenTeamsTegenTegenstanderOpAndereDatums_KiestNietsEnVraagtOmHetTeam()
     {
+        // De aanleiding van #1861: twee eigen teams speelden ooit tegen deze club; de oudste won stil.
         var gevraagd = Over(60);
-        await ZetMatchAsync(9700003, $"{Team} - {AndereDatumTegenstander}", Over(67));
-        var classificatie = Beschikbaarheid("Onbekend 13-2", AndereDatumTegenstander, gevraagd);
+        await ZetMatchAsync(9700003, $"{Team} - {AndereDatumTegenstander}", Over(61));
+        await ZetMatchAsync(9700004, $"JO15-1JM - {AndereDatumTegenstander}", Over(68));
+        var classificatie = Beschikbaarheid("Onbekend 23-1", AndereDatumTegenstander, gevraagd);
 
         var json = await Verwerk(classificatie, new GeenTeamResolver());
 
-        classificatie.TeamNaam.Should().Be("Onbekend 13-2");
+        JObject.Parse(json)["teamOnbekend"]!.Value<bool>().Should().BeTrue();
+        classificatie.TeamNaam.Should().Be("Onbekend 23-1");
         classificatie.LeeftijdsCategorie.Should().BeNull();
-        classificatie.Datum.Should().Be(gevraagd.ToString("yyyy-MM-dd"));
-        var r = JObject.Parse(json);
-        r["teamOnbekend"].Should().BeNull();
-        r["datumOnbekend"].Should().BeNull();
+    }
+
+    [PostgresFact]
+    public async Task ZonderTeamEnZonderTegenstander_DoetGeenPlannercheckEnVraagtOmHetTeam()
+    {
+        var classificatie = new BerichtClassificatie
+        {
+            Type = VerzoekType.BeschikbaarheidCheck,
+            TeamNaam = Club, // alleen de clubnaam (#1861 RC6)
+            Datums = new List<string> { Over(60).ToString("yyyy-MM-dd") },
+        };
+        var trace = new TraceBuilder();
+
+        var json = await Verwerk(classificatie, new GeenTeamResolver(), trace: trace);
+
+        json.Should().Be("{\"teamOnbekend\":true,\"tegenstander\":null}");
+        json.Should().NotContain("speeltijden");
+        trace.Bouw().Stappen.Single(x => x.Code == "classificatie").Details["teamGenoemd"].Should().Be("nee");
     }
 
     // ── Beschikbaarheid: multi-datum en datumOnbekend ──
@@ -258,6 +277,47 @@ public class BerichtPipelinePlannerTakkenIntegrationTests : IAsyncLifetime
         var r = JObject.Parse(json);
         r["multiDatum"].Should().BeNull();
         r["datumOnbekend"].Should().BeNull();
+    }
+
+    [PostgresFact]
+    public async Task EnkeleDatum_HerkendTeamZonderSpeeltijd_GaatNaarHandmatigePlanning()
+    {
+        // #1861 (RC4): zonder speelduur is de check niet uit te voeren; geen "geen veld beschikbaar" met de
+        // beheerinstructie van de planner, maar de afsluitende handmatige route.
+        var classificatie = new BerichtClassificatie
+        {
+            Type = VerzoekType.BeschikbaarheidCheck,
+            TeamNaam = "JO15-1",
+            Datums = new List<string> { Over(60).ToString("yyyy-MM-dd") },
+        };
+        var trace = new TraceBuilder();
+
+        var json = await Verwerk(classificatie, new FakeTeamResolver(), trace: trace);
+
+        var r = JObject.Parse(json);
+        r[BeschikbaarheidVoorwaarden.HandmatigePlanningVlag]!.Value<bool>().Should().BeTrue();
+        json.Should().NotContain("speeltijden").And.NotContain("/instellingen");
+        classificatie.TeamHandmatigBeoordelen.Should().BeTrue();
+        trace.Bouw().Stappen.Should().Contain(x => x.Code == "speelduur");
+    }
+
+    [PostgresFact]
+    public async Task EnkeleDatum_LosseCategorieInBondsnotatie_VindtDeSpeeltijd()
+    {
+        // #1861: "O13" uit het model is dezelfde speeltijd als "JO13", deterministisch en niet via de prompt.
+        var classificatie = new BerichtClassificatie
+        {
+            Type = VerzoekType.BeschikbaarheidCheck,
+            TeamNaam = Team,
+            LeeftijdsCategorie = "O13",
+            Datums = new List<string> { Over(60).ToString("yyyy-MM-dd") },
+        };
+
+        var json = await Verwerk(classificatie, new FakeTeamResolver());
+
+        classificatie.LeeftijdsCategorie.Should().Be("JO13");
+        classificatie.TeamHandmatigBeoordelen.Should().BeFalse();
+        JObject.Parse(json)[BeschikbaarheidVoorwaarden.HandmatigePlanningVlag].Should().BeNull();
     }
 
     // ── Herplan ──
@@ -439,7 +499,7 @@ public class BerichtPipelinePlannerTakkenIntegrationTests : IAsyncLifetime
 
     // ── helpers ──
 
-    private static DateOnly Over(int dagen) => DateOnly.FromDateTime(DateTime.Today).AddDays(dagen);
+    private static DateOnly Over(int dagen) => NederlandseBedrijfsKlok.Vandaag().AddDays(dagen);
 
     private static BerichtClassificatie Beschikbaarheid(string team, string tegenstander, DateOnly datum) => new()
     {
