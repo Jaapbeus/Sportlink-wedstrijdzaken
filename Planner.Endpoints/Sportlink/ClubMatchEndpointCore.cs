@@ -29,6 +29,16 @@ public static class ClubMatchEndpointCore
     private const int AuditPublicMatchIdMaxLengte = 50;
 
     /// <summary>
+    /// <c>true</c> als <paramref name="id"/> geheel uit letters, cijfers, '-' en '_' bestaat en in de auditkolom past.
+    /// Bewust tekengericht en niet via een regex met <c>$</c>: dat anker laat een afsluitende regeleinde door, en
+    /// zo'n waarde mag nooit in de audit komen.
+    /// </summary>
+    private static bool IsBruikbaarAuditPublicMatchId(string? id)
+        => !string.IsNullOrEmpty(id)
+           && id.Length <= AuditPublicMatchIdMaxLengte
+           && id.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
+
+    /// <summary>
     /// Legt na een geslaagde, echte aanmaak het door Sportlink teruggegeven <c>PublicMatchId</c> vast op de
     /// audit-rij (#1879), zodat een latere wijziging of verwijdering aan de aanmaak te koppelen is. Doet niets bij
     /// een mislukking, dry-run, gesimuleerde aanroep of een ID met een onverwachte vorm of lengte. Een fout hierbij
@@ -42,7 +52,7 @@ public static class ClubMatchEndpointCore
             return;
 
         var id = resultaat.PublicMatchId;
-        if (id is null || id.Length > AuditPublicMatchIdMaxLengte || !ClubMatchVerwijderCore.IsGeldigPublicMatchId(id))
+        if (!IsBruikbaarAuditPublicMatchId(id))
             return;
 
         try

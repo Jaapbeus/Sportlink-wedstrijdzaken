@@ -67,6 +67,12 @@ public class ClubMatchKoppelPublicMatchIdTests
     [InlineData("")]
     [InlineData("heeft spatie")]
     [InlineData("pad/../id")]
+    [InlineData("synthetic-id\n")]      // afsluitende LF: een regex met $ zou deze doorlaten
+    [InlineData("synthetic-id\r\n")]    // afsluitende CRLF
+    [InlineData("synthetic\nid")]       // ingebedde LF
+    [InlineData("synthetic-id\t")]
+    [InlineData("synthetic-id\0")]
+    [InlineData("syntheticé")]          // niet-ASCII letter
     public async Task OngeldigId_ZetNiets(string? id)
     {
         (await Roep(Resultaat(id: id))).Should().BeEmpty();
