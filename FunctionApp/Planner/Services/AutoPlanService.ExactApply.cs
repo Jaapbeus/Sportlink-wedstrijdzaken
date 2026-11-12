@@ -16,7 +16,7 @@ internal static partial class AutoPlanService
         using var conn = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
         await conn.OpenAsync();
         using var transaction = conn.BeginTransaction(IsolationLevel.Serializable);
-        try
+        return await MapTransactionConflictAsync(async () =>
         {
             var sources = await AllstarsTestDataRepository.GetAllMatchesForDatumAsync(conn, transaction, datum, AllstarsClubCode);
             var velden = await AllstarsTestDataRepository.GetAllstarsVeldenAsync(conn, transaction);
@@ -35,6 +35,19 @@ internal static partial class AutoPlanService
                     write.WedstrijdCode, write.VerwachtVeld, write.VerwachteTijd, write.Veld, write.Tijd),
                 () => transaction.CommitAsync());
             return new AutoPlanToepassenResponse { Bijgewerkt = updated };
+        });
+    }
+
+    /// <summary>
+    /// Vertaalt een SQL Server-deadlock (1205) of snapshotconflict (3960) naar het veilige conflict;
+    /// andere fouten gaan ongewijzigd door. Losse naad (#1888) omdat T-SQL fout 1205 niet zelf kan
+    /// opwerpen: zo is de vertaling deterministisch te testen zonder echte deadlock.
+    /// </summary>
+    internal static async Task<T> MapTransactionConflictAsync<T>(Func<Task<T>> work)
+    {
+        try
+        {
+            return await work();
         }
         catch (SqlException ex) when (AutoPlanApplyConflictException.IsTransactionConflict(null, ex.Number))
         {

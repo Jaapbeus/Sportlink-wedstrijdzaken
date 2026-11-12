@@ -24,6 +24,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - De clubkiezer, startpoort en initialisatie van de hoofdindeling staan nu in het aangrenzende partial-bestand; gedrag blijft gelijk (zie issue #1807).
 - API-bodybegrenzing hergebruikt de gedeelde uitvoeringspoort met behoud van bestaande parsers en endpointvalidatie (zie issue #1811).
 - Clubcodevalidatie vereist nu het volledige invoerformaat en clubcodes worden veilig gemaakt vóór logging op beide databasetiers (zie issue #1811).
+- De SQL Server-deadlocktest van het exact toepassen van een planning is niet langer afhankelijk van welke taak na de deadlock het eerst klaar is, en de vertaling van een deadlock (fout 1205/3960) naar een veilig conflict (409) heeft nu ook een deterministische unittest zonder database; geen gedragswijziging (#1888).
 
 ### Breaking
 - `/api/health` exposeert niet langer database-, schema-, migratie-, TLS-, sync- of tierdiagnostiek. Deploy- en readinessvelden zijn geaggregeerd; details zijn beschikbaar via admin-only `GET /api/beheer/health` (#1811). Dit is een contractwijziging; op eigenaarsbesluit (#1811) zonder MAJOR-versiesprong.
