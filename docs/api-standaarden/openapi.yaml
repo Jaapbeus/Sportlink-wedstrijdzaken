@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.17.0.1
+  version: 3.17.0.2
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -225,6 +225,11 @@ components:
           type: boolean
           description: Whether a TLS warning exists; details are admin-only.
           example: false
+        readPathsOk:
+          type: boolean
+          nullable: true
+          description: Result of the planner read-path probe (#1911), or null when not measured (SQL Server tier, database offline, no data to read). false fails the deployment smoke test.
+          example: true
 
     AdminHealthStatus:
       type: object

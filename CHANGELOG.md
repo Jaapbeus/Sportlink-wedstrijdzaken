@@ -18,6 +18,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.17.0.2] — 2026-11-12
+
+- De pagina Planning gaf bij Veldbezetting "Interne fout" op productie. Oorzaak: sinds 3.17.0.0 las de gedeelde speeltijden-lookup de kolom `standaardvoorkeurtijd` met een harde cast naar `TimeSpan`, terwijl Npgsql 10 voor een `time`-kolom een `TimeOnly` levert; elke rij met een voorkeurstijd gaf daardoor een `InvalidCastException`. De lookup herkent nu beide typen (Postgres en SQL Server). Nieuw: een test tegen de echte Postgres-driver, een unit-test per drivertype, en een leesproef in `/api/health` (`readPathsOk`) waarop de deploy-smoke-test faalt, zodat zo'n fout bij een volgende uitrol de deployment onderschept (#1911). De zichtbaarheid van sync-runs voor beheerders staat in issue #1912.
+
 ## [3.17.0.1] — 2026-11-12
 
 - De Admin GUI werd bij de uitrol van 3.17.0.0 niet vernieuwd: de deploy-pipeline sloeg de Blazor-uitrol ten onrechte over, waardoor alleen de API en de database waren bijgewerkt. Dat is hersteld, en de pipeline meldt een overgeslagen GUI-uitrol voortaan als fout (#1908).
