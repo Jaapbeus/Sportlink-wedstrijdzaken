@@ -1062,14 +1062,10 @@ PUT-mutatie-endpoints (kleedkamers, veld, officials, wijzigingsverzoek). De rela
 wordt dus niet gelogd.
 
 **BESLUIT:** het bestaande mutatie-auditlog mag de door de beheerder ingevoerde relatiecode van de
-officials-mutatie (#994) blijven vastleggen. De bewaartermijn volgt de levenscyclus van de
-wedstrijddata.
-
-**Werking vandaag, nog af te stemmen met de eigenaar:** het mutatie-auditlog wordt op beide tiers
-standaard na 365 dagen opgeruimd (instelbaar per club via `sportlinkmutationauditbewaardagen`, zie
-hierboven). Dat is een vaste termijn en geen koppeling aan de wedstrijddata. Of 365 dagen volstaat of
-dat de werking moet worden aangepast, is een open vervolgbesluit; wijkt de gewenste termijn af, dan
-volgt een apart implementatie-issue op beide tiers.
+officials-mutatie (#994) blijven vastleggen. De bewaartermijn van het auditlog is **365 dagen**
+(besluit eigenaar, 2026-11-12). Dat is de bestaande werking: het mutatie-auditlog wordt op beide
+tiers na 365 dagen opgeruimd, instelbaar per club via `sportlinkmutationauditbewaardagen` (zie
+hierboven). Er is geen koppeling aan de levenscyclus van de wedstrijddata. Er volgt geen codewijziging.
 
 ### Samenvatting
 
@@ -1078,4 +1074,4 @@ volgt een apart implementatie-issue op beide tiers.
 | Rechtsgrond | Gerechtvaardigd belang (art. 6 lid 1 sub f) | Besluit eigenaar, 2026-11-12 (#1869) |
 | Bewaartermijn prefill | Geen aparte termijn, want niet bewaard | Besluit eigenaar, 2026-11-12 (#1869) |
 | Audit-logging (leespad #1340) | Gebeurt niet | Feitelijk vastgesteld |
-| Audit-logging (schrijfpad #994) | Auditlog mag de relatiecode bevatten; termijn volgt de wedstrijddata | Besluit eigenaar, 2026-11-12 (#1869); werking is 365 dagen standaard, afstemming open |
+| Audit-logging (schrijfpad #994) | Auditlog mag de relatiecode bevatten, bewaartermijn 365 dagen (standaard, per club instelbaar) | Besluit eigenaar, 2026-11-12 (#1869) |
