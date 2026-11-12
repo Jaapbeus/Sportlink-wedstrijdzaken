@@ -413,8 +413,9 @@ regel→bestemming-matrix staan in `DOSSIER-AGENTINSTRUCTIES-BUDGET.md`.
 *Leesbaarheid en laadcontrole (#1898).* Binnen het budget past niet automatisch goed gelezen: de guard
 begrenst ook de regellengte (maximaal 600 tekens per regel, structureel, niet via het plafondbestand
 te verhogen) en eist dat de laatste regel van elke `AGENTS.md` met `Laadcontrole:` begint (een canary, zie
-`AGENT-INSTRUCTIES-LADEN.md`). De ketenmarge van 2 KiB onder het Codex-budget is bedoeld voor een globaal
-`~/.codex/AGENTS.md` (onbewaakt: een bestand op andermans machine is voor de guard onzichtbaar).
+`AGENT-INSTRUCTIES-LADEN.md`). De ketenmarge van 2 KiB onder het Codex-budget is een conservatieve
+projectmarge (een globaal `~/.codex/AGENTS.md` wordt volgens de broncode afzonderlijk geladen; onbewaakt: een
+bestand op andermans machine is voor de guard onzichtbaar, en de canary bewijst laden hooguit waargenomen, nooit naleving).
 
 *Guards: `scripts/ci/check-agent-instructies.py` (stubs, bron, laadpaden, omvang, leesbaarheid, codeblokken),
 `scripts/ci/check-agent-instructies.test.py` (fixturetests; de verwachtingen over budget, krimpmarge,
