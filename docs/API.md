@@ -275,7 +275,7 @@ Publieke, geaggregeerde status zonder database-, schema-, migratie-, TLS- of syn
 | `migrationsCurrent` | `boolean \| null` | Postgres: `true` als er geen migraties openstaan, `false` als dat wel zo is; `null` als dit niet vastgesteld kon worden. SQL Server retourneert `null` omdat deze healthprobe daar geen migratiestatus heeft. |
 | `schemaWarningPresent` | `boolean` | Alleen of de Postgres-schemawaarschuwing aanwezig is. |
 | `tlsWarningPresent` | `boolean` | Alleen of de Postgres-TLS-waarschuwing aanwezig is. |
-| `readPathsOk` | `boolean \| null` | Postgres (#1911): uitkomst van de leesproef van de planner-leespaden (speeltijden-lookup met dezelfde code als de Planning). `false` zet `status` op `degraded` en laat de deploy-smoke-test falen; `null` = niet gemeten (SQL Server, database offline of geen speeltijden-rij). |
+| `readPathsOk` | `boolean \| null` | Beide tiers (#1911): uitkomst van de leesproef van de planner-leespaden (speeltijden-lookup met dezelfde code als de Planning). `false` zet `status` op `degraded` en laat de deploy-smoke-test falen; `null` = niet gemeten (database offline of geen speeltijden-rij). |
 
 De publieke respons bevat geen ruwe serverversie, tier/provider, sync-tijd, TLS-modus, waarschuwingsinhoud of migratienamen. De deployment gate blijft bij dezelfde uitkomsten falen en houdt schema/TLS-waarschuwingen niet-fataal.
 

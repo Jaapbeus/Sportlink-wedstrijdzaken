@@ -55,6 +55,15 @@ public class PlannerSpeeltijdenLookupIntegrationTests
         await Voer(conn, "DELETE FROM public.speeltijden WHERE clubcode = @cc");
     }
 
+    [Fact]
+    public async Task ProbeSpeeltijdenLeesPadAsync_OnbereikbareDatabase_GeeftFoutDoorAanHealth()
+    {
+        // Health vangt dit en meldt readPathsOk=false (degraded); de probe zelf slikt nooit een fout in.
+        var act = () => PlannerSettingsRepository.ProbeSpeeltijdenLeesPadAsync(
+            "Host=127.0.0.1;Port=1;Username=x;Password=x;Database=x;Timeout=2", CancellationToken.None);
+        await act.Should().ThrowAsync<Exception>();
+    }
+
     private static async Task Voer(NpgsqlConnection conn, string sql)
     {
         await using var cmd = new NpgsqlCommand(sql, conn);

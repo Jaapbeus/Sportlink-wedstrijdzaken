@@ -15,7 +15,7 @@ public static class HealthFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "health")] HttpRequest req,
         FunctionContext context)
     {
-        var snapshot = await GetCachedHealthSnapshotAsync(req.HttpContext.RequestAborted);
+        var snapshot = await GetCachedHealthSnapshotAsync(logger: context.GetLogger("Health"), callerCancellation: req.HttpContext.RequestAborted);
         var response = snapshot.ToPublicResponse();
         return snapshot.Database == "unconfigured"
             ? new ObjectResult(response) { StatusCode = StatusCodes.Status503ServiceUnavailable }
@@ -30,7 +30,7 @@ public static class HealthFunction
         var log = context.GetLogger("AdminHealth");
         return AdminEndpoint.ExecuteZonderDatabaseAsync(req, log, "gezondheidsdetails ophalen", async () =>
         {
-            var snapshot = await GetCachedHealthSnapshotAsync(req.HttpContext.RequestAborted);
+            var snapshot = await GetCachedHealthSnapshotAsync(logger: log, callerCancellation: req.HttpContext.RequestAborted);
             var response = snapshot.ToAdminResponse();
             return snapshot.Database == "unconfigured"
                 ? new ObjectResult(response) { StatusCode = StatusCodes.Status503ServiceUnavailable }
@@ -38,16 +38,19 @@ public static class HealthFunction
         });
     }
 
-    private static Task<HealthStatusSnapshot> GetCachedHealthSnapshotAsync(CancellationToken callerCancellation) =>
-        HealthStatusCacheAccessor.Instance.GetAsync("SqlServer", CreateHealthSnapshotAsync, callerCancellation);
+    private static Task<HealthStatusSnapshot> GetCachedHealthSnapshotAsync(ILogger logger, CancellationToken callerCancellation) =>
+        HealthStatusCacheAccessor.Instance.GetAsync("SqlServer", () => CreateHealthSnapshotAsync(logger), callerCancellation);
 
-    private static async Task<HealthStatusSnapshot> CreateHealthSnapshotAsync()
+    private static async Task<HealthStatusSnapshot> CreateHealthSnapshotAsync(ILogger logger)
     {
         var version = typeof(HealthFunction).Assembly.GetName().Version?.ToString(4) ?? "?";
         var (dbStatus, serverVersion) = await PlannerFunction.GetDatabaseStatusAsync();
         var settingsLoaded = !SystemUtilities.AppSettings.LastLoadFailed;
+        var leesPadenOk = await HealthLeesproef.UitvoerenAsync(
+            dbStatus,
+            ct => PlannerSettingsRepository.ProbeSpeeltijdenLeesPadAsync(SystemUtilities.DatabaseConfig.ConnectionString, ct), logger);
         return new HealthStatusSnapshot(
-            dbStatus == "online" && settingsLoaded ? "ok" : "degraded",
+            dbStatus == "online" && settingsLoaded && leesPadenOk != false ? "ok" : "degraded",
             version,
             dbStatus,
             settingsLoaded,
@@ -63,6 +66,7 @@ public static class HealthFunction
             TlsMode: null,
             TlsWarning: null,
             SchemaWarning: null,
-            PendingMigrations: null);
+            PendingMigrations: null,
+            ReadPathsOk: leesPadenOk);
     }
 }

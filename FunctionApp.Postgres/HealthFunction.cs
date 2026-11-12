@@ -62,7 +62,8 @@ public static class HealthFunction
         var (lastSync, syncStale) = await GetSyncStatusAsync(dbStatus);
         var (tlsMode, tlsWarning) = GetTlsStatus();
         var pendingMigrations = await GetPendingMigrationsAsync(dbStatus);
-        var leesPadenOk = await ProbeLeesPadenAsync(dbStatus, log);
+        var leesPadenOk = await HealthLeesproef.UitvoerenAsync(dbStatus,
+            ct => Planner.PlannerSettingsRepository.ProbeSpeeltijdenLeesPadAsync(PostgresDatabaseConfig.ConnectionString, ct), log);
         var schemaWarning = PostgresAppSettings.SchemaWarning;
         var status = dbStatus == "online" && settingsLoaded && !(syncStale && SyncWordtVerwacht)
                      && pendingMigrations is { Count: 0 } && leesPadenOk != false ? "ok" : "degraded";
@@ -85,31 +86,6 @@ public static class HealthFunction
             schemaWarning,
             pendingMigrations,
             leesPadenOk);
-    }
-
-    /// <summary>
-    /// #1911: leest het speeltijden-leespad van de Planning met dezelfde productiecode als het endpoint. Een
-    /// driver- of typemappingfout (Npgsql 10 geeft een <c>time</c>-kolom als <see cref="TimeOnly"/>) viel
-    /// voorheen pas op bij de eerste gebruiker: de smoke tests keken alleen naar bereikbaarheid, auth en migraties.
-    /// <c>false</c> laat de deploy-smoke-test falen (<c>scripts/dev/health-deploy-predicate.sh</c>); <c>null</c> =
-    /// niet gemeten (database offline of geen speeltijden-rij). Er wordt een rij mét voorkeurstijd gekozen, want
-    /// juist een gevulde <c>time</c>-waarde loopt door de typemapping. De foutdetails staan alleen in het log.
-    /// </summary>
-    private static async Task<bool?> ProbeLeesPadenAsync(string dbStatus, ILogger log)
-    {
-        if (dbStatus != "online") return null;
-
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        try
-        {
-            return await FunctionApp.Postgres.Planner.PlannerSettingsRepository.ProbeSpeeltijdenLeesPadAsync(
-                PostgresDatabaseConfig.ConnectionString, cts.Token);
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Health: leesproef van de planner-leespaden mislukt.");
-            return false;
-        }
     }
 
     /// <summary>

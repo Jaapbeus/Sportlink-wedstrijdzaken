@@ -1,4 +1,5 @@
 using Microsoft.Data.SqlClient;
+using Planner.Endpoints.Health;
 using Planner.Shared;
 
 namespace SportlinkFunction.Planner;
@@ -74,6 +75,16 @@ internal static class PlannerSettingsRepository
             result[reader.GetString(0).TrimEnd()] = reader.GetInt32(1);
         return result;
     }
+
+    /// <summary>
+    /// #1911: leesproef voor <c>/api/health</c> — leest de speeltijden-lookup van één club met dezelfde code als de
+    /// Planning, bij voorkeur een club met een ingevulde voorkeurstijd. <c>null</c> = geen rij om te lezen; een fout
+    /// wordt aan de aanroeper doorgegeven.
+    /// </summary>
+    internal static Task<bool?> ProbeSpeeltijdenLeesPadAsync(string connectionString, CancellationToken ct) =>
+        HealthLeesproef.LeesVoorEersteClubAsync(new SqlConnection(connectionString),
+            "SELECT TOP 1 [ClubCode] FROM [dbo].[Speeltijden] ORDER BY CASE WHEN [StandaardVoorkeurTijd] IS NULL THEN 1 ELSE 0 END, [ClubCode]",
+            (conn, clubCode) => GetSpeeltijdenLookupAsync((SqlConnection)conn, null, clubCode), ct);
 
     internal static async Task<Dictionary<string, Speeltijd>> GetSpeeltijdenLookupAsync(string? clubCode = null)
     {
