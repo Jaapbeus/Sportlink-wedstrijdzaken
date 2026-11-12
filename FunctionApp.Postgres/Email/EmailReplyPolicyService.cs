@@ -17,9 +17,15 @@ internal sealed class EmailReplyPolicyService
 {
     /// <summary>De opslag van de reply-afhandeling; standaard de Postgres-repository, een test geeft een fake mee (geen database nodig).</summary>
     private readonly Func<string, IReplyPersistentie> _persistentie;
+    private readonly Func<int, TeamContactDoorstuurVerzoek, Task<TeamContactDoorstuurUitkomst>>? _teamContactDoorstuur;
 
-    internal EmailReplyPolicyService(Func<string, IReplyPersistentie>? persistentie = null)
-        => _persistentie = persistentie ?? (cs => new SqlReplyPersistentie(cs));
+    internal EmailReplyPolicyService(
+        Func<string, IReplyPersistentie>? persistentie = null,
+        Func<int, TeamContactDoorstuurVerzoek, Task<TeamContactDoorstuurUitkomst>>? teamContactDoorstuur = null)
+    {
+        _persistentie = persistentie ?? (cs => new SqlReplyPersistentie(cs));
+        _teamContactDoorstuur = teamContactDoorstuur;
+    }
 
     internal Task<ReplyVerwerkingUitkomst> HandelReplyFlowAfAsync(
         string connectionString,
@@ -34,7 +40,8 @@ internal sealed class EmailReplyPolicyService
         Func<string, string> sanitizeFoutMelding,
         ILogger log,
         TraceBuilder? trace = null,
-        bool zekerheidspoortActief = true)
+        bool zekerheidspoortActief = true,
+        string? clubCode = null)
     {
         var haken = new ReplyTierHaken(
             async team => (await AllstarsTestDataRepository.GetTeamleiderContactAsync(connectionString, team))?.Emailadres,
@@ -43,10 +50,17 @@ internal sealed class EmailReplyPolicyService
                 var seizoen = await PostgresSeasonHelper.GetCurrentKnvbSeizoenAsync(log);
                 return string.IsNullOrWhiteSpace(seizoen) ? null : await KnvbPdfService.GetKalenderPdfAsync(regio, seizoen, log);
             },
-            ExtraheerGraphStatusCode);
+            ExtraheerGraphStatusCode,
+            _teamContactDoorstuur ?? TeamContactDoorstuurAfhandeling.MaakStandaardDoorstuur(
+                () => new PostgresTeamContactDoorstuurPersistentie(connectionString, clubCode ?? VereisClubCode()),
+                async team => (await AllstarsTestDataRepository.GetTeamleiderContactAsync(
+                    connectionString, team, clubCode ?? VereisClubCode()))?.Emailadres,
+                () => PostgresAppSettings.GetSetting("plannerEmailAdres"),
+                graphService.StuurTeamContactDoorAsync,
+                log));
 
         return EmailReplyAfhandeling.HandelReplyFlowAfAsync(
-            verwerkingId, new ReplyBericht(email.MessageId, email.Afzender, email.ConversationId), classificatie,
+            verwerkingId, new ReplyBericht(email.MessageId, email.Afzender, email.ConversationId, email.AfzenderNaam, email.Body ?? ""), classificatie,
             plannerResponseJson, reviewMode, reviewRecipient, graphService, _persistentie(connectionString),
             bouwTemplateAntwoordAsync, sanitizeFoutMelding, haken, log, trace, zekerheidspoortActief);
     }
@@ -60,4 +74,12 @@ internal sealed class EmailReplyPolicyService
         => ex is Microsoft.Graph.Models.ODataErrors.ODataError odataError && odataError.ResponseStatusCode > 0
             ? odataError.ResponseStatusCode
             : null;
+
+    private static string VereisClubCode()
+    {
+        var clubCode = PostgresAppSettings.GetSetting("clubCode");
+        return !string.IsNullOrWhiteSpace(clubCode)
+            ? clubCode
+            : throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt");
+    }
 }

@@ -4233,6 +4233,11 @@ IF OBJECT_ID('dbo.Teams', 'U') IS NOT NULL AND COL_LENGTH('dbo.Teams', 'Categori
         [Categorie] NVARCHAR(1) NULL CONSTRAINT [CK_Teams_Categorie] CHECK ([Categorie] COLLATE Latin1_General_100_BIN2 IN (N'A', N'B'));
 GO
 
+-- #1799: NULL means legacy unknown; new pipeline inserts explicitly NietGestart.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('planner.EmailVerwerking') AND name = 'TeamContactDoorstuurStatus')
+    ALTER TABLE [planner].[EmailVerwerking] ADD [TeamContactDoorstuurStatus] NVARCHAR(20) NULL;
+GO
+
 -- #1803: begin van de lopende publicatiepoging van een feedbackmelding. ClaimPublicatieAsync zet het vóór de eerste
 -- GitHub-POST (ZetIssueBodyAsync ook, als een oudere melding haar referentie krijgt); een herclaim (automatisch
 -- herstel) laat het staan, zodat het zoekvenster naar een al aangemaakt issue niet opschuift door een mislukte
