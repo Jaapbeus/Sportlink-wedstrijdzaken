@@ -18,6 +18,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- Agentinstructies zijn beter laadbaar en leesbaar: veiligheids- en kostenregels staan bovenaan `AGENTS.md`, lange alinea's zijn opgesplitst, elke `AGENTS.md` eindigt met een laadcontrole (canary) en de guard bewaakt een maximale regellengte; `FunctionApp/AGENTS.md` herhaalt de harde stops kort (zie issue #1898).
 - Nieuwe GitHub-titels, bodies, comments, reviewcomments en workflow-uitvoer moeten in het Nederlands worden geschreven (#1896).
 - Clubgebonden beheerpagina's (Planning, Veld optimalisatie, Leermomenten, Teamaliassen, Rolrechten, Thema, Sportlink Web Extension, Feedback) passen een te late response van de vorige club niet meer toe na een clubwissel, en slaan nooit een thema of instellingen van een andere club op. Ook de uitkomst van een actie die nog voor de vorige club liep (opslaan, kleuren ophalen van de website, publiceren, teamlijst opnieuw opbouwen, alias- of leermomentactie, koppeling) verschijnt niet meer onder de nieuwe club; een late verwijderactie van de vorige club sluit geen verwijderbevestiging meer die intussen voor de nieuwe club is geopend, en de knop 'Ophalen van website' blijft na een clubwissel niet hangen. Planning en Veld optimalisatie laden de Sportlink-extensievlag opnieuw bij een clubwissel (#1872).
 - Veldoptimalisatie past de getoonde planning exact toe, inclusief handmatig gekozen deelvelden. Onbekende teams zonder betrouwbare speelduur blokkeren andere geldige wijzigingen niet.

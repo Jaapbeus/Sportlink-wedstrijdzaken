@@ -41,6 +41,9 @@ CODEX_SLEUTELS = (
 CODEX_BUDGET = 32768
 KRIMP_RUIMTE = 1024
 SCHEIDING = 2
+# Leesbaarheid (#1898), uitgeschreven en niet uit de guard gelezen: regelmaximum en canary-voorvoegsel.
+REGEL_MAX = 600
+CANARY = "Laadcontrole: einde bereikt (testcanary)."
 
 
 class AgentInstructiesTests(unittest.TestCase):
@@ -55,9 +58,9 @@ class AgentInstructiesTests(unittest.TestCase):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         root = Path(temp.name)
-        self.schrijf(root, "AGENTS.md", "# AGENTS.md\n\nRegel A.\n")
+        self.schrijf(root, "AGENTS.md", f"# AGENTS.md\n\nRegel A.\n\n{CANARY}\n")
         self.schrijf(root, "CLAUDE.md", STUB)
-        self.schrijf(root, "sub/AGENTS.md", "# AGENTS.md\n\nSubregel.\n")
+        self.schrijf(root, "sub/AGENTS.md", f"# AGENTS.md\n\nSubregel.\n\n{CANARY}\n")
         self.schrijf(root, "sub/CLAUDE.md", STUB)
         for naam in SKILLS:
             for basis in (".agents", ".claude"):
@@ -101,7 +104,11 @@ class AgentInstructiesTests(unittest.TestCase):
     def vul(self, root: Path, pad: str, bytes_totaal: int) -> None:
         """Schrijf een AGENTS.md van exact `bytes_totaal` bytes (ASCII)."""
         kop = "# AGENTS.md\n\n"
-        self.schrijf(root, pad, kop + "x" * (bytes_totaal - len(kop) - 1) + "\n")
+        staart = CANARY + "\n"
+        rest = bytes_totaal - len(kop) - len(staart)
+        volle, over = divmod(rest, 100)  # regels van 99 tekens: onder het regelmaximum, geen enorme regel
+        vulling = ("x" * 99 + "\n") * volle + ("" if over == 0 else ("x" * (over - 1) + "\n"))
+        self.schrijf(root, pad, kop + vulling + staart)
         self.assertEqual((root / pad).stat().st_size, bytes_totaal)
 
     def fouten(self, root: Path) -> str:
@@ -856,9 +863,10 @@ class AgentInstructiesTests(unittest.TestCase):
     def test_groei_met_een_byte_boven_het_plafond_wordt_geweigerd(self):
         root = self.fixture()
         bestand = root / "AGENTS.md"
-        bestand.write_bytes(bestand.read_bytes() + b"x")
+        oud = len(bestand.read_bytes())
+        bestand.write_bytes(bestand.read_bytes().replace(b"Regel A.", b"Regel A.x"))  # canary blijft de laatste regel
         fouten = self.fouten(root)
-        self.assertIn("bestand:AGENTS.md: 23 bytes is hoger dan het plafond 22", fouten)
+        self.assertIn(f"bestand:AGENTS.md: {oud + 1} bytes is hoger dan het plafond {oud}", fouten)
         self.assertIn("keten:sub/AGENTS.md", fouten)  # de keten groeit mee
 
     def test_plafond_een_byte_onder_de_meting_wordt_geweigerd(self):
@@ -910,16 +918,19 @@ class AgentInstructiesTests(unittest.TestCase):
 
     def test_omvang_telt_bytes_niet_tekens(self):
         root = self.fixture()
-        self.schrijf(root, "AGENTS.md", "# AGENTS.md\n\n" + "é" * 10 + "\n")  # 10 tekens, 20 bytes
+        self.schrijf(root, "AGENTS.md", f"# AGENTS.md\n\n{'é' * 10}\n\n{CANARY}\n")  # 10 tekens, 20 bytes
         self.zet_plafonds(root)
-        self.assertEqual(guard["meet_omvang"](root, [root / "AGENTS.md"])["bestand:AGENTS.md"], 13 + 20 + 1)
+        bytes_totaal = len((root / "AGENTS.md").read_bytes())
+        tekens_totaal = len((root / "AGENTS.md").read_text(encoding="utf-8"))
+        self.assertEqual(bytes_totaal - tekens_totaal, 10)
+        self.assertEqual(guard["meet_omvang"](root, [root / "AGENTS.md"])["bestand:AGENTS.md"], bytes_totaal)
         self.assertEqual(guard["controleer"](root), [])
-        self.plafond(root, "bestand:AGENTS.md", 13 + 10 + 1)  # tekenaantal is geen bytetelling
+        self.plafond(root, "bestand:AGENTS.md", tekens_totaal)  # tekenaantal is geen bytetelling
         self.assertIn("bestand:AGENTS.md", self.fouten(root))
 
     def test_keten_van_drie_niveaus_heeft_per_niveau_een_meting(self):
         root = self.fixture()
-        self.schrijf(root, "sub/diep/AGENTS.md", "# AGENTS.md\n\nDiep.\n")
+        self.schrijf(root, "sub/diep/AGENTS.md", f"# AGENTS.md\n\nDiep.\n\n{CANARY}\n")
         self.schrijf(root, "sub/diep/CLAUDE.md", STUB)
         self.zet_plafonds(root)
         meting = guard["meet_omvang"](root, sorted(root.rglob("AGENTS.md")))
@@ -1019,6 +1030,51 @@ class AgentInstructiesTests(unittest.TestCase):
 
     def test_de_vier_verplichte_skills_zijn_genoeg(self):
         self.assertEqual(guard["controleer"](self.fixture()), [])  # geen vijfde verplichte skill
+
+    # ── leesbaarheid (#1898) ────────────────────────────────────────────────────────────────
+    def test_leesbaarheidsconstanten_zijn_vast(self):
+        self.assertEqual((guard["REGEL_MAX_CHARS"], guard["CANARY_PREFIX"]), (REGEL_MAX, "Laadcontrole:"))
+
+    def test_regel_op_het_maximum_is_toegestaan_en_een_teken_meer_faalt(self):
+        root = self.fixture()
+        self.schrijf(root, "AGENTS.md", "# AGENTS.md\n\n" + "x" * REGEL_MAX + f"\n\n{CANARY}\n")
+        self.zet_plafonds(root)
+        self.assertEqual(guard["controleer"](root), [])
+        self.schrijf(root, "AGENTS.md", "# AGENTS.md\n\n" + "x" * (REGEL_MAX + 1) + f"\n\n{CANARY}\n")
+        self.zet_plafonds(root)
+        self.assertIn(f"AGENTS.md:3: regel van {REGEL_MAX + 1} tekens is langer dan het maximum {REGEL_MAX}", self.fouten(root))
+
+    def test_regelmaximum_geldt_ook_in_een_submap(self):
+        root = self.fixture()
+        self.schrijf(root, "sub/AGENTS.md", "# AGENTS.md\n\n" + "x" * (REGEL_MAX + 1) + f"\n\n{CANARY}\n")
+        self.zet_plafonds(root)
+        self.assertIn("sub/AGENTS.md:3: regel van", self.fouten(root))
+
+    def test_regelmaximum_telt_tekens_niet_bytes(self):
+        root = self.fixture()
+        self.schrijf(root, "AGENTS.md", "# AGENTS.md\n\n" + "é" * REGEL_MAX + f"\n\n{CANARY}\n")  # 1200 bytes, 600 tekens
+        self.zet_plafonds(root)
+        self.assertEqual(guard["controleer"](root), [])
+
+    def test_ontbrekende_canary_faalt_in_root_en_submap(self):
+        for pad in ("AGENTS.md", "sub/AGENTS.md"):
+            with self.subTest(pad=pad):
+                root = self.fixture()
+                self.schrijf(root, pad, "# AGENTS.md\n\nRegel zonder canary.\n")
+                self.zet_plafonds(root)
+                self.assertIn(f"{pad}: de laatste regel moet met 'Laadcontrole:' beginnen", self.fouten(root))
+
+    def test_canary_midden_in_het_bestand_telt_niet(self):
+        root = self.fixture()
+        self.schrijf(root, "AGENTS.md", f"# AGENTS.md\n\n{CANARY}\n\nNog een regel erna.\n")
+        self.zet_plafonds(root)
+        self.assertIn("AGENTS.md: de laatste regel moet met 'Laadcontrole:' beginnen", self.fouten(root))
+
+    def test_canary_gevolgd_door_lege_regels_is_toegestaan(self):
+        root = self.fixture()
+        self.schrijf(root, "AGENTS.md", f"# AGENTS.md\n\nRegel.\n\n{CANARY}\n\n\n")
+        self.zet_plafonds(root)
+        self.assertEqual(guard["controleer"](root), [])
 
 
 if __name__ == "__main__":

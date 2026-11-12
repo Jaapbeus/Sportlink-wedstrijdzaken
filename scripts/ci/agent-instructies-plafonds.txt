@@ -21,5 +21,5 @@
 # Na de verkleining (#1580) gemeten op de eindtoestand van die PR:
 
 bestand:AGENTS.md                  27588  compacte kern; alle harde regels inline, uitleg in docs/
-bestand:FunctionApp/AGENTS.md       2163  compacte kern voor de SQL Server-tier
-keten:FunctionApp/AGENTS.md        29753  27588 + 2 + 2163; sessie in FunctionApp/ laadt beide (Codex-grens 32768)
+bestand:FunctionApp/AGENTS.md       2637  compacte kern voor de SQL Server-tier + harde-stopsamenvatting en canary (#1898)
+keten:FunctionApp/AGENTS.md        30219  27580 + 2 + 2637; sessie in FunctionApp/ laadt beide (Codex-grens 32768; marge 2549 bytes incl. een globaal ~/.codex/AGENTS.md)

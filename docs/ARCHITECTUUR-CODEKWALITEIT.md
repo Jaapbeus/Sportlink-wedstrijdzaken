@@ -410,7 +410,13 @@ bestandswijziging alleen geen eigenaarsbesluit is. Wat boven het budget uitkomt,
 (zie §13.1 van `ARCHITECTUUR.md`) met een leesmoment in `AGENTS.md`. De route daarheen en de
 regel→bestemming-matrix staan in `DOSSIER-AGENTINSTRUCTIES-BUDGET.md`.
 
-*Guards: `scripts/ci/check-agent-instructies.py` (stubs, bron, laadpaden, omvang, codeblokken),
+*Leesbaarheid en laadcontrole (#1898).* Binnen het budget past niet automatisch goed gelezen: de guard
+begrenst ook de regellengte (maximaal 600 tekens per regel, structureel, niet via het plafondbestand
+te verhogen) en eist dat de laatste regel van elke `AGENTS.md` met `Laadcontrole:` begint (een canary, zie
+`AGENT-INSTRUCTIES-LADEN.md`). De ketenmarge van 2 KiB onder het Codex-budget is bedoeld voor een globaal
+`~/.codex/AGENTS.md` (onbewaakt: een bestand op andermans machine is voor de guard onzichtbaar).
+
+*Guards: `scripts/ci/check-agent-instructies.py` (stubs, bron, laadpaden, omvang, leesbaarheid, codeblokken),
 `scripts/ci/check-agent-instructies.test.py` (fixturetests; de verwachtingen over budget, krimpmarge,
 verplichte skills en verboden sleutels staan daar uitgeschreven en komen niet uit de guard) en
 `scripts/ci/check-agent-instructies.mutaties.py` (geselecteerde mutaties: schakelt per genoemde guardregel
@@ -584,7 +590,7 @@ endpoint laat hem ook falen. Dezelfde knip als de Layer-5-scan in
 | 3b — geen `<style>`-blok of statische inline style in Blazor-pagina's (#1329) | `scripts/ci/check-blazor-inline-styles.sh` | `build.yml` |
 | 3c — gelinkte bronbestanden in BlazorAdmin: alleen `using System*`, geen `RegexOptions.Compiled` (#1461) | `scripts/ci/check-gelinkte-bronbestanden.sh` | `build.yml` |
 | 4 — platformafhankelijke valkuilen | `scripts/ci/check-codekwaliteit-valkuilen.sh` | `build.yml` |
-| 5 — AGENTS.md enige bron, CLAUDE.md-stubs leeg, skills één bron, codeblokken afgesloten (#1579); geen bekend tweede laadpad (toelatingsmatrix), geen symlinks, ook niet in uitgesloten mappen; omvangplafond per bestand en per keten (#1580) | `scripts/ci/check-agent-instructies.py` | `build.yml` |
+| 5 — AGENTS.md enige bron, CLAUDE.md-stubs leeg, skills één bron, codeblokken afgesloten (#1579); geen bekend tweede laadpad (toelatingsmatrix), geen symlinks, ook niet in uitgesloten mappen; omvangplafond per bestand en per keten (#1580); maximale regellengte en canary als laatste regel (#1898) | `scripts/ci/check-agent-instructies.py` | `build.yml` |
 | 5 — negatieve/positieve fixturetests van de agentinstructiecontrole | `scripts/ci/check-agent-instructies.test.py` | `build.yml` |
 | 5 — mutatietest: geselecteerde guardregels afzonderlijk uitschakelen maakt de tests rood (#1580) | `scripts/ci/check-agent-instructies.mutaties.py` | `build.yml` |
 | 5 — skillkopieën in `.claude/skills/` identiek aan de bron in `.agents/skills/` (#1579) | `scripts/ci/sync-skills.py` | `build.yml` |
