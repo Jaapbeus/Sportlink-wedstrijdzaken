@@ -4250,3 +4250,23 @@ GO
 IF OBJECT_ID('avg.Feedback', 'U') IS NOT NULL AND COL_LENGTH('avg.Feedback', 'PublicatieGestartOpUtc') IS NULL
     ALTER TABLE [avg].[Feedback] ADD [PublicatieGestartOpUtc] DATETIME2 NULL;
 GO
+-- #1862: opzoeking van het eigen team via het e-mailadres van de afzender (AfzenderTeamBron). De query vergelijkt
+-- LOWER(LTRIM(RTRIM([Emailadres]))) = @adres; een persisted computed column met index maakt dat een seek in plaats van een
+-- scan (architectuurinvariant: LOWER()-vergelijking vraagt een persisted computed column + index). SQL Server matcht
+-- de expressie uit de query automatisch, dus de querytekst wijzigt niet. Zuiver additief en niet uniek: de vorige
+-- codeversie blijft werken. Postgres-tegenhanger: Database.Postgres/migrations/049_teambegeleiding_email_index.sql.
+-- Bron: Database/avg/Tables/Teambegeleiding.sql. QUOTED_IDENTIFIER moet AAN zijn (Msg 1934 bij sqlcmd-standaard OFF).
+SET QUOTED_IDENTIFIER ON;
+GO
+IF OBJECT_ID('avg.Teambegeleiding', 'U') IS NOT NULL AND COL_LENGTH('avg.Teambegeleiding', 'EmailadresGenormaliseerd') IS NULL
+    ALTER TABLE [avg].[Teambegeleiding]
+        ADD [EmailadresGenormaliseerd] AS LOWER(LTRIM(RTRIM([Emailadres]))) PERSISTED;
+GO
+IF COL_LENGTH('avg.Teambegeleiding', 'EmailadresGenormaliseerd') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes
+                   WHERE name = 'IX_avg_Teambegeleiding_EmailadresGenormaliseerd'
+                     AND object_id = OBJECT_ID('avg.Teambegeleiding'))
+    CREATE NONCLUSTERED INDEX [IX_avg_Teambegeleiding_EmailadresGenormaliseerd]
+        ON [avg].[Teambegeleiding] ([EmailadresGenormaliseerd])
+        INCLUDE ([Team], [ClubCode]);
+GO

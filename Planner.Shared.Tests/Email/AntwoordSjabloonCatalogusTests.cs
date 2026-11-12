@@ -98,6 +98,21 @@ public class AntwoordSjabloonCatalogusTests
     }
 
     [Fact]
+    public void SjabloonAntwoord_BijAfgeleidTeam_BevatDeControleregel()
+    {
+        var info = AntwoordSjabloonCatalogus.Zoek(AntwoordSjabloonSleutels.HerplanVerzoek)!;
+        var classificatie = Classificatie();
+        classificatie.TeamNaam = "ALLSTARS JO23-1";
+        classificatie.TeamAfgeleidUitAfzender = true;
+
+        var (_, body) = BerichtAntwoordGenerator.BouwAangepasteAntwoord(
+            new TestSjabloon(info.Sleutel, info.StandaardOnderwerp, info.StandaardBody),
+            classificatie, Afzender, Instellingen, Placeholders(info.Sleutel));
+
+        body.Should().Contain("\n\nWe gaan uit van ALLSTARS JO23-1; klopt dat niet, laat het ons weten.\n\nTestomgeving");
+    }
+
+    [Fact]
     public void LeegOnderwerp_GeeftReOnderwerpVanDeMail()
     {
         var info = AntwoordSjabloonCatalogus.Zoek(AntwoordSjabloonSleutels.TeamOnbekend)!;

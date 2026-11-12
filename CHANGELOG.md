@@ -29,6 +29,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ### Breaking
 - `/api/health` exposeert niet langer database-, schema-, migratie-, TLS-, sync- of tierdiagnostiek. Deploy- en readinessvelden zijn geaggregeerd; details zijn beschikbaar via admin-only `GET /api/beheer/health` (#1811). Dit is een contractwijziging; op eigenaarsbesluit (#1811) zonder MAJOR-versiesprong.
 
+### Added
+- Een bericht zonder herkenbaar eigen team gebruikt nu het team van de afzender als die in de teambegeleiding bij precies één team staat; het antwoord noemt dat team met een controleregel. Bij meerdere teams, een onbekende afzender of een afwijkend Reply-To blijft de wedervraag om het team. Een genoemd team wint altijd. Beide databasetiers, met een index op het genormaliseerde e-mailadres (Postgres-migratie 049, SQL Server persisted computed column); het adres komt nooit in trace of log en de opzoeking schrijft geen inzageregel. De beheerderstester doet de opzoeking niet, en de SQL Server-demoseed zet `QUOTED_IDENTIFIER` aan voor de nieuwe kolom (#1862).
+
 ### Changed
 - De Sportlink contract-check-noodmail wordt nu hoogstens één keer per Nederlandse kalenderdag (Europe/Amsterdam) verstuurd, ongeacht het tijdstip van de check; het vaste 24-uursinterval (in de praktijk om de twee dagen) vervalt. Geen schemawijziging; beide databasetiers gebruiken dezelfde gedeelde beslissing. Een geslaagde check wist het laatste verzendmoment niet meer, zodat afwijking, geslaagd, afwijking op dezelfde dag geen tweede mail geeft (zie issue #1815).
 - 21 planner-wire-DTO's die op SQL Server en Postgres woordelijk gelijk waren staan nu eenmalig in `GedeeldeBron/PlannerDto/` en worden per tier link-gecompileerd; naamruimten, JSON-vorm, het inlezen van requests en gedrag blijven gelijk, vastgelegd in characterization-tests die op beide tiers draaien. Twee auto-plan-typen volgen na de open PR's die ze wijzigen (#1856).

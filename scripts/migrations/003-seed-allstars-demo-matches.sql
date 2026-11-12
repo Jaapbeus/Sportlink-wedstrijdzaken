@@ -28,6 +28,11 @@
 -- rijen met ClubCode = 'ALLSTARS'; nooit gebruikt voor een echte club.
 -- ============================================================
 
+-- QUOTED_IDENTIFIER moet AAN zijn (#1862): avg.Teambegeleiding heeft een persisted computed column met index, en
+-- sqlcmd zet hem standaard UIT. Zonder deze regel faalt de INSERT/UPDATE met Msg 1934. Geldt voor de hele sessie.
+SET QUOTED_IDENTIFIER ON;
+GO
+
 DECLARE @DemoClub NVARCHAR(20) = 'ALLSTARS';
 
 IF NOT EXISTS (SELECT 1 FROM [dbo].[AppSettings] WHERE [ClubCode] = @DemoClub)

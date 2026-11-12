@@ -93,6 +93,60 @@ public class BerichtPipelineEigenTeamTests
         Assert.False(classification.VoegKnvbPdfBijlageToe);
     }
 
+    // #1862: de afzender-opzoeking is aangesloten op de pipeline van deze tier. Een fake bron vervangt de
+    // database; een afzender bij twee teams geeft de wedervraag zonder dat er een plannerquery volgt.
+    [Fact]
+    public async Task AfzenderBijMeerdereTeams_GeeftTeamOnbekendZonderDatabase()
+    {
+        var bron = new VasteAfzenderBron("JO13-2", "JO13-1");
+        var classificatie = new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck };
+
+        var result = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, new InkomendBericht { Afzender = "trainer@voorbeeld.nl" },
+            NullLogger.Instance, new VasteResolver("JO13-2"), Club, afzenderTeamBron: bron);
+
+        bron.Aanroepen.Should().Be(1);
+        classificatie.TeamAfgeleidUitAfzender.Should().BeFalse();
+        classificatie.TeamNaam.Should().BeNull();
+        result.Should().Contain("teamOnbekend");
+    }
+
+    [Fact]
+    public async Task AntwoordadresWijktAf_PipelineDoetGeenAfzenderOpzoeking()
+    {
+        var bron = new VasteAfzenderBron("JO13-2");
+        var classificatie = new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck };
+
+        var result = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie,
+            new InkomendBericht { Afzender = "trainer@voorbeeld.nl", InternetHeaders = [new("Reply-To", "Ander <ander@voorbeeld.nl>")] },
+            NullLogger.Instance, new VasteResolver("JO13-2"), Club, afzenderTeamBron: bron);
+
+        bron.Aanroepen.Should().Be(0);
+        result.Should().Contain("teamOnbekend");
+    }
+
+    [Fact]
+    public async Task Omhulsel_AfzenderBegeleidtPreciesEenTeam_LeidtHetTeamAf()
+    {
+        var classificatie = new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck };
+
+        var herkend = await EigenTeamBepaling.BereidPlannerVoorAsync(classificatie, new VasteResolver("JO13-2"), Club,
+            NullLogger.Instance, null, afzender: new AfzenderOpzoeking(new VasteAfzenderBron("JO13-2"), "trainer@voorbeeld.nl", []));
+
+        herkend.Should().BeTrue();
+        classificatie.TeamNaam.Should().Be("TESTCLUB JO13-2");
+        classificatie.TeamAfgeleidUitAfzender.Should().BeTrue();
+    }
+
+    private sealed class VasteAfzenderBron(params string[] teams) : IAfzenderTeamBron
+    {
+        public int Aanroepen { get; private set; }
+        public Task<IReadOnlyList<string>> ZoekTeamsVanAfzenderAsync(string afzender, string clubCode)
+        {
+            Aanroepen++;
+            return Task.FromResult<IReadOnlyList<string>>(teams);
+        }
+    }
+
     private sealed class ConflictingFixtures : ITeamFixtureContextRepository
     {
         public Task<TeamFixtureContext> GetAsync(string clubCode, DateOnly date, IReadOnlyList<int> candidateIds)

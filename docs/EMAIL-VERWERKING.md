@@ -1500,6 +1500,22 @@ Toelichting bij de bewerkingen:
 Bij een nieuwe club-installatie: neem deze rij en de voorwaarden uit §5c over in het eigen register en
 vul de eigenaarsvelden (grondslag, overeenkomst, bewaartermijn, locatie, instrument) voor die club in.
 
+### 5e. Eigen team afleiden uit de teambegeleiding van de afzender (#1862, AVG)
+
+Noemt een bericht geen herkenbaar eigen team, dan zoekt de verwerker het e-mailadres van de afzender op in de teambegeleiding
+(`AfzenderTeamBron`). Staat het adres bij precies één team, dan is dat het team van het antwoord.
+
+| Onderdeel | Vastlegging |
+|---|---|
+| Doelverenigbaarheid (art. 6 lid 4 AVG) | De begeleiding is vastgelegd voor contact en organisatie rond teams (gerechtvaardigd belang, #168). Een begeleider herkennen die zelf over zijn eigen team mailt valt binnen dezelfde context en verwachting van de betrokkene. Er wordt niets aan derden getoond: het antwoord noemt alleen de teamnaam. |
+| Minimalisatie | De query geeft alleen teamwaarden terug, nooit naam, telefoonnummer of rol. Het e-mailadres staat alleen als parameter in de query en nooit in trace, log, telemetrie of GitHub, ook niet gehasht. |
+| Inzagelog (#1701) | Eigenaarsbesluit 2026-11-11 (4A): geen inzageregel in `avg.teambegeleidinginzagelog`; de automatische verwerking van echte mail toont geen persoonsgegevens aan een mens. De trace legt alleen het aantal gevonden teams vast (0, 1 of meer). |
+| Beheerderstester (`test/email`) | Geen opzoeking (`OvergeslagenAfzenderTeamBron.Proefverwerking`, beide tiers): daar typt een mens een vrij adres in en ziet het antwoord, dus een opzoeking zou tonen welk team iemand begeleidt, buiten het inzagelog om. De trace toont de stap als overgeslagen, met de reden. |
+| Meerdere teams | Eigenaarsbesluit (5A): niets kiezen; de wedervraag `team_onbekend` noemt de teams van de afzender niet. |
+| Afwijkend genoemd team | Eigenaarsbesluit (6A): het genoemde team wint; een afwijking van het begeleidingsteam is alleen een tracenotitie zonder namen en zonder review-markering. |
+| Vervalste afzender | De opzoeking gebeurt alleen als Reply-To ontbreekt of gelijk is aan From, zodat een vervalste afzender via een eigen antwoordadres nooit te weten komt bij welk team een adres hoort. |
+| Opslag en bewaartermijn | Geen nieuwe opslag of bewaartermijn. De bestaande opruiming (`CleanupTeambegeleiding`) blijft leidend; is de lijst opgeschoond, dan valt de verwerking terug op de wedervraag om het team. |
+
 ---
 
 *Feitelijkheid geverifieerd tegen beide tiers op 2026-09-19 (v3.5.3.1): tabelnamen per tier,

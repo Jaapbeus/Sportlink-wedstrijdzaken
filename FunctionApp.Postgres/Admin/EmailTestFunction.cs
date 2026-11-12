@@ -106,8 +106,9 @@ public static class EmailTestFunction
         if (!await teamRepository.HeeftActieveTeamsAsync(clubCode))
             await TeamCanonicalisatieService.RefreshAsync(PostgresDatabaseConfig.ConnectionString, clubCode, log);
 
+        // #1862: geen afzender-opzoeking in de proefverwerking; een vrij ingetypt adres mag niet tonen welk team iemand begeleidt.
         var plannerResponseJson = await BerichtPipeline.VerwerkMetPlannerAsync(
-            classificatie, fakeEmail, log, context.InstanceServices.GetRequiredService<ITeamResolver>(), clubCode, clubSettings, trace);
+            classificatie, fakeEmail, log, context.InstanceServices.GetRequiredService<ITeamResolver>(), clubCode, clubSettings, trace, afzenderTeamBron: OvergeslagenAfzenderTeamBron.Proefverwerking);
         var (voorbeeldOnderwerp, voorbeeldBody) = await BerichtPipeline.BouwTemplateAntwoord(
             classificatie, plannerResponseJson, fakeEmail, log, clubSettings, clubCode, trace);
 
