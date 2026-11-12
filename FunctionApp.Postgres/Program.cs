@@ -60,7 +60,7 @@ if (!string.IsNullOrWhiteSpace(tenantId)
 // vertaald (#889). Zelfde patroon als FunctionApp/Program.cs: EgressGuard (#857) houdt dit
 // onvoorwaardelijk ongeregistreerd buiten productie, ook als OpenAiApiKey lokaal geconfigureerd is.
 var openAiApiKey = Environment.GetEnvironmentVariable("OpenAiApiKey");
-OpenAiChatClientRegistration.Register(builder.Services, openAiApiKey, Environment.GetEnvironmentVariable("AiModelName"), EgressGuard.ExternalIntegrationsAllowed());
+OpenAiChatClientRegistration.Register(builder.Services, openAiApiKey, Environment.GetEnvironmentVariable("AiModelName"), EgressGuard.ExternalIntegrationsAllowed(), Environment.GetEnvironmentVariable("AiReasoningEffort"));
 
 // Sportlink Club API client (#991, #998): read-only Match API + token-refresh per functionele rol.
 // EgressGuard (#857): eigen if-blok, losgekoppeld van de OpenAiApiKey-check hierboven — dit is een

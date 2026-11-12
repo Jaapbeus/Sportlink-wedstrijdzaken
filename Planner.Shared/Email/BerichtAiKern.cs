@@ -262,7 +262,7 @@ public class BerichtAiKern
     }
 
     /// <summary>
-    /// Classificeert een inkomend bericht met behulp van GPT-4o-mini.
+    /// Classificeert een inkomend bericht met behulp van gpt-6-luna.
     /// Retourneert een BerichtClassificatie met het type verzoek en geëxtraheerde gegevens.
     /// Optionele voorbeelden worden als few-shot context in de system prompt geïnjecteerd (#323) —
     /// gevuld door de tier zodra er gevalideerde leermomenten zijn (#972).

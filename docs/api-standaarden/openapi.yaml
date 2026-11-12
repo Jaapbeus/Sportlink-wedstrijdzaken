@@ -7202,7 +7202,7 @@ paths:
       operationId: feedbackValidate
       summary: Feedback valideren op volledigheid
       description: |
-        Controleert via GPT-4o-mini of de beschrijving voldoende informatie bevat.
+        Controleert via gpt-6-luna of de beschrijving voldoende informatie bevat.
         Geeft gerichte aanvulvragen terug als er gaten zijn.
         Open voor elke ingelogde rol (admin én user, #764). Per gebruiker begrensd: max 30 AI-aanroepen
         (validate + preview) per 10 minuten.
@@ -7318,7 +7318,7 @@ paths:
       description: |
         Open voor elke ingelogde rol (#764). De melder (Entra object-ID, naam-momentopname, rol) komt
         uitsluitend uit het Easy Auth-principal en wordt bewaard in `avg.Feedback` — nooit in het
-        publieke issue. Structureert de feedback met GPT-4o-mini en bewaart de te publiceren titel en body.
+        publieke issue. Structureert de feedback met gpt-6-luna en bewaart de te publiceren titel en body.
 
         * Rol **admin**: de melding wordt direct als GitHub-issue gepubliceerd (is GitHub niet
           geconfigureerd, dan blijft ze bewaard met een `waarschuwing`). Bij een time-out, verbroken verbinding of HTTP 408/5xx

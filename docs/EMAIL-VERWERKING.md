@@ -1419,6 +1419,9 @@ gaan via een apart pad naar dezelfde provider; die registerrij staat in [FEEDBAC
   endpoint of regio in; het standaardendpoint van de SDK geldt.
 * **Model: configuratie.** App setting `AiModelName`; zonder een ingevulde model-ID wordt `IChatClient`
   niet geregistreerd. De e-mailpoll stopt dan vóór de databasefase en logt een begrensde melding.
+* **Reasoning (#1756):** optionele app setting `AiReasoningEffort` (`none`, `low`, `medium`, `high`,
+  `extra-high`). Alleen nodig bij een model met reasoning: de app laat dan de temperatuur weg en stuurt deze
+  inspanning mee. Leeg voor een model zonder reasoning.
 * **Sleutel:** app setting `OpenAiApiKey`.
 * **Alleen waar uitgaande integraties zijn toegestaan.** `IChatClient` wordt alleen geregistreerd als
   `OpenAiApiKey` gevuld is én `EgressGuard.ExternalIntegrationsAllowed()` dat toestaat (#857). Die

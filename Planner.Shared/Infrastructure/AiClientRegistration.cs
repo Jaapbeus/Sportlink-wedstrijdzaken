@@ -15,7 +15,8 @@ public static class AiClientRegistration
         string? apiKey,
         string? modelName,
         bool externalIntegrationsAllowed,
-        Func<string, string, IChatClient> createClient)
+        Func<string, string, IChatClient> createClient,
+        string? reasoningEffort = null)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(createClient);
@@ -29,7 +30,17 @@ public static class AiClientRegistration
             return false;
         }
 
-        services.AddSingleton(createClient(modelName, apiKey));
+        var client = createClient(modelName, apiKey);
+
+        // #1756: een model met reasoning weigert de vaste temperatuur van de aanroepers. Alleen als de
+        // app setting AiReasoningEffort een geldige waarde heeft, past dit filter elke aanroep aan.
+        // Leeg of onbekend laat het gedrag voor modellen zonder reasoning ongewijzigd (de waarde zelf wordt niet gelogd).
+        if (ReasoningChatClient.TryParse(reasoningEffort, out var inspanning))
+            client = new ReasoningChatClient(client, inspanning);
+        else if (!string.IsNullOrWhiteSpace(reasoningEffort))
+            Console.Error.WriteLine("AiReasoningEffort is geen geldige waarde en wordt genegeerd.");
+
+        services.AddSingleton(client);
         return true;
     }
 }
