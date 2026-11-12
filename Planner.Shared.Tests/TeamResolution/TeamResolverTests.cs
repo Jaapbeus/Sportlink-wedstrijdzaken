@@ -47,6 +47,17 @@ public class TeamResolverTests
     }
 
     [Fact]
+    public async Task ResolveAsync_OpgelostTeam_DraagtSportlinkCategorieMee()
+    {
+        // #1863: de teamtabel kent de categorie; het e-mailpad gebruikt die voor een seniorenteam.
+        var fake = new FakeTeamCandidateRepository { ExactTeam = new TeamCandidate(3, "TESTCLUB 1", "1-99") };
+
+        var resultaat = await new TeamResolver(fake).ResolveAsync(Request("TESTCLUB 1"));
+
+        resultaat.LeeftijdsCategorie.Should().Be("1-99");
+    }
+
+    [Fact]
     public async Task ResolveAsync_ZoektMetGestripteClubPrefix()
     {
         // Een tegenstander schrijft de KNVB-vorm mét clubprefix; de canonieke sleutel is

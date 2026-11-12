@@ -112,4 +112,18 @@ public class LeeftijdNormalisatieTests
         var zonderRij = Rijen(105); zonderRij.Remove("JO23");
         LeeftijdNormalisatie.SpeeltijdSleutel("1-99", "TESTCLUB O23-1", zonderRij).Should().Be("1-99");
     }
+
+    [Theory]
+    [InlineData("Senioren", "1-99")]           // #1863: eerste elftal en veteranen
+    [InlineData("1-99", "1-99")]
+    [InlineData("Senioren Vrouwen", "VR")]
+    [InlineData("VR", "VR")]
+    [InlineData("JO13", null)]                 // jeugd: geen seniorensleutel
+    [InlineData("MO15", null)]
+    [InlineData("G", null)]
+    [InlineData("Veteranen", null)]            // onbekende vorm: geen gok
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public void SeniorenSpeeltijdSleutel_AlleenVoorSeniorencategorieen(string? categorie, string? verwacht)
+        => LeeftijdNormalisatie.SeniorenSpeeltijdSleutel(categorie).Should().Be(verwacht);
 }

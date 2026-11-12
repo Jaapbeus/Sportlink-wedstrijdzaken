@@ -308,6 +308,19 @@ public class AfzenderTeamBepalingTests
             .GetAwaiter().GetResult().Should().BeFalse();
     }
 
+    [Fact]
+    public async Task GeenTeamInMail_AfzenderBegeleidtSeniorenteam_KrijgtSportlinkCategorie()
+    {
+        // #1863: het afgeleide team draagt zijn Sportlink-categorie mee; zonder leeftijd in de naam bepaalt die de sleutel.
+        var resolver = new FakeResolver { ["VR1"] = new(9, "ALLSTARS VR1", 1.0, [], ResolutionBron.ExacteAlias, "VR") };
+
+        var (herkend, c, _, _) = await Voer(Zonder(), new FakeBron("VR1"), resolver);
+
+        herkend.Should().BeTrue();
+        c.TeamNaam.Should().Be("ALLSTARS VR1");
+        c.LeeftijdsCategorie.Should().Be("VR");
+    }
+
     private sealed class FakeBron(params string[] teams) : IAfzenderTeamBron
     {
         public int Aanroepen { get; private set; }

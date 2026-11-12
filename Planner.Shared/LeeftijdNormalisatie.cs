@@ -54,6 +54,16 @@ public static class LeeftijdNormalisatie
         return categorie ?? "";
     }
 
+    /// <summary>
+    /// De seniorensleutel van een Sportlink-categorie (#1863): "Senioren"/"1-99" → <c>1-99</c>,
+    /// "Senioren Vrouwen"/"Vrouwen"/"VR" → <c>VR</c>; elke andere (jeugd- of onbekende) categorie → <c>null</c>.
+    /// </summary>
+    public static string? SeniorenSpeeltijdSleutel(string? categorie)
+    {
+        var sleutel = Normaliseer(categorie);
+        return sleutel is "1-99" or "VR" ? sleutel : null;
+    }
+
     /// <summary>Normaliseert een leeftijdscategorie-string naar de Speeltijden-sleutel.</summary>
     public static string Normaliseer(string? cat)
     {

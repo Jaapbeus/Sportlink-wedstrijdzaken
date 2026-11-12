@@ -60,4 +60,39 @@ public class AutoPlanRegelsO23Tests
     {
         AutoPlanRegels.SpeeltijdSleutelVoorWedstrijd(team, categorie, isAllstars, Speeltijden(jo23)).Should().Be(verwacht);
     }
+
+    /// <summary>
+    /// Toepassen van een getoonde planning (<see cref="AutoPlanExactApply"/>) rekent met dezelfde O23-duur: het
+    /// O23-team (Sportlink-categorie 1-99) bezet het veld 60 minuten (JO23), zodat een wedstrijd om 11:30 past.
+    /// Met de seniorenduur (120) of zonder bruikbare JO23-rij botst die wedstrijd.
+    /// </summary>
+    [Theory]
+    [InlineData(60, true)]
+    [InlineData(0, false)]
+    public void ExactApply_O23Team_BezetHetVeldMetJo23Duur(int jo23, bool past)
+    {
+        var velden = new List<VeldInfo> { new() { VeldNummer = 101, VeldNaam = "veld 101" } };
+        var speeltijden = new Dictionary<string, Speeltijd>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["JO23"] = new() { Leeftijd = "JO23", WedstrijdTotaal = jo23, Veldafmeting = 1.00m },
+            ["1-99"] = new() { Leeftijd = "1-99", WedstrijdTotaal = 120, Veldafmeting = 1.00m },
+            ["JO13"] = new() { Leeftijd = "JO13", WedstrijdTotaal = 60, Veldafmeting = .25m },
+        };
+        AutoPlanApplySource[] bronnen =
+        [
+            new(1, null, null, "ALLSTARS O23-1", "1-99", null),
+            new(2, null, null, "ALLSTARS JO13-1", "JO13", null),
+        ];
+        AutoPlanApplyChoice[] keuzes =
+        [
+            new(1, null, null, 101, null, "10:00"),
+            new(2, null, null, 101, "A2", "11:30"),
+        ];
+
+        var toepassen = () => AutoPlanExactApply.Validate(keuzes, bronnen, velden, speeltijden,
+            new Dictionary<string, (int, int)>(StringComparer.OrdinalIgnoreCase), 15);
+
+        if (past) toepassen().Should().HaveCount(2);
+        else toepassen.Should().Throw<AutoPlanApplyConflictException>();
+    }
 }

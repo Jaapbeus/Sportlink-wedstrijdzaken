@@ -205,9 +205,18 @@ public static class TeamNaamNormalisatie
     /// naar het enige passende team herleidt, staat de categorie vast. Zonder categorie kan de
     /// beschikbaarheidscheck geen wedstrijdduur bepalen en meldt hij ten onrechte "geen veld".
     /// Een al ingevulde categorie blijft ongemoeid.
+    /// <para>
+    /// Een seniorenteam (eerste elftal "1", vrouwen "VR1", veteranen "35+1") heeft geen leeftijd in de naam. Dan
+    /// geldt de Sportlink-categorie van het herkende team (<paramref name="sportlinkCategorie"/>), maar alleen als
+    /// die een seniorensleutel is (<see cref="LeeftijdNormalisatie.SeniorenSpeeltijdSleutel"/>, #1863). Een
+    /// jeugdteam blijft aangewezen op zijn naam: een ontbrekend geslacht-prefix wordt nooit ingevuld.
+    /// </para>
     /// </summary>
-    public static string? VulLeeftijdsCategorieAan(string? huidige, string? teamNaam, string? clubPrefix)
-        => string.IsNullOrWhiteSpace(huidige) ? LeidLeeftijdsCategorieAf(teamNaam, clubPrefix) : huidige;
+    public static string? VulLeeftijdsCategorieAan(string? huidige, string? teamNaam, string? clubPrefix,
+        string? sportlinkCategorie = null)
+        => string.IsNullOrWhiteSpace(huidige)
+            ? LeidLeeftijdsCategorieAf(teamNaam, clubPrefix) ?? LeeftijdNormalisatie.SeniorenSpeeltijdSleutel(sportlinkCategorie)
+            : huidige;
 }
 
 /// <summary>Ontlede onderdelen van een genormaliseerde teamnaam. Zie <see cref="TeamNaamNormalisatie.Parse"/>.</summary>

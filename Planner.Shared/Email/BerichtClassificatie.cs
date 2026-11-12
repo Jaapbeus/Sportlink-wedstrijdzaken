@@ -64,6 +64,11 @@ public class BerichtClassificatie
     [Newtonsoft.Json.JsonIgnore, System.Text.Json.Serialization.JsonIgnore]
     public bool MeerdereAfzenderTeams { get; set; }
 
+    // Door de pipeline gezet (niet door AI): de Sportlink-categorie van het herkende eigen team uit de teamtabel (#1863).
+    // Alleen gebruikt om een seniorenteam zonder leeftijd in de naam een speeltijdsleutel te geven. Niet bewaard.
+    [Newtonsoft.Json.JsonIgnore, System.Text.Json.Serialization.JsonIgnore]
+    public string? TeamSportlinkCategorie { get; set; }
+
     // Door de pipeline gezet (niet door AI) wanneer een KNVB-bijlage + BCC van toepassing is (#561/#1141).
     // Houd dit klein (strings, geen bytes): de classificatie wordt naar planner.EmailVerwerking gelogd —
     // grote binaire payloads horen daar niet in.
