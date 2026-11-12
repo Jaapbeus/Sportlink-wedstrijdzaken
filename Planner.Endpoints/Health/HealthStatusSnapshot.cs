@@ -1,6 +1,10 @@
 namespace Planner.Endpoints.Health;
 
-/// <summary>One bounded database probe result. Diagnostic values are only returned by the admin projection.</summary>
+/// <summary>
+/// One bounded database probe result. Diagnostic values are only returned by the admin projection.
+/// <c>ReadPathsOk</c> (#1911): <c>true</c>/<c>false</c> = de leesproef van de planner-leespaden slaagde/faalde,
+/// <c>null</c> = niet gemeten (tier zonder leesproef, of geen data om te lezen).
+/// </summary>
 public sealed record HealthStatusSnapshot(
     string Status,
     string Version,
@@ -18,7 +22,8 @@ public sealed record HealthStatusSnapshot(
     string? TlsMode,
     string? TlsWarning,
     string? SchemaWarning,
-    IReadOnlyList<string>? PendingMigrations)
+    IReadOnlyList<string>? PendingMigrations,
+    bool? ReadPathsOk = null)
 {
     public object ToPublicResponse() => new
     {
@@ -28,7 +33,8 @@ public sealed record HealthStatusSnapshot(
         settingsReady = SettingsReady,
         migrationsCurrent = MigrationsCurrent,
         schemaWarningPresent = SchemaWarningPresent,
-        tlsWarningPresent = TlsWarningPresent
+        tlsWarningPresent = TlsWarningPresent,
+        readPathsOk = ReadPathsOk
     };
 
     public object ToAdminResponse() => new
@@ -46,6 +52,7 @@ public sealed record HealthStatusSnapshot(
         tlsMode = TlsMode,
         tlsWarning = TlsWarning,
         schemaWarning = SchemaWarning,
-        pendingMigrations = PendingMigrations
+        pendingMigrations = PendingMigrations,
+        readPathsOk = ReadPathsOk
     };
 }

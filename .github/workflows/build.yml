@@ -834,7 +834,7 @@ jobs:
       # geen job SQLSERVER_TEST_CONNECTION_STRING zette. Hier draaien ze tegen deze wegwerpdatabase: seizoenen
       # per club (doorrol rond de jaarwisseling, afgebroken en overlappende wijzigingen, overgang), de
       # seizoensretentie (#1698), de feedbackopslag, het inzagelog, veldbeschikbaarheidsconflicten (#1819)
-      # en e-maillogaggregaties (#1819), en de afzender-opzoeking met haar SHOWPLAN-indexbewijs (#1862). SqlServerReconciliationIntegrationTests
+      # en e-maillogaggregaties (#1819), de afzender-opzoeking met haar SHOWPLAN-indexbewijs (#1862) en de speeltijden-lookup met gevulde time-kolom plus health-leesproef (#1911). SqlServerReconciliationIntegrationTests
       # blijft buiten deze filter: die leest de connectiestring van de Function App zelf.
       - name: SQL Server-integratietests (FunctionApp.Tests, tegen SportlinkFresh)
         run: |
@@ -853,7 +853,7 @@ jobs:
           CONN="Server=localhost,1433;Database=SportlinkFresh;User Id=sa;Password=${SA_PW};TrustServerCertificate=True;Pooling=false"
           SQLSERVER_TEST_CONNECTION_STRING="$CONN" SqlConnectionString="$CONN" \
             dotnet test FunctionApp.Tests/FunctionApp.Tests.csproj --configuration Release --verbosity normal \
-              --filter "FullyQualifiedName~SqlServerSeizoenIntegrationTests|FullyQualifiedName~SqlServerHisRetentieIntegrationTests|FullyQualifiedName~SqlFeedbackStoreIntegrationTests|FullyQualifiedName~SqlTeambegeleidingInzageStoreIntegrationTests|FullyQualifiedName~AdminSettingsFieldContractTests|FullyQualifiedName~AdminVeldBeschikbaarheidConflictIntegrationTests|FullyQualifiedName~AdminEmailLogStatusCountsIntegrationTests|FullyQualifiedName~AutoPlanExactApplyIntegrationTests|FullyQualifiedName~TeamCanonicalisatieAliasStateIntegrationTests|FullyQualifiedName~SqlServerLeeftijdNormalisatieSqlIntegrationTests|FullyQualifiedName~SqlServerSyncStagingLeaseIntegrationTests|FullyQualifiedName~SqlServerSyncJobsRepositoryIntegrationTests|FullyQualifiedName~SqlServerSyncSeasonRolloverIntegrationTests|FullyQualifiedName~SqlServerPlannerViewIntegrationTests|FullyQualifiedName~SqlSportlinkPublicMatchIdRepositoryIntegrationTests|FullyQualifiedName~TeamContactDoorstuurPersistentieIntegrationTests|FullyQualifiedName~SqlAfzenderTeamBronIntegrationTests"
+              --filter "FullyQualifiedName~SqlServerSeizoenIntegrationTests|FullyQualifiedName~SqlServerHisRetentieIntegrationTests|FullyQualifiedName~SqlFeedbackStoreIntegrationTests|FullyQualifiedName~SqlTeambegeleidingInzageStoreIntegrationTests|FullyQualifiedName~AdminSettingsFieldContractTests|FullyQualifiedName~AdminVeldBeschikbaarheidConflictIntegrationTests|FullyQualifiedName~AdminEmailLogStatusCountsIntegrationTests|FullyQualifiedName~AutoPlanExactApplyIntegrationTests|FullyQualifiedName~TeamCanonicalisatieAliasStateIntegrationTests|FullyQualifiedName~SqlServerLeeftijdNormalisatieSqlIntegrationTests|FullyQualifiedName~SqlServerSyncStagingLeaseIntegrationTests|FullyQualifiedName~SqlServerSyncJobsRepositoryIntegrationTests|FullyQualifiedName~SqlServerSyncSeasonRolloverIntegrationTests|FullyQualifiedName~SqlServerPlannerViewIntegrationTests|FullyQualifiedName~SqlSportlinkPublicMatchIdRepositoryIntegrationTests|FullyQualifiedName~TeamContactDoorstuurPersistentieIntegrationTests|FullyQualifiedName~SqlAfzenderTeamBronIntegrationTests|FullyQualifiedName~PlannerSpeeltijdenLeesPadIntegrationTests"
 
       - name: Container opruimen
         if: always()
