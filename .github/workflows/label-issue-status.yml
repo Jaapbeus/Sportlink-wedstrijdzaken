@@ -18,18 +18,18 @@ name: Issue-status bijhouden
 # De merge naar develop is NIET van deze workflow: die zet 'awaiting-release' via
 # label-awaiting-release.yml. Zie AGENTS.md, "Ontwikkelcyclus" (alinea "Labels").
 #
-# Handmatig gezette statussen (blocked, wont-fix, waiting-owner) worden nooit
+# Beschermde statussen (ook awaiting-release) worden nooit door PR-events
 # overschreven — zie PROTECTED in .github/scripts/issue-status.js.
 
 on:
   issues:
     types: [opened, reopened]
-  # pull_request_target zodat PR's uit forks óók gelabeld worden: bij 'pull_request'
-  # krijgt een fork-PR een read-only token en zou het labelen stil falen.
+  # pull_request_target gebruikt base-code met een schrijvend issue-token. De PR-tekst
+  # mag daarom alleen status muteren na herkomst- en bevoegdheidscontrole.
   #
   # Veiligheid: deze workflow checkt uitsluitend de BASE-repo uit (het standaardgedrag
-  # van pull_request_target) en voert nooit code of scripts uit de PR uit. Er wordt
-  # alleen gelezen uit de PR-titel en -body, als tekst.
+  # van pull_request_target) en voert nooit code of scripts uit de PR uit.
+  # PR-titel en -body zijn onbetrouwbare invoer totdat de poort is gepasseerd.
   pull_request_target:
     types: [opened, reopened, ready_for_review, converted_to_draft, closed]
 
@@ -73,49 +73,6 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            const { extractIssueRefs, setIssueStatus } =
+            const { updatePullRequestIssueStatuses } =
               require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/issue-status.js`);
-
-            const pr = context.payload.pull_request;
-            const action = context.payload.action;
-
-            // Een merge naar develop is niet van deze workflow: label-awaiting-release.yml
-            // zet daar 'awaiting-release'. Zou deze workflow ook iets zetten, dan racen de
-            // twee workflows om hetzelfde label.
-            if (action === 'closed' && pr.merged) {
-              core.notice('PR is gemerged — status komt van label-awaiting-release.yml.');
-              return;
-            }
-
-            let status;
-            switch (action) {
-              case 'ready_for_review':
-                status = 'status: review-needed';
-                break;
-              case 'converted_to_draft':
-                status = 'status: in-progress';
-                break;
-              case 'closed':
-                // Gesloten zonder merge: het werk is niet geland, terug naar de wachtrij.
-                status = 'status: triage';
-                break;
-              default: // opened, reopened
-                status = pr.draft ? 'status: in-progress' : 'status: review-needed';
-            }
-
-            // Alleen 'strong' referenties: het nummer in de PR-titel of achter een
-            // sluitend keyword. Een kale kruisverwijzing in proza ("zie #123") mag de
-            // status van dat andere issue niet veranderen — zelfde reden als #630.
-            const { strong } = extractIssueRefs(pr.title, pr.body);
-
-            if (strong.size === 0) {
-              core.notice(
-                'Geen issue in de PR-titel of achter een sluitend keyword in de body — ' +
-                'niets bij te werken. Gebruik de conventie: fix(#NNN): ...'
-              );
-              return;
-            }
-
-            for (const issueNumber of strong) {
-              await setIssueStatus({ github, context, core, issueNumber, status });
-            }
+            await updatePullRequestIssueStatuses({ github, context, core });

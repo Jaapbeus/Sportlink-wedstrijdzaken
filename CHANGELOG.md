@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- PR-statusautomatisering waarschuwt concreet bij een mislukte permissiecontrole; de geïsoleerde lokale verificatiehelpers draaien ook in CI (#1810).
+
 - Agentinstructies zijn beter laadbaar en leesbaar: veiligheids- en kostenregels staan bovenaan `AGENTS.md`, lange alinea's zijn opgesplitst, elke `AGENTS.md` eindigt met een laadcontrole (canary) en de guard bewaakt een maximale regellengte; `FunctionApp/AGENTS.md` herhaalt de harde stops kort (zie issue #1898).
 - Nieuwe GitHub-titels, bodies, comments, reviewcomments en workflow-uitvoer moeten in het Nederlands worden geschreven (#1896).
 - Clubgebonden beheerpagina's (Planning, Veld optimalisatie, Leermomenten, Teamaliassen, Rolrechten, Thema, Sportlink Web Extension, Feedback) passen een te late response van de vorige club niet meer toe na een clubwissel, en slaan nooit een thema of instellingen van een andere club op. Ook de uitkomst van een actie die nog voor de vorige club liep (opslaan, kleuren ophalen van de website, publiceren, teamlijst opnieuw opbouwen, alias- of leermomentactie, koppeling) verschijnt niet meer onder de nieuwe club; een late verwijderactie van de vorige club sluit geen verwijderbevestiging meer die intussen voor de nieuwe club is geopend, en de knop 'Ophalen van website' blijft na een clubwissel niet hangen. Planning en Veld optimalisatie laden de Sportlink-extensievlag opnieuw bij een clubwissel (#1872).
@@ -109,6 +111,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Veldbeschikbaarheid kan niet meer naar een periodecombinatie worden bijgewerkt die al bestaat (#1819)
 - E-maildashboardtellers gebruiken de echte laatste 24 uur en tellen alle passende berichten, ook als de detailweergave de limiet bereikt. Bij een oudere API zonder volledige tellingen toont het dashboard "Niet beschikbaar" in plaats van onjuiste nullen; werk de API bij vóór de Blazor-app (#1819)
 - De email-log OpenAPI-parameters documenteren nu de drie parser-ondersteunde datumvormen; de SQL Server-beschikbaarheidstest ruimt ook op als het fixture-opzetten faalt (#1819, reviewronde 3)
+- De zelfmergepoort verwijst wijzigingen aan workflows, hooks en de rootconfiguratie voor secretscans naar de eigenaar; CI-scripts en overige GitHub-bestanden volgen de gewone zelfmergevoorwaarden. PR-statusovergangen vereisen een repositorybranch en bewezen schrijfrechten, met een beperkte uitzondering voor de ingebouwde Dependabot-identiteit; beschermde releasestatussen blijven behouden. De duplicatieguard telt niet-genegeerde lokale Postgres-bronbestanden al vóór staging mee, met een geïsoleerde regressietest in Build (#1810).
+- Het codekwaliteitsregister bewaakt dat de regressietest voor tierduplicatie aangesloten blijft op Build (#1810).
+- Git-hooks blokkeren als hun verplichte lokale patroonconfiguratie ontbreekt, leeg is, alleen witruimte/commentaar bevat of ongeldig is; Build test beide echte hooks. Nieuwe branchpushes scannen iedere nog niet gepubliceerde commit; vóór commit worden de gestagede applicatieversies gecontroleerd (#1810).
+- `Test-App.ps1` ondersteunt expliciete projectroot-, Postgres-container- en runtime-URL-overrides; offline feedback en bewust overgeslagen builds worden apart als `SKIPPED` geteld. Een databasequeryfout wordt niet meer als lege migratieledger of ontbrekende migraties gepresenteerd (#1810).
+- Het publieke advisorrapport toont alleen aantallen per ernstklasse in ernstvolgorde, met vaste veilige vervolginstructies; synthetische tests bewaken dat advisorgegevens niet in issues of workflowsamenvattingen belanden (#1810).
+- De Postgres-identifierguard werkt op Bash 3.2/BSD, controleert ook arraykolommen en blokkeert als migratie-invoer of scannertools ontbreken (#1810).
+- Beveiligingspatroonscans verwerken bijzondere tracked paden, blokkeren bij scannerfouten en publiceren alleen aantallen per klasse. Basisrepository-pushes blokkeren ook bij ontbrekende privéconfiguratie; lokale en forkcontroles melden een expliciete overslag. CRLF-patroonregels worden correct verwerkt (#1810).
+- Productiedeployment vereist de main-ref en geslaagde actieve-tiercontroles vóór publicatie; deployments worden geserialiseerd en Blazor wacht op de Function App-deploy (#1810).
 - Sportlink-wedstrijdkoppelingen accepteren alleen een unieke match op de beschikbare dag- en wedstrijdnummergegevens; oude cachekoppelingen zonder deze controle worden genegeerd. Een wijzigingsverzoek krijgt geen lokale wedstrijddetails uit zo'n onbevestigde cachemapping (#1815)
 - Een lokale automatische-loginlease die bezet is wordt als lokale tijdelijke blokkade teruggegeven, zonder de upstream-foutstatus te gebruiken. Bij een bevestigde mutatie waarvan de auditafronding faalt, meldt de API dat de wijziging al is verwerkt en dat de gebruiker niet opnieuw moet proberen; de veldplannercache wordt na een geslaagde live-mutatie geleegd (#1815)
 - Het oefenwedstrijdformulier serialiseert een datum/tijd als lokale wandklokwaarde zonder machine-offset. De automatische periodieke herlogin start eerder zodat een uur-tickmarge blijft vóór de absolute sessiegrens; de bestaande dagelijkse limiet blijft gelijk (#1815)
@@ -2735,8 +2745,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - CI deploy-workflow: database-resume gebruikt nu TCP-verbindingspoging (triggert Azure SQL Serverless auto-resume) in plaats van REST API-aanroep waarvoor onvoldoende RBAC beschikbaar was — lost structureel op dat deploys blijven hangen bij gepauzeerde database.
 - `Start-Debug.ps1` toont nu een waarschuwing als `.githooks/sensitive-patterns.txt` ontbreekt op de ontwikkelmachine. (#514)
 - CSP `connect-src` in `staticwebapp.config.json` gebruikt geen wildcard `*.azurewebsites.net` meer — bij deploy wordt de waarde vervangen door de specifieke URL van de eigen Function App via CI-substitutie. (#528)
-- `DEFAULT 'VRC'` verwijderd uit drie tabeldefinities (`AppSettingsAudit`, `TeamVoorkeurTijden`, `UitgeslotenEmailAdressen`) — vervangen door `CHECK (LEN([ClubCode]) > 0)` conform het patroon van issue #242. Voorkomt stille datavervuiling bij multi-club deployments. (#501)
-- `Test-App.ps1`: schema-repair voor ontbrekende `ClubCode` kolom gebruikt niet meer `DEFAULT 'VRC'` maar `DEFAULT ''` — zelfde principe als boven. (#501)
+- `DEFAULT '[ClubCode]'` verwijderd uit drie tabeldefinities (`AppSettingsAudit`, `TeamVoorkeurTijden`, `UitgeslotenEmailAdressen`) — vervangen door `CHECK (LEN([ClubCode]) > 0)` conform het patroon van issue #242. Voorkomt stille datavervuiling bij multi-club deployments. (#501)
+- `Test-App.ps1`: schema-repair voor ontbrekende `ClubCode` kolom gebruikt niet meer `DEFAULT '[ClubCode]'` maar `DEFAULT ''` — zelfde principe als boven. (#501)
 
 ## [2.16.0.0] — 2026-06-01
 
@@ -2828,7 +2838,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - `deploy.yml`: twee nieuwe smoke tests voor anonymous admin endpoint (zonder token → 401) en header-spoofing (gefakete X-MS-CLIENT-PRINCIPAL → 401). (#419)
 - `.github/dependabot.yml`: Dependabot bewaakt nu ook `/BlazorAdmin` NuGet-packages en GitHub Actions. (#431)
 - `.github/workflows/security-scan.yml`: Trivy blokkeert nu bij HIGH/CRITICAL findings (was: exit-code 0). Dependency-scan opgenomen in security-gate. (#431)
-- `Database`: `DEFAULT 'VRC'` verwijderd uit `Speeltijden`, `VeldBeschikbaarheid`, `TeamRegels`; DROP CONSTRAINT-migraties toegevoegd voor bestaande installaties. PostDeployment scalar subquery gefixet. `PlannerAfzenderNaam` default `VRC Veldplanner` → `Veldplanner`. (#435)
+- `Database`: `DEFAULT '[ClubCode]'` verwijderd uit `Speeltijden`, `VeldBeschikbaarheid`, `TeamRegels`; DROP CONSTRAINT-migraties toegevoegd voor bestaande installaties. PostDeployment scalar subquery gefixet. `PlannerAfzenderNaam` default `[ClubCode] Veldplanner` → `Veldplanner`. (#435)
 
 ### Fixed
 - `EmailGraphService.SendReplyAsync` slikt verzendfouten niet meer stilzwijgend weg — exception wordt opnieuw gegooid zodat de aanroeper de status correct kan bijwerken. (#432)
@@ -2851,10 +2861,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - `docs/api-standaarden/openapi.yaml`: 22 ontbrekende routes toegevoegd (clubs, speeltijden, theme/extract, leermomenten/stats/valideer, teambegeleiding/doorsturen, testdata, planner/auto-plan en auto-plan/toepassen); tag `testdata` toegevoegd; bijbehorende schemas toegevoegd. `openapi.json` gesynchroniseerd. Sluit issue #396.
 - `deploy.yml`: `vars.*`-referenties in `run:`-scripts vervangen door bash-omgevingsvariabelen (`$SQL_SERVER`, `$SQL_DATABASE`, `$SQL_RESOURCE_GROUP`); `AZURE_STATIC_WEB_APP_HOSTNAME` naar job-level `env:` verplaatst — elimineert VS Code GitHub Actions linter-waarschuwingen.
 - `docs/SETUP.md`: nieuwe sectie 11 "GitHub Actions: Productie-deployment configureren" met overzichtstabel van alle vereiste secrets en variables, uitleg welke optioneel zijn, en verificatiestap via `gh run view`.
-- **AVG/multi-club cleanup:** club-specifieke data verwijderd uit 10+ bestanden: GPS-coördinaten Veenendaal (→ geografisch centrum NL als fallback), "Sportpark Spitsbergen" (→ `[Sportparklocatie]`), clubteamnamen (→ `[ClubCode]`), Blazor PageTitles (→ "Beheer"), `PlannerAfzenderNaam`-default. `PlannerFunction.cs`: `?? "VRC"` fallback vervangen door `InvalidOperationException` — hardcoded clubnaam in productie-code.
+- **AVG/multi-club cleanup:** club-specifieke data verwijderd uit 10+ bestanden: GPS-coördinaten [plaatsnaam] (→ geografisch centrum NL als fallback), "[Sportparklocatie]" (→ `[Sportparklocatie]`), clubteamnamen (→ `[ClubCode]`), Blazor PageTitles (→ "Beheer"), `PlannerAfzenderNaam`-default. `PlannerFunction.cs`: `?? "[ClubCode]"` fallback vervangen door `InvalidOperationException` — hardcoded clubnaam in productie-code.
 
 ### Fixed
-- `FunctionApp/Planner/PlannerFunction.cs`: twee endpoints (AutoPlan, AutoPlanToepassen) hadden `?? "VRC"` als fallback voor ClubCode — architectuurschending en multi-club-bypass. Gooit nu `InvalidOperationException` als ClubCode niet via Easy Auth bepaald kan worden.
+- `FunctionApp/Planner/PlannerFunction.cs`: twee endpoints (AutoPlan, AutoPlanToepassen) hadden `?? "[ClubCode]"` als fallback voor ClubCode — architectuurschending en multi-club-bypass. Gooit nu `InvalidOperationException` als ClubCode niet via Easy Auth bepaald kan worden.
 - `FunctionApp/Email/BerichtAiService.cs`: hardcoded jaar (2026) in twee few-shot voorbeelden in de AI system prompt vervangen. Datum staat nu dynamisch als eerste instructie in de system prompt; het `doordeweeks`-voorbeeld berekent de komende maandagdatums dynamisch vanuit `DateTime.Now`. Voorkomt dat het model verkeerde datum-context aanneemt bij datumberekening.
 
 ### Added
@@ -2921,7 +2931,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Veldplanner-optimalisatie was afhankelijk van hardcoded "veld 5 = grasveld": alle logica is nu gebaseerd op het `VeldType`-veld in de database (`kunstgras`/`gras`). Clubs met een ander aantal velden of een andere indeling worden correct behandeld.
 - ALLSTARS dagplanning toonde onzichtbare blokken voor JO-teams door slechte leeftijdscategorie-extractie — opgelost met spatie-gescheiden tokenizer (#365).
 - Planner-queries joinden `dbo.Speeltijden` zonder ClubCode-filter — dubbele rijen bij multi-club data opgelost (#365).
-- Wedstrijden-pagina en dagplanning toonden VRC-data in ALLSTARS-modus door race-condities bij initialisatie (#365).
+- Wedstrijden-pagina en dagplanning toonden [ClubCode]-data in ALLSTARS-modus door race-condities bij initialisatie (#365).
 - Start-Debug.ps1: runtimeconfig.json lock-fout bij dotnet watch herstart opgelost (#365).
 - Dagplanning UI: "Veld 5 ontlasten" hernoemd naar "Grasveld(en) ontlasten"; statistiek "Van veld 5 verplaatst" wordt nu "Van grasveld verplaatst".
 
@@ -3011,7 +3021,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - **Absoluut verbod club-specifieke data in GitHub issues en PR's:** SECURITY.md uitgebreid met volledig hoofdstuk — vervangingstabel, rapportagepatroon voor bevindingen, en controleplicht checklist. Aanleiding: 29 issues/comments bevatten echte Azure resource namen, tenant/client IDs en club-domein; allemaal geredacteerd. (#PR320)
 - **Teambegeleiding PII alleen voor admin-rol (#310):** Alle drie endpoints in `AdminTeambegeleidingFunction` worden nu beschermd met `RequireAdmin` i.p.v. `RequireAuthenticated`. Persoonsgegevens (naam, e-mail, telefoonnummer) zijn niet meer toegankelijk voor de `user`-rol.
 - **Documentatiefout appsettings.Production.json gecorrigeerd (#311):** De handleiding instrueerde foutief om `appsettings.Production.json` te committen. Vervangen door correcte instructie: dit bestand wordt door CI aangemaakt en mag nooit in git.
-- **Hardcoded VRC resourcenamen verwijderd uit infrastructuurbestanden (#312):** `infrastructure/main.bicep`, `main.parameters.json`, `docs/openapi.yaml`, `docs/openapi.json` en `scripts/azure/Configure-EntraApp.ps1` gebruiken nu `<clubcode>`-placeholders i.p.v. hardcoded VRC-waarden.
+- **Hardcoded [ClubCode] resourcenamen verwijderd uit infrastructuurbestanden (#312):** `infrastructure/main.bicep`, `main.parameters.json`, `docs/openapi.yaml`, `docs/openapi.json` en `scripts/azure/Configure-EntraApp.ps1` gebruiken nu `<clubcode>`-placeholders i.p.v. hardcoded [ClubCode]-waarden.
 
 ---
 ## [2.3.0] — 2026-05-24
@@ -3068,7 +3078,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - **SQL-injectie in MergeStgToHis opgelost (#270)**: schema- en tabelnamen werden als strings in de query-string gezet via string interpolatie. Vervangen door `SqlParameter`-objecten via `command.Parameters.AddWithValue()`. De stored procedures `sp_CreateTargetTableFromSource` en `sp_MergeStgToHis` ontvangen de parameters nu netjes via de parameterlijst.
 - **AVG: e-mailadres niet meer gelogd bij toevoegen uitsluitingsadres** (#248): `AdminUitgeslotenEmailFunction` logt nu alleen het ID van het nieuwe uitsluitingsadres, niet het e-mailadres zelf. Consistent met de delete-actie die ook alleen ID logt.
 - **AVG: Afzender gemaskeerd in email-log API** (#241): `/api/beheer/email-log` geeft `Afzender` terug als `***@domein.nl` in plaats van het volledige e-mailadres. De domein-informatie blijft beschikbaar voor debugging; het persoonsgegeven (lokaal deel) niet.
-- **Architectuurovertreding opgelost: ClubCode DEFAULT 'VRC' verwijderd** (#242): `DEFAULT 'VRC'` constraint verwijderd uit `planner.EmailVerwerking.ClubCode`. `CHECK (LEN(ClubCode) > 0)` toegevoegd. Migratie in `Script.PostDeployment1.sql` dropt de bestaande constraint in productie.
+- **Architectuurovertreding opgelost: ClubCode DEFAULT '[ClubCode]' verwijderd** (#242): `DEFAULT '[ClubCode]'` constraint verwijderd uit `planner.EmailVerwerking.ClubCode`. `CHECK (LEN(ClubCode) > 0)` toegevoegd. Migratie in `Script.PostDeployment1.sql` dropt de bestaande constraint in productie.
 - **Security-scan scope uitgebreid naar alle docs/** (#240): `pii-docs` job scant nu alle `docs/*.md` bestanden met `git ls-files`. Gerelateerd: een voorbeeld-e-mailadres in `docs/API.md` vervangen door `trainer@voorbeeld.nl`.
 - **tenantId/clientId verwijderd uit documentatie en scripts** (#237): `docs/AZURE-ENTRA-SETUP.md` gebruikt nu generic placeholders i.p.v. echte Azure IDs. Scripts ophalen IDs dynamisch via `az ad sp show`. `appsettings.Production.json` al vervangen door template (PR #244).
 
@@ -3103,7 +3113,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ### Changed
 
 - **GETDATE() vervangen door GETUTCDATE()** (#215): alle `mta_inserted`, `mta_modified` en timestamp-kolommen in SQL-tabellen en stored procedures gebruiken nu GETUTCDATE() conform de architectuurregel UTC in DB / `ToLocalTime()` in Blazor.
-- **DEFAULT 'VRC' gedocumenteerd als migratie-backwards-compat** (#213): `-- migratie-backwards-compat` commentaar toegevoegd aan alle SQL-tabellen en migraties met `DEFAULT 'VRC'`. C#-inserts geven ClubCode altijd expliciet mee vanuit AppSettings. DEFAULT is nodig voor ALTER TABLE op bestaande rijen.
+- **DEFAULT '[ClubCode]' gedocumenteerd als migratie-backwards-compat** (#213): `-- migratie-backwards-compat` commentaar toegevoegd aan alle SQL-tabellen en migraties met `DEFAULT '[ClubCode]'`. C#-inserts geven ClubCode altijd expliciet mee vanuit AppSettings. DEFAULT is nodig voor ALTER TABLE op bestaande rijen.
 
 ### Documentation
 
@@ -3168,7 +3178,7 @@ Zeven samenhangende fixes en verbeteringen sinds v2.1.0 die de Entra ID auth-flo
 
 ### Fixed
 - **'Doordeweeks' geeft altijd maandag t/m donderdag terug** (#140): bij e-mails als 'kunnen wij volgende week doordeweeks spelen?' retourneerde de AI soms vrijdag of weekenddagen. AI-prompt verduidelijkt ('doordeweeks = ma-do, vrijdag is geen doordeweekse dag') én deterministische code-override in `BerichtPipeline` zorgt dat bij aanwezigheid van 'doordeweeks' altijd exact de vier weekdagen (ma/di/wo/do) van de afgeleide kalenderweek worden gebruikt.
-- **TeamRegelDto hardcoded ClubCode verwijderd** (#135): standaard `ClubCode = "VRC"` in `TeamRegelDto` vervangen door `string.Empty` — voorkomt stille multi-club data-isolatie bypass bij ontbrekende ClubCode.
+- **TeamRegelDto hardcoded ClubCode verwijderd** (#135): standaard `ClubCode = "[ClubCode]"` in `TeamRegelDto` vervangen door `string.Empty` — voorkomt stille multi-club data-isolatie bypass bij ontbrekende ClubCode.
 
 ### Removed
 - **'Intern domein' instelling verwijderd** (#148): De instelling waarmee e-mails van een heel domein automatisch werden overgeslagen is verwijderd. Beheerders gebruiken voortaan de 'Uitgesloten e-mailadressen' lijst om specifieke adressen uit te sluiten. De veldfiltering op domeinniveau was overbodig geworden nu uitsluitingen per adres worden beheerd.
@@ -3183,12 +3193,12 @@ Zeven samenhangende fixes en verbeteringen sinds v2.1.0 die de Entra ID auth-flo
 
 ### Added
 - **KNVB-verplaatsingsregels in AI-context** (#73): de AI-classificatie controleert automatisch of een herplanverzoek mogelijk een KNVB-regel overtreedt. De regels voor seizoen 2025/'26 (Categorie A, Categorie B, snipperdagen, bekerdeadlines) zijn als context meegegeven aan GPT-4o-mini. Bij een mogelijke overtreding vult de AI het veld `KnvbNotitie` in; dit wordt als let-op-melding in het antwoordbericht opgenomen inclusief link naar de KNVB-website.
-- **Teamleider-notificatie bij herplanverzoeken** (#66): wanneer een tegenstander een herplanverzoek instuurt, stuurt het systeem automatisch een korte interne notificatie naar de teamleider/trainer van het betrokken VRC-team. De contactgegevens worden opgezocht in `avg.Teambegeleiding` (geïmporteerd via het bestaande CSV-script). In review mode gaat de notificatie naar de reviewer in plaats van de echte teamleider. Als geen teamleider is gevonden, wordt de notificatie stil overgeslagen. AVG: de e-mail van de teamleider wordt alleen intern gebruikt en nooit naar externe partijen verstuurd.
+- **Teamleider-notificatie bij herplanverzoeken** (#66): wanneer een tegenstander een herplanverzoek instuurt, stuurt het systeem automatisch een korte interne notificatie naar de teamleider/trainer van het betrokken [ClubCode]-team. De contactgegevens worden opgezocht in `avg.Teambegeleiding` (geïmporteerd via het bestaande CSV-script). In review mode gaat de notificatie naar de reviewer in plaats van de echte teamleider. Als geen teamleider is gevonden, wordt de notificatie stil overgeslagen. AVG: de e-mail van de teamleider wordt alleen intern gebruikt en nooit naar externe partijen verstuurd.
 - **Automatische herstart bij schema-wijziging** (#27): wanneer een beheerder het ophaalschema wijzigt via de Instellingen-pagina, werkt de applicatie de Azure App Setting automatisch bij via de Azure Management API — de Function App herstart zichzelf zonder handmatige actie. CRON-expressies worden gevalideerd vóór opslaan. De Instellingen-pagina toont een leesbare omschrijving van het schema én de eerstvolgende drie uitvoertijden.
 - **Automatisch GitHub Issues bij exceptions** (#105, #106): onverwachte exceptions in de timer- en HTTP-triggers worden automatisch gerapporteerd als GitHub Issues. Deduplicatie op fingerprint: bestaand open issue krijgt een comment, nieuw issue wordt aangemaakt met labels `bug` en `type: bug`. Rate-limiting voorkomt dat hetzelfde issue meer dan één keer per 24 uur gerapporteerd wordt. Vereist configuratie van `GitHubPat`, `GitHubOwner` en `GitHubRepo` — als `GitHubPat` niet is ingesteld, wordt alles stil overgeslagen.
 
 ### Added
-- **Team-schedule endpoint** (#70): `GET /api/planner/team-schedule?team=VRC+JO11-1` geeft een overzicht van alle nog te spelen wedstrijden per team tot seizoenseinde, inclusief een gesorteerde zaterdag-lijst met status `vrij`/`oefenwedstrijd`/`bezet`. Ondersteunt `?format=html` voor een leesbaar HTML-rapport. Onbekend team → 404; ontbrekende parameter → 400.
+- **Team-schedule endpoint** (#70): `GET /api/planner/team-schedule?team=[ClubCode]+JO11-1` geeft een overzicht van alle nog te spelen wedstrijden per team tot seizoenseinde, inclusief een gesorteerde zaterdag-lijst met status `vrij`/`oefenwedstrijd`/`bezet`. Ondersteunt `?format=html` voor een leesbaar HTML-rapport. Onbekend team → 404; ontbrekende parameter → 400.
 - **Error fingerprinting** (#104): `SystemUtilities.ComputeFingerprint(Exception)` berekent een deterministische 12-karakter hex fingerprint per exception (type + genormaliseerd bericht + callsite in SportlinkFunction-namespace). Basis voor deduplicatie van GitHub Issues in v2.1.
 - **Unit tests voor BerichtPipeline** (#51): xUnit test project `FunctionApp.Tests` toegevoegd aan de solution. 13 tests voor `BerichtPipeline.ValideerDagDatum` — datums in onderwerp, body, dag-naam correctie, prioriteitsregels en randgevallen.
 
@@ -3259,7 +3269,7 @@ e-mailtemplates beheren en inkomende e-mails laten verwerken door AI.
 
 ### Changed
 
-- **Multi-club ondersteuning** — alle hardcoded clubnaam-strings vervangen door dynamische `AppSettings.ClubCode`; geen `?? "VRC"` fallback meer; falende instelling gooit `InvalidOperationException`
+- **Multi-club ondersteuning** — alle hardcoded clubnaam-strings vervangen door dynamische `AppSettings.ClubCode`; geen `?? "[ClubCode]"` fallback meer; falende instelling gooit `InvalidOperationException`
 - **Routeprefix** — van `/api/admin/` naar `/api/beheer/` (consistente Nederlandse naamgeving)
 - **BerichtPipeline** — email-specifieke klassen hernoemd naar kanaal-agnostische `Bericht*`-namen
 - **.NET 10.0** als target framework (was .NET 9)

@@ -586,6 +586,7 @@ endpoint laat hem ook falen. Dezelfde knip als de Layer-5-scan in
 | Regel | Afgedwongen door | Draait in |
 |---|---|---|
 | 1, 2 — tier-duplicatie stijgt niet | `scripts/ci/check-tier-duplicatie.sh` | `build.yml` |
+| 1, 2 — negatieve fixturetests voor de tier-duplicatiemeting (#1810) | `scripts/ci/check-tier-duplicatie.test.sh` | `build.yml` |
 | 1, 2 — interne duplicatie stijgt niet (#1263) | `scripts/ci/check-interne-duplicatie.sh` | `build.yml` |
 | 3 — geen logica in Blazor-pagina's | `scripts/ci/check-blazor-codebehind.sh` | `build.yml` |
 | 3b — geen `<style>`-blok of statische inline style in Blazor-pagina's (#1329) | `scripts/ci/check-blazor-inline-styles.sh` | `build.yml` |
@@ -609,6 +610,12 @@ uit een workflow kan verdwijnen zonder dat iemand het merkt.
 |---|---|---|
 | Padverwijzingen exact in casing (#825) | `scripts/ci/check-path-casing.sh` | `build.yml` |
 | Postgres-identifiers lowercase snake_case | `scripts/ci/check-postgres-identifier-casing.sh` | `build.yml` |
+| Identifier-casing guard: portable positive/negative fixtures (#1810) | `scripts/ci/check-postgres-identifier-casing.test.sh` | `build.yml` |
+| Production ref and active database jobs gate publication (#1810) | `scripts/ci/check-deploy-readiness.sh` | `deploy.yml` |
+| Production preflight rejects missing, failed and inactive-tier results (#1810) | `scripts/ci/check-deploy-readiness.test.sh` | `build.yml` |
+| Security scanners fail closed and publish class counts only (#1810) | `scripts/ci/check-security-patterns.sh` | `security-scan.yml` |
+| Security scanner negative and positive fixtures (#1810) | `scripts/ci/check-security-patterns.test.sh` | `build.yml` |
+| Advisor reports publish severity-class counts only (#1810) | `scripts/ci/supabase-advisors-report.test.sh` | `build.yml` |
 | Migratievolgnummers uniek in Database.Postgres/migrations (#1485) | `scripts/ci/check-migratie-volgnummers.sh` | `build.yml` |
 | Migratievolgnummers zelf getest (#1485) | `scripts/ci/check-migratie-volgnummers.test.sh` | `build.yml` |
 | Tabellen gedekt in beide tierbomen | `scripts/ci/check-postgres-table-coverage.sh` | `build.yml` |

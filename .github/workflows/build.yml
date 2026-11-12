@@ -70,6 +70,9 @@ jobs:
       - name: Codekwaliteit — tier-duplicatie stijgt niet
         run: bash scripts/ci/check-tier-duplicatie.sh
 
+      - name: Code quality — tier-duplication regression test
+        run: bash scripts/ci/check-tier-duplicatie.test.sh
+
       - name: Codekwaliteit — geen logica in Blazor-pagina's
         run: bash scripts/ci/check-blazor-codebehind.sh
 
@@ -121,6 +124,9 @@ jobs:
       - name: Versies — csproj's synchroon, OpenAPI-versie YAML = JSON
         run: bash scripts/ci/check-versie-synchroon.sh
 
+      - name: Git hooks — verplichte lokale patronen en pushbereik
+        run: bash scripts/ci/test-git-hooks.sh
+
       - name: API.md — endpointtabel komt overeen met openapi.json
         run: python3 scripts/ci/check-api-md-sync.py
 
@@ -169,7 +175,18 @@ jobs:
       # 3) binnen de Postgres-migratiebestanden zelf — een ander risico dan de bestandsnaam-
       # casing hierboven (#825). Geen database, geen secrets.
       - name: Postgres identifier-casing-guard
-        run: bash scripts/ci/check-postgres-identifier-casing.sh
+        run: |
+          bash scripts/ci/check-postgres-identifier-casing.sh
+          bash scripts/ci/check-postgres-identifier-casing.test.sh
+
+      - name: Production deployment preflight — synthetic regression tests
+        run: bash scripts/ci/check-deploy-readiness.test.sh
+
+      - name: Security pattern scanner — synthetic regression tests
+        run: bash scripts/ci/check-security-patterns.test.sh
+
+      - name: Advisor publication boundary — synthetic regression tests
+        run: bash scripts/ci/supabase-advisors-report.test.sh
 
       # #1485: twee parallel gebouwde PR's kunnen elk hetzelfde volgnummer toevoegen
       # (bijv. 034_pdf_switch.sql en 034_feedback_storage.sql). Technisch werkt het omdat
@@ -226,6 +243,9 @@ jobs:
       # docs/ARCHITECTUUR-DATABASE-TIERS.md sectie 36.
       - name: Postgres procedures/views-dekking-guard (cross-tree)
         run: bash scripts/ci/check-postgres-procedure-view-coverage.sh
+
+      - name: Lokale verificatiehelpers — geïsoleerde tests
+        run: pwsh -NoProfile -File scripts/dev/Test-AppSupport.Tests.ps1
 
       # #865: bewijst dat resolve-database-tier.sh (bash) en Get-DatabaseTierProject
       # (scripts/dev/DevServices.psm1, PowerShell) voor elke tier exact dezelfde uitkomst geven.

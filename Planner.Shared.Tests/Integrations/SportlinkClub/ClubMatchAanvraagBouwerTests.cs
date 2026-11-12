@@ -87,8 +87,8 @@ public class ClubMatchAanvraagBouwerTests
         // #1737: formulier levert "[club] O14-2" (bond), Sportlink kent "JO14-2" (lokaal).
         var teams = new[] { new SportlinkClubTeam("TJO14", "JO14-2", "JO14-2 - Jongens", "SOCCER-VE-AL", "SATURDAY") };
 
-        ClubMatchAanvraagBouwer.ZoekTeam(teams, "VRC O14-2")!.Id.Should().Be("TJO14");
-        ClubMatchAanvraagBouwer.ZoekTeam(teams, "VRC O14-3").Should().BeNull();
+        ClubMatchAanvraagBouwer.ZoekTeam(teams, "TESTCLUB O14-2")!.Id.Should().Be("TJO14");
+        ClubMatchAanvraagBouwer.ZoekTeam(teams, "TESTCLUB O14-3").Should().BeNull();
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public class ClubMatchAanvraagBouwerTests
             new SportlinkClubTeam("B", "JO14-2", null, "SOCCER-VE-AL", "SATURDAY"),
         };
 
-        ClubMatchAanvraagBouwer.ZoekTeam(teams, "VRC O14-2").Should().BeNull();
+        ClubMatchAanvraagBouwer.ZoekTeam(teams, "TESTCLUB O14-2").Should().BeNull();
     }
 
     [Fact]

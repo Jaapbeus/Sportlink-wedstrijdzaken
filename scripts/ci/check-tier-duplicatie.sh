@@ -51,7 +51,7 @@ cd "$repo_root"
 
 plafond="$(lees_plafond tier-duplicatie-regels)"
 
-meting="$(git ls-files -- 'FunctionApp.Postgres/*.cs' | python3 -c '
+meting="$(git ls-files --cached --others --exclude-standard -z -- 'FunctionApp.Postgres/*.cs' | python3 -c '
 import difflib, os, re, sys
 
 NEGEER = re.compile(r"^(using [A-Za-z]|//|///|/\*|\*|\*/)")
@@ -88,7 +88,13 @@ def meet_paar(pad_a, pad_b, label):
     totaal += gelijk
     per_paar.append((gelijk, label))
 
-for pad_b in (r.strip() for r in sys.stdin if r.strip()):
+bestanden = {
+    os.fsdecode(pad)
+    for pad in sys.stdin.buffer.read().split(b"\0")
+    if pad
+}
+
+for pad_b in sorted(bestanden):
     pad_a = os.path.join(TIER_A, os.path.relpath(pad_b, TIER_B))
     if not os.path.isfile(pad_a):
         continue

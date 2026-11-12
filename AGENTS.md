@@ -58,10 +58,11 @@ Werk na andere merges je eigen branch bij vanaf de afgesproken basis en herhaal 
 3. Reviewer geeft terug: SHA, uitkomst, volgende beurt; fase `verwerking`, beurt naar de implementer, ook zonder bevindingen. Bij ontbrekende/meerdere PR-koppelingen, gewijzigde SHA, toegangsfout of onveilige inhoud: niets publiceren of relabelen, blokkade aan de eigenaar, raak geen andere issues/PR's aan.
 4. Implementer verwerkt elke bevinding als "opgelost (commit)" of "niet overgenomen (reden)"; nieuwe review = nieuwe SHA én bewuste aanvraag. Hoogstens drie rondes per PR; ontbreekt daarna een schone review op de head, dan fase `eigenaarsbesluit` + `turn: owner`.
 
-**Zelfmerge na schone review (#1690).** De implementer merget naar `develop` (`gh pr merge --merge`; fase `gemerged`) als álles geldt: de reviewer gaf op de huidige head-SHA "geen bevindingen"; alle checks groen incl. aanwezige `Build (PR)` + Security Gate op de head; geen openstaand eigenaarspunt (keuze, acceptatie, risico, onverwerkte bevinding; verificatie na release telt niet).
-Nooit zelf: `main`, Azure-resources/kosten, databaseschema/migraties, werkinstructies/skills.
-Fase `eigenaarsbesluit` + `turn: owner` alleen bij zo'n eigenaarspunt of uitzondering.
-Was de CI-bot implementer, dan merget de eerstvolgende interactieve sessie na deze controles; een bot-run merget nooit (`CONTRIBUTING.md`).
+**Zelfmerge na schone review (#1690).** Implementer merget naar `develop` (`gh pr merge --merge`; fase `gemerged`) bij "geen bevindingen" op actuele head, groene checks (incl. aanwezige `Build (PR)` en Security Gate), zonder eigenaarspunt.
+Alleen eigenaar: `main`, Azure-resources/kosten, databaseschema/migraties, werkinstructies/skills, `.github/workflows/`, `.githooks/`, root `.gitleaks.toml`.
+`scripts/ci/` en overige `.github/` volgen gewone zelfmergevoorwaarden.
+Fase `eigenaarsbesluit` + `turn: owner` alleen bij eigenaarspunt/uitzondering.
+CI-bot als implementer: eerstvolgende interactieve sessie controleert en merget; bot merget nooit (`CONTRIBUTING.md`).
 
 Geplande reviewruns hebben alleen reviewbevoegdheid (expliciete aanvraag, fase `review`, andere implementer, onbeoordeelde SHA; alleen reviewcommentaar en teruggave, nooit code, claims, issues, merge of deploy); een teruggegeven implementatiebeurt triggert geen reviewrun, en een automatische of geplande ontwikkelrun vraagt een aparte eigenaarsopdracht.
 Onbewaakt: rondelimiet, zelfmerge-voorwaarden, geplande uitvoering.

@@ -49,7 +49,35 @@ Ook de server/database-parsing accepteert nu zowel `Data Source=`/`Initial Catal
 # Alles tonen, ook successen
 .\scripts\dev\Test-App.ps1 -Verbose
 .\scripts\dev\Test-App.ps1 -Fix -Verbose
+
+# Geïsoleerde runtime/database en exact gebouwde checkout
+.\scripts\dev\Test-App.ps1 -RootPath /pad/naar/checkout -PostgresContainerName mijn-test-db `
+  -FunctionBaseUrl http://127.0.0.1:17094 -BlazorBaseUrl http://127.0.0.1:15242 `
+  -SkipBuild -Offline
 ```
+
+`-RootPath` kiest de checkout waarvan projectbestanden, tierinstellingen en schema worden
+gecontroleerd; het script en de helpers zelf blijven uit de map van `Test-App.ps1` komen.
+`-PostgresContainerName`, `-FunctionBaseUrl` en `-BlazorBaseUrl` overschrijven alleen de
+compatibiliteitsdefaults (`sportlink-postgres`, `http://localhost:7094` en
+`http://localhost:5242`). De API- en Blazor-poortcontrole volgt de opgegeven base-URL.
+
+`-SkipBuild` slaat de twee builds expliciet over en telt die als `SKIPPED`; gebruik dit alleen
+wanneer de exacte `-RootPath`-HEAD al gebouwd is en een actieve Blazor-server geen tweede build
+toelaat. Zonder deze vlag blijft de build verplicht en een ontbrekende `dotnet`-CLI is een fout.
+
+`-Offline` slaat alleen de externe GitHub-feedback-smoke over. De controle gebruikt geen GitHub-
+credentials en maakt geen testissue aan; de samenvatting telt deze controle als `SKIPPED`. Zonder `-Offline` blijft de
+echte GitHub-smoke afhankelijk van de bestaande `GitHubPat`, `GitHubOwner` en `GitHubRepo`-instellingen.
+Unit-tests voor de offline en fake-GitHub-paden (ook aangesloten op de bestaande Build-job):
+
+```powershell
+pwsh -NoProfile -File scripts/dev/Test-AppSupport.Tests.ps1
+```
+
+De fake tests controleren ook ongeldige URL's, mislukte ledgerqueries en dat Postgres-
+wachtwoorden uitsluitend via de omgeving van het kindproces worden doorgegeven. Docker krijgt
+alleen de variabelenaam in zijn argumenten; de test gebruikt uitsluitend een synthetische waarde.
 
 **`-Tier` bepaalt álles wat tier-specifiek is** (#1060): welk functieproject gebouwd wordt, welk
 `local.settings.json` gelezen wordt, en welke schemacontrole draait. De vertaling tier → projectpad
@@ -68,14 +96,16 @@ volgorde waarin ze draaien.
 | 3 | Schema validatie (SqlServer) | Alle 11 tabellen én hun kolommen | ja — ALTER TABLE / CREATE TABLE |
 | 3 | Schema validatie (Postgres) | `Database.Postgres/migrations/*.sql` vs. `schema_migrations` + kerntabellen aanwezig | ja — openstaande migraties toepassen |
 | 4 | Build verificatie | `dotnet build` van het tier-project + BlazorAdmin | nee |
-| 5 | API smoke tests | 13 endpoints op `:7094` | nee (2xx verwacht) |
-| 6 | Feedback widget | GitHub-integratie van de feedbackwidget | nee |
-| 7 | Blazor pagina checks | 8 routes op `:5242` | nee (geen Blazor-foutindicatoren) |
+| 5 | API smoke tests | 13 endpoints op `FunctionBaseUrl` (standaard `:7094`) | nee (2xx verwacht) |
+| 6 | Feedback widget | GitHub-integratie of expliciete `-Offline`-skip | nee |
+| 7 | Blazor pagina checks | 8 routes op `BlazorBaseUrl` (standaard `:5242`) | nee (geen Blazor-foutindicatoren) |
 | 8 | SWA emulator checks | `/.auth/login/aad` op `:4280` | nee |
 
-Secties 5 t/m 8 worden automatisch overgeslagen als de bijbehorende service niet draait. AGENTS.md
-verwijst naar "secties 4+5+6" van dit script; dat zijn hier de secties die een draaiende service
-nodig hebben (5 t/m 8).
+Een niet-draaiende API-, Blazor- of SWA-service wordt zichtbaar als `SKIPPED` geteld, niet als
+geslaagd. Ook `-Offline`, `-SkipBuild` en het overslaan van de Blazor-build wegens een actieve
+dev-server staan in die teller. Als er fouten zijn, is de exitcode 1; zonder fouten maar met
+overgeslagen controles meldt het script een onvolledige run in plaats van "Alles in orde". Een
+volledige run vereist nul skips.
 
 ### Bewake tabellen
 
@@ -107,7 +137,7 @@ dbo.VeldTraining             — Id, VeldNummer, DagVanWeek, VanTijd, TotTijd, O
 
 ### Exit codes
 
-- `0` — alles in orde
+- `0` — geen fouten; controleer de samenvatting op `SKIPPED` voordat je volledigheid claimt
 - `1` — fouten gevonden (of niet automatisch te herstellen)
 
 ### Schema-drift detectie (#684)
@@ -671,6 +701,7 @@ draaiende database nodig.
 | Script | Bewaakt |
 |---|---|
 | `check-path-casing.sh` | Padverwijzingen in ps1/psm1/md/yml/yaml/csproj matchen exact de casing van het getrackte bestand (#825) |
+| `check-tier-duplicatie.test.sh` | A temporary Git repository proves that new nonignored C# source pairs are measured before and after staging, while ignored output is excluded (#1810) |
 | `check-postgres-identifier-casing.sh` | Identifiers in `Database.Postgres/migrations/*.sql` zijn lowercase snake_case, nooit gequote of PascalCase (#864) |
 | `check-postgres-table-coverage.sh` | Elke SQL Server-tabel heeft een Postgres-tegenhanger of een gemotiveerde uitzondering (#864) |
 | `check-postgres-column-coverage.sh` | Idem op kolomniveau (#864) |
@@ -680,6 +711,7 @@ draaiende database nodig.
 
 ```bash
 # Vanuit de repo-root, met de standaard macOS-bash (bewust niet de Homebrew-bash):
+/bin/bash scripts/ci/check-tier-duplicatie.test.sh
 /bin/bash scripts/ci/check-path-casing.sh
 /bin/bash scripts/ci/check-postgres-identifier-casing.sh
 /bin/bash scripts/ci/check-theme-variables.sh
@@ -713,6 +745,11 @@ bevat alleen een samenvatting.
   terwijl dezelfde regex op Linux/CI wél blokkeerde (#1090).
 - **Git-hooks moeten de executable-bit hebben** (`git update-index --chmod=+x`); git slaat een
   niet-executable hook op macOS stilzwijgend over, waarna de secrets- en AVG-scan niet draait.
+- **De lokale patroonconfiguratie moet minstens één geldige regel bevatten.** Lege regels, regels
+  met alleen spaties/tabs en commentaarregels (ook ingesprongen) tellen niet mee. Beide hooks
+  blokkeren een ontbrekend, uitsluitend leeg/commentaar of ongeldig patroonbestand. Draai
+  `bash scripts/ci/test-git-hooks.sh` om de echte hooks in tijdelijke repositories te toetsen;
+  dezelfde test draait in de Build-workflow vóór de applicatiebuilds (#1810).
 - **Test lokaal met `/bin/bash scripts/ci/<script>.sh`**; het resultaat moet identiek zijn aan de
   Linux-CI-runner.
 
@@ -901,3 +938,32 @@ workflow-token via alleen `GET /rate_limit`; behandelt het token als opaque en m
 of de responsebody. Dit forceert geen formaat en vervangt de enabled/disabled-test met eigen
 App-authenticatie niet. Lokale eigen hookpatronen blijven behouden bij een template-update
 ([DEVELOPER-SETUP.md](DEVELOPER-SETUP.md#32-gevoelige-patronen-configureren)).
+
+
+### Beveiligings- en automatiseringsregressies (zie issue #1810)
+
+`bash scripts/ci/check-security-patterns.test.sh` gebruikt uitsluitend synthetische patronen.
+De placeholdertest bewijst eerst een treffer in een getrackt bestand en daarna de uitsluiting.
+`REQUIRE_CLUB_EXTRA_PATTERNS=true` maakt actieve privéconfiguratie verplicht; de workflow zet
+dit voor pushes in een basisrepository. Ontbrekende configuratie blokkeert dan met exit 2.
+Lokaal en bij forks blijft een ontbrekende optionele configuratie een expliciete overslag.
+Een ontbrekend secret bij een botrun is geen automatische vrijstelling: de eigenaar moet de
+beschikbaarheid veilig regelen. CRLF-regels worden vóór patroonverwerking genormaliseerd.
+Scanneruitvoer bevat uitsluitend klasse/aantal of een vaste foutmelding, nooit vindplaatsen.
+
+`node .github/scripts/issue-status.test.js` controleert ook dat een mislukte permissie-aanroep
+waarschuwt zonder API-details te publiceren. Alleen de door GitHub aangeleverde combinatie
+`dependabot[bot]` met type `Bot` krijgt op een branch van dezelfde repository een vrijstelling;
+forks, andere bots en ontbrekende identiteit vallen onder de gewone vertrouwenscontrole.
+Na merge blijft verificatie van een echte PR-statusrun met het workflowtoken nodig.
+
+`bash scripts/ci/test-git-hooks.sh` test echte hooks met een vervangende Gitleaks-CLI en bewijst
+zo het aanroepcontract en het commitbereik; dit is geen integratietest van Gitleaks zelf.
+Push bij voorkeur via een benoemde remote. Bij een URL kan de veilige terugval een ruimere
+historiescan opleveren. De scan per commit blijft behouden om tussentijds verwijderde waarden
+te detecteren; Windows-doorlooptijd is niet gemeten.
+
+De tierduplicatieguard telt bewust ook niet-genegeerde, ongetrackte bronbestanden mee.
+Daardoor verandert staging de meting niet. Een schone CI-checkout heeft zulke lokale extra
+bestanden niet; een lokaal verschil vraagt controle van de lokale broninventaris, geen ruimer plafond.
+Het advisorrapport sorteert ERROR, WARN, INFO, OTHER en geeft alleen vaste veilige vervolginstructies.

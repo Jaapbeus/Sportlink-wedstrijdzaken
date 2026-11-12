@@ -1,150 +1,164 @@
 #!/bin/bash
-# Pre-push hook: scan alle tracked bestanden op secrets/PII voor push naar remote.
+# Pre-push hook: scan every unpublished commit for secrets/PII before pushing.
 # Vereist: git config core.hooksPath .githooks (eenmalig per developer)
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PATTERN_FILE="$SCRIPT_DIR/sensitive-patterns.txt"
-REMOTE_URL="$2"
+REMOTE_NAME="$1"
 
-# Zelfde geankerde vrijstellingslijst als in pre-commit (#1095) — daar staat de toelichting per
-# token. Beide hooks moeten dezelfde lijst hanteren, anders slaagt een commit die de push weigert.
-#
-# Let op bij het uitbreiden (#1172): deze hook filtert hele REGELS (git grep -h levert de regel),
-# pre-commit filtert alleen de MATCH (grep -oiE levert het token). Een vrijstelling moet dus in
-# beide vormen aanslaan — een op '^' of '$' geankerde variant werkt hier niet.
 KNOWN_SYNTHETIC_VALUES='wegwerpwachtwoord-niet-geheim|(password|pwd)[[:space:]]*=[[:space:]]*\$|=[[:space:]]*(password\b|userInfo\.|wachtwoord\b|devonly\b|devonly123!|YOUR_[A-Z_]*PASSWORD\b|\[password\]|_{4,})|900012345'
 
-echo "Scanning repository before push to: $REMOTE_URL"
+check_pattern_config() {
+  if [ ! -f "$PATTERN_FILE" ]; then
+    echo "BLOCKED: required local sensitive-pattern configuration is missing." >&2
+    echo "Copy the approved local template, configure it, and retry." >&2
+    return 1
+  fi
+  active_patterns=0
+  while IFS= read -r configured_pattern || [ -n "$configured_pattern" ]; do
+    [[ "$configured_pattern" =~ ^[[:space:]]*$ ]] && continue
+    [[ "$configured_pattern" =~ ^[[:space:]]*# ]] && continue
+    active_patterns=$((active_patterns + 1))
+    printf '' | grep -E -q -e "$configured_pattern" >/dev/null 2>&1
+    grep_status=$?
+    if [ "$grep_status" -gt 1 ]; then
+      echo "BLOCKED: local sensitive-pattern configuration contains an invalid rule." >&2
+      return 1
+    fi
+  done < "$PATTERN_FILE"
+  if [ "$active_patterns" -eq 0 ]; then
+    echo "BLOCKED: local sensitive-pattern configuration has no active rules." >&2
+    return 1
+  fi
+  return 0
+}
 
+if [ -z "$REMOTE_NAME" ]; then
+  echo "BLOCKED: Git did not provide a remote name to the push hook." >&2
+  exit 1
+fi
+if ! check_pattern_config; then
+  exit 1
+fi
+
+echo "Scanning repository before push."
 FOUND_ISSUE=0
 
 # ── 1. Blokkeer data-bestanden in working tree ────────────────────────────────
 BLOCKED_EXT_PATTERN="\.(csv|xlsx|xls|xlsm|mdb|accdb)$"
 TRACKED_DATA_FILES=$(git ls-files | grep -iE "$BLOCKED_EXT_PATTERN" || true)
 if [ -n "$TRACKED_DATA_FILES" ]; then
-  echo ""
-  echo "BLOCKED: Data files are tracked by git:"
-  while IFS= read -r f; do echo "  $f"; done <<< "$TRACKED_DATA_FILES"
-  echo "  These may contain personal data (AVG/GDPR). Remove from git tracking."
+  echo "BLOCKED: tracked data files may contain personal data."
+  while IFS= read -r f; do [ -z "$f" ] || echo "  File: $f"; done <<< "$TRACKED_DATA_FILES"
   FOUND_ISSUE=1
 fi
 
-# ── 2. Scan commits die gepusht worden op secrets ────────────────────────────
-while read local_ref local_sha remote_ref remote_sha; do
+# ── 2. Scan alle commits in het pushbereik ─────────────────────────────────────
+while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
+  [ -z "$local_sha" ] && continue
   [ "$local_sha" = "0000000000000000000000000000000000000000" ] && continue
 
   if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
-    # Nieuwe branch: scan de bestanden in de tip-commit (vs parent), niet vs working tree.
-    RANGE_SPEC="${local_sha}^..${local_sha}"
+    # Een nieuwe remote-branch heeft geen remote tip. Scan alle commits die nog niet via
+    # remote-tracking refs zijn gepubliceerd, niet alleen de branchtip.
+    RANGE_SPEC="$local_sha --not --remotes=$REMOTE_NAME"
+    if ! COMMITS=$(git rev-list --reverse "$local_sha" --not --remotes="$REMOTE_NAME" 2>/dev/null); then
+      echo "BLOCKED: could not determine the complete new-branch push range."
+      FOUND_ISSUE=1
+      continue
+    fi
   else
     RANGE_SPEC="$remote_sha..$local_sha"
+    if ! COMMITS=$(git rev-list --reverse "$RANGE_SPEC" 2>/dev/null); then
+      echo "BLOCKED: could not determine the complete existing-branch push range."
+      FOUND_ISSUE=1
+      continue
+    fi
   fi
 
-  CHANGED_FILES=$(git diff --name-only "$RANGE_SPEC" 2>/dev/null || git show --name-only --format="" "$local_sha" 2>/dev/null)
+  if [ -z "$COMMITS" ]; then
+    echo "No unpublished commits in this push range."
+    continue
+  fi
 
-  # Blokkeer data-bestanden in commits
-  while IFS= read -r file; do
-    [ -z "$file" ] && continue
-    if echo "$file" | grep -qiE "$BLOCKED_EXT_PATTERN"; then
-      echo ""
-      echo "BLOCKED: Data file in commit being pushed"
-      echo "  File: $file"
+  while IFS= read -r commit; do
+    [ -z "$commit" ] && continue
+    CHANGED_FILES=$(git diff-tree --root --no-commit-id --name-only -r -m "$commit" 2>/dev/null)
+    if [ $? -ne 0 ]; then
+      echo "BLOCKED: could not list changed files for a commit in the push range."
       FOUND_ISSUE=1
+      continue
     fi
-  done <<< "$CHANGED_FILES"
 
-  # Pattern-based scan op commits
-  #
-  # #636: voorheen liep dit als 'git show <sha>:<bestand> | grep' voor ELKE combinatie van patroon
-  # en bestand. Bij 42 patronen en ~100 gewijzigde bestanden (een tag-push dereferencet naar de
-  # volledige merge-diff) zijn dat ~4200 losse processen. Procesopstart is op Windows duur, dus een
-  # tag-push duurde meer dan vijf minuten en leek vastgelopen — met het risico dat iemand
-  # --no-verify gaat gebruiken en daarmee de AVG-/secretsbescherming omzeilt.
-  #
-  # Nu één 'git grep' per patroon: 42 processen in plaats van 4200. Dezelfde dekking, want git grep
-  # zoekt server-side in dezelfde commit over dezelfde bestandenlijst.
-  FILES_TO_SCAN=()
-  while IFS= read -r file; do
-    [ -z "$file" ] && continue
-    # Sla configuratie- en template-bestanden over: die bevatten de patronen per definitie.
-    case "$file" in
-      *sensitive-patterns.template.txt|*.gitleaks.toml|*pre-commit|*pre-push|*security-scan.yml) continue ;;
-    esac
-    FILES_TO_SCAN+=("$file")
-  done <<< "$CHANGED_FILES"
-
-  if [ -f "$PATTERN_FILE" ] && [ ${#FILES_TO_SCAN[@]} -gt 0 ]; then
-    while IFS= read -r pattern || [ -n "$pattern" ]; do
-      [ -z "$pattern" ] && continue
-      [[ "$pattern" =~ ^# ]] && continue
-      # -I slaat binaire bestanden over; -l geeft alleen de treffers, niet de regel zelf (die kan
-      # de gevoelige waarde bevatten en hoort niet in de hook-output).
-      CANDIDATE_HITS=$(git grep -l -I -i -E -e "$pattern" "$local_sha" -- "${FILES_TO_SCAN[@]}" 2>/dev/null || true)
-      HITS=""
-      while IFS= read -r candidate; do
-        [ -z "$candidate" ] && continue
-        candidate_path="${candidate#*:}"
-        # Bekende, opzettelijk niet-geheime CI/test-waarden (wegwerpdatabase, alleen in CI-run
-        # bestaand, expliciet zo genoemd) mogen de scan niet blokkeren.
-        REAL_LINES=$(git grep -h -I -i -E -e "$pattern" "$local_sha" -- "$candidate_path" 2>/dev/null | grep -viE "$KNOWN_SYNTHETIC_VALUES" || true)
-        if [ -n "$REAL_LINES" ]; then
-          HITS="$HITS
-$candidate"
-        fi
-      done <<< "$CANDIDATE_HITS"
-      if [ -n "$HITS" ]; then
-        echo ""
-        echo "BLOCKED: Sensitive pattern in commit"
-        echo "  Pattern: $pattern"
-        while IFS= read -r hit; do
-          [ -z "$hit" ] && continue
-          # git grep geeft '<sha>:<pad>' terug wanneer een commit is meegegeven.
-          echo "  File   : ${hit#*:}"
-        done <<< "$HITS"
+    while IFS= read -r file; do
+      [ -z "$file" ] && continue
+      if echo "$file" | grep -qiE "$BLOCKED_EXT_PATTERN"; then
+        echo "BLOCKED: data file in commit being pushed."
+        echo "  File: $file"
         FOUND_ISSUE=1
       fi
-    done < "$PATTERN_FILE"
-  fi
-  # ── 3. gitleaks op dezelfde commit-range als hierboven ─────────────────────
-  # gitleaks is optioneel (zie AGENTS.md), dus ontbreken mag de push niet blokkeren. Maar het stil
-  # overslaan gaf een vals gevoel van dekking: de patroonscan hierboven is aanzienlijk beperkter dan
-  # gitleaks. Nu wordt het expliciet gemeld, net zoals #514 dat deed voor een ontbrekende
-  # sensitive-patterns.txt. (#649)
-  #
-  # #1314: 'gitleaks detect' scant zonder --log-opts de VOLLEDIGE geschiedenis van de repository —
-  # niet alleen de commits die deze push toevoegt. Op een repo met bekende, al op de remote staande
-  # historische bevindingen (zie het besloten #1204-dossier) blokkeerde dat elke push, ook een push
-  # die zelf niets gevoeligs bevat. --log-opts="$RANGE_SPEC" beperkt de scan tot exact dezelfde range
-  # als de patroonscan hierboven. gitleaks schrijft zijn per-finding-detail (inclusief het geheim
-  # zelf) naar stderr, niet stdout — vandaar het JSON-rapport hieronder in plaats van stdout/stderr
-  # parsen: --redact maskeert de waarde daarin ("REDACTED"), en alleen RuleID/File/Commit tonen
-  # blijft veilig voor de hook-output.
+    done <<< "$CHANGED_FILES"
+
+    FILES_TO_SCAN=()
+    while IFS= read -r file; do
+      [ -z "$file" ] && continue
+      case "$file" in
+        *sensitive-patterns.template.txt|*.gitleaks.toml|*pre-commit|*pre-push|*security-scan.yml) continue ;;
+      esac
+      FILES_TO_SCAN+=("$file")
+    done <<< "$CHANGED_FILES"
+
+    if [ ${#FILES_TO_SCAN[@]} -gt 0 ]; then
+      while IFS= read -r pattern || [ -n "$pattern" ]; do
+        [[ "$pattern" =~ ^[[:space:]]*$ ]] && continue
+        [[ "$pattern" =~ ^[[:space:]]*# ]] && continue
+        CANDIDATE_HITS=$(git grep -l -I -i -E -e "$pattern" "$commit" -- "${FILES_TO_SCAN[@]}" 2>/dev/null)
+        GREP_STATUS=$?
+        if [ "$GREP_STATUS" -gt 1 ]; then
+          echo "BLOCKED: the configured pattern scan could not complete."
+          FOUND_ISSUE=1
+          continue
+        fi
+        HITS=""
+        while IFS= read -r candidate; do
+          [ -z "$candidate" ] && continue
+          candidate_path="${candidate#*:}"
+          REAL_LINES=$(git grep -h -I -i -E -e "$pattern" "$commit" -- "$candidate_path" 2>/dev/null | grep -viE "$KNOWN_SYNTHETIC_VALUES" || true)
+          if [ -n "$REAL_LINES" ]; then
+            HITS="$HITS
+$candidate"
+          fi
+        done <<< "$CANDIDATE_HITS"
+        if [ -n "$HITS" ]; then
+          echo "BLOCKED: configured sensitive-data pattern matched a commit in the push range."
+          while IFS= read -r hit; do
+            [ -z "$hit" ] && continue
+            echo "  File: ${hit#*:}"
+          done <<< "$HITS"
+          FOUND_ISSUE=1
+        fi
+      done < "$PATTERN_FILE"
+    fi
+  done <<< "$COMMITS"
+
+  # Gitleaks is optional. When installed, scan the same complete commit set and redact output.
   if command -v gitleaks &>/dev/null; then
     GITLEAKS_REPORT=$(mktemp)
     gitleaks detect --exit-code 1 --no-banner --redact --log-opts="$RANGE_SPEC" -f json -r "$GITLEAKS_REPORT" >/dev/null 2>&1
     GITLEAKS_EXIT=$?
     if [ "$GITLEAKS_EXIT" -ne 0 ]; then
-      echo ""
-      echo "BLOCKED: gitleaks detected secrets in commits being pushed"
+      echo "BLOCKED: gitleaks detected a secret in commits being pushed."
       grep -E '"(RuleID|File|Commit)":' "$GITLEAKS_REPORT" 2>/dev/null
       FOUND_ISSUE=1
     fi
     rm -f "$GITLEAKS_REPORT"
   else
-    echo ""
     echo "WAARSCHUWING: gitleaks is niet geinstalleerd — alleen de patroonscan is uitgevoerd."
-    echo "  Die dekt minder dan gitleaks (geen entropie-analyse, geen generieke sleutelformaten)."
-    echo "  Installeren:  winget install gitleaks   (Windows)"
-    echo "                brew install gitleaks     (macOS)"
   fi
 done
 
 if [ "$FOUND_ISSUE" -eq 1 ]; then
-  echo ""
-  echo "========================================================"
-  echo " PUSH BLOCKED — secrets or personal data detected."
-  echo " Fix the issues above, then push again."
-  echo "========================================================"
+  echo "PUSH BLOCKED — resolve the scan result and retry."
   exit 1
 fi
 

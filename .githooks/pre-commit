@@ -5,6 +5,35 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PATTERN_FILE="$SCRIPT_DIR/sensitive-patterns.txt"
 
+check_pattern_config() {
+  if [ ! -f "$PATTERN_FILE" ]; then
+    echo "BLOCKED: required local sensitive-pattern configuration is missing." >&2
+    echo "Copy the approved local template, configure it, and retry." >&2
+    return 1
+  fi
+  active_patterns=0
+  while IFS= read -r configured_pattern || [ -n "$configured_pattern" ]; do
+    [[ "$configured_pattern" =~ ^[[:space:]]*$ ]] && continue
+    [[ "$configured_pattern" =~ ^[[:space:]]*# ]] && continue
+    active_patterns=$((active_patterns + 1))
+    printf '' | grep -E -q -e "$configured_pattern" >/dev/null 2>&1
+    grep_status=$?
+    if [ "$grep_status" -gt 1 ]; then
+      echo "BLOCKED: local sensitive-pattern configuration contains an invalid rule." >&2
+      return 1
+    fi
+  done < "$PATTERN_FILE"
+  if [ "$active_patterns" -eq 0 ]; then
+    echo "BLOCKED: local sensitive-pattern configuration has no active rules." >&2
+    return 1
+  fi
+  return 0
+}
+
+if ! check_pattern_config; then
+  exit 1
+fi
+
 # Bekende, opzettelijk niet-geheime waarden die de wachtwoordpatronen wél raken (#1095, na de
 # #1090-fix die het Password=-patroon werkend maakte en daarmee ook alle al aanwezige synthetische
 # waarden ging afvangen). Bewust geankerd op '=<waarde>' met woordgrens, zodat alleen exact deze
@@ -50,6 +79,26 @@ echo "Scanning staged files for secrets and PII..."
 FOUND_ISSUE=0
 STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM)
 
+VERSION_PROJECT_STAGED=0
+while IFS= read -r file; do
+  case "$file" in
+    FunctionApp/fa-dev-sportlink-01.csproj|BlazorAdmin/BlazorAdmin.csproj|FunctionApp.Postgres/FunctionApp.Postgres.csproj)
+      VERSION_PROJECT_STAGED=1
+      ;;
+  esac
+done <<< "$STAGED_FILES"
+if [ "$VERSION_PROJECT_STAGED" -eq 1 ]; then
+  VERSION_CHECKER="$SCRIPT_DIR/../scripts/ci/check-versie-synchroon.sh"
+  if [ ! -f "$VERSION_CHECKER" ]; then
+    echo "BLOCKED: required staged project-version checker is missing." >&2
+    exit 1
+  fi
+  if ! bash "$VERSION_CHECKER" --staged; then
+    echo "BLOCKED: staged project-version synchronization failed." >&2
+    exit 1
+  fi
+fi
+
 # ── 1. Blokkeer data-bestanden unconditionally ────────────────────────────────
 # CSV, Excel, en Access-bestanden bevatten mogelijk persoonsgegevens.
 # Scripts (.ps1, .py, .sh) en templates zijn wel toegestaan.
@@ -81,13 +130,9 @@ while IFS= read -r file; do
 done <<< "$STAGED_FILES"
 
 # ── 3. Pattern-based secret/PII scan ─────────────────────────────────────────
-if [ ! -f "$PATTERN_FILE" ]; then
-  echo "WARN: $PATTERN_FILE not found. Copy sensitive-patterns.template.txt to sensitive-patterns.txt"
-  echo "      Commit allowed without pattern scan."
-else
-  while IFS= read -r pattern || [ -n "$pattern" ]; do
-    [ -z "$pattern" ] && continue
-    [[ "$pattern" =~ ^# ]] && continue
+while IFS= read -r pattern || [ -n "$pattern" ]; do
+    [[ "$pattern" =~ ^[[:space:]]*$ ]] && continue
+    [[ "$pattern" =~ ^[[:space:]]*# ]] && continue
     while IFS= read -r file; do
       [ -z "$file" ] && continue
       # Sla configuratie- en template-bestanden over (deze bevatten patronen als voorbeeld)
@@ -105,12 +150,11 @@ else
         echo ""
         echo "BLOCKED: Sensitive pattern detected"
         echo "  File   : $file"
-        echo "  Pattern: $pattern"
+        echo "  A configured sensitive-data pattern matched staged content."
         FOUND_ISSUE=1
       fi
     done <<< "$STAGED_FILES"
-  done < "$PATTERN_FILE"
-fi
+done < "$PATTERN_FILE"
 
 # ── 3b. Email-check specifiek in documentatiebestanden ───────────────────────
 # CHANGELOG.md en docs/ mogen NOOIT echte emailadressen bevatten (AVG).
@@ -131,7 +175,7 @@ for doc in "${DOC_PATTERNS[@]}"; do
         echo ""
         echo "BLOCKED: Emailadres in documentatiebestand (AVG)"
         echo "  Bestand : $file"
-        echo "  Gevonden: $email_hits"
+        echo "  Een e-mailadres is gevonden; de waarde wordt niet getoond."
         echo "  Oplossing: gebruik [emailadres] of example@example.nl als placeholder"
         FOUND_ISSUE=1
       fi

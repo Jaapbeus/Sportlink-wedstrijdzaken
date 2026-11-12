@@ -1,7 +1,7 @@
 # Test-App.ps1
 # Zelfherstellend verificatiescript voor Sportlink Wedstrijdzaken.
 # Controleert: database-schema vs. code, build, en alle API-endpoints.
-# Gebruik: .\Test-App.ps1 [-Tier <naam>] [-Fix] [-Verbose]
+# Gebruik: .\Test-App.ps1 [-Tier <naam>] [-Fix] [-Verbose] [-Offline] [-SkipBuild]
 #   -Tier    : welke database-tier gecontroleerd wordt. Standaard Postgres — de tier die deze
 #              installatie in productie draait (docs/ARCHITECTUUR-DATABASE-TIERS.md §49). Een
 #              dagelijkse verificatie tegen een tier die niet gedeployd wordt, meet de verkeerde
@@ -23,23 +23,51 @@ param(
     [string]$Tier = 'Postgres',
 
     [switch]$Fix,
-    [switch]$Verbose
+    [switch]$Verbose,
+    [switch]$Offline,
+    [switch]$SkipBuild,
+    [string]$RootPath,
+    [string]$PostgresContainerName = 'sportlink-postgres',
+    [string]$FunctionBaseUrl = 'http://localhost:7094',
+    [string]$BlazorBaseUrl = 'http://localhost:5242'
 )
 
 $ErrorActionPreference = "Continue"
-$root = Resolve-Path (Join-Path $PSScriptRoot "../..")
+$defaultRoot = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
+if ([string]::IsNullOrWhiteSpace($RootPath)) {
+    $root = $defaultRoot
+} elseif (Test-Path -LiteralPath $RootPath -PathType Container) {
+    $root = (Resolve-Path -LiteralPath $RootPath).Path
+} else {
+    Write-Error "RootPath bestaat niet of is geen map: $RootPath"
+    exit 1
+}
 
 # Poortdetectie loopt via DevServices.psm1: Get-NetTCPConnection bestaat alleen op Windows,
 # en dit script moet ook op macOS een eerlijk oordeel geven in plaats van secties stilzwijgend
 # over te slaan omdat de cmdlet ontbreekt (#800).
 Import-Module (Join-Path $PSScriptRoot 'DevServices.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Test-AppSupport.psm1') -Force
+try {
+    $functionUri = ConvertTo-TestAppBaseUri -BaseUrl $FunctionBaseUrl -ParameterName 'FunctionBaseUrl'
+    $blazorUri = ConvertTo-TestAppBaseUri -BaseUrl $BlazorBaseUrl -ParameterName 'BlazorBaseUrl'
+} catch {
+    Write-Error $_.Exception.Message
+    exit 1
+}
+if ([string]::IsNullOrWhiteSpace($PostgresContainerName)) {
+    Write-Error 'PostgresContainerName cannot be empty.'
+    exit 1
+}
 $issues  = [System.Collections.Generic.List[string]]::new()
 $fixed   = [System.Collections.Generic.List[string]]::new()
 $ok      = [System.Collections.Generic.List[string]]::new()
+$skipped = [System.Collections.Generic.List[string]]::new()
 
 function Write-Ok($msg)    { if ($Verbose) { Write-Host "  [OK]  $msg" -ForegroundColor Green } ; $ok.Add($msg) }
 function Write-Issue($msg) { Write-Host "  [!!]  $msg" -ForegroundColor Red    ; $issues.Add($msg) }
 function Write-Fixed($msg) { Write-Host "  [FIX] $msg" -ForegroundColor Yellow ; $fixed.Add($msg) }
+function Write-Skipped($msg) { Write-Host "  [SKIPPED] $msg" -ForegroundColor DarkYellow ; $skipped.Add($msg) }
 function Write-Section($msg) { Write-Host "`n=== $msg ===" -ForegroundColor Cyan }
 
 # ──────────────────────────────────────────────────────────────────────
@@ -128,11 +156,16 @@ if ($Tier -eq 'Postgres') {
     # psql draait bij voorkeur IN de container: dat scheelt een installatie op de eigen machine
     # en houdt het wachtwoord in de omgeving van het kindproces in plaats van in de
     # processenlijst (#800, zelfde afweging als SQLCMDPASSWORD hieronder).
-    $pgContainer   = 'sportlink-postgres'
+    $pgContainer   = $PostgresContainerName
     $viaContainer  = $false
     if (Get-Command docker -ErrorAction SilentlyContinue) {
         $draait = (& docker ps --filter "name=^/$pgContainer$" --filter 'status=running' --format '{{.Names}}' 2>$null)
         if ($draait -eq $pgContainer) { $viaContainer = $true }
+    }
+    if ([string]::IsNullOrEmpty($pgPass) -and
+        -not (Test-TestAppPasswordlessPostgresHost -HostName $pgHost -ViaContainer:$viaContainer)) {
+        Write-Issue 'Passwordless Postgres authentication is allowed only for a loopback host or the selected local container.'
+        exit 1
     }
     if (-not $viaContainer -and -not (Get-Command psql -ErrorAction SilentlyContinue)) {
         Write-Issue "Geen manier om SQL uit te voeren: container '$pgContainer' draait niet en psql ontbreekt."
@@ -143,15 +176,13 @@ if ($Tier -eq 'Postgres') {
 
     function Invoke-Pg([string]$query, [switch]$Tuples) {
         if ($viaContainer) {
-            return Invoke-Psql -ContainerName $pgContainer -Sql $query -Password $pgPass `
+            return Invoke-Psql -ContainerName $pgContainer -Sql $query -Password ([string]$pgPass) `
                                -User $pgUser -Database $pgDb -Tuples:$Tuples
         }
-        $env:PGPASSWORD = $pgPass
         $psqlArgs = @('-h', $pgHost, '-p', "$pgPort", '-U', $pgUser, '-d', $pgDb)
         if ($Tuples) { $psqlArgs += @('-t', '-A') }
         $psqlArgs += @('-c', $query)
-        $uit = & psql @psqlArgs 2>&1
-        [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($uit -join "`n").Trim() }
+        return Invoke-DevChildProcess -FileName 'psql' -Arguments $psqlArgs -PgPassword ([string]$pgPass)
     }
 
     $ping = Invoke-Pg 'SELECT 1' -Tuples
@@ -211,12 +242,23 @@ if ($Tier -eq 'Postgres') {
     $env:SQLCMDPASSWORD = $sqlPass
     $sqlAuthArgs = @('-U', $sqlUser)
 
+    if (-not (Get-Command sqlcmd -ErrorAction SilentlyContinue)) {
+        Write-Issue 'sqlcmd ontbreekt; de SQL Server-controle kan niet worden uitgevoerd.'
+        exit 1
+    }
+
     # ODBC Driver 18 zet standaard Encrypt=yes en valideert het certificaat. De container heeft
     # een self-signed certificaat, dus -C (TrustServerCertificate) is nodig.
     if ($trustCert) { $sqlAuthArgs += '-C' }
 
     function Invoke-Sql($query) {
-        sqlcmd -S $server -d $db @sqlAuthArgs -Q $query -h -1 -W 2>&1
+        sqlcmd -b -S $server -d $db @sqlAuthArgs -Q $query -h -1 -W 2>&1
+    }
+
+    $sqlPing = Invoke-Sql 'SELECT 1'
+    if ($LASTEXITCODE -ne 0) {
+        Write-Issue "SQL Server-query mislukt; controleer verbinding en database. $($sqlPing -join ' ')"
+        exit 1
     }
 }
 
@@ -241,15 +283,12 @@ if ($Tier -eq 'Postgres') {
         }
 
         $ledger    = Invoke-Pg 'SELECT filename FROM schema_migrations ORDER BY filename' -Tuples
-        $toegepast = @()
-        if ($ledger.ExitCode -ne 0) {
-            # Een verse database heeft de tabel nog niet; dat is "nul toegepast", geen storing.
-            if ($ledger.Output -notmatch 'does not exist|bestaat niet') {
-                Write-Issue "Kon schema_migrations niet lezen: $($ledger.Output)"
-            }
-        } else {
-            $toegepast = @($ledger.Output -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+        $ledgerState = ConvertFrom-TestAppMigrationLedgerResult -Result $ledger
+        if ($ledgerState.Status -eq 'Failed') {
+            Write-Issue "Kon schema_migrations niet lezen: $($ledger.Output)"
+            exit 1
         }
+        $toegepast = $ledgerState.Applied
 
         $ontbreekt = @($bestanden | Where-Object { $toegepast -notcontains $_ })
         $onbekend  = @($toegepast | Where-Object { $bestanden -notcontains $_ })
@@ -267,6 +306,10 @@ if ($Tier -eq 'Postgres') {
                     Write-Issue "Migraties toepassen mislukt (exitcode $migratieExit)"
                 } else {
                     $herlees   = Invoke-Pg 'SELECT filename FROM schema_migrations ORDER BY filename' -Tuples
+                    if ($herlees.ExitCode -ne 0) {
+                        Write-Issue "Migratie-ledger opnieuw lezen mislukt: $($herlees.Output)"
+                        exit 1
+                    }
                     $toegepast = @($herlees.Output -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
                     $restant   = @($bestanden | Where-Object { $toegepast -notcontains $_ })
                     if ($restant.Count -gt 0) {
@@ -524,27 +567,37 @@ $blazorProj = Join-Path $root "BlazorAdmin/BlazorAdmin.csproj"
 # naast de draaiende 'dotnet watch' levert een tweede set fingerprints op → 404 op
 # framework-JS → "An unhandled error has occurred. Reload" in de browser. Dit is dezelfde
 # KRITIEKE REGEL als in AGENTS.md; het script hield zich er zelf niet aan.
-$blazorLive = Test-PortListening -Port 5242
+$blazorLive = Test-PortListening -Port $blazorUri.Port
 
+if ($SkipBuild) {
+    Write-Skipped 'FunctionApp-build expliciet overgeslagen (-SkipBuild).'
+    Write-Skipped 'BlazorAdmin-build expliciet overgeslagen (-SkipBuild).'
+} else {
+if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
+    Write-Issue 'dotnet ontbreekt; build-verificatie kan niet worden uitgevoerd.'
+    exit 1
+}
 foreach ($proj in @($funcProj, $blazorProj)) {
     $name   = Split-Path $proj -Parent | Split-Path -Leaf
 
     if ($proj -eq $blazorProj -and $blazorLive) {
-        Write-Host "  Build BlazorAdmin OVERGESLAGEN: dev server draait op :5242." -ForegroundColor DarkYellow
+        Write-Host "  Build BlazorAdmin OVERGESLAGEN: dev server draait op $($blazorUri.Authority)." -ForegroundColor DarkYellow
         Write-Host "    Bouwen zou een tweede set fingerprints maken (404 op framework-JS)." -ForegroundColor DarkGray
         Write-Host "    Build-fouten detecteren: .\scripts\dev\Stop-Debug.ps1 en daarna dit script opnieuw." -ForegroundColor DarkGray
-        Write-Ok "Build BlazorAdmin overgeslagen (dev server actief — fingerprint-veiligheid)"
+        Write-Skipped 'Build BlazorAdmin overgeslagen (dev server actief — fingerprint-veiligheid).'
         continue
     }
 
     $output = dotnet build $proj -c Debug 2>&1
+    $buildExitCode = $LASTEXITCODE
     $errors = $output | Where-Object { $_ -match "\serror\s" }
-    if ($errors) {
-        Write-Issue "Build MISLUKT: $name"
+    if ($buildExitCode -ne 0 -or $errors) {
+        Write-Issue "Build MISLUKT: $name (exitcode $buildExitCode)"
         $errors | ForEach-Object { Write-Issue "  $_" }
     } else {
         Write-Ok "Build OK: $name"
     }
+}
 }
 
 # ──────────────────────────────────────────────────────────────────────
@@ -552,8 +605,8 @@ foreach ($proj in @($funcProj, $blazorProj)) {
 # ──────────────────────────────────────────────────────────────────────
 Write-Section "API smoke tests"
 
-$funcBase = "http://localhost:7094"
-$funcRunning = Test-PortListening -Port 7094
+$funcBase = $functionUri.AbsoluteUri.TrimEnd('/')
+$funcRunning = Test-PortListening -Port $functionUri.Port
 
 # Lees func-sleutel uit local.settings.json indien aanwezig
 $funcKey = $settings.Values.FunctionAppKey
@@ -578,7 +631,7 @@ $endpoints = @(
 )
 
 if (-not $funcRunning) {
-    Write-Host "  FunctionApp niet actief op :7094 — API-tests overgeslagen." -ForegroundColor DarkGray
+    Write-Skipped "FunctionApp niet actief op $($functionUri.Authority) — API-tests overgeslagen."
     Write-Host "  Start met: .\scripts\dev\Start-Debug.ps1 en wacht 10s; daarna .\Test-App.ps1" -ForegroundColor DarkGray
 } else {
     foreach ($ep in $endpoints) {
@@ -600,40 +653,18 @@ if (-not $funcRunning) {
 # ──────────────────────────────────────────────────────────────────────
 # 5. FEEDBACK WIDGET — GitHub-integratie smoke test
 # ──────────────────────────────────────────────────────────────────────
-Write-Section "Feedback widget (GitHub-integratie)"
-
-$ghPat   = $settings.Values.GitHubPat
-$ghOwner = $settings.Values.GitHubOwner
-$ghRepo  = if ($settings.Values.GitHubRepo) { $settings.Values.GitHubRepo } else { "Sportlink-wedstrijdzaken" }
-
-if (-not $ghPat -or -not $ghOwner) {
-    Write-Issue "GitHubPat of GitHubOwner niet geconfigureerd in local.settings.json — feedbackknop werkt niet"
+Write-Section 'Feedback widget (GitHub-integratie)'
+if ($Offline) {
+    $feedbackResult = Invoke-TestAppFeedbackSmoke -Offline
 } else {
-    $ghHeaders = @{
-        "Authorization"        = "Bearer $ghPat"
-        "Accept"               = "application/vnd.github+json"
-        "X-GitHub-Api-Version" = "2022-11-28"
-        "User-Agent"           = "Test-App.ps1/SportlinkWedstrijdzaken"
-    }
-    $testTitle = "[TEST] Smoke test feedback widget — $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
-    $testBody  = "Automatisch aangemaakt door Test-App.ps1 als smoke test voor de feedbackknop. Wordt direct gesloten."
-    $createPayload = @{ title = $testTitle; body = $testBody } | ConvertTo-Json -Compress
-
-    try {
-        $created  = Invoke-RestMethod -Uri "https://api.github.com/repos/$ghOwner/$ghRepo/issues" `
-                        -Method POST -Headers $ghHeaders -Body $createPayload -ContentType "application/json" -ErrorAction Stop
-        $issueNr  = $created.number
-        Write-Ok "GitHub issue aangemaakt: #$issueNr"
-
-        # Sluit het test-issue direct (GitHub ondersteunt geen delete via REST)
-        $closePayload = '{"state":"closed"}'
-        Invoke-RestMethod -Uri "https://api.github.com/repos/$ghOwner/$ghRepo/issues/$issueNr" `
-            -Method PATCH -Headers $ghHeaders -Body $closePayload -ContentType "application/json" -ErrorAction Stop | Out-Null
-        Write-Ok "GitHub issue #$issueNr gesloten (cleanup)"
-    } catch {
-        $code = $_.Exception.Response?.StatusCode.value__
-        Write-Issue "GitHub issue aanmaken mislukt (HTTP $code) — feedbackknop werkt niet: $($_.Exception.Message)"
-    }
+    $ghRepo = if ($settings.Values.GitHubRepo) { $settings.Values.GitHubRepo } else { 'Sportlink-wedstrijdzaken' }
+    $feedbackResult = Invoke-TestAppFeedbackSmoke -Token $settings.Values.GitHubPat `
+        -Owner $settings.Values.GitHubOwner -Repository $ghRepo
+}
+switch ($feedbackResult.Status) {
+    'Passed'  { Write-Ok $feedbackResult.Message }
+    'Skipped' { Write-Skipped $feedbackResult.Message }
+    default   { Write-Issue $feedbackResult.Message }
 }
 
 # ──────────────────────────────────────────────────────────────────────
@@ -641,8 +672,8 @@ if (-not $ghPat -or -not $ghOwner) {
 # ──────────────────────────────────────────────────────────────────────
 Write-Section "Blazor pagina checks"
 
-$blazorBase    = "http://localhost:5242"
-$blazorRunning = Test-PortListening -Port 5242
+$blazorBase    = $blazorUri.AbsoluteUri.TrimEnd('/')
+$blazorRunning = Test-PortListening -Port $blazorUri.Port
 
 $pages = @(
     @{ Path="/";                    Desc="Home / Dashboard" }
@@ -656,7 +687,7 @@ $pages = @(
 )
 
 if (-not $blazorRunning) {
-    Write-Host "  BlazorAdmin niet actief op :5242 — pagina-tests overgeslagen." -ForegroundColor DarkGray
+    Write-Skipped "BlazorAdmin niet actief op $($blazorUri.Authority) — pagina-tests overgeslagen."
     Write-Host "  Start met: .\scripts\dev\Start-Debug.ps1 en wacht 15s; daarna .\Test-App.ps1" -ForegroundColor DarkGray
 } else {
     foreach ($page in $pages) {
@@ -685,7 +716,7 @@ $swaBase    = "http://localhost:4280"
 $swaRunning = Test-PortListening -Port 4280
 
 if (-not $swaRunning) {
-    Write-Host "  SWA emulator niet actief op :4280 — SWA-tests overgeslagen." -ForegroundColor DarkGray
+    Write-Skipped 'SWA emulator niet actief op :4280 — SWA-tests overgeslagen.'
     Write-Host "  Start met: .\scripts\dev\Start-Debug.ps1 -Swa" -ForegroundColor DarkGray
 } else {
     # 1. Mock-login pagina bereikbaar
@@ -742,6 +773,9 @@ Write-Host "══════════════════════�
 Write-Host "  VERIFICATIE RESULTAAT" -ForegroundColor Cyan
 Write-Host "══════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host "  Geslaagd : $($ok.Count)" -ForegroundColor Green
+if ($skipped.Count -gt 0) {
+    Write-Host "  Overgeslagen : $($skipped.Count)" -ForegroundColor DarkYellow
+}
 if ($fixed.Count -gt 0) {
     Write-Host "  Gefixed   : $($fixed.Count)" -ForegroundColor Yellow
 }
@@ -757,6 +791,10 @@ if ($issues.Count -gt 0) {
     exit 1
 } else {
     Write-Host ""
-    Write-Host "  Alles in orde." -ForegroundColor Green
+    if ($skipped.Count -gt 0) {
+        Write-Host "  Run afgerond met overgeslagen controles; dit is geen volledige verificatie." -ForegroundColor DarkYellow
+    } else {
+        Write-Host "  Alles in orde." -ForegroundColor Green
+    }
     exit 0
 }
