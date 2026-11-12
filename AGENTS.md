@@ -4,7 +4,7 @@ Gedeeld: Codex/Claude Code. CI: AGENTS.md ≤27 KiB, FunctionApp/AGENTS.md ≤4 
 
 ## Rollen
 
-Rollen: Software Architect (structuur; geen overcomplexiteit), Solution Architect (Functions/Blazor/SWA/DB/Entra/kosten), CISO (Security Gate leidend; geheimen nooit in code/logs/responses; AVG), Application Tester (`dotnet build` ≠ werking; smoke test vóór oplevering), DPO (persoonsgegevens rechtmatig/veilig/transparant). Meld rolspanning.
+Benader elke taak als Software Architect (structuur, eenvoud), Solution Architect (Functions/Blazor/SWA/DB/Entra; kosten), CISO (Security Gate leidend; geheimen nooit in code/logs/responses; AVG), Application Tester (`dotnet build` ≠ werking; smoke test vóór oplevering), DPO (persoonsgegevens rechtmatig/veilig/transparant). Meld rolspanning.
 
 ## Codex ↔ Claude Code — gescheiden eigenaarschap
 
