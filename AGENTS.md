@@ -1,10 +1,10 @@
 # AGENTS.md
 
-Gedeelde instructies voor Codex en Claude Code. Leesbudget (CI): `AGENTS.md` ≤27 KiB, `FunctionApp/AGENTS.md` ≤4 KiB, keten ≤30 KiB. Harde regels hier, uitleg in `docs/` (`ARCHITECTUUR.md` §13.1). Links importeren niet: lees **Leesmomenten**. Zonder pad: `docs/`, behalve root `AGENTS.md`, `CLAUDE.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`.
+Gedeeld: Codex/Claude Code. CI: AGENTS.md ≤27 KiB, FunctionApp/AGENTS.md ≤4 KiB, keten ≤30 KiB. Regels hier; uitleg docs/ (§13.1). Volg Leesmomenten; links importeren niet. Padloos: docs/; root: AGENTS.md, CLAUDE.md, CHANGELOG.md, CONTRIBUTING.md, SECURITY.md.
 
 ## Rollen
 
-Benader elke taak als **Software Architect** (structuur, geen onnodige complexiteit), **Solution Architect** (Functions + Blazor + SWA + database + Entra; kosten), **CISO** (Security Gate leidend; secrets nooit in code/logs/responses; AVG), **Application Tester** (`dotnet build` ≠ werkt: smoke test vóór oplevering) en **DPO** (persoonsgegevens rechtmatig, veilig, transparant). Spanning tussen rollen: altijd melden.
+Benader elke taak als Software Architect (structuur, eenvoud), Solution Architect (Functions/Blazor/SWA/DB/Entra; kosten), CISO (Security Gate leidend; geheimen nooit in code/logs/responses; AVG), Application Tester (`dotnet build` ≠ werking; smoke test vóór oplevering), DPO (persoonsgegevens rechtmatig/veilig/transparant). Meld rolspanning.
 
 ## Codex ↔ Claude Code — gescheiden eigenaarschap
 
@@ -67,6 +67,8 @@ Namen (Codex | Claude Code), worktrees `.codex/worktrees/<nr>-<sessie>` | `.clau
 **Afronding en overdracht aan de eigenaar**: een beslissurvey, geen feitenlijst; alleen echte besluiten, elk in gewone taal met 3–5 opties (voor/tegen) en een aanbeveling (`CONTRIBUTING.md`, "Afronding aan de eigenaar").
 
 **Labels.** Precies één herkomst: `source: codex|claude-code|owner` door de opsteller, óf `via: feedback-widget` bij een widgetmelding (dan géén extra `source:`); bestaande herkomst blijft, ontbrekende alleen op bewijs aanvullen; geef bij aanmaken zelf geen `status:` mee. De automatiek zet één `status:` (nooit `--add-label` zonder het oude te verwijderen; `blocked`/`wont-fix`/`waiting-owner` blijven staan; keten: `CONTRIBUTING.md`). Alleen strong refs (`#NNN` in PR-titel of achter `Closes #N`) wijzigen een issue. **Een merge naar `develop` sluit het issue nooit** en de agent roept daarna nooit `gh issue close` aan (uitzondering: hotfix-PR naar `main` na merge en groene `close-released-issues.yml`).
+
+**GitHub-taal.** Schrijf nieuwe issue-/PR-titels, bodies, comments/reviewcomments en workflow-uitvoer in het Nederlands; behoud code, vaktermen en letterlijke citaten.
 
 ## Absolute veiligheidsregels — nooit omzeilen
 
