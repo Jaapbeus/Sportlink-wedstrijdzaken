@@ -38,6 +38,23 @@ public class PlannerSpeeltijdenLookupIntegrationTests
         await Voer(conn, "DELETE FROM public.speeltijden WHERE clubcode = @cc");
     }
 
+    [PostgresFact]
+    public async Task ProbeSpeeltijdenLeesPadAsync_RijMetVoorkeurstijd_GeeftTrue()
+    {
+        await using var conn = new NpgsqlConnection(ConnectionString);
+        await conn.OpenAsync();
+        await Voer(conn, "DELETE FROM public.speeltijden WHERE clubcode = @cc");
+        await Voer(conn,
+            @"INSERT INTO public.speeltijden
+                (leeftijd, veldafmeting, wedstrijdtotaal, wedstrijdhelft, wedstrijdrust, clubcode, standaardvoorkeurtijd)
+              VALUES ('JO9', 0.5, 60, 30, 10, @cc, '10:30')");
+
+        (await PlannerSettingsRepository.ProbeSpeeltijdenLeesPadAsync(ConnectionString, CancellationToken.None))
+            .Should().BeTrue("de leesproef leest een rij mét voorkeurstijd door de echte typemapping");
+
+        await Voer(conn, "DELETE FROM public.speeltijden WHERE clubcode = @cc");
+    }
+
     private static async Task Voer(NpgsqlConnection conn, string sql)
     {
         await using var cmd = new NpgsqlCommand(sql, conn);

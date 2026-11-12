@@ -102,16 +102,8 @@ public static class HealthFunction
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         try
         {
-            await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
-            await connection.OpenAsync(cts.Token);
-            await using var kies = new NpgsqlCommand(
-                "SELECT clubcode FROM public.speeltijden ORDER BY (standaardvoorkeurtijd IS NULL), clubcode LIMIT 1", connection)
-            { CommandTimeout = 5 };
-            if (await kies.ExecuteScalarAsync(cts.Token) is not string clubCode) return null;
-
-            await FunctionApp.Postgres.Planner.PlannerSettingsRepository.GetSpeeltijdenLookupAsync(connection, null, clubCode)
-                .WaitAsync(cts.Token);
-            return true;
+            return await FunctionApp.Postgres.Planner.PlannerSettingsRepository.ProbeSpeeltijdenLeesPadAsync(
+                PostgresDatabaseConfig.ConnectionString, cts.Token);
         }
         catch (Exception ex)
         {
