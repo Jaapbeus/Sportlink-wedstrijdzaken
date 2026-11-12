@@ -18,6 +18,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.17.0.1] — 2026-11-12
+
+- De Admin GUI werd bij de uitrol van 3.17.0.0 niet vernieuwd: de deploy-pipeline sloeg de Blazor-uitrol ten onrechte over, waardoor alleen de API en de database waren bijgewerkt. Dat is hersteld, en de pipeline meldt een overgeslagen GUI-uitrol voortaan als fout (#1908).
+
 ## [3.17.0.0] — 2026-11-12
 
 - De auditregistratie van een aangemaakte clubwedstrijd legt nu het echte `PublicMatchId` van Sportlink vast in plaats van de tijdelijke waarde, op beide databasetiers. Daardoor is een latere wijziging of verwijdering aan de aanmaak te koppelen. Alleen bij een geslaagde, echte aanmaak; een fout bij het bijwerken breekt de aanmaak niet af (#1879).
