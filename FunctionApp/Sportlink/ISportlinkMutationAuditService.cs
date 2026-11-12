@@ -24,4 +24,11 @@ public interface ISportlinkMutationAuditService
     /// bijgewerkt is (verkeerd ID of verkeerde club) — de aanroeper vertaalt dat naar 404.
     /// </summary>
     Task<bool> ZetNotitieAsync(long auditId, string clubCode, string notitie, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Vervangt de tijdelijke <c>PublicMatchId</c> van een aanmaak-poging (#1879) door het echte ID dat Sportlink
+    /// teruggaf. Scoped op <paramref name="clubCode"/> en alleen waar de rij nog de tijdelijke waarde heeft: een
+    /// ID wordt nooit overschreven. Geeft <c>false</c> terug als er geen rij is bijgewerkt.
+    /// </summary>
+    Task<bool> ZetPublicMatchIdAsync(long auditId, string clubCode, string publicMatchId, CancellationToken cancellationToken = default);
 }

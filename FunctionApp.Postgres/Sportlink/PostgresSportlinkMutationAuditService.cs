@@ -1,6 +1,7 @@
 using Planner.Shared;
 using Microsoft.Extensions.Logging;
 using Npgsql;
+using Planner.Endpoints.Sportlink;
 using Planner.Shared.Integrations.SportlinkClub;
 
 namespace FunctionApp.Postgres.Sportlink;
@@ -103,6 +104,26 @@ internal sealed class PostgresSportlinkMutationAuditService : ISportlinkMutation
         command.Parameters.AddWithValue("@id", auditId);
         command.Parameters.AddWithValue("@clubcode", clubCode ?? "");
         command.Parameters.AddWithValue("@notitie", notitie ?? "");
+
+        var affected = await command.ExecuteNonQueryAsync(cancellationToken);
+        return affected > 0;
+    }
+
+    public async Task<bool> ZetPublicMatchIdAsync(long auditId, string clubCode, string publicMatchId, CancellationToken cancellationToken = default)
+    {
+        await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = @"
+            UPDATE public.sportlinkmutationaudit
+            SET publicmatchid = @publicmatchid
+            WHERE id = @id AND clubcode = @clubcode AND publicmatchid = @placeholder";
+
+        command.Parameters.AddWithValue("@id", auditId);
+        command.Parameters.AddWithValue("@clubcode", clubCode ?? "");
+        command.Parameters.AddWithValue("@publicmatchid", publicMatchId ?? "");
+        command.Parameters.AddWithValue("@placeholder", ClubMatchEndpointCore.AuditPublicMatchIdPlaceholder);
 
         var affected = await command.ExecuteNonQueryAsync(cancellationToken);
         return affected > 0;

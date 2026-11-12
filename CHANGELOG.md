@@ -18,6 +18,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- De auditregistratie van een aangemaakte clubwedstrijd legt nu het echte `PublicMatchId` van Sportlink vast in plaats van de tijdelijke waarde, op beide databasetiers. Daardoor is een latere wijziging of verwijdering aan de aanmaak te koppelen. Alleen bij een geslaagde, echte aanmaak; een fout bij het bijwerken breekt de aanmaak niet af (zie issue #1879).
 - Het DPO-besluit over de relatiecode van officials staat vast in de documentatie: gerechtvaardigd belang als rechtsgrond, geen aparte bewaartermijn voor de prefill, en het mutatie-auditlog mag de ingevoerde relatiecode houden, met een bewaartermijn van 365 dagen (de bestaande standaard, per club instelbaar). Er is geen codewijziging (#1869).
 - PR-statusautomatisering waarschuwt concreet bij een mislukte permissiecontrole; de geïsoleerde lokale verificatiehelpers draaien ook in CI (#1810).
 
