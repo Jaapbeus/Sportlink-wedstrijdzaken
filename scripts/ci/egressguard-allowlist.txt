@@ -8,8 +8,9 @@
 # regel die naar een bestand wijst dat geen uitzondering (meer) nodig heeft.
 
 # ── Tiers: sync-pipelines en monitoring ──────────────────────────────────────────────────────────
-FunctionApp/Sync/SportlinkSyncPipeline.cs  Pipeline wordt alleen aangeroepen vanuit de timer (Function1.cs), SyncMatchesHttp (Function1.cs) en SyncJobProcessor (via het internal Function1.RunSyncAsync), die elk EgressGuard controleren.
+FunctionApp/Sync/SportlinkSyncPipeline.cs  Pipeline wordt alleen aangeroepen via het internal FetchAndStoreApiData.RunConfiguredSyncAsync (Function1.cs: timer, SyncMatchesHttp; en SyncJobProcessor), die elk EgressGuard controleren.
 FunctionApp.Postgres/Sync/PostgresSyncPipeline.cs  Pipeline wordt alleen aangeroepen via SyncFunction.RunConfiguredSyncAsync (timer, HTTP, SyncJobProcessor), die elk EgressGuard controleren.
+Planner.Shared/Sync/SportlinkDataserviceHttp.cs  Helper (#1779) zonder eigen HttpClient: voert alleen GET's uit op een meegegeven client; enige aanroepers zijn SportlinkSyncPipeline en PostgresSyncPipeline (zie de redenen daar).
 FunctionApp/Monitoring/ArmDatabaseStatusReader.cs  Alleen aangeroepen vanuit DatabaseUitvalMonitorFunction, die zonder IEmailGraphService (alleen geregistreerd onder EgressGuard) terugkeert vóór de aanroep.
 
 # ── Planner.Shared: GitHub ───────────────────────────────────────────────────────────────────────

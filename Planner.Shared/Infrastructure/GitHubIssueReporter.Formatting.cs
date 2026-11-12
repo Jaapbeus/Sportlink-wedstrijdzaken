@@ -71,7 +71,12 @@ public static partial class GitHubIssueReporter
     internal static string BuildPublicDiagnostics(Exception ex, string functionName, string fp, DateTime nlTijd)
     {
         var innerType = ex.InnerException?.GetType().FullName ?? "(geen)";
+        // #1779: faselabels zijn vaste literals (SyncUitkomst.Fase*), dus veilig in het publieke blok.
+        var fases = ex is Planner.Shared.Sync.SyncGedeeltelijkMisluktException sync
+            ? $"**Mislukte fases:** {string.Join(", ", sync.Fases)}\n"
+            : "";
         return $"**Foutcategorie:** {ClassifyErrorCategory(ex)}\n"
+             + fases
              + $"**Exceptietype:** `{ex.GetType().FullName}`\n"
              + $"**Inner exceptietype:** `{innerType}`\n"
              + $"**Interne operationele naam:** `{functionName}`\n"
@@ -97,6 +102,8 @@ public static partial class GitHubIssueReporter
     {
         for (var current = ex; current != null; current = current.InnerException)
         {
+            if (current is Planner.Shared.Sync.SyncGedeeltelijkMisluktException)
+                return "Sync gedeeltelijk mislukt";
             var typeName = current.GetType().FullName ?? "";
             if (typeName.Contains("Sql", StringComparison.OrdinalIgnoreCase))
                 return "Database";

@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.16.0.15
+  version: 3.16.0.17
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -202,7 +202,7 @@ components:
           example: "ok"
         version:
           type: string
-          example: "3.16.0.15"
+          example: "3.16.0.17"
         database:
           type: string
           description: Database connection status. "unconfigured" returns HTTP 503.
@@ -235,7 +235,7 @@ components:
           example: "ok"
         version:
           type: string
-          example: "3.16.0.15"
+          example: "3.16.0.17"
         timestamp:
           type: string
           format: date-time
@@ -3734,6 +3734,7 @@ paths:
 
         Mislukt één of meer deelstappen, dan volgt `207` in plaats van `200`: de geslaagde
         deelstappen blijven staan, maar `lastsynctimestamp` wordt bewust niet bijgewerkt (#1081).
+        Een ongeldige basis-URL geeft `207` met fase `configuratie` (#1779).
         Als een andere sync de gedeelde staging gebruikt, volgt `409` en wordt deze aanvraag niet uitgevoerd.
       security:
         - easyAuth: []
@@ -3777,6 +3778,12 @@ paths:
                   weekOffsetTo:
                     type: integer
                     example: 42
+                  mislukteFases:
+                    type: array
+                    items:
+                      type: string
+                      enum: [teams, programma, uitslagen, matchdetails, configuratie]
+                    example: ["matchdetails"]
                   melding:
                     type: string
                     example: "Eén of meer deelstappen zijn mislukt; lastsynctimestamp is niet bijgewerkt. Zie het functielog voor de betrokken fase(s)."
@@ -3821,8 +3828,11 @@ paths:
         - **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)
         - **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar
 
-        Deze tier kent de `207`-respons van de Postgres-tier niet. Als een andere sync de gedeelde
-        staging gebruikt, volgt `409` en wordt deze aanvraag niet uitgevoerd.
+        Mislukt één of meer deelstappen, dan volgt `207` in plaats van `200` (pariteit met de
+        Postgres-tier, #1779): de geslaagde deelstappen blijven staan, maar `LastSyncTimestamp`
+        wordt bewust niet bijgewerkt (#1081). Een ongeldige basis-URL geeft `207` met fase
+        `configuratie`. Als een andere sync de gedeelde staging gebruikt, volgt `409` en wordt
+        deze aanvraag niet uitgevoerd.
       security:
         - easyAuth: []
       parameters:
@@ -3847,6 +3857,34 @@ paths:
               schema:
                 type: string
                 example: "Sync completed. WeekOffset range: -1 to 42."
+        '207':
+          description: |
+            Gedeeltelijk mislukt — één of meer deelstappen zijn niet geslaagd (ook een
+            ontbrekende `sportlinkApiUrl`, fase `configuratie`) en `LastSyncTimestamp` is niet
+            bijgewerkt (#1081, #1779). Zelfde body als `/postgres/sync-matches`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "gedeeltelijk mislukt"
+                  weekOffsetFrom:
+                    type: integer
+                    example: -1
+                  weekOffsetTo:
+                    type: integer
+                    example: 42
+                  mislukteFases:
+                    type: array
+                    items:
+                      type: string
+                      enum: [teams, programma, uitslagen, matchdetails, configuratie]
+                    example: ["matchdetails"]
+                  melding:
+                    type: string
+                    example: "Eén of meer deelstappen zijn mislukt; lastsynctimestamp is niet bijgewerkt. Zie het functielog voor de betrokken fase(s)."
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
