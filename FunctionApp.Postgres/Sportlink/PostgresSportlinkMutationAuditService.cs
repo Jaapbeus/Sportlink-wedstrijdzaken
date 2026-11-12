@@ -1,7 +1,6 @@
 using Planner.Shared;
 using Microsoft.Extensions.Logging;
 using Npgsql;
-using Planner.Endpoints.Sportlink;
 using Planner.Shared.Integrations.SportlinkClub;
 
 namespace FunctionApp.Postgres.Sportlink;
@@ -123,7 +122,7 @@ internal sealed class PostgresSportlinkMutationAuditService : ISportlinkMutation
         command.Parameters.AddWithValue("@id", auditId);
         command.Parameters.AddWithValue("@clubcode", clubCode ?? "");
         command.Parameters.AddWithValue("@publicmatchid", publicMatchId ?? "");
-        command.Parameters.AddWithValue("@placeholder", ClubMatchEndpointCore.AuditPublicMatchIdPlaceholder);
+        command.Parameters.AddWithValue("@placeholder", global::Planner.Endpoints.Sportlink.ClubMatchEndpointCore.AuditPublicMatchIdPlaceholder);
 
         var affected = await command.ExecuteNonQueryAsync(cancellationToken);
         return affected > 0;

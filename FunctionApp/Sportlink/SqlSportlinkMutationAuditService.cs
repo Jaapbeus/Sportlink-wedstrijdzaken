@@ -1,7 +1,6 @@
 using Planner.Shared;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
-using Planner.Endpoints.Sportlink;
 using Planner.Shared.Integrations.SportlinkClub;
 
 namespace SportlinkFunction.Sportlink;
@@ -119,7 +118,7 @@ internal sealed class SqlSportlinkMutationAuditService : ISportlinkMutationAudit
         command.Parameters.AddWithValue("@Id", auditId);
         command.Parameters.AddWithValue("@ClubCode", clubCode ?? "");
         command.Parameters.AddWithValue("@PublicMatchId", publicMatchId ?? "");
-        command.Parameters.AddWithValue("@Placeholder", ClubMatchEndpointCore.AuditPublicMatchIdPlaceholder);
+        command.Parameters.AddWithValue("@Placeholder", global::Planner.Endpoints.Sportlink.ClubMatchEndpointCore.AuditPublicMatchIdPlaceholder);
 
         var affected = await command.ExecuteNonQueryAsync(cancellationToken);
         return affected > 0;

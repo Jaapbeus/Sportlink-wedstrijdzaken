@@ -98,9 +98,7 @@ public static class SportlinkClubMatchFunction
 
                 var mutationResult = await sportlinkClient!.CreateClubMatchAsync(RolNaam, aanvraag!);
                 // #1879: leg het echte PublicMatchId van een geslaagde aanmaak vast op de audit-rij, vóór de afronding.
-                await KoppelPublicMatchIdAsync(mutationResult.Data,
-                    id => auditId.HasValue ? auditService.ZetPublicMatchIdAsync(auditId.Value, clubCode, id) : Task.FromResult(false),
-                    context.GetLogger("SqlSportlinkClubMatch"));
+                await KoppelPublicMatchIdAsync(mutationResult.Data, id => auditId.HasValue ? auditService.ZetPublicMatchIdAsync(auditId.Value, clubCode, id) : Task.FromResult(false), context.GetLogger("SqlSportlinkClubMatch"));
                 return await SportlinkEndpointSupport.RondMutatieAfAsync(
                     mutationResult, auditService, auditId, r => r,
                     r => new OkObjectResult(Resultaat(r, aanvraag!, gegevens!.VeldNaam, waarschuwingen)),
