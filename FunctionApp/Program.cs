@@ -55,7 +55,7 @@ if (!string.IsNullOrEmpty(tenantId) && !string.IsNullOrEmpty(clientId) && !strin
 // EgressGuard (#857): buiten productie blijft IChatClient onvoorwaardelijk ongeregistreerd, ook als
 // OpenAiApiKey toevallig wél lokaal geconfigureerd is.
 var openAiApiKey = Environment.GetEnvironmentVariable("OpenAiApiKey");
-OpenAiChatClientRegistration.Register(builder.Services, openAiApiKey, Environment.GetEnvironmentVariable("AiModelName"), EgressGuard.ExternalIntegrationsAllowed());
+OpenAiChatClientRegistration.Register(builder.Services, openAiApiKey, Environment.GetEnvironmentVariable("AiModelName"), EgressGuard.ExternalIntegrationsAllowed(), Environment.GetEnvironmentVariable("AiReasoningEffort"));
 
 // #1268: hier stond de forced-choice teamdisambiguatie (#697). Die bestond alleen op deze
 // tier; de Postgres-tier gaf bij ambiguïteit altijd de kandidatenlijst terug. Beide tiers zijn

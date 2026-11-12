@@ -117,6 +117,11 @@ az functionapp config appsettings set \
 > wordt de AI-client niet geregistreerd; niet-AI-functies blijven beschikbaar en AI-verwerking stopt
 > veilig. Kies de model-ID volgens het besluit en de configuratie van jouw installatie; er is geen
 > ingebouwde terugvalwaarde.
+>
+> **Model met reasoning (bijvoorbeeld `gpt-6-luna`, #1756): zet ook `AiReasoningEffort`.** Zo'n model
+> weigert de vaste temperatuur die de aanroepen meesturen. Met `AiReasoningEffort=none` (andere waarden:
+> `low`, `medium`, `high`, `extra-high`) laat de app de temperatuur weg en stuurt de gekozen
+> reasoning-inspanning mee. Laat de instelling leeg voor een model zonder reasoning; dan verandert er niets.
 
 ### 2b. Database aanmaken — kies een tier
 

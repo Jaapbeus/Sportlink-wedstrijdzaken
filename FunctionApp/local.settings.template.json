@@ -16,6 +16,7 @@
     "GraphMailbox": "",
     "OpenAiApiKey": "",
     "AiModelName": "gpt-6-luna",
+    "AiReasoningEffort": "none",
     "EmailProcessorEnabled": "false",
     "EmailReviewMode": "true",
     "EmailReviewRecipient": "",
