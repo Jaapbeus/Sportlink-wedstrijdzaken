@@ -67,8 +67,9 @@ lees_tabelidentifiers() {
 # Extract only column definitions whose following type belongs to the guard's existing type set.
 lees_kolomidentifiers() {
   awk '
-    function kolomtype(i, type) {
+    function kolomtype(i, type, tweede) {
       type = toupper($i)
+      sub(/\[.*/, "", type)
       sub(/\(.*/, "", type)
       sub(/[(),;]+$/, "", type)
       if (type == "INTEGER" || type == "BIGINT" || type == "SMALLINT" ||
@@ -76,8 +77,10 @@ lees_kolomidentifiers() {
           type == "TIMESTAMPTZ" || type == "TIMESTAMP" || type == "DATE" ||
           type == "TIME" || type == "NUMERIC" || type == "SERIAL" ||
           type == "BIGSERIAL") return 1
-      if ((type == "CHARACTER" && toupper($(i + 1)) == "VARYING") ||
-          (type == "DOUBLE" && toupper($(i + 1)) == "PRECISION")) return 1
+      tweede = toupper($(i + 1))
+      sub(/[\[(,;].*/, "", tweede)
+      if ((type == "CHARACTER" && tweede == "VARYING") ||
+          (type == "DOUBLE" && tweede == "PRECISION")) return 1
       return 0
     }
     {

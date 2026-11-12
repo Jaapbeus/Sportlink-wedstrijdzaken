@@ -180,10 +180,23 @@ async function run() {
     { outcome: 'untrusted', added: [], removed: [], permissionChecks: 1 });
   await runPrCase('permission API error cannot relabel', prEvent(), 'error',
     { outcome: 'untrusted', added: [], removed: [], permissionChecks: 1 });
+  await runPrCase('Dependabot uit dezelfde repository heeft geen permissie-aanroep nodig',
+    prEvent({ user: { login: 'dependabot[bot]', type: 'Bot' } }), 'error',
+    { outcome: 'updated', added: ['status: in-progress'], removed: ['status: triage'], permissionChecks: 0 });
+  await runPrCase('Dependabot uit een fork blijft geweigerd',
+    prEvent({ user: { login: 'dependabot[bot]', type: 'Bot' }, head: { repo: { id: 8 } } }), 'error',
+    { outcome: 'untrusted', added: [], removed: [], permissionChecks: 0 });
+  await runPrCase('Een andere bot krijgt geen vrijstelling',
+    prEvent({ user: { login: 'andere-app[bot]', type: 'Bot' } }), 'error',
+    { outcome: 'untrusted', added: [], removed: [], permissionChecks: 1 });
+  await runPrCase('Een gebruikersnaam zonder Bot-type krijgt geen vrijstelling',
+    prEvent({ user: { login: 'dependabot[bot]', type: 'User' } }), 'error',
+    { outcome: 'untrusted', added: [], removed: [], permissionChecks: 1 });
   const warnings = [];
   gh = prGithub(['status: triage'], 'error');
   await updatePullRequestIssueStatuses({ github: gh, context: prEvent(),
     core: { notice: () => {}, warning: message => warnings.push(message) } });
+  check('mislukte permissie-aanroep waarschuwt concreet', warnings.length === 1 && warnings[0].includes('workflowtoken') && warnings[0].includes('opnieuw'), true);
   check('permission error does not disclose API detail', warnings.some(message => message.includes('private API detail')), false);
   await runPrCase('missing origin cannot relabel', prEvent({ head: {} }), 'write',
     { outcome: 'untrusted', added: [], removed: [], permissionChecks: 0 });

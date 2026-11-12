@@ -69,7 +69,7 @@ toelaat. Zonder deze vlag blijft de build verplicht en een ontbrekende `dotnet`-
 `-Offline` slaat alleen de externe GitHub-feedback-smoke over. De controle gebruikt geen GitHub-
 credentials en maakt geen testissue aan; de samenvatting telt deze controle als `SKIPPED`. Zonder `-Offline` blijft de
 echte GitHub-smoke afhankelijk van de bestaande `GitHubPat`, `GitHubOwner` en `GitHubRepo`-instellingen.
-Unit-tests voor de offline en fake-GitHub-paden:
+Unit-tests voor de offline en fake-GitHub-paden (ook aangesloten op de bestaande Build-job):
 
 ```powershell
 pwsh -NoProfile -File scripts/dev/Test-AppSupport.Tests.ps1
@@ -938,3 +938,32 @@ workflow-token via alleen `GET /rate_limit`; behandelt het token als opaque en m
 of de responsebody. Dit forceert geen formaat en vervangt de enabled/disabled-test met eigen
 App-authenticatie niet. Lokale eigen hookpatronen blijven behouden bij een template-update
 ([DEVELOPER-SETUP.md](DEVELOPER-SETUP.md#32-gevoelige-patronen-configureren)).
+
+
+### Beveiligings- en automatiseringsregressies (zie issue #1810)
+
+`bash scripts/ci/check-security-patterns.test.sh` gebruikt uitsluitend synthetische patronen.
+De placeholdertest bewijst eerst een treffer in een getrackt bestand en daarna de uitsluiting.
+`REQUIRE_CLUB_EXTRA_PATTERNS=true` maakt actieve privéconfiguratie verplicht; de workflow zet
+dit voor pushes in een basisrepository. Ontbrekende configuratie blokkeert dan met exit 2.
+Lokaal en bij forks blijft een ontbrekende optionele configuratie een expliciete overslag.
+Een ontbrekend secret bij een botrun is geen automatische vrijstelling: de eigenaar moet de
+beschikbaarheid veilig regelen. CRLF-regels worden vóór patroonverwerking genormaliseerd.
+Scanneruitvoer bevat uitsluitend klasse/aantal of een vaste foutmelding, nooit vindplaatsen.
+
+`node .github/scripts/issue-status.test.js` controleert ook dat een mislukte permissie-aanroep
+waarschuwt zonder API-details te publiceren. Alleen de door GitHub aangeleverde combinatie
+`dependabot[bot]` met type `Bot` krijgt op een branch van dezelfde repository een vrijstelling;
+forks, andere bots en ontbrekende identiteit vallen onder de gewone vertrouwenscontrole.
+Na merge blijft verificatie van een echte PR-statusrun met het workflowtoken nodig.
+
+`bash scripts/ci/test-git-hooks.sh` test echte hooks met een vervangende Gitleaks-CLI en bewijst
+zo het aanroepcontract en het commitbereik; dit is geen integratietest van Gitleaks zelf.
+Push bij voorkeur via een benoemde remote. Bij een URL kan de veilige terugval een ruimere
+historiescan opleveren. De scan per commit blijft behouden om tussentijds verwijderde waarden
+te detecteren; Windows-doorlooptijd is niet gemeten.
+
+De tierduplicatieguard telt bewust ook niet-genegeerde, ongetrackte bronbestanden mee.
+Daardoor verandert staging de meting niet. Een schone CI-checkout heeft zulke lokale extra
+bestanden niet; een lokaal verschil vraagt controle van de lokale broninventaris, geen ruimer plafond.
+Het advisorrapport sorteert ERROR, WARN, INFO, OTHER en geeft alleen vaste veilige vervolginstructies.

@@ -115,8 +115,8 @@ function extractIssueRefs(title, body) {
 }
 
 /**
- * PR text may select issues only when the PR originates in this repository and its author
- * currently has repository write permission. Missing data or an API failure denies the event.
+ * PR-tekst mag alleen issues selecteren vanuit deze repository, met bewezen schrijfrechten
+ * of de expliciet toegestane ingebouwde Dependabot-identiteit. Bij twijfel geen wijziging.
  */
 async function trustedPullRequestOrigin({ github, context, core, pr }) {
   const repositoryId = context.payload.repository?.id;
@@ -124,9 +124,12 @@ async function trustedPullRequestOrigin({ github, context, core, pr }) {
   const headId = pr?.head?.repo?.id;
   const author = pr?.user?.login;
   if (!Number.isInteger(repositoryId) || baseId !== repositoryId || headId !== repositoryId || !author) {
-    core.notice('PR origin is not verified as a repository branch; issue status unchanged.');
+    core.notice('PR-herkomst is niet als repositorybranch bewezen; issuestatus ongewijzigd.');
     return false;
   }
+
+  // GitHub levert de auteuridentiteit; geen algemene vrijstelling voor andere bots of forks.
+  if (pr.user.type === 'Bot' && author === 'dependabot[bot]') return true;
 
   try {
     const response = await github.request('GET /repos/{owner}/{repo}/collaborators/{username}/permission', {
@@ -137,22 +140,22 @@ async function trustedPullRequestOrigin({ github, context, core, pr }) {
     });
     if (['write', 'admin'].includes(response.data?.permission)) return true;
   } catch {
-    core.warning('PR author permission could not be verified; issue status unchanged.');
+    core.warning('PR-auteursrechten konden niet worden gecontroleerd; issuestatus niet bijgewerkt. Controleer of het workflowtoken de repositorypermissies mag lezen en voer de workflow daarna opnieuw uit.');
     return false;
   }
 
-  core.notice('PR author has no verified repository write permission; issue status unchanged.');
+  core.notice('PR-auteur heeft geen bewezen schrijfrechten; issuestatus ongewijzigd.');
   return false;
 }
 
-/** Applies the PR lifecycle transition only after the PR-text trust boundary. */
+/** Past de PR-statusovergang pas toe na de vertrouwenspoort voor PR-tekst. */
 async function updatePullRequestIssueStatuses({ github, context, core }) {
   const pr = context.payload.pull_request;
   const action = context.payload.action;
   if (!pr || !['opened', 'reopened', 'ready_for_review', 'converted_to_draft', 'closed'].includes(action)) {
     return 'skipped';
   }
-  // The develop-merge workflow owns awaiting-release; it also clears turn labels.
+  // De develop-mergeworkflow beheert awaiting-release en verwijdert ook beurtlabels.
   if (action === 'closed' && pr.merged) return 'merged';
   if (!await trustedPullRequestOrigin({ github, context, core, pr })) return 'untrusted';
 
@@ -162,7 +165,7 @@ async function updatePullRequestIssueStatuses({ github, context, core }) {
     : pr.draft ? 'status: in-progress' : 'status: review-needed';
   const { strong } = extractIssueRefs(pr.title, pr.body);
   if (strong.size === 0) {
-    core.notice('No strong issue reference in PR text; issue status unchanged.');
+    core.notice('Geen sterke issueverwijzing in PR-tekst; issuestatus ongewijzigd.');
     return 'unlinked';
   }
   for (const issueNumber of strong) {

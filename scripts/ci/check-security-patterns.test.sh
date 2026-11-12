@@ -141,8 +141,13 @@ done
 
 # The placeholder exclusion applies to the whole matching line.
 new_repo infra-placeholder
-printf '%s%s%s <clubcode>\n' "$function_prefix" 'aa' "$function_suffix" > "$TEMP_ROOT/placeholder.txt"
-git -C "$REPO" add --all
+printf '%s%s%s\n' "$function_prefix" 'aa' "$function_suffix" > "$REPO/placeholder.txt"
+track_repo
+git -C "$REPO" ls-files --error-unmatch placeholder.txt >/dev/null
+run_mode infra-structural
+assert_match_count infrastructure 1
+printf '%s%s%s <clubcode>\n' "$function_prefix" 'aa' "$function_suffix" > "$REPO/placeholder.txt"
+track_repo
 run_mode infra-structural
 assert_no_match_count infrastructure
 
@@ -165,6 +170,15 @@ run_mode infra-private CLUB_EXTRA_PATTERNS=
 [ "$SCAN_STATUS" -eq 0 ] || fail "missing optional private patterns should be an explicit skip"
 grep -Fq 'SKIPPED (configuration unavailable)' "$TEMP_ROOT/stdout" \
   || fail "missing optional private patterns were not reported as skipped"
+
+run_mode infra-private REQUIRE_CLUB_EXTRA_PATTERNS=true CLUB_EXTRA_PATTERNS=
+[ "$SCAN_STATUS" -eq 2 ] || fail "verplichte ontbrekende privéconfiguratie werd niet geweigerd"
+grep -Fq 'Verplichte privépatroonconfiguratie ontbreekt' "$TEMP_ROOT/stderr" \
+  || fail "ontbrekende verplichte configuratie gaf geen generieke fout"
+run_mode infra-private REQUIRE_CLUB_EXTRA_PATTERNS=true "CLUB_EXTRA_PATTERNS=$private_pattern"$'\r\n'
+assert_match_count 'private infrastructure' 1
+run_mode infra-private REQUIRE_CLUB_EXTRA_PATTERNS=true $'CLUB_EXTRA_PATTERNS=# alleen commentaar\r\n'
+[ "$SCAN_STATUS" -eq 2 ] || fail "commentaar-only privéconfiguratie werd niet geweigerd"
 
 run_mode infra-private 'CLUB_EXTRA_PATTERNS=SYNTHETIC_INVALID_PATTERN['
 [ "$SCAN_STATUS" -eq 2 ] || fail "invalid configured pattern did not fail closed"
@@ -206,7 +220,7 @@ if grep -Fq 'Production/Source.cs' "$TEMP_ROOT/stdout" "$TEMP_ROOT/stderr"; then
   fail "missing scanner output exposed a file path"
 fi
 
-# Documentation scanning keeps its exemptions and redacts both addresses and paths.
+# Databestandsdetectie publiceert geen bestandsnamen.
 new_repo data-file-names
 data_file="$REPO/synthetic personal data.csv"
 data_file_newline="$REPO/line"$'\n'"break.xlsx"

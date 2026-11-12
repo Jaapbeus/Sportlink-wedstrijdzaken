@@ -28,7 +28,7 @@
 // zelfmerge-voorwaarden controleert en merget (de bot merget nooit). Dat mag alleen in de
 // verwerkingsfase (er is een start-PR) en alleen als die PR naar `develop` gaat en geen pad raakt
 // dat volgens de zelfmerge-regel altijd naar de eigenaar gaat (werkinstructies/skills,
-// databaseschema/migraties, Azure-infrastructuur of automation/security controls); anders wordt
+// databaseschema/migraties, Azure-infrastructuur of automatiserings-/beveiligingscontroles); anders wordt
 // het alsnog `turn: owner`.
 //
 // #1727: in de reviewfase (Claude Code reviewt een Codex-PR) roept de publicatiestap
@@ -56,12 +56,11 @@ const SELF_MERGE_BASE = 'develop';
 const OWNER_ONLY_PATHS = [
   { name: 'AGENTS.md', reden: 'werkinstructies' },
   { name: 'CLAUDE.md', reden: 'werkinstructies' },
-  { prefix: '.agents/', reden: 'skills' },
-  { prefix: '.claude/', reden: 'skills/agentconfiguratie' },
-  { prefix: '.github/', reden: 'automation/security controls' },
-  { prefix: 'scripts/ci/', reden: 'automation/security controls' },
-  { prefix: '.githooks/', reden: 'automation/security controls' },
-  { path: '.gitleaks.toml', reden: 'automation/security controls' },
+  { prefix: '.agents/skills/', reden: 'skills' },
+  { prefix: '.claude/skills/', reden: 'skills' },
+  { prefix: '.github/workflows/', reden: 'automatiserings-/beveiligingscontroles' },
+  { prefix: '.githooks/', reden: 'automatiserings-/beveiligingscontroles' },
+  { path: '.gitleaks.toml', reden: 'automatiserings-/beveiligingscontroles' },
   { prefix: 'Database/', reden: 'databaseschema' },
   { prefix: 'Database.Postgres/', reden: 'databaseschema/migraties' },
   { prefix: 'scripts/migrations/', reden: 'databaseschema/migraties' },

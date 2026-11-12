@@ -107,6 +107,7 @@ fi
 if [ "$MODE" = "infra-private" ]; then
   configured_patterns="${CLUB_EXTRA_PATTERNS:-}"
   while IFS= read -r pattern || [ -n "$pattern" ]; do
+    pattern="${pattern%$'\r'}"
     [ -z "$pattern" ] && continue
     case "$pattern" in
       \#*) continue ;;
@@ -119,6 +120,10 @@ if [ "$MODE" = "infra-private" ]; then
   done <<< "$configured_patterns"
 
   if [ -z "$PATTERN_LIST" ]; then
+    if [ "${REQUIRE_CLUB_EXTRA_PATTERNS:-false}" = "true" ]; then
+      echo "::error::Verplichte privépatroonconfiguratie ontbreekt; controle niet uitgevoerd." >&2
+      exit 2
+    fi
     echo "Private infrastructure pattern scan: SKIPPED (configuration unavailable)."
     exit 0
   fi

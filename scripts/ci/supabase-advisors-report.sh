@@ -64,7 +64,7 @@ jq -s '
   | map(if .level == "ERROR" or .level == "WARN" or .level == "INFO" then . else {level: "OTHER"} end)
   | group_by(.level)
   | map({level: .[0].level, count: length})
-  | sort_by(.level)
+  | sort_by(if .level == "ERROR" then 0 elif .level == "WARN" then 1 elif .level == "INFO" then 2 else 3 end)
 ' "$ADVISORS" "$BASELINE" > "${BODY}.nieuw.json"
 
 NIEUW=$(jq '[.[].count] | add // 0' "${BODY}.nieuw.json")
@@ -82,6 +82,13 @@ fi
   echo "| Ernstklasse | Aantal |"
   echo "|---|---:|"
   jq -r '.[] | "| \(.level) | \(.count) |"' "${BODY}.nieuw.json"
+  cat <<'INSTRUCTIES'
+
+## Wat nu
+
+Beoordeel de details besloten met de eigenaar; plaats ze niet in een publieke reactie.
+Los de bevinding op via een git-migratie en de bestaande migratieroute, of accepteer het risico gemotiveerd via de baseline met een reden en issueverwijzing.
+INSTRUCTIES
 } > "$BODY"
 
 # ── Redactie-gate, tweede keer ──────────────────────────────────────────────────────────────────

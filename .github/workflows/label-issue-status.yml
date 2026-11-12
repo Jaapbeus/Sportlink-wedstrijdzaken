@@ -28,7 +28,7 @@ on:
   # mag daarom alleen status muteren na herkomst- en bevoegdheidscontrole.
   #
   # Veiligheid: deze workflow checkt uitsluitend de BASE-repo uit (het standaardgedrag
-  # van pull_request_target) en voert nooit code of scripts uit de PR uit. Er wordt
+  # van pull_request_target) en voert nooit code of scripts uit de PR uit.
   # PR-titel en -body zijn onbetrouwbare invoer totdat de poort is gepasseerd.
   pull_request_target:
     types: [opened, reopened, ready_for_review, converted_to_draft, closed]

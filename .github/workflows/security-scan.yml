@@ -221,9 +221,10 @@ jobs:
 
       - name: Scan op Azure resource namen en infrastructuuridentifiers
         env:
-          # Optioneel: stel CLUB_EXTRA_PATTERNS in als GitHub Secret (newline-gescheiden regexes)
-          # voor installatie-specifieke patronen die niet structureel zijn.
+          # Basisrepository-pushes vereisen privéconfiguratie; forks mogen expliciet overslaan.
+          # Regexes blijven uitsluitend in het secret en de scanneromgeving.
           CLUB_EXTRA_PATTERNS: ${{ secrets.CLUB_EXTRA_PATTERNS || '' }}
+          REQUIRE_CLUB_EXTRA_PATTERNS: ${{ github.event_name == 'push' && !github.event.repository.fork }}
         run: |
           set -euo pipefail
           FOUND=0

@@ -244,6 +244,9 @@ jobs:
       - name: Postgres procedures/views-dekking-guard (cross-tree)
         run: bash scripts/ci/check-postgres-procedure-view-coverage.sh
 
+      - name: Lokale verificatiehelpers — geïsoleerde tests
+        run: pwsh -NoProfile -File scripts/dev/Test-AppSupport.Tests.ps1
+
       # #865: bewijst dat resolve-database-tier.sh (bash) en Get-DatabaseTierProject
       # (scripts/dev/DevServices.psm1, PowerShell) voor elke tier exact dezelfde uitkomst geven.
       # Zonder deze test kunnen de shell-kant (CI) en de PowerShell-kant (lokale dev-scripts) uit

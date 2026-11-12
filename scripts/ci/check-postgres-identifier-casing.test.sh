@@ -89,6 +89,17 @@ cat > "$MIGRATIONS/001_synthetic.sql" <<'SQL'
 SQL
 assert_pass "commented-out DDL is ignored"
 
+for type in 'TEXT[]' 'VARCHAR(40)[]' 'TEXT[][]' 'CHARACTER VARYING[]' 'DOUBLE PRECISION[]'; do
+  printf 'CREATE TABLE public.clean_table (\n    clean_column %s\n);\n' "$type" > "$MIGRATIONS/001_synthetic.sql"
+  assert_pass "lowercase arraykolom $type"
+  printf 'CREATE TABLE public.clean_table (\n    mixedColumn %s\n);\n' "$type" > "$MIGRATIONS/001_synthetic.sql"
+  assert_blocked "mixed-case arraykolom $type"
+  printf 'CREATE TABLE public.clean_table (\n    "quoted_column" %s\n);\n' "$type" > "$MIGRATIONS/001_synthetic.sql"
+  assert_blocked "gequote arraykolom $type"
+  printf 'ALTER TABLE public.clean_table ADD COLUMN mixedColumn %s;\n' "$type" > "$MIGRATIONS/001_synthetic.sql"
+  assert_blocked "ALTER ADD arraykolom $type"
+done
+
 EMPTY_REPO="$TEMP_ROOT/empty"
 mkdir -p "$EMPTY_REPO/Database.Postgres/migrations"
 if (cd "$EMPTY_REPO" && /bin/bash "$SCRIPT") > "$TEMP_ROOT/stdout" 2> "$TEMP_ROOT/stderr"; then

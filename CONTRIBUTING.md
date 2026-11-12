@@ -257,12 +257,10 @@ geen eigenaarspunt open. Een eigenaarspunt is een keuze, een acceptatie, een ris
 niet is verwerkt. Een controle die pas na de release kan (bijvoorbeeld een ingelogde browsercheck in
 productie) is nazorg, geen besluit, en houdt de merge dus niet tegen.
 
-**Always owner-merged:** merges to `main` (release and hotfix only through `/release`), PRs changing
-Azure resources or costs, database schemas or migrations, work instructions or skills
-(`AGENTS.md`, `.agents/skills/`), or automation/security controls (`.github/`, `scripts/ci/`,
-`.githooks/`, and root `.gitleaks.toml`). The end-label step enforces this boundary for its merge-wait
-outcome. Auth/Entra changes and issues with `source: owner` remain eligible for the same three
-self-merge conditions, unless the PR also touches a listed owner-only path.
+**Altijd door de eigenaar gemerged:** merges naar `main` (release en hotfix alleen via `/release`), PR’s met wijzigingen aan Azure-resources of kosten, databaseschema’s of migraties, werkinstructies of skills (`AGENTS.md`, `.agents/skills/`), of automatiserings-/beveiligingscontroles (`.github/workflows/`, `.githooks/` en root `.gitleaks.toml`).
+De eindlabelstap handhaaft deze grens bij wachten op een merge.
+`scripts/ci/` en overige `.github/`-bestanden zijn op zichzelf niet eigenaar-only.
+Auth-/Entra-wijzigingen en issues met `source: owner` volgen dezelfde drie zelfmergevoorwaarden, tenzij de PR ook een genoemd eigenaarspad raakt.
 
 **Fase `eigenaarsbesluit`** (met `turn: owner`) is alleen voor een echt openstaand besluit of een van de
 uitzonderingen hierboven. Een PR die alleen op de merge wacht, krijgt die fase niet.
@@ -277,8 +275,8 @@ merge als besluit tonen. De job `eindlabel` haalt `turn: claude-code` weg en pla
 op merge door de implementer". Zo'n issue heeft dus geen `turn:`-label, een open draft-PR en dat comment
 als laatste workflowbericht; zoek het met
 `gh issue list --state open --search '"Wacht op merge door de implementer" in:comments'`. De job controleert zelf de uitzonderingen die aan paden te zien zijn (base
-niet `develop`; `AGENTS.md`/`CLAUDE.md`, `.agents/`, `.claude/`, `Database/`, `Database.Postgres/`,
-`scripts/migrations/`, `infrastructure/`, `scripts/azure/`) en maakt er dan `turn: owner` van; kosten of
+niet `develop`; `AGENTS.md`/`CLAUDE.md`, `.agents/skills/`, `.claude/skills/`, `Database/`, `Database.Postgres/`,
+`scripts/migrations/`, `infrastructure/`, `scripts/azure/`, `.github/workflows/`, `.githooks/`, root `.gitleaks.toml`) en maakt er dan `turn: owner` van; kosten of
 een schemawijziging buiten die paden beoordeelt de bot in de prompt en de mergende sessie opnieuw. Fase
 `eigenaarsbesluit` + `turn: owner` blijft voor een echt openstaand punt, voor alle bevindingen "niet
 overgenomen" zonder codewijziging, voor een derde ronde zonder schone review en voor "CI niet bewezen".

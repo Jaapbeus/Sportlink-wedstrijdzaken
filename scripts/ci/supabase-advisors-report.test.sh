@@ -44,9 +44,14 @@ EXPECTED_BODY=$(cat <<'EXPECTED'
 | Ernstklasse | Aantal |
 |---|---:|
 | ERROR | 2 |
+| WARN | 1 |
 | INFO | 1 |
 | OTHER | 1 |
-| WARN | 1 |
+
+## Wat nu
+
+Beoordeel de details besloten met de eigenaar; plaats ze niet in een publieke reactie.
+Los de bevinding op via een git-migratie en de bestaande migratieroute, of accepteer het risico gemotiveerd via de baseline met een reden en issueverwijzing.
 EXPECTED
 )
 [ "$(cat "$BODY")" = "$EXPECTED_BODY" ] || fail "public issue body did not match the class-only report"
