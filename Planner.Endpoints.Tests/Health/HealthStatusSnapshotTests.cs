@@ -36,4 +36,19 @@ public class HealthStatusSnapshotTests
         json.Should().Contain("settingsLoaded").And.Contain("serverVersion").And.Contain("pendingMigrations");
         json.Should().Contain("db-version").And.Contain("VerifyFull");
     }
+
+    [Theory]
+    [InlineData(true, "\"readPathsOk\":true")]
+    [InlineData(false, "\"readPathsOk\":false")]
+    [InlineData(null, "\"readPathsOk\":null")]
+    public void ReadPathsOk_ZitInPubliekeEnAdminProjectie(bool? waarde, string verwacht)
+    {
+        var snapshot = new HealthStatusSnapshot(
+            "ok", "3.17.0.2", "online", true, true, false, false,
+            DateTime.UtcNow, "Postgres", "Npgsql", null, null, false,
+            null, null, null, [], waarde);
+
+        JsonSerializer.Serialize(snapshot.ToPublicResponse()).Should().Contain(verwacht);
+        JsonSerializer.Serialize(snapshot.ToAdminResponse()).Should().Contain(verwacht);
+    }
 }

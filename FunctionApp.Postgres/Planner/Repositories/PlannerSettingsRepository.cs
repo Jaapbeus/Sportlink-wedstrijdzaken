@@ -1,4 +1,5 @@
 using Npgsql;
+using Planner.Endpoints.Health;
 using Planner.Shared;
 
 namespace FunctionApp.Postgres.Planner;
@@ -56,6 +57,16 @@ internal static class PlannerSettingsRepository
         await conn.OpenAsync();
         return await GetSpeeltijdenLookupAsync(conn, null, clubCode);
     }
+
+    /// <summary>
+    /// #1911: leesproef voor <c>/api/health</c> — leest de speeltijden-lookup van één club met dezelfde code als de
+    /// Planning, bij voorkeur een club met een ingevulde voorkeurstijd (juist die loopt door de <c>time</c>-typemapping).
+    /// <c>null</c> = geen speeltijden-rij om te lezen; een fout wordt niet gevangen maar aan de aanroeper doorgegeven.
+    /// </summary>
+    internal static Task<bool?> ProbeSpeeltijdenLeesPadAsync(string connectionString, CancellationToken ct) =>
+        HealthLeesproef.LeesVoorEersteClubAsync(new NpgsqlConnection(connectionString),
+            "SELECT clubcode FROM public.speeltijden ORDER BY (standaardvoorkeurtijd IS NULL), clubcode LIMIT 1",
+            (conn, clubCode) => GetSpeeltijdenLookupAsync((NpgsqlConnection)conn, null, clubCode), ct);
 
     internal static async Task<Dictionary<string, Speeltijd>> GetSpeeltijdenLookupAsync(
         NpgsqlConnection conn, NpgsqlTransaction? transaction, string clubCode)
