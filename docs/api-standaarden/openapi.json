@@ -9844,7 +9844,7 @@
         ],
         "operationId": "feedbackValidate",
         "summary": "Feedback valideren op volledigheid",
-        "description": "Controleert via GPT-4o-mini of de beschrijving voldoende informatie bevat.\nGeeft gerichte aanvulvragen terug als er gaten zijn.\nOpen voor elke ingelogde rol (admin én user, #764). Per gebruiker begrensd: max 30 AI-aanroepen\n(validate + preview) per 10 minuten.\n",
+        "description": "Controleert via gpt-6-luna of de beschrijving voldoende informatie bevat.\nGeeft gerichte aanvulvragen terug als er gaten zijn.\nOpen voor elke ingelogde rol (admin én user, #764). Per gebruiker begrensd: max 30 AI-aanroepen\n(validate + preview) per 10 minuten.\n",
         "security": [
           {
             "easyAuth": []
@@ -10004,7 +10004,7 @@
         ],
         "operationId": "feedbackSubmit",
         "summary": "Feedback indienen (bewaren, en direct publiceren als beheerder)",
-        "description": "Open voor elke ingelogde rol (#764). De melder (Entra object-ID, naam-momentopname, rol) komt\nuitsluitend uit het Easy Auth-principal en wordt bewaard in `avg.Feedback` — nooit in het\npublieke issue. Structureert de feedback met GPT-4o-mini en bewaart de te publiceren titel en body.\n\n* Rol **admin**: de melding wordt direct als GitHub-issue gepubliceerd (is GitHub niet\n  geconfigureerd, dan blijft ze bewaard met een `waarschuwing`). Bij een time-out, verbroken verbinding of HTTP 408/5xx\n  tijdens de POST is de uitkomst onbekend; de melding blijft op `publiceren` en is te herstellen via `POST /beheer/feedback/{id}/publiceer`.\n* Rol **user**: de melding wacht (`status: wacht-op-publicatie`) tot een beheerder haar in het\n  overzicht publiceert (`POST /beheer/feedback/{id}/publiceer`). De response bevat geen\n  issueverwijzing.\n\nIs `bevestiging` meegestuurd — de velden zoals `/feedback/preview` ze teruggaf en de\nbeheerder ze gezien heeft — dan wordt exact díe tekst gepubliceerd en volgt er géén nieuwe\nAI-aanroep. De PII-gate draait onverkort op de uiteindelijke titel en body.\n\nLimieten: max 3 meldingen per 10 minuten per gebruiker (gemeten in de database, dus gedeeld over\ninstances) en een vangnet van 30 per uur voor de hele club.\n",
+        "description": "Open voor elke ingelogde rol (#764). De melder (Entra object-ID, naam-momentopname, rol) komt\nuitsluitend uit het Easy Auth-principal en wordt bewaard in `avg.Feedback` — nooit in het\npublieke issue. Structureert de feedback met gpt-6-luna en bewaart de te publiceren titel en body.\n\n* Rol **admin**: de melding wordt direct als GitHub-issue gepubliceerd (is GitHub niet\n  geconfigureerd, dan blijft ze bewaard met een `waarschuwing`). Bij een time-out, verbroken verbinding of HTTP 408/5xx\n  tijdens de POST is de uitkomst onbekend; de melding blijft op `publiceren` en is te herstellen via `POST /beheer/feedback/{id}/publiceer`.\n* Rol **user**: de melding wacht (`status: wacht-op-publicatie`) tot een beheerder haar in het\n  overzicht publiceert (`POST /beheer/feedback/{id}/publiceer`). De response bevat geen\n  issueverwijzing.\n\nIs `bevestiging` meegestuurd — de velden zoals `/feedback/preview` ze teruggaf en de\nbeheerder ze gezien heeft — dan wordt exact díe tekst gepubliceerd en volgt er géén nieuwe\nAI-aanroep. De PII-gate draait onverkort op de uiteindelijke titel en body.\n\nLimieten: max 3 meldingen per 10 minuten per gebruiker (gemeten in de database, dus gedeeld over\ninstances) en een vangnet van 30 per uur voor de hele club.\n",
         "security": [
           {
             "easyAuth": []

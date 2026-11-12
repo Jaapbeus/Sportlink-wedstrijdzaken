@@ -18,6 +18,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- Het standaard AI-model in de lokale instellingsvoorbeelden en de documentatie is `gpt-6-luna`, de door de provider aangewezen opvolger van `gpt-4o-mini`, dat op 14 januari 2027 uit de API verdwijnt. De code heeft geen vaste modelnaam meer; de eigenaar zet daarom nog de app setting `AiModelName` en de GitHub Variable `AI_MODEL_NAME` en test het model op geanonimiseerde berichten (zie issue #1756).
 - PR-statusautomatisering waarschuwt concreet bij een mislukte permissiecontrole; de geïsoleerde lokale verificatiehelpers draaien ook in CI (#1810).
 
 - Agentinstructies zijn beter laadbaar en leesbaar: veiligheids- en kostenregels staan bovenaan `AGENTS.md`, lange alinea's zijn opgesplitst, elke `AGENTS.md` eindigt met een laadcontrole (canary) en de guard bewaakt een maximale regellengte; `FunctionApp/AGENTS.md` herhaalt de harde stops kort (zie issue #1898).

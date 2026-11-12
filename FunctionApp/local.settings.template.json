@@ -15,7 +15,7 @@
     "GraphClientSecret": "",
     "GraphMailbox": "",
     "OpenAiApiKey": "",
-    "AiModelName": "gpt-4o-mini",
+    "AiModelName": "gpt-6-luna",
     "EmailProcessorEnabled": "false",
     "EmailReviewMode": "true",
     "EmailReviewRecipient": "",
