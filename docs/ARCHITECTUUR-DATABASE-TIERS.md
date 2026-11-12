@@ -172,6 +172,43 @@ C#-versie, precies het onderhoudsrisico dat #719 al blootlegde voor die twee. Vu
 volgende tier: bevat de te herbouwen logica geen SQL en geen providerspecifieke aanroep, verhuis
 haar naar een gedeeld project in plaats van haar te dupliceren.
 
+### Scoped implementation for #1813
+
+The repository continues to mark SQL Server and Postgres as `built: true`; this change preserves
+that invariant and does not decide their long-term support policy. The issue's option A is
+“Doorgaan zoals nu”. This PR documents a narrow implementation choice and does not present it as
+a broader owner decision.
+
+For this change, Codex chose a narrow implementation: the SQL Server and Postgres KNVB calendar
+repositories remain native and keep their own region, season, date-range, day-type and ordering
+rules. They pass their results to one pure `Planner.Shared` selector that filters Saturdays,
+excludes occupied dates and applies the requested maximum. Both native repository suites and the
+shared selector tests cover that boundary. This choice follows the existing exception for pure,
+provider-agnostic business logic; it adds no generic provider abstraction, runtime tier switch,
+schema change or broad endpoint-orchestration roadmap. SQLite remains `built: false` in
+`scripts/ci/database-tiers.json`.
+
+At `1ee175ff7c50f1640060ebaecb2a2441d2090cb2`, a path inventory found 101 exact relative-path
+pairs and 5 unique-basename candidates, with no ambiguous basename groups. These are path
+inventory counts, not semantic-coverage or maintenance-cost evidence. The KNVB calendar
+repositories were separately verified as semantic counterparts for this selector; that one pair
+is recorded in `scripts/ci/tier-duplicatie-mapping.txt`. Counting that pair adds 9 identical lines;
+the same change moves the KNVB calendar PDF reader (`KnvbPdfService`, 32 identical lines in two
+tier copies, no database access) to `Planner.Shared/Email/KnvbPdfService.cs`, so the duplication
+ceiling goes down instead of up. A negative fixture proves that mapped duplication is counted.
+Other candidates remain unverified.
+
+Broader support, extraction and migration policy remains outside this scoped implementation and
+requires a separately evidenced owner decision. `#1542` remains a separate owner goal to eliminate
+its storage resource; this ADR does not accept ongoing cost or close that issue.
+
+The report command `python3 scripts/ci/report-tier-pairs.py --ref <commit>` inventories tracked C#
+paths at an explicit Git ref. It lists exact-path matches, unique-basename candidates, ambiguous
+groups and unmatched files. It does not compare contents or establish semantic coverage; a
+basename match alone does not establish that files were renamed counterparts or quantify their
+combined line count. See [VERIFICATIE-SCRIPTS.md](VERIFICATIE-SCRIPTS.md) for usage and focused
+tests.
+
 **Tier-keuze is bewust onveranderlijk na de eerste deploy — afdwinging gebouwd bij #976.** #816
 legt vast dat de repository-variabele `DatabaseTier` de keuze bepaalt (hard-fail bij een
 ontbrekende/onbekende waarde). Met de Postgres-tier inmiddels functioneel gereed werd een switch
@@ -3548,6 +3585,8 @@ bestaan onvoorwaardelijk sinds migratie 003 — geen optionele-kolom-dans zoals 
   een eigen namespace (`SportlinkFunction.Email`/`FunctionApp.Postgres.Email`) — een gedeelde
   `KnvbPdfService` zou een gedeeld `EmailBijlage`-type vereisen, en dat is een grotere refactor dan
   dit issue rechtvaardigt. Een twin, net als `EmailBijlage` zelf, is hier het consistente patroon.
+  *Bijgewerkt bij #1813:* `EmailBijlage` is inmiddels gedeeld (`Planner.Shared/Email/`); de twin
+  is vervallen en `KnvbPdfService` staat nu eenmalig in `Planner.Shared/Email/KnvbPdfService.cs`.
 
 **PDF-bestanden: één bron, twee build-outputs.** `FunctionApp.Postgres.csproj` verwijst met een
 MSBuild `Content Include`+`Link` naar dezelfde bronbestanden als

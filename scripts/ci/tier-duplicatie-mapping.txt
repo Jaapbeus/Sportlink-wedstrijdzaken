@@ -1,0 +1,3 @@
+# Explicit semantic counterparts whose tier-specific paths differ.
+# Keep one SQL Server path | one Postgres path per reviewed pair.
+FunctionApp/Planner/KnvbKalenderRepository.cs | FunctionApp.Postgres/Planner/Repositories/KnvbKalenderRepository.cs

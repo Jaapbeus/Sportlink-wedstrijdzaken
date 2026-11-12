@@ -182,7 +182,7 @@ hierheen. (Verplaatst uit `AGENTS.md`, #1580.)
 | `docs/RUNBOOK-FLEX-MIGRATIE.md` | Flex Consumption-migratie (epic #1063): volgorde, kostencontroles, cutover of rollback gewijzigd |
 | `docs/SPORTLINK-DATASERVICE.md` | Endpoints, synchronisatiestrategie of veldreferentie van de Sportlink-dataservice (leesrichting) gewijzigd |
 | `docs/SPORTLINK-WEB-EXTENSION.md` | Sportlink Web Extension (epic #986): rol/serviceaccount-koppeling, auth-flow of de regel dat agents dit mechanisme nooit zelf mogen uitvoeren gewijzigd |
-| `docs/VERIFICATIE-SCRIPTS.md` | Testscript, schema-controle of endpoint-verificatie gewijzigd |
+| `docs/VERIFICATIE-SCRIPTS.md` | Test scripts, schema checks, endpoint verification, or the reproducible tier-pair inventory change |
 | `docs/MONITORING.md` | Alerting-drempelwaarden, KQL-queries of escalatiematrix gewijzigd |
 | `docs/DEVELOPER-SETUP.md` | Lokale setup of configuratiestappen gewijzigd |
 | `CLAUDE.md`, `FunctionApp/CLAUDE.md` | **Nooit inhoud toevoegen** — stubs met `@AGENTS.md`; `check-agent-instructies.py` bewaakt dit |
