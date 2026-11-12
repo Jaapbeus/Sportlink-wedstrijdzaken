@@ -56,6 +56,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - BlazorAdmin: XML-documentatie voor tijdnormalisatie en Gantt-layout bijgewerkt; gedrag ongewijzigd (zie issue #1806).
 - De SQL Server-planner geeft voor de niet-opgeslagen optionele eerste-elftalnaam nu expliciet `null` door, gelijk aan Postgres; de settings-loader guard hoeft deze ontbrekende sleutel niet meer uit te zonderen (#1821).
 - Fixture filtering and planner classification preparation now share one implementation across database tiers (#1816).
+- The SQL Server and Postgres KNVB repositories keep their native query rules while sharing the pure free-Saturday selector; the explicit tier-pair mapping, read-only pair report and contract tests document this bounded implementation (zie issue #1813).
+- The SQL Server KNVB contract test now verifies case-insensitive behavior in its disposable catalog and that both connection settings resolve to the same database target; Postgres retains its strict CHECK (zie issue #1813).
+- De KNVB-kalender-PDF-lezer (`KnvbPdfService`) stond woordelijk in beide databasetiers en staat nu eenmalig in `Planner.Shared/Email/`; bestandsnaam, cache en fail-safe gedrag blijven gelijk, met unit-tests op slug, seizoen, cache en leesfout (zie issue #1813).
 
 ### Security
 - Providerinvoer in leermomenten behoudt nu ook een tijdbereik (`10:30-12:00`, ook met gedachtestreepje, compact of met spaties: `10:30–12:00`, `10:30 - 12:00`) en dag-maand (`14-11`) als planningsnotatie; telefoonnummers met dezelfde scheidingstekens blijven `[nummer]`, opslag-/tracesanering ongewijzigd (#1870).

@@ -24,6 +24,7 @@ namespace FunctionApp.Postgres.Tests;
 public class KnvbKalenderRepositoryIntegrationTests : IAsyncLifetime
 {
     private const string Seizoen = "2099/2100";
+    private const string AnderSeizoen = "2098/2099";
     private const string Regio = "West";
 
     private static string ConnectionString => PostgresTestEnvironment.ConnectionStringOrNull
@@ -38,12 +39,13 @@ public class KnvbKalenderRepositoryIntegrationTests : IAsyncLifetime
         await using var conn = new NpgsqlConnection(ConnectionString);
         await conn.OpenAsync();
         await using var cmd = new NpgsqlCommand(
-            "DELETE FROM public.knvbkalenderdag WHERE seizoen = @seizoen", conn);
+            "DELETE FROM public.knvbkalenderdag WHERE seizoen IN (@seizoen, @anderSeizoen)", conn);
         cmd.Parameters.AddWithValue("seizoen", Seizoen);
+        cmd.Parameters.AddWithValue("anderSeizoen", AnderSeizoen);
         await cmd.ExecuteNonQueryAsync();
     }
 
-    private static async Task ZetDagAsync(string regio, DateOnly datum, string dagtype)
+    private static async Task ZetDagAsync(string regio, DateOnly datum, string dagtype, string seizoen = Seizoen)
     {
         await using var conn = new NpgsqlConnection(ConnectionString);
         await conn.OpenAsync();
@@ -53,7 +55,7 @@ public class KnvbKalenderRepositoryIntegrationTests : IAsyncLifetime
             VALUES (@seizoen, @regio, @datum, @dagtype, TRUE, TRUE, FALSE, FALSE)
             ON CONFLICT (seizoen, regio, datum) DO NOTHING
             """, conn);
-        cmd.Parameters.AddWithValue("seizoen", Seizoen);
+        cmd.Parameters.AddWithValue("seizoen", seizoen);
         cmd.Parameters.AddWithValue("regio", regio);
         cmd.Parameters.AddWithValue("datum", datum.ToDateTime(TimeOnly.MinValue));
         cmd.Parameters.AddWithValue("dagtype", dagtype);
@@ -65,6 +67,8 @@ public class KnvbKalenderRepositoryIntegrationTests : IAsyncLifetime
     private static readonly DateOnly Zaterdag1 = new(2099, 9, 5);
     private static readonly DateOnly Zaterdag2 = new(2099, 9, 12);
     private static readonly DateOnly Zaterdag3 = new(2099, 9, 19);
+    private static readonly DateOnly ZaterdagVoor = new(2099, 8, 29);
+    private static readonly DateOnly ZaterdagNa = new(2099, 9, 26);
 
     [PostgresFact]
     public async Task FiltertOpDagtype_AlleenCompetitieBekerInhaal()
@@ -72,12 +76,30 @@ public class KnvbKalenderRepositoryIntegrationTests : IAsyncLifetime
         await ZetDagAsync(Regio, Zaterdag1, "Competitie");
         await ZetDagAsync(Regio, Zaterdag2, "Vrij");
         await ZetDagAsync(Regio, Zaterdag3, "NC");
+        await ZetDagAsync("Oost", Zaterdag1, "Competitie");
+        await ZetDagAsync(Regio, Zaterdag1, "Competitie", AnderSeizoen);
 
         var resultaat = await KnvbKalenderRepository.GetVrijeZaterdagenAsync(
             ConnectionString, Regio, Seizoen, Zaterdag1, Zaterdag3, new HashSet<DateOnly>(), maxAantal: 5);
 
         resultaat.Should().ContainSingle().Which.Should().Be(Zaterdag1,
             "alleen Competitie/Beker/Inhaal tellen als 'vrije zaterdag'-kandidaat — Vrij/NC niet");
+    }
+
+    [PostgresFact]
+    public async Task BehoudtPostgresHoofdletterEnSpatiegevoeligeDagtypes()
+    {
+        foreach (var dagtype in new[] { "competitie", "Beker " })
+        {
+            var fout = await Assert.ThrowsAsync<PostgresException>(
+                () => ZetDagAsync(Regio, Zaterdag1, dagtype));
+            fout.SqlState.Should().Be(PostgresErrorCodes.CheckViolation);
+        }
+
+        await ZetDagAsync(Regio, Zaterdag1, "Competitie");
+        var resultaat = await KnvbKalenderRepository.GetVrijeZaterdagenAsync(
+            ConnectionString, Regio, Seizoen, Zaterdag1, Zaterdag1, new HashSet<DateOnly>(), maxAantal: 5);
+        resultaat.Should().Equal(Zaterdag1);
     }
 
     [PostgresFact]
@@ -97,9 +119,11 @@ public class KnvbKalenderRepositoryIntegrationTests : IAsyncLifetime
     [PostgresFact]
     public async Task BegrensdMaxAantal()
     {
+        await ZetDagAsync(Regio, ZaterdagVoor, "Competitie");
         await ZetDagAsync(Regio, Zaterdag1, "Competitie");
         await ZetDagAsync(Regio, Zaterdag2, "Competitie");
         await ZetDagAsync(Regio, Zaterdag3, "Competitie");
+        await ZetDagAsync(Regio, ZaterdagNa, "Competitie");
 
         var resultaat = await KnvbKalenderRepository.GetVrijeZaterdagenAsync(
             ConnectionString, Regio, Seizoen, Zaterdag1, Zaterdag3, new HashSet<DateOnly>(), maxAantal: 2);
