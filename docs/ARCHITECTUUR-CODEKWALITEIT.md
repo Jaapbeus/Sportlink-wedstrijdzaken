@@ -623,6 +623,7 @@ uit een workflow kan verdwijnen zonder dat iemand het merkt.
 | Lock-bestanden aanwezig en gevuld voor de NuGet-scan | inline-stap: `Guard — lock-bestanden aanwezig en gevuld` | `security-scan.yml` |
 | Trivy heeft daadwerkelijk NuGet-manifesten gescand | inline-stap: `Guard — Trivy heeft daadwerkelijk NuGet-manifesten gescand` | `security-scan.yml` |
 | CodeQL: geen bevinding met security-severity >= 7.0 | inline-stap: `Drempel — geen bevindingen met security-severity >= 7.0` | `security-scan.yml` |
+| Nieuw geschreven GitHub-tekst is Nederlands (#1896) | onbewaakt: natuurlijke taal is niet betrouwbaar te classificeren zonder vals-positieven; controle bij review | Handmatig: controleer titel, body, comments en workflow-uitvoer vóór publicatie |
 | AI: `IChatClient`, systeemprompt begint met de datumzin, geen vast jaar in few-shots (#1717) | onbewaakt: semantisch oordeel over promptinhoud; een tekstguard zou alleen de eerste regel zien, beoordeling bij review | n.v.t. |
 | Multi-club: geen clubwaarde in een `?? "…"`-fallback (#1717) | onbewaakt: vergt dataflow- of semantische analyse; alleen de `sensitive-patterns`-scan (security-scan.yml) vangt letterlijke clubwaarden | n.v.t. |
 | Multi-club: nieuwe tabel heeft `ClubCode` of komt via de instellingentabel (#1717) | onbewaakt: de ClubCode-dekking in `build.yml` geldt alleen voor bestaande configuratietabellen, niet voor nieuwe tabellen in het algemeen; beoordeling bij review | n.v.t. |
