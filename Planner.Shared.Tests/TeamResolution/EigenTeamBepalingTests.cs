@@ -184,6 +184,7 @@ public class EigenTeamBepalingTests
     [InlineData("35+1", "TESTCLUB 35+1", "1-99", "1-99")]
     [InlineData("Tegenstander 1", "TESTCLUB 1", "1-99", "1-99")]  // eigen team in het tegenstanderveld
     [InlineData("1", "TESTCLUB 1", null, null)]
+    [InlineData("G1", "TESTCLUB G1", "1-99", null)]  // G-team: nooit seniorenduur, de planner gebruikt de naamsleutel G
     public async Task BereidPlannerVoor_Seniorenteam_KrijgtSpeelduurUitSportlinkCategorie(
         string genoemd, string canoniek, string? sportlink, string? verwacht)
     {

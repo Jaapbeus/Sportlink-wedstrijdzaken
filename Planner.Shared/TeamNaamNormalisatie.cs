@@ -215,8 +215,15 @@ public static class TeamNaamNormalisatie
     public static string? VulLeeftijdsCategorieAan(string? huidige, string? teamNaam, string? clubPrefix,
         string? sportlinkCategorie = null)
         => string.IsNullOrWhiteSpace(huidige)
-            ? LeidLeeftijdsCategorieAf(teamNaam, clubPrefix) ?? LeeftijdNormalisatie.SeniorenSpeeltijdSleutel(sportlinkCategorie)
+            ? LeidLeeftijdsCategorieAf(teamNaam, clubPrefix)
+                ?? (IsGTeamNaam(teamNaam) ? null : LeeftijdNormalisatie.SeniorenSpeeltijdSleutel(sportlinkCategorie))
             : huidige;
+
+    // G-teams ("[club] G1") hebben geen leeftijd in de naam en krijgen in de planner de sleutel "G" op naam (vóór de
+    // categorie). Zij mogen dus nooit een seniorensleutel uit hun Sportlink-categorie krijgen (#1863).
+    private static bool IsGTeamNaam(string? teamNaam)
+        => !string.IsNullOrWhiteSpace(teamNaam)
+           && System.Text.RegularExpressions.Regex.IsMatch(teamNaam.Trim(), @"(^|\s)G\d", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 }
 
 /// <summary>Ontlede onderdelen van een genormaliseerde teamnaam. Zie <see cref="TeamNaamNormalisatie.Parse"/>.</summary>
