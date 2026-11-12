@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.17.0.0] — 2026-11-12
+
 - De auditregistratie van een aangemaakte clubwedstrijd legt nu het echte `PublicMatchId` van Sportlink vast in plaats van de tijdelijke waarde, op beide databasetiers. Daardoor is een latere wijziging of verwijdering aan de aanmaak te koppelen. Alleen bij een geslaagde, echte aanmaak; een fout bij het bijwerken breekt de aanmaak niet af (#1879).
 - Het standaard AI-model in de lokale instellingsvoorbeelden en de documentatie is `gpt-6-luna`, de door de provider aangewezen opvolger van `gpt-4o-mini`, dat op 14 januari 2027 uit de API verdwijnt. Een model met reasoning weigert de vaste temperatuur van de AI-aanroepen. Daarom is er een nieuwe optionele app setting `AiReasoningEffort` (`none`, `low`, `medium`, `high`, `extra-high`): als die is ingesteld, laat de app de temperatuur weg en stuurt de gekozen reasoning-inspanning mee, op beide databasetiers. Leeg laat het gedrag voor `gpt-4o-mini` ongewijzigd. De code heeft geen vaste modelnaam; de eigenaar zet nog `AiModelName` (`gpt-6-luna`) samen met `AiReasoningEffort=none`, zet de GitHub Variable `AI_MODEL_NAME` en test het model op geanonimiseerde berichten (zie issue #1756).
 - Het DPO-besluit over de relatiecode van officials staat vast in de documentatie: gerechtvaardigd belang als rechtsgrond, geen aparte bewaartermijn voor de prefill, en het mutatie-auditlog mag de ingevoerde relatiecode houden, met een bewaartermijn van 365 dagen (de bestaande standaard, per club instelbaar). Er is geen codewijziging (#1869).
