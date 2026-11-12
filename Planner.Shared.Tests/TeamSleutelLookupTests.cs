@@ -143,4 +143,17 @@ public class TeamSleutelLookupTests
     [InlineData(null, "14-2", null)]              // geen prefix → niets raden
     public void VulLeeftijdsCategorieAan(string? huidige, string team, string? verwacht)
         => TeamNaamNormalisatie.VulLeeftijdsCategorieAan(huidige, team, Club).Should().Be(verwacht);
+
+    [Theory]
+    [InlineData(null, "TESTCLUB 1", "1-99", "1-99")]       // #1863: eerste elftal → Sportlink-categorie
+    [InlineData(null, "TESTCLUB VR1", "VR", "VR")]         // vrouwen
+    [InlineData(null, "TESTCLUB 35+1", "Senioren", "1-99")] // veteranen
+    [InlineData(null, "TESTCLUB O23-1", "1-99", "JO23")]   // O23 volgt de naam (besluit 3A)
+    [InlineData(null, "14-2", "JO14", null)]               // jeugd zonder prefix: nooit raden, ook niet via de categorie
+    [InlineData(null, "TESTCLUB G1", "G", null)]           // geen seniorensleutel
+    [InlineData(null, "TESTCLUB 1", null, null)]           // categorie onbekend: niets
+    [InlineData("JO13", "TESTCLUB 1", "1-99", "JO13")]     // al ingevuld → ongemoeid
+    public void VulLeeftijdsCategorieAan_SeniorenteamKrijgtSportlinkCategorie(
+        string? huidige, string team, string? sportlink, string? verwacht)
+        => TeamNaamNormalisatie.VulLeeftijdsCategorieAan(huidige, team, Club, sportlink).Should().Be(verwacht);
 }

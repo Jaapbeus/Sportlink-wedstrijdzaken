@@ -1973,6 +1973,9 @@ LEFT JOIN [his].[teams] t
 LEFT JOIN [dbo].[Speeltijden] s
     ON s.[Leeftijd] = CASE
         WHEN m.[teamnaam] LIKE a.[ClubCode] + '' G[0-9]%'' THEN ''G''
+        WHEN ('' '' + UPPER(m.[teamnaam]) + '' '' LIKE ''%[^A-Z0-9]O23[^0-9]%'' OR '' '' + UPPER(m.[teamnaam]) + '' '' LIKE ''%[^A-Z0-9]JO23[^0-9]%'')
+             AND EXISTS (SELECT 1 FROM [dbo].[Speeltijden] jo23 WHERE jo23.[Leeftijd] = ''JO23'' AND jo23.[WedstrijdTotaal] > 0 AND jo23.[ClubCode] = a.[ClubCode])
+            THEN ''JO23'' -- #1863: O23-team = JO23-speeltijd, ook als Sportlink ''Senioren'' levert
         ELSE REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], ''Onder '', ''JO''), ''Meisjes '', ''MO''), ''Vrouwen'', ''VR'')
     END
    AND s.[ClubCode] = a.[ClubCode]

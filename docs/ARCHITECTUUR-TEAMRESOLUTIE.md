@@ -369,6 +369,16 @@ In de beschikbaarheidscheck van de e-mailpipeline wordt een ontbrekende leeftijd
 uit het team dat `TeamResolver` herkende (`TeamNaamNormalisatie.LeidLeeftijdsCategorieAf`,
 `JO14-2` → `JO14`). Zonder categorie kan de check geen wedstrijdduur bepalen.
 
+**Senioren en O23 (#1863).** Een seniorenteam heeft geen leeftijd in de naam (`1`, `VR1`, `35+1`). De resolver
+geeft daarom de categorie uit de teamtabel van de tier mee (`TeamCandidate.LeeftijdsCategorie` →
+`TeamResolutionResult.LeeftijdsCategorie` → `EigenTeamUitkomst.LeeftijdsCategorie` →
+`BerichtClassificatie.TeamSportlinkCategorie`, niet bewaard). `TeamNaamNormalisatie.VulLeeftijdsCategorieAan` gebruikt die
+alleen als de naam niets oplevert én de categorie een seniorensleutel is
+(`LeeftijdNormalisatie.SeniorenSpeeltijdSleutel`: `1-99` of `VR`). Jeugdteams houden de naamregel; een
+ontbrekend geslacht-prefix wordt nooit uit de categorie ingevuld. Een O23-team (`[club] O23-1`) krijgt overal de
+`JO23`-speeltijd, ook al levert Sportlink `Senioren` (`LeeftijdNormalisatie.SpeeltijdSleutel`, en de
+SQL-tegenhangers per tier); zonder bruikbare `JO23`-rij blijft de bronwaarde gelden.
+
 **Nog niet via deze lookup:** de buffers uit `teamregels` (`FieldScheduler`, `PlanningConflictRegels`)
 vergelijken nog exact. De parser herkent een JM-suffix (`[club] O14-1JM`) voor leeftijd en teamnummer en bewaart de suffix in de genormaliseerde sleutel; `JM` wordt niet als afzonderlijke categorie afgeleid.
 

@@ -36,6 +36,19 @@ public record PlanDoel(
 public static class AutoPlanRegels
 {
     /// <summary>
+    /// Speeltijdsleutel van één wedstrijd, gedeeld door de automatische planning en de veldbezetting van
+    /// beide tiers: de bron-categorie (of in demomodus de leeftijd uit de teamnaam), waarbij een O23-team de
+    /// <c>JO23</c>-speeltijd krijgt zolang die met duur &gt; 0 bestaat (#1863, <see cref="LeeftijdNormalisatie.SpeeltijdSleutel"/>).
+    /// </summary>
+    public static string SpeeltijdSleutelVoorWedstrijd(
+        string? teamNaam, string? leeftijdsCategorie, bool isAllstars, IReadOnlyDictionary<string, Speeltijd> speeltijden)
+        => LeeftijdNormalisatie.SpeeltijdSleutel(
+            !string.IsNullOrWhiteSpace(leeftijdsCategorie)
+                ? leeftijdsCategorie
+                : (isAllstars ? ExtractLeeftijdFromTeamNaam(teamNaam) ?? "" : ""),
+            teamNaam, speeltijden);
+
+    /// <summary>
     /// Stelt het planningsdoel voor één wedstrijd samen uit de drie lagen (#666).
     /// </summary>
     /// <param name="teamNaam">Teamnaam zoals die in de bron staat.</param>
@@ -54,9 +67,7 @@ public static class AutoPlanRegels
         Dictionary<string, Speeltijd> speeltijden,
         string? clubPrefix = null)
     {
-        var leeftijd = (!string.IsNullOrWhiteSpace(leeftijdsCategorie))
-            ? leeftijdsCategorie
-            : (isAllstars ? ExtractLeeftijdFromTeamNaam(teamNaam) ?? "" : "");
+        var leeftijd = SpeeltijdSleutelVoorWedstrijd(teamNaam, leeftijdsCategorie, isAllstars, speeltijden);
 
         // Laag 2 — default per leeftijdscategorie (mag null zijn: dan géén streeftijd)
         TimeOnly? defaultTijd = null;

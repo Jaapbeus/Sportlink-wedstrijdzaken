@@ -121,9 +121,11 @@ public static class AutoPlanExactApply
         var targetField = choice.VeldNummer ?? sourceField;
         var targetTime = choice.Tijd ?? source.AanvangsTijd;
         var targetLane = choice.VeldNummer.HasValue ? choice.VeldSubpositie : sourceLane;
-        var age = !string.IsNullOrWhiteSpace(source.LeeftijdsCategorie)
-            ? source.LeeftijdsCategorie : AutoPlanRegels.ExtractLeeftijdFromTeamNaam(source.TeamNaam);
-        speeltijden.TryGetValue(age ?? "", out var speeltijd);
+        var age = LeeftijdNormalisatie.SpeeltijdSleutel(
+            !string.IsNullOrWhiteSpace(source.LeeftijdsCategorie)
+                ? source.LeeftijdsCategorie : AutoPlanRegels.ExtractLeeftijdFromTeamNaam(source.TeamNaam),
+            source.TeamNaam, speeltijden); // #1863: O23 → JO23-speeltijd
+        speeltijden.TryGetValue(age, out var speeltijd);
         bool sportlinkLeading = VeldbezettingDuur.IsSportlinkLeidend(source.SportlinkSpeelduur);
 
         // Een onbekend team zonder Sportlink-speelduur heeft geen betrouwbare duur of veldfractie.

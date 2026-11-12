@@ -206,7 +206,14 @@ planner met een herkend eigen team (`Planner.Shared/Email/BeschikbaarheidVoorwaa
    afsluitende handmatige afhandeling van #1816 (Review, mailboxlabel voor handmatige planning, geen antwoord),
    met trace-stap `speelduur`. Zo komt de beheerinstructie van de planner nooit bij de afzender. Een losse
    categorie uit het model wordt eerst exact gezocht en daarna via `LeeftijdNormalisatie` (`O23` → `JO23`,
-   `Senioren` → `1-99`).
+   `Senioren` → `1-99`). De speelduur volgt twee teamregels (#1863):
+   - **O23**: een team met `O23`/`JO23` in de naam krijgt de `JO23`-speeltijd, ook als het model of Sportlink
+     `Senioren` noemt. Ontbreekt `JO23` of is de duur 0, dan geldt de gewone opzoeking op de categorie. Dezelfde
+     regel geldt in de automatische planning (duur, standaard voorkeurstijd, volgorde) en de veldbezetting.
+   - **Seniorenteam**: een herkend team zonder leeftijd in de naam (eerste elftal `1`, vrouwen `VR1`, veteranen
+     `35+1`) krijgt, als het model geen categorie noemde, de sleutel uit zijn Sportlink-categorie in de teamtabel:
+     `Senioren` → `1-99`, `Senioren Vrouwen` → `VR`. Een andere of ontbrekende categorie blijft handmatige
+     planning. Een jeugdteam blijft aangewezen op zijn naam; een ontbrekend geslacht-prefix wordt niet ingevuld.
 
 Bij een aanduiding die écht dubbelzinnig is — "13-1" kan JO13-1 of MO13-1 zijn — wordt niet gegokt:
 the system chooses no candidate and requires manual review.

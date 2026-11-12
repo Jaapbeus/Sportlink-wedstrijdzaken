@@ -41,4 +41,28 @@ public static class PostgresLeeftijdNormalisatie
             ELSE
                 REPLACE(REPLACE(REPLACE({kolom}, 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
         END";
+
+    /// <summary>
+    /// Speeltijdsleutel uit categorie <i>én</i> teamnaam (#1863): een O23-team ("[club] O23-1", "JO23-2") krijgt
+    /// <c>JO23</c> als die rij voor de club bestaat met een duur &gt; 0, ook als Sportlink het team als "Senioren"
+    /// (<c>1-99</c>) aanlevert. Anders de gewone <see cref="SqlExpr"/>: nooit duur 0 door deze regel. De grens van
+    /// "O23" is dezelfde als <see cref="Planner.Shared.TeamNaamNormalisatie.IsO23Team"/> (geen "MO23", geen "O230").
+    /// </summary>
+    public static string SpeeltijdSleutelSqlExpr(string categorieKolom, string teamNaamKolom, string clubCodeExpr) => $@"
+        CASE
+            WHEN {O23Jo23Voorwaarde(teamNaamKolom, clubCodeExpr)}
+                THEN 'JO23'
+            ELSE {SqlExpr(categorieKolom)}
+        END";
+
+    /// <summary>
+    /// De enige Postgres-formulering van de O23-regel (#1863): het team is een O23-team én de club heeft een
+    /// <c>JO23</c>-speeltijd met duur &gt; 0. Gedeeld door <see cref="SpeeltijdSleutelSqlExpr"/> en
+    /// <see cref="PostgresPlannerViewGenerator"/>, zodat er in deze tier één kopie van het teamnaampatroon is.
+    /// SQL kan <see cref="Planner.Shared.TeamNaamNormalisatie.IsO23Team"/> niet aanroepen; de pariteit met C#
+    /// bewaakt <c>PostgresLeeftijdNormalisatieSqlIntegrationTests</c>.
+    /// </summary>
+    public static string O23Jo23Voorwaarde(string teamNaamKolom, string clubCodeExpr) =>
+        $"{teamNaamKolom} ~* '(^|[^[:alnum:]])J?O23([^0-9]|$)' "
+        + $"AND EXISTS (SELECT 1 FROM public.speeltijden jo23 WHERE jo23.leeftijd = 'JO23' AND jo23.wedstrijdtotaal > 0 AND jo23.clubcode = {clubCodeExpr})";
 }

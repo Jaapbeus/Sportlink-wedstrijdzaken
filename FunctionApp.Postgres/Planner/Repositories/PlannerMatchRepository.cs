@@ -246,7 +246,7 @@ internal static class PlannerMatchRepository
             FROM his.matches m
             LEFT JOIN his.teams t ON t.teamnaam = m.teamnaam
                  AND {PostgresClubScope.HisFilter("t")}
-            LEFT JOIN public.speeltijden s ON s.leeftijd = {Database.Postgres.PostgresLeeftijdNormalisatie.SqlExpr("t.leeftijdscategorie")}
+            LEFT JOIN public.speeltijden s ON s.leeftijd = {Database.Postgres.PostgresLeeftijdNormalisatie.SpeeltijdSleutelSqlExpr("t.leeftijdscategorie", "m.teamnaam", PostgresClubScope.ClubCodeParam)}
                  AND s.clubcode = {PostgresClubScope.ClubCodeParam}
             WHERE m.kaledatum::date = @date
               AND UPPER(m.status) <> 'AFGELAST'
@@ -347,7 +347,7 @@ internal static class PlannerMatchRepository
             LEFT JOIN his.teams t ON t.teamnaam = m.teamnaam
                  AND t.leeftijdscategorie IS NOT NULL AND t.leeftijdscategorie <> ''
                  AND {PostgresClubScope.HisFilter("t")}
-            LEFT JOIN public.speeltijden s ON s.leeftijd = {Database.Postgres.PostgresLeeftijdNormalisatie.SqlExpr("t.leeftijdscategorie")}
+            LEFT JOIN public.speeltijden s ON s.leeftijd = {Database.Postgres.PostgresLeeftijdNormalisatie.SpeeltijdSleutelSqlExpr("t.leeftijdscategorie", "m.teamnaam", PostgresClubScope.ClubCodeParam)}
                  AND s.clubcode = {PostgresClubScope.ClubCodeParam}
             WHERE m.kaledatum::date = @date
               AND m.accommodatie ILIKE @accommodatiepattern ESCAPE '\'
@@ -390,7 +390,7 @@ internal static class PlannerMatchRepository
             LEFT JOIN his.teams t ON t.teamnaam = m.teamnaam
                  AND t.leeftijdscategorie IS NOT NULL AND t.leeftijdscategorie <> ''
                  AND {PostgresClubScope.HisFilter("t")}
-            LEFT JOIN public.speeltijden s ON s.leeftijd = {Database.Postgres.PostgresLeeftijdNormalisatie.SqlExpr("t.leeftijdscategorie")}
+            LEFT JOIN public.speeltijden s ON s.leeftijd = {Database.Postgres.PostgresLeeftijdNormalisatie.SpeeltijdSleutelSqlExpr("t.leeftijdscategorie", "m.teamnaam", PostgresClubScope.ClubCodeParam)}
                  AND s.clubcode = {PostgresClubScope.ClubCodeParam}
             WHERE m.wedstrijdcode = @code
               AND m.accommodatie ILIKE @accommodatiepattern ESCAPE '\'
@@ -484,7 +484,7 @@ internal static class PlannerMatchRepository
             LEFT JOIN his.teams t ON t.teamnaam = m.teamnaam
                  AND t.leeftijdscategorie IS NOT NULL AND t.leeftijdscategorie <> ''
                  AND {PostgresClubScope.HisFilter("t")}
-            LEFT JOIN public.speeltijden s ON s.leeftijd = {Database.Postgres.PostgresLeeftijdNormalisatie.SqlExpr("t.leeftijdscategorie")}
+            LEFT JOIN public.speeltijden s ON s.leeftijd = {Database.Postgres.PostgresLeeftijdNormalisatie.SpeeltijdSleutelSqlExpr("t.leeftijdscategorie", "m.teamnaam", PostgresClubScope.ClubCodeParam)}
                  AND s.clubcode = {PostgresClubScope.ClubCodeParam}
             WHERE m.accommodatie ILIKE @accommodatiepattern ESCAPE '\'
               AND UPPER(m.status) <> 'AFGELAST'

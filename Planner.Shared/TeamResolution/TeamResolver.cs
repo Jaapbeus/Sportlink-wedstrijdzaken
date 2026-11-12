@@ -80,5 +80,5 @@ public sealed class TeamResolver(ITeamCandidateRepository repository) : ITeamRes
 
     private static TeamResolutionResult Opgelost(
         TeamCandidate team, double confidence, IReadOnlyList<TeamCandidate> kandidaten, ResolutionBron bron)
-        => new(team.TeamId, team.Teamnaam, confidence, kandidaten, bron);
+        => new(team.TeamId, team.Teamnaam, confidence, kandidaten, bron, team.LeeftijdsCategorie);
 }

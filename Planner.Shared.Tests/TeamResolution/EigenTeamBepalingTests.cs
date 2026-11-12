@@ -174,6 +174,42 @@ public class EigenTeamBepalingTests
         classificatie.LeeftijdsCategorie.Should().Be("JO13");
     }
 
+    /// <summary>
+    /// #1863: een herkend seniorenteam (eerste elftal, vrouwen, veteranen) heeft geen leeftijd in de naam en krijgt
+    /// de speeltijd uit zijn Sportlink-categorie; een onbekende categorie blijft handmatige planning.
+    /// </summary>
+    [Theory]
+    [InlineData("1", "TESTCLUB 1", "1-99", "1-99")]
+    [InlineData("VR1", "TESTCLUB VR1", "VR", "VR")]
+    [InlineData("35+1", "TESTCLUB 35+1", "1-99", "1-99")]
+    [InlineData("Tegenstander 1", "TESTCLUB 1", "1-99", "1-99")]  // eigen team in het tegenstanderveld
+    [InlineData("1", "TESTCLUB 1", null, null)]
+    [InlineData("G1", "TESTCLUB G1", "1-99", null)]  // G-team: nooit seniorenduur, de planner gebruikt de naamsleutel G
+    public async Task BereidPlannerVoor_Seniorenteam_KrijgtSpeelduurUitSportlinkCategorie(
+        string genoemd, string canoniek, string? sportlink, string? verwacht)
+    {
+        var resolver = new FakeResolver { [canoniek] = new(5, canoniek, 1.0, [], ResolutionBron.ExacteMatch, sportlink) };
+        var classificatie = genoemd.StartsWith("Tegenstander", StringComparison.Ordinal)
+            ? new Planner.Shared.Email.BerichtClassificatie
+            { Type = Planner.Shared.Email.VerzoekType.BeschikbaarheidCheck, TeamNaam = genoemd, Tegenstander = canoniek }
+            : new Planner.Shared.Email.BerichtClassificatie
+            { Type = Planner.Shared.Email.VerzoekType.BeschikbaarheidCheck, TeamNaam = canoniek };
+        var speeltijden = new Dictionary<string, Speeltijd>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["1-99"] = new() { Leeftijd = "1-99", WedstrijdTotaal = 115, Veldafmeting = 1m },
+            ["VR"] = new() { Leeftijd = "VR", WedstrijdTotaal = 105, Veldafmeting = 1m },
+        };
+
+        (await EigenTeamBepaling.BereidPlannerVoorAsync(classificatie, resolver, Club, NullLogger.Instance, null)).Should().BeTrue();
+        var handmatig = await Planner.Shared.Email.BeschikbaarheidVoorwaarden.ControleerSpeelduurAsync(classificatie,
+            sleutel => Task.FromResult(speeltijden.GetValueOrDefault(sleutel)), null);
+
+        classificatie.TeamNaam.Should().Be(canoniek);
+        classificatie.LeeftijdsCategorie.Should().Be(verwacht);
+        if (verwacht is null) handmatig.Should().NotBeNull("zonder categorie blijft het handmatige planning");
+        else handmatig.Should().BeNull();
+    }
+
     /// <summary>Resolver met vaste antwoorden per (getrimde) ruwe tekst; onbekend = Onopgelost.</summary>
     private sealed class FakeResolver : Dictionary<string, TeamResolutionResult>, ITeamResolver
     {

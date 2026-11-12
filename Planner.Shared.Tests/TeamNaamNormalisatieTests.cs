@@ -265,4 +265,19 @@ public class TeamNaamNormalisatieTests
     [Fact]
     public void IsAlleenClubPrefix_ZonderClubPrefix_IsNooitWaar()
         => TeamNaamNormalisatie.IsAlleenClubPrefix("TESTCLUB", null).Should().BeFalse();
+
+    [Theory]
+    [InlineData("TESTCLUB O23-1", true)]
+    [InlineData("O23-1", true)]
+    [InlineData("testclub jo23-2", true)]
+    [InlineData("TESTCLUB O23 1", true)]
+    [InlineData("TESTCLUB MO23-1", false)]   // meiden-O23 heeft een eigen sleutel
+    [InlineData("TESTCLUB O230-1", false)]
+    [InlineData("TESTCLUB O21-1", false)]
+    [InlineData("TESTCLUB 1", false)]        // eerste elftal blijft senioren
+    [InlineData("TESTCLUB VR1", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void IsO23Team_HerkentAlleenO23(string? teamnaam, bool verwacht)
+        => TeamNaamNormalisatie.IsO23Team(teamnaam).Should().Be(verwacht);
 }

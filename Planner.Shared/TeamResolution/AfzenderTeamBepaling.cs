@@ -87,6 +87,7 @@ public static class AfzenderTeamBepaling
         }
 
         classificatie.TeamNaam = canoniek;
+        classificatie.TeamSportlinkCategorie = uitkomst!.LeeftijdsCategorie;
         classificatie.TeamAfgeleidUitAfzender = true;
         trace?.BegeleidingAfzender(AantalOmschrijving(1), true, ZekerheidsNiveau.Zeker, false);
         log.LogInformation("TEAMRESOLUTIE - eigen team afgeleid uit de teambegeleiding van de afzender");
