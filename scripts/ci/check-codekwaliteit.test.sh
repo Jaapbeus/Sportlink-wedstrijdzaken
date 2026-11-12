@@ -78,6 +78,7 @@ proef_tier="$(mktemp -d)"
 mkdir -p "$proef_tier/scripts/ci/lib" "$proef_tier/FunctionApp" "$proef_tier/FunctionApp.Postgres"
 cp scripts/ci/check-tier-duplicatie.sh "$proef_tier/scripts/ci/"
 cp scripts/ci/lib/plafond.sh "$proef_tier/scripts/ci/lib/"
+printf '# explicit tier pairs\n' > "$proef_tier/scripts/ci/tier-duplicatie-mapping.txt"
 printf 'tier-duplicatie-regels 1\n' > "$proef_tier/scripts/ci/codekwaliteit-plafonds.txt"
 printf 'internal const int Basis = 1;\n' > "$proef_tier/FunctionApp/Proef.cs"
 cp "$proef_tier/FunctionApp/Proef.cs" "$proef_tier/FunctionApp.Postgres/Proef.cs"
@@ -87,6 +88,29 @@ cp "$proef_tier/FunctionApp/Proef.cs" "$proef_tier/FunctionApp.Postgres/Proef.cs
 )
 verwacht_slagen "tier-duplicatie op synthetisch plafond" bash -c \
   'cd "$1" && bash scripts/ci/check-tier-duplicatie.sh' _ "$proef_tier"
+
+# Een reviewed path mapping moet exact als een extra paar in de guardtelling vallen.
+mkdir -p "$proef_tier/FunctionApp/Planner" "$proef_tier/FunctionApp.Postgres/Planner/Repositories"
+printf 'internal const int Mapped = 1;\n' > "$proef_tier/FunctionApp/Planner/Service.cs"
+cp "$proef_tier/FunctionApp/Planner/Service.cs" \
+  "$proef_tier/FunctionApp.Postgres/Planner/Repositories/Service.cs"
+printf 'FunctionApp/Planner/Service.cs | FunctionApp.Postgres/Planner/Repositories/Service.cs\n' \
+  >> "$proef_tier/scripts/ci/tier-duplicatie-mapping.txt"
+(
+  cd "$proef_tier" || exit 2
+  bash scripts/ci/check-tier-duplicatie.sh
+) > "$TMP_C" 2>&1
+proef_status=$?
+if [ "$proef_status" -eq 1 ] && grep -Fq 'Tier-duplicatie gestegen naar 2 regels (plafond 1, dus +1)' "$TMP_C"; then
+  echo "  ok — expliciet gemapt tierpaar telt mee"
+  geslaagd=$((geslaagd + 1))
+else
+  echo "::error::NEGATIEVE TEST MISLUKT — expliciet gemapt tierpaar is niet meegeteld."
+  cat "$TMP_C"
+  mislukt=$((mislukt + 1))
+fi
+
+printf '# explicit tier pairs\n' > "$proef_tier/scripts/ci/tier-duplicatie-mapping.txt"
 printf 'internal const int Extra = 2;\n' >> "$proef_tier/FunctionApp/Proef.cs"
 printf 'internal const int Extra = 2;\n' >> "$proef_tier/FunctionApp.Postgres/Proef.cs"
 (
