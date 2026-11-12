@@ -17,8 +17,10 @@
   versie; controleer die bij een afwijking).
 - **Harde limiet bij opstarten:** een bestand van meer dan 4 MiB wordt overgeslagen en niets ervan geladen. Onze
   bestanden zijn ruim daaronder.
-- **Laden op aanvraag (subdirectory-`CLAUDE.md`, ook `FunctionApp/CLAUDE.md`, en de bestanden die ze importeren):**
-  pas zodra Claude in die map een bestand leest. Hier geldt een kleinere limiet per bestand: 40.000 tekens bij een
+- **Laden op aanvraag (`CLAUDE.md` in een submap van de map waarin Claude gestart is, en de bestanden die ze importeren):**
+  pas zodra Claude in die submap een bestand leest. Dat geldt voor `FunctionApp/CLAUDE.md` bij een sessie die in de root
+  start; start je in `FunctionApp/` zelf, dan is `FunctionApp/CLAUDE.md` een opstartbestand (limiet 4 MiB, hierboven).
+  Voor op aanvraag geladen bestanden geldt een kleinere limiet per bestand: 40.000 tekens bij een
   contextvenster van 200K; bij 1M-context 200.000 of 150.000 tekens, afhankelijk van het model. Bij overschrijding
   krijgt Claude alleen het begin, met een notitie om de rest met de Read-tool te lezen. `FunctionApp/AGENTS.md` (ongeveer
   2,6 KB) zit daar ver onder.
@@ -74,6 +76,9 @@ De laatste regel van elke `AGENTS.md` begint met `Laadcontrole:` en bevat een ca
   tekst niet altijd betrouwbaar.
 - Canary en laadbron samen zijn pas sluitend: de canary is gezien **en** er is geen toolaanroep geweest om het
   bestand te lezen **en** de lijst van geladen bronnen bevat het bestand.
+- Een ontbrekende canary betekent daarom alleen "niet aangetoond, oorzaak onbekend". Afkapping, een niet-vertrouwd
+  project, configuratie of bestandsselectie zijn alle mogelijk. Stel afkapping pas vast uit geladen instructietekst,
+  een truncatiewaarschuwing of budget-/configuratiebewijs, niet uit de afwezigheid van de canary.
 - Naleving van de regels bewijst deze test nooit.
 
 ### Per oppervlak
@@ -81,12 +86,17 @@ De laatste regel van elke `AGENTS.md` begint met `Laadcontrole:` en bevat een ca
 1. **Claude Code (CLI en extensie).** Start een nieuwe sessie in de repositoryroot. Run `/context all` en controleer
    onder **Memory files** dat `CLAUDE.md` en (via de import) de inhoud van `AGENTS.md` aanwezig zijn. Vraag dan, zonder
    toolgebruik toe te staan (weiger elke toolaanroep): "Citeer de laatste regel van je instructies die met
-   `Laadcontrole:` begint." Verwacht `ROOT-EINDE-1898`. Herhaal in een nieuwe sessie in `FunctionApp/`: lees eerst een
-   bestand in `FunctionApp/` (laden op aanvraag) en vraag dan om beide canaries (`ROOT-EINDE-1898` en
-   `FUNCTIONAPP-EINDE-1898`).
+   `Laadcontrole:` begint." Verwacht `ROOT-EINDE-1898`. Twee aparte tests voor `FunctionApp/`:
+   - *Opstarttest:* start een nieuwe sessie in `FunctionApp/`; `FunctionApp/CLAUDE.md` is dan een opstartbestand. Controleer met
+     `/context all` onder **Memory files** en vraag toolvrij om beide canaries (`ROOT-EINDE-1898` en
+     `FUNCTIONAPP-EINDE-1898`). Of de root-`AGENTS.md` in een submapsessie meekomt, is precies wat deze test vaststelt.
+   - *Test voor laden op aanvraag:* start een nieuwe sessie in de root en lees daarna een gewoon bestand onder
+     `FunctionApp/`. Controleer dat de laadmelding (`Loaded`-regel) voor `FunctionApp/CLAUDE.md` verschijnt (dit bestand staat
+     niet als opstartbestand onder **Memory files**) en vraag pas dan toolvrij om `FUNCTIONAPP-EINDE-1898`.
 2. **Codex (app en CLI).** Start een nieuwe sessie in de root en vraag hetzelfde zonder toolgebruik. Controleer in de
    sessielog dat er geen bestand gelezen is vóór het antwoord. Herhaal in `FunctionApp/`: beide canaries verwacht. Mist
-   de laatste, dan is de keten afgekapt: dat is een budgetprobleem.
+   een canary, dan is dat "niet aangetoond, oorzaak onbekend": zoek bewijs voor afkapping (geladen instructietekst, een
+   truncatiewaarschuwing) of voor een configuratie-/vertrouwensprobleem voordat je het budget verhoogt.
 3. **Copilot chat en IDE, CLI.** Zelfde vraag in een nieuwe sessie met de repository als context; controleer in de
    zichtbare context/referenties welke instructiebestanden meegestuurd zijn. Noteer per oppervlak of ook de root-canary zichtbaar is
    als je in `FunctionApp/` werkt (samenvoegen of vervangen).
