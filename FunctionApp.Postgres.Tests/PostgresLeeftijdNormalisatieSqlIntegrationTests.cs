@@ -106,6 +106,8 @@ public class PostgresLeeftijdNormalisatieSqlIntegrationTests
 
         view.Should().Contain("m.teamnaam ~* '(^|[^[:alnum:]])J?O23([^0-9]|$)'")
             .And.Contain("jo23.wedstrijdtotaal > 0").And.Contain("THEN 'JO23'");
+        // Eén Postgres-kopie van het O23-patroon: de view hergebruikt de voorwaarde van de repository-expressie.
+        view.Should().Contain(PostgresLeeftijdNormalisatie.O23Jo23Voorwaarde("m.teamnaam", "a.clubcode"));
     }
 
     /// <summary>

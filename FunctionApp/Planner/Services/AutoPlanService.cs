@@ -244,11 +244,8 @@ internal static partial class AutoPlanService
         return wedstrijden
             .Select(w =>
             {
-                var leeftijd = LeeftijdNormalisatie.SpeeltijdSleutel(
-                    !string.IsNullOrWhiteSpace(w.LeeftijdsCategorie)
-                        ? w.LeeftijdsCategorie
-                        : (isAllstars ? ExtractLeeftijdFromTeamNaam(w.TeamNaam) ?? "" : ""),
-                    w.TeamNaam, speeltijden); // #1863: O23 → JO23-speeltijd
+                // #1863: O23 → JO23-speeltijd; dezelfde sleutel als de automatische planning.
+                var leeftijd = AutoPlanRegels.SpeeltijdSleutelVoorWedstrijd(w.TeamNaam, w.LeeftijdsCategorie, isAllstars, speeltijden);
                 speeltijden.TryGetValue(leeftijd, out var speeltijdInfo);
 
                 return new VeldbezettingItem

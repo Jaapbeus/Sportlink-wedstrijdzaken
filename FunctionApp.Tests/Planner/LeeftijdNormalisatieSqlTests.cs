@@ -77,7 +77,15 @@ public class LeeftijdNormalisatieSqlTests
 
         view.Should().Contain("LIKE '%[^A-Z0-9]O23[^0-9]%'").And.Contain("jo23.[WedstrijdTotaal] > 0").And.Contain("THEN 'JO23'");
         script.Should().Contain("LIKE ''%[^A-Z0-9]O23[^0-9]%''").And.Contain("jo23.[WedstrijdTotaal] > 0").And.Contain("THEN ''JO23''");
+
+        // Driftbewaking: beide statische kopieën bevatten letterlijk (op witruimte na) dezelfde voorwaarde als de
+        // repository-expressie; het script staat binnen EXEC('...'), dus daar zijn quotes verdubbeld.
+        var voorwaarde = ZonderWitruimte(LeeftijdNormalisatieSql.O23Jo23Voorwaarde("m.[teamnaam]", "a.[ClubCode]"));
+        ZonderWitruimte(view).Should().Contain(voorwaarde);
+        ZonderWitruimte(script.Replace("''", "'")).Should().Contain(voorwaarde);
     }
+
+    private static string ZonderWitruimte(string sql) => System.Text.RegularExpressions.Regex.Replace(sql, @"\s+", " ");
 
     private static string RepoRoot()
     {
@@ -136,7 +144,7 @@ public sealed class SqlServerLeeftijdNormalisatieSqlIntegrationTests
         await connection.OpenAsync();
         await using var tx = (SqlTransaction)await connection.BeginTransactionAsync();
         await using (var ins = new SqlCommand(
-            "INSERT INTO [dbo].[Speeltijden] ([Leeftijd],[Veldafmeting],[WedstrijdTotaal],[ClubCode]) VALUES ('JO23',1.00,105,@cc)", connection, tx))
+            "INSERT INTO [dbo].[Speeltijden] ([Leeftijd],[Veldafmeting],[WedstrijdTotaal],[WedstrijdHelft],[WedstrijdRust],[ClubCode]) VALUES ('JO23',1.00,105,45,15,@cc)", connection, tx))
         {
             ins.Parameters.AddWithValue("@cc", clubCode);
             await ins.ExecuteNonQueryAsync();

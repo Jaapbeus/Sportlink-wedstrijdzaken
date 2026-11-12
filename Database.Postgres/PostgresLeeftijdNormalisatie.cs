@@ -50,10 +50,19 @@ public static class PostgresLeeftijdNormalisatie
     /// </summary>
     public static string SpeeltijdSleutelSqlExpr(string categorieKolom, string teamNaamKolom, string clubCodeExpr) => $@"
         CASE
-            WHEN {teamNaamKolom} ~* '(^|[^[:alnum:]])J?O23([^0-9]|$)'
-                 AND EXISTS (SELECT 1 FROM public.speeltijden jo23
-                             WHERE jo23.leeftijd = 'JO23' AND jo23.wedstrijdtotaal > 0 AND jo23.clubcode = {clubCodeExpr})
+            WHEN {O23Jo23Voorwaarde(teamNaamKolom, clubCodeExpr)}
                 THEN 'JO23'
             ELSE {SqlExpr(categorieKolom)}
         END";
+
+    /// <summary>
+    /// De enige Postgres-formulering van de O23-regel (#1863): het team is een O23-team én de club heeft een
+    /// <c>JO23</c>-speeltijd met duur &gt; 0. Gedeeld door <see cref="SpeeltijdSleutelSqlExpr"/> en
+    /// <see cref="PostgresPlannerViewGenerator"/>, zodat er in deze tier één kopie van het teamnaampatroon is.
+    /// SQL kan <see cref="Planner.Shared.TeamNaamNormalisatie.IsO23Team"/> niet aanroepen; de pariteit met C#
+    /// bewaakt <c>PostgresLeeftijdNormalisatieSqlIntegrationTests</c>.
+    /// </summary>
+    public static string O23Jo23Voorwaarde(string teamNaamKolom, string clubCodeExpr) =>
+        $"{teamNaamKolom} ~* '(^|[^[:alnum:]])J?O23([^0-9]|$)' "
+        + $"AND EXISTS (SELECT 1 FROM public.speeltijden jo23 WHERE jo23.leeftijd = 'JO23' AND jo23.wedstrijdtotaal > 0 AND jo23.clubcode = {clubCodeExpr})";
 }

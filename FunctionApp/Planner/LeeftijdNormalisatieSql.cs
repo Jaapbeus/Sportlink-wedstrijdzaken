@@ -68,11 +68,19 @@ internal static class LeeftijdNormalisatieSql
     /// </summary>
     internal static string SpeeltijdSleutelSqlExpr(string categorieKolom, string teamNaamKolom, string clubCodeExpr) => $@"
         CASE
-            WHEN (' ' + UPPER({teamNaamKolom}) + ' ' LIKE '%[^A-Z0-9]O23[^0-9]%'
-                  OR ' ' + UPPER({teamNaamKolom}) + ' ' LIKE '%[^A-Z0-9]JO23[^0-9]%')
-                 AND EXISTS (SELECT 1 FROM [dbo].[Speeltijden] jo23
-                             WHERE jo23.[Leeftijd] = 'JO23' AND jo23.[WedstrijdTotaal] > 0 AND jo23.[ClubCode] = {clubCodeExpr})
+            WHEN {O23Jo23Voorwaarde(teamNaamKolom, clubCodeExpr)}
                 THEN 'JO23'
             ELSE {SqlExpr(categorieKolom)}
         END";
+
+    /// <summary>
+    /// De SQL Server-formulering van de O23-regel (#1863): het team is een O23-team én de club heeft een
+    /// <c>JO23</c>-speeltijd met duur &gt; 0. De statische view (<c>Database/planner/Views/AlleWedstrijdenOpVeld.sql</c>)
+    /// en het PostDeployment-script kunnen deze methode niet aanroepen; <c>LeeftijdNormalisatieSqlTests</c> eist dat
+    /// beide letterlijk deze voorwaarde bevatten (uitzondering op "geen teamnaam-regex elders": SQL kan
+    /// <see cref="Planner.Shared.TeamNaamNormalisatie.IsO23Team"/> niet aanroepen).
+    /// </summary>
+    internal static string O23Jo23Voorwaarde(string teamNaamKolom, string clubCodeExpr) =>
+        $"(' ' + UPPER({teamNaamKolom}) + ' ' LIKE '%[^A-Z0-9]O23[^0-9]%' OR ' ' + UPPER({teamNaamKolom}) + ' ' LIKE '%[^A-Z0-9]JO23[^0-9]%') "
+        + $"AND EXISTS (SELECT 1 FROM [dbo].[Speeltijden] jo23 WHERE jo23.[Leeftijd] = 'JO23' AND jo23.[WedstrijdTotaal] > 0 AND jo23.[ClubCode] = {clubCodeExpr})";
 }
